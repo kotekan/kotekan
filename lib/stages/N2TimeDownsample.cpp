@@ -326,6 +326,13 @@ void N2TimeDownsample::main_thread() {
             }
             output_frame.erms += frame.erms * frame.n_valid_fpga_ticks;
 
+            // Fold the flags (1 == good): an element flagged anywhere in the
+            // window is flagged for the window; copy_frame seeded the first.
+            for (size_t i = 0; i < num_elements; i++) {
+                if (frame.flags[i] == 0.0f)
+                    output_frame.flags[i] = 0.0f;
+            }
+
             // Accumulate integration totals
             output_frame.n_valid_fpga_ticks += frame.n_valid_fpga_ticks;
             output_frame.n_rfi_fpga_ticks += frame.n_rfi_fpga_ticks;

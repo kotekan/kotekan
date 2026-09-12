@@ -1,5 +1,6 @@
 #define BOOST_TEST_MODULE "test_eigen_stages"
 
+#include "CHORDTelescope.hpp"
 #include "Config.hpp"
 #include "EigenN2Iter.hpp"
 #include "FakeN2.hpp"
@@ -583,4 +584,138 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_concurrent_pipelines) {
     auto results = run_n2_pipeline_pair(params_a, params_b);
     verify_results(results.first, params_a, 1e-4, 1e-4, 1e-4, 1e-5f);
     verify_results(results.second, params_b, 1e-4, 1e-4, 1e-4, 1e-5f);
+}
+
+// A compact DishInputs frame holds the dense triangle over its own element axis, so the
+// solver runs on it as on a FullUpperTri frame of the same size.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
+    ensure_n2metadata_registered();
+
+    nlohmann::json cfg;
+    cfg["log_level"] = "ERROR";
+    cfg["cpu_affinity"] = std::vector<int>{0};
+    cfg["num_polarizations"] = 2;
+    cfg["num_ev"] = 1;
+
+    cfg["n2buf"]["num_elements"] = 8;
+    cfg["n2buf"]["num_ev"] = 1;
+    cfg["n2buf"]["n2_layout"] = "DishInputs";
+
+    cfg["eigen_di"]["kotekan_stage"] = "EigenN2Iter";
+    cfg["eigen_di"]["in_buf"] = "in_buf";
+    cfg["eigen_di"]["out_buf"] = "out_buf";
+    cfg["eigen_di"]["num_ev_conv"] = 1;
+
+    cfg["dataset_manager"]["enable_state_caching"] = false;
+    cfg["dataset_manager"]["use_dataset_broker"] = false;
+
+    // Four dishes, two of them Fake: DishInputs keeps the array dish and the RFI
+    // antenna, elements {0, 1, 4, 5} of the eight-element full order.
+    add_test_telescope_config(cfg);
+    cfg["telescope"]["num_dishes"] = 4;
+    cfg["telescope"]["dish_inputs"] = nlohmann::json::array({{{"dish_idx", 0},
+                                                              {"grid_x_idx", 0},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "ArrayDish"},
+                                                              {"label", "D00"}},
+                                                             {{"dish_idx", 1},
+                                                              {"grid_x_idx", 1},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "RFIDish"},
+                                                              {"label", "R01"}},
+                                                             {{"dish_idx", 2},
+                                                              {"grid_x_idx", 2},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "Fake"},
+                                                              {"label", "F02"}},
+                                                             {{"dish_idx", 3},
+                                                              {"grid_x_idx", 3},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "Fake"},
+                                                              {"label", "F03"}}});
+
+    kotekan::Config conf;
+    conf.update_config(cfg);
+    kotekan::configUpdater::instance().apply_config(conf);
+    Telescope::instance(conf);
+    datasetManager::instance(conf);
+
+    // The compact frame: four elements standing for the connected {0, 1, 4, 5}, with a
+    // dense triangle over its own element axis.
+    const auto* tel = dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+    BOOST_REQUIRE(tel != nullptr);
+    const std::vector<uint64_t> expected_ids = {0, 1, 4, 5};
+    BOOST_CHECK(tel->get_connected_elements(tel->fiducial_element_order()) == expected_ids);
+    auto desc = std::make_shared<kotekan::N2FrameDesc>(conf, "/n2buf");
+    BOOST_REQUIRE_EQUAL(desc->get_num_elements(), 4u);
+    BOOST_REQUIRE_EQUAL(desc->get_product_list().size(), 10u);
+    for (const auto& p : desc->get_product_list()) {
+        BOOST_CHECK(p.input_a <= p.input_b);
+        BOOST_CHECK(p.input_b < 4);
+    }
+
+    const size_t frame_size = desc->get_byte_size();
+    auto pool = metadataPool::create(4, sizeof(N2Metadata), "n2_pool_di", "N2Metadata");
+    Buffer in_buf(2, frame_size, pool, "in_buf", "N2", 0, false, false, std::vector<int>{}, true);
+    Buffer out_buf(2, frame_size, pool, "out_buf", "N2", 0, false, false, std::vector<int>{}, true);
+    in_buf.ensure_frame_desc(desc);
+    out_buf.ensure_frame_desc(desc);
+    in_buf.register_producer("test-producer");
+    out_buf.register_consumer("test_sink");
+    kotekan::bufferContainer bc;
+    bc.add_buffer("in_buf", &in_buf);
+    bc.add_buffer("out_buf", &out_buf);
+
+    EigenN2Iter stage(conf, "/eigen_di", bc);
+    stage.start();
+
+    // One frame: rank-1 vis(a, b) = e^{i(a-b)} over the compact element axis, flags
+    // all good -- the Fake elements are simply not in the frame.
+    BOOST_REQUIRE(in_buf.wait_for_empty_frame("test-producer", 0) != nullptr);
+    in_buf.allocate_new_metadata_object(0);
+    auto meta = get_N2_metadata(&in_buf, 0);
+    meta->freq_id = 0;
+    meta->fpga_start_tick = 100;
+    meta->frame_length_fpga_ticks = 100;
+    {
+        N2FrameView fv(&in_buf, 0);
+        fv.zero_frame();
+        const auto& prods = desc->get_product_list();
+        for (size_t p = 0; p < prods.size(); ++p) {
+            fv.vis[p] = std::polar(1.0f, float(prods[p].input_a) - float(prods[p].input_b));
+            fv.weight[p] = 1.0f;
+        }
+        for (size_t i = 0; i < 4; ++i) {
+            fv.flags[i] = 1.0f;
+            fv.gain[i] = 1.0f;
+        }
+    }
+    in_buf.mark_frame_full("test-producer", 0);
+
+    const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (out_buf.get_num_full_frames() < 1) {
+        BOOST_REQUIRE(std::chrono::steady_clock::now() < timeout);
+        std::this_thread::sleep_for(10ms);
+    }
+
+    in_buf.send_shutdown_signal();
+    out_buf.send_shutdown_signal();
+    stage.stop();
+    stage.join();
+
+    N2FrameView out(&out_buf, 0);
+    BOOST_CHECK_GT(out.erms, 0.0f); // converged
+    BOOST_CHECK_CLOSE(out.eval[0], 4.0f, 1.0);
+    std::vector<std::complex<float>> evec(4);
+    for (size_t i = 0; i < 4; ++i)
+        evec[i] = out.evec[i];
+    check_phase_vector(evec, {}, 4, 1e-3, 1e-3);
 }
