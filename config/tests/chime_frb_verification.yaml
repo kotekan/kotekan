@@ -103,42 +103,42 @@ host_voltage_buffer:
     num_frames: baseband_buffer_depth
     frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
     metadata_pool: main_pool
-host_voltage_ringbuffer:
-    kotekan_buffer: ring
-    # [24576, 1, 2, 512]
-    # value = 0x55555ba9c5e0 "T"}, {value = 0x55555ba9d650 "F"}, {value = 0x55555ba9d8a0 "P"}, {
-    # value = 0x55555ba9e5f0 "D"}}}
-    ring_buffer_size: gpu_buffer_depth * samples_per_data_set * num_elements * num_local_freq
-    type: float32
-    dimnames: ["T", "F", "P", "D"]
-    shape: [samples_per_dataset, num_local_freq, 2, num_elements / 2]
-    metadata_pool: main_pool
+#host_voltage_ringbuffer:
+#    kotekan_buffer: ring
+#    # [24576, 1, 2, 512]
+#    # value = 0x55555ba9c5e0 "T"}, {value = 0x55555ba9d650 "F"}, {value = 0x55555ba9d8a0 "P"}, {
+#    # value = 0x55555ba9e5f0 "D"}}}
+#    ring_buffer_size: gpu_buffer_depth * samples_per_data_set * num_elements * num_local_freq
+#    type: float32
+#    dimnames: ["T", "F", "P", "D"]
+#    shape: [samples_per_dataset, num_local_freq, 2, num_elements / 2]
+#    metadata_pool: main_pool
 
-host_beamform_frb1_buffer:
-  kotekan_buffer: standard
-  num_frames: buffer_depth
-  frame_size: num_data_sets * samples_per_data_set * num_local_freq * num_elements * 2*sizeof_half
-  metadata_pool: main_pool
-host_beamform_frb1_ringbuffer:
-  kotekan_buffer: ring
-  ring_buffer_size: buffer_depth * num_data_sets * samples_per_data_set * num_local_freq * num_elements * 2*sizeof_half
-  type: cfloat16
-  dimnames: ["T", "F", "P", "EW", "NS"]
-  shape: [buffer_depth * samples_per_data_set, num_local_freq, 2, 4, num_elements / 2 / 4]
-  metadata_pool: main_pool
-
-host_beamform_frb2_buffer:
-  kotekan_buffer: standard
-  num_frames: buffer_depth
-  frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
-  metadata_pool: main_pool
-host_beamform_frb2_ringbuffer:
-  kotekan_buffer: ring
-  ring_buffer_size: buffer_depth * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
-  type: float32
-  dimnames: ["Tc", "B", "Fc", "Tfrb", "Fu"]
-  shape: [buffer_depth,  num_elements / 2, num_local_freq, samples_per_data_set / (3 * 128), 16]
-  metadata_pool: main_pool
+#host_beamform_frb1_buffer:
+#  kotekan_buffer: standard
+#  num_frames: buffer_depth
+#  frame_size: num_data_sets * samples_per_data_set * num_local_freq * num_elements * 2*sizeof_half
+#  metadata_pool: main_pool
+#host_beamform_frb1_ringbuffer:
+#  kotekan_buffer: ring
+#  ring_buffer_size: buffer_depth * num_data_sets * samples_per_data_set * num_local_freq * num_elements * 2*sizeof_half
+#  type: cfloat16
+#  dimnames: ["T", "F", "P", "EW", "NS"]
+#  shape: [buffer_depth * samples_per_data_set, num_local_freq, 2, 4, num_elements / 2 / 4]
+#  metadata_pool: main_pool
+#
+#host_beamform_frb2_buffer:
+#  kotekan_buffer: standard
+#  num_frames: buffer_depth
+#  frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
+#  metadata_pool: main_pool
+#host_beamform_frb2_ringbuffer:
+#  kotekan_buffer: ring
+#  ring_buffer_size: buffer_depth * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
+#  type: float32
+#  dimnames: ["Tc", "B", "Fc", "Tfrb", "Fu"]
+#  shape: [buffer_depth,  num_elements / 2, num_local_freq, samples_per_data_set / (3 * 128), 16]
+#  metadata_pool: main_pool
 
 gain_frb_buffer:
   kotekan_buffer: standard
@@ -146,84 +146,89 @@ gain_frb_buffer:
   num_frames: buffer_depth
   frame_size: 2048 * 2 * sizeof_float
 
-# trivial gain
-set_gain_frb_buffer:
-  kotekan_stage: testDataGenFloat
-  type: const
-  value: 1.0
-  dim_scaling: [ 1, 1, 1, 1 ]
-  dim_name: ["T", "P", "D", "C"]
-  array_shape: [1,  2, 1024, 2]
-  network_out_buf: gain_frb_buffer
+## trivial gain
+#set_gain_frb_buffer:
+#  kotekan_stage: testDataGenFloat
+#  type: const
+#  value: 1.0
+#  dim_scaling: [ 1, 1, 1, 1 ]
+#  dim_name: ["T", "P", "D", "C"]
+#  array_shape: [1,  2, 1024, 2]
+#  network_out_buf: gain_frb_buffer
 
-# send data to GPU
-run_send_voltage:
-  kotekan_stage: cudaProcess
-  log_level: debug
-  gpu_id: 0
-  buffer_depth: gpu_buffer_depth
-  frame_arrival_period: network_frame_arrival_period
-  num_times: samples_per_data_set
-  in_buffers:
-      host_voltage_buffer: host_voltage_buffer
-  out_buffers:
-      host_voltage_ringbuffer: host_voltage_ringbuffer
-  commands:
-  - name: cudaCopyToRingbuffer
-    input_size: samples_per_data_set * num_elements * num_local_freq
-    ring_buffer_size: gpu_buffer_depth * input_size
-    in_buf: host_voltage_buffer
-    signal_buf: host_voltage_ringbuffer
-    gpu_mem_output: voltage_buffer
+## send data to GPU
+#run_send_voltage:
+#  kotekan_stage: cudaProcess
+#  log_level: debug
+#  gpu_id: 0
+#  buffer_depth: gpu_buffer_depth
+#  frame_arrival_period: network_frame_arrival_period
+#  num_times: samples_per_data_set
+#  in_buffers:
+#      host_voltage_buffer: host_voltage_buffer
+#  out_buffers:
+#      host_voltage_ringbuffer: host_voltage_ringbuffer
+#  commands:
+#  - name: cudaCopyToRingbuffer
+#    input_size: samples_per_data_set * num_elements * num_local_freq
+#    ring_buffer_size: gpu_buffer_depth * input_size
+#    in_buf: host_voltage_buffer
+#    signal_buf: host_voltage_ringbuffer
+#    gpu_mem_output: voltage_buffer
 
-# TODO: reorder into beamformer order
-# TODO: handle gains (hard-coded to 1.0 in C++ code right now)
-gpu_beamform:
-  kotekan_stage: cudaProcess
-  log_level: debug
-  buffer_depth: gpu_buffer_depth
-  frame_arrival_period: network_frame_arrival_period
-  num_times: samples_per_data_set
-  gpu_id: 0
-  in_buffers:
-      host_voltage_ringbuffer: host_voltage_ringbuffer
-  out_buffers:
-      host_beamform_frb2_ringbuffer: host_beamform_frb2_ringbuffer
-      host_beamform_frb1_ringbuffer: host_beamform_frb1_ringbuffer
-  commands:
-  - name: cudaCHIMEFRBBeamform
-    poison_buffers: true
-    num_frequencies: num_local_freq
-    num_polarizations: 2
-    num_dishes: num_elements / 2
-    voltage_name: voltage
-    frb1_beams_name: beamform_frb1
-    frb2_beams_name: beamform_frb2
-
-recv_gpu_beamform_output_buffer:
-  kotekan_stage: cudaProcess
-  buffer_depth: gpu_buffer_depth
-  frame_arrival_period: network_frame_arrival_period
-  num_times: samples_per_data_set
-  gpu_id: 0
-  in_buffers:
-      host_beamform_frb2_ringbuffer: host_beamform_frb2_ringbuffer
-  out_buffers:
-      host_beamform_frb2_buffer: host_beamform_frb2_buffer
-  commands:
-  - name: cudaCopyFromRingbuffer
-    host_signal: host_beamform_frb2_ringbuffer
-    gpu_mem_input: beamform_frb2
-    output_size: sizeof_float * num_frb_total_beams * num_local_freq * samples_per_data_set / (downsample_time * factor_upchan) * factor_upchan_out
-    ring_buffer_size: gpu_buffer_depth * output_size
-    out_buf: host_beamform_frb2_buffer
+## TODO: reorder into beamformer order
+## TODO: handle gains (hard-coded to 1.0 in C++ code right now)
+#gpu_beamform:
+#  kotekan_stage: cudaProcess
+#  log_level: debug
+#  buffer_depth: gpu_buffer_depth
+#  frame_arrival_period: network_frame_arrival_period
+#  num_times: samples_per_data_set
+#  gpu_id: 0
+#  in_buffers:
+#      host_voltage_ringbuffer: host_voltage_ringbuffer
+#  out_buffers:
+#      host_beamform_frb2_ringbuffer: host_beamform_frb2_ringbuffer
+#      host_beamform_frb1_ringbuffer: host_beamform_frb1_ringbuffer
+#  commands:
+#  - name: cudaCHIMEFRBBeamform
+#    poison_buffers: true
+#    num_frequencies: num_local_freq
+#    num_polarizations: 2
+#    num_dishes: num_elements / 2
+#    voltage_name: voltage
+#    frb1_beams_name: beamform_frb1
+#    frb2_beams_name: beamform_frb2
+#
+#recv_gpu_beamform_output_buffer:
+#  kotekan_stage: cudaProcess
+#  buffer_depth: gpu_buffer_depth
+#  frame_arrival_period: network_frame_arrival_period
+#  num_times: samples_per_data_set
+#  gpu_id: 0
+#  in_buffers:
+#      host_beamform_frb2_ringbuffer: host_beamform_frb2_ringbuffer
+#  out_buffers:
+#      host_beamform_frb2_buffer: host_beamform_frb2_buffer
+#  commands:
+#  - name: cudaCopyFromRingbuffer
+#    host_signal: host_beamform_frb2_ringbuffer
+#    gpu_mem_input: beamform_frb2
+#    output_size: sizeof_float * num_frb_total_beams * num_local_freq * samples_per_data_set / (downsample_time * factor_upchan) * factor_upchan_out
+#    ring_buffer_size: gpu_buffer_depth * output_size
+#    out_buf: host_beamform_frb2_buffer
 
 cpu_output_buffers:
     num_frames: buffer_depth
     frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
     metadata_pool: main_pool
+    value_type: float32
+    extents: [1, num_frb_total_beams, samples_per_data_set/factor_upchan/downsample_time, factor_upchan/downsample_freq]
+    quantity_name: "R"
+    dimnames: ["Tc", "R", "T", "F" ]
+    dimscalings: [ samples_per_data_set, 1, factor_upchan*downsample_time, 1]
     cpu_output_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
 
 cpu_hfb_output_buffers:
     num_frames: buffer_depth
@@ -240,8 +245,10 @@ lost_samples_buffer:
 
 gen_data:
   test_data_gen_network:
-    type: random_signed_offset
-    value: 153
+    #type: random_signed_offset
+    #value: 153
+    type: const_offset
+    value: 0x98
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
     name: "E"
@@ -271,64 +278,72 @@ cpu_simulate:
     beam_out_buf: cpu_output_buffer_0
     hfb_out_buf: cpu_hfb_output_buffer_0
 
-check_data:
-  bf_data_check_0:
-    num_frames_to_test: 1
-    epsilon: 0.001
-    kotekan_stage: testDataCheckFloat
-    first_buf : host_beamform_frb2_buffer
-    second_buf: cpu_output_buffer_0
+beam_write:
+    kotekan_stage: hdf5FileWrite
+    max_frames: 1
+    base_dir: frb_beams
+    input_order: CHIMEBeamformer # this makes no sense, but is required
+    in_buf: cpu_output_buffer_0
+    file_name: cpu_output_buffer_0
 
-
-frb:
-    # set via a globals
-    #num_gpus: 1
-    #samples_per_data_set: samples_per_data_set
-    #downsample_time: downsample_time
-    #factor_upchan: factor_upchan
-    # must be 16, hard-coded in C code
-    #factor_upchan_out: factor_upchan_out
-    # from chime_science_run_gpu.yaml
-    num_beams_per_frb_packet: 4
-    # must be 16 (hard-coded in C code)
-    timesamples_per_frb_packet: 16
-    frb_packet_header_size: 32
-    frb_output_buffer:
-        num_frames: buffer_depth + 4
-        frame_size: 8 * 256 * (num_beams_per_frb_packet * num_gpus
-          * factor_upchan_out * timesamples_per_frb_packet
-          + frb_packet_header_size + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
-          + sizeof_float * num_beams_per_frb_packet * num_gpus
-          + sizeof_float * num_beams_per_frb_packet * num_gpus)
-        metadata_pool: main_pool
-        kotekan_buffer: standard
-    postprocess:
-        kotekan_stage: frbPostProcess
-        incoherent_beams: [0, 256, 512, 768]
-        lost_samples_buf: lost_samples_buffer
-        in_buf_0: cpu_output_buffer_0
-        out_buf: frb_output_buffer
-    network_send:
-        kotekan_stage: frbNetworkProcess
-        in_buf: frb_output_buffer
-        udp_frb_packet_size: (frb_packet_header_size
-          + sizeof_short * num_beams_per_frb_packet
-          + sizeof_short * num_gpus
-          + sizeof_float * num_beams_per_frb_packet * num_gpus
-          + sizeof_float * num_beams_per_frb_packet * num_gpus)
-          + (num_beams_per_frb_packet * num_gpus
-             * factor_upchan_out * timesamples_per_frb_packet)
-        udp_frb_port_number: 1313
-        number_of_nodes: 1
-        packets_per_stream: 8
-        # magic number, don't bind to any subnet
-        number_of_subnets: 0
-        #column_mode: true
-        beam_offset: 0
-        time_interval: 125829120
-        # don't ping
-        ping_dead_threshold: 0
-        L1_node_ips:
-            - 127.0.0.1
+#check_data:
+#  bf_data_check_0:
+#    num_frames_to_test: 1
+#    epsilon: 0.001
+#    kotekan_stage: testDataCheckFloat
+#    first_buf : host_beamform_frb2_buffer
+#    second_buf: cpu_output_buffer_0
+#
+#
+#frb:
+#    # set via a globals
+#    #num_gpus: 1
+#    #samples_per_data_set: samples_per_data_set
+#    #downsample_time: downsample_time
+#    #factor_upchan: factor_upchan
+#    # must be 16, hard-coded in C code
+#    #factor_upchan_out: factor_upchan_out
+#    # from chime_science_run_gpu.yaml
+#    num_beams_per_frb_packet: 4
+#    # must be 16 (hard-coded in C code)
+#    timesamples_per_frb_packet: 16
+#    frb_packet_header_size: 32
+#    frb_output_buffer:
+#        num_frames: buffer_depth + 4
+#        frame_size: 8 * 256 * (num_beams_per_frb_packet * num_gpus
+#          * factor_upchan_out * timesamples_per_frb_packet
+#          + frb_packet_header_size + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
+#          + sizeof_float * num_beams_per_frb_packet * num_gpus
+#          + sizeof_float * num_beams_per_frb_packet * num_gpus)
+#        metadata_pool: main_pool
+#        kotekan_buffer: standard
+#    postprocess:
+#        kotekan_stage: frbPostProcess
+#        incoherent_beams: [0, 256, 512, 768]
+#        lost_samples_buf: lost_samples_buffer
+#        in_buf_0: cpu_output_buffer_0
+#        out_buf: frb_output_buffer
+#    network_send:
+#        kotekan_stage: frbNetworkProcess
+#        in_buf: frb_output_buffer
+#        udp_frb_packet_size: (frb_packet_header_size
+#          + sizeof_short * num_beams_per_frb_packet
+#          + sizeof_short * num_gpus
+#          + sizeof_float * num_beams_per_frb_packet * num_gpus
+#          + sizeof_float * num_beams_per_frb_packet * num_gpus)
+#          + (num_beams_per_frb_packet * num_gpus
+#             * factor_upchan_out * timesamples_per_frb_packet)
+#        udp_frb_port_number: 1313
+#        number_of_nodes: 1
+#        packets_per_stream: 8
+#        # magic number, don't bind to any subnet
+#        number_of_subnets: 0
+#        #column_mode: true
+#        beam_offset: 0
+#        time_interval: 125829120
+#        # don't ping
+#        ping_dead_threshold: 0
+#        L1_node_ips:
+#            - 127.0.0.1
 
 ...
