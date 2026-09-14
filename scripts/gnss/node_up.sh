@@ -101,6 +101,43 @@ preflight() {
         echo "FAILED: binary not executable: $BIN" >&2
         exit 1
     fi
+    if [ "${GNSS_SKIP_PREFLIGHT:-0}" != 1 ]; then
+        # ⚠️ THE BAKED EOP TABLE ROLLS. fatal_eop_out_of_range is true, so a node started from a
+        # config whose table ends near now runs about a minute and exits on "Requesting EOP later
+        # than in table" -- 2026-09-11, and again 2026-09-14 when Friday's table was 17 h expired
+        # by Monday afternoon. A live /earth_rotation_data push does not survive a restart; only
+        # the baked table does. Refuse below GNSS_EOP_MIN_H hours of headroom (default 12).
+        _eop_h=$(python3 - "$CFG" <<'PYEOP'
+import re, sys, time
+ts = [int(x) for x in re.findall(r"t_inst_ns:\s*(\d+)", open(sys.argv[1]).read())]
+print("%.1f" % ((max(ts) / 1e9 - time.time()) / 3600) if ts else "nan")
+PYEOP
+)
+        _min_h=${GNSS_EOP_MIN_H:-12}
+        if [ "$_eop_h" = nan ] || [ "$(python3 -c "print(int(float('$_eop_h') < $_min_h))")" = 1 ]; then
+            echo "FAILED: the baked EOP table in $CFG has ${_eop_h} h of headroom (< ${_min_h} h)." >&2
+            echo "  Regenerate all six, gate them, commit, then start:" >&2
+            echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml" >&2
+            echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml --check" >&2
+            echo "  and push the live table once the nodes answer:  $K/scripts/gnss/eop_push.sh" >&2
+            echo "  (GNSS_SKIP_PREFLIGHT=1 overrides, deliberately.)" >&2
+            exit 1
+        fi
+        # ⚠️ chive MUST ANSWER FIRST. ConfigTracker GETs chive:54321/config at construction and
+        # its failure is FATAL; ICETelescope reads frame0 from get-frame0-time ONCE, at start.
+        # A node started while the F-engine controller is down dies; one started while chive
+        # still publishes the epoch from BEFORE an F-engine re-base latches the old axis and
+        # timestamps the sky a day or more in the past (2026-09-14: 134042 s). /config is
+        # bimodal (median 6 ms, max 16 s) so the timeout is generous.
+        if ! curl -sf -m 20 http://chive:54321/get-frame0-time 2>/dev/null | grep -q frame0_nano; then
+            echo "FAILED: chive:54321/get-frame0-time does not answer with frame0_nano." >&2
+            echo "  The F-engine controller is down or restarting. A node started now either dies" >&2
+            echo "  (ConfigTracker) or latches the wrong epoch (ICETelescope). Wait until" >&2
+            echo "    curl -s http://chive:54321/get-frame0-time" >&2
+            echo "  returns a start_ctime you believe, then retry. (GNSS_SKIP_PREFLIGHT=1 overrides.)" >&2
+            exit 1
+        fi
+    fi
     # ⚠️ IS THE BINARY OLDER THAN THE LIBRARY IT LINKS? A WARNING, never a refusal.
     #
     # `ninja lib/stages/all` builds the static library and DOES NOT RELINK kotekan. Everything
@@ -183,10 +220,22 @@ preflight() {
 # stay LOADED, and then systemd-run refuses the name: "Unit gnss-node.service was already
 # loaded or has a fragment file". reset-failed clears it; harmless when there is nothing to
 # clear, hence the `|| true`.
+# ⚠️ THE UNIT RESTARTS ITSELF ON FAILURE (2026-09-14). Two things end a healthy node that are
+# not the node's fault and are not anyone's decision: an F-engine reconfigure, which fpga_monitor
+# turns into a FatalError on purpose (the latched frame0 is no longer the wire's), and a crash.
+# Restart=on-failure brings it back after RestartSec; on the way up it re-reads chive, so it
+# converges on the new epoch by itself -- and if chive is still down it fails again and retries,
+# bounded by RestartSec, with StartLimitIntervalSec=0 so systemd never gives up on it. A clean
+# exit does NOT restart: a deliberate /kill or `systemctl stop` stays down.
+# The log is APPENDED, not truncated, so the fatal that caused a restart survives it; each
+# node_up start rotates the previous file to $LOG.1 instead.
 REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
+      { [ -f '$LOG' ] && sudo mv -f '$LOG' '$LOG.1'; true; }; \
       test -r '$CFG' && sudo systemd-run --unit=gnss-node \
         --working-directory=$K \
-        --property=StandardOutput=truncate:$LOG \
+        --property=Restart=on-failure --property=RestartSec=20 \
+        --property=StartLimitIntervalSec=0 \
+        --property=StandardOutput=append:$LOG \
         --property=StandardError=inherit \
         '$BIN' --config '$CFG' --bind-address 0.0.0.0:12048"
 
@@ -220,7 +269,7 @@ REMOTE_START_VERIFY="for attempt in 1 2 3; do \
       for i in \$(seq 1 100); do \
         if curl -sf -m 2 -o /dev/null http://localhost:12048/telescope/time0_ns 2>/dev/null; \
           then ok=1; break; fi; \
-        systemctl is-active --quiet gnss-node || break; \
+        systemctl is-active gnss-node 2>/dev/null | grep -qE '^activ' || break; \
         sleep 2; \
       done; \
       if [ \$ok = 1 ]; then echo \"node_up: up on attempt \$attempt\"; exit 0; fi; \
