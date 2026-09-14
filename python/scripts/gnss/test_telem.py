@@ -289,6 +289,51 @@ class TestWindowRing(unittest.TestCase):
         self.assertEqual(list(c.frame_set("gal_e5a", 10)), ["cx19.0"])
 
 
+    # -- epoch resets (2026-09-14): an F-engine re-base restarts the window counter ------------
+    def _fill(self, c, lo, hi, insts=("cx19.0", "cx42.0")):
+        for w in range(lo, hi):
+            for inst in insts:
+                self._feed(c, _make_frame(inst=inst, win=w))
+
+    def test_a_persistent_large_backwards_jump_resets_the_ring(self):
+        # Before the fix these frames were inserted, sorted to the front and evicted first --
+        # every one discarded, every instance stale, for as long as the process lived.
+        c = self._client(depth=16)
+        self._fill(c, 1000, 1010)
+        for w in range(5, 5 + c.epoch_strikes - 1):        # strikes 1..7: counted, kept as before
+            self._feed(c, _make_frame(inst="cx19.0", win=w))
+        self.assertEqual(c.epoch_resets, 0)
+        self.assertEqual(c.far_behind, c.epoch_strikes - 1)
+        self.assertTrue(any(w >= 1000 for w in c._store["gps_l5"]))    # old epoch still held
+        self._feed(c, _make_frame(inst="cx19.0", win=5 + c.epoch_strikes - 1))   # strike 8
+        self.assertEqual(c.epoch_resets, 1)
+        self.assertEqual(list(c._store["gps_l5"]), [5 + c.epoch_strikes - 1])
+        self._feed(c, _make_frame(inst="cx42.0", win=5 + c.epoch_strikes))
+        st = c.stats(stale_after_s=0)["chains"]["gps_l5"]
+        self.assertEqual(st["live"], 2)
+        self.assertEqual(c.stats()["epoch_resets"], 1)
+
+    def test_a_laggard_inside_the_margin_is_still_a_laggard(self):
+        c = self._client(depth=16)
+        self._fill(c, 1000, 1010)
+        self._feed(c, _make_frame(inst="cx43.0", win=1010 - c.epoch_margin))
+        self.assertEqual(c.epoch_resets, 0)
+        self.assertEqual(c.far_behind, 0)
+        self.assertIn(1010 - c.epoch_margin, c._store["gps_l5"])   # accepted and re-sorted
+        self.assertEqual(list(c._store["gps_l5"]), sorted(c._store["gps_l5"]))
+
+    def test_one_corrupt_header_does_not_reset(self):
+        c = self._client(depth=16)
+        self._fill(c, 1000, 1010)
+        self._feed(c, _make_frame(inst="cx19.0", win=3))          # one wild header
+        self._feed(c, _make_frame(inst="cx19.0", win=1010))       # in order again
+        for w in range(4, 4 + c.epoch_strikes - 1):               # never reaches a full run
+            self._feed(c, _make_frame(inst="cx19.0", win=w))
+            self._feed(c, _make_frame(inst="cx42.0", win=1011 + w))
+        self.assertEqual(c.epoch_resets, 0)
+        self.assertEqual(c.far_behind, c.epoch_strikes)           # counted, never acted on
+        self.assertIn(1011 + 4 + c.epoch_strikes - 2, c._store["gps_l5"])   # the last in-order window fed
+
 class TestQuietGatherDoesNotReconnect(unittest.TestCase):
     """C. Silence is not a broken link.
 
@@ -299,6 +344,7 @@ class TestQuietGatherDoesNotReconnect(unittest.TestCase):
     969 sockets in CLOSE_WAIT, the accept() calls failing with EMFILE, and the gather serving
     nothing at all -- REST included -- exactly as the fleet came back.
     """
+
 
     def _serve(self, sock, gap_s):
         """One frame, then GAP (longer than the client's read timeout), then a second frame."""

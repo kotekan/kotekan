@@ -263,10 +263,18 @@ class TelemClient(object):
     """
 
     def __init__(self, host="127.0.0.1", port=11061, depth=64, retry_s=5.0, chains=None,
-                 read_timeout_s=30.0):
+                 read_timeout_s=30.0, epoch_margin=64, epoch_strikes=8):
         self.host = host
         self.port = port
         self.depth = int(depth)
+        # An F-engine re-base moves the window counter far backwards. These mirror
+        # GnssFleetTrim's defaults (gnssFleetDll.hpp) so the gather and the broker re-anchor on
+        # the same event; see _store_frame.
+        self.epoch_margin = int(epoch_margin)
+        self.epoch_strikes = int(epoch_strikes)
+        self.epoch_resets = 0
+        self.far_behind = 0    # frames more than epoch_margin behind the newest window (counted, kept)
+        self._backwards = {}   # chain -> consecutive such frames; epoch_strikes of them re-anchor
         # Optional chain filter, applied at PARSE time. The stream carries all five chains on
         # one connection, so a long collection (tens of seconds of records) otherwise costs 5x
         # the memory for data the caller will throw away -- which is the difference between a
@@ -422,6 +430,30 @@ class TelemClient(object):
                 # are independent processes, so out-of-order window opens are normal, not an
                 # error -- which is why the ring is re-sorted rather than assumed monotone.
                 newest = next(reversed(ring)) if ring else None
+                # AN EPOCH RESET IS A LARGE, PERSISTENT BACKWARDS JUMP -- the gather's rule
+                # (gnssFleetDll.hpp), mirrored so both ends re-anchor on the same event. A
+                # laggard is a few windows behind while its peers are not; a frame0 move lands
+                # the WHOLE stream far below everything held and keeps doing it. Without this
+                # the post-re-base windows are inserted, sorted to the front, and evicted
+                # first, forever: every frame after an F-engine restart is discarded and every
+                # instance reads stale, while frames/gaps look healthy. One corrupt header
+                # cannot trigger it: epoch_strikes consecutive such frames must arrive, and
+                # any frame that is not far behind clears the run. Until the run completes the
+                # frame is handled exactly as before -- inserted, re-sorted, evicted when the
+                # ring is full -- so nothing changes for a stream that never re-bases.
+                if newest is not None and newest - f.win > self.epoch_margin:
+                    self.far_behind += 1
+                    self._backwards[f.chain] = self._backwards.get(f.chain, 0) + 1
+                    if self._backwards[f.chain] >= self.epoch_strikes:
+                        self._backwards[f.chain] = 0
+                        self.epoch_resets += 1
+                        _log("telem: chain %s window counter went back %d -> %d and stayed "
+                             "there: epoch reset #%d, ring cleared (an F-engine re-base)"
+                             % (f.chain, newest, f.win, self.epoch_resets))
+                        ring.clear()
+                        newest = None
+                else:
+                    self._backwards[f.chain] = 0
                 ring[f.win] = {}
                 if newest is not None and f.win < newest:
                     for w in sorted(ring):
@@ -589,6 +621,8 @@ class TelemClient(object):
                     "frames": self.frames,
                     "gaps": self.gaps,
                     "bad": self.bad,
+                    "far_behind": self.far_behind,
+                    "epoch_resets": self.epoch_resets,
                     "connects": self.connects,
                     "age_s": (now - self.last_rx) if self.last_rx else None,
                     "chains": per_chain}
