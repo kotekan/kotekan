@@ -28,7 +28,12 @@
 set -u
 K=/home/kvand/gnss/kotekan
 LOG=${GNSS_BROKER_LOG:-/tmp/gnss_broker.log}
-PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}
+# ⚠️ THE DEFAULT IS THE FREE-THREADED INTERPRETER. The broker has run on 3.14t at venv-ft since
+# 2026-09-0x; under the 3.12 GIL venv one thread pins a core, the telemetry receiver misses the
+# gather's 200 ms whole-frame deadline, the gather drops it every ~15 s, every instance reads
+# stale, nothing is armed, and every chain but L5 goes dark while the stack looks up (2026-09-14,
+# two hours). GNSS_PY still overrides -- the 3.12 venv is the rollback.
+PY=${GNSS_PY:-/home/kvand/gnss/venv-ft/bin/python}
 CHAINS=${GNSS_CHAINS:-$K/config/gnss_chains_chord.yaml}
 
 if [ ! -r "$CHAINS" ]; then
