@@ -11,6 +11,7 @@ add_library(
     FakeN2.cpp
     FakeHFB.cpp
     FakeVisPattern.cpp
+    gpuBeamformSimulate.cpp
     gpuSimulate.cpp
     gpuSimulateCudaBasebandBeamformer.cpp
     gpuSimulateCudaFRBBeamformer.cpp

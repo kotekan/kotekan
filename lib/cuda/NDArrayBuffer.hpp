@@ -261,8 +261,31 @@ public:
                                     cudaMemcpyDeviceToHost));
         const bool found_error =
             std::find_if(local_data.begin(), local_data.end(), check) != local_data.end();
-        if (found_error)
-            FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
+        if (found_error) {
+            std::ostringstream locations;
+            bool in_poison_region = false;
+            size_t first_index_in_poison_region, number_of_poison_values = 0;
+            for(size_t i = 0; i < local_data.size(); ++i) {
+               if(check(local_data[i])) {
+                    number_of_poison_values += 1;
+                    if(!in_poison_region) {
+                        first_index_in_poison_region = i;
+                        locations << " " << first_index_in_poison_region;
+                        in_poison_region = true;
+                    }
+               } else {
+                    if(in_poison_region) {
+                        if(first_index_in_poison_region < i-1)
+                            locations << "-" << (i-1);
+                        in_poison_region = false;
+                    }
+               }
+            }
+            if(in_poison_region)
+                if(first_index_in_poison_region < local_data.size()-1)
+                    locations << "-" << (local_data.size()-1);
+            FATAL_ERROR("NDArray buffer {:s} contains {:d} poison at:{:s}", buffer_name, number_of_poison_values, locations.str());
+        }
     }
 
     // I/O

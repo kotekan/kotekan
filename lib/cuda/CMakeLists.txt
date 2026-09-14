@@ -26,6 +26,7 @@ add_library(
     cudaCalcFRB2Weights.cpp
     cudaCalcFRB2WeightsKernel.cu
     testCalcFRB2Weights.cpp
+    cudaCHIMEFRBBeamform.cpp
     cudaCopyFromRingbuffer.cpp
     cudaCopyToRingbuffer.cpp
     cudaCopyNToRingbuffer.cpp
