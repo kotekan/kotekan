@@ -78,6 +78,12 @@ void cudaDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 cudaStream_t cudaDeviceInterface::getStream(int32_t cuda_stream_id) {
+    // The per-stage bound (cudaProcess::collect_stream_ids) runs after the commands are built,
+    // and a command may fetch its stream in its constructor; refuse here too rather than read
+    // past the vector first.
+    if (cuda_stream_id < 0 || cuda_stream_id >= (int32_t)streams.size())
+        throw std::runtime_error(fmt::format("getStream: stream {:d} outside [0, {:d})",
+                                             cuda_stream_id, (int32_t)streams.size()));
     return streams[cuda_stream_id];
 }
 
@@ -85,9 +91,18 @@ int32_t cudaDeviceInterface::get_num_streams() {
     return streams.size();
 }
 
+std::recursive_mutex& cudaDeviceInterface::stream_mutex(int32_t stream_id) {
+    if (stream_id < 0 || stream_id >= (int32_t)stream_mutexes.size())
+        throw std::runtime_error(fmt::format("stream_mutex: stream {:d} outside [0, {:d})",
+                                             stream_id, (int32_t)stream_mutexes.size()));
+    return stream_mutexes[stream_id];
+}
+
 void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
-    // Create GPU command queues
+    // Create GPU command queues, each with its queuing mutex; the mutex first, so no stream
+    // ever exists without one.
     for (uint32_t i = streams.size(); i < num_streams; ++i) {
+        stream_mutexes.emplace_back();
         cudaStream_t stream = nullptr;
         CHECK_CUDA_ERROR(cudaStreamCreate(&stream));
         streams.push_back(stream);
