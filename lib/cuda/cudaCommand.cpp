@@ -1,6 +1,7 @@
 #include "cudaCommand.hpp"
 
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cudaStreamAssignment.hpp" // for resolve_cuda_stream, CUDA_STREAM_NEEDS_EXPLICIT
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaEventCreate, cudaEventDestroy, cudaEventRecord, cudaEv...
 #include "visUtil.hpp"        // for StatTracker
 
@@ -61,37 +62,18 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
 
 void cudaCommand::set_command_type(const gpuCommandType& type) {
     command_type = type;
-    // Use the cuda_stream if provided
+    // An explicit `cuda_stream` is absolute and ignores the base.
     cuda_stream_id = config.get_default<int32_t>(unique_name, "cuda_stream", -1);
-
-    if (cuda_stream_id >= device.get_num_streams()) {
-        throw std::runtime_error(
-            "Asked for a CUDA stream greater than the maximum number available");
-    }
-    // If the stream is set (not -1), we don't need to set a default below.
     if (cuda_stream_id >= 0)
         return;
 
-    // If no stream set use a default stream, or generate an error
-    switch (command_type) {
-        case gpuCommandType::NOT_SET:
-            throw std::runtime_error("No command type set");
-            break;
-        case gpuCommandType::COPY_IN:
-            cuda_stream_id = 0;
-            break;
-        case gpuCommandType::COPY_OUT:
-            cuda_stream_id = 1;
-            break;
-        case gpuCommandType::KERNEL:
-            cuda_stream_id = 2;
-            break;
-        case gpuCommandType::BARRIER:
-            throw std::runtime_error("cuda_stream required for barrier type command object");
-            break;
-        default:
-            throw std::runtime_error("Invalid GPU Command type");
-    }
+    // Otherwise assign by role, shifted by the pipeline's base: base+0 copy-in, base+1
+    // copy-out, base+2 kernel. The owning cudaProcess checks the result against its own
+    // num_cuda_streams once every command is built (cudaProcess::collect_stream_ids).
+    const int32_t base = config.get_default<int32_t>(unique_name, "cuda_stream_base", 0);
+    cuda_stream_id = resolve_cuda_stream(command_type, base);
+    if (cuda_stream_id == CUDA_STREAM_NEEDS_EXPLICIT)
+        throw std::runtime_error("cuda_stream required for barrier type command object");
 }
 
 cudaCommand::~cudaCommand() {
