@@ -572,8 +572,10 @@ void gpuBeamformSimulate::main_thread() {
         output_buf->allocate_new_metadata_object(output_buf_id);
         input_buf->copy_metadata(input_buf_id, output_buf, output_buf_id);
         input_buf->mark_frame_empty(unique_name, input_buf_id);
-        get_chord_metadata(output_buf, output_buf_id)->set_from_frame_desc(output_buf->get_frame_desc<kotekan::GenericNDArray>());
-        get_chord_metadata(output_buf, output_buf_id)->set_time_downsampling_fpga(_factor_upchan * _downsample_time);
+        get_chord_metadata(output_buf, output_buf_id)
+            ->set_from_frame_desc(output_buf->get_frame_desc<kotekan::GenericNDArray>());
+        get_chord_metadata(output_buf, output_buf_id)
+            ->set_time_downsampling_fpga(_factor_upchan * _downsample_time);
         output_buf->mark_frame_full(unique_name, output_buf_id);
         hfb_output_buf->mark_frame_full(unique_name, output_buf_id);
 
