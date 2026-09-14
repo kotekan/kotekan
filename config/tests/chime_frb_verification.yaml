@@ -55,7 +55,7 @@ factor_upchan: 128
 factor_upchan_out: 16
 num_frb_total_beams: 1024
 frb_missing_gains: [1.0, 0.0]
-frb_scaling: 1.0/512
+frb_scaling: 1.0/32.
 # not quite input reorder since that one is to cylinder order (cyl, pol, dish)
 # while here we are going to beamformer order (pol, dis). Also groups by 4 (so
 # only 512 entries and each entry covers elements 4*i to 4*i+3)
@@ -248,7 +248,7 @@ gen_data:
     #type: random_signed_offset
     #value: 153
     type: const_offset
-    value: 0x98
+    value: 0xc8
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
     name: "E"
@@ -271,7 +271,7 @@ gen_data:
 cpu_simulate:
   cpu_data_sim_0:
     gain_dir: "./"
-    ew_spacing: [0.0, 0.1, 0.2, 0.3]
+    ew_spacing: [0.0, 0.4, 0.8, -0.4]
     northmost_beam: 90.0
     kotekan_stage: gpuBeamformSimulate
     network_in_buf: host_voltage_buffer
