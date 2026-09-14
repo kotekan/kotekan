@@ -15,6 +15,18 @@
 set -u
 K=/home/kvand/gnss/kotekan
 PY=${GNSS_PY:-/home/kvand/gnss/venv-ft/bin/python}
+
+# ⚠️ NOT ON A HOST THAT IS SERVING THE FLEET. Seven full broker replays in parallel (three gates
+# back to back on 2026-09-14: 21 processes) starved the LIVE broker's telemetry receiver on
+# cf06; the gather dropped it for missing its 200 ms deadline, the client flapped 20 times in a
+# minute, and the gather died -- 50 minutes of fleet-wide trim outage from a test run. The
+# replays carry no telemetry of their own, so this is load, not a connection. GATE_FORCE=1
+# overrides when you know the stack is down.
+if [ "${GATE_FORCE:-0}" != 1 ] && pgrep -f '[k]otekan .*chord_gnss_gather|[b]roker_multi' >/dev/null 2>&1; then
+    echo "REFUSING: a live gather or broker is running on $(hostname -s). Run the gate on a host that" >&2
+    echo "is not serving the fleet, or stop the stack first (GATE_FORCE=1 to override)." >&2
+    exit 3
+fi
 F=/home/kvand/gnss/fixtures
 cd "$K/scripts/gnss" || exit 2
 

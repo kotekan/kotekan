@@ -171,6 +171,25 @@ carries C56/C58. Small, and separate from the above.
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #131 — the gather dies when a telemetry client flaps
+**[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no
+core (no `coredumpctl` on cf06) and a log that ends mid-burst: six `dropped client fd N -- it
+could not take a frame within 200 ms` lines in its final second, and **20 loopback connects /
+20 drops in its last 40 lines** on fds cycling 201–210. That client was the live broker's telemetry
+reader reconnecting after each drop. The broker had been flat (34 drops, 19:12→20:48) until 21
+`broker_equiv` replays ran on the same host (three `gate.sh` runs, 20:50–20:58) and starved it.
+**Consequence:** every `set_policy` and trim post `Connection refused` for 50 min, the fleet ran
+on the gather's *standing* policy (so seven chains looked fine), and L2C — never armed in that
+policy — was the visible casualty. Trim store aged past 300 s, so recovery cost a pull-in.
+**Two defects:** the gather must survive a client that connects and is dropped 20 times a minute
+(reaping path, 241c0e4a1 lineage; suspect a use-after-close in the poster/reaper race); and the
+broker must fail LOUDLY when its gather link is refused -- it logged `TELEM DOWN frames 0` every
+30 s and `0 posts / 1349 failed` while the viewer showed a working fleet. **Mitigations shipped
+09-14:** `gate.sh` refuses on a host with a live gather/broker; the gather runs under
+`segvtrace.so` (separate log `/tmp/gnss_gather_segv.log`) so the next death leaves a backtrace.
+**How to see it:** `ss -ltn | grep -E "11060|11061|12051"` empty; broker log `frames 0` with
+`nothing yet` on every chain; the 2-line `stack_up.sh` health table.
+
 ### #130 — cx42 died of heap corruption 12.5 min into the merged binary
 **[live]** `malloc(): unaligned tcache chunk detected` and the process is gone. cx42 started
 20:10:59 on `build/kotekan/kotekan` (the develop-merge build) and aborted **20:23:33**; the other
