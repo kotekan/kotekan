@@ -141,10 +141,10 @@ host_voltage_buffer:
 #  metadata_pool: main_pool
 
 gain_frb_buffer:
-  kotekan_buffer: standard
-  metadata_pool: main_pool
-  num_frames: buffer_depth
-  frame_size: 2048 * 2 * sizeof_float
+    kotekan_buffer: standard
+    metadata_pool: main_pool
+    num_frames: buffer_depth
+    frame_size: 2048 * 2 * sizeof_float
 
 ## trivial gain
 #set_gain_frb_buffer:
@@ -225,8 +225,8 @@ cpu_output_buffers:
     value_type: float32
     extents: [1, num_frb_total_beams, samples_per_data_set/factor_upchan/downsample_time, factor_upchan/downsample_freq]
     quantity_name: "R"
-    dimnames: ["Tc", "R", "T", "F" ]
-    dimscalings: [ samples_per_data_set, 1, factor_upchan*downsample_time, 1]
+    dimnames: ["Tc", "R", "T", "F"]
+    dimscalings: [samples_per_data_set, 1, factor_upchan*downsample_time, 1]
     cpu_output_buffer_0:
         kotekan_buffer: ndarray
 
@@ -244,39 +244,39 @@ lost_samples_buffer:
     metadata_pool: main_pool
 
 gen_data:
-  test_data_gen_network:
+    test_data_gen_network:
     #type: random_signed_offset
     #value: 153
-    type: const_offset
-    value: 0x98
-    kotekan_stage: testDataGen
-    out_buf: host_voltage_buffer
-    name: "E"
+        type: const_offset
+        value: 0x98
+        kotekan_stage: testDataGen
+        out_buf: host_voltage_buffer
+        name: "E"
     # kotekan does not like variables in arrays
     #array_shape: [ samples_per_data_set, num_local_freq, 2, num_elements/2 ]
-    array_shape: [ 6144, 1, 2, 1024 ]
-    dim_name: [ "T", "F", "P", "D" ]
-    dim_scaling: [ 1, 1, 1, 1 ]
-  test_data_gen_lost_samples:
-    type: const
-    value: 0
-    kotekan_stage: testDataGen
-    out_buf: lost_samples_buffer
-    name: "lost_samples"
-    array_shape: [ 6144 ]
-    dim_name: [ "T" ]
-    dim_scaling: [ 1 ]
-    num_local_freq: 1
+        array_shape: [6144, 1, 2, 1024]
+        dim_name: ["T", "F", "P", "D"]
+        dim_scaling: [1, 1, 1, 1]
+    test_data_gen_lost_samples:
+        type: const
+        value: 0
+        kotekan_stage: testDataGen
+        out_buf: lost_samples_buffer
+        name: "lost_samples"
+        array_shape: [6144]
+        dim_name: ["T"]
+        dim_scaling: [1]
+        num_local_freq: 1
 
 cpu_simulate:
-  cpu_data_sim_0:
-    gain_dir: "./"
-    ew_spacing: [0.0, 0.1, 0.2, 0.3]
-    northmost_beam: 90.0
-    kotekan_stage: gpuBeamformSimulate
-    network_in_buf: host_voltage_buffer
-    beam_out_buf: cpu_output_buffer_0
-    hfb_out_buf: cpu_hfb_output_buffer_0
+    cpu_data_sim_0:
+        gain_dir: "./"
+        ew_spacing: [0.0, 0.1, 0.2, 0.3]
+        northmost_beam: 90.0
+        kotekan_stage: gpuBeamformSimulate
+        network_in_buf: host_voltage_buffer
+        beam_out_buf: cpu_output_buffer_0
+        hfb_out_buf: cpu_hfb_output_buffer_0
 
 beam_write:
     kotekan_stage: hdf5FileWrite
@@ -346,4 +346,3 @@ beam_write:
 #        L1_node_ips:
 #            - 127.0.0.1
 
-...

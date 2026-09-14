@@ -62,8 +62,7 @@ private:
     // Buffers
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage; // (time, freq, pol, ew*ns)
     // this is internal and can be changed to an NDArrayBuffer
-    NDArrayBuffer<kotekan::GetType_t<kotekan::cfloat16>, 5>
-        frb1_beams;                         // (time, freq, pol, ew, ns)
+    NDArrayBuffer<kotekan::GetType_t<kotekan::cfloat16>, 5> frb1_beams; // (time, freq, pol, ew, ns)
     NDArrayRingBuffer<float, 5> frb2_beams; // (ctime, beam, cfreq, time, ufreq)
 
     // pre-computed non-buffer data
@@ -178,7 +177,7 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
     static_assert(std::is_same_v<__half, kotekan::GetType_t<kotekan::cfloat16>::value_type>);
 
     voltage.register_consumer();
-    //frb1_beams.register_producer();
+    // frb1_beams.register_producer();
     frb2_beams.register_producer();
 
     set_command_type(gpuCommandType::KERNEL);
@@ -201,7 +200,7 @@ int cudaCHIMEFRBBeamform::wait_on_precondition() {
     DEBUG("Done waiting for voltage input ringbuffer data for frame {:d}; will read {:d} elements",
           gpu_frame_id, voltage_read);
 
-# if 0 // disable FRB1 access control for now, it's only a temp array
+#if 0 // disable FRB1 access control for now, it's only a temp array
     DEBUG("Waiting for frb1_beams output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t frb1_beams_written =
         voltage_read; // no downsampling in time when forming beams
@@ -238,14 +237,15 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     // TODO: update frb2 metadata due to time downsampling and frequency upsampling
 
     // needs metadata and thus access to an actual frame
-    if (first_time) { // && instance_num == 0) { // first time and we handle frame 0 of the buffer depth
+    if (first_time) { // && instance_num == 0) { // first time and we handle frame 0 of the buffer
+                      // depth
         DEBUG("Setting up constant data");
 
         const auto meta = voltage.get_metadata();
         const auto coarse_freq = meta->get_coarse_freq();
 
         map.set_to_poison(0xff); // may contain 0 bytes
-        co.set_to_poison(0xff); // may contain 0 bytes
+        co.set_to_poison(0xff);  // may contain 0 bytes
         gains.set_to_poison(0x00);
 
         // indices for clamping
@@ -337,13 +337,13 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     assert(frb2_beams.get_ndarray().extent(4) == factor_upchan_out);
 
     map.check_for_poison(0xff); // may contain 0 bytes
-    co.check_for_poison(0xff); // may contain 0 bytes
+    co.check_for_poison(0xff);  // may contain 0 bytes
     gains.check_for_poison(0x00);
 
     voltage.check_input_for_poison(0x00);
 #if 1
     if (poison_buffers)
-       frb1_beams.set_to_poison(0x00); // NaN
+        frb1_beams.set_to_poison(0x00); // NaN
 #endif
 
     std::cerr << "T, num_frequencies" << T << ", " << num_frequencies << std::endl;
@@ -372,8 +372,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     pirate::launch_chime_frb_upchan(reinterpret_cast<__half*>(frb1_beams_memory + Tfrb1_offset),
                                     frb2_beams_memory + Tfrb2_offset, static_cast<long>(Tfrb1),
                                     static_cast<long>(num_frequencies),
-                                    static_cast<long>(num_beams),
-                                    device.getStream(cuda_stream_id));
+                                    static_cast<long>(num_beams), device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
@@ -387,7 +386,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
 void cudaCHIMEFRBBeamform::finalize_frame() {
     // Advance the ring buffers
     voltage.finish_read();
-    //frb1_beams.finish_write();
+    // frb1_beams.finish_write();
     frb2_beams.finish_write();
 
     cudaCommand::finalize_frame();
