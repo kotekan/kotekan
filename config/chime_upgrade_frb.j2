@@ -22,7 +22,7 @@ type: config
 log_level: info
 
 # Test configuration parameters
-{% set using_dpdk = True %}
+{% set using_dpdk = False %}
 {% set fake_upchan_voltage = False %}
 {% set do_once_and_dump = False %}
 {% set send_frb = False %}
@@ -49,7 +49,7 @@ num_ev_to_calculate: 4            # from n2 test case
 samples_per_data_set: 16384
 sample_period_ns: 2560
 network_frame_arrival_period: 16384 * sample_period_ns / 1e9
-baseband_buffer_depth: 3*272 # = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 3*32 # 3*272 # = ~33 seconds after accounting for active frames
 # see where / if / how to use host_buffer_depth and gpu_buffer_depth
 # must be at least size of gpu_buffer_depth
 host_buffer_depth: 12
@@ -100,7 +100,7 @@ updatable_config:
   frb_gain:
     0:
       kotekan_update_endpoint: "json"
-      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_FRBAAA
   # bad input mask, assumed to be in cylinder order
   bad_inputs:
       kotekan_update_endpoint: json
@@ -142,7 +142,7 @@ updatable_config:
     enabled: false
   enable_frb_out:
     kotekan_update_endpoint: "json"
-    enabled: false
+    enabled: true
 
 dataset_manager:
   use_dataset_broker: False
@@ -323,6 +323,7 @@ dbg_read_voltages_{{ id }}:
 ##}
 
 {% set frequency_channels = [ 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954  ] %}
+{% set frequency_channels = range(16)  %}
 #{#
 
 {% for id in range(16) %}   # num_frequencies = 16
@@ -379,7 +380,7 @@ dbg_read_lostsamples_{{ id }}:
 fake_voltages_{{ id }}:
     kotekan_stage: testDataGen
     type: const_offset
-    value: 0x88
+    value: 0xc8
     array_shape: [ 1, 16384, 2048 ]
     dim_scaling: [ 1, 1, 1 ]
     dim_name: [ F, T , E ]
@@ -1507,7 +1508,7 @@ FRB:
               Fmax: upchan_U16_max_channel
             - name: cudaSyncOutput
 
-#{# for debugging only
+### for debugging only
     run_recv_upchan_U16_voltage:
         gpu_0:
             kotekan_stage: cudaProcess
@@ -1527,7 +1528,7 @@ FRB:
               output_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
               ring_buffer_size: buffer_depth * output_size
               out_buf: host_upchan_U16_voltage_buffer
-#}#
+###
 {%- endif %}
 
     # FRB 1
@@ -1551,7 +1552,7 @@ FRB:
         frb1_swap_MN: true
         conjugate_gains: true
         # empirically, this made CYG_A have an intermediate intesity2 of 37000
-        scaling_factor: 1.0 / 512
+        scaling_factor: 1.0 / 32. #512
         gain_buffers:
           - host_frb1_phase_buffer
         in_mask_buf: host_bf_mask_buffer
@@ -1735,7 +1736,7 @@ FRB:
               gpu_mem_output: frb3_beams
               gpu_mem_offsetscale: frb3_beams_offsetscale
             - name: cudaSyncOutput
-#{# for debugging only
+### for debugging only
             - name: cudaCopyFromRingbuffer
               # TODO: Don't do this in production
               host_signal: host_frb1_beams_ringbuffer
@@ -1743,7 +1744,7 @@ FRB:
               output_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
               ring_buffer_size: gpu_buffer_depth * output_size
               out_buf: host_frb1_beams_buffer
-#}#
+###
             - name: cudaOutputData
               # TODO: Don't do this in production
               gpu_mem: frb2_beams_buffer
@@ -1933,8 +1934,31 @@ write_frb_offsetscale:
     create_single_file: true
     input_order: CHIMEBeamformer
 
+write_frb1:
+    kotekan_stage: hdf5FileWrite
+    max_frames: 1
+    log_level: warn
+    use_compression: false
+    base_dir: frb_beams
+    in_buf: host_frb1_beams_buffer
+    file_name: host_frb1_beams_buffer
+    create_single_file: true
+    input_order: CHIMEBeamformer
+
+write_upchan_U16_voltage:
+    kotekan_stage: hdf5FileWrite
+    max_frames: 1
+    log_level: warn
+    use_compression: false
+    base_dir: frb_beams
+    in_buf: host_upchan_U16_voltage_buffer
+    file_name: host_upchan_U16_voltage_buffer
+    create_single_file: true
+    input_order: CHIMEBeamformer
+
 write_frb2:
     kotekan_stage: hdf5FileWrite
+    max_frames: 1
     log_level: warn
     use_compression: false
     base_dir: frb_beams
