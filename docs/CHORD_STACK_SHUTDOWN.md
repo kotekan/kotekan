@@ -1,4 +1,4 @@
-# Stopping the GNSS stack — the teardown, and what it costs to get it wrong
+# Stopping and starting the GNSS stack — the teardown, the bring-up, and what it costs to get either wrong
 
 **What this is for.** Handing the array to someone else, or taking GNSS down for any other
 reason. The bring-up counterpart is [`CHORD_BEAMCUBE_RUNBOOK.md`](CHORD_BEAMCUBE_RUNBOOK.md) §2
@@ -94,10 +94,51 @@ the port, not the page.
 
 ## 6. Bringing it back
 
-Reverse the table: cube-archiver, gather, aggregator, broker, then the viewers, the compactor and
-the obs writers. `CHORD_BEAMCUBE_RUNBOOK.md` §2 covers the cube half in detail. The scripts are
-`cubecompact_up.sh`, `gather_up.sh`, `agg_up.sh`, `broker_restart.sh`, `viewer_up.sh`,
-`obs_up.sh` — each rotates its own log on start, so nothing needs clearing first.
+**One command, then the nodes:**
+
+```sh
+ssh cf06 /home/kvand/gnss/kotekan/scripts/gnss/stack_up.sh        # --list shows the plan
+for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/node_up.sh $n restart; done   # sudo per node
+scripts/gnss/eop_push.sh                                            # from a host that reaches the nodes
+```
+
+`stack_up.sh` is the reverse of the table in §1 with the environment each component needs baked
+in -- above all **`GNSS_PY=/home/kvand/gnss/venv-ft/bin/python` for the broker** -- and it
+verifies every component by its ports before starting the next. It refuses unless this is cf06,
+`/mnt/cs00/data` is mounted, and `chive:54321/get-frame0-time` answers.
+
+### The four things that stopped the 2026-09-14 bring-up, in the order they bit
+
+Each is now a refusal or a script default; they are listed so the symptom is recognisable.
+
+1. **The baked EOP table had expired** (Friday's table, −17 h by Monday). Symptom: every node
+   runs ~60 s then exits on `Requesting EOP later than in table`. `node_up.sh` now refuses below
+   12 h of headroom and prints the `gen_fleet.py` regen + `--check`; commit the result.
+2. **choco's per-node maintenance mode was off.** Symptom: nodes die within ~60 s of coming up
+   with `ERROR: /kill endpoint called` as the last log line, one per minute (a sweep). Nothing in
+   this tree sends `/kill`. Maintenance mode must be ON on all six before any node start.
+3. **chive still published the epoch from before an F-engine re-base.** Symptom: every DPDK
+   worker logs `THE WIRE'S SEQ AXIS IS <big>s FROM THE WALL CLOCK`, `port_axis_gate.py` says both
+   ports agree, the broker sees nothing. Order is chive refresh → nodes (frame0 is read once per
+   process). `node_up.sh` now refuses if chive does not answer; it cannot know whether the
+   answer is *current* -- compare `start_ctime` with when the F-engine actually restarted.
+4. **The broker came up under the GIL** (`broker_restart.sh` defaulted to the 3.12 venv).
+   Symptom: gather logs `dropped client fd N (127.0.0.1) -- could not take a frame within 200 ms`
+   every ~15 s; broker logs `chain X: ALL 12 instances stale` for every chain; `FLEET-TRIM`
+   shows `0 PRN(s) armed` on every chain but L5; nodes log `trim EXPIRED with no /set_trim`;
+   L5 works (its fast loop is in-broker). The default is now `venv-ft`.
+
+### Surviving an F-engine restart
+
+The nodes cannot: `fpga_monitor` raises a FatalError when the controller's config *or timing*
+changes, on purpose -- the latched `frame0` is no longer the wire's. As of 2026-09-14 the
+transient unit carries `Restart=on-failure` (20 s, no start limit), so a node that dies this
+way -- or crashes -- comes back on its own, re-reads chive on the way up, and converges on the
+new epoch without an operator. A clean exit (`/kill`, `systemctl stop`) stays down. The node
+log is appended across restarts so the fatal survives; `node_up.sh` rotates it to `.1` on each
+deliberate start. The gather re-anchors by itself (`epoch_resets` in `/fleet_trim/get_stats`);
+the aggregator, archiver and broker do not read chive and do not need restarting for this. The
+EOP live table does NOT survive a node restart -- only the baked one does, hence the 12 h gate.
 
 ⚠️ **The obs writers and the broker must both be running the same generation of the code.** They
 are separate processes with separate lifetimes: on 2026-09-11 the broker was restarted with a new
