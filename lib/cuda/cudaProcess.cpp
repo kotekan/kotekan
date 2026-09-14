@@ -1,19 +1,21 @@
 #include "cudaProcess.hpp"
 
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "cudaCommand.hpp"        // for cudaCommand, _factory_aliascudaCommandState, _factory_...
-#include "cudaEventContainer.hpp" // for cudaEventContainer
-#include "cudaUtils.hpp"          // for CHECK_CUDA_ERROR
-#include "cuda_profiler_api.h"    // for cudaProfilerStart, cudaProfilerStop
-#include "cuda_runtime_api.h"     // for cudaHostRegister
-#include "driver_types.h"         // for CUevent_st, cudaEvent_t, cudaHostRegisterDefault
-#include "factory.hpp"            // for FACTORY, FACTORY_VARIANT
-#include "kotekanLogging.hpp"     // for DEBUG, DEBUG2
+#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE
+#include "cudaCommand.hpp"          // for cudaCommand, _factory_aliascudaCommandState, _factory_...
+#include "cudaEventContainer.hpp"   // for cudaEventContainer
+#include "cudaStreamAssignment.hpp" // for unique_ascending_streams, check_stream_within, lock_str...
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "cuda_profiler_api.h"      // for cudaProfilerStart, cudaProfilerStop
+#include "cuda_runtime_api.h"       // for cudaHostRegister
+#include "driver_types.h"           // for CUevent_st, cudaEvent_t, cudaHostRegisterDefault
+#include "factory.hpp"              // for FACTORY, FACTORY_VARIANT
+#include "kotekanLogging.hpp"       // for DEBUG, DEBUG2
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <mutex>    // for recursive_mutex, lock_guard
-#include <stdint.h> // for uint32_t, int32_t
+#include <mutex>     // for recursive_mutex, unique_lock
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t, int32_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -38,6 +40,24 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
     device->prepareStreams(num_streams);
     CHECK_CUDA_ERROR(cudaProfilerStart());
     init();
+    collect_stream_ids(num_streams);
+}
+
+// Which streams do our commands enqueue onto? Each is checked against this stage's own
+// num_cuda_streams, not the device's (see check_stream_within).
+void cudaProcess::collect_stream_ids(uint32_t num_cuda_streams) {
+    std::vector<std::int32_t> ids;
+    for (auto& command : commands)
+        for (auto* c : command)
+            if (c != nullptr) {
+                const std::int32_t sid = ((cudaCommand*)c)->get_cuda_stream_id();
+                check_stream_within(c->get_unique_name(), sid, unique_name, num_cuda_streams);
+                ids.push_back(sid);
+            }
+    _my_stream_ids = unique_ascending_streams(ids);
+    if (_my_stream_ids.empty())
+        throw std::runtime_error(fmt::format("{:s} has no commands to queue", unique_name));
+    INFO("queuing streams [{:s}]", fmt::format("{}", fmt::join(_my_stream_ids, ", ")));
 }
 
 cudaProcess::~cudaProcess() {
@@ -83,8 +103,12 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
 
     int icommand = gpu_frame_counter % _gpu_buffer_depth;
     {
-        // Grab the lock for queuing GPU commands
-        std::lock_guard<std::recursive_mutex> lock(device->gpu_command_mutex);
+        // One queuing lock per stream this pipeline enqueues onto; the helper fixes the order
+        // (see lock_streams_ascending for why that matters).
+        auto locks =
+            lock_streams_ascending(_my_stream_ids, [&](std::int32_t sid) -> std::recursive_mutex& {
+                return device->stream_mutex(sid);
+            });
 
         // Create the state object that will get passed through this pipeline
         cudaPipelineState pipestate(gpu_frame_counter);

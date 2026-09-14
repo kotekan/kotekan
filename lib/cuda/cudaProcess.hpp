@@ -18,9 +18,10 @@
 #include "gpuEventContainer.hpp"   // for gpuEventContainer
 #include "gpuProcess.hpp"          // for gpuProcess
 
-#include <memory> // for shared_ptr
-#include <string> // for string
-#include <vector> // for vector
+#include <cstdint> // for int32_t
+#include <memory>  // for shared_ptr
+#include <string>  // for string
+#include <vector>  // for vector
 
 /**
  * @class cudaProcess
@@ -34,6 +35,12 @@
  *                        host->device, one device->host, and one kernel stream.
  *                        Can be set higher if more than one stream is need for each type
  *                        of operation.  See @c cudaCommand and @c cudaSyncStream for more details.
+ *                        Every command in this stage must resolve to a stream below this value,
+ *                        so a stage with a kernel at @c cuda_stream_base b needs at least b+3.
+ * @conf cuda_stream_base Int, default 0. Shifts the default stream triple of every command in
+ *                        this stage to base+0 (copy-in), base+1 (copy-out), base+2 (kernel);
+ *                        see @c cudaCommand. Two stages on one GPU whose triples do not overlap
+ *                        share no stream and take no queuing mutex in common.
  *
  * @author Keith Vanderlinde and Andre Renard
  */
@@ -51,6 +58,17 @@ public:
     void register_host_memory(Buffer* host_buffer) override;
 
     std::shared_ptr<cudaDeviceInterface> device;
+
+private:
+    /// The CUDA streams this pipeline's commands enqueue onto, ascending and unique. Only these
+    /// streams' mutexes are taken while queuing a frame, so a pipeline with private streams
+    /// never blocks another one (see cudaDeviceInterface::stream_mutex).
+    std::vector<std::int32_t> _my_stream_ids;
+
+    /// Fill `_my_stream_ids` from the constructed command list, refusing a command whose stream
+    /// is not below `num_cuda_streams` and a stage with no commands that enqueue. Called once,
+    /// after init().
+    void collect_stream_ids(uint32_t num_cuda_streams);
 };
 
 #endif // CUDA_PROCESS_H
