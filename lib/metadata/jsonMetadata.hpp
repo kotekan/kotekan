@@ -14,14 +14,15 @@
 #pragma pack()
 
 // json based metadata structures to hold "physics" metadata, ie. data that
-// various at most once per frame
+// varies at most once per frame
+
+// These must match chimeMetadata and chordMetadata for now. They are used
+// unqualified all over the code base, so they live in the global namespace
+// (they used to be macros).
+constexpr int MAX_NUM_BEAMS = 20;
+constexpr int MAX_NUM_RFI_THRESHOLDS = 8;
 
 namespace jsonMetadata {
-// these must match chimeMetadata and choordMetadata for now
-// in namespace for C++ const
-#define MAX_NUM_BEAMS 20
-#define MAX_NUM_RFI_THRESHOLDS 8
-const int CHORD_META_MAX_FREQ = 4096;
 
 typedef nlohmann::json metadata;
 
@@ -49,8 +50,8 @@ const std::string FRAME_COUNTER("FRAME_COUNTER"); // an int
 
 const std::string FIRST_PACKET_RECV_TIME(
     "FIRST_PACKET_RECV_TIME"); // The system time when the first packet in the frame was captured
-const std::string TV_SEC("TV_SEC");   // the tv_sec memmber of a timeval
-const std::string TV_USEC("TV_USEC"); // the tv_usec memmber of a timeval
+const std::string TV_SEC("TV_SEC");   // the tv_sec member of a timeval
+const std::string TV_USEC("TV_USEC"); // the tv_usec member of a timeval
 
 const std::string
     FREQ_UPCHAN_FACTOR("FREQ_UPCHAN_FACTOR"); // an array of int of size CHORD_META_MAX_FREQ
@@ -64,89 +65,28 @@ const std::string RFI_FRAME_EXCISION_THRESHOLDS(
     "RFI_FRAME_EXCISION_THRESHOLDS"); // an array of array<float, 2> of size MAX_NUM_RFI_THRESHOLDS
 
 
+/// The coordinates of the tracking beams.
+///
+/// An unused entry is marked by a NaN right ascension and declination, and a
+/// zero scaling. Since a NaN can never be a real coordinate, this identifies the
+/// beams in use on its own, and no separate beam count is needed. @c from_json
+/// marks the entries it does not fill in that way.
 struct beamCoord {
     float right_ascension[MAX_NUM_BEAMS];
     float declination[MAX_NUM_BEAMS];
     uint32_t scaling[MAX_NUM_BEAMS];
 };
 
-static inline void from_json(const nlohmann::json& j, beamCoord& c) {
-    {
-        const auto& ra(j.at(RIGHT_ASCENSION));
-        if (ra.size() > MAX_NUM_BEAMS)
-            throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
-        size_t i = 0;
-        for (auto it = ra.cbegin(); it != ra.cend(); ++it) {
-            it->get_to(c.right_ascension[i++]);
-        }
-#ifdef DEBUG
-        for (size_t i = ra.size(); i < MAX_NUM_BEAMS; ++i) {
-            c.right_ascension[i] = std::nanf("");
-        }
-#endif
-    }
-
-    {
-        const auto& dec(j.at(DECLINATION));
-        if (dec.size() > MAX_NUM_BEAMS)
-            throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
-        size_t i = 0;
-        for (auto it = dec.cbegin(); it != dec.cend(); ++it) {
-            it->get_to(c.declination[i++]);
-        }
-#ifdef DEBUG
-        for (size_t i = dec.size(); i < MAX_NUM_BEAMS; ++i) {
-            c.declination[i] = std::nanf("");
-        }
-#endif
-    }
-
-    {
-        const auto& scale(j.at(SCALING));
-        if (scale.size() > MAX_NUM_BEAMS)
-            throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
-        size_t i = 0;
-        for (auto it = scale.cbegin(); it != scale.cend(); ++it) {
-            it->get_to(c.scaling[i++]);
-        }
-#ifdef DEBUG
-        for (size_t i = scale.size(); i < MAX_NUM_BEAMS; ++i) {
-            c.scaling[i] = 0;
-        }
-#endif
-    }
-}
-
-static inline void to_json(nlohmann::json& j, const beamCoord& c) {
-    assert(j.empty());
-    {
-        std::vector<float> ra(c.right_ascension, c.right_ascension + MAX_NUM_BEAMS);
-        j.emplace(RIGHT_ASCENSION, ra);
-    }
-
-    {
-        std::vector<float> dec(c.declination, c.declination + MAX_NUM_BEAMS);
-        j.emplace(DECLINATION, dec);
-    }
-
-    {
-        std::vector<uint32_t> scale(c.scaling, c.scaling + MAX_NUM_BEAMS);
-        j.emplace(SCALING, scale);
-    }
-}
+// Defined in jsonMetadata.cpp. Found via ADL because beamCoord lives in this
+// namespace.
+void from_json(const nlohmann::json& j, beamCoord& c);
+void to_json(nlohmann::json& j, const beamCoord& c);
 
 } // namespace jsonMetadata
 
-static inline void to_json(nlohmann::json& j, const timeval& tv) {
-    using namespace jsonMetadata;
-    j[TV_SEC] = static_cast<std::int64_t>(tv.tv_sec);
-    j[TV_USEC] = static_cast<std::int64_t>(tv.tv_usec);
-}
-
-static inline void from_json(const nlohmann::json& j, timeval& tv) {
-    using namespace jsonMetadata;
-    tv.tv_sec = j.at(TV_SEC).template get<std::int64_t>();
-    tv.tv_usec = j.at(TV_USEC).template get<std::int64_t>();
-}
+// Defined in jsonMetadata.cpp. Found via ADL because timeval lives in the
+// global namespace.
+void to_json(nlohmann::json& j, const timeval& tv);
+void from_json(const nlohmann::json& j, timeval& tv);
 
 #endif
