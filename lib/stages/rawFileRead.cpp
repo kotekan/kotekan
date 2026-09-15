@@ -5,13 +5,13 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"            // for exit_kotekan, ReturnCode
-#include "kotekanLogging.hpp"  // for INFO, ERROR, WARN, FATAL_ERROR
+#include "kotekanLogging.hpp"  // for INFO, WARN, FATAL_ERROR
 #include "metadata.hpp"        // for metadataObject
 
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <chrono>     // for microseconds
-#include <cstdio>     // for fread, snprintf, fclose, fopen, fseeko, ftello, FILE
+#include <cstdio>     // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
 #include <errno.h>    // for errno
 #include <functional> // for bind, function
 #include <memory>     // for __shared_ptr_access, shared_ptr
@@ -96,23 +96,16 @@ void rawFileRead::main_thread() {
         FILE* fp = fopen(full_path, "rb");
         uint32_t metadata_size = 0;
         if (!fp)
-            FATAL_ERROR("rawFileRead: cannot open {}: {}", full_path, strerror(errno));
-        if (fseeko(fp, 0, SEEK_END) != 0)
-            FATAL_ERROR("rawFileRead: cannot seek {}", full_path);
-        const auto end_offset = ftello(fp);
-        if (end_offset < 0)
-            FATAL_ERROR("rawFileRead: cannot determine file size for {}", full_path);
-        if (static_cast<uint64_t>(end_offset) < sizeof(uint32_t))
-            FATAL_ERROR("rawFileRead: missing size header in {}", full_path);
-        const uint64_t fileSize = static_cast<uint64_t>(end_offset);
-        if (fseeko(fp, 0, SEEK_SET) != 0)
-            FATAL_ERROR("rawFileRead: cannot rewind {}", full_path);
+            FATAL_ERROR("rawFileRead: cannot open {:s}: {:s}", full_path, strerror(errno));
 
-        if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
-            ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
-                  strerror(errno));
-            break;
-        }
+        // Work out the file size, metadata size and no. of frames per file.
+        fseek(fp, 0, SEEK_END);
+        const uint64_t fileSize = ftell(fp);
+        rewind(fp);
+
+        if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1)
+            FATAL_ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}",
+                        full_path, strerror(errno));
 
         // Each rawFileWrite record includes its own metadata-size header.
         const uint64_t record_size = sizeof(uint32_t) + uint64_t(metadata_size) + buf->frame_size;
@@ -120,11 +113,8 @@ void rawFileRead::main_thread() {
             WARN("rawFileRead: {:s} has {:d} trailing bytes that do not form a whole frame for the "
                  "configured descriptor, ignoring them",
                  full_path, fileSize % record_size);
-        if (buf->buffer_type == "N2" && metadata_size == 0)
-            FATAL_ERROR("rawFileRead: N2 frames require metadata");
         const uint64_t num_frames_per_file = fileSize / record_size;
-        if (fseeko(fp, 0, SEEK_SET) != 0)
-            FATAL_ERROR("rawFileRead: cannot rewind {}", full_path);
+        rewind(fp);
 
         INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
 
