@@ -378,9 +378,10 @@ dbg_read_lostsamples_{{ id }}:
 ##}
 
 fake_voltages_0:
-    kotekan_stage: hdf5FileRead
+    kotekan_stage: hdf5FileReadSingleFile
     input_dir: debug-data
-    read_single_file: yes
+    transpose_frequency_and_time: true
+    combine_dishes_and_polarizations: true
     # this is both (up to .h5) the name of the file and the name of the dataset
     # in the file
     file_name: host_voltage_buffer
