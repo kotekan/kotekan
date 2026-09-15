@@ -175,6 +175,7 @@ host_voltage_buffers:
   value_type: int4x2_swapped_withoffset
   extents: [num_freq_host_buf, samples_per_data_set, num_elements]
   dimnames: [F, T, E]
+  dimscalings: [1, 1, 1]
   metadata_pool: main_pool
   use_hugepages: true
   numa_0:
@@ -376,7 +377,18 @@ dbg_read_lostsamples_{{ id }}:
 {%- endfor %}
 ##}
 
-{% for id in range(16) %}   # num_frequencies = 16
+fake_voltages_0:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    read_single_file: yes
+    # this is both (up to .h5) the name of the file and the name of the dataset
+    # in the file
+    file_name: host_voltage_buffer
+    num_times: samples_per_data_set
+    frequency_channels: [{{ frequency_channels[0] }}]
+    out_buf: host_voltage_buffer_0
+
+{% for id in range(1,16) %}   # num_frequencies = 16
 fake_voltages_{{ id }}:
     kotekan_stage: testDataGen
     type: const_offset
