@@ -28,6 +28,7 @@
 #include <algorithm>  // for fill
 #include <array>      // for array
 #include <assert.h>   // for assert
+#include <cmath>      // for isfinite
 #include <complex>    // for complex, operator*, conj, operator-, norm
 #include <functional> // for bind, function, placeholders
 #include <math.h>     // for floor
@@ -212,6 +213,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
     _n_valid_sample_diff_sq_sum = std::vector<float>(_num_freq_per_n2k_frame, 0);
+    _n_usable_variance_pairs = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
     _n_rfi_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
     _n_pl_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
 
@@ -554,6 +556,10 @@ void N2Accumulate::main_thread() {
                 int32_t count_t1 = counts_mat_t1[count_idx];
 
                 _n_valid_fpga_samples_in_vis[f] += count_t0 + count_t1;
+
+                // Both frames need samples to estimate variance; either can contribute to the mean.
+                if (count_t0 > 0 && count_t1 > 0)
+                    ++_n_usable_variance_pairs[f];
 
                 float samples_diff = count_t1 - count_t0;
                 _n_valid_sample_diff_sq_sum[f] += samples_diff * samples_diff;
@@ -1111,18 +1117,19 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                     }
                     assert(_vis_samples_in_out_frame % 2 == 0);
 
+                    // Normalize by pairs that contributed to the variance estimate.
+                    int64_t num_var_samp = _n_usable_variance_pairs.at(f);
+                    int64_t norm = ns * num_var_samp;
+
                     loop_over_block([&](int64_t idx, [[maybe_unused]] N2::cfloat v) {
                         float weight = 0.0f;
 
-                        int64_t num_var_samp = _vis_samples_in_out_frame / 2;
-                        int64_t norm = ns * num_var_samp;
-
                         float var = _var[idx];
 
-                        if (norm > 0 && var != 0.0f)
+                        if (norm > 0 && var > 0.0f && std::isfinite(var))
                             weight = norm / var;
 
-                        return weight;
+                        return std::isfinite(weight) ? weight : 0.0f;
                     });
 
                 } else {
@@ -1185,6 +1192,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     // These arrays are smaller, single threaded is fine.
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
+    std::fill(_n_usable_variance_pairs.begin(), _n_usable_variance_pairs.end(), 0);
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
     std::fill(_n_pl_samples_in_vis.begin(), _n_pl_samples_in_vis.end(), 0);
 

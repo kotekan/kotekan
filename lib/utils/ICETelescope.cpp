@@ -399,7 +399,7 @@ std::tuple<uint32_t, uint32_t, std::string> ICETelescope::parse_reorder_single(n
 }
 
 std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
-ICETelescope::parse_reorder(nlohmann::json& j) {
+ICETelescope::parse_reorder(nlohmann::json& j) const {
 
     uint32_t adc_id, chan_id;
     std::string serial;
@@ -408,7 +408,7 @@ ICETelescope::parse_reorder(nlohmann::json& j) {
     std::vector<input_ctype> inputmap;
 
     if (!j.is_array()) {
-        throw std::runtime_error("Was expecting list of input orders.");
+        FATAL_ERROR("Was expecting list of input orders but received {:s}.", j.dump());
     }
 
     for (auto& element : j) {
@@ -416,6 +416,28 @@ ICETelescope::parse_reorder(nlohmann::json& j) {
 
         adc_ids.push_back(adc_id);
         inputmap.emplace_back(chan_id, serial);
+    }
+
+    // check that the orderings are permutations (no lost elements, no
+    // duplications)
+    {
+        std::vector<uint32_t> ordered(adc_ids.size());
+        std::iota(ordered.begin(), ordered.end(), 0);
+
+        std::vector<uint32_t> ordered_adc_ids(adc_ids);
+        std::sort(ordered_adc_ids.begin(), ordered_adc_ids.end());
+        if (ordered_adc_ids != ordered) {
+            FATAL_ERROR("Input mapping {:s} is not a permutation wrt to adc ids", j.dump());
+        }
+
+        std::vector<uint32_t> ordered_chan_ids;
+        for (const input_ctype& i : inputmap) {
+            ordered_chan_ids.emplace_back(i.chan_id);
+        }
+        std::sort(ordered_chan_ids.begin(), ordered_chan_ids.end());
+        if (ordered_chan_ids != ordered) {
+            FATAL_ERROR("Input mapping {:s} is not a permutation wrt to channel ids", j.dump());
+        }
     }
 
     return std::make_tuple(adc_ids, inputmap);
@@ -437,7 +459,7 @@ ICETelescope::default_reorder(size_t num_elements) {
 
 std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
 ICETelescope::parse_reorder_default(const kotekan::Config& config, const std::string& path,
-                                    uint64_t num_elements) {
+                                    uint64_t num_elements) const {
 
     try {
         nlohmann::json reorder_config =
