@@ -203,7 +203,7 @@ struct chordMetadataFormat {
     // unambiguous exactly because a set array is never empty.
     int32_t nfreq;
 
-    // frequencies -- integer (0-2047) identifier for FPGA coarse frequencies;
+    // frequencies -- integer (0-CHORD_META_MAX_FREQ) identifier for FPGA coarse frequencies;
     // unset when coarse_freq[0] == -1, an invalid frequency index
     int32_t coarse_freq[CHORD_META_MAX_FREQ];
 
