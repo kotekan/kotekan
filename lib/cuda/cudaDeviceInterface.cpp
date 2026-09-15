@@ -55,6 +55,13 @@ cudaDeviceInterface::cudaDeviceInterface(Config& config, const std::string& uniq
     }
 
     set_thread_device();
+
+    // Copy engines, once per device: see async_engine_count() and cudaProcess's
+    // `require_async_engines`.
+    cudaDeviceProp prop;
+    CHECK_CUDA_ERROR(cudaGetDeviceProperties(&prop, gpu_id));
+    _async_engine_count = prop.asyncEngineCount;
+    INFO("GPU[{:d}] {:s}: {:d} async copy engine(s)", gpu_id, prop.name, _async_engine_count);
 }
 
 cudaDeviceInterface::~cudaDeviceInterface() {
