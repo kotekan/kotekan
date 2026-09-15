@@ -38,8 +38,9 @@
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
-#include <time.h> // for timespec, size_t
-#include <vector> // for vector
+#include <time.h>  // for timespec, size_t
+#include <utility> // for pair
+#include <vector>  // for vector
 
 
 using namespace std::placeholders;
@@ -296,6 +297,8 @@ void N2Accumulate::main_thread() {
     int previous_in_rficounts_frame_id = -1;
     int previous_in_plcounts_frame_id = -1;
     int previous_in_rfiframemask_frame_id = -1;
+    bool have_previous_seq = false;
+    int64_t previous_seq = 0;
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
          in_frame_id, out_buf->buffer_name, out_frame_id);
@@ -417,6 +420,114 @@ void N2Accumulate::main_thread() {
                         in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
                         in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id,
                         rfiframemask_metadata->get_fpga_seq_num());
+        }
+
+        // Counts and masks must refer to the same times and frequencies as the correlations.
+        const std::array<std::pair<const char*, std::shared_ptr<chordMetadata>>, 5> stream_metadata{
+            {{"correlation", frame_metadata},
+             {"counts", counts_metadata},
+             {"RFI counts", rficounts_metadata},
+             {"packet-loss counts", plcounts_metadata},
+             {"RFI frame mask", rfiframemask_metadata}}};
+        for (const auto& stream : stream_metadata) {
+            if (!stream.second->has_coarse_freq()) {
+                FATAL_ERROR("N2Accumulate missing coarse-frequency metadata in {} stream",
+                            stream.first);
+            }
+            if (!stream.second->has_time_downsampling_fpga()) {
+                FATAL_ERROR("N2Accumulate missing time-downsampling metadata in {} stream",
+                            stream.first);
+            }
+        }
+        const auto frame_coarse_freq = frame_metadata->get_coarse_freq();
+        const int frame_time_downsampling = frame_metadata->get_time_downsampling_fpga();
+        if (frame_coarse_freq.size() != static_cast<size_t>(_num_freq_per_n2k_frame)) {
+            FATAL_ERROR("N2Accumulate coarse-frequency length mismatch: got {}, expected {}",
+                        frame_coarse_freq.size(), _num_freq_per_n2k_frame);
+        }
+        for (const auto& stream : stream_metadata) {
+            if (stream.second->get_coarse_freq() != frame_coarse_freq) {
+                FATAL_ERROR("N2Accumulate coarse-frequency mismatch in {} stream", stream.first);
+            }
+            if (stream.second->get_time_downsampling_fpga() != frame_time_downsampling) {
+                FATAL_ERROR("N2Accumulate time-downsampling mismatch in {} stream", stream.first);
+            }
+        }
+
+        // The correlation period in the metadata must be the configured sub-integration.
+        if (frame_time_downsampling != _n_fpga_samples_per_n2k_correlation) {
+            FATAL_ERROR("N2Accumulate correlation period {} in the metadata differs from "
+                        "sub_integration_ntime {}",
+                        frame_time_downsampling, _n_fpga_samples_per_n2k_correlation);
+        }
+        if (_coarse_freq_order.empty()) {
+            _coarse_freq_order = frame_coarse_freq;
+        } else if (frame_coarse_freq != _coarse_freq_order) {
+            FATAL_ERROR("N2Accumulate coarse-frequency order changed between correlation frames");
+        }
+
+        // The even frame may be saved for the next iteration, so frames must be consecutive.
+        const int64_t frame_seq = frame_metadata->get_fpga_seq_num();
+        if (frame_seq < 0) {
+            FATAL_ERROR("N2Accumulate negative correlation frame sequence {}", frame_seq);
+        }
+        // Even/odd pairing requires frames to start on the global frame grid.
+        if (frame_seq % _n_fpga_samples_per_n2k_frame != 0) {
+            FATAL_ERROR("N2Accumulate unaligned correlation frame: sequence {} is not a multiple "
+                        "of frame span {} FPGA ticks",
+                        frame_seq, _n_fpga_samples_per_n2k_frame);
+        }
+        if (have_previous_seq && frame_seq != previous_seq + _n_fpga_samples_per_n2k_frame) {
+            FATAL_ERROR("N2Accumulate nonconsecutive correlation frame: previous {}, current {}, "
+                        "required increment {}",
+                        previous_seq, frame_seq, _n_fpga_samples_per_n2k_frame);
+        }
+        previous_seq = frame_seq;
+        have_previous_seq = true;
+
+        // Check that lower-triangular counts are equal and in range.
+        // The upper entries in diagonal tiles are redundant.
+        for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
+            for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+                const int64_t offset = t * counts_stride_t + f * counts_stride_f;
+                const int32_t scalar_count = counts_mat[offset];
+                const int64_t scalar_offset = t * _num_freq_per_n2k_frame + f;
+                const int32_t rfi_count = rficounts[scalar_offset];
+                const int32_t pl_count = plcounts[scalar_offset];
+                if (rfi_count < 0 || rfi_count > _n_fpga_samples_per_n2k_correlation || pl_count < 0
+                    || pl_count > _n_fpga_samples_per_n2k_correlation) {
+                    FATAL_ERROR("N2Accumulate diagnostic count out of range at subintegration {}, "
+                                "frequency {}",
+                                t, f);
+                }
+                int64_t block_idx = 0;
+                for (int64_t ihi = 0; ihi < _n2k_counts_lin_blocks; ++ihi) {
+                    for (int64_t jhi = 0; jhi <= ihi; ++jhi, ++block_idx) {
+                        for (int64_t ilo = 0; ilo < _n2k_counts_blocksize; ++ilo) {
+                            for (int64_t jlo = 0; jlo < _n2k_counts_blocksize; ++jlo) {
+                                if (ihi == jhi && jlo > ilo)
+                                    continue;
+                                const int64_t idx =
+                                    offset
+                                    + block_idx * _n2k_counts_blocksize * _n2k_counts_blocksize
+                                    + ilo * _n2k_counts_blocksize + jlo;
+                                const int32_t count = counts_mat[idx];
+                                if (count < 0 || count > _n_fpga_samples_per_n2k_correlation) {
+                                    FATAL_ERROR("N2Accumulate count out of range at subintegration "
+                                                "{}, frequency {}, count {} (allowed 0..{})",
+                                                t, f, count, _n_fpga_samples_per_n2k_correlation);
+                                }
+                                if (count != scalar_count) {
+                                    FATAL_ERROR("N2Accumulate requires scalar counts: differing "
+                                                "science entries at subintegration {}, frequency "
+                                                "{} ({} versus {})",
+                                                t, f, count, scalar_count);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Record the current frame time being processed.
@@ -1005,6 +1116,10 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->n_rfi_only_fpga_ticks =
             ticks_in_accum - _n_valid_fpga_samples_in_vis.at(f) - _n_pl_samples_in_vis.at(f);
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
+        if (meta->n_valid_fpga_ticks + meta->n_pl_fpga_ticks > static_cast<uint64_t>(ticks_in_accum)
+            || meta->n_rfi_fpga_ticks > static_cast<uint64_t>(ticks_in_accum)) {
+            FATAL_ERROR("N2Accumulate inconsistent valid/packet-loss/RFI count totals");
+        }
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
         meta->rfi_frame_excision_num = num_thresholds;
