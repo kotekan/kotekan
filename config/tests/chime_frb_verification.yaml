@@ -288,7 +288,7 @@ beam_write:
 
 voltage_write:
     kotekan_stage: hdf5FileWrite
-    max_frames: 6
+    max_frames: 16
     create_single_file: yes
     base_dir: debug-data
     input_order: CHIMEBeamformer # this makes no sense, but is required
