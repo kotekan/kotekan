@@ -388,6 +388,14 @@ fake_voltages_0:
     num_times: samples_per_data_set
     frequency_channels: [{{ frequency_channels[0] }}]
     out_buf: host_voltage_buffer_0
+out_fake_voltages_0:
+    kotekan_stage: hdf5FileWrite
+    base_dir: debug-data-out
+    create_single_file: false
+    file_name: host_voltage_buffer_0
+    num_times: samples_per_data_set
+    frequency_channels: [{{ frequency_channels[0] }}]
+    in_buf: host_voltage_buffer_0
 
 {% for id in range(1,16) %}   # num_frequencies = 16
 fake_voltages_{{ id }}:
@@ -594,7 +602,7 @@ set_scatter_indices:
     out_buf: host_scatter_indices_buffer
     # TODO: need to undo transpose to beamformer (from cylinder order) in
     # conversion to visFrame
-    input_order: CHIMECorrelator
+    input_order: CHIMEBeamformer
     output_order: CHIMEBeamformer
     name: scatter_indices
 
