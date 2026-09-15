@@ -245,10 +245,10 @@ lost_samples_buffer:
 
 gen_data:
   test_data_gen_network:
-    #type: random_signed_offset
-    #value: 153
-    type: const_offset
-    value: 0xc8
+    type: random_signed_offset
+    value: 153
+    #type: const_offset
+    #value: 0xc8
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
     name: "E"
@@ -285,6 +285,15 @@ beam_write:
     input_order: CHIMEBeamformer # this makes no sense, but is required
     in_buf: cpu_output_buffer_0
     file_name: cpu_output_buffer_0
+
+voltage_write:
+    kotekan_stage: hdf5FileWrite
+    max_frames: 6
+    create_single_file: yes
+    base_dir: debug-data
+    input_order: CHIMEBeamformer # this makes no sense, but is required
+    in_buf: host_voltage_buffer
+    file_name: host_voltage_buffer
 
 #check_data:
 #  bf_data_check_0:
