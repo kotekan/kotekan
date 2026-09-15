@@ -51,6 +51,12 @@ public:
     void register_host_memory(Buffer* host_buffer) override;
 
     std::shared_ptr<cudaDeviceInterface> device;
+
+private:
+    /// Per-frame-slot end-of-frame join events, for pipelines whose commands span several
+    /// streams (see queue_commands). Sized in the constructor, created on first use for each
+    /// slot, re-recorded each frame, and destroyed in the destructor.
+    std::vector<cudaEvent_t> join_events;
 };
 
 #endif // CUDA_PROCESS_H

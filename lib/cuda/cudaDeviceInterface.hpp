@@ -49,6 +49,12 @@ public:
     /// Returns the number of streams available
     int32_t get_num_streams();
 
+    /// Async copy engines this device reports. Two are needed for a host-to-device copy to
+    /// overlap a device-to-host one; with one they serialise whatever the stream layout says.
+    int32_t async_engine_count() const {
+        return _async_engine_count;
+    }
+
     /// This function calls cudaSetDevice and must be called from every thread operating with this
     /// gpuDeviceInterface, or making calls directly to one of the cuda streams
     void set_thread_device() override;
@@ -115,6 +121,9 @@ public:
 protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
+
+    /// Async copy engines, from cudaGetDeviceProperties at construction.
+    int32_t _async_engine_count = 0;
 
     // Cuda Streams
     std::vector<cudaStream_t> streams;

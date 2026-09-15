@@ -136,6 +136,9 @@ bool cudaCommand::should_execute(cudaPipelineState& pipestate, const std::vector
 }
 
 void cudaCommand::finalize_frame() {
+    // An event that has not completed when finalize_frame runs means the frame was signalled
+    // before its work finished; this must stay a hard error rather than tolerating
+    // cudaErrorNotReady, because a gpu_batch config relies on it to detect exactly that.
     if (profiling && (start_event != nullptr) && (end_event != nullptr)) {
         float exec_time;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));
