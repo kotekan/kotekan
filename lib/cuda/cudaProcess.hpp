@@ -79,6 +79,11 @@ private:
     /// is not below `num_cuda_streams` and a stage with no commands that enqueue. Called once,
     /// after init().
     void collect_stream_ids(uint32_t num_cuda_streams);
+
+    /// Per-frame-slot end-of-frame join events, for pipelines whose commands span several
+    /// streams (see queue_commands). Sized in the constructor, created on first use for each
+    /// slot, re-recorded each frame, and destroyed in the destructor.
+    std::vector<cudaEvent_t> join_events;
 };
 
 #endif // CUDA_PROCESS_H

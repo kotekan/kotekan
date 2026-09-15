@@ -118,6 +118,10 @@ bool cudaCommand::should_execute(cudaPipelineState& pipestate, const std::vector
 }
 
 void cudaCommand::finalize_frame() {
+    // An event that has not completed when finalize_frame runs means the frame was signalled
+    // before its work finished, and the host frames it guards may already be released. Keep
+    // this a hard error rather than tolerating cudaErrorNotReady: it is the only place that
+    // early signal is visible.
     if (profiling && (start_event != nullptr) && (end_event != nullptr)) {
         float exec_time;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));
