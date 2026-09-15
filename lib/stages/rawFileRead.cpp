@@ -14,7 +14,6 @@
 #include <cstdio>     // for fread, snprintf, fclose, fopen, fseeko, ftello, FILE
 #include <errno.h>    // for errno
 #include <functional> // for bind, function
-#include <limits>     // for numeric_limits
 #include <memory>     // for __shared_ptr_access, shared_ptr
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <string.h>   // for strerror
@@ -116,10 +115,6 @@ void rawFileRead::main_thread() {
         }
 
         // Each rawFileWrite record includes its own metadata-size header.
-        if (buf->frame_size == 0
-            || uint64_t(buf->frame_size)
-                   > std::numeric_limits<uint64_t>::max() - sizeof(uint32_t) - metadata_size)
-            FATAL_ERROR("rawFileRead: invalid configured frame size");
         const uint64_t record_size = sizeof(uint32_t) + uint64_t(metadata_size) + buf->frame_size;
         if (fileSize % record_size)
             WARN("rawFileRead: {:s} has {:d} trailing bytes that do not form a whole frame for the "
