@@ -186,9 +186,10 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     const auto& pl_mask_meta = pl_mask.get_metadata();
     const auto& pl_counts_meta = pl_counts.get_metadata();
     // The ring buffer's `fpga_seq_num` is the sequence number of its logical beginning, not
-    // zero; each pl_mask element along the time axis spans 128 FPGA samples.
+    // zero; each pl_mask element along the time axis spans time_downsampling_fpga samples.
     pl_counts_meta->set_fpga_seq_num(pl_mask_meta->get_fpga_seq_num()
-                                     + pl_mask.get_read_valid().begin() * 128);
+                                     + pl_mask.get_read_valid().begin()
+                                           * pl_mask_meta->get_time_downsampling_fpga());
     pl_counts_meta->set_time_downsampling_fpga(
         div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), 128) * sub_integration_ntime);
 

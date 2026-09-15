@@ -5,6 +5,7 @@
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "N2Util.hpp"         // for freq_ctype, frameID, modulo, cfloat
 #include "Telescope.hpp"      // for Telescope, freq_id_t
+#include "chordMetadata.hpp"  // for chordMetadata, get_chord_metadata
 #include "geoUtil.hpp"        // for mat3x3d_t
 #include "hdf5Files.hpp"      // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
@@ -60,12 +61,15 @@
 #include <limits>                                // for numeric_limits
 #include <map>                                   // for map, _Rb_tree_iterator, operator!=
 #include <memory>                                // for allocator, unique_ptr, make_unique, __s...
+#include <mutex>                                 // for mutex, lock_guard
 #include <optional>                              // for optional, nullopt, operator!=
 #include <prometheusMetrics.hpp>                 // for Gauge, Counter, Metrics, MetricFamily
 #include <sstream>                               // for basic_ostringstream
 #include <stdexcept>                             // for runtime_error
 #include <string>                                // for basic_string, operator+, char_traits
 #include <system_error>                          // for error_code
+#include <thread>                                // for thread
+#include <time.h>                                // for clock_gettime, timespec
 #include <type_traits>                           // for false_type, true_type, void_t
 #include <utility>                               // for pair, move
 #include <vector>                                // for vector, operator!=
@@ -257,6 +261,31 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
 // NOTE: The datasets and attributes created below define the on-disk file format,
 // which is documented in docs/sphinx/user/file_formats/n2_vis_hdf5.rst. If you add,
 // remove, or change any dataset or attribute, update that page to match.
+HighFive::DataSetCreateProps N2FileData::_compressed_props() const {
+    HighFive::DataSetCreateProps props = HighFive::DataSetCreateProps::Empty();
+    if (use_bitshuffle) {
+        // bitshuffle + optional compression backend
+        auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 9);
+        unsigned int comp = hdf5::BITSHUFFLE_COMPRESS_NONE;
+        if (compression == "zstd") {
+            comp = hdf5::BITSHUFFLE_COMPRESS_ZSTD;
+        } else if (compression == "lz4") {
+            comp = hdf5::BITSHUFFLE_COMPRESS_LZ4;
+        }
+        std::vector<unsigned int> bshuf_flags{hdf5::BITSHUFFLE_BLOCKSIZE_AUTO, comp, level};
+        herr_t status =
+            H5Pset_filter(props.getId(), hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                          static_cast<unsigned>(bshuf_flags.size()), bshuf_flags.data());
+        if (status < 0) {
+            throw std::runtime_error("H5Pset_filter(BITSHUFFLE) failed");
+        }
+    } else if (compression == "deflate") {
+        auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 4);
+        props.add(HighFive::Deflate(level));
+    }
+    return props;
+}
+
 std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::string& filepath,
                                                                  const uint64_t num_file_t_,
                                                                  const N2FrameView& fv,
@@ -277,37 +306,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         }
 
         // 2) Describe compression/filters
-        HighFive::DataSetCreateProps props_compressed = HighFive::DataSetCreateProps::Empty();
+        HighFive::DataSetCreateProps props_compressed = _compressed_props();
         HighFive::DataSetCreateProps props_empty = HighFive::DataSetCreateProps::Empty();
-
-        if (use_bitshuffle) {
-            // bitshuffle + optional compression backend
-
-            auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 9);
-            unsigned int comp = hdf5::BITSHUFFLE_COMPRESS_NONE;
-
-            if (compression == "zstd") {
-                comp = hdf5::BITSHUFFLE_COMPRESS_ZSTD;
-            } else if (compression == "lz4") {
-                comp = hdf5::BITSHUFFLE_COMPRESS_LZ4;
-            }
-
-            std::vector<unsigned int> bshuf_flags{hdf5::BITSHUFFLE_BLOCKSIZE_AUTO, comp, level};
-
-            // props_compressed.add(H5Pset_filter, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
-            //                      bshuf_flags.size(), bshuf_flags.data());
-            hid_t dcpl = props_compressed.getId();
-            herr_t status =
-                H5Pset_filter(dcpl, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
-                              static_cast<unsigned>(bshuf_flags.size()), bshuf_flags.data());
-            if (status < 0) {
-                throw std::runtime_error("H5Pset_filter(BITSHUFFLE) failed");
-            }
-
-        } else if (compression == "deflate") {
-            auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 4);
-            props_compressed.add(HighFive::Deflate(level));
-        }
 
         std::string flags_group_prefix = file_mode_ == CHIME ? "/flags" : "";
         if (file_mode_ == CHIME && !file->exist(flags_group_prefix)) {
@@ -993,6 +993,98 @@ std::optional<std::string> N2FileData::_get_final_filename() {
     return final_path.string();
 }
 
+std::pair<std::uint64_t, std::uint64_t> N2FileData::fpga_tick_span() const {
+    std::uint64_t span_start = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t span_end = 0;
+    for (std::size_t t = 0; t < frame_length_fpga_ticks.size(); ++t) {
+        if (frame_length_fpga_ticks[t] == 0)
+            continue; // no frame in this slot
+        span_start = std::min(span_start, fpga_start_tick[t]);
+        span_end = std::max(span_end, fpga_start_tick[t] + frame_length_fpga_ticks[t]);
+    }
+    if (span_end == 0)
+        return {0, 0};
+    return {span_start, span_end};
+}
+
+namespace {
+// Rows per HDF5 chunk of the /bf_mask time axis: about ten seconds of 21 ms mask frames.
+constexpr std::size_t bf_mask_chunk_rows = 512;
+} // namespace
+
+std::vector<std::int32_t> N2FileData::freq_ids_with_frames() const {
+    const auto min_freq_id = Telescope::instance().cast<CHORDTelescope>().min_science_freq_id();
+    std::vector<std::int32_t> freq_ids;
+    for (std::size_t f = 0; f < num_file_f; ++f)
+        for (std::size_t t = 0; t < num_file_t; ++t)
+            if (added_ft[f * num_file_t + t]) {
+                freq_ids.push_back(static_cast<std::int32_t>(min_freq_id + f));
+                break;
+            }
+    return freq_ids;
+}
+
+void N2FileData::create_bf_mask(const BfMaskStreams& streams, std::size_t num_pol,
+                                std::size_t num_dish) {
+    const std::size_t num_stream = streams.size();
+    std::size_t num_freq = 0;
+    for (const auto& stream : streams)
+        num_freq = std::max(num_freq, stream.second.size());
+
+    h5_file->createGroup("/bf_mask");
+
+    // The frequencies each stream's masks were applied to, -1 padding shorter lists.
+    std::vector<std::int32_t> table(num_stream * num_freq, -1);
+    for (std::size_t i = 0; i < num_stream; ++i)
+        std::copy(streams[i].second.begin(), streams[i].second.end(), table.begin() + i * num_freq);
+    _check_create_dataset(*h5_file, "/bf_mask/stream_freq_id", {num_stream, num_freq},
+                          {"stream", "freq_in_stream"}, HighFive::create_datatype<std::int32_t>(),
+                          HighFive::DataSetCreateProps::Empty());
+    h5_file->getDataSet("/bf_mask/stream_freq_id").write_raw(table.data());
+
+    // Rows are appended as the file's time bins arrive, so the time axis is unlimited.
+    HighFive::DataSetCreateProps mask_props = _compressed_props();
+    mask_props.add(HighFive::Chunking({bf_mask_chunk_rows, num_stream, num_pol, num_dish}));
+    HighFive::DataSpace mask_space({0, num_stream, num_pol, num_dish},
+                                   {HighFive::DataSpace::UNLIMITED, num_stream, num_pol, num_dish});
+    h5_file->createDataSet<std::int8_t>("/bf_mask/mask", mask_space, mask_props)
+        .createAttribute("axis", std::vector<std::string>{"time", "stream", "pol", "dish"});
+    HighFive::DataSetCreateProps seq_props = HighFive::DataSetCreateProps::Empty();
+    seq_props.add(HighFive::Chunking({bf_mask_chunk_rows}));
+    h5_file
+        ->createDataSet<std::uint64_t>("/bf_mask/fpga_seq_num",
+                                       HighFive::DataSpace({0}, {HighFive::DataSpace::UNLIMITED}),
+                                       seq_props)
+        .createAttribute("axis", std::vector<std::string>{"time"});
+
+    bf_mask_stream_ids.clear();
+    for (const auto& stream : streams)
+        bf_mask_stream_ids.push_back(stream.first);
+    bf_mask_started = true;
+}
+
+void N2FileData::append_bf_mask(const std::vector<std::uint64_t>& seqs,
+                                const std::vector<std::int8_t>& masks) {
+    const std::size_t n = seqs.size();
+    if (n == 0)
+        return;
+    HighFive::DataSet mask_ds = h5_file->getDataSet("/bf_mask/mask");
+    std::vector<std::size_t> dims = mask_ds.getDimensions();
+    const std::size_t rows = dims[0];
+    dims[0] = rows + n;
+    mask_ds.resize(dims);
+    mask_ds.select({rows, 0, 0, 0}, {n, dims[1], dims[2], dims[3]}).write_raw(masks.data());
+    HighFive::DataSet seq_ds = h5_file->getDataSet("/bf_mask/fpga_seq_num");
+    seq_ds.resize({rows + n});
+    seq_ds.select({rows}, {n}).write_raw(seqs.data());
+}
+
+void N2FileData::write_bf_mask_uncovered(const std::vector<std::int32_t>& freq_ids) {
+    if (freq_ids.empty())
+        return;
+    h5_file->getGroup("/bf_mask").createAttribute("uncovered_freq_id", freq_ids);
+}
+
 bool N2FileData::flush_to_disk() {
     bool has_error = false;
 
@@ -1157,6 +1249,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
     _input_order(config.get<ElementOrder>(unique_name, "input_order")),
     _buffer(get_buffer("in_buf")),
+    _bf_mask_buf(config.exists(unique_name, "in_bf_mask_buf") ? get_buffer("in_bf_mask_buf")
+                                                              : nullptr),
     _write_time_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_write_time_seconds", unique_name)),
     _n_datasets_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -1176,9 +1270,27 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _finalize_failures_metric(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_hdf5N2Write_finalize_failures_total", unique_name, {"reason"})),
     _unfinalized_file_metric(kotekan::prometheus::Metrics::instance().add_gauge(
-        "kotekan_hdf5N2Write_unfinalized_file", unique_name, {"abs_file_idx", "partial_path"})) {
+        "kotekan_hdf5N2Write_unfinalized_file", unique_name, {"abs_file_idx", "partial_path"})),
+    _bf_mask_frames_metric(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_hdf5N2Write_bf_mask_frames_total", unique_name, {"stream"})),
+    _bf_mask_missing_metric(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_hdf5N2Write_bf_mask_missing_frames_total", unique_name, {"stream"})),
+    _bf_mask_uncovered_metric(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_hdf5N2Write_bf_mask_uncovered_freq_total", unique_name)) {
 
     _buffer->register_consumer(unique_name);
+
+    if (_bf_mask_buf != nullptr) {
+        _bf_mask_buf->register_consumer(unique_name);
+        const std::shared_ptr<const kotekan::GenericNDArray> mask_desc =
+            _bf_mask_buf->require_frame_desc<kotekan::GenericNDArray>();
+        if (mask_desc->get_value_datatype() != kotekan::int8 || mask_desc->get_rank() != 3
+            || mask_desc->get_extent(0) != 1)
+            FATAL_ERROR("in_bf_mask_buf {:s} must be int8 [1, P, D]", _bf_mask_buf->buffer_name);
+        _bf_mask_num_pol = mask_desc->get_extent(1);
+        _bf_mask_num_dish = mask_desc->get_extent(2);
+        _bf_mask_row_len = _bf_mask_num_pol * _bf_mask_num_dish;
+    }
 
     // Resolve baseband_gain_host_info once: it names a config path (e.g.
     // /fpga_controller) to a block exposing host, port, and an optional
@@ -1275,10 +1387,187 @@ size_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     return fv.abs_time_idx / _num_file_t;
 }
 
+void hdf5N2Write::_bf_mask_ingest() {
+    int frame_id = 0;
+    while (!stop_thread && !_bf_mask_stop) {
+        // A bounded wait, so a stop request is noticed without a buffer shutdown.
+        timespec deadline;
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_nsec += 100'000'000;
+        if (deadline.tv_nsec >= 1'000'000'000) {
+            deadline.tv_sec += 1;
+            deadline.tv_nsec -= 1'000'000'000;
+        }
+        const int status =
+            _bf_mask_buf->wait_for_full_frame_timeout(unique_name, frame_id, deadline);
+        if (status < 0)
+            break;
+        if (status > 0)
+            continue;
+        const std::int8_t* frame = (const std::int8_t*)_bf_mask_buf->frames[frame_id];
+        const std::shared_ptr<chordMetadata> meta = get_chord_metadata(_bf_mask_buf, frame_id);
+
+        // The stream is identified by the frequencies its X-engine half applied the mask to.
+        if (!meta->has_coarse_freq() || meta->get_coarse_freq().empty()) {
+            FATAL_ERROR("Bad feed mask frame on {:s} carries no coarse frequencies, so the stream "
+                        "that applied it cannot be identified.",
+                        _bf_mask_buf->buffer_name);
+            return;
+        }
+        const std::vector<int> coarse_freq = meta->get_coarse_freq();
+        const std::int32_t stream_id = coarse_freq.front();
+        const std::int64_t step = meta->get_time_downsampling_fpga();
+        const std::uint64_t seq = meta->get_fpga_seq_num();
+        if (step <= 0) {
+            FATAL_ERROR("Bad feed mask frame on {:s} has no time_downsampling_fpga, the samples "
+                        "per mask frame.",
+                        _bf_mask_buf->buffer_name);
+            return;
+        }
+
+        std::uint64_t missing = 0;
+        {
+            std::lock_guard<std::mutex> lock(_bf_mask_lock);
+            if (_bf_mask_step == 0)
+                _bf_mask_step = step;
+            if (step != _bf_mask_step) {
+                FATAL_ERROR("Bad feed mask stream {:d} has {:d} samples per frame, the others "
+                            "{:d}.",
+                            stream_id, step, _bf_mask_step);
+                return;
+            }
+            BfMaskStream& stream = _bf_mask_streams[stream_id];
+            if (stream.coarse_freq.empty()) {
+                stream.coarse_freq.assign(coarse_freq.begin(), coarse_freq.end());
+                INFO("Bad feed mask stream {:d}: {:d} coarse frequencies, first frame at seq {:d}",
+                     stream_id, coarse_freq.size(), seq);
+            } else if (!std::equal(stream.coarse_freq.begin(), stream.coarse_freq.end(),
+                                   coarse_freq.begin(), coarse_freq.end())) {
+                WARN("Bad feed mask stream {:d}: coarse frequencies changed ({:d} -> {:d} of them)",
+                     stream_id, stream.coarse_freq.size(), coarse_freq.size());
+                stream.coarse_freq.assign(coarse_freq.begin(), coarse_freq.end());
+            }
+            if (stream.has_last && seq > stream.last_seq)
+                missing = (seq - stream.last_seq) / step - 1;
+            else if (stream.has_last)
+                WARN("Bad feed mask stream {:d}: seq {:d} arrived after {:d}", stream_id, seq,
+                     stream.last_seq);
+            stream.last_seq = seq;
+            stream.has_last = true;
+            stream.samples[seq].assign(frame, frame + _bf_mask_row_len);
+            // Bound what is held while no file takes it.
+            while (stream.samples.size() > bf_mask_max_samples)
+                stream.samples.erase(stream.samples.begin());
+        }
+        _bf_mask_frames_metric.labels({std::to_string(stream_id)}).inc();
+        if (missing > 0) {
+            _bf_mask_missing_metric.labels({std::to_string(stream_id)}).inc(missing);
+            WARN("Bad feed mask stream {:d}: {:d} frames missing before seq {:d}", stream_id,
+                 missing, seq);
+        }
+
+        _bf_mask_buf->mark_frame_empty(unique_name, frame_id);
+        frame_id = (frame_id + 1) % _bf_mask_buf->num_frames;
+    }
+}
+
+void hdf5N2Write::_bf_mask_append(N2FileData& filedata, std::uint64_t upto_seq) {
+    if (_bf_mask_buf == nullptr)
+        return;
+    std::lock_guard<std::mutex> lock(_bf_mask_lock);
+    if (_bf_mask_streams.empty())
+        return; // no stream has delivered a frame yet
+    const std::uint64_t step = _bf_mask_step;
+    try {
+        if (!filedata.bf_mask_started) {
+            // The stream axis is every stream seen so far, in first-frequency order. A
+            // stream that first appears while this file is open starts in the next file.
+            const auto [span_start, span_end] = filedata.fpga_tick_span();
+            if (span_end == 0)
+                return;
+            N2FileData::BfMaskStreams streams;
+            for (const auto& [id, stream] : _bf_mask_streams)
+                streams.emplace_back(id, stream.coarse_freq);
+            filedata.create_bf_mask(streams, _bf_mask_num_pol, _bf_mask_num_dish);
+            // The first grid sample overlapping the file's span.
+            filedata.bf_mask_next_seq = span_start - span_start % step;
+        }
+        std::vector<std::uint64_t> seqs;
+        std::vector<std::int8_t> masks;
+        std::uint64_t seq = filedata.bf_mask_next_seq;
+        for (; seq < upto_seq; seq += step) {
+            seqs.push_back(seq);
+            for (const std::int32_t id : filedata.bf_mask_stream_ids) {
+                const BfMaskStream& stream = _bf_mask_streams.at(id);
+                const auto sample = stream.samples.find(seq);
+                if (sample == stream.samples.end())
+                    masks.insert(masks.end(), _bf_mask_row_len, static_cast<std::int8_t>(-1));
+                else
+                    masks.insert(masks.end(), sample->second.begin(), sample->second.end());
+            }
+        }
+        filedata.bf_mask_next_seq = seq;
+        filedata.append_bf_mask(seqs, masks);
+    } catch (const std::exception& e) {
+        FATAL_ERROR("Failed to write /bf_mask to {}: {}", filedata.partial_filepath, e.what());
+    }
+}
+
+void hdf5N2Write::_bf_mask_prune(const std::map<size_t, std::unique_ptr<N2FileData>>& files) {
+    if (_bf_mask_buf == nullptr)
+        return;
+    // Samples before every open file's cursor have been written wherever they belong.
+    std::uint64_t keep_from = std::numeric_limits<std::uint64_t>::max();
+    for (const auto& [idx, file] : files)
+        if (file->bf_mask_started)
+            keep_from = std::min(keep_from, file->bf_mask_next_seq);
+    if (keep_from == std::numeric_limits<std::uint64_t>::max())
+        return;
+    std::lock_guard<std::mutex> lock(_bf_mask_lock);
+    for (auto& [id, stream] : _bf_mask_streams)
+        stream.samples.erase(stream.samples.begin(), stream.samples.lower_bound(keep_from));
+}
+
+void hdf5N2Write::_bf_mask_finish(N2FileData& filedata) {
+    if (_bf_mask_buf == nullptr)
+        return;
+    const auto [span_start, span_end] = filedata.fpga_tick_span();
+    if (span_end == 0)
+        return;
+    _bf_mask_append(filedata, span_end);
+    if (!filedata.bf_mask_started)
+        return; // no stream delivered a frame while this file was open
+
+    // Every frequency with data must belong to one of the file's streams.
+    std::vector<std::int32_t> uncovered;
+    {
+        std::lock_guard<std::mutex> lock(_bf_mask_lock);
+        for (const std::int32_t freq_id : filedata.freq_ids_with_frames()) {
+            bool covered = false;
+            for (const std::int32_t id : filedata.bf_mask_stream_ids) {
+                const std::vector<std::int32_t>& freqs = _bf_mask_streams.at(id).coarse_freq;
+                if (std::find(freqs.begin(), freqs.end(), freq_id) != freqs.end()) {
+                    covered = true;
+                    break;
+                }
+            }
+            if (!covered)
+                uncovered.push_back(freq_id);
+        }
+    }
+    if (!uncovered.empty()) {
+        WARN("File {:d}: {:d} frequencies with data have no bad feed mask stream (first: {:d})",
+             filedata.abs_file_idx, uncovered.size(), uncovered.front());
+        _bf_mask_uncovered_metric.inc(uncovered.size());
+    }
+    filedata.write_bf_mask_uncovered(uncovered);
+}
+
 bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
     DEBUG_NON_OO("hdf5N2Write: Flushing and closing file {}...", abs_idx);
     try {
+        _bf_mask_finish(filedata);
         filedata.flush_to_disk();
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR("Failed to flush dataset {} to disk: {}", filedata.partial_filepath, e.what());
@@ -1465,6 +1754,11 @@ void hdf5N2Write::main_thread() {
         }
     }
 
+    // Mask frames arrive at line rate from every X-engine half; take them in on their own
+    // thread so that the buffer drains however long a file write takes.
+    if (_bf_mask_buf != nullptr)
+        _bf_mask_thread = std::thread(&hdf5N2Write::_bf_mask_ingest, this);
+
     // Main stage thread
     while (!stop_thread) {
 
@@ -1565,6 +1859,10 @@ void hdf5N2Write::main_thread() {
         N2FileData_ptr->last_update_wall_s = frame_recv_time;
         _update_file_metrics(*N2FileData_ptr);
 
+        // Mask rows up to this bin's start; the bin's own rows follow with the next bin.
+        _bf_mask_append(*N2FileData_ptr, fv.fpga_start_tick);
+        _bf_mask_prune(filedata);
+
         // If buffer full, flush
         double elapsed_writing_frame = 0.0;
         if (N2FileData_ptr->full()) {
@@ -1602,6 +1900,11 @@ void hdf5N2Write::main_thread() {
         _grace_finalize_files(filedata, &abs_file_idx);
 
     } // while !stop_thread
+
+    if (_bf_mask_thread.joinable()) {
+        _bf_mask_stop = true;
+        _bf_mask_thread.join();
+    }
 
     // Finalize any partially-filled datasets on exit
     for (auto& file : filedata) {
