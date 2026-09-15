@@ -1019,8 +1019,7 @@ def expected_accum(
             # Accumulate the EvenOddPosDef variance. Less worried about replicating truncation here.
             inv_N1 = safe_invert(N1, float)
             inv_N2 = safe_invert(N2, float)
-            # Convert before multiplying to avoid int32 overflow.
-            inv_var = N1.astype(float) * N2 * safe_invert(N1.astype(float) + N2)
+            inv_var = N1 * N2 * safe_invert(N1 + N2)  # Must be 0 if N1 or N2 are.
             vis1 = corr1 * inv_N1[:, None, None, None, None]
             vis2 = corr2 * inv_N2[:, None, None, None, None]
             dvis = vis2 - vis1

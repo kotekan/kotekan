@@ -291,9 +291,9 @@ private:
     std::vector<int32_t> _vis;
     std::vector<float> _var;
     // number of fpga samples, per frequency, in frame
-    std::vector<int64_t> _n_valid_fpga_samples_in_vis;
+    std::vector<int32_t> _n_valid_fpga_samples_in_vis;
     std::vector<float> _n_valid_sample_diff_sq_sum;
-    std::vector<int64_t> _n_usable_variance_pairs; ///< Accepted pairs with samples in both frames
+    std::vector<int32_t> _n_usable_variance_pairs; ///< Accepted pairs with samples in both frames
     std::vector<uint64_t> _n_rfi_samples_in_vis;
     std::vector<uint64_t> _n_pl_samples_in_vis;
     int64_t _vis_samples_in_out_frame;

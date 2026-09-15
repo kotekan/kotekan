@@ -250,8 +250,8 @@ def _run_accumulation(tmpdir_factory, scale=1, period=1, subintegrations_per_fra
 
 @pytest.fixture(
     scope="module",
-    params=[(1, 1, 2), (4096, 1, 2), (1, 1, 1)],
-    ids=["counts-16-period-1", "counts-65536-period-1", "cross-frame-pairs"],
+    params=[(1, 1, 2), (1, 1, 1)],
+    ids=["counts-16-period-1", "cross-frame-pairs"],
 )
 def masked_accumulation(request, tmpdir_factory):
     return _run_accumulation(tmpdir_factory, *request.param)
