@@ -9,12 +9,14 @@ quantised the code phase, then retired on an anchor-scaled tolerance), **#65**, 
 (no aid available, bounded by measurement), **#111**, **#116**, **#117**, **#118**, **#128**.
 Opened: **#129** (no GLONASS positions anywhere), **#130** (cx42 heap corruption).
 
-⚠️ **THE FLEET IS DOWN.** The array was handed over on 2026-09-11 21:04 and the whole GNSS stack
-is stopped (`scripts/gnss/stack_down.sh`; see [`CHORD_STACK_SHUTDOWN.md`](CHORD_STACK_SHUTDOWN.md)).
-**No `[live]` claim in this file can be re-checked until it comes back** — until then every one of
-them is effectively `[carried]`, however recently it was measured. Offline work on the archived
-soak is unaffected: `fixtures/obs/*_20260910.jsonl` is a genuine 24 h at 6.8 rows/s, and is what
-closed #93.
+**Fleet state: UP since 2026-09-14** (down 09-11 21:04 → 09-14 for the handover; see
+[`CHORD_STACK_SHUTDOWN.md`](CHORD_STACK_SHUTDOWN.md), which now covers both directions and the
+four faults that stopped that bring-up). `[live]` claims are re-checkable again.
+
+⚠️ **But every `[live]` mark dated 09-10 or earlier now sits across a full teardown, a develop
+merge, a fleet rebuild and an F-engine re-base.** Treat those as `[carried]` until re-measured —
+the instrument they were measured on is not bit-for-bit the one running now. Archive work is
+unaffected: `fixtures/obs/*_20260910.jsonl` is a genuine 24 h at 6.8 rows/s, and is what closed #93.
 
 **How to read the marks.** `[tree]` = checked against the working tree, with the check named.
 `[live]` = measured on the running fleet, with the date and the number. `[bench]` / `[archive]` =
