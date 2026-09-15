@@ -23,7 +23,25 @@ namespace kotekan {
  *
  * Use this enum to refer to the fields.
  **/
-enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, radiometer_chi2, gain, mask };
+enum class N2Field {
+    vis,
+    weight,
+    flags,
+    eval,
+    evec,
+    emethod,
+    erms,
+    radiometer_chi2,
+    gain,
+    mask,
+    valid_fpga_ticks
+};
+
+/// Scalar uses one sample count for all products. PerProductV1 appends uint64
+/// valid FPGA-tick counts per product; scalar count fields are unused and zero.
+enum class N2SupportMode { Scalar, PerProductV1 };
+N2SupportMode n2_support_mode_from_string(const std::string& value);
+const char* n2_support_mode_name(N2SupportMode mode);
 
 /**
  * @brief Describes the byte range of a field within an N2 frame.
@@ -66,13 +84,15 @@ public:
      * @param num_products  Number of products in the visibility matrix
      * @param n2_layout     The layout of the visibility matrix
      * @param product_list  Optional explicit list of products (required for subset layouts)
+     * @param support_mode  Scalar counts by default, or per-product counts with PerProductV1
      *
      * @note Validation failures (product_list missing, sized inconsistently with
      *       num_products, or referencing inputs outside num_elements) are fatal
      *       and shut kotekan down (FATAL_ERROR_NON_OO).
      */
     N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_products, N2Layout n2_layout,
-                std::vector<N2::prod_ctype> product_list = {});
+                std::vector<N2::prod_ctype> product_list = {},
+                N2SupportMode support_mode = N2SupportMode::Scalar);
     virtual ~N2FrameDesc() = default;
 
     // FrameDesc overrides
@@ -99,6 +119,10 @@ public:
     }
     N2Layout get_n2_layout() const {
         return n2_layout;
+    }
+
+    N2SupportMode get_support_mode() const {
+        return support_mode;
     }
 
     /**
@@ -192,7 +216,8 @@ public:
      * @brief Calculate the size of the frame.
      */
     static size_t calculate_frame_size(uint32_t num_elements_in, uint32_t num_ev_in,
-                                       size_t num_prod_in);
+                                       size_t num_prod_in,
+                                       N2SupportMode mode = N2SupportMode::Scalar);
 
     /**
      * @brief The layout of data/fields within the frame.
@@ -200,7 +225,8 @@ public:
      * @return The frame layout including field positions and total size.
      **/
     static n2frame_layout_t get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in,
-                                             size_t num_prod_in);
+                                             size_t num_prod_in,
+                                             N2SupportMode mode = N2SupportMode::Scalar);
 
 private:
     /// Helper for the config constructor: parses config and returns a fully constructed
@@ -211,6 +237,7 @@ private:
     const uint32_t num_ev;
     const uint32_t num_products;
     const N2Layout n2_layout;
+    const N2SupportMode support_mode;
 
     /// Product list for this frame descriptor (populated for all layouts)
     const std::vector<N2::prod_ctype> product_list;

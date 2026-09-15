@@ -55,11 +55,26 @@ class N2Buffer(object):
     skip : int, optional
         Number of bytes to skip from the beginning of the buffer. Useful for
         raw dumps when the metadata size is given in the first four bytes.
+    support_mode : {"scalar", "per_product_v1"}, optional
+        Use "per_product_v1" for a dump with per-product counts. The default
+        is "scalar"; raw dumps do not store this setting.
     """
 
-    def __init__(self, buffer, skip=4, num_elements=None, num_prod=None, num_ev=None):
+    def __init__(
+        self,
+        buffer,
+        skip=4,
+        num_elements=None,
+        num_prod=None,
+        num_ev=None,
+        support_mode="scalar",
+    ):
 
-        self._buffer = buffer[skip:]
+        if support_mode not in ("scalar", "per_product_v1"):
+            raise ValueError(f"Unknown N2 support_mode: {support_mode}")
+        self.support_mode = support_mode
+        # Use a view so metadata and array edits update the original buffer.
+        self._buffer = memoryview(buffer)[skip:]
         self._num_elements = num_elements
         self._num_prod = num_prod
         self._num_ev = num_ev
@@ -96,7 +111,9 @@ class N2Buffer(object):
             num_prod = self.metadata.num_prod
             num_ev = self.metadata.num_ev
 
-        layout = self.__class__.calculate_layout(num_elements, num_prod, num_ev)
+        layout = self.__class__.calculate_layout(
+            num_elements, num_prod, num_ev, self.support_mode
+        )
 
         if layout["size"] != len(_data):
             raise RuntimeError(
@@ -109,6 +126,8 @@ class N2Buffer(object):
                 )
             )
 
+        # Scalar frames use metadata.n_valid_fpga_ticks instead of this array.
+        self.valid_fpga_ticks = np.empty(0, dtype=np.uint64)
         for member in layout["members"]:
 
             arr = np.frombuffer(
@@ -117,13 +136,15 @@ class N2Buffer(object):
             setattr(self, member["name"], arr)
 
     @classmethod
-    def calculate_layout(cls, num_elements, num_prod, num_ev):
+    def calculate_layout(cls, num_elements, num_prod, num_ev, support_mode="scalar"):
         """Calculate the buffer layout.
 
         Parameters
         ----------
         num_elements, num_prod, num_ev : int
             Length of each dimension.
+        support_mode : {"scalar", "per_product_v1"}, optional
+            Whether to append per-product counts. Default: "scalar".
 
         Returns
         -------
@@ -131,6 +152,10 @@ class N2Buffer(object):
             Structure of buffer.
         """
 
+        if support_mode not in ("scalar", "per_product_v1"):
+            raise ValueError(f"Unknown N2 support_mode: {support_mode}")
+        if support_mode == "per_product_v1" and num_prod <= 0:
+            raise ValueError("per_product_v1 requires at least one product")
         structure = [
             ("vis", np.complex64, num_prod),
             ("weight", np.float32, num_prod),
@@ -143,6 +168,9 @@ class N2Buffer(object):
             ("gain", np.complex64, num_elements),
             ("mask", np.uint8, num_elements),
         ]
+
+        if support_mode == "per_product_v1":
+            structure.append(("valid_fpga_ticks", np.uint64, num_prod))
 
         end = 0
 
@@ -182,8 +210,15 @@ class N2Buffer(object):
         return layout
 
     @classmethod
-    def from_file(cls, filename, num_elements=None, num_prod=None, num_ev=None):
-        """Load an N2Buffer from a kotekan dump file."""
+    def from_file(
+        cls,
+        filename,
+        num_elements=None,
+        num_prod=None,
+        num_ev=None,
+        support_mode="scalar",
+    ):
+        """Load a dump using the supplied dimensions and support mode."""
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -191,16 +226,31 @@ class N2Buffer(object):
         with io.FileIO(filename, "rb") as fh:
             fh.readinto(buf)
 
-        return cls(buf, num_elements=num_elements, num_prod=num_prod, num_ev=num_ev)
+        return cls(
+            buf,
+            num_elements=num_elements,
+            num_prod=num_prod,
+            num_ev=num_ev,
+            support_mode=support_mode,
+        )
 
     @classmethod
-    def load_files(cls, pattern, num_elements=None, num_prod=None, num_ev=None):
+    def load_files(
+        cls,
+        pattern,
+        num_elements=None,
+        num_prod=None,
+        num_ev=None,
+        support_mode="scalar",
+    ):
         """Read a set of dump files as N2Buffers.
 
         Parameters
         ----------
         pattern : str
-            A globable pattern to read.
+            A glob pattern to read.
+        support_mode : {"scalar", "per_product_v1"}, optional
+            Support mode shared by all files. Default: "scalar".
 
         Returns
         -------
@@ -210,7 +260,11 @@ class N2Buffer(object):
 
         return [
             cls.from_file(
-                fname, num_elements=num_elements, num_prod=num_prod, num_ev=num_ev
+                fname,
+                num_elements=num_elements,
+                num_prod=num_prod,
+                num_ev=num_ev,
+                support_mode=support_mode,
             )
             for fname in sorted(glob.glob(pattern))
         ]
@@ -237,31 +291,37 @@ class N2Buffer(object):
                 fh.write(bytearray(buf._buffer))
 
     @classmethod
-    def new_from_params(cls, num_elements, num_prod, num_ev, insert_size=True):
-        """Create a new VisBuffer owning its own memory.
+    def new_from_params(
+        cls, num_elements, num_prod, num_ev, insert_size=True, support_mode="scalar"
+    ):
+        """Create an N2Buffer with its own zeroed memory.
 
         Parameters
         ----------
-        num_elements, num_prod, num_ev
-            Structural parameters.
+        num_elements, num_prod, num_ev : int
+            Length of each dimension.
+        support_mode : {"scalar", "per_product_v1"}, optional
+            Whether to include per-product counts. Default: "scalar".
 
         Returns
         -------
         buffer : N2Buffer
         """
 
-        layout = cls.calculate_layout(num_elements, num_prod, num_ev)
+        layout = cls.calculate_layout(num_elements, num_prod, num_ev, support_mode)
         meta_size = ctypes.sizeof(N2Metadata)
 
         buf = np.zeros(meta_size + layout["size"], dtype=np.uint8)
 
-        # Set the structure in the metadata
-        metadata = N2Metadata.from_buffer(buf[:meta_size])
-        metadata.num_elements = num_elements
-        metadata.num_prod = num_prod
-        metadata.num_ev = num_ev
-
-        return cls(buf, skip=0)
+        # N2Metadata does not store dimensions, so pass them to the view.
+        return cls(
+            buf,
+            skip=0,
+            num_elements=num_elements,
+            num_prod=num_prod,
+            num_ev=num_ev,
+            support_mode=support_mode,
+        )
 
 
 def _offset(offset, align):

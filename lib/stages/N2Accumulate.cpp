@@ -17,7 +17,7 @@
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
 #include "dataset.hpp"           // for dset_id_t
 #include "div.hpp"               // for div_ceil, num_triangle_blocks
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO, WARN
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "timeUtil.hpp"          // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
 
@@ -38,8 +38,9 @@
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
-#include <time.h> // for timespec, size_t
-#include <vector> // for vector
+#include <time.h>  // for timespec, size_t
+#include <utility> // for pair
+#include <vector>  // for vector
 
 
 using namespace std::placeholders;
@@ -90,7 +91,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                 _tel.element_index_to_station_id(idx_in, _input_order), _output_order);
         return reorder;
     }()),
-    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _tel.fiducial_element_order())),
+    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _input_order)),
     n_valid_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_valid_fpga_ticks",
                                                 unique_name, {"freq_id"})),
     n_pl_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_flagged_fpga_ticks_pl",
@@ -140,9 +141,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                         "with non-positive num_bins_per_rotation {:d}.",
                         _num_bins_per_rotation);
 
-        if (!_packet_loss_is_scalar)
+        if (!_packet_loss_is_scalar
+            && (_variance_mode != N2VarianceMode::EvenOddPosDef || _debug_accum_mode))
             FATAL_ERROR(
-                "N2Accumulate configured to use packet loss matrix, which is not implemented.");
+                "N2Accumulate per-product support requires EvenOddPosDef without debug mode");
 
         // sampling information
         if (!(_n_fpga_samples_per_n2k_frame > 0))
@@ -217,6 +219,14 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_rfi_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
     _n_pl_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
 
+    if (!_packet_loss_is_scalar) {
+        const size_t n = size_t(_num_freq_per_n2k_frame) * _n2k_correlation_num_products;
+        _product_sum.assign(n, {0, 0});
+        _product_q.assign(n, 0);
+        _product_n.assign(n, 0);
+        _product_k.assign(n, 0);
+    }
+
     _vis_samples_in_out_frame = 0;
     _accum_fpga_start_tick = -1;
     _accum_bin_idx = -1;
@@ -255,6 +265,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     {
         auto n2_desc = out_buf->require_frame_desc<kotekan::N2FrameDesc>();
         // Validate the descriptor matches what we expect to produce
+        const auto expected_support = _packet_loss_is_scalar ? kotekan::N2SupportMode::Scalar
+                                                             : kotekan::N2SupportMode::PerProductV1;
+        if (n2_desc->get_support_mode() != expected_support)
+            FATAL_ERROR("N2Accumulate support_mode must match packet_loss_is_scalar");
         if (n2_desc->get_num_elements() != (uint32_t)_num_elements) {
             FATAL_ERROR(
                 "N2Accumulate: Output buffer num_elements ({:d}) does not match expected ({:d})",
@@ -296,6 +310,10 @@ void N2Accumulate::main_thread() {
     int previous_in_rficounts_frame_id = -1;
     int previous_in_plcounts_frame_id = -1;
     int previous_in_rfiframemask_frame_id = -1;
+    bool have_previous_seq = false;
+    int64_t previous_seq = 0;
+    nlohmann::json support_identity; // Copy these fields before input metadata is reused.
+    bool warned_support_identity = false;
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
          in_frame_id, out_buf->buffer_name, out_frame_id);
@@ -389,6 +407,37 @@ void N2Accumulate::main_thread() {
         std::shared_ptr<chordMetadata> rfiframemask_metadata =
             get_chord_metadata(in_rfiframemask_buf, in_rfiframemask_frame_id);
 
+        if (!_packet_loss_is_scalar) {
+            if (!frame_metadata || !counts_metadata || !rficounts_metadata || !plcounts_metadata
+                || !rfiframemask_metadata)
+                FATAL_ERROR("N2Accumulate per-product streams require CHORD metadata");
+            if (!rfiframemask_metadata->has_rfi_frame_excision_enabled()
+                || !rfiframemask_metadata->has_rfi_frame_excision_thresholds())
+                FATAL_ERROR("N2Accumulate per-product stream missing RFI policy identity");
+            const auto policy = rfiframemask_metadata->get_rfi_frame_excision_thresholds();
+            for (const auto& pair : policy)
+                if (!std::isfinite(pair[0]) || !std::isfinite(pair[1]))
+                    FATAL_ERROR("N2Accumulate per-product RFI policy must be finite");
+            const auto dataset = frame_metadata->has_dataset_id() ? frame_metadata->get_dataset_id()
+                                                                  : dset_id_t::null;
+            for (const auto& m :
+                 {counts_metadata, rficounts_metadata, plcounts_metadata, rfiframemask_metadata})
+                if (m->has_dataset_id() && m->get_dataset_id() != dataset)
+                    FATAL_ERROR("N2Accumulate per-product dataset identity mismatch");
+            const nlohmann::json identity = {
+                {"dataset_present", frame_metadata->has_dataset_id()},
+                {"dataset_id", dataset},
+                {"rfi_enabled", rfiframemask_metadata->get_rfi_frame_excision_enabled()},
+                {"rfi_thresholds", policy}};
+            if (!support_identity.is_null() && identity != support_identity
+                && !warned_support_identity) {
+                WARN("N2Accumulate per-product dataset or RFI policy changed mid-run; later "
+                     "frames use the new identity");
+                warned_support_identity = true;
+            }
+            support_identity = identity;
+        }
+
         // Check synchronization
         if (frame_metadata->get_fpga_seq_num() != counts_metadata->get_fpga_seq_num()) {
             FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
@@ -417,6 +466,116 @@ void N2Accumulate::main_thread() {
                         in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
                         in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id,
                         rfiframemask_metadata->get_fpga_seq_num());
+        }
+
+        // Counts and masks must refer to the same times and frequencies as the correlations.
+        const std::array<std::pair<const char*, std::shared_ptr<chordMetadata>>, 5> stream_metadata{
+            {{"correlation", frame_metadata},
+             {"counts", counts_metadata},
+             {"RFI counts", rficounts_metadata},
+             {"packet-loss counts", plcounts_metadata},
+             {"RFI frame mask", rfiframemask_metadata}}};
+        for (const auto& stream : stream_metadata) {
+            if (!stream.second->has_coarse_freq()) {
+                FATAL_ERROR("N2Accumulate missing coarse-frequency metadata in {} stream",
+                            stream.first);
+            }
+            if (!stream.second->has_time_downsampling_fpga()) {
+                FATAL_ERROR("N2Accumulate missing time-downsampling metadata in {} stream",
+                            stream.first);
+            }
+        }
+        const auto frame_coarse_freq = frame_metadata->get_coarse_freq();
+        const int frame_time_downsampling = frame_metadata->get_time_downsampling_fpga();
+        if (frame_coarse_freq.size() != static_cast<size_t>(_num_freq_per_n2k_frame)) {
+            FATAL_ERROR("N2Accumulate coarse-frequency length mismatch: got {}, expected {}",
+                        frame_coarse_freq.size(), _num_freq_per_n2k_frame);
+        }
+        for (const auto& stream : stream_metadata) {
+            if (stream.second->get_coarse_freq() != frame_coarse_freq) {
+                FATAL_ERROR("N2Accumulate coarse-frequency mismatch in {} stream", stream.first);
+            }
+            if (stream.second->get_time_downsampling_fpga() != frame_time_downsampling) {
+                FATAL_ERROR("N2Accumulate time-downsampling mismatch in {} stream", stream.first);
+            }
+        }
+
+        // The correlation period in the metadata must be the configured sub-integration.
+        if (frame_time_downsampling != _n_fpga_samples_per_n2k_correlation) {
+            FATAL_ERROR("N2Accumulate correlation period {} in the metadata differs from "
+                        "sub_integration_ntime {}",
+                        frame_time_downsampling, _n_fpga_samples_per_n2k_correlation);
+        }
+        if (_coarse_freq_order.empty()) {
+            _coarse_freq_order = frame_coarse_freq;
+        } else if (frame_coarse_freq != _coarse_freq_order) {
+            FATAL_ERROR("N2Accumulate coarse-frequency order changed between correlation frames");
+        }
+
+        // The even frame may be saved for the next iteration, so frames must be consecutive.
+        const int64_t frame_seq = frame_metadata->get_fpga_seq_num();
+        if (frame_seq < 0) {
+            FATAL_ERROR("N2Accumulate negative correlation frame sequence {}", frame_seq);
+        }
+        // Even/odd pairing requires frames to start on the global frame grid.
+        if (frame_seq % _n_fpga_samples_per_n2k_frame != 0) {
+            FATAL_ERROR("N2Accumulate unaligned correlation frame: sequence {} is not a multiple "
+                        "of frame span {} FPGA ticks",
+                        frame_seq, _n_fpga_samples_per_n2k_frame);
+        }
+        if (have_previous_seq && frame_seq != previous_seq + _n_fpga_samples_per_n2k_frame) {
+            FATAL_ERROR("N2Accumulate nonconsecutive correlation frame: previous {}, current {}, "
+                        "required increment {}",
+                        previous_seq, frame_seq, _n_fpga_samples_per_n2k_frame);
+        }
+        previous_seq = frame_seq;
+        have_previous_seq = true;
+
+        // Check that lower-triangular counts are equal and in range.
+        // The upper entries in diagonal tiles are redundant.
+        for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
+            for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+                const int64_t offset = t * counts_stride_t + f * counts_stride_f;
+                const int32_t scalar_count = counts_mat[offset];
+                const int64_t scalar_offset = t * _num_freq_per_n2k_frame + f;
+                const int32_t rfi_count = rficounts[scalar_offset];
+                const int32_t pl_count = plcounts[scalar_offset];
+                if (!_packet_loss_is_scalar && rfiframemask[scalar_offset] > 1)
+                    FATAL_ERROR("N2Accumulate per-product frame mask must be binary");
+                if (rfi_count < 0 || rfi_count > _n_fpga_samples_per_n2k_correlation || pl_count < 0
+                    || pl_count > _n_fpga_samples_per_n2k_correlation) {
+                    FATAL_ERROR("N2Accumulate diagnostic count out of range at subintegration {}, "
+                                "frequency {}",
+                                t, f);
+                }
+                int64_t block_idx = 0;
+                for (int64_t ihi = 0; ihi < _n2k_counts_lin_blocks; ++ihi) {
+                    for (int64_t jhi = 0; jhi <= ihi; ++jhi, ++block_idx) {
+                        for (int64_t ilo = 0; ilo < _n2k_counts_blocksize; ++ilo) {
+                            for (int64_t jlo = 0; jlo < _n2k_counts_blocksize; ++jlo) {
+                                if (ihi == jhi && jlo > ilo)
+                                    continue;
+                                const int64_t idx =
+                                    offset
+                                    + block_idx * _n2k_counts_blocksize * _n2k_counts_blocksize
+                                    + ilo * _n2k_counts_blocksize + jlo;
+                                const int32_t count = counts_mat[idx];
+                                if (count < 0 || count > _n_fpga_samples_per_n2k_correlation) {
+                                    FATAL_ERROR("N2Accumulate count out of range at subintegration "
+                                                "{}, frequency {}, count {} (allowed 0..{})",
+                                                t, f, count, _n_fpga_samples_per_n2k_correlation);
+                                }
+                                if (_packet_loss_is_scalar && count != scalar_count) {
+                                    FATAL_ERROR("N2Accumulate requires scalar counts: differing "
+                                                "science entries at subintegration {}, frequency "
+                                                "{} ({} versus {})",
+                                                t, f, count, scalar_count);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Record the current frame time being processed.
@@ -536,6 +695,19 @@ void N2Accumulate::main_thread() {
 #endif
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
+                if (!_packet_loss_is_scalar) {
+                    if (!rfiframemask_t0[f] || !rfiframemask_t1[f]) {
+                        _vis_input_frames_skipped_rfi.at(f) += 1;
+                        continue;
+                    }
+                    accum_per_product(
+                        f, corr_t0 + f * corr_stride_f, corr_t1 + f * corr_stride_f,
+                        counts_mat_t0 + f * counts_stride_f, counts_mat_t1 + f * counts_stride_f,
+                        _tel.to_freq_MHz(static_cast<freq_id_t>(coarse_freq.at(f))), target_eop,
+                        eop_t0, eop_t1, fringe_phase_t0.at(f), fringe_phase_t1.at(f));
+                    continue;
+                }
+
                 // Second: accum packet loss, it's always present.
                 _n_pl_samples_in_vis[f] += plcounts_t0[f] + plcounts_t1[f];
 
@@ -631,6 +803,52 @@ void N2Accumulate::main_thread() {
         if (previous_in_rfiframemask_frame_id != -1)
             in_rfiframemask_buf->mark_frame_empty(unique_name, previous_in_rfiframemask_frame_id);
         previous_in_rfiframemask_frame_id = in_rfiframemask_frame_id++;
+    }
+}
+
+void N2Accumulate::accum_per_product(int64_t f, const int32_t* corr0, const int32_t* corr1,
+                                     const int32_t* counts0, const int32_t* counts1,
+                                     double freq_MHz, EOP& target, EOP& eop0, EOP& eop1,
+                                     std::vector<std::complex<float>>& phase0,
+                                     std::vector<std::complex<float>>& phase1) {
+    if (_do_fringestop) {
+        _tel.fill_fringestop_phases_1d(freq_MHz, eop0, target, _feed_positions_m, phase0);
+        _tel.fill_fringestop_phases_1d(freq_MHz, eop1, target, _feed_positions_m, phase1);
+        for (int64_t i = 0; i < _num_elements; ++i)
+            for (const auto& phase : {phase0[i], phase1[i]})
+                if (phase == _sentinel_phase || !std::isfinite(phase.real())
+                    || !std::isfinite(phase.imag()))
+                    FATAL_ERROR("N2Accumulate invalid per-product fringestop phase");
+    }
+    for (int64_t i = 0; i < _num_elements; ++i) {
+        for (int64_t j = 0; j <= i; ++j) {
+            // Correlation tiles are 16x16; the matching packet-loss count tile is 8x8,
+            // since masks group eight dishes per polarization in native [P,D] order.
+            const int64_t ib = i / 16, jb = j / 16;
+            const int64_t p = 256 * (ib * (ib + 1) / 2 + jb) + 16 * (i % 16) + j % 16;
+            const int64_t gi = i / 8, gj = j / 8, gb = gi / 8, hb = gj / 8;
+            const int64_t c = 64 * (gb * (gb + 1) / 2 + hb) + 8 * (gi % 8) + gj % 8;
+            const uint64_t n0 = counts0[c], n1 = counts1[c]; // ranges checked before pairing
+            std::complex<double> x0{0, 0}, x1{0, 0};
+            if (n0)
+                x0 = {double(corr0[2 * p]), double(corr0[2 * p + 1])};
+            if (n1)
+                x1 = {double(corr1[2 * p]), double(corr1[2 * p + 1])};
+            if (_do_fringestop) {
+                x0 *= std::complex<double>(phase0[i]) * std::conj(std::complex<double>(phase0[j]));
+                x1 *= std::complex<double>(phase1[i]) * std::conj(std::complex<double>(phase1[j]));
+            }
+            const size_t out = size_t(f) * _n2k_correlation_num_products + p;
+            if (_product_n[out] > std::numeric_limits<uint64_t>::max() - n0 - n1)
+                FATAL_ERROR("N2Accumulate per-product count overflow");
+            _product_n[out] += n0 + n1;
+            _product_sum[out] += x0 + x1;
+            if (n0 && n1) {
+                ++_product_k[out];
+                _product_q[out] += double(n0) * double(n1) / double(n0 + n1)
+                                   * std::norm(x1 / double(n1) - x0 / double(n0));
+            }
+        }
     }
 }
 
@@ -1000,11 +1218,18 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_start_time_ns = accum_start_time_ns;
         meta->frame_length_fpga_ticks = ticks_in_accum;
+        // Scalar counters stay zero in per-product mode.
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis.at(f);
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis.at(f);
-        meta->n_rfi_only_fpga_ticks =
-            ticks_in_accum - _n_valid_fpga_samples_in_vis.at(f) - _n_pl_samples_in_vis.at(f);
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
+        if (meta->n_valid_fpga_ticks + meta->n_pl_fpga_ticks > static_cast<uint64_t>(ticks_in_accum)
+            || meta->n_rfi_fpga_ticks > static_cast<uint64_t>(ticks_in_accum)) {
+            FATAL_ERROR("N2Accumulate inconsistent valid/packet-loss/RFI count totals");
+        }
+        meta->n_rfi_only_fpga_ticks =
+            _packet_loss_is_scalar
+                ? ticks_in_accum - meta->n_valid_fpga_ticks - meta->n_pl_fpga_ticks
+                : 0;
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
         meta->rfi_frame_excision_num = num_thresholds;
@@ -1014,16 +1239,20 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         if (dataset_id != dset_id_t::null) {
             meta->dataset_id = dataset_id;
         }
-        N2FrameView out_vis(out_buf, out_frame_id + f);
+        N2FrameView out_vis(out_buf, out_frame_id + f, !_packet_loss_is_scalar);
 
-        // Update some prometheus metrics here, since metadata is already available
-        auto fid = std::to_string(meta->freq_id);
-        n_valid_gauge.labels({fid}).set(static_cast<float>(meta->n_valid_fpga_ticks)
-                                        / ticks_in_accum);
-        n_pl_gauge.labels({fid}).set(static_cast<float>(meta->n_pl_fpga_ticks) / ticks_in_accum);
-        n_rfi_gauge.labels({fid}).set(static_cast<float>(meta->n_rfi_fpga_ticks) / ticks_in_accum);
-        n_rfi_only_gauge.labels({fid}).set(static_cast<float>(meta->n_rfi_only_fpga_ticks)
-                                           / ticks_in_accum);
+        if (_packet_loss_is_scalar) {
+            // Update some prometheus metrics here, since metadata is already available
+            auto fid = std::to_string(meta->freq_id);
+            n_valid_gauge.labels({fid}).set(static_cast<float>(meta->n_valid_fpga_ticks)
+                                            / ticks_in_accum);
+            n_pl_gauge.labels({fid}).set(static_cast<float>(meta->n_pl_fpga_ticks)
+                                         / ticks_in_accum);
+            n_rfi_gauge.labels({fid}).set(static_cast<float>(meta->n_rfi_fpga_ticks)
+                                          / ticks_in_accum);
+            n_rfi_only_gauge.labels({fid}).set(static_cast<float>(meta->n_rfi_only_fpga_ticks)
+                                               / ticks_in_accum);
+        }
 
         // Sample numbers for normalizing variaces/weights
         int64_t ns = _n_valid_fpga_samples_in_vis.at(f); // ns = "number of samples"
@@ -1080,6 +1309,25 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                             // vis_N2(i, j) = vis_n2k(j, i)*
 
                             int64_t n2_idx = N2::cmap(j_out, i_out, _num_elements);
+
+                            if (!_packet_loss_is_scalar) {
+                                const uint64_t n = _product_n[idx], k = _product_k[idx];
+                                const double q = _product_q[idx];
+                                out_vis.valid_fpga_ticks[n2_idx] = n;
+                                if (out_vis.valid_fpga_ticks[n2_idx] > uint64_t(ticks_in_accum))
+                                    FATAL_ERROR(
+                                        "N2Accumulate per-product support exceeds frame span");
+                                const auto sum =
+                                    swapped ? _product_sum[idx] : std::conj(_product_sum[idx]);
+                                const auto mean = n ? sum / double(n) : std::complex<double>{0, 0};
+                                out_vis.vis[n2_idx] = N2::cfloat(mean.real(), mean.imag());
+                                const double w = n && k && q > 0 && std::isfinite(q)
+                                                     ? double(n) * double(k) / q
+                                                     : 0;
+                                const float wf = static_cast<float>(w);
+                                out_vis.weight[n2_idx] = std::isfinite(wf) ? wf : 0;
+                                continue;
+                            }
 
                             // Populate the visibility matrix, remember the upper-tri element
                             // is the conjugate of the lower-tri element.
@@ -1188,6 +1436,11 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 #endif
     for (uint64_t i = 0; i < _var.size(); i++)
         _var[i] = 0.0f;
+
+    std::fill(_product_sum.begin(), _product_sum.end(), std::complex<double>{0, 0});
+    std::fill(_product_q.begin(), _product_q.end(), 0);
+    std::fill(_product_n.begin(), _product_n.end(), 0);
+    std::fill(_product_k.begin(), _product_k.end(), 0);
 
     // These arrays are smaller, single threaded is fine.
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);

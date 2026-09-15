@@ -16,16 +16,17 @@
 #include <vector>       // for vector
 
 
-N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
+N2FrameView::N2FrameView(Buffer* buf, int frame_id, bool allow_per_product) :
 
     FrameView(buf, frame_id),
     _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[frame_id])),
     _desc(buf->require_frame_desc<kotekan::N2FrameDesc>()),
 
     // Set the const refs to the structural metadata
-    n2_layout(_desc->get_n2_layout()), num_elements(_desc->get_num_elements()),
-    num_prod(_desc->get_num_products()), num_ev(_desc->get_num_ev()),
-    frame_layout(kotekan::N2FrameDesc::get_frame_layout(num_elements, num_ev, num_prod)),
+    n2_layout(_desc->get_n2_layout()), support_mode(_desc->get_support_mode()),
+    num_elements(_desc->get_num_elements()), num_prod(_desc->get_num_products()),
+    num_ev(_desc->get_num_ev()), frame_layout(kotekan::N2FrameDesc::get_frame_layout(
+                                     num_elements, num_ev, num_prod, support_mode)),
 
     // Non-structural data
     freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
@@ -60,7 +61,13 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     erms(bind_scalar<float>(_frame, frame_layout.fields[N2Field::erms])),
     radiometer_chi2(bind_span<float>(_frame, frame_layout.fields[N2Field::radiometer_chi2])),
     gain(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::gain])),
-    mask(bind_span<uint8_t>(_frame, frame_layout.fields[N2Field::mask])) {
+    mask(bind_span<uint8_t>(_frame, frame_layout.fields[N2Field::mask])),
+    valid_fpga_ticks(
+        support_mode == kotekan::N2SupportMode::PerProductV1
+            ? bind_span<uint64_t>(_frame, frame_layout.fields.at(N2Field::valid_fpga_ticks))
+            : gsl_lite::span<uint64_t>{}) {
+    if (support_mode == kotekan::N2SupportMode::PerProductV1 && !allow_per_product)
+        FATAL_ERROR_NON_OO("N2FrameView per_product_v1 requires allow_per_product=true");
 
     // User-facing error if frame size does not match size required by N2FrameView
     if (buf->frame_size != data_size()) {
@@ -79,13 +86,24 @@ void N2FrameView::zero_frame() {
 }
 
 N2FrameView N2FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
-                                    int frame_id_dest) {
+                                    int frame_id_dest, bool allow_per_product) {
+    auto src = buf_src->require_frame_desc<kotekan::N2FrameDesc>();
+    auto dest = buf_dest->require_frame_desc<kotekan::N2FrameDesc>();
+    if (src->get_support_mode() != dest->get_support_mode()
+        || (src->get_support_mode() == kotekan::N2SupportMode::PerProductV1
+            && (!allow_per_product || *src != *dest)))
+        FATAL_ERROR_NON_OO(
+            "N2FrameView copy requires matching descriptors and explicit support-mode opt-in");
     FrameView::copy_frame(buf_src, frame_id_src, buf_dest, frame_id_dest);
 
-    return N2FrameView(buf_dest, frame_id_dest);
+    return N2FrameView(buf_dest, frame_id_dest, allow_per_product);
 }
 
 void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members) {
+    if (support_mode != frame_to_copy_from.support_mode
+        || (support_mode == kotekan::N2SupportMode::PerProductV1
+            && *_desc != *frame_to_copy_from._desc))
+        FATAL_ERROR_NON_OO("N2FrameView cannot copy data across support descriptors");
     auto copy_member = [&](N2Field member) { return (skip_members.count(member) == 0); };
 
     if (copy_member(N2Field::vis) || copy_member(N2Field::weight) || copy_member(N2Field::flags)
@@ -95,6 +113,13 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
 
     if (copy_member(N2Field::eval) || copy_member(N2Field::evec)) {
         assert(num_ev == frame_to_copy_from.num_ev);
+    }
+
+    if (copy_member(N2Field::valid_fpga_ticks)) {
+        if (valid_fpga_ticks.size() != frame_to_copy_from.valid_fpga_ticks.size())
+            FATAL_ERROR_NON_OO("N2FrameView count shape mismatch");
+        std::copy(frame_to_copy_from.valid_fpga_ticks.begin(),
+                  frame_to_copy_from.valid_fpga_ticks.end(), valid_fpga_ticks.begin());
     }
 
     if (copy_member(N2Field::vis))

@@ -1,8 +1,11 @@
 #define BOOST_TEST_MODULE "test_N2FrameDesc"
 
 #include "N2FrameDesc.hpp"
+#include "N2FrameView.hpp"
 #include "N2Layout.hpp"
+#include "N2Metadata.hpp"
 #include "N2Util.hpp"
+#include "buffer.hpp"
 
 #include <boost/test/included/unit_test.hpp>
 #include <csignal>
@@ -492,4 +495,160 @@ BOOST_AUTO_TEST_CASE(test_generate_product_list_throws_for_unsupported_layout) {
                       std::runtime_error);
 
     std::cout << "Success.\n";
+}
+
+BOOST_AUTO_TEST_CASE(test_per_product_layout_appends_aligned_exact_counts) {
+    for (uint32_t ni : {2, 3, 7}) {
+        for (uint32_t ne : {0, 1}) {
+            const size_t np = N2FrameDesc::get_num_prod(ni, N2Layout::FullUpperTri);
+            const auto scalar = N2FrameDesc::get_frame_layout(ni, ne, np);
+            const auto product =
+                N2FrameDesc::get_frame_layout(ni, ne, np, N2SupportMode::PerProductV1);
+            BOOST_CHECK(scalar.fields.count(N2Field::valid_fpga_ticks) == 0);
+            for (const auto& [field, interval] : scalar.fields) {
+                BOOST_CHECK_EQUAL(product.fields.at(field).begin, interval.begin);
+                BOOST_CHECK_EQUAL(product.fields.at(field).end, interval.end);
+            }
+            const auto count_field = product.fields.at(N2Field::valid_fpga_ticks);
+            const size_t aligned = (scalar.total_size() + 7) / 8 * 8;
+            BOOST_CHECK_EQUAL(count_field.begin, aligned);
+            BOOST_CHECK_EQUAL(count_field.size(), np * sizeof(uint64_t));
+            BOOST_CHECK_EQUAL(product.total_size(), aligned + np * sizeof(uint64_t));
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(test_per_product_json_equality_and_exact_product_order) {
+    const std::vector<N2::prod_ctype> products = {{2, 2}, {0, 2}, {1, 1}};
+    const N2FrameDesc scalar(3, 0, 3, N2Layout::GeneralSubset, products);
+    const N2FrameDesc product(3, 0, 3, N2Layout::GeneralSubset, products,
+                              N2SupportMode::PerProductV1);
+    BOOST_CHECK(!(scalar == product));
+    BOOST_CHECK(!scalar.to_json().contains("support_mode"));
+    BOOST_CHECK(product.to_json().at("support_mode") == "per_product_v1");
+    auto decoded =
+        std::dynamic_pointer_cast<const N2FrameDesc>(N2FrameDesc::from_json(product.to_json()));
+    BOOST_REQUIRE(decoded);
+    BOOST_CHECK(*decoded == product);
+    BOOST_CHECK(decoded->get_support_mode() == N2SupportMode::PerProductV1);
+    for (size_t p = 0; p < products.size(); ++p) {
+        BOOST_CHECK_EQUAL(decoded->get_product_list()[p].input_a, products[p].input_a);
+        BOOST_CHECK_EQUAL(decoded->get_product_list()[p].input_b, products[p].input_b);
+    }
+    BOOST_CHECK(*N2FrameDesc::from_json(scalar.to_json()) == scalar);
+}
+
+BOOST_AUTO_TEST_CASE(test_unknown_support_modes_refused) {
+    auto encoded = N2FrameDesc(2, 0, 3, N2Layout::FullUpperTri).to_json();
+    encoded["support_mode"] = "per_product_v2";
+    BOOST_CHECK_THROW(N2FrameDesc::from_json(encoded), std::runtime_error);
+    BOOST_CHECK_THROW(n2_support_mode_from_string(""), std::runtime_error);
+    BOOST_CHECK_THROW(
+        N2FrameDesc(2, 0, 3, N2Layout::FullUpperTri, {}, static_cast<N2SupportMode>(99)),
+        std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(test_per_product_view_and_copy_require_explicit_opt_in) {
+    N2Metadata force_link_marker;
+    const size_t ni = 3, ne = 0, np = 6;
+    const auto mode = N2SupportMode::PerProductV1;
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "view_product_pool", "N2Metadata");
+    Buffer source(1, N2FrameDesc::calculate_frame_size(ni, ne, np, mode), pool, "view_source", "N2",
+                  0, false, false, std::vector<int>{}, true);
+    Buffer target(1, N2FrameDesc::calculate_frame_size(ni, ne, np, mode), pool, "view_target", "N2",
+                  0, false, false, std::vector<int>{}, true);
+    const auto descriptor = std::make_shared<N2FrameDesc>(ni, ne, np, N2Layout::FullUpperTri,
+                                                          std::vector<N2::prod_ctype>{}, mode);
+    source.ensure_frame_desc(descriptor);
+    target.ensure_frame_desc(descriptor);
+    // Two consumers select FrameView's memcpy path and preserve the source.
+    source.register_consumer("copy_reader_a");
+    source.register_consumer("copy_reader_b");
+    source.allocate_new_metadata_object(0);
+    target.allocate_new_metadata_object(0);
+    BOOST_CHECK_THROW(N2FrameView(&source, 0), std::runtime_error);
+    N2FrameView view(&source, 0, true);
+    BOOST_REQUIRE_EQUAL(view.valid_fpga_ticks.size(), np);
+    view.zero_frame();
+    for (size_t p = 0; p < np; ++p)
+        view.valid_fpga_ticks[p] = (uint64_t(1) << 40) + p;
+    BOOST_CHECK_THROW(N2FrameView::copy_frame(&source, 0, &target, 0), std::runtime_error);
+    const auto copied = N2FrameView::copy_frame(&source, 0, &target, 0, true);
+    for (size_t p = 0; p < np; ++p)
+        BOOST_CHECK_EQUAL(copied.valid_fpga_ticks[p], (uint64_t(1) << 40) + p);
+    N2FrameView target_view(&target, 0, true);
+    target_view.zero_frame();
+    for (size_t p = 0; p < np; ++p)
+        BOOST_CHECK_EQUAL(target_view.valid_fpga_ticks[p], 0);
+}
+
+BOOST_AUTO_TEST_CASE(test_per_product_native_computed_layout_requires_canonical_products) {
+    const auto mode = N2SupportMode::PerProductV1;
+    const std::vector<N2::prod_ctype> shortened = {{0, 0}, {1, 1}, {2, 2}};
+    BOOST_CHECK_THROW(N2FrameDesc(3, 0, 3, N2Layout::FullUpperTri, shortened, mode),
+                      std::runtime_error);
+    auto reordered = N2FrameDesc::generate_product_list(3, N2Layout::FullUpperTri);
+    std::swap(reordered[0], reordered[1]);
+    BOOST_CHECK_THROW(N2FrameDesc(3, 0, 6, N2Layout::FullUpperTri, reordered, mode),
+                      std::runtime_error);
+    auto reordered_auto = shortened;
+    std::swap(reordered_auto[0], reordered_auto[1]);
+    BOOST_CHECK_THROW(N2FrameDesc(3, 0, 3, N2Layout::Autocorrelations, reordered_auto, mode),
+                      std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(test_per_product_copy_rejects_reordered_subset_identity) {
+    N2Metadata force_link_marker;
+    const auto mode = N2SupportMode::PerProductV1;
+    const std::vector<N2::prod_ctype> source_products = {{0, 0}, {1, 1}};
+    const std::vector<N2::prod_ctype> target_products = {{1, 1}, {0, 0}};
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "copy_identity_pool", "N2Metadata");
+    const auto size = N2FrameDesc::calculate_frame_size(2, 0, 2, mode);
+    Buffer source(1, size, pool, "copy_identity_source", "N2", 0, false, false, std::vector<int>{},
+                  true);
+    Buffer target(1, size, pool, "copy_identity_target", "N2", 0, false, false, std::vector<int>{},
+                  true);
+    source.ensure_frame_desc(
+        std::make_shared<N2FrameDesc>(2, 0, 2, N2Layout::GeneralSubset, source_products, mode));
+    target.ensure_frame_desc(
+        std::make_shared<N2FrameDesc>(2, 0, 2, N2Layout::GeneralSubset, target_products, mode));
+    source.allocate_new_metadata_object(0);
+    target.allocate_new_metadata_object(0);
+    N2FrameView source_view(&source, 0, true), target_view(&target, 0, true);
+    source_view.zero_frame();
+    target_view.zero_frame();
+    source_view.valid_fpga_ticks[0] = 17;
+    source_view.valid_fpga_ticks[1] = 29;
+    BOOST_CHECK_THROW(N2FrameView::copy_frame(&source, 0, &target, 0, true), std::runtime_error);
+    BOOST_CHECK_THROW(target_view.copy_data(source_view, {}), std::runtime_error);
+    BOOST_CHECK_EQUAL(target_view.valid_fpga_ticks[0], 0);
+    BOOST_CHECK_EQUAL(target_view.valid_fpga_ticks[1], 0);
+}
+
+BOOST_AUTO_TEST_CASE(test_metadata_dataset_identity_roundtrip) {
+    const dset_id_t id{0x0123456789abcdefULL, 0xfedcba9876543210ULL};
+    N2Metadata source;
+    source.dataset_id = id;
+    source.freq_id = 614;
+
+    N2MetadataFormat wire;
+    auto* bytes = reinterpret_cast<char*>(&wire);
+    BOOST_CHECK_EQUAL(source.get_serialized_size(), sizeof(wire));
+    BOOST_CHECK_EQUAL(source.serialize(bytes), sizeof(wire));
+    BOOST_CHECK(wire.dataset_id == id);
+    N2Metadata binary_copy;
+    BOOST_CHECK_EQUAL(binary_copy.set_from_bytes(bytes, sizeof(wire)), sizeof(wire));
+    BOOST_CHECK(binary_copy.dataset_id == id);
+    BOOST_CHECK_EQUAL(binary_copy.freq_id, source.freq_id);
+
+    auto encoded = source.to_json();
+    BOOST_REQUIRE(encoded.contains("dataset_id"));
+    N2Metadata json_copy;
+    from_json(encoded, json_copy);
+    BOOST_CHECK(json_copy.dataset_id == id);
+    BOOST_CHECK_EQUAL(json_copy.freq_id, source.freq_id);
+
+    encoded.erase("dataset_id");
+    from_json(encoded, json_copy);
+    BOOST_CHECK(json_copy.dataset_id == dset_id_t::null);
 }
