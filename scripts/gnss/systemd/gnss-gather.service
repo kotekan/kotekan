@@ -1,0 +1,35 @@
+[Unit]
+Description=CHORD GNSS telemetry gather and fleet trim
+Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+RequiresMountsFor=/home/kvand
+After=network-online.target remote-fs.target
+Wants=network-online.target
+PartOf=gnss-stack.target
+# StartLimit* live in [Unit], not [Service] -- systemd silently ignores them
+# in [Service] and the crash loop then has no limit at all.
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=kvand
+# ⚠️ NOT build_nodpdk: that tree is ARCH=native for cf06 and SIGILLs here, and the live cf06
+# gather and aggregator run out of it. Build -DARCH=x86-64-v2 -DUSE_CUDA=OFF into its own tree.
+ExecStart=/home/kvand/gnss/build_portable/kotekan/kotekan \
+    --config /home/kvand/gnss/kotekan/config/generated/chord_gnss_gather.yaml \
+    --bind-address 0.0.0.0:12051
+# It runs at ~201 open fds and has hit EMFILE twice: a 301 GB log filled the table once, and
+# broker reconnect churn did it again. The default 1024 is not enough headroom.
+LimitNOFILE=65536
+# ⚠️ A RESTART WIPES EVERY STANDING TRIM, costing a fleet-wide re-arm of several minutes. Coming
+# back is still better than staying down, but it must not be cheap or silent -- hence the long
+# RestartSec and the low burst limit.
+Restart=on-failure
+RestartSec=30
+MemoryAccounting=yes
+MemoryMax=2G
+StandardOutput=append:/var/log/gnss/gather.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target

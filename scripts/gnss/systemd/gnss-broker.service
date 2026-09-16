@@ -1,0 +1,42 @@
+[Unit]
+Description=CHORD GNSS unified multi-chain broker
+Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+# The code, the venv and the chain manifest are all on NFS. Starting before the mount is up
+# fails in a way that reads as a code fault, not a missing filesystem.
+RequiresMountsFor=/home/kvand
+After=network-online.target remote-fs.target
+Wants=network-online.target
+# The gather's trim-in socket is bound to 127.0.0.1, so these two are one machine by
+# construction, not by convenience.
+After=gnss-gather.service
+PartOf=gnss-stack.target
+# StartLimit* live in [Unit], not [Service] -- systemd silently ignores them
+# in [Service] and the crash loop then has no limit at all.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=kvand
+# ⚠️ FREE-THREADED 3.14t, NOT the 3.12 venv. Under the GIL the gather drops its consumer every
+# 15 s, every chain reports all instances stale, and nothing arms; L5 keeps working because its
+# fast loop is in-broker, which makes the failure look survivable. It is not -- it cost two
+# hours of dead chains on a restart that otherwise looked clean.
+Environment=GNSS_PY=/home/kvand/gnss/venv-ft/bin/python
+ExecStart=/home/kvand/gnss/venv-ft/bin/python -u \
+    /home/kvand/gnss/kotekan/scripts/gnss/broker_multi.py \
+    /home/kvand/gnss/kotekan/config/gnss_chains_chord.yaml
+# Replaces the hand-rolled supervisor loop in broker_restart.sh: restart on a non-zero exit,
+# with a burst limit so a crash loop stops instead of hiding behind a restart.
+Restart=on-failure
+RestartSec=5
+# No swap on this box, so a leak must hit a cgroup limit and restart one unit rather than let
+# the kernel pick a victim. 582 MB is the steady state.
+MemoryAccounting=yes
+MemoryMax=3G
+LimitNOFILE=65536
+StandardOutput=append:/var/log/gnss/broker.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target

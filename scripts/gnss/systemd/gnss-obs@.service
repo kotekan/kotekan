@@ -1,0 +1,25 @@
+[Unit]
+Description=CHORD GNSS observables writer for chain %i
+Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+# Writes to /home/kvand/gnss/fixtures/obs, reads from the broker.
+RequiresMountsFor=/home/kvand
+After=gnss-broker.service
+PartOf=gnss-stack.target
+
+[Service]
+Type=simple
+User=kvand
+# ⚠️ The writers and the broker must run the SAME generation of the code. They are separate
+# processes with separate lifetimes: a broker restarted with a new published field while the
+# writers kept running yesterday's code published that field into nothing for 26 minutes.
+# Restarting gnss-stack.target rather than one unit is what keeps them in step.
+ExecStart=/usr/bin/env GNSS_CHAIN=%i /home/kvand/gnss/kotekan/scripts/gnss/obs_unit.sh
+Restart=on-failure
+RestartSec=10
+MemoryAccounting=yes
+MemoryMax=512M
+StandardOutput=append:/var/log/gnss/obs_%i.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target

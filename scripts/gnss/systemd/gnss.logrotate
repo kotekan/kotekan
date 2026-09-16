@@ -1,0 +1,11 @@
+# ~0.7 GB/day across the stack (broker 259 MB/h dominates). /tmp is cleared on boot, which is
+# why these live in /var/log/gnss instead -- an unarchived log was lost that way before.
+/var/log/gnss/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
