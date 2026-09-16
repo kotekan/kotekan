@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_truncate"
 
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
-#include "truncate.hpp"           // for fast_pow, bit_truncate_float, count_zeros
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "truncate.hpp"              // for fast_pow, bit_truncate_float, count_zeros
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <limits>                            // for numeric_limits

@@ -257,6 +257,7 @@ void FramePrefetchService::prefetcher_loop() {
                 // since we waited for all workers to register before reaching here)
                 const std::vector<uint32_t>& stream_ids_vec = global_expected_stream_ids.at(port);
 
+#ifdef DEBUGGING
                 // Print the list of expected stream IDs for this port
                 std::string stream_id_list;
                 for (size_t i = 0; i < stream_ids_vec.size(); ++i) {
@@ -267,6 +268,7 @@ void FramePrefetchService::prefetcher_loop() {
                 }
                 DEBUG("FramePrefetchService {}: Setting expected stream IDs for port {}: {}",
                       unique_name, port, stream_id_list);
+#endif
 
                 // Add the list of stream IDs to the metadata
                 auto metadata = get_chord_metadata(buf, frame_id);

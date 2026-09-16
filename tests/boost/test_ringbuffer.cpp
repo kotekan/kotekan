@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_ringbuffer"
 
-#include "Config.hpp"             // for Config
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "Config.hpp"                // for Config
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "metadataFactory.hpp"
 #include "ringbuffer.hpp"
 #include "test_utils.hpp"

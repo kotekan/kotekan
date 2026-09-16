@@ -5,7 +5,7 @@ find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
-# kotekanTestLogging.hpp includes kotekanLogging.hpp, which needs lib/core (for errors.h) and
+# kotekanLoggingFixture.hpp includes kotekanLogging.hpp, which needs lib/core (for errors.h) and
 # external/fmt (for fmt.hpp), and not every test links a target that provides them -- test_Metadata
 # links only kotekan_metadata. Give every test in this directory kotekan_core_headers, which carries
 # kotekan_core's full set of header usage requirements: adding the include paths on their own would

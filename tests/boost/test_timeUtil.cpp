@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE "test_timeUtil"
 
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "timeUtil.hpp"
 
 #include "fmt.hpp"

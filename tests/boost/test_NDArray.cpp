@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE "test_NDArray"
 
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <NDArray.hpp>
 #include <boost/test/included/unit_test.hpp>

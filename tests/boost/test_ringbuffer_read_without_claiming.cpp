@@ -24,7 +24,7 @@
 
 #undef WITH_CUDA
 
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 

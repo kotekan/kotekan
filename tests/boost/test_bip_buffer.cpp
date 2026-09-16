@@ -3,10 +3,10 @@
  */
 #define BOOST_TEST_MODULE "test_BipBuffer"
 
-#include "BipBuffer.hpp"          // for BipWriteReservation, BipBuffer, BipBufferRe...
-#include "SynchronizedQueue.hpp"  // for SynchronizedQueue
-#include "kotekanLogging.hpp"     // for DEBUG_NON_OO, DEBUG2_NON_OO
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "BipBuffer.hpp"             // for BipWriteReservation, BipBuffer, BipBufferRe...
+#include "SynchronizedQueue.hpp"     // for SynchronizedQueue
+#include "kotekanLogging.hpp"        // for DEBUG_NON_OO, DEBUG2_NON_OO
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include "gsl-lite.hpp" // for span
 

@@ -1,9 +1,9 @@
 #define BOOST_TEST_MODULE "test_chime_stacking"
 
-#include "Stack.hpp"              // for stack_chime_in_cyl, chimeFeed, CYL_A, CYL_D
-#include "datasetState.hpp"       // for invert_stack
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
-#include "visUtil.hpp"            // for input_ctype, prod_ctype, rstack_ctype, stac...
+#include "Stack.hpp"                 // for stack_chime_in_cyl, chimeFeed, CYL_A, CYL_D
+#include "datasetState.hpp"          // for invert_stack
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "visUtil.hpp"               // for input_ctype, prod_ctype, rstack_ctype, stac...
 
 #include <algorithm>                         // for copy, max, transform
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...

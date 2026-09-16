@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_div"
 
 #include "div.hpp"
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <cstddef>

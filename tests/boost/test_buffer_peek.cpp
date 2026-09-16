@@ -1,12 +1,12 @@
 #define BOOST_TEST_MODULE "test_buffer_peek"
 
-#include "Config.hpp"             // for Config
-#include "buffer.hpp"             // for Buffer
-#include "errors.h"               // for __enable_syslog
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
-#include "metadata.hpp"           // for metadataObject, metadataPool
-#include "metadataFactory.hpp"    // for metadataFactory
-#include "test_utils.hpp"         // for GlobalFixture_Locale
+#include "Config.hpp"                // for Config
+#include "buffer.hpp"                // for Buffer
+#include "errors.h"                  // for __enable_syslog
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "metadata.hpp"              // for metadataObject, metadataPool
+#include "metadataFactory.hpp"       // for metadataFactory
+#include "test_utils.hpp"            // for GlobalFixture_Locale
 
 #include "json.hpp" // for json
 
