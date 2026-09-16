@@ -39,6 +39,16 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
+
+// Override the leading (slowest) dimension's scaling with a run-time value. Used for inputs
+// that are valid for a configurable number of FPGA samples, such as the phase matrix.
+template<std::size_t D>
+std::array<std::ptrdiff_t, D> with_leading_dimscaling(std::array<std::ptrdiff_t, D> dimscalings,
+                                                      const std::ptrdiff_t dimscaling) {
+    static_assert(D > 0);
+    dimscalings[0] = dimscaling;
+    return dimscalings;
+}
 }
 
 /**
@@ -115,16 +125,17 @@ private:
         A_index_B,
         A_index_P,
         A_index_F,
+        A_index_Tbb,
         A_rank,
     };
     static constexpr std::array<const char*, A_rank> A_labels = {
-        "C", "D", "B", "P", "F",
+        "C", "D", "B", "P", "F", "Tbb",
     };
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
-        2, 1024, 32, 2, 16,
+        2, 1024, 32, 2, 16, 4,
     };
     static constexpr std::array<std::ptrdiff_t, A_rank> A_dimscalings = {
-        1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1,
     };
     static constexpr auto A_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -134,7 +145,8 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, A_rank + 1> A_strides = {
         A_calc_stride(A_index_C), A_calc_stride(A_index_D), A_calc_stride(A_index_B),
-        A_calc_stride(A_index_P), A_calc_stride(A_index_F), A_calc_stride(A_rank),
+        A_calc_stride(A_index_P), A_calc_stride(A_index_F), A_calc_stride(A_index_Tbb),
+        A_calc_stride(A_rank),
     };
     static constexpr std::ptrdiff_t A_length = A_strides[A_rank];
     static constexpr std::ptrdiff_t A_length_in_bytes = type_total_bytes(A_type) * A_length;
@@ -332,8 +344,11 @@ private:
     const std::string info_name;
     const std::string log_name;
 
+    // Lifetimes of slowly varying inputs, in FPGA samples
+    const std::ptrdiff_t A_lifetime_in_samples;
+
     // Buffers
-    NDArrayBuffer<kotekan::GetType_t<A_type>, A_rank> A_buffer;
+    NDArrayRingBuffer<kotekan::GetType_t<A_type>, A_rank> A_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<E_type>, E_rank> E_buffer;
     NDArrayBuffer<kotekan::GetType_t<s_type>, s_rank> s_buffer;
     NDArrayBuffer<kotekan::GetType_t<J_type>, J_rank> J_buffer;
@@ -364,8 +379,10 @@ cudaBasebandBeamformer_chime::cudaBasebandBeamformer_chime(Config& config,
     J_name(config.get<std::string>(unique_name, "bb_beams_name")),
     info_name(unique_name + "/gpu_mem_info"), log_name(unique_name + "/gpu_mem_log"),
 
-    A_buffer(A_name, A_quantity, reverse(A_lengths), reverse(A_labels), reverse(A_dimscalings),
-             *this, buffer_type_t::do_once),
+    A_lifetime_in_samples(config.get<std::int64_t>(unique_name, "bb_phase_lifetime_in_samples")),
+
+    A_buffer(A_name, A_quantity, reverse(A_lengths), reverse(A_labels),
+             with_leading_dimscaling(reverse(A_dimscalings), A_lifetime_in_samples), *this),
     E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), reverse(E_dimscalings),
              *this),
     s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), reverse(s_dimscalings),
@@ -400,6 +417,18 @@ cudaBasebandBeamformer_chime::cudaBasebandBeamformer_chime(Config& config,
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
     register_gpu_buffer_user(
         {.name = log_name, .is_array = true, .does_read = true, .does_write = true});
+
+    // Slowly varying inputs are held in a ring buffer and read without claiming, one element
+    // per lifetime. The output `J` is a regular buffer, so the number of time samples per
+    // kernel invocation is fixed by the output frame size and cannot be shrunk to fit a
+    // lifetime -- hence the lifetime has to be a whole number of invocations instead.
+    {
+        const std::ptrdiff_t T_read_max = E_buffer.get_ndarray().extent(0) / 4;
+        if (A_lifetime_in_samples <= 0 || A_lifetime_in_samples % T_read_max != 0)
+            FATAL_ERROR("bb_phase_lifetime_in_samples {:d} must be a positive multiple of the "
+                        "processing cadence of {:d} time samples",
+                        A_lifetime_in_samples, T_read_max);
+    }
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -439,6 +468,37 @@ int cudaBasebandBeamformer_chime::wait_on_precondition() {
             return errcode;
     }
 
+    // Slowly varying inputs: locate the element covering the voltage samples we just claimed,
+    // then read it. We read the same element on every invocation within its lifetime, and claim
+    // it only on the last one, so that the producer can recycle it afterwards.
+    {
+        const std::ptrdiff_t T_begin = E_buffer.get_read_valid().begin();
+        const std::ptrdiff_t T_end = E_buffer.get_read_valid().end();
+        const std::ptrdiff_t element = kotekan::div(T_begin, A_lifetime_in_samples);
+        const std::ptrdiff_t lifetime_end = (element + 1) * A_lifetime_in_samples;
+        // The constructor checks the cadences against each other; a short read (a starved
+        // voltage ring buffer) can still push a window across a boundary.
+        if (T_end > lifetime_end)
+            FATAL_ERROR("voltage samples [{:d},{:d}) straddle the end {:d} of A "
+                        "element {:d}; bb_phase_lifetime_in_samples {:d} and the voltage stream "
+                        "are not aligned",
+                        T_begin, T_end, lifetime_end, element, A_lifetime_in_samples);
+        const bool last_use = T_end == lifetime_end;
+        DEBUG("Waiting for A input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const int errcode =
+            A_buffer.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+                if (available_elements < 1)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                return read_descriptor_t{.claimed = last_use ? 1 : 0, .read = 1};
+            });
+        if (errcode < 0)
+            return errcode;
+        DEBUG("Done waiting for A input ringbuffer data for frame {:d}; "
+              "using element {:d}{:s}",
+              gpu_frame_id, element, last_use ? " (last use)" : "");
+        assert(A_buffer.get_read_valid().begin() == element);
+    }
+
     return 0;
 }
 
@@ -475,6 +535,15 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
     // Set E_memory to beginning of input ring buffer
     E_arg = array_desc(E_memory, E_length_in_bytes);
 
+    // Slowly varying inputs: the kernel wants a single element, not the whole ring buffer.
+    {
+        const std::ptrdiff_t ring_length = A_buffer.get_ndarray().extent(0);
+        const std::ptrdiff_t element = A_buffer.get_read_valid().begin();
+        A_arg = array_desc(A_buffer.get_ndarray().data()
+                               + A_buffer.get_ndarray().stride(0) * (element % ring_length),
+                           A_length_in_bytes / ring_length);
+    }
+
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
 
@@ -499,6 +568,11 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
         J_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num()
                                  + T_min * E_meta->get_time_downsampling_fpga());
         assert(J_meta->get_time_downsampling_fpga() == 1);
+
+        // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards,
+        // counted from the voltage ring buffer's logical beginning -- so the two streams have
+        // to start at the same sequence number.
+        assert(A_buffer.get_metadata()->get_fpga_seq_num() == E_meta->get_fpga_seq_num());
     }
 
     // Copy inputs to device memory
@@ -589,8 +663,9 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
 }
 
 void cudaBasebandBeamformer_chime::finalize_frame() {
-    // Advance the input ring buffer
+    // Advance the input ring buffers
     E_buffer.finish_read();
+    A_buffer.finish_read();
 
     cudaCommand::finalize_frame();
 }

@@ -39,6 +39,16 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
+
+// Override the leading (slowest) dimension's scaling with a run-time value. Used for inputs
+// that are valid for a configurable number of FPGA samples, such as the phase matrix.
+template<std::size_t D>
+std::array<std::ptrdiff_t, D> with_leading_dimscaling(std::array<std::ptrdiff_t, D> dimscalings,
+                                                      const std::ptrdiff_t dimscaling) {
+    static_assert(D > 0);
+    dimscalings[0] = dimscaling;
+    return dimscalings;
+}
 }
 
 /**
@@ -151,6 +161,13 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    // Lifetimes of slowly varying inputs, in FPGA samples
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            const std::ptrdiff_t {{{name}}}_lifetime_in_samples;
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+
     // Buffers
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -197,6 +214,12 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{/kernel_arguments}}
 
     {{#kernel_arguments}}
+        {{#haslifetime}}
+            {{{name}}}_lifetime_in_samples(config.get<std::int64_t>(unique_name, "{{{lifetime_config}}}")),
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+
+    {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
                 {{#hasringbuffer}}
@@ -205,7 +228,12 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                         {{{name}}}_quantity,
                         reverse({{{name}}}_lengths),
                         reverse({{{name}}}_labels),
-                        reverse({{{name}}}_dimscalings),
+                        {{#haslifetime}}
+                            with_leading_dimscaling(reverse({{{name}}}_dimscalings), {{{name}}}_lifetime_in_samples),
+                        {{/haslifetime}}
+                        {{^haslifetime}}
+                            reverse({{{name}}}_dimscalings),
+                        {{/haslifetime}}
                         *this
                     ),
                 {{/hasringbuffer}}
@@ -269,6 +297,23 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    // Slowly varying inputs are held in a ring buffer and read without claiming, one element
+    // per lifetime. The output `J` is a regular buffer, so the number of time samples per
+    // kernel invocation is fixed by the output frame size and cannot be shrunk to fit a
+    // lifetime -- hence the lifetime has to be a whole number of invocations instead.
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            {
+                const std::ptrdiff_t T_read_max = E_buffer.get_ndarray().extent(0) / 4;
+                if ({{{name}}}_lifetime_in_samples <= 0
+                    || {{{name}}}_lifetime_in_samples % T_read_max != 0)
+                    FATAL_ERROR("{{{lifetime_config}}} {:d} must be a positive multiple of the "
+                                "processing cadence of {:d} time samples",
+                                {{{name}}}_lifetime_in_samples, T_read_max);
+            }
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+
     set_command_type(gpuCommandType::KERNEL);
 
     // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
@@ -304,6 +349,42 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
         if (errcode < 0)
             return errcode;
     }
+
+    // Slowly varying inputs: locate the element covering the voltage samples we just claimed,
+    // then read it. We read the same element on every invocation within its lifetime, and claim
+    // it only on the last one, so that the producer can recycle it afterwards.
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            {
+                const std::ptrdiff_t T_begin = E_buffer.get_read_valid().begin();
+                const std::ptrdiff_t T_end = E_buffer.get_read_valid().end();
+                const std::ptrdiff_t element = kotekan::div(T_begin, {{{name}}}_lifetime_in_samples);
+                const std::ptrdiff_t lifetime_end = (element + 1) * {{{name}}}_lifetime_in_samples;
+                // The constructor checks the cadences against each other; a short read (a starved
+                // voltage ring buffer) can still push a window across a boundary.
+                if (T_end > lifetime_end)
+                    FATAL_ERROR("voltage samples [{:d},{:d}) straddle the end {:d} of {{{name}}} "
+                                "element {:d}; {{{lifetime_config}}} {:d} and the voltage stream "
+                                "are not aligned",
+                                T_begin, T_end, lifetime_end, element,
+                                {{{name}}}_lifetime_in_samples);
+                const bool last_use = T_end == lifetime_end;
+                DEBUG("Waiting for {{{name}}} input ringbuffer data for frame {:d}...", gpu_frame_id);
+                const int errcode = {{{name}}}_buffer.wait_and_claim_readable(
+                    [&](const std::ptrdiff_t available_elements) {
+                        if (available_elements < 1)
+                            return read_descriptor_t{.claimed = 0, .read = 0};
+                        return read_descriptor_t{.claimed = last_use ? 1 : 0, .read = 1};
+                    });
+                if (errcode < 0)
+                    return errcode;
+                DEBUG("Done waiting for {{{name}}} input ringbuffer data for frame {:d}; "
+                      "using element {:d}{:s}",
+                      gpu_frame_id, element, last_use ? " (last use)" : "");
+                assert({{{name}}}_buffer.get_read_valid().begin() == element);
+            }
+        {{/haslifetime}}
+    {{/kernel_arguments}}
 
     return 0;
 }
@@ -348,6 +429,20 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     // Set E_memory to beginning of input ring buffer
     E_arg = array_desc(E_memory, E_length_in_bytes);
 
+    // Slowly varying inputs: the kernel wants a single element, not the whole ring buffer.
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            {
+                const std::ptrdiff_t ring_length = {{{name}}}_buffer.get_ndarray().extent(0);
+                const std::ptrdiff_t element = {{{name}}}_buffer.get_read_valid().begin();
+                {{{name}}}_arg = array_desc({{{name}}}_buffer.get_ndarray().data()
+                                                + {{{name}}}_buffer.get_ndarray().stride(0)
+                                                      * (element % ring_length),
+                                            {{{name}}}_length_in_bytes / ring_length);
+            }
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
 
@@ -372,6 +467,16 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         J_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num()
                                  + T_min * E_meta->get_time_downsampling_fpga());
         assert(J_meta->get_time_downsampling_fpga() == 1);
+
+        // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards,
+        // counted from the voltage ring buffer's logical beginning -- so the two streams have
+        // to start at the same sequence number.
+        {{#kernel_arguments}}
+            {{#haslifetime}}
+                assert({{{name}}}_buffer.get_metadata()->get_fpga_seq_num()
+                       == E_meta->get_fpga_seq_num());
+            {{/haslifetime}}
+        {{/kernel_arguments}}
     }
 
     // Copy inputs to device memory
@@ -491,8 +596,13 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 }
 
 void cuda{{{kernel_name}}}::finalize_frame() {
-    // Advance the input ring buffer
+    // Advance the input ring buffers
     E_buffer.finish_read();
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            {{{name}}}_buffer.finish_read();
+        {{/haslifetime}}
+    {{/kernel_arguments}}
 
     cudaCommand::finalize_frame();
 }
