@@ -1,0 +1,982 @@
+{
+ "schema": 1,
+ "_comment": [
+  "WHICH PHYSICAL FEED EACH CORRELATOR ELEMENT IS, AS A FUNCTION OF TIME.",
+  "",
+  "Elements are keyed by CORRELATOR element index (0..127); only the live ones appear.",
+  "The beam cube packs a 32-wide axis in `cube_order` below -- cube index i is correlator",
+  "element cube_order[i]. THESE ARE DIFFERENT AXES (cube pol*16+dish, correlator pol*64+dish)",
+  "and crossing them silently mislabels every polarisation. Resolve, never compute.",
+  "",
+  "'plane' labels the two physical feed planes A and B. Which is X and which is Y is NOT",
+  "determined by the measurement behind it (a contrast split, relative between dishes), so",
+  "never promote A/B to X/Y without an absolute reference.",
+  "",
+  "AN EPOCH IS AN IDENTITY INTERVAL, NOT A HEALTH INTERVAL. An element going dark does not",
+  "start a new epoch; a recabling, a re-pointing or a change to live_element_ranges does.",
+  "Data outside every listed interval RAISES -- the resolver never extrapolates.",
+  "",
+  "Provenance: identity and positions from fixtures/chord_dish_layout_measured_20260907.json",
+  "(viscap_20260907 survey, 7 satellites x 24 chunks, placement gate 10 ns / 1 m); feed-plane",
+  "split from the beam-contrast clustering over 2026-09-05..08 (docs/CHORD_BEAM_MAPS.md).",
+  "Names follow config/chord_dish_layout.json: rows A southernmost 8.5 m, columns 01",
+  "westernmost 6.3 m. ENU metres relative to correlator element 0 (dish A01 slot 0)."
+ ],
+ "site": {
+  "name": "chord",
+  "lat_deg": 49.32,
+  "_lat_note": "implied by bore_el 81.41 at dec +40.73; not independently surveyed here"
+ },
+ "pointings": {
+  "p0_dec40p73": {
+   "dec_deg": 40.73,
+   "bore_az_deg": 180.0,
+   "bore_el_deg": 81.41,
+   "source": "docs/CHORD_BEAM_MAPS.md section 5 (pointing memo)",
+   "_note": "telescope.dish_coelev_deg reads -27.3 and does NOT give this -- do not use it"
+  }
+ },
+ "epochs": [
+  {
+   "name": "2026-08-29-baseline",
+   "valid_from": "2026-08-29T00:00:00Z",
+   "valid_to": "2026-09-15T00:00:00Z",
+   "pointing": "p0_dec40p73",
+   "cube_order": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79
+   ],
+   "verified": true,
+   "provenance": "survey 2026-09-07 + beam-contrast split 2026-09-05..08",
+   "notes": [
+    "Dishes A06, A07, B07 (9, 10, 14) carry the feed planes the other way round: slot 0 is",
+    "plane B there and plane A everywhere else. Three independent indicators flip on exactly",
+    "those three (contrast split, the lower-gain pol being the higher-contrast one, and a",
+    "cos(2phi) fit to the 12-25 deg skirt).",
+    "Six dishes were never classified: B01, B02, B04 (dark LNAs) and A05, B05, B08 (one pol",
+    "degraded). B06 is ambiguous -- its indicators disagree. Those carry plane null.",
+    "valid_from is the date of the first written mapping, not a claim that nothing changed",
+    "earlier; there is no record before it, so earlier data raises."
+   ],
+   "elements": {
+    "0": {
+     "dish": 0,
+     "dish_name": "A01",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "1": {
+     "dish": 1,
+     "dish_name": "A02",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      6.047,
+      -0.115,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "2": {
+     "dish": 2,
+     "dish_name": "A03",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      11.5,
+      0.135,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "3": {
+     "dish": 3,
+     "dish_name": "A04",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      18.824,
+      -0.033,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "4": {
+     "dish": 4,
+     "dish_name": "B01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      0.0,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "5": {
+     "dish": 5,
+     "dish_name": "B02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      6.3,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "6": {
+     "dish": 6,
+     "dish_name": "B03",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      12.567,
+      8.878,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "7": {
+     "dish": 7,
+     "dish_name": "B04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      18.9,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "8": {
+     "dish": 8,
+     "dish_name": "A05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      25.188,
+      0.25,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "9": {
+     "dish": 9,
+     "dish_name": "A06",
+     "slot": 0,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      31.03,
+      1.317,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "10": {
+     "dish": 10,
+     "dish_name": "A07",
+     "slot": 0,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      36.674,
+      1.742,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "11": {
+     "dish": 11,
+     "dish_name": "A08",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      43.554,
+      0.574,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "12": {
+     "dish": 12,
+     "dish_name": "B05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      25.62,
+      8.088,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "13": {
+     "dish": 13,
+     "dish_name": "B06",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "ambiguous",
+     "enu_m": [
+      30.871,
+      8.952,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "14": {
+     "dish": 14,
+     "dish_name": "B07",
+     "slot": 0,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      37.696,
+      9.296,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "15": {
+     "dish": 15,
+     "dish_name": "B08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      43.999,
+      8.395,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "64": {
+     "dish": 0,
+     "dish_name": "A01",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      -0.469,
+      0.983,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "65": {
+     "dish": 1,
+     "dish_name": "A02",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      6.918,
+      -0.968,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "66": {
+     "dish": 2,
+     "dish_name": "A03",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      11.688,
+      0.795,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "67": {
+     "dish": 3,
+     "dish_name": "A04",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      17.993,
+      0.496,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "68": {
+     "dish": 4,
+     "dish_name": "B01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      0.0,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "69": {
+     "dish": 5,
+     "dish_name": "B02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      6.3,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "70": {
+     "dish": 6,
+     "dish_name": "B03",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      12.018,
+      8.834,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "71": {
+     "dish": 7,
+     "dish_name": "B04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      18.801,
+      0.48,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "72": {
+     "dish": 8,
+     "dish_name": "A05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      24.359,
+      0.637,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "73": {
+     "dish": 9,
+     "dish_name": "A06",
+     "slot": 1,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      31.579,
+      -0.043,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "74": {
+     "dish": 10,
+     "dish_name": "A07",
+     "slot": 1,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      37.611,
+      -0.033,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "75": {
+     "dish": 11,
+     "dish_name": "A08",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      43.478,
+      1.804,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "76": {
+     "dish": 12,
+     "dish_name": "B05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      24.335,
+      10.215,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "77": {
+     "dish": 13,
+     "dish_name": "B06",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "ambiguous",
+     "enu_m": [
+      31.116,
+      9.312,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "78": {
+     "dish": 14,
+     "dish_name": "B07",
+     "slot": 1,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      37.253,
+      8.916,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "79": {
+     "dish": 15,
+     "dish_name": "B08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      43.295,
+      10.434,
+      0.0
+     ],
+     "position_confidence": "measured"
+    }
+   }
+  },
+  {
+   "name": "2026-09-16-polswap",
+   "valid_from": "2026-09-16T00:00:00Z",
+   "valid_to": null,
+   "pointing": "p0_dec40p73",
+   "cube_order": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79
+   ],
+   "verified": false,
+   "provenance": "reported by KV 2026-09-16: site team rewired the flipped dishes 2026-09-15",
+   "notes": [
+    "NOT VERIFIED ON SKY. The array was handed over for other work, so no beam data exists",
+    "after the swap yet. Confirm by re-running the contrast split on the first post-swap",
+    "cube and checking that A06, A07, B07 have joined the majority cluster.",
+    "Whether the site team also touched A05, B05, B08 (which were flagged UNTESTED when the",
+    "three were reported) is UNKNOWN -- they stay plane null either way, so the table is not",
+    "wrong if they did, only less complete.",
+    "The 2026-09-15 gap between the two epochs is deliberate: the swap happened during that",
+    "day and the hour is not recorded, so any data from it resolves to no epoch. GNSS was",
+    "off, so nothing is lost."
+   ],
+   "elements": {
+    "0": {
+     "dish": 0,
+     "dish_name": "A01",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "1": {
+     "dish": 1,
+     "dish_name": "A02",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      6.047,
+      -0.115,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "2": {
+     "dish": 2,
+     "dish_name": "A03",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      11.5,
+      0.135,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "3": {
+     "dish": 3,
+     "dish_name": "A04",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      18.824,
+      -0.033,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "4": {
+     "dish": 4,
+     "dish_name": "B01",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      0.0,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "5": {
+     "dish": 5,
+     "dish_name": "B02",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      6.3,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "6": {
+     "dish": 6,
+     "dish_name": "B03",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      12.567,
+      8.878,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "7": {
+     "dish": 7,
+     "dish_name": "B04",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      18.9,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "8": {
+     "dish": 8,
+     "dish_name": "A05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      25.188,
+      0.25,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "9": {
+     "dish": 9,
+     "dish_name": "A06",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "reported",
+     "enu_m": [
+      31.03,
+      1.317,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "10": {
+     "dish": 10,
+     "dish_name": "A07",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "reported",
+     "enu_m": [
+      36.674,
+      1.742,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "11": {
+     "dish": 11,
+     "dish_name": "A08",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "measured",
+     "enu_m": [
+      43.554,
+      0.574,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "12": {
+     "dish": 12,
+     "dish_name": "B05",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      25.62,
+      8.088,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "13": {
+     "dish": 13,
+     "dish_name": "B06",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "ambiguous",
+     "enu_m": [
+      30.871,
+      8.952,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "14": {
+     "dish": 14,
+     "dish_name": "B07",
+     "slot": 0,
+     "plane": "A",
+     "plane_confidence": "reported",
+     "enu_m": [
+      37.696,
+      9.296,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "15": {
+     "dish": 15,
+     "dish_name": "B08",
+     "slot": 0,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      43.999,
+      8.395,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "64": {
+     "dish": 0,
+     "dish_name": "A01",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      -0.469,
+      0.983,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "65": {
+     "dish": 1,
+     "dish_name": "A02",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      6.918,
+      -0.968,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "66": {
+     "dish": 2,
+     "dish_name": "A03",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      11.688,
+      0.795,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "67": {
+     "dish": 3,
+     "dish_name": "A04",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      17.993,
+      0.496,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "68": {
+     "dish": 4,
+     "dish_name": "B01",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      0.0,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "69": {
+     "dish": 5,
+     "dish_name": "B02",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      6.3,
+      8.5,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "70": {
+     "dish": 6,
+     "dish_name": "B03",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      12.018,
+      8.834,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "71": {
+     "dish": 7,
+     "dish_name": "B04",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      18.801,
+      0.48,
+      0.0
+     ],
+     "position_confidence": "nominal"
+    },
+    "72": {
+     "dish": 8,
+     "dish_name": "A05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      24.359,
+      0.637,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "73": {
+     "dish": 9,
+     "dish_name": "A06",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "reported",
+     "enu_m": [
+      31.579,
+      -0.043,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "74": {
+     "dish": 10,
+     "dish_name": "A07",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "reported",
+     "enu_m": [
+      37.611,
+      -0.033,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "75": {
+     "dish": 11,
+     "dish_name": "A08",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "measured",
+     "enu_m": [
+      43.478,
+      1.804,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "76": {
+     "dish": 12,
+     "dish_name": "B05",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      24.335,
+      10.215,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "77": {
+     "dish": 13,
+     "dish_name": "B06",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "ambiguous",
+     "enu_m": [
+      31.116,
+      9.312,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "78": {
+     "dish": 14,
+     "dish_name": "B07",
+     "slot": 1,
+     "plane": "B",
+     "plane_confidence": "reported",
+     "enu_m": [
+      37.253,
+      8.916,
+      0.0
+     ],
+     "position_confidence": "measured"
+    },
+    "79": {
+     "dish": 15,
+     "dish_name": "B08",
+     "slot": 1,
+     "plane": null,
+     "plane_confidence": "unknown",
+     "enu_m": [
+      43.295,
+      10.434,
+      0.0
+     ],
+     "position_confidence": "measured"
+    }
+   }
+  }
+ ]
+}

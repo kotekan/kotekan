@@ -82,6 +82,8 @@ from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all  # noqa: E40
 
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 R_REF = 20.2e6            # m: the dB zero for range normalisation (semi-synchronous slant)
+import gnss_arraymap                                  # noqa: E402  (same directory)
+
 BORE_AZ, BORE_EL = 180.0, 81.41   # docs/CHORD_BEAM_MAPS.md §5 -- NOT telescope.dish_coelev_deg
 MIN_ELEMS = 8             # an instance with fewer live elements says nothing about the beam
 FLOOR_BIN_S = 300.0       # probe-pedestal bin: per (instance, element, 5 min)
@@ -615,6 +617,14 @@ def cmd_build(args):
     for daystr in args.days:
         day_unix = datetime.strptime(daystr, "%Y%m%d").replace(
             tzinfo=timezone.utc).timestamp()
+        # WHICH ARRAY WAS THIS DAY? Resolved before any work, because the answer can be "not
+        # one array" -- a recabling or a re-pointing inside the day makes the master a sum of
+        # two things, and no amount of care later can unmix it.
+        try:
+            epoch = gnss_arraymap.for_day(daystr)
+        except gnss_arraymap.Refused as exc:
+            sys.exit("%s: %s\n  Add the interval to %s (then gnss_arraymap.py check) before "
+                     "building this day." % (daystr, exc, gnss_arraymap.CONFIG))
         chains = args.chains or sorted(CHAIN_SYS)
         present = [(c, find_inputs(args, c, daystr)) for c in chains]
         present = [(c, p) for c, p in present if p]
@@ -625,7 +635,9 @@ def cmd_build(args):
         geom = Geometry(day_unix, args.veto_deg)
         out = {"nside": args.nside, "day": daystr, "source": args.source,
                "veto_deg": args.veto_deg, "range_norm": not args.no_range_norm,
+               "array_epoch": epoch.name, "array_epoch_key": epoch.key(),
                "chains": []}
+        print("  array epoch %s%s" % (epoch.key(), "" if epoch.verified else "  (UNVERIFIED)"))
         blobs = {}
         for chain, paths in present:
             if args.source == "l0":
@@ -649,6 +661,11 @@ def cmd_build(args):
             blobs["n_%d" % i] = r["n"]
             blobs["s1_%d" % i] = r["s1"]
             blobs["s2_%d" % i] = r["s2"]
+        # The archive path names a pointing and the epoch records one; if they disagree, one
+        # of the two is wrong and the map would be drawn around the wrong boresight.
+        if out.get("pointing") and out["pointing"] != epoch.pointing.name:
+            sys.exit("%s: archive says pointing %s, epoch %s records %s -- fix one before "
+                     "building" % (daystr, out["pointing"], epoch.name, epoch.pointing.name))
         nm, nv = geom.veto_stats()
         print("  railing veto: %d/%d minute(s) vetoed (%.1f%%) at %.1f deg"
               % (nv, nm, 100.0 * nv / max(1, nm), args.veto_deg))
@@ -741,6 +758,8 @@ def cmd_export(args):
             os.remove(stale)
         man = {"day": day, "nside": nside, "source": meta["source"],
                "pointing": meta.get("pointing"), "units": meta.get("units", "power"),
+               "array_epoch": meta.get("array_epoch"),
+               "array_epoch_key": meta.get("array_epoch_key"),
                "veto_deg": meta["veto_deg"], "range_norm": meta["range_norm"],
                "offset_ref": ref["chain"], "offset_annulus_deg": list(args.offset_annulus),
                "chains": chains,
