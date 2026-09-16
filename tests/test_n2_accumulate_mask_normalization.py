@@ -316,6 +316,7 @@ def test_masked_mean_counts_and_precision(masked_accumulation, case):
 _REJECTIONS = (
     ("negative-count", "N2Accumulate count out of range"),
     ("overfull-count", "N2Accumulate count out of range"),
+    ("mirrored-upper-count", "N2Accumulate count out of range"),
     ("count-frequency-reorder", "N2Accumulate coarse-frequency mismatch"),
     ("count-period-mismatch", "N2Accumulate time-downsampling mismatch"),
     ("skipped-frame", "N2Accumulate nonconsecutive correlation frame"),
@@ -336,8 +337,8 @@ def _alter_input(streams, subintegration, period, mutation):
         count.data[0, 0, 0, 7, 0] = -1
     elif mutation == "overfull-count":
         count.data[0, 0, 0, 7, 0] = subintegration + 1
-    elif mutation == "redundant-upper-count":
-        # Upper entries in diagonal count tiles are unused.
+    elif mutation == "mirrored-upper-count":
+        # Mirrored entries in diagonal count tiles are unused but checked like the rest.
         count.data[:, :, 0, 0, 7] = -123
     elif mutation == "count-frequency-reorder":
         count.metadata["coarse_freq"] = count.metadata["coarse_freq"][::-1].copy()
@@ -397,15 +398,3 @@ def test_unequal_counts_warn_and_continue(tmpdir_factory):
     )
     assert stage.return_code == 0, stage.output
     assert stage.output.count("counts differ across products") == 1
-
-
-def test_redundant_upper_counts_are_ignored(tmpdir_factory):
-    result = _run_accumulation(
-        tmpdir_factory,
-        mutation=lambda streams, subintegration, period: _alter_input(
-            streams, subintegration, period, "redundant-upper-count"
-        ),
-    )
-    # Check all output values after changing the unused entries.
-    for case in _CASES:
-        test_masked_mean_counts_and_precision(result, case)

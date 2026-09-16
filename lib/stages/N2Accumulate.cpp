@@ -484,8 +484,8 @@ void N2Accumulate::main_thread() {
         previous_seq = frame_seq;
         have_previous_seq = true;
 
-        // Check that lower-triangular counts are equal and in range.
-        // The upper entries in diagonal tiles are redundant.
+        // Check that counts are equal and in range. The mirrored entries in diagonal tiles
+        // are redundant but harmless to check.
         for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
                 const int64_t offset = t * counts_stride_t + f * counts_stride_f;
@@ -499,33 +499,19 @@ void N2Accumulate::main_thread() {
                                 "frequency {}",
                                 t, f);
                 }
-                int64_t block_idx = 0;
-                for (int64_t ihi = 0; ihi < _n2k_counts_lin_blocks; ++ihi) {
-                    for (int64_t jhi = 0; jhi <= ihi; ++jhi, ++block_idx) {
-                        for (int64_t ilo = 0; ilo < _n2k_counts_blocksize; ++ilo) {
-                            for (int64_t jlo = 0; jlo < _n2k_counts_blocksize; ++jlo) {
-                                if (ihi == jhi && jlo > ilo)
-                                    continue;
-                                const int64_t idx =
-                                    offset
-                                    + block_idx * _n2k_counts_blocksize * _n2k_counts_blocksize
-                                    + ilo * _n2k_counts_blocksize + jlo;
-                                const int32_t count = counts_mat[idx];
-                                if (count < 0 || count > _n_fpga_samples_per_n2k_correlation) {
-                                    FATAL_ERROR("N2Accumulate count out of range at subintegration "
-                                                "{}, frequency {}, count {} (allowed 0..{})",
-                                                t, f, count, _n_fpga_samples_per_n2k_correlation);
-                                }
-                                if (count != scalar_count && !warned_unequal_counts) {
-                                    WARN("N2Accumulate counts differ across products at "
-                                         "subintegration {:d}, frequency {:d} ({:d} versus {:d}); "
-                                         "using the first entry, as packet_loss_is_scalar "
-                                         "requires",
-                                         t, f, count, scalar_count);
-                                    warned_unequal_counts = true;
-                                }
-                            }
-                        }
+                for (int64_t i = 0; i < _n2k_counts_num_products; ++i) {
+                    const int32_t count = counts_mat[offset + i];
+                    if (count < 0 || count > _n_fpga_samples_per_n2k_correlation) {
+                        FATAL_ERROR("N2Accumulate count out of range at subintegration {}, "
+                                    "frequency {}, count {} (allowed 0..{})",
+                                    t, f, count, _n_fpga_samples_per_n2k_correlation);
+                    }
+                    if (count != scalar_count && !warned_unequal_counts) {
+                        WARN("N2Accumulate counts differ across products at subintegration "
+                             "{:d}, frequency {:d} ({:d} versus {:d}); using the first entry, "
+                             "as packet_loss_is_scalar requires",
+                             t, f, count, scalar_count);
+                        warned_unequal_counts = true;
                     }
                 }
             }
@@ -1077,17 +1063,14 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
         const uint64_t span = static_cast<uint64_t>(ticks_in_accum);
         // Nominal valid counts (the correlator's unsupported-geometry fallback) plus real packet
-        // loss add up to more than the span; say so once and carry on rather than stop a running
+        // loss add up to more than the span; note it and carry on rather than stop a running
         // pipeline.
-        static bool warned_totals = false;
-        if ((static_cast<uint64_t>(_n_valid_fpga_samples_in_vis.at(f)) + _n_pl_samples_in_vis.at(f)
-                 > span
-             || _n_rfi_samples_in_vis.at(f) > span)
-            && !warned_totals) {
-            WARN("N2Accumulate valid, packet-loss and RFI counts at frequency {:d} exceed the "
-                 "accumulation span of {:d} ticks; RFI-only ticks will be clamped at zero",
-                 f, ticks_in_accum);
-            warned_totals = true;
+        if (static_cast<uint64_t>(_n_valid_fpga_samples_in_vis.at(f)) + _n_pl_samples_in_vis.at(f)
+                > span
+            || _n_rfi_samples_in_vis.at(f) > span) {
+            DEBUG("N2Accumulate valid, packet-loss and RFI counts at frequency {:d} exceed the "
+                  "accumulation span of {:d} ticks; RFI-only ticks will be clamped at zero",
+                  f, ticks_in_accum);
         }
     }
     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
