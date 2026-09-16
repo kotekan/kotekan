@@ -46,10 +46,9 @@ constexpr double deg2rad = M_PI / 180.0;
  *
  * Beam IDs are u64 values used to identify beams in post.
  *
- * NOTE: This stage is intended to be run continuously, so as to produce the time-dependent
- * tracking beams. However, this will require modification of the calcBBPhases stage and the
- * cudaBBBeamformer wrapper. It was written to demonstrate how beams should be produced and
- * how to use the Telescope for Tracking beams.
+ * This stage runs continuously, emitting one frame every `time_downsampling_fpga` FPGA samples,
+ * so that tracking beams can be time-dependent. The positions are consumed by calcBBPhase, which
+ * turns them into a phase matrix at the same cadence.
  *
  * NOTE: This stage is likely a placeholder, or will require (possibly telescope-specific) upgrades
  * to be used in production (e.g. updating beams via REST).
@@ -255,19 +254,15 @@ void setBBBeams::main_thread() {
     // in)
     in_buf->unregister_consumer(unique_name);
 
-    // Set the seq_num of the first output to be on our output cadence and <= the seq_num
-    // of the first frame we saw. This means these beams will already be considered valid.
-    uint64_t num_frames = 0; // Total number of frame output
-    uint64_t seq0 = time_downsampling_fpga
-                    * (input_seq / time_downsampling_fpga); // seq number of 1st output frame
+    // Start this stream at the voltage stream's first sequence number, without rounding to our
+    // own cadence: the GPU-side consumers locate phase-matrix element `k` at
+    // `k * time_downsampling_fpga` FPGA samples after the logical beginning of the voltage ring
+    // buffer, so both streams have to share an origin. (Same reasoning as PR #1644 for the bad
+    // feed mask.)
+    uint64_t num_frames = 0;         // Total number of frame output
+    const uint64_t seq0 = input_seq; // seq number of 1st output frame
 
     while (!stop_thread) {
-        // TODO: remove this (and update the cuda wrappers) to make the beam positions time
-        // dependent.  Have to keep this stage spinning on the input buffer to not stall the
-        // pipeline.
-        if (num_frames > 0)
-            break;
-
         // Grab output buffer frames
         float* beam_pos = (float*)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)

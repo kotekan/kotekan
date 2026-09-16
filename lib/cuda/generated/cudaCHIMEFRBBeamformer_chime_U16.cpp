@@ -14,6 +14,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 #include "div.hpp"
 #include "ringbuffer.hpp"
 
@@ -85,6 +86,9 @@ private:
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 4096;
     static constexpr int cuda_granularity_number_of_timesamples = 24;
+    // We are not using all the non-upchannelized frequencies.
+    // But we are (should be!) using all the upchannelized ones.
+    static_assert(cuda_upchannelization_factor > 1);
 
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
@@ -334,11 +338,8 @@ cudaCHIMEFRBBeamformer_chime_U16::cudaCHIMEFRBBeamformer_chime_U16(Config& confi
 
     did_set_metadata(false) {
     // Register host memory
-    {
-        const cudaError_t ierr = cudaHostRegister(
-            host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0);
-        assert(ierr == cudaSuccess);
-    }
+    CHECK_CUDA_ERROR(cudaHostRegister(
+        host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0));
 
     W_buffer.register_consumer();
     Ebar_buffer.register_consumer();
@@ -437,19 +438,37 @@ cudaCHIMEFRBBeamformer_chime_U16::execute(cudaPipelineState& /*pipestate*/,
             const std::string quantity = "E";
             const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
             const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+            // A mismatch here means the kernel would index the buffer with a layout
+            // the producer did not use, silently producing wrong results, so these
+            // checks must hold in release builds as well.
             if (!(metadata->get_name() == quantity))
-                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            assert(metadata->get_name() == quantity);
+                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                            Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
             const auto& ndarray = Ebar_buffer.get_ndarray();
-            assert(metadata->type == ndarray.value_datatype);
-            assert(metadata->dims == ndarray.rank);
+            if (!(metadata->type == ndarray.value_datatype))
+                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
+                            Ebar_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
+                            kotekan::type_to_string(ndarray.value_datatype));
+            if (!(metadata->dims == int(ndarray.rank)))
+                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
+                            Ebar_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
             for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                assert(metadata->get_dimension_name(d) == dimname[d]);
+                if (!(metadata->get_dimension_name(d) == dimname[d]))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: "
+                                "{:s}, expected: {:s}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d),
+                                dimname[d]);
                 // The ring buffer direction is special
-                if (d > 0)
-                    assert(metadata->dim[d] == int(ndarray.extent(d)));
-                assert(metadata->stride[d] == ndarray.stride(d));
+                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
+                                "ndarray extent: {:d}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->dim[d],
+                                int(ndarray.extent(d)));
+                if (!(metadata->stride[d] == ndarray.stride(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
+                                "ndarray stride: {:d}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->stride[d],
+                                ndarray.stride(d));
             }
         } else {
             W_buffer.check_metadata();
@@ -460,19 +479,37 @@ cudaCHIMEFRBBeamformer_chime_U16::execute(cudaPipelineState& /*pipestate*/,
             const std::string quantity = "E";
             const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
             const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+            // A mismatch here means the kernel would index the buffer with a layout
+            // the producer did not use, silently producing wrong results, so these
+            // checks must hold in release builds as well.
             if (!(metadata->get_name() == quantity))
-                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            assert(metadata->get_name() == quantity);
+                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                            Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
             const auto& ndarray = Ebar_buffer.get_ndarray();
-            assert(metadata->type == ndarray.value_datatype);
-            assert(metadata->dims == ndarray.rank);
+            if (!(metadata->type == ndarray.value_datatype))
+                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
+                            Ebar_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
+                            kotekan::type_to_string(ndarray.value_datatype));
+            if (!(metadata->dims == int(ndarray.rank)))
+                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
+                            Ebar_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
             for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                assert(metadata->get_dimension_name(d) == dimname[d]);
+                if (!(metadata->get_dimension_name(d) == dimname[d]))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: "
+                                "{:s}, expected: {:s}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d),
+                                dimname[d]);
                 // The ring buffer direction is special
-                if (d > 0)
-                    assert(metadata->dim[d] == int(ndarray.extent(d)));
-                assert(metadata->stride[d] == ndarray.stride(d));
+                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
+                                "ndarray extent: {:d}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->dim[d],
+                                int(ndarray.extent(d)));
+                if (!(metadata->stride[d] == ndarray.stride(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
+                                "ndarray stride: {:d}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->stride[d],
+                                ndarray.stride(d));
             }
         } else {
             Ebar_buffer.check_metadata();
@@ -481,34 +518,51 @@ cudaCHIMEFRBBeamformer_chime_U16::execute(cudaPipelineState& /*pipestate*/,
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_N);
-        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_M);
+        // The kernel is compiled for a fixed dish grid. A larger telescope would place dishes
+        // outside that grid and silently beamform the wrong sky.
+        if (!(Telescope::instance().get_grid_size_x() <= std::uint64_t(cuda_dish_layout_N)
+              && Telescope::instance().get_grid_size_y() <= std::uint64_t(cuda_dish_layout_M)))
+            FATAL_ERROR("Telescope dish grid {:d}x{:d} does not fit the dish layout {:d}x{:d} "
+                        "(N x M) for which kernel CHIMEFRBBeamformer_chime_U16 was compiled",
+                        Telescope::instance().get_grid_size_x(),
+                        Telescope::instance().get_grid_size_y(), int(cuda_dish_layout_N),
+                        int(cuda_dish_layout_M));
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();
-        assert(!I_has_metadata);
+        if (I_has_metadata)
+            FATAL_ERROR(
+                "Output buffer I already has metadata; kernel CHIMEFRBBeamformer_chime_U16 must be "
+                "its only producer");
         I_buffer.set_metadata(Ebar_meta);
         auto I_meta = I_buffer.get_metadata();
 
         const auto Ebar_nfreq = Ebar_meta->get_nfreq();
         const auto I_nfreq = I_meta->dim[I_rank - 1 - I_index_Fbar];
-        assert(I_nfreq >= 0);
-        // We are not using all the non-upchannelized frequencies.
-        // But we are (should be!) using all the upchannelized ones.
-        assert(cuda_upchannelization_factor > 1);
+        if (I_nfreq < 0)
+            FATAL_ERROR("Output buffer I reports a negative number of frequencies ({:d})", I_nfreq);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
-        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_freq_upchan_factor.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `freq_upchan_factor` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_freq_upchan_factor.size());
         const auto& I_freq_upchan_factor = Ebar_freq_upchan_factor;
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
-        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_freq_upchan_index.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `freq_upchan_index` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_freq_upchan_index.size());
         const auto& I_freq_upchan_index = Ebar_freq_upchan_index;
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
-        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_coarse_freq.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `coarse_freq` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_coarse_freq.size());
         const auto& I_coarse_freq = Ebar_coarse_freq;
         I_meta->set_coarse_freq(I_coarse_freq);
 
@@ -519,16 +573,27 @@ cudaCHIMEFRBBeamformer_chime_U16::execute(cudaPipelineState& /*pipestate*/,
 
         const auto W_meta = W_buffer.get_metadata();
         const auto W_nfreq = W_meta->get_nfreq();
-        assert(W_nfreq == I_nfreq);
+        // Mismatched weights would beamform each frequency with another frequency's gains.
+        if (W_nfreq != I_nfreq)
+            FATAL_ERROR(
+                "Weight buffer W holds {:d} frequencies, but kernel CHIMEFRBBeamformer_chime_U16 "
+                "processes {:d}",
+                W_nfreq, I_nfreq);
         const auto W_coarse_freq = W_meta->get_coarse_freq();
         for (int freq = 0; freq < W_nfreq; ++freq)
-            assert(I_coarse_freq.at(freq) == W_coarse_freq.at(freq));
+            if (I_coarse_freq.at(freq) != W_coarse_freq.at(freq))
+                FATAL_ERROR(
+                    "Weight buffer W is for coarse frequency {:d} at index {:d}, but "
+                    "kernel CHIMEFRBBeamformer_chime_U16 processes coarse frequency {:d} there",
+                    W_coarse_freq.at(freq), freq, I_coarse_freq.at(freq));
 
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
     } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
-    assert(I_buffer.has_metadata());
+    if (!I_buffer.has_metadata())
+        FATAL_ERROR(
+            "Output buffer I has no metadata; kernel CHIMEFRBBeamformer_chime_U16 cannot run");
 
     const char* exc_arg = "exception";
     std::int32_t Tbar_min_arg;
