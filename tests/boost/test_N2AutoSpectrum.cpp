@@ -13,6 +13,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "metadata.hpp"
 #include "metadataFactory.hpp"
 
@@ -139,6 +140,8 @@ struct TestSetup {
         out_buf->register_consumer("test_consumer");
     }
 };
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_gather_flush_and_drops) {
     std::cout << "Testing N2AutoSpectrum: gather, flush, late and out-of-range drops...\n";

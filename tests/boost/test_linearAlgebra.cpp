@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_linearAlgebra"
 
 #include "LinearAlgebra.hpp" // for DynamicHermitian, EigConvergenceStats, eigen_masked_subspace
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>   // for M_PI
@@ -88,6 +89,8 @@ void check_identical(const Result& a, const Result& b) {
 
 // The eigenvalues of the test matrix are known, so check the decomposition is
 // actually solving the problem before checking that it does so reproducibly.
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
+
 BOOST_AUTO_TEST_CASE(eigen_masked_subspace_recovers_sources) {
     std::mt19937 rng(eigen_subspace_seed);
     const auto r = decompose(test_matrix(), test_mask(), rng);
