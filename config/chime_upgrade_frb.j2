@@ -1848,24 +1848,24 @@ write_failed_vis:
     file_length: 256
     in_buf: failed_vis_buffer_post
 
-write_frb:
-    kotekan_stage: hdf5FileWrite
-    log_level: warn
-    use_compression: false
-    base_dir: frb_beams
-    in_buf: host_frb3_beams_buffer_post
-    file_name: host_frb3_beams_buffer
-    create_single_file: true
-    input_order: CHIMEBeamformer
-write_frb_offsetscale:
-    kotekan_stage: hdf5FileWrite
-    log_level: warn
-    use_compression: false
-    base_dir: frb_beams
-    in_buf: host_frb3_beams_offsetscale_buffer_post
-    file_name: host_frb3_offsetscale_buffer
-    create_single_file: true
-    input_order: CHIMEBeamformer
+#write_frb:
+#    kotekan_stage: hdf5FileWrite
+#    log_level: warn
+#    use_compression: false
+#    base_dir: frb_beams
+#    in_buf: host_frb3_beams_buffer_post
+#    file_name: host_frb3_beams_buffer
+#    create_single_file: true
+#    input_order: CHIMEBeamformer
+#write_frb_offsetscale:
+#    kotekan_stage: hdf5FileWrite
+#    log_level: warn
+#    use_compression: false
+#    base_dir: frb_beams
+#    in_buf: host_frb3_beams_offsetscale_buffer_post
+#    file_name: host_frb3_offsetscale_buffer
+#    create_single_file: true
+#    input_order: CHIMEBeamformer
 
 write_frb2:
     kotekan_stage: hdf5FileWrite
