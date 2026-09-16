@@ -46,7 +46,7 @@ GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
 
 void GenHFBFrames::main_thread() {
     frameID out_frame_id(out_buf), cls_frame_id(cls_out_buf);
-    uint64_t seq_num = _samples_per_data_set * _first_frame_index;
+    uint64_t seq_num = _samples_per_data_set * static_cast<uint64_t>(_first_frame_index);
 
     std::default_random_engine gen;
     std::normal_distribution<float> gaussian(_rng_mean, _rng_stddev);
