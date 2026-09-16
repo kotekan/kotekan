@@ -48,6 +48,14 @@ import time
 import urllib.request
 
 C_LIGHT = 299792458.0  # m/s (audit rec E: was inlined at four sites)
+
+# -- frame0 guard -----------------------------------------------------------------------
+# A changed F-engine frame 0 invalidates every seed this process computes. Confirm it over
+# several reads (the endpoint answering oddly once is not an F-engine restart) and then STOP,
+# so the supervisor restarts us and the anchor is re-latched by the startup path.
+_ANCHOR_STRIKES = 3            # consecutive 60 s re-reads that must disagree
+_ANCHOR_RESTART_S = 20         # what broker_restart.sh's supervisor waits before relaunching
+_EXIT_ANCHOR_CHANGED = 3       # distinct exit code, so the supervisor can log why
 from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
@@ -1011,7 +1019,7 @@ def main(argv=None, rx=None, publisher=None):
     _rf_last = [0.0]  # #8: wall of the last RF-health poll (rate-limits it)
     _est_next = [_now() + (hash(chain_id) % 5) * 8.0]
     _anchor_seen = [0.0]   # frame0 as first latched (see the re-check in the cycle loop)
-    _anchor_chk = [0.0]    # wall time of the last anchor re-read
+    _anchor_chk = [0.0, 0]  # [wall time of the last anchor re-read, consecutive mismatches]
     _cls.seg_s = float(args.long_code_epoch_s) / max(int(args.long_code_segments), 1)
     _cls.spiral = ([0] + [v for n in range(1, int(args.long_code_segments) // 2 + 1)
                             for v in (-n, n)])[:max(int(args.long_code_segments), 1)]
@@ -1839,11 +1847,41 @@ def main(argv=None, rx=None, publisher=None):
                 _fresh = float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
                                .get("time0_ns", 0.0)) / 1e9
                 if _fresh and abs(_fresh - _ctx.utc0_sample0) > 1e-3:
-                    _log("*** TIME ANCHOR CHANGED: frame0 was %.9f, endpoint now reports %.9f "
-                         "(%+.3f days). The F-engine has been restarted. EVERY SEED THIS BROKER "
-                         "SENDS IS WRONG BY THAT AMOUNT, and every node still running cached the "
-                         "old epoch too. Restart the nodes AND this broker."
-                         % (_ctx.utc0_sample0, _fresh, (_fresh - _ctx.utc0_sample0) / 86400.0))
+                    _anchor_chk[1] += 1
+                    _log("*** TIME ANCHOR CHANGED (%d/%d): frame0 was %.9f, endpoint now reports "
+                         "%.9f (%+.3f days). The F-engine has been restarted. EVERY SEED THIS "
+                         "BROKER SENDS IS WRONG BY THAT AMOUNT."
+                         % (_anchor_chk[1], _ANCHOR_STRIKES, _ctx.utc0_sample0, _fresh,
+                            (_fresh - _ctx.utc0_sample0) / 86400.0))
+                    if _anchor_chk[1] >= _ANCHOR_STRIKES:
+                        # EXIT, DO NOT RE-ANCHOR. frame0 is latched once per process here and
+                        # once per process in every node, and the seeds, clock solution, phase
+                        # history and record windows are all built on it. Re-anchoring in place
+                        # would fix this process's arithmetic and leave every derived quantity
+                        # inconsistent with its own past; the startup path is the only one that
+                        # builds coherent state from an anchor, so the way back is through it.
+                        #
+                        # This was a log line only until 2026-09-16, when it fired 5960 times
+                        # into a 2.2 GB log while seven of eight chains sat at `0 present` for
+                        # twelve hours. A monitor that cannot act is not a monitor.
+                        #
+                        # os._exit, NOT sys.exit: chains are THREADS (broker_multi.py runs them
+                        # with threading.Thread and catches SystemExit per chain), so a normal
+                        # exit would stop this chain, be logged as "CHAIN REFUSED TO START", and
+                        # leave the other seven running on the wrong epoch.
+                        _log("*** STOPPING THE BROKER after %d confirmations, so frame0 is "
+                             "re-latched by the startup path. The supervisor in "
+                             "broker_restart.sh relaunches in %d s; the nodes are stopped by "
+                             "their own fpga_monitor on this same event and come back on the "
+                             "new epoch." % (_anchor_chk[1], _ANCHOR_RESTART_S))
+                        try:
+                            sys.stdout.flush()
+                            sys.stderr.flush()
+                        except Exception:
+                            pass
+                        os._exit(_EXIT_ANCHOR_CHANGED)
+                elif _fresh:
+                    _anchor_chk[1] = 0     # one odd read must not accumulate into a restart
             except Exception:
                 pass   # endpoint down is the normal outage case, already logged elsewhere
 

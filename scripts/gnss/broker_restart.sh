@@ -56,6 +56,12 @@ if [ "$(hostname -s)" != "$HOST" ]; then
     exit 1
 fi
 
+# ⚠️ THE SUPERVISOR FIRST. The launch below wraps the broker in a restart loop, so killing
+# the python alone just makes the loop relaunch it 20 s into this script's own startup --
+# two brokers, or a race with the new one. Its argv carries the marker below precisely so it
+# can be named separately from the broker it babysits.
+pkill -f "[g]nss-broker-supervisor" 2>/dev/null || true
+
 # Both names, because a tree mid-transition can have either running: broker_multi is the
 # driver, gps_distributed_broker the single-chain process it replaced.
 pkill -f "[b]roker_multi.py" 2>/dev/null || true
@@ -85,8 +91,50 @@ if [ -s "$LOG" ]; then
     # shellcheck disable=SC2012  # ls -t is the point: newest first, drop everything past 3
     ls -1t "$LOG".20*[0-9] 2>/dev/null | tail -n +4 | xargs -r rm -f
 fi
-nohup setsid "$PY" -u "$K/scripts/gnss/broker_multi.py" "$CHAINS" "$@" \
-    > "$LOG" 2>&1 < /dev/null &
+# ⚠️ SUPERVISED, NOT BARE. The broker stops itself when the F-engine's frame 0 changes
+# (gps_distributed_broker.py, exit 3): its anchor is latched once per process, so every seed
+# it computes after a re-base is wrong, and the only way to a coherent anchor is through the
+# startup path. On 2026-09-16 that condition was a log line only -- it fired 5960 times while
+# seven of eight chains sat blind for twelve hours -- so the exit is now real and something
+# has to bring the broker back.
+#
+# A `while` loop rather than a systemd unit because nothing on this host is a unit today and
+# a user unit would not survive the weekly 03:03 reboot either; this at least makes a re-base
+# self-healing. Exit 0 is a deliberate stop and ends the loop, so `pkill` still works.
+nohup setsid bash -c '
+    K="$1"; PY="$2"; CHAINS="$3"; LOG="$4"; shift 4
+    fast=0
+    while :; do
+        started=$(date +%s)
+        "$PY" -u "$K/scripts/gnss/broker_multi.py" "$CHAINS" "$@" >> "$LOG" 2>&1 < /dev/null
+        rc=$?
+        [ "$rc" -eq 0 ] && break
+        ran=$(( $(date +%s) - started ))
+        # ⚠️ A RESTART LOOP MUST NOT BE INFINITE. An exit 3 after hours of running is the
+        # F-engine re-base this exists for and a relaunch fixes it. An exit seconds after
+        # startup is a bad config or a bad tree, which relaunching cannot fix -- and a broker
+        # that thrashes forever is harder to notice than one that is simply down.
+        if [ "$ran" -ge 120 ]; then
+            fast=0
+        else
+            fast=$((fast + 1))
+        fi
+        if [ "$fast" -ge 5 ]; then
+            echo "[supervisor $(date -u +%H:%M:%S)] broker exited $rc after only ${ran}s, 5 times" \
+                 "in a row -- NOT relaunching. This is a startup failure, not a re-base; fix it" \
+                 "and run broker_restart.sh again." >> "$LOG"
+            break
+        fi
+        if [ "$rc" -eq 3 ]; then
+            echo "[supervisor $(date -u +%H:%M:%S)] broker exited 3 (F-engine frame0 changed)" \
+                 "after ${ran}s; relaunching in 20 s so it re-latches the anchor" >> "$LOG"
+        else
+            echo "[supervisor $(date -u +%H:%M:%S)] broker exited $rc after ${ran}s;" \
+                 "relaunching in 20 s (${fast}/5 rapid failures)" >> "$LOG"
+        fi
+        sleep 20
+    done
+' gnss-broker-supervisor "$K" "$PY" "$CHAINS" "$LOG" "$@" > /dev/null 2>&1 < /dev/null &
 disown
 sleep 10
 
