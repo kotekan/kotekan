@@ -1076,12 +1076,19 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     // Wait for a block of frames to be available.  Grab them and get them metadata.
     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
         const uint64_t span = static_cast<uint64_t>(ticks_in_accum);
-        if (static_cast<uint64_t>(_n_valid_fpga_samples_in_vis.at(f)) + _n_pl_samples_in_vis.at(f)
-                > span
-            || _n_rfi_samples_in_vis.at(f) > span)
-            FATAL_ERROR("N2Accumulate valid, packet-loss and RFI counts at frequency {:d} exceed "
-                        "the accumulation span of {:d} ticks",
-                        f, ticks_in_accum);
+        // Nominal valid counts (the correlator's unsupported-geometry fallback) plus real packet
+        // loss add up to more than the span; say so once and carry on rather than stop a running
+        // pipeline.
+        static bool warned_totals = false;
+        if ((static_cast<uint64_t>(_n_valid_fpga_samples_in_vis.at(f)) + _n_pl_samples_in_vis.at(f)
+                 > span
+             || _n_rfi_samples_in_vis.at(f) > span)
+            && !warned_totals) {
+            WARN("N2Accumulate valid, packet-loss and RFI counts at frequency {:d} exceed the "
+                 "accumulation span of {:d} ticks; RFI-only ticks will be clamped at zero",
+                 f, ticks_in_accum);
+            warned_totals = true;
+        }
     }
     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
         if (out_buf->wait_for_empty_frame(unique_name, out_frame_id + f) == nullptr) {
@@ -1123,8 +1130,11 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->frame_length_fpga_ticks = ticks_in_accum;
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis.at(f);
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis.at(f);
-        meta->n_rfi_only_fpga_ticks =
-            ticks_in_accum - _n_valid_fpga_samples_in_vis.at(f) - _n_pl_samples_in_vis.at(f);
+        // Signed so nominal counts plus packet loss cannot wrap to 2^64 (#1672).
+        const int64_t rfi_only = static_cast<int64_t>(ticks_in_accum)
+                                 - _n_valid_fpga_samples_in_vis.at(f)
+                                 - static_cast<int64_t>(_n_pl_samples_in_vis.at(f));
+        meta->n_rfi_only_fpga_ticks = rfi_only > 0 ? static_cast<uint64_t>(rfi_only) : 0;
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
