@@ -193,10 +193,11 @@ run_calc_hfb2_weights:
     frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
     frb2_beam_positions: host_hfb2_beam_positions_buffer
     frb2_weights: host_hfb2_weights_buffer
+    num_threads: 32
     metadata_source:
 {% for id in range(16) %}   # num_frequencies = 16
         - host_voltage_buffer_{{ id }}
-{% endfor %}    num_threads: 32
+{% endfor %}
 
 run_hfb23:
     gpu_0:

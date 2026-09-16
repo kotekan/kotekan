@@ -178,6 +178,7 @@ run_calc_frb2_weights:
 {% for id in range(16) %}   # num_frequencies = 16
         - host_voltage_buffer_{{ id }}
 {% endfor %}
+
 run_frb23:
     gpu_0:
         kotekan_stage: cudaProcess
