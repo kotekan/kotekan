@@ -34,24 +34,6 @@ class UpchannelizationSchedule : kotekan::kotekanLogging {
     // The mapping from "channel" to "frequency" is done via the CHORD
     // Telescope object function `to_freq_MHz`.
 
-    // This is a plain value type, not a singleton. Parsing a schedule
-    // is cheap -- a handful of configuration lookups and some small
-    // maps -- so every stage that needs a schedule constructs its
-    // own.
-    //
-    // There deliberately is no process-wide instance. A single
-    // kotekan process can drive several GPUs, and each GPU handles a
-    // different set of coarse frequency channels, so there is no such
-    // thing as "the" schedule of a process.
-    //
-    // The configuration describes the schedule itself: the
-    // upchannelization factors, and the range of channels each factor
-    // applies to. That part is identical on all nodes and for all
-    // GPUs. The set of coarse frequency channels, on the other hand,
-    // is local to one GPU; the caller passes it in, taking it e.g.
-    // from the metadata of an incoming frame. It must never be read
-    // from the configuration.
-
     ////////////////////////////////////////////////////////////////////////////////
 
     // The coarse frequency channels handled by this X-Engine
