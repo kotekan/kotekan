@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_VisTranspose"
 
-#include "Transpose.hpp"          // for strided_copy
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "Transpose.hpp"             // for strided_copy
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <cstdint>                           // for uint32_t, uint8_t

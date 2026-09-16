@@ -4,8 +4,8 @@
 #include "Config.hpp"
 #include "Telescope.hpp"
 #include "configUpdater.hpp"
-#include "errors.h"               // _global_log_level
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "errors.h"                  // _global_log_level
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "test_logging.hpp"
 #include "timeUtil.hpp"

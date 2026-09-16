@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_stat_tracker"
 
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
-#include "visUtil.hpp"            // for StatTracker
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "visUtil.hpp"               // for StatTracker
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <cmath>                             // for isnan

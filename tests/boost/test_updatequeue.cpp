@@ -1,8 +1,8 @@
 #define BOOST_TEST_MODULE "test_updateQueue"
 
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
-#include "updateQueue.hpp"        // for updateQueue
-#include "visUtil.hpp"            // for operator==
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "updateQueue.hpp"           // for updateQueue
+#include "visUtil.hpp"               // for operator==
 
 #include "fmt.hpp" // for format
 

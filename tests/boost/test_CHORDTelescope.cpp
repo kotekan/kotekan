@@ -6,7 +6,7 @@
 #include "configUpdater.hpp"
 #include "errors.h" // _global_log_level
 #include "geoUtil.hpp"
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "timeUtil.hpp"
 

@@ -1,8 +1,8 @@
 #define BOOST_TEST_MODULE "test_modulo"
 
-#include "N2Util.hpp"             // for N2::modulo
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
-#include "visUtil.hpp"            // for modulo, frameID
+#include "N2Util.hpp"                // for N2::modulo
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "visUtil.hpp"               // for modulo, frameID
 
 #include <boost/test/included/unit_test.hpp>
 #include <cstdint>

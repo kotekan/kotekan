@@ -12,7 +12,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "configUpdater.hpp"
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "metadata.hpp"
 #include "test_utils.hpp"
 

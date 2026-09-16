@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE "test_Metadata"
 
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <NDMetadata.hpp>
 #include <algorithm>

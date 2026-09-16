@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_config"
 
-#include "Hash.hpp"               // for Hash, hash
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "Hash.hpp"                  // for Hash, hash
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include "fmt.hpp"  // for format
 #include "json.hpp" // for json

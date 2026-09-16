@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_linearAlgebra"
 
 #include "LinearAlgebra.hpp" // for DynamicHermitian, EigConvergenceStats, eigen_masked_subspace
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>   // for M_PI

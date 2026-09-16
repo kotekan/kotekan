@@ -1,15 +1,15 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_producer"
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for operator<<
-#include "dataset.hpp"            // for dataset
-#include "datasetManager.hpp"     // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"       // for freqState, inputState, prodState, datasetState
-#include "errors.h"               // for __enable_syslog, _global_log_level
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
-#include "restClient.hpp"         // for restClient, restClient::restReply
-#include "restServer.hpp"         // for restServer
-#include "visUtil.hpp"            // for input_ctype, prod_ctype, freq_ctype
+#include "Config.hpp"                // for Config
+#include "Hash.hpp"                  // for operator<<
+#include "dataset.hpp"               // for dataset
+#include "datasetManager.hpp"        // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"          // for freqState, inputState, prodState, datasetState
+#include "errors.h"                  // for __enable_syslog, _global_log_level
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "restClient.hpp"            // for restClient, restClient::restReply
+#include "restServer.hpp"            // for restServer
+#include "visUtil.hpp"               // for input_ctype, prod_ctype, freq_ctype
 
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 

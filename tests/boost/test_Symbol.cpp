@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE "test_Symbol"
 
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <Symbol.hpp>
 #include <boost/test/included/unit_test.hpp>

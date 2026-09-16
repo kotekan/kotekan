@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_SynchronizedQueue"
 
-#include "SynchronizedQueue.hpp"  // for SynchronizedQueue
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "SynchronizedQueue.hpp"     // for SynchronizedQueue
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
 #include <optional>                          // for optional

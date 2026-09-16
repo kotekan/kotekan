@@ -4,7 +4,7 @@
 #include "N2Layout.hpp"
 #include "N2Metadata.hpp"
 #include "N2Util.hpp"
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <iostream>

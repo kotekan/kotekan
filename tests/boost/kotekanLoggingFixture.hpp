@@ -36,10 +36,13 @@
 /// process. An event from any other thread is printed instead, and counted so
 /// that the run still fails if it was an error.
 ///
-/// SIGTERM is ignored as well. FATAL_ERROR calls exit_kotekan(), which raises
-/// SIGTERM, before throwing FatalError; the handler below throws first so that is
-/// normally not reached, but a path that reaches exit_kotekan() by another route
-/// should not take the test process down with it.
+/// SIGTERM is ignored for the lifetime of the fixture, and the previous
+/// disposition put back afterwards. FATAL_ERROR calls exit_kotekan(), which
+/// raises SIGTERM, before throwing FatalError; the handler below throws first so
+/// that is normally not reached, but a path that reaches exit_kotekan() by
+/// another route should not take the test process down with it. Restoring
+/// matters because test_logging.hpp's configure() installs a SIGTERM handler of
+/// its own, and a test may use both.
 ///
 /// Note: test_logging.hpp in this directory is a separate, opt-in helper
 /// (kotekan_test_logging::configure()) that raises the log level and prints
@@ -47,13 +50,19 @@
 /// use either or both.
 struct kotekan_logging_fixture {
     kotekan_logging_fixture() {
-        std::signal(SIGTERM, SIG_IGN);
+        struct sigaction ignore;
+        ignore.sa_handler = SIG_IGN;
+        sigemptyset(&ignore.sa_mask);
+        ignore.sa_flags = 0;
+        sigaction(SIGTERM, &ignore, &old_sigterm);
+
         state().test_thread = std::this_thread::get_id();
         kotekan::log_event_hook.store(&handle);
     }
 
     ~kotekan_logging_fixture() {
         kotekan::log_event_hook.store(nullptr);
+        sigaction(SIGTERM, &old_sigterm, nullptr);
 
         int errors, warnings;
         {
@@ -111,6 +120,9 @@ struct kotekan_logging_fixture {
     }
 
 private:
+    /// The SIGTERM disposition from before the fixture ignored it.
+    struct sigaction old_sigterm;
+
     struct shared_state {
         std::thread::id test_thread;
         std::mutex mutex;

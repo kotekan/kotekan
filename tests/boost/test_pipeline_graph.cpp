@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_pipeline_graph"
 
-#include "PipelineGraph.hpp"      // for PipelineGraph, GraphNode, GraphCluster
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "PipelineGraph.hpp"         // for PipelineGraph, GraphNode, GraphCluster
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <string>

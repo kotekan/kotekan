@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE "test_fmt"
 #include "errors.h"
-#include "kotekanLogging.hpp"     // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLogging.hpp"        // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include "fmt.hpp" // for format
 

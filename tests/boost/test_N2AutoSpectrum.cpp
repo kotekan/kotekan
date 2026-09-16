@@ -13,7 +13,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "metadata.hpp"
 #include "metadataFactory.hpp"
 

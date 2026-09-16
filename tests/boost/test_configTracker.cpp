@@ -1,8 +1,8 @@
 #define BOOST_TEST_MODULE "test_configTracker"
 
-#include "configTracker.hpp"      // for ConfigTracker
-#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
-#include "restServer.hpp"         // for restServer, connectionInstance
+#include "configTracker.hpp"         // for ConfigTracker
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "restServer.hpp"            // for restServer, connectionInstance
 
 #include "json.hpp" // for json_ref, basic_json<>::object_t, json
 

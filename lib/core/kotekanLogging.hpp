@@ -23,7 +23,7 @@ enum class log_event { warning, error };
 
 /// A handler notified of WARN and ERROR events, in addition to the message being
 /// logged. There is none in production; boost tests install one (see
-/// tests/boost/kotekanTestLogging.hpp) so that an error logged by kotekan fails
+/// tests/boost/kotekanLoggingFixture.hpp) so that an error logged by kotekan fails
 /// the test.
 ///
 /// This must be a run-time decision, not a compile-time one: the reporting macros
