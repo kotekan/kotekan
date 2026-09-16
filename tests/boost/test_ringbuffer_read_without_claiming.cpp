@@ -24,6 +24,8 @@
 
 #undef WITH_CUDA
 
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
 #include <boost/test/included/unit_test.hpp>
@@ -51,6 +53,8 @@ static std::shared_ptr<metadataPool> make_pool() {
 
 // Reading without claiming must leave the read head alone, so the same element is readable
 // again on the next iteration.
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
+
 BOOST_AUTO_TEST_CASE(read_without_claiming_does_not_advance_the_read_head) {
     __enable_syslog = 0;
     std::shared_ptr<metadataPool> pool = make_pool();

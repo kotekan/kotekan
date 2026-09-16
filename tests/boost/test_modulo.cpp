@@ -1,7 +1,8 @@
 #define BOOST_TEST_MODULE "test_modulo"
 
-#include "N2Util.hpp"  // for N2::modulo
-#include "visUtil.hpp" // for modulo, frameID
+#include "N2Util.hpp"             // for N2::modulo
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
+#include "visUtil.hpp"            // for modulo, frameID
 
 #include <boost/test/included/unit_test.hpp>
 #include <cstdint>
@@ -91,6 +92,8 @@ static void check_unsigned_semantics(unsigned n) {
     x += 5000000000LL;
     BOOST_CHECK_EQUAL((uint64_t)x, (uint64_t)(5000000000LL % n));
 }
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_modulo_basic) {
     check_basic_semantics<modulo<int>>(24);

@@ -8,6 +8,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
+#include "kotekanTestLogging.hpp" // for kotekan_logging_fixture
 #include "metadata.hpp"
 #include "metadataFactory.hpp"
 
@@ -222,6 +223,8 @@ static void run_case(const std::string& name, const std::vector<uint32_t>& live_
 static const std::vector<uint32_t> all_boards = {0, 1, 2,  3,  4,  5,  6,  7,
                                                  8, 9, 10, 11, 12, 13, 14, 15};
 static const std::vector<uint32_t> live_boards = {0, 1, 2, 3};
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_transpose_all_boards) {
     std::cout << "Testing TransposeBasebandArray: transpose with every board present...\n";

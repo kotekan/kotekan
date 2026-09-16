@@ -4,13 +4,12 @@
 #include "kotekanLogging.hpp" // for log_event, log_event_handler, log_event_hook, FORMAT
 
 #include <boost/test/included/unit_test.hpp>
-#include <csignal>   // for signal, SIGTERM, SIG_IGN
-#include <cstdlib>   // for _Exit
-#include <iostream>  // for cerr, cout, flush
-#include <mutex>     // for mutex, lock_guard
-#include <stdexcept> // for runtime_error
-#include <string>    // for string, to_string
-#include <thread>    // for thread::id, this_thread::get_id
+#include <csignal>  // for signal, SIGTERM, SIG_IGN
+#include <cstdlib>  // for _Exit
+#include <iostream> // for cerr, cout, flush
+#include <mutex>    // for mutex, lock_guard
+#include <string>   // for string, to_string
+#include <thread>   // for thread::id, this_thread::get_id
 
 /// Boost fixture that makes an error logged by kotekan fail the test.
 ///
@@ -19,9 +18,14 @@
 ///     BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 ///
 /// to a test. An ERROR (including the one FATAL_ERROR logs first) then throws
-/// std::runtime_error, and a WARN registers a boost warning. Note that FatalError
-/// derives from std::runtime_error, so a BOOST_CHECK_THROW on std::runtime_error
-/// matches either exception.
+/// FatalError, and a WARN registers a boost warning.
+///
+/// FatalError rather than a plain std::runtime_error because it is the narrower
+/// of the two: it derives from std::runtime_error, so a BOOST_CHECK_THROW on
+/// std::runtime_error or std::exception still matches, and one on FatalError --
+/// which is what a test asserting a FATAL_ERROR path naturally writes, see
+/// test_Telescope's _get_eop_out_of_range_fatal -- matches as well. Throwing the
+/// base class would fail those.
 ///
 /// That happens only on the thread that installed the fixture. Boost.Test
 /// assertions are not safe to call from more than one thread, and kotekan logs
@@ -102,7 +106,7 @@ struct kotekan_logging_fixture {
                 BOOST_WARN_MESSAGE(false, described);
                 break;
             case kotekan::log_event::error:
-                throw std::runtime_error(described);
+                throw FatalError(described);
         }
     }
 
