@@ -26,17 +26,11 @@ enum class log_event { warning, error };
 /// tests/boost/kotekanTestLogging.hpp) so that an error logged by kotekan fails
 /// the test.
 ///
-/// This is deliberately a run-time decision. It used to be a compile-time one:
-/// the reporting macros below were defined differently depending on whether
-/// BOOST_TEST_MODULE was defined when this header was included, which is true in
-/// a boost test but false in every library translation unit. That gave every
-/// function *defined in a header* that logs two different bodies. Such functions
-/// have external linkage and are emitted as weak symbols, so it was an ODR
-/// violation, silently resolved by the linker keeping one arbitrary copy: a test
-/// could end up with the library's non-throwing copy, so an expected error
-/// terminated the test process instead of failing an assertion, or library code
-/// could end up with the test's throwing copy. Which one won depended on link
-/// order and LTO. Reporting at run time keeps the macros identical everywhere.
+/// This must be a run-time decision, not a compile-time one: the reporting macros
+/// below have to expand to the same tokens in every translation unit, or every
+/// function *defined in a header* that logs gets two different bodies, which is an
+/// ODR violation the linker resolves by keeping one arbitrary copy. tools/lint.sh
+/// enforces the rule; see the git history of this file for how it was broken.
 using log_event_handler = void (*)(log_event kind, const char* file, int line,
                                    const std::string& message);
 
@@ -50,9 +44,7 @@ inline std::atomic<log_event_handler> log_event_hook{nullptr};
 /// as a plain string_view, so it is not checked against the argument types at
 /// compile time. Using fmt::format here instead would subject every ERROR and WARN
 /// format string in the code base to fmt's compile-time checking for the first
-/// time, which is a worthwhile change but not this one -- it does not compile
-/// today (see e.g. the three "{:d}" specifiers applied to a std::string in
-/// lib/testing/FakeVisPattern.cpp).
+/// time, which is worthwhile but does not compile today.
 template<typename... Args>
 inline void report_log_event(const log_event kind, const char* const file, const int line,
                              const fmt::basic_string_view<char> format, const Args&... args) {
@@ -65,14 +57,20 @@ inline void report_log_event(const log_event kind, const char* const file, const
 // Report an error/warning to the installed log event handler.
 //
 // These must expand to the same tokens in every translation unit; see the comment
-// on kotekan::log_event_handler above. report_log_event() checks for a handler
-// before formatting, so production pays one relaxed load rather than a string
-// format on every ERROR and WARN.
+// on kotekan::log_event_handler above. The check for a handler is in the macro
+// rather than only inside report_log_event() so that the arguments are not
+// evaluated either when there is none, which is always the case in production:
+// there it costs one relaxed load per ERROR and WARN and nothing else.
 #define KTK_REPORT_ERROR(m, ...)                                                                   \
-    kotekan::report_log_event(kotekan::log_event::error, __FILE__, __LINE__, fmt(m), ##__VA_ARGS__)
+    (kotekan::log_event_hook.load(std::memory_order_relaxed)                                       \
+         ? kotekan::report_log_event(kotekan::log_event::error, __FILE__, __LINE__, fmt(m),        \
+                                     ##__VA_ARGS__)                                                \
+         : (void)0)
 #define KTK_REPORT_WARNING(m, ...)                                                                 \
-    kotekan::report_log_event(kotekan::log_event::warning, __FILE__, __LINE__, fmt(m),             \
-                              ##__VA_ARGS__)
+    (kotekan::log_event_hook.load(std::memory_order_relaxed)                                       \
+         ? kotekan::report_log_event(kotekan::log_event::warning, __FILE__, __LINE__, fmt(m),      \
+                                     ##__VA_ARGS__)                                                \
+         : (void)0)
 
 // Macro to pass a string and arguments to fmt::format including a compile-time string format check.
 #define FORMAT(m, ...) fmt::format(FMT_STRING(m), ##__VA_ARGS__)

@@ -26,10 +26,21 @@ add_library(
     StageFactory.cpp
     $<$<BOOL:${Julia_FOUND}>:juliaManager.cpp>)
 
-target_include_directories(kotekan_core PUBLIC .)
+# The usage requirements for *compiling against* lib/core's headers, kept separate from kotekan_core
+# so that a target can include them without linking the library. Every consumer has to see the same
+# ones: Config.hpp for instance declares a member only #ifdef WITH_SSL, so a translation unit that
+# gets the headers without the definitions sees a different class Config -- the type-level version
+# of the problem described on kotekan::log_event_handler. kotekan_core links this PUBLIC, so there
+# is one definition of the requirements rather than two that can drift.
+add_library(kotekan_core_headers INTERFACE)
+target_include_directories(kotekan_core_headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+# lib/core headers include fmt.hpp and json.hpp.
+target_link_libraries(kotekan_core_headers INTERFACE libexternal)
+
+target_link_libraries(kotekan_core PUBLIC kotekan_core_headers)
 
 if(${Julia_FOUND})
-    target_include_directories(kotekan_core INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_include_directories(kotekan_core_headers INTERFACE ${JULIA_INCLUDE_DIRS})
     target_link_libraries(kotekan_core INTERFACE ${JULIA_LIBRARY})
     add_definitions(-DWITH_JULIA)
 endif()
@@ -80,7 +91,7 @@ if(USE_OPENSSL)
             "found"
             CACHE STRING "")
         target_link_libraries(kotekan_core PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
-        target_compile_definitions(kotekan_core PUBLIC WITH_SSL)
+        target_compile_definitions(kotekan_core_headers INTERFACE WITH_SSL)
     else()
         set(OPENSSL_REASON
             "not found"
@@ -100,4 +111,4 @@ target_link_libraries(
     PRIVATE libexternal ${CMAKE_THREAD_LIBS_INIT} kotekan_libs
     PUBLIC ${LIBEVENT_CORE} ${LIBEVENT_PTHREADS} ${LIBEVENT_EXTRA})
 
-target_include_directories(kotekan_core INTERFACE ${LIBEVENT_INCLUDE_DIR})
+target_include_directories(kotekan_core_headers INTERFACE ${LIBEVENT_INCLUDE_DIR})
