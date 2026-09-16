@@ -431,10 +431,10 @@ baseband:
   max_dump_samples: 300000 # 768ms
   num_frames_buffer: baseband_buffer_depth - 10
 {%- for id in range(num_freq_gpu_buf) %}
-  baseband{{ id }}:
-    kotekan_stage: basebandReadout
-    in_buf: host_voltage_buffer_{{ id }}
-    out_buf: baseband_output_buffer_{{ id }}
+#  baseband{{ id }}:
+#    kotekan_stage: basebandReadout
+#    in_buf: host_voltage_buffer_{{ id }}
+#    out_buf: baseband_output_buffer_{{ id }}
 {%- endfor %}
 
 baseband_merge:
