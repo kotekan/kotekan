@@ -14,6 +14,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 #include "div.hpp"
 #include "ringbuffer.hpp"
 
@@ -276,12 +277,9 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{#kernel_arguments}}
         {{^isscalar}}
             {{^hasbuffer}}
-                {
-                    const cudaError_t ierr = cudaHostRegister(host_{{{name}}}_buffer.data(),
-                                                              host_{{{name}}}_buffer.size() * sizeof *host_{{{name}}}_buffer.data(),
-                                                              0);
-                    assert(ierr == cudaSuccess);
-                }
+                CHECK_CUDA_ERROR(cudaHostRegister(host_{{{name}}}_buffer.data(),
+                                                  host_{{{name}}}_buffer.size() * sizeof *host_{{{name}}}_buffer.data(),
+                                                  0));
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -392,19 +390,30 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                         const std::string quantity = "E";
                         const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
                         const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+                        // A mismatch here means the kernel would index the buffer with a layout
+                        // the producer did not use, silently producing wrong results, so these
+                        // checks must hold in release builds as well.
                         if (!(metadata->get_name() == quantity))
-                            ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}", Ebar_buffer.get_buffer_name(), quantity,
-                                  metadata->get_name());
-                        assert(metadata->get_name() == quantity);
+                            FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}", Ebar_buffer.get_buffer_name(),
+                                        quantity, metadata->get_name());
                         const auto& ndarray = Ebar_buffer.get_ndarray();
-                        assert(metadata->type == ndarray.value_datatype);
-                        assert(metadata->dims == ndarray.rank);
+                        if (!(metadata->type == ndarray.value_datatype))
+                            FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}", Ebar_buffer.get_buffer_name(),
+                                        kotekan::type_to_string(metadata->type), kotekan::type_to_string(ndarray.value_datatype));
+                        if (!(metadata->dims == int(ndarray.rank)))
+                            FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}", Ebar_buffer.get_buffer_name(),
+                                        metadata->dims, int(ndarray.rank));
                         for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                            assert(metadata->get_dimension_name(d) == dimname[d]);
+                            if (!(metadata->get_dimension_name(d) == dimname[d]))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: {:s}, expected: {:s}",
+                                            Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d), dimname[d]);
                             // The ring buffer direction is special
-                            if (d > 0)
-                                assert(metadata->dim[d] == int(ndarray.extent(d)));
-                            assert(metadata->stride[d] == ndarray.stride(d));
+                            if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, ndarray extent: {:d}",
+                                            Ebar_buffer.get_buffer_name(), d, metadata->dim[d], int(ndarray.extent(d)));
+                            if (!(metadata->stride[d] == ndarray.stride(d)))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray stride: {:d}",
+                                            Ebar_buffer.get_buffer_name(), d, metadata->stride[d], ndarray.stride(d));
                         }
                     } else {
                         {{{name}}}_buffer.check_metadata();
@@ -418,8 +427,14 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/kernel_arguments}}
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_M);
-        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_N);
+        // The kernel is compiled for a fixed dish grid. A larger telescope would place dishes
+        // outside that grid and silently beamform the wrong sky.
+        if (!(Telescope::instance().get_grid_size_x() <= std::uint64_t(cuda_dish_layout_M)
+              && Telescope::instance().get_grid_size_y() <= std::uint64_t(cuda_dish_layout_N)))
+            FATAL_ERROR("Telescope dish grid {:d}x{:d} does not fit the dish layout {:d}x{:d} "
+                        "for which kernel {{{kernel_name}}} was compiled",
+                        Telescope::instance().get_grid_size_x(), Telescope::instance().get_grid_size_y(),
+                        int(cuda_dish_layout_M), int(cuda_dish_layout_N));
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();
@@ -427,19 +442,31 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             I_buffer.set_metadata(Ebar_meta);
         auto I_meta = I_buffer.get_metadata();
 
-        assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+        // The span checks below are repeated before each launch; here they guard the metadata
+        // we are about to publish for all downstream consumers.
+        if (Fbar_out_max - Fbar_out_min != Fbar_in_max - Fbar_in_min)
+            FATAL_ERROR("Input and output frequency spans have different lengths for kernel "
+                        "{{{kernel_name}}}: input [{:d},{:d}), output [{:d},{:d})",
+                        Fbar_in_min, Fbar_in_max, Fbar_out_min, Fbar_out_max);
         const auto Ebar_nfreq = Ebar_meta->get_nfreq();
-        assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
         const auto I_all_nfreq = I_meta->dim[I_rank - 1 - I_index_Fbar];
         const auto I_nfreq = Fbar_out_max - Fbar_out_min;
-        assert(I_nfreq >= 0 && I_nfreq <= I_all_nfreq);
+        if (!(I_nfreq >= 0 && I_nfreq <= I_all_nfreq))
+            FATAL_ERROR("Kernel {{{kernel_name}}} would write {:d} frequencies, but its output "
+                        "buffer I holds {:d}",
+                        I_nfreq, I_all_nfreq);
         // We are not using all the non-upchannelized frequencies.
         // But we are (should be!) using all the upchannelized ones.
-        if (cuda_upchannelization_factor > 1)
-            assert(I_nfreq == Ebar_nfreq);
+        if (cuda_upchannelization_factor > 1 && I_nfreq != Ebar_nfreq)
+            FATAL_ERROR("Kernel {{{kernel_name}}} writes {:d} of the {:d} upchannelized input "
+                        "frequencies; it must consume all of them",
+                        I_nfreq, Ebar_nfreq);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
-        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_freq_upchan_factor.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `freq_upchan_factor` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_freq_upchan_factor.size());
         std::vector<int> I_freq_upchan_factor;
         if (I_has_metadata)
             I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
@@ -450,7 +477,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
-        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_freq_upchan_index.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `freq_upchan_index` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_freq_upchan_index.size());
         std::vector<int> I_freq_upchan_index;
         if (I_has_metadata)
             I_freq_upchan_index = I_meta->get_freq_upchan_index();
@@ -461,7 +491,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
-        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_coarse_freq.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `coarse_freq` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_coarse_freq.size());
         std::vector<int> I_coarse_freq;
         if (I_has_metadata)
             I_coarse_freq = I_meta->get_coarse_freq();
@@ -475,21 +508,31 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         const auto I_time_downsampling_fpga = Ebar_time_downsampling_fpga * cuda_downsampling_factor;
         if (!I_has_metadata)
             I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
-        else
-            assert(I_meta->get_time_downsampling_fpga() == I_time_downsampling_fpga);
+        else if (I_meta->get_time_downsampling_fpga() != I_time_downsampling_fpga)
+            FATAL_ERROR("Another producer of buffer I set time_downsampling_fpga={:d}, but kernel "
+                        "{{{kernel_name}}} produces {:d}",
+                        I_meta->get_time_downsampling_fpga(), I_time_downsampling_fpga);
 
         const auto W_meta = W_buffer.get_metadata();
         const auto W_nfreq = W_meta->get_nfreq();
-        assert(W_nfreq == I_nfreq);
+        // Mismatched weights would beamform each frequency with another frequency's gains.
+        if (W_nfreq != I_nfreq)
+            FATAL_ERROR("Weight buffer W holds {:d} frequencies, but kernel {{{kernel_name}}} "
+                        "processes {:d}",
+                        W_nfreq, I_nfreq);
         const auto W_coarse_freq = W_meta->get_coarse_freq();
         for (int freq = 0; freq < W_nfreq; ++freq)
-            assert(I_coarse_freq.at(Fbar_out_min + freq) == W_coarse_freq.at(freq));
+            if (I_coarse_freq.at(Fbar_out_min + freq) != W_coarse_freq.at(freq))
+                FATAL_ERROR("Weight buffer W is for coarse frequency {:d} at index {:d}, but "
+                            "kernel {{{kernel_name}}} processes coarse frequency {:d} there",
+                            W_coarse_freq.at(freq), freq, I_coarse_freq.at(Fbar_out_min + freq));
 
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
     } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
-    assert(I_buffer.has_metadata());
+    if (!I_buffer.has_metadata())
+        FATAL_ERROR("Output buffer I has no metadata; kernel {{{kernel_name}}} cannot run");
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}
@@ -532,17 +575,36 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     Ttilde_min_arg = mod(Ttilde_min, Ttilde_ringbuf);
     Ttilde_max_arg = mod(Ttilde_min, Ttilde_ringbuf) + Ttilde_length;
 
-    // Pass frequency spans to kernel
-    assert(0 <= Fbar_in_min && Fbar_in_min <= Fbar_in_max);
-    assert(0 <= Fbar_out_min && Fbar_out_min <= Fbar_out_max);
-    assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+    // Pass frequency spans to kernel.
+    // These spans become kernel arguments; out-of-range values would make the kernel
+    // read and write outside the frequency extent of its buffers.
+    if (!(0 <= Fbar_in_min && Fbar_in_min <= Fbar_in_max))
+        FATAL_ERROR("Invalid input frequency span for kernel {{{kernel_name}}}: "
+                    "Fbar_in_min={:d}, Fbar_in_max={:d} (require 0 <= Fbar_in_min <= Fbar_in_max)",
+                    Fbar_in_min, Fbar_in_max);
+    if (!(0 <= Fbar_out_min && Fbar_out_min <= Fbar_out_max))
+        FATAL_ERROR("Invalid output frequency span for kernel {{{kernel_name}}}: "
+                    "Fbar_out_min={:d}, Fbar_out_max={:d} "
+                    "(require 0 <= Fbar_out_min <= Fbar_out_max)",
+                    Fbar_out_min, Fbar_out_max);
+    if (Fbar_out_max - Fbar_out_min != Fbar_in_max - Fbar_in_min)
+        FATAL_ERROR("Input and output frequency spans have different lengths for kernel "
+                    "{{{kernel_name}}}: input [{:d},{:d}) holds {:d} frequencies, "
+                    "output [{:d},{:d}) holds {:d}",
+                    Fbar_in_min, Fbar_in_max, Fbar_in_max - Fbar_in_min, Fbar_out_min,
+                    Fbar_out_max, Fbar_out_max - Fbar_out_min);
     Fbar_in_min_arg = Fbar_in_min;
     Fbar_in_max_arg = Fbar_in_max;
     Fbar_out_min_arg = Fbar_out_min;
     Fbar_out_max_arg = Fbar_out_max;
     const int blocks = Fbar_out_max - Fbar_out_min;
-    assert(0 <= blocks);
-    assert(blocks <= max_blocks);
+    // `blocks` is both the CUDA grid size and the extent of the block dimension of the `info`
+    // buffer. Launching more than `max_blocks` blocks would make the kernel write its status
+    // words past the end of that device allocation.
+    if (!(0 <= blocks && blocks <= max_blocks))
+        FATAL_ERROR("Kernel {{{kernel_name}}} would launch {:d} blocks, but the `info` buffer "
+                    "holds only {:d} (Fbar_out_min={:d}, Fbar_out_max={:d})",
+                    blocks, int(max_blocks), Fbar_out_min, Fbar_out_max);
 
     // Initialize `S` and copy it to the GPU
     if (!did_init_host_S_buffer) {
@@ -583,7 +645,12 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         for (int d = cuda_number_of_dishes; d < cuda_dish_layout_M * cuda_dish_layout_N; ++d) {
             surplus_dishes.push_back(d);
         }
-        assert(array_dish_count + surplus_dishes.size() == cuda_dish_layout_M * cuda_dish_layout_N);
+        if (array_dish_count + surplus_dishes.size()
+            != std::size_t(cuda_dish_layout_M) * std::size_t(cuda_dish_layout_N))
+            FATAL_ERROR("Dish bookkeeping is inconsistent for kernel {{{kernel_name}}}: {:d} array "
+                        "dishes plus {:d} surplus dishes do not fill the {:d}x{:d} dish grid",
+                        array_dish_count, surplus_dishes.size(), int(cuda_dish_layout_M),
+                        int(cuda_dish_layout_N));
 
         // Finally we can build the host_S_buffer.  First initialize with -1 as a sentinel.
         for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
@@ -611,10 +678,16 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             }
         }
         // Confirm we used all surplus dishes.
-        assert(surplus_idx == surplus_dishes.size());
-        // Confirm the grid is filled.
+        if (surplus_idx != surplus_dishes.size())
+            FATAL_ERROR("Kernel {{{kernel_name}}} placed {:d} of {:d} surplus dishes on the dish grid",
+                        surplus_idx, surplus_dishes.size());
+        // Confirm the grid is filled. `S` is about to be copied to the GPU; a sentinel left here
+        // would make the kernel scatter dishes to undefined grid locations.
         for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
-            assert(host_S_buffer.at(s) >= 0);
+            if (host_S_buffer.at(s) < 0)
+                FATAL_ERROR("Kernel {{{kernel_name}}} left entry {:d} of the dish location map `S` "
+                            "unassigned (value {:d})",
+                            s, host_S_buffer.at(s));
 
         // Done! Copy to the GPU.
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes, cudaMemcpyHostToDevice,

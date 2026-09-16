@@ -11,6 +11,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 
 #include <algorithm>
 #include <array>
