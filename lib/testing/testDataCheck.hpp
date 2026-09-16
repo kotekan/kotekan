@@ -430,7 +430,7 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
     CHECK_META_SCALAR_INT(frame_counter, meta1, meta2, num_errors, first_buf->buffer_name,
                           first_buf_id, second_buf->buffer_name, second_buf_id);
     */
-    // char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
+    // char name[CHORD_META_MAX_NAME]; // "E", "J", "I", etc
     CHECK_META_SCALAR_STR(name, meta1, meta2, num_errors, first_buf->buffer_name, first_buf_id,
                           second_buf->buffer_name, second_buf_id);
     // kotekan::DataType type;

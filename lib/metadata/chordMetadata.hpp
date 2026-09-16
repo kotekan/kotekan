@@ -38,14 +38,18 @@ const int CHORD_META_MAX_DIM = 10;
 static_assert(CHORD_META_MAX_DIM == int(kotekan::GenericNDArray::max_rank),
               "CHORD_META_MAX_DIM must match GenericNDArray::max_rank");
 
-// Maximum length of array names and dimension names.
+// Maximum length of array names and of dimension names.
 //
 // These names are stored in fixed-size char arrays that are NOT NUL-terminated:
-// a name of exactly CHORD_META_MAX_DIMNAME characters fills its field
-// completely. The fields are NUL-padded, so shorter names do end in a NUL, but
-// no code may rely on that. Read them via get_name() and get_dimension_name(),
-// which bound the length with strnlen; never pass them to strlen, strcpy,
-// printf("%s") or fmt, all of which read until they find a NUL.
+// a name that uses the full length fills its field completely. The fields are
+// NUL-padded, so shorter names do end in a NUL, but no code may rely on that.
+// Read them via get_name() and get_dimension_name(), which bound the length with
+// strnlen; never pass them to strlen, strcpy, printf("%s") or fmt, all of which
+// read until they find a NUL.
+//
+// The two limits are independent, even though they currently have the same
+// value.
+const int CHORD_META_MAX_NAME = 24;
 const int CHORD_META_MAX_DIMNAME = 24;
 
 // Maximum number of stream IDs in metadata array
@@ -98,9 +102,9 @@ public:
 
     // TODO: Replace by NDArray
     /// The name of the array, e.g. "E", "J", "I". NUL-padded but not
-    /// NUL-terminated when the name uses all CHORD_META_MAX_DIMNAME characters;
+    /// NUL-terminated when the name uses all CHORD_META_MAX_NAME characters;
     /// use set_name() and get_name() instead of accessing the field directly.
-    char name[CHORD_META_MAX_DIMNAME];
+    char name[CHORD_META_MAX_NAME];
     kotekan::DataType type;
 
     int dims;
@@ -174,17 +178,17 @@ public:
     }
 
     bool has_name() const {
-        return (strnlen(this->name, CHORD_META_MAX_DIMNAME) > 0);
+        return (strnlen(this->name, CHORD_META_MAX_NAME) > 0);
     }
 
     /// Sets the name of the array, truncating it (with a warning) to
-    /// CHORD_META_MAX_DIMNAME characters.
+    /// CHORD_META_MAX_NAME characters.
     void set_name(const std::string& name) {
         set_string_field(this->name, name, "array name");
     }
 
     std::string get_name() const {
-        return std::string(name, strnlen(name, CHORD_META_MAX_DIMNAME));
+        return std::string(name, strnlen(name, CHORD_META_MAX_NAME));
     }
 
     // science metadata
@@ -532,12 +536,19 @@ public:
     }
 
 private:
-    /// Copies @p str into a fixed-size name field, padding it with NULs and
-    /// truncating (with a warning naming @p what) if it does not fit. A name that
-    /// fills the field leaves it without a terminating NUL; see
-    /// CHORD_META_MAX_DIMNAME.
-    void set_string_field(char (&field)[CHORD_META_MAX_DIMNAME], const std::string& str,
+    /// Copies @p str into a fixed-size name field of @p field_size characters,
+    /// padding it with NULs and truncating (with a warning naming @p what) if it
+    /// does not fit. A name that fills the field leaves it without a terminating
+    /// NUL; see CHORD_META_MAX_NAME and CHORD_META_MAX_DIMNAME.
+    void set_string_field(char* field, std::size_t field_size, const std::string& str,
                           const char* what);
+
+    /// Takes the field size from the field itself; the `name` and `dim_name`
+    /// fields have separate size limits.
+    template<std::size_t field_size>
+    void set_string_field(char (&field)[field_size], const std::string& str, const char* what) {
+        set_string_field(field, field_size, str, what);
+    }
 
     jsonMetadata::metadata metadata;
 

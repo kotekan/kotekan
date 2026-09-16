@@ -213,24 +213,26 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata_stream_ids_and_rfi_excision) {
 }
 
 BOOST_AUTO_TEST_CASE(test_chordMetadata_names_are_truncated) {
-    // Names are truncated to CHORD_META_MAX_DIMNAME characters. A name of exactly
-    // that length fills its field, which is then not NUL-terminated, so it must
-    // only ever be read back through get_name()/get_dimension_name().
-    const std::string long_name(CHORD_META_MAX_DIMNAME + 7, 'x');
-    const std::string full_name(CHORD_META_MAX_DIMNAME, 'y');
+    // Names are truncated to CHORD_META_MAX_NAME resp. CHORD_META_MAX_DIMNAME
+    // characters. A name of exactly that length fills its field, which is then not
+    // NUL-terminated, so it must only ever be read back through
+    // get_name()/get_dimension_name().
+    const std::string long_name(CHORD_META_MAX_NAME + 7, 'x');
+    const std::string full_name(CHORD_META_MAX_NAME, 'y');
+    const std::string full_dimname(CHORD_META_MAX_DIMNAME, 'z');
 
     chordMetadata meta;
     meta.set_name(long_name);
-    BOOST_TEST(meta.get_name() == std::string(CHORD_META_MAX_DIMNAME, 'x'));
+    BOOST_TEST(meta.get_name() == std::string(CHORD_META_MAX_NAME, 'x'));
 
     meta.set_name(full_name);
     BOOST_TEST(meta.get_name() == full_name);
     BOOST_TEST(meta.has_name());
 
     meta.dims = 1;
-    meta.set_array_dimension(0, 4, full_name, 1);
+    meta.set_array_dimension(0, 4, full_dimname, 1);
     meta.set_strides_simple();
-    BOOST_TEST(meta.get_dimension_name(0) == full_name);
+    BOOST_TEST(meta.get_dimension_name(0) == full_dimname);
 
     // A name that fills its field must survive both round trips intact
     check_round_trips(meta);
@@ -238,7 +240,7 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata_names_are_truncated) {
     // A shorter name is NUL-padded
     meta.set_name("E");
     BOOST_TEST(meta.get_name() == "E");
-    for (int i = 1; i < CHORD_META_MAX_DIMNAME; ++i)
+    for (int i = 1; i < CHORD_META_MAX_NAME; ++i)
         BOOST_TEST(meta.name[i] == '\0');
 
     // set_dimension_name() rejects out-of-range dimensions with FATAL_ERROR, which

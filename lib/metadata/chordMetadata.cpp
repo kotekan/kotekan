@@ -23,11 +23,11 @@ chordMetadata::chordMetadata() : type(kotekan::unknown_type), dims(-1), offset(0
     }
 }
 
-void chordMetadata::set_string_field(char (&field)[CHORD_META_MAX_DIMNAME], const std::string& str,
-                                     const char* const what) {
+void chordMetadata::set_string_field(char* const field, const std::size_t field_size,
+                                     const std::string& str, const char* const what) {
     // A name that fills the field is stored without a terminating NUL; the field
-    // is not a C string. See CHORD_META_MAX_DIMNAME.
-    const std::size_t max_length = sizeof(field);
+    // is not a C string. See CHORD_META_MAX_NAME and CHORD_META_MAX_DIMNAME.
+    const std::size_t max_length = field_size;
     const std::size_t length = std::min(str.size(), max_length);
     if (str.size() > max_length)
         WARN("Truncating {:s} \"{:s}\" to {:d} characters", what, str, max_length);
@@ -41,7 +41,7 @@ bool chordMetadata::operator==(const chordMetadata& other) const {
 
     std::scoped_lock<std::mutex, std::mutex> guard(this->lock, other.lock);
 
-    if (0 != strncmp(name, other.name, CHORD_META_MAX_DIMNAME))
+    if (0 != strncmp(name, other.name, CHORD_META_MAX_NAME))
         return false;
 
     if (type != other.type)
@@ -174,6 +174,7 @@ void chordMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
 
 struct chordMetadataFormat {
     int32_t max_dim;
+    int32_t max_name;
     int32_t max_dimname;
     int32_t max_freq;
     int32_t max_stream_ids;
@@ -186,7 +187,7 @@ struct chordMetadataFormat {
     // downsampled relative to FPGA samples.
     int32_t time_downsampling_fpga;
 
-    char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
+    char name[CHORD_META_MAX_NAME]; // "E", "J", "I", etc
     // chordDataType type;
     int32_t type;
 
@@ -203,7 +204,7 @@ struct chordMetadataFormat {
     // unambiguous exactly because a set array is never empty.
     int32_t nfreq;
 
-    // frequencies -- integer (0-CHORD_META_MAX_FREQ) identifier for FPGA coarse frequencies;
+    // frequencies -- integer (0-CHORD_META_MAX_FREQ-1) identifier for FPGA coarse frequencies;
     // unset when coarse_freq[0] == -1, an invalid frequency index
     int32_t coarse_freq[CHORD_META_MAX_FREQ];
 
@@ -265,17 +266,19 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
 
     // These describe the layout of the byte array, so they must be checked
     // before anything else is read from it.
-    if (fmt_data->max_dim != CHORD_META_MAX_DIM || fmt_data->max_dimname != CHORD_META_MAX_DIMNAME
+    if (fmt_data->max_dim != CHORD_META_MAX_DIM || fmt_data->max_name != CHORD_META_MAX_NAME
+        || fmt_data->max_dimname != CHORD_META_MAX_DIMNAME
         || fmt_data->max_freq != CHORD_META_MAX_FREQ
         || fmt_data->max_stream_ids != CHORD_META_MAX_STREAM_IDS
         || fmt_data->max_rfi_thresholds != MAX_NUM_RFI_THRESHOLDS)
         throw std::runtime_error(fmt::format(
             "Cannot deserialize chordMetadata: the sender uses incompatible limits "
-            "(max_dim={:d}, max_dimname={:d}, max_freq={:d}, max_stream_ids={:d}, "
-            "max_rfi_thresholds={:d}; expected {:d}, {:d}, {:d}, {:d}, {:d})",
-            fmt_data->max_dim, fmt_data->max_dimname, fmt_data->max_freq, fmt_data->max_stream_ids,
-            fmt_data->max_rfi_thresholds, CHORD_META_MAX_DIM, CHORD_META_MAX_DIMNAME,
-            CHORD_META_MAX_FREQ, CHORD_META_MAX_STREAM_IDS, MAX_NUM_RFI_THRESHOLDS));
+            "(max_dim={:d}, max_name={:d}, max_dimname={:d}, max_freq={:d}, max_stream_ids={:d}, "
+            "max_rfi_thresholds={:d}; expected {:d}, {:d}, {:d}, {:d}, {:d}, {:d})",
+            fmt_data->max_dim, fmt_data->max_name, fmt_data->max_dimname, fmt_data->max_freq,
+            fmt_data->max_stream_ids, fmt_data->max_rfi_thresholds, CHORD_META_MAX_DIM,
+            CHORD_META_MAX_NAME, CHORD_META_MAX_DIMNAME, CHORD_META_MAX_FREQ,
+            CHORD_META_MAX_STREAM_IDS, MAX_NUM_RFI_THRESHOLDS));
 
     if (fmt_data->dims < -1 || fmt_data->dims > CHORD_META_MAX_DIM)
         throw std::runtime_error(
@@ -369,6 +372,7 @@ size_t chordMetadata::serialize(char* bytes) {
     memset(fmt_data, 0, sizeof(chordMetadataFormat));
 
     fmt_data->max_dim = CHORD_META_MAX_DIM;
+    fmt_data->max_name = CHORD_META_MAX_NAME;
     fmt_data->max_dimname = CHORD_META_MAX_DIMNAME;
     fmt_data->max_freq = CHORD_META_MAX_FREQ;
     fmt_data->max_stream_ids = CHORD_META_MAX_STREAM_IDS;
@@ -517,6 +521,7 @@ namespace {
 // is a json metadata entry; from_json copies those verbatim so that newly added
 // entries do not have to be listed anywhere.
 constexpr const char* KEY_MAX_DIM = "max_dim";
+constexpr const char* KEY_MAX_NAME = "max_name";
 constexpr const char* KEY_MAX_DIMNAME = "max_dimname";
 constexpr const char* KEY_MAX_FREQ = "max_freq";
 constexpr const char* KEY_NAME = "name";
@@ -528,9 +533,9 @@ constexpr const char* KEY_DIM_SCALING = "dim_scaling";
 constexpr const char* KEY_STRIDE = "stride";
 constexpr const char* KEY_OFFSET = "offset";
 
-const std::array<const char*, 11> structural_keys = {
-    KEY_MAX_DIM, KEY_MAX_DIMNAME, KEY_MAX_FREQ,    KEY_NAME,   KEY_TYPE,  KEY_DIMS,
-    KEY_DIM,     KEY_DIM_NAME,    KEY_DIM_SCALING, KEY_STRIDE, KEY_OFFSET};
+const std::array<const char*, 12> structural_keys = {
+    KEY_MAX_DIM, KEY_MAX_NAME, KEY_MAX_DIMNAME, KEY_MAX_FREQ,    KEY_NAME,   KEY_TYPE,
+    KEY_DIMS,    KEY_DIM,      KEY_DIM_NAME,    KEY_DIM_SCALING, KEY_STRIDE, KEY_OFFSET};
 
 bool is_structural_key(const std::string& key) {
     return std::find_if(structural_keys.begin(), structural_keys.end(),
@@ -556,6 +561,7 @@ void to_json(nlohmann::json& j, const chordMetadata& m) {
     j = m.metadata;
 
     j.emplace(KEY_MAX_DIM, CHORD_META_MAX_DIM);
+    j.emplace(KEY_MAX_NAME, CHORD_META_MAX_NAME);
     j.emplace(KEY_MAX_DIMNAME, CHORD_META_MAX_DIMNAME);
     j.emplace(KEY_MAX_FREQ, CHORD_META_MAX_FREQ);
 
@@ -586,7 +592,8 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
     if (!m.metadata.empty())
         throw std::runtime_error("Cannot deserialize chordMetadata: the target is not empty");
 
-    if (j.at(KEY_MAX_DIM) != CHORD_META_MAX_DIM || j.at(KEY_MAX_DIMNAME) != CHORD_META_MAX_DIMNAME
+    if (j.at(KEY_MAX_DIM) != CHORD_META_MAX_DIM || j.at(KEY_MAX_NAME) != CHORD_META_MAX_NAME
+        || j.at(KEY_MAX_DIMNAME) != CHORD_META_MAX_DIMNAME
         || j.at(KEY_MAX_FREQ) != CHORD_META_MAX_FREQ)
         throw std::runtime_error(
             "Cannot deserialize chordMetadata: the json was written with incompatible limits");
