@@ -61,7 +61,7 @@ class cudaCalcFRB2Weights : public kotekan::Stage {
         config.get_default<std::int64_t>(unique_name, "gpu_max_chunk_bytes", std::int64_t(2) << 30);
 
     const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
-        sizeof(float) * 2 * frb2_num_beams;
+        sizeof(float) * 2 * frb2_num_beams * 16;
     const std::ptrdiff_t W2_frame_size [[maybe_unused]] = sizeof(float16_t) * frb1_num_beams_P
                                                           * frb1_num_beams_Q * frb2_num_beams
                                                           * frb2_num_frequencies;
@@ -89,8 +89,8 @@ public:
         W2_buffer->register_producer(unique_name);
         metadata_buffer->register_consumer(unique_name);
 
-        frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
+        frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 3>::describe(
+            "frb2_beam_positions", {16, frb2_num_beams, 2}, {"F", "R", "X/Y"}, {1, 1, 1}));
         W2_buffer->require_frame_desc(kotekan::NDArray<float16_t, 4>::describe(
             "W2", {frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
             {"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1}));

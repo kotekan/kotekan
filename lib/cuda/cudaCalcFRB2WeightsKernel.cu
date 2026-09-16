@@ -58,8 +58,8 @@ __global__ void cuda_calc_frb2_weights_kernel(
     const float wavelength = c0 / frequencies[freq];
 
     // Unit vector pointing to sky location in the GRID frame
-    const float nx = beam_positions[2 * beamR + 0];
-    const float ny = beam_positions[2 * beamR + 1];
+    const float nx = beam_positions[freq/16 * 2 * num_beams_R + 2 * beamR + 0];
+    const float ny = beam_positions[freq/16 * 2 * num_beams_R + 2 * beamR + 1];
     const float nz = sqrtf(1 - (nx * nx + ny * ny));
 
     // Kendrick's FRB beamforming notes, equation 7:
