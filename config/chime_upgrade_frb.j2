@@ -1449,6 +1449,7 @@ FRB:
         upchan_factor: factor_upchan_out
         upchan_max_num_channels: upchan_U16_max_num_channels
 {%-if using_dpdk %}
+#{#
         # these coefficients are taken from commit
         # 00a332717 "correction upchan bandpass (#395)
 {% set upchan_gain = [
@@ -1458,7 +1459,9 @@ FRB:
           0.81113021, 0.6999944, 0.59367968, 0.52614263,
         ] %}
         # with order reveresd here due to inverted counting of sub-frequencies
-        upchan_gain: [ {%- for i in range(16) %} 1./upchan_gain[15-i], {% endfor-%} ]
+        upchan_gain: [ {%- for i in range(16) %} {{ 1.0/upchan_gain[15-i] }}, {% endfor-%} ]
+#}#
+        upchan_gain:  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 {%-else %}
         # F-Engine simulator data (could use theoretica values)
         upchan_gain:  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
