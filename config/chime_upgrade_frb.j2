@@ -470,10 +470,10 @@ baseband:
   num_frames_buffer: baseband_buffer_depth - 10
   num_local_freq: 1
 {%- for id in range(num_freq_gpu_buf) %}
-  baseband{{ id }}:
-    kotekan_stage: basebandReadout
-    in_buf: host_voltage_buffer_{{ id }}
-    out_buf: baseband_output_buffer_{{ id }}
+#  baseband{{ id }}:
+#    kotekan_stage: basebandReadout
+#    in_buf: host_voltage_buffer_{{ id }}
+#    out_buf: baseband_output_buffer_{{ id }}
 {%- endfor %}
 
 baseband_merge:
