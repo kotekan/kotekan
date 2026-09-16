@@ -13,6 +13,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 #include "div.hpp"
 
 #include <algorithm>
@@ -290,6 +291,9 @@ private:
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
+
     // To avoid trailing comma below
     int dummy;
 };
@@ -321,14 +325,11 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
                 reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
-    dummy() // avoid trailing comma
+    did_set_metadata(false), dummy() // avoid trailing comma
 {
     // Register host memory
-    {
-        const cudaError_t ierr = cudaHostRegister(
-            host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0);
-        assert(ierr == cudaSuccess);
-    }
+    CHECK_CUDA_ERROR(cudaHostRegister(
+        host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0));
 
     Ein_buffer.register_consumer();
     E_buffer.register_producer();
@@ -338,16 +339,17 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Build the PTX only once
-    static std::once_flag build_ptx_flag;
-    std::call_once(build_ptx_flag, [&]() {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("Transpose2048_chime_" + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_89",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/Transpose2048_chime.ptx", {kernel_symbol}, opts,
                          "Transpose2048_chime_");
-    });
+    }
 }
 
 cudaTranspose2048_chime::~cudaTranspose2048_chime() {}
@@ -394,67 +396,96 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
     void* const scatter_indices_memory = scatter_indices_buffer.get_ndarray().data();
     void* const info_memory = info_buffer.get_ndarray().data();
 
-    if (args::Ein == args::Ein) {
-        // Replace "Ein" with "E" etc.
-        // Ein_buffer.check_metadata();
-        const std::shared_ptr<const chordMetadata>& metadata = Ein_buffer.get_metadata();
-        const auto& ndarray = Ein_buffer.get_ndarray();
-        if (!(metadata->get_name() == ndarray.quantity_name()))
-            FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                        Ein_buffer.get_buffer_name(), ndarray.quantity_name(),
-                        metadata->get_name());
-        assert(metadata->type == ndarray.value_datatype);
-        assert(metadata->dims == ndarray.rank);
-        for (std::size_t d = 0; d < ndarray.rank; ++d) {
-            if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
-                FATAL_ERROR(
-                    "buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
-                    Ein_buffer.get_buffer_name(), d, ndarray.dimname(d),
-                    metadata->get_dimension_name(d));
-            // The ring buffer direction is special
-            if (d > 0)
-                assert(metadata->dim[d] == int(ndarray.extent(d)));
-            assert(metadata->dim_scaling[d] == ndarray.dimscaling(d));
-            if (!(metadata->stride[d] == ndarray.stride(d)))
-                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray "
-                            "stride: {:d}",
-                            Ein_buffer.get_buffer_name(), d, metadata->stride[d],
-                            ndarray.stride(d));
+    // Since we use a ring buffer we need to set the metadata only once
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+
+        if (args::Ein == args::Ein) {
+            // Replace "Ein" with "E" etc.
+            // Ein_buffer.check_metadata();
+            const std::shared_ptr<const chordMetadata>& metadata = Ein_buffer.get_metadata();
+            const auto& ndarray = Ein_buffer.get_ndarray();
+            if (!(metadata->get_name() == ndarray.quantity_name()))
+                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                            Ein_buffer.get_buffer_name(), ndarray.quantity_name(),
+                            metadata->get_name());
+            if (!(metadata->type == ndarray.value_datatype))
+                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
+                            Ein_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
+                            kotekan::type_to_string(ndarray.value_datatype));
+            if (!(metadata->dims == int(ndarray.rank)))
+                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
+                            Ein_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
+            for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: dimension name: {:s}, "
+                                "metadata name: {:s}",
+                                Ein_buffer.get_buffer_name(), d, ndarray.dimname(d),
+                                metadata->get_dimension_name(d));
+                // The ring buffer direction is special
+                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
+                                "ndarray extent: {:d}",
+                                Ein_buffer.get_buffer_name(), d, metadata->dim[d],
+                                int(ndarray.extent(d)));
+                if (!(metadata->dim_scaling[d] == ndarray.dimscaling(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dim_scaling: {:d}, "
+                                "ndarray dimscaling: {:d}",
+                                Ein_buffer.get_buffer_name(), d, metadata->dim_scaling[d],
+                                ndarray.dimscaling(d));
+                if (!(metadata->stride[d] == ndarray.stride(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
+                                "ndarray stride: {:d}",
+                                Ein_buffer.get_buffer_name(), d, metadata->stride[d],
+                                ndarray.stride(d));
+            }
+        } else {
+            Ein_buffer.check_metadata();
         }
-    } else {
-        Ein_buffer.check_metadata();
-    }
-    E_buffer.set_metadata(Ein_buffer.get_metadata());
-    if (args::scatter_indices == args::Ein) {
-        // Replace "Ein" with "E" etc.
-        // scatter_indices_buffer.check_metadata();
-        const std::shared_ptr<const chordMetadata>& metadata = Ein_buffer.get_metadata();
-        const auto& ndarray = Ein_buffer.get_ndarray();
-        if (!(metadata->get_name() == ndarray.quantity_name()))
-            FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                        Ein_buffer.get_buffer_name(), ndarray.quantity_name(),
-                        metadata->get_name());
-        assert(metadata->type == ndarray.value_datatype);
-        assert(metadata->dims == ndarray.rank);
-        for (std::size_t d = 0; d < ndarray.rank; ++d) {
-            if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
-                FATAL_ERROR(
-                    "buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
-                    Ein_buffer.get_buffer_name(), d, ndarray.dimname(d),
-                    metadata->get_dimension_name(d));
-            // The ring buffer direction is special
-            if (d > 0)
-                assert(metadata->dim[d] == int(ndarray.extent(d)));
-            assert(metadata->dim_scaling[d] == ndarray.dimscaling(d));
-            if (!(metadata->stride[d] == ndarray.stride(d)))
-                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray "
-                            "stride: {:d}",
-                            Ein_buffer.get_buffer_name(), d, metadata->stride[d],
-                            ndarray.stride(d));
+        E_buffer.set_metadata(Ein_buffer.get_metadata());
+        if (args::scatter_indices == args::Ein) {
+            // Replace "Ein" with "E" etc.
+            // scatter_indices_buffer.check_metadata();
+            const std::shared_ptr<const chordMetadata>& metadata = Ein_buffer.get_metadata();
+            const auto& ndarray = Ein_buffer.get_ndarray();
+            if (!(metadata->get_name() == ndarray.quantity_name()))
+                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                            Ein_buffer.get_buffer_name(), ndarray.quantity_name(),
+                            metadata->get_name());
+            if (!(metadata->type == ndarray.value_datatype))
+                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
+                            Ein_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
+                            kotekan::type_to_string(ndarray.value_datatype));
+            if (!(metadata->dims == int(ndarray.rank)))
+                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
+                            Ein_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
+            for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: dimension name: {:s}, "
+                                "metadata name: {:s}",
+                                Ein_buffer.get_buffer_name(), d, ndarray.dimname(d),
+                                metadata->get_dimension_name(d));
+                // The ring buffer direction is special
+                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
+                                "ndarray extent: {:d}",
+                                Ein_buffer.get_buffer_name(), d, metadata->dim[d],
+                                int(ndarray.extent(d)));
+                if (!(metadata->dim_scaling[d] == ndarray.dimscaling(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dim_scaling: {:d}, "
+                                "ndarray dimscaling: {:d}",
+                                Ein_buffer.get_buffer_name(), d, metadata->dim_scaling[d],
+                                ndarray.dimscaling(d));
+                if (!(metadata->stride[d] == ndarray.stride(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
+                                "ndarray stride: {:d}",
+                                Ein_buffer.get_buffer_name(), d, metadata->stride[d],
+                                ndarray.stride(d));
+            }
+        } else {
+            scatter_indices_buffer.check_metadata();
         }
-    } else {
-        scatter_indices_buffer.check_metadata();
-    }
+    } // if !did_set_metadata
 
     const char* exc_arg = "exception";
     std::int32_t Tin_min_arg;
