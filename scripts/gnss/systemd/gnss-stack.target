@@ -4,7 +4,7 @@ Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
 # Ordering within the target comes from the units' own After=; this only groups them so the
 # whole stack starts on boot and stops together. The prize is that a reboot -- the VM will take
 # unattended-upgrades reboots the way cf06 does at 03:03 -- needs no operator.
-Wants=gnss-gather.service gnss-broker.service
+Wants=gnss-gather.service gnss-broker.service gnss-viewer.service
 # gnss-aggregator.service is deliberately NOT listed: it is step 4 of the migration, after a
 # peak-under-load sample, and it costs the spare GPU we bench on. Add it here when it moves.
 Wants=gnss-obs@gps_l5.service gnss-obs@gps_l2c.service

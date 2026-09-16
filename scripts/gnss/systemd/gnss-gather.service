@@ -13,9 +13,10 @@ StartLimitBurst=3
 [Service]
 Type=simple
 User=kvand
-# ⚠️ NOT build_nodpdk: that tree is ARCH=native for cf06 and SIGILLs here, and the live cf06
-# gather and aggregator run out of it. Build -DARCH=x86-64-v2 -DUSE_CUDA=OFF into its own tree.
-ExecStart=/home/kvand/gnss/build_portable/kotekan/kotekan \
+# build_nodpdk is ARCH=native for cf06, and this VM is a guest on cf02 -- the same Xeon Gold
+# 5416S -- so it runs here as-is (verified: --help exits 0, no missing libraries). ⚠️ That is
+# true of THIS host and not of a host in general; a -DARCH=x86-64-v2 tree is the insurance.
+ExecStart=/home/kvand/gnss/kotekan/build_nodpdk/kotekan/kotekan \
     --config /home/kvand/gnss/kotekan/config/generated/chord_gnss_gather.yaml \
     --bind-address 0.0.0.0:12051
 # It runs at ~201 open fds and has hit EMFILE twice: a 301 GB log filled the table once, and

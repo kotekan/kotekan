@@ -1,0 +1,28 @@
+[Unit]
+Description=CHORD GNSS live fleet viewer (HTTP 8080, WebSocket 8539)
+Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+RequiresMountsFor=/home/kvand
+After=gnss-broker.service
+PartOf=gnss-stack.target
+
+[Service]
+Type=simple
+User=kvand
+# It resolves its static assets relative to the cwd, so this is load-bearing, not tidiness.
+WorkingDirectory=/home/kvand/gnss/kotekan/python/scripts/js_viewer
+# ⚠️ THE VIEWER ONCE CALLED A DEAD BAND "LOCKED" because it gated on sig, which reads 46M on
+# noise. It gates on q now. Reproduce the live argument list exactly rather than tidying it:
+# --no-power-stream and --unified are what the running instance uses.
+ExecStart=/home/kvand/gnss/venv/bin/python -u livebeam_server.py \
+    --no-power-stream --http-port 8080 --ws-port 8539 --kotekan-rest-port 12060 \
+    --lat 49.32001414 --lon -119.62262691 --alt 545 --band l5 --unified \
+    --pvt-obs-globs /home/kvand/gnss/fixtures/obs/[gb]*_2026*.jsonl
+Restart=on-failure
+RestartSec=10
+MemoryAccounting=yes
+MemoryMax=1G
+StandardOutput=append:/var/log/gnss/viewer.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target

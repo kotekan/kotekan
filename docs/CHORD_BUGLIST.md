@@ -446,6 +446,22 @@ mutate), which has not been done for these two.
 
 ## Open — measured, real, and nobody's lever
 
+### #132 — the gather's cpu_affinity names cores that do not exist on the gnss VM
+**[live 09-16]** The stack moved to `gnss` (6 vCPU) and `chord_gnss_gather.yaml` still pins to
+cores **19, 24 and 59**, which is cf06's 64-core map. Every start now logs six
+`Failed to set thread affinity/name ... error code 22` (EINVAL) lines. Not a fault today —
+kotekan falls back to unpinned threads, and on a 6-core box shared with the broker that is
+arguably better than confining the gather to a 3-core subset chosen for a 64-core NUMA machine.
+It matters for two other reasons: the config now asserts something false about its host, and six
+ERROR lines at every start is exactly the noise that hides a real error later (cf. #98, where a
+log-only monitor ate the hold chain for five weeks).
+
+Not fixable by hand — the file is generated and says DO NOT HAND-EDIT — and
+`gen_chord_gnss_config.py` exposes no core/affinity flag; the table is baked into the generator
+(`core(gpu + k)`, around line 389). So the fix is a generator option for the host's core count,
+or a documented "no affinity" mode for single-socket hosts. Confirmed new rather than inherited:
+the archived cf06 gather log contains startup and has zero such lines.
+
 ### #123 — cf06's single 1 GbE is the fleet's binding constraint
 **[live]** 713 Mbit/s ingress, of which telemetry is 363 after the v6 shrink. It has already
 produced two named faults — 22% late frames (since paced down to 0.2–0.5%) and SYN-ACK loss that

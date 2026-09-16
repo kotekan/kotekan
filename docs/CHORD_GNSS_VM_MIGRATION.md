@@ -204,25 +204,50 @@ already paid for:
 - **A `gnss-stack.target`** so the whole thing comes up in order after a reboot — which is the
   real prize here. Today nothing is a systemd unit and every bring-up is by hand.
 
-## 8. Order of work
+## 8. Order of work — steps 1 and 2 are DONE (2026-09-16)
 
-Nothing needs requesting; this is all sequencing now.
+Done, during the F-engine site-work window:
 
-1. **Install the units** and start broker + gather + obs writers on the VM **with the fleet
-   still pointing at cf06**. Both stacks run; the VM's sees no fleet traffic yet. Confirms the
-   units, the mounts, the venv and the log paths with zero blast radius.
-2. **Cut over the infrastructure**: repoint the nodes' telemetry at `gnss:11060`, stop the cf06
-   broker and gather. Expect the usual re-arm transient — trims are wiped by the gather change.
-   Watch `late_frames` and `forced_closes` in `/fleet_trim/get_stats`; the 10G uplink should make
-   them *better* than cf06's, not worse.
-3. **Take the peak-under-load sample** once the F-engine is back (§9), over an hour rather than
-   30 s, and compare against the 3.05-core budget. This is the number §4 is missing.
-4. **Then, and only then, move the aggregator** — it is the step that takes the box to 70% and
-   the one that costs the spare bench GPU. Rebuild is not needed (same silicon), but it needs
-   CUDA, so it cannot use a `-DUSE_CUDA=OFF` tree.
-5. **Reboot the VM deliberately** and confirm the whole stack comes back with no operator. That
-   is the actual prize: today nothing is a systemd unit and every bring-up is by hand.
-6. Optionally move the cube archiver, and build the portable tree (§5) as insurance.
+1. ✅ **Repointed the telemetry leg.** `telem-host` 10.222.3.6 → 10.222.0.56 in the fleet
+   manifest; `search-host` and `cube-host` deliberately unchanged, so the aggregator and the
+   archiver stay on cf06. The broker's aggregator endpoint stopped being able to be localhost
+   and is now `http://cf06:12050/gps_search`. `gen_fleet --check` green before and after; the
+   regen also picked up a fresh EOP table (51 h of headroom, against a 12 h gate).
+2. ✅ **Archived cf06's live logs** to `/home/kvand/gnss/logs/` — 331 MB of broker log to 91 MB,
+   11 files. `/tmp` is cleared on boot, so this is not optional.
+3. ✅ **Stopped broker, gather, viewer and the 8 obs writers on cf06**, consumers first, by PID.
+   All went on `SIGTERM`; none needed `-9`. The supervisor was killed before the broker it
+   supervises, or it would have respawned it. The aggregator, the cube archiver, the static
+   viewer and the compactor were left running and verified still alive.
+4. ✅ **Started them on `gnss` as systemd USER units** — 11 units plus the target, all active,
+   ports listening, `broker → gather` on loopback and `broker → cf06:12050` both established,
+   verified on two polls 20 s apart. A full `restart gnss-stack.target` was exercised and brings
+   everything back, which is the behaviour the whole migration was for.
+
+Still to do:
+
+5. ⚠️ **KV restarts the six nodes** — they read `telem-host` once at startup, so until they
+   cycle they are still pushing at a cf06 gather that is gone. `node_up.sh <node> restart`.
+   Nothing is lost meanwhile: the F-engine is down.
+6. **Take the peak-under-load sample** once the F-engine is back (§9), over an hour rather than
+   30 s, against the 3.05-core budget.
+7. **Then move the aggregator** — the step that takes the box to 70% and costs the spare bench
+   GPU. `gnss-aggregator.service` exists and is deliberately not in `gnss-stack.target`.
+8. Optionally move the cube archiver, and build the portable tree (§5) as insurance.
+
+### Why user units, and what changes when sudo arrives
+
+There is no passwordless sudo on the VM yet, so system units, `/var/log/gnss` and logrotate were
+not available. `loginctl enable-linger` **did** work without root, and that is the part that
+matters: user units with linger start at boot and survive logout, so the operational behaviour is
+the same. Logs go to `/var/tmp/gnss-logs` (local disk — **not** the NFS home, where 259 MB/h of
+appends would meet the fact that `O_APPEND` is not atomic there, and not `/tmp`, which is cleared
+on boot).
+
+`scripts/gnss/systemd/install_user_units.sh` derives the user variants from the canonical units
+rather than keeping a second copy — three `sed` edits, listed in its header. Converting to system
+units later is: install the originals into `/etc/systemd/system`, create `/var/log/gnss`, drop in
+`gnss.logrotate`. Nothing else changes.
 
 ## 9. Re-measuring
 

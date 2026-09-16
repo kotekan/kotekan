@@ -14,7 +14,7 @@ set -eu
 K=/home/kvand/gnss/kotekan
 PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}
 BROKER=${GNSS_BROKER_URL:-http://127.0.0.1:12060}
-FRAME0_URL=${GNSS_FRAME0_URL:-http://chive:54321/get-frame0-time}
+FRAME0_URL=${GNSS_FRAME0_URL:-http://cx43:12048}
 OUT=${GNSS_OBS_OUT:-/home/kvand/gnss/fixtures/obs}
 UP=$K/scripts/gnss/obs_up.sh
 
