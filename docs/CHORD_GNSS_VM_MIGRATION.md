@@ -73,8 +73,24 @@ Same interpreter off the same NFS venv, best of three:
 | float64 matmul, **1 thread** | 0.0052 s | **0.0028 s** |
 
 ⚠️ **The multi-threaded matmul row is not a per-core comparison and should not be read as one.**
-cf06 spreads it over 64 cores and the VM over 6. Pinned to one thread the VM is *faster*, because
-cf06 is running the live stack. Same silicon: assume per-core parity and size on core count.
+cf06 spreads it over 64 cores and the VM over 6.
+
+The single-thread row is the interesting one: **the VM did the same work 1.9× faster on
+nominally identical silicon**, which should not happen. It is the clock. cf06 runs the
+`powersave` governor under `intel_pstate` and was sampled at **819–1767 MHz**; the guest has no
+`cpufreq` driver and reports a flat nominal 2000 MHz, which is a KVM fiction — but the work it
+actually completed is not.
+
+Two consequences, and the second is the useful one:
+
+- Do not quote "per-core parity" as a measured fact. What is measured is that the VM's effective
+  per-core throughput is **at least** cf06's.
+- **Every core figure in this document was therefore measured on a down-clocked host, so the
+  budget is conservative.** 4.23 cores on cf06 is an upper bound on what the VM will need, not
+  an estimate to add margin to.
+
+⚡ Worth someone's attention independently of this migration: cf06 serves the GPU aggregator
+while sitting on `powersave` at well under half its rated clock.
 
 ## 3. Measured load, and why today's numbers are the floor not the basis
 
