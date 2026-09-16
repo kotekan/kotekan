@@ -76,7 +76,7 @@ class cudaCalcFRB2Weights : public cudaCommand {
         config.get_default<int>(unique_name, "frb2_weights_ring_depth", 2);
 
     const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
-        sizeof(float) * 2 * frb2_num_beams;
+        sizeof(float) * 2 * frb2_num_beams * 16;
     const std::ptrdiff_t W2_frame_size [[maybe_unused]] = sizeof(float16_t) * frb1_num_beams_P
                                                           * frb1_num_beams_Q * frb2_num_beams
                                                           * frb2_num_frequencies;
@@ -86,11 +86,11 @@ class cudaCalcFRB2Weights : public cudaCommand {
         config.get<std::string>(unique_name, "frb2_beam_positions_name");
     const std::string frb2_weights_name = config.get<std::string>(unique_name, "frb2_weights_name");
 
-    NDArrayBuffer<float, 2> frb2_beam_positions_buffer{frb2_beam_positions_name,
+    NDArrayBuffer<float, 3> frb2_beam_positions_buffer{frb2_beam_positions_name,
                                                        "frb2_beam_positions",
-                                                       {frb2_num_beams, 2},
-                                                       std::array<std::string, 2>{"R", "X/Y"},
-                                                       {1, 1},
+                                                       {16, frb2_num_beams, 2},
+                                                       std::array<std::string, 3>{"F", "R", "X/Y"},
+                                                       {1, 1, 1},
                                                        *this};
     NDArrayRingBuffer<float16_t, 5> W2_buffer{
         frb2_weights_name,
