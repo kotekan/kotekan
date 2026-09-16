@@ -62,12 +62,20 @@ fi
 # can be named separately from the broker it babysits.
 pkill -f "[g]nss-broker-supervisor" 2>/dev/null || true
 
+# ⚠️ THE SUPERVISOR'S OWN ARGV CONTAINS "broker_multi.py". `pgrep -f "[b]roker_multi.py"`
+# therefore matches the BABYSITTER as well as the broker, and would report "broker up" with
+# the broker dead and the loop merely sleeping -- the same false-positive health check this
+# file's header warns about, reintroduced by the fix for it. Name the python process only.
+broker_running() {
+    pgrep -af "[b]roker_multi.py" 2>/dev/null | grep -v "gnss-broker-supervisor" | grep -q .
+}
+
 # Both names, because a tree mid-transition can have either running: broker_multi is the
 # driver, gps_distributed_broker the single-chain process it replaced.
 pkill -f "[b]roker_multi.py" 2>/dev/null || true
 pkill -f "[g]ps_distributed_broker" 2>/dev/null || true
 sleep 3
-if pgrep -f "[b]roker_multi.py|[g]ps_distributed_broker" > /dev/null; then
+if broker_running || pgrep -f "[g]ps_distributed_broker" > /dev/null; then
     pkill -9 -f "[b]roker_multi.py" 2>/dev/null || true
     pkill -9 -f "[g]ps_distributed_broker" 2>/dev/null || true
     sleep 2
@@ -138,7 +146,7 @@ nohup setsid bash -c '
 disown
 sleep 10
 
-if pgrep -f "[b]roker_multi.py" > /dev/null; then
+if broker_running; then
     echo "broker up (log $LOG) chains: $CHAINS ${*:+args: $*}"
     grep -a "starting .* chain" "$LOG" | tail -1
 else
