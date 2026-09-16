@@ -152,6 +152,31 @@ satellite's at once and the DLL re-establishes all of them from zero.
 
 ## Closed with a full write-up — the three worth reading before touching these areas
 
+### #132 — the gather's cpu_affinity named cores that do not exist on the gnss VM ✅ FIXED 09-16
+The stack moved to a 6-vCPU host and `chord_gnss_gather.yaml` still pinned to cores 19, 24, 31,
+57, 58 and 59 — cf06's 64-core map — so every start logged six
+`Failed to set thread affinity/name ... error code 22` (EINVAL) and fell back to unpinned.
+
+Two things made this more than cosmetic. kotekan's `Stage` reads `cpu_affinity` through a
+**required** `get` (`lib/core/Stage.cpp:29`), so the key cannot simply be dropped — a wrong core
+is an error per stage, not a no-op. And six ERROR lines at every start is the noise that hides a
+real one later, which is exactly how #98 ate the hold chain for five weeks.
+
+Fixed with a `--gather-cores` flag on `gen_chord_gnss_config.py` rather than a hand-edit: the
+file says DO NOT HAND-EDIT and the generator had no core option at all. The list is consumed
+exactly as the built-in one is (first four for the buffer, then `[4]` and `[5]` modulo its
+length), so a single-socket host lists all its cpus. Regenerated with `0,1,2,3,4,5`; verified the
+pins now take — `/telem_recv` on 0-3, `/telem_gather` on 4, `/fleet_trim` on 5 — with zero errors.
+
+⚠️ The same latent problem sits in `build_aggregator_instance` and `build_cube_archive_instance`,
+which take their cores from the same base-config list. Whichever moves next needs the same flag.
+
+⚡ Also closed a smaller gap found on the way: the gather config recorded no regeneration
+command, unlike the node configs, so its exact flags lived only in `gather_up.sh`'s help text.
+It now carries its own `REGENERATE WITH:` line. Before changing anything, the documented flags
+were shown to reproduce the live file byte-for-byte — otherwise the regeneration would have been
+silently changing more than the affinity.
+
 ### #54 — the yardstick was the defect (2026-09-10)
 
 For a month this read as "the GPU replica is wrong at 3.5% and gets worse with uptime". It was the
