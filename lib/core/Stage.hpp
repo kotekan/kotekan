@@ -123,6 +123,21 @@ protected:
      */
     std::vector<Buffer*> get_buffer_array(const std::string& name);
 
+    /**
+     * @brief Gets the buffers linked to @c name in the config, which may hold
+     *        either a single buffer name or a list of them.
+     *
+     * Use this where a stage needs the same information from one buffer on one
+     * telescope and from several on another -- e.g. the coarse frequency
+     * channels, which CHORD carries in one voltage buffer and CHIME splits over
+     * one buffer per channel.
+     *
+     * @param name The name of the option in the config.
+     * @return A vector of pointers to the buffers requested, with one element
+     *         when the option names a single buffer.
+     */
+    std::vector<Buffer*> get_buffer_or_array(const std::string& name);
+
     bufferContainer& buffer_container;
 
 private:

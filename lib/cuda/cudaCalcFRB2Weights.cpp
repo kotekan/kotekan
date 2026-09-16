@@ -37,15 +37,6 @@ class cudaCalcFRB2Weights : public kotekan::Stage {
     // Upchannelization setup
     const std::string upchannelization_schedule_name =
         config.get_default<std::string>(unique_name, "upchannelization_schedule_name", "");
-    // The coarse frequency channels handled by this GPU. These are
-    // local to a GPU and are thus not part of the upchannelization
-    // schedule, which is shared by all GPUs.
-    //
-    // TODO: Reading these from the configuration still assumes that
-    // there is only one GPU per process. Take them from the metadata
-    // of an incoming frame instead.
-    const std::vector<int> local_frequency_channels =
-        config.get<std::vector<int>>(upchannelization_schedule_name, "frequency_channels");
 
     // FRB1 beamformer setup
 
@@ -77,6 +68,7 @@ class cudaCalcFRB2Weights : public kotekan::Stage {
 
     Buffer* const frb2_beam_positions_buffer;
     Buffer* const W2_buffer;
+    const std::vector<Buffer*> metadata_sources;
 
 public:
     cudaCalcFRB2Weights(kotekan::Config& config, const std::string& unique_name,
@@ -86,7 +78,8 @@ public:
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         frb2_beam_positions_buffer(get_buffer("frb2_beam_positions")),
-        W2_buffer(get_buffer("frb2_weights"))
+        W2_buffer(get_buffer("frb2_weights")),
+        metadata_sources(get_buffer_or_array("metadata_source"))
     //
     {
         assert(frb2_beam_positions_buffer);
@@ -95,6 +88,8 @@ public:
             FATAL_ERROR("gpu_max_chunk_bytes {:d} must be positive", gpu_max_chunk_bytes);
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
+        for (Buffer* const metadata_source : metadata_sources)
+            metadata_source->register_consumer(unique_name);
 
         frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
@@ -117,8 +112,15 @@ public:
         const Telescope& telescope = Telescope::instance();
 
         // Upchannelization schedule
+        // The coarse frequency channels handled by this GPU. These are local to
+        // a GPU and thus cannot come from the configuration, which is the same
+        // for every GPU.
+        const auto local_coarse_freq = wait_for_coarse_freq(metadata_sources, unique_name);
+        if (!local_coarse_freq)
+            return;
+
         const UpchannelizationSchedule upchan_schedule(config, upchannelization_schedule_name,
-                                                       local_frequency_channels, unique_name);
+                                                       *local_coarse_freq, unique_name);
 
         // Calculate frequencies
         const auto& frequency_channels = upchan_schedule.get_frequency_channels();

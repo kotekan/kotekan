@@ -174,7 +174,10 @@ run_calc_frb2_weights:
     frb2_num_frequencies: upchan_U16_max_num_output_channels
     frb2_beam_positions: host_frb2_beam_positions_buffer
     frb2_weights: host_frb2_weights_buffer
-
+    metadata_source:
+{% for id in range(16) %}   # num_frequencies = 16
+        - host_voltage_buffer_{{ id }}
+{% endfor %}
 run_frb23:
     gpu_0:
         kotekan_stage: cudaProcess

@@ -2,11 +2,13 @@
 #define UPCHANNELIZATION_SCHEDULE_H
 
 #include "Config.hpp"         // for Config
+#include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for kotekanLogging
 
 #include <assert.h> // for assert
 #include <cstddef>  // for size_t
 #include <map>      // for map
+#include <optional> // for optional
 #include <string>   // for basic_string, string
 #include <vector>   // for vector
 
@@ -132,5 +134,22 @@ public:
     const std::vector<int>& get_upchan_channels(const int upchan_factor) const;
     const std::vector<int>& get_upchan_factors(const int channel) const;
 };
+
+// Read the coarse frequency channels handled by this GPU from the
+// metadata of the first frame of each of `metadata_sources`, in order.
+//
+// CHORD carries all local channels in a single voltage buffer, CHIME
+// splits them over one buffer per channel, so this takes a list and
+// concatenates what it finds.
+//
+// The channels do not change while kotekan runs, so one frame from each
+// buffer is enough: this marks that frame empty and unregisters the
+// caller as a consumer, leaving the buffers to the rest of the
+// pipeline. The caller must have registered as a consumer of every
+// buffer beforehand.
+//
+// Returns an empty optional if kotekan shut down while waiting.
+std::optional<std::vector<int>> wait_for_coarse_freq(const std::vector<Buffer*>& metadata_sources,
+                                                     const std::string& unique_name);
 
 #endif // #ifndef UPCHANNELIZATION_SCHEDULE_H
