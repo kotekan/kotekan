@@ -22,7 +22,6 @@
 #include <functional>  // for bind
 #include <limits>      // for numeric_limits
 #include <memory>      // for shared_ptr, __shared_ptr_access
-#include <string.h>    // for strncmp
 #include <string>      // for allocator, basic_string, operator!=, string
 #include <type_traits> // for enable_if
 #include <vector>      // for vector
@@ -126,21 +125,6 @@
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->get_##FIELD(),   \
                   (META2)->get_##FIELD());                                                         \
             (ERR_COUNT)++;                                                                         \
-        }                                                                                          \
-    } while (0)
-
-#define CHECK_META_ARR1_CSTR_DIRECT(FIELD, ARR_LEN, STR_LEN, META1, META2, ERR_COUNT, BUF_NAME1,   \
-                                    FRAME_ID1, BUF_NAME2, FRAME_ID2)                               \
-    do {                                                                                           \
-        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
-        for (int meta_idx = 0; meta_idx < (ARR_LEN); meta_idx++) {                                 \
-            if (strncmp((META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx], (STR_LEN))) {          \
-                ERROR(                                                                             \
-                    "metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:s} {:s}",  \
-                    (BUF_NAME1), (FRAME_ID1), #FIELD, meta_idx, (BUF_NAME2), (FRAME_ID2), #FIELD,  \
-                    meta_idx, (META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx]);                 \
-                (ERR_COUNT)++;                                                                     \
-            }                                                                                      \
         }                                                                                          \
     } while (0)
 
@@ -460,9 +444,19 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                                first_buf_id, second_buf->buffer_name, second_buf_id);
 
     // char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "T", "D", etc
-    CHECK_META_ARR1_CSTR_DIRECT(dim_name, num_dim, CHORD_META_MAX_DIMNAME, meta1, meta2, num_errors,
-                                first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
-                                second_buf_id);
+    DEBUG2("Checking meta field {:s}", "dim_name");
+    for (int meta_idx = 0; meta_idx < num_dim; meta_idx++) {
+        // The fields are not NUL-terminated; get_dimension_name() bounds the length
+        const std::string dim_name1 = meta1->get_dimension_name(meta_idx);
+        const std::string dim_name2 = meta2->get_dimension_name(meta_idx);
+        if (dim_name1 != dim_name2) {
+            ERROR("metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:s} {:s}",
+                  first_buf->buffer_name, first_buf_id, "dim_name", meta_idx,
+                  second_buf->buffer_name, second_buf_id, "dim_name", meta_idx, dim_name1,
+                  dim_name2);
+            num_errors++;
+        }
+    }
 
     // int64_t stride[CHORD_META_MAX_DIM];
     CHECK_META_ARR1_INT_DIRECT(stride, num_dim, meta1, meta2, num_errors, first_buf->buffer_name,

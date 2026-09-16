@@ -237,11 +237,24 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata_names_are_truncated) {
     // A name that fills its field must survive both round trips intact
     check_round_trips(meta);
 
-    // A shorter name is NUL-padded
-    meta.set_name("E");
-    BOOST_TEST(meta.get_name() == "E");
-    for (int i = 1; i < CHORD_META_MAX_NAME; ++i)
-        BOOST_TEST(meta.name[i] == '\0');
+    // Every length up to the limit reads back with its content and length intact,
+    // including after a longer name has been stored in the same field. The fill
+    // character varies with the length so that leftover characters from the
+    // previous, longer name would show up in the comparison.
+    for (int len = CHORD_META_MAX_NAME; len >= 0; --len) {
+        const std::string name(len, char('a' + len % 26));
+        meta.set_name(name);
+        BOOST_TEST(meta.get_name().size() == size_t(len));
+        BOOST_TEST(meta.get_name() == name);
+        BOOST_TEST(meta.has_name() == (len > 0));
+    }
+
+    for (int len = CHORD_META_MAX_DIMNAME; len >= 0; --len) {
+        const std::string dimname(len, char('a' + len % 26));
+        meta.set_array_dimension(0, 4, dimname, 1);
+        BOOST_TEST(meta.get_dimension_name(0).size() == size_t(len));
+        BOOST_TEST(meta.get_dimension_name(0) == dimname);
+    }
 
     // set_dimension_name() rejects out-of-range dimensions with FATAL_ERROR, which
     // shuts kotekan down rather than throwing, so it cannot be checked here.
