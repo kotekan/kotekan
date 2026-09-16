@@ -1,13 +1,14 @@
 # Moving the GNSS infrastructure to `gnss.site.chord-observatory.ca`
 
-**What this is.** Sizing and a migration plan for putting the broker, the gather and the obs
-writers on the provided VM under systemd, long-term. Every number below is measured on the live
-stack, not estimated; how to re-measure is at the end.
+**What this is.** Sizing and a migration plan for putting the GNSS stack on the provided VM
+under systemd, long-term. Every number below is measured on the live stack, not estimated; how
+to re-measure is at the end.
 
-**The short version.** RAM, disk and network are comfortable — the network is *much* better than
-cf06's. CPU is not: the stack needs ~3.1 cores and the VM has 2. And there is a hard blocker
-that has nothing to do with capacity: **the VM's CPU model is so old that the kotekan binary
-dies on `SIGILL`**. Ask for the CPU model to be changed at the same time as the cores.
+**The short version.** As re-provisioned — 6 cores of `host` Xeon Gold 5416S on cf02, an L40S
+passed through, a 10G uplink — **the whole stack fits, aggregator included**, at ~70% of 6
+cores and a third of the RAM. Nothing more needs requesting. The remaining questions are about
+sequencing, not capacity: one peak-under-load measurement is still missing, and moving the
+aggregator costs the spare GPU we bench on.
 
 ---
 
@@ -29,114 +30,142 @@ average (which runs ~15% lower for the broker).
 **Totals for the infrastructure move** (broker + gather + obs writers):
 **3.05 cores, 1.35 GB RSS, ~0.7 GB/day of logs, 369 Mbit/s in.**
 
-## 2. The VM as provided
+## 2. The VM as provisioned (2026-09-16 — re-provisioned, everything below re-measured)
+
+It is a KVM guest **on cf02, so the same silicon as cf06**, with `host` CPU passthrough.
 
 | | value | verdict |
 |---|---|---|
-| vCPU | **2** (QEMU Virtual CPU 2.5+) | ❌ need ~4 |
-| CPU features | `sse4_2`, `popcnt`, `aes` — **no avx, avx2, avx512, fma, bmi2** | ❌ see §3 |
-| RAM | 7 GB, **no swap** | ✅ (1.35 GB needed) |
-| Disk | 249 G, 210 G free, local LVM | ✅ with rotation |
-| Network | **≥4.3 Gbit/s** measured (536 MB/s read off `cs00` NFS, `iflag=direct`) | ✅✅ |
-| `/mnt/cs00/data` | mounted, NFS4 | ✅ |
-| `/home/kvand` | mounted, NFS3 from `nfs-home` | ✅ code and venvs are already visible |
-| OS | Ubuntu 24.04.5, systemd 255 | ✅ same as cf06 |
-| Reachability | cx19, cx43 and cf06 all connect inbound to `gnss:11060`; VM reaches all of them | ✅ no firewall in the way |
+| vCPU | **6**, `Intel Xeon Gold 5416S` | ✅ identical part to cf06 |
+| CPU features | `fma avx avx2 bmi2 avx512f avx512dq` | ✅ the `SIGILL` blocker is gone |
+| RAM | 7 GB, **no swap** | ✅ 2.4 GB needed even with everything |
+| Disk | 249 G, 210 G free | ✅ with rotation |
+| Network | **≥5.1 Gbit/s** measured (641 MB/s off `cs00`, `iflag=direct`) on a 10G uplink | ✅✅ |
+| **GPU** | **NVIDIA L40S, 46 GB, passthrough** | ✅ verified with a real kernel, see below |
+| CUDA | toolkit 13.4, driver 615.71.09 (cf06: 13.3 / 610.57.04) | ✅ newer driver, forward-compatible |
+| NUMA | 1 node, GPU affinity `0-5` | ✅ core-placement rules cannot bite |
+| `/mnt/cs00/data`, `/home/kvand` | mounted | ✅ |
+| Reachability | cx19, cx43, cf06 all connect inbound to `:11060` | ✅ |
 
-### The network is the headline improvement
-
-cf06 is on 1 GbE and it has cost us real diagnosis time: 22% late frames traced to TCP loss,
-and an ingress path that drops SYN-ACKs so every fresh connect from cf06 stalls 1/2/5 s. The
-gather alone pulls 369 Mbit/s. **Moving the gather here retires that class of fault** — the VM
-has roughly four times the usable bandwidth.
-
-## 3. ⚠️ The blocker: the CPU model, not the core count
+### The binary runs, and the GPU is real
 
 ```
-$ ssh gnss /home/kvand/gnss/kotekan/build_nodpdk/kotekan/kotekan --help
-Illegal instruction (core dumped)          # exit 132
+$ ssh gnss .../build_nodpdk/kotekan/kotekan --help ; echo $?
+0                                  # was 132 (SIGILL) before the reprovision
+$ ldd .../kotekan | grep "not found"
+                                   # nothing missing
 ```
 
-cf06 builds with `ARCH=native` on a Xeon Gold 5416S, which means AVX-512. The VM's QEMU CPU
-model predates AVX entirely. Two independent fixes, and **both are worth doing**:
+A passthrough GPU that answers `nvidia-smi` does not always give a usable compute context, so
+that was tested rather than assumed — `cudaMalloc` + a kernel launch + readback returned the
+right answer, `devices=1`, exit 0. All of `/dev/nvidia{0,ctl,-uvm,-uvm-tools}` are present.
 
-1. **Ask for a better CPU model** — `host-passthrough`, or any modern named model. This costs
-   nothing, is the smaller request of the two, and it also closes the 12× gap in §4.
-2. **Build a portable binary**: `cmake -DARCH=x86-64-v2 -DUSE_CUDA=OFF` (`ARCH` defaults to
-   `native` in `cmake/Toolchain.cmake:207`; `USE_CUDA` is an AUTO tristate). Build it **on
-   cf06**, not on the VM — same OS, and the VM has 2 cores. This is needed regardless: a
-   `native` binary breaks on every future host move, and we have now been bitten by it twice.
+### Per-core speed is cf06's, because it is cf06's CPU
 
-None of the three cf06 kotekan configs (`gather`, `cubearch`, `agg6_cuda`) declares a `cuda*`
-stage, so `USE_CUDA=OFF` costs the gather nothing.
+Same interpreter off the same NFS venv, best of three:
 
-## 4. Per-core speed: the same, except where it isn't
-
-Same interpreter off the same NFS venv, best of three, exercising what the broker actually does:
-
-| kernel | cf06 | gnss VM | ratio |
-|---|---|---|---|
-| Python dict/tuple churn | 0.0475 s | 0.0469 s | **1.0×** |
-| `json.loads` | 0.190 s | 0.185 s | **1.0×** |
-| `np.fft.rfft` | 0.119 s | 0.118 s | **1.0×** |
-| float64 matmul (level-3 BLAS) | 0.0104 s | 0.1222 s | **11.8× slower** |
-
-⚠️ **My first run said the VM was 2× faster at scalar work. That was cf06 load, not the VM** —
-cf06's own number swung 0.0928 → 0.0475 between back-to-back runs while the VM was stable to
-3%. Take minimums, and do not compare a loaded host to an idle one.
-
-The 11.8× is OpenBLAS falling off AVX-512 onto SSE. It does not touch the broker:
-`broker_multi.py` and `python/scripts/gnss/gnss_broker/*.py` contain **zero** uses of
-`np.dot`/`matmul`/`linalg`/`einsum`. So the 3.05-core figure transfers about 1:1.
-
-⚠️ **The gather is the untested half.** It is C++, and rebuilding it without AVX will make its
-vectorised loops slower by an unknown factor. Budget for it, then measure (§8).
-
-## 5. Recommended shape
-
-| | ask for | why |
+| kernel | cf06 | gnss VM |
 |---|---|---|
-| vCPU | **4 minimum, 6 comfortable** | 3.05 measured + the unknown gather penalty + headroom for acquisition bursts. 4 leaves ~25% margin, which is thin if the gather slows down. |
-| CPU model | **host-passthrough or a modern named model** | removes the `SIGILL` and the 11.8× BLAS gap |
-| RAM | **8 GB is already right** — keep it | 1.35 GB in use; the rest is page cache for two NFS mounts. Do not shrink it to 4 GB: there is no swap, so an OOM kill is a fleet outage. |
-| Disk | as provided | ~0.7 GB/day of logs with rotation |
+| Python dict/tuple churn | 0.0475 s | 0.0468 s |
+| `json.loads` | 0.190 s | 0.185 s |
+| `np.fft.rfft` | 0.119 s | 0.119 s |
+| float64 matmul, default threads | 0.0104 s | 0.0139 s |
+| float64 matmul, **1 thread** | 0.0052 s | **0.0028 s** |
 
-**Do not ask for more RAM or disk.** They are not the constraint.
+⚠️ **The multi-threaded matmul row is not a per-core comparison and should not be read as one.**
+cf06 spreads it over 64 cores and the VM over 6. Pinned to one thread the VM is *faster*, because
+cf06 is running the live stack. Same silicon: assume per-core parity and size on core count.
+
+## 3. Measured load, and why today's numbers are the floor not the basis
+
+⚠️ **The F-engine went down for site work partway through this work.** The stack stays up and
+connected — 89 sender connections to the gather, 12 to the aggregator — but carries no data:
+`rx 0.0 Mbit/s`, `present: 0` and `n_prn: 0` on every chain, the archiver writing 0 GB/h. So
+there are two sets of numbers and only one of them is a sizing basis.
+
+| process | **with data** (the basis) | idle, F-engine down |
+|---|---|---|
+| broker | **1.75 cores** | 0.82 |
+| gather | **1.24 cores** | 0.23 |
+| aggregator | **0.91 cores** + GPU | 0.95 |
+| cube archiver | **0.27 cores**, 32.5 GB/h | 0.00, 0 GB/h |
+| obs writers ×8 | **0.06 cores** | 0.03 |
+| **total** | **4.23 cores** | 2.03 |
+
+Two things worth keeping from the idle column. The fixed overhead is ~2 cores, so about half the
+load is data-driven and scales with the fleet. And **the aggregator costs the same either way** —
+its search spins regardless (`blocked 3.6s (100%), 120 frames discarded`), so its 0.91 is a floor
+that will not fall when the sky is quiet.
+
+## 4. Sizing: 6 cores fits, with one measurement still missing
+
+**Everything, including the aggregator, fits in 6 cores at ~70%.** RAM is not close to binding:
+2.4 GB of RSS against 7 GB, and the aggregator's alarming 24.9 GB `VmSize` is virtual —
+`VmHWM` 823 MB, `VmLck` 86 MB, `VmPin` 0, and the VM runs `vm.overcommit_memory=0`, so the
+reservation is free. **Do not ask for more RAM or disk.**
+
+⚠️ **What I cannot tell you yet is the peak.** The with-data column is a single 30 s window taken
+before the F-engine went down; I have no peak-under-load sample, and the one thing that would
+change the answer is a burst. Two reasons to care on a 6-core box specifically:
+
+- **69 threads** (aggregator 44, gather 14, broker 11) on 6 cores instead of 64. Thread count is
+  not itself a problem — they are mostly idle — but scheduling latency becomes a new variable.
+- **The gather has a 200 ms frame deadline** (`dropped client fd N -- could not take a frame
+  within 200 ms`). On a 64-core host that deadline has enormous slack. At 70% CPU it does not.
+
+So: take a peak sample when the F-engine returns, before committing the aggregator (§8).
+
+## 5. The portable build: now optional, still worth doing
+
+cf02 and cf06 are the same part, so `build_nodpdk`'s `ARCH=native` binary runs as-is — which is
+why `--help` now exits 0. That removes the blocker but not the fragility: a `native` binary
+breaks on any future host that is not this exact CPU, and we have now been bitten by that twice
+in two days. Building `-DARCH=x86-64-v2` into its own tree remains cheap insurance and costs the
+gather nothing (none of the three configs declares a `cuda*` stage, so `-DUSE_CUDA=OFF` is also
+free for the gather — but **not** for the aggregator, which needs CUDA).
 
 ## 6. What moves, what does not
 
-**Moves — the infrastructure:**
+**Moves now — the infrastructure:**
 
 - **broker** + **gather** — and they must stay **together**. The gather's trim-in port is bound
   to `127.0.0.1:11061`, and the broker↔gather link carries 453 Mbit/s; splitting them puts that
   on the wire and breaks the localhost binding.
-- **the 8 obs writers** — they poll the broker, and they write to
-  `/home/kvand/gnss/fixtures/obs/`, which is the same NFS path on the VM. No path changes.
+- **the 8 obs writers** — they poll the broker and write to `/home/kvand/gnss/fixtures/obs/`,
+  the same NFS path on the VM. No path changes.
 
-**Stays on cf06:**
+Together that is **3.05 cores of 6 (51%)** and ~1.35 GB. Comfortable.
 
-- **the aggregator** — yes, as you thought, and it is confirmed rather than assumed: it holds
-  **2664 MiB of GPU memory** with 25 open `/dev/nvidia*` fds, and its config carries
-  `use_cuda_acquire: true`. A CPU acquire path does exist (it is the reference the #54 work
-  fixed), but it is the expensive stage and the VM has no vector units — a bad trade twice over.
-- **the cube compactor** — periodic heavy analysis, exactly what you said should live elsewhere.
+**Can move, second — the aggregator.** The GPU objection is gone: an L40S is passed through and
+verified to run a real kernel, and the aggregator only ever used one GPU (57% of cf06's GPU 0,
+2664 MiB of 46 GB). Adding it takes the VM to **4.23 cores of 6 (70%)**. Two things to weigh
+first, neither of them a blocker:
 
-**Either way, decide deliberately:**
+- ⚠️ **cf06 has two L40S and the VM has one.** GPU 1 on cf06 is idle and is what we bench on
+  (`CUDA_VISIBLE_DEVICES=1` — the #54 work lived there). Move the aggregator and any GPU
+  benchmarking either contends with production or has nowhere to go. That is an argument for
+  keeping a foothold on cf06, not for keeping the aggregator there.
+- The peak-under-load sample in §4 should exist before this step, not after.
 
-- **the cube archiver** — 0.27 cores, and its 32.5 GB/h goes to NFS, which the VM does at 9 MB/s
-  without noticing. The argument for moving it is the bring-up ordering: it must be up *before
-  the nodes*, and systemd would guarantee that where a hand-run script does not. The argument
-  against is that it is the recording leg for an analysis product. **My call: leave it on cf06
-  for the first cut**, move it once the VM has proven itself over a few weeks.
-- **the beam viewers** (`livebeam_server` 8080/8539, `http.server` 8877) — you said elsewhere,
-  and they cost nothing either way (0.02 cores). They serve exported cube products, so they
-  belong wherever the cube analysis lands.
+**Stays on cf06 regardless:**
+
+- **the cube compactor** — periodic heavy analysis, which is what this VM is explicitly not for.
+- **the beam viewers** (`livebeam_server` 8080/8539, `http.server` 8877) — they serve exported
+  cube products, so they belong with the cube analysis. They cost 0.02 cores either way.
+
+**Judgement call — the cube archiver.** 0.27 cores, and its 32.5 GB/h goes to NFS, which the VM
+does at 9 MB/s without noticing. The argument for moving it is bring-up ordering: it must be up
+*before the nodes*, and systemd guarantees that where a hand-run script does not. **My call:
+leave it on cf06 for the first cut**, and move it with the aggregator once the VM has a few
+weeks behind it.
 
 ## 7. systemd: what the units must encode
 
-Templates are in [`scripts/gnss/systemd/`](../scripts/gnss/systemd/). They are **not installed**
-— they need the resized VM and a portable binary first. Each of these is a fault we have already
-paid for:
+Templates are in [`scripts/gnss/systemd/`](../scripts/gnss/systemd/), and are no longer blocked
+on anything — the re-provisioned VM runs the binary as-is. They are not installed yet because
+that is step 1 of §8, not because they cannot be. `gnss-aggregator.service` exists but is
+deliberately left out of `gnss-stack.target` until step 4. Each setting below is a fault we have
+already paid for:
 
 - **`Environment=GNSS_PY=/home/kvand/gnss/venv-ft/bin/python` on the broker.** Starting it under
   the GIL 3.12 venv instead of free-threaded 3.14t killed every non-L5 chain for two hours: the
@@ -161,18 +190,23 @@ paid for:
 
 ## 8. Order of work
 
-1. Request **4–6 vCPU and a modern CPU model**. Nothing else can be tested until the second one
-   lands — the binary will not execute.
-2. Build the portable kotekan **on cf06**: `-DARCH=x86-64-v2 -DUSE_CUDA=OFF`, into its own tree
-   (not `build_nodpdk`, which the live cf06 gather and aggregator run out of).
-3. **Measure the gather on the VM** against the 1.24-core baseline, from a replayed telemetry
-   capture rather than the live fleet (`fleetdll --trim-in` against a `:11061` capture). This is
-   the one number in this document that is extrapolated rather than measured.
-4. Install the units, start broker + gather + obs writers on the VM with the fleet still
-   pointing at cf06, and compare side by side before cutting over.
-5. Cut over: repoint the nodes' telemetry at `gnss:11060`, stop the cf06 broker and gather.
-   Expect the usual re-arm transient — trims are wiped by the gather change.
-6. Reboot the VM deliberately, and confirm the whole stack comes back with no operator.
+Nothing needs requesting; this is all sequencing now.
+
+1. **Install the units** and start broker + gather + obs writers on the VM **with the fleet
+   still pointing at cf06**. Both stacks run; the VM's sees no fleet traffic yet. Confirms the
+   units, the mounts, the venv and the log paths with zero blast radius.
+2. **Cut over the infrastructure**: repoint the nodes' telemetry at `gnss:11060`, stop the cf06
+   broker and gather. Expect the usual re-arm transient — trims are wiped by the gather change.
+   Watch `late_frames` and `forced_closes` in `/fleet_trim/get_stats`; the 10G uplink should make
+   them *better* than cf06's, not worse.
+3. **Take the peak-under-load sample** once the F-engine is back (§9), over an hour rather than
+   30 s, and compare against the 3.05-core budget. This is the number §4 is missing.
+4. **Then, and only then, move the aggregator** — it is the step that takes the box to 70% and
+   the one that costs the spare bench GPU. Rebuild is not needed (same silicon), but it needs
+   CUDA, so it cannot use a `-DUSE_CUDA=OFF` tree.
+5. **Reboot the VM deliberately** and confirm the whole stack comes back with no operator. That
+   is the actual prize: today nothing is a systemd unit and every bring-up is by hand.
+6. Optionally move the cube archiver, and build the portable tree (§5) as insurance.
 
 ## 9. Re-measuring
 
@@ -189,4 +223,6 @@ ssh cf06 'grep write_bytes /proc/$P/io'
 ssh gnss 'dd if=<a big file on /mnt/cs00> of=/dev/null bs=4M count=100 iflag=direct'
 # is the aggregator really on the GPU
 ssh cf06 'nvidia-smi --query-compute-apps=pid,used_memory --format=csv'
+# ⚠️ is there DATA? a sample taken with the F-engine down measures the floor, not the load
+ssh cf06 'curl -s http://127.0.0.1:12060/status'      # present/n_prn zero => not a sizing basis
 ```

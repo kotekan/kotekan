@@ -1,0 +1,34 @@
+[Unit]
+Description=CHORD GNSS aggregator (channelised search, GPU)
+Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+RequiresMountsFor=/home/kvand
+After=network-online.target remote-fs.target
+Wants=network-online.target
+PartOf=gnss-stack.target
+# A crash loop here must stop rather than hide behind the restart.
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=kvand
+# ⚠️ NOT a -DUSE_CUDA=OFF tree. The search runs on the GPU (use_cuda_acquire: true) and holds
+# ~2.7 GB of device memory; the CPU acquire path exists but is the expensive stage.
+ExecStart=/home/kvand/gnss/kotekan/build_nodpdk/kotekan/kotekan \
+    --config /home/kvand/gnss/kotekan/config/generated/chord_gnss_agg6_cuda.yaml \
+    --bind-address 0.0.0.0:12050
+# ⚠️ On cf06 this process runs with the DEFAULT soft limit of 1024 against 119 open fds, which
+# is thinner headroom than the gather had when it hit EMFILE twice. Do not inherit that here.
+LimitNOFILE=65536
+Restart=on-failure
+RestartSec=15
+# 24.9 GB of VmSize is CUDA's virtual reservation, not memory: VmHWM is 823 MB and VmPin is 0.
+# Cap on the real figure, and leave overcommit alone -- vm.overcommit_memory=2 would refuse the
+# reservation and the process would not start at all.
+MemoryAccounting=yes
+MemoryMax=4G
+StandardOutput=append:/var/log/gnss/aggregator.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target
