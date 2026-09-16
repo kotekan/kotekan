@@ -60,15 +60,43 @@ fi
 # the python alone just makes the loop relaunch it 20 s into this script's own startup --
 # two brokers, or a race with the new one. Its argv carries the marker below precisely so it
 # can be named separately from the broker it babysits.
+# ⚠️ PIDFILES, NOT PATTERN MATCHING. Every `pgrep -f`/`pkill -f` over this process table has
+# a false positive waiting in it: the pattern matches the shell that runs it (the header's
+# 20-minute outage on 2026-08-04), and once the broker is supervised it also matches the
+# BABYSITTER, whose argv necessarily contains "broker_multi.py" -- so the health check
+# reported "broker up" while the loop merely slept between relaunches. The prototype hit the
+# same class and moved to pidfiles; this follows it, including the part that matters: a pid
+# is only believed if /proc/<pid>/cmdline still says it is what we think it is, because pids
+# are reused.
+SUP_PIDFILE=${GNSS_BROKER_SUP_PIDFILE:-/tmp/gnss_broker_supervisor.pid}
+BROKER_PIDFILE=${GNSS_BROKER_PIDFILE:-/tmp/gnss_broker.pid}
+
+# pid_is <pidfile> <string that must appear in its /proc cmdline> -> echoes the live pid
+pid_is() {
+    local pf=$1 want=$2 pid
+    [ -f "$pf" ] || return 1
+    pid=$(cat "$pf" 2>/dev/null)
+    case $pid in ''|*[!0-9]*) return 1 ;; esac
+    kill -0 "$pid" 2>/dev/null || return 1
+    grep -qa -- "$want" /proc/"$pid"/cmdline 2>/dev/null || return 1
+    echo "$pid"
+}
+
+broker_running() { pid_is "$BROKER_PIDFILE" "broker_multi.py" > /dev/null; }
+
+sup_pid=$(pid_is "$SUP_PIDFILE" "gnss-broker-supervisor") && {
+    kill "$sup_pid" 2>/dev/null || true
+    sleep 1
+    kill -0 "$sup_pid" 2>/dev/null && kill -9 "$sup_pid" 2>/dev/null
+}
+brk_pid=$(pid_is "$BROKER_PIDFILE" "broker_multi.py") && kill "$brk_pid" 2>/dev/null
+rm -f "$SUP_PIDFILE" "$BROKER_PIDFILE"
+
+# Transitional, and harmless to keep: a broker launched by a version of this script from
+# before the pidfiles has none to find. Over-killing here costs nothing -- unlike the health
+# check above, where a false positive is the whole problem.
 pkill -f "[g]nss-broker-supervisor" 2>/dev/null || true
 
-# ⚠️ THE SUPERVISOR'S OWN ARGV CONTAINS "broker_multi.py". `pgrep -f "[b]roker_multi.py"`
-# therefore matches the BABYSITTER as well as the broker, and would report "broker up" with
-# the broker dead and the loop merely sleeping -- the same false-positive health check this
-# file's header warns about, reintroduced by the fix for it. Name the python process only.
-broker_running() {
-    pgrep -af "[b]roker_multi.py" 2>/dev/null | grep -v "gnss-broker-supervisor" | grep -q .
-}
 
 # Both names, because a tree mid-transition can have either running: broker_multi is the
 # driver, gps_distributed_broker the single-chain process it replaced.
@@ -110,11 +138,15 @@ fi
 # a user unit would not survive the weekly 03:03 reboot either; this at least makes a re-base
 # self-healing. Exit 0 is a deliberate stop and ends the loop, so `pkill` still works.
 nohup setsid bash -c '
-    K="$1"; PY="$2"; CHAINS="$3"; LOG="$4"; shift 4
+    K="$1"; PY="$2"; CHAINS="$3"; LOG="$4"; SUP_PIDFILE="$5"; BROKER_PIDFILE="$6"; shift 6
+    echo $$ > "$SUP_PIDFILE"
+    trap "rm -f \"$SUP_PIDFILE\" \"$BROKER_PIDFILE\"" EXIT
     fast=0
     while :; do
         started=$(date +%s)
-        "$PY" -u "$K/scripts/gnss/broker_multi.py" "$CHAINS" "$@" >> "$LOG" 2>&1 < /dev/null
+        "$PY" -u "$K/scripts/gnss/broker_multi.py" "$CHAINS" "$@" >> "$LOG" 2>&1 < /dev/null &
+        echo $! > "$BROKER_PIDFILE"
+        wait $!
         rc=$?
         [ "$rc" -eq 0 ] && break
         ran=$(( $(date +%s) - started ))
@@ -142,7 +174,8 @@ nohup setsid bash -c '
         fi
         sleep 20
     done
-' gnss-broker-supervisor "$K" "$PY" "$CHAINS" "$LOG" "$@" > /dev/null 2>&1 < /dev/null &
+' gnss-broker-supervisor "$K" "$PY" "$CHAINS" "$LOG" "$SUP_PIDFILE" "$BROKER_PIDFILE" "$@" \
+    > /dev/null 2>&1 < /dev/null &
 disown
 sleep 10
 
