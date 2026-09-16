@@ -49,7 +49,7 @@ static_assert(CHORD_META_MAX_DIM == int(kotekan::GenericNDArray::max_rank),
 const int CHORD_META_MAX_DIMNAME = 24;
 
 // Maximum number of stream IDs in metadata array
-const int CHORD_META_MAX_STREAM_IDS = 64;
+const int CHORD_META_MAX_STREAM_IDS = 128;
 
 // Maximum number of visibility matrix samples in a frame
 const int CHORD_META_MAX_VIS_SAMPLES = 64;
