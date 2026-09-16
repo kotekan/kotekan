@@ -9,7 +9,7 @@
 #       --carrier-phase-from-ref 1 --carrier-phase-mode 1 --keep-n2 --n2-dual --phi-fp16
 #       --despread-max-chips 80 --despread-chips-centered --dpdk-resync-max-advances 32
 #       --n2-send --n2-send-legs both --rf-stats --no-path-a --sky-deep --elem-steer-sign 1.0
-#       --search-host 10.222.3.6 --telem-host 10.222.3.6 --send-pacing-factor 2.0 --beam-cube
+#       --search-host 10.222.3.6 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube
 #       --cube-host 10.222.3.6 --vis-capture gps_l5 --extra-signal
 #       GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
 #       --extra-signal
@@ -228,14 +228,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: -0.0050606
-    t_inst_ns: 1789171200000000000
-    xp_as: 0.200791
-    yp_as: 0.332091
-  - delta_UT1_inst: -0.0063572
-    t_inst_ns: 1789257600000000000
-    xp_as: 0.199928
-    yp_as: 0.331451
   - delta_UT1_inst: -0.006312
     t_inst_ns: 1789344000000000000
     xp_as: 0.195756
@@ -252,6 +244,14 @@ earth_rotation_data:
     t_inst_ns: 1789603200000000000
     xp_as: 0.192683
     yp_as: 0.330484
+  - delta_UT1_inst: -0.0088671
+    t_inst_ns: 1789689600000000000
+    xp_as: 0.191668
+    yp_as: 0.329927
+  - delta_UT1_inst: -0.0092012
+    t_inst_ns: 1789776000000000000
+    xp_as: 0.190667
+    yp_as: 0.329402
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -538,7 +538,7 @@ gnss0_b2a_telem_send:
   max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss0_b2b_cube_buf:
@@ -785,7 +785,7 @@ gnss0_b2b_telem_send:
   max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss0_b3i_cube_buf:
@@ -1029,7 +1029,7 @@ gnss0_b3i_telem_send:
   max_pacing_rate_mbps: 7.135
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss0_cmb_buf:
@@ -1306,7 +1306,7 @@ gnss0_e5a_telem_send:
   max_pacing_rate_mbps: 11.273
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss0_e5b_cube_buf:
@@ -1561,7 +1561,7 @@ gnss0_e5b_telem_send:
   max_pacing_rate_mbps: 11.273
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss0_e6_cube_buf:
@@ -1804,7 +1804,7 @@ gnss0_e6_telem_send:
   max_pacing_rate_mbps: 6.879
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss0_n2assemble:
@@ -2103,7 +2103,7 @@ gnss0_telem_send:
   max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss0_viscap_ctl_buf:
@@ -2374,7 +2374,7 @@ gnss1_b2a_telem_send:
   max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss1_b2b_cube_buf:
@@ -2594,7 +2594,7 @@ gnss1_b2b_telem_send:
   max_pacing_rate_mbps: 7.135
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss1_b3i_cube_buf:
@@ -2817,7 +2817,7 @@ gnss1_b3i_telem_send:
   max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss1_cmb_buf:
@@ -3062,7 +3062,7 @@ gnss1_e5a_telem_send:
   max_pacing_rate_mbps: 11.273
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss1_e5b_cube_buf:
@@ -3282,7 +3282,7 @@ gnss1_e5b_telem_send:
   max_pacing_rate_mbps: 10.175
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss1_e6_cube_buf:
@@ -3496,7 +3496,7 @@ gnss1_e6_telem_send:
   max_pacing_rate_mbps: 7.977
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss1_l2c_cube_buf:
@@ -3729,7 +3729,7 @@ gnss1_l2c_telem_send:
   max_pacing_rate_mbps: 3.29
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss1_n2assemble:
@@ -3997,7 +3997,7 @@ gnss1_telem_send:
   max_pacing_rate_mbps: 7.904
   reconnect_time: 30
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11060
   use_config_tracker: false
 gnss1_viscap_ctl_buf:

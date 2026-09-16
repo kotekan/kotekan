@@ -392,7 +392,7 @@ common:
   #
   # ⚠️ BRING THE GATHER UP BEFORE RESTARTING NODES INTO THIS. 60 senders retrying a dead
   # listener is ~2 log lines a second across the fleet even at reconnect_time 30.
-  telem-host: 10.222.3.6
+  telem-host: 10.222.0.56
   # PACE EVERY PUSH LEG (telem, cube, search tap) at 2x its mean rate. Every sender in the
   # fleet emits on the F-engine frame clock, so unpaced they all land on the receiver's single
   # 1 GbE in the same millisecond and the switch drops what its egress queue cannot hold; each

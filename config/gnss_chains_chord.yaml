@@ -489,7 +489,7 @@ chains:
     # It needs the seed and the carrier trim to be ONE controller -- task #33's shared per-sat
     # vector state. See #52.
     carrier-gain: 0.0
-    detectors: http://localhost:12050/gps_search
+    detectors: http://cf06:12050/gps_search
     # -- PATH B (task #26, 2026-08-09). GPS L5 ran on BOTH paths simultaneously: path A
     # (gnss*_track / gnss*_assemble / gnss*_combine) and a fully-built path B
     # (gnss*_inject / gnss*_n2assemble / gnss*_n2combine). Measured, path A costs 7x path B
