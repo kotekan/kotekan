@@ -13,6 +13,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 #include "div.hpp"
 
 #include <algorithm>
@@ -271,12 +272,9 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{#kernel_arguments}}
         {{^isscalar}}
             {{^hasbuffer}}
-                {
-                    const cudaError_t ierr = cudaHostRegister(host_{{{name}}}_buffer.data(),
-                                                              host_{{{name}}}_buffer.size() * sizeof *host_{{{name}}}_buffer.data(),
-                                                              0);
-                    assert(ierr == cudaSuccess);
-                }
+                CHECK_CUDA_ERROR(cudaHostRegister(host_{{{name}}}_buffer.data(),
+                                                  host_{{{name}}}_buffer.size() * sizeof *host_{{{name}}}_buffer.data(),
+                                                  0));
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -467,7 +465,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         J_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num()
                                  + T_min * E_meta->get_time_downsampling_fpga());
         // The kernel's generated dim scalings assume the input is sampled at the FPGA rate
-        assert(E_meta->get_time_downsampling_fpga() == 1);
+        if (E_meta->get_time_downsampling_fpga() != 1)
+            FATAL_ERROR("Input buffer E has time_downsampling_fpga={:d}, but the dim scalings "
+                        "generated for kernel {{{kernel_name}}} assume an input sampled at the "
+                        "FPGA rate",
+                        E_meta->get_time_downsampling_fpga());
         // `J` splits the time direction into a slow `Thi` (dimension 0, extent 1) and a fast
         // `T`. `time_downsampling_fpga` describes dimension 0, i.e. the whole frame, so it is
         // that dimension's scaling, not the input's value that `set_metadata` copied over.
@@ -478,8 +480,14 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         // to start at the same sequence number.
         {{#kernel_arguments}}
             {{#haslifetime}}
-                assert({{{name}}}_buffer.get_metadata()->get_fpga_seq_num()
-                       == E_meta->get_fpga_seq_num());
+                // A misaligned slowly varying input would be applied to the wrong samples,
+                // silently corrupting the output, so check this on every frame.
+                if ({{{name}}}_buffer.get_metadata()->get_fpga_seq_num() != E_meta->get_fpga_seq_num())
+                    FATAL_ERROR("Buffer {{{name}}} begins at FPGA sequence number {:d}, but the "
+                                "voltage buffer E begins at {:d}; kernel {{{kernel_name}}} requires "
+                                "them to be aligned",
+                                {{{name}}}_buffer.get_metadata()->get_fpga_seq_num(),
+                                E_meta->get_fpga_seq_num());
             {{/haslifetime}}
         {{/kernel_arguments}}
     }

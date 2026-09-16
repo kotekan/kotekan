@@ -13,6 +13,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 #include "div.hpp"
 
 #include <algorithm>
@@ -398,16 +399,10 @@ cudaBasebandBeamformer_chime::cudaBasebandBeamformer_chime(Config& config,
     dummy() // avoid trailing comma
 {
     // Register host memory
-    {
-        const cudaError_t ierr = cudaHostRegister(
-            host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0);
-        assert(ierr == cudaSuccess);
-    }
-    {
-        const cudaError_t ierr = cudaHostRegister(
-            host_log_buffer.data(), host_log_buffer.size() * sizeof *host_log_buffer.data(), 0);
-        assert(ierr == cudaSuccess);
-    }
+    CHECK_CUDA_ERROR(cudaHostRegister(
+        host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0));
+    CHECK_CUDA_ERROR(cudaHostRegister(host_log_buffer.data(),
+                                      host_log_buffer.size() * sizeof *host_log_buffer.data(), 0));
 
     A_buffer.register_consumer();
     E_buffer.register_consumer();
@@ -568,7 +563,12 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
         J_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num()
                                  + T_min * E_meta->get_time_downsampling_fpga());
         // The kernel's generated dim scalings assume the input is sampled at the FPGA rate
-        assert(E_meta->get_time_downsampling_fpga() == 1);
+        if (E_meta->get_time_downsampling_fpga() != 1)
+            FATAL_ERROR(
+                "Input buffer E has time_downsampling_fpga={:d}, but the dim scalings "
+                "generated for kernel BasebandBeamformer_chime assume an input sampled at the "
+                "FPGA rate",
+                E_meta->get_time_downsampling_fpga());
         // `J` splits the time direction into a slow `Thi` (dimension 0, extent 1) and a fast
         // `T`. `time_downsampling_fpga` describes dimension 0, i.e. the whole frame, so it is
         // that dimension's scaling, not the input's value that `set_metadata` copied over.
@@ -577,7 +577,13 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
         // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards,
         // counted from the voltage ring buffer's logical beginning -- so the two streams have
         // to start at the same sequence number.
-        assert(A_buffer.get_metadata()->get_fpga_seq_num() == E_meta->get_fpga_seq_num());
+        // A misaligned slowly varying input would be applied to the wrong samples,
+        // silently corrupting the output, so check this on every frame.
+        if (A_buffer.get_metadata()->get_fpga_seq_num() != E_meta->get_fpga_seq_num())
+            FATAL_ERROR("Buffer A begins at FPGA sequence number {:d}, but the "
+                        "voltage buffer E begins at {:d}; kernel BasebandBeamformer_chime requires "
+                        "them to be aligned",
+                        A_buffer.get_metadata()->get_fpga_seq_num(), E_meta->get_fpga_seq_num());
     }
 
     // Copy inputs to device memory
