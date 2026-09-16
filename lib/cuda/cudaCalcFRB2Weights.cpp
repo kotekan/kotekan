@@ -37,6 +37,15 @@ class cudaCalcFRB2Weights : public kotekan::Stage {
     // Upchannelization setup
     const std::string upchannelization_schedule_name =
         config.get_default<std::string>(unique_name, "upchannelization_schedule_name", "");
+    // The coarse frequency channels handled by this GPU. These are
+    // local to a GPU and are thus not part of the upchannelization
+    // schedule, which is shared by all GPUs.
+    //
+    // TODO: Reading these from the configuration still assumes that
+    // there is only one GPU per process. Take them from the metadata
+    // of an incoming frame instead.
+    const std::vector<int> local_frequency_channels =
+        config.get<std::vector<int>>(upchannelization_schedule_name, "frequency_channels");
 
     // FRB1 beamformer setup
 
@@ -108,8 +117,8 @@ public:
         const Telescope& telescope = Telescope::instance();
 
         // Upchannelization schedule
-        const auto& upchan_schedule =
-            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+        const UpchannelizationSchedule upchan_schedule(config, upchannelization_schedule_name,
+                                                       local_frequency_channels, unique_name);
 
         // Calculate frequencies
         const auto& frequency_channels = upchan_schedule.get_frequency_channels();

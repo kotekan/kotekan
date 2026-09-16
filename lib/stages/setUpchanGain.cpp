@@ -23,6 +23,15 @@
 class setUpchanGain : public kotekan::Stage {
     const std::string upchannelization_schedule_name =
         config.get_default<std::string>(unique_name, "upchannelization_schedule_name", "");
+    // The coarse frequency channels handled by this GPU. These are
+    // local to a GPU and are thus not part of the upchannelization
+    // schedule, which is shared by all GPUs.
+    //
+    // TODO: Reading these from the configuration still assumes that
+    // there is only one GPU per process. Take them from the metadata
+    // of an incoming frame instead.
+    const std::vector<int> local_frequency_channels =
+        config.get<std::vector<int>>(upchannelization_schedule_name, "frequency_channels");
     const int upchan_factor = config.get<int>(unique_name, "upchan_factor");
     const int upchan_max_num_channels = config.get<int>(unique_name, "upchan_max_num_channels");
     const std::vector<double> upchan_gain =
@@ -62,8 +71,8 @@ public:
             return;
 
         // Upchannelization schedule
-        const auto& upchan_schedule =
-            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+        const UpchannelizationSchedule upchan_schedule(config, upchannelization_schedule_name,
+                                                       local_frequency_channels, unique_name);
 
         // Wait for buffer
         DEBUG("[{:s}/{:d}] Waiting for buffer...", upchan_gain_buffer->buffer_name, frame_index);
