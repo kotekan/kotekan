@@ -1,19 +1,18 @@
 #ifndef KOTEKAN_LOGGING_FIXTURE_HPP
 #define KOTEKAN_LOGGING_FIXTURE_HPP
 
-#include "kotekanLogging.hpp" // for log_event, log_event_handler, log_event_hook
+#include "kotekanLogging.hpp" // for log_event, log_event_handler, log_event_hook, FORMAT
 
 #include <boost/test/included/unit_test.hpp>
 #include <csignal>   // for signal, SIGTERM, SIG_IGN
+#include <cstdlib>   // for _Exit
+#include <iostream>  // for cerr, cout, flush
+#include <mutex>     // for mutex, lock_guard
 #include <stdexcept> // for runtime_error
 #include <string>    // for string, to_string
+#include <thread>    // for thread::id, this_thread::get_id
 
 /// Boost fixture that makes an error logged by kotekan fail the test.
-///
-/// Note: test_logging.hpp in this directory is a separate, opt-in helper
-/// (kotekan_test_logging::configure()) that raises the log level and prints
-/// kotekan's stored error message on SIGTERM. The two are independent; a test may
-/// use either or both. Worth consolidating, but not in this change.
 ///
 /// Install it by adding
 ///
@@ -24,28 +23,80 @@
 /// derives from std::runtime_error, so a BOOST_CHECK_THROW on std::runtime_error
 /// matches either exception.
 ///
-/// This replaces the compile-time KTK_BOOST_ERR/KTK_BOOST_WARN switch in
-/// kotekanLogging.hpp, which was an ODR violation for every function defined in a
-/// header that logs; see the comment on kotekan::log_event_handler.
+/// That happens only on the thread that installed the fixture. Boost.Test
+/// assertions are not safe to call from more than one thread, and kotekan logs
+/// from threads that cannot carry an exception either: restClient and restServer
+/// both log from libevent callbacks, and restServer's ERROR_NON_OO calls sit
+/// inside the very catch blocks that turn an exception into a 500 reply, so
+/// throwing there would unwind into libevent's C frames and terminate the
+/// process. An event from any other thread is printed instead, and counted so
+/// that the run still fails if it was an error.
 ///
 /// SIGTERM is ignored as well. FATAL_ERROR calls exit_kotekan(), which raises
 /// SIGTERM, before throwing FatalError; the handler below throws first so that is
 /// normally not reached, but a path that reaches exit_kotekan() by another route
 /// should not take the test process down with it.
+///
+/// Note: test_logging.hpp in this directory is a separate, opt-in helper
+/// (kotekan_test_logging::configure()) that raises the log level and prints
+/// kotekan's stored error message on SIGTERM. The two are independent; a test may
+/// use either or both.
 struct kotekan_logging_fixture {
     kotekan_logging_fixture() {
         std::signal(SIGTERM, SIG_IGN);
+        state().test_thread = std::this_thread::get_id();
         kotekan::log_event_hook.store(&handle);
     }
 
     ~kotekan_logging_fixture() {
         kotekan::log_event_hook.store(nullptr);
+
+        int errors, warnings;
+        {
+            const std::lock_guard<std::mutex> lock(state().mutex);
+            errors = state().off_thread_errors;
+            warnings = state().off_thread_warnings;
+        }
+        if (errors == 0 && warnings == 0)
+            return;
+
+        // No Boost.Test assertion can be raised from here: BOOST_GLOBAL_FIXTURE
+        // destroys the fixture during the framework's teardown, after the report
+        // has been written, where an assertion is reported as an empty "Test setup
+        // error" instead (Boost 1.83). So report this directly, and end the process
+        // with boost's own failure status if an error was among the events -- an
+        // error on the test thread fails the run, and one on another thread must
+        // not be quieter just because it could not be thrown.
+        std::cerr << "\n[kotekan] " << (errors + warnings)
+                  << " log event(s) reported off the test thread (" << errors << " error(s), "
+                  << warnings << " warning(s)); see the lines above." << std::endl;
+        if (errors > 0) {
+            std::cerr << "[kotekan] failing the run: an error logged off the test thread cannot "
+                         "be turned into an exception there."
+                      << std::endl;
+            std::cout << std::flush;
+            std::_Exit(boost::exit_test_failure);
+        }
     }
 
     static void handle(const kotekan::log_event kind, const char* const file, const int line,
                        const std::string& message) {
-        const std::string described =
-            std::string(file) + ":" + std::to_string(line) + ": " + message;
+        const std::string described = FORMAT("{}:{}: {}", file, line, message);
+
+        if (std::this_thread::get_id() != state().test_thread) {
+            // Neither throw nor touch Boost.Test from here; see the comment above.
+            const std::lock_guard<std::mutex> lock(state().mutex);
+            if (kind == kotekan::log_event::error)
+                state().off_thread_errors++;
+            else
+                state().off_thread_warnings++;
+            std::cerr << "[kotekan] "
+                             + std::string(kind == kotekan::log_event::error ? "error" : "warning")
+                             + " logged off the test thread: " + described + "\n"
+                      << std::flush;
+            return;
+        }
+
         switch (kind) {
             case kotekan::log_event::warning:
                 BOOST_WARN_MESSAGE(false, described);
@@ -53,6 +104,21 @@ struct kotekan_logging_fixture {
             case kotekan::log_event::error:
                 throw std::runtime_error(described);
         }
+    }
+
+private:
+    struct shared_state {
+        std::thread::id test_thread;
+        std::mutex mutex;
+        int off_thread_errors = 0;
+        int off_thread_warnings = 0;
+    };
+
+    /// The hook is a plain function pointer, so handle() has no instance to reach
+    /// the fixture's state through.
+    static shared_state& state() {
+        static shared_state shared;
+        return shared;
     }
 };
 

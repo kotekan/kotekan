@@ -185,7 +185,7 @@ void ChimeVisPattern::fill(N2FrameView& frame) {
     const std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
     ERROR("ChimeVisPattern cannot fill an N2 frame (metadata type \"{:s}\"); the frame is left "
           "unfilled.",
-          pool ? pool->type_name.c_str() : "unknown");
+          pool->type_name);
 }
 
 
@@ -330,7 +330,7 @@ void TestPatternFreqVisPattern::fill(N2FrameView& frame) {
     const std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
     ERROR("TestPatternFreqVisPattern cannot fill an N2 frame (metadata type \"{:s}\"); the frame "
           "is left unfilled.",
-          pool ? pool->type_name.c_str() : "unknown");
+          pool->type_name);
 }
 
 
@@ -392,7 +392,7 @@ void TestPatternInputVisPattern::fill(N2FrameView& frame) {
     const std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
     ERROR("TestPatternInputVisPattern cannot fill an N2 frame (metadata type \"{:s}\"); the frame "
           "is left unfilled.",
-          pool ? pool->type_name.c_str() : "unknown");
+          pool->type_name);
 }
 
 
