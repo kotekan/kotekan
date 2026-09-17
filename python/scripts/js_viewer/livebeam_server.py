@@ -735,6 +735,25 @@ class ModeResource(resource.Resource):
         return json.dumps({"mode": mode}).encode("utf-8")
 
 
+# WARNING: "l1" / "l2c" / "l5" HERE ARE FRONT-END NAMES FROM THE AIRSPY PROTOTYPE, NOTHING ELSE.
+# They are one of FOUR band taxonomies in this file, and the only one that is purely historical:
+#
+#   this one      "l1"/"l2c"/"l5"        the three prototype dongles -- a dict key, a websocket
+#                                        port (8539/8639/8739) and the --band default. CHORD has
+#                                        NO airspys, so here they are vestigial: the RF selector
+#                                        is rebuilt from the broker's chains instead.
+#   column group  "high"/"mid"/"low"     BAND_LABEL / BAND_ORDER / _band_of -- what the table
+#                                        columns group by. Renamed off L1/L2/L5 on 2026-09-17
+#                                        precisely so it could not be confused with this one.
+#   broker        "L5"/"E5b"/"B3"/"E6"   per-signal physical band, from /get_chains. What the
+#                                        Stream-health panel shows, one row per RF stream.
+#   PVT           CARRIER_NAME           clock-group naming, keyed by carrier MHz.
+#
+# AND "l2c" IS A MISNOMER EVEN WITHIN ITS OWN TAXONOMY: that dongle was repurposed from GPS L2C
+# to BeiDou B2b (1207.14) and the key was never renamed, which is why its static label reads
+# "L2 - 1207.14 MHz" -- an L2 name on a signal that is not L2. Do not reason about frequency
+# from any of these three strings; use the carrier.
+#
 # Per-band constellation display defs (name shown in the sky legend + record period t_rec used
 # for C/N0 = x / t_rec). tag/colour are constant across bands (G/E/C = blue/orange/red, matching
 # the matplotlib composite-map palette); only the SIGNAL name and t_rec change. The client swaps
@@ -1184,6 +1203,10 @@ def _gps_signal_capability():
 # each front end is LABELLED BY ITS ACTUAL airspy tuning (not a hardcoded GPS band name -- the l2c
 # dongle now tunes 1207.14 for BeiDou B2b / Galileo E5b, not GPS L2C's 1227.6), and a suspended
 # band (absent airspy stage) drops out of the selector. Used only when /config is unreachable.
+# The prototype's three front ends. See the taxonomy note above BAND_CHAINS: these keys
+# are NOT the column groups (high/mid/low), and "l2c" has carried BeiDou B2b since the
+# dongle was repurposed. Superseded at runtime on CHORD -- discover_rf_bands() and the
+# broker-chain branch rebuild this list from what is actually on the sky.
 UNIFIED_RF_BANDS = [
     {"band": "l1",  "ws_port": 8539, "airspy": "l1_airspy_in",  "label": "L1 · 1575.42 MHz"},
     {"band": "l2c", "ws_port": 8639, "airspy": "l2c_airspy_in", "label": "L2 · 1207.14 MHz"},
