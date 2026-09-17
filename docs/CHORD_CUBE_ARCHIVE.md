@@ -1,5 +1,10 @@
 # CHORD GNSS beam-cube archive — raw, L0, and the trim ladder
 
+> ✅ **The cf06 references in this document are correct and deliberate.** When the live GNSS
+> stack moved to `gnss` on 2026-09-17 the cube leg deliberately stayed: the archiver, the
+> compactor and the static viewer :8877 are offline analysis, and cf06's two now-idle L40S are
+> where GPU benchmarking belongs. See [`CHORD_GNSS_RUNBOOK.md`](CHORD_GNSS_RUNBOOK.md) §6.
+
 The beam cube is the (PRN slot × subband bin × element) pair of sums — incoherent |A|² (the
 beam) and coherent Σ A·rot (the arc) — over one ~1.007 s window, produced by every
 `GnssGpuRecordAssemble` instance in the fleet (15 per node, 14 on cx44 = 89 senders) and

@@ -1,6 +1,13 @@
 #!/bin/bash
 # Stop the cf06 GNSS stack, in dependency order, archiving its logs first.
 #
+# ⚠️ 2026-09-17: most of what this stops is NO LONGER ON cf06. The broker, gather, aggregator,
+# obs writers and live viewer moved to the gnss VM (docs/CHORD_GNSS_RUNBOOK.md); stop those with
+#     ssh gnss systemctl --user stop gnss-stack.target
+# Running this on cf06 is harmless -- it finds nothing for those five and stops the cube leg
+# that IS still there (archiver, compactor, static viewer :8877) -- but it is no longer "the
+# stack", and its log archiving only covers cf06's own /tmp.
+#
 # WHY THIS EXISTS: there were six `*_up.sh` scripts and NO way down, so every teardown was
 # hand-assembled from `ps` output at the moment it was needed -- which is how a component gets
 # missed. Two were missed the first time this was written by hand: the static viewer

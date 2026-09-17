@@ -1,5 +1,10 @@
 # CHORD GNSS — state of play, 2026-07-31 (evening)
 
+> ⚠️ **Hosts moved on 2026-09-17.** This document is a running narrative and its cf06 references
+> are historical — including §8.19.8's *earlier, failed* cf06 migration, which is not this one.
+> The live stack (broker, gather, aggregator, obs writers, viewer) now runs on `gnss` under
+> systemd: [`CHORD_GNSS_RUNBOOK.md`](CHORD_GNSS_RUNBOOK.md). Only the cube leg is still on cf06.
+
 Working state of the CHORD-side GNSS instrument on branch `kv/chord-gnss`.
 
 **READ THIS FIRST — the picture changed completely on 2026-07-31.** For weeks the tracker could

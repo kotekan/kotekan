@@ -55,7 +55,10 @@ metadata segfaulted six nodes. Archiver first, then nodes.
 ⚠️ `cubecompact_up.sh` needs `h5py`, so it runs `/home/kvand/gnss/venv/bin/python` and **not**
 `venv-ft` — the script checks and refuses, but if you invoke the loop by hand, use `venv`.
 
-The rest of cf06 is out of scope here and has its own owners: `gather_up.sh`, `agg_up.sh`,
+⚠️ Those three ARE cf06's GNSS presence now. The live stack -- broker, gather, aggregator, obs
+writers, viewer -- moved to `gnss` on 2026-09-17 ([`CHORD_GNSS_RUNBOOK.md`](CHORD_GNSS_RUNBOOK.md));
+the scripts named below are superseded for it, and `stack_up.sh` on cf06 now refuses outright.
+The old text: the rest of cf06 is out of scope here and has its own owners: `gather_up.sh`, `agg_up.sh`,
 `obs_up.sh`, and the broker (`broker_restart.sh`, KV's — archive `/tmp/gnss_broker.log` first).
 
 **Checks that actually bind** (all three, in under a minute):

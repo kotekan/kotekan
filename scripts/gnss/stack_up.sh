@@ -23,6 +23,29 @@
 # WARNS (does not refuse): the six node configs' baked EOP headroom -- node_up.sh refuses on
 # that itself, but hearing it here saves a round trip.
 set -u
+
+# ⚠️⚠️ SUPERSEDED 2026-09-17 -- THIS WOULD START A SECOND LIVE STACK.
+# The broker, gather, aggregator, obs writers and viewer moved to the gnss VM and run there as
+# systemd user units. This script still starts all five. Run on cf06 today it gives the fleet
+# TWO BROKERS commanding the same nodes, and two gathers competing for the same telemetry --
+# which is the failure broker_restart.sh's own host guard exists to prevent, arriving by a
+# different door.
+#
+#     ssh gnss systemctl --user start gnss-stack.target      <- what you want
+#     docs/CHORD_GNSS_RUNBOOK.md                             <- why
+#
+# Kept, not deleted: it records the dependency order and the preflight conditions, and cf06
+# still runs the cube leg (cubearch_up.sh, cubecompact_up.sh, beamview_up.sh), which this
+# script never started anyway.
+if [ "${GNSS_ALLOW_LEGACY_STACK_UP:-0}" != "1" ]; then
+    echo "REFUSING: the live GNSS stack moved to the gnss VM on 2026-09-17." >&2
+    echo "  This script would start a SECOND broker, gather and aggregator beside it." >&2
+    echo "  Use:  ssh gnss systemctl --user start gnss-stack.target" >&2
+    echo "  See:  docs/CHORD_GNSS_RUNBOOK.md" >&2
+    echo "  If you genuinely mean to run a legacy stack here, set" >&2
+    echo "  GNSS_ALLOW_LEGACY_STACK_UP=1 -- and stop the VM's units first." >&2
+    exit 1
+fi
 K=/home/kvand/gnss/kotekan
 S=$K/scripts/gnss
 FT=/home/kvand/gnss/venv-ft/bin/python

@@ -1,12 +1,17 @@
 # Stopping and starting the GNSS stack — the teardown, the bring-up, and what it costs to get either wrong
 
+> ⚠️ **SUPERSEDED for the live stack, 2026-09-17.** The broker, gather, aggregator, obs writers
+> and live viewer moved to **`gnss.site.chord-observatory.ca`** and run as systemd units.
+> **Start here instead: [`CHORD_GNSS_RUNBOOK.md`](CHORD_GNSS_RUNBOOK.md).**
+> What remains on cf06 is the cube leg only — archiver, compactor, static viewer :8877.
+
 **What this is for.** Handing the array to someone else, or taking GNSS down for any other
 reason. The bring-up counterpart is [`CHORD_BEAMCUBE_RUNBOOK.md`](CHORD_BEAMCUBE_RUNBOOK.md) §2
 for the cube chain and the `scripts/gnss/*_up.sh` family for everything else; there was no
 counterpart going the other way until 2026-09-11, so every teardown before that was assembled by
 hand from `ps` output at the moment it was needed.
 
-**One command:**
+**One command** (cf06's cube leg only, these days):
 
 ```sh
 ssh cf06 /home/kvand/gnss/kotekan/scripts/gnss/stack_down.sh

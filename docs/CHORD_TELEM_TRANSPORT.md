@@ -36,7 +36,7 @@ entire reason the vector state exists (KV, 2026-08-14 — do not revisit).
 ## 2. Shape
 
 ```
-  each node, each GPU, each chain                       the broker host (cf06)
+  each node, each GPU, each chain                       the broker host (gnss)
   ────────────────────────────────                      ──────────────────────
    n2rec_buf ──┬─► GnssCoherentCombiner  (unchanged)
                │
@@ -143,7 +143,7 @@ today's earlier work) — so the POST stream is untouched.
 lines a second across the fleet even at `reconnect_time 30`.
 
 ```bash
-ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/gather_up.sh'   # :11060 in, :11061 out, rest :12051
+ssh gnss systemctl --user restart gnss-gather.service           # :11060 in, :11061 out, rest :12051
 # then, per node (KV — these need sudo):
 scripts/gnss/node_up.sh <node> restart
 ```
@@ -160,7 +160,9 @@ Same view over REST: `curl -s localhost:12051/telem_gather/get_stats`.
 
 Two independent broker flags, both off by default:
 
-- `--telem-gather cf06:11061` — connect and fill the store. **Changes nothing on its own**; the
+- `--telem-gather 127.0.0.1:11061` — connect and fill the store (the gather binds its broker
+  stream to LOCALHOST, which is why broker and gather are one machine). **Changes nothing on
+  its own**; the
   broker logs a rate-limited `TELEM` line with frames / gaps / bad and the per-chain window
   spread. This is worth running alone first: it makes the transport's health visible without
   putting anything downstream of it.
@@ -271,7 +273,9 @@ thing that regressed, not the thing that was complained about.**
 Dropping only the broker's subscription while leaving the gather running at full NIC load gave
 **no recovery** (17.8–23.6 s), and the broker sits at **10% CPU** — waiting, not computing.
 
-cf06 has **one** 1 GbE (`eno8303`, 1000 Mb/s) carrying everything: telemetry, the search
+⚠️ **Historical, and the reason for the move:** cf06 had **one** 1 GbE (`eno8303`) carrying everything. The stack now runs on gnss, which measures >=4.3 Gbit/s on a 10G uplink, and late frames fell from 0.23% to ~0.15-0.25%. The paragraph below is kept because the pacing it motivated is still in the node configs.
+
+cf06 had **one** 1 GbE carrying everything: telemetry, the search
 aggregator legs, and the broker's ~60 REST polls. At 62832 B/frame the telemetry alone was
 ~480 Mbps of a measured 620, and **the senders are frame-synced by design** — they burst
 together on every window boundary, so the REST replies queue behind the bursts.
