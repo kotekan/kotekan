@@ -82,7 +82,13 @@ def load(path, since_s, cn0_min):
             cn = d.get("cn0_kcoh_dbhz")
             if cn is None or cn < cn0_min:
                 continue
-            out[d["prn"]][gh] = (gc, d.get("fadr_arc"), d["t"], d.get("az"), d.get("el"))
+            # ⚠️ THE ARC KEY IS (fadr_arc, fadr_hop0), NEVER fadr_arc ALONE. FleetAdr forgets a
+            # satellite that has been absent 30 s and its arc counter restarts at 1, so "arc 1"
+            # before and after a dropout are two accumulators with unrelated origins. Keyed on
+            # the arc id alone they pair as one arc and the join reads as a 1e5 TECU step;
+            # hop0 is the arc's first hop and changes with every genuine break.
+            arc = (d.get("fadr_arc"), d.get("fadr_hop0"))
+            out[d["prn"]][gh] = (gc, arc, d["t"], d.get("az"), d.get("el"))
             kept += 1
             # #117: the row also carries the last few grid hops (fleetadr.GRID_KEEP). Take
             # them. The writer polls at 2 s against a 1.0066 s grid -- exactly Nyquist -- so
@@ -98,7 +104,7 @@ def load(path, since_s, cn0_min):
                 # The row's `t` is the poll instant; each earlier grid hop happened one grid
                 # cadence further back. az/el move ~0.01 deg over that span, far below
                 # anything the pairing or the mapping function resolves.
-                out[d["prn"]][h] = (a, d.get("fadr_arc"),
+                out[d["prn"]][h] = (a, arc,
                                     d["t"] - (gh - h) / GRID_HOPS * GRID_SECONDS,
                                     d.get("az"), d.get("el"))
                 kept += 1
