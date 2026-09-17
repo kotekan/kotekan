@@ -20,6 +20,10 @@ prod_config = {
     "num_polarizations": 2,
     "num_dishes": 64,
     "num_subintegrations_per_bin": 2,
+    # One bad feed mask frame covers exactly one correlation frame, as required
+    # (N2Accumulate: "each bad feed mask frame must cover exactly one correlation
+    # frame") and as chord_pathfinder.j2 configures it in production.
+    "bf_mask_lifetime_in_samples": 16384,
     "variance_mode": "EvenOddPosDef",
     "num_ev": 0,
     "freq_ids": [0, 8191, 300, 1000, 4000],
@@ -554,6 +558,54 @@ def rfiframemask_data(setup):
     return bufs
 
 
+# Elements flagged bad in every bad_feed_mask frame; folded into the output flags.
+BAD_FEEDS = [3, 17, 40]
+
+
+@pytest.fixture(scope="module")
+def bad_feed_mask_data(setup):
+    """
+    Generate a list of input bad feed mask frames in ChordBuffers
+
+    Every frame carries the same mask: all elements good except BAD_FEEDS.
+    As with bufferBadInputs, a frame is one mask sample covering
+    bf_mask_lifetime_in_samples, so the sequence numbers step by that.
+
+    Parameters
+    ----------
+    setup : fixture
+        Includes the base config as well as generation parameters
+
+    Returns
+    -------
+    List of ChordBuffers each containing a bad feed mask frame.
+    """
+
+    config = setup["config"]
+    lifetime = config["bf_mask_lifetime_in_samples"]
+
+    shape = (1, config["num_polarizations"], config["num_dishes"])
+
+    bufs = make_zeroed_chord_buffer(
+        "bad_feed_mask",
+        np.int8,
+        "int8",
+        shape,
+        ("Tbf", "P", "D"),
+        (lifetime, 1, 1),
+        config["first_frame_index"] * lifetime,
+        lifetime,
+        setup["num_frames"],
+        time_downsampling=lifetime,
+    )
+
+    for buf in bufs:
+        buf.data[...] = 1
+        buf.data.reshape(-1)[BAD_FEEDS] = 0
+
+    return bufs
+
+
 @pytest.fixture(scope="module")
 def accum_data(
     tmpdir_factory,
@@ -564,6 +616,7 @@ def accum_data(
     rficount_data,
     plcount_data,
     rfiframemask_data,
+    bad_feed_mask_data,
     accum_list,
 ):
     """
@@ -587,6 +640,8 @@ def accum_data(
         input pl_lost_counts_scalar
     rfiframemask_data : fixture
         input RFIFrameMask
+    bad_feed_mask_data : fixture
+        input bad feed mask
     accum_list : fixture
         List of expected output accumulation frame metadata. Used only to set the number of expected output frames.
 
@@ -610,6 +665,8 @@ def accum_data(
     plcount_buffer.write()
     rfiframemask_buffer = runner.ReadChordBuffer(str(tmpdir), rfiframemask_data)
     rfiframemask_buffer.write()
+    bad_feed_mask_buffer = runner.ReadChordBuffer(str(tmpdir), bad_feed_mask_data)
+    bad_feed_mask_buffer.write()
 
     # Make the output buffer we'll read from
     dump_buffer = runner.DumpN2Buffer(
@@ -636,6 +693,7 @@ def accum_data(
             "in_rficounts_buf": rficount_buffer,
             "in_plcounts_buf": plcount_buffer,
             "in_rfiframemask_buf": rfiframemask_buffer,
+            "in_bad_feed_mask_buf": bad_feed_mask_buffer,
         },
         dump_buffer,
         config,
@@ -1260,6 +1318,23 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
         # vis_diff = frame.vis - exp_vis[t, f]
         # tol =  1.0e-6 + 1.0e-6 * 0.5*np.abs(frame.vis + exp_vis[t, f])
         np.testing.assert_allclose(frame.vis, exp_vis[t, f], 1.0e-6, 1.0e-6)
+
+
+def test_flags(accum_data, setup):
+    """
+    The per-element flags carry the bad feed mask (1.0 == good). N2Accumulate
+    consumes one mask frame per correlation frame, so every output frame shows
+    exactly the flagged feeds.
+    """
+
+    if setup["fail"]:
+        return
+
+    expected = np.ones(setup["config"]["num_elements"], dtype=np.float32)
+    expected[BAD_FEEDS] = 0.0
+
+    for frame in accum_data:
+        np.testing.assert_array_equal(frame.flags, expected)
 
 
 def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):

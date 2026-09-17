@@ -137,6 +137,15 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * excise.
  *         @buffer_format   NDArray uint8 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
+ * @buffer  in_bad_feed_mask_buf  Optional bad feed mask (1 == good) in the input order, as
+ * produced by bufferBadInputs and fed to the GPU, folded (AND) over each accumulation
+ * bin into the output frames' per-element flags. Consumed 1:1 with the correlation
+ * frames and checked against them by FPGA sequence number, so the recorded flags are
+ * exactly the masks the GPU applied to the accumulated data. Each mask frame must be one
+ * mask sample covering exactly one correlation frame. Without this input the flags are
+ * all good.
+ *         @buffer_format   NDArray int8 [1, num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
@@ -237,12 +246,13 @@ public:
 
 private:
     // Buffers to read/write
-    Buffer* in_buf;              /// Buffer containing input correlations
-    Buffer* in_counts_buf;       /// Buffer containing input counts
-    Buffer* in_rficounts_buf;    /// Buffer containing input rficounts
-    Buffer* in_plcounts_buf;     /// Buffer containing input plcounts
-    Buffer* in_rfiframemask_buf; /// Buffer containing input rfiframemask
-    Buffer* out_buf;             /// Output for the main vis dataset only
+    Buffer* in_buf;               /// Buffer containing input correlations
+    Buffer* in_counts_buf;        /// Buffer containing input counts
+    Buffer* in_rficounts_buf;     /// Buffer containing input rficounts
+    Buffer* in_plcounts_buf;      /// Buffer containing input plcounts
+    Buffer* in_rfiframemask_buf;  /// Buffer containing input rfiframemask
+    Buffer* in_bad_feed_mask_buf; /// Optional buffer containing the bad feed mask; may be null
+    Buffer* out_buf;              /// Output for the main vis dataset only
 
     // Parameters saved from the config files
     const int64_t _num_freq_per_n2k_frame;
@@ -296,6 +306,10 @@ private:
     std::vector<int32_t> _n_usable_variance_pairs; ///< Accepted pairs with samples in both frames
     std::vector<uint64_t> _n_rfi_samples_in_vis;
     std::vector<uint64_t> _n_pl_samples_in_vis;
+    /// Bad feed mask folded (AND) over the current accumulation bin (1 == good), input order
+    std::vector<uint8_t> _accum_bad_feed_mask;
+    /// AND a bad feed mask frame (@c _num_elements bytes, input order) into @c _accum_bad_feed_mask
+    void fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask);
     int64_t _vis_samples_in_out_frame;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;

@@ -117,7 +117,8 @@ if(NOT ${IWYU})
                 generated/cudaUpchannelizer_pathfinder_U8.cpp
                 generated/cudaUpchannelizer_pathfinder_U16.cpp
                 generated/cudaUpchannelizer_pathfinder_U32.cpp
-                generated/cudaUpchannelizer_pathfinder_U64.cpp)
+                generated/cudaUpchannelizer_pathfinder_U64.cpp
+                generated/cudaUpchannelizer_pathfinder_U128.cpp)
 endif()
 
 # C++17

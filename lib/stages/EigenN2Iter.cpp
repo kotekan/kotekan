@@ -195,11 +195,15 @@ void EigenN2Iter::main_thread() {
         DEBUG("EigenN2Iter got input frame.");
         N2FrameView input_frame(in_buf, input_frame_id);
 
-        // Check that we have the full triangle
-        if (input_frame.n2_layout != N2Layout::FullUpperTri) {
-            FATAL_ERROR(
-                "Eigenvector calculations require a full correlation triangle. Got layout {}.",
-                N2Layout_to_string(input_frame.n2_layout));
+        // The full correlation triangle over the frame's own elements: n(n+1)/2 products.
+        // Necessary but not sufficient; FullUpperTri and compact subsets like DishInputs pass.
+        const size_t num_prod_full =
+            (size_t)input_frame.num_elements * (input_frame.num_elements + 1) / 2;
+        if (input_frame.num_prod != num_prod_full) {
+            FATAL_ERROR("Eigenvector calculations require a full correlation triangle: "
+                        "{:d} elements need {:d} products, got {:d} (layout {}).",
+                        input_frame.num_elements, num_prod_full, input_frame.num_prod,
+                        N2Layout_to_string(input_frame.n2_layout));
         }
 
         // Start the calculation clock.
