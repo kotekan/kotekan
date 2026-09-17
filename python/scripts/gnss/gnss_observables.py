@@ -43,7 +43,8 @@ from fractions import Fraction
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_stages import resolve_stage, capture_clock
-from gnss_ephemeris import (fetch_brdc, parse_rinex_nav, predict_all, gpst_of_utc, C_LIGHT)
+from gnss_ephemeris import parse_rinex_nav, predict_all, gpst_of_utc, C_LIGHT
+from gnss_brdc_supply import cached_brdc
 
 
 def _get(url, timeout=3.0):
@@ -222,6 +223,11 @@ def main():
                          "airspy adcstat anchor.")
     ap.add_argument("--frame0-utc", type=float, default=0.0,
                     help="the same anchor as a literal, for replay.")
+    ap.add_argument("--frame0-recheck-s", type=float, default=60.0,
+                    help="re-read /telescope/time0_ns this often and EXIT 3 when it has moved. "
+                         "An F-engine re-base restarts the hop counter; a writer holding the "
+                         "old anchor then files the new session onto the old day, hours or "
+                         "days in the past, with its geometry evaluated there. 0 disables.")
     ap.add_argument("--hop-key", default="fleet_hop",
                     help="status field holding the emit's ABSOLUTE F-engine hop. The epoch is "
                          "built from this integer, never from a UTC difference: two 1.79e9 "
@@ -260,6 +266,7 @@ def main():
     lam = C_LIGHT / args.carrier_hz          # carrier wavelength (m/cycle)
 
     eph, eph_t, eph_probe_t = None, 0.0, 0.0
+    frame0_check_t, frame0_warn_t = time.time(), 0.0
     last = {}   # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
     n = 0
     write_row = make_obs_writer(
@@ -276,6 +283,38 @@ def main():
         dets = _get("%s/%s/get_detections" % (args.url, args.search)) or []
         det_snr = {int(d["prn"]): d.get("snr") for d in dets if "prn" in d}
         now = time.time()
+        # ── THE ANCHOR IS RE-READ, AND A CHANGE IS FATAL ON PURPOSE. frame0 is latched once
+        # per process, and an F-engine re-base restarts the hop counter without telling
+        # anyone: t_epoch = frame0 + hop then stamps the new session onto the OLD epoch --
+        # every row lands in a past day's file, non-monotonic in file order, with az/el/range
+        # evaluated at that past instant (tracked satellites below the horizon, code and
+        # carrier residuals against the wrong range). The broker already refuses to carry a
+        # moved anchor (gnss_broker/receiver.time_anchor; its supervisor restarts it) and
+        # this is the same rule here: exit 3 is a failure to systemd, which restarts the unit
+        # on the new epoch and a new day file. An unreadable endpoint keeps the latched
+        # anchor and is logged, not fatal -- only a DIFFERENT value is.
+        if (frame0 and args.frame0_url and args.frame0_recheck_s > 0
+                and now - frame0_check_t >= args.frame0_recheck_s):
+            frame0_check_t = now
+            try:
+                with urllib.request.urlopen(args.frame0_url.rstrip("/") + "/telescope/time0_ns",
+                                            timeout=3) as _r:
+                    _t0 = json.loads(_r.read().decode()).get("time0_ns")
+                if _t0 and abs(float(_t0) * 1e-9 - frame0) > 1e-6:
+                    print("gnss_observables: *** F-ENGINE SAMPLE-0 EPOCH MOVED %.9f -> %.9f "
+                          "(%+.3f h). Every further row would be stamped on the old epoch; "
+                          "exiting 3 for the supervisor to restart this writer on the new one."
+                          % (frame0, float(_t0) * 1e-9, (float(_t0) * 1e-9 - frame0) / 3600.0),
+                          file=sys.stderr)
+                    sys.stderr.flush()
+                    sys.exit(3)
+            except SystemExit:
+                raise
+            except Exception as _e:
+                if now - frame0_warn_t > 600.0:
+                    frame0_warn_t = now
+                    print("gnss_observables: time0_ns unreadable at %s (%s); keeping the "
+                          "latched anchor" % (args.frame0_url, _e), file=sys.stderr)
         if to_unix(1.0) == 1.0:         # anchor wasn't up at startup: retry until it is
             to_unix = capture_clock(args.url, args.airspy)
         if not utc0:
@@ -299,7 +338,13 @@ def main():
                 stale_geom = True
         if eph is None or now - eph_t > 7200 or stale_geom:
             try:
-                eph = parse_rinex_nav(fetch_brdc())
+                # READ-ONLY. The nav cache has ONE writer, the broker (gnss_brdc_supply.
+                # cached_brdc); eight of these were rebuilding its rolling store on their
+                # own schedule. An empty cache is "geometry omitted", never a fetch.
+                srcs = cached_brdc()
+                if not srcs:
+                    raise RuntimeError("nav cache empty -- the broker has not fetched yet")
+                eph = parse_rinex_nav(srcs)
                 eph_t = now
                 if stale_geom:
                     print("BRDC geometry was stale for %s; re-fetched" % args.sys,
