@@ -101,19 +101,10 @@ public:
     } lock;
 
     // TODO: Replace by NDArray
-    /// The name of the array, e.g. "E", "J", "I". NUL-padded but not
-    /// NUL-terminated when the name uses all CHORD_META_MAX_NAME characters;
-    /// use set_name() and get_name() instead of accessing the field directly.
-    char name[CHORD_META_MAX_NAME];
     kotekan::DataType type;
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
-    /// The names of the dimensions, e.g. "F", "T", "D". NUL-padded but not
-    /// NUL-terminated when a name uses all CHORD_META_MAX_DIMNAME characters; use
-    /// set_dimension_name() and get_dimension_name() instead of accessing the
-    /// fields directly.
-    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
     int64_t dim_scaling[CHORD_META_MAX_DIM];
     // The stride counts elements, not bytes
     int64_t stride[CHORD_META_MAX_DIM];
@@ -561,6 +552,18 @@ public:
     }
 
 private:
+    /// The name of the array, e.g. "E", "J", "I". NUL-padded but not
+    /// NUL-terminated when the name uses all CHORD_META_MAX_NAME characters, so
+    /// it is private: read and write it through has_name(), get_name() and
+    /// set_name(), which bound the length correctly.
+    char name[CHORD_META_MAX_NAME];
+
+    /// The names of the dimensions, e.g. "F", "T", "D". NUL-padded but not
+    /// NUL-terminated when a name uses all CHORD_META_MAX_DIMNAME characters, so
+    /// these are private: read and write them through get_dimension_name(),
+    /// set_dimension_name() and set_array_dimension().
+    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
+
     /// Copies @p str into a fixed-size name field of @p field_size characters,
     /// padding it with NULs and truncating (with a warning naming @p what) if it
     /// does not fit. A name that fills the field leaves it without a terminating
