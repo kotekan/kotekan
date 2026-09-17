@@ -89,6 +89,8 @@ private:
     const int num_dishes;
     const int sub_integration_ntime;
     const int num_subintegrations;
+    /// FPGA samples per pl_mask element along the time axis; the kernel's layout is fixed to it
+    static constexpr int pl_mask_samples = 128;
 
     // Kotekan buffer names
     const std::string pl_mask_name;
@@ -136,14 +138,14 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
     if (sub_integration_ntime % 2 != 0)
         FATAL_ERROR("sub_integration_ntime % 2 != 0");
 
-    if (num_times % 128 != 0)
-        FATAL_ERROR("num_times % 128 != 0");
+    if (num_times % pl_mask_samples != 0)
+        FATAL_ERROR("num_times % pl_mask_samples != 0");
 
     if (num_times % sub_integration_ntime != 0)
         FATAL_ERROR("num_times % sub_integration_ntime != 0");
 
-    if ((num_dishes * num_polarizations) % 128 != 0)
-        FATAL_ERROR("num_elements (dish x pol) % 128 != 0");
+    if ((num_dishes * num_polarizations) % pl_mask_samples != 0)
+        FATAL_ERROR("num_elements (dish x pol) % pl_mask_samples != 0");
 
     pl_mask.register_consumer();
     pl_counts.register_producer();
@@ -157,7 +159,7 @@ cudaPLMaskAccumulator::~cudaPLMaskAccumulator() {}
 int cudaPLMaskAccumulator::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
     DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::ptrdiff_t pl_samples_per_frame = num_times / 128;
+    const std::ptrdiff_t pl_samples_per_frame = num_times / pl_mask_samples;
     const int pl_mask_errcode =
         pl_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             if (available_elements < pl_samples_per_frame)
@@ -185,12 +187,16 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
 
     const auto& pl_mask_meta = pl_mask.get_metadata();
     const auto& pl_counts_meta = pl_counts.get_metadata();
+    if (pl_mask_meta->get_time_downsampling_fpga() != pl_mask_samples)
+        FATAL_ERROR("pl_mask time_downsampling_fpga {:d} != {:d}, the kernel's samples per element",
+                    pl_mask_meta->get_time_downsampling_fpga(), pl_mask_samples);
     // The ring buffer's `fpga_seq_num` is the sequence number of its logical beginning, not
-    // zero; each pl_mask element along the time axis spans 128 FPGA samples.
+    // zero.
     pl_counts_meta->set_fpga_seq_num(pl_mask_meta->get_fpga_seq_num()
-                                     + pl_mask.get_read_valid().begin() * 128);
+                                     + pl_mask.get_read_valid().begin() * pl_mask_samples);
     pl_counts_meta->set_time_downsampling_fpga(
-        div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), 128) * sub_integration_ntime);
+        div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), pl_mask_samples)
+        * sub_integration_ntime);
 
     const kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
     std::uint64_t* const pl_counts_memory = pl_counts.get_ndarray().data();
@@ -207,9 +213,9 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     }
     assert(Tplmin + Tpl <= Tplsize);
 
-    const std::ptrdiff_t T = Tpl * 128;
-    const std::ptrdiff_t Tmin = Tplmin * 128;
-    const std::ptrdiff_t Tsize = Tplsize * 128;
+    const std::ptrdiff_t T = Tpl * pl_mask_samples;
+    const std::ptrdiff_t Tmin = Tplmin * pl_mask_samples;
+    const std::ptrdiff_t Tsize = Tplsize * pl_mask_samples;
 
     const std::ptrdiff_t F_stride = pl_counts.get_ndarray().stride(1);
 
