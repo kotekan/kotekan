@@ -757,19 +757,24 @@ lost_samples_buffer:
     metadata_pool: main_pool
 
 gen_data:
-  test_data_gen_network:
-    type: random_signed_offset
-    value: 153
-    #type: const_offset
-    #value: 0xc8
-    kotekan_stage: testDataGen
-    out_buf: host_voltage_buffer
-    name: "E"
-    # kotekan does not like variables in arrays
-    #array_shape: [ samples_per_data_set, num_local_freq, 2, num_elements/2 ]
-    array_shape: [ 6144, 1, 2, 1024 ]
-    dim_name: [ "T", "F", "P", "D" ]
-    dim_scaling: [ 1, 1, 1, 1 ]
+  #test_data_gen_network:
+  #  type: random_signed_offset
+  #  value: 153
+  #  #type: const_offset
+  #  #value: 0xc8
+  #  kotekan_stage: testDataGen
+  #  out_buf: host_voltage_buffer
+  #  name: "E"
+  #  # kotekan does not like variables in arrays
+  #  #array_shape: [ samples_per_data_set, num_local_freq, 2, num_elements/2 ]
+  #  array_shape: [ 6144, 1, 2, 1024 ]
+  #  dim_name: [ "T", "F", "P", "D" ]
+  #  dim_scaling: [ 1, 1, 1, 1 ]
+  read_data_network:
+      type: hdf5FileRead
+      base_dir:  debug-data-skydata-20260916T1551
+      file_name: host_voltage_buffer_0
+      out_buf: host_voltage_buffer_0
   test_data_gen_lost_samples:
     type: const
     value: 0
