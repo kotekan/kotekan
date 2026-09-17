@@ -446,6 +446,29 @@ mutate), which has not been done for these two.
 
 ## Open — measured, real, and nobody's lever
 
+### #133 — the viewer's RF-band selector collapses 5 bands into 2, and mislabels one
+**[live 09-17]** The broker reports five distinct `rf_band` values across the eight chains — L5,
+E5b, B3, E6, L2 — but `livebeam_server.py` maps them into only **two** for its own selector:
+
+| chain | broker `rf_band` | carrier | viewer `band` |
+|---|---|---|---|
+| gps_l5, gal_e5a, bds_b2a | L5 | 1176.45 | L5 |
+| gal_e5b, bds_b2b | **E5b** | 1207.14 | L5 |
+| bds_b3i | **B3** | 1268.52 | L2 |
+| gal_e6 | **E6** | 1278.75 | L2 |
+| gps_l2c | **L2** | 1227.60 | L2 |
+
+So the RF selector offers two entries where there should be five, and because the label takes the
+carrier of the **first** chain in each bucket, the "L2" entry reads **`L2 · 1268.52 MHz`** — the
+L2 band name against B3's carrier. L2C is 1227.60.
+
+⚠️ **Not caused by the migration**, though it was found during it: the mapping is a function of
+the chain list alone and would have read identically on cf06 given a full discovery. It was
+simply invisible while the viewer only ever had one chain (#the discovery race, now fixed).
+
+The satellite table is unaffected — it draws from `signals`, which is complete and carries the
+right per-chain carriers. This is the band selector and its label only.
+
 ### #123 — cf06's single 1 GbE is the fleet's binding constraint
 **[live]** 713 Mbit/s ingress, of which telemetry is 363 after the v6 shrink. It has already
 produced two named faults — 22% late frames (since paced down to 0.2–0.5%) and SYN-ACK loss that
