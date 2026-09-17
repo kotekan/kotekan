@@ -29,6 +29,7 @@ class setUpchanGain : public kotekan::Stage {
         config.get<std::vector<double>>(unique_name, "upchan_gain");
 
     Buffer* const upchan_gain_buffer;
+    Buffer* const metadata_buffer;
 
 public:
     setUpchanGain(kotekan::Config& config, const std::string& unique_name,
@@ -37,7 +38,8 @@ public:
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
-        upchan_gain_buffer(get_buffer("upchan_gain_buffer"))
+        upchan_gain_buffer(get_buffer("upchan_gain_buffer")),
+        metadata_buffer(get_buffer("metadata_buffer"))
     //
     {
         // We use the same gain for all channels
@@ -49,6 +51,7 @@ public:
                == sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
 
         upchan_gain_buffer->register_producer(unique_name);
+        metadata_buffer->register_consumer(unique_name);
     }
 
     virtual ~setUpchanGain() {}
@@ -62,8 +65,16 @@ public:
             return;
 
         // Upchannelization schedule
-        const auto& upchan_schedule =
-            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+        uint8_t const* const metadata_frame = metadata_buffer->wait_for_full_frame(unique_name, 0);
+        if (metadata_frame == nullptr)
+            return;
+        const auto& upchan_schedule = *[&]() {
+            const auto coarse_freq = get_chord_metadata(metadata_buffer, 0)->get_coarse_freq();
+            return &UpchannelizationSchedule::instance(config, upchannelization_schedule_name,
+                                                       coarse_freq);
+        }();
+        metadata_buffer->mark_frame_empty(unique_name, 0);
+        metadata_buffer->unregister_consumer(unique_name);
 
         // Wait for buffer
         DEBUG("[{:s}/{:d}] Waiting for buffer...", upchan_gain_buffer->buffer_name, frame_index);
