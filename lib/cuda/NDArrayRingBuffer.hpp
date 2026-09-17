@@ -19,7 +19,6 @@
 
 #include <algorithm>          // for find_if, fill_n
 #include <array>              // for array
-#include <cassert>            // for assert
 #include <cmath>              // for isfinite
 #include <cstddef>            // for ptrdiff_t, size_t
 #include <cstdint>            // for uint8_t
@@ -36,6 +35,17 @@
 #include <type_traits>        // for is_floating_point_v, is_same_v
 #include <utility>            // for pair
 #include <vector>             // for vector
+
+// An `assert` that stays enabled in release builds. Most conditions in this file are not
+// internal invariants: they bound ring buffer offsets that become kernel arguments, or
+// describe metadata another stage published. A violation therefore corrupts data silently
+// rather than crashing, which is exactly the case a disabled `assert` cannot catch.
+// Requires `buffer_name` to be in scope. Undefined at the end of this header.
+#define RINGBUF_CHECK(cond)                                                                        \
+    do {                                                                                           \
+        if (!(cond))                                                                               \
+            FATAL_ERROR("ring buffer {:s}: failed check `{:s}`", buffer_name, #cond);              \
+    } while (0)
 
 using kotekan::div_noremainder;
 using kotekan::mod;
@@ -96,7 +106,10 @@ public:
 
     extent_t() : extent_t(0, 0) {}
     extent_t(std::ptrdiff_t begin, std::ptrdiff_t end) : m_begin(begin), m_end(end) {
-        assert(size() >= 0);
+        // An inverted extent has a negative size, which would propagate into kernel
+        // arguments, so reject it here rather than only in a debug build.
+        if (size() < 0)
+            FATAL_ERROR_NON_OO("extent_t: begin={:d} lies past end={:d}", begin, end);
     }
     std::ptrdiff_t begin() const noexcept {
         return m_begin;
@@ -198,7 +211,14 @@ private:
         for (std::size_t d = 0; d < D; ++d)
             size *= extents[d];
         const std::ptrdiff_t size_in_bytes = size * sizeof(T);
-        assert(ringbuffer->size == size_in_bytes);
+        // This runs from the member initializer list, so it is the first place that can
+        // report a missing ring buffer -- the constructor body would be too late.
+        if (!ringbuffer)
+            FATAL_ERROR("buffer {:s}: there is no ring buffer named {:s}", buffer_name,
+                        signal_buffer_name);
+        if (ringbuffer->size != size_in_bytes)
+            FATAL_ERROR("buffer {:s}: ring buffer {:s} holds {:d} bytes, but the array needs {:d}",
+                        buffer_name, signal_buffer_name, ringbuffer->size, size_in_bytes);
         void* const ptr =
             cuda_command.get_device().get_gpu_memory(buffer_name_device, size_in_bytes);
         return static_cast<T*>(ptr);
@@ -225,8 +245,6 @@ public:
     //
     {
         set_log_level(cuda_command.get_log_level());
-
-        assert(ringbuffer);
     }
 
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
@@ -279,9 +297,9 @@ public:
     // terms of the slowest varying dimension of the `NDArray`.
     // Returns 0 if all is good, -1 if we should terminate.
     int wait_for_writable(const std::ptrdiff_t produced_elements) {
-        assert(write_valid.size() == 0);
-        assert(read_valid.size() == 0);
-        assert(read_claimed.size() == 0);
+        RINGBUF_CHECK(write_valid.size() == 0);
+        RINGBUF_CHECK(read_valid.size() == 0);
+        RINGBUF_CHECK(read_claimed.size() == 0);
 
         const std::ptrdiff_t produced_bytes = produced_elements * granularity_in_bytes();
         const std::optional<std::ptrdiff_t> waited = ringbuffer->wait_for_writable(
@@ -291,19 +309,19 @@ public:
 
         const std::ptrdiff_t write_begin = div_noremainder(waited.value(), granularity_in_bytes());
         write_valid = extent_t(write_begin, write_begin + produced_elements);
-        assert(write_valid.size() > 0);
+        RINGBUF_CHECK(write_valid.size() > 0);
 
         return 0;
     }
 
     void finish_write() {
-        assert(write_valid.size() > 0);
+        RINGBUF_CHECK(write_valid.size() > 0);
         const std::ptrdiff_t written_elements = write_valid.size();
         ringbuffer->finish_write(cuda_command.get_unique_name(), get_instance_num(),
                                  written_elements * granularity_in_bytes());
 
         write_valid = extent_t(write_valid.end(), write_valid.end());
-        assert(write_valid.size() == 0);
+        RINGBUF_CHECK(write_valid.size() == 0);
     }
 
     // Where the next read will begin, in elements.
@@ -347,15 +365,14 @@ public:
     // Returns 0 if all is good, -1 if we should terminate.
     int wait_and_claim_readable(
         const std::function<read_descriptor_t(std::ptrdiff_t)>& calc_read_descriptor) {
-        assert(write_valid.size() == 0);
+        RINGBUF_CHECK(write_valid.size() == 0);
         if (!(read_valid.size() == 0)) {
             FATAL_ERROR("buffer {:s}, wait_and_claim_readable({:s}[{:d}]): valid read region is "
                         "not empty (begin={:d}, end={:d}, size={:d})",
                         buffer_name, cuda_command.get_unique_name(), get_instance_num(),
                         read_valid.begin(), read_valid.end(), read_valid.size());
         }
-        assert(read_valid.size() == 0);
-        assert(read_claimed.size() == 0);
+        RINGBUF_CHECK(read_claimed.size() == 0);
 
         // Check available samples
         const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
@@ -372,9 +389,14 @@ public:
         const std::ptrdiff_t available_elements =
             div_noremainder(available_bytes, granularity_in_bytes());
         const read_descriptor_t read_descriptor = calc_read_descriptor(available_elements);
-        assert(read_descriptor.claimed >= 0);
-        assert(read_descriptor.claimed <= read_descriptor.read);
-        assert(read_descriptor.read <= available_elements);
+        // `calc_read_descriptor` is supplied by the caller. A descriptor outside these
+        // bounds would move the read head past data that is not there.
+        if (!(read_descriptor.claimed >= 0 && read_descriptor.claimed <= read_descriptor.read
+              && read_descriptor.read <= available_elements))
+            FATAL_ERROR("ring buffer {:s}, {:s}[{:d}]: invalid read descriptor {:s} for {:d} "
+                        "available elements (require 0 <= claimed <= read <= available)",
+                        buffer_name, cuda_command.get_unique_name(), get_instance_num(),
+                        read_descriptor, available_elements);
 
         // Can we make progress?
         if (read_descriptor.read <= 0) {
@@ -406,15 +428,15 @@ public:
 
         read_valid = extent_t(read_begin, read_begin + read_descriptor.read);
         read_claimed = extent_t(read_begin, read_begin + read_descriptor.claimed);
-        assert(read_valid.size() > 0);
-        assert(read_claimed.size() >= 0);
+        RINGBUF_CHECK(read_valid.size() > 0);
+        RINGBUF_CHECK(read_claimed.size() >= 0);
 
         return 0;
     }
 
     void finish_read() {
-        assert(read_valid.size() > 0);
-        assert(read_claimed.size() >= 0);
+        RINGBUF_CHECK(read_valid.size() > 0);
+        RINGBUF_CHECK(read_claimed.size() >= 0);
         const std::ptrdiff_t claimed_elements = read_claimed.size();
         // We might not have claimed anything, and thus have nothing to release
         if (claimed_elements > 0)
@@ -423,8 +445,8 @@ public:
 
         read_valid = extent_t(read_claimed.end(), read_claimed.end());
         read_claimed = extent_t(read_claimed.end(), read_claimed.end());
-        assert(read_valid.size() == 0);
-        assert(read_claimed.size() == 0);
+        RINGBUF_CHECK(read_valid.size() == 0);
+        RINGBUF_CHECK(read_claimed.size() == 0);
     }
 
     // State
@@ -440,30 +462,21 @@ public:
     }
 
     extent_t get_write_valid() const {
-#ifdef DEBUGGING
         if (!(write_valid.size() > 0))
             FATAL_ERROR("kernel {:s}, buffer {:s}, get_write_valid: valid write region is empty",
                         cuda_command.get_unique_name(), buffer_name);
-        assert(write_valid.size() > 0);
-#endif
         return write_valid;
     }
     extent_t get_read_valid() const {
-#ifdef DEBUGGING
         if (!(read_valid.size() > 0))
             FATAL_ERROR("kernel {:s}, buffer {:s}, get_read_valid: valid read region is empty",
                         cuda_command.get_unique_name(), buffer_name);
-        assert(read_valid.size() > 0);
-#endif
         return read_valid;
     }
     extent_t get_read_claimed() const {
-#ifdef DEBUGGING
         if (!(read_claimed.size() > 0))
             FATAL_ERROR("kernel {:s}, buffer {:s}, get_read_claimed: claimed read region is empty",
                         cuda_command.get_unique_name(), buffer_name);
-        assert(read_claimed.size() > 0);
-#endif
         return read_claimed;
     }
 
@@ -523,39 +536,59 @@ public:
 
     std::shared_ptr<const chordMetadata> get_metadata() const {
         const std::shared_ptr<const metadataObject> mc = ringbuffer->get_metadata(0);
-        assert(mc);
+        if (!mc)
+            FATAL_ERROR("ring buffer {:s} has no metadata object", buffer_name);
         const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
-        assert(metadata);
+        if (!metadata)
+            FATAL_ERROR("ring buffer {:s} has metadata that is not CHORD metadata", buffer_name);
         return metadata;
     }
     std::shared_ptr<chordMetadata> get_metadata() {
         const std::shared_ptr<metadataObject> mc = ringbuffer->get_metadata(0);
-        assert(mc);
+        if (!mc)
+            FATAL_ERROR("ring buffer {:s} has no metadata object", buffer_name);
         const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
-        assert(metadata);
+        if (!metadata)
+            FATAL_ERROR("ring buffer {:s} has metadata that is not CHORD metadata", buffer_name);
         return metadata;
     }
 
+    // Check that the metadata published for this ring buffer describes the array we are
+    // about to index. A mismatch is a disagreement between two stages, not an internal
+    // invariant; in a release build it would silently make the kernel read the buffer with
+    // the wrong layout. The generated kernels open-code this same check when they have to
+    // substitute a quantity name, and both paths must fail the same way.
     void check_metadata() const {
         const std::shared_ptr<const chordMetadata> metadata = get_metadata();
         if (!(metadata->get_name() == ndarray.quantity_name()))
-            ERROR("buffer name: {:s}, metadata name: {:s}, quantity_name: {:s}", buffer_name,
-                  metadata->get_name(), ndarray.quantity_name());
-        assert(metadata->get_name() == ndarray.quantity_name());
-        assert(metadata->type == ndarray.value_datatype);
-        assert(metadata->dims == ndarray.rank);
+            FATAL_ERROR("buffer name: {:s}, metadata name: {:s}, quantity_name: {:s}", buffer_name,
+                        metadata->get_name(), ndarray.quantity_name());
+        if (!(metadata->type == ndarray.value_datatype))
+            FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}", buffer_name,
+                        kotekan::type_to_string(metadata->type),
+                        kotekan::type_to_string(ndarray.value_datatype));
+        if (!(metadata->dims == int(ndarray.rank)))
+            FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}", buffer_name,
+                        metadata->dims, int(ndarray.rank));
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
             if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
-                ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, ndarray "
-                      "dimname: {:s}",
-                      buffer_name, d, metadata->get_dimension_name(d),
-                      std::string(ndarray.dimname(d)));
-            assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
-            assert(metadata->dim_scaling[d] == ndarray.dimscaling(d));
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, "
+                            "ndarray dimname: {:s}",
+                            buffer_name, d, metadata->get_dimension_name(d),
+                            std::string(ndarray.dimname(d)));
+            if (!(metadata->dim_scaling[d] == ndarray.dimscaling(d)))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata dim_scaling: {:d}, "
+                            "ndarray dimscaling: {:d}",
+                            buffer_name, d, metadata->dim_scaling[d], ndarray.dimscaling(d));
             // The ring buffer direction is special
-            if (d > 0)
-                assert(metadata->dim[d] == int(ndarray.extent(d)));
-            assert(metadata->stride[d] == ndarray.stride(d));
+            if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata extent: {:d}, ndarray "
+                            "extent: {:d}",
+                            buffer_name, d, metadata->dim[d], int(ndarray.extent(d)));
+            if (!(metadata->stride[d] == ndarray.stride(d)))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata stride: {:d}, ndarray "
+                            "stride: {:d}",
+                            buffer_name, d, metadata->stride[d], ndarray.stride(d));
         }
     }
 
@@ -597,42 +630,42 @@ public:
     // Poison an NDArray ring buffer
     void set_to_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
                        const std::ptrdiff_t F_max) {
-        assert(get_write_valid().size() > 0);
+        RINGBUF_CHECK(get_write_valid().size() > 0);
 
         const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
-        assert(F_stride > 0);
+        RINGBUF_CHECK(F_stride > 0);
         const std::ptrdiff_t F_offset = F_min;
-        assert(F_offset >= 0);
+        RINGBUF_CHECK(F_offset >= 0);
         const std::ptrdiff_t F_length = F_max - F_min;
-        assert(F_length > 0);
+        RINGBUF_CHECK(F_length > 0);
 
         const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
-        assert(T_ringbuf > 0);
+        RINGBUF_CHECK(T_ringbuf > 0);
         const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
-        assert(T_stride > 0);
+        RINGBUF_CHECK(T_stride > 0);
         const std::ptrdiff_t T_min = get_write_valid().begin();
-        assert(T_min >= 0);
+        RINGBUF_CHECK(T_min >= 0);
         const std::ptrdiff_t T_max = get_write_valid().end();
-        assert(T_max > T_min);
+        RINGBUF_CHECK(T_max > T_min);
         const std::ptrdiff_t T_length = T_max - T_min;
-        assert(T_length > 0);
+        RINGBUF_CHECK(T_length > 0);
 
         const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
-        assert(T_min_arg >= 0);
-        assert(T_min_arg < T_ringbuf);
+        RINGBUF_CHECK(T_min_arg >= 0);
+        RINGBUF_CHECK(T_min_arg < T_ringbuf);
         const std::ptrdiff_t T_max_arg = T_min_arg + T_length;
-        assert(T_max_arg >= T_min_arg);
-        assert(T_max_arg < 2 * T_ringbuf);
+        RINGBUF_CHECK(T_max_arg >= T_min_arg);
+        RINGBUF_CHECK(T_max_arg < 2 * T_ringbuf);
         const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
         for (int chunk = 0; chunk < num_chunks; ++chunk) {
             const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
-            assert(T_offset >= 0);
-            assert(T_offset < T_ringbuf);
+            RINGBUF_CHECK(T_offset >= 0);
+            RINGBUF_CHECK(T_offset < T_ringbuf);
             const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
                                             : chunk == 0    ? T_ringbuf - T_min_arg
                                                             : T_max_arg - T_ringbuf;
-            assert(T_length > 0);
-            assert(T_offset + T_length <= T_ringbuf);
+            RINGBUF_CHECK(T_length > 0);
+            RINGBUF_CHECK(T_offset + T_length <= T_ringbuf);
 
             const auto stream =
                 cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
@@ -663,40 +696,40 @@ public:
         };
 
         const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
-        assert(F_stride > 0);
+        RINGBUF_CHECK(F_stride > 0);
         const std::ptrdiff_t F_offset = F_min;
-        assert(F_offset >= 0);
+        RINGBUF_CHECK(F_offset >= 0);
         const std::ptrdiff_t F_length = F_max - F_min;
-        assert(F_length > 0);
+        RINGBUF_CHECK(F_length > 0);
 
         const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
-        assert(T_ringbuf > 0);
+        RINGBUF_CHECK(T_ringbuf > 0);
         const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
-        assert(T_stride > 0);
-        assert(T_min >= 0);
-        assert(T_max > T_min);
+        RINGBUF_CHECK(T_stride > 0);
+        RINGBUF_CHECK(T_min >= 0);
+        RINGBUF_CHECK(T_max > T_min);
         const std::ptrdiff_t T_length = T_max - T_min;
-        assert(T_length > 0);
+        RINGBUF_CHECK(T_length > 0);
 
         const std::ptrdiff_t T_stride_local = F_length * F_stride;
         std::vector<T> local_data(T_length * T_stride_local, poison);
 
         const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
-        assert(T_min_arg >= 0);
-        assert(T_min_arg < T_ringbuf);
+        RINGBUF_CHECK(T_min_arg >= 0);
+        RINGBUF_CHECK(T_min_arg < T_ringbuf);
         const std::ptrdiff_t T_max_arg = T_min_arg + T_length;
-        assert(T_max_arg >= T_min_arg);
-        assert(T_max_arg < 2 * T_ringbuf);
+        RINGBUF_CHECK(T_max_arg >= T_min_arg);
+        RINGBUF_CHECK(T_max_arg < 2 * T_ringbuf);
         const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
         for (int chunk = 0; chunk < num_chunks; ++chunk) {
             const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
-            assert(T_offset >= 0);
-            assert(T_offset < T_ringbuf);
+            RINGBUF_CHECK(T_offset >= 0);
+            RINGBUF_CHECK(T_offset < T_ringbuf);
             const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
                                             : chunk == 0    ? T_ringbuf - T_min_arg
                                                             : T_max_arg - T_ringbuf;
-            assert(T_length > 0);
-            assert(T_offset + T_length <= T_ringbuf);
+            RINGBUF_CHECK(T_length > 0);
+            RINGBUF_CHECK(T_offset + T_length <= T_ringbuf);
 
             const std::ptrdiff_t T_offset_local = chunk == 0 ? 0 : T_ringbuf - T_min_arg;
 
@@ -711,7 +744,8 @@ public:
             std::find_if(local_data.begin(), local_data.end(), check);
         const bool found_error = first_poison_location != local_data.end();
         if (found_error)
-            ERROR("NDArray ring buffer {:s} contains poison or a non-finite number at index={:d}",
+            ERROR("NDArray ring buffer {:s} contains poison or a non-finite number at index={:d} "
+                  "of {:d}",
                   buffer_name, first_poison_location - local_data.begin(), local_data.size());
         if (found_error) {
             for (std::ptrdiff_t t = 0; t < T_length; ++t) {
@@ -742,12 +776,11 @@ public:
         }
         if (found_error)
             FATAL_ERROR("NDArray ring buffer {:s} contains poison", buffer_name);
-        assert(!found_error);
     }
 
     void check_input_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
                                 const std::ptrdiff_t F_max) const {
-        assert(get_read_valid().size() > 0);
+        RINGBUF_CHECK(get_read_valid().size() > 0);
         const std::ptrdiff_t T_min = get_read_valid().begin();
         const std::ptrdiff_t T_max = get_read_valid().end();
         check_for_poison(poison_value, F_min, F_max, T_min, T_max);
@@ -755,7 +788,7 @@ public:
 
     void check_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
                           const std::ptrdiff_t F_max) const {
-        assert(get_write_valid().size() > 0);
+        RINGBUF_CHECK(get_write_valid().size() > 0);
         const std::ptrdiff_t T_min = get_write_valid().begin();
         const std::ptrdiff_t T_max = get_write_valid().end();
         check_for_poison(poison_value, F_min, F_max, T_min, T_max);
@@ -788,5 +821,7 @@ public:
 
 const std::shared_ptr<const chordMetadata> get_ringbuffer_metadata(cudaCommand& cuda_command,
                                                                    const std::string& buffer_name);
+
+#undef RINGBUF_CHECK
 
 #endif // #ifndef NDARRAYRINGBUFFER_HPP

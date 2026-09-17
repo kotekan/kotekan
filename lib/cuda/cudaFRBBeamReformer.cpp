@@ -206,9 +206,21 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
         std::dynamic_pointer_cast<chordMetadata>(frb1_beams_buffer.get_metadata());
     assert(frb1_beams_meta);
     const std::shared_ptr<chordMetadata> frb2_beams_meta = frb2_beams_buffer.get_metadata();
+    // `frb1_beams_offset` counts elements of the input's dimension 0 (`Ttilde`), so it has to be
+    // scaled by the *input's* `time_downsampling_fpga`, which by convention is that dimension's
+    // scaling.
+    assert(frb1_beams_meta->get_time_downsampling_fpga()
+           == frb1_beams_buffer.get_ndarray().dimscaling(0));
     frb2_beams_meta->set_fpga_seq_num(frb1_beams_meta->get_fpga_seq_num()
                                       + frb1_beams_offset
-                                            * frb2_beams_meta->get_time_downsampling_fpga());
+                                            * frb1_beams_meta->get_time_downsampling_fpga());
+    // The output splits the time direction into a slow `Ttildehi256` (dimension 0, extent 1) and
+    // a fast `Ttildelo256`. `time_downsampling_fpga` describes dimension 0, i.e. the whole frame,
+    // so it is that dimension's scaling and not the one inherited from the input. (`set_metadata`
+    // copies `time_downsampling_fpga` verbatim; only the array description is taken from the
+    // output's own ndarray.)
+    frb2_beams_meta->set_time_downsampling_fpga(
+        static_cast<int>(frb2_beams_buffer.get_ndarray().dimscaling(0)));
 
     if (poison_buffers)
         frb2_beams_buffer.set_to_poison(0xff); // 0xffff is a NaN16
