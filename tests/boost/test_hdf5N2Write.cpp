@@ -59,13 +59,13 @@ static const std::string TEST_GAINS_FILE =
     std::string(TEST_DATA_DIR) + "/baseband_gains/test_gains.h5";
 
 // Install the test telescope: two dishes D00 and D01, with D00 optionally disconnected
-// (typed Fake) so that a DishInputs frame is a proper subset of the array.
+// (typed Missing) so that a DishInputs frame is a proper subset of the array.
 static void set_test_telescope(bool dish0_connected) {
     nlohmann::json cfg;
     cfg["num_polarizations"] = 2;
     add_test_telescope_config(cfg);
     if (!dish0_connected) {
-        cfg["telescope"]["dish_inputs"][0]["type"] = "Fake";
+        cfg["telescope"]["dish_inputs"][0]["type"] = "Missing";
         cfg["/telescope"] = cfg["telescope"];
     }
     kotekan::Config conf;

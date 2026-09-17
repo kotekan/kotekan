@@ -34,7 +34,7 @@
  * CHIME orders; when the two are equal -- CHORD flags and masks in the same
  * [P][D] order -- the telescope is not consulted.
  *
- * Elements the telescope places outside the main array (CHORD's Fake dishes
+ * Elements the telescope places outside the main array (CHORD's Missing dishes
  * and RFI antennas) are never valid inputs; they stay masked whatever the
  * posted list says.
  *
@@ -136,7 +136,7 @@ private:
     int64_t bf_mask_lifetime_in_samples;
 
     /// Mask before any posted flags: 0 for elements outside the telescope's
-    /// main array (CHORD's Fake dishes and RFI antennas).
+    /// main array (CHORD's Missing dishes and RFI antennas).
     std::vector<uint8_t> baseline_mask;
 
     /// Posted updates, keyed by their start time.
