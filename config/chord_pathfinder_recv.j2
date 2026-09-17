@@ -193,8 +193,8 @@ chord_pool:
     kotekan_metadata_pool: chordMetadata
     num_metadata_objects: 4 * buffer_depth
 
-# Metadata for the received bad feed mask frames: one object per frame in bf_mask_buffer.
-bf_mask_pool:
+# Metadata for the received bad feed mask frames: one object per frame in bad_feed_mask_buffer.
+bad_feed_mask_pool:
     kotekan_metadata_pool: chordMetadata
     num_metadata_objects: 1024 + 4 * buffer_depth
 
@@ -239,7 +239,7 @@ auto_spectrum_buffer:
 # the stream. hdf5N2Write takes them in on their own thread, so the depth only has to cover
 # that thread's latency; a full buffer drops frames, which the files record as -1 rows.
 # Shape must match the X-engine's host_bf_mask_buffer.
-bf_mask_buffer:
+bad_feed_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: 1024
     value_type: int8
@@ -247,7 +247,7 @@ bf_mask_buffer:
     dimnames: ["Tbf", "P", "D"]
     dimscalings: [{{ samples_per_data_set }}, 1, 1]
     extents: [1, num_polarizations, num_dishes]
-    metadata_pool: bf_mask_pool
+    metadata_pool: bad_feed_mask_pool
 
 
 
@@ -270,12 +270,12 @@ buffer_recv_full_n2:
     buf: n2_recv_full_buffer
     listen_port: 11027
 
-# hdf5N2Write records the mask frames in the vis files (each file's /bf_mask group holds
+# hdf5N2Write records the mask frames in the vis files (each file's /bad_feed_mask group holds
 # every stream's masks over its time span), so both writers consume this buffer.
-buffer_recv_bf_mask:
+buffer_recv_bad_feed_mask:
     kotekan_stage: bufferRecv
     use_frame_desc: true
-    buf: bf_mask_buffer
+    buf: bad_feed_mask_buffer
     listen_port: 11029
 
 # Live autocorrelation power vs frequency from the full N2 stream, for the
@@ -308,7 +308,7 @@ hdf5_N2_write_subset:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_subset_buffer
-    in_bf_mask_buf: bf_mask_buffer
+    in_bad_feed_mask_buf: bad_feed_mask_buffer
     input_order: CHORDBeamformer
     base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
     baseband_gain_host_info: /fpga_controller
@@ -326,7 +326,7 @@ hdf5_N2_write_full:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_full_buffer
-    in_bf_mask_buf: bf_mask_buffer
+    in_bad_feed_mask_buf: bad_feed_mask_buffer
     input_order: CHORDBeamformer
     base_dir: /mnt/cs00/data/kotekan_vis_files/full/
     baseband_gain_host_info: /fpga_controller

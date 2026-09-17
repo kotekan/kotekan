@@ -680,18 +680,18 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     rm_tree_if_exists(base_dir);
 }
 
-// The bad feed mask streams land in /bf_mask: one row per mask frame on the streams'
+// The bad feed mask streams land in /bad_feed_mask: one row per mask frame on the streams'
 // common FPGA grid over the file's tick span, one column per stream (an X-engine half,
 // identified by the coarse frequencies it applied the mask to), -1 where a stream's frame
-// did not arrive, plus the file frequencies no stream covers.
-BOOST_AUTO_TEST_CASE(test_writer_bf_mask) {
+// did not arrive.
+BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
 
     kotekan_test_logging::configure();
 
     const std::string unique_name = "/hdf5_vis_writer_bfmask";
     const std::string in_buf_name = "n2buf";
     const std::string mask_buf_name = "maskbuf";
-    const std::string base_dir = "test_hdf5N2Write_bf_mask";
+    const std::string base_dir = "test_hdf5N2Write_bad_feed_mask";
     rm_tree_if_exists(base_dir);
 
     const size_t num_input = 3;
@@ -710,7 +710,7 @@ BOOST_AUTO_TEST_CASE(test_writer_bf_mask) {
     set_file_num_t(conf, unique_name, num_file_t);
     {
         auto cfg = conf.get_full_config_json();
-        cfg[unique_name.substr(1)]["in_bf_mask_buf"] = mask_buf_name;
+        cfg[unique_name.substr(1)]["in_bad_feed_mask_buf"] = mask_buf_name;
         conf.update_config(cfg);
     }
 
@@ -746,14 +746,13 @@ BOOST_AUTO_TEST_CASE(test_writer_bf_mask) {
 
     // The vis frames below cover ticks [100, 201): bins start at 100 and 101 (test helper)
     // and are 100 ticks long, so the grid rows are 100, 110, ..., 200. Two streams: A covers
-    // the file's frequencies 0 and (an absent) 3, B covers frequency 1; frequency 2 has no
-    // stream. A's masks run from before the span to after it with a change at 130 and its
-    // frame at 150 missing; B's frames cover the span exactly.
+    // the file's frequencies 0 and (an absent) 3, B covers frequencies 1 and 2. A's masks
+    // run from before the span to after it with a change at 130 and its frame at 150
+    // missing; B's frames cover the span exactly.
     const int32_t freq_a0 = (int32_t)get_abs_freq_id(0), freq_a3 = (int32_t)get_abs_freq_id(3);
-    const int32_t freq_b1 = (int32_t)get_abs_freq_id(1);
-    const int32_t freq_uncovered = (int32_t)get_abs_freq_id(2);
+    const int32_t freq_b1 = (int32_t)get_abs_freq_id(1), freq_b2 = (int32_t)get_abs_freq_id(2);
     const std::vector<int> stream_a = {freq_a0, freq_a3};
-    const std::vector<int> stream_b = {freq_b1};
+    const std::vector<int> stream_b = {freq_b1, freq_b2};
     struct MaskFrame {
         uint64_t seq;
         const std::vector<int>* stream;
@@ -809,21 +808,21 @@ BOOST_AUTO_TEST_CASE(test_writer_bf_mask) {
     BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
     {
         File f(datasets[0], File::ReadOnly);
-        BOOST_REQUIRE(f.exist("/bf_mask"));
+        BOOST_REQUIRE(f.exist("/bad_feed_mask"));
 
         std::vector<uint64_t> seqs;
-        f.getDataSet("/bf_mask/fpga_seq_num").read(seqs);
+        f.getDataSet("/bad_feed_mask/fpga_seq_num").read(seqs);
         BOOST_REQUIRE_EQUAL(seqs.size(), 11u);
         for (size_t r = 0; r < seqs.size(); ++r)
             BOOST_CHECK_EQUAL(seqs[r], 100 + step * r);
 
         std::vector<std::vector<int32_t>> table;
-        f.getDataSet("/bf_mask/stream_freq_id").read(table);
+        f.getDataSet("/bad_feed_mask/stream_freq_id").read(table);
         BOOST_REQUIRE_EQUAL(table.size(), 2u);
         BOOST_CHECK(table[0] == (std::vector<int32_t>{freq_a0, freq_a3}));
-        BOOST_CHECK(table[1] == (std::vector<int32_t>{freq_b1, -1}));
+        BOOST_CHECK(table[1] == (std::vector<int32_t>{freq_b1, freq_b2}));
 
-        auto mask_ds = f.getDataSet("/bf_mask/mask");
+        auto mask_ds = f.getDataSet("/bad_feed_mask/mask");
         const std::vector<size_t> dims = mask_ds.getDimensions();
         BOOST_REQUIRE(dims == (std::vector<size_t>{11, 2, 1, 3}));
         std::vector<int8_t> mask(11 * 2 * 3);
@@ -843,10 +842,6 @@ BOOST_AUTO_TEST_CASE(test_writer_bf_mask) {
                                 "stream A row at seq " << seq);
             BOOST_CHECK_MESSAGE(row(r, 1) == b, "stream B row at seq " << seq);
         }
-
-        std::vector<int32_t> uncovered;
-        f.getGroup("/bf_mask").getAttribute("uncovered_freq_id").read(uncovered);
-        BOOST_CHECK(uncovered == (std::vector<int32_t>{freq_uncovered}));
     }
 
     rm_tree_if_exists(base_dir);

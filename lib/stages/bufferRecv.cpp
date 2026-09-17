@@ -706,9 +706,7 @@ void connInstance::internal_read_callback() {
                     std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
                     std::vector<kotekan::Symbol> dimnames(chord->dims);
                     for (size_t d = 0; d < dimnames.size(); ++d) {
-                        dimnames.at(d) =
-                            std::string(chord->dim_name[d],
-                                        strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
+                        dimnames.at(d) = chord->get_dimension_name(d);
                     }
                     std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
                                                             chord->dim_scaling + chord->dims);

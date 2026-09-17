@@ -9,7 +9,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, metadata_is_chord, get_c...
-#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO
+#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO, WARN
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visUtil.hpp"           // for current_time
@@ -37,6 +37,13 @@ class inventBFMask : public kotekan::Stage {
     const std::vector<int> manual_bad_feeds =
         config.get_default<std::vector<int>>(unique_name, "manual_bad_feeds", {});
 
+    // Only the "auto" mode needs to know which dishes exist, and dish types are a
+    // CHORD-specific concept; the generic `Telescope` interface has no equivalent.
+    // Telescopes without dish types (e.g. CHIME) leave this null and "auto" then
+    // falls back to marking every dish good.
+    const CHORDTelescope* const chord_tel =
+        mode == "auto" ? dynamic_cast<const CHORDTelescope*>(&Telescope::instance()) : nullptr;
+
     Buffer* const buffer;
 
 public:
@@ -52,6 +59,11 @@ public:
 
         if (!(mode == "all_good" || mode == "all_bad" || mode == "auto" || mode == "manual"))
             FATAL_ERROR("Bad mode: {:s}", mode);
+
+        if (mode == "auto" && !chord_tel)
+            WARN("Telescope type {:s} does not provide dish types; mode \"auto\" marks all dishes "
+                 "as good",
+                 Telescope::instance().get_name());
 
         if (mode == "manual")
             // Check feed indices
@@ -85,8 +97,6 @@ public:
             meta->set_fpga_seq_num(frame_index * bf_mask_lifetime_in_samples);
             meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
 
-            const auto& tel = Telescope::instance().cast<CHORDTelescope>();
-
             // Fill buffer
             DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
             if (mode == "all_good") {
@@ -115,8 +125,12 @@ public:
                     for (int dish = 0; dish < num_dishes; ++dish) {
                         const int idx = dish + num_dishes * polr;
                         assert(idx >= 0 && idx < std::ptrdiff_t(buffer->frame_size));
-                        // existing dishes are active, missing dishes are inactive
-                        frame[idx] = tel.get_dish_at_idx(dish).type == DishType::ArrayDish;
+                        // existing dishes are active, missing dishes are inactive;
+                        // without dish information all dishes are assumed to exist
+                        const bool dish_exists =
+                            !chord_tel
+                            || chord_tel->get_dish_at_idx(dish).type == DishType::ArrayDish;
+                        frame[idx] = dish_exists;
                     }
                 }
 

@@ -195,19 +195,15 @@ void EigenN2Iter::main_thread() {
         DEBUG("EigenN2Iter got input frame.");
         N2FrameView input_frame(in_buf, input_frame_id);
 
-        // Check that we have the full correlation triangle: a dense upper triangle over
-        // the frame's own element axis holds exactly n(n+1)/2 products. The count is
-        // necessary but not sufficient (a subset of the right size could still be
-        // non-triangular); layouts that store the dense triangle in the canonical order
-        // (FullUpperTri, and compact subsets like DishInputs) pass, and the solver
-        // stays blind to where the frame's elements came from.
-        if (input_frame.num_prod
-            != (size_t)input_frame.num_elements * (input_frame.num_elements + 1) / 2) {
+        // The full correlation triangle over the frame's own elements: n(n+1)/2 products.
+        // Necessary but not sufficient; FullUpperTri and compact subsets like DishInputs pass.
+        const size_t num_prod_full =
+            (size_t)input_frame.num_elements * (input_frame.num_elements + 1) / 2;
+        if (input_frame.num_prod != num_prod_full) {
             FATAL_ERROR("Eigenvector calculations require a full correlation triangle: "
                         "{:d} elements need {:d} products, got {:d} (layout {}).",
-                        input_frame.num_elements,
-                        (size_t)input_frame.num_elements * (input_frame.num_elements + 1) / 2,
-                        input_frame.num_prod, N2Layout_to_string(input_frame.n2_layout));
+                        input_frame.num_elements, num_prod_full, input_frame.num_prod,
+                        N2Layout_to_string(input_frame.n2_layout));
         }
 
         // Start the calculation clock.

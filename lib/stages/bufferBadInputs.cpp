@@ -1,6 +1,5 @@
 #include "bufferBadInputs.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, dishInputFields, DishType
 #include "Config.hpp"            // for Config
 #include "NDArray.hpp"           // for NDArray, GenericNDArray
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
@@ -12,7 +11,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "visUtil.hpp"           // for current_time, double_to_ts, ts_to_double
 
-#include <algorithm>  // for count
+#include <algorithm>  // for count, fill
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
 #include <json.hpp>   // for json
@@ -87,39 +86,30 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
         for (size_t idx = 0; idx < num_elements; ++idx)
             reorder.at(idx) = idx;
     } else {
-        for (size_t output_idx = 0; output_idx < num_elements; ++output_idx) {
-            station_id_t st_id = tel.element_index_to_station_id(output_idx, output_order);
-            reorder.at(tel.station_id_to_element_index(st_id, input_order)) = output_idx;
+        // Note: this is overkill. The input received by this stage's REST
+        // endpoint takes channel ids (which happen to by element indices in
+        // cylinder order in CHIME).
+        for (station_id_t station_id = 0; station_id < num_elements; ++station_id) {
+            const int output_idx = tel.station_id_to_element_index(station_id, output_order);
+            reorder.at(tel.station_id_to_element_index(station_id, input_order)) = output_idx;
         }
     }
 
-    // Baseline mask from the telescope's dish table: elements whose dish is not a real
-    // array dish (Fake or an RFI antenna) are never valid inputs and stay masked
-    // independent of the posted bad-inputs list.
-    //
-    // Every dish missing from `dish_inputs` is reported as Fake, so a telescope configured
-    // without a dish table reports all of them that way. That means the table is absent,
-    // not that every feed is bad, so leave the baseline all-good rather than mask the whole
-    // array.
+    // Baseline mask from the telescope: elements outside the main array (CHORD's Fake
+    // dishes and RFI antennas) are never valid inputs and stay masked independent of the
+    // posted bad-inputs list. A telescope with no dish table configured reports every
+    // element outside the array; that means the table is absent, not that every feed is
+    // bad, so the baseline is then left all-good.
     baseline_mask = std::vector<uint8_t>(num_elements, 1u);
-    const CHORDTelescope* const chord_tel = dynamic_cast<const CHORDTelescope*>(&tel);
-    if (chord_tel != nullptr) {
-        dishInputFields dish_inputs;
-        chord_tel->fill_input_maps(dish_inputs);
-        if (std::count(dish_inputs.type.begin(), dish_inputs.type.end(), DishType::ArrayDish)
-            == 0) {
-            WARN("The telescope reports no array dishes, so its dish table is not configured; "
-                 "masking no element on dish type.");
-        } else {
-            for (size_t el = 0; el < num_elements; ++el) {
-                uint64_t dish;
-                uint64_t pol;
-                const station_id_t st_id = tel.element_index_to_station_id(el, output_order);
-                chord_tel->decode_station_id(st_id, dish, pol);
-                if (dish_inputs.type.at(dish) != DishType::ArrayDish)
-                    baseline_mask[el] = 0;
-            }
-        }
+    for (size_t el = 0; el < num_elements; ++el) {
+        const station_id_t st_id = tel.element_index_to_station_id(el, output_order);
+        if (tel.station_id_to_main_array_grid_indices(st_id)[0] < 0)
+            baseline_mask[el] = 0;
+    }
+    if (std::count(baseline_mask.begin(), baseline_mask.end(), 1u) == 0) {
+        WARN("The telescope reports no main array element, so its dish table is not "
+             "configured; masking no element on dish type.");
+        std::fill(baseline_mask.begin(), baseline_mask.end(), 1u);
     }
 
     // Listen for bad input list updates. The initial config block arrives

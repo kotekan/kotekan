@@ -218,7 +218,7 @@ N2_accumulate:
     in_rficounts_buf: fake_rficounts_buffer
     in_plcounts_buf: fake_plcounts_buffer
     in_rfiframemask_buf: fake_rfi_frame_mask_buffer
-    in_bf_mask_buf: host_bf_mask_buffer
+    in_bad_feed_mask_buf: host_bf_mask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
@@ -260,9 +260,9 @@ writers:
         file_name: n2k_rfiframemask
         in_buf: fake_rfi_frame_mask_buffer
 
-    write_bf_mask:
+    write_bad_feed_mask:
         kotekan_stage: hdf5FileWrite
-        file_name: bf_mask
+        file_name: bad_feed_mask
         in_buf: host_bf_mask_buffer
 
     write_N2:

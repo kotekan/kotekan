@@ -20,7 +20,6 @@
 #include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
 #include <stddef.h>    // for ptrdiff_t, size_t
 #include <stdint.h>    // for uint8_t
-#include <string.h>    // for strnlen
 #include <sys/types.h> // for uint, size_t
 #include <tuple>       // for tuple, make_tuple
 
@@ -120,9 +119,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
                     std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
                     std::vector<kotekan::Symbol> dimnames(chord->dims);
                     for (size_t d = 0; d < dimnames.size(); ++d) {
-                        dimnames.at(d) =
-                            std::string(chord->dim_name[d],
-                                        strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
+                        dimnames.at(d) = chord->get_dimension_name(d);
                     }
                     std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
                                                             chord->dim_scaling + chord->dims);

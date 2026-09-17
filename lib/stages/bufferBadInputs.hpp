@@ -34,9 +34,9 @@
  * CHIME orders; when the two are equal -- CHORD flags and masks in the same
  * [P][D] order -- the telescope is not consulted.
  *
- * Elements whose CHORD dish is not an ArrayDish (Fake dishes, RFI antennas)
- * are never valid inputs; they are masked from the telescope's dish table and
- * stay masked whatever the posted list says.
+ * Elements the telescope places outside the main array (CHORD's Fake dishes
+ * and RFI antennas) are never valid inputs; they stay masked whatever the
+ * posted list says.
  *
  * Updates queue by @c start_time and take effect once the wall clock reaches
  * it (a start time already in the past applies immediately).  Mask frames
@@ -135,8 +135,8 @@ private:
     /// Number of FPGA samples that one bad feed mask is valid for
     int64_t bf_mask_lifetime_in_samples;
 
-    /// Mask before any posted flags: 0 for elements whose CHORD dish is not
-    /// an ArrayDish (Fake, RFI antennas); all-1 on other telescopes.
+    /// Mask before any posted flags: 0 for elements outside the telescope's
+    /// main array (CHORD's Fake dishes and RFI antennas).
     std::vector<uint8_t> baseline_mask;
 
     /// Posted updates, keyed by their start time.

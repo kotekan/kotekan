@@ -558,12 +558,12 @@ def rfiframemask_data(setup):
     return bufs
 
 
-# Elements flagged bad in every bf_mask frame; folded into the output flags.
+# Elements flagged bad in every bad_feed_mask frame; folded into the output flags.
 BAD_FEEDS = [3, 17, 40]
 
 
 @pytest.fixture(scope="module")
-def bf_mask_data(setup):
+def bad_feed_mask_data(setup):
     """
     Generate a list of input bad feed mask frames in ChordBuffers
 
@@ -587,7 +587,7 @@ def bf_mask_data(setup):
     shape = (1, config["num_polarizations"], config["num_dishes"])
 
     bufs = make_zeroed_chord_buffer(
-        "bf_mask",
+        "bad_feed_mask",
         np.int8,
         "int8",
         shape,
@@ -616,7 +616,7 @@ def accum_data(
     rficount_data,
     plcount_data,
     rfiframemask_data,
-    bf_mask_data,
+    bad_feed_mask_data,
     accum_list,
 ):
     """
@@ -640,7 +640,7 @@ def accum_data(
         input pl_lost_counts_scalar
     rfiframemask_data : fixture
         input RFIFrameMask
-    bf_mask_data : fixture
+    bad_feed_mask_data : fixture
         input bad feed mask
     accum_list : fixture
         List of expected output accumulation frame metadata. Used only to set the number of expected output frames.
@@ -665,8 +665,8 @@ def accum_data(
     plcount_buffer.write()
     rfiframemask_buffer = runner.ReadChordBuffer(str(tmpdir), rfiframemask_data)
     rfiframemask_buffer.write()
-    bf_mask_buffer = runner.ReadChordBuffer(str(tmpdir), bf_mask_data)
-    bf_mask_buffer.write()
+    bad_feed_mask_buffer = runner.ReadChordBuffer(str(tmpdir), bad_feed_mask_data)
+    bad_feed_mask_buffer.write()
 
     # Make the output buffer we'll read from
     dump_buffer = runner.DumpN2Buffer(
@@ -693,7 +693,7 @@ def accum_data(
             "in_rficounts_buf": rficount_buffer,
             "in_plcounts_buf": plcount_buffer,
             "in_rfiframemask_buf": rfiframemask_buffer,
-            "in_bf_mask_buf": bf_mask_buffer,
+            "in_bad_feed_mask_buf": bad_feed_mask_buffer,
         },
         dump_buffer,
         config,
@@ -1016,6 +1016,7 @@ def expected_accum(
     accum_var_chime = np.zeros(corr_shape[:-1], dtype=np.float32)
     accum_bias_chime = np.zeros(corr_shape[:-1], dtype=np.float32)
     accum_count = np.zeros(count_shape, dtype=np.int32)
+    accum_usable_pairs = np.zeros(count_shape, dtype=np.int64)
     accum_plcount = np.zeros(count_shape, dtype=np.int32)
     accum_rficount = np.zeros(count_shape, dtype=np.int32)
     accum_n2 = np.zeros((num_accum, num_freq, num_n2_prod), dtype=np.complex128)
@@ -1047,6 +1048,7 @@ def expected_accum(
             # apply the RFI frame mask and accumulate!
             accum_corr[i] += corr_mask * (corr1 + corr2)
             accum_count[i] += mask * (N1 + N2)
+            accum_usable_pairs[i] += (mask != 0) & (N1 > 0) & (N2 > 0)
             # Packet loss is accumulated regardless of the rfi frame mask
             accum_plcount[i] += (
                 plcount_data[tf1].data[tc1] + plcount_data[tf2].data[tc2]
@@ -1100,8 +1102,9 @@ def expected_accum(
             ] * (inv_N_32 ** 2)
 
             # compute final EvenOddPosDef var
-            M = len(accum["sub_idx"])
-            norm = 2 * inv_N / M
+            # Normalize by pairs that contributed to the variance estimate.
+            usable_pairs = accum_usable_pairs[i, f]
+            norm = inv_N / usable_pairs if usable_pairs > 0 else 0.0
             accum_n2_var_pos[i, f, :] = (
                 accum_var[i, f, corr_idx_b, corr_idx_i, corr_idx_j] * norm
             )
@@ -1319,31 +1322,19 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
 
 def test_flags(accum_data, setup):
     """
-    The per-element flags carry the bad feed mask (1.0 == good), which is
-    constant across the run in these tests.
-
-    N2Accumulate polls its mask input rather than waiting on it, so a bin that
-    completes before the first mask frame arrives comes out unflagged.  That is
-    a startup transient, not a wiring failure, so accept it -- but every other
-    frame must show exactly the flagged feeds, and the run must end flagged.
+    The per-element flags carry the bad feed mask (1.0 == good). N2Accumulate
+    consumes one mask frame per correlation frame, so every output frame shows
+    exactly the flagged feeds.
     """
 
     if setup["fail"]:
         return
 
-    config = setup["config"]
-
-    expected = np.ones(config["num_elements"], dtype=np.float32)
+    expected = np.ones(setup["config"]["num_elements"], dtype=np.float32)
     expected[BAD_FEEDS] = 0.0
-    all_good = np.ones(config["num_elements"], dtype=np.float32)
 
     for frame in accum_data:
-        assert frame.flags.shape == expected.shape
-        assert np.array_equal(frame.flags, expected) or np.array_equal(
-            frame.flags, all_good
-        ), f"unexpected flags: bad feeds {np.flatnonzero(frame.flags == 0.0)}"
-
-    np.testing.assert_array_equal(accum_data[-1].flags, expected)
+        np.testing.assert_array_equal(frame.flags, expected)
 
 
 def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):

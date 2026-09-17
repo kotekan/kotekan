@@ -256,18 +256,18 @@ n2_pool:
 # its correlation frame is accumulated, so the depth bounds the GPU's lead over it; the send
 # copies must ride out bufferSend's 20 s send_timeout at one frame per ~42 ms. The frames
 # get their own metadata pool: one object each, hundreds alive at a time.
-bf_mask_buffer_depth: 2 * host_side_buffer_depth
-bf_mask_send_buffer_depth: 512
-bf_mask_pool:
+bad_feed_mask_buffer_depth: 2 * host_side_buffer_depth
+bad_feed_mask_send_buffer_depth: 512
+bad_feed_mask_pool:
     kotekan_metadata_pool: chordMetadata
-    num_metadata_objects: 2 * (bf_mask_buffer_depth + bf_mask_send_buffer_depth) + 4 * buffer_depth
+    num_metadata_objects: 2 * (bad_feed_mask_buffer_depth + bad_feed_mask_send_buffer_depth) + 4 * buffer_depth
 
 # The bad feed mask is valid for this many input samples: one frame (~42 ms), so each
 # correlation frame is gated by exactly one mask element, which N2Accumulate requires.
 bf_mask_lifetime_in_samples: samples_per_data_set
 
 # Bad feed mask - marks which feeds to exclude from RFI calculations.
-# bufferBadInputs output: int8 "bf_mask" [1, P, D], 1 = good, one element per frame, stamped
+# bufferBadInputs output: int8 "bad_feed_mask" [1, P, D], 1 = good, one element per frame, stamped
 # with the FPGA seq it applies from. One stream per NUMA half, clocked to that half's voltage
 # stream (the two DPDK captures can start frames apart) and feeding only that half's GPU copy
 # (run_send_bf_mask), N2Accumulate and recv-node send. Never cross the halves: the GPU and
@@ -275,50 +275,50 @@ bf_mask_lifetime_in_samples: samples_per_data_set
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
     peek_hold: true
-    num_frames: bf_mask_buffer_depth
+    num_frames: bad_feed_mask_buffer_depth
     value_type: int8
     extents: [1, num_polarizations, num_dishes]
     quantity_name: "bf_mask"
     dimnames: ["Tbf", "P", "D"]
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
-    metadata_pool: bf_mask_pool
+    metadata_pool: bad_feed_mask_pool
     numa_node: 0
 
 host_bf_mask_buffer_1:
     kotekan_buffer: ndarray
     peek_hold: true
-    num_frames: bf_mask_buffer_depth
+    num_frames: bad_feed_mask_buffer_depth
     value_type: int8
     extents: [1, num_polarizations, num_dishes]
     quantity_name: "bf_mask"
     dimnames: ["Tbf", "P", "D"]
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
-    metadata_pool: bf_mask_pool
+    metadata_pool: bad_feed_mask_pool
     numa_node: 1
 
 # Private copies of the mask streams for the recv-node sends: bufferSend drops frames
 # when its buffer looks congested, and host_bf_mask_buffer_N always does (N2Accumulate
 # holds its frames), so the sends get their own buffers.
-host_bf_mask_send_buffer:
+host_bad_feed_mask_send_buffer:
     kotekan_buffer: ndarray
-    num_frames: bf_mask_send_buffer_depth
+    num_frames: bad_feed_mask_send_buffer_depth
     value_type: int8
     extents: [1, num_polarizations, num_dishes]
     quantity_name: "bf_mask"
     dimnames: ["Tbf", "P", "D"]
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
-    metadata_pool: bf_mask_pool
+    metadata_pool: bad_feed_mask_pool
     numa_node: 0
 
-host_bf_mask_send_buffer_1:
+host_bad_feed_mask_send_buffer_1:
     kotekan_buffer: ndarray
-    num_frames: bf_mask_send_buffer_depth
+    num_frames: bad_feed_mask_send_buffer_depth
     value_type: int8
     extents: [1, num_polarizations, num_dishes]
     quantity_name: "bf_mask"
     dimnames: ["Tbf", "P", "D"]
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
-    metadata_pool: bf_mask_pool
+    metadata_pool: bad_feed_mask_pool
     numa_node: 1
 
 # Buffers
@@ -1491,8 +1491,8 @@ n2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
-    # N2Accumulate itself uses the telescope's fiducial order ([P][D],
-    # CHORDBeamformer); this key documents it for downstream consumers.
+    # Correlation frames and the bad feed mask both arrive in [P][D] (CHORDBeamformer)
+    # order and the output stays in it, so the mask maps onto the flags without reordering.
     input_order: CHORDBeamformer
     variance_mode: EvenOddPosDef
     bin_in_ERA: true
@@ -1507,7 +1507,7 @@ n2_accumulate:
         in_rficounts_buf: host_rfi_RFImask_counts_buffer
         in_plcounts_buf: host_pl_counts_buffer
         in_rfiframemask_buf: host_rfi_RFIframemask_buffer
-        in_bf_mask_buf: host_bf_mask_buffer
+        in_bad_feed_mask_buf: host_bf_mask_buffer
         out_buf: n2_buffer
     accum_1:
         kotekan_stage: N2Accumulate
@@ -1517,7 +1517,7 @@ n2_accumulate:
         in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
         in_plcounts_buf: host_pl_counts_buffer_1
         in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
-        in_bf_mask_buf: host_bf_mask_buffer_1
+        in_bad_feed_mask_buf: host_bf_mask_buffer_1
         out_buf: n2_buffer_1
 
 
@@ -1573,35 +1573,35 @@ eigencalc_1:
     subspace: 2
 
 # Ship each half's mask stream to the recv node, where hdf5N2Write records it in the vis
-# files' /bf_mask group. Through a private copy so bufferSend's congestion heuristic sees only
-# its own backlog (see host_bf_mask_send_buffer); a dropped frame shows up there as a -1 row.
-copy_bf_mask:
+# files' /bad_feed_mask group. Through a private copy so bufferSend's congestion heuristic sees only
+# its own backlog (see host_bad_feed_mask_send_buffer); a dropped frame shows up there as a -1 row.
+copy_bad_feed_mask:
     copy_0:
         kotekan_stage: bufferCopy
         in_buf: host_bf_mask_buffer
         out_bufs:
-            - host_bf_mask_send_buffer
+            - host_bad_feed_mask_send_buffer
     copy_1:
         kotekan_stage: bufferCopy
         in_buf: host_bf_mask_buffer_1
         out_bufs:
-            - host_bf_mask_send_buffer_1
+            - host_bad_feed_mask_send_buffer_1
 
 # Both halves send to the same port; the recv node tells the streams apart by their
 # coarse_freq metadata.
-buffer_send_bf_mask:
+buffer_send_bad_feed_mask:
     kotekan_stage: bufferSend
     use_frame_desc: true
-    buf: host_bf_mask_send_buffer
+    buf: host_bad_feed_mask_send_buffer
     server_ip: 10.222.0.51
     server_port: 11029
     reconnect_time: 10
     drop_frames: true
 
-buffer_send_bf_mask_1:
+buffer_send_bad_feed_mask_1:
     kotekan_stage: bufferSend
     use_frame_desc: true
-    buf: host_bf_mask_send_buffer_1
+    buf: host_bad_feed_mask_send_buffer_1
     server_ip: 10.222.0.51
     server_port: 11029
     reconnect_time: 10
