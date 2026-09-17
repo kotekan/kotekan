@@ -100,12 +100,13 @@ updatable_config:
   frb_gain:
     0:
       kotekan_update_endpoint: "json"
-      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_FRBAAA
+      #gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
+      gain_directory: frb_gains
   # bad input mask, assumed to be in cylinder order
   bad_inputs:
       kotekan_update_endpoint: json
       # yamlfix:off
-      bad_inputs: {%- if using_dpdk %}
+      bad_inputs: {%- if (1 or using_dpdk) %}
                   [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
                     370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
                     807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
@@ -396,18 +397,20 @@ dbg_read_lostsamples_{{ id }}:
 #    num_times: samples_per_data_set
 #    frequency_channels: [{{ frequency_channels[0] }}]
 #    in_buf: host_voltage_buffer_0
-fake_voltages_0:
+
+{% for id in range(0,16) %}   # num_frequencies = 16
+{% if id == 7 %}
+fake_voltages_7:
     kotekan_stage: hdf5FileRead
-    input_dir: debug-data
+    input_dir: b0329-data
     # this is both (up to .h5) the name of the file and the name of the dataset
     # in the file
-    file_name: host_voltage_buffer_0
-    out_buf: host_voltage_buffer_0
-
-{% for id in range(1,16) %}   # num_frequencies = 16
+    file_name: host_voltage_buffer_7
+    out_buf: host_voltage_buffer_7
+{% else %}
 fake_voltages_{{ id }}:
     kotekan_stage: testDataGen
-    first_frame_index: 9037190
+    first_frame_index: 10151881
     # set globally
     # samples_per_data_set: samples_per_data_set
     type: const_offset
@@ -419,12 +422,13 @@ fake_voltages_{{ id }}:
     manual_freq_ids:
         - {{ frequency_channels[id] }}
     out_buf: host_voltage_buffer_{{ id }}
+{% endif %}
 {% endfor %}
 
 {% for id in range(16//4) %}   # num_frequencies = 16
 fake_lost_samples_{{ id }}:
     kotekan_stage: testDataGen
-    first_frame_index: 9037190
+    first_frame_index: 10151881 #166328418304 / samples_per_data_set
     # set globally
     # samples_per_data_set: samples_per_data_set
     type: ramp # to get uint8 as data type
@@ -1448,7 +1452,7 @@ FRB:
         kotekan_stage: setUpchanGain
         upchan_factor: factor_upchan_out
         upchan_max_num_channels: upchan_U16_max_num_channels
-{%-if using_dpdk %}
+{%-if (1 or using_dpdk) %}
         # these coefficients are taken from commit
         # 00a332717 "correction upchan bandpass (#395)
 {% set bandpass_shape_vals = [ 0.52225748, 0.58330915, 0.6868705, 0.80121821, 0.89386546, 0.95477358, 0.98662733, 0.99942558, 0.99988676, 0.98905127, 0.95874124, 0.90094667, 0.81113021, 0.6999944, 0.59367968, 0.52614263, ] %}
@@ -1588,7 +1592,7 @@ FRB:
         frb1_swap_MN: true
         conjugate_gains: true
         # empirically, this made CYG_A have an intermediate intesity2 of 37000
-        scaling_factor: 1.0 / 32. #512
+        scaling_factor: 1.0 / 512
         gain_buffers:
           - host_frb1_phase_buffer
         in_mask_buf: host_bf_mask_buffer
@@ -1662,7 +1666,7 @@ FRB:
 {%- endfor %}
         name: frb2_beam_positions
         datatype: float32
-        array_shape: [ num_freq_gpu_buf, {{ frb2_num_beams }}, 2]
+        array_shape: [ {{ num_freq_gpu_buf }}, {{ frb2_num_beams }}, 2]
         dim_scalings: [ 1, 1, 1 ]
         dim_name: [ "F", "R", "X/Y" ]
         do_once: true
@@ -1906,50 +1910,50 @@ write_failed_vis:
     file_length: 256
     in_buf: failed_vis_buffer_post
 
-write_frb:
-    kotekan_stage: hdf5FileWrite
-    log_level: warn
-    use_compression: false
-    base_dir: frb_beams
-    in_buf: host_frb3_beams_buffer_post
-    file_name: host_frb3_beams_buffer
-    create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
-    input_order: CHIMEBeamformer
-write_frb_offsetscale:
-    kotekan_stage: hdf5FileWrite
-    log_level: warn
-    use_compression: false
-    base_dir: frb_beams
-    in_buf: host_frb3_beams_offsetscale_buffer_post
-    file_name: host_frb3_offsetscale_buffer
-    create_single_file: true
-    input_order: CHIMEBeamformer
-
-write_frb1:
-    kotekan_stage: hdf5FileWrite
-    max_frames: 1
-    log_level: warn
-    use_compression: false
-    base_dir: frb_beams
-    in_buf: host_frb1_beams_buffer
-    file_name: host_frb1_beams_buffer
-    create_single_file: true
-    input_order: CHIMEBeamformer
-
-write_upchan_U16_voltage:
-    kotekan_stage: hdf5FileWrite
-    max_frames: 1
-    log_level: warn
-    use_compression: false
-    base_dir: frb_beams
-    in_buf: host_upchan_U16_voltage_buffer
-    file_name: host_upchan_U16_voltage_buffer
-    create_single_file: true
-    input_order: CHIMEBeamformer
+#write_frb:
+#    kotekan_stage: hdf5FileWrite
+#    log_level: warn
+#    use_compression: false
+#    base_dir: frb_beams
+#    in_buf: host_frb3_beams_buffer_post
+#    file_name: host_frb3_beams_buffer
+#    create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
+#    input_order: CHIMEBeamformer
+#write_frb_offsetscale:
+#    kotekan_stage: hdf5FileWrite
+#    log_level: warn
+#    use_compression: false
+#    base_dir: frb_beams
+#    in_buf: host_frb3_beams_offsetscale_buffer_post
+#    file_name: host_frb3_offsetscale_buffer
+#    create_single_file: true
+#    input_order: CHIMEBeamformer
+#
+#write_frb1:
+#    kotekan_stage: hdf5FileWrite
+#    #max_frames: 1
+#    log_level: warn
+#    use_compression: false
+#    base_dir: frb_beams
+#    in_buf: host_frb1_beams_buffer
+#    file_name: host_frb1_beams_buffer
+#    create_single_file: true
+#    input_order: CHIMEBeamformer
+#
+#write_upchan_U16_voltage:
+#    kotekan_stage: hdf5FileWrite
+#    #max_frames: 1
+#    log_level: warn
+#    use_compression: false
+#    base_dir: frb_beams
+#    in_buf: host_upchan_U16_voltage_buffer
+#    file_name: host_upchan_U16_voltage_buffer
+#    create_single_file: true
+#    input_order: CHIMEBeamformer
 
 write_frb2:
     kotekan_stage: hdf5FileWrite
-    max_frames: 1
+    max_frames: 79
     log_level: warn
     use_compression: false
     base_dir: frb_beams
