@@ -1576,7 +1576,14 @@ end
 end
 @eval const upchan = $(Symbol(:upchan, U))
 
-function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false, silent::Bool=false)
+function main(;
+              compile_only::Bool=false,
+              nruns::Int=0,
+              run_selftest::Bool=false,
+              silent::Bool=false,
+              # Self-test: fine frequency bin and sub-bin offset of the test tone
+              bin::Int=0,
+              delta::Float32=0.0f0)
     !silent && println("CHORD upchannelizer")
 
     !silent && println("Compiling kernel...")
@@ -1623,33 +1630,44 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     @show T̄min = Int32(0)
     @show T̄max = Int32(idiv(Tmax, U) - (M - 1))
     @show Fmin = Int32(0)
-    @show Fmax = Int32(F)
+    # `Ē` only holds `F̄ = F_per_U[U] * U` fine frequencies, i.e. `F_per_U[U]`
+    # coarse frequencies. Writing more would run past the end of `Ē`.
+    @show Fmax = Int32(min(F, F_per_U[U]))
 
-    amp = 7.5f0                 # amplitude
-    bin = 0                     # frequency bin
-    delta = 0.0f0               # frequency offset
-    test_freq = bin - (U - 1) / 2.0f0 + delta
-    attenuation_factors = Pair{Float32,Float32}[
-        0 => 1.00007,
-        0.0001 => 1.00007,
-        0.001 => 1.00005,
-        0.01 => 0.999116,
-        0.1 => 0.910357,
-        0.2 => 0.680212,
-        0.3 => 0.402912,
-        0.4 => 0.172467,
-        0.5 => 0.0374226,
-        1.0 => 0.000714811,
-        2.0 => 0,
-    ]
-    att = interp(attenuation_factors, delta)
+    # We inject a single complex tone into dish 0, polarization 0, coarse
+    # frequency 0, and predict the kernel output analytically.
+    #
+    # The kernel computes (see the `X` and `Γ` factors above, and eqn. (83),
+    # (84) of <CHORD_GPU_upchannelization.pdf>)
+    #
+    #     Ē[u, t̄] = 1/U Σ_s W(s) exp(+2πi (u - (U-1)/2) s/U) E[U t̄ + s]
+    #
+    # with `0 ≤ s < M U`. A tone `E[t] = amp exp(2πi ν t)` thus lands in the
+    # fine frequency `u = (U-1)/2 - ν U`, and we choose
+    #
+    #     ν U = test_freq = (U-1)/2 - (bin + delta)
+    #
+    # so that the tone lands in fine frequency `bin`, offset by `delta` bins.
+    # Note that `test_freq` is a half-integer for `delta = 0`: the fine
+    # frequency channels are offset by half a channel from the DFT bins.
+    @assert 0 ≤ bin < U
+    amp = 6.0f0                 # amplitude (stays below 7 after quantization)
+    test_freq = (U - 1) / 2.0f0 - (bin + delta)
+    # Substituting the tone into the kernel formula leaves
+    #
+    #     Ē[bin, t̄] = amp att exp(2πi t̄ test_freq)
+    #
+    # where `att` is the response of the PFB window to the sub-bin offset
+    # `delta`. It is real and ≈ 1 for `delta = 0`, and acquires a phase for
+    # `delta ≠ 0` because `W` is symmetric about `s = (M U - 1) / 2`.
+    att = sum(s -> Wkernel(s, M, U) * cispi(-2 * s * delta / Float32(U)), 0:(M * U - 1)) / Float32(U)
 
     # map!(i -> zero(Int4x2), E_memory, E_memory)
     @assert Tmin == 0
     for time in Tmin:(Tmax - 1), freq in 0:(F - 1), polr in 0:(P - 1), dish in 0:(D - 1)
         Eidx = dish + D * polr + D * P * freq + D * P * F * time
         if polr == 0 && dish == 0 && freq == 0
-            E1 = amp * cispi((2 * time / Float32(U) * test_freq) % 2.0f0)
+            E1 = amp * cispi(Float32(mod(2 * time * Float64(test_freq) / U, 2.0)))
         else
             E1 = 0.0f0 + 0im
         end
@@ -1661,8 +1679,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     @assert T̄min == 0
     for tbar in T̄min:(T̄max - 1), fbar in 0:(F̄ - 1), polr in 0:(P - 1), dish in 0:(D - 1)
         Ēidx = dish + D * polr + D * P * fbar + D * P * (F̄) * tbar
-        if polr == 0 && dish == 0 && fbar ÷ U == 0
-            Ē1 = fbar == bin ? att * amp * cispi((2 * (tbar - (M - 1) + M / 2.0f0) * (0.5f0 + delta)) % 2.0f0) : 0
+        if polr == 0 && dish == 0 && fbar == bin
+            Ē1 = amp * att * cispi(Float32(mod(2 * tbar * Float64(test_freq), 2.0)))
         else
             Ē1 = 0.0f0 + 0im
         end
@@ -1772,6 +1790,11 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         println("Checking results...")
         num_samples = 0
         num_errors = 0
+        max_error = 0.0f0
+        # `Ē` is quantized to 4 bits, so a correct result can be off by 0.5.
+        # The remainder is the quantization of the input `E` (also 4 bits) and
+        # the kernel's Float16 arithmetic.
+        tolerance = 0.8f0
         println("    Ē:")
         did_test_Ē_memory = falses(length(Ē_memory))
         # for tbar in 0:(idiv(T, U) - 1), fbar in 0:(F̄ - 1), polr in 0:(P - 1), dish in 0:(D - 1)
@@ -1782,10 +1805,9 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
             have_value = Complex(convert(NTuple{2,Int32}, Ē_memory[Ēidx + 1])...)
             want_value = Ē_wanted[Ēidx + 1]
             err = have_value - want_value
-            unerr = have_value - (-8 - 8im)
             num_samples += 1
-            if abs(err) > 0.8f0
-                # if unerr == 0
+            max_error = max(max_error, abs(err))
+            if abs(err) > tolerance
                 num_errors += 1
                 if num_errors ≤ 100
                     println("        dish=$dish polr=$polr fbar=$fbar tbar=$tbar Ē=$have_value Ē₀=$want_value ΔĒ=$(abs(err))")
@@ -1796,7 +1818,20 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         end
         @assert all(@view did_test_Ē_memory[1:(P * D * F̄ * T̄max)])
         @assert !any(@view did_test_Ē_memory[(P * D * F̄ * T̄max + 1):end])
-        println("Found $num_errors errors in $num_samples samples")
+        if num_errors > 0
+            # Summarize which fine frequencies are wrong; a tone that lands in
+            # the wrong channel shows up as exactly two bad channels.
+            println("    measured spectrum (dish=0, polr=0, max over t̄):")
+            for fbar in 0:(F̄ - 1)
+                m = 0.0f0
+                for tbar in 0:(T̄max - 1)
+                    idx = 0 + D * 0 + D * P * fbar + D * (F̄) * P * tbar
+                    m = max(m, abs(Complex(convert(NTuple{2,Int32}, Ē_memory[idx + 1])...)))
+                end
+                m > 0 && println("        fbar=$fbar max|Ē|=$m")
+            end
+        end
+        println("Found $num_errors errors in $num_samples samples (max error $max_error, tolerance $tolerance)")
         @assert num_errors == 0
     end
 
@@ -2055,6 +2090,10 @@ if CUDA.functional()
     fix_ptx_kernel()
 
     # # Run test
+    # # (`./julia/bin/upchan_selftest.sh` runs this for all upchannelization
+    # # factors, using the dedicated `selftest` setup. The production setups
+    # # have `F > F_per_U[U]`, so the self-test only covers the first
+    # # `F_per_U[U]` coarse frequencies there.)
     # main(; run_selftest=true)
 
     # # Run benchmark
