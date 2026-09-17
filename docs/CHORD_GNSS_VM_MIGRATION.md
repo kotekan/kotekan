@@ -4,11 +4,14 @@
 under systemd, long-term. Every number below is measured on the live stack, not estimated; how
 to re-measure is at the end.
 
-**The short version.** The infrastructure (broker, gather, obs writers, viewer) moved on
-2026-09-16 and runs well. ⚠️ **The aggregator cannot follow yet**: the peak measurement that was
-outstanding came back at **5.18-5.66 cores of 6** for what is already there, against an estimate
-of 3.05 — the broker alone costs 4.3, not the 1.75 estimated from cf06. Ask for more vCPU (§4).
-RAM, disk and network are all comfortable and need nothing.
+**The short version.** ✅ **DONE.** Broker, gather, obs writers and viewer moved 2026-09-16; the
+aggregator followed on 2026-09-17. The whole GNSS stack now runs on one 6-core VM at **3.19 mean
+/ 3.39 max cores, 53-57%**, under systemd, coming back by itself after a reboot. cf06 keeps only
+the cube archiver, the compactor and the static viewer — and both its L40S are now free.
+
+⚠️ The sizing very nearly went the other way: the first peak sample read 5.18-5.66 cores and I
+recommended asking for more vCPU. That was measuring a bug (#134, a dropped BLAS thread cap),
+not a shortage. See §4 — the episode is the most useful thing in this document.
 
 ---
 
@@ -113,58 +116,52 @@ load is data-driven and scales with the fleet. And **the aggregator costs the sa
 its search spins regardless (`blocked 3.6s (100%), 120 frames discarded`), so its 0.91 is a floor
 that will not fall when the sky is quiet.
 
-## 4. Sizing — ⚠️ THE PEAK SAMPLE CAME BACK AND THE ANSWER CHANGED
+## 4. Sizing — measured twice, and the first answer was wrong
 
-The estimate below was 3.05 cores for broker + gather + obs, from single 30 s windows on cf06.
-**Measured on the VM itself, 3 minutes at 5 s granularity with the F-engine live and 95 PRNs
-armed across 8 chains:**
+Estimated from cf06: 3.05 cores for broker + gather + obs. **First measurement on the VM**
+(3 min at 5 s, F-engine live, 95 PRNs armed): **5.18 mean / 5.66 max of 6**, load average 9.61,
+with the broker alone at 4.31 against the 1.75 estimated. On that basis I said the aggregator
+could not move and recommended more vCPU.
 
-| process | mean | p90 | max | vs the cf06 estimate |
+**That was measuring #134.** `broker_restart.sh` has exported `OPENBLAS_NUM_THREADS=1` and its
+three siblings since 2026-08-15; the systemd unit reproduced the command line faithfully and
+silently dropped the environment. `perf top` settled it in one screen: **55.6% of all cycles in
+`blas_thread_server`**, OpenBLAS's busy-wait, against **0.52% in `dgemm_kernel_SKYLAKEX`**, the
+actual arithmetic. Two thirds of the process spinning to do half a percent of maths.
+
+| | estimate (cf06) | first measurement | after #134 | final, with the aggregator |
 |---|---|---|---|---|
-| **broker** | **4.31** | 4.61 | **4.85** | estimated 1.75 — **2.5× low** |
-| gather | 0.74 | 0.77 | 0.80 | estimated 1.24 — over-estimated |
-| obs writers ×8 | 0.12 | 0.15 | 0.15 | as estimated |
-| viewer | 0.00 | 0.00 | 0.00 | as estimated |
-| **total** | **5.18** | **5.44** | **5.66** | **of 6 cores — 86–94%** |
+| broker | 1.75 | **4.31** | 1.23 | 1.43 |
+| gather | 1.24 | 0.74 | 0.78 | 0.84 |
+| aggregator | 0.91 | — (on cf06) | — | **0.76** |
+| obs ×8 + viewer | 0.08 | 0.12 | 0.12 | 0.17 |
+| **total of 6** | — | **5.18 / 5.66** | 2.14 / 2.39 | **3.19 / 3.39 (53-57%)** |
+| load average | — | 9.61 | 3.07 | 4.43 |
 
-Load average **9.61** on a 6-core box: the run queue is 1.6× the cores.
+⚠️ **The lesson is not about OpenBLAS.** It is that **a wrapper script's `export` is part of the
+program's contract, and porting the command line is not porting the program** — the faithfully
+reproduced `ExecStart` is exactly what hid this. When converting a launcher to a unit, diff
+`/proc/<pid>/environ` between the old process and the new one, not the argv.
 
-**So the aggregator cannot move yet.** It costs 1.00 mean / 1.11 max on cf06, which would put the
-VM at ~6.2–6.8 cores against 6.
+⚡ The aggregator is *cheaper* here than on cf06 (0.76 against 0.91), which is consistent with
+cf06 running `powersave` at 819-1767 MHz while this guest boosts properly.
 
-### Why the broker estimate was wrong — honestly, not yet known
+⚡ And the cf06 estimates were not simply "low": the gather came in **under** estimate and the
+broker far over. A single 30 s window on a differently-loaded host is not a budget.
 
-Its 4.34 cores sit in 16 threads: five unnamed worker threads at 0.41–0.68 each (~2.9 cores
-together) plus the eight chain threads at ~0.20 each. On cf06 the same process ran 11 threads.
+### What the profilers could and could not do
 
-I cannot presently tell a **busier fleet** from **different behaviour on a smaller host**,
-because the 1.75-core sample was never recorded alongside the fleet's armed-PRN count. That is a
-gap in the measurement, not a subtlety of the system: **always record what the fleet was doing
-next to what the process cost.** Candidate explanations, none confirmed:
+* **py-spy cannot attach to this broker at all** — 0.4.2 fails with `failed to get gil_thread_id`
+  against free-threaded 3.14 (a 3.12 control profiles cleanly). Do not spend time on it.
+* **perf works but needs root here**: `kernel.perf_event_paranoid = 4`. `perf record -F 999 -g -p
+  <pid> -- sleep 30` then `perf report --stdio --no-children --sort dso,symbol`.
+* **`kill -USR1 <broker>` dumps every thread's stack** to the log — but ONCE. Driven as a
+  sampler it killed the broker on 2026-08-23. It showed 10 threads with Python frames against 16
+  in the process, and that gap was the clue: the missing six were native BLAS workers.
+* For a real profile, `broker_multi.py`'s own header points at a **replay** under `broker_equiv`,
+  which is side-effect-free and needs neither root nor a working ptrace.
 
-* more armed PRNs now than during the cf06 sample (95 across 8 chains at the time of writing);
-* the broker now reaches the aggregator over the network (`http://cf06:12050`) rather than
-  loopback — which, if it is the cause, means **moving the aggregator would reduce broker cost**,
-  not add to it. That is a guess, and not one to bet a 94%-loaded box on;
-* free-threading contention at 6 cores that 64 cores hid.
-
-### The fleet is healthy at this load — it is headroom that is gone, not function
-
-    gather 2123 frames/s   late 0.28%   bad_frames 0   forced_closes 0
-    trim   21178 posts / 0 failed
-    broker context switches 43466 voluntary vs 5987 involuntary (blocking on I/O, not preempted)
-
-⚠️ Late frames have drifted **0.11% → 0.28%** since the cutover, which is now level with cf06's
-0.23% lifetime rather than the 20× better figure measured on an idle wire. Worth watching.
-
-### Recommendation
-
-**Ask for more vCPU before moving the aggregator.** The VM is a guest on cf02, the same 64-core
-part as cf06, so the headroom exists: 8 cores would leave the current stack at ~65-71% and fit
-the aggregator at ~78-85%; 10 would be comfortable. Alternatively, find out where the broker's
-4.3 cores go first — if it is the cross-network aggregator poll, the move pays for itself.
-
-RAM and disk remain untouched by this: 2.4 GB against 7 GB.
+RAM and disk were never close: 2.4 GB of 7, and ~0.7 GB/day of logs on 210 GB free.
 
 ## 5. The portable build: now optional, still worth doing
 
@@ -175,40 +172,26 @@ in two days. Building `-DARCH=x86-64-v2` into its own tree remains cheap insuran
 gather nothing (none of the three configs declares a `cuda*` stage, so `-DUSE_CUDA=OFF` is also
 free for the gather — but **not** for the aggregator, which needs CUDA).
 
-## 6. What moves, what does not
+## 6. What moved, and what stayed
 
-**Moves now — the infrastructure:**
+**On the VM** (13 units, all active, enabled, lingering):
 
-- **broker** + **gather** — and they must stay **together**. The gather's trim-in port is bound
-  to `127.0.0.1:11061`, and the broker↔gather link carries 453 Mbit/s; splitting them puts that
-  on the wire and breaks the localhost binding.
-- **the 8 obs writers** — they poll the broker and write to `/home/kvand/gnss/fixtures/obs/`,
-  the same NFS path on the VM. No path changes.
+| unit | cost |
+|---|---|
+| `gnss-broker` | 1.43 cores |
+| `gnss-gather` | 0.84 |
+| `gnss-aggregator` | 0.76 + the GPU (34%, 1.5 GB of an L40S) |
+| `gnss-obs@` ×8 | 0.15 total |
+| `gnss-viewer` | 0.02 |
 
-Together that is **3.05 cores of 6 (51%)** and ~1.35 GB. Comfortable.
+Broker and gather are one machine by construction — the gather's trim-in port is bound to
+`127.0.0.1:11061` and the pair exchanges 453 Mbit/s over loopback. The aggregator joining them
+put its detector endpoint back on loopback too.
 
-**Can move, second — the aggregator.** The GPU objection is gone: an L40S is passed through and
-verified to run a real kernel, and the aggregator only ever used one GPU (57% of cf06's GPU 0,
-2664 MiB of 46 GB). Adding it takes the VM to **4.23 cores of 6 (70%)**. Two things to weigh
-first, neither of them a blocker:
-
-- ⚠️ **cf06 has two L40S and the VM has one.** GPU 1 on cf06 is idle and is what we bench on
-  (`CUDA_VISIBLE_DEVICES=1` — the #54 work lived there). Move the aggregator and any GPU
-  benchmarking either contends with production or has nowhere to go. That is an argument for
-  keeping a foothold on cf06, not for keeping the aggregator there.
-- The peak-under-load sample in §4 should exist before this step, not after.
-
-**Stays on cf06 regardless:**
-
-- **the cube compactor** — periodic heavy analysis, which is what this VM is explicitly not for.
-- **the beam viewers** (`livebeam_server` 8080/8539, `http.server` 8877) — they serve exported
-  cube products, so they belong with the cube analysis. They cost 0.02 cores either way.
-
-**Judgement call — the cube archiver.** 0.27 cores, and its 32.5 GB/h goes to NFS, which the VM
-does at 9 MB/s without noticing. The argument for moving it is bring-up ordering: it must be up
-*before the nodes*, and systemd guarantees that where a hand-run script does not. **My call:
-leave it on cf06 for the first cut**, and move it with the aggregator once the VM has a few
-weeks behind it.
+**Still on cf06:** the cube archiver (32.5 GB/h to NFS, and the bring-up ordering rule that it
+precedes the nodes), the cube compactor (periodic heavy analysis), and the static viewer. Its
+**two L40S are now both idle**, which matters: that is where GPU benchmarking lives
+(`CUDA_VISIBLE_DEVICES=1`), and the VM's single GPU is now in production use. Keep the foothold.
 
 ## 7. systemd: what the units must encode
 
