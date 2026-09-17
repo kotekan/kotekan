@@ -180,8 +180,12 @@ export class GpsAmpHistoryPanel {
                 coh_s: [], dop: [], snr: [], dr: [], peel: [], bound: []};
     }
 
-    // L1/L2/L5 (unified signal band) -> the CN0_BASELINE band key.
-    static BAND_KEY = {L1: "l1", L2: "l2c", L5: "l5"};
+    // Column group (high/mid/low) -> the CN0_BASELINE band key, which is a DIFFERENT
+    // taxonomy: the front-end names l1/l2c/l5, left as they are. The left-hand side was
+    // L1/L2/L5 until 2026-09-17, which made the two look like one thing. ⚠️ A miss here
+    // is silent -- the lookup below falls back to "l1", so every signal would quietly
+    // take the L1 C/N0 baseline rather than its own.
+    static BAND_KEY = {high: "l1", mid: "l2c", low: "l5"};
 
     // Append one (metrics) sample to a history series, with dedup + ring trim. `src` is either
     // a flat row (r.snr present) or a per-signal metrics object (r.deep_snr, snr absent).

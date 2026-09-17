@@ -767,7 +767,7 @@ BAND_CHAINS = {
 # stages on one REST port, so the client polls all of these; the split into three viewer
 # ports was purely presentational. Each row here is ONE signal:
 #   tag        constellation (G/E/C) -- the satellite key is tag+prn across ALL bands
-#   band       frequency-band column group in the table (L1 / L2 / L5)
+#   band       frequency-band column group in the table (high / mid / low)
 #   col        the short column label under that group ("CA","L1C","CM","CL","Q","E1C",...)
 #   name       full signal name (tooltips / amp-history legend)
 #   combiner   ABSOLUTE kotekan stage (merged instance -- already l1_/l2c_/l5_ prefixed)
@@ -781,16 +781,16 @@ BAND_CHAINS = {
 # gnss_node.yaml -- L2C dongle -> BeiDou B2b today, Galileo E5b next, GLONASS later -- flows into
 # the viewer with no edit here. This literal is used only when /config is unreachable at launch.
 UNIFIED_SIGNALS = [
-    {"tag": "G", "band": "L1", "col": "CA",  "name": "GPS L1 C/A", "sigid": "GPS_L1CA",
+    {"tag": "G", "band": "high", "col": "CA",  "name": "GPS L1 C/A", "sigid": "GPS_L1CA",
      "combiner": "l1_gps_combiner", "search": "l1_gps_search",  "t_rec": 1e-3,  "peel": True},
-    {"tag": "G", "band": "L1", "col": "L1C", "name": "GPS L1C-P", "sigid": "GPS_L1C_P",
+    {"tag": "G", "band": "high", "col": "L1C", "name": "GPS L1C-P", "sigid": "GPS_L1C_P",
      "combiner": "l1_l1c_combiner", "search": "l1_l1c_search",  "t_rec": 10e-3, "peel": True},
     # L2/MID band: the l2c dongle was REPURPOSED from GPS L2C (CM data + CL pilot) to BeiDou B2b
     # (2026-08-03, mid-band-gal-bds-receivers). B2b is DATA-only (no pilot), tag C, 1 ms records;
     # the primary stage keeps its l2c_gps_* name (Shape-A convention), only the signal changes.
-    {"tag": "C", "band": "L5", "col": "B2b", "name": "BeiDou B2b (data, B-CNAV3)", "sigid": "BDS_B2B_I",
+    {"tag": "C", "band": "low", "col": "B2b", "name": "BeiDou B2b (data, B-CNAV3)", "sigid": "BDS_B2B_I",
      "combiner": "l2c_gps_combiner", "search": "l2c_gps_search", "t_rec": 1e-3,  "peel": False},
-    {"tag": "G", "band": "L5", "col": "Q",   "name": "GPS L5-Q", "sigid": "GPS_L5_Q",
+    {"tag": "G", "band": "low", "col": "Q",   "name": "GPS L5-Q", "sigid": "GPS_L5_Q",
      "combiner": "l5_gps_combiner", "search": "l5_gps_search",  "t_rec": 1e-3,  "peel": True},
     # L5-I is the DATA component of the same signal L5-Q pilots (S4 phase 2). Like L2C-CL it
     # is DERIVED, not acquired -- seeded verbatim from its sibling's rows -- so search is None
@@ -798,28 +798,28 @@ UNIFIED_SIGNALS = [
     # which is what lets it integrate past the 20 ms symbol boundary. Judge it against Q, its
     # equal-power sibling, not against an absolute: measured 6.4 dB below Q at the 1 s rung
     # (2026-07-29), down from 15.4 dB before the navwipe.
-    {"tag": "G", "band": "L5", "col": "I",   "name": "GPS L5-I (data, CNAV)", "sigid": "GPS_L5_I",
+    {"tag": "G", "band": "low", "col": "I",   "name": "GPS L5-I (data, CNAV)", "sigid": "GPS_L5_I",
      "combiner": "l5_i_combiner",   "search": None,             "t_rec": 1e-3,  "peel": False},
-    {"tag": "E", "band": "L1", "col": "E1C", "name": "Galileo E1-C",
+    {"tag": "E", "band": "high", "col": "E1C", "name": "Galileo E1-C",
      "combiner": "l1_gal_combiner", "search": "l1_gal_search",  "t_rec": 4e-3,  "peel": True},
     # E1B / E5a-I / B1C-data / B2a-data: the DATA components (S5 D-components), each DERIVED off
     # its band-mate pilot (search None, seeded verbatim). Their combiners run the nav-bit wipe
     # (navwipe_bit_records) that lets a data channel integrate to 1 s, so they carry coherent
     # C/N0 like any chain; judge each against its pilot sibling, not an absolute. Unpeeled
     # (peel is GPS-only for now).
-    {"tag": "E", "band": "L1", "col": "E1B", "name": "Galileo E1-B (data, I/NAV)",
+    {"tag": "E", "band": "high", "col": "E1B", "name": "Galileo E1-B (data, I/NAV)",
      "combiner": "l1_e1b_combiner",  "search": None,            "t_rec": 4e-3,  "peel": False},
-    {"tag": "E", "band": "L5", "col": "E5a", "name": "Galileo E5a-Q",
+    {"tag": "E", "band": "low", "col": "E5a", "name": "Galileo E5a-Q",
      "combiner": "l5_gal_combiner", "search": "l5_gal_search",  "t_rec": 1e-3,  "peel": True},
-    {"tag": "E", "band": "L5", "col": "E5aI","name": "Galileo E5a-I (data, F/NAV)",
+    {"tag": "E", "band": "low", "col": "E5aI","name": "Galileo E5a-I (data, F/NAV)",
      "combiner": "l5_e5a_i_combiner","search": None,            "t_rec": 1e-3,  "peel": False},
-    {"tag": "C", "band": "L1", "col": "B1C", "name": "BeiDou B1C",
+    {"tag": "C", "band": "high", "col": "B1C", "name": "BeiDou B1C",
      "combiner": "l1_bds_combiner", "search": "l1_bds_search",  "t_rec": 10e-3, "peel": True},
-    {"tag": "C", "band": "L1", "col": "B1CD","name": "BeiDou B1C (data, B-CNAV1)",
+    {"tag": "C", "band": "high", "col": "B1CD","name": "BeiDou B1C (data, B-CNAV1)",
      "combiner": "l1_b1c_d_combiner","search": None,            "t_rec": 10e-3, "peel": False},
-    {"tag": "C", "band": "L5", "col": "B2a", "name": "BeiDou B2a",
+    {"tag": "C", "band": "low", "col": "B2a", "name": "BeiDou B2a",
      "combiner": "l5_bds_combiner", "search": "l5_bds_search",  "t_rec": 1e-3,  "peel": True},
-    {"tag": "C", "band": "L5", "col": "B2aD","name": "BeiDou B2a (data, B-CNAV2)",
+    {"tag": "C", "band": "low", "col": "B2aD","name": "BeiDou B2a (data, B-CNAV2)",
      "combiner": "l5_b2a_d_combiner","search": None,            "t_rec": 1e-3,  "peel": False},
 ]
 
@@ -888,27 +888,47 @@ def _display_for(sigid):
 # The three column groups, key -> display name. The keys are historical and GPS-centric; the
 # NAMES are what the instrument means by them and what every panel shows. Mirrored in
 # app/panels/gps_table.js and app/panels/decode_health.js -- rename in all three or not at all.
-BAND_LABEL = {"L1": "High", "L2": "Mid", "L5": "Low"}
-BAND_ORDER = ["L1", "L2", "L5"]
+BAND_LABEL = {"high": "High", "mid": "Mid", "low": "Low"}
+BAND_ORDER = ["high", "mid", "low"]
+
+
+def _group_of(carrier_hz, who=""):
+    """Column group for a signal, from its carrier -- the only input that cannot drift.
+
+    A signal with no carrier cannot be classified, and the two ways of being wrong are not
+    equal: an unknown group is DROPPED from the table (that is the 2026-08-09 fault), while a
+    guessed one merely renders in the wrong column. So guess, and say so -- a warning in the
+    log beats a column that quietly is not there.
+    """
+    f = float(carrier_hz or 0.0)
+    if f > 0.0:
+        return _band_of(f)
+    log_.warning("signal %s has no carrier_hz; column group guessed as %r", who or "?", BAND_ORDER[-1])
+    return BAND_ORDER[-1]
 
 
 def _band_of(carrier_hz):
-    """RF-band column group (L1/L2/L5) from the sky carrier.
+    """RF-band column group (high/mid/low) from the sky carrier.
 
     ⚠️ THE L5/L2 BOUNDARY IS 1.22 GHz, NOT 1.20 (KV, 2026-08-31): Galileo E5 is ONE
     AltBOC(15,10) centred at 1191.795 MHz and BeiDou B2 is ACE-BOC on the same centre --
     E5b/B2b at 1207.14 are the UPPER SIDEBANDS of the same transmission as E5a/B2a at
     1176.45, one modulator, coherent. Splitting the pair across column groups drew a
-    physical unit as two bands. So: Low ('L5') = the E5/B2 complex + GLONASS L3OC
-    (1202.03, GLONASS's L5-class signal); Mid ('L2') = L2C (1227.60), GLONASS L2
-    (1246-1248), B3I (1268.52), E6 (1278.75); High ('L1') >= 1.40 GHz.
-    A 1.20 GHz threshold put 1207.14 in Mid alongside E6/B3I -- wrong side of the split.
+    physical unit as two bands. So: low = the E5/B2 complex + GLONASS L3OC (1202.03,
+    GLONASS's L5-class signal); mid = L2C (1227.60), GLONASS L2 (1246-1248), B3I
+    (1268.52), E6 (1278.75); high >= 1.40 GHz.
+    A 1.20 GHz threshold put 1207.14 in mid alongside E6/B3I -- wrong side of the split.
+
+    ⚠️ THE KEYS ARE NOT SIGNAL NAMES. They were 'L1'/'L2'/'L5' until 2026-09-17, which read as
+    GPS signal names for groups that are multi-constellation and always displayed as
+    High/Mid/Low. Do not reintroduce a GPS name here: the broker's per-signal taxonomy
+    ('L5', 'E5b', 'B3', 'E6', 'L2') is a DIFFERENT axis that legitimately uses them.
     """
     if carrier_hz >= 1.40e9:
-        return "L1"
+        return "high"
     if carrier_hz >= 1.22e9:
-        return "L2"
-    return "L5"
+        return "mid"
+    return "low"
 
 
 def _signal_descriptors():
@@ -991,17 +1011,17 @@ def discover_broker_chains(host, port, timeout=3.0):
                     # ⚠️ THE BROKER'S rf_band IS A DIFFERENT TAXONOMY AND MUST BE VALIDATED,
                     # not trusted. It names the band physically -- "E5b", "B3", "L3", "E6" --
                     # while this table has exactly three COLUMN GROUPS, and _band_of() below
-                    # already declares the intent: 1.20-1.40 GHz (L2C, E5b/B2b, B3I, E6)
-                    # groups under 'L2'. Taking the string raw put Galileo E5b and BeiDou
-                    # B2b in a group named "E5b" that band_rank has never heard of, so both
-                    # signals were discovered, polled, and then silently dropped from the
-                    # table -- the viewer showed NO COLUMNS for a band that was tracking
-                    # end to end (2026-08-09). Anything unrecognised falls back to the
-                    # carrier, which is the one input that cannot be out of step; this also
-                    # makes B3I, L3OC and L1 land correctly the day they arrive.
-                    "band": (c.get("rf_band")
-                             if c.get("rf_band") in ("L1", "L2", "L5")
-                             else _band_of(float(c.get("carrier_hz") or 0.0))),
+                    # already declares the intent: 1.22-1.40 GHz (L2C, B3I, E6) is mid.
+                    # Taking the string raw put Galileo E5b and BeiDou B2b in a group named
+                    # "E5b" that band_rank has never heard of, so both signals were
+                    # discovered, polled, and then silently dropped from the table -- the
+                    # viewer showed NO COLUMNS for a band that was tracking end to end
+                    # (2026-08-09). The carrier is the one input that cannot be out of step,
+                    # so it is now the ONLY input: since the group keys stopped being
+                    # GPS names there is no longer any string the two taxonomies share, and
+                    # the old "trust it if it looks like one of ours" shortcut could only
+                    # ever fire on a coincidence.
+                    "band": _group_of(c.get("carrier_hz"), chain),
                     "col": c.get("short") or chain,
                     "name": c.get("label") or chain,
                     "sigid": c.get("sigid"),
@@ -1065,7 +1085,7 @@ def discover_signals(host, rest_port, timeout=3.0):
         return None
 
     desc = _signal_descriptors()
-    band_rank = {"L1": 0, "L2": 1, "L5": 2}
+    band_rank = {b: i for i, b in enumerate(BAND_ORDER)}
     tag_rank = {"G": 0, "L": 1, "E": 2, "C": 3, "R": 4}
     rows = []
     for chain, sig, peel in tracks:
@@ -1085,7 +1105,7 @@ def discover_signals(host, rest_port, timeout=3.0):
             # gets ONE row carrying both CA and L1C, which is the entire premise of the unified
             # viewer ("one satellite per row"). Keying rows by tag split it into G20 and L20.
             "sys": _SYS_TAG.get(sigid.split("_", 1)[0], tag),
-            "band": _band_of(carrier) if carrier else "L1",
+            "band": _group_of(carrier, sigid),
             "col": col,
             "name": name,
             "sigid": sigid,
@@ -1249,11 +1269,10 @@ class WsPortResource(resource.Resource):
             # actually occupy rather than from a list of front ends CHORD does not have.
             if broker_chains:
                 self.signals = [dict(c) for c in broker_chains]
-                # ⚠️ THE GROUP KEY IS NOT A DISPLAY NAME. "L1"/"L2"/"L5" are GPS-centric
-                # labels for what are three multi-constellation COLUMN GROUPS -- High, Mid and
-                # Low -- and every other panel already renders them that way (BAND_LABEL in
-                # app/panels/gps_table.js and app/panels/decode_health.js; keep the three in
-                # step). This selector was the one place the raw key reached the page.
+                # ⚠️ THE GROUP KEY IS NOT A DISPLAY NAME. The keys are high/mid/low; the
+                # names shown are High/Mid/Low via BAND_LABEL, mirrored in
+                # app/panels/gps_table.js and app/panels/decode_health.js -- keep the three in
+                # step. This selector was the one place the raw key reached the page.
                 #
                 # And a group spans SEVERAL carriers, so naming it after one is wrong whichever
                 # one is picked: taking the first chain's made the Mid entry read

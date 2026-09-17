@@ -122,11 +122,15 @@ const METRICS = {
 };
 
 // Frequency-band grouping shared across every constellation (2026-07-31). L1/E1/B1 = HIGH
-// (~1575 MHz), L2 = MID (~1227, GPS only for now), L5/E5a/B2a = LOW (~1176). Glonass will slot
-// in the same three when it lands. The per-band SIGNALS differ per constellation, so the
+// (~1575 MHz), mid (~1227-1279: L2C, B3I, E6), low (~1176-1207: the E5/B2 complex).
+// GLONASS will slot into the same three when it lands. The per-band SIGNALS differ per constellation, so the
 // constellation is its own section below the shared header rather than a grey side-note.
-const BAND_LABEL = {L1: "High", L2: "Mid", L5: "Low"};
-const BAND_ORDER = ["L1", "L2", "L5"];
+// Column-group key -> display name, and the left-to-right order. The keys are high/mid/low
+// (they were L1/L2/L5 until 2026-09-17 -- GPS signal names for groups that are
+// multi-constellation and have always been SHOWN as High/Mid/Low). Mirrored in
+// app/panels/decode_health.js and livebeam_server.py -- rename in all three or not at all.
+const BAND_LABEL = {high: "High", mid: "Mid", low: "Low"};
+const BAND_ORDER = ["high", "mid", "low"];
 // STATIC FALLBACK ONLY -- the live list comes from the server's `chains` via consts_of() below.
 // Hardcoding it here meant a new constellation got a sky marker and a legend chip but NO table
 // section and no columns, because every bucket/loop in this file iterated this literal. That is

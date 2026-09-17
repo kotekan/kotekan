@@ -16,7 +16,10 @@ const CONSTS = [
     {tag: "E", name: "Galileo"},
     {tag: "C", name: "BeiDou"},
 ];
-const BAND_LABEL = {L1: "High", L2: "Mid", L5: "Low"};
+// Column-group key -> display name. The keys are high/mid/low (they were the GPS names
+// L1/L2/L5 until 2026-09-17, which read as signal names for multi-constellation groups).
+// Mirrored in app/panels/gps_table.js and livebeam_server.py -- rename in all three.
+const BAND_LABEL = {high: "High", mid: "Mid", low: "Low"};
 // Friendly signal names keyed on the decode_health signal id.
 const SIG_NAME = {
     GPS_L1_LNAV: "L1 C/A · LNAV", GPS_L2C_CNAV: "L2C · CNAV", GPS_L5_CNAV: "L5-I · CNAV",

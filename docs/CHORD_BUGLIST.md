@@ -469,10 +469,17 @@ because nothing occupies it yet, which is the honest rendering.
 ⚠️ `BAND_LABEL`/`BAND_ORDER` now exist in three files (the server plus those two panels). Rename
 in all three or not at all — noted in each.
 
-⚡ Still open, deliberately not done: the KEYS are still `L1`/`L2`/`L5`. They are internal (wire
-value, sort order, dict keys) and no user sees them, so renaming to `high`/`mid`/`low` is a
-server-plus-four-client-files change with no visible benefit. Worth doing when one of those
-files is open anyway.
+✅ **The keys are renamed too** (09-17): `L1`/`L2`/`L5` → `high`/`mid`/`low` across
+`livebeam_server.py` and four client panels. The sweep turned up one site that would have failed
+**silently**: `gps_amp_history.js` mapped the group key to the C/N0 baseline key
+(`{L1:"l1", L2:"l2c", L5:"l5"}`) behind a `|| "l1"` fallback, so every signal would quietly have
+taken the L1 baseline rather than its own. Three other taxonomies were deliberately left alone —
+the front-end names (`l1`/`l2c`/`l5`), the broker's per-signal `rf_band`, and the PVT
+`CARRIER_NAME` — and each now says so where it is defined.
+
+⚠️ `check_js.sh` could not be run: no `node` on cx43, cf06 or the VM. The change is confined to
+comments and three const declarations, and the four panels were confirmed to serve with the new
+keys present, but a browser reload is the only real proof the panels still render.
 
 ### #123 — cf06's single 1 GbE is the fleet's binding constraint
 **[live]** 713 Mbit/s ingress, of which telemetry is 363 after the v6 shrink. It has already

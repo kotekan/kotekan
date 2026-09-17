@@ -46,7 +46,7 @@ export function configure_chains(defs) {
 
 // UNIFIED viewer (2026-07-28): one row per satellite, every signal it carries side by side.
 // SIGNALS is the full inventory from the server's /wsport (UNIFIED_SIGNALS): each entry is one
-// signal {tag, band ("L1"/"L2"/"L5"), col, name, combiner (absolute stage), search|null,
+// signal {tag, band ("high"/"mid"/"low"), col, name, combiner (absolute stage), search|null,
 // t_rec, peel}. null = per-band mode (the historical path). RF_BANDS drives the spectrum
 // selector. The feed keys satellites by tag+prn ACROSS bands and hangs each signal's metrics
 // off r.sig_by[combiner]; the table renders one column per signal.
