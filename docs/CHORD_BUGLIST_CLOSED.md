@@ -152,6 +152,57 @@ satellite's at once and the DLL re-establishes all of them from zero.
 
 ## Closed with a full write-up — the three worth reading before touching these areas
 
+### #135 — the obs writer latched the F-engine sample-0 epoch once, and filed three days of data onto one ✅ FIXED 09-17
+`gnss_observables.py` read `/telescope/time0_ns` at startup and stamped every row `t = frame0 +
+hop/HPS` for the life of the process. An F-engine re-base restarts the hop counter without moving
+that value, so a writer that outlived one (they ran for days) filed the new session onto the OLD
+epoch: rows tens of hours in the past, several sessions stacked into one day file with `t`
+non-monotonic in file order, and every geometry column evaluated at the wrong instant. In
+`*_20260916.jsonl` 71% of rows with geometry put a tracked satellite below the horizon (median el
+−46° for >35 dB-Hz); E13 read range-rate +441 m/s against a tracked Doppler of −90 Hz.
+
+Measured with `obs_retime.py census` (the time shift at which the ephemeris Doppler matches every
+strong PRN's `dop_rec_hz` at its `rec_hop`, rms 0.00–0.05 Hz, snapped to the anchors the brokers
+logged): `*_20260913` holds three sessions at +136968 s, +143735 s (anchor 1789418417) and
++248166 s (1789522848); `*_20260914` is the +143735 s session past UTC midnight; `*_20260916` is
++84351 s (1789607198 — the whole 09-16→17 overnight run, stamped a day early). GAL and BDS date
+every segment identically. **The broker was on the right epoch throughout** (9c56c1682 makes it
+exit 3 on a moved anchor; its residuals were ±10–45 Hz all night); the writer had no such rule.
+
+Fixed `27f91a4a1`: `--frame0-recheck-s 60`, exit 3 on a moved value, systemd restarts into the
+new epoch and a new day file (exercised against a fake endpoint: exit 3 within 2 s of a +24 h
+move). The writer also read the nav cache through `fetch_brdc()` — one of EIGHT extra writers of
+the shared cache, the 08-27 fault — and now reads `cached_brdc()`. The archive was re-timed into
+`fixtures/obs_retimed/` (`obs_retime.py apply`, never in place; `t_raw`/`retime_s` kept per row).
+
+⚠️ **The lesson:** a value fetched once is a latch, and every latch needs a re-read that can
+ACT. The broker had exactly this fault two days earlier and got the rule; the writer, a
+separate process reading the same endpoint, did not. When one process learns to detect a moved
+anchor, ask which OTHER processes hold the same anchor. Tracking is blind, so nothing downstream
+ever complained — the data kept flowing, on the wrong day.
+
+### #136 — the BRDC hourly merge ran synchronously in the control loop and broke every fleet-ADR arc at once ✅ FIXED 09-17
+`fetch_brdc` did the station-hourly merge (up to nine files, 20 s timeout each) and the daily
+mirror fetches (30 s) inside the broker's control pass. The cf06 log of 09-16 goes silent for
+24.3 s (14:50:32→14:50:57) and resumes with `BRDC hourly merge: 9 station-file(s)` on every
+chain; the FADR lines show every satellite's arc restarting at 14:50:56. The telemetry ring is
+64 windows = 10.7 s, so a stall longer than that loses windows and `fleetadr.fold_record`
+breaks every arc on the chain — correctly, an increment it cannot account for is a break. On the
+09-13 run the breaks hit 16 satellites at once at :03/:18/:33/:48. Each one throws away the
+carrier level of every satellite, which is the one thing a geometry-free TEC cannot recover:
+this, with #137 and the ADR random walk (`fixtures/tec_wander/README.md`), is why TEC was
+"useless by the hour".
+
+Fixed `d40e35d29`: `fetch_brdc` hands the loop what is on disk and runs the fetch on one daemon
+thread; synchronous only for a pinned replay, an empty cache, or `block=True` (a caller with no
+ephemeris yet). Verified in production 18:59:41: the merge line with zero log-timestamp gaps.
+
+### #137 — `gnss_tec_chord.py` keyed joint arcs on `fadr_arc` alone, which restarts at 1 ✅ FIXED 09-17
+FleetAdr forgets a satellite absent 30 s and starts it again at arc 1, so the arc before and
+after a dropout both read 1 and the producer joined them: two accumulators with unrelated
+origins, a step of ~1e5 TECU that then dominated the satellite's statistics. Fixed `67643f642`:
+the continuity key is (arc, hop0).
+
 ### #134 — the systemd unit dropped the broker's BLAS thread cap, and the 2026-08-15 fault came back ✅ FIXED 09-17
 `broker_restart.sh` has exported `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 NUMEXPR_NUM_THREADS=1` since 2026-08-15, when numpy's OpenBLAS pool — one **busy-spinning**
