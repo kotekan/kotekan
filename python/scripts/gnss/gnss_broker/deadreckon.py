@@ -1432,7 +1432,8 @@ def stage_dead_reckon(ctx):
         ctx.drp.slew_k = 0.25
         if ctx.dr_state["eph"] is None or ctx.drp.now_w - ctx.dr_state["eph_t"] > 7200:
             try:
-                ctx.dr_state["eph"] = ctx.dr_eph_mod.parse_rinex_nav(ctx.dr_eph_mod.fetch_brdc())
+                ctx.dr_state["eph"] = ctx.dr_eph_mod.parse_rinex_nav(
+                    ctx.dr_eph_mod.fetch_brdc(block=ctx.dr_state["eph"] is None))
                 ctx.dr_state["eph_t"] = ctx.drp.now_w
                 ctx.dr_state["t0m"] = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0) % ctx.drp.t_code
                 _log("dead-reckon: BRDC loaded (%d sats)" % len(ctx.dr_state["eph"]))

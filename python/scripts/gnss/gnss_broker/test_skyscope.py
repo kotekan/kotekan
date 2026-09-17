@@ -67,7 +67,7 @@ class _FakeEphMod(object):
 
     # A collapse forces eph_t back so the NEXT call re-fetches; the stub has to answer that
     # or the test measures its own AttributeError instead of the bridge.
-    def fetch_brdc(self, when=None):
+    def fetch_brdc(self, when=None, block=False):
         self.fetches += 1
         return "stub"
 
@@ -591,6 +591,72 @@ def test_refresh_cadence_matches_the_product():
           "chosen against it" % d)
 
 
+def test_fetch_brdc_off_the_loop():
+    """⚠️ A NETWORK FETCH IN THE CONTROL LOOP IS A STALL, AND A STALL BREAKS EVERY ARC.
+
+    The station-hourly merge pulls up to nine files with a 20 s timeout each, inside the
+    broker's control pass. The telemetry ring holds ~10 s of windows, so a merge that takes
+    longer loses windows and fleetadr breaks the carrier arc of every satellite on every
+    chain at once -- the arc level, which is the one thing a geometry-free TEC cannot
+    recover. fetch_brdc now hands the loop the disk and refreshes on a thread; this pins that.
+    """
+    import threading
+    import gnss_brdc_supply as sup
+    from datetime import datetime, timezone
+    print("\nfetch_brdc: the loop gets the disk, the network gets a thread")
+    now = datetime.now(timezone.utc)
+    daily = "BRDC00WRD_S_%04d%03d0000_01D_MN.rnx.gz" % (now.year, now.timetuple().tm_yday)
+    calls = []
+    gate = threading.Event()
+    real = sup._fetch_brdc_now
+
+    def slow(when=None, cache_dir=sup.CACHE):
+        calls.append((threading.current_thread().name, cache_dir))
+        gate.wait(3.0)
+        return ["fresh"]
+
+    sup._fetch_brdc_now = slow
+    pin = os.environ.pop("GNSS_BRDC_DIR", None)
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            for n in (daily, "hourly_MN.rnx.gz"):
+                open(os.path.join(d, n), "wb").close()
+            t0 = time.time()
+            got = sup.fetch_brdc(cache_dir=d)
+            dt = time.time() - t0
+            check(dt < 0.5, "returns in %.3f s while the fetch itself is blocked" % dt)
+            check(sorted(os.path.basename(x) for x in got) == sorted([daily, "hourly_MN.rnx.gz"]),
+                  "...with the cached daily and hourly merge")
+            sup.fetch_brdc(cache_dir=d)
+            check(len(calls) == 1,
+                  "a second call while the refresh is in flight starts no second one (%d)" % len(calls))
+            gate.set()
+            sup._REFRESH["thread"].join(3.0)
+            check(calls and calls[0][0] == "brdc-refresh" and calls[0][1] == d,
+                  "the refresh ran on the daemon thread, against the same cache")
+            calls.clear()
+            got = sup.fetch_brdc(cache_dir=d, block=True)
+            check(got == ["fresh"] and calls and calls[0][0] == threading.main_thread().name,
+                  "block=True (no ephemeris yet) fetches synchronously")
+        calls.clear()
+        with tempfile.TemporaryDirectory() as e:
+            got = sup.fetch_brdc(cache_dir=e)
+            check(got == ["fresh"] and calls and calls[0][0] == threading.main_thread().name,
+                  "an EMPTY cache blocks: there is nothing to hand out")
+        calls.clear()
+        with tempfile.TemporaryDirectory() as f:
+            open(os.path.join(f, "pinned.rnx"), "wb").close()
+            os.environ["GNSS_BRDC_DIR"] = f
+            got = sup.fetch_brdc(cache_dir=f)
+            check(got == ["fresh"] and calls and calls[0][0] == threading.main_thread().name,
+                  "a pinned replay stays synchronous and hermetic")
+            del os.environ["GNSS_BRDC_DIR"]
+    finally:
+        sup._fetch_brdc_now = real
+        if pin is not None:
+            os.environ["GNSS_BRDC_DIR"] = pin
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
@@ -606,6 +672,7 @@ def main():
     test_coverage_counts_only_usable_records()
     test_cached_brdc_never_writes()
     test_refresh_cadence_matches_the_product()
+    test_fetch_brdc_off_the_loop()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

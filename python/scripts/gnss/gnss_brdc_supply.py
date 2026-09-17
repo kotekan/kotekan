@@ -762,8 +762,85 @@ def cached_brdc(cache_dir=CACHE):
     return [f for _, f in out]
 
 
-def fetch_brdc(when=None, cache_dir=CACHE):
-    """Ordered list of currently-available BRDC nav-source files (best-first). parse_rinex_nav
+# ── THE FETCH RUNS OFF THE CONTROL LOOP ────────────────────────────────────────────────────
+# A network fetch inside the broker's control pass is a STALL: every station file carries a
+# 20 s timeout and the daily mirrors 30 s, while the telemetry ring holds ~10 s of windows.
+# A stall longer than the ring loses windows, and fleetadr.fold_record then breaks every
+# fleet-ADR arc on that chain -- correctly, an increment it cannot account for is a break --
+# so one slow mirror throws away the carrier level of every satellite on every chain at once.
+# The loop is therefore handed what is already on disk, and the refresh runs on ONE daemon
+# thread at a time; the next call after it lands sees the new files. The synchronous path is
+# kept for the cases where there is nothing to hand out: a pinned replay (hermetic by
+# definition), an empty cache, and a caller that says so because it has no ephemeris at all.
+_REFRESH = {"thread": None, "lock": threading.Lock(), "started": 0, "err": None}
+
+
+def _cached_sources(when, cache_dir):
+    """What _fetch_brdc_now would return with NO network: the daily variants on disk for
+    `when`'s day -- the previous day only when this day has none, the rule _fetch_brdc_merged
+    applies -- then the station-hourly merge. [] when nothing is cached. Order is immaterial
+    to parse_rinex_nav, which merges per PRN by freshest toe."""
+    out = []
+    for back in (0, 1):
+        d = when - timedelta(days=back)
+        doy = d.timetuple().tm_yday
+        for kind in ("S", "R"):
+            p = os.path.join(cache_dir,
+                             "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy))
+            if os.path.exists(p):
+                out.append(p)
+        if out:
+            break
+    hourly = os.path.join(cache_dir, "hourly_MN.rnx.gz")
+    if os.path.exists(hourly):
+        out.append(hourly)
+    return out
+
+
+def _refresh_in_background(when, cache_dir):
+    """Start the synchronous fetch on a daemon thread unless one is still running. Returns
+    True when a thread was started. Its failure is logged and leaves the disk as it was."""
+    with _REFRESH["lock"]:
+        t = _REFRESH["thread"]
+        if t is not None and t.is_alive():
+            return False
+
+        def run():
+            try:
+                _fetch_brdc_now(when, cache_dir)
+            except Exception as e:
+                _REFRESH["err"] = e
+                _log_hourly("BRDC background refresh failed (%s); the cached sources stay "
+                            "in service until the next refresh" % e)
+
+        t = threading.Thread(target=run, name="brdc-refresh", daemon=True)
+        _REFRESH["thread"] = t
+        _REFRESH["started"] += 1
+        t.start()
+        return True
+
+
+def fetch_brdc(when=None, cache_dir=CACHE, block=False):
+    """Ordered list of BRDC nav-source files for `when`, WITHOUT blocking the caller on the
+    network: the files already on disk are returned and a refresh is started on a daemon
+    thread (see the module note above). Synchronous -- the full _fetch_brdc_now -- only when
+    GNSS_BRDC_DIR pins the sky, when the cache is empty, or when block=True: a caller with no
+    ephemeris yet must wait, one with an ephemeris must not.
+
+    The ordering/merging contract and the supply history are documented on _fetch_brdc_now,
+    which is the function this used to be."""
+    if os.environ.get("GNSS_BRDC_DIR") or block:
+        return _fetch_brdc_now(when, cache_dir)
+    when = when or datetime.now(timezone.utc)
+    have = _cached_sources(when, cache_dir)
+    if not have:
+        return _fetch_brdc_now(when, cache_dir)
+    _refresh_in_background(when, cache_dir)
+    return have
+
+
+def _fetch_brdc_now(when=None, cache_dir=CACHE):
+    """SYNCHRONOUS. Ordered list of currently-available BRDC nav-source files (best-first). parse_rinex_nav
     merges them PER-PRN (freshest toe per PRN wins, union of records), so no single frozen
     product can starve a PRN another source carries fresh.
 

@@ -68,7 +68,9 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
         # cannot predict another epoch (best_eph 4 h window).
         try:
             _old_eph = state["eph"]
-            state["eph"] = ge.parse_rinex_nav(ge.fetch_brdc(t_utc))
+            # block only while there is NO sky at all; with one in hand the fetch must not
+            # stall the pass (gnss_brdc_supply: the refresh runs on a thread).
+            state["eph"] = ge.parse_rinex_nav(ge.fetch_brdc(t_utc, block=_old_eph is None))
             state["eph_t"] = now
             # ── EPH-REBASE (#101, --eph-rebase): a refresh STEPS the per-sat model, and
             # on a model-primary chain the slewing seed drags the code loop through the
