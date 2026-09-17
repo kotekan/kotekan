@@ -16,7 +16,6 @@
 #include <optional>    // for optional
 #include <stdexcept>   // for runtime_error
 #include <stdint.h>    // for uint8_t
-#include <string.h>    // for strnlen
 #include <sys/types.h> // for uint
 #include <tuple>       // for tuple, make_tuple
 
@@ -162,9 +161,7 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
         std::vector<std::ptrdiff_t> extents(out_meta->dim, out_meta->dim + out_meta->dims);
         std::vector<kotekan::Symbol> dimnames;
         for (int d = 0; d < out_meta->dims; ++d)
-            dimnames.push_back(
-                std::string(out_meta->dim_name[d],
-                            strnlen(out_meta->dim_name[d], sizeof(out_meta->dim_name[d]))));
+            dimnames.push_back(out_meta->get_dimension_name(d));
         std::vector<std::ptrdiff_t> dimscalings(out_meta->dim_scaling,
                                                 out_meta->dim_scaling + out_meta->dims);
         out_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
