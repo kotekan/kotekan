@@ -2035,7 +2035,12 @@ def build_aggregator_instance(cfg, nodes, args, port):
     """
     sig = cfg["signals"]
     rt = cfg["runtime"]
-    cores = rt["cpu_affinity"]
+    # The base config's list is the SEARCH host's; override it when the aggregator runs
+    # elsewhere. See --aggregator-cores: a wrong core is an EINVAL per stage, not a no-op.
+    cores = ([int(c) for c in args.aggregator_cores.split(",") if c.strip() != ""]
+             if getattr(args, "aggregator_cores", None) else rt["cpu_affinity"])
+    if not cores:
+        raise SystemExit("--aggregator-cores parsed to an empty list")
     out = {
         "type": "config",
         "log_level": "info",
@@ -3089,6 +3094,13 @@ def main():
                          "hugepages; runs as an ordinary user beside the search aggregator on "
                          "cf06. It collates NOTHING: the frames carry an absolute window index, "
                          "so grouping is an exact integer match the broker does itself.")
+    ap.add_argument("--aggregator-cores",
+                    help="logical CPUs the aggregator instance may use, comma-separated "
+                         "(--aggregator-instance). Same trap as --gather-cores: the default "
+                         "comes from the base config's runtime.cpu_affinity, which is the "
+                         "SEARCH HOST's core map, and kotekan's Stage reads cpu_affinity with a "
+                         "required get -- so a core that does not exist is an EINVAL per stage, "
+                         "not a no-op. A single-socket host wants all of its cpus listed.")
     ap.add_argument("--gather-cores",
                     help="logical CPUs the gather instance may use, comma-separated "
                          "(--gather-instance). Default: the base config's runtime.cpu_affinity, "

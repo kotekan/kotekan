@@ -379,7 +379,7 @@ common:
   n2-dump: false
   # cf06. The search/broker host; 127.0.0.1 (the generator default) is the airspy prototype's
   # answer and would point every node at itself.
-  search-host: 10.222.3.6
+  search-host: 10.222.0.56
   # TASK #59: the frame-synced tracker->broker telemetry leg. Same host as the search
   # aggregator and the broker -- cf06 already runs a kotekan instance, so this is a second
   # small one beside it (scripts/gnss/gather_up.sh), not a new kind of thing.

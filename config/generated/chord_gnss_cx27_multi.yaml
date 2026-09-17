@@ -9,7 +9,7 @@
 #       --carrier-phase-from-ref 1 --carrier-phase-mode 1 --keep-n2 --n2-dual --phi-fp16
 #       --despread-max-chips 80 --despread-chips-centered --dpdk-resync-max-advances 32
 #       --n2-send --n2-send-legs both --rf-stats --no-path-a --sky-deep --elem-steer-sign 1.0
-#       --search-host 10.222.3.6 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube
+#       --search-host 10.222.0.56 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube
 #       --cube-host 10.222.3.6 --vis-capture gps_l5 --extra-signal
 #       GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
 #       --extra-signal
@@ -228,10 +228,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: -0.006312
-    t_inst_ns: 1789344000000000000
-    xp_as: 0.195756
-    yp_as: 0.332323
   - delta_UT1_inst: -0.0072317
     t_inst_ns: 1789430400000000000
     xp_as: 0.194696
@@ -252,6 +248,10 @@ earth_rotation_data:
     t_inst_ns: 1789776000000000000
     xp_as: 0.190667
     yp_as: 0.329402
+  - delta_UT1_inst: -0.0095544
+    t_inst_ns: 1789862400000000000
+    xp_as: 0.189679
+    yp_as: 0.328897
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -2246,7 +2246,7 @@ gnss0_srch_send:
   max_pacing_rate_mbps: 18.75
   reconnect_time: 5
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11042
   use_config_tracker: false
 gnss0_srch_tap:
@@ -3904,7 +3904,7 @@ gnss1_srch_send:
   max_pacing_rate_mbps: 21.875
   reconnect_time: 5
   send_timeout: 2
-  server_ip: 10.222.3.6
+  server_ip: 10.222.0.56
   server_port: 11043
   use_config_tracker: false
 gnss1_srch_tap:

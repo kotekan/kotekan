@@ -1,4 +1,10 @@
 # DERIVED from chord_gnss_agg6.yaml by hand, 2026-08-05: use_cuda_acquire true and
+# ⚠️ 2026-09-17: the 45 cpu_affinity entries were ALSO remapped by hand, from cf06's 10-core
+# pool [19,24,31,57..63] onto this host's 0-5 (pool index i -> i%6, so stages that shared a
+# core still do). The aggregator moved to a 6-core VM and kotekan's Stage reads cpu_affinity
+# with a REQUIRED get -- a core that does not exist is an EINVAL per stage. Regenerating
+# instead would have dropped the #97 settings below, which are armed. A regeneration from
+# now on should pass --aggregator-cores 0,1,2,3,4,5.
 # doppler_step 31.25 -> 62.5 (bin-aligned; the GPU engine declines a half-bin grid).
 # Patched rather than regenerated so the diff is provably those two keys and nothing
 # else -- a regeneration would also pick up any default that has moved since Aug 4.
@@ -17,7 +23,7 @@
 agg0_deq:
   conjugate: true
   cpu_affinity:
-  - 31
+  - 2
   element: 0
   in_buf: agg0_in_buf
   kotekan_stage: GnssChordDequantize
@@ -37,7 +43,7 @@ agg0_in_buf:
 agg0_recv:
   buf: agg0_in_buf
   cpu_affinity:
-  - 19
+  - 0
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11040
@@ -46,7 +52,7 @@ agg0_recv:
 agg10_deq:
   conjugate: true
   cpu_affinity:
-  - 31
+  - 2
   element: 0
   in_buf: agg10_in_buf
   kotekan_stage: GnssChordDequantize
@@ -66,7 +72,7 @@ agg10_in_buf:
 agg10_recv:
   buf: agg10_in_buf
   cpu_affinity:
-  - 19
+  - 0
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11050
@@ -75,7 +81,7 @@ agg10_recv:
 agg11_deq:
   conjugate: true
   cpu_affinity:
-  - 57
+  - 3
   element: 0
   in_buf: agg11_in_buf
   kotekan_stage: GnssChordDequantize
@@ -95,7 +101,7 @@ agg11_in_buf:
 agg11_recv:
   buf: agg11_in_buf
   cpu_affinity:
-  - 24
+  - 1
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11051
@@ -104,7 +110,7 @@ agg11_recv:
 agg1_deq:
   conjugate: true
   cpu_affinity:
-  - 57
+  - 3
   element: 0
   in_buf: agg1_in_buf
   kotekan_stage: GnssChordDequantize
@@ -124,7 +130,7 @@ agg1_in_buf:
 agg1_recv:
   buf: agg1_in_buf
   cpu_affinity:
-  - 24
+  - 1
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11041
@@ -133,7 +139,7 @@ agg1_recv:
 agg2_deq:
   conjugate: true
   cpu_affinity:
-  - 58
+  - 4
   element: 0
   in_buf: agg2_in_buf
   kotekan_stage: GnssChordDequantize
@@ -153,7 +159,7 @@ agg2_in_buf:
 agg2_recv:
   buf: agg2_in_buf
   cpu_affinity:
-  - 31
+  - 2
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11042
@@ -162,7 +168,7 @@ agg2_recv:
 agg3_deq:
   conjugate: true
   cpu_affinity:
-  - 59
+  - 5
   element: 0
   in_buf: agg3_in_buf
   kotekan_stage: GnssChordDequantize
@@ -182,7 +188,7 @@ agg3_in_buf:
 agg3_recv:
   buf: agg3_in_buf
   cpu_affinity:
-  - 57
+  - 3
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11043
@@ -191,7 +197,7 @@ agg3_recv:
 agg4_deq:
   conjugate: true
   cpu_affinity:
-  - 60
+  - 0
   element: 0
   in_buf: agg4_in_buf
   kotekan_stage: GnssChordDequantize
@@ -211,7 +217,7 @@ agg4_in_buf:
 agg4_recv:
   buf: agg4_in_buf
   cpu_affinity:
-  - 58
+  - 4
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11044
@@ -220,7 +226,7 @@ agg4_recv:
 agg5_deq:
   conjugate: true
   cpu_affinity:
-  - 61
+  - 1
   element: 0
   in_buf: agg5_in_buf
   kotekan_stage: GnssChordDequantize
@@ -240,7 +246,7 @@ agg5_in_buf:
 agg5_recv:
   buf: agg5_in_buf
   cpu_affinity:
-  - 59
+  - 5
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11045
@@ -249,7 +255,7 @@ agg5_recv:
 agg6_deq:
   conjugate: true
   cpu_affinity:
-  - 62
+  - 2
   element: 0
   in_buf: agg6_in_buf
   kotekan_stage: GnssChordDequantize
@@ -269,7 +275,7 @@ agg6_in_buf:
 agg6_recv:
   buf: agg6_in_buf
   cpu_affinity:
-  - 60
+  - 0
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11046
@@ -278,7 +284,7 @@ agg6_recv:
 agg7_deq:
   conjugate: true
   cpu_affinity:
-  - 63
+  - 3
   element: 0
   in_buf: agg7_in_buf
   kotekan_stage: GnssChordDequantize
@@ -298,7 +304,7 @@ agg7_in_buf:
 agg7_recv:
   buf: agg7_in_buf
   cpu_affinity:
-  - 61
+  - 1
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11047
@@ -307,7 +313,7 @@ agg7_recv:
 agg8_deq:
   conjugate: true
   cpu_affinity:
-  - 19
+  - 0
   element: 0
   in_buf: agg8_in_buf
   kotekan_stage: GnssChordDequantize
@@ -327,7 +333,7 @@ agg8_in_buf:
 agg8_recv:
   buf: agg8_in_buf
   cpu_affinity:
-  - 62
+  - 2
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11048
@@ -336,7 +342,7 @@ agg8_recv:
 agg9_deq:
   conjugate: true
   cpu_affinity:
-  - 24
+  - 1
   element: 0
   in_buf: agg9_in_buf
   kotekan_stage: GnssChordDequantize
@@ -356,7 +362,7 @@ agg9_in_buf:
 agg9_recv:
   buf: agg9_in_buf
   cpu_affinity:
-  - 63
+  - 3
   drop_frames: true
   kotekan_stage: bufferRecv
   listen_port: 11049
@@ -364,7 +370,7 @@ agg9_recv:
   use_config_tracker: false
 agg_merge:
   cpu_affinity:
-  - 57
+  - 3
   in_bufs:
   - agg0_f_buf
   - agg1_f_buf
@@ -402,16 +408,16 @@ agg_merged_buf:
 clock_profile:
   name: gpsdo
 cpu_affinity: &id001
-- 19
-- 24
-- 31
-- 57
-- 58
-- 59
-- 60
-- 61
-- 62
-- 63
+- 0
+- 1
+- 2
+- 3
+- 4
+- 5
+- 0
+- 1
+- 2
+- 3
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 120
@@ -528,16 +534,16 @@ gps_search:
   channel_offset: 5972
   code_doppler_sign: 1.0
   cpu_affinity:
-  - 19
-  - 24
-  - 31
-  - 57
-  - 58
-  - 59
-  - 60
-  - 61
-  - 62
-  - 63
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 0
+  - 1
+  - 2
+  - 3
   doppler_margin_hz: 5000.0
   doppler_max: 5000.0
   doppler_min: -5000.0
