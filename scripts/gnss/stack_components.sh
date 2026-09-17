@@ -113,7 +113,10 @@ gnss_component() {
         # with the pass/consumer profile ON for its whole life -- 113,997 [consumer] lines in its
         # last log. The first systemd unit dropped it silently (the #134 shape again, found while
         # consolidating). It is OFF here because it is a diagnostic that costs log volume, and
-        # that is now a DECISION rather than an accident: set GNSS_SEARCH_PROFILE=1 to restore it.
+        # that is now a DECISION rather than an accident. KV, 2026-09-17: it dates to a period
+        # when the search had lagged badly and was being sped up, and was simply never turned
+        # off -- so OFF is the correct steady state. Set GNSS_SEARCH_PROFILE=1 to bring it back
+        # for an investigation; agg_up.sh still does.
         [ -n "${GNSS_SEARCH_PROFILE:-}" ] && export GNSS_SEARCH_PROFILE
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_AGG_CFG:-$GNSS_K/config/generated/chord_gnss_agg6_cuda.yaml}"
