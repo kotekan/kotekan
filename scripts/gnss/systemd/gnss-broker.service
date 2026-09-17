@@ -23,6 +23,14 @@ User=kvand
 # fast loop is in-broker, which makes the failure look survivable. It is not -- it cost two
 # hours of dead chains on a restart that otherwise looked clean.
 Environment=GNSS_PY=/home/kvand/gnss/venv-ft/bin/python
+# ⚠️ ONE BLAS THREAD, AND THIS LINE IS NOT OPTIONAL. numpy's OpenBLAS pool defaults to one
+# BUSY-SPINNING worker per core and the joint filter's small matmuls (P ~57x57) wake all of
+# them. On cf06 that measured ~53 cores of pure spin, which starved the TELEMETRY READER at the
+# OS level -- the gather dropped its client every 200 ms and lost 5 of 6 frames. broker_restart.sh
+# has exported this since 2026-08-15; the first systemd unit omitted it and reproduced the fault
+# in miniature on 6 cores: 55.6% of all cycles in blas_thread_server against 0.52% in the actual
+# dgemm kernel, 4.3 cores where cf06 used 1.75. At these matrix sizes one thread is also FASTER.
+Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 ExecStart=/home/kvand/gnss/venv-ft/bin/python -u \
     /home/kvand/gnss/kotekan/scripts/gnss/broker_multi.py \
     /home/kvand/gnss/kotekan/config/gnss_chains_chord.yaml

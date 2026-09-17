@@ -152,6 +152,40 @@ satellite's at once and the DLL re-establishes all of them from zero.
 
 ## Closed with a full write-up — the three worth reading before touching these areas
 
+### #134 — the systemd unit dropped the broker's BLAS thread cap, and the 2026-08-15 fault came back ✅ FIXED 09-17
+`broker_restart.sh` has exported `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+NUMEXPR_NUM_THREADS=1` since 2026-08-15, when numpy's OpenBLAS pool — one **busy-spinning**
+worker per core, woken by the joint filter's small (~57×57) matmuls — measured **~53 cores of
+pure spin** on cf06 and starved the telemetry reader at the OS level: the gather dropped its
+client every 200 ms and lost 5 of 6 frames.
+
+The first systemd unit reproduced the command line faithfully and **silently dropped the
+environment**, so the fault returned in miniature on 6 cores. `perf top` on the live broker:
+
+    55.56%  libscipy_openblas64_.so   blas_thread_server     <- the spin-wait
+     3.61%  libscipy_openblas64_.so   exec_blas_async_wait
+     3.44%  libscipy_openblas64_.so   inner_thread
+     3.25%  libscipy_openblas64_.so   inner_thread
+     0.52%  libscipy_openblas64_.so   dgemm_kernel_SKYLAKEX  <- the actual arithmetic
+
+Two thirds of the process spinning to do half a percent of maths. Fixed by putting the four
+variables in `gnss-broker.service` with the reason beside them.
+
+| | before | after |
+|---|---|---|
+| broker CPU | 4.31 mean / 4.85 max | **1.23 / 1.48** (cf06 ran 1.75) |
+| broker threads | 16 | **11** (cf06 ran 11) |
+| stack total, of 6 cores | 5.18 / 5.66 | **2.14 / 2.39** |
+| load average | 9.61 | 3.07 |
+
+⚠️ **The lesson is not "set OPENBLAS_NUM_THREADS".** It is that **a wrapper script's `export` is
+part of the program's contract, and porting the command line is not porting the program.** The
+faithfully-reproduced `ExecStart` was exactly what made this invisible. When converting any
+launcher to a unit, diff `/proc/<pid>/environ` between the old and new process — not the argv.
+
+⚡ It was NOT the whole story on late frames: 0.28% → 0.238%, against cf06's 0.23% lifetime. At
+6 cores the five spinners cost throughput, not the reader starvation that 53 caused.
+
 ### #132 — the gather's cpu_affinity named cores that do not exist on the gnss VM ✅ FIXED 09-16
 The stack moved to a 6-vCPU host and `chord_gnss_gather.yaml` still pinned to cores 19, 24, 31,
 57, 58 and 59 — cf06's 64-core map — so every start logged six
