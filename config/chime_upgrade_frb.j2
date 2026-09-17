@@ -1451,11 +1451,8 @@ FRB:
         # these coefficients are taken from commit
         # 00a332717 "correction upchan bandpass (#395)
         # with order reveresd here due to inverted counting of sub-frequencies
-        #upchan_gain: [ 0.52614263, 0.59367968, 0.6999944, 0.81113021,
-        #               0.90094667, 0.95874124, 0.98905127, 0.99988676,
-        #               0.99942558, 0.98662733, 0.95477358, 0.89386546,
-        #               0.80121821, 0.6868705, 0.58330915, 0.52225748, ]
-        upchan_gain: [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 ]
+        # inverse sqart of BP values (to correct)
+        upchan_gain: [1.37863168, 1.29784823, 1.19523339, 1.11033674, 1.05353861, 1.02129051, 1.00551973, 1.00005662, 1.00028733, 1.00675415, 1.02341035, 1.05770345, 1.11718371, 1.20659791, 1.30933448, 1.3837501 ]
         upchan_gain_buffer: host_upchan_U16_gain_buffer
         metadata_buffer: host_rfi_RFImask_buffer
 
