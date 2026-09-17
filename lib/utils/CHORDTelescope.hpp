@@ -27,7 +27,7 @@ using dish_index_t =
  * @brief Enum for denoting the type of dish input into Kotekan
  */
 enum class DishType : int32_t {
-    Missing = -1,  // An unpopulated dish slot
+    Missing = -1,  // An unpopulated dish element
     ArrayDish = 0, // A standard dish in the main array.
     RFIDish = 1,   // A site for an RFI antenna
 };
