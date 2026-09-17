@@ -19,6 +19,7 @@
 #include <cstdint>  // for int64_t, int32_t, uint64_t, uint32_t
 #include <iosfwd>   // for ostream
 #include <json.hpp> // for json
+#include <mutex>    // for mutex
 #include <string>   // for string
 #include <time.h>   // for timespec
 #include <vector>   // for vector
@@ -172,6 +173,14 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
+ * @conf    rfi_first_stage_enabled_updatable_config  String. Optional path to the updatable
+ *                                          config block that switches first-stage (GPU) RFI
+ *                                          excision, the same block cudaRFISKtilde subscribes
+ *                                          to. Used to record, per output frame, how many FPGA
+ *                                          ticks first-stage excision was enabled for; a switch
+ *                                          applies from the first input frame starting at or
+ *                                          after its valid time, as on the GPU. Without this
+ *                                          key the count is the whole frame.
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -245,6 +254,9 @@ public:
                           frameID& out_frame_id);
 
 private:
+    /// Queue an update from the `rfi_first_stage_enabled_updatable_config` block
+    bool receive_rfi_first_stage_enabled(nlohmann::json& update);
+
     // Buffers to read/write
     Buffer* in_buf;               /// Buffer containing input correlations
     Buffer* in_counts_buf;        /// Buffer containing input counts
@@ -276,6 +288,13 @@ private:
     const N2VarianceMode _variance_mode;
     const bool _debug_accum_mode;
     const bool _profile_info;
+    const std::string _rfi_first_stage_config_path;
+    /// First-stage RFI excision state, tracked in step with cudaRFISKtilde; `_next_*` hold a
+    /// pending update
+    std::mutex _rfi_first_stage_mutex;
+    bool _rfi_first_stage_enabled;
+    bool _next_rfi_first_stage_enabled;
+    int64_t _next_rfi_first_stage_valid_at_seq;
 
 
     // Some derived parameters
@@ -311,6 +330,8 @@ private:
     /// AND a bad feed mask frame (@c _num_elements bytes, input order) into @c _accum_bad_feed_mask
     void fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask);
     int64_t _vis_samples_in_out_frame;
+    /// FPGA ticks of the current bin during which first-stage RFI excision was enabled
+    uint64_t _n_rfi_first_stage_enabled_ticks;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
 

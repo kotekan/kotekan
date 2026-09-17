@@ -619,6 +619,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/rfi_frame_excision_fraction",
                               {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
                               HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, "/frac_rfi_first_stage_enabled", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<float>(), props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
         if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
@@ -739,6 +741,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     rfi_frame_excision_num.assign(num_file_t, 0);
     rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
     rfi_frame_excision_fraction.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    frac_rfi_first_stage_enabled.assign(num_file_t, 0.0f);
 
 
     added_ft.assign(num_file_f * num_file_t, 0);
@@ -935,6 +938,10 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
               rfi_frame_excision_threshold.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
     std::copy(fv.rfi_frame_excision_fraction.begin(), fv.rfi_frame_excision_fraction.end(),
               rfi_frame_excision_fraction.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
+    frac_rfi_first_stage_enabled[t_index] =
+        (frame_len_ticks > 0)
+            ? (float(fv.n_rfi_first_stage_enabled_fpga_ticks) / float(frame_len_ticks))
+            : 0.0f;
 
     // Mark (f, t) as added
     size_t si = idx_ft(f_index, t_index);
@@ -1191,6 +1198,7 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/rfi_frame_excision_fraction")
             .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
             .write_raw(rfi_frame_excision_fraction.data());
+        h5_file->getDataSet("/frac_rfi_first_stage_enabled").write(frac_rfi_first_stage_enabled);
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;

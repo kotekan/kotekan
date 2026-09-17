@@ -632,6 +632,11 @@ verifies consistency, within ns-level tolerance, as frames arrive).
      - float32 (:math:`N_t`, :math:`N_k`)
      - Fraction of samples above the corresponding threshold required to
        trigger excision.
+   * - ``frac_rfi_first_stage_enabled``
+     - float32
+     - Fraction of the bin during which first-stage (GPU, SK-based) RFI
+       excision was enabled. A switch applies from the first input frame
+       starting at or after its scheduled time, on the GPU and in this count.
 
 Completeness tracking and configuration snapshots
 =================================================

@@ -15,6 +15,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
+#include "configUpdater.hpp"     // for configUpdater
 #include "dataset.hpp"           // for dset_id_t
 #include "div.hpp"               // for div_ceil, num_triangle_blocks
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
@@ -30,9 +31,12 @@
 #include <assert.h>   // for assert
 #include <cmath>      // for isfinite
 #include <complex>    // for complex, operator*, conj, operator-, norm
+#include <exception>  // for exception
 #include <functional> // for bind, function, placeholders
+#include <limits>     // for numeric_limits
 #include <math.h>     // for floor
 #include <memory>     // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <mutex>      // for mutex, lock_guard
 #include <ostream>    // for ostream, basic_ostream
 #include <utility>    // for swap
 #ifdef WITH_OMP
@@ -79,6 +83,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
     _profile_info(config.get_default<bool>(unique_name, "profile_info", false)),
+    _rfi_first_stage_config_path(config.get_default<std::string>(
+        unique_name, "rfi_first_stage_enabled_updatable_config", "")),
+    _rfi_first_stage_enabled(true), _next_rfi_first_stage_enabled(true),
+    _next_rfi_first_stage_valid_at_seq(std::numeric_limits<int64_t>::max()),
     _tel(Telescope::instance()), _input_order(config.get_default<ElementOrder>(
                                      unique_name, "input_order", _tel.fiducial_element_order())),
     _output_order(config.get_default<ElementOrder>(unique_name, "output_order",
@@ -227,7 +235,13 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _accum_bad_feed_mask = std::vector<uint8_t>(_num_elements, 1u);
 
     _vis_samples_in_out_frame = 0;
+    _n_rfi_first_stage_enabled_ticks = 0;
     _accum_fpga_start_tick = -1;
+
+    if (!_rfi_first_stage_config_path.empty())
+        kotekan::configUpdater::instance().subscribe(
+            _rfi_first_stage_config_path,
+            std::bind(&N2Accumulate::receive_rfi_first_stage_enabled, this, _1));
     _accum_bin_idx = -1;
 
     // Ensure incoming buffer shapes and type are correct
@@ -505,6 +519,16 @@ void N2Accumulate::main_thread() {
 
         const auto& coarse_freq = frame_metadata->get_coarse_freq();
 
+        // Apply a pending first-stage excision switch from the first frame starting at or
+        // after its valid seq, the rule cudaRFISKtilde applies.
+        {
+            std::lock_guard<std::mutex> lock(_rfi_first_stage_mutex);
+            if (seq0 >= _next_rfi_first_stage_valid_at_seq) {
+                _rfi_first_stage_enabled = _next_rfi_first_stage_enabled;
+                _next_rfi_first_stage_valid_at_seq = std::numeric_limits<int64_t>::max();
+            }
+        }
+
         // Accumulate each visibility sample in the in_frame
         // t_outer
         for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
@@ -531,6 +555,7 @@ void N2Accumulate::main_thread() {
                     // Away we go!
                     assert(t_abs % 2 == 0);
                     _vis_samples_in_out_frame = 0;
+                    _n_rfi_first_stage_enabled_ticks = 0;
                     _accum_fpga_start_tick = seq;
                     _accum_bin_idx = bin_idx;
                     target_eop = get_accum_bin_EOP(bin_idx);
@@ -550,6 +575,9 @@ void N2Accumulate::main_thread() {
 
             DEBUG("Accumulating new visibility sample ({:d} of {:d} in frame).", t,
                   _n_integrations_per_n2k_frame);
+
+            if (_rfi_first_stage_enabled)
+                _n_rfi_first_stage_enabled_ticks += _n_fpga_samples_per_n2k_correlation;
 
             uint64_t corr_offset_t = t * corr_stride_t;
             uint64_t counts_offset_t = t * counts_stride_t;
@@ -650,6 +678,7 @@ void N2Accumulate::main_thread() {
                     fold_bad_feed_mask_into_accum(bad_feed_mask);
 
                 _vis_samples_in_out_frame = 0;
+                _n_rfi_first_stage_enabled_ticks = 0;
                 std::fill(_vis_input_frames_skipped_rfi.begin(),
                           _vis_input_frames_skipped_rfi.end(), 0);
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
@@ -698,6 +727,24 @@ void N2Accumulate::main_thread() {
                 (in_bad_feed_mask_frame_id + 1) % in_bad_feed_mask_buf->num_frames;
         }
     }
+}
+
+bool N2Accumulate::receive_rfi_first_stage_enabled(nlohmann::json& update) {
+    bool enabled;
+    int64_t time_ns;
+    try {
+        enabled = update.at("enabled").get<bool>();
+        time_ns = update.at("valid_at_time_ns").get<int64_t>();
+    } catch (const std::exception& e) {
+        WARN("Failed to read update to {:s}: {:s}", _rfi_first_stage_config_path, e.what());
+        return false;
+    }
+    const int64_t seq = _tel.to_seq(time_ns);
+    INFO("Recording first-stage RFI excision {:s} from seq {:d}", enabled ? "on" : "off", seq);
+    std::lock_guard<std::mutex> lock(_rfi_first_stage_mutex);
+    _next_rfi_first_stage_enabled = enabled;
+    _next_rfi_first_stage_valid_at_seq = seq;
+    return true;
 }
 
 void N2Accumulate::fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask) {
@@ -1077,6 +1124,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->n_rfi_only_fpga_ticks =
             ticks_in_accum - _n_valid_fpga_samples_in_vis.at(f) - _n_pl_samples_in_vis.at(f);
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
+        meta->n_rfi_first_stage_enabled_fpga_ticks = _n_rfi_first_stage_enabled_ticks;
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
         meta->rfi_frame_excision_num = num_thresholds;

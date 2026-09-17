@@ -3,14 +3,16 @@
 #include "NDArray.hpp"             // for NDArray
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer, buffer_type_t
 #include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "Telescope.hpp"           // for Telescope
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chordMetadata.hpp"       // for chordMetadata
+#include "configUpdater.hpp"       // for configUpdater
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
 #include "div.hpp"                 // for div_noremainder, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG, INFO
+#include "kotekanLogging.hpp"      // for DEBUG, INFO, WARN
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
 
 #include "fmt.hpp" // for compile_string_to_view
@@ -21,8 +23,12 @@
 #include <cstdint>            // for int8_t, uint64_t, uint8_t
 #include <cuda_runtime_api.h> // for cudaStreamSynchronize
 #include <driver_types.h>     // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
-#include <functional>         // for function
+#include <exception>          // for exception
+#include <functional>         // for bind, function, _1
+#include <json.hpp>           // for json
+#include <limits>             // for numeric_limits
 #include <memory>             // for allocator, shared_ptr, __shared_ptr_access
+#include <mutex>              // for mutex, lock_guard
 #include <numeric>            // for gcd
 #include <string>             // for basic_string, string
 #include <sys/types.h>        // for uint, ulong
@@ -32,6 +38,41 @@ using kotekan::div_noremainder;
 using kotekan::round_down;
 using kotekan::round_up;
 
+/**
+ * @class cudaRFISKtilde
+ * @brief Compute the feed-averaged SK statistics and the first-stage RFI mask.
+ *
+ * The SK kernel reads the S012 statistics and the bad feed mask, writes SKtilde (SK, bias and
+ * sigma averaged over the good feeds) for second-stage excision (RfiFrameMask), and writes the
+ * bit-packed RFI mask the correlator excises with. When first-stage excision is disabled the
+ * kernel skips the mask and an all-good mask is written instead; SKtilde is computed either way.
+ *
+ * @par Ring buffers
+ * @buffer bf_mask_name       int8 [Tbf, P, D] bad feed mask, 1 == good
+ * @buffer rfi_S012_name      uint64 [Trfi, F, S, P, D] S012 statistics
+ * @buffer rfi_SKtilde_name   float [Trfi, F, SK] feed-averaged SK, output
+ * @buffer rfi_RFImask_name   uint1x8 [T8hi128, F, T8lo128] RFI mask, output
+ *
+ * @conf buffer_depth                     int
+ * @conf num_times                        int     Voltage samples per frame
+ * @conf num_frequencies                  int
+ * @conf num_polarizations                int
+ * @conf num_dishes                       int
+ * @conf bf_mask_lifetime_in_samples      int64   Voltage samples covered by one bad feed mask
+ * @conf rfi_downsampling_factor          int     Voltage samples per S012 element
+ * @conf rfi_num_times                    int     S012 elements per frame
+ * @conf rfi_sk_rfimask_sigmas            double  SK threshold for the mask, in sigma
+ * @conf rfi_single_feed_min_good_frac    double
+ * @conf rfi_feed_averaged_min_good_frac  double
+ * @conf rfi_mu_min                       double
+ * @conf rfi_mu_max                       double
+ * @conf poison_buffers                   bool    Default false
+ * @conf enabled_updatable_config         string  Optional path to an updatable config block
+ *      with fields `enabled` (bool) and `valid_at_time_ns` (int64), switching first-stage
+ *      excision on or off from the first frame starting at or after that instrument time.
+ *      N2Accumulate applies the same rule to record the switch. Without this key excision
+ *      is always on.
+ */
 class cudaRFISKtilde : public cudaCommand {
 public:
     cudaRFISKtilde(kotekan::Config& config, const std::string& unique_name,
@@ -45,6 +86,9 @@ public:
     void finalize_frame() override;
 
 private:
+    /// Queue an update from the `enabled_updatable_config` block
+    bool receive_enabled(nlohmann::json& update);
+
     // Some terminology:
 
     //    Quantity    Definition
@@ -75,10 +119,14 @@ private:
     const int rfi_downsampling_factor;
     const int rfi_num_times;
     const bool poison_buffers;
-    // If false, the SK kernel skips the RFI mask computation and an all-good mask is
-    // produced instead, so no samples are excised in the correlator. The SKtilde
-    // statistics are still computed for second-stage excision (RfiFrameMask).
-    const bool first_stage_excision_enabled;
+    const std::string enabled_config_path;
+    // If off, the SK kernel skips the RFI mask computation and an all-good mask is produced
+    // instead, so no samples are excised in the correlator. Each command instance keeps its
+    // own copy, fed from the same updatable config block; `next_*` hold a pending update.
+    std::mutex enabled_mutex;
+    bool excision_enabled;
+    bool next_excision_enabled;
+    std::int64_t next_enabled_valid_at_seq;
 
     const std::int64_t rfi_samples_per_bf_sample;
 
@@ -123,8 +171,10 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
-    first_stage_excision_enabled(
-        config.get_default<bool>(unique_name, "rfi_first_stage_excision_enabled", true)),
+    enabled_config_path(
+        config.get_default<std::string>(unique_name, "enabled_updatable_config", "")),
+    excision_enabled(true), next_excision_enabled(true),
+    next_enabled_valid_at_seq(std::numeric_limits<std::int64_t>::max()),
     rfi_samples_per_bf_sample(
         div_noremainder(bf_mask_lifetime_in_samples, rfi_downsampling_factor)),
     rfi_S012_read_granularity(8 * 128 / std::gcd(8 * 128, rfi_downsampling_factor)),
@@ -189,14 +239,36 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_SKtilde.register_producer();
     rfi_RFImask.register_producer();
 
-    if (!first_stage_excision_enabled && get_instance_num() == 0)
-        INFO("First-stage RFI excision disabled: producing an all-good RFI mask. "
-             "SK statistics are still computed.");
+    if (!enabled_config_path.empty())
+        kotekan::configUpdater::instance().subscribe(
+            enabled_config_path,
+            std::bind(&cudaRFISKtilde::receive_enabled, this, std::placeholders::_1));
 
     set_command_type(gpuCommandType::KERNEL);
 }
 
 cudaRFISKtilde::~cudaRFISKtilde() {}
+
+bool cudaRFISKtilde::receive_enabled(nlohmann::json& update) {
+    bool enabled;
+    std::int64_t time_ns;
+    try {
+        enabled = update.at("enabled").get<bool>();
+        time_ns = update.at("valid_at_time_ns").get<int64_t>();
+    } catch (const std::exception& e) {
+        WARN("Failed to read update to {:s}: {:s}", enabled_config_path, e.what());
+        return false;
+    }
+    const std::int64_t seq = Telescope::instance().to_seq(time_ns);
+    if (instance_num == 0)
+        INFO("{:s} first-stage RFI excision at t_inst = {:d} s + {:d} ns (seq {:d})",
+             enabled ? "Enabling" : "Disabling", time_ns / 1'000'000'000, time_ns % 1'000'000'000,
+             seq);
+    std::lock_guard<std::mutex> lock(enabled_mutex);
+    next_excision_enabled = enabled;
+    next_enabled_valid_at_seq = seq;
+    return true;
+}
 
 int cudaRFISKtilde::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
@@ -215,10 +287,12 @@ int cudaRFISKtilde::wait_on_precondition() {
 
     DEBUG("Waiting for rfi_S012 input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_S012_ringbuf = rfi_S012.get_ndarray().extent(0);
-    // Do not overshoot the bf mask lifetime
+    // Do not overshoot the bf mask lifetime or the frame: every batch then starts on a frame
+    // boundary, so the excision switch in execute() applies to whole frames
     using std::min;
     const std::ptrdiff_t rfi_S012_read_max =
-        min(rfi_S012_ringbuf / buffer_depth, bf_mask_lifetime_end - rfi_S012_begin);
+        min(min(rfi_S012_ringbuf / buffer_depth, bf_mask_lifetime_end - rfi_S012_begin),
+            round_up(rfi_S012_begin + 1, rfi_num_times) - rfi_S012_begin);
     assert(rfi_S012_read_max > 0);
     std::ptrdiff_t rfi_S012_read = -1;
     const int rfi_S012_errcode =
@@ -324,10 +398,27 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     float* const rfi_SKtilde_memory = rfi_SKtilde.get_ndarray().data();
     kotekan::uint1x8_t* const rfi_RFImask_memory = rfi_RFImask.get_ndarray().data();
 
+    // Apply a pending excision switch once the batch (a whole frame, see
+    // wait_on_precondition) starts at or after its valid seq. Same rule as N2Accumulate.
+    const std::shared_ptr<const chordMetadata> rfi_S012_meta = rfi_S012.get_metadata();
+    const std::int64_t batch_seq =
+        rfi_S012_meta->get_fpga_seq_num()
+        + rfi_S012.get_read_valid().begin() * rfi_S012_meta->get_time_downsampling_fpga();
+    {
+        std::lock_guard<std::mutex> lock(enabled_mutex);
+        if (batch_seq >= next_enabled_valid_at_seq) {
+            excision_enabled = next_excision_enabled;
+            next_enabled_valid_at_seq = std::numeric_limits<std::int64_t>::max();
+            if (instance_num == 0)
+                WARN("First-stage RFI excision {:s} from seq {:d}", excision_enabled ? "on" : "off",
+                     batch_seq);
+        }
+    }
+
     float* const out_sk_feed_averaged = rfi_SKtilde_memory;
     float* const out_sk_single_feed = nullptr;
     // The SK kernel skips the mask computation when out_rfimask is NULL.
-    uint* const out_rfimask = first_stage_excision_enabled ? (uint*)rfi_RFImask_memory : nullptr;
+    uint* const out_rfimask = excision_enabled ? (uint*)rfi_RFImask_memory : nullptr;
     const ulong* const in_S012 = rfi_S012_memory;
     const uint8_t* const in_bf_mask = (const uint8_t*)bf_mask_memory;
     const long T = rfi_S012.get_read_valid().size();
@@ -352,7 +443,7 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
                     sk_single_feed_Tmin, sk_single_feed_Tsize, rfimask_T512min, rfimask_T512size,
                     stream);
 
-    if (!first_stage_excision_enabled) {
+    if (!excision_enabled) {
         // The kernel skipped the mask, so fill the claimed region with 1s (all samples
         // good). The claimed region may wrap around the end of the ring buffer.
         const long mask_row_len =

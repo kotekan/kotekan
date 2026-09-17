@@ -215,7 +215,8 @@ as dotted scalar attributes (``time_center_eop.t_inst_ns``,
 ``bin_start_ERA_deg``, ``bin_end_ERA_deg``, ``bin_start_ERAL_deg``,
 ``bin_end_ERAL_deg``; ``fpga_start_tick``, ``frame_start_time_ns``,
 ``frame_length_fpga_ticks``, ``n_valid_fpga_ticks``, ``n_rfi_fpga_ticks``,
-``n_rfi_only_fpga_ticks``, ``n_pl_fpga_ticks``;
+``n_rfi_only_fpga_ticks``, ``n_pl_fpga_ticks``,
+``n_rfi_first_stage_enabled_fpga_ticks``;
 ``rfi_frame_excision_enabled``, ``rfi_frame_excision_num``,
 ``rfi_frame_excision_threshold``, ``rfi_frame_excision_fraction``; and the
 telescope geometry set (``itrs_lat_deg``, ``itrs_lon_deg``,

@@ -86,21 +86,6 @@ rfi_downsampling_factor: {{ rfi_downsampling_factor }}
 rfi_second_downsampling_factor: {{ rfi_second_downsampling_factor }}
 rfi_num_times: {{ rfi_num_times }}
 rfi_num_times_bar: {{ rfi_num_times_bar }}
-# First-stage mask threshold, in feed-averaged SK standard deviations from 1 (sigma ~ 0.021
-# with 32 good feeds). Measured Sep 2 2026: 3.0 flags ~7% of cells vs ~6% at 5.0.
-rfi_sk_rfimask_sigmas: 3.0
-rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
-# Feed-averaged SK validity gate: the S0 sum over bf_mask-good, sf_valid feeds must reach
-# num_elements*Nds*frac; at 0.1 that is ~13 fully valid feeds. A failed gate writes SKtilde
-# invalid (sigma=-1) and flags the bin in the first-stage RFI mask.
-rfi_feed_averaged_min_good_frac: 0.1
-rfi_mu_min: 2.0       # Minimum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 2.0
-rfi_mu_max: 50.0      # Maximum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 50.0
-# First-stage (GPU, SK-based) RFI excision: the correlator excises the samples cudaRFISKtilde
-# flags. With false the RFImask is all-good; SKtilde is computed either way, so second-stage
-# excision (RfiFrameMask -> N2Accumulate) keeps working.
-rfi_first_stage_excision_enabled: true
-
 num_times: samples_per_data_set  # New N2K needs this.
 num_polarizations: 2
 num_dishes: {{ num_dishes }}
@@ -476,7 +461,7 @@ host_rfi_skbar_buffer_1:
     numa_node: 1
 
 # This is the RFI Mask recieved from the GPU, that was applied to produce n2k_correlation & n2k_counts.
-# It contains the mask computed by SKtilde (all-good if rfi_first_stage_excision_enabled is false).
+# It contains the mask computed by SKtilde (all-good while /rfi_first_stage_enabled is off).
 # GPU output (cudaCopyFromRingbuffer of rfi_RFImask) and consumed by RfiMaskSum:
 # uint1x8 "RFImask" [samples_per_data_set/1024, num_local_freq, 128] {T8hi128, F, T8lo128}.
 host_rfi_RFImask_buffer:
@@ -1113,7 +1098,7 @@ run_rfi_s012:
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 
 # This stage produces SK statistics averaged over all input elements and the RFI mask.
-# When rfi_first_stage_excision_enabled is false, the mask is written as all-good (no excision)
+# While /rfi_first_stage_enabled is off, the mask is written as all-good (no excision)
 # but the SK statistics are still computed for second-stage excision.
 run_rfi_sktilde:
     gpu_0:
@@ -1134,6 +1119,7 @@ run_rfi_sktilde:
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+          enabled_updatable_config: /rfi_first_stage_enabled
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
@@ -1152,6 +1138,7 @@ run_rfi_sktilde:
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+          enabled_updatable_config: /rfi_first_stage_enabled
 
 run_recv_rfi_sktilde:
     gpu_0:
@@ -1290,8 +1277,8 @@ rfi_sk_metrics:
         in_buf: host_rfi_skbar_buffer_1
 
 # This copies the RFI Mask that was used in N2K kernels back out to the CPU into the
-# host_rfi_RFImask_buffer. It contains the SKtilde-produced mask (all-good if
-# rfi_first_stage_excision_enabled is false).
+# host_rfi_RFImask_buffer. It contains the SKtilde-produced mask (all-good while
+# /rfi_first_stage_enabled is off).
 run_recv_rfi_RFImask:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -1476,6 +1463,26 @@ compute_RFI_frame_mask_1:
     enabled_updatable_config: /rfi_second_stage_enabled
     thresholds_updatable_config: /rfi_second_stage_thresholds
 
+# First-stage (GPU) RFI excision parameters and switch.
+# First-stage mask threshold, in feed-averaged SK standard deviations from 1 (sigma ~ 0.021
+# with 32 good feeds). Measured Sep 2 2026: 3.0 flags ~7% of cells vs ~6% at 5.0.
+rfi_sk_rfimask_sigmas: 3.0
+rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
+# Feed-averaged SK validity gate: the S0 sum over bf_mask-good, sf_valid feeds must reach
+# num_elements*Nds*frac; at 0.1 that is ~13 fully valid feeds. A failed gate writes SKtilde
+# invalid (sigma=-1) and flags the bin in the first-stage RFI mask.
+rfi_feed_averaged_min_good_frac: 0.1
+rfi_mu_min: 2.0       # Minimum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 2.0
+rfi_mu_max: 50.0      # Maximum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 50.0
+# First-stage (GPU, SK-based) RFI excision: the correlator excises the samples cudaRFISKtilde
+# flags. While off the RFImask is all-good; SKtilde is computed either way, so second-stage
+# excision (RfiFrameMask -> N2Accumulate) keeps working. N2Accumulate records the fraction
+# of each bin this was on.
+rfi_first_stage_enabled:
+    kotekan_update_endpoint: json
+    enabled: true
+    valid_at_time_ns: 0
+
 # Updatable Config for second stage RFI excision.
 rfi_second_stage_enabled:
     kotekan_update_endpoint: json
@@ -1499,6 +1506,7 @@ n2_accumulate:
     num_bins_per_rotation: 8640
     do_fringestop: false
     num_workers: 1
+    rfi_first_stage_enabled_updatable_config: /rfi_first_stage_enabled
     accum_0:
         kotekan_stage: N2Accumulate
         cpu_affinity: [9]

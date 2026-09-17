@@ -43,11 +43,16 @@ bf_mask_lifetime_in_samples: samples_per_data_set
 # A mu range of [2, 80] and min_good_frac of 0.25 only gives 60% good SK, the
 # rest are 0'd.
 rfi_sk_rfimask_sigmas: 2000.0
-rfi_first_stage_excision_enabled: false
 rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
 rfi_feed_averaged_min_good_frac: 0.25   # Wide open (0.25) so most averaged feeds are good
 rfi_mu_min: 2.0       # Should be small (2) to let in many samples.
 rfi_mu_max: 80.0      # Should be big (80) to let in many samples.
+
+# First-stage excision off from the start; cudaRFISKtilde subscribes below.
+rfi_first_stage_enabled:
+    kotekan_update_endpoint: json
+    enabled: false
+    valid_at_time_ns: 0
 
 updatable_config:
     bad_inputs:
@@ -248,6 +253,7 @@ run_rfi_sktilde:
               num_times: samples_per_data_set
               num_frequencies: num_local_freq
               rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+              enabled_updatable_config: /rfi_first_stage_enabled
 
 run_recv_rfi_sktilde:
     gpu_0:

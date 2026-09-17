@@ -530,6 +530,9 @@ int testDataCheck<A_Type>::check_N2_metadata(const std::shared_ptr<const N2Metad
     CHECK_META_SCALAR_INT_DIRECT(n_pl_fpga_ticks, meta1, meta2, num_errors, first_buf->buffer_name,
 
                                  first_buf_id, second_buf->buffer_name, second_buf_id);
+    CHECK_META_SCALAR_INT_DIRECT(n_rfi_first_stage_enabled_fpga_ticks, meta1, meta2, num_errors,
+                                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
+                                 second_buf_id);
 
     return num_errors;
 }

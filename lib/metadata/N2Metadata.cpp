@@ -33,6 +33,7 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     n_rfi_fpga_ticks = fmt->n_rfi_fpga_ticks;
     n_rfi_only_fpga_ticks = fmt->n_rfi_only_fpga_ticks;
     n_pl_fpga_ticks = fmt->n_pl_fpga_ticks;
+    n_rfi_first_stage_enabled_fpga_ticks = fmt->n_rfi_first_stage_enabled_fpga_ticks;
 
     abs_time_idx = fmt->abs_time_idx;
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
@@ -66,6 +67,7 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->n_rfi_fpga_ticks = n_rfi_fpga_ticks;
     fmt->n_rfi_only_fpga_ticks = n_rfi_only_fpga_ticks;
     fmt->n_pl_fpga_ticks = n_pl_fpga_ticks;
+    fmt->n_rfi_first_stage_enabled_fpga_ticks = n_rfi_first_stage_enabled_fpga_ticks;
 
     fmt->abs_time_idx = abs_time_idx;
     fmt->freq_id = freq_id; // this is an int in chordMetadata, maybe change later
@@ -123,6 +125,7 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("n_rfi_fpga_ticks", m.n_rfi_fpga_ticks);
     j.emplace("n_rfi_only_fpga_ticks", m.n_rfi_only_fpga_ticks);
     j.emplace("n_pl_fpga_ticks", m.n_pl_fpga_ticks);
+    j.emplace("n_rfi_first_stage_enabled_fpga_ticks", m.n_rfi_first_stage_enabled_fpga_ticks);
 
     j.emplace("abs_time_idx", m.abs_time_idx);
     j.emplace("freq_id", m.freq_id); // this is an int in chordMetadata, maybe change later
@@ -150,6 +153,7 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.n_rfi_fpga_ticks = j.at("n_rfi_fpga_ticks");
     m.n_rfi_only_fpga_ticks = j.at("n_rfi_only_fpga_ticks");
     m.n_pl_fpga_ticks = j.at("n_pl_fpga_ticks");
+    m.n_rfi_first_stage_enabled_fpga_ticks = j.at("n_rfi_first_stage_enabled_fpga_ticks");
 
     m.abs_time_idx = j.at("abs_time_idx");
     m.freq_id = j.at("freq_id"); // this is an int in chordMetadata, maybe change later
