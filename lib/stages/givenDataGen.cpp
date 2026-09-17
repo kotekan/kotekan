@@ -136,7 +136,7 @@ void givenDataGen::main_thread() {
         chordmeta->set_frame_counter(abs_frame_id);
 
         // The name field is not NUL-terminated, so all of it is usable
-        if (_name.get_string().size() > sizeof chordmeta->name) {
+        if (_name.get_string().size() > size_t(CHORD_META_MAX_NAME)) {
             throw std::runtime_error("Name too long");
         }
         chordmeta->set_name(_name.get_string());
@@ -147,7 +147,7 @@ void givenDataGen::main_thread() {
         assert(chordmeta->dims <= CHORD_META_MAX_DIM);
 
         for (int d = 0; d < chordmeta->dims; ++d) {
-            if (_dim_name.at(d).get_string().size() > sizeof chordmeta->dim_name[d]) {
+            if (_dim_name.at(d).get_string().size() > size_t(CHORD_META_MAX_DIMNAME)) {
                 throw std::runtime_error("Dimension label too long");
             }
             chordmeta->set_array_dimension(d, _array_shape.at(d), _dim_name.at(d).get_string(),
