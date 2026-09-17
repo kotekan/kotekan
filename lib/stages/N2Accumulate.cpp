@@ -299,7 +299,6 @@ void N2Accumulate::main_thread() {
     bool have_previous_seq = false;
     int64_t previous_seq = 0;
     std::vector<int> coarse_freq_order;
-    bool warned_unequal_counts = false;
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
          in_frame_id, out_buf->buffer_name, out_frame_id);
@@ -484,35 +483,20 @@ void N2Accumulate::main_thread() {
         previous_seq = frame_seq;
         have_previous_seq = true;
 
-        // Check that counts are equal and in range. The mirrored entries in diagonal tiles
-        // are redundant but harmless to check.
+        // Only the first count entry of each subintegration and frequency is used
+        // (packet_loss_is_scalar), so that is the one that has to be sane.
         for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
-                const int64_t offset = t * counts_stride_t + f * counts_stride_f;
-                const int32_t scalar_count = counts_mat[offset];
-                const int64_t scalar_offset = t * _num_freq_per_n2k_frame + f;
-                const int32_t rfi_count = rficounts[scalar_offset];
-                const int32_t pl_count = plcounts[scalar_offset];
-                if (rfi_count < 0 || rfi_count > _n_fpga_samples_per_n2k_correlation || pl_count < 0
-                    || pl_count > _n_fpga_samples_per_n2k_correlation) {
-                    FATAL_ERROR("N2Accumulate diagnostic count out of range at subintegration {}, "
-                                "frequency {}",
-                                t, f);
-                }
-                for (int64_t i = 0; i < _n2k_counts_num_products; ++i) {
-                    const int32_t count = counts_mat[offset + i];
-                    if (count < 0 || count > _n_fpga_samples_per_n2k_correlation) {
-                        FATAL_ERROR("N2Accumulate count out of range at subintegration {}, "
-                                    "frequency {}, count {} (allowed 0..{})",
-                                    t, f, count, _n_fpga_samples_per_n2k_correlation);
-                    }
-                    if (count != scalar_count && !warned_unequal_counts) {
-                        WARN("N2Accumulate counts differ across products at subintegration "
-                             "{:d}, frequency {:d} ({:d} versus {:d}); using the first entry, "
-                             "as packet_loss_is_scalar requires",
-                             t, f, count, scalar_count);
-                        warned_unequal_counts = true;
-                    }
+                const int64_t count = counts_mat[t * counts_stride_t + f * counts_stride_f];
+                const int64_t rfi_count = rficounts[t * _num_freq_per_n2k_frame + f];
+                const int64_t pl_count = plcounts[t * _num_freq_per_n2k_frame + f];
+                if (count < 0 || pl_count < 0
+                    || count + pl_count > _n_fpga_samples_per_n2k_correlation || rfi_count < 0
+                    || rfi_count > _n_fpga_samples_per_n2k_correlation) {
+                    FATAL_ERROR(
+                        "N2Accumulate counts out of range at subintegration {:d}, frequency "
+                        "{:d}: valid {:d}, packet loss {:d}, RFI {:d}, period {:d}",
+                        t, f, count, pl_count, rfi_count, _n_fpga_samples_per_n2k_correlation);
                 }
             }
         }
@@ -1061,19 +1045,6 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
     // Wait for a block of frames to be available.  Grab them and get them metadata.
     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
-        const uint64_t span = static_cast<uint64_t>(ticks_in_accum);
-        // Nominal valid counts (the correlator's unsupported-geometry fallback) plus real packet
-        // loss add up to more than the span; note it and carry on rather than stop a running
-        // pipeline.
-        if (static_cast<uint64_t>(_n_valid_fpga_samples_in_vis.at(f)) + _n_pl_samples_in_vis.at(f)
-                > span
-            || _n_rfi_samples_in_vis.at(f) > span) {
-            DEBUG("N2Accumulate valid, packet-loss and RFI counts at frequency {:d} exceed the "
-                  "accumulation span of {:d} ticks; RFI-only ticks will be clamped at zero",
-                  f, ticks_in_accum);
-        }
-    }
-    for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
         if (out_buf->wait_for_empty_frame(unique_name, out_frame_id + f) == nullptr) {
             return false;
         }
@@ -1113,11 +1084,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->frame_length_fpga_ticks = ticks_in_accum;
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis.at(f);
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis.at(f);
-        // Signed so nominal counts plus packet loss cannot wrap to 2^64 (#1672).
-        const int64_t rfi_only = static_cast<int64_t>(ticks_in_accum)
-                                 - _n_valid_fpga_samples_in_vis.at(f)
-                                 - static_cast<int64_t>(_n_pl_samples_in_vis.at(f));
-        meta->n_rfi_only_fpga_ticks = rfi_only > 0 ? static_cast<uint64_t>(rfi_only) : 0;
+        meta->n_rfi_only_fpga_ticks =
+            ticks_in_accum - _n_valid_fpga_samples_in_vis.at(f) - _n_pl_samples_in_vis.at(f);
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;

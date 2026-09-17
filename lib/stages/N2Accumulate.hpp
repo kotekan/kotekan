@@ -108,7 +108,8 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *
  * The five input streams must agree on coarse frequencies and on the correlation period, which
  * must equal sub_integration_ntime; correlation frames must be consecutive and start on a frame
- * boundary; counts must lie between zero and sub_integration_ntime.
+ * boundary; the valid count plus packet loss, and the RFI count, must not exceed
+ * sub_integration_ntime.
  *
  * TODO:    - radiometer_chi2
  *

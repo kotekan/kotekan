@@ -314,9 +314,9 @@ def test_masked_mean_counts_and_precision(masked_accumulation, case):
 
 
 _REJECTIONS = (
-    ("negative-count", "N2Accumulate count out of range"),
-    ("overfull-count", "N2Accumulate count out of range"),
-    ("mirrored-upper-count", "N2Accumulate count out of range"),
+    ("negative-count", "N2Accumulate counts out of range"),
+    ("overfull-count", "N2Accumulate counts out of range"),
+    ("valid-plus-loss-over-period", "N2Accumulate counts out of range"),
     ("count-frequency-reorder", "N2Accumulate coarse-frequency mismatch"),
     ("count-period-mismatch", "N2Accumulate time-downsampling mismatch"),
     ("skipped-frame", "N2Accumulate nonconsecutive correlation frame"),
@@ -331,15 +331,13 @@ _REJECTIONS = (
 
 def _alter_input(streams, subintegration, period, mutation):
     count = streams["counts"][0]
-    if mutation == "nonuniform-lower-count":
-        count.data[0, 0, 0, 7, 0] -= 1
-    elif mutation == "negative-count":
-        count.data[0, 0, 0, 7, 0] = -1
+    if mutation == "negative-count":
+        count.data[0, 0, 0, 0, 0] = -1
     elif mutation == "overfull-count":
-        count.data[0, 0, 0, 7, 0] = subintegration + 1
-    elif mutation == "mirrored-upper-count":
-        # Mirrored entries in diagonal count tiles are unused but checked like the rest.
-        count.data[:, :, 0, 0, 7] = -123
+        count.data[0, 0, 0, 0, 0] = subintegration + 1
+    elif mutation == "valid-plus-loss-over-period":
+        count.data[0, 0, 0, 0, 0] = subintegration
+        streams["pl"][0].data[0, 0] = 1
     elif mutation == "count-frequency-reorder":
         count.metadata["coarse_freq"] = count.metadata["coarse_freq"][::-1].copy()
     elif mutation == "missing-count-frequency":
@@ -385,16 +383,3 @@ def test_unsupported_input_refused(tmpdir_factory, mutation, diagnostic):
     )
     assert stage.return_code != 0, f"Stage accepted {mutation}"
     assert diagnostic in stage.output
-
-
-def test_unequal_counts_warn_and_continue(tmpdir_factory):
-    # Counts that differ across products are a data condition: warn once, keep the first entry.
-    stage = _run_accumulation(
-        tmpdir_factory,
-        mutation=lambda streams, subintegration, period: _alter_input(
-            streams, subintegration, period, "nonuniform-lower-count"
-        ),
-        expect_failure=True,
-    )
-    assert stage.return_code == 0, stage.output
-    assert stage.output.count("counts differ across products") == 1
