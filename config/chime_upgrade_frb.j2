@@ -1885,8 +1885,8 @@ write_baseband:
 {%- if send_baseband %}
 baseband_send:
   #server_ip: 10.5.60.2
-  # mock receiver IP
-  server_ip: 10.13.60.1
+  # mock baseband receiver IP (different from mock recv1)
+  server_ip: 10.13.60.2
   reconnect_time: 60
   send_timeout: 600 # 10 minutes
   log_level: warn
