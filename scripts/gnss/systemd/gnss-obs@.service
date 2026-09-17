@@ -7,13 +7,21 @@ After=gnss-broker.service
 PartOf=gnss-stack.target
 
 [Service]
+# %i is the chain name; the RF constants come from stack_components.sh.
+Environment=GNSS_CHAIN=%i
 Type=simple
 User=kvand
 # ⚠️ The writers and the broker must run the SAME generation of the code. They are separate
 # processes with separate lifetimes: a broker restarted with a new published field while the
 # writers kept running yesterday's code published that field into nothing for 26 minutes.
 # Restarting gnss-stack.target rather than one unit is what keeps them in step.
-ExecStart=/usr/bin/env GNSS_CHAIN=%i /home/kvand/gnss/kotekan/scripts/gnss/obs_unit.sh
+
+# ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come
+# from ONE definition (scripts/gnss/stack_components.sh), which the *_up.sh scripts also
+# use. Inlining the command here is how #134 happened: the command line was reproduced
+# faithfully and the broker's OPENBLAS_NUM_THREADS export, which is not on it, was not.
+# stack_contract_gate.sh proves a running process still matches the definition.
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/run_component.sh obs
 Restart=on-failure
 RestartSec=10
 MemoryAccounting=yes

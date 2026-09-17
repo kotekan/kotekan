@@ -119,10 +119,10 @@ gather and aggregator alongside the VM's. Two brokers command the same fleet. It
 if you find a copy that does not, do not use it.
 
 The per-component `*_up.sh` scripts (`broker_restart.sh`, `gather_up.sh`, `agg_up.sh`,
-`obs_up.sh`, `viewer_up.sh`) are **superseded for the live stack** by the units. They still hold
-the authoritative launch details — the chain RF table, the EOP gate, the `GNSS_PY` requirement —
-which is why they are kept and why `obs_unit.sh` reads its constants back out of `obs_up.sh`
-rather than copying them.
+`obs_up.sh`, `viewer_up.sh`) are **superseded for the live stack** by the units, but they are not
+stale: since 2026-09-17 they launch through the *same* definition the units do (§10), so running
+one by hand starts exactly what systemd would. They keep the host guards, the config preflight,
+the log rotation and the post-start health checks that systemd does not do.
 
 ## 7. Two deliberate delays, so they are not mistaken for faults
 
@@ -160,16 +160,53 @@ Archive before any deliberate teardown you might want to explain later:
   has killed the broker.
 * For a real profile, replay under `broker_equiv` — side-effect-free, no root, no ptrace.
 
-## 10. Changing the stack
+## 10. One definition, two ways to run it
 
-The units are in [`scripts/gnss/systemd/`](../scripts/gnss/systemd/); `install_user_units.sh`
-derives the user variants and reloads. After editing one:
+**`scripts/gnss/stack_components.sh` is the single source of truth** for what each component is
+— its argv, its environment, and its working directory. Nothing else defines those.
 
-```sh
-ssh gnss 'sh /home/kvand/gnss/kotekan/scripts/gnss/systemd/install_user_units.sh'
-ssh gnss 'systemctl --user restart gnss-<unit>.service'
+```
+stack_components.sh            what to run, and with what environment
+       |
+       +-- run_component.sh    execs it in the FOREGROUND
+               |        |
+               |        +----- systemd  ExecStart=run_component.sh <name>     (the live path)
+               +-------------- *_up.sh  daemonises it, and adds the things systemd does not:
+                                        host guards, config preflight, log rotation,
+                                        post-start health checks
 ```
 
-⚠️ **When converting any launcher to a unit, diff `/proc/<pid>/environ` between the old process
-and the new one — not the argv.** A wrapper's `export` is part of the program's contract, and a
-faithfully reproduced `ExecStart` is exactly what hides a missing one. That is #134.
+⚠️ **Why the units do not simply call `*_up.sh`**, which is the obvious idea: those scripts
+*daemonise* (`nohup setsid … &`, `disown`) and most `pkill` a previous instance first. Under
+systemd that is three faults at once — `Type=simple` expects `ExecStart` to *be* the process,
+`setsid` detaches the child from the unit's cgroup so supervision is lost entirely, and the
+internal `pkill` races systemd's own restart. So the direction is inverted: both paths go
+through a foreground runner.
+
+### The gate that makes #134 impossible to repeat
+
+```sh
+ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/stack_contract_gate.sh'
+```
+
+It compares each **running** process against the definition — **argv *and* environment** — and
+exits non-zero on the first mismatch. The environment half is the point: #134 was a faithfully
+reproduced command line with a dropped `export`, which an argv-only comparison would pass.
+
+**Run it after any change to a unit, a launcher, or the definition.** Expect
+`checked 12 component(s), 0 mismatch(es)`.
+
+### Editing
+
+```sh
+# change what a component IS  -> scripts/gnss/stack_components.sh
+# change how it is SUPERVISED -> scripts/gnss/systemd/gnss-<x>.service
+ssh gnss 'sh /home/kvand/gnss/kotekan/scripts/gnss/systemd/install_user_units.sh'
+ssh gnss 'systemctl --user restart gnss-<unit>.service'
+ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/stack_contract_gate.sh'
+```
+
+⚠️ One difference is deliberate and visible in the definition rather than hidden: `agg_up.sh`
+runs the aggregator with `GNSS_SEARCH_PROFILE=1` and the systemd unit does not. cf06 ran with
+that profiling on for its whole life (113,997 `[consumer]` lines in its last log); the live VM
+instance runs without it. Set `GNSS_SEARCH_PROFILE=1` to restore it.

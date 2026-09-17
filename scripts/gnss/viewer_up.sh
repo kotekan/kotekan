@@ -41,14 +41,11 @@ cd "$K/python/scripts/js_viewer" || exit 1
 pkill -f "[l]ivebeam_server" 2>/dev/null || true
 sleep 2
 
-nohup setsid $PY -u livebeam_server.py \
-    --no-power-stream \
-    --http-port "$PORT" --ws-port 8539 \
-    --kotekan-rest-port "$REST" \
-    --lat 49.32001414 --lon -119.62262691 --alt 545 \
-    --band l5 --unified \
-    --pvt-obs-globs "/home/kvand/gnss/fixtures/obs/[gb]*_2026*.jsonl" \
-    "$@" > "$LOG" 2>&1 < /dev/null &
+# ONE DEFINITION (stack_components.sh via run_component.sh) -- including the cwd, which is
+# load-bearing: livebeam_server.py resolves its static assets relative to it. Extra "$@" args
+# still pass through, after the defined ones.
+GNSS_VIEWER_PORT="$PORT" GNSS_BROKER_PORT="$REST" \
+    nohup setsid "$K/scripts/gnss/run_component.sh" viewer "$@" > "$LOG" 2>&1 < /dev/null &
 disown
 sleep 6
 

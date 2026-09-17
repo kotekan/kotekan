@@ -17,25 +17,20 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+# ⚠️ NO Environment= HERE ON PURPOSE. The broker needs free-threaded 3.14t (GNSS_PY) and a
+# one-thread BLAS cap (#134), and BOTH now live beside the argv in stack_components.sh, so the
+# command and the environment cannot be ported apart again. Verify with stack_contract_gate.sh,
+# which compares a RUNNING process against that definition -- argv and environment.
 User=kvand
-# ⚠️ FREE-THREADED 3.14t, NOT the 3.12 venv. Under the GIL the gather drops its consumer every
-# 15 s, every chain reports all instances stale, and nothing arms; L5 keeps working because its
-# fast loop is in-broker, which makes the failure look survivable. It is not -- it cost two
-# hours of dead chains on a restart that otherwise looked clean.
-Environment=GNSS_PY=/home/kvand/gnss/venv-ft/bin/python
-# ⚠️ ONE BLAS THREAD, AND THIS LINE IS NOT OPTIONAL. numpy's OpenBLAS pool defaults to one
-# BUSY-SPINNING worker per core and the joint filter's small matmuls (P ~57x57) wake all of
-# them. On cf06 that measured ~53 cores of pure spin, which starved the TELEMETRY READER at the
-# OS level -- the gather dropped its client every 200 ms and lost 5 of 6 frames. broker_restart.sh
-# has exported this since 2026-08-15; the first systemd unit omitted it and reproduced the fault
-# in miniature on 6 cores: 55.6% of all cycles in blas_thread_server against 0.52% in the actual
-# dgemm kernel, 4.3 cores where cf06 used 1.75. At these matrix sizes one thread is also FASTER.
-Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
-ExecStart=/home/kvand/gnss/venv-ft/bin/python -u \
-    /home/kvand/gnss/kotekan/scripts/gnss/broker_multi.py \
-    /home/kvand/gnss/kotekan/config/gnss_chains_chord.yaml
+
 # Replaces the hand-rolled supervisor loop in broker_restart.sh: restart on a non-zero exit,
 # with a burst limit so a crash loop stops instead of hiding behind a restart.
+# ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come
+# from ONE definition (scripts/gnss/stack_components.sh), which the *_up.sh scripts also
+# use. Inlining the command here is how #134 happened: the command line was reproduced
+# faithfully and the broker's OPENBLAS_NUM_THREADS export, which is not on it, was not.
+# stack_contract_gate.sh proves a running process still matches the definition.
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/run_component.sh broker
 Restart=on-failure
 RestartSec=5
 # No swap on this box, so a leak must hit a cgroup limit and restart one unit rather than let

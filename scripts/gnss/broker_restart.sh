@@ -117,6 +117,9 @@ fi
 # 17:14 the broker sat at ~53 cores of spin -- which starved the TELEMETRY READER at the OS
 # level: the gather dropped its client every 200 ms and 5 of 6 frames were lost (gaps 95k
 # vs frames 18k). At these matrix sizes single-threaded BLAS is also simply faster.
+# ⚠️ The cap itself now lives in stack_components.sh beside the broker's argv, so the command
+# and its environment cannot be ported apart again. Kept exported here too: this script is
+# also the ad-hoc path, and a belt on a brace that has already broken once costs nothing.
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 # ROTATE, DO NOT TRUNCATE (buglist #65). `> "$LOG"` destroyed the evidence twice: the log a
 # restart is diagnosing is the very one it overwrites, and both times the burst that prompted
@@ -144,7 +147,11 @@ nohup setsid bash -c '
     fast=0
     while :; do
         started=$(date +%s)
-        "$PY" -u "$K/scripts/gnss/broker_multi.py" "$CHAINS" "$@" >> "$LOG" 2>&1 < /dev/null &
+        # ONE DEFINITION: argv AND environment from stack_components.sh via run_component.sh,
+        # which the systemd unit also execs. The BLAS cap below used to live only in this
+        # file as an `export`, which is exactly why the unit could drop it (#134).
+        GNSS_PY="$PY" GNSS_CHAINS_YAML="$CHAINS" \
+            "$K/scripts/gnss/run_component.sh" broker "$@" >> "$LOG" 2>&1 < /dev/null &
         echo $! > "$BROKER_PIDFILE"
         wait $!
         rc=$?

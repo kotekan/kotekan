@@ -76,8 +76,11 @@ if [ -s "$LOG" ]; then
     # shellcheck disable=SC2012  # ls -t is the point: newest first, drop everything past 3
     ls -1t "$LOG".20*[0-9] 2>/dev/null | tail -n +4 | xargs -r rm -f
 fi
-nohup setsid env GNSS_SEARCH_PROFILE=1 "$BIN" \
-    --config "$CFG" --bind-address 0.0.0.0:12050 > "$LOG" 2>&1 < /dev/null &
+# ONE DEFINITION (stack_components.sh via run_component.sh). GNSS_SEARCH_PROFILE stays ON in
+# THIS path, which is what this script has always done; the systemd unit leaves it off. That
+# difference is now visible in one place instead of being a silent divergence.
+GNSS_BIN="$BIN" GNSS_AGG_CFG="$CFG" GNSS_SEARCH_PROFILE=1 \
+    nohup setsid "$K/scripts/gnss/run_component.sh" aggregator > "$LOG" 2>&1 < /dev/null &
 disown
 sleep 8
 pgrep -f "kotekan[^ ]* --config.*[a]gg" > /dev/null \

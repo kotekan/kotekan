@@ -16,15 +16,19 @@ User=kvand
 # build_nodpdk is ARCH=native for cf06, and this VM is a guest on cf02 -- the same Xeon Gold
 # 5416S -- so it runs here as-is (verified: --help exits 0, no missing libraries). ⚠️ That is
 # true of THIS host and not of a host in general; a -DARCH=x86-64-v2 tree is the insurance.
-ExecStart=/home/kvand/gnss/kotekan/build_nodpdk/kotekan/kotekan \
-    --config /home/kvand/gnss/kotekan/config/generated/chord_gnss_gather.yaml \
-    --bind-address 0.0.0.0:12051
+
 # It runs at ~201 open fds and has hit EMFILE twice: a 301 GB log filled the table once, and
 # broker reconnect churn did it again. The default 1024 is not enough headroom.
 LimitNOFILE=65536
 # ⚠️ A RESTART WIPES EVERY STANDING TRIM, costing a fleet-wide re-arm of several minutes. Coming
 # back is still better than staying down, but it must not be cheap or silent -- hence the long
 # RestartSec and the low burst limit.
+# ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come
+# from ONE definition (scripts/gnss/stack_components.sh), which the *_up.sh scripts also
+# use. Inlining the command here is how #134 happened: the command line was reproduced
+# faithfully and the broker's OPENBLAS_NUM_THREADS export, which is not on it, was not.
+# stack_contract_gate.sh proves a running process still matches the definition.
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/run_component.sh gather
 Restart=on-failure
 RestartSec=30
 MemoryAccounting=yes

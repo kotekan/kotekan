@@ -16,15 +16,17 @@ Type=simple
 TimeoutStartSec=360
 User=kvand
 # It resolves its static assets relative to the cwd, so this is load-bearing, not tidiness.
-WorkingDirectory=/home/kvand/gnss/kotekan/python/scripts/js_viewer
 # ⚠️ THE VIEWER ONCE CALLED A DEAD BAND "LOCKED" because it gated on sig, which reads 46M on
 # noise. It gates on q now. Reproduce the live argument list exactly rather than tidying it:
 # --no-power-stream and --unified are what the running instance uses.
 ExecStartPre=/home/kvand/gnss/kotekan/scripts/gnss/wait_for_broker_chains.sh
-ExecStart=/home/kvand/gnss/venv/bin/python -u livebeam_server.py \
-    --no-power-stream --http-port 8080 --ws-port 8539 --kotekan-rest-port 12060 \
-    --lat 49.32001414 --lon -119.62262691 --alt 545 --band l5 --unified \
-    --pvt-obs-globs /home/kvand/gnss/fixtures/obs/[gb]*_2026*.jsonl
+
+# ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come
+# from ONE definition (scripts/gnss/stack_components.sh), which the *_up.sh scripts also
+# use. Inlining the command here is how #134 happened: the command line was reproduced
+# faithfully and the broker's OPENBLAS_NUM_THREADS export, which is not on it, was not.
+# stack_contract_gate.sh proves a running process still matches the definition.
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/run_component.sh viewer
 Restart=on-failure
 RestartSec=10
 MemoryAccounting=yes

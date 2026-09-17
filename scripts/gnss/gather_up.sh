@@ -104,8 +104,11 @@ if [ -s "$LOG" ]; then
     # shellcheck disable=SC2012  # ls -t is the point: newest first, drop everything past 3
     ls -1t "$LOG".20*[0-9] 2>/dev/null | tail -n +4 | xargs -r rm -f
 fi
-nohup setsid "$BIN" --config "$CFG" --bind-address "0.0.0.0:$REST" \
-    > "$LOG" 2>&1 < /dev/null &
+# ONE DEFINITION: the argv and environment come from stack_components.sh via
+# run_component.sh, which systemd also execs. This script keeps what systemd does not do --
+# the host guard, the config preflight, the log rotation and the post-start health check.
+GNSS_BIN="$BIN" GNSS_GATHER_CFG="$CFG" GNSS_GATHER_REST="$REST" \
+    nohup setsid "$K/scripts/gnss/run_component.sh" gather > "$LOG" 2>&1 < /dev/null &
 disown
 sleep 5
 pgrep -f "kotekan[^ ]* --config.*[g]ather" > /dev/null \

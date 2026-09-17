@@ -67,6 +67,11 @@ gps_l2c G 1227600000   511500 10230 2
 n=0
 while read -r chain sys carrier chiprate codelen combmult; do
     [ -z "$chain" ] && continue
+    # ONE DEFINITION: the RF constants and argv now live in stack_components.sh, which this
+    # loop and the systemd template both use. The CHAINS table below is kept as the readable
+    # chain list; the numbers in it are no longer the ones that reach the process.
+    GNSS_CHAIN="$chain" nohup setsid "$K/scripts/gnss/run_component.sh" obs \
+        > "/tmp/obs_${chain}.log" 2>&1 < /dev/null & disown; n=$((n+1)); continue
     nohup setsid "$PY" -u "$K/python/scripts/gnss/gnss_observables.py" \
         --url "$BROKER" --combiner "$chain" --search "$chain" --airspy "$chain" \
         --sys "$sys" --band "$chain" \
