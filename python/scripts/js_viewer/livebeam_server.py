@@ -885,6 +885,13 @@ def _display_for(sigid):
     return (tag, col, sigid)
 
 
+# The three column groups, key -> display name. The keys are historical and GPS-centric; the
+# NAMES are what the instrument means by them and what every panel shows. Mirrored in
+# app/panels/gps_table.js and app/panels/decode_health.js -- rename in all three or not at all.
+BAND_LABEL = {"L1": "High", "L2": "Mid", "L5": "Low"}
+BAND_ORDER = ["L1", "L2", "L5"]
+
+
 def _band_of(carrier_hz):
     """RF-band column group (L1/L2/L5) from the sky carrier.
 
@@ -1242,14 +1249,27 @@ class WsPortResource(resource.Resource):
             # actually occupy rather than from a list of front ends CHORD does not have.
             if broker_chains:
                 self.signals = [dict(c) for c in broker_chains]
-                _bands, _seen = [], set()
+                # ⚠️ THE GROUP KEY IS NOT A DISPLAY NAME. "L1"/"L2"/"L5" are GPS-centric
+                # labels for what are three multi-constellation COLUMN GROUPS -- High, Mid and
+                # Low -- and every other panel already renders them that way (BAND_LABEL in
+                # app/panels/gps_table.js and app/panels/decode_health.js; keep the three in
+                # step). This selector was the one place the raw key reached the page.
+                #
+                # And a group spans SEVERAL carriers, so naming it after one is wrong whichever
+                # one is picked: taking the first chain's made the Mid entry read
+                # "L2 · 1268.52 MHz" -- the L2 name against B3I's frequency, when L2C is
+                # 1227.60. Quote the span the group actually occupies.
+                _by_band = {}
                 for c in broker_chains:
-                    if c["band"] not in _seen:
-                        _seen.add(c["band"])
-                        _bands.append({"band": c["band"], "ws_port": ws_port,
-                                       "airspy": None,
-                                       "label": ("%s \u00b7 %.2f MHz"
-                                                 % (c["band"], c.get("carrier_mhz") or 0.0))})
+                    _by_band.setdefault(c["band"], []).append(c.get("carrier_mhz") or 0.0)
+                _bands = []
+                for _b in [x for x in BAND_ORDER if x in _by_band]:
+                    _f = sorted({round(v, 2) for v in _by_band[_b] if v})
+                    _span = ("%.2f MHz" % _f[0] if len(_f) == 1 else
+                             "%.2f\u2013%.2f MHz" % (_f[0], _f[-1]) if _f else "")
+                    _bands.append({"band": _b, "ws_port": ws_port, "airspy": None,
+                                   "label": ("%s \u00b7 %s" % (BAND_LABEL.get(_b, _b), _span)
+                                             if _span else BAND_LABEL.get(_b, _b))})
                 self.rf_bands = _bands
             else:
                 self.signals = [dict(s) for s in UNIFIED_SIGNALS]

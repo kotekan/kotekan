@@ -446,28 +446,33 @@ mutate), which has not been done for these two.
 
 ## Open — measured, real, and nobody's lever
 
-### #133 — the viewer's RF-band selector collapses 5 bands into 2, and mislabels one
-**[live 09-17]** The broker reports five distinct `rf_band` values across the eight chains — L5,
-E5b, B3, E6, L2 — but `livebeam_server.py` maps them into only **two** for its own selector:
+### #133 — the RF-band selector leaked the internal group key and mislabelled its frequency ✅ FIXED 09-17
+**Corrected filing.** I first wrote this up as "the viewer collapses the broker's five `rf_band`
+values into two", which was wrong and is retracted. The two-way split is **deliberate and
+correct**: the viewer has exactly three multi-constellation COLUMN GROUPS — High (≥1.40 GHz,
+nothing deployed), Mid (L2C 1227.60, B3I 1268.52, E6 1278.75) and Low (the E5/B2 complex,
+1176.45–1207.14) — and `_band_of()` validates the broker's finer per-signal taxonomy against
+them rather than trusting it, because taking `"E5b"` raw once dropped two tracking signals out
+of the table entirely (2026-08-09). The Stream-health panel shows the broker's five-band view
+and is also correct; they are two different taxonomies, both wanted.
 
-| chain | broker `rf_band` | carrier | viewer `band` |
-|---|---|---|---|
-| gps_l5, gal_e5a, bds_b2a | L5 | 1176.45 | L5 |
-| gal_e5b, bds_b2b | **E5b** | 1207.14 | L5 |
-| bds_b3i | **B3** | 1268.52 | L2 |
-| gal_e6 | **E6** | 1278.75 | L2 |
-| gps_l2c | **L2** | 1227.60 | L2 |
+The real defect was narrower. `BAND_LABEL = {L1: "High", L2: "Mid", L5: "Low"}` already existed
+in `app/panels/gps_table.js` and `app/panels/decode_health.js`, so every table header already
+read High/Mid/Low — but the **RF-band selector** was built server-side from the raw group key
+plus *the first chain's carrier*, so it rendered `L2 · 1268.52 MHz`: the GPS-centric key, against
+B3I's frequency, for a group whose namesake L2C is at 1227.60.
 
-So the RF selector offers two entries where there should be five, and because the label takes the
-carrier of the **first** chain in each bucket, the "L2" entry reads **`L2 · 1268.52 MHz`** — the
-L2 band name against B3's carrier. L2C is 1227.60.
+Fixed by labelling the selector from the shared `BAND_LABEL` and quoting the span the group
+actually occupies — `Mid · 1227.60–1278.75 MHz`, `Low · 1176.45–1207.14 MHz`. High is absent
+because nothing occupies it yet, which is the honest rendering.
 
-⚠️ **Not caused by the migration**, though it was found during it: the mapping is a function of
-the chain list alone and would have read identically on cf06 given a full discovery. It was
-simply invisible while the viewer only ever had one chain (#the discovery race, now fixed).
+⚠️ `BAND_LABEL`/`BAND_ORDER` now exist in three files (the server plus those two panels). Rename
+in all three or not at all — noted in each.
 
-The satellite table is unaffected — it draws from `signals`, which is complete and carries the
-right per-chain carriers. This is the band selector and its label only.
+⚡ Still open, deliberately not done: the KEYS are still `L1`/`L2`/`L5`. They are internal (wire
+value, sort order, dict keys) and no user sees them, so renaming to `high`/`mid`/`low` is a
+server-plus-four-client-files change with no visible benefit. Worth doing when one of those
+files is open anyway.
 
 ### #123 — cf06's single 1 GbE is the fleet's binding constraint
 **[live]** 713 Mbit/s ingress, of which telemetry is 363 after the v6 shrink. It has already
