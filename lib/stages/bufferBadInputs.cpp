@@ -95,7 +95,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
         }
     }
 
-    // Baseline mask from the telescope: elements outside the main array (CHORD's Fake
+    // Baseline mask from the telescope: elements outside the main array (CHORD's Missing
     // dishes and RFI antennas) are never valid inputs and stay masked independent of the
     // posted bad-inputs list. A telescope with no dish table configured reports every
     // element outside the array; that means the table is absent, not that every feed is

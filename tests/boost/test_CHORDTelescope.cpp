@@ -190,8 +190,8 @@ std::array<double, 3> itrs_to_cirs(std::array<double, 3> v, double ERA_deg, doub
 
 BOOST_AUTO_TEST_CASE(_DishType_to_json) {
 
-    json fake = DishType::Fake;
-    BOOST_CHECK_MESSAGE(fake == "Fake", "to_json(Fake)");
+    json missing = DishType::Missing;
+    BOOST_CHECK_MESSAGE(missing == "Missing", "to_json(Missing)");
 
     json arrayDish = DishType::ArrayDish;
     BOOST_CHECK_MESSAGE(arrayDish == "ArrayDish", "to_json(ArrayDish)");
@@ -202,8 +202,8 @@ BOOST_AUTO_TEST_CASE(_DishType_to_json) {
 
 BOOST_AUTO_TEST_CASE(_DishType_from_json) {
 
-    json fake = "Fake";
-    BOOST_CHECK_MESSAGE(fake.get<DishType>() == DishType::Fake, "from_json(Fake)");
+    json missing = "Missing";
+    BOOST_CHECK_MESSAGE(missing.get<DishType>() == DishType::Missing, "from_json(Missing)");
 
     json array_dish = "ArrayDish";
     BOOST_CHECK_MESSAGE(array_dish.get<DishType>() == DishType::ArrayDish, "from_json(ArrayDish)");
@@ -386,7 +386,7 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
 }
 
 /*
- * @brief   Test the connected (non-Fake) element selection
+ * @brief   Test the connected (non-Missing) element selection
  */
 BOOST_AUTO_TEST_CASE(_get_connected_elements) {
     dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
@@ -402,7 +402,7 @@ BOOST_AUTO_TEST_CASE(_get_connected_elements) {
     const CHORDTelescope& tel = get_telescope(json_config);
 
     // Dishes 0, 1, 2 and 5 are connected (the RFI antenna included); 3, 4, 6 and 7 are
-    // Fake. CHORDBeamformer blocks polarizations (element = dish + pol * num_dishes),
+    // Missing. CHORDBeamformer blocks polarizations (element = dish + pol * num_dishes),
     // CHORDEarly interleaves them (element = dish * 2 + pol).
     const std::vector<uint64_t> beamformer{0, 1, 2, 5, 8, 9, 10, 13};
     const std::vector<uint64_t> early{0, 1, 2, 3, 4, 5, 10, 11};
