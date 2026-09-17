@@ -73,14 +73,19 @@ simulated_formed_beams_buffer:
     frame_size: samples_per_data_set * num_beams * num_local_freq * 2
     metadata_pool: main_pool
 
-gen_data:
-    type: random_signed
-    # don't seed each frame to the same value!
-    value: 0
-    seed: 0x42
-    kotekan_stage: testDataGen
-    out_buf: host_voltage_buffer
-    log_level: debug
+#gen_data:
+#    type: random_signed
+#    # don't seed each frame to the same value!
+#    value: 0
+#    seed: 0x42
+#    kotekan_stage: testDataGen
+#    out_buf: host_voltage_buffer
+#    log_level: debug
+read_data:
+    type: hdf5FileRead
+    base_dir: debug-data
+    file_name: host_voltage_buffer_0
+    out_buf: host_voltage_buffer_0
 
 gen_phase:
     type: const
