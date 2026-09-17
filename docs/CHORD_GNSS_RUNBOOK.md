@@ -83,7 +83,15 @@ for a minute and settles. That is the transient, not a fault.
 * **An F-engine restart** needs chive refreshed *first*, then the nodes. Symptom: every DPDK
   worker logs `frames are being stamped <big>s from the wall clock`, the fleet looks alive and
   acquires nothing. Compare chive's `start_ctime` against when the F-engine actually restarted —
-  the nodes will faithfully latch a stale epoch.
+  the nodes will faithfully latch a stale epoch. **The broker and the obs writers do fix
+  themselves** here: both re-read `/telescope/time0_ns` every 60 s and exit 3 when it has moved,
+  and systemd restarts them on the new epoch (the writers open a new day file). A writer that
+  outlived a re-base used to file the new session onto the old day, tens of hours in the past,
+  with its geometry evaluated there; that is what the exit is for.
+* **The ephemeris refresh no longer stalls the broker.** `fetch_brdc` hands the loop what is on
+  disk and fetches on a thread; before, a slow mirror blocked every chain for 20-30 s, the 10.7 s
+  telemetry ring overflowed, and every fleet-ADR arc broke at once. A `BRDC hourly merge` line
+  with no gap in the log timestamps around it is the healthy signature.
 * **Reboot:** ⚠️ the mechanism is in place (`Linger=yes`, `gnss-stack.target` in
   `default.target.wants`) but **has not been tested with an actual reboot** — that needs root.
   Check it the first time the VM reboots.
