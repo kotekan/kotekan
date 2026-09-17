@@ -971,13 +971,13 @@ set_bf_mask:
         kotekan_stage: bufferBadInputs
         updatable_config:
             bad_inputs: /updatable_config/bad_inputs
-        in_clock_buf: host_voltage_buffer_0
+        metadata_source: host_voltage_buffer_0
         out_buf: host_bf_mask_buffer
     bf_mask_1:
         kotekan_stage: bufferBadInputs
         updatable_config:
             bad_inputs: /updatable_config/bad_inputs
-        in_clock_buf: host_voltage_buffer_1
+        metadata_source: host_voltage_buffer_1
         out_buf: host_bf_mask_buffer_1
 
 ## Send data to GPU ringbuffers ##

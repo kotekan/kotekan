@@ -54,7 +54,7 @@ constexpr double deg2rad = M_PI / 180.0;
  * to be used in production (e.g. updating beams via REST).
  *
  * @par Buffers
- * @buffer in_clock_buf     Any time-dependent buffer with an `fpga_seq_num`. Used to synchronize
+ * @buffer metadata_source     Any time-dependent buffer with an `fpga_seq_num`. Used to synchronize
  *                          output buffers. Only first frame is read. `host_voltage_buffer`
  * recommended.
  *      @buffer_format      Any
@@ -137,7 +137,7 @@ setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
     y_max(config.get_default<double>(unique_name, "y_max", 0.0)) {
 
     // Get Buffer
-    in_buf = get_buffer("in_clock_buf");
+    in_buf = get_buffer("metadata_source");
     in_buf->register_consumer(unique_name);
     out_pos_buf = get_buffer("out_pos_buf");
     out_pos_buf->register_producer(unique_name);
