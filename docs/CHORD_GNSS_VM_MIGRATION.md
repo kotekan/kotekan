@@ -4,11 +4,11 @@
 under systemd, long-term. Every number below is measured on the live stack, not estimated; how
 to re-measure is at the end.
 
-**The short version.** As re-provisioned — 6 cores of `host` Xeon Gold 5416S on cf02, an L40S
-passed through, a 10G uplink — **the whole stack fits, aggregator included**, at ~70% of 6
-cores and a third of the RAM. Nothing more needs requesting. The remaining questions are about
-sequencing, not capacity: one peak-under-load measurement is still missing, and moving the
-aggregator costs the spare GPU we bench on.
+**The short version.** The infrastructure (broker, gather, obs writers, viewer) moved on
+2026-09-16 and runs well. ⚠️ **The aggregator cannot follow yet**: the peak measurement that was
+outstanding came back at **5.18-5.66 cores of 6** for what is already there, against an estimate
+of 3.05 — the broker alone costs 4.3, not the 1.75 estimated from cf06. Ask for more vCPU (§4).
+RAM, disk and network are all comfortable and need nothing.
 
 ---
 
@@ -113,23 +113,58 @@ load is data-driven and scales with the fleet. And **the aggregator costs the sa
 its search spins regardless (`blocked 3.6s (100%), 120 frames discarded`), so its 0.91 is a floor
 that will not fall when the sky is quiet.
 
-## 4. Sizing: 6 cores fits, with one measurement still missing
+## 4. Sizing — ⚠️ THE PEAK SAMPLE CAME BACK AND THE ANSWER CHANGED
 
-**Everything, including the aggregator, fits in 6 cores at ~70%.** RAM is not close to binding:
-2.4 GB of RSS against 7 GB, and the aggregator's alarming 24.9 GB `VmSize` is virtual —
-`VmHWM` 823 MB, `VmLck` 86 MB, `VmPin` 0, and the VM runs `vm.overcommit_memory=0`, so the
-reservation is free. **Do not ask for more RAM or disk.**
+The estimate below was 3.05 cores for broker + gather + obs, from single 30 s windows on cf06.
+**Measured on the VM itself, 3 minutes at 5 s granularity with the F-engine live and 95 PRNs
+armed across 8 chains:**
 
-⚠️ **What I cannot tell you yet is the peak.** The with-data column is a single 30 s window taken
-before the F-engine went down; I have no peak-under-load sample, and the one thing that would
-change the answer is a burst. Two reasons to care on a 6-core box specifically:
+| process | mean | p90 | max | vs the cf06 estimate |
+|---|---|---|---|---|
+| **broker** | **4.31** | 4.61 | **4.85** | estimated 1.75 — **2.5× low** |
+| gather | 0.74 | 0.77 | 0.80 | estimated 1.24 — over-estimated |
+| obs writers ×8 | 0.12 | 0.15 | 0.15 | as estimated |
+| viewer | 0.00 | 0.00 | 0.00 | as estimated |
+| **total** | **5.18** | **5.44** | **5.66** | **of 6 cores — 86–94%** |
 
-- **69 threads** (aggregator 44, gather 14, broker 11) on 6 cores instead of 64. Thread count is
-  not itself a problem — they are mostly idle — but scheduling latency becomes a new variable.
-- **The gather has a 200 ms frame deadline** (`dropped client fd N -- could not take a frame
-  within 200 ms`). On a 64-core host that deadline has enormous slack. At 70% CPU it does not.
+Load average **9.61** on a 6-core box: the run queue is 1.6× the cores.
 
-So: take a peak sample when the F-engine returns, before committing the aggregator (§8).
+**So the aggregator cannot move yet.** It costs 1.00 mean / 1.11 max on cf06, which would put the
+VM at ~6.2–6.8 cores against 6.
+
+### Why the broker estimate was wrong — honestly, not yet known
+
+Its 4.34 cores sit in 16 threads: five unnamed worker threads at 0.41–0.68 each (~2.9 cores
+together) plus the eight chain threads at ~0.20 each. On cf06 the same process ran 11 threads.
+
+I cannot presently tell a **busier fleet** from **different behaviour on a smaller host**,
+because the 1.75-core sample was never recorded alongside the fleet's armed-PRN count. That is a
+gap in the measurement, not a subtlety of the system: **always record what the fleet was doing
+next to what the process cost.** Candidate explanations, none confirmed:
+
+* more armed PRNs now than during the cf06 sample (95 across 8 chains at the time of writing);
+* the broker now reaches the aggregator over the network (`http://cf06:12050`) rather than
+  loopback — which, if it is the cause, means **moving the aggregator would reduce broker cost**,
+  not add to it. That is a guess, and not one to bet a 94%-loaded box on;
+* free-threading contention at 6 cores that 64 cores hid.
+
+### The fleet is healthy at this load — it is headroom that is gone, not function
+
+    gather 2123 frames/s   late 0.28%   bad_frames 0   forced_closes 0
+    trim   21178 posts / 0 failed
+    broker context switches 43466 voluntary vs 5987 involuntary (blocking on I/O, not preempted)
+
+⚠️ Late frames have drifted **0.11% → 0.28%** since the cutover, which is now level with cf06's
+0.23% lifetime rather than the 20× better figure measured on an idle wire. Worth watching.
+
+### Recommendation
+
+**Ask for more vCPU before moving the aggregator.** The VM is a guest on cf02, the same 64-core
+part as cf06, so the headroom exists: 8 cores would leave the current stack at ~65-71% and fit
+the aggregator at ~78-85%; 10 would be comfortable. Alternatively, find out where the broker's
+4.3 cores go first — if it is the cross-network aggregator poll, the move pays for itself.
+
+RAM and disk remain untouched by this: 2.4 GB against 7 GB.
 
 ## 5. The portable build: now optional, still worth doing
 
