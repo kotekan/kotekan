@@ -784,7 +784,7 @@ gen_data:
 cpu_simulate:
   cpu_data_sim_0:
     gain_dir: "./"
-    ew_spacing: [0.0, 0.4, 0.8, -0.4]
+    ew_spacing: [ -0.4, 0.0, 0.4, 0.8 ]
     northmost_beam: 60.0
     kotekan_stage: gpuBeamformSimulate
     network_in_buf: host_voltage_buffer
