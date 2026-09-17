@@ -6,6 +6,36 @@ Compiled docs are available at https://kotekan.readthedocs.io/.
 [![Documentation Status](https://app.readthedocs.org/projects/kotekan/badge/)](https://kotekan.readthedocs.io/)
 
 
+# Repository layout
+
+- `kotekan/` - the `kotekan` executable entry point.
+- `lib/core/` - framework: `Stage` base class and factory, `buffer`/frame management, `ringbuffer`, `Config`, REST server, logging, metrics.
+- `lib/stages/` - CPU stages (network I/O, file writers, N2 processing, RFI, beamforming support). Most new pipeline work lands here.
+- `lib/metadata/` - per-frame metadata types and frame descriptors (`chordMetadata`, `N2FrameDesc`, `N2Layout`, `NDArray`).
+- `lib/utils/` - shared helpers: telescope definitions, dataset manager and states, frame views, file formats, time utilities.
+- `lib/gpu/`, `lib/cuda/`, `lib/hip/`, `lib/opencl/` - GPU framework and backend-specific commands. `lib/cuda/generated/` holds kernels produced by `julia/`; regenerate them there rather than editing by hand.
+- `lib/dpdk/` - DPDK packet capture stages.
+- `lib/testing/` - synthetic data and checking stages used by test configs (built with `-DWITH_TESTS=ON`).
+- `julia/` - Julia CUDA kernel generator (see its README).
+- `config/` - pipeline configs. Top level and `fengine/` hold production and telescope configs (`.yaml`, or `.j2` Jinja templates); `ci-tests/` holds the configs run by CI; `examples/` holds minimal starters.
+- `python/kotekan/` - Python helpers for reading kotekan buffers and configs; used by the pytests.
+- `tests/` - pytests, `boost/` unit tests, and `ci-scripts/` standalone shell tests.
+- `docs/sphinx/`, `docs/doxygen/` - user and developer guides, API reference.
+- `tools/` - lint scripts, docker images, debugging helpers.
+- `external/` - vendored dependencies.
+
+# Glossary
+
+- **Stage** - a pipeline unit with its own thread, configured under `kotekan_stage` in a yaml config. Consumes and produces buffers. Older docs call these "processes".
+- **Buffer / frame** - a buffer is a fixed set of equal-size frames shared between stages; a frame is the unit a producer fills and a consumer releases. Each frame carries a metadata object drawn from a **metadata pool**.
+- **Ring buffer** - a byte-addressed circular buffer with a cursor, used between GPU stages instead of framed buffers.
+- **Element / input** - one correlator input, that is one dish-polarization pair. `num_elements` counts inputs. Labels use the form `<dish>p<pol>`.
+- **Dish / feed** - the physical antenna. A dish has two inputs, one per polarization.
+- **Product** - one visibility, a pair of inputs. Autocorrelations are the products of an input with itself.
+- **N2 layout** (also visibility layout) - the arrangement of products within an N2 frame, described by `N2Layout`. Use this term rather than "frame order".
+- **Coarse frequency** - one FPGA channel. Upchannelization splits it into finer channels.
+- **Metadata** - per-frame header (timestamps, sequence numbers, frequency, dataset id). Telescope-specific types live in `lib/metadata/`.
+
 # Build Instructions
 
 | `develop` |
