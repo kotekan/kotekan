@@ -59,6 +59,7 @@ SITE = (49.32001414, -119.62262691, 545.0)
 CACHE = os.path.expanduser("~/.cache/kotekan_gps")
 SYSOF = {"gps": "G", "gal": "E", "bds": "C"}
 GEOM_KEYS = ("az", "el", "range_m", "range_rate_mps", "sat_clk_s", "eph_age_s")
+MIN_SEG_ROWS = 50                # fewer rows than this is stray rows, not a session
 
 
 def load_eph(days_back=12):
@@ -84,36 +85,84 @@ def rows_of(path):
 
 
 def segments(path):
-    """[(first_idx, last_idx_exclusive, t_first, t_last, frame0_latched)] in file order; a new
-    segment starts wherever t steps back by more than 60 s."""
-    segs, cur = [], None
+    """[{i0, i1, t0, t_last, frame0_latched, glitch}] in file order. A new segment starts where t
+    steps back by more than 60 s AND STAYS there: the median of the next 50 rows must sit on the
+    new axis. A step that does not persist is a handful of boundary rows whose t came from a
+    different hop source while the new session was still settling; they are listed in `glitch`
+    and the caller skips them rather than re-timing them onto either neighbour."""
+    ts, idx = [], []
     for i, d in rows_of(path):
         t = d.get("t")
-        h = d.get("fadr_hop") or d.get("rec_hop")
         if t is None:
             continue
-        if cur is None or t < cur["t_last"] - 60.0:
-            if cur is not None:
-                segs.append(cur)
-            cur = {"i0": i, "i1": i + 1, "t0": t, "t_last": t, "f0": []}
-        cur["i1"] = i + 1
-        cur["t_last"] = t
-        if h and len(cur["f0"]) < 2000:
-            cur["f0"].append(t - h / HPS)
-    if cur is not None:
-        segs.append(cur)
-    for s in segs:
-        if s["f0"]:
-            # t is stamped from fleet_hop while the row keeps fadr_hop/rec_hop, so the median
-            # sits a fraction of a second off the latched anchor; an anchor is an integer
-            # second plus FRAC, so snap -- the retime then comes out as whole seconds and an
-            # unaffected file re-times by exactly zero
-            est = float(np.median(s["f0"]))
-            s["frame0_latched"] = round(est - FRAC) + FRAC
-            s["frame0_latched_est"] = est
+        ts.append(t)
+        idx.append(i)
+    ts = np.array(ts)
+    idx = np.array(idx)
+    if not len(ts):
+        return []
+    bounds = []                     # positions (into ts) where a new segment begins
+    glitch = set()
+    runmax = ts[0]
+    j = 1
+    while j < len(ts):
+        if ts[j] < runmax - 60.0:
+            look = ts[j:j + 50]
+            med = float(np.median(look))
+            if med < runmax - 60.0:
+                # a new session. Its axis is the MEDIAN of the first rows, not the first row:
+                # in the first seconds the writer stamps rows from two hop sources ~3 min apart,
+                # so taking the first value would make every later row on the other source look
+                # like yet another re-base. Rows off the new axis in that window are glitches.
+                bounds.append(j)
+                for k in range(j, min(j + 50, len(ts))):
+                    if abs(ts[k] - med) > 60.0:
+                        glitch.add(int(idx[k]))
+                runmax = med
+            else:
+                # a dip that does not persist: skip every row of it
+                k = j
+                while k < len(ts) and ts[k] < runmax - 60.0:
+                    glitch.add(int(idx[k]))
+                    k += 1
+                j = k
+                continue
+        if int(idx[j]) not in glitch:
+            runmax = max(runmax, ts[j])
+        j += 1
+    segs = []
+    for a, b in zip([0] + bounds, bounds + [len(ts)]):
+        if b - a < MIN_SEG_ROWS:
+            # a "session" of a couple of polls is a stray row or two on another axis (a lone
+            # first row, a session too short to date); its rows are glitches, not a segment
+            glitch.update(int(x) for x in idx[a:b])
+            continue
+        segs.append({"i0": int(idx[a]), "i1": int(idx[b - 1]) + 1, "t0": float(ts[a]),
+                     "t_last": float(ts[b - 1]), "f0": []})
+    # the latched anchor of each segment from its rows' hops, snapped: t is stamped from
+    # fleet_hop while the row keeps fadr_hop/rec_hop, so the median sits a fraction of a second
+    # off; an anchor is an integer second plus FRAC, so the retime comes out as whole seconds
+    # and an unaffected file re-times by exactly zero
+    for i, d in rows_of(path):
+        if i in glitch:
+            continue
+        h = d.get("fadr_hop") or d.get("rec_hop")
+        if not h or d.get("t") is None:
+            continue
+        for sg in segs:
+            if sg["i0"] <= i < sg["i1"]:
+                if len(sg["f0"]) < 2000:
+                    sg["f0"].append(d["t"] - h / HPS)
+                break
+    for sg in segs:
+        if sg["f0"]:
+            est = float(np.median(sg["f0"]))
+            sg["frame0_latched"] = round(est - FRAC) + FRAC
+            sg["frame0_latched_est"] = est
         else:
-            s["frame0_latched"] = None
-        del s["f0"]
+            sg["frame0_latched"] = None
+        del sg["f0"]
+        sg["glitch"] = sorted(g for g in glitch if sg["i0"] <= g < sg["i1"])
     return segs
 
 
@@ -195,7 +244,7 @@ def census(args):
     out = {"day": args.day, "band": band, "path": path, "segments": []}
     for k, seg in enumerate(segments(path)):
         rec = {"seg": k, "i0": seg["i0"], "i1": seg["i1"], "t0": seg["t0"], "t1": seg["t_last"],
-               "frame0_latched": seg["frame0_latched"], "probes": []}
+               "frame0_latched": seg["frame0_latched"], "glitch_rows": len(seg["glitch"]), "probes": []}
         if seg["frame0_latched"] is None or seg["i1"] - seg["i0"] < 50:
             rec["status"] = "skipped: no hop axis or too short"
             out["segments"].append(rec)
@@ -238,22 +287,28 @@ def census(args):
 
 
 def apply(args):
-    # several maps per day: the segment a band could not date (no strong rows -- the broker was
-    # blind on that chain) is usually dated by another band of the same writer generation
+    # ⚠️ SEGMENTS ARE MATCHED BY ORDER, NOT BY (anchor, t). The sessions stacked into one file
+    # all carry the SAME latched anchor and OVERLAPPING t ranges -- that is what a stale anchor
+    # does -- so nothing in a row says which session it belongs to. File order does: every
+    # band's writer saw the same sequence of re-bases, so the k-th monotonic segment of any
+    # band's file is the k-th of the census band's. Each input is segmented the same way the
+    # census was, the counts must agree, and each pair must share its latched anchor and
+    # overlap in t; otherwise the file is refused rather than guessed at.
     maps = [json.load(open(m)) for m in args.map]
     day = maps[0]["day"]
-    segs = []
-    for m in maps:
-        for s in m["segments"]:
-            if s.get("status") != "ok":
-                continue
-            if any(abs(s["frame0_latched"] - q["frame0_latched"]) < 2.0
-                   and s["t0"] < q["t1"] + 120 and q["t0"] < s["t1"] + 120 for q in segs):
-                continue        # the same session already dated by an earlier map
-            segs.append(s)
+    # the same MIN_SEG_ROWS rule the census band was cut with, applied to a map that may predate it
+    base = [s for s in maps[0]["segments"] if s["i1"] - s["i0"] >= MIN_SEG_ROWS]
+    for m in maps[1:]:
+        m["segments"] = [s for s in m["segments"] if s["i1"] - s["i0"] >= MIN_SEG_ROWS]
+        if len(m["segments"]) != len(base):
+            raise SystemExit("%s has %d segments, %s has %d: not the same writer generation"
+                             % (args.map[0], len(base), m.get("band"), len(m["segments"])))
+        for k, s in enumerate(m["segments"]):
+            if base[k].get("status") != "ok" and s.get("status") == "ok":
+                base[k] = s          # another band dated the segment this one could not
     eph = load_eph()
     os.makedirs(args.out_dir, exist_ok=True)
-    manifest = {"maps": [os.path.abspath(m) for m in args.map], "segments": segs,
+    manifest = {"maps": [os.path.abspath(m) for m in args.map], "segments": base,
                 "inputs": [], "outputs": {}}
     handles = {}
     # predict_all evaluates the whole sky for one epoch; every PRN of a poll shares its epoch
@@ -276,8 +331,7 @@ def apply(args):
         return v
 
     def out_for(band, t_true):
-        day = time.strftime("%Y%m%d", time.gmtime(t_true))
-        key = "%s_%s.jsonl" % (band, day)
+        key = "%s_%s.jsonl" % (band, time.strftime("%Y%m%d", time.gmtime(t_true)))
         if key not in handles:
             p = os.path.join(args.out_dir, key)
             if os.path.exists(p) and not args.append:
@@ -289,28 +343,44 @@ def apply(args):
     for path in args.inputs:
         band = os.path.basename(path).rsplit("_", 1)[0]
         sysid = SYSOF[band.split("_")[0]]
-        n_in = n_out = n_skip = 0
-        # ⚠️ the map was censused on ONE band; the other bands' writers started together and
-        # latched the same anchor, so segments are matched by LATCHED frame0 and t-range, not
-        # by row index (row counts differ per band).
-        for i, d in rows_of(path):
-            n_in += 1
-            t = d.get("t")
-            h = d.get("fadr_hop") or d.get("rec_hop")
-            if t is None or not h:
-                n_skip += 1
+        fsegs = segments(path)
+        rec = {"path": path, "segments": len(fsegs), "rows": 0, "written": 0, "skipped": 0}
+        if len(fsegs) != len(base):
+            rec["refused"] = "%d segments in the file, %d in the map" % (len(fsegs), len(base))
+            print("%s: REFUSED -- %s" % (os.path.basename(path), rec["refused"]))
+            manifest["inputs"].append(rec)
+            continue
+        plan = []
+        for k, (fs, ms) in enumerate(zip(fsegs, base)):
+            if ms.get("status") != "ok" or fs["frame0_latched"] is None:
+                plan.append(None)
                 continue
-            f0 = t - h / HPS
-            seg = None
-            for s in segs:
-                if abs(s["frame0_latched"] - f0) < 2.0 and s["t0"] - 120 <= t <= s["t1"] + 120:
-                    seg = s
-                    break
-            if seg is None:
-                n_skip += 1
+            if (abs(fs["frame0_latched"] - ms["frame0_latched"]) > 2.0
+                    or not (fs["t0"] < ms["t1"] + 120 and ms["t0"] < fs["t_last"] + 120)):
+                rec["refused"] = ("segment %d: file has anchor %.0f over %s..%s, map has %.0f over %s..%s"
+                                  % (k, fs["frame0_latched"], time.strftime("%m-%d %H:%M", time.gmtime(fs["t0"])),
+                                     time.strftime("%m-%d %H:%M", time.gmtime(fs["t_last"])), ms["frame0_latched"],
+                                     time.strftime("%m-%d %H:%M", time.gmtime(ms["t0"])),
+                                     time.strftime("%m-%d %H:%M", time.gmtime(ms["t1"]))))
+                break
+            plan.append(ms)
+        if "refused" in rec:
+            print("%s: REFUSED -- %s" % (os.path.basename(path), rec["refused"]))
+            manifest["inputs"].append(rec)
+            continue
+        k = 0
+        glitch = {g for fs in fsegs for g in fs["glitch"]}
+        rec["glitch_rows"] = len(glitch)
+        for i, d in rows_of(path):
+            rec["rows"] += 1
+            while k < len(fsegs) - 1 and i >= fsegs[k]["i1"]:
+                k += 1
+            seg = plan[k]
+            if seg is None or d.get("t") is None or i in glitch:
+                rec["skipped"] += 1
                 continue
             dt = seg["retime_s"]
-            t_new = round(t + dt, 4)
+            t_new = round(d["t"] + dt, 4)
             d["t_raw"], d["frame0_raw"], d["frame0"], d["retime_s"] = d["t"], seg["frame0_latched"], seg["frame0_true"], dt
             d["retime_src"] = seg["anchor_src"]
             d["t"] = t_new
@@ -318,8 +388,8 @@ def apply(args):
             # geometry at the corrected epoch; the same call and window the writer used
             v = sky_at(t_new).get((sysid, int(d["prn"])))
             if v is None:
-                for k in GEOM_KEYS:
-                    d.pop(k, None)
+                for key in GEOM_KEYS:
+                    d.pop(key, None)
                 d["carr_resid_m"] = None
                 d["carr_resid_src"] = None
             else:
@@ -343,9 +413,10 @@ def apply(args):
             fh_out, key = out_for(band, t_new)
             fh_out.write(json.dumps(d, separators=(",", ":")) + "\n")
             manifest["outputs"][key] += 1
-            n_out += 1
-        manifest["inputs"].append({"path": path, "rows": n_in, "written": n_out, "skipped": n_skip})
-        print("%s: %d rows, %d re-timed, %d skipped (no dated segment)" % (os.path.basename(path), n_in, n_out, n_skip))
+            rec["written"] += 1
+        manifest["inputs"].append(rec)
+        print("%s: %d rows in %d segments, %d re-timed, %d skipped (undated segment or %d boundary glitch rows)"
+              % (os.path.basename(path), rec["rows"], len(fsegs), rec["written"], rec["skipped"], rec["glitch_rows"]))
     for fh in handles.values():
         fh.close()
     if args.sort:
