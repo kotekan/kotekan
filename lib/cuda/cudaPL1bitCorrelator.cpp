@@ -103,9 +103,6 @@ private:
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_expanded_mask;
     NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;
     NDArrayBuffer<std::int32_t, 5> n2k_counts;
-
-    // internals
-    bool warned_about_unsupported_Sds;
 };
 
 REGISTER_CUDA_COMMAND(cudaPL1bitCorrelator);
@@ -154,9 +151,7 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
         const std::array<std::ptrdiff_t, 5> n2k_dimscalings{n2k_dimscaling_time, 1, 64, 8, 8};
         return NDArrayBuffer<std::int32_t, 5>(n2k_counts_name, "n2k_counts", n2k_lengths,
                                               n2k_dimnames, n2k_dimscalings, *this);
-    }()),
-    // internals
-    warned_about_unsupported_Sds(false)
+    }())
 //
 {
     if (num_polarizations <= 0 || num_dishes <= 0)
@@ -165,6 +160,16 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
 
     if (num_dishes % 8 != 0)
         FATAL_ERROR("num_dishes ({:d}) must be divisible by eight", num_dishes);
+    // The n2k count kernel currently implements 16 and 128 stations (after downsampling by 8);
+    // every other geometry takes the fallback in execute(), which pretends there is no packet loss.
+    {
+        const int Sds = num_dishes / 8 * num_polarizations;
+        if (Sds != 16 && Sds != 128)
+            ERROR("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
+                  "dishes. Pretending there is no packet loss; the n2k counts will be wrong if "
+                  "there is.",
+                  num_dishes);
+    }
 
     pl_expanded_mask.register_consumer();
     rfi_RFImask.register_consumer();
@@ -283,15 +288,8 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
             Nds, // downsampling factor of counts array, relative to baseband
             device.getStream(cuda_stream_id));
     } else {
-        if (!warned_about_unsupported_Sds) {
-            // These cases are not yet implemented in n2k. Pretend that there is no packet loss.
-            WARN("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
-                 "dishes. Pretending there was no packet loss. The n2k counts will be wrong if "
-                 "there "
-                 "was packet loss.",
-                 num_dishes);
-            warned_about_unsupported_Sds = true;
-        }
+        // Not implemented in n2k for this geometry (reported once in the constructor): pretend
+        // that there is no packet loss.
         cudaMemsetInt(n2k_counts_memory, Nds, n2k_counts.get_ndarray().size());
     }
 
