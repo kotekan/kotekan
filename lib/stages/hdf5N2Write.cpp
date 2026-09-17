@@ -317,7 +317,16 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // 3) Create attributes/datasets, if they don't exist.
 
         // General File info
-        _check_create_attribute(*file, "version", std::string("CHORD_0.0"));
+        const bool per_product = support_mode == kotekan::N2SupportMode::PerProductV1;
+        _check_create_attribute(*file, "version",
+                                std::string(per_product ? "CHORD_0.1" : "CHORD_0.0"));
+        if (per_product) {
+            _check_create_attribute(*file, "support_mode", std::string("per_product_v1"));
+            _check_create_attribute(*file, "scalar_support_availability",
+                                    std::string("unavailable"));
+            _check_create_attribute(*file, "loss_reason_availability", std::string("unavailable"));
+            _check_create_attribute(*file, "support_units", std::string("fpga_ticks"));
+        }
         _check_create_attribute(*file, "file_mode",
                                 std::string(file_mode_ == CHIME ? "CHIME" : "CHORD"));
         _check_create_attribute(*file, "abs_file_idx", abs_file_idx);
@@ -553,30 +562,37 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(
             *file, flags_group_prefix + "/flags", {num_file_f, fv.num_elements, num_file_t_},
             {"frequency", "element", "time"}, HighFive::create_datatype<float>(), props_empty);
-        _check_create_dataset(*file, flags_group_prefix + "/valid_fpga_count",
-                              {num_file_f, num_file_t_}, {"frequency", "time"},
-                              HighFive::create_datatype<uint64_t>(), props_empty);
-        _check_create_dataset(*file, flags_group_prefix + "/rfi_fpga_count",
-                              {num_file_f, num_file_t_}, {"frequency", "time"},
-                              HighFive::create_datatype<uint64_t>(), props_empty);
-        _check_create_dataset(*file, flags_group_prefix + "/rfi_only_fpga_count",
-                              {num_file_f, num_file_t_}, {"frequency", "time"},
-                              HighFive::create_datatype<uint64_t>(), props_empty);
-        _check_create_dataset(*file, flags_group_prefix + "/pl_fpga_count",
-                              {num_file_f, num_file_t_}, {"frequency", "time"},
-                              HighFive::create_datatype<uint64_t>(), props_empty);
-        _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {num_file_f, num_file_t_},
-                              {"frequency", "time"}, HighFive::create_datatype<float>(),
-                              props_empty);
-        _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {num_file_f, num_file_t_},
-                              {"frequency", "time"}, HighFive::create_datatype<float>(),
-                              props_empty);
-        _check_create_dataset(*file, flags_group_prefix + "/frac_rfi_only",
-                              {num_file_f, num_file_t_}, {"frequency", "time"},
-                              HighFive::create_datatype<float>(), props_empty);
-        _check_create_dataset(*file, flags_group_prefix + "/frac_pl", {num_file_f, num_file_t_},
-                              {"frequency", "time"}, HighFive::create_datatype<float>(),
-                              props_empty);
+        if (per_product) {
+            _check_create_dataset(*file, flags_group_prefix + "/valid_fpga_count_per_product",
+                                  {num_file_f, fv.num_prod, num_file_t_},
+                                  {"frequency", "product", "time"},
+                                  HighFive::create_datatype<uint64_t>(), props_empty);
+        } else {
+            _check_create_dataset(*file, flags_group_prefix + "/valid_fpga_count",
+                                  {num_file_f, num_file_t_}, {"frequency", "time"},
+                                  HighFive::create_datatype<uint64_t>(), props_empty);
+            _check_create_dataset(*file, flags_group_prefix + "/rfi_fpga_count",
+                                  {num_file_f, num_file_t_}, {"frequency", "time"},
+                                  HighFive::create_datatype<uint64_t>(), props_empty);
+            _check_create_dataset(*file, flags_group_prefix + "/rfi_only_fpga_count",
+                                  {num_file_f, num_file_t_}, {"frequency", "time"},
+                                  HighFive::create_datatype<uint64_t>(), props_empty);
+            _check_create_dataset(*file, flags_group_prefix + "/pl_fpga_count",
+                                  {num_file_f, num_file_t_}, {"frequency", "time"},
+                                  HighFive::create_datatype<uint64_t>(), props_empty);
+            _check_create_dataset(*file, flags_group_prefix + "/frac_lost",
+                                  {num_file_f, num_file_t_}, {"frequency", "time"},
+                                  HighFive::create_datatype<float>(), props_empty);
+            _check_create_dataset(*file, flags_group_prefix + "/frac_rfi",
+                                  {num_file_f, num_file_t_}, {"frequency", "time"},
+                                  HighFive::create_datatype<float>(), props_empty);
+            _check_create_dataset(*file, flags_group_prefix + "/frac_rfi_only",
+                                  {num_file_f, num_file_t_}, {"frequency", "time"},
+                                  HighFive::create_datatype<float>(), props_empty);
+            _check_create_dataset(*file, flags_group_prefix + "/frac_pl", {num_file_f, num_file_t_},
+                                  {"frequency", "time"}, HighFive::create_datatype<float>(),
+                                  props_empty);
+        }
 
         _check_create_dataset(*file, "/fpga_start_tick", {num_file_t_}, {"time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
@@ -689,7 +705,8 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     baseband_gain_file(std::move(baseband_gain_file_)),
     baseband_gain_update_idx(baseband_gain_update_idx_),
     partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
-    n2_layout(fv.n2_layout), last_update_wall_s(open_wall_s_),
+    n2_layout(fv.n2_layout), support_mode(fv.support_mode),
+    product_list(fv._desc->get_product_list()), last_update_wall_s(open_wall_s_),
     h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
 
     if (!h5_file) {
@@ -708,14 +725,18 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     evec.assign(num_ev * num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
     erms.assign(num_file_f * num_file_t, 0.0f);
     gain.assign(num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
-    valid_fpga_count.assign(num_file_f * num_file_t, 0);
-    rfi_fpga_count.assign(num_file_f * num_file_t, 0);
-    rfi_only_fpga_count.assign(num_file_f * num_file_t, 0);
-    pl_fpga_count.assign(num_file_f * num_file_t, 0);
-    frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
-    frac_rfi.assign(num_file_f * num_file_t, 0.0f);
-    frac_rfi_only.assign(num_file_f * num_file_t, 0.0f);
-    frac_pl.assign(num_file_f * num_file_t, 0.0f);
+    if (support_mode == kotekan::N2SupportMode::PerProductV1) {
+        valid_fpga_count_per_product.assign(num_prod * num_file_f * num_file_t, 0);
+    } else {
+        valid_fpga_count.assign(num_file_f * num_file_t, 0);
+        rfi_fpga_count.assign(num_file_f * num_file_t, 0);
+        rfi_only_fpga_count.assign(num_file_f * num_file_t, 0);
+        pl_fpga_count.assign(num_file_f * num_file_t, 0);
+        frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
+        frac_rfi.assign(num_file_f * num_file_t, 0.0f);
+        frac_rfi_only.assign(num_file_f * num_file_t, 0.0f);
+        frac_pl.assign(num_file_f * num_file_t, 0.0f);
+    }
     flags.assign(num_elements * num_file_f * num_file_t, 0.0f);
     radiometer_chi2.assign(num_file_f * num_file_t * 3, 0.0f);
 
@@ -784,6 +805,29 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     std::string structural_checks_failures = "";
     auto add_failure = [&](std::string msg) { structural_checks_failures += "\n  - " + msg; };
 
+    if (support_mode != fv.support_mode)
+        add_failure("support_mode changed within output file");
+    if (support_mode == kotekan::N2SupportMode::PerProductV1) {
+        const auto& incoming_products = fv._desc->get_product_list();
+        if (incoming_products.size() != product_list.size()
+            || !std::equal(incoming_products.begin(), incoming_products.end(), product_list.begin(),
+                           [](const auto& a, const auto& b) {
+                               return a.input_a == b.input_a && a.input_b == b.input_b;
+                           }))
+            add_failure("per-product identities/order changed within output file");
+        if (fv.valid_fpga_ticks.size() != num_prod) {
+            add_failure("per-product valid_fpga_ticks length differs from num_prod");
+        } else {
+            for (size_t p = 0; p < num_prod; ++p) {
+                if (fv.valid_fpga_ticks[p] > fv.frame_length_fpga_ticks)
+                    add_failure(fmt::format("valid_fpga_ticks[{}] exceeds frame interval", p));
+            }
+        }
+        if (fv.n_valid_fpga_ticks != 0 || fv.n_pl_fpga_ticks != 0 || fv.n_rfi_fpga_ticks != 0
+            || fv.n_rfi_only_fpga_ticks != 0)
+            add_failure(
+                "per-product input requires unavailable scalar support counters to be zero");
+    }
     if (n2_layout != fv.n2_layout)
         add_failure(fmt::format("n2_layout: {} != {}", N2Layout_to_string(n2_layout),
                                 N2Layout_to_string(fv.n2_layout)));
@@ -879,6 +923,8 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     for (size_t p = 0; p < num_prod; ++p) {
         vis[idx_fpt(f_index, p, t_index)] = fv.vis[p];
         vis_weight[idx_fpt(f_index, p, t_index)] = fv.weight[p];
+        if (support_mode == kotekan::N2SupportMode::PerProductV1)
+            valid_fpga_count_per_product[idx_fpt(f_index, p, t_index)] = fv.valid_fpga_ticks[p];
     }
     // Store eval + evec
     for (size_t e = 0; e < num_ev; ++e) {
@@ -895,24 +941,27 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     }
     for (size_t i = 0; i < 3; i++)
         radiometer_chi2[3 * idx_ft(f_index, t_index) + i] = fv.radiometer_chi2[i];
-    // Store fraction lost and RFI
-    const uint64_t frame_len_ticks = fv.frame_length_fpga_ticks;
-    const uint64_t n_valid = fv.n_valid_fpga_ticks;
-    const uint64_t n_rfi = fv.n_rfi_fpga_ticks;
-    const uint64_t n_rfi_only = fv.n_rfi_only_fpga_ticks;
-    const uint64_t n_pl = fv.n_pl_fpga_ticks;
-    valid_fpga_count[idx_ft(f_index, t_index)] = n_valid;
-    rfi_fpga_count[idx_ft(f_index, t_index)] = n_rfi;
-    rfi_only_fpga_count[idx_ft(f_index, t_index)] = n_rfi_only;
-    pl_fpga_count[idx_ft(f_index, t_index)] = n_pl;
-    frac_lost[idx_ft(f_index, t_index)] =
-        (frame_len_ticks > 0) ? (1.0f - float(n_valid) / float(frame_len_ticks)) : 0.0f;
-    frac_rfi[idx_ft(f_index, t_index)] =
-        (frame_len_ticks > 0) ? (float(n_rfi) / float(frame_len_ticks)) : 0.0f;
-    frac_rfi_only[idx_ft(f_index, t_index)] =
-        (frame_len_ticks > 0) ? (float(n_rfi_only) / float(frame_len_ticks)) : 0.0f;
-    frac_pl[idx_ft(f_index, t_index)] =
-        (frame_len_ticks > 0) ? (float(n_pl) / float(frame_len_ticks)) : 0.0f;
+    // Scalar loss counts and fractions are unavailable in per-product mode.
+    if (support_mode == kotekan::N2SupportMode::Scalar) {
+        // Store fraction lost and RFI
+        const uint64_t frame_len_ticks = fv.frame_length_fpga_ticks;
+        const uint64_t n_valid = fv.n_valid_fpga_ticks;
+        const uint64_t n_rfi = fv.n_rfi_fpga_ticks;
+        const uint64_t n_rfi_only = fv.n_rfi_only_fpga_ticks;
+        const uint64_t n_pl = fv.n_pl_fpga_ticks;
+        valid_fpga_count[idx_ft(f_index, t_index)] = n_valid;
+        rfi_fpga_count[idx_ft(f_index, t_index)] = n_rfi;
+        rfi_only_fpga_count[idx_ft(f_index, t_index)] = n_rfi_only;
+        pl_fpga_count[idx_ft(f_index, t_index)] = n_pl;
+        frac_lost[idx_ft(f_index, t_index)] =
+            (frame_len_ticks > 0) ? (1.0f - float(n_valid) / float(frame_len_ticks)) : 0.0f;
+        frac_rfi[idx_ft(f_index, t_index)] =
+            (frame_len_ticks > 0) ? (float(n_rfi) / float(frame_len_ticks)) : 0.0f;
+        frac_rfi_only[idx_ft(f_index, t_index)] =
+            (frame_len_ticks > 0) ? (float(n_rfi_only) / float(frame_len_ticks)) : 0.0f;
+        frac_pl[idx_ft(f_index, t_index)] =
+            (frame_len_ticks > 0) ? (float(n_pl) / float(frame_len_ticks)) : 0.0f;
+    }
     // Store per-time metadata
     fpga_start_tick[t_index] = fv.fpga_start_tick;
     frame_length_fpga_ticks[t_index] = fv.frame_length_fpga_ticks;
@@ -1048,30 +1097,36 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/erms")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(erms.data());
-        h5_file->getDataSet(flags_group_prefix + "/valid_fpga_count")
-            .select({0, 0}, {num_file_f, num_file_t})
-            .write_raw(valid_fpga_count.data());
-        h5_file->getDataSet(flags_group_prefix + "/rfi_fpga_count")
-            .select({0, 0}, {num_file_f, num_file_t})
-            .write_raw(rfi_fpga_count.data());
-        h5_file->getDataSet(flags_group_prefix + "/rfi_only_fpga_count")
-            .select({0, 0}, {num_file_f, num_file_t})
-            .write_raw(rfi_only_fpga_count.data());
-        h5_file->getDataSet(flags_group_prefix + "/pl_fpga_count")
-            .select({0, 0}, {num_file_f, num_file_t})
-            .write_raw(pl_fpga_count.data());
-        h5_file->getDataSet(flags_group_prefix + "/frac_lost")
-            .select({0, 0}, {num_file_f, num_file_t})
-            .write_raw(frac_lost.data());
-        h5_file->getDataSet(flags_group_prefix + "/frac_rfi")
-            .select({0, 0}, {num_file_f, num_file_t})
-            .write_raw(frac_rfi.data());
-        h5_file->getDataSet(flags_group_prefix + "/frac_rfi_only")
-            .select({0, 0}, {num_file_f, num_file_t})
-            .write_raw(frac_rfi_only.data());
-        h5_file->getDataSet(flags_group_prefix + "/frac_pl")
-            .select({0, 0}, {num_file_f, num_file_t})
-            .write_raw(frac_pl.data());
+        if (support_mode == kotekan::N2SupportMode::PerProductV1) {
+            h5_file->getDataSet(flags_group_prefix + "/valid_fpga_count_per_product")
+                .select({0, 0, 0}, {num_file_f, num_prod, num_file_t})
+                .write_raw(valid_fpga_count_per_product.data());
+        } else {
+            h5_file->getDataSet(flags_group_prefix + "/valid_fpga_count")
+                .select({0, 0}, {num_file_f, num_file_t})
+                .write_raw(valid_fpga_count.data());
+            h5_file->getDataSet(flags_group_prefix + "/rfi_fpga_count")
+                .select({0, 0}, {num_file_f, num_file_t})
+                .write_raw(rfi_fpga_count.data());
+            h5_file->getDataSet(flags_group_prefix + "/rfi_only_fpga_count")
+                .select({0, 0}, {num_file_f, num_file_t})
+                .write_raw(rfi_only_fpga_count.data());
+            h5_file->getDataSet(flags_group_prefix + "/pl_fpga_count")
+                .select({0, 0}, {num_file_f, num_file_t})
+                .write_raw(pl_fpga_count.data());
+            h5_file->getDataSet(flags_group_prefix + "/frac_lost")
+                .select({0, 0}, {num_file_f, num_file_t})
+                .write_raw(frac_lost.data());
+            h5_file->getDataSet(flags_group_prefix + "/frac_rfi")
+                .select({0, 0}, {num_file_f, num_file_t})
+                .write_raw(frac_rfi.data());
+            h5_file->getDataSet(flags_group_prefix + "/frac_rfi_only")
+                .select({0, 0}, {num_file_f, num_file_t})
+                .write_raw(frac_rfi_only.data());
+            h5_file->getDataSet(flags_group_prefix + "/frac_pl")
+                .select({0, 0}, {num_file_f, num_file_t})
+                .write_raw(frac_pl.data());
+        }
         h5_file->getDataSet("/gain")
             .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
             .write_raw(gain.data());
@@ -1156,6 +1211,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
     _max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
     _input_order(config.get<ElementOrder>(unique_name, "input_order")),
+    _support_mode(config.get_default<std::string>(unique_name, "support_mode", "scalar")),
     _buffer(get_buffer("in_buf")),
     _write_time_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_write_time_seconds", unique_name)),
@@ -1178,6 +1234,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _unfinalized_file_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_unfinalized_file", unique_name, {"abs_file_idx", "partial_path"})) {
 
+    if (_support_mode != "scalar" && _support_mode != "per_product_v1")
+        FATAL_ERROR("hdf5N2Write: unsupported support_mode {}", _support_mode);
     _buffer->register_consumer(unique_name);
 
     // Resolve baseband_gain_host_info once: it names a config path (e.g.
@@ -1474,7 +1532,10 @@ void hdf5N2Write::main_thread() {
             break;
 
         // Fetch metadata and create N2 frame view
-        N2FrameView fv(_buffer, in_frame_id);
+        N2FrameView fv(_buffer, in_frame_id, _support_mode == "per_product_v1");
+        if ((fv.support_mode == kotekan::N2SupportMode::PerProductV1)
+            != (_support_mode == "per_product_v1"))
+            FATAL_ERROR("hdf5N2Write: support_mode must match the input descriptor");
 
         // Start timer
         const double frame_recv_time = mono_time_s();
