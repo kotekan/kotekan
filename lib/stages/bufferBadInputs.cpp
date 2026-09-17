@@ -11,6 +11,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "visUtil.hpp"           // for current_time, double_to_ts, ts_to_double
 
+#include <algorithm>  // for count, fill
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
 #include <json.hpp>   // for json
@@ -94,6 +95,23 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
         }
     }
 
+    // Baseline mask from the telescope: elements outside the main array (CHORD's Fake
+    // dishes and RFI antennas) are never valid inputs and stay masked independent of the
+    // posted bad-inputs list. A telescope with no dish table configured reports every
+    // element outside the array; that means the table is absent, not that every feed is
+    // bad, so the baseline is then left all-good.
+    baseline_mask = std::vector<uint8_t>(num_elements, 1u);
+    for (size_t el = 0; el < num_elements; ++el) {
+        const station_id_t st_id = tel.element_index_to_station_id(el, output_order);
+        if (tel.station_id_to_main_array_grid_indices(st_id)[0] < 0)
+            baseline_mask[el] = 0;
+    }
+    if (std::count(baseline_mask.begin(), baseline_mask.end(), 1u) == 0) {
+        WARN("The telescope reports no main array element, so its dish table is not "
+             "configured; masking no element on dish type.");
+        std::fill(baseline_mask.begin(), baseline_mask.end(), 1u);
+    }
+
     // Listen for bad input list updates. The initial config block arrives
     // through this callback during subscribe().
     std::string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
@@ -167,8 +185,9 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
         return true;
     }
 
-    // Build the update's mask (1 == good) in output_order.
-    std::vector<uint8_t> mask(num_elements, 1u);
+    // Build the update's mask (1 == good) in output_order, on top of the dishes the
+    // telescope says are never valid inputs.
+    std::vector<uint8_t> mask(baseline_mask);
     for (int element : bad_inputs)
         mask[reorder[element]] = 0;
 
@@ -199,6 +218,9 @@ void bufferBadInputs::main_thread() {
     // voltage frame -- so that is where this stream has to start as well. Read it from the clock
     // buffer's first frame, as setBBBeams does; without a clock buffer the stream starts at zero.
     int64_t first_fpga_seq_num = 0;
+    // The clock buffer's coarse frequencies, stamped on every mask frame so that a consumer
+    // fed by several instances can tell their streams apart.
+    std::vector<int> coarse_freq;
     if (in_clock_buf) {
         if (in_clock_buf->wait_for_full_frame(unique_name, 0) == nullptr)
             return;
@@ -208,6 +230,8 @@ void bufferBadInputs::main_thread() {
                         "sequence numbers.",
                         in_clock_buf->buffer_name);
         first_fpga_seq_num = clock_meta->get_fpga_seq_num();
+        if (clock_meta->has_coarse_freq())
+            coarse_freq = clock_meta->get_coarse_freq();
         in_clock_buf->mark_frame_empty(unique_name, 0);
         // Only the first frame is needed; stop being a consumer so that the producer does not
         // wait for us on the frames after it.
@@ -230,10 +254,10 @@ void bufferBadInputs::main_thread() {
         // pending update.
         const timespec ref_ts = double_to_ts(current_time());
 
-        // Compose the frame from the active update; all-good until one applies.
+        // Compose the frame from the active update; the bare baseline until one applies.
         const std::shared_ptr<const badInputUpdate> update = updates.get_update(ref_ts).second;
         for (size_t el = 0; el < num_elements; ++el)
-            out_frame[el] = update != nullptr ? update->mask[el] : 1u;
+            out_frame[el] = update != nullptr ? update->mask[el] : baseline_mask[el];
 
         // Set metadata and release
         out_buf->allocate_new_metadata_object(frame_id);
@@ -243,6 +267,8 @@ void bufferBadInputs::main_thread() {
         // `bf_mask_lifetime_in_samples` FPGA samples.
         meta->set_fpga_seq_num(first_fpga_seq_num + frame_index * bf_mask_lifetime_in_samples);
         meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
+        if (!coarse_freq.empty())
+            meta->set_coarse_freq(coarse_freq);
         out_buf->mark_frame_full(unique_name, frame_id);
     }
 }
