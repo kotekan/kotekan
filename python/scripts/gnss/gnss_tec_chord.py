@@ -141,6 +141,14 @@ def main():
     ap.add_argument("--min-arc-s", type=float, default=300.0)
     ap.add_argument("--max-gap-s", type=float, default=30.0,
                     help="a hole longer than this ends a joint arc even if fadr_arc held")
+    ap.add_argument("--step-m", type=float, default=0.05,
+                    help="a 1-s change of the geometry-free combination beyond this is not sky "
+                         "(the 1-s noise is ~3 mm, the ionosphere moves ~1 mm/s at most): the arc "
+                         "is split there. 0 disables.")
+    ap.add_argument("--max-noise-tecu", type=float, default=0.5,
+                    help="drop an arc whose 1-s measurement noise exceeds this: a replica parked "
+                         "on noise still exports a fleet ADR, and it reads as tens of TECU of "
+                         "'ionosphere'. 0 disables.")
     ap.add_argument("--out", default="/tmp/tec_chord")
     ap.add_argument("--no-plot", action="store_true")
     args = ap.parse_args()
@@ -170,7 +178,27 @@ def main():
         A, B = data[a], data[b]
         nseg = 0
         for prn in sorted(set(A) & set(B)):
-            for k, seg in enumerate(joint_arcs(A, B, prn, max_gap_hops)):
+            segs = joint_arcs(A, B, prn, max_gap_hops)
+            if args.step_m > 0:
+                # ⚠️ SPLIT AT STEPS. A weak satellite's fleet ADR takes half-cycle-class jumps
+                # that fadr_arc does not flag (the arc is the accumulator's continuity, not its
+                # sanity); one such jump inside a 30-min arc dominates every statistic of it.
+                # A 1-s change of the combination larger than --step-m in EITHER band is a
+                # jump, and the arc is cut there (the same rule fixtures/tec_wander/
+                # triple_closure.py uses to census them).
+                cut = []
+                for seg in segs:
+                    cur = [seg[0]]
+                    for h0, h in zip(seg, seg[1:]):
+                        d = ((la * A[prn][h][0] - lb * B[prn][h][0])
+                             - (la * A[prn][h0][0] - lb * B[prn][h0][0]))
+                        if abs(d) > args.step_m and (A[prn][h][2] - A[prn][h0][2]) < 3.0 * GRID_SECONDS:
+                            cut.append(cur)
+                            cur = []
+                        cur.append(h)
+                    cut.append(cur)
+                segs = cut
+            for k, seg in enumerate(segs):
                 span = A[prn][seg[-1]][2] - A[prn][seg[0]][2]
                 if span < args.min_arc_s or len(seg) < 30:
                     continue
@@ -193,6 +221,8 @@ def main():
                     lo, hi = max(0, i - 15), min(len(gf), i + 16)
                     res.append(gf[i] - sum(gf[lo:hi]) / (hi - lo))
                 noise = math.sqrt(sum(x * x for x in res) / len(res))
+                if args.max_noise_tecu > 0 and noise > args.max_noise_tecu:
+                    continue                           # a replica on noise, not a satellite
                 for h, x in zip(seg, gf):
                     _, _, t_, az_, el_ = A[prn][h]
                     rows.append((t_, sysid, prn, nseg, x,
