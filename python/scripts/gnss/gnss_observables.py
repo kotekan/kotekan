@@ -384,7 +384,12 @@ def main():
                 if not (t_epoch > 1.0e9):
                     continue                   # no capture anchor yet: an untagged row is junk
                 v = None
-                if eph:
+                # ⚠️ WHILE THE BROKER SAYS THE EPOCH IS SUSPECT, THERE IS NO GEOMETRY. A row
+                # evaluated at a wrong instant is not degraded geometry, it is a different
+                # satellite's position wearing this PRN's number (measured: 71% of strong
+                # satellites "below the horizon"). The row's own measurements are kept.
+                epoch_suspect = bool(r.get("time_base_suspect"))
+                if eph and not epoch_suspect:
                     try:
                         v = predict_all(eph, args.lat, args.lon, args.alt,
                                         datetime.fromtimestamp(t_epoch, tz=timezone.utc),
@@ -564,6 +569,7 @@ def main():
                     "prompt_lock": r.get("prompt_lock"),
                     "prompt_rayleigh": r.get("prompt_rayleigh"),
                     "fleet_present": r.get("fleet_present"),
+                    "time_base_suspect": epoch_suspect,   # geometry withheld when true
                     "coh_src": r.get("coh_src"),
                     "cn0_inc_dbhz": cn0_inc_dbhz(r.get("amplitude"),
                                                  r.get("unbiased_amplitude"), t_rec),

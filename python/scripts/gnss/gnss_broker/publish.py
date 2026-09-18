@@ -16,6 +16,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .transport import _now
+from . import timebase
 
 # Prompt-intensity Rayleigh bar for the blind-tracking flag (task #47). A prompt tap holding a
 # coherent signal has s4_raw well below 1; a tap on noise is Rayleigh, s4_raw ~= 1.
@@ -452,6 +453,9 @@ class FleetPublisher:
                 # fleet-only extras: not in the combiner schema, ignored by older consumers
                 "fleet_q": v["q"], "fleet_q_floor": v["q_floor"],
                 "fleet_p_over_noise": ratio, "fleet_present": bool(v["present"]),
+                # telescope-wide: the epoch the nodes serve is suspect (gnss_broker/timebase).
+                # Consumers withhold geometry while this is set; the row's own numbers stand.
+                "time_base_suspect": timebase.VERDICT.suspect,
                 # ⚠️ WHICH GATE SAID SO. present alone is a boolean with five different
                 # provenances -- "q+p:probes", the "prompt" peer fallback, "UNANCHORED",
                 # "deep", and the displaced re-admissions -- and an A/B on any of them is
@@ -875,6 +879,8 @@ class FleetPublisher:
             rows.append(row)
         meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
                 "present": sum(1 for r in rows if r["fleet_present"]),
+                "time_base_suspect": timebase.VERDICT.suspect,
+                "time_base_dt_s": timebase.VERDICT.dt_s,
                 "utc": _now()}
         with self._lock:
             st = self._chains.get(chain)

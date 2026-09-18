@@ -22,6 +22,7 @@ import statistics
 
 from gnss_broker.transport import _now, _post, _log, _log_rl
 from gnss_broker.sky import brdc_predict, visible_prns
+from gnss_broker import timebase
 
 
 def stage_almanac_predict(ctx):
@@ -195,6 +196,11 @@ def stage_almanac_predict(ctx):
         resid = [ctx.best[p][1] - ctx.pred[p][0] for p in ctx.best
                  if p in ctx.pred and ctx.t0 - ctx.det_fresh.get(p, (None, 0.0))[1] < ctx.args.bias_det_fresh_s
                  and ctx.best[p][0] >= ctx.args.bias_min_snr]
+        # ── TIME BASE: the same residuals, read for their SPREAD rather than their median.
+        # The median is the clock bias; a spread that one epoch shift explains is a stale
+        # sample-0 epoch on the nodes -- the fault that filed a day of data onto the wrong
+        # day, twice, with nothing here complaining (gnss_broker/timebase.py).
+        timebase.observe(ctx, _log_rl)
         # BAND-SHARED bias fusion (--clock-bias-siblings) is read BEFORE the min-sats
         # gate, and the gate counts LOCAL + SIBLING sats.
         #
