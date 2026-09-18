@@ -152,6 +152,21 @@ satellite's at once and the DLL re-establishes all of them from zero.
 
 ## Closed with a full write-up — the three worth reading before touching these areas
 
+### #138 — the fleet ADR random-walked on weak satellites: clustered half-cycle slips through the re-seat ✅ FIXED 09-18
+The geometry-free TEC was 0.06 TECU at 1 s and useless by the hour. A triple-frequency closure on
+the archive (`fixtures/tec_wander/`) showed the instrument itself random-walking from 1 s
+(0.018 cycle/√s per band), heavier on weak satellites, common to every instance of a chain. Live
+telemetry captures replayed through `fleetadr.fold_record` found it: a weak satellite's instances
+slip their squared-phasor sums by exactly ±0.5 cycle, and they slip TOGETHER (E25: 134
+slip-seconds in 10 min, 38 pairs, 8 triples, 3 quads, one six). The fold re-seated slippers to a
+median taken with the slipped values in the sorted list, which moved that median by their ranks;
+the re-seated copies then held the ranks, so each cluster left a permanent step. Strong satellites
+(no slips) were flat at 0.16 TECU over 300 s throughout. Fixed `b444d2926`: repair each slip by
+whole half-cycles before the median. Replayed: E25 1.41 → 0.50 TECU at 300 s, E05 1.06 → 0.77,
+strong satellites bit-identical. Ruled out with numbers: multipath/elevation, carrier-trim
+leakage, the median combine, per-instance Doppler. Open: weak satellites remain ~3× worse than
+strong ones (sub-threshold excursions), and why slips cluster.
+
 ### #135 — the obs writer latched the F-engine sample-0 epoch once, and filed three days of data onto one ✅ FIXED 09-17
 `gnss_observables.py` read `/telescope/time0_ns` at startup and stamped every row `t = frame0 +
 hop/HPS` for the life of the process. An F-engine re-base restarts the hop counter without moving
