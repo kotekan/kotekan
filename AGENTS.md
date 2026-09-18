@@ -40,7 +40,7 @@ Before running tests, a quick pass for syntactic or logical issues is appropriat
 
 Before pushing a final code version, it can be a good idea to run (only) select, relevant tests. The full test suite does not need to be run every time, and individual commits within a PR do not all need to pass tests.
 
-Python tooling exists in /opt/kotekan_env; activate it, or put its bin directory first on PATH.
+Python tooling may exist in /opt/kotekan_env; if so, activate it, or put its bin directory first on PATH.
 
 There are many boost tests in tests/boost, which are built with -DWITH_BOOST_TESTS=ON and run with run_boost_tests.sh.
 

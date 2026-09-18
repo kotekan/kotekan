@@ -1,10 +1,11 @@
 
-# Documentation
+# Contributing
 
-Compiled docs are available at https://kotekan.readthedocs.io/.
+If you are contributing, or even just a kotekan user, please have a look at the documentation! You can find an [https://kotekan.readthedocs.io/latest/overview.html](overview of kotekan) and [https://kotekan.readthedocs.io/latest/overview_theory_of_operation.html](theory of operation) in the documentaton, which is available at [https://kotekan.readthedocs.io/](kotekan.readthedocs.io).
 
 [![Documentation Status](https://app.readthedocs.org/projects/kotekan/badge/)](https://kotekan.readthedocs.io/)
 
+In general, it is asked that contributors aim for changes that address operational needs, rather than routine code maintenance. It is also helpful for developers to ask for an adversarial review from an LLM before submitting a pull request for human review. If using an LLM, PR descriptions should be written for human reviewers with less exposition. An AGENTS.md file exists in this repository to support these goals.
 
 # Repository layout
 
@@ -18,7 +19,7 @@ Compiled docs are available at https://kotekan.readthedocs.io/.
 - `lib/testing/` - synthetic data and checking stages used by test configs (built with `-DWITH_TESTS=ON`).
 - `julia/` - Julia CUDA kernel generator (see its README).
 - `config/` - pipeline configs. Top level and `fengine/` hold production and telescope configs (`.yaml`, or `.j2` Jinja templates); `ci-tests/` holds the configs run by CI; `examples/` holds minimal starters.
-- `python/kotekan/` - Python helpers for reading kotekan buffers and configs; used by the pytests.
+- `python/kotekan/` - Python helpers for reading and running kotekan buffers and configs; used by the pytests.
 - `tests/` - pytests, `boost/` unit tests, and `ci-scripts/` standalone shell tests.
 - `docs/sphinx/`, `docs/doxygen/` - user and developer guides, API reference.
 - `tools/` - lint scripts, docker images, debugging helpers.
