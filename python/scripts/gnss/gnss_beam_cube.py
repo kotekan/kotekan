@@ -769,7 +769,15 @@ def cmd_export(args):
                          "s1 float32[n_sub*n_elem*n_pix]"}
         with open(os.path.join(args.outdir, "cube_%s.json" % day), "w") as fh:
             json.dump(man, fh)
+        # array_epoch rides in the index, not just the per-day manifest: the page picks days
+        # from the index and THE BROWSER SUMS THEM. Summing across an epoch boundary co-adds
+        # two different instruments -- after 2026-09-14 19:08Z, three dishes have their feed
+        # planes the other way round -- and the result is not an error, just a quietly wrong
+        # picture. A null here means a master built before the field existed, which is NOT a
+        # promise that it is one epoch: cube_20260914 straddled the rewire and read null.
         index.append({"day": day, "bytes": total,
+                      "array_epoch": meta.get("array_epoch"),
+                      "array_epoch_key": meta.get("array_epoch_key"),
                       "chains": [c["chain"] for c in chains]})
         print("%s -> %s/cube_%s_<chain>.bin (%.1f MB, nside %d, %d chain(s), %s)"
               % (src, args.outdir, day, total / 1e6, nside, len(chains),
