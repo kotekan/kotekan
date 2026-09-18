@@ -88,6 +88,13 @@ static std::optional<size_t> hash_file_contents(const std::string& path) {
 /// restClient and write the response body verbatim to `dest_path`. FATAL on any
 /// fetch/write error. Intended for small files (bytes land in a std::string
 /// before hitting disk).
+///
+/// NOTE: `kotekan::BasebandGains` (lib/stages/basebandGains.hpp) is the shared
+/// implementation of this fetch and of the /digital_gains copy below, and is what
+/// hdf5FileWrite uses. This stage still has its own copy because N2FileData takes the
+/// resolved gains path by value rather than the gains object; migrating it onto the
+/// shared class would mean reworking that constructor and its flush-time hash check.
+/// Keep the two in step until then.
 static void download_to_file(const std::string& host, std::uint16_t port, const std::string& path,
                              const std::string& dest_path) {
     INFO_NON_OO("hdf5N2Write: downloading digital gains file from http://{}:{}{}", host, port,

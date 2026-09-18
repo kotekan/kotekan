@@ -34,6 +34,7 @@ add_library(
     $<${HDF5_CONDITION}:hdf5FileReadSingleFile.cpp>
     $<${HDF5_CONDITION}:hdf5FileWrite.cpp>
     $<${HDF5_CONDITION}:hdf5Files.cpp>
+    $<${HDF5_CONDITION}:basebandGains.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp

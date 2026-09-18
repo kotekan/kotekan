@@ -9,6 +9,7 @@
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"              // for Symbol
 #include "Telescope.hpp"           // for Telescope
+#include "basebandGains.hpp"       // for BasebandGains
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chordMetadata.hpp"       // for chordMetadata, metadata_is_chord, get_c...
@@ -130,7 +131,20 @@ class hdf5FileWrite : public kotekan::Stage {
     const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
     const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
 
+    /// Raw CRS board order along the frame's element axis: output slot `i` holds the board
+    /// whose raw source_id is `crs_board_remap[i]` (the same list the DPDK capture worker
+    /// takes). Needed because the FPGA indexes its digital gains by raw board, so the gains
+    /// have to be permuted by this to reach dish order. Empty means identity.
+    const std::vector<uint32_t> crs_board_remap =
+        config.get_default<std::vector<uint32_t>>(unique_name, "crs_board_remap", {});
+
     Buffer* const buffer;
+
+    /// The FPGA digital gains archive, copied into every output file as /digital_gains so
+    /// that the recorded voltages can be interpreted without a separate lookup.
+    kotekan::BasebandGains gains{config, unique_name, "hdf5FileWrite"};
+    /// The archive is fetched at most once, when the first output file is created.
+    bool gains_resolved = false;
 
     // The directory the files are actually written into. Equal to base_dir unless
     // timestamp_subdir is set, in which case resolve_output_dir() appends the capture
@@ -230,7 +244,7 @@ public:
 
     // Create the HDF5 file.
     // Determine the file name, and create the containing directory if necessary.
-    std::shared_ptr<File> create_file(const std::int64_t frame_counter) const {
+    std::shared_ptr<File> create_file(const std::int64_t frame_counter) {
         // Define file name
         std::ostringstream buf;
         buf << output_dir << "/";
@@ -274,7 +288,80 @@ public:
         // Use SWMR. This keeps HDF5 files readable even if they were not properly closed.
         // You may have to use `h5clear -s FILENAME.h5` to "tell" the file that the writer does not
         // exist any more.
-        return std::make_unique<File>(full_path, File::Truncate | File::WriteSWMR, fprops, fapl);
+        auto file =
+            std::make_shared<File>(full_path, File::Truncate | File::WriteSWMR, fprops, fapl);
+
+        // Fetch the gains archive once the capture directory exists, then copy it into this
+        // file. The cache name carries the stage's unique name so that two writers sharing a
+        // base_dir (one per NUMA domain, say) do not fetch onto each other.
+        if (gains.configured()) {
+            if (!gains_resolved) {
+                gains_resolved = true;
+                const std::string partial_dir = output_dir + "/.partial";
+                make_directory(partial_dir);
+                std::string stem = "baseband_gains" + unique_name;
+                std::replace(stem.begin(), stem.end(), '/', '_');
+                gains.resolve_local_copy(partial_dir, stem);
+            }
+            gains.copy_into(*file);
+        }
+
+        return file;
+    }
+
+    /// Channels a single CRS board contributes to the element axis.
+    static constexpr std::size_t channels_per_board = 8;
+
+    /**
+     * @brief Archive input index for each (polarization, dish) slot of the frame.
+     *
+     * The FPGA indexes its digital gains by CRS hardware position, `board * 8 + channel`,
+     * which is not the order the frame's element axis is in. A frame element
+     * `e = p * num_dishes + d` sits in output slot `e / 8`, channel `e % 8`, and
+     * `crs_board_remap` says which raw board that slot holds -- so (p, d)'s gains live at
+     * `crs_board_remap[e / 8] * 8 + e % 8`.
+     *
+     * @param dish_index  Telescope dish held by each position on the dish axis, or empty
+     *                    when the axis holds the leading `num_dishes` in fiducial order.
+     * @return Row-major [P][D] archive input indices, or empty if the mapping cannot be
+     *         formed (no remap configured for a frame that needs one, or a bad remap).
+     */
+    std::vector<int> gain_input_for_frame(const std::vector<int>& dish_index) const {
+        const std::size_t n_dish_out = dish_index.empty() ? num_dishes : dish_index.size();
+        const std::size_t n_elem = (std::size_t)num_dishes * num_polarizations;
+        const std::size_t n_boards = n_elem / channels_per_board;
+
+        // An empty remap is the identity the capture worker also defaults to.
+        std::vector<uint32_t> remap = crs_board_remap;
+        if (remap.empty()) {
+            remap.resize(n_boards);
+            for (std::size_t i = 0; i < n_boards; i++)
+                remap[i] = (uint32_t)i;
+        } else if (remap.size() != n_boards) {
+            WARN("hdf5FileWrite: crs_board_remap has {:d} entries but the element axis needs "
+                 "{:d} boards ({:d} elements / {:d} channels); not writing dish-ordered gains",
+                 remap.size(), n_boards, n_elem, channels_per_board);
+            return {};
+        }
+
+        std::vector<int> gain_input;
+        gain_input.reserve(num_polarizations * n_dish_out);
+        for (std::uint64_t p = 0; p < num_polarizations; p++) {
+            for (std::size_t k = 0; k < n_dish_out; k++) {
+                const std::size_t dish = dish_index.empty() ? k : (std::size_t)dish_index[k];
+                const std::size_t e = p * num_dishes + dish;
+                if (e >= n_elem) {
+                    WARN("hdf5FileWrite: (pol {:d}, dish {:d}) is element {:d}, past the {:d} "
+                         "element axis; not writing dish-ordered gains",
+                         p, dish, e, n_elem);
+                    return {};
+                }
+                const std::size_t slot = e / channels_per_board;
+                gain_input.push_back(
+                    (int)(remap.at(slot) * channels_per_board + e % channels_per_board));
+            }
+        }
+        return gain_input;
     }
 
     /**
@@ -284,14 +371,19 @@ public:
      *               attached
      */
     template<typename Node>
-    void write_telescope_metadata(Node& node) {
+    void write_telescope_metadata(Node& node, const std::vector<int>* dish_index = nullptr) {
         const auto& telescope = Telescope::instance();
+
+        // When the frame holds a subset (or a reordering) of the telescope's dishes, the
+        // per-dish attributes must describe the dishes that are actually present, in the
+        // order the dish axis holds them, rather than the leading `num_dishes` of the array.
+        const std::uint64_t num_dishes_present = dish_index ? dish_index->size() : num_dishes;
 
         node.createAttribute("telescope_name", telescope.get_name());
         node.createAttribute("seq_length_nsec", telescope.seq_length_nsec());
         node.createAttribute("gps_time_enabled", telescope.gps_time_enabled());
         node.createAttribute("num_polarizations", num_polarizations);
-        node.createAttribute("num_dishes", num_dishes);
+        node.createAttribute("num_dishes", num_dishes_present);
         node.createAttribute("itrs_lat_deg", telescope.get_itrs_lat_deg());
         node.createAttribute("itrs_lon_deg", telescope.get_itrs_lon_deg());
         node.createAttribute("grid_orientation", telescope.get_grid_orientation());
@@ -301,13 +393,65 @@ public:
         node.createAttribute("feed_separation_y_m", telescope.get_feed_separation_y_m());
 
         // Flatten to proper HDF5 multi-dimensional arrays
-        const auto& dish_grid_indices =
+        auto dish_grid_indices =
             telescope.get_main_array_grid_indices(num_dishes, telescope.fiducial_element_order());
+        auto feed_positions_m =
+            telescope.get_feed_positions_m(num_dishes, telescope.fiducial_element_order());
+
+        if (dish_index) {
+            // `dish_index` indexes the telescope's full dish table, so gather rather than
+            // truncate. An out-of-range index would mean the producing stage and the
+            // configured num_dishes disagree, which is a config error worth failing on.
+            decltype(dish_grid_indices) subset_grid;
+            decltype(feed_positions_m) subset_pos;
+            subset_grid.reserve(dish_index->size());
+            subset_pos.reserve(dish_index->size());
+            for (const int d : *dish_index) {
+                if (d < 0 || (std::uint64_t)d >= num_dishes) {
+                    throw std::runtime_error(fmt::format(
+                        fmt("hdf5FileWrite: frame metadata dish_index entry {:d} is outside the "
+                            "configured num_dishes ({:d})"),
+                        d, num_dishes));
+                }
+                subset_grid.push_back(dish_grid_indices.at(d));
+                subset_pos.push_back(feed_positions_m.at(d));
+            }
+            dish_grid_indices = std::move(subset_grid);
+            feed_positions_m = std::move(subset_pos);
+
+            // Which of the telescope's dishes each position on the dish axis holds.
+            node.createAttribute("dish_index", *dish_index);
+        }
+
+        // Human-readable dish labels (e.g. "A1", "RFI_B3") from the telescope's
+        // `dish_inputs` table. These cannot be derived from the grid indices downstream --
+        // the RFI monitor antennas are named RFI_*, not by grid position -- so record them
+        // alongside the geometry. Only CHORDTelescope carries the table; for any other
+        // telescope the attribute is simply absent.
+        if (const auto* chord = dynamic_cast<const CHORDTelescope*>(&telescope)) {
+            dishInputFields dish_inputs;
+            chord->fill_input_maps(dish_inputs);
+
+            std::vector<std::string> dish_labels;
+            dish_labels.reserve(num_dishes_present);
+            for (std::uint64_t i = 0; i < num_dishes_present; i++) {
+                const std::size_t d = dish_index ? (std::size_t)dish_index->at(i) : (std::size_t)i;
+                if (d >= dish_inputs.label.size())
+                    break;
+                dish_labels.push_back(dish_inputs.label.at(d));
+            }
+
+            if (dish_labels.size() == num_dishes_present)
+                node.createAttribute("dish_label", dish_labels);
+            else
+                WARN("hdf5FileWrite: the telescope's dish_inputs table has {:d} labels, too "
+                     "few for the {:d} dishes on the dish axis; omitting dish_label",
+                     dish_inputs.label.size(), num_dishes_present);
+        }
+
         node.createAttribute("dish_grid_indices", DataSpace({dish_grid_indices.size(), 2}),
                              create_datatype<std::int64_t>())
             .write_raw(reinterpret_cast<const std::int64_t*>(dish_grid_indices.data()));
-        const auto& feed_positions_m =
-            telescope.get_feed_positions_m(num_dishes, telescope.fiducial_element_order());
         node.createAttribute("feed_positions_m", DataSpace({feed_positions_m.size(), 3}),
                              create_datatype<double>())
             .write_raw(reinterpret_cast<const double*>(feed_positions_m.data()));
@@ -444,7 +588,24 @@ public:
                 dataset.createAttribute("rfi_frame_excision_thresholds",
                                         meta->get_rfi_frame_excision_thresholds());
 
-            write_telescope_metadata(dataset);
+            const std::vector<int> dish_index =
+                meta->has_dish_index() ? meta->get_dish_index() : std::vector<int>();
+            write_telescope_metadata(dataset, meta->has_dish_index() ? &dish_index : nullptr);
+
+            // Alongside the /digital_gains group: a digest of the archive, on the dataset
+            // where tools merging several writers' files look for their attributes.
+            if (const auto gains_hash = gains.content_hash())
+                dataset.createAttribute("digital_gains_hash", *gains_hash);
+
+            // The verbatim archive is indexed by CRS hardware position and spans the whole
+            // array; add a copy permuted into this file's own dish order and reduced to the
+            // dishes it holds. Must happen before SWMR starts, which freezes the layout.
+            if (gains.configured()) {
+                const auto gain_input = gain_input_for_frame(dish_index);
+                if (!gain_input.empty())
+                    gains.write_by_dish(file, gain_input, num_polarizations,
+                                        gain_input.size() / num_polarizations);
+            }
 
             if (create_single_file || frames_per_file > 1) {
                 // Start SWMR mode on files that stay open across frames

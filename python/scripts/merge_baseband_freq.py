@@ -7,6 +7,17 @@ contain the frequencies that node processed (see
 ``[T, F, P, D]`` with the time axis growing as frames are appended, and the
 ``coarse_freq`` attribute naming the channels held in the file.
 
+Dish subsets are preserved: when the dumps carry a ``dish_index`` attribute (written
+by ``hdf5FileWrite`` when a stage such as ``SubsetBaseband`` subset the dish axis),
+every source must name the same dishes, and the attribute is copied to the merged
+file alongside the ``num_dishes``, ``dish_grid_indices`` and ``feed_positions_m``
+attributes describing them.
+
+The FPGA digital gains archive is preserved the same way: ``hdf5FileWrite`` copies it
+into each dump verbatim as ``/digital_gains``, every source must carry the same one
+(checked via ``digital_gains_hash``), and the group is copied once into the merged
+file.
+
 This tool takes the dumps from several nodes, checks that they describe the same
 observation and the same time samples, and writes one file whose frequency axis
 is the union of all of them.  Files belonging to one node are also concatenated
@@ -63,6 +74,20 @@ CRITICAL_ATTRS = (
     "dim_scalings",
     "num_polarizations",
     "num_dishes",
+    # Which of the telescope's dishes sit on the dish axis, written by hdf5FileWrite when a
+    # stage upstream subset or reordered that axis (SubsetBaseband).  Nodes differ only in
+    # frequency, so a mismatch -- or the attribute appearing in only some files -- means the
+    # dumps do not hold the same dishes and must not be merged.  Copied through to the
+    # merged file, since it is not in DERIVED_ATTRS.
+    "dish_index",
+    # The dishes' names ("A1", "RFI_B3"), written alongside dish_index.  Same reasoning:
+    # nodes differ only in frequency, so disagreeing names mean the dumps do not describe
+    # the same dishes.
+    "dish_label",
+    # Digest of the FPGA digital gains archive that hdf5FileWrite copied into each file as
+    # /digital_gains.  All nodes fetch the same archive, so a mismatch means they recorded
+    # against different gains and the merged file could not describe both.
+    "digital_gains_hash",
     "seq_length_nsec",
     "time_downsampling_fpga",
     "chord_metadata_version",
@@ -134,6 +159,21 @@ def parse_int(text):
     return int(s, 16) if s.lower().startswith("0x") else int(s)
 
 
+def summarize_ints(values):
+    """Compact ``0-15, 56-63`` summary of a sorted integer sequence."""
+
+    v = np.asarray(values).ravel().astype(np.int64)
+    if v.size == 0:
+        return "(none)"
+    parts, start = [], v[0]
+    for prev, cur in zip(v[:-1], v[1:]):
+        if cur != prev + 1:
+            parts.append(f"{start}-{prev}" if prev > start else f"{start}")
+            start = cur
+    parts.append(f"{start}-{v[-1]}" if v[-1] > start else f"{start}")
+    return ", ".join(parts)
+
+
 def attrs_equal(a, b):
     if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
         a, b = np.asarray(a), np.asarray(b)
@@ -155,7 +195,9 @@ def as_selection(indices):
     if indices.size == 1:
         return slice(int(indices[0]), int(indices[0]) + 1)
     step = int(indices[1] - indices[0])
-    if step > 0 and np.array_equal(indices, np.arange(indices.size) * step + indices[0]):
+    if step > 0 and np.array_equal(
+        indices, np.arange(indices.size) * step + indices[0]
+    ):
         return slice(int(indices[0]), int(indices[-1]) + 1, step)
     return indices
 
@@ -264,6 +306,22 @@ def scan_file(path, dataset=None):
                 )
             )
 
+        # `dish_index` names the dishes held on the dish axis, so its length must match that
+        # axis.  Find the axis by name: [T, F, P, D] is the convention, not a guarantee.
+        if "dish_index" in attrs:
+            dim_names = [
+                n.decode() if isinstance(n, bytes) else str(n)
+                for n in np.asarray(attrs.get("dim_names", [])).ravel()
+            ]
+            dish_axis = dim_names.index("D") if "D" in dim_names else dset.ndim - 1
+            n_dish_attr = np.asarray(attrs["dish_index"], dtype=np.int64).size
+            if n_dish_attr != dset.shape[dish_axis]:
+                raise MergeError(
+                    "{}: dish_index has {} entries but the dish axis (axis {}) is {}".format(
+                        path, n_dish_attr, dish_axis, dset.shape[dish_axis]
+                    )
+                )
+
         n_freq = coarse_freq.size
         upchan_index = np.asarray(
             attrs.get("freq_upchan_index", np.zeros(n_freq)), dtype=np.int64
@@ -277,7 +335,9 @@ def scan_file(path, dataset=None):
         # were downsampled without recording it.
         seq_step = int(attrs.get("time_downsampling_fpga", 0))
         if seq_step <= 0:
-            scalings = np.asarray(attrs.get("dim_scalings", [1]), dtype=np.int64).ravel()
+            scalings = np.asarray(
+                attrs.get("dim_scalings", [1]), dtype=np.int64
+            ).ravel()
             seq_step = int(scalings[0]) if scalings.size else 1
         if seq_step <= 0:
             seq_step = 1
@@ -295,7 +355,9 @@ def scan_file(path, dataset=None):
             seq_start=int(attrs["fpga_seq_num"]),
             seq_step=seq_step,
             seq_length_nsec=int(attrs.get("seq_length_nsec", 0)),
-            time_ns=int(attrs["fpga_seq_time_nsec"]) if "fpga_seq_time_nsec" in attrs else None,
+            time_ns=int(attrs["fpga_seq_time_nsec"])
+            if "fpga_seq_time_nsec" in attrs
+            else None,
             attrs=attrs,
         )
 
@@ -416,7 +478,9 @@ def check_consistency(sources, strict, log):
     for src in sources[1:]:
         if src.dtype != ref.dtype:
             problems.append(
-                "{}: dtype {} != {} ({})".format(src.path, src.dtype, ref.dtype, ref.path)
+                "{}: dtype {} != {} ({})".format(
+                    src.path, src.dtype, ref.dtype, ref.path
+                )
             )
         if src.trailing != ref.trailing:
             problems.append(
@@ -434,11 +498,15 @@ def check_consistency(sources, strict, log):
             if key in ref.attrs and key in src.attrs:
                 if not attrs_equal(ref.attrs[key], src.attrs[key]):
                     problems.append(
-                        "{}: attribute '{}' differs from {}".format(src.path, key, ref.path)
+                        "{}: attribute '{}' differs from {}".format(
+                            src.path, key, ref.path
+                        )
                     )
             elif (key in ref.attrs) != (key in src.attrs):
                 problems.append(
-                    "{}: attribute '{}' present in only one of the files".format(src.path, key)
+                    "{}: attribute '{}' present in only one of the files".format(
+                        src.path, key
+                    )
                 )
 
     if problems:
@@ -470,7 +538,9 @@ def build_freq_axis(groups, order, allow_duplicates, log):
     # A channel is identified by (coarse channel, upchannelisation index) so that
     # upchannelised data with repeated coarse ids still sorts correctly.
     pairs = np.stack([coarse, upchan_idx], axis=1)
-    _, first_idx, counts = np.unique(pairs, axis=0, return_index=True, return_counts=True)
+    _, first_idx, counts = np.unique(
+        pairs, axis=0, return_index=True, return_counts=True
+    )
     if np.any(counts > 1):
         dup = pairs[np.sort(first_idx[counts > 1])][:5]
         msg = "{} channels are claimed by more than one node, e.g. {}".format(
@@ -499,16 +569,34 @@ def build_freq_axis(groups, order, allow_duplicates, log):
     out_upchan_idx[dst] = upchan_idx
     out_upchan_fac[dst] = upchan_fac
 
-    # Report holes in the band so a missing node is obvious.
+    # Report holes in the band so a missing node is obvious.  The nodes need not cover
+    # a contiguous run of coarse channels: a pathfinder capture records every Nth
+    # channel, so contiguity would flag thousands of "missing" channels that were never
+    # meant to be there.  Take the tightest spacing the nodes actually achieve as the
+    # grid, and warn only about gaps in *that* grid -- a dropped node leaves a gap of
+    # several strides, which still shows up.
     if np.all(out_upchan_fac == 1):
         span = np.unique(out_coarse)
-        expected = np.arange(span[0], span[-1] + 1)
+        diffs = np.diff(span)
+        stride = int(diffs.min()) if diffs.size else 1
+        expected = np.arange(span[0], span[-1] + 1, stride)
         missing = np.setdiff1d(expected, span)
         if missing.size:
             log(
-                "warning: {} coarse channels between {} and {} are not covered by any "
-                "node (e.g. {})".format(
-                    missing.size, span[0], span[-1], missing[:8].tolist()
+                "warning: {} of the {} channels on the stride-{} grid between {} and {} "
+                "are not covered by any node (e.g. {})".format(
+                    missing.size,
+                    expected.size,
+                    stride,
+                    span[0],
+                    span[-1],
+                    missing[:8].tolist(),
+                )
+            )
+        elif stride > 1:
+            log(
+                "band: {} channels, stride {}, from {} to {} (no gaps)".format(
+                    span.size, stride, span[0], span[-1]
                 )
             )
 
@@ -544,7 +632,9 @@ def check_time_alignment(groups, seq_step, tolerance_ns, log):
             if ref is None:
                 ref = src
                 continue
-            expected = ref.time_ns + (src.seq_start - ref.seq_start) * ref.seq_length_nsec
+            expected = (
+                ref.time_ns + (src.seq_start - ref.seq_start) * ref.seq_length_nsec
+            )
             delta = src.time_ns - expected
             if abs(delta) > tolerance_ns:
                 raise MergeError(
@@ -735,7 +825,9 @@ def create_output_dataset(fout, name, shape, dtype, chunks, fill, compression, l
         raise MergeError(
             "could not create the output dataset with --compression {}: {}\n"
             "The HDF5 filter is probably unavailable for writing in this "
-            "environment; try --compression none or --compression zstd.".format(label, exc)
+            "environment; try --compression none or --compression zstd.".format(
+                label, exc
+            )
         )
 
 
@@ -746,7 +838,9 @@ def write_attributes(dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, ar
         if key not in DERIVED_ATTRS:
             dset.attrs[key] = value
 
-    dset.attrs["coarse_freq"] = coarse.astype(np.asarray(ref.attrs["coarse_freq"]).dtype)
+    dset.attrs["coarse_freq"] = coarse.astype(
+        np.asarray(ref.attrs["coarse_freq"]).dtype
+    )
     if "freq_upchan_factor" in ref.attrs:
         dset.attrs["freq_upchan_factor"] = upchan_fac.astype(
             np.asarray(ref.attrs["freq_upchan_factor"]).dtype
@@ -776,13 +870,46 @@ def write_attributes(dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, ar
         )
 
 
+def copy_digital_gains(fout, ref, log):
+    """Copy the FPGA digital gains archive from the reference source into the merged file.
+
+    ``hdf5FileWrite`` copies the archive into every output file verbatim as
+    ``/digital_gains``: it spans the full band and every input, and its own
+    ``index_map/freq`` says which FPGA channel each gain belongs to.  So there is nothing
+    to merge along frequency -- every source holds the same copy, which
+    ``digital_gains_hash`` in CRITICAL_ATTRS has already confirmed -- and taking the
+    reference file's copy is enough.
+    """
+
+    with h5py.File(ref.path, "r") as fin:
+        if "digital_gains" not in fin:
+            return
+        fout.copy(fin["digital_gains"], "digital_gains")
+        # File-level provenance attributes.  The source path is per-writer (each stage
+        # caches the fetched archive under its own name), so it is informational only.
+        for key in ("digital_gains_source_file", "digital_gains_hash"):
+            if key in fin.attrs:
+                fout.attrs[key] = fin.attrs[key]
+    log("copied /digital_gains from {}".format(os.path.basename(ref.path)))
+
+
 # ---------------------------------------------------------------------------
 # merge implementations
 # ---------------------------------------------------------------------------
 
 
 def merge_copy(
-    groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan_fac, out_path, args, log
+    groups,
+    ref,
+    out_shape,
+    seq0,
+    seq_step,
+    coarse,
+    upchan_idx,
+    upchan_fac,
+    out_path,
+    args,
+    log,
 ):
     """Stream the sources into a new dataset, one time block at a time."""
 
@@ -818,7 +945,10 @@ def merge_copy(
     block_rows = int(max(1, min(block_rows, out_shape[0])))
     task_rows = int(max(1, min(task_rows, block_rows)))
 
-    resident = block_rows * bytes_per_row + max(args.read_jobs, 1) * task_rows * scratch_per_row
+    resident = (
+        block_rows * bytes_per_row
+        + max(args.read_jobs, 1) * task_rows * scratch_per_row
+    )
     if resident > args.memory_limit:
         log(
             "warning: one time sample needs {}, more than the {} limit".format(
@@ -842,7 +972,10 @@ def merge_copy(
     # Any row not covered by every node has to be initialised before the copies.
     needs_fill = bool(
         any(g.gaps for g in groups)
-        or any(g.seq_start > seq0 or g.seq_end < seq0 + out_shape[0] * seq_step for g in groups)
+        or any(
+            g.seq_start > seq0 or g.seq_end < seq0 + out_shape[0] * seq_step
+            for g in groups
+        )
     )
 
     compression = compression_options(args.compression, args.compression_level)
@@ -859,10 +992,14 @@ def merge_copy(
             shm = shared_memory.SharedMemory(
                 create=True, size=block_rows * bytes_per_row
             )
-            buf = np.ndarray((block_rows, n_freq_out) + ref.trailing, ref.dtype, buffer=shm.buf)
+            buf = np.ndarray(
+                (block_rows, n_freq_out) + ref.trailing, ref.dtype, buffer=shm.buf
+            )
         else:
             buf = np.empty((block_rows, n_freq_out) + ref.trailing, dtype=ref.dtype)
-            scratch = np.empty((task_rows, max_group_freq) + ref.trailing, dtype=ref.dtype)
+            scratch = np.empty(
+                (task_rows, max_group_freq) + ref.trailing, dtype=ref.dtype
+            )
 
         with h5py.File(out_path, "w", rdcc_nbytes=args.output_cache) as fout:
             dset = create_output_dataset(
@@ -875,7 +1012,10 @@ def merge_copy(
                 compression,
                 args.compression,
             )
-            write_attributes(dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, args)
+            write_attributes(
+                dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, args
+            )
+            copy_digital_gains(fout, ref, log)
 
             if args.read_jobs:
                 executor = get_context("spawn").Pool(
@@ -915,7 +1055,13 @@ def merge_copy(
                         for off in range(0, count, task_rows):
                             take = min(task_rows, count - off)
                             tasks.append(
-                                (path, src_row + off, take, dst_row + off, group.dst_sel)
+                                (
+                                    path,
+                                    src_row + off,
+                                    take,
+                                    dst_row + off,
+                                    group.dst_sel,
+                                )
                             )
 
                 if executor is not None:
@@ -960,13 +1106,25 @@ def merge_copy(
     elapsed = time.monotonic() - started
     log(
         "wrote {} in {:.1f}s ({:.0f} MiB/s)".format(
-            human_bytes(total_bytes), elapsed, total_bytes / (1 << 20) / max(elapsed, 1e-6)
+            human_bytes(total_bytes),
+            elapsed,
+            total_bytes / (1 << 20) / max(elapsed, 1e-6),
         )
     )
 
 
 def merge_vds(
-    groups, ref, out_shape, seq0, seq_step, coarse, upchan_idx, upchan_fac, out_path, args, log
+    groups,
+    ref,
+    out_shape,
+    seq0,
+    seq_step,
+    coarse,
+    upchan_idx,
+    upchan_fac,
+    out_path,
+    args,
+    log,
 ):
     """Map the sources into one virtual dataset without copying any data."""
 
@@ -985,7 +1143,9 @@ def merge_vds(
         ):
             src = by_path[path]
             stored = os.path.relpath(path, out_dir) if args.vds_relative else path
-            vsource = h5py.VirtualSource(stored, ref.dataset, shape=src.shape, dtype=src.dtype)
+            vsource = h5py.VirtualSource(
+                stored, ref.dataset, shape=src.shape, dtype=src.dtype
+            )
             if isinstance(group.dst_sel, slice):
                 layout[dst_row : dst_row + count, group.dst_sel] = vsource[
                     src_row : src_row + count
@@ -1002,6 +1162,7 @@ def merge_vds(
     with h5py.File(out_path, "w") as fout:
         dset = fout.create_virtual_dataset(args.dataset_name, layout, fillvalue=fill)
         write_attributes(dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, args)
+        copy_digital_gains(fout, ref, log)
         dset.attrs["merge_mode"] = "virtual"
 
     log(
@@ -1111,13 +1272,19 @@ def build_parser():
     parser.add_argument("inputs", nargs="+", help="source files, globs or directories")
     parser.add_argument("-o", "--output", required=True, help="merged output file")
     parser.add_argument(
-        "--pattern", default="*.h5", help="glob used inside input directories (default: *.h5)"
+        "--pattern",
+        default="*.h5",
+        help="glob used inside input directories (default: *.h5)",
     )
     parser.add_argument(
-        "--dataset", default=None, help="source dataset name (default: the only root dataset)"
+        "--dataset",
+        default=None,
+        help="source dataset name (default: the only root dataset)",
     )
     parser.add_argument(
-        "--dataset-name", default=None, help="dataset name in the output (default: same as input)"
+        "--dataset-name",
+        default=None,
+        help="dataset name in the output (default: same as input)",
     )
 
     parser.add_argument(
@@ -1134,7 +1301,9 @@ def build_parser():
         help="keep only times covered by every node, or the full span with gaps "
         "filled (default: intersection)",
     )
-    parser.add_argument("--start-seq", type=int, default=None, help="first FPGA tick to merge")
+    parser.add_argument(
+        "--start-seq", type=int, default=None, help="first FPGA tick to merge"
+    )
     parser.add_argument(
         "--end-seq", type=int, default=None, help="stop before this FPGA tick"
     )
@@ -1199,7 +1368,9 @@ def build_parser():
         default="chunked",
         help="output dataset layout (default: chunked)",
     )
-    parser.add_argument("--chunk-time", type=int, default=None, help="output chunk time extent")
+    parser.add_argument(
+        "--chunk-time", type=int, default=None, help="output chunk time extent"
+    )
     parser.add_argument(
         "--chunk-freq", type=int, default=None, help="output chunk frequency extent"
     )
@@ -1217,7 +1388,10 @@ def build_parser():
         "but needs an encoding-capable plugin (default: none, much faster)",
     )
     parser.add_argument(
-        "--compression-level", type=int, default=9, help="compression level (default: 9)"
+        "--compression-level",
+        type=int,
+        default=9,
+        help="compression level (default: 9)",
     )
     parser.add_argument(
         "--fill-value",
@@ -1265,7 +1439,9 @@ def build_parser():
         metavar="N",
         help="after merging, compare N random time samples against the sources",
     )
-    parser.add_argument("--verify-seed", type=int, default=0, help="seed for --verify sampling")
+    parser.add_argument(
+        "--verify-seed", type=int, default=0, help="seed for --verify sampling"
+    )
     parser.add_argument(
         "--verify-only",
         action="store_true",
@@ -1274,7 +1450,9 @@ def build_parser():
     parser.add_argument(
         "-n", "--dry-run", action="store_true", help="run all checks but write nothing"
     )
-    parser.add_argument("-q", "--quiet", action="store_true", help="only report warnings")
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", help="only report warnings"
+    )
     return parser
 
 
@@ -1318,15 +1496,28 @@ def main(argv=None):
     for group in groups:
         check_group_time_continuity(group, log)
 
-    # SubsetBaseband does not record which element blocks it kept, so matching
-    # trailing dimensions is the only cross-node check available for them.
+    # hdf5FileWrite records the dishes on the dish axis as `dish_index` whenever a
+    # stage upstream subset that axis, and CRITICAL_ATTRS already requires every node
+    # to agree on it -- so when it is present there is nothing left to assume.  Files
+    # written before that attribute existed fall back to matching trailing dimensions,
+    # which is the only cross-node check available for them.
     if len(groups) > 1 and sources[0].trailing:
-        log(
-            "note: the dish/polarisation subset is not recorded in the files; the merge "
-            "assumes every node wrote the same {} element layout".format(
-                "x".join(str(d) for d in sources[0].trailing)
+        layout = "x".join(str(d) for d in sources[0].trailing)
+        dish_index = sources[0].attrs.get("dish_index")
+        if dish_index is None:
+            log(
+                "note: the dish/polarisation subset is not recorded in these files; the "
+                "merge assumes every node wrote the same {} element layout".format(
+                    layout
+                )
             )
-        )
+        else:
+            dishes = np.asarray(dish_index).ravel().astype(np.int64)
+            log(
+                "element layout {}: dishes {} (identical across nodes)".format(
+                    layout, summarize_ints(dishes)
+                )
+            )
 
     ref = groups[0].files[0]
     seq_step = ref.seq_step
@@ -1345,7 +1536,11 @@ def main(argv=None):
     for group in groups:
         log(
             "  {:<44} {:>5} chan  {:>4} file(s)  ticks {}..{}".format(
-                group.label, group.n_freq, len(group.files), group.seq_start, group.seq_end
+                group.label,
+                group.n_freq,
+                len(group.files),
+                group.seq_start,
+                group.seq_end,
             )
         )
     log(
@@ -1354,7 +1549,9 @@ def main(argv=None):
         )
     )
 
-    parts = plan_output_parts(args.output, out_shape, seq0, seq_step, split_rows, frame_rows)
+    parts = plan_output_parts(
+        args.output, out_shape, seq0, seq_step, split_rows, frame_rows
+    )
     source_set = set(paths)
     for path, _, _ in parts:
         if os.path.abspath(path) in source_set:

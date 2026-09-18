@@ -52,22 +52,35 @@
 # correlation frames needed to form one output N2 frame
 {% set n2k_frames_per_output = num_n2k_samples_to_accumulate // integrations_per_frame %}
 
-# element_blocks_subset: which 8-element blocks of the 128-element frame each SubsetBaseband
-# keeps.  Both NUMA domains record the same inputs, they differ only in frequency.
-{% set element_blocks_subset = [0, 1, 2, 3] %}
+# dish_blocks_subset: which 8-dish blocks of the 64-dish frame each SubsetBaseband keeps.
+# Both polarizations of every selected dish are copied, so this selects
+# dish_blocks_subset|length * 8 * 2 of the 128 elements.  Both NUMA domains record the same
+# inputs, they differ only in frequency.
+{% set dish_blocks_subset = [0, 1, 7] %}
 
-# Elements surviving the subset, and the trailing extent of the subset buffers.
-# SubsetBaseband describes its output as [T, F, 2, num_elements_out/2] and fatally checks the
-# out_buf frame size against it, so these must be derived from element_blocks_subset rather
-# than hard coded.
-{% set num_subset_elements = element_blocks_subset|length * 8 %}
+# Dishes surviving the subset, and the trailing extent of the subset buffers.
+# SubsetBaseband describes its output as [T, F, 2, num_subset_dishes] and fatally checks the
+# out_buf frame size against it, so this must be derived from dish_blocks_subset rather than
+# hard coded.
+{% set num_subset_dishes = dish_blocks_subset|length * 8 %}
+
+# Subset frame size and buffer depth.  Derived rather than written out so that the figures
+# quoted in the comments below track dish_blocks_subset instead of going stale.
+{% set subset_frame_mib = samples_per_data_set * num_local_freq * 2 * num_subset_dishes // 1048576 %}
+{% set subset_buffer_depth = 20 %}
+# Each subset frame is {{ subset_frame_mib }} MiB, so each of the two subset buffers holds
+# {{ subset_buffer_depth }} x {{ subset_frame_mib }} MiB = {{ (subset_buffer_depth * subset_frame_mib / 1024) | round(2) }} GiB and absorbs ~{{ subset_buffer_depth * 42 }} ms of hdf5FileWrite
+# stalls (frames arrive every ~42 ms).  The depth stays at {{ subset_buffer_depth }} now that both
+# polarizations are copied: the frame size, and hence the write rate, both doubled, so the
+# stall tolerance is worth more than it was, and a few GiB per NUMA domain is negligible on
+# this host.
 
 # num_capture_frames: DPDK frames to record before the capture stops.
 # The pipeline is 1:1 from the network input buffer through to hdf5FileWrite, so this is also
-# the number of frames written out (~42 ms / ~96 MiB of subset data each).
+# the number of frames written out (~42 ms / {{ subset_frame_mib }} MiB of subset data each).
 # The DPDK threads exit once these frames have been handed off, leaving the rest of kotekan
 # running so the file writer can flush; the writer then shuts kotekan down.
-{% set num_capture_frames = 400 %}
+{% set num_capture_frames = 240 %}
 
 # RFI Detection Parameters
 {% set rfi_downsampling_factor = 256 %}
@@ -108,6 +121,15 @@ num_dishes: {{ num_dishes }}
 num_elements: num_polarizations * {{ num_dishes }}
 num_local_freq: {{ num_local_freq }}
 num_ev_to_calculate: 2
+
+# Which 8-dish blocks the capture keeps, and the raw CRS board order along the element
+# axis.  Both are global because more than one stage needs them and they must agree:
+# SubsetBaseband selects the dishes with dish_blocks_subset, the DPDK capture workers
+# place the boards with crs_board_remap, and hdf5FileWrite needs both to permute the FPGA
+# digital gains -- which the FPGA indexes by raw board -- into the dish order it writes.
+dish_blocks_subset: {{ dish_blocks_subset }}
+# So [2, ...], maps CRS board with source_id 2 to output location 0, and so on.
+crs_board_remap: [0, 2, 4, 6, 8, 10, 12, 15, 1, 3, 5, 7, 9, 11, 13, 14]
 
 # DPDK related parameters
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
@@ -156,15 +178,73 @@ telescope:
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
     dish_inputs: [
-        {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p1},
-        {dish_idx: 1, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p2},
-        {dish_idx: 2, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p1},
-        {dish_idx: 3, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p2},
-        {dish_idx: 4, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p1},
-        {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
+        {dish_idx:  0, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4},
+        {dish_idx:  1, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3},
+        {dish_idx:  2, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B2},
+        {dish_idx:  3, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B1},
+        {dish_idx:  4, grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A4},
+        {dish_idx:  5, grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A3},
+        {dish_idx:  6, grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A2},
+        {dish_idx:  7, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1},
+        {dish_idx:  8, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B8},
+        {dish_idx:  9, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B7},
+        {dish_idx: 10, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B6},
+        {dish_idx: 11, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B5},
+        {dish_idx: 12, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A8},
+        {dish_idx: 13, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7},
+        {dish_idx: 14, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6},
+        {dish_idx: 15, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A5},
+        {dish_idx: 16, grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D4},
+        {dish_idx: 17, grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D3},
+        {dish_idx: 18, grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D2},
+        {dish_idx: 19, grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D1},
+        {dish_idx: 20, grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C4},
+        {dish_idx: 21, grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C3},
+        {dish_idx: 22, grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C2},
+        {dish_idx: 23, grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C1},
+        {dish_idx: 24, grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D8},
+        {dish_idx: 25, grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D7},
+        {dish_idx: 26, grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D6},
+        {dish_idx: 27, grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D5},
+        {dish_idx: 28, grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C8},
+        {dish_idx: 29, grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C7},
+        {dish_idx: 30, grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C6},
+        {dish_idx: 31, grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C5},
+        {dish_idx: 32, grid_x_idx: 3,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F4},
+        {dish_idx: 33, grid_x_idx: 2,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F3},
+        {dish_idx: 34, grid_x_idx: 1,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F2},
+        {dish_idx: 35, grid_x_idx: 0,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F1},
+        {dish_idx: 36, grid_x_idx: 3,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E4},
+        {dish_idx: 37, grid_x_idx: 2,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E3},
+        {dish_idx: 38, grid_x_idx: 1,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E2},
+        {dish_idx: 39, grid_x_idx: 0,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E1},
+        {dish_idx: 40, grid_x_idx: 7,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F8},
+        {dish_idx: 41, grid_x_idx: 6,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F7},
+        {dish_idx: 42, grid_x_idx: 5,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F6},
+        {dish_idx: 43, grid_x_idx: 4,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F5},
+        {dish_idx: 44, grid_x_idx: 7,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E8},
+        {dish_idx: 45, grid_x_idx: 6,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E7},
+        {dish_idx: 46, grid_x_idx: 5,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E6},
+        {dish_idx: 47, grid_x_idx: 4,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E5},
+        {dish_idx: 48, grid_x_idx: 3,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H4},
+        {dish_idx: 49, grid_x_idx: 2,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H3},
+        {dish_idx: 50, grid_x_idx: 1,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H2},
+        {dish_idx: 51, grid_x_idx: 0,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H1},
+        {dish_idx: 52, grid_x_idx: 3,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G4},
+        {dish_idx: 53, grid_x_idx: 2,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G3},
+        {dish_idx: 54, grid_x_idx: 1,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G2},
+        {dish_idx: 55, grid_x_idx: 0,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G1},
+        {dish_idx: 56, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_A1},
+        {dish_idx: 57, grid_x_idx: 6,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_A2},
+        {dish_idx: 58, grid_x_idx: 5,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_A3},
+        {dish_idx: 59, grid_x_idx: 4,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_A4},
+        {dish_idx: 60, grid_x_idx: 7,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_B1},
+        {dish_idx: 61, grid_x_idx: 6,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_B2},
+        {dish_idx: 62, grid_x_idx: 5,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_B3},
+        {dish_idx: 63, grid_x_idx: 4,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_B4}
     ]
 
-    require_gps: False
+    require_gps: True
     query_gps: True
     gps_host_info: /fpga_controller
     auto_correct_gps_week_rollover: True
@@ -233,22 +313,22 @@ host_voltage_buffer_1:
 
 
 # Subset Buffers, one per NUMA domain.
-# The extents must match what SubsetBaseband produces, which is why the trailing element
-# extent is derived from element_blocks_subset above.
+# The extents must match what SubsetBaseband produces, which is why the trailing dish
+# extent is derived from dish_blocks_subset above.
 subset_voltage_buffer_0:
     kotekan_buffer: ndarray
-    extents: [samples_per_data_set, num_local_freq, 2, {{ num_subset_elements // 2 }}]
+    extents: [samples_per_data_set, num_local_freq, 2, {{ num_subset_dishes }}]
     value_type: int4x2_swapped_withoffset
     numa_node: 0
-    num_frames: 20
+    num_frames: {{ subset_buffer_depth }}
     metadata_pool: main_pool
 
 subset_voltage_buffer_1:
     kotekan_buffer: ndarray
-    extents: [samples_per_data_set, num_local_freq, 2, {{ num_subset_elements // 2 }}]
+    extents: [samples_per_data_set, num_local_freq, 2, {{ num_subset_dishes }}]
     value_type: int4x2_swapped_withoffset
     numa_node: 1
-    num_frames: 20
+    num_frames: {{ subset_buffer_depth }}
     metadata_pool: main_pool
 
 packet_receipt_bitmap_buffers:
@@ -321,7 +401,7 @@ host_pl_mask_exp_buffer_1:
 ##  Packet capture from the F-engine ##
 dpdk:
     kotekan_stage: dpdkCore
-    log_level: info
+    log_level: INFO
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [5, 6, 7, 21, 22, 23] # [5,6,7]
     main_lcore_cpu: 4
@@ -347,8 +427,7 @@ dpdk:
     # timestamped folder. Unscheduled, their starts can differ by one frame (~42 ms), which
     # now and then rounds to two different folder names. Harmless for merging (point
     # merge_baseband_freq.py at /scratch/baseband and it recurses into both), but untidy.
-    capture_start_time_utc: "2026-08-11 13:28:00"
-    #
+    capture_start_time_utc: "2026-09-04 18:18:00"
     # capture_n_frames: stop after this many frames, 0 = record until kotekan is stopped.
     capture_n_frames: {{ num_capture_frames }}
     # List of PCIe addresses to block from DPDK use
@@ -411,6 +490,8 @@ dpdk:
           out_buf: network_input_buffer_1
           receipt_bitmap_buf: packet_receipt_bitmap_buffer_3
 
+missing_source_ids: [2, 3, 4, 5, 6, 10, 11, 12, 13, 14]
+
 # Combine packet receipt bitmaps and generate packet-loss masks
 process_packet_mask_0:
     kotekan_stage: ProcessPacketMask
@@ -423,8 +504,6 @@ process_packet_mask_0:
     rfi_mask_buf: host_rfi_RFImask_buffer
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
-    # Update this as we add more CRS (F-engine) boards 
-    missing_source_ids: [4,5,6,7,8,9,10,11,12,13,14,15]
 
 process_packet_mask_1:
     kotekan_stage: ProcessPacketMask
@@ -438,8 +517,6 @@ process_packet_mask_1:
     rfi_mask_buf: host_rfi_RFImask_buffer_1
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
-    # Update this as we add more CRS (F-engine) boards 
-    missing_source_ids: [4,5,6,7,8,9,10,11,12,13,14,15]
 
 # Transpose the voltage data from the network input buffer into a more convenient layout
 # for the GPU and baseband dump processing. 
@@ -489,11 +566,11 @@ subset_baseband_0:
     timesamples_per_frame: samples_per_data_set
     in_buf: host_voltage_buffer_0
     out_buf: subset_voltage_buffer_0
-    element_blocks_subset: {{ element_blocks_subset }}
     log_level: info
 
 # Same subset on the NUMA 1 half of the band. The default cpu_affinity is a NUMA 0 core
-# list, which would read this domain's ~96 MiB frames across the socket link, so pin the
+# list, which would pull this domain's 384 MiB input frames and push its {{ subset_frame_mib }} MiB output
+# frames across the socket link, so pin the
 # NUMA 1 stages to free cores on node 1 (16-31; 16-18 and 20-23 are taken by the packet
 # mask, transposes, frame service and DPDK lcores).
 subset_baseband_1:
@@ -502,7 +579,6 @@ subset_baseband_1:
     timesamples_per_frame: samples_per_data_set
     in_buf: host_voltage_buffer_1
     out_buf: subset_voltage_buffer_1
-    element_blocks_subset: {{ element_blocks_subset }}
     log_level: info
 
 # The two writers share a base_dir and a timestamped capture folder, so they need
@@ -523,10 +599,14 @@ hdf5_write_baseband_0:
     prefix_host_rank: true
     frequency_pool_rank: 0
     frequency_pool_size: 2
-    # Capture this many frames (~42 ms / ~96 MiB each), then shut down kotekan.
+    # Capture this many frames (~42 ms / {{ subset_frame_mib }} MiB each), then shut down kotekan.
     # Matches the DPDK stage's capture_n_frames, so the writer flushes everything the
     # capture produced and then exits.
     max_frames: {{ num_capture_frames }}
+    # Fetch the FPGA digital gains from the controller and copy them into every output file
+    # as /digital_gains, so the recorded voltages can be interpreted without a side lookup.
+    # Each writer caches its own copy under <capture dir>/.partial/, so the two do not race.
+    baseband_gain_host_info: /fpga_controller
     # Frames appended to each file before rolling over to a new one
     frames_per_file: 20
     # bitshuffle+zstd cannot keep up with the full subset data rate
@@ -544,6 +624,7 @@ hdf5_write_baseband_1:
     frequency_pool_rank: 1
     frequency_pool_size: 2
     max_frames: {{ num_capture_frames }}
+    baseband_gain_host_info: /fpga_controller
     frames_per_file: 20
     use_compression: false
     log_level: info

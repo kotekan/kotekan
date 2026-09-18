@@ -279,6 +279,25 @@ public:
         return metadata.at(jsonMetadata::COARSE_FREQ).template get<std::vector<int>>();
     }
 
+    /// Dish index -- which of the telescope's `dish_inputs` dishes each position on the
+    /// dish axis holds, in dish-axis order. Only carried in the json metadata, so it does
+    /// not survive serialize()/set_from_bytes(); it is for in-process consumers such as
+    /// the file writers.
+    void set_dish_index(const std::vector<int>& dish_index) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::DISH_INDEX] = dish_index;
+    }
+
+    bool has_dish_index() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::DISH_INDEX);
+    }
+
+    std::vector<int> get_dish_index() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::DISH_INDEX).template get<std::vector<int>>();
+    }
+
     // Stream IDs - the stream identifiers for packets received
     void set_stream_ids(const std::vector<uint32_t>& stream_ids) {
         std::lock_guard<std::mutex> lock(this->lock);

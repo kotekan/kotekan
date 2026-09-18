@@ -13,14 +13,19 @@
 #include <stdexcept>
 #include <visUtil.hpp>
 
+#if defined(__x86_64__) || defined(__i386__)
+#include <xmmintrin.h> // for _mm_sfence
+#endif
+
+#ifdef __AVX512F__
+#include <immintrin.h> // for __m512i, _mm512_stream_si512, _mm512_i64gather_epi64
+#endif
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(SubsetBaseband);
-
-// Element block size: copies always operate on 8-element (8-byte) blocks.
-static constexpr uint32_t ELEMENT_BLOCK = 8;
 
 STAGE_CONSTRUCTOR(SubsetBaseband) {
     in_buf = get_buffer("in_buf");
@@ -34,10 +39,20 @@ STAGE_CONSTRUCTOR(SubsetBaseband) {
     num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
     num_elements = config.get<uint32_t>(unique_name, "num_elements");
 
-    if (num_elements % ELEMENT_BLOCK != 0) {
-        throw std::runtime_error(
-            fmt::format(fmt("SubsetBaseband: num_elements ({:d}) must be a multiple of {:d}"),
-                        num_elements, ELEMENT_BLOCK));
+    // The element axis is [P][D] with P outer and always NUM_POL wide.
+    if (num_elements % NUM_POL != 0) {
+        throw std::runtime_error(fmt::format(
+            fmt("SubsetBaseband: num_elements ({:d}) must be a multiple of the polarization "
+                "count ({:d}); the element axis is [P][D]"),
+            num_elements, NUM_POL));
+    }
+    num_dishes_in = num_elements / NUM_POL;
+
+    if (num_dishes_in % DISH_BLOCK != 0) {
+        throw std::runtime_error(fmt::format(
+            fmt("SubsetBaseband: number of input dishes ({:d}, from num_elements {:d} / P {:d}) "
+                "must be a multiple of {:d}"),
+            num_dishes_in, num_elements, NUM_POL, DISH_BLOCK));
     }
 
     // Subset configuration (both lists are optional)
@@ -50,76 +65,267 @@ STAGE_CONSTRUCTOR(SubsetBaseband) {
         }
     }
 
-    const uint32_t num_blocks_in = num_elements / ELEMENT_BLOCK;
+    // `element_blocks_subset` selected 8-element blocks of the flat element axis, which is
+    // not the same set of bytes as any dish block. Fail loudly rather than silently
+    // defaulting to a full pass-through.
     if (config.exists(unique_name, "element_blocks_subset")) {
-        element_blocks_subset =
-            config.get<std::vector<int>>(unique_name, "element_blocks_subset");
-        if (element_blocks_subset.empty()) {
-            throw std::runtime_error(
-                "SubsetBaseband: element_blocks_subset, if provided, must be non-empty");
-        }
-        for (int b : element_blocks_subset) {
+        throw std::runtime_error(
+            "SubsetBaseband: element_blocks_subset is no longer supported; use "
+            "dish_blocks_subset, which selects 8-dish blocks and copies both polarizations "
+            "of each selected dish");
+    }
+
+    const uint32_t num_blocks_in = num_dishes_in / DISH_BLOCK;
+
+    // Resolved by value, not by presence: `Config::exists` checks only this stage's own
+    // block, while `get_default` walks up the config tree. `dish_blocks_subset` is shared
+    // with the DPDK capture workers and hdf5FileWrite (which needs it to put the FPGA gains
+    // into dish order), so it normally sits at global scope rather than on this stage. An
+    // empty list therefore means "all blocks", exactly as omitting the key does.
+    dish_blocks_subset =
+        config.get_default<std::vector<int>>(unique_name, "dish_blocks_subset", {});
+    if (!dish_blocks_subset.empty()) {
+        for (int b : dish_blocks_subset) {
             if (b < 0 || (uint32_t)b >= num_blocks_in) {
-                throw std::runtime_error(fmt::format(
-                    fmt("SubsetBaseband: element_blocks_subset entry {:d} out of range "
-                        "[0, {:d})"),
-                    b, num_blocks_in));
+                throw std::runtime_error(
+                    fmt::format(fmt("SubsetBaseband: dish_blocks_subset entry {:d} out of range "
+                                    "[0, {:d})"),
+                                b, num_blocks_in));
             }
         }
     } else {
-        // Default: pass through all element blocks in input order.
-        element_blocks_subset.resize(num_blocks_in);
+        // Default: pass through all dish blocks in input order.
+        dish_blocks_subset.resize(num_blocks_in);
         for (uint32_t i = 0; i < num_blocks_in; i++) {
-            element_blocks_subset[i] = (int)i;
+            dish_blocks_subset[i] = (int)i;
         }
     }
 
-    // Validate input buffer size: T * F * E bytes
-    const size_t expected_in_size =
-        (size_t)timesamples_per_frame * num_local_freq * num_elements;
+    // Validate input buffer size: T * F * P * D bytes
+    const size_t expected_in_size = (size_t)timesamples_per_frame * num_local_freq * num_elements;
     if (in_buf->frame_size != expected_in_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("SubsetBaseband: in_buf frame size ({:d}) does not match expected "
-                "size ({:d}) for shape [T={:d}][F={:d}][E={:d}]"),
-            in_buf->frame_size, expected_in_size, timesamples_per_frame, num_local_freq,
-            num_elements));
+        throw std::runtime_error(
+            fmt::format(fmt("SubsetBaseband: in_buf frame size ({:d}) does not match expected "
+                            "size ({:d}) for shape [T={:d}][F={:d}][P={:d}][D={:d}]"),
+                        in_buf->frame_size, expected_in_size, timesamples_per_frame, num_local_freq,
+                        NUM_POL, num_dishes_in));
     }
 
-    num_elements_out = (uint32_t)element_blocks_subset.size() * ELEMENT_BLOCK;
-    if (num_elements_out % 2 != 0) {
-        throw std::runtime_error(fmt::format(
-            fmt("SubsetBaseband: num_elements_out ({:d}) must be even"), num_elements_out));
-    }
+    num_dishes_out = (uint32_t)dish_blocks_subset.size() * DISH_BLOCK;
+    num_elements_out = NUM_POL * num_dishes_out;
 
-    // Pre-compute per-output-element source byte offsets (block_index * 8).
-    element_byte_offsets_.resize(element_blocks_subset.size());
-    for (size_t i = 0; i < element_blocks_subset.size(); i++) {
-        element_byte_offsets_[i] = element_blocks_subset[i] * (int32_t)ELEMENT_BLOCK;
-    }
+    plan_copy();
 
     initialized_ = false;
 
-    INFO("SubsetBaseband: Input shape  [T={:d}][F={:d}][E={:d}]", timesamples_per_frame,
-         num_local_freq, num_elements);
-    INFO("SubsetBaseband: Output shape [T={:d}][F_sub=<from intersection>][E_sub={:d}]",
-         timesamples_per_frame, num_elements_out);
+    INFO("SubsetBaseband: Input shape  [T={:d}][F={:d}][P={:d}][D={:d}]", timesamples_per_frame,
+         num_local_freq, NUM_POL, num_dishes_in);
+    INFO("SubsetBaseband: Output shape [T={:d}][F_sub=<from intersection>][P={:d}][D_sub={:d}]",
+         timesamples_per_frame, NUM_POL, num_dishes_out);
+    INFO("SubsetBaseband: {:d} dish block(s) coalesced into {:d} copy run(s) per (time, freq) "
+         "row of {:d} bytes",
+         dish_blocks_subset.size(), copy_runs_.size(), num_elements_out);
+    if (use_avx512_fast_path) {
+        INFO("SubsetBaseband: AVX512 fast path enabled ({:d} chunk(s) of {:d} bytes per row, "
+             "non-temporal stores)",
+             chunk_plans_.size(), CHUNK_BYTES);
+    } else {
+#ifdef __AVX512F__
+        INFO("SubsetBaseband: output row of {:d} bytes is not a whole number of {:d}-byte "
+             "chunks, using the portable copy path",
+             num_elements_out, CHUNK_BYTES);
+#else
+        INFO("SubsetBaseband: AVX512 not available, using the portable copy path");
+#endif
+    }
 }
 
 SubsetBaseband::~SubsetBaseband() {}
+
+void SubsetBaseband::plan_copy() {
+    const size_t n_blocks_out = dish_blocks_subset.size();
+
+    // Source element offset of every 8-byte block of the output row. The output row is
+    // [P][D_sub], so output block `p * n_blocks_out + i` holds dish block
+    // `dish_blocks_subset[i]` of polarization `p`.
+    src_off_for_out_block_.resize(NUM_POL * n_blocks_out);
+    for (uint32_t p = 0; p < NUM_POL; p++) {
+        for (size_t i = 0; i < n_blocks_out; i++) {
+            src_off_for_out_block_[p * n_blocks_out + i] =
+                p * num_dishes_in + (uint32_t)dish_blocks_subset[i] * DISH_BLOCK;
+        }
+    }
+
+    // Which input dish each output dish position holds, in output dish order. The dish axis
+    // is shared by both polarizations, so this is one entry per output dish, not per element.
+    dish_index_out_.resize(num_dishes_out);
+    for (size_t i = 0; i < n_blocks_out; i++) {
+        for (uint32_t k = 0; k < DISH_BLOCK; k++) {
+            dish_index_out_[i * DISH_BLOCK + k] = dish_blocks_subset[i] * (int)DISH_BLOCK + (int)k;
+        }
+    }
+
+    // Coalesce into maximal runs that are contiguous in both source and destination. The
+    // destination is walked in order, so a run extends whenever the source does too. For a
+    // request of adjacent blocks this collapses to one run per polarization, and for a full
+    // pass-through the two polarizations merge into a single run.
+    copy_runs_.clear();
+    for (size_t blk = 0; blk < src_off_for_out_block_.size(); blk++) {
+        const uint32_t src_off = src_off_for_out_block_[blk];
+        const uint32_t dst_off = (uint32_t)blk * DISH_BLOCK;
+        if (!copy_runs_.empty()) {
+            CopyRun& prev = copy_runs_.back();
+            if (prev.src_off + prev.len == src_off && prev.dst_off + prev.len == dst_off) {
+                prev.len += DISH_BLOCK;
+                continue;
+            }
+        }
+        copy_runs_.push_back({src_off, dst_off, DISH_BLOCK});
+    }
+
+    // The AVX512 path writes whole 64-byte chunks, so it needs the output row to be a whole
+    // number of them. num_elements_out is 16 * n_blocks_out, so this holds whenever the
+    // number of requested blocks is a multiple of 4.
+    chunk_plans_.clear();
+    use_avx512_fast_path = false;
+#ifdef __AVX512F__
+    if (num_elements_out % CHUNK_BYTES == 0) {
+        const uint32_t blocks_per_chunk = CHUNK_BYTES / DISH_BLOCK;
+        const uint32_t n_chunks = num_elements_out / CHUNK_BYTES;
+
+        for (uint32_t c = 0; c < n_chunks; c++) {
+            ChunkPlan plan{};
+            for (uint32_t j = 0; j < blocks_per_chunk; j++) {
+                plan.gather_offsets[j] = (int64_t)src_off_for_out_block_[c * blocks_per_chunk + j];
+            }
+
+            // Classify so the common shapes avoid a gather: a fully contiguous chunk is one
+            // load, and two contiguous 32-byte halves are two loads and an insert.
+            const int64_t base = plan.gather_offsets[0];
+            bool contiguous = true;
+            for (uint32_t j = 1; j < blocks_per_chunk; j++) {
+                if (plan.gather_offsets[j] != base + (int64_t)j * DISH_BLOCK) {
+                    contiguous = false;
+                    break;
+                }
+            }
+
+            const uint32_t half = blocks_per_chunk / 2;
+            bool two_halves = true;
+            for (uint32_t j = 1; j < half; j++) {
+                if (plan.gather_offsets[j] != base + (int64_t)j * DISH_BLOCK) {
+                    two_halves = false;
+                    break;
+                }
+            }
+            if (two_halves) {
+                const int64_t base_hi = plan.gather_offsets[half];
+                for (uint32_t j = half + 1; j < blocks_per_chunk; j++) {
+                    if (plan.gather_offsets[j] != base_hi + (int64_t)(j - half) * DISH_BLOCK) {
+                        two_halves = false;
+                        break;
+                    }
+                }
+            }
+
+            if (contiguous) {
+                plan.kind = ChunkKind::Contiguous;
+                plan.src_off = (uint32_t)base;
+            } else if (two_halves) {
+                plan.kind = ChunkKind::TwoHalves;
+                plan.src_off = (uint32_t)base;
+                plan.src_off_hi = (uint32_t)plan.gather_offsets[half];
+            } else {
+                plan.kind = ChunkKind::Gather;
+            }
+            chunk_plans_.push_back(plan);
+        }
+        use_avx512_fast_path = true;
+    }
+#endif
+}
+
+void SubsetBaseband::copy_frame_scalar(const uint8_t* in_frame, uint8_t* out_frame,
+                                       uint32_t num_freq_out, size_t in_time_stride,
+                                       size_t out_time_stride) const {
+    const size_t in_freq_stride = num_elements;
+    const size_t out_freq_stride = num_elements_out;
+
+    for (uint32_t t = 0; t < timesamples_per_frame; t++) {
+        for (uint32_t f_out = 0; f_out < num_freq_out; f_out++) {
+            uint8_t* out_row = out_frame + t * out_time_stride + f_out * out_freq_stride;
+            const uint8_t* in_row =
+                in_frame + t * in_time_stride + (size_t)freq_in_index_[f_out] * in_freq_stride;
+
+            for (const CopyRun& run : copy_runs_) {
+                std::memcpy(out_row + run.dst_off, in_row + run.src_off, run.len);
+            }
+        }
+    }
+}
+
+#ifdef __AVX512F__
+void SubsetBaseband::copy_frame_avx512(const uint8_t* in_frame, uint8_t* out_frame,
+                                       uint32_t num_freq_out, size_t in_time_stride,
+                                       size_t out_time_stride) const {
+    const size_t in_freq_stride = num_elements;
+    const size_t out_freq_stride = num_elements_out;
+    const size_t n_chunks = chunk_plans_.size();
+
+    for (uint32_t t = 0; t < timesamples_per_frame; t++) {
+        for (uint32_t f_out = 0; f_out < num_freq_out; f_out++) {
+            uint8_t* out_row = out_frame + t * out_time_stride + f_out * out_freq_stride;
+            const uint8_t* in_row =
+                in_frame + t * in_time_stride + (size_t)freq_in_index_[f_out] * in_freq_stride;
+
+            for (size_t c = 0; c < n_chunks; c++) {
+                const ChunkPlan& plan = chunk_plans_[c];
+                __m512i data;
+
+                switch (plan.kind) {
+                    case ChunkKind::Contiguous:
+                        data = _mm512_loadu_si512((const void*)(in_row + plan.src_off));
+                        break;
+                    case ChunkKind::TwoHalves: {
+                        const __m256i lo =
+                            _mm256_loadu_si256((const __m256i*)(in_row + plan.src_off));
+                        const __m256i hi =
+                            _mm256_loadu_si256((const __m256i*)(in_row + plan.src_off_hi));
+                        data = _mm512_inserti64x4(_mm512_castsi256_si512(lo), hi, 1);
+                        break;
+                    }
+                    case ChunkKind::Gather:
+                    default: {
+                        const __m512i idx =
+                            _mm512_loadu_si512((const void*)plan.gather_offsets.data());
+                        data = _mm512_i64gather_epi64(idx, (const long long*)in_row, 1);
+                        break;
+                    }
+                }
+
+                // The output frame is far larger than the cache and is not read back here,
+                // so keep it out of the cache entirely.
+                _mm512_stream_si512((__m512i*)(out_row + c * CHUNK_BYTES), data);
+            }
+        }
+    }
+
+    // Make the non-temporal stores visible before the frame is marked full.
+    _mm_sfence();
+}
+#endif
 
 void SubsetBaseband::main_thread() {
     frameID in_frame_id(in_buf);
     frameID out_frame_id(out_buf);
 
-    // Strides (bytes) for the input array [T][F][E]
+    // Strides (bytes) for the input array [T][F][P][D]
     const size_t in_freq_stride = (size_t)num_elements;
     const size_t in_time_stride = (size_t)num_local_freq * in_freq_stride;
 
     // Output frequency stride (bytes). Time stride is set after the freq map is built.
     const size_t out_freq_stride = (size_t)num_elements_out;
     size_t out_time_stride = 0;
-
-    const size_t n_blocks_out = element_blocks_subset.size();
 
     while (!stop_thread) {
         uint8_t* in_frame = in_buf->wait_for_full_frame(unique_name, in_frame_id);
@@ -165,10 +371,10 @@ void SubsetBaseband::main_thread() {
                 throw std::runtime_error(fmt::format(
                     fmt("SubsetBaseband: out_buf frame size ({:d}) does not match expected "
                         "intersection size ({:d}) for shape "
-                        "[T={:d}][F_sub={:d}][E_sub={:d}] (intersection of "
+                        "[T={:d}][F_sub={:d}][P={:d}][D_sub={:d}] (intersection of "
                         "coarse_freq_subset and input metadata yielded {:d} frequencies)"),
                     out_buf->frame_size, expected_out_size, timesamples_per_frame, num_freq_out,
-                    num_elements_out, num_freq_out));
+                    NUM_POL, num_dishes_out, num_freq_out));
             }
 
             // The output shape depends on the freq intersection, which is only known
@@ -176,7 +382,7 @@ void SubsetBaseband::main_thread() {
             // descriptor rather than requiring one from the config.
             out_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
                 kotekan::int4x2_swapped_withoffset, "E",
-                {timesamples_per_frame, num_freq_out, 2, num_elements_out / 2},
+                {timesamples_per_frame, num_freq_out, NUM_POL, num_dishes_out},
                 {"T", "F", "P", "D"}, {1, 1, 1, 1}));
 
             out_time_stride = (size_t)num_freq_out * out_freq_stride;
@@ -210,20 +416,18 @@ void SubsetBaseband::main_thread() {
             }
         }
 
-        // Copy data: for each (t, f_out), copy the configured 8-byte element blocks.
-        for (uint32_t t = 0; t < timesamples_per_frame; t++) {
-            for (uint32_t f_out = 0; f_out < num_freq_out; f_out++) {
-                uint8_t* out_row =
-                    out_frame + t * out_time_stride + f_out * out_freq_stride;
-                const int f_in = freq_in_index_[f_out];
-                const uint8_t* in_row =
-                    in_frame + t * in_time_stride + (size_t)f_in * in_freq_stride;
-
-                for (size_t i = 0; i < n_blocks_out; i++) {
-                    std::memcpy(out_row + i * ELEMENT_BLOCK,
-                                in_row + element_byte_offsets_[i], ELEMENT_BLOCK);
-                }
-            }
+        // Copy data: for each (t, f_out), gather the configured dish blocks of both
+        // polarizations into the output row. Non-temporal stores need a 64-byte aligned
+        // destination; frames are page aligned in practice, but fall back if one is not.
+        bool used_fast_path = false;
+#ifdef __AVX512F__
+        if (use_avx512_fast_path && ((uintptr_t)out_frame % CHUNK_BYTES) == 0) {
+            copy_frame_avx512(in_frame, out_frame, num_freq_out, in_time_stride, out_time_stride);
+            used_fast_path = true;
+        }
+#endif
+        if (!used_fast_path) {
+            copy_frame_scalar(in_frame, out_frame, num_freq_out, in_time_stride, out_time_stride);
         }
 
         // Build output metadata.
@@ -235,12 +439,13 @@ void SubsetBaseband::main_thread() {
         out_meta->set_name("E");
         out_meta->set_array_dimension(0, timesamples_per_frame, "T", 1);
         out_meta->set_array_dimension(1, num_freq_out, "F", 1);
-        out_meta->set_array_dimension(2, 2, "P", 1);
-        out_meta->set_array_dimension(3, num_elements_out / 2, "D", 1);
+        out_meta->set_array_dimension(2, NUM_POL, "P", 1);
+        out_meta->set_array_dimension(3, num_dishes_out, "D", 1);
         out_meta->set_strides_simple();
 
         out_meta->set_coarse_freq(out_coarse_freq_);
         out_meta->set_freq_upchan_factor(out_upchan);
+        out_meta->set_dish_index(dish_index_out_);
 
         out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num());
         out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga());
