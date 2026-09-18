@@ -1,8 +1,8 @@
 ################################################################################
-# test_xpose2048.j2 with run_xpose2048 at cuda_stream_base 3.
+# test_xpose2048.j2 with run_xpose2048 at cuda_stream_base 1, i.e. the second stream triple.
 #
 # At the default base that stage enqueues on streams {0, 2} and shares stream 0 with
-# run_send_voltage; at base 3 it enqueues on {3, 5} and shares nothing, so the two take no
+# run_send_voltage; at base 1 it enqueues on {3, 5} and shares nothing, so the two take no
 # queuing mutex in common. Its cudaSyncInput must then wait on stream 3 -- this stage's own
 # copy-in stream -- rather than on stream 0, and compare_data checks the transposed output
 # against the CPU model. This exercises the shifted path end to end. It shows the
@@ -10,5 +10,5 @@
 # reliable detector for a missing wait, because the input copy here is small enough to land
 # before the kernel reaches it.
 ################################################################################
-{% set xpose_stream_base = 3 %}
+{% set xpose_stream_base = 1 %}
 {% include "test_xpose2048.j2" %}

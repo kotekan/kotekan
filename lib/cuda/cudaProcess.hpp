@@ -36,11 +36,21 @@
  *                        Can be set higher if more than one stream is need for each type
  *                        of operation.  See @c cudaCommand and @c cudaSyncStream for more details.
  *                        Every command in this stage must resolve to a stream below this value,
- *                        so a stage with a kernel at @c cuda_stream_base b needs at least b+3.
- * @conf cuda_stream_base Int, default 0. Shifts the default stream triple of every command in
- *                        this stage to base+0 (copy-in), base+1 (copy-out), base+2 (kernel);
- *                        see @c cudaCommand. Two stages on one GPU whose triples do not overlap
- *                        share no stream and take no queuing mutex in common.
+ *                        so a stage with a kernel at @c cuda_stream_base b needs at least 3*b+3.
+ * @conf cuda_stream_base Int, default 0. A pipeline INDEX: the default triple of every command
+ *                        in this stage is streams 3*base+0 (copy-in), 3*base+1 (copy-out),
+ *                        3*base+2 (kernel); see @c cudaCommand. Distinct bases give disjoint
+ *                        triples, so two stages on one GPU share either all three streams or
+ *                        none, and take either the same queuing mutexes or none in common.
+ *
+ *                        \warning Two stages on one GPU that chain kernels through a block of
+ *                        GPU memory named the same in both -- @c gpuDeviceInterface::get_gpu_memory
+ *                        keys those by name across the whole device -- must share a base. The
+ *                        queuing lock is per stream, so pipelines on disjoint streams queue
+ *                        concurrently and one can overwrite the block between the other's two
+ *                        commands. Memory passed between stages through a ring buffer is not
+ *                        affected: the host ring is signalled only once the producing stage's
+ *                        final event has completed.
  *
  * @author Keith Vanderlinde and Andre Renard
  */
