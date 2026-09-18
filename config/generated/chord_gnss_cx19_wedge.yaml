@@ -205,30 +205,30 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: -0.0072317
-    t_inst_ns: 1789430400000000000
-    xp_as: 0.194696
-    yp_as: 0.331698
-  - delta_UT1_inst: -0.0079459
-    t_inst_ns: 1789516800000000000
+  - t_inst_ns: 1789516800000000000
+    delta_UT1_inst: -0.0079459
     xp_as: 0.193695
     yp_as: 0.331076
-  - delta_UT1_inst: -0.0084742
-    t_inst_ns: 1789603200000000000
+  - t_inst_ns: 1789603200000000000
+    delta_UT1_inst: -0.0084742
     xp_as: 0.192683
     yp_as: 0.330484
-  - delta_UT1_inst: -0.0088671
-    t_inst_ns: 1789689600000000000
+  - t_inst_ns: 1789689600000000000
+    delta_UT1_inst: -0.0088671
     xp_as: 0.191668
     yp_as: 0.329927
-  - delta_UT1_inst: -0.0092012
-    t_inst_ns: 1789776000000000000
+  - t_inst_ns: 1789776000000000000
+    delta_UT1_inst: -0.0092012
     xp_as: 0.190667
     yp_as: 0.329402
-  - delta_UT1_inst: -0.0095544
-    t_inst_ns: 1789862400000000000
+  - t_inst_ns: 1789862400000000000
+    delta_UT1_inst: -0.0095544
     xp_as: 0.189679
     yp_as: 0.328897
+  - t_inst_ns: 1789948800000000000
+    delta_UT1_inst: -0.0109374
+    xp_as: 0.185883
+    yp_as: 0.328437
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:

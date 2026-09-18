@@ -236,6 +236,12 @@ void cudaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, size_t le
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(getStream(cuda_stream_id), pre_event, 0));
     if (copy_start_event) {
         CHECK_CUDA_ERROR(cudaEventCreate(copy_start_event));
+        // ⚠️ COUNT IT HERE. These events are handed back into cudaCommand's start_event /
+        // end_event and destroyed by finalize_frame, which decrements. Counting only the
+        // creations in cudaCommand::record_*_event left these decrements unmatched and drove
+        // events_outstanding NEGATIVE -- a probe that reads below zero is one nobody will
+        // believe when it finally reads high.
+        events_outstanding++;
         CHECK_CUDA_ERROR(cudaEventRecord(*copy_start_event, getStream(cuda_stream_id)));
     }
     // Data transfer to GPU
@@ -243,6 +249,7 @@ void cudaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, size_t le
         cudaMemcpyAsync(dst, src, len, cudaMemcpyHostToDevice, getStream(cuda_stream_id)));
     if (copy_end_event) {
         CHECK_CUDA_ERROR(cudaEventCreate(copy_end_event));
+        events_outstanding++; // see async_copy_host_to_gpu
         CHECK_CUDA_ERROR(cudaEventRecord(*copy_end_event, getStream(cuda_stream_id)));
     }
 }
@@ -255,6 +262,7 @@ void cudaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, size_t le
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(getStream(cuda_stream_id), pre_event, 0));
     if (copy_start_event) {
         CHECK_CUDA_ERROR(cudaEventCreate(copy_start_event));
+        events_outstanding++; // see async_copy_host_to_gpu
         CHECK_CUDA_ERROR(cudaEventRecord(*copy_start_event, getStream(cuda_stream_id)));
     }
     // Data transfer from GPU
@@ -262,6 +270,7 @@ void cudaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, size_t le
         cudaMemcpyAsync(dst, src, len, cudaMemcpyDeviceToHost, getStream(cuda_stream_id)));
     if (copy_end_event) {
         CHECK_CUDA_ERROR(cudaEventCreate(copy_end_event));
+        events_outstanding++; // see async_copy_host_to_gpu
         CHECK_CUDA_ERROR(cudaEventRecord(*copy_end_event, getStream(cuda_stream_id)));
     }
 }
