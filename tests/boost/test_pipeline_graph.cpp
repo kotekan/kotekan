@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_pipeline_graph"
 
-#include "PipelineGraph.hpp" // for PipelineGraph, GraphNode, GraphCluster
+#include "PipelineGraph.hpp"         // for PipelineGraph, GraphNode, GraphCluster
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <string>
@@ -31,6 +32,8 @@ static void check_statements_terminated(const std::string& dot) {
         BOOST_CHECK_MESSAGE(trimmed.back() == ';', "unterminated statement: " + trimmed);
     }
 }
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(nodes_and_edges) {
     PipelineGraph graph;

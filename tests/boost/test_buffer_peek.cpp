@@ -1,12 +1,12 @@
 #define BOOST_TEST_MODULE "test_buffer_peek"
 
-#include "Config.hpp"          // for Config
-#include "buffer.hpp"          // for Buffer
-#include "errors.h"            // for __enable_syslog
-#include "metadata.hpp"        // for metadataObject, metadataPool
-#include "metadataFactory.hpp" // for metadataFactory
-#include "test_logging.hpp"    // for SigtermGuard
-#include "test_utils.hpp"      // for GlobalFixture_Locale
+#include "Config.hpp"                // for Config
+#include "buffer.hpp"                // for Buffer
+#include "errors.h"                  // for __enable_syslog
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "metadata.hpp"              // for metadataObject, metadataPool
+#include "metadataFactory.hpp"       // for metadataFactory
+#include "test_utils.hpp"            // for GlobalFixture_Locale
 
 #include "json.hpp" // for json
 
@@ -24,10 +24,7 @@
 using kotekan::Config;
 using json = nlohmann::json;
 
-// Lets peek_hold_single_frame_rejected catch the FATAL_ERROR, which calls
-// exit_kotekan and raises SIGTERM before throwing FatalError.
-static kotekan_test_logging::SigtermGuard g_sigterm_guard;
-
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 // Build the chordMetadata pool the peek tests allocate metadata from.

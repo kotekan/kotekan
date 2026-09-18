@@ -5,6 +5,7 @@
 
 #include "fmt.hpp" // for fmt, basic_string_view, FMT_STRING, format_args, make_format_args
 
+#include <atomic>    // for atomic
 #include <errno.h>   // for errno
 #include <stdexcept> // for runtime_error
 #include <string>    // for string, basic_string
@@ -15,28 +16,61 @@ public:
     explicit FatalError(const std::string& what_arg) : std::runtime_error(what_arg) {}
 };
 
-// Boost messages (conditional on test compile/link)
-#if defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN) || defined(BOOST_TEST_DYN_LINK)
-#include <boost/test/unit_test.hpp>
+namespace kotekan {
 
-#define KTK_BOOST_ERR(m, ...)                                                                      \
-    do {                                                                                           \
-        BOOST_THROW_EXCEPTION(std::runtime_error(FORMAT(m, ##__VA_ARGS__).c_str()));               \
-    } while (0)
-#define KTK_BOOST_WARN(m, ...)                                                                     \
-    do {                                                                                           \
-        BOOST_WARN_MESSAGE(false, FORMAT(m, ##__VA_ARGS__).c_str());                               \
-    } while (0)
-#else
-#define KTK_BOOST_ERR(m, ...)                                                                      \
-    do {                                                                                           \
-        (void)0;                                                                                   \
-    } while (0)
-#define KTK_BOOST_WARN(m, ...)                                                                     \
-    do {                                                                                           \
-        (void)0;                                                                                   \
-    } while (0)
-#endif
+/// The kind of event reported to a log_event_handler.
+enum class log_event { warning, error };
+
+/// A handler notified of WARN and ERROR events, in addition to the message being
+/// logged. There is none in production; boost tests install one (see
+/// tests/boost/kotekanLoggingFixture.hpp) so that an error logged by kotekan fails
+/// the test.
+///
+/// This must be a run-time decision, not a compile-time one: the reporting macros
+/// below have to expand to the same tokens in every translation unit, or every
+/// function *defined in a header* that logs gets two different bodies, which is an
+/// ODR violation the linker resolves by keeping one arbitrary copy. tools/lint.sh
+/// enforces the rule; see the git history of this file for how it was broken.
+using log_event_handler = void (*)(log_event kind, const char* file, int line,
+                                   const std::string& message);
+
+/// The installed handler, or null. Prefer report_log_event() to reading this.
+inline std::atomic<log_event_handler> log_event_hook{nullptr};
+
+/// Reports a log event to the installed handler, if there is one.
+///
+/// The message is formatted with fmt::vformat, matching what
+/// kotekanLogging::internal_logging does with the same format string: it is passed
+/// as a plain string_view, so it is not checked against the argument types at
+/// compile time. Using fmt::format here instead would subject every ERROR and WARN
+/// format string in the code base to fmt's compile-time checking for the first
+/// time, which is worthwhile but does not compile today.
+template<typename... Args>
+inline void report_log_event(const log_event kind, const char* const file, const int line,
+                             const fmt::basic_string_view<char> format, const Args&... args) {
+    if (const log_event_handler handler = log_event_hook.load(std::memory_order_relaxed))
+        handler(kind, file, line, fmt::vformat(format, fmt::make_format_args(args...)));
+}
+
+} // namespace kotekan
+
+// Report an error/warning to the installed log event handler.
+//
+// These must expand to the same tokens in every translation unit; see the comment
+// on kotekan::log_event_handler above. The check for a handler is in the macro
+// rather than only inside report_log_event() so that the arguments are not
+// evaluated either when there is none, which is always the case in production:
+// there it costs one relaxed load per ERROR and WARN and nothing else.
+#define KTK_REPORT_ERROR(m, ...)                                                                   \
+    (kotekan::log_event_hook.load(std::memory_order_relaxed)                                       \
+         ? kotekan::report_log_event(kotekan::log_event::error, __FILE__, __LINE__, fmt(m),        \
+                                     ##__VA_ARGS__)                                                \
+         : (void)0)
+#define KTK_REPORT_WARNING(m, ...)                                                                 \
+    (kotekan::log_event_hook.load(std::memory_order_relaxed)                                       \
+         ? kotekan::report_log_event(kotekan::log_event::warning, __FILE__, __LINE__, fmt(m),      \
+                                     ##__VA_ARGS__)                                                \
+         : (void)0)
 
 // Macro to pass a string and arguments to fmt::format including a compile-time string format check.
 #define FORMAT(m, ...) fmt::format(FMT_STRING(m), ##__VA_ARGS__)
@@ -49,7 +83,8 @@ public:
             kotekanLogging::internal_logging(LOG_ERR, __log_prefix,                                \
                                              fmt("Error at {:s}:{:d}; Error type: {:s}"),          \
                                              __FILE__, __LINE__, strerror(errno));                 \
-            KTK_BOOST_ERR("Error at {}:{}; Error type: {}", __FILE__, __LINE__, strerror(errno));  \
+            KTK_REPORT_ERROR("Error at {}:{}; Error type: {}", __FILE__, __LINE__,                 \
+                             strerror(errno));                                                     \
             exit(errno);                                                                           \
         }                                                                                          \
     } while (0)
@@ -58,7 +93,7 @@ public:
         if (pointer == nullptr) {                                                                  \
             internal_logging(LOG_ERR, __log_prefix, fmt("Error at {:s}:{:d}; Null pointer"),       \
                              __FILE__, __LINE__);                                                  \
-            KTK_BOOST_ERR("Error at {}:{}; Null pointer", __FILE__, __LINE__);                     \
+            KTK_REPORT_ERROR("Error at {}:{}; Null pointer", __FILE__, __LINE__);                  \
             exit(-1);                                                                              \
         }                                                                                          \
     } while (0)
@@ -145,13 +180,13 @@ public:
     do {                                                                                           \
         if (_member_log_level > 0)                                                                 \
             internal_logging(LOG_ERR, __log_prefix, fmt(m), ##__VA_ARGS__);                        \
-        KTK_BOOST_ERR(m, ##__VA_ARGS__);                                                           \
+        KTK_REPORT_ERROR(m, ##__VA_ARGS__);                                                        \
     } while (0)
 #define ERROR_NON_OO(m, ...)                                                                       \
     do {                                                                                           \
         if (_global_log_level > 0)                                                                 \
             kotekan::kotekanLogging::internal_logging(LOG_ERR, "", fmt(m), ##__VA_ARGS__);         \
-        KTK_BOOST_ERR(m, ##__VA_ARGS__);                                                           \
+        KTK_REPORT_ERROR(m, ##__VA_ARGS__);                                                        \
     } while (0)
 
 // This is for errors that could cause problems with the operation, or data issues,
@@ -160,13 +195,13 @@ public:
     do {                                                                                           \
         if (_member_log_level > 1)                                                                 \
             internal_logging(LOG_WARNING, __log_prefix, fmt(m), ##__VA_ARGS__);                    \
-        KTK_BOOST_WARN(m, ##__VA_ARGS__);                                                          \
+        KTK_REPORT_WARNING(m, ##__VA_ARGS__);                                                      \
     } while (0)
 #define WARN_NON_OO(m, ...)                                                                        \
     do {                                                                                           \
         if (_global_log_level > 1)                                                                 \
             kotekan::kotekanLogging::internal_logging(LOG_WARNING, "", fmt(m), ##__VA_ARGS__);     \
-        KTK_BOOST_WARN(m, ##__VA_ARGS__);                                                          \
+        KTK_REPORT_WARNING(m, ##__VA_ARGS__);                                                      \
     } while (0)
 
 // Useful messages to say what the application is doing.
