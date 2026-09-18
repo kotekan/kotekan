@@ -9,8 +9,6 @@ using Random
 
 const Memory = IndexSpaces.Memory
 
-chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
-unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # shift(x::Number, s) = (@assert s ≥ 0; s == 0 ? x : (x + (1 << (s - 1))) >> s)
 shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
@@ -1455,7 +1453,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 @assert max(abs(Ju.re), abs(Ju.im)) ≤ 32767
                 J = Ju
                 J = shift(J, s - σ)
-                reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * T + t + 1] = Int4x2(
+                reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * Tout + t + 1] = Int4x2(
                     Int32(clamp(J.re, -7:+7)), Int32(clamp(J.im, -7:+7))
                 )
             end
@@ -1464,9 +1462,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Copying data from CPU to GPU...")
     A_cuda = CuArray(A_memory)
-    E_cuda = CuArray(chimify.(E_memory))
+    E_cuda = CuArray(swap_offset.(E_memory))
     s_cuda = CuArray(s_memory)
-    J_cuda = CUDA.fill(chimify(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(Tout, 4) * P * F * B)
+    J_cuda = CUDA.fill(swap_offset(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(Tout, 4) * P * F * B)
     info_cuda = CUDA.fill(-1i32, num_threads * num_warps * num_blocks)
     log_cuda = CUDA.fill(0i32, num_blocks)
 
@@ -1544,7 +1542,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     println("Copying data back from GPU to CPU...")
-    J_memory = unchimify.(Array(J_cuda))
+    J_memory = swap_offset.(Array(J_cuda))
     info_memory = Array(info_cuda)
     log_memory = Array(log_cuda)
     @assert all(info_memory .== 0)
@@ -1568,6 +1566,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         end
         @assert all(checked_J)
         println("    J: $error_count errors found")
+        error_count == 0 || error("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+        println("Self-test passed.")
     end
 
     println("Done.")

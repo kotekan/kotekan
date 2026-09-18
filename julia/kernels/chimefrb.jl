@@ -10,8 +10,6 @@ using StaticArrays
 
 const Memory = IndexSpaces.Memory
 
-chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
-unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 
 function shrink(value::Integer)
@@ -1428,7 +1426,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
         Random.seed!(0)
 
-        map!(i -> chimify(zero(Int4x8)), E_memory, E_memory)
+        map!(i -> swap_offset(zero(Int4x8)), E_memory, E_memory)
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
 
         # Constant input gain, scaled to keep intensities within Float16 range.
@@ -1445,10 +1443,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
         for dish in 0:(D - 1)
             Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar * time
-            Evalue8 = convert(NTuple{8,Int8}, unchimify(E_memory[Eidx + 1]))
+            Evalue8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
             Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
             Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
-            E_memory[Eidx + 1] = chimify(Int4x8(Evalue8...))
+            E_memory[Eidx + 1] = swap_offset(Int4x8(Evalue8...))
         end
 
         # Reference intensities (Eqn. 4): sum over dishes of the 2-D beam phase, then |·|².
@@ -1474,7 +1472,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Copying data from CPU to GPU...")
     W_cuda = CuArray(W_memory)
-    E_cuda = run_selftest ? CuArray(E_memory) : CuArray(chimify.(E_memory))
+    E_cuda = run_selftest ? CuArray(E_memory) : CuArray(swap_offset.(E_memory))
     I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_memory))
     info_cuda = CUDA.fill(-1i32, length(info_memory))
 

@@ -10,8 +10,6 @@ using StaticArrays
 
 const Memory = IndexSpaces.Memory
 
-chimify(x::Int4x8) = swap_offset(x)
-unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
 # shift(x::Complex, s) = Complex(shift(x.re, s), shift(x.im, s))
@@ -638,7 +636,7 @@ function write_Fsh2!(emitter)
         delete!(layout, Dish(:dish, W, RF1))
         emitter.environment[:Freg1′] = layout
         real_dish_value = Symbol(:Freg1_dish, string(W * i))
-        zero_dish_value = chimify(zero(Int4x8))
+        zero_dish_value = swap_offset(zero(Int4x8))
         if i < D ÷ W
             # This is a real dish for all warps
             dish_value = real_dish_value
@@ -698,7 +696,7 @@ function read_Fsh2!(emitter)
         Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
     ])
     # This loads garbage for nlo ≥ idiv(N, 4)
-    apply!(emitter, :Freg2 => layout_Freg2_registers, chimify(zero(Int4x8)))
+    apply!(emitter, :Freg2 => layout_Freg2_registers, swap_offset(zero(Int4x8)))
     if!(
         emitter, :(
             let
@@ -2058,7 +2056,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         println("Setting up input data...")
         map!(i -> zero(Int16x2), Smn_memory, Smn_memory)
         map!(i -> zero(Float16x2), W_memory, W_memory)
-        map!(i -> chimify(zero(Int4x8)), E_memory, E_memory)
+        map!(i -> swap_offset(zero(Int4x8)), E_memory, E_memory)
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
         map!(i -> zero(Int32), info_wanted, info_wanted)
 
@@ -2107,7 +2105,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             Evalue8 = zero(SVector{8,Int8})
             Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
             Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
-            E_memory[Eidx + 1] = chimify(Int4x8(Evalue8...))
+            E_memory[Eidx + 1] = swap_offset(Int4x8(Evalue8...))
             @show Wvalue Evalue Evalue8
             @show Eidx E_memory[Eidx + 1]
 
@@ -2151,10 +2149,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             @show Fvalue Evalue
             for dish in 0:D-1
                 Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar_in * time
-                Evalue8 = convert(NTuple{8,Int8}, unchimify(E_memory[Eidx + 1]))
+                Evalue8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
                 Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
                 Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
-                E_memory[Eidx + 1] = chimify(Int4x8(Evalue8...))
+                E_memory[Eidx + 1] = swap_offset(Int4x8(Evalue8...))
                 # println("dish=$dish E=$(E_memory[Eidx + 1])")
             end
 
@@ -2309,14 +2307,26 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             if error_count > 0
                 println("    Found $(error_count) errors")
             end
-            # @assert all(did_test_I_memory)
+
+            # `all(did_test_I_memory)` cannot hold: the loop above covers only
+            # `Fbar_out_min:Fbar_out_max` and `Ttildemin:Ttildemax`, which is
+            # not all of `I_memory`. The check with teeth is the converse --
+            # that the kernel wrote *nothing* outside the range it was given.
+            # `I_cuda` is NaN-filled, so every untested element must still be
+            # NaN. (An out-of-range write is what turned the analogous `Fmax`
+            # overrun in `upchan.jl` into silent corruption.)
+            for Iidx in 0:(length(I_memory) - 1)
+                did_test_I_memory[Iidx + 1] && continue
+                @assert all(isnan, convert(NTuple{2,Float32}, I_memory[Iidx + 1]))
+            end
 
             found_error && break
         end
-        if found_error
-            println("*** FOUND ERROR DURING SELF-TEST ***")
-        end
     end
+    if found_error
+        error("*** SELF-TEST FAILED ***")
+    end
+    run_selftest && println("Self-test passed.")
 
     println("Done.")
     return nothing
