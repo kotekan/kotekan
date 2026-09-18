@@ -1580,11 +1580,14 @@ function main(;
               silent::Bool=false,
               # Self-test: which input to inject, see below
               testcase::Symbol=:tone,
+              # Self-test: start the time window part way into the ring buffer,
+              # so that it wraps around the end
+              twrap::Bool=false,
               # Self-test: fine frequency bin and sub-bin offset of the test tone
               bin::Int=0,
               delta::Float32=0.0f0)
     # Returns the number of self-test mismatches, or 0 when no self-test ran.
-    @assert testcase ≡ :tone || testcase ≡ :constant
+    @assert testcase ∈ (:tone, :constant, :impulse)
     !silent && println("CHORD upchannelizer")
 
     !silent && println("Compiling kernel...")
@@ -1623,18 +1626,43 @@ function main(;
     !silent && println("Setting up input data...")
 
     # Give every fine frequency its own gain. With a constant gain a transposed
-    # or otherwise misindexed gain array would be invisible. The gains stay
-    # `≤ 1` so that the expected output remains inside the 4-bit output range,
-    # and are exact in `Float16` so that they contribute no rounding error.
-    gain(fbar) = Float16(1 - (fbar % 4) / 8)
+    # or otherwise misindexed gain array would be invisible. The gains are exact
+    # in `Float16` so that they contribute no rounding error of their own, and
+    # are scaled so that the expected output fills, but does not leave, the
+    # 4-bit output range. A single impulse carries `1/U` of full scale, so the
+    # impulse probe has to undo that or it would quantize to zero for large `U`.
+    gain_scale = testcase ≡ :impulse ? Float32(U) : 1.0f0
+    gain(fbar) = Float16(gain_scale * (1 - (fbar % 4) / 8))
     for fbar in 0:(F̄ - 1)
         G_memory[fbar + 1] = gain(fbar)
     end
 
-    @show Tmin = Int32(0)
-    @show Tmax = Int32(idiv(T, 4))
-    @show T̄min = Int32(0)
-    @show T̄max = Int32(idiv(Tmax, U) - (M - 1))
+    # `E` and `Ē` are ring buffers, of `T` and `T̄ring = T/U` time samples. The
+    # kernel processes input times `Tmin:Tmax` and writes output times
+    # `T̄min:T̄max`, both modulo the respective buffer length -- `Tmax` may exceed
+    # `T`, which is what makes the window wrap. With `twrap` the window is
+    # placed so that it does run off the end; that `mod(addr + offset, length)`
+    # in `load!`/`store!` is otherwise never exercised with a nonzero offset,
+    # and it is what turns an out-of-range write into silent corruption rather
+    # than a crash.
+    T̄ring = idiv(T, U)
+    chunk = idiv(T, 4)
+    # `Tmin` is aligned to `Touter` because the kernel reads one `Touter` block
+    # per loop iteration, and the kernel itself requires `(Tmax - Tmin)` to be a
+    # multiple of `Touter`.
+    tmin = twrap ? T - Touter * idiv(idiv(chunk, 2), Touter) : 0
+    @show Tmin = Int32(tmin)
+    @show Tmax = Int32(Tmin + chunk)
+    @show T̄min = Int32(idiv(Tmin, U))
+    @show T̄max = Int32(T̄min + idiv(chunk, U) - (M - 1))
+    # These are the kernel's own preconditions; see the parameter check in
+    # `make_upchan_kernel`.
+    @assert 0 ≤ Tmin < T && Tmin ≤ Tmax < 2 * T && (Tmax - Tmin) % Touter == 0
+    @assert 0 ≤ T̄min < T̄ring && T̄min ≤ T̄max < 2 * T̄ring
+    @assert (T̄max - T̄min + (M - 1)) % idiv(Touter, U) == 0
+    # Each output time must land in a distinct ring slot, or the reference
+    # would overwrite itself.
+    @assert T̄max - T̄min ≤ T̄ring
     @show Fmin = Int32(0)
     # `Ē` only holds `F̄ = F_per_U[U] * U` fine frequencies, i.e. `F_per_U[U]`
     # coarse frequencies. Writing more would run past the end of `Ē`.
@@ -1672,8 +1700,8 @@ function main(;
     testbin(freq) = (bin + freq) % U
     # `Evalue` and `Ēvalue` must be anonymous functions, not `f(x) = ...`
     # definitions: a local function definition is hoisted out of the branch it
-    # appears in, so the two branches would define colliding methods on one
-    # closure and the `else` branch would silently win at runtime.
+    # appears in, so the branches would define colliding methods on one closure
+    # and the last one would silently win at runtime.
     if testcase ≡ :tone
         # A single complex tone per coarse frequency, injected into dish 0 and
         # polarization 0. We choose
@@ -1685,7 +1713,11 @@ function main(;
         # fine frequency channels are offset by half a channel from the DFT
         # bins.
         test_freq = freq -> (testbin(freq) + delta) - (U - 1) / 2.0f0
-        Evalue = (freq, time) -> amp * cispi(Float32(mod(2 * time * Float64(test_freq(freq)) / U, 2.0)))
+        Evalue =
+            (dish, polr, freq, time) -> begin
+                dish == 0 && polr == 0 || return 0.0f0 + 0.0f0im
+                return amp * cispi(Float32(mod(2 * time * Float64(test_freq(freq)) / U, 2.0)))
+            end
         # Substituting the tone into the kernel formula leaves
         #
         #     Ē[bin, t̄] = G[bin] amp att exp(2πi t̄ test_freq)
@@ -1697,12 +1729,12 @@ function main(;
         # predicted to be zero, which holds only for `delta = 0`; a nonzero
         # `delta` leaks into the neighbouring bins.
         Ēvalue =
-            (freq, u, tbar) -> begin
-                u == testbin(freq) || return 0.0f0 + 0.0f0im
+            (dish, polr, freq, u, tbar) -> begin
+                dish == 0 && polr == 0 && u == testbin(freq) || return 0.0f0 + 0.0f0im
                 att = response(testbin(freq), test_freq(freq) / Float32(U))
                 return amp * att * cispi(Float32(mod(2 * tbar * Float64(test_freq(freq)), 2.0)))
             end
-    else
+    elseif testcase ≡ :constant
         # A constant (DC) input. This needs no reasoning about where a tone
         # lands: it is exactly representable, so quantization contributes no
         # error of its own, the output must be constant in `t̄`, and the
@@ -1713,16 +1745,51 @@ function main(;
         # kernel bug, where a constant input produces a time dependent output
         # with power in three of the four fine frequencies.
         cvalue = 6.0f0 - 3.0f0im
-        Evalue = (freq, time) -> cvalue
-        Ēvalue = (freq, u, tbar) -> cvalue * response(u, 0.0f0)
+        Evalue = (dish, polr, freq, time) -> (dish == 0 && polr == 0 ? cvalue : 0.0f0 + 0.0f0im)
+        Ēvalue =
+            (dish, polr, freq, u, tbar) ->
+                (dish == 0 && polr == 0 ? cvalue * response(u, 0.0f0) : 0.0f0 + 0.0f0im)
+    else
+        # Impulse response. The kernel is linear, so one impulse recovers a
+        # whole column of the transfer matrix at once: substituting
+        # `E[t] = A δ(t, t_imp)` into the kernel formula leaves
+        #
+        #     Ē[u, t̄] = G[u] A W(s)/U exp(-2πi (u - (U-1)/2) s/U),  s = t_imp - U t̄
+        #
+        # for the `M` output samples whose window covers the impulse
+        # (`0 ≤ s < M U`), and exactly zero everywhere else. That is the full
+        # `u` dependence for `M` window positions, with no reasoning about
+        # where a tone lands and no leakage caveat.
+        #
+        # `D * P * Fmax` signal paths are independent, so they can carry
+        # `D * P * Fmax` impulses in a single kernel run. Probe
+        # `p = dish + D polr + D P freq` puts its impulse at `t_imp = p`, so the
+        # probes cover every residue `s mod U`, and the `M` windows covering
+        # each probe supply the rest: together they sweep all `M U` values of
+        # `s`. This is the check that catches a wrong twiddle factor directly.
+        @assert D * P * Fmax ≤ Tmax - Tmin
+        avalue = 5.0f0 - 3.0f0im
+        timpulse(dish, polr, freq) = Tmin + dish + D * polr + D * P * freq
+        Evalue =
+            (dish, polr, freq, time) ->
+                (time == timpulse(dish, polr, freq) ? avalue : 0.0f0 + 0.0f0im)
+        Ēvalue =
+            (dish, polr, freq, u, tbar) -> begin
+                s = timpulse(dish, polr, freq) - U * tbar
+                0 ≤ s < M * U || return 0.0f0 + 0.0f0im
+                return avalue * Wkernel(s, M, U) / Float32(U) *
+                       cispi(-2 * (u - (U - 1) / 2) * s / Float32(U))
+            end
     end
 
-    # map!(i -> zero(Int4x2), E_memory, E_memory)
-    @assert Tmin == 0
+    # Zero the whole buffer first: the kernel only reads `Tmin:Tmax`, but the
+    # rest would otherwise be uploaded uninitialized and the run would not be
+    # reproducible.
+    map!(i -> zero(Int4x2), E_memory, E_memory)
     for time in Tmin:(Tmax - 1), freq in 0:(F - 1), polr in 0:(P - 1), dish in 0:(D - 1)
-        Eidx = dish + D * polr + D * P * freq + D * P * F * time
-        if polr == 0 && dish == 0 && freq < Fmax
-            E1 = Evalue(freq, time)
+        Eidx = dish + D * polr + D * P * freq + D * P * F * mod(time, T)
+        if freq < Fmax
+            E1 = Evalue(dish, polr, freq, time)
         else
             E1 = 0.0f0 + 0im
         end
@@ -1730,13 +1797,11 @@ function main(;
         E_memory[Eidx + 1] = Int4x2(E1.re, E1.im)
     end
 
-    # map!(i -> zero(Int4x2), Ẽ_wanted, Ẽ_wanted)
-    @assert T̄min == 0
     for tbar in T̄min:(T̄max - 1), fbar in 0:(F̄ - 1), polr in 0:(P - 1), dish in 0:(D - 1)
-        Ēidx = dish + D * polr + D * P * fbar + D * P * (F̄) * tbar
+        Ēidx = dish + D * polr + D * P * fbar + D * P * (F̄) * mod(tbar, T̄ring)
         freq, u = divrem(fbar, U)
-        if polr == 0 && dish == 0 && freq < Fmax
-            Ē1 = gain(fbar) * Ēvalue(freq, u, tbar)
+        if freq < Fmax
+            Ē1 = gain(fbar) * Ēvalue(dish, polr, freq, u, tbar)
         else
             Ē1 = 0.0f0 + 0im
         end
@@ -1847,41 +1912,53 @@ function main(;
         println("Checking results...")
         num_samples = 0
         max_error = 0.0f0
-        # `Ē` is quantized to 4 bits, so a correct result can be off by 0.5.
-        # The remainder is the quantization of the input `E` (also 4 bits) and
-        # the kernel's Float16 arithmetic.
+        # `Ē` is quantized to 4 bits *per component*, so the real and the
+        # imaginary part can each be off by 0.5; the error is therefore
+        # measured per component, not as a complex magnitude. (Comparing
+        # `abs(err)` bounds a correctly rounded result by `0.5 sqrt(2) = 0.707`
+        # instead, which left almost no room below the tolerance.) The
+        # remainder is the quantization of the input `E` (also 4 bits) and the
+        # kernel's Float16 arithmetic.
         tolerance = 0.8f0
         println("    Ē:")
         did_test_Ē_memory = falses(length(Ē_memory))
         # for tbar in 0:(idiv(T, U) - 1), fbar in 0:(F̄ - 1), polr in 0:(P - 1), dish in 0:(D - 1)
-        for polr in 0:(P - 1), dish in 0:(D - 1), fbar in 0:(F̄ - 1), tbar in 0:(T̄max - 1)
-            Ēidx = dish + D * polr + D * P * fbar + D * (F̄) * P * tbar
+        for polr in 0:(P - 1), dish in 0:(D - 1), fbar in 0:(F̄ - 1), tbar in T̄min:(T̄max - 1)
+            Ēidx = dish + D * polr + D * P * fbar + D * (F̄) * P * mod(tbar, T̄ring)
             @assert !did_test_Ē_memory[Ēidx + 1]
             did_test_Ē_memory[Ēidx + 1] = true
             have_value = Complex(convert(NTuple{2,Int32}, Ē_memory[Ēidx + 1])...)
             want_value = Ē_wanted[Ēidx + 1]
             err = have_value - want_value
+            err = max(abs(real(err)), abs(imag(err)))
             num_samples += 1
-            max_error = max(max_error, abs(err))
-            if abs(err) > tolerance
+            max_error = max(max_error, err)
+            if err > tolerance
                 num_errors += 1
                 if num_errors ≤ 100
-                    println("        dish=$dish polr=$polr fbar=$fbar tbar=$tbar Ē=$have_value Ē₀=$want_value ΔĒ=$(abs(err))")
+                    println("        dish=$dish polr=$polr fbar=$fbar tbar=$tbar Ē=$have_value Ē₀=$want_value ΔĒ=$err")
                 elseif num_errors == 101
                     println("        [skipping further error output]")
                 end
             end
         end
-        @assert all(@view did_test_Ē_memory[1:(P * D * F̄ * T̄max)])
-        @assert !any(@view did_test_Ē_memory[(P * D * F̄ * T̄max + 1):end])
+        # Everything outside `T̄min:T̄max` must still hold the fill value that
+        # `Ē_cuda` was initialized with: the kernel must not write past the
+        # range it was given. (This is what the `Fmax` overrun fixed in #1684
+        # used to violate silently -- the ring buffer wrapped the stray writes
+        # back over earlier output instead of running off the end.)
+        for Ēidx in 0:(length(Ē_memory) - 1)
+            did_test_Ē_memory[Ēidx + 1] && continue
+            @assert Ē_memory[Ēidx + 1] == Int4x2(-8, -8)
+        end
         if num_errors > 0
             # Summarize which fine frequencies are wrong; a tone that lands in
             # the wrong channel shows up as exactly two bad channels.
             println("    measured spectrum (dish=0, polr=0, max over t̄):")
             for fbar in 0:(F̄ - 1)
                 m = 0.0f0
-                for tbar in 0:(T̄max - 1)
-                    idx = 0 + D * 0 + D * P * fbar + D * (F̄) * P * tbar
+                for tbar in T̄min:(T̄max - 1)
+                    idx = 0 + D * 0 + D * P * fbar + D * (F̄) * P * mod(tbar, T̄ring)
                     m = max(m, abs(Complex(convert(NTuple{2,Int32}, Ē_memory[idx + 1])...)))
                 end
                 m > 0 && println("        fbar=$fbar max|Ē|=$m")
