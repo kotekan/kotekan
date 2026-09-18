@@ -1,5 +1,6 @@
 This is a high-performance, soft-realtime radio astronomy pipeline code. This is an older codebase, maintained by a number of developers using different styles and conventions. Below are some guidelines for editing this code. These are not firm rules.
 
+
 Development
 -----------
 
@@ -31,6 +32,7 @@ The kotekan binary can be compiled as a whole, or specific targets compiled, if 
 
 The kotekan binary lives at <build>/kotekan/kotekan (bare <build>/kotekan is a directory).
 
+
 Testing
 -------
 
@@ -44,7 +46,7 @@ There are many boost tests in tests/boost, which are built with -DWITH_BOOST_TES
 
 There are pytest tests in the tests directory, however development of new pytests is discouraged in favor of yaml or boost tests. This is because of the extra layer of abstraction and care required in the pytest ecosystem -- errors hidden by default, tests may be silently skipped, etc.
 
-Shell scripts in tests/ci-scripts/push_pull run as part of tests. The configs in config/ci-tests/gpu_batch and config/ci-tests/cpu_batch are also run with the kotekan executable as part of the tests. There is a script, config/ci-tests/run_tests.sh, that runs the latter of these.
+Shell scripts in tests/ci-scripts/push_pull are run as part of CI tests, and are for testing more complex pipelines. The configs in config/ci-tests/gpu_batch and config/ci-tests/cpu_batch are also run with the kotekan executable as part of the tests. There is a script, config/ci-tests/run_tests.sh, that runs the latter of these.
 
 Many of these tests are run as part of github actions CI. We have a limited amount of hardware to run GPU tests locally, so a more minimal set of tests covers those runs.
 
