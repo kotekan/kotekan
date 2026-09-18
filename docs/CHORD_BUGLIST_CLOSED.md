@@ -152,6 +152,25 @@ satellite's at once and the DLL re-establishes all of them from zero.
 
 ## Closed with a full write-up — the three worth reading before touching these areas
 
+### #139 — every fleet-ADR arc on every chain broke every 7200 s: a 2.7-s telemetry ring and a reload on the pass ✅ FIXED 09-18
+After #136 (the synchronous BRDC merge) the arcs still broke fleet-wide twice every two hours,
+to the second. A break diagnostic in `fleetadr.fold_record` (9d7f04908) read `gap 193-253
+records / dark 0 / vouch 0`, every instance's last record exactly `gap` behind: telemetry the
+fold never saw, not trackers gone dark. A telemetry window is one frame = 4 records = 41.9 ms,
+so the broker's 64-window ring held **2.7 s** (its docstring said "~168 ms" per window) against
+a fold that runs once per 2.0 s control pass. The 2-hourly dead-reckon reload held the pass
+2-2.6 s longer -- `parse_rinex_nav` plus `fetch_dcb`, whose day-by-day walk pays a live HTTPS
+404 to CDDIS for every day younger than the ~5-day-late product -- and the windows arriving
+meanwhile were evicted unfolded. The routine breaks were the same mechanism in miniature: a
+pass 0.7 s longer than usual lost one or two windows (`gap 5-9`), a few times an hour. Fixed
+`8eeb1affb`: the reload's I/O runs on a thread and is swapped in between passes (no seed
+touched; first load stays synchronous), and `shared_client` holds 256 windows = 10.7 s (~+380
+MB). Ruled out first: seeds cleared (never), locked satellites re-born at the reload (they are
+slewed), JOINT-CLK adoption (per-cycle), any whole-process or per-chain log gap over 3 s.
+⚠️ The whole-process log-gap scan cannot see a per-chain stall in a free-threaded broker, and a
+per-chain scan at a 3 s threshold could not see a 2.6 s one: the instrument for a stall is the
+consumer that loses data, not the log.
+
 ### #138 — the fleet ADR random-walked on weak satellites: clustered half-cycle slips through the re-seat ✅ FIXED 09-18
 The geometry-free TEC was 0.06 TECU at 1 s and useless by the hour. A triple-frequency closure on
 the archive (`fixtures/tec_wander/`) showed the instrument itself random-walking from 1 s
