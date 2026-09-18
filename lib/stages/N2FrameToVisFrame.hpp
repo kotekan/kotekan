@@ -26,9 +26,17 @@
  * @buffer vis_buf Output buffer.
  *         @buffer_format VisBuffer structured.
  *         @buffer_metadata VisMetadata
+ * @buffer metadata_buffer Optional. A buffer whose first frame's metadata lists the
+ *         frequencies of this stream (the input of N2Accumulate, typically).
+ *         @buffer_format any
+ *         @buffer_metadata chordMetadata
  *
  * @conf  n2_buf  Buffers to hold the N2FrameView
  * @conf  vis_buf Buffers to hold the VisFrameView
+ * @conf  metadata_buffer String. Optional. Name of the buffer to take the frequencies of this
+ *        stream from (``coarse_freq`` of its first frame). Takes precedence over freq_ids.
+ * @conf  freq_ids Array of UInt32. Optional. Frequencies of this stream, used when no
+ *        metadata_buffer is given. Defaults to all channels of the telescope.
  * @conf  fake_git_tag String. Fake git hash in visMetadata to make receiver
  *        accept it. Leave empty to use actual git tag.
  *
@@ -64,8 +72,19 @@ private:
     /// The target buffer for a visFrame
     Buffer* vis_buf;
 
+    /// Optional buffer whose first frame's metadata lists the frequencies of the stream
+    Buffer* metadata_buf = nullptr;
+
     /// Fake git hash to record in visMetadata dataset id
     std::string fake_git_tag;
+
+    //@{
+    /// Ingredients of the base dataset states, registered at the start of main_thread()
+    std::string instrument_name;
+    std::vector<uint32_t> freq_ids;
+    std::vector<input_ctype> inputs;
+    std::vector<prod_ctype> prods;
+    //@}
 };
 
 #endif /* N2FRAME_TO_VISFRAME_HPP */

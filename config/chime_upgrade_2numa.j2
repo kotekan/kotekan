@@ -38,8 +38,10 @@
 # produced once and read by both domains.
 #
 # The bad feed mask is a plain host buffer that the RFI kernels read through
-# cudaInputData.  setUpchanGain and cudaCalcFRB2Weights take the frequencies
-# of their domain from the metadata of the RFI mask buffer.
+# cudaInputData.  The config holds no frequency list: the DPDK handlers record
+# the frequency of each link (from the F-engine stream id) in the buffer
+# metadata, and every stage that needs the frequencies of its domain reads
+# them from there (setUpchanGain, cudaCalcFRB2Weights, n2FrameToVisFrame).
 #
 # Author: Andre Renard, Roland Haas, Erik Schnetter
 #
@@ -74,20 +76,6 @@ log_level: info
 {% macro cpus(numa, cores) -%}
 [{% for c in cores %}{{ cpus_per_socket * numa + c }}{{ ", " if not loop.last }}{% endfor %}]
 {%- endmacro %}
-
-{# Frequencies carried by the 16 links of each domain, in DPDK port order:
-   link group 0 streams 0-3, link group 1 streams 0-3, ... (see the dpdk
-   handlers below).  This is also the host buffer order: host_voltage_buffer_<b>
-   of a domain holds frequency <b> of this list.  The list is only used for
-   the freq_ids of the visibility output (n2FrameToVisFrame); the FRB stages
-   take the frequencies from the buffer metadata.
-   TODO: the domain 1 list is a placeholder.  Replace it with the frequencies
-   actually carried by the links of domain 1 (see the dpdk handler port_data
-   endpoints / CHIMETelescope frequency map). #}
-{% set frequency_channels_per_numa = [
-    [666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954],
-    [529, 697, 537, 49, 649, 657, 865, 705, 737, 729, 25, 561, 641, 873, 801, 937],
-] %}
 
 {# Bad input mask, in cylinder order.  Used by the bad_inputs updatable config
    and by the eigen-decomposition exclude_inputs. #}
@@ -498,12 +486,10 @@ dpdk:
 
 {% for numa in numa_domains %}
 {%- set numa_sfx = "_n" ~ numa %}
-{%- set frequency_channels = frequency_channels_per_numa[numa] %}
 
 ################################################################################
 ################################################################################
 # NUMA domain {{ numa }}: GPU {{ numa }}, DPDK ports {{ ports_per_numa * numa }}-{{ ports_per_numa * numa + ports_per_numa - 1 }}
-# Frequencies in host buffer order: {{ frequency_channels }}
 ################################################################################
 
 numa_{{ numa }}:
@@ -553,7 +539,7 @@ numa_{{ numa }}:
         metadata_pool: main_pool{{ numa_sfx }}
         use_hugepages: true
 {%- for id in range(num_freq_gpu_buf) %}
-        host_voltage_buffer{{ numa_sfx }}_{{ id }}: # {{ frequency_channels[id] }}
+        host_voltage_buffer{{ numa_sfx }}_{{ id }}:
             kotekan_buffer: ndarray
 {%- endfor %}
     host_voltage_ringbuffer{{ numa_sfx }}:
@@ -1253,13 +1239,14 @@ numa_{{ numa }}:
         kotekan_stage: n2FrameToVisFrame
         n2_buf: eig_10s_buffer{{ numa_sfx }}
         vis_buf: vis_buffer{{ numa_sfx }}
-        freq_ids: {{ frequency_channels }}
+        # frequencies of this stream, from the metadata of the first frame
+        metadata_buffer: host_n2k_correlation_buffer{{ numa_sfx }}
 
     failed_vis_convert:
         kotekan_stage: n2FrameToVisFrame
         n2_buf: failed_10s_buffer{{ numa_sfx }}
         vis_buf: failed_vis_buffer{{ numa_sfx }}
-        freq_ids: {{ frequency_channels }}
+        metadata_buffer: host_n2k_correlation_buffer{{ numa_sfx }}
 
     switch_vis_out:
         kotekan_stage: bufferSwitch
