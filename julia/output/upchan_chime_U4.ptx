@@ -823,7 +823,7 @@ $L__BB0_29:                             // %L963.lr.ph
 	mul.f32 	%f501, %f499, %f500;
 	neg.f32 	%f502, %f500;
 	mul.f32 	%f503, %f496, %f502;
-	shl.b32 	%r272, %r263, 1;
+	and.b32  	%r272, %r4, 4;
 	add.s32 	%r273, %r266, %r272;
 	and.b32  	%r274, %r273, 6;
 	cvt.rn.f32.s32 	%f504, %r274;
@@ -865,15 +865,15 @@ $L__BB0_29:                             // %L963.lr.ph
 	selp.f32 	%f530, %f529, %f524, %p94;
 	mul.f32 	%f531, %f530, %f500;
 	mul.f32 	%f532, %f527, %f502;
-	mov.b32 	%r225, %f531;
 	mov.b32 	%r224, %f501;
+	mov.b32 	%r225, %f531;
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r1222, %r225, %r224;
 	// end inline asm
-	mov.b32 	%r231, %f532;
-	xor.b32  	%r228, %r231, -2147483648;
 	mov.b32 	%r230, %f503;
 	xor.b32  	%r227, %r230, -2147483648;
+	mov.b32 	%r231, %f532;
+	xor.b32  	%r228, %r231, -2147483648;
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r1224, %r228, %r227;
 	// end inline asm
