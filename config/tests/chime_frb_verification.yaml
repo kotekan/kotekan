@@ -33,6 +33,22 @@ block_size: 32
 num_gpus: 1
 link_map: [0, 1, 2, 3]
 
+# Single source of truth for the upstream FPGA controller's REST interface.
+# Referenced by /telescope/{gps,frequency_map}_host_info.
+fpga_controller:
+  host: 10.1.13.1
+  port: 54321
+
+# Telescope
+telescope:
+  name: CHIMETelescope
+  require_gps: true
+  query_gps: true # GPS time is provided via coco
+  gps_host_info: /fpga_controller
+  query_frequency_map: true # Frequency map is provided via coco
+  require_frequency_map: true # Make sure we have the full frequency map
+  allow_default_frequency_map: false # Don't fall back on default map
+
 # this must be 4 since cudaTranspose2048_chime.cpp hard-codes the outermost
 # size of the voltage ring-buffer as 4
 gpu_buffer_depth: 4
@@ -55,7 +71,7 @@ factor_upchan: 128
 factor_upchan_out: 16
 num_frb_total_beams: 1024
 frb_missing_gains: [1.0, 0.0]
-frb_scaling: 1.0/512.
+frb_scaling: 1.0/32.
 # not quite input reorder since that one is to cylinder order (cyl, pol, dish)
 # while here we are going to beamformer order (pol, dis). Also groups by 4 (so
 # only 512 entries and each entry covers elements 4*i to 4*i+3)
@@ -612,9 +628,13 @@ hfb_pool:
 
 # Buffers
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: baseband_buffer_depth
     frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+    value_type: int4x2_swapped_withoffset
+    extents: [1, samples_per_data_set, num_elements]
+    dimscalinga: [1, 1, 1]
+    dimnames: [F, T, E]
     metadata_pool: main_pool
 #host_voltage_ringbuffer:
 #    kotekan_buffer: ring
@@ -771,10 +791,11 @@ gen_data:
   #  dim_name: [ "T", "F", "P", "D" ]
   #  dim_scaling: [ 1, 1, 1, 1 ]
   read_data_network:
-      type: hdf5FileRead
-      base_dir:  debug-data-skydata-20260916T1551
-      file_name: host_voltage_buffer_0
-      out_buf: host_voltage_buffer_0
+    kotekan_stage: hdf5FileRead
+    #input_dir: debug-data-skydata-20260916T1551
+    input_dir: debug-data-chopped
+    file_name: host_voltage_buffer_0
+    out_buf: host_voltage_buffer
   test_data_gen_lost_samples:
     type: const
     value: 0
