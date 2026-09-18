@@ -40,7 +40,7 @@
   {
    "name": "2026-08-29-baseline",
    "valid_from": "2026-08-29T00:00:00Z",
-   "valid_to": "2026-09-15T00:00:00Z",
+   "valid_to": "2026-09-14T19:08:00Z",
    "pointing": "p0_dec40p73",
    "cube_order": [
     0,
@@ -508,8 +508,8 @@
    }
   },
   {
-   "name": "2026-09-16-polswap",
-   "valid_from": "2026-09-16T00:00:00Z",
+   "name": "2026-09-14-polswap",
+   "valid_from": "2026-09-14T19:08:00Z",
    "valid_to": null,
    "pointing": "p0_dec40p73",
    "cube_order": [
@@ -546,18 +546,33 @@
     78,
     79
    ],
-   "verified": false,
-   "provenance": "reported by KV 2026-09-16: site team rewired the flipped dishes 2026-09-15",
+   "verified": true,
+   "provenance": "site log via KV 2026-09-18: rewire at 2026-09-14 15:08 ET = 19:08Z; confirmed on sky from the 20260915..17 maps (fixtures/beamcube/static_l5mid_0915_0917/slot_swap_check.py)",
    "notes": [
-    "NOT VERIFIED ON SKY. The array was handed over for other work, so no beam data exists",
-    "after the swap yet. Confirm by re-running the contrast split on the first post-swap",
-    "cube and checking that A06, A07, B07 have joined the majority cluster.",
+    "VERIFIED ON SKY 2026-09-18, on KV's call, from the first post-swap beam maps (20260915,",
+    "16, 17 -- fixtures/beamcube/static_l5mid_0915_0917/). Plane B is the higher-gain plane,",
+    "so a rewired dish must FLIP the sign of its (slot1 - slot0) fitted gain and an untouched",
+    "one must not. Measured, over dishes healthy in both epochs:",
+    "    untouched (n=7) mean -0.04 dB, max |change| 0.56 dB",
+    "    A06/A07/B07    mean +1.98 dB, min |change| 1.64 dB",
+    "A06 -0.85 -> +1.22, A07 -1.11 -> +1.13, B07 -0.89 -> +0.75: all three cross zero and join",
+    "the majority. The smallest rewired change is 2.9x the largest untouched one -- no overlap.",
+    "⚠️ THE BASIS IS ONE INDICATOR, the gain ordering -- not all three that fixed the baseline",
+    "planes (contrast split, lower-gain pol being the higher-contrast one, cos(2phi) skirt fit).",
+    "It confirms the REPORTED swap rather than re-deriving the planes from scratch. If the",
+    "planes are ever disputed, run the full contrast split before arguing from this line.",
+    "⚠️ B06 (dish 13) moved -0.56 dB, the largest untouched mover. Its baseline value was",
+    "+0.04 dB -- no ordering at all -- and B06 is flagged ambiguous, so its sign says nothing.",
     "Whether the site team also touched A05, B05, B08 (which were flagged UNTESTED when the",
     "three were reported) is UNKNOWN -- they stay plane null either way, so the table is not",
     "wrong if they did, only less complete.",
-    "The 2026-09-15 gap between the two epochs is deliberate: the swap happened during that",
-    "day and the hour is not recorded, so any data from it resolves to no epoch. GNSS was",
-    "off, so nothing is lost."
+    "BOUNDARY CORRECTED 2026-09-18. This epoch first read 2026-09-16T00:00Z with a",
+    "deliberate one-day gap, on the belief that the swap happened some unrecorded hour of",
+    "2026-09-15 and that GNSS was off so nothing was lost. Both halves were wrong: the site",
+    "log puts the rewire at 2026-09-14 15:08 ET (19:08Z), and 2026-09-15 is a FULL GNSS day",
+    "(8487 raw files, 204 GB of L0, 00:00:00-23:59:59 on one F-engine epoch). The gap was",
+    "silently costing the best day in the window. 2026-09-14 now straddles the boundary and",
+    "refuses, which is correct and cheap -- that is the day data was barely flowing."
    ],
    "elements": {
     "0": {
@@ -682,7 +697,7 @@
      "dish_name": "A06",
      "slot": 0,
      "plane": "A",
-     "plane_confidence": "reported",
+     "plane_confidence": "measured",
      "enu_m": [
       31.03,
       1.317,
@@ -695,7 +710,7 @@
      "dish_name": "A07",
      "slot": 0,
      "plane": "A",
-     "plane_confidence": "reported",
+     "plane_confidence": "measured",
      "enu_m": [
       36.674,
       1.742,
@@ -747,7 +762,7 @@
      "dish_name": "B07",
      "slot": 0,
      "plane": "A",
-     "plane_confidence": "reported",
+     "plane_confidence": "measured",
      "enu_m": [
       37.696,
       9.296,
@@ -890,7 +905,7 @@
      "dish_name": "A06",
      "slot": 1,
      "plane": "B",
-     "plane_confidence": "reported",
+     "plane_confidence": "measured",
      "enu_m": [
       31.579,
       -0.043,
@@ -903,7 +918,7 @@
      "dish_name": "A07",
      "slot": 1,
      "plane": "B",
-     "plane_confidence": "reported",
+     "plane_confidence": "measured",
      "enu_m": [
       37.611,
       -0.033,
@@ -955,7 +970,7 @@
      "dish_name": "B07",
      "slot": 1,
      "plane": "B",
-     "plane_confidence": "reported",
+     "plane_confidence": "measured",
      "enu_m": [
       37.253,
       8.916,
