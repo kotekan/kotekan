@@ -149,6 +149,7 @@ class L0File:
             a["sample_rate"] = h["sample_rate"]
             a["utc0"] = utc0
             a["utc0_source"] = utc0_source
+            a["utc0_set"] = json.dumps([utc0])
             a["pointing"] = pointing
             a["day"] = day
             a["created"] = iso(time.time())
@@ -184,13 +185,24 @@ class L0File:
                 if a[k] != v:
                     raise SystemExit(f"{path}: existing file has {k}={a[k]}, frame says {v} -- "
                                      f"the sender's geometry changed mid-day; refusing to mix")
-            if abs(float(a["utc0"]) - utc0) > 1e-6:
-                raise SystemExit(f"{path}: existing utc0 {a['utc0']!r} != {utc0!r}: two epochs "
-                                 f"for one day means an F-engine restart; refusing to mix")
+            # An F-engine re-base mid-day puts two epochs in one day. That is NOT a reason to
+            # refuse the day: every consumer reads ABSOLUTE time -- win/utc here, rows/utc0|utc1
+            # after `rung`, and gnss_beam_cube.py reads those two and never this attribute -- and
+            # win/utc was computed from each frame's OWN utc0 as it was folded, so rows stay
+            # correctly dated straight across the boundary. Refusing cost us 09-15..09-17: this
+            # SystemExit aborted the whole run on 09-14, so the ~21k clean files behind it were
+            # never folded at all, and three good days went unpublished.
+            # ⚠️ THE GUARD THAT MATTERS IS THE MTIME GATE in cmd_compact. That is what catches a
+            # frame stamped with a STALE epoch -- the real corruption, and a different thing from
+            # a day that honestly contains two. Do not relax that one to make a day fold.
         self.win = {k: [] for k in ("idx", "utc", "wstart0", "wstart1", "dropped", "n_live",
                                     "freq_id_lo", "freq_id_hi")}
         self.rows = {k: [] for k in L0_ROWS}
         self.versions = set(json.loads(self.f.attrs["cube_versions"]))
+        prior = self.f.attrs.get("utc0_set")
+        self.utc0_set = set(json.loads(str(prior.decode() if isinstance(prior, bytes) else prior))
+                            ) if prior is not None else {float(self.f.attrs["utc0"])}
+        self.utc0_set.add(float(utc0))
         self.sources = list(json.loads(self.f.attrs["source_files"]))
 
     def _mk(self, g, name, dtype, inner=()):
@@ -234,6 +246,7 @@ class L0File:
             if s not in self.sources:
                 self.sources.append(s)
         self.f.attrs["cube_versions"] = json.dumps(sorted(self.versions))
+        self.f.attrs["utc0_set"] = json.dumps(sorted(self.utc0_set))
         self.f.attrs["source_files"] = json.dumps(self.sources)
         self.f.attrs["updated"] = iso(time.time())
         for k in self.win:
@@ -297,12 +310,21 @@ def cmd_compact(args):
     manifest = load_manifest(args.out)
     files = raw_files(args.raw, args.include_open)
     todo = []
+    reskipped = 0
     for p in files:
         st = os.stat(p)
         key = os.path.basename(p)
         prev = manifest.get(key)
         if prev and prev["size"] == st.st_size and not args.redo:
-            continue
+            if not prev.get("refused"):
+                continue
+            # A recorded refusal is skipped only while the file is BYTE-FOR-BYTE the one we
+            # refused. Someone repairing a stale epoch in place would very likely leave the
+            # size unchanged, and a refusal that outlived its own evidence would quietly
+            # discard the repair -- so mtime has to match too, and a touched file is retried.
+            if prev.get("mtime") == st.st_mtime:
+                reskipped += 1
+                continue
         if prev and prev["size"] != st.st_size:
             # Grew since we folded it: rows already in L0 cannot be un-appended, and appending
             # the whole file again would duplicate. Only the newest file is ever open, so this
@@ -350,6 +372,9 @@ def cmd_compact(args):
         else:
             print(f"✗ {key}: v2 frames carry no utc0 and no --utc0 given -- REFUSED (an archive "
                   f"dated by guess is worse than one not dated)", file=sys.stderr)
+            manifest[key] = dict(size=st.st_size, mtime=st.st_mtime, frames=len(frames),
+                                 refused="no utc0 in frames and no --utc0",
+                                 done=iso(time.time()))
             stats["refused"] += 1
             continue
         last_utc = max(frame_utc(h, utc0) for h, _ in frames)
@@ -358,6 +383,16 @@ def cmd_compact(args):
             print(f"✗ {key}: last window dated {iso(last_utc)} but the file was last written "
                   f"{iso(st.st_mtime)} ({gap:+.1f} s): the epoch ({src} utc0={utc0!r}) does not "
                   f"describe this file. REFUSED.", file=sys.stderr)
+            # RECORD THE REFUSAL, do not just skip it. The verdict is a property of the file's
+            # own bytes (its frames' utc0 against its mtime), so it cannot change on a retry --
+            # but every pass was re-READING the file to reach that verdict again. With 349 of
+            # them at ~91 MB, one pass moved ~32 GB and took 345 s against a 300 s loop period:
+            # the compactor never idled and cf06's 1 GbE stayed saturated, for no work at all.
+            # `--redo` still retries, and the end-of-run line below keeps the count visible so
+            # a growing refusal set cannot hide in the manifest.
+            manifest[key] = dict(size=st.st_size, mtime=st.st_mtime, frames=len(frames),
+                                 refused="epoch does not describe file (mtime gate)",
+                                 utc0=utc0, utc0_source=src, gap_s=gap, done=iso(time.time()))
             stats["refused"] += 1
             continue
         for h, a in frames:
@@ -393,9 +428,14 @@ def cmd_compact(args):
                     open_files.pop(k).close()
     for lf in open_files.values():
         lf.close()
+    # ⚠️ SAVE UNCONDITIONALLY. A refusal `continue`s past the batch block above, so a pass that
+    # refused everything -- exactly the steady state this guards against -- would otherwise
+    # never persist its refusals and would re-read every one of them again next pass.
+    save_manifest(args.out, manifest)
     el = time.time() - t_start
     print(f"done: {stats['files']} raw files, {stats['frames']} frames, {stats['rows']} live rows "
-          f"in {el:.0f} s; {stats['refused']} refused")
+          f"in {el:.0f} s; {stats['refused']} refused"
+          + (f"; {reskipped} previously-refused skipped (--redo to retry)" if reskipped else ""))
 
 
 # ---------------------------------------------------------------------------------------------
