@@ -182,6 +182,7 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/cpu_batch
+              for t in $GITHUB_WORKSPACE/tests/ci-scripts/push_pull/*.sh; do bash $t $GITHUB_WORKSPACE/build-2404/kotekan/kotekan || exit 1; done
 
           # Test gcc build with docs
           - id: local-docs
