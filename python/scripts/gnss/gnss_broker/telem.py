@@ -632,7 +632,7 @@ _shared = {}
 _shared_lock = threading.Lock()
 
 
-def shared_client(host, port, depth=64):
+def shared_client(host, port, depth=256):
     """ONE reader thread per process, shared by every chain.
 
     broker_multi runs all five chains as threads of one process (task #27), and the gather
@@ -640,6 +640,12 @@ def shared_client(host, port, depth=64):
     connections and decode the same 24 MB/s five times over, four of them discarded. The store
     is already keyed by chain, so sharing costs nothing and the accessors are unchanged.
     """
+    # ⚠️ DEPTH IS IN WINDOWS, AND A WINDOW IS ONE FRAME = 4 RECORDS = 41.9 ms. 64 windows held
+    # 2.7 s against a fold that runs once per 2.0 s control pass: any pass 0.7 s longer than
+    # usual evicted unfolded windows and broke every fleet-ADR arc on the chain (FADR BREAK
+    # gap 5-9 records, dark 0, a few times an hour), and the 2-hourly dead-reckon reload's
+    # 2-2.6 s lost exactly that much on every chain at once. 256 windows = 10.7 s, ~216 kB per
+    # chain-window, ~+380 MB for eight chains: retention, no change in what is folded.
     key = (host, int(port))
     with _shared_lock:
         c = _shared.get(key)

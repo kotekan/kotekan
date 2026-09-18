@@ -27,6 +27,7 @@ quantity has STOPPED MOVING, never on its age alone: age alone once adopted a cl
 """
 
 import math
+import threading
 import os
 import time
 from datetime import datetime, timezone
@@ -1329,6 +1330,106 @@ def dr_seed(ctx):
                 ctx.hold.low_hits.pop(prn, None)
 
 
+def _dr_reload(ctx, first):
+    """Fetch and parse the dead-reckon's ephemeris (and the DCB table): the SLOW half of the
+    2-hourly reload, with no ctx state touched -- it runs on a thread. Returns a result dict for
+    _dr_apply_reload; `first` (no ephemeris yet) lets fetch_brdc block for the network."""
+    res = {"eph": None, "dcb": None, "has_dcb": False, "error": None, "fatal": None,
+           "t0": time.time()}
+    try:
+        res["eph"] = ctx.dr_eph_mod.parse_rinex_nav(ctx.dr_eph_mod.fetch_brdc(block=first))
+        # MEASURED CODE BIASES, refreshed on the ephemeris cadence (A0b, part 2).
+        # Daily product, ~5 days of latency, biases stable over weeks -- so the
+        # refresh rate is irrelevant and the fetch is cached. Optional by design:
+        # no token or no network -> dcb stays None and group_delay_s falls back to
+        # the broadcast term, which is what every run before 2026-08-23 did.
+        if ctx.args.dcb_bias:
+            try:
+                import gnss_dcb as _dcbm
+                _st = {}
+                _p = _dcbm.fetch_dcb(status=_st)
+                _t = _dcbm.parse_dcb(_p)
+                res["dcb"], res["has_dcb"] = (_t or None), True
+                # WHY THIS IS INSTRUMENTED AND THE OTHER SOURCES ARE NOT: the
+                # credential is the single point of failure, its death is dated,
+                # and fetch_dcb HIDES that death for two weeks by serving the
+                # cache. So complain about AGE, not just absence -- absence is the
+                # late symptom. See --dcb-max-age-days.
+                _age = _st.get("age_days")
+                _texp = _st.get("token_expiry_days")
+                _why = None
+                if not _t:
+                    _why = {"no-token": "no Earthdata token configured "
+                                        "(EARTHDATA_TOKEN or the cached file)",
+                            "auth-rejected": "the Earthdata token was REJECTED "
+                                             "(HTTP %s) -- it has expired or been "
+                                             "revoked" % _st.get("http"),
+                            "unreachable": "no product reachable and none cached "
+                                           "in the walk-back window",
+                            }.get(_st.get("reason"), "no product (%s)"
+                                  % _st.get("reason"))
+                elif (ctx.args.dcb_max_age_days > 0.0 and _age is not None
+                      and _age > ctx.args.dcb_max_age_days):
+                    _why = ("the product in use is %.1f days old (bar %.1f) -- the "
+                            "fetch has stopped working and the cache is carrying "
+                            "it" % (_age, ctx.args.dcb_max_age_days))
+                if _why and ctx.args.dcb_require:
+                    res["fatal"] = "--dcb-require: %s" % _why
+                if _why:
+                    _log("⚠️ DCB: %s. Falling back to the BROADCAST group delay "
+                         "per satellite -- the per-sat bias spread is gone, and "
+                         "for BeiDou B2a there is no broadcast term at all. %s"
+                         % (_why,
+                            "Token expires in %.1f days." % _texp if _texp is not None
+                            else "Token expiry unknown (not a JWT)."))
+                else:
+                    _n = sum(1 for k in _t if k[0] == ctx.args.dr_constellation)
+                    _log("dead-reckon: DCB loaded (%s, product %s; %d sats this "
+                         "constellation) -- measured code biases override the "
+                         "broadcast TGD/BGD per satellite%s"
+                         % (os.path.basename(_p or "?"),
+                            "%.1f d old" % _age if _age is not None else "age ?",
+                            _n,
+                            "" if _texp is None or _texp > 14.0
+                            else "; ⚠️ TOKEN EXPIRES IN %.1f DAYS" % _texp))
+            except SystemExit:
+                raise
+            except Exception as _de:
+                res["dcb"], res["has_dcb"] = None, True
+                _log("dead-reckon: DCB load failed (%s); broadcast term only"
+                     % _de)
+    except Exception as e:
+        res["error"] = str(e)
+    return res
+
+
+def _dr_apply_reload(ctx, res):
+    """Swap a finished reload into dr_state, on the control pass. Same data and the same swap
+    the synchronous code did; only WHEN it lands differs (between passes, not mid-pass).
+
+    ⚠️ WHY THE RELOAD LEFT THE PASS. The parse plus the DCB walk -- `fetch_dcb` steps back day
+    by day and every day younger than the ~5-day-late product is a live HTTPS 404 round trip
+    before the cached file is reached -- held the pass for 2-2.6 s every 7200 s. The broker's
+    telemetry ring is 64 windows of one frame (4 records, 41.9 ms) = 2.7 s, and the fold runs
+    once per pass, so those windows were EVICTED UNFOLDED: fleetadr then broke every arc on
+    every chain (FADR BREAK gap 193-253 records, dark 0, vouch 0 -- records never seen, not
+    trackers gone dark). Nothing here re-seeds: the seeding loop below reads the new model the
+    same way it read the old one."""
+    if res["fatal"]:
+        raise SystemExit(res["fatal"])
+    if res["error"]:
+        _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % res["error"])
+        ctx.dr_state["eph_t"] = ctx.drp.now_w - 7200 + 600
+        return
+    ctx.dr_state["eph"] = res["eph"]
+    ctx.dr_state["eph_t"] = ctx.drp.now_w
+    ctx.dr_state["t0m"] = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0) % ctx.drp.t_code
+    if res["has_dcb"]:
+        ctx.dr_state["dcb"] = res["dcb"]
+    _log("dead-reckon: BRDC loaded (%d sats) -- %.1f s of fetch+parse, off the pass"
+         % (len(res["eph"]), time.time() - res["t0"]))
+
+
 def stage_dead_reckon(ctx):
     """3e: DEAD-RECKONED SEEDING -- the model-primary spine, and the shell of its pipeline.
         
@@ -1430,76 +1531,24 @@ def stage_dead_reckon(ctx):
         # from "the model is wrong and the slew drags good seeds onto it".
         ctx.drp.slew_cap = ctx.args.dr_slew_cap
         ctx.drp.slew_k = 0.25
-        if ctx.dr_state["eph"] is None or ctx.drp.now_w - ctx.dr_state["eph_t"] > 7200:
-            try:
-                ctx.dr_state["eph"] = ctx.dr_eph_mod.parse_rinex_nav(
-                    ctx.dr_eph_mod.fetch_brdc(block=ctx.dr_state["eph"] is None))
-                ctx.dr_state["eph_t"] = ctx.drp.now_w
-                ctx.dr_state["t0m"] = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0) % ctx.drp.t_code
-                _log("dead-reckon: BRDC loaded (%d sats)" % len(ctx.dr_state["eph"]))
-                # MEASURED CODE BIASES, refreshed on the ephemeris cadence (A0b, part 2).
-                # Daily product, ~5 days of latency, biases stable over weeks -- so the
-                # refresh rate is irrelevant and the fetch is cached. Optional by design:
-                # no token or no network -> dcb stays None and group_delay_s falls back to
-                # the broadcast term, which is what every run before 2026-08-23 did.
-                if ctx.args.dcb_bias:
-                    try:
-                        import gnss_dcb as _dcbm
-                        _st = {}
-                        _p = _dcbm.fetch_dcb(status=_st)
-                        _t = _dcbm.parse_dcb(_p)
-                        ctx.dr_state["dcb"] = _t or None
-                        # WHY THIS IS INSTRUMENTED AND THE OTHER SOURCES ARE NOT: the
-                        # credential is the single point of failure, its death is dated,
-                        # and fetch_dcb HIDES that death for two weeks by serving the
-                        # cache. So complain about AGE, not just absence -- absence is the
-                        # late symptom. See --dcb-max-age-days.
-                        _age = _st.get("age_days")
-                        _texp = _st.get("token_expiry_days")
-                        _why = None
-                        if not _t:
-                            _why = {"no-token": "no Earthdata token configured "
-                                                "(EARTHDATA_TOKEN or the cached file)",
-                                    "auth-rejected": "the Earthdata token was REJECTED "
-                                                     "(HTTP %s) -- it has expired or been "
-                                                     "revoked" % _st.get("http"),
-                                    "unreachable": "no product reachable and none cached "
-                                                   "in the walk-back window",
-                                    }.get(_st.get("reason"), "no product (%s)"
-                                          % _st.get("reason"))
-                        elif (ctx.args.dcb_max_age_days > 0.0 and _age is not None
-                              and _age > ctx.args.dcb_max_age_days):
-                            _why = ("the product in use is %.1f days old (bar %.1f) -- the "
-                                    "fetch has stopped working and the cache is carrying "
-                                    "it" % (_age, ctx.args.dcb_max_age_days))
-                        if _why and ctx.args.dcb_require:
-                            raise SystemExit("--dcb-require: %s" % _why)
-                        if _why:
-                            _log("⚠️ DCB: %s. Falling back to the BROADCAST group delay "
-                                 "per satellite -- the per-sat bias spread is gone, and "
-                                 "for BeiDou B2a there is no broadcast term at all. %s"
-                                 % (_why,
-                                    "Token expires in %.1f days." % _texp if _texp is not None
-                                    else "Token expiry unknown (not a JWT)."))
-                        else:
-                            _n = sum(1 for k in _t if k[0] == ctx.args.dr_constellation)
-                            _log("dead-reckon: DCB loaded (%s, product %s; %d sats this "
-                                 "constellation) -- measured code biases override the "
-                                 "broadcast TGD/BGD per satellite%s"
-                                 % (os.path.basename(_p or "?"),
-                                    "%.1f d old" % _age if _age is not None else "age ?",
-                                    _n,
-                                    "" if _texp is None or _texp > 14.0
-                                    else "; ⚠️ TOKEN EXPIRES IN %.1f DAYS" % _texp))
-                    except SystemExit:
-                        raise
-                    except Exception as _de:
-                        ctx.dr_state["dcb"] = None
-                        _log("dead-reckon: DCB load failed (%s); broadcast term only"
-                             % _de)
-            except Exception as e:
-                _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % e)
-                ctx.dr_state["eph_t"] = ctx.drp.now_w - 7200 + 600
+        _rl = ctx.dr_state.setdefault("reload", {"thread": None, "done": None})
+        if ctx.dr_state["eph"] is None:
+            # FIRST LOAD, synchronous: there is no sky to serve without it, so waiting is the
+            # honest state. Every later reload goes through the thread (see _dr_apply_reload).
+            _dr_apply_reload(ctx, _dr_reload(ctx, first=True))
+        elif ctx.drp.now_w - ctx.dr_state["eph_t"] > 7200 and _rl["thread"] is None:
+            def _run(_rl=_rl):
+                try:
+                    _rl["done"] = _dr_reload(ctx, first=False)
+                except Exception as _e:          # the helper catches its own; this is the belt
+                    _rl["done"] = {"eph": None, "dcb": None, "has_dcb": False,
+                                   "error": str(_e), "fatal": None, "t0": time.time()}
+            _rl["thread"] = threading.Thread(target=_run, name="dr-reload-%s" % ctx.chain_id,
+                                             daemon=True)
+            _rl["thread"].start()
+        if _rl["done"] is not None:
+            _res, _rl["done"], _rl["thread"] = _rl["done"], None, None
+            _dr_apply_reload(ctx, _res)
         # DECODED-EPH FALLBACK: keep predicting off our own decode when the network BRDC is
         # gone (or always, under --decoded-eph-fallback-force, the live A/B harness).
         _use_decoded = ctx.decfb is not None and (
