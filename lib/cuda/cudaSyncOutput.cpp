@@ -20,7 +20,6 @@ cudaSyncOutput::cudaSyncOutput(Config& config, const std::string& unique_name,
                                int inst) :
     // Call the "subclassers" version of the cudaSyncStream constructor
     cudaSyncStream(config, unique_name, host_buffers, device, inst, true) {
-    DEBUG("Number of streams: {:d}", device.get_num_streams());
     std::vector<int32_t> streams;
     // Sync on this pipeline's compute streams: its kernel stream, resolved by the same rule
     // that assigns it to the kernels, and every further stream this stage declared. Starting at
@@ -30,6 +29,9 @@ cudaSyncOutput::cudaSyncOutput(Config& config, const std::string& unique_name,
     const int32_t base = config.get_default<int32_t>(unique_name, "cuda_stream_base", 0);
     const int32_t num_cuda_streams =
         config.get_default<int32_t>(unique_name, "num_cuda_streams", 3);
+    // This stage's count, not the device's: the device pool is grown to the largest any stage
+    // on it asked for, so logging that would name streams this sweep deliberately excludes.
+    DEBUG("Number of streams: {:d}", num_cuda_streams);
     for (int32_t s = resolve_cuda_stream(gpuCommandType::KERNEL, base); s < num_cuda_streams; s++)
         streams.push_back(s);
     set_source_cuda_streams(streams);
