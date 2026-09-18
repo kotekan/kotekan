@@ -55,12 +55,12 @@ factor_upchan: 128
 factor_upchan_out: 16
 num_frb_total_beams: 1024
 frb_missing_gains: [1.0, 0.0]
-frb_scaling: 1.0/32.
+frb_scaling: 1.0/512.
 # not quite input reorder since that one is to cylinder order (cyl, pol, dish)
 # while here we are going to beamformer order (pol, dis). Also groups by 4 (so
 # only 512 entries and each entry covers elements 4*i to 4*i+3)
 # yamlfix:off
-reorder_map:
+no_reorder_map:
   - 0
   - 1
   - 2
@@ -573,7 +573,7 @@ reorder_map:
   - 509
   - 510
   - 511
-old_reorder_map: [
+reorder_map: [
 # cyl A, pol 0
  32, 33, 34, 35, 40, 41, 42, 43, 48, 49, 50, 51, 56, 57, 58, 59, 96, 97, 98, 99,104,105,106,107,112,113,114,115,120,121,122,123,
  67, 66, 65, 64, 75, 74, 73, 72, 83, 82, 81, 80, 91, 90, 89, 88,  3,  2,  1,  0, 11, 10,  9,  8, 19, 18, 17, 16, 27, 26, 25, 24,
@@ -783,7 +783,7 @@ gen_data:
 
 cpu_simulate:
   cpu_data_sim_0:
-    gain_dir: "./"
+    gain_dir: frb_gains
     ew_spacing: [ -0.4, 0.0, 0.4, 0.8 ]
     northmost_beam: 60.0
     kotekan_stage: gpuBeamformSimulate
@@ -793,7 +793,7 @@ cpu_simulate:
 
 beam_write:
     kotekan_stage: hdf5FileWrite
-    max_frames: 1
+    max_frames: 79
     base_dir: frb_beams
     input_order: CHIMEBeamformer # this makes no sense, but is required
     in_buf: cpu_output_buffer_0
