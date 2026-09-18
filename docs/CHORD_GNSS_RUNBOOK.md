@@ -88,6 +88,14 @@ for a minute and settles. That is the transient, not a fault.
   and systemd restarts them on the new epoch (the writers open a new day file). A writer that
   outlived a re-base used to file the new session onto the old day, tens of hours in the past,
   with its geometry evaluated there; that is what the exit is for.
+* **A stale epoch on the nodes is now detected** (`gnss_broker/timebase.py`). If the nodes come
+  back from a re-base on the epoch chive *used* to serve, the broker log carries one line
+  `*** TIME BASE SUSPECT (gps_l5): N satellites disagree with the model by X Hz rms … ONE epoch
+  shift of +S s (+H h) explains …`, `/status` shows `time_base_suspect: true` with `time_base_dt_s`,
+  every published row carries the flag, and the writers **withhold geometry** until it clears
+  (`TIME BASE CLEAR`). The cure is the one above — refresh chive, restart the nodes — and the
+  broker and writers then restart themselves. A `SUSPECT` line saying the shift does *not*
+  explain it is a different fault (ephemeris, front end), not the epoch.
 * **The ephemeris refresh no longer stalls the broker.** `fetch_brdc` hands the loop what is on
   disk and fetches on a thread; before, a slow mirror blocked every chain for 20-30 s, the 10.7 s
   telemetry ring overflowed, and every fleet-ADR arc broke at once. A `BRDC hourly merge` line
