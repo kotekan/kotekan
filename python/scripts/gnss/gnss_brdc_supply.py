@@ -807,7 +807,13 @@ def _refresh_in_background(when, cache_dir):
 
         def run():
             try:
-                _fetch_brdc_now(when, cache_dir)
+                _t0 = time.time()
+                _got = _fetch_brdc_now(when, cache_dir)
+                _new = [os.path.basename(f) for f in _got
+                        if os.path.exists(f) and os.path.getmtime(f) >= _t0 - 1.0]
+                if _new:
+                    _log_hourly("BRDC background refresh: %d source(s), %d rewritten in %.1f s: %s"
+                                % (len(_got), len(_new), time.time() - _t0, " ".join(_new)))
             except Exception as e:
                 _REFRESH["err"] = e
                 _log_hourly("BRDC background refresh failed (%s); the cached sources stay "

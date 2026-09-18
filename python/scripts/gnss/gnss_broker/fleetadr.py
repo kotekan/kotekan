@@ -94,7 +94,7 @@ GRID_KEEP = 4               # grid snapshots retained per satellite (see SatAdr.
 class SatAdr(object):
     """One satellite's running arc."""
     __slots__ = ("hop", "hop0", "s_prev", "adr", "trim", "res", "arc", "n", "n_inst",
-                 "inst_prev", "inst_x", "breaks", "t", "grid")
+                 "inst_prev", "inst_x", "breaks", "t", "grid", "dark", "last_break")
 
     def __init__(self):
         self.hop = None        # hop of the last record folded
@@ -125,6 +125,8 @@ class SatAdr(object):
         # Four snapshots span ~4 s, so consecutive 2 s polls overlap by two and no hop is lost
         # unless a poll is more than GRID_KEEP grid hops late.
         self.grid = []
+        self.dark = 0            # consecutive energy-less records since the last good fold
+        self.last_break = None   # why the last arc ended (see fold_record)
 
 
 def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
@@ -138,6 +140,8 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     """
     usable = {i: v for i, v in per_inst.items() if v[2] != 0}
     if len(usable) < min_inst:
+        # energy-less records: remember them (the gap will be judged when energy returns)
+        st.dark = getattr(st, "dark", 0) + 1
         for i, v in per_inst.items():
             st.inst_prev[i] = (hop, v[0], v[2], v[3])
         return False
@@ -185,6 +189,7 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
         for i in usable:
             if i not in st.inst_x:              # (re)joining: adopt the fleet's phase
                 st.inst_x[i] = res
+        st.dark = 0
         dres = res - st.res
         st.adr += dcmd - dres
         st.res += dres
@@ -194,6 +199,17 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     else:
         if st.hop is not None:
             st.breaks += 1
+            # ⚠️ SAY WHY. Every arc break costs the carrier level of this satellite, and a
+            # break on every satellite of every chain in the same second is a broker or node
+            # event, not sky. The archive can measure the gap but cannot tell records that
+            # never arrived from records that arrived without energy; this can, and the
+            # instances' last-seen hops say whether the telemetry stopped or the trackers did.
+            _gap = (hop - prev) / float(hpr) if prev is not None else float("nan")
+            _seen = sorted(st.inst_prev.get(i, (None,))[0] or 0 for i in per_inst)
+            st.last_break = {"hop": hop, "gap_rec": _gap, "dark_rec": getattr(st, "dark", 0),
+                             "n_usable": len(usable), "n_vouch": len(vouch),
+                             "inst_lag_rec": [(hop - h) / float(hpr) for h in _seen[-3:]]}
+        st.dark = 0
         st.arc += 1
         st.hop0 = hop
         st.adr = st.trim = st.res = 0.0
@@ -250,7 +266,8 @@ def records_of_frame(f, want):
 class FleetAdr(object):
     """Per-chain state: {prn: SatAdr} plus the newest window already folded."""
 
-    def __init__(self, hpr=2048, max_gap_rec=3, min_inst=2):
+    def __init__(self, hpr=2048, max_gap_rec=3, min_inst=2, log=None):
+        self.log = log
         self.sats = {}
         self.last_win = None
         self.hpr = int(hpr)
@@ -285,6 +302,20 @@ class FleetAdr(object):
         # satellites that stopped arriving: forget them after a while so a return is a new arc
         for prn in [p for p, s in self.sats.items() if now - s.t > 30.0]:
             del self.sats[prn]
+        # one line per cycle naming every arc that broke and why -- a fleet-wide break reads as
+        # one line with every PRN and the same gap, which is the signature to look for
+        broke = [(p, s.last_break) for p, s in self.sats.items()
+                 if s.last_break is not None and s.last_break.get("logged") is None]
+        if broke and self.log is not None:
+            parts = []
+            for p, b in sorted(broke):
+                b["logged"] = True
+                parts.append("%d:gap%.0f/dark%d/usable%d/vouch%d/lag%s"
+                             % (p, b["gap_rec"], b["dark_rec"], b["n_usable"], b["n_vouch"],
+                                ",".join("%.0f" % x for x in b["inst_lag_rec"])))
+            self.log("FADR BREAK %s: %d arc(s) ended -- prn:gap(records)/dark(records without "
+                     "energy)/usable/vouchers/instance-lag(records) %s"
+                     % (chain, len(broke), " ".join(parts)))
         return len(wins)
 
     def publish(self, carrier_hz, now):
@@ -328,7 +359,9 @@ def stage_fleet_adr(ctx):
         return {}
     fa = _STATE.get(ctx.chain_id)
     if fa is None:
-        fa = _STATE[ctx.chain_id] = FleetAdr(hpr=int(getattr(ctx.args, "hops_per_record", 2048) or 2048))
+        from gnss_broker.transport import _log
+        fa = _STATE[ctx.chain_id] = FleetAdr(hpr=int(getattr(ctx.args, "hops_per_record", 2048) or 2048),
+                                             log=_log)
     now = ctx.drp.now_w or 0.0
     fa.fold_windows(ctx.telem_client, ctx.telem_chain, set(ctx.seeds) | set(ctx.dllp.fleet or {}), now)
     return fa.publish(ctx.args.carrier_hz, now)
