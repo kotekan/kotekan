@@ -11,6 +11,7 @@
 #include "driver_types.h"         // for cudaEvent_t, cudaStream_t
 #include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 
+#include <atomic>   // for atomic
 #include <cuda.h>   // for CUfunction
 #include <map>      // for map
 #include <memory>   // for allocator, shared_ptr, weak_ptr
@@ -18,6 +19,7 @@
 #include <stddef.h> // for size_t
 #include <stdint.h> // for int32_t, uint32_t
 #include <string>   // for string
+#include <thread>   // for thread
 #include <vector>   // for vector
 
 /**
@@ -142,6 +144,60 @@ public:
     /// locking several of these cannot deadlock.
     std::recursive_mutex& stream_mutex(int32_t stream_id);
 
+    // ------------------------------------------------------------------ the wedge probe
+    //
+    // Instrumentation for RE-EXCITING the half-node wedge on purpose, and for naming its
+    // cause if it fires. The fault was diagnosed by backtrace to a thread inside
+    // `cuEventRecord` holding the device-wide queuing lock while every other pipeline on the
+    // GPU piled up behind it, but WHY that thread never returned was never established, so
+    // the per-stream lock above is a blast-radius fix on an unexplained fault.
+    //
+    // ⚠️ A STUCK CALL CANNOT BE TIMED. If a thread never returns from the driver, code that
+    // measures a call's duration after it returns prints nothing at all -- which is exactly
+    // what happened the first time. So each pipeline PUBLISHES what it is about to do before
+    // it does it, and a watchdog thread reads those records. That is what turns "the node is
+    // dark and nothing logged" into a line naming the stage, command, stream and frame.
+
+    /// The device-wide queuing lock this class replaced, kept so the fault can be re-excited
+    /// with a config key rather than a rebuild. Selected by `gpu_command_lock: device`; see
+    /// cudaProcess. Nothing takes it in the default `stream` mode.
+    std::recursive_mutex gpu_command_mutex;
+
+    /// What one pipeline is doing right now. Published BEFORE the call and cleared after, so
+    /// a call that never returns leaves its record standing for the watchdog to find.
+    struct InFlight {
+        std::mutex m; ///< guards the fields below; never held across a CUDA call
+        std::string stage;
+        std::string command;
+        int32_t stream = -1;
+        int64_t frame = -1;
+        int64_t entered_us = 0;  ///< steady clock, microseconds
+        bool active = false;     ///< inside a command
+        bool holds_lock = false; ///< past the queuing lock, i.e. blocking other pipelines
+        bool waiting = false;    ///< blocked ON the queuing lock
+        /// When this pipeline last FINISHED queuing a frame, and how many it has done. A
+        /// pipeline that is not active and has not finished one recently is starved --
+        /// blocked in wait_on_precondition, outside the lock and outside every record here.
+        /// That is what the wedge's VICTIMS look like, and without it they stay silent.
+        int64_t last_done_us = 0;
+        int64_t frames_done = 0;
+    };
+
+    /// Register one record per cudaProcess. The device keeps it alive, so the watchdog can
+    /// read it without racing a stage's destruction.
+    std::shared_ptr<InFlight> register_in_flight();
+
+    /// CUDA events created minus destroyed on this device. A monotonic rise means frames are
+    /// not being finalized, which is the other way this fault could present.
+    std::atomic<int64_t> events_outstanding{0};
+
+    /// Start a thread that every `period_s` reports any pipeline stuck in one command for
+    /// more than `stuck_s`, the busy/idle state of every stream, and events_outstanding.
+    /// `cudaStreamQuery` is non-blocking and thread-safe, and it is the measurement that
+    /// splits the hypothesis: all streams idle while a thread sits in the driver means the
+    /// GPU has drained and the block is host-side. Idempotent; a period of 0 does nothing.
+    void start_wedge_watchdog(double period_s, double stuck_s);
+
 protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
@@ -151,6 +207,15 @@ protected:
 
     /// Per-stream command-queuing mutexes; see stream_mutex(). Fixed-size on purpose.
     std::recursive_mutex stream_mutexes[MAX_CUDA_STREAMS];
+
+    /// Every registered pipeline record, and the watchdog reading them.
+    std::mutex in_flight_mutex;
+    std::vector<std::shared_ptr<InFlight>> in_flight;
+    std::thread watchdog_thread;
+    std::atomic<bool> watchdog_stop{false};
+    double watchdog_period_s = 0.0;
+    double watchdog_stuck_s = 0.0;
+    void watchdog_loop();
 
     // Cache of device instances (weak to avoid lifetime extension)
     static std::map<int32_t, std::weak_ptr<cudaDeviceInterface>> inst_map;

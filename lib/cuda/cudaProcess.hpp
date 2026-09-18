@@ -65,6 +65,25 @@ private:
 
     void register_host_memory(Buffer* host_buffer) override;
 
+    // ---------------------------------------------------------------- the wedge probe
+    //
+    /// Take ONE device-wide lock instead of this pipeline's stream mutexes, the behaviour
+    /// before per-stream locking. `gpu_command_lock: device`; diagnostic only, so the wedge
+    /// can be re-excited without a rebuild.
+    bool device_wide_lock = false;
+
+    /// Warn when a single command takes longer than this to RETURN. The command that never
+    /// returns is the watchdog's business, not this one's.
+    double slow_command_warn_s = 0.5;
+
+    /// This pipeline's record in the device's registry. Written before every command so a
+    /// watchdog can name a thread that is still inside one.
+    std::shared_ptr<cudaDeviceInterface::InFlight> in_flight;
+
+    void probe_enter(const std::string& command, int32_t stream, int64_t frame, bool holds_lock,
+                     bool waiting);
+    void probe_clear();
+
     std::shared_ptr<cudaDeviceInterface> device;
 };
 

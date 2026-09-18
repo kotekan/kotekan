@@ -2,11 +2,12 @@
 
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaEventCreate, cudaEventRecord, cudaMemcpyAsync, cudaStr...
-#include "kotekanLogging.hpp" // for FATAL_ERROR, INFO, DEBUG2
+#include "kotekanLogging.hpp" // for FATAL_ERROR, INFO, WARN, DEBUG2
 
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <assert.h>        // for assert
+#include <chrono>          // for steady_clock
 #include <cuda.h>          // for cuGetErrorString, cuModuleGetFunction, cuModuleLoadDataEx
 #include <mutex>           // for mutex, lock_guard
 #include <nvPTXCompiler.h> // for NVPTXCOMPILE_SUCCESS, nvPTXCompilerCompile, nvPTXCompilerC...
@@ -14,6 +15,7 @@
 #include <stdexcept>       // for runtime_error
 #include <stdio.h>         // for fclose, fopen, fread, fseek, ftell, rewind, FILE, SEEK_END
 #include <stdlib.h>        // for free, malloc
+#include <thread>          // for this_thread::sleep_for
 #include <utility>         // for pair
 
 using kotekan::Config;
@@ -58,10 +60,130 @@ cudaDeviceInterface::cudaDeviceInterface(Config& config, const std::string& uniq
 }
 
 cudaDeviceInterface::~cudaDeviceInterface() {
+    watchdog_stop = true;
+    if (watchdog_thread.joinable())
+        watchdog_thread.join();
     for (auto& stream : streams) {
         CHECK_CUDA_ERROR(cudaStreamDestroy(stream));
     }
     cleanup_memory();
+}
+
+// ---------------------------------------------------------------------- the wedge probe
+
+static int64_t probe_now_us() {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+std::shared_ptr<cudaDeviceInterface::InFlight> cudaDeviceInterface::register_in_flight() {
+    auto rec = std::make_shared<InFlight>();
+    std::lock_guard<std::mutex> lock(in_flight_mutex);
+    in_flight.push_back(rec);
+    return rec;
+}
+
+void cudaDeviceInterface::start_wedge_watchdog(double period_s, double stuck_s) {
+    // Every cudaProcess on the device calls this; exactly one thread must result. Stage
+    // construction is serial today, but a probe that silently starts twice would report the
+    // same stall twice and cost an hour of confusion.
+    static std::mutex start_mutex;
+    std::lock_guard<std::mutex> guard(start_mutex);
+    if (period_s <= 0.0 || watchdog_thread.joinable())
+        return;
+    watchdog_period_s = period_s;
+    watchdog_stuck_s = stuck_s;
+    watchdog_thread = std::thread(&cudaDeviceInterface::watchdog_loop, this);
+    // WARN, not INFO: nodes run at log_level WARN, and a probe whose own startup line is
+    // invisible cannot be shown to have started. This IS the falsifier for the run.
+    WARN("GPU[{:d}] WEDGE WATCHDOG ARMED: polling every {:.1f} s, reporting any command or "
+         "lock wait held longer than {:.1f} s",
+         gpu_id, period_s, stuck_s);
+}
+
+void cudaDeviceInterface::watchdog_loop() {
+    // The watchdog must never take a queuing lock and never make a blocking CUDA call, or it
+    // becomes another victim of the fault it exists to describe. cudaStreamQuery returns
+    // immediately; set_thread_device is needed because every thread touching this device
+    // must select it.
+    set_thread_device();
+    const auto tick = std::chrono::duration<double>(watchdog_period_s);
+    while (!watchdog_stop) {
+        std::this_thread::sleep_for(tick);
+        if (watchdog_stop)
+            break;
+        const int64_t now = probe_now_us();
+
+        // 1. Any pipeline that entered a command and never came out.
+        std::vector<std::shared_ptr<InFlight>> recs;
+        {
+            std::lock_guard<std::mutex> lock(in_flight_mutex);
+            recs = in_flight;
+        }
+        int n_stuck = 0, n_waiting = 0;
+        std::vector<std::pair<std::string, double>> starved;
+        for (const auto& r : recs) {
+            std::string stage, command;
+            int32_t stream;
+            int64_t frame, age_us;
+            bool holds, waits;
+            {
+                std::lock_guard<std::mutex> lock(r->m);
+                if (!r->active) {
+                    // Not in a command. If it has not finished one recently either, it is
+                    // starved: blocked on its inputs, which is what a victim of the wedge
+                    // looks like from here.
+                    if (r->frames_done > 0
+                        && now - r->last_done_us > (int64_t)(watchdog_stuck_s * 1e6))
+                        starved.emplace_back(r->stage, (now - r->last_done_us) / 1e6);
+                    continue;
+                }
+                stage = r->stage;
+                command = r->command;
+                stream = r->stream;
+                frame = r->frame;
+                age_us = now - r->entered_us;
+                holds = r->holds_lock;
+                waits = r->waiting;
+            }
+            if (age_us < (int64_t)(watchdog_stuck_s * 1e6))
+                continue;
+            n_stuck++;
+            n_waiting += waits ? 1 : 0;
+            WARN("*** GPU[{:d}] STUCK {:.1f} s: {:s} in {:s}, stream {:d}, frame {:d}{:s}{:s}",
+                 gpu_id, age_us / 1e6, stage, command, stream, frame,
+                 holds ? " -- HOLDS THE QUEUING LOCK" : "",
+                 waits ? " -- WAITING FOR THE QUEUING LOCK" : "");
+        }
+        if (n_stuck == 0 && starved.empty())
+            continue;
+        for (const auto& sv : starved)
+            WARN("*** GPU[{:d}] STARVED {:.1f} s: {:s} has finished no frame -- blocked on its "
+                 "inputs, not on the GPU",
+                 gpu_id, sv.second, sv.first);
+
+        // 2. Is the GPU itself draining? This is the bit that splits the hypothesis: every
+        //    stream idle while a thread sits in the driver means the block is host-side.
+        std::string busy;
+        int n_busy = 0;
+        for (size_t i = 0; i < streams.size(); ++i) {
+            const cudaError_t q = cudaStreamQuery(streams[i]);
+            if (q == cudaErrorNotReady) {
+                n_busy++;
+                busy += (busy.empty() ? "" : ",") + std::to_string(i);
+            } else if (q != cudaSuccess) {
+                // Clear it: a sticky error here would be reported by the next CHECK elsewhere
+                // and we must not turn a diagnostic into a fault of its own.
+                cudaGetLastError();
+                busy += (busy.empty() ? "" : ",") + std::to_string(i) + "=ERR";
+            }
+        }
+        WARN("*** GPU[{:d}] WEDGE STATE: {:d} stuck ({:d} of them merely waiting), {:d} of "
+             "{:d} streams still busy [{:s}], {:d} CUDA events outstanding",
+             gpu_id, n_stuck, n_waiting, n_busy, (int)streams.size(), busy.empty() ? "none" : busy,
+             (long long)events_outstanding.load());
+    }
 }
 
 void cudaDeviceInterface::set_thread_device() {
@@ -88,7 +210,7 @@ int32_t cudaDeviceInterface::get_num_streams() {
 std::recursive_mutex& cudaDeviceInterface::stream_mutex(int32_t stream_id) {
     if (stream_id < 0 || stream_id >= MAX_CUDA_STREAMS)
         throw std::runtime_error(fmt::format("stream_mutex: stream {:d} outside [0, {:d})",
-                                            stream_id, MAX_CUDA_STREAMS));
+                                             stream_id, MAX_CUDA_STREAMS));
     return stream_mutexes[stream_id];
 }
 

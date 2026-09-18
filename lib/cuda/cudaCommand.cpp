@@ -169,10 +169,12 @@ void cudaCommand::finalize_frame() {
     }
     if (start_event != nullptr) {
         CHECK_CUDA_ERROR(cudaEventDestroy(start_event));
+        device.events_outstanding--;
         start_event = nullptr;
     }
     if (end_event != nullptr) {
         CHECK_CUDA_ERROR(cudaEventDestroy(end_event));
+        device.events_outstanding--;
         end_event = nullptr;
     }
 }
@@ -184,12 +186,17 @@ int32_t cudaCommand::get_cuda_stream_id() {
 void cudaCommand::record_start_event() {
     if (profiling) {
         CHECK_CUDA_ERROR(cudaEventCreate(&start_event));
+        device.events_outstanding++;
         CHECK_CUDA_ERROR(cudaEventRecord(start_event, device.getStream(cuda_stream_id)));
     }
 }
 
 cudaEvent_t cudaCommand::record_end_event() {
     CHECK_CUDA_ERROR(cudaEventCreate(&end_event));
+    // Counted so the watchdog can say whether frames are being finalized at all: these are
+    // destroyed in finalize_frame, on the results thread, so a monotonic rise means that
+    // thread has stopped. See cudaDeviceInterface::events_outstanding.
+    device.events_outstanding++;
     CHECK_CUDA_ERROR(cudaEventRecord(end_event, device.getStream(cuda_stream_id)));
     return end_event;
 }

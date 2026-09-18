@@ -9,13 +9,15 @@
 #include "cuda_runtime_api.h"     // for cudaHostRegister
 #include "driver_types.h"         // for CUevent_st, cudaEvent_t, cudaHostRegisterDefault
 #include "factory.hpp"            // for FACTORY, FACTORY_VARIANT
-#include "kotekanLogging.hpp"     // for DEBUG, DEBUG2
+#include "kotekanLogging.hpp"     // for DEBUG, DEBUG2, WARN
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <mutex>    // for recursive_mutex, unique_lock
-#include <set>      // for set (stream-id dedup in collect_stream_ids)
-#include <stdint.h> // for uint32_t, int32_t
+#include <chrono>    // for steady_clock
+#include <mutex>     // for recursive_mutex, unique_lock
+#include <set>       // for set (stream-id dedup in collect_stream_ids)
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t, int32_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -38,6 +40,28 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
     uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_cuda_streams", 3);
 
     device->prepareStreams(num_streams);
+
+    // ---- the wedge probe. `gpu_command_lock: device` restores the older whole-device lock, one
+    // per GPU across every pipeline's whole command loop, so the half-node wedge can be
+    // re-excited deliberately. The stream-mutex path is the default and the shipping
+    // behaviour; this exists so the experiment needs a config key, not a rebuild.
+    const std::string lock_mode =
+        config.get_default<std::string>(unique_name, "gpu_command_lock", "stream");
+    if (lock_mode == "device")
+        device_wide_lock = true;
+    else if (lock_mode != "stream")
+        throw std::runtime_error(
+            fmt::format("{:s}: gpu_command_lock must be \"stream\" or \"device\", not \"{:s}\"",
+                        unique_name, lock_mode));
+    slow_command_warn_s = config.get_default<double>(unique_name, "slow_command_warn_s", 0.5);
+    in_flight = device->register_in_flight();
+    device->start_wedge_watchdog(
+        config.get_default<double>(unique_name, "wedge_watchdog_s", 0.0),
+        config.get_default<double>(unique_name, "wedge_watchdog_stuck_s", 5.0));
+    if (device_wide_lock)
+        WARN("{:s}: gpu_command_lock=device -- this pipeline serialises its command queuing "
+             "against EVERY other pipeline on GPU {:d}. Diagnostic only.",
+             unique_name, gpu_id);
     CHECK_CUDA_ERROR(cudaProfilerStart());
     init();
     collect_stream_ids();
@@ -120,22 +144,44 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
 
     int icommand = gpu_frame_counter % _gpu_buffer_depth;
     {
+        // Publish that we are about to take the lock, so a watchdog can tell a pipeline
+        // blocked ON the lock from the one pipeline stuck INSIDE it. A call that never
+        // returns cannot be timed after the fact, which is why this is written first.
+        probe_enter("(queuing lock)", _my_stream_ids.front(), gpu_frame_counter, false, true);
+
         // Grab the queuing locks for THE STREAMS WE USE -- not one device-wide lock. See
         // cudaDeviceInterface::stream_mutex for why that was a whole-GPU outage waiting to
         // happen. _my_stream_ids is ascending, which is what makes taking several safe.
+        // `gpu_command_lock: device` puts the old whole-device lock back, for re-exciting it.
         std::vector<std::unique_lock<std::recursive_mutex>> locks;
-        locks.reserve(_my_stream_ids.size());
-        for (const std::int32_t sid : _my_stream_ids)
-            locks.emplace_back(device->stream_mutex(sid));
+        if (device_wide_lock) {
+            locks.emplace_back(device->gpu_command_mutex);
+        } else {
+            locks.reserve(_my_stream_ids.size());
+            for (const std::int32_t sid : _my_stream_ids)
+                locks.emplace_back(device->stream_mutex(sid));
+        }
 
         // Create the state object that will get passed through this pipeline
         cudaPipelineState pipestate(gpu_frame_counter);
 
         for (auto& command : commands) {
+            cudaCommand* cmd = (cudaCommand*)command[icommand];
+            probe_enter(cmd->get_unique_name(), cmd->get_cuda_stream_id(), gpu_frame_counter, true,
+                        false);
+            const auto t0 = std::chrono::steady_clock::now();
             // Feed the last signal into the next operation
-            cudaEvent_t event = ((cudaCommand*)command[icommand])->execute_base(pipestate, events);
+            cudaEvent_t event = cmd->execute_base(pipestate, events);
+            const double held_s =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            // Catches a command that is slow but RETURNS. The one that never returns is the
+            // watchdog's job; it reads the record written above.
+            if (held_s > slow_command_warn_s)
+                WARN("SLOW COMMAND: {:s} took {:.2f} s on stream {:d} (frame {:d}), holding "
+                     "the queuing lock throughout",
+                     cmd->get_unique_name(), held_s, cmd->get_cuda_stream_id(), gpu_frame_counter);
             if (event != nullptr) {
-                int32_t command_stream_id = ((cudaCommand*)command[icommand])->get_cuda_stream_id();
+                int32_t command_stream_id = cmd->get_cuda_stream_id();
                 events[command_stream_id] = event;
                 final_event = event;
                 final_stream_id = command_stream_id;
@@ -182,8 +228,39 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
             final_event = join_events[icommand];
         }
     }
+    probe_clear();
     final_signals[icommand]->set_signal(final_event);
     DEBUG2("Commands executed.");
+}
+
+void cudaProcess::probe_enter(const std::string& command, int32_t stream, int64_t frame,
+                              bool holds_lock, bool waiting) {
+    if (!in_flight)
+        return;
+    std::lock_guard<std::mutex> lock(in_flight->m);
+    in_flight->stage = unique_name;
+    in_flight->command = command;
+    in_flight->stream = stream;
+    in_flight->frame = frame;
+    in_flight->entered_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch())
+                                .count();
+    in_flight->active = true;
+    in_flight->holds_lock = holds_lock;
+    in_flight->waiting = waiting;
+}
+
+void cudaProcess::probe_clear() {
+    if (!in_flight)
+        return;
+    std::lock_guard<std::mutex> lock(in_flight->m);
+    in_flight->active = false;
+    in_flight->holds_lock = false;
+    in_flight->waiting = false;
+    in_flight->last_done_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                  std::chrono::steady_clock::now().time_since_epoch())
+                                  .count();
+    in_flight->frames_done++;
 }
 
 void cudaProcess::register_host_memory(Buffer* host_buffer) {
