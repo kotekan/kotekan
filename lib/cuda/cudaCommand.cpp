@@ -67,8 +67,8 @@ void cudaCommand::set_command_type(const gpuCommandType& type) {
     if (cuda_stream_id >= 0)
         return;
 
-    // Otherwise assign by role, shifted by the pipeline's base: base+0 copy-in, base+1
-    // copy-out, base+2 kernel. The owning cudaProcess checks the result against its own
+    // Otherwise assign by role within the pipeline's triple: 3*base+0 copy-in, 3*base+1
+    // copy-out, 3*base+2 kernel. The owning cudaProcess checks the result against its own
     // num_cuda_streams once every command is built (cudaProcess::collect_stream_ids).
     const int32_t base = config.get_default<int32_t>(unique_name, "cuda_stream_base", 0);
     cuda_stream_id = resolve_cuda_stream(command_type, base);

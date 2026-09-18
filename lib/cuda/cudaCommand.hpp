@@ -56,21 +56,22 @@ extern std::shared_ptr<cudaCommandState> no_cuda_command_state;
  * which handles a lot of queueing and device interface issues.
  *
  * @conf cuda_stream  The ID of the CUDA stream to use for this command, defaults to
- *                    @c cuda_stream_base + 0, 1, 2 for command types COPY_IN, COPY_OUT, and
- *                    KERNEL respectively. This number must be less than @c num_cuda_streams
- *                    set in cudaProcess.
- * @conf cuda_stream_base  Int, default 0. Shifts this pipeline's DEFAULT stream triple to
- *                    base+0 (COPY_IN), base+1 (COPY_OUT), base+2 (KERNEL). Set once on the
- *                    owning cudaProcess; config lookup walks up, so its commands inherit it.
- *                    Two pipelines on one GPU get disjoint CUDA streams when their bases are
- *                    at least 3 apart -- the triples themselves must not overlap, so bases 0
- *                    and 3 are disjoint while 0 and 1 share two streams. Disjoint streams let
- *                    their kernels overlap (a stream is an in-order queue, so pipelines
- *                    sharing stream 2 serialize) and mean they take no queuing mutex in
- *                    common. This is not validated across stages: overlapping bases are legal
- *                    and simply share what they overlap on. The owning cudaProcess must
- *                    declare num_cuda_streams greater than base+2. An explicit @c cuda_stream
- *                    is absolute and ignores this.
+ *                    3 * @c cuda_stream_base + 0, 1, 2 for command types COPY_IN, COPY_OUT,
+ *                    and KERNEL respectively. This number must be less than
+ *                    @c num_cuda_streams set in cudaProcess.
+ * @conf cuda_stream_base  Int, default 0. A pipeline INDEX, not a stream id: it selects this
+ *                    pipeline's DEFAULT triple, streams 3*base+0 (COPY_IN), 3*base+1
+ *                    (COPY_OUT) and 3*base+2 (KERNEL). Set once on the owning cudaProcess;
+ *                    config lookup walks up, so its commands inherit it. Distinct bases
+ *                    therefore give wholly disjoint triples -- a triple that straddles two
+ *                    pipelines cannot be expressed -- so two pipelines either share all three
+ *                    streams or none, and take either the same queuing mutexes or none in
+ *                    common. Disjoint streams also let their kernels overlap, a stream being
+ *                    an in-order queue. The owning cudaProcess must declare num_cuda_streams
+ *                    greater than 3*base+2. An explicit @c cuda_stream is absolute, ignores
+ *                    this, and is the one way to put a command outside its pipeline's triple:
+ *                    prefer not to, because a copy sharing a stream with kernels blocks them
+ *                    behind unrelated traffic on the device's single copy queue.
  * @conf required_flag  A string flag name.  If set, the @c cudaPipelineState object will be
  *                    checked for this flag, and this command will only run if that flag is set.
  *
