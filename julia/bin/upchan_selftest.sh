@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # This script runs the in-file self-test of the upchannelization kernel for all
-# supported upchannelization factors. Each run injects two inputs -- a tone and
-# a constant -- and compares the kernel output against an analytic prediction
-# (see `main` in `kernels/upchan.jl`).
+# supported upchannelization factors. Each run injects three inputs -- a tone,
+# a constant, and a set of impulses -- and compares the kernel output against an
+# analytic prediction (see `main` in `kernels/upchan.jl`). The tone is then
+# repeated with the time window wrapped around the end of the ring buffer.
 # Run it from the kotekan base directory like ./julia/bin/upchan_selftest.sh
 #
 # The self-test uses its own small setup (`kernels/setup_selftest.jl`) instead
@@ -40,9 +41,10 @@ for setup in ${setups}; do
 done
 wait
 
-# Each driver runs both test cases (`:tone` and `:constant`) and prints one
-# "Found N errors" line per case.
-expected_results=2
+# Each driver runs all test cases (`:tone`, `:constant`, `:impulse`, and the
+# tone again with a wrapped time window) and prints one "Found N errors" line
+# per case.
+expected_results=4
 
 status=0
 for setup in ${setups}; do

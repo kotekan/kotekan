@@ -4,10 +4,23 @@ using CUDA
 using CUDASIMDTypes
 using IndexSpaces
 using Mustache
+using Random
 
 const Memory = IndexSpaces.Memory
 
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
+
+# The self-test fills the output with `-8` nibbles and must be able to tell an
+# element the kernel never wrote from one it did, so the random input has to
+# avoid `-8` (nibble `0b1000`). Map that one nibble value to `0` and leave the
+# other 15 alone; this works on whole words because the arrays are large.
+function kill_nan_nibbles(r::UInt32)
+    lo = r & 0x77777777             # the low three bits of each nibble
+    lo |= lo >> 0x1
+    lo |= lo >> 0x2                 # bit 0 of each nibble: are they nonzero?
+    nonzero = (lo & 0x11111111) << 0x3
+    return r & ~(r & 0x88888888 & ~nonzero)
+end
 
 @enum CHORDTag CplxTag DishTag FreqTag PolrTag TimeTag ThreadTag WarpTag BlockTag
 
@@ -52,6 +65,15 @@ elseif setup ≡ :pathfinder
 else
     @assert false
 end
+
+# `xpose.jl` carries its own setup block instead of including one of the
+# `setup_*.jl` files, so it never picked up the constants that #1608 added
+# there. Without them `main` raises `UndefVarError: ptx_compat` and the
+# generator cannot run at all. All three setups above use the same values.
+# See `setup_charts.jl` for what these mean.
+const compute_capability = v"8.6" # A40
+const ptx_compat = v"8.0"
+const cuda_arch = "sm_86" # A40
 
 const Dshort = 8
 const Tshort = 16
@@ -328,7 +350,7 @@ println("[Done creating xpose kernel]")
     return nothing
 end
 
-function main(; compile_only::Bool=false, output_kernel::Bool=false)
+function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftest::Bool=false)
     if !compile_only
         println("CHORD transpose kernel")
     end
@@ -482,6 +504,69 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
         write("output/xpose_$setup.cxx", cxx)
     end
 
+    if run_selftest
+        println("Allocating input data...")
+        Ein_memory = Array{Int4x8}(undef, idiv(D, 4) * P * F * T)
+        Eout_memory = Array{Int4x8}(undef, idiv(D, 4) * P * F * T)
+        info_memory = Array{Int32}(undef, num_threads * num_warps * num_blocks)
+
+        println("Setting up input data...")
+        # The kernel is a pure permutation, so a random input can be checked
+        # exactly: complete coverage, no reference arithmetic, no tolerance.
+        # The data is never interpreted, so there is no encoding step here.
+        Random.seed!(0)
+        Ein_words = reinterpret(UInt32, Ein_memory)
+        rand!(Ein_words)
+        Ein_words .= kill_nan_nibbles.(Ein_words)
+
+        println("Copying data from CPU to GPU...")
+        Ein_cuda = CuArray(Ein_memory)
+        # `-8` cannot occur in the input, so an output element still holding it
+        # is one the kernel never wrote.
+        Eout_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), length(Eout_memory))
+        info_cuda = CUDA.fill(-1i32, length(info_memory))
+
+        println("Running kernel...")
+        kernel(Ein_cuda, Eout_cuda, info_cuda; threads=(num_threads, num_warps), blocks=num_blocks, shmem=shmem_bytes)
+        synchronize()
+
+        println("Copying data back from GPU to CPU...")
+        Eout_memory = Array(Eout_cuda)
+        info_memory = Array(info_cuda)
+        @assert all(info_memory .== 0)
+
+        println("Checking results...")
+        # See `layout_Ein_memory` and `layout_Eout_memory`, and the `strides`
+        # in the YAML above. In units of complex samples:
+        #     Ein[dish % Dshort, time % Tshort, dish ÷ Dshort, polr, freq, time ÷ Tshort]
+        #     Eout[dish, polr, freq, time]
+        Ein = reinterpret(Int4x2, Ein_memory)
+        Eout = reinterpret(Int4x2, Eout_memory)
+        error_count = 0
+        for time in 0:(T - 1), freq in 0:(F - 1), polr in 0:(P - 1), dish in 0:(D - 1)
+            dish_hi, dish_lo = divrem(dish, Dshort)
+            time_hi, time_lo = divrem(time, Tshort)
+            ein_idx =
+                dish_lo +
+                Dshort * time_lo +
+                Dshort * Tshort * dish_hi +
+                D * Tshort * polr +
+                D * Tshort * P * freq +
+                D * Tshort * P * F * time_hi
+            eout_idx = dish + D * polr + D * P * freq + D * P * F * time
+            if Eout[eout_idx + 1] ≠ Ein[ein_idx + 1]
+                if error_count < 20
+                    println("    ERROR: dish=$dish polr=$polr freq=$freq time=$time " *
+                            "Eout=$(Eout[eout_idx + 1]) Ein=$(Ein[ein_idx + 1])")
+                end
+                error_count += 1
+            end
+        end
+        println("    E: $error_count errors found in $(D * P * F * T) samples")
+        error_count == 0 || error("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+        println("Self-test passed.")
+    end
+
     println("Done.")
     return nothing
 end
@@ -502,8 +587,8 @@ if CUDA.functional()
     # modifies the generated PTX code
     main(; output_kernel=true)
 
-    # # Run test
-    # main(; run_selftest=true)
+    # Self-test (checks the transpose against a CPU reference permutation)
+    main(; run_selftest=true)
 
     # # Run benchmark
     # main(; nruns=10000)
