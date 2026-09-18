@@ -15,9 +15,10 @@ TWO KINDS OF TEST HERE, and the first is the one that matters:
      failed (#53, #52, #46, #33). Every one of these is a case where the old path produced a
      confident wrong answer rather than an error.
 
-  C-E. TRANSPORT LIVENESS, each against a real socket: silence is not a broken link (C), the
+  C-F. TRANSPORT LIVENESS, each against a real socket: silence is not a broken link (C), the
      socket thread is never stalled by the ring lock (D), and a connection the gather closed
-     after it lived is reconnected at once (E). C and D were each a fleet-wide outage first.
+     after it lived is reconnected at once (E), and the receive buffer is pinned before
+     connect rather than autotuned up from 128 kB (F). C and D were each a fleet-wide outage.
 
     python3 python/scripts/gnss/test_telem.py
 """
@@ -739,6 +740,56 @@ class TestReconnectPolicy(unittest.TestCase):
                                 "dropping us at once -- that is the churn the backoff exists "
                                 "for" % gap)
         self.assertEqual(c.fast_reconnects, 0)
+
+
+class TestReceiveBufferIsPinned(unittest.TestCase):
+    """F. The receive buffer is asked for explicitly, before connect().
+
+    The kernel starts a connection near 128 kB and autotunes up over tens of seconds. This
+    stream runs at tens of MB/s, the gather drops a client that cannot take a frame in time,
+    and a drop is now followed by an IMMEDIATE reconnect -- so leaving the size to autotuning
+    would re-enter the smallest-buffer ramp on every drop, at the worst possible moment.
+    """
+
+    def _connected_client(self, **kw):
+        import threading
+        srv = _listen()
+        holder = {}
+
+        def serve():
+            try:
+                conn, _ = srv.accept()
+                holder["conn"] = conn
+                time.sleep(1.5)
+            except Exception:
+                pass
+        threading.Thread(target=serve, daemon=True).start()
+        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=8,
+                              retry_s=0.05, read_timeout_s=1.0, **kw)
+        c.start()
+        deadline = time.time() + 5.0
+        while time.time() < deadline and c.rcvbuf_actual is None:
+            time.sleep(0.01)
+        c.stop()
+        srv.close()
+        return c
+
+    def test_the_kernel_grants_what_was_asked_for_within_its_ceiling(self):
+        req = 256 * 1024          # small enough to be under any plausible rmem_max
+        with open("/proc/sys/net/core/rmem_max") as f:
+            rmem_max = int(f.read().strip())
+        c = self._connected_client(rcvbuf_bytes=req)
+        self.assertIsNotNone(c.rcvbuf_actual, "the client never recorded a receive buffer")
+        # Linux stores 2x the request, then clamps to rmem_max.
+        self.assertGreaterEqual(c.rcvbuf_actual, min(2 * req, rmem_max))
+        self.assertEqual(c.stats()["rcvbuf"], c.rcvbuf_actual)
+
+    def test_zero_leaves_the_kernels_autotuning_alone(self):
+        c = self._connected_client(rcvbuf_bytes=0)
+        # Still reported (it is the number worth reading), just not requested: a fresh
+        # connection's default is far below what this stream needs, which is the whole point.
+        self.assertIsNotNone(c.rcvbuf_actual)
+        self.assertLess(c.rcvbuf_actual, 32 << 20)
 
 
 if __name__ == "__main__":

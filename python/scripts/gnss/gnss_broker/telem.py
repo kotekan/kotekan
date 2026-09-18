@@ -273,7 +273,8 @@ class TelemClient(object):
 
     def __init__(self, host="127.0.0.1", port=11061, depth=64, retry_s=5.0, chains=None,
                  read_timeout_s=30.0, epoch_margin=64, epoch_strikes=8,
-                 pending_max_bytes=128 << 20, fast_retry_after_s=10.0):
+                 pending_max_bytes=128 << 20, fast_retry_after_s=10.0,
+                 rcvbuf_bytes=32 << 20):
         self.host = host
         self.port = port
         self.depth = int(depth)
@@ -323,6 +324,11 @@ class TelemClient(object):
         self.fast_retry_after_s = float(fast_retry_after_s)
         self.fast_reconnects = 0
         self.last_lived_s = None
+        # Receive buffer asked for on each new socket; see _connect. 0 leaves the kernel's
+        # autotuning alone. `rcvbuf_actual` is what the kernel granted, which is the number
+        # worth reading: the request is doubled and then clamped to net.core.rmem_max.
+        self.rcvbuf_bytes = int(rcvbuf_bytes)
+        self.rcvbuf_actual = None
         self.connected = False
         self.frames = 0
         self.bad = 0
@@ -347,13 +353,39 @@ class TelemClient(object):
         with self._pending_cv:
             self._pending_cv.notify_all()
 
+    def _connect(self):
+        """Open the socket with its receive buffer sized BEFORE connect().
+
+        ⚠️ SO_RCVBUF HAS TO PRECEDE connect(). The window scale is negotiated in the handshake
+        from the buffer size at that moment, so a buffer enlarged afterwards cannot be
+        advertised in full. And the size matters most in the seconds just after a connect: the
+        kernel starts a fresh connection near 128 kB and autotunes upwards over tens of
+        seconds, while this stream carries every chain at tens of MB/s and the gather drops a
+        client that cannot take a frame within send_timeout_ms. Since a drop is now followed by
+        an immediate reconnect, leaving it to autotuning would re-enter that ramp on every
+        drop -- the weakest moment, re-entered exactly when the link is already in trouble.
+        The kernel clamps the request to net.core.rmem_max, so a host without the sysctl gets
+        its maximum rather than an error.
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            if self.rcvbuf_bytes > 0:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.rcvbuf_bytes)
+            sock.settimeout(10.0)
+            sock.connect((self.host, self.port))
+            self.rcvbuf_actual = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+        except Exception:
+            sock.close()
+            raise
+        return sock
+
     def _run(self):
         while not self._stop.is_set():
             sock = None
             t_up = None
             fast = False
             try:
-                sock = socket.create_connection((self.host, self.port), timeout=10.0)
+                sock = self._connect()
                 sock.settimeout(self.read_timeout_s)
                 # KEEPALIVE, because a read timeout no longer means "reconnect" (see
                 # _read_loop): silence is now tolerated, so the ONLY thing left to notice a
@@ -366,8 +398,13 @@ class TelemClient(object):
                 self.connected = True
                 self.connects += 1
                 t_up = time.monotonic()
-                _log("telem: connected to gather %s:%d (connection #%d)"
-                     % (self.host, self.port, self.connects))
+                _log("telem: connected to gather %s:%d (connection #%d, receive buffer "
+                     "%.1f MB%s)"
+                     % (self.host, self.port, self.connects,
+                        (self.rcvbuf_actual or 0) / 1048576.0,
+                        "" if (self.rcvbuf_actual or 0) >= self.rcvbuf_bytes
+                        else " -- CLAMPED by net.core.rmem_max, which is the ceiling on how "
+                             "long a reader stall the link survives"))
                 self._read_loop(sock)
             except Exception as e:
                 lived = None if t_up is None else time.monotonic() - t_up
@@ -721,6 +758,7 @@ class TelemClient(object):
                     "epoch_resets": self.epoch_resets,
                     "connects": self.connects,
                     "fast_reconnects": self.fast_reconnects,
+                    "rcvbuf": self.rcvbuf_actual,
                     "pending": len(self._pending),
                     "pending_peak": self.pending_peak,
                     "pending_dropped": self.pending_dropped,
