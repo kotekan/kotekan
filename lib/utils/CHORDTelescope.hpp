@@ -27,7 +27,7 @@ using dish_index_t =
  * @brief Enum for denoting the type of dish input into Kotekan
  */
 enum class DishType : int32_t {
-    Fake = -1,     // Not a real dish
+    Missing = -1,  // An unpopulated dish element
     ArrayDish = 0, // A standard dish in the main array.
     RFIDish = 1,   // A site for an RFI antenna
 };
@@ -64,18 +64,18 @@ struct dishInfo {
     std::string label;
 
     /**
-     * @brief   Default constructor for a Fake, un-indexed dishInfo.
+     * @brief   Default constructor for a Missing, un-indexed dishInfo.
      */
     dishInfo() :
         idx(-1), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
-        coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
+        coelev_disp_deg(0.0), type(DishType::Missing), label("Missing") {}
 
     /**
-     * @brief   Constructor for a Fake dishInfo with an index.
+     * @brief   Constructor for a Missing dishInfo with an index.
      */
     dishInfo(dish_index_t idx) :
         idx(idx), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
-        coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
+        coelev_disp_deg(0.0), type(DishType::Missing), label("Missing") {}
 
     /**
      * @brief   Constructor for dishInfo with all fields.
@@ -114,7 +114,7 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  * actual_pos = grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
  *                                  actual_coelev = target_coelev + disp.
- * @param   type            DishType Type of dish input. DishType::Fake, DishType::ArrayDish
+ * @param   type            DishType Type of dish input. DishType::Missing, DishType::ArrayDish
  * @param   label           std::string Label for dish. Future: key for layout DB?
  */
 struct dishInputFields {
@@ -140,7 +140,7 @@ struct DishParams {
     /// Dish positions in dish coordinate system.
     std::vector<vec3d_t> dish_positions;
 
-    /// Full dish info table (Fake + real dishes), used to build dish_positions.
+    /// Full dish info table (Missing + real dishes), used to build dish_positions.
     std::vector<dishInfo> dish_info_table;
 
     /**
@@ -500,7 +500,7 @@ public:
 
     /**
      * @brief   Element indices, in the given element order, of the connected elements:
-     *          those whose dish type is not Fake, array dishes and RFI antennas alike.
+     *          those whose dish type is not Missing, array dishes and RFI antennas alike.
      **/
     std::vector<uint64_t> get_connected_elements(ElementOrder ord) const;
 

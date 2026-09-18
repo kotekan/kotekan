@@ -2,11 +2,13 @@
 #define UPCHANNELIZATION_SCHEDULE_H
 
 #include "Config.hpp"         // for Config
+#include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for kotekanLogging
 
 #include <assert.h> // for assert
 #include <cstddef>  // for size_t
 #include <map>      // for map
+#include <optional> // for optional
 #include <string>   // for basic_string, string
 #include <vector>   // for vector
 
@@ -34,9 +36,6 @@ class UpchannelizationSchedule : kotekan::kotekanLogging {
 
     ////////////////////////////////////////////////////////////////////////////////
 
-    const std::string unique_name;
-    kotekan::Config& config;
-
     // The coarse frequency channels handled by this X-Engine
     // instance. This maps "channel index" to "channel".
     const std::vector<int> frequency_channels;
@@ -51,28 +50,42 @@ class UpchannelizationSchedule : kotekan::kotekanLogging {
 
     ////////////////////////////////////////////////////////////////////////////////
 
-    std::vector<int> make_frequency_channels() const;
+    // These validate their input and abort with a fatal error if it is
+    // malformed. They take `schedule_name` only to name it in error
+    // messages; the log prefix is not set yet while they run.
+    std::vector<int> make_frequency_channels(const std::string& schedule_name,
+                                             const std::vector<int>& coarse_freq) const;
     std::map<int, int> make_frequency_channels_to_indices() const;
 
-    std::vector<int> make_upchan_factors() const;
+    std::vector<int> make_upchan_factors(kotekan::Config& config,
+                                         const std::string& schedule_name) const;
 
-    std::map<int, std::vector<int>> make_upchan_factors_to_channels() const;
+    std::map<int, std::vector<int>>
+    make_upchan_factors_to_channels(kotekan::Config& config,
+                                    const std::string& schedule_name) const;
     std::map<int, std::vector<int>> make_upchan_channels_to_factors() const;
 
     void output_statistics() const;
     bool invariant() const;
 
 public:
-    UpchannelizationSchedule(const UpchannelizationSchedule&) = delete;
-    UpchannelizationSchedule(UpchannelizationSchedule&&) = delete;
-    UpchannelizationSchedule& operator=(const UpchannelizationSchedule&) = delete;
-    UpchannelizationSchedule& operator=(UpchannelizationSchedule&&) = delete;
-
-    UpchannelizationSchedule(kotekan::Config& config, const std::string& unique_name = "");
-
-    // Get the singleton instance
-    static const UpchannelizationSchedule& instance(kotekan::Config& config,
-                                                    const std::string& unique_name = "");
+    // Parse an upchannelization schedule.
+    //
+    // - config, schedule_name: where to find `upchan_factors` and
+    //   `upchan_channel_ranges` in the configuration.
+    //
+    // - coarse_freq: the coarse frequency channels handled here. This
+    //   is local to one GPU and thus cannot come from the
+    //   configuration.
+    //
+    // - caller_unique_name: the unique name of the calling stage. The
+    //   schedule logs under that name and at that stage's configured
+    //   log level, the same way the stage itself does. Several stages
+    //   -- and several GPUs -- build their own schedules, so their log
+    //   output needs to be told apart.
+    UpchannelizationSchedule(kotekan::Config& config, const std::string& schedule_name,
+                             const std::vector<int>& coarse_freq,
+                             const std::string& caller_unique_name);
 
     // The coarse frequency channels handled by this X-Engine
     // instance. This maps "channel index" to "channel".
@@ -103,5 +116,22 @@ public:
     const std::vector<int>& get_upchan_channels(const int upchan_factor) const;
     const std::vector<int>& get_upchan_factors(const int channel) const;
 };
+
+// Read the coarse frequency channels handled by this GPU from the
+// metadata of the first frame of each of `metadata_sources`, in order.
+//
+// CHORD carries all local channels in a single voltage buffer, CHIME
+// splits them over one buffer per channel, so this takes a list and
+// concatenates what it finds.
+//
+// The channels do not change while kotekan runs, so one frame from each
+// buffer is enough: this marks that frame empty and unregisters the
+// caller as a consumer, leaving the buffers to the rest of the
+// pipeline. The caller must have registered as a consumer of every
+// buffer beforehand.
+//
+// Returns an empty optional if kotekan shut down while waiting.
+std::optional<std::vector<int>> wait_for_coarse_freq(const std::vector<Buffer*>& metadata_sources,
+                                                     const std::string& unique_name);
 
 #endif // #ifndef UPCHANNELIZATION_SCHEDULE_H

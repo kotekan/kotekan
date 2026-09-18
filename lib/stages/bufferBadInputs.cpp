@@ -67,10 +67,10 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 
     // Optional clock: the produced frames' FPGA sequence numbers start at the sequence number
     // of this buffer's first frame instead of at zero. See main_thread().
-    in_clock_buf =
-        config.exists(unique_name, "in_clock_buf") ? get_buffer("in_clock_buf") : nullptr;
-    if (in_clock_buf)
-        in_clock_buf->register_consumer(unique_name);
+    metadata_source =
+        config.exists(unique_name, "metadata_source") ? get_buffer("metadata_source") : nullptr;
+    if (metadata_source)
+        metadata_source->register_consumer(unique_name);
 
     updates.resize(config.get_default<uint32_t>(unique_name, "num_kept_updates", 5));
 
@@ -95,7 +95,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
         }
     }
 
-    // Baseline mask from the telescope: elements outside the main array (CHORD's Fake
+    // Baseline mask from the telescope: elements outside the main array (CHORD's Missing
     // dishes and RFI antennas) are never valid inputs and stay masked independent of the
     // posted bad-inputs list. A telescope with no dish table configured reports every
     // element outside the array; that means the table is absent, not that every feed is
@@ -218,26 +218,28 @@ void bufferBadInputs::main_thread() {
     // voltage frame -- so that is where this stream has to start as well. Read it from the clock
     // buffer's first frame, as setBBBeams does; without a clock buffer the stream starts at zero.
     int64_t first_fpga_seq_num = 0;
-    // The clock buffer's coarse frequencies, stamped on every mask frame so that a consumer
+    // The metadata source's coarse frequencies, stamped on every mask frame so that a consumer
     // fed by several instances can tell their streams apart.
     std::vector<int> coarse_freq;
-    if (in_clock_buf) {
-        if (in_clock_buf->wait_for_full_frame(unique_name, 0) == nullptr)
+    if (metadata_source) {
+        if (metadata_source->wait_for_full_frame(unique_name, 0) == nullptr)
             return;
-        const std::shared_ptr<const chordMetadata> clock_meta = get_chord_metadata(in_clock_buf, 0);
+        const std::shared_ptr<const chordMetadata> clock_meta =
+            get_chord_metadata(metadata_source, 0);
         if (!clock_meta->has_fpga_seq_num())
-            FATAL_ERROR("in_clock_buf {:s} has no fpga_seq_num, needed to start the bad feed mask "
-                        "sequence numbers.",
-                        in_clock_buf->buffer_name);
+            FATAL_ERROR(
+                "metadata_source {:s} has no fpga_seq_num, needed to start the bad feed mask "
+                "sequence numbers.",
+                metadata_source->buffer_name);
         first_fpga_seq_num = clock_meta->get_fpga_seq_num();
         if (clock_meta->has_coarse_freq())
             coarse_freq = clock_meta->get_coarse_freq();
-        in_clock_buf->mark_frame_empty(unique_name, 0);
+        metadata_source->mark_frame_empty(unique_name, 0);
         // Only the first frame is needed; stop being a consumer so that the producer does not
         // wait for us on the frames after it.
-        in_clock_buf->unregister_consumer(unique_name);
+        metadata_source->unregister_consumer(unique_name);
         INFO("Bad feed mask FPGA sequence numbers start at {:d}, from the first frame of {:s}",
-             first_fpga_seq_num, in_clock_buf->buffer_name);
+             first_fpga_seq_num, metadata_source->buffer_name);
     }
 
     // `frame_index` counts all frames produced, not just the current slot, because the FPGA

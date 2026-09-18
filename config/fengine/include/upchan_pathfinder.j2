@@ -246,6 +246,7 @@ run_set_upchan_U{{ U }}_gain:
     upchan_max_num_channels: upchan_U{{ U }}_max_num_channels
     upchan_gain: [{{ ([1] * U) | join(', ') }}]
     upchan_gain_buffer: host_upchan_U{{ U }}_gain_buffer
+    metadata_source: host_voltage_buffer
 {% endfor %}
 
 {% for U in [2, 4, 8, 16, 32, 64] %}

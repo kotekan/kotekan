@@ -194,7 +194,7 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_autocorrelations) {
 BOOST_AUTO_TEST_CASE(test_fulluppertri_to_dish_inputs) {
     std::cout << "Testing N2Subset: FullUpperTri -> DishInputs (compact)...\n";
 
-    // Four dishes of which 1 and 3 are connected (0 and 2 default to Fake): in the
+    // Four dishes of which 1 and 3 are connected (0 and 2 default to Missing): in the
     // fiducial CHORDBeamformer order (element = dish + pol * 4) the DishInputs frame
     // holds elements {1, 3, 5, 7} of the eight-element input.
     {

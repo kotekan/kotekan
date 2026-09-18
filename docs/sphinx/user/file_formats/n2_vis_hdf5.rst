@@ -253,7 +253,7 @@ File identity and structure
        ``RedundantBaselineAvg``, ``Autocorrelations``, ``InputANDMasked``,
        ``InputORMasked``, ``GeneralSubset``, or ``DishInputs`` (a compact
        frame holding the dense triangle over the connected elements, those
-       whose dish type is not ``Fake``; see the ``input_list`` attribute).
+       whose dish type is not ``Missing``; see the ``input_list`` attribute).
    * - ``input_list``
      - int32 array
      - Compact subset layouts only: the element index, in ``input_order``,
@@ -388,8 +388,8 @@ compact subset layouts hold the elements named by the ``input_list``
 attribute, in the N2 layout's element order. Each row names the dish the
 element belongs to and its polarization, and copies that dish's entry from
 the telescope's ``dish_inputs`` configuration. Dishes not populated in the
-configuration hold type ``Fake`` (-1) and label ``"Fake"``, so in a full
-layout their elements read ``"Fakep1"``, ``"Fakep2"``; compact layouts
+configuration hold type ``Missing`` (-1) and label ``"Missing"``, so in a full
+layout their elements read ``"Missingp1"``, ``"Missingp2"``; compact layouts
 leave them out.
 
 .. list-table::
@@ -445,7 +445,7 @@ leave them out.
    * - ``type``
      - (elements)
      - int32
-     - Dish type enum: -1 = ``Fake`` (element of an unpopulated dish),
+     - Dish type enum: -1 = ``Missing`` (element of an unpopulated dish),
        0 = ``ArrayDish``, 1 = ``RFIDish``.
    * - ``label``
      - (elements)

@@ -34,7 +34,7 @@
  * CHIME orders; when the two are equal -- CHORD flags and masks in the same
  * [P][D] order -- the telescope is not consulted.
  *
- * Elements the telescope places outside the main array (CHORD's Fake dishes
+ * Elements the telescope places outside the main array (CHORD's Missing dishes
  * and RFI antennas) are never valid inputs; they stay masked whatever the
  * posted list says.
  *
@@ -47,7 +47,7 @@
  * for @c bf_mask_lifetime_in_samples FPGA samples, and its FPGA sequence
  * number is that sample's seq -- so it grows by the lifetime from frame to
  * frame, which is what the bad feed mask ring buffer requires.  The
- * sequence numbers start at the seq of the first frame of @c in_clock_buf
+ * sequence numbers start at the seq of the first frame of @c metadata_source
  * (normally the voltage buffer, whose first frame also defines the logical
  * beginning of the voltage ring buffer), or at zero if no clock buffer is
  * configured.
@@ -64,7 +64,7 @@
  * reinterpretation of the mask rather than a reordering of it.
  *
  * @par Buffers
- * @buffer in_clock_buf Optional.  Any buffer with an @c fpga_seq_num; only its
+ * @buffer metadata_source Optional.  Any buffer with an @c fpga_seq_num; only its
  *     first frame is read, then the stage unregisters as a consumer.  The
  *     voltage buffer is recommended.  Its coarse frequencies, when present,
  *     are copied onto every mask frame, so a consumer fed by several
@@ -126,7 +126,7 @@ private:
 
     Buffer* out_buf;
     /// Optional; see the class comment. Null when not configured.
-    Buffer* in_clock_buf;
+    Buffer* metadata_source;
     /// The size of the bad input mask.
     size_t num_elements;
     /// The shape of the bad input mask, num_elements == num_polarizations * num_dishes
@@ -136,7 +136,7 @@ private:
     int64_t bf_mask_lifetime_in_samples;
 
     /// Mask before any posted flags: 0 for elements outside the telescope's
-    /// main array (CHORD's Fake dishes and RFI antennas).
+    /// main array (CHORD's Missing dishes and RFI antennas).
     std::vector<uint8_t> baseline_mask;
 
     /// Posted updates, keyed by their start time.

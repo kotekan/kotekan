@@ -141,7 +141,7 @@ telescope:
     dish_vert_axis: [0.0, 0.0, 1.0]
 
     dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
-    check_duplicate_dish_grid: true  # Only ArrayDish entries are checked; Fake and RFIDish rows are exempt
+    check_duplicate_dish_grid: true  # Only ArrayDish entries are checked; Missing and RFIDish rows are exempt
 
     dish_grid_size_x: 8
     dish_grid_size_y: 12
@@ -152,7 +152,7 @@ telescope:
     # order is [P][D] (CHORDBeamformer): crs_board_remap groups the polarizations and this
     # table defines the D axis (board lanes run opposite to the dish numbering, so each
     # group of 8 reads backwards). RFIDish rows are correlated but always masked and kept
-    # in the DishInputs subset; Fake rows are not connected, flip to ArrayDish when wired.
+    # in the DishInputs subset; Missing rows are not connected, flip to ArrayDish when wired.
     dish_inputs: [
         {dish_idx:  0, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4},
         {dish_idx:  1, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3},
@@ -170,46 +170,46 @@ telescope:
         {dish_idx: 13, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7},
         {dish_idx: 14, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6},
         {dish_idx: 15, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A5},
-        {dish_idx: 16, grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: D4},
-        {dish_idx: 17, grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: D3},
-        {dish_idx: 18, grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: D2},
-        {dish_idx: 19, grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: D1},
-        {dish_idx: 20, grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: C4},
-        {dish_idx: 21, grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: C3},
-        {dish_idx: 22, grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: C2},
-        {dish_idx: 23, grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: C1},
-        {dish_idx: 24, grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: D8},
-        {dish_idx: 25, grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: D7},
-        {dish_idx: 26, grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: D6},
-        {dish_idx: 27, grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: D5},
-        {dish_idx: 28, grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: C8},
-        {dish_idx: 29, grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: C7},
-        {dish_idx: 30, grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: C6},
-        {dish_idx: 31, grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: C5},
-        {dish_idx: 32, grid_x_idx: 3,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: F4},
-        {dish_idx: 33, grid_x_idx: 2,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: F3},
-        {dish_idx: 34, grid_x_idx: 1,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: F2},
-        {dish_idx: 35, grid_x_idx: 0,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: F1},
-        {dish_idx: 36, grid_x_idx: 3,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: E4},
-        {dish_idx: 37, grid_x_idx: 2,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: E3},
-        {dish_idx: 38, grid_x_idx: 1,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: E2},
-        {dish_idx: 39, grid_x_idx: 0,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: E1},
-        {dish_idx: 40, grid_x_idx: 7,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: F8},
-        {dish_idx: 41, grid_x_idx: 6,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: F7},
-        {dish_idx: 42, grid_x_idx: 5,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: F6},
-        {dish_idx: 43, grid_x_idx: 4,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: F5},
-        {dish_idx: 44, grid_x_idx: 7,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: E8},
-        {dish_idx: 45, grid_x_idx: 6,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: E7},
-        {dish_idx: 46, grid_x_idx: 5,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: E6},
-        {dish_idx: 47, grid_x_idx: 4,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: E5},
-        {dish_idx: 48, grid_x_idx: 3,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: H4},
-        {dish_idx: 49, grid_x_idx: 2,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: H3},
-        {dish_idx: 50, grid_x_idx: 1,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: H2},
-        {dish_idx: 51, grid_x_idx: 0,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: H1},
-        {dish_idx: 52, grid_x_idx: 3,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G4},
-        {dish_idx: 53, grid_x_idx: 2,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G3},
-        {dish_idx: 54, grid_x_idx: 1,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G2},
-        {dish_idx: 55, grid_x_idx: 0,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake,      label: G1},
+        {dish_idx: 16, grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D4},
+        {dish_idx: 17, grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D3},
+        {dish_idx: 18, grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D2},
+        {dish_idx: 19, grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D1},
+        {dish_idx: 20, grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C4},
+        {dish_idx: 21, grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C3},
+        {dish_idx: 22, grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C2},
+        {dish_idx: 23, grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C1},
+        {dish_idx: 24, grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D8},
+        {dish_idx: 25, grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D7},
+        {dish_idx: 26, grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D6},
+        {dish_idx: 27, grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D5},
+        {dish_idx: 28, grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C8},
+        {dish_idx: 29, grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C7},
+        {dish_idx: 30, grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C6},
+        {dish_idx: 31, grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C5},
+        {dish_idx: 32, grid_x_idx: 3,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F4},
+        {dish_idx: 33, grid_x_idx: 2,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F3},
+        {dish_idx: 34, grid_x_idx: 1,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F2},
+        {dish_idx: 35, grid_x_idx: 0,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F1},
+        {dish_idx: 36, grid_x_idx: 3,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E4},
+        {dish_idx: 37, grid_x_idx: 2,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E3},
+        {dish_idx: 38, grid_x_idx: 1,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E2},
+        {dish_idx: 39, grid_x_idx: 0,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E1},
+        {dish_idx: 40, grid_x_idx: 7,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F8},
+        {dish_idx: 41, grid_x_idx: 6,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F7},
+        {dish_idx: 42, grid_x_idx: 5,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F6},
+        {dish_idx: 43, grid_x_idx: 4,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F5},
+        {dish_idx: 44, grid_x_idx: 7,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E8},
+        {dish_idx: 45, grid_x_idx: 6,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E7},
+        {dish_idx: 46, grid_x_idx: 5,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E6},
+        {dish_idx: 47, grid_x_idx: 4,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E5},
+        {dish_idx: 48, grid_x_idx: 3,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: H4},
+        {dish_idx: 49, grid_x_idx: 2,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: H3},
+        {dish_idx: 50, grid_x_idx: 1,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: H2},
+        {dish_idx: 51, grid_x_idx: 0,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: H1},
+        {dish_idx: 52, grid_x_idx: 3,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: G4},
+        {dish_idx: 53, grid_x_idx: 2,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: G3},
+        {dish_idx: 54, grid_x_idx: 1,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: G2},
+        {dish_idx: 55, grid_x_idx: 0,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: G1},
         {dish_idx: 56, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB4},
         {dish_idx: 57, grid_x_idx: 6,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB3},
         {dish_idx: 58, grid_x_idx: 5,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB2},
@@ -630,7 +630,7 @@ n2_buffer_1:
     num_frames: host_side_buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
-# DishInputs: compact frames over the connected (non-Fake) elements, derived from the
+# DishInputs: compact frames over the connected (non-Missing) elements, derived from the
 # telescope's dish table; num_elements is the full count they are selected from. Element
 # identities are derived where needed (N2Subset, hdf5N2Write), not carried on the descriptor.
 n2_subset_buffer:
@@ -962,7 +962,7 @@ PL_mask_compactor_1:
 # Bad feed mask from /updatable_config/bad_inputs (fed by bffs via choco). One instance per
 # NUMA half, clocked to that half's voltage buffer (see host_bf_mask_buffer); both apply the
 # same posted list, though an update can land one frame apart between the halves. CHORD
-# flags and masks share the [P][D] order, so no reorder. Non-ArrayDish elements (Fake, RFI
+# flags and masks share the [P][D] order, so no reorder. Non-ArrayDish elements (Missing, RFI
 # antennas) are always masked, whatever the posted list says.
 set_bf_mask:
     input_order: CHORDBeamformer
@@ -971,13 +971,13 @@ set_bf_mask:
         kotekan_stage: bufferBadInputs
         updatable_config:
             bad_inputs: /updatable_config/bad_inputs
-        in_clock_buf: host_voltage_buffer_0
+        metadata_source: host_voltage_buffer_0
         out_buf: host_bf_mask_buffer
     bf_mask_1:
         kotekan_stage: bufferBadInputs
         updatable_config:
             bad_inputs: /updatable_config/bad_inputs
-        in_clock_buf: host_voltage_buffer_1
+        metadata_source: host_voltage_buffer_1
         out_buf: host_bf_mask_buffer_1
 
 ## Send data to GPU ringbuffers ##
@@ -1521,7 +1521,7 @@ n2_accumulate:
         out_buf: n2_buffer_1
 
 
-# Subset to the connected (non-Fake) feeds: DishInputs frames are compact over products and
+# Subset to the connected (non-Missing) feeds: DishInputs frames are compact over products and
 # per-element fields alike.
 
 n2_subset:

@@ -29,6 +29,7 @@ class setUpchanGain : public kotekan::Stage {
         config.get<std::vector<double>>(unique_name, "upchan_gain");
 
     Buffer* const upchan_gain_buffer;
+    const std::vector<Buffer*> metadata_sources;
 
 public:
     setUpchanGain(kotekan::Config& config, const std::string& unique_name,
@@ -37,7 +38,8 @@ public:
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
-        upchan_gain_buffer(get_buffer("upchan_gain_buffer"))
+        upchan_gain_buffer(get_buffer("upchan_gain_buffer")),
+        metadata_sources(get_buffer_or_array("metadata_source"))
     //
     {
         // We use the same gain for all channels
@@ -49,6 +51,8 @@ public:
                == sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
 
         upchan_gain_buffer->register_producer(unique_name);
+        for (Buffer* const metadata_source : metadata_sources)
+            metadata_source->register_consumer(unique_name);
     }
 
     virtual ~setUpchanGain() {}
@@ -62,8 +66,15 @@ public:
             return;
 
         // Upchannelization schedule
-        const auto& upchan_schedule =
-            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+        // The coarse frequency channels handled by this GPU. These are local to
+        // a GPU and thus cannot come from the configuration, which is the same
+        // for every GPU.
+        const auto local_coarse_freq = wait_for_coarse_freq(metadata_sources, unique_name);
+        if (!local_coarse_freq)
+            return;
+
+        const UpchannelizationSchedule upchan_schedule(config, upchannelization_schedule_name,
+                                                       *local_coarse_freq, unique_name);
 
         // Wait for buffer
         DEBUG("[{:s}/{:d}] Waiting for buffer...", upchan_gain_buffer->buffer_name, frame_index);

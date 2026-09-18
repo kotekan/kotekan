@@ -609,7 +609,7 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     cfg["dataset_manager"]["enable_state_caching"] = false;
     cfg["dataset_manager"]["use_dataset_broker"] = false;
 
-    // Four dishes, two of them Fake: DishInputs keeps the array dish and the RFI
+    // Four dishes, two of them Missing: DishInputs keeps the array dish and the RFI
     // antenna, elements {0, 1, 4, 5} of the eight-element full order.
     add_test_telescope_config(cfg);
     cfg["telescope"]["num_dishes"] = 4;
@@ -632,15 +632,15 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
                                                               {"grid_y_idx", 0},
                                                               {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
                                                               {"coelev_disp_deg", 0.0},
-                                                              {"type", "Fake"},
-                                                              {"label", "F02"}},
+                                                              {"type", "Missing"},
+                                                              {"label", "M02"}},
                                                              {{"dish_idx", 3},
                                                               {"grid_x_idx", 3},
                                                               {"grid_y_idx", 0},
                                                               {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
                                                               {"coelev_disp_deg", 0.0},
-                                                              {"type", "Fake"},
-                                                              {"label", "F03"}}});
+                                                              {"type", "Missing"},
+                                                              {"label", "M03"}}});
 
     kotekan::Config conf;
     conf.update_config(cfg);
@@ -678,7 +678,7 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     stage.start();
 
     // One frame: rank-1 vis(a, b) = e^{i(a-b)} over the compact element axis, flags
-    // all good -- the Fake elements are simply not in the frame.
+    // all good -- the Missing elements are simply not in the frame.
     BOOST_REQUIRE(in_buf.wait_for_empty_frame("test-producer", 0) != nullptr);
     in_buf.allocate_new_metadata_object(0);
     auto meta = get_N2_metadata(&in_buf, 0);
