@@ -399,18 +399,18 @@ dbg_read_lostsamples_{{ id }}:
 #    in_buf: host_voltage_buffer_0
 
 {% for id in range(0,16) %}   # num_frequencies = 16
-{% if id == 7 %}
-fake_voltages_7:
+{% if id == 0 %}
+fake_voltages_{{id}}:
     kotekan_stage: hdf5FileRead
-    input_dir: b0329-data
+    input_dir: debug-data-skydata-20260916T1551
     # this is both (up to .h5) the name of the file and the name of the dataset
     # in the file
-    file_name: host_voltage_buffer_7
-    out_buf: host_voltage_buffer_7
+    file_name: host_voltage_buffer_{{id}}
+    out_buf: host_voltage_buffer_{{id}}
 {% else %}
 fake_voltages_{{ id }}:
     kotekan_stage: testDataGen
-    first_frame_index: 10151881
+    first_frame_index: 9037190
     # set globally
     # samples_per_data_set: samples_per_data_set
     type: const_offset
@@ -428,7 +428,7 @@ fake_voltages_{{ id }}:
 {% for id in range(16//4) %}   # num_frequencies = 16
 fake_lost_samples_{{ id }}:
     kotekan_stage: testDataGen
-    first_frame_index: 10151881 #166328418304 / samples_per_data_set
+    first_frame_index: 9037190
     # set globally
     # samples_per_data_set: samples_per_data_set
     type: ramp # to get uint8 as data type
