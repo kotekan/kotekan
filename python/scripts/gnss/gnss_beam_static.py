@@ -282,19 +282,32 @@ def uvec(az, el):
     return np.stack([np.cos(e) * np.sin(a), np.cos(e) * np.cos(a), np.sin(e)], -1)
 
 
-def patch(vals, nside, radius_deg, size, proj="azeq"):
-    """Resample a full-sky array onto a square patch centred on boresight.
+def centre_azel(spec):
+    """--centre: "boresight" | "zenith" | "AZ,EL". Zenith keeps az 180 as the north reference,
+    so a hemisphere plot has the same orientation as every patch: north up, east left."""
+    if spec in (None, "", "boresight"):
+        return BORE_AZ, BORE_EL
+    if spec == "zenith":
+        return 180.0, 90.0
+    a, e = spec.split(",")
+    return float(a), float(e)
+
+
+def patch(vals, nside, radius_deg, size, proj="azeq", centre=None):
+    """Resample a full-sky array onto a square patch centred on `centre` (default boresight).
 
     Azimuthal equidistant by default so a radius on the image IS an angle in degrees -- the
-    projection to read ring radii off. `x` is EAST, `y` is NORTH, and the image is drawn with
-    east to the LEFT (looking up at the sky, azimuth running clockwise from north).
+    projection to read ring radii off, and the one that turns a 90 deg radius into the whole
+    visible hemisphere with the horizon as the rim. `x` is EAST, `y` is NORTH, and the image is
+    drawn with east to the LEFT (looking up at the sky, azimuth running clockwise from north).
     """
     import healpy as hp
-    b = uvec(BORE_AZ, BORE_EL)
-    north = np.array([-np.sin(np.radians(BORE_EL)) * np.sin(np.radians(BORE_AZ)),
-                      -np.sin(np.radians(BORE_EL)) * np.cos(np.radians(BORE_AZ)),
-                      np.cos(np.radians(BORE_EL))])
-    east = np.array([np.cos(np.radians(BORE_AZ)), -np.sin(np.radians(BORE_AZ)), 0.0])
+    c_az, c_el = centre if centre else (BORE_AZ, BORE_EL)
+    b = uvec(c_az, c_el)
+    north = np.array([-np.sin(np.radians(c_el)) * np.sin(np.radians(c_az)),
+                      -np.sin(np.radians(c_el)) * np.cos(np.radians(c_az)),
+                      np.cos(np.radians(c_el))])
+    east = np.array([np.cos(np.radians(c_az)), -np.sin(np.radians(c_az)), 0.0])
     ax = np.linspace(-radius_deg, radius_deg, size)
     X, Y = np.meshgrid(ax, ax)
     r = np.hypot(X, Y)
@@ -346,7 +359,7 @@ def fig_setup():
     return plt
 
 
-def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=()):
+def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=(), sky=False):
     plt = fig_setup()
     d = os.path.dirname(os.path.abspath(png))
     if d:
@@ -356,13 +369,39 @@ def draw_map(img, ax_deg, title, sub, png, vmin, vmax, cbar_label, rings=()):
     im = a.imshow(img, origin="lower", extent=ext, cmap="inferno", vmin=vmin, vmax=vmax,
                   interpolation="nearest")
     a.invert_xaxis()                       # east to the left: the view looking UP
+    # Graticule colour follows the ground it is drawn on: white over the dense bright data of a
+    # boresight patch, black on an all-sky where most of the frame is empty and the HORIZON is
+    # the line a reader needs to find first.
+    gcol = "k" if sky else "w"
     for r in rings:
-        a.add_artist(plt.Circle((0, 0), r, fill=False, color="w", lw=0.5, alpha=0.35))
-        a.annotate("%g°" % r, (0, r), color="w", fontsize=6, alpha=0.6,
-                   ha="center", va="bottom")
-    a.plot(0, 0, "+", color="w", ms=9, mew=1.0, alpha=0.8)
-    a.set_xlabel("east offset from boresight  [deg]")
-    a.set_ylabel("north offset from boresight  [deg]")
+        horizon = sky and abs(r - 90.0) < 1e-6
+        a.add_artist(plt.Circle((0, 0), r, fill=False, color=gcol,
+                                lw=1.4 if horizon else 0.8, alpha=0.9 if horizon else 0.55,
+                                zorder=3))
+        lab = ("horizon" if horizon else "el %g°" % (90.0 - r)) if sky else ("%g°" % r)
+        # The horizon label goes INSIDE its ring: outside it would sit on the compass letter.
+        a.annotate(lab, (0, r), color=gcol, fontsize=7 if horizon else 6.5,
+                   alpha=0.9 if horizon else 0.7, ha="center",
+                   va="top" if horizon else "bottom",
+                   xytext=(0, -4 if horizon else 2), textcoords="offset points", zorder=3)
+    a.plot(0, 0, "+", color=gcol, ms=9, mew=1.0, alpha=0.8, zorder=3)
+    if sky:
+        # Compass and the boresight, because a hemisphere has no other landmarks. Boresight is
+        # 8.59 deg south of zenith, so it must be DRAWN, not assumed at the centre.
+        rr = ax_deg[-1]
+        a.set_xlim(rr * 1.1, -rr * 1.1)     # room for the compass; x already runs east-left
+        a.set_ylim(-rr * 1.1, rr * 1.1)
+        for lbl, (dx, dy) in (("N", (0, 1)), ("E", (1, 0)), ("S", (0, -1)), ("W", (-1, 0))):
+            a.annotate(lbl, (dx * rr * 1.045, dy * rr * 1.045), color="0.45", fontsize=10,
+                       ha="center", va="center", weight="bold")
+        a.plot(0, -(90.0 - BORE_EL), "o", mfc="none", mec="#39d0ff", ms=13, mew=1.6, alpha=.95)
+        a.annotate("boresight", (0, -(90.0 - BORE_EL)), color="#39d0ff", fontsize=7.5,
+                   ha="center", va="top", xytext=(0, -9), textcoords="offset points")
+        a.set_xlabel("east  ←   azimuth   →  west        [deg from zenith]")
+        a.set_ylabel("south   ←   →   north        [deg from zenith]")
+    else:
+        a.set_xlabel("east offset from boresight  [deg]")
+        a.set_ylabel("north offset from boresight  [deg]")
     a.set_title(title, fontsize=10)
     a.text(0.5, -0.105, sub, transform=a.transAxes, ha="center", va="top", fontsize=7,
            color="0.35")
@@ -438,6 +477,10 @@ def cmd_map(args):
         sweep = [(None, parse_elems(args.elements, n_elem), d["freqs"])]
 
     outs = []
+    cen = centre_azel(args.centre)
+    sky = args.radius >= 45.0
+    if sky and args.rings == [5, 10, 20]:
+        args.rings = [30, 60, 90]          # elevation circles read better than 5/10/20 here
     vmin, vmax = args.vmin, args.vmax
     frames = []
     for tag, elems, freqs in sweep:
@@ -451,7 +494,7 @@ def cmd_map(args):
             db = 10.0 * np.log10(val)
         if args.peak_norm:
             db = db - np.nanmax(db)
-        img, axd = patch(db, nside, args.radius, args.size, args.proj)
+        img, axd = patch(db, nside, args.radius, args.size, args.proj, cen)
         frames.append((tag, img, axd, elems, freqs, np.isfinite(db).sum()))
     if vmin is None or vmax is None:
         allv = np.concatenate([f[1][np.isfinite(f[1])] for f in frames if np.isfinite(f[1]).any()])
@@ -464,17 +507,29 @@ def cmd_map(args):
         fsel = ("all channels" if not freqs else
                 "freq_id " + (",".join(str(f) for f in sorted(freqs)) if len(freqs) <= 4
                               else "%d..%d" % (min(freqs), max(freqs))))
-        esel = ("all elements" if len(elems) == d["N"].shape[0] else
-                "element " + (",".join(str(e) for e in elems) if len(elems) <= 6
-                              else "%d of %d" % (len(elems), d["N"].shape[0])))
+        # Name the selection the way a reader checks it: one element by id, a contiguous run as
+        # a range (which is how a polarisation is selected), anything else by count.
+        if len(elems) == d["N"].shape[0]:
+            esel = "all %d elements" % len(elems)
+        elif len(elems) == 1:
+            esel = "element %d" % elems[0]
+        elif elems == list(range(elems[0], elems[-1] + 1)):
+            esel = "elements %d-%d" % (elems[0], elems[-1])
+            if (elems[0], elems[-1]) in ((0, 15), (16, 31)):
+                esel += "  (P%d)" % (elems[0] // 16)
+        else:
+            esel = "%d of %d elements" % (len(elems), d["N"].shape[0])
+        if args.label:
+            esel = "%s  (%d elements)" % (args.label, len(elems))
         title = "%s · %s · %s" % ("+".join(sorted(d["info"]["chains"])), fsel, esel)
-        sub = ("days %s · nside %d · %s · elem-norm %s · %d pixels · %s"
+        sub = ("days %s · nside %d · %s%s · elem-norm %s · %d pixels · %s"
                % ("+".join(sorted(set(d["info"]["days"]))), d["nside"], args.proj,
+                  "" if not args.centre or args.centre == "boresight" else " @" + args.centre,
                   args.elem_norm, npx, "peak-normalised" if args.peak_norm else "pedestal dB")
                + ("" if not args.smooth else " · smoothed %.2f deg FWHM" % args.smooth))
         outs.append(draw_map(img, axd, title, sub, png, vmin, vmax,
                              "dB rel. peak" if args.peak_norm else "dB (pedestal units)",
-                             rings=args.rings))
+                             rings=args.rings, sky=sky))
         print("  -> %s" % png)
     return outs
 
@@ -668,6 +723,8 @@ def main():
         p.add_argument("--min-occ", type=float, default=0.5,
                        help="with --smooth: fraction of the kernel's weight that must come from "
                             "pixels holding real samples (0 = the old, leaky behaviour)")
+        p.add_argument("--label", default=None,
+                       help="name the element selection in the title, e.g. a feed plane")
         p.add_argument("--peak-norm", action="store_true")
         p.add_argument("--out", required=True)
 
@@ -676,6 +733,9 @@ def main():
     m.add_argument("--radius", type=float, default=25.0)
     m.add_argument("--size", type=int, default=900, help="image pixels per side")
     m.add_argument("--proj", default="azeq", choices=["azeq", "gnomonic", "ortho"])
+    m.add_argument("--centre", default="boresight",
+                   help="boresight | zenith | AZ,EL -- with --radius 90 and zenith this is the "
+                        "whole visible hemisphere, horizon at the rim")
     m.add_argument("--dr", type=float, default=35.0, help="colour range below the 99.9th pct")
     m.add_argument("--vmin", type=float, default=None)
     m.add_argument("--vmax", type=float, default=None)
