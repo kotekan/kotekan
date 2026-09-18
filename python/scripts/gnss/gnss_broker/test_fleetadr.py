@@ -144,6 +144,36 @@ class TestFold(unittest.TestCase):
         # over 4000 records would be ~0.9 cycles here
         self.assertLess(abs(err), 0.12, err)
 
+    def test_clustered_half_cycle_slips_do_not_walk_the_median(self):
+        """A weak satellite's instances slip by exactly +-0.5 cycle (the squared phasor's
+        ambiguity), and they slip TOGETHER: a common disturbance pushes several over the wrap in
+        the same record, same direction (live capture: of 134 slip-seconds on one satellite, 38
+        were pairs, 8 triples, 3 quads). Re-seating them to a median taken with the slipped values
+        in the sorted list moved that median by their ranks, and the re-seated copies kept the
+        ranks, so the fleet phase random-walked -- 0.05-0.3 cycle over 8000 records here, 3x the
+        closure wander on sky. Repairing each slip by whole half-cycles first leaves the median
+        where the unslipped majority puts it. (An even split -- half the fleet slipping together
+        -- is undecidable by any median and steps both ways of doing it; it is rare and not
+        tested.)"""
+        errs = []
+        for seed in (1, 2, 3, 4, 5):
+            class Clustered(Sky):
+                def record(self, hop, prev_hop, **kw):
+                    out = Sky.record(self, hop, prev_hop, **kw)
+                    if random.random() < 0.01:
+                        for i in random.sample(range(12), random.choice((2, 2, 3, 3, 4))):
+                            v = out[i]
+                            out[i] = (v[0], v[1], -v[2], v[3], v[4])   # S -> -S: a half-cycle slip
+                    return out
+            sky = Clustered(noise_rad=0.15, seed=seed)
+            hops = [HOP0 + k * HPR for k in range(8000)]
+            st = run(sky, hops)
+            errs.append(st.adr - dop_only(sky, hops[-1], hops[0]))
+        # judged on the rms over seeds: a walk is a distribution, not one draw. The re-seat
+        # measured 0.086 here (0.03-0.17 per seed); the repair ~0.02.
+        rms = math.sqrt(sum(e * e for e in errs) / len(errs))
+        self.assertLess(rms, 0.04, "rms %.3f over seeds %s" % (rms, [round(e, 3) for e in errs]))
+
     def test_commanded_trim_does_not_enter_the_adr(self):
         """The export is relative to the model Doppler: the assembler rotates the commanded
         carrier trim back out. Slot 19 must therefore be recorded (trim_cycles) but never added

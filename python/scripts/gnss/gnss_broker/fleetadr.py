@@ -60,8 +60,9 @@ is a random walk (the published ADR's residual rate had the 1/sqrt(tau) Allan de
 one, while the median of per-instance phases on the same records was white). So each vouching
 instance keeps its own continuous residual phase, an
 instance that (re)joins is placed at the fleet's value, an instance that slips by a half cycle
-(the squared phasor's period) is re-seated, and the fleet residual is the median of the
-instances' phases.
+(the squared phasor's period) is REPAIRED by whole half-cycles before the median is taken (a
+re-seat after the fact moves the median by the slippers' ranks, permanently -- see the note in
+fold_record), and the fleet residual is the median of the instances' phases.
 
 THE BROKER DOES NOT RE-FOLD THE PRODUCER'S PHASE. The assembler folds the replica's per-record
 re-pin step into its NCO from a history shared across the pipeline's command instances, so the
@@ -157,8 +158,29 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
             st.inst_x[i] = x + cmath.phase(v[2] * st.inst_prev[i][2].conjugate()) / (4.0 * math.pi)
         xs = sorted(st.inst_x[i] for i, _v in vouch)
         res = xs[len(xs) // 2]
+        # ⚠️ A SLIP IS REPAIRED BEFORE THE MEDIAN IS TAKEN, NOT RE-SEATED AFTER. The squared
+        # phasor's increment is ambiguous by half a cycle, so a weak instance whose prompt
+        # phase moves more than a quarter cycle in one record steps its own sum by exactly
+        # +-0.5. Re-seating it to a median taken WITH the slipped values inside the sorted
+        # list moves that median -- one rank per slipper, several ranks when a weak satellite's
+        # instances slip together -- and the re-seated copies then hold those ranks, so the
+        # step stays. Measured on live telemetry replayed through this function: the fleet
+        # phase of a weak satellite walked 3x more with the re-seat than with the repair
+        # (1.4 vs 0.5 TECU of closure at 300 s), while strong satellites were bit-identical.
+        # Undoing each slip by whole half-cycles puts the instance back at its own rank first,
+        # so the median never sees it move; re-seating remains only for an excursion that is
+        # not a multiple of a half cycle.
+        repaired = False
         for i, _v in vouch:
-            if abs(st.inst_x[i] - res) > 0.3:   # a half-cycle slip: re-seat, do not carry it
+            d = st.inst_x[i] - res
+            if abs(d) > 0.3:
+                st.inst_x[i] -= round(d * 2.0) / 2.0
+                repaired = True
+        if repaired:
+            xs = sorted(st.inst_x[i] for i, _v in vouch)
+            res = xs[len(xs) // 2]
+        for i, _v in vouch:
+            if abs(st.inst_x[i] - res) > 0.3:   # not a slip: an excursion, re-seat it
                 st.inst_x[i] = res
         for i in usable:
             if i not in st.inst_x:              # (re)joining: adopt the fleet's phase
