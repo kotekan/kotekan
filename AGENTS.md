@@ -5,7 +5,7 @@ Development
 
 The code itself is intended to run on many nodes, cores, and GPUs simultaneously. It should avoid bottlenecks, race conditions, and memory leaks. Because this is a complex code, it is also best to fully understand code before editing. Kotekan is run under a service daemon in production, so instances should prefer to FATAL_ERROR or abort rather than passing along suspect data; the daemon will restart the instance.
 
-When developing code, most edits and additions should be "lazy", except when it comes to understanding code and validation/testing. Said differently, it is advisable to read through existing code and docs to ensure you understand both what has been implemented and its intent. Then, the ladder below can be followed heuristically to determine how to make edits:
+When developing code, most edits and additions should be "lazy", except when it comes to understanding code and validation/testing. It is advisable to read through existing code and docs to ensure you understand both what has been implemented and its intent. Then, the ladder below can be followed heuristically to determine how to make edits:
 1. Does the feature need to exist at all, or is there a simplification that subsumes it?
 2. Is the feature already in this codebase? If so, use it.
 3. Are there native platform features that cover this? If so, use it.
@@ -19,7 +19,7 @@ Doxygen strings should exist where appropriate. Higher-level sphinx documentatio
 
 When reviewing, attempt to understand both the intent of previously existing code, and incoming changes, before providing feedback. Rather than merely providing feedback, explicit suggestions for changes are preferred.
 
-Review language, comments, and documentation should all use concise, professional technical English in the active voice. They should use existing kotekan vocabulary if relevant (see the glossary and repository layout in README.md), avoid introducing new terms if possible, and avoid "code-jockey" slang and buzzwords. Acronyms and eponyms are disfavored if a common generic name exists, including for variable and function names.
+Review language, comments, and documentation should all use concise, professional technical English in the active voice. They should use existing kotekan vocabulary if relevant (see the glossary and repository layout in README.md), avoid introducing new terms if possible, and avoid "code-jockey" slang and buzzwords. Acronyms and eponyms are disfavored if a common generic name exists, including for variable and function names. Code style is enforced by a set of lint scripts, which the CI checks and runs. Some additional guidelines (these are not _firm_ rules) can be found in docs/sphinx/dev/dev_style_guide_code.rst.
 
 
 Compiling
@@ -42,7 +42,7 @@ Python tooling exists in /opt/kotekan_env; activate it, or put its bin directory
 
 There are many boost tests in tests/boost, which are built with -DWITH_BOOST_TESTS=ON and run with run_boost_tests.sh.
 
-There are pytest tests in the tests directory, however development of new pytests is discouraged in favor of yaml or boost tests. This is because of the extra layer of abstraction and extra care required in the pytest ecosystem -- errors hidden by default, tests may be silently skipped, etc.
+There are pytest tests in the tests directory, however development of new pytests is discouraged in favor of yaml or boost tests. This is because of the extra layer of abstraction and care required in the pytest ecosystem -- errors hidden by default, tests may be silently skipped, etc.
 
 Shell scripts in tests/ci-scripts/push_pull run as part of tests. The configs in config/ci-tests/gpu_batch and config/ci-tests/cpu_batch are also run with the kotekan executable as part of the tests. There is a script, config/ci-tests/run_tests.sh, that runs the latter of these.
 
@@ -56,22 +56,24 @@ If changes affect config parameters, existing configs and tests may need to be u
 Common Commands
 ---------------
 
-<build> is the cmake build directory (build locally, build-2404 in the CI containers).
+The set of commands below is a quick reference that may be useful when working on hosts with the CHORD development environment (`/opt/kotekan_env` indicates the environment is present, and we are likely on one of those nodes).
+
+<build> is the cmake build directory (`build` locally, `build-2404` in the CI containers).
 
 ```bash
 # Configure and build (CI's gcc Test configuration; add -DUSE_CUDA=ON for GPU, -DCMAKE_BUILD_TYPE=Release for timing)
 cmake -S . -B <build> -DCMAKE_BUILD_TYPE=Test -DWITH_BOOST_TESTS=ON -DWERROR=ON -DCCACHE=ON
-cmake --build <build> -j 40 [--target kotekan_core]
+cmake --build <build> -j$(expr $(nproc) / 2) [--target kotekan_core]
 
 # Config checks: enough on their own for config- or comment-only edits
-<build>/kotekan/kotekan --check-config config/<file>.yaml      # or --dry-run, needs 15435f812 or later
+<build>/kotekan/kotekan --check-config config/<file>.yaml      # or --dry-run
 config/ci-tests/run_tests.sh <build>/kotekan/kotekan 2m config/ci-tests/cpu_batch   # or gpu_batch
 
 # Boost tests (PATH prefix needed: test_timeUtil shells out to python with astropy)
-PATH=/opt/kotekan_env/bin:$PATH tests/boost/run_boost_tests.sh -v -t 180 <build>/tests/boost
+PATH=/opt/kotekan_env/bin:$PATH tests/boost/run_boost_tests.sh -v -t 30 <build>/tests/boost
 <build>/tests/boost/test_<name>                                 # one test binary
 
-# Pytest (use -n 4, never -n auto: it exhausts the container pid limit on large hosts)
+# Pytest (in a container on a large host use -n 4, never -n auto: it exhausts the container pid limit on large hosts)
 PYTHONPATH=$PWD/python pytest -v -x -rs -m serial tests/[test_<name>.py]
 PYTHONPATH=$PWD/python pytest -v -x -rs -n 4 --dist=loadfile -m 'not serial' tests/
 
@@ -84,7 +86,7 @@ podman run --rm -it -v $PWD:/code/kotekan -w /code/kotekan localhost/u2404-cpu b
 touch /.dockerenv            # inside: makes baseband tests self-skip as they do in CI
 
 # Git / GitHub policy
-#   develop changes only via PRs; chord is the CHORD production branch and should be kept equal to develop.
+#   `develop` branch changes via PRs; `chord` is the CHORD production branch.
 git worktree add <scratch>/wt-<x> -b <user>/<x> origin/develop   # isolate work from the shared checkout
 gh pr view <n> --json state,headRefOid                           # before every push to a PR branch
 git push --force-with-lease=<branch>:<old-sha> origin <branch>
