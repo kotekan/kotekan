@@ -254,16 +254,26 @@ class TelemFrame(object):
 
 
 class TelemClient(object):
-    """Reader thread + a bounded per-chain window ring.
+    """Socket thread + store thread + a bounded per-chain window ring.
 
-    Reconnects forever with a fixed backoff. A gather that is down must cost the broker
-    NOTHING: every accessor simply returns empty, and the caller falls back to the REST path
-    it already has. That is the whole migration strategy -- both feeds live side by side until
-    the new one has been shown, on sky, to be at least as good.
+    Reconnects forever. A gather that is down must cost the broker NOTHING: every accessor
+    simply returns empty, and the caller falls back to the REST path it already has. That is
+    the whole migration strategy -- both feeds live side by side until the new one has been
+    shown, on sky, to be at least as good.
+
+    ⚠️ THE SOCKET IS DRAINED BY A THREAD THAT DOES NOTHING ELSE. The gather delivers a frame
+    whole or drops the client (GnssTelemGather: a client that cannot take a frame within
+    send_timeout_ms is closed), and the stream carries EVERY chain on one connection, so a
+    stall of the reading thread is not one chain's problem: it is every fleet-ADR arc on every
+    chain broken at once. The kernel's socket buffers cover only a fraction of a second at
+    the stream's rate, and the ring lock is contended by every chain's control pass. So the
+    socket thread reads bytes and hands them to a queue, and a second thread parses them and
+    takes the ring lock. Nothing the consumers do can stop the socket draining.
     """
 
     def __init__(self, host="127.0.0.1", port=11061, depth=64, retry_s=5.0, chains=None,
-                 read_timeout_s=30.0, epoch_margin=64, epoch_strikes=8):
+                 read_timeout_s=30.0, epoch_margin=64, epoch_strikes=8,
+                 pending_max_bytes=128 << 20, fast_retry_after_s=10.0):
         self.host = host
         self.port = port
         self.depth = int(depth)
@@ -292,7 +302,27 @@ class TelemClient(object):
         # chain -> OrderedDict{win: {inst: TelemFrame}}, oldest first, capped at `depth`
         self._store = {}
         self._thread = None
+        self._store_thread = None
         self._stop = threading.Event()
+        # Frames read off the socket and not yet parsed into the ring: (bytes, rx_time). The
+        # socket thread appends, the store thread pops; the condition's lock is held for one
+        # deque operation and never across a parse or the ring lock. Bounded in BYTES because
+        # senders ship different frame sizes: past the bound the OLDEST frames are dropped and
+        # counted, which costs the affected windows (the fold breaks those arcs honestly) but
+        # never the connection.
+        self._pending = collections.deque()
+        self._pending_bytes = 0
+        self._pending_cv = threading.Condition(threading.Lock())
+        self.pending_max_bytes = int(pending_max_bytes)
+        self.pending_peak = 0     # most frames ever queued at once
+        self.pending_dropped = 0  # frames discarded because the queue was over its bound
+        # A connection that LIVED and was then closed by the gather is reconnected at once: a
+        # dropped client is a momentary stall on our side, and every second before the
+        # reconnect is a second of records lost on every chain. The backoff (retry_s) is for a
+        # gather that is down, i.e. a connection that failed or died young.
+        self.fast_retry_after_s = float(fast_retry_after_s)
+        self.fast_reconnects = 0
+        self.last_lived_s = None
         self.connected = False
         self.frames = 0
         self.bad = 0
@@ -305,16 +335,23 @@ class TelemClient(object):
     def start(self):
         if self._thread is not None:
             return self
+        self._store_thread = threading.Thread(target=self._store_loop, name="telem-store",
+                                              daemon=True)
+        self._store_thread.start()
         self._thread = threading.Thread(target=self._run, name="telem", daemon=True)
         self._thread.start()
         return self
 
     def stop(self):
         self._stop.set()
+        with self._pending_cv:
+            self._pending_cv.notify_all()
 
     def _run(self):
         while not self._stop.is_set():
             sock = None
+            t_up = None
+            fast = False
             try:
                 sock = socket.create_connection((self.host, self.port), timeout=10.0)
                 sock.settimeout(self.read_timeout_s)
@@ -328,11 +365,25 @@ class TelemClient(object):
                         sock.setsockopt(socket.IPPROTO_TCP, getattr(socket, opt), val)
                 self.connected = True
                 self.connects += 1
-                _log("telem: connected to gather %s:%d" % (self.host, self.port))
+                t_up = time.monotonic()
+                _log("telem: connected to gather %s:%d (connection #%d)"
+                     % (self.host, self.port, self.connects))
                 self._read_loop(sock)
             except Exception as e:
-                _log_rl("telem-conn", "telem: gather %s:%d unavailable (%s) -- the REST path is "
-                        "unaffected" % (self.host, self.port, e))
+                lived = None if t_up is None else time.monotonic() - t_up
+                self.last_lived_s = lived
+                fast = lived is not None and lived >= self.fast_retry_after_s
+                if fast:
+                    self.fast_reconnects += 1
+                    # An EVENT line, not rate-limited: each one is a fleet-wide arc break and
+                    # the autopsy needs every timestamp.
+                    _log("telem: gather %s:%d closed a connection that lived %.0f s (%s) -- "
+                         "reconnecting now; the frames in between are lost on every chain and "
+                         "the REST path is unaffected" % (self.host, self.port, lived, e))
+                else:
+                    _log_rl("telem-conn", "telem: gather %s:%d unavailable (%s) -- retry in "
+                            "%.0f s; the REST path is unaffected"
+                            % (self.host, self.port, e, self.retry_s))
             finally:
                 self.connected = False
                 if sock is not None:
@@ -340,7 +391,7 @@ class TelemClient(object):
                         sock.close()
                     except Exception:
                         pass
-            if not self._stop.is_set():
+            if not self._stop.is_set() and not fast:
                 self._stop.wait(self.retry_s)
 
     def _recv_exactly(self, sock, n, quiet_ok=False):
@@ -367,6 +418,12 @@ class TelemClient(object):
         return chunks[0] if len(chunks) == 1 else b"".join(chunks)
 
     def _read_loop(self, sock):
+        """Drain the socket into the pending queue. Bytes in, bytes out, nothing else here.
+
+        The only work between two recv() calls is one length check and one deque append under
+        a lock that the store thread holds for one pop. A parse, a log line or the ring lock
+        do not belong on this thread: see the class note on why a stall here is fleet-wide.
+        """
         while not self._stop.is_set():
             # A QUIET GATHER IS NOT A BROKEN ONE. With the fleet down there is nothing to
             # forward, and tearing the connection down on the read timeout meant reconnecting
@@ -385,27 +442,66 @@ class TelemClient(object):
             if length < _HDR_BYTES or length > (1 << 24):
                 raise IOError("implausible frame length %d" % length)
             buf = self._recv_exactly(sock, length)
-            hdr = _HDR.unpack_from(buf, 0)
-            if hdr[0] != _MAGIC or hdr[1] != _VERSION or hdr[4] != _ROW_FLOATS:
+            self._enqueue(buf, time.time())
+
+    def _enqueue(self, buf, rx):
+        with self._pending_cv:
+            self._pending.append((buf, rx))
+            self._pending_bytes += len(buf)
+            n = len(self._pending)
+            if n > self.pending_peak:
+                self.pending_peak = n
+            # Over the bound: shed the OLDEST, keep the connection. Never shed the frame just
+            # appended -- a bound smaller than one frame must still let frames through.
+            while self._pending_bytes > self.pending_max_bytes and len(self._pending) > 1:
+                old, _ = self._pending.popleft()
+                self._pending_bytes -= len(old)
+                self.pending_dropped += 1
+            self._pending_cv.notify()
+
+    def pending(self):
+        """Frames read off the socket and not yet in the ring."""
+        with self._pending_cv:
+            return len(self._pending)
+
+    def _store_loop(self):
+        while not self._stop.is_set():
+            with self._pending_cv:
+                while not self._pending and not self._stop.is_set():
+                    self._pending_cv.wait(0.5)
+                if not self._pending:
+                    continue
+                buf, rx = self._pending.popleft()
+                self._pending_bytes -= len(buf)
+            try:
+                self._parse_and_store(buf, rx)
+            except Exception as e:  # one bad frame must not take the store thread down
                 self.bad += 1
-                _log_rl("telem-bad", "telem: rejecting a frame (magic %#x v%d n_row %d, want "
-                        "%#x v%d %d) -- a tracker and this broker are on different builds"
-                        % (hdr[0], hdr[1], hdr[4], _MAGIC, _VERSION, _ROW_FLOATS))
-                continue
-            # THE SHAPE IS THE SENDER'S AND IT IS CHECKED AGAINST THE LENGTH PREFIX. Senders
-            # ship different widths (their own comb columns) and different row counts (their
-            # chain's), so the stride cannot be assumed -- and a stride that disagrees with the
-            # bytes on the wire is exactly the failure that reads plausible numbers off the
-            # wrong rows. n_rec, n_prn, max_chan, row_total are hdr[2], [3], [14], [15].
-            if (hdr[14] > _MAX_CHAN or hdr[5] > hdr[14]
-                    or hdr[15] != _ROW_FLOATS + hdr[14] * _CHAN_FLOATS
-                    or _HDR_BYTES + hdr[2] * hdr[3] * hdr[15] * 4 != length):
-                self.bad += 1
-                _log_rl("telem-shape", "telem: rejecting a frame whose header shape does not "
-                        "match its %d bytes (n_rec %d n_prn %d n_chan %d max_chan %d row_total "
-                        "%d)" % (length, hdr[2], hdr[3], hdr[5], hdr[14], hdr[15]))
-                continue
-            self._store_frame(TelemFrame(hdr, buf, time.time()))
+                _log_rl("telem-parse", "telem: dropping a frame the parser refused (%s)" % e)
+
+    def _parse_and_store(self, buf, rx):
+        hdr = _HDR.unpack_from(buf, 0)
+        if hdr[0] != _MAGIC or hdr[1] != _VERSION or hdr[4] != _ROW_FLOATS:
+            self.bad += 1
+            _log_rl("telem-bad", "telem: rejecting a frame (magic %#x v%d n_row %d, want "
+                    "%#x v%d %d) -- a tracker and this broker are on different builds"
+                    % (hdr[0], hdr[1], hdr[4], _MAGIC, _VERSION, _ROW_FLOATS))
+            return
+        # THE SHAPE IS THE SENDER'S AND IT IS CHECKED AGAINST THE LENGTH PREFIX. Senders
+        # ship different widths (their own comb columns) and different row counts (their
+        # chain's), so the stride cannot be assumed -- and a stride that disagrees with the
+        # bytes on the wire is exactly the failure that reads plausible numbers off the
+        # wrong rows. n_rec, n_prn, max_chan, row_total are hdr[2], [3], [14], [15].
+        length = len(buf)
+        if (hdr[14] > _MAX_CHAN or hdr[5] > hdr[14]
+                or hdr[15] != _ROW_FLOATS + hdr[14] * _CHAN_FLOATS
+                or _HDR_BYTES + hdr[2] * hdr[3] * hdr[15] * 4 != length):
+            self.bad += 1
+            _log_rl("telem-shape", "telem: rejecting a frame whose header shape does not "
+                    "match its %d bytes (n_rec %d n_prn %d n_chan %d max_chan %d row_total "
+                    "%d)" % (length, hdr[2], hdr[3], hdr[5], hdr[14], hdr[15]))
+            return
+        self._store_frame(TelemFrame(hdr, buf, rx))
 
     def _store_frame(self, f):
         if self.chains_filter is not None and f.chain not in self.chains_filter:
@@ -624,6 +720,10 @@ class TelemClient(object):
                     "far_behind": self.far_behind,
                     "epoch_resets": self.epoch_resets,
                     "connects": self.connects,
+                    "fast_reconnects": self.fast_reconnects,
+                    "pending": len(self._pending),
+                    "pending_peak": self.pending_peak,
+                    "pending_dropped": self.pending_dropped,
                     "age_s": (now - self.last_rx) if self.last_rx else None,
                     "chains": per_chain}
 

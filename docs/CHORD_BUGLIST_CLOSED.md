@@ -152,6 +152,29 @@ satellite's at once and the DLL re-establishes all of them from zero.
 
 ## Closed with a full write-up — the three worth reading before touching these areas
 
+### #140 — the gather dropped the broker's telemetry socket, and the reconnect cost 5 s on every chain ✅ FIXED 09-18 (in the tree; live at the next broker restart)
+With #139 fixed the 2-hourly breaks were gone, but four fleet-wide breaks remained in the first
+8 h (18:27, 19:25, 19:58, 21:54 UTC), each `gap ~500 / dark 0 / vouch 0` on all eight chains.
+Each sat 5.0 s after a broker line `telem: gather ... unavailable (gather closed the
+connection)`, and the gather's log had the other half: `dropped client fd 14 -- it could not
+take a frame within 200 ms` (GnssTelemGather's `send_timeout_ms`). The stream carries every
+chain on one loopback connection at ~45 MB/s, and the kernel held ~10 MB for it (4 MB send +
+6 MB receive) = 0.22 s of slack; `ss -tmi` showed the receiver window-limited 5.7 % of the time
+and its buffer full 11,412 times in 50 min. The old reader parsed each frame and took the ring
+lock between two `recv()` calls, so any stall on that thread -- the lock is contended by every
+chain's pass, and the VM runs at load 6-7 on 6 cores -- became a dropped connection, a fixed
+`retry_s = 5 s` wait, and ~500 records missing on every instance of every chain. Not a
+whole-process pause: the chain threads logged through all four. Fixed in `gnss_broker/telem.py`:
+the socket thread does nothing but `recv()` and a deque append (bounded in bytes; over the
+bound it sheds the OLDEST frames, counted as `pending_dropped`, never the connection); a store
+thread parses and takes the ring lock; a connection the gather closed after it LIVED
+(`fast_retry_after_s`, 10 s) is reconnected at once, the backoff kept for a gather that is
+down. `stats()` carries `pending / pending_peak / pending_dropped / fast_reconnects`.
+Tests D-E in `test_telem.py` run against a real socket with a 64 kB send buffer: the old client
+blocks the sender while the ring lock is held, the new one drains 2 MB through it. Belt and
+braces, root side: raise `net.ipv4.tcp_rmem`/`tcp_wmem` maxima so the kernel holds seconds
+rather than a fifth of one; the autotune caps apply to the live connection without a restart.
+
 ### #139 — every fleet-ADR arc on every chain broke every 7200 s: a 2.7-s telemetry ring and a reload on the pass ✅ FIXED 09-18
 After #136 (the synchronous BRDC merge) the arcs still broke fleet-wide twice every two hours,
 to the second. A break diagnostic in `fleetadr.fold_record` (9d7f04908) read `gap 193-253

@@ -15,6 +15,10 @@ TWO KINDS OF TEST HERE, and the first is the one that matters:
      failed (#53, #52, #46, #33). Every one of these is a case where the old path produced a
      confident wrong answer rather than an error.
 
+  C-E. TRANSPORT LIVENESS, each against a real socket: silence is not a broken link (C), the
+     socket thread is never stalled by the ring lock (D), and a connection the gather closed
+     after it lived is reconnected at once (E). C and D were each a fleet-wide outage first.
+
     python3 python/scripts/gnss/test_telem.py
 """
 import json
@@ -564,6 +568,177 @@ class TestStats(unittest.TestCase):
         self.assertEqual(st["live"], 3)
         self.assertEqual(st["stale"], [])
         self.assertEqual(st["spread"], 3)
+
+
+def _listen():
+    import socket as _s
+    srv = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+    srv.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
+    # A SMALL SEND BUFFER, set before accept so every accepted connection inherits it, and set
+    # explicitly so the kernel does not autotune it upwards. Production's slack is a fraction
+    # of a second at the stream's rate; without this the loopback kernel would quietly hold
+    # megabytes for a stalled reader and these tests would pass on the code they are meant to
+    # fail on.
+    srv.setsockopt(_s.SOL_SOCKET, _s.SO_SNDBUF, 65536)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(4)
+    return srv
+
+
+class TestSocketDrainsIndependentOfTheRing(unittest.TestCase):
+    """D. The socket thread never waits on the ring.
+
+    ⚠️ WHY THIS TEST EXISTS. The gather closes a client that cannot take a frame within
+    200 ms, the stream carries every chain on one connection, and the kernel buffers hold only
+    a fraction of a second at the stream's rate -- so a reader that parsed and took the ring
+    lock between two recv() calls turned any contention on that lock into a dropped
+    connection, a fixed 5 s reconnect wait, and ~500 records missing on EVERY instance of
+    EVERY chain: a fleet-wide fleet-ADR arc break. Four of them in eight hours. Here the ring
+    lock is held for 1.5 s while the server pushes 2 MB through a 64 kB send buffer: the send
+    must finish while the lock is still held.
+    """
+
+    def _serve(self, srv, n):
+        conn, _ = srv.accept()
+        try:
+            for k in range(n):
+                raw = _make_frame(win=1000 + k, seq=k)
+                conn.sendall(struct.pack("<I", len(raw)) + raw)
+            self.t_sent = time.monotonic()
+            time.sleep(2.5)
+        except Exception as e:
+            self.err = e
+        finally:
+            conn.close()
+
+    def test_a_held_ring_lock_does_not_stall_the_socket(self):
+        import threading
+        srv = _listen()
+        n = 450   # ~2.2 MB of frames vs a 64 kB send buffer
+        self.t_sent = None
+        self.err = None
+        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=1024,
+                              retry_s=0.05, read_timeout_s=5.0)
+        hold_s = 1.5
+        with c._lock:                      # every consumer's lock, held for a long pass
+            t0 = time.monotonic()
+            threading.Thread(target=self._serve, args=(srv, n), daemon=True).start()
+            c.start()
+            time.sleep(hold_s)
+            # While the lock is held the store thread cannot insert a single frame...
+            frames_during = c.frames
+            pending_during = c.pending()
+            t_release = time.monotonic()
+        try:
+            deadline = time.time() + 5.0
+            while time.time() < deadline and c.frames < n:
+                time.sleep(0.02)
+        finally:
+            c.stop()
+            srv.close()
+        self.assertIsNone(self.err)
+        self.assertEqual(frames_during, 0)
+        # ...yet the socket was drained: the server finished sending well before the release.
+        self.assertIsNotNone(self.t_sent, "the server never finished sending")
+        self.assertLess(self.t_sent, t_release - 0.3,
+                        "sendall finished only %.2f s before the lock was released: the "
+                        "socket thread was blocked behind the ring lock" % (t_release - self.t_sent))
+        self.assertGreaterEqual(pending_during, n // 2)
+        # Nothing lost, one connection: the gather would have had no reason to drop us.
+        self.assertEqual(c.frames, n)
+        self.assertEqual(c.pending_dropped, 0)
+        self.assertEqual(c.connects, 1)
+        self.assertEqual(c.bad, 0)
+        self.assertGreaterEqual(c.pending_peak, n // 2)
+        del t0
+
+    def test_the_pending_queue_sheds_the_oldest_and_keeps_the_connection(self):
+        import threading
+        srv = _listen()
+        one = len(_make_frame())
+        n = 40
+        self.t_sent = None
+        self.err = None
+        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=1024,
+                              retry_s=0.05, read_timeout_s=5.0, pending_max_bytes=4 * one)
+        with c._lock:
+            threading.Thread(target=self._serve, args=(srv, n), daemon=True).start()
+            c.start()
+            time.sleep(1.0)
+        try:
+            deadline = time.time() + 3.0
+            while time.time() < deadline and c.frames + c.pending_dropped < n:
+                time.sleep(0.02)
+        finally:
+            c.stop()
+            srv.close()
+        self.assertIsNone(self.err)
+        self.assertIsNotNone(self.t_sent)
+        # Over the bound the OLDEST frames go, counted, and the NEWEST window is what lands.
+        self.assertGreaterEqual(c.pending_dropped, n - 6)
+        self.assertEqual(c.frames + c.pending_dropped, n)
+        self.assertIn(1000 + n - 1, c.windows("gps_l5", lag=0))
+        self.assertEqual(c.connects, 1)
+
+
+class TestReconnectPolicy(unittest.TestCase):
+    """E. A connection the gather closed after it LIVED is reconnected at once.
+
+    Every second between the drop and the reconnect is a second of records lost on every
+    chain, and the fold cannot bridge it. The backoff is for a gather that is DOWN -- a
+    connection refused or one that died young -- where retrying at once would only churn.
+    """
+
+    def _serve(self, srv, live_s, n_conns):
+        for _ in range(n_conns):
+            conn, _ = srv.accept()
+            self.accepts.append(time.monotonic())
+            try:
+                t_end = time.monotonic() + live_s
+                k = 0
+                while time.monotonic() < t_end:
+                    raw = _make_frame(win=2000 + k, seq=k)
+                    conn.sendall(struct.pack("<I", len(raw)) + raw)
+                    k += 1
+                    time.sleep(0.02)
+            except Exception:
+                pass
+            finally:
+                conn.close()
+                self.closes.append(time.monotonic())
+
+    def _run(self, live_s, fast_after_s, retry_s):
+        import threading
+        srv = _listen()
+        self.accepts, self.closes = [], []
+        threading.Thread(target=self._serve, args=(srv, live_s, 2), daemon=True).start()
+        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=64,
+                              retry_s=retry_s, read_timeout_s=5.0,
+                              fast_retry_after_s=fast_after_s)
+        c.start()
+        try:
+            deadline = time.time() + 5.0
+            while time.time() < deadline and len(self.accepts) < 2:
+                time.sleep(0.01)
+        finally:
+            c.stop()
+            srv.close()
+        self.assertEqual(len(self.accepts), 2, "the client never reconnected")
+        return c, self.accepts[1] - self.closes[0]
+
+    def test_a_connection_that_lived_is_reconnected_immediately(self):
+        c, gap = self._run(live_s=0.5, fast_after_s=0.2, retry_s=2.0)
+        self.assertLess(gap, 0.3, "waited %.2f s (the backoff) after a live connection was "
+                        "closed" % gap)
+        self.assertEqual(c.fast_reconnects, 1)
+        self.assertGreaterEqual(c.last_lived_s, 0.2)
+
+    def test_a_connection_that_died_young_waits_the_backoff(self):
+        c, gap = self._run(live_s=0.02, fast_after_s=5.0, retry_s=0.4)
+        self.assertGreaterEqual(gap, 0.3, "reconnected after %.2f s to a gather that keeps "
+                                "dropping us at once -- that is the churn the backoff exists "
+                                "for" % gap)
+        self.assertEqual(c.fast_reconnects, 0)
 
 
 if __name__ == "__main__":
