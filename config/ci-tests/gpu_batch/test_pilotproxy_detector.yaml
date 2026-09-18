@@ -1,0 +1,18 @@
+---
+# Compare packing, integer powers, fine FFT and decisions against CPU references.
+# This stage requires a CUDA device; fixtures are defined in the test stage.
+
+type: config
+log_level: INFO
+
+cpu_affinity: [0]
+
+# Required by the default telescope setup (the stage itself reads no config).
+num_polarizations: 2
+num_dishes: 512
+
+test_pilotproxy_detector:
+    kotekan_stage: testPilotProxyDetector
+    # Safety cap for the GPU-vs-CPU sweep in debug builds.
+    join_timeout: 120
+log_config_usage: fatal_error

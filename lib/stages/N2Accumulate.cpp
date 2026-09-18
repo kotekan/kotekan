@@ -34,7 +34,7 @@
 #include <math.h>     // for floor
 #include <memory>     // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
 #include <ostream>    // for ostream, basic_ostream
-#include <utility>    // for swap
+#include <utility>    // for pair, swap
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
@@ -323,6 +323,9 @@ void N2Accumulate::main_thread() {
     int previous_in_plcounts_frame_id = -1;
     int previous_in_rfiframemask_frame_id = -1;
     int previous_in_bad_feed_mask_frame_id = -1; // only used when the mask input is wired
+    bool have_previous_seq = false;
+    int64_t previous_seq = 0;
+    std::vector<int> coarse_freq_order;
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
          in_frame_id, out_buf->buffer_name, out_frame_id);
@@ -471,6 +474,85 @@ void N2Accumulate::main_thread() {
             // AND this frame's mask into the current bin's flags: a feed flagged at any
             // point in the bin is flagged for the whole bin.
             fold_bad_feed_mask_into_accum(bad_feed_mask);
+        }
+
+        // Counts and masks must refer to the same times and frequencies as the correlations.
+        const std::array<std::pair<const char*, std::shared_ptr<chordMetadata>>, 5> stream_metadata{
+            {{"correlation", frame_metadata},
+             {"counts", counts_metadata},
+             {"RFI counts", rficounts_metadata},
+             {"packet-loss counts", plcounts_metadata},
+             {"RFI frame mask", rfiframemask_metadata}}};
+        for (const auto& stream : stream_metadata) {
+            if (!stream.second->has_coarse_freq()) {
+                FATAL_ERROR("N2Accumulate missing coarse-frequency metadata in {} stream",
+                            stream.first);
+            }
+            if (!stream.second->has_time_downsampling_fpga()) {
+                FATAL_ERROR("N2Accumulate missing time-downsampling metadata in {} stream",
+                            stream.first);
+            }
+        }
+        const auto frame_coarse_freq = frame_metadata->get_coarse_freq();
+        const int frame_time_downsampling = frame_metadata->get_time_downsampling_fpga();
+        if (frame_coarse_freq.size() != static_cast<size_t>(_num_freq_per_n2k_frame)) {
+            FATAL_ERROR("N2Accumulate coarse-frequency length mismatch: got {:d}, expected {:d}",
+                        frame_coarse_freq.size(), _num_freq_per_n2k_frame);
+        }
+        for (const auto& stream : stream_metadata) {
+            if (stream.second->get_coarse_freq() != frame_coarse_freq) {
+                FATAL_ERROR("N2Accumulate coarse-frequency mismatch in {} stream", stream.first);
+            }
+            if (stream.second->get_time_downsampling_fpga() != frame_time_downsampling) {
+                FATAL_ERROR("N2Accumulate time-downsampling mismatch in {} stream", stream.first);
+            }
+        }
+
+        // The correlation period in the metadata must be the configured sub-integration.
+        if (frame_time_downsampling != _n_fpga_samples_per_n2k_correlation) {
+            FATAL_ERROR("N2Accumulate correlation period {:d} in the metadata differs from "
+                        "sub_integration_ntime {:d}",
+                        frame_time_downsampling, _n_fpga_samples_per_n2k_correlation);
+        }
+        if (coarse_freq_order.empty()) {
+            coarse_freq_order = frame_coarse_freq;
+        } else if (frame_coarse_freq != coarse_freq_order) {
+            FATAL_ERROR("N2Accumulate coarse-frequency order changed between correlation frames");
+        }
+
+        // The even frame may be saved for the next iteration, so frames must be consecutive.
+        const int64_t frame_seq = frame_metadata->get_fpga_seq_num();
+        // Even/odd pairing requires frames to start on the global frame grid.
+        if (frame_seq % _n_fpga_samples_per_n2k_frame != 0) {
+            FATAL_ERROR("N2Accumulate unaligned correlation frame: sequence {:d} is not a multiple "
+                        "of frame span {:d} FPGA ticks",
+                        frame_seq, _n_fpga_samples_per_n2k_frame);
+        }
+        if (have_previous_seq && frame_seq != previous_seq + _n_fpga_samples_per_n2k_frame) {
+            FATAL_ERROR(
+                "N2Accumulate nonconsecutive correlation frame: previous {:d}, current {:d}, "
+                "required increment {:d}",
+                previous_seq, frame_seq, _n_fpga_samples_per_n2k_frame);
+        }
+        previous_seq = frame_seq;
+        have_previous_seq = true;
+
+        // Only the first count entry of each subintegration and frequency is used
+        // (packet_loss_is_scalar), so that is the one that has to be sane.
+        for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
+            for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+                const int64_t count = counts_mat[t * counts_stride_t + f * counts_stride_f];
+                const int64_t rfi_count = rficounts[t * _num_freq_per_n2k_frame + f];
+                const int64_t pl_count = plcounts[t * _num_freq_per_n2k_frame + f];
+                if (count < 0 || pl_count < 0
+                    || count + pl_count > _n_fpga_samples_per_n2k_correlation || rfi_count < 0
+                    || rfi_count > _n_fpga_samples_per_n2k_correlation) {
+                    FATAL_ERROR(
+                        "N2Accumulate counts out of range at subintegration {:d}, frequency "
+                        "{:d}: valid {:d}, packet loss {:d}, RFI {:d}, period {:d}",
+                        t, f, count, pl_count, rfi_count, _n_fpga_samples_per_n2k_correlation);
+                }
+            }
         }
 
         // Record the current frame time being processed.
