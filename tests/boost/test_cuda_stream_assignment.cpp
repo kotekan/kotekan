@@ -11,13 +11,15 @@
 #include <cstdlib>
 #include <future>
 #include <iostream>
+#include <iterator>
 #include <mutex>
 #include <vector>
 
 // Three properties are pinned here.
 //
-// 1. Stream assignment by role, shifted by the pipeline's cuda_stream_base: base 0 is 0/1/2,
-//    which is what makes the key safe to add to existing configs.
+// 1. Stream assignment by role within the pipeline's own triple, selected by the index in
+//    cuda_stream_base: base 0 is 0/1/2, which is what makes the key safe to add to existing
+//    configs, and every other base is a wholly disjoint triple.
 //
 // 2. That the queuing locks are ACQUIRED in ascending stream order, whatever order a pipeline
 //    supplies its set in. cudaProcess takes one mutex per stream, several at a time, and
@@ -37,19 +39,43 @@ BOOST_AUTO_TEST_CASE(base_zero_is_the_plain_triple) {
     BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::KERNEL, 0), 2);
 }
 
-// Bases three apart (3 and 6 here) give disjoint triples, which is the whole point.
-BOOST_AUTO_TEST_CASE(a_base_shifts_the_whole_triple_and_keeps_the_roles_adjacent) {
-    for (std::int32_t base : {3, 6, 9, 24}) {
-        BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::COPY_IN, base), base + 0);
-        BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::COPY_OUT, base), base + 1);
-        BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::KERNEL, base), base + 2);
+// The base is an INDEX: it scales by three, so consecutive bases give adjacent triples.
+BOOST_AUTO_TEST_CASE(a_base_selects_a_whole_triple_and_keeps_the_roles_adjacent) {
+    for (std::int32_t base : {1, 2, 3, 8}) {
+        BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::COPY_IN, base), 3 * base + 0);
+        BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::COPY_OUT, base), 3 * base + 1);
+        BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::KERNEL, base), 3 * base + 2);
+    }
+}
+
+// The property the index buys, and the reason Andre asked for it: no two bases can produce
+// triples that partially overlap, so a copy can never land on another pipeline's kernel
+// stream by a careless config. A device has one real copy queue in each direction, so such a
+// copy would stall that pipeline's kernels behind unrelated traffic.
+BOOST_AUTO_TEST_CASE(distinct_bases_can_never_partially_overlap) {
+    const gpuCommandType roles[] = {gpuCommandType::COPY_IN, gpuCommandType::COPY_OUT,
+                                    gpuCommandType::KERNEL};
+    for (std::int32_t a = 0; a < 8; a++) {
+        for (std::int32_t b = 0; b < 8; b++) {
+            std::vector<std::int32_t> sa, sb;
+            for (gpuCommandType r : roles) {
+                sa.push_back(resolve_cuda_stream(r, a));
+                sb.push_back(resolve_cuda_stream(r, b));
+            }
+            std::vector<std::int32_t> both;
+            std::set_intersection(sa.begin(), sa.end(), sb.begin(), sb.end(),
+                                  std::back_inserter(both));
+            BOOST_CHECK_MESSAGE(both.size() == (a == b ? 3u : 0u),
+                                "bases " << a << " and " << b << " share " << both.size()
+                                         << " stream(s); a triple must be all or nothing");
+        }
     }
 }
 
 // A BARRIER has no role to derive a stream from; the caller must reject it.
 BOOST_AUTO_TEST_CASE(a_barrier_without_an_explicit_stream_is_refused) {
     BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::BARRIER, 0), CUDA_STREAM_NEEDS_EXPLICIT);
-    BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::BARRIER, 6), CUDA_STREAM_NEEDS_EXPLICIT);
+    BOOST_CHECK_EQUAL(resolve_cuda_stream(gpuCommandType::BARRIER, 2), CUDA_STREAM_NEEDS_EXPLICIT);
 }
 
 // The negative-base refusal here is the one cudaCommand::set_command_type, cudaSyncInput and
@@ -161,12 +187,12 @@ BOOST_AUTO_TEST_CASE(the_stream_set_is_unique_ascending_and_empty_for_no_command
     BOOST_CHECK(unique_ascending_streams({-1, -1}).empty());
 }
 
-// The realistic case: a pipeline at base 6 whose commands were declared kernel-first.
+// The realistic case: a pipeline at base 2, i.e. streams 6/7/8, declared kernel-first.
 BOOST_AUTO_TEST_CASE(a_shifted_pipelines_set_is_its_own_triple_in_order) {
     std::vector<std::int32_t> ids;
     for (auto t : {gpuCommandType::KERNEL, gpuCommandType::KERNEL, gpuCommandType::COPY_OUT,
                    gpuCommandType::COPY_OUT})
-        ids.push_back(resolve_cuda_stream(t, 6));
+        ids.push_back(resolve_cuda_stream(t, 2));
     const auto s = unique_ascending_streams(ids);
     BOOST_REQUIRE_EQUAL(s.size(), 2u);
     BOOST_CHECK_EQUAL(s[0], 7); // COPY_OUT

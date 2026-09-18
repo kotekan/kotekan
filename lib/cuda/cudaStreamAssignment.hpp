@@ -30,13 +30,20 @@ constexpr std::int32_t CUDA_STREAM_NEEDS_EXPLICIT = -1;
  * @brief The stream a command lands on.
  *
  * @param type  the command's gpuCommandType.
- * @param base  the owning pipeline's `cuda_stream_base`.
+ * @param base  the owning pipeline's `cuda_stream_base`, an INDEX not a stream id.
  *
- * Default assignment is by ROLE, shifted by the pipeline's base: COPY_IN base+0, COPY_OUT
- * base+1, KERNEL base+2. Those indices are into a stream vector shared by every cudaProcess
- * on the device, so two pipelines at the same base share streams -- and since a CUDA stream
- * is an in-order queue, their kernels serialize. Distinct bases are what give pipelines
- * genuinely independent queues.
+ * Default assignment is by ROLE within the pipeline's own triple: COPY_IN 3*base+0, COPY_OUT
+ * 3*base+1, KERNEL 3*base+2. Those are indices into a stream vector shared by every
+ * cudaProcess on the device, so two pipelines at the same base share streams -- and since a
+ * CUDA stream is an in-order queue, their kernels serialize. Distinct bases are what give
+ * pipelines genuinely independent queues.
+ *
+ * THE FACTOR OF THREE IS NOT COSMETIC: it makes a triple that overlaps another pipeline's
+ * inexpressible. A device has effectively one host-to-device and one device-to-host copy
+ * queue however many streams feed them, so a copy landing on a stream that also carries
+ * kernels blocks those kernels until an unrelated copy elsewhere clears. Partial overlap is
+ * also strictly worse than either extreme: it costs the extra streams while still sharing
+ * queuing locks. An index admits neither.
  *
  * This resolves the DEFAULT only. A per-command `cuda_stream` is absolute and ignores the
  * base, so cudaCommand::set_command_type short-circuits on one before calling this; a BARRIER
@@ -52,11 +59,11 @@ inline std::int32_t resolve_cuda_stream(gpuCommandType type, std::int32_t base) 
         throw std::runtime_error("cuda_stream_base must be >= 0");
     switch (type) {
         case gpuCommandType::COPY_IN:
-            return base + 0;
+            return 3 * base + 0;
         case gpuCommandType::COPY_OUT:
-            return base + 1;
+            return 3 * base + 1;
         case gpuCommandType::KERNEL:
-            return base + 2;
+            return 3 * base + 2;
         case gpuCommandType::BARRIER:
             return CUDA_STREAM_NEEDS_EXPLICIT;
         case gpuCommandType::NOT_SET:
