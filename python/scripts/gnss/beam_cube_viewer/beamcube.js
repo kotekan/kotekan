@@ -14,6 +14,7 @@ const S = {
   chains: [], sel: new Set(), nsub: 1, nelem: 32,
   axis: [],              // ABSOLUTE freq_ids covered by the selected chains, sorted (the slider)
   elOn: null,            // Set of enabled element indices (the sum AND the scan use it)
+  polSel: 'both',        // 'both' | 0 | 1 -- the VIEW, a second layer over elOn, never edits it
   offset: new Map(),     // chain -> dB offset applied when summing/comparing chains
   cmap: 0, grid: true, hover: null,
 };
@@ -155,7 +156,7 @@ function collapse() {
       for (let s = 0; s < c.n_sub; s++) {
         if (!subAll && c.freq_ids[s][0] !== fidOne) continue;
         for (let e = e0; e <= e1; e++) {
-          if (elAll && S.elOn && !S.elOn.has(e)) continue;   // toggled off by the reader
+          if (elAll && !elActive(e)) continue;   // masked out by the reader, or hidden pol
           const base = (s * c.n_elem + e) * P;
           for (let p = 0; p < P; p++) {
             const nn = c.n[base + p];
@@ -355,7 +356,15 @@ function checkBands() {
   } else el.innerHTML = '';
 }
 
-const enabledList = () => [...Array(S.nelem).keys()].filter(e => !S.elOn || S.elOn.has(e));
+// TWO INDEPENDENT LAYERS, and everything that consumes the element axis goes through elActive:
+//   S.elOn   the reader's mask -- which elements are GOOD. Edited rarely, saved per browser.
+//   S.polSel the view -- which pol is on screen. Flipped constantly, never edits the mask.
+// They were one layer at first, and selecting a pol silently re-enabled every masked-out dead
+// feed. An element contributes only if BOTH allow it.
+const polHalf = () => Math.floor(S.nelem / 2);
+const polAllows = e => S.polSel === 'both' || ((e < polHalf()) === (S.polSel === 0));
+const elActive = e => (!S.elOn || S.elOn.has(e)) && polAllows(e);
+const enabledList = () => [...Array(S.nelem).keys()].filter(elActive);
 
 function saveElOn() {
   try { localStorage.setItem('beamcube.elOn', JSON.stringify([...S.elOn])); } catch (e) {}
@@ -440,12 +449,19 @@ function syncLabels() {
   // fault to chase -- it is the instrument -- so the viewer says so instead of showing an
   // empty sky and letting the reader diagnose it again.
   const one = +document.getElementById('el').value;
-  const nOn = S.elOn ? S.elOn.size : S.nelem;
+  // nOn is the EFFECTIVE count -- mask AND pol -- because that is what the map is actually a
+  // sum over. Reporting the mask size alone would overstate it whenever a pol is hidden.
+  const nOn = enabledList().length;
+  const nMask = S.elOn ? S.elOn.size : S.nelem;
+  const polTxt = S.polSel === 'both' ? '' : ` · pol ${S.polSel} only (slot, not feed plane`
+                 + ` — they agree only after the 2026-09-14 rewire)`;
   document.getElementById('elinfo').textContent =
     elOn
       ? (DARK.includes(one) ? `element ${one} is DARK (broken LNA) — expect an empty map` : '')
-      : `${nOn} of ${S.nelem} elements in the sum` + (nOn < S.nelem ? ' (toggle below)' : '');
-  const masked = elOn && S.elOn && !S.elOn.has(one);
+      : `${nOn} of ${S.nelem} elements in the sum`
+        + (S.polSel !== 'both' && nMask > nOn ? ` (${nMask} unmasked, ${nMask - nOn} in the hidden pol)` : '')
+        + (S.polSel === 'both' && nOn < S.nelem ? ' (toggle below)' : '') + polTxt;
+  const masked = elOn && !elActive(one);   // by the reader's mask OR by the hidden pol
   document.getElementById('ellab').textContent =
     elOn ? '#' + one + (masked ? ' (masked out of the sum)' : '') : `all (${nOn})`;
   // Keep the enabled-only slider in step with the full one.
@@ -465,8 +481,19 @@ function syncLabels() {
       (masked ? 'nearest enabled #' : '#') + on[k] + ` (${k + 1} of ${on.length})`;
   } else document.getElementById('elonlab').textContent = on.length ? `${on.length} enabled` : 'none enabled';
   for (const b of document.querySelectorAll('#elgrid button')) {
-    b.classList.toggle('on', !S.elOn || S.elOn.has(+b.dataset.e));
-    b.classList.toggle('cur', elOn && +b.dataset.e === one);
+    const e = +b.dataset.e;
+    // `on` stays the READER'S mask so it is still legible while a pol is hidden; `polout` dims
+    // the half that is out of view. Two states, because they mean different things.
+    b.classList.toggle('on', !S.elOn || S.elOn.has(e));
+    b.classList.toggle('polout', !polAllows(e));
+    b.classList.toggle('cur', elOn && e === one);
+  }
+  document.getElementById('pollab').textContent =
+    S.polSel === 'both' ? 'both' : `pol ${S.polSel} (elements ${S.polSel === 0 ? '0–' + (polHalf() - 1)
+      : polHalf() + '–' + (S.nelem - 1)})`;
+  for (const [id, v] of [['elpolboth', 'both'], ['elpol0', 0], ['elpol1', 1]]) {
+    const b = document.getElementById(id);
+    if (b) b.classList.toggle('on', S.polSel === v);
   }
   // The axis is the ABSOLUTE F-engine channel (0.1953125 MHz each), the union over every
   // instance of the fleet AND over the selected chains -- never an instance's local bin
@@ -585,6 +612,12 @@ async function boot() {
   // Element toggles: one button per antenna, remembered per browser.
   try { const sv = JSON.parse(localStorage.getItem('beamcube.elOn')); if (Array.isArray(sv)) S.elOn = new Set(sv); } catch (e) {}
   if (!S.elOn) S.elOn = new Set([...Array(S.nelem).keys()]);
+  // The pol view is remembered too, but validated: a stale or hand-edited value must not leave
+  // the page filtering on something polAllows() cannot interpret (it would show an empty sky).
+  try {
+    const pv = JSON.parse(localStorage.getItem('beamcube.polSel'));
+    if (pv === 'both' || pv === 0 || pv === 1) S.polSel = pv;
+  } catch (e) {}
   const grid = document.getElementById('elgrid');
   for (let e = 0; e < S.nelem; e++) {
     const b = document.createElement('button');
@@ -601,6 +634,27 @@ async function boot() {
   document.getElementById('elnone').addEventListener('click', () => setAll(() => false));
   document.getElementById('ellive').addEventListener('click', () => setAll(e => !DARK.includes(e)));
   document.getElementById('elinv').addEventListener('click', () => { const was = S.elOn; setAll(e => !was.has(e)); });
+  // The pol view. A RADIO, not a selection: one click flips, and none of it touches S.elOn, so
+  // the reader's masking of dead feeds survives every flip. The cube packs element = pol*16 +
+  // dish, so a pol is exactly a half: 0..15 and 16..31.
+  // ⚠️ POL IS THE SLOT, NOT THE FEED PLANE. Identical only from 2026-09-14 19:08Z: before the
+  // rewire A06, A07 and B07 carried slot 0 on plane B while the other thirteen carried plane A,
+  // so a per-pol average over a pre-rewire day mixes 13 dishes of one plane with 3 of the other.
+  // The day's array_epoch (now in index.json) is what tells you which side you are on.
+  const POL_TITLE = 'pol = the SLOT (element = pol*16 + dish), not the feed plane. '
+                  + 'Before the 2026-09-14 19:08Z rewire, A06/A07/B07 sat on the other plane '
+                  + 'in slot 0, so a per-pol average over an earlier day mixes both planes.';
+  const setPol = v => {
+    S.polSel = v;
+    try { localStorage.setItem('beamcube.polSel', JSON.stringify(v)); } catch (e) {}
+    syncLabels(); draw();
+  };
+  for (const [id, v] of [['elpolboth', 'both'], ['elpol0', 0], ['elpol1', 1]]) {
+    const b = document.getElementById(id);
+    if (!b) continue;
+    b.title = POL_TITLE;
+    b.addEventListener('click', () => setPol(v));
+  }
   // Default to a single chain: a first view that silently mixed bands would teach the wrong
   // reading of the very axis this page exists to separate.
   const first = box.querySelector('input');

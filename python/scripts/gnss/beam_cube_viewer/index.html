@@ -82,6 +82,9 @@
   #elgrid button.on { background: #22403d; color: var(--accent); border-color: #2f6b66; }
   #elgrid button[title] { text-decoration: line-through; }
   #elgrid button.cur { outline: 1px solid var(--warn); outline-offset: -1px; }
+  /* Excluded by the pol filter, not by the reader's mask: still shows its own on/off state so
+     the mask stays readable while one pol is hidden. */
+  #elgrid button.polout { opacity: .28; }
   input[type=range].greyed { accent-color: var(--dim); opacity: .55; }
   #boot { position: absolute; inset: 0; display: grid; place-items: center;
           color: var(--dim); font-size: 12px; text-align: center; padding: 30px; }
@@ -127,6 +130,18 @@
     <div id="elgrid"></div>
     <div class="btns"><button id="elall">all</button><button id="ellive">live only</button>
       <button id="elnone">none</button><button id="elinv">invert</button></div>
+    <!-- A SECOND, INDEPENDENT LAYER over the per-element mask above. The buttons above set WHICH
+         ELEMENTS ARE GOOD (a judgement about the array, edited rarely); these set WHICH POL YOU
+         ARE LOOKING AT (a view, flipped constantly). Folding the second into the first is what
+         the first cut of this got wrong: selecting a pol overwrote the mask, so every dead feed
+         came back into the sum and had to be masked out again by hand.
+         Pol is the SLOT (the cube packs element = pol*16 + dish), not the feed plane: the same
+         thing only after the 2026-09-14 rewire, before which A06/A07/B07 had slot 0 on the
+         other plane. The titles say so, because a per-pol average is exactly where it matters. -->
+    <div class="row" style="margin-top:8px"><span class="muted">show pol</span>
+      <span class="val" id="pollab">both</span></div>
+    <div class="btns"><button id="elpolboth" class="on">both</button>
+      <button id="elpol0">pol 0</button><button id="elpol1">pol 1</button></div>
   </fieldset>
 
   <fieldset>
