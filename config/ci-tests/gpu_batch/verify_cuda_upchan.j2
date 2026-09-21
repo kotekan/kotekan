@@ -20,10 +20,19 @@
 # and the notes disagree.
 #
 # Cost: the reference is O(M*U) per output sample, i.e.
-#     Tbar_per_frame * Fbar * num_polarizations * num_dishes * (num_taps * U)
-# complex multiply-adds per output frame -- about 1.1e9 here, a few seconds
-# single-threaded. Raising buffer_depth shrinks the frames and so the per-frame
-# cost, since the ring length is fixed by the kernel.
+#     num_times_out * Fbar * num_polarizations * num_dishes * (num_taps * U)
+# complex multiply-adds before a comparison can happen. Keep that small: the
+# per-config timeout in config/ci-tests/run_tests.sh is 2 minutes, and a
+# `CMAKE_BUILD_TYPE=Test` build -- what the CI GPU yaml job uses -- runs this
+# loop about 30x slower than a Debug build of the same source. That is not an
+# optimization-level effect (Debug ends up at -O2, Test at -O3); the cause is
+# unidentified, so leave generous margin. Measured on an A40: 13s in a Test
+# build, 3.5s in a Debug build.
+#
+# The two knobs are `num_times_out` (how much output a comparison needs) and
+# `max_times_per_iteration` (how much the reference computes before publishing
+# any of it -- it calls finish_write once per execute, so a large chunk delays
+# the first output by its whole cost).
 #
 # The kernel is chosen for sm_86 (A40). The chime_* variants are built for sm_89
 # and will not load on an A40.
@@ -63,6 +72,12 @@ Fmax: upchan_max_num_channels
 # generator has refilled, so the ring silently receives the wrong samples.
 buffer_depth: 16
 num_times: num_times_total / buffer_depth
+
+# Time samples per *output* frame, i.e. how much the reference must compute before
+# `compare_data` can run. This is independent of num_times / U (=128), and much smaller:
+# `cudaCopyFromRingbuffer` just slices `output_size` chunks off the ring, and one frame of
+# 8 x 128 x 2 x 512 is still a megabyte of samples to compare.
+num_times_out: 8
 
 frame_arrival_period: 5.12e-6 * num_times
 cpu_affinity: []
@@ -116,7 +131,7 @@ host_{{ chain }}_voltage_buffer:
     kotekan_buffer: ndarray
     num_frames: buffer_depth
     value_type: int4x2_swapped_withoffset
-    extents: [num_times / {{ upchan_factor }}, num_frequencies_out, num_polarizations, num_dishes]
+    extents: [num_times_out, num_frequencies_out, num_polarizations, num_dishes]
     quantity_name: "Ebar"
     dimnames: ["Tbar", "Fbar", "P", "D"]
     dimscalings: [{{ upchan_factor }}, 1, 1, 1]
@@ -209,7 +224,9 @@ run_sim_upchan:
           ring_num_times: num_times_total
           upchannelization_factor: {{ upchan_factor }}
           num_taps: {{ num_taps }}
-          max_times_per_iteration: 2048
+          # 256 input samples -> (256 - (M-1)*U)/U = 13 output samples per execute, which
+          # covers a whole output frame. 2048 would compute 125 before publishing any.
+          max_times_per_iteration: 256
           voltage_name: voltage
           upchan_gain_name: sim_upchan_gain
           upchan_voltage_name: sim_upchan_voltage
@@ -227,7 +244,7 @@ run_recv_{{ chain }}_voltage:
         - name: cudaCopyFromRingbuffer
           host_signal: host_{{ chain }}_voltage_ringbuffer
           gpu_mem_input: {{ chain }}_voltage_buffer
-          output_size: (num_times / {{ upchan_factor }}) * num_frequencies_out * num_polarizations * num_dishes
+          output_size: num_times_out * num_frequencies_out * num_polarizations * num_dishes
           ring_buffer_size: (num_times_total / {{ upchan_factor }}) * num_frequencies_out * num_polarizations * num_dishes
           out_buf: host_{{ chain }}_voltage_buffer
 {% endfor %}
@@ -250,7 +267,7 @@ compare_data:
     first_buf: host_upchan_voltage_buffer
     second_buf: host_sim_upchan_voltage_buffer
     num_frames_to_test: 1
-    max_num_errors_allowed: (num_times / {{ upchan_factor }}) * num_frequencies_out * num_polarizations * num_dishes / 100
+    max_num_errors_allowed: num_times_out * num_frequencies_out * num_polarizations * num_dishes / 100
     trigger_exit_on_pass: true
     check_metadata: true
 
