@@ -10,17 +10,11 @@ const Memory = IndexSpaces.Memory
 
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 
-# The self-test fills the output with `-8` nibbles and must be able to tell an
-# element the kernel never wrote from one it did, so the random input has to
-# avoid `-8` (nibble `0b1000`). Map that one nibble value to `0` and leave the
-# other 15 alone; this works on whole words because the arrays are large.
-function kill_nan_nibbles(r::UInt32)
-    lo = r & 0x77777777             # the low three bits of each nibble
-    lo |= lo >> 0x1
-    lo |= lo >> 0x2                 # bit 0 of each nibble: are they nonzero?
-    nonzero = (lo & 0x11111111) << 0x3
-    return r & ~(r & 0x88888888 & ~nonzero)
-end
+# The self-test fills the output with `-8` and must be able to tell an element
+# the kernel never wrote from one it did, so the random input has to avoid
+# `-8`. Clamping to `-7:+7` maps it to `-7` and leaves the other 15 values
+# alone.
+avoid_nan(x::Int4x8) = clamp(x, Int4x8(-7, -7, -7, -7, -7, -7, -7, -7), Int4x8(+7, +7, +7, +7, +7, +7, +7, +7))
 
 @enum CHORDTag CplxTag DishTag FreqTag PolrTag TimeTag ThreadTag WarpTag BlockTag
 
@@ -511,13 +505,23 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         info_memory = Array{Int32}(undef, num_threads * num_warps * num_blocks)
 
         println("Setting up input data...")
-        # The kernel is a pure permutation, so a random input can be checked
-        # exactly: complete coverage, no reference arithmetic, no tolerance.
-        # The data is never interpreted, so there is no encoding step here.
+        # A transpose is a pure permutation, so the reference needs no
+        # arithmetic and the comparison needs no tolerance: every output
+        # element must equal exactly one input element, and every output
+        # element is checked. The data is never interpreted, so there is no
+        # encoding step here.
+        #
+        # That is not quite a proof that the permutation is right. An `Int4x2`
+        # takes only 15*15 = 225 distinct values here, far fewer than the
+        # `D * P` elements of a single (frequency, time) column, so equal
+        # values are common and a misrouted element can happen to carry the
+        # value that belongs in its place -- with probability about 1/225. A
+        # real permutation bug misroutes a large fraction of the elements at
+        # once and every one of them would have to coincide, so in practice it
+        # is caught.
         Random.seed!(0)
-        Ein_words = reinterpret(UInt32, Ein_memory)
-        rand!(Ein_words)
-        Ein_words .= kill_nan_nibbles.(Ein_words)
+        rand!(reinterpret(UInt32, Ein_memory))
+        map!(avoid_nan, Ein_memory, Ein_memory)
 
         println("Copying data from CPU to GPU...")
         Ein_cuda = CuArray(Ein_memory)

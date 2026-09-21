@@ -33,16 +33,10 @@ end
 
 Base.isnan(i::Int4x8) = any(==(-8), convert(NTuple{8,Int8}, i))
 
-# `-8` (nibble `0b1000`) is the NaN sentinel for `Int4x8`, so random test data
-# must avoid it. Map that one nibble value to `0` and leave the other 15 alone.
-# This is done on whole words because the arrays are large.
-function kill_nan_nibbles(r::UInt32)
-    lo = r & 0x77777777             # the low three bits of each nibble
-    lo |= lo >> 0x1
-    lo |= lo >> 0x2                 # bit 0 of each nibble: are they nonzero?
-    nonzero = (lo & 0x11111111) << 0x3
-    return r & ~(r & 0x88888888 & ~nonzero)
-end
+# `-8` is the NaN sentinel for `Int4x8` (see `isnan` above), so random test
+# data must avoid it. Clamping to `-7:+7` maps `-8` to `-7` and leaves the
+# other 15 values alone.
+avoid_nan(x::Int4x8) = clamp(x, Int4x8(-7, -7, -7, -7, -7, -7, -7, -7), Int4x8(+7, +7, +7, +7, +7, +7, +7, +7))
 
 ################################################################################
 
@@ -426,12 +420,22 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Setting up input data...")
     if run_selftest
-        # The kernel is a pure permutation, so a random input can be checked
-        # exactly: complete coverage, no reference arithmetic, no tolerance.
+        # A transpose is a pure permutation, so the reference needs no
+        # arithmetic and the comparison needs no tolerance: every output
+        # element must equal exactly one input element, and every output
+        # element is checked.
+        #
+        # That is not quite a proof that the permutation is right. An `Int4x2`
+        # takes only 15*15 = 225 distinct values here, far fewer than the
+        # `D * P` = 2048 elements of a single (frequency, time) column, so
+        # equal values are common and a misrouted element can happen to carry
+        # the value that belongs in its place -- with probability about 1/225.
+        # A real permutation bug misroutes a large fraction of the elements at
+        # once and every one of them would have to coincide, so in practice it
+        # is caught.
         Random.seed!(0)
-        Ein_words = reinterpret(UInt32, Ein_memory)
-        rand!(Ein_words)
-        Ein_words .= kill_nan_nibbles.(Ein_words)
+        rand!(reinterpret(UInt32, Ein_memory))
+        map!(avoid_nan, Ein_memory, Ein_memory)
         # A nontrivial scatter. The identity permutation, which `main` used to
         # pass, would hide any mistake in applying `scatter_indices` at all.
         scatter_indices_memory .= Int32.(randperm(D * P) .- 1)
