@@ -1478,7 +1478,7 @@ FRB:
         # take square root since shape was for upchanelized intentisties, not voltages
         upchan_gain: 
 {%- for i in range(16) %}
-          - {{ 1.0 / (bandpass_shape_vals[15-i]**0.5) }}
+          - {{ 4.0 / (bandpass_shape_vals[15-i]**0.5) }}
 {% endfor -%}
 {%-else %}
         # F-Engine simulator data (could use theoretica values)
