@@ -87,7 +87,7 @@ void upchannelize_reference(const std::complex<float>* E, const float* window, c
 //
 // CHIME/CHORD pack a complex sample with the REAL part in the HIGH bits and the
 // IMAGINARY part in the LOW bits; this is what "swapped" names in the kotekan type
-// `int4x2_swapped_withoffset`. See `external/n2k/include/n2k/Correlator.hpp:61`
+// `int4x2_swapped_withoffset`. See `external/n2k/include/n2k/Correlator.hpp`
 // (`real_part_in_low_bits = false`, `offset_encoded = true`).
 //
 // Decoding the other way round yields the complex conjugate of eqn. (83) -- consistently
@@ -95,7 +95,7 @@ void upchannelize_reference(const std::complex<float>* E, const float* window, c
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Largest magnitude a 4-bit component may take. The kernel clamps to +-7 rather than
-/// [-8, +7]: `-8` is reserved as the poison / missing-data marker (`upchan.jl:1420`).
+/// [-8, +7]: `-8` is reserved as the poison / missing-data marker.
 constexpr int upchan_int4_max = 7;
 /// Largest magnitude an 8-bit component may take.
 constexpr int upchan_int8_max = 127;

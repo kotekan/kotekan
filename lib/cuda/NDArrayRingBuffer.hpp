@@ -625,13 +625,16 @@ public:
         }
     }
 
-    // Host <-> device transfers
-
 private:
-    // A time span [T_min, T_max) wraps around the end of the ring buffer, so it covers at
-    // most two contiguous runs of the underlying allocation. Call `body(T_offset,
-    // T_offset_local, T_length)` once per run, where `T_offset` indexes the ring and
-    // `T_offset_local` the packed host-side copy.
+    // Helper function for accessing contiguous regions in a ring buffer
+    //
+    // A time span `[T_min, T_max)` can wrap around the end of the
+    // ring buffer's memory. A time span thus covers either one or two
+    // contiguous runs of memory. `for_each_time_chunk` calls the
+    // function `body(T_offset, T_offset_local, T_length)` once for
+    // each such run. `T_offset` indexes into the ring buffer's memory
+    // (`0 <= T_offset < T_ringbuf`), and `T_offset_local` indexes
+    // into the time span (`0 <= T_offset_local < T_max - T_min`).
     template<typename F>
     void for_each_time_chunk(const std::ptrdiff_t T_min, const std::ptrdiff_t T_max,
                              F&& body) const {
@@ -673,6 +676,10 @@ private:
     }
 
 public:
+
+    // Host <-> device transfers
+    // These functions are slow. They are intended for debugging or testing.
+
     // Copy frequencies [F_min, F_max) of times [T_min, T_max) out of the ring buffer. The
     // result is packed: `(F_max - F_min) * stride(1)` values per time sample, time slowest.
     //
