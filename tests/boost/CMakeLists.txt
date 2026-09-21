@@ -339,10 +339,9 @@ endif()
 target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                                ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
-# test_upchannelizeReference - the serial float32 upchannelization reference.
-# The reference lives in lib/cuda, next to its only caller, but has no CUDA dependency of its
-# own. Compile it directly rather than linking kotekan_cuda, so these tests still build and run
-# on a machine without CUDA.
+# test_upchannelizeReference - the serial float32 upchannelization reference. The reference lives in
+# lib/cuda, next to its only caller, but has no CUDA dependency of its own. Compile it directly
+# rather than linking kotekan_cuda, so these tests still build and run on a machine without CUDA.
 add_executable(test_upchannelizeReference test_upchannelizeReference.cpp
                                           ${KOTEKAN_SOURCE_DIR}/lib/cuda/upchannelizeReference.cpp)
 target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)

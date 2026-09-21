@@ -676,7 +676,6 @@ private:
     }
 
 public:
-
     // Host <-> device transfers
     // These functions are slow. They are intended for debugging or testing.
 
