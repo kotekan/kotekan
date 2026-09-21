@@ -4,6 +4,7 @@ using CUDA
 using CUDASIMDTypes
 using IndexSpaces
 using Mustache
+using Random
 
 const Memory = IndexSpaces.Memory
 
@@ -31,6 +32,11 @@ function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
 end
 
 Base.isnan(i::Int4x8) = any(==(-8), convert(NTuple{8,Int8}, i))
+
+# `-8` is the NaN sentinel for `Int4x8` (see `isnan` above), so random test
+# data must avoid it. Clamping to `-7:+7` maps `-8` to `-7` and leaves the
+# other 15 values alone.
+avoid_nan(x::Int4x8) = clamp(x, Int4x8(-7, -7, -7, -7, -7, -7, -7, -7), Int4x8(+7, +7, +7, +7, +7, +7, +7, +7))
 
 ################################################################################
 
@@ -368,7 +374,7 @@ println("[Done creating xpose2048 kernel]")
     return nothing
 end
 
-function main(; compile_only::Bool=false, output_kernel::Bool=false)
+function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftest::Bool=false)
     if !compile_only
         println("CHORD 2048 transpose kernel")
     end
@@ -413,9 +419,31 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     info_memory = Array{Int32}(undef, num_threads * num_warps * num_blocks)
 
     println("Setting up input data...")
-    map!(i -> Int4x8(-4, -3, -2, -1, 0, 1, 2, 3), Ein_memory, Ein_memory)
-    for i in (D * P - 1):-1:0
-        scatter_indices_memory[i + 1] = i
+    if run_selftest
+        # A transpose is a pure permutation, so the reference needs no
+        # arithmetic and the comparison needs no tolerance: every output
+        # element must equal exactly one input element, and every output
+        # element is checked.
+        #
+        # That is not quite a proof that the permutation is right. An `Int4x2`
+        # takes only 15*15 = 225 distinct values here, far fewer than the
+        # `D * P` = 2048 elements of a single (frequency, time) column, so
+        # equal values are common and a misrouted element can happen to carry
+        # the value that belongs in its place -- with probability about 1/225.
+        # A real permutation bug misroutes a large fraction of the elements at
+        # once and every one of them would have to coincide, so in practice it
+        # is caught.
+        Random.seed!(0)
+        rand!(reinterpret(UInt32, Ein_memory))
+        map!(avoid_nan, Ein_memory, Ein_memory)
+        # A nontrivial scatter. The identity permutation, which `main` used to
+        # pass, would hide any mistake in applying `scatter_indices` at all.
+        scatter_indices_memory .= Int32.(randperm(D * P) .- 1)
+    else
+        map!(i -> Int4x8(-4, -3, -2, -1, 0, 1, 2, 3), Ein_memory, Ein_memory)
+        for i in (D * P - 1):-1:0
+            scatter_indices_memory[i + 1] = i
+        end
     end
 
     Tinmin = Int32(0 ÷ T16384)
@@ -452,6 +480,35 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     @assert all(isnan, (@view E_memory[(idiv(D, 4) * P * F * Tmax + 1):end]))
     info_memory = Array(info_cuda)
     @assert all(info_memory .== 0)
+
+    if run_selftest
+        println("Checking results...")
+        # `Ein` is indexed `[dish + D polr, time % T16384, freq, time ÷ T16384]`
+        # and `E` is indexed `[dish + D polr, freq, time]` (see
+        # `layout_Ein_memory` and `layout_E_memory`); the kernel moves `freq`
+        # from above the fast time index to below it. It also scatters the
+        # combined `(dish, polr)` index: the element with combined index `i`
+        # ends up at `scatter_indices[i]`.
+        Ein = reshape(reinterpret(Int4x2, Ein_memory), D * P, T16384, F, Tin)
+        Eout = reshape(reinterpret(Int4x2, E_memory), D * P, F, T)
+        error_count = 0
+        for tin in Tinmin:(Tinmax - 1), f in 0:(F - 1), t in 0:(T16384 - 1)
+            src = @view Ein[:, t + 1, f + 1, tin + 1]
+            dst = @view Eout[:, f + 1, T16384 * tin + t + 1]
+            @inbounds for i in 1:(D * P)
+                if dst[scatter_indices_memory[i] + 1] ≠ src[i]
+                    if error_count < 20
+                        println("    ERROR: dishpolr=$(i - 1) freq=$f time=$(T16384 * tin + t) " *
+                                "E=$(dst[scatter_indices_memory[i] + 1]) Ein=$(src[i])")
+                    end
+                    error_count += 1
+                end
+            end
+        end
+        println("    E: $error_count errors found in $(Int(Tinmax - Tinmin) * F * T16384 * D * P) samples")
+        error_count == 0 || error("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+        println("Self-test passed.")
+    end
 
     if output_kernel
         ptx = read("output/xpose2048_$setup.ptx", String)
@@ -672,8 +729,8 @@ if CUDA.functional()
     # modifies the generated PTX code
     main(; output_kernel=true)
 
-    # # Run test
-    # main(; run_selftest=true)
+    # Self-test (checks the transpose against a CPU reference permutation)
+    main(; run_selftest=true)
 
     # # Run benchmark
     # main(; nruns=10000)
