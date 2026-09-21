@@ -422,3 +422,34 @@ jobs:
           # The PR is authored by the workflow token, so the owner of the source
           # branch hears about it only if asked to review it.
           reviewers: ${{ github.event.pull_request.user.login || github.actor }}
+
+  # PilotProxy DTV detector: the vendor check, the runtime bundle export, the
+  # pipeline verifier and the integration tests, in their own job so an
+  # unavailable pilot-proxy package cannot fail the shared GPU jobs.
+  kotekan-pilotproxy-tests:
+    name: "PilotProxy"
+    needs: kotekan-docker
+    uses: ./.github/workflows/test_kotekan_build.yaml
+    with:
+      container_image: ${{ needs.kotekan-docker.outputs.docker_gpu_img_name }}
+      ccache_key: ${{ matrix.ccache_key }}
+      cmake_defs: ${{ matrix.cmake_defs }}
+      post_build: ${{ matrix.post_build }}
+      runs_on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: test-gcc-gpu-pilotproxy
+            ccache_key: kotekan-test-gcc-yaml
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_pilotproxy_tests.sh $GITHUB_WORKSPACE/build-2404
+            runs_on: self-hosted
