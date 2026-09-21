@@ -141,6 +141,7 @@ private:
     Buffer* second_buf;
     int num_frames_to_test;
     int max_num_errors_logged;
+    int max_num_errors_allowed;
     double epsilon;
     bool trigger_exit_on_pass;
     bool check_metadata;
@@ -165,6 +166,12 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
 
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
     max_num_errors_logged = config.get_default<int32_t>(unique_name, "max_num_errors_logged", 100);
+    // How many differing elements still count as a pass. The default, 0, demands exact
+    // equality. Raise it when comparing a float16 GPU kernel against a float32 CPU reference:
+    // the two round differently, so a sample sitting within half a quantization step of a
+    // boundary can legitimately land on either side. Keep it far below the point where a real
+    // algorithmic difference -- a wrong sign, a shifted channel -- would hide under it.
+    max_num_errors_allowed = config.get_default<int32_t>(unique_name, "max_num_errors_allowed", 0);
     epsilon = config.get_default<double>(unique_name, "epsilon",
                                          std::numeric_limits<A_Type>::epsilon() * (A_Type)5.0);
     trigger_exit_on_pass = config.get_default<bool>(unique_name, "trigger_exit_on_pass", true);
@@ -326,7 +333,12 @@ void testDataCheck<A_Type>::main_thread() {
             }
         }
 
-        if (num_errors == 0) {
+        if (num_errors <= max_num_errors_allowed) {
+            if (num_errors > 0)
+                INFO("The buffers {:s}[{:d}] and {:s}[{:d}] differ in {:d} of {:d} elements, "
+                     "within the {:d} allowed.",
+                     first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+                     num_errors, num_elements, max_num_errors_allowed);
             INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were equal.",
                  first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
             if (use_almost_equal) {
@@ -339,8 +351,10 @@ void testDataCheck<A_Type>::main_thread() {
                      rel_diff / std::max((uint32_t)1, num_nonzero));
             }
         } else {
-            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were NOT equal!",
-                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
+            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were NOT equal! "
+                 "{:d} of {:d} elements differ, more than the {:d} allowed.",
+                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+                 num_errors, num_elements, max_num_errors_allowed);
             INFO("Test failed, exiting.");
             TEST_FAILED();
         }
@@ -355,7 +369,7 @@ void testDataCheck<A_Type>::main_thread() {
 
         if (num_frames_to_test == frames) {
 
-            if (num_errors == 0) {
+            if (num_errors <= max_num_errors_allowed) {
                 if (trigger_exit_on_pass) {
                     INFO("Test passed, exiting.");
                     // Unregister to allow the pipeline to continue, unless I'm the last
@@ -370,7 +384,7 @@ void testDataCheck<A_Type>::main_thread() {
             }
         } // frames
 
-        if (num_errors > 0) {
+        if (num_errors > max_num_errors_allowed) {
             break;
         }
     }
