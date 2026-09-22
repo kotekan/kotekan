@@ -110,7 +110,8 @@ inline std::complex<float> upchan_decode_int4(const std::uint8_t byte) {
 /// Encode one `int4x2_swapped_withoffset` byte, clamping to +-7 and rounding half to even.
 std::uint8_t upchan_encode_int4(std::complex<float> value);
 
-/// Decode one `cint8` sample: plain two's complement, without swapping real and imaginary component.
+/// Decode one `cint8` sample: plain two's complement, without swapping real and imaginary
+/// component.
 inline std::complex<float> upchan_decode_int8(const std::complex<std::int8_t> value) {
     return std::complex<float>(float(value.real()), float(value.imag()));
 }
