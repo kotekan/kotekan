@@ -625,37 +625,31 @@ public:
         }
     }
 
-    // Poison
-
-    // Poison an NDArray ring buffer
-    void set_to_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
-                       const std::ptrdiff_t F_max) {
-        RINGBUF_CHECK(get_write_valid().size() > 0);
-
-        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
-        RINGBUF_CHECK(F_stride > 0);
-        const std::ptrdiff_t F_offset = F_min;
-        RINGBUF_CHECK(F_offset >= 0);
-        const std::ptrdiff_t F_length = F_max - F_min;
-        RINGBUF_CHECK(F_length > 0);
-
+private:
+    // Helper function for accessing contiguous regions in a ring buffer
+    //
+    // A time span `[T_min, T_max)` can wrap around the end of the
+    // ring buffer's memory. A time span thus covers either one or two
+    // contiguous runs of memory. `for_each_time_chunk` calls the
+    // function `body(T_offset, T_offset_local, T_length)` once for
+    // each such run. `T_offset` indexes into the ring buffer's memory
+    // (`0 <= T_offset < T_ringbuf`), and `T_offset_local` indexes
+    // into the time span (`0 <= T_offset_local < T_max - T_min`).
+    template<typename F>
+    void for_each_time_chunk(const std::ptrdiff_t T_min, const std::ptrdiff_t T_max,
+                             F&& body) const {
         const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
         RINGBUF_CHECK(T_ringbuf > 0);
-        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
-        RINGBUF_CHECK(T_stride > 0);
-        const std::ptrdiff_t T_min = get_write_valid().begin();
         RINGBUF_CHECK(T_min >= 0);
-        const std::ptrdiff_t T_max = get_write_valid().end();
         RINGBUF_CHECK(T_max > T_min);
-        const std::ptrdiff_t T_length = T_max - T_min;
-        RINGBUF_CHECK(T_length > 0);
 
         const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
         RINGBUF_CHECK(T_min_arg >= 0);
         RINGBUF_CHECK(T_min_arg < T_ringbuf);
-        const std::ptrdiff_t T_max_arg = T_min_arg + T_length;
+        const std::ptrdiff_t T_max_arg = T_min_arg + (T_max - T_min);
         RINGBUF_CHECK(T_max_arg >= T_min_arg);
         RINGBUF_CHECK(T_max_arg < 2 * T_ringbuf);
+
         const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
         for (int chunk = 0; chunk < num_chunks; ++chunk) {
             const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
@@ -666,14 +660,95 @@ public:
                                                             : T_max_arg - T_ringbuf;
             RINGBUF_CHECK(T_length > 0);
             RINGBUF_CHECK(T_offset + T_length <= T_ringbuf);
+            const std::ptrdiff_t T_offset_local = chunk == 0 ? 0 : T_ringbuf - T_min_arg;
+            body(T_offset, T_offset_local, T_length);
+        }
+    }
 
-            const auto stream =
-                cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
-            CHECK_CUDA_ERROR(
-                cudaMemset2DAsync(get_ndarray().data() + T_offset * T_stride + F_offset * F_stride,
-                                  T_stride * sizeof(T), poison_value,
-                                  F_length * F_stride * sizeof(T), T_length, stream));
-        } // for chunk
+    // Number of values per time sample in the packed host-side copy of frequencies
+    // [F_min, F_max).
+    std::ptrdiff_t host_time_stride(const std::ptrdiff_t F_min, const std::ptrdiff_t F_max) const {
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        RINGBUF_CHECK(F_stride > 0);
+        RINGBUF_CHECK(F_min >= 0);
+        RINGBUF_CHECK(F_max > F_min);
+        return (F_max - F_min) * F_stride;
+    }
+
+public:
+    // Host <-> device transfers
+    // These functions are slow. They are intended for debugging or testing.
+
+    // Copy frequencies [F_min, F_max) of times [T_min, T_max) out of the ring buffer. The
+    // result is packed: `(F_max - F_min) * stride(1)` values per time sample, time slowest.
+    //
+    // These copies are synchronous, so the caller is responsible for ordering them against
+    // work queued on the CUDA stream -- typically a `cudaStreamSynchronize` before reading.
+    std::vector<T> copy_to_host(const std::ptrdiff_t F_min, const std::ptrdiff_t F_max,
+                                const std::ptrdiff_t T_min, const std::ptrdiff_t T_max) const {
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
+        RINGBUF_CHECK(T_stride > 0);
+        const std::ptrdiff_t T_stride_local = host_time_stride(F_min, F_max);
+
+        std::vector<T> local_data((T_max - T_min) * T_stride_local);
+        for_each_time_chunk(T_min, T_max,
+                            [&](const std::ptrdiff_t T_offset, const std::ptrdiff_t T_offset_local,
+                                const std::ptrdiff_t T_length) {
+                                CHECK_CUDA_ERROR(cudaMemcpy2D(
+                                    local_data.data() + T_offset_local * T_stride_local,
+                                    T_stride_local * sizeof(T),
+                                    get_ndarray().data() + T_offset * T_stride + F_min * F_stride,
+                                    T_stride * sizeof(T), T_stride_local * sizeof(T), T_length,
+                                    cudaMemcpyDeviceToHost));
+                            });
+        return local_data;
+    }
+
+    // The inverse of `copy_to_host`: write a packed host-side block into frequencies
+    // [F_min, F_max) of times [T_min, T_max).
+    void copy_from_host(const std::vector<T>& local_data, const std::ptrdiff_t F_min,
+                        const std::ptrdiff_t F_max, const std::ptrdiff_t T_min,
+                        const std::ptrdiff_t T_max) {
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
+        RINGBUF_CHECK(T_stride > 0);
+        const std::ptrdiff_t T_stride_local = host_time_stride(F_min, F_max);
+        RINGBUF_CHECK(std::ptrdiff_t(local_data.size()) == (T_max - T_min) * T_stride_local);
+
+        for_each_time_chunk(T_min, T_max,
+                            [&](const std::ptrdiff_t T_offset, const std::ptrdiff_t T_offset_local,
+                                const std::ptrdiff_t T_length) {
+                                CHECK_CUDA_ERROR(cudaMemcpy2D(
+                                    get_ndarray().data() + T_offset * T_stride + F_min * F_stride,
+                                    T_stride * sizeof(T),
+                                    local_data.data() + T_offset_local * T_stride_local,
+                                    T_stride_local * sizeof(T), T_stride_local * sizeof(T),
+                                    T_length, cudaMemcpyHostToDevice));
+                            });
+    }
+
+    // Poison
+
+    // Poison an NDArray ring buffer
+    void set_to_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
+                       const std::ptrdiff_t F_max) {
+        RINGBUF_CHECK(get_write_valid().size() > 0);
+
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
+        RINGBUF_CHECK(T_stride > 0);
+        const std::ptrdiff_t T_stride_local = host_time_stride(F_min, F_max);
+
+        const auto stream = cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
+        for_each_time_chunk(get_write_valid().begin(), get_write_valid().end(),
+                            [&](const std::ptrdiff_t T_offset, const std::ptrdiff_t /*unused*/,
+                                const std::ptrdiff_t T_length) {
+                                CHECK_CUDA_ERROR(cudaMemset2DAsync(
+                                    get_ndarray().data() + T_offset * T_stride + F_min * F_stride,
+                                    T_stride * sizeof(T), poison_value, T_stride_local * sizeof(T),
+                                    T_length, stream));
+                            });
     }
 
     void set_to_poison(const std::uint8_t poison_value) {
@@ -696,49 +771,11 @@ public:
         };
 
         const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
-        RINGBUF_CHECK(F_stride > 0);
-        const std::ptrdiff_t F_offset = F_min;
-        RINGBUF_CHECK(F_offset >= 0);
         const std::ptrdiff_t F_length = F_max - F_min;
-        RINGBUF_CHECK(F_length > 0);
-
-        const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
-        RINGBUF_CHECK(T_ringbuf > 0);
-        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
-        RINGBUF_CHECK(T_stride > 0);
-        RINGBUF_CHECK(T_min >= 0);
-        RINGBUF_CHECK(T_max > T_min);
         const std::ptrdiff_t T_length = T_max - T_min;
-        RINGBUF_CHECK(T_length > 0);
+        const std::ptrdiff_t T_stride_local = host_time_stride(F_min, F_max);
 
-        const std::ptrdiff_t T_stride_local = F_length * F_stride;
-        std::vector<T> local_data(T_length * T_stride_local, poison);
-
-        const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
-        RINGBUF_CHECK(T_min_arg >= 0);
-        RINGBUF_CHECK(T_min_arg < T_ringbuf);
-        const std::ptrdiff_t T_max_arg = T_min_arg + T_length;
-        RINGBUF_CHECK(T_max_arg >= T_min_arg);
-        RINGBUF_CHECK(T_max_arg < 2 * T_ringbuf);
-        const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
-        for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
-            RINGBUF_CHECK(T_offset >= 0);
-            RINGBUF_CHECK(T_offset < T_ringbuf);
-            const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
-                                            : chunk == 0    ? T_ringbuf - T_min_arg
-                                                            : T_max_arg - T_ringbuf;
-            RINGBUF_CHECK(T_length > 0);
-            RINGBUF_CHECK(T_offset + T_length <= T_ringbuf);
-
-            const std::ptrdiff_t T_offset_local = chunk == 0 ? 0 : T_ringbuf - T_min_arg;
-
-            CHECK_CUDA_ERROR(cudaMemcpy2D(
-                local_data.data() + T_offset_local * T_stride_local, T_stride_local * sizeof(T),
-                get_ndarray().data() + T_offset * T_stride + F_offset * F_stride,
-                T_stride * sizeof(T), T_stride_local * sizeof(T), T_length,
-                cudaMemcpyDeviceToHost));
-        } // for chunk
+        const std::vector<T> local_data = copy_to_host(F_min, F_max, T_min, T_max);
 
         const auto first_poison_location =
             std::find_if(local_data.begin(), local_data.end(), check);
