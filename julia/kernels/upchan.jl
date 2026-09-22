@@ -83,11 +83,14 @@ setup::Symbol
 F::Integer
 T::Integer
 U::Integer
+K::Integer                      # output bit depth; see sect. 5.1
 
 const F̄ = F_per_U[U] * U
 
 const M = 4
-const K = 4
+# We support 4-bit and 8-bit output. 4-bit output is offset-encoded (see
+# `swap_offset`) with nibbles swapped; 8-bit output is plain two's complement.
+@assert K == 4 || K == 8
 
 # Derived constants
 
@@ -117,6 +120,15 @@ const Ubits = trailing_zeros(U) # k
 const Wbits = trailing_zeros(W) # l
 @assert U == 1 << Ubits
 @assert W == 1 << Wbits
+
+# How many Ē values (i.e. complex dish samples) are packed into one 32-bit
+# word, and the resulting number of words per (polr, freq, tbar) dish row
+const Ēdishes_per_word = idiv(16, K) # K=4 => 4, K=8 => 2
+const Ēwords_per_row = idiv(D, Ēdishes_per_word)
+
+# Largest representable output magnitude, and the reserved "no data" value
+const Ēmax = (1 << (K - 1)) - 1      # K=4 => 7, K=8 => 127
+const Ēnovalue = -(1 << (K - 1))     # K=4 => -8, K=8 => -128
 
 # Machine setup
 
@@ -216,15 +228,33 @@ const layout_E_memory = Layout([
     Time(:time, 1, T) => Memory(:memory, idiv(D, 4) * P * F, T),
 ])
 
-const layout_Ē_memory = Layout([
-    IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
-    Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
-    Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
-    Dish(:dish, 4, idiv(D, 4)) => Memory(:memory, 1, idiv(D, 4)),
-    Polr(:polr, 1, P) => Memory(:memory, idiv(D, 4), P),
-    Freq(:freq, 1, F̄) => Memory(:memory, idiv(D, 4) * P, F̄),
-    Time(:time, U, idiv(T, U)) => Memory(:memory, idiv(D, 4) * P * F̄, idiv(T, U)),
-])
+# The intra-word index assignment is eqn. (145) for K=4 and eqn. (149) for
+# K=8; a 32-bit word holds `Ēdishes_per_word` complex samples either way.
+const layout_Ē_memory = if K == 4
+    Layout([
+        # eqn. (145): b0 b1 b2 <-> ReIm, d0, d1
+        IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+        Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+        Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+        Dish(:dish, 4, Ēwords_per_row) => Memory(:memory, 1, Ēwords_per_row),
+        Polr(:polr, 1, P) => Memory(:memory, Ēwords_per_row, P),
+        Freq(:freq, 1, F̄) => Memory(:memory, Ēwords_per_row * P, F̄),
+        Time(:time, U, idiv(T, U)) => Memory(:memory, Ēwords_per_row * P * F̄, idiv(T, U)),
+    ])
+elseif K == 8
+    Layout([
+        # eqn. (149): b0 b1 <-> ReIm, d0
+        IntValue(:intvalue, 1, 8) => SIMD(:simd, 1, 8),
+        Cplx(:cplx, 1, C) => SIMD(:simd, 8, 2),
+        Dish(:dish, 1, 2) => SIMD(:simd, 16, 2),
+        Dish(:dish, 2, Ēwords_per_row) => Memory(:memory, 1, Ēwords_per_row),
+        Polr(:polr, 1, P) => Memory(:memory, Ēwords_per_row, P),
+        Freq(:freq, 1, F̄) => Memory(:memory, Ēwords_per_row * P, F̄),
+        Time(:time, U, idiv(T, U)) => Memory(:memory, Ēwords_per_row * P * F̄, idiv(T, U)),
+    ])
+else
+    @assert false
+end
 
 const layout_info_memory = Layout([
     IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32),
@@ -264,26 +294,53 @@ const layout_F_shared = Layout([
 ])
 const layout_F_shared_size = Σ * idiv(Touter, U)
 
-@assert K == 4
-const layout_F̄_shared = Layout([
-    IntValue(:intvalue, 1, K) => SIMD(:simd, 1, 4),
-    Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
-    Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
-    Freq(:freq, 1, 2) => SIMD(:simd, 16, 2),
-    # eqn. (94)
-    [dish_polr[2 + bit + 1] => Shared(:shared, 1 << bit, 2) for bit in 0:4]...,
-    Dish(:dish, 2, 2) => Shared(:shared, 32, 2),
-    # eqn. (102)
-    Freq(:freq, 2, idiv(U, 2)) => Shared(:shared, 65, idiv(U, 2)),
-    # eqn. (102)
-    Time(:time, U, idiv(Touter, U)) => Shared(:shared, Σ, idiv(Touter, U)),
-    Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
-    # Cplx(:cplx, 1, C) => Shared(:shared, Σ * idiv(Touter, U), 2),
-    # sect. 5.2
-    [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
-    Freq(:freq, U, F) => Block(:block, idiv(D * P, 128), F),
-])
-const layout_F̄_shared_size = Σ * idiv(Touter, U)
+# eqn. (99): the F̄-array has a leading length-(K/4) ReIm axis. For K=4 the
+# ReIm index lives inside the 32-bit word (eqn. (97)); for K=8 the word is
+# already full (eqn. (98)), so ReIm becomes a shared-memory axis instead.
+const layout_F̄_shared = if K == 4
+    Layout([
+        # eqn. (97): b0 b1 b2 <-> ReIm, d'6, u0
+        IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+        Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+        Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
+        Freq(:freq, 1, 2) => SIMD(:simd, 16, 2),
+        # eqn. (94)
+        [dish_polr[2 + bit + 1] => Shared(:shared, 1 << bit, 2) for bit in 0:4]...,
+        Dish(:dish, 2, 2) => Shared(:shared, 32, 2),
+        # eqn. (102)
+        Freq(:freq, 2, idiv(U, 2)) => Shared(:shared, 65, idiv(U, 2)),
+        # eqn. (102)
+        Time(:time, U, idiv(Touter, U)) => Shared(:shared, Σ, idiv(Touter, U)),
+        Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+        # sect. 5.2
+        [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
+        Freq(:freq, U, F) => Block(:block, idiv(D * P, 128), F),
+    ])
+elseif K == 8
+    Layout([
+        # eqn. (98): b0 b1 <-> d'6, u0
+        IntValue(:intvalue, 1, 8) => SIMD(:simd, 1, 8),
+        Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
+        Freq(:freq, 1, 2) => SIMD(:simd, 16, 2),
+        # eqn. (94)
+        [dish_polr[2 + bit + 1] => Shared(:shared, 1 << bit, 2) for bit in 0:4]...,
+        Dish(:dish, 2, 2) => Shared(:shared, 32, 2),
+        # eqn. (102)
+        Freq(:freq, 2, idiv(U, 2)) => Shared(:shared, 65, idiv(U, 2)),
+        # eqn. (102)
+        Time(:time, U, idiv(Touter, U)) => Shared(:shared, Σ, idiv(Touter, U)),
+        Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+        # eqn. (102): the leading ReIm axis, at offset (Touter/U) * Σ
+        Cplx(:cplx, 1, C) => Shared(:shared, Σ * idiv(Touter, U), 2),
+        # sect. 5.2
+        [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
+        Freq(:freq, U, F) => Block(:block, idiv(D * P, 128), F),
+    ])
+else
+    @assert false
+end
+# eqn. (103)
+const layout_F̄_shared_size = Σ * idiv(Touter, U) * idiv(K, 4)
 
 # Register layouts
 
@@ -368,7 +425,7 @@ const layout_E_registers = let
     ])
 end
 
-# eqn. (142)
+# eqns. (144), (148)
 @assert U ≥ 2
 # One output tile: 128 dishes, 4 frequencies
 # Assign output tiles to warps and registers
@@ -384,13 +441,19 @@ const layout_Ē_registers = let
     @assert Thi_w * Thi_r == Thi_n
     @assert Flo_w * Thi_w == W
     Layout([
-        IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
-        Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+        # eqns. (144), (148). For K=8 the ReIm index does not fit into the
+        # 32-bit word and becomes a register instead.
+        IntValue(:intvalue, 1, K) => SIMD(:simd, 1, K),
+        (K == 4 ? Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2) : Cplx(:cplx, 1, C) => Register(:cplx, 1, C)),
         Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
+        # eqns. (142), (146): r <-> d'0 d'5 = d2 d1
         Dish(:dish, 2, 4) => Register(:dish, 2, 4),
-        Dish(:dish, 8, 2) => Thread(:thread, 8, 2),
-        [dish_polr[4 + bit + 1] => Thread(:thread, 1 << bit, 2) for bit in 0:2]...,
+        # eqn. (142): t0..t4 <-> d'2 d'3 d'4 d'1 X = d4 d5 d6 d3 X
+        # eqn. (146): t0..t4 <-> d'1 d'2 d'3 d'4 X = d3 d4 d5 d6 X
+        Dish(:dish, 8, 2) => Thread(:thread, K == 4 ? 8 : 1, 2),
+        [dish_polr[4 + bit + 1] => Thread(:thread, 1 << (K == 4 ? bit : bit + 1), 2) for bit in 0:2]...,
         Freq(:freq, 1, 2) => SIMD(:simd, 16, 2),
+        # eqns. (143), (147): X
         (U == 2 ? Time(:time, U, 2) : Freq(:freq, 2, 2)) => Thread(:thread, 16, 2),
         Freq(:freq, 4, Flo_w) => Warp(:warp, 1, Flo_w),
         Freq(:freq, 4 * Flo_w, Flo_r) => Register(:freq, 4 * Flo_w, Flo_r),
@@ -438,12 +501,13 @@ const layout_F_registers = Layout([
     Freq(:freq, U, F) => Block(:block, idiv(D * P, 128), F),
 ])
 
-@assert K == 4
 @assert Packed
+# eqns. (105), (107): for K=8 the F̄-array gains a length-2 ReIm axis, which
+# is mapped to a register index bit. Everything else is identical to K=4.
 const layout_F̄_registers = Layout([
-    # eqn. (110)
-    IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
-    Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+    # eqns. (97), (98)
+    IntValue(:intvalue, 1, K) => SIMD(:simd, 1, K),
+    (K == 4 ? Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2) : Cplx(:cplx, 1, C) => Register(:cplx, 1, C)),
     Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
     Dish(:dish, 2, W) => Warp(:warp, 1, W),
     # [make_register_pair(dish_polr[Wbits + bit + 2]) for bit in 0:(Drbits - 1)]...,
@@ -510,6 +574,10 @@ const shmem_size = max(shmem_F_size, shmem_F̄_size)
 const shmem_bytes = 4 * shmem_size
 
 const kernel_setup = KernelSetup(num_threads, num_warps, num_blocks, num_blocks_per_sm, shmem_bytes)
+
+# Julia type of one 32-bit word of the F̄/Ē arrays. The E/F input arrays
+# are always 4-bit; the output depends on `K`.
+const Ētype = K == 4 ? Int4x8 : Int8x4
 
 # Generate Code
 
@@ -1413,17 +1481,43 @@ function upchan!(emitter)
                     # TODO: Combine gains and last FFT step
                     apply!(emitter, :E5, [:E4, :Gain], (E4, G) -> :($G * $E4))
 
-                    # Step 8: Compute F̄_out by quantizing E5
-                    apply!(emitter, :E5, [:E5], (E5,) -> :(clamp($E5, Float16x2(-7, -7), Float16x2(+7, +7))))
-                    narrow2!(
+                    # Step 8: Compute F̄_out by quantizing E5.
+                    # Clamping is mandatory: neither packing primitive saturates.
+                    # `Ēnovalue` is reserved as the "no data" value.
+                    apply!(
                         emitter,
-                        :F̄_out,
                         :E5,
-                        Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
-                        Register(:dish, 1, 2) => SIMD(:simd, 8, 2);
-                        newtype=IntValue,
-                        swapped_withoffset=true,
+                        [:E5],
+                        (E5,) -> :(clamp(
+                            $E5, Float16x2($(-Ēmax), $(-Ēmax)), Float16x2($(+Ēmax), $(+Ēmax))
+                        )),
                     )
+                    if K == 4
+                        # eqn. (97): pack ReIm and d'6 into the 32-bit word
+                        narrow2!(
+                            emitter,
+                            :F̄_out,
+                            :E5,
+                            Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
+                            Register(:dish, 1, 2) => SIMD(:simd, 8, 2);
+                            newtype=IntValue,
+                            swapped_withoffset=true,
+                        )
+                    elseif K == 8
+                        # eqn. (98): only d'6 is packed; ReIm stays a register.
+                        # Plain two's complement, i.e. no offset encoding.
+                        #
+                        # No `Cplx` fixup is needed here. Step 3 unpacks with
+                        # `swapped_withoffset=true`, which by itself would
+                        # exchange the two `Cplx` registers, but the host writes
+                        # `E` through `swap_offset`, whose nibble swap cancels it.
+                        # The net effect is that `cplx=0` holds the real part, so
+                        # it packs straight into the low byte, which is what
+                        # Kotekan's `cint8` (i.e. `std::complex<int8_t>`) means.
+                        narrow!(emitter, :F̄_out, :E5, Register(:dish, 1, 2) => SIMD(:simd, 8, 2); newtype=IntValue)
+                    else
+                        @assert false
+                    end
                     @assert emitter.environment[:F̄_out] == layout_F̄_registers
 
                     # Step 9: Write F̄_out to shared memory
@@ -1475,19 +1569,37 @@ function upchan!(emitter)
         sync_threads!(emitter)
 
         # Step 10: Copy outer block from shared memory to global memory
+        # For K=8 the F̄-array is twice as large as the F-array, but the extra
+        # (ReIm=1) half lives at shared offsets >= (Touter/U)*Σ, beyond anything
+        # step 1 wrote, and is written only by this same warp in step 9. The
+        # "no __syncthreads() needed" argument of sect. 5.5 therefore still holds.
         load!(emitter, :Ē => layout_Ē_registers, :F̄_shared => layout_F̄_shared)
-        # eqn. (145)
-        # Swap Dish(2,2) and Freq(2,2), i.e. Register(:dish,2,2) and SIMD(16,2)
-        permute!(emitter, :Ē1, :Ē, Dish(:dish, 2, 2), Freq(:freq, 1, 2))
-        split!(emitter, [:Ē1lo, :Ē1hi], :Ē1, Register(:dish, 2, 2))
-        merge!(emitter, :Ē1, [:Ē1lo, :Ē1hi], Freq(:freq, 1, 2) => Register(:freq, 1, 2))
-        # Swap Dish(8,2) and Freq(1,2), i.e. Register(:freq,1,2) and Thread(8,2)
-        permute!(emitter, :Ē2, :Ē1, Dish(:dish, 8, 2), Freq(:freq, 1, 2))
-        split!(emitter, [:Ē2lo, :Ē2hi], :Ē2, Register(:freq, 1, 2))
-        merge!(emitter, :Ē3, [:Ē2lo, :Ē2hi], Dish(:dish, 8, 2) => Register(:dish, 8, 2))
+        if K == 4
+            # eqn. (144) -> (145); needs one warp transpose
+            # Swap Dish(2,2) and Freq(2,2), i.e. Register(:dish,2,2) and SIMD(16,2)
+            permute!(emitter, :Ē1, :Ē, Dish(:dish, 2, 2), Freq(:freq, 1, 2))
+            split!(emitter, [:Ē1lo, :Ē1hi], :Ē1, Register(:dish, 2, 2))
+            merge!(emitter, :Ē1, [:Ē1lo, :Ē1hi], Freq(:freq, 1, 2) => Register(:freq, 1, 2))
+            # Swap Dish(8,2) and Freq(1,2), i.e. Register(:freq,1,2) and Thread(8,2)
+            permute!(emitter, :Ē2, :Ē1, Dish(:dish, 8, 2), Freq(:freq, 1, 2))
+            split!(emitter, [:Ē2lo, :Ē2hi], :Ē2, Register(:freq, 1, 2))
+            merge!(emitter, :Ē3, [:Ē2lo, :Ē2hi], Dish(:dish, 8, 2) => Register(:dish, 8, 2))
+        elseif K == 8
+            # eqn. (148) -> (149); thread-local transposes only.
+            # Both permutations route through the same `:cplx` register slot,
+            # so only one rename is needed at the end.
+            # Swap Cplx and Dish(1,2), i.e. Register(:cplx,1,2) and SIMD(8,2)
+            permute!(emitter, :Ē1, :Ē, Cplx(:cplx, 1, C), Dish(:dish, 1, 2))
+            # Swap Dish(1,2) and Freq(1,2), i.e. Register(:cplx,1,2) and SIMD(16,2)
+            permute!(emitter, :Ē2, :Ē1, Dish(:dish, 1, 2), Freq(:freq, 1, 2))
+            split!(emitter, [:Ē2lo, :Ē2hi], :Ē2, Register(:cplx, 1, C))
+            merge!(emitter, :Ē3, [:Ē2lo, :Ē2hi], Freq(:freq, 1, 2) => Register(:freq, 1, 2))
+        else
+            @assert false
+        end
 
         # Skip the first MTap-1 outputs when writing to memory.
-        tbarstride = idiv(D, 4) * P * F̄
+        tbarstride = Ēwords_per_row * P * F̄
         t_min = U * (M - 1)
         layout_Ē3 = emitter.environment[:Ē3]
         store!(
@@ -1551,7 +1663,7 @@ println("[Creating upchan kernel...]")
 const upchan_kernel = make_upchan_kernel()
 println("[Done creating upchan kernel]")
 
-open("output/upchan_$(setup)_U$(U).jl", "w") do fh
+open("output/upchan_$(setup)_U$(U)_K$(K).jl", "w") do fh
     println(fh, "# Julia source code for the CUDA upchannelizer")
     println(fh, "# This file has been generated automatically by `upchan.jl`.")
     println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1567,7 +1679,7 @@ end
     # F_shared = reinterpret(Int4x8, shmem)
     # F̄_shared = reinterpret(Int4x8, shmem)
     F_shared = @cuDynamicSharedMem(Int4x8, $shmem_F_size, $(shmem_F_offset * sizeof(Int4x8)))
-    F̄_shared = @cuDynamicSharedMem(Int4x8, $shmem_F̄_size, $(shmem_F̄_offset * sizeof(Int4x8)))
+    F̄_shared = @cuDynamicSharedMem($(Ētype), $shmem_F̄_size, $(shmem_F̄_offset * sizeof(Int32)))
     $upchan_kernel
     return nothing
 end
@@ -1608,7 +1720,7 @@ function main(;
         Int32(0),
         CUDA.zeros(Float16x2, 0),
         CUDA.zeros(Int4x8, 0),
-        CUDA.zeros(Int4x8, 0),
+        CUDA.zeros(Ētype, 0),
         CUDA.zeros(Int32, 0),
     )
     attributes(kernel.fun)[CUDA.CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES] = shmem_bytes
@@ -1631,6 +1743,8 @@ function main(;
     # are scaled so that the expected output fills, but does not leave, the
     # 4-bit output range. A single impulse carries `1/U` of full scale, so the
     # impulse probe has to undo that or it would quantize to zero for large `U`.
+    # These gains are deliberately not scaled up for K=8: that would scale the
+    # input quantization error with them and force a looser tolerance.
     gain_scale = testcase ≡ :impulse ? Float32(U) : 1.0f0
     gain(fbar) = Float16(gain_scale * (1 - (fbar % 4) / 8))
     for fbar in 0:(F̄ - 1)
@@ -1816,12 +1930,17 @@ function main(;
     !silent && println("Copying data from CPU to GPU...")
     G_cuda = CuArray(G_memory)
     E_cuda = CuArray(swap_offset.(E_memory))
-    Ē_cuda = CUDA.fill(swap_offset(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(C, 2) * idiv(D, 4) * P * (F̄) * idiv(T, U))
+    # Fill with the "no data" value: -8 for K=4 (offset-encoded), -128 for K=8
+    Ē_poison =
+        K == 4 ? swap_offset(Int4x8(ntuple(i -> Ēnovalue, 8)...)) : Int8x4(ntuple(i -> Ēnovalue, 4)...)
+    Ē_cuda = CUDA.fill(Ē_poison, idiv(C, 2) * Ēwords_per_row * P * (F̄) * idiv(T, U))
     info_cuda = CUDA.fill(-1i32, length(info_wanted))
 
     @assert sizeof(G_cuda) < 2^32
     @assert sizeof(E_cuda) < 2^32
-    @assert sizeof(Ē_cuda) < 2^32
+    # The kernel addresses `Ē` in 32-bit words with `Int32` arithmetic, so it
+    # is the element count (not the byte count) that must stay below 2^31.
+    @assert length(Ē_cuda) < 2^31
 
     !silent && println("Running kernel...")
     kernel(
@@ -1901,11 +2020,16 @@ function main(;
     end
 
     !silent && println("Copying data back from GPU to CPU...")
-    Ē_memory = swap_offset.(Array(Ē_cuda))
+    Ē_memory = Array(Ē_cuda)
+    K == 4 && (Ē_memory = swap_offset.(Ē_memory))
     info_memory = Array(info_cuda)
     @assert all(info_memory .== 0)
 
-    Ē_memory = reinterpret(Int4x2, Ē_memory)
+    # One element per complex sample: `Int4x2` (1 byte) or `Complex{Int8}` (2 bytes)
+    Ē_memory = K == 4 ? reinterpret(Int4x2, Ē_memory) : reinterpret(Complex{Int8}, Ē_memory)
+    # Decode one output element to a complex integer. `Int4x2` packs both
+    # components into one byte; `Complex{Int8}` already is a complex number.
+    Ēdecode(x) = K == 4 ? Complex(convert(NTuple{2,Int32}, x)...) : Complex{Int32}(x)
 
     num_errors = 0
     if run_selftest
@@ -1927,7 +2051,7 @@ function main(;
             Ēidx = dish + D * polr + D * P * fbar + D * (F̄) * P * mod(tbar, T̄ring)
             @assert !did_test_Ē_memory[Ēidx + 1]
             did_test_Ē_memory[Ēidx + 1] = true
-            have_value = Complex(convert(NTuple{2,Int32}, Ē_memory[Ēidx + 1])...)
+            have_value = Ēdecode(Ē_memory[Ēidx + 1])
             want_value = Ē_wanted[Ēidx + 1]
             err = have_value - want_value
             err = max(abs(real(err)), abs(imag(err)))
@@ -1949,7 +2073,7 @@ function main(;
         # back over earlier output instead of running off the end.)
         for Ēidx in 0:(length(Ē_memory) - 1)
             did_test_Ē_memory[Ēidx + 1] && continue
-            @assert Ē_memory[Ēidx + 1] == Int4x2(-8, -8)
+            @assert Ēdecode(Ē_memory[Ēidx + 1]) == Complex(Ēnovalue, Ēnovalue)
         end
         if num_errors > 0
             # Summarize which fine frequencies are wrong; a tone that lands in
@@ -1959,7 +2083,7 @@ function main(;
                 m = 0.0f0
                 for tbar in T̄min:(T̄max - 1)
                     idx = 0 + D * 0 + D * P * fbar + D * (F̄) * P * mod(tbar, T̄ring)
-                    m = max(m, abs(Complex(convert(NTuple{2,Int32}, Ē_memory[idx + 1])...)))
+                    m = max(m, abs(Ēdecode(Ē_memory[idx + 1])))
                 end
                 m > 0 && println("        fbar=$fbar max|Ē|=$m")
             end
@@ -1975,9 +2099,9 @@ function main(;
 end
 
 function fix_ptx_kernel()
-    ptx = read("output/upchan_$(setup)_U$(U).ptx", String)
+    ptx = read("output/upchan_$(setup)_U$(U)_K$(K).ptx", String)
     ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
-    open("output/upchan_$(setup)_U$(U).ptx", "w") do fh
+    open("output/upchan_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         println(fh, "// PTX kernel code for the CUDA upchannelizer")
         println(fh, "// This file has been generated automatically by `upchan.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
@@ -1985,7 +2109,7 @@ function fix_ptx_kernel()
         write(fh, ptx)
         return nothing
     end
-    open("output/upchan_$(setup)_U$(U).sass", "w") do fh
+    open("output/upchan_$(setup)_U$(U)_K$(K).sass", "w") do fh
         println(fh, "// SASS kernel code for the CUDA upchannelizer")
         println(fh, "// This file has been generated automatically by `upchan.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
@@ -1993,7 +2117,7 @@ function fix_ptx_kernel()
         CUDA.code_sass(fh, upchan, Tuple{Int32, Int32, Int32, Int32, Int32, Int32,
                                          CuDeviceVector{Float16x2,1},
                                          CuDeviceVector{Int4x8,1},
-                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Ētype,1},
                                          CuDeviceVector{Int32,1}};
                        cap=compute_capability, ptx=ptx_compat,
                        minthreads=(num_threads, num_warps),
@@ -2001,7 +2125,7 @@ function fix_ptx_kernel()
         return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output/upchan_$(setup)_U$(U).yaml", "w") do fh
+    open("output/upchan_$(setup)_U$(U)_K$(K).yaml", "w") do fh
         println(fh, "# Metadata for the CUDA upchannelizer")
         println(fh, "# This file has been generated automatically by `upchan.jl`.")
         println(fh, "# Do not modify this file, your changes will be lost.")
@@ -2064,7 +2188,7 @@ function fix_ptx_kernel()
           strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
         - name: "Ē"
           intent: out
-          type: Int4
+          type: Int$K
           indices: [C, D, P, F̄, T̄]
           shape: [$C, $D, $P, $(F*U), $(idiv(T, U))]
           strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F*U)]
@@ -2083,7 +2207,7 @@ function fix_ptx_kernel()
     cxx = Mustache.render(
         cxx,
         Dict(
-            "kernel_name" => "Upchannelizer_$(setup)_U$(U)",
+            "kernel_name" => "Upchannelizer_$(setup)_U$(U)_K$(K)",
             "cuda_arch" => cuda_arch,
             "upchannelization_factor" => "$U",
             "kernel_design_parameters" => [
@@ -2096,6 +2220,7 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Touter"),
                 Dict("type" => "int", "name" => "cuda_algorithm_overlap", "value" => "$(U * (M - 1))"),
                 Dict("type" => "int", "name" => "cuda_upchannelization_factor", "value" => "$U"),
+                Dict("type" => "int", "name" => "cuda_output_bits", "value" => "$K"),
             ],
             "minthreads" => num_threads * num_warps,
             "num_blocks_per_sm" => num_blocks_per_sm,
@@ -2105,6 +2230,9 @@ function fix_ptx_kernel()
             "num_blocks" => num_blocks,
             "shmem_bytes" => shmem_bytes,
             "kernel_symbol" => kernel_symbol,
+            # Byte pattern of the "no data" value in the output encoding:
+            # 0x00 is (-8, -8) offset-encoded, 0x80 is (-128, -128) two's complement
+            "ebar_poison_byte" => K == 4 ? "0x00" : "0x80",
             "kernel_arguments" => [
                 Dict(
                     "name" => "T_min",
@@ -2182,7 +2310,9 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "upchan_U$(U)_voltage_name",
-                    "type" => "int4x2_swapped_withoffset",
+                    # K=4: offset-encoded, nibble-swapped, 1 byte per complex sample.
+                    # K=8: plain two's complement, 2 bytes per complex sample.
+                    "type" => K == 4 ? "int4x2_swapped_withoffset" : "cint8",
                     "axes" => [
                         Dict("label" => "D", "length" => D, "dimscaling" => 1),
                         Dict("label" => "P", "length" => P, "dimscaling" => 1),
@@ -2210,14 +2340,14 @@ function fix_ptx_kernel()
             ],
         ),
     )
-    write("output/upchan_$(setup)_U$(U).cxx", cxx)
+    write("output/upchan_$(setup)_U$(U)_K$(K).cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     println("Writing PTX code...")
-    open("output/upchan_$(setup)_U$(U).ptx", "w") do fh
+    open("output/upchan_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
         end
