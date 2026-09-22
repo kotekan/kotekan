@@ -338,7 +338,12 @@ void gpuSimulateCudaUpchannelizerT<OutT>::set_metadata_once() {
         FATAL_ERROR("Input buffer E reports {:d} frequencies, but its frequency dimension has "
                     "extent {:d}",
                     E_nfreq, E_meta->dim[1]);
-    if (Ebar_meta->dim[1] != Ebar_nfreq)
+    // `<`, not `!=`: the output buffer may hold more frequencies than we produce, and the
+    // production configs rely on that. `upchan_<setup>_max_num_channels` sizes the Fbar axis for
+    // the largest schedule, while `Fmin`/`Fmax` select however many channels this run actually
+    // upchannelizes -- for CHORD at U=16, 128 versus 80. We write [0, Ebar_nfreq) and leave the
+    // rest untouched, exactly as the generated kernel does.
+    if (Ebar_meta->dim[1] < Ebar_nfreq)
         FATAL_ERROR("This kernel produces {:d} frequencies, but the frequency dimension of its "
                     "output buffer Ebar has extent {:d}",
                     Ebar_nfreq, Ebar_meta->dim[1]);
