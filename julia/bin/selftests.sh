@@ -29,7 +29,8 @@ tests='
     xpose:xpose_hirax
     xpose:xpose_pathfinder
     xpose2048:xpose2048_chime
-    chimefrb:chimefrb_chime_U16
+    chimefrb:chimefrb_chime_U16_K4
+    chimefrb:chimefrb_chime_U16_K8
     frb:frb_selftest
     bb:bb_selftest
 '
