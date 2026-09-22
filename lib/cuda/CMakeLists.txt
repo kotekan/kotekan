@@ -68,8 +68,10 @@ if(NOT ${IWYU})
                 generated/cudaBasebandBeamformer_chord.cpp
                 generated/cudaBasebandBeamformer_hirax.cpp
                 generated/cudaBasebandBeamformer_pathfinder.cpp
-                generated/cudaCHIMEFRBBeamformer_chime_U16.cpp
-                generated/cudaCHIMEFRBBeamformer_chime_U128.cpp
+                generated/cudaCHIMEFRBBeamformer_chime_U16_K4.cpp
+                generated/cudaCHIMEFRBBeamformer_chime_U128_K4.cpp
+                generated/cudaCHIMEFRBBeamformer_chime_U16_K8.cpp
+                generated/cudaCHIMEFRBBeamformer_chime_U128_K8.cpp
                 generated/cudaFRBBeamformer_charts_U32.cpp
                 generated/cudaFRBBeamformer_chord_U1.cpp
                 generated/cudaFRBBeamformer_chord_U2.cpp
