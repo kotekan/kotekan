@@ -1,0 +1,271 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# verify_cuda_upchan.j2
+#
+# Check the generated CUDA upchannelizer against a serial float32 CPU reference.
+#
+# One voltage ring feeds two chains:
+#
+#   inventVoltage -> host_voltage_buffer -> cudaCopyToRingbuffer -> [voltage ring]
+#        |                                                              |
+#        |    +-- cudaUpchannelizer_chord_U16   -> [ring] -> host_upchan_voltage_buffer
+#        |    +-- gpuSimulateCudaUpchannelizer  -> [ring] -> host_sim_upchan_voltage_buffer
+#        |                                                              |
+#        +--------------------- testDataCheckUchar <--------------------+
+#
+# The CPU side implements eqn. (83) of julia/docs/CHORD_GPU_upchannelization.pdf
+# literally (lib/cuda/upchannelizeReference.cpp), so a mismatch means the kernel
+# and the notes disagree.
+#
+# Cost: the reference is O(M*U) per output sample, i.e.
+#     num_times_out * Fbar * num_polarizations * num_dishes * (num_taps * U)
+# complex multiply-adds before a comparison can happen. Keep that small: the
+# per-config timeout in config/ci-tests/run_tests.sh is 2 minutes, and a
+# `CMAKE_BUILD_TYPE=Test` build -- what the CI GPU yaml job uses -- runs this
+# loop about 30x slower than a Debug build of the same source. That is not an
+# optimization-level effect (Debug ends up at -O2, Test at -O3); the cause is
+# unidentified, so leave generous margin. Measured on an A40: 13s in a Test
+# build, 3.5s in a Debug build.
+#
+# The two knobs are `num_times_out` (how much output a comparison needs) and
+# `max_times_per_iteration` (how much the reference computes before publishing
+# any of it -- it calls finish_write once per execute, so a large chunk delays
+# the first output by its whole cost).
+#
+# The kernel is chosen for sm_86 (A40). The chime_* variants are built for sm_89
+# and will not load on an A40.
+#
+################################################################################
+
+---
+log_level: info
+
+{% set upchan_factor = 16 %}
+{% set num_taps = 4 %}
+{% set num_frequencies_out = 128 %}
+{% set upchan_max_num_channels = num_frequencies_out // upchan_factor %}
+
+# These must match the compile-time constants in
+# lib/cuda/generated/cudaUpchannelizer_chord_U16.cpp, because the ring buffers it
+# allocates are sized from them.
+num_dishes: 512
+num_polarizations: 2
+num_frequencies: 48
+# cuda_max_number_of_timesamples: the length of the input voltage ring along time
+num_times_total: 32768
+# Number of output fine channels the kernel's Ebar array holds (Ebar_lengths[2])
+num_frequencies_out: {{ num_frequencies_out }}
+
+# Every output channel has to be written, or the two output rings would differ in
+# the channels neither chain touches.
+upchan_max_num_channels: {{ upchan_max_num_channels }}
+Fmin: 0
+Fmax: upchan_max_num_channels
+
+# `buffer_depth` is the number of in-flight cudaProcess command instances. Every host
+# buffer a cudaProcess touches must have at least that many frames: cudaCopyToRingbuffer
+# and friends index their frame as `gpu_frame_id % in_buffer->num_frames`, so with fewer
+# frames than instances two in-flight instances land on the same frame. The result is not
+# a clean error -- one instance copies a frame the other has already released and the
+# generator has refilled, so the ring silently receives the wrong samples.
+buffer_depth: 16
+num_times: num_times_total / buffer_depth
+
+# Time samples per *output* frame, i.e. how much the reference must compute before
+# `compare_data` can run. This is independent of num_times / U (=128), and much smaller:
+# `cudaCopyFromRingbuffer` just slices `output_size` chunks off the ring, and one frame of
+# 8 x 128 x 2 x 512 is still a megabyte of samples to compare.
+num_times_out: 8
+
+frame_arrival_period: 5.12e-6 * num_times
+cpu_affinity: []
+
+# Upchannelization schedule. Channels [0, upchan_max_num_channels) are the ones we
+# upchannelize; `setUpchanGain` uses this to label the gain buffer's frequencies,
+# and both upchannelizers check those labels against their own output.
+upchan_factors: [{{ upchan_factor }}]
+upchan_channel_ranges:
+    {{ upchan_factor }}: [0, {{ upchan_max_num_channels }}]
+
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 30 * buffer_depth
+
+################################################################################
+# Buffers
+
+host_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    quantity_name: "E"
+    dimnames: ["T", "F", "P", "D"]
+    dimscalings: [1, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: num_times_total * num_frequencies * num_polarizations * num_dishes
+    metadata_pool: main_pool
+
+host_upchan_gain_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float16
+    extents: [num_frequencies_out]
+    quantity_name: "G"
+    dimnames: ["Fbar"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+{% for chain in ["upchan", "sim_upchan"] %}
+host_{{ chain }}_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: (num_times_total / {{ upchan_factor }}) * num_frequencies_out * num_polarizations * num_dishes
+    metadata_pool: main_pool
+
+host_{{ chain }}_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times_out, num_frequencies_out, num_polarizations, num_dishes]
+    quantity_name: "Ebar"
+    dimnames: ["Tbar", "Fbar", "P", "D"]
+    dimscalings: [{{ upchan_factor }}, 1, 1, 1]
+    metadata_pool: main_pool
+{% endfor %}
+
+################################################################################
+# Stages
+
+gen_voltage:
+    kotekan_stage: inventVoltage
+    input_kind: random
+    frequency_channels: [{% for f in range(48) %}{{ f }}{{ ", " if not loop.last }}{% endfor %}]
+    voltage: host_voltage_buffer
+
+# Gain 2.6, not the 1 every production config uses. The kernel's window is normalized so a
+# CW tone passes with unit gain, which leaves noise-like input under-loaded by ~sqrt(U): with
+# gain 1 the int4 output here uses only 9 of its 15 levels, 39% of components are exactly
+# zero, and the +-7 clamp is never reached -- so most of the comparison would be zeros
+# matching zeros, and the saturation path would go untested. Gain 2.6 gives sigma ~ 2.5 LSB,
+# 16% zeros, all 15 levels and ~0.9% of components clamping.
+set_upchan_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: {{ upchan_factor }}
+    upchan_gain: [{% for u in range(upchan_factor) %}2.6{{ ", " if not loop.last }}{% endfor %}]
+    upchan_gain_buffer: host_upchan_gain_buffer
+    metadata_source: host_voltage_buffer
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer: host_voltage_buffer
+        out_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_times * num_frequencies * num_polarizations * num_dishes
+          ring_buffer_size: num_times_total * num_frequencies * num_polarizations * num_dishes
+          in_buf: host_voltage_buffer
+          signal_buf: host_voltage_ringbuffer
+          gpu_mem_output: voltage_buffer
+
+# The real kernel
+run_upchan:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_gain_buffer: host_upchan_gain_buffer
+        out_buffers:
+            host_upchan_voltage_ringbuffer: host_upchan_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_upchan_gain_buffer
+          gpu_mem: upchan_gain_buffer
+        - name: cudaSyncInput
+        - name: cudaUpchannelizer_chord_U{{ upchan_factor }}
+          voltage_name: voltage
+          upchan_U{{ upchan_factor }}_gain_name: upchan_gain
+          upchan_U{{ upchan_factor }}_voltage_name: upchan_voltage
+
+# The serial CPU reference, on the same input ring.
+#
+# buffer_depth: 1 is deliberate. All instances of a command share one ring-buffer read
+# cursor, and the shared tail advances on whichever instance finishes first. A microsecond
+# kernel's instances complete in order, so that is harmless; this one takes seconds, so
+# overlapping instances would finish out of order. Pipelining a reference buys nothing.
+run_sim_upchan:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: 1
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_gain_buffer: host_upchan_gain_buffer
+        out_buffers:
+            host_sim_upchan_voltage_ringbuffer: host_sim_upchan_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_upchan_gain_buffer
+          gpu_mem: sim_upchan_gain_buffer
+        - name: cudaSyncInput
+        - name: gpuSimulateCudaUpchannelizer
+          # The ring length, kept independent of the buffer_depth: 1 above.
+          ring_num_times: num_times_total
+          upchannelization_factor: {{ upchan_factor }}
+          num_taps: {{ num_taps }}
+          # 256 input samples -> (256 - (M-1)*U)/U = 13 output samples per execute, which
+          # covers a whole output frame. 2048 would compute 125 before publishing any.
+          max_times_per_iteration: 256
+          voltage_name: voltage
+          upchan_gain_name: sim_upchan_gain
+          upchan_voltage_name: sim_upchan_voltage
+
+{% for chain in ["upchan", "sim_upchan"] %}
+run_recv_{{ chain }}_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_{{ chain }}_voltage_ringbuffer: host_{{ chain }}_voltage_ringbuffer
+        out_buffers:
+            host_{{ chain }}_voltage_buffer: host_{{ chain }}_voltage_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_{{ chain }}_voltage_ringbuffer
+          gpu_mem_input: {{ chain }}_voltage_buffer
+          output_size: num_times_out * num_frequencies_out * num_polarizations * num_dishes
+          ring_buffer_size: (num_times_total / {{ upchan_factor }}) * num_frequencies_out * num_polarizations * num_dishes
+          out_buf: host_{{ chain }}_voltage_buffer
+{% endfor %}
+
+# The kernel accumulates in float16 and the reference in float32, so the two round
+# differently: a sample within half a quantization step of a boundary can legitimately land
+# on either side. Measured on an A40: 45360 of 16777216 values differ (0.270%), and *every*
+# one differs by exactly +-1 in a 4-bit component -- not one component anywhere is off by
+# more than 1. 26 values differ in both components, which is what independent rounding
+# predicts. The acceptance threshold below is 1%, ~3.7x the observed rate.
+#
+# It is nowhere near loose enough to hide a real disagreement. A wrong sign in the exponent,
+# a swapped real/imaginary nibble or a shifted fine channel changes essentially every
+# non-zero sample. Even clamping the output to -8 instead of -7 would show up.
+compare_data:
+    kotekan_stage: testDataCheckUchar
+    first_buf: host_upchan_voltage_buffer
+    second_buf: host_sim_upchan_voltage_buffer
+    num_frames_to_test: 1
+    max_num_errors_allowed: num_times_out * num_frequencies_out * num_polarizations * num_dishes / 100
+    trigger_exit_on_pass: true
+    check_metadata: true
+
+log_config_usage: fatal_error

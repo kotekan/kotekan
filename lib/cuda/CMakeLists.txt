@@ -30,6 +30,8 @@ add_library(
     cudaCopyToRingbuffer.cpp
     cudaCopyNToRingbuffer.cpp
     cudaFRBBeamReformer.cpp
+    gpuSimulateCudaUpchannelizer.cpp
+    upchannelizeReference.cpp
     cudaHFB1Accumulate.cpp
     cudaHFB1Accumulate.cu
     cudaMemsetInt.cu
