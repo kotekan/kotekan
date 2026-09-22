@@ -19,6 +19,7 @@ cd "$scriptdir/.."
 
 setups='
     selftest_U2_K4 selftest_U4_K4 selftest_U8_K4 selftest_U16_K4 selftest_U32_K4 selftest_U64_K4 selftest_U128_K4
+    selftest_U2_K8 selftest_U4_K8 selftest_U8_K8 selftest_U16_K8 selftest_U32_K8 selftest_U64_K8 selftest_U128_K8
 '
 
 # Setups that are known to fail, with the kernel bug they expose. Both are
@@ -32,7 +33,9 @@ setups='
 #   - selftest_U128_K4: the tone lands in fine frequency `u + U/2` instead of
 #                       `u`; a constant lands in `u = 0` and `u = 63` instead of
 #                       the middle two `u = 63` and `u = 64` (`64 + 64 ≡ 0 mod 128`)
-known_failures='selftest_U4_K4 selftest_U128_K4'
+# The U=4 and U=128 bugs are in the FFT itself, so they fail for both output
+# bit depths.
+known_failures='selftest_U4_K4 selftest_U128_K4 selftest_U4_K8 selftest_U128_K8'
 
 mkdir -p output
 
