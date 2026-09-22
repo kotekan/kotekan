@@ -412,7 +412,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // Each row names the dish and polarization the element decodes to and copies
         // that dish's entry; the label is the dish label with the polarization name
         // appended (A01X, A01Y).
-	{
+        {
             // Polarization index 0 is X, 1 is Y.
             static constexpr std::array<char, 2> pol_name = {'X', 'Y'};
 
