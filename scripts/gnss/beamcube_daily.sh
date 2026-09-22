@@ -55,6 +55,24 @@ MASTER=$BEAM/cube_${DAY}_nside${NSIDE}.npz
 if [ -s "$MASTER" ] && [ -z "${BEAMCUBE_FORCE:-}" ]; then
     say "master exists, skipping build: $MASTER (BEAMCUBE_FORCE=1 to rebuild)"
 else
+    # THE CHAIN-HEALTH MASK FIRST. After one F-engine re-base four chains sat on noise for 12 h; the
+    # cube folded every one of those records, and the observables writers had flagged
+    # all of it. gnss_chain_health.py turns those flags into per-chain 5-min bins and the build
+    # vetoes them (--health-mask auto finds this file). A failed mask run must not stop the
+    # build: exit 1 there means "episodes found", which is the point.
+    # An existing mask is kept (BEAMCUBE_REMASK=1 to regenerate): a day whose writers carried a
+    # wrong time base gets its mask built by hand from the retimed archive, and the nightly run
+    # must not replace that with one built from the raw files.
+    OBS=${GNSS_OBS_OUT:-/home/kvand/gnss/fixtures/obs}
+    shopt -s nullglob; OBSFILES=("$OBS"/*_"$DAY".jsonl); shopt -u nullglob
+    if [ -s "$OBS/health/mask_$DAY.json" ] && [ -z "${BEAMCUBE_REMASK:-}" ]; then
+        say "chain-health: keeping existing $OBS/health/mask_$DAY.json"
+    elif [ "${#OBSFILES[@]}" -gt 0 ]; then
+        nice -n 19 "$PY" -u $K/python/scripts/gnss/gnss_chain_health.py "${OBSFILES[@]}" \
+            --out "$OBS/health/mask_$DAY.json" || say "chain-health: EPISODES on $DAY (masked)"
+    else
+        say "chain-health: no observables for $DAY under $OBS -- building without a mask"
+    fi
     say "build $DAY nside $NSIDE from ${POINTINGS[0]}"
     # Build into a staging dir: a half-written master that the export then reads is worse than
     # no master, and the build writes its .npz incrementally.

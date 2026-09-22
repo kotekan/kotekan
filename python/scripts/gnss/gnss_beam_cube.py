@@ -83,10 +83,12 @@ from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all  # noqa: E40
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 R_REF = 20.2e6            # m: the dB zero for range normalisation (semi-synchronous slant)
 import gnss_arraymap                                  # noqa: E402  (same directory)
+import gnss_chain_health                              # noqa: E402  (same directory)
 
 BORE_AZ, BORE_EL = 180.0, 81.41   # docs/CHORD_BEAM_MAPS.md §5 -- NOT telescope.dish_coelev_deg
 MIN_ELEMS = 8             # an instance with fewer live elements says nothing about the beam
 FLOOR_BIN_S = 300.0       # probe-pedestal bin: per (instance, element, 5 min)
+HEALTH_DIR = "/home/kvand/gnss/fixtures/obs/health"   # gnss_chain_health.py masks, per day
 GEOM_BIN_S = 60.0         # BRDC evaluated once per (prn, minute), interpolation-free
 
 # Chain -> constellation letter, for the BRDC lookup. Declared, never guessed from the
@@ -553,6 +555,14 @@ def build_day_h5(args, chain, paths, day_unix, geom):
         ok = inday & ~vet_r & ~np.isnan(el_r)
         stats["low"] += int((ok & (el_r <= args.mask_deg)).sum())
         ok &= el_r > args.mask_deg
+        # THE CHAIN'S OWN VERDICT ON ITSELF. The archive carries no lock flag, so a chain that
+        # lost the fleet and kept emitting records writes noise into the cube at a level the
+        # pedestal cannot tell from a weak sky -- the observables writers' prompt_lock /
+        # fleet_present flags, folded into 5-min bins by gnss_chain_health.py, are the only
+        # record of it. Bins the mask marks unhealthy are dropped here, per chain.
+        unhealthy = gnss_chain_health.unhealthy(getattr(args, "_health", {}), chain, t)
+        stats["unhealthy"] += int((ok & unhealthy).sum())
+        ok &= ~unhealthy
         if not ok.any():
             continue
         pix = azel_to_pix(args.nside, az_r[ok], el_r[ok]).astype(np.int64)
@@ -594,6 +604,8 @@ def build_day_h5(args, chain, paths, day_unix, geom):
           "vetoed %d, no-geom %d, below-mask %d, thin %d; pointing %s"
           % (chain, stats["rows"], n.shape[0], n.shape[1], len(pix),
              stats["vetoed"], stats["nogeo"], stats["low"], stats["thin"], pointing))
+    if stats["unhealthy"]:
+        print("  %s: %d row(s) dropped by the chain-health mask" % (chain, stats["unhealthy"]))
     assert n.shape[0] == len(band), (n.shape, len(band))
     return dict(pix=pix, n=n, s1=s1, s2=s2, freq_ids=freq_ids, pointing=pointing,
                 units="pedestal" + ("_unbiased" if args.unbiased else ""))
@@ -638,6 +650,16 @@ def cmd_build(args):
                "array_epoch": epoch.name, "array_epoch_key": epoch.key(),
                "chains": []}
         print("  array epoch %s%s" % (epoch.key(), "" if epoch.verified else "  (UNVERIFIED)"))
+        hm = args.health_mask
+        if hm == "auto":
+            hm = os.path.join(HEALTH_DIR, "mask_%s.json" % daystr)
+        args._health = gnss_chain_health.load_mask(hm) if hm else {}
+        if args._health:
+            print("  health mask %s: %s" % (hm, ", ".join("%s %d bin(s)" % (c, len(b)) for c, (_, b) in
+                                                          sorted(args._health.items()) if b) or "nothing masked"))
+        elif hm:
+            print("  health mask %s: not found -- no chain-health veto for this day" % hm)
+        out["health_mask"] = hm or None
         blobs = {}
         for chain, paths in present:
             if args.source == "l0":
@@ -940,6 +962,9 @@ def main():
                    help="cross-chain railing veto; 0 disables (and keeps the main lobe, "
                         "contaminated -- quote it as a lower bound if you do)")
     b.add_argument("--mask-deg", type=float, default=0.0)
+    b.add_argument("--health-mask", default="auto",
+                   help="chain-health mask from gnss_chain_health.py; 'auto' = %s/mask_<day>.json, "
+                        "'' = none" % HEALTH_DIR)
     b.add_argument("--no-range-norm", action="store_true")
     b.add_argument("--unbiased", action="store_true",
                    help="l0: keep below-pedestal samples (signed debias) instead of dropping them")
