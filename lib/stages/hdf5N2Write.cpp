@@ -410,9 +410,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // Per-element input info: one row per element of the frame, indexed like the
         // element axis of /evec, /gain and /flags and the entries of /index_map/prod.
         // Each row names the dish and polarization the element decodes to and copies
-        // that dish's entry; the label is the dish label with the 1-based polarization
-        // appended (A1p1, A1p2).
-        {
+        // that dish's entry; the label is the dish label with the polarization name
+        // appended (A01X, A01Y).
+	{
+            // Polarization index 0 is X, 1 is Y.
+            static constexpr std::array<char, 2> pol_name = {'X', 'Y'};
+
             dishInputFields dishes;
             telescope.fill_input_maps(dishes);
 
@@ -429,6 +432,10 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 uint64_t p;
                 telescope.decode_station_id(telescope.element_index_to_station_id(el, input_order),
                                             dish, p);
+                if (p >= pol_name.size())
+                    FATAL_ERROR_NON_OO("hdf5N2Write: element {:d} has polarization {:d}, but only "
+                                       "{:d} polarizations can be named",
+                                       el, p, pol_name.size());
                 dish_idx.push_back(dish);
                 pol.push_back(p);
                 grid_x_idx.push_back(dishes.grid_x_idx.at(dish));
@@ -436,7 +443,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 feed_pos_disp_m.push_back(dishes.feed_pos_disp_m.at(dish));
                 coelev_disp_deg.push_back(dishes.coelev_disp_deg.at(dish));
                 type.push_back(static_cast<int32_t>(dishes.type.at(dish)));
-                label.push_back(fmt::format(fmt("{:s}p{:d}"), dishes.label.at(dish), p + 1));
+                label.push_back(fmt::format(fmt("{:s}{:c}"), dishes.label.at(dish), pol_name[p]));
             }
             const hsize_t num_el = rows.size();
 
