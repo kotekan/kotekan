@@ -21,7 +21,7 @@
  *
  * The two phase factors collapse into the single factor
  * @f$ \exp(-2\pi i (u - (U-1)/2) s / U) @f$, which is what the code below evaluates.
- * There is no FFT, no bit reversal and no twiddle table: the transform is a literal
+ * There is no FFT: the transform is a literal
  * @f$O(MU)@f$-per-output sum, so that the code can be read against the notes line by line.
  *
  * This header deliberately has no CUDA dependency, so that it can be unit tested on a
@@ -37,7 +37,7 @@ constexpr int upchan_default_num_taps = 4;
  * @brief The sinc-Hanning PFB window @f$W(s)@f$, eqn. (11) of the notes with @f$N \to U@f$.
  *
  * @f[
- *   s' = \frac{2s - (MU-1)}{2MU}, \qquad
+ *   s' = \frac{s - (MU-1)/2}{MU}, \qquad
  *   W(s) = \frac{\cos^2(\pi s')\, \mathrm{sinc}(M s')}{U}
  * @f]
  *
@@ -110,7 +110,7 @@ inline std::complex<float> upchan_decode_int4(const std::uint8_t byte) {
 /// Encode one `int4x2_swapped_withoffset` byte, clamping to +-7 and rounding half to even.
 std::uint8_t upchan_encode_int4(std::complex<float> value);
 
-/// Decode one `cint8` sample: plain two's complement, real component first.
+/// Decode one `cint8` sample: plain two's complement, without swapping real and imaginary component.
 inline std::complex<float> upchan_decode_int8(const std::complex<std::int8_t> value) {
     return std::complex<float>(float(value.real()), float(value.imag()));
 }

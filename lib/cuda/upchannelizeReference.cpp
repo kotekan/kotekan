@@ -42,7 +42,7 @@ std::vector<float> upchan_window(const int num_taps, const int upchannelization_
     std::vector<float> window(M * U);
     for (int s = 0; s < M * U; ++s) {
         // Normalized to (-1/2, +1/2); see `Wkernel` in `julia/kernels/upchan.jl:76`.
-        const float sp = float(2 * s - (M * U - 1)) / float(2 * M * U);
+        const float sp = (s - (M * U - 1) / float(2)) / float(M * U);
         const float cosine = std::cos(float(M_PI) * sp);
         window.at(s) = cosine * cosine * sinc_normalized(float(M) * sp) / float(U);
     }
@@ -66,6 +66,7 @@ void upchannelize_reference(const std::complex<float>* const E, const float* con
 
     // Precompute the phase factor exp(-2 pi i (u - (U-1)/2) s / U). It depends only on
     // (u, s), not on time, polarization or dish, so it is shared across the whole call.
+    // See the derivation in `upchannelizeReference.hpp`.
     std::vector<std::complex<float>> phases(U * M * U);
     for (int u = 0; u < U; ++u) {
         for (int s = 0; s < M * U; ++s) {

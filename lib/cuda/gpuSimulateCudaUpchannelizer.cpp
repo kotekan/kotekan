@@ -338,7 +338,7 @@ void gpuSimulateCudaUpchannelizerT<OutT>::set_metadata_once() {
         FATAL_ERROR("Input buffer E reports {:d} frequencies, but its frequency dimension has "
                     "extent {:d}",
                     E_nfreq, E_meta->dim[1]);
-    if (Ebar_meta->dim[1] < Ebar_nfreq)
+    if (Ebar_meta->dim[1] != Ebar_nfreq)
         FATAL_ERROR("This kernel produces {:d} frequencies, but the frequency dimension of its "
                     "output buffer Ebar has extent {:d}",
                     Ebar_nfreq, Ebar_meta->dim[1]);

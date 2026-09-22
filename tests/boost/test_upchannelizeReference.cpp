@@ -81,7 +81,7 @@ BOOST_AUTO_TEST_CASE(window_is_symmetric) {
     }
 }
 
-// The window has sinc nulls: it changes sign. An unnormalized sinc(x) = sin(x)/x over this
+// The window has sinc zeros: it changes sign. An unnormalized sinc(x) = sin(x)/x over this
 // range is a single positive lobe, so this is what distinguishes the two.
 BOOST_AUTO_TEST_CASE(window_changes_sign) {
     for (const int U : all_U) {
@@ -163,7 +163,8 @@ BOOST_AUTO_TEST_CASE(constant_input_splits_between_the_two_centre_bins) {
 //
 // The response is not a delta: a 4-tap PFB leaks a fixed fraction into its neighbours. Those
 // fractions are a property of the window alone, so they are the same for every U, and pinning
-// them is a much sharper test than merely requiring "not much" leakage.
+// them (i.e. expecting certain vaues) is a much sharper test than merely requiring "not much"
+// leakage.
 //
 // The fine-frequency axis is cyclic, so bin 1 is a *neighbour* of bin U-1. Where +k and -k
 // land on the same channel (k == U/2) the two contributions cancel instead of adding, so the
@@ -171,6 +172,8 @@ BOOST_AUTO_TEST_CASE(constant_input_splits_between_the_two_centre_bins) {
 BOOST_AUTO_TEST_CASE(single_tone_lands_in_its_bin) {
     // On-bin response, and the leakage at cyclic distance 1 and 2, as fractions of the peak.
     constexpr double on_bin = 1.0127;
+    // The constants characterizing the leakage were measured, and confirmed by a double
+    // precision calculation, and are consistent with the U -> \infty limit.
     constexpr double leak[3] = {1.0, 6.0414e-3, 1.8051e-4};
 
     for (const int U : all_U) {
@@ -239,12 +242,12 @@ BOOST_AUTO_TEST_CASE(gain_scales_the_output) {
 
 // The output at tbar reads inputs [U*tbar, U*tbar + M*U), and nothing outside that range.
 // An impulse in the part of tbar=1's window that tbar=0's window does not cover must show up
-// in tbar=1 and be *exactly* absent from tbar=0.
+// in tbar=1 and be completely absent from tbar=0.
 BOOST_AUTO_TEST_CASE(output_reads_its_own_input_window) {
     const int U = 8;
     const int num_times_out = 2;
-    // tbar=0 covers [0, M*U); tbar=1 covers [U, U + M*U). This sits in the second but not
-    // the first, and far enough from the window edge to carry a non-negligible weight.
+    // tbar=0 covers [0, M*U); tbar=1 covers [U, U + M*U). This impulse sits in the second
+    // but not in the first.
     const int impulse = M * U;
     const auto out = run(U, num_times_out, [&](const int t) {
         return t == impulse ? std::complex<float>(1.0f, 0.0f) : std::complex<float>(0.0f, 0.0f);
@@ -293,8 +296,8 @@ BOOST_AUTO_TEST_CASE(int4_saturates_symmetrically) {
                       std::complex<float>(-7.0f, -7.0f));
 }
 
-// Ties round to even, matching the `cvt.rni` in the generated PTX. `floor(x + 0.5)` -- what
-// the older CPU simulation uses -- would give 1, 2, 3, 4 here instead.
+// Ties round to even, matching the `cvt.rni` in the generated PTX. A straightforward
+// `floor(x + 0.5)` would give 1, 2, 3, 4 here instead.
 BOOST_AUTO_TEST_CASE(int4_rounds_half_to_even) {
     BOOST_CHECK_EQUAL(upchan_decode_int4(upchan_encode_int4({0.5f, 1.5f})).real(), 0.0f);
     BOOST_CHECK_EQUAL(upchan_decode_int4(upchan_encode_int4({0.5f, 1.5f})).imag(), 2.0f);

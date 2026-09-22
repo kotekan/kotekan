@@ -253,15 +253,12 @@ run_recv_{{ chain }}_voltage:
 # differently: a sample within half a quantization step of a boundary can legitimately land
 # on either side. Measured on an A40: 45360 of 16777216 bytes differ (0.270%), and *every*
 # one differs by exactly +-1 in a 4-bit component -- not one component anywhere is off by
-# more than 1. The four +-1 cases split 24.7/24.8/25.2/25.3%, and 26 bytes differ in both
-# components, which is what independent rounding predicts. The threshold below is 1%, ~3.7x
-# the observed rate.
+# more than 1. 26 bytes differ in both components, which is what independent rounding
+# predicts. The acceptance threshold below is 1%, ~3.7x the observed rate.
 #
 # It is nowhere near loose enough to hide a real disagreement. A wrong sign in the exponent,
 # a swapped real/imaginary nibble or a shifted fine channel changes essentially every
-# non-zero sample, i.e. ~84% of the frame -- 300x this threshold. Even clamping the output
-# to -8 instead of -7 would show up: ~0.45% of components saturate negative here, three
-# times the budget.
+# non-zero sample. Even clamping the output to -8 instead of -7 would show up.
 compare_data:
     kotekan_stage: testDataCheckUchar
     first_buf: host_upchan_voltage_buffer
