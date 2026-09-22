@@ -97,7 +97,7 @@ class FleetPublisher:
         # authoritative, so a dropped PRN sets f_ref = NaN and re-acquires). The step and the
         # reference change are then inseparable, which is exactly how the 2026-08-04 attempt
         # came out uninterpretable. Setting it in a LIVE broker holds f_ref still.
-        self._ctl = {"carrier_trim_const": None}
+        self._ctl = {"carrier_trim_const": None, "nh_prn_offset": {}}
         pub = self
 
         class H(BaseHTTPRequestHandler):
@@ -236,10 +236,63 @@ class FleetPublisher:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _set_nh_prn_offset(self, sel):
+                # Diagnostic lever for a per-PRN despread deficit: shift ONE satellite's seeds
+                # by k whole overlay periods on the wire (seeding.apply_nh_prn_offset), so the
+                # tracker despreads at another NH20 alignment while everything else it is told
+                # stays the broker's own. Body {"prn": <int>, "k": <int>}; k = 0 clears. Per
+                # chain, like the carrier trim, and for the same reason: one signal at a time.
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                    req = json.loads(self.rfile.read(n) or b"{}")
+                    prn = int(req["prn"])
+                    k = int(req.get("k", 0) or 0)
+                except Exception as e:
+                    body = json.dumps({"error": "body must be {\"prn\": int, \"k\": int}: %s"
+                                                % e}).encode()
+                    self.send_response(400)
+                    self._cors()
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                with pub._lock:
+                    targets = [sel] if sel in pub._chains else list(pub._order)
+                    if len(targets) != 1:
+                        body = json.dumps({"error": "name one chain with ?chain=<id> or "
+                                                    "/<id>/set_nh_prn_offset (registered: %s)"
+                                                    % ", ".join(targets)}).encode()
+                        targets = []
+                    else:
+                        tbl = pub._chains[targets[0]]["ctl"]["nh_prn_offset"]
+                        if k:
+                            tbl[prn] = k
+                        else:
+                            tbl.pop(prn, None)
+                        body = json.dumps({"chain": targets[0],
+                                           "nh_prn_offset": dict(tbl)}).encode()
+                if not targets:
+                    self.send_response(400)
+                    self._cors()
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                pub._log("nh_prn_offset PRN %d -> %s on %s by REST (diagnostic: whole overlay "
+                         "periods on the wire)"
+                         % (prn, "cleared" if not k else "%+d period(s)" % k, targets[0]))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._cors()
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_POST(self):
-                # ONLY /set_carrier_trim. Body {"hz": <float>} holds that trim on every seeded
-                # PRN; {"hz": null} releases it back to --carrier-trim-const. Diagnostic: pair
-                # it with --carrier-gain 0 so the loop does not immediately correct the step away.
+                # /set_carrier_trim: body {"hz": <float>} holds that trim on every seeded PRN;
+                # {"hz": null} releases it back to --carrier-trim-const. Diagnostic: pair it
+                # with --carrier-gain 0 so the loop does not immediately correct the step away.
+                # /set_nh_prn_offset: see _set_nh_prn_offset above.
                 raw = self.path.split("?", 1)
                 p = raw[0].rstrip("/")
                 q = urllib.parse.parse_qs(raw[1]) if len(raw) > 1 else {}
@@ -249,6 +302,9 @@ class FleetPublisher:
                         if seg in pub._chains:
                             sel = seg
                             break
+                if p.endswith("set_nh_prn_offset"):
+                    self._set_nh_prn_offset(sel)
+                    return
                 if not p.endswith("set_carrier_trim"):
                     self.send_response(404)
                     self._cors()
@@ -316,7 +372,7 @@ class FleetPublisher:
         with self._lock:
             if chain not in self._chains:
                 self._chains[chain] = {"rows": [], "dets": [], "meta": {}, "elem": {},
-                                       "ctl": {"carrier_trim_const": None},
+                                       "ctl": {"carrier_trim_const": None, "nh_prn_offset": {}},
                                        "sig": signal, "band": band,
                                        "desc": dict(meta or {}, chain=chain,
                                                     signal=signal, band=band)}
@@ -378,6 +434,13 @@ class FleetPublisher:
             st = self._chains.get(chain) if chain else None
             v = st["ctl"]["carrier_trim_const"] if st else self._ctl["carrier_trim_const"]
         return fallback if v is None else v
+
+    def nh_prn_offset(self, chain=None):
+        """{prn: k} overlay-period shifts posted for this chain (a copy; empty when none)."""
+        with self._lock:
+            st = self._chains.get(chain) if chain else None
+            tbl = st["ctl"]["nh_prn_offset"] if st else self._ctl["nh_prn_offset"]
+            return dict(tbl)
 
     def set_elements(self, table, chain=None):
         """The per-element complex-gain table (task #57 step 2), served on /get_elements.
@@ -881,6 +944,9 @@ class FleetPublisher:
                 "present": sum(1 for r in rows if r["fleet_present"]),
                 "time_base_suspect": timebase.VERDICT.suspect,
                 "time_base_dt_s": timebase.VERDICT.dt_s,
+                # the diagnostic overlay-period shifts in force, so a reader of the records
+                # knows a satellite is being deliberately despread off its own alignment
+                "nh_prn_offset": self.nh_prn_offset(chain=chain),
                 "utc": _now()}
         with self._lock:
             st = self._chains.get(chain)
@@ -914,6 +980,9 @@ class _ChainView(object):
 
     def carrier_trim_const(self, fallback):
         return self._pub.carrier_trim_const(fallback, chain=self._chain)
+
+    def nh_prn_offset(self):
+        return self._pub.nh_prn_offset(chain=self._chain)
 
     def set_elements(self, table):
         return self._pub.set_elements(table, chain=self._chain)

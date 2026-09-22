@@ -1020,6 +1020,7 @@ def main(argv=None, rx=None, publisher=None):
     _est_next = [_now() + (hash(chain_id) % 5) * 8.0]
     _anchor_seen = [0.0]   # frame0 as first latched (see the re-check in the cycle loop)
     _anchor_chk = [0.0, 0]  # [wall time of the last anchor re-read, consecutive mismatches]
+    _nhoff_seen = [{}]      # the overlay-period knob as last logged (publish.py /set_nh_prn_offset)
     _cls.seg_s = float(args.long_code_epoch_s) / max(int(args.long_code_segments), 1)
     _cls.spiral = ([0] + [v for n in range(1, int(args.long_code_segments) // 2 + 1)
                             for v in (-n, n)])[:max(int(args.long_code_segments), 1)]
@@ -1181,6 +1182,11 @@ def main(argv=None, rx=None, publisher=None):
                         posted.append(d)
                         fast_stats["updates"] += 1
                     if posted:
+                        # the same overlay-period knob the cycle applies; the fast thread
+                        # re-posts trimmed copies of the SAME seeds, so it must shift them too
+                        posted = seeding.apply_nh_prn_offset(
+                            posted, publisher.nh_prn_offset() if publisher is not None else {},
+                            CODE_LEN, LC_SEG)
                         for t_ep in trackers:
                             try:
                                 _post("%s/set_seeds" % t_ep, posted)
@@ -2547,6 +2553,13 @@ def main(argv=None, rx=None, publisher=None):
         #                        look like)
         #   no response      -> the trim never reaches the despread; the loop is open, and no
         #                        amount of gain tuning would ever have helped.
+        # The per-PRN overlay-period knob (publish.py /set_nh_prn_offset), read once per cycle
+        # and applied ON THE WIRE at both post sites below (seeding.apply_nh_prn_offset), so
+        # every seed route carries the same shift and clearing it restores the broker's own seed.
+        _nhoff = publisher.nh_prn_offset() if publisher is not None else {}
+        if _nhoff != _nhoff_seen[0]:
+            _log("nh_prn_offset in force: %s" % (_nhoff or "none"))
+            _nhoff_seen[0] = dict(_nhoff)
         _ctc = (publisher.carrier_trim_const(args.carrier_trim_const)
                 if publisher is not None else args.carrier_trim_const)
         if _ctc is not None:
@@ -2785,9 +2798,10 @@ def main(argv=None, rx=None, publisher=None):
                     every_s=30.0)
 
         ok = 0
+        _wire = seeding.apply_nh_prn_offset(_ctx.payload, _nhoff, CODE_LEN, LC_SEG)
         for t_ep in trackers:
             try:
-                _post("%s/set_seeds" % t_ep, _ctx.payload)
+                _post("%s/set_seeds" % t_ep, _wire)
                 ok += 1
             except Exception as e:
                 _log("set_seeds %s failed: %s" % (t_ep, e))

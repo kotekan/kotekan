@@ -66,6 +66,40 @@ def _nh_joint_pred_chips(ctx, prn, t_utc):
     return (t_tx % ctx.lc_epoch) * ctx.args.chip_rate_hz
 
 
+def apply_nh_prn_offset(payload, offsets, code_len, lc_seg):
+    """Shift chosen PRNs' seeds by whole overlay periods ON THE WIRE, just before they are posted.
+
+    A diagnostic lever for the per-PRN L5 deficit: the tracker despreads the pilot tiled with
+    NH20 as one 204600-chip code, so adding k*code_len to a seed's phase moves it k overlay
+    periods and nothing else. Applied here rather than where the seed is built so that every
+    route a seed can take -- search lift, consensus derivation, dead-reckon slew, the fast
+    trim thread -- carries the same shift, and so that clearing it (k = 0) restores the
+    broker's own seed on the next post with nothing to unwind.
+
+    `offsets` is {prn: k}; k = 0 or absent leaves a seed untouched. Both the argument
+    (code_phase_chips) and the physical phase (code_phase_at_ref_chips, when present and
+    >= 0) move, because propagate_seed prefers the phase whenever it is supplied and would
+    otherwise read an unshifted one. Pure; the caller keeps its own list."""
+    if not offsets or lc_seg <= 1:
+        return payload
+    llc = float(lc_seg) * float(code_len)
+    out = []
+    for d in payload:
+        k = int(offsets.get(d.get("prn"), 0) or 0)
+        if k == 0:
+            out.append(d)
+            continue
+        e = dict(d)
+        shift = k * float(code_len)
+        if e.get("code_phase_chips") is not None:
+            e["code_phase_chips"] = (float(e["code_phase_chips"]) + shift) % llc
+        ph = e.get("code_phase_at_ref_chips")
+        if ph is not None and ph >= 0.0:
+            e["code_phase_at_ref_chips"] = (float(ph) + shift) % llc
+        out.append(e)
+    return out
+
+
 def _nh_joint_vote(ctx, prn, ph_ref, ref_hop, snr, now):
     """One detection's vote: the receiver-common overlay offset implied by its measured
     phase-at-its-own-epoch. delta = (measured - predicted) mod LLc is the receiver clock
