@@ -389,7 +389,7 @@ attribute, in the N2 layout's element order. Each row names the dish the
 element belongs to and its polarization, and copies that dish's entry from
 the telescope's ``dish_inputs`` configuration. Dishes not populated in the
 configuration hold type ``Missing`` (-1) and label ``"Missing"``, so in a full
-layout their elements read ``"Missingp1"``, ``"Missingp2"``; compact layouts
+layout their elements read ``"MissingX"``, ``"MissingY"``; compact layouts
 leave them out.
 
 .. list-table::
@@ -450,9 +450,9 @@ leave them out.
    * - ``label``
      - (elements)
      - variable-length string
-     - Per-element label: the dish label with the 1-based polarization
-       appended, e.g. ``A1p1`` and ``A1p2`` for the two inputs of dish
-       ``A1``.
+     - Per-element label: the dish label with the polarization name
+       appended, e.g. ``A01X`` and ``A01Y`` for the two inputs of dish
+       ``A01``.
 
 Visibility and per-(frequency, time) datasets
 =============================================
