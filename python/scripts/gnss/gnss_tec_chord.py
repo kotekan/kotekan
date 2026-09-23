@@ -114,24 +114,33 @@ def load(path, since_s, cn0_min):
 def joint_arcs(A, B, prn, max_gap_hops):
     """Runs of common grid hops over which BOTH bands' fadr_arc is unchanged."""
     hops = sorted(set(A[prn]) & set(B[prn]))
-    segs, cur = [], []
+    segs, cur, why = [], [], ["start"]
     for h in hops:
         if cur:
             p = cur[-1]
-            if (A[prn][h][1] != A[prn][p][1] or B[prn][h][1] != B[prn][p][1]
-                    or h - p > max_gap_hops):
+            # Name the boundary: the census of WHY arcs end is the diagnostic the plot cannot
+            # give (an arc restart in a band, or a hole in the common grid -- which is a
+            # dropout or the C/N0 gate, not the ADR).
+            r = ("arc_a" if A[prn][h][1] != A[prn][p][1] else
+                 "arc_b" if B[prn][h][1] != B[prn][p][1] else
+                 "gap" if h - p > max_gap_hops else None)
+            if r is not None:
                 segs.append(cur)
                 cur = []
+                why.append(r)
         cur.append(h)
     if cur:
         segs.append(cur)
-    return segs
+    return segs, why
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--obs-dir", default="/home/kvand/gnss/fixtures/obs")
-    ap.add_argument("--day", default=None, help="YYYYMMDD (default: today UTC)")
+    ap.add_argument("--day", default=None,
+                    help="YYYYMMDD, or a comma list of consecutive days (default: today UTC). A run "
+                         "spans the midnight file roll; listing both days joins it at the grid hop, "
+                         "which is continuous across the roll.")
     ap.add_argument("--pair", action="append", default=[],
                     help="A_BAND:B_BAND, repeatable (default: %s)" % ", ".join(DEFAULT_PAIRS))
     ap.add_argument("--since-h", type=float, default=6.0)
@@ -162,10 +171,19 @@ def main():
     bands = sorted({b for p in pairs for b in p})
     data = {}
     for b in bands:
-        path = os.path.join(args.obs_dir, "%s_%s.jsonl" % (b, day))
-        if not os.path.exists(path):
-            sys.exit("no such observables file: %s" % path)
-        data[b], n, kept = load(path, since, args.cn0_min)
+        data[b] = collections.defaultdict(dict)
+        n = kept = 0
+        for d_ in day.split(","):
+            path = os.path.join(args.obs_dir, "%s_%s.jsonl" % (b, d_))
+            if not os.path.exists(path):
+                sys.exit("no such observables file: %s" % path)
+            one, n1, k1 = load(path, since, args.cn0_min)
+            # Keyed on the grid hop, so a hop reported in both files (the roll is by wall
+            # clock, the hop by the F-engine) lands once; the arc key rides along unchanged.
+            for prn, hops in one.items():
+                data[b][prn].update(hops)
+            n += n1
+            kept += k1
         print("%-9s %8d rows read, %7d kept (C/N0 >= %.0f), %2d sats"
               % (b, n, kept, args.cn0_min, len(data[b])))
 
@@ -177,8 +195,9 @@ def main():
         sysid = SYSOF[a.split("_")[0]]
         A, B = data[a], data[b]
         nseg = 0
+        boundaries, short = collections.Counter(), collections.Counter()
         for prn in sorted(set(A) & set(B)):
-            segs = joint_arcs(A, B, prn, max_gap_hops)
+            segs, why = joint_arcs(A, B, prn, max_gap_hops)
             if args.step_m > 0:
                 # ⚠️ SPLIT AT STEPS. A weak satellite's fleet ADR takes half-cycle-class jumps
                 # that fadr_arc does not flag (the arc is the accumulator's continuity, not its
@@ -186,21 +205,24 @@ def main():
                 # A 1-s change of the combination larger than --step-m in EITHER band is a
                 # jump, and the arc is cut there (the same rule fixtures/tec_wander/
                 # triple_closure.py uses to census them).
-                cut = []
-                for seg in segs:
+                cut, cwhy = [], []
+                for seg, w in zip(segs, why):
                     cur = [seg[0]]
+                    cwhy.append(w)
                     for h0, h in zip(seg, seg[1:]):
                         d = ((la * A[prn][h][0] - lb * B[prn][h][0])
                              - (la * A[prn][h0][0] - lb * B[prn][h0][0]))
                         if abs(d) > args.step_m and (A[prn][h][2] - A[prn][h0][2]) < 3.0 * GRID_SECONDS:
                             cut.append(cur)
                             cur = []
+                            cwhy.append("step")
                         cur.append(h)
                     cut.append(cur)
-                segs = cut
-            for k, seg in enumerate(segs):
+                segs, why = cut, cwhy
+            for k, (seg, w) in enumerate(zip(segs, why)):
                 span = A[prn][seg[-1]][2] - A[prn][seg[0]][2]
                 if span < args.min_arc_s or len(seg) < 30:
+                    short[w] += 1
                     continue
                 # ⚠️ SIGN, DERIVED NOT GUESSED (this was wrong for one commit). The obs
                 # writer builds carr_resid_m = -fadr_dop_cycles*lam - range_m and expects it
@@ -228,14 +250,18 @@ def main():
                     rows.append((t_, sysid, prn, nseg, x,
                                  float("nan") if az_ is None else az_,
                                  float("nan") if el_ is None else el_))
+                boundaries[w] += 1
                 summary.append({"pair": "%s x %s" % (a, b), "sys": sysid, "prn": prn,
                                 "arc": nseg, "span_s": round(span, 1), "n": len(seg),
+                                "starts_at": w,
                                 "m_per_TECU": round(mpt, 4),
                                 "range_TECU": round(max(gf) - min(gf), 3),
                                 "rms_TECU": round(sd, 3), "noise_TECU": round(noise, 4)})
                 nseg += 1
         print("%-9s x %-9s %.4f m/TECU  %3d joint arc(s) >= %.0f s"
               % (a, b, mpt, nseg, args.min_arc_s))
+        print("          kept arcs begin at: %s | pieces too short (< %.0f s or 30 hops) begin at: %s"
+              % (dict(boundaries), args.min_arc_s, dict(short)))
 
     if not rows:
         sys.exit("no joint arcs -- try --since-h larger or --cn0-min lower")
