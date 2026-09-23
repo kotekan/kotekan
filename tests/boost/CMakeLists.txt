@@ -27,9 +27,9 @@ target_link_libraries(test_cuda_stream_assignment PRIVATE pthread libexternal ko
 
 # test_gpu_memory_claims - the one-owner-per-region rule for named GPU memory: the policy function
 # AND its wiring in gpuDeviceInterface (owner scopes, thread attribution, arrays, views, the
-# declared-share exemption). lib/gpu is built only when a GPU backend is found and the CI boost
-# jobs are CPU-only, so gpuDeviceInterface.cpp is compiled into the test directly -- it depends on
-# no backend, only on kotekan_core.
+# declared-share exemption). lib/gpu is built only when a GPU backend is found and the CI boost jobs
+# are CPU-only, so gpuDeviceInterface.cpp is compiled into the test directly -- it depends on no
+# backend, only on kotekan_core.
 add_executable(test_gpu_memory_claims test_gpu_memory_claims.cpp
                                       ${KOTEKAN_SOURCE_DIR}/lib/gpu/gpuDeviceInterface.cpp)
 target_include_directories(test_gpu_memory_claims PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/gpu)
