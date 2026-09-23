@@ -1,9 +1,12 @@
 #include "gpuDeviceInterface.hpp"
 
+#include "gpuMemoryClaims.hpp" // for classify_gpu_memory_claim, gpuClaimResult
+
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
 #include <assert.h>  // for assert
 #include <stdexcept> // for runtime_error
+#include <thread>    // for this_thread::get_id
 #include <utility>   // for pair
 
 using kotekan::Config;
@@ -21,6 +24,101 @@ void gpuDeviceInterface::cleanup_memory() {
             if (mem)
                 free_gpu_memory(mem);
         }
+    }
+}
+
+void gpuDeviceInterface::begin_memory_owner(const std::string& owner) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    if (!_constructing_owner.empty())
+        FATAL_ERROR("GPU[{:d}]: {:s} began constructing while {:s} still was; stages are built "
+                    "one at a time, so this is a bug in the caller, not the config",
+                    gpu_id, owner, _constructing_owner);
+    _constructing_owner = owner;
+}
+
+void gpuDeviceInterface::end_memory_owner() {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    _constructing_owner.clear();
+}
+
+void gpuDeviceInterface::claim_memory_owner_thread(const std::string& owner) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    _thread_owner[std::this_thread::get_id()] = owner;
+}
+
+void gpuDeviceInterface::register_gpu_memory_name(const std::string& name) {
+    check_memory_claim(name);
+}
+
+void gpuDeviceInterface::declare_shared_gpu_memory(const std::string& name,
+                                                   const std::string& handshake) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    const std::string& owner = current_memory_owner();
+    if (owner.empty())
+        FATAL_ERROR("GPU[{:d}] memory: \"{:s}\" was declared shared outside any stage; a share "
+                    "belongs to the stage that declares it",
+                    gpu_id, name);
+    auto& mine = _shared_declared[name];
+    const auto prior = mine.find(owner);
+    if (prior != mine.end() && prior->second != handshake)
+        FATAL_ERROR("GPU[{:d}] memory: {:s} declared \"{:s}\" shared through {:s} and again "
+                    "through {:s}; one region cannot be ordered by two different things",
+                    gpu_id, owner, name, prior->second, handshake);
+    mine[owner] = handshake;
+}
+
+const std::string& gpuDeviceInterface::current_memory_owner() const {
+    // Caller holds gpu_memory_mutex. A registered enqueuing thread wins over the construction
+    // scope; in practice the two are never live at once (stages are all built before any runs).
+    const auto thread = _thread_owner.find(std::this_thread::get_id());
+    if (thread != _thread_owner.end())
+        return thread->second;
+    return _constructing_owner;
+}
+
+void gpuDeviceInterface::check_memory_claim(const std::string& name) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    const std::string& owner = current_memory_owner();
+    if (owner.empty())
+        return; // no stage to attribute to (a REST callback outside construction); nothing to check
+    const auto existing = _memory_owner.find(name);
+    if (existing == _memory_owner.end()) {
+        _memory_owner[name] = owner;
+        return;
+    }
+    const std::string* have = &existing->second;
+    const std::string* have_hs = nullptr;
+    const std::string* want_hs = nullptr;
+    const auto decl = _shared_declared.find(name);
+    if (decl != _shared_declared.end()) {
+        const auto h = decl->second.find(*have);
+        const auto w = decl->second.find(owner);
+        have_hs = (h == decl->second.end()) ? nullptr : &h->second;
+        want_hs = (w == decl->second.end()) ? nullptr : &w->second;
+    }
+    switch (classify_gpu_memory_claim(have, owner, have_hs, want_hs)) {
+        case gpuClaimResult::first_claim:
+        case gpuClaimResult::same_owner:
+        case gpuClaimResult::shared:
+            return;
+        case gpuClaimResult::conflict:
+            if (have_hs && want_hs)
+                FATAL_ERROR("GPU[{:d}] memory: \"{:s}\" is used by both {:s} and {:s}, declared "
+                            "shared through different things ({:s} vs {:s}). A share is ordered by "
+                            "ONE thing: two ring buffers were given one backing store, or one "
+                            "side names a ring while the other lists it under shared_gpu_memory.",
+                            gpu_id, name, *have, owner, *have_hs, *want_hs);
+            FATAL_ERROR("GPU[{:d}] memory: \"{:s}\" is used by both {:s} and {:s}{:s}. A named "
+                        "region belongs to one stage unless both declare the share, because "
+                        "nothing here can see which streams the two will touch it on. If "
+                        "something outside the GPU already orders their accesses -- a host "
+                        "buffer handed between them, say -- list the name under "
+                        "`shared_gpu_memory` on BOTH stages; a GPU ring buffer declares itself. "
+                        "Otherwise give one of them its own name.",
+                        gpu_id, name, *have, owner,
+                        have_hs   ? fmt::format(" (only {:s} declared it)", *have)
+                        : want_hs ? fmt::format(" (only {:s} declared it)", owner)
+                                  : "");
     }
 }
 
@@ -46,6 +144,10 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
     if (gpu_memory[name].gpu_pointers.size() != 1)
         FATAL_ERROR("GPU[{:d}] memory: {:s}, implicitly requested 1 frame, have {:d}", gpu_id, name,
                     gpu_memory[name].gpu_pointers.size());
+
+    // A region a second stage takes without declaring the share is a data race waiting for
+    // its streams to diverge; refuse it by name. See gpuMemoryClaims.hpp.
+    check_memory_claim(name);
 
     // Return the requested memory.
     return gpu_memory[name].gpu_pointers[0];
@@ -82,6 +184,7 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
                     "{:d} frame(s) are allocated",
                     name, index, gpu_memory[name].gpu_pointers.size());
     // Return the requested memory.
+    check_memory_claim(name); // same rule as get_gpu_memory; see gpuMemoryClaims.hpp
     return gpu_memory[name].gpu_pointers[index];
 }
 
@@ -89,6 +192,8 @@ void* gpuDeviceInterface::create_gpu_memory_view(const std::string& source_name,
                                                  const size_t source_len,
                                                  const std::string& dest_name, const size_t offset,
                                                  const size_t dest_len) {
+    check_memory_claim(dest_name);   // a view is a second name for the source, so both
+    check_memory_claim(source_name); // belong to the stage that makes it
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Ensure that the view doesn't already exist
     if (gpu_memory.count(dest_name) > 0)
@@ -114,6 +219,8 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
                                                       const std::string& dest_name,
                                                       const size_t offset, const size_t dest_len,
                                                       const uint32_t buffer_depth) {
+    check_memory_claim(dest_name);   // a view is a second name for the source, so both
+    check_memory_claim(source_name); // belong to the stage that makes it
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     INFO("Creating GPU memory array view {:s} with length {:d}, view on {:s} + offset {:d}",
          dest_name, dest_len, source_name, offset);

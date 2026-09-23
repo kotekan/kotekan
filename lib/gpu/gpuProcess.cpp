@@ -90,6 +90,14 @@ void gpuProcess::init() {
     dev->set_log_level(s_log_level);
     dev->set_log_prefix(fmt::format(fmt("GPU[{:d}] device interface"), gpu_id));
 
+    // GPU memory taken while the commands are built belongs to this stage, and a region a
+    // second stage takes is refused unless both declare the share -- here, in config, or in
+    // code by the ring-buffer classes. See gpuMemoryClaims.hpp.
+    gpuMemoryOwnerScope constructing(*dev, unique_name);
+    for (const auto& name :
+         config.get_default<std::vector<std::string>>(unique_name, "shared_gpu_memory", {}))
+        dev->declare_shared_gpu_memory(name, "shared_gpu_memory");
+
     vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
     int i = 0;
     for (json cmd : cmds) {
@@ -150,6 +158,23 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 
 void gpuProcess::main_thread() {
     dev->set_thread_device();
+    // Every frame this stage enqueues is enqueued from THIS thread, so a region a command first
+    // takes in execute() without having listed it belongs to this stage. See gpuMemoryClaims.hpp.
+    dev->claim_memory_owner_thread(unique_name);
+
+    // A FatalError thrown from a command's execute() after the first frame (the results thread
+    // starts then; a command gated by required_flag, say) leaves this function without reaching
+    // exit_loop below; the results thread would then wait forever on signals nobody stops, and
+    // ~gpuProcess would destroy a joinable std::thread, which terminates the process instead of
+    // shutting it down. Stop and join on the way out too.
+    struct results_unwind {
+        gpuProcess& proc;
+        bool armed = true;
+        ~results_unwind() {
+            if (armed)
+                proc.stop_results_thread();
+        }
+    } unwind{*this};
 
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
@@ -212,6 +237,11 @@ void gpuProcess::main_thread() {
         gpu_frame_counter++;
     }
 exit_loop:
+    unwind.armed = false;
+    stop_results_thread();
+}
+
+void gpuProcess::stop_results_thread() {
     for (auto& sig_container : final_signals)
         sig_container->stop();
     INFO("Waiting for GPU packet queues to finish up before freeing memory.");

@@ -39,8 +39,9 @@ void cudaSyncStream::set_source_cuda_streams(const std::vector<int32_t>& source_
     // Bounded by the owning stage's num_cuda_streams, as the commands themselves are: a stream
     // this stage never declared can carry none of its events, so waiting on it is a silent no-op.
     // Commands are named <stage>/commands/<n> (gpuProcess::init), which gives the stage's name.
-    const int32_t num_cuda_streams =
-        config.get_default<int32_t>(unique_name, "num_cuda_streams", 3);
+    const int32_t base = config.get_default<int32_t>(unique_name, "cuda_stream_base", 0);
+    const int32_t num_cuda_streams = config.get_default<int32_t>(unique_name, "num_cuda_streams",
+                                                                 default_num_cuda_streams(base));
     const auto cut = unique_name.rfind("/commands/");
     const std::string stage = cut == std::string::npos ? unique_name : unique_name.substr(0, cut);
     _source_cuda_streams = source_cuda_streams;
