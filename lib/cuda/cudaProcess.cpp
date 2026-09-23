@@ -35,7 +35,11 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
     // Tell the Cuda runtime to associate this gpu_id with this thread/Stage.
     device->set_thread_device();
 
-    uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_cuda_streams", 3);
+    // The default covers this stage's own triple; a stage with explicit streams above it, or
+    // more than three, sets num_cuda_streams itself.
+    const int32_t stream_base = config.get_default<int32_t>(unique_name, "cuda_stream_base", 0);
+    uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_cuda_streams",
+                                                        default_num_cuda_streams(stream_base));
 
     device->prepareStreams(num_streams);
 

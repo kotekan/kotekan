@@ -66,6 +66,9 @@ gpuA:
           out_buf: host_mid
     gpu_0:
         kotekan_stage: cudaProcess
+        # `in` is handed between the two stages through a zero-size host buffer, which is what
+        # orders them; both stages declare the share (see gpuMemoryClaims.hpp).
+        shared_gpu_memory: [in]
         gpu_id: 0
         commands: *command_list
         in_buffers:
@@ -87,6 +90,9 @@ gpuB:
           out_buf: host_out
     gpu_0:
         kotekan_stage: cudaProcess
+        # `in` is handed between the two stages through a zero-size host buffer, which is what
+        # orders them; both stages declare the share (see gpuMemoryClaims.hpp).
+        shared_gpu_memory: [in]
         gpu_id: 0
         commands: *command_list2
         in_buffers:
