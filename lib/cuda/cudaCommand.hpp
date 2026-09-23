@@ -67,10 +67,10 @@ extern std::shared_ptr<cudaCommandState> no_cuda_command_state;
  *                    pipelines cannot be expressed -- so two pipelines either share all three
  *                    streams or none, and take either the same queuing mutexes or none in
  *                    common. Disjoint streams also let their kernels overlap, a stream being
- *                    an in-order queue. The owning cudaProcess must declare num_cuda_streams
- *                    greater than 3*base+2. An explicit @c cuda_stream is absolute, ignores
- *                    this, and is the one way to put a command outside its pipeline's triple:
- *                    prefer not to, because a copy sharing a stream with kernels blocks them
+ *                    an in-order queue. The owning cudaProcess's num_cuda_streams (default
+ *                    3*base+3, its own triple) must exceed every stream its commands use. An
+ * explicit @c cuda_stream is absolute, ignores this, and is the one way to put a command outside
+ * its pipeline's triple: prefer not to, because a copy sharing a stream with kernels blocks them
  *                    behind unrelated traffic on the device's single copy queue.
  * @conf required_flag  A string flag name.  If set, the @c cudaPipelineState object will be
  *                    checked for this flag, and this command will only run if that flag is set.

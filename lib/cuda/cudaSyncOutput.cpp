@@ -27,8 +27,8 @@ cudaSyncOutput::cudaSyncOutput(Config& config, const std::string& unique_name,
     // the same pipeline at base 0 deliberately excludes. The list stops at this stage's own
     // num_cuda_streams: a stream it never declared can carry none of its events.
     const int32_t base = config.get_default<int32_t>(unique_name, "cuda_stream_base", 0);
-    const int32_t num_cuda_streams =
-        config.get_default<int32_t>(unique_name, "num_cuda_streams", 3);
+    const int32_t num_cuda_streams = config.get_default<int32_t>(unique_name, "num_cuda_streams",
+                                                                 default_num_cuda_streams(base));
     // This stage's count, not the device's: the device pool is grown to the largest any stage
     // on it asked for, so logging that would name streams this sweep deliberately excludes.
     DEBUG("Number of streams: {:d}", num_cuda_streams);

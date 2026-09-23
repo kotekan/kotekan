@@ -141,4 +141,15 @@ lock_streams_ascending(const std::vector<std::int32_t>& streams, MutexOf&& mutex
     return locks;
 }
 
+/**
+ * @brief The `num_cuda_streams` a stage gets when it does not set one: its own triple.
+ *
+ * Read in more than one place (cudaProcess, cudaSyncStream, cudaSyncOutput), so the default is
+ * defined once. A stage whose commands use explicit streams above its triple, or more than three
+ * streams, sets num_cuda_streams itself.
+ */
+inline std::uint32_t default_num_cuda_streams(std::int32_t base) {
+    return 3u * static_cast<std::uint32_t>(base < 0 ? 0 : base) + 3u;
+}
+
 #endif // CUDA_STREAM_ASSIGNMENT_HPP
