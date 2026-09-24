@@ -113,7 +113,7 @@ def record(args):
     every pass exactly once whatever the phase between the two clocks; a pass missed because
     the poll came late is visible as a jump in `pass`, never as a silent gap.
 
-    A line:  {"t", "inst": "cx27.0", "pass", "seq" (fpga_seq of the measured frame),
+    A line:  {"t", "inst": "<node>.<gpu>", "pass", "seq" (fpga_seq of the measured frame),
               "age" (s since the pass), "hi"/"lo" (fraction of nibbles at +7 / -8, per
               channel), "pw" (mean |x|^2 per channel)}
     plus "f" (the channels' freq_ids, from the frame) on an instance's first line of each file
