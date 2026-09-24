@@ -28,6 +28,7 @@
  * Header-only and stage-independent so the offline gate drives exactly this arithmetic.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdint>
@@ -59,6 +60,26 @@ public:
     }
     int n_elem() const {
         return _n_elem;
+    }
+    int n_chan() const {
+        return _n_chan;
+    }
+
+    /// Forget one slot's geometry. A slot is a PRN SLOT, not a satellite: when the tracker
+    /// swaps the PRN in a slot, the table still holds the departed satellite's phasors and
+    /// warm() would keep steering the newcomer with them for up to hold_s -- a wrong steer,
+    /// not a weaker one (it derotates every element by another direction's delay).
+    void invalidate(int slot) {
+        if (slot >= 0 && (size_t)slot < _fresh_t.size())
+            _fresh_t[(size_t)slot] = -1.0e18;
+    }
+
+    /// Copy one slot's whole [n_chan][n_elem] table into `out` (n_chan*n_elem entries).
+    /// The caller holds whatever lock guards update(); the copy is what lets it drop that
+    /// lock before the combine instead of reading rows a concurrent update() may rewrite.
+    void copy_slot(int slot, cf* out) const {
+        const cf* src = &_tab[(size_t)slot * _n_chan * _n_elem];
+        std::copy(src, src + (size_t)_n_chan * _n_elem, out);
     }
 
     /// New geometry for one satellite slot: rebuild its [n_chan][n_elem] phasor table.

@@ -70,6 +70,15 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _elem_hold_on_reanchor =
         config.get_default<bool>(unique_name, "elem_sum_hold_on_reanchor", true);
     _elem_sum_min_w = config.get_default<double>(unique_name, "elem_sum_min_w", 0.02);
+    // HOLD vs ADAPT. The per-PRN cal learns its element phases FROM THAT PRN'S OWN DATA, so a
+    // satellite near boresight, whose cross-correlation dominates every weak satellite's
+    // per-element despread, teaches every cal ITS phases and the array gain is gone (measured
+    // on a BeiDou transit: element vectors 80-90% identical to the bright satellite's inside
+    // 2 deg, p down 100x, spared only the bright one). With geometry steered and one shared
+    // instrumental prior seeded, adapt=false freezes the weights at the prior: nothing a
+    // single satellite can move. A SHADOW cal keeps learning per PRN so the capture stays
+    // visible (/get_elem_cal) without being acted on.
+    _elem_adapt = config.get_default<bool>(unique_name, "elem_sum_adapt", true);
     // ── #102 ELEMENT STEERING: geometric per-(sat, channel, element) phasors ─────────
     // OFF unless elem_positions_enu is provided (flat [n_elements][3], metres ENU of any
     // fixed array point -- re-referenced to the reference element below so the header's
@@ -122,6 +131,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     if (_elem_sum) {
         _cal.assign((size_t)n, gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
                                              _elem_sum_min_w));
+        _cal_shadow = _cal;
+        _cal_sim.assign((size_t)n, -1.0);
         _anchor_warned.assign((size_t)n, 0);
     }
     _phi.assign(n, 0.0);
@@ -348,10 +359,20 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_elem_gain",
             std::bind(&GnssGpuRecordAssemble::set_elem_gain_callback, this, _1, _2));
-    if (_steer.enabled())
+    // Registered whether or not steering is armed: the broker posts its sky to every
+    // assembler it knows, and an unsteered one answering 404 every 30 s is indistinguishable
+    // in its log from a dead one. Unsteered, the post is acknowledged and dropped.
+    kotekan::restServer::instance().register_post_callback(
+        unique_name + "/set_sat_geometry",
+        std::bind(&GnssGpuRecordAssemble::set_sat_geometry_callback, this, _1, _2));
+    if (_elem_sum) {
         kotekan::restServer::instance().register_post_callback(
-            unique_name + "/set_sat_geometry",
-            std::bind(&GnssGpuRecordAssemble::set_sat_geometry_callback, this, _1, _2));
+            unique_name + "/set_elem_sum_adapt",
+            std::bind(&GnssGpuRecordAssemble::set_elem_sum_adapt_callback, this, _1, _2));
+        kotekan::restServer::instance().register_get_callback(
+            unique_name + "/get_elem_cal",
+            std::bind(&GnssGpuRecordAssemble::get_elem_cal_callback, this, _1));
+    }
     // LIVE REFERENCE SWAP (KV, 2026-08-20). Registered whenever the element axis exists --
     // the header's correlation slots carry the reference even with elem_sum off, so the
     // swap is meaningful either way. See set_reference_element_callback.
@@ -374,6 +395,10 @@ void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstanc
     // cadence keeps the steering within ~1 mm of true. Unknown PRNs are skipped (the
     // broker posts its whole sky; this stage steers the slots it owns).
     int n_up = 0;
+    if (!_steer.enabled()) {
+        conn.send_json_reply(nlohmann::json{{"updated", 0}, {"steering", "off"}});
+        return;
+    }
     try {
         const double now_s = std::chrono::duration<double>(
                                  std::chrono::steady_clock::now().time_since_epoch())
@@ -422,8 +447,16 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
         if (_elem_sum && (size_t)p < _cal.size()) {
             _cal[(size_t)p] = gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
                                             _elem_sum_min_w);
+            _cal_shadow[(size_t)p] = _cal[(size_t)p];
+            _cal_sim[(size_t)p] = -1.0;
             if ((size_t)p < _anchor_warned.size())
                 _anchor_warned[(size_t)p] = 0;
+        }
+        // The steer table is keyed by SLOT: the departed satellite's phasors must not steer
+        // the newcomer for up to hold_s. Geometry for the new PRN arrives with the next post.
+        if (_steer.enabled()) {
+            std::lock_guard<std::mutex> lk(_steer_mtx);
+            _steer.invalidate(p);
         }
         _phi[(size_t)p] = 0.0;
         _phi_cyc[(size_t)p] = 0.0;
@@ -535,6 +568,8 @@ void GnssGpuRecordAssemble::main_thread() {
                     _cal.assign(_prns.size(),
                                 gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
                                               _elem_sum_min_w));
+                    _cal_shadow = _cal;
+                    std::fill(_cal_sim.begin(), _cal_sim.end(), -1.0);
                     std::fill(_anchor_warned.begin(), _anchor_warned.end(), 0);
                     std::fill(_elem_prev_ok.begin(), _elem_prev_ok.end(), 0);
                 }
@@ -689,16 +724,33 @@ void GnssGpuRecordAssemble::main_thread() {
                 // #102: steer this satellite's elements if geometry is fresh. The lock is
                 // cheap here (one take per record row-set); the REST writer holds it only
                 // while rebuilding one slot's table.
-                const gnss::ElemSteer::cf* steer_rows[64] = {nullptr};
-                {
-                    std::lock_guard<std::mutex> lk(_steer_mtx);
-                    const double now_s =
-                        std::chrono::duration<double>(
-                            std::chrono::steady_clock::now().time_since_epoch())
-                            .count();
-                    if (_steer.warm((int)p, now_s))
-                        for (int ch = 0; ch < n_chan && ch < 64; ++ch)
-                            steer_rows[ch] = _steer.row((int)p, ch);
+                // The slot's table is COPIED under the lock and read from the copy: a row
+                // pointer read after the lock is released can be rewritten by a concurrent
+                // /set_sat_geometry mid-combine (benign in value, undefined in principle).
+                bool steered = false;
+                if (_steer.enabled()) {
+                    if (_steer.n_chan() != n_chan) {
+                        // The table was built from the config's channel_ids; the frame says
+                        // otherwise. Steering with a mismatched channel axis would apply one
+                        // channel's phasor to another's data -- refuse, once and loudly.
+                        if (!_steer_nchan_warned) {
+                            WARN("elem steering DISABLED: steer table has {:d} channels, the "
+                                 "frame {:d} -- channel_ids and the producer disagree",
+                                 _steer.n_chan(), n_chan);
+                            _steer_nchan_warned = 1;
+                        }
+                    } else {
+                        std::lock_guard<std::mutex> lk(_steer_mtx);
+                        const double now_s =
+                            std::chrono::duration<double>(
+                                std::chrono::steady_clock::now().time_since_epoch())
+                                .count();
+                        if (_steer.warm((int)p, now_s)) {
+                            _steer_buf.resize((size_t)n_chan * n_e);
+                            _steer.copy_slot((int)p, _steer_buf.data());
+                            steered = true;
+                        }
+                    }
                 }
                 for (int t = 0; t < n_rows_spec; ++t) {
                     const size_t row = (size_t)(c.job0 + t) * n_chan;
@@ -707,7 +759,8 @@ void GnssGpuRecordAssemble::main_thread() {
                         if ((c.chan_mask >> ch) & 1ULL) {
                             e += energy[row + ch];
                             const size_t base = (row + ch) * n_e;
-                            const gnss::ElemSteer::cf* st = steer_rows[ch];
+                            const gnss::ElemSteer::cf* st =
+                                steered ? &_steer_buf[(size_t)ch * n_e] : nullptr;
                             for (int el = 0; el < n_e; ++el) {
                                 std::complex<double> v(corr[2 * (base + el)],
                                                        corr[2 * (base + el) + 1]);
@@ -749,9 +802,34 @@ void GnssGpuRecordAssemble::main_thread() {
                         // that IS the ADR observable (gnssRecord.hpp REC_SKY_RE).
                         g_sky = ec.combine_split(&_g_elem[(size_t)1 * n_e]);
                     }
-                    if (_elem_prev_ok[p] && wstart > _wstart_prev[p])
-                        ec.update(&_g_elem[(size_t)1 * n_e],
-                                  (double)(wstart - _wstart_prev[p]) / _sample_rate);
+                    if (_elem_prev_ok[p] && wstart > _wstart_prev[p]) {
+                        const double dt_s = (double)(wstart - _wstart_prev[p]) / _sample_rate;
+                        if (_elem_adapt) {
+                            ec.update(&_g_elem[(size_t)1 * n_e], dt_s);
+                        } else {
+                            // HELD: the live weights stay what the prior (or the last adapting
+                            // record) left them. The shadow keeps learning from this PRN alone,
+                            // and its agreement with the held weights is the capture detector:
+                            // sim ~1 = this satellite's data still say the same phases; sim -> 0
+                            // = something else is teaching it (a transit).
+                            gnss::ElemCal& sh = _cal_shadow[p];
+                            if (c.reanchored == 1 && !_elem_hold_on_reanchor)
+                                sh.reset();
+                            sh.update(&_g_elem[(size_t)1 * n_e], dt_s);
+                            if (sh.warm() && ec.warm()) {
+                                const auto& wl = ec.weights();
+                                const auto& ws = sh.weights();
+                                std::complex<double> x(0.0, 0.0);
+                                double nl = 0.0, ns = 0.0;
+                                for (int e2 = 0; e2 < n_e; ++e2) {
+                                    x += std::conj(wl[(size_t)e2]) * ws[(size_t)e2];
+                                    nl += std::norm(wl[(size_t)e2]);
+                                    ns += std::norm(ws[(size_t)e2]);
+                                }
+                                _cal_sim[p] = (nl > 0.0 && ns > 0.0) ? std::norm(x) / (nl * ns) : -1.0;
+                            }
+                        }
+                    }
                     if (ec.anchor_moved()) {
                         if (!_anchor_warned[p]) {
                             WARN("elem_sum PRN {:d}: reference element {:d} too weak -- phase "
@@ -1729,6 +1807,45 @@ void GnssGpuRecordAssemble::set_elem_gain_callback(kotekan::connectionInstance& 
         _pending_gain_set = true;
     }
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+void GnssGpuRecordAssemble::set_elem_sum_adapt_callback(kotekan::connectionInstance& conn,
+                                                        nlohmann::json& request) {
+    // {"adapt": true|false}. A plain flag read by the per-record loop: no lock, no frame
+    // boundary needed -- a record combined with the old value is as valid as the next.
+    bool adapt;
+    try {
+        adapt = request.at("adapt").get<bool>();
+    } catch (const std::exception& ex) {
+        conn.send_error(std::string("set_elem_sum_adapt: expected {\"adapt\": bool}: ") + ex.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const bool was = _elem_adapt.exchange(adapt);
+    if (was != adapt)
+        WARN("elem_sum_adapt {:s} -> {:s}: per-PRN element weights now {:s}",
+             was ? "true" : "false", adapt ? "true" : "false",
+             adapt ? "LEARNING from each PRN's own data" : "HELD (shadow cal keeps learning)");
+    conn.send_json_reply(nlohmann::json{{"adapt", adapt}, {"was", was}});
+}
+
+void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& conn) {
+    // Per PRN slot: is the live cal warm, is the anchor off the reference, and -- when held --
+    // how well the shadow (still learning) agrees with the held weights (-1 = not measured).
+    // The doubles are written by main_thread and read here without a lock: a torn read of one
+    // diagnostic double is acceptable, a lock on the per-record path is not.
+    nlohmann::json out;
+    out["adapt"] = _elem_adapt.load();
+    out["n_elements"] = _n_elements;
+    nlohmann::json rows = nlohmann::json::array();
+    for (size_t p = 0; p < _cal.size() && p < _prns.size(); ++p)
+        rows.push_back({{"prn", _prns[p]},
+                        {"warm", _cal[p].warm()},
+                        {"anchor_moved", _cal[p].anchor_moved()},
+                        {"shadow_warm", _cal_shadow[p].warm()},
+                        {"sim", _cal_sim[p]}});
+    out["prns"] = rows;
+    conn.send_json_reply(out);
 }
 
 void GnssGpuRecordAssemble::set_reference_element_callback(kotekan::connectionInstance& conn,

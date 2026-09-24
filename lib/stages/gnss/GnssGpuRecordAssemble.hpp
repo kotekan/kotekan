@@ -10,6 +10,7 @@
 #include "restServer.hpp"
 #include "json.hpp"    // nlohmann::json for the set_elem_gain POST
 
+#include <atomic>
 #include <complex>
 #include <mutex>
 #include <vector>
@@ -82,6 +83,14 @@ private:
     double _elem_sum_min_w = 0.02; ///< weight gate vs the strongest element: absent/unpowered
                                    ///< elements (EMA of pure noise) fall below and are excluded
     std::vector<gnss::ElemCal> _cal; ///< per PRN slot
+    /// HOLD vs ADAPT (config elem_sum_adapt, live /set_elem_sum_adapt): false freezes every
+    /// PRN's live weights and lets _cal_shadow learn instead; _cal_sim[p] is the shadow's
+    /// agreement with the held weights (the capture detector), -1 until both are warm.
+    std::atomic<bool> _elem_adapt{true};
+    std::vector<gnss::ElemCal> _cal_shadow;
+    std::vector<double> _cal_sim;
+    std::vector<gnss::ElemSteer::cf> _steer_buf; ///< this PRN's [n_chan][n_elem] phasors, copied under _steer_mtx
+    uint8_t _steer_nchan_warned = 0;
     std::vector<uint8_t> _anchor_warned; ///< one WARN per PRN when the phase anchor moves off
                                          ///< the reference element (a one-time phase step
                                          ///< downstream); cleared on cal reset
@@ -320,6 +329,8 @@ private:
     void set_elem_gain_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     /// #102: per-satellite geometry for the element steering (POST {"<prn>": [az_deg, el_deg]}).
     void set_sat_geometry_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    void set_elem_sum_adapt_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    void get_elem_cal_callback(kotekan::connectionInstance& conn);
     void set_reference_element_callback(kotekan::connectionInstance& conn,
                                         nlohmann::json& request);
 

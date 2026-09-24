@@ -108,6 +108,15 @@ public:
         return _anchor != _ref;
     }
 
+    /// The anchored MRC weights as they stand (n entries). Read-only: for comparing two cals
+    /// (a held prior against a shadow that keeps learning), never for combining by hand.
+    const std::vector<cd>& weights() const {
+        return _w;
+    }
+    double weight_sum() const {
+        return _wsum;
+    }
+
     /// Calibrated weighted mean of one correlator row (E/P/L/PH/RES -- same weights, same
     /// antennas), in "one element" units and the reference element's phase convention.
     /// This is what the record HEADER carries: it must stay a plain linear combination, because
