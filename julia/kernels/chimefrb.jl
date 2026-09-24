@@ -1600,6 +1600,7 @@ function fix_ptx_kernel()
         number-of-frequencies: $Fbar
         number-of-polarizations: $P
         number-of-timesamples: $Tbar
+        input-gain: $input_gain
         output-gain: $output_gain
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
@@ -1734,6 +1735,7 @@ function fix_ptx_kernel()
                     "hasbuffer" => true,
                     "hasringbuffer" => false,
                     "isscalar" => false,
+                    "do_once" => true,
                 ),
                 Dict(
                     "name" => "Ebar",
