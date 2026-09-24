@@ -51,9 +51,17 @@ cudaCopyNToRingbuffer::cudaCopyNToRingbuffer(Config& config, const std::string& 
 
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
 
+
     signal_buffer = dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "signal_buf")));
     assert(signal_buffer && "Buffer given by signal_buf is null or not a RingBuffer");
+    // Producer and consumer stages both name this backing store on purpose, and the ring they
+    // wait on and signal is what orders them. Declare the share through the ring's own name
+    // (config aliases in in/out_buffers resolve to it) so the one-owner check accepts exactly
+    // that pairing, and register the store as this stage's now: it is only taken in execute(),
+    // and a conflict belongs at construction, where --dry-run can see it (gpuMemoryClaims.hpp).
+    device.declare_shared_gpu_memory(_gpu_mem_output, signal_buffer->buffer_name);
+    device.register_gpu_memory_name(_gpu_mem_output);
     if (instance_num == 0)
         signal_buffer->register_producer(unique_name);
 

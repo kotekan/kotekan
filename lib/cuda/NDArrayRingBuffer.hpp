@@ -219,6 +219,11 @@ private:
         if (ringbuffer->size != size_in_bytes)
             FATAL_ERROR("buffer {:s}: ring buffer {:s} holds {:d} bytes, but the array needs {:d}",
                         buffer_name, signal_buffer_name, ringbuffer->size, size_in_bytes);
+        // The producing and the consuming stage both build an NDArrayRingBuffer over the same
+        // host ring and so name the same device store; that ring's handshake is what orders
+        // them, so declare the share through it (see gpuMemoryClaims.hpp).
+        cuda_command.get_device().declare_shared_gpu_memory(buffer_name_device,
+                                                            ringbuffer->buffer_name);
         void* const ptr =
             cuda_command.get_device().get_gpu_memory(buffer_name_device, size_in_bytes);
         return static_cast<T*>(ptr);

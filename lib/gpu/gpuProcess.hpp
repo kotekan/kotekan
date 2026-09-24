@@ -18,6 +18,20 @@
 #include <thread>   // for thread
 #include <vector>   // for vector
 
+/**
+ * @class gpuProcess
+ * @brief Base class for a stage that drives one chain of gpuCommands on one GPU device, frame by
+ *        frame, from its own thread. cudaProcess and the other backends derive from it.
+ *
+ * @conf shared_gpu_memory  List of strings, default empty. Names of GPU memory regions this
+ *                          stage shares with another stage on the same GPU on purpose. A named
+ *                          region otherwise belongs to the first stage that takes it, and a
+ *                          second stage taking it is refused at construction (see
+ *                          gpuMemoryClaims.hpp). List a name only when something outside the
+ *                          GPU already orders the two stages' accesses -- a host buffer handed
+ *                          between them, for instance -- and list it on BOTH stages. GPU ring
+ *                          buffers declare their own store and need no entry here.
+ */
 class gpuProcess : public kotekan::Stage {
 public:
     gpuProcess(kotekan::Config& config, const std::string& unique_name,
@@ -72,6 +86,10 @@ protected:
     /// and the destructor cannot drift apart; unique_name already starts
     /// with "/", so this reads e.g. "/gpu_profile/gpuB/gpu_0".
     const std::string _profile_endpoint;
+
+    /// Stops every frame signal and joins the results thread; main_thread()'s normal exit and
+    /// its unwind path both go through here.
+    void stop_results_thread();
 
     // Config variables
     uint32_t _gpu_buffer_depth;
