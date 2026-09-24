@@ -40,7 +40,8 @@ class setFRB1Phase : public kotekan::Stage {
     const int upchan_max_channel = config.get<int>(unique_name, "upchan_max_channel");
     const int upchan_num_channels = upchan_max_channel - upchan_min_channel;
     const int upchan_max_num_channels = config.get<int>(unique_name, "upchan_max_num_channels");
-    const float frb1_input_scale = config.get<double>(unique_name, "frb1_input_scale");
+    // The FRB1 kernels normalize the weights themselves, so this should be about 1
+    const float frb1_input_scale = config.get_default<double>(unique_name, "frb1_input_scale", 1);
 
     Buffer* const frb1_phase_buffer;
 
