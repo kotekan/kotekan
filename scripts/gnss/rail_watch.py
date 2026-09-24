@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Log the ADC rail (clip) fraction and band power at a FIXED cadence, fleet-wide.
 
+    rail_watch.py record [--out FILE]                  # per channel, every pass (1 Hz)
     rail_watch.py watch [--out FILE] [--period 10] [--endpoints ...]
     rail_watch.py plot  [--out FILE] [--since 01:30] [--prn G9,E8] [--png x.png]
 
@@ -96,6 +97,82 @@ def watch(args):
         time.sleep(max(1.0, args.period - (time.time() - t)))
 
 
+REC_OUT = "/home/kvand/gnss/fixtures/obs/rf_chan_%Y%m%d.jsonl"
+
+
+def _r(v, n=4):
+    """Compact float for the per-channel arrays: 4 significant figures, exact 0 stays "0"."""
+    return [0 if x == 0 else float("%.*g" % (n, x)) for x in v]
+
+
+def record(args):
+    """EVERY rf_stats pass, per channel, one JSON line per (instance, pass).
+
+    The node computes one pass per band_power_period_s (1 s in the manifest) from ONE frame, and
+    `passes` counts them. Polling at twice that rate and writing only when `passes` moves keeps
+    every pass exactly once whatever the phase between the two clocks; a pass missed because
+    the poll came late is visible as a jump in `pass`, never as a silent gap.
+
+    A line:  {"t", "inst": "cx27.0", "pass", "seq" (fpga_seq of the measured frame),
+              "age" (s since the pass), "hi"/"lo" (fraction of nibbles at +7 / -8, per
+              channel), "pw" (mean |x|^2 per channel)}
+    plus "f" (the channels' freq_ids, from the frame) on an instance's first line of each file
+    and whenever it changes, "ec" (per-element clip, 128) every 10th pass, and a {"state"} line
+    whenever an instance goes unreachable / off / back. freq_ids are carried, never assumed:
+    local comb index means a different frequency on every node.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    eps = args.endpoints.split(",") if args.endpoints else DEF_EP
+    name = {u: u.split("//")[1].split(":")[0] + "." + u.rsplit("gnss", 1)[1][0] for u in eps}
+    last_pass, last_f, last_state, cur_path = {}, {}, {}, [None]
+    print("rail_watch record: %d endpoint(s) -> %s" % (len(eps), args.out),
+          file=sys.stderr, flush=True)
+
+    def get(u):
+        try:
+            with urllib.request.urlopen(u + "/rf_stats", timeout=args.timeout) as r:
+                return u, json.load(r)
+        except Exception as e:
+            return u, {"_err": str(e)[:80]}
+
+    with ThreadPoolExecutor(len(eps)) as pool:
+        while True:
+            t0 = time.time()
+            path = time.strftime(args.out, time.gmtime(t0))
+            if path != cur_path[0]:          # new file: every instance restates its freq_ids
+                cur_path[0] = path
+                last_f.clear()
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+            lines = []
+            for u, d in pool.map(get, eps):
+                inst = name[u]
+                state = ("unreachable" if "_err" in d else
+                         "off" if not d.get("enabled") else "ok")
+                if state != last_state.get(inst):
+                    last_state[inst] = state
+                    lines.append({"t": round(t0, 3), "inst": inst, "state": state,
+                                  **({"err": d["_err"]} if "_err" in d else {})})
+                if state != "ok" or d.get("passes") == last_pass.get(inst):
+                    continue
+                if not d.get("clip_hi"):     # enabled but no frame measured yet
+                    continue
+                last_pass[inst] = d["passes"]
+                rec = {"t": round(t0, 3), "inst": inst, "pass": d["passes"],
+                       "seq": d.get("fpga_seq"), "age": round(d.get("age_s", -1), 3),
+                       "hi": _r(d["clip_hi"]), "lo": _r(d["clip_lo"]), "pw": _r(d["power"])}
+                f = d.get("freq_ids") or []
+                if f != last_f.get(inst):
+                    last_f[inst] = f
+                    rec["f"] = f
+                if d["passes"] % 10 == 0 and d.get("elem_clip"):
+                    rec["ec"] = _r(d["elem_clip"], 3)
+                lines.append(rec)
+            if lines:
+                with open(path, "a") as fh:
+                    fh.write("".join(json.dumps(x, separators=(",", ":")) + "\n" for x in lines))
+            time.sleep(max(0.05, args.poll - (time.time() - t0)))
+
+
 def plot(args):
     import datetime as dt
     import matplotlib
@@ -149,8 +226,12 @@ def plot(args):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=["watch", "plot"])
-    ap.add_argument("--out", default=DEF_OUT)
+    ap.add_argument("mode", choices=["record", "watch", "plot"])
+    ap.add_argument("--out", default=None,
+                    help="strftime path; default %s (record) or %s" % (REC_OUT, DEF_OUT))
+    ap.add_argument("--poll", type=float, default=0.5,
+                    help="record: seconds between polls; half the node's pass period, so no "
+                         "pass is skipped")
     ap.add_argument("--endpoints", default="")
     ap.add_argument("--period", type=float, default=10.0,
                     help="seconds; the node integrates over period_s (10 s), so faster buys "
@@ -159,4 +240,6 @@ if __name__ == "__main__":
     ap.add_argument("--since", default="", help="plot: UTC HH:MM to start from")
     ap.add_argument("--png", default="/tmp/rf_rail.png")
     a = ap.parse_args()
-    (watch if a.mode == "watch" else plot)(a)
+    if a.out is None:
+        a.out = REC_OUT if a.mode == "record" else DEF_OUT
+    {"record": record, "watch": watch, "plot": plot}[a.mode](a)

@@ -51,6 +51,7 @@ else
     check gather     gnss-gather.service
     check aggregator gnss-aggregator.service
     check viewer     gnss-viewer.service
+    check rail       gnss-rail.service
     . "$here/stack_components.sh"
     for c in $(gnss_chains); do check obs "gnss-obs@$c.service" "$c"; done
 fi

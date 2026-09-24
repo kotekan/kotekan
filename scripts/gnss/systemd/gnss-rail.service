@@ -1,0 +1,19 @@
+[Unit]
+Description=CHORD GNSS per-channel rail and band-power recorder (voltage-tap rf_stats, every pass)
+Documentation=file:///home/kvand/gnss/kotekan/scripts/gnss/rail_watch.py
+RequiresMountsFor=/home/kvand
+PartOf=gnss-stack.target
+
+[Service]
+Type=simple
+# Through run_component.sh like every stack unit: argv and environment from one definition.
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/run_component.sh rail
+Restart=on-failure
+RestartSec=10
+MemoryAccounting=yes
+MemoryMax=256M
+StandardOutput=append:/var/tmp/gnss-logs/rail.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target

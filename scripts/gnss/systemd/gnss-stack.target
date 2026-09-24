@@ -4,7 +4,7 @@ Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
 # Ordering within the target comes from the units' own After=; this only groups them so the
 # whole stack starts on boot and stops together. The prize is that a reboot -- the VM will take
 # unattended-upgrades reboots the way cf06 does at 03:03 -- needs no operator.
-Wants=gnss-gather.service gnss-broker.service gnss-viewer.service gnss-aggregator.service
+Wants=gnss-gather.service gnss-broker.service gnss-viewer.service gnss-aggregator.service gnss-rail.service
 # gnss-aggregator.service joined on 2026-09-17, after the peak sample (which first said no,
 # then said yes once #134 -- the dropped BLAS thread cap -- was fixed and the stack fell from
 # 5.2 to 2.1 cores of 6). ⚠️ cf06 keeps its second L40S idle for benching; this host has one.

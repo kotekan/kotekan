@@ -78,11 +78,11 @@ gnss_chain_rf() {          # gnss_chain_rf <chain> -> "chain sys carrier chip co
     echo "$GNSS_CHAIN_RF" | awk -v c="$1" '$1 == c {print; found=1} END {exit !found}'
 }
 
-gnss_components() { echo "broker gather aggregator viewer obs"; }
+gnss_components() { echo "broker gather aggregator viewer obs rail"; }
 
 # ── the definitions ────────────────────────────────────────────────────────────────────────
 gnss_component() {
-    local name=${1:?gnss_component <broker|gather|aggregator|viewer|obs>}
+    local name=${1:?gnss_component <broker|gather|aggregator|viewer|obs|rail>}
     GNSS_CWD=""
     case "$name" in
 
@@ -147,6 +147,14 @@ gnss_component() {
                    --carrier-hz "$3" --chip-rate-hz "$4" --code-length "$5" --comb-mult "$6"
                    $GNSS_SITE_LL --frame0-url "$GNSS_FRAME0_URL"
                    --out "$GNSS_OBS_OUT/$1_%Y%m%d.jsonl")
+        ;;
+
+    rail)
+        # Per-channel 4+4b rail fraction and band power from every GPU's voltage tap, every pass
+        # (1 s on the nodes). Standalone: stdlib only, reads the nodes' rf_stats and nothing else,
+        # so it can never touch the control path.
+        GNSS_EXEC=(/usr/bin/python3 -u "$GNSS_K/scripts/gnss/rail_watch.py" record
+                   --out "$GNSS_OBS_OUT/rf_chan_%Y%m%d.jsonl")
         ;;
 
     *)
