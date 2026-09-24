@@ -207,7 +207,6 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
                     "frb2_num_times={}, and frb1_beams_stride={}. These would result in a "
                     "wrap-around in the ringbuffer which is not implemented.",
                     frb1_beams_offset, frb1_beams_extent, frb2_num_times, frb1_beams_stride);
-        std::abort();
     }
 
     // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
