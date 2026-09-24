@@ -363,8 +363,21 @@ common:
   # elem_mapping_check.py against the banked pre-restart fingerprint,
   # fixtures/elem_fingerprint_20260831_premerge_restart.txt), then re-arm with the sign
   # calibration against the unsteered e5b sibling exactly as before.
-  elem-steer-bands: null
-  elem-steer-sign: 1.0
+  # ── RE-ARMED 2026-09-24 (KV): steer from the MEASURED positions. The 08-31 blocker was the
+  # element numbering of the nominal layout file; the array-epoch table carries the viscap-
+  # solved positions in the current numbering, resolved by date, so the generator now takes
+  # them from there (--elem-positions-from arraymap) and stamps the epoch key into the config.
+  # Why now: a boresight transit's cross-correlation dominates every weak satellite's
+  # per-element despread and the per-PRN self-cal element sum learns the bright satellite's
+  # phases -- the array gain is gone for everyone in its bands. Geometry-steered elements are
+  # what a single satellite cannot capture. e5a steered, e5b the unsteered band-sibling
+  # control, exactly the 08-29 protocol; judge = per-PRN coherence efficiency of the element
+  # vectors (fixtures/elemsteer/judge.py) within minutes of the restart. The sign is a
+  # measured convention: -1 is the first guess from the viscap solve's phase model and the
+  # despread's data*conj(replica) convention; if e5a reads WORSE than e5b, flip it and restart.
+  elem-steer-bands: e5a
+  elem-steer-sign: -1.0
+  elem-positions-from: arraymap
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated

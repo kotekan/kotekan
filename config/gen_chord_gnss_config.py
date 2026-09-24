@@ -1142,6 +1142,50 @@ def live_tile_columns(arr, tile=16):
     return cols
 
 
+def elem_positions_from_arraymap(arr, n_elem):
+    """#102, measured positions: flat [n_elem][3] ENU metres from the array-epoch table
+    (config/chord_array_epochs.json via gnss_arraymap), for the epoch valid NOW, in the
+    assembler's element order -- which is the epoch's cube_order and must equal the config's
+    live element ranges. Returns (positions, epoch_key).
+
+    The nominal layout (elem_positions_from_layout) is indexed by the element numbering that
+    predated the base re-capture and silently names the wrong feed since; the epoch
+    table is what the array actually was, resolved by date, and it refuses rather than
+    extrapolates. A position the table does not know is a refusal too: a steer built from a
+    guessed position is a wrong steer, not a weaker one.
+    """
+    sys.path.insert(0, os.path.join(CONF, "..", "python", "scripts", "gnss"))
+    import gnss_arraymap
+    ep = gnss_arraymap.at(time.time())
+    live = [e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)]
+    if list(ep.cube_order) != live:
+        raise SystemExit("--elem-positions-from arraymap: epoch %s cube_order %s != the config's "
+                         "live elements %s -- the assembler's element axis would be mislabelled"
+                         % (ep.name, ep.cube_order, live))
+    if len(live) != n_elem:
+        raise SystemExit("--elem-positions-from arraymap: %d live elements, assembler has %d"
+                         % (len(live), n_elem))
+    out = []
+    for cube_i, e in ep.cube_elements():
+        if len(e.enu_m) != 3:
+            raise SystemExit("--elem-positions-from arraymap: element %d (%s) has no enu_m in "
+                             "epoch %s" % (e.index, e.label(), ep.name))
+        out += [float(v) for v in e.enu_m]
+    return out, ep.key()
+
+
+def elem_steer_keys(args, arr, n_elem):
+    """The assembler keys that ARM steering for one band: positions (from the source chosen by
+    --elem-positions-from), the measured sign, and -- for the arraymap source -- the epoch key
+    the positions came from, so a config can be matched to the array it was built for."""
+    if args.elem_positions_from == "arraymap":
+        pos, key = elem_positions_from_arraymap(arr, n_elem)
+        return {"elem_positions_enu": pos, "elem_steer_sign": args.elem_steer_sign,
+                "elem_positions_epoch": key}
+    return {"elem_positions_enu": elem_positions_from_layout(args.dish_layout, n_elem),
+            "elem_steer_sign": args.elem_steer_sign}
+
+
 def elem_positions_from_layout(path, n_elem):
     """#102: flat [n_elem][3] ENU metres from config/chord_dish_layout.json (rows=letters
     south->north at row_spacing_m, columns=numbers west->east at col_spacing_m, U=0)."""
@@ -1549,8 +1593,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # dish-layout reference; presence of elem_positions_enu is what ARMS the
             # steering in GnssGpuRecordAssemble (geometry then arrives from the broker's
             # --post-sat-geometry feed). The SIGN is a measured convention.
-            **({"elem_positions_enu": elem_positions_from_layout(args.dish_layout, n_live),
-                "elem_steer_sign": args.elem_steer_sign}
+            **(elem_steer_keys(args, arr, n_live)
                if tag.strip("_") in [b for b in args.elem_steer_bands.split(",") if b]
                else {}),
             "elem_sum": args.elem_sum,
@@ -2845,6 +2888,13 @@ def main():
                          "geometric steering. Empty = no steering anywhere (the default).")
     ap.add_argument("--dish-layout", default="config/chord_dish_layout.json",
                     help="dish grid + element mapping reference (#102)")
+    ap.add_argument("--elem-positions-from", choices=("layout", "arraymap"), default="layout",
+                    help="#102: where steered bands get their element positions. 'layout' = the "
+                         "nominal grid in --dish-layout (pre-re-capture element numbering, "
+                         "stale since). 'arraymap' = the measured positions "
+                         "of the array epoch valid at generation time "
+                         "(config/chord_array_epochs.json via gnss_arraymap; refuses an epoch "
+                         "it cannot place or an element without a position).")
     ap.add_argument("--elem-steer-sign", type=float, default=1.0,
                     help="#102 steering phase sign -- a MEASURED convention (see "
                          "gnssElemSteer.hpp); calibrated live: e5a vs its band-sibling")
