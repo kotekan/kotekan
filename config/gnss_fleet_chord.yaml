@@ -377,7 +377,10 @@ common:
   # despread's data*conj(replica) convention) and it was WRONG on sky: steered e5a read the
   # most displaced dish (element 3, 18.8 m) at -11..-13 dB against -3..-4 on unsteered e5b --
   # the comb smearing DOUBLED, which is what the wrong sign does. +1 is the measured sign.
-  elem-steer-bands: e5a
+  # PHASE 2: every band, once e5a had confirmed the sign against e5b (displaced dishes up
+  # 2-5 dB in per-element amplitude with +1, down 8 dB with -1). The broker posts geometry
+  # from every chain (gnss_chains_chord.yaml common: post-sat-geometry).
+  elem-steer-bands: all
   elem-steer-sign: 1.0
   elem-positions-from: arraymap
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").

@@ -1594,7 +1594,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # steering in GnssGpuRecordAssemble (geometry then arrives from the broker's
             # --post-sat-geometry feed). The SIGN is a measured convention.
             **(elem_steer_keys(args, arr, n_live)
-               if tag.strip("_") in [b for b in args.elem_steer_bands.split(",") if b]
+               if args.elem_steer_bands == "all"
+               or tag.strip("_") in [b for b in args.elem_steer_bands.split(",") if b]
                else {}),
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
@@ -2884,8 +2885,9 @@ def main():
                          "returned; 8 leaves headroom without meaningful memory cost.")
     ap.add_argument("--elem-steer-bands", default="",
                     help="#102: comma list of band tags (e.g. 'e5a') whose n2assemble gets "
-                         "elem_positions_enu from --dish-layout, enabling per-element "
-                         "geometric steering. Empty = no steering anywhere (the default).")
+                         "elem_positions_enu, enabling per-element geometric steering, or "
+                         "'all' for every assembler including the untagged primary. Empty = "
+                         "no steering anywhere (the default).")
     ap.add_argument("--dish-layout", default="config/chord_dish_layout.json",
                     help="dish grid + element mapping reference (#102)")
     ap.add_argument("--elem-positions-from", choices=("layout", "arraymap"), default="layout",

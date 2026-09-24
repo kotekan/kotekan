@@ -23,6 +23,10 @@ common:
   rest-url: http://cx19:12048      # must name a real NODE; cf06 runs no gnss node itself
   time0-endpoint: telescope/time0_ns
   hops-per-sec: 195312.5           # F-engine record geometry -- not a signal property
+  # #102 geometry feed for the per-element steering: each chain posts its constellation's
+  # az/el to its record assemblers every 30 s. Every band is steered (gnss_fleet_chord.yaml
+  # elem-steer-bands: all); an unsteered assembler acknowledges {"steering":"off"}.
+  post-sat-geometry: 1
   # #104 (2026-08-30): bound sibling clock adoption -- the unbounded path relayed gps's
   # poisoned clock fleet-wide in ~2 s during the #103 outage while JOINT-CLK's 5-chip
   # bound refused the same values. Fresh-local refusals only; stale local (>300 s) adopts.
@@ -1219,7 +1223,8 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # is the unsteered control + sign calibration). Judge: e5a per-element |u| coherence
     # and p2 vs e5b after the node restart; SAT-GEOMETRY posted lines here.
     # Revert: delete this line (and/or regenerate nodes without --elem-steer-bands).
-    post-sat-geometry: 1
+    # MOVED TO common: every band is steered now, so every chain posts its constellation's
+    # az/el; the assembler acknowledges and drops a post when it is unsteered.
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
     # res_cycles differenced over adr_records: ~5 mHz over a poll span vs the rate
     # spectrum's ~60 mHz floor. Sign calibrated on sky from the JRRP shadow (4/4 healthy
