@@ -99,6 +99,10 @@ private:
     /// Create a frame desc for the output buffer.
     virtual void set_frame_desc(Buffer* buf) = 0;
 
+    /// Check the processed and masked gains of an output frame. Called whenever the gains or
+    /// the mask changed. The default does nothing.
+    virtual void check_gains(const float16_t* /*frame*/) {}
+
     std::vector<Buffer*> gain_buffers;
     Buffer* in_mask_buf;
     Buffer* out_buf;

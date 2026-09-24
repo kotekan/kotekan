@@ -4,8 +4,13 @@
 #include "StageFactory.hpp"
 #include "Telescope.hpp"
 #include "bufferContainer.hpp"
+#include "frb1IntensityBound.hpp"
+#include "kotekanLogging.hpp"
 #include "processFeedGains.hpp"
 
+#include <cassert>
+#include <cmath>
+#include <cstddef>
 #include <string>
 
 using kotekan::bufferContainer;
@@ -38,6 +43,41 @@ void processFRBFeedGains::copy_upchannelize_f(const float* src_f, float16_t* dst
         std::transform(src_f, src_f + num_components * num_elements, u_ptr,
                        [scaling_factor](float v) { return float16_t(v * scaling_factor); });
     }
+}
+
+void processFRBFeedGains::check_gains(const float16_t* frame) {
+    // Output frame layout: [beam][Fbar][P][dishN][dishM][re/im]
+    assert(num_components == 2);
+    assert(num_elements == num_polarizations * num_dishes_M * num_dishes_N);
+    const std::ptrdiff_t str_freq = std::ptrdiff_t(num_elements) * num_components;
+    const std::ptrdiff_t num_freqs = std::ptrdiff_t(num_beams) * num_local_freq * upchan_factor;
+
+    // Find the frequency with the largest worst-case intensity
+    std::ptrdiff_t num_bad_freqs = 0;
+    std::ptrdiff_t worst_freq = -1;
+    double worst_bound = 0;
+    for (std::ptrdiff_t freq = 0; freq < num_freqs; ++freq) {
+        const double bound = kotekan::frb1_intensity_bound(
+            frame + str_freq * freq, num_polarizations, num_dishes_M, num_dishes_N);
+        if (bound > kotekan::frb1_intensity_limit)
+            ++num_bad_freqs;
+        if (bound > worst_bound) {
+            worst_freq = freq;
+            worst_bound = bound;
+        }
+    }
+
+    // Don't abort: the gains are updated while the pipeline runs, and the kernel only
+    // overflows for strong coherent signals
+    if (num_bad_freqs > 0)
+        WARN("The FRB1 gains can overflow Float16 for {:d} of {:d} frequencies: frequency {:d} "
+             "has a worst-case intensity of {:g}, above the limit {:g}. The gains need to be "
+             "reduced by at least a factor {:.3g}.",
+             num_bad_freqs, num_freqs, worst_freq, worst_bound, kotekan::frb1_intensity_limit,
+             std::sqrt(worst_bound / kotekan::frb1_intensity_limit));
+    else
+        DEBUG("FRB1 gains: largest worst-case intensity {:g} (frequency {:d}), limit {:g}",
+              worst_bound, worst_freq, kotekan::frb1_intensity_limit);
 }
 
 void processFRBFeedGains::set_frame_desc(Buffer* buf) {

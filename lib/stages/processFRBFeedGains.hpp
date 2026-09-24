@@ -31,6 +31,8 @@ public:
 private:
     void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) override;
     void set_frame_desc(Buffer* buf) override;
+    /// Warn if the gains can make the FRB1 kernel overflow Float16
+    void check_gains(const float16_t* frame) override;
 
     // config parameters required for metadata
     uint32_t num_polarizations;

@@ -1,16 +1,18 @@
 #include "Config.hpp"   // for Config
 #include "DataType.hpp" // for float16_t
 #include "NDArray.hpp"
-#include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"  // for DEBUG
+#include "Stage.hpp"              // for Stage
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chordMetadata.hpp"      // for chordMetadata, get_chord_metadata
+#include "frb1IntensityBound.hpp" // for frb1_intensity_bound, frb1_intensity_limit
+#include "kotekanLogging.hpp"     // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
 #include <cassert>    // for assert
+#include <cmath>      // for sqrt
 #include <complex>    // for complex
 #include <cstddef>    // for ptrdiff_t
 #include <functional> // for function
@@ -128,6 +130,21 @@ public:
                     }
                 }
             }
+        }
+
+        // Ensure that the FRB1 kernel cannot overflow for these weights. (The unused
+        // frequencies have NaN weights and are skipped.)
+        for (int freq = 0; freq < upchan_num_channels * upchan_factor; ++freq) {
+            const double bound = kotekan::frb1_intensity_bound(
+                reinterpret_cast<const float16_t*>(&frb1_phase_frame[str_freq * freq]),
+                num_polarizations, num_dishes_M, num_dishes_N);
+            if (bound > kotekan::frb1_intensity_limit)
+                FATAL_ERROR(
+                    "The FRB1 weights can overflow Float16: frequency {:d} has a worst-case "
+                    "intensity of {:g}, above the limit {:g}. Reduce frb1_input_scale by at "
+                    "least a factor {:.3g}.",
+                    freq, bound, kotekan::frb1_intensity_limit,
+                    std::sqrt(bound / kotekan::frb1_intensity_limit));
         }
 
         // Mark buffers as full
