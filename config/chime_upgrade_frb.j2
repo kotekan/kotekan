@@ -1745,6 +1745,8 @@ FRB:
               gpu_mem: frb2_weights_buffer
             - name: cudaSyncInput
             - name: cudaFRBBeamReformer
+              # accumulate the 4096-term sums in float32; float16 loses precision
+              accumulate_float32: true
               frb1_max_num_frequencies: upchan_U16_max_num_output_channels
               frb1_max_num_times: buffer_depth * frb_num_output_times
               frb2_num_frequencies: upchan_U16_max_num_output_channels

@@ -44,6 +44,14 @@ using kotekan::mod;
  * The weights matrix for the beam locations uses the correct math but
  * with a lot of placeholder assumptions.  This will need to get
  * revisited in post-MVP development.
+ *
+ * @conf  accumulate_float32  Bool (default true). Accumulate the matrix product in float32
+ *                            (`cublasGemmStridedBatchedEx` with `CUBLAS_COMPUTE_32F`) instead
+ *                            of float16 (`cublasHgemmStridedBatched`). Inputs and outputs are
+ *                            float16 either way. The product sums over all
+ *                            `frb1_num_beams_P * frb1_num_beams_Q` input beams (4096 for CHIME),
+ *                            which is too long a sum for a float16 accumulator: rounding errors
+ *                            accumulate, and if the tensor cores truncate, they bias the result.
  */
 class cudaFRBBeamReformer : public cudaCommand {
 public:
@@ -58,6 +66,7 @@ public:
 
 private:
     const bool poison_buffers;
+    const bool accumulate_float32;
 
     const int frb_downsampling_factor;
 
@@ -93,6 +102,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
                 "cudaFRBBeamReformer"),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
+    accumulate_float32(config.get_default<bool>(unique_name, "accumulate_float32", true)),
 
     frb_downsampling_factor(config.get<int>(unique_name, "frb_downsampling_factor")),
 
@@ -283,7 +293,6 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     const int K = frb1_num_beams_P * frb1_num_beams_Q; // input beams
 
     // Matrix A
-    const float16_t alpha = 1;
     const float16_t* A = frb1_beams_buffer.get_ndarray().data()
                          + frb1_beams_stride * mod(frb1_beams_offset, frb1_beams_extent);
     assert(std::string(frb1_beams_buffer.get_ndarray().get_dimname(0)) == "Ttilde");
@@ -299,7 +308,6 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t strideB = frb2_weights_buffer.get_ndarray().get_stride(0); // frequency
 
     // Matrix C
-    const float16_t beta = 0;
     float16_t* C = frb2_beams_buffer.get_ndarray().data();
     assert(std::string(frb2_beams_buffer.get_ndarray().get_dimname(1)) == "R");
     const int ldC = frb2_beams_buffer.get_ndarray().get_stride(1); // output beams
@@ -318,17 +326,35 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     //                     const T* beta,
     //                     T* C, int ldC, int strideC,
     //                     int batchCount)
+    // GemmStridedBatchedEx takes the same arguments, plus the data type of each matrix and the
+    // compute type. `alpha` and `beta` then have the compute type.
     DEBUG("M={} N={} K={} A={} ldA={} strideA={} B={} ldB={} strideB={} C={} ldC={} strideC={} "
-          "batchCount={}",
+          "batchCount={} accumulate_float32={}",
           M, N, K, (const void*)A, ldA, strideA, (const void*)B, ldB, strideB, (void*)C, ldC,
-          strideC, batchCount);
-    cublasStatus_t stat =
-        cublasHgemmStridedBatched(handle, transA, transB, M, N, K, &alpha, A, ldA, strideA, B, ldB,
-                                  strideB, &beta, C, ldC, strideC, batchCount);
-    if (stat != CUBLAS_STATUS_SUCCESS) {
-        ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
-              cublasGetStatusString(stat));
-        std::abort();
+          strideC, batchCount, accumulate_float32);
+    if (accumulate_float32) {
+        const float alpha = 1;
+        const float beta = 0;
+        cublasStatus_t stat = cublasGemmStridedBatchedEx(
+            handle, transA, transB, M, N, K, &alpha, A, CUDA_R_16F, ldA, strideA, B, CUDA_R_16F,
+            ldB, strideB, &beta, C, CUDA_R_16F, ldC, strideC, batchCount, CUBLAS_COMPUTE_32F,
+            CUBLAS_GEMM_DEFAULT);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+            ERROR("Error at {:s}:{:d}: cublasGemmStridedBatchedEx: {:s}", __FILE__, __LINE__,
+                  cublasGetStatusString(stat));
+            std::abort();
+        }
+    } else {
+        const float16_t alpha = 1;
+        const float16_t beta = 0;
+        cublasStatus_t stat =
+            cublasHgemmStridedBatched(handle, transA, transB, M, N, K, &alpha, A, ldA, strideA, B,
+                                      ldB, strideB, &beta, C, ldC, strideC, batchCount);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+            ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
+                  cublasGetStatusString(stat));
+            std::abort();
+        }
     }
 
     if (poison_buffers)
