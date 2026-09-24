@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1325 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1331 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 1), 1), 8), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 256)) + 0) + 0x01] =
             info
@@ -569,6 +569,14 @@
         W_dish5 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 16), 2), 8), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 2), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(5::Int32, 1), 8), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 2), 2), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 4), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 2), 16)), 1), 1024), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 4), 2), 1), 1), 2), 1024)) + 0x01]
         W_dish6 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 16), 2), 8), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 2), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(6::Int32, 1), 8), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 2), 2), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 4), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 2), 16)), 1), 1024), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 4), 2), 1), 1), 2), 1024)) + 0x01]
         W_dish7 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 16), 2), 8), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 2), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(7::Int32, 1), 8), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 2), 2), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 4), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 2), 16)), 1), 1024), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 4), 2), 1), 1), 2), 1024)) + 0x01]
+        W_dish0 = Float16x2(0.015625f0, 0.015625f0) * W_dish0
+        W_dish1 = Float16x2(0.015625f0, 0.015625f0) * W_dish1
+        W_dish2 = Float16x2(0.015625f0, 0.015625f0) * W_dish2
+        W_dish3 = Float16x2(0.015625f0, 0.015625f0) * W_dish3
+        W_dish4 = Float16x2(0.015625f0, 0.015625f0) * W_dish4
+        W_dish5 = Float16x2(0.015625f0, 0.015625f0) * W_dish5
+        W_dish6 = Float16x2(0.015625f0, 0.015625f0) * W_dish6
+        W_dish7 = Float16x2(0.015625f0, 0.015625f0) * W_dish7
         for time_outer in 0:128:10239
             Tbarmin + time_outer ≥ Tbarmax && break
             I_beamQ0 = zero(Float16x2)
@@ -1778,7 +1786,7 @@
                 Y_polr0_im_beamQ7 = Y_im_beamQ7_polr0
                 Y_polr1_im_beamQ7 = Y_im_beamQ7_polr1
                 I_beamQ0 = muladd(
-                    Float16x2(0.0009765625f0, 0.0009765625f0),
+                    Float16x2(0.0078125f0, 0.0078125f0),
                     muladd(
                         Y_polr1_im_beamQ0,
                         Y_polr1_im_beamQ0,
@@ -1791,7 +1799,7 @@
                     I_beamQ0,
                 )
                 I_beamQ1 = muladd(
-                    Float16x2(0.0009765625f0, 0.0009765625f0),
+                    Float16x2(0.0078125f0, 0.0078125f0),
                     muladd(
                         Y_polr1_im_beamQ1,
                         Y_polr1_im_beamQ1,
@@ -1804,7 +1812,7 @@
                     I_beamQ1,
                 )
                 I_beamQ2 = muladd(
-                    Float16x2(0.0009765625f0, 0.0009765625f0),
+                    Float16x2(0.0078125f0, 0.0078125f0),
                     muladd(
                         Y_polr1_im_beamQ2,
                         Y_polr1_im_beamQ2,
@@ -1817,7 +1825,7 @@
                     I_beamQ2,
                 )
                 I_beamQ3 = muladd(
-                    Float16x2(0.0009765625f0, 0.0009765625f0),
+                    Float16x2(0.0078125f0, 0.0078125f0),
                     muladd(
                         Y_polr1_im_beamQ3,
                         Y_polr1_im_beamQ3,
@@ -1830,7 +1838,7 @@
                     I_beamQ3,
                 )
                 I_beamQ4 = muladd(
-                    Float16x2(0.0009765625f0, 0.0009765625f0),
+                    Float16x2(0.0078125f0, 0.0078125f0),
                     muladd(
                         Y_polr1_im_beamQ4,
                         Y_polr1_im_beamQ4,
@@ -1843,7 +1851,7 @@
                     I_beamQ4,
                 )
                 I_beamQ5 = muladd(
-                    Float16x2(0.0009765625f0, 0.0009765625f0),
+                    Float16x2(0.0078125f0, 0.0078125f0),
                     muladd(
                         Y_polr1_im_beamQ5,
                         Y_polr1_im_beamQ5,
@@ -1856,7 +1864,7 @@
                     I_beamQ5,
                 )
                 I_beamQ6 = muladd(
-                    Float16x2(0.0009765625f0, 0.0009765625f0),
+                    Float16x2(0.0078125f0, 0.0078125f0),
                     muladd(
                         Y_polr1_im_beamQ6,
                         Y_polr1_im_beamQ6,
@@ -1869,7 +1877,7 @@
                     I_beamQ6,
                 )
                 I_beamQ7 = muladd(
-                    Float16x2(0.0009765625f0, 0.0009765625f0),
+                    Float16x2(0.0078125f0, 0.0078125f0),
                     muladd(
                         Y_polr1_im_beamQ7,
                         Y_polr1_im_beamQ7,
