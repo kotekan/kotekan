@@ -1180,6 +1180,24 @@ def elem_steer_keys(args, arr, n_elem):
     the positions came from, so a config can be matched to the array it was built for."""
     if args.elem_positions_from == "arraymap":
         pos, key = elem_positions_from_arraymap(arr, n_elem)
+        if args.elem_positions_file:
+            # A refinement ON TOP of the epoch: solved from steered per-element phases and
+            # written in cube order against a named epoch key. It is only valid for the epoch
+            # it was solved against -- a re-cabling makes it a different array -- so the key
+            # must match the epoch valid now, and the order must be the epoch's cube_order.
+            ref = json.load(open(args.elem_positions_file))
+            live = [e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)]
+            if ref.get("epoch_key") != key:
+                raise SystemExit("--elem-positions-file %s was solved against epoch %s, the epoch "
+                                 "valid now is %s -- refusing" % (args.elem_positions_file,
+                                                                 ref.get("epoch_key"), key))
+            if list(ref.get("cube_order", [])) != live:
+                raise SystemExit("--elem-positions-file cube_order != the config's live elements")
+            pos = [float(v) for row in ref["positions_enu"] for v in row]
+            if len(pos) != 3 * n_elem:
+                raise SystemExit("--elem-positions-file: %d positions, assembler has %d elements"
+                                 % (len(pos) // 3, n_elem))
+            key = "%s+%s" % (key, os.path.basename(args.elem_positions_file))
         return {"elem_positions_enu": pos, "elem_steer_sign": args.elem_steer_sign,
                 "elem_positions_epoch": key}
     return {"elem_positions_enu": elem_positions_from_layout(args.dish_layout, n_elem),
@@ -2890,6 +2908,10 @@ def main():
                          "no steering anywhere (the default).")
     ap.add_argument("--dish-layout", default="config/chord_dish_layout.json",
                     help="dish grid + element mapping reference (#102)")
+    ap.add_argument("--elem-positions-file", default="",
+                    help="#102: a refined-positions JSON (cube order, epoch_key, positions_enu) "
+                         "applied on top of --elem-positions-from arraymap; refused unless its "
+                         "epoch_key is the epoch valid now")
     ap.add_argument("--elem-positions-from", choices=("layout", "arraymap"), default="layout",
                     help="#102: where steered bands get their element positions. 'layout' = the "
                          "nominal grid in --dish-layout (pre-re-capture element numbering, "
