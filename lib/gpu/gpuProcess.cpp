@@ -168,6 +168,13 @@ void gpuProcess::main_thread() {
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[ic]->wait_for_free_slot();
 
+        // The slot came free because the results thread finished with that frame. On a shutdown
+        // it does so WITHOUT finalize_frame(), so the frame's ring-buffer claims and host frames
+        // are still held; running the next frame's preconditions on this slot would find them
+        // held and raise a FatalError over an ordinary shutdown. Leave instead.
+        if (stop_thread)
+            break;
+
         // Update the gpu_frame_counter and perform any reset actions on the command object
         // for this frame.
 
