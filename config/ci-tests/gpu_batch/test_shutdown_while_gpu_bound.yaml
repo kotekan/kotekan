@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # test_shutdown_while_gpu_bound.yaml
@@ -23,7 +24,6 @@
 # Author: Keith Vanderlinde
 #
 ##########################################
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
