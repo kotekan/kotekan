@@ -37,7 +37,7 @@
     "search_port_base": 11048,
     "pool_objects": 120,
     "gpus": [
-        {"gpu": 0, "search": {'tap_core': 32, 'send_core': 34, 'chan_ids': [278, 279, 280, 281, 282, 283], 'element_offset': 0, 'band_power_chans': [278, 279, 280, 281, 282, 283, 287, 288, 289, 290, 291, 292, 293, 307, 308, 309, 310, 311, 312, 313, 314], 'band_power_period_s': 10.0, 'band_power_hop_stride': 32}, "chains": [
+        {"gpu": 0, "search": {'tap_core': 32, 'send_core': 34, 'chan_ids': [278, 279, 280, 281, 282, 283], 'element_offset': 0, 'band_power_chans': [278, 279, 280, 281, 282, 283, 287, 288, 289, 290, 291, 292, 293, 307, 308, 309, 310, 311, 312, 313, 314], 'band_power_period_s': 1.0, 'band_power_hop_stride': 32}, "chains": [
             {"tag": "", "chain": "gps_l5", "signal": "GPS_L5_Q_NH",
              "channel_ids": [5986, 6002, 6018, 6034, 6050, 6066],
              "local_channels": [278, 279, 280, 281, 282, 283],
@@ -95,7 +95,7 @@
              "viscap": false,
              "sizes": {'tiles': 393216, 'ctl': 90288, 'epl': 3236016, 'rec': '32 * 413 * sizeof_float32 + 32 * 3 * 9 * sizeof_float32', 'cmb': '32 * 413 * sizeof_float32', 'telem': 12656}},
         ]},
-        {"gpu": 1, "search": {'tap_core': 31, 'send_core': 58, 'chan_ids': [277, 278, 279, 280, 281, 282, 283], 'element_offset': 0, 'band_power_chans': [277, 278, 279, 280, 281, 282, 283, 287, 288, 289, 290, 291, 292, 306, 307, 308, 309, 310, 311, 312, 313, 314], 'band_power_period_s': 10.0, 'band_power_hop_stride': 32}, "chains": [
+        {"gpu": 1, "search": {'tap_core': 31, 'send_core': 58, 'chan_ids': [277, 278, 279, 280, 281, 282, 283], 'element_offset': 0, 'band_power_chans': [277, 278, 279, 280, 281, 282, 283, 287, 288, 289, 290, 291, 292, 306, 307, 308, 309, 310, 311, 312, 313, 314], 'band_power_period_s': 1.0, 'band_power_hop_stride': 32}, "chains": [
             {"tag": "", "chain": "gps_l5", "signal": "GPS_L5_Q_NH",
              "channel_ids": [5978, 5994, 6010, 6026, 6042, 6058, 6074],
              "local_channels": [277, 278, 279, 280, 281, 282, 283],
