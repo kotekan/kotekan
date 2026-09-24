@@ -50,8 +50,7 @@ using kotekan::mod;
  *                            of float16 (`cublasHgemmStridedBatched`). Inputs and outputs are
  *                            float16 either way. The product sums over all
  *                            `frb1_num_beams_P * frb1_num_beams_Q` input beams (4096 for CHIME),
- *                            which is too long a sum for a float16 accumulator: rounding errors
- *                            accumulate, and if the tensor cores truncate, they bias the result.
+ *                            and float32 accumulation of this sum is about 10x more accurate.
  */
 class cudaFRBBeamReformer : public cudaCommand {
 public:
@@ -340,9 +339,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
             ldB, strideB, &beta, C, CUDA_R_16F, ldC, strideC, batchCount, CUBLAS_COMPUTE_32F,
             CUBLAS_GEMM_DEFAULT);
         if (stat != CUBLAS_STATUS_SUCCESS) {
-            ERROR("Error at {:s}:{:d}: cublasGemmStridedBatchedEx: {:s}", __FILE__, __LINE__,
-                  cublasGetStatusString(stat));
-            std::abort();
+            FATAL_ERROR("Error at {:s}:{:d}: cublasGemmStridedBatchedEx: {:s}", __FILE__, __LINE__,
+                        cublasGetStatusString(stat));
         }
     } else {
         const float16_t alpha = 1;
@@ -351,9 +349,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
             cublasHgemmStridedBatched(handle, transA, transB, M, N, K, &alpha, A, ldA, strideA, B,
                                       ldB, strideB, &beta, C, ldC, strideC, batchCount);
         if (stat != CUBLAS_STATUS_SUCCESS) {
-            ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
-                  cublasGetStatusString(stat));
-            std::abort();
+            FATAL_ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
+                        cublasGetStatusString(stat));
         }
     }
 
