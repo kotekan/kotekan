@@ -9,7 +9,7 @@
 #       --carrier-phase-from-ref 1 --carrier-phase-mode 1 --keep-n2 --n2-dual --phi-fp16
 #       --despread-max-chips 80 --despread-chips-centered --dpdk-resync-max-advances 32
 #       --n2-send --n2-send-legs both --rf-stats --rf-stats-period-s 1.0 --no-path-a --sky-deep
-#       --elem-steer-bands e5a --elem-steer-sign -1.0 --elem-positions-from arraymap
+#       --elem-steer-bands e5a --elem-steer-sign 1.0 --elem-positions-from arraymap
 #       --search-host 10.222.0.56 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube
 #       --cube-host 10.222.3.6 --vis-capture gps_l5 --extra-signal
 #       GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
@@ -1190,7 +1190,7 @@ gnss0_e5a_n2assemble:
   - 10.434
   - 0.0
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f
-  elem_steer_sign: -1.0
+  elem_steer_sign: 1.0
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e5a_n2epl_buf
@@ -3077,7 +3077,7 @@ gnss1_e5a_n2assemble:
   - 10.434
   - 0.0
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f
-  elem_steer_sign: -1.0
+  elem_steer_sign: 1.0
   elem_sum: true
   elem_sum_tau_s: 2.0
   in_buf: gnss1_e5a_n2epl_buf

@@ -373,10 +373,12 @@ common:
   # what a single satellite cannot capture. e5a steered, e5b the unsteered band-sibling
   # control, exactly the 08-29 protocol; judge = per-PRN coherence efficiency of the element
   # vectors (fixtures/elemsteer/judge.py) within minutes of the restart. The sign is a
-  # measured convention: -1 is the first guess from the viscap solve's phase model and the
-  # despread's data*conj(replica) convention; if e5a reads WORSE than e5b, flip it and restart.
+  # measured convention. -1 was the first guess (the viscap solve's phase model with the
+  # despread's data*conj(replica) convention) and it was WRONG on sky: steered e5a read the
+  # most displaced dish (element 3, 18.8 m) at -11..-13 dB against -3..-4 on unsteered e5b --
+  # the comb smearing DOUBLED, which is what the wrong sign does. +1 is the measured sign.
   elem-steer-bands: e5a
-  elem-steer-sign: -1.0
+  elem-steer-sign: 1.0
   elem-positions-from: arraymap
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
