@@ -84,6 +84,10 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _elem_shared = config.get_default<bool>(unique_name, "elem_sum_shared", false);
     _elem_shared_tau_s = config.get_default<double>(unique_name, "elem_sum_shared_tau_s", 300.0);
     _elem_pol_tau_s = config.get_default<double>(unique_name, "elem_sum_pol_tau_s", 3.0);
+    _elem_shared_freeze_deg =
+        config.get_default<double>(unique_name, "elem_sum_shared_freeze_deg", 6.0);
+    _elem_shared_freeze_hold_s =
+        config.get_default<double>(unique_name, "elem_sum_shared_freeze_hold_s", 60.0);
     if (_elem_shared) {
         _elem_adapt = false;
         INFO("GnssGpuRecordAssemble[{:s}]: SHARED element model ON (consensus tau {:.0f} s, "
@@ -425,6 +429,14 @@ void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstanc
         const double now_s = std::chrono::duration<double>(
                                  std::chrono::steady_clock::now().time_since_epoch())
                                  .count();
+        // "_bore": [sep_deg, t_utc] -- the broker's POOLED nearest-to-boresight separation over
+        // every constellation (a satellite of another system rails and leaks into this band
+        // just the same). It gates the shared model's learning (see _elem_shared_freeze_deg).
+        auto bi = request.find("_bore");
+        if (bi != request.end() && bi->is_array() && !bi->empty()) {
+            _bore_sep_deg.store((*bi)[0].get<double>());
+            _bore_post_t.store(now_s);
+        }
         std::lock_guard<std::mutex> lk(_steer_mtx);
         for (auto it = request.begin(); it != request.end(); ++it) {
             const int prn = std::atoi(it.key().c_str());
@@ -601,6 +613,7 @@ void GnssGpuRecordAssemble::main_thread() {
                     std::fill(_elem_prev_ok.begin(), _elem_prev_ok.end(), 0);
                     // The shared model is anchored to the old reference: relearn it.
                     _g_shared_warm = false;
+                    _g_pin_ref_ok = false;
                     _g_shared_n = 0;
                     for (size_t p2 = 0; p2 < _cal.size(); ++p2)
                         shared_reset_prn(p2);
@@ -1916,6 +1929,14 @@ void GnssGpuRecordAssemble::set_elem_sum_shared_callback(kotekan::connectionInst
                                         {"adapt", _elem_adapt.load()}});
 }
 
+namespace {
+/// The steady clock in seconds -- the same clock every freshness decision here uses.
+double steady_now_s() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+} // namespace
+
 void GnssGpuRecordAssemble::shared_reset_prn(size_t p) {
     if (p >= _pol_num.size())
         return;
@@ -1947,6 +1968,10 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
         return;
     const double dt = now_s - _g_shared_t;
     _g_shared_t = now_s;
+    // Transit: the model in force stays exactly as it was, and none is FORMED from captured
+    // learners either (before a model exists the PRNs ride their own, as always).
+    if (shared_frozen(now_s))
+        return;
     const int h = (n % 2 == 0) ? n / 2 : n;   // an odd count is one pol
     const int n_pol = (h < n) ? 2 : 1;
     std::vector<cd> acc((size_t)n, cd(0.0, 0.0));
@@ -2023,7 +2048,13 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
         const int e0 = pol * h, e1 = std::min(n, e0 + h);
         const int anchor = std::min(e1 - 1, e0 + _reference_element);
         cd pin(1.0, 0.0);
-        if (std::abs(_g_shared[(size_t)anchor]) > 0.0)
+        cd y(0.0, 0.0);
+        if (_g_pin_ref_ok)
+            for (int e = e0; e < e1; ++e)
+                y += std::conj(_g_pin_ref[(size_t)e]) * _g_shared[(size_t)e];
+        if (std::abs(y) > 0.0)
+            pin = std::conj(y) / std::abs(y);   // <ref, G*pin> real positive, whole pol
+        else if (std::abs(_g_shared[(size_t)anchor]) > 0.0)
             pin = std::conj(_g_shared[(size_t)anchor]) / std::abs(_g_shared[(size_t)anchor]);
         double s = 0.0;
         for (int e = e0; e < e1; ++e)
@@ -2046,12 +2077,25 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
             _g_shared_collapsed = 1;
             _g_shared_warm = false;
             _g_shared_n = 0;
+            _g_pin_ref_ok = false;
             return;
         }
     }
     _g_shared_collapsed = 0;
     _g_shared_warm = true;
     _g_shared_n = cnt;
+    if (!_g_pin_ref_ok) {
+        _g_pin_ref = _g_shared;
+        _g_pin_ref_ok = true;
+    }
+}
+
+bool GnssGpuRecordAssemble::shared_frozen(double now_s) {
+    // A post older than 120 s is not evidence of anything (broker down or an older broker
+    // that sends no "_bore"): no freeze from it, and an armed hold still runs out.
+    if (now_s - _bore_post_t.load() <= 120.0 && _bore_sep_deg.load() < _elem_shared_freeze_deg)
+        _freeze_until = now_s + _elem_shared_freeze_hold_s;
+    return now_s < _freeze_until;
 }
 
 void GnssGpuRecordAssemble::shared_hold(size_t p) {
@@ -2097,6 +2141,10 @@ void GnssGpuRecordAssemble::shared_pol_update(size_t p, const std::complex<doubl
     const int n = _n_elements;
     if (!_g_shared_warm || p >= _pol_num.size() || n < 2 || (n % 2) != 0 || !(dt_s > 0.0))
         return;
+    // Transit: hold every coefficient too. The sub-beams reject leakage by the half-array's
+    // gain, but a boresight transit is 20-30 dB above a weak satellite and 3 s forgets fast.
+    if (shared_frozen(steady_now_s()))
+        return;
     const int h = n / 2;
     cd b0(0.0, 0.0), b1(0.0, 0.0);
     for (int e = 0; e < h; ++e)
@@ -2120,6 +2168,13 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
     out["shared"] = _elem_shared.load();
     out["shared_warm"] = _g_shared_warm;
     out["shared_n"] = _g_shared_n;
+    {
+        const double now_s = steady_now_s();
+        out["shared_frozen"] = now_s < _freeze_until;
+        out["bore_sep_deg"] = _bore_sep_deg.load();
+        out["bore_post_age_s"] = now_s - _bore_post_t.load();
+        out["pin_ref_ok"] = _g_pin_ref_ok;
+    }
     nlohmann::json gs = nlohmann::json::array();
     for (const auto& g : _g_shared)
         gs.push_back({g.real(), g.imag()});

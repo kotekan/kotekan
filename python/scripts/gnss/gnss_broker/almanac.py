@@ -21,7 +21,7 @@ search rather than narrow it.
 import statistics
 
 from gnss_broker.transport import _now, _post, _log, _log_rl
-from gnss_broker.sky import brdc_predict, visible_prns
+from gnss_broker.sky import brdc_predict, nearest_boresight, visible_prns
 from gnss_broker import timebase
 
 
@@ -121,6 +121,14 @@ def stage_almanac_predict(ctx):
                         _body[str(_p2)] = ([float(_v2[5]), float(_v2[2]), float(_v2[6]),
                                             float(_v2[7]), float(_v2[8])]
                                            if len(_v2) > 8 else [float(_v2[5]), float(_v2[2])])
+                # THE TRANSIT GATE for the assemblers' shared element model: the POOLED nearest-to-
+                # boresight separation over every constellation (ctx.dr_pd carries all three --
+                # the same sky the railing veto reads). A bright satellite of ANOTHER system
+                # captures this band's per-PRN learners just the same, so a per-chain answer
+                # would miss exactly the transits that matter.
+                _near = nearest_boresight(getattr(ctx, "dr_pd", None))
+                if _body and _near is not None:
+                    _body["_bore"] = [float(_near[0]), float(t_pred.timestamp())]
                 if _body:
                     _okc = 0
                     for _u2 in ctx.dll_combiners:

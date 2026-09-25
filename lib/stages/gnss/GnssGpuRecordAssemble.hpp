@@ -109,6 +109,25 @@ private:
     uint8_t _g_shared_collapsed = 0;     ///< last consensus refused (one element > 50%)
     int _g_shared_n = 0;                 ///< PRNs that fed the last consensus
     double _g_shared_t = 0.0;            ///< steady time of the last consensus refresh
+    /// THE TRANSIT FREEZE. A satellite near boresight captures every weak satellite's per-PRN
+    /// learner at once (its leakage dominates their per-element despread), and a consensus of
+    /// captured learners is a captured model. The broker posts the pooled (all-constellation)
+    /// nearest-to-boresight separation with each geometry post; while it is inside
+    /// _elem_shared_freeze_deg, and for _elem_shared_freeze_hold_s after, neither the model
+    /// nor any inter-pol coefficient learns. Written by the REST thread, read by main.
+    double _elem_shared_freeze_deg = 6.0;
+    double _elem_shared_freeze_hold_s = 60.0;
+    std::atomic<double> _bore_sep_deg{1.0e9};   ///< last posted pooled boresight separation
+    std::atomic<double> _bore_post_t{-1.0e18};  ///< steady time of that post
+    double _freeze_until = -1.0e18;             ///< main thread: frozen while now < this
+    /// THE PHASE PIN. The model's global phase per pol is pinned to the FIRST healthy model
+    /// (all elements, <ref, G> real positive), not to one element: an element's weight can
+    /// collapse, and a pin on it then goes to noise independently on every instance, which
+    /// cancels the instances in the fleet sum. The first model is pinned on the reference
+    /// element, which is what makes the instances agree to begin with.
+    std::vector<std::complex<double>> _g_pin_ref;
+    bool _g_pin_ref_ok = false;
+    bool shared_frozen(double now_s);
     std::vector<std::complex<double>> _pol_num; ///< per PRN: EMA of B1 conj(B0)
     std::vector<double> _pol_den;               ///< per PRN: EMA of |B0|^2
     std::vector<double> _pol_warmth;            ///< per PRN: -> 1 with tau
