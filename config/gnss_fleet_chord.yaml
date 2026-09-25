@@ -398,10 +398,13 @@ common:
   # transit can no longer teach the weak satellites the bright one's phases. Requires the
   # steering above (the instrument is common only once geometry is removed). Live switch:
   # POST <assemble>/set_elem_sum_shared {"shared": false} reverts to held per-PRN weights.
-  # DISARMED: live, the model's element weights were right and tracking improved, but the
-  # served C/N0 read 16 dB low on every chain (the noise-probe anchor moved) and the
-  # split-aperture REC_SKY output died. Re-arm once the estimator side is understood.
-  elem-sum-shared: false
+  # First live run: element weights right, tracking better, but the served prompt C/N0 read
+  # 13-27 dB low. That was NOT the model or the probe anchor (which fell 6 dB, as the combined
+  # noise should): the per-channel comb taps applied the steered-learned weights to the
+  # UNSTEERED correlations, so the array's geometric phase spread the per-channel sum by
+  # exactly the geometry's prediction, satellite by satellite. Fixed in the assembler (the
+  # taps are steered like the header); requires the binary that carries that fix.
+  elem-sum-shared: true
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
