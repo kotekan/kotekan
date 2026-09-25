@@ -11,8 +11,8 @@ add_library(
                       f_statistic_reference.cpp # bit-accurate CPU reference (fstat_ref_*)
 )
 
-# CHORD: 64 samples/window and 128 windows per 8192-sample detector block.
-# Consumers read this private setting through FStat_GetSpecs().
+# CHORD: 64 samples/window and 128 windows per 8192-sample detector block. Consumers read this
+# private setting through FStat_GetSpecs().
 target_compile_definitions(pilotproxy PRIVATE FSTAT_DETECTOR_WINDOW_SAMPLES=64)
 
 # Match the other vendored libraries' system-header treatment.

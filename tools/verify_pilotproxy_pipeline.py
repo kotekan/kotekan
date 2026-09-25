@@ -66,7 +66,9 @@ def read_raw_frames(pattern, frame_size):
             if len(metadata) != metadata_size:
                 raise ValueError(f"{path}: missing or truncated timing metadata")
             if metadata_size != CHORD_METADATA_SIZE:
-                raise ValueError(f"{path}: unsupported CHORD metadata size {metadata_size}")
+                raise ValueError(
+                    f"{path}: unsupported CHORD metadata size {metadata_size}"
+                )
             # Six layout limits, frame counter, ABI padding, then FPGA timing.
             prefix = CHORD_METADATA_PREFIX.unpack_from(metadata)
             if prefix[:6] != CHORD_METADATA_LIMITS:
