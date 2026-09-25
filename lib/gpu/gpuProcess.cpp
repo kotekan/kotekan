@@ -72,6 +72,12 @@ gpuProcess::~gpuProcess() {
     // remove_get_callback() waits for an in-flight invocation to finish, so the
     // callback cannot still be walking `commands` once this returns.
     restServer::instance().remove_get_callback(_profile_endpoint);
+    // main_thread() stops the signals and joins the results thread on every exit path; this is
+    // the backstop for a stage that got here with the thread still alive. Deleting a signal the
+    // results thread is waiting on blocks forever in pthread_cond_destroy (glibc waits for the
+    // waiter to leave), and destroying a joinable std::thread terminates the process.
+    if (results_thread_handle.joinable())
+        stop_results_thread();
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
@@ -151,6 +157,19 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 void gpuProcess::main_thread() {
     dev->set_thread_device();
 
+    // A FatalError thrown from a command below leaves this function without reaching exit_loop;
+    // the results thread would then wait forever on signals nobody stops, and ~gpuProcess would
+    // block in pthread_cond_destroy on the very condition variable it waits on. Stop and join on
+    // the way out too.
+    struct results_unwind {
+        gpuProcess& proc;
+        bool armed = true;
+        ~results_unwind() {
+            if (armed)
+                proc.stop_results_thread();
+        }
+    } unwind{*this};
+
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
         _profile_endpoint, std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
@@ -167,6 +186,13 @@ void gpuProcess::main_thread() {
 
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[ic]->wait_for_free_slot();
+
+        // The slot came free because the results thread finished with that frame. On a shutdown
+        // it does so WITHOUT finalize_frame(), so the frame's ring-buffer claims and host frames
+        // are still held; running the next frame's preconditions on this slot would find them
+        // held and raise a FatalError over an ordinary shutdown. Leave instead.
+        if (stop_thread)
+            break;
 
         // Update the gpu_frame_counter and perform any reset actions on the command object
         // for this frame.
@@ -212,6 +238,11 @@ void gpuProcess::main_thread() {
         gpu_frame_counter++;
     }
 exit_loop:
+    unwind.armed = false;
+    stop_results_thread();
+}
+
+void gpuProcess::stop_results_thread() {
     for (auto& sig_container : final_signals)
         sig_container->stop();
     INFO("Waiting for GPU packet queues to finish up before freeing memory.");

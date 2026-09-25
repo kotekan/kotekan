@@ -73,6 +73,10 @@ protected:
     /// with "/", so this reads e.g. "/gpu_profile/gpuB/gpu_0".
     const std::string _profile_endpoint;
 
+    /// Stops every frame signal and joins the results thread. main_thread()'s normal exit, its
+    /// unwind on an exception, and the destructor's backstop all go through here.
+    void stop_results_thread();
+
     // Config variables
     uint32_t _gpu_buffer_depth;
     uint32_t gpu_id;
