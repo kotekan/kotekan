@@ -168,6 +168,11 @@ endif()
 add_executable(test_DataType test_DataType.cpp)
 target_link_libraries(test_DataType kotekan_metadata libexternal)
 
+# test_frb1IntensityBound - the worst-case FRB1 intensity for given weights (header-only helper)
+add_executable(test_frb1IntensityBound test_frb1IntensityBound.cpp)
+target_include_directories(test_frb1IntensityBound PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_link_libraries(test_frb1IntensityBound kotekan_metadata libexternal)
+
 add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
 

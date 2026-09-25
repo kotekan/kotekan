@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1948 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1954 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256), 1), 256), 1), 1), 256), 768), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 24), 1), 24), 1), 1), 24), 32)) + 0) + 0x01] =
             info
@@ -169,7 +169,7 @@
             if !(0i32 ≤ Sm < 24 && 0i32 ≤ Sn < 24)
                 CUDA.@cuprintf "thread=%d warp=%d block=%d Sm=%d Sn=%d\n" Cint((threadIdx()).x - 1) Cint((threadIdx()).y - 1) Cint(
                     (blockIdx()).x - 1
-                ) Cint(Sm) Cint(Sn)                    #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1715 =#
+                ) Cint(Sm) Cint(Sn)                    #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1720 =#
                 info = 4
                 info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256), 1), 256), 1), 1), 256), 768), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 24), 1), 24), 1), 1), 24), 32)) + 0) + 0x01] =
                     info
@@ -186,6 +186,8 @@
         end
             W_polr0 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256), 1), 256), 1), 1), 256), 1152), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(0::Int32, 1), 2), 1), 1), 2), 576), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 8), 1), 1), 6), 24), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 4), 1), 1), 4), 144), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 24), 1), 24), 1), 1), 24), 1)) + 0x01]
             W_polr1 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256), 1), 256), 1), 1), 256), 1152), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(1::Int32, 1), 2), 1), 1), 2), 576), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 8), 1), 1), 6), 24), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 4), 1), 1), 4), 144), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 24), 1), 24), 1), 1), 24), 1)) + 0x01]
+            W_polr0 = Float16x2(0.020828247f0, 0.020828247f0) * W_polr0
+            W_polr1 = Float16x2(0.020828247f0, 0.020828247f0) * W_polr1
         end
         I_beamQ0 = zero(Float16x2)
         I_beamQ24 = zero(Float16x2)
@@ -1684,7 +1686,7 @@
                             Ẽp1re_beamQ24 = Ẽp1_beamQ24_cplx0
                             Ẽp1im_beamQ24 = Ẽp1_beamQ24_cplx1
                             I_beamQ0 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ0,
                                     Ẽp1im_beamQ0,
@@ -1695,7 +1697,7 @@
                                 I_beamQ0,
                             )
                             I_beamQ24 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ24,
                                     Ẽp1im_beamQ24,
@@ -1885,7 +1887,7 @@
                             Ẽp1re_beamQ24 = Ẽp1_beamQ24_cplx0
                             Ẽp1im_beamQ24 = Ẽp1_beamQ24_cplx1
                             I_beamQ0 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ0,
                                     Ẽp1im_beamQ0,
@@ -1896,7 +1898,7 @@
                                 I_beamQ0,
                             )
                             I_beamQ24 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ24,
                                     Ẽp1im_beamQ24,
@@ -2086,7 +2088,7 @@
                             Ẽp1re_beamQ24 = Ẽp1_beamQ24_cplx0
                             Ẽp1im_beamQ24 = Ẽp1_beamQ24_cplx1
                             I_beamQ0 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ0,
                                     Ẽp1im_beamQ0,
@@ -2097,7 +2099,7 @@
                                 I_beamQ0,
                             )
                             I_beamQ24 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ24,
                                     Ẽp1im_beamQ24,
@@ -2287,7 +2289,7 @@
                             Ẽp1re_beamQ24 = Ẽp1_beamQ24_cplx0
                             Ẽp1im_beamQ24 = Ẽp1_beamQ24_cplx1
                             I_beamQ0 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ0,
                                     Ẽp1im_beamQ0,
@@ -2298,7 +2300,7 @@
                                 I_beamQ0,
                             )
                             I_beamQ24 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ24,
                                     Ẽp1im_beamQ24,
@@ -2902,7 +2904,7 @@
                             Ẽp1re_beamQ24 = Ẽp1_beamQ24_cplx0
                             Ẽp1im_beamQ24 = Ẽp1_beamQ24_cplx1
                             I_beamQ0 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ0,
                                     Ẽp1im_beamQ0,
@@ -2913,7 +2915,7 @@
                                 I_beamQ0,
                             )
                             I_beamQ24 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ24,
                                     Ẽp1im_beamQ24,
@@ -3103,7 +3105,7 @@
                             Ẽp1re_beamQ24 = Ẽp1_beamQ24_cplx0
                             Ẽp1im_beamQ24 = Ẽp1_beamQ24_cplx1
                             I_beamQ0 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ0,
                                     Ẽp1im_beamQ0,
@@ -3114,7 +3116,7 @@
                                 I_beamQ0,
                             )
                             I_beamQ24 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ24,
                                     Ẽp1im_beamQ24,
@@ -3304,7 +3306,7 @@
                             Ẽp1re_beamQ24 = Ẽp1_beamQ24_cplx0
                             Ẽp1im_beamQ24 = Ẽp1_beamQ24_cplx1
                             I_beamQ0 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ0,
                                     Ẽp1im_beamQ0,
@@ -3315,7 +3317,7 @@
                                 I_beamQ0,
                             )
                             I_beamQ24 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ24,
                                     Ẽp1im_beamQ24,
@@ -3505,7 +3507,7 @@
                             Ẽp1re_beamQ24 = Ẽp1_beamQ24_cplx0
                             Ẽp1im_beamQ24 = Ẽp1_beamQ24_cplx1
                             I_beamQ0 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ0,
                                     Ẽp1im_beamQ0,
@@ -3516,7 +3518,7 @@
                                 I_beamQ0,
                             )
                             I_beamQ24 = muladd(
-                                Float16x2(0.020828247f0, 0.020828247f0),
+                                Float16x2(0.16662598f0, 0.16662598f0),
                                 muladd(
                                     Ẽp1im_beamQ24,
                                     Ẽp1im_beamQ24,

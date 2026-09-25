@@ -73,7 +73,14 @@ end
 const output_size_scale = is_hfb ? 20 : 1
 const Ttilde = (is_hfb ? 4 * 1 : 4 * 256) * output_size_scale
 
-const output_gain = 1 / (8 * Tds) #TODO   1 / (2 * Tds)
+# I = 1/(2 · P · M·N · Tds) · Σ_t Σ_pol |Ẽ|²
+# I is the mean beam power per polarisation per real component, in units of the
+# input LSB², i.e. ⟨I⟩ = σ² for noise-dominated input. Splitting the scale as
+# `input_gain` (applied to `W`, before the squaring) and `output_gain` (applied
+# after) bounds both the intermediate |Ẽ|² and the accumulated I by 49·M·N,
+# which is below the Float16 maximum of 65504 for any representable input.
+const input_gain = 1 / (2 * sqrt(M * N))
+const output_gain = 2 / (P * Tds)
 
 # Machine setup
 
@@ -696,6 +703,7 @@ function make_chimefrb_kernel()
         Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
     ])
     load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory)
+    apply!(emitter, :W, [:W], (W,) -> :($(Float16x2(input_gain, input_gain)) * $W))
 
     # Main loop
 
@@ -1415,6 +1423,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     @assert Ttildemax - Ttildemin == (Tbarmax - Tbarmin) ÷ Int32(Tds)
 
     println("Setting up input data...")
+    # Largest expected intensity, used to scale the self-test tolerance
+    I_max = 0.0f0
     if run_selftest
         # Plane-wave self-test with a CPU reference beamformer (ported from `frb.jl`).
         function uniform_in_disk()
@@ -1429,8 +1439,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         map!(i -> swap_offset(zero(Int4x8)), E_memory, E_memory)
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
 
-        # Constant input gain, scaled to keep intensities within Float16 range.
-        Wvalue = (1 + 0im) / 16
+        # Constant input gain; the kernel's `input_gain` keeps intensities in range.
+        Wvalue = 1 + 0im
         map!(i -> Float16x2(c2t(Wvalue)...), W_memory, W_memory)
 
         # A single nonzero (freq, polr, time) sample, identical across all dishes.
@@ -1460,7 +1470,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 dishn = dish ÷ M
                 Ẽvalue += cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
             end
-            Ivalue = output_gain * abs2(Ẽvalue)
+            Ivalue = output_gain * abs2(input_gain * Ẽvalue)
+            I_max = max(I_max, Ivalue)
             Ivalue2 = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])
             Ivalue2 = setindex(Ivalue2, Ivalue, beamp % 2 + 1)
             I_wanted[Iidx + 1] = Float16x2(Ivalue2...)
@@ -1532,7 +1543,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar * dstime
             have_value = convert(NTuple{2,Float32}, I_memory[Iidx + 1])[beamp % 2 + 1]
             want_value = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])[beamp % 2 + 1]
-            if !isapprox(have_value, want_value; atol=10 * eps(Float16), rtol=10 * eps(Float16))
+            # The kernel's rounding error at any beam is set by the largest
+            # intermediate value of the FFT, which is common to all beams,
+            # so the absolute tolerance must scale with the peak intensity
+            if !isapprox(have_value, want_value; atol=eps(Float16) * I_max, rtol=10 * eps(Float16))
                 error_count += 1
                 if error_count ≤ 20
                     println("    beamp=$beamp beamq=$beamq freq=$freq dstime=$dstime I=$have_value I₀=$want_value")
@@ -1600,6 +1614,7 @@ function fix_ptx_kernel()
         number-of-frequencies: $Fbar
         number-of-polarizations: $P
         number-of-timesamples: $Tbar
+        input-gain: $input_gain
         output-gain: $output_gain
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U

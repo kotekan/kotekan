@@ -138,6 +138,10 @@ void processFeedGains::main_thread() {
     std::vector<bool> gains_received(gain_buffers.size(), false);
     bool mask_received = false;
     while (!stop_thread) {
+        // Whether the gains or the mask changed in this iteration. Each iteration emits one
+        // output frame (or returns).
+        bool gains_changed = false;
+
         // Poll all possible producing buffers
         for (size_t beam_id = 0; beam_id < gain_buffers.size(); beam_id++) {
             Buffer* buf = gain_buffers.at(beam_id);
@@ -161,6 +165,7 @@ void processFeedGains::main_thread() {
                 // copy gains into the permanent buffer and upchannelize
                 copy_upchannelize(frame, beam_id);
                 gains_received.at(beam_id) = true;
+                gains_changed = true;
                 DEBUG("Copied upchannelized gains for beam {:d}", beam_id);
 
                 // set coarse freq metadata once
@@ -199,6 +204,7 @@ void processFeedGains::main_thread() {
             // copy into the permanent buffer
             std::copy_n(in_mask_frame, num_elements, mask_store_buf.begin());
             mask_received = true;
+            gains_changed = true;
 
             in_mask_buf->mark_frame_empty(unique_name, in_mask_frame_id);
             in_mask_frame_id++;
@@ -248,6 +254,9 @@ void processFeedGains::main_thread() {
                 }
             }
         }
+
+        if (gains_changed)
+            check_gains(out_frame);
 
         out_buf->mark_frame_full(unique_name, out_buf_frame_id);
         out_buf_frame_id++;
