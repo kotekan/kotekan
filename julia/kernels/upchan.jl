@@ -664,7 +664,7 @@ function upchan!(emitter)
                         elseif U == 4
                             quote
                                 timehi0 = 2i32 * 0i32 + 1i32 * thread1
-                                timehi1 = 1i32 * 1i32 + 1i32 * thread1
+                                timehi1 = 2i32 * 1i32 + 1i32 * thread1
                                 dish_in0 = 1i32 * thread0
                                 dish_in1 = 1i32 * thread0
                             end
@@ -707,7 +707,7 @@ function upchan!(emitter)
                               maxfreqlo = 1i32
                           elseif U == 4
                               maxtimehi0 = 2i32 * 0i32 + 1i32
-                              maxtimehi1 = 1i32 * 1i32 + 1i32
+                              maxtimehi1 = 2i32 * 1i32 + 1i32
                               maxfreqlo = 1i32 + 2i32
                           elseif U ≥ 8
                               maxtimehi0 = 4i32 * 0i32 + 2i32 + 1i32
@@ -1399,8 +1399,15 @@ function upchan!(emitter)
                         merge!(emitter, :ZZZ_t1, [:ZZZre, :ZZZim], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
 
                         # Step 6.5 (equivalent to 6.3, but without mma): Length 2 FFT: Y = exp(...) Z
-                        apply!(emitter, :YYY_u0, [:WWW_t0, :WWW_t1], (WWW_t0, WWW_t1) -> :($WWW_t0 + $WWW_t1))
-                        apply!(emitter, :YYY_u1, [:WWW_t0, :WWW_t1], (WWW_t0, WWW_t1) -> :($WWW_t0 - $WWW_t1))
+                        # Note the orientation: eqn. (62) reads `Σ_τlo Z[τlo, ulo]
+                        # exp(-2πi τlo uhi / 2^n)`, i.e. the sum for `uhi = 0` and the
+                        # difference for `uhi = 1`. Here it is the other way round, so
+                        # either the two halves of `Time(:time, 1, 2)` or those of
+                        # `Freq(:freq, U/2, 2)` are labelled opposite to the note. The
+                        # self-test pins this down: with the sum in `uhi = 0` a constant
+                        # input lands in `u = 0` and `u = 63` instead of the middle two.
+                        apply!(emitter, :YYY_u0, [:ZZZ_t0, :ZZZ_t1], (ZZZ_t0, ZZZ_t1) -> :($ZZZ_t0 - $ZZZ_t1))
+                        apply!(emitter, :YYY_u1, [:ZZZ_t0, :ZZZ_t1], (ZZZ_t0, ZZZ_t1) -> :($ZZZ_t0 + $ZZZ_t1))
                         merge!(emitter, :YYY, [:YYY_u0, :YYY_u1], Freq(:freq, idiv(U, 2), 2) => Register(:freq, idiv(U, 2), 2))
 
                         apply!(emitter, :E4, [:YYY], (YYY,) -> :($YYY))

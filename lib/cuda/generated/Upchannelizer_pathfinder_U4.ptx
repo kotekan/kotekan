@@ -13,18 +13,18 @@
 .address_size 64
 
 	// .globl	_Z7upchan45Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE // -- Begin function _Z7upchan45Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE
-.func gpu_report_exception
+.func gpu_signal_exception
 (
-	.param .align 8 .b8 gpu_report_exception_param_0[16],
-	.param .b64 gpu_report_exception_param_1
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
 )
 .noreturn
 {
 	trap;
 }
-.func gpu_signal_exception
+.func gpu_report_exception
 (
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+	.param .align 8 .b8 gpu_report_exception_param_0[16],
+	.param .b64 gpu_report_exception_param_1
 )
 .noreturn
 {
@@ -826,7 +826,7 @@ $L__BB0_29:                             // %L963.lr.ph
 	mul.f32 	%f501, %f499, %f500;
 	neg.f32 	%f502, %f500;
 	mul.f32 	%f503, %f496, %f502;
-	shl.b32 	%r277, %r268, 1;
+	and.b32  	%r277, %r4, 4;
 	add.s32 	%r278, %r271, %r277;
 	and.b32  	%r279, %r278, 6;
 	cvt.rn.f32.s32 	%f504, %r279;
@@ -868,15 +868,15 @@ $L__BB0_29:                             // %L963.lr.ph
 	selp.f32 	%f530, %f529, %f524, %p94;
 	mul.f32 	%f531, %f530, %f500;
 	mul.f32 	%f532, %f527, %f502;
-	mov.b32 	%r231, %f531;
 	mov.b32 	%r230, %f501;
+	mov.b32 	%r231, %f531;
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r1204, %r231, %r230;
 	// end inline asm
-	mov.b32 	%r237, %f532;
-	xor.b32  	%r234, %r237, -2147483648;
 	mov.b32 	%r236, %f503;
 	xor.b32  	%r233, %r236, -2147483648;
+	mov.b32 	%r237, %f532;
+	xor.b32  	%r234, %r237, -2147483648;
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r1206, %r234, %r233;
 	// end inline asm

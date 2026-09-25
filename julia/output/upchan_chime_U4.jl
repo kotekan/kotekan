@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1543 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1547 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 4), 1), 4), 1), 1), 4), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256), 1), 256), 1), 1), 256), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1)) + 0) + 0x01] =
             info
@@ -102,7 +102,7 @@
             thread3 = (thread ÷ (8i32)) % (2i32)
             thread4 = (thread ÷ (16i32)) % (2i32)
             timehi0 = (2i32) * (0i32) + (1i32) * thread1
-            timehi1 = (1i32) * (1i32) + (1i32) * thread1
+            timehi1 = (2i32) * (1i32) + (1i32) * thread1
             dish_in0 = (1i32) * thread0
             dish_in1 = (1i32) * thread0
             freqlo = (1i32) * thread2 + (2i32) * thread4
