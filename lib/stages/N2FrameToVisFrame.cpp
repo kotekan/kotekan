@@ -65,6 +65,7 @@ n2FrameToVisFrame::n2FrameToVisFrame(Config& config, const std::string& unique_n
     }
 
     fake_git_tag = config.get_default<std::string>(unique_name, "fake_git_tag", std::string());
+    INFO("Fake git tag is {:s}", fake_git_tag);
 
     // Get everything we need for registering dataset states
 
