@@ -137,7 +137,10 @@ def test_dtv_diagnostics_preserve_per_frame_metadata(apply_mask):
     jinja2 = pytest.importorskip("jinja2")
     yaml = pytest.importorskip("yaml")
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/fengine"))
-    config = yaml.safe_load(env.get_template("chord.j2").render(
-        dtv_enabled=not apply_mask, dtv_apply_mask=apply_mask))
+    config = yaml.safe_load(
+        env.get_template("chord.j2").render(
+            dtv_enabled=not apply_mask, dtv_apply_mask=apply_mask
+        )
+    )
     for name in ("write_dtv_mask", "write_dtv_powers"):
         assert config["write_data"][name]["create_single_file"] is False
