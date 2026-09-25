@@ -135,6 +135,26 @@ const BAND_ORDER = ["high", "mid", "low"];
 // Hardcoding it here meant a new constellation got a sky marker and a legend chip but NO table
 // section and no columns, because every bucket/loop in this file iterated this literal. That is
 // how GLONASS arrived: visible in the sky panel, absent from the detections table.
+// NOMINAL BORESIGHT, for the Offset column: the dishes point at dec +40.73 through the local
+// meridian (config/pointings.yaml), i.e. az 180, el 81.41 at the site -- the same constants as
+// the broker's sky.BORESIGHT_AZ_DEG/EL_DEG.
+// TODO: serve the current pointing from the feed (derived from config/pointings.yaml) instead of
+// hardcoding it here and in the broker; a repoint must change one file, not three.
+const BORESIGHT_AZ_DEG = 180.0;
+const BORESIGHT_EL_DEG = 81.41;
+const _unit = (el, az) => {
+    const e = el * Math.PI / 180, a = az * Math.PI / 180;
+    return [Math.cos(e) * Math.sin(a), Math.cos(e) * Math.cos(a), Math.sin(e)];
+};
+const _BS = _unit(BORESIGHT_EL_DEG, BORESIGHT_AZ_DEG);
+// Angular distance from boresight, degrees (null without a position).
+export const boresight_offset_deg = (el, az) => {
+    if (el == null || az == null) return null;
+    const u = _unit(el, az);
+    const c = u[0] * _BS[0] + u[1] * _BS[1] + u[2] * _BS[2];
+    return Math.acos(Math.max(-1, Math.min(1, c))) * 180 / Math.PI;
+};
+
 const CONSTS = [{tag: "G", name: "GPS"}, {tag: "E", name: "Galileo"}, {tag: "C", name: "BeiDou"}];
 
 /// Constellations to section the table by, from the server inventory (`chains`), which is
@@ -301,8 +321,8 @@ export class GpsTablePanel {
     }
 
     // ONE ROW PER SATELLITE, split into THREE CONSTELLATION SECTIONS (GPS, Galileo, BeiDou)
-    // stacked in that fixed order, under ONE shared header: Sat · El · High/Mid/Low band groups ·
-    // az. Each constellation's actual signals are its own sub-header under the bands (GPS: CA/L1C
+    // stacked in that fixed order, under ONE shared header: Sat · El · az · Offset · High/Mid/Low
+    // band groups. Each constellation's actual signals are its own sub-header under the bands (GPS: CA/L1C
     // High, CM/CL Mid, Q/I Low; Galileo/BeiDou: pilot+data in High and Low, no Mid) -- so a signal
     // is a named, sortable column instead of a grey side-note. Cell = the selected metric (C/N0
     // default). Sorting sorts WITHIN each section (section order stays GPS→Gal→BeiDou); a band-slot
@@ -327,11 +347,13 @@ export class GpsTablePanel {
         const maxCols = {};
         for (const b of BANDS)
             maxCols[b] = Math.max(0, ...CONSTS.map(c => ((byCB[c.tag] || {})[b] || []).length));
-        const ncol = 3 + BANDS.reduce((n, b) => n + maxCols[b], 0);
+        const ncol = 4 + BANDS.reduce((n, b) => n + maxCols[b], 0);
 
-        // A sort key is "id"/"el"/"az" (shared) or "<band>#<slot>" (a per-constellation signal
-        // slot). Guard a stale saved key from the old per-combiner layout back to the el default.
-        const valid = (k) => k === "id" || k === "el" || k === "az" || /^(L1|L2|L5)#\d+$/.test(k);
+        // A sort key is "id"/"el"/"az"/"off" (shared) or "<band>#<slot>" (a per-constellation
+        // signal slot). Guard a stale saved key from the old per-combiner layout back to the el
+        // default. The slot keys are built from BANDS (high/mid/low), so that is what must pass.
+        const valid = (k) => k === "id" || k === "el" || k === "az" || k === "off"
+            || /^(high|mid|low)#\d+$/.test(k);
         if (!valid(this.usort.key)) this.usort = {key: "el", dir: -1};
 
         // Metric toggle + status line (unchanged behaviour).
@@ -356,6 +378,7 @@ export class GpsTablePanel {
             if (key === "id") return r.id;
             if (key === "el") return r.el;
             if (key === "az") return r.az;
+            if (key === "off") return boresight_offset_deg(r.el, r.az);
             const [band, slot] = key.split("#");
             const sg = ((byCB[r.tag] || {})[band] || [])[+slot];
             const m = sg && r.sig_by && r.sig_by[sg.key];
@@ -383,14 +406,15 @@ export class GpsTablePanel {
             + (k === "id" ? "width:1%;" : "")
             + (this.usort.key === k ? "color:#1a1e24;" : "color:#666;") + `">${label}${arrow(k)}</th>`;
 
-        // Shared header: Sat | El | High | Mid | Low | az. Band groups span their aligned columns.
+        // Shared header: Sat | El | az | Offset | High | Mid | Low. Band groups span their columns.
         let head = "<tr style='border-bottom:1px solid #ddd;'>"
-            + sortTh("id", "Sat", "left") + sortTh("el", "El", "right");
+            + sortTh("id", "Sat", "left") + sortTh("el", "El", "right")
+            + sortTh("az", "az", "right") + sortTh("off", "Offset", "right");
         for (const b of BANDS)
             head += `<th colspan="${maxCols[b]}" style="text-align:center;padding:2px 5px;`
                 + `color:#8a929b;border-left:1px solid #eee;font-weight:600;letter-spacing:.3px;">`
                 + `${BAND_LABEL[b] || b}</th>`;
-        head += sortTh("az", "az", "right") + "</tr>";
+        head += "</tr>";
 
         // Empty cells: "·" = this satellite's block does not broadcast this signal (nothing to
         // detect); "—" = it does and we have no value; blank = this constellation has no signal in
@@ -409,7 +433,7 @@ export class GpsTablePanel {
         const sectionHeader = (c) => {
             let h = `<tr class="gps-section" style="background:#fafbfc;border-top:2px solid #e6e8eb;">`
                 + `<td style="padding:3px 5px;font-weight:700;white-space:nowrap;`
-                + `color:${chain_color(c.tag)};">${c.name}</td><td></td>`;
+                + `color:${chain_color(c.tag)};">${c.name}</td><td></td><td></td><td></td>`;
             for (const b of BANDS) {
                 const sigs = (byCB[c.tag] || {})[b] || [];
                 for (let i = 0; i < maxCols[b]; i++) {
@@ -424,7 +448,7 @@ export class GpsTablePanel {
                         + `">${sg.col}${arrow(k)}</th>`;
                 }
             }
-            return h + "<td></td></tr>";
+            return h + "</tr>";
         };
         const satRow = (r) => {
             const cc = chain_color(r.tag);
@@ -435,6 +459,12 @@ export class GpsTablePanel {
                 + `<b>${dot}${r.id}</b></td>`
                 + `<td style="padding:1px 5px;text-align:right;">`
                 + (r.el != null ? r.el.toFixed(0) + "°" : "—") + "</td>";
+            const az = r.az != null ? r.az.toFixed(0) + "°" : "—";
+            cells += `<td style="padding:1px 5px;text-align:right;color:#8a929b;">${az}</td>`;
+            const off = boresight_offset_deg(r.el, r.az);
+            cells += `<td title="angular distance from boresight (az ${BORESIGHT_AZ_DEG}, el `
+                + `${BORESIGHT_EL_DEG})" style="padding:1px 5px;text-align:right;">`
+                + (off != null ? off.toFixed(1) + "°" : "—") + "</td>";
             for (const b of BANDS) {
                 const sigs = (byCB[r.tag] || {})[b] || [];
                 for (let i = 0; i < maxCols[b]; i++) {
@@ -444,8 +474,6 @@ export class GpsTablePanel {
                     cells += mcell(r.sig_by[sg.key], sg, r.prn, edge);
                 }
             }
-            const az = r.az != null ? r.az.toFixed(0) + "°" : "—";
-            cells += `<td style="padding:1px 5px;text-align:right;color:#8a929b;">${az}</td>`;
             return `<tr style="${r.active ? "" : "color:#8a929b;"}">${cells}</tr>`;
         };
 
