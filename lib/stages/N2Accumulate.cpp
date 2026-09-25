@@ -90,7 +90,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                 _tel.element_index_to_station_id(idx_in, _input_order), _output_order);
         return reorder;
     }()),
-    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _tel.fiducial_element_order())),
+    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _input_order)),
     n_valid_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_valid_fpga_ticks",
                                                 unique_name, {"freq_id"})),
     n_pl_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_flagged_fpga_ticks_pl",
