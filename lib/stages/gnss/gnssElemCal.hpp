@@ -374,13 +374,31 @@ private:
         // collapsed relative to the strongest (then the strongest takes over -- a one-time
         // phase step downstream, reported by anchor_moved()).
         _anchor = (mag[(size_t)_ref] >= _min_w * mmax) ? _ref : strongest;
-        const cd pin = std::conj(_u[(size_t)_anchor]) / std::abs(_u[(size_t)_anchor]);
+        // THE REFERENCE ELEMENT'S DIRECTION IS THE CONVENTION, NOT A MEASUREMENT. Every other
+        // u_e is G_e*conj(G_ref): a phase RELATIVE TO the reference, so the reference's own
+        // relative phase is 0 by definition. Its u_ref is measured against the leave-it-out sum
+        // instead, whose phase is whatever the CURRENT weights make it, and taking u_ref's
+        // direction as the reference's weight phase closes a loop with TWO stable fixed points:
+        // aligned, and anti-aligned whenever the bootstrap anchor (the strongest element) sat
+        // more than 90 deg of instrument phase from the reference. Measured live: on about half
+        // the instances the reference's weight settled 180 deg from the other elements. In the
+        // per-PRN combine that only mis-adds one element; a SHARED model built from these cals
+        // and pinned to the reference inherits an arbitrary global phase per instance, and the
+        // senders' prompts then cancel in the fleet's lobe sum (xcoh 0.98 -> -0.08).
+        auto dir_of = [&](int e) -> cd {
+            if (e == _ref)
+                return cd(1.0, 0.0);
+            const cd u = _u[(size_t)e];
+            const double d = std::abs(u);
+            return (d > 0.0) ? u / d : cd(0.0, 0.0);
+        };
+        const cd pin = std::conj(dir_of(_anchor));
         for (int e = 0; e < _n; ++e) {
             if (mag[(size_t)e] <= 0.0)
                 continue; // failed the significance gate above: absent / unpowered / too noisy
             // Re-anchored MRC weight: direction from u_e (rotated so the anchor is real
             // positive), magnitude |u_e|/sigma_e^2.
-            const cd dir = _u[(size_t)e] * pin;
+            const cd dir = dir_of(e) * pin;
             const double d = std::abs(dir);
             if (d <= 0.0)
                 continue;
