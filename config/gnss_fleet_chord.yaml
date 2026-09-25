@@ -398,7 +398,10 @@ common:
   # transit can no longer teach the weak satellites the bright one's phases. Requires the
   # steering above (the instrument is common only once geometry is removed). Live switch:
   # POST <assemble>/set_elem_sum_shared {"shared": false} reverts to held per-PRN weights.
-  elem-sum-shared: true
+  # DISARMED: live, the model's element weights were right and tracking improved, but the
+  # served C/N0 read 16 dB low on every chain (the noise-probe anchor moved) and the
+  # split-aperture REC_SKY output died. Re-arm once the estimator side is understood.
+  elem-sum-shared: false
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
