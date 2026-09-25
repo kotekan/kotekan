@@ -128,6 +128,19 @@ else
     echo "fast mode enabled, skipping IWYU (add option -i ON to disable fast mode)"
 fi
 
+# ODR guard
+# Logging macros must expand to the same tokens in every translation unit. Defining
+# them conditionally on the boost test macros gives every function defined in a
+# header that logs two different bodies, which is an ODR violation the linker
+# resolves by keeping one arbitrary copy. See kotekan::log_event_handler.
+echo "Checking that lib/ does not branch on the boost test macros..."
+if grep -rn --include='*.hpp' --include='*.h' --include='*.cpp' --include='*.c' \
+        -E '^[[:space:]]*#[[:space:]]*(if|ifdef|elif).*BOOST_TEST_(MODULE|MAIN|DYN_LINK)' \
+        "$KOTEKAN_DIR/lib"; then
+    echo "Error: lib/ must not change its meaning depending on the boost test macros" >&2
+    ERROR=1
+fi
+
 # clang-format
 echo "Running clang-format..."
 find $KOTEKAN_DIR -type d \( -name "build-iwyu" -o -name "build" -o -name "external" -o -name ".venv" -o -name "scratch" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
