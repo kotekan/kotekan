@@ -190,7 +190,7 @@ gpuB:
               in_buf: host_upchan_gain
               gpu_mem: upchan_gain
             - name: cudaSyncInput
-            - name: cudaUpchannelizer_pathfinder_U16
+            - name: cudaUpchannelizer_pathfinder_U16_K4
               in_signal: host_e_sig
               out_signal: host_ebar_sig
           #gpu_mem_input_voltage: voltage
