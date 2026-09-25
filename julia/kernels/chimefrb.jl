@@ -1749,6 +1749,7 @@ function fix_ptx_kernel()
                     "hasbuffer" => true,
                     "hasringbuffer" => false,
                     "isscalar" => false,
+                    "do_once" => true,
                 ),
                 Dict(
                     "name" => "Ebar",
