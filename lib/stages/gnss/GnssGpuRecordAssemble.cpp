@@ -1900,11 +1900,18 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
     // One instrument per pol from the warm shadow cals: each PRN's per-pol weight vector is
     // normalised to sum|w| = 1 (its overall MRC scale is the satellite's strength, not the
     // instrument), rotated onto the current model (its overall phase is the satellite's), and
-    // averaged with the satellite's strength as weight. A slow EMA then follows the
-    // instrument; the first model is the strongest satellite alone (a blind average of
-    // unaligned vectors could cancel). Re-anchored so the reference element's pol-0 weight is
-    // real positive (the header's phase convention) and the pol-1 anchor element likewise (a
-    // convention only: the per-PRN coefficient carries pol-1's phase).
+    // averaged with EQUAL weight per satellite. A slow EMA then follows the instrument; the
+    // first model is one satellite alone (a blind average of unaligned vectors could cancel).
+    // Re-anchored so the reference element's pol-0 weight is real positive (the header's
+    // phase convention) and the pol-1 anchor element likewise (a convention only: the per-PRN
+    // coefficient carries pol-1's phase).
+    // ⚠️ THE REFERENCE ELEMENT'S MAGNITUDE IS CAPPED at the median of the other live elements'
+    // BEFORE normalising, and satellites are NOT weighted by their MRC weight sum. A cal
+    // whose reference weight has degenerated (its variance collapses when the leave-one-out
+    // sum correlates strongly; measured thousands against ~10) is that satellite's own
+    // problem in the per-PRN sum, but weighted by its (huge) weight sum and normalised it is
+    // a unit vector on the reference element that outvotes every other satellite: the model
+    // became the bare reference element and every satellite lost the array gain.
     using cd = std::complex<double>;
     const int n = _n_elements;
     if (n <= 0 || _g_shared.size() != (size_t)n)
@@ -1914,43 +1921,65 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
     const int h = (n % 2 == 0) ? n / 2 : n;   // an odd count is one pol
     const int n_pol = (h < n) ? 2 : 1;
     std::vector<cd> acc((size_t)n, cd(0.0, 0.0));
+    std::vector<cd> v((size_t)n, cd(0.0, 0.0));
+    std::vector<double> mags;
     double A = 0.0;
     int cnt = 0;
-    // Seed choice: strongest warm shadow.
+    // Seed choice: the warm shadow with the most live elements (a degenerate cal has few).
     size_t q_best = 0;
-    double a_best = -1.0;
-    for (size_t q = 0; q < _cal_shadow.size(); ++q)
-        if (_cal_shadow[q].warm() && _cal_shadow[q].weight_sum() > a_best) {
-            a_best = _cal_shadow[q].weight_sum();
+    int live_best = -1;
+    for (size_t q = 0; q < _cal_shadow.size(); ++q) {
+        if (!_cal_shadow[q].warm())
+            continue;
+        int live = 0;
+        for (const auto& w : _cal_shadow[q].weights())
+            live += (std::abs(w) > 0.0);
+        if (live > live_best) {
+            live_best = live;
             q_best = q;
         }
-    if (a_best <= 0.0)
+    }
+    if (live_best <= 1)
         return;
     for (size_t q = 0; q < _cal_shadow.size(); ++q) {
         const auto& sh = _cal_shadow[q];
         if (!sh.warm() || (!_g_shared_warm && q != q_best))
             continue;
         const auto& w = sh.weights();
-        const double a_q = sh.weight_sum();
         bool any = false;
         for (int pol = 0; pol < n_pol; ++pol) {
             const int e0 = pol * h, e1 = std::min(n, e0 + h);
+            const int anchor = std::min(e1 - 1, e0 + _reference_element);
+            // Cap the anchor element at the median live magnitude of the others (the same
+            // convention rebuild_weights uses when it detects the degeneracy).
+            mags.clear();
+            for (int e = e0; e < e1; ++e)
+                if (e != anchor && std::abs(w[(size_t)e]) > 0.0)
+                    mags.push_back(std::abs(w[(size_t)e]));
+            if (mags.size() < 2)
+                continue;   // one live element besides the anchor is not an instrument
+            std::sort(mags.begin(), mags.end());
+            const double cap = mags[mags.size() / 2];
+            for (int e = e0; e < e1; ++e)
+                v[(size_t)e] = w[(size_t)e];
+            if (std::abs(v[(size_t)anchor]) > cap)
+                v[(size_t)anchor] *= cap / std::abs(v[(size_t)anchor]);
             double s = 0.0;
             cd x(0.0, 0.0);
             for (int e = e0; e < e1; ++e) {
-                s += std::abs(w[(size_t)e]);
+                s += std::abs(v[(size_t)e]);
                 if (_g_shared_warm)
-                    x += std::conj(_g_shared[(size_t)e]) * w[(size_t)e];
+                    x += std::conj(_g_shared[(size_t)e]) * v[(size_t)e];
             }
             if (s <= 0.0)
                 continue;
             const cd rot = (std::abs(x) > 0.0) ? std::conj(x) / std::abs(x) : cd(1.0, 0.0);
             for (int e = e0; e < e1; ++e)
-                acc[(size_t)e] += a_q * w[(size_t)e] * rot / s;
+                acc[(size_t)e] += v[(size_t)e] * rot / s;
             any = true;
         }
         if (any) {
-            A += a_q;
+            A += 1.0;
             ++cnt;
         }
     }
@@ -1972,9 +2001,26 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
             s += std::abs(_g_shared[(size_t)e]);
         if (s <= 0.0)
             continue;
-        for (int e = e0; e < e1; ++e)
+        double gmax = 0.0;
+        for (int e = e0; e < e1; ++e) {
             _g_shared[(size_t)e] = _g_shared[(size_t)e] * pin / s;
+            gmax = std::max(gmax, std::abs(_g_shared[(size_t)e]));
+        }
+        // A model with half its weight on one element is not an instrument (a healthy array
+        // spreads it over a dozen); refuse it and let every PRN ride its own learner until
+        // the consensus is sane again. Logged once per collapse.
+        if (gmax > 0.5) {
+            if (_g_shared_warm || !_g_shared_collapsed)
+                WARN("elem_sum_shared: pol-{:d} model collapsed onto one element ({:.0f}% of "
+                     "the weight) -- not installed, PRNs ride their own learners",
+                     pol, 100.0 * gmax);
+            _g_shared_collapsed = 1;
+            _g_shared_warm = false;
+            _g_shared_n = 0;
+            return;
+        }
     }
+    _g_shared_collapsed = 0;
     _g_shared_warm = true;
     _g_shared_n = cnt;
 }

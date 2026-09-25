@@ -106,6 +106,7 @@ private:
     double _elem_pol_tau_s = 3.0;        ///< per-PRN inter-pol coefficient EMA
     std::vector<std::complex<double>> _g_shared; ///< [n_elem]: pol-0 half then pol-1 half
     bool _g_shared_warm = false;
+    uint8_t _g_shared_collapsed = 0;     ///< last consensus refused (one element > 50%)
     int _g_shared_n = 0;                 ///< PRNs that fed the last consensus
     double _g_shared_t = 0.0;            ///< steady time of the last consensus refresh
     std::vector<std::complex<double>> _pol_num; ///< per PRN: EMA of B1 conj(B0)
