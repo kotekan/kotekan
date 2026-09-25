@@ -383,12 +383,15 @@ common:
   elem-steer-bands: all
   elem-steer-sign: 1.0
   elem-positions-from: arraymap
-  # REFINED POSITIONS on top of the epoch: solved from the first three steered hours
-  # (fixtures/elemsteer/possolve.py, seven bands agreeing to 1-20 cm per dish); the solve
-  # recovers the 6.3 x 8.5 m survey lattice to a few cm where the epoch table was off by
-  # up to 1.2 m. Cube order; pol-1 elements carry their dish's pol-0 position (one feed,
-  # one phase centre); dark dishes keep the epoch value. Refused if the epoch key changes.
-  elem-positions-file: config/elem_positions_refined_20260924.json
+  # REFINED POSITIONS on top of the epoch: solved from steered per-element phases
+  # (fixtures/elemsteer/possolve.py). First pass recovered the 6.3 x 8.5 m survey lattice to
+  # a few cm where the epoch table was off by up to 1.2 m; the second pass adds the residual
+  # E/N from 3.7 h steered on the first and the HEIGHT: the dishes are co-planar by survey on
+  # a plane tilted 4.2 mrad down to the east and 3.5 mrad up to the north through A01 (a free
+  # per-dish height solve lands on it to 1 cm rms). Cube order; pol-1 elements carry their
+  # dish's pol-0 position (one feed, one phase centre); dark dishes keep the epoch E/N and
+  # take the plane height. Refused if the epoch key changes.
+  elem-positions-file: config/elem_positions_refined_20260925.json
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
