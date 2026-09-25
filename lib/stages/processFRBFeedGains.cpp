@@ -8,6 +8,7 @@
 #include "kotekanLogging.hpp"
 #include "processFeedGains.hpp"
 
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <string>
@@ -45,7 +46,10 @@ void processFRBFeedGains::copy_upchannelize_f(const float* src_f, float16_t* dst
 }
 
 void processFRBFeedGains::check_gains(const float16_t* frame) {
-    // Output frame layout: [beam][Fbar][P][dishN][dishM][C]
+    // Output frame layout: [beam][Fbar][P][dishN][dishM][C]. `num_components` is the number of
+    // components of a complex number; it is always 2, and is only named in the configs to avoid
+    // a magic number.
+    assert(num_components == 2);
     if (num_elements != num_polarizations * num_dishes_M * num_dishes_N) {
         WARN("Cannot check the FRB1 gains for overflow: num_elements={:d} differs from "
              "num_polarizations * num_dishes_M * num_dishes_N = {:d} * {:d} * {:d}",
@@ -62,9 +66,9 @@ void processFRBFeedGains::check_gains(const float16_t* frame) {
     double worst_bound = 0;
     for (std::ptrdiff_t beam = 0; beam < std::ptrdiff_t(num_beams); ++beam) {
         for (std::ptrdiff_t freq = 0; freq < num_freqs; ++freq) {
-            const double bound = kotekan::frb1_intensity_bound(
-                frame + str_beam * beam + str_freq * freq, num_polarizations, num_dishes_M,
-                num_dishes_N, num_components);
+            const double bound =
+                kotekan::frb1_intensity_bound(frame + str_beam * beam + str_freq * freq,
+                                              num_polarizations, num_dishes_M, num_dishes_N);
             if (bound > kotekan::frb1_intensity_limit)
                 ++num_bad;
             if (bound > worst_bound) {
