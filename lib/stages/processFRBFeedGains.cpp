@@ -8,7 +8,6 @@
 #include "kotekanLogging.hpp"
 #include "processFeedGains.hpp"
 
-#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <string>
@@ -46,38 +45,48 @@ void processFRBFeedGains::copy_upchannelize_f(const float* src_f, float16_t* dst
 }
 
 void processFRBFeedGains::check_gains(const float16_t* frame) {
-    // Output frame layout: [beam][Fbar][P][dishN][dishM][re/im]
-    assert(num_components == 2);
-    assert(num_elements == num_polarizations * num_dishes_M * num_dishes_N);
+    // Output frame layout: [beam][Fbar][P][dishN][dishM][C]
+    if (num_elements != num_polarizations * num_dishes_M * num_dishes_N) {
+        WARN("Cannot check the FRB1 gains for overflow: num_elements={:d} differs from "
+             "num_polarizations * num_dishes_M * num_dishes_N = {:d} * {:d} * {:d}",
+             num_elements, num_polarizations, num_dishes_M, num_dishes_N);
+        return;
+    }
+    const std::ptrdiff_t num_freqs = std::ptrdiff_t(num_local_freq) * upchan_factor;
     const std::ptrdiff_t str_freq = std::ptrdiff_t(num_elements) * num_components;
-    const std::ptrdiff_t num_freqs = std::ptrdiff_t(num_beams) * num_local_freq * upchan_factor;
+    const std::ptrdiff_t str_beam = str_freq * num_freqs;
 
-    // Find the frequency with the largest worst-case intensity
-    std::ptrdiff_t num_bad_freqs = 0;
-    std::ptrdiff_t worst_freq = -1;
+    // Find the (beam, frequency) with the largest worst-case intensity
+    std::ptrdiff_t num_bad = 0;
+    std::ptrdiff_t worst_beam = -1, worst_freq = -1;
     double worst_bound = 0;
-    for (std::ptrdiff_t freq = 0; freq < num_freqs; ++freq) {
-        const double bound = kotekan::frb1_intensity_bound(
-            frame + str_freq * freq, num_polarizations, num_dishes_M, num_dishes_N);
-        if (bound > kotekan::frb1_intensity_limit)
-            ++num_bad_freqs;
-        if (bound > worst_bound) {
-            worst_freq = freq;
-            worst_bound = bound;
+    for (std::ptrdiff_t beam = 0; beam < std::ptrdiff_t(num_beams); ++beam) {
+        for (std::ptrdiff_t freq = 0; freq < num_freqs; ++freq) {
+            const double bound = kotekan::frb1_intensity_bound(
+                frame + str_beam * beam + str_freq * freq, num_polarizations, num_dishes_M,
+                num_dishes_N, num_components);
+            if (bound > kotekan::frb1_intensity_limit)
+                ++num_bad;
+            if (bound > worst_bound) {
+                worst_beam = beam;
+                worst_freq = freq;
+                worst_bound = bound;
+            }
         }
     }
 
     // Don't abort: the gains are updated while the pipeline runs, and the kernel only
     // overflows for strong coherent signals
-    if (num_bad_freqs > 0)
-        WARN("The FRB1 gains can overflow Float16 for {:d} of {:d} frequencies: frequency {:d} "
-             "has a worst-case intensity of {:g}, above the limit {:g}. The gains need to be "
-             "reduced by at least a factor {:.3g}.",
-             num_bad_freqs, num_freqs, worst_freq, worst_bound, kotekan::frb1_intensity_limit,
-             std::sqrt(worst_bound / kotekan::frb1_intensity_limit));
+    if (num_bad > 0)
+        WARN("The FRB1 gains can overflow Float16 for {:d} of {:d} (beam, frequency) pairs: "
+             "beam {:d}, frequency {:d} has a worst-case intensity of {:g}, above the limit "
+             "{:g}. The gains need to be reduced by at least a factor {:.3g}.",
+             num_bad, std::ptrdiff_t(num_beams) * num_freqs, worst_beam, worst_freq, worst_bound,
+             kotekan::frb1_intensity_limit, std::sqrt(worst_bound / kotekan::frb1_intensity_limit));
     else
-        DEBUG("FRB1 gains: largest worst-case intensity {:g} (frequency {:d}), limit {:g}",
-              worst_bound, worst_freq, kotekan::frb1_intensity_limit);
+        DEBUG("FRB1 gains: largest worst-case intensity {:g} (beam {:d}, frequency {:d}), "
+              "limit {:g}",
+              worst_bound, worst_beam, worst_freq, kotekan::frb1_intensity_limit);
 }
 
 void processFRBFeedGains::set_frame_desc(Buffer* buf) {

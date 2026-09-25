@@ -39,7 +39,7 @@ std::vector<float16_t> make_constant_weights(const int M, const int N,
 BOOST_AUTO_TEST_CASE(unit_weights_chime) {
     const int M = 256, N = 4;
     const auto W = make_constant_weights(M, N, 1);
-    const double bound = frb1_intensity_bound(W.data(), P, M, N);
+    const double bound = frb1_intensity_bound(W.data(), P, M, N, 2);
     BOOST_CHECK_CLOSE(bound, 49.0 * M * N, 1.0e-10);
     BOOST_CHECK_EQUAL(bound, 50176);
     BOOST_CHECK(bound <= frb1_intensity_limit);
@@ -49,7 +49,7 @@ BOOST_AUTO_TEST_CASE(unit_weights_chime) {
 BOOST_AUTO_TEST_CASE(large_weights_chime) {
     const int M = 256, N = 4;
     const auto W = make_constant_weights(M, N, 1.2f);
-    const double bound = frb1_intensity_bound(W.data(), P, M, N);
+    const double bound = frb1_intensity_bound(W.data(), P, M, N, 2);
     BOOST_CHECK(bound > frb1_intensity_limit);
 }
 
@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_CASE(phases_do_not_matter) {
         w = std::polar(1.0f, phase(rng));
     const auto W = make_weights(M, N, Wc);
     // Float16 rounds each component, so the magnitudes are 1 only to Float16 precision
-    BOOST_CHECK_CLOSE(frb1_intensity_bound(W.data(), P, M, N), 49.0 * M * N, 0.1);
+    BOOST_CHECK_CLOSE(frb1_intensity_bound(W.data(), P, M, N, 2), 49.0 * M * N, 0.1);
 }
 
 // The bound depends on the mean magnitude per polarization, so a few large gains are fine
@@ -73,21 +73,31 @@ BOOST_AUTO_TEST_CASE(mean_magnitude_matters) {
     for (std::size_t i = 0; i < Wc.size(); ++i)
         Wc.at(i) = i % 2 == 0 ? 2 : 0;
     const auto W = make_weights(M, N, Wc);
-    BOOST_CHECK_EQUAL(frb1_intensity_bound(W.data(), P, M, N), 50176);
+    BOOST_CHECK_EQUAL(frb1_intensity_bound(W.data(), P, M, N, 2), 50176);
+}
+
+// Real weights (one component) are handled like complex weights with zero imaginary part
+BOOST_AUTO_TEST_CASE(real_weights) {
+    const int M = 256, N = 4;
+    const std::vector<float16_t> W_real(std::size_t(P) * M * N, float16_t(-1));
+    BOOST_CHECK_EQUAL(frb1_intensity_bound(W_real.data(), P, M, N, 1), 50176);
+    const auto W_cplx = make_constant_weights(M, N, -1);
+    BOOST_CHECK_EQUAL(frb1_intensity_bound(W_real.data(), P, M, N, 1),
+                      frb1_intensity_bound(W_cplx.data(), P, M, N, 2));
 }
 
 // Masked (zero) weights reduce the bound
 BOOST_AUTO_TEST_CASE(zero_weights) {
     const int M = 8, N = 8;
     const auto W = make_constant_weights(M, N, 0);
-    BOOST_CHECK_EQUAL(frb1_intensity_bound(W.data(), P, M, N), 0);
+    BOOST_CHECK_EQUAL(frb1_intensity_bound(W.data(), P, M, N, 2), 0);
 }
 
 // NaN weights (unused frequencies in setFRB1Phase) give a NaN bound, which passes the check
 BOOST_AUTO_TEST_CASE(nan_weights) {
     const int M = 8, N = 8;
     const auto W = make_constant_weights(M, N, NAN);
-    const double bound = frb1_intensity_bound(W.data(), P, M, N);
+    const double bound = frb1_intensity_bound(W.data(), P, M, N, 2);
     BOOST_CHECK(std::isnan(bound));
     BOOST_CHECK(!(bound > frb1_intensity_limit));
 }

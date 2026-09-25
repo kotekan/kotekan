@@ -138,7 +138,7 @@ public:
         for (int freq = 0; freq < upchan_num_channels * upchan_factor; ++freq) {
             const double bound = kotekan::frb1_intensity_bound(
                 reinterpret_cast<const float16_t*>(&frb1_phase_frame[str_freq * freq]),
-                num_polarizations, num_dishes_M, num_dishes_N);
+                num_polarizations, num_dishes_M, num_dishes_N, num_components);
             if (bound > kotekan::frb1_intensity_limit)
                 FATAL_ERROR(
                     "The FRB1 weights can overflow Float16: frequency {:d} has a worst-case "
