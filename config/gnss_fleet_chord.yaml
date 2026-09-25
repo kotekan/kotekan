@@ -404,7 +404,11 @@ common:
   # UNSTEERED correlations, so the array's geometric phase spread the per-channel sum by
   # exactly the geometry's prediction, satellite by satellite. Fixed in the assembler (the
   # taps are steered like the header); requires the binary that carries that fix.
-  elem-sum-shared: true
+  # DISARMED again: through a boresight transit the consensus learned from the captured per-PRN
+  # learners, and the per-instance phase pin (one element, whose weight collapsed) went to noise,
+  # so the instances cancelled each other in the fleet sum for 20+ min after the pass. Re-arm
+  # with the transit freeze and the whole-model pin.
+  elem-sum-shared: false
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
