@@ -38,8 +38,22 @@ setup::Symbol
 F::Integer
 T::Integer
 U::Integer
+K::Integer                      # input bit depth; see `upchan.jl` sect. 5.1
 
 const F̄ = F_per_U[U] * U
+
+# We consume whatever the upchannelizer produced. 4-bit input is offset-encoded
+# (see `swap_offset`) with the two nibbles of each byte swapped; 8-bit input is plain
+# two's complement. Both pack one complex sample into 2K bits.
+@assert K == 4 || K == 8
+
+# How many Ē values (i.e. complex dish samples) are packed into one 32-bit word,
+# and the resulting number of words per (polr, freq, tbar) dish row
+const Ēdishes_per_word = idiv(16, K) # K=4 => 4, K=8 => 2
+const Ēwords_per_row = idiv(D, Ēdishes_per_word)
+
+# Julia type of one 32-bit word of the Ē input array
+const Ētype = K == 4 ? Int4x8 : Int8x4
 
 # We use U = 128 for HFB beams: downsample to the max, and have a larger output buffer to allow for more downsampling
 const is_hfb = U == 128
@@ -108,15 +122,35 @@ const Time = Index{Physics,TimeTag}
 
 # Layouts
 
-const layout_E_memory = Layout([
-    IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
-    Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
-    Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
-    Dish(:dish, 4, idiv(D, 4)) => Memory(:memory, 1, idiv(D, 4)),
-    Polr(:polr, 1, P) => Memory(:memory, idiv(D, 4), P),
-    Freq(:freq, 1, Fbar) => Memory(:memory, idiv(D, 4) * P, Fbar),
-    Time(:time, 1, Tbar) => Memory(:memory, idiv(D, 4) * Fbar * P, Tbar),
-])
+# This must mirror the upchannelizer's Ē output layout exactly: `upchan.jl`
+# eqn. (145) for K=4 and eqn. (149) for K=8. A 32-bit word holds
+# `Ēdishes_per_word` complex samples either way, so only the intra-word index
+# assignment and the word stride per dish row differ.
+const layout_E_memory = if K == 4
+    Layout([
+        # eqn. (145): b0 b1 b2 <-> ReIm, d0, d1
+        IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+        Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+        Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+        Dish(:dish, 4, Ēwords_per_row) => Memory(:memory, 1, Ēwords_per_row),
+        Polr(:polr, 1, P) => Memory(:memory, Ēwords_per_row, P),
+        Freq(:freq, 1, Fbar) => Memory(:memory, Ēwords_per_row * P, Fbar),
+        Time(:time, 1, Tbar) => Memory(:memory, Ēwords_per_row * Fbar * P, Tbar),
+    ])
+elseif K == 8
+    Layout([
+        # eqn. (149): b0 b1 <-> ReIm, d0
+        IntValue(:intvalue, 1, 8) => SIMD(:simd, 1, 8),
+        Cplx(:cplx, 1, C) => SIMD(:simd, 8, 2),
+        Dish(:dish, 1, 2) => SIMD(:simd, 16, 2),
+        Dish(:dish, 2, Ēwords_per_row) => Memory(:memory, 1, Ēwords_per_row),
+        Polr(:polr, 1, P) => Memory(:memory, Ēwords_per_row, P),
+        Freq(:freq, 1, Fbar) => Memory(:memory, Ēwords_per_row * P, Fbar),
+        Time(:time, 1, Tbar) => Memory(:memory, Ēwords_per_row * Fbar * P, Tbar),
+    ])
+else
+    @assert false
+end
 
 const layout_W_memory = Layout([
     FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -735,7 +769,19 @@ function make_chimefrb_kernel()
             @assert P == 2
             @assert W == 8
 
-            if Treg == 1
+            # `Tbarmin` selects the starting point in the input ring buffer
+            wrap_address = addr -> :(
+                let
+                    offset = $(shrinkmul(Ēwords_per_row * P * Fbar, :Tbarmin, Tbar))
+                    length = $(shrink(Ēwords_per_row * P * Fbar * Tbar))
+                    mod($addr + offset, length)
+                end
+            )
+
+            if Treg == 1 && K == 4
+                # Dish bits d0 d1 sit inside the 32-bit word, d2 is a register, so
+                # each thread loads 2 consecutive words and the warp covers 64
+                # consecutive words.
                 layout_E_registers = Layout([
                     IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
                     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
@@ -752,21 +798,39 @@ function make_chimefrb_kernel()
                     Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
                     Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
                 ])
-                load!(
-                    emitter,
-                    :E => layout_E_registers,
-                    :E_memory => layout_E_memory;
-                    align=8,
-                    postprocess=addr -> :(
-                        let
-                            offset = $(shrinkmul(idiv(D, 4) * P * Fbar, :Tbarmin, Tbar))
-                            length = $(shrink(idiv(D, 4) * P * Fbar * Tbar))
-                            mod($addr + offset, length)
-                        end
-                    ),
-                )
+                load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=8, postprocess=wrap_address)
+
+            elseif Treg == 1 && K == 8
+                # Only d0 fits inside the 32-bit word, so d1 becomes a second
+                # register and each thread loads 4 consecutive words (16 bytes, the
+                # widest vectorized load). The warp still covers a contiguous range,
+                # now of 128 words.
+                layout_E_registers = Layout([
+                    IntValue(:intvalue, 1, 8) => SIMD(:simd, 1, 8),
+                    Cplx(:cplx, 1, C) => SIMD(:simd, 8, 2),
+                    Dish(:dish, 1, 2) => SIMD(:simd, 16, 2),
+                    Dish(:dish, 2, 2) => Register(:dish, 2, 2),
+                    Dish(:dish, 4, 2) => Register(:dish, 4, 2),
+                    Dish(:dish, 8, 2) => Thread(:thread, 16, 2),
+                    Dish(:dish, 16, 2) => Thread(:thread, 8, 2),
+                    Dish(:dish, 32, 2) => Thread(:thread, 4, 2),
+                    Dish(:dish, 64, 2) => Thread(:thread, 2, 2),
+                    Dish(:dish, 128, 2) => Thread(:thread, 1, 2),
+                    Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
+                    Polr(:polr, 1, P) => Warp(:warp, 4, 2),
+                    Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
+                    Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
+                    Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
+                ])
+                load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16, postprocess=wrap_address)
 
             elseif Treg == 2
+                # K=8 is not supported here: this layout already loads 16 bytes per
+                # thread with K=4, and halving the number of dishes per word would
+                # require a 32-byte load. Supporting it would mean moving a dish bit
+                # back from a register to a thread index, which changes the warp
+                # transpose downstream. `Treg == 1` for every current setup.
+                @assert K == 4
                 layout_E_registers = Layout([
                     IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
                     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
@@ -784,37 +848,40 @@ function make_chimefrb_kernel()
                     Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
                     Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
                 ])
-                load!(
-                    emitter,
-                    :E0 => layout_E_registers,
-                    :E_memory => layout_E_memory;
-                    align=16,
-                    postprocess=addr -> :(
-                        let
-                            offset = $(shrinkmul(idiv(D, 4) * P * Fbar, :Tbarmin, Tbar))
-                            length = $(shrink(idiv(D, 4) * P * Fbar * Tbar))
-                            mod($addr + offset, length)
-                        end
-                    ),
-                )
+                load!(emitter, :E0 => layout_E_registers, :E_memory => layout_E_memory; align=16, postprocess=wrap_address)
                 permute!(emitter, :E, :E0, Dish(:dish, 8, 2), Time(:time, 1, 2))
 
             else
                 @assert false
             end
 
-            # Convert to float16
-
-            widen2!(
-                emitter,
-                :X0,
-                :E,
-                SIMD(:simd, 4, 2) => Register(:dish, 2, 2),
-                SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
-                newtype=FloatValue,
-                swapped_withoffset=true,
-            )
-            permute!(emitter, :X1, :X0, Cplx(:cplx, 1, 2), Dish(:dish, 2, 2))
+            # Convert to float16.
+            #
+            # `widen!`/`widen2!` move the lowest intra-word index bits out into
+            # registers and leave the highest one as the half-index of the resulting
+            # `Float16x2`. That puts a dish index where `layout_X_registers` wants
+            # ReIm, so a (thread-local, shuffle-free) `permute!` swaps them back.
+            if K == 4
+                # ReIm and d0 move out, d1 stays: Int4x8 -> 4 x Float16x2.
+                # `swapped_withoffset` undoes the `swap_offset` encoding for free.
+                widen2!(
+                    emitter,
+                    :X0,
+                    :E,
+                    SIMD(:simd, 4, 2) => Register(:dish, 2, 2),
+                    SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
+                    newtype=FloatValue,
+                    swapped_withoffset=true,
+                )
+                permute!(emitter, :X1, :X0, Cplx(:cplx, 1, 2), Dish(:dish, 2, 2))
+            elseif K == 8
+                # Only ReIm moves out, d0 stays: Int8x4 -> 2 x Float16x2.
+                # Plain two's complement, i.e. no offset encoding to undo.
+                widen!(emitter, :X0, :E, SIMD(:simd, 8, 2) => Register(:dish, 1, 2); newtype=FloatValue)
+                permute!(emitter, :X1, :X0, Cplx(:cplx, 1, 2), Dish(:dish, 1, 2))
+            else
+                @assert false
+            end
 
             # Scale by input gain
 
@@ -1348,7 +1415,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     !silent && println("CHIME FRB beamformer")
 
     if output_kernel
-        open("output/chimefrb_$(setup)_U$(U).jl", "w") do fh
+        open("output/chimefrb_$(setup)_U$(U)_K$(K).jl", "w") do fh
             println(fh, "# Julia source code for CUDA chimefrb beamformer")
             println(fh, "# This file has been generated automatically by `chimefrb.jl`.")
             println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1373,7 +1440,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         Int32(0),
         Int32(0),
         CUDA.zeros(Float16x2, 0),
-        CUDA.zeros(Int4x8, 0),
+        CUDA.zeros(Ētype, 0),
         CUDA.zeros(Float16x2, 0),
         CUDA.zeros(Int32, 0),
     )
@@ -1385,7 +1452,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Allocating input data...")
     W_memory = Array{Float16x2}(undef, M * N * Fbar * P)
-    E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * Fbar * Tbar)
+    E_memory = Array{Ētype}(undef, Ēwords_per_row * P * Fbar * Tbar)
     I_memory = Array{Float16x2}(undef, M * 2 * N * Fbar * Ttilde)
     I_wanted = Array{Float16x2}(undef, M * 2 * N * Fbar * Ttilde)
     info_memory = Array{Int32}(undef, num_threads * num_warps * num_blocks)
@@ -1426,27 +1493,42 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
         Random.seed!(0)
 
-        map!(i -> swap_offset(zero(Int4x8)), E_memory, E_memory)
+        # Largest representable input magnitude: 7 for K=4, 127 for K=8
+        Emax = (1 << (K - 1)) - 1
+
+        fill!(E_memory, K == 4 ? swap_offset(zero(Int4x8)) : zero(Int8x4))
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
 
         # Constant input gain, scaled to keep intensities within Float16 range.
-        Wvalue = (1 + 0im) / 16
+        # The divisor tracks `Emax` so that the beamformed amplitude, and hence the
+        # accuracy demanded below, is the same for both bit depths.
+        Wvalue = (1 + 0im) / (2 * Emax + 2)
         map!(i -> Float16x2(c2t(Wvalue)...), W_memory, W_memory)
 
         # A single nonzero (freq, polr, time) sample, identical across all dishes.
         freq = rand(0:(Fbar - 1))
         polr = rand(0:(P - 1))
         time = rand(0:(Int(Tbarmax) - 1))
-        Fvalue = 7.5f0 * uniform_in_disk()
-        Evalue = Complex{Int8}(clamp(round(Int, real(Fvalue)), -7, 7), clamp(round(Int, imag(Fvalue)), -7, 7))
+        Fvalue = (Emax + 0.5f0) * uniform_in_disk()
+        Evalue = Complex{Int8}(clamp(round(Int, real(Fvalue)), -Emax, Emax), clamp(round(Int, imag(Fvalue)), -Emax, Emax))
         @show freq polr time Evalue
 
+        # One 32-bit word holds `Ēdishes_per_word` complex samples, ReIm fastest
         for dish in 0:(D - 1)
-            Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar * time
-            Evalue8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
-            Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
-            Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
-            E_memory[Eidx + 1] = swap_offset(Int4x8(Evalue8...))
+            Eidx =
+                dish ÷ Ēdishes_per_word + Ēwords_per_row * polr + Ēwords_per_row * P * freq + Ēwords_per_row * P * Fbar * time
+            dishlo = dish % Ēdishes_per_word
+            if K == 4
+                Evalues = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
+                Evalues = setindex(Evalues, real(Evalue), 2 * dishlo + 0 + 1)
+                Evalues = setindex(Evalues, imag(Evalue), 2 * dishlo + 1 + 1)
+                E_memory[Eidx + 1] = swap_offset(Int4x8(Evalues...))
+            else
+                Evalues = convert(NTuple{4,Int8}, E_memory[Eidx + 1])
+                Evalues = setindex(Evalues, real(Evalue), 2 * dishlo + 0 + 1)
+                Evalues = setindex(Evalues, imag(Evalue), 2 * dishlo + 1 + 1)
+                E_memory[Eidx + 1] = Int8x4(Evalues...)
+            end
         end
 
         # Reference intensities (Eqn. 4): sum over dishes of the 2-D beam phase, then |·|².
@@ -1467,12 +1549,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         end
     else
         map!(f -> Float16x2(1, 1), W_memory, W_memory)
-        map!(i -> Int4x8(-4, -3, -2, -1, 0, 1, 2, 3), E_memory, E_memory)
+        fill!(E_memory, K == 4 ? Int4x8(-4, -3, -2, -1, 0, 1, 2, 3) : Int8x4(-4, -3, -2, -1))
     end
 
     println("Copying data from CPU to GPU...")
     W_cuda = CuArray(W_memory)
-    E_cuda = run_selftest ? CuArray(E_memory) : CuArray(swap_offset.(E_memory))
+    # The self-test already fills `E_memory` in its encoded form; the benchmark data
+    # is plain values and still needs the K=4 nibble-swap + offset encoding applied.
+    E_cuda = (run_selftest || K == 8) ? CuArray(E_memory) : CuArray(swap_offset.(E_memory))
     I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_memory))
     info_cuda = CUDA.fill(-1i32, length(info_memory))
 
@@ -1553,9 +1637,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 end
 
 function fix_ptx_kernel()
-    ptx = read("output/chimefrb_$(setup)_U$(U).ptx", String)
+    ptx = read("output/chimefrb_$(setup)_U$(U)_K$(K).ptx", String)
     ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
-    open("output/chimefrb_$(setup)_U$(U).ptx", "w") do fh
+    open("output/chimefrb_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         println(fh, "// PTX kernel code for CUDA chimefrb beamformer")
         println(fh, "// This file has been generated automatically by `chimefrb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
@@ -1563,14 +1647,14 @@ function fix_ptx_kernel()
         write(fh, ptx)
         return nothing
     end
-    open("output/chimefrb_$(setup)_U$(U).sass", "w") do fh
+    open("output/chimefrb_$(setup)_U$(U)_K$(K).sass", "w") do fh
         println(fh, "// SASS kernel code for CUDA chimefrb beamformer")
         println(fh, "// This file has been generated automatically by `chimefrb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
         println(fh)
         CUDA.code_sass(fh, chimefrb, Tuple{Int32, Int32, Int32, Int32,
                                            CuDeviceVector{Float16x2,1},
-                                           CuDeviceVector{Int4x8,1},
+                                           CuDeviceVector{Ētype,1},
                                            CuDeviceVector{Float16x2,1},
                                            CuDeviceVector{Int32,1}};
                        cap=compute_capability, ptx=ptx_compat,
@@ -1579,7 +1663,7 @@ function fix_ptx_kernel()
         return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output/chimefrb_$(setup)_U$(U).yaml", "w") do fh
+    open("output/chimefrb_$(setup)_U$(U)_K$(K).yaml", "w") do fh
         println(fh, "# Metadata code for CUDA chimefrb beamformer")
         println(fh, "# This file has been generated automatically by `chimefrb.jl`.")
         println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1603,6 +1687,7 @@ function fix_ptx_kernel()
         output-gain: $output_gain
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
+        input-bits: $K
       compile-parameters:
         minthreads: [$num_threads, $num_warps]
         blocks_per_sm: $num_blocks_per_sm
@@ -1632,7 +1717,7 @@ function fix_ptx_kernel()
           strides: [1, $C, $(C*M), $(C*M*N), $(C*M*N*P), $(C*M*N*P*Fbar_W)]
         - name: "Ē"
           intent: in
-          type: Int4
+          type: Int$K
           indices: [C, D, P, Fbar, Tbar]
           shape: [$C, $D, $P, $Fbar, $Tbar]
           strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*Fbar)]
@@ -1657,7 +1742,7 @@ function fix_ptx_kernel()
     cxx = Mustache.render(
         cxx,
         Dict(
-            "kernel_name" => "CHIMEFRBBeamformer_$(setup)_U$(U)",
+            "kernel_name" => "CHIMEFRBBeamformer_$(setup)_U$(U)_K$(K)",
             "cuda_arch" => cuda_arch,
             "upchannelization_factor" => "$U",
             "downsampling_factor" => "$Tds",
@@ -1667,6 +1752,7 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_dish_layout_M", "value" => "$M"),
                 Dict("type" => "int", "name" => "cuda_dish_layout_N", "value" => "$N"),
                 Dict("type" => "int", "name" => "cuda_upchannelization_factor", "value" => "$U"),
+                Dict("type" => "int", "name" => "cuda_input_bits", "value" => "$K"),
                 Dict("type" => "int", "name" => "cuda_downsampling_factor", "value" => "$Tds"),
                 Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                 Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
@@ -1738,7 +1824,9 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "voltage_name",
-                    "type" => "int4x2_swapped_withoffset",
+                    # K=4: offset-encoded, nibble-swapped, 1 byte per complex sample.
+                    # K=8: plain two's complement, 2 bytes per complex sample.
+                    "type" => K == 4 ? "int4x2_swapped_withoffset" : "cint8",
                     "axes" => [
                         Dict("label" => "D", "length" => D, "dimscaling" => 1),
                         Dict("label" => "P", "length" => P, "dimscaling" => 1),
@@ -1782,14 +1870,14 @@ function fix_ptx_kernel()
             ],
         ),
     )
-    write("output/chimefrb_$(setup)_U$(U).cxx", cxx)
+    write("output/chimefrb_$(setup)_U$(U)_K$(K).cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     main(; output_kernel=true)
-    open("output/chimefrb_$(setup)_U$(U).ptx", "w") do fh
+    open("output/chimefrb_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
         end
