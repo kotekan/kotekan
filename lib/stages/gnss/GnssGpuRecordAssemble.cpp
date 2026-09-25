@@ -79,6 +79,17 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     // single satellite can move. A SHADOW cal keeps learning per PRN so the capture stays
     // visible (/get_elem_cal) without being acted on.
     _elem_adapt = config.get_default<bool>(unique_name, "elem_sum_adapt", true);
+    // SHARED MODEL (hpp note): one instrument per pol + one inter-pol coefficient per PRN.
+    // Shared implies held -- a learner that also combined would defeat the point.
+    _elem_shared = config.get_default<bool>(unique_name, "elem_sum_shared", false);
+    _elem_shared_tau_s = config.get_default<double>(unique_name, "elem_sum_shared_tau_s", 300.0);
+    _elem_pol_tau_s = config.get_default<double>(unique_name, "elem_sum_pol_tau_s", 3.0);
+    if (_elem_shared) {
+        _elem_adapt = false;
+        INFO("GnssGpuRecordAssemble[{:s}]: SHARED element model ON (consensus tau {:.0f} s, "
+             "inter-pol tau {:.1f} s); per-PRN weights held to it",
+             unique_name, _elem_shared_tau_s, _elem_pol_tau_s);
+    }
     // ── #102 ELEMENT STEERING: geometric per-(sat, channel, element) phasors ─────────
     // OFF unless elem_positions_enu is provided (flat [n_elements][3], metres ENU of any
     // fixed array point -- re-referenced to the reference element below so the header's
@@ -134,6 +145,12 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _cal_shadow = _cal;
         _cal_sim.assign((size_t)n, -1.0);
         _anchor_warned.assign((size_t)n, 0);
+        _g_shared.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
+        _pol_num.assign((size_t)n, std::complex<double>(0.0, 0.0));
+        _pol_den.assign((size_t)n, 0.0);
+        _pol_warmth.assign((size_t)n, 0.0);
+        _pol_c.assign((size_t)n, std::complex<double>(0.0, 0.0));
+        _w_scratch.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
     }
     _phi.assign(n, 0.0);
     _phi_cyc.assign(n, 0.0);
@@ -369,6 +386,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_elem_sum_adapt",
             std::bind(&GnssGpuRecordAssemble::set_elem_sum_adapt_callback, this, _1, _2));
+        kotekan::restServer::instance().register_post_callback(
+            unique_name + "/set_elem_sum_shared",
+            std::bind(&GnssGpuRecordAssemble::set_elem_sum_shared_callback, this, _1, _2));
         kotekan::restServer::instance().register_get_callback(
             unique_name + "/get_elem_cal",
             std::bind(&GnssGpuRecordAssemble::get_elem_cal_callback, this, _1));
@@ -449,6 +469,7 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
                                             _elem_sum_min_w);
             _cal_shadow[(size_t)p] = _cal[(size_t)p];
             _cal_sim[(size_t)p] = -1.0;
+            shared_reset_prn((size_t)p);
             if ((size_t)p < _anchor_warned.size())
                 _anchor_warned[(size_t)p] = 0;
         }
@@ -572,6 +593,11 @@ void GnssGpuRecordAssemble::main_thread() {
                     std::fill(_cal_sim.begin(), _cal_sim.end(), -1.0);
                     std::fill(_anchor_warned.begin(), _anchor_warned.end(), 0);
                     std::fill(_elem_prev_ok.begin(), _elem_prev_ok.end(), 0);
+                    // The shared model is anchored to the old reference: relearn it.
+                    _g_shared_warm = false;
+                    _g_shared_n = 0;
+                    for (size_t p2 = 0; p2 < _cal.size(); ++p2)
+                        shared_reset_prn(p2);
                 }
                 WARN("set_reference_element: header reference {:d} -> {:d} at the frame "
                      "boundary. Element cal rebuilt COLD ({} PRNs, re-warm ~{:.1f} s); "
@@ -794,6 +820,11 @@ void GnssGpuRecordAssemble::main_thread() {
                     // NB: do NOT reset _anchor_warned on re-anchor -- the trackers can re-anchor
                     // every record, and re-arming the WARN there ballooned the node log to tens
                     // of GB. The "reference too weak" message is worth exactly once per PRN.
+                    // SHARED MODEL: this record's weights come from the model as it stood
+                    // (previous records' consensus and coefficient -- causal), installed as
+                    // held weights so combine/combine_split run unchanged.
+                    if (_elem_shared.load())
+                        shared_hold(p);
                     if (ec.warm()) {
                         for (int t = 0; t < n_rows_spec; ++t)
                             g3[t] = ec.combine(&_g_elem[(size_t)t * n_e]);
@@ -828,6 +859,8 @@ void GnssGpuRecordAssemble::main_thread() {
                                 }
                                 _cal_sim[p] = (nl > 0.0 && ns > 0.0) ? std::norm(x) / (nl * ns) : -1.0;
                             }
+                            if (_elem_shared.load())
+                                shared_pol_update(p, &_g_elem[(size_t)1 * n_e], dt_s);
                         }
                     }
                     if (ec.anchor_moved()) {
@@ -1829,6 +1862,178 @@ void GnssGpuRecordAssemble::set_elem_sum_adapt_callback(kotekan::connectionInsta
     conn.send_json_reply(nlohmann::json{{"adapt", adapt}, {"was", was}});
 }
 
+void GnssGpuRecordAssemble::set_elem_sum_shared_callback(kotekan::connectionInstance& conn,
+                                                         nlohmann::json& request) {
+    // {"shared": true|false}. On -> the per-PRN weights are rebuilt from the shared model
+    // every record and the learners are held (adapt forced false). Off -> back to held
+    // per-PRN weights (whatever the model last installed); re-enable adapt separately.
+    bool shared;
+    try {
+        shared = request.at("shared").get<bool>();
+    } catch (const std::exception& ex) {
+        conn.send_error(std::string("set_elem_sum_shared: expected {\"shared\": bool}: ")
+                            + ex.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const bool was = _elem_shared.exchange(shared);
+    bool adapt_was = _elem_adapt.load();
+    if (shared)
+        adapt_was = _elem_adapt.exchange(false);
+    if (was != shared)
+        WARN("elem_sum_shared {:s} -> {:s}{:s}", was ? "true" : "false", shared ? "true" : "false",
+             (shared && adapt_was) ? " (adapt forced false)" : "");
+    conn.send_json_reply(nlohmann::json{{"shared", shared}, {"was", was},
+                                        {"adapt", _elem_adapt.load()}});
+}
+
+void GnssGpuRecordAssemble::shared_reset_prn(size_t p) {
+    if (p >= _pol_num.size())
+        return;
+    _pol_num[p] = std::complex<double>(0.0, 0.0);
+    _pol_den[p] = 0.0;
+    _pol_warmth[p] = 0.0;
+    _pol_c[p] = std::complex<double>(0.0, 0.0);
+}
+
+void GnssGpuRecordAssemble::shared_consensus(double now_s) {
+    // One instrument per pol from the warm shadow cals: each PRN's per-pol weight vector is
+    // normalised to sum|w| = 1 (its overall MRC scale is the satellite's strength, not the
+    // instrument), rotated onto the current model (its overall phase is the satellite's), and
+    // averaged with the satellite's strength as weight. A slow EMA then follows the
+    // instrument; the first model is the strongest satellite alone (a blind average of
+    // unaligned vectors could cancel). Re-anchored so the reference element's pol-0 weight is
+    // real positive (the header's phase convention) and the pol-1 anchor element likewise (a
+    // convention only: the per-PRN coefficient carries pol-1's phase).
+    using cd = std::complex<double>;
+    const int n = _n_elements;
+    if (n <= 0 || _g_shared.size() != (size_t)n)
+        return;
+    const double dt = now_s - _g_shared_t;
+    _g_shared_t = now_s;
+    const int h = (n % 2 == 0) ? n / 2 : n;   // an odd count is one pol
+    const int n_pol = (h < n) ? 2 : 1;
+    std::vector<cd> acc((size_t)n, cd(0.0, 0.0));
+    double A = 0.0;
+    int cnt = 0;
+    // Seed choice: strongest warm shadow.
+    size_t q_best = 0;
+    double a_best = -1.0;
+    for (size_t q = 0; q < _cal_shadow.size(); ++q)
+        if (_cal_shadow[q].warm() && _cal_shadow[q].weight_sum() > a_best) {
+            a_best = _cal_shadow[q].weight_sum();
+            q_best = q;
+        }
+    if (a_best <= 0.0)
+        return;
+    for (size_t q = 0; q < _cal_shadow.size(); ++q) {
+        const auto& sh = _cal_shadow[q];
+        if (!sh.warm() || (!_g_shared_warm && q != q_best))
+            continue;
+        const auto& w = sh.weights();
+        const double a_q = sh.weight_sum();
+        bool any = false;
+        for (int pol = 0; pol < n_pol; ++pol) {
+            const int e0 = pol * h, e1 = std::min(n, e0 + h);
+            double s = 0.0;
+            cd x(0.0, 0.0);
+            for (int e = e0; e < e1; ++e) {
+                s += std::abs(w[(size_t)e]);
+                if (_g_shared_warm)
+                    x += std::conj(_g_shared[(size_t)e]) * w[(size_t)e];
+            }
+            if (s <= 0.0)
+                continue;
+            const cd rot = (std::abs(x) > 0.0) ? std::conj(x) / std::abs(x) : cd(1.0, 0.0);
+            for (int e = e0; e < e1; ++e)
+                acc[(size_t)e] += a_q * w[(size_t)e] * rot / s;
+            any = true;
+        }
+        if (any) {
+            A += a_q;
+            ++cnt;
+        }
+    }
+    if (cnt == 0 || A <= 0.0)
+        return;
+    const double beta = _g_shared_warm ? std::min(0.25, 1.0 - std::exp(-std::max(dt, 0.0)
+                                                                          / _elem_shared_tau_s))
+                                       : 1.0;
+    for (int e = 0; e < n; ++e)
+        _g_shared[(size_t)e] += beta * (acc[(size_t)e] / A - _g_shared[(size_t)e]);
+    for (int pol = 0; pol < n_pol; ++pol) {
+        const int e0 = pol * h, e1 = std::min(n, e0 + h);
+        const int anchor = std::min(e1 - 1, e0 + _reference_element);
+        cd pin(1.0, 0.0);
+        if (std::abs(_g_shared[(size_t)anchor]) > 0.0)
+            pin = std::conj(_g_shared[(size_t)anchor]) / std::abs(_g_shared[(size_t)anchor]);
+        double s = 0.0;
+        for (int e = e0; e < e1; ++e)
+            s += std::abs(_g_shared[(size_t)e]);
+        if (s <= 0.0)
+            continue;
+        for (int e = e0; e < e1; ++e)
+            _g_shared[(size_t)e] = _g_shared[(size_t)e] * pin / s;
+    }
+    _g_shared_warm = true;
+    _g_shared_n = cnt;
+}
+
+void GnssGpuRecordAssemble::shared_hold(size_t p) {
+    // Install this PRN's weights from the model. Until a model exists, the PRN rides its own
+    // learner's weights (the held-mode behaviour), so nothing is lost while the consensus
+    // forms; until its inter-pol coefficient is warm it combines pol-0 alone (coherent from
+    // the first record, 3 dB short of both pols).
+    using cd = std::complex<double>;
+    const int n = _n_elements;
+    if (p >= _cal.size() || n <= 0)
+        return;
+    const double now_s =
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    if (now_s - _g_shared_t >= 1.0)
+        shared_consensus(now_s);
+    gnss::ElemCal& ec = _cal[p];
+    if (!_g_shared_warm) {
+        const auto& sh = _cal_shadow[p];
+        if (sh.warm())
+            ec.hold(sh.weights().data(), n);
+        return;
+    }
+    const int h = (n % 2 == 0) ? n / 2 : n;
+    for (int e = 0; e < h; ++e)
+        _w_scratch[(size_t)e] = _g_shared[(size_t)e];
+    cd c(0.0, 0.0);
+    if (h < n && _pol_warmth[p] > 0.95 && _pol_den[p] > 0.0)
+        c = _pol_num[p] / _pol_den[p];
+    _pol_c[p] = c;
+    for (int e = h; e < n; ++e)
+        _w_scratch[(size_t)e] = c * _g_shared[(size_t)e];
+    ec.hold(_w_scratch.data(), n);
+}
+
+void GnssGpuRecordAssemble::shared_pol_update(size_t p, const std::complex<double>* g_prompt,
+                                              double dt_s) {
+    // The inter-pol coefficient from the two SUB-BEAMS of this record: B0 = pol-0 model dotted
+    // with the prompt, B1 = pol-1 likewise; c = <B1 conj(B0)> / <|B0|^2>. Each sub-beam has
+    // the half-array's gain, so a bright satellite's leakage is rejected here as in the beam
+    // itself -- that is what makes this one number safe to learn per PRN when 32 were not.
+    using cd = std::complex<double>;
+    const int n = _n_elements;
+    if (!_g_shared_warm || p >= _pol_num.size() || n < 2 || (n % 2) != 0 || !(dt_s > 0.0))
+        return;
+    const int h = n / 2;
+    cd b0(0.0, 0.0), b1(0.0, 0.0);
+    for (int e = 0; e < h; ++e)
+        b0 += std::conj(_g_shared[(size_t)e]) * g_prompt[e];
+    for (int e = h; e < n; ++e)
+        b1 += std::conj(_g_shared[(size_t)e]) * g_prompt[e];
+    const double alpha = std::min(0.25, 1.0 - std::exp(-dt_s / _elem_pol_tau_s));
+    _pol_num[p] += alpha * (b1 * std::conj(b0) - _pol_num[p]);
+    _pol_den[p] += alpha * (std::norm(b0) - _pol_den[p]);
+    _pol_warmth[p] += alpha * (1.0 - _pol_warmth[p]);
+}
+
 void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& conn) {
     // Per PRN slot: is the live cal warm, is the anchor off the reference, and -- when held --
     // how well the shadow (still learning) agrees with the held weights (-1 = not measured).
@@ -1837,13 +2042,22 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
     nlohmann::json out;
     out["adapt"] = _elem_adapt.load();
     out["n_elements"] = _n_elements;
+    out["shared"] = _elem_shared.load();
+    out["shared_warm"] = _g_shared_warm;
+    out["shared_n"] = _g_shared_n;
+    nlohmann::json gs = nlohmann::json::array();
+    for (const auto& g : _g_shared)
+        gs.push_back({g.real(), g.imag()});
+    out["g_shared"] = gs;
     nlohmann::json rows = nlohmann::json::array();
     for (size_t p = 0; p < _cal.size() && p < _prns.size(); ++p)
         rows.push_back({{"prn", _prns[p]},
                         {"warm", _cal[p].warm()},
                         {"anchor_moved", _cal[p].anchor_moved()},
                         {"shadow_warm", _cal_shadow[p].warm()},
-                        {"sim", _cal_sim[p]}});
+                        {"sim", _cal_sim[p]},
+                        {"pol_c", {_pol_c[p].real(), _pol_c[p].imag()}},
+                        {"pol_warm", p < _pol_warmth.size() && _pol_warmth[p] > 0.95}});
     out["prns"] = rows;
     conn.send_json_reply(out);
 }

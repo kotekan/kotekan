@@ -622,6 +622,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             # byte-identical to reference-element-only.
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
+            **elem_shared_keys(args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
             # keys unconditionally changed every production node config by three lines for a
@@ -1174,6 +1175,16 @@ def elem_positions_from_arraymap(arr, n_elem):
     return out, ep.key()
 
 
+def elem_shared_keys(args):
+    """Assembler keys for the shared element model; nothing unless --elem-sum-shared, so
+    a fleet without it is byte-identical."""
+    if not getattr(args, "elem_sum_shared", False):
+        return {}
+    return {"elem_sum_shared": True, "elem_sum_adapt": False,
+            "elem_sum_shared_tau_s": args.elem_sum_shared_tau_s,
+            "elem_sum_pol_tau_s": args.elem_sum_pol_tau_s}
+
+
 def elem_steer_keys(args, arr, n_elem):
     """The assembler keys that ARM steering for one band: positions (from the source chosen by
     --elem-positions-from), the measured sign, and -- for the arraymap source -- the epoch key
@@ -1617,6 +1628,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                else {}),
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
+            **elem_shared_keys(args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
             # keys unconditionally changed every production node config by three lines for a
@@ -2973,6 +2985,16 @@ def main():
                          "competes under the same measured floor as every other candidate, "
                          "so a cold or bad cal loses on merit rather than corrupting the "
                          "fold (docs 11.32).")
+    ap.add_argument("--elem-sum-shared", action=argparse.BooleanOptionalAction, default=False,
+                    help="SHARED instrument model in the assembler: one per-element gain per "
+                         "polarisation learned as a slow consensus of every satellite's cal, "
+                         "plus one inter-pol coefficient per satellite; per-PRN weights are "
+                         "held to it (elem_sum_adapt false), so a boresight transit cannot "
+                         "capture the weak satellites' element sums. Emitted only when on.")
+    ap.add_argument("--elem-sum-shared-tau-s", type=float, default=300.0,
+                    help="consensus EMA time constant (s) for --elem-sum-shared")
+    ap.add_argument("--elem-sum-pol-tau-s", type=float, default=3.0,
+                    help="per-satellite inter-pol coefficient EMA time constant (s)")
     ap.add_argument("--elem-sum-tau-s", type=float, default=2.0,
                     help="ElemCal integration time constant (s). warm() is ~3 tau, so this sets "
                          "how long a CONTINUOUS lock the per-element self-cal needs before it "

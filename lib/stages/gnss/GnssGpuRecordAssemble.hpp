@@ -89,6 +89,34 @@ private:
     std::atomic<bool> _elem_adapt{true};
     std::vector<gnss::ElemCal> _cal_shadow;
     std::vector<double> _cal_sim;
+    /// SHARED INSTRUMENT MODEL (config elem_sum_shared, live /set_elem_sum_shared). With
+    /// geometry steered, every satellite's per-element vector is the same instrument to within
+    /// the per-dish pattern residual -- WITHIN A POLARISATION. Between the two feeds of one
+    /// dish the phase is direction-dependent by up to +-150 deg (the E/H-plane sidelobe
+    /// patterns differ), so the two halves cannot share one phase. The model is therefore one
+    /// per-element gain per pol (_g_shared, each half normalised to sum|g| = 1, learned as a
+    /// slow consensus of the per-PRN SHADOW cals) plus ONE complex coefficient per PRN
+    /// (_pol_c: the pol-1 sub-beam against the pol-0 sub-beam, a fast EMA). A bright satellite
+    /// in a transit can capture a per-PRN learner in seconds; it moves a 300-s consensus by a
+    /// few percent and a sub-beam ratio not at all, so the weak satellites keep the array gain.
+    /// shared implies held (_elem_adapt = false): the live weights are rebuilt from the model
+    /// every record and the learners only ever feed the consensus.
+    std::atomic<bool> _elem_shared{false};
+    double _elem_shared_tau_s = 300.0;   ///< consensus EMA (slower than any transit)
+    double _elem_pol_tau_s = 3.0;        ///< per-PRN inter-pol coefficient EMA
+    std::vector<std::complex<double>> _g_shared; ///< [n_elem]: pol-0 half then pol-1 half
+    bool _g_shared_warm = false;
+    int _g_shared_n = 0;                 ///< PRNs that fed the last consensus
+    double _g_shared_t = 0.0;            ///< steady time of the last consensus refresh
+    std::vector<std::complex<double>> _pol_num; ///< per PRN: EMA of B1 conj(B0)
+    std::vector<double> _pol_den;               ///< per PRN: EMA of |B0|^2
+    std::vector<double> _pol_warmth;            ///< per PRN: -> 1 with tau
+    std::vector<std::complex<double>> _pol_c;   ///< per PRN: the coefficient in force (diagnostic)
+    std::vector<std::complex<double>> _w_scratch; ///< [n_elem] held weights being built
+    void shared_reset_prn(size_t p);
+    void shared_consensus(double now_s);
+    void shared_hold(size_t p);
+    void shared_pol_update(size_t p, const std::complex<double>* g_prompt, double dt_s);
     std::vector<gnss::ElemSteer::cf> _steer_buf; ///< this PRN's [n_chan][n_elem] phasors, copied under _steer_mtx
     uint8_t _steer_nchan_warned = 0;
     std::vector<uint8_t> _anchor_warned; ///< one WARN per PRN when the phase anchor moves off
@@ -330,6 +358,7 @@ private:
     /// #102: per-satellite geometry for the element steering (POST {"<prn>": [az_deg, el_deg]}).
     void set_sat_geometry_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_adapt_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    void set_elem_sum_shared_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void get_elem_cal_callback(kotekan::connectionInstance& conn);
     void set_reference_element_callback(kotekan::connectionInstance& conn,
                                         nlohmann::json& request);

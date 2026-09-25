@@ -97,6 +97,23 @@ public:
         apply_prior();
     }
 
+    /// HELD WEIGHTS FROM OUTSIDE: install @p w (n entries, anchored and scaled by the caller)
+    /// as this cal's weights, warm at once. The combine/combine_split machinery then runs on
+    /// them exactly as on learned weights; update() is the caller's to skip. This is how a
+    /// SHARED instrument model (one per-element gain for every satellite) reaches the per-PRN
+    /// combine without the per-PRN learner ever touching it.
+    void hold(const cd* w, int n_elem) {
+        if (w == nullptr || n_elem != _n)
+            return;
+        _w.assign(w, w + _n);
+        _wsum = 0.0;
+        for (int e = 0; e < _n; ++e)
+            _wsum += std::abs(_w[(size_t)e]);
+        _warmth = 1.0;
+        _anchor = _ref;
+        rebuild_split();
+    }
+
     /// True once the weights have integrated ~3 time constants and the sum should be used.
     bool warm() const {
         return _warmth > 0.95 && _wsum > 0.0;
