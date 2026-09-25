@@ -145,7 +145,8 @@ updatable_config:
     enabled: false
 
 dataset_manager:
-  use_dataset_broker: False
+  use_dataset_broker: True
+  ds_broker_host: "10.5.60.1"
 
 main_pool:
   kotekan_metadata_pool: chordMetadata
@@ -1199,6 +1200,7 @@ vis_convert:
     n2_buf: eig_10s_buffer
     vis_buf: vis_buffer
     freq_ids: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ]
+    fake_git_tag: "f97998b79bb057668de62ced820273c3f5a5fd27" # 2021.11_hotfix - receiver
 
 failed_vis_convert:
     kotekan_stage: n2FrameToVisFrame
