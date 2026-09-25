@@ -411,9 +411,11 @@ GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
 
 void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstance& conn,
                                                       nlohmann::json& request) {
-    // #102: {"<prn>": [az_deg, el_deg], ...}. Slow-moving (~0.5 deg/min): a 30 s post
-    // cadence keeps the steering within ~1 mm of true. Unknown PRNs are skipped (the
-    // broker posts its whole sky; this stage steers the slots it owns).
+    // #102: {"<prn>": [az_deg, el_deg, az_rate_dps, el_rate_dps, t_utc], ...}. The rates and
+    // the epoch let the steering follow the satellite between the ~30 s posts (gnssElemSteer.hpp:
+    // held, a snapshot is ~0.2 m off by the next post on the 44 m baseline). A bare [az, el]
+    // (older broker) is still accepted and held. Unknown PRNs are skipped (the broker posts its
+    // whole sky; this stage steers the slots it owns).
     int n_up = 0;
     if (!_steer.enabled()) {
         conn.send_json_reply(nlohmann::json{{"updated", 0}, {"steering", "off"}});
@@ -430,8 +432,12 @@ void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstanc
                 continue;
             for (size_t p = 0; p < _prns.size(); ++p)
                 if (_prns[p] == prn) {
-                    _steer.update((int)p, it.value()[0].get<double>(),
-                                  it.value()[1].get<double>(), now_s);
+                    const auto& v = it.value();
+                    const bool rated = v.size() >= 5;
+                    _steer.update((int)p, v[0].get<double>(), v[1].get<double>(), now_s,
+                                  rated ? v[2].get<double>() : 0.0,
+                                  rated ? v[3].get<double>() : 0.0,
+                                  rated ? v[4].get<double>() : 0.0);
                     ++n_up;
                     break;
                 }
@@ -772,6 +778,9 @@ void GnssGpuRecordAssemble::main_thread() {
                                 std::chrono::steady_clock::now().time_since_epoch())
                                 .count();
                         if (_steer.warm((int)p, now_s)) {
+                            // Follow the satellite to THIS record's time (the data's clock,
+                            // not the host's: records lag the wall by the pipeline depth).
+                            _steer.refresh((int)p, utc);
                             _steer_buf.resize((size_t)n_chan * n_e);
                             _steer.copy_slot((int)p, _steer_buf.data());
                             steered = true;

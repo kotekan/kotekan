@@ -143,7 +143,19 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
         # fetching and merging its own ephemeris, which made it a second writer of the shared
         # cache (2026-08-27) and let its sky plot disagree with the broker's while claiming to
         # be "the SAME source the tracker uses".
-        out[prn] = (dop, rate, v["el"], v["range_m"], v["sat_clk_s"], v["az"])
+        #
+        # Elements 6-8 (az rate, el rate, deg/s, and the unix epoch az/el describe) are for the
+        # element steering: a 30-s geometry snapshot drifts ~0.2 m of path across the array by
+        # the next post, so the assemblers extrapolate along the track (gnssElemSteer.hpp). The
+        # epoch travels WITH the tuple so a bridged (frozen) sky extrapolates from when it was
+        # true rather than being stamped as current.
+        if v2:
+            _daz = (v2["az"] - v["az"] + 540.0) % 360.0 - 180.0
+            _az_rate, _el_rate = _daz / dt, (v2["el"] - v["el"]) / dt
+        else:
+            _az_rate = _el_rate = 0.0
+        out[prn] = (dop, rate, v["el"], v["range_m"], v["sat_clk_s"], v["az"],
+                    _az_rate, _el_rate, t_utc.timestamp())
     # PREDICTION-COLLAPSE GUARD (2026-07-19): the daily BRDC's C/E nav records can LAG the
     # GPS ones by hours, so an entire constellation's newest toe crosses best_eph's window
     # at ONE instant -- measured 11:59:57Z: 13 seeded sats dropped 'set below horizon' in

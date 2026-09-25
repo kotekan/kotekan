@@ -101,11 +101,14 @@ def stage_almanac_predict(ctx):
             # element -- broadcast sat clock -- is BRDC-only; the TLE path has none.)
             ctx.pred = {p: (ctx.args.doppler_sign * v[0], ctx.args.doppler_sign * v[1], v[2],
                             v[3], (v[4] if len(v) > 4 else 0.0),
-                            (v[5] if len(v) > 5 else 0.0))
+                            (v[5] if len(v) > 5 else 0.0)) + tuple(v[6:9])
                         for p, v in raw.items()}
             # ── #102 GEOMETRY FEED (--post-sat-geometry): every ~30 s, post each sat's
             # az/el to the record assemblers' /set_sat_geometry so the element steering
-            # (elem_positions_enu in the node config) has fresh directions. Endpoint
+            # (elem_positions_enu in the node config) has fresh directions. With the rates and
+            # epoch (pred elements 6-8, BRDC path) the post is [az, el, az_rate, el_rate,
+            # t_utc] and the assemblers follow the track between posts; without them it stays
+            # a bare [az, el] snapshot, which they hold. Endpoint
             # derived from the combiner list (n2combine -> n2assemble). Harmless where
             # the assembler has no positions configured (the endpoint then does not
             # exist and the post fails quietly into the rate-limited log).
@@ -115,7 +118,9 @@ def stage_almanac_predict(ctx):
                 _body = {}
                 for _p2, _v2 in ctx.pred.items():
                     if len(_v2) > 5 and _v2[2] > 0.0:      # above horizon; az is element 5
-                        _body[str(_p2)] = [float(_v2[5]), float(_v2[2])]
+                        _body[str(_p2)] = ([float(_v2[5]), float(_v2[2]), float(_v2[6]),
+                                            float(_v2[7]), float(_v2[8])]
+                                           if len(_v2) > 8 else [float(_v2[5]), float(_v2[2])])
                 if _body:
                     _okc = 0
                     for _u2 in ctx.dll_combiners:
