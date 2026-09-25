@@ -1115,12 +1115,32 @@ void GnssGpuRecordAssemble::main_thread() {
                     const size_t erow = (size_t)(c.job0 + 0) * n_chan;
                     const size_t lrow = (size_t)(c.job0 + 2) * n_chan;
                     const bool warm = _elem_sum && _cal[p].warm();
+                    // STEERED, EXACTLY AS THE HEADER IS (#102). The cal's weights are learned
+                    // from the STEERED prompt above, so they carry the instrument phase only.
+                    // Applied to the raw per-channel correlations they leave every element's
+                    // geometric phase in the sum, and a combine spread over a dozen dishes then
+                    // reads 5-20 dB below the header -- the per-channel mean of
+                    // |sum_e w_e exp(i 2 pi f_ch tau_e)|^2, satellite by satellite -- while the
+                    // unsteered noise probes do not, so the served C/N0 and the comb DLL's own
+                    // taps both lose exactly that. The per-PRN learners hid it by putting nearly
+                    // all their weight on the reference element; a shared model does not. The
+                    // reference element is the phase centre, so the steered combine keeps the
+                    // comb's code and phase currency. The beam cube below stays raw: per element
+                    // is its axis.
+                    const gnss::ElemSteer::cf* st_tab = steered ? _steer_buf.data() : nullptr;
                     auto tap = [&](size_t row, int ch) -> std::complex<double> {
                         const size_t b = (row + ch) * n_e;
                         std::complex<double> v;
                         if (warm) {
-                            for (int el = 0; el < n_e; ++el)
-                                _spec_scratch[el] = {corr[2 * (b + el)], corr[2 * (b + el) + 1]};
+                            const gnss::ElemSteer::cf* st =
+                                st_tab ? st_tab + (size_t)ch * n_e : nullptr;
+                            for (int el = 0; el < n_e; ++el) {
+                                std::complex<double> x(corr[2 * (b + el)],
+                                                       corr[2 * (b + el) + 1]);
+                                if (st)
+                                    x *= std::complex<double>(st[el].real(), st[el].imag());
+                                _spec_scratch[el] = x;
+                            }
                             v = _cal[p].combine(_spec_scratch.data());
                         } else {
                             v = {corr[2 * (b + ref_e)], corr[2 * (b + ref_e) + 1]};
