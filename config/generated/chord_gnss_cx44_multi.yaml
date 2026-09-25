@@ -10,9 +10,9 @@
 #       --despread-max-chips 80 --despread-chips-centered --dpdk-resync-max-advances 32
 #       --n2-send --n2-send-legs both --rf-stats --rf-stats-period-s 1.0 --no-path-a --sky-deep
 #       --elem-steer-bands all --elem-steer-sign 1.0 --elem-positions-from arraymap
-#       --elem-positions-file config/elem_positions_refined_20260925.json --search-host
-#       10.222.0.56 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube --cube-host
-#       10.222.3.6 --vis-capture gps_l5 --extra-signal
+#       --elem-positions-file config/elem_positions_refined_20260925.json --elem-sum-shared
+#       --search-host 10.222.0.56 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube
+#       --cube-host 10.222.3.6 --vis-capture gps_l5 --extra-signal
 #       GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
 #       --extra-signal
 #       BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
@@ -432,6 +432,10 @@ gnss0_b2a_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b2a_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -776,6 +780,10 @@ gnss0_b2b_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b2b_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -1122,6 +1130,10 @@ gnss0_b3i_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss0_b3i_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -1489,6 +1501,10 @@ gnss0_e5a_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e5a_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -1841,6 +1857,10 @@ gnss0_e5b_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e5b_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -2191,6 +2211,10 @@ gnss0_e6_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss0_e6_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -2519,6 +2543,10 @@ gnss0_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss0_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -2978,6 +3006,10 @@ gnss1_b2a_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss1_b2a_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -3299,6 +3331,10 @@ gnss1_b2b_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss1_b2b_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -3619,6 +3655,10 @@ gnss1_b3i_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss1_b3i_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -3963,6 +4003,10 @@ gnss1_e5a_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss1_e5a_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -4284,6 +4328,10 @@ gnss1_e5b_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss1_e5b_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -4601,6 +4649,10 @@ gnss1_e6_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss1_e6_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble
@@ -4900,6 +4952,10 @@ gnss1_n2assemble:
   elem_positions_epoch: 2026-09-14-polswap:9db46e1f+elem_positions_refined_20260925.json
   elem_steer_sign: 1.0
   elem_sum: true
+  elem_sum_adapt: false
+  elem_sum_pol_tau_s: 3.0
+  elem_sum_shared: true
+  elem_sum_shared_tau_s: 300.0
   elem_sum_tau_s: 2.0
   in_buf: gnss1_n2epl_buf
   kotekan_stage: GnssGpuRecordAssemble

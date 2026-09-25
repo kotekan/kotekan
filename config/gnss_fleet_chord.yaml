@@ -392,6 +392,13 @@ common:
   # dish's pol-0 position (one feed, one phase centre); dark dishes keep the epoch E/N and
   # take the plane height. Refused if the epoch key changes.
   elem-positions-file: config/elem_positions_refined_20260925.json
+  # SHARED INSTRUMENT MODEL (phase 3a of the transit fix): the per-PRN self-cal is a learner
+  # only; the live element weights are one per-element gain per polarisation (a 300-s
+  # consensus over every satellite) plus one inter-pol coefficient per satellite. A boresight
+  # transit can no longer teach the weak satellites the bright one's phases. Requires the
+  # steering above (the instrument is common only once geometry is removed). Live switch:
+  # POST <assemble>/set_elem_sum_shared {"shared": false} reverts to held per-PRN weights.
+  elem-sum-shared: true
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
