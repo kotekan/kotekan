@@ -389,9 +389,15 @@ def main():
                 # satellite's position wearing this PRN's number (measured: 71% of strong
                 # satellites "below the horizon"). The row's own measurements are kept.
                 epoch_suspect = bool(r.get("time_base_suspect"))
+                # ONE SATELLITE, NOT THE SKY. predict_all works satellite by satellite, and each
+                # row needs only its own: handing it the whole store (100 satellites, ~40k
+                # records over the cached days) cost 18 ms a call, twice per row, and made the
+                # eight writers the gnss VM's heaviest load after the broker (2026-09-27).
+                _k1 = (args.sys, prn)
+                _eph1 = {_k1: eph[_k1]} if (eph and _k1 in eph) else {}
                 if eph and not epoch_suspect:
                     try:
-                        v = predict_all(eph, args.lat, args.lon, args.alt,
+                        v = predict_all(_eph1, args.lat, args.lon, args.alt,
                                         datetime.fromtimestamp(t_epoch, tz=timezone.utc),
                                         mask_deg=-90.0,
                                         max_age=args.eph_geom_window_s).get((args.sys, prn))
@@ -495,7 +501,7 @@ def main():
                     if frame0 and _fh and _fd is not None and eph:
                         try:
                             _ta = frame0 + _fh * args.samples_per_hop / args.sample_rate_hz
-                            _va = predict_all(eph, args.lat, args.lon, args.alt,
+                            _va = predict_all(_eph1, args.lat, args.lon, args.alt,
                                               datetime.fromtimestamp(_ta, tz=timezone.utc),
                                               mask_deg=-90.0,
                                               max_age=args.eph_geom_window_s).get((args.sys, prn))
