@@ -16,7 +16,9 @@ URL=${GNSS_BROKER_URL:-http://127.0.0.1:12060}/get_chains
 STABLE_FOR=${GNSS_CHAINS_STABLE_S:-15}      # count must hold this long
 DEADLINE=${GNSS_CHAINS_TIMEOUT_S:-300}
 
-count() { curl -s -m5 "$URL" 2>/dev/null | tr ',' '\n' | grep -c '"chain"' || echo 0; }
+# grep -c prints its count even when it is 0 (and exits 1 then), so it needs no fallback: an
+# `|| echo 0` here added a second line, and "0\n0" broke every numeric test below.
+count() { curl -s -m5 "$URL" 2>/dev/null | tr ',' '\n' | grep -c '"chain"'; }
 
 start=$(date +%s); last=-1; since=0
 while :; do
