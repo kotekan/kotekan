@@ -41,7 +41,7 @@ telem_buf:
   frame_size: 32432
   kotekan_buffer: standard
   metadata_pool: gnss_pool
-  num_frames: 1024
+  num_frames: 8192
 telem_gather:
   cpu_affinity:
   - 4

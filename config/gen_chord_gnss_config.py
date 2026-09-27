@@ -2387,10 +2387,14 @@ def build_gather_instance(cfg, args, port):
         "telem_buf": {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
-            # 60 senders x 23.84 frames/s = ~1430 frames/s; 1024 frames is ~0.7 s of absorption
-            # for a broker that stalls, at 17 MB of memory. Past that the gather drops, which is
-            # correct: telemetry must never back-pressure a tracker.
-            "num_frames": 1024,
+            # Past this depth the gather drops, which is correct: telemetry must never
+            # back-pressure a tracker. But a drop here is EVERY sender's frame at once -- a whole
+            # window missing fleet-wide -- and the broker's fleet ADR ends every arc on every
+            # chain when it sees one. 1024 frames was ~0.7 s for the 60 senders it was sized for;
+            # at 89 senders x 23.84 frames/s (~2120 frames/s) it was 0.48 s, and a saturated host
+            # starving either pinned consumer for that long broke every TEC arc every few
+            # minutes (2026-09-27). 8192 frames is ~3.9 s at ~270 MB.
+            "num_frames": 8192,
             "frame_size": frame_bytes,
         },
         "telem_recv": {
