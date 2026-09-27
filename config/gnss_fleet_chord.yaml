@@ -390,8 +390,11 @@ common:
   # a plane tilted 4.2 mrad down to the east and 3.5 mrad up to the north through A01 (a free
   # per-dish height solve lands on it to 1 cm rms). Cube order; pol-1 elements carry their
   # dish's pol-0 position (one feed, one phase centre); dark dishes keep the epoch E/N and
-  # take the plane height. Refused if the epoch key changes.
-  elem-positions-file: config/elem_positions_refined_20260925.json
+  # take the plane height. Refused if the epoch key changes. The third pass is a free 3-D
+  # solve over 35 h steered on the second (transit windows vetoed): 6-h to 35-h windows agree
+  # to 1-2 cm, and the heights settle a further 3.3 mrad down to the east (east dishes 10-14 cm
+  # lower), worth 0.1-0.3 dB of steering coherence on the east dishes.
+  elem-positions-file: config/elem_positions_refined_20260927.json
   # SHARED INSTRUMENT MODEL (phase 3a of the transit fix): the per-PRN self-cal is a learner
   # only; the live element weights are one per-element gain per polarisation (a 300-s
   # consensus over every satellite) plus one inter-pol coefficient per satellite. A boresight
@@ -408,7 +411,11 @@ common:
   # learners, and the per-instance phase pin (one element, whose weight collapsed) went to noise,
   # so the instances cancelled each other in the fleet sum for 20+ min after the pass. Re-arm
   # with the transit freeze and the whole-model pin.
-  elem-sum-shared: false
+  # RE-ARMED with both (assembler 422ea1bf8: no learning while the broker's pooled nearest-
+  # to-boresight separation is inside 6 deg and for 60 s after; the pin is the whole first
+  # healthy model). The freeze needs a broker that posts that separation ("_bore", same
+  # commit), so restart the broker with the nodes.
+  elem-sum-shared: true
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
