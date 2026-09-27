@@ -269,7 +269,13 @@ common:
   # the full leg does, which recv1 is now demonstrably accepting. eigencalc itself ran clean
   # on cx19 for hours: zero non-real diagonals at ~38 fps.
   # Rollback if recv1's writer complains again: n2-send-legs: full, regenerate, restart.
-  n2-send-legs: both
+  #
+  # FULL LEG ONLY since recv1's 09-19 update. Its receivers check each sender's frame
+  # descriptor (layout and element count) against their own buffers, and recv1's subset
+  # buffer is the DishInputs layout (compact, over the non-Missing dishes of its dish
+  # table) while ours is a 32-element FullUpperTri from the captured base. The full leg
+  # matches (FullUpperTri, 128). Re-arm the subset only with a DishInputs buffer.
+  n2-send-legs: full
   # ⚠️ RETRACTION 2026-08-18 23:4x -- KV asked "are we certain we didn't mess up the N^2 in
   # our manipulations?" and the honest answer is NO, not certain. The previous note claimed
   # eigencalc "has been parked for the life of this instrument" and that we merely uncovered

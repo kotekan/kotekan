@@ -3850,6 +3850,14 @@ def main():
                 leg["server_port"] = (args.n2_send_port_subset if "subset" in key
                                       else args.n2_send_port_full)
                 leg.setdefault("drop_frames", True)
+                # THE FRAME-DESCRIPTOR HANDSHAKE. recv1's bufferRecv requires it on every N^2
+                # port (use_frame_desc: true); a sender without it is read as a descriptor and
+                # kills the receiver ("Failed to deserialize frame descriptor"). The captured
+                # base predates the handshake, so it is stamped here, as the endpoint is.
+                # reconnect_time is the sender's option; the base's retry_time is an old name
+                # nothing reads.
+                leg["use_frame_desc"] = True
+                leg["reconnect_time"] = int(leg.pop("retry_time", None) or leg.get("reconnect_time") or 10)
                 n2_send_kept.append("%s(%s -> %s:%d)" % (key, leg.get("buf"),
                                                          leg["server_ip"], leg["server_port"]))
             continue

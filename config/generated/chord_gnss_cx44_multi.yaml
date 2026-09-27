@@ -2,13 +2,13 @@
 # node cx44  base live_config_20260831.json  signal GPS_L5_Q
 # covering channels 13: freq_id 5978..6074
 # rest port 12048 (our nodes replace production's kotekan on these six)
-# outputs disabled: ['buffer_send_bf_mask_changes', 'buffer_send_bf_mask_changes_1']
+# outputs disabled: ['buffer_send_bf_mask_changes', 'buffer_send_bf_mask_changes_1', 'buffer_send_n2_subset', 'buffer_send_n2_subset_1']
 # base sha256 8630ca13702a83ec (config/base/live_config_20260831.json)
 # REGENERATE WITH (this is the whole recipe -- flags included):
 #   config/gen_chord_gnss_config.py --base config/base/live_config_20260831.json --node cx44
 #       --carrier-phase-from-ref 1 --carrier-phase-mode 1 --keep-n2 --n2-dual --phi-fp16
 #       --despread-max-chips 80 --despread-chips-centered --dpdk-resync-max-advances 32
-#       --n2-send --n2-send-legs both --rf-stats --rf-stats-period-s 1.0 --no-path-a --sky-deep
+#       --n2-send --n2-send-legs full --rf-stats --rf-stats-period-s 1.0 --no-path-a --sky-deep
 #       --elem-steer-bands all --elem-steer-sign 1.0 --elem-positions-from arraymap
 #       --elem-positions-file config/elem_positions_refined_20260927.json --elem-sum-shared
 #       --search-host 10.222.0.56 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube
@@ -48,30 +48,18 @@ buffer_send_n2_full:
   buf: n2_buffer
   drop_frames: true
   kotekan_stage: bufferSend
-  retry_time: 10.0
+  reconnect_time: 10
   server_ip: 10.222.0.51
   server_port: 11027
+  use_frame_desc: true
 buffer_send_n2_full_1:
   buf: n2_buffer_1
   drop_frames: true
   kotekan_stage: bufferSend
-  retry_time: 10.0
+  reconnect_time: 10
   server_ip: 10.222.0.51
   server_port: 11027
-buffer_send_n2_subset:
-  buf: n2_eigen_buffer
-  drop_frames: true
-  kotekan_stage: bufferSend
-  retry_time: 10.0
-  server_ip: 10.222.0.51
-  server_port: 11025
-buffer_send_n2_subset_1:
-  buf: n2_eigen_buffer_1
-  drop_frames: true
-  kotekan_stage: bufferSend
-  retry_time: 10.0
-  server_ip: 10.222.0.51
-  server_port: 11025
+  use_frame_desc: true
 compute_RFI_frame_mask:
   enabled_updatable_config: /rfi_second_stage_enabled
   in_buf: host_rfi_sktilde_buffer
