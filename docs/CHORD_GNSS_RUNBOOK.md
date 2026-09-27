@@ -27,7 +27,7 @@ Without `--user` systemd looks for system units, finds nothing, and says so conf
 | broker | **gnss** | `gnss-broker` | 1.43 cores |
 | gather | **gnss** | `gnss-gather` | 0.84 |
 | aggregator (GPU) | **gnss** | `gnss-aggregator` | 0.76 + 34% of an L40S |
-| obs writers ×8 | **gnss** | `gnss-obs@<chain>` | 0.15 total |
+| obs writers ×8 | **gnss** | `gnss-obs@<chain>` | 0.15 total (~1% each; 20-90% each means the per-row ephemeris cost is back) |
 | live viewer :8080 | **gnss** | `gnss-viewer` | 0.02 |
 | — | | | **3.19 of 6 cores (53%)** |
 | cube archiver | cf06 | `cubearch_up.sh` | writes 32.5 GB/h to NFS |
@@ -73,8 +73,19 @@ are actually being seen. `present` well below `armed` for minutes is the interes
 and present were back at 99/64 immediately, detections within seconds, and the trim loop
 re-closed inside a minute. The nodes hold their own tracking; the VM services only re-attach.
 
-⚠️ **A gather restart still wipes every standing trim.** The readback goes large (~1-2.5 chips)
-for a minute and settles. That is the transient, not a fault.
+**A gather restart keeps the standing trims** (the fleet trim store is on local disk): measured
+2026-09-27, the E5a and L5 trim readbacks were unchanged across one. What it does cost is one
+fleet-ADR arc break on every chain while the node senders reconnect (their retry is 30 s, so all
+89 are back within ~30 s). The older warning here, that a restart wipes every trim, predates the
+trim store.
+
+⚠️ **Every fleet-ADR arc breaking at once, every few minutes, is the gather's input buffer
+overflowing** -- not the sky, not a node. The broker logs `FADR BREAK <chain>: ... gap5..25` on all
+eight chains within a second; the gather's `/metrics` shows it directly:
+`kotekan_buffer_recv_dropped_frame_total{stage_name="/telem_recv"}` climbing. The buffer's two
+consumers are pinned to single cores, so a saturated VM starves them and whole windows are dropped
+from every sender at once (2026-09-27: VM ~97% busy from obs writers doing a whole-sky ephemeris
+prediction per row; fixed, and the buffer raised to 8192 frames, ~3.9 s). Check the load first.
 
 **Does NOT fix itself:**
 
