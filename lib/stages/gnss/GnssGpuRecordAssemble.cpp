@@ -2100,9 +2100,9 @@ bool GnssGpuRecordAssemble::shared_frozen(double now_s) {
 
 void GnssGpuRecordAssemble::shared_hold(size_t p) {
     // Install this PRN's weights from the model. Until a model exists, the PRN rides its own
-    // learner's weights (the held-mode behaviour), so nothing is lost while the consensus
-    // forms; until its inter-pol coefficient is warm it combines pol-0 alone (coherent from
-    // the first record, 3 dB short of both pols).
+    // learner's weights (the held-mode behaviour; outside a transit freeze, see below), so
+    // nothing is lost while the consensus forms; until its inter-pol coefficient is warm it
+    // combines pol-0 alone (coherent from the first record, 3 dB short of both pols).
     using cd = std::complex<double>;
     const int n = _n_elements;
     if (p >= _cal.size() || n <= 0)
@@ -2114,8 +2114,14 @@ void GnssGpuRecordAssemble::shared_hold(size_t p) {
         shared_consensus(now_s);
     gnss::ElemCal& ec = _cal[p];
     if (!_g_shared_warm) {
+        // ⚠️ NOT INSIDE A TRANSIT FREEZE. The shadow is exactly the per-PRN learner the freeze
+        // exists to keep out of the combine: near boresight a bright satellite's leakage
+        // teaches it that satellite's phases, and a full-array combine on those weights puts
+        // the array gain on the leak (worse than the bare reference element). So while frozen
+        // the live cal keeps what it holds -- the shadow's weights from before the freeze, or
+        // nothing, which leaves the header on the reference element.
         const auto& sh = _cal_shadow[p];
-        if (sh.warm())
+        if (sh.warm() && !shared_frozen(now_s))
             ec.hold(sh.weights().data(), n);
         return;
     }

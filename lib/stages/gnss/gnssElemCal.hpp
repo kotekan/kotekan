@@ -253,19 +253,27 @@ public:
         // element's noise out of its own gain and its own noise estimate.
         //
         // The reference element itself is the one special case: it has no fixed external
-        // reference, so it is calibrated against the leave-it-out weighted sum of the others,
+        // reference, so it is calibrated against the leave-it-out weighted MEAN of the others,
         // which exists once they are warm. Until then it keeps its bootstrap weight of 1 (the
         // header is then exactly the reference element -- the historical behaviour).
+        // ⚠️ A MEAN, NOT A SUM: the reference's reference must be in the same "one element"
+        // units that g_ref is for every other element. rho^2 and sig are scale-free, but the
+        // MRC magnitude |u|/sigma^2 is not: against the bare sum the reference's weight
+        // inherits the sum's scale, ~(n-1)*SNR times the others', and the combine is then the
+        // reference element alone.
         cd tot(0.0, 0.0);
-        const bool have_w = _wsum > 0.0;
-        if (have_w)
-            for (int e = 0; e < _n; ++e)
+        double w_rest = 0.0; // sum of |w_e| over e != ref: the leave-it-out mean's normalization
+        if (_wsum > 0.0)
+            for (int e = 0; e < _n; ++e) {
                 tot += std::conj(_w[(size_t)e]) * g[(size_t)e];
+                if (e != _ref)
+                    w_rest += std::abs(_w[(size_t)e]);
+            }
         for (int e = 0; e < _n; ++e) {
             const cd ge = g[(size_t)e];
-            const cd rest = (e != _ref)
-                                ? g[(size_t)_ref]
-                                : (have_w ? (tot - std::conj(_w[(size_t)e]) * ge) : cd(0.0, 0.0));
+            const cd rest = (e != _ref)      ? g[(size_t)_ref]
+                            : (w_rest > 0.0) ? (tot - std::conj(_w[(size_t)e]) * ge) / w_rest
+                                             : cd(0.0, 0.0);
             if (std::norm(rest) <= 0.0)
                 continue; // no independent reference for this element yet
             _u[(size_t)e] += alpha * (ge * std::conj(rest) - _u[(size_t)e]);
