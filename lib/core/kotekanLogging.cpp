@@ -77,7 +77,10 @@ logLevel kotekanLogging::get_log_level() const {
 void kotekanLogging::vset_error_message(const fmt::basic_string_view<char> format,
                                         fmt::format_args args) {
     // Note: We should protect `__err_msg` with a lock
-    auto result = fmt::format_to_n(__err_msg, MAX_LOG_MSG_LEN - 1, fmt::vformat(format, args));
+    // Format once, straight into the buffer. The formatted text is the message, not a format
+    // string: a brace it carries (JSON, a library's error text, an escaped `{{`) must not be
+    // parsed a second time, or fmt throws from inside the FatalError path.
+    auto result = fmt::vformat_to_n(__err_msg, MAX_LOG_MSG_LEN - 1, format, args);
     char* next = result.out;
     // Ensure NUL termination
     *next = '\0';
