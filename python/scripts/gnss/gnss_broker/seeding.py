@@ -397,7 +397,11 @@ def stage_detections_to_seeds(ctx):
         # a ~exact-doppler_step jump here is the smoking gun for a grid/quantization
         # slip upstream (the hint-anchored search grid was one such; fixed same day).
         _prev_sd = ctx.seeds.get(prn, {}).get("doppler_hz")
-        if _prev_sd is None and ctx.args.almanac and not ctx.cb.available:
+        # Under --seed-bias-source=zero no seed carries the solve, so a first seed now is
+        # exactly the seed it would be after the solve: waiting protects nothing and
+        # re-opens the never-solves deadlock described below.
+        if (_prev_sd is None and ctx.args.almanac and not ctx.cb.available
+                and ctx.args.seed_bias_source != "zero"):
             # S2d: the condition is now "no bias FROM ANY SOURCE", not "this chain has
             # not solved its own". Same guard, wider supply. It is the exact deadlock
             # that cost 2h45m on 2026-07-27: L5 GPS could measure one satellite, never

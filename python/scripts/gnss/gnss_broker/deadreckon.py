@@ -388,6 +388,9 @@ def dr_joint_shadow(ctx):
             # every chain. A change of value is logged by the filter's own
             # F-matrix taking effect (0.0 = identity, no code path change).
             _js.rr_bsat_chips_per_m = float(ctx.args.rr_bsat_chips_per_m)
+            # The code phases fed below are in THIS chain's chips, mod its code; every
+            # consumer at another chip rate converts through this declaration.
+            ctx.rx.joint_declare_unit(ctx.chain_id, ctx.args.chip_rate_hz, ctx.code_len)
             # SNR GATE, caller-side. The broker's own comment 60 lines up
             # measures it: below --period-check-snr a detection's phase is
             # noise, "~2000-chip within-period residuals against a few chips
@@ -505,6 +508,8 @@ def dr_joint_shadow(ctx):
             _js = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len,   # warm start, see above
                                     clk0=float(ctx.dr_state.get("clk") or 0.0))
             _js.rr_bsat_chips_per_m = float(ctx.args.rr_bsat_chips_per_m)  # see 3a
+            ctx.rx.joint_declare_unit(ctx.chain_id, ctx.args.chip_rate_hz,
+                                      ctx.code_len)                   # see above
             _h1 = int(round(ctx.drp.t_now_abs * ctx.args.hops_per_sec))
             _th = _h1 / ctx.args.hops_per_sec
             _mm = []
@@ -742,6 +747,72 @@ def dr_joint_shadow(ctx):
                     every_s=300.0)
 
 
+def dr_joint_clk(ctx):
+    """P2b consumer "clk": move this cycle's `clk_now` onto the joint clock, or leave it.
+
+    The joint state is in its FEEDERS' chips (declared through Receiver.joint_declare_unit),
+    this chain's clock in its own; the two are one receiver time, so the joint is converted
+    into our chips and the delta wrapped in the window both are defined in
+    (Receiver.joint_clk_delta). Applied as that wrapped delta, so our clock keeps saying
+    which period of a longer code we are in.
+
+    BOTH BOUNDS ARE IN THE JOINT'S CHIPS: --joint-clk-max-chips and --joint-clk-max-sigma
+    mean the same time on every chain (5 chips = 489 ns at 10.23 Mcps), because what they
+    guard -- a wrap alias, a diverged filter, the legacy median's churn -- is a clock error,
+    not a count of any one chain's chips. Comparing unconverted chips refuses a correct joint
+    clock on every chain whose chip rate differs from the feeders': the same 14.7 us is 150
+    joint chips, 75 E6 chips and 7.5 L2C-CM chips, and neither difference fits a 5-chip bound.
+
+    NO tau(band) IS ADDED. The clock this replaces carries none (a same-band sibling, or the
+    cross-band bootstrap's converted donor), and the per-sat biases and DLL trims this chain
+    runs on were built without it, so the band's delay already lives in the trims; adding
+    tau would move every seed by it while the trims still hold it. tau is only defined where
+    a satellite is fed in both bands, and a band that feeds nothing has no row (tau 0).
+
+    Stateless per cycle: nothing is written back to dr_state, so a refused joint falls back
+    to the legacy clock on the next cycle."""
+    _jrC = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
+    if _jrC is None or len(_jrC._idx) < ctx.args.joint_min_sats:
+        return
+    # sigma <= 0 is DEGENERATE (a zero-gain state claims perfect knowledge), not excellent:
+    # refuse it explicitly rather than by truthiness (`sigma() or inf` would also flip a
+    # legitimate 0.0). The state_filter P floor keeps sigma above 0; this gate must not
+    # depend on that.
+    _jsigC = _jrC.sigma()
+    if _jsigC is None or _jsigC <= 0.0:
+        _jsigC = float("inf")
+    _unit = ctx.rx.joint_unit()
+    if _unit is None:
+        _log_rl("jclk",
+                "JOINT-CLK: legacy %.3f chips -> REFUSED (the joint state's chip rate is "
+                "undeclared or mixed across its feeders; no single conversion exists)"
+                % ctx.drp.clk_now, every_s=30.0)
+        return
+    _jrate, _jlen = _unit
+    _r = ctx.args.chip_rate_hz / _jrate
+    _jdC, _jdJ = ctx.rx.joint_clk_delta(_jrC.clk, _jrate, _jlen,
+                                        ctx.drp.clk_now, ctx.args.chip_rate_hz, ctx.code_len)
+    _jokC = (_jsigC <= ctx.args.joint_clk_max_sigma
+             and abs(_jdJ) <= ctx.args.joint_clk_max_chips)
+    # Fields before the bracket are in OUR chips; the bracket (other chip rates only) gives
+    # the joint-chip numbers the bounds are tested in.
+    _log_rl("jclk",
+            "JOINT-CLK: legacy %.3f joint %.3f chips (delta %+.3f,"
+            " sigma %.3f, n %d)%s -> %s"
+            % (ctx.drp.clk_now, (_jrC.clk * _r) % ctx.code_len, _jdC, _jsigC * _r,
+               len(_jrC._idx),
+               "" if _r == 1.0 else
+               " [x%.4f: joint %.3f delta %+.3f sigma %.3f in %.3f-Mcps chips, the"
+               " bounds' unit]" % (_r, _jrC.clk, _jdJ, _jsigC, _jrate / 1e6),
+               "ADOPTED" if _jokC else
+               "REFUSED (bounds %.1f chips / %.2f sigma)"
+               % (ctx.args.joint_clk_max_chips,
+                  ctx.args.joint_clk_max_sigma)),
+            every_s=30.0)
+    if _jokC:
+        ctx.drp.clk_now = (ctx.drp.clk_now + _jdC) % ctx.code_len
+
+
 def dr_seed(ctx):
     """3e-seed: BIRTH, SLEW or HAND BACK every visible satellite's seed from the model.
         
@@ -783,33 +854,7 @@ def dr_seed(ctx):
         # -- a consumer whose firing cannot be seen is how this month's gates
         # failed.
         if "clk" in ctx.joint_consume:
-            _jrC = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
-            if _jrC is not None and len(_jrC._idx) >= ctx.args.joint_min_sats:
-                # sigma <= 0 is DEGENERATE (a zero-gain zombie claims perfect
-                # knowledge), not excellent -- refuse it explicitly. The first
-                # version wrote `sigma() or inf`, which also flipped a
-                # legitimate 0.0 to inf by truthiness accident; with the
-                # state_filter P floor sigma cannot reach 0 anymore, but this
-                # gate must not depend on that.
-                _jsigC = _jrC.sigma()
-                if _jsigC is None or _jsigC <= 0.0:
-                    _jsigC = float("inf")
-                _jdC = ((_jrC.clk - ctx.drp.clk_now + ctx.code_len / 2.0) % ctx.code_len
-                        ) - ctx.code_len / 2.0
-                _jokC = (_jsigC <= ctx.args.joint_clk_max_sigma
-                         and abs(_jdC) <= ctx.args.joint_clk_max_chips)
-                _log_rl("jclk",
-                        "JOINT-CLK: legacy %.3f joint %.3f chips (delta %+.3f,"
-                        " sigma %.3f, n %d) -> %s"
-                        % (ctx.drp.clk_now, _jrC.clk % ctx.code_len, _jdC, _jsigC,
-                           len(_jrC._idx),
-                           "ADOPTED" if _jokC else
-                           "REFUSED (bounds %.1f chips / %.2f sigma)"
-                           % (ctx.args.joint_clk_max_chips,
-                              ctx.args.joint_clk_max_sigma)),
-                        every_s=30.0)
-                if _jokC:
-                    ctx.drp.clk_now = (ctx.drp.clk_now + _jdC) % ctx.code_len
+            dr_joint_clk(ctx)
         # DRCLK (2026-08-11): the "dead-reckon clock ..." line above is gated on
         # `offs`, i.e. on this chain having its OWN detections -- so the four
         # model-primary chains, the ones whose seeds ride clk_now raw, never log
@@ -835,16 +880,24 @@ def dr_seed(ctx):
         # the estimators. An A/B must not depend on which code path happened to
         # execute.
         _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
-        if _jr3 is not None and ctx.drp.now_w >= ctx.dr_state.get("jslew_log_next", 0.0):
+        # The joint is in its FEEDERS' chips (Receiver.joint_unit): at another chip rate the
+        # comparison is made in ours, through the clock consumer's conversion and window.
+        _u3 = ctx.rx.joint_unit() if _jr3 is not None else None
+        if _u3 is not None and ctx.drp.now_w >= ctx.dr_state.get("jslew_log_next", 0.0):
             ctx.dr_state["jslew_log_next"] = ctx.drp.now_w + 30.0
+            _r3 = ctx.args.chip_rate_hz / _u3[0]
             _cmp = []
             for (_ct, _p) in list(_jr3._idx):
                 if _ct != ctx.drp.tag:
                     continue
                 _lo = ctx.drp.clk_now + ctx.bsat.get(_p, ctx.drp.now_w)
                 _jo = _jr3.predicted((_ct, _p))
-                _dd = ((_jo - _lo + ctx.drp.mod / 2.0) % ctx.drp.mod) - ctx.drp.mod / 2.0
-                _cmp.append((_p, _dd, _jr3.sigma((_ct, _p)) or 0.0))
+                if _r3 == 1.0:
+                    _dd = ((_jo - _lo + ctx.drp.mod / 2.0) % ctx.drp.mod) - ctx.drp.mod / 2.0
+                else:
+                    _dd = ctx.rx.joint_clk_delta(_jo, _u3[0], _u3[1], _lo,
+                                                 ctx.args.chip_rate_hz, ctx.code_len)[0]
+                _cmp.append((_p, _dd, (_jr3.sigma((_ct, _p)) or 0.0) * _r3))
             if _cmp:
                 _cmp.sort(key=lambda x: -abs(x[1]))
                 _log("SEED-OFFSET %s: joint-vs-legacy over %d sat(s), "

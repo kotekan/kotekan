@@ -424,7 +424,9 @@ def stage_almanac_predict(ctx):
                        "" if _local_ok else " LOCAL-UNTRUSTED(band consensus)",
                        n_sib, ctx.args.bias_alpha, ctx.cb.seed,
                        "slow a=%.3f" % ctx.args.seed_bias_alpha
-                       if ctx.args.seed_bias_source == "slow" else "= hint EMA"))
+                       if ctx.args.seed_bias_source == "slow"
+                       else "zero: fixed, the solve is hints-only"
+                       if ctx.args.seed_bias_source == "zero" else "= hint EMA"))
         else:
             # Say WHY, with both counts -- "1 sat" alone sent this investigation looking
             # at the clock, the sky and the front end before anyone asked whether the

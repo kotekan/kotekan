@@ -20,6 +20,15 @@ for seeding (continuity there beats freshness). Those two consumers want opposit
 the same number, which is why `stale` is carried alongside the value instead of being
 recomputed by whoever happens to need it.
 
+WHEN THE SEEDS SHOULD NOT RIDE IT AT ALL (--seed-bias-source=zero). The solve is a median of a
+handful of search detections: it wanders by Hz, and on the first solve and after every stale gap
+it snaps to one fresh median that can sit 10-20 Hz off. With the carrier loop open, whatever
+the seeds ride IS each satellite's residual carrier. On a receiver whose LO is locked to the
+site reference the true offset is ~0 (the carrier residuals of sibling chains on the same
+channels, which never solve a bias, read 0 +- 0.02 Hz), so seeding the solve commands its noise
+and nothing else. 'zero' keeps the solve for what it is good at -- centring and widening the
+search -- and seeds 0 Hz.
+
 @author Keith Vanderlinde
 """
 
@@ -43,10 +52,13 @@ class ClockBias(object):
         # minutes. The search window shrugs at +-10 Hz; the seeds cannot.
         #
         # `seed` is what the SEED consumers read. Under --seed-bias-source=slow it is a
-        # long-memory EMA (--seed-bias-alpha, tau ~30 min) of the same raw medians: the
-        # quantization wander is suppressed ~sqrt(alpha ratio) while genuine GPSDO thermal
-        # drift (hour-scale) is still followed -- which a static calibration would not do.
-        # Under the default it mirrors `value`, byte-for-byte the old behaviour.
+        # long-memory EMA (--seed-bias-alpha, tau ~400 s at the 2 s cycle) of the same raw
+        # medians: the quantization wander is suppressed ~sqrt(alpha ratio) while genuine
+        # GPSDO thermal drift (hour-scale) is still followed -- which a static calibration
+        # would not do.
+        # Under the default it mirrors `value`, byte-for-byte the old behaviour. Under 'zero'
+        # it is 0.0 for the life of the process: nothing but update_seed writes it, and the
+        # broker constructs this with value 0.0 (a warm start writes `ema`, never `seed`).
         self.seed = value
         # Smoothed estimate; None until enough satellites have been solved together.
         self.ema = ema
@@ -79,9 +91,13 @@ class ClockBias(object):
         captured by the caller BEFORE that branch clears `stale`: a genuine measurement
         gap outranks the slow memory, exactly as it outranks the fast one. Otherwise
         'slow' crawls at its own alpha and 'ema' keeps the seed glued to the hint EMA --
-        the pre-#105 behaviour, byte-for-byte.
+        the pre-#105 behaviour, byte-for-byte. 'zero' ignores the solve entirely: no
+        crawl, and above all no snap -- a snap is one few-satellite median commanded into
+        every seed at once.
         """
-        if source != "slow":
+        if source == "zero":
+            self.seed = 0.0
+        elif source != "slow":
             self.seed = self.ema if self.ema is not None else self.value
         elif snapped:
             self.seed = raw_bias

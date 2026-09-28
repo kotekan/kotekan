@@ -1765,8 +1765,10 @@ def main(argv=None, rx=None, publisher=None):
         if _cb.stale:
             _log_rl("clkstale",
                     "CLOCK BIAS STALE: no multi-sat measurement for %.0f s (holding %+.0f Hz "
-                    "for seeding) -- margins WIDE until re-solved"
-                    % (t0 - _cb.meas_t, _cb.value), every_s=60.0)
+                    "%s) -- margins WIDE until re-solved"
+                    % (t0 - _cb.meas_t, _cb.value,
+                       "for the hints; seeds ride 0 Hz" if args.seed_bias_source == "zero"
+                       else "for seeding"), every_s=60.0)
         _ctx.up = None
         almanac_stage.stage_almanac_predict(_ctx)
 
@@ -2505,16 +2507,23 @@ def main(argv=None, rx=None, publisher=None):
         # tested a correct rate at all.
         if "rate" in joint_consume:
             _jr = _joint_state(rx, band_id, args)
-            _ppm = (_jr.clk_rate / args.chip_rate_hz * 1e6) if _jr is not None else None
+            # clk_rate is in the joint state's FEEDERS' chips per second (Receiver.joint_unit),
+            # not this chain's: dividing by our own chip rate scales the fractional rate by
+            # the chip-rate ratio (20x on L2C, 2x on E6). No single unit -> not consumed.
+            _ju = rx.joint_unit() if _jr is not None else None
+            if _jr is not None and _ju is None:
+                _log_rl("jointrate-unit", "code-rate clock NOT taken from the JOINT state: its "
+                        "chip rate is undeclared or mixed across its feeders", every_s=60.0)
+            _ppm = (_jr.clk_rate / _ju[0] * 1e6) if _ju is not None else None
             # PLAUSIBILITY BOUND, and the incident's most transferable lesson: a consumer
             # must never hand a physically impossible number to the instrument just because
             # an estimator produced it. CHORD's reference is GPS-disciplined; the measured
             # code-rate offset is 4e-5 ppm. The runaway that froze the trackers published
             # -0.028 ppm -- 700x the truth and trivially refusable right here, no matter
             # what went wrong upstream.
-            if (_jr is not None and len(_jr._idx) >= args.joint_min_sats
+            if (_ju is not None and len(_jr._idx) >= args.joint_min_sats
                     and abs(_ppm) <= args.joint_max_rate_ppm):
-                cb_to_seed = _jr.clk_rate / args.chip_rate_hz
+                cb_to_seed = _jr.clk_rate / _ju[0]
                 _log_rl("jointrate", "code-rate clock from the JOINT state: %+.5f ppm "
                                      "(l-a EMA says %+.5f)"
                         % (cb_to_seed * 1e6,

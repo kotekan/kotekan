@@ -66,6 +66,8 @@ class Receiver(object):
                                        # fit's consensus, clock mod 20 ms). The epoch
                                        # EXTENSION a short-window donor clock needs.
         self._joint = {}               # band -> JointReceiverState (P2a, shadow)
+        self._joint_unit = {}          # chain -> (chip_rate_hz, code_len) of the code
+                                       # phases it FEEDS into the receiver-wide joint state
 
     # -- the joint receiver state (task #33 P2a) ------------------------------------------
     def joint(self, band, **kw):
@@ -154,6 +156,26 @@ class Receiver(object):
         with self._lock:
             st = self._joint.get("__receiver__")
             return bool(st is not None and abs(st.clk) > 0.4 * st.L)
+
+    def joint_declare_unit(self, chain, chip_rate_hz, code_len):
+        """A chain that FEEDS code phases into the joint state declares the chips they are in.
+
+        The state stores bare numbers: its clk, biases and sigma are in the chips of whoever
+        fed it, known mod that feeder's code. Nothing inside the filter records which chips
+        those are, so a consumer at another chip rate cannot convert without being told --
+        and the unit must come from the measurements, not from the consumer's assumption.
+        Declared on every feed cycle, before the feed, so a state fit to consume always has
+        a declaration behind it."""
+        with self._lock:
+            self._joint_unit[chain] = (float(chip_rate_hz), float(code_len))
+
+    def joint_unit(self):
+        """(chip_rate_hz, code_len) of the joint state's code phases, or None when no feeder
+        has declared one or the feeders DISAGREE. One state holds one unit: mixed-rate
+        feeds cannot be converted by any single factor, so a consumer must refuse them."""
+        with self._lock:
+            units = set(self._joint_unit.values())
+            return units.pop() if len(units) == 1 else None
 
     # -- time anchor --------------------------------------------------------------------
     def time_anchor(self, fetch, chain):
@@ -381,6 +403,28 @@ class Receiver(object):
         silently return."""
         rate = donor_rate_hz or our_rate_hz
         return (float(donor_chips) * our_rate_hz / rate) % our_code_len
+
+    @staticmethod
+    def joint_clk_delta(joint_chips, joint_rate_hz, joint_code_len,
+                        our_chips, our_rate_hz, our_code_len):
+        """The correction that moves OUR clock onto the joint clock: (delta in our chips,
+        the same delta in the joint's chips).
+
+        Both clocks are the same receiver TIME in different units and known mod different
+        windows: the joint mod its feeders' code (joint_code_len joint chips), ours mod our
+        code. The joint is converted into our chips first, then the difference is wrapped in
+        the SHORTER of the two windows, the only one both values are defined in. So the
+        joint moves our clock only within that window and our clock keeps saying which
+        period of a longer code we are in (a 20 ms L2C-CM code under a 1 ms joint window).
+
+        The second value exists so a bound stays one physical time on every chain: a gate
+        written in the joint's chips means the same nanoseconds whatever our chip rate is.
+        At our rate == joint rate the factor is exactly 1.0 and the window is our code, so
+        this reproduces the same-rate arithmetic bit for bit."""
+        r = float(our_rate_hz) / float(joint_rate_hz)
+        w = min(float(joint_code_len) * r, float(our_code_len))
+        d = ((float(joint_chips) * r - float(our_chips) + w / 2.0) % w) - w / 2.0
+        return d, d / r
 
     # -- internals ----------------------------------------------------------------------
     def _best(self, store, exclude, max_age_s, t_now, key2):

@@ -837,13 +837,15 @@ _FROZEN = dict(
     #   P2b consumer 'clk': refuse the joint CLOCK if it disagrees with the legacy
     #   median by more than this. The median's measured churn oscillation is +-1-2 chips
     #   (the very thing being replaced), so 5 keeps the whole plausible envelope while
-    #   refusing a wrap alias or a diverged filter.
+    #   refusing a wrap alias or a diverged filter. In the JOINT STATE'S chips (its feeders',
+    #   10.23 Mcps) on every chain, so 5 = 489 ns everywhere; a chain at another chip rate
+    #   converts before comparing (deadreckon.dr_joint_clk).
     joint_clk_max_chips=5.0,
 
     # --joint-clk-max-sigma
     #   P2b consumer 'clk': refuse a joint clock with 1-sigma above this (chips). P
     #   grows while the state is unfed, so this one gate covers estimator health AND
-    #   staleness; healthy runs measure 0.05-0.08.
+    #   staleness; healthy runs measure 0.05-0.08. Joint-state chips, as above.
     joint_clk_max_sigma=0.5,
 
     # --joint-feed-min-ratio
@@ -1229,8 +1231,9 @@ def build_parser(description):
                          "Closes the 2026-07-20 lockout: a GPSDO unlock walked the EMA -2 ppm, "
                          "every lock died, and the EMA latched mid-walk -- hints then sat kHz "
                          "off truth at narrow margins with nothing left to update them. The "
-                         "held value still centers the (wide) hints and seeds, so a healthy "
-                         "chain that merely has a sparse sky loses nothing. 0 disables.")
+                         "held value still centers the (wide) hints and seeds (hints only under "
+                         "--seed-bias-source=zero), so a healthy chain that merely has a sparse "
+                         "sky loses nothing. 0 disables.")
     ap.add_argument("--bias-min-sats", type=int, default=2,
                     help="detected sats needed before a cycle's median residual may update the "
                          "clock-freq bias (and hence NARROW the search). A single sat's residual "
@@ -1239,7 +1242,7 @@ def build_parser(description):
                          "hint out of the narrow window -- a self-locking deadlock where no second "
                          "sat can ever acquire to correct it (2026-07-12: BDS-2 C14 froze the whole "
                          "B1C constellation at -1550 Hz).")
-    ap.add_argument("--seed-bias-source", choices=("ema", "slow"), default="ema",
+    ap.add_argument("--seed-bias-source", choices=("ema", "slow", "zero"), default="ema",
                     help="which clock-freq bias the SEED consumers ride (#105). 'ema' = the "
                          "hint EMA, the old shared-number behaviour. 'slow' = a long-memory "
                          "EMA (--seed-bias-alpha) of the same raw medians: search hints keep "
@@ -1248,12 +1251,20 @@ def build_parser(description):
                          "quantization wander into every replica's code rate (measured: the "
                          "wander integrates ~1 chip off-peak fleet-wide every ~5 min = the "
                          "#105 q-crash bursts; gal/bds were immune only because they never "
-                         "solve a local bias).")
+                         "solve a local bias). 'zero' = seeds ride exactly 0 Hz whatever the "
+                         "solve says, and never snap; the search hints keep the solved bias. "
+                         "For an LO locked to the site reference, where the true offset is ~0 "
+                         "and the solve is estimator noise: with the carrier loop open, the "
+                         "seeded bias IS every satellite's residual carrier. The first-seed "
+                         "guard does not wait for a solve under 'zero' (no seed carries one). "
+                         "Noise probes, which have no signal to stay coherent with, keep the "
+                         "hint bias.")
     ap.add_argument("--seed-bias-alpha", type=float, default=0.005,
                     help="EMA weight for the seed-side clock-freq bias under "
-                         "--seed-bias-source=slow (per solve, ~10 s cadence: 0.005 => tau "
-                         "~30 min -- above the minute-scale quantization wander, below "
-                         "hour-scale GPSDO thermal drift).")
+                         "--seed-bias-source=slow (per solve, i.e. every cycle that has "
+                         ">= --bias-min-sats detections: at --interval 2, 0.005 => tau ~400 s "
+                         "-- above the minute-scale quantization wander, below hour-scale "
+                         "GPSDO thermal drift).")
     ap.add_argument("--dr-cs-scan", action="store_true",
                     help="BRING-UP INSTRUMENT (2026-08-31, gal_e6): step every dead-reckon "
                          "birth cp by one primary period per pass (re-birthing, never "
