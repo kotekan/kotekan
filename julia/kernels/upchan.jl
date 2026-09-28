@@ -122,8 +122,9 @@ const Wbits = trailing_zeros(W) # l
 @assert W == 1 << Wbits
 
 # How many Ē values (i.e. complex dish samples) are packed into one 32-bit
-# word, and the resulting number of words per (polr, freq, tbar) dish row
-const Ēdishes_per_word = idiv(16, K) # K=4 => 4, K=8 => 2
+# word, and the resulting number of words per (polr, freq, tbar) dish row.
+# Each value takes `2K` bits, `K` for the real and `K` for the imaginary part.
+const Ēdishes_per_word = idiv(32, 2 * K) # K=4 => 4, K=8 => 2
 const Ēwords_per_row = idiv(D, Ēdishes_per_word)
 
 # Largest representable output magnitude, and the reserved "no data" value
