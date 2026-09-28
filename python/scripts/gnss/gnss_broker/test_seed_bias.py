@@ -172,15 +172,18 @@ class TestSeedBiasWiring(unittest.TestCase):
             self.assertNotIn("value", reads,
                              "%s reads cb.value: the hint bias would reach a seed" % name)
 
-    def test_first_seed_guard_does_not_wait_under_zero(self):
-        """The guard withholds first seeds until a bias exists; under 'zero' no seed uses
-        one, so it must not fire (else a chain that never solves never first-seeds)."""
+    def test_first_seed_guard_is_mode_independent(self):
+        """The guard withholds first seeds until a bias exists, in EVERY seed-bias mode. Under
+        'zero' the seed no longer needs the bias, but the guard also keeps a chain's first
+        seeds off its first cycle, which runs before dead-reckoning has stamped the cycle's
+        clock (drp.now_w is None): exempting 'zero' let gps_l5 seed on cycle 1 and die in
+        _nh_joint_consensus on None - None."""
         with open(os.path.join(HERE, "seeding.py")) as f:
             tree = ast.parse(f.read())
         tests = [ast.unparse(n.test) for n in ast.walk(tree)
                  if isinstance(n, ast.If) and "cb.available" in ast.unparse(n.test)]
         self.assertEqual(len(tests), 1, tests)
-        self.assertIn("seed_bias_source != 'zero'", tests[0])
+        self.assertNotIn("seed_bias_source", tests[0])
 
 
 if __name__ == "__main__":
