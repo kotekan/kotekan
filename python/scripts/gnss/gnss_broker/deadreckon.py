@@ -1905,10 +1905,23 @@ def dr_seed(ctx):
                 ctx.hold.low_hits.pop(prn, None)
 
 
-def _dr_reload(ctx, first):
-    """Fetch and parse the dead-reckon's ephemeris (and the DCB table): the SLOW half of the
-    2-hourly reload, with no ctx state touched -- it runs on a thread. Returns a result dict for
-    _dr_apply_reload; `first` (no ephemeris yet) lets fetch_brdc block for the network."""
+# ⚠️ THE SEEDING EPHEMERIS RELOADS ON THE SKY'S CADENCE, NOT THE DAILY FILE'S. A broadcast
+# record is valid for 4 h from its toe and the station-hourly merge adds records every hour, but
+# they publish late (BeiDou's by more than an hour of toe), so between 2-h reloads the newest
+# record an in-view satellite has can age past the 4-h window first: its seed and its row in the
+# transit sky vanish until the next reload -- a whole constellation at once, on the reload's own
+# phase. fetch_brdc caches the merge, so a reload is a parse on this thread, not a fetch.
+# The DCB table keeps the slow cadence: it is a daily product, and its walk back to the newest
+# day on the server is a live HTTPS 404 for every day younger than the product's latency.
+_DR_EPH_REFRESH_S = 900.0
+_DR_DCB_REFRESH_S = 7200.0
+
+
+def _dr_reload(ctx, first, with_dcb=True):
+    """Fetch and parse the dead-reckon's ephemeris (and, when `with_dcb`, the DCB table): the
+    SLOW half of the reload, with no ctx state touched -- it runs on a thread. Returns a result
+    dict for _dr_apply_reload; `first` (no ephemeris yet) lets fetch_brdc block for the
+    network."""
     res = {"eph": None, "dcb": None, "has_dcb": False, "error": None, "fatal": None,
            "t0": time.time()}
     try:
@@ -1918,7 +1931,7 @@ def _dr_reload(ctx, first):
         # refresh rate is irrelevant and the fetch is cached. Optional by design:
         # no token or no network -> dcb stays None and group_delay_s falls back to
         # the broadcast term, which is what every run before 2026-08-23 did.
-        if ctx.args.dcb_bias:
+        if ctx.args.dcb_bias and with_dcb:
             try:
                 import gnss_dcb as _dcbm
                 _st = {}
@@ -1994,13 +2007,14 @@ def _dr_apply_reload(ctx, res):
         raise SystemExit(res["fatal"])
     if res["error"]:
         _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % res["error"])
-        ctx.dr_state["eph_t"] = ctx.drp.now_w - 7200 + 600
+        ctx.dr_state["eph_t"] = ctx.drp.now_w - _DR_EPH_REFRESH_S + 600.0
         return
     ctx.dr_state["eph"] = res["eph"]
     ctx.dr_state["eph_t"] = ctx.drp.now_w
     ctx.dr_state["t0m"] = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0) % ctx.drp.t_code
     if res["has_dcb"]:
         ctx.dr_state["dcb"] = res["dcb"]
+        ctx.dr_state["dcb_t"] = ctx.drp.now_w
     _log("dead-reckon: BRDC loaded (%d sats) -- %.1f s of fetch+parse, off the pass"
          % (len(res["eph"]), time.time() - res["t0"]))
 
@@ -2111,10 +2125,12 @@ def stage_dead_reckon(ctx):
             # FIRST LOAD, synchronous: there is no sky to serve without it, so waiting is the
             # honest state. Every later reload goes through the thread (see _dr_apply_reload).
             _dr_apply_reload(ctx, _dr_reload(ctx, first=True))
-        elif ctx.drp.now_w - ctx.dr_state["eph_t"] > 7200 and _rl["thread"] is None:
-            def _run(_rl=_rl):
+        elif ctx.drp.now_w - ctx.dr_state["eph_t"] > _DR_EPH_REFRESH_S and _rl["thread"] is None:
+            _with_dcb = ctx.drp.now_w - ctx.dr_state.get("dcb_t", float("-inf")) > _DR_DCB_REFRESH_S
+
+            def _run(_rl=_rl, _with_dcb=_with_dcb):
                 try:
-                    _rl["done"] = _dr_reload(ctx, first=False)
+                    _rl["done"] = _dr_reload(ctx, first=False, with_dcb=_with_dcb)
                 except Exception as _e:          # the helper catches its own; this is the belt
                     _rl["done"] = {"eph": None, "dcb": None, "has_dcb": False,
                                    "error": str(_e), "fatal": None, "t0": time.time()}
