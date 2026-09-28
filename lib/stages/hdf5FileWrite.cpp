@@ -118,20 +118,27 @@ class hdf5FileWrite : public kotekan::Stage {
         config.get_default<bool>(unique_name, "create_single_file", false);
     const int64_t write_x_frames = config.get_default<int64_t>(unique_name, "write_x_frames", -1);
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
+    const uint64_t frames_per_file =
+        config.get_default<uint64_t>(unique_name, "frames_per_file", 1);
 
     const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
     const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
 
     Buffer* const buffer;
 
-    std::shared_ptr<File> the_single_file;
+    std::shared_ptr<File> the_current_file_pointer;
 
     // The state of the single-file stream: the shape and time downsampling of the first frame,
     // and the fpga_seq_num the next frame has to start at. See the checks in write_chord.
-    std::size_t single_file_dim0 = 0;
-    std::int64_t single_file_tds = 0;
-    bool single_file_has_seq = false;
-    std::int64_t single_file_next_seq = 0;
+    std::size_t multi_frame_file_dim0 = 0;
+    std::int64_t multi_frame_file_tds = 0;
+    bool multi_frame_file_has_seq = false;
+    std::int64_t multi_frame_file_next_seq = 0;
+    // track the first frame sequence number in the current file, if we are writing multiple
+    // frames per file with a fixed number per file (i.e., not just a single file)
+    int64_t current_file_start_frame = 0;
+    // track whether a new file should be started on the next frame
+    bool start_new_file = true;
 
     kotekan::prometheus::Gauge& write_time_metric =
         kotekan::prometheus::Metrics::instance().add_gauge(
@@ -146,10 +153,14 @@ public:
               }),
         buffer(get_buffer("in_buf")) {
 
-        if (create_single_file && write_x_frames >= 0 && per_y_frames > 0)
+        if (frames_per_file == 0)
+            FATAL_ERROR("hdf5FileWrite {:s}: frames_per_file must be greater than zero",
+                        unique_name);
+
+        if ((create_single_file || frames_per_file > 1) && write_x_frames >= 0 && per_y_frames > 0)
             FATAL_ERROR("hdf5FileWrite {:s}: write_x_frames/per_y_frames (frame decimation) cannot "
-                        "be combined with create_single_file; a single file must hold a contiguous "
-                        "stream",
+                        "be combined with create_single_file or multiple frames per file; a single "
+                        "file must hold a contiguous stream",
                         unique_name);
 
         if (max_frames > 0)
@@ -254,62 +265,95 @@ public:
                      const std::int64_t frame_counter) {
         const auto& telescope = Telescope::instance();
 
-        std::shared_ptr<File> fileptr;
         bool do_create_dataset = false; // Whether to create the dataset and write the attributes
-        if (create_single_file) {
-            // Create only a single file
-            if (!the_single_file) {
-                the_single_file = create_file(-1);
-                do_create_dataset = true;
-            }
-            fileptr = the_single_file;
-        } else {
-            // Create a new file for every frame
-            fileptr = create_file(frame_counter);
-            do_create_dataset = true;
-        }
-        auto& file = *fileptr;
 
         if (create_single_file) {
-            // A single file concatenates frames along axis 0 and stores the metadata only once,
-            // so hdf5FileRead can only reconstruct the per-frame fpga_seq_num if axis 0 is a
-            // contiguous, uniformly sampled time axis.
+            // Create only a single file
+            if (!the_current_file_pointer) {
+                the_current_file_pointer = create_file(-1);
+                do_create_dataset = true;
+            }
+        } else {
+            // Create a new file for every frame or batch, accounting for
+            // an offset if any frames were dropped
+            int64_t frame_offset = frame_counter - current_file_start_frame;
+            if (frame_offset < 0)
+                FATAL_ERROR(
+                    "Received a frame number {:d} earlier than the start of the current file {:d}",
+                    frame_counter, current_file_start_frame);
+
+            // either start after a fixed number of frames, or if the start
+            // flag is explicitly set
+            if ((frame_offset % frames_per_file == 0) || start_new_file) {
+                the_current_file_pointer = create_file(frame_counter);
+                current_file_start_frame = frame_counter;
+                do_create_dataset = true;
+                start_new_file = false;
+            }
+        }
+        auto& file = *the_current_file_pointer;
+
+        if (create_single_file || (frames_per_file > 1)) {
+            // A file with multiple frames concatenates frames along axis 0 and stores the metadata
+            // only once, so hdf5FileRead can only reconstruct the per-frame fpga_seq_num if axis 0
+            // is a contiguous, uniformly sampled time axis.
             const std::string dim0_name = meta->get_dimension_name(0);
             if (!is_time_axis(dim0_name))
-                FATAL_ERROR("Buffer \"{:s}\": create_single_file requires a time axis as dimension "
-                            "0, but dimension 0 is \"{:s}\"; set create_single_file: false for "
-                            "this writer",
-                            buffer->buffer_name, dim0_name);
+                FATAL_ERROR(
+                    "Buffer \"{:s}\": storing multiple frames per file requires a time axis "
+                    "as dimension 0, but dimension 0 is \"{:s}\"; set create_single_file: "
+                    "false and frames_per_file: 1 for this writer",
+                    buffer->buffer_name, dim0_name);
             const std::int64_t tds =
                 meta->has_time_downsampling_fpga() ? meta->get_time_downsampling_fpga() : 1;
             if (meta->dim_scaling[0] != tds)
-                FATAL_ERROR("Buffer \"{:s}\": create_single_file requires dim_scaling[0] ({:d}) == "
-                            "time_downsampling_fpga ({:d}); set create_single_file: false for this "
-                            "writer",
-                            buffer->buffer_name, meta->dim_scaling[0], tds);
+                FATAL_ERROR(
+                    "Buffer \"{:s}\": storing multiple frames per file requires dim_scaling[0] "
+                    "({:d}) == time_downsampling_fpga ({:d}); set create_single_file: false "
+                    "and frames_per_file: 1 for this writer",
+                    buffer->buffer_name, meta->dim_scaling[0], tds);
+
+            // use the fpga sequency number to track sample contiguity
+            multi_frame_file_has_seq = meta->has_fpga_seq_num();
+
             if (do_create_dataset) {
-                single_file_dim0 = meta->dim[0];
-                single_file_tds = tds;
+                multi_frame_file_dim0 = meta->dim[0];
+                multi_frame_file_tds = tds;
             } else {
-                if (std::size_t(meta->dim[0]) != single_file_dim0 || tds != single_file_tds)
+                if (std::size_t(meta->dim[0]) != multi_frame_file_dim0
+                    || tds != multi_frame_file_tds)
                     FATAL_ERROR("Buffer \"{:s}\": frame {:d} changes the frame shape/downsampling "
                                 "(dim[0] {:d}->{:d}, time_downsampling_fpga {:d}->{:d}) within a "
                                 "single file",
-                                buffer->buffer_name, frame_counter, single_file_dim0, meta->dim[0],
-                                single_file_tds, tds);
-                if (meta->has_fpga_seq_num() != single_file_has_seq)
+                                buffer->buffer_name, frame_counter, multi_frame_file_dim0,
+                                meta->dim[0], multi_frame_file_tds, tds);
+                if (meta->has_fpga_seq_num() != multi_frame_file_has_seq)
                     FATAL_ERROR("Buffer \"{:s}\": fpga_seq_num is present in some frames but not "
                                 "in others; cannot write a single file",
                                 buffer->buffer_name);
-                if (single_file_has_seq && meta->get_fpga_seq_num() != single_file_next_seq)
-                    FATAL_ERROR("Buffer \"{:s}\": create_single_file requires a contiguous stream, "
-                                "but frame {:d} starts at fpga_seq_num {:d}, expected {:d}",
-                                buffer->buffer_name, frame_counter, meta->get_fpga_seq_num(),
-                                single_file_next_seq);
+                if (multi_frame_file_has_seq
+                    && meta->get_fpga_seq_num() != multi_frame_file_next_seq) {
+                    if (create_single_file) {
+                        FATAL_ERROR(
+                            "Buffer \"{:s}\": storing multiple frames per file requires a "
+                            "contiguous stream, but frame {:d} starts at fpga_seq_num {:d}, "
+                            "expected {:d}",
+                            buffer->buffer_name, frame_counter, meta->get_fpga_seq_num(),
+                            multi_frame_file_next_seq);
+                    } else {
+                        DEBUG("Buffer \"{:s}\": received a non-contigous frame {:d} starting at "
+                              "fpga_seq_num {:d} - discarding this frame and starting a new file",
+                              buffer->buffer_name, frame_counter, meta->get_fpga_seq_num());
+                        // Start a new file on the next frame received
+                        start_new_file = true;
+                        return;
+                    }
+                }
             }
-            single_file_has_seq = meta->has_fpga_seq_num();
-            if (single_file_has_seq)
-                single_file_next_seq = meta->get_fpga_seq_num() + std::int64_t(meta->dim[0]) * tds;
+
+            if (multi_frame_file_has_seq)
+                multi_frame_file_next_seq =
+                    meta->get_fpga_seq_num() + std::int64_t(meta->dim[0]) * tds;
         }
 
         if (do_create_dataset) {
@@ -408,7 +452,8 @@ public:
 
             write_telescope_metadata(dataset);
 
-            if (create_single_file) {
+            // only true when a new file is being started
+            if (do_create_dataset) {
                 // Start SWMR mode
                 // (Can only do that after creating the dataset and writing all attributes.)
                 file.flush(); // for good measure
@@ -443,7 +488,7 @@ public:
 
         // Only flush when writing to a single file. Otherwise we'll close the file anyway so we
         // don't need to flush.
-        if (create_single_file) {
+        if (create_single_file || (frames_per_file > 1)) {
             // dataset.flush();
             file.flush();
         }
@@ -695,7 +740,7 @@ public:
         } // for
 
         // Close file if necessary
-        the_single_file.reset();
+        the_current_file_pointer.reset();
 
         if (max_frames > 0) {
             // Unregister to allow the pipeline to continue, unless I'm the last
