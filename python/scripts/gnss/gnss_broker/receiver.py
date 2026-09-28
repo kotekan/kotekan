@@ -287,7 +287,7 @@ class Receiver(object):
         return self._best(self._code, exclude, max_age_s, t_now, key2=None)
 
     def contribute_dr_clock(self, chain, band, chips, drift, t, code_length,
-                            chip_rate_hz=None):
+                            chip_rate_hz=None, epoch=None, held=False):
         """Publish the dead-reckon receiver clock (chips, mod the code period) + drift.
 
         ⚠️ THIS IS THE SEAM `--dr-clock-adopt` PAPERS OVER. `dr_state` straddles the
@@ -310,13 +310,22 @@ class Receiver(object):
         pull-in window; dll_disc read noise while codes, Doppler and RF all verified
         clean). The unit trap wears the SAME costume as the modulus trap the paragraph
         above documents: numerically fine, physically wrong, silently.
+
+        AND WITH ITS EPOCH (#142): a count the solving chain bumps each time it SNAPS its
+        clock on purpose (bootstrap, re-roll, confirmed re-pin). A consumer bounds every step
+        of the published value except one that arrives with an epoch it has not adopted --
+        so a deliberate re-pin reaches it at once and an undeclared step is refused. None =
+        not declared (every step bounded). `held` marks a value the solving chain is HOLDING
+        at zero rate (it did not update this cycle): valid at any instant, so a consumer takes
+        it at its own now instead of extrapolating it from `t`.
         """
         if chips is None:
             return
         with self._lock:
             self._dr[(band, chain)] = _Shared(float(chips), chain, 1, t,
                                               {"drift": drift, "code_length": code_length,
-                                               "chip_rate_hz": chip_rate_hz})
+                                               "chip_rate_hz": chip_rate_hz, "epoch": epoch,
+                                               "held": bool(held)})
 
     def dr_clock(self, band, exclude=None, max_age_s=120.0, t_now=None):
         return self._best(self._dr, exclude, max_age_s, t_now, key2=band)

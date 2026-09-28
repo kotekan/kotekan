@@ -45,7 +45,8 @@ class _Rx:
     def __init__(self):
         self.contrib = []
 
-    def contribute_dr_clock(self, chain, band, chips, drift, t, code_length, chip_rate_hz=None):
+    def contribute_dr_clock(self, chain, band, chips, drift, t, code_length, chip_rate_hz=None,
+                            epoch=None, held=False):
         self.contrib.append((chips, drift, t))
 
 

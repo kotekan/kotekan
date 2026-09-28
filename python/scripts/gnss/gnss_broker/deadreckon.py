@@ -37,6 +37,7 @@ from gnss_broker.seed import Seed
 from gnss_broker.fits import (
     dr_seed_phys, dr_cp0, cp_rate_from_code_bias, seed_phase_at_ref, split_erratic_offsets,
 )
+from gnss_broker.sky import nearest_boresight
 
 
 def dr_clock_solve(ctx):
@@ -45,7 +46,32 @@ def dr_clock_solve(ctx):
     ⚠️ MEDIAN, AND THE MEMBERSHIP MATTERS AS MUCH AS THE VALUE. Which satellites are in the pool
     steps the median by 1-2 chips when membership churns, on a ~600 s timescale, and that churn
     was THE DECAY ROOT (chord-clock-median-churn): a clock that moves because the population moved
-    looks exactly like a clock that moved because the receiver did."""
+    looks exactly like a clock that moved because the receiver did.
+
+    ⚠️ INSIDE A BORESIGHT TRANSIT THE SOLVE IS NOT CONSULTED (#142, dr_clock_transit): the
+    median is not taken, and the MAD-refusal clock that forces a re-bootstrap is stopped --
+    a re-roll inside a transit draws from the transit's noise."""
+    _tr = dr_clock_transit(ctx)
+    if _tr is None and ctx.dr_state.get("clk_transit") is not None:
+        _log("dead-reckon: boresight transit CLEAR (nearest %s%d at %.1f deg) after %.0f s -- "
+             "the clock solve RESUMES from the held %.2f chips"
+             % (ctx.dr_state["clk_transit"][1][0], ctx.dr_state["clk_transit"][1][1],
+                (nearest_boresight(ctx.drp.pd) or (float("nan"),))[0],
+                ctx.drp.now_w - ctx.dr_state.get("clk_transit_since", ctx.drp.now_w),
+                ctx.dr_state["clk"] if ctx.dr_state.get("clk") is not None else float("nan")))
+    elif _tr is not None and ctx.dr_state.get("clk_transit") is None:
+        ctx.dr_state["clk_transit_since"] = ctx.drp.now_w
+        _log("dead-reckon: receiver clock FROZEN for a boresight transit (%s%d at %.1f deg < "
+             "--dr-clock-transit-freeze-deg %.1f) -- holding %.2f chips at zero rate and "
+             "contributing it every cycle; no solve is applied, no drift is differenced and "
+             "the MAD re-bootstrap clock is stopped until it clears"
+             % (_tr[1][0], _tr[1][1], _tr[0], ctx.args.dr_clock_transit_freeze_deg,
+                ctx.dr_state["clk"]))
+    ctx.dr_state["clk_transit"] = _tr
+    if _tr is not None:
+        ctx.dr_state["mad_refused_since"] = None
+        ctx.drp.raw_clk = None
+        return
     if len(ctx.drp.offs) >= ctx.args.dr_min_sats:
         ref = ctx.drp.offs[0][1]
         cen = sorted(((d - ref + ctx.code_len / 2) % ctx.code_len) - ctx.code_len / 2
@@ -71,7 +97,24 @@ def dr_clock_solve(ctx):
         # 10230-chip code has a MAD of ~2557. Anything from 50 to 500 separates
         # them; 100 is the middle of that range in log terms.
         _mad = sorted(abs(c - cen[len(cen) // 2]) for c in cen)[len(cen) // 2]
-        if _mad > ctx.args.dr_max_solve_mad_chips:
+        if _mad > ctx.args.dr_max_solve_mad_chips and _dr_clock_guarded(ctx):
+            # #142: A CONFIRMED CLOCK IS NOT RE-ROLLED. The offsets' scatter does not depend
+            # on our clock (d_i = cp_loc - cp_predicted; the search's hints are the model's
+            # Doppler and its own nh, never this clock), so a scattered sky under a confirmed
+            # clock is the SKY's fault -- a transit the pooled veto cannot see, an outage --
+            # and a re-roll draws from exactly that noise. The clock is held (dr_clock_quality)
+            # and a genuinely wrong one is corrected by the re-pin, which needs a sky that
+            # agrees with itself, not a lucky draw.
+            _log_rl("clkmad",
+                    "clock solve REFUSED: %d sats scatter MAD %.0f chips (bound %.0f) -- "
+                    "this is a median over NOISE, not a measurement; holding the CONFIRMED "
+                    "clk %.2f at zero rate (no re-bootstrap: a confirmed clock re-pins on "
+                    "agreeing solves instead)"
+                    % (len(ctx.drp.offs), _mad, ctx.args.dr_max_solve_mad_chips,
+                       ctx.dr_state["clk"]), every_s=30.0)
+            ctx.dr_state["mad_refused_since"] = None
+            ctx.drp.raw_clk = None
+        elif _mad > ctx.args.dr_max_solve_mad_chips:
             # HOW LONG HAVE WE BEEN REFUSING? The guard alone is a LATCH: the
             # scatter that triggers it is sustained by the very clock it is
             # protecting, so once the model has drifted off the sky every
@@ -154,7 +197,19 @@ def dr_clock_quality(ctx):
              "state (drift %s)"
              % ("%+.4f chips/s" % ctx.dr_state["drift"]
                 if ctx.dr_state.get("drift") is not None else "unmeasured"))
+    # #142: a transit freeze (decided in dr_clock_solve) holds the established clock every
+    # cycle, whatever the detections say and however many there are.
+    if ctx.dr_state.get("clk_transit") is not None:
+        dr_clock_hold(ctx)
+        return
     if len(ctx.drp.offs) >= ctx.args.dr_min_sats and ctx.drp.raw_clk is not None:
+        # #142: an ESTABLISHED clock moves only on a solve of enough satellites whose step is
+        # inside the bound; a larger step must be confirmed before it is taken. The bootstrap
+        # below (no clock yet, or a prime) is exempt: nothing exists to defend, and a first
+        # solve that waited for more satellites could leave a cold chain unseeded.
+        if (ctx.dr_state["clk"] is not None and not ctx.dr_state.get("clk_primed")
+                and _dr_clock_step_gate(ctx) != "update"):
+            return
         prev_raw = ctx.dr_state.get("raw_prev")
         # A primed drift is authoritative (the GPSDO rate is a band constant):
         # never EMA it toward pair-differences of solutions built from UNCHANGED
@@ -198,6 +253,11 @@ def dr_clock_quality(ctx):
         if ctx.dr_state["clk"] is None or ctx.dr_state.pop("clk_primed", False):
             was = ctx.dr_state["clk"]
             ctx.dr_state["clk"] = ctx.drp.raw_clk
+            # a snap nothing has agreed with yet: no transit freeze may hold it, and the copy
+            # paths are told it is a deliberate new clock, not a step to refuse (#142)
+            ctx.dr_state["clk_confirmed"] = False
+            ctx.dr_state.pop("repin", None)
+            ctx.dr_state["clk_epoch"] = ctx.dr_state.get("clk_epoch", 0) + 1
             _log("dead-reckon: receiver clock BOOTSTRAP %.2f chips = %.3f us "
                  "(mod %.0f ms; %d sats%s)"
                  % (ctx.drp.raw_clk, ctx.drp.raw_clk / ctx.args.chip_rate_hz * 1e6, ctx.drp.t_code * 1e3, len(ctx.drp.offs),
@@ -209,6 +269,7 @@ def dr_clock_quality(ctx):
                    + ctx.drp.drift * (ctx.drp.now_w - ctx.dr_state["clk_t"])) % ctx.code_len
             step = ((ctx.drp.raw_clk - clk + ctx.code_len / 2) % ctx.code_len) - ctx.code_len / 2
             ctx.dr_state["clk"] = (clk + ctx.args.dr_clock_alpha * step) % ctx.code_len
+            ctx.dr_state["clk_confirmed"] = True
         ctx.dr_state["clk_t"] = ctx.drp.now_w
         # CONTRIBUTE (task #27 M3). THIS IS THE SEAM --dr-clock-adopt PAPERS
         # OVER: dr_state straddles the boundary -- clk and drift are the
@@ -219,7 +280,206 @@ def dr_clock_quality(ctx):
         # mod 10230 is meaningless to a 1023000-chip code.
         ctx.rx.contribute_dr_clock(ctx.chain_id, ctx.band_id, ctx.dr_state["clk"],
                                ctx.dr_state.get("drift"), ctx.drp.now_w, ctx.code_len,
-                               chip_rate_hz=ctx.args.chip_rate_hz)
+                               chip_rate_hz=ctx.args.chip_rate_hz,
+                               epoch=ctx.dr_state.get("clk_epoch"))
+    elif _dr_clock_guarded(ctx):
+        # #142: no solve this cycle (MAD-refused, or too few offsets to take a median). A
+        # confirmed clock is HELD -- zero rate, contributed -- exactly as through a transit;
+        # a refused solve also breaks a re-pin candidate's run, a thin cycle leaves it.
+        if len(ctx.drp.offs) >= ctx.args.dr_min_sats:
+            ctx.dr_state.pop("repin", None)
+        dr_clock_hold(ctx)
+
+
+def _dr_clock_guarded(ctx):
+    """#142: this chain's receiver clock is SOLVED, CONFIRMED (a bootstrap followed by an
+    in-bound update of enough satellites, or a re-pin) and under the step guard. Such a clock
+    never goes unheld: every cycle it is updated, re-pinned or held, and it is never re-rolled.
+    A prime, a bootstrap nothing has agreed with yet, a chain that never solves, and the step
+    guard off (--dr-clock-step-max-chips 0) all keep the pre-#142 behaviour."""
+    return (float(getattr(ctx.args, "dr_clock_step_max_chips", 0.0) or 0.0) > 0.0
+            and ctx.dr_state.get("clk") is not None and not ctx.dr_state.get("clk_primed")
+            and bool(ctx.dr_state.get("clk_confirmed")))
+
+
+def dr_clock_transit(ctx):
+    """#142: (separation_deg, (sys, prn)) while this chain's SOLVED receiver clock must freeze
+    for a boresight transit, else None.
+
+    A satellite near boresight rails the quantiser every chain shares; the search then reports
+    other satellites at noise code phases with SNR just over its bar, and two of them agreeing
+    inside the MAD bound pass as a median -- a step of hundreds of chips that the drift check
+    rejects as a DRIFT and lets stand as a CLOCK. The quantity being solved does not move (the
+    receiver clock is a GPS-disciplined constant, well under a chip per hour), so inside a
+    transit the best estimate is the one held at its entry, and no solve is consulted.
+
+    POOLED over every constellation the model carries -- the geometry of the D2/D3 veto
+    (sky.nearest_boresight) -- because the bright satellite need not be one this chain tracks.
+    Only a clock this chain SOLVED and CONFIRMED freezes (a bootstrap followed by an in-bound
+    update, or a re-pin): a prime or a bootstrap nothing has agreed with yet could be the
+    transit's own noise and must stay free to re-pin, and a chain that never solves (no
+    detections) never confirms, so it never freezes -- it keeps adopting."""
+    _deg = float(getattr(ctx.args, "dr_clock_transit_freeze_deg", 0.0) or 0.0)
+    if (_deg <= 0.0 or ctx.dr_state.get("clk") is None or ctx.dr_state.get("clk_primed")
+            or not ctx.dr_state.get("clk_confirmed")):
+        return None
+    _near = nearest_boresight(getattr(ctx.drp, "pd", None))
+    return _near if (_near is not None and _near[0] < _deg) else None
+
+
+def dr_clock_hold(ctx):
+    """#142: HOLD this chain's established clock at ZERO RATE for this cycle and contribute it.
+
+    Zero rate, not propagation with `drift`: the held value is the best estimate of a constant,
+    while the drift EMA carries noise of order 0.01 chips/s that a long hold would integrate
+    into a walk (18 chips over 30 minutes). clk_t moves to now, so dr_seed's
+    clk + drift*(now - clk_t) is the held value exactly.
+
+    THE DRIFT'S AGE STANDS STILL while the clock is held (drift_t follows the hold): nothing
+    consumes the drift during a hold, and the value measured before it is a better rate for
+    the first cycles after it than the f_chip*(l-a) fallback an expiry would substitute --
+    the (l-a) EMA takes the code-rate fits of the very transit that caused the hold.
+
+    CONTRIBUTED with this cycle's stamp, as a solved clock is, and marked HELD: a consumer that
+    stopped hearing from us, or that extrapolated our stamp, would propagate our value with
+    ITS OWN rate -- a cross-band consumer carries no drift and uses f_chip*(l-a), which is
+    only as good as the code-rate fits behind it. The hold must be the receiver's, not each
+    consumer's private extrapolation, so a HELD value is taken as valid at the consumer's own
+    now. raw_prev is dropped so no drift pair ever straddles a held cycle."""
+    ctx.dr_state["clk_t"] = ctx.drp.now_w
+    if ctx.dr_state.get("drift") is not None:
+        ctx.dr_state["drift_t"] = ctx.drp.now_w
+    ctx.dr_state.pop("raw_prev", None)
+    ctx.rx.contribute_dr_clock(ctx.chain_id, ctx.band_id, ctx.dr_state["clk"],
+                               ctx.dr_state.get("drift"), ctx.drp.now_w, ctx.code_len,
+                               chip_rate_hz=ctx.args.chip_rate_hz,
+                               epoch=ctx.dr_state.get("clk_epoch"), held=True)
+
+
+def _dr_clock_newest_hop(ctx):
+    """The newest detection ref_hop among this cycle's solve inputs, or None when unknown. The
+    search's table LATCHES: a stalled search hands the broker the same detections cycle after
+    cycle, and their median is then the same measurement repeated, not agreement."""
+    _best = getattr(ctx, "best", None) or {}
+    _h = [_best[p][3] for p, _ in ctx.drp.offs if p in _best and len(_best[p]) > 3]
+    return max(_h) if _h else None
+
+
+def _dr_clock_step_gate(ctx):
+    """#142: judge one MAD-accepted solve against an ESTABLISHED clock.
+
+    Returns "update" when the EMA may apply it (exactly the pre-#142 path), else holds or
+    re-pins the clock itself and returns "held" / "repinned".
+
+      FEW SATELLITES (--dr-update-min-sats). A median of 2-3 is set by its members' biases
+        (+-5 chips) as much as by the clock, and it is where two corrupted detections that
+        agree become a clock: such a solve never UPDATES the clock, it is held.
+      THE STEP (--dr-clock-step-max-chips) is the solve against the PROPAGATED clock, the
+        quantity the EMA would take 20% of. Inside it the update is the unchanged EMA.
+      A RE-PIN (--dr-clock-repin-solves). A step beyond the bound is taken only when that many
+        consecutive solves agree with each other to within the bound; it is then a SNAP, not
+        a 20% walk. This is how a wrong clock is corrected, so it must stay reachable: a
+        disagreeing solve restarts the count, a MAD-refused one breaks it, a thin cycle
+        leaves it standing. A CONFIRMED clock counts only solves of --dr-update-min-sats; an
+        unconfirmed one (a bootstrap or re-roll nothing has agreed with, possibly drawn from
+        noise) counts any solve of --dr-min-sats, so a thin but consistent sky can replace it.
+        Only a solve with a NEWER detection than the last counted one counts at all
+        (_dr_clock_newest_hop): agreement must come from independent measurements.
+
+    Every knob at 0 is the pre-#142 behaviour (a re-pin count below 1 counts as 1)."""
+    _nmin = int(getattr(ctx.args, "dr_update_min_sats", 0) or 0)
+    _smax = float(getattr(ctx.args, "dr_clock_step_max_chips", 0.0) or 0.0)
+    _n = len(ctx.drp.offs)
+    _enough = _nmin <= 0 or _n >= _nmin
+    L = ctx.code_len
+
+    def _thin():
+        _log_rl("clkthin",
+                "dead-reckon: receiver clock HELD at %.2f chips -- %d sat(s) in the solve "
+                "(< --dr-update-min-sats %d): a thin median follows its members' biases, not "
+                "the clock" % (ctx.dr_state["clk"], _n, _nmin), every_s=60.0)
+        dr_clock_hold(ctx)
+        return "held"
+
+    if _smax <= 0.0:
+        return "update" if _enough else _thin()
+    _prop = (ctx.dr_state["clk"]
+             + ctx.drp.drift * (ctx.drp.now_w - ctx.dr_state["clk_t"])) % L
+    _step = ((ctx.drp.raw_clk - _prop + L / 2) % L) - L / 2
+    if abs(_step) <= _smax:
+        if not _enough:
+            return _thin()
+        ctx.dr_state.pop("repin", None)
+        return "update"
+    if not _enough and ctx.dr_state.get("clk_confirmed"):
+        return _thin()
+    _k = max(1, int(getattr(ctx.args, "dr_clock_repin_solves", 1) or 1))
+    _cand = ctx.dr_state.get("repin")
+    _hop = _dr_clock_newest_hop(ctx)
+    if (_cand is not None
+            and abs(((ctx.drp.raw_clk - _cand["v"] + L / 2) % L) - L / 2) <= _smax):
+        if _hop is None or _cand.get("hop") is None or _hop > _cand["hop"]:
+            _cand["n"] += 1
+            _cand["hop"] = _hop
+    else:
+        _cand = ctx.dr_state["repin"] = {"v": ctx.drp.raw_clk, "n": 1, "t": ctx.drp.now_w,
+                                         "hop": _hop}
+    if _cand["n"] >= _k:
+        _was = ctx.dr_state["clk"]
+        _conf = bool(ctx.dr_state.get("clk_confirmed"))
+        ctx.dr_state["clk"] = ctx.drp.raw_clk
+        ctx.dr_state["clk_t"] = ctx.drp.now_w
+        ctx.dr_state["clk_confirmed"] = True
+        ctx.dr_state.pop("raw_prev", None)
+        ctx.dr_state.pop("repin", None)
+        ctx.dr_state["clk_epoch"] = ctx.dr_state.get("clk_epoch", 0) + 1
+        _log("dead-reckon: receiver clock RE-PIN %.2f chips (%+.2f from the held %s%.2f): %d "
+             "consecutive solves (this one %d sats) agree within %.1f chips over %.0f s -- a "
+             "confirmed step, taken whole"
+             % (ctx.drp.raw_clk, _step, "" if _conf else "UNCONFIRMED ", _was, _cand["n"], _n,
+                _smax, ctx.drp.now_w - _cand["t"]))
+        ctx.rx.contribute_dr_clock(ctx.chain_id, ctx.band_id, ctx.dr_state["clk"],
+                                   ctx.dr_state.get("drift"), ctx.drp.now_w, L,
+                                   chip_rate_hz=ctx.args.chip_rate_hz,
+                                   epoch=ctx.dr_state.get("clk_epoch"))
+        return "repinned"
+    _log_rl("clkstep",
+            "dead-reckon: clock solve step %+.1f chips REFUSED (%d sats, bound %.1f) -- holding "
+            "%.2f chips; a step is taken only after %d consecutive agreeing solves (this one "
+            "is %d)" % (_step, _n, _smax, ctx.dr_state["clk"], _k, _cand["n"]), every_s=30.0)
+    dr_clock_hold(ctx)
+    return "held"
+
+
+def _dr_clock_local_fresh(ctx):
+    """#104's question for a clock-CONSUMING chain -- is the local clock still fresh? -- which
+    decides whether a sibling's large step is REFUSED or, once the local clock is 300 s old,
+    adopted anyway (a questionable clock beats a dead one).
+
+    The age runs from the newer of two stamps (#142):
+      clk_src_t  when this clock was last TAKEN from a source (adopted or bootstrapped). A
+                 refusal holds the clock at zero rate (clk_t moves to now) but never
+                 refreshes this, so refusing cannot keep a chain fresh forever.
+      jclk_t     when JOINT-CLK last adopted the joint clock on top of it. A chain the joint
+                 is vouching for -- healthy by its own gates, and within their bound of this
+                 very clock -- is not stale and must not escape onto a stepped sibling; when
+                 the joint goes deaf, unhealthy or disagrees, adoptions stop and the escape is
+                 back 300 s later.
+
+    A step the donor DECLARED -- a new clock_epoch in its contribution, i.e. a bootstrap,
+    re-roll or confirmed re-pin of its own solve -- is not a step to refuse at all: the callers
+    adopt it whatever its size (_dr_clock_declared). The bound is for the undeclared ones."""
+    _src = ctx.dr_state.get("clk_src_t", ctx.dr_state.get("clk_t"))
+    _ts = [_t for _t in (_src, ctx.dr_state.get("jclk_t")) if _t is not None]
+    return bool(_ts) and ctx.t0 - max(_ts) < 300.0
+
+
+def _dr_clock_declared(ctx):
+    """#142: the donor's contribution carries a clock_epoch this chain has not adopted yet -- the
+    donor snapped its clock on purpose (bootstrap, re-roll, confirmed re-pin) since our last
+    adoption. None when the donor publishes no epoch: then every step is bounded, as before."""
+    _e = ctx.drp.rx_sib.extra.get("epoch") if ctx.drp.rx_sib is not None else None
+    return _e is not None and _e != ctx.dr_state.get("clk_src_epoch")
 
 
 def dr_clock_adopt(ctx):
@@ -318,6 +578,7 @@ def dr_clock_adopt(ctx):
                          - ctx.code_len / 2) if prev is not None else None)
             ctx.dr_state["clk"] = new_clk
             ctx.dr_state["clk_t"] = ctx.t0
+            ctx.dr_state["clk_src_t"] = ctx.t0
             # The donor's drift comes WITH its clock, "unknown" included: keeping our own
             # stale value when the donor has none is how a poisoned drift outlived its
             # donor's (2026-09-03).
@@ -350,6 +611,262 @@ def dr_clock_adopt(ctx):
                     % (ctx.args.state_dongle, ctx.xb_read_dir,
                        ctx.args.dr_clock_adopt_max_age_s,
                        ctx.dr_state.get("clk") if ctx.dr_state.get("clk") is not None else float("nan")))
+
+
+def dr_clock_adopt_rx(ctx):
+    """3e-adopt, IN-PROCESS: take a co-hosted sibling's receiver clock when this chain cannot
+    solve its own -- the same band first (#104-bounded), else across bands (the #34 bootstrap,
+    #142-bounded). Leaves ctx.drp.rx_sib as the donor it looked at (None if none). Moved out
+    of stage_dead_reckon verbatim so the adoption can be driven by a test; the stage calls it
+    where the block stood, between the clock JUDGE and the file-route dr_clock_adopt."""
+    # ---- ADOPT A BAND SIBLING'S CLOCK (--dr-clock-adopt) -------------------------
+    # Runs AFTER the EMA above on purpose: a chain that solved its own clock this
+    # cycle keeps it, and only a chain that cannot solve one (no detectors -> `offs`
+    # empty -> the block above never ran) takes the sibling's. So enabling the flag
+    # on a detector-bearing chain is a no-op rather than a silent override.
+    #
+    # IN-PROCESS SIBLING FIRST (task #27 M3). A chain co-hosted in this process
+    # has already CONTRIBUTED its clock to the Receiver, so there is nothing to
+    # serialise, flush, age or slew-test: the number is the same object the
+    # sibling is using this cycle. The file route below stays for genuinely
+    # cross-process siblings (the airspy benches, and a transitional split
+    # deployment) and is unchanged. With one chain the lookup returns None and
+    # this branch does not exist.
+    ctx.drp.rx_sib = (ctx.rx.dr_clock(ctx.band_id, exclude=ctx.chain_id, t_now=ctx.t0)
+               if (ctx.args.dr_clock_adopt and not ctx.drp.offs) else None)
+    # CROSS-BAND BOOTSTRAP (task #34). Without this a band whose chains all lack
+    # detectors NEVER gets a clock: measured on sky, gal_e5b and bds_b2b sat at the
+    # startup prime of 0.00 chips while gps_l5 had bootstrapped 150.74 and both
+    # 1176.45 siblings had adopted it. 150 chips of error against a +-1 chip peak,
+    # so dll_disc read -0.0008 (despreading noise) where E5a railed at -0.59.
+    #
+    # Layer 2 (the cross-band RATE) was necessary and NOT sufficient, and the
+    # distinction is the whole point: a rate keeps you on the peak, a phase puts
+    # you there. With the clock 150 chips out there is no peak to hold.
+    #
+    # ⚠️ THE ADOPTED PHASE CARRIES tau_band -- that is accepted, not overlooked. It
+    # replaces a 150-chip error with a tau_band-sized one, which is inside the
+    # DLL's pull-in, and the loop's steady-state residual then IS tau_band. The
+    # per-band scoping exists to protect that measurement, and by blocking the
+    # bootstrap it was the reason the measurement could never be made. Logged as
+    # BOOTSTRAP, never as "ADOPTED ... same band", so the log distinguishes a
+    # borrowed phase from a measured one.
+    #
+    # MODULUS: a clock may be reduced to a SHORTER code (150.74 mod 10230 is
+    # well-defined) but never lengthened -- a value known mod 10230 says nothing
+    # about which of the 100 periods of a 1023000-chip code it sits in. So a donor
+    # whose code is shorter than ours is refused, which is the same-length guard
+    # generalised rather than dropped.
+    # ⚠️ CHIPS ARE A UNIT, THE CLOCK IS A TIME (2026-08-31, the gal_e6 root).
+    # The donor publishes chips AT ITS OWN CHIP RATE; a consumer at a different
+    # rate must convert by the rate ratio or it adopts a clock scaled by that
+    # ratio -- gal_e6 (5.115 Mcps, the instrument's first non-10.23 chain) adopted
+    # gps_l5's 150.2 raw = 2x the true time = +75 E6 chips of code error on every
+    # seed, outside every pull-in window. Codes/Doppler/RF all verified before the
+    # units were suspected; the CS-phase scan could not see it (it steps whole
+    # periods). The MODULUS guard below moves to TIME for the same reason: what a
+    # donor must cover is our code PERIOD, not our chip count.
+    _rx_xband = False
+    _rx_xext = None
+    if ctx.drp.rx_sib is None and ctx.args.dr_clock_adopt and not ctx.drp.offs:
+        _cand = ctx.rx.dr_clock_any_band(exclude=ctx.chain_id, t_now=ctx.t0)
+        if _cand is not None:
+            _don_rate = _cand.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
+            _don_window_s = (_cand.extra.get("code_length") or 0) / _don_rate
+            _our_window_s = ctx.code_len / ctx.args.chip_rate_hz
+            if _don_window_s >= _our_window_s:
+                ctx.drp.rx_sib, _rx_xband = _cand, True
+            else:
+                # EPOCH EXTENSION (2026-08-31). The modulus guard is right: a
+                # clock known mod the donor's SHORTER window says nothing about
+                # which of our periods it sits in. But an independent estimator
+                # that resolves the clock mod >= OUR period -- the NH joint fit,
+                # clock mod 20 ms from every strong GPS sat voting -- supplies
+                # exactly the missing ambiguity resolution, while the donor keeps
+                # supplying the precision. Candidates are a full donor window
+                # apart, so the extension needs the mod measurement right only to
+                # half of that (~16 sigma of margin at today's consensus noise).
+                # This was gps_l2c's blocker: clock primed 0.0 while the truth
+                # was ~15 us = ~8 CM chips, against a +-1 chip pull-in.
+                _ext = ctx.rx.clock_mod_epoch(min_epoch_s=_our_window_s,
+                                              exclude=ctx.chain_id, t_now=ctx.t0)
+                if _ext is not None:
+                    ctx.drp.rx_sib, _rx_xband, _rx_xext = _cand, True, _ext
+                else:
+                    _log_rl("clkxmod-none",
+                            "dead-reckon: cross-band donor '%s' REFUSED on "
+                            "modulus (its %.4f s window < our %.4f s period) and "
+                            "no clock-mod-epoch record covers us -- the clock "
+                            "stays primed. The NH joint fit (--nh-joint) on a "
+                            "sibling chain is what contributes that record."
+                            % (_cand.src, _don_window_s, _our_window_s),
+                            every_s=300.0)
+    if ctx.drp.rx_sib is not None and _rx_xband:
+        _don_rate = ctx.drp.rx_sib.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
+        if _rx_xext is None:
+            _v = ctx.rx.clock_chips_convert(ctx.drp.rx_sib.value, _don_rate,
+                                            ctx.args.chip_rate_hz, ctx.code_len)
+        else:
+            _don_window_s = (ctx.drp.rx_sib.extra.get("code_length")
+                             or ctx.code_len) / _don_rate
+            _our_window_s = ctx.code_len / ctx.args.chip_rate_hz
+            _t_sec, _resid_s = ctx.rx.clock_extend_mod(
+                float(ctx.drp.rx_sib.value) / _don_rate, _don_window_s,
+                float(_rx_xext.value), _rx_xext.extra["epoch_s"], _our_window_s)
+            if abs(_resid_s) > 0.25 * _don_window_s:
+                # The k choice itself is in doubt: the two sources disagree by a
+                # large fraction of a donor window. Refuse LOUDLY -- a silent
+                # refusal here is how the last bootstrap gap hid for two hours.
+                _log_rl("clkxmod-resid",
+                        "dead-reckon: epoch extension REFUSED -- donor '%s' and "
+                        "clock-mod '%s' disagree by %+.1f us (%.0f%% of the donor "
+                        "window). One of them is wrong; the clock stays primed."
+                        % (ctx.drp.rx_sib.src, _rx_xext.src, _resid_s * 1e6,
+                           100.0 * abs(_resid_s) / _don_window_s),
+                        every_s=300.0)
+                ctx.drp.rx_sib = None
+                _rx_xband = False
+                _v = None
+            else:
+                _v = (_t_sec * ctx.args.chip_rate_hz) % ctx.code_len
+    if ctx.drp.rx_sib is not None and _rx_xband:
+        # ── #142: THE #104 BOUND ON THIS PATH TOO, AS A TIME. The bootstrap used to
+        # copy the donor every cycle, unbounded, so a step in the donor's solve became
+        # every cross-band chain's clock two seconds later. The bound is the same
+        # PHYSICAL one the same-band adoption applies: --dr-clock-adopt-max-chips of
+        # the DONOR's chips (5 = 489 ns at 10.23 Mcps), re-expressed in ours through
+        # the two chip rates -- a count of chips means a different time on every
+        # chain, and a 5-chip L2C-CM bound would be 20x looser than the L5 one. Same
+        # freshness, prime exemption and escape as #104; a refusal holds at zero rate
+        # rather than extrapolating a refused donor's value with this chain's own
+        # (l-a) rate.
+        _xb_rate = ctx.drp.rx_sib.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
+        _xb_bound = float(getattr(ctx.args, "dr_clock_adopt_max_chips", 0.0) or 0.0)
+        _xb_ours = _xb_bound * ctx.args.chip_rate_hz / _xb_rate
+        _xb_step = None
+        if ctx.dr_state.get("clk") is not None:
+            _xb_step = (((_v - ctx.dr_state["clk"] + ctx.code_len / 2) % ctx.code_len)
+                        - ctx.code_len / 2)
+        _xb_decl = _dr_clock_declared(ctx)
+        if (_xb_bound > 0.0 and _xb_step is not None
+                and not ctx.dr_state.get("clk_primed") and not _xb_decl
+                and _dr_clock_local_fresh(ctx) and abs(_xb_step) > _xb_ours):
+            _log_rl("clkxboot-refuse",
+                    "dead-reckon: cross-band clock from '%s' is %+.3f chips (%+.0f ns) "
+                    "from the local clock -- bootstrap REFUSED (bound %.3f chips = "
+                    "%.0f ns: --dr-clock-adopt-max-chips %.1f of the donor's %.3f-Mcps "
+                    "chips); holding %.3f chips at zero rate, adopts again once the "
+                    "local clock is 300 s stale with no JOINT-CLK adoption"
+                    % (ctx.drp.rx_sib.src, _xb_step,
+                       _xb_step / ctx.args.chip_rate_hz * 1e9, _xb_ours,
+                       _xb_bound / _xb_rate * 1e9, _xb_bound, _xb_rate / 1e6,
+                       ctx.dr_state["clk"]),
+                    every_s=30.0)
+            ctx.dr_state["clk_t"] = ctx.t0
+        else:
+            if ctx.dr_state.get("clk") is None or abs(
+                    ((_v - ctx.dr_state["clk"] + ctx.code_len / 2) % ctx.code_len)
+                    - ctx.code_len / 2) > 0.5:
+                _log("dead-reckon: clock BOOTSTRAP %.2f chips (donor %.2f @ %.3f Mcps, "
+                     "ours %.3f) from in-process chain '%s' (CROSS-BAND -- carries "
+                     "tau_band; the DLL residual IS that measurement)%s"
+                     % (_v, float(ctx.drp.rx_sib.value), _don_rate / 1e6,
+                        ctx.args.chip_rate_hz / 1e6, ctx.drp.rx_sib.src,
+                        "" if _rx_xext is None else
+                        " [EPOCH-EXTENDED by '%s' clock-mod-%.0f-ms, resid %+.1f us]"
+                        % (_rx_xext.src, _rx_xext.extra["epoch_s"] * 1e3,
+                           _resid_s * 1e6)))
+            if (_xb_decl and _xb_step is not None and _xb_bound > 0.0
+                    and not ctx.dr_state.get("clk_primed") and abs(_xb_step) > _xb_ours):
+                _log("dead-reckon: cross-band clock from '%s' stepped %+.3f chips -- "
+                     "ADOPTED: a DECLARED snap of its own solve (clock epoch %s)"
+                     % (ctx.drp.rx_sib.src, _xb_step, ctx.drp.rx_sib.extra.get("epoch")))
+            ctx.dr_state["clk"] = _v
+            # a HELD donor value is its clock at zero rate, i.e. valid NOW (#142): not to be
+            # extrapolated from its stamp with this chain's own f_chip*(l-a)
+            ctx.dr_state["clk_t"] = (ctx.t0 if ctx.drp.rx_sib.extra.get("held")
+                                     else ctx.drp.rx_sib.t)
+            ctx.dr_state["clk_src_t"] = ctx.drp.rx_sib.t
+            ctx.dr_state["clk_src_epoch"] = ctx.drp.rx_sib.extra.get("epoch")
+            ctx.dr_state.pop("clk_primed", None)
+    elif ctx.drp.rx_sib is not None and ctx.drp.rx_sib.extra.get("code_length") == ctx.code_len:
+        # ── #104 (--dr-clock-adopt-max-chips): BOUND THE ADOPTION STEP. During
+        # #103's 2026-08-30 outage, gps_l5's churn ran its legacy clock solve away
+        # (150 -> 292 chips) and THIS PATH relayed the poison to gal/bds every ~2 s
+        # -- fleet-wide q floor for 13 min -- while JOINT-CLK, which HAS a bound
+        # (5 chips / 0.5 sigma), REFUSED the identical values throughout. One
+        # guard existed; the parallel path skipped it (the peer-relative-blindness
+        # class). Refuse a sibling step beyond the bound while the LOCAL clock is
+        # fresh; if the local goes stale (> 300 s since its last adoption -- refusals
+        # do not refresh that; see _dr_clock_local_fresh), adopt anyway: a questionable
+        # clock beats a dead one, and 300 s
+        # of containment turns a fleet kill into a slow, loudly-logged leak while
+        # the sibling heals. 0 disables (the pre-#104 behaviour).
+        _sib_v = float(ctx.drp.rx_sib.value) % ctx.code_len
+        _adopt_step = None
+        if ctx.dr_state.get("clk") is not None:
+            _adopt_step = (((_sib_v - ctx.dr_state["clk"] + ctx.code_len / 2)
+                            % ctx.code_len) - ctx.code_len / 2)
+        _adopt_bound = getattr(ctx.args, "dr_clock_adopt_max_chips", 0.0)
+        # #142: age from the last ADOPTION or JOINT-CLK adoption, whichever is newer
+        # (see _dr_clock_local_fresh) -- no longer from clk_t, which a refusal now
+        # moves to hold the clock at zero rate.
+        _local_fresh = _dr_clock_local_fresh(ctx)
+        # ⚠️ A PRIMED CLOCK IS NOT A MEASUREMENT TO DEFEND (learned live 15:51-15:56:
+        # gal/bds start with a 0.00-chip PRIME, and the first form of this guard
+        # refused the sibling's real +149.44 against the placeholder -- both
+        # 1176 MHz chains sat seedless until the disarm). clk_primed marks
+        # exactly this state; the guard only defends a clock that was MEASURED.
+        _adopt_decl = _dr_clock_declared(ctx)
+        if (_adopt_bound > 0.0 and _adopt_step is not None and _local_fresh
+                and not ctx.dr_state.get("clk_primed") and not _adopt_decl
+                and abs(_adopt_step) > _adopt_bound):
+            _log_rl("clkadopt-refuse",
+                    "dead-reckon: sibling clock from '%s' is %+.2f chips from the "
+                    "local solve -- adoption REFUSED (--dr-clock-adopt-max-chips "
+                    "%.1f; #104: a poisoned sibling must not overwrite a healthy "
+                    "chain; holding %.2f chips at zero rate, adopts again once the "
+                    "local clock is 300 s stale with no JOINT-CLK adoption)"
+                    % (ctx.drp.rx_sib.src, _adopt_step, _adopt_bound,
+                       ctx.dr_state["clk"]),
+                    every_s=30.0)
+            # #142: HOLD, do not extrapolate. The refused step is not replaced by a walk
+            # at the drift the refused donor handed over at its last adoption.
+            ctx.dr_state["clk_t"] = ctx.t0
+        else:
+            if ctx.dr_state.get("clk") is None or abs(
+                    ((_sib_v - ctx.dr_state["clk"] + ctx.code_len / 2)
+                     % ctx.code_len) - ctx.code_len / 2) > 0.5:
+                _log("dead-reckon: clock ADOPTED %.2f chips from in-process chain "
+                     "'%s' (same band %s, no file transport)"
+                     % (_sib_v, ctx.drp.rx_sib.src, ctx.band_id))
+            if (_adopt_decl and _adopt_step is not None and _adopt_bound > 0.0
+                    and not ctx.dr_state.get("clk_primed") and abs(_adopt_step) > _adopt_bound):
+                _log("dead-reckon: sibling clock from '%s' stepped %+.2f chips -- "
+                     "ADOPTED: a DECLARED snap of its own solve (clock epoch %s)"
+                     % (ctx.drp.rx_sib.src, _adopt_step, ctx.drp.rx_sib.extra.get("epoch")))
+            ctx.dr_state["clk"] = _sib_v
+            ctx.dr_state["clk_t"] = (ctx.t0 if ctx.drp.rx_sib.extra.get("held")
+                                     else ctx.drp.rx_sib.t)          # held = valid now (#142)
+            ctx.dr_state["clk_src_t"] = ctx.drp.rx_sib.t
+            ctx.dr_state["clk_src_epoch"] = ctx.drp.rx_sib.extra.get("epoch")
+            # An adopted clock IS a measurement -- the sibling measured it -- so the
+            # prime is spent. If this chain ever gains detectors it should refine by
+            # EMA from here, not snap away from a good number.
+            ctx.dr_state.pop("clk_primed", None)
+            # drift travels with the clock, "unknown" included (see dr_clock_adopt)
+            _sd = ctx.drp.rx_sib.extra.get("drift")
+            ctx.dr_state["drift"] = float(_sd) if _sd is not None else None
+            ctx.dr_state["drift_t"] = ctx.drp.rx_sib.t
+    elif ctx.drp.rx_sib is not None:
+        # Same band, different code length: the chips are modular in a different
+        # period, so the number is numerically fine and physically meaningless.
+        # Refuse loudly rather than adopt a plausible wrong value.
+        _log_rl("clkadopt-len",
+                "dead-reckon: chain '%s' publishes a clock mod %.0f chips but "
+                "this chain's code is %.0f -- NOT adoptable across code lengths"
+                % (ctx.drp.rx_sib.src, ctx.drp.rx_sib.extra.get("code_length") or -1, ctx.code_len),
+                every_s=60.0)
 
 
 def dr_joint_shadow(ctx):
@@ -769,8 +1286,10 @@ def dr_joint_clk(ctx):
     tau would move every seed by it while the trims still hold it. tau is only defined where
     a satellite is fed in both bands, and a band that feeds nothing has no row (tau 0).
 
-    Stateless per cycle: nothing is written back to dr_state, so a refused joint falls back
-    to the legacy clock on the next cycle."""
+    Stateless for the CLOCK: nothing it computes is written back to dr_state, so a refused
+    joint falls back to the legacy clock on the next cycle. The one thing it records is WHEN
+    it adopted (dr_state["jclk_t"]) -- freshness for #104's escape, never a value (#142,
+    _dr_clock_local_fresh)."""
     _jrC = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
     if _jrC is None or len(_jrC._idx) < ctx.args.joint_min_sats:
         return
@@ -811,6 +1330,9 @@ def dr_joint_clk(ctx):
             every_s=30.0)
     if _jokC:
         ctx.drp.clk_now = (ctx.drp.clk_now + _jdC) % ctx.code_len
+        _ds = getattr(ctx, "dr_state", None)
+        if _ds is not None:
+            _ds["jclk_t"] = ctx.t0
 
 
 def dr_seed(ctx):
@@ -2013,193 +2535,7 @@ def stage_dead_reckon(ctx):
             dr_joint_shadow(ctx)
             dr_clock_solve(ctx)
             dr_clock_quality(ctx)
-            # ---- ADOPT A BAND SIBLING'S CLOCK (--dr-clock-adopt) -------------------------
-            # Runs AFTER the EMA above on purpose: a chain that solved its own clock this
-            # cycle keeps it, and only a chain that cannot solve one (no detectors -> `offs`
-            # empty -> the block above never ran) takes the sibling's. So enabling the flag
-            # on a detector-bearing chain is a no-op rather than a silent override.
-            #
-            # IN-PROCESS SIBLING FIRST (task #27 M3). A chain co-hosted in this process
-            # has already CONTRIBUTED its clock to the Receiver, so there is nothing to
-            # serialise, flush, age or slew-test: the number is the same object the
-            # sibling is using this cycle. The file route below stays for genuinely
-            # cross-process siblings (the airspy benches, and a transitional split
-            # deployment) and is unchanged. With one chain the lookup returns None and
-            # this branch does not exist.
-            ctx.drp.rx_sib = (ctx.rx.dr_clock(ctx.band_id, exclude=ctx.chain_id, t_now=ctx.t0)
-                       if (ctx.args.dr_clock_adopt and not ctx.drp.offs) else None)
-            # CROSS-BAND BOOTSTRAP (task #34). Without this a band whose chains all lack
-            # detectors NEVER gets a clock: measured on sky, gal_e5b and bds_b2b sat at the
-            # startup prime of 0.00 chips while gps_l5 had bootstrapped 150.74 and both
-            # 1176.45 siblings had adopted it. 150 chips of error against a +-1 chip peak,
-            # so dll_disc read -0.0008 (despreading noise) where E5a railed at -0.59.
-            #
-            # Layer 2 (the cross-band RATE) was necessary and NOT sufficient, and the
-            # distinction is the whole point: a rate keeps you on the peak, a phase puts
-            # you there. With the clock 150 chips out there is no peak to hold.
-            #
-            # ⚠️ THE ADOPTED PHASE CARRIES tau_band -- that is accepted, not overlooked. It
-            # replaces a 150-chip error with a tau_band-sized one, which is inside the
-            # DLL's pull-in, and the loop's steady-state residual then IS tau_band. The
-            # per-band scoping exists to protect that measurement, and by blocking the
-            # bootstrap it was the reason the measurement could never be made. Logged as
-            # BOOTSTRAP, never as "ADOPTED ... same band", so the log distinguishes a
-            # borrowed phase from a measured one.
-            #
-            # MODULUS: a clock may be reduced to a SHORTER code (150.74 mod 10230 is
-            # well-defined) but never lengthened -- a value known mod 10230 says nothing
-            # about which of the 100 periods of a 1023000-chip code it sits in. So a donor
-            # whose code is shorter than ours is refused, which is the same-length guard
-            # generalised rather than dropped.
-            # ⚠️ CHIPS ARE A UNIT, THE CLOCK IS A TIME (2026-08-31, the gal_e6 root).
-            # The donor publishes chips AT ITS OWN CHIP RATE; a consumer at a different
-            # rate must convert by the rate ratio or it adopts a clock scaled by that
-            # ratio -- gal_e6 (5.115 Mcps, the instrument's first non-10.23 chain) adopted
-            # gps_l5's 150.2 raw = 2x the true time = +75 E6 chips of code error on every
-            # seed, outside every pull-in window. Codes/Doppler/RF all verified before the
-            # units were suspected; the CS-phase scan could not see it (it steps whole
-            # periods). The MODULUS guard below moves to TIME for the same reason: what a
-            # donor must cover is our code PERIOD, not our chip count.
-            _rx_xband = False
-            _rx_xext = None
-            if ctx.drp.rx_sib is None and ctx.args.dr_clock_adopt and not ctx.drp.offs:
-                _cand = ctx.rx.dr_clock_any_band(exclude=ctx.chain_id, t_now=ctx.t0)
-                if _cand is not None:
-                    _don_rate = _cand.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
-                    _don_window_s = (_cand.extra.get("code_length") or 0) / _don_rate
-                    _our_window_s = ctx.code_len / ctx.args.chip_rate_hz
-                    if _don_window_s >= _our_window_s:
-                        ctx.drp.rx_sib, _rx_xband = _cand, True
-                    else:
-                        # EPOCH EXTENSION (2026-08-31). The modulus guard is right: a
-                        # clock known mod the donor's SHORTER window says nothing about
-                        # which of our periods it sits in. But an independent estimator
-                        # that resolves the clock mod >= OUR period -- the NH joint fit,
-                        # clock mod 20 ms from every strong GPS sat voting -- supplies
-                        # exactly the missing ambiguity resolution, while the donor keeps
-                        # supplying the precision. Candidates are a full donor window
-                        # apart, so the extension needs the mod measurement right only to
-                        # half of that (~16 sigma of margin at today's consensus noise).
-                        # This was gps_l2c's blocker: clock primed 0.0 while the truth
-                        # was ~15 us = ~8 CM chips, against a +-1 chip pull-in.
-                        _ext = ctx.rx.clock_mod_epoch(min_epoch_s=_our_window_s,
-                                                      exclude=ctx.chain_id, t_now=ctx.t0)
-                        if _ext is not None:
-                            ctx.drp.rx_sib, _rx_xband, _rx_xext = _cand, True, _ext
-                        else:
-                            _log_rl("clkxmod-none",
-                                    "dead-reckon: cross-band donor '%s' REFUSED on "
-                                    "modulus (its %.4f s window < our %.4f s period) and "
-                                    "no clock-mod-epoch record covers us -- the clock "
-                                    "stays primed. The NH joint fit (--nh-joint) on a "
-                                    "sibling chain is what contributes that record."
-                                    % (_cand.src, _don_window_s, _our_window_s),
-                                    every_s=300.0)
-            if ctx.drp.rx_sib is not None and _rx_xband:
-                _don_rate = ctx.drp.rx_sib.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
-                if _rx_xext is None:
-                    _v = ctx.rx.clock_chips_convert(ctx.drp.rx_sib.value, _don_rate,
-                                                    ctx.args.chip_rate_hz, ctx.code_len)
-                else:
-                    _don_window_s = (ctx.drp.rx_sib.extra.get("code_length")
-                                     or ctx.code_len) / _don_rate
-                    _our_window_s = ctx.code_len / ctx.args.chip_rate_hz
-                    _t_sec, _resid_s = ctx.rx.clock_extend_mod(
-                        float(ctx.drp.rx_sib.value) / _don_rate, _don_window_s,
-                        float(_rx_xext.value), _rx_xext.extra["epoch_s"], _our_window_s)
-                    if abs(_resid_s) > 0.25 * _don_window_s:
-                        # The k choice itself is in doubt: the two sources disagree by a
-                        # large fraction of a donor window. Refuse LOUDLY -- a silent
-                        # refusal here is how the last bootstrap gap hid for two hours.
-                        _log_rl("clkxmod-resid",
-                                "dead-reckon: epoch extension REFUSED -- donor '%s' and "
-                                "clock-mod '%s' disagree by %+.1f us (%.0f%% of the donor "
-                                "window). One of them is wrong; the clock stays primed."
-                                % (ctx.drp.rx_sib.src, _rx_xext.src, _resid_s * 1e6,
-                                   100.0 * abs(_resid_s) / _don_window_s),
-                                every_s=300.0)
-                        ctx.drp.rx_sib = None
-                        _rx_xband = False
-                        _v = None
-                    else:
-                        _v = (_t_sec * ctx.args.chip_rate_hz) % ctx.code_len
-            if ctx.drp.rx_sib is not None and _rx_xband:
-                if ctx.dr_state.get("clk") is None or abs(
-                        ((_v - ctx.dr_state["clk"] + ctx.code_len / 2) % ctx.code_len)
-                        - ctx.code_len / 2) > 0.5:
-                    _log("dead-reckon: clock BOOTSTRAP %.2f chips (donor %.2f @ %.3f Mcps, "
-                         "ours %.3f) from in-process chain '%s' (CROSS-BAND -- carries "
-                         "tau_band; the DLL residual IS that measurement)%s"
-                         % (_v, float(ctx.drp.rx_sib.value), _don_rate / 1e6,
-                            ctx.args.chip_rate_hz / 1e6, ctx.drp.rx_sib.src,
-                            "" if _rx_xext is None else
-                            " [EPOCH-EXTENDED by '%s' clock-mod-%.0f-ms, resid %+.1f us]"
-                            % (_rx_xext.src, _rx_xext.extra["epoch_s"] * 1e3,
-                               _resid_s * 1e6)))
-                ctx.dr_state["clk"] = _v
-                ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
-                ctx.dr_state.pop("clk_primed", None)
-            elif ctx.drp.rx_sib is not None and ctx.drp.rx_sib.extra.get("code_length") == ctx.code_len:
-                # ── #104 (--dr-clock-adopt-max-chips): BOUND THE ADOPTION STEP. During
-                # #103's 2026-08-30 outage, gps_l5's churn ran its legacy clock solve away
-                # (150 -> 292 chips) and THIS PATH relayed the poison to gal/bds every ~2 s
-                # -- fleet-wide q floor for 13 min -- while JOINT-CLK, which HAS a bound
-                # (5 chips / 0.5 sigma), REFUSED the identical values throughout. One
-                # guard existed; the parallel path skipped it (the peer-relative-blindness
-                # class). Refuse a sibling step beyond the bound while the LOCAL clock is
-                # fresh; if the local goes stale (> 300 s -- refusals do not refresh
-                # clk_t), adopt anyway: a questionable clock beats a dead one, and 300 s
-                # of containment turns a fleet kill into a slow, loudly-logged leak while
-                # the sibling heals. 0 disables (the pre-#104 behaviour).
-                _sib_v = float(ctx.drp.rx_sib.value) % ctx.code_len
-                _adopt_step = None
-                if ctx.dr_state.get("clk") is not None:
-                    _adopt_step = (((_sib_v - ctx.dr_state["clk"] + ctx.code_len / 2)
-                                    % ctx.code_len) - ctx.code_len / 2)
-                _adopt_bound = getattr(ctx.args, "dr_clock_adopt_max_chips", 0.0)
-                _local_fresh = (ctx.dr_state.get("clk_t") is not None
-                                and ctx.t0 - ctx.dr_state["clk_t"] < 300.0)
-                # ⚠️ A PRIMED CLOCK IS NOT A MEASUREMENT TO DEFEND (learned live 15:51-15:56:
-                # gal/bds start with a 0.00-chip PRIME, and the first form of this guard
-                # refused the sibling's real +149.44 against the placeholder -- both
-                # 1176 MHz chains sat seedless until the disarm). clk_primed marks
-                # exactly this state; the guard only defends a clock that was MEASURED.
-                if (_adopt_bound > 0.0 and _adopt_step is not None and _local_fresh
-                        and not ctx.dr_state.get("clk_primed")
-                        and abs(_adopt_step) > _adopt_bound):
-                    _log_rl("clkadopt-refuse",
-                            "dead-reckon: sibling clock from '%s' is %+.2f chips from the "
-                            "local solve -- adoption REFUSED (--dr-clock-adopt-max-chips "
-                            "%.1f; #104: a poisoned sibling must not overwrite a healthy "
-                            "chain; adopts again if local goes stale > 300 s)"
-                            % (ctx.drp.rx_sib.src, _adopt_step, _adopt_bound),
-                            every_s=30.0)
-                else:
-                    if ctx.dr_state.get("clk") is None or abs(
-                            ((_sib_v - ctx.dr_state["clk"] + ctx.code_len / 2)
-                             % ctx.code_len) - ctx.code_len / 2) > 0.5:
-                        _log("dead-reckon: clock ADOPTED %.2f chips from in-process chain "
-                             "'%s' (same band %s, no file transport)"
-                             % (_sib_v, ctx.drp.rx_sib.src, ctx.band_id))
-                    ctx.dr_state["clk"] = _sib_v
-                    ctx.dr_state["clk_t"] = ctx.drp.rx_sib.t
-                    # An adopted clock IS a measurement -- the sibling measured it -- so the
-                    # prime is spent. If this chain ever gains detectors it should refine by
-                    # EMA from here, not snap away from a good number.
-                    ctx.dr_state.pop("clk_primed", None)
-                    # drift travels with the clock, "unknown" included (see dr_clock_adopt)
-                    _sd = ctx.drp.rx_sib.extra.get("drift")
-                    ctx.dr_state["drift"] = float(_sd) if _sd is not None else None
-                    ctx.dr_state["drift_t"] = ctx.drp.rx_sib.t
-            elif ctx.drp.rx_sib is not None:
-                # Same band, different code length: the chips are modular in a different
-                # period, so the number is numerically fine and physically meaningless.
-                # Refuse loudly rather than adopt a plausible wrong value.
-                _log_rl("clkadopt-len",
-                        "dead-reckon: chain '%s' publishes a clock mod %.0f chips but "
-                        "this chain's code is %.0f -- NOT adoptable across code lengths"
-                        % (ctx.drp.rx_sib.src, ctx.drp.rx_sib.extra.get("code_length") or -1, ctx.code_len),
-                        every_s=60.0)
+            dr_clock_adopt_rx(ctx)
             dr_clock_adopt(ctx)
             # ---- MODEL-HEALTH GATES (design (b)): the resilience the fence never gave.
             # A fence on Doppler MOTION cannot detect a model that is simply WRONG -- a

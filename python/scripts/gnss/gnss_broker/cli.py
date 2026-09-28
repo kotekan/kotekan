@@ -2976,7 +2976,54 @@ def build_parser(description):
                          "solve to 292 chips and the unbounded adoption path relayed it "
                          "to every chain in ~2 s -- while JOINT-CLK's 5-chip bound "
                          "refused the identical values throughout. 5.0 matches that "
-                         "precedent. 0 = unbounded (pre-#104).")
+                         "precedent. 0 = unbounded (pre-#104). #142: it bounds the "
+                         "CROSS-BAND bootstrap too, as a TIME -- this many of the DONOR's "
+                         "chips (5 = 489 ns at 10.23 Mcps), converted into each consumer's "
+                         "chips (2.5 at E6, 0.25 L2C-CM). 'Fresh' is 300 s since the last "
+                         "adoption OR the last JOINT-CLK adoption, and a refusal holds the "
+                         "local clock at zero rate instead of extrapolating it.")
+    ap.add_argument("--dr-update-min-sats", type=int, default=4,
+                    help="#142: satellites a receiver-clock solve needs to MOVE an established "
+                         "clock (the first solve after a start, a prime or a forced "
+                         "re-bootstrap still needs only --dr-min-sats, so a cold chain is never "
+                         "left unseeded). Below it the clock is HELD at zero rate and still "
+                         "contributed. A 2-3 satellite median follows its members' biases (+-5 "
+                         "chips) and is where two corrupted detections that agree become a "
+                         "clock: outside transits n=2 / n=3 solves step p90 4300 / 0.6 chips "
+                         "against p99 1.3 at n=4, and they are 4.5%% of cycles. 0 = every solve "
+                         "of --dr-min-sats moves it (pre-#142).")
+    ap.add_argument("--dr-clock-step-max-chips", type=float, default=5.0,
+                    help="#142: the largest step (this chain's chips, solve vs the propagated "
+                         "clock) an update of an established receiver clock may take. A larger "
+                         "one is refused and the clock HELD at zero rate unless "
+                         "--dr-clock-repin-solves consecutive agreeing solves confirm it -- then "
+                         "it is a RE-PIN, taken whole (how a bad bootstrap is corrected). With "
+                         "it on, a CONFIRMED clock is also held, never re-rolled, through MAD "
+                         "refusals. Normal solves step p99 1.5 chips; the solves that stepped the "
+                         "clock in the replayed transit passes were 2-5-satellite medians "
+                         "6-5000 chips off it. 5.0 is the #104 / JOINT-CLK bound (489 ns at "
+                         "10.23 Mcps). "
+                         "0 = unbounded, and the re-roll as before (pre-#142).")
+    ap.add_argument("--dr-clock-repin-solves", type=int, default=3,
+                    help="#142: consecutive solves of NEW detections that must agree -- within "
+                         "--dr-clock-step-max-chips of the first -- before the receiver clock "
+                         "takes a step larger than that bound, as a snap (a confirmed clock "
+                         "counts only solves of --dr-update-min-sats, an unconfirmed one any of "
+                         "--dr-min-sats). Real solves agree cycle to cycle to p99 1.5 chips "
+                         "while noise medians land uniformly over the code, so 3 leaves "
+                         "~(10/10230)^2 for a chance agreement and costs a genuine re-pin 4 s. "
+                         "Values below 1 count as 1.")
+    ap.add_argument("--dr-clock-transit-freeze-deg", type=float, default=5.0,
+                    help="#142: FREEZE this chain's solved receiver clock while any satellite "
+                         "the model carries (every constellation, the D2/D3 veto's geometry) is "
+                         "within this many degrees of boresight: no solve is applied, no drift "
+                         "is differenced, the MAD re-bootstrap clock stops, and the clock is "
+                         "held at zero rate and contributed every cycle. Inside a transit the "
+                         "search reports noise code phases just over its bar and the median of "
+                         "them is not the clock; the clock itself is a GPS-disciplined "
+                         "constant. Only a clock confirmed by an in-bound update freezes (never "
+                         "a prime or an unconfirmed bootstrap), and chains without detections "
+                         "never do. 0 = off.")
     ap.add_argument("--dr-min-sats", type=int, default=2,
                     help="detections needed for a receiver-clock solve (one sat is "
                          "unfalsifiable -- same reasoning as --bias-min-sats)")
