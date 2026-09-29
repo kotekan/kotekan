@@ -82,7 +82,7 @@ private:
     const std::string rfi_SKbartilde_name;
 
     // Buffers
-    NDArrayRingBuffer<std::int8_t, 3> bf_mask;
+    NDArrayRingBuffer<std::uint8_t, 3> bf_mask;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012bar;
     NDArrayRingBuffer<float, 5> rfi_SKbar;
     NDArrayRingBuffer<float, 3> rfi_SKbartilde;
@@ -297,7 +297,7 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
         rfi_SKbartilde.set_to_poison(0xff);
     }
 
-    const std::int8_t* const bf_mask_memory =
+    const std::uint8_t* const bf_mask_memory =
         bf_mask.get_ndarray().data()
         + bf_mask.get_ndarray().stride(0)
               * (bf_mask.get_read_valid().begin() % bf_mask.get_ndarray().extent(0));
@@ -309,7 +309,7 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     float* const out_sk_single_feed = rfi_SKbar_memory;
     uint* const out_rfimask = nullptr;
     const ulong* const in_S012 = rfi_S012bar_memory;
-    const uint8_t* const in_bf_mask = (const uint8_t*)bf_mask_memory;
+    const uint8_t* const in_bf_mask = bf_mask_memory;
     const long T = rfi_S012bar.get_read_valid().size();
     const long F = rfi_S012bar.get_ndarray().get_extent(1);
     const long S = rfi_S012bar.get_ndarray().get_extent(3)
