@@ -94,7 +94,7 @@ private:
     const std::string rfi_RFImask_name;
 
     // Buffers
-    NDArrayRingBuffer<std::int8_t, 3> bf_mask;
+    NDArrayRingBuffer<std::uint8_t, 3> bf_mask;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
     NDArrayRingBuffer<float, 3> rfi_SKtilde;
     NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;
@@ -316,7 +316,7 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
         // rfi_RFImask.set_to_poison(0x55);
     }
 
-    const std::int8_t* const bf_mask_memory =
+    const std::uint8_t* const bf_mask_memory =
         bf_mask.get_ndarray().data()
         + bf_mask.get_ndarray().stride(0)
               * (bf_mask.get_read_valid().begin() % bf_mask.get_ndarray().extent(0));
@@ -329,7 +329,7 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     // The SK kernel skips the mask computation when out_rfimask is NULL.
     uint* const out_rfimask = first_stage_excision_enabled ? (uint*)rfi_RFImask_memory : nullptr;
     const ulong* const in_S012 = rfi_S012_memory;
-    const uint8_t* const in_bf_mask = (const uint8_t*)bf_mask_memory;
+    const uint8_t* const in_bf_mask = bf_mask_memory;
     const long T = rfi_S012.get_read_valid().size();
     const long F = rfi_S012.get_ndarray().get_extent(1);
     const long S = rfi_S012.get_ndarray().get_extent(3)
