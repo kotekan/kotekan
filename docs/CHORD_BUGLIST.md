@@ -196,10 +196,12 @@ binary (no projection code), all three with `malloc(): unaligned tcache chunk de
 line of `/tmp/gnss_node.log` before the new `Kotekan version ... starting`; cx42 also restarted once
 earlier and cx19 at 06:52:05Z with NO message and no operator (cx19's unit shows NRestarts=0, so it
 was not a systemd relaunch -- unexplained; a segfault prints nothing, so those may be the same bug
-with a different symptom). cx27 and cx44 ran 16 h clean. The .1 logs (every lifetime before the
-09-28 20:38 rotation, i.e. 422ea1bf8 from 09-27 15:06 and the bundle's first 2 h) contain none of
-these messages: ~160 node-hours clean on 422ea1bf8 against 4-5 events in ~90 node-hours on the
-bundle. The message means a freed chunk's tcache metadata was overwritten: a heap overflow/underflow
+with a different symptom). cx27 and cx44 ran 16 h clean. ⚠️ **No 422ea1bf8 node log survives**
+(corrected 09-29): node_up.sh keeps one rotation, so every node's oldest `/tmp/gnss_node.log.1` starts
+on the bundle (`gd53b6a254b`) and holds only its first ~2 h, which are clean. The only pre-bundle
+baseline is the journal: one ABRT on 422ea1bf8 (cx42 09-28 05:13Z) in ~160 node-hours, against 4-5
+events in ~90 on the bundle. At equal rates, 4 or more of 5 events landing in the bundle window has
+p ≈ 0.06 (5 of 6: 0.025), so the rise is suggestive, not established. The message means a freed chunk's tcache metadata was overwritten: a heap overflow/underflow
 or a write through a stale pointer somewhere in the process; the abort comes at a LATER malloc, in
 whichever thread happens to allocate, so the last log lines (routine n2-send refusals, valve drops)
 say nothing about the writer. Nothing broker-side lines up with the times (the BIRTH-STEP lines
@@ -217,12 +219,16 @@ before each one recur every few seconds all day).
   `status=11/SEGV` then, 45 s into the relaunched process, 11:24:37Z `status=6/ABRT` (the malloc
   line 78 log lines after its start: the corruption can strike during start-up); cx42 ALSO aborted
   09-28 05:13:00Z on 422ea1bf8, before the bundle (its message is in a log rotation that no longer
-  exists), so the bundle is not clearly the origin, only the rate is new; cx19's 06:52Z restart has
+  exists), so the bundle is not clearly the origin, and only the rate may be new; cx19's 06:52Z restart has
   no failure line at all -- a deliberate `systemctl restart`, not a crash (not KV; the other
   session is the candidate). Every 09-24/25 entry is the shutdown-hang / F-engine-outage history.
-- **Suspect first:** #1699's gpuProcess lifetime changes (frame slots released without
-  finalize_frame, the results thread joined on every exit path) -- the only part of the bundle that
-  touches buffer lifetimes; #145 changes arithmetic only, #146 the FatalError message.
+- **#1699 and #146 are cleared; #145 is the only bundle change left** (09-29). Two adversarial
+  reviews of #1699 found no memory-safety defect: on the normal path it adds only a stack guard
+  object and one atomic load per frame, and everything else it adds runs after a stop, an exception,
+  or in the destructor. #146 is reached only from FATAL_ERROR, /kill and the teardown config report.
+  So the stock bundle's only C++ change that runs mid-run is #145 (ElemCal arithmetic plus the
+  `shared_frozen()` guard in shared_hold); a memory-safety review of it is under way. The projection
+  build's code had its own review (above). Given the baseline, the writer may predate all three.
 - **Why it hides:** the unit's `Restart=` policy relaunches within 20 s, the models re-form in
   minutes, and the node's stdout goes to `/tmp/gnss_node.log` (node_up.sh rotates it to `.1` on a
   manual restart) rather than the journal, so nobody sees the message unless they grep for it. Any
@@ -241,7 +247,8 @@ before each one recur every few seconds all day).
   (0x210 = a 32-element vector<complex<double>>); (3) an ASan build of
   the CPU stages (build_nodpdk on cf06 is USE_DPDK OFF) replaying a captured tiles+ctl stream
   through GnssN2RecordAssemble -> GnssGpuRecordAssemble -> GnssTelemPack catches anything on the
-  host side deterministically; (4) A/B: one node on 422ea1bf8 + #145 only (no #1699/#146) for a day.
+  host side deterministically; (4) A/B: one node without #145 (422ea1bf8) against the bundle fleet --
+  but at the bundle's ~1 event per 20 node-hours a clean node-day still has p ≈ 0.3, so it takes several.
 - **Check:** `for n in cx19 cx27 cx42 cx43 cx44 cx51; do ssh $n 'grep -a -c "malloc()" /tmp/gnss_node.log*; systemctl show gnss-node -p NRestarts -p ExecMainStartTimestamp'; done`
   and `sudo journalctl -u gnss-node | grep -E "Main process exited|Scheduled restart"` for the
   exit code of every relaunch (status=6/ABRT = this; status=11/SEGV = the silent kind).
