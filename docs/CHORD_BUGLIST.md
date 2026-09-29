@@ -302,6 +302,44 @@ before each one recur every few seconds all day).
   and `sudo journalctl -u gnss-node | grep -E "Main process exited|Scheduled restart"` for the
   exit code of every relaunch (status=6/ABRT = this; status=11/SEGV = the silent kind).
 
+### #155 — dTEC arcs die in transits of 1176-MHz emitters: the fleet ADR holds the arc while the victim band's residual is dark (2026-09-29)
+- **What:** since #142 (live 09-28 20:18:48Z) the tracking lock holds through every transit: 362 of
+  363 fleet-ADR arcs on all eight chains, against 92% (525/573) the night before. The dTEC arcs do
+  not. Only 39% of E5a × E6 product arcs survive a transit (26/67), the same as the night before
+  (37/94), against 99% and 96% in matched quiet windows. 58% of the arcs that entered came out
+  SLIPPED: arc key held, level displaced.
+- **Mechanism (measured on one case):** E16 through C39, 09-29 04:24–04:47Z. E5a's C/N0 was 6–19
+  dB-Hz for about five minutes while E6 stayed near 40. One `(fadr_arc, fadr_hop0)` held on both
+  bands, with all 12 instances, throughout. The E5a × E6 level went from +0.5 to −2062 TECU, which
+  is −362 E5a cycles. The likely reading: the fold keeps integrating the commanded Doppler while
+  the residual is unmeasurable, so the error grows with the dropout. The product's C/N0 gate and
+  5-cm step rule cut the arc there, so nothing wrong is published, but the arc does not continue.
+- **By emitter:** arcs survive transits of satellites with nothing at 1176 MHz (G19 IIR-B, G12
+  IIR-M per IGS SINEX: 11/13). They mostly die in transits of 1176 emitters (GPS IIF, Galileo,
+  BDS-3: 15/54).
+- **Damage:** the median jump of the Galileo triple-frequency closure (ionosphere-free) across a
+  transit fell from 170 TECU before #142 to 10 after, against 0.8 in quiet windows. #142 cut it
+  about 17×, but it is still many cycles.
+- **Not judged:** B2a × B3I and L5 × L2C slip even in quiet windows (0–21% survive; B3I and L2C
+  are thin). Projection, live fleet-wide since 09-29 17:00Z, had no transit in this census.
+- **Fix candidates:**
+  1. Projection may remove the dropout itself. Judge it on the first transits under it (G09
+     09-29 22:14Z, then the rest of that night).
+  2. FleetAdr ends or flags an arc while its vouching instances' residual is unmeasurable (C/N0
+     below roughly 20 dB-Hz for more than a few seconds). That gives every consumer honest
+     continuity, not only the TEC product.
+  3. Bridge the dark band's residual rate from a locked sibling band of the same satellite. The
+     non-dispersive part scales with frequency. Untested.
+- **Check:** `python/scripts/gnss/gnss_transit_arcs.py`, run on cf06 from `fixtures/tec_wander`
+  (~2 min; the exact command is in the page footer). Census
+  `fixtures/tec_wander/out/transit_arcs_0929_census.json`. Page
+  https://claude.ai/artifact/15dmeuuxeESKk2WNsANhmU (built by `fixtures/tec_wander/page/make_page.py`).
+- **Traps:**
+  - Order grid hops by (F-engine epoch, hop), never by a row's `t`. `fadr_g_hist` times inherit
+    the poll time and swap neighbours; the first pass faked 63% NO ARC that way.
+  - A row's `carr_resid_m` is dominated by the ~100-ms record-count stamp (±40 m). Judge a
+    band's ADR only at exact grid hops.
+
 ### #119 — `--fit-flush-on-reject`'s own revert trigger is tripped, and unread
 Pre-registered as "revert if flushes happen on healthy sats outside events". **[live]** 69
 `cp-fit history FLUSHED` in 57 minutes on a healthy fleet, all on gps_l5, concentrated on five

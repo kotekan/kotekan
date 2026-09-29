@@ -128,6 +128,21 @@ scripts/gnss/eop_push.sh        # from a host that reaches the nodes
 **Bring the gather and the aggregator up BEFORE restarting nodes into them.** Sixty senders
 retrying a dead listener is ~2 log lines a second across the fleet.
 
+**After an F-engine outage or re-base, restart the nodes only after the broker has re-anchored**
+(its 3-strike relaunch, `starting 8 chain(s)`, then the new epoch in its time-anchor line). A node that
+starts first pins its shared element models on noise (09-28 20:15Z: R pol0 E6 0.15). The nodes'
+own `Restart=on-failure` relaunches will usually beat the broker, so plan on a `restart` loop
+afterwards.
+
+**Only a `node_up.sh` start carries the unit's properties.** Those relaunches reuse whatever the last
+`node_up` start set, including `LimitCORE=infinity`. Without it, a crash leaves no core, only glibc's
+one line in `/tmp/gnss_node.log`.
+
+**Where a core goes is the node's `kernel.core_pattern`.** It is set per boot:
+`sudo sysctl -w kernel.core_pattern=/var/crash/core.%e.%p.%t.%s`. apport's stock pipe drops the core
+of a binary replaced since the process started, which a live deploy does. A core is ~44 GB, and `%e`
+names the faulting thread. The recipe and the gdb line are in bug list #153.
+
 The four things that have stopped a node bring-up, in the order they bit:
 EOP table expired (`node_up.sh` refuses below 12 h headroom) · choco maintenance mode off (a
 per-minute `/kill` sweep) · chive serving a pre-re-base epoch · the broker started under the GIL.
