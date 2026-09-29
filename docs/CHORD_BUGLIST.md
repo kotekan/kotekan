@@ -273,8 +273,9 @@ before each one recur every few seconds all day).
   (0x210 = a 32-element vector<complex<double>>); (3) an ASan build of
   the CPU stages (build_nodpdk on cf06 is USE_DPDK OFF) replaying a captured tiles+ctl stream
   through GnssN2RecordAssemble -> GnssGpuRecordAssemble -> GnssTelemPack catches anything on the
-  host side deterministically; (4) A/B: one node without #145 (422ea1bf8) against the bundle fleet --
-  but at the bundle's ~1 event per 20 node-hours a clean node-day still has p ≈ 0.3, so it takes several.
+  host side deterministically; (4) A/B: one node on 422ea1bf8 against the bundle fleet -- it now
+  tests only the three reviews, and at the bundle's ~1 event per 20 node-hours a clean node-day still
+  has p ≈ 0.3, so it takes several; the core (1) is the better next step.
 - **Check:** `for n in cx19 cx27 cx42 cx43 cx44 cx51; do ssh $n 'grep -a -c "malloc()" /tmp/gnss_node.log*; systemctl show gnss-node -p NRestarts -p ExecMainStartTimestamp'; done`
   and `sudo journalctl -u gnss-node | grep -E "Main process exited|Scheduled restart"` for the
   exit code of every relaunch (status=6/ABRT = this; status=11/SEGV = the silent kind).
