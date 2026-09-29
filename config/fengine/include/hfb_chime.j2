@@ -16,8 +16,10 @@ hfb2_beam_separation_y: 90.0 / 256
 
 # The HFB2 beamforming weights are valid for this many input samples. This must be a multiple of
 # hfb_num_output_times * hfb_downsampling_factor * hfb_second_downsampling_factor, the number of
-# input samples the HFB2 beamformer processes per kernel invocation.
-hfb2_weights_lifetime_in_samples: hfb_num_output_times * hfb_downsampling_factor * hfb_second_downsampling_factor # 838.8608 ms
+# input samples the HFB2 beamformer processes per kernel invocation. The weights matrices are large
+# and are recalculated on the GPU, so keep this long: about a minute here, and possibly much longer
+# (e.g. 24 h) in production.
+hfb2_weights_lifetime_in_samples: 72 * hfb_num_output_times * hfb_downsampling_factor * hfb_second_downsampling_factor # 60.3979776 s
 # Number of weights matrices in the GPU ring buffer. Each takes
 # 2 * upchan_hfb_upchan_U128_max_num_output_channels * hfb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
 # bytes (16 GiB), so there is room for only one. The HFB2 beamformer then waits for the next

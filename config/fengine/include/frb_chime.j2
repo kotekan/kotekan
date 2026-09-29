@@ -19,8 +19,9 @@ frb2_beam_separation_y: 90.0 / 256
 
 # The FRB2 beamforming weights are valid for this many input samples. This must be a multiple of
 # frb_num_output_times * frb_downsampling_factor, the number of input samples the FRB2 beamformer
-# processes per kernel invocation.
-frb2_weights_lifetime_in_samples: 4 * frb_num_output_times * frb_downsampling_factor # 1.00663296 s
+# processes per kernel invocation. The weights matrices are large and are recalculated on the GPU, so
+# keep this long: about a minute here, and possibly much longer (e.g. 24 h) in production.
+frb2_weights_lifetime_in_samples: 240 * frb_num_output_times * frb_downsampling_factor # 60.3979776 s
 # Number of weights matrices in the GPU ring buffer. Each takes
 # 2 * upchan_U16_max_num_output_channels * frb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
 # bytes (2 GiB).
