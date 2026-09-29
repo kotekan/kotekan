@@ -18,7 +18,9 @@
  * @brief Merge, upchannelize, and apply weights to gain files.
  *
  * Applies the same processing as the parent, but sets the buffer metadata
- * expected by `CHIMEFRBBeamformer_chime_U16`.
+ * expected by `CHIMEFRBBeamformer_chime_U16_K4` and
+ * `CHIMEFRBBeamformer_chime_U16_K8`; the gain buffer is the same for both input
+ * bit depths.
  *
  * @author Liam Gray
  *
