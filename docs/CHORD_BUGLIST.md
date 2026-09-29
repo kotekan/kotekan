@@ -226,9 +226,35 @@ before each one recur every few seconds all day).
   reviews of #1699 found no memory-safety defect: on the normal path it adds only a stack guard
   object and one atomic load per frame, and everything else it adds runs after a stop, an exception,
   or in the destructor. #146 is reached only from FATAL_ERROR, /kill and the teardown config report.
-  So the stock bundle's only C++ change that runs mid-run is #145 (ElemCal arithmetic plus the
-  `shared_frozen()` guard in shared_hold); a memory-safety review of it is under way. The projection
-  build's code had its own review (above). Given the baseline, the writer may predate all three.
+  So the stock bundle's only C++ change that runs mid-run is #145, and its review (09-29) cleared it
+  too:
+  - its changes write only locals and skip one `hold()` call; nothing is resized or shared across
+    threads;
+  - a sanitizer harness of the deployed ElemCal and assembler code ran clean (ASan/UBSan,
+    `_GLIBCXX_ASSERTIONS`, TSan; ~426M records including starts inside a freeze, reference swaps and
+    slot resets; `cf06:/var/tmp/kvand-review145/`).
+
+  **None of the bundle's three changes can write the heap.** The writer predates the bundle, or it
+  lies in code not yet reviewed: DPDK, the GPU stages, bufferSend/Recv, the N²/eigen stages, the
+  combiner. The projection build's code had its own review (above). The node config is mostly not a
+  confound: the 422ea1bf8 lifetimes ran the same a16ba9bdd configs from KV's 09-27 ~18:2xZ cycle
+  (per the 09-28 handoff; no log survives to check).
+- **Latent, pre-existing, not live (found by the #145 review; cheap to harden, none explains #153 as
+  deployed).** Each needs a producer or config that breaks the contract, and none does today: every
+  producer's channel count matches, `n_rows_spec` is 4, and there are 96 position values.
+  - GnssGpuRecordAssemble's chan_export zero-fill spans `frame_floats(n_prn, _n_elements, hdr.n_chan)`,
+    with the frame's `n_chan` unchecked against the configured channels.
+  - GnssN2RecordAssemble takes offsets from the input header's `n_chan` and loops to its `n_rec`, with
+    no MAX_REC check.
+  - The stack arrays `g3[6]`/`e3[6]` are indexed by the frame's `n_rows_spec`, never checked against 6.
+  - Two constructor FATAL_ERRORs lack a `return`, so a short `elem_positions_enu` would then be
+    indexed out of range.
+- **Where it is detected is not where it was written.** Each assembler thread frees and allocates
+  two 0x210 chunks and one 0x110 chunk per record per PRN (rebuild_split, mag), so those threads are
+  the likeliest to trip over a damaged tcache entry. A backtrace in an assembler thread does not
+  implicate the assembler. (Inference: with `USE_NUMA=ON` kotekan frames come from
+  `numa_alloc_onnode`, which is mmap-based, so the damaged chunk is a heap object such as a vector,
+  string or json, and a frame-buffer overrun would not hit a chunk header directly.)
 - **Why it hides:** the unit's `Restart=` policy relaunches within 20 s, the models re-form in
   minutes, and the node's stdout goes to `/tmp/gnss_node.log` (node_up.sh rotates it to `.1` on a
   manual restart) rather than the journal, so nobody sees the message unless they grep for it. Any
