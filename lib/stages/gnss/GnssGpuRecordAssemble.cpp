@@ -203,6 +203,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 Q.init(_n_elements, _proj_kmax_alloc);
             _proj_isB.assign((size_t)n, 0);
             _proj_isProbe.assign((size_t)n, 0);
+            _proj_dropped.assign((size_t)n, 0);
             _slot_was_run.assign((size_t)n, 0);
             _slot_run_since.assign((size_t)n, 0.0);
             _slot_probe_broker.assign((size_t)n, 0);
@@ -2430,6 +2431,7 @@ void GnssGpuRecordAssemble::proj_reset_slot(size_t p, double now_s) {
     _cap_plain[p] = _cap_proj[p] = _b_cos2[p] = _sim_pp[p] = -1.0;
     _proj_isB[p] = 0;
     _proj_isProbe[p] = 0;
+    _proj_dropped[p] = 0;
     _slot_was_run[p] = 0;
     _slot_run_since[p] = now_s;
     {
@@ -2451,6 +2453,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         Q.clear();
     std::fill(_proj_isB.begin(), _proj_isB.end(), 0);
     std::fill(_proj_isProbe.begin(), _proj_isProbe.end(), 0);
+    std::fill(_proj_dropped.begin(), _proj_dropped.end(), 0);
     std::fill(_proj_k_ch.begin(), _proj_k_ch.end(), 0);
     std::fill(_proj_src_ch.begin(), _proj_src_ch.end(), 0);
     if (n_chan != (int)_proj_fids.size()) {
@@ -2615,17 +2618,28 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
     //    99 % of the probe rows' cross energy that matched no tracked satellite, and when it did
     //    latch onto a real satellite at 5-10 deg that satellite's own held weights sat at cos^2
     //    0.7-0.9 with the direction: projected live, it would have been nulled out of its own
-    //    row. So a probe direction (ours or a sibling's) is accepted only if (i) it IS one of our
-    //    tracked satellites (proj_identify: that slot then becomes a source, excluded from the
-    //    projection and the diagnostics), or (ii) the broker reports a satellite inside
-    //    elem_proj_deg of boresight and no row source explains it on this channel -- the
-    //    unnamed-emitter case the probe stack exists for. Anything else is ignored (its trigger
-    //    level is still served per channel).
+    //    row. So a probe direction (ours or a sibling's) is taken only while the broker reports a
+    //    satellite inside elem_proj_deg of boresight, and then: a direction a row source on this
+    //    channel already spans is the same emitter seen twice (skipped, and never put through
+    //    the identity, see below); a direction that IS one tracked satellite's own signature
+    //    (proj_identify) is a column for nothing when that satellite is steered -- inside the
+    //    window its row is the source, outside it it is a sidelobe leaker worth 1/26 of every
+    //    victim -- so it is dropped; the same for a tracked satellite WITHOUT geometry makes
+    //    that slot a source (its own rows spared) and serves the direction to the others; and a
+    //    direction that names no single row is the row-less emitter the stack exists for.
+    //    ⚠️ C42 09-29 (third lesson): the identity used to run on every probe-class direction
+    //    and MARK its answer a source. On the six chains that do not track the emitter every row
+    //    along the direction is a victim's, so it named the most captured victim on 40 % of the
+    //    records, whose projected learner was then fed the plain prompt (cap_proj = cap_plain,
+    //    sim_pp 0.99 on e5a/e5b/e6/l5 -- and live, its rows would have gone unprojected); and on
+    //    L2C, where C42 has no signal, the stack's direction was the brightest GPS satellite's
+    //    own signature, accepted as "unnamed" and charged to every other GPS row (b_cos2 > 0.3 on
+    //    16 % of the polls).
     const double frac_min = _proj_probe_frac_min.load();
     const double max_age = _proj_max_age_s.load();
     const bool bore_near = (now_s - _bore_post_t.load() <= 120.0) && _bore_sep_deg.load() < deg;
     int k_rec = 0;
-    int n_sib = 0, n_probe_ch = 0, n_ident = 0;
+    int n_sib = 0, n_probe_ch = 0, n_ident = 0, n_drop = 0;
     double probe_frac_max = 0.0;
     std::fill(_proj_probe_used.begin(), _proj_probe_used.end(), 0);
     for (int ch = 0; ch < n_chan; ++ch) {
@@ -2640,16 +2654,29 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
             if (Q.add(_v_scratch.data()))
                 src |= 1;
         }
-        // A probe-class direction is used only while the broker reports a satellite inside
-        // elem_proj_deg of boresight (a transit is in progress; outside one the stack finds the
-        // nearest sidelobe leaker at 10-15 deg, worth 1/26 of every victim and a basis column
-        // for nothing). The identity then names the emitter among OUR rows so its own rows are
-        // not projected; an unidentified direction is the row-less emitter the stack exists for.
+        // A probe-class direction (the stack's, ours or a sibling's): see the note above.
         auto accept_probe_dir = [&](const cd* q) -> bool {
             if (!bore_near)
                 return false;
-            const int who = proj_identify(q, ch, n_e, pctl_rec_v);
-            if (who >= 0 && !_proj_isB[(size_t)who]) {
+            // Already spanned by a row source on this channel (Gram-Schmidt would drop it at
+            // the same 0.5): the same emitter seen twice, nothing to name.
+            if (Q.k > 0 && Q.cos2(q) >= 0.5)
+                return false;
+            int n_along = 0;
+            const int who = proj_identify(q, ch, n_e, pctl_rec_v, &n_along);
+            if (who < 0)
+                return true; // nothing of ours along it, or a common interferer in several rows
+            if (_proj_steered[(size_t)who]) {
+                // One steered satellite's own signature: never a column (its row is the source
+                // when it is inside the window; a sidelobe leaker when it is not).
+                if (!_proj_dropped[(size_t)who]) {
+                    _proj_dropped[(size_t)who] = 1;
+                    ++n_drop;
+                }
+                return false;
+            }
+            if (!_proj_isB[(size_t)who]) {
+                // Tracked without geometry: its own rows are spared, the direction serves the rest.
                 _proj_isB[(size_t)who] = 1;
                 ++n_ident;
             }
@@ -2774,6 +2801,10 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         sig.push_back(n_sib > 0);
         sig.push_back(n_probe_ch > 0);
         sig.push_back(n_ident);
+        sig.push_back(n_drop);
+        for (int p = 0; p < n_prn; ++p)
+            if (_proj_dropped[(size_t)p])
+                sig.push_back(p);
         if (sig != _proj_sig) {
             _proj_sig = sig;
             std::string d;
@@ -2795,6 +2826,14 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
                         who += fmt::format("{}{:c}{:02d}", who.empty() ? "" : ",", _proj_sys,
                                            _prns[(size_t)p]);
                 d += fmt::format("{}identified {:s}", d.empty() ? "" : "; ", who);
+            }
+            if (n_drop > 0) {
+                std::string who;
+                for (int p = 0; p < n_prn; ++p)
+                    if (_proj_dropped[(size_t)p])
+                        who += fmt::format("{}{:c}{:02d}", who.empty() ? "" : ",", _proj_sys,
+                                           _prns[(size_t)p]);
+                d += fmt::format("{}probe dir dropped ({:s})", d.empty() ? "" : "; ", who);
             }
             {
                 std::lock_guard<std::mutex> lk(_proj_mtx);
@@ -2976,7 +3015,7 @@ void GnssGpuRecordAssemble::set_elem_proj_callback(kotekan::connectionInstance& 
 }
 
 int GnssGpuRecordAssemble::proj_identify(const std::complex<double>* q, int ch, int n_e,
-                                         const void* pctl_rec) {
+                                         const void* pctl_rec, int* n_along) {
     // THE EMITTER IS THE BRIGHTEST ROW ALONG q, NOT THE LEARNER THAT AGREES WITH q. The first
     // version matched q against the slots' learned weights and, during C34's pass (09-29
     // 11:5x), "identified" C37, C21 and C23 -- captured victims whose learners point along the
@@ -2986,13 +3025,21 @@ int GnssGpuRecordAssemble::proj_identify(const std::complex<double>* q, int ch, 
     // row per channel; the interferer's row lies along q with cos^2 ~ 1 and is the strongest
     // by 10-20 dB; a captured victim's row lies along q only in proportion to the leak, and
     // its power is that of a victim. Score = cos^2 x |row|^2, threshold cos^2 > 0.5.
+    // AND THE BRIGHTEST VICTIM IS STILL A VICTIM (C42 09-29 13:5x, the sibling chains): where
+    // the emitter has no row, every row along q is a victim's and "the brightest" is just the
+    // most captured. So the COUNT of rows along q decides: exactly one -> that slot's own
+    // signature; several -> the emitter only if it is 10x brighter than the next (its power
+    // against its victims' leak), else nobody -- a common interferer in every row, tracked by
+    // no slot here.
     using namespace gnss_gpu;
     using cd = std::complex<double>;
     const PrnCtl* pc = (const PrnCtl*)pctl_rec;
     const int n_prn = (int)_prns.size();
     const int n_chan = (int)_proj_fids.size();
     int best = -1;
-    double sbest = 0.0;
+    double sbest = 0.0, ssecond = 0.0;
+    int n = 0;
+    *n_along = 0;
     double qn = 0.0;
     for (int i = 0; i < n_e; ++i)
         qn += std::norm(q[i]);
@@ -3015,11 +3062,18 @@ int GnssGpuRecordAssemble::proj_identify(const std::complex<double>* q, int ch, 
         const double c2 = std::norm(sdot) / (vn * qn);
         if (c2 < 0.5)
             continue;
+        ++n;
         const double score = c2 * vn;
         if (score > sbest) {
+            ssecond = sbest;
             sbest = score;
             best = p;
+        } else if (score > ssecond) {
+            ssecond = score;
         }
     }
-    return best;
+    *n_along = n;
+    if (n <= 1)
+        return best;
+    return (sbest >= 10.0 * ssecond) ? best : -1;
 }

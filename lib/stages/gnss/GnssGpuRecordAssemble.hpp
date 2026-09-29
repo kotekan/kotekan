@@ -474,10 +474,15 @@ private:
     void proj_slot_shadow(const double* corr, const void* pctl_slot, int n_chan, int n_e,
                           bool steered);
     void proj_slot_diag(size_t p, const void* pctl_slot, int n_chan, int n_e, bool steered);
-    /// Which own slot (running, steered, with warm weights) a raw-frame direction belongs to:
-    /// the slot whose weights, un-steered at this channel, lie inside it with cos^2 > 0.5.
-    /// -1 = none (an unnamed emitter, or one tracked only by a sibling).
-    int proj_identify(const std::complex<double>* q, int ch, int n_e, const void* pctl_rec);
+    /// Which own slot a raw-frame direction IS: among this record's raw prompt rows on the
+    /// channel, the one lying along q (cos^2 > 0.5) when it is the only one, or the one 10x
+    /// brighter (cos^2 x |row|^2) than the next when several do. -1 = none: nothing of ours
+    /// along it, or several rows along it with no dominant one -- the signature of a common
+    /// interferer captured in every victim's row, i.e. an emitter we do not track. @p n_along
+    /// receives the count of rows along q.
+    int proj_identify(const std::complex<double>* q, int ch, int n_e, const void* pctl_rec,
+                      int* n_along);
+    std::vector<uint8_t> _proj_dropped; ///< [n_prn] a probe direction was this steered slot's own signature and was dropped this record
     void set_elem_proj_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 };
 
