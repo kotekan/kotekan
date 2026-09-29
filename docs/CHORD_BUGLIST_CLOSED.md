@@ -62,6 +62,12 @@ that goes with it.
 | #116 | the observables writers never rolled the UTC day | `461eb8ce0` | **deployed and verified on sky**: `gps_l5_20260910.jsonl` ends at Sep 11 00:00:00 and `_20260911.jsonl` takes over; 8 tests, 6 of which fail against the old writer |
 | #117 | cross-chain grid pairing yielded 40%, and the loss was sampling | see below | `GRID_KEEP=4` snapshots published as `fadr_g_hist` and consumed by `gnss_tec_chord.py`; 7 tests, and **verified on sky**: per-chain coverage 50.0% → 99.8%, pair coverage 8.1% → 99.6% |
 | #118 | `dop_rate_rejected` was never cleared | — | one line, mirroring `cp_rate_rejected`. **Verified live**: rejections-per-cycle now bounded and fluctuating (1–7, up and down) with fresh values each cycle, where the bug could only grow |
+| #141 | gps_l5's carrier seeds rode the solved clock-frequency bias, a 2-sat median that snapped −23..+16 Hz after restarts and transits, so it was the residual carrier on every L5 PRN (fleet 1-s coherence 0.03) | `01964948a` (`seed-bias-source: zero`: seeds at 0 Hz, the solved bias steers only the search and the probes) + `987d9efcb` (the first-seed guard kept under `zero`; the first cut killed gps_l5 on cycle 1) | **live**: L5 common carrier −0.05..0.00 Hz, sinc² 0.96–1.00 at 09-28 16:26Z (was −1.14 Hz / 0.02); over 09-29 06:00–12:54Z median \|common\| 0.03 Hz on gps_l5, gal_e5a and bds_b2a alike, 0 of 415 minutes past 0.5 Hz, median sinc² 0.99; L5 against the solved bias slope +0.002, r 0.05 (was 0.975, r 0.943). `fixtures/fix0928/141/verify141.py`, `snap141.py` |
+| #142 | the cross-band clock bootstrap copied gps_l5's legacy clock (a median of as few as 2 detections, which stepped 250–690 chips in passes) into five chains with no step limit; their trackers lost lock 30–110 s after each step | `ea9129b60`: ≥ 4 sats (`dr-update-min-sats`), a 5-chip step limit with a re-pin after 3 agreeing solves, the clock frozen at zero rate while the transit sky has anything inside 5°, the cross-band bound in time units, joint-clock adoption resetting #104's 300-s escape, refusals hold | **live** 09-28 20:18Z → 09-29 12:40Z: 7 transits (G9, E28, G19, C39, G12, E11, C34), each one FROZEN and one CLEAR line (742–1408 s); held clock 149.3 → 150.3 chips over the night; 0 RE-PIN, FORCING or REFUSED; legacy within 5 chips of JOINT[shadow] in 1969 of 1969 samples; thin-sky holds 98 min, longest run 17 min (revert bar 30). Consumers' present counts moved only on each transit's own bands, apart from single-sample PRESENCE UNANCHORED dips while a noise probe re-seeds, and were back at baseline by CLEAR + 15 min. `fixtures/fix0928/142/tools/verify_after_restart.sh`. Residual: open list |
+| #143 | the joint-clock consumer compared the joint clock (10.23-Mcps chips) with the chain's own in the chain's chips, so gps_l2c (+142.7) and gal_e6 (+75) refused it every time | `01964948a` (the joint declared in its feeders' unit; `joint_clk_delta` converts and wraps in the consumer's chips; the band-level SEED-OFFSET line and the rate consumer convert too) | **live** 09-28 20:18Z → 09-29 12:40Z: all seven consumers ADOPTED on 1968 of 1969 JOINT-CLK lines (the one refusal each is the start-up line). ⚠️ The filing's "it alone would have protected L2C and E6" was wrong: in a #142 step the converted delta is 250–690 chips against a 5-chip bound, so they refused exactly when e5b, b2b and b3i did. #142 is what protects them. Residual (the per-PRN SEED-OFFSET line): open list |
+| #145 | ElemCal calibrated the reference element against the others' weighted SUM, so \|w_ref\| ≈ (n−1)·SNR × the others' median and the per-PRN combine was the reference element alone | `978561481` (a leave-it-out MEAN: divide by W_rest; shared_hold's no-model fallback no longer installs the shadow while frozen), fleet-wide in the node bundle d53b6a254 09-28 18:33–20:39Z | synthetic array-gain efficiency 0.17 → 0.97 at SNR 1; viscap replay: projection prevents capture only with it (G09 at 1–2°: −8.7 → +1.1 dB against the held model); **live**: served `sim` 0.46–0.86 (was 0.02–0.23), shared-model R 0.94–1.00 and fleet xcoh 0.86–0.99 after the 20:39Z cycle. Residual (rho² > 0.99 drop): open list |
+| #146 | a FatalError message containing a brace went back to fmt as a format string, so fmt threw inside FATAL_ERROR and the process died on SIGABRT instead of shutting down (recv1 09-27; 46 of 917 sites can carry braces) | `35d7120d0` (format once with `vformat_to_n`), shipped with the #1699 gpuProcess commits `1a739bdd0` `a05fd0a5d` `eafb60f9b` | **bench**: the Boost case fails on the old code and passes on the new (`fixtures/upstream0928/`); in the node bundle since 09-28. ⚠️ That bundle's abort rate is #153 (#1699's lifetime changes are its first suspect). Upstream: open list |
+| #151 | the dead-reckon (seeding) ephemeris reloaded every 7200 s while the sky took 900 s, so BeiDou records expired ~10 min before each reload (09-28 11:00Z 9 → 3 PRNs, 13:00Z 12 → 6) | `b2223cc7a` (`_DR_EPH_REFRESH_S` 900; DCB stays on 7200) | **live** 09-28 20:18Z → 09-29 12:40Z: 66 reloads per chain at 15 min, DCB every 2 h; the bds_b2a `active=` minimum over each hour's first 12 min stayed 8–13, and no hour dropped. Residual (two ephemerides; EPH-REBASE inert): open list |
 
 ## Closed because the premise died (moot)
 
@@ -149,6 +155,22 @@ indistinguishable from baseline. The fleet-wide roll at 02:02–02:10 climbed 0.
 02:38–02:44. The standing C++ trim lives **on each node**, so one roll discards a twelfth of the
 fleet's trim state while ten combiners carry the measurement, and a fleet roll discards every
 satellite's at once and the DLL re-establishes all of them from zero.
+
+**#148 — cx19's ~0 beam-cube coherence was the statistic, not the instance.** Answered 2026-09-28 from the
+per-record viscap capture (`fixtures/projtest/viscap0928/out/cube148_0927T19.txt`, `coh_w1.txt`,
+`coh_w2.txt`). The cube's cells are exact against the capture: worst relative difference 5.96e-8,
+and |γ| = 1.0000000 on cx19 as on cx51. Each cell is corr/E, so its noise variance scales as 1/E, and the
+within-window coherence summed the channels unweighted. Each cx19 instance has one channel next to a
+BPSK(10) null, and that one channel's noise swamps the sum:
+- gnss0 at 1166.41 MHz (null at 1166.22), E/median 1.1e-3;
+- gnss1 at 1186.72 MHz (null at 1186.68), E/median 1.4e-4.
+
+Weighted by E² (corr units), all 12 instances read 0.91–0.95 on e5a and b2a (09-27 19–20Z). Unweighted,
+the statistic tracks the smallest channel's E ratio: cx44 gnss1 at 4.4e-3 read 0.37/0.33, cx42 gnss0 at
+4.8e-3 read 0.70/0.30 (the entry's two 0.4–0.6 instances), and instances at ≥ 1e-2 read ~0.9. Dropping
+the minimum channel only patches it (it costs cx51 0.93 → 0.82). ElemCal, the header and the replay sum
+corr, not corr/E, and never saw it. L5's 0.02 on every instance was #141. ⚠️ **Any statistic that sums
+cube cells across channels must weight them by E².**
 
 ## Closed with a full write-up — the three worth reading before touching these areas
 

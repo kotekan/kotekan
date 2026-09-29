@@ -81,46 +81,37 @@ seven are dead-reckon.
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
 
-### #141 — gps_l5's carrier seeds ride a noisy clock-frequency bias (found 2026-09-28)
-**The L5 chain-wide coherence collapse is ours, not the sky's.** gps_l5 is the only chain that solves a
-local clock-frequency bias (the other seven log `clock-freq bias UNSOLVED` ~18,500 times each) and
-`seeding.py` adds it to every PRN's commanded Doppler (`seed_dop = BRDC + ctx.cb.seed`) while the carrier
-loop is open (`carrier-gain: 0.0`), so the bias estimate IS the residual carrier on every L5 PRN and
-instance: residual vs logged "seeds ride X Hz" slope 0.975, r 0.943 over 2,953 min; fleet-median L5 1-s
-coherence 0.034. The true offset is ~0: gal_e5a and bds_b2a on the same GPUs/channels read 0 ± 0.02 Hz.
-The "slow" EMA has tau ~6 min (not the documented ~30), and the estimate SNAPS to one raw 2-sat median
-after a broker restart and after going stale (transits starve `bias-min-snr 60`): +16 (restart 09-25),
-−23 (C38), +11 (E18, C34), −12 Hz (C19 live 09-27 21:11Z); each snap costs 20–30 min of L5 coherence.
-**Fix to test:** seed L5 with 0 Hz and keep the solved bias for search centring only; at minimum, no snap.
-Evidence `fixtures/projtest/forensics/l5/` (episodes.tsv, timeline_1min.tsv, cube_analyze.txt).
+### #142 residual — two observations from the pre-fix L2C losses are still unexplained
+The fix (`ea9129b60`, closed) has held through seven transits. Two things seen during the old losses
+have no explanation, and with the losses gone they can be studied only in the archive: a repeatable
++1510 m L2C code-residual plateau while the trackers were being dragged, and gps_l5's legacy clock
+~10,014 chips (≡ −216 mod 10230) off the joint clock at 09-27 21:03Z. Evidence
+`fixtures/projtest/forensics/l2c/timeline.json`.
 
-### #142 — the cross-band clock bootstrap copies gps_l5's legacy clock with no step limit (2026-09-28)
-**The post-transit L2C loss is a clock copy, not the joint clock** (which stayed within ~1 chip through
-C38, G09, C34 and E26). gps_l5's legacy clock (`deadreckon.py`) is a median of as few as 2 search
-detections with a 100-chip scatter bar, so two corrupted detections that agree pass; it moves 20% per
-cycle and steps 250–690 L5 chips (25–67 µs) during passes (the drift check rejects the drift, not the
-step: C34 06:01:39Z `+1318.9 chips/s REJECTED`, clock 152 → 679). gps_l2c, gal_e5b, bds_b2b, bds_b3i and
-gal_e6 take it through the cross-band BOOTSTRAP every cycle, unbounded (#104's 5-chip limit covers only the
-same-band path); trackers are dragged 0.05 chip/cycle and lose lock 30–110 s later (+1..+3 min). Same-band
-bds_b2a/gal_e5a hold until #104's 300-s escape adopts the sibling anyway (C34 +111 s, 75 chips; C38 +146 s,
-−202 chips). **Fixes, in order:** #143; the #104 limit in time units on the cross-band bootstrap; ≥3–4 sats
-and a step limit on the legacy solve, frozen inside the transit veto; reset the 300-s age on joint-clock
-adoption. Evidence `fixtures/projtest/forensics/l2c/timeline.json`. Open: a repeatable +1510 m L2C
-code-residual plateau during the loss; L5 legacy clock ~10,014 chips off the joint clock at 09-27 21:03Z.
-
-### #143 — the joint-clock consumer compares chips at different chip rates (`deadreckon.py:794`)
-It compares the joint clock (10.23 Mcps chips) with the chain's own clock in the chain's chips, with no
-`clock_chips_convert` and no per-band delay. gps_l2c (0.5115 Mcps) always differs by ~+142.7 and gal_e6 by
-~+75, so both REFUSE the joint clock every time (0 of 34 per window) and ride #142's unbounded copy. The
-smallest fix of the set; it alone would have protected L2C and E6 on all four passes studied.
+### #143 residual — the per-PRN `SEED-OFFSET` line still compares chips at different rates (`deadreckon.py`, seeding loop)
+The clock consumer and the band-level SEED-OFFSET line convert (`01964948a`, closed); the per-PRN
+`SEED-OFFSET PRN n (slew|cp0)` comparison does not, so every gps_l2c line reads ~+142.8 and every gal_e6
+line ~+75.7 chips "REFUSED" (5957 of 5957 and 9604 of 9604 lines, 09-28 20:18Z – 09-29 12:40Z) while the
+same two chains adopt the joint clock on 99.9% of their JOINT-CLK lines. Harmless today, because neither
+chain has `slew` in `joint-consume`, but it reads as a fault, and it would refuse every seed the day either
+chain takes `slew`. Fix: take `_d3` from `rx.joint_clk_delta`, as the band-level line does.
 
 ### #144 — the transit sky (`_bore` freeze, railing veto) cannot see unhealthy or non-BRDC satellites
 `nearest_boresight` runs over `brdc_predict` → `gnss_ephemeris.predict_all`, which drops G/E records with
 health ≠ 0 (~l.477) and stale ephemerides, so neither the shared-model transit freeze nor the railing veto
 fires for E18 (1.6 deg 09-26 09:42Z), E14 (0.66 deg 09-28 04:51:54Z), or objects in no BRDC at all:
 NORAD 40748 "BEIDOU-3S M2S" (Celestrak C58; 09-27 12:40Z at 0.66 deg, +10 dB in 1176/1207/B3I for up to
-24 min) and GLONASS (L3OC at 1202 MHz sits in e5b/b2b). Fix: build the transit sky with the health gate
-off and a long age limit, supplemented from TLEs; reuse it for the railing veto.
+24 min) and GLONASS (L3OC at 1202 MHz sits in e5b/b2b). **E14 is E202** (SINEX: GALILEO 6, GAL-2 = FOC,
+launched 2014-08-22 into the eccentric orbit with E18 = E201): flagged unhealthy, and a strong E5a emitter.
+On its 09-28 pass it was the N² top vector inside 2° (cos² 0.56–0.61 onto its model subspace, control
+0.077), `shared_frozen` stayed 0, and the live shared model turned toward it fleet-wide: similarity to the
+pre-pass model fell to 0.14–0.73 on L5 and 0.45–0.83 on the other E/B bands (fleet minima), against
+0.88–0.99 in an unfrozen gap with no unhealthy satellite, while L2C, which E14 does not reach, held
+0.87–0.90 [archive: viscap replay, `fixtures/projtest/viscap0928/`]. That is this item's measured cost.
+Next exposures (predicted): NORAD 40748 09-30 17:13Z at 1.34°, E18 10-01 04:11Z at 4.75°. Fix: build the
+transit sky with the health gate off and a long age limit, supplemented from TLEs; reuse it for the
+railing veto. This is also #151's geometry-only sky: `predict_all`'s docstring allows a widened
+`max_age` for geometry callers, never for seeds.
 Evidence `fixtures/projtest/live/passes/`, `fixtures/projtest/unk/`.
 
 ### #150 — C11–C14 are BDS-3 MEOs now, and no chain can track them (found 2026-09-28)
@@ -147,31 +138,23 @@ in all three places; add C11–C14 to all three lists (B3I stays matched to B2a/
 regenerate the node configs; node cycle (KV). **Check:** `--check-prns` lists C11–C14 EXCLUDED before the
 change and is clean after; each gets a `fleet_present` row within a pass of rising.
 
-### #151 — the seeding model's ephemeris still reloads every 2 h; BeiDou drops out for ~10 min before each reload (2026-09-28)
-**bddb6d0d5 (08-27) cut the SKY's refresh from 7200 s to 900 s and left the dead-reckon copy behind.**
-Its message names the cause — "a cadence inherited from the DAILY file's own 2 h re-fetch rule" — and it
-changed only `sky.py:65`. `deadreckon.py:1539` still reloads `dr_state["eph"]` when it is > 7200 s old,
-and that copy is the one every model-primary seed uses and the one `dr_pd` is built from (the transit
-veto and the assemblers' `_bore` freeze). Records expire 4 h after toe (`best_eph`); BeiDou updates hourly
-and IGS hourlies publish ~15–25 min late, so a load at X:10 can leave in-view BeiDou satellites with
-nothing newer than X−2:00, and they expire at X+2:00, ten minutes before the next load. The reload phase
-is the broker's start time (09-27 15:09:19 → X:09–X:10, creeping ~5 s per load). Cost is not the reason:
-`fetch_brdc` caches the merge (30 min) and the reload has run on a thread since the telemetry-ring fix.
-[live 09-28] bds_b2a's `active=` list: **11:00:00 9 → 3 PRNs (13 at 11:10:21); 13:00:02 12 → 6 (11 at
-13:10:22)**; smaller drops at 19:00, 21:00, 23:00 and 01:00 on 09-27/28. bds_b2a/b2b/b3i presence 0–1%
-over 13:00–13:09. The fresher records were already on disk: the hourly merge ran at 11:55 and 12:39 while
-the seeds stayed on the 11:10 load until 13:10.
-**Second effect, a new case of #144:** `nearest_boresight(dr_pd)` uses the same 4-h window, so when C13's
-record expired at 13:00 the veto and the freeze lost it while it was still 3.3° off boresight (last veto
-line 12:59:53; C13 stayed inside 6° until 13:08). A healthy satellite whose record ages out is as
-invisible to the transit sky as an unhealthy one.
-**Fix:** one ephemeris on the sky's 15-min cadence (share `receiver.brdc()`'s dict, or at minimum 7200 →
-900 here), and a geometry-only transit sky with a widened `max_age` (`predict_all`'s docstring allows it
-for geometry callers; never for seeds). ⚠️ Check #101 first: every reload steps each satellite's model,
-EPH-REBASE is computed on the sky copy's refreshes rather than this one, and broker.log shows no
-`EPH-REBASE` or `eph-rebase census` line in the ~7 h to 13:55Z 09-28 although `eph-rebase: 1` is armed.
-**Check:** no `active=` collapse on the hour over a day; `BORESIGHT TRANSIT` lines run until the
-satellite actually leaves 5°.
+### #151 residual — the seeds and the sky still keep two ephemerides, and EPH-REBASE (#101) never fires
+The reload cadence is fixed (`b2223cc7a`, closed). What is left is the entry's own "check #101 first":
+- **Two copies, two phases.** The seeds' copy (`dr_state["eph"]`) reloads on the broker's start phase and
+  the sky's (the shared `receiver.brdc()` store, where EPH-REBASE computes its step) on its own, so a seed
+  model step can land up to 15 min from the step computed for it.
+- **No step is computed at all.** Zero `eph-rebase census` lines in 16.4 h (09-28 20:18Z – 09-29 12:40Z)
+  with `eph-rebase: 1` armed on gal_e5a, although the census prints at every re-parse, zero included, so
+  its silence cannot mean "nothing moved". Both halves of a per-chain decision live on the SHARED store:
+  `almanac.py` writes the calling chain's `eph_rebase` flag onto it just before `brdc_predict`; whichever
+  chain finds the store stale does the re-parse and reads that flag (gal_e6 on all three `ephemeris
+  refreshed` lines of this run, unarmed); and a stored step is `pop`ped by whichever chain's almanac pass
+  comes next, armed or not. The same shape as the 08-27 prediction-collapse bookkeeping (the note in
+  `sky.py`). [tree + live; the interleaving is inferred from the code, not traced]
+- **Fix:** one ephemeris for the seeds and the sky, the step computed once per reload and handed to every
+  armed chain (keyed per consumer, never popped from the shared dict). **Check:** a census line at every
+  reload, and `EPH-REBASE:` posts on gal_e5a after the merge-adjacent ones. The geometry-only transit sky
+  moved to #144.
 
 ### #152 — the joint clock latches chips off the search clock and nothing notices or re-latches it (2026-09-28)
 **Twice now a transit has left the shared joint clock confidently wrong, adopted fleet-wide.** 09-23
@@ -365,22 +348,33 @@ carries C56/C58. Small, and separate from the above.
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
 
-### #145 — ElemCal's reference element outweighs the others by ~n·SNR (`gnssElemCal.hpp` ~l.268)
-The reference element is calibrated against `rest = tot − conj(w)·g`, the leave-it-out weighted sum NOT
-divided by `_wsum`, so its u and q are in "sum of weights" units and |w_ref| ≈ n·SNR × the median of the
-others until rho² > 0.99 (measured, 26 elements: 24× at SNR 1, 241× at 10, 490× at 50). The adapting
-combine is therefore mostly the reference element alone — why the per-PRN cal showed no array gain, and
-why the shared model's learners looked degenerate. Fix: `rest / _wsum`. It changes the live combine for
-every PRN (KV's call); check what the shared model's consensus inherits. Related: ElemCal drops any element
-with rho² > 0.99, so a very bright satellite's own cal can end with zero weights. Found by the review of
-the moment dump (worktree `kv/elem-steer` 584571cfc, staged `build/kotekan/kotekan.new_moments_584571cfc`).
+### #145 residual — ElemCal drops any element with rho² > 0.99
+The reference-weight defect is fixed (`978561481`, closed). Left from the same review: an element whose
+rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with zero weights. Unmeasured.
 
-### #146 — a FatalError whose message contains a brace aborts instead of shutting down
-`kotekanLogging::vset_error_message` formats the message and then passes the RESULT to fmt as a format
-string, so any `{`/`}` in it (every nlohmann::json error text) throws `fmt::format_error` inside the
-FatalError path and the process dies on SIGABRT ("terminate called ..."). Seen on recv1 09-27 18:08Z
-(upstream binary; our tree has the same code). One-line fix: `format_to_n(..., "{}", vformat(...))`.
-Upstream issue/PR material.
+### #146 residual — upstream develop still re-parses the FatalError message
+Fixed on `kv/chord-gnss` (`35d7120d0`, closed). develop carries the same code. The patch and a Boost case
+that fails on the old code are in `fixtures/upstream0928/`. Open the PR with #1699 as its stated
+dependency: without #1699, a controlled shutdown can hang in `~gpuProcess` where the abort used to exit.
+
+### #154 — the shared element model latches its phase pin from its FIRST model, which is one shadow (2026-09-28)
+`shared_consensus` (`GnssGpuRecordAssemble.cpp`) forms the first shared model from a single warm shadow
+(the one with the most live elements), latches `_g_pin_ref` from it, and phase-aligns every later model
+to that pin. Only a process restart, a collapse onto one element, or a reference-element change clears
+it. The model's shape keeps learning, but its per-pol phase stays referenced to whatever sky the node
+started into. Twice on 09-28:
+- cx44 restarted 18:12Z inside a BeiDou dropout (#151) and pinned its BDS models on weak shadows (B2A
+  +85/+155° off the fleet). It stayed there until a second restart.
+- All six restarted 20:15:55Z before the broker had re-anchored after the F-engine re-base, and pinned
+  on noise. Cross-instance R pol0 read E6 0.15, E5b 0.66, B2B 0.69 and E5a 0.70, and E6's fleet lobe sum
+  cancelled (xcoh −0.066). It lasted until KV cycled them again at 20:39Z, after which R read 0.94–1.00
+  and xcoh 0.86–0.99.
+
+With #153's silent relaunches, every node is a candidate at any hour.
+**Fix:** latch the pin only once the consensus includes ≥ ~4 warm shadows, and re-latch when the pinned
+model's normalised overlap with the current one falls below a bound. **Check:** a node started into a
+thin sky reaches R ≥ 0.95 against the fleet without a second restart
+(`fixtures/fix0928/canary/snap_xinst.py`).
 
 ### #131 — the gather dies when a telemetry client flaps
 **[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no
@@ -674,11 +668,6 @@ expected), a −37 m (−127 ns) code step, carrier residual ±2.5 Hz for >14 mi
 0.90 → 0.03 for ~2 h, with no lock loss and no broker event; gps_l5's code-rate clock estimate moved
 −0.001 → +0.002..+0.003 ppm (also ~3 ppb). Maser/GPSDO or F-engine reference? Not ours to fix, but it
 must be vetoed from any coherence statistic. Evidence `fixtures/projtest/forensics/l5/ev2201*.py`.
-
-### #148 — cx19's beam-cube within-window coherence is ~0 on both GPUs (L5, e5a, b2a), 09-25..27
-Every other healthy instance reads ~0.90 on e5a/b2a (cx42_gnss0 and cx44_gnss1 0.4–0.6). Either a cube
-artifact on cx19 or a real instance fault; not diagnosed. cx19 carries one of the two per-record
-viscap captures, so run the capture's cube cross-check (`viscap_replay.py cubecheck`) first.
 
 ### #133 — the RF-band selector leaked the internal group key and mislabelled its frequency ✅ FIXED 09-17
 **Corrected filing.** I first wrote this up as "the viewer collapses the broker's five `rf_band`
