@@ -229,12 +229,21 @@ PYEOP
 # exit does NOT restart: a deliberate /kill or `systemctl stop` stays down.
 # The log is APPENDED, not truncated, so the fatal that caused a restart survives it; each
 # node_up start rotates the previous file to $LOG.1 instead.
+# CORES: LimitCORE=infinity, because otherwise a crash's cause is gone. The unit relaunches after
+# RestartSec, and the log keeps at most glibc's one line. systemd's default soft core limit is 0,
+# under which the kernel writes nothing; LimitCORE= sets soft and hard. The node's
+# kernel.core_pattern decides where a core goes. A file pattern writes it there. apport's stock
+# pipe keeps it in /var/lib/apport/coredump (5 per uid), but DISCARDS it if the binary was
+# replaced since the process started, which a live deploy does. A core is ~44 GB, mostly the
+# hugepage voltage rings (the default coredump_filter includes private hugepages), and a crash
+# loop writes one per relaunch.
 REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
       { [ -f '$LOG' ] && sudo mv -f '$LOG' '$LOG.1'; true; }; \
       test -r '$CFG' && sudo systemd-run --unit=gnss-node \
         --working-directory=$K \
         --property=Restart=on-failure --property=RestartSec=20 \
         --property=StartLimitIntervalSec=0 \
+        --property=LimitCORE=infinity \
         --property=StandardOutput=append:$LOG \
         --property=StandardError=inherit \
         '$BIN' --config '$CFG' --bind-address 0.0.0.0:12048"
