@@ -623,6 +623,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
             **elem_shared_keys(args),
+            **elem_proj_keys(args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
             # keys unconditionally changed every production node config by three lines for a
@@ -1175,6 +1176,16 @@ def elem_positions_from_arraymap(arr, n_elem):
     return out, ep.key()
 
 
+def elem_proj_keys(args):
+    """Assembler keys for the bright-satellite projection (gnssProjSubspace.hpp); nothing unless
+    --elem-proj-mode is shadow or live, so a fleet without it is byte-identical. The mode is
+    also a live switch (POST /set_elem_proj) -- this key is what makes it survive a restart."""
+    mode = getattr(args, "elem_proj_mode", "off") or "off"
+    if mode not in ("shadow", "live"):
+        return {}
+    return {"elem_proj_mode": mode}
+
+
 def elem_shared_keys(args):
     """Assembler keys for the shared element model; nothing unless --elem-sum-shared, so
     a fleet without it is byte-identical."""
@@ -1629,6 +1640,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
             **elem_shared_keys(args),
+            **elem_proj_keys(args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
             # keys unconditionally changed every production node config by three lines for a
@@ -2995,6 +3007,11 @@ def main():
                          "plus one inter-pol coefficient per satellite; per-PRN weights are "
                          "held to it (elem_sum_adapt false), so a boresight transit cannot "
                          "capture the weak satellites' element sums. Emitted only when on.")
+    ap.add_argument("--elem-proj-mode", default="off", choices=("off", "shadow", "live"),
+                    help="bright-satellite projection in the assembler (PROJECTION_PLAN.md): "
+                         "shadow = projected shadow learner + capture diagnostics only; live = "
+                         "the rows are projected in place. Emitted only when not off; the "
+                         "assembler also takes it live over POST /set_elem_proj.")
     ap.add_argument("--elem-sum-shared-tau-s", type=float, default=300.0,
                     help="consensus EMA time constant (s) for --elem-sum-shared")
     ap.add_argument("--elem-sum-pol-tau-s", type=float, default=3.0,

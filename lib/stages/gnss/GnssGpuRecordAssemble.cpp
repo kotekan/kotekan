@@ -156,6 +156,85 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _pol_c.assign((size_t)n, std::complex<double>(0.0, 0.0));
         _w_scratch.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
     }
+    // ── BRIGHT-SATELLITE PROJECTION (hpp note; gnssProjSubspace.hpp) ──────────────────────
+    // Needs the element axis, the channel labels (the board is keyed on freq_id) and the
+    // element cal (the shadow learners). Ships OFF; the mode is a live switch (/set_elem_proj)
+    // so a canary can be armed without a config regeneration.
+    {
+        auto fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
+        const std::string mode_s =
+            config.get_default<std::string>(unique_name, "elem_proj_mode", "off");
+        _proj_mode = (mode_s == "live") ? 2 : (mode_s == "shadow") ? 1 : 0;
+        _proj_deg = config.get_default<double>(unique_name, "elem_proj_deg", 4.0);
+        _proj_kmax_alloc =
+            std::max(1, std::min(4, config.get_default<int>(unique_name, "elem_proj_rank_max", 2)));
+        _proj_rank_max = _proj_kmax_alloc;
+        _proj_max_age_s = config.get_default<double>(unique_name, "elem_proj_max_age_s", 2.0);
+        _proj_probe_frac_min =
+            config.get_default<double>(unique_name, "elem_proj_probe_frac_min", 0.5);
+        _proj_tau_s = config.get_default<double>(unique_name, "elem_proj_tau_s", 4.0);
+        _proj_probe_tau_s = config.get_default<double>(unique_name, "elem_proj_probe_tau_s", 1.0);
+        _proj_probe_since_s =
+            config.get_default<double>(unique_name, "elem_proj_probe_since_s", 90.0);
+        _bore_az_deg = config.get_default<double>(unique_name, "boresight_az_deg", 180.0);
+        _bore_el_deg = config.get_default<double>(unique_name, "boresight_el_deg", 81.41);
+        _proj_group = config.get_default<std::string>(
+            unique_name, "elem_proj_group", unique_name.substr(0, unique_name.find('_')));
+        std::string sys = config.get_default<std::string>(unique_name, "gnss_system", "");
+        if (sys.empty()) {
+            // Fallback from the stage name (the generator's chain tokens); the key wins when set.
+            auto has = [&](const char* t) { return unique_name.find(t) != std::string::npos; };
+            sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))   ? "E"
+                  : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1")) ? "C"
+                  : (has("_l1of") || has("_l2of") || has("_l3oc"))           ? "R"
+                                                                             : "G";
+        }
+        _proj_sys = sys[0];
+        _proj_ready = _elem_sum && _n_elements > 0 && !fids.empty();
+        if (_proj_ready) {
+            _proj_fids = fids;
+            _proj_own.resize((size_t)n);
+            _proj_probe = gnss::ProjSubspace(_n_elements, (int)fids.size(), _proj_probe_tau_s,
+                                             _proj_kmax_alloc);
+            _proj_steer.assign((size_t)_proj_kmax_alloc * fids.size() * _n_elements,
+                               gnss::ElemSteer::cf(1.0f, 0.0f));
+            _proj_Q.resize(fids.size());
+            for (auto& Q : _proj_Q)
+                Q.init(_n_elements, _proj_kmax_alloc);
+            _proj_isB.assign((size_t)n, 0);
+            _proj_isProbe.assign((size_t)n, 0);
+            _slot_was_run.assign((size_t)n, 0);
+            _slot_run_since.assign((size_t)n, 0.0);
+            _slot_probe_broker.assign((size_t)n, 0);
+            _cal_proj = _cal;
+            _cap_plain.assign((size_t)n, -1.0);
+            _cap_proj.assign((size_t)n, -1.0);
+            _b_cos2.assign((size_t)n, -1.0);
+            _sim_pp.assign((size_t)n, -1.0);
+            _g_proj.assign((size_t)_n_elements, {0.0, 0.0});
+            _v_scratch.assign((size_t)_n_elements, {0.0, 0.0});
+            _proj_probe_frac.assign(fids.size(), 0.0);
+            _proj_probe_on.assign(fids.size(), 0);
+            _proj_probe_used.assign(fids.size(), 0);
+            _proj_steer_all.assign((size_t)n * fids.size() * _n_elements,
+                                   gnss::ElemSteer::cf(1.0f, 0.0f));
+            _proj_steered.assign((size_t)n, 0);
+            _proj_owner_probe = unique_name + "/probe";
+            _proj_k_ch.assign(fids.size(), 0);
+            _proj_src_ch.assign(fids.size(), 0);
+            INFO("GnssGpuRecordAssemble[{:s}]: bright-satellite projection READY, mode {:s} "
+                 "(system {:c}, group {:s}, {:d} channels, deg {:.1f}, rank <= {:d}, tau own "
+                 "{:.1f} s / probe {:.1f} s, probe trigger frac >= {:.2f}); POST /set_elem_proj "
+                 "to change",
+                 unique_name, mode_s, _proj_sys, _proj_group, (int)fids.size(), _proj_deg.load(),
+                 _proj_kmax_alloc, _proj_tau_s, _proj_probe_tau_s, _proj_probe_frac_min.load());
+        } else if (_proj_mode.load() != 0) {
+            WARN("GnssGpuRecordAssemble[{:s}]: elem_proj_mode {:s} requested but the projection "
+                 "needs elem_sum, an element axis and channel_ids -- OFF",
+                 unique_name, mode_s);
+            _proj_mode = 0;
+        }
+    }
     _phi.assign(n, 0.0);
     _phi_cyc.assign(n, 0.0);
     _phi_cmd_prev.assign(n, 0.0);
@@ -396,6 +475,10 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         kotekan::restServer::instance().register_get_callback(
             unique_name + "/get_elem_cal",
             std::bind(&GnssGpuRecordAssemble::get_elem_cal_callback, this, _1));
+        if (_proj_ready)
+            kotekan::restServer::instance().register_post_callback(
+                unique_name + "/set_elem_proj",
+                std::bind(&GnssGpuRecordAssemble::set_elem_proj_callback, this, _1, _2));
     }
     // LIVE REFERENCE SWAP (KV, 2026-08-20). Registered whenever the element axis exists --
     // the header's correlation slots carry the reference even with elem_sum off, so the
@@ -438,6 +521,25 @@ void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstanc
             _bore_post_t.store(now_s);
         }
         std::lock_guard<std::mutex> lk(_steer_mtx);
+        // "_probes": [prn, ...] -- this chain's noise probes (below-horizon PRNs) when the
+        // broker names them; the projection's probe stack then uses exactly those slots.
+        // Absent (older broker), a probe is inferred as a running slot with no geometry for
+        // elem_proj_probe_since_s (geometry is only ever posted above the horizon).
+        {
+            auto pi = request.find("_probes");
+            if (pi != request.end() && pi->is_array() && !_slot_probe_broker.empty()) {
+                std::fill(_slot_probe_broker.begin(), _slot_probe_broker.end(), 0);
+                for (const auto& v : *pi) {
+                    if (!v.is_number_integer())
+                        continue;
+                    const int prn = v.get<int>();
+                    for (size_t p = 0; p < _prns.size() && p < _slot_probe_broker.size(); ++p)
+                        if (_prns[p] == prn)
+                            _slot_probe_broker[p] = 1;
+                }
+                _probes_from_broker = true;
+            }
+        }
         for (auto it = request.begin(); it != request.end(); ++it) {
             const int prn = std::atoi(it.key().c_str());
             if (prn <= 0 || !it.value().is_array() || it.value().size() < 2)
@@ -488,6 +590,10 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
             _cal_shadow[(size_t)p] = _cal[(size_t)p];
             _cal_sim[(size_t)p] = -1.0;
             shared_reset_prn((size_t)p);
+            proj_reset_slot((size_t)p,
+                            std::chrono::duration<double>(
+                                std::chrono::steady_clock::now().time_since_epoch())
+                                .count());
             if ((size_t)p < _anchor_warned.size())
                 _anchor_warned[(size_t)p] = 0;
         }
@@ -608,6 +714,8 @@ void GnssGpuRecordAssemble::main_thread() {
                                 gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
                                               _elem_sum_min_w));
                     _cal_shadow = _cal;
+                    if (_proj_ready)
+                        _cal_proj = _cal;
                     std::fill(_cal_sim.begin(), _cal_sim.end(), -1.0);
                     std::fill(_anchor_warned.begin(), _anchor_warned.end(), 0);
                     std::fill(_elem_prev_ok.begin(), _elem_prev_ok.end(), 0);
@@ -721,6 +829,18 @@ void GnssGpuRecordAssemble::main_thread() {
             const double utc = ((hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor)
                                + (double)wstart / _sample_rate;
 
+            // BRIGHT-SATELLITE PROJECTION, per record (hpp note): feed the source trackers
+            // from this record's RAW rows, build the per-channel basis, publish it to the
+            // siblings. Inert (k = 0) unless armed and a source is in force.
+            if (_proj_ready && _proj_mode.load() != 0)
+                proj_prepare_record(corr, &pctl[(size_t)r * n_prn], n_chan, _n_elements, wstart,
+                                    utc,
+                                    std::chrono::duration<double>(
+                                        std::chrono::steady_clock::now().time_since_epoch())
+                                        .count());
+            else
+                _proj_k_rec = 0;
+
             for (int p = 0; p < n_prn; ++p) {
                 const int rec_stride = gnss::record_stride(_n_elements);
                 float* rec = out + (size_t)p * rec_stride;
@@ -766,6 +886,11 @@ void GnssGpuRecordAssemble::main_thread() {
                 std::complex<double> g3[6];  // reference element, for the header + NCO/gain state
                 double e3[6];                // element-independent
                 _g_elem.assign((size_t)n_rows_spec * n_e, std::complex<double>(0.0, 0.0));
+                // LIVE PROJECTION (hpp note): a non-source slot's rows are projected IN PLACE
+                // in the input frame before anything reads them, so the sum below, the taps,
+                // the cube and the element blocks all see one and the same projected data.
+                if (_proj_k_rec > 0 && _proj_mode.load() == 2 && !_proj_isB[p])
+                    proj_slot_inplace(const_cast<double*>(corr), &c, n_chan, n_e, n_rows_spec);
                 // #102: steer this satellite's elements if geometry is fresh. The lock is
                 // cheap here (one take per record row-set); the REST writer holds it only
                 // while rebuilding one slot's table.
@@ -820,6 +945,13 @@ void GnssGpuRecordAssemble::main_thread() {
                     g3[t] = _g_elem[(size_t)t * n_e + ref_e];
                     e3[t] = e;
                 }
+                // SHADOW PROJECTION (hpp note): the same prompt, projected per channel before
+                // steering and summing, into _g_proj -- for the projected learner and the
+                // capture diagnostics only. The frame, _g_elem and everything live are untouched.
+                const bool proj_this =
+                    _proj_k_rec > 0 && _proj_mode.load() == 1 && !_proj_isB[p];
+                if (proj_this)
+                    proj_slot_shadow(corr, &c, n_chan, n_e, steered);
                 // SELF-CALIBRATED ELEMENT SUM (hpp note). Once this PRN's cal is warm, every
                 // header row (E/P/L/PH/RES -- same weights: same antennas) becomes the
                 // calibrated weighted mean instead of the bare reference element: reference-
@@ -883,6 +1015,21 @@ void GnssGpuRecordAssemble::main_thread() {
                             }
                             if (_elem_shared.load())
                                 shared_pol_update(p, &_g_elem[(size_t)1 * n_e], dt_s);
+                        }
+                        // THE PROJECTED LEARNER (hpp note): fed the projected prompt while a
+                        // source is in force and the plain prompt otherwise, so out of transit
+                        // it is the plain shadow's twin and in transit their difference is the
+                        // capture. Diagnostics per slot: cap_plain / cap_proj = how much of
+                        // each learner's weight vector lies in the interferer subspace,
+                        // b_cos2 = the same for the held (live) weights = the projection's
+                        // predicted cost on this satellite, sim_pp = the two learners' agreement.
+                        if (_proj_ready && _proj_mode.load() != 0) {
+                            gnss::ElemCal& pj = _cal_proj[p];
+                            if (c.reanchored == 1 && !_elem_hold_on_reanchor)
+                                pj.reset();
+                            pj.update(proj_this ? _g_proj.data() : &_g_elem[(size_t)1 * n_e],
+                                      dt_s);
+                            proj_slot_diag(p, &c, n_chan, n_e, steered);
                         }
                     }
                     if (ec.anchor_moved()) {
@@ -2186,15 +2333,56 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
         gs.push_back({g.real(), g.imag()});
     out["g_shared"] = gs;
     nlohmann::json rows = nlohmann::json::array();
-    for (size_t p = 0; p < _cal.size() && p < _prns.size(); ++p)
-        rows.push_back({{"prn", _prns[p]},
-                        {"warm", _cal[p].warm()},
-                        {"anchor_moved", _cal[p].anchor_moved()},
-                        {"shadow_warm", _cal_shadow[p].warm()},
-                        {"sim", _cal_sim[p]},
-                        {"pol_c", {_pol_c[p].real(), _pol_c[p].imag()}},
-                        {"pol_warm", p < _pol_warmth.size() && _pol_warmth[p] > 0.95}});
+    for (size_t p = 0; p < _cal.size() && p < _prns.size(); ++p) {
+        nlohmann::json row = {{"prn", _prns[p]},
+                              {"warm", _cal[p].warm()},
+                              {"anchor_moved", _cal[p].anchor_moved()},
+                              {"shadow_warm", _cal_shadow[p].warm()},
+                              {"sim", _cal_sim[p]},
+                              {"pol_c", {_pol_c[p].real(), _pol_c[p].imag()}},
+                              {"pol_warm", p < _pol_warmth.size() && _pol_warmth[p] > 0.95}};
+        if (_proj_ready && p < _cal_proj.size()) {
+            row["proj_warm"] = _cal_proj[p].warm();
+            row["cap_plain"] = _cap_plain[p];
+            row["cap_proj"] = _cap_proj[p];
+            row["b_cos2"] = _b_cos2[p];
+            row["sim_pp"] = _sim_pp[p];
+            row["is_src"] = _proj_isB[p] != 0;
+            row["is_probe"] = _proj_isProbe[p] != 0;
+        }
+        rows.push_back(row);
+    }
     out["prns"] = rows;
+    if (_proj_ready) {
+        // The projection's state (hpp note): mode and tunables, what is in force this record
+        // (k per channel, which source kinds), the probe-stack trigger level per channel, the
+        // CPU it costs, and a human summary of the sources.
+        const int mode = _proj_mode.load();
+        nlohmann::json pj;
+        pj["mode"] = (mode == 2) ? "live" : (mode == 1) ? "shadow" : "off";
+        pj["deg"] = _proj_deg.load();
+        pj["rank_max"] = _proj_rank_max.load();
+        pj["max_age_s"] = _proj_max_age_s.load();
+        pj["probe_frac_min"] = _proj_probe_frac_min.load();
+        pj["group"] = _proj_group;
+        pj["sys"] = std::string(1, _proj_sys);
+        pj["probes_from_broker"] = _probes_from_broker.load();
+        pj["k"] = _proj_k_rec;
+        pj["us_per_record"] = _proj_us;
+        pj["active_records"] = _proj_active_records;
+        {
+            std::lock_guard<std::mutex> lk(_proj_mtx);
+            pj["sources"] = _proj_desc;
+        }
+        nlohmann::json chans = nlohmann::json::array();
+        for (size_t ch = 0; ch < _proj_fids.size(); ++ch)
+            chans.push_back({{"fid", _proj_fids[ch]},
+                             {"k", ch < _proj_k_ch.size() ? _proj_k_ch[ch] : 0},
+                             {"src", ch < _proj_src_ch.size() ? _proj_src_ch[ch] : 0},
+                             {"probe_frac", ch < _proj_probe_frac.size() ? _proj_probe_frac[ch] : 0.0}});
+        pj["channels"] = chans;
+        out["proj"] = pj;
+    }
     conn.send_json_reply(out);
 }
 
@@ -2230,4 +2418,608 @@ void GnssGpuRecordAssemble::set_reference_element_callback(kotekan::connectionIn
                          {"applies", "next frame boundary"},
                          {"rewarm_s", _elem_sum ? 3.0 * _elem_sum_tau_s : 0.0}};
     conn.send_json_reply(reply);
+}
+
+// ── BRIGHT-SATELLITE PROJECTION (hpp note; gnssProjSubspace.hpp; PROJECTION_PLAN.md) ────────
+
+void GnssGpuRecordAssemble::proj_reset_slot(size_t p, double now_s) {
+    if (!_proj_ready || p >= _proj_own.size())
+        return;
+    _proj_own[p].reset();
+    _cal_proj[p] = gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s, _elem_sum_min_w);
+    _cap_plain[p] = _cap_proj[p] = _b_cos2[p] = _sim_pp[p] = -1.0;
+    _proj_isB[p] = 0;
+    _proj_isProbe[p] = 0;
+    _slot_was_run[p] = 0;
+    _slot_run_since[p] = now_s;
+    {
+        // The REST geometry handler writes this vector under _steer_mtx; so do we.
+        std::lock_guard<std::mutex> lk(_steer_mtx);
+        _slot_probe_broker[p] = 0;
+    }
+}
+
+void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* pctl_rec_v,
+                                                int n_chan, int n_e, int64_t wstart, double utc,
+                                                double now_s) {
+    using namespace gnss_gpu;
+    using cd = std::complex<double>;
+    const PrnCtl* pc = (const PrnCtl*)pctl_rec_v;
+    const int n_prn = (int)_prns.size();
+    _proj_k_rec = 0;
+    for (auto& Q : _proj_Q)
+        Q.clear();
+    std::fill(_proj_isB.begin(), _proj_isB.end(), 0);
+    std::fill(_proj_isProbe.begin(), _proj_isProbe.end(), 0);
+    std::fill(_proj_k_ch.begin(), _proj_k_ch.end(), 0);
+    std::fill(_proj_src_ch.begin(), _proj_src_ch.end(), 0);
+    if (n_chan != (int)_proj_fids.size()) {
+        // The basis is keyed by channel_ids; a frame with another channel count would apply
+        // one channel's subspace to another's data. Refuse, once and loudly.
+        if (!_proj_nchan_warned) {
+            WARN("elem projection DISABLED: channel_ids has {:d} channels, the frame {:d}",
+                 (int)_proj_fids.size(), n_chan);
+            _proj_nchan_warned = 1;
+        }
+        return;
+    }
+    const auto t0 = std::chrono::steady_clock::now();
+    _proj_corr_rec = corr;
+    const double dt_s = (_proj_wstart_prev > 0 && wstart > _proj_wstart_prev)
+                            ? (double)(wstart - _proj_wstart_prev) / _sample_rate
+                            : 0.0;
+    _proj_wstart_prev = wstart;
+    for (int p = 0; p < n_prn; ++p) {
+        const bool run = pc[p].run != 0;
+        if (run && !_slot_was_run[(size_t)p])
+            _slot_run_since[(size_t)p] = now_s;
+        _slot_was_run[(size_t)p] = run ? 1 : 0;
+    }
+
+    // 1. SOURCES AMONG THE OWN SLOTS: running, geometry fresh, inside elem_proj_deg of
+    //    boresight -- nearest first, at most rank_max. Everything else that runs and has had
+    //    no geometry since it started (a below-horizon probe) feeds the probe stack.
+    const double az = _bore_az_deg * M_PI / 180.0, el = _bore_el_deg * M_PI / 180.0;
+    const double eb[3] = {std::cos(el) * std::sin(az), std::cos(el) * std::cos(az), std::sin(el)};
+    std::vector<std::pair<double, int>> cand;
+    std::vector<uint8_t> probe_flag((size_t)n_prn, 0);
+    const bool broker_probes = _probes_from_broker.load();
+    const double deg = _proj_deg.load();
+    {
+        std::lock_guard<std::mutex> lk(_steer_mtx);
+        for (int p = 0; p < n_prn; ++p) {
+            if (!pc[p].run)
+                continue;
+            double e[3];
+            const bool fresh = _steer.warm(p, now_s);
+            if (fresh && _steer.direction(p, utc, e)) {
+                const double c = std::max(
+                    -1.0, std::min(1.0, e[0] * eb[0] + e[1] * eb[1] + e[2] * eb[2]));
+                const double sep = std::acos(c) * 180.0 / M_PI;
+                if (sep < deg)
+                    cand.emplace_back(sep, p);
+            } else if (broker_probes ? (_slot_probe_broker[(size_t)p] != 0)
+                                     : (!fresh
+                                        && now_s - _slot_run_since[(size_t)p]
+                                               >= _proj_probe_since_s)) {
+                probe_flag[(size_t)p] = 1;
+            }
+        }
+    }
+    std::sort(cand.begin(), cand.end());
+    const int kmax = std::max(1, std::min(_proj_kmax_alloc, _proj_rank_max.load()));
+    if ((int)cand.size() > kmax)
+        cand.resize((size_t)kmax);
+    for (int p = 0; p < n_prn; ++p) {
+        bool is = false;
+        for (const auto& c : cand)
+            is = is || (c.second == p);
+        if (!is && _proj_own[(size_t)p])
+            _proj_own[(size_t)p].reset(); // no longer a source: forget its tracker
+    }
+    // The sources' steering tables at THIS record's time (hpp note: the own-row covariance is
+    // accumulated in the source's steered frame and un-steered at use with the same table).
+    {
+        std::lock_guard<std::mutex> lk(_steer_mtx);
+        // A steer table wider than this record's channel axis would write past _proj_steer:
+        // impossible while both come from channel_ids, and cheap to refuse if that ever drifts.
+        if ((size_t)_steer.n_chan() * _steer.n_elem() > (size_t)n_chan * n_e) {
+            if (!_proj_nchan_warned) {
+                WARN("elem projection DISABLED: steer table {:d}x{:d} exceeds the frame's {:d}x{:d}",
+                     _steer.n_chan(), _steer.n_elem(), n_chan, n_e);
+                _proj_nchan_warned = 1;
+            }
+            cand.clear();
+        }
+        for (size_t ci = 0; ci < cand.size(); ++ci) {
+            const int p = cand[ci].second;
+            _steer.refresh(p, utc);
+            _steer.copy_slot(p, &_proj_steer[ci * (size_t)n_chan * n_e]);
+        }
+    }
+    auto steer_of = [&](size_t ci, int ch) -> const gnss::ElemSteer::cf* {
+        return &_proj_steer[(ci * (size_t)n_chan + (size_t)ch) * n_e];
+    };
+    // q in the raw frame from a tracker's steered-frame vector: q_raw = conj(D) o q_steered.
+    auto unsteer = [&](size_t ci, int ch, const cd* qs, cd* out) {
+        const gnss::ElemSteer::cf* st = steer_of(ci, ch);
+        for (int i = 0; i < n_e; ++i)
+            out[i] = std::conj(cd(st[i].real(), st[i].imag())) * qs[i];
+    };
+
+    // 2. OWN-ROW TRACKERS: this record's PROMPT row, STEERED by the source's own table, per
+    //    covering channel; rank 1 (a satellite's own row is rank one by construction),
+    //    warm-started power iteration.
+    for (size_t ci = 0; ci < cand.size(); ++ci) {
+        const int p = cand[ci].second;
+        _proj_isB[(size_t)p] = 1;
+        auto& T = _proj_own[(size_t)p];
+        if (!T)
+            T = std::make_unique<gnss::ProjSubspace>(n_e, n_chan, _proj_tau_s, 1);
+        const PrnCtl& c = pc[p];
+        const size_t prow = (size_t)(c.job0 + ROW_P) * n_chan;
+        for (int ch = 0; ch < n_chan; ++ch) {
+            if (!((c.chan_mask >> ch) & 1ULL))
+                continue;
+            const double* v = corr + 2 * (prow + ch) * n_e;
+            const gnss::ElemSteer::cf* st = steer_of(ci, ch);
+            for (int i = 0; i < n_e; ++i)
+                _v_scratch[(size_t)i] =
+                    cd(v[2 * i], v[2 * i + 1]) * cd(st[i].real(), st[i].imag());
+            T->push(ch, _v_scratch.data(), dt_s);
+            T->solve(ch, T->warm(ch) ? 1 : 2);
+        }
+    }
+    // Every steered slot's table at this record's time, for the identity check below (a
+    // direction the probe stack or a sibling reports may be one of OUR tracked satellites,
+    // which must then be treated as a source, not a victim). ~45 kB of copies per record.
+    std::fill(_proj_steered.begin(), _proj_steered.end(), 0);
+    {
+        std::lock_guard<std::mutex> lk(_steer_mtx);
+        for (int p = 0; p < n_prn; ++p)
+            if (pc[p].run && _steer.warm(p, now_s))
+                _proj_steered[(size_t)p] = 1;
+    }
+
+    // 3. THE PROBE STACK: every probe row's prompt into one covariance per channel; solved
+    //    every 4th record (the direction moves on the second scale, the solve is n^2 per
+    //    component). Its component-0 energy fraction is the trigger level, served per channel.
+    for (int p = 0; p < n_prn; ++p) {
+        if (!probe_flag[(size_t)p] || _proj_isB[(size_t)p])
+            continue;
+        _proj_isProbe[(size_t)p] = 1;
+        const PrnCtl& c = pc[p];
+        const size_t prow = (size_t)(c.job0 + ROW_P) * n_chan;
+        for (int ch = 0; ch < n_chan; ++ch) {
+            if (!((c.chan_mask >> ch) & 1ULL))
+                continue;
+            const double* v = corr + 2 * (prow + ch) * n_e;
+            for (int i = 0; i < n_e; ++i)
+                _v_scratch[(size_t)i] = cd(v[2 * i], v[2 * i + 1]);
+            _proj_probe.push(ch, _v_scratch.data(), dt_s);
+        }
+    }
+    const bool do_solve = (++_proj_solve_ctr % 4) == 0;
+    for (int ch = 0; ch < n_chan; ++ch) {
+        if (do_solve && _proj_probe.warmth(ch) > 0.0)
+            _proj_probe.solve(ch, 2);
+        _proj_probe_frac[(size_t)ch] = _proj_probe.warm(ch) ? _proj_probe.frac(ch, 0) : 0.0;
+    }
+
+    // 4. THE BASIS PER CHANNEL: own rows, then the siblings' entries from the board, then the
+    //    probe stack. Gram-Schmidt drops a direction already spanned (the same emitter seen
+    //    through two sources), rank capped at rank_max.
+    //
+    //    ⚠️ A PROBE-STACK DIRECTION IS USED ONLY WHEN IT IS ACCOUNTED FOR. Overnight 09-28/29 the
+    //    stack triggered 40 % of the time far from any transit, on a direction carrying up to
+    //    99 % of the probe rows' cross energy that matched no tracked satellite, and when it did
+    //    latch onto a real satellite at 5-10 deg that satellite's own held weights sat at cos^2
+    //    0.7-0.9 with the direction: projected live, it would have been nulled out of its own
+    //    row. So a probe direction (ours or a sibling's) is accepted only if (i) it IS one of our
+    //    tracked satellites (proj_identify: that slot then becomes a source, excluded from the
+    //    projection and the diagnostics), or (ii) the broker reports a satellite inside
+    //    elem_proj_deg of boresight and no row source explains it on this channel -- the
+    //    unnamed-emitter case the probe stack exists for. Anything else is ignored (its trigger
+    //    level is still served per channel).
+    const double frac_min = _proj_probe_frac_min.load();
+    const double max_age = _proj_max_age_s.load();
+    const bool bore_near = (now_s - _bore_post_t.load() <= 120.0) && _bore_sep_deg.load() < deg;
+    int k_rec = 0;
+    int n_sib = 0, n_probe_ch = 0, n_ident = 0;
+    double probe_frac_max = 0.0;
+    std::fill(_proj_probe_used.begin(), _proj_probe_used.end(), 0);
+    for (int ch = 0; ch < n_chan; ++ch) {
+        gnss::ProjBasis& Q = _proj_Q[(size_t)ch];
+        Q.kmax = kmax;
+        int src = 0;
+        for (size_t ci = 0; ci < cand.size(); ++ci) {
+            const auto& T = *_proj_own[(size_t)cand[ci].second];
+            if (!T.warm(ch) || T.k(ch) <= 0)
+                continue;
+            unsteer(ci, ch, T.q(ch, 0), _v_scratch.data());
+            if (Q.add(_v_scratch.data()))
+                src |= 1;
+        }
+        // A probe-class direction is used only while the broker reports a satellite inside
+        // elem_proj_deg of boresight (a transit is in progress; outside one the stack finds the
+        // nearest sidelobe leaker at 10-15 deg, worth 1/26 of every victim and a basis column
+        // for nothing). The identity then names the emitter among OUR rows so its own rows are
+        // not projected; an unidentified direction is the row-less emitter the stack exists for.
+        auto accept_probe_dir = [&](const cd* q) -> bool {
+            if (!bore_near)
+                return false;
+            const int who = proj_identify(q, ch, n_e, pctl_rec_v);
+            if (who >= 0 && !_proj_isB[(size_t)who]) {
+                _proj_isB[(size_t)who] = 1;
+                ++n_ident;
+            }
+            return true;
+        };
+        gnss::ProjBoard::instance().for_each(
+            _proj_group, _proj_fids[(size_t)ch], unique_name, now_s, max_age,
+            [&](const gnss::ProjEntry& e) {
+                if (e.n != n_e || e.q.size() < (size_t)e.k * (size_t)n_e)
+                    return; // another element count, or a malformed entry: never index it
+                for (int j = 0; j < e.k; ++j) {
+                    for (int i = 0; i < n_e; ++i)
+                        _v_scratch[(size_t)i] = cd(e.q[(size_t)j * n_e + i].real(),
+                                                   e.q[(size_t)j * n_e + i].imag());
+                    if (e.src == 1 && !accept_probe_dir(_v_scratch.data()))
+                        continue;
+                    if (Q.add(_v_scratch.data())) {
+                        src |= (e.src == 1) ? 4 : 2;
+                        if (e.src == 1)
+                            _proj_probe_used[(size_t)ch] = 1;
+                        else
+                            ++n_sib;
+                    }
+                }
+            });
+        // The probe-stack trigger has hysteresis: a channel enters at frac_min and stays until
+        // 0.8 frac_min, so a level hovering at the threshold does not flicker the basis (and
+        // the log) record by record.
+        const bool was_on = (_proj_probe_on[(size_t)ch] != 0);
+        const bool probe_on = _proj_probe.warm(ch)
+                              && _proj_probe.frac(ch, 0) >= (was_on ? 0.8 * frac_min : frac_min);
+        _proj_probe_on[(size_t)ch] = probe_on ? 1 : 0;
+        if (probe_on) {
+            bool any = false;
+            for (int j = 0; j < _proj_probe.k(ch); ++j) {
+                if (!accept_probe_dir(_proj_probe.q(ch, j)))
+                    continue;
+                any = Q.add(_proj_probe.q(ch, j)) || any;
+            }
+            if (any) {
+                src |= 4;
+                _proj_probe_used[(size_t)ch] = 1;
+                ++n_probe_ch;
+                probe_frac_max = std::max(probe_frac_max, _proj_probe.frac(ch, 0));
+            }
+        }
+        _proj_k_ch[(size_t)ch] = Q.k;
+        _proj_src_ch[(size_t)ch] = src;
+        k_rec = std::max(k_rec, Q.k);
+    }
+    _proj_k_rec = k_rec;
+    if (k_rec > 0)
+        ++_proj_active_records;
+
+    // 5. PUBLISH to the siblings: our own rows (the nearest source, or both when two are
+    //    inside the window) and our probe stack, per channel; retire them when they go away.
+    gnss::ProjBoard& board = gnss::ProjBoard::instance();
+    bool pub_own = false, pub_probe = false;
+    for (int ch = 0; ch < n_chan; ++ch) {
+        gnss::ProjEntry e;
+        e.owner = unique_name;
+        e.sys = _proj_sys;
+        e.src = 0;
+        e.wstart = wstart;
+        e.t_pub = now_s;
+        e.n = n_e;
+        e.k = 0;
+        for (size_t ci = 0; ci < cand.size(); ++ci) {
+            const int p = cand[ci].second;
+            const auto& T = *_proj_own[(size_t)p];
+            if (!T.warm(ch) || T.k(ch) <= 0 || e.k >= kmax)
+                continue;
+            if (e.k == 0) {
+                e.prn = _prns[(size_t)p];
+                e.sep_deg = cand[ci].first;
+                e.frac = T.frac(ch, 0);
+            }
+            unsteer(ci, ch, T.q(ch, 0), _v_scratch.data());
+            for (int i = 0; i < n_e; ++i)
+                e.q.emplace_back((float)_v_scratch[(size_t)i].real(),
+                                 (float)_v_scratch[(size_t)i].imag());
+            ++e.k;
+        }
+        if (e.k > 0) {
+            board.publish(_proj_group, _proj_fids[(size_t)ch], e);
+            pub_own = true;
+        }
+        if (_proj_probe_used[(size_t)ch] && _proj_probe_on[(size_t)ch] && _proj_probe.k(ch) > 0) {
+            gnss::ProjEntry pe;
+            pe.owner = _proj_owner_probe;
+            pe.sys = _proj_sys;
+            pe.src = 1;
+            pe.frac = _proj_probe.frac(ch, 0);
+            pe.wstart = wstart;
+            pe.t_pub = now_s;
+            pe.n = n_e;
+            pe.k = 0;
+            for (int j = 0; j < _proj_probe.k(ch) && pe.k < kmax; ++j, ++pe.k) {
+                const cd* q = _proj_probe.q(ch, j);
+                for (int i = 0; i < n_e; ++i)
+                    pe.q.emplace_back((float)q[i].real(), (float)q[i].imag());
+            }
+            board.publish(_proj_group, _proj_fids[(size_t)ch], pe);
+            pub_probe = true;
+        }
+    }
+    if (!pub_own && _proj_pub_own)
+        board.retire(_proj_group, unique_name);
+    if (!pub_probe && _proj_pub_probe)
+        board.retire(_proj_group, _proj_owner_probe);
+    _proj_pub_own = pub_own;
+    _proj_pub_probe = pub_probe;
+
+    // 6. A one-line description of the sources, rebuilt (and logged) only when the SET changes:
+    //    the signature is compared every record, the string is formatted only on a change.
+    {
+        std::vector<int> sig;
+        sig.reserve(cand.size() + 4);
+        for (const auto& c : cand)
+            sig.push_back(_prns[(size_t)c.second]);
+        sig.push_back(-1);
+        sig.push_back(n_sib > 0);
+        sig.push_back(n_probe_ch > 0);
+        sig.push_back(n_ident);
+        if (sig != _proj_sig) {
+            _proj_sig = sig;
+            std::string d;
+            for (const auto& [sep, p] : cand)
+                d += fmt::format("{}{:c}{:02d} row {:.2f} deg", d.empty() ? "" : "; ", _proj_sys,
+                                 _prns[(size_t)p], sep);
+            if (n_sib > 0)
+                d += fmt::format("{}sibling x{:d}", d.empty() ? "" : "; ", n_sib);
+            if (n_probe_ch > 0)
+                d += fmt::format("{}probe stack on {:d} ch (frac {:.2f})", d.empty() ? "" : "; ",
+                                 n_probe_ch, probe_frac_max);
+            if (n_ident > 0) {
+                std::string who;
+                for (int p = 0; p < n_prn; ++p)
+                    if (_proj_isB[(size_t)p] && std::none_of(cand.begin(), cand.end(),
+                                                             [&](const std::pair<double, int>& c) {
+                                                                 return c.second == p;
+                                                             }))
+                        who += fmt::format("{}{:c}{:02d}", who.empty() ? "" : ",", _proj_sys,
+                                           _prns[(size_t)p]);
+                d += fmt::format("{}identified {:s}", d.empty() ? "" : "; ", who);
+            }
+            {
+                std::lock_guard<std::mutex> lk(_proj_mtx);
+                _proj_desc = d;
+            }
+            // Logged on change, at most every 5 s (a source set that flips faster than that is
+            // itself the message, and one line says so).
+            if (now_s - _proj_log_t >= 5.0) {
+                _proj_log_t = now_s;
+                INFO("elem projection [{:s}]: {:s} (k {:d}, mode {:s})", unique_name,
+                     d.empty() ? "no source in force" : d, k_rec,
+                     _proj_mode.load() == 2 ? "live" : "shadow");
+            }
+        }
+    }
+    const double us =
+        std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
+    _proj_us += 0.01 * (us - _proj_us);
+}
+
+void GnssGpuRecordAssemble::proj_slot_inplace(double* corr_rw, const void* pctl_slot, int n_chan,
+                                              int n_e, int n_rows) {
+    using namespace gnss_gpu;
+    using cd = std::complex<double>;
+    const PrnCtl& c = *(const PrnCtl*)pctl_slot;
+    for (int t = 0; t < n_rows; ++t) {
+        const size_t row = (size_t)(c.job0 + t) * n_chan;
+        for (int ch = 0; ch < n_chan; ++ch) {
+            if (!((c.chan_mask >> ch) & 1ULL) || _proj_Q[(size_t)ch].k == 0)
+                continue;
+            double* v = corr_rw + 2 * (row + ch) * n_e;
+            for (int i = 0; i < n_e; ++i)
+                _v_scratch[(size_t)i] = cd(v[2 * i], v[2 * i + 1]);
+            _proj_Q[(size_t)ch].project(_v_scratch.data());
+            for (int i = 0; i < n_e; ++i) {
+                v[2 * i] = _v_scratch[(size_t)i].real();
+                v[2 * i + 1] = _v_scratch[(size_t)i].imag();
+            }
+        }
+    }
+}
+
+void GnssGpuRecordAssemble::proj_slot_shadow(const double* corr, const void* pctl_slot, int n_chan,
+                                             int n_e, bool steered) {
+    using namespace gnss_gpu;
+    using cd = std::complex<double>;
+    const PrnCtl& c = *(const PrnCtl*)pctl_slot;
+    std::fill(_g_proj.begin(), _g_proj.end(), cd(0.0, 0.0));
+    const size_t row = (size_t)(c.job0 + ROW_P) * n_chan;
+    for (int ch = 0; ch < n_chan; ++ch) {
+        if (!((c.chan_mask >> ch) & 1ULL))
+            continue;
+        const double* v = corr + 2 * (row + ch) * n_e;
+        for (int i = 0; i < n_e; ++i)
+            _v_scratch[(size_t)i] = cd(v[2 * i], v[2 * i + 1]);
+        if (_proj_Q[(size_t)ch].k > 0)
+            _proj_Q[(size_t)ch].project(_v_scratch.data());
+        const gnss::ElemSteer::cf* st = steered ? &_steer_buf[(size_t)ch * n_e] : nullptr;
+        for (int i = 0; i < n_e; ++i) {
+            cd x = _v_scratch[(size_t)i];
+            if (st)
+                x *= cd(st[i].real(), st[i].imag());
+            _g_proj[(size_t)i] += x;
+        }
+    }
+}
+
+void GnssGpuRecordAssemble::proj_slot_diag(size_t p, const void* pctl_slot, int n_chan, int n_e,
+                                           bool steered) {
+    using namespace gnss_gpu;
+    using cd = std::complex<double>;
+    // The two learners' agreement, always (1 out of transit; their divergence is the capture).
+    {
+        const auto& ws = _cal_shadow[p].weights();
+        const auto& wp = _cal_proj[p].weights();
+        if (_cal_shadow[p].warm() && _cal_proj[p].warm()) {
+            cd x(0.0, 0.0);
+            double ns = 0.0, np = 0.0;
+            for (int i = 0; i < n_e; ++i) {
+                x += std::conj(ws[(size_t)i]) * wp[(size_t)i];
+                ns += std::norm(ws[(size_t)i]);
+                np += std::norm(wp[(size_t)i]);
+            }
+            _sim_pp[p] = (ns > 0.0 && np > 0.0) ? std::norm(x) / (ns * np) : -1.0;
+        } else {
+            _sim_pp[p] = -1.0;
+        }
+    }
+    // Capture and cost: the fraction of a weight vector lying in the interferer subspace, as
+    // this satellite's steered channel sum sees it -- per channel cos^2(w, D_ch q_ch), i.e.
+    // cos^2(conj(D_ch) w, q_ch), averaged over the covering channels with a basis in force.
+    // Control for a random direction: 1/n_live (~0.04). Only while a basis is in force and the
+    // slot is steered (a probe is never steered and never learns anything meaningful).
+    // A SOURCE is excluded: its own learner is degenerate anyway (every element correlates
+    // with the reference at rho^2 > 0.99, so ElemCal's self-reference guard collapses it) and
+    // its capture would read as a bright satellite captured by itself.
+    if (_proj_k_rec == 0 || !steered || _proj_isB[p]) {
+        _cap_plain[p] = _cap_proj[p] = _b_cos2[p] = -1.0;
+        return;
+    }
+    const PrnCtl& c = *(const PrnCtl*)pctl_slot;
+    const std::vector<cd>* w[3] = {&_cal_shadow[p].weights(), &_cal_proj[p].weights(),
+                                   &_cal[p].weights()};
+    const bool ok[3] = {_cal_shadow[p].warm(), _cal_proj[p].warm(), _cal[p].warm()};
+    double acc[3] = {0.0, 0.0, 0.0};
+    int nch = 0;
+    for (int ch = 0; ch < n_chan; ++ch) {
+        if (!((c.chan_mask >> ch) & 1ULL) || _proj_Q[(size_t)ch].k == 0)
+            continue;
+        const gnss::ElemSteer::cf* st = &_steer_buf[(size_t)ch * n_e];
+        for (int m = 0; m < 3; ++m) {
+            if (!ok[m])
+                continue;
+            for (int i = 0; i < n_e; ++i)
+                _v_scratch[(size_t)i] =
+                    std::conj(cd(st[i].real(), st[i].imag())) * (*w[m])[(size_t)i];
+            const double c2 = _proj_Q[(size_t)ch].cos2(_v_scratch.data());
+            if (c2 >= 0.0)
+                acc[m] += c2;
+        }
+        ++nch;
+    }
+    _cap_plain[p] = (nch > 0 && ok[0]) ? acc[0] / nch : -1.0;
+    _cap_proj[p] = (nch > 0 && ok[1]) ? acc[1] / nch : -1.0;
+    _b_cos2[p] = (nch > 0 && ok[2]) ? acc[2] / nch : -1.0;
+}
+
+void GnssGpuRecordAssemble::set_elem_proj_callback(kotekan::connectionInstance& conn,
+                                                   nlohmann::json& request) {
+    // Body: any of {"mode": "off"|"shadow"|"live" (or 0|1|2), "deg": D, "rank_max": K,
+    // "max_age_s": S, "probe_frac_min": F}. Applied at once (atomics read per record); the
+    // reply is the state in force. rank_max cannot exceed the columns allocated at
+    // construction (config elem_proj_rank_max).
+    try {
+        if (request.contains("mode")) {
+            const auto& m = request["mode"];
+            int mode = -1;
+            if (m.is_number_integer())
+                mode = m.get<int>();
+            else if (m.is_string()) {
+                const std::string s = m.get<std::string>();
+                mode = (s == "off") ? 0 : (s == "shadow") ? 1 : (s == "live") ? 2 : -1;
+            }
+            if (mode < 0 || mode > 2) {
+                conn.send_error("set_elem_proj: mode must be off|shadow|live",
+                                kotekan::HTTP_RESPONSE::BAD_REQUEST);
+                return;
+            }
+            const int prev = _proj_mode.exchange(mode);
+            if (prev != mode)
+                WARN("set_elem_proj[{:s}]: mode {:d} -> {:d} ({:s})", unique_name, prev, mode,
+                     mode == 2 ? "LIVE: rows projected in place" :
+                     mode == 1 ? "SHADOW: projected learner + diagnostics only" : "off");
+        }
+        if (request.contains("deg"))
+            _proj_deg = std::max(0.0, request["deg"].get<double>());
+        if (request.contains("rank_max"))
+            _proj_rank_max = std::max(1, std::min(_proj_kmax_alloc, request["rank_max"].get<int>()));
+        if (request.contains("max_age_s"))
+            _proj_max_age_s = std::max(0.0, request["max_age_s"].get<double>());
+        if (request.contains("probe_frac_min")) // > 1 = the probe stack never triggers
+            _proj_probe_frac_min =
+                std::max(0.0, std::min(2.0, request["probe_frac_min"].get<double>()));
+    } catch (const std::exception& e) {
+        conn.send_error(std::string("set_elem_proj: bad payload: ") + e.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const int mode = _proj_mode.load();
+    conn.send_json_reply(nlohmann::json{
+        {"mode", (mode == 2) ? "live" : (mode == 1) ? "shadow" : "off"},
+        {"deg", _proj_deg.load()},
+        {"rank_max", _proj_rank_max.load()},
+        {"rank_alloc", _proj_kmax_alloc},
+        {"max_age_s", _proj_max_age_s.load()},
+        {"probe_frac_min", _proj_probe_frac_min.load()},
+        {"group", _proj_group},
+        {"sys", std::string(1, _proj_sys)}});
+}
+
+int GnssGpuRecordAssemble::proj_identify(const std::complex<double>* q, int ch, int n_e,
+                                         const void* pctl_rec) {
+    // THE EMITTER IS THE BRIGHTEST ROW ALONG q, NOT THE LEARNER THAT AGREES WITH q. The first
+    // version matched q against the slots' learned weights and, during C34's pass (09-29
+    // 11:5x), "identified" C37, C21 and C23 -- captured victims whose learners point along the
+    // interferer -- while the real source's own learner is degenerate (rho^2 > 0.99 collapses
+    // it). A victim so identified was then excluded from the projection: the most captured
+    // satellite escaped the fix. So: among the running slots, take this record's RAW prompt
+    // row per channel; the interferer's row lies along q with cos^2 ~ 1 and is the strongest
+    // by 10-20 dB; a captured victim's row lies along q only in proportion to the leak, and
+    // its power is that of a victim. Score = cos^2 x |row|^2, threshold cos^2 > 0.5.
+    using namespace gnss_gpu;
+    using cd = std::complex<double>;
+    const PrnCtl* pc = (const PrnCtl*)pctl_rec;
+    const int n_prn = (int)_prns.size();
+    const int n_chan = (int)_proj_fids.size();
+    int best = -1;
+    double sbest = 0.0;
+    double qn = 0.0;
+    for (int i = 0; i < n_e; ++i)
+        qn += std::norm(q[i]);
+    if (!(qn > 0.0) || _proj_corr_rec == nullptr)
+        return -1;
+    for (int p = 0; p < n_prn; ++p) {
+        const PrnCtl& c = pc[p];
+        if (!c.run || _proj_isProbe[(size_t)p] || !((c.chan_mask >> ch) & 1ULL))
+            continue;
+        const double* v = _proj_corr_rec + 2 * ((size_t)(c.job0 + ROW_P) * n_chan + ch) * n_e;
+        cd sdot(0.0, 0.0);
+        double vn = 0.0;
+        for (int i = 0; i < n_e; ++i) {
+            const cd x(v[2 * i], v[2 * i + 1]);
+            sdot += std::conj(q[i]) * x;
+            vn += std::norm(x);
+        }
+        if (!(vn > 0.0))
+            continue;
+        const double c2 = std::norm(sdot) / (vn * qn);
+        if (c2 < 0.5)
+            continue;
+        const double score = c2 * vn;
+        if (score > sbest) {
+            sbest = score;
+            best = p;
+        }
+    }
+    return best;
 }

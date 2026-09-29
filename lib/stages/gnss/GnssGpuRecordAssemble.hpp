@@ -7,12 +7,15 @@
 #include "bufferContainer.hpp"
 #include "gnssElemCal.hpp"
 #include "gnssElemSteer.hpp"
+#include "gnssProjSubspace.hpp"
 #include "restServer.hpp"
 #include "json.hpp"    // nlohmann::json for the set_elem_gain POST
 
 #include <atomic>
 #include <complex>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 /**
@@ -394,6 +397,88 @@ private:
     /// identity rides the data, and a frame that straddles a swap labels itself correctly with
     /// no coordination at all. Returns the number of slots that changed (0 in steady state).
     int follow_frame_prns(const void* pctl, int n_prn);
+
+    // ── BRIGHT-SATELLITE PROJECTION (gnssProjSubspace.hpp; PROJECTION_PLAN.md phase 1) ────
+    /// v' = v - Q (Q^H v) per channel, on every row of every slot that is not itself a source.
+    /// mode 0 = OFF (default). 1 = SHADOW: the projected prompt feeds a second per-PRN learner
+    /// (_cal_proj) and the capture diagnostics only; nothing live changes. 2 = LIVE: the rows
+    /// are projected IN PLACE in the input frame before anything reads them (this stage is the
+    /// frame's only consumer), so the combine, the taps, the cube, the element blocks and
+    /// everything downstream see projected data. Config elem_proj_mode, live POST
+    /// /set_elem_proj. Sources, in order: this chain's own slots inside elem_proj_deg of
+    /// boresight (their prompt row, zero latency); the sibling chains' rows through the
+    /// process-wide board (same GPU, same channels, matched by freq_id); the top eigenvector(s)
+    /// of the probe rows' covariance (any emitter, named or not). A slot with no geometry for
+    /// elem_proj_probe_since_s after it started running is a probe (geometry is posted only
+    /// above the horizon), unless the broker names them in "_probes".
+    std::atomic<int> _proj_mode{0};
+    std::atomic<double> _proj_deg{4.0};
+    std::atomic<int> _proj_rank_max{2};
+    std::atomic<double> _proj_max_age_s{2.0};
+    std::atomic<double> _proj_probe_frac_min{0.5};
+    int _proj_kmax_alloc = 2;                 ///< basis columns allocated (config elem_proj_rank_max)
+    /// Covariance horizons. The own-row tracker accumulates in the SOURCE'S STEERED frame (its
+    /// geometric phase ramp removed), so it can average for seconds without smearing the
+    /// direction as the satellite moves -- the offline result: a re-steered 10-window mean
+    /// nulls -35..-48 dB where a 1-window raw vector gives -30..-34. The probe stack has no
+    /// geometry to remove (its emitter is unnamed), so it stays short.
+    double _proj_tau_s = 4.0;
+    double _proj_probe_tau_s = 1.0;
+    std::vector<gnss::ElemSteer::cf> _proj_steer; ///< [kmax][n_chan][n_elem] the sources' steering
+    double _proj_probe_since_s = 90.0;
+    double _bore_az_deg = 180.0, _bore_el_deg = 81.41;
+    std::string _proj_group;                  ///< board key: the GPU instance ("gnss0")
+    char _proj_sys = '?';                     ///< constellation letter of this chain's PRNs
+    std::vector<int> _proj_fids;              ///< [n_chan] freq_id per channel (channel_ids)
+    bool _proj_ready = false;
+    uint8_t _proj_nchan_warned = 0;
+    std::vector<std::unique_ptr<gnss::ProjSubspace>> _proj_own; ///< per slot, while it is a source
+    gnss::ProjSubspace _proj_probe;           ///< the probe-row stack
+    std::vector<gnss::ProjBasis> _proj_Q;     ///< [n_chan] the basis in force this record
+    std::vector<uint8_t> _proj_isB;           ///< [n_prn] slot is a source this record
+    std::vector<uint8_t> _proj_isProbe;       ///< [n_prn] slot fed the probe stack this record
+    std::vector<uint8_t> _slot_was_run;       ///< [n_prn] run flag of the previous record
+    std::vector<double> _slot_run_since;      ///< [n_prn] steady time the slot started running
+    std::vector<uint8_t> _slot_probe_broker;  ///< [n_prn] named a probe by the broker (under _steer_mtx)
+    std::atomic<bool> _probes_from_broker{false};
+    int64_t _proj_wstart_prev = 0;
+    int _proj_k_rec = 0;                      ///< max k over channels this record (0 = inert)
+    uint64_t _proj_solve_ctr = 0;
+    bool _proj_pub_own = false, _proj_pub_probe = false;
+    std::vector<gnss::ElemCal> _cal_proj;     ///< per slot: the learner fed the PROJECTED prompt
+    std::vector<double> _cap_plain, _cap_proj, _b_cos2, _sim_pp; ///< per slot (-1 = not measured)
+    std::vector<std::complex<double>> _g_proj;    ///< [n_elem] projected, steered, channel-summed prompt
+    std::vector<std::complex<double>> _v_scratch; ///< [n_elem]
+    std::vector<gnss::ElemSteer::cf> _proj_steer_all; ///< [n_prn][n_chan][n_elem] every steered slot's table this record
+    std::vector<uint8_t> _proj_steered;           ///< [n_prn] slot had a fresh table this record
+    std::string _proj_owner_probe;                ///< unique_name + "/probe" (the board owner of the probe stack)
+    std::vector<int> _proj_sig;                   ///< signature of the source set, for change detection
+    std::vector<uint8_t> _proj_probe_used;        ///< [n_chan] a probe direction was used this record
+    const double* _proj_corr_rec = nullptr;       ///< this record's raw corr rows (proj_identify)
+    // Served state: written by main_thread, read by REST without a lock (torn reads of a
+    // diagnostic double are acceptable; a lock on the per-record path is not).
+    std::vector<double> _proj_probe_frac;     ///< [n_chan] probe-stack component-0 energy fraction
+    std::vector<uint8_t> _proj_probe_on;      ///< [n_chan] probe trigger latched (hysteresis)
+    double _proj_log_t = -1.0e18;             ///< steady time of the last source-change log line
+    std::vector<int> _proj_k_ch;              ///< [n_chan] k in force
+    std::vector<int> _proj_src_ch;            ///< [n_chan] bitmask: 1 own row, 2 sibling, 4 probe stack
+    double _proj_us = 0.0;                    ///< EMA of the per-record projection CPU time
+    uint64_t _proj_active_records = 0;
+    std::string _proj_desc;                   ///< the current sources (log/REST); under _proj_mtx
+    std::mutex _proj_mtx;
+    void proj_prepare_record(const double* corr, const void* pctl_rec, int n_chan, int n_e,
+                             int64_t wstart, double utc, double now_s);
+    void proj_reset_slot(size_t p, double now_s);
+    void proj_slot_inplace(double* corr_rw, const void* pctl_slot, int n_chan, int n_e,
+                           int n_rows);
+    void proj_slot_shadow(const double* corr, const void* pctl_slot, int n_chan, int n_e,
+                          bool steered);
+    void proj_slot_diag(size_t p, const void* pctl_slot, int n_chan, int n_e, bool steered);
+    /// Which own slot (running, steered, with warm weights) a raw-frame direction belongs to:
+    /// the slot whose weights, un-steered at this channel, lie inside it with cos^2 > 0.5.
+    /// -1 = none (an unnamed emitter, or one tracked only by a sibling).
+    int proj_identify(const std::complex<double>* q, int ch, int n_e, const void* pctl_rec);
+    void set_elem_proj_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 };
 
 #endif
