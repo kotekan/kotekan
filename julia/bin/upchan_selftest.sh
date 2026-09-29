@@ -18,7 +18,8 @@ scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
 setups='
-    selftest_U2 selftest_U4 selftest_U8 selftest_U16 selftest_U32 selftest_U64 selftest_U128
+    selftest_U2_K4 selftest_U4_K4 selftest_U8_K4 selftest_U16_K4 selftest_U32_K4 selftest_U64_K4 selftest_U128_K4
+    selftest_U2_K8 selftest_U4_K8 selftest_U8_K8 selftest_U16_K8 selftest_U32_K8 selftest_U64_K8 selftest_U128_K8
 '
 
 # Setups that are known to fail, with the kernel bug they expose. Both are
@@ -26,13 +27,15 @@ setups='
 # stage for U=128); all other upchannelization factors pass. Both test cases
 # fail for both, which is worth recording: the tone and the constant see the
 # same bug from two independent directions.
-#   - selftest_U4:   a constant input produces a time dependent output, with
-#                    power in three of the four fine frequencies instead of an
-#                    even split across the middle two
-#   - selftest_U128: the tone lands in fine frequency `u + U/2` instead of `u`;
-#                    a constant lands in `u = 0` and `u = 63` instead of the
-#                    middle two `u = 63` and `u = 64` (`64 + 64 ≡ 0 mod 128`)
-known_failures='selftest_U4 selftest_U128'
+#   - selftest_U4_K4:   a constant input produces a time dependent output, with
+#                       power in three of the four fine frequencies instead of
+#                       an even split across the middle two
+#   - selftest_U128_K4: the tone lands in fine frequency `u + U/2` instead of
+#                       `u`; a constant lands in `u = 0` and `u = 63` instead of
+#                       the middle two `u = 63` and `u = 64` (`64 + 64 ≡ 0 mod 128`)
+# The U=4 and U=128 bugs are in the FFT itself, so they fail for both output
+# bit depths.
+known_failures='selftest_U4_K4 selftest_U128_K4 selftest_U4_K8 selftest_U128_K8'
 
 mkdir -p output
 

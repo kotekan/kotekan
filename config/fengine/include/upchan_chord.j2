@@ -207,7 +207,7 @@ run_upchan_U{{ U }}:
           in_buf: host_upchan_U{{ U }}_gain_buffer
           gpu_mem: upchan_U{{ U }}_gain_buffer
         - name: cudaSyncInput
-        - name: cudaUpchannelizer_chord_U{{ U }}
+        - name: cudaUpchannelizer_chord_U{{ U }}_K4
           voltage_name: voltage
           upchan_U{{ U }}_gain_name: upchan_U{{ U }}_gain
           upchan_U{{ U }}_voltage_name: upchan_U{{ U }}_voltage

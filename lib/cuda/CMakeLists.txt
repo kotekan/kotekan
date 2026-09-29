@@ -94,33 +94,40 @@ if(NOT ${IWYU})
                 generated/cudaFRBBeamformer_pathfinder_U16.cpp
                 generated/cudaFRBBeamformer_pathfinder_U32.cpp
                 generated/cudaFRBBeamformer_pathfinder_U64.cpp
-                generated/cudaUpchannelizer_charts_U32.cpp
-                generated/cudaUpchannelizer_chime_U2.cpp
-                generated/cudaUpchannelizer_chime_U4.cpp
-                generated/cudaUpchannelizer_chime_U8.cpp
-                generated/cudaUpchannelizer_chime_U16.cpp
-                generated/cudaUpchannelizer_chime_U32.cpp
-                generated/cudaUpchannelizer_chime_U64.cpp
-                generated/cudaUpchannelizer_chime_U128.cpp
-                generated/cudaUpchannelizer_chord_U2.cpp
-                generated/cudaUpchannelizer_chord_U4.cpp
-                generated/cudaUpchannelizer_chord_U8.cpp
-                generated/cudaUpchannelizer_chord_U16.cpp
-                generated/cudaUpchannelizer_chord_U32.cpp
-                generated/cudaUpchannelizer_chord_U64.cpp
-                generated/cudaUpchannelizer_chord_U128.cpp
-                generated/cudaUpchannelizer_hirax_U8.cpp
-                generated/cudaUpchannelizer_hirax_U16.cpp
-                generated/cudaUpchannelizer_hirax_U32.cpp
-                generated/cudaUpchannelizer_hirax_U64.cpp
-                generated/cudaUpchannelizer_hirax_U128.cpp
-                generated/cudaUpchannelizer_pathfinder_U2.cpp
-                generated/cudaUpchannelizer_pathfinder_U4.cpp
-                generated/cudaUpchannelizer_pathfinder_U8.cpp
-                generated/cudaUpchannelizer_pathfinder_U16.cpp
-                generated/cudaUpchannelizer_pathfinder_U32.cpp
-                generated/cudaUpchannelizer_pathfinder_U64.cpp
-                generated/cudaUpchannelizer_pathfinder_U128.cpp)
+                generated/cudaUpchannelizer_charts_U32_K4.cpp
+                generated/cudaUpchannelizer_chime_U2_K4.cpp
+                generated/cudaUpchannelizer_chime_U4_K4.cpp
+                generated/cudaUpchannelizer_chime_U8_K4.cpp
+                generated/cudaUpchannelizer_chime_U16_K4.cpp
+                generated/cudaUpchannelizer_chime_U32_K4.cpp
+                generated/cudaUpchannelizer_chime_U64_K4.cpp
+                generated/cudaUpchannelizer_chime_U128_K4.cpp
+                generated/cudaUpchannelizer_chime_U2_K8.cpp
+                generated/cudaUpchannelizer_chime_U4_K8.cpp
+                generated/cudaUpchannelizer_chime_U8_K8.cpp
+                generated/cudaUpchannelizer_chime_U16_K8.cpp
+                generated/cudaUpchannelizer_chime_U32_K8.cpp
+                generated/cudaUpchannelizer_chime_U64_K8.cpp
+                generated/cudaUpchannelizer_chime_U128_K8.cpp
+                generated/cudaUpchannelizer_chord_U2_K4.cpp
+                generated/cudaUpchannelizer_chord_U4_K4.cpp
+                generated/cudaUpchannelizer_chord_U8_K4.cpp
+                generated/cudaUpchannelizer_chord_U16_K4.cpp
+                generated/cudaUpchannelizer_chord_U32_K4.cpp
+                generated/cudaUpchannelizer_chord_U64_K4.cpp
+                generated/cudaUpchannelizer_chord_U128_K4.cpp
+                generated/cudaUpchannelizer_hirax_U8_K4.cpp
+                generated/cudaUpchannelizer_hirax_U16_K4.cpp
+                generated/cudaUpchannelizer_hirax_U32_K4.cpp
+                generated/cudaUpchannelizer_hirax_U64_K4.cpp
+                generated/cudaUpchannelizer_hirax_U128_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U2_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U4_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U8_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U16_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U32_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U64_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U128_K4.cpp)
 endif()
 
 # C++17
