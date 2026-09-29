@@ -82,7 +82,7 @@ private:
     const std::string rfi_S012tilde_name;
 
     // Buffers
-    NDArrayRingBuffer<std::int8_t, 3> bf_mask;
+    NDArrayRingBuffer<std::uint8_t, 3> bf_mask;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
     NDArrayRingBuffer<std::uint64_t, 3> rfi_S012tilde;
     // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
@@ -258,7 +258,7 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     // if (poison_buffers)
     //     rfi_S012tilde.set_to_poison(0xff);
 
-    const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
+    const std::uint8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
     std::uint64_t* const rfi_S012tilde_memory = rfi_S012tilde.get_ndarray().data();
 
@@ -284,7 +284,7 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
 
     n2k::launch_s012_station_downsample_kernel(
         (ulong*)(rfi_S012tilde_memory + Trfitilde_offset),
-        (const ulong*)(rfi_S012_memory + Trfi_offset), (const uint8_t*)bf_mask_memory + Tbf_offset,
+        (const ulong*)(rfi_S012_memory + Trfi_offset), bf_mask_memory + Tbf_offset,
         Trfi, 0, Trfisize, num_frequencies, num_dishes * num_polarizations,
         device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
