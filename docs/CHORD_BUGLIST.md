@@ -263,10 +263,13 @@ before each one recur every few seconds all day).
 - **Cost:** a node's chains drop for ~2 min and its shared element model re-forms cold (a restart
   inside a transit re-forms it frozen and single-element until the freeze lifts).
 - **Diagnostics, cheapest first:**
-  - (1) Give the nodes a core. Two things stop one today, and both must be fixed. apport keeps
-    nothing for an unpackaged binary; cx27 has systemd-coredump instead, and the same sysctl
-    overrides either. The unit's SOFT core limit is also 0: `LimitCORE=infinity` is only the hard
-    limit, `LimitCORESoft=0`. Per node, without a restart (one `ssh -t`, one sudo prompt):
+  - (1) Give the nodes a core. Two things stop one today. First, the unit's SOFT core limit is 0:
+    `LimitCORE=infinity` is only the hard limit, `LimitCORESoft=0`, and apport writes nothing under
+    a 0 limit. Second, even with the limit raised, apport's `consistency_checks()` drops the whole
+    crash, core included, when `/proc/<pid>/exe` no longer exists or is newer than the process,
+    which a binary swapped under a running node is. So use a plain file pattern. cx27 runs
+    systemd-coredump instead (ProcessSizeMax=64G since 09-14; it holds a 09-24 kotekan core), and
+    the same sysctl overrides either. Per node, without a restart (one `ssh -t`, one sudo prompt):
     `p=$(systemctl show gnss-node -p MainPID --value); sudo sysctl -w
     kernel.core_pattern=/var/crash/core.%e.%p.%t.%s && sudo prlimit --pid $p --core=unlimited &&
     sudo cp /proc/$p/exe /var/crash/kotekan.$p && grep "core file" /proc/$p/limits`.
@@ -274,8 +277,9 @@ before each one recur every few seconds all day).
       process.
     - `%e` is the faulting THREAD's name (Stage names its threads, with `/` written as `!`), so
       the file name alone says which thread died.
-    - A relaunch starts at soft 0 again, so each arming yields one core per node unless
-      node_up.sh's systemd-run gains `--property=LimitCORE=infinity`.
+    - A relaunch starts at soft 0 again, so each arming yields one core per node until the node's
+      next node_up start, which now passes `--property=LimitCORE=infinity` (d543d3abc). All six
+      nodes were armed this way on 09-29 at about 19:40Z.
     - Expect ~44 GB per core: 5 GB of heap plus 38 GB of `MAP_PRIVATE` hugepage buffers, which the
       default coredump_filter 0x33 includes. Every node has ≥ 2.5 TB free on /.
     - apport restores its own pattern if its service restarts (e.g. a package upgrade), so
