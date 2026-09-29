@@ -18,8 +18,10 @@
 # must notice the stop when its slot comes free instead of starting another frame
 # on it, or cudaCorrelator's precondition finds its claim still open ("valid read
 # region is not empty") and a clean exit becomes a FatalError, after which the
-# results thread is left waiting on a signal the destructor destroys. Fails on
-# the code before this test was added.
+# results thread is left waiting on a signal the destructor destroys. A pass on
+# the race logs "Stop requested while GPU[0] waited for a free slot" from
+# run_n2k; a pass without that line means the stop landed while the stage waited
+# for ring data instead, and the race was not exercised.
 #
 # Author: Keith Vanderlinde
 #
@@ -34,11 +36,8 @@ buffer_depth: 4
 cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
 frame_arrival_period: 5.12e-6 * samples_per_data_set
 
-# For faster CHORD testing, we're using...
 sub_integration_ntime: 512
 samples_per_data_set: 2048
-# sub_integration_ntime: 8192  # ~40 ms for chord
-# samples_per_data_set: 8192   # 
 num_times: samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
