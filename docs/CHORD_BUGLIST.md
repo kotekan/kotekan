@@ -88,14 +88,6 @@ have no explanation, and with the losses gone they can be studied only in the ar
 ~10,014 chips (≡ −216 mod 10230) off the joint clock at 09-27 21:03Z. Evidence
 `fixtures/projtest/forensics/l2c/timeline.json`.
 
-### #143 residual — the per-PRN `SEED-OFFSET` line still compares chips at different rates (`deadreckon.py`, seeding loop)
-The clock consumer and the band-level SEED-OFFSET line convert (`01964948a`, closed); the per-PRN
-`SEED-OFFSET PRN n (slew|cp0)` comparison does not, so every gps_l2c line reads ~+142.8 and every gal_e6
-line ~+75.7 chips "REFUSED" (5957 of 5957 and 9604 of 9604 lines, 09-28 20:18Z – 09-29 12:40Z) while the
-same two chains adopt the joint clock on 99.9% of their JOINT-CLK lines. Harmless today, because neither
-chain has `slew` in `joint-consume`, but it reads as a fault, and it would refuse every seed the day either
-chain takes `slew`. Fix: take `_d3` from `rx.joint_clk_delta`, as the band-level line does.
-
 ### #144 — the transit sky (`_bore` freeze, railing veto) cannot see unhealthy or non-BRDC satellites
 `nearest_boresight` runs over `brdc_predict` → `gnss_ephemeris.predict_all`, which drops G/E records with
 health ≠ 0 (~l.477) and stale ephemerides, so neither the shared-model transit freeze nor the railing veto
