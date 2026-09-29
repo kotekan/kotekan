@@ -17,6 +17,15 @@ frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
 frb2_beam_separation_x: 1.3 / 4
 frb2_beam_separation_y: 90.0 / 256
 
+# The FRB2 beamforming weights are valid for this many input samples. This must be a multiple of
+# frb_num_output_times * frb_downsampling_factor, the number of input samples the FRB2 beamformer
+# processes per kernel invocation.
+frb2_weights_lifetime_in_samples: 4 * frb_num_output_times * frb_downsampling_factor # 1.00663296 s
+# Number of weights matrices in the GPU ring buffer. Each takes
+# 2 * upchan_U16_max_num_output_channels * frb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
+# bytes (2 GiB).
+frb2_weights_ring_depth: 2
+
 frb_chunk_size: 256
 
 ################################################################################
@@ -35,9 +44,10 @@ host_frb1_U16_phase_buffer:
     dimscalings: [1, 1, 1, 1, 1]
     metadata_pool: main_pool
 
+# One frame of positions per frb2_weights_lifetime_in_samples input samples
 host_frb2_beam_positions_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: float32
     extents: [frb2_num_beams, 2]
     quantity_name: "frb2_beam_positions"
@@ -47,7 +57,7 @@ host_frb2_beam_positions_buffer:
 
 host_frb2_beam_ids_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: uint64
     extents: [frb2_num_beams]
     quantity_name: "frb2_beam_ids"
@@ -55,14 +65,11 @@ host_frb2_beam_ids_buffer:
     dimscalings: [1]
     metadata_pool: main_pool
 
-host_frb2_weights_buffer:
-    kotekan_buffer: ndarray
-    num_frames: 1
-    value_type: float16
-    extents: [upchan_U16_max_output_channel - upchan_U16_min_output_channel, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P]
-    quantity_name: "W2"
-    dimnames: ["Fbar", "R", "beamQ", "beamP"]
-    dimscalings: [1, 1, 1, 1]
+# The weights are calculated on the GPU, directly into this ring buffer, one matrix
+# [Fbar, R, beamQ, beamP] per frb2_weights_lifetime_in_samples input samples. There is no host copy.
+host_frb2_weights_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: frb2_weights_ring_depth * sizeof_float16 * upchan_U16_max_num_output_channels * frb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
     metadata_pool: main_pool
 
 # Beams
@@ -157,8 +164,10 @@ run_frb1_U16:
 
 run_set_frb2_beams:
     kotekan_stage: setFRBBeams
+    metadata_source: host_voltage_buffer_0
     out_pos_buf: host_frb2_beam_positions_buffer
     out_id_buf: host_frb2_beam_ids_buffer
+    time_downsampling_fpga: frb2_weights_lifetime_in_samples
     mode: grid_degrees
     num_beams: frb2_num_beams
     num_x: frb2_num_beams_x
@@ -168,14 +177,33 @@ run_set_frb2_beams:
     y_min: -frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
     y_max: frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
 
+# Calculate the weights on the GPU, one matrix per positions frame. This runs once per
+# frb2_weights_lifetime_in_samples, so a single command instance suffices. The frequencies come
+# from the voltage buffers' metadata.
 run_calc_frb2_weights:
-    kotekan_stage: cudaCalcFRB2Weights
-    frb2_num_frequencies: upchan_U16_max_num_output_channels
-    frb2_beam_positions: host_frb2_beam_positions_buffer
-    frb2_weights: host_frb2_weights_buffer
-    metadata_source:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: 1
+        in_buffers:
+            host_frb2_beam_positions_buffer: host_frb2_beam_positions_buffer
 {% for id in range(16) %}   # num_frequencies = 16
-        - host_voltage_buffer_{{ id }}
+            host_voltage_buffer_{{ id }}: host_voltage_buffer_{{ id }}
+{% endfor %}
+        out_buffers:
+            host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
+        commands:
+        - name: cudaInputData
+          in_buf: host_frb2_beam_positions_buffer
+          gpu_mem: frb2_beam_positions_buffer
+        - name: cudaSyncInput
+        - name: cudaCalcFRB2Weights
+          frb2_num_frequencies: upchan_U16_max_num_output_channels
+          frb2_beam_positions_name: frb2_beam_positions
+          frb2_weights_name: frb2_weights
+          metadata_source:
+{% for id in range(16) %}   # num_frequencies = 16
+            - host_voltage_buffer_{{ id }}
 {% endfor %}
 
 run_frb23:
@@ -184,17 +212,12 @@ run_frb23:
         gpu_id: 0
         in_buffers:
             host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
-            host_frb2_weights_buffer: host_frb2_weights_buffer
+            host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
         out_buffers:
             host_frb2_beams_buffer: host_frb2_beams_buffer
             host_frb3_beams_buffer: host_frb3_beams_buffer
             host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_frb2_weights_buffer
-          gpu_mem: frb2_weights_buffer
-        - name: cudaSyncInput
         - name: cudaFRBBeamReformer
           frb1_max_num_frequencies: upchan_U16_max_num_output_channels
           frb1_max_num_times: buffer_depth * frb_num_output_times

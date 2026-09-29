@@ -1,283 +1,399 @@
-// GPU version of calcFRB2Weights: calculates the FRB2 beamforming weights on a CUDA device.
-// This is an independent alternative to the (slow) CPU stage calcFRB2Weights; both produce
-// the same weights up to floating-point differences (see cudaCalcFRB2WeightsKernel.hpp).
+/**
+ * @file
+ * @brief Calculate the FRB2 beamforming weights on the GPU
+ *  - cudaCalcFRB2Weights : public cudaCommand
+ */
 
-#include "Config.hpp"                   // for Config
-#include "DataType.hpp"                 // for float16_t
-#include "NDArray.hpp"                  // for GenericNDArray
-#include "Stage.hpp"                    // for Stage
-#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"                // for Telescope, freq_id_t
-#include "UpchannelizationSchedule.hpp" // for UpchannelizationSchedule
-#include "buffer.hpp"                   // for Buffer
-#include "bufferContainer.hpp"          // for bufferContainer
-#include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
-#include "cudaCalcFRB2WeightsKernel.hpp"
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
-#include "kotekanLogging.hpp" // for DEBUG, INFO, WARN, FATAL_ERROR
-#include "visUtil.hpp"        // for current_time
+#include "Config.hpp"                    // for Config
+#include "DataType.hpp"                  // for float16_t
+#include "NDArrayBuffer.hpp"             // for NDArrayBuffer
+#include "NDArrayRingBuffer.hpp"         // for NDArrayRingBuffer
+#include "Telescope.hpp"                 // for Telescope, freq_id_t
+#include "UpchannelizationSchedule.hpp"  // for UpchannelizationSchedule, wait_for_coarse_freq
+#include "buffer.hpp"                    // for Buffer
+#include "bufferContainer.hpp"           // for bufferContainer
+#include "chordMetadata.hpp"             // for chordMetadata
+#include "cudaCalcFRB2WeightsKernel.hpp" // for cuda_calc_frb2_weights
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for mod
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, INFO, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm> // for clamp, min
-#include <cassert>   // for assert
-#include <cstddef>   // for ptrdiff_t, size_t
-#include <cstdint>   // for int64_t
-#include <cuda_runtime.h>
-#include <functional> // for function
-#include <memory>     // for __shared_ptr_access, shared_ptr
-#include <string>     // for allocator, basic_string, string
-#include <unistd.h>   // for sleep
-#include <vector>     // for vector
+#include <algorithm>      // for min
+#include <array>          // for array
+#include <cassert>        // for assert
+#include <cstddef>        // for ptrdiff_t, size_t
+#include <cstdint>        // for int64_t
+#include <cuda_runtime.h> // for cudaMemcpyAsync
+#include <memory>         // for shared_ptr, make_shared
+#include <optional>       // for optional
+#include <string>         // for string
+#include <vector>         // for vector
 
-class cudaCalcFRB2Weights : public kotekan::Stage {
-    // Telescope setup
-    const int num_dishes = config.get<int>(unique_name, "num_dishes");
+using kotekan::mod;
 
-    // Upchannelization setup
-    const std::string upchannelization_schedule_name =
-        config.get_default<std::string>(unique_name, "upchannelization_schedule_name", "");
-
-    // FRB1 beamformer setup
-
-    // See calcFRB2Weights for the meaning of the directions M/N and P/Q and of `frb1_swap_MN`.
-    const int num_dishes_x = Telescope::instance().get_grid_size_x();
-    const int num_dishes_y = Telescope::instance().get_grid_size_y();
-    const bool frb1_swap_MN = config.get_default<bool>(unique_name, "frb1_swap_MN", false);
-    const int num_dishes_M = frb1_swap_MN ? num_dishes_y : num_dishes_x;
-    const int num_dishes_N = frb1_swap_MN ? num_dishes_x : num_dishes_y;
-    const int frb1_num_beams_P = 2 * num_dishes_M;
-    const int frb1_num_beams_Q = 2 * num_dishes_N;
-
-    // FRB2 beamformer setup
-    const int frb2_num_beams_x = config.get<int>(unique_name, "frb2_num_beams_x");
-    const int frb2_num_beams_y = config.get<int>(unique_name, "frb2_num_beams_y");
-    const int frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y;
-    const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
-
-    // Upper limit for the GPU scratch buffer holding W2 before it is copied to the host; the
-    // calculation is split into chunks of frequencies to respect this limit
-    const std::int64_t gpu_max_chunk_bytes =
-        config.get_default<std::int64_t>(unique_name, "gpu_max_chunk_bytes", std::int64_t(2) << 30);
-
-    const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
-        sizeof(float) * 2 * frb2_num_beams;
-    const std::ptrdiff_t W2_frame_size [[maybe_unused]] = sizeof(float16_t) * frb1_num_beams_P
-                                                          * frb1_num_beams_Q * frb2_num_beams
-                                                          * frb2_num_frequencies;
-
-    Buffer* const frb2_beam_positions_buffer;
-    Buffer* const W2_buffer;
-    const std::vector<Buffer*> metadata_sources;
-
+/**
+ * @class cudaCalcFRB2Weights
+ * @brief cudaCommand calculating the FRB2 beamforming weights `W2` directly into their GPU ring
+ *        buffer.
+ *
+ * Each invocation turns one frame of FRB2 beam positions into one weights matrix, i.e. one element
+ * of the `W2` ring buffer consumed by cudaFRBBeamReformer. A positions frame, and hence a weights
+ * matrix, is valid for `frb2_weights_lifetime_in_samples` FPGA samples; its `fpga_seq_num` is
+ * `seq0 + k * frb2_weights_lifetime_in_samples`, where `k` counts the frames. The positions have
+ * to be copied to the GPU beforehand, by a (non-`do_once`) cudaInputData followed by cudaSyncInput
+ * in the same cudaProcess. The weights never leave the GPU.
+ *
+ * The weights depend on the frequencies this GPU handles. These are not in the configuration,
+ * which is the same for every GPU: they come from the `coarse_freq` metadata of the first frame of
+ * the `metadata_source` buffers, typically the voltage buffers, which are read once, on the first
+ * invocation, and then released.
+ *
+ * The calculation is the same as calcFRB2Weights' (see there for the conventions), up to
+ * floating-point differences (see cudaCalcFRB2WeightsKernel.hpp).
+ *
+ * @par GPU Memory
+ * @gpu_mem <frb2_beam_positions_name>_buffer  Input beam positions, filled by cudaInputData
+ *     @gpu_mem_type   array
+ *     @gpu_mem_format float32 [R, X/Y]
+ * @gpu_mem <frb2_weights_name>_buffer  Output weights ring buffer
+ *     @gpu_mem_type   ring buffer
+ *     @gpu_mem_format float16 [TW2, Fbar, R, beamQ, beamP]
+ * @gpu_mem <frb2_weights_name>_frequencies_buffer  The frequencies in Hz, uploaded once
+ *     @gpu_mem_type   static
+ *     @gpu_mem_format float32 [Fbar]
+ *
+ * @par Buffers
+ * @buffer metadata_source  Buffer or list of buffers whose first frame's `coarse_freq`
+ *                          metadata lists the coarse frequency channels this GPU handles. Must
+ *                          also be listed in the cudaProcess's `in_buffers`.
+ * @buffer host_<frb2_weights_name>_ringbuffer  Signal buffer for the weights ring buffer
+ *
+ * @conf frb2_beam_positions_name  String. Name of the beam positions (without `_buffer`).
+ * @conf frb2_weights_name  String. Name of the weights (without `_buffer`).
+ * @conf frb2_weights_lifetime_in_samples  Int. FPGA samples one weights matrix is valid for. Must
+ *                          equal the positions' `time_downsampling_fpga`.
+ * @conf frb2_weights_ring_depth  Int (default 2). Number of weights matrices in the ring buffer.
+ * @conf frb2_num_beams_x   Int. Number of FRB2 beams in the x direction.
+ * @conf frb2_num_beams_y   Int. Number of FRB2 beams in the y direction.
+ * @conf frb2_num_frequencies  Int. Number of (upchannelized) frequencies.
+ * @conf frb1_swap_MN       Bool (default false). See calcFRB2Weights.
+ * @conf upchannelization_schedule_name  String (default ""). Config path of the upchannelization
+ *                          schedule.
+ */
+class cudaCalcFRB2Weights : public cudaCommand {
 public:
     cudaCalcFRB2Weights(kotekan::Config& config, const std::string& unique_name,
-                        kotekan::bufferContainer& buffer_container) :
-        Stage(config, unique_name, buffer_container,
-              [](const kotekan::Stage& stage) {
-                  return const_cast<kotekan::Stage&>(stage).main_thread();
-              }),
-        frb2_beam_positions_buffer(get_buffer("frb2_beam_positions")),
-        W2_buffer(get_buffer("frb2_weights")),
-        metadata_sources(get_buffer_or_array("metadata_source"))
-    //
-    {
-        assert(frb2_beam_positions_buffer);
-        assert(W2_buffer);
-        if (gpu_max_chunk_bytes <= 0)
-            FATAL_ERROR("gpu_max_chunk_bytes {:d} must be positive", gpu_max_chunk_bytes);
-        frb2_beam_positions_buffer->register_consumer(unique_name);
-        W2_buffer->register_producer(unique_name);
-        for (Buffer* const metadata_source : metadata_sources)
-            metadata_source->register_consumer(unique_name);
+                        kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                        int instance_num);
+    ~cudaCalcFRB2Weights() {}
+    int wait_on_precondition() override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
+    void finalize_frame() override;
 
-        frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
-        W2_buffer->require_frame_desc(kotekan::NDArray<float16_t, 4>::describe(
-            "W2", {frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
-            {"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1}));
+private:
+    // Calculate the frequencies from the upchannelization schedule (instance 0 only)
+    bool setup_frequencies();
+
+    // Upchannelization setup
+    const std::string upchannelization_schedule_name;
+
+    // FRB1 beamformer setup
+    // See calcFRB2Weights for the meaning of the directions M/N and P/Q and of `frb1_swap_MN`.
+    const int num_dishes_x;
+    const int num_dishes_y;
+    const bool frb1_swap_MN;
+    const int num_dishes_M;
+    const int num_dishes_N;
+    const int frb1_num_beams_P;
+    const int frb1_num_beams_Q;
+
+    // FRB2 beamformer setup
+    const int frb2_num_beams_x;
+    const int frb2_num_beams_y;
+    const int frb2_num_beams;
+    const int frb2_num_frequencies;
+
+    // Lifetime of a weights matrix in FPGA samples, and the number of matrices in the ring buffer
+    const std::ptrdiff_t frb2_weights_lifetime_in_samples;
+    const int frb2_weights_ring_depth;
+
+    // Kotekan buffer names
+    const std::string frb2_beam_positions_name;
+    const std::string frb2_weights_name;
+    const std::string frb2_frequencies_name;
+
+    // Buffers
+    std::vector<Buffer*> metadata_sources;
+    NDArrayBuffer<float, 2> frb2_beam_positions_buffer;
+    NDArrayRingBuffer<float16_t, 5> frb2_weights_buffer;
+    float* const frb2_frequencies_memory;
+
+    // Frequency setup, known to instance 0 after its first `wait_on_precondition`
+    bool did_setup_frequencies;
+    std::vector<int> coarse_freq;
+    std::vector<int> freq_upchan_factor;
+    std::vector<int> freq_upchan_index;
+    std::vector<float> frequencies;
+
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
+};
+
+REGISTER_CUDA_COMMAND(cudaCalcFRB2Weights);
+
+cudaCalcFRB2Weights::cudaCalcFRB2Weights(kotekan::Config& config, const std::string& unique_name,
+                                         kotekan::bufferContainer& host_buffers,
+                                         cudaDeviceInterface& device, const int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
+                "cudaCalcFRB2Weights"),
+
+    upchannelization_schedule_name(
+        config.get_default<std::string>(unique_name, "upchannelization_schedule_name", "")),
+
+    num_dishes_x(Telescope::instance().get_grid_size_x()),
+    num_dishes_y(Telescope::instance().get_grid_size_y()),
+    frb1_swap_MN(config.get_default<bool>(unique_name, "frb1_swap_MN", false)),
+    num_dishes_M(frb1_swap_MN ? num_dishes_y : num_dishes_x),
+    num_dishes_N(frb1_swap_MN ? num_dishes_x : num_dishes_y), frb1_num_beams_P(2 * num_dishes_M),
+    frb1_num_beams_Q(2 * num_dishes_N),
+
+    frb2_num_beams_x(config.get<int>(unique_name, "frb2_num_beams_x")),
+    frb2_num_beams_y(config.get<int>(unique_name, "frb2_num_beams_y")),
+    frb2_num_beams(frb2_num_beams_x * frb2_num_beams_y),
+    frb2_num_frequencies(config.get<int>(unique_name, "frb2_num_frequencies")),
+
+    frb2_weights_lifetime_in_samples(
+        config.get<std::int64_t>(unique_name, "frb2_weights_lifetime_in_samples")),
+    frb2_weights_ring_depth(config.get_default<int>(unique_name, "frb2_weights_ring_depth", 2)),
+
+    frb2_beam_positions_name(config.get<std::string>(unique_name, "frb2_beam_positions_name")),
+    frb2_weights_name(config.get<std::string>(unique_name, "frb2_weights_name")),
+    frb2_frequencies_name(frb2_weights_name + "_frequencies_buffer"),
+
+    frb2_beam_positions_buffer(frb2_beam_positions_name, "frb2_beam_positions",
+                               std::array<std::ptrdiff_t, 2>{frb2_num_beams, 2},
+                               std::array<std::string, 2>{"R", "X/Y"}, {1, 1}, *this),
+    frb2_weights_buffer(frb2_weights_name, "W2",
+                        std::array<std::ptrdiff_t, 5>{frb2_weights_ring_depth, frb2_num_frequencies,
+                                                      frb2_num_beams, frb1_num_beams_Q,
+                                                      frb1_num_beams_P},
+                        std::array<std::string, 5>{"TW2", "Fbar", "R", "beamQ", "beamP"},
+                        {frb2_weights_lifetime_in_samples, 1, 1, 1, 1}, *this),
+    frb2_frequencies_memory(static_cast<float*>(
+        device.get_gpu_memory(frb2_frequencies_name, frb2_num_frequencies * sizeof(float)))),
+
+    did_setup_frequencies(false), did_set_metadata(false)
+//
+{
+    if (frb2_weights_lifetime_in_samples <= 0)
+        FATAL_ERROR("frb2_weights_lifetime_in_samples {:d} must be positive",
+                    frb2_weights_lifetime_in_samples);
+    if (frb2_weights_ring_depth <= 0)
+        FATAL_ERROR("frb2_weights_ring_depth {:d} must be positive", frb2_weights_ring_depth);
+
+    // Only instance 0 handles frame 0 and thus reads the metadata sources; the other instances
+    // must not register, or the sources' producers would wait for them forever.
+    if (instance_num == 0) {
+        // A single buffer name or a list, as for `Stage::get_buffer_or_array`
+        const std::vector<std::string> names =
+            config.get_value(unique_name, "metadata_source").is_array()
+                ? config.get<std::vector<std::string>>(unique_name, "metadata_source")
+                : std::vector<std::string>{config.get<std::string>(unique_name, "metadata_source")};
+        for (const std::string& name : names) {
+            Buffer* const metadata_source = host_buffers.get_buffer(name);
+            if (!metadata_source)
+                FATAL_ERROR("metadata_source {:s} is not a frame buffer listed in the "
+                            "cudaProcess's in_buffers",
+                            name);
+            metadata_source->register_consumer(unique_name);
+            metadata_sources.push_back(metadata_source);
+        }
     }
 
-    virtual ~cudaCalcFRB2Weights() {}
+    frb2_beam_positions_buffer.register_consumer();
+    frb2_weights_buffer.register_producer();
+    if (instance_num == 0)
+        register_gpu_buffer_user({.name = frb2_frequencies_name,
+                                  .is_array = false,
+                                  .does_read = true,
+                                  .does_write = true});
 
-    void main_thread() override {
-        // Only calculate a single frame
-        const int frame_index = 0;
-        const int frame_id = frame_index;
+    set_command_type(gpuCommandType::KERNEL);
+}
 
-        if (stop_thread)
-            return;
+bool cudaCalcFRB2Weights::setup_frequencies() {
+    // The coarse frequency channels handled by this GPU. These are local to a GPU and thus cannot
+    // come from the configuration, which is the same for every GPU. This blocks until the
+    // metadata sources have produced their first frame; the voltage buffers do not depend on
+    // anything downstream of them, so this cannot deadlock.
+    const std::optional<std::vector<int>> local_coarse_freq =
+        wait_for_coarse_freq(metadata_sources, unique_name);
+    if (!local_coarse_freq)
+        return false;
 
-        // Telescope
-        const Telescope& telescope = Telescope::instance();
+    const UpchannelizationSchedule upchan_schedule(config, upchannelization_schedule_name,
+                                                   *local_coarse_freq, unique_name);
 
-        // Upchannelization schedule
-        // The coarse frequency channels handled by this GPU. These are local to
-        // a GPU and thus cannot come from the configuration, which is the same
-        // for every GPU.
-        const auto local_coarse_freq = wait_for_coarse_freq(metadata_sources, unique_name);
-        if (!local_coarse_freq)
-            return;
-
-        const UpchannelizationSchedule upchan_schedule(config, upchannelization_schedule_name,
-                                                       *local_coarse_freq, unique_name);
-
-        // Calculate frequencies
-        const auto& frequency_channels = upchan_schedule.get_frequency_channels();
-        std::vector<int> coarse_freq;
-        std::vector<int> freq_upchan_factor;
-        std::vector<int> freq_upchan_index;
-        std::vector<float> frequencies;
-        for (const int channel : frequency_channels) {
-            const float frequency = telescope.to_freq_MHz(freq_id_t(channel)) * 1.0e+6f;
-            const float frequency_spacing = telescope.freq_width_MHz(freq_id_t(channel)) * 1.0e+6f;
-            const auto& upchan_factors = upchan_schedule.get_upchan_factors(channel);
-            if (upchan_factors.empty()) {
-                // Assume we keep the frequency itself
-                coarse_freq.push_back(channel);
-                freq_upchan_factor.push_back(1);
-                freq_upchan_index.push_back(0);
-                frequencies.push_back(frequency);
-            } else {
-                // Assume we do not keep the frequency itself, we only process the upchannelized
-                // ones
-                for (const int upchan_factor : upchan_factors) {
-                    for (int upchan_index = 0; upchan_index < upchan_factor; ++upchan_index) {
-                        const float upchan_frequency =
-                            frequency
-                            + frequency_spacing * ((upchan_index + 0.5f) / upchan_factor - 0.5f);
-                        coarse_freq.push_back(channel);
-                        freq_upchan_factor.push_back(upchan_factor);
-                        freq_upchan_index.push_back(upchan_index);
-                        frequencies.push_back(upchan_frequency);
-                    }
+    const Telescope& telescope = Telescope::instance();
+    for (const int channel : upchan_schedule.get_frequency_channels()) {
+        const float frequency = telescope.to_freq_MHz(freq_id_t(channel)) * 1.0e+6f;
+        const float frequency_spacing = telescope.freq_width_MHz(freq_id_t(channel)) * 1.0e+6f;
+        const auto& upchan_factors = upchan_schedule.get_upchan_factors(channel);
+        if (upchan_factors.empty()) {
+            // Assume we keep the frequency itself
+            coarse_freq.push_back(channel);
+            freq_upchan_factor.push_back(1);
+            freq_upchan_index.push_back(0);
+            frequencies.push_back(frequency);
+        } else {
+            // Assume we do not keep the frequency itself, we only process the upchannelized ones
+            for (const int upchan_factor : upchan_factors) {
+                for (int upchan_index = 0; upchan_index < upchan_factor; ++upchan_index) {
+                    const float upchan_frequency =
+                        frequency
+                        + frequency_spacing * ((upchan_index + 0.5f) / upchan_factor - 0.5f);
+                    coarse_freq.push_back(channel);
+                    freq_upchan_factor.push_back(upchan_factor);
+                    freq_upchan_index.push_back(upchan_index);
+                    frequencies.push_back(upchan_frequency);
                 }
             }
         }
-        assert(frequencies.size() == std::size_t(frb2_num_frequencies));
-
-        // Wait for buffers
-        DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_positions_buffer->buffer_name,
-              frame_index);
-        float* const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
-            frb2_beam_positions_buffer->wait_for_full_frame(unique_name, frame_id)));
-        if (!frb2_beam_positions_frame)
-            return;
-
-        DEBUG("[{:s}/{:d}] Waiting for buffer...", W2_buffer->buffer_name, frame_index);
-        float16_t* const W2_frame = static_cast<float16_t*>(
-            static_cast<void*>(W2_buffer->wait_for_empty_frame(unique_name, frame_id)));
-        if (!W2_frame)
-            return;
-
-        // Check buffer sizes
-        assert(std::ptrdiff_t(frb2_beam_positions_buffer->frame_size)
-               == frb2_beam_positions_frame_size);
-        assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
-
-        // Set metadata
-        W2_buffer->allocate_new_metadata_object(frame_id);
-        const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
-        W2_meta->set_from_frame_desc(W2_buffer->get_frame_desc<kotekan::GenericNDArray>());
-        W2_meta->set_fpga_seq_num(0);           // ???
-        W2_meta->set_time_downsampling_fpga(1); // ???
-        W2_meta->set_coarse_freq(coarse_freq);
-        W2_meta->set_freq_upchan_factor(freq_upchan_factor);
-        W2_meta->set_freq_upchan_index(freq_upchan_index);
-
-        // Set W2
-        {
-            // Start timer
-            DEBUG("Calculating FRB2 beam weights...");
-            const double t0 = current_time();
-
-            const std::ptrdiff_t str_beamP = 1;
-            const std::ptrdiff_t str_beamQ = str_beamP * frb1_num_beams_P;
-            const std::ptrdiff_t str_beamR = str_beamQ * frb1_num_beams_Q;
-            const std::ptrdiff_t str_freq = str_beamR * frb2_num_beams;
-
-            // Vectors giving the feed separation in each axis direction in meters.
-            // These vectors are in the GRID frame, where 'x' and 'y' are aligned
-            // with the feed grid array and are also orthogonal. This makes the
-            // vectors very simple, with a single component in the x and y directions
-            // respectively.
-            const float sigmaM_x = frb1_swap_MN ? 0 : telescope.get_feed_separation_x_m();
-            const float sigmaM_y = frb1_swap_MN ? telescope.get_feed_separation_y_m() : 0;
-            const float sigmaM_z = 0;
-
-            const float sigmaN_x = frb1_swap_MN ? telescope.get_feed_separation_x_m() : 0;
-            const float sigmaN_y = frb1_swap_MN ? 0 : telescope.get_feed_separation_y_m();
-            const float sigmaN_z = 0;
-
-            // Split the calculation into chunks of frequencies such that the GPU scratch
-            // buffer stays below `gpu_max_chunk_bytes` (and the grid fits into gridDim.y)
-            const std::ptrdiff_t slab_bytes = str_freq * std::ptrdiff_t(sizeof(float16_t));
-            const int max_chunk =
-                std::clamp<std::ptrdiff_t>(gpu_max_chunk_bytes / slab_bytes, 1,
-                                           std::min<std::ptrdiff_t>(frb2_num_frequencies, 65535));
-
-            float* d_frequencies = nullptr;
-            float* d_positions = nullptr;
-            float16_t* d_W2 = nullptr;
-            CHECK_CUDA_ERROR(cudaMalloc(&d_frequencies, frb2_num_frequencies * sizeof(float)));
-            CHECK_CUDA_ERROR(cudaMalloc(&d_positions, frb2_beam_positions_buffer->frame_size));
-            CHECK_CUDA_ERROR(cudaMalloc(&d_W2, max_chunk * slab_bytes));
-
-            CHECK_CUDA_ERROR(cudaMemcpy(d_frequencies, frequencies.data(),
-                                        frb2_num_frequencies * sizeof(float),
-                                        cudaMemcpyHostToDevice));
-            CHECK_CUDA_ERROR(cudaMemcpy(d_positions, frb2_beam_positions_frame,
-                                        frb2_beam_positions_buffer->frame_size,
-                                        cudaMemcpyHostToDevice));
-
-            // Pinning the output frame speeds up the device-to-host copies below, but
-            // pinning can fail for very large frames (locked-memory limits); fall back to
-            // pageable copies in that case
-            const cudaError_t register_error =
-                cudaHostRegister(W2_frame, W2_buffer->frame_size, cudaHostRegisterDefault);
-            const bool host_registered = register_error == cudaSuccess;
-            if (!host_registered) {
-                (void)cudaGetLastError(); // clear the error
-                WARN("Could not pin the W2 frame ({:s}); using slower pageable copies",
-                     cudaGetErrorString(register_error));
-            }
-
-            for (int freq0 = 0; freq0 < frb2_num_frequencies; freq0 += max_chunk) {
-                const int nfreq = std::min(max_chunk, frb2_num_frequencies - freq0);
-                cuda_calc_frb2_weights(d_frequencies + freq0, d_positions, d_W2, nfreq,
-                                       frb2_num_beams, num_dishes_M, num_dishes_N, sigmaM_x,
-                                       sigmaM_y, sigmaM_z, sigmaN_x, sigmaN_y, sigmaN_z, nullptr);
-                // This synchronizes with the kernel (same stream, synchronous copy). No
-                // copy/compute overlap: this stage runs only once, a few seconds suffice.
-                CHECK_CUDA_ERROR(cudaMemcpy(W2_frame + freq0 * str_freq, d_W2, nfreq * slab_bytes,
-                                            cudaMemcpyDeviceToHost));
-                INFO("cudaCalcFRB2Weights: freqs: {:d}/{:d}...", freq0 + nfreq,
-                     frb2_num_frequencies);
-            }
-
-            if (host_registered)
-                CHECK_CUDA_ERROR(cudaHostUnregister(W2_frame));
-            CHECK_CUDA_ERROR(cudaFree(d_W2));
-            CHECK_CUDA_ERROR(cudaFree(d_positions));
-            CHECK_CUDA_ERROR(cudaFree(d_frequencies));
-
-            const double t1 = current_time();
-            const double elapsed = t1 - t0;
-            DEBUG("Calculated FRB2 beam weights in {} seconds", elapsed);
-        }
-
-        // Mark buffers as full
-        DEBUG("[{:s}/{:d}] Marking buffer as empty...", frb2_beam_positions_buffer->buffer_name,
-              frame_index);
-        frb2_beam_positions_buffer->mark_frame_empty(unique_name, frame_id);
-
-        DEBUG("[{:s}/{:d}] Marking buffer as full...", W2_buffer->buffer_name, frame_index);
-        W2_buffer->mark_frame_full(unique_name, frame_id);
-
-        // Wait for shutdown (don't trigger a shutdown)
-        while (!stop_thread)
-            sleep(1);
     }
-};
+    if (frequencies.size() != std::size_t(frb2_num_frequencies))
+        FATAL_ERROR("The upchannelization schedule yields {:d} frequencies, but "
+                    "frb2_num_frequencies is {:d}",
+                    frequencies.size(), frb2_num_frequencies);
 
-REGISTER_KOTEKAN_STAGE(cudaCalcFRB2Weights);
+    return true;
+}
+
+int cudaCalcFRB2Weights::wait_on_precondition() {
+    {
+        const int errcode = cudaCommand::wait_on_precondition();
+        if (errcode < 0)
+            return errcode;
+    }
+
+    // Instance 0 handles frame 0, and it needs the frequencies for its first `execute`, which
+    // uploads them for all instances. This may block, which is allowed here.
+    if (instance_num == 0 && !did_setup_frequencies) {
+        if (!setup_frequencies())
+            return -1;
+        did_setup_frequencies = true;
+    }
+
+    DEBUG("Waiting for {:s} output ringbuffer space for frame {:d}...", frb2_weights_name,
+          gpu_frame_id);
+    const int errcode = frb2_weights_buffer.wait_for_writable(1);
+    if (errcode < 0)
+        return errcode;
+    DEBUG("Done waiting for {:s} output ringbuffer space for frame {:d}; writing element {:d}",
+          frb2_weights_name, gpu_frame_id, frb2_weights_buffer.get_write_valid().begin());
+
+    return 0;
+}
+
+cudaEvent_t cudaCalcFRB2Weights::execute(cudaPipelineState& /*pipestate*/,
+                                         const std::vector<cudaEvent_t>& /*pre_events*/) {
+    pre_execute();
+    record_start_event();
+
+    const cudaStream_t stream = device.getStream(cuda_stream_id);
+
+    frb2_beam_positions_buffer.check_metadata();
+    const std::shared_ptr<const chordMetadata> positions_meta =
+        frb2_beam_positions_buffer.get_metadata();
+    if (positions_meta->get_time_downsampling_fpga() != frb2_weights_lifetime_in_samples)
+        FATAL_ERROR("The {:s} stream has time_downsampling_fpga {:d}, but "
+                    "frb2_weights_lifetime_in_samples is {:d}",
+                    frb2_beam_positions_name, positions_meta->get_time_downsampling_fpga(),
+                    frb2_weights_lifetime_in_samples);
+
+    const std::ptrdiff_t element = frb2_weights_buffer.get_write_valid().begin();
+
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`. The ring buffer
+    // starts where the positions stream starts, and each element covers one lifetime.
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        assert(did_setup_frequencies);
+        assert(element == 0);
+        const std::shared_ptr<chordMetadata> weights_meta = std::make_shared<chordMetadata>();
+        weights_meta->deepCopy(positions_meta);
+        weights_meta->dim[0] = 1; // one weights matrix per positions frame
+        weights_meta->set_fpga_seq_num(positions_meta->get_fpga_seq_num());
+        weights_meta->set_time_downsampling_fpga(frb2_weights_lifetime_in_samples);
+        weights_meta->set_coarse_freq(coarse_freq);
+        weights_meta->set_freq_upchan_factor(freq_upchan_factor);
+        weights_meta->set_freq_upchan_index(freq_upchan_index);
+        frb2_weights_buffer.set_metadata(weights_meta);
+
+        // The frequencies are the same for every weights matrix. Later instances run on the same
+        // stream, after this copy.
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(frb2_frequencies_memory, frequencies.data(),
+                                         frb2_num_frequencies * sizeof(float),
+                                         cudaMemcpyHostToDevice, stream));
+
+        INFO("Calculating {:s} weights matrices of {:d} bytes each, one per {:d} FPGA samples, in "
+             "a ring buffer of {:d} matrices",
+             frb2_weights_name,
+             frb2_weights_buffer.get_ndarray().get_stride(0) * std::ptrdiff_t(sizeof(float16_t)),
+             frb2_weights_lifetime_in_samples, frb2_weights_ring_depth);
+    }
+    frb2_weights_buffer.check_metadata();
+
+    // Positions frame `k` has to describe weights matrix `k`
+    const std::shared_ptr<const chordMetadata> weights_meta = frb2_weights_buffer.get_metadata();
+    const std::int64_t expected_seq_num =
+        weights_meta->get_fpga_seq_num() + element * frb2_weights_lifetime_in_samples;
+    if (positions_meta->get_fpga_seq_num() != expected_seq_num)
+        FATAL_ERROR("{:s} frame {:d} has fpga_seq_num {:d}, expected {:d} (the stream must be "
+                    "contiguous with a cadence of frb2_weights_lifetime_in_samples {:d})",
+                    frb2_beam_positions_name, element, positions_meta->get_fpga_seq_num(),
+                    expected_seq_num, frb2_weights_lifetime_in_samples);
+    DEBUG("Calculating {:s} element {:d} for fpga_seq_num {:d}", frb2_weights_name, element,
+          positions_meta->get_fpga_seq_num());
+
+    // Vectors giving the feed separation in each axis direction in meters. These vectors are in
+    // the GRID frame, where 'x' and 'y' are aligned with the feed grid array and are also
+    // orthogonal. This makes the vectors very simple, with a single component in the x and y
+    // directions respectively.
+    const Telescope& telescope = Telescope::instance();
+    const float sigmaM_x = frb1_swap_MN ? 0 : telescope.get_feed_separation_x_m();
+    const float sigmaM_y = frb1_swap_MN ? telescope.get_feed_separation_y_m() : 0;
+    const float sigmaM_z = 0;
+    const float sigmaN_x = frb1_swap_MN ? telescope.get_feed_separation_x_m() : 0;
+    const float sigmaN_y = frb1_swap_MN ? 0 : telescope.get_feed_separation_y_m();
+    const float sigmaN_z = 0;
+
+    // Write directly into the ring buffer element
+    kotekan::NDArray<float16_t, 5>& W2 = frb2_weights_buffer.get_ndarray();
+    assert(std::string(W2.get_dimname(1)) == "Fbar");
+    float16_t* const W2_element = W2.data() + W2.get_stride(0) * mod(element, W2.get_extent(0));
+    const float* const positions = frb2_beam_positions_buffer.get_ndarray().data();
+
+    // The kernel's grid has one row per frequency, and gridDim.y must be < 65536
+    const int max_chunk = 65535;
+    for (int freq0 = 0; freq0 < frb2_num_frequencies; freq0 += max_chunk) {
+        const int nfreq = std::min(max_chunk, frb2_num_frequencies - freq0);
+        cuda_calc_frb2_weights(frb2_frequencies_memory + freq0, positions,
+                               W2_element + freq0 * W2.get_stride(1), nfreq, frb2_num_beams,
+                               num_dishes_M, num_dishes_N, sigmaM_x, sigmaM_y, sigmaM_z, sigmaN_x,
+                               sigmaN_y, sigmaN_z, stream);
+    }
+
+    return record_end_event();
+}
+
+void cudaCalcFRB2Weights::finalize_frame() {
+    // Publish the weights matrix
+    frb2_weights_buffer.finish_write();
+
+    cudaCommand::finalize_frame();
+}
