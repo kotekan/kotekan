@@ -44,7 +44,7 @@
  * its consumers.
  *
  * Each frame is one bad feed mask sample, valid
- * for @c bf_mask_lifetime_in_samples FPGA samples, and its FPGA sequence
+ * for @c lifetime_in_samples FPGA samples, and its FPGA sequence
  * number is that sample's seq -- so it grows by the lifetime from frame to
  * frame, which is what the bad feed mask ring buffer requires.  The
  * sequence numbers start at the seq of the first frame of @c metadata_source
@@ -85,7 +85,7 @@
  *                                      num_polarizations * num_dishes.
  * @conf   num_polarizations            Int.  Number of polarizations.
  * @conf   num_dishes                   Int.  Number of dishes.
- * @conf   bf_mask_lifetime_in_samples  Int.  Number of FPGA samples that one bad feed mask
+ * @conf   lifetime_in_samples          Int.  Number of FPGA samples that one bad feed mask
  *                                      is valid for.
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
@@ -133,7 +133,7 @@ private:
     int num_polarizations;
     int num_dishes;
     /// Number of FPGA samples that one bad feed mask is valid for
-    int64_t bf_mask_lifetime_in_samples;
+    int64_t lifetime_in_samples;
 
     /// Mask before any posted flags: 0 for elements outside the telescope's
     /// main array (CHORD's Missing dishes and RFI antennas).
