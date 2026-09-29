@@ -112,6 +112,11 @@ else
 end
 const Touter = 256              # 512 uses too much shared memory
 
+# The gains are recalculated periodically, and handed to the GPU through a ring buffer holding
+# this many of them. How many FPGA samples one gain vector covers is a run-time setting,
+# `upchan_gain_lifetime_in_samples`. This affects only the C++ wrapper, not the kernel.
+const TG = 4
+
 @assert W ≤ U
 @assert Touter % U == 0
 @assert Touter % (4 * W) == 0
@@ -2287,11 +2292,22 @@ function fix_ptx_kernel()
                     "name" => "G",
                     "kotekan_name" => "upchan_U$(U)_gain_name",
                     "type" => "float16",
-                    "axes" => [Dict("label" => "Fbar", "length" => F̄, "dimscaling" => 1)],
+                    # The slowest axis is the ring buffer direction. Its `dimscaling` is a
+                    # placeholder; it is overwritten at run time with the configured
+                    # `upchan_gain_lifetime_in_samples`. The kernel itself still sees a single
+                    # gain vector: the wrapper passes it the element covering the output samples
+                    # being produced.
+                    "axes" => [
+                        Dict("label" => "Fbar", "length" => F̄, "dimscaling" => 1),
+                        Dict("label" => "TG", "length" => TG, "dimscaling" => 1),
+                    ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
-                    "do_once" => true,
+                    "do_once" => false,
+                    "haslifetime" => true,
+                    "lifetime_config" => "upchan_gain_lifetime_in_samples",
                 ),
                 Dict(
                     "name" => "E",

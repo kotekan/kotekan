@@ -7,6 +7,7 @@
 
 #include <assert.h> // for assert
 #include <cstddef>  // for size_t
+#include <cstdint>  // for int64_t
 #include <map>      // for map
 #include <optional> // for optional
 #include <string>   // for basic_string, string
@@ -130,8 +131,13 @@ public:
 // pipeline. The caller must have registered as a consumer of every
 // buffer beforehand.
 //
+// If `first_fpga_seq_num` is given, it receives the sequence number of the
+// first frame of the first buffer, so that a caller producing a stream of
+// its own can start that stream at the same origin.
+//
 // Returns an empty optional if kotekan shut down while waiting.
 std::optional<std::vector<int>> wait_for_coarse_freq(const std::vector<Buffer*>& metadata_sources,
-                                                     const std::string& unique_name);
+                                                     const std::string& unique_name,
+                                                     std::int64_t* first_fpga_seq_num = nullptr);
 
 #endif // #ifndef UPCHANNELIZATION_SCHEDULE_H

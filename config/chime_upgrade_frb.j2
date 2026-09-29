@@ -1304,6 +1304,13 @@ FRB:
     upchan_U16_max_output_channel: (upchan_U16_max_channel - upchan_U16_min_channel) * 16
     upchan_U16_max_num_output_channels: upchan_U16_max_output_channel - upchan_U16_min_output_channel
 
+    # The upchannelization gains are valid for this many FPGA samples (about one second). It
+    # must be a multiple of the upchannelization factor that whole kernel windows can tile
+    # exactly, because a window may not straddle the end of a lifetime (see
+    # lib/cuda/lifetimeWindows.hpp). 24 * samples_per_data_set = 393216 samples = 1.007 s
+    # works for the U = 16 upchannelizer.
+    upchan_gain_lifetime_in_samples: 24 * samples_per_data_set
+
     # TODO: remove
     frb1_num_beams_P: 2 * num_dishes_y
     frb1_num_beams_Q: 2 * num_dishes_x
@@ -1319,16 +1326,22 @@ FRB:
 
     # Upchanneling Gains
     # Per-frequency real multiplier for each upchannelized frequency. This is _not_
-    # the complex feed gains
+    # the complex feed gains. One frame is one gain vector, covering
+    # upchan_gain_lifetime_in_samples FPGA samples.
     host_upchan_U16_gain_buffer:
         kotekan_buffer: ndarray
-        num_frames: 1
+        num_frames: gpu_buffer_depth
         # TODO: check if factor_upchan_out was the correct 16 to use here
         value_type: float16
-        extents: [upchan_U16_max_num_channels * 16]
+        extents: [1, upchan_U16_max_num_channels * 16]
         quantity_name: "G"
-        dimnames: ["Fbar"]
-        dimscalings: [1]
+        dimnames: ["TG", "Fbar"]
+        dimscalings: [upchan_gain_lifetime_in_samples, 1]
+        metadata_pool: main_pool
+    # Holds 4 gain vectors, the length of the generated kernels' TG axis
+    host_upchan_U16_gain_ringbuffer:
+        kotekan_buffer: ring
+        ring_buffer_size: 4 * sizeof_float16 * upchan_U16_max_num_channels * 16
         metadata_pool: main_pool
 
     # Upchannelized voltages
@@ -1454,6 +1467,9 @@ FRB:
 
     # Stages
 
+{%- if using_dpdk %}
+    # (Only the dpdk branch runs the upchannelizer. Without a consumer this stage would produce
+    # gain frames as fast as it can.)
     run_set_upchan_U16_gain:
         kotekan_stage: setUpchanGain
         upchan_factor: factor_upchan_out
@@ -1464,6 +1480,27 @@ FRB:
 {%- for id in range(num_freq_gpu_buf) %}
             - host_voltage_buffer_{{ id }}
 {%- endfor %}
+
+    # Send the gains to their GPU ringbuffer. One gain vector covers
+    # upchan_gain_lifetime_in_samples FPGA samples, so this runs far less often than
+    # run_upchan_U16.
+    run_send_upchan_U16_gain:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            in_buffers:
+                host_upchan_U16_gain_buffer: host_upchan_U16_gain_buffer
+            out_buffers:
+                host_upchan_U16_gain_ringbuffer: host_upchan_U16_gain_ringbuffer
+            commands:
+            - name: cudaCopyToRingbuffer
+              input_size: sizeof_float16 * upchan_U16_max_num_channels * 16
+              ring_buffer_size: 4 * input_size
+              in_buf: host_upchan_U16_gain_buffer
+              signal_buf: host_upchan_U16_gain_ringbuffer
+              gpu_mem_output: upchan_U16_gain_buffer
+{%- endif %}
 
     run_upchan_U16:
 {%- if not using_dpdk %}
@@ -1520,15 +1557,10 @@ FRB:
             num_times: samples_per_data_set
             in_buffers:
                 host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
-                host_upchan_U16_gain_buffer: host_upchan_U16_gain_buffer
+                host_upchan_U16_gain_ringbuffer: host_upchan_U16_gain_ringbuffer
             out_buffers:
                 host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
             commands:
-            - name: cudaInputData
-              do_once: true
-              in_buf: host_upchan_U16_gain_buffer
-              gpu_mem: upchan_U16_gain_buffer
-            - name: cudaSyncInput
             - name: cudaUpchannelizer_chime_U16_K4
               voltage_name: xposed_voltage
               upchan_U16_gain_name: upchan_U16_gain
