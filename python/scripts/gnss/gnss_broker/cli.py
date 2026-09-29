@@ -2277,7 +2277,8 @@ def build_parser(description):
                          "legacy path is the one with years behind it. Same discipline as "
                          "--joint-max-rate-ppm on consumer 1, which would have refused the "
                          "-0.028 ppm runaway that froze the trackers no matter what went "
-                         "wrong upstream.")
+                         "wrong upstream. In the joint state's chips (5 = 489 ns at 10.23 "
+                         "Mcps), the same time on every chain, like --joint-clk-max-chips.")
     ap.add_argument("--seed-phase-transport", action="store_true",
                     help="#45 step 6: dead-reckon/slew seeds carry code_phase_at_ref_chips "
                          "(the PHASE at ref_hop) in addition to the sample-0 argument. "

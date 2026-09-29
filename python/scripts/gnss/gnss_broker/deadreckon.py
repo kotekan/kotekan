@@ -1606,8 +1606,11 @@ def dr_seed(ctx):
             _off = _leg_off
             _off_sigma = None      # set only when a JOINT offset is adopted
             _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
+            # The joint is in its FEEDERS' chips (Receiver.joint_unit); with no single unit
+            # there is nothing to compare, as in dr_joint_clk.
+            _u3 = ctx.rx.joint_unit() if _jr3 is not None else None
             _joff = (_jr3.predicted((ctx.drp.tag, prn))
-                     if (_jr3 is not None and (ctx.drp.tag, prn) in _jr3._idx)
+                     if (_u3 is not None and (ctx.drp.tag, prn) in _jr3._idx)
                      else None)
             if _joff is not None:
                 # ⚠️ WRAP AT THE MODULUS THE TWO ACTUALLY SHARE, AND APPLY THE
@@ -1629,19 +1632,32 @@ def dr_seed(ctx):
                 # So the joint state contributes only the SMALL correction it
                 # actually measures, and the legacy path keeps ownership of
                 # which long-code segment we are in.
-                _d3 = ((_joff - _leg_off + ctx.code_len / 2.0) % ctx.code_len) - ctx.code_len / 2.0
-                _ok3 = abs(_d3) <= ctx.args.joint_slew_max_chips
+                #
+                # At another chip rate the joint is converted into our chips and
+                # the window is the shorter code (Receiver.joint_clk_delta); the
+                # bound is tested in the joint's chips, the same time on every
+                # chain, as in dr_joint_clk. At the joint's rate this is the same-rate
+                # arithmetic bit for bit, and so is the line (no bracket).
+                _r3 = ctx.args.chip_rate_hz / _u3[0]
+                _d3, _d3j = ctx.rx.joint_clk_delta(_joff, _u3[0], _u3[1], _leg_off,
+                                                   ctx.args.chip_rate_hz, ctx.code_len)
+                _ok3 = abs(_d3j) <= ctx.args.joint_slew_max_chips
+                _s3 = _jr3.sigma((ctx.drp.tag, prn)) or 0.0
                 _log_rl("jslew-%d" % prn,
                         "SEED-OFFSET PRN %d (%s): joint %+.3f vs legacy %+.3f "
-                        "chips (diff %+.3f mod %.0f, sigma %.3f)%s"
-                        % (prn, "slew" if _slew else "cp0", _joff, _leg_off,
-                           _d3, ctx.code_len, _jr3.sigma((ctx.drp.tag, prn)) or 0.0,
+                        "chips (diff %+.3f mod %g, sigma %.3f)%s%s"
+                        % (prn, "slew" if _slew else "cp0", _joff * _r3, _leg_off,
+                           _d3, min(_u3[1] * _r3, ctx.code_len), _s3 * _r3,
+                           "" if _r3 == 1.0 else
+                           " [x%.4f: diff %+.3f sigma %.3f in %.3f-Mcps chips, the"
+                           " bound's unit]" % (_r3, _d3j, _s3, _u3[0] / 1e6),
                            "" if _ok3 else "  REFUSED (> %.1f chips)"
                            % ctx.args.joint_slew_max_chips),
                         every_s=60.0)
                 if "slew" in ctx.joint_consume and _ok3:
                     _off = _leg_off + _d3
-                    # ...and how well we know it, for the rate limit below.
+                    # ...and how well we know it, for the rate limit below
+                    # (joint chips: the unit --dr-slew-trust-sigma is written in).
                     _off_sigma = _jr3.sigma((ctx.drp.tag, prn))
             cp0 = ((ctx.cp_predicted(v, ctx.drp.t_fc_abs) + _off)
                    - ctx.drp.t_fc_abs * ctx.args.chip_rate_hz

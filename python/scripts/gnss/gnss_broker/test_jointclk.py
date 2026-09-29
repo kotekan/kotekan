@@ -24,6 +24,7 @@ from gnss_broker.receiver import Receiver
 
 BROKER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                       "gps_distributed_broker.py")
+DEADRECKON = deadreckon.__file__
 
 _fails = []
 
@@ -255,11 +256,56 @@ def test_rate_consumer_unit():
           "seeded code rate: one fractional rate on 10.23 / 5.115 / 0.5115 Mcps (%s)" % rates)
 
 
+def seed_offset_site(path=DEADRECKON):
+    """The per-PRN joint-vs-legacy comparison in dr_seed's seeding loop: (the call that
+    computes _d3, the expression _ok3 bounds, every modulus applied to a joff-leg_off
+    difference)."""
+    with open(path) as f:
+        tree = ast.parse(f.read(), path)
+    fn = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "dr_seed"]
+    calls, oks, mods = [], [], []
+    for n in (ast.walk(fn[0]) if fn else ()):
+        if isinstance(n, ast.Assign):
+            tgt = ast.unparse(n.targets[0])
+            if tgt.strip("()").startswith("_d3"):
+                calls.append((tgt, ast.unparse(n.value.func) if isinstance(n.value, ast.Call)
+                              else ast.unparse(n.value)))
+            if tgt == "_ok3":
+                oks.append(ast.unparse(n.value))
+        if (isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mod)
+                and "_joff - _leg_off" in ast.unparse(n.left)):
+            mods.append(ast.unparse(n))
+    return calls, oks, mods
+
+
+def test_seed_offset_per_prn():
+    """The per-PRN SEED-OFFSET comparison converts like the consumer: the old one compared
+    raw chips and logged every gps_l2c line at +142.8 and every gal_e6 line at +75.7 chips
+    REFUSED on the live broker while both chains adopted the joint clock 99.9% of the time."""
+    calls, oks, mods = seed_offset_site()
+    check(calls == [("(_d3, _d3j)", "ctx.rx.joint_clk_delta")] and not mods,
+          "dr_seed takes _d3 from Receiver.joint_clk_delta, no raw joff-leg_off wrap (%s %s)"
+          % (calls, mods))
+    check(oks == ["abs(_d3j) <= ctx.args.joint_slew_max_chips"],
+          "...and bounds it in the joint's chips (%s)" % oks)
+    # The live lines: joint +150.310 vs legacy +7.529 (L2C PRN 18), +150.850 vs +75.148
+    # (E6 PRN 10). Both were a few tenths of a reference chip apart, not 142.8 / 75.7.
+    d, dj = delta(150.310, REF_RATE, REF_LEN, 7.529, L2C_RATE, L2C_LEN)
+    check(abs(d + 0.0135) < 1e-9 and abs(dj + 0.270) < 1e-9 and abs(dj) <= MAX_CHIPS,
+          "L2C PRN 18: delta %+.4f CM = %+.3f ref, inside the 5-chip bound" % (d, dj))
+    d, dj = delta(150.850, REF_RATE, REF_LEN, 75.148, E6_RATE, E6_LEN)
+    check(abs(d - 0.277) < 1e-9 and abs(dj - 0.554) < 1e-9 and abs(dj) <= MAX_CHIPS,
+          "E6 PRN 10: delta %+.4f E6 = %+.3f ref, inside the 5-chip bound" % (d, dj))
+    check(abs(_old_delta(150.310, 7.529, L2C_LEN) - 142.781) < 1e-9
+          and abs(_old_delta(150.850, 75.148, E6_LEN) - 75.702) < 1e-9,
+          "the unconverted comparison reproduces both live REFUSED lines (+142.781, +75.702)")
+
+
 def main():
     for fn in (test_live_numbers_convert, test_consumer_adopts_l2c_and_e6,
                test_step_refused_in_both_units, test_sigma_bound_is_reference_chips,
                test_windows, test_ten_mcps_unchanged, test_unit_declaration,
-               test_rate_consumer_unit):
+               test_rate_consumer_unit, test_seed_offset_per_prn):
         print(fn.__name__)
         fn()
     print("\n%s (%d failure(s))" % ("FAIL" if _fails else "ALL PASS", len(_fails)))
