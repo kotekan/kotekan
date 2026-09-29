@@ -2664,8 +2664,16 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
                 return false;
             int n_along = 0;
             const int who = proj_identify(q, ch, n_e, pctl_rec_v, &n_along);
-            if (who < 0)
-                return true; // nothing of ours along it, or a common interferer in several rows
+            if (who < 0) {
+                // Unnamed: used only when it captures someone, i.e. at least two of our rows lie
+                // along it (a common interferer nobody here tracks). A direction along NO row of
+                // ours is a satellite this chain does not track, seen through the sidelobes:
+                // during G32's pass (09-29 15:2x) the 1207/1268/1278 chains, where G32 has no
+                // signal, accepted such directions on 1-6 channels and charged the victims
+                // b_cos2 > 0.1 on 15-19 % of the polls (7 % on the chains with a row source),
+                // for nothing. A direction along ONE row is that row's own signature, named above.
+                return n_along >= 2;
+            }
             if (_proj_steered[(size_t)who]) {
                 // One steered satellite's own signature: never a column (its row is the source
                 // when it is inside the window; a sidelobe leaker when it is not).
