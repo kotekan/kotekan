@@ -694,4 +694,7 @@ nodes:
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
   cx44: {search-port-base: 11048}
-  cx51: {search-port-base: 11050}
+  # PROJECTION CANARY (phase 1, 2026-09-29): the shadow mode survives a restart only through
+  # this key; the 09-29 01:43Z relaunch came back with it off. Move to `common:` when it goes
+  # fleet-wide. See fixtures/projtest/PROJECTION_PLAN.md s.5.
+  cx51: {search-port-base: 11050, elem-proj-mode: shadow}

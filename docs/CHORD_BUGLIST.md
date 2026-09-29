@@ -123,6 +123,154 @@ NORAD 40748 "BEIDOU-3S M2S" (Celestrak C58; 09-27 12:40Z at 0.66 deg, +10 dB in 
 off and a long age limit, supplemented from TLEs; reuse it for the railing veto.
 Evidence `fixtures/projtest/live/passes/`, `fixtures/projtest/unk/`.
 
+### #150 — C11–C14 are BDS-3 MEOs now, and no chain can track them (found 2026-09-28)
+**Three places still encode "PRN < 19 = BDS-2", and IGS retired that on 2026-04-19..21.** The SINEX
+`SATELLITE/PRN` block (`~/.cache/kotekan_gps/igs_satellite_metadata.snx`) moved BDS-3 satellites onto
+the decommissioned BDS-2 PRNs: **C11 = C234, C12 = C233, C13 = C235 (ex-C49), C14 = C232**, all BDS-3 MEO
+(a = 27 906 km); C01–C04 and C06–C08 went to BDS-3 GEO/IGSO (not visible here). Each of the four MEOs is
+above 10° for 6–8 h a day at DRAO, C13 peaking at 82° — as much sky as C19 or C33 [archive: BRDC 09-28].
+The rule lives in `signals.py` `_CHAINS` (`min_prn 19` on bds_b2a/bds_b2b, and its "C1-C18 are BDS-2
+birds" comment), in the manifest lists (`BDS_B2A_P_CS`, `BDS_B2B_I`, `BDS_B3I_NH` = 19–42,
+`config/gnss_fleet_chord.yaml` l.547/603/615), and in `gen_fleet.py --check-prns`, whose `MIN_PRN` table
+declares the B2a/B2b exclusion "CORRECT and must never be reported as a fault" — so the gate built to
+catch exactly this is silenced by the same rule. B3I has no floor in that table, so `--check-prns`
+should already be reporting C11–C14 EXCLUDED on `BDS_B3I_NH` [tree; not run — it re-fetches the BRDC
+cache the live broker reads].
+**They are also the brightest satellites we do not track.** A near-boresight pass raises L5, E5b, B3 and
+E6 but not L2 (BeiDou has nothing at 1227.6 MHz): **C12 at 0.6° on 09-25 13:58–14:20Z** (power ~7×,
+plotted rail 3.5–6.5% — first misread as gain work), **C13 at 3.0° on 09-28 12:46–13:08Z** (+4.4 / +4.8 /
++7.0 / +3.5 dB in L5 / E5b / B3 / E6; plotted rail peak 0.6% in B3, ×5.3 true; the L5 search clock broke
+at 12:58 and #142 carried it into e5a/b2a) [live, `rf_chan_*.jsonl` + broker log]. The broker's transit
+veto and freeze do see them — `dr_pd` pools the whole BRDC — subject to #151's expiry.
+**Fix:** take BDS-3 capability from the SINEX block type (`BDS-3*`), the standing rule for capability,
+in all three places; add C11–C14 to all three lists (B3I stays matched to B2a/B2b for tau_band);
+regenerate the node configs; node cycle (KV). **Check:** `--check-prns` lists C11–C14 EXCLUDED before the
+change and is clean after; each gets a `fleet_present` row within a pass of rising.
+
+### #151 — the seeding model's ephemeris still reloads every 2 h; BeiDou drops out for ~10 min before each reload (2026-09-28)
+**bddb6d0d5 (08-27) cut the SKY's refresh from 7200 s to 900 s and left the dead-reckon copy behind.**
+Its message names the cause — "a cadence inherited from the DAILY file's own 2 h re-fetch rule" — and it
+changed only `sky.py:65`. `deadreckon.py:1539` still reloads `dr_state["eph"]` when it is > 7200 s old,
+and that copy is the one every model-primary seed uses and the one `dr_pd` is built from (the transit
+veto and the assemblers' `_bore` freeze). Records expire 4 h after toe (`best_eph`); BeiDou updates hourly
+and IGS hourlies publish ~15–25 min late, so a load at X:10 can leave in-view BeiDou satellites with
+nothing newer than X−2:00, and they expire at X+2:00, ten minutes before the next load. The reload phase
+is the broker's start time (09-27 15:09:19 → X:09–X:10, creeping ~5 s per load). Cost is not the reason:
+`fetch_brdc` caches the merge (30 min) and the reload has run on a thread since the telemetry-ring fix.
+[live 09-28] bds_b2a's `active=` list: **11:00:00 9 → 3 PRNs (13 at 11:10:21); 13:00:02 12 → 6 (11 at
+13:10:22)**; smaller drops at 19:00, 21:00, 23:00 and 01:00 on 09-27/28. bds_b2a/b2b/b3i presence 0–1%
+over 13:00–13:09. The fresher records were already on disk: the hourly merge ran at 11:55 and 12:39 while
+the seeds stayed on the 11:10 load until 13:10.
+**Second effect, a new case of #144:** `nearest_boresight(dr_pd)` uses the same 4-h window, so when C13's
+record expired at 13:00 the veto and the freeze lost it while it was still 3.3° off boresight (last veto
+line 12:59:53; C13 stayed inside 6° until 13:08). A healthy satellite whose record ages out is as
+invisible to the transit sky as an unhealthy one.
+**Fix:** one ephemeris on the sky's 15-min cadence (share `receiver.brdc()`'s dict, or at minimum 7200 →
+900 here), and a geometry-only transit sky with a widened `max_age` (`predict_all`'s docstring allows it
+for geometry callers; never for seeds). ⚠️ Check #101 first: every reload steps each satellite's model,
+EPH-REBASE is computed on the sky copy's refreshes rather than this one, and broker.log shows no
+`EPH-REBASE` or `eph-rebase census` line in the ~7 h to 13:55Z 09-28 although `eph-rebase: 1` is armed.
+**Check:** no `active=` collapse on the hour over a day; `BORESIGHT TRANSIT` lines run until the
+satellite actually leaves 5°.
+
+### #152 — the joint clock latches chips off the search clock and nothing notices or re-latches it (2026-09-28)
+**Twice now a transit has left the shared joint clock confidently wrong, adopted fleet-wide.** 09-23
+08:00–10:39Z, after E31 at 0.3°: joint − legacy +2.0 chips. 09-28 from 13:09Z, after C13 at 3.0°: −1.8 to −2.4
+chips until C33's pass began at 13:38 (the pass then reshuffled it to −0.7 by 14:03). Both sit inside the
+5-chip JOINT-CLK bound, which limits a per-cycle delta and nothing persistent, so every 10.23-Mcps consumer
+adopted them. Presence looked normal, but gal_e5a and bds_b2a `code_resid_m` moved −94 / −92 m (3.1 chips)
+against their pre-transit level while gal_e5b, gal_e6 and bds_b3i did not [live 09-28, obs 12:25–12:45 vs
+13:13–13:30]. The 09-23 latch took ~3 h to decay; the 09-28 one showed no decay in the 30 min before C33
+disturbed it.
+**Mechanism (JOINT[shadow] summaries, 09-28).** JFEED ingests y = seed + trim − model from model-primary
+trackers whether or not they are on the peak, so a runaway seed (#142) comes back as a measurement. Before
+12:58 the per-satellite biases were GPS −0.2..−0.7, Galileo +0.1..+0.4 chips; after the runaway E8/E15 read
+−27..−33, E3/E26/E13 −4..−8. The gauge (median b = 0) moved clk −2.2 and every search-anchored GPS b went
++2.0 to compensate: a self-consistent state at sigma 0.048 that nothing pulls back.
+**Detector — built and replayed on 41 h of broker.log** (`fixtures/obs/joint_latch_detect.py`, offline,
+exit 1 on a latch). d = median(joint − legacy) per minute over the 10.23-Mcps consumers (the JOINT-CLK
+lines; gal_e6/gps_l2c excluded until #143). A minute counts only when gps_l5's own search solve is healthy
+(≥ 3 integrity residuals with |r| < 1 chip, none BAD) and no BORESIGHT TRANSIT veto fired in the previous
+5 min, because the legacy clock itself goes bad in passes (#142). LATCH = |d − 0.3| > 1 chip for 10 counted
+minutes. Healthy d: p1 / p50 / p99 = −0.02 / +0.22 / +0.44 chips. It fires on exactly the two known latches
+(09-23 08:00Z, d +2.02; 09-28 13:08Z, d −2.19) with no false alarm over 09-23 00:45–11:55Z and 09-27
+08:00Z – 09-28 13:55Z, 21 transits among them [archive]. ⚠️ A ROLLING baseline fails: it absorbs a slowly
+decaying latch and then fires on the recovery (09-23 11:13Z), so ref is a fixed band. ref is a gauge
+convention (median b over the current membership): re-derive it when the membership changes, e.g. after #150.
+**Independent product-side check,** no broker internals: the gal_e5a − gal_e5b difference of median
+`code_resid_m` (same Galileo satellites) went −0.3 → −87 m, which as geometry-free code is ~600 TECU;
+bds_b2a − bds_b3i moved −90 m. It can run from the obs files in the cf06 health cron.
+**Kick — none exists today** (`publish.py` POSTs only `/set_carrier_trim` and `/set_nh_prn_offset`). In order
+of preference: (1) in-broker RE-ANCHOR on the alarm: move the joint's gauge until its clock agrees with the
+healthy search clock + ref (clk by +δ and every b by −δ, so no prediction inside the joint moves — only
+the clock level the consumers adopt),
+re-birth the model-primary satellites whose b sits > 3 chips from the median, and log it as loudly as TIME
+ANCHOR; (2) the fallback that already works: a strike counter → `os._exit` → systemd restart, the 9c56c1682
+pattern (costs ~10 min of L5 settling and one arc break). **Prevention** is upstream of both: take JFEED only
+from on-peak trackers (present, q above floor), freeze it inside the transit veto, and land #142 — the
+detector stays as the backstop.
+**Check:** replaying the 09-23 and 09-28 windows alarms within 10 min of onset and the re-anchor brings d back
+inside ±1 chip of ref; zero alarms on a quiet day; e5a/b2a `code_resid_m` returns to its pre-transit level.
+
+### #153 — node processes abort with `malloc(): unaligned tcache chunk detected` (heap corruption; 4 restarts in 17 h on the d53b6a254 bundle) (2026-09-29)
+**Since the node bundle d53b6a254 (#145 + #1699 + #146) went fleet-wide on 09-28 18:33-20:39Z, kotekan
+has died with glibc's heap check on three nodes and restarted silently on two:** cx51 01:43:20Z
+(`Main process exited, code=dumped, status=6/ABRT`, systemd relaunched it 20 s later; the node ran
+the phase-1 projection build, a dirty d53b6a254), cx43 ~05:26Z and cx42 ~11:24Z on the STOCK bundle
+binary (no projection code), all three with `malloc(): unaligned tcache chunk detected` as the last
+line of `/tmp/gnss_node.log` before the new `Kotekan version ... starting`; cx42 also restarted once
+earlier and cx19 at 06:52:05Z with NO message and no operator (cx19's unit shows NRestarts=0, so it
+was not a systemd relaunch -- unexplained; a segfault prints nothing, so those may be the same bug
+with a different symptom). cx27 and cx44 ran 16 h clean. The .1 logs (every lifetime before the
+09-28 20:38 rotation, i.e. 422ea1bf8 from 09-27 15:06 and the bundle's first 2 h) contain none of
+these messages: ~160 node-hours clean on 422ea1bf8 against 4-5 events in ~90 node-hours on the
+bundle. The message means a freed chunk's tcache metadata was overwritten: a heap overflow/underflow
+or a write through a stale pointer somewhere in the process; the abort comes at a LATER malloc, in
+whichever thread happens to allocate, so the last log lines (routine n2-send refusals, valve drops)
+say nothing about the writer. Nothing broker-side lines up with the times (the BIRTH-STEP lines
+before each one recur every few seconds all day).
+- **Which binary died (from each lifetime's `Kotekan version` line in the node log; the fleet
+  file on disk has been a projection build since 09-28 21:20Z, so a relaunch after that runs
+  projection code with the mode off):** cx43's aborting lifetime = the STOCK bundle (`gd53b6a254b`,
+  no projection code) -> the corruption predates the projection; cx42's stock lifetime (20:39Z
+  start) died silently, its next lifetime (projection build, mode off) took the malloc abort;
+  cx51 = projection build in shadow. An adversarial memory-safety review of the projection diff
+  (09-29 12:00Z) found no out-of-bounds write, no use-after-free and no cross-thread write into
+  a reallocating container; it found only torn reads of fixed-size POD vectors by the REST thread,
+  and its size guards are in the 1c build.
+- **From the journals (KV, 09-29 12:15Z):** cx43 05:26:01Z `status=6/ABRT`; cx42 11:23:32Z
+  `status=11/SEGV` then, 45 s into the relaunched process, 11:24:37Z `status=6/ABRT` (the malloc
+  line 78 log lines after its start: the corruption can strike during start-up); cx42 ALSO aborted
+  09-28 05:13:00Z on 422ea1bf8, before the bundle (its message is in a log rotation that no longer
+  exists), so the bundle is not clearly the origin, only the rate is new; cx19's 06:52Z restart has
+  no failure line at all -- a deliberate `systemctl restart`, not a crash (not KV; the other
+  session is the candidate). Every 09-24/25 entry is the shutdown-hang / F-engine-outage history.
+- **Suspect first:** #1699's gpuProcess lifetime changes (frame slots released without
+  finalize_frame, the results thread joined on every exit path) -- the only part of the bundle that
+  touches buffer lifetimes; #145 changes arithmetic only, #146 the FatalError message.
+- **Why it hides:** the unit's `Restart=` policy relaunches within 20 s, the models re-form in
+  minutes, and the node's stdout goes to `/tmp/gnss_node.log` (node_up.sh rotates it to `.1` on a
+  manual restart) rather than the journal, so nobody sees the message unless they grep for it. Any
+  live switch set over REST is lost on the relaunch (that is how the projection canary lost its
+  shadow mode overnight; now a config key).
+- **Cost:** a node's chains drop for ~2 min and its shared element model re-forms cold (a restart
+  inside a transit re-forms it frozen and single-element until the freeze lifts).
+- **Diagnostics, cheapest first:** (1) give the nodes a core: apport keeps nothing for an
+  unpackaged binary, so `sudo sysctl -w kernel.core_pattern=/var/crash/core.%e.%p.%t` on a node
+  (LimitCORE is already infinity) and `gdb build/kotekan/kotekan /var/crash/core.* -batch -ex
+  'thread apply all bt 12'` after the next event names the aborting thread's stage (the victim,
+  often near the culprit); (2) `MALLOC_CHECK_=3` in the unit environment makes glibc check on
+  every free and abort at the first corrupted chunk, closer to the writer (glibc >= 2.34 also needs
+  `LD_PRELOAD=libc_malloc_debug.so.0`); the tcache is per thread, so the aborting thread's
+  backtrace names the stage that FREED the damaged chunk and the bin size names the object
+  (0x210 = a 32-element vector<complex<double>>); (3) an ASan build of
+  the CPU stages (build_nodpdk on cf06 is USE_DPDK OFF) replaying a captured tiles+ctl stream
+  through GnssN2RecordAssemble -> GnssGpuRecordAssemble -> GnssTelemPack catches anything on the
+  host side deterministically; (4) A/B: one node on 422ea1bf8 + #145 only (no #1699/#146) for a day.
+- **Check:** `for n in cx19 cx27 cx42 cx43 cx44 cx51; do ssh $n 'grep -a -c "malloc()" /tmp/gnss_node.log*; systemctl show gnss-node -p NRestarts -p ExecMainStartTimestamp'; done`
+  and `sudo journalctl -u gnss-node | grep -E "Main process exited|Scheduled restart"` for the
+  exit code of every relaunch (status=6/ABRT = this; status=11/SEGV = the silent kind).
+
 ### #119 — `--fit-flush-on-reject`'s own revert trigger is tripped, and unread
 Pre-registered as "revert if flushes happen on healthy sats outside events". **[live]** 69
 `cp-fit history FLUSHED` in 57 minutes on a healthy fleet, all on gps_l5, concentrated on five
