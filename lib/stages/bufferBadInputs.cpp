@@ -108,8 +108,8 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     }
 
     // Set the frame description
-    out_buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::uint8>, 1>::describe(
-        "bad_inputs", {static_cast<ptrdiff_t>(num_elements)}, {"E"}, {1}));
+    out_buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::uint8>, 3>::describe(
+        "bf_mask", {1, static_cast<ptrdiff_t>(num_polarizations), static_cast<ptrdiff_t>(num_elements/num_polarizations)}, {"Tbf", "P", "D"}, {lifetime_in_samples, 1,1}));
 
     // Listen for bad input list updates. The initial config block arrives
     // through this callback during subscribe().
