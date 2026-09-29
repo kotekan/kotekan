@@ -262,11 +262,29 @@ before each one recur every few seconds all day).
   shadow mode overnight; now a config key).
 - **Cost:** a node's chains drop for ~2 min and its shared element model re-forms cold (a restart
   inside a transit re-forms it frozen and single-element until the freeze lifts).
-- **Diagnostics, cheapest first:** (1) give the nodes a core: apport keeps nothing for an
-  unpackaged binary, so `sudo sysctl -w kernel.core_pattern=/var/crash/core.%e.%p.%t` on a node
-  (LimitCORE is already infinity) and `gdb build/kotekan/kotekan /var/crash/core.* -batch -ex
-  'thread apply all bt 12'` after the next event names the aborting thread's stage (the victim,
-  often near the culprit); (2) `MALLOC_CHECK_=3` in the unit environment makes glibc check on
+- **Diagnostics, cheapest first:**
+  - (1) Give the nodes a core. Two things stop one today, and both must be fixed. apport keeps
+    nothing for an unpackaged binary; cx27 has systemd-coredump instead, and the same sysctl
+    overrides either. The unit's SOFT core limit is also 0: `LimitCORE=infinity` is only the hard
+    limit, `LimitCORESoft=0`. Per node, without a restart (one `ssh -t`, one sudo prompt):
+    `p=$(systemctl show gnss-node -p MainPID --value); sudo sysctl -w
+    kernel.core_pattern=/var/crash/core.%e.%p.%t.%s && sudo prlimit --pid $p --core=unlimited &&
+    sudo cp /proc/$p/exe /var/crash/kotekan.$p && grep "core file" /proc/$p/limits`.
+    - The `cp` keeps the exact binary, because the fleet file is often replaced under a running
+      process.
+    - `%e` is the faulting THREAD's name (Stage names its threads, with `/` written as `!`), so
+      the file name alone says which thread died.
+    - A relaunch starts at soft 0 again, so each arming yields one core per node unless
+      node_up.sh's systemd-run gains `--property=LimitCORE=infinity`.
+    - Expect ~44 GB per core: 5 GB of heap plus 38 GB of `MAP_PRIVATE` hugepage buffers, which the
+      default coredump_filter 0x33 includes. Every node has ≥ 2.5 TB free on /.
+    - apport restores its own pattern if its service restarts (e.g. a package upgrade), so
+      re-check `/proc/sys/kernel/core_pattern` before trusting a quiet night. To disarm:
+      `sudo systemctl restart apport` (cx27: `sudo sysctl --system`).
+    - Afterwards, `gdb /var/crash/kotekan.<pid> /var/crash/core.*.<pid>.* -batch -ex 'thread
+      apply all bt 12'` names the aborting thread's stage. That is the victim, often near the
+      culprit.
+  - (2) `MALLOC_CHECK_=3` in the unit environment makes glibc check on
   every free and abort at the first corrupted chunk, closer to the writer (glibc >= 2.34 also needs
   `LD_PRELOAD=libc_malloc_debug.so.0`); the tcache is per thread, so the aborting thread's
   backtrace names the stage that FREED the damaged chunk and the bin size names the object
