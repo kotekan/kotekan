@@ -41,7 +41,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_polarizations = config.get<int>(unique_name, "num_polarizations");
     num_dishes = config.get<int>(unique_name, "num_dishes");
-    bf_mask_lifetime_in_samples = config.get<int64_t>(unique_name, "bf_mask_lifetime_in_samples");
+    lifetime_in_samples = config.get<int64_t>(unique_name, "lifetime_in_samples");
 
     // The mask is written as a flat array whose element `output_idx` is
     // `polarization * num_dishes + dish`, so describing it as
@@ -212,7 +212,7 @@ void bufferBadInputs::main_thread() {
         out_buf->get_frame_desc<kotekan::GenericNDArray>();
 
     // The FPGA sequence number of the first mask sample. The consumers of the bad feed mask ring
-    // buffer locate mask sample `k` at `k * bf_mask_lifetime_in_samples` FPGA samples after the
+    // buffer locate mask sample `k` at `k * lifetime_in_samples` FPGA samples after the
     // logical beginning of the voltage ring buffer, which is the sequence number of the first
     // voltage frame -- so that is where this stream has to start as well. Read it from the clock
     // buffer's first frame, as setBBBeams does; without a clock buffer the stream starts at zero.
@@ -265,9 +265,9 @@ void bufferBadInputs::main_thread() {
         const std::shared_ptr<chordMetadata> meta = get_chord_metadata(out_buf, frame_id);
         meta->set_from_frame_desc(frame_desc);
         // Each frame is one bad feed mask sample, and each sample is valid for
-        // `bf_mask_lifetime_in_samples` FPGA samples.
-        meta->set_fpga_seq_num(first_fpga_seq_num + frame_index * bf_mask_lifetime_in_samples);
-        meta->set_time_downsampling_fpga(bf_mask_lifetime_in_samples);
+        // `lifetime_in_samples` FPGA samples.
+        meta->set_fpga_seq_num(first_fpga_seq_num + frame_index * lifetime_in_samples);
+        meta->set_time_downsampling_fpga(lifetime_in_samples);
         if (!coarse_freq.empty())
             meta->set_coarse_freq(coarse_freq);
         // Verify the frame desc and metadata match
