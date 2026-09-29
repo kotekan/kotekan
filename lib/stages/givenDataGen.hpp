@@ -9,6 +9,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 
 #include <cstddef> // for ptrdiff_t
+#include <cstdint> // for int64_t
 #include <string>  // for string
 #include <vector>  // for vector
 
@@ -20,6 +21,12 @@
  * @buffer out_buf Buffer to fill
  *         @buffer_format any format
  *         @buffer_metadata chordMetadata
+ * @buffer metadata_source Optional. Any time-dependent buffer with an `fpga_seq_num`, typically
+ *         the voltage buffer. Only its first frame is read. If given, the output is a stream
+ *         clocked by it: frame `k` gets `fpga_seq_num = seq0 + k * time_downsampling_fpga`, where
+ *         `seq0` is the `fpga_seq_num` of the source's first frame. Requires `do_once: false`.
+ *         @buffer_format any format
+ *         @buffer_metadata chordMetadata
  *
  * @conf  values                Vector of values.
  * @conf  name                  String. Name of the quantity being set.
@@ -27,6 +34,8 @@
  * @conf  array_shape           Vector of ints. Size of each dimension.
  * @conf  dim_name              Vector of strings. Name of each dimension.
  * @conf  do_once               Bool. Set data only once, for a single frame.
+ * @conf  time_downsampling_fpga  Int. Number of FPGA samples per output frame. Required (and
+ *                              only used) if `metadata_source` is given.
  *
  * @author Roland Haas, based on testDataGen
  */
@@ -46,6 +55,9 @@ private:
     const std::vector<kotekan::Symbol> _dim_name;
     const std::vector<std::ptrdiff_t> _dim_scalings;
     const bool _do_once;
+    // Optional clock
+    Buffer* const _in_buf;
+    const std::int64_t _time_downsampling_fpga;
 };
 
 #endif
