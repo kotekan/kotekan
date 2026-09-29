@@ -5,7 +5,7 @@
 #include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
 #include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
-#include "kotekanLogging.hpp"     // for DEBUG2, INFO
+#include "kotekanLogging.hpp"     // for DEBUG2, ERROR, INFO
 #include "restServer.hpp"         // for restServer, connectionInstance
 #include "util.h"                 // for e_time
 #include "visUtil.hpp"            // for StatTracker
@@ -15,6 +15,7 @@
 
 #include <assert.h>    // for assert
 #include <cmath>       // for isnan
+#include <cstdlib>     // for abort
 #include <functional>  // for bind, ref, function, _1
 #include <map>         // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
 #include <memory>      // for __shared_ptr_access, shared_ptr
@@ -72,12 +73,17 @@ gpuProcess::~gpuProcess() {
     // remove_get_callback() waits for an in-flight invocation to finish, so the
     // callback cannot still be walking `commands` once this returns.
     restServer::instance().remove_get_callback(_profile_endpoint);
-    // main_thread() stops the signals and joins the results thread on every exit path; this is
-    // the backstop for a stage that got here with the thread still alive. Deleting a signal the
-    // results thread is waiting on blocks forever in pthread_cond_destroy (glibc waits for the
-    // waiter to leave), and destroying a joinable std::thread terminates the process.
-    if (results_thread_handle.joinable())
-        stop_results_thread();
+    // main_thread() joins the results thread on every exit path, so it can still be joinable here
+    // only if this stage is destroyed while its main_thread runs: a stage deleted without stop()
+    // and join(), which is undefined behaviour before this line (the derived destructors have
+    // already run). Joining could not make that safe, and deleting the signals below would block
+    // forever in pthread_cond_destroy on the live waiter, so fail loudly instead of hanging.
+    if (results_thread_handle.joinable()) {
+        ERROR("{:s}: destroyed with its results thread still running (the stage was deleted "
+              "without stop() and join()); aborting instead of hanging in teardown.",
+              unique_name);
+        std::abort();
+    }
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
@@ -187,12 +193,17 @@ void gpuProcess::main_thread() {
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[ic]->wait_for_free_slot();
 
-        // The slot came free because the results thread finished with that frame. On a shutdown
-        // it does so WITHOUT finalize_frame(), so the frame's ring-buffer claims and host frames
-        // are still held; running the next frame's preconditions on this slot would find them
-        // held and raise a FatalError over an ordinary shutdown. Leave instead.
-        if (stop_thread)
+        // The slot came free because the results thread finished that slot's previous frame. Once
+        // a stop is set it finishes frames WITHOUT finalize_frame(), so that frame's ring-buffer
+        // claims and host frames may still be held: an NDArrayRingBuffer reader would raise a
+        // FatalError over an ordinary shutdown, and a frame-buffer command would reuse the stale
+        // frame. Never start a frame after a stop.
+        if (stop_thread) {
+            INFO(
+                "Stop requested while GPU[{:d}] waited for a free slot; leaving before frame {:d}.",
+                gpu_id, gpu_frame_counter);
             break;
+        }
 
         // Update the gpu_frame_counter and perform any reset actions on the command object
         // for this frame.
