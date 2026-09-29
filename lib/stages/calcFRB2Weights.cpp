@@ -151,7 +151,7 @@ public:
                 // Assume we keep the frequency itself
                 coarse_freq.push_back(channel);
                 freq_upchan_factor.push_back(1);
-                freq_upchan_index.push_back(1);
+                freq_upchan_index.push_back(0);
                 frequencies.push_back(frequency);
             } else {
                 // Assume we do not keep the frequency itself, we only process the upchannelized
