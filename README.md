@@ -1,17 +1,17 @@
 
 # Contributing
 
-If you are contributing, or even just a kotekan user, please have a look at the documentation! You can find an [https://kotekan.readthedocs.io/latest/overview.html](overview of kotekan) and [https://kotekan.readthedocs.io/latest/overview_theory_of_operation.html](theory of operation) in the documentaton, which is available at [https://kotekan.readthedocs.io/](kotekan.readthedocs.io).
+If you are contributing, or even just a kotekan user, please have a look at the documentation! You can find an [overview of kotekan](https://kotekan.readthedocs.io/latest/overview.html) and [theory of operation](https://kotekan.readthedocs.io/latest/overview_theory_of_operation.html) in the documentation, which is available at [kotekan.readthedocs.io](https://kotekan.readthedocs.io/).
 
 [![Documentation Status](https://app.readthedocs.org/projects/kotekan/badge/)](https://kotekan.readthedocs.io/)
 
-In general, it is asked that contributors aim for changes that address operational needs, rather than routine code maintenance. It is also helpful for developers to ask for an adversarial review from an LLM before submitting a pull request for human review. If using an LLM, PR descriptions should be written for human reviewers with less exposition. An AGENTS.md file exists in this repository to support these goals.
+Please send changes that meet an operational need, not refactoring or reformatting on its own. Before asking for human review, it helps to ask an LLM for an adversarial review of the pull request. Write PR descriptions for human reviewers, in a few sentences: what changed, why, and how it was tested. An AGENTS.md file in this repository supports these goals.
 
 # Repository layout
 
 - `kotekan/` - the `kotekan` executable entry point.
 - `lib/core/` - framework: `Stage` base class and factory, `buffer`/frame management, `ringbuffer`, `Config`, REST server, logging, metrics.
-- `lib/stages/` - CPU stages (network I/O, file writers, N2 processing, RFI, beamforming support). Most new pipeline work lands here.
+- `lib/stages/` - CPU stages (network I/O, file writers, N2 processing, RFI, beamforming support).
 - `lib/metadata/` - per-frame metadata types and frame descriptors (`chordMetadata`, `N2FrameDesc`, `N2Layout`, `NDArray`).
 - `lib/utils/` - shared helpers: telescope definitions, dataset manager and states, frame views, file formats, time utilities.
 - `lib/gpu/`, `lib/cuda/`, `lib/hip/`, `lib/opencl/` - GPU framework and backend-specific commands. `lib/cuda/generated/` holds kernels produced by `julia/`; regenerate them there rather than editing by hand.
@@ -30,7 +30,7 @@ In general, it is asked that contributors aim for changes that address operation
 - **Stage** - a pipeline unit with its own thread, configured under `kotekan_stage` in a yaml config. Consumes and produces buffers. Older docs call these "processes".
 - **Buffer / frame** - a buffer is a fixed set of equal-size frames shared between stages; a frame is the unit a producer fills and a consumer releases. Each frame carries a metadata object drawn from a **metadata pool**.
 - **Ring buffer** - a byte-addressed circular buffer with a cursor, used between GPU stages instead of framed buffers.
-- **Element / input** - one correlator input, that is one dish-polarization pair. `num_elements` counts inputs. Labels use the form `<dish>p<pol>`.
+- **Element / input** - one correlator input, that is one dish-polarization pair. `num_elements` counts inputs. Labels are the dish label followed by the polarization letter, for example `A01X` and `A01Y`.
 - **Dish / feed** - the physical antenna. A dish has two inputs, one per polarization.
 - **Product** - one visibility, a pair of inputs. Autocorrelations are the products of an input with itself.
 - **N2 layout** (also visibility layout) - the arrangement of products within an N2 frame, described by `N2Layout`. Use this term rather than "frame order".
