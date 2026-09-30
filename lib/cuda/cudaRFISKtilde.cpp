@@ -324,6 +324,12 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
         const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
         rfi_meta->set_time_downsampling_fpga(rfi_meta->get_time_downsampling_fpga()
                                              * div_noremainder(128 * 8, rfi_downsampling_factor));
+        // The applied-mask echo too, here and never per frame: its consumer (the copy to the
+        // host, in another thread) copies slot 0 every frame, so replacing it every frame races
+        // that copy. The copy takes each frame's sequence number from the ring position, not
+        // from this object.
+        if (bf_mask_applied)
+            bf_mask_applied->set_metadata(rfi_S012.get_metadata());
     }
 
     if (poison_buffers) {
@@ -387,7 +393,6 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
         // rfi time sample produced, so the stream advances in step with rfi_SKtilde and
         // the copy to the host chunks it into one mask frame per correlation frame. The
         // claimed region may wrap around the end of the ring buffer.
-        bf_mask_applied->set_metadata(rfi_S012.get_metadata());
         std::int8_t* const echo_memory = bf_mask_applied->get_ndarray().data();
         const long echo_Tsize = bf_mask_applied->get_ndarray().extent(0);
         const long echo_stride = bf_mask_applied->get_ndarray().stride(0);
