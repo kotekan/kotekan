@@ -274,13 +274,14 @@ private:
     matrix_type V_;
     /// A * V (n x k)
     iterate_type AV_;
-    /// QR factors used to orthonormalise an n x k subspace
+    /// The Q factor used to orthonormalise an n x k subspace, and the R factor of every
+    /// QR decomposition, which is never read (kp x kp)
     matrix_type Q_, R_;
 
     /// The block Krylov subspace (n x kp) ...
     matrix_type K_;
-    /// ... its QR factors (n x kp, kp x kp) ...
-    matrix_type QK_, RK_;
+    /// ... its Q factor (n x kp) ...
+    matrix_type QK_;
     /// ... the conjugate transpose of its orthonormal basis (kp x n) ...
     ctrans_type QKh_;
     /// ... that basis projected onto Am (kp x n) ...
@@ -289,9 +290,8 @@ private:
     /// eigenvalues ...
     matrix_type At_;
     vector_type evals_kp_;
-    /// ... the Ritz vectors (n x kp) and the phase that fixes each one's degeneracy
+    /// ... and the Ritz vectors (n x kp)
     matrix_type Vfull_;
-    std::vector<MT> phase_;
 
     /// The eigenvalues on a diagonal (k x k), V * L (n x k) and the conjugate transpose
     /// of V (k x n), from which Ar_ is formed
@@ -326,17 +326,15 @@ void EigenMaskedSubspaceSolver<MT>::resize(size_t n, size_t k, size_t p, size_t 
     V_.resize(n, k, false);
     AV_.resize(n, k, false);
     Q_.resize(n, k, false);
-    R_.resize(k, k, false);
+    R_.resize(kp, kp, false);
 
     K_.resize(n, kp, false);
     QK_.resize(n, kp, false);
-    RK_.resize(kp, kp, false);
     QKh_.resize(kp, n, false);
     KhA_.resize(kp, n, false);
     At_.resize(kp, kp, false);
     evals_kp_.resize(kp, false);
     Vfull_.resize(n, kp, false);
-    phase_.resize(kp);
 
     L_.resize(k, false);
     VL_.resize(n, k, false);
@@ -380,29 +378,26 @@ void EigenMaskedSubspaceSolver<MT>::augmented_ritz() {
     // matrix is formed as a plain product and heevd reads its lower triangle, which is
     // what blaze::eigen does with a Hermitian matrix, minus the temporary copy it makes
     // of it; the eigenvectors overwrite it.
-    blaze::qr(K_, QK_, RK_);
+    blaze::qr(K_, QK_, R_);
     QKh_ = blaze::ctrans(QK_);
     KhA_ = QKh_ * Am_;
     At_ = KhA_ * QK_;
     blaze::heevd(At_, evals_kp_, 'V', 'L');
     Vfull_ = QK_ * At_;
 
-    // Set the phase degeneracy if it exists. An input whose visibilities are all zero
-    // leaves every Ritz vector with a zero first element, which has no phase to fix.
-    for (unsigned int j = 0; j < Vfull_.columns(); j++) {
-        MT z = Vfull_(0, j);
-        const real_type magnitude = std::abs(z);
-        phase_[j] = magnitude > 0 ? std::conj(z) / magnitude : MT(1);
-    }
-    for (unsigned int i = 0; i < Vfull_.rows(); i++) {
-        for (unsigned int j = 0; j < Vfull_.columns(); j++) {
-            Vfull_(i, j) *= phase_[j];
-        }
-    }
-
     // Keep the highest eigenpairs
     evals_ = blaze::subvector(evals_kp_, top, k_);
     V_ = blaze::submatrix(Vfull_, 0, top, n_, k_);
+
+    // Set the phase degeneracy if it exists, making the first element of each
+    // eigenvector real. An input whose visibilities are all zero leaves that element
+    // zero, with no phase to fix.
+    for (size_t j = 0; j < k_; j++) {
+        const MT z = V_(0, j);
+        const real_type magnitude = std::abs(z);
+        if (magnitude > 0)
+            blaze::column(V_, j) *= std::conj(z) / magnitude;
+    }
 }
 
 
@@ -429,9 +424,10 @@ void EigenMaskedSubspaceSolver<MT>::backfill(const DynamicHermitian<MT>& A,
         blaze::gemm(C, VL_, B, MT(1), MT(0));
     }
 
-    // Back fill the missing entries of the array. The reconstruction is Hermitian only
-    // to rounding, so it and the filled matrix are kept as plain matrices.
-    Am_ = A % W + Ar_ - Ar_ % W;
+    // Back fill the missing entries of the array: the masked entries take the
+    // reconstruction, the rest the data. The reconstruction is Hermitian only to
+    // rounding, so it and the filled matrix are kept as plain matrices.
+    Am_ = Ar_ + (A - Ar_) % W;
 }
 
 
@@ -566,6 +562,65 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
     const EigConvergenceStats stats =
         solver.solve(A, W, k, tol_eval, tol_evec, maxiter, k_conv, p, q, rng);
     return {{solver.evals(), solver.evecs()}, stats};
+}
+
+/**
+ * @brief Build the mask of a matrix to decompose, in place.
+ *
+ * One includes an element in the decomposition, zero leaves it to be filled in from
+ * the low rank estimate. The mask is written through the Hermitian adaptor's element
+ * access, which sets each entry and its transpose together, so an existing mask of the
+ * right size is rebuilt without allocating.
+ *
+ * @param  mask            The mask to build, resized if it is not num_elements square.
+ * @param  num_elements    Number of elements in the matrix.
+ * @param  exclude_inputs  Inputs whose rows and columns are masked out. Must be in range.
+ * @param  flags           Per-element flags: an input with a zero flag is masked out
+ *                         like an excluded one. Empty for no flags.
+ * @param  diagonal_bands  Ranges [first, second) of diagonal bands to mask out, with 0
+ *                         the main diagonal; sub-diagonals are masked with their
+ *                         super-diagonals. Each range must satisfy first <= second <=
+ *                         num_elements.
+ * @param  block_size      If not zero, mask out blocks of this size on the diagonal.
+ **/
+inline void fill_mask(DynamicHermitian<float>& mask, size_t num_elements,
+                      const std::vector<size_t>& exclude_inputs, const std::vector<float>& flags,
+                      const std::vector<std::pair<size_t, size_t>>& diagonal_bands,
+                      size_t block_size) {
+    if (mask.rows() != num_elements)
+        mask.resize(num_elements, false);
+
+    // Include everything ...
+    for (size_t i = 0; i < num_elements; i++)
+        for (size_t j = i; j < num_elements; j++)
+            mask(i, j) = 1.0f;
+
+    // ... then zero out the rows and columns of excluded and flagged inputs ...
+    for (size_t i = 0; i < num_elements; i++) {
+        const bool excluded =
+            std::find(exclude_inputs.begin(), exclude_inputs.end(), i) != exclude_inputs.end();
+        const bool flagged = i < flags.size() && flags[i] == 0.0f;
+        if (!excluded && !flagged)
+            continue;
+        for (size_t j = 0; j < num_elements; j++)
+            mask(i, j) = 0.0f;
+    }
+
+    // ... the diagonal bands, super- and sub-diagonal together ...
+    for (const auto& band : diagonal_bands)
+        for (size_t b = band.first; b < band.second; b++)
+            for (size_t i = 0; i + b < num_elements; i++)
+                mask(i, i + b) = 0.0f;
+
+    // ... and the blocks on the diagonal.
+    if (block_size > 0) {
+        for (size_t start = 0; start < num_elements; start += block_size) {
+            const size_t end = std::min(num_elements, start + block_size);
+            for (size_t i = start; i < end; i++)
+                for (size_t j = i; j < end; j++)
+                    mask(i, j) = 0.0f;
+        }
+    }
 }
 
 /**

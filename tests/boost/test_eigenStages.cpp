@@ -137,6 +137,7 @@ static EigenResults run_pipeline(const EigenStageTestParams& p) {
     cfg[fake_name]["freq_ids"] = p.freq_ids;
     cfg[fake_name]["num_elements"] = p.num_elements;
     // FakeN2 counts its frame limit in time steps, one frame per frequency each
+    BOOST_REQUIRE_EQUAL(p.total_frames % p.freq_ids.size(), 0u);
     cfg[fake_name]["num_frames"] = p.total_frames / p.freq_ids.size();
     cfg[fake_name]["cadence"] = 1.0;
     cfg[fake_name]["wait"] = false;

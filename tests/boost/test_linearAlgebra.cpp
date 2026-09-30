@@ -23,18 +23,20 @@ using cfloat = std::complex<float>;
 #if defined(__linux__) && defined(__GLIBC__)
 // Count the aligned allocations blaze's containers make (blaze allocates them with
 // posix_memalign on this platform) that are at least `allocation_threshold` bytes.
-// Interposing the function in the executable catches every call in the process, from
-// every thread, hence the atomics.
+// Interposing the function in the executable catches every call in the process, so
+// counting is switched on per thread and only while a test wants it, to keep other
+// threads' allocations out of the count.
 namespace {
 std::atomic<size_t> allocation_threshold{0};
 std::atomic<size_t> large_allocations{0};
+thread_local bool count_allocations = false;
 } // namespace
 
-extern "C" int posix_memalign(void** ptr, size_t alignment, size_t size) {
+extern "C" int posix_memalign(void** ptr, size_t alignment, size_t size) noexcept {
     using posix_memalign_t = int (*)(void**, size_t, size_t);
     static const posix_memalign_t real =
         reinterpret_cast<posix_memalign_t>(dlsym(RTLD_NEXT, "posix_memalign"));
-    if (size >= allocation_threshold)
+    if (count_allocations && size >= allocation_threshold)
         large_allocations++;
     return real(ptr, alignment, size);
 }
@@ -357,7 +359,8 @@ BOOST_AUTO_TEST_CASE(solver_reuse_across_sizes) {
 // must not allocate any blaze container again: that is what the solver is for. The
 // LAPACK scratch arrays blaze's qr() and heevd() make on every call are not blaze
 // containers and are allowed. The size here keeps every product below the threshold
-// at which blaze's own product kernel would make packing buffers of its own.
+// at which blaze's own product kernel would make packing buffers of its own, and the
+// solves run on this thread alone so that every allocation they make is counted.
 #if defined(__linux__) && defined(__GLIBC__)
 BOOST_AUTO_TEST_CASE(solver_reuse_does_not_allocate) {
     const size_t n = 512;
@@ -365,13 +368,17 @@ BOOST_AUTO_TEST_CASE(solver_reuse_does_not_allocate) {
     const auto W = test_mask(n);
     // The smallest matrix in the workspace is the n x num_ev subspace
     allocation_threshold = n * num_ev * sizeof(cfloat);
+    const size_t threads = blaze::getNumThreads();
+    blaze::setNumThreads(1);
 
     EigenMaskedSubspaceSolver<cfloat> solver;
     std::mt19937 rng(eigen_subspace_seed);
 
     // Only solve() is counted: copying the results out is the test's own allocation.
     large_allocations = 0;
+    count_allocations = true;
     const auto first_stats = solver.solve(A, W, num_ev, tol, tol, max_iterations, 0, 2, 3, rng);
+    count_allocations = false;
     // The first call builds the workspace
     BOOST_CHECK_GT(large_allocations.load(), 0u);
     const Result first{solver.evals(), solver.evecs(), first_stats};
@@ -380,12 +387,69 @@ BOOST_AUTO_TEST_CASE(solver_reuse_does_not_allocate) {
     for (int round = 0; round < 3; round++) {
         rng.seed(eigen_subspace_seed);
         large_allocations = 0;
+        count_allocations = true;
         const auto stats = solver.solve(A, W, num_ev, tol, tol, max_iterations, 0, 2, 3, rng);
+        count_allocations = false;
         BOOST_CHECK_EQUAL(large_allocations.load(), 0u);
         check_identical(first, Result{solver.evals(), solver.evecs(), stats});
     }
+
+    blaze::setNumThreads(threads);
 }
 #endif
+
+// The mask built in place through the Hermitian adaptor must equal the one the stage
+// used to build in a plain matrix and copy, for every kind of entry it masks, at a size
+// that is not a multiple of the SIMD width, and it must reuse its storage.
+BOOST_AUTO_TEST_CASE(fill_mask_matches_reference) {
+    const size_t n = 37;
+    const std::vector<size_t> excluded = {0, 5, 36};
+    std::vector<float> flags(n, 1.0f);
+    flags[7] = 0.0f;
+    flags[20] = 0.0f;
+    const std::vector<std::pair<size_t, size_t>> bands = {{0, 2}, {9, 12}};
+    const size_t block = 8;
+
+    // The reference, built as EigenN2Iter::calculate_mask did
+    blaze::DynamicMatrix<float, blaze::columnMajor> M(n, n, 1.0f);
+    for (size_t e : excluded)
+        for (size_t j = 0; j < n; j++)
+            M(e, j) = M(j, e) = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        if (flags[i] != 0.0f)
+            continue;
+        for (size_t j = 0; j < n; j++)
+            M(i, j) = M(j, i) = 0.0f;
+    }
+    for (const auto& br : bands)
+        for (int64_t b = br.first; b < (int64_t)br.second; b++) {
+            blaze::band(M, b) = 0.0f;
+            blaze::band(M, -b) = 0.0f;
+        }
+    for (size_t start = 0; start < n; start += block) {
+        const size_t width = std::min(n - start, block);
+        blaze::submatrix(M, start, start, width, width) = 0.0f;
+    }
+    const DynamicHermitian<float> reference = blaze::declherm(M);
+
+    DynamicHermitian<float> mask;
+    fill_mask(mask, n, {}, {}, {}, 0);
+    const float* const storage = mask.data();
+    // A rebuild of the same size, with different entries masked, must reuse the storage
+    fill_mask(mask, n, excluded, flags, bands, block);
+    BOOST_CHECK_EQUAL(mask.data(), storage);
+
+    BOOST_REQUIRE_EQUAL(mask.rows(), n);
+    size_t masked = 0;
+    for (size_t i = 0; i < n; i++)
+        for (size_t j = 0; j < n; j++) {
+            BOOST_CHECK_EQUAL(mask(i, j), reference(i, j));
+            masked += mask(i, j) == 0.0f;
+        }
+    // ... and it must actually mask something, and not everything
+    BOOST_CHECK_GT(masked, 0u);
+    BOOST_CHECK_LT(masked, n * n);
+}
 
 // Unpacking a frame's triangle into an existing container must fill it in place and
 // give the same matrix as unpacking into a new one.

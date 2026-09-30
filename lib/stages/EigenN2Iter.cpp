@@ -1,15 +1,14 @@
 #include "EigenN2Iter.hpp"
 
-#include "Config.hpp"         // for Config
-#include "Hash.hpp"           // for operator!=, operator<
-#include "LinearAlgebra.hpp"  // for EigConvergenceStats, EigenMaskedSubspaceSolver, to_blaze_herm
-#include "N2FrameDesc.hpp"    // for N2FrameDesc
-#include "N2FrameView.hpp"    // for N2FrameView
-#include "N2Util.hpp"         // for cfloat, frameID
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"         // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
-#include "div.hpp"            // for div_ceil
-#include "kotekanLogging.hpp" // for DEBUG
+#include "Config.hpp" // for Config
+#include "Hash.hpp"   // for operator!=, operator<
+#include "LinearAlgebra.hpp" // for EigConvergenceStats, EigenMaskedSubspaceSolver, fill_mask, to_blaze_herm
+#include "N2FrameDesc.hpp"       // for N2FrameDesc
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Util.hpp"            // for cfloat, frameID
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"            // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
+#include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
 
 #include "fmt.hpp"      // for format, fmt
@@ -17,7 +16,7 @@
 
 #include <algorithm>     // for find, min
 #include <atomic>        // for atomic_bool
-#include <blaze/Blaze.h> // for DynamicMatrix, DMatDeclHermExpr, band, HermitianMatrix
+#include <blaze/Blaze.h> // for setNumThreads
 #include <cblas.h>       // for openblas_set_num_threads
 #include <complex>       // for complex
 #include <cstdint>       // for uint32_t, int32_t
@@ -173,7 +172,6 @@ void EigenN2Iter::main_thread() {
     EigenMaskedSubspaceSolver<cfloat> solver;
     DynamicHermitian<cfloat> vis;
     DynamicHermitian<float> mask;
-    blaze::DynamicMatrix<float, blaze::columnMajor> mask_scratch;
     uint32_t num_elements = 0;
     // Binarized per-element flags the cached mask was built from (any non-zero
     // incoming flag counts as good). Empty until the first frame forces a build.
@@ -232,7 +230,7 @@ void EigenN2Iter::main_thread() {
                     applied_flags[i] = input_frame.flags[i] != 0.0f ? 1.0f : 0.0f;
             }
 
-            calculate_mask(num_elements, applied_flags, mask_scratch, mask);
+            calculate_mask(num_elements, applied_flags, mask);
 
             // Count the elements neither the flags nor the config masks out.
             num_good_elements = 0;
@@ -272,17 +270,25 @@ void EigenN2Iter::main_thread() {
                 last_degenerate_warn = current_time();
             }
         } else {
-            // Copy the visibilities into the blaze container
-            to_blaze_herm(input_frame.vis, vis);
-
-            try {
-                stats = solver.solve(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
-                                     _max_iterations, _num_ev_conv, _krylov, _subspace);
-            } catch (const std::exception& e) {
+            // A failure of LAPACK (runtime_error) or of blaze's checks on the frame's
+            // data (invalid_argument: an autocorrelation with an imaginary part, say) is
+            // a property of the frame, which is then reported as failed. Anything else,
+            // such as running out of memory, is not, and is left to propagate.
+            auto frame_failed = [&](const std::exception& e) {
                 ERROR("Could not find eigenvalues after {:d} for frame fpga_seq {:d}: {:s}",
                       _max_iterations, input_frame.fpga_start_tick, e.what());
                 num_failed_eigencalc.inc(1);
                 failed = true;
+            };
+            try {
+                // Copy the visibilities into the blaze container
+                to_blaze_herm(input_frame.vis, vis);
+                stats = solver.solve(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
+                                     _max_iterations, _num_ev_conv, _krylov, _subspace);
+            } catch (const std::runtime_error& e) {
+                frame_failed(e);
+            } catch (const std::invalid_argument& e) {
+                frame_failed(e);
             }
         }
 
@@ -385,7 +391,6 @@ void EigenN2Iter::update_metrics(int freq_id, double elapsed_time,
 
 
 void EigenN2Iter::calculate_mask(size_t num_elements, const std::vector<float>& flags,
-                                 blaze::DynamicMatrix<float, blaze::columnMajor>& scratch,
                                  DynamicHermitian<float>& mask) const {
     // Blaze does not bounds check element access in a release build, so a
     // config containing an out of bounds element would corrupt memory.
@@ -401,53 +406,9 @@ void EigenN2Iter::calculate_mask(size_t num_elements, const std::vector<float>& 
             FATAL_ERROR("The `diagonal_bands_filled` range [{:d}, {:d}) is not a valid band range "
                         "for frames with {:d} elements.",
                         br.first, br.second, num_elements);
-    }
-
-    // Build the mask in the scratch matrix, which keeps its storage from one rebuild to
-    // the next, and copy it into the Hermitian mask at the end.
-    auto& M = scratch;
-    M.resize(num_elements, num_elements, false);
-
-    // Construct the mask matrix ...
-    // Go through and zero out data in excluded rows and columns.
-    M = 1.0f;
-    for (auto iexclude : _exclude_inputs) {
-        for (size_t j = 0; j < num_elements; j++) {
-            M(iexclude, j) = 0.0;
-            M(j, iexclude) = 0.0;
-        }
-    }
-
-    // Zero out the rows and columns of elements flagged bad. The flags here
-    // are already binarized, as the solver's mask must be strictly binary.
-    for (size_t i = 0; i < num_elements; i++) {
-        if (flags[i] != 0.0f)
-            continue;
-        for (size_t j = 0; j < num_elements; j++) {
-            M(i, j) = 0.0;
-            M(j, i) = 0.0;
-        }
-    }
-
-    // Remove specified diagonal bands
-    for (const auto& br : _diagonal_bands_filled) {
         DEBUG("Masking diagonal bands [{:d}, {:d}).", br.first, br.second);
-        // Signed so that -i below is a genuine negation, not size_t wraparound.
-        for (int64_t i = br.first; i < (int64_t)br.second; i++) {
-            blaze::band(M, i) = 0.0;
-            blaze::band(M, -i) = 0.0;
-        }
     }
 
-    // Zero out blocks on the diagonal if requested
-    if (_block_fill_size > 0) {
-        unsigned int nb = kotekan::div_ceil(num_elements, _block_fill_size);
-        for (unsigned int ii = 0; ii < nb; ii++) {
-            unsigned int start = ii * _block_fill_size;
-            unsigned int width = std::min(num_elements - start, _block_fill_size);
-            blaze::submatrix(M, start, start, width, width) = 0.0;
-        }
-    }
-
-    mask = blaze::declherm(M);
+    // The flags here are already binarized, as the solver's mask must be strictly binary.
+    fill_mask(mask, num_elements, _exclude_inputs, flags, _diagonal_bands_filled, _block_fill_size);
 }
