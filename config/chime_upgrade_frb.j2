@@ -1899,7 +1899,6 @@ write_frb:
     input_order: CHIMEBeamformer
 
 # enable to dump sk statistics data
-{% if False %}
 host_rfi_SKtilde_buffer:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
@@ -1948,15 +1947,15 @@ switch_sk_out:
       - enabled: host_rfi_SKtilde_buffer
     out_buf: host_rfi_SKtilde_buffer_post
     updatable_config: /updatable_config/enable_sk_out
-dump_rfi_SKtilde:
+write_rfi_SKtilde:
    kotekan_stage: hdf5FileWrite
     log_level: warn
    base_dir: rfi_sk_dump
    in_buf: host_rfi_SKtilde_buffer_post
    file_name: host_rfi_SKtilde_buffer
-   create_single_file: true
+   create_single_file: false
+   frames_per_file: 50000000 # just over 2 minutes(?)
    input_order: CHIMEBeamformer
-{% endif %}
 
 ################################################################################
 # Additional configuration
