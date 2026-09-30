@@ -21,7 +21,9 @@ using kotekan::numa_node_of_cpus;
 using kotekan::numa_supported;
 using kotekan::ScopedNumaPolicy;
 
-#ifdef __linux__
+// Only the builds that can set a policy have a use for reading one back; a
+// NO_MEMLOCK build never sets any, and its unused probe would fail -Werror.
+#if defined(__linux__) && !defined(WITH_NO_MEMLOCK)
 namespace {
 
 /// The calling thread's memory policy, read straight from the kernel so that
@@ -179,6 +181,8 @@ BOOST_AUTO_TEST_CASE(scoped_policy_places_allocations) {
         }
         munmap(block, size);
     }
+#else
+    BOOST_TEST_MESSAGE("NO_MEMLOCK build: memory policies are never set");
 #endif
 }
 #endif
