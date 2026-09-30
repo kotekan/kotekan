@@ -155,7 +155,9 @@ endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
     add_executable(test_linearAlgebra test_linearAlgebra.cpp)
-    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core)
+    # CMAKE_DL_LIBS for the dlsym behind its allocation counting
+    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core
+                                                     ${CMAKE_DL_LIBS})
     target_include_directories(test_linearAlgebra PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 
     add_executable(test_eigenStages test_eigenStages.cpp)

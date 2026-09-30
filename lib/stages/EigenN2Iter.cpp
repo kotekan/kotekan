@@ -1,15 +1,15 @@
 #include "EigenN2Iter.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator!=, operator<
-#include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
-#include "N2FrameDesc.hpp"       // for N2FrameDesc
-#include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Util.hpp"            // for cfloat, frameID
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
-#include "div.hpp"               // for div_ceil
-#include "kotekanLogging.hpp"    // for DEBUG
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator!=, operator<
+#include "LinearAlgebra.hpp"  // for EigConvergenceStats, EigenMaskedSubspaceSolver, to_blaze_herm
+#include "N2FrameDesc.hpp"    // for N2FrameDesc
+#include "N2FrameView.hpp"    // for N2FrameView
+#include "N2Util.hpp"         // for cfloat, frameID
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"         // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
+#include "div.hpp"            // for div_ceil
+#include "kotekanLogging.hpp" // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
 
 #include "fmt.hpp"      // for format, fmt
@@ -27,7 +27,6 @@
 #include <memory>        // for make_unique
 #include <regex>         // for match_results<>::_Base_type
 #include <stdexcept>     // for runtime_error, out_of_range
-#include <tuple>         // for tie, tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -162,6 +161,11 @@ void EigenN2Iter::main_thread() {
     // is not used afterwards
     frameID failed_frame_id(failed_buf != nullptr ? failed_buf : out_buf);
 
+    // The solver keeps every matrix it works on between frames, and each frame's
+    // visibilities are unpacked into the same container, so after the first frame
+    // nothing of the size of the visibility matrix is allocated per frame.
+    EigenMaskedSubspaceSolver<cfloat> solver;
+    DynamicHermitian<cfloat> vis;
     DynamicHermitian<float> mask;
     uint32_t num_elements = 0;
     // Binarized per-element flags the cached mask was built from (any non-zero
@@ -182,8 +186,7 @@ void EigenN2Iter::main_thread() {
 
     while (!stop_thread) {
 
-        // Containers for results
-        eig_t<cfloat> eigpair;
+        // How this frame's decomposition converged; the eigenpairs stay in the solver
         EigConvergenceStats stats;
         bool failed = false;
 
@@ -262,13 +265,12 @@ void EigenN2Iter::main_thread() {
                 last_degenerate_warn = current_time();
             }
         } else {
-            // Copy the visibilities into a blaze container
-            DynamicHermitian<cfloat> vis = to_blaze_herm(input_frame.vis);
+            // Copy the visibilities into the blaze container
+            to_blaze_herm(input_frame.vis, vis);
 
             try {
-                std::tie(eigpair, stats) =
-                    eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
-                                          _max_iterations, _num_ev_conv, _krylov, _subspace);
+                stats = solver.solve(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
+                                     _max_iterations, _num_ev_conv, _krylov, _subspace);
             } catch (const std::runtime_error& e) {
                 ERROR("Could not find eigenvalues after {:d} for frame fpga_seq {:d}: {:s}",
                       _max_iterations, input_frame.fpga_start_tick, e.what());
@@ -313,8 +315,8 @@ void EigenN2Iter::main_thread() {
             // output buffers.
             double elapsed_time = current_time() - start_time;
 
-            auto& evals = eigpair.first;
-            auto& evecs = eigpair.second;
+            const auto& evals = solver.evals();
+            const auto& evecs = solver.evecs();
 
             // Report eigenvalues to stdout.
             std::string str_evals = "";
@@ -326,7 +328,7 @@ void EigenN2Iter::main_thread() {
                   str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
 
             // Update Prometheus metrics
-            update_metrics(input_frame.freq_id, elapsed_time, eigpair, stats);
+            update_metrics(input_frame.freq_id, elapsed_time, evals, stats);
 
             // Copy in eigenvectors and eigenvalues.
             for (uint32_t i = 0; i < _num_eigenvectors; i++) {
@@ -350,7 +352,8 @@ void EigenN2Iter::main_thread() {
 }
 
 
-void EigenN2Iter::update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
+void EigenN2Iter::update_metrics(int freq_id, double elapsed_time,
+                                 const blaze::DynamicVector<float>& evals,
                                  const EigConvergenceStats& stats) {
     // Update average write time in prometheus
     auto& calc_time = calc_time_map[freq_id];
@@ -360,7 +363,7 @@ void EigenN2Iter::update_metrics(int freq_id, double elapsed_time, const eig_t<c
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {
         eigenvalue_metric.labels({std::to_string(i), std::to_string(freq_id)})
-            .set(eigpair.first[_num_eigenvectors - 1 - i]);
+            .set(evals[_num_eigenvectors - 1 - i]);
     }
 
     // Output RMS to prometheus

@@ -8,10 +8,15 @@
 #include "visUtil.hpp"
 
 #include <blaze/Blaze.h>
-#include <complex>     // for complex
+#include <cmath>       // for sqrt
+#include <complex>     // for complex, conj, abs
 #include <cstdint>     // for uint32_t
 #include <random>      // for mt19937, uniform_real_distribution
-#include <type_traits> // for is_same_v
+#include <stdexcept>   // for invalid_argument
+#include <string>      // for to_string
+#include <type_traits> // for is_same_v, decay_t
+#include <utility>     // for pair, declval
+#include <vector>      // for vector
 
 // Type defs for simplicity
 // Map complex types to their real equivalent
@@ -68,138 +73,6 @@ double rms(const blaze::DenseVector<MT, TF>& A) {
         t += fast_norm(rd[i]);
     }
     return std::sqrt(t / n);
-}
-
-
-/**
- * @brief Orthonormalise a set of vectors using QR.
- *
- * @param  x  Vectors to orthonormalise.
- *
- * @return    Orthonormal vectors.
- **/
-template<typename MT>
-blaze::DynamicMatrix<MT, blaze::columnMajor>
-orth(const blaze::DynamicMatrix<MT, blaze::columnMajor>& x) {
-    blaze::DynamicMatrix<MT, blaze::columnMajor> Q, R;
-    qr(x, Q, R);
-    return Q;
-}
-
-
-/**
- * @brief Find eigenvalues of a subspace with the Ritz method.
- *
- * @param  A  A Hermitian matrix to find eigenpairs of.
- * @param  V  The subspace to decompose. A set of *row* vectors.
- *
- * @return    Pair of evals and evecs (row vectors).
- **/
-template<typename MT>
-eig_t<MT> ritz(const DynamicHermitian<MT>& A,
-               const blaze::DynamicMatrix<MT, blaze::columnMajor>& V) {
-    blaze::DynamicVector<real_t<MT>> evals;
-    blaze::DynamicMatrix<MT, blaze::columnMajor> evecst;
-
-    auto Vt = orth(V);
-    // auto At = blaze::evaluate(blaze::declherm(blaze::ctrans(V) * A * V));
-    DynamicHermitian<MT> At = blaze::declherm(blaze::ctrans(Vt) * A * Vt);
-    blaze::eigen(At, evals, evecst);
-
-    return {evals, Vt * evecst};
-}
-
-
-/**
- * @brief Construct the p-dimensional block Krylov subspace,
- * i.e. {V, A V, A^2 V, ..., A^{p-1} V}
- *
- * @param  A  Operator to use.
- * @param  V  Set of vectors (column wise)
- * @param  p  The number of iterations performed.
- *
- * @return    The block Krylov subspace.
- **/
-template<typename MT>
-blaze::DynamicMatrix<MT, blaze::columnMajor>
-krylov(const DynamicHermitian<MT>& A, const blaze::DynamicMatrix<MT, blaze::columnMajor>& V,
-       unsigned int p) {
-    size_t nr = V.rows();
-    size_t nc = V.columns();
-
-    // Create matrix for holding Krylov subspace and set the first block
-    // TODO: this will probably break if the number of elements is not a
-    // multiple of eight
-    blaze::DynamicMatrix<MT, blaze::columnMajor> K{nr, nc * p};
-    blaze::submatrix<blaze::aligned>(K, 0, 0, nr, nc) = V;
-
-    // Iteratively apply A and set the result
-    for (unsigned int i = 1; i < p; i++) {
-        auto X = blaze::submatrix<blaze::aligned>(K, 0, nc * (i - 1), nr, nc);
-        blaze::submatrix<blaze::aligned>(K, 0, i * nc, nr, nc) = A * X;
-    }
-    return K;
-}
-
-
-/**
- * @brief Find eigenvalues of a subspace with an augmented Ritz method.
- *
- * This expands the subspace using a block Krylov method, performs a Ritz
- * method, before returning only the highest eigenpairs from.
- *
- * @param  A  A Hermitian matrix to find eigenpairs of.
- * @param  V  The subspace to decompose. A set of *row* vectors.
- * @param  p  The number of iterations performed.
- *
- * @return    Pair of evals and evecs (row vectors).
- **/
-template<typename MT>
-eig_t<MT> augmented_ritz(const DynamicHermitian<MT>& A,
-                         const blaze::DynamicMatrix<MT, blaze::columnMajor>& V, unsigned int p) {
-    size_t nr = V.rows();
-    size_t nc = V.columns();
-
-    // Form the Krylov subspace and perform a Ritz step
-    auto K = krylov(A, V, p);
-    auto epair = ritz(A, K);
-
-    // Set the phase degeneracy if it exists
-    auto& evec = epair.second;
-    std::vector<MT> norm;
-    for (unsigned int j = 0; j < evec.columns(); j++) {
-        MT z = evec(0, j);
-        norm.push_back(std::conj(z) / std::abs(z));
-    }
-    for (unsigned int i = 0; i < evec.rows(); i++) {
-        for (unsigned int j = 0; j < evec.columns(); j++) {
-            evec(i, j) *= norm[j];
-        }
-    }
-
-    // Create views of the relevant eigenvalues and vectors, these should get
-    // turned into Dynamic arrays by the implicit copy constructor
-    return {blaze::subvector(epair.first, (p - 1) * nc, nc),
-            blaze::submatrix(epair.second, 0, (p - 1) * nc, nr, nc)};
-}
-
-
-/**
- * @brief Construct a rank-N approx from eigenpairs.
- *
- * @param  eigpair  Eigenvalues and vectors.
- *
- * @return          The approximate matrix.
- **/
-template<typename MT>
-DynamicHermitian<MT> expand_rankN(const eig_t<MT>& eigpair) {
-    // Create an array with the eigenvalues on the diagonal
-    blaze::DiagonalMatrix<blaze::DynamicMatrix<MT, blaze::columnMajor>> L;
-    L.resize(eigpair.second.columns());
-    blaze::diagonal(L) = eigpair.first;
-
-    // Return thr rank-N approximation
-    return blaze::declherm(eigpair.second * L * blaze::ctrans(eigpair.second));
 }
 
 
@@ -270,11 +143,354 @@ MT rand_subspace_element(std::mt19937& rng) {
 }
 
 /**
- * @brief Find a low rank decomposition of a masked matrix.
+ * @brief Low rank decomposition of a masked matrix, keeping its workspace between calls.
  *
  * Method based on one described in Wen and Zhang 2017
  * (https://doi.org/10.1137/16M1058534). Also inspired by the suggestion in
- * Saad 2017 (http://dx.doi.org/10.1137/141002037).
+ * Saad 2017 (http://dx.doi.org/10.1137/141002037). A random starting subspace is
+ * refined by subspace iteration on the matrix, with the eigenpairs read off by a
+ * Rayleigh-Ritz step on a block Krylov extension of the subspace, and the masked
+ * entries of the matrix progressively filled in from the current low rank estimate.
+ *
+ * Every matrix the iteration works on lives in this object, several of them of the
+ * full n x n size: the masked and filled matrix, the rank-k reconstruction, and the
+ * subspace, Krylov and Ritz intermediates that blaze would otherwise allocate for
+ * itself as temporaries. They are allocated the first time solve() runs for a given
+ * problem size and are reused by every later call of that size, so a caller decomposing
+ * a stream of same-sized matrices, as the Eigen stages do, allocates once rather than
+ * once per matrix (and pays once, rather than per matrix, for faulting in the pages
+ * behind them). What solve() still allocates per call is what blaze allocates inside
+ * its own routines: the LAPACK scratch arrays of qr() and heevd(), and, for the n x k
+ * subspace products when a thread's share of one is above blaze's large-kernel
+ * threshold, the packing buffers of blaze's own product kernel. Both are of the order
+ * of the subspace size, not the matrix size.
+ *
+ * Reusing the workspace does not change the results: every call draws its starting
+ * subspace afresh from the generator it is given, and each workspace matrix is written
+ * in full before it is read. The arithmetic follows the allocating implementation this
+ * replaces step for step, with one exception. The n x n rank-k reconstruction is formed
+ * with BLAS gemm rather than blaze's own product kernel, which kotekan's
+ * BLAZE_BLAS_IS_PARALLEL=0 build routes every large product through and which allocates
+ * packing buffers of a few MB on every call. The two round differently, so the
+ * eigenpairs agree with the old implementation's to a few parts per million rather
+ * than to the last bit.
+ *
+ * The workspace is not synchronised: use one solver per thread.
+ **/
+template<typename MT>
+class EigenMaskedSubspaceSolver {
+public:
+    using real_type = real_t<MT>;
+    using vector_type = blaze::DynamicVector<real_type>;
+    using matrix_type = blaze::DynamicMatrix<MT, blaze::columnMajor>;
+
+    /**
+     * @brief Find the k largest eigenpairs of a masked matrix.
+     *
+     * @param  A         The matrix to decompose.
+     * @param  W         A mask matrix. One includes an elements, zero excludes it.
+     * @param  k         The number of eigenpairs to return.
+     * @param  tol_eval  The fractional tolerance for the convergence check.
+     * @param  tol_evec  The fractional tolerance for the convergence check.
+     * @param  maxiter   Maximum number of iterations. Must be at least one.
+     * @param  k_conv    The number of eigenpairs to use for the convergence check. If
+     *                   zero, use all eigenpairs.
+     * @param  p         Size of the Krylov subspace in the augmented Ritz.
+     * @param  q         Number of subspace updates per iteration.
+     * @param  rng       Generator for the random starting subspace. Defaults to the
+     *                   calling thread's generator.
+     *
+     * @return           How the iteration converged. The eigenpairs themselves are
+     *                   available from evals() and evecs() until the next call.
+     *
+     * @throws std::invalid_argument  If the sizes or parameters are inconsistent.
+     * @throws std::runtime_error     If a LAPACK routine fails.
+     **/
+    EigConvergenceStats solve(const DynamicHermitian<MT>& A, const DynamicHermitian<float>& W,
+                              size_t k, float tol_eval, float tol_evec, size_t maxiter,
+                              size_t k_conv = 0, size_t p = 2, size_t q = 3,
+                              std::mt19937& rng = eigen_subspace_rng());
+
+    /// The eigenvalues found by the last solve(), in ascending order.
+    const vector_type& evals() const {
+        return evals_;
+    }
+
+    /// The eigenvectors found by the last solve(), one per column, ordered as evals().
+    const matrix_type& evecs() const {
+        return V_;
+    }
+
+private:
+    // The types blaze evaluates these expressions into when left to make its own
+    // temporaries; the workspace uses the same ones so the same kernels run on it. The
+    // conjugate transpose of a column-major matrix is row-major, for one.
+    template<typename E>
+    using result_of_t = blaze::ResultType_t<std::decay_t<E>>;
+    using diagonal_type = blaze::DiagonalMatrix<matrix_type>;
+    using ctrans_type = result_of_t<decltype(blaze::ctrans(std::declval<const matrix_type&>()))>;
+    using iterate_type = result_of_t<decltype(std::declval<const DynamicHermitian<MT>&>()
+                                              * std::declval<const matrix_type&>())>;
+    using projection_type = result_of_t<decltype(std::declval<const ctrans_type&>()
+                                                 * std::declval<const DynamicHermitian<MT>&>())>;
+    using scaled_type = result_of_t<decltype(std::declval<const matrix_type&>()
+                                             * std::declval<const diagonal_type&>())>;
+    using overlap_type = result_of_t<decltype(std::declval<const ctrans_type&>()
+                                              * std::declval<const matrix_type&>())>;
+
+    /// Size the workspace for an n x n matrix, k eigenpairs and a Krylov factor of p.
+    /// This is the only place solve() allocates, and it only does so when a size changes.
+    void resize(size_t n, size_t k, size_t p);
+
+    /// The masked matrix, with its masked entries filled from the current estimate (n x n)
+    DynamicHermitian<MT> Am_;
+    /// The rank-k reconstruction from the current eigenpairs (n x n)
+    matrix_type Ar_;
+
+    /// The current subspace (n x k); on return, the eigenvectors
+    matrix_type V_;
+    /// A * V (n x k)
+    iterate_type AV_;
+    /// QR factors used to orthonormalise an n x k subspace
+    matrix_type Q_, R_;
+
+    /// The block Krylov subspace (n x kp) ...
+    matrix_type K_;
+    /// ... its QR factors (n x kp, kp x kp) ...
+    matrix_type QK_, RK_;
+    /// ... the conjugate transpose of its orthonormal basis (kp x n) ...
+    ctrans_type QKh_;
+    /// ... that basis projected onto Am (kp x n) ...
+    projection_type KhA_;
+    /// ... the projected matrix (kp x kp) and its eigenpairs ...
+    matrix_type At_;
+    vector_type evals_kp_;
+    matrix_type evecs_kp_;
+    /// ... the Ritz vectors (n x kp) and the phase that fixes each one's degeneracy
+    matrix_type Vfull_;
+    std::vector<MT> phase_;
+
+    /// The eigenvalues on a diagonal (k x k), V * L (n x k) and the conjugate transpose
+    /// of V (k x n), from which Ar_ is formed
+    diagonal_type L_;
+    scaled_type VL_;
+    ctrans_type Vh_;
+
+    /// The conjugate transpose of the previous iteration's subspace (k x n)
+    ctrans_type Vph_;
+    /// Overlap of the previous and current subspaces (k x k)
+    overlap_type evec_conv_;
+
+    /// The current and previous eigenvalues, the eigenvalue tolerances, and the
+    /// fractional eigenvalue changes tested for convergence
+    vector_type evals_, evalsp_, etols_, evconv_;
+};
+
+
+template<typename MT>
+void EigenMaskedSubspaceSolver<MT>::resize(size_t n, size_t k, size_t p) {
+    const size_t kp = k * p;
+
+    // Blaze skips a resize to the current size, and one to a size that fits the
+    // existing capacity only moves memory when asked to preserve the contents, which
+    // nothing here needs: every container is written in full before it is read.
+    auto ensure = [](auto& M, size_t rows, size_t columns) {
+        if (M.rows() != rows || M.columns() != columns)
+            M.resize(rows, columns, false);
+    };
+    auto ensure_square = [](auto& M, size_t size) {
+        if (M.rows() != size)
+            M.resize(size, false);
+    };
+    auto ensure_vector = [](auto& v, size_t size) {
+        if (v.size() != size)
+            v.resize(size, false);
+    };
+
+    ensure_square(Am_, n);
+    ensure(Ar_, n, n);
+
+    ensure(V_, n, k);
+    ensure(AV_, n, k);
+    ensure(Q_, n, k);
+    ensure(R_, k, k);
+
+    ensure(K_, n, kp);
+    ensure(QK_, n, kp);
+    ensure(RK_, kp, kp);
+    ensure(QKh_, kp, n);
+    ensure(KhA_, kp, n);
+    ensure(At_, kp, kp);
+    ensure_vector(evals_kp_, kp);
+    ensure(evecs_kp_, kp, kp);
+    ensure(Vfull_, n, kp);
+
+    ensure_square(L_, k);
+    ensure(VL_, n, k);
+    ensure(Vh_, k, n);
+
+    ensure(Vph_, k, n);
+    ensure(evec_conv_, k, k);
+
+    ensure_vector(evals_, k);
+    ensure_vector(evalsp_, k);
+    ensure_vector(etols_, k);
+}
+
+
+template<typename MT>
+EigConvergenceStats EigenMaskedSubspaceSolver<MT>::solve(const DynamicHermitian<MT>& A,
+                                                         const DynamicHermitian<float>& W, size_t k,
+                                                         float tol_eval, float tol_evec,
+                                                         size_t maxiter, size_t k_conv, size_t p,
+                                                         size_t q, std::mt19937& rng) {
+    const size_t n = A.columns();
+
+    if (W.columns() != n)
+        throw std::invalid_argument("The mask is " + std::to_string(W.columns())
+                                    + " square, but the matrix is " + std::to_string(n)
+                                    + " square.");
+    if (k == 0 || k > n)
+        throw std::invalid_argument("Cannot find " + std::to_string(k) + " eigenpairs of a "
+                                    + std::to_string(n) + " square matrix.");
+    if (p == 0)
+        throw std::invalid_argument("The Krylov subspace size must be at least one.");
+    if (maxiter == 0)
+        throw std::invalid_argument("At least one iteration is needed to find eigenpairs.");
+
+    // Set k_conv appropriately
+    k_conv = k_conv == 0 ? k : k_conv;
+    if (k_conv > k)
+        throw std::invalid_argument("Cannot test " + std::to_string(k_conv)
+                                    + " eigenpairs for convergence when only " + std::to_string(k)
+                                    + " are found.");
+
+    const size_t kp = k * p;
+    // The columns of the Krylov subspace holding the k eigenpairs of the largest
+    // eigenvalues, which LAPACK returns last
+    const size_t top = (p - 1) * k;
+
+    resize(n, k, p);
+
+    // Mask out
+    Am_ = blaze::declherm(A % W);
+
+    // Initialise (randomly the vector array) and orthonormalise it. Handing qr() the
+    // spare n x k buffer and swapping it in is blaze's own move of the Q factor.
+    for (unsigned int i = 0; i < n; i++) {
+        for (unsigned int j = 0; j < k; j++) {
+            V_(i, j) = rand_subspace_element<MT>(rng);
+        }
+    }
+    blaze::qr(V_, Q_, R_);
+    blaze::swap(V_, Q_);
+
+    // Initialise loop variables for holding the previous state. The convergence check
+    // only needs the previous subspace conjugate transposed, so that is what is kept.
+    Vph_ = blaze::ctrans(V_);
+    evalsp_ = 0.0;
+    etols_ = tol_evec;
+
+    EigConvergenceStats stats;
+    for (stats.iterations = 0; !stats.converged && stats.iterations < maxiter; stats.iterations++) {
+
+        // Perform the subspace iteration steps
+        for (unsigned int ss_ind = 0; ss_ind < q; ss_ind++) {
+            AV_ = A * V_;
+            blaze::qr(AV_, Q_, R_);
+            blaze::swap(V_, Q_);
+        }
+
+        // Construct the p-dimensional block Krylov subspace, i.e. {V, A V, A^2 V, ..., A^{p-1} V}
+        blaze::submatrix<blaze::aligned>(K_, 0, 0, n, k) = V_;
+        for (unsigned int i = 1; i < p; i++) {
+            auto X = blaze::submatrix<blaze::aligned>(K_, 0, k * (i - 1), n, k);
+            blaze::submatrix<blaze::aligned>(K_, 0, i * k, n, k) = Am_ * X;
+        }
+
+        // Find the eigenpairs of the Krylov subspace with the Ritz method. The projected
+        // matrix is formed as a plain product and heevd reads its lower triangle, which
+        // is what blaze::eigen does with a Hermitian matrix, minus the temporary copy it
+        // makes of it.
+        blaze::qr(K_, QK_, RK_);
+        QKh_ = blaze::ctrans(QK_);
+        KhA_ = QKh_ * Am_;
+        At_ = KhA_ * QK_;
+        evecs_kp_ = At_;
+        blaze::heevd(evecs_kp_, evals_kp_, 'V', 'L');
+        Vfull_ = QK_ * evecs_kp_;
+
+        // Set the phase degeneracy if it exists
+        phase_.resize(kp);
+        for (unsigned int j = 0; j < Vfull_.columns(); j++) {
+            MT z = Vfull_(0, j);
+            phase_[j] = std::conj(z) / std::abs(z);
+        }
+        for (unsigned int i = 0; i < Vfull_.rows(); i++) {
+            for (unsigned int j = 0; j < Vfull_.columns(); j++) {
+                Vfull_(i, j) *= phase_[j];
+            }
+        }
+
+        // Keep the highest eigenpairs
+        evals_ = blaze::subvector(evals_kp_, top, k);
+        V_ = blaze::submatrix(Vfull_, 0, top, n, k);
+
+        // Back fill the missing entries of the array from the rank-k reconstruction. The
+        // reconstruction is formed with BLAS gemm: blaze's own product kernel, which this
+        // build uses for every large product, allocates packing buffers of a few MB on
+        // every call, and this is the one product here big enough for that to matter.
+        // It is Hermitian by construction; it is kept in a plain matrix and declared so
+        // where it is used, which spares the Hermitian adaptor its temporary and runtime
+        // check.
+        blaze::diagonal(L_) = evals_;
+        VL_ = V_ * L_;
+        Vh_ = blaze::ctrans(V_);
+        blaze::gemm(Ar_, VL_, Vh_, MT(1), MT(0));
+        Am_ = blaze::declherm(A % W + Ar_ - Ar_ % W);
+
+        // Calculate the eigenvector convergence (L1 norm of the tested subset)
+        // NOTE: there seems to be a bug in Blaze's L1 norm function so we
+        // calculate it directly
+        evec_conv_ = Vph_ * V_;
+        for (auto& d : blaze::diagonal(evec_conv_))
+            d -= 1.0;
+        stats.eps_evec = blaze::sum(blaze::abs(
+                             blaze::submatrix(evec_conv_, k - k_conv, k - k_conv, k_conv, k_conv)))
+                         / (k_conv * k_conv);
+
+        // Calculate the eigenvalue convergence (Summed fractional change in eigenvalues)
+        evconv_ = blaze::subvector((evalsp_ - evals_) / (blaze::abs(evals_) + etols_), k - k_conv,
+                                   k_conv);
+        stats.eps_eval = rms(evconv_);
+
+        evalsp_ = evals_;
+        // This iteration's conjugate transposed subspace is the next one's previous
+        blaze::swap(Vph_, Vh_);
+
+        // Check convergence
+        if (stats.eps_eval < tol_eval && stats.eps_evec < tol_evec) {
+            stats.converged = true;
+        }
+    }
+
+    // Calculate the RMS of the masked residual. Ar_ still holds the reconstruction from
+    // the final eigenpairs, and Am_ is free to hold the residual.
+    // TODO: the blaze norm implementation is slow and naive. This is better.
+    Am_ = blaze::declherm(W % (A - Ar_));
+    stats.rms = rms(Am_);
+    stats.rms *= A.rows() / std::sqrt(blaze::sum(W)); // Re-norm to account for masking
+
+    return stats;
+}
+
+
+/**
+ * @brief Find a low rank decomposition of a masked matrix.
+ *
+ * A convenience wrapper around EigenMaskedSubspaceSolver for a one-off decomposition.
+ * It allocates a fresh workspace on every call, so a caller decomposing many matrices
+ * of one size should keep a solver instead.
  *
  * @param  A         The matrix to decompose.
  * @param  W         A mask matrix. One includes an elements, zero excludes it.
@@ -297,87 +513,38 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
                       const DynamicHermitian<float>& W, // Should this be symmetric
                       size_t k, float tol_eval, float tol_evec, size_t maxiter, size_t k_conv = 0,
                       size_t p = 2, size_t q = 3, std::mt19937& rng = eigen_subspace_rng()) {
-    blaze::DynamicVector<real_t<MT>> evals, evalsp, etols;
-    blaze::DynamicMatrix<MT, blaze::columnMajor> V, Vp;
+    EigenMaskedSubspaceSolver<MT> solver;
+    const EigConvergenceStats stats =
+        solver.solve(A, W, k, tol_eval, tol_evec, maxiter, k_conv, p, q, rng);
+    return {{solver.evals(), solver.evecs()}, stats};
+}
 
-    // Mask out
-    auto Am = blaze::evaluate(blaze::declherm(A % W));
-    size_t n = Am.columns();
+/**
+ * @brief Copy a packed Hermitian matrix into an existing blaze container.
+ *
+ * The container is resized only if it does not already have the matrix's size, so a
+ * caller unpacking a stream of same-sized matrices into the same container allocates
+ * once.
+ *
+ * @param  data  Hermitian matrix packed as upper triangle.
+ * @param  A     The blaze matrix to fill.
+ **/
+template<typename MT>
+void to_blaze_herm(const gsl_lite::span<MT>& data, DynamicHermitian<MT>& A) {
+    size_t N = (size_t)std::sqrt(2 * data.size());
 
-    // Set k_conv appropriately
-    k_conv = k_conv == 0 ? k : k_conv;
+    if (A.rows() != N)
+        A.resize(N, false);
 
-    // Initialise (randomly the vector array)
-    V.resize(n, k);
-    for (unsigned int i = 0; i < n; i++) {
-        for (unsigned int j = 0; j < k; j++) {
-            V(i, j) = rand_subspace_element<MT>(rng);
+    // TODO: check how much overhead is in this step. The cache overhead
+    // must be terrible. Might want to do a raw, blocked method
+    int ind = 0;
+    for (uint32_t i = 0; i < N; i++) {
+        for (uint32_t j = i; j < N; j++) {
+            A(i, j) = data[ind];
+            ind++;
         }
     }
-    V = orth(V);
-
-    // Initialise loop variables for holding the previous state
-    Vp = V;
-    evalsp.resize(k);
-    evalsp = 0.0;
-    etols.resize(k);
-    etols = tol_evec;
-
-    EigConvergenceStats stats;
-    for (stats.iterations = 0; !stats.converged && stats.iterations < maxiter; stats.iterations++) {
-
-        // Perform the subspace iteration steps
-        for (unsigned int ss_ind = 0; ss_ind < q; ss_ind++) {
-            V = orth(blaze::evaluate(A * V));
-        }
-
-        // Calculate the eigenpairs
-        auto eigpair = augmented_ritz(Am, V, p);
-        std::tie(evals, V) = eigpair;
-
-        // Back fill the missing entries of the array
-        auto Ar = expand_rankN(eigpair);
-        Am = A % W + Ar - Ar % W;
-
-        // Calculate the eigenvector convergence (L1 norm of the tested subset)
-        // NOTE: there seems to be a bug in Blaze's L1 norm function so we
-        // calculate it directly
-        auto evec_conv = blaze::evaluate(blaze::ctrans(Vp) * V);
-        for (auto& d : blaze::diagonal(evec_conv))
-            d -= 1.0;
-        // stats.eps_evec = rms(
-        //     blaze::submatrix(evec_conv, k - k_conv, k - k_conv, k_conv, k_conv)
-        // );
-        stats.eps_evec = blaze::sum(blaze::abs(
-                             blaze::submatrix(evec_conv, k - k_conv, k - k_conv, k_conv, k_conv)))
-                         / (k_conv * k_conv);
-
-        // Calculate the eigenvalue convergence (Summed fractional change in eigenvalues)
-        stats.eps_eval = rms(blaze::evaluate(
-            blaze::subvector((evalsp - evals) / (blaze::abs(evals) + etols), k - k_conv, k_conv)));
-
-        evalsp = evals;
-        Vp = V;
-
-        // Check convergence
-        if (stats.eps_eval < tol_eval && stats.eps_evec < tol_evec) {
-            stats.converged = true;
-        }
-        // For debugging:
-        // for (uint ii = 0; ii < k; ii++) {
-        //     std::cout << evals[ii] << " ";
-        // }
-        // std::cout << std::endl;
-    }
-
-    // Calculate the RMS
-    // TODO: the blaze norm implementation is slow and naive. This is better.
-    eig_t<MT> eigpair = std::make_pair(evals, V);
-    stats.rms = rms(blaze::evaluate(W % (A - expand_rankN(eigpair))));
-    stats.rms *= A.rows() / std::sqrt(blaze::sum(W)); // Re-norm to account for masking
-
-
-    return {eigpair, stats};
 }
 
 /**
@@ -389,21 +556,8 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
  **/
 template<typename MT>
 DynamicHermitian<MT> to_blaze_herm(const gsl_lite::span<MT>& data) {
-    size_t N = (size_t)std::sqrt(2 * data.size());
-
     DynamicHermitian<MT> A;
-    A.resize(N);
-
-    // TODO: check how much overhead is in this step. The cache overhead
-    // must be terrible. Might want to do a raw, blocked method
-    int ind = 0;
-    for (uint32_t i = 0; i < N; i++) {
-        for (uint32_t j = i; j < N; j++) {
-            A(i, j) = data[ind];
-            ind++;
-        }
-    }
-
+    to_blaze_herm(data, A);
     return A;
 }
 
