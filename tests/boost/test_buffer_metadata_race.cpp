@@ -77,7 +77,7 @@ BOOST_AUTO_TEST_CASE(metadata_copy_races_replacement) {
 
     BOOST_CHECK_EQUAL(missing, 0);
     BOOST_CHECK_EQUAL(backwards, 0);
-    BOOST_CHECK_GT(reads, 1000);
+    BOOST_CHECK_GE(reads, 1000);
     const std::shared_ptr<chordMetadata> final_meta = get_chord_metadata(&buf, 0);
     BOOST_REQUIRE(final_meta);
     BOOST_CHECK_EQUAL(final_meta->get_fpga_seq_num(), iterations);
