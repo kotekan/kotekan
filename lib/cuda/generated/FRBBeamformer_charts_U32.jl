@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1948 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1954 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 4), 1), 4), 1), 1), 4), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 10752), 1), 10752), 1), 1), 10752), 128)) + 0) + 0x01] =
             info
@@ -171,7 +171,7 @@
             if !(0i32 ≤ Sm < 8 && 0i32 ≤ Sn < 8)
                 CUDA.@cuprintf "thread=%d warp=%d block=%d Sm=%d Sn=%d\n" Cint((threadIdx()).x - 1) Cint((threadIdx()).y - 1) Cint(
                     (blockIdx()).x - 1
-                ) Cint(Sm) Cint(Sn)                    #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1715 =#
+                ) Cint(Sm) Cint(Sn)                    #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1720 =#
                 info = 4
                 info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 4), 1), 4), 1), 1), 4), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 10752), 1), 10752), 1), 1), 10752), 128)) + 0) + 0x01] =
                     info
@@ -188,6 +188,8 @@
         end
             W_polr0 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 4), 1), 2), 4), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 4), 1)), 1), 8), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 10752), 1), 10752), 1), 1), 10752), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 1), 1), 2), 8), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(0::Int32, 1), 2), 1), 1), 2), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 4), 1), 1), 4), 16)) + 0x01]
             W_polr1 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 4), 1), 2), 4), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 4), 1)), 1), 8), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 10752), 1), 10752), 1), 1), 10752), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 1), 1), 2), 8), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(1::Int32, 1), 2), 1), 1), 2), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 4), 1), 1), 4), 16)) + 0x01]
+            W_polr0 = Float16x2(0.0625f0, 0.0625f0) * W_polr0
+            W_polr1 = Float16x2(0.0625f0, 0.0625f0) * W_polr1
         end
         I = zero(Float16x2)
         dstime = 0
@@ -1467,7 +1469,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -1625,7 +1627,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -1783,7 +1785,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -1941,7 +1943,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -2099,7 +2101,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -2257,7 +2259,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -2415,7 +2417,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -2573,7 +2575,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -3345,7 +3347,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -3503,7 +3505,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -3661,7 +3663,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -3819,7 +3821,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -3977,7 +3979,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -4135,7 +4137,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -4293,7 +4295,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )
@@ -4451,7 +4453,7 @@
                             Ẽp1re = Ẽp1_cplx0
                             Ẽp1im = Ẽp1_cplx1
                             I = muladd(
-                                Float16x2(0.012496948f0, 0.012496948f0),
+                                Float16x2(0.099975586f0, 0.099975586f0),
                                 muladd(Ẽp1im, Ẽp1im, muladd(Ẽp1re, Ẽp1re, muladd(Ẽp0im, Ẽp0im, Ẽp0re * Ẽp0re))),
                                 I,
                             )

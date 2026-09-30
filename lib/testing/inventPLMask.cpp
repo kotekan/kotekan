@@ -35,6 +35,9 @@ class inventPLMask : public kotekan::Stage {
     const int num_frequencies = config.get<int>(unique_name, "num_frequencies");
     const int num_times = config.get<int>(unique_name, "num_times");
 
+    const std::vector<int> frequency_channels =
+        config.get<std::vector<int>>(unique_name, "frequency_channels");
+
     Buffer* const buffer;
 
 public:
@@ -47,6 +50,10 @@ public:
         buffer(get_buffer("pl_mask")) {
         assert(buffer);
         buffer->register_producer(unique_name);
+        if (frequency_channels.size() != static_cast<size_t>(num_frequencies))
+            FATAL_ERROR("inventPLMask: frequency_channels has {:d} entries, expected "
+                        "num_frequencies={:d}",
+                        frequency_channels.size(), num_frequencies);
     }
 
     virtual ~inventPLMask() {}
@@ -76,6 +83,16 @@ public:
             meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
             meta->set_fpga_seq_num(frame_index * num_times);
             meta->set_time_downsampling_fpga(2 * 64);
+
+            // Set frequency information. As in `testLostSamplesToPLMask`, this lists every
+            // frequency, not one entry per `F4` bin; consumers such as `N2Accumulate` compare
+            // it against the voltage frequencies.
+            const std::vector<int>& coarse_freq = frequency_channels;
+            const std::vector<int> freq_upchan_factor(coarse_freq.size(), 1);
+            const std::vector<int> freq_upchan_index(coarse_freq.size(), 0);
+            meta->set_coarse_freq(coarse_freq);
+            meta->set_freq_upchan_factor(freq_upchan_factor);
+            meta->set_freq_upchan_index(freq_upchan_index);
 
             // Fill buffer
             DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);

@@ -181,7 +181,7 @@ static std::string get_dataset_name(const std::string& base_dir, uint64_t abs_fi
 // layout holds the first num_input elements of the array in the file's
 // input_order: the test telescope has two dishes and two polarizations, and
 // CHORDBeamformer order puts element = dish + pol * num_dishes, so the rows are
-// D00p1, D01p1, D00p2, D01p2 with dish i in grid column i.
+// D00X, D01X, D00Y, D01Y with dish i in grid column i.
 static void validate_index_map_inputs(File& file, size_t num_input) {
     std::vector<std::string> labels;
     std::vector<int64_t> dish_idx;
@@ -193,7 +193,7 @@ static void validate_index_map_inputs(File& file, size_t num_input) {
     file.getDataSet("/index_map/grid_x_idx").read(grid_x);
 
     BOOST_REQUIRE_LE(num_input, 4u);
-    const std::vector<std::string> all_labels{"D00p1", "D01p1", "D00p2", "D01p2"};
+    const std::vector<std::string> all_labels{"D00X", "D01X", "D00Y", "D01Y"};
     const std::vector<int64_t> all_dish{0, 1, 0, 1};
     const std::vector<int32_t> all_pol{0, 0, 1, 1};
     const std::vector<std::string> expected_labels(all_labels.begin(),
@@ -420,7 +420,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_index_map_dish_inputs) {
         data.h5_file->getDataSet("/index_map/pol").read(pol);
         data.h5_file->getDataSet("/index_map/type").read(type);
 
-        const std::vector<std::string> expected_labels{"D01p1", "D01p2"};
+        const std::vector<std::string> expected_labels{"D01X", "D01Y"};
         const std::vector<int64_t> expected_dish{1, 1};
         const std::vector<int32_t> expected_pol{0, 1};
         const std::vector<int32_t> expected_type{0, 0}; // ArrayDish

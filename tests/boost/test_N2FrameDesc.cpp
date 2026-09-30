@@ -2,6 +2,7 @@
 
 #include "N2FrameDesc.hpp"
 #include "N2Layout.hpp"
+#include "N2Metadata.hpp"
 #include "N2Util.hpp"
 
 #include <boost/test/included/unit_test.hpp>
@@ -492,4 +493,32 @@ BOOST_AUTO_TEST_CASE(test_generate_product_list_throws_for_unsupported_layout) {
                       std::runtime_error);
 
     std::cout << "Success.\n";
+}
+
+BOOST_AUTO_TEST_CASE(test_metadata_dataset_identity_roundtrip) {
+    const dset_id_t id{0x0123456789abcdefULL, 0xfedcba9876543210ULL};
+    N2Metadata source;
+    source.dataset_id = id;
+    source.freq_id = 614;
+
+    N2MetadataFormat wire;
+    auto* bytes = reinterpret_cast<char*>(&wire);
+    BOOST_CHECK_EQUAL(source.get_serialized_size(), sizeof(wire));
+    BOOST_CHECK_EQUAL(source.serialize(bytes), sizeof(wire));
+    BOOST_CHECK(wire.dataset_id == id);
+    N2Metadata binary_copy;
+    BOOST_CHECK_EQUAL(binary_copy.set_from_bytes(bytes, sizeof(wire)), sizeof(wire));
+    BOOST_CHECK(binary_copy.dataset_id == id);
+    BOOST_CHECK_EQUAL(binary_copy.freq_id, source.freq_id);
+
+    auto encoded = source.to_json();
+    BOOST_REQUIRE(encoded.contains("dataset_id"));
+    N2Metadata json_copy;
+    from_json(encoded, json_copy);
+    BOOST_CHECK(json_copy.dataset_id == id);
+    BOOST_CHECK_EQUAL(json_copy.freq_id, source.freq_id);
+
+    encoded.erase("dataset_id");
+    from_json(encoded, json_copy);
+    BOOST_CHECK(json_copy.dataset_id == dset_id_t::null);
 }

@@ -366,6 +366,7 @@ def count_data(setup):
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
+        freq_ids=np.arange(num_freq, dtype=np.int32),
         time_downsampling=config["sub_integration_ntime"],
     )
 
@@ -423,6 +424,7 @@ def rficount_data(setup, count_data):
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
+        freq_ids=np.arange(num_freq, dtype=np.int32),
         time_downsampling=config["sub_integration_ntime"],
     )
 
@@ -480,6 +482,7 @@ def plcount_data(setup, count_data):
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
+        freq_ids=np.arange(num_freq, dtype=np.int32),
         time_downsampling=config["sub_integration_ntime"],
     )
 
@@ -534,6 +537,7 @@ def rfiframemask_data(setup):
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
+        freq_ids=np.arange(num_freq, dtype=np.int32),
         time_downsampling=config["sub_integration_ntime"],
         extra_meta={
             "rfi_frame_excision_enabled": rfiframemask_setup["enabled"],

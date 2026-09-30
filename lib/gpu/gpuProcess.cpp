@@ -5,7 +5,7 @@
 #include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
 #include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
-#include "kotekanLogging.hpp"     // for DEBUG2, INFO
+#include "kotekanLogging.hpp"     // for DEBUG2, ERROR, INFO
 #include "restServer.hpp"         // for restServer, connectionInstance
 #include "util.h"                 // for e_time
 #include "visUtil.hpp"            // for StatTracker
@@ -15,6 +15,7 @@
 
 #include <assert.h>    // for assert
 #include <cmath>       // for isnan
+#include <cstdlib>     // for abort
 #include <functional>  // for bind, ref, function, _1
 #include <map>         // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
 #include <memory>      // for __shared_ptr_access, shared_ptr
@@ -72,6 +73,17 @@ gpuProcess::~gpuProcess() {
     // remove_get_callback() waits for an in-flight invocation to finish, so the
     // callback cannot still be walking `commands` once this returns.
     restServer::instance().remove_get_callback(_profile_endpoint);
+    // main_thread() joins the results thread on every exit path, so it can still be joinable here
+    // only if this stage is destroyed while its main_thread runs: a stage deleted without stop()
+    // and join(), which is undefined behaviour before this line (the derived destructors have
+    // already run). Joining could not make that safe, and deleting the signals below would block
+    // forever in pthread_cond_destroy on the live waiter, so fail loudly instead of hanging.
+    if (results_thread_handle.joinable()) {
+        ERROR("{:s}: destroyed with its results thread still running (the stage was deleted "
+              "without stop() and join()); aborting instead of hanging in teardown.",
+              unique_name);
+        std::abort();
+    }
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
@@ -151,6 +163,19 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 void gpuProcess::main_thread() {
     dev->set_thread_device();
 
+    // A FatalError thrown from a command below leaves this function without reaching exit_loop;
+    // the results thread would then wait forever on signals nobody stops, and ~gpuProcess would
+    // block in pthread_cond_destroy on the very condition variable it waits on. Stop and join on
+    // the way out too.
+    struct results_unwind {
+        gpuProcess& proc;
+        bool armed = true;
+        ~results_unwind() {
+            if (armed)
+                proc.stop_results_thread();
+        }
+    } unwind{*this};
+
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
         _profile_endpoint, std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
@@ -167,6 +192,18 @@ void gpuProcess::main_thread() {
 
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[ic]->wait_for_free_slot();
+
+        // The slot came free because the results thread finished that slot's previous frame. Once
+        // a stop is set it finishes frames WITHOUT finalize_frame(), so that frame's ring-buffer
+        // claims and host frames may still be held: an NDArrayRingBuffer reader would raise a
+        // FatalError over an ordinary shutdown, and a frame-buffer command would reuse the stale
+        // frame. Never start a frame after a stop.
+        if (stop_thread) {
+            INFO(
+                "Stop requested while GPU[{:d}] waited for a free slot; leaving before frame {:d}.",
+                gpu_id, gpu_frame_counter);
+            break;
+        }
 
         // Update the gpu_frame_counter and perform any reset actions on the command object
         // for this frame.
@@ -212,6 +249,11 @@ void gpuProcess::main_thread() {
         gpu_frame_counter++;
     }
 exit_loop:
+    unwind.armed = false;
+    stop_results_thread();
+}
+
+void gpuProcess::stop_results_thread() {
     for (auto& sig_container : final_signals)
         sig_container->stop();
     INFO("Waiting for GPU packet queues to finish up before freeing memory.");

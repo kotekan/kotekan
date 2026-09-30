@@ -518,7 +518,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     if (poison_buffers) {
-        Ebar_buffer.set_to_poison(0x00, 0, cuda_upchannelization_factor * (Fmax - Fmin));
+        Ebar_buffer.set_to_poison({{{ebar_poison_byte}}}, 0, cuda_upchannelization_factor * (Fmax - Fmin));
         info_buffer.set_to_poison(0xff);
 
         // Initialize host-side buffer arrays
@@ -600,7 +600,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             }
         }
 
-        Ebar_buffer.check_for_poison(0x00, 0, cuda_upchannelization_factor * (Fmax - Fmin));
+        Ebar_buffer.check_for_poison({{{ebar_poison_byte}}}, 0, cuda_upchannelization_factor * (Fmax - Fmin));
     } // if (poison_buffers)
 
     return record_end_event();
