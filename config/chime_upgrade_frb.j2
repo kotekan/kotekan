@@ -57,9 +57,7 @@ host_buffer_depth: 12
 # size of the voltage ring-buffer as 4
 gpu_buffer_depth: 4
 num_gpus: 2
-# 14,15,16 for blaze in EigenN2Iter
-# 17,18,19 for N2Accumulate
-cpu_affinity: [0, 10, 11, 12, 13] #, 14, 15, 16, 17, 18, 19]
+cpu_affinity: [0, 1, 2, 3]
 
 # Constants
 sizeof_float: 4
@@ -1150,7 +1148,7 @@ vis_accumulate:
     in_rfiframemask_buf: host_rfi_RFIframemask_buffer
     out_buf: vis_10s_buffer
     packet_loss_is_scalar: True
-    cpu_affinity: [17, 18, 19]
+    cpu_affinity: [8, 9, 10]
     num_workers: 3
     input_order: CHIMEBeamformer
     output_order: CHIMECylinder
@@ -1171,7 +1169,7 @@ vis_accumulate:
 
 eigencalc:
     kotekan_stage: EigenN2Iter
-    cpu_affinity: [14, 15, 16] # for blaze
+    cpu_affinity: [11, 12, 13] # for blaze
     num_blaze_workers: 3
     num_ev: num_ev_to_calculate
     in_buf: vis_10s_buffer
