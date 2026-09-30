@@ -192,6 +192,12 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
 std::shared_ptr<metadataObject> GenericBuffer::get_metadata(int ID) {
     assert(ID >= 0);
     assert(ID < num_frames);
+    // Copy the slot under the buffer mutex. set_metadata, pass_metadata and
+    // allocate_new_metadata_object replace it under the same mutex, and a shared_ptr copy that
+    // races an assignment to the same shared_ptr is a data race: unlocked, the copy can take a
+    // reference on an object whose count has already reached zero, which then runs its
+    // destructor twice and frees everything it owns twice.
+    buffer_lock lock(mutex);
     return metadata[ID];
 }
 

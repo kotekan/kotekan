@@ -485,6 +485,7 @@ get_chord_metadata(const std::shared_ptr<const metadataObject>& mc) {
 std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
     if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
         return std::shared_ptr<chordMetadata>();
-    std::shared_ptr<metadataObject> meta = buf->metadata.at(frame_id);
-    return get_chord_metadata(meta);
+    // Through the locked accessor, never `buf->metadata` directly: another thread may be
+    // replacing the slot (see GenericBuffer::get_metadata).
+    return get_chord_metadata(buf->get_metadata(frame_id));
 }
