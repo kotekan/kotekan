@@ -50,6 +50,11 @@ add_executable(test_pipeline_graph test_pipeline_graph.cpp)
 target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
                                                   kotekan_core)
 
+# test_numa_policy - NUMA placement of stages and buffers: which node a config block resolves to,
+# and the scoped memory policy that puts an object there
+add_executable(test_numa_policy test_numa_policy.cpp)
+target_link_libraries(test_numa_policy PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 # test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
 add_executable(test_buffer_peek test_buffer_peek.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
