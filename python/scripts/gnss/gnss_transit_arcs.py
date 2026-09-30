@@ -98,12 +98,19 @@ EVENTS = []
 HOP_S = gtc.GRID_SECONDS / gtc.GRID_HOPS  # 5.12 us, one hop
 
 
+def epoch_of(t, hop):
+    """The F-engine epoch a hop belongs to: the frame0 that t - hop implies, to the hour (frame0s
+    are hours to days apart; a row's t is within seconds of its hop)."""
+    return int(round((t - hop * HOP_S) / 3600.0))
+
+
 def order(d):
-    """Hops in time order: by F-engine epoch, then by hop. A row's `t` is its POLL instant, up to
-    ~2 s after the hop it reports, and fadr_g_hist hops take their time from it, so ordering by
-    `t` swaps neighbours; the hop count restarts at a re-base, so ordering by hop alone puts the
-    new epoch first. Epoch = frame0 implied by t - hop, to the hour (frame0s here are days apart)."""
-    return sorted(d, key=lambda h: (int(round((d[h][2] - h * HOP_S) / 3600.0)), h))
+    """Keys in time order. Every sample is keyed (epoch, hop): the hop count restarts at 0 at a
+    re-base, so two epochs in one span reuse the same hop values, and a dict keyed by hop alone
+    overwrites one day's samples with another's. Ordering by a row's `t` instead swaps
+    neighbours: `t` is the POLL instant, up to ~2 s after the hop it reports, and fadr_g_hist
+    hops take their time from it."""
+    return sorted(d)
 
 
 def ts(s):
@@ -208,7 +215,7 @@ def transits(t_lo, t_hi, bore_deg):
 # ------------------------------------------------------------------------------------ loading
 def load_band(band, days, t_lo, t_hi):
     """can: gnss_tec_chord.load() exactly (C/N0 gate first); raw: every row of a real satellite
-    (no noise probe, el >= 10), ungated. Both {prn: {g_hop: tuple}}."""
+    (no noise probe, el >= 10), ungated. Both {prn: {(epoch, g_hop): tuple}}."""
     can = collections.defaultdict(dict)
     raw = collections.defaultdict(dict)
     for day in days:
@@ -230,17 +237,18 @@ def load_band(band, days, t_lo, t_hi):
                 if not gh or gc is None:
                     continue
                 prn = d["prn"]
+                ep = epoch_of(t, gh)
                 arc = (d.get("fadr_arc"), d.get("fadr_hop0"))
                 cn, el, az = d.get("cn0_kcoh_dbhz"), d.get("el"), d.get("az")
                 hist = d.get("fadr_g_hist") or []
                 if cn is not None and cn >= CN0_MIN:
                     dst = can[prn]
-                    dst[gh] = (gc, arc, t, az, el)
+                    dst[(ep, gh)] = (gc, arc, t, az, el)
                     for e in hist:
                         h = e[0]
-                        if h == gh or h in dst:
+                        if h == gh or (ep, h) in dst:
                             continue
-                        dst[h] = (
+                        dst[(ep, h)] = (
                             e[1],
                             arc,
                             t - (gh - h) / gtc.GRID_HOPS * gtc.GRID_SECONDS,
@@ -252,12 +260,12 @@ def load_band(band, days, t_lo, t_hi):
                 fp = bool(d.get("fleet_present"))
                 cq = -99.0 if cn is None else cn
                 dst = raw[prn]
-                dst[gh] = (gc, arc, t, el, cq, fp)
+                dst[(ep, gh)] = (gc, arc, t, el, cq, fp)
                 for e in hist:
                     h = e[0]
-                    if h == gh or h in dst:
+                    if h == gh or (ep, h) in dst:
                         continue
-                    dst[h] = (
+                    dst[(ep, h)] = (
                         e[1],
                         arc,
                         t - (gh - h) / gtc.GRID_HOPS * gtc.GRID_SECONDS,
@@ -285,7 +293,7 @@ def product_arcs(A, B, prn, la, lb, mpt):
                 else "arc_b"
                 if B[prn][h][1] != B[prn][p][1]
                 else "gap"
-                if (h - p > MAX_GAP_HOPS or h <= p)
+                if (h[0] != p[0] or h[1] - p[1] > MAX_GAP_HOPS or h[1] <= p[1])
                 else None
             )
             if r is not None:
@@ -693,6 +701,9 @@ def figures(period, pw, pair_res, out, pad):
     import matplotlib.dates as mdates
     from matplotlib.lines import Line2D
 
+    # A window with no classified arc anywhere (the F-engine was down, say) has nothing to
+    # show, and keeping it would stretch the time axis across the gap.
+    pw = [(i, w) for i, w in pw if any(pr["cls"][i] for pr in pair_res)]
     if not pw:
         return []
     idx = [i for i, _ in pw]

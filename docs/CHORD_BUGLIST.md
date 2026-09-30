@@ -188,6 +188,44 @@ detector stays as the backstop.
 inside ±1 chip of ref; zero alarms on a quiet day; e5a/b2a `code_resid_m` returns to its pre-transit level.
 
 ### #153 — node processes abort with `malloc(): unaligned tcache chunk detected` (heap corruption; 4 restarts in 17 h on the d53b6a254 bundle) (2026-09-29)
+**⚡ ROOT-CAUSED 09-30 from the first two cores, and a fix is staged, not yet deployed.** cx51 crashed twice right
+after KV's 12:45Z node_up restarts; cores are in cx51:/var/crash.
+
+- **The abort is a double destruction of a chordMetadata.**
+  - The writer: fork-only `cudaRFISKtilde.cpp:390` replaces `bf_mask_applied`'s ring slot 0 **every frame**. That breaks
+    `NDArrayRingBuffer::set_metadata`'s set-once contract. It came in with bad4892eb and has been in every fleet build since
+    abb8f4f20 (08-31); upstream chord has since dropped the echo (78822148a).
+  - The reader: `cudaCopyFromRingbuffer.cpp:112`, on another GPU 0 main thread, copies that slot every frame through
+    `GenericBuffer::get_metadata()`, which took no lock.
+  - A shared_ptr copy racing an assignment of the same shared_ptr means the object dies twice, so its json nodes and key
+    strings are freed twice.
+  - The core shows it: the aborting thread's bin-4 link has its low 32 bits zeroed (a live rb-node's red colour store),
+    and a `FREQ_UPCHAN_FACTOR` key-string chunk sits on both an arena fastbin and a tcache.
+- **The segfault at capture start is a FramePrefetchService race.** The prefetcher holds an unlocked reference into the
+  static stream-ID vector while another port's worker `resize()`s it (reallocates and frees it). The core has port 1's
+  first `push_back` landing in the freed array.
+- **cx19's "silent" restarts are not crashes.** 09-29 06:52Z and 09-30 06:45Z were unattended-upgrades plus `needrestart`
+  restarting gnss-node. Fix (KV's sudo): `/etc/needrestart/conf.d/gnss.conf` with
+  `$nrconf{override_rc}{qr(^gnss-node)} = 0;` on every node.
+- **Fixes:**
+  - Upstream #1713 (prefetcher; approved).
+  - Upstream #1714: first taking the buffer mutex in `get_metadata`. jbmertens asked for something finer, so it now uses
+    shared_ptr atomics on the slots, commit 1cfecda36; adversarially reviewed, TSan clean, and its new frame-cycle test
+    catches a reverted store.
+  - Fork: set-once on `kv/rfi-bfmask-set-once`.
+- **Deploy:** `build/kotekan/kotekan.next_fix153_20260930` (md5 16959baf0a18).
+  - Built from branch kv/proj-phase1-fix153 = kv/proj-phase1 + #1713 + set-once + the mutex version of #1714.
+  - See `fixtures/prefetch_fix/STAGED_BINARY.txt` for the swap command.
+  - When the F-engine returns: wait for the broker's re-anchor, swap, then run the node_up restart loop.
+  - Close #153 after a few node-days on it with no `malloc()` line, no unexplained relaunch and no new core.
+- **Follow-ups (upstream code):**
+  - `#ifdef DEBUG` in FramePrefetchService is always true (DEBUG is the logging macro), so its per-frame freq-ID string
+    loop runs in production.
+  - The readiness wait sleeps 1 ms while holding `global_stream_id_mutex`.
+  - #1714's list of direct slot readers.
+  - #156 and #157 below.
+  - cx51 has 4 of the 7 aborts, so rule out its RAM too.
+
 **Since the node bundle d53b6a254 (#145 + #1699 + #146) went fleet-wide on 09-28 18:33-20:39Z, kotekan
 has died with glibc's heap check on three nodes and restarted silently on two:** cx51 01:43:20Z
 (`Main process exited, code=dumped, status=6/ABRT`, systemd relaunched it 20 s later; the node ran
@@ -303,6 +341,22 @@ before each one recur every few seconds all day).
   exit code of every relaunch (status=6/ABRT = this; status=11/SEGV = the silent kind).
 
 ### #155 — dTEC arcs die in transits of 1176-MHz emitters: the fleet ADR holds the arc while the victim band's residual is dark (2026-09-29)
+**⚡ 09-30, with projection live fleet-wide (from 09-29 17:00Z): candidate 1 largely holds.** Seven transits had data,
+09-30 03:17Z to 15:10Z, between two F-engine outages.
+- **E5a × E6 arcs surviving a transit:** 74% (39/53), against 39% (26/67) with the freeze alone.
+  - Through 1176-MHz emitters: 25/38, against 15/54.
+  - Through close (< 1.5°) 1176 passes: 9/16, against 5/36.
+- **Closure (ionosphere-free) median jump per transit:** 0.85 TECU, against 10.2 with the freeze alone. Quiet windows
+  0.77–0.81, so the typical damage is now at baseline.
+- **Not fixed:** C31 (0.44°) slipped 4 of 9 and C11 (0.72°) 2 of 7. Suspects: the band-edge channels' own-row direction, or
+  victims outside the probe stack.
+- **Candidates 2 and 3 (an honest FleetAdr; sibling-band bridging) still stand.**
+- **Page v3:** https://claude.ai/artifact/15dmeuuxeESKk2WNsANhmU
+- **Census:** `--t-lo 2026-09-28T20:30:00 --t-hi 2026-09-30T15:10:00 --split 2026-09-29T17:00:00 --events events_0930.txt
+  --out out/transit_arcs_proj`.
+- **Page build:** `fixtures/tec_wander/page/make_page.py OUT transit_arcs_proj page_template_proj.html`.
+- **Next:** rerun over more nights, and after the freeze is relaxed from 6° to about 2°.
+
 - **What:** since #142 (live 09-28 20:18:48Z) the tracking lock holds through every transit: 362 of
   363 fleet-ADR arcs on all eight chains, against 92% (525/573) the night before. The dTEC arcs do
   not. Only 39% of E5a × E6 product arcs survive a transit (26/67), the same as the night before
@@ -433,6 +487,22 @@ carries C56/C58. Small, and separate from the above.
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+
+### #156 — `get_chord_metadata()` reads an object's `parent_pool` while `deepCopy` can be assigning it (object-content race; found 2026-09-30)
+- **What:** `chordMetadata::deepCopy` does `*this = *chord_other` under both objects' locks, and that assigns the weak_ptr
+  `parent_pool`. `get_chord_metadata()` reads `mc->parent_pool.lock()` with no lock (chordMetadata.cpp:447, 455, 464, 477).
+  So a thread that holds no frame and inspects a slot `copy_metadata` is filling races the `deepCopy` into it.
+- **Found by** the adversarial TSan review of #1714: a lock-free observer, get_chord_metadata() on a copy_metadata target.
+  The slot atomics don't cover it, because it's a race on the object's contents, not the slot.
+- **Impact:** believed rare. It needs copy_metadata plus a reader outside the frame protocol. No crash is attributed to it,
+  but a weak_ptr read racing its assignment is UB.
+- **Fix candidates:**
+  - Read `parent_pool` under the object's lock (one accessor).
+  - Or treat it as immutable after construction: stop `deepCopy` copying it. NDArrayRingBuffer::set_metadata already sets
+    it explicitly before deepCopy.
+  - Upstream.
+- **Check:** the #1714 frame-cycle test with B observed through get_chord_metadata() (the template in the TSan review
+  avoided exactly this), run under TSan (cf06:/var/tmp/kvand-tsan-review, `setarch -R`).
 
 ### #145 residual — ElemCal drops any element with rho² > 0.99
 The reference-weight defect is fixed (`978561481`, closed). Left from the same review: an element whose
@@ -590,6 +660,15 @@ Pairs naturally with #115.
 ---
 
 ## Open — bench or offline, no deployment at all
+
+### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
+- **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
+  (tests/boost/test_buffer_peek.cpp:430, and the similar check near :490) fails. It failed 6/11 runs on #1714's commit and
+  5/11 on develop. It passes without TSan, and TSan reports no race.
+- **Why it matters:** it blocks running the buffer tests under TSan in CI. #153 showed that TSan is the tool that catches
+  this class of bug.
+- **Fix:** make the contention deterministic (a barrier so the peek goes first at least once), or check "not vacuous" some
+  other way. Upstream test code.
 
 ### #56 — transits confirmed; the residual is very likely GNSS we cannot see (see #129)
 **[archive + BRDC, 08-22/08-23]** Near-boresight transits are the mechanism, and the amplitude
