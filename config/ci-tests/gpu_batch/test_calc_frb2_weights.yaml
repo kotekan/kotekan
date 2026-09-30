@@ -291,14 +291,14 @@ run_calc_frb2_weights_gpu:
         out_buffers:
             host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
         commands:
-        - name: cudaInputData
-          in_buf: host_frb2_beam_positions_buffer
-          gpu_mem: frb2_beam_positions_buffer
-        - name: cudaSyncInput
-        - name: cudaCalcFRB2Weights
-          frb2_beam_positions_name: frb2_beam_positions
-          frb2_weights_name: frb2_weights
-          metadata_source: host_dummy_voltage_buffer
+            - name: cudaInputData
+              in_buf: host_frb2_beam_positions_buffer
+              gpu_mem: frb2_beam_positions_buffer
+            - name: cudaSyncInput
+            - name: cudaCalcFRB2Weights
+              frb2_beam_positions_name: frb2_beam_positions
+              frb2_weights_name: frb2_weights
+              metadata_source: host_dummy_voltage_buffer
 
 run_recv_frb2_weights_gpu:
     gpu_0:
@@ -309,12 +309,12 @@ run_recv_frb2_weights_gpu:
         out_buffers:
             host_frb2_weights_gpu_buffer: host_frb2_weights_gpu_buffer
         commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_frb2_weights_ringbuffer
-          gpu_mem_input: frb2_weights_buffer
-          output_size: frb2_weights_size
-          ring_buffer_size: frb2_weights_ring_depth * frb2_weights_size
-          out_buf: host_frb2_weights_gpu_buffer
+            - name: cudaCopyFromRingbuffer
+              host_signal: host_frb2_weights_ringbuffer
+              gpu_mem_input: frb2_weights_buffer
+              output_size: frb2_weights_size
+              ring_buffer_size: frb2_weights_ring_depth * frb2_weights_size
+              out_buf: host_frb2_weights_gpu_buffer
 
 run_test_calc_frb2_weights:
     kotekan_stage: testCalcFRB2Weights
