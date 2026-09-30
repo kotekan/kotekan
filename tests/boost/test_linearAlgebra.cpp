@@ -4,6 +4,7 @@
 
 #include "gsl-lite.hpp" // for span
 
+#include <atomic> // for atomic
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>   // for M_PI
 #include <complex> // for complex, polar
@@ -22,10 +23,11 @@ using cfloat = std::complex<float>;
 #if defined(__linux__) && defined(__GLIBC__)
 // Count the aligned allocations blaze's containers make (blaze allocates them with
 // posix_memalign on this platform) that are at least `allocation_threshold` bytes.
-// Interposing the function in the executable catches every call in the process.
+// Interposing the function in the executable catches every call in the process, from
+// every thread, hence the atomics.
 namespace {
-size_t allocation_threshold = 0;
-size_t large_allocations = 0;
+std::atomic<size_t> allocation_threshold{0};
+std::atomic<size_t> large_allocations{0};
 } // namespace
 
 extern "C" int posix_memalign(void** ptr, size_t alignment, size_t size) {
@@ -74,6 +76,20 @@ DynamicHermitian<cfloat> test_matrix(size_t n = num_elements,
 // Every input included, as in the default stage configuration.
 DynamicHermitian<float> test_mask(size_t n = num_elements) {
     blaze::DynamicMatrix<float, blaze::columnMajor> M(n, n, 1.0f);
+    return blaze::declherm(M);
+}
+
+// A mask of the kind the stages build: the main diagonal (the autocorrelations) masked
+// out when `mask_diagonal` is set, and the rows and columns of `excluded` inputs zeroed.
+// Both kinds of entry are then filled in from the low rank estimate by the solver.
+DynamicHermitian<float> test_mask(size_t n, bool mask_diagonal,
+                                  const std::vector<size_t>& excluded) {
+    blaze::DynamicMatrix<float, blaze::columnMajor> M(n, n, 1.0f);
+    if (mask_diagonal)
+        blaze::band(M, 0) = 0.0f;
+    for (size_t e : excluded)
+        for (size_t j = 0; j < n; j++)
+            M(e, j) = M(j, e) = 0.0f;
     return blaze::declherm(M);
 }
 
@@ -244,29 +260,72 @@ BOOST_AUTO_TEST_CASE(eigen_masked_subspace_seed_independent_result) {
         BOOST_CHECK_CLOSE(a.evals[i], b.evals[i], 1e-2);
 }
 
+// With the autocorrelations masked out, the solver has to fill them in from its low
+// rank estimate. The test matrix is exactly rank 2, so the fill converges to the true
+// values and the eigenvalues are unchanged.
+BOOST_AUTO_TEST_CASE(eigen_masked_subspace_fills_masked_diagonal) {
+    std::mt19937 rng(eigen_subspace_seed);
+    const auto r = decompose(test_matrix(), test_mask(num_elements, true, {}), rng);
+
+    BOOST_CHECK(r.stats.converged);
+    BOOST_CHECK_CLOSE(r.evals[num_ev - 1], 4.0f * num_elements, 1e-2);
+    BOOST_CHECK_CLOSE(r.evals[num_ev - 2], 1.0f * num_elements, 1e-2);
+    BOOST_CHECK_LT(r.stats.rms, 1e-3);
+}
+
+// Inputs whose rows and columns are masked out drop out of the decomposition: the
+// eigenvectors are zero there and the eigenvalues are those of the remaining inputs.
+// Inputs 3 and 7 are four apart, so the two sources stay exactly orthogonal over the
+// remaining fourteen and the eigenvalues are known exactly.
+BOOST_AUTO_TEST_CASE(eigen_masked_subspace_excludes_masked_inputs) {
+    const std::vector<size_t> excluded = {3, 7};
+    std::mt19937 rng(eigen_subspace_seed);
+    const auto r = decompose(test_matrix(), test_mask(num_elements, true, excluded), rng);
+
+    const size_t remaining = num_elements - excluded.size();
+    BOOST_CHECK(r.stats.converged);
+    BOOST_CHECK_CLOSE(r.evals[num_ev - 1], 4.0f * remaining, 1e-2);
+    BOOST_CHECK_CLOSE(r.evals[num_ev - 2], 1.0f * remaining, 1e-2);
+    for (size_t j = 0; j < num_ev; j++)
+        for (size_t e : excluded)
+            BOOST_CHECK_SMALL(std::abs(r.evecs(e, j)), 1e-4f);
+}
+
 // A solver keeps its workspace from one call to the next. That reuse must not leak
-// into the results: solving again after solving something else in between has to
-// give exactly what a fresh solve gives.
+// into the results: solving a series of different problems, as a stage does for the
+// frames of its frequencies, has to give for each one exactly what a fresh solve gives.
+// The masks differ too, so the filled-in entries the workspace carries are exercised.
 BOOST_AUTO_TEST_CASE(solver_reuse_matches_fresh_solve) {
-    const auto A = test_matrix();
-    const auto W = test_mask();
+    struct Frequency {
+        DynamicHermitian<cfloat> A;
+        DynamicHermitian<float> W;
+        Result fresh;
+    };
     const float other_amplitude[2] = {1.0f, 3.0f};
     const float other_turns[2] = {2.0f, 5.0f};
-    const auto B = test_matrix(num_elements, other_amplitude, other_turns);
+    std::vector<Frequency> frequencies = {
+        {test_matrix(), test_mask(), {}},
+        {test_matrix(num_elements, other_amplitude, other_turns), test_mask(), {}},
+        {test_matrix(), test_mask(num_elements, true, {3, 7}), {}},
+        {test_matrix(num_elements, other_amplitude, other_turns),
+         test_mask(num_elements, true, {1, 5}),
+         {}},
+    };
 
     std::mt19937 rng(eigen_subspace_seed);
-    const auto fresh = decompose(A, W, rng);
+    for (auto& f : frequencies) {
+        rng.seed(eigen_subspace_seed);
+        f.fresh = decompose(f.A, f.W, rng);
+        BOOST_CHECK(f.fresh.stats.converged);
+    }
 
     EigenMaskedSubspaceSolver<cfloat> solver;
-    rng.seed(eigen_subspace_seed);
-    check_identical(fresh, decompose(solver, A, W, rng));
-
-    rng.seed(eigen_subspace_seed);
-    const auto other = decompose(solver, B, W, rng);
-    BOOST_CHECK(other.stats.converged);
-
-    rng.seed(eigen_subspace_seed);
-    check_identical(fresh, decompose(solver, A, W, rng));
+    for (int round = 0; round < 3; round++) {
+        for (const auto& f : frequencies) {
+            rng.seed(eigen_subspace_seed);
+            check_identical(f.fresh, decompose(solver, f.A, f.W, rng));
+        }
+    }
 }
 
 // The same when the problem changes size between calls, which makes the solver
@@ -314,7 +373,7 @@ BOOST_AUTO_TEST_CASE(solver_reuse_does_not_allocate) {
     large_allocations = 0;
     const auto first_stats = solver.solve(A, W, num_ev, tol, tol, max_iterations, 0, 2, 3, rng);
     // The first call builds the workspace
-    BOOST_CHECK_GT(large_allocations, 0);
+    BOOST_CHECK_GT(large_allocations.load(), 0u);
     const Result first{solver.evals(), solver.evecs(), first_stats};
     BOOST_CHECK(first.stats.converged);
 
@@ -322,7 +381,7 @@ BOOST_AUTO_TEST_CASE(solver_reuse_does_not_allocate) {
         rng.seed(eigen_subspace_seed);
         large_allocations = 0;
         const auto stats = solver.solve(A, W, num_ev, tol, tol, max_iterations, 0, 2, 3, rng);
-        BOOST_CHECK_EQUAL(large_allocations, 0);
+        BOOST_CHECK_EQUAL(large_allocations.load(), 0u);
         check_identical(first, Result{solver.evals(), solver.evecs(), stats});
     }
 }

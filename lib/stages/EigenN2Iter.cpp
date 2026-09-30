@@ -137,6 +137,12 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
         FATAL_ERROR("The `tol_evec` config parameter must be greater than zero.");
     if (_max_iterations == 0)
         FATAL_ERROR("The `max_iterations` config parameter must be greater than zero.");
+    if (_krylov == 0)
+        FATAL_ERROR("The `krylov` config parameter must be greater than zero.");
+    if (_num_eigenvectors * _krylov > in_desc->get_num_elements())
+        FATAL_ERROR("The Krylov subspace of `num_ev` * `krylov` = {:d} vectors cannot exceed the "
+                    "{:d} elements of the input frames.",
+                    _num_eigenvectors * _krylov, in_desc->get_num_elements());
 }
 
 // Whether a frame's flags match the binarized flags the cached mask was built
@@ -167,6 +173,7 @@ void EigenN2Iter::main_thread() {
     EigenMaskedSubspaceSolver<cfloat> solver;
     DynamicHermitian<cfloat> vis;
     DynamicHermitian<float> mask;
+    blaze::DynamicMatrix<float, blaze::columnMajor> mask_scratch;
     uint32_t num_elements = 0;
     // Binarized per-element flags the cached mask was built from (any non-zero
     // incoming flag counts as good). Empty until the first frame forces a build.
@@ -225,7 +232,7 @@ void EigenN2Iter::main_thread() {
                     applied_flags[i] = input_frame.flags[i] != 0.0f ? 1.0f : 0.0f;
             }
 
-            mask = calculate_mask(num_elements, applied_flags);
+            calculate_mask(num_elements, applied_flags, mask_scratch, mask);
 
             // Count the elements neither the flags nor the config masks out.
             num_good_elements = 0;
@@ -271,7 +278,7 @@ void EigenN2Iter::main_thread() {
             try {
                 stats = solver.solve(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
                                      _max_iterations, _num_ev_conv, _krylov, _subspace);
-            } catch (const std::runtime_error& e) {
+            } catch (const std::exception& e) {
                 ERROR("Could not find eigenvalues after {:d} for frame fpga_seq {:d}: {:s}",
                       _max_iterations, input_frame.fpga_start_tick, e.what());
                 num_failed_eigencalc.inc(1);
@@ -377,8 +384,9 @@ void EigenN2Iter::update_metrics(int freq_id, double elapsed_time,
 }
 
 
-DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements,
-                                                    const std::vector<float>& flags) const {
+void EigenN2Iter::calculate_mask(size_t num_elements, const std::vector<float>& flags,
+                                 blaze::DynamicMatrix<float, blaze::columnMajor>& scratch,
+                                 DynamicHermitian<float>& mask) const {
     // Blaze does not bounds check element access in a release build, so a
     // config containing an out of bounds element would corrupt memory.
     for (auto iexclude : _exclude_inputs) {
@@ -395,8 +403,10 @@ DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements,
                         br.first, br.second, num_elements);
     }
 
-    blaze::DynamicMatrix<float, blaze::columnMajor> M;
-    M.resize(num_elements, num_elements);
+    // Build the mask in the scratch matrix, which keeps its storage from one rebuild to
+    // the next, and copy it into the Hermitian mask at the end.
+    auto& M = scratch;
+    M.resize(num_elements, num_elements, false);
 
     // Construct the mask matrix ...
     // Go through and zero out data in excluded rows and columns.
@@ -439,5 +449,5 @@ DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements,
         }
     }
 
-    return blaze::declherm(M);
+    mask = blaze::declherm(M);
 }

@@ -139,9 +139,13 @@ private:
      * @param flags         Binarized per-element flags, zero for an element to
      *                      mask and one otherwise. All ones when
      *                      @c mask_flagged_inputs is off.
+     * @param scratch       Working matrix the mask is built in. Kept by the
+     *                      caller so that a rebuild does not allocate.
+     * @param mask          The mask, filled in place.
      */
-    DynamicHermitian<float> calculate_mask(size_t num_elements,
-                                           const std::vector<float>& flags) const;
+    void calculate_mask(size_t num_elements, const std::vector<float>& flags,
+                        blaze::DynamicMatrix<float, blaze::columnMajor>& scratch,
+                        DynamicHermitian<float>& mask) const;
 
     Buffer* in_buf;
     Buffer* out_buf;
