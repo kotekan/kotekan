@@ -188,6 +188,11 @@ add_executable(test_buffer_swap test_buffer_swap.cpp)
 target_link_libraries(test_buffer_swap PRIVATE pthread libexternal kotekan_libs kotekan_utils
                                                kotekan_core kotekan_metadata)
 
+# test_buffer_metadata_race - copying a frame's metadata while another thread replaces it
+add_executable(test_buffer_metadata_race test_buffer_metadata_race.cpp)
+target_link_libraries(test_buffer_metadata_race PRIVATE pthread libexternal kotekan_libs
+                                                        kotekan_utils kotekan_core kotekan_metadata)
+
 # test_prometheus_metrics needs fmt and prometheusMetrics
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
 target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_libs kotekan_core)
