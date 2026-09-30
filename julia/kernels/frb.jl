@@ -114,7 +114,14 @@ end
 
 const Ttilde = 4 * 256
 
-const output_gain = 1 / (8 * Tds) #TODO   1 / (2 * Tds)
+# I = 1/(2 · P · M·N · Tds) · Σ_t Σ_pol |Ẽ|²
+# I is the mean beam power per polarisation per real component, in units of the
+# input LSB², i.e. ⟨I⟩ = σ² for noise-dominated input. Splitting the scale as
+# `input_gain` (applied to `W`, before the squaring) and `output_gain` (applied
+# after) bounds both the intermediate |Ẽ|² and the accumulated I by 49·M·N,
+# which is below the Float16 maximum of 65504 for any representable input.
+const input_gain = 1 / (2 * sqrt(M*N))
+const output_gain = 2 / (P * Tds)
 
 # Derived compile-time parameters (section 4.4)
 const Mpad = nextpow(2, M)
@@ -1758,7 +1765,8 @@ function make_frb_kernel()
                 nlo < $(Int32(idiv(N, 4)))
             end
         )) do emitter
-            load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory;)
+            load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory)
+            apply!(emitter, :W, [:W], (W,) -> :($(Float16x2(input_gain, input_gain)) * $W))
             return nothing
         end
     end
@@ -2075,6 +2083,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         @show num_threads num_warps num_blocks
 
         input = :planewave
+        # Largest expected intensity, used to scale the self-test tolerance
+        I_max = 0.0f0
         if input ≡ :zero
             # do nothing
         elseif input ≡ :random
@@ -2090,7 +2100,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             end
 
             # Wvalue = 1 + 0im
-            Wvalue = uniform_factor() * uniform_in_disk()
+            # Only one dish contributes, so undo the kernel's input gain to put
+            # the output at the scale a full array would produce
+            Wvalue = cispi(2 * rand(Float32)) / input_gain
             # TODO: Set only one element of `W` (this requires the dish gridding)
             W_memory .= [Float16x2(c2t(Wvalue)...) for i in eachindex(W_memory)]
 
@@ -2116,7 +2128,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 dishm, dishn = dish_grid[dish + 1]
                 # Eqn. (4)
                 Ẽvalue = cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
-                Ivalue = output_gain * abs2(Ẽvalue)
+                Ivalue = output_gain * abs2(input_gain * Ẽvalue)
+                I_max = max(I_max, Ivalue)
                 if (beamp, beamq) == (0,0)
                     @show beamp beamq Ivalue
                 end
@@ -2136,7 +2149,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             end
 
             Wvalue = 1 + 0im
-            Wvalue /= 16
             W_memory .= [Float16x2(c2t(Wvalue)...) for i in eachindex(W_memory)]
 
             freq = rand(0:(Fbar_in - 1))
@@ -2173,7 +2185,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 #     Ẽvalue2 += cispi(2 * dishm * beamp / Float64(2 * M) + 2 * dishn * beamq / Float64(2 * N)) * Wvalue * Evalue
                 # end
                 # @assert abs(Ẽvalue - Ẽvalue2) <= 1.0f-4 # + 0.01f0 * max(abs(Ẽvalue), max(Ẽvalue2))
-                Ivalue = output_gain * abs2(Ẽvalue)
+                Ivalue = output_gain * abs2(input_gain * Ẽvalue)
+                I_max = max(I_max, Ivalue)
                 # println("beamp=$beamp beamq=$beamq I=$Ivalue")
                 Ivalue2 = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])
                 Ivalue2 = setindex(Ivalue2, Ivalue, beamp % 2 + 1)
@@ -2294,7 +2307,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 have_value = have_value2[beamp % 2 + 1]
                 want_value = want_value2[beamp % 2 + 1]
                 # if have_value ≠ want_value
-                if !isapprox(have_value, want_value; atol=10 * eps(Float16), rtol=10 * eps(Float16))
+                # The kernel's rounding error at any beam is set by the largest
+                # intermediate value of the FFT, which is common to all beams,
+                # so the absolute tolerance must scale with the peak intensity
+                if !isapprox(have_value, want_value; atol=eps(Float16) * I_max, rtol=10 * eps(Float16))
                     found_error = true
                     error_count += 1
                     if error_count <= 20
@@ -2381,6 +2397,7 @@ function fix_ptx_kernel()
         number-of-frequencies: $Fbar_in
         number-of-polarizations: $P
         number-of-timesamples: $Tbar
+        input-gain: $input_gain
         output-gain: $output_gain
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
