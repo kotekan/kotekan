@@ -362,7 +362,6 @@ void EigenMaskedSubspaceSolver<MT>::orthonormalise(const XT& X) {
 
 template<typename MT>
 void EigenMaskedSubspaceSolver<MT>::augmented_ritz() {
-    const size_t kp = k_ * p_;
     // The columns of the Krylov subspace holding the k eigenpairs of the largest
     // eigenvalues, which LAPACK returns last
     const size_t top = (p_ - 1) * k_;
