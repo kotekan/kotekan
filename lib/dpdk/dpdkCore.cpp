@@ -11,6 +11,7 @@
 #include "iceBoardShuffle.hpp"         // for iceBoardShuffle
 #include "iceBoardStandard.hpp"        // for iceBoardStandard
 #include "iceBoardVDIF.hpp"            // for iceBoardVDIF
+#include "numaPolicy.hpp"              // for ScopedNumaPolicy
 
 #include "fmt.hpp"  // for format, compile_string_to_view, fmt, format_string
 #include "json.hpp" // for basic_json, json, iter_impl
@@ -356,6 +357,12 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
         INFO("  {:s}", arg);
     }
     if (!__eal_initalized) {
+        // The EAL places its hugepage memory per socket, and starts one thread
+        // per lcore that inherits this thread's memory policy. StageFactory
+        // binds that policy to this stage's NUMA node while the constructor
+        // runs, which would pull the lcores on other nodes onto it: let DPDK
+        // do its own placement.
+        kotekan::ScopedNumaPolicy own_placement(kotekan::ScopedNumaPolicy::system_default);
         int ret = rte_eal_init(argc2, argv2_vec.data());
         if (ret < 0)
             throw std::runtime_error(

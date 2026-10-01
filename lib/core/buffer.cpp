@@ -22,6 +22,7 @@
 #include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "nt_memset.h"        // for nt_memset
+#include "numaPolicy.hpp"     // for ScopedNumaPolicy
 #include "util.h"             // for e_time
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
@@ -31,7 +32,7 @@
 #include <time.h> // for timespec
 #ifdef WITH_NUMA
 #include <numa.h>   // for bitmask, numa_allocate_nodemask, numa_bitmask_free, numa_b...
-#include <numaif.h> // for set_mempolicy, MPOL_BIND, mbind, MPOL_DEFAULT, MPOL_MF_STRICT
+#include <numaif.h> // for mbind, MPOL_BIND, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.
@@ -277,18 +278,10 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
     for (auto cpu : cpu_affinity)
         CPU_SET(cpu, &_cpu_set_zero);
 
-#if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
-    // Allocate all memory for a buffer on the NUMA domain its frames are located.
-    struct bitmask* node_mask = numa_allocate_nodemask();
-    numa_bitmask_setbit(node_mask, numa_node);
-    if (set_mempolicy(MPOL_BIND, node_mask ? node_mask->maskp : NULL,
-                      node_mask ? node_mask->size + 1 : 0)
-        < 0) {
-        throw std::runtime_error(
-            fmt::format(fmt("Failed to set memory policy: {:s} {:d}"), strerror(errno), errno));
-    }
-    numa_bitmask_free(node_mask);
-#endif
+    // Allocate everything the constructor creates on the NUMA node the frames
+    // are on. bufferFactory wraps the whole construction in the same policy so
+    // that the object itself is placed too; this covers a Buffer built directly.
+    kotekan::ScopedNumaPolicy bind_memory(numa_node);
 
     if (use_hugepages) {
         // Round up to the nearest huge page size multiple.
@@ -314,14 +307,6 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
             frames[i] = (uint8_t*)0xffffffff;
         }
     }
-
-#if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
-    // Reset the memory policy so that we don't impact other parts of the
-    if (set_mempolicy(MPOL_DEFAULT, nullptr, 0) < 0) {
-        throw std::runtime_error(fmt::format(
-            fmt("Failed to reset memory policy to default: %s (%d)"), strerror(errno), errno));
-    }
-#endif
 }
 
 Buffer::~Buffer() {
