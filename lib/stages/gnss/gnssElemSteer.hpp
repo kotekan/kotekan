@@ -148,6 +148,27 @@ public:
                && t_now - _fresh_t[(size_t)slot] <= _hold_s;
     }
 
+    /// The slot's line-of-sight UNIT VECTOR (ENU) at @p t_utc, extrapolated along its track
+    /// exactly as refresh() does but without rebuilding the table. False if the slot never
+    /// received geometry (or was invalidated); freshness is the caller's check (warm()).
+    bool direction(int slot, double t_utc, double* e_out) const {
+        if (!enabled() || slot < 0 || (size_t)slot >= _trk.size()
+            || _fresh_t[(size_t)slot] <= -1.0e17)
+            return false;
+        const Track& k = _trk[(size_t)slot];
+        double dt = 0.0;
+        if (k.moving && t_utc > 0.0)
+            dt = std::max(-_hold_s, std::min(_hold_s, t_utc - k.t0_utc));
+        double e[3] = {k.e[0] + k.edot[0] * dt, k.e[1] + k.edot[1] * dt,
+                       k.e[2] + k.edot[2] * dt};
+        const double n = std::sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+        if (!(n > 0.0))
+            return false;
+        for (int i = 0; i < 3; ++i)
+            e_out[i] = e[i] / n;
+        return true;
+    }
+
     /// The [n_elem] phasor row for (slot, channel). Valid only when warm().
     const cf* row(int slot, int ch) const {
         return &_tab[((size_t)slot * _n_chan + ch) * _n_elem];
