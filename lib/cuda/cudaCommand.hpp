@@ -148,7 +148,11 @@ protected:
     cudaDeviceInterface& device;
 
     /// The ID of the cuda stream to run operations on
-    int32_t cuda_stream_id;
+    // -1 until set_command_type() picks one. A command whose constructor returns before
+    // calling it -- cudaInputData's do_once instances past the first -- never enqueues
+    // anything, and cudaProcess::collect_stream_ids() skips a negative id; left
+    // uninitialised, that read was garbage and could abort the pipeline.
+    int32_t cuda_stream_id = -1;
 
     // cudaPipelineState flag required for this command to run, set from config "required_flag"
     std::string _required_flag;
