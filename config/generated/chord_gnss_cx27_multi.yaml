@@ -3,7 +3,7 @@
 # covering channels 13: freq_id 5976..6072
 # rest port 12048 (our nodes replace production's kotekan on these six)
 # outputs disabled: ['buffer_send_bf_mask_changes', 'buffer_send_bf_mask_changes_1', 'buffer_send_n2_subset', 'buffer_send_n2_subset_1']
-# base sha256 8630ca13702a83ec (config/base/live_config_20260831.json)
+# base sha256 0a34f2a590f99c4d (config/base/live_config_20260831.json)
 # REGENERATE WITH (this is the whole recipe -- flags included):
 #   config/gen_chord_gnss_config.py --base config/base/live_config_20260831.json --node cx27
 #       --elem-proj-mode live --elem-proj-deg 6 --carrier-phase-from-ref 1 --carrier-phase-mode
@@ -7014,7 +7014,7 @@ telescope:
     grid_x_idx: 3
     grid_y_idx: 3
     label: D4
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 17
     feed_pos_disp_m:
@@ -7024,7 +7024,7 @@ telescope:
     grid_x_idx: 2
     grid_y_idx: 3
     label: D3
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 18
     feed_pos_disp_m:
@@ -7034,7 +7034,7 @@ telescope:
     grid_x_idx: 1
     grid_y_idx: 3
     label: D2
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 19
     feed_pos_disp_m:
@@ -7044,7 +7044,7 @@ telescope:
     grid_x_idx: 0
     grid_y_idx: 3
     label: D1
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 20
     feed_pos_disp_m:
@@ -7054,7 +7054,7 @@ telescope:
     grid_x_idx: 3
     grid_y_idx: 2
     label: C4
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 21
     feed_pos_disp_m:
@@ -7064,7 +7064,7 @@ telescope:
     grid_x_idx: 2
     grid_y_idx: 2
     label: C3
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 22
     feed_pos_disp_m:
@@ -7074,7 +7074,7 @@ telescope:
     grid_x_idx: 1
     grid_y_idx: 2
     label: C2
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 23
     feed_pos_disp_m:
@@ -7084,7 +7084,7 @@ telescope:
     grid_x_idx: 0
     grid_y_idx: 2
     label: C1
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 24
     feed_pos_disp_m:
@@ -7094,7 +7094,7 @@ telescope:
     grid_x_idx: 7
     grid_y_idx: 3
     label: D8
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 25
     feed_pos_disp_m:
@@ -7104,7 +7104,7 @@ telescope:
     grid_x_idx: 6
     grid_y_idx: 3
     label: D7
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 26
     feed_pos_disp_m:
@@ -7114,7 +7114,7 @@ telescope:
     grid_x_idx: 5
     grid_y_idx: 3
     label: D6
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 27
     feed_pos_disp_m:
@@ -7124,7 +7124,7 @@ telescope:
     grid_x_idx: 4
     grid_y_idx: 3
     label: D5
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 28
     feed_pos_disp_m:
@@ -7134,7 +7134,7 @@ telescope:
     grid_x_idx: 7
     grid_y_idx: 2
     label: C8
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 29
     feed_pos_disp_m:
@@ -7144,7 +7144,7 @@ telescope:
     grid_x_idx: 6
     grid_y_idx: 2
     label: C7
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 30
     feed_pos_disp_m:
@@ -7154,7 +7154,7 @@ telescope:
     grid_x_idx: 5
     grid_y_idx: 2
     label: C6
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 31
     feed_pos_disp_m:
@@ -7164,7 +7164,7 @@ telescope:
     grid_x_idx: 4
     grid_y_idx: 2
     label: C5
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 32
     feed_pos_disp_m:
@@ -7174,7 +7174,7 @@ telescope:
     grid_x_idx: 3
     grid_y_idx: 5
     label: F4
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 33
     feed_pos_disp_m:
@@ -7184,7 +7184,7 @@ telescope:
     grid_x_idx: 2
     grid_y_idx: 5
     label: F3
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 34
     feed_pos_disp_m:
@@ -7194,7 +7194,7 @@ telescope:
     grid_x_idx: 1
     grid_y_idx: 5
     label: F2
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 35
     feed_pos_disp_m:
@@ -7204,7 +7204,7 @@ telescope:
     grid_x_idx: 0
     grid_y_idx: 5
     label: F1
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 36
     feed_pos_disp_m:
@@ -7214,7 +7214,7 @@ telescope:
     grid_x_idx: 3
     grid_y_idx: 4
     label: E4
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 37
     feed_pos_disp_m:
@@ -7224,7 +7224,7 @@ telescope:
     grid_x_idx: 2
     grid_y_idx: 4
     label: E3
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 38
     feed_pos_disp_m:
@@ -7234,7 +7234,7 @@ telescope:
     grid_x_idx: 1
     grid_y_idx: 4
     label: E2
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 39
     feed_pos_disp_m:
@@ -7244,7 +7244,7 @@ telescope:
     grid_x_idx: 0
     grid_y_idx: 4
     label: E1
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 40
     feed_pos_disp_m:
@@ -7254,7 +7254,7 @@ telescope:
     grid_x_idx: 7
     grid_y_idx: 5
     label: F8
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 41
     feed_pos_disp_m:
@@ -7264,7 +7264,7 @@ telescope:
     grid_x_idx: 6
     grid_y_idx: 5
     label: F7
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 42
     feed_pos_disp_m:
@@ -7274,7 +7274,7 @@ telescope:
     grid_x_idx: 5
     grid_y_idx: 5
     label: F6
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 43
     feed_pos_disp_m:
@@ -7284,7 +7284,7 @@ telescope:
     grid_x_idx: 4
     grid_y_idx: 5
     label: F5
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 44
     feed_pos_disp_m:
@@ -7294,7 +7294,7 @@ telescope:
     grid_x_idx: 7
     grid_y_idx: 4
     label: E8
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 45
     feed_pos_disp_m:
@@ -7304,7 +7304,7 @@ telescope:
     grid_x_idx: 6
     grid_y_idx: 4
     label: E7
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 46
     feed_pos_disp_m:
@@ -7314,7 +7314,7 @@ telescope:
     grid_x_idx: 5
     grid_y_idx: 4
     label: E6
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 47
     feed_pos_disp_m:
@@ -7324,7 +7324,7 @@ telescope:
     grid_x_idx: 4
     grid_y_idx: 4
     label: E5
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 48
     feed_pos_disp_m:
@@ -7334,7 +7334,7 @@ telescope:
     grid_x_idx: 3
     grid_y_idx: 7
     label: H4
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 49
     feed_pos_disp_m:
@@ -7344,7 +7344,7 @@ telescope:
     grid_x_idx: 2
     grid_y_idx: 7
     label: H3
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 50
     feed_pos_disp_m:
@@ -7354,7 +7354,7 @@ telescope:
     grid_x_idx: 1
     grid_y_idx: 7
     label: H2
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 51
     feed_pos_disp_m:
@@ -7364,7 +7364,7 @@ telescope:
     grid_x_idx: 0
     grid_y_idx: 7
     label: H1
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 52
     feed_pos_disp_m:
@@ -7374,7 +7374,7 @@ telescope:
     grid_x_idx: 3
     grid_y_idx: 6
     label: G4
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 53
     feed_pos_disp_m:
@@ -7384,7 +7384,7 @@ telescope:
     grid_x_idx: 2
     grid_y_idx: 6
     label: G3
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 54
     feed_pos_disp_m:
@@ -7394,7 +7394,7 @@ telescope:
     grid_x_idx: 1
     grid_y_idx: 6
     label: G2
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 55
     feed_pos_disp_m:
@@ -7404,7 +7404,7 @@ telescope:
     grid_x_idx: 0
     grid_y_idx: 6
     label: G1
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 56
     feed_pos_disp_m:
@@ -7414,7 +7414,7 @@ telescope:
     grid_x_idx: 7
     grid_y_idx: 7
     label: H8
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 57
     feed_pos_disp_m:
@@ -7424,7 +7424,7 @@ telescope:
     grid_x_idx: 6
     grid_y_idx: 7
     label: H7
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 58
     feed_pos_disp_m:
@@ -7434,7 +7434,7 @@ telescope:
     grid_x_idx: 5
     grid_y_idx: 7
     label: H6
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 59
     feed_pos_disp_m:
@@ -7444,7 +7444,7 @@ telescope:
     grid_x_idx: 4
     grid_y_idx: 7
     label: H5
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 60
     feed_pos_disp_m:
@@ -7454,7 +7454,7 @@ telescope:
     grid_x_idx: 7
     grid_y_idx: 6
     label: G8
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 61
     feed_pos_disp_m:
@@ -7464,7 +7464,7 @@ telescope:
     grid_x_idx: 6
     grid_y_idx: 6
     label: G7
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 62
     feed_pos_disp_m:
@@ -7474,7 +7474,7 @@ telescope:
     grid_x_idx: 5
     grid_y_idx: 6
     label: G6
-    type: Fake
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 63
     feed_pos_disp_m:
@@ -7484,7 +7484,7 @@ telescope:
     grid_x_idx: 4
     grid_y_idx: 6
     label: G5
-    type: Fake
+    type: Missing
   dish_separation_x_m: 6.300156854906823
   dish_separation_y_m: 8.500057809796308
   dish_vert_axis:
