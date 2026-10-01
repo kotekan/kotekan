@@ -149,7 +149,7 @@ run_hfb1_U128:
           in_buf: host_hfb1_U128_phase_buffer
           gpu_mem: hfb1_U128_phase_buffer
         - name: cudaSyncInput
-        - name: cudaCHIMEFRBBeamformer_chime_U128
+        - name: cudaCHIMEFRBBeamformer_chime_U128_K4
           voltage_name: upchan_hfb_U128_voltage
           frb_phase_name: hfb1_U128_phase
           frb_beamgrid_name: hfb1_beams
@@ -194,6 +194,10 @@ run_calc_hfb2_weights:
     frb2_beam_positions: host_hfb2_beam_positions_buffer
     frb2_weights: host_hfb2_weights_buffer
     num_threads: 32
+    metadata_source:
+{% for id in range(16) %}   # num_frequencies = 16
+        - host_voltage_buffer_{{ id }}
+{% endfor %}
 
 run_hfb23:
     gpu_0:

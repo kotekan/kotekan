@@ -10,8 +10,6 @@ using StaticArrays
 
 const Memory = IndexSpaces.Memory
 
-chimify(x::Int4x8) = swap_offset(x)
-unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
 # shift(x::Complex, s) = Complex(shift(x.re, s), shift(x.im, s))
@@ -116,7 +114,14 @@ end
 
 const Ttilde = 4 * 256
 
-const output_gain = 1 / (8 * Tds) #TODO   1 / (2 * Tds)
+# I = 1/(2 · P · M·N · Tds) · Σ_t Σ_pol |Ẽ|²
+# I is the mean beam power per polarisation per real component, in units of the
+# input LSB², i.e. ⟨I⟩ = σ² for noise-dominated input. Splitting the scale as
+# `input_gain` (applied to `W`, before the squaring) and `output_gain` (applied
+# after) bounds both the intermediate |Ẽ|² and the accumulated I by 49·M·N,
+# which is below the Float16 maximum of 65504 for any representable input.
+const input_gain = 1 / (2 * sqrt(M*N))
+const output_gain = 2 / (P * Tds)
 
 # Derived compile-time parameters (section 4.4)
 const Mpad = nextpow(2, M)
@@ -638,7 +643,7 @@ function write_Fsh2!(emitter)
         delete!(layout, Dish(:dish, W, RF1))
         emitter.environment[:Freg1′] = layout
         real_dish_value = Symbol(:Freg1_dish, string(W * i))
-        zero_dish_value = chimify(zero(Int4x8))
+        zero_dish_value = swap_offset(zero(Int4x8))
         if i < D ÷ W
             # This is a real dish for all warps
             dish_value = real_dish_value
@@ -698,7 +703,7 @@ function read_Fsh2!(emitter)
         Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
     ])
     # This loads garbage for nlo ≥ idiv(N, 4)
-    apply!(emitter, :Freg2 => layout_Freg2_registers, chimify(zero(Int4x8)))
+    apply!(emitter, :Freg2 => layout_Freg2_registers, swap_offset(zero(Int4x8)))
     if!(
         emitter, :(
             let
@@ -1760,7 +1765,8 @@ function make_frb_kernel()
                 nlo < $(Int32(idiv(N, 4)))
             end
         )) do emitter
-            load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory;)
+            load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory)
+            apply!(emitter, :W, [:W], (W,) -> :($(Float16x2(input_gain, input_gain)) * $W))
             return nothing
         end
     end
@@ -2058,7 +2064,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         println("Setting up input data...")
         map!(i -> zero(Int16x2), Smn_memory, Smn_memory)
         map!(i -> zero(Float16x2), W_memory, W_memory)
-        map!(i -> chimify(zero(Int4x8)), E_memory, E_memory)
+        map!(i -> swap_offset(zero(Int4x8)), E_memory, E_memory)
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
         map!(i -> zero(Int32), info_wanted, info_wanted)
 
@@ -2077,6 +2083,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         @show num_threads num_warps num_blocks
 
         input = :planewave
+        # Largest expected intensity, used to scale the self-test tolerance
+        I_max = 0.0f0
         if input ≡ :zero
             # do nothing
         elseif input ≡ :random
@@ -2092,7 +2100,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             end
 
             # Wvalue = 1 + 0im
-            Wvalue = uniform_factor() * uniform_in_disk()
+            # Only one dish contributes, so undo the kernel's input gain to put
+            # the output at the scale a full array would produce
+            Wvalue = cispi(2 * rand(Float32)) / input_gain
             # TODO: Set only one element of `W` (this requires the dish gridding)
             W_memory .= [Float16x2(c2t(Wvalue)...) for i in eachindex(W_memory)]
 
@@ -2107,7 +2117,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             Evalue8 = zero(SVector{8,Int8})
             Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
             Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
-            E_memory[Eidx + 1] = chimify(Int4x8(Evalue8...))
+            E_memory[Eidx + 1] = swap_offset(Int4x8(Evalue8...))
             @show Wvalue Evalue Evalue8
             @show Eidx E_memory[Eidx + 1]
 
@@ -2118,7 +2128,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 dishm, dishn = dish_grid[dish + 1]
                 # Eqn. (4)
                 Ẽvalue = cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
-                Ivalue = output_gain * abs2(Ẽvalue)
+                Ivalue = output_gain * abs2(input_gain * Ẽvalue)
+                I_max = max(I_max, Ivalue)
                 if (beamp, beamq) == (0,0)
                     @show beamp beamq Ivalue
                 end
@@ -2138,7 +2149,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             end
 
             Wvalue = 1 + 0im
-            Wvalue /= 16
             W_memory .= [Float16x2(c2t(Wvalue)...) for i in eachindex(W_memory)]
 
             freq = rand(0:(Fbar_in - 1))
@@ -2151,10 +2161,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             @show Fvalue Evalue
             for dish in 0:D-1
                 Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar_in * time
-                Evalue8 = convert(NTuple{8,Int8}, unchimify(E_memory[Eidx + 1]))
+                Evalue8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
                 Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
                 Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
-                E_memory[Eidx + 1] = chimify(Int4x8(Evalue8...))
+                E_memory[Eidx + 1] = swap_offset(Int4x8(Evalue8...))
                 # println("dish=$dish E=$(E_memory[Eidx + 1])")
             end
 
@@ -2175,7 +2185,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 #     Ẽvalue2 += cispi(2 * dishm * beamp / Float64(2 * M) + 2 * dishn * beamq / Float64(2 * N)) * Wvalue * Evalue
                 # end
                 # @assert abs(Ẽvalue - Ẽvalue2) <= 1.0f-4 # + 0.01f0 * max(abs(Ẽvalue), max(Ẽvalue2))
-                Ivalue = output_gain * abs2(Ẽvalue)
+                Ivalue = output_gain * abs2(input_gain * Ẽvalue)
+                I_max = max(I_max, Ivalue)
                 # println("beamp=$beamp beamq=$beamq I=$Ivalue")
                 Ivalue2 = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])
                 Ivalue2 = setindex(Ivalue2, Ivalue, beamp % 2 + 1)
@@ -2296,7 +2307,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 have_value = have_value2[beamp % 2 + 1]
                 want_value = want_value2[beamp % 2 + 1]
                 # if have_value ≠ want_value
-                if !isapprox(have_value, want_value; atol=10 * eps(Float16), rtol=10 * eps(Float16))
+                # The kernel's rounding error at any beam is set by the largest
+                # intermediate value of the FFT, which is common to all beams,
+                # so the absolute tolerance must scale with the peak intensity
+                if !isapprox(have_value, want_value; atol=eps(Float16) * I_max, rtol=10 * eps(Float16))
                     found_error = true
                     error_count += 1
                     if error_count <= 20
@@ -2309,14 +2323,26 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             if error_count > 0
                 println("    Found $(error_count) errors")
             end
-            # @assert all(did_test_I_memory)
+
+            # `all(did_test_I_memory)` cannot hold: the loop above covers only
+            # `Fbar_out_min:Fbar_out_max` and `Ttildemin:Ttildemax`, which is
+            # not all of `I_memory`. The check with teeth is the converse --
+            # that the kernel wrote *nothing* outside the range it was given.
+            # `I_cuda` is NaN-filled, so every untested element must still be
+            # NaN. (An out-of-range write is what turned the analogous `Fmax`
+            # overrun in `upchan.jl` into silent corruption.)
+            for Iidx in 0:(length(I_memory) - 1)
+                did_test_I_memory[Iidx + 1] && continue
+                @assert all(isnan, convert(NTuple{2,Float32}, I_memory[Iidx + 1]))
+            end
 
             found_error && break
         end
-        if found_error
-            println("*** FOUND ERROR DURING SELF-TEST ***")
-        end
     end
+    if found_error
+        error("*** SELF-TEST FAILED ***")
+    end
+    run_selftest && println("Self-test passed.")
 
     println("Done.")
     return nothing
@@ -2371,6 +2397,7 @@ function fix_ptx_kernel()
         number-of-frequencies: $Fbar_in
         number-of-polarizations: $P
         number-of-timesamples: $Tbar
+        input-gain: $input_gain
         output-gain: $output_gain
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U

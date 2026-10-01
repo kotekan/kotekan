@@ -5,16 +5,16 @@
 #include "CHORDTelescope.hpp"
 #include "Config.hpp" // for Config
 #include "H5Support.hpp"
-#include "NDArray.hpp"       // for GenericNDArray
-#include "chordMetadata.hpp" // for chordMetadata, get_chord_metadata
 #include "N2FrameDesc.hpp" // for N2FrameDesc
 #include "N2FrameView.hpp" // for N2FrameView
 #include "N2Metadata.hpp"  // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"      // for N2 helpers
+#include "NDArray.hpp"     // for GenericNDArray
 #include "Stage.hpp"       // for Stage
 #include "Telescope.hpp"
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
 #include "configUpdater.hpp"
 #include "hdf5N2Write.hpp" // for hdf5N2Write
 #include "restServer.hpp"
@@ -57,6 +57,22 @@ using kotekan::N2FrameDesc;
 // Absolute path to test gains file (injected by CMake via TEST_DATA_DIR)
 static const std::string TEST_GAINS_FILE =
     std::string(TEST_DATA_DIR) + "/baseband_gains/test_gains.h5";
+
+// Install the test telescope: two dishes D00 and D01, with D00 optionally disconnected
+// (typed Missing) so that a DishInputs frame is a proper subset of the array.
+static void set_test_telescope(bool dish0_connected) {
+    nlohmann::json cfg;
+    cfg["num_polarizations"] = 2;
+    add_test_telescope_config(cfg);
+    if (!dish0_connected) {
+        cfg["telescope"]["dish_inputs"][0]["type"] = "Missing";
+        cfg["/telescope"] = cfg["telescope"];
+    }
+    kotekan::Config conf;
+    conf.update_config(cfg);
+    kotekan::configUpdater::instance().apply_config(conf);
+    Telescope::instance(conf);
+}
 
 static freq_id_t get_abs_freq_id(size_t f_index) {
     const auto& tel = Telescope::instance().cast<CHORDTelescope>();
@@ -159,6 +175,38 @@ static std::string get_dataset_name(const std::string& base_dir, uint64_t abs_fi
     buf << std::put_time(std::gmtime(&tsec), "%Y%m%dT%H%M%S") << "_" << std::setw(9)
         << std::setfill('0') << nsec << suffix;
     return buf.str();
+}
+
+// The /index_map input tables have one row per element of the frame. A full
+// layout holds the first num_input elements of the array in the file's
+// input_order: the test telescope has two dishes and two polarizations, and
+// CHORDBeamformer order puts element = dish + pol * num_dishes, so the rows are
+// D00X, D01X, D00Y, D01Y with dish i in grid column i.
+static void validate_index_map_inputs(File& file, size_t num_input) {
+    std::vector<std::string> labels;
+    std::vector<int64_t> dish_idx;
+    std::vector<int32_t> pol;
+    std::vector<int64_t> grid_x;
+    file.getDataSet("/index_map/label").read(labels);
+    file.getDataSet("/index_map/dish_idx").read(dish_idx);
+    file.getDataSet("/index_map/pol").read(pol);
+    file.getDataSet("/index_map/grid_x_idx").read(grid_x);
+
+    BOOST_REQUIRE_LE(num_input, 4u);
+    const std::vector<std::string> all_labels{"D00X", "D01X", "D00Y", "D01Y"};
+    const std::vector<int64_t> all_dish{0, 1, 0, 1};
+    const std::vector<int32_t> all_pol{0, 0, 1, 1};
+    const std::vector<std::string> expected_labels(all_labels.begin(),
+                                                   all_labels.begin() + num_input);
+    const std::vector<int64_t> expected_dish(all_dish.begin(), all_dish.begin() + num_input);
+    const std::vector<int32_t> expected_pol(all_pol.begin(), all_pol.begin() + num_input);
+    BOOST_CHECK_EQUAL_COLLECTIONS(labels.begin(), labels.end(), expected_labels.begin(),
+                                  expected_labels.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(dish_idx.begin(), dish_idx.end(), expected_dish.begin(),
+                                  expected_dish.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(pol.begin(), pol.end(), expected_pol.begin(), expected_pol.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(grid_x.begin(), grid_x.end(), expected_dish.begin(),
+                                  expected_dish.end());
 }
 
 // Read back and validate a few arrays using the known patterns
@@ -333,6 +381,62 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
 }
 
 // Test 2: add_frame for the same (f,t) slot twice with differing metadata values
+// A DishInputs frame carries only the telescope's connected elements, so the /index_map
+// input tables hold those rows in the N2 layout's element order. With D00 disconnected,
+// the connected elements (CHORDBeamformer: element = dish + pol * 2) are 1 and 3, the
+// two polarizations of D01.
+BOOST_AUTO_TEST_CASE(test_visfiledata_index_map_dish_inputs) {
+    set_test_telescope(false);
+    const size_t num_input = 2;
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::DishInputs);
+    const size_t num_ev = 1;
+    const size_t num_file_t = 1;
+
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
+    auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool_di", "N2Metadata");
+    Buffer buf(1, frame_size, pool, "n2buf_di", "N2", 1, false, false, std::vector<int>{}, true);
+    buf.ensure_frame_desc(
+        std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::DishInputs));
+    buf.allocate_new_metadata_object(0);
+    auto meta = get_N2_metadata(&buf, 0);
+    BOOST_REQUIRE(meta);
+    meta->freq_id = get_abs_freq_id(0);
+    N2FrameView fv(&buf, 0);
+    fv.zero_frame();
+
+    const std::string base_dir = "test_visfiledata_index_map_dish_inputs";
+    rm_tree_if_exists(base_dir);
+    ensure_directory(base_dir);
+    ensure_directory(base_dir + "/.partial");
+    {
+        TestVisFileData data(fv, num_file_t, 100.0, 0, base_dir);
+
+        std::vector<std::string> labels;
+        std::vector<int64_t> dish_idx;
+        std::vector<int32_t> pol;
+        std::vector<int32_t> type;
+        data.h5_file->getDataSet("/index_map/label").read(labels);
+        data.h5_file->getDataSet("/index_map/dish_idx").read(dish_idx);
+        data.h5_file->getDataSet("/index_map/pol").read(pol);
+        data.h5_file->getDataSet("/index_map/type").read(type);
+
+        const std::vector<std::string> expected_labels{"D01X", "D01Y"};
+        const std::vector<int64_t> expected_dish{1, 1};
+        const std::vector<int32_t> expected_pol{0, 1};
+        const std::vector<int32_t> expected_type{0, 0}; // ArrayDish
+        BOOST_CHECK_EQUAL_COLLECTIONS(labels.begin(), labels.end(), expected_labels.begin(),
+                                      expected_labels.end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(dish_idx.begin(), dish_idx.end(), expected_dish.begin(),
+                                      expected_dish.end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(pol.begin(), pol.end(), expected_pol.begin(),
+                                      expected_pol.end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(type.begin(), type.end(), expected_type.begin(),
+                                      expected_type.end());
+    }
+    rm_tree_if_exists(base_dir);
+    set_test_telescope(true);
+}
+
 BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     N2Metadata force_link_marker;
     const size_t num_input = 2;
@@ -428,13 +532,7 @@ BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 struct TelescopeFixture {
     TelescopeFixture() {
-        nlohmann::json cfg;
-        cfg["num_polarizations"] = 2;
-        add_test_telescope_config(cfg);
-        kotekan::Config conf;
-        conf.update_config(cfg);
-        kotekan::configUpdater::instance().apply_config(conf);
-        Telescope::instance(conf);
+        set_test_telescope(true);
     }
 };
 
@@ -575,23 +673,25 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     {
         File f(ds_path, File::ReadOnly);
         validate_dataset_content(f, num_input, num_ev, nfreq, expected_num_file_t);
+        validate_index_map_inputs(f, num_input);
     }
 
     // Cleanup
     rm_tree_if_exists(base_dir);
 }
 
-// Applied bad-feed-mask change records covering the file's tick span land in
-// /flag_updates: the record already in effect at the span start plus the records
-// inside it; records after the span and resent duplicates do not.
-BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
+// The bad feed mask streams land in /bad_feed_mask: one row per mask frame on the streams'
+// common FPGA grid over the file's tick span, one column per stream (an X-engine half,
+// identified by the coarse frequencies it applied the mask to), -1 where a stream's frame
+// did not arrive.
+BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
 
     kotekan_test_logging::configure();
 
-    const std::string unique_name = "/hdf5_vis_writer_flagup";
+    const std::string unique_name = "/hdf5_vis_writer_bfmask";
     const std::string in_buf_name = "n2buf";
     const std::string mask_buf_name = "maskbuf";
-    const std::string base_dir = "test_hdf5N2Write_flag_updates";
+    const std::string base_dir = "test_hdf5N2Write_bad_feed_mask";
     rm_tree_if_exists(base_dir);
 
     const size_t num_input = 3;
@@ -610,31 +710,31 @@ BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
     set_file_num_t(conf, unique_name, num_file_t);
     {
         auto cfg = conf.get_full_config_json();
-        cfg[unique_name.substr(1)]["in_bf_mask_buf"] = mask_buf_name;
+        cfg[unique_name.substr(1)]["in_bad_feed_mask_buf"] = mask_buf_name;
         conf.update_config(cfg);
     }
 
     // Vis buffer
     const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
     const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
-    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_flagup", "N2Metadata");
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_bfmask", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
     buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
 
-    // Mask record buffer: frames of two identical rows of three elements.
-    const size_t mask_rows = 2;
+    // Mask buffer: [1, P=1, D=3], one frame per 10 FPGA samples.
     const size_t mask_row_len = 3;
+    const uint64_t step = 10;
     auto chord_pool =
-        metadataPool::create(8, sizeof(chordMetadata), "pool_flagup_mask", "chordMetadata");
-    Buffer mask_buf(4, mask_rows * mask_row_len, chord_pool, mask_buf_name, "ndarray", /*numa*/ 0,
+        metadataPool::create(8, sizeof(chordMetadata), "pool_bfmask_mask", "chordMetadata");
+    Buffer mask_buf(4, mask_row_len, chord_pool, mask_buf_name, "ndarray", /*numa*/ 0,
                     /*huge*/ false, /*mlock*/ false, /*producers*/ std::vector<int>{},
                     /*zero_new_frames*/ true);
     mask_buf.ensure_frame_desc(kotekan::GenericNDArray::describe(
-        kotekan::int8, "bf_mask", {(std::ptrdiff_t)mask_rows, 1, (std::ptrdiff_t)mask_row_len},
-        {"Trfi", "P", "D"}, {1, 1, 1}));
+        kotekan::int8, "bf_mask", {1, 1, (std::ptrdiff_t)mask_row_len}, {"Tbf", "P", "D"},
+        {(std::ptrdiff_t)step, 1, 1}));
     mask_buf.register_producer("test-producer");
 
     kotekan::bufferContainer bc;
@@ -644,30 +744,45 @@ BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
     hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
-    // The vis frames below sit at ticks [100, 201). Records: one before the span (in
-    // effect at its start), a resent duplicate of it, one inside, one after the end.
-    const struct {
+    // The vis frames below cover ticks [100, 201): bins start at 100 and 101 (test helper)
+    // and are 100 ticks long, so the grid rows are 100, 110, ..., 200. Two streams: A covers
+    // the file's frequencies 0 and (an absent) 3, B covers frequencies 1 and 2. A's masks
+    // run from before the span to after it with a change at 130 and its frame at 150
+    // missing; B's frames cover the span exactly.
+    const int32_t freq_a0 = (int32_t)get_abs_freq_id(0), freq_a3 = (int32_t)get_abs_freq_id(3);
+    const int32_t freq_b1 = (int32_t)get_abs_freq_id(1), freq_b2 = (int32_t)get_abs_freq_id(2);
+    const std::vector<int> stream_a = {freq_a0, freq_a3};
+    const std::vector<int> stream_b = {freq_b1, freq_b2};
+    struct MaskFrame {
         uint64_t seq;
+        const std::vector<int>* stream;
         std::array<int8_t, 3> mask;
-    } records[] = {
-        {50, {1, 1, 1}},  // in effect at the span start
-        {90, {1, 1, 1}},  // duplicate contents: collapsed on ingest
-        {150, {1, 0, 1}}, // inside the span
-        {300, {0, 0, 1}}, // after the span: excluded
     };
+    std::vector<MaskFrame> frames;
+    for (uint64_t seq = 90; seq <= 210; seq += step) {
+        if (seq != 150)
+            frames.push_back(
+                {seq, &stream_a,
+                 seq < 130 ? std::array<int8_t, 3>{1, 1, 1} : std::array<int8_t, 3>{1, 0, 1}});
+        if (seq >= 100 && seq <= 200)
+            frames.push_back({seq, &stream_b, {0, 1, 1}});
+    }
     int mask_fid = 0;
-    for (const auto& rec : records) {
+    for (const auto& rec : frames) {
         int8_t* frame = (int8_t*)mask_buf.wait_for_empty_frame("test-producer", mask_fid);
         BOOST_REQUIRE(frame != nullptr);
-        for (size_t r = 0; r < mask_rows; ++r)
-            std::copy(rec.mask.begin(), rec.mask.end(), frame + r * mask_row_len);
+        std::copy(rec.mask.begin(), rec.mask.end(), frame);
         mask_buf.allocate_new_metadata_object(mask_fid);
         auto meta = get_chord_metadata(&mask_buf, mask_fid);
         meta->set_fpga_seq_num(rec.seq);
-        meta->set_coarse_freq({7});
+        meta->set_time_downsampling_fpga(step);
+        meta->set_coarse_freq(*rec.stream);
         mask_buf.mark_frame_full("test-producer", mask_fid);
         mask_fid = (mask_fid + 1) % mask_buf.num_frames;
     }
+    // Every mask frame is in before the vis frames start defining the file's stream axis.
+    wait_until_frame_empty(&mask_buf, (mask_fid + mask_buf.num_frames - 1) % mask_buf.num_frames,
+                           30.0);
 
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t base_time_ns = 10'000'000'000ULL;
@@ -693,23 +808,40 @@ BOOST_AUTO_TEST_CASE(test_writer_flag_updates) {
     BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
     {
         File f(datasets[0], File::ReadOnly);
-        BOOST_REQUIRE(f.exist("/flag_updates"));
-        std::vector<uint64_t> seqs;
-        f.getDataSet("/flag_updates/fpga_seq_num").read(seqs);
-        std::vector<int32_t> freq_ids;
-        f.getDataSet("/flag_updates/freq_id").read(freq_ids);
-        std::vector<std::vector<int8_t>> masks;
-        f.getDataSet("/flag_updates/bf_mask").read(masks);
+        BOOST_REQUIRE(f.exist("/bad_feed_mask"));
 
-        BOOST_REQUIRE_EQUAL(seqs.size(), 2u);
-        BOOST_CHECK_EQUAL(seqs[0], 50u);
-        BOOST_CHECK_EQUAL(seqs[1], 150u);
-        BOOST_REQUIRE_EQUAL(freq_ids.size(), 2u);
-        BOOST_CHECK_EQUAL(freq_ids[0], 7);
-        BOOST_CHECK_EQUAL(freq_ids[1], 7);
-        BOOST_REQUIRE_EQUAL(masks.size(), 2u);
-        BOOST_CHECK(masks[0] == (std::vector<int8_t>{1, 1, 1}));
-        BOOST_CHECK(masks[1] == (std::vector<int8_t>{1, 0, 1}));
+        std::vector<uint64_t> seqs;
+        f.getDataSet("/bad_feed_mask/fpga_seq_num").read(seqs);
+        BOOST_REQUIRE_EQUAL(seqs.size(), 11u);
+        for (size_t r = 0; r < seqs.size(); ++r)
+            BOOST_CHECK_EQUAL(seqs[r], 100 + step * r);
+
+        std::vector<std::vector<int32_t>> table;
+        f.getDataSet("/bad_feed_mask/stream_freq_id").read(table);
+        BOOST_REQUIRE_EQUAL(table.size(), 2u);
+        BOOST_CHECK(table[0] == (std::vector<int32_t>{freq_a0, freq_a3}));
+        BOOST_CHECK(table[1] == (std::vector<int32_t>{freq_b1, freq_b2}));
+
+        auto mask_ds = f.getDataSet("/bad_feed_mask/mask");
+        const std::vector<size_t> dims = mask_ds.getDimensions();
+        BOOST_REQUIRE(dims == (std::vector<size_t>{11, 2, 1, 3}));
+        std::vector<int8_t> mask(11 * 2 * 3);
+        mask_ds.read_raw(mask.data());
+        auto row = [&](size_t r, size_t s) {
+            return std::vector<int8_t>(mask.begin() + (r * 2 + s) * 3,
+                                       mask.begin() + (r * 2 + s + 1) * 3);
+        };
+        const std::vector<int8_t> a_before{1, 1, 1}, a_after{1, 0, 1}, missing{-1, -1, -1},
+            b{0, 1, 1};
+        for (size_t r = 0; r < 11; ++r) {
+            const uint64_t seq = 100 + step * r;
+            BOOST_CHECK_MESSAGE(row(r, 0)
+                                    == (seq == 150  ? missing
+                                        : seq < 130 ? a_before
+                                                    : a_after),
+                                "stream A row at seq " << seq);
+            BOOST_CHECK_MESSAGE(row(r, 1) == b, "stream B row at seq " << seq);
+        }
     }
 
     rm_tree_if_exists(base_dir);

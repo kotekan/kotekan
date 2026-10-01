@@ -83,6 +83,7 @@ class calcFRB2Weights : public kotekan::Stage {
 
     Buffer* const frb2_beam_positions_buffer;
     Buffer* const W2_buffer;
+    const std::vector<Buffer*> metadata_sources;
 
 public:
     calcFRB2Weights(kotekan::Config& config, const std::string& unique_name,
@@ -92,7 +93,8 @@ public:
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         frb2_beam_positions_buffer(get_buffer("frb2_beam_positions")),
-        W2_buffer(get_buffer("frb2_weights"))
+        W2_buffer(get_buffer("frb2_weights")),
+        metadata_sources(get_buffer_or_array("metadata_source"))
     //
     {
         assert(frb2_beam_positions_buffer);
@@ -101,6 +103,8 @@ public:
             FATAL_ERROR("num_threads %d must be positive", num_threads);
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
+        for (Buffer* const metadata_source : metadata_sources)
+            metadata_source->register_consumer(unique_name);
 
         frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
@@ -123,8 +127,15 @@ public:
         const Telescope& telescope = Telescope::instance();
 
         // Upchannelization schedule
-        const auto& upchan_schedule =
-            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+        // The coarse frequency channels handled by this GPU. These are local to
+        // a GPU and thus cannot come from the configuration, which is the same
+        // for every GPU.
+        const auto local_coarse_freq = wait_for_coarse_freq(metadata_sources, unique_name);
+        if (!local_coarse_freq)
+            return;
+
+        const UpchannelizationSchedule upchan_schedule(config, upchannelization_schedule_name,
+                                                       *local_coarse_freq, unique_name);
 
         // Calculate frequencies
         const auto& frequency_channels = upchan_schedule.get_frequency_channels();

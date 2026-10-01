@@ -551,6 +551,8 @@ set_bf_mask:
     updatable_config:
         bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
+    # The mask stream starts at the sequence number of the first voltage frame
+    metadata_source: host_voltage_buffer_0
 
 # Send the bad feed mask to its GPU ringbuffer. One mask element covers
 # bf_mask_lifetime_in_samples input samples, so this runs far less often than the other
@@ -1458,6 +1460,10 @@ FRB:
         upchan_max_num_channels: upchan_U16_max_num_channels
         upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
         upchan_gain_buffer: host_upchan_U16_gain_buffer
+        metadata_source:
+{%- for id in range(num_freq_gpu_buf) %}
+            - host_voltage_buffer_{{ id }}
+{%- endfor %}
 
     run_upchan_U16:
 {%- if not using_dpdk %}
@@ -1523,7 +1529,7 @@ FRB:
               in_buf: host_upchan_U16_gain_buffer
               gpu_mem: upchan_U16_gain_buffer
             - name: cudaSyncInput
-            - name: cudaUpchannelizer_chime_U16
+            - name: cudaUpchannelizer_chime_U16_K4
               voltage_name: xposed_voltage
               upchan_U16_gain_name: upchan_U16_gain
               upchan_U16_voltage_name: upchan_U16_voltage
@@ -1570,7 +1576,6 @@ FRB:
         kotekan_stage: processFRBFeedGains
         num_local_freq: num_freq_gpu_buf
         upchan_factor: factor_upchan_out
-        scaling_factor: 1.0 / 32
         gain_buffers:
           - host_frb1_phase_buffer
         # This reads the mask on the host side, not from the GPU ringbuffer, and it reads it as
@@ -1596,7 +1601,7 @@ FRB:
               in_buf: host_frb1_U16_phase_buffer
               gpu_mem: frb1_U16_phase_buffer
             - name: cudaSyncInput
-            - name: cudaCHIMEFRBBeamformer_chime_U16
+            - name: cudaCHIMEFRBBeamformer_chime_U16_K4
               voltage_name: upchan_U16_voltage
               frb_phase_name: frb1_U16_phase
               frb_beamgrid_name: frb1_beams
@@ -1703,6 +1708,10 @@ FRB:
         frb2_beam_positions: host_frb2_beam_positions_buffer
         frb1_swap_MN: true # yes, this is used by FRB 2
         frb2_weights: host_frb2_weights_buffer
+        metadata_source:
+{%- for id in range(num_freq_gpu_buf) %}
+            - host_voltage_buffer_{{ id }}
+{%- endfor %}
 ###
 #{#
         kotekan_stage: hdf5FileRead
@@ -1735,6 +1744,8 @@ FRB:
               gpu_mem: frb2_weights_buffer
             - name: cudaSyncInput
             - name: cudaFRBBeamReformer
+              # accumulate the 4096-term sums in float32; float16 loses precision
+              accumulate_float32: true
               frb1_max_num_frequencies: upchan_U16_max_num_output_channels
               frb1_max_num_times: buffer_depth * frb_num_output_times
               frb2_num_frequencies: upchan_U16_max_num_output_channels
@@ -1884,7 +1895,7 @@ write_frb:
     base_dir: frb_beams
     in_buf: host_frb3_beams_buffer_post
     file_name: host_frb3_beams_buffer
-    create_single_file: false  # split time axis: dim_scaling[0] != time_downsampling_fpga
+    create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
     input_order: CHIMEBeamformer
 
 # enable to dump sk statistics data

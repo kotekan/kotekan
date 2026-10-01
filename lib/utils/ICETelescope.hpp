@@ -108,9 +108,9 @@ protected:
      * @return          Tuple containing a vector of the input reorder map, and a
      *                  vector of the input labels for the index map.
      */
-    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
     parse_reorder_default(const kotekan::Config& config, const std::string& path,
-                          uint64_t num_elements);
+                          uint64_t num_elements) const;
 
     static std::vector<station_id_t>
     invert_reorder_table(const std::vector<uint32_t>& input_reorder);
@@ -174,8 +174,8 @@ protected:
 
 private:
     static std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(nlohmann::json j);
-    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
-    parse_reorder(nlohmann::json& j);
+    std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    parse_reorder(nlohmann::json& j) const;
     static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
     default_reorder(size_t num_elements);
 };

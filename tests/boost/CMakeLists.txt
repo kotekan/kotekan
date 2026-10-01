@@ -100,13 +100,13 @@ if(FFTW_FOUND)
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
 endif()
 
-# frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
 # test_cuda_frame_join - the end-of-frame join decision (header-only, no CUDA needed)
 add_executable(test_cuda_frame_join test_cuda_frame_join.cpp)
 target_include_directories(test_cuda_frame_join PRIVATE ${CMAKE_SOURCE_DIR}/lib/cuda)
 target_link_libraries(test_cuda_frame_join PRIVATE libexternal kotekan_libs kotekan_utils
                                                    kotekan_core)
 
+# frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
 add_executable(test_modulo test_modulo.cpp)
 target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
@@ -262,6 +262,11 @@ endif()
 
 add_executable(test_DataType test_DataType.cpp)
 target_link_libraries(test_DataType kotekan_metadata libexternal)
+
+# test_frb1IntensityBound - the worst-case FRB1 intensity for given weights (header-only helper)
+add_executable(test_frb1IntensityBound test_frb1IntensityBound.cpp)
+target_include_directories(test_frb1IntensityBound PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_link_libraries(test_frb1IntensityBound kotekan_metadata libexternal)
 
 add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
@@ -479,3 +484,10 @@ else()
 endif()
 target_include_directories(test_bufferDedup PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                     ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_upchannelizeReference - the serial float32 upchannelization reference. The reference lives in
+# lib/cuda, next to its only caller, but has no CUDA dependency of its own. Compile it directly
+# rather than linking kotekan_cuda, so these tests still build and run on a machine without CUDA.
+add_executable(test_upchannelizeReference test_upchannelizeReference.cpp
+                                          ${KOTEKAN_SOURCE_DIR}/lib/cuda/upchannelizeReference.cpp)
+target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)

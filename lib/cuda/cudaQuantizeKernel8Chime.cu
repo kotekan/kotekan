@@ -133,7 +133,7 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input,
     for (int freq = 0; freq < out_nfreqs_chunk; ++freq) {
         for (int time = 0; time < out_ntimes_chunk; ++time) {
             const int in_ind = time + in_ntimes * freq;
-            const int out_ind = time + out_ntimes_chunk * freq;
+            const int out_ind = time + out_ntimes_chunk * (out_nfreqs_chunk - 1 - freq);
             // Get value
             const float x = input[in_ind];
             // Scale
@@ -194,7 +194,7 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
                                     int beam_outer) {
         return time_chunk
                + out_ntimes_chunk
-                     * (freq_chunk
+                     * ((out_nfreqs_chunk - 1 - freq_chunk)
                         + out_nfreqs_chunk
                               * (freq_packet
                                  + out_nfreqs_packet

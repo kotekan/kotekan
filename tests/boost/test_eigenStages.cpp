@@ -1,5 +1,6 @@
 #define BOOST_TEST_MODULE "test_eigen_stages"
 
+#include "CHORDTelescope.hpp"
 #include "Config.hpp"
 #include "EigenN2Iter.hpp"
 #include "FakeN2.hpp"
@@ -585,11 +586,8 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_concurrent_pipelines) {
     verify_results(results.second, params_b, 1e-4, 1e-4, 1e-4, 1e-5f);
 }
 
-// DishInputs layout: the frame descriptor derives a compact frame from the
-// telescope's dish table (an array dish, an RFI antenna and two Fake dishes -> the
-// 4 elements {0, 1, 4, 5} of the full 8, carried in the input_list), and the eigen
-// stage solves it as an ordinary dense triangle, blind to where the elements came
-// from. A rank-1 phase matrix must converge with all four evec entries populated.
+// A compact DishInputs frame holds the dense triangle over its own element axis, so the
+// solver runs on it as on a FullUpperTri frame of the same size.
 BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     ensure_n2metadata_registered();
 
@@ -611,39 +609,38 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     cfg["dataset_manager"]["enable_state_caching"] = false;
     cfg["dataset_manager"]["use_dataset_broker"] = false;
 
-    // Four dishes, two of them Fake: DishInputs keeps the array dish and the RFI
-    // antenna, elements {0, 1, 4, 5}.
+    // Four dishes, two of them Missing: DishInputs keeps the array dish and the RFI
+    // antenna, elements {0, 1, 4, 5} of the eight-element full order.
     add_test_telescope_config(cfg);
     cfg["telescope"]["num_dishes"] = 4;
-    cfg["telescope"]["dish_inputs"] = nlohmann::json::array(
-        {{{"dish_idx", 0},
-          {"grid_x_idx", 0},
-          {"grid_y_idx", 0},
-          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
-          {"coelev_disp_deg", 0.0},
-          {"type", "ArrayDish"},
-          {"label", "D00"}},
-         {{"dish_idx", 1},
-          {"grid_x_idx", 1},
-          {"grid_y_idx", 0},
-          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
-          {"coelev_disp_deg", 0.0},
-          {"type", "RFIDish"},
-          {"label", "R01"}},
-         {{"dish_idx", 2},
-          {"grid_x_idx", 2},
-          {"grid_y_idx", 0},
-          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
-          {"coelev_disp_deg", 0.0},
-          {"type", "Fake"},
-          {"label", "F02"}},
-         {{"dish_idx", 3},
-          {"grid_x_idx", 3},
-          {"grid_y_idx", 0},
-          {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
-          {"coelev_disp_deg", 0.0},
-          {"type", "Fake"},
-          {"label", "F03"}}});
+    cfg["telescope"]["dish_inputs"] = nlohmann::json::array({{{"dish_idx", 0},
+                                                              {"grid_x_idx", 0},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "ArrayDish"},
+                                                              {"label", "D00"}},
+                                                             {{"dish_idx", 1},
+                                                              {"grid_x_idx", 1},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "RFIDish"},
+                                                              {"label", "R01"}},
+                                                             {{"dish_idx", 2},
+                                                              {"grid_x_idx", 2},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "Missing"},
+                                                              {"label", "M02"}},
+                                                             {{"dish_idx", 3},
+                                                              {"grid_x_idx", 3},
+                                                              {"grid_y_idx", 0},
+                                                              {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                              {"coelev_disp_deg", 0.0},
+                                                              {"type", "Missing"},
+                                                              {"label", "M03"}}});
 
     kotekan::Config conf;
     conf.update_config(cfg);
@@ -651,14 +648,15 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     Telescope::instance(conf);
     datasetManager::instance(conf);
 
-    // The derivation itself: a compact 4-element frame whose identities are the
-    // non-Fake elements {0, 1, 4, 5} of the full order, with a dense triangle over
-    // its own element axis.
+    // The compact frame: four elements standing for the connected {0, 1, 4, 5}, with a
+    // dense triangle over its own element axis.
+    const auto* tel = dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+    BOOST_REQUIRE(tel != nullptr);
+    const std::vector<uint64_t> expected_ids = {0, 1, 4, 5};
+    BOOST_CHECK(tel->get_connected_elements(tel->fiducial_element_order()) == expected_ids);
     auto desc = std::make_shared<kotekan::N2FrameDesc>(conf, "/n2buf");
     BOOST_REQUIRE_EQUAL(desc->get_num_elements(), 4u);
     BOOST_REQUIRE_EQUAL(desc->get_product_list().size(), 10u);
-    const std::vector<uint16_t> expected_ids = {0, 1, 4, 5};
-    BOOST_CHECK(desc->get_input_list() == expected_ids);
     for (const auto& p : desc->get_product_list()) {
         BOOST_CHECK(p.input_a <= p.input_b);
         BOOST_CHECK(p.input_b < 4);
@@ -667,8 +665,7 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     const size_t frame_size = desc->get_byte_size();
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "n2_pool_di", "N2Metadata");
     Buffer in_buf(2, frame_size, pool, "in_buf", "N2", 0, false, false, std::vector<int>{}, true);
-    Buffer out_buf(2, frame_size, pool, "out_buf", "N2", 0, false, false, std::vector<int>{},
-                   true);
+    Buffer out_buf(2, frame_size, pool, "out_buf", "N2", 0, false, false, std::vector<int>{}, true);
     in_buf.ensure_frame_desc(desc);
     out_buf.ensure_frame_desc(desc);
     in_buf.register_producer("test-producer");
@@ -681,7 +678,7 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_dish_inputs) {
     stage.start();
 
     // One frame: rank-1 vis(a, b) = e^{i(a-b)} over the compact element axis, flags
-    // all good -- the Fake elements are simply not in the frame.
+    // all good -- the Missing elements are simply not in the frame.
     BOOST_REQUIRE(in_buf.wait_for_empty_frame("test-producer", 0) != nullptr);
     in_buf.allocate_new_metadata_object(0);
     auto meta = get_N2_metadata(&in_buf, 0);

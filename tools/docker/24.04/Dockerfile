@@ -131,7 +131,9 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
 # We want the `python` command to point to python3
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
-# Install Blaze for the eigenvalue processes
+# Install Blaze for the eigenvalue processes. Pin the cache size: Blaze bakes the build
+# host's L3 size into a header and rejects values above 100 MB at compile time.
+# 30 MiB matches the per-socket L3 of the CHORD compute nodes.
 RUN mkdir src && \
     ( \
         git clone -b v3.8.2 https://bitbucket.org/blaze-lib/blaze.git blaze && \
@@ -140,6 +142,8 @@ RUN mkdir src && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBLAZE_CACHE_SIZE_AUTO=OFF \
+            -DBLAZE_CACHE_SIZE=31457280 \
             && \
         cmake --build cmake-build --parallel $(nproc) && \
         cmake --install cmake-build && \

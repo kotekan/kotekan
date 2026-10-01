@@ -309,10 +309,10 @@ void bufferRecv::main_thread() {
     listener = socket(AF_INET, SOCK_STREAM, 0);
     evutil_make_socket_nonblocking(listener);
 
-    // Bind even when connections from a previous run are still in TIME_WAIT.
-    // Without this, a restart within the TIME_WAIT window (a couple of minutes)
-    // fails with EADDRINUSE on a port nothing is listening on any more, which
-    // is exactly the window a supervisor restarts kotekan in.
+    // Bind even when connections from a previous run are still in TIME_WAIT;
+    // otherwise a restart within that window fails with EADDRINUSE on a port
+    // nothing is listening on. SO_REUSEADDR on a listener only permits rebinding
+    // over TIME_WAIT -- two live listeners sharing a port would need SO_REUSEPORT.
     {
         int reuse = 1;
         if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {
@@ -728,9 +728,7 @@ void connInstance::internal_read_callback() {
                     std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
                     std::vector<kotekan::Symbol> dimnames(chord->dims);
                     for (size_t d = 0; d < dimnames.size(); ++d) {
-                        dimnames.at(d) =
-                            std::string(chord->dim_name[d],
-                                        strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
+                        dimnames.at(d) = chord->get_dimension_name(d);
                     }
                     std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
                                                             chord->dim_scaling + chord->dims);

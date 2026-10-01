@@ -662,6 +662,12 @@ public:
                             "Buffer \"{:s}\" has no NDArray frame descriptor; hdf5FileWrite "
                             "needs one to write CHORD-metadata frames",
                             buffer->buffer_name);
+                    if (frame_desc->get_byte_size() != buffer->frame_size)
+                        FATAL_ERROR(
+                            "Buffer \"{:s}\" has inconsistent size in NDArray "
+                            "frame descriptor ({:d}) and buffer ({:d}); hdf5FileWrite needs "
+                            "consistent frame sizes",
+                            buffer->buffer_name, frame_desc->get_byte_size(), buffer->frame_size);
                     write_chord(frame, meta, frame_desc, frame_counter);
                 } else if (metadata_is_N2(mc)) {
                     assert(metadata_is_N2(mc));

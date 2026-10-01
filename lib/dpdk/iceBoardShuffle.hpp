@@ -483,13 +483,13 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         // feed and polarization.  Note that off the F-engine polarization is _not_ a defined
         // axis.
         /* old style array description */
-        std::strncpy(meta->dim_name[0], "F", sizeof meta->dim_name[0]);
-        std::strncpy(meta->dim_name[1], "T", sizeof meta->dim_name[1]);
-        std::strncpy(meta->dim_name[2], "E", sizeof meta->dim_name[2]);
+        meta->set_dimension_name(0, "F");
+        meta->set_dimension_name(1, "T");
+        meta->set_dimension_name(2, "E");
         meta->dims = 3;
         meta->type = kotekan::int4x2_swapped_withoffset;
         // Somewhat confusingly E in this context is the electric field...
-        std::strncpy(meta->name, "E", sizeof meta->name);
+        meta->set_name("E");
         meta->dim[0] = 1;
         meta->dim[1] = out_bufs[i]->frame_size / sample_size;
         meta->dim[2] = sample_size;
@@ -545,11 +545,11 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
     meta->type = kotekan::uint8;
 
-    std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
+    meta->set_dimension_name(0, "T");
     meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
     meta->dim_scaling[0] = 1;
     meta->dims = 1;
-    std::strncpy(meta->name, "lost_samples", sizeof meta->name);
+    meta->set_name("lost_samples");
     meta->set_strides_simple();
     /* new style array description */
     lost_samples_buf->ensure_frame_desc(

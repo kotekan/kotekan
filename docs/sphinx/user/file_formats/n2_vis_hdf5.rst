@@ -131,9 +131,9 @@ Conventions
 **Axis labels.**
 Every dataset created by the stage carries a string-array attribute ``axis``
 naming its dimensions in order, e.g. ``/vis`` has
-``axis = ["frequency", "product", "time"]``. (Some per-input tables under
-``/index_map`` carry the axis label ``dish`` for historical reasons; see
-below.)
+``axis = ["frequency", "product", "time"]``. (Under ``/index_map`` the
+input tables are indexed by ``element`` and ``dish_positions_in_grid_coords``
+by ``dish``; see below.)
 
 **Frequency axis.**
 Index :math:`f` along the ``frequency`` axis corresponds to FPGA channel
@@ -154,9 +154,10 @@ visibility matrix, including autocorrelations, row-major:
 always index the file's own element axis; ``/index_map/prod`` is
 authoritative. Compact subset layouts (e.g. ``DishInputs``) carry fewer
 elements than the full array: the ``input_list`` attribute gives, per file
-element, the corresponding element index of the full fiducial order, and
-the per-element attributes (``main_array_grid_indices``,
-``feed_positions_m``) are already gathered through it.
+element, the corresponding element index of the full array in
+``input_order``; the per-element tables under ``/index_map`` and the
+per-element attributes (``main_array_grid_indices``, ``feed_positions_m``)
+are already gathered through it.
 
 **Element ordering.**
 The mapping from element index to physical input (dish, polarization) is
@@ -252,11 +253,12 @@ File identity and structure
        ``RedundantBaselineAvg``, ``Autocorrelations``, ``InputANDMasked``,
        ``InputORMasked``, ``GeneralSubset``, or ``DishInputs`` (a compact
        frame holding the dense triangle over the connected elements, those
-       whose dish type is not ``Fake``; see the ``input_list`` attribute).
+       whose dish type is not ``Missing``; see the ``input_list`` attribute).
    * - ``input_list``
      - int32 array
-     - Compact subset layouts only: the element index, in the full
-       fiducial order, of each of the file's elements.
+     - Compact subset layouts only: the element index, in ``input_order``,
+       of each of the file's elements. ``DishInputs`` holds the connected
+       elements, derived from the telescope's ``dish_inputs`` table.
    * - ``input_order``
      - string
      - Element ordering of the data (an ``ElementOrder`` name; see
@@ -376,12 +378,19 @@ omitted entirely if the telescope has no EOP table loaded.
 Index maps (``/index_map``)
 ===========================
 
-Static lookup tables describing the axes. The input tables (``grid_x_idx``
-through ``label`` below) are copied verbatim from the telescope's
-``dish_inputs`` configuration, which carries one entry per correlator input
-(element); inputs not populated in the configuration hold type ``Fake``
-(-1) and label ``"Fake"``. These tables are indexed by input even where the
-``axis`` attribute says ``dish``.
+Static lookup tables describing the axes. The input tables (``dish_idx``
+through ``label`` below) have one row per element of the file,
+:math:`N_e` rows indexed like the ``element`` axis of ``/evec``, ``/gain``
+and ``/flags`` and like the ``input_a``/``input_b`` entries of ``prod``, so
+a product's inputs read straight into them. Full layouts hold the whole
+array in the file's ``input_order`` (:math:`N_{pol} \times N_d` rows);
+compact subset layouts hold the elements named by the ``input_list``
+attribute, in the N2 layout's element order. Each row names the dish the
+element belongs to and its polarization, and copies that dish's entry from
+the telescope's ``dish_inputs`` configuration. Dishes not populated in the
+configuration hold type ``Missing`` (-1) and label ``"Missing"``, so in a full
+layout their elements read ``"MissingX"``, ``"MissingY"``; compact layouts
+leave them out.
 
 .. list-table::
    :header-rows: 1
@@ -401,37 +410,49 @@ through ``label`` below) are copied verbatim from the telescope's
      - compound {input_a: u2, input_b: u2}
      - Element-index pair :math:`(a, b)`, :math:`a \le b`, for each
        ``product`` index (row/column of the visibility matrix).
+   * - ``dish_idx``
+     - (elements)
+     - int64
+     - Index of the dish each element belongs to: its row in
+       ``dish_positions_in_grid_coords`` and in the ``dish_inputs``
+       configuration.
+   * - ``pol``
+     - (elements)
+     - int32
+     - Polarization index of each element, 0-based.
    * - ``grid_x_idx``
-     - (inputs)
+     - (elements)
      - int64
-     - East--west dish grid column of each input.
+     - East--west dish grid column of each element's dish.
    * - ``grid_y_idx``
-     - (inputs)
+     - (elements)
      - int64
-     - North--south dish grid row of each input.
+     - North--south dish grid row of each element's dish.
    * - ``dish_positions_in_grid_coords``
      - (:math:`N_d`, 3)
      - float64
      - Dish positions in metres in the grid coordinate frame (grid index x
        dish separation); one entry per dish.
    * - ``feed_pos_disp_m``
-     - (inputs, 3)
+     - (elements, 3)
      - float64
      - Feed position displacement from the nominal grid position, metres.
    * - ``coelev_disp_deg``
-     - (inputs)
+     - (elements)
      - float64
      - Co-elevation pointing offset from the commanded ``dish_coelev_deg``,
        degrees.
    * - ``type``
-     - (inputs)
+     - (elements)
      - int32
-     - Dish type enum: -1 = ``Fake`` (unpopulated input), 0 = ``ArrayDish``,
-       1 = ``RFIDish``.
+     - Dish type enum: -1 = ``Missing`` (element of an unpopulated dish),
+       0 = ``ArrayDish``, 1 = ``RFIDish``.
    * - ``label``
-     - (inputs)
+     - (elements)
      - variable-length string
-     - Human-readable input labels; ``"Fake"`` for unpopulated inputs.
+     - Per-element label: the dish label with the polarization name
+       appended, e.g. ``A01X`` and ``A01Y`` for the two inputs of dish
+       ``A01``.
 
 Visibility and per-(frequency, time) datasets
 =============================================
@@ -486,8 +507,10 @@ uncompressed.
    * - ``flags``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - float32
-     - Per-input flags from upstream flagging: 1.0 for a good element, 0.0
-       for one flagged bad. All 1.0 when no flagging stage ran.
+     - Per-input flags, 1.0 for a good element and 0.0 for a bad one: the
+       bad feed mask the X-engine applied, folded over the integration (an
+       element flagged at any point in it is flagged). All 1.0 when no mask
+       is wired into the accumulator.
    * - ``radiometer_chi2``
      - (:math:`N_f`, :math:`N_t`, 3)
      - float32
@@ -631,17 +654,26 @@ Completeness tracking and configuration snapshots
    ``kotekan_build_branch``, and ``kotekan_cmake_options``. Empty if the
    tracker is disabled.
 
-Flag updates group (``/flag_updates``)
-======================================
+Bad feed mask group (``/bad_feed_mask``)
+========================================
 
-Only present when the writer's ``in_bf_mask_buf`` input is wired and at least one
-applied bad-feed-mask change record covers the file's time span. Each record is a mask
-the GPU pipeline actually applied (1 = good element, element order as ``/flags``),
-forwarded upstream only when its contents changed. A record applies from its
-``fpga_seq_num`` until the next record *from the same stream* (``freq_id``, the first
-coarse frequency of the pipeline that applied it — the streams cover disjoint parts of
-the band). The first record per stream may precede the file: it is the mask already in
-effect when the file's span starts.
+Present when the writer's ``in_bad_feed_mask_buf`` input is wired. Each X-engine
+half applies a bad feed mask to the correlation frames of the frequencies it
+processes and sends that mask downstream once per correlation frame; the writer
+records every stream's masks over the file's FPGA tick span, one row per mask
+frame. Rows lie on the streams' common grid of ``time_downsampling_fpga`` samples
+(the correlation frame length): the first row is the last grid sample at or
+before the span start, the last row the last grid sample before the span end. A
+stream is identified by the coarse frequencies its masks were applied to. The
+``stream`` axis holds every stream known when the file's first rows were
+written, in order of first frequency. Every frequency with data in the file must
+belong to one of its streams, so a stream that first appears while a file is
+open must carry no data in that file; the writer stops otherwise. Where a
+stream's frame did not reach the writer before its row was written, the row
+holds -1. The mask's element axes are the telescope's polarizations and dishes
+in the fiducial element order (the mask buffer's ``[P, D]`` shape), independent
+of the file's ``input_order`` and layout. ``/flags`` remains the per-integration
+record: the same masks folded over each bin by ``N2Accumulate``.
 
 .. list-table::
    :header-rows: 1
@@ -651,20 +683,20 @@ effect when the file's span starts.
      - Shape
      - Type
      - Description
-   * - ``fpga_seq_num``
-     - (updates)
-     - uint64
-     - Absolute FPGA sequence number of the first sample the mask was
-       applied to.
-   * - ``freq_id``
-     - (updates)
-     - int32
-     - First coarse frequency of the stream that applied the mask,
-       identifying which part of the band the record covers.
-   * - ``bf_mask``
-     - (updates, elements)
+   * - ``mask``
+     - (time, streams, pols, dishes)
      - int8
-     - The applied mask, 1 = good.
+     - The applied mask: 1 = good, 0 = bad, -1 = the stream's frame for this row
+       did not arrive.
+   * - ``fpga_seq_num``
+     - (time)
+     - uint64
+     - Absolute FPGA sequence number of the first sample each row was applied to.
+   * - ``stream_freq_id``
+     - (streams, freqs)
+     - int32
+     - The coarse frequency ids each stream's masks were applied to, -1 padded.
+       A file frequency's stream is the row that contains it.
 
 Digital gains group (``/digital_gains``)
 ========================================

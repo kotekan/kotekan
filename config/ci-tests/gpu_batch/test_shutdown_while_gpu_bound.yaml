@@ -3,23 +3,20 @@
 #
 # test_shutdown_while_gpu_bound.yaml
 #
-# A shutdown requested while a GPU stage is GPU-bound must exit cleanly.
+# Kotekan must exit cleanly when a stop arrives while a GPU stage is waiting
+# for a free frame slot -- where a busy GPU spends most of its time.
 #
-# run_n2k copies a 256 MiB padding region out to the host every frame, so its
-# GPU work takes ~10 ms per frame while the host feeds it in ~1 ms: the host runs
-# buffer_depth frames ahead and the stage's main thread waits for a FREE SLOT, not
-# for ring data. That is how a loaded production GPU runs. exit_timer, a paced
-# generator on an unrelated buffer, then requests the exit after ~2 s while both
-# drains keep draining, so run_n2k is still slot-bound when the stop lands. (A
-# drain requesting the exit itself would stop draining first, and main polls for
-# the request once a second, long enough for the GPU stage to block on a full
-# host buffer instead.) gpuProcess::results_thread skips finalize_frame() once
-# stop is set, so the in-flight frames' ring claims stay held; the main thread
-# must notice the stop when its slot comes free instead of starting another frame
-# on it, or cudaCorrelator's precondition finds its claim still open ("valid read
-# region is not empty") and a clean exit becomes a FatalError, after which the
-# results thread is left waiting on a signal the destructor destroys. Fails on
-# the code before this test was added.
+# run_n2k copies a large pad buffer to the host every frame, so it is much
+# slower than its unpaced inputs and always waits for a slot. exit_timer
+# requests the exit after about 2 s.
+#
+# Shutdown leaves the in-flight frames' ring claims open. If the stage starts
+# another frame after the stop, cudaCorrelator fails with "valid read region
+# is not empty" and the exit can then hang.
+#
+# The log line "Stop requested while GPU[0] waited for a free slot" shows the
+# race was hit. A pass without it (not yet seen in practice) would mean the
+# stop landed elsewhere and the race was not tested, the test should be re-run.
 #
 # Author: Keith Vanderlinde
 #
@@ -34,11 +31,8 @@ buffer_depth: 4
 cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
 frame_arrival_period: 5.12e-6 * samples_per_data_set
 
-# For faster CHORD testing, we're using...
 sub_integration_ntime: 512
 samples_per_data_set: 2048
-# sub_integration_ntime: 8192  # ~40 ms for chord
-# samples_per_data_set: 8192   # 
 num_times: samples_per_data_set
 num_polarizations: 2
 num_dishes: 64

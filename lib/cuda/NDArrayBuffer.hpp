@@ -8,14 +8,13 @@
 #include "cudaCommand.hpp"         // for cudaCommand
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "kotekanLogging.hpp"      // for kotekanLogging, ERROR, FATAL_ERROR
+#include "kotekanLogging.hpp"      // for kotekanLogging, FATAL_ERROR
 #include "metadata.hpp"            // for metadataObject
 
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <algorithm>          // for find_if, fill_n
 #include <array>              // for array
-#include <cassert>            // for assert
 #include <cstddef>            // for ptrdiff_t, size_t
 #include <cstdint>            // for uint8_t
 #include <cstring>            // for memcmp, memset
@@ -197,24 +196,42 @@ public:
         return metadata;
     }
 
+    // Check that the metadata published for this buffer describes the array we are about to
+    // index. A mismatch is not an internal invariant but a disagreement between two stages;
+    // in a release build it would silently make the kernel read the buffer with the wrong
+    // layout, so these checks must not be compiled out.
     void check_metadata() const {
         const std::shared_ptr<const chordMetadata> metadata = get_metadata();
+        if (!metadata)
+            FATAL_ERROR("buffer name: {:s} has no CHORD metadata", buffer_name);
         if (!(metadata->get_name() == ndarray.quantity_name()))
-            ERROR("buffer name: {:s}, metadata name: {:s}, quantity_name: {:s}", buffer_name,
-                  metadata->get_name(), ndarray.quantity_name());
-        assert(metadata->get_name() == ndarray.quantity_name());
-        assert(metadata->type == ndarray.value_datatype);
-        assert(metadata->dims == ndarray.rank);
+            FATAL_ERROR("buffer name: {:s}, metadata name: {:s}, quantity_name: {:s}", buffer_name,
+                        metadata->get_name(), ndarray.quantity_name());
+        if (!(metadata->type == ndarray.value_datatype))
+            FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}", buffer_name,
+                        kotekan::type_to_string(metadata->type),
+                        kotekan::type_to_string(ndarray.value_datatype));
+        if (!(metadata->dims == int(ndarray.rank)))
+            FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}", buffer_name,
+                        metadata->dims, int(ndarray.rank));
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
             if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
-                ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, ndarray "
-                      "dimname: {:s}",
-                      buffer_name, d, metadata->get_dimension_name(d),
-                      std::string(ndarray.dimname(d)));
-            assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
-            assert(metadata->dim_scaling[d] == ndarray.dimscaling(d));
-            assert(metadata->dim[d] == int(ndarray.extent(d)));
-            assert(metadata->stride[d] == ndarray.stride(d));
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, "
+                            "ndarray dimname: {:s}",
+                            buffer_name, d, metadata->get_dimension_name(d),
+                            std::string(ndarray.dimname(d)));
+            if (!(metadata->dim_scaling[d] == ndarray.dimscaling(d)))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata dim_scaling: {:d}, "
+                            "ndarray dimscaling: {:d}",
+                            buffer_name, d, metadata->dim_scaling[d], ndarray.dimscaling(d));
+            if (!(metadata->dim[d] == int(ndarray.extent(d))))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata extent: {:d}, ndarray "
+                            "extent: {:d}",
+                            buffer_name, d, metadata->dim[d], int(ndarray.extent(d)));
+            if (!(metadata->stride[d] == ndarray.stride(d)))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata stride: {:d}, ndarray "
+                            "stride: {:d}",
+                            buffer_name, d, metadata->stride[d], ndarray.stride(d));
         }
     }
 
@@ -240,7 +257,8 @@ public:
     void set_to_poison(const std::uint8_t poison_value) {
         const std::ptrdiff_t buffer_length = length_in_bytes();
         void* const buffer_device_ptr = ndarray.data();
-        assert(buffer_device_ptr);
+        if (!buffer_device_ptr)
+            FATAL_ERROR("buffer {:s} has no device memory", buffer_name);
         const cudaStream_t cuda_stream =
             cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
         CHECK_CUDA_ERROR(
@@ -255,7 +273,8 @@ public:
         const auto check = [=](const T x) { return std::memcmp(&x, &poison, sizeof poison) == 0; };
         const std::ptrdiff_t buffer_length = length_in_bytes();
         const void* const buffer_device_ptr = ndarray.data();
-        assert(buffer_device_ptr);
+        if (!buffer_device_ptr)
+            FATAL_ERROR("buffer {:s} has no device memory", buffer_name);
         std::vector<T> local_data(buffer_length / sizeof(T), poison);
         CHECK_CUDA_ERROR(cudaMemcpy(local_data.data(), buffer_device_ptr, buffer_length,
                                     cudaMemcpyDeviceToHost));

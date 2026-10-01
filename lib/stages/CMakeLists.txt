@@ -105,7 +105,6 @@ add_library(
     BufferSplit.cpp
     InputSubset.cpp
     setScatterIndices.cpp
-    UpchannelizationSchedule.cpp
     setBBBeams.cpp
     calcBBPhase.cpp
     setUpchanGain.cpp

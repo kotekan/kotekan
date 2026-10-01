@@ -35,6 +35,7 @@ add_library(
     N2FrameView.cpp
     timeUtil.cpp
     CHORDTelescope.cpp
+    UpchannelizationSchedule.cpp
     geoUtil.cpp
     beamUtil.cpp)
 

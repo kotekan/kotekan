@@ -53,8 +53,8 @@ FPGA controller (the ``/fpga_controller`` config block, via
 ``<acq>/.partial/baseband_gains.h5``.
 
 The *subset* stream contains the cross-products of correlator inputs 0--7
-only (the six connected feeds ``A01p1``, ``A01p2``, ``A06p1``, ``A06p2``,
-``A07p1``, ``A07p2`` plus two unconnected inputs; see ``/index_map/label``).
+only (the six connected feeds ``A01X``, ``A01Y``, ``A06X``, ``A06Y``,
+``A07X``, ``A07Y`` plus two unconnected inputs; see ``/index_map/label``).
 The *full* stream contains all :math:`128 \times 129 / 2 = 8256` products of
 the 128 inputs.
 

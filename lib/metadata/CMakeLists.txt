@@ -4,6 +4,7 @@ add_library(
     kotekan_metadata
     chordMetadata.cpp
     GnssChanMetadata.cpp
+    jsonMetadata.cpp
     HFBMetadata.cpp
     BasebandMetadata.cpp
     BeamMetadata.cpp

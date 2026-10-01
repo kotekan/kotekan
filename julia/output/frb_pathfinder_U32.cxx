@@ -14,6 +14,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 #include "div.hpp"
 #include "ringbuffer.hpp"
 
@@ -422,16 +423,10 @@ cudaFRBBeamformer_pathfinder_U32::cudaFRBBeamformer_pathfinder_U32(Config& confi
 
     did_init_host_S_buffer(false), did_set_metadata(false) {
     // Register host memory
-    {
-        const cudaError_t ierr = cudaHostRegister(
-            host_S_buffer.data(), host_S_buffer.size() * sizeof *host_S_buffer.data(), 0);
-        assert(ierr == cudaSuccess);
-    }
-    {
-        const cudaError_t ierr = cudaHostRegister(
-            host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0);
-        assert(ierr == cudaSuccess);
-    }
+    CHECK_CUDA_ERROR(cudaHostRegister(host_S_buffer.data(),
+                                      host_S_buffer.size() * sizeof *host_S_buffer.data(), 0));
+    CHECK_CUDA_ERROR(cudaHostRegister(
+        host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0));
 
     register_gpu_buffer_user(
         {.name = S_name, .is_array = true, .does_read = true, .does_write = true});
@@ -443,16 +438,18 @@ cudaFRBBeamformer_pathfinder_U32::cudaFRBBeamformer_pathfinder_U32(Config& confi
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Build the PTX only once
-    static std::once_flag build_ptx_flag;
-    std::call_once(build_ptx_flag, [&]() {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("FRBBeamformer_pathfinder_U32_"
+                                      + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/FRBBeamformer_pathfinder_U32.ptx", {kernel_symbol},
                          opts, "FRBBeamformer_pathfinder_U32_");
-    });
+    }
 }
 
 cudaFRBBeamformer_pathfinder_U32::~cudaFRBBeamformer_pathfinder_U32() {}
@@ -535,19 +532,37 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
             const std::string quantity = "E";
             const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
             const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+            // A mismatch here means the kernel would index the buffer with a layout
+            // the producer did not use, silently producing wrong results, so these
+            // checks must hold in release builds as well.
             if (!(metadata->get_name() == quantity))
-                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            assert(metadata->get_name() == quantity);
+                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                            Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
             const auto& ndarray = Ebar_buffer.get_ndarray();
-            assert(metadata->type == ndarray.value_datatype);
-            assert(metadata->dims == ndarray.rank);
+            if (!(metadata->type == ndarray.value_datatype))
+                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
+                            Ebar_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
+                            kotekan::type_to_string(ndarray.value_datatype));
+            if (!(metadata->dims == int(ndarray.rank)))
+                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
+                            Ebar_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
             for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                assert(metadata->get_dimension_name(d) == dimname[d]);
+                if (!(metadata->get_dimension_name(d) == dimname[d]))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: "
+                                "{:s}, expected: {:s}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d),
+                                dimname[d]);
                 // The ring buffer direction is special
-                if (d > 0)
-                    assert(metadata->dim[d] == int(ndarray.extent(d)));
-                assert(metadata->stride[d] == ndarray.stride(d));
+                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
+                                "ndarray extent: {:d}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->dim[d],
+                                int(ndarray.extent(d)));
+                if (!(metadata->stride[d] == ndarray.stride(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
+                                "ndarray stride: {:d}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->stride[d],
+                                ndarray.stride(d));
             }
         } else {
             W_buffer.check_metadata();
@@ -558,19 +573,37 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
             const std::string quantity = "E";
             const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
             const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+            // A mismatch here means the kernel would index the buffer with a layout
+            // the producer did not use, silently producing wrong results, so these
+            // checks must hold in release builds as well.
             if (!(metadata->get_name() == quantity))
-                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            assert(metadata->get_name() == quantity);
+                FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                            Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
             const auto& ndarray = Ebar_buffer.get_ndarray();
-            assert(metadata->type == ndarray.value_datatype);
-            assert(metadata->dims == ndarray.rank);
+            if (!(metadata->type == ndarray.value_datatype))
+                FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}",
+                            Ebar_buffer.get_buffer_name(), kotekan::type_to_string(metadata->type),
+                            kotekan::type_to_string(ndarray.value_datatype));
+            if (!(metadata->dims == int(ndarray.rank)))
+                FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}",
+                            Ebar_buffer.get_buffer_name(), metadata->dims, int(ndarray.rank));
             for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                assert(metadata->get_dimension_name(d) == dimname[d]);
+                if (!(metadata->get_dimension_name(d) == dimname[d]))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dimension name: "
+                                "{:s}, expected: {:s}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->get_dimension_name(d),
+                                dimname[d]);
                 // The ring buffer direction is special
-                if (d > 0)
-                    assert(metadata->dim[d] == int(ndarray.extent(d)));
-                assert(metadata->stride[d] == ndarray.stride(d));
+                if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, "
+                                "ndarray extent: {:d}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->dim[d],
+                                int(ndarray.extent(d)));
+                if (!(metadata->stride[d] == ndarray.stride(d)))
+                    FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, "
+                                "ndarray stride: {:d}",
+                                Ebar_buffer.get_buffer_name(), d, metadata->stride[d],
+                                ndarray.stride(d));
             }
         } else {
             Ebar_buffer.check_metadata();
@@ -579,8 +612,15 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_M);
-        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_N);
+        // The kernel is compiled for a fixed dish grid. A larger telescope would place dishes
+        // outside that grid and silently beamform the wrong sky.
+        if (!(Telescope::instance().get_grid_size_x() <= std::uint64_t(cuda_dish_layout_M)
+              && Telescope::instance().get_grid_size_y() <= std::uint64_t(cuda_dish_layout_N)))
+            FATAL_ERROR("Telescope dish grid {:d}x{:d} does not fit the dish layout {:d}x{:d} "
+                        "for which kernel FRBBeamformer_pathfinder_U32 was compiled",
+                        Telescope::instance().get_grid_size_x(),
+                        Telescope::instance().get_grid_size_y(), int(cuda_dish_layout_M),
+                        int(cuda_dish_layout_N));
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();
@@ -588,19 +628,33 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
             I_buffer.set_metadata(Ebar_meta);
         auto I_meta = I_buffer.get_metadata();
 
-        assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+        // The span checks below are repeated before each launch; here they guard the metadata
+        // we are about to publish for all downstream consumers.
+        if (Fbar_out_max - Fbar_out_min != Fbar_in_max - Fbar_in_min)
+            FATAL_ERROR("Input and output frequency spans have different lengths for kernel "
+                        "FRBBeamformer_pathfinder_U32: input [{:d},{:d}), output [{:d},{:d})",
+                        Fbar_in_min, Fbar_in_max, Fbar_out_min, Fbar_out_max);
         const auto Ebar_nfreq = Ebar_meta->get_nfreq();
-        assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
         const auto I_all_nfreq = I_meta->dim[I_rank - 1 - I_index_Fbar];
         const auto I_nfreq = Fbar_out_max - Fbar_out_min;
-        assert(I_nfreq >= 0 && I_nfreq <= I_all_nfreq);
+        if (!(I_nfreq >= 0 && I_nfreq <= I_all_nfreq))
+            FATAL_ERROR(
+                "Kernel FRBBeamformer_pathfinder_U32 would write {:d} frequencies, but its output "
+                "buffer I holds {:d}",
+                I_nfreq, I_all_nfreq);
         // We are not using all the non-upchannelized frequencies.
         // But we are (should be!) using all the upchannelized ones.
-        if (cuda_upchannelization_factor > 1)
-            assert(I_nfreq == Ebar_nfreq);
+        if (cuda_upchannelization_factor > 1 && I_nfreq != Ebar_nfreq)
+            FATAL_ERROR(
+                "Kernel FRBBeamformer_pathfinder_U32 writes {:d} of the {:d} upchannelized input "
+                "frequencies; it must consume all of them",
+                I_nfreq, Ebar_nfreq);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
-        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_freq_upchan_factor.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `freq_upchan_factor` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_freq_upchan_factor.size());
         std::vector<int> I_freq_upchan_factor;
         if (I_has_metadata)
             I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
@@ -612,7 +666,10 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
-        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_freq_upchan_index.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `freq_upchan_index` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_freq_upchan_index.size());
         std::vector<int> I_freq_upchan_index;
         if (I_has_metadata)
             I_freq_upchan_index = I_meta->get_freq_upchan_index();
@@ -624,7 +681,10 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
-        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_coarse_freq.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `coarse_freq` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_coarse_freq.size());
         std::vector<int> I_coarse_freq;
         if (I_has_metadata)
             I_coarse_freq = I_meta->get_coarse_freq();
@@ -639,21 +699,34 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
             Ebar_time_downsampling_fpga * cuda_downsampling_factor;
         if (!I_has_metadata)
             I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
-        else
-            assert(I_meta->get_time_downsampling_fpga() == I_time_downsampling_fpga);
+        else if (I_meta->get_time_downsampling_fpga() != I_time_downsampling_fpga)
+            FATAL_ERROR("Another producer of buffer I set time_downsampling_fpga={:d}, but kernel "
+                        "FRBBeamformer_pathfinder_U32 produces {:d}",
+                        I_meta->get_time_downsampling_fpga(), I_time_downsampling_fpga);
 
         const auto W_meta = W_buffer.get_metadata();
         const auto W_nfreq = W_meta->get_nfreq();
-        assert(W_nfreq == I_nfreq);
+        // Mismatched weights would beamform each frequency with another frequency's gains.
+        if (W_nfreq != I_nfreq)
+            FATAL_ERROR(
+                "Weight buffer W holds {:d} frequencies, but kernel FRBBeamformer_pathfinder_U32 "
+                "processes {:d}",
+                W_nfreq, I_nfreq);
         const auto W_coarse_freq = W_meta->get_coarse_freq();
         for (int freq = 0; freq < W_nfreq; ++freq)
-            assert(I_coarse_freq.at(Fbar_out_min + freq) == W_coarse_freq.at(freq));
+            if (I_coarse_freq.at(Fbar_out_min + freq) != W_coarse_freq.at(freq))
+                FATAL_ERROR(
+                    "Weight buffer W is for coarse frequency {:d} at index {:d}, but "
+                    "kernel FRBBeamformer_pathfinder_U32 processes coarse frequency {:d} there",
+                    W_coarse_freq.at(freq), freq, I_coarse_freq.at(Fbar_out_min + freq));
 
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
     } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
-    assert(I_buffer.has_metadata());
+    if (!I_buffer.has_metadata())
+        FATAL_ERROR(
+            "Output buffer I has no metadata; kernel FRBBeamformer_pathfinder_U32 cannot run");
 
     const char* exc_arg = "exception";
     std::int32_t Tbar_min_arg;
@@ -711,17 +784,37 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
     Ttilde_min_arg = mod(Ttilde_min, Ttilde_ringbuf);
     Ttilde_max_arg = mod(Ttilde_min, Ttilde_ringbuf) + Ttilde_length;
 
-    // Pass frequency spans to kernel
-    assert(0 <= Fbar_in_min && Fbar_in_min <= Fbar_in_max);
-    assert(0 <= Fbar_out_min && Fbar_out_min <= Fbar_out_max);
-    assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+    // Pass frequency spans to kernel.
+    // These spans become kernel arguments; out-of-range values would make the kernel
+    // read and write outside the frequency extent of its buffers.
+    if (!(0 <= Fbar_in_min && Fbar_in_min <= Fbar_in_max))
+        FATAL_ERROR("Invalid input frequency span for kernel FRBBeamformer_pathfinder_U32: "
+                    "Fbar_in_min={:d}, Fbar_in_max={:d} (require 0 <= Fbar_in_min <= Fbar_in_max)",
+                    Fbar_in_min, Fbar_in_max);
+    if (!(0 <= Fbar_out_min && Fbar_out_min <= Fbar_out_max))
+        FATAL_ERROR("Invalid output frequency span for kernel FRBBeamformer_pathfinder_U32: "
+                    "Fbar_out_min={:d}, Fbar_out_max={:d} "
+                    "(require 0 <= Fbar_out_min <= Fbar_out_max)",
+                    Fbar_out_min, Fbar_out_max);
+    if (Fbar_out_max - Fbar_out_min != Fbar_in_max - Fbar_in_min)
+        FATAL_ERROR("Input and output frequency spans have different lengths for kernel "
+                    "FRBBeamformer_pathfinder_U32: input [{:d},{:d}) holds {:d} frequencies, "
+                    "output [{:d},{:d}) holds {:d}",
+                    Fbar_in_min, Fbar_in_max, Fbar_in_max - Fbar_in_min, Fbar_out_min, Fbar_out_max,
+                    Fbar_out_max - Fbar_out_min);
     Fbar_in_min_arg = Fbar_in_min;
     Fbar_in_max_arg = Fbar_in_max;
     Fbar_out_min_arg = Fbar_out_min;
     Fbar_out_max_arg = Fbar_out_max;
     const int blocks = Fbar_out_max - Fbar_out_min;
-    assert(0 <= blocks);
-    assert(blocks <= max_blocks);
+    // `blocks` is both the CUDA grid size and the extent of the block dimension of the `info`
+    // buffer. Launching more than `max_blocks` blocks would make the kernel write its status
+    // words past the end of that device allocation.
+    if (!(0 <= blocks && blocks <= max_blocks))
+        FATAL_ERROR(
+            "Kernel FRBBeamformer_pathfinder_U32 would launch {:d} blocks, but the `info` buffer "
+            "holds only {:d} (Fbar_out_min={:d}, Fbar_out_max={:d})",
+            blocks, int(max_blocks), Fbar_out_min, Fbar_out_max);
 
     // Initialize `S` and copy it to the GPU
     if (!did_init_host_S_buffer) {
@@ -762,7 +855,13 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
         for (int d = cuda_number_of_dishes; d < cuda_dish_layout_M * cuda_dish_layout_N; ++d) {
             surplus_dishes.push_back(d);
         }
-        assert(array_dish_count + surplus_dishes.size() == cuda_dish_layout_M * cuda_dish_layout_N);
+        if (array_dish_count + surplus_dishes.size()
+            != std::size_t(cuda_dish_layout_M) * std::size_t(cuda_dish_layout_N))
+            FATAL_ERROR("Dish bookkeeping is inconsistent for kernel FRBBeamformer_pathfinder_U32: "
+                        "{:d} array "
+                        "dishes plus {:d} surplus dishes do not fill the {:d}x{:d} dish grid",
+                        array_dish_count, surplus_dishes.size(), int(cuda_dish_layout_M),
+                        int(cuda_dish_layout_N));
 
         // Finally we can build the host_S_buffer.  First initialize with -1 as a sentinel.
         for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
@@ -790,10 +889,18 @@ cudaFRBBeamformer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
             }
         }
         // Confirm we used all surplus dishes.
-        assert(surplus_idx == surplus_dishes.size());
-        // Confirm the grid is filled.
+        if (surplus_idx != surplus_dishes.size())
+            FATAL_ERROR("Kernel FRBBeamformer_pathfinder_U32 placed {:d} of {:d} surplus dishes on "
+                        "the dish grid",
+                        surplus_idx, surplus_dishes.size());
+        // Confirm the grid is filled. `S` is about to be copied to the GPU; a sentinel left here
+        // would make the kernel scatter dishes to undefined grid locations.
         for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
-            assert(host_S_buffer.at(s) >= 0);
+            if (host_S_buffer.at(s) < 0)
+                FATAL_ERROR("Kernel FRBBeamformer_pathfinder_U32 left entry {:d} of the dish "
+                            "location map `S` "
+                            "unassigned (value {:d})",
+                            s, host_S_buffer.at(s));
 
         // Done! Copy to the GPU.
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,

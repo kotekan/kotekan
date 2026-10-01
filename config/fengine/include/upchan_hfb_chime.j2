@@ -84,6 +84,10 @@ run_set_upchan_hfb_U128_gain:
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     ]
     upchan_gain_buffer: host_upchan_hfb_U128_gain_buffer
+    metadata_source:
+{% for id in range(16) %}   # num_frequencies = 16
+        - host_voltage_buffer_{{ id }}
+{% endfor %}
 
 run_upchan_hfb_U128:
     gpu_0:
@@ -100,7 +104,7 @@ run_upchan_hfb_U128:
           in_buf: host_upchan_hfb_U128_gain_buffer
           gpu_mem: upchan_hfb_U128_gain_buffer
         - name: cudaSyncInput
-        - name: cudaUpchannelizer_chime_U128
+        - name: cudaUpchannelizer_chime_U128_K4
           voltage_name: xposed_voltage
           upchan_U128_gain_name: upchan_hfb_U128_gain
           upchan_U128_voltage_name: upchan_hfb_U128_voltage

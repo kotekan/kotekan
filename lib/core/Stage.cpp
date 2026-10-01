@@ -44,6 +44,12 @@ Buffer* Stage::get_buffer(const std::string& name) {
     return buffer_container.get_buffer(buf_name);
 }
 
+std::vector<Buffer*> Stage::get_buffer_or_array(const std::string& name) {
+    if (config.get_value(unique_name, name).is_array())
+        return get_buffer_array(name);
+    return {get_buffer(name)};
+}
+
 std::vector<Buffer*> Stage::get_buffer_array(const std::string& name) {
     std::vector<Buffer*> bufs;
 

@@ -34,7 +34,8 @@
  * This is performed by using a subspace iteration method with an augmented
  * Rayleigh-Ritz step and a progressive matrix completion of masked values.
  *
- * Dataset tracking is left to N2FrameToVisFrame downstream.
+ * This stage is similar to EigenVisIter, but works on N2Buffer inputs/outputs,
+ * and without the dataset tracking functionality.
  *
  * @par Buffers
  * @buffer in_buf The stream to eigen decompose. Must hold the full correlation
@@ -67,8 +68,8 @@
  * @conf  exclude_inputs   List of UInts, optional. Inputs to exclude (rows and
  *                         columns to set to zero) in visibilities prior to
  *                         factorization. These are indices into the incoming
- *                         frame's elements, which for a subsetted buffer are the
- *                         subset's own indices, not the full array's.
+ *                         frame's elements, which for a compact subset buffer are
+ *                         the subset's own indices, not the full array's.
  * @conf  mask_flagged_inputs  Bool, default false. Also mask the inputs the
  *                         incoming frame flags as bad, i.e. those whose entry in
  *                         the frame's per-element `flags` is zero (1.0 == good), on
