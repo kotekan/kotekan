@@ -21,6 +21,10 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 
+# The largest upchannelization factor used in this run. All upchannelizers delay their
+# output so that it is aligned in time with that of the largest factor.
+max_upchannelization_factor: 16
+
 # Test configuration parameters
 {% set using_dpdk = True %}
 {% set do_once_and_dump = False %}
