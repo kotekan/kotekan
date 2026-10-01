@@ -9,7 +9,7 @@
 #include <pthread.h>  // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>    // for CPU_SET, CPU_ZERO, cpu_set_t
 #include <sstream>    // for ostringstream
-#include <stdexcept>  // for runtime_error, invalid_argument
+#include <stdexcept>  // for runtime_error
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for strerror, memset, memcpy
 #include <sys/mman.h> // for mlock, mmap, munmap, MAP_FAILED
@@ -1118,12 +1118,10 @@ void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id
         src_frame = src->frames[src_frame_id];
     }
 
-    // The copy runs with both buffers unlocked. The stage reaching here holds
-    // the destination frame as its only producer and the source frame as a
-    // consumer, so neither frame can be given to another stage until it marks
-    // them, exactly as for a stage filling a frame of its own. Holding the
-    // locks instead would stall both buffers for a whole frame copy, which on
-    // the voltage buffers is the largest copy in the pipeline.
+    // The copy runs with both buffers unlocked: this stage is the destination's
+    // only producer (checked in safe_swap_frame) and holds the source frame as a
+    // consumer, so neither frame can move until it marks them. Holding the locks
+    // would stall both buffers for the largest copy in the pipeline.
     memcpy(dest_frame, src_frame, src->frame_size);
 }
 
