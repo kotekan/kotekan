@@ -87,6 +87,7 @@ private:
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 512;
     static constexpr int cuda_granularity_number_of_timesamples = 48;
+    static constexpr int cuda_upchan_number_of_taps = 4;
 
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
@@ -112,6 +113,15 @@ private:
     // How many frequencies we will process
     const int Fbar_in_min, Fbar_in_max;
     const int Fbar_out_min, Fbar_out_max;
+
+    // The upchannelizers skip input samples at startup so that all their outputs begin at input
+    // sample `(M-1) * max_upchannelization_factor / 2` (see `upchan_template.cxx`). Without
+    // upchannelization (U=1) we read the input voltages directly and skip the same number of
+    // samples ourselves, so that all producers of the shared output buffer `I` are aligned.
+    // Only needed for U=1.
+    const int max_upchannelization_factor;
+    // Number of input samples we skip at startup
+    const std::ptrdiff_t Tbar_skip;
 
     // Kernel arguments:
     enum class args {
@@ -400,6 +410,13 @@ cudaFRBBeamformer_pathfinder_U64::cudaFRBBeamformer_pathfinder_U64(Config& confi
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
+    max_upchannelization_factor(cuda_upchannelization_factor == 1
+                                    ? config.get<int>(unique_name, "max_upchannelization_factor")
+                                    : 0),
+    Tbar_skip(cuda_upchannelization_factor == 1
+                  ? (cuda_upchan_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor)
+                        / 2
+                  : 0),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -422,6 +439,14 @@ cudaFRBBeamformer_pathfinder_U64::cudaFRBBeamformer_pathfinder_U64(Config& confi
     host_info_buffer(info_length),
 
     did_init_host_S_buffer(false), did_set_metadata(false) {
+    if (cuda_upchannelization_factor == 1
+        && !(max_upchannelization_factor >= 1
+             && (cuda_upchan_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
+        FATAL_ERROR("Kernel FRBBeamformer_pathfinder_U64: max_upchannelization_factor={:d} must be "
+                    "positive, "
+                    "and (taps-1)*max_upchannelization_factor must be even (taps={:d})",
+                    max_upchannelization_factor, int(cuda_upchan_number_of_taps));
+
     // Register host memory
     CHECK_CUDA_ERROR(cudaHostRegister(host_S_buffer.data(),
                                       host_S_buffer.size() * sizeof *host_S_buffer.data(), 0));
@@ -475,9 +500,34 @@ int cudaFRBBeamformer_pathfinder_U64::wait_on_precondition() {
             return errcode;
     }
 
-    // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
+
+    // Skip `Tbar_skip` input samples once, at startup (see `Tbar_skip`). (Only the main thread
+    // moves the shared read head, so it is 0 exactly until the first claim.)
+    if (Tbar_skip > 0) {
+        const std::ptrdiff_t Tbar_head = Ebar_buffer.peek_read_head();
+        if (Tbar_head < 0)
+            return -1; // shutting down
+        if (Tbar_head == 0) {
+            if (!(Tbar_skip <= Tbar_read_max))
+                FATAL_ERROR(
+                    "Kernel FRBBeamformer_pathfinder_U64 needs to skip {:d} input samples, but its "
+                    "input ring buffer Ebar holds only {:d}",
+                    Tbar_skip, Tbar_ringbuf);
+            const int errcode =
+                Ebar_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tbar_available) {
+                    return Tbar_available >= Tbar_skip
+                               ? read_descriptor_t{.claimed = Tbar_skip, .read = Tbar_skip}
+                               : read_descriptor_t{.claimed = 0, .read = 0};
+                });
+            if (errcode < 0)
+                return errcode;
+            Ebar_buffer.finish_read();
+        }
+    }
+
+    // Wait for data to be available in input ringbuffer
     std::ptrdiff_t Tbar_read = -1;
     {
         const int errcode =
@@ -720,7 +770,26 @@ cudaFRBBeamformer_pathfinder_U64::execute(cudaPipelineState& /*pipestate*/,
                     "kernel FRBBeamformer_pathfinder_U64 processes coarse frequency {:d} there",
                     W_coarse_freq.at(freq), freq, I_coarse_freq.at(Fbar_out_min + freq));
 
-        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+        // All producers of `I` must agree on its start time. (The upchannelizers align their
+        // outputs via `max_upchannelization_factor`; for U=1 we skip input samples ourselves.)
+        // We set the metadata only once since we use a ring buffer.
+        if (Ebar_meta->has_fpga_seq_num()) {
+            const std::int64_t I_fpga_seq_num =
+                Ebar_meta->get_fpga_seq_num() + Tbar_skip * Ebar_meta->get_time_downsampling_fpga();
+            if (!I_has_metadata)
+                I_meta->set_fpga_seq_num(I_fpga_seq_num);
+            else if (!I_meta->has_fpga_seq_num() || I_meta->get_fpga_seq_num() != I_fpga_seq_num)
+                FATAL_ERROR("Another producer of buffer I starts at fpga_seq_num={:d}, but kernel "
+                            "FRBBeamformer_pathfinder_U64 starts at {:d}. (Are all upchannelizers "
+                            "and the U=1 "
+                            "FRB beamformer using the same max_upchannelization_factor?)",
+                            I_meta->has_fpga_seq_num() ? I_meta->get_fpga_seq_num() : -1,
+                            I_fpga_seq_num);
+        } else if (I_has_metadata && I_meta->has_fpga_seq_num()) {
+            FATAL_ERROR("Another producer of buffer I starts at fpga_seq_num={:d}, but the input "
+                        "of kernel FRBBeamformer_pathfinder_U64 has no fpga_seq_num",
+                        I_meta->get_fpga_seq_num());
+        }
     } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
