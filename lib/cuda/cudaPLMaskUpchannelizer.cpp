@@ -68,6 +68,10 @@ using kotekan::round_down;
  * @conf  num_polarizations                    Int.  Number of polarizations (2).
  * @conf  num_dishes                           Int.  Number of dishes.
  * @conf  upchannelization_factor              Int.  Time downsampling factor U (power of two).
+ * @conf  max_upchannelization_factor          Int.  The largest upchannelization factor used in
+ *                                                   this run. As for the voltage upchannelizers,
+ *                                                   the output begins at input sample
+ *                                                   (M-1) * max_upchannelization_factor / 2.
  * @conf  Fmin                                 Int.  First input coarse channel to process.
  * @conf  Fmax                                 Int.  One past the last input coarse channel.
  * @conf  expanded_pl_mask_name                String.  Base name for the input pl_mask buffers.
@@ -98,6 +102,14 @@ private:
     const int num_polarizations;
     const int num_dishes;
     const int upchannelization_factor;
+    const int max_upchannelization_factor;
+    // Output time offset relative to the input, in input samples
+    const std::ptrdiff_t T_offset;
+    // Number of input samples we skip at startup: whole `time_64` rows via the ring buffer, and the
+    // remaining bits in the kernel
+    const std::ptrdiff_t T_skip;
+    const std::ptrdiff_t skip_rows;
+    const int bit_offset;
     // Input coarse-channel range [Fmin, Fmax) to process; the output is written densely to channels
     // [0, Fmax-Fmin).
     const int Fmin;
@@ -132,6 +144,10 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
+    max_upchannelization_factor(config.get<int>(unique_name, "max_upchannelization_factor")),
+    T_offset((cuda_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor) / 2),
+    T_skip(T_offset - (cuda_number_of_taps - 1) * std::ptrdiff_t(upchannelization_factor) / 2),
+    skip_rows(T_skip / 64), bit_offset(int(T_skip % 64)),
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
@@ -158,6 +174,11 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
     did_set_metadata(false)
 //
 {
+    if (!(max_upchannelization_factor >= upchannelization_factor
+          && (cuda_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
+        FATAL_ERROR("Upchannelization factor {:d} with {:d} taps: max_upchannelization_factor={:d} "
+                    "must not be smaller, and (taps-1)*max_upchannelization_factor must be even",
+                    upchannelization_factor, cuda_number_of_taps, max_upchannelization_factor);
     if (!(0 <= Fmin && Fmin <= Fmax && Fmax <= num_frequencies))
         FATAL_ERROR("Invalid channel range: require 0 <= Fmin ({:d}) <= Fmax ({:d}) <= "
                     "num_frequencies ({:d})",
@@ -185,12 +206,38 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
 cudaPLMaskUpchannelizer::~cudaPLMaskUpchannelizer() {}
 
 int cudaPLMaskUpchannelizer::wait_on_precondition() {
-    // The kernel reads (M-1)*U input bits past the data it consumes (the PFB forward stencil). In
-    // time_64 row units that is `overlap` extra rows that must be readable but are not advanced.
-    const std::ptrdiff_t overlap =
-        div_ceil((cuda_number_of_taps - 1) * std::ptrdiff_t(upchannelization_factor), 64);
+    // The kernel starts `bit_offset` bits into the first row and reads (M-1)*U input bits past the
+    // data it consumes (the PFB forward stencil). In time_64 row units that is `overlap` extra rows
+    // that must be readable but are not advanced.
+    const std::ptrdiff_t overlap = div_ceil(
+        bit_offset + (cuda_number_of_taps - 1) * std::ptrdiff_t(upchannelization_factor), 64);
     const std::ptrdiff_t in_ringbuf = pl_expanded_mask.get_ndarray().extent(0);
     const std::ptrdiff_t read_max = in_ringbuf / 4;
+
+    // Output bit `tbar` covers the M*U input samples starting at `T_skip + U * tbar`, so that its
+    // centre is aligned with the voltage upchannelizers' outputs (see `execute`). Skip the whole
+    // rows of `T_skip` once, at startup; the kernel skips the remaining `bit_offset` bits. (Only
+    // the main thread moves the shared read head, so it is 0 exactly until the first claim.)
+    if (skip_rows > 0) {
+        const std::ptrdiff_t head = pl_expanded_mask.peek_read_head();
+        if (head < 0)
+            return -1; // shutting down
+        if (head == 0) {
+            if (!(skip_rows <= read_max))
+                FATAL_ERROR("Need to skip {:d} input time_64 rows, but the input ring buffer "
+                            "pl_expanded_mask holds only {:d}",
+                            skip_rows, in_ringbuf);
+            const int errcode =
+                pl_expanded_mask.wait_and_claim_readable([&](const std::ptrdiff_t available) {
+                    return available >= skip_rows
+                               ? read_descriptor_t{.claimed = skip_rows, .read = skip_rows}
+                               : read_descriptor_t{.claimed = 0, .read = 0};
+                });
+            if (errcode < 0)
+                return errcode;
+            pl_expanded_mask.finish_read();
+        }
+    }
 
     DEBUG("Waiting for pl_expanded_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
     std::ptrdiff_t consumed = 0;
@@ -235,19 +282,12 @@ cudaEvent_t cudaPLMaskUpchannelizer::execute(cudaPipelineState& /*pipestate*/,
         const auto& out_meta = pl_upchannelized_expanded_mask.get_metadata();
         out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
                                              * upchannelization_factor);
-        // Output bit `tbar` covers input bits [U * tbar, U * tbar + M * U). Timestamps point to
-        // the beginning of a sample, so the output sample centred on this window begins at input
-        // sample `U * tbar + (M-1) * U / 2`.
-        //
-        // TODO: Unlike the voltage upchannelizers, this kernel does not (yet) skip input samples
-        // at startup to align all upchannelization factors (`max_upchannelization_factor`): its
-        // input ring is addressed in 64-sample words. Its output is therefore labelled correctly,
-        // but its samples are offset from the upchannelized voltages' by
-        // `(M-1) * (max_upchannelization_factor - U) / 2` input samples.
+        // Output bit `tbar` covers input samples [T_skip + U * tbar, T_skip + U * tbar + M * U).
+        // Timestamps point to the beginning of a sample, so the output sample centred on this
+        // window begins at input sample `T_offset + U * tbar`, as for the voltage upchannelizers.
         if (in_meta->has_fpga_seq_num())
             out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num()
-                                       + (cuda_number_of_taps - 1) * upchannelization_factor / 2
-                                             * in_meta->get_time_downsampling_fpga());
+                                       + T_offset * in_meta->get_time_downsampling_fpga());
     }
 
     kotekan::uint1x8_t* const in_memory = pl_expanded_mask.get_ndarray().data();
@@ -272,8 +312,8 @@ cudaEvent_t cudaPLMaskUpchannelizer::execute(cudaPipelineState& /*pipestate*/,
     launch_upchannelize_pl_mask(reinterpret_cast<std::uint64_t*>(out_memory),
                                 reinterpret_cast<const std::uint64_t*>(in_memory), num_elements,
                                 num_frequencies, num_frequencies_out, Fmin, Fmax, num_times_64,
-                                size_in, pos_in, size_out, pos_out, upchannelization_factor,
-                                device.getStream(cuda_stream_id));
+                                size_in, pos_in, bit_offset, size_out, pos_out,
+                                upchannelization_factor, device.getStream(cuda_stream_id));
 
     return record_end_event();
 }
