@@ -85,6 +85,10 @@ common:
   # exchange between nodes). off | shadow | live. Also a live switch (POST /set_elem_proj)
   # that a relaunch loses -- this key is what survives. fixtures/projtest/PROJECTION_PLAN.md s.7.
   elem-proj-mode: live
+  # 2026-10-01 (KV: "swap over to a 2 deg freezeout"): the projection window widens 4 -> 6 deg
+  # as the freeze below narrows 6 -> 2, so the shared model learns on projected data through
+  # 2-6 deg and nothing is left uncovered between the two.
+  elem-proj-deg: 6
   carrier-phase-from-ref: 1
   # ── #71: THE CARRIER NCO, PAIRED PER GPU (2026-08-16) ───────────────────────────────
   # 'ab' = GPU 0 accumulates the replica phase across records, GPU 1 keeps arm 1. The old
@@ -428,6 +432,10 @@ common:
   # healthy model). The freeze needs a broker that posts that separation ("_bore", same
   # commit), so restart the broker with the nodes.
   elem-sum-shared: true
+  # 2026-10-01: freeze 6 -> 2 deg now that the projection (elem-proj-deg 6 above) keeps the
+  # victims' rows clean in transit; inside 2 deg the victim in the bright satellite's own beam is
+  # lost anyway. Hold stays 60 s (assembler default).
+  elem-freeze-deg: 2
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated

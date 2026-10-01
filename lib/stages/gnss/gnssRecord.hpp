@@ -123,7 +123,9 @@ namespace gnss {
 /// carrier-phase quantities #72 needs and that no external measurement can reach.
 /// 28 -> 29 same day: @ref REC_PHI0, the comb's phase currency -- #72's root cause, made
 /// recoverable by the consumer instead of left implicit.
-constexpr int RECORD_FLOATS = 29;
+/// 29 -> 30 on 2026-10-01: @ref REC_PROJ_COST, the bright-satellite projection's cost on the
+/// satellite's live weights, so the broker can weight rows by it instead of vetoing by angle.
+constexpr int RECORD_FLOATS = 30;
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
 // THE HOP-ORDER CONTRACT (decided 2026-08-06, docs/gnss_gpu_search.md 11.3): every hop-indexed
@@ -246,6 +248,14 @@ constexpr int REC_ANG0 = 26;
 /// removed every instance is on one common phase reference and the band can be summed
 /// coherently across its full 20.31 MHz.
 constexpr int REC_PHI0 = 28;
+
+/// BRIGHT-SATELLITE PROJECTION COST on this record (GnssGpuRecordAssemble::proj_slot_diag): the
+/// fraction of this satellite's LIVE element weights lying in the projected subspace, cos^2 in
+/// [0, 1] averaged over its covering channels with a basis in force; the projection costs it
+/// (1 - cost)^2 of its prompt power. -1 = not applicable: no basis in force on this record, the
+/// satellite is itself a projection source, it is unsteered, or its cal is cold. The broker's
+/// fleet solve weights the row by it instead of vetoing every satellite within 5 deg.
+constexpr int REC_PROJ_COST = 29;
 
 /// PHI-CACHE STALENESS, Hz: doppler_now - the Doppler this PRN's channelizer filter was BUILT
 /// at. GnssCudaDespread::ensure_phi rebuilds only when the Doppler moves further than

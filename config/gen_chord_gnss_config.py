@@ -1183,7 +1183,10 @@ def elem_proj_keys(args):
     mode = getattr(args, "elem_proj_mode", "off") or "off"
     if mode not in ("shadow", "live"):
         return {}
-    return {"elem_proj_mode": mode}
+    out = {"elem_proj_mode": mode}
+    if getattr(args, "elem_proj_deg", None) is not None:
+        out["elem_proj_deg"] = args.elem_proj_deg
+    return out
 
 
 def elem_shared_keys(args):
@@ -1191,9 +1194,12 @@ def elem_shared_keys(args):
     a fleet without it is byte-identical."""
     if not getattr(args, "elem_sum_shared", False):
         return {}
-    return {"elem_sum_shared": True, "elem_sum_adapt": False,
-            "elem_sum_shared_tau_s": args.elem_sum_shared_tau_s,
-            "elem_sum_pol_tau_s": args.elem_sum_pol_tau_s}
+    out = {"elem_sum_shared": True, "elem_sum_adapt": False,
+           "elem_sum_shared_tau_s": args.elem_sum_shared_tau_s,
+           "elem_sum_pol_tau_s": args.elem_sum_pol_tau_s}
+    if getattr(args, "elem_freeze_deg", None) is not None:
+        out["elem_sum_shared_freeze_deg"] = args.elem_freeze_deg
+    return out
 
 
 def elem_steer_keys(args, arr, n_elem):
@@ -3012,6 +3018,14 @@ def main():
                          "shadow = projected shadow learner + capture diagnostics only; live = "
                          "the rows are projected in place. Emitted only when not off; the "
                          "assembler also takes it live over POST /set_elem_proj.")
+    ap.add_argument("--elem-proj-deg", type=float, default=None,
+                    help="projection window: own-row sources and the probe-stack gate inside this "
+                         "many degrees of boresight (assembler default 4). Emitted only when given "
+                         "and --elem-proj-mode is not off.")
+    ap.add_argument("--elem-freeze-deg", type=float, default=None,
+                    help="shared-model transit freeze: no learning while the broker's nearest-to-"
+                         "boresight separation is inside this many degrees (assembler default 6). "
+                         "Emitted only when given, with --elem-sum-shared.")
     ap.add_argument("--elem-sum-shared-tau-s", type=float, default=300.0,
                     help="consensus EMA time constant (s) for --elem-sum-shared")
     ap.add_argument("--elem-sum-pol-tau-s", type=float, default=3.0,

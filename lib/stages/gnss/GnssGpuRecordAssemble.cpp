@@ -849,6 +849,7 @@ void GnssGpuRecordAssemble::main_thread() {
                 // window must not leave a previous window's per-antenna correlations behind.
                 for (int f = 0; f < rec_stride; ++f)
                     rec[f] = 0.0f;
+                rec[gnss::REC_PROJ_COST] = -1.0f; // measured below when a basis is in force
                 const PrnCtl& c = pctl[(size_t)r * n_prn + p];
                 // THE FRAME'S PRN WINS. _prns was reconciled to it at the top of this frame,
                 // so the two agree -- but reading it from the record's own control word means
@@ -1031,6 +1032,7 @@ void GnssGpuRecordAssemble::main_thread() {
                             pj.update(proj_this ? _g_proj.data() : &_g_elem[(size_t)1 * n_e],
                                       dt_s);
                             proj_slot_diag(p, &c, n_chan, n_e, steered);
+                            rec[gnss::REC_PROJ_COST] = (float)_b_cos2[p];
                         }
                     }
                     if (ec.anchor_moved()) {

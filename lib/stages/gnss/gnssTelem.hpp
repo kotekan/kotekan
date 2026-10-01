@@ -94,6 +94,9 @@ namespace gnss {
 
 /// "GTL1" -- bumped only for an INCOMPATIBLE layout change; `version` covers the rest.
 constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
+/// v7 (2026-10-01): RECORD_FLOATS 29 -> 30 for REC_PROJ_COST, the bright-satellite projection's
+/// per-row cost, which the broker's fleet solve weights by. The row grew, so nodes, gather and
+/// broker move together as for v4/v5.
 /// v5 (2026-08-16): RECORD_FLOATS 28 -> 29 for REC_PHI0, the comb's phase currency -- #72's
 /// root cause. Without it the comb carries a per-instance arbitrary phase constant that no
 /// consumer can undo, which is what held the fleet combine to within-instance coherence.
@@ -115,7 +118,7 @@ constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
 /// each instance, that's *never* what we want to do" -- the cross-channel sum destroys the
 /// frequency axis a delay lives on, so the broker was left FITTING a per-instance constant
 /// where it should DERIVE one from the ramp across ~106 channels.
-constexpr uint16_t TELEM_VERSION = 6;
+constexpr uint16_t TELEM_VERSION = 7;
 
 /// Comb columns a row MAY carry. This is the format's ceiling and the size of the header's
 /// freq_id label array -- NOT the row stride: each sender ships exactly the columns it despreads
