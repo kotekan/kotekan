@@ -53,7 +53,7 @@ import math
 # imports fleet for apply_presence, so the definition lives there to keep imports acyclic.
 from .fleet import apply_presence
 from .fleet import epl_decompose
-from .telem import REC_PHI0
+from .telem import REC_PHI0, REC_PROJ_COST
 
 __all__ = ["epl_decompose"]  # the re-export, stated
 
@@ -138,14 +138,23 @@ def _lobe_fold(client, chain, wins, want, per_channel):
                         continue
                     row = f.row(r, prn)
                     rot = cmath.exp(1j * float(row[REC_PHI0])) if row is not None else 1.0
+                    # PROJECTION-COST WEIGHT (REC_PROJ_COST): this sender kept (1 - b) of the
+                    # satellite's amplitude, so its partial enters with weight (1 - b) on the
+                    # numerator and the energies alike -- maximal-ratio across senders, and
+                    # the unweighted sum exactly when every sender has the same b. -1 weighs 1;
+                    # b = 1 is an absent measurement. Mirrors gnss::FleetDll::fold.
+                    pc = float(row[REC_PROJ_COST]) if row is not None else -1.0
+                    pw = 1.0 - min(1.0, pc) if pc >= 0.0 else 1.0
+                    if pw <= 0.0:
+                        continue
                     d = acc.setdefault((w, r), {}).setdefault(
                         prn, [0j, 0j, 0j, 0.0, 0.0, 0.0, 0, 0, -1, 0j, 0.0])
-                    d[0] += gE * rot
-                    d[1] += gP * rot
-                    d[2] += gL * rot
-                    d[3] += eE
-                    d[4] += eP
-                    d[5] += eL
+                    d[0] += gE * rot * pw
+                    d[1] += gP * rot * pw
+                    d[2] += gL * rot * pw
+                    d[3] += eE * pw
+                    d[4] += eP * pw
+                    d[5] += eL * pw
                     d[6] += len(cmb)
                     d[7] += 1
                     d[8] = max(d[8], hop)

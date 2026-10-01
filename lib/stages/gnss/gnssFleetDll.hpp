@@ -407,19 +407,30 @@ public:
                 if (used == 0 || wP <= 0.0)
                     continue;
 
+                // PROJECTION-COST WEIGHT (REC_PROJ_COST): a sender whose live weights lie in
+                // the projected subspace by cos^2 = b kept (1 - b) of this satellite's
+                // amplitude, so its partial enters the lobe sum weighted (1 - b), numerator and
+                // energies alike: maximal-ratio across senders, and today's expression exactly
+                // when every sender has the same b. -1 (no basis in force) weighs 1; b = 1 is
+                // an absent measurement, like a record with no live comb.
+                const float pc = row[REC_PROJ_COST];
+                const double pw = (pc >= 0.0f) ? 1.0 - std::min(1.0, (double)pc) : 1.0;
+                if (pw <= 0.0)
+                    continue;
+
                 // ONTO THE COMMON REFERENCE, then into the lobe's sum for this record.
                 const double phi0 = row[REC_PHI0];
                 const double cr = std::cos(phi0), ci = std::sin(phi0);
                 RecAcc& a = w.acc[r][prn];
-                a.gE_re += gE_re * cr - gE_im * ci;
-                a.gE_im += gE_re * ci + gE_im * cr;
-                a.gP_re += gP_re * cr - gP_im * ci;
-                a.gP_im += gP_re * ci + gP_im * cr;
-                a.gL_re += gL_re * cr - gL_im * ci;
-                a.gL_im += gL_re * ci + gL_im * cr;
-                a.wE += wE;
-                a.wP += wP;
-                a.wL += wL;
+                a.gE_re += (gE_re * cr - gE_im * ci) * pw;
+                a.gE_im += (gE_re * ci + gE_im * cr) * pw;
+                a.gP_re += (gP_re * cr - gP_im * ci) * pw;
+                a.gP_im += (gP_re * ci + gP_im * cr) * pw;
+                a.gL_re += (gL_re * cr - gL_im * ci) * pw;
+                a.gL_im += (gL_re * ci + gL_im * cr) * pw;
+                a.wE += wE * pw;
+                a.wP += wP * pw;
+                a.wL += wL * pw;
                 // ⚠️ NORMALISE FIRST, THEN ROTATE, mirroring the Python `gP / eP * rot`: the
                 // same number in exact arithmetic and not the same float otherwise.
                 {

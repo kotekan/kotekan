@@ -181,6 +181,10 @@ def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng,
                 continue
             phi0 = phi0_for(inst_idx, r, prn)
             rows[base + telem.REC_PHI0] = phi0
+            # PROJECTION COST (REC_PROJ_COST), a per-sender pattern so the (1 - b) weight path
+            # is exercised in both arms: not applicable on instance 0, graded on the others.
+            rows[base + telem.REC_PROJ_COST] = (-1.0 if inst_idx == 0
+                                               else 0.3 if prn % 2 else 0.05 * ((r + inst_idx) % 3))
             for ch in range(n_chan):
                 cb = base + telem._ROW_FLOATS + ch * telem._CHAN_FLOATS
                 blk = _chan_block(rng, prn, chan_ids[ch],

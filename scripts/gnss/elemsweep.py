@@ -22,6 +22,7 @@ ceiling. Use --set only once --sweep has told you what to set.
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -31,7 +32,10 @@ PORT = 12048
 AGG_HOST = "cf06"
 AGG_LOG = "/tmp/gnss_agg_final.log"
 TAPS = ["gnss0_srch_tap", "gnss1_srch_tap"]
-RECORD_FLOATS = 29   # gnssRecord.hpp; grew 26->29 (sky-phase + phi0 slots). ELEM_FLOATS=12.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "config"))
+from gnss_record_layout import record_stride  # noqa: E402
+
+RECORD_FLOATS = record_stride(0)   # gnssRecord.hpp, READ rather than copied (29 -> 30 on 10-01)
 
 
 def _get(url, timeout=8):

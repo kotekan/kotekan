@@ -5,7 +5,7 @@
 #       fig/generated/chord_gnss_gather.yaml
 # TASK #59: the fleet's per-record telemetry, gathered on ONE port and handed
 # to the PYTHON broker on 127.0.0.1:11061.
-# buffer frame 32432 B = 4 records x 20 PRN rows x 8 comb columns -- THE WIDEST SENDER, not what any one ships; listen 11060; rest 12051
+# buffer frame 32752 B = 4 records x 20 PRN rows x 8 comb columns -- THE WIDEST SENDER, not what any one ships; listen 11060; rest 12051
 # ⚠️ SENDERS SHIP THEIR OWN SHAPES -- their chain's PRN rows, their instance's
 #    comb columns -- and this buffer only has to HOLD the widest. bufferRecv
 #    closes any connection whose frame EXCEEDS its buffer, so raising a
@@ -38,7 +38,7 @@ rest_server:
   enable_cors: true
   port: 12051
 telem_buf:
-  frame_size: 32432
+  frame_size: 32752
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 8192
