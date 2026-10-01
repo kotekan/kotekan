@@ -8,7 +8,6 @@
 #include "frb_functions.h"       // for FRBHeader
 #include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR
 #include "network_functions.hpp" // for receive_ping, send_ping
-#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance
 #include "tx_utils.hpp"          // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_...
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
@@ -36,17 +35,9 @@
 
 using std::string;
 
-// Update beam_offset parameter with:
-// curl localhost:12048/frb/update_beam_offset -X POST -H 'Content-Type: application/json' -d
-// '{"beam_offset":108}'
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
-
-using kotekan::connectionInstance;
-using kotekan::HTTP_RESPONSE;
-using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(frbNetworkSend);
 
@@ -90,8 +81,6 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
 }
 
 frbNetworkSend::~frbNetworkSend() {
-    restServer::instance().remove_json_callback("/frb/update_beam_offset");
-
     for (auto src : src_sockets) {
         close(src.socket_fd);
     }
@@ -102,20 +91,6 @@ frbNetworkSend::~frbNetworkSend() {
     }
 }
 
-
-void frbNetworkSend::update_offset_callback(connectionInstance& conn,
-                                            nlohmann::json& json_request) {
-    // no need for a lock here, beam_offset copied into a local variable for use
-    try {
-        beam_offset = json_request["beam_offset"];
-    } catch (...) {
-        conn.send_error("Couldn't parse new beam_offset parameter.", HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    INFO("Updating beam_offset to {:d}", beam_offset);
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
-    config.update_value(unique_name, "beam_offset", beam_offset);
-}
 
 void frbNetworkSend::main_thread() {
     DEBUG("number of subnets {:d}\n", number_of_subnets);
@@ -143,15 +118,6 @@ void frbNetworkSend::main_thread() {
         pthread_setaffinity_np(send_ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
         pthread_setaffinity_np(receive_ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
     }
-
-    // rest server
-    using namespace std::placeholders;
-    restServer& rest_server = restServer::instance();
-    std::string endpoint = "/frb/update_beam_offset";
-    rest_server.register_post_callback(
-        endpoint, std::bind(&frbNetworkSend::update_offset_callback, this, _1, _2));
-
-    // config.update_value(unique_name, "beam_offset", beam_offset);
 
     int frame_id = 0;
     uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
@@ -507,8 +473,17 @@ int frbNetworkSend::initialize_source_sockets() {
             return -1;
         }
         if (number_of_subnets > 0) {
+            // Several frbNetworkSend stages in one process (one per NUMA domain) bind
+            // the same local addresses and port; allow that for these send-only sockets.
+            const int reuse = 1;
+            if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0
+                || setsockopt(sock_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
+                FATAL_ERROR("Network Thread: setsockopt(SO_REUSEADDR/SO_REUSEPORT) failed: {:s} ",
+                            strerror(errno));
+                return -1;
+            }
             if (bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-                FATAL_ERROR("port binding failed ");
+                FATAL_ERROR("port binding failed: {:s} ", strerror(errno));
                 return -1;
             }
         }
