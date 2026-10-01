@@ -1851,12 +1851,12 @@ $L__BB0_76:                             // %__nv_fmodf.exit1688
 	mov.b32 	%r478, %f1145;
 	mov.b32 	%r477, %f110;
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r476, %r478, %r477;
+	cvt.rn.f16x2.f32 %r141, %r478, %r477;
 	// end inline asm
 	mov.b32 	%r481, %f1141;
 	mov.b32 	%r480, %f109;
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r479, %r481, %r480;
+	cvt.rn.f16x2.f32 %r142, %r481, %r480;
 	// end inline asm
 	shl.b32 	%r491, %r168, 13;
 	shl.b32 	%r492, %r172, 9;
@@ -2978,34 +2978,64 @@ $L__BB0_50:                             // %L13782
 	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r1498, %r1501}, {%r380, %r386, %r383, %r389}, {%r1369, %r1401}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r1493, %r1496}, {%r380, %r386, %r383, %r389}, {%r1378, %r1408}, {%r880, %r880};
+	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r1466, %r1463}, {%r380, %r386, %r383, %r389}, {%r1378, %r1408}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r1499, %r1502}, {%r380, %r386, %r383, %r389}, {%r1387, %r1415}, {%r880, %r880};
+	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r1475, %r1472}, {%r380, %r386, %r383, %r389}, {%r1387, %r1415}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1491, %r1492, %r1493;
+	neg.f16x2 %r1459, %r142;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1494, %r1495, %r1496;
+	mul.rn.f16x2 %r1461, %r1459, %r1463;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1497, %r1498, %r1499;
+	fma.rn.f16x2 %r1493, %r141, %r1466, %r1461;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1500, %r1501, %r1502;
+	neg.f16x2 %r1468, %r142;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r1503, %r1492, %r1493;
+	mul.rn.f16x2 %r1470, %r1468, %r1472;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r1506, %r1495, %r1496;
+	fma.rn.f16x2 %r1499, %r141, %r1475, %r1470;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r1509, %r1498, %r1499;
+	mul.rn.f16x2 %r1477, %r142, %r1466;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r1512, %r1501, %r1502;
+	fma.rn.f16x2 %r1496, %r141, %r1463, %r1477;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r1484, %r142, %r1475;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r1502, %r141, %r1472, %r1484;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r1491, %r1492, %r1493;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r1494, %r1495, %r1496;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r1497, %r1498, %r1499;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r1500, %r1501, %r1502;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r1503, %r1492, %r1493;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r1506, %r1495, %r1496;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r1509, %r1498, %r1499;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r1512, %r1501, %r1502;
 	// end inline asm
 	// begin inline asm
 	mul.rn.f16x2 %r1515, %r113, %r1491;
@@ -3956,34 +3986,64 @@ $L__BB0_50:                             // %L13782
 	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r2496, %r2499}, {%r380, %r386, %r383, %r389}, {%r2367, %r2399}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r2491, %r2494}, {%r380, %r386, %r383, %r389}, {%r2376, %r2406}, {%r880, %r880};
+	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r2464, %r2461}, {%r380, %r386, %r383, %r389}, {%r2376, %r2406}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r2497, %r2500}, {%r380, %r386, %r383, %r389}, {%r2385, %r2413}, {%r880, %r880};
+	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r2473, %r2470}, {%r380, %r386, %r383, %r389}, {%r2385, %r2413}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r2489, %r2490, %r2491;
+	neg.f16x2 %r2457, %r142;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r2492, %r2493, %r2494;
+	mul.rn.f16x2 %r2459, %r2457, %r2461;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r2495, %r2496, %r2497;
+	fma.rn.f16x2 %r2491, %r141, %r2464, %r2459;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r2498, %r2499, %r2500;
+	neg.f16x2 %r2466, %r142;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r2501, %r2490, %r2491;
+	mul.rn.f16x2 %r2468, %r2466, %r2470;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r2504, %r2493, %r2494;
+	fma.rn.f16x2 %r2497, %r141, %r2473, %r2468;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r2507, %r2496, %r2497;
+	mul.rn.f16x2 %r2475, %r142, %r2464;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r2510, %r2499, %r2500;
+	fma.rn.f16x2 %r2494, %r141, %r2461, %r2475;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r2482, %r142, %r2473;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2500, %r141, %r2470, %r2482;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r2489, %r2490, %r2491;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r2492, %r2493, %r2494;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r2495, %r2496, %r2497;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r2498, %r2499, %r2500;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r2501, %r2490, %r2491;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r2504, %r2493, %r2494;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r2507, %r2496, %r2497;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r2510, %r2499, %r2500;
 	// end inline asm
 	// begin inline asm
 	mul.rn.f16x2 %r2513, %r113, %r2489;
@@ -4929,34 +4989,64 @@ $L__BB0_50:                             // %L13782
 	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r3494, %r3497}, {%r380, %r386, %r383, %r389}, {%r3365, %r3397}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r3489, %r3492}, {%r380, %r386, %r383, %r389}, {%r3374, %r3404}, {%r880, %r880};
+	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r3462, %r3459}, {%r380, %r386, %r383, %r389}, {%r3374, %r3404}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r3495, %r3498}, {%r380, %r386, %r383, %r389}, {%r3383, %r3411}, {%r880, %r880};
+	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r3471, %r3468}, {%r380, %r386, %r383, %r389}, {%r3383, %r3411}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r3487, %r3488, %r3489;
+	neg.f16x2 %r3455, %r142;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r3490, %r3491, %r3492;
+	mul.rn.f16x2 %r3457, %r3455, %r3459;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r3493, %r3494, %r3495;
+	fma.rn.f16x2 %r3489, %r141, %r3462, %r3457;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r3496, %r3497, %r3498;
+	neg.f16x2 %r3464, %r142;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r3499, %r3488, %r3489;
+	mul.rn.f16x2 %r3466, %r3464, %r3468;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r3502, %r3491, %r3492;
+	fma.rn.f16x2 %r3495, %r141, %r3471, %r3466;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r3505, %r3494, %r3495;
+	mul.rn.f16x2 %r3473, %r142, %r3462;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r3508, %r3497, %r3498;
+	fma.rn.f16x2 %r3492, %r141, %r3459, %r3473;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r3480, %r142, %r3471;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r3498, %r141, %r3468, %r3480;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r3487, %r3488, %r3489;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r3490, %r3491, %r3492;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r3493, %r3494, %r3495;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r3496, %r3497, %r3498;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r3499, %r3488, %r3489;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r3502, %r3491, %r3492;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r3505, %r3494, %r3495;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r3508, %r3497, %r3498;
 	// end inline asm
 	// begin inline asm
 	mul.rn.f16x2 %r3511, %r113, %r3487;
@@ -5902,34 +5992,64 @@ $L__BB0_50:                             // %L13782
 	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r4492, %r4495}, {%r380, %r386, %r383, %r389}, {%r4363, %r4395}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r4487, %r4490}, {%r380, %r386, %r383, %r389}, {%r4372, %r4402}, {%r880, %r880};
+	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r4460, %r4457}, {%r380, %r386, %r383, %r389}, {%r4372, %r4402}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r4493, %r4496}, {%r380, %r386, %r383, %r389}, {%r4381, %r4409}, {%r880, %r880};
+	mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%r4469, %r4466}, {%r380, %r386, %r383, %r389}, {%r4381, %r4409}, {%r880, %r880};
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r4485, %r4486, %r4487;
+	neg.f16x2 %r4453, %r142;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r4488, %r4489, %r4490;
+	mul.rn.f16x2 %r4455, %r4453, %r4457;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r4491, %r4492, %r4493;
+	fma.rn.f16x2 %r4487, %r141, %r4460, %r4455;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r4494, %r4495, %r4496;
+	neg.f16x2 %r4462, %r142;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r4497, %r4486, %r4487;
+	mul.rn.f16x2 %r4464, %r4462, %r4466;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r4500, %r4489, %r4490;
+	fma.rn.f16x2 %r4493, %r141, %r4469, %r4464;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r4503, %r4492, %r4493;
+	mul.rn.f16x2 %r4471, %r142, %r4460;
 	// end inline asm
 	// begin inline asm
-	sub.rn.f16x2 %r4506, %r4495, %r4496;
+	fma.rn.f16x2 %r4490, %r141, %r4457, %r4471;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r4478, %r142, %r4469;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r4496, %r141, %r4466, %r4478;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r4485, %r4486, %r4487;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r4488, %r4489, %r4490;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r4491, %r4492, %r4493;
+	// end inline asm
+	// begin inline asm
+	sub.rn.f16x2 %r4494, %r4495, %r4496;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r4497, %r4486, %r4487;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r4500, %r4489, %r4490;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r4503, %r4492, %r4493;
+	// end inline asm
+	// begin inline asm
+	add.rn.f16x2 %r4506, %r4495, %r4496;
 	// end inline asm
 	// begin inline asm
 	mul.rn.f16x2 %r4509, %r113, %r4485;
