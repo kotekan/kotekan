@@ -564,22 +564,22 @@ public:
     // change over time. This function fills that object in place, so the producer must call it
     // exactly once, on its first frame, before the first `finish_write` publishes data. From then
     // on consumers -- which may run in other threads -- read the object without synchronization,
-    // and rewriting it, even with unchanged values, would race with them.
+    // and rewriting it, even with unchanged values, would race with them. A second call is
+    // therefore a fatal error.
     //
     // A cudaCommand has `buffer_depth` instances sharing the ring buffer, and frame 0 is always
     // handled by instance 0, so guard the call with `instance_num == 0` and a flag.
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) {
-        // ⚠️ ALWAYS A FRESH OBJECT, NEVER IN PLACE (2026-09-02). The first version fell back
-        // to allocate_new_metadata_object(0)-then-mutate when the source had no parent_pool
-        // -- and that is not a rare corner: cudaCopyToRingbuffer creates ring metadata with a
-        // bare make_shared (no pool tag), so EVERY per-execute set_metadata sourced from a
-        // ring object (both correlators, the whole PL-mask chain) took the fallback and
-        // mutated the live slot-0 object under concurrent readers -- the very torn-write this
-        // function was rewritten to kill. The pool was only ever a size-accounting tag
-        // (request_metadata_object heap-allocates fresh; nothing recycles), so a poolless
-        // fresh object is strictly correct; keep the pool tag when the source has one.
-        auto metadata = std::make_shared<chordMetadata>();
-        metadata->parent_pool = other_metadata->parent_pool;
+        if (ringbuffer->get_metadata(0))
+            FATAL_ERROR("ring buffer {:s} already has a metadata object; set it only once, on the "
+                        "first frame",
+                        buffer_name);
+        // const std::shared_ptr<metadataObject> mc =
+        //     cuda_command.get_device().create_gpu_memory_array_metadata(buffer_name_device, 0,
+        //                                                                other_metadata->parent_pool);
+        // const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
+        ringbuffer->allocate_new_metadata_object(0);
+        const std::shared_ptr<chordMetadata> metadata = get_metadata();
         metadata->deepCopy(other_metadata);
         metadata->set_name(ndarray.quantity_name());
         metadata->type = ndarray.value_datatype;
@@ -595,8 +595,6 @@ public:
                                               ndarray.dimscaling(d));
             metadata->stride[d] = ndarray.stride(d);
         }
-        // Publish last: everything above is invisible to readers until this line.
-        ringbuffer->set_metadata(0, metadata);
     }
 
     // Poison
