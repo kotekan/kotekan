@@ -3526,52 +3526,46 @@ def main():
     if _stamped:
         sys.stderr.write(f"  hardened {_stamped} ring copies with expect_quantity_name\n")
 
-    # ⚠️ THE BF-MASK VALVE SPLIT (2026-09-02, KV's interim for the startup deadlock). The
-    # bad-feed mask had ONE producer, ONE ring, and BOTH GPU halves as peek-hold, seq-matched
-    # consumers -- so a half whose capture starts late (port-1 stream-id set + the 30 s
-    # anchor) wants mask seqs the blocked producer can never write: producer waits on
-    # consumer, consumer waits on impossible seqs, the half is dark forever (proven by four
-    # backtraces on cx19+cx43, 2026-09-02; the same knot also starves the PL chain and,
-    # via the trickle-fed searcher merge, the whole fleet's search). The GPUs are
-    # INDEPENDENT PIPELINES; nothing ever required matched consumption. Give each half its
-    # own small buffer behind a Valve: the valves always drain the shared buffer (the
-    # producer can never block), and a stalled half sheds ITS OWN frames -- counted in
-    # kotekan_valve_dropped_frames_total -- instead of wedging the node. Two valve
-    # consumers force Valve's memcpy path, so no metadata aliasing is introduced.
-    if isinstance(out.get("host_bf_mask_buffer"), dict):
-        _mask_def = out["host_bf_mask_buffer"]
-        _split = 0
-        # The consumers are NESTED cudaProcess runtimes (run_send_bf_mask/gpu_N in the
-        # captured base), not top-level stages -- walk the whole tree.
-        _procs = []
-        def _walk_masks(_o):
-            if isinstance(_o, dict):
-                if (_o.get("kotekan_stage") == "cudaProcess"
-                        and isinstance(_o.get("in_buffers"), dict)):
-                    _procs.append(_o)
-                for _vv in _o.values():
-                    _walk_masks(_vv)
-            elif isinstance(_o, list):
-                for _vv in _o:
-                    _walk_masks(_vv)
-        _walk_masks(out)
-        for _st in _procs:
-            _inb = _st["in_buffers"]
-            for _k, _v in list(_inb.items()):
-                if _v == "host_bf_mask_buffer":
-                    _gpu = _st.get("gpu_id", _split)
-                    _nb = f"host_bf_mask_buffer_v{_gpu}"
-                    out[_nb] = dict(_mask_def)
-                    out[_nb]["num_frames"] = 4
-                    out[f"valve_bf_mask_{_gpu}"] = {
-                        "kotekan_stage": "Valve",
-                        "in_buf": "host_bf_mask_buffer",
-                        "out_buf": _nb,
-                    }
-                    _inb[_k] = _nb
-                    _split += 1
-        if _split:
-            sys.stderr.write(f"  bf-mask valve split: {_split} gpu consumer(s) decoupled\n")
+    # ⚠️ ONE BAD-FEED MASK STREAM PER NUMA HALF, CLOCKED TO THAT HALF'S VOLTAGE STREAM (develop's
+    # #1655 layout). The GPU RFI stages look the mask up by ring POSITION, so each refuses to run
+    # unless its mask stream starts at the seq its data stream starts at ("The bad feed mask stream
+    # starts at seq 0 but the data stream at ..."), and the two DPDK captures can start frames
+    # apart: one shared producer can satisfy at most one half. bufferBadInputs takes its first seq
+    # from metadata_source's first frame, then stops consuming that buffer. This also replaces the
+    # 09-02 valve split: a valve that sheds a mask frame would shift every later ring position, and
+    # with a producer per half, a late half can no longer hold up the other one (the deadlock the
+    # valves broke).
+    if isinstance(out.get("set_bf_mask"), dict) and isinstance(out.get("host_bf_mask_buffer"), dict):
+        _sbm = out["set_bf_mask"]
+        if _sbm.get("kotekan_stage") == "bufferBadInputs":
+            _shared = {k: v for k, v in _sbm.items() if k in ("input_order", "output_order")}
+            _inst = {k: v for k, v in _sbm.items() if k not in _shared}
+            _mask_def = out["host_bf_mask_buffer"]
+            out["set_bf_mask"] = dict(_shared)
+            for _half in (0, 1):
+                _vbuf = f"host_voltage_buffer_{_half}"
+                _mbuf = "host_bf_mask_buffer" if _half == 0 else "host_bf_mask_buffer_1"
+                if _vbuf not in out:
+                    sys.exit(f"gen: {_vbuf} missing -- cannot clock the bad feed mask to it")
+                out["set_bf_mask"][f"bf_mask_{_half}"] = dict(_inst, metadata_source=_vbuf,
+                                                              out_buf=_mbuf)
+                if _mbuf not in out:
+                    out[_mbuf] = dict(_mask_def)
+                out[_mbuf]["numa_node"] = _half
+            # Each GPU's mask copy reads its own half's stream.
+            _rewired = 0
+            _rsm = out.get("run_send_bf_mask")
+            for _g, _st in (_rsm.items() if isinstance(_rsm, dict) else []):
+                if not isinstance(_st, dict) or not isinstance(_st.get("in_buffers"), dict):
+                    continue
+                for _k, _v in list(_st["in_buffers"].items()):
+                    if _v == "host_bf_mask_buffer":
+                        _st["in_buffers"][_k] = ("host_bf_mask_buffer" if int(_st.get("gpu_id", 0)) == 0
+                                                 else "host_bf_mask_buffer_1")
+                        _rewired += 1
+            if _rewired != 2:
+                sys.exit(f"gen: expected 2 run_send_bf_mask inputs to rewire, found {_rewired}")
+            sys.stderr.write("  bad feed mask: one bufferBadInputs per NUMA half, clocked to its voltage buffer\n")
 
     # --frame0-nano: START WITHOUT chive's timing service.
     #

@@ -5692,25 +5692,14 @@ host_bf_mask_buffer:
   peek_hold: true
   quantity_name: bf_mask
   value_type: int8
-host_bf_mask_buffer_v0:
+host_bf_mask_buffer_1:
   dimnames: *id039
   dimscalings: *id040
   extents: *id041
   kotekan_buffer: ndarray
   metadata_pool: main_pool
-  num_frames: 4
-  numa_node: 0
-  peek_hold: true
-  quantity_name: bf_mask
-  value_type: int8
-host_bf_mask_buffer_v1:
-  dimnames: *id039
-  dimscalings: *id040
-  extents: *id041
-  kotekan_buffer: ndarray
-  metadata_pool: main_pool
-  num_frames: 4
-  numa_node: 0
+  num_frames: host_side_buffer_depth
+  numa_node: 1
   peek_hold: true
   quantity_name: bf_mask
   value_type: int8
@@ -6715,7 +6704,7 @@ run_send_bf_mask:
     - 14
     gpu_id: 0
     in_buffers:
-      host_bf_mask_buffer_in: host_bf_mask_buffer_v0
+      host_bf_mask_buffer_in: host_bf_mask_buffer
     kotekan_stage: cudaProcess
     out_buffers:
       host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
@@ -6733,7 +6722,7 @@ run_send_bf_mask:
     - 27
     gpu_id: 1
     in_buffers:
-      host_bf_mask_buffer_in: host_bf_mask_buffer_v1
+      host_bf_mask_buffer_in: host_bf_mask_buffer_1
     kotekan_stage: cudaProcess
     out_buffers:
       host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
@@ -6815,12 +6804,19 @@ run_send_voltage:
       host_voltage_ringbuffer_out: host_voltage_ringbuffer_1
 samples_per_data_set: 8192
 set_bf_mask:
+  bf_mask_0:
+    kotekan_stage: bufferBadInputs
+    metadata_source: host_voltage_buffer_0
+    out_buf: host_bf_mask_buffer
+    updatable_config: &id042
+      bad_inputs: /updatable_config/bad_inputs
+  bf_mask_1:
+    kotekan_stage: bufferBadInputs
+    metadata_source: host_voltage_buffer_1
+    out_buf: host_bf_mask_buffer_1
+    updatable_config: *id042
   input_order: CHORDBeamformer
-  kotekan_stage: bufferBadInputs
-  out_buf: host_bf_mask_buffer
   output_order: CHORDBeamformer
-  updatable_config:
-    bad_inputs: /updatable_config/bad_inputs
 sizeof_float32: 4
 sizeof_gpu_int: 4
 sizeof_int32: 4
@@ -7679,14 +7675,6 @@ updatable_config:
     kotekan_update_endpoint: json
     start_time: 1788188409.7181444
     update_id: bffs-1788188404718
-valve_bf_mask_0:
-  in_buf: host_bf_mask_buffer
-  kotekan_stage: Valve
-  out_buf: host_bf_mask_buffer_v0
-valve_bf_mask_1:
-  in_buf: host_bf_mask_buffer
-  kotekan_stage: Valve
-  out_buf: host_bf_mask_buffer_v1
 vis_blocksize: 16
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 vis_num_blocks_lin: num_elements / vis_blocksize
