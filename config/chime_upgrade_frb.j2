@@ -1370,6 +1370,16 @@ FRB:
         dimscalings: [1, 1]
         metadata_pool: main_pool
 
+    host_frb2_beam_ids_buffer:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: uint64
+        extents: [frb2_num_beams]
+        quantity_name: "frb2_beam_ids"
+        dimnames: ["R"]
+        dimscalings: [1]
+        metadata_pool: main_pool
+
     # Beamforming gains at coarse frequency resolution
     host_frb1_phase_buffer:
         kotekan_buffer: ndarray
@@ -1618,9 +1628,16 @@ FRB:
 
     # FRB 2 and 3
 
+    # One frame of beams per weights lifetime, starting at the first voltage frame's sequence
+    # number
     run_set_beam_positions:
-        kotekan_stage: givenDataGen
-        out_buf: host_frb2_beam_positions_buffer
+        kotekan_stage: setFRBBeams
+        metadata_source: host_voltage_buffer_0
+        out_pos_buf: host_frb2_beam_positions_buffer
+        out_id_buf: host_frb2_beam_ids_buffer
+        time_downsampling_fpga: frb2_weights_lifetime_in_samples
+        mode: manual
+        num_beams: frb2_num_beams
         # beam separation in EW should be 0.4deg
         # beam separtion in NS is such that sin(angle) changes by sqrt(3)/256
         # from https://github.com/chime-frb-open-data/chime-frb-beam-model/blob/e65b070243056fe5d33a2b1f4ce52ce685b74fc5/cfbm/formed.py#L86 via Paul Scholz
@@ -1696,23 +1713,17 @@ FRB:
         {% set sin_achromatic_beam_angles_EW = [
           -0.00698126029796155, 0.0, 0.00698126029796155, 0.0139621803391453
         ] %}
-        values:
-# direction sine in the normal vector sin(angle-from-zenith-towards-x), equally spaced for CHIME
+        # Beam R = ns * frb2_num_beams_x + ew, with the CHIME/FRB beam id 1000 * ew + ns.
+        # x_dir_grid and y_dir_grid are the direction sines in the normal vector,
+        # sin(angle-from-zenith-towards-x) and -y, equally spaced in y for CHIME.
+        beams:
 {%- for ns in range(frb2_num_beams_y) %}
 {%- for ew in range(frb2_num_beams_x) %}
-          - {{ sin_achromatic_beam_angles_EW[ew] }}
-          - {{ (ns - 127)*1.73205080756888/256 }}
+          - id: {{ 1000 * ew + ns }}
+            x_dir_grid: {{ sin_achromatic_beam_angles_EW[ew] }}
+            y_dir_grid: {{ (ns - 127)*1.73205080756888/256 }}
 {%- endfor %}
 {%- endfor %}
-        name: frb2_beam_positions
-        datatype: float32
-        array_shape: [ {{ frb2_num_beams }}, 2]
-        dim_scalings: [ 1, 1 ]
-        dim_name: [ "R", "X/Y" ]
-        # One frame per weights lifetime, starting at the first voltage frame's sequence number
-        do_once: false
-        metadata_source: host_voltage_buffer_0
-        time_downsampling_fpga: frb2_weights_lifetime_in_samples
 
     # Calculate the weights on the GPU, one matrix per positions frame. This runs once per
     # frb2_weights_lifetime_in_samples, so a single command instance suffices. The frequencies

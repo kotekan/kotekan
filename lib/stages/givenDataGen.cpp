@@ -9,7 +9,6 @@
 #include "fmt.hpp" // for format
 
 #include <assert.h>   // for assert
-#include <cstdint>    // for int64_t
 #include <cstring>    // for memcpy
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr, __shared_ptr_access
@@ -36,23 +35,9 @@ givenDataGen::givenDataGen(Config& config, const std::string& unique_name,
     _array_shape(config.get<std::vector<ptrdiff_t>>(unique_name, "array_shape")),
     _dim_name(config.get<std::vector<kotekan::Symbol>>(unique_name, "dim_name")),
     _dim_scalings(config.get<std::vector<std::ptrdiff_t>>(unique_name, "dim_scalings")),
-    _do_once(config.get<bool>(unique_name, "do_once")),
-    _in_buf(config.exists(unique_name, "metadata_source") ? get_buffer("metadata_source")
-                                                          : nullptr),
-    _time_downsampling_fpga(
-        _in_buf ? config.get<std::int64_t>(unique_name, "time_downsampling_fpga") : 0) {
+    _do_once(config.get<bool>(unique_name, "do_once")) {
 
     _out_buf->register_producer(unique_name);
-
-    if (_in_buf) {
-        if (_do_once)
-            throw std::invalid_argument(
-                "givenDataGen: 'metadata_source' requires 'do_once: false'");
-        if (_time_downsampling_fpga <= 0)
-            throw std::invalid_argument("givenDataGen: 'metadata_source' requires a positive "
-                                        "'time_downsampling_fpga'");
-        _in_buf->register_consumer(unique_name);
-    }
 
     if (_datatype == kotekan::unknown_type) {
         throw std::invalid_argument("givenDataGen: unknown datatype for 'datatype' option");
@@ -84,24 +69,6 @@ givenDataGen::givenDataGen(Config& config, const std::string& unique_name,
 
 
 void givenDataGen::main_thread() {
-
-    // If we have a clock, start the stream at its first sequence number
-    std::int64_t seq0 = -1;
-    if (_in_buf) {
-        const int in_frame_id = 0;
-        if (_in_buf->wait_for_full_frame(unique_name, in_frame_id) == nullptr)
-            return;
-        const std::shared_ptr<const chordMetadata> in_meta =
-            get_chord_metadata(_in_buf, in_frame_id);
-        if (!in_meta->has_fpga_seq_num())
-            FATAL_ERROR("metadata_source {:s} has no fpga_seq_num, needed for setting clock.",
-                        _in_buf->buffer_name);
-        seq0 = in_meta->get_fpga_seq_num();
-        _in_buf->mark_frame_empty(unique_name, in_frame_id);
-        // Only the first frame is needed; stop being a consumer so that the producer does not
-        // wait for us on the frames after it
-        _in_buf->unregister_consumer(unique_name);
-    }
 
     int abs_frame_id = 0;
     while (!stop_thread) {
@@ -167,10 +134,6 @@ void givenDataGen::main_thread() {
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(_out_buf, frame_id);
 
         chordmeta->set_frame_counter(abs_frame_id);
-        if (_in_buf) {
-            chordmeta->set_fpga_seq_num(seq0 + abs_frame_id * _time_downsampling_fpga);
-            chordmeta->set_time_downsampling_fpga(_time_downsampling_fpga);
-        }
 
         // The name field is not NUL-terminated, so all of it is usable
         if (_name.get_string().size() > size_t(CHORD_META_MAX_NAME)) {
