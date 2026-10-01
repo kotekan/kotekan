@@ -35,7 +35,6 @@ RUN apt-get update && \
         cmake \
         coreutils \
         curl \
-        default-jre \
         doxygen \
         dpdk \
         dpdk-dev \
@@ -120,7 +119,6 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         setuptools \
         sphinx==6.2.* \
         sphinx_rtd_theme==2.0.* \
-        sphinxcontrib-plantuml==0.25 \
         tabulate \
         wheel
 
