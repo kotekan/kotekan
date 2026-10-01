@@ -61,9 +61,7 @@ host_buffer_depth: 12
 # size of the voltage ring-buffer as 4
 gpu_buffer_depth: 4
 num_gpus: 2
-# 14,15,16 for blaze in EigenN2Iter
-# 17,18,19 for N2Accumulate
-cpu_affinity: [0, 10, 11, 12, 13] #, 14, 15, 16, 17, 18, 19]
+cpu_affinity: [0, 1, 2, 3]
 
 # Constants
 sizeof_float: 4
@@ -163,7 +161,10 @@ baseband_pool:
 
 n2_pool:
     kotekan_metadata_pool: N2Metadata
-    num_metadata_objects: num_freq_gpu_buf * host_buffer_depth
+    # Must cover every N2 buffer frame: vis_10s_buffer (1x), vis_10s_valved_buffer (2x),
+    # eig_10s_buffer (1x) and failed_10s_buffer (1x), each in units of
+    # gpu_buffer_depth * num_freq_gpu_buf frames.
+    num_metadata_objects: 5 * gpu_buffer_depth * num_freq_gpu_buf
 
 vis_pool:
     kotekan_metadata_pool: VisMetadata
@@ -1091,6 +1092,15 @@ vis_10s_buffer:
     num_frames: gpu_buffer_depth * num_freq_gpu_buf
     metadata_pool: n2_pool
 
+# Output of eigencalc_valve, input to eigencalc. Twice as deep as vis_10s_buffer so
+# eigencalc can fall further behind before the valve starts dropping frames.
+vis_10s_valved_buffer:
+    kotekan_buffer: N2
+    num_ev: 0
+    n2_layout: "FullUpperTri"
+    num_frames: 2 * gpu_buffer_depth * num_freq_gpu_buf
+    metadata_pool: n2_pool
+
 eig_10s_buffer:
     kotekan_buffer: N2
     num_ev: num_ev_to_calculate
@@ -1175,7 +1185,7 @@ vis_accumulate:
     in_rfiframemask_buf: host_rfi_RFIframemask_buffer
     out_buf: vis_10s_buffer
     packet_loss_is_scalar: True
-    cpu_affinity: [17, 18, 19]
+    cpu_affinity: [8, 9, 10]
     num_workers: 3
     input_order: CHIMEBeamformer
     # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
@@ -1193,12 +1203,20 @@ vis_accumulate:
     num_ev: 0 # only allowed value
     variance_mode: CHIMEv1
 
+# Decouple eigencalc from vis_accumulate: if eigencalc falls behind and its input
+# buffer fills, drop 10s frames here instead of blocking vis_accumulate, which would
+# back-pressure the GPU pipeline and eventually the DPDK capture.
+eigencalc_valve:
+    kotekan_stage: Valve
+    in_buf: vis_10s_buffer
+    out_buf: vis_10s_valved_buffer
+
 eigencalc:
     kotekan_stage: EigenN2Iter
-    cpu_affinity: [14, 15, 16] # for blaze
+    cpu_affinity: [11, 12, 13] # for blaze
     num_blaze_workers: 3
     num_ev: num_ev_to_calculate
-    in_buf: vis_10s_buffer
+    in_buf: vis_10s_valved_buffer
     out_buf: eig_10s_buffer
     failed_buf: failed_10s_buffer
     # Convergence config from chime science run
