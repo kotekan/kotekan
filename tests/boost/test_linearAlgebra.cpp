@@ -6,12 +6,14 @@
 
 #include <atomic> // for atomic
 #include <boost/test/included/unit_test.hpp>
+#include <cblas.h>   // for openblas_set_num_threads
 #include <cmath>     // for M_PI
 #include <complex>   // for complex, polar
 #include <cstddef>   // for size_t
 #include <cstdint>   // for uint32_t
 #include <random>    // for mt19937
 #include <stdexcept> // for invalid_argument
+#include <string>    // for string, to_string
 #include <thread>    // for thread
 #include <vector>    // for vector
 
@@ -44,6 +46,16 @@ extern "C" int posix_memalign(void** ptr, size_t alignment, size_t size) noexcep
 #endif
 
 namespace {
+
+// The stages run BLAS on one thread and leave the parallelism to blaze; so do the tests.
+// A multithreaded OpenBLAS makes every LAPACK call on these small matrices a thread
+// synchronisation, which turns a tenth of a second of tests into seconds.
+struct SerialBlas {
+    SerialBlas() {
+        openblas_set_num_threads(1);
+    }
+};
+BOOST_GLOBAL_FIXTURE(SerialBlas);
 
 constexpr size_t num_elements = 16;
 constexpr size_t num_ev = 2;
@@ -496,4 +508,346 @@ BOOST_AUTO_TEST_CASE(to_blaze_herm_rejects_complex_autocorrelation) {
     packed.back() += cfloat(0.0f, 1.0f);
     BOOST_CHECK_THROW(to_blaze_herm(span, unpacked), std::invalid_argument);
     BOOST_CHECK_THROW(to_blaze_herm(span), std::invalid_argument);
+}
+
+
+// ---- CHIME-like matrices across convergence regimes --------------------------------
+//
+// The matrices the stages see: four cylinders of feeds in two polarisations with complex
+// gains, point sources at random directions, receiver noise with an autocorrelation
+// excess, and a mask of the shortest baselines and of excluded inputs. At 256 elements
+// these solve in milliseconds and LAPACK's full decomposition is a cheap reference. How
+// fast the iteration converges is set by the ratio of the fifth eigenvalue to the fourth:
+// bright, well separated sources converge in a few iterations, sources of nearly equal
+// flux take many.
+namespace {
+
+constexpr size_t sky_elements = 256;
+// The CHIME stage parameters
+constexpr size_t sky_num_ev = 4;
+constexpr size_t sky_num_ev_conv = 2;
+constexpr size_t sky_krylov = 2;
+constexpr size_t sky_subspace = 1;
+constexpr size_t sky_max_iterations = 19;
+constexpr float sky_tol_eval = 1e-5f;
+constexpr float sky_tol_evec = 1e-4f;
+// The mask the stage builds: the shortest baselines and the excluded inputs
+const std::vector<size_t> sky_excluded = {5, 40, 77, 130, 201, 250};
+const std::vector<std::pair<size_t, size_t>> sky_bands = {{0, 6}};
+
+struct Sky {
+    /// Point source fluxes, in units of the noise rms; a source of flux F has an
+    /// eigenvalue of about F times the number of elements
+    std::vector<float> flux;
+    /// RMS of the cross-correlation noise, zero for an exactly low rank matrix
+    float noise = 0.0f;
+    /// Inputs with no signal
+    std::vector<size_t> zero_gain = {};
+};
+
+// The gains and source directions are drawn before the noise, so two skies that differ
+// only in their noise have the same signal when built from generators in the same state.
+DynamicHermitian<cfloat> sky_matrix(const Sky& sky, std::mt19937& rng) {
+    const size_t n = sky_elements;
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    std::uniform_real_distribution<float> uni(-1.0f, 1.0f);
+
+    // Four cylinders 22 m apart, 32 feeds 0.3048 m apart along each, two polarisations
+    // per feed, at 600 MHz
+    std::vector<float> x(n), y(n);
+    for (size_t i = 0; i < n; i++) {
+        x[i] = 22.0f * (i / (n / 4));
+        y[i] = 0.3048f * ((i % (n / 4)) / 2);
+    }
+    std::vector<cfloat> gain(n);
+    for (auto& g : gain)
+        g = std::polar(1.0f + 0.3f * uni(rng), float(M_PI) * uni(rng));
+    for (size_t i : sky.zero_gain)
+        gain[i] = 0.0f;
+
+    blaze::DynamicMatrix<cfloat, blaze::columnMajor> G(n, sky.flux.size());
+    for (size_t s = 0; s < sky.flux.size(); s++) {
+        const float l = 0.3f * uni(rng), m = 0.3f * uni(rng);
+        for (size_t i = 0; i < n; i++) {
+            const float phase = 2.0f * float(M_PI) * (x[i] * l + y[i] * m) / 0.5f;
+            G(i, s) = gain[i] * std::sqrt(sky.flux[s]) * std::polar(1.0f, phase);
+        }
+    }
+    blaze::DynamicMatrix<cfloat, blaze::columnMajor> M = G * blaze::ctrans(G);
+
+    if (sky.noise > 0.0f) {
+        for (size_t j = 0; j < n; j++) {
+            for (size_t i = 0; i < j; i++) {
+                const cfloat z = sky.noise * cfloat(gauss(rng), gauss(rng)) / std::sqrt(2.0f);
+                M(i, j) += z;
+                M(j, i) += std::conj(z);
+            }
+            // The autocorrelation excess of a receiver temperature thirty times the noise
+            M(j, j) = cfloat(M(j, j).real() + 30.0f * sky.noise * (1.0f + 0.2f * uni(rng)), 0.0f);
+        }
+    }
+    return blaze::declherm(M);
+}
+
+DynamicHermitian<float> sky_mask() {
+    DynamicHermitian<float> mask;
+    fill_mask(mask, sky_elements, sky_excluded, {}, sky_bands, 0);
+    return mask;
+}
+
+// LAPACK's top eigenpairs, in the solver's ascending order
+Result lapack_reference(const DynamicHermitian<cfloat>& A) {
+    blaze::DynamicVector<float> evals;
+    blaze::DynamicMatrix<cfloat, blaze::columnMajor> evecs;
+    blaze::eigen(A, evals, evecs);
+    const size_t n = A.rows();
+    return {blaze::subvector(evals, n - sky_num_ev, sky_num_ev),
+            blaze::submatrix(evecs, 0, n - sky_num_ev, n, sky_num_ev),
+            {}};
+}
+
+Result sky_solve(const DynamicHermitian<cfloat>& A, const DynamicHermitian<float>& W,
+                 float tol_eval = sky_tol_eval, float tol_evec = sky_tol_evec,
+                 size_t maxiter = sky_max_iterations, size_t k_conv = sky_num_ev_conv) {
+    std::mt19937 rng(eigen_subspace_seed);
+    EigenMaskedSubspaceSolver<cfloat> solver;
+    const auto stats = solver.solve(A, W, sky_num_ev, tol_eval, tol_evec, maxiter, k_conv,
+                                    sky_krylov, sky_subspace, rng);
+    return {solver.evals(), solver.evecs(), stats};
+}
+
+using DoubleMatrix = blaze::DynamicMatrix<std::complex<double>, blaze::columnMajor>;
+
+DoubleMatrix to_double(const blaze::DynamicMatrix<cfloat, blaze::columnMajor>& m, size_t first,
+                       size_t count) {
+    DoubleMatrix d(m.rows(), count);
+    for (size_t j = 0; j < count; j++)
+        for (size_t i = 0; i < m.rows(); i++)
+            d(i, j) = std::complex<double>(m(i, first + j));
+    return d;
+}
+
+// The sine of the largest principal angle between the subspaces spanned by `count`
+// columns of each matrix from `first`, in double: the largest singular value of the part
+// of one basis orthogonal to the other. For one column each, the angle between the two
+// vectors, whatever their phases.
+double sin_angle(const blaze::DynamicMatrix<cfloat, blaze::columnMajor>& U,
+                 const blaze::DynamicMatrix<cfloat, blaze::columnMajor>& V, size_t first,
+                 size_t count = 1) {
+    const DoubleMatrix A = to_double(U, first, count), B = to_double(V, first, count);
+    const DoubleMatrix R = B - A * (blaze::ctrans(A) * B);
+    blaze::DynamicVector<double> s;
+    blaze::svd(R, s);
+    return blaze::max(s);
+}
+
+// Log how far a result is from a reference, eigenpair by eigenpair, for reading off the
+// margins when a check fails
+void report(const char* label, const Result& r, const Result& ref) {
+    std::string line = std::string(label) + ": " + std::to_string(r.stats.iterations)
+                       + " iterations, converged " + std::to_string(r.stats.converged);
+    for (size_t l = 0; l < sky_num_ev; l++) {
+        char buf[96];
+        std::snprintf(buf, sizeof buf, " | %.6g: d(eval) %.1e sin %.1e", ref.evals[l],
+                      std::abs(r.evals[l] - ref.evals[l]) / std::abs(ref.evals[l]),
+                      sin_angle(ref.evecs, r.evecs, l));
+        line += buf;
+    }
+    BOOST_TEST_MESSAGE(line);
+}
+
+} // namespace
+
+// Bright, well separated sources with no noise: the matrix is exactly rank four, so the
+// masked entries are filled in exactly and the eigenpairs are those LAPACK finds for the
+// unmasked matrix. The excluded inputs have no signal, as the mask takes them out of the
+// decomposition. The iteration converges in a few steps. Every eigenpair is tested for
+// convergence here and below, where the eigenpairs are compared with a reference: with
+// the stage's two of four, the other two are wherever the iteration left them.
+BOOST_AUTO_TEST_CASE(sky_fast_convergence_matches_lapack) {
+    std::mt19937 rng(1);
+    const auto A = sky_matrix({{100, 30, 10, 3}, 0.0f, sky_excluded}, rng);
+    const auto ref = lapack_reference(A);
+    const auto r =
+        sky_solve(A, sky_mask(), sky_tol_eval, sky_tol_evec, sky_max_iterations, sky_num_ev);
+    report("fast", r, ref);
+
+    BOOST_CHECK(r.stats.converged);
+    BOOST_CHECK_LE(r.stats.iterations, sky_max_iterations);
+    for (size_t l = 0; l < sky_num_ev; l++) {
+        BOOST_CHECK_CLOSE(r.evals[l], ref.evals[l], 1e-2);
+        BOOST_CHECK_LT(sin_angle(ref.evecs, r.evecs, l), 1e-3);
+        for (size_t e : sky_excluded)
+            BOOST_CHECK_LT(std::abs(r.evecs(e, l)), 1e-3f);
+    }
+}
+
+// One source a thousand times brighter than the rest, as the Sun is: float rounding on
+// the dominant eigenpair sets the floor for the accuracy of the weak ones. That floor is
+// above the stage's eigenvalue tolerance for the weakest pair, so with every eigenpair
+// tested the iteration never reports convergence (the stage tests the top two); the
+// eigenpairs it leaves after the maximum number of iterations are nevertheless right.
+BOOST_AUTO_TEST_CASE(sky_dominant_source) {
+    std::mt19937 rng(2);
+    const auto A = sky_matrix({{1000, 10, 5, 2}, 0.0f, sky_excluded}, rng);
+    const auto ref = lapack_reference(A);
+    const auto r =
+        sky_solve(A, sky_mask(), sky_tol_eval, sky_tol_evec, sky_max_iterations, sky_num_ev);
+    report("dominant", r, ref);
+
+    for (size_t l = 0; l < sky_num_ev; l++) {
+        BOOST_CHECK_CLOSE(r.evals[l], ref.evals[l], 1e-1);
+        BOOST_CHECK_LT(sin_angle(ref.evecs, r.evecs, l), 1e-2);
+    }
+}
+
+// Two sources of equal flux: their eigenvectors are only defined up to a rotation within
+// the pair, so it is the pair's subspace that has to match, while the other two
+// eigenvectors are as well defined as ever.
+BOOST_AUTO_TEST_CASE(sky_degenerate_pair) {
+    std::mt19937 rng(3);
+    const auto A = sky_matrix({{20, 5, 5, 1}, 0.0f, sky_excluded}, rng);
+    const auto ref = lapack_reference(A);
+    const auto r =
+        sky_solve(A, sky_mask(), sky_tol_eval, sky_tol_evec, sky_max_iterations, sky_num_ev);
+    report("degenerate", r, ref);
+
+    BOOST_CHECK(r.stats.converged);
+    for (size_t l = 0; l < sky_num_ev; l++)
+        BOOST_CHECK_CLOSE(r.evals[l], ref.evals[l], 1e-2);
+    // Ascending: the pair is the middle two
+    BOOST_CHECK_LT(sin_angle(ref.evecs, r.evecs, 0), 1e-3);
+    BOOST_CHECK_LT(sin_angle(ref.evecs, r.evecs, 1, 2), 1e-3);
+    BOOST_CHECK_LT(sin_angle(ref.evecs, r.evecs, 3), 1e-3);
+}
+
+// Five sources of nearly equal flux in noise, with nothing masked so that LAPACK's
+// decomposition is the exact answer, is the slow regime: the fifth eigenvalue is within
+// a few percent of the fourth. The Ritz values are bounded above by the eigenvalues
+// (Cauchy interlacing) and improve with the iterations, and the subspace closes in on
+// the eigenspace.
+BOOST_AUTO_TEST_CASE(sky_slow_convergence_improves_with_iterations) {
+    std::mt19937 rng(4);
+    const auto A = sky_matrix({{10, 9.5, 9, 8.5, 8}, 1.0f}, rng);
+    const auto W = test_mask(sky_elements);
+    const auto ref = lapack_reference(A);
+    {
+        blaze::DynamicVector<float> all;
+        blaze::eigen(A, all);
+        BOOST_TEST_MESSAGE("slow: gap ratio lambda_5 / lambda_4 = "
+                           << all[sky_elements - sky_num_ev - 1] / all[sky_elements - sky_num_ev]);
+    }
+
+    const size_t iterations[] = {1, 3, 40};
+    std::vector<Result> results;
+    for (size_t iters : iterations)
+        results.push_back(sky_solve(A, W, 0.0f, 0.0f, iters, sky_num_ev));
+
+    for (const auto& r : results)
+        for (size_t l = 0; l < sky_num_ev; l++)
+            BOOST_CHECK_LE(r.evals[l], ref.evals[l] * (1.0f + 1e-5f));
+    for (size_t l = 0; l < sky_num_ev; l++) {
+        BOOST_CHECK_GE(results[2].evals[l], results[0].evals[l] * (1.0f - 1e-5f));
+        BOOST_CHECK_CLOSE(results[2].evals[l], ref.evals[l], 1e-1);
+    }
+    for (size_t i = 0; i < 3; i++)
+        report("slow", results[i], ref);
+    const double angle_1 = sin_angle(ref.evecs, results[0].evecs, 0, sky_num_ev);
+    const double angle_3 = sin_angle(ref.evecs, results[1].evecs, 0, sky_num_ev);
+    const double angle_40 = sin_angle(ref.evecs, results[2].evecs, 0, sky_num_ev);
+    BOOST_TEST_MESSAGE("slow: sin(subspace angle) after 1, 3, 40 iterations: "
+                       << angle_1 << " " << angle_3 << " " << angle_40);
+    BOOST_CHECK_LT(angle_3, angle_1);
+    BOOST_CHECK_LT(angle_40, angle_3);
+    BOOST_CHECK_LT(angle_40, 1e-3);
+
+    // At the stage's tolerances the convergence flag must agree with the statistics
+    const auto r = sky_solve(A, sky_mask());
+    BOOST_CHECK_EQUAL(r.stats.converged,
+                      r.stats.eps_eval < sky_tol_eval && r.stats.eps_evec < sky_tol_evec);
+}
+
+// Noise, and inputs with no signal, some masked as excluded and some not: the eigenpairs
+// are those of the signal alone, to the noise, and the eigenvectors are small where
+// there is no signal. Noise of rms sigma moves an eigenvector of eigenvalue lambda by
+// about sigma sqrt(n) / lambda, which here is 2e-3 for the weakest source.
+BOOST_AUTO_TEST_CASE(sky_dead_and_excluded_inputs) {
+    const std::vector<size_t> dead = {13, 110};
+    std::vector<size_t> zero_gain = sky_excluded;
+    zero_gain.insert(zero_gain.end(), dead.begin(), dead.end());
+
+    // The same sky with and without noise, from generators in the same state
+    std::mt19937 rng_signal(5), rng_noisy(5);
+    const auto signal = sky_matrix({{100, 30, 10, 3}, 0.0f, zero_gain}, rng_signal);
+    const auto A = sky_matrix({{100, 30, 10, 3}, 0.1f, zero_gain}, rng_noisy);
+    const auto ref = lapack_reference(signal);
+    const auto r =
+        sky_solve(A, sky_mask(), sky_tol_eval, sky_tol_evec, sky_max_iterations, sky_num_ev);
+    report("dead and excluded", r, ref);
+
+    BOOST_CHECK(r.stats.converged);
+    for (size_t l = 0; l < sky_num_ev; l++) {
+        BOOST_CHECK_CLOSE(r.evals[l], ref.evals[l], 1.0);
+        BOOST_CHECK_LT(sin_angle(ref.evecs, r.evecs, l), 5e-2);
+        for (size_t i : zero_gain)
+            BOOST_CHECK_LT(std::abs(r.evecs(i, l)), 1e-2f);
+    }
+}
+
+// The eigenpairs of a converged masked decomposition are eigenpairs of the matrix they
+// imply: the data where the mask includes it and the rank-k reconstruction where it does
+// not. This is what the refill of the masked entries has to achieve.
+BOOST_AUTO_TEST_CASE(sky_masked_fill_is_self_consistent) {
+    std::mt19937 rng(6);
+    const auto A = sky_matrix({{100, 30, 10, 3}, 1.0f, sky_excluded}, rng);
+    const auto W = sky_mask();
+    const auto r = sky_solve(A, W, 1e-5f, 1e-5f, 60, sky_num_ev);
+    BOOST_REQUIRE(r.stats.converged);
+
+    const size_t n = sky_elements;
+    const DoubleMatrix V = to_double(r.evecs, 0, sky_num_ev);
+    DoubleMatrix filled(n, n);
+    for (size_t j = 0; j < n; j++)
+        for (size_t i = 0; i < n; i++) {
+            if (W(i, j) != 0.0f) {
+                filled(i, j) = std::complex<double>(A(i, j));
+                continue;
+            }
+            std::complex<double> fill(0.0);
+            for (size_t l = 0; l < sky_num_ev; l++)
+                fill += double(r.evals[l]) * V(i, l) * std::conj(V(j, l));
+            filled(i, j) = fill;
+        }
+    DoubleMatrix VL = V;
+    for (size_t l = 0; l < sky_num_ev; l++)
+        blaze::column(VL, l) *= double(r.evals[l]);
+    const DoubleMatrix residual = filled * V - VL;
+    double residual_norm = 0.0, scale = 0.0;
+    for (size_t l = 0; l < sky_num_ev; l++)
+        for (size_t i = 0; i < n; i++) {
+            residual_norm += std::norm(residual(i, l));
+            scale += std::norm(VL(i, l));
+        }
+    BOOST_CHECK_LT(std::sqrt(residual_norm / scale), 1e-3);
+}
+
+// The products, the refill and the residual are split over blaze's threads, and the
+// split must not change the result beyond rounding. Without OpenMP the thread count
+// cannot be set and the two solves are the same.
+BOOST_AUTO_TEST_CASE(sky_thread_count_agreement) {
+    std::mt19937 rng(7);
+    const auto A = sky_matrix({{10, 9.5, 9, 8.5, 8}, 1.0f, sky_excluded}, rng);
+    const auto W = sky_mask();
+    const size_t threads = blaze::getNumThreads();
+
+    blaze::setNumThreads(1);
+    const auto serial = sky_solve(A, W, 0.0f, 0.0f, 10, sky_num_ev);
+    blaze::setNumThreads(3);
+    const auto parallel = sky_solve(A, W, 0.0f, 0.0f, 10, sky_num_ev);
+    blaze::setNumThreads(threads);
+
+    for (size_t l = 0; l < sky_num_ev; l++) {
+        BOOST_CHECK_CLOSE(serial.evals[l], parallel.evals[l], 1e-2);
+        BOOST_CHECK_LT(sin_angle(serial.evecs, parallel.evecs, l), 1e-3);
+    }
 }
