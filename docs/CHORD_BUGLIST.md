@@ -81,6 +81,25 @@ seven are dead-reckon.
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
 
+### #158 — projection phase 2 leftovers: `b` reaches only the lobe fold, `k`/source are not exported, the dB judge never ran (2026-10-02)
+**Phase 2 is closed on its judge** (KV, 10-02): E5a × E6 arcs through transits 39% (freeze) → 74% (09-30) → 82% (10-01)
+→ 97% (28/29, night of 10-01/02, freeze 2°); lock held 149/149; closure median 0.57 TECU = quiet sky. Three items the plan
+(`fixtures/projtest/PROJECTION_PLAN.md` phase 2) listed were not built; none blocks phase 3.
+- **The export is `b` only.** `REC_PROJ_COST` (record slot 29, telem v7) carries b = cos² of the victim's live weights in the
+  projected subspace per record row. Per-record `k` and the source kind (own row / sibling board / probe stack) exist only
+  in `/get_elem_cal` (the 10-s poller). Adding them is one header slot each = a WIRE bump (v8): queue for the next flag day.
+- **`b` is consumed by the fleet DLL lobe fold only** (`gnssFleetDll.hpp` fold + `combdll._lobe_fold`, weight 1−b). Not by
+  JFEED's `joint_sigma` (0.3 for every satellite, `gnss_broker/cli.py:897`; the #152 item "freeze it inside the transit
+  veto" → scale σ by 1/(1−b), or drop b > 0.3), and not in `/get_dll`'s `FleetDllRow`, so no obs row records a transit's cost.
+- **The plan's dB judge never ran:** other-satellite C/N0 loss at closest approach against the freeze-era twins
+  (`freeze0928/work/pairs.md` method) and lock-loss victim-minutes. We judged by arcs, locks and closure
+  (`gnss_transit_arcs.py`). One run over 09-30..10-02 against 09-25..27 closes it.
+- Phase 1c (`GnssN2Eigen`, the science-N² a-source for row-less emitters) was never built; the gated probe stack stands in.
+  It moves to phase 3, where the N×k block of the extended triangle seeds it.
+- Standing caveat, not a leftover: the search tap is single-element and unprojected, so #142/#152 stay necessary.
+Check: `[tree]` `grep -rn REC_PROJ_COST lib python` (one writer, one reader = the fold); `grep -n joint_sigma
+python/scripts/gnss/gnss_broker/*.py` (constant). `[live]` census `fixtures/tec_wander/out/transit_arcs_1002`.
+
 ### #142 residual — two observations from the pre-fix L2C losses are still unexplained
 The fix (`ea9129b60`, closed) has held through seven transits. Two things seen during the old losses
 have no explanation, and with the losses gone they can be studied only in the archive: a repeatable
