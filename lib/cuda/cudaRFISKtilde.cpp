@@ -3,8 +3,9 @@
 #include "NDArray.hpp"           // for NDArray
 #include "NDArrayBuffer.hpp"     // for NDArrayBuffer, buffer_type_t
 #include "NDArrayRingBuffer.hpp" // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata
+#include "Telescope.hpp"
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata
 #include "configUpdater.hpp"
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
@@ -101,7 +102,7 @@ private:
     std::mutex mask_toggle_mutex;
     int64_t enabled_valid_at_seq;
     int64_t next_enabled_valid_at_seq;
-
+    int64_t start_time_ns;
 
     const std::int64_t rfi_samples_per_bf_sample;
 
@@ -213,6 +214,8 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_S012.register_consumer();
     rfi_SKtilde.register_producer();
     rfi_RFImask.register_producer();
+
+    start_time_ns = Telescope::instance().to_time_ns(0);
 
     if (!enabled_config_path.empty()) {
         INFO("Subscribing {:s} to updatable config", enabled_config_path);
@@ -464,8 +467,17 @@ bool cudaRFISKtilde::receive_rfi_excision_enabled(nlohmann::json& json) {
         return false;
     }
 
-    // We have values! Compute the sequence number and print a status message.
-    int64_t seq_num = Telescope::instance().to_seq(new_time_ns);
+    int64_t seq_num;
+    if (new_time_ns == 0) {
+        // special case - assume this means we _always_ want to enable
+        seq_num = 0;
+    } else if (new_time_ns >= start_time_ns) {
+        // required to avoid an overflow in `to_seq`
+        seq_num = Telescope::instance().to_seq(new_time_ns);
+    } else {
+        WARN("Got invalid start time: {:d}", new_time_ns);
+        return false;
+    }
 
     std::string time_str =
         fmt::format("t_inst = {:d} s + {:d} ns (seq {:d})", new_time_ns / 1'000'000'000,
