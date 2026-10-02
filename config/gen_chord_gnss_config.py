@@ -3088,6 +3088,22 @@ def main():
                          "rfi_first_stage_excision_exempt_freq_ids (our key; declared in "
                          "stock_parity.py). The GNSS lobes: the stock SK flagger excises them "
                          "most of the time and their N2 feeds the satellite projection.")
+    ap.add_argument("--n2-project", choices=["off", "shadow", "live"], default="off",
+                    help="GnssN2Project on the science N2 (phase 3a): shadow = solve the live "
+                         "block's dominant subspace per frame and report k/lambda/null per "
+                         "channel, touch nothing; live = N2Accumulate reads the projected copy "
+                         "(gnss_n2_proj_buffer{,_1}). Needs --keep-n2.")
+    ap.add_argument("--n2-project-stations", type=str, default="0-15,56-79,120-127",
+                    help="live correlator station ranges the projection works on")
+    ap.add_argument("--n2-project-k-max", type=int, default=3)
+    ap.add_argument("--n2-project-tau-s", type=float, default=0.5)
+    ap.add_argument("--n2-project-frac-min", type=float, default=0.4,
+                    help="trigger: component 0's share of the off-diagonal energy")
+    ap.add_argument("--n2-project-lambda-min", type=float, default=3.0,
+                    help="trigger: lambda0 in units of the mean live auto")
+    ap.add_argument("--n2-project-solve-every", type=int, default=4, help="frames per solve")
+    ap.add_argument("--n2-project-archive-dir", type=str, default=None,
+                    help="JSONL archive directory on the node (per GPU file), default none")
     ap.add_argument("--elem-proj-deg", type=float, default=None,
                     help="projection window: own-row sources and the probe-stack gate inside this "
                          "many degrees of boresight (assembler default 4). Emitted only when given "
@@ -4000,6 +4016,55 @@ def main():
             raise SystemExit("--rfi-excision-exempt-freq-ids: the base has no cudaRFISKtilde command")
         sys.stderr.write(f"  exempted {len(_ids)} freq_ids from first-stage RFI excision "
                          f"in {_n} cudaRFISKtilde commands\n")
+
+    # PHASE 3a: project the dominant coherent components (the transiting satellites) out of
+    # the science N2 per frame, before N2Accumulate (lib/stages/gnss/GnssN2Project.cpp). One
+    # stage per GPU under gnss_n2_project (a GNSS key for the parity gate). In live mode the
+    # output copy replaces N2Accumulate's input, which stock_parity.py declares.
+    if args.n2_project != "off":
+        if not args.keep_n2:
+            raise SystemExit("--n2-project needs --keep-n2 (the science N2 must be running)")
+        _st = []
+        for _part in str(args.n2_project_stations).split(","):
+            _a, _, _b = _part.strip().partition("-")
+            _st.extend(range(int(_a), int(_b or _a) + 1))
+        _st = sorted(set(_st))
+        _pool0 = gnss_cores(cfg["runtime"], 0)
+        _pool1 = gnss_cores(cfg["runtime"], 1)
+        out["gnss_n2_project"] = {}
+        for _gpu, _pool in ((0, _pool0), (1, _pool1)):
+            _suf = "" if _gpu == 0 else "_1"
+            if ("host_correlation_buffer" + _suf) not in out:
+                raise SystemExit("--n2-project: host_correlation_buffer%s is not in the base" % _suf)
+            _stage = {
+                "kotekan_stage": "GnssN2Project",
+                # The telemetry packer's core: a light host stage on this GPU's own NUMA pool.
+                "cpu_affinity": [_pool[(_gpu + 5) % len(_pool)]],
+                "in_buf": "host_correlation_buffer" + _suf,
+                # num_elements / num_local_freq / samples_per_data_set / sub_integration_ntime
+                # are read from the globals (a local `num_elements: num_elements` is a
+                # self-reference that recurses the expression evaluator to a stack overflow).
+                "mode": args.n2_project,
+                "stations": list(_st),
+                "k_max": int(args.n2_project_k_max),
+                "tau_s": float(args.n2_project_tau_s),
+                "frac_first_min": float(args.n2_project_frac_min),
+                "lambda_min_rel": float(args.n2_project_lambda_min),
+                "solve_every": int(args.n2_project_solve_every),
+                "metric_period_s": 1.0,
+                "archive_period_s": 10.0,
+            }
+            if args.n2_project_archive_dir:
+                _stage["archive_path"] = "%s/n2proj_%s_gpu%d.jsonl" % (
+                    args.n2_project_archive_dir.rstrip("/"), args.node, _gpu)
+            if args.n2_project == "live":
+                _buf = dict(out["host_correlation_buffer" + _suf])
+                out["gnss_n2_proj_buffer" + _suf] = _buf
+                _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
+                out["n2_accumulate"]["accum_%d" % _gpu]["in_buf"] = "gnss_n2_proj_buffer" + _suf
+            out["gnss_n2_project"]["proj_%d" % _gpu] = _stage
+        sys.stderr.write("  GnssN2Project %s on both GPUs (%d stations, k_max %d)\n"
+                         % (args.n2_project, len(_st), int(args.n2_project_k_max)))
 
     # --- metadata pool for the GNSS chain -----------------------------------------------------
     out["gnss_pool"] = {"kotekan_metadata_pool": "GnssChanMetadata",

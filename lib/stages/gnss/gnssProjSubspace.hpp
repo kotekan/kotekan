@@ -205,6 +205,25 @@ public:
         _warm[(size_t)ch] += alpha * (1.0 - _warm[(size_t)ch]);
     }
 
+    /// Accumulate one Hermitian covariance @p V (n x n, row-major, any diagonal) for channel
+    /// @p ch: the EMA of its OFF-diagonal entries, the diagonal staying zero as for push().
+    /// The N^2 path (GnssN2Project) feeds the correlator's own per-frame matrix here, so the
+    /// per-input autos -- noise levels that differ per feed -- never enter the eigenproblem.
+    void push_cov(int ch, const cd* V, double dt_s) {
+        if (ch < 0 || ch >= _nc || !(dt_s > 0.0))
+            return;
+        const double alpha = std::min(0.25, 1.0 - std::exp(-dt_s / _tau));
+        cd* C = &_C[(size_t)ch * _n * _n];
+        for (int i = 0; i < _n; ++i) {
+            cd* Ci = C + (size_t)i * _n;
+            const cd* Vi = V + (size_t)i * _n;
+            for (int j = 0; j < _n; ++j)
+                if (j != i)
+                    Ci[j] += alpha * (Vi[j] - Ci[j]);
+        }
+        _warm[(size_t)ch] += alpha * (1.0 - _warm[(size_t)ch]);
+    }
+
     /// Re-solve channel @p ch: @p iters power iterations per component, warm-started from the
     /// previous solution and deflated by the components before it. Sets k(ch) by the rank gates
     /// below. Cost ~ iters * kmax * n^2. Returns k.

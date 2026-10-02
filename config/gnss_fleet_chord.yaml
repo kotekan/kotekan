@@ -720,4 +720,5 @@ nodes:
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
   cx44: {search-port-base: 11048}
-  cx51: {search-port-base: 11050}
+  # cx51 = the phase-3a canary: GnssN2Project in SHADOW (metrics only, the N2 untouched).
+  cx51: {search-port-base: 11050, n2-project: shadow}
