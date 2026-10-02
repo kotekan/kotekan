@@ -53,8 +53,8 @@ N2FrameDesc N2FrameDesc::_from_config_impl(kotekan::Config& config, const std::s
     // The order of the frame's element axis is a declaration about the producer,
     // carried in the descriptor so a receiver can check it against its own.
     // Defaults to the production CHORD order (CHORDTelescope::fiducial_element_order()).
-    const ElementOrder element_order = config.get_default<ElementOrder>(
-        location, "element_order", ElementOrder::CHORDBeamformer);
+    const ElementOrder element_order =
+        config.get_default<ElementOrder>(location, "element_order", ElementOrder::CHORDBeamformer);
 
     std::vector<N2::prod_ctype> product_list;
 

@@ -1289,8 +1289,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         const auto n2_desc = _buffer->require_frame_desc<kotekan::N2FrameDesc>();
         if (n2_desc->get_element_order() != _input_order)
             FATAL_ERROR("in_buf {:s} declares element_order {:s}, but input_order is {:s}",
-                        _buffer->buffer_name,
-                        ElementOrder_to_string(n2_desc->get_element_order()),
+                        _buffer->buffer_name, ElementOrder_to_string(n2_desc->get_element_order()),
                         ElementOrder_to_string(_input_order));
     }
 

@@ -719,8 +719,8 @@ public:
             if (!local_telescope.contains(item.key()))
                 keys += " " + item.key();
         FATAL_ERROR_NON_OO(
-            "ConfigTracker: telescope config of upstream {}:{} differs from ours in:{}", host,
-            port, keys);
+            "ConfigTracker: telescope config of upstream {}:{} differs from ours in:{}", host, port,
+            keys);
     }
 
     /**
