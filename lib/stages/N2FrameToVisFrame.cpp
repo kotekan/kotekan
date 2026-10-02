@@ -15,8 +15,6 @@
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, freq_ctype, modulo, par...
 
-#include "fmt.hpp" // for compile_string_to_view
-
 #include <algorithm>    // for transform
 #include <cassert>      // for assert
 #include <complex>      // for complex, conj
@@ -244,7 +242,11 @@ void n2FrameToVisFrame::register_base_dataset_states(
     const std::string weight_type = "inverse_var";
     const std::string git_tag = fake_git_tag.empty() ? get_git_commit_hash() : fake_git_tag;
 
+    // create a mock `rfi_frame_drop` state - this no longer exists, but should
+    // be kept in the state hierarchy for compatibility
     // create all the states
+    base_dataset_states.push_back(
+        dm.create_state<RFIFrameDropState>(false, std::vector<std::pair<float, float>>()).first);
     base_dataset_states.push_back(dm.create_state<freqState>(freqs).first);
     base_dataset_states.push_back(dm.create_state<inputState>(inputs).first);
     base_dataset_states.push_back(dm.create_state<prodState>(prods).first);
