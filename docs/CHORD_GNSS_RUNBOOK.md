@@ -134,6 +134,15 @@ starts first pins its shared element models on noise (09-28 20:15Z: R pol0 E6 0.
 own `Restart=on-failure` relaunches will usually beat the broker, so plan on a `restart` loop
 afterwards.
 
+**After any long node outage, restart the broker once the nodes are back, re-base or not.** An
+F-engine outage usually forces this on its own: the new frame0 trips the broker's 3-strike relaunch.
+Other outages do not. On 10-01 the nodes were down ~5.5 h for X-engine work with frame0 unchanged,
+and the broker kept dead-reckoning every satellite's held code phase the whole time. When the
+nodes returned, many were tens of chips off, and the broker slews a held phase back at 0.05
+chips per step, ~0.25 chips/min. Twenty minutes later E23 and E31 were still ~20 chips off on E5a,
+and the Galileo position solve was in the hundreds of metres. A restart re-seeds every satellite
+from the orbit model. Do it outside a transit freeze, then check broker.log for CHAIN DIED at T+60 s.
+
 **Only a `node_up.sh` start carries the unit's properties.** Those relaunches reuse whatever the last
 `node_up` start set, including `LimitCORE=infinity`. Without it, a crash leaves no core, only glibc's
 one line in `/tmp/gnss_node.log`.
