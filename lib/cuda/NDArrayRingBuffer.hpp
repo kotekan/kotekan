@@ -279,16 +279,20 @@ public:
     void register_consumer() {
         if (get_instance_num() == 0) {
             ringbuffer->register_consumer(cuda_command.get_unique_name());
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = true, .does_write = false});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = false,
+                                                   .does_read = true,
+                                                   .does_write = false});
         }
     }
 
     void register_producer() {
         if (get_instance_num() == 0) {
             ringbuffer->register_producer(cuda_command.get_unique_name());
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = false, .does_write = true});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = false,
+                                                   .does_read = false,
+                                                   .does_write = true});
         }
     }
 
