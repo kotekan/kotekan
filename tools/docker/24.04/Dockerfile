@@ -156,13 +156,13 @@ RUN mkdir src && \
 # Depends on lz4.pc (called liblz4.pc in apt install)
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
-# Install HighFive v3.2.0
+# Install HighFive v3.3.0
 RUN mkdir src && \
     ( \
         cd src && \
         git clone https://github.com/highfive-devs/highfive && \
         cd highfive && \
-        git checkout b8d21eb39d4c6c66a72646ddd338d4c552b1a645 && \
+        git checkout be0ddb3d43ce0f53db2d8b1438e819c5a5cb278a && \
         git submodule update --init --recursive && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
