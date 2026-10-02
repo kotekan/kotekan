@@ -272,8 +272,9 @@ void EigenN2Iter::main_thread() {
         } else {
             // A failure of LAPACK (runtime_error) or of blaze's checks on the frame's
             // data (invalid_argument: an autocorrelation with an imaginary part, say) is
-            // a property of the frame, which is then reported as failed. Anything else,
-            // such as running out of memory, is not, and is left to propagate.
+            // a property of the frame data, which is then reported as failed. Anything
+            // else, such as running out of memory, is a fault of the stage, not of the
+            // frame, and stops kotekan.
             auto frame_failed = [&](const std::exception& e) {
                 ERROR("Could not find eigenvalues after {:d} for frame fpga_seq {:d}: {:s}",
                       _max_iterations, input_frame.fpga_start_tick, e.what());
@@ -289,6 +290,10 @@ void EigenN2Iter::main_thread() {
                 frame_failed(e);
             } catch (const std::invalid_argument& e) {
                 frame_failed(e);
+            } catch (const std::exception& e) {
+                FATAL_ERROR("Eigendecomposition of frame fpga_seq {:d} failed with an error "
+                            "that is not a property of its data: {:s}",
+                            input_frame.fpga_start_tick, e.what());
             }
         }
 

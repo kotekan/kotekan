@@ -6,13 +6,14 @@
 
 #include <atomic> // for atomic
 #include <boost/test/included/unit_test.hpp>
-#include <cmath>   // for M_PI
-#include <complex> // for complex, polar
-#include <cstddef> // for size_t
-#include <cstdint> // for uint32_t
-#include <random>  // for mt19937
-#include <thread>  // for thread
-#include <vector>  // for vector
+#include <cmath>     // for M_PI
+#include <complex>   // for complex, polar
+#include <cstddef>   // for size_t
+#include <cstdint>   // for uint32_t
+#include <random>    // for mt19937
+#include <stdexcept> // for invalid_argument
+#include <thread>    // for thread
+#include <vector>    // for vector
 
 #if defined(__linux__) && defined(__GLIBC__)
 #include <dlfcn.h> // for dlsym, RTLD_NEXT
@@ -358,9 +359,8 @@ BOOST_AUTO_TEST_CASE(solver_reuse_across_sizes) {
 // Once a solver has solved a problem of a given size, solving another of that size
 // must not allocate any blaze container again: that is what the solver is for. The
 // LAPACK scratch arrays blaze's qr() and heevd() make on every call are not blaze
-// containers and are allowed. The size here keeps every product below the threshold
-// at which blaze's own product kernel would make packing buffers of its own, and the
-// solves run on this thread alone so that every allocation they make is counted.
+// containers and are allowed. The solves run on this thread alone so that every
+// allocation they make is counted.
 #if defined(__linux__) && defined(__GLIBC__)
 BOOST_AUTO_TEST_CASE(solver_reuse_does_not_allocate) {
     const size_t n = 512;
@@ -452,29 +452,48 @@ BOOST_AUTO_TEST_CASE(fill_mask_matches_reference) {
 }
 
 // Unpacking a frame's triangle into an existing container must fill it in place and
-// give the same matrix as unpacking into a new one.
+// give the same matrix as unpacking into a new one, for a matrix smaller than one of the
+// tiles the unpack works in and for one spanning several tiles and a partial one.
 BOOST_AUTO_TEST_CASE(to_blaze_herm_reuses_container) {
-    const auto A = test_matrix();
-    const float other_amplitude[2] = {1.0f, 3.0f};
-    const float other_turns[2] = {2.0f, 5.0f};
-    const auto B = test_matrix(num_elements, other_amplitude, other_turns);
-    auto packed_A = packed_upper_triangle(A);
-    auto packed_B = packed_upper_triangle(B);
-    const gsl_lite::span<cfloat> span_A(packed_A.data(), packed_A.size());
-    const gsl_lite::span<cfloat> span_B(packed_B.data(), packed_B.size());
+    for (const size_t n : {num_elements, size_t(150)}) {
+        const auto A = test_matrix(n);
+        const float other_amplitude[2] = {1.0f, 3.0f};
+        const float other_turns[2] = {2.0f, 5.0f};
+        const auto B = test_matrix(n, other_amplitude, other_turns);
+        auto packed_A = packed_upper_triangle(A);
+        auto packed_B = packed_upper_triangle(B);
+        const gsl_lite::span<cfloat> span_A(packed_A.data(), packed_A.size());
+        const gsl_lite::span<cfloat> span_B(packed_B.data(), packed_B.size());
 
+        DynamicHermitian<cfloat> unpacked;
+        to_blaze_herm(span_B, unpacked);
+        const cfloat* const storage = unpacked.data();
+        to_blaze_herm(span_A, unpacked);
+        BOOST_CHECK_EQUAL(unpacked.data(), storage);
+
+        const auto fresh = to_blaze_herm(span_A);
+        BOOST_REQUIRE_EQUAL(unpacked.rows(), fresh.rows());
+        BOOST_REQUIRE_EQUAL(unpacked.columns(), fresh.columns());
+        size_t mismatches = 0;
+        for (size_t i = 0; i < n; i++)
+            for (size_t j = 0; j < n; j++)
+                mismatches += unpacked(i, j) != fresh(i, j) || unpacked(i, j) != A(i, j);
+        BOOST_CHECK_EQUAL(mismatches, 0u);
+    }
+}
+
+// An autocorrelation with an imaginary part is not a Hermitian matrix. The adaptor
+// rejects it with an invalid_argument, which is what EigenN2Iter catches to report the
+// frame as failed, and it has to be thrown however far into the triangle it sits.
+BOOST_AUTO_TEST_CASE(to_blaze_herm_rejects_complex_autocorrelation) {
+    const size_t n = 150;
+    auto packed = packed_upper_triangle(test_matrix(n));
     DynamicHermitian<cfloat> unpacked;
-    to_blaze_herm(span_B, unpacked);
-    const cfloat* const storage = unpacked.data();
-    to_blaze_herm(span_A, unpacked);
-    BOOST_CHECK_EQUAL(unpacked.data(), storage);
+    const gsl_lite::span<cfloat> span(packed.data(), packed.size());
+    BOOST_CHECK_NO_THROW(to_blaze_herm(span, unpacked));
 
-    const auto fresh = to_blaze_herm(span_A);
-    BOOST_REQUIRE_EQUAL(unpacked.rows(), fresh.rows());
-    BOOST_REQUIRE_EQUAL(unpacked.columns(), fresh.columns());
-    for (size_t i = 0; i < num_elements; i++)
-        for (size_t j = 0; j < num_elements; j++) {
-            BOOST_CHECK_EQUAL(unpacked(i, j), fresh(i, j));
-            BOOST_CHECK_EQUAL(unpacked(i, j), A(i, j));
-        }
+    // The last autocorrelation is the last packed element
+    packed.back() += cfloat(0.0f, 1.0f);
+    BOOST_CHECK_THROW(to_blaze_herm(span, unpacked), std::invalid_argument);
+    BOOST_CHECK_THROW(to_blaze_herm(span), std::invalid_argument);
 }

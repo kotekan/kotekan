@@ -19,6 +19,10 @@
 #include <utility>     // for pair, declval
 #include <vector>      // for vector
 
+#ifdef _OPENMP
+#include <omp.h> // for omp_get_thread_num
+#endif
+
 // Type defs for simplicity
 // Map complex types to their real equivalent
 template<typename T>
@@ -153,28 +157,34 @@ MT rand_subspace_element(std::mt19937& rng) {
  * Rayleigh-Ritz step on a block Krylov extension of the subspace, and the masked
  * entries of the matrix progressively filled in from the current low rank estimate.
  *
- * Every matrix the iteration works on lives in this object, several of them of the
- * full n x n size: the masked and filled matrix, the rank-k reconstruction, and the
- * subspace, Krylov and Ritz intermediates that blaze would otherwise allocate for
- * itself as temporaries. They are allocated the first time solve() runs for a given
- * problem size and are reused by every later call of that size, so a caller decomposing
- * a stream of same-sized matrices, as the Eigen stages do, allocates once rather than
- * once per matrix (and pays once, rather than per matrix, for faulting in the pages
- * behind them). What solve() still allocates per call is what blaze allocates inside
- * its own routines: the LAPACK scratch arrays of qr() and heevd(), and, for the n x k
- * subspace products when a thread's share of one is above blaze's large-kernel
- * threshold, the packing buffers of blaze's own product kernel. Both are of the order
- * of the subspace size, not the matrix size.
+ * Every matrix the iteration works on lives in this object: the masked and filled
+ * matrix, which is the one n x n matrix among them, and the subspace, Krylov and Ritz
+ * intermediates that blaze would otherwise allocate for itself as temporaries. They are
+ * allocated the first time solve() runs for a given problem size and are reused by
+ * every later call of that size, so a caller decomposing a stream of same-sized
+ * matrices, as the Eigen stages do, allocates once rather than once per matrix (and
+ * pays once, rather than per matrix, for faulting in the pages behind them). What
+ * solve() still allocates per call is the LAPACK scratch of blaze's qr() and heevd(),
+ * of the order of the subspace size, and the list of masked entries when a mask has
+ * more of them than any before it.
+ *
+ * The products of the matrix with the subspace, which are the bulk of the work, are
+ * BLAS gemm calls, one per row block on the threads blaze uses, rather than blaze's own
+ * product kernel: kotekan builds blaze with BLAZE_BLAS_IS_PARALLEL=0, which keeps every
+ * large product in that kernel, and it is both slower than gemm on these narrow
+ * products and allocates packing buffers on every call. The refill of the masked
+ * entries only touches those entries, from the k-vectors of the two inputs each one
+ * joins, so the rank-k reconstruction is never formed as a matrix; the unmasked entries
+ * keep the data exactly. The rank-k reconstruction is still compared with the data at
+ * the end, for the residual, one block of columns at a time through a scratch block
+ * that stays in cache.
  *
  * Reusing the workspace does not change the results: every call draws its starting
  * subspace afresh from the generator it is given, and each workspace matrix is written
- * in full before it is read. The arithmetic follows the allocating implementation this
- * replaces step for step, with one exception. The n x n rank-k reconstruction is formed
- * with BLAS gemm rather than blaze's own product kernel, which kotekan's
- * BLAZE_BLAS_IS_PARALLEL=0 build routes every large product through and which allocates
- * packing buffers of a few MB on every call. The two round differently, so the
- * eigenpairs agree with the old implementation's to a few parts per million rather
- * than to the last bit.
+ * in full before it is read. The arithmetic differs from the allocating implementation
+ * this replaces in the order of the products (Q^H (A Q) in place of (Q^H A) Q, and
+ * BLAS rounding), so the eigenpairs agree with it to parts per million rather than to
+ * the last bit.
  *
  * The workspace is not synchronised: use one solver per thread.
  **/
@@ -234,21 +244,23 @@ private:
     // conjugate transpose of a column-major matrix is row-major, for one.
     template<typename E>
     using result_of_t = blaze::ResultType_t<std::decay_t<E>>;
-    using diagonal_type = blaze::DiagonalMatrix<matrix_type>;
     using ctrans_type = result_of_t<decltype(blaze::ctrans(std::declval<const matrix_type&>()))>;
-    using iterate_type = result_of_t<decltype(std::declval<const DynamicHermitian<MT>&>()
-                                              * std::declval<const matrix_type&>())>;
-    using projection_type = result_of_t<decltype(std::declval<const ctrans_type&>()
-                                                 * std::declval<const matrix_type&>())>;
-    using scaled_type = result_of_t<decltype(std::declval<const matrix_type&>()
-                                             * std::declval<const diagonal_type&>())>;
     using overlap_type = result_of_t<decltype(std::declval<const ctrans_type&>()
                                               * std::declval<const matrix_type&>())>;
+    /// A row-major n x k matrix holds the k-vector of each input contiguously
+    using row_major_type = blaze::DynamicMatrix<MT, blaze::rowMajor>;
 
     /// Size the workspace for an n x n matrix, k eigenpairs, a Krylov factor of p and
     /// k_conv eigenpairs tested for convergence. This is the only place solve()
-    /// allocates, and it only does so when a size changes.
+    /// allocates blaze containers, and it only does so when a size changes.
     void resize(size_t n, size_t k, size_t p, size_t k_conv);
+
+    /// C = A * B, as one BLAS gemm per row block of C on the threads blaze uses.
+    template<typename CT, typename AT, typename BT>
+    static void multiply(CT& C, const AT& A, const BT& B);
+
+    /// List the entries of W that are not one, by column, in masked_start_ and masked_.
+    void find_masked(const DynamicHermitian<float>& W);
 
     /// Replace V_ by an orthonormal basis of the columns of X, which may be V_ itself.
     template<typename XT>
@@ -259,21 +271,30 @@ private:
     void augmented_ritz();
 
     /// Refill the masked entries of Am_ from the rank-k reconstruction of the current
-    /// eigenpairs, which is left in Ar_.
-    void backfill(const DynamicHermitian<MT>& A, const DynamicHermitian<float>& W);
+    /// eigenpairs.
+    void backfill(const DynamicHermitian<MT>& A);
+
+    /// The RMS of the masked residual of the current eigenpairs. Uses Am_ as scratch.
+    double residual(const DynamicHermitian<MT>& A, const DynamicHermitian<float>& W);
 
     /// The problem size the workspace is sized for
     size_t n_ = 0, k_ = 0, p_ = 0;
 
     /// The masked matrix, with its masked entries filled from the current estimate (n x n)
     matrix_type Am_;
-    /// The rank-k reconstruction from the current eigenpairs (n x n)
-    matrix_type Ar_;
+    /// The entries of the mask that are not one, with their mask values: those in
+    /// column j are masked_[masked_start_[j] .. masked_start_[j + 1])
+    struct MaskedEntry {
+        uint32_t row;
+        float weight;
+    };
+    std::vector<size_t> masked_start_;
+    std::vector<MaskedEntry> masked_;
 
     /// The current subspace (n x k); on return, the eigenvectors
     matrix_type V_;
     /// A * V (n x k)
-    iterate_type AV_;
+    matrix_type AV_;
     /// The Q factor used to orthonormalise an n x k subspace, and the R factor of every
     /// QR decomposition, which is never read (kp x kp)
     matrix_type Q_, R_;
@@ -282,10 +303,9 @@ private:
     matrix_type K_;
     /// ... its Q factor (n x kp) ...
     matrix_type QK_;
-    /// ... the conjugate transpose of its orthonormal basis (kp x n) ...
+    /// ... Am times that factor (n x kp), and the conjugate transpose of the factor (kp x n) ...
+    matrix_type AmQK_;
     ctrans_type QKh_;
-    /// ... that basis projected onto Am (kp x n) ...
-    projection_type KhA_;
     /// ... the projected matrix (kp x kp), overwritten by its eigenvectors, and its
     /// eigenvalues ...
     matrix_type At_;
@@ -293,10 +313,12 @@ private:
     /// ... and the Ritz vectors (n x kp)
     matrix_type Vfull_;
 
-    /// The eigenvalues on a diagonal (k x k), V * L (n x k) and the conjugate transpose
-    /// of V (k x n), from which Ar_ is formed
-    diagonal_type L_;
-    scaled_type VL_;
+    /// The current subspace with the k-vector of each input contiguous (n x k), from
+    /// which the masked entries are refilled
+    row_major_type Vr_;
+    /// V * L (n x k) and the conjugate transpose of V (k x n), from which the
+    /// reconstruction is formed for the residual
+    matrix_type VL_;
     ctrans_type Vh_;
 
     /// The conjugate transpose of the previous iteration's subspace (k x n)
@@ -317,11 +339,9 @@ void EigenMaskedSubspaceSolver<MT>::resize(size_t n, size_t k, size_t p, size_t 
     p_ = p;
     const size_t kp = k * p;
 
-    // Blaze skips a resize to the current size. Otherwise the plain matrices and vectors
-    // only reallocate when their capacity is too small, and with `preserve` false do not
-    // copy; the one adaptor, L_, copies on every size change, but is k x k.
+    // Blaze skips a resize to the current size. Otherwise the matrices and vectors only
+    // reallocate when their capacity is too small, and with `preserve` false do not copy.
     Am_.resize(n, n, false);
-    Ar_.resize(n, n, false);
 
     V_.resize(n, k, false);
     AV_.resize(n, k, false);
@@ -330,13 +350,13 @@ void EigenMaskedSubspaceSolver<MT>::resize(size_t n, size_t k, size_t p, size_t 
 
     K_.resize(n, kp, false);
     QK_.resize(n, kp, false);
+    AmQK_.resize(n, kp, false);
     QKh_.resize(kp, n, false);
-    KhA_.resize(kp, n, false);
     At_.resize(kp, kp, false);
     evals_kp_.resize(kp, false);
     Vfull_.resize(n, kp, false);
 
-    L_.resize(k, false);
+    Vr_.resize(n, k, false);
     VL_.resize(n, k, false);
     Vh_.resize(k, n, false);
 
@@ -347,6 +367,58 @@ void EigenMaskedSubspaceSolver<MT>::resize(size_t n, size_t k, size_t p, size_t 
     evalsp_.resize(k, false);
     etols_.resize(k, false);
     evconv_.resize(k_conv, false);
+}
+
+
+template<typename MT>
+template<typename CT, typename AT, typename BT>
+void EigenMaskedSubspaceSolver<MT>::multiply(CT& C, const AT& A, const BT& B) {
+    // A block of fewer than 64 rows is not worth a thread
+    const size_t m = C.rows();
+    const size_t nblocks = std::max<size_t>(1, std::min<size_t>(blaze::getNumThreads(), m / 64));
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (size_t b = 0; b < nblocks; b++) {
+        const size_t first = b * m / nblocks;
+        const size_t rows = (b + 1) * m / nblocks - first;
+        auto Cb = blaze::submatrix(C, first, 0, rows, C.columns());
+        const auto Ab = blaze::submatrix(A, first, 0, rows, A.columns());
+        blaze::gemm(Cb, Ab, B, MT(1), MT(0));
+    }
+}
+
+
+template<typename MT>
+void EigenMaskedSubspaceSolver<MT>::find_masked(const DynamicHermitian<float>& W) {
+    // Count the masked entries of each column, then list them, both in parallel over
+    // the columns. The lists only reallocate when a mask has more masked entries than
+    // any before it.
+    masked_start_.resize(n_ + 1);
+    masked_start_[0] = 0;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (size_t j = 0; j < n_; j++) {
+        const float* const wj = W.data(j);
+        size_t count = 0;
+        for (size_t i = 0; i < n_; i++)
+            count += wj[i] != 1.0f;
+        masked_start_[j + 1] = count;
+    }
+    for (size_t j = 0; j < n_; j++)
+        masked_start_[j + 1] += masked_start_[j];
+    masked_.resize(masked_start_[n_]);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (size_t j = 0; j < n_; j++) {
+        const float* const wj = W.data(j);
+        size_t m = masked_start_[j];
+        for (size_t i = 0; i < n_; i++)
+            if (wj[i] != 1.0f)
+                masked_[m++] = {static_cast<uint32_t>(i), wj[i]};
+    }
 }
 
 
@@ -369,20 +441,22 @@ void EigenMaskedSubspaceSolver<MT>::augmented_ritz() {
     // Construct the p-dimensional block Krylov subspace, i.e. {V, A V, A^2 V, ..., A^{p-1} V}
     blaze::submatrix<blaze::aligned>(K_, 0, 0, n_, k_) = V_;
     for (unsigned int i = 1; i < p_; i++) {
-        auto X = blaze::submatrix<blaze::aligned>(K_, 0, k_ * (i - 1), n_, k_);
-        blaze::submatrix<blaze::aligned>(K_, 0, i * k_, n_, k_) = Am_ * X;
+        const auto X = blaze::submatrix<blaze::aligned>(K_, 0, k_ * (i - 1), n_, k_);
+        auto AX = blaze::submatrix<blaze::aligned>(K_, 0, i * k_, n_, k_);
+        multiply(AX, Am_, X);
     }
 
     // Find the eigenpairs of the Krylov subspace with the Ritz method. The projected
-    // matrix is formed as a plain product and heevd reads its lower triangle, which is
-    // what blaze::eigen does with a Hermitian matrix, minus the temporary copy it makes
-    // of it; the eigenvectors overwrite it.
+    // matrix Q^H Am Q is formed as Q^H (Am Q), a narrow product on Am rather than a wide
+    // one, and heevd reads its lower triangle, which is what blaze::eigen does with a
+    // Hermitian matrix, minus the temporary copy it makes of it; the eigenvectors
+    // overwrite it.
     blaze::qr(K_, QK_, R_);
+    multiply(AmQK_, Am_, QK_);
     QKh_ = blaze::ctrans(QK_);
-    KhA_ = QKh_ * Am_;
-    At_ = KhA_ * QK_;
+    At_ = QKh_ * AmQK_;
     blaze::heevd(At_, evals_kp_, 'V', 'L');
-    Vfull_ = QK_ * At_;
+    multiply(Vfull_, QK_, At_);
 
     // Keep the highest eigenpairs
     evals_ = blaze::subvector(evals_kp_, top, k_);
@@ -401,32 +475,89 @@ void EigenMaskedSubspaceSolver<MT>::augmented_ritz() {
 
 
 template<typename MT>
-void EigenMaskedSubspaceSolver<MT>::backfill(const DynamicHermitian<MT>& A,
-                                             const DynamicHermitian<float>& W) {
-    blaze::diagonal(L_) = evals_;
-    VL_ = V_ * L_;
+void EigenMaskedSubspaceSolver<MT>::backfill(const DynamicHermitian<MT>& A) {
+    Vr_ = V_;
+
+    // Each masked entry (i, j) takes the reconstruction sum_l L_l V_il conj(V_jl), or
+    // for a mask value between zero and one that fraction of the way from the
+    // reconstruction to the data. Both triangles are filled, column by column, so every
+    // write is to the column in hand; the two halves are conjugates to rounding, as the
+    // reconstruction is. The unmasked entries hold the data from the start and are not
+    // touched, and a masked entry's data is only read when its mask value is not zero:
+    // the bulk of the entries are then written without being read first, which matters
+    // because a masked input's row runs across every column.
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, 16)
+#endif
+    for (size_t j = 0; j < n_; j++) {
+        const MT* const vj = Vr_.data(j);
+        const MT* const aj = A.data(j);
+        MT* const mj = Am_.data(j);
+        for (size_t m = masked_start_[j]; m < masked_start_[j + 1]; m++) {
+            const auto [i, w] = masked_[m];
+            const MT* const vi = Vr_.data(i);
+            MT r(0);
+            for (size_t l = 0; l < k_; l++)
+                r += evals_[l] * (vi[l] * std::conj(vj[l]));
+            mj[i] = w == 0.0f ? r : r + (aj[i] - r) * w;
+        }
+    }
+}
+
+
+template<typename MT>
+double EigenMaskedSubspaceSolver<MT>::residual(const DynamicHermitian<MT>& A,
+                                               const DynamicHermitian<float>& W) {
+    VL_ = V_;
+    for (size_t l = 0; l < k_; l++)
+        blaze::column(VL_, l) *= evals_[l];
     Vh_ = blaze::ctrans(V_);
 
-    // The reconstruction is formed with BLAS gemm: blaze's own product kernel, which this
-    // build uses for every large product, allocates packing buffers of a few MB on every
-    // call, and this is the one product here big enough for that to matter. One gemm per
-    // column block, on the threads blaze itself would use, keeps it parallel.
-    const size_t nblocks = std::min<size_t>(blaze::getNumThreads(), n_);
+    // The reconstruction is formed one block of columns at a time, with gemm, into a
+    // scratch block that stays in cache, and compared with the data block by block. The
+    // iteration is over, so Am_ lends each thread its scratch block.
+    const size_t nthreads = std::min<size_t>(blaze::getNumThreads(), n_);
+    const size_t width = std::min<size_t>(64, n_ / nthreads);
+    double sum = 0.0;
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static)
+#pragma omp parallel num_threads(nthreads) reduction(+ : sum)
 #endif
-    for (size_t b = 0; b < nblocks; b++) {
-        const size_t first = b * n_ / nblocks;
-        const size_t width = (b + 1) * n_ / nblocks - first;
-        auto C = blaze::submatrix(Ar_, 0, first, n_, width);
-        const auto B = blaze::submatrix(Vh_, 0, first, k_, width);
-        blaze::gemm(C, VL_, B, MT(1), MT(0));
+    {
+#ifdef _OPENMP
+        const size_t t = omp_get_thread_num();
+#else
+        const size_t t = 0;
+#endif
+        auto scratch = blaze::submatrix(Am_, 0, t * width, n_, width);
+#ifdef _OPENMP
+#pragma omp for schedule(dynamic)
+#endif
+        for (size_t c0 = 0; c0 < n_; c0 += width) {
+            const size_t w = std::min(width, n_ - c0);
+            auto R = blaze::submatrix(scratch, 0, 0, n_, w);
+            const auto B = blaze::submatrix(Vh_, 0, c0, k_, w);
+            blaze::gemm(R, VL_, B, MT(1), MT(0));
+            for (size_t j = 0; j < w; j++) {
+                // In real arithmetic, which the compiler vectorises where it would not
+                // see through the complex type: |w (a - r)|^2 = w^2 |a - r|^2
+                const real_type* const aj = reinterpret_cast<const real_type*>(A.data(c0 + j));
+                const real_type* const rj = reinterpret_cast<const real_type*>(R.data(j));
+                const float* const wj = W.data(c0 + j);
+                double s = 0.0;
+#ifdef _OPENMP
+#pragma omp simd reduction(+ : s)
+#endif
+                for (size_t i = 0; i < n_; i++) {
+                    const real_type dr = aj[2 * i] - rj[2 * i];
+                    const real_type di = aj[2 * i + 1] - rj[2 * i + 1];
+                    s += (wj[i] * wj[i]) * (dr * dr + di * di);
+                }
+                sum += s;
+            }
+        }
     }
-
-    // Back fill the missing entries of the array: the masked entries take the
-    // reconstruction, the rest the data. The reconstruction is Hermitian only to
-    // rounding, so it and the filled matrix are kept as plain matrices.
-    Am_ = Ar_ + (A - Ar_) % W;
+    // Normalised to the unmasked entries
+    return std::sqrt(sum / blaze::sum(W));
 }
 
 
@@ -462,6 +593,7 @@ EigConvergenceStats EigenMaskedSubspaceSolver<MT>::solve(const DynamicHermitian<
                                     + " are found.");
 
     resize(n, k, p, k_conv);
+    find_masked(W);
 
     // Mask out
     Am_ = A % W;
@@ -485,13 +617,13 @@ EigConvergenceStats EigenMaskedSubspaceSolver<MT>::solve(const DynamicHermitian<
 
         // Perform the subspace iteration steps
         for (unsigned int ss_ind = 0; ss_ind < q; ss_ind++) {
-            AV_ = A * V_;
+            multiply(AV_, A, V_);
             orthonormalise(AV_);
         }
 
         // Calculate the eigenpairs, and back fill the missing entries of the array
         augmented_ritz();
-        backfill(A, W);
+        backfill(A);
 
         // Calculate the eigenvector convergence (L1 norm of the tested subset)
         // NOTE: there seems to be a bug in Blaze's L1 norm function so we
@@ -509,8 +641,7 @@ EigConvergenceStats EigenMaskedSubspaceSolver<MT>::solve(const DynamicHermitian<
         stats.eps_eval = rms(evconv_);
 
         evalsp_ = evals_;
-        // This iteration's conjugate transposed subspace is the next one's previous
-        blaze::swap(Vph_, Vh_);
+        Vph_ = blaze::ctrans(V_);
 
         // Check convergence
         if (stats.eps_eval < tol_eval && stats.eps_evec < tol_evec) {
@@ -518,12 +649,9 @@ EigConvergenceStats EigenMaskedSubspaceSolver<MT>::solve(const DynamicHermitian<
         }
     }
 
-    // Calculate the RMS of the masked residual. Ar_ still holds the reconstruction from
-    // the final eigenpairs, and Am_ is free to hold the residual.
+    // Calculate the RMS of the masked residual
     // TODO: the blaze norm implementation is slow and naive. This is better.
-    Am_ = W % (A - Ar_);
-    stats.rms = rms(Am_);
-    stats.rms *= A.rows() / std::sqrt(blaze::sum(W)); // Re-norm to account for masking
+    stats.rms = residual(A, W);
 
     return stats;
 }
@@ -627,25 +755,50 @@ inline void fill_mask(DynamicHermitian<float>& mask, size_t num_elements,
  *
  * The container is resized only if it does not already have the matrix's size, so a
  * caller unpacking a stream of same-sized matrices into the same container allocates
- * once.
+ * once. The triangle is unpacked in square tiles, on the threads blaze uses, so that
+ * the writes to a row of the column-major container, which are strided, stay within a
+ * tile of cache lines while the tile's rows are filled.
  *
  * @param  data  Hermitian matrix packed as upper triangle.
  * @param  A     The blaze matrix to fill.
+ *
+ * @throws std::invalid_argument  If a diagonal element has an imaginary part.
  **/
 template<typename MT>
 void to_blaze_herm(const gsl_lite::span<MT>& data, DynamicHermitian<MT>& A) {
-    size_t N = (size_t)std::sqrt(2 * data.size());
+    const size_t N = (size_t)std::sqrt(2 * data.size());
 
     if (A.rows() != N)
         A.resize(N, false);
 
-    // TODO: check how much overhead is in this step. The cache overhead
-    // must be terrible. Might want to do a raw, blocked method
-    int ind = 0;
-    for (uint32_t i = 0; i < N; i++) {
-        for (uint32_t j = i; j < N; j++) {
-            A(i, j) = data[ind];
-            ind++;
+    // The packed row i holds (i, i) .. (i, N - 1), so it starts at i * N - i * (i - 1) / 2
+    // and element (i, j) is at that start + j - i.
+    auto row_start = [N](size_t i) { return i * N - i * (i - 1) / 2; };
+
+    // The diagonal first, on this thread: the Hermitian adaptor rejects a diagonal
+    // element with an imaginary part, and that has to be thrown from here rather than
+    // from inside a parallel region.
+    for (size_t i = 0; i < N; i++)
+        A(i, i) = data[row_start(i)];
+
+    // Then the off-diagonal tiles, each row of a tile written through the adaptor, which
+    // sets the element and its conjugate transpose together. No two tiles write the
+    // same element: tile (I, J) writes rows I of columns J and rows J of columns I.
+    constexpr size_t tile = 64;
+    const size_t ntiles = (N + tile - 1) / tile;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for (size_t t = 0; t < ntiles; t++) {
+        const size_t I = t * tile;
+        const size_t I_end = std::min(N, I + tile);
+        for (size_t J = I; J < N; J += tile) {
+            const size_t J_end = std::min(N, J + tile);
+            for (size_t i = I; i < I_end; i++) {
+                const MT* const row = data.data() + row_start(i) - i;
+                for (size_t j = std::max(J, i + 1); j < J_end; j++)
+                    A(i, j) = row[j];
+            }
         }
     }
 }
