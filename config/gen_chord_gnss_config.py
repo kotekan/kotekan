@@ -8,10 +8,9 @@ it, rather than restating the pipeline. Upstream changes to chord_pathfinder.j2
 are picked up for free, and the ingest stages we depend on are preserved by
 construction rather than by copy.
 
-    # capture the base from a running node (or a rendered .j2)
-    curl -s http://cx19:12048/config -o base.json
-
-    python3 config/gen_chord_gnss_config.py --base base.json --node cx19 \
+    # the base is production's own template, rendered stock (no gnss_node) exactly as
+    # kotekan renders it -- never a capture, which goes stale without a sound
+    python3 config/gen_chord_gnss_config.py --base config/chord_pathfinder.j2 --node cx19 \
         --out config/generated/chord_gnss_cx19.yaml
 
 Safety switches, both ON by default because the intended use is a shared node:
@@ -2591,6 +2590,83 @@ def build_search_instance(cfg, node, per_gpu, args, port):
     return out
 
 
+def render_stock_template(path):
+    """A kotekan .j2 config rendered EXACTLY as kotekan renders it (kotekan/kotekan.cpp): jinja2
+    with a FileSystemLoader on the template's own directory and select_autoescape(), then
+    yaml.safe_load. No options, so this is the STOCK render -- chord_pathfinder.j2's GNSS hook
+    renders nothing unless gnss_node is set.
+
+    WHY A RENDER AND NOT A CAPTURE. Until 2026-10-02 the base was a JSON captured from a running
+    node (config/base/live_config_20260831.json). It went stale silently: production moved on --
+    two more CRS boards, a new dish table, the DishInputs subset, the bad-feed mask fold and send,
+    new RFI settings -- and our nodes kept shipping the August pipeline's N^2, self-consistent and
+    wrong. Rendering production's own template makes the stock half stock by construction, and
+    scripts/gnss/stock_parity.py proves it, against the render and against a live stock node.
+    """
+    import jinja2
+    d, f = os.path.split(os.path.abspath(path))
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(d),
+                             autoescape=jinja2.select_autoescape())
+    return yaml.safe_load(env.get_template(f).render({}))
+
+
+def _ssh_or_local(path, timeout):
+    """Read `host:/path` over ssh (BatchMode) or a local path."""
+    import subprocess
+    host, _, remote = path.partition(":")
+    if remote:
+        return subprocess.run(["ssh", "-o", "BatchMode=yes", host, "cat " + remote],
+                              capture_output=True, timeout=timeout, check=True).stdout.decode()
+    return open(path).read()
+
+
+def choco_bad_inputs(args, timeout=20.0):
+    """bffs's current bad-input list as kotekan's updatable block, or None. Returns
+    (block, source) with the block in the shape a node's /updatable_config/bad_inputs holds.
+
+    bffs stores its list as FEED LABELS; what it POSTs is their positions in the label list it
+    stores beside them (the flat [P][D] input index), with start_time = its update time plus
+    choco's sync_delay. Rebuilt the same way here, so a node started from this config holds the
+    same block a stock node holds (stock_parity.py --live checks exactly that).
+    """
+    state = getattr(args, "bffs_state", None) or "choco:/var/lib/choco/bffs/state.json"
+    conf = getattr(args, "bffs_conf", None) or "choco:/etc/choco/bffs.yaml"
+    try:
+        st = json.loads(_ssh_or_local(state, timeout))
+        labels, bad = list(st["labels"]), list(st["bad_inputs"])
+        missing = [lb for lb in bad if lb not in labels]
+        if missing:
+            raise ValueError("labels not in bffs's label list: %s" % missing[:5])
+        delay = float((yaml.safe_load(_ssh_or_local(conf, timeout)) or {})
+                      .get("choco", {}).get("sync_delay", 0.0))
+        return ({"bad_inputs": sorted(labels.index(lb) for lb in bad),
+                 "kotekan_update_endpoint": "json",
+                 "start_time": float(st["updated"]) + delay,
+                 "update_id": str(st["update_id"])}, state)
+    except Exception as e:
+        print("  bad inputs bffs source unavailable (%s: %s) -- asking the stock nodes"
+              % (type(e).__name__, e), file=sys.stderr)
+        return None
+
+
+def live_bad_inputs(cfg, args, timeout=5.0):
+    """The bad-input block a running STOCK node holds (runtime.eop_reference_nodes), or None.
+    The fallback when bffs's state cannot be read: those nodes are the ones choco keeps current.
+    """
+    import urllib.request
+
+    port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"]
+    for host in cfg["runtime"].get("eop_reference_nodes", []):
+        try:
+            with urllib.request.urlopen(f"http://{host}:{port}/config", timeout=timeout) as r:
+                blk = json.loads(r.read().decode())["updatable_config"]["bad_inputs"]
+        except Exception:
+            continue
+        if isinstance(blk, dict) and blk.get("update_id") != "initial_flags":
+            return blk, host
+    return None
+
+
 def choco_eop_table(args, timeout=10.0):
     """The observatory's refreshed EOP table, or None. Same (table, source, last_ns) shape as
     @ref live_eop_table so the caller cannot tell them apart.
@@ -2717,7 +2793,10 @@ def live_frame0_utc(cfg, args, timeout=3.0):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--base", required=True, help="production config (JSON from /config, or yaml)")
+    ap.add_argument("--base", required=True,
+                    help="production config: a .j2 template, rendered STOCK exactly as kotekan "
+                         "renders it (config/chord_pathfinder.j2 -- what the manifest uses), or "
+                         "a JSON/yaml config")
     ap.add_argument("--node", required=True)
     ap.add_argument("--node-file", default=DEFAULT_NODE_FILE)
     ap.add_argument("--out", default=None)
@@ -2814,6 +2893,9 @@ def main():
                     help="port for the full n2_buffer leg (default 11027, stock)")
     ap.add_argument("--n2-send-port-subset", type=int, default=11025,
                     help="port for the n2_eigen_buffer subset leg (default 11025, stock)")
+    ap.add_argument("--n2-send-port-mask", type=int, default=11029,
+                    help="port for the bad-feed mask legs that ride with the N^2 frames "
+                         "(default 11029, stock)")
     ap.add_argument("--no-ingest", action="store_true",
                     help="drop dpdk + the transposes, leaving host_voltage_buffer unfed. The "
                          "GNSS branch still CONSTRUCTS, so --dry-run validates it without "
@@ -3315,15 +3397,6 @@ def main():
                          "and not for SNR. If the fleet is small, prefer leaving it OFF: "
                          "instance count is the one axis the combine is mildly sensitive to, "
                          "and collapsing spends it for nothing.")
-    ap.add_argument("--dish-coelev-deg", type=float, default=-8.59,
-                    help="dish pointing co-elevation (degrees from vertical, negative = south), "
-                         "OVERRIDING whatever the production base carries. Bases have been "
-                         "captured with -27.3, which is 18.7 deg wrong and puts boresight at "
-                         "dec +22.0 instead of the true dec +40.73 (elevation 81.41, Cyg A's "
-                         "declination, matching its measured 81.5 deg transit). Nothing in the "
-                         "GNSS chain reads it -- it feeds CHORDTelescope's dish geometry -- but "
-                         "every satellite-pass prediction is computed from it, so a stale value "
-                         "silently sends you looking for the wrong satellite on the wrong night.")
     ap.add_argument("--local-trim-gain", type=float, default=0.0,
                     help="cudaGnssChordTrack's IN-TRACKER code-trim gain. 0 (the default since "
                          "2026-08-03) hands the code loop to the broker's fleet DLL "
@@ -3477,20 +3550,12 @@ def main():
     if args.frame0_nano:
         cfg["fengine"]["frame0_utc"] = args.frame0_nano * 1e-9
 
-    with open(args.base) as fh:
-        base = json.load(fh) if args.base.endswith(".json") else yaml.safe_load(fh)
+    if args.base.endswith(".j2"):
+        base = render_stock_template(args.base)
+    else:
+        with open(args.base) as fh:
+            base = json.load(fh) if args.base.endswith(".json") else yaml.safe_load(fh)
     out = copy.deepcopy(base)
-
-    # THE PRODUCTION BASE CARRIES A STALE POINTING. Captured bases have read
-    # telescope.dish_coelev_deg = -27.3, which puts boresight at dec +22.0 / elevation 62.7.
-    # The dishes are actually 8.59 deg SOUTH of zenith -- dec +40.73, elevation 81.41 -- which
-    # is Cyg A's declination and matches its measured 81.5 deg transit. The 18.7 deg
-    # disagreement is not academic: it moves every predicted satellite pass. Taking the field at
-    # face value on 2026-08-03 produced a completely wrong transit list ("PRN 3 at 0.55 deg in
-    # 2 h"; the truth was PRN 19 at 0.40 deg, 10 h later, a different satellite on a different
-    # night). Override rather than inherit, and say so in the emitted config.
-    if isinstance(out.get("telescope"), dict) and "dish_coelev_deg" in out["telescope"]:
-        out["telescope"]["dish_coelev_deg"] = args.dish_coelev_deg
 
     # ⚠️ NAME THE QUANTITY EVERY RING COPY EXPECTS (2026-08-31). cudaCopyFromRingbuffer
     # publishes its output buffer's ndarray descriptor from the ring's slot-0 METADATA, and
@@ -3506,7 +3571,6 @@ def main():
         "rfi_skbar_buffer": "SKbar",
         "rfi_sktilde_buffer": "SKtilde",
         "rfi_RFImask_buffer": "RFImask",
-        "bf_mask_applied_buffer": "bf_mask",
     }
     _stamped = 0
     for _st in out.values():
@@ -3525,47 +3589,6 @@ def main():
     # it), so a stray line makes the yaml unparseable at the first stage boundary. stderr.
     if _stamped:
         sys.stderr.write(f"  hardened {_stamped} ring copies with expect_quantity_name\n")
-
-    # ⚠️ ONE BAD-FEED MASK STREAM PER NUMA HALF, CLOCKED TO THAT HALF'S VOLTAGE STREAM (develop's
-    # #1655 layout). The GPU RFI stages look the mask up by ring POSITION, so each refuses to run
-    # unless its mask stream starts at the seq its data stream starts at ("The bad feed mask stream
-    # starts at seq 0 but the data stream at ..."), and the two DPDK captures can start frames
-    # apart: one shared producer can satisfy at most one half. bufferBadInputs takes its first seq
-    # from metadata_source's first frame, then stops consuming that buffer. This also replaces the
-    # 09-02 valve split: a valve that sheds a mask frame would shift every later ring position, and
-    # with a producer per half, a late half can no longer hold up the other one (the deadlock the
-    # valves broke).
-    if isinstance(out.get("set_bf_mask"), dict) and isinstance(out.get("host_bf_mask_buffer"), dict):
-        _sbm = out["set_bf_mask"]
-        if _sbm.get("kotekan_stage") == "bufferBadInputs":
-            _shared = {k: v for k, v in _sbm.items() if k in ("input_order", "output_order")}
-            _inst = {k: v for k, v in _sbm.items() if k not in _shared}
-            _mask_def = out["host_bf_mask_buffer"]
-            out["set_bf_mask"] = dict(_shared)
-            for _half in (0, 1):
-                _vbuf = f"host_voltage_buffer_{_half}"
-                _mbuf = "host_bf_mask_buffer" if _half == 0 else "host_bf_mask_buffer_1"
-                if _vbuf not in out:
-                    sys.exit(f"gen: {_vbuf} missing -- cannot clock the bad feed mask to it")
-                out["set_bf_mask"][f"bf_mask_{_half}"] = dict(_inst, metadata_source=_vbuf,
-                                                              out_buf=_mbuf)
-                if _mbuf not in out:
-                    out[_mbuf] = dict(_mask_def)
-                out[_mbuf]["numa_node"] = _half
-            # Each GPU's mask copy reads its own half's stream.
-            _rewired = 0
-            _rsm = out.get("run_send_bf_mask")
-            for _g, _st in (_rsm.items() if isinstance(_rsm, dict) else []):
-                if not isinstance(_st, dict) or not isinstance(_st.get("in_buffers"), dict):
-                    continue
-                for _k, _v in list(_st["in_buffers"].items()):
-                    if _v == "host_bf_mask_buffer":
-                        _st["in_buffers"][_k] = ("host_bf_mask_buffer" if int(_st.get("gpu_id", 0)) == 0
-                                                 else "host_bf_mask_buffer_1")
-                        _rewired += 1
-            if _rewired != 2:
-                sys.exit(f"gen: expected 2 run_send_bf_mask inputs to rewire, found {_rewired}")
-            sys.stderr.write("  bad feed mask: one bufferBadInputs per NUMA half, clocked to its voltage buffer\n")
 
     # --frame0-nano: START WITHOUT chive's timing service.
     #
@@ -3848,6 +3871,26 @@ def main():
               "stale. Records will carry a wrong dUT1 and any collator that checks frame "
               "metadata will reject them.", file=sys.stderr)
 
+    # --- BAD INPUTS: bffs's current list, the other value stock gets by REST ------------------
+    # The stock template ships `bad_inputs: []`; choco relays bffs's list to every node in its
+    # cx group -- ours included -- but only WHEN THE LIST CHANGES. A node down at that moment
+    # starts from whatever its config carries. Ours were down for the 2026-10-01 20:17Z update
+    # and came back on the 08-31 capture's list, every one of 128 inputs flagged; with the
+    # template's [] they would come back with none. Both are wrong data in the bad-feed mask
+    # stream and the N^2 fold, so take the list from bffs itself, as the EOP table above.
+    _bi = choco_bad_inputs(args)
+    if _bi is None:
+        _bi = live_bad_inputs(cfg, args)
+    if _bi is not None:
+        _blk, _src = _bi
+        out.setdefault("updatable_config", {})["bad_inputs"] = _blk
+        print("  bad inputs %d flagged, %s from %s" % (len(_blk["bad_inputs"]), _blk["update_id"], _src),
+              file=sys.stderr)
+    else:
+        print("  WARNING   no source served the bad-input list -- keeping the template's, so "
+              "every input reads GOOD until bffs next CHANGES the list. gen_fleet refuses to "
+              "write a config in this state.", file=sys.stderr)
+
     # --- safety: don't inject into the downstream science consumer ----------------------------
     dropped = []
     if args.n2_send and not args.keep_n2:
@@ -3886,9 +3929,27 @@ def main():
                 n2_send_kept.append("%s(%s -> %s:%d)" % (key, leg.get("buf"),
                                                          leg["server_ip"], leg["server_port"]))
             continue
+        if args.n2_send and key.startswith("buffer_send_bad_feed_mask"):
+            # THE MASK THAT GOES WITH THE N^2 FRAMES (recv1 writes /bad_feed_mask from it), so
+            # it follows the N^2 legs. Our nodes sent N^2 with no mask beside it until 10-02.
+            leg = out[key]
+            if isinstance(leg, dict):
+                leg["server_ip"] = args.n2_send_ip
+                leg["server_port"] = args.n2_send_port_mask
+                n2_send_kept.append("%s(%s -> %s:%d)" % (key, leg.get("buf"),
+                                                         leg["server_ip"], leg["server_port"]))
+            continue
         if args.disable_outputs and key.startswith("buffer_send"):
             del out[key]
             dropped.append(key)
+            if key.startswith("buffer_send_bad_feed_mask"):
+                # Its feeder goes too: bufferCopy into a buffer nobody drains blocks once the
+                # buffer fills, and then stops draining host_bf_mask_buffer -- which the GPU
+                # RFI stages and N2Accumulate also read.
+                for _k in ("copy_bad_feed_mask", "host_bad_feed_mask_send_buffer",
+                           "host_bad_feed_mask_send_buffer_1"):
+                    if out.pop(_k, None) is not None:
+                        dropped.append(_k)
         elif args.n2_primary and key.startswith("run_n2k"):
             # Replaced, in both --keep-n2 modes: cudaCorrelatorDual produces the same prefix on
             # the same leg, and leaving run_n2k in place would give host_correlation_buffer two

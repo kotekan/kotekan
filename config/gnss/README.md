@@ -12,10 +12,19 @@ and these vars and compares them byte for byte.
 kotekan -c config/chord_pathfinder.j2 -j '{"gnss_node": "cx19"}'
 ```
 
-⚠️ **Deployment has NOT moved yet.** `node_up.sh` still runs the generated
-`config/generated/chord_gnss_<node>_multi.yaml`, and the generator still injects into the
-captured base. This template is proven equivalent to that; switching deployment onto it is
-a separate change — see *What is left*.
+**Deployment still runs the generator's output** — `node_up.sh` starts
+`config/generated/chord_gnss_<node>_multi.yaml` — but since 2026-10-02 the generator's
+base is the **stock render of this same template** (no `gnss_node`, rendered exactly as
+kotekan renders it), not a config captured from a running node. The captured base went
+stale silently and our nodes shipped the August pipeline's N² for a month
+(`fixtures/stock_parity_20261002/`). Two gates now hold both halves:
+
+* the GNSS half: this include renders the generator's GNSS blocks (gate 1 below), and
+  `gen_fleet.py --check` byte-compares the vars;
+* the stock half: `scripts/gnss/stock_parity.py` diffs every non-GNSS block against the
+  stock render — or, with `--live cx47`, a running stock node — and fails on anything
+  not declared there with a reason. `gen_fleet.py` runs it on every config it writes or
+  checks.
 
 ## Why the split is worth it, measured
 
@@ -92,6 +101,12 @@ scripts/gnss/j2_chain_equiv.py config/generated/chord_gnss_cx19_multi.yaml
 
 **All six nodes: EQUIVALENT, 137/137 blocks each** — the entire GNSS branch.
 
+> ⚠️ **Broken as of 2026-10-02, and not by the stock rebuild:** it dies with
+> `KeyError: 'cpu_affinity'` on `<chain>_n2sink` against the configs deployed on 10-01
+> too — the sink lost its pinned core and `extract()` was never told. The generator has
+> also grown past it (244 GNSS blocks per node against the include's 202). The vars are
+> still byte-checked by `gen_fleet.py --check`; this field-level gate needs repair.
+
 **2. `chord_pathfinder.j2` itself**, checked when the wiring landed:
 
 | check | result |
@@ -149,8 +164,10 @@ a one-line change plus a regenerate, wanting a node restart to land.
   blocks that the template also renders. Removing that code is the step that makes the
   template the single definition of the stage graph; it is mechanical, and gate 2 is what
   proves it safe.
-* **Moving deployment onto this path.** Once the above lands, `node_up.sh` can render
-  `chord_pathfinder.j2` directly and `config/base/live_config_20260730.json` — our frozen
-  July copy of production — goes away, which is what actually stops us drifting from
-  upstream. That changes how configs are produced and deployed, so it wants review and a
-  restart window rather than a quiet switch.
+* **Moving deployment onto this path.** The base half is done (2026-10-02: the generator
+  injects into the stock render). Rendering `chord_pathfinder.j2` directly would still lose
+  what the generator adds to the stock half — four data-neutral, declared tweaks
+  (`stock_parity.py`'s `DECLARED`) and the two values stock receives over REST at runtime
+  (the EOP table, bffs's bad inputs), which the generator fetches live. Each of those is the
+  remaining work: upstream it, move it into a GNSS-only block, or have `node_up.sh` push it
+  after start.

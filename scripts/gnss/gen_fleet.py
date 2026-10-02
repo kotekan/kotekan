@@ -28,6 +28,8 @@ import tempfile
 
 import yaml
 
+import stock_parity
+
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GEN = os.path.join(K, "config", "gen_chord_gnss_config.py")
 OUTDIR = os.path.join(K, "config", "generated")
@@ -45,31 +47,51 @@ OUTDIR = os.path.join(K, "config", "generated")
 VARSDIR = os.path.join(K, "config", "gnss")
 
 
-def _drop_eop(text):
-    """Blank the earth_orientation_parameter_table entries out of a rendered config.
+def _split_header(text):
+    """(leading '#' comment lines, the YAML body). The generator emits its provenance header and
+    then yaml.safe_dump(sort_keys=True) -- no comments inside the body."""
+    lines = text.splitlines(True)
+    n = 0
+    while n < len(lines) and lines[n].startswith("#"):
+        n += 1
+    return "".join(lines[:n]), "".join(lines[n:])
 
-    Line-based on purpose: the block is emitted by yaml.safe_dump as an indented list under
-    `earth_rotation_data:`, and this runs on the rendered TEXT (which is what --check
-    compares) rather than reparsing. Everything outside the table stays byte-exact, so a real
-    difference anywhere else -- including elsewhere in earth_rotation_data -- still fails.
+
+def _drop_live(text):
+    """Blank the LIVE values out of a rendered config: the Earth-orientation table and bffs's
+    bad-input block. Both are fetched at generation time (choco), both move on their own --
+    the EOP window rolls daily, the bad-input list whenever bffs flags a feed -- and neither is
+    a declared choice, so --check must not report them as drift.
+
+    Parse-based, then re-dumped exactly as the generator dumps: the round trip is byte-exact for
+    these files (checked on all six), so everything outside those two values still compares
+    byte for byte. (A line-based version once ended the EOP block on its first entry and passed
+    the happy path anyway -- nothing it was meant to skip was skipped.)
     """
-    out, skipping = [], False
-    for line in text.splitlines(True):
-        if line.startswith("  earth_orientation_parameter_table:"):
-            out.append(line)
-            skipping = True
-            continue
-        if skipping:
-            # yaml.safe_dump renders the entries as "  - delta_UT1_inst: ..." followed by
-            # "    t_inst_ns: ...", i.e. a list item at the SAME two-space indent as the key
-            # plus four-space continuations. An earlier version required three spaces and so
-            # ended the block on its very first entry -- which passed the happy-path check and
-            # failed the falsification, because nothing it was meant to skip was skipped.
-            if line.startswith("  - ") or line.startswith("    "):
-                continue
-            skipping = False
-        out.append(line)
-    return "".join(out)
+    head, body = _split_header(text)
+    cfg = yaml.load(body, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
+    if isinstance(cfg, dict):
+        if isinstance(cfg.get("earth_rotation_data"), dict):
+            cfg["earth_rotation_data"]["earth_orientation_parameter_table"] = None
+        if isinstance(cfg.get("updatable_config"), dict) and "bad_inputs" in cfg["updatable_config"]:
+            cfg["updatable_config"]["bad_inputs"] = None
+    return head + yaml.dump(cfg, Dumper=getattr(yaml, "CSafeDumper", yaml.SafeDumper),
+                            default_flow_style=False, sort_keys=True)
+
+
+def _live_inputs_missing(text):
+    """Why a generated config must NOT be written, or None. Both live values must have come from
+    a live source: an empty EOP table floods 'Requesting EOP later than in table' and stamps a
+    wrong dUT1 (it killed recv1's writer 2026-08-19); the template's bad-input block flags no
+    feed at all, and the mask rides to recv1 with the N^2."""
+    cfg = yaml.load(_split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
+    why = []
+    if not (cfg.get("earth_rotation_data") or {}).get("earth_orientation_parameter_table"):
+        why.append("no EOP table (choco and the fleet both unreachable)")
+    bi = (cfg.get("updatable_config") or {}).get("bad_inputs") or {}
+    if bi.get("update_id") in (None, "initial_flags"):
+        why.append("bad_inputs is the template's default (bffs and the stock nodes unreachable)")
+    return "; ".join(why) or None
 
 
 def flags_from(mapping):
@@ -227,6 +249,13 @@ def main():
                  "into it -- so it must be committed, not re-captured ad hoc." % base)
     suffix = man.get("suffix", "")
     common = flags_from(man.get("common") or {})
+    # THE STOCK HALF IS CHECKED, NOT TRUSTED: every config, written or checked, is diffed against
+    # the stock render (stock_parity.py) and anything undeclared stops it. Rendered once here.
+    stock_ref = stock_parity.render_stock(base if base.endswith(".j2") else stock_parity.TEMPLATE)
+
+    def parity(text):
+        cfg = yaml.load(_split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
+        return stock_parity.classify(stock_parity.differences(stock_ref, cfg))[1]
 
     nodes = sorted(man["nodes"])
     if a.node:
@@ -270,6 +299,15 @@ def main():
         text = p.stdout
 
         if not a.check:
+            undeclared = parity(text)
+            missing = _live_inputs_missing(text)
+            if undeclared or missing:
+                for kind, path, detail, _ in undeclared:
+                    sys.stderr.write("  !!  %s %s  %s\n" % (kind, path, detail))
+                sys.exit("NOT WRITTEN: %s -- %s" % (
+                    node, missing or "%d undeclared difference(s) from the stock render "
+                    "(scripts/gnss/stock_parity.py; declare one there only with a reason)"
+                    % len(undeclared)))
             # ATOMIC: a sibling .tmp then os.replace. A plain open(out,"w") leaves a window
             # where a concurrent reader -- node_up.sh's preflight, another --check, or kotekan
             # itself starting -- sees a TRUNCATED config. It reads as a difference, so the
@@ -319,9 +357,16 @@ def main():
         # file's own docstring is about why that is worse than not checking: a gate that
         # cries wolf is a gate people learn to skip. Normalise it out of BOTH sides and let
         # everything else stay byte-exact.
-        have_c, text_c = _drop_eop(have), _drop_eop(text)
+        undeclared = parity(have)
+        if undeclared:
+            bad.append(node + ":stock")
+            print("STOCK    %s  %d undeclared difference(s) from the stock render:"
+                  % (os.path.relpath(out, K), len(undeclared)))
+            for kind, path, detail, _ in undeclared[:12]:
+                print("    !!  %s %s  %s" % (kind, path, detail))
+        have_c, text_c = _drop_live(have), _drop_live(text)
         if have_c == text_c and have != text:
-            print("ok*      %s  (differs only in the live EOP table)"
+            print("ok*      %s  (differs only in live data: EOP table / bad inputs)"
                   % os.path.relpath(out, K))
             continue
         if have == text:

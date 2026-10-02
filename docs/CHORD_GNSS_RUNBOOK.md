@@ -143,6 +143,17 @@ chips per step, ~0.25 chips/min. Twenty minutes later E23 and E31 were still ~20
 and the Galileo position solve was in the hundreds of metres. A restart re-seeds every satellite
 from the orbit model. Do it outside a transit freeze, then check broker.log for CHAIN DIED at T+60 s.
 
+**The non-GNSS half of every node config is production's, and a gate holds it there.** The
+generator builds on `config/chord_pathfinder.j2` rendered stock, the same template choco renders
+for its own nodes. It injects the two values stock nodes receive over REST: choco's EOP table, and
+bffs's bad-input list, which choco relays only when the list changes. `scripts/gnss/stock_parity.py`
+diffs the stock half against the render and fails on any difference not declared in the script.
+`gen_fleet.py` runs it on every write and `--check`, and
+`stock_parity.py <config> --live cx47` checks the stock half, live values included, against a running
+stock node. When production's template changes, take develop's copy, regenerate, and check.
+**recv1 remembers each sender's config by host:port, and new content from the same node is fatal
+there** (ConfigTracker). After any node-config change, restart the nodes first and then recv1 (Jim).
+
 **Only a `node_up.sh` start carries the unit's properties.** Those relaunches reuse whatever the last
 `node_up` start set, including `LimitCORE=infinity`. Without it, a crash leaves no core, only glibc's
 one line in `/tmp/gnss_node.log`.
