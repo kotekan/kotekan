@@ -59,6 +59,12 @@ base: chord_pathfinder.j2
 suffix: _multi
 
 common:
+  # Channels EXEMPT from first-stage (SK) RFI excision, absolute freq_id ranges: the GNSS main
+  # lobes, +-10.23 MHz (one chip rate) around 1176.45 (L5/E5a/B2a), 1207.14 + 1227.60 (E5b/B2b
+  # and the whole L2, contiguous) and 1268.52..1278.75 (B3I + E6). The stock flagger excises
+  # them ~100 % of the time since 10-01 ~21Z; their N2 feeds the satellite projection (phase 3a)
+  # and is lost to cosmology anyway (KV, 10-02). SK statistics are still computed there.
+  rfi-excision-exempt-freq-ids: "5971-6076,6128-6338,6442-6573"
   # ⚠️⚠️ TEMPORARY EXPERIMENT -- REMOVE WITH TASK #55. ⚠️⚠️
   #
   # TASK #52 A/B: 'ab' puts the carrier-phase fix (DespreadJob::ang0, phase taken at the

@@ -3082,6 +3082,12 @@ def main():
                          "shadow = projected shadow learner + capture diagnostics only; live = "
                          "the rows are projected in place. Emitted only when not off; the "
                          "assembler also takes it live over POST /set_elem_proj.")
+    ap.add_argument("--rfi-excision-exempt-freq-ids", type=str, default=None,
+                    help="Comma-separated absolute freq_id ranges (lo-hi) exempt from first-stage "
+                         "RFI excision, injected into every cudaRFISKtilde command as "
+                         "rfi_first_stage_excision_exempt_freq_ids (our key; declared in "
+                         "stock_parity.py). The GNSS lobes: the stock SK flagger excises them "
+                         "most of the time and their N2 feeds the satellite projection.")
     ap.add_argument("--elem-proj-deg", type=float, default=None,
                     help="projection window: own-row sources and the probe-stack gate inside this "
                          "many degrees of boresight (assembler default 4). Emitted only when given "
@@ -3964,6 +3970,36 @@ def main():
     # anything we want true fleet-wide is injected here and declared in the manifest.
     if args.dpdk_resync_max_advances is not None and isinstance(out.get("dpdk"), dict):
         out["dpdk"]["resync_max_advances"] = int(args.dpdk_resync_max_advances)
+
+    # FLEET POLICY: channels exempt from first-stage RFI excision (our cudaRFISKtilde key,
+    # default off upstream). The stock SK flagger excises the GNSS main lobes ~100 % of the
+    # time (from 10-01 ~21Z), and those channels' N2 feeds the satellite projection, so the
+    # correlator keeps every sample there; the SK statistics are still computed. Each GPU
+    # resolves the absolute ids against its own channels at its first frame.
+    if args.rfi_excision_exempt_freq_ids:
+        _ids = set()
+        for _part in str(args.rfi_excision_exempt_freq_ids).split(","):
+            _a, _, _b = _part.strip().partition("-")
+            _lo, _hi = int(_a), int(_b or _a)
+            if _hi < _lo:
+                raise SystemExit(f"--rfi-excision-exempt-freq-ids: bad range {_part!r}")
+            _ids.update(range(_lo, _hi + 1))
+        _ids = sorted(_ids)
+        _n = 0
+        for _st in out.values():
+            if not isinstance(_st, dict):
+                continue
+            for _leg in _st.values():
+                if not isinstance(_leg, dict):
+                    continue
+                for _cmd in _leg.get("commands") or []:
+                    if isinstance(_cmd, dict) and _cmd.get("name") == "cudaRFISKtilde":
+                        _cmd["rfi_first_stage_excision_exempt_freq_ids"] = list(_ids)
+                        _n += 1
+        if _n == 0:
+            raise SystemExit("--rfi-excision-exempt-freq-ids: the base has no cudaRFISKtilde command")
+        sys.stderr.write(f"  exempted {len(_ids)} freq_ids from first-stage RFI excision "
+                         f"in {_n} cudaRFISKtilde commands\n")
 
     # --- metadata pool for the GNSS chain -----------------------------------------------------
     out["gnss_pool"] = {"kotekan_metadata_pool": "GnssChanMetadata",

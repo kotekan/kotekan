@@ -49,6 +49,9 @@ DECLARED = [
      "bounded capture resync instead of a wedge (our dpdk code; 0, the default, is stock)"),
     ("run_recv_rfi_*.gpu_*.commands.*.expect_quantity_name", "+",
      "ring-copy descriptor guard (our cudaCopyFromRingbuffer; startup FATALs 08-31)"),
+    ("run_rfi_sktilde.gpu_*.commands.*.rfi_first_stage_excision_exempt_freq_ids", "+",
+     "GNSS lobes exempt from first-stage excision (our cudaRFISKtilde key, default off): their "
+     "N2 feeds the satellite projection and is lost to cosmology anyway (KV, 10-02)"),
 ]
 # Values stock gets by REST at runtime; the generator injects the current ones. Different from
 # the bare render by design, and EQUAL to a live stock node's -- so --live does not allow them.

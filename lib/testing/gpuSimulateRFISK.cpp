@@ -15,6 +15,7 @@
 
 #include <assert.h>   // for assert
 #include <cstdint>    // for uint64_t, int32_t, int64_t
+#include <cstring>    // for memset
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr, __shared_ptr_access
 #include <string>     // for string
@@ -147,6 +148,9 @@ private:
     const double _rfi_feed_averaged_min_good_frac;
     const double _rfi_mu_min;
     const double _rfi_mu_max;
+    // Channels whose RFI mask is forced to all-good, whatever SK said; mirrors
+    // cudaRFISKtilde's `rfi_first_stage_excision_exempt_local_freqs`.
+    const std::vector<int> _excision_exempt_local_freqs;
     /// Lower x limit in bias & sigma tables
     const float _xmin;
     /// Upper x limit in bias & sigma tables
@@ -192,15 +196,22 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     _rfi_feed_averaged_min_good_frac(
         config.get<double>(unique_name, "rfi_feed_averaged_min_good_frac")),
     _rfi_mu_min(config.get<double>(unique_name, "rfi_mu_min")),
-    _rfi_mu_max(config.get<double>(unique_name, "rfi_mu_max")), _xmin(n2k_globals::xmin),
-    _xmax(n2k_globals::xmax), _bias_nx(n2k_globals::bias_nx), _bias_ny(n2k_globals::bias_ny),
-    _sigma_nx(n2k_globals::sigma_nx), _bias_coeffs(std::vector<float>()),
-    _sigma_coeffs(std::vector<float>()) {
+    _rfi_mu_max(config.get<double>(unique_name, "rfi_mu_max")),
+    _excision_exempt_local_freqs(config.get_default<std::vector<int>>(
+        unique_name, "rfi_first_stage_excision_exempt_local_freqs", std::vector<int>{})),
+    _xmin(n2k_globals::xmin), _xmax(n2k_globals::xmax), _bias_nx(n2k_globals::bias_nx),
+    _bias_ny(n2k_globals::bias_ny), _sigma_nx(n2k_globals::sigma_nx),
+    _bias_coeffs(std::vector<float>()), _sigma_coeffs(std::vector<float>()) {
 
     // Grab Buffers
     in_rfi_s012_buf = get_buffer("in_rfi_s012_buf");
     in_rfi_s012_buf->register_consumer(unique_name);
 
+    for (const int f : _excision_exempt_local_freqs)
+        if (f < 0 || f >= _num_local_freq)
+            FATAL_ERROR("rfi_first_stage_excision_exempt_local_freqs: channel {:d} is outside "
+                        "[0, {:d})",
+                        f, _num_local_freq);
     in_bf_mask_buf = get_buffer("in_bf_mask_buf");
     in_bf_mask_buf->register_consumer(unique_name);
 
@@ -548,6 +559,11 @@ void gpuSimulateRFISK::main_thread() {
 
             } // f
         } // t_rfi
+
+        // Exempt channels: every sample good, whatever SK said (mirrors cudaRFISKtilde).
+        for (const int f : _excision_exempt_local_freqs)
+            for (uint64_t t_hi = 0; t_hi < _samples_per_data_set / 1024; ++t_hi)
+                std::memset(rfi_mask + t_hi * nf * 128 + static_cast<uint64_t>(f) * 128, 0xff, 128);
 
         // Create output SK metadata
         out_rfi_sk_buf->allocate_new_metadata_object(out_rfi_sk_frame_id);

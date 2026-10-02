@@ -27,6 +27,7 @@
 #include <optional>           // for optional
 #include <string>             // for basic_string, string
 #include <sys/types.h>        // for uint, ulong
+#include <utility>            // for pair
 #include <vector>             // for vector
 
 using kotekan::div_noremainder;
@@ -80,6 +81,19 @@ private:
     // produced instead, so no samples are excised in the correlator. The SKtilde
     // statistics are still computed for second-stage excision (RfiFrameMask).
     const bool first_stage_excision_enabled;
+    // Optional, with excision enabled: channels EXEMPT from first-stage excision. After the SK
+    // kernel has written the mask, these channels' rows are overwritten with 1s (every sample
+    // good), so the correlator keeps all of their samples while their SK statistics are still
+    // computed and served. Absolute freq_ids are resolved on the first frame against the
+    // input metadata's coarse frequencies (the labels the N2 frames carry); local channel
+    // indices apply as given; both lists may be set. The GNSS lobes are the use case: their
+    // N2 feeds the satellite projection, and the SK flagger would excise them most of the time.
+    const std::vector<int> excision_exempt_freq_ids;
+    const std::vector<int> excision_exempt_local_freqs;
+    // Resolved on the first frame: maximal runs [first, last] of exempt local channels.
+    std::vector<std::pair<int, int>> excision_exempt_runs;
+    bool excision_exempt_resolved;
+    void resolve_excision_exempt();
 
     const std::int64_t rfi_samples_per_bf_sample;
 
@@ -131,16 +145,19 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     first_stage_excision_enabled(
         config.get_default<bool>(unique_name, "rfi_first_stage_excision_enabled", true)),
-    rfi_samples_per_bf_sample(
-        div_noremainder(bf_mask_lifetime_in_samples, rfi_downsampling_factor)),
+    excision_exempt_freq_ids(config.get_default<std::vector<int>>(
+        unique_name, "rfi_first_stage_excision_exempt_freq_ids", std::vector<int>{})),
+    excision_exempt_local_freqs(config.get_default<std::vector<int>>(
+        unique_name, "rfi_first_stage_excision_exempt_local_freqs", std::vector<int>{})),
+    excision_exempt_resolved(false), rfi_samples_per_bf_sample(div_noremainder(
+                                         bf_mask_lifetime_in_samples, rfi_downsampling_factor)),
     rfi_S012_read_granularity(8 * 128 / std::gcd(8 * 128, rfi_downsampling_factor)),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_SKtilde_name(config.get<std::string>(unique_name, "rfi_SKtilde_name")),
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
-    bf_mask_applied_name(
-        config.get_default<std::string>(unique_name, "bf_mask_applied_name", "")),
+    bf_mask_applied_name(config.get_default<std::string>(unique_name, "bf_mask_applied_name", "")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask",
             std::array<std::ptrdiff_t, 3>{buffer_depth * 1, num_polarizations, num_dishes},
@@ -210,11 +227,63 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     if (!first_stage_excision_enabled && get_instance_num() == 0)
         INFO("First-stage RFI excision disabled: producing an all-good RFI mask. "
              "SK statistics are still computed.");
+    for (const int f : excision_exempt_local_freqs)
+        if (f < 0 || f >= num_frequencies)
+            FATAL_ERROR("rfi_first_stage_excision_exempt_local_freqs: channel {:d} is outside "
+                        "[0, {:d})",
+                        f, num_frequencies);
+    if (!first_stage_excision_enabled && get_instance_num() == 0
+        && !(excision_exempt_freq_ids.empty() && excision_exempt_local_freqs.empty()))
+        INFO("First-stage RFI excision is disabled, so its exempt channel list has no effect.");
 
     set_command_type(gpuCommandType::KERNEL);
 }
 
 cudaRFISKtilde::~cudaRFISKtilde() {}
+
+// Turn the configured exempt channels into runs of local channel indices. Absolute freq_ids
+// need the input's metadata, so this runs on the first frame rather than in the constructor.
+void cudaRFISKtilde::resolve_excision_exempt() {
+    excision_exempt_resolved = true;
+    std::vector<int> local(excision_exempt_local_freqs);
+    if (!excision_exempt_freq_ids.empty()) {
+        const std::shared_ptr<chordMetadata> meta = rfi_S012.get_metadata();
+        if (!meta || !meta->has_coarse_freq())
+            FATAL_ERROR("rfi_first_stage_excision_exempt_freq_ids needs the coarse frequencies "
+                        "in {:s}'s metadata, and it carries none",
+                        rfi_S012_name);
+        const std::vector<int> coarse = meta->get_coarse_freq();
+        if (coarse.size() != size_t(num_frequencies))
+            FATAL_ERROR("{:s} carries {:d} coarse frequencies for {:d} channels", rfi_S012_name,
+                        coarse.size(), num_frequencies);
+        std::vector<int> wanted(excision_exempt_freq_ids);
+        std::sort(wanted.begin(), wanted.end());
+        for (int f = 0; f < num_frequencies; ++f)
+            if (std::binary_search(wanted.begin(), wanted.end(), coarse[f]))
+                local.push_back(f);
+    }
+    std::sort(local.begin(), local.end());
+    local.erase(std::unique(local.begin(), local.end()), local.end());
+    for (const int f : local) {
+        if (!excision_exempt_runs.empty() && excision_exempt_runs.back().second + 1 == f)
+            excision_exempt_runs.back().second = f;
+        else
+            excision_exempt_runs.emplace_back(f, f);
+    }
+    if (get_instance_num() != 0)
+        return;
+    if (excision_exempt_runs.empty()) {
+        if (!excision_exempt_freq_ids.empty())
+            WARN("First-stage RFI excision: none of the {:d} exempt freq_ids is on this GPU",
+                 excision_exempt_freq_ids.size());
+        return;
+    }
+    std::string runs;
+    for (const auto& run : excision_exempt_runs)
+        runs += " " + std::to_string(run.first) + "-" + std::to_string(run.second);
+    INFO("First-stage RFI excision exempts {:d} of {:d} channels (local runs:{:s})", local.size(),
+         num_frequencies, runs);
+}
 
 int cudaRFISKtilde::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
@@ -397,6 +466,32 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
         if (mask_rows > mask_rows_to_end)
             CHECK_CUDA_ERROR(cudaMemsetAsync(
                 rfi_RFImask_memory, 0xff, (mask_rows - mask_rows_to_end) * mask_row_bytes, stream));
+    }
+    if (first_stage_excision_enabled) {
+        if (!excision_exempt_resolved)
+            resolve_excision_exempt();
+        if (!excision_exempt_runs.empty()) {
+            // Overwrite the exempt channels' rows of the claimed region with 1s (every sample
+            // good), after the kernel on the same stream. A row is one 1024-sample chunk of
+            // every channel, each channel 128 contiguous bytes; a run of channels is one 2-D
+            // memset per segment, and the claimed region may wrap around the end of the ring.
+            std::uint8_t* const mask_bytes = reinterpret_cast<std::uint8_t*>(rfi_RFImask_memory);
+            const long chan_bytes =
+                rfi_RFImask.get_ndarray().get_extent(2) * sizeof(kotekan::uint1x8_t);
+            const long row_bytes = rfi_RFImask.get_ndarray().get_extent(1) * chan_bytes;
+            const long rows = rfi_RFImask.get_write_valid().size();
+            const long rows_to_end = std::min(rows, rfimask_T512size - rfimask_T512min);
+            const auto fill = [&](const long row0, const long nrows) {
+                if (nrows <= 0)
+                    return;
+                for (const auto& run : excision_exempt_runs)
+                    CHECK_CUDA_ERROR(cudaMemset2DAsync(
+                        mask_bytes + row0 * row_bytes + run.first * chan_bytes, row_bytes, 0xff,
+                        (run.second - run.first + 1) * chan_bytes, nrows, stream));
+            };
+            fill(rfimask_T512min, rows_to_end);
+            fill(0, rows - rows_to_end);
+        }
     }
     if (bf_mask_applied) {
         // Echo the mask applied to this batch: one copy of the current mask element per
