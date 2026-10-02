@@ -1,10 +1,16 @@
 # systemd units for the GNSS infrastructure on `gnss.site.chord-observatory.ca`
 
-⚠️ **NOT INSTALLED — but no longer blocked.** The VM was re-provisioned on cf02 with 6 `host`
-cores and an L40S passthrough, so the cf06 `ARCH=native` binary runs there as-is and the GPU
-takes a real CUDA context. Install them when you want the cutover, following the order of work
-in [`docs/CHORD_GNSS_VM_MIGRATION.md`](../../../docs/CHORD_GNSS_VM_MIGRATION.md) §8 --
-infrastructure first, aggregator only after a peak-under-load sample.
+**Installed on gnss as systemd USER units since 2026-09-17**, by `install_user_units.sh`, which
+derives them from the canonical files here. The text below on system units describes the other
+install path, which still waits on passwordless sudo.
+
+⚠️ **They carry `ConditionHost=` (gnss only), and must.** The user copies live in the NFS-shared
+home, so cf06, all eight cx nodes, recv1 and choco see them too. Before 2026-10-02 any login on
+any of those hosts started the whole stack there, crash-looping until the session closed. On
+cf06, a backgrounded cube archiver held its session open, so the strays kept looping for as
+long as the archiver ran. Keep the condition on every unit, not only the target: a target's
+failed condition does not cancel the start jobs its `Wants=` queued. To run the stack on another
+host, change the condition there deliberately.
 
 They are in the repo now so the settings are reviewable, because each non-obvious one is a
 fault we have already paid for rather than a preference — the comments say which.

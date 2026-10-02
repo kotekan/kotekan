@@ -1,6 +1,9 @@
 [Unit]
 Description=CHORD GNSS per-channel rail and band-power recorder (voltage-tap rf_stats, every pass)
 Documentation=file:///home/kvand/gnss/kotekan/scripts/gnss/rail_watch.py
+# This host only: the user copies sit in the NFS-shared home (see gnss-stack.target).
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
 RequiresMountsFor=/home/kvand
 PartOf=gnss-stack.target
 

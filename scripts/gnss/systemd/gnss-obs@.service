@@ -1,6 +1,9 @@
 [Unit]
 Description=CHORD GNSS observables writer for chain %i
 Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+# This host only: the user copies sit in the NFS-shared home (see gnss-stack.target).
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
 # Writes to /home/kvand/gnss/fixtures/obs, reads from the broker.
 RequiresMountsFor=/home/kvand
 After=gnss-broker.service

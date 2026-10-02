@@ -1,6 +1,16 @@
 [Unit]
 Description=CHORD GNSS infrastructure stack (broker, gather, observables writers)
 Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+# ⚠️ ON THIS HOST ONLY, and every unit says so. The user-unit copies live in the NFS-SHARED home
+# (~/.config/systemd/user), so cf06 and all eight cx nodes see them too -- and any login there
+# starts kvand's user manager, which pulls default.target -> this target -> the whole stack. On
+# 2026-10-02 a read-only ssh to cx51 left all 15 units crash-looping there until the session
+# closed; on cf06 the broker hit its start limit. A stray broker that came up would command the
+# fleet beside the real one. The condition is on EVERY unit, not just this target: a target whose
+# condition fails is skipped, but the start jobs its Wants= queued run anyway. Two triggering
+# (|) forms so a short hostname also matches; gethostname() returns the FQDN here today.
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
 # Ordering within the target comes from the units' own After=; this only groups them so the
 # whole stack starts on boot and stops together. The prize is that a reboot -- the VM will take
 # unattended-upgrades reboots the way cf06 does at 03:03 -- needs no operator.
