@@ -16,7 +16,7 @@ import random
 import re
 import statistics
 
-from .transport import _get, _log_rl
+from .transport import _get, _log_rl, _now
 
 
 
@@ -155,9 +155,54 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
     return out
 
 
+def live_instances(served, hop_hist, now, anchor_utc=None, hops_per_sec=None, ahead_s=60.0,
+                   frozen_s=10.0):
+    """Which instances' rows may enter the fleet sum. -> (excluded {url: reason}).
+
+    `served` is {url: newest pow_hop this poll} (-1 = none yet). `hop_hist` is {url: (hop,
+    first_seen_at_that_hop)}, carried across calls and updated here.
+
+    WHY. The fleet hop is the NEWEST instance's -- right for a laggard, which is only ever
+    behind -- and an F-engine re-base breaks that: the counter restarts at 0, and a node not yet
+    relaunched still serves its pre-outage row, hours of counting ahead of the live ones. It wins
+    the max, the live instances fall outside hop_window, and the published fleet hop is the old
+    session's. The obs writers stamped rows with it (new frame0 + old hop), which put rows dated
+    10-02 00:49 into a file on 09-28 at 20:16:38.
+
+    Two exclusions, each refusing to blind the fleet:
+      * AHEAD: with the anchor known, a hop past what the F-engine has counted by `now` plus
+        `ahead_s` is from a previous session. Applied only while at least one instance is not
+        ahead -- if every instance is, the anchor is the thing that is wrong.
+      * FROZEN: a served hop unchanged for `frozen_s` while another instance advanced inside
+        that time. Any CHANGE counts as advancing, so a relaunched node's backwards jump to a
+        small hop clears it at once. When nobody advances (an outage, a paused F-engine) nobody
+        is excluded.
+    """
+    excluded = {}
+    for url, hop in served.items():
+        if hop < 0:
+            continue
+        old = hop_hist.get(url)
+        hop_hist[url] = (hop, old[1] if (old is not None and old[0] == hop) else now)
+    live = {u: h for u, h in served.items() if h >= 0}
+    if anchor_utc and hops_per_sec:
+        bound = (now - anchor_utc + ahead_s) * hops_per_sec
+        ahead = {u for u, h in live.items() if h > bound}
+        if ahead and len(ahead) < len(live):
+            for u in ahead:
+                excluded[u] = "ahead"
+    advancing = {u for u in live if now - hop_hist[u][1] < frozen_s}
+    if advancing:
+        for u in live:
+            if u not in advancing and u not in excluded:
+                excluded[u] = "frozen"
+    return excluded
+
+
 def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
               deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None, src_hops=None,
-              admit_displaced=None):
+              admit_displaced=None, hop_hist=None, anchor_utc=None, hops_per_sec=None,
+              now=None):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
     THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
@@ -200,12 +245,30 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
     rows = {}
     best_coh = {}   # prn -> ((deep_snr, amp_snr), row, url): strongest instance's COHERENT view
     coh_cleared = {}  # prn -> floor-cleared per-instance deep_snrs, for the quadrature fallback
+    polled = {}
     for url in endpoints:
         try:
-            got = _get("%s/get_status" % url)
+            polled[url] = _get("%s/get_status" % url) or []
         except Exception as e:
             _log_rl("fleet-dll-%s" % url, "fleet DLL: %s unreachable (%s)" % (url, e))
-            continue
+    # Judge each INSTANCE before any of its rows count (live_instances). Excluded instances still
+    # report their hop to src_hops, so the axis and stall instruments keep seeing them.
+    excluded = {}
+    if hop_hist is not None:
+        served = {u: max([int(r.get("pow_hop", -1)) for r in g if isinstance(r, dict)] or [-1])
+                  for u, g in polled.items()}
+        # the CYCLE's frozen clock: live wall time, a replay's recorded instant
+        excluded = live_instances(served, hop_hist, _now() if now is None else now,
+                                  anchor_utc=anchor_utc, hops_per_sec=hops_per_sec)
+        for u, why in sorted(excluded.items()):
+            _log_rl("fleet-dll-excl-%s-%s" % (why, u),
+                    "fleet DLL: %s EXCLUDED (%s) at hop %d -- %s"
+                    % (u, why, served[u],
+                       "past what the F-engine has counted: a previous session's row"
+                       if why == "ahead" else
+                       "not advancing while its peers do: pre-outage state or a wedged chain"),
+                    every_s=60.0)
+    for url, got in polled.items():
         for r in got:
             hop = int(r.get("pow_hop", -1))
             e = float(r.get("e_pow", 0.0))
@@ -228,6 +291,8 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
             # per-instance axis away, and that axis is the one a wedge lives on.
             if src_hops is not None and hop > src_hops.get(url, -1):
                 src_hops[url] = hop
+            if url in excluded:
+                continue
             rows.setdefault(prn, []).append(
                 (hop, e, float(r.get("p_pow", 0.0)), l, float(r.get("n_chan", 0.0))))
             # BEST-OF for the COHERENT statistics. deep_amplitude / deep_snr / coherence_s come

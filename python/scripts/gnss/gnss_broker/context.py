@@ -81,6 +81,8 @@ class ChainContext(object):
         "innov_hist", "minnov_hist", "p2c", "dop_rate_fitted", "dop_rate_rejected",
         "cp_rate_rejected",
         "dll_hop_window", "deep_gate", "dg_auto_last", "est_next", "birth_steps",
+        # {combiner url: (newest pow_hop, first seen at it)}, for fleet.live_instances
+        "fleet_hop_hist",
         # ---- per-cycle: written directly by the stage that computes them ---------------
         # Attributes rather than loop locals for one reason: a module-level stage can assign
         # `ctx.have_sig`, where it could never declare `nonlocal have_sig`. That is the whole
@@ -101,7 +103,7 @@ class ChainContext(object):
     #
     # `utc0_sample0` is 0.0 rather than None because it is compared numerically before the
     # first fetch succeeds; None would raise there instead of reading as "no anchor yet".
-    DEFAULTS = {"utc0_sample0": float, "status": dict, "birth_steps": dict}
+    DEFAULTS = {"utc0_sample0": float, "status": dict, "birth_steps": dict, "fleet_hop_hist": dict}
 
     def __init__(self, **kw):
         for k in self.__slots__:

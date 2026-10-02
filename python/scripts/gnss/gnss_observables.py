@@ -127,6 +127,41 @@ def _phys_chips(cp_arg, comb_mult, hop, t_abs, dop_hz, args):
     return (comb_mult * cp_arg + t_abs * args.chip_rate_hz * scale) % args.code_length
 
 
+def row_epoch(r, frame0, hop_key, samples_per_hop, sample_rate_hz, to_unix, utc0, now,
+              max_skew_s):
+    """(t_epoch, t_abs, hop, None) for a row this writer may record, else (None, None, hop, why).
+
+    ON CHORD (frame0 set) THE EPOCH IS THE HOP, OR THERE IS NO ROW. The epoch is
+    frame0 + hop * samples_per_hop / sample_rate_hz, an exact integer on the F-engine counter.
+    A row without one used to fall back to the row's `utc` (a capture-clock float the broker
+    calls diagnostic-only) -- the airspy path's anchor, which on CHORD is the identity. A missing
+    or non-positive hop (the comb's -1 = "no window") now means no row: an unanchored row is
+    junk, the same rule as t_epoch < 1e9 below.
+
+    THE WALL-CLOCK GATE (max_skew_s; 0 disables). This writer polls a LIVE broker, so a row's
+    epoch is seconds old -- ~1.5 s in steady state. One that is not is mis-stamped, not late:
+    right after an F-engine re-base the broker's fleet hop can still come from the PREVIOUS
+    session's windows, and new frame0 + old hop lands hours or days in the future. Files roll on
+    the row's epoch, so those rows headed future days' files: gal_e5a_20261002.jsonl was created
+    on 09-28 at 20:16:38, 48 s after that day's re-base, by rows stamped 10-02 00:49:00
+    (= the previous session's last hop, at 09-28 19:04:24, read against the new frame0).
+    """
+    hop = r.get(hop_key) or r.get("pow_hop") or 0
+    if frame0:
+        if not hop or hop < 0:
+            return None, None, hop, "no-hop"
+        t_abs = hop * samples_per_hop / sample_rate_hz
+        t_epoch = frame0 + t_abs
+    else:
+        t_epoch = to_unix(r.get("utc") or 0.0)
+        t_abs = (t_epoch - utc0) if utc0 else 0.0
+    if not (t_epoch > 1.0e9):
+        return None, None, hop, "no-anchor"
+    if max_skew_s > 0 and abs(t_epoch - now) > max_skew_s:
+        return None, None, hop, "skew"
+    return t_epoch, t_abs, hop, None
+
+
 def make_obs_writer(path_tmpl, label="", log=None):
     """Append-only JSONL row writer whose file ROLLS on the row's own UTC.
 
@@ -235,6 +270,10 @@ def main():
                          "of code. Which hop field is used barely matters -- both sides of the "
                          "residual are evaluated at the SAME hop, so the choice cancels to "
                          "first order (5e-5 chips over 12288 hops of Doppler mismatch).")
+    ap.add_argument("--max-epoch-skew-s", type=float, default=60.0,
+                    help="drop a row whose epoch is more than this far from wall clock (0 "
+                         "disables). Rows from a live broker are ~1.5 s old; one that is not "
+                         "is mis-stamped -- the re-base case is in row_epoch().")
     ap.add_argument("--integ-max-age-s", type=float, default=90.0,
                     help="how stale the broker's dead-reckon integrity residual may be before "
                          "this falls back to reconstructing one (it refreshes ~30 s).")
@@ -268,6 +307,7 @@ def main():
     eph, eph_t, eph_probe_t = None, 0.0, 0.0
     frame0_check_t, frame0_warn_t = time.time(), 0.0
     last = {}   # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
+    dropped, dropped_t = {}, time.time()   # rows refused by row_epoch(), reported once a minute
     n = 0
     write_row = make_obs_writer(
         args.out, "%s [%s/%s]" % (args.band, args.sys, args.combiner))
@@ -279,6 +319,15 @@ def main():
 
     while True:
         t0 = time.time()
+        if dropped and t0 - dropped_t >= 60.0:
+            print("gnss_observables: %s [%s/%s] dropped in the last %.0f s: %s%s"
+                  % (args.band, args.sys, args.combiner, t0 - dropped_t,
+                     ", ".join("%s %d" % (k, v) for k, v in sorted(dropped.items())
+                               if not k.startswith("_")),
+                     (" (largest skew %+.0f s: a stale hop, e.g. the previous F-engine "
+                      "session's right after a re-base)" % dropped["_skew_max"])
+                     if "_skew_max" in dropped else ""), file=sys.stderr)
+            dropped, dropped_t = {}, t0
         status = _get("%s/%s/get_status" % (args.url, args.combiner))
         dets = _get("%s/%s/get_detections" % (args.url, args.search)) or []
         det_snr = {int(d["prn"]): d.get("snr") for d in dets if "prn" in d}
@@ -372,17 +421,20 @@ def main():
                 # (and wrong) instant: pipeline latency and emit jitter of 0.1 s smear a
                 # 2 kHz Doppler by ~200 cycles, and every geometry term is evaluated at the
                 # epoch, so the error would land straight in the ionosphere estimate.
-                hop = r.get(args.hop_key) or r.get("pow_hop") or 0
-                if frame0 and hop:
-                    # EXACT: an integer hop count off the F-engine's own counter, scaled by
-                    # two integers. Never (t_now - utc0) on two 1.79e9 floats.
-                    t_abs = hop * args.samples_per_hop / args.sample_rate_hz
-                    t_epoch = frame0 + t_abs
-                else:
-                    t_epoch = to_unix(r.get("utc") or 0.0)
-                    t_abs = (t_epoch - utc0) if utc0 else 0.0
-                if not (t_epoch > 1.0e9):
-                    continue                   # no capture anchor yet: an untagged row is junk
+                # EXACT on CHORD: an integer hop count off the F-engine's own counter, scaled
+                # by two integers -- never (t_now - utc0) on two 1.79e9 floats. No hop, or an
+                # epoch far from wall clock, is no row (row_epoch says why).
+                t_epoch, t_abs, hop, why = row_epoch(
+                    r, frame0, args.hop_key, args.samples_per_hop, args.sample_rate_hz,
+                    to_unix, utc0, now, args.max_epoch_skew_s)
+                if why is not None:
+                    dropped[why] = dropped.get(why, 0) + 1
+                    if why == "skew" and frame0 and hop:
+                        _sk = frame0 + hop * args.samples_per_hop / args.sample_rate_hz - now
+                        if abs(_sk) > abs(dropped.get("_skew_max", 0.0)):
+                            dropped["_skew_max"] = _sk
+                    last.pop(prn, None)        # never dedup a later good row against this one
+                    continue
                 v = None
                 # ⚠️ WHILE THE BROKER SAYS THE EPOCH IS SUSPECT, THERE IS NO GEOMETRY. A row
                 # evaluated at a wrong instant is not degraded geometry, it is a different
