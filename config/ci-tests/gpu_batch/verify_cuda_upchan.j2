@@ -64,6 +64,11 @@ upchan_max_num_channels: {{ upchan_max_num_channels }}
 Fmin: 0
 Fmax: upchan_max_num_channels
 
+# The largest upchannelization factor of the run. Choosing it larger than `upchan_factor`
+# makes both chains skip (num_taps-1) * (64-16) / 2 = 72 input samples at startup, so that
+# this test checks that they skip the same samples and label their output the same way.
+max_upchannelization_factor: 64
+
 # `buffer_depth` is the number of in-flight cudaProcess command instances. Every host
 # buffer a cudaProcess touches must have at least that many frames: cudaCopyToRingbuffer
 # and friends index their frame as `gpu_frame_id % in_buffer->num_frames`, so with fewer

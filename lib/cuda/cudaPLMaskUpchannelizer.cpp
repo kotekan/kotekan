@@ -235,6 +235,19 @@ cudaEvent_t cudaPLMaskUpchannelizer::execute(cudaPipelineState& /*pipestate*/,
         const auto& out_meta = pl_upchannelized_expanded_mask.get_metadata();
         out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
                                              * upchannelization_factor);
+        // Output bit `tbar` covers input bits [U * tbar, U * tbar + M * U). Timestamps point to
+        // the beginning of a sample, so the output sample centred on this window begins at input
+        // sample `U * tbar + (M-1) * U / 2`.
+        //
+        // TODO: Unlike the voltage upchannelizers, this kernel does not (yet) skip input samples
+        // at startup to align all upchannelization factors (`max_upchannelization_factor`): its
+        // input ring is addressed in 64-sample words. Its output is therefore labelled correctly,
+        // but its samples are offset from the upchannelized voltages' by
+        // `(M-1) * (max_upchannelization_factor - U) / 2` input samples.
+        if (in_meta->has_fpga_seq_num())
+            out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num()
+                                       + (cuda_number_of_taps - 1) * upchannelization_factor / 2
+                                             * in_meta->get_time_downsampling_fpga());
     }
 
     kotekan::uint1x8_t* const in_memory = pl_expanded_mask.get_ndarray().data();
