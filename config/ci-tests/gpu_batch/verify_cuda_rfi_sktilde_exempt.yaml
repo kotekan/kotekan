@@ -4,7 +4,7 @@
 # verify_cuda_rfi_sktilde_exempt.yaml
 #
 # Config to test the cuda RFI SKtilde kernel & wrapper with channels EXEMPT from
-# first-stage excision: rfi_mu_max is set so low that every sample is flagged, so the
+# first-stage excision: the SK sigma threshold is so tight that every sample is flagged, so the
 # produced RFI mask must be all-bad except in the exempt channels, where it must be
 # all-good; the CPU reference applies the same exemption. The SKtilde statistics must
 # still match the CPU simulation in every channel.
@@ -44,11 +44,11 @@ bf_mask_lifetime_in_samples: 4 * samples_per_data_set
 # The other thresholds are also set wide, because their effect is multiplicative.
 # A mu range of [2, 80] and min_good_frac of 0.25 only gives 60% good SK, the
 # rest are 0'd.
-rfi_sk_rfimask_sigmas: 2000.0
+rfi_sk_rfimask_sigmas: 1.0e-6  # So tight that every sample is flagged (the mask is all-bad where not exempt).
 rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
 rfi_feed_averaged_min_good_frac: 0.25   # Wide open (0.25) so most averaged feeds are good
 rfi_mu_min: 2.0       # Should be small (2) to let in many samples.
-rfi_mu_max: 1.0e-3    # Reject every sample, so the mask is all-bad where not exempt.
+rfi_mu_max: 80.0      # Should be big (80) to let in many samples.
 # Local channel indices exempt from excision (both the GPU wrapper and the CPU reference).
 rfi_first_stage_excision_exempt_local_freqs: [1, 3]
 
