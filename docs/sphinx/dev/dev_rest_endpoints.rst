@@ -41,7 +41,8 @@ The kotekan framework registers a number of points
 
 ``/metrics`` ``[GET]``
     Returns text containing `Prometheus <https://prometheus.io/>`_-formatted
-    metrics which serve a host of system state properties.
+    metrics which serve a host of system state properties. A metric is only
+    exported once it has been set or incremented.
 
 
 Per-stage
