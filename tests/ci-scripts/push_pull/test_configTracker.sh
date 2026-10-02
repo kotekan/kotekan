@@ -49,73 +49,6 @@ mkdir -p "${CONFIG_OUT_DIR}"
 # which is where CONFIG_OUT_DIR is checked.
 cd "${KOTEKAN_BUILD_DIR}" || exit 1
 
-# Run three instances of kotekan in an A -> B -> C chain. This exercises both
-# steps of getUpstreamConfigs on instance 3:
-#   - step 1: fetches B's local config via /config_tracker_local
-#   - step 2: discovers and fetches A's config via B's upstream-hashes index
-"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_1.yaml" &
-KOTEKAN_PID_1=$!
-"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_2.yaml" -b 127.0.0.1:12748 &
-KOTEKAN_PID_2=$!
-"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_3.yaml" -b 127.0.0.1:12848 &
-KOTEKAN_PID_3=$!
-
-# Allow some time for kotekan to start and the chain to converge (frames must
-# flow A -> B and trigger B -> A config fetch, then frames B -> C and trigger
-# C -> B config fetch, including the upstream-by-hash step).
-sleep 3
-
-# Kill kotekan processes, make sure they exit cleanly.
-kill $KOTEKAN_PID_1
-wait $KOTEKAN_PID_1
-EXIT_STATUS_1=$?
-kill $KOTEKAN_PID_2
-wait $KOTEKAN_PID_2
-EXIT_STATUS_2=$?
-kill $KOTEKAN_PID_3
-wait $KOTEKAN_PID_3
-EXIT_STATUS_3=$?
-
-sleep 1 # Wait a moment to ensure output is flushed
-
-ERROR=0
-
-# Print exit statuses
-echo "kotekan instance 1 exit status: $EXIT_STATUS_1"
-echo "kotekan instance 2 exit status: $EXIT_STATUS_2"
-echo "kotekan instance 3 exit status: $EXIT_STATUS_3"
-# Exit with error if any instance did not exit cleanly
-if [ $EXIT_STATUS_1 -ne 0 ] || [ $EXIT_STATUS_2 -ne 0 ] || [ $EXIT_STATUS_3 -ne 0 ]; then
-    echo "One or more kotekan instances did not exit cleanly!"
-    ERROR=1
-fi
-
-# Verify that the config writer (on instance 3) produced exactly three JSON
-# files:
-#   local.json              -- instance 3's own (local) config; identity-by-content
-#   127.0.0.1_12748.json    -- B's local config, fetched by C's bufferRecv via
-#                              /config_tracker_local and re-keyed under
-#                              (client_ip, upstream_rest_port) = (127.0.0.1, 12748)
-#                              (step 1)
-#   127.0.0.1_12048.json    -- A's config, discovered via B's upstream-hashes
-#                              index and fetched as
-#                              /config_tracker_upstream_configs?hash=...
-#                              (step 2)
-if [ "$(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)" -ne 3 ]; then
-    echo "Expected 3 JSON files in ${CONFIG_OUT_DIR}, found $(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)"
-    ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null
-    ERROR=1
-fi
-
-# Prune node/code-dependent lines from json output before comparing
-for file in "${CONFIG_OUT_DIR}"/*.json; do
-    # Remove lines with "kotekan_build_branch", "kotekan_git_commit_hash", "kotekan_version", "kotekan_cmake_options"
-    sed -i '/"kotekan_build_branch":/d' "$file"
-    sed -i '/"kotekan_git_commit_hash":/d' "$file"
-    sed -i '/"kotekan_version":/d' "$file"
-    sed -i '/"kotekan_cmake_options":/d' "$file"
-done
-
 # Compare files against expected md5 sums.
 #
 # NOTE: these literals must be regenerated whenever the canonical
@@ -149,20 +82,118 @@ check_file_hash() {
 
 # Instance 3's own (local) config
 EXPECTED_LOCAL_HASH="0ea7c33c609614b8dc414d6270fcb241"
-if ! check_file_hash "${CONFIG_OUT_DIR}/local.json" "$EXPECTED_LOCAL_HASH"; then
-    ERROR=1
-fi
-
 # B's local config as seen by C (step 1, re-keyed under 127.0.0.1:12748)
 EXPECTED_B_HASH="7f4de78da3e74a9c31e0ba312b8d4844"
-if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12748.json" "$EXPECTED_B_HASH"; then
-    ERROR=1
-fi
-
 # A's config, discovered via B's upstream-hashes (step 2; B already had A
 # stored under 127.0.0.1:12048, and C trusts that key transitively).
 EXPECTED_A_HASH="998b28f455d99bfde5f4eb57ad5b1b2b"
-if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12048.json" "$EXPECTED_A_HASH"; then
+
+# Verify that the config writer (on instance 3) produced exactly three JSON
+# files:
+#   local.json              -- instance 3's own (local) config; identity-by-content
+#   127.0.0.1_12748.json    -- B's local config, fetched by C's bufferRecv via
+#                              /config_tracker_local and re-keyed under
+#                              (client_ip, upstream_rest_port) = (127.0.0.1, 12748)
+#                              (step 1)
+#   127.0.0.1_12048.json    -- A's config, discovered via B's upstream-hashes
+#                              index and fetched as
+#                              /config_tracker_upstream_configs?hash=...
+#                              (step 2)
+# Sets ERROR=1 on any mismatch; $1 names the run in the messages.
+check_outputs() {
+    local label="$1"
+    local n_files
+    n_files="$(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)"
+    if [ "${n_files}" -ne 3 ]; then
+        echo "${label}: expected 3 JSON files in ${CONFIG_OUT_DIR}, found ${n_files}"
+        ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null
+        ERROR=1
+    fi
+
+    # Prune node/code-dependent lines from json output before comparing
+    for file in "${CONFIG_OUT_DIR}"/*.json; do
+        [ -f "$file" ] || continue
+        # Remove lines with "kotekan_build_branch", "kotekan_git_commit_hash", "kotekan_version", "kotekan_cmake_options"
+        sed -i '/"kotekan_build_branch":/d' "$file"
+        sed -i '/"kotekan_git_commit_hash":/d' "$file"
+        sed -i '/"kotekan_version":/d' "$file"
+        sed -i '/"kotekan_cmake_options":/d' "$file"
+    done
+
+    if ! check_file_hash "${CONFIG_OUT_DIR}/local.json" "$EXPECTED_LOCAL_HASH"; then
+        echo "${label}: local config mismatch"
+        ERROR=1
+    fi
+    if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12748.json" "$EXPECTED_B_HASH"; then
+        echo "${label}: B's config mismatch"
+        ERROR=1
+    fi
+    if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12048.json" "$EXPECTED_A_HASH"; then
+        echo "${label}: A's config mismatch"
+        ERROR=1
+    fi
+}
+
+ERROR=0
+
+# Run three instances of kotekan in an A -> B -> C chain. This exercises both
+# steps of getUpstreamConfigs on instance 3:
+#   - step 1: fetches B's local config via /config_tracker_local
+#   - step 2: discovers and fetches A's config via B's upstream-hashes index
+"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_1.yaml" &
+KOTEKAN_PID_1=$!
+"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_2.yaml" -b 127.0.0.1:12748 &
+KOTEKAN_PID_2=$!
+"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_3.yaml" -b 127.0.0.1:12848 &
+KOTEKAN_PID_3=$!
+
+# Allow some time for kotekan to start and the chain to converge (frames must
+# flow A -> B and trigger B -> A config fetch, then frames B -> C and trigger
+# C -> B config fetch, including the upstream-by-hash step).
+sleep 3
+
+# Phase 1: stop C alone and check what it wrote. A and B keep running.
+kill $KOTEKAN_PID_3
+wait $KOTEKAN_PID_3
+EXIT_STATUS_3=$?
+
+sleep 1 # Wait a moment to ensure output is flushed
+check_outputs "first run"
+
+# Phase 2: restart C while A and B keep running. B's bufferSend reconnects
+# (reconnect_time: 1) and must flag a config tracker update on the new
+# connection although its own tracker hash has not changed: the restarted C
+# starts with an empty tracker and has no other way to learn B's or A's
+# config. Without that flag only local.json appears here.
+rm -f "${CONFIG_OUT_DIR}"/*.json
+"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_3.yaml" -b 127.0.0.1:12848 &
+KOTEKAN_PID_3B=$!
+
+sleep 3
+
+# Kill the remaining kotekan processes, make sure they exit cleanly.
+kill $KOTEKAN_PID_1
+wait $KOTEKAN_PID_1
+EXIT_STATUS_1=$?
+kill $KOTEKAN_PID_2
+wait $KOTEKAN_PID_2
+EXIT_STATUS_2=$?
+kill $KOTEKAN_PID_3B
+wait $KOTEKAN_PID_3B
+EXIT_STATUS_3B=$?
+
+sleep 1 # Wait a moment to ensure output is flushed
+check_outputs "after restarting instance 3"
+
+# Print exit statuses
+echo "kotekan instance 1 exit status: $EXIT_STATUS_1"
+echo "kotekan instance 2 exit status: $EXIT_STATUS_2"
+echo "kotekan instance 3 exit status: $EXIT_STATUS_3"
+echo "kotekan instance 3 (restarted) exit status: $EXIT_STATUS_3B"
+# Exit with error if any instance did not exit cleanly
+if [ $EXIT_STATUS_1 -ne 0 ] || [ $EXIT_STATUS_2 -ne 0 ] || [ $EXIT_STATUS_3 -ne 0 ] \
+    || [ $EXIT_STATUS_3B -ne 0 ]; then
+    echo "One or more kotekan instances did not exit cleanly!"
     ERROR=1
 fi
 
@@ -171,5 +202,5 @@ if [ $ERROR -ne 0 ]; then
     exit 1
 fi
 
-echo "configTrackerWriter test passed: three matching config files found in ${CONFIG_OUT_DIR}."
+echo "configTrackerWriter test passed: three matching config files found in ${CONFIG_OUT_DIR}, before and after restarting instance 3."
 exit 0
