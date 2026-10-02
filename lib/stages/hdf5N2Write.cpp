@@ -1282,6 +1282,18 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
 
     _buffer->register_consumer(unique_name);
 
+    // The file is written assuming its elements are in input_order; the buffer's
+    // descriptor declares the order the producer used (and, behind a bufferRecv,
+    // the order every sender declared), so the two must agree.
+    {
+        const auto n2_desc = _buffer->require_frame_desc<kotekan::N2FrameDesc>();
+        if (n2_desc->get_element_order() != _input_order)
+            FATAL_ERROR("in_buf {:s} declares element_order {:s}, but input_order is {:s}",
+                        _buffer->buffer_name,
+                        ElementOrder_to_string(n2_desc->get_element_order()),
+                        ElementOrder_to_string(_input_order));
+    }
+
     if (_bad_feed_mask_buf != nullptr) {
         _bad_feed_mask_buf->register_consumer(unique_name);
         const std::shared_ptr<const kotekan::GenericNDArray> mask_desc =
