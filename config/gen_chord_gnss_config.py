@@ -2610,39 +2610,21 @@ def render_stock_template(path):
     return yaml.safe_load(env.get_template(f).render({}))
 
 
-def _ssh_or_local(path, timeout):
-    """Read `host:/path` over ssh (BatchMode) or a local path."""
-    import subprocess
-    host, _, remote = path.partition(":")
-    if remote:
-        return subprocess.run(["ssh", "-o", "BatchMode=yes", host, "cat " + remote],
-                              capture_output=True, timeout=timeout, check=True).stdout.decode()
-    return open(path).read()
-
-
 def choco_bad_inputs(args, timeout=20.0):
     """bffs's current bad-input list as kotekan's updatable block, or None. Returns
     (block, source) with the block in the shape a node's /updatable_config/bad_inputs holds.
 
-    bffs stores its list as FEED LABELS; what it POSTs is their positions in the label list it
-    stores beside them (the flat [P][D] input index), with start_time = its update time plus
-    choco's sync_delay. Rebuilt the same way here, so a node started from this config holds the
-    same block a stock node holds (stock_parity.py --live checks exactly that).
+    The translation (bffs's feed labels -> input indices, start_time = its update time plus
+    choco's sync_delay) lives in config/bffs_bad_inputs.py, shared with
+    scripts/gnss/bad_inputs_cron.sh, so a node started from this config and a running node the
+    cron keeps current hold the same block a stock node does (stock_parity.py --live checks).
     """
-    state = getattr(args, "bffs_state", None) or "choco:/var/lib/choco/bffs/state.json"
-    conf = getattr(args, "bffs_conf", None) or "choco:/etc/choco/bffs.yaml"
+    import bffs_bad_inputs
     try:
-        st = json.loads(_ssh_or_local(state, timeout))
-        labels, bad = list(st["labels"]), list(st["bad_inputs"])
-        missing = [lb for lb in bad if lb not in labels]
-        if missing:
-            raise ValueError("labels not in bffs's label list: %s" % missing[:5])
-        delay = float((yaml.safe_load(_ssh_or_local(conf, timeout)) or {})
-                      .get("choco", {}).get("sync_delay", 0.0))
-        return ({"bad_inputs": sorted(labels.index(lb) for lb in bad),
-                 "kotekan_update_endpoint": "json",
-                 "start_time": float(st["updated"]) + delay,
-                 "update_id": str(st["update_id"])}, state)
+        body, src = bffs_bad_inputs.fetch(
+            getattr(args, "bffs_state", None) or bffs_bad_inputs.STATE,
+            getattr(args, "bffs_conf", None) or bffs_bad_inputs.CONF, timeout)
+        return dict(body, kotekan_update_endpoint="json"), src
     except Exception as e:
         print("  bad inputs bffs source unavailable (%s: %s) -- asking the stock nodes"
               % (type(e).__name__, e), file=sys.stderr)

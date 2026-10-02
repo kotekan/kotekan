@@ -151,6 +151,10 @@ diffs the stock half against the render and fails on any difference not declared
 `gen_fleet.py` runs it on every write and `--check`, and
 `stock_parity.py <config> --live cx47` checks the stock half, live values included, against a running
 stock node. When production's template changes, take develop's copy, regenerate, and check.
+**choco has our six in maintenance mode** (it would also push configs we must not have overwritten),
+so it pushes nothing to them. Two gnss cron jobs stand in for it: `scripts/gnss/eop_cron.sh` (hourly at :17,
+the EOP table) and `scripts/gnss/bad_inputs_cron.py` (every 5 min, bffs's bad-input list, pushed only when it
+changes). Logs: `/var/tmp/gnss-logs/{eop,bad_inputs}_cron.log`.
 **recv1 remembers each sender's config by host:port, and new content from the same node is fatal
 there** (ConfigTracker). After any node-config change, restart the nodes first and then recv1 (Jim).
 
