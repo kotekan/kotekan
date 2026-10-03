@@ -150,6 +150,10 @@ struct GraphNode {
     /// Graphviz node attributes (shape, style, color, ...) other than the label.
     std::map<std::string, std::string> attrs;
 
+    /// Set on a buffer whose data flow another node already draws (a host ring
+    /// tracking a GPU region), so its producer/consumer edges are left out.
+    bool flow_drawn_elsewhere = false;
+
     /// Convenience: append a label line, ignoring empty strings.
     GraphNode& add_line(const std::string& line);
 

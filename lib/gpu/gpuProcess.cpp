@@ -451,6 +451,8 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         // A ring region is tracked by a host RingBuffer, whose node the graph
         // already has as a buffer: mark that node as the ring's signal and tie
         // the two together, so it is not mistaken for data living on the host.
+        // The region's edges show where the data goes, so the ring drops its
+        // own; drawing both roughly triples the crossings on a large pipeline.
         std::string signal;
         for (auto& command : commands)
             if (signal.empty())
@@ -463,10 +465,10 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
                 ring.add_line(mark);
                 ring.set_attr("fillcolor",
                               kotekan::graph_style(kotekan::GraphCategory::Memory).fill);
+                ring.flow_drawn_elsewhere = true;
                 graph.add_edge(signal, mem_prefix + buffer_name)
                     .set_attr("style", "dashed")
-                    .set_attr("arrowhead", "none")
-                    .set_attr("constraint", "false");
+                    .set_attr("arrowhead", "none");
             }
         }
 
