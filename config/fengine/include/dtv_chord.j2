@@ -1,0 +1,105 @@
+# -*-yaml-*-
+
+# CHORD PilotProxy detector; see docs/sphinx/dev/dev_pilotproxy_testing.rst for bundle setup.
+# Bind local coarse_freq IDs to runtime-bundle chord_channel_id entries.
+# Non-pilot channels emit zero mask/power products.
+# One 8192-sample block is 41.94304 ms at CHORD's 195.3125 kHz sample rate:
+# 128 detector windows of 64 samples, aligned with one n2k integration.
+
+
+################################################################################
+
+# Buffers
+
+host_dtv_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [num_frequencies]
+    quantity_name: "dtv_mask"
+    dimnames: ["F"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+host_dtv_powers_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [num_frequencies, 3]
+    quantity_name: "dtv_powers"
+    dimnames: ["F", "W"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+run_dtv_detector:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        out_buffers:
+            host_dtv_mask: host_dtv_mask_buffer
+            host_dtv_powers: host_dtv_powers_buffer
+        commands:
+        - name: cudaPilotProxyDetector
+          voltage_name: voltage
+          dtv_mask_name: dtv_mask
+          dtv_powers_name: dtv_powers
+          samples_per_detector_frame: 8192
+          # Use calibrated fine CFAR decisions on every bound pilot channel.
+          decision_mode: auto
+          require_fine_calibration: true
+          pilot_profiles_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/pilot_profiles.json
+          weights_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/weights.bin
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: dtv_mask_buffer
+          out_buf: host_dtv_mask
+        - name: cudaOutputData
+          gpu_mem: dtv_powers_buffer
+          out_buf: host_dtv_powers
+
+# Both correlation and valid-sample counts must consume this opt-in mask.
+{% if dtv_apply_mask|default(false) %}
+host_dtv_RFImask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint1x8
+    extents: [num_times / 1024, num_frequencies, 128]
+    quantity_name: "RFImask"
+    dimnames: ["T8hi128", "F", "T8lo128"]
+    dimscalings: [1024, 1, 8]
+    metadata_pool: main_pool
+
+host_dtv_RFImask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_frequencies * num_times / 8
+    metadata_pool: main_pool
+
+run_combine_dtv_mask:
+    kotekan_stage: DtvRfiMask
+    num_local_freq: num_frequencies
+    rfi_buf: host_rfi_RFImask_buffer
+    dtv_buf: host_dtv_mask_buffer
+    out_buf: host_dtv_RFImask_buffer
+
+run_send_dtv_RFImask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_dtv_RFImask_buffer: host_dtv_RFImask_buffer
+        out_buffers:
+            host_dtv_RFImask_ringbuffer: host_dtv_RFImask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_frequencies * num_times / 8
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_dtv_RFImask_buffer
+          signal_buf: host_dtv_RFImask_ringbuffer
+          gpu_mem_output: dtv_RFImask_buffer
+{% endif %}
