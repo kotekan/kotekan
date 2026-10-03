@@ -4,16 +4,14 @@
   Included by pathfinder.j2 (X-engine) and recv.j2 (receiver) so both label the same
   element axis from one dish_inputs table; the receiver's hdf5N2Write would write files
   mislabeled if its table ever diverged from the X-engine's at the same connected count.
-  Uses the includer's sampling_rate_MHz, fft_length, nyquist_zone, science_min_freq_MHz
-  and science_max_freq_MHz.
 -#}
 telescope:
     name: CHORDTelescope
-    sampling_rate_MHz: {{ sampling_rate_MHz }}
-    fft_length: {{ fft_length }}
-    nyquist_zone: {{ nyquist_zone }}
-    min_science_freq_MHz: {{ science_min_freq_MHz }}
-    max_science_freq_MHz: {{ science_max_freq_MHz }}
+    sampling_rate_MHz: 3200.0
+    fft_length: 16384
+    nyquist_zone: 1
+    min_science_freq_MHz: 300
+    max_science_freq_MHz: 1500
 
     origin_itrs_lat_deg: 49.32075144444
     origin_itrs_lon_deg: -119.62081125
