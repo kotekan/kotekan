@@ -7,7 +7,8 @@ SRC="${GITHUB_WORKSPACE:-$(cd "$(dirname "$0")/../.." && pwd)}"
 export PYTHONPATH="$SRC/python${PYTHONPATH:+:$PYTHONPATH}"
 python3 "$SRC/tools/check_vendored_pilotproxy.py" --offline
 PP_COMMIT="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["upstream_commit"])' "$SRC/external/pilotproxy/VENDOR.json")"
-python3 -m pip install --upgrade "git+https://github.com/WVURAIL/pilot-proxy@${PP_COMMIT}"
+PP_REPO="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["upstream_repo"])' "$SRC/external/pilotproxy/VENDOR.json")"
+python3 -m pip install --upgrade "git+${PP_REPO}@${PP_COMMIT}"
 PP_CONFIGS="$(python3 -c 'from pilot_proxy.paths import CONFIGS_DIR; print(CONFIGS_DIR)')"
 PP_BUNDLE="$BUILD/pilotproxy_bundle"
 pilot-proxy export-runtime-weight-bundle \

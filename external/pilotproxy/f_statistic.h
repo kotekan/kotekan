@@ -685,6 +685,37 @@ void FStat_Compute_FusedFineMask_U64(
 int FStat_Supports_FusedFineMask(void);
 
 /**
+ * @brief Fine decision v1 with explicit rank-support outputs for every batch entry.
+ *
+ * Same mask and power arithmetic as FStat_Compute_FusedFineMask_U64. The required
+ * device int32[batch] outputs d_rank_valid_out and d_n_bulk_out receive
+ * (1, usable bulk count) when count > cfar_rank and (0, count) otherwise.
+ * Invalid rank support still has the legacy mask zero; consumers must use the
+ * separate validity output before treating a zero mask as a valid keep.
+ * These outputs describe positive-denominator rank support only, not input
+ * packet loss, feed health, or physical calibration. No designated-bin support
+ * rule is added. Outputs are initialized to -1 before a successful launch.
+ * All output regions must be distinct and remain live until stream completion.
+ */
+void FStat_Compute_FusedFineMaskWithSupport_U64(
+    void* handle,
+    const InputType* w_in,
+    int anchor_bin,
+    int designated_half_width,
+    const unsigned long long* bulk_mask_words,
+    int cfar_rank,
+    unsigned long long multiplier_q16,
+    unsigned long long* d_fine_power_out,
+    int* d_mask_out,
+    int* d_rank_valid_out,
+    int* d_n_bulk_out,
+    unsigned long long* d_power_out,
+    int* d_row_sums_out);
+
+/** @brief Return 1 when the additive rank-support entry point is available. */
+int FStat_Supports_FusedFineMaskWithSupport(void);
+
+/**
  * @brief Query the frozen fine-reduction geometry (128 / 2 / 256).
  *
  * @note Any parameter can be NULL if not needed.

@@ -1430,6 +1430,8 @@ kernel_fused_fine(
     unsigned long long* __restrict__ PowerTerms,
     int*             __restrict__ RowSumsTap,
     int*             __restrict__ MaskOut,
+    int*             __restrict__ RankValidOut,
+    int*             __restrict__ BulkCountOut,
     int anchor_bin,
     int designated_half_width,
     unsigned long long bulk_mask_w0,
@@ -1704,6 +1706,8 @@ kernel_fused_fine(
             total += s_int[i];
         }
         s_nbulk = total;
+        if (RankValidOut != nullptr) RankValidOut[b] = total > cfar_rank ? 1 : 0;
+        if (BulkCountOut != nullptr) BulkCountOut[b] = total;
     }
     __syncthreads();
     if (s_nbulk <= cfar_rank) {
@@ -2621,6 +2625,7 @@ void FStat_Compute_FusedFine_U64(
         d_power_out,
         d_row_sums_out,
         NULL,            /* no decision epilogue: core 2.2.0 behavior */
+        NULL, NULL,      /* no rank-support diagnostics */
         0, 0, 0ULL, 0ULL, 0ULL, 0ULL, 0, 0ULL,
         num_streams,
         h->detector_rows_per_block,
@@ -2637,7 +2642,7 @@ int FStat_Supports_FusedFine(void)
 /**
  * See f_statistic.h for the full contract.
  */
-void FStat_Compute_FusedFineMask_U64(
+static void fstat_compute_fused_fine_mask(
     void* handle,
     const InputType* w_in,
     int anchor_bin,
@@ -2647,6 +2652,8 @@ void FStat_Compute_FusedFineMask_U64(
     unsigned long long multiplier_q16,
     unsigned long long* d_fine_power_out,
     int* d_mask_out,
+    int* d_rank_valid_out,
+    int* d_n_bulk_out,
     unsigned long long* d_power_out,
     int* d_row_sums_out)
 {
@@ -2708,6 +2715,12 @@ void FStat_Compute_FusedFineMask_U64(
      * at zero for every launch. */
     CUDA_CHECK(cudaMemsetAsync(
         d_mask_out, 0, static_cast<size_t>(h->batch) * sizeof(int), h->stream));
+    if (d_rank_valid_out != nullptr) {
+        CUDA_CHECK(cudaMemsetAsync(d_rank_valid_out, 0xff,
+            static_cast<size_t>(h->batch) * sizeof(int), h->stream));
+        CUDA_CHECK(cudaMemsetAsync(d_n_bulk_out, 0xff,
+            static_cast<size_t>(h->batch) * sizeof(int), h->stream));
+    }
     if (d_power_out != nullptr) {
         const size_t power_bytes = static_cast<size_t>(h->batch)
             * FSTAT_NUM_WEIGHT_TERMS * sizeof(unsigned long long);
@@ -2723,6 +2736,8 @@ void FStat_Compute_FusedFineMask_U64(
         d_power_out,
         d_row_sums_out,
         d_mask_out,
+        d_rank_valid_out,
+        d_n_bulk_out,
         anchor_bin,
         designated_half_width,
         bulk_mask_words[0],
@@ -2736,6 +2751,39 @@ void FStat_Compute_FusedFineMask_U64(
         h->batch);
     CUDA_CHECK_LAST();
     CUDA_CHECK_SYNC(h->stream);
+}
+
+void FStat_Compute_FusedFineMask_U64(
+    void* handle, const InputType* w_in, int anchor_bin, int designated_half_width,
+    const unsigned long long* bulk_mask_words, int cfar_rank,
+    unsigned long long multiplier_q16, unsigned long long* d_fine_power_out,
+    int* d_mask_out, unsigned long long* d_power_out, int* d_row_sums_out)
+{
+    fstat_compute_fused_fine_mask(handle, w_in, anchor_bin, designated_half_width,
+        bulk_mask_words, cfar_rank, multiplier_q16, d_fine_power_out, d_mask_out,
+        nullptr, nullptr, d_power_out, d_row_sums_out);
+}
+
+void FStat_Compute_FusedFineMaskWithSupport_U64(
+    void* handle, const InputType* w_in, int anchor_bin, int designated_half_width,
+    const unsigned long long* bulk_mask_words, int cfar_rank,
+    unsigned long long multiplier_q16, unsigned long long* d_fine_power_out,
+    int* d_mask_out, int* d_rank_valid_out, int* d_n_bulk_out,
+    unsigned long long* d_power_out, int* d_row_sums_out)
+{
+    clear_last_error();
+    if (d_rank_valid_out == nullptr || d_n_bulk_out == nullptr) {
+        record_api_error("rank validity and bulk count output pointers must be non-null.");
+        return;
+    }
+    fstat_compute_fused_fine_mask(handle, w_in, anchor_bin, designated_half_width,
+        bulk_mask_words, cfar_rank, multiplier_q16, d_fine_power_out, d_mask_out,
+        d_rank_valid_out, d_n_bulk_out, d_power_out, d_row_sums_out);
+}
+
+int FStat_Supports_FusedFineMaskWithSupport(void)
+{
+    return 1;
 }
 
 int FStat_Supports_FusedFineMask(void)

@@ -31,6 +31,16 @@ host_dtv_powers_buffer:
     dimscalings: [1, 1]
     metadata_pool: main_pool
 
+host_dtv_fine_support_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int32
+    extents: [num_frequencies, 2]
+    quantity_name: "dtv_fine_support"
+    dimnames: ["F", "S"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+
 ################################################################################
 
 # Stages
@@ -44,11 +54,14 @@ run_dtv_detector:
         out_buffers:
             host_dtv_mask: host_dtv_mask_buffer
             host_dtv_powers: host_dtv_powers_buffer
+            host_dtv_fine_support: host_dtv_fine_support_buffer
         commands:
         - name: cudaPilotProxyDetector
           voltage_name: voltage
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
+          dtv_fine_support_name: dtv_fine_support
+          permanent_mask_freq_ids: {{ dtv_permanent_mask_freq_ids|default([]) }}
           samples_per_detector_frame: 8192
           # Use calibrated fine CFAR decisions on every bound pilot channel.
           decision_mode: auto
@@ -62,6 +75,9 @@ run_dtv_detector:
         - name: cudaOutputData
           gpu_mem: dtv_powers_buffer
           out_buf: host_dtv_powers
+        - name: cudaOutputData
+          gpu_mem: dtv_fine_support_buffer
+          out_buf: host_dtv_fine_support
 
 # Both correlation and valid-sample counts must consume this opt-in mask.
 {% if dtv_apply_mask|default(false) %}
@@ -85,6 +101,9 @@ run_combine_dtv_mask:
     num_local_freq: num_frequencies
     rfi_buf: host_rfi_RFImask_buffer
     dtv_buf: host_dtv_mask_buffer
+    fine_support_buf: host_dtv_fine_support_buffer
+    permanent_mask_freq_ids: {{ dtv_permanent_mask_freq_ids|default([]) }}
+    require_fine_freq_ids: {{ dtv_require_fine_freq_ids|default([]) }}
     out_buf: host_dtv_RFImask_buffer
 
 run_send_dtv_RFImask:

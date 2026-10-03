@@ -243,6 +243,7 @@ public:
         unsigned long long* d_numden = nullptr;
         unsigned char* d_mask_u8 = nullptr;
         int* d_mask_i32 = nullptr;
+        int* d_support = nullptr;
         CHECK_CUDA_ERROR(cudaMalloc(&d_ring, ring.size()));
         CHECK_CUDA_ERROR(cudaMalloc(&d_packed, packed_count));
         CHECK_CUDA_ERROR(cudaMalloc(&d_powers, NUM_TERMS * sizeof(unsigned long long)));
@@ -253,6 +254,7 @@ public:
         CHECK_CUDA_ERROR(cudaMalloc(&d_numden, 2 * sizeof(unsigned long long)));
         CHECK_CUDA_ERROR(cudaMalloc(&d_mask_u8, 1));
         CHECK_CUDA_ERROR(cudaMalloc(&d_mask_i32, sizeof(int)));
+        CHECK_CUDA_ERROR(cudaMalloc(&d_support, 2 * sizeof(int)));
         CHECK_CUDA_ERROR(cudaMemcpy(d_ring, ring.data(), ring.size(), cudaMemcpyHostToDevice));
 
         void* const handle = FStat_Create(d_packed, nullptr, int(detector_rows));
@@ -417,6 +419,23 @@ public:
                                         calibration.anchor, calibration.half_width,
                                         calibration.rank, calibration.mult_q16, mask_gpu_i32,
                                         ref.mask, ref.n_bulk, int(ref.valid));
+                        const int legacy_mask = mask_gpu_i32;
+                        FStat_Compute_FusedFineMaskWithSupport_U64(
+                            handle, weights.data(), calibration.anchor, calibration.half_width,
+                            words.data(), calibration.rank, calibration.mult_q16, d_fine_powers,
+                            d_mask_i32, d_support, d_support + 1, nullptr, nullptr);
+                        CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+                        std::array<int, 2> support;
+                        CHECK_CUDA_ERROR(cudaMemcpy(support.data(), d_support, 2 * sizeof(int),
+                                                    cudaMemcpyDeviceToHost));
+                        CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu_i32, d_mask_i32, sizeof(int),
+                                                    cudaMemcpyDeviceToHost));
+                        if (mask_gpu_i32 != legacy_mask || support[0] != int(ref.valid)
+                            || support[1] != ref.n_bulk)
+                            FATAL_ERROR("fine support mismatch: gpu=({:d},{:d}) cpu=({:d},{:d}) "
+                                        "mask={:d} legacy={:d}",
+                                        support[0], support[1], int(ref.valid), ref.n_bulk,
+                                        mask_gpu_i32, legacy_mask);
                     }
 
                     ++cases;
@@ -433,6 +452,7 @@ public:
         CHECK_CUDA_ERROR(cudaFree(d_numden));
         CHECK_CUDA_ERROR(cudaFree(d_mask_u8));
         CHECK_CUDA_ERROR(cudaFree(d_mask_i32));
+        CHECK_CUDA_ERROR(cudaFree(d_support));
 
         INFO("testPilotProxyDetector: all GPU-vs-CPU products matched over {:d} cases.", cases);
         TEST_PASSED();

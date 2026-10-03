@@ -56,9 +56,14 @@
  * stream, so existing callers are unchanged). The handle-less
  * FStat_Compute_FinePowers_U64 stays on the default stream. Existing
  * entry points and their output are unchanged.
+ *
+ * 2.5.0: adds FStat_Compute_FusedFineMaskWithSupport_U64 and its capability
+ * probe. Separate rank-valid and usable-bulk-count outputs identify invalid
+ * fine support at full rate without changing the legacy mask or power outputs.
+ * Rank support does not establish input health or physical calibration.
  */
 #define FSTAT_CORE_VERSION_MAJOR 2
-#define FSTAT_CORE_VERSION_MINOR 4
+#define FSTAT_CORE_VERSION_MINOR 5
 #define FSTAT_CORE_VERSION_PATCH 0
 
 /* ===========================================================================

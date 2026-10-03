@@ -16,6 +16,7 @@
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json
 
+#include <algorithm>          // for find
 #include <array>              // for array
 #include <bitset>             // for bitset
 #include <cassert>            // for assert
@@ -387,6 +388,14 @@ private:
  *                                  buffer (default "dtv_mask").
  * @conf dtv_powers_name            String. Base name of the powers output
  *                                  buffer (default "dtv_powers").
+ * @conf dtv_fine_support_name      String. Optional int32[F,2] output (default empty).
+ *                                  Columns are rank_valid and n_bulk. (-1,-1) means
+ *                                  not evaluated; (0,n) means insufficient rank
+ *                                  support; (1,n) means valid rank support. This
+ *                                  does not certify input health or calibration.
+ * @conf permanent_mask_freq_ids    List of unique receiver coarse_freq IDs for
+ *                                  the reject-all limit. These bypass detector
+ *                                  evaluation; DtvRfiMask applies their mask.
  * @conf pilot_profiles_path        String. Runtime bundle pilot_profiles.json.
  * @conf weights_path               String. Runtime bundle weights.bin.
  * @conf decision_mode              String. "auto" (default; fine mask for
@@ -426,11 +435,13 @@ private:
     const int num_dishes;
     const std::string decision_mode; // "auto" or "coarse"
     const bool require_fine_calibration;
+    std::set<int> permanent_mask_freq_ids;
 
     // Kotekan buffer names
     const std::string voltage_name;
     const std::string dtv_mask_name;
     const std::string dtv_powers_name;
+    const std::string dtv_fine_support_name; // empty preserves the legacy output contract
 
     // Derived geometry
     const int num_streams;             // P * D
@@ -442,6 +453,7 @@ private:
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayBuffer<std::int8_t, 1> dtv_mask;
     NDArrayBuffer<std::uint64_t, 2> dtv_powers;
+    std::unique_ptr<NDArrayBuffer<std::int32_t, 2>> dtv_fine_support;
 };
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaPilotProxyDetector, cudaPilotProxyDetectorState);
@@ -475,6 +487,8 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     voltage_name(config.get_default<std::string>(unique_name, "voltage_name", "voltage")),
     dtv_mask_name(config.get_default<std::string>(unique_name, "dtv_mask_name", "dtv_mask")),
     dtv_powers_name(config.get_default<std::string>(unique_name, "dtv_powers_name", "dtv_powers")),
+    dtv_fine_support_name(
+        config.get_default<std::string>(unique_name, "dtv_fine_support_name", "")),
     // Derived geometry
     num_streams(num_polarizations * num_dishes),
     detector_window_samples(query_detector_window_samples()),
@@ -496,6 +510,16 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
         FATAL_ERROR("decision_mode must be \"auto\" or \"coarse\"; got {:s}", decision_mode);
     if (require_fine_calibration && decision_mode != "auto")
         FATAL_ERROR("require_fine_calibration is only valid with decision_mode: \"auto\"");
+    const auto permanent = config.get_default<nlohmann::json>(
+        unique_name, "permanent_mask_freq_ids", nlohmann::json::array());
+    if (!permanent.is_array())
+        FATAL_ERROR("permanent_mask_freq_ids must be an array of receiver frequency IDs");
+    for (const auto& value : permanent) {
+        if (!value.is_number_integer() || value < 0 || value >= 12288)
+            FATAL_ERROR("permanent_mask_freq_ids must contain integer receiver IDs in [0,12288)");
+        if (!permanent_mask_freq_ids.insert(value.get<int>()).second)
+            FATAL_ERROR("permanent_mask_freq_ids must contain unique receiver IDs in [0,12288)");
+    }
 
     if (samples_per_detector_frame <= 0
         || samples_per_detector_frame % detector_window_samples != 0)
@@ -529,6 +553,15 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     voltage.register_consumer();
     dtv_mask.register_producer();
     dtv_powers.register_producer();
+    if (!dtv_fine_support_name.empty()) {
+        if (!FStat_Supports_FusedFineMaskWithSupport())
+            FATAL_ERROR("PilotProxy core does not provide fine rank-support outputs");
+        dtv_fine_support = std::make_unique<NDArrayBuffer<std::int32_t, 2>>(
+            dtv_fine_support_name, "dtv_fine_support",
+            std::array<std::ptrdiff_t, 2>{num_frequencies, 2}, std::array<std::string, 2>{"F", "S"},
+            std::array<std::ptrdiff_t, 2>{1, 1}, *this);
+        dtv_fine_support->register_producer();
+    }
 
     set_command_type(gpuCommandType::KERNEL);
 }
@@ -562,6 +595,10 @@ void cudaPilotProxyDetector::bind_first_frame(
                     "{:d}",
                     int(coarse_freq.size()), num_frequencies);
     state.bound_coarse_freq = coarse_freq;
+    for (const int id : permanent_mask_freq_ids)
+        if (std::find(coarse_freq.begin(), coarse_freq.end(), id) == coarse_freq.end())
+            FATAL_ERROR("permanent_mask_freq_ids contains receiver ID {:d} absent from this node",
+                        id);
 
     int fine_windows = 0;
     FStat_GetFineSpecs(&fine_windows, nullptr, nullptr);
@@ -569,6 +606,11 @@ void cudaPilotProxyDetector::bind_first_frame(
 
     int num_without_id = 0;
     for (int f = 0; f < num_frequencies; ++f) {
+        if (permanent_mask_freq_ids.count(coarse_freq[f])) {
+            INFO("PilotProxy: receiver ID {:d} uses the reject-all limit; detector not evaluated",
+                 coarse_freq[f]);
+            continue;
+        }
         for (const auto& profile : state.bundle_profiles) {
             if (profile.chord_channel_id < 0) {
                 // Counted once below; a bundle without chord ids cannot bind.
@@ -658,10 +700,21 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         metadata->set_time_downsampling_fpga(in_metadata->get_time_downsampling_fpga()
                                              * samples_per_detector_frame);
     }
+    if (dtv_fine_support) {
+        dtv_fine_support->set_metadata(in_metadata);
+        const auto metadata = dtv_fine_support->get_metadata();
+        metadata->set_fpga_seq_num(in_metadata->get_fpga_seq_num()
+                                   + block_start_sample
+                                         * in_metadata->get_time_downsampling_fpga());
+        metadata->set_time_downsampling_fpga(in_metadata->get_time_downsampling_fpga()
+                                             * samples_per_detector_frame);
+    }
 
     std::int8_t* const mask_memory = dtv_mask.get_ndarray().data();
     std::uint64_t* const powers_memory = dtv_powers.get_ndarray().data();
     const cudaStream_t kotekan_stream = device.getStream(cuda_stream_id);
+    std::int32_t* const support_memory =
+        dtv_fine_support ? dtv_fine_support->get_ndarray().data() : nullptr;
 
     // Non-pilot channels (and DISABLED nodes) report mask 0 / powers 0.
     CHECK_CUDA_ERROR(cudaMemsetAsync(
@@ -669,6 +722,11 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaMemsetAsync(powers_memory, 0,
                                      std::size_t(num_frequencies) * 3 * sizeof(std::uint64_t),
                                      kotekan_stream));
+    // (-1,-1) means no fine decision: unbound, disabled, or explicit coarse path.
+    if (support_memory)
+        CHECK_CUDA_ERROR(cudaMemsetAsync(support_memory, 0xff,
+                                         std::size_t(num_frequencies) * 2 * sizeof(std::int32_t),
+                                         kotekan_stream));
 
     if (state.run_state == State::RunState::disabled) {
         if (!state.logged_disabled) {
@@ -710,11 +768,23 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         std::uint64_t* const channel_powers = powers_memory + 3 * channel.freq_index;
         if (channel.use_fine_mask) {
             // Compute the fine CFAR decision and save coarse powers for validation.
-            FStat_Compute_FusedFineMask_U64(
-                channel.fstat_handle, weights, profile.anchor_bin, profile.designated_half_width,
-                profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
-                fine_power_scratch, mask_i32_scratch + i,
-                reinterpret_cast<unsigned long long*>(channel_powers), nullptr);
+            if (support_memory) {
+                // Rank support is not packet-loss or feed-health qualification.
+                FStat_Compute_FusedFineMaskWithSupport_U64(
+                    channel.fstat_handle, weights, profile.anchor_bin,
+                    profile.designated_half_width, profile.bulk_mask_words.data(),
+                    profile.cfar_rank, profile.multiplier_q16, fine_power_scratch,
+                    mask_i32_scratch + i, support_memory + 2 * channel.freq_index,
+                    support_memory + 2 * channel.freq_index + 1,
+                    reinterpret_cast<unsigned long long*>(channel_powers), nullptr);
+            } else {
+                FStat_Compute_FusedFineMask_U64(
+                    channel.fstat_handle, weights, profile.anchor_bin,
+                    profile.designated_half_width, profile.bulk_mask_words.data(),
+                    profile.cfar_rank, profile.multiplier_q16, fine_power_scratch,
+                    mask_i32_scratch + i, reinterpret_cast<unsigned long long*>(channel_powers),
+                    nullptr);
+            }
             if (const char* error = FStat_LastError(); error != nullptr && error[0] != '\0')
                 FATAL_ERROR("PilotProxy fine detector failed for physical channel {:d}: {:s}",
                             profile.physical_channel, error);
