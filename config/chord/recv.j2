@@ -101,7 +101,7 @@ auto_spectrum_buffer:
 # stamped with the FPGA seq it applies from and the half's coarse frequencies, which identify
 # the stream. hdf5N2Write takes them in on their own thread, so the depth only has to cover
 # that thread's latency; a full buffer drops frames, which the files record as -1 rows.
-# Shape must match the X-engine's host_bf_mask_buffer.
+# Shape must match the X-engine's host_bf_mask_buffer_<n>.
 bad_feed_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: 1024
