@@ -143,6 +143,7 @@ static EigenResults run_pipeline(const EigenStageTestParams& p) {
     cfg[fake_name]["out_buf"] = "in_buf";
     cfg[fake_name]["mode"] = p.mode;
     cfg[fake_name]["kill_on_complete"] = false;
+    cfg[fake_name]["sleep_after"] = 0.0;
     if (!p.flagged_inputs.empty()) {
         cfg[fake_name]["flagged_inputs"] = p.flagged_inputs;
         cfg[fake_name]["flag_start_frame"] = p.flag_start_frame;
@@ -475,6 +476,7 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a, const EigenStageTestP
         cfg[s.fake_name]["out_buf"] = s.in_buf_name;
         cfg[s.fake_name]["mode"] = s.params.mode;
         cfg[s.fake_name]["kill_on_complete"] = false;
+        cfg[s.fake_name]["sleep_after"] = 0.0;
 
         cfg[s.eigen_name]["kotekan_stage"] = "EigenN2Iter";
         cfg[s.eigen_name]["in_buf"] = s.in_buf_name;

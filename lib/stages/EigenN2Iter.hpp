@@ -85,8 +85,11 @@
  * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  * @conf  krylov           UInt, default 2. Size of the Krylov basis to use.
  * @conf  subspace         UInt, default 3. Number of subspace iteration substeps.
- * @conf  cpu_affinity     Array of ints. The cores this stage runs on; it uses one
- *                         Blaze worker thread per core.
+ * @conf  num_blaze_workers UInt, default 1. If greater than 0, set the number of
+ *                          Blaze SMP worker threads used by this stage's
+ *                          intra-op parallelization (per-stage with the OpenMP
+ *                          backend; should match the size of cpu_affinity). 0 leaves
+ *                          the OpenMP default, one thread per core of the process.
  *
  * @par Metrics
  * @metric kotekan_eigenN2iter_comp_time_seconds
@@ -156,6 +159,9 @@ private:
     const size_t _max_iterations;
     const size_t _krylov;
     const size_t _subspace;
+
+    /// Blaze SMP worker thread count for this stage
+    uint32_t _num_blaze_workers;
 
     /// Parameters for masking the matrix
     std::vector<size_t> _exclude_inputs;

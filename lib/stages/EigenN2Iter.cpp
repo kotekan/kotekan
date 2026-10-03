@@ -51,6 +51,8 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _krylov(config.get_default<size_t>(unique_name, "krylov", 2)),
     _subspace(config.get_default<size_t>(unique_name, "subspace", 3)),
 
+    // Blaze SMP thread count
+    _num_blaze_workers(config.get_default<uint32_t>(unique_name, "num_blaze_workers", 1)),
 
     // Masking params
     _exclude_inputs(config.get_default<std::vector<size_t>>(unique_name, "exclude_inputs", {})),
@@ -184,11 +186,8 @@ void EigenN2Iter::main_thread() {
     // affinity is fixed at first-call time and bleeds between concurrent
     // eigen stages.
     openblas_set_num_threads(1);
-    // One Blaze worker per core in cpu_affinity. Left alone, OpenMP would size the
-    // team from every core of the process and crowd it onto this stage's cores.
-    const size_t num_cores = get_cpu_affinity().size();
-    if (num_cores > 0)
-        blaze::setNumThreads(num_cores);
+    if (_num_blaze_workers > 0)
+        blaze::setNumThreads(_num_blaze_workers);
 
     while (!stop_thread) {
 
