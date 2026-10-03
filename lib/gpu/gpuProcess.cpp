@@ -4,9 +4,9 @@
 #include "DataType.hpp"           // for type_to_string
 #include "FrameDesc.hpp"          // for FrameDesc
 #include "NDArray.hpp"            // for GenericNDArray
+#include "PipelineGraph.hpp"      // for PipelineGraph, GraphNode
 #include "Symbol.hpp"             // for Symbol
 #include "chordMetadata.hpp"      // for chordMetadata
-#include "PipelineGraph.hpp"      // for PipelineGraph, GraphNode
 #include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
 #include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
@@ -487,8 +487,8 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
             std::vector<std::string> dimnames;
             for (const kotekan::Symbol& dimname : array->get_dimnames())
                 dimnames.push_back(dimname ? dimname.get_string() : std::string());
-            node.add_line(kotekan::array_layout_line(
-                type_to_string(array->get_value_datatype()), array->get_extents(), dimnames));
+            node.add_line(kotekan::array_layout_line(type_to_string(array->get_value_datatype()),
+                                                     array->get_extents(), dimnames));
         } else if (info) {
             if (auto chord = std::dynamic_pointer_cast<chordMetadata>(info->metadata)) {
                 std::vector<std::ptrdiff_t> extents;
@@ -503,8 +503,8 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         }
         if (info) {
             if (info->depth > 1)
-                node.add_line(fmt::format(fmt("{:s} ×{:d}"), kotekan::human_bytes(info->len),
-                                          info->depth));
+                node.add_line(
+                    fmt::format(fmt("{:s} ×{:d}"), kotekan::human_bytes(info->len), info->depth));
             else if (!signal.empty())
                 node.add_line(fmt::format(fmt("{:s} · ring"), kotekan::human_bytes(info->len)));
             else
