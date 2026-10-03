@@ -38,15 +38,17 @@ public:
     void add_graph_details(kotekan::PipelineGraph& graph) const override;
 
     /**
-     * @brief The node id prefix under which a gpuProcess' GPU memory is drawn.
+     * @brief The node id prefix under which a device's GPU memory is drawn.
      *
-     * GPU memory names come from the config and are local to one gpuProcess, so
-     * they are namespaced by the stage to keep two devices' memory apart.
+     * GPU memory names come from the config and are local to one device: every
+     * gpuProcess driving it shares them, so a region a copy fills in one stage
+     * and a kernel reads in another is one node. They are namespaced by the
+     * device to keep two devices' memory apart.
      *
-     * @param stage_name The gpuProcess unique name.
+     * @param gpu_id The device the memory lives on.
      * @return The prefix to prepend to a GPU memory name to get its node id.
      */
-    static std::string gpu_mem_node_prefix(const std::string& stage_name);
+    static std::string gpu_mem_node_prefix(uint32_t gpu_id);
 
 protected:
     virtual std::vector<gpuCommand*> create_command(const std::string& cmd_name,

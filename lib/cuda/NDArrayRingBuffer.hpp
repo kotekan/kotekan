@@ -275,20 +275,35 @@ public:
         return buffer_name_device;
     }
 
+    /// The array layout as a descriptor, for the pipeline graph.
+    std::shared_ptr<const kotekan::FrameDesc> frame_desc() const {
+        return kotekan::GenericNDArray::describe(ndarray.get_value_datatype(),
+                                                 ndarray.get_quantity_name(), ndarray.get_extents(),
+                                                 ndarray.get_dimnames(), ndarray.get_dimscalings());
+    }
+
     // TODO: Distinguish between input and output buffers, then register automatically
-    void register_consumer() {
+    void register_consumer() const {
         if (get_instance_num() == 0) {
             ringbuffer->register_consumer(cuda_command.get_unique_name());
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = true, .does_write = false});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = false,
+                                                   .does_read = true,
+                                                   .does_write = false,
+                                                   .frame_desc = frame_desc(),
+                                                   .signal_buffer = signal_buffer_name});
         }
     }
 
-    void register_producer() {
+    void register_producer() const {
         if (get_instance_num() == 0) {
             ringbuffer->register_producer(cuda_command.get_unique_name());
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = false, .does_write = true});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = false,
+                                                   .does_read = false,
+                                                   .does_write = true,
+                                                   .frame_desc = frame_desc(),
+                                                   .signal_buffer = signal_buffer_name});
         }
     }
 
