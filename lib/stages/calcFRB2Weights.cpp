@@ -27,10 +27,18 @@
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
-#include <string>   // for allocator, basic_string, string
-#include <unistd.h> // for sleep
-#include <vector>   // for vector
+#include <string> // for allocator, basic_string, string
+#include <vector> // for vector
 
+// Calculate the FRB2 beamforming weights on the CPU. This is the (slow) reference for
+// cudaCalcFRB2Weights, which calculates the same weights on the GPU; only the test
+// config/ci-tests/gpu_batch/test_calc_frb2_weights.yaml uses it.
+//
+// Every frame of beam positions yields one frame of weights. A frame covers
+// `frb2_weights_lifetime_in_samples` FPGA samples, which is the positions'
+// `time_downsampling_fpga`, and the weights inherit the positions' `fpga_seq_num`. The weights have
+// a leading length-1 time axis `TW2` whose `dimscaling` is the lifetime, as in cudaCalcFRB2Weights'
+// ring buffer.
 class calcFRB2Weights : public kotekan::Stage {
     // Telescope setup
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
@@ -75,6 +83,10 @@ class calcFRB2Weights : public kotekan::Stage {
 
     const int num_threads = config.get_default<int>(unique_name, "num_threads", 1);
 
+    // Lifetime of a weights matrix in FPGA samples
+    const std::int64_t frb2_weights_lifetime_in_samples =
+        config.get<std::int64_t>(unique_name, "frb2_weights_lifetime_in_samples");
+
     const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
         sizeof(float) * 2 * frb2_num_beams;
     const std::ptrdiff_t W2_frame_size [[maybe_unused]] = sizeof(float16_t) * frb1_num_beams_P
@@ -100,7 +112,10 @@ public:
         assert(frb2_beam_positions_buffer);
         assert(W2_buffer);
         if (num_threads < 0)
-            FATAL_ERROR("num_threads %d must be positive", num_threads);
+            FATAL_ERROR("num_threads {:d} must be positive", num_threads);
+        if (frb2_weights_lifetime_in_samples <= 0)
+            FATAL_ERROR("frb2_weights_lifetime_in_samples {:d} must be positive",
+                        frb2_weights_lifetime_in_samples);
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
         for (Buffer* const metadata_source : metadata_sources)
@@ -108,18 +123,15 @@ public:
 
         frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
-        W2_buffer->require_frame_desc(kotekan::NDArray<float16_t, 4>::describe(
-            "W2", {frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
-            {"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1}));
+        W2_buffer->require_frame_desc(kotekan::NDArray<float16_t, 5>::describe(
+            "W2", {1, frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
+            {"TW2", "Fbar", "R", "beamQ", "beamP"},
+            {frb2_weights_lifetime_in_samples, 1, 1, 1, 1}));
     }
 
     virtual ~calcFRB2Weights() {}
 
     void main_thread() override {
-        // Only calculate a single frame
-        const int frame_index = 0;
-        const int frame_id = frame_index;
-
         if (stop_thread)
             return;
 
@@ -151,7 +163,7 @@ public:
                 // Assume we keep the frequency itself
                 coarse_freq.push_back(channel);
                 freq_upchan_factor.push_back(1);
-                freq_upchan_index.push_back(1);
+                freq_upchan_index.push_back(0);
                 frequencies.push_back(frequency);
             } else {
                 // Assume we do not keep the frequency itself, we only process the upchannelized
@@ -169,21 +181,50 @@ public:
                 }
             }
         }
-        assert(frequencies.size() == std::size_t(frb2_num_frequencies));
+        if (frequencies.size() != std::size_t(frb2_num_frequencies))
+            FATAL_ERROR("The upchannelization schedule yields {:d} frequencies, but "
+                        "frb2_num_frequencies is {:d}",
+                        frequencies.size(), frb2_num_frequencies);
+
+        // One weights frame per positions frame
+        for (std::int64_t frame_index = 0; !stop_thread; ++frame_index) {
+            if (!calculate_frame(frame_index, telescope, frequencies, coarse_freq,
+                                 freq_upchan_factor, freq_upchan_index))
+                break;
+        }
+    }
+
+private:
+    // Returns false if the pipeline is shutting down
+    bool calculate_frame(const std::int64_t frame_index, const Telescope& telescope,
+                         const std::vector<float>& frequencies, const std::vector<int>& coarse_freq,
+                         const std::vector<int>& freq_upchan_factor,
+                         const std::vector<int>& freq_upchan_index) {
+        const int positions_frame_id = frame_index % frb2_beam_positions_buffer->num_frames;
+        const int W2_frame_id = frame_index % W2_buffer->num_frames;
 
         // Wait for buffers
         DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
         float* const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
-            frb2_beam_positions_buffer->wait_for_full_frame(unique_name, frame_id)));
+            frb2_beam_positions_buffer->wait_for_full_frame(unique_name, positions_frame_id)));
         if (!frb2_beam_positions_frame)
-            return;
+            return false;
 
         DEBUG("[{:s}/{:d}] Waiting for buffer...", W2_buffer->buffer_name, frame_index);
         float16_t* const W2_frame = static_cast<float16_t*>(
-            static_cast<void*>(W2_buffer->wait_for_empty_frame(unique_name, frame_id)));
+            static_cast<void*>(W2_buffer->wait_for_empty_frame(unique_name, W2_frame_id)));
         if (!W2_frame)
-            return;
+            return false;
+
+        const std::shared_ptr<const chordMetadata> positions_meta =
+            get_chord_metadata(frb2_beam_positions_buffer, positions_frame_id);
+        if (positions_meta->get_time_downsampling_fpga() != frb2_weights_lifetime_in_samples)
+            FATAL_ERROR("{:s} has time_downsampling_fpga {:d}, but "
+                        "frb2_weights_lifetime_in_samples is {:d}",
+                        frb2_beam_positions_buffer->buffer_name,
+                        positions_meta->get_time_downsampling_fpga(),
+                        frb2_weights_lifetime_in_samples);
 
         // Check buffer sizes
         assert(std::ptrdiff_t(frb2_beam_positions_buffer->frame_size)
@@ -191,11 +232,11 @@ public:
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
-        W2_buffer->allocate_new_metadata_object(frame_id);
-        const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
+        W2_buffer->allocate_new_metadata_object(W2_frame_id);
+        const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(W2_frame_id));
         W2_meta->set_from_frame_desc(W2_buffer->get_frame_desc<kotekan::GenericNDArray>());
-        W2_meta->set_fpga_seq_num(0);           // ???
-        W2_meta->set_time_downsampling_fpga(1); // ???
+        W2_meta->set_fpga_seq_num(positions_meta->get_fpga_seq_num());
+        W2_meta->set_time_downsampling_fpga(frb2_weights_lifetime_in_samples);
         W2_meta->set_coarse_freq(coarse_freq);
         W2_meta->set_freq_upchan_factor(freq_upchan_factor);
         W2_meta->set_freq_upchan_index(freq_upchan_index);
@@ -225,6 +266,8 @@ public:
             const std::ptrdiff_t str_beamQ = str_beamP * frb1_num_beams_P;
             const std::ptrdiff_t str_beamR = str_beamQ * frb1_num_beams_Q;
             const std::ptrdiff_t str_freq = str_beamR * frb2_num_beams;
+            assert(str_freq * frb2_num_frequencies
+                   == std::ptrdiff_t(W2_buffer->frame_size / sizeof *W2_frame));
 
             // Vectors giving the feed separation in each axis direction in meters.
             // These vectors are in the GRID frame, where 'x' and 'y' are aligned
@@ -305,14 +348,12 @@ public:
         // Mark buffers as full
         DEBUG("[{:s}/{:d}] Marking buffer as empty...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
-        frb2_beam_positions_buffer->mark_frame_empty(unique_name, frame_id);
+        frb2_beam_positions_buffer->mark_frame_empty(unique_name, positions_frame_id);
 
         DEBUG("[{:s}/{:d}] Marking buffer as full...", W2_buffer->buffer_name, frame_index);
-        W2_buffer->mark_frame_full(unique_name, frame_id);
+        W2_buffer->mark_frame_full(unique_name, W2_frame_id);
 
-        // Wait for shutdown (don't trigger a shutdown)
-        while (!stop_thread)
-            sleep(1);
+        return true;
     }
 };
 
