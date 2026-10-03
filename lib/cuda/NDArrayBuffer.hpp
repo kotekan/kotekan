@@ -147,7 +147,7 @@ public:
     }
 
     // TODO: Distinguish between input and output buffers, then register automatically
-    void register_consumer() {
+    void register_consumer() const {
         if (get_instance_num() == 0)
             cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
                                                    .is_array = !is_do_once,
@@ -156,7 +156,7 @@ public:
                                                    .frame_desc = frame_desc()});
     }
 
-    void register_producer() {
+    void register_producer() const {
         if (get_instance_num() == 0)
             cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
                                                    .is_array = !is_do_once,

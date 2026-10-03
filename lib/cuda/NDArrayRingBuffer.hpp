@@ -283,25 +283,27 @@ public:
     }
 
     // TODO: Distinguish between input and output buffers, then register automatically
-    void register_consumer() {
+    void register_consumer() const {
         if (get_instance_num() == 0) {
             ringbuffer->register_consumer(cuda_command.get_unique_name());
             cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
                                                    .is_array = false,
                                                    .does_read = true,
                                                    .does_write = false,
-                                                   .frame_desc = frame_desc()});
+                                                   .frame_desc = frame_desc(),
+                                                   .signal_buffer = signal_buffer_name});
         }
     }
 
-    void register_producer() {
+    void register_producer() const {
         if (get_instance_num() == 0) {
             ringbuffer->register_producer(cuda_command.get_unique_name());
             cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
                                                    .is_array = false,
                                                    .does_read = false,
                                                    .does_write = true,
-                                                   .frame_desc = frame_desc()});
+                                                   .frame_desc = frame_desc(),
+                                                   .signal_buffer = signal_buffer_name});
         }
     }
 
