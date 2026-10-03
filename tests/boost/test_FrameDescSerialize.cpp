@@ -7,7 +7,6 @@
 #include "N2Util.hpp"      // for N2::prod_ctype
 #include "NDArray.hpp"     // for GenericNDArray
 #include "Symbol.hpp"      // for Symbol
-#include "Telescope.hpp"   // for ElementOrder
 
 #include "json.hpp" // for json
 
@@ -68,15 +67,6 @@ BOOST_AUTO_TEST_CASE(n2_round_trip_general_subset) {
     std::vector<N2::prod_ctype> products = {{0, 1}, {0, 2}, {3, 5}};
     N2FrameDesc desc(8, 2, static_cast<uint32_t>(products.size()), N2Layout::GeneralSubset,
                      products);
-    auto back = round_trip(desc);
-    BOOST_REQUIRE(back);
-    BOOST_CHECK(*back == desc);
-}
-
-BOOST_AUTO_TEST_CASE(n2_round_trip_element_order) {
-    // A non-default element order is carried over the wire.
-    N2FrameDesc desc(16, 4, N2FrameDesc::get_num_prod(16, N2Layout::FullUpperTri),
-                     N2Layout::FullUpperTri, {}, ElementOrder::CHORDEarly);
     auto back = round_trip(desc);
     BOOST_REQUIRE(back);
     BOOST_CHECK(*back == desc);

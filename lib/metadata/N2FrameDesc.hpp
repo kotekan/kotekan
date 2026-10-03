@@ -6,7 +6,6 @@
 #include "N2Layout.hpp"  // for N2Layout
 #include "N2Util.hpp"    // for prod_ctype
 #include "Symbol.hpp"    // for Symbol
-#include "Telescope.hpp" // for ElementOrder
 
 #include <algorithm> // for max
 #include <iosfwd>    // for ostream
@@ -67,16 +66,13 @@ public:
      * @param num_products  Number of products in the visibility matrix
      * @param n2_layout     The layout of the visibility matrix
      * @param product_list  Optional explicit list of products (required for subset layouts)
-     * @param element_order Order of the elements along the frame's element axis; defaults
-     *                      to the production CHORD order
      *
      * @note Validation failures (product_list missing, sized inconsistently with
      *       num_products, or referencing inputs outside num_elements) are fatal
      *       and shut kotekan down (FATAL_ERROR_NON_OO).
      */
     N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_products, N2Layout n2_layout,
-                std::vector<N2::prod_ctype> product_list = {},
-                ElementOrder element_order = ElementOrder::CHORDBeamformer);
+                std::vector<N2::prod_ctype> product_list = {});
     virtual ~N2FrameDesc() = default;
 
     // FrameDesc overrides
@@ -103,9 +99,6 @@ public:
     }
     N2Layout get_n2_layout() const {
         return n2_layout;
-    }
-    ElementOrder get_element_order() const {
-        return element_order;
     }
 
     /**
@@ -221,10 +214,6 @@ private:
 
     /// Product list for this frame descriptor (populated for all layouts)
     const std::vector<N2::prod_ctype> product_list;
-
-    /// Order of the elements along the frame's element axis. A declaration by the
-    /// producer that travels with the descriptor so a receiver can check it.
-    const ElementOrder element_order;
 };
 
 } // namespace kotekan

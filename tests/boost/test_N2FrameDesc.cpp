@@ -4,7 +4,6 @@
 #include "N2Layout.hpp"
 #include "N2Metadata.hpp"
 #include "N2Util.hpp"
-#include "Telescope.hpp"
 
 #include <boost/test/included/unit_test.hpp>
 #include <csignal>
@@ -339,30 +338,6 @@ BOOST_AUTO_TEST_CASE(test_equality_with_product_list) {
 
     BOOST_CHECK(desc1 == desc2);    // Same product list
     BOOST_CHECK(!(desc1 == desc3)); // Different product list
-
-    std::cout << "Success.\n";
-}
-
-BOOST_AUTO_TEST_CASE(test_element_order) {
-    std::cout << "Testing element_order on descriptors...\n";
-
-    // Defaults to the production CHORD order; a different declared order is a
-    // different descriptor, and the order survives the wire form.
-    N2FrameDesc desc1(8, 2, 36, N2Layout::FullUpperTri);
-    N2FrameDesc desc2(8, 2, 36, N2Layout::FullUpperTri, {}, ElementOrder::CHORDBeamformer);
-    N2FrameDesc desc3(8, 2, 36, N2Layout::FullUpperTri, {}, ElementOrder::CHORDEarly);
-
-    BOOST_CHECK(desc1.get_element_order() == ElementOrder::CHORDBeamformer);
-    BOOST_CHECK(desc1 == desc2);
-    BOOST_CHECK(!(desc1 == desc3));
-
-    auto wire = N2FrameDesc::from_json(desc3.to_json());
-    BOOST_CHECK(*wire == desc3);
-
-    // A descriptor from a sender predating element_order reads as the default.
-    auto j = desc1.to_json();
-    j.erase("element_order");
-    BOOST_CHECK(*N2FrameDesc::from_json(j) == desc1);
 
     std::cout << "Success.\n";
 }

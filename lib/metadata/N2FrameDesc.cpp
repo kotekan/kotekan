@@ -12,12 +12,10 @@
 namespace kotekan {
 
 N2FrameDesc::N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_products,
-                         N2Layout n2_layout, std::vector<N2::prod_ctype> product_list,
-                         ElementOrder element_order) :
+                         N2Layout n2_layout, std::vector<N2::prod_ctype> product_list) :
     num_elements(num_elements), num_ev(num_ev), num_products(num_products), n2_layout(n2_layout),
     product_list(product_list.empty() ? generate_product_list(num_elements, n2_layout)
-                                      : std::move(product_list)),
-    element_order(element_order) {
+                                      : std::move(product_list)) {
 
     // Validate product list for layouts that require it. A bad descriptor is
     // unrecoverable (frames would be mis-sized downstream), so failures are
@@ -50,11 +48,6 @@ N2FrameDesc N2FrameDesc::_from_config_impl(kotekan::Config& config, const std::s
     uint32_t num_elements = config.get<uint32_t>(location, "num_elements");
     const uint32_t num_ev = config.get<uint32_t>(location, "num_ev");
     const N2Layout n2_layout = config.get<N2Layout>(location, "n2_layout");
-    // The order of the frame's element axis is a declaration about the producer,
-    // carried in the descriptor so a receiver can check it against its own.
-    // Defaults to the production CHORD order (CHORDTelescope::fiducial_element_order()).
-    const ElementOrder element_order =
-        config.get_default<ElementOrder>(location, "element_order", ElementOrder::CHORDBeamformer);
 
     std::vector<N2::prod_ctype> product_list;
 
@@ -97,8 +90,7 @@ N2FrameDesc N2FrameDesc::_from_config_impl(kotekan::Config& config, const std::s
 
     const uint32_t num_prod = get_num_prod(num_elements, n2_layout, product_list);
 
-    return N2FrameDesc(num_elements, num_ev, num_prod, n2_layout, std::move(product_list),
-                       element_order);
+    return N2FrameDesc(num_elements, num_ev, num_prod, n2_layout, std::move(product_list));
 }
 
 Symbol N2FrameDesc::get_quantity_name() const {
@@ -115,8 +107,6 @@ nlohmann::json N2FrameDesc::to_json() const {
     // The layout is encoded by name (via its json serializer) so the wire form
     // survives any reordering of the N2Layout enum.
     j["n2_layout"] = n2_layout;
-    // The element order is likewise encoded by name.
-    j["element_order"] = element_order;
     // Subset layouts cannot be regenerated from num_elements alone, so send the
     // explicit product list; other layouts the receiver regenerates.
     if (layout_requires_product_list(n2_layout))
@@ -128,10 +118,6 @@ std::shared_ptr<const FrameDesc> N2FrameDesc::from_json(const nlohmann::json& j)
     const uint32_t num_elements = j.at("num_elements").get<uint32_t>();
     const uint32_t num_ev = j.at("num_ev").get<uint32_t>();
     const N2Layout n2_layout = j.at("n2_layout").get<N2Layout>();
-    // A sender predating element_order sends none; read it as the default.
-    ElementOrder element_order = ElementOrder::CHORDBeamformer;
-    if (j.contains("element_order"))
-        element_order = j.at("element_order").get<ElementOrder>();
 
     // Subset layouts require the explicit product list; for other layouts the
     // list is regenerated locally, and one arriving anyway is malformed input
@@ -148,7 +134,7 @@ std::shared_ptr<const FrameDesc> N2FrameDesc::from_json(const nlohmann::json& j)
     // the product list (including index bounds) and fails fatally on any problem.
     const uint32_t num_products = get_num_prod(num_elements, n2_layout, product_list);
     return std::make_shared<N2FrameDesc>(num_elements, num_ev, num_products, n2_layout,
-                                         std::move(product_list), element_order);
+                                         std::move(product_list));
 }
 
 bool N2FrameDesc::layout_requires_product_list(N2Layout layout) {
@@ -261,8 +247,7 @@ void N2FrameDesc::output_framedesc(std::ostream& os) const {
        << "    num_elements: " << num_elements << "\n"
        << "    num_ev:       " << num_ev << "\n"
        << "    num_products: " << num_products << "\n"
-       << "    n2_layout:    " << N2Layout_to_string(n2_layout) << "\n"
-       << "    element_order: " << ElementOrder_to_string(element_order) << "\n";
+       << "    n2_layout:    " << N2Layout_to_string(n2_layout) << "\n";
     if (!product_list.empty()) {
         os << "    product_list: [";
         for (size_t i = 0; i < std::min(product_list.size(), size_t(5)); ++i) {
@@ -282,8 +267,7 @@ bool N2FrameDesc::operator==(const FrameDesc& other) const {
         return false;
 
     if ((num_elements != other_ptr->num_elements) || (num_ev != other_ptr->num_ev)
-        || (num_products != other_ptr->num_products) || (n2_layout != other_ptr->n2_layout)
-        || (element_order != other_ptr->element_order))
+        || (num_products != other_ptr->num_products) || (n2_layout != other_ptr->n2_layout))
         return false;
 
     // For layouts with explicit product lists, compare the lists
