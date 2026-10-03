@@ -236,7 +236,7 @@ public:
         std::shared_ptr<const kotekan::FrameDesc> frame_desc = nullptr;
         /// For a ring region: the host RingBuffer whose cursors track it, so
         /// the pipeline graph can draw the two as a pair. Empty otherwise.
-        std::string signal_buffer;
+        std::string signal_buffer = "";
     };
     void register_gpu_buffer_user(const gpu_buffer_descriptor& desc);
 
