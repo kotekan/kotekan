@@ -45,11 +45,12 @@
 {% set rfi_num_times_bar = rfi_num_times //  rfi_second_downsampling_factor %}  {# = 1 #}
 
 # The two NUMA halves. Each owns a NIC port, a GPU and a set of cores, and every per-half
-# buffer and stage below loops over this table. Block names keep their historical
-# suffixes (half 0 unsuffixed or _0, half 1 _1, see sfx) so nothing that peeks a buffer
-# or polls a stage by name has to change.
+# buffer and stage below loops over this table; a block that exists once per half is
+# named <block>_<id> (sfx), so half 0's buffers and stages end in _0 and half 1's in _1.
+# (Until Oct 2026 half 0's were mostly unsuffixed: a peek URL or Prometheus stage_name
+# from before then needs the _0.)
 {% set numa_halves = [
-    {"id": 0, "sfx": "",   "mask_cpu": 1,  "transpose_cpus": [2, 3],   "frame_service_cpu": 4,
+    {"id": 0, "sfx": "_0", "mask_cpu": 1,  "transpose_cpus": [2, 3],   "frame_service_cpu": 4,
      "gpu_cpus": [12, 13, 14], "accum_cpu": 9,  "subset_cpu": 11, "eigen_cpu": 10},
     {"id": 1, "sfx": "_1", "mask_cpu": 16, "transpose_cpus": [17, 18], "frame_service_cpu": 20,
      "gpu_cpus": [25, 26, 27], "accum_cpu": 28, "subset_cpu": 29, "eigen_cpu": 30},
@@ -123,7 +124,7 @@ n2_pool:
     kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 16 * buffer_depth
 
-# Bad feed mask buffers (see host_bf_mask_buffer). N2Accumulate holds each mask frame until
+# Bad feed mask buffers (see host_bf_mask_buffer_<n>). N2Accumulate holds each mask frame until
 # its correlation frame is accumulated, so the depth bounds the GPU's lead over it; the send
 # copies must ride out bufferSend's 20 s send_timeout at one frame per ~42 ms. The frames
 # get their own metadata pool: one object each, hundreds alive at a time.
@@ -158,7 +159,7 @@ host_bf_mask_buffer{{ n.sfx }}:
 {% endfor %}
 
 # Private copies of the mask streams for the recv-node sends: bufferSend drops frames
-# when its buffer looks congested, and host_bf_mask_buffer_N always does (N2Accumulate
+# when its buffer looks congested, and host_bf_mask_buffer_<n> always does (N2Accumulate
 # holds its frames), so the sends get their own buffers.
 {% for n in numa_halves %}
 host_bad_feed_mask_send_buffer{{ n.sfx }}:
@@ -653,7 +654,7 @@ PL_mask_compactor{{ n.sfx }}:
 {% endfor %}
 
 # Bad feed mask from /updatable_config/bad_inputs (fed by bffs via choco). One instance per
-# NUMA half, clocked to that half's voltage buffer (see host_bf_mask_buffer); both apply the
+# NUMA half, clocked to that half's voltage buffer (see host_bf_mask_buffer_<n>); both apply the
 # same posted list, though an update can land one frame apart between the halves. CHORD
 # flags and masks share the [P][D] order, so no reorder. Non-ArrayDish elements (Missing, RFI
 # antennas) are always masked, whatever the posted list says.
@@ -861,8 +862,8 @@ rfi_sk_metrics:
         in_buf: host_rfi_skbar_buffer{{ n.sfx }}
 {% endfor %}
 
-# This copies the RFI Mask that was used in N2K kernels back out to the CPU into the
-# host_rfi_RFImask_buffer. It contains the SKtilde-produced mask (all-good if
+# This copies the RFI Mask that was used in N2K kernels back out to the CPU into
+# host_rfi_RFImask_buffer_<n>. It contains the SKtilde-produced mask (all-good if
 # rfi_first_stage_excision_enabled is false).
 run_recv_rfi_RFImask:
 {% for n in numa_halves %}
@@ -1047,7 +1048,7 @@ eigencalc{{ n.sfx }}:
 
 # Ship each half's mask stream to the recv node, where hdf5N2Write records it in the vis
 # files' /bad_feed_mask group. Through a private copy so bufferSend's congestion heuristic sees only
-# its own backlog (see host_bad_feed_mask_send_buffer); a dropped frame shows up there as a -1 row.
+# its own backlog (see host_bad_feed_mask_send_buffer_<n>); a dropped frame shows up there as a -1 row.
 copy_bad_feed_mask:
 {% for n in numa_halves %}
     copy_{{ n.id }}:
