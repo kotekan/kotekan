@@ -36,8 +36,10 @@ class _NoDupLoader(yaml.SafeLoader):
 
 def render(path: str) -> dict:
     p = Path(path)
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(p.parent)),
-                             autoescape=jinja2.select_autoescape())
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(p.parent)),
+        autoescape=jinja2.select_autoescape(),
+    )
     return yaml.load(env.get_template(p.name).render({}), Loader=_NoDupLoader)
 
 
