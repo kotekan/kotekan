@@ -222,6 +222,9 @@ protected:
     /// For get_gpu_buffer_desc: the frame descriptors registered with them.
     std::map<std::string, std::shared_ptr<const kotekan::FrameDesc>> gpu_buffer_descs;
 
+    /// For get_gpu_buffer_signal: the signal rings registered with them.
+    std::map<std::string, std::string> gpu_buffer_signals;
+
 public:
     struct gpu_buffer_descriptor {
         std::string name;
@@ -231,6 +234,9 @@ public:
         /// The array layout of the memory, when the command declares one (the
         /// NDArray wrappers do); drawn on its node in the pipeline graph.
         std::shared_ptr<const kotekan::FrameDesc> frame_desc = nullptr;
+        /// For a ring region: the host RingBuffer whose cursors track it, so
+        /// the pipeline graph can draw the two as a pair. Empty otherwise.
+        std::string signal_buffer;
     };
     void register_gpu_buffer_user(const gpu_buffer_descriptor& desc);
 
@@ -239,6 +245,13 @@ public:
     std::shared_ptr<const kotekan::FrameDesc> get_gpu_buffer_desc(const std::string& name) const {
         auto it = gpu_buffer_descs.find(name);
         return it == gpu_buffer_descs.end() ? nullptr : it->second;
+    }
+
+    /// The host RingBuffer registered as the signal of a GPU ring region, or ""
+    /// when the command registered none for that name.
+    std::string get_gpu_buffer_signal(const std::string& name) const {
+        auto it = gpu_buffer_signals.find(name);
+        return it == gpu_buffer_signals.end() ? std::string() : it->second;
     }
 };
 
