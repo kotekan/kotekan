@@ -52,7 +52,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _subspace(config.get_default<size_t>(unique_name, "subspace", 3)),
 
     // Blaze SMP thread count
-    _num_blaze_workers(config.get_default<uint32_t>(unique_name, "num_blaze_workers", 0)),
+    _num_blaze_workers(config.get_default<uint32_t>(unique_name, "num_blaze_workers", 1)),
 
     // Masking params
     _exclude_inputs(config.get_default<std::vector<size_t>>(unique_name, "exclude_inputs", {})),
