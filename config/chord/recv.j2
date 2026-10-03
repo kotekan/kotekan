@@ -8,6 +8,11 @@
 #    buffer_depth frames per frequency.
 {% set num_local_freq = 6550 %}
 
+# The frequency IDs the F-engine sends, 1536 + 128 index + stream for 48 indices and 128
+# streams: 1536 to 7679, the 300-1500 MHz band in telescope.j2. Rows of the auto spectrum.
+{% set first_freq_id = 1536 %}
+{% set num_sent_freq = 6144 %}
+
 
 # num_dishes: dishes/antennas to simulate.
 # With 2 polarizations, num_elements = 2 * num_dishes, which the n2k correlator requires to be a multiple of 128
@@ -77,15 +82,15 @@ n2_recv_full_buffer:
 
 # Autocorrelation power gathered across frequency, one frame per accumulation
 # bin. Produced by N2AutoSpectrum: float32 "autospectrum"
-# [num_local_freq, num_elements] {F, E}; rows stay NaN until that freq_id
-# arrives. No consumer: held for the /buffer/auto_spectrum_buffer/frame peek
-# endpoint.
+# [num_sent_freq, num_elements] {F, E}, row 0 at first_freq_id; rows stay NaN
+# until that freq_id arrives. No consumer: held for the /buffer/auto_spectrum_buffer/frame
+# peek endpoint.
 auto_spectrum_buffer:
     kotekan_buffer: ndarray
     peek_hold: true
     num_frames: buffer_depth
     value_type: float32
-    extents: [num_local_freq, num_elements]
+    extents: [{{ num_sent_freq }}, num_elements]
     metadata_pool: chord_pool
 
 # Bad feed mask streams from the X-engine, one frame per correlation frame per NUMA half,
@@ -133,12 +138,13 @@ buffer_recv_bad_feed_mask:
     listen_port: 11029
 
 # Live autocorrelation power vs frequency from the full N2 stream, for the
-# peek endpoint. freq_id_base and num_pending_bins are left at their defaults
-# (0 and 2).
+# peek endpoint. num_pending_bins is left at its default (2).
 auto_spectrum:
     kotekan_stage: N2AutoSpectrum
     in_buf: n2_recv_full_buffer
     out_buf: auto_spectrum_buffer
+    num_local_freq: {{ num_sent_freq }}
+    freq_id_base: {{ first_freq_id }}
 
 
 
