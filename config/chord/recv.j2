@@ -36,6 +36,11 @@ cpu_affinity: [0,1,2,3]
 # CHORDTelescope encodes as a station id and what CHORDBeamformer indexes by.
 input_order: CHORDBeamformer
 
+# X-engine halves sending bad feed masks to hdf5N2Write. Each half takes 1/16 of the F-engine
+# stream ids, spaced by 16 (crs16BoardCaptureWorker), so half k owns the frequency ids
+# min_science_freq_id + k + 16 n.
+num_bad_feed_mask_streams: 16
+
 {% include "telescope.j2" %}
 
 # Pools
