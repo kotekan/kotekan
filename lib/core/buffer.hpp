@@ -215,9 +215,10 @@ public:
     void allocate_new_metadata_object(int frame_id);
 
     /**
-     * @brief Sets the metadata object for the given frame index.
+     * @brief Sets the metadata object for the given frame index, replacing any object already
+     * there.
      *
-     * @return @c true if successful, @c false if metadata was already set.
+     * @return Always @c true.
      */
     bool set_metadata(int frame_id, std::shared_ptr<metadataObject> meta);
 
