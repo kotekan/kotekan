@@ -3102,6 +3102,9 @@ def main():
     ap.add_argument("--n2-project-lambda-min", type=float, default=3.0,
                     help="trigger: lambda0 in units of the mean live auto")
     ap.add_argument("--n2-project-solve-every", type=int, default=4, help="frames per solve")
+    ap.add_argument("--n2-project-live-freq-ids", type=str, default=None,
+                    help="live mode writes only these absolute freq_id ranges (lo-hi,...); "
+                         "'exempt' = the --rfi-excision-exempt-freq-ids ranges; default = all")
     ap.add_argument("--n2-project-pr-min", type=float, default=6.0,
                     help="trigger: a component must be spread over >= this many inputs "
                          "(participation ratio 1/sum|q|^4); a lone correlated pair scores 2")
@@ -4062,7 +4065,16 @@ def main():
                 _stage["archive_path"] = "%s/n2proj_%s_gpu%d.jsonl" % (
                     args.n2_project_archive_dir.rstrip("/"), args.node, _gpu)
             if args.n2_project == "live":
-                _buf = dict(out["host_correlation_buffer" + _suf])
+                _lf = args.n2_project_live_freq_ids
+                if _lf == "exempt":
+                    _lf = args.rfi_excision_exempt_freq_ids
+                if _lf:
+                    _lids = set()
+                    for _part in str(_lf).split(","):
+                        _a, _, _b = _part.strip().partition("-")
+                        _lids.update(range(int(_a), int(_b or _a) + 1))
+                    _stage["live_freq_ids"] = sorted(_lids)
+                _buf = copy.deepcopy(out["host_correlation_buffer" + _suf])  # no YAML aliases
                 out["gnss_n2_proj_buffer" + _suf] = _buf
                 _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
                 out["n2_accumulate"]["accum_%d" % _gpu]["in_buf"] = "gnss_n2_proj_buffer" + _suf

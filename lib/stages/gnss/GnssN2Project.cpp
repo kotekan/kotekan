@@ -29,6 +29,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     n_integrations(samples_per_data_set / sub_integration_ntime),
     stations(config.get_default<std::vector<int>>(unique_name, "stations", std::vector<int>{})),
+    live_freq_ids(
+        config.get_default<std::vector<int>>(unique_name, "live_freq_ids", std::vector<int>{})),
     mode(config.get_default<std::string>(unique_name, "mode", "shadow")), live(mode == "live"),
     tau_s(config.get_default<double>(unique_name, "tau_s", 0.5)),
     k_max(config.get_default<int>(unique_name, "k_max", 3)),
@@ -87,6 +89,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     nul = gnss::ProjSubspace(n, num_local_freq, tau_s, k_max);
     nul.rel_min = 0.0;
     nul.frac_next_min = 0.0;
+    live_ch.assign(num_local_freq, live_freq_ids.empty() ? 1 : 0);
+    live_ch_resolved = live_freq_ids.empty();
     k_cur.assign(num_local_freq, 0);
     on.assign(num_local_freq, 0);
     lam0_rel.assign(num_local_freq, 0.0);
@@ -165,6 +169,26 @@ void GnssN2Project::main_thread() {
                 labelled = true;
             }
         }
+        if (!live_ch_resolved) {
+            // Absolute ids need the labels; until they arrive nothing is written (live_ch 0).
+            if (!labelled)
+                FATAL_ERROR("live_freq_ids needs the coarse frequencies in {:s}'s metadata",
+                            in_buf->buffer_name);
+            std::vector<int> wanted(live_freq_ids);
+            std::sort(wanted.begin(), wanted.end());
+            int n_live_ch = 0;
+            for (int f = 0; f < num_local_freq; ++f) {
+                live_ch[f] = std::binary_search(wanted.begin(), wanted.end(), freq_ids[f]) ? 1 : 0;
+                n_live_ch += live_ch[f];
+            }
+            live_ch_resolved = true;
+            INFO("GnssN2Project: live writes restricted to {:d} of {:d} channels", n_live_ch,
+                 num_local_freq);
+            if (live && n_live_ch == 0)
+                WARN("GnssN2Project: none of the {:d} live_freq_ids is on this GPU: live mode "
+                     "writes nothing here",
+                     (int)live_freq_ids.size());
+        }
         const double dt_int = dt / n_integrations;
         const bool solve_now = (frame_count % (uint64_t)solve_every) == 0;
 
@@ -236,7 +260,7 @@ void GnssN2Project::main_thread() {
                         null_db[f] =
                             (l0 > 0.0) ? 10.0 * std::log10(std::max(l1, 1e-12 * l0) / l0) : 0.0;
                     }
-                    if (live)
+                    if (live && live_ch[f])
                         gnss_n2proj::writeback(layout,
                                                out + (size_t)t * per_int + (size_t)f * per_freq,
                                                stations, V.data());

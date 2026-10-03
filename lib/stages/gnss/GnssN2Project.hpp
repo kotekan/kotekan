@@ -63,6 +63,11 @@
  * @conf k_max            Int. Rank cap (3).
  * @conf frac_first_min   Double. Trigger: component 0's off-diagonal energy fraction (0.4).
  * @conf lambda_min_rel   Double. Trigger: lambda0 / mean auto (3.0).
+ * @conf live_freq_ids    Int list. Live mode writes the projected block ONLY for these absolute
+ *                        freq_ids (resolved against the input metadata's coarse frequencies on
+ *                        the first frame); empty = every channel. Shadow metrics cover every
+ *                        channel regardless. The GNSS lobes exempted from first-stage excision
+ *                        are the contract with the cosmology pipeline: those and nothing else.
  * @conf pr_min           Double. A component must be SPREAD over the array: participation
  *                        ratio 1 / sum |q_i|^4 >= pr_min (6.0). A lone correlated input pair
  *                        (cross-talk, a saturated dish's two pols: B04X/B04Y on 10-03) is a
@@ -93,6 +98,9 @@ private:
     const int sub_integration_ntime;
     const int n_integrations;
     std::vector<int> stations;
+    const std::vector<int> live_freq_ids;
+    std::vector<char> live_ch; ///< per local channel: live writes allowed (resolved on frame 1)
+    bool live_ch_resolved = false;
     const std::string mode;
     const bool live;
     const double tau_s;
