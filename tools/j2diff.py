@@ -4,21 +4,19 @@
 For config refactors that must not change what kotekan sees, e.g.
 
     git show develop:config/chord_pathfinder.j2 > /tmp/old/chord_pathfinder.j2
-    tools/j2diff.py /tmp/old/chord_pathfinder.j2 config/chord/pathfinder.j2
+    PYTHONPATH=python tools/j2diff.py /tmp/old/chord_pathfinder.j2 config/chord/pathfinder.j2
 
 (the old file goes in its own directory so its includes, if any, resolve there).
 
-Mirrors python/kotekan/config.py: FileSystemLoader rooted at the template's parent, an
-empty render context, select_autoescape() defaults.  Exit 0 if the parsed dicts are
-equal, 1 with a key-sorted JSON diff otherwise.
+Renders with kotekan.config.render_jinja, but rejects duplicate keys where kotekan keeps
+the last.  Exit 0 if the parsed dicts are equal, 1 with a key-sorted JSON diff otherwise.
 """
 import difflib
 import json
 import sys
-from pathlib import Path
 
-import jinja2
 import yaml
+from kotekan.config import render_jinja
 
 
 class _NoDupLoader(yaml.SafeLoader):
@@ -35,12 +33,7 @@ class _NoDupLoader(yaml.SafeLoader):
 
 
 def render(path: str) -> dict:
-    p = Path(path)
-    env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(str(p.parent)),
-        autoescape=jinja2.select_autoescape(),
-    )
-    return yaml.load(env.get_template(p.name).render({}), Loader=_NoDupLoader)
+    return yaml.load(render_jinja(path), Loader=_NoDupLoader)
 
 
 def main(a: str, b: str) -> int:
