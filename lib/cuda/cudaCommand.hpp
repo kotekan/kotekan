@@ -55,9 +55,23 @@ extern std::shared_ptr<cudaCommandState> no_cuda_command_state;
  * Kernels and other operations (I/O) should derive from this class,
  * which handles a lot of queueing and device interface issues.
  *
- * @conf cuda_stream  The ID of the CUDA stream to use for this command, defaults to one of
- *                    0, 1, 2, for command types COPY_IN, COPY_OUT, and KERNEL respectively.
- *                    This number must be less than @c num_cuda_streams set in cudaProcess.
+ * @conf cuda_stream  The ID of the CUDA stream to use for this command, defaults to
+ *                    3 * @c cuda_stream_base + 0, 1, 2 for command types COPY_IN, COPY_OUT,
+ *                    and KERNEL respectively. This number must be less than
+ *                    @c num_cuda_streams set in cudaProcess.
+ * @conf cuda_stream_base  Int, default 0. A pipeline INDEX, not a stream id: it selects this
+ *                    pipeline's DEFAULT triple, streams 3*base+0 (COPY_IN), 3*base+1
+ *                    (COPY_OUT) and 3*base+2 (KERNEL). Set once on the owning cudaProcess;
+ *                    config lookup walks up, so its commands inherit it. Distinct bases
+ *                    therefore give wholly disjoint triples -- a triple that straddles two
+ *                    pipelines cannot be expressed -- so two pipelines either share all three
+ *                    streams or none, and take either the same queuing mutexes or none in
+ *                    common. Disjoint streams also let their kernels overlap, a stream being
+ *                    an in-order queue. The owning cudaProcess's num_cuda_streams (default
+ *                    3*base+3, its own triple) must exceed every stream its commands use. An
+ * explicit @c cuda_stream is absolute, ignores this, and is the one way to put a command outside
+ * its pipeline's triple: prefer not to, because a copy sharing a stream with kernels blocks them
+ *                    behind unrelated traffic on the device's single copy queue.
  * @conf required_flag  A string flag name.  If set, the @c cudaPipelineState object will be
  *                    checked for this flag, and this command will only run if that flag is set.
  *
@@ -147,8 +161,11 @@ protected:
 
     cudaDeviceInterface& device;
 
-    /// The ID of the cuda stream to run operations on
-    int32_t cuda_stream_id;
+    /// The CUDA stream this command's work is enqueued on. A command must enqueue only onto
+    /// this stream: cudaProcess takes one queuing mutex per stream its commands declare here,
+    /// and work submitted to any other stream is not covered by that lock. -1 until
+    /// set_command_type() resolves it.
+    int32_t cuda_stream_id = -1;
 
     // cudaPipelineState flag required for this command to run, set from config "required_flag"
     std::string _required_flag;

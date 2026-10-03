@@ -24,6 +24,9 @@ cudaOutputDataZero::cudaOutputDataZero(Config& config, const std::string& unique
     memset(output_zeros, 0, output_len);
     CHECK_CUDA_ERROR(cudaHostRegister(output_zeros, output_len, 0));
 
+    // Taken in execute(); attribute it to this stage now (see gpuMemoryClaims.hpp).
+    device.register_gpu_memory_name("output");
+
     set_command_type(gpuCommandType::COPY_IN);
 }
 

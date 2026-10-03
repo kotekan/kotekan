@@ -1,8 +1,9 @@
 #include "cudaSyncStream.hpp"
 
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h" // for cudaStreamWaitEvent
-#include "gpuCommand.hpp"     // for gpuCommandType
+#include "cudaStreamAssignment.hpp" // for check_stream_within
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"       // for cudaStreamWaitEvent
+#include "gpuCommand.hpp"           // for gpuCommandType
 
 #include "fmt.hpp" // for format
 
@@ -35,12 +36,21 @@ cudaSyncStream::cudaSyncStream(kotekan::Config& config, const std::string& uniqu
 }
 
 void cudaSyncStream::set_source_cuda_streams(const std::vector<int32_t>& source_cuda_streams) {
+    // Bounded by the owning stage's num_cuda_streams, as the commands themselves are: a stream
+    // this stage never declared can carry none of its events, so waiting on it is a silent no-op.
+    // Commands are named <stage>/commands/<n> (gpuProcess::init), which gives the stage's name.
+    const int32_t base = config.get_default<int32_t>(unique_name, "cuda_stream_base", 0);
+    const int32_t num_cuda_streams = config.get_default<int32_t>(unique_name, "num_cuda_streams",
+                                                                 default_num_cuda_streams(base));
+    const auto cut = unique_name.rfind("/commands/");
+    const std::string stage = cut == std::string::npos ? unique_name : unique_name.substr(0, cut);
     _source_cuda_streams = source_cuda_streams;
     for (auto cuda_stream_id : _source_cuda_streams) {
-        if (cuda_stream_id >= device.get_num_streams()) {
-            throw std::runtime_error(
-                "Asked to sync on a CUDA stream greater than the maximum number available");
-        }
+        if (cuda_stream_id < 0)
+            throw std::runtime_error(fmt::format("{:s}: source_cuda_streams entry {:d} is negative",
+                                                 unique_name, cuda_stream_id));
+        check_stream_within(unique_name + " (source stream)", cuda_stream_id, stage,
+                            num_cuda_streams);
     }
 }
 

@@ -15,6 +15,27 @@ target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotek
 add_executable(test_modulo test_modulo.cpp)
 target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_cuda_stream_assignment - stream-by-role and the pipeline's lock order. The functions under
+# test are header-only and call no CUDA, so this runs in the CPU-only builds; lib/gpu is named
+# explicitly because gpuCommand.hpp (for gpuCommandType) is only on an include path via kotekan_gpu,
+# and lib/ builds that target solely when a GPU backend is found.
+add_executable(test_cuda_stream_assignment test_cuda_stream_assignment.cpp)
+target_include_directories(test_cuda_stream_assignment PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda
+                                                               ${KOTEKAN_SOURCE_DIR}/lib/gpu)
+target_link_libraries(test_cuda_stream_assignment PRIVATE pthread libexternal kotekan_libs
+                                                          kotekan_utils kotekan_core)
+
+# test_gpu_memory_claims - the one-owner-per-region rule for named GPU memory: the policy function
+# AND its wiring in gpuDeviceInterface (owner scopes, thread attribution, arrays, views, the
+# declared-share exemption). lib/gpu is built only when a GPU backend is found and the CI boost jobs
+# are CPU-only, so gpuDeviceInterface.cpp is compiled into the test directly -- it depends on no
+# backend, only on kotekan_core.
+add_executable(test_gpu_memory_claims test_gpu_memory_claims.cpp
+                                      ${KOTEKAN_SOURCE_DIR}/lib/gpu/gpuDeviceInterface.cpp)
+target_include_directories(test_gpu_memory_claims PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/gpu)
+target_link_libraries(test_gpu_memory_claims PRIVATE pthread libexternal kotekan_libs kotekan_utils
+                                                     kotekan_core)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 

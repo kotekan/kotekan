@@ -44,6 +44,19 @@
 {% set rfi_num_times = samples_per_data_set // rfi_downsampling_factor %}  {# = 32 #}
 {% set rfi_num_times_bar = rfi_num_times //  rfi_second_downsampling_factor %}  {# = 1 #}
 
+# CUDA stream assignment. Every cudaProcess on a GPU takes its default streams by command
+# role, so with a shared base all their copy-ins land on one stream, all their copy-outs on
+# another and all their kernels on a third -- and since queuing is locked per stream, their
+# command queuing serialises against each other however little they share. Each pipeline
+# below declares its own base, an INDEX, `stream_base_step` apart, which gives it a private
+# triple (streams 3*base+0 copy-in, 3*base+1 copy-out, 3*base+2 kernel) and so its own
+# queuing locks. A stage's num_cuda_streams must cover its own highest stream, or startup
+# refuses it by name. stream_base_step defaults to 0, which puts every pipeline on the shared
+# 0/1/2 triple exactly as before, so this file changes nothing in production. Opt in with
+# `-e '{"stream_base_step": 1}'` or from a derived config; 1 already gives every pipeline
+# its own disjoint triple (the base is a pipeline INDEX), larger steps only spread them out.
+{% set stream_base_step = stream_base_step | default(0) %}
+
 ---
 type: config
 
@@ -985,6 +998,8 @@ run_send_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 0 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (0 * stream_base_step) + 3 }}
         cpu_affinity: [12, 13, 14]
         in_buffers:
             host_voltage_buffer_in: host_voltage_buffer_0
@@ -1000,6 +1015,8 @@ run_send_voltage:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 0 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (0 * stream_base_step) + 3 }}
         cpu_affinity: [25, 26, 27]
         in_buffers:
             host_voltage_buffer_in: host_voltage_buffer_1
@@ -1017,6 +1034,8 @@ run_send_bf_mask:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 1 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (1 * stream_base_step) + 3 }}
         cpu_affinity: [12, 13, 14]
         in_buffers:
             host_bf_mask_buffer_in: host_bf_mask_buffer
@@ -1032,6 +1051,8 @@ run_send_bf_mask:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 1 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (1 * stream_base_step) + 3 }}
         cpu_affinity: [25, 26, 27]
         in_buffers:
             host_bf_mask_buffer_in: host_bf_mask_buffer_1
@@ -1049,6 +1070,8 @@ run_send_pl_mask:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 2 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (2 * stream_base_step) + 3 }}
         cpu_affinity: [12, 13, 14]
         in_buffers:
             host_pl_mask_buffer_in: host_pl_mask_buffer
@@ -1064,6 +1087,8 @@ run_send_pl_mask:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 2 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (2 * stream_base_step) + 3 }}
         cpu_affinity: [25, 26, 27]
         in_buffers:
             host_pl_mask_buffer_in: host_pl_mask_buffer_1
@@ -1081,6 +1106,8 @@ run_rfi_s012:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 3 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (3 * stream_base_step) + 3 }}
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
@@ -1097,6 +1124,8 @@ run_rfi_s012:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 3 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (3 * stream_base_step) + 3 }}
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer_1
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
@@ -1118,6 +1147,8 @@ run_rfi_sktilde:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 4 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (4 * stream_base_step) + 3 }}
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
@@ -1136,6 +1167,8 @@ run_rfi_sktilde:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 4 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (4 * stream_base_step) + 3 }}
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
@@ -1156,6 +1189,8 @@ run_recv_rfi_sktilde:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 5 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (5 * stream_base_step) + 3 }}
         in_buffers:
             host_rfi_sktilde_ringbuffer_in: host_rfi_sktilde_ringbuffer
         out_buffers:
@@ -1170,6 +1205,8 @@ run_recv_rfi_sktilde:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 5 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (5 * stream_base_step) + 3 }}
         in_buffers:
             host_rfi_sktilde_ringbuffer_in: host_rfi_sktilde_ringbuffer_1
         out_buffers:
@@ -1189,6 +1226,8 @@ run_rfi_s012bar:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 6 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (6 * stream_base_step) + 3 }}
         in_buffers:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         out_buffers:
@@ -1202,6 +1241,8 @@ run_rfi_s012bar:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 6 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (6 * stream_base_step) + 3 }}
         in_buffers:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
         out_buffers:
@@ -1217,6 +1258,8 @@ run_rfi_skbar:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 7 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (7 * stream_base_step) + 3 }}
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
             host_rfi_s012bar_ringbuffer: host_rfi_s012bar_ringbuffer
@@ -1233,6 +1276,8 @@ run_rfi_skbar:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 7 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (7 * stream_base_step) + 3 }}
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer_1
             host_rfi_s012bar_ringbuffer: host_rfi_s012bar_ringbuffer_1
@@ -1251,6 +1296,8 @@ run_recv_rfi_skbar:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 8 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (8 * stream_base_step) + 3 }}
         in_buffers:
             host_rfi_skbar_ringbuffer_in: host_rfi_skbar_ringbuffer
         out_buffers:
@@ -1265,6 +1312,8 @@ run_recv_rfi_skbar:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 8 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (8 * stream_base_step) + 3 }}
         in_buffers:
             host_rfi_skbar_ringbuffer_in: host_rfi_skbar_ringbuffer_1
         out_buffers:
@@ -1295,6 +1344,8 @@ run_recv_rfi_RFImask:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 9 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (9 * stream_base_step) + 3 }}
         in_buffers:
             host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer
         out_buffers:
@@ -1309,6 +1360,8 @@ run_recv_rfi_RFImask:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 9 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (9 * stream_base_step) + 3 }}
         in_buffers:
             host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer_1
         out_buffers:
@@ -1327,6 +1380,8 @@ run_pl_expand:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 10 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (10 * stream_base_step) + 3 }}
         in_buffers:
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
         out_buffers:
@@ -1339,6 +1394,8 @@ run_pl_expand:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 10 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (10 * stream_base_step) + 3 }}
         in_buffers:
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
         out_buffers:
@@ -1355,6 +1412,8 @@ run_pl_corr:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 11 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (11 * stream_base_step) + 3 }}
         in_buffers:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
@@ -1373,6 +1432,8 @@ run_pl_corr:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 11 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (11 * stream_base_step) + 3 }}
         in_buffers:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
@@ -1395,6 +1456,8 @@ run_n2k:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ 12 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (12 * stream_base_step) + 3 }}
         cpu_affinity: [12, 13, 14]
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
@@ -1413,6 +1476,8 @@ run_n2k:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
+        cuda_stream_base: {{ 12 * stream_base_step }}
+        num_cuda_streams: {{ 3 * (12 * stream_base_step) + 3 }}
         cpu_affinity: [25, 26, 27]
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer_1

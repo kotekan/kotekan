@@ -11,6 +11,7 @@
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t, int32_t
 #include <string>   // for string, basic_string
+#include <thread>   // for thread::id
 #include <vector>   // for vector
 
 /// Stores a named set of gpu pointer(s) with uniform size
@@ -149,6 +150,40 @@ public:
     void claim_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
                                          std::shared_ptr<metadataObject> mc);
 
+
+    /**
+     * @brief Attribute GPU memory taken on the calling thread to `owner` from now on.
+     *
+     * Called once from gpuProcess::main_thread(). It is the backstop for a region first taken
+     * in execute() by a command that did not register it from its constructor (see
+     * register_gpu_memory_name); such a conflict surfaces at the first frame rather than at
+     * construction. Registrations last the life of the device object.
+     */
+    void claim_memory_owner_thread(const std::string& owner);
+
+    /**
+     * @brief Record that the current owner will use `name`, before it is allocated.
+     *
+     * A command that only takes its region in execute() (cudaInputData, cudaOutputData, the ring
+     * copies, cudaUpchannelize) calls this from its constructor, so the region is attributed --
+     * and a conflict refused -- at construction, where --dry-run can see it.
+     */
+    void register_gpu_memory_name(const std::string& name);
+
+    /**
+     * @brief Declare that the current owner shares `name` with another stage, ordered by
+     *        `handshake`.
+     *
+     * A share is allowed only when BOTH stages declare it with the same handshake. The ring
+     * classes (cudaCopyToRingbuffer, cudaCopyFromRingbuffer, cudaCopyNToRingbuffer,
+     * NDArrayRingBuffer) pass the host RingBuffer's name: producer and consumer wait on and
+     * signal that ring, and the ring is signalled only once the producing stage's frame has
+     * completed on the device. Config authors reach the same declaration through
+     * `shared_gpu_memory` on the stage (gpuProcess), whose handshake is that key. Must be
+     * called with an owner in effect (a stage under construction, or a registered thread).
+     */
+    void declare_shared_gpu_memory(const std::string& name, const std::string& handshake);
+
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...
     void cleanup_memory();
@@ -179,10 +214,57 @@ protected:
     int gpu_id;
 
 private:
+    /**
+     * @brief Attribute GPU memory taken while a stage is being CONSTRUCTED to that stage.
+     *
+     * Stages are built one at a time on the main thread (StageFactory::build_stages), so one
+     * scope per device suffices; gpuProcess::init() holds a gpuMemoryOwnerScope around its
+     * command constructors, which is where most named regions are first taken (NDArrayBuffer
+     * and NDArrayRingBuffer fetch theirs from member initialisers). Nesting is refused as a bug.
+     */
+    void begin_memory_owner(const std::string& owner);
+    void end_memory_owner();
+    friend class gpuMemoryOwnerScope;
+
+    /// Owner of regions taken on each registered enqueuing thread; see claim_memory_owner_thread.
+    std::map<std::thread::id, std::string> _thread_owner;
+
+    /// Owner of regions taken while a stage is being constructed; empty outside a scope.
+    std::string _constructing_owner;
+
+    /// First owner of each named region.
+    std::map<std::string, std::string> _memory_owner;
+
+    /// Declared shares: name -> (declaring stage -> handshake). See declare_shared_gpu_memory.
+    std::map<std::string, std::map<std::string, std::string>> _shared_declared;
+
+    /// The stage the calling thread's claims belong to, or empty when there is none.
+    const std::string& current_memory_owner() const;
+
+    /// Refuses, by name, a region a second stage takes without a matching declared share.
+    void check_memory_claim(const std::string& name);
+
     std::map<std::string, gpuMemoryBlock> gpu_memory;
 
     // Mutex to protect gpu_memory variable
     std::recursive_mutex gpu_memory_mutex;
+};
+
+/// Holds a construction-owner scope on a device for the lifetime of the object; see
+/// gpuDeviceInterface::begin_memory_owner.
+class gpuMemoryOwnerScope {
+public:
+    gpuMemoryOwnerScope(gpuDeviceInterface& device, const std::string& owner) : dev(device) {
+        dev.begin_memory_owner(owner);
+    }
+    ~gpuMemoryOwnerScope() {
+        dev.end_memory_owner();
+    }
+    gpuMemoryOwnerScope(const gpuMemoryOwnerScope&) = delete;
+    gpuMemoryOwnerScope& operator=(const gpuMemoryOwnerScope&) = delete;
+
+private:
+    gpuDeviceInterface& dev;
 };
 
 #endif // GPU_DEVICE_INTERFACE_H
