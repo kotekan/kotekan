@@ -141,9 +141,9 @@ public:
 
     /// The array layout as a descriptor, for the pipeline graph.
     std::shared_ptr<const kotekan::FrameDesc> frame_desc() const {
-        return kotekan::GenericNDArray::describe(
-            ndarray.get_value_datatype(), ndarray.get_quantity_name(), ndarray.get_extents(),
-            ndarray.get_dimnames(), ndarray.get_dimscalings());
+        return kotekan::GenericNDArray::describe(ndarray.get_value_datatype(),
+                                                 ndarray.get_quantity_name(), ndarray.get_extents(),
+                                                 ndarray.get_dimnames(), ndarray.get_dimscalings());
     }
 
     // TODO: Distinguish between input and output buffers, then register automatically
