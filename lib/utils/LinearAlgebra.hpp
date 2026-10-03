@@ -234,6 +234,8 @@ public:
     }
 
     /// The eigenvectors found by the last solve(), one per column, ordered as evals().
+    /// Each is phased so that its element for the first input the mask does not exclude
+    /// entirely is real and non-negative.
     const matrix_type& evecs() const {
         return V_;
     }
@@ -259,7 +261,8 @@ private:
     template<typename CT, typename AT, typename BT>
     static void multiply(CT& C, const AT& A, const BT& B);
 
-    /// List the entries of W that are not one, by column, in masked_start_ and masked_.
+    /// List the entries of W that are not one, by column, in masked_start_ and masked_,
+    /// and find the phase reference.
     void find_masked(const DynamicHermitian<float>& W);
 
     /// Replace V_ by an orthonormal basis of the columns of X, which may be V_ itself.
@@ -290,6 +293,9 @@ private:
     };
     std::vector<size_t> masked_start_;
     std::vector<MaskedEntry> masked_;
+    /// The first input the mask does not exclude entirely, whose element of each
+    /// eigenvector is made real
+    size_t phase_ref_ = 0;
 
     /// The current subspace (n x k); on return, the eigenvectors
     matrix_type V_;
@@ -406,6 +412,14 @@ void EigenMaskedSubspaceSolver<MT>::find_masked(const DynamicHermitian<float>& W
             count += wj[i] != 1.0f;
         masked_start_[j + 1] = count;
     }
+    // An excluded input's eigenvector elements are rounding noise, so the phase is
+    // referenced to the first input that has some unmasked entries. With none, any
+    // input will do.
+    phase_ref_ = 0;
+    while (phase_ref_ < n_ && masked_start_[phase_ref_ + 1] == n_)
+        phase_ref_++;
+    if (phase_ref_ == n_)
+        phase_ref_ = 0;
     for (size_t j = 0; j < n_; j++)
         masked_start_[j + 1] += masked_start_[j];
     masked_.resize(masked_start_[n_]);
@@ -462,11 +476,11 @@ void EigenMaskedSubspaceSolver<MT>::augmented_ritz() {
     evals_ = blaze::subvector(evals_kp_, top, k_);
     V_ = blaze::submatrix(Vfull_, 0, top, n_, k_);
 
-    // Set the phase degeneracy if it exists, making the first element of each
-    // eigenvector real. An input whose visibilities are all zero leaves that element
-    // zero, with no phase to fix.
+    // Set the phase degeneracy if it exists, making the phase reference's element of
+    // each eigenvector real. An input whose visibilities are all zero can leave that
+    // element zero, with no phase to fix.
     for (size_t j = 0; j < k_; j++) {
-        const MT z = V_(0, j);
+        const MT z = V_(phase_ref_, j);
         const real_type magnitude = std::abs(z);
         if (magnitude > 0)
             blaze::column(V_, j) *= std::conj(z) / magnitude;
