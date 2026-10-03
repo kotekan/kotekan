@@ -153,7 +153,7 @@ MT rand_subspace_element(std::mt19937& rng) {
  * Method based on one described in Wen and Zhang 2017
  * (https://doi.org/10.1137/16M1058534). Also inspired by the suggestion in
  * Saad 2017 (http://dx.doi.org/10.1137/141002037). A random starting subspace is
- * refined by subspace iteration on the matrix, with the eigenpairs read off by a
+ * refined by subspace iteration on the masked matrix, with the eigenpairs read off by a
  * Rayleigh-Ritz step on a block Krylov extension of the subspace, and the masked
  * entries of the matrix progressively filled in from the current low rank estimate.
  *
@@ -615,9 +615,10 @@ EigConvergenceStats EigenMaskedSubspaceSolver<MT>::solve(const DynamicHermitian<
     EigConvergenceStats stats;
     for (stats.iterations = 0; !stats.converged && stats.iterations < maxiter; stats.iterations++) {
 
-        // Perform the subspace iteration steps
+        // Perform the subspace iteration steps on the masked and filled matrix, so that
+        // the masked entries' data does not reach the subspace
         for (unsigned int ss_ind = 0; ss_ind < q; ss_ind++) {
-            multiply(AV_, A, V_);
+            multiply(AV_, Am_, V_);
             orthonormalise(AV_);
         }
 
