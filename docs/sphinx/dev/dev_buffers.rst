@@ -49,7 +49,8 @@ Buffer types
 
 ``kotekan_buffer`` selects the buffer type. Every buffer block takes
 ``log_level`` (usually inherited) and optionally ``metadata_pool`` and
-``numa_node``. Frame-oriented buffers (all types except ``ring``) also
+``numa_node`` (the node the frames, and the buffer object itself, are
+allocated on). Frame-oriented buffers (all types except ``ring``) also
 require ``num_frames``, plus the optional allocation tunables
 ``use_hugepages`` (off), ``mlock_frames`` (on), ``zero_new_frames`` (on),
 ``zero_value`` (0), and ``cpu_affinity`` (unset). ``peek_hold`` (off) keeps

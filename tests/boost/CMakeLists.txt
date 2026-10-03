@@ -50,6 +50,11 @@ add_executable(test_pipeline_graph test_pipeline_graph.cpp)
 target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
                                                   kotekan_core)
 
+# test_numa_policy - NUMA placement of stages and buffers: which node a config block resolves to,
+# and the scoped memory policy that puts an object there
+add_executable(test_numa_policy test_numa_policy.cpp)
+target_link_libraries(test_numa_policy PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 # test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
 add_executable(test_buffer_peek test_buffer_peek.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -167,6 +172,11 @@ endif()
 
 add_executable(test_DataType test_DataType.cpp)
 target_link_libraries(test_DataType kotekan_metadata libexternal)
+
+# test_frb1IntensityBound - the worst-case FRB1 intensity for given weights (header-only helper)
+add_executable(test_frb1IntensityBound test_frb1IntensityBound.cpp)
+target_include_directories(test_frb1IntensityBound PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_link_libraries(test_frb1IntensityBound kotekan_metadata libexternal)
 
 add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
@@ -338,3 +348,10 @@ else()
 endif()
 target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                                ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_upchannelizeReference - the serial float32 upchannelization reference. The reference lives in
+# lib/cuda, next to its only caller, but has no CUDA dependency of its own. Compile it directly
+# rather than linking kotekan_cuda, so these tests still build and run on a machine without CUDA.
+add_executable(test_upchannelizeReference test_upchannelizeReference.cpp
+                                          ${KOTEKAN_SOURCE_DIR}/lib/cuda/upchannelizeReference.cpp)
+target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)

@@ -10,7 +10,6 @@ frb_num_output_times: 256
 frb1_swap_MN: true
 frb1_num_beams_P: 2 * num_dishes_y
 frb1_num_beams_Q: 2 * num_dishes_x
-frb1_input_scale: 1.0 / 64
 
 frb2_num_beams_x: 4
 frb2_num_beams_y: 256
@@ -149,7 +148,7 @@ run_frb1_U16:
           in_buf: host_frb1_U16_phase_buffer
           gpu_mem: frb1_U16_phase_buffer
         - name: cudaSyncInput
-        - name: cudaCHIMEFRBBeamformer_chime_U16
+        - name: cudaCHIMEFRBBeamformer_chime_U16_K4
           voltage_name: upchan_U16_voltage
           frb_phase_name: frb1_U16_phase
           frb_beamgrid_name: frb1_beams
