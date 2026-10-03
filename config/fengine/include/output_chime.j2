@@ -370,7 +370,7 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_U16_phase_buffer
         file_name: frb1_U16_phase
-        create_single_file: false  # not time-major
+        create_single_file: true
     write_frb2_beam_ids:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_beam_ids_buffer
@@ -380,11 +380,6 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_beam_positions_buffer
         file_name: frb2_beam_positions
-        create_single_file: false  # not time-major
-    write_frb2_weights:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_frb2_weights_buffer
-        file_name: frb2_weights
         create_single_file: false  # not time-major
     write_frb1_beams:
         kotekan_stage: hdf5FileWrite
@@ -410,16 +405,11 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_hfb1_U128_phase_buffer
         file_name: hfb1_U128_phase
-        create_single_file: false  # not time-major
+        create_single_file: true
     write_hfb2_beam_positions:
         kotekan_stage: hdf5FileWrite
         in_buf: host_hfb2_beam_positions_buffer
         file_name: hfb2_beam_positions
-        create_single_file: false  # not time-major
-    write_hfb2_weights:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_hfb2_weights_buffer
-        file_name: hfb2_weights
         create_single_file: false  # not time-major
     write_hfb1_beams:
         kotekan_stage: hdf5FileWrite

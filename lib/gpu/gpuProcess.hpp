@@ -76,6 +76,12 @@ protected:
     // Config variables
     uint32_t _gpu_buffer_depth;
     uint32_t gpu_id;
+
+private:
+    /// Stops every frame signal and joins the results thread. main_thread()'s normal exit and its
+    /// unwind on an exception both go through here; it must not run while main_thread() can
+    /// still queue frames.
+    void stop_results_thread();
 };
 
 #endif // GPU_PROCESS_H
