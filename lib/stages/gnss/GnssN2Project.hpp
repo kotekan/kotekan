@@ -63,6 +63,11 @@
  * @conf k_max            Int. Rank cap (3).
  * @conf frac_first_min   Double. Trigger: component 0's off-diagonal energy fraction (0.4).
  * @conf lambda_min_rel   Double. Trigger: lambda0 / mean auto (3.0).
+ * @conf pr_min           Double. A component must be SPREAD over the array: participation
+ *                        ratio 1 / sum |q_i|^4 >= pr_min (6.0). A lone correlated input pair
+ *                        (cross-talk, a saturated dish's two pols: B04X/B04Y on 10-03) is a
+ *                        rank-1 term with PR = 2 that the least-squares fit scores as a full
+ *                        component; a satellite spans 20-40 of 48 inputs.
  * @conf rel_min, frac_next_min  Double. ProjSubspace's rank gates (0.2, 0.3).
  * @conf solve_every      Int. Frames between solves per channel (4).
  * @conf metric_period_s  Double. Gauge update period (1.0).
@@ -94,6 +99,7 @@ private:
     const int k_max;
     const double frac_first_min;
     const double lambda_min_rel;
+    const double pr_min;
     const double rel_min;
     const double frac_next_min;
     const int solve_every;
@@ -105,7 +111,8 @@ private:
     gnss::ProjSubspace sub; ///< the raw live block's subspace
     gnss::ProjSubspace nul; ///< the projected block's (for null_db)
     std::vector<int> k_cur, on;
-    std::vector<double> lam0_rel, frac0, null_db, mean_auto;
+    std::vector<double> lam0_rel, frac0, null_db, mean_auto, pr0;
+    std::vector<int> q_use; ///< per channel: the solved components the gates accepted, in order
     std::ofstream archive;
 };
 

@@ -34,6 +34,7 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     k_max(config.get_default<int>(unique_name, "k_max", 3)),
     frac_first_min(config.get_default<double>(unique_name, "frac_first_min", 0.4)),
     lambda_min_rel(config.get_default<double>(unique_name, "lambda_min_rel", 3.0)),
+    pr_min(config.get_default<double>(unique_name, "pr_min", 6.0)),
     rel_min(config.get_default<double>(unique_name, "rel_min", 0.2)),
     frac_next_min(config.get_default<double>(unique_name, "frac_next_min", 0.3)),
     solve_every(std::max(1, config.get_default<int>(unique_name, "solve_every", 4))),
@@ -87,14 +88,17 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     frac0.assign(num_local_freq, 0.0);
     null_db.assign(num_local_freq, 0.0);
     mean_auto.assign(num_local_freq, 0.0);
+    pr0.assign(num_local_freq, 0.0);
+    q_use.assign((size_t)num_local_freq * k_max, -1);
     if (!archive_path.empty()) {
         archive.open(archive_path, std::ios::app);
         if (!archive)
             WARN("GnssN2Project: cannot open archive {:s}; archiving off", archive_path);
     }
     INFO("GnssN2Project {:s}: {:d} live stations of {:d}, k_max {:d}, tau {:.2f} s, trigger "
-         "frac0 >= {:.2f} and lambda0 >= {:.1f} x mean auto, solve every {:d} frames{:s}",
-         mode, n, num_elements, k_max, tau_s, frac_first_min, lambda_min_rel, solve_every,
+         "frac0 >= {:.2f}, lambda0 >= {:.1f} x mean auto, spread >= {:.1f} inputs, solve every "
+         "{:d} frames{:s}",
+         mode, n, num_elements, k_max, tau_s, frac_first_min, lambda_min_rel, pr_min, solve_every,
          out_buf ? " -> " + out_name : "");
 }
 
@@ -118,6 +122,8 @@ void GnssN2Project::main_thread() {
         Metrics::instance().add_gauge("kotekan_gnss_n2project_frac0", unique_name, {"freq_id"});
     auto& g_null =
         Metrics::instance().add_gauge("kotekan_gnss_n2project_null_db", unique_name, {"freq_id"});
+    auto& g_pr =
+        Metrics::instance().add_gauge("kotekan_gnss_n2project_pr0", unique_name, {"freq_id"});
     auto& c_frames =
         Metrics::instance().add_counter("kotekan_gnss_n2project_frames_total", unique_name);
     auto& c_proj = Metrics::instance().add_counter(
@@ -165,25 +171,53 @@ void GnssN2Project::main_thread() {
                 sub.push_cov(f, V.data(), dt_int);
                 if (solve_now) {
                     const int ks = sub.solve(f, 2);
-                    frac0[f] = sub.frac(f, 0);
-                    const double lam0 = sub.lambda(f, 0);
+                    // Components that are SPREAD over the array, in energy order; a lone
+                    // correlated pair (PR 2) is skipped and the next component judged.
+                    int* use = &q_use[(size_t)f * k_max];
+                    int nuse = 0;
+                    int first = -1;
+                    for (int j = 0; j < ks; ++j) {
+                        const cd* qj = sub.q(f, j);
+                        double s4 = 0.0;
+                        for (int i = 0; i < n; ++i)
+                            s4 += std::norm(qj[i]) * std::norm(qj[i]);
+                        const double pr = s4 > 0.0 ? 1.0 / s4 : 0.0;
+                        if (j == 0)
+                            pr0[f] = pr;
+                        if (pr >= pr_min) {
+                            if (first < 0)
+                                first = j;
+                            use[nuse++] = j;
+                        }
+                    }
+                    for (int j = nuse; j < k_max; ++j)
+                        use[j] = -1;
+                    // The trigger is judged on the first spread component: its share of the
+                    // off-diagonal energy left after the ones before it, and its eigenvalue.
+                    frac0[f] = first >= 0 ? sub.frac(f, first) : 0.0;
+                    const double lam0 = first >= 0 ? sub.lambda(f, first) : 0.0;
                     lam0_rel[f] = mean_auto[f] > 0.0 ? lam0 / mean_auto[f] : 0.0;
                     // Hysteresis on the trigger so a threshold-grazing emitter does not
                     // flicker the rank frame by frame.
                     const double fmin = on[f] ? 0.8 * frac_first_min : frac_first_min;
-                    on[f] =
-                        (sub.warm(f) && frac0[f] >= fmin && lam0_rel[f] >= lambda_min_rel) ? 1 : 0;
-                    k_cur[f] = on[f] ? std::min(ks, k_max) : 0;
+                    on[f] = (first >= 0 && sub.warm(f) && frac0[f] >= fmin
+                             && lam0_rel[f] >= lambda_min_rel)
+                                ? 1
+                                : 0;
+                    k_cur[f] = on[f] ? std::min(nuse, k_max) : 0;
                 }
                 const int k = k_cur[f];
                 if (k > 0) {
+                    const int* use = &q_use[(size_t)f * k_max];
                     for (int j = 0; j < k; ++j)
-                        std::copy(sub.q(f, j), sub.q(f, j) + n, q.begin() + (size_t)j * n);
+                        std::copy(sub.q(f, use[j]), sub.q(f, use[j]) + n,
+                                  q.begin() + (size_t)j * n);
                     gnss_n2proj::project(n, k, q.data(), V.data(), W, M);
                     nul.push_cov(f, V.data(), dt_int);
                     if (solve_now) {
                         nul.solve(f, 2);
-                        const double l0 = sub.lambda(f, 0), l1 = nul.lambda(f, 0);
+                        const double l0 = sub.lambda(f, q_use[(size_t)f * k_max]),
+                                     l1 = nul.lambda(f, 0);
                         null_db[f] =
                             (l0 > 0.0) ? 10.0 * std::log10(std::max(l1, 1e-12 * l0) / l0) : 0.0;
                     }
@@ -209,6 +243,7 @@ void GnssN2Project::main_thread() {
                 g_lam.labels({fid}).set(lam0_rel[f]);
                 g_frac.labels({fid}).set(frac0[f]);
                 g_null.labels({fid}).set(null_db[f]);
+                g_pr.labels({fid}).set(pr0[f]);
             }
         }
         if (archive && since_archive >= archive_period_s) {
@@ -230,6 +265,9 @@ void GnssN2Project::main_thread() {
             archive << "],\"null_db\":[";
             for (int f = 0; f < num_local_freq; ++f)
                 archive << (f ? "," : "") << (float)null_db[f];
+            archive << "],\"pr0\":[";
+            for (int f = 0; f < num_local_freq; ++f)
+                archive << (f ? "," : "") << (float)pr0[f];
             archive << "]}\n";
             archive.flush();
         }

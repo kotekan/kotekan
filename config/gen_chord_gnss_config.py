@@ -3102,6 +3102,9 @@ def main():
     ap.add_argument("--n2-project-lambda-min", type=float, default=3.0,
                     help="trigger: lambda0 in units of the mean live auto")
     ap.add_argument("--n2-project-solve-every", type=int, default=4, help="frames per solve")
+    ap.add_argument("--n2-project-pr-min", type=float, default=6.0,
+                    help="trigger: a component must be spread over >= this many inputs "
+                         "(participation ratio 1/sum|q|^4); a lone correlated pair scores 2")
     ap.add_argument("--n2-project-archive-dir", type=str, default=None,
                     help="JSONL archive directory on the node (per GPU file), default none")
     ap.add_argument("--elem-proj-deg", type=float, default=None,
@@ -4050,6 +4053,7 @@ def main():
                 "tau_s": float(args.n2_project_tau_s),
                 "frac_first_min": float(args.n2_project_frac_min),
                 "lambda_min_rel": float(args.n2_project_lambda_min),
+                "pr_min": float(args.n2_project_pr_min),
                 "solve_every": int(args.n2_project_solve_every),
                 "metric_period_s": 1.0,
                 "archive_period_s": 10.0,
