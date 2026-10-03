@@ -81,7 +81,12 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     sub = gnss::ProjSubspace(n, num_local_freq, tau_s, k_max);
     sub.rel_min = rel_min;
     sub.frac_next_min = frac_next_min;
-    nul = gnss::ProjSubspace(n, num_local_freq, tau_s, 1);
+    // The projected block's tracker solves k_max components too: its first SPREAD one is the
+    // null depth; a component the gate skipped (a lone pair) is still there after projection
+    // and would otherwise floor the metric.
+    nul = gnss::ProjSubspace(n, num_local_freq, tau_s, k_max);
+    nul.rel_min = 0.0;
+    nul.frac_next_min = 0.0;
     k_cur.assign(num_local_freq, 0);
     on.assign(num_local_freq, 0);
     lam0_rel.assign(num_local_freq, 0.0);
@@ -215,9 +220,19 @@ void GnssN2Project::main_thread() {
                     gnss_n2proj::project(n, k, q.data(), V.data(), W, M);
                     nul.push_cov(f, V.data(), dt_int);
                     if (solve_now) {
-                        nul.solve(f, 2);
-                        const double l0 = sub.lambda(f, q_use[(size_t)f * k_max]),
-                                     l1 = nul.lambda(f, 0);
+                        const int kn = nul.solve(f, 2);
+                        double l1 = 0.0;
+                        for (int j = 0; j < kn; ++j) {
+                            const cd* qj = nul.q(f, j);
+                            double s4 = 0.0;
+                            for (int i = 0; i < n; ++i)
+                                s4 += std::norm(qj[i]) * std::norm(qj[i]);
+                            if (s4 > 0.0 && 1.0 / s4 >= pr_min) {
+                                l1 = std::fabs(nul.lambda(f, j));
+                                break;
+                            }
+                        }
+                        const double l0 = sub.lambda(f, q_use[(size_t)f * k_max]);
                         null_db[f] =
                             (l0 > 0.0) ? 10.0 * std::log10(std::max(l1, 1e-12 * l0) / l0) : 0.0;
                     }
