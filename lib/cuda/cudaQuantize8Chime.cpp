@@ -142,9 +142,9 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaQuantize8Chime");
 
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_offsetscale, true, false, true));
+    input_buffer.register_consumer();
+    beam_buffer.register_producer();
+    offsetscale_buffer.register_producer();
 
     // these sizes are hard-coded in the CUDA kernel
     if (_num_beams != in_nbeams || _num_frequencies != in_nfreqs || _num_times != in_ntimes) {

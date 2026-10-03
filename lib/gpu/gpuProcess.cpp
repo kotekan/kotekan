@@ -18,6 +18,7 @@
 #include "fmt.hpp"  // for format, compile_string_to_view, format_string, fmt
 #include "json.hpp" // for json_ref, basic_json, json, iter_impl
 
+#include <algorithm>   // for find
 #include <assert.h>    // for assert
 #include <cmath>       // for isnan
 #include <cstdlib>     // for abort
@@ -415,26 +416,61 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         previous = id;
     }
 
-    // GPU memory, in one region per device. The memory is the device's, shared
-    // by every gpuProcess driving it (cudaDeviceInterface::get hands them the
-    // same object), so a region a copy fills in one stage and a kernel reads in
-    // another is a single node with edges from both. "voltage" on one device is
-    // still not the "voltage" on the next, so the ids carry the device.
+    // GPU memory. The memory is the device's, shared by every gpuProcess driving
+    // it (cudaDeviceInterface::get hands them the same object), so a region a
+    // copy fills in one stage and a kernel reads in another is a single node
+    // with edges from both. "voltage" on one device is still not the "voltage"
+    // on the next, so the ids carry the device.
+    //
+    // A region is drawn in the box of the stage that writes it, so the edges
+    // leaving a box are exactly the regions read elsewhere; one that nothing
+    // here writes sits at the device level until a writer claims it. Gathering
+    // the regions in a box of their own instead doubles the edge crossings.
     const std::string mem_prefix = gpu_mem_node_prefix(gpu_id);
-    auto& mem = graph.add_cluster(fmt::format(fmt("__gpu/{:d}/mem"), gpu_id));
-    mem.parent = device.id;
-    mem.label = "device memory";
-    mem.set_attr("style", "rounded").set_attr("color", kotekan::graph_cluster_line);
 
     std::set<std::string> gpu_buffers;
-    for (auto& command : commands)
-        for (auto& buff : command[0]->get_gpu_buffers())
+    std::set<std::string> written_here;
+    for (auto& command : commands) {
+        for (auto& buff : command[0]->get_gpu_buffers()) {
             gpu_buffers.insert(std::get<0>(buff));
+            if (std::get<3>(buff))
+                written_here.insert(std::get<0>(buff));
+        }
+    }
 
     for (const auto& buffer_name : gpu_buffers) {
         auto& node = graph.add_node(mem_prefix + buffer_name);
-        // Another stage on this device may have described it already.
-        if (!node.cluster.empty())
+        // Another stage on this device may have described it already; a writer
+        // still claims it into its own box.
+        const bool is_new = node.cluster.empty();
+        if (written_here.count(buffer_name))
+            node.cluster = work.id;
+        else if (is_new)
+            node.cluster = device.id;
+
+        // A ring region is tracked by a host RingBuffer, whose node the graph
+        // already has as a buffer: mark that node as the ring's signal and tie
+        // the two together, so it is not mistaken for data living on the host.
+        std::string signal;
+        for (auto& command : commands)
+            if (signal.empty())
+                signal = command[0]->get_gpu_buffer_signal(buffer_name);
+        if (!signal.empty() && graph.has_node(signal)) {
+            auto& ring = graph.add_node(signal);
+            const std::string mark = "signal for " + buffer_name;
+            if (std::find(ring.label_lines.begin(), ring.label_lines.end(), mark)
+                == ring.label_lines.end()) {
+                ring.add_line(mark);
+                ring.set_attr("fillcolor",
+                              kotekan::graph_style(kotekan::GraphCategory::Memory).fill);
+                graph.add_edge(signal, mem_prefix + buffer_name)
+                    .set_attr("style", "dashed")
+                    .set_attr("arrowhead", "none")
+                    .set_attr("constraint", "false");
+            }
+        }
+
+        if (!is_new)
             continue;
         node.add_line(buffer_name);
 
@@ -469,11 +505,12 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
             if (info->depth > 1)
                 node.add_line(fmt::format(fmt("{:s} ×{:d}"), kotekan::human_bytes(info->len),
                                           info->depth));
+            else if (!signal.empty())
+                node.add_line(fmt::format(fmt("{:s} · ring"), kotekan::human_bytes(info->len)));
             else
                 node.add_line(kotekan::human_bytes(info->len));
         }
 
-        node.cluster = mem.id;
         node.set_category(kotekan::GraphCategory::Memory);
     }
 
