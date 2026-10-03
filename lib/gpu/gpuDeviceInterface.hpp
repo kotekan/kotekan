@@ -4,6 +4,7 @@
 #include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "metadata.hpp"       // for metadataObject, metadataPool
+#include "restServer.hpp"     // for connectionInstance
 
 #include <map>      // for map
 #include <memory>   // for shared_ptr, weak_ptr
@@ -28,6 +29,11 @@ struct gpuMemoryBlock {
  * @class gpuDeviceInterface
  * @brief Base class for interacting with GPU devices.
  *        Primarily deals with memory allocation in GPU subsystems.
+ *
+ * @par REST Endpoints
+ * @endpoint /gpu_memory/gpu_\<gpu_id\> ``[GET]`` Lists the named GPU memory regions on this
+ *           device: size in bytes, depth, view source, and the metadata (e.g. array name,
+ *           type and shape) attached to each array element, or null where none is attached.
  *
  * @author Keith Vanderlinde
  */
@@ -179,6 +185,10 @@ protected:
     int gpu_id;
 
 private:
+    void memory_callback(kotekan::connectionInstance& conn);
+
+    const std::string memory_endpoint;
+
     std::map<std::string, gpuMemoryBlock> gpu_memory;
 
     // Mutex to protect gpu_memory variable

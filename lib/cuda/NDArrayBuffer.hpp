@@ -142,14 +142,18 @@ public:
     // TODO: Distinguish between input and output buffers, then register automatically
     void register_consumer() {
         if (get_instance_num() == 0)
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = true, .does_write = false});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = !is_do_once,
+                                                   .does_read = true,
+                                                   .does_write = false});
     }
 
     void register_producer() {
         if (get_instance_num() == 0)
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = false, .does_write = true});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = !is_do_once,
+                                                   .does_read = false,
+                                                   .does_write = true});
     }
 
     // NDArray:
