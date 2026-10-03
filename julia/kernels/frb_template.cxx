@@ -26,6 +26,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -42,6 +43,16 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
     for (std::size_t d=0; d<D; ++d)
         result[d] = values[D - 1 - d];
     return result;
+}
+
+// Override the leading (slowest) dimension's scaling with a run-time value. Used for inputs
+// that are valid for a configurable number of FPGA samples, such as the beamforming weights.
+template<std::size_t D>
+std::array<std::ptrdiff_t, D> with_leading_dimscaling(std::array<std::ptrdiff_t, D> dimscalings,
+                                                      const std::ptrdiff_t dimscaling) {
+    static_assert(D > 0);
+    dimscalings[0] = dimscaling;
+    return dimscalings;
 }
 }
 
@@ -80,6 +91,14 @@ private:
     {{#kernel_design_parameters}}
         static constexpr {{{type}}} {{{name}}} = {{{value}}};
     {{/kernel_design_parameters}}
+
+    // Each kernel invocation processes a multiple of this many `Tbar` samples: a multiple of the
+    // kernel's granularity, and of the downsampling factor so that every sample read is also
+    // consumed. The read head thus always stays on a multiple of `Tbar_quantum`, which is what
+    // lets a read stop exactly at the end of a slowly varying input's lifetime.
+    static constexpr std::ptrdiff_t Tbar_quantum =
+        std::lcm(std::ptrdiff_t(cuda_granularity_number_of_timesamples),
+                 std::ptrdiff_t(cuda_downsampling_factor));
 
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
@@ -165,6 +184,13 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    // Lifetimes of slowly varying inputs, in FPGA samples
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            const std::ptrdiff_t {{{name}}}_lifetime_in_samples;
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+
     // Host-side buffer arrays
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -230,6 +256,12 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{/kernel_arguments}}
 
     {{#kernel_arguments}}
+        {{#haslifetime}}
+            {{{name}}}_lifetime_in_samples(config.get<std::int64_t>(unique_name, "{{{lifetime_config}}}")),
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+
+    {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
                 {{#hasringbuffer}}
@@ -238,7 +270,12 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                         {{{name}}}_quantity,
                         reverse({{{name}}}_lengths),
                         reverse({{{name}}}_labels),
-                        reverse({{{name}}}_dimscalings),
+                        {{#haslifetime}}
+                            with_leading_dimscaling(reverse({{{name}}}_dimscalings), {{{name}}}_lifetime_in_samples),
+                        {{/haslifetime}}
+                        {{^haslifetime}}
+                            reverse({{{name}}}_dimscalings),
+                        {{/haslifetime}}
                         *this
                     ),
                 {{/hasringbuffer}}
@@ -300,6 +337,40 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    // Every invocation processes a multiple of `Tbar_quantum` samples, so at least that many
+    // have to fit into one read, or the kernel would never make progress.
+    {
+        const std::ptrdiff_t Tbar_read_max = Ebar_buffer.get_ndarray().extent(0) / 4;
+        if (Tbar_quantum > Tbar_read_max)
+            FATAL_ERROR("Kernel {{{kernel_name}}} processes multiples of {:d} time samples "
+                        "(the least common multiple of its granularity {:d} and its downsampling "
+                        "factor {:d}), but reads at most {:d} time samples at a time",
+                        Tbar_quantum, int(cuda_granularity_number_of_timesamples),
+                        int(cuda_downsampling_factor), Tbar_read_max);
+    }
+
+    // Slowly varying inputs are held in a ring buffer and read without claiming, one element
+    // per lifetime. A kernel invocation must not straddle the end of a lifetime, so a lifetime
+    // has to be a whole number of processing quanta. (Unlike the baseband beamformer, the
+    // output here is a ring buffer, so the reads can be shortened to stop at a lifetime's end.)
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            {
+                const std::ptrdiff_t quantum = cuda_upchannelization_factor * Tbar_quantum;
+                if ({{{name}}}_lifetime_in_samples <= 0
+                    || {{{name}}}_lifetime_in_samples % quantum != 0)
+                    FATAL_ERROR("{{{lifetime_config}}} {:d} must be a positive multiple of {:d} "
+                                "FPGA samples, the processing quantum of kernel {{{kernel_name}}} "
+                                "(upchannelization factor {:d} times the least common multiple of "
+                                "the granularity {:d} and the downsampling factor {:d})",
+                                {{{name}}}_lifetime_in_samples, quantum,
+                                int(cuda_upchannelization_factor),
+                                int(cuda_granularity_number_of_timesamples),
+                                int(cuda_downsampling_factor));
+            }
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+
     set_command_type(gpuCommandType::KERNEL);
 
     // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
@@ -317,14 +388,14 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
 
 std::int64_t cuda{{{kernel_name}}}::num_consumed_elements(std::int64_t num_available_elements) const {
-    return num_produced_elements(num_available_elements) * cuda_downsampling_factor;
+    return num_processed_elements(num_available_elements);
 }
 std::int64_t cuda{{{kernel_name}}}::num_produced_elements(std::int64_t num_available_elements) const {
-    return num_processed_elements(num_available_elements) / cuda_downsampling_factor;
+    return div_noremainder(num_processed_elements(num_available_elements), cuda_downsampling_factor);
 }
 
 std::int64_t cuda{{{kernel_name}}}::num_processed_elements(std::int64_t num_available_elements) const {
-    return round_down(num_available_elements, cuda_granularity_number_of_timesamples);
+    return round_down(num_available_elements, Tbar_quantum);
 }
 
 int cuda{{{kernel_name}}}::wait_on_precondition() {
@@ -334,23 +405,87 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
             return errcode;
     }
 
-    // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
+
+    // Where will our read begin? Ask the ringbuffer. We must not use our own `read_valid` for
+    // this: every instance of this command shares one ringbuffer read head, so our own position
+    // lags it by whatever the other instances have claimed since our previous frame.
+    const std::ptrdiff_t Tbar_begin = Ebar_buffer.peek_read_head();
+    if (Tbar_begin < 0)
+        return -1; // shutting down
+    // We only ever claim multiples of `Tbar_quantum`
+    assert(Tbar_begin % Tbar_quantum == 0);
+
+    // Slowly varying inputs: find the element covering the samples we are about to read, and do
+    // not read past the end of its lifetime. (The constructor checked that lifetimes are
+    // multiples of `Tbar_quantum`, so we can stop exactly there.)
+    std::ptrdiff_t Tbar_read_limit = Tbar_read_max;
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            // `Tbar` samples are `cuda_upchannelization_factor` FPGA samples apart
+            const std::ptrdiff_t {{{name}}}_lifetime_in_Tbar =
+                div_noremainder({{{name}}}_lifetime_in_samples, std::ptrdiff_t(cuda_upchannelization_factor));
+            // (`kotekan::div` must be qualified; an unqualified `div` finds C's `::div`)
+            const std::ptrdiff_t {{{name}}}_element = kotekan::div(Tbar_begin, {{{name}}}_lifetime_in_Tbar);
+            const std::ptrdiff_t {{{name}}}_lifetime_end = ({{{name}}}_element + 1) * {{{name}}}_lifetime_in_Tbar;
+            Tbar_read_limit = std::min(Tbar_read_limit, {{{name}}}_lifetime_end - Tbar_begin);
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+    assert(Tbar_read_limit >= Tbar_quantum);
+
+    // Wait for data to be available in input ringbuffer
     std::ptrdiff_t Tbar_read = -1;
     {
         const int errcode = Ebar_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tbar_available) {
             using std::min;
-            Tbar_read = min(Tbar_available, Tbar_read_max);
-            // Ensure that we make progress: If we cannot claim any elements then we
-            // must not read any elements either, and instead wait for more data.
-            const std::ptrdiff_t Tbar_claimed = num_consumed_elements(Tbar_read);
-            const std::ptrdiff_t Tbar_processed = Tbar_claimed == 0 ? 0 : num_processed_elements(Tbar_read);
-            return read_descriptor_t{.claimed = Tbar_claimed, .read = Tbar_processed};
+            // `*_written` below is derived from this value, so it must include the clamp
+            Tbar_read = num_processed_elements(min(Tbar_available, Tbar_read_limit));
+            // If we cannot process a whole quantum then we read nothing, and wait for more data
+            return read_descriptor_t{.claimed = num_consumed_elements(Tbar_read), .read = Tbar_read};
         });
         if (errcode < 0)
             return errcode;
     }
+    const std::ptrdiff_t Tbar_end = Ebar_buffer.get_read_claimed().end();
+    assert(Ebar_buffer.get_read_valid().begin() == Tbar_begin);
+    assert(Ebar_buffer.get_read_valid().end() == Tbar_end);
+    assert(Tbar_end <= Tbar_begin + Tbar_read_limit);
+
+    // Slowly varying inputs: read the element covering these samples. We read the same element
+    // on every invocation within its lifetime, and claim it only on the last one, so that the
+    // producer can recycle it afterwards. That invocation is by construction the last one to use
+    // the element, and `finalize_frame` runs in frame order, so releasing it there is safe.
+    //
+    // We are holding a claim on `Ebar` while we wait here. That is safe because the producer of
+    // these inputs does not depend on `Ebar` being drained.
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            {
+                const bool last_use = Tbar_end == {{{name}}}_lifetime_end;
+                DEBUG("Waiting for {{{name}}} input ringbuffer data for frame {:d}...", gpu_frame_id);
+                const int errcode = {{{name}}}_buffer.wait_and_claim_readable(
+                    [&](const std::ptrdiff_t available_elements) {
+                        if (available_elements < 1)
+                            return read_descriptor_t{.claimed = 0, .read = 0};
+                        return read_descriptor_t{.claimed = last_use ? 1 : 0, .read = 1};
+                    });
+                if (errcode < 0)
+                    return errcode;
+                DEBUG("Done waiting for {{{name}}} input ringbuffer data for frame {:d}; "
+                      "using element {:d}{:s}",
+                      gpu_frame_id, {{{name}}}_element, last_use ? " (last use)" : "");
+                // The two ringbuffers must agree on which element covers these samples
+                if ({{{name}}}_buffer.get_read_valid().begin() != {{{name}}}_element)
+                    FATAL_ERROR("Kernel {{{kernel_name}}}: samples [{:d},{:d}) of buffer Ebar are "
+                                "covered by element {:d} of buffer {{{name}}}, but the {{{name}}} "
+                                "ringbuffer is at element {:d}",
+                                Tbar_begin, Tbar_end, {{{name}}}_element,
+                                {{{name}}}_buffer.get_read_valid().begin());
+            }
+        {{/haslifetime}}
+    {{/kernel_arguments}}
+
     const std::ptrdiff_t Ttilde_written = num_produced_elements(Tbar_read);
 
     // Wait for space to be available in output ringbuffer
@@ -527,6 +662,22 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                             "kernel {{{kernel_name}}} processes coarse frequency {:d} there",
                             W_coarse_freq.at(freq), freq, I_coarse_freq.at(Fbar_out_min + freq));
 
+        // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards,
+        // counted from the voltage ring buffer's logical beginning -- so the two streams have
+        // to start at the same sequence number. A misaligned input would be applied to the
+        // wrong samples, silently corrupting the output. Ring buffer metadata are written once,
+        // so checking once suffices.
+        {{#kernel_arguments}}
+            {{#haslifetime}}
+                if ({{{name}}}_buffer.get_metadata()->get_fpga_seq_num() != Ebar_meta->get_fpga_seq_num())
+                    FATAL_ERROR("Buffer {{{name}}} begins at FPGA sequence number {:d}, but the "
+                                "voltage buffer Ebar begins at {:d}; kernel {{{kernel_name}}} "
+                                "requires them to be aligned",
+                                {{{name}}}_buffer.get_metadata()->get_fpga_seq_num(),
+                                Ebar_meta->get_fpga_seq_num());
+            {{/haslifetime}}
+        {{/kernel_arguments}}
+
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
     } // if !did_set_metadata
 
@@ -555,6 +706,20 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     // Set I_memory to beginning of output ring buffer
     I_arg = array_desc(I_memory, I_length_in_bytes);
+
+    // Slowly varying inputs: the kernel wants a single element, not the whole ring buffer.
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            {
+                const std::ptrdiff_t ring_length = {{{name}}}_buffer.get_ndarray().extent(0);
+                const std::ptrdiff_t element = {{{name}}}_buffer.get_read_valid().begin();
+                {{{name}}}_arg = array_desc({{{name}}}_buffer.get_ndarray().data()
+                                                + {{{name}}}_buffer.get_ndarray().stride(0)
+                                                      * (element % ring_length),
+                                            {{{name}}}_length_in_bytes / ring_length);
+            }
+        {{/haslifetime}}
+    {{/kernel_arguments}}
 
     // Ringbuffer size
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
@@ -804,8 +969,13 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 }
 
 void cuda{{{kernel_name}}}::finalize_frame() {
-    // Advance the input ring buffer
+    // Advance the input ring buffers
     Ebar_buffer.finish_read();
+    {{#kernel_arguments}}
+        {{#haslifetime}}
+            {{{name}}}_buffer.finish_read();
+        {{/haslifetime}}
+    {{/kernel_arguments}}
 
     // Advance the output ring buffer
     I_buffer.finish_write();

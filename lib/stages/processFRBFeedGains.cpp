@@ -11,6 +11,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 using kotekan::bufferContainer;
@@ -23,6 +24,8 @@ processFRBFeedGains::processFRBFeedGains(Config& config, const std::string& uniq
     processFeedGains(config, unique_name, buffer_container) {
     // get the additional config parameters needed for the frame desc
     num_polarizations = config.get<uint32_t>(unique_name, "num_polarizations");
+    frb1_phase_lifetime_in_samples =
+        config.get<std::int64_t>(unique_name, "frb1_phase_lifetime_in_samples");
     frb1_swap_MN = config.get_default<bool>(unique_name, "frb1_swap_MN", false);
 
     // telescope layout
@@ -94,13 +97,17 @@ void processFRBFeedGains::check_gains(const float16_t* frame) {
 }
 
 void processFRBFeedGains::set_frame_desc(Buffer* buf) {
-    // Attach the frame description, or check the declared one
-    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 5>::describe(
+    // Attach the frame description, or check the declared one. The leading axis has length 1
+    // and carries the lifetime as its `dimscaling`; that is how the GPU ring buffer learns how
+    // many FPGA samples one set of weights covers. One frame is emitted per bad feed mask frame,
+    // so this must equal the mask's lifetime (checked in the main loop).
+    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 6>::describe(
         "W",
-        {static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
+        {1, static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
          static_cast<ptrdiff_t>(num_polarizations), static_cast<ptrdiff_t>(num_dishes_N),
          static_cast<ptrdiff_t>(num_dishes_M), static_cast<ptrdiff_t>(num_components)},
-        {"Fbar", "P", "dishN", "dishM", "C"}, {1, 1, 1, 1, 1}));
+        {"TW", "Fbar", "P", "dishN", "dishM", "C"},
+        {static_cast<ptrdiff_t>(frb1_phase_lifetime_in_samples), 1, 1, 1, 1, 1}));
 
     // everything below here ends up being the same as the parent class
     freq_upchan_factor = std::vector<int>(num_local_freq * upchan_factor, upchan_factor);
