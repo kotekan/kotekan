@@ -17,7 +17,7 @@
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
-#include "PipelineGraph.hpp"  // for human_bytes
+#include "PipelineGraph.hpp"  // for human_bytes, array_layout_line
 #include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
 #include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
 #include "metadata.hpp"       // for metadataObject, metadataPool
@@ -610,19 +610,11 @@ std::vector<std::string> Buffer::dot_label_lines(const kotekan::GraphOptions& op
     // the config or from the kernel sources.
     auto array = get_frame_desc<kotekan::GenericNDArray>();
     if (array) {
-        const std::vector<std::ptrdiff_t> extents = array->get_extents();
-        const std::vector<kotekan::Symbol> dimnames = array->get_dimnames();
-        std::string layout;
-        for (size_t d = 0; d < extents.size(); d++) {
-            if (!layout.empty())
-                layout += " × ";
-            if (d < dimnames.size() && dimnames[d])
-                layout += fmt::format(fmt("{:s}:{:d}"), dimnames[d].get_string(), extents[d]);
-            else
-                layout += fmt::format(fmt("{:d}"), extents[d]);
-        }
-        lines.push_back(
-            fmt::format(fmt("{:s} {:s}"), type_to_string(array->get_value_datatype()), layout));
+        std::vector<std::string> dimnames;
+        for (const kotekan::Symbol& dimname : array->get_dimnames())
+            dimnames.push_back(dimname ? dimname.get_string() : std::string());
+        lines.push_back(kotekan::array_layout_line(type_to_string(array->get_value_datatype()),
+                                                   array->get_extents(), dimnames));
     }
 
     lines.push_back(fmt::format(fmt("{:s} ×{:d} frames = {:s}"), kotekan::human_bytes(frame_size),

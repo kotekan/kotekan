@@ -64,7 +64,8 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 
     set_command_type(gpuCommandType::COPY_OUT);
 
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
+    // The ring it reads from is one region, not a per-frame array.
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, false, true, false));
 }
 
 cudaCopyFromRingbuffer::~cudaCopyFromRingbuffer() {

@@ -46,6 +46,28 @@ void gpuDeviceInterface::memory_callback(connectionInstance& conn) {
     conn.send_json_reply(reply);
 }
 
+std::optional<gpuMemoryInfo> gpuDeviceInterface::get_gpu_memory_info(const std::string& name) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    auto it = gpu_memory.find(name);
+    if (it == gpu_memory.end())
+        return std::nullopt;
+    gpuMemoryInfo info{it->second.len, it->second.gpu_pointers.size(), nullptr};
+    // Metadata lives on the region that owns the memory, so a same-size view
+    // reads its source's, as get_gpu_memory_array_metadata does.
+    std::string source = name;
+    while (gpu_memory.count(source)) {
+        for (const auto& mc : gpu_memory[source].metadata_pointers)
+            if (mc) {
+                info.metadata = mc;
+                break;
+            }
+        if (info.metadata || !is_view_of_same_size(source))
+            break;
+        source = gpu_memory[source].view_source;
+    }
+    return info;
+}
+
 void gpuDeviceInterface::cleanup_memory() {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     for (auto it = gpu_memory.begin(); it != gpu_memory.end(); it++) {

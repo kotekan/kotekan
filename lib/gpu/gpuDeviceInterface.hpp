@@ -9,6 +9,7 @@
 #include <map>      // for map
 #include <memory>   // for shared_ptr, weak_ptr
 #include <mutex>    // for recursive_mutex
+#include <optional> // for optional
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t, int32_t
 #include <string>   // for string, basic_string
@@ -23,6 +24,17 @@ struct gpuMemoryBlock {
     size_t len;
     // if this is a view, the target of that view; used only for metadata
     std::string view_source;
+};
+
+/// What the pipeline graph asks about a named region; see
+/// gpuDeviceInterface::get_gpu_memory_info().
+struct gpuMemoryInfo {
+    /// Bytes per element: per array slot, or the whole of a single region.
+    size_t len;
+    /// Number of elements: an array's buffer depth, 1 for a single region.
+    size_t depth;
+    /// Metadata attached to the first element that has any, or null.
+    std::shared_ptr<metadataObject> metadata;
 };
 
 /**
@@ -133,6 +145,19 @@ public:
      */
     std::shared_ptr<metadataObject> get_gpu_memory_array_metadata(const std::string& name,
                                                                   const uint32_t index);
+
+    /**
+     * @brief Describes a named region without allocating it or failing.
+     *
+     * Unlike @c get_gpu_memory_array_metadata this is safe for a name a command
+     * has registered but not yet allocated, which the pipeline graph can meet
+     * while the pipeline is still starting.
+     *
+     * @param name  The region name as given to get_gpu_memory or _array.
+     * @return Its size, depth and metadata (a same-size view reports its
+     *         source's metadata), or nullopt when no region of that name exists.
+     */
+    std::optional<gpuMemoryInfo> get_gpu_memory_info(const std::string& name);
 
     /**
      * @brief Allocates a new metadata object (from the given pool)

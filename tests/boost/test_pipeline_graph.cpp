@@ -32,6 +32,15 @@ static void check_statements_terminated(const std::string& dot) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(array_layout_line_formats_type_and_shape) {
+    // Named dimensions read name:extent; an unnamed one is the bare extent, and a
+    // short name list leaves the trailing dimensions unnamed.
+    BOOST_CHECK_EQUAL(kotekan::array_layout_line("int8", {4, 2, 64}, {"Tbf", "P", "D"}),
+                      "int8 Tbf:4 × P:2 × D:64");
+    BOOST_CHECK_EQUAL(kotekan::array_layout_line("int32", {1, 384}, {"", "F"}), "int32 1 × F:384");
+    BOOST_CHECK_EQUAL(kotekan::array_layout_line("float32", {3, 5}, {"A"}), "float32 A:3 × 5");
+}
+
 BOOST_AUTO_TEST_CASE(nodes_and_edges) {
     PipelineGraph graph;
     graph.add_node("buffer")
