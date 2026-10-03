@@ -1380,7 +1380,12 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     }
 }
 
-hdf5N2Write::~hdf5N2Write() {}
+hdf5N2Write::~hdf5N2Write() {
+    // main_thread joins it unless a FatalError cut it short.
+    _bad_feed_mask_stop = true;
+    if (_bad_feed_mask_thread.joinable())
+        _bad_feed_mask_thread.join();
+}
 
 size_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     // Get the absolute file index based on the absolute frame index and
