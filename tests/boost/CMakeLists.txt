@@ -355,3 +355,8 @@ target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_
 add_executable(test_upchannelizeReference test_upchannelizeReference.cpp
                                           ${KOTEKAN_SOURCE_DIR}/lib/cuda/upchannelizeReference.cpp)
 target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)
+
+# test_lifetimeWindows - the upchannelizer's window scheduler, which makes every window end on a
+# gain lifetime boundary. Header-only and CUDA-free, like the reference above.
+add_executable(test_lifetimeWindows test_lifetimeWindows.cpp)
+target_include_directories(test_lifetimeWindows PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)

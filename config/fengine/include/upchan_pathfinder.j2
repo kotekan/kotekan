@@ -136,6 +136,12 @@ upchan_all_max_num_output_channels: 4096
 upchan_all_min_output_channel: 0
 upchan_all_max_output_channel: upchan_U1_max_output_channel
 
+# The gains are valid for this many FPGA samples (about one second). It must be a multiple of
+# the upchannelization factor that whole kernel windows can tile exactly, because a window may
+# not straddle the end of a lifetime (see lib/cuda/lifetimeWindows.hpp). 24 * num_times =
+# 196608 samples = 1.007 s works for every upchannelizer here (U = 2...64).
+upchan_gain_lifetime_in_samples: 24 * num_times
+
 ################################################################################
 
 # Buffers
@@ -143,14 +149,20 @@ upchan_all_max_output_channel: upchan_U1_max_output_channel
 # Gains
 
 {% for U in [2, 4, 8, 16, 32, 64] %}
+# One frame is one gain vector, covering upchan_gain_lifetime_in_samples FPGA samples.
 host_upchan_U{{ U }}_gain_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: float16
-    extents: [upchan_U{{ U }}_max_num_channels * {{ U }}]
+    extents: [1, upchan_U{{ U }}_max_num_channels * {{ U }}]
     quantity_name: "G"
-    dimnames: ["Fbar"]
-    dimscalings: [1]
+    dimnames: ["TG", "Fbar"]
+    dimscalings: [upchan_gain_lifetime_in_samples, 1]
+    metadata_pool: main_pool
+# Holds 4 gain vectors, the length of the generated kernels' TG axis
+host_upchan_U{{ U }}_gain_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: 4 * sizeof_float16 * upchan_U{{ U }}_max_num_channels * {{ U }}
     metadata_pool: main_pool
 {% endfor %}
 
@@ -249,6 +261,26 @@ run_set_upchan_U{{ U }}_gain:
     metadata_source: host_voltage_buffer
 {% endfor %}
 
+# Send the gains to their GPU ringbuffers. One gain vector covers
+# upchan_gain_lifetime_in_samples FPGA samples, so this runs far less often than run_upchan_U*.
+{% for U in [2, 4, 8, 16, 32, 64] %}
+run_send_upchan_U{{ U }}_gain:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_U{{ U }}_gain_buffer: host_upchan_U{{ U }}_gain_buffer
+        out_buffers:
+            host_upchan_U{{ U }}_gain_ringbuffer: host_upchan_U{{ U }}_gain_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: sizeof_float16 * upchan_U{{ U }}_max_num_channels * {{ U }}
+          ring_buffer_size: 4 * input_size
+          in_buf: host_upchan_U{{ U }}_gain_buffer
+          signal_buf: host_upchan_U{{ U }}_gain_ringbuffer
+          gpu_mem_output: upchan_U{{ U }}_gain_buffer
+{% endfor %}
+
 {% for U in [2, 4, 8, 16, 32, 64] %}
 run_upchan_pl_U{{ U }}:
     gpu_0:
@@ -275,15 +307,10 @@ run_upchan_U{{ U }}:
         gpu_id: 0
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
-            host_upchan_U{{ U }}_gain_buffer: host_upchan_U{{ U }}_gain_buffer
+            host_upchan_U{{ U }}_gain_ringbuffer: host_upchan_U{{ U }}_gain_ringbuffer
         out_buffers:
             host_upchan_U{{ U }}_voltage_ringbuffer: host_upchan_U{{ U }}_voltage_ringbuffer
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_upchan_U{{ U }}_gain_buffer
-          gpu_mem: upchan_U{{ U }}_gain_buffer
-        - name: cudaSyncInput
         - name: cudaUpchannelizer_pathfinder_U{{ U }}_K4
           voltage_name: voltage
           upchan_U{{ U }}_gain_name: upchan_U{{ U }}_gain

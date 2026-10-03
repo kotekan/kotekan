@@ -15,10 +15,12 @@
 #include "cudaDeviceInterface.hpp"
 #include "cudaUtils.hpp"
 #include "div.hpp"
+#include "lifetimeWindows.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <fmt.hpp>
 #include <limits>
@@ -38,6 +40,16 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
     for (std::size_t d = 0; d < D; ++d)
         result[d] = values[D - 1 - d];
     return result;
+}
+
+// Override the leading (slowest) dimension's scaling with a run-time value. Used for inputs
+// that are valid for a configurable number of FPGA samples, such as the gains.
+template<std::size_t D>
+std::array<std::ptrdiff_t, D> with_leading_dimscaling(std::array<std::ptrdiff_t, D> dimscalings,
+                                                      const std::ptrdiff_t dimscaling) {
+    static_assert(D > 0);
+    dimscalings[0] = dimscaling;
+    return dimscalings;
 }
 }
 
@@ -88,6 +100,16 @@ private:
     std::int64_t num_produced_elements(std::int64_t num_available_elements) const;
 
     std::int64_t num_processed_elements(std::int64_t num_available_elements) const;
+
+    // We read at most a quarter of the input ring buffer per kernel invocation
+    static constexpr std::int64_t max_granules_per_window =
+        cuda_max_number_of_timesamples / 4 / cuda_granularity_number_of_timesamples;
+    static_assert(kotekan::LifetimeWindows::valid(cuda_granularity_number_of_timesamples,
+                                                  cuda_algorithm_overlap,
+                                                  cuda_upchannelization_factor,
+                                                  max_granules_per_window));
+    // Chooses the input windows so that none of them straddles the end of a gain lifetime
+    const kotekan::LifetimeWindows windows;
 
     // Kernel compile parameters:
     static constexpr int minthreads = 64;
@@ -140,15 +162,19 @@ private:
     static constexpr kotekan::DataType G_type = kotekan::float16;
     enum G_indices {
         G_index_Fbar,
+        G_index_TG,
         G_rank,
     };
     static constexpr std::array<const char*, G_rank> G_labels = {
         "Fbar",
+        "TG",
     };
     static constexpr std::array<std::ptrdiff_t, G_rank> G_lengths = {
         256,
+        4,
     };
     static constexpr std::array<std::ptrdiff_t, G_rank> G_dimscalings = {
+        1,
         1,
     };
     static constexpr auto G_calc_stride = [](int dim) {
@@ -159,6 +185,7 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, G_rank + 1> G_strides = {
         G_calc_stride(G_index_Fbar),
+        G_calc_stride(G_index_TG),
         G_calc_stride(G_rank),
     };
     static constexpr std::ptrdiff_t G_length = G_strides[G_rank];
@@ -297,8 +324,11 @@ private:
     const std::string Ebar_name;
     const std::string info_name;
 
+    // Lifetimes of slowly varying inputs, in FPGA samples
+    const std::ptrdiff_t G_lifetime_in_samples;
+
     // Buffers
-    NDArrayBuffer<kotekan::GetType_t<G_type>, G_rank> G_buffer;
+    NDArrayRingBuffer<kotekan::GetType_t<G_type>, G_rank> G_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<E_type>, E_rank> E_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<Ebar_type>, Ebar_rank> Ebar_buffer;
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
@@ -318,6 +348,9 @@ cudaUpchannelizer_pathfinder_U2_K4::cudaUpchannelizer_pathfinder_U2_K4(
     cudaDeviceInterface& device, const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Upchannelizer_pathfinder_U2_K4", "Upchannelizer_pathfinder_U2_K4.ptx"),
+    windows(cuda_granularity_number_of_timesamples, cuda_algorithm_overlap,
+            cuda_upchannelization_factor, max_granules_per_window),
+
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
@@ -327,8 +360,10 @@ cudaUpchannelizer_pathfinder_U2_K4::cudaUpchannelizer_pathfinder_U2_K4(
     Ebar_name(config.get<std::string>(unique_name, "upchan_U2_voltage_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    G_buffer(G_name, G_quantity, reverse(G_lengths), reverse(G_labels), reverse(G_dimscalings),
-             *this, buffer_type_t::do_once),
+    G_lifetime_in_samples(config.get<std::int64_t>(unique_name, "upchan_gain_lifetime_in_samples")),
+
+    G_buffer(G_name, G_quantity, reverse(G_lengths), reverse(G_labels),
+             with_leading_dimscaling(reverse(G_dimscalings), G_lifetime_in_samples), *this),
     E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), reverse(E_dimscalings),
              *this),
     Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
@@ -348,6 +383,24 @@ cudaUpchannelizer_pathfinder_U2_K4::cudaUpchannelizer_pathfinder_U2_K4(
     Ebar_buffer.register_producer();
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
+
+    // The gains are held in a ring buffer, one element per lifetime, and read without claiming.
+    // Unlike the baseband beamformer, whose output frame fixes the number of time samples per
+    // invocation, we can shrink a read so that it ends exactly on a lifetime boundary. Because
+    // of the PFB overlap not every size is possible; `LifetimeWindows` chooses them, and the
+    // lifetime has to be a whole number of possible windows.
+    if (G_lifetime_in_samples <= 0 || G_lifetime_in_samples % cuda_upchannelization_factor != 0
+        || !windows.reachable(G_lifetime_in_samples / cuda_upchannelization_factor))
+        FATAL_ERROR("upchan_gain_lifetime_in_samples {:d} must be a positive multiple of the "
+                    "upchannelization factor {:d} that whole windows of kernel "
+                    "Upchannelizer_pathfinder_U2_K4 can tile exactly: a window reads n*{:d} input "
+                    "samples for "
+                    "n in [{:d},{:d}] and produces n*{:d}-{:d} output samples",
+                    G_lifetime_in_samples, int(cuda_upchannelization_factor),
+                    int(cuda_granularity_number_of_timesamples), windows.min_granules(),
+                    windows.max_granules(),
+                    int(cuda_granularity_number_of_timesamples / cuda_upchannelization_factor),
+                    int(cuda_algorithm_overlap / cuda_upchannelization_factor));
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -391,14 +444,39 @@ int cudaUpchannelizer_pathfinder_U2_K4::wait_on_precondition() {
             return errcode;
     }
 
+    // Which gain element covers the data we are about to read? Ask the ring buffer where our
+    // next read will begin. We must not use our own `read_valid` for this: every instance of
+    // this command shares one ring buffer read head, so our own position lags it by whatever
+    // the other instances have claimed since our previous frame. Output sample `Tbar` is
+    // computed from the input samples starting at `U * Tbar`, and it uses the gain element
+    // covering that input sample.
+    const std::ptrdiff_t T_begin = E_buffer.peek_read_head();
+    if (T_begin < 0)
+        return -1; // shutting down
+    // Each window claims a whole number of output samples' worth of input
+    assert(T_begin % cuda_upchannelization_factor == 0);
+    // (`kotekan::div` must be qualified; an unqualified `div` finds C's `::div`)
+    const std::ptrdiff_t G_element = kotekan::div(T_begin, G_lifetime_in_samples);
+    const std::ptrdiff_t G_lifetime_end = (G_element + 1) * G_lifetime_in_samples;
+    // Output samples left until the end of this gain element's lifetime
+    const std::ptrdiff_t Tbar_remaining =
+        div_noremainder(G_lifetime_end - T_begin, cuda_upchannelization_factor);
+
     // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t T_read_max = T_ringbuf / 4;
+    assert(T_read_max == max_granules_per_window * cuda_granularity_number_of_timesamples);
     std::ptrdiff_t T_read = -1;
     {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
             using std::min;
-            T_read = min(T_available, T_read_max);
+            // Read as much as we can, but end exactly on the gain lifetime boundary when we
+            // reach it, and never leave a remainder that whole windows cannot fill. If no
+            // window fits the available data we read nothing and wait for more.
+            const std::ptrdiff_t available_granules =
+                min(T_available, T_read_max) / cuda_granularity_number_of_timesamples;
+            T_read = windows.num_granules(Tbar_remaining, available_granules)
+                     * cuda_granularity_number_of_timesamples;
             // Ensure that we make progress: If we cannot claim any elements then we
             // must not read any elements either, and instead wait for more data.
             const std::ptrdiff_t T_claimed = num_consumed_elements(T_read);
@@ -409,6 +487,41 @@ int cudaUpchannelizer_pathfinder_U2_K4::wait_on_precondition() {
             return errcode;
     }
     const std::ptrdiff_t T_written = num_produced_elements(T_read);
+    // The window must end on or before the end of the gain element's lifetime. This cannot
+    // fail unless the scheduler is wrong, but a violation would silently apply the wrong gains.
+    if (!(E_buffer.get_read_claimed().begin() == T_begin
+          && E_buffer.get_read_claimed().end() <= G_lifetime_end))
+        FATAL_ERROR("Kernel Upchannelizer_pathfinder_U2_K4 claimed input samples [{:d},{:d}), "
+                    "which straddle "
+                    "the end {:d} of gain element {:d} or do not begin at the read head {:d}",
+                    E_buffer.get_read_claimed().begin(), E_buffer.get_read_claimed().end(),
+                    G_lifetime_end, G_element, T_begin);
+
+    // Read the gain element covering these data. We claim it only when we have reached the end
+    // of its lifetime, i.e. when this is the last frame that will use it. Until then it stays
+    // in the ring buffer and the following frames read it again.
+    //
+    // We are holding a claim on `E` while we wait here. That is safe because the gain producer
+    // does not depend on `E` being drained: it is clocked only by the first voltage frame.
+    {
+        const bool G_last_use = E_buffer.get_read_claimed().end() == G_lifetime_end;
+        DEBUG("Waiting for G input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const int errcode =
+            G_buffer.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+                if (available_elements < 1)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                return read_descriptor_t{.claimed = G_last_use ? 1 : 0, .read = 1};
+            });
+        if (errcode < 0)
+            return errcode;
+        DEBUG("Done waiting for G input ringbuffer data for frame {:d}; output samples "
+              "[{:d},{:d}) using element {:d}{:s}",
+              gpu_frame_id, T_begin / cuda_upchannelization_factor,
+              T_begin / cuda_upchannelization_factor + T_written, G_element,
+              G_last_use ? " (last use)" : "");
+        // The two ring buffers must agree on which gain element covers these data
+        assert(G_buffer.get_read_valid().begin() == G_element);
+    }
 
     // Wait for space to be available in output ringbuffer
     {
@@ -514,6 +627,25 @@ cudaUpchannelizer_pathfinder_U2_K4::execute(cudaPipelineState& /*pipestate*/,
                         "dimension of its output buffer Ebar has extent {:d}",
                         Ebar_nfreq, Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Fbar]);
 
+        // The gain lifetime is counted in input samples, so these must be FPGA samples
+        if (E_meta->get_time_downsampling_fpga() != 1)
+            FATAL_ERROR("Input buffer E has time_downsampling_fpga={:d}, but kernel "
+                        "Upchannelizer_pathfinder_U2_K4 counts the gain lifetime in input samples "
+                        "and requires "
+                        "an input sampled at the FPGA rate",
+                        E_meta->get_time_downsampling_fpga());
+
+        // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards,
+        // counted from the voltage ring buffer's logical beginning -- so the two streams have
+        // to start at the same sequence number. The metadata of both ring buffers are fixed,
+        // so checking once suffices.
+        if (G_buffer.get_metadata()->get_fpga_seq_num() != E_meta->get_fpga_seq_num())
+            FATAL_ERROR(
+                "Buffer G begins at FPGA sequence number {:d}, but the "
+                "voltage buffer E begins at {:d}; kernel Upchannelizer_pathfinder_U2_K4 requires "
+                "them to be aligned",
+                G_buffer.get_metadata()->get_fpga_seq_num(), E_meta->get_fpga_seq_num());
+
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
     } // if !did_set_metadata
 
@@ -542,6 +674,15 @@ cudaUpchannelizer_pathfinder_U2_K4::execute(cudaPipelineState& /*pipestate*/,
 
     // Set Ebar_memory to beginning of output ring buffer
     Ebar_arg = array_desc(Ebar_memory, Ebar_length_in_bytes);
+
+    // Slowly varying inputs: the kernel wants a single element, not the whole ring buffer.
+    {
+        const std::ptrdiff_t ring_length = G_buffer.get_ndarray().extent(0);
+        const std::ptrdiff_t element = G_buffer.get_read_valid().begin();
+        G_arg = array_desc(G_buffer.get_ndarray().data()
+                               + G_buffer.get_ndarray().stride(0) * (element % ring_length),
+                           G_length_in_bytes / ring_length);
+    }
 
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
@@ -645,8 +786,9 @@ cudaUpchannelizer_pathfinder_U2_K4::execute(cudaPipelineState& /*pipestate*/,
 }
 
 void cudaUpchannelizer_pathfinder_U2_K4::finalize_frame() {
-    // Advance the input ring buffer
+    // Advance the input ring buffers
     E_buffer.finish_read();
+    G_buffer.finish_read();
 
     // Advance the output ring buffer
     Ebar_buffer.finish_write();

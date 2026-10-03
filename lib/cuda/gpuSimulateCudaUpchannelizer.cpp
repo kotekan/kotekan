@@ -1,6 +1,5 @@
 #include "Config.hpp"                // for Config
 #include "DataType.hpp"              // for int4x2_swapped_withoffset_t, float16_t, cint8
-#include "NDArrayBuffer.hpp"         // for NDArrayBuffer, buffer_type_t
 #include "NDArrayRingBuffer.hpp"     // for NDArrayRingBuffer, read_descriptor_t
 #include "bufferContainer.hpp"       // for bufferContainer
 #include "chordMetadata.hpp"         // for chordMetadata
@@ -8,7 +7,8 @@
 #include "cudaDeviceInterface.hpp"   // for cudaDeviceInterface
 #include "cudaUtils.hpp"             // for CHECK_CUDA_ERROR
 #include "div.hpp"                   // for div_noremainder, round_down
-#include "kotekanLogging.hpp"        // for FATAL_ERROR, INFO
+#include "kotekanLogging.hpp"        // for FATAL_ERROR, INFO, DEBUG
+#include "lifetimeWindows.hpp"       // for LifetimeWindows
 #include "upchannelizeReference.hpp" // for upchannelize_reference, upchan_window
 
 #include <algorithm>          // for min
@@ -25,6 +25,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::div_noremainder, kotekan::round_down;
+using kotekan::LifetimeWindows;
 
 /**
  * @class gpuSimulateCudaUpchannelizer
@@ -63,11 +64,11 @@ using kotekan::div_noremainder, kotekan::round_down;
  *   @gpu_mem_type         @c int4x2_swapped_withoffset
  *   @gpu_mem_dim_name     [@c T][@c F][@c P][@c D]
  *   @gpu_mem_metadata     @c chordMetadata
- * @gpu_mem Upchannelization gains
- *   @gpu_mem_buffer       @c ndarray
+ * @gpu_mem Upchannelization gains, one element per @c upchan_gain_lifetime_in_samples
+ *   @gpu_mem_buffer       @c ring
  *   @gpu_mem_quantity     @c G
  *   @gpu_mem_type         @c float16
- *   @gpu_mem_dim_name     [@c Fbar]
+ *   @gpu_mem_dim_name     [@c TG][@c Fbar]
  *   @gpu_mem_metadata     @c chordMetadata
  * @gpu_mem Output upchannelized voltages
  *   @gpu_mem_buffer       @c ring
@@ -94,6 +95,11 @@ using kotekan::div_noremainder, kotekan::round_down;
  * @conf  max_times_per_iteration  Int.  Cap on the input samples read per call, default 0
  *                                    (meaning a quarter of the ring, as the real kernel uses).
  *                                    Lower it to bound this stage's host memory use.
+ * @conf  upchan_gain_lifetime_in_samples  Int.  FPGA samples one gain element covers. As for
+ *                                    the generated kernel, a positive multiple of @c U that
+ *                                    whole windows can tile exactly (see @c LifetimeWindows).
+ * @conf  gain_ring_length      Int.  Gain elements the gain ring buffer holds, default 4 (the
+ *                                    generated kernels' @c TG axis).
  * @conf  Fmin                  Int.  First input coarse channel to upchannelize.
  * @conf  Fmax                  Int.  One past the last input coarse channel.
  * @conf  voltage_name          String.  Base name for the input voltage buffers.
@@ -129,6 +135,28 @@ private:
                                std::int64_t(_upchannelization_factor));
     }
 
+    /// The most input samples one call reads: a quarter of the ring, as the real kernel uses,
+    /// or less if `max_times_per_iteration` says so.
+    std::int64_t read_max() const {
+        const std::int64_t quarter_ring = _ring_num_times / 4;
+        return _max_times_per_iteration > 0
+                   ? std::min<std::int64_t>(_max_times_per_iteration, quarter_ring)
+                   : quarter_ring;
+    }
+
+    /// The window scheduler the generated kernels use, for our shapes. Called from the member
+    /// initializer list, hence the check here rather than in the constructor body.
+    LifetimeWindows make_windows() const {
+        const std::int64_t overlap = std::int64_t(_upchannelization_factor) * (_num_taps - 1);
+        const std::int64_t max_granules = read_max() / _granularity;
+        if (!LifetimeWindows::valid(_granularity, overlap, _upchannelization_factor, max_granules))
+            FATAL_ERROR("Cannot schedule windows of up to {:d} granules of {:d} input samples "
+                        "with U={:d} and M={:d}: the granule must be a multiple of U, and the "
+                        "largest window must produce output",
+                        max_granules, _granularity, _upchannelization_factor, _num_taps);
+        return LifetimeWindows(_granularity, overlap, _upchannelization_factor, max_granules);
+    }
+
     /// Fill the output metadata and validate the shapes, once, on the first frame.
     void set_metadata_once();
 
@@ -143,19 +171,29 @@ private:
     const int _max_times_per_iteration;
     const int _Fmin;
     const int _Fmax;
+    /// FPGA samples one gain element covers
+    const std::int64_t _gain_lifetime_in_samples;
+    /// Gain elements the gain ring buffer holds
+    const int _gain_ring_length;
 
     const std::string _gain_name;
     const std::string _voltage_name;
     const std::string _upchan_voltage_name;
 
-    NDArrayBuffer<float16_t, 1> G_buffer;
+    NDArrayRingBuffer<float16_t, 2> G_buffer;
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> E_buffer;
     NDArrayRingBuffer<OutT, 4> Ebar_buffer;
 
+    /// Chooses the input windows so that none straddles the end of a gain lifetime. This must
+    /// be the same rule as the generated kernel's, so that both claim the same data.
+    const LifetimeWindows _windows;
+
     /// The PFB window, W(s), for s in [0, M*U). Computed once, after the shape checks.
     std::vector<float> _window;
-    /// The gains, one per output fine channel. Copied off the device on the first frame.
+    /// The gains of element `_gain_element`, one per output fine channel. Copied off the
+    /// device whenever a call uses a different element than the previous one.
     std::vector<float> _gain;
+    std::ptrdiff_t _gain_element;
 
     /// Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`.
     bool did_set_metadata;
@@ -181,14 +219,20 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
     _granularity(config.get_default<int>(unique_name, "granularity_number_of_timesamples", 256)),
     _max_times_per_iteration(config.get_default<int>(unique_name, "max_times_per_iteration", 0)),
     _Fmin(config.get<int>(unique_name, "Fmin")), _Fmax(config.get<int>(unique_name, "Fmax")),
+    _gain_lifetime_in_samples(
+        config.get<std::int64_t>(unique_name, "upchan_gain_lifetime_in_samples")),
+    _gain_ring_length(config.get_default<int>(unique_name, "gain_ring_length", 4)),
 
     _gain_name(config.get<std::string>(unique_name, "upchan_gain_name")),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _upchan_voltage_name(config.get<std::string>(unique_name, "upchan_voltage_name")),
 
-    G_buffer(_gain_name, "G", std::array<std::ptrdiff_t, 1>{_num_frequencies_out},
-             std::array<std::string, 1>{"Fbar"}, std::array<std::ptrdiff_t, 1>{1}, *this,
-             buffer_type_t::do_once),
+    // The leading axis is the ring buffer direction; its scaling is the lifetime, which is
+    // checked against the producer's metadata.
+    G_buffer(_gain_name, "G",
+             std::array<std::ptrdiff_t, 2>{_gain_ring_length, _num_frequencies_out},
+             std::array<std::string, 2>{"TG", "Fbar"},
+             std::array<std::ptrdiff_t, 2>{_gain_lifetime_in_samples, 1}, *this),
     E_buffer(_voltage_name, "E",
              std::array<std::ptrdiff_t, 4>{_ring_num_times, _num_frequencies, _num_polarizations,
                                            _num_dishes},
@@ -202,7 +246,7 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
         std::array<std::string, 4>{"Tbar", "Fbar", "P", "D"},
         std::array<std::ptrdiff_t, 4>{_upchannelization_factor, 1, 1, 1}, *this),
 
-    did_set_metadata(false) {
+    _windows(make_windows()), _gain_element(-1), did_set_metadata(false) {
 
     if (!(_upchannelization_factor >= 1))
         FATAL_ERROR("upchannelization_factor must be positive, not {:d}", _upchannelization_factor);
@@ -222,6 +266,17 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
                     "output buffer holds only {:d}",
                     _Fmin, _Fmax, _upchannelization_factor,
                     _upchannelization_factor * (_Fmax - _Fmin), _num_frequencies_out);
+
+    // Same condition as in the generated kernels
+    if (_gain_lifetime_in_samples <= 0 || _gain_lifetime_in_samples % _upchannelization_factor != 0
+        || !_windows.reachable(_gain_lifetime_in_samples / _upchannelization_factor))
+        FATAL_ERROR("upchan_gain_lifetime_in_samples {:d} must be a positive multiple of the "
+                    "upchannelization factor {:d} that whole windows can tile exactly: a window "
+                    "reads n*{:d} input samples for n in [{:d},{:d}] and produces n*{:d}-{:d} "
+                    "output samples",
+                    _gain_lifetime_in_samples, _upchannelization_factor, _granularity,
+                    _windows.min_granules(), _windows.max_granules(),
+                    _granularity / _upchannelization_factor, _num_taps - 1);
 
     _window = kotekan::upchan_window(_num_taps, _upchannelization_factor);
 
@@ -251,19 +306,30 @@ int gpuSimulateCudaUpchannelizerT<OutT>::wait_on_precondition() {
             return errcode;
     }
 
-    // Wait for data to be available in the input ring buffer. This mirrors the generated
-    // kernel exactly: the two must claim and release the same elements, or swapping one for
-    // the other in a config would change where the output lands.
-    const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
-    const std::ptrdiff_t T_read_max =
-        _max_times_per_iteration > 0
-            ? std::min<std::ptrdiff_t>(_max_times_per_iteration, T_ringbuf / 4)
-            : T_ringbuf / 4;
+    // This mirrors the generated kernel exactly: the two must claim and release the same
+    // elements, or swapping one for the other in a config would change where the output lands.
+    const std::ptrdiff_t U = _upchannelization_factor;
+
+    // Which gain element covers the data we are about to read? Ask the ring buffer where our
+    // next read will begin; see the generated kernel.
+    const std::ptrdiff_t T_begin = E_buffer.peek_read_head();
+    if (T_begin < 0)
+        return -1; // shutting down
+    assert(T_begin % U == 0);
+    const std::ptrdiff_t G_element = kotekan::div(T_begin, _gain_lifetime_in_samples);
+    const std::ptrdiff_t G_lifetime_end = (G_element + 1) * _gain_lifetime_in_samples;
+    const std::ptrdiff_t Tbar_remaining = div_noremainder(G_lifetime_end - T_begin, U);
+
+    // Wait for data to be available in the input ring buffer. Read as much as we can, but end
+    // exactly on the gain lifetime boundary when we reach it, and never leave a remainder that
+    // whole windows cannot fill.
+    const std::ptrdiff_t T_read_max = read_max();
     std::ptrdiff_t T_read = -1;
     {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
             using std::min;
-            T_read = min(T_available, T_read_max);
+            const std::ptrdiff_t available_granules = min(T_available, T_read_max) / _granularity;
+            T_read = _windows.num_granules(Tbar_remaining, available_granules) * _granularity;
             // Ensure that we make progress: if we cannot claim any elements then we must not
             // read any either, and instead wait for more data.
             const std::ptrdiff_t T_claimed = num_consumed_elements(T_read);
@@ -272,6 +338,30 @@ int gpuSimulateCudaUpchannelizerT<OutT>::wait_on_precondition() {
         });
         if (errcode < 0)
             return errcode;
+    }
+    if (!(E_buffer.get_read_claimed().begin() == T_begin
+          && E_buffer.get_read_claimed().end() <= G_lifetime_end))
+        FATAL_ERROR("Claimed input samples [{:d},{:d}), which straddle the end {:d} of gain "
+                    "element {:d} or do not begin at the read head {:d}",
+                    E_buffer.get_read_claimed().begin(), E_buffer.get_read_claimed().end(),
+                    G_lifetime_end, G_element, T_begin);
+
+    // Read the gain element covering these data, and claim it on its last use. See the
+    // generated kernel.
+    {
+        const bool G_last_use = E_buffer.get_read_claimed().end() == G_lifetime_end;
+        const int errcode =
+            G_buffer.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+                if (available_elements < 1)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                return read_descriptor_t{.claimed = G_last_use ? 1 : 0, .read = 1};
+            });
+        if (errcode < 0)
+            return errcode;
+        DEBUG("Frame {:d}: output samples [{:d},{:d}) using gain element {:d}{:s}", gpu_frame_id,
+              T_begin / U, T_begin / U + num_produced_elements(T_read), G_element,
+              G_last_use ? " (last use)" : "");
+        assert(G_buffer.get_read_valid().begin() == G_element);
     }
 
     // Wait for space in the output ring buffer
@@ -348,6 +438,18 @@ void gpuSimulateCudaUpchannelizerT<OutT>::set_metadata_once() {
                     "output buffer Ebar has extent {:d}",
                     Ebar_nfreq, Ebar_meta->dim[1]);
 
+    // The gain lifetime is counted in input samples, so these must be FPGA samples.
+    if (E_meta->get_time_downsampling_fpga() != 1)
+        FATAL_ERROR("Input buffer E has time_downsampling_fpga={:d}, but the gain lifetime is "
+                    "counted in input samples and requires an input sampled at the FPGA rate",
+                    E_meta->get_time_downsampling_fpga());
+    // Gain element `k` covers the samples `k * lifetime` onwards, counted from the voltage ring
+    // buffer's logical beginning, so the two streams have to start at the same sequence number.
+    if (G_meta->get_fpga_seq_num() != E_meta->get_fpga_seq_num())
+        FATAL_ERROR("Gain buffer G begins at FPGA sequence number {:d}, but the voltage buffer E "
+                    "begins at {:d}; they must be aligned",
+                    G_meta->get_fpga_seq_num(), E_meta->get_fpga_seq_num());
+
     // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`.
 }
 
@@ -367,12 +469,10 @@ cudaEvent_t gpuSimulateCudaUpchannelizerT<OutT>::execute(cudaPipelineState& /*pi
     const std::ptrdiff_t PD = std::ptrdiff_t(P) * D;
 
     // Everything this command reads from the device -- the gains and the input voltages -- is
-    // written by commands that only *enqueue* their work into our stream (cudaInputData,
-    // cudaSyncInput, the upstream ring producer). None of it has necessarily completed when
-    // execute() runs on the host, so drain the stream before the first device read. Doing this
-    // after the gain copy instead lets a later instance pick up the gains before
-    // `cudaInputData` has uploaded them, which silently corrupts that instance's whole output
-    // block.
+    // written by commands that may only *enqueue* their work into our stream (e.g. a
+    // cudaInputData and cudaSyncInput in the same cudaProcess). None of it has necessarily
+    // completed when execute() runs on the host, so drain the stream before the first device
+    // read.
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
     // Only instance 0 publishes the output metadata; see `NDArrayRingBuffer::set_metadata`.
@@ -381,17 +481,22 @@ cudaEvent_t gpuSimulateCudaUpchannelizerT<OutT>::execute(cudaPipelineState& /*pi
         set_metadata_once();
     }
 
-    // Every instance needs its own host copy of the gains: unlike the real kernel, which reads
-    // them from device memory, we apply them on the CPU. They are `do_once`, so one copy per
-    // instance covers the whole run.
-    if (_gain.empty()) {
-        const float16_t* const G_device = G_buffer.get_ndarray().data();
+    // Unlike the real kernel, which reads the gains from device memory, we apply them on the
+    // CPU, so we need a host copy of the gain element this call uses. An element stays the same
+    // for many calls, so copy it only when it changes. (Each instance keeps its own copy.) The
+    // ring buffer published the element only after its upload completed.
+    const std::ptrdiff_t G_element = G_buffer.get_read_valid().begin();
+    if (G_element != _gain_element) {
+        const float16_t* const G_device =
+            G_buffer.get_ndarray().data()
+            + G_buffer.get_ndarray().stride(0) * (G_element % G_buffer.get_ndarray().extent(0));
         std::vector<float16_t> G_host(_num_frequencies_out);
         CHECK_CUDA_ERROR(cudaMemcpy(G_host.data(), G_device, G_host.size() * sizeof *G_host.data(),
                                     cudaMemcpyDeviceToHost));
         _gain.resize(_num_frequencies_out);
         for (int freq = 0; freq < _num_frequencies_out; ++freq)
             _gain.at(freq) = float(G_host.at(freq));
+        _gain_element = G_element;
     }
 
     if (!Ebar_buffer.has_metadata())
@@ -476,6 +581,7 @@ cudaEvent_t gpuSimulateCudaUpchannelizerT<OutT>::execute(cudaPipelineState& /*pi
 template<typename OutT>
 void gpuSimulateCudaUpchannelizerT<OutT>::finalize_frame() {
     E_buffer.finish_read();
+    G_buffer.finish_read();
     Ebar_buffer.finish_write();
     cudaCommand::finalize_frame();
 }

@@ -26,8 +26,10 @@
 # `CMAKE_BUILD_TYPE=Test` build -- what the CI GPU yaml job uses -- runs this
 # loop about 30x slower than a Debug build of the same source. That is not an
 # optimization-level effect (Debug ends up at -O2, Test at -O3); the cause is
-# unidentified, so leave generous margin. Measured on an A40: 13s in a Test
-# build, 3.5s in a Debug build.
+# unidentified, so leave generous margin. Measured on an A40 with one compared
+# frame: 13s in a Test build, 3.5s in a Debug build. With the six frames needed to
+# span a gain lifetime boundary (see below): 36s in a Test build, 3.8s in a
+# Release build.
 #
 # The two knobs are `num_times_out` (how much output a comparison needs) and
 # `max_times_per_iteration` (how much the reference computes before publishing
@@ -82,6 +84,16 @@ num_times_out: 8
 frame_arrival_period: 5.12e-6 * num_times
 cpu_affinity: []
 
+# The gains change every `upchan_gain_lifetime_in_samples` FPGA samples, i.e. every 42 output
+# samples here -- deliberately short and awkward, so that the comparison below spans a
+# lifetime boundary and the kernel crosses a boundary every few invocations while it runs
+# ahead of the reference. Every window has to end exactly on a boundary, and because of the PFB
+# overlap a window of n granules produces 16n-3 output samples: the kernel tiles each lifetime
+# as 29+13, and so does the reference (whose windows are at most 2 granules). The gains of
+# consecutive lifetimes differ (`upchan_gain_scale_cycle`), so applying the wrong gain element
+# to any output sample would show up as a mismatch.
+upchan_gain_lifetime_in_samples: {{ upchan_factor }} * 42
+
 # Upchannelization schedule. Channels [0, upchan_max_num_channels) are the ones we
 # upchannelize; `setUpchanGain` uses this to label the gain buffer's frequencies,
 # and both upchannelizers check those labels against their own output.
@@ -111,14 +123,20 @@ host_voltage_ringbuffer:
     ring_buffer_size: num_times_total * num_frequencies * num_polarizations * num_dishes
     metadata_pool: main_pool
 
+# One frame is one gain vector, covering upchan_gain_lifetime_in_samples FPGA samples.
 host_upchan_gain_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: float16
-    extents: [num_frequencies_out]
+    extents: [1, num_frequencies_out]
     quantity_name: "G"
-    dimnames: ["Fbar"]
-    dimscalings: [1]
+    dimnames: ["TG", "Fbar"]
+    dimscalings: [upchan_gain_lifetime_in_samples, 1]
+    metadata_pool: main_pool
+# Holds 4 gain vectors, the length of the generated kernel's TG axis. Both chains read it.
+host_upchan_gain_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: 4 * 2 * num_frequencies_out
     metadata_pool: main_pool
 
 {% for chain in ["upchan", "sim_upchan"] %}
@@ -157,8 +175,26 @@ set_upchan_gain:
     kotekan_stage: setUpchanGain
     upchan_factor: {{ upchan_factor }}
     upchan_gain: [{% for u in range(upchan_factor) %}2.6{{ ", " if not loop.last }}{% endfor %}]
+    # Consecutive gain elements differ, so that a wrong element is detectable
+    upchan_gain_scale_cycle: [1.0, 0.75, 1.25]
     upchan_gain_buffer: host_upchan_gain_buffer
     metadata_source: host_voltage_buffer
+
+run_send_upchan_gain:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_gain_buffer: host_upchan_gain_buffer
+        out_buffers:
+            host_upchan_gain_ringbuffer: host_upchan_gain_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: 2 * num_frequencies_out
+          ring_buffer_size: 4 * input_size
+          in_buf: host_upchan_gain_buffer
+          signal_buf: host_upchan_gain_ringbuffer
+          gpu_mem_output: upchan_gain_buffer
 
 run_send_voltage:
     gpu_0:
@@ -183,15 +219,10 @@ run_upchan:
         gpu_id: 0
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
-            host_upchan_gain_buffer: host_upchan_gain_buffer
+            host_upchan_gain_ringbuffer: host_upchan_gain_ringbuffer
         out_buffers:
             host_upchan_voltage_ringbuffer: host_upchan_voltage_ringbuffer
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_upchan_gain_buffer
-          gpu_mem: upchan_gain_buffer
-        - name: cudaSyncInput
         - name: cudaUpchannelizer_chord_U{{ upchan_factor }}_K4
           voltage_name: voltage
           upchan_U{{ upchan_factor }}_gain_name: upchan_gain
@@ -210,25 +241,23 @@ run_sim_upchan:
         buffer_depth: 1
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
-            host_upchan_gain_buffer: host_upchan_gain_buffer
+            host_upchan_gain_ringbuffer: host_upchan_gain_ringbuffer
         out_buffers:
             host_sim_upchan_voltage_ringbuffer: host_sim_upchan_voltage_ringbuffer
         commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_upchan_gain_buffer
-          gpu_mem: sim_upchan_gain_buffer
-        - name: cudaSyncInput
         - name: gpuSimulateCudaUpchannelizer
           # The ring length, kept independent of the buffer_depth: 1 above.
           ring_num_times: num_times_total
           upchannelization_factor: {{ upchan_factor }}
           num_taps: {{ num_taps }}
-          # 256 input samples -> (256 - (M-1)*U)/U = 13 output samples per execute, which
-          # covers a whole output frame. 2048 would compute 125 before publishing any.
-          max_times_per_iteration: 256
+          # 512 input samples -> (512 - (M-1)*U)/U = 29 output samples per execute at most.
+          # Two granules are the least that tile the 42-sample gain lifetime (29+13); with one
+          # granule every window would be 13 samples. 2048 would compute 125 before publishing
+          # any.
+          max_times_per_iteration: 512
           voltage_name: voltage
-          upchan_gain_name: sim_upchan_gain
+          # Shares the kernel's gain ring buffer
+          upchan_gain_name: upchan_gain
           upchan_voltage_name: sim_upchan_voltage
 
 {% for chain in ["upchan", "sim_upchan"] %}
@@ -263,7 +292,8 @@ compare_data:
     kotekan_stage: testDataCheckUchar
     first_buf: host_upchan_voltage_buffer
     second_buf: host_sim_upchan_voltage_buffer
-    num_frames_to_test: 1
+    # 6 frames = 48 output samples, across the first gain lifetime boundary at 42
+    num_frames_to_test: 6
     max_num_errors_allowed: num_times_out * num_frequencies_out * num_polarizations * num_dishes / 100
     trigger_exit_on_pass: true
     check_metadata: true

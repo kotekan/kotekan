@@ -256,7 +256,8 @@ const std::vector<int>& UpchannelizationSchedule::get_upchan_factors(const int c
 ////////////////////////////////////////////////////////////////////////////////
 
 std::optional<std::vector<int>> wait_for_coarse_freq(const std::vector<Buffer*>& metadata_sources,
-                                                     const std::string& unique_name) {
+                                                     const std::string& unique_name,
+                                                     std::int64_t* const first_fpga_seq_num) {
     if (metadata_sources.empty())
         FATAL_ERROR_NON_OO("{:s}: no metadata_source given, so the coarse frequency channels "
                            "handled here are unknown",
@@ -276,6 +277,8 @@ std::optional<std::vector<int>> wait_for_coarse_freq(const std::vector<Buffer*>&
                                unique_name, metadata_source->buffer_name);
         const std::vector<int> source_coarse_freq = meta->get_coarse_freq();
         coarse_freq.insert(coarse_freq.end(), source_coarse_freq.begin(), source_coarse_freq.end());
+        if (first_fpga_seq_num && metadata_source == metadata_sources.front())
+            *first_fpga_seq_num = meta->get_fpga_seq_num();
         metadata_source->mark_frame_empty(unique_name, frame_id);
         // Only the first frame is needed; stop being a consumer so that the
         // producer does not wait for us on the frames after it.

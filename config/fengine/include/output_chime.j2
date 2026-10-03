@@ -344,12 +344,12 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U16_gain_buffer
         file_name: upchan_U16_gain
-        create_single_file: false  # not time-major
+        create_single_file: true
     write_upchan_HFB_U128_gain:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_hfb_U128_gain_buffer
         file_name: upchan_hfb_U128_gain
-        create_single_file: false  # not time-major
+        create_single_file: true
     write_upchan_U16_expanded_pl_mask:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U16_expanded_pl_mask_buffer
