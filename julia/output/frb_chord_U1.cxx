@@ -26,6 +26,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -41,6 +42,16 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
     for (std::size_t d = 0; d < D; ++d)
         result[d] = values[D - 1 - d];
     return result;
+}
+
+// Override the leading (slowest) dimension's scaling with a run-time value. Used for inputs
+// that are valid for a configurable number of FPGA samples, such as the beamforming weights.
+template<std::size_t D>
+std::array<std::ptrdiff_t, D> with_leading_dimscaling(std::array<std::ptrdiff_t, D> dimscalings,
+                                                      const std::ptrdiff_t dimscaling) {
+    static_assert(D > 0);
+    dimscalings[0] = dimscaling;
+    return dimscalings;
 }
 }
 
@@ -87,6 +98,14 @@ private:
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 32768;
     static constexpr int cuda_granularity_number_of_timesamples = 48;
+
+    // Each kernel invocation processes a multiple of this many `Tbar` samples: a multiple of the
+    // kernel's granularity, and of the downsampling factor so that every sample read is also
+    // consumed. The read head thus always stays on a multiple of `Tbar_quantum`, which is what
+    // lets a read stop exactly at the end of a slowly varying input's lifetime.
+    static constexpr std::ptrdiff_t Tbar_quantum =
+        std::lcm(std::ptrdiff_t(cuda_granularity_number_of_timesamples),
+                 std::ptrdiff_t(cuda_downsampling_factor));
 
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
@@ -206,16 +225,17 @@ private:
         W_index_dishN,
         W_index_P,
         W_index_Fbar,
+        W_index_TW,
         W_rank,
     };
     static constexpr std::array<const char*, W_rank> W_labels = {
-        "C", "dishM", "dishN", "P", "Fbar",
+        "C", "dishM", "dishN", "P", "Fbar", "TW",
     };
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
-        2, 24, 24, 2, 16,
+        2, 24, 24, 2, 16, 4,
     };
     static constexpr std::array<std::ptrdiff_t, W_rank> W_dimscalings = {
-        1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1,
     };
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -225,7 +245,8 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, W_rank + 1> W_strides = {
         W_calc_stride(W_index_C), W_calc_stride(W_index_dishM), W_calc_stride(W_index_dishN),
-        W_calc_stride(W_index_P), W_calc_stride(W_index_Fbar),  W_calc_stride(W_rank),
+        W_calc_stride(W_index_P), W_calc_stride(W_index_Fbar),  W_calc_stride(W_index_TW),
+        W_calc_stride(W_rank),
     };
     static constexpr std::ptrdiff_t W_length = W_strides[W_rank];
     static constexpr std::ptrdiff_t W_length_in_bytes = type_total_bytes(W_type) * W_length;
@@ -364,6 +385,9 @@ private:
     const std::string I_name;
     const std::string info_name;
 
+    // Lifetimes of slowly varying inputs, in FPGA samples
+    const std::ptrdiff_t W_lifetime_in_samples;
+
     // Host-side buffer arrays
     std::vector<std::uint8_t> S_host;
     std::vector<std::uint8_t> info_host;
@@ -371,7 +395,7 @@ private:
     // Buffers
     NDArrayBuffer<kotekan::GetType_t<S_type>, S_rank> S_buffer;
     std::vector<kotekan::GetType_t<S_type>> host_S_buffer;
-    NDArrayBuffer<kotekan::GetType_t<W_type>, W_rank> W_buffer;
+    NDArrayRingBuffer<kotekan::GetType_t<W_type>, W_rank> W_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<Ebar_type>, Ebar_rank> Ebar_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<I_type>, I_rank> I_buffer;
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
@@ -409,10 +433,13 @@ cudaFRBBeamformer_chord_U1::cudaFRBBeamformer_chord_U1(Config& config,
     I_name(config.get<std::string>(unique_name, "frb_beamgrid_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
+    W_lifetime_in_samples(config.get<std::int64_t>(unique_name, "frb1_phase_lifetime_in_samples")),
+
     S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), reverse(S_dimscalings),
              *this),
-    host_S_buffer(S_length), W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels),
-                                      reverse(W_dimscalings), *this, buffer_type_t::do_once),
+    host_S_buffer(S_length),
+    W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels),
+             with_leading_dimscaling(reverse(W_dimscalings), W_lifetime_in_samples), *this),
     Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
                 reverse(Ebar_dimscalings), *this),
     I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), reverse(I_dimscalings),
@@ -436,6 +463,33 @@ cudaFRBBeamformer_chord_U1::cudaFRBBeamformer_chord_U1(Config& config,
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
 
+    // Every invocation processes a multiple of `Tbar_quantum` samples, so at least that many
+    // have to fit into one read, or the kernel would never make progress.
+    {
+        const std::ptrdiff_t Tbar_read_max = Ebar_buffer.get_ndarray().extent(0) / 4;
+        if (Tbar_quantum > Tbar_read_max)
+            FATAL_ERROR("Kernel FRBBeamformer_chord_U1 processes multiples of {:d} time samples "
+                        "(the least common multiple of its granularity {:d} and its downsampling "
+                        "factor {:d}), but reads at most {:d} time samples at a time",
+                        Tbar_quantum, int(cuda_granularity_number_of_timesamples),
+                        int(cuda_downsampling_factor), Tbar_read_max);
+    }
+
+    // Slowly varying inputs are held in a ring buffer and read without claiming, one element
+    // per lifetime. A kernel invocation must not straddle the end of a lifetime, so a lifetime
+    // has to be a whole number of processing quanta. (Unlike the baseband beamformer, the
+    // output here is a ring buffer, so the reads can be shortened to stop at a lifetime's end.)
+    {
+        const std::ptrdiff_t quantum = cuda_upchannelization_factor * Tbar_quantum;
+        if (W_lifetime_in_samples <= 0 || W_lifetime_in_samples % quantum != 0)
+            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be a positive multiple of {:d} "
+                        "FPGA samples, the processing quantum of kernel FRBBeamformer_chord_U1 "
+                        "(upchannelization factor {:d} times the least common multiple of "
+                        "the granularity {:d} and the downsampling factor {:d})",
+                        W_lifetime_in_samples, quantum, int(cuda_upchannelization_factor),
+                        int(cuda_granularity_number_of_timesamples), int(cuda_downsampling_factor));
+    }
+
     set_command_type(gpuCommandType::KERNEL);
 
     // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
@@ -455,16 +509,17 @@ cudaFRBBeamformer_chord_U1::~cudaFRBBeamformer_chord_U1() {}
 
 std::int64_t
 cudaFRBBeamformer_chord_U1::num_consumed_elements(std::int64_t num_available_elements) const {
-    return num_produced_elements(num_available_elements) * cuda_downsampling_factor;
+    return num_processed_elements(num_available_elements);
 }
 std::int64_t
 cudaFRBBeamformer_chord_U1::num_produced_elements(std::int64_t num_available_elements) const {
-    return num_processed_elements(num_available_elements) / cuda_downsampling_factor;
+    return div_noremainder(num_processed_elements(num_available_elements),
+                           cuda_downsampling_factor);
 }
 
 std::int64_t
 cudaFRBBeamformer_chord_U1::num_processed_elements(std::int64_t num_available_elements) const {
-    return round_down(num_available_elements, cuda_granularity_number_of_timesamples);
+    return round_down(num_available_elements, Tbar_quantum);
 }
 
 int cudaFRBBeamformer_chord_U1::wait_on_precondition() {
@@ -474,25 +529,80 @@ int cudaFRBBeamformer_chord_U1::wait_on_precondition() {
             return errcode;
     }
 
-    // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
+
+    // Where will our read begin? Ask the ringbuffer. We must not use our own `read_valid` for
+    // this: every instance of this command shares one ringbuffer read head, so our own position
+    // lags it by whatever the other instances have claimed since our previous frame.
+    const std::ptrdiff_t Tbar_begin = Ebar_buffer.peek_read_head();
+    if (Tbar_begin < 0)
+        return -1; // shutting down
+    // We only ever claim multiples of `Tbar_quantum`
+    assert(Tbar_begin % Tbar_quantum == 0);
+
+    // Slowly varying inputs: find the element covering the samples we are about to read, and do
+    // not read past the end of its lifetime. (The constructor checked that lifetimes are
+    // multiples of `Tbar_quantum`, so we can stop exactly there.)
+    std::ptrdiff_t Tbar_read_limit = Tbar_read_max;
+    // `Tbar` samples are `cuda_upchannelization_factor` FPGA samples apart
+    const std::ptrdiff_t W_lifetime_in_Tbar =
+        div_noremainder(W_lifetime_in_samples, std::ptrdiff_t(cuda_upchannelization_factor));
+    // (`kotekan::div` must be qualified; an unqualified `div` finds C's `::div`)
+    const std::ptrdiff_t W_element = kotekan::div(Tbar_begin, W_lifetime_in_Tbar);
+    const std::ptrdiff_t W_lifetime_end = (W_element + 1) * W_lifetime_in_Tbar;
+    Tbar_read_limit = std::min(Tbar_read_limit, W_lifetime_end - Tbar_begin);
+    assert(Tbar_read_limit >= Tbar_quantum);
+
+    // Wait for data to be available in input ringbuffer
     std::ptrdiff_t Tbar_read = -1;
     {
         const int errcode =
             Ebar_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tbar_available) {
                 using std::min;
-                Tbar_read = min(Tbar_available, Tbar_read_max);
-                // Ensure that we make progress: If we cannot claim any elements then we
-                // must not read any elements either, and instead wait for more data.
-                const std::ptrdiff_t Tbar_claimed = num_consumed_elements(Tbar_read);
-                const std::ptrdiff_t Tbar_processed =
-                    Tbar_claimed == 0 ? 0 : num_processed_elements(Tbar_read);
-                return read_descriptor_t{.claimed = Tbar_claimed, .read = Tbar_processed};
+                // `*_written` below is derived from this value, so it must include the clamp
+                Tbar_read = num_processed_elements(min(Tbar_available, Tbar_read_limit));
+                // If we cannot process a whole quantum then we read nothing, and wait for more data
+                return read_descriptor_t{.claimed = num_consumed_elements(Tbar_read),
+                                         .read = Tbar_read};
             });
         if (errcode < 0)
             return errcode;
     }
+    const std::ptrdiff_t Tbar_end = Ebar_buffer.get_read_claimed().end();
+    assert(Ebar_buffer.get_read_valid().begin() == Tbar_begin);
+    assert(Ebar_buffer.get_read_valid().end() == Tbar_end);
+    assert(Tbar_end <= Tbar_begin + Tbar_read_limit);
+
+    // Slowly varying inputs: read the element covering these samples. We read the same element
+    // on every invocation within its lifetime, and claim it only on the last one, so that the
+    // producer can recycle it afterwards. That invocation is by construction the last one to use
+    // the element, and `finalize_frame` runs in frame order, so releasing it there is safe.
+    //
+    // We are holding a claim on `Ebar` while we wait here. That is safe because the producer of
+    // these inputs does not depend on `Ebar` being drained.
+    {
+        const bool last_use = Tbar_end == W_lifetime_end;
+        DEBUG("Waiting for W input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const int errcode =
+            W_buffer.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+                if (available_elements < 1)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                return read_descriptor_t{.claimed = last_use ? 1 : 0, .read = 1};
+            });
+        if (errcode < 0)
+            return errcode;
+        DEBUG("Done waiting for W input ringbuffer data for frame {:d}; "
+              "using element {:d}{:s}",
+              gpu_frame_id, W_element, last_use ? " (last use)" : "");
+        // The two ringbuffers must agree on which element covers these samples
+        if (W_buffer.get_read_valid().begin() != W_element)
+            FATAL_ERROR("Kernel FRBBeamformer_chord_U1: samples [{:d},{:d}) of buffer Ebar are "
+                        "covered by element {:d} of buffer W, but the W "
+                        "ringbuffer is at element {:d}",
+                        Tbar_begin, Tbar_end, W_element, W_buffer.get_read_valid().begin());
+    }
+
     const std::ptrdiff_t Ttilde_written = num_produced_elements(Tbar_read);
 
     // Wait for space to be available in output ringbuffer
@@ -715,6 +825,17 @@ cudaEvent_t cudaFRBBeamformer_chord_U1::execute(cudaPipelineState& /*pipestate*/
                             "kernel FRBBeamformer_chord_U1 processes coarse frequency {:d} there",
                             W_coarse_freq.at(freq), freq, I_coarse_freq.at(Fbar_out_min + freq));
 
+        // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards,
+        // counted from the voltage ring buffer's logical beginning -- so the two streams have
+        // to start at the same sequence number. A misaligned input would be applied to the
+        // wrong samples, silently corrupting the output. Ring buffer metadata are written once,
+        // so checking once suffices.
+        if (W_buffer.get_metadata()->get_fpga_seq_num() != Ebar_meta->get_fpga_seq_num())
+            FATAL_ERROR("Buffer W begins at FPGA sequence number {:d}, but the "
+                        "voltage buffer Ebar begins at {:d}; kernel FRBBeamformer_chord_U1 "
+                        "requires them to be aligned",
+                        W_buffer.get_metadata()->get_fpga_seq_num(), Ebar_meta->get_fpga_seq_num());
+
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
     } // if !did_set_metadata
 
@@ -758,6 +879,15 @@ cudaEvent_t cudaFRBBeamformer_chord_U1::execute(cudaPipelineState& /*pipestate*/
 
     // Set I_memory to beginning of output ring buffer
     I_arg = array_desc(I_memory, I_length_in_bytes);
+
+    // Slowly varying inputs: the kernel wants a single element, not the whole ring buffer.
+    {
+        const std::ptrdiff_t ring_length = W_buffer.get_ndarray().extent(0);
+        const std::ptrdiff_t element = W_buffer.get_read_valid().begin();
+        W_arg = array_desc(W_buffer.get_ndarray().data()
+                               + W_buffer.get_ndarray().stride(0) * (element % ring_length),
+                           W_length_in_bytes / ring_length);
+    }
 
     // Ringbuffer size
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
@@ -976,8 +1106,9 @@ cudaEvent_t cudaFRBBeamformer_chord_U1::execute(cudaPipelineState& /*pipestate*/
 }
 
 void cudaFRBBeamformer_chord_U1::finalize_frame() {
-    // Advance the input ring buffer
+    // Advance the input ring buffers
     Ebar_buffer.finish_read();
+    W_buffer.finish_read();
 
     // Advance the output ring buffer
     I_buffer.finish_write();

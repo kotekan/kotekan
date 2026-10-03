@@ -88,6 +88,7 @@ struct EigenStageTestParams {
     // For the concurrent-pipeline test. The default settings are equivalent
     // to the original single-pipeline behaviour.
     std::vector<int> cpu_affinity = {0};
+    int num_blaze_workers = 0; // 0 leaves blaze::setNumThreads untouched
 };
 
 template<typename Cfloat>
@@ -485,6 +486,8 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a, const EigenStageTestP
         cfg[s.eigen_name]["num_diagonals_filled"] = s.params.num_diagonals_filled;
         cfg[s.eigen_name]["num_ev_conv"] = s.params.num_ev_conv;
         cfg[s.eigen_name]["cpu_affinity"] = s.params.cpu_affinity;
+        if (s.params.num_blaze_workers > 0)
+            cfg[s.eigen_name]["num_blaze_workers"] = s.params.num_blaze_workers;
         if (!s.params.exclude_inputs.empty())
             cfg[s.eigen_name]["exclude_inputs"] = s.params.exclude_inputs;
     }
@@ -588,7 +591,7 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_concurrent_pipelines) {
     // Matrix size matches the eigenN2Iter_iterative single-pipeline test so we
     // can reuse its tolerances; what this case adds is concurrent execution.
     //
-    // Both pipelines run two Blaze workers on the same two cores, so the test
+    // Per-pipeline CPU affinity is kept to a single distinct core so the test
     // runs on minimal CI hosts (e.g. 2-core GitHub runners) as well as larger
     // machines. The race the patch guards against fires whenever two stages
     // are inside Blaze's parallel section at the same time, which is reliably
@@ -596,9 +599,11 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_concurrent_pipelines) {
     EigenStageTestParams params_a;
     params_a.total_frames = 6;
     params_a.num_elements = 16;
-    params_a.cpu_affinity = {0, 1};
+    params_a.cpu_affinity = {0};
+    params_a.num_blaze_workers = 2;
 
     EigenStageTestParams params_b = params_a;
+    params_b.cpu_affinity = {1};
 
     auto results = run_n2_pipeline_pair(params_a, params_b);
     verify_results(results.first, params_a, 1e-4, 1e-4, 1e-4, 1e-5f);
