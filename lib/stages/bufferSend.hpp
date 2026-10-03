@@ -126,7 +126,8 @@ private:
     /// (once per connection). Must match use_frame_desc on the receiver.
     bool use_frame_desc;
 
-    /// Serialized list of current config tracker hashes
+    /// Tracker hash as last signalled to the receiver. A differing current
+    /// hash, or the first frame of a connection, sets config_tracker_update.
     std::string config_tracker_combined_hash;
 
     /**

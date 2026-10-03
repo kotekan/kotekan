@@ -114,8 +114,13 @@ void bufferSend::main_thread() {
             bufferFrameHeader header;
             header.metadata_size = static_cast<uint32_t>(meta->get_serialized_size());
             header.frame_size = static_cast<uint32_t>(buf->frame_size);
+            // Flag a tracker update on the first frame of every connection, not
+            // only when this side's tracker hash changes: a receiver that
+            // (re)started after us holds no upstream configs and has no way to
+            // ask for them, so the first frame it sees must carry the flag.
             header.config_tracker_update =
-                config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
+                !first_transmission_sent
+                || config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
             // for legacy CHIME, do not send last field (config_tracker_update)
             size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
                                                    : sizeof(bufferFrameHeaderNoConfigTracker);
