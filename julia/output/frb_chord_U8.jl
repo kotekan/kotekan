@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1954 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1959 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 24), 1), 24), 1), 1), 24), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 64), 1), 64), 1), 1), 64), 768)) + 0) + 0x01] =
             info
@@ -171,7 +171,7 @@
             if !(0i32 ≤ Sm < 24 && 0i32 ≤ Sn < 24)
                 CUDA.@cuprintf "thread=%d warp=%d block=%d Sm=%d Sn=%d\n" Cint((threadIdx()).x - 1) Cint((threadIdx()).y - 1) Cint(
                     (blockIdx()).x - 1
-                ) Cint(Sm) Cint(Sn)                    #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1720 =#
+                ) Cint(Sm) Cint(Sn)                    #= /home/eschnett/src/kotekan/julia/kernels/frb.jl:1725 =#
                 info = 4
                 info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 24), 1), 24), 1), 1), 24), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 64), 1), 64), 1), 1), 64), 768)) + 0) + 0x01] =
                     info

@@ -13,10 +13,6 @@ base_dir: data/fengine_benchmark_hirax # unused
 prefix_hostname: false
 prefix_host_rank: true
 
-# The largest upchannelization factor used in this run. All upchannelizers delay their
-# output so that it is aligned in time with that of the largest factor.
-max_upchannelization_factor: 32
-
 {% include "include/defs.j2" %}
 {% include "include/fengine_hirax.j2" %}
 

@@ -17,11 +17,12 @@
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
-#include "PipelineGraph.hpp"  // for human_bytes
+#include "PipelineGraph.hpp"  // for human_bytes, array_layout_line
 #include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
 #include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "nt_memset.h"        // for nt_memset
+#include "numaPolicy.hpp"     // for ScopedNumaPolicy
 #include "util.h"             // for e_time
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
@@ -31,7 +32,7 @@
 #include <time.h> // for timespec
 #ifdef WITH_NUMA
 #include <numa.h>   // for bitmask, numa_allocate_nodemask, numa_bitmask_free, numa_b...
-#include <numaif.h> // for set_mempolicy, MPOL_BIND, mbind, MPOL_DEFAULT, MPOL_MF_STRICT
+#include <numaif.h> // for mbind, MPOL_BIND, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.
@@ -277,18 +278,10 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
     for (auto cpu : cpu_affinity)
         CPU_SET(cpu, &_cpu_set_zero);
 
-#if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
-    // Allocate all memory for a buffer on the NUMA domain its frames are located.
-    struct bitmask* node_mask = numa_allocate_nodemask();
-    numa_bitmask_setbit(node_mask, numa_node);
-    if (set_mempolicy(MPOL_BIND, node_mask ? node_mask->maskp : NULL,
-                      node_mask ? node_mask->size + 1 : 0)
-        < 0) {
-        throw std::runtime_error(
-            fmt::format(fmt("Failed to set memory policy: {:s} {:d}"), strerror(errno), errno));
-    }
-    numa_bitmask_free(node_mask);
-#endif
+    // Allocate everything the constructor creates on the NUMA node the frames
+    // are on. bufferFactory wraps the whole construction in the same policy so
+    // that the object itself is placed too; this covers a Buffer built directly.
+    kotekan::ScopedNumaPolicy bind_memory(numa_node);
 
     if (use_hugepages) {
         // Round up to the nearest huge page size multiple.
@@ -314,14 +307,6 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
             frames[i] = (uint8_t*)0xffffffff;
         }
     }
-
-#if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
-    // Reset the memory policy so that we don't impact other parts of the
-    if (set_mempolicy(MPOL_DEFAULT, nullptr, 0) < 0) {
-        throw std::runtime_error(fmt::format(
-            fmt("Failed to reset memory policy to default: %s (%d)"), strerror(errno), errno));
-    }
-#endif
 }
 
 Buffer::~Buffer() {
@@ -625,19 +610,11 @@ std::vector<std::string> Buffer::dot_label_lines(const kotekan::GraphOptions& op
     // the config or from the kernel sources.
     auto array = get_frame_desc<kotekan::GenericNDArray>();
     if (array) {
-        const std::vector<std::ptrdiff_t> extents = array->get_extents();
-        const std::vector<kotekan::Symbol> dimnames = array->get_dimnames();
-        std::string layout;
-        for (size_t d = 0; d < extents.size(); d++) {
-            if (!layout.empty())
-                layout += " × ";
-            if (d < dimnames.size() && dimnames[d])
-                layout += fmt::format(fmt("{:s}:{:d}"), dimnames[d].get_string(), extents[d]);
-            else
-                layout += fmt::format(fmt("{:d}"), extents[d]);
-        }
-        lines.push_back(
-            fmt::format(fmt("{:s} {:s}"), type_to_string(array->get_value_datatype()), layout));
+        std::vector<std::string> dimnames;
+        for (const kotekan::Symbol& dimname : array->get_dimnames())
+            dimnames.push_back(dimname ? dimname.get_string() : std::string());
+        lines.push_back(kotekan::array_layout_line(type_to_string(array->get_value_datatype()),
+                                                   array->get_extents(), dimnames));
     }
 
     lines.push_back(fmt::format(fmt("{:s} ×{:d} frames = {:s}"), kotekan::human_bytes(frame_size),
