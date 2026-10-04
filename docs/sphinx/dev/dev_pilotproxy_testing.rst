@@ -34,12 +34,38 @@ for the active inputs. The exported development bundle is for testing.
 The integration tests compare every mask, coarse power and FPGA timestamp
 against the CPU reference using synthetic calibration.
 
-For a sustained workload, enable the larger geometries:
+For a sustained workload, enable the larger geometries after checking the
+test process's soft and hard locked-memory limits (``ulimit -Sl`` and
+``ulimit -Hl``). Each geometry has four 384 MiB host voltage frames, so its
+locked-memory allowance must exceed 1.5 GiB plus the other buffers. A 64 MiB
+default fails before detector execution. Use the host's approved mechanism
+to raise the dedicated test process's limit; record the effective user and
+limits. Preserve the usual locked-buffer configuration.
 
 .. code-block:: sh
 
-    PILOTPROXY_SOAK_FRAMES=2048 python3 -m pytest -v -s \
+    PILOTPROXY_SOAK_FRAMES=2048 PILOTPROXY_SOAK_TIMEOUT_SECONDS=1800 \
+        python3 -m pytest -v -s \
         tests/test_pilotproxy_integration.py -k production_geometry_soak
+
+The two cases use 64 dishes with 384 frequencies and 512 dishes with 48
+frequencies, each with two polarizations. All 23 bound pilots are evaluated.
+The full-rate fine-support product is compared with the independent CPU
+reference at every block, along with masks, coarse powers, and FPGA timing;
+unbound frequencies must retain the ``[-1, -1]`` support sentinel.
+
+Each 2,048-frame case processes 768 GiB of voltage through a four-frame ring.
+Only the four repeated seed voltage frames are saved, together with every
+mask, power, and support output. Allow about 2.4 GiB of scratch space per case
+and retain failed fixtures until reviewed. The default per-pipeline timeout
+is 1,800 seconds. Start with ``PILOTPROXY_SOAK_FRAMES=8`` to verify local
+allocation and geometry before a sustained run.
+
+At the configured 5.12 microsecond sample interval, 2,048 blocks represent
+85.89934592 seconds of data per case. Report measured wall time separately:
+it includes synthetic seed generation, GPU work, and file output. Reused
+synthetic inputs and file-I/O stress do not establish production cadence,
+processing headroom, or telescope acceptance.
 
 The mask stage's own tests need the same two variables:
 
@@ -50,6 +76,12 @@ The mask stage's own tests need the same two variables:
 
 Fine support and channel threshold limits
 ========================================
+
+This section describes the separate ``dtv-validity-policy`` follow-up with
+PilotProxy detector core 2.5.0. The earlier submitted revision
+``c81def5518bb86b03afa837d6c57655ef48c548d`` exports masks and coarse powers
+without this full-rate support path. Record the exact follow-up binary,
+source, vendor manifest, and configuration when qualifying these capabilities.
 
 The optional ``dtv_fine_support_name`` detector output is an ``int32[F, 2]``
 product named ``dtv_fine_support``. Each row contains the rank-valid flag and

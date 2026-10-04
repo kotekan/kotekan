@@ -3,8 +3,10 @@
 Set PILOTPROXY_TEST_BINARY and PILOTPROXY_TEST_BUNDLE to run these tests.
 The bundle must match the compiled core. PILOTPROXY_SOAK_FRAMES (at least 8)
 also enables 64-dish/384-channel and 512-dish/48-channel runs, each with two
-polarizations. Four voltage frames repeat; every output is compared with
-its CPU reference. Synthetic calibration is for these tests only.
+polarizations and full-rate fine support. Four voltage frames repeat; every
+mask, power, and support output is compared with its CPU reference. Each
+pipeline has a 1,800-second timeout, overridable with
+PILOTPROXY_SOAK_TIMEOUT_SECONDS. Synthetic calibration is for these tests only.
 """
 
 import importlib.util
@@ -32,6 +34,45 @@ reference = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = reference
 spec.loader.exec_module(reference)
 pytestmark = pytest.mark.serial
+
+
+def expected_fine_products_with_support(block, freq_ids, bundle, weights, num_dishes):
+    """Calculate all three outputs once from the independent CPU references."""
+    from pilot_proxy.fine_decision import fine_mask_decision
+    from pilot_proxy.fxfft import fine_power_fx
+
+    profiles = {row["chord_channel_id"]: row for row in bundle["profiles"]}
+    reverse = bundle["input_preprocessing"][
+        "time_reverse_detector_windows_before_kernel"
+    ]
+    masks = np.zeros(len(freq_ids), dtype=np.uint8)
+    powers = np.zeros((len(freq_ids), 3), dtype=np.uint64)
+    support = np.full((len(freq_ids), 2), -1, dtype=np.int32)
+    for index, freq_id in enumerate(freq_ids):
+        profile = profiles.get(freq_id)
+        if profile is None:
+            continue
+        calibration = profile["fine_calibration"]
+        assert calibration["status"] == "calibrated"
+        offset = profile["weight_bank_offset_bytes"]
+        bank = weights[offset : offset + profile["weight_bank_nbytes"]]
+        real, imag = reference.detector_rows_from_voltage(
+            block, index, reverse, num_freq=len(freq_ids), num_dishes=num_dishes
+        )
+        projections = reference.expected_row_sums(real, imag, bank)
+        powers[index] = (projections * projections).sum(axis=(1, 2), dtype=np.uint64)
+        fine = fine_power_fx(projections, num_streams=2 * num_dishes)
+        decision = fine_mask_decision(
+            fine,
+            anchor_bin=calibration["anchor_bin"],
+            designated_half_width=calibration["designated_half_width"],
+            bulk_mask=[int(word, 16) for word in calibration["bulk_mask_words_hex"]],
+            cfar_rank=calibration["cfar_rank"],
+            multiplier_q16=calibration["cfar_multiplier_q16"],
+        )
+        masks[index] = decision.mask
+        support[index] = (int(decision.valid), decision.n_bulk)
+    return masks, powers, support
 
 
 @pytest.fixture(scope="module")
@@ -116,7 +157,7 @@ class Pipeline:
         output = (self.directory / "pipeline.log").read_text()
         return result.returncode, output
 
-    def verify(self, *, repeated_seeds=False):
+    def verify(self, *, repeated_seeds=False, fine_support=False):
         config = self.config
         freq_ids = self.generator["manual_freq_ids"]
         num_freq, num_dishes = len(freq_ids), config["num_dishes"]
@@ -143,11 +184,18 @@ class Pipeline:
         )
         downsample = self.generator["meta_time_downsample_factor"]
         start = self.generator["first_frame_index"] * num_times * downsample
-        for frames, factor, stride in (
+        products = [
             (voltage, downsample, num_times),
             (masks, 8192 * downsample, 8192),
             (powers, 8192 * downsample, 8192),
-        ):
+        ]
+        if fine_support:
+            support = reference.read_raw_frames(
+                str(self.directory / "out/dtv_fine_support_*.raw"), num_freq * 2 * 4
+            )
+            assert len(support) == num_blocks
+            products.append((support, 8192 * downsample, 8192))
+        for frames, factor, stride in products:
             for index, frame in enumerate(frames):
                 assert frame.fpga_seq_num == start + index * stride * downsample
                 assert frame.time_downsampling_fpga == factor
@@ -159,19 +207,29 @@ class Pipeline:
             blocks = np.concatenate([frame.payload for frame in voltage]).reshape(
                 -1, 8192 * num_freq * 2 * num_dishes
             )
-        expected = [
-            reference.expected_products(
-                block,
-                freq_ids,
-                self.bundle,
-                weights,
-                num_dishes=num_dishes,
-                decision_mode=self.detector["decision_mode"],
-            )
-            for block in blocks
-        ]
+        if fine_support:
+            assert self.detector["decision_mode"] == "auto"
+            expected = [
+                expected_fine_products_with_support(
+                    block, freq_ids, self.bundle, weights, num_dishes
+                )
+                for block in blocks
+            ]
+        else:
+            expected = [
+                reference.expected_products(
+                    block,
+                    freq_ids,
+                    self.bundle,
+                    weights,
+                    num_dishes=num_dishes,
+                    decision_mode=self.detector["decision_mode"],
+                )
+                for block in blocks
+            ]
         for index, (mask, power) in enumerate(zip(masks, powers)):
-            want_mask, want_power = expected[index % len(expected)]
+            want = expected[index % len(expected)]
+            want_mask, want_power = want[:2]
             np.testing.assert_array_equal(
                 mask.payload, want_mask, err_msg=f"block {index} mask"
             )
@@ -179,6 +237,11 @@ class Pipeline:
             np.testing.assert_array_equal(
                 got_power, want_power, err_msg=f"block {index} powers"
             )
+            if fine_support:
+                got_support = support[index].payload.view("<i4").reshape(num_freq, 2)
+                np.testing.assert_array_equal(
+                    got_support, want[2], err_msg=f"block {index} fine support"
+                )
         return np.stack([pair[0] for pair in expected])
 
 
@@ -553,12 +616,38 @@ def test_production_geometry_soak(pipeline, record_property, num_dishes, num_fre
     pipeline.config["dump_voltage"]["exit_after_n_files"] = 4
     for product in ("mask", "powers"):
         pipeline.config[f"dump_dtv_{product}"]["exit_after_n_files"] = frames
-    code, output = pipeline.run(timeout=max(1800, frames * 2))
+    config = pipeline.config
+    config["host_dtv_fine_support_buffer"] = copy.deepcopy(
+        config["host_dtv_powers_buffer"]
+    )
+    config["host_dtv_fine_support_buffer"]["frame_size"] = num_freq * 2 * 4
+    gpu = config["run_dtv_detector"]["gpu_0"]
+    gpu["out_buffers"]["host_dtv_fine_support"] = "host_dtv_fine_support_buffer"
+    pipeline.detector["dtv_fine_support_name"] = "dtv_fine_support"
+    gpu["commands"].append(
+        dict(
+            name="cudaOutputData",
+            gpu_mem="dtv_fine_support_buffer",
+            out_buf="host_dtv_fine_support",
+        )
+    )
+    config["dump_dtv_fine_support"] = copy.deepcopy(config["dump_dtv_mask"])
+    config["dump_dtv_fine_support"].update(
+        in_buf="host_dtv_fine_support_buffer", file_name="dtv_fine_support"
+    )
+    timeout = float(os.environ.get("PILOTPROXY_SOAK_TIMEOUT_SECONDS", "1800"))
+    assert np.isfinite(timeout) and timeout > 0
+    code, output = pipeline.run(timeout=timeout)
     assert code == 0, output[-12000:]
-    pipeline.verify(repeated_seeds=True)
+    verification_start = time.monotonic()
+    pipeline.verify(repeated_seeds=True, fine_support=True)
     record_property("frames", frames)
     record_property("pipeline_seconds", pipeline.elapsed)
-    record_property("voltage_gib", frames * 8192 * num_freq * 2 * num_dishes / 2 ** 30)
+    record_property("verification_seconds", time.monotonic() - verification_start)
+    record_property("fine_support_rows_checked", frames * num_freq)
+    record_property("bound_fine_profiles", len(pipeline.bundle["profiles"]))
+    record_property("pipeline_timeout_seconds", timeout)
+    record_property("voltage_gib", frames * 8192 * num_freq * 2 * num_dishes / 2**30)
     print(
         f"Verified {frames} production-size blocks; pipeline took {pipeline.elapsed:.2f}s"
     )
