@@ -75,13 +75,10 @@ The mask stage's own tests need the same two variables:
 
 
 Fine support and channel threshold limits
-========================================
+=========================================
 
-This section describes the separate ``dtv-validity-policy`` follow-up with
-PilotProxy detector core 2.5.0. The earlier submitted revision
-``c81def5518bb86b03afa837d6c57655ef48c548d`` exports masks and coarse powers
-without this full-rate support path. Record the exact follow-up binary,
-source, vendor manifest, and configuration when qualifying these capabilities.
+Record the Kotekan revision, vendor manifest, runtime bundle, and configuration
+when validating fine support and frequency policies.
 
 The optional ``dtv_fine_support_name`` detector output is an ``int32[F, 2]``
 product named ``dtv_fine_support``. Each row contains the rank-valid flag and
@@ -91,14 +88,16 @@ that no fine test was evaluated, including an unbound, coarse, or permanently
 masked frequency. This support product does not establish packet-loss,
 input-health, target-support, or scientific-calibration validity.
 
-The F-engine include connects this product at full rate to ``DtvRfiMask``.
-That stage intersects the existing RFI mask with the DTV decision and excludes
-invalid fine support before the same combined mask reaches correlation and
-valid-sample counts. It refuses mismatched timestamps, frequency identities,
-layouts, and malformed support rows. Legacy graphs that omit the optional
-support buffer retain their previous behavior.
+Set ``dtv_enabled: true`` in the CHORD F-engine configuration to record DTV
+masks and coarse powers. Set ``dtv_apply_mask: true`` to also connect full-rate fine
+support to ``DtvRfiMask``. That stage intersects the existing RFI mask with the
+DTV decision and excludes invalid fine support before the same combined mask
+reaches correlation and valid-sample counts. It refuses mismatched timestamps,
+frequency identities, layouts, and malformed support rows. Both options default
+to false; legacy graphs that omit the optional support buffer retain their
+previous behavior.
 
-Two explicit receiver-frequency lists configure the follow-up path:
+Two receiver-frequency lists configure the masking policy:
 
 * ``dtv_require_fine_freq_ids`` requires an evaluated fine test for each listed
   frequency. An unevaluated row stops processing rather than being treated as

@@ -41,8 +41,12 @@
  *
  * @conf    num_local_freq  int  Frequencies per frame.
  * @conf    num_times       int  Samples per detector block; must be 8192.
- * @conf    permanent_mask_freq_ids Receiver coarse-frequency IDs at the reject-all limit.
- * @conf    require_fine_freq_ids Receiver IDs that must have an evaluated fine decision.
+ * @conf    permanent_mask_freq_ids List of unique integer receiver coarse-frequency IDs
+ *          in [0,12288) at the reject-all limit (default []).
+ * @conf    require_fine_freq_ids List of unique integer receiver coarse-frequency IDs
+ *          in [0,12288) that must have an evaluated fine decision (default []).
+ *          Requires fine_support_buf when nonempty. Both lists must be disjoint and
+ *          contain only IDs in the input frequency assignment.
  */
 class DtvRfiMask : public kotekan::Stage {
 public:

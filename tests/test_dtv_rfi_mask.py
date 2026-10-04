@@ -175,9 +175,8 @@ def setup_pipeline(
         voltage = raw_payload(source("voltage"), (T, F, 128))
         voltage[~np.repeat(pl, 8, axis=2)] = 0x88  # offset-binary complex zero
         if fine_support and real_detector and index == 4:
-            voltage[:, 2, :] = (
-                0x88  # No reference support on a finite-threshold channel.
-            )
+            # No reference support on a finite-threshold channel.
+            voltage[:, 2, :] = 0x88
         decision = np.array([(index + f) % 3 == 0 for f in range(F)], dtype=np.uint8)
         if index == 0:
             decision[:] = 0

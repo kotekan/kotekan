@@ -452,6 +452,7 @@ jobs:
   # unavailable pilot-proxy package cannot fail the shared GPU jobs.
   kotekan-pilotproxy-tests:
     name: "PilotProxy"
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     needs: kotekan-docker
     uses: ./.github/workflows/test_kotekan_build.yaml
     with:

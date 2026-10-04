@@ -647,7 +647,7 @@ def test_production_geometry_soak(pipeline, record_property, num_dishes, num_fre
     record_property("fine_support_rows_checked", frames * num_freq)
     record_property("bound_fine_profiles", len(pipeline.bundle["profiles"]))
     record_property("pipeline_timeout_seconds", timeout)
-    record_property("voltage_gib", frames * 8192 * num_freq * 2 * num_dishes / 2**30)
+    record_property("voltage_gib", frames * 8192 * num_freq * 2 * num_dishes / 2 ** 30)
     print(
         f"Verified {frames} production-size blocks; pipeline took {pipeline.elapsed:.2f}s"
     )

@@ -43,7 +43,7 @@
  * @param num_frequencies   Local coarse-frequency count F on this node.
  * @param freq_index        Local frequency index to extract, in [0, F).
  * @param num_time_samples  Channelized samples per detector block (multiple
- *                          of detector_window_samples; 8192 deployed).
+ *                          of detector_window_samples; 8192 in the CHORD configuration).
  * @param ringbuf_size_t    Ring extent in time samples; must be a power of
  *                          two.
  * @param ringbuf_pos_t     Logical start position in time samples (wrapped

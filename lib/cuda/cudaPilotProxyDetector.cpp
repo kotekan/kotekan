@@ -370,6 +370,13 @@ private:
  *   @gpu_mem_dim_name  [@c F][@c W]
  *   @gpu_mem_shape     [@c num_frequencies][@c 3]
  *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Output fine rank support (optional)
+ *   @gpu_mem_buffer    @c standard
+ *   @gpu_mem_quantity  @c dtv_fine_support
+ *   @gpu_mem_type      @c int32
+ *   @gpu_mem_dim_name  [@c F][@c S]
+ *   @gpu_mem_shape     [@c num_frequencies][@c 2]
+ *   @gpu_mem_metadata  @c chordMetadata
  *
  * @conf buffer_depth               Int. GPU frames used for pipelining.
  * @conf num_times                  Int. Voltage samples per upstream GPU
