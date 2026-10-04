@@ -381,7 +381,8 @@ protected:
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
  * @conf metadata_pool The name of the metadata pool to associate with the buffer
- * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
+ * @conf numa_node The NUMA node the frames, and the buffer itself, are allocated on.
+ *                 Default: 0
  * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
  * @conf mlock_frames Lock the frame pages with mlock Default: true
  * @conf peek_hold Keep the newest full frame peekable by deferring its empty

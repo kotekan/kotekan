@@ -5,6 +5,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, print, format, fmt
 
+#include <algorithm>  // for none_of
 #include <cmath>      // for isinf, isnan
 #include <functional> // for bind, _1, function
 #include <iterator>   // for begin, end
@@ -19,6 +20,12 @@ namespace prometheus {
 
 Metric::Metric(const std::vector<string>& label_values) : label_values(label_values) {}
 
+bool Metric::has_value() {
+    std::lock_guard<std::mutex> lock(metric_lock);
+
+    return value_set;
+}
+
 
 Counter::Counter(const std::vector<string>& label_values) : Metric(label_values) {}
 
@@ -26,12 +33,14 @@ void Counter::inc() {
     std::lock_guard<std::mutex> lock(metric_lock);
 
     ++value;
+    value_set = true;
 }
 
 void Counter::inc(const uint64_t increment) {
     std::lock_guard<std::mutex> lock(metric_lock);
 
     value += increment;
+    value_set = true;
 }
 
 string Counter::to_string() {
@@ -53,6 +62,7 @@ void Gauge::set(const double value) {
 
     this->value = value;
     this->last_update_time_stamp = get_time_in_milliseconds();
+    value_set = true;
 }
 
 string Gauge::to_string() {
@@ -94,7 +104,7 @@ template<typename T>
 string MetricFamily<T>::serialize() {
     std::lock_guard<std::mutex> lock(metrics_lock);
 
-    if (metrics.empty())
+    if (std::none_of(metrics.begin(), metrics.end(), [](T& m) { return m.has_value(); }))
         return "";
 
     std::ostringstream out;
@@ -110,6 +120,8 @@ string MetricFamily<T>::serialize() {
             out << "# TYPE " << name << " untyped\n";
     }
     for (auto& m : metrics) {
+        if (!m.has_value())
+            continue;
         out << name;
         out << "{" << "stage_name=\"" << stage_name << "\"";
         if (!label_names.empty()) {

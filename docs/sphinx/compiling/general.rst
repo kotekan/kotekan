@@ -179,12 +179,7 @@ Documentation:
 * Sphinx::
 
     sudo apt-get install python-sphinx
-    sudo pip install sphinx_rtd_theme sphinxcontrib-plantuml
-
-* PlantUml::
-
-    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P /opt/plantuml
-    sudo apt-get install default-jre
+    sudo pip install sphinx_rtd_theme
 
 * Breathe::
 

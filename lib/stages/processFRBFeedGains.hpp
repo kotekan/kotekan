@@ -11,6 +11,7 @@
 #include "bufferContainer.hpp"
 #include "processFeedGains.hpp"
 
+#include <cstdint>
 #include <string>
 
 /**
@@ -21,6 +22,19 @@
  * expected by `CHIMEFRBBeamformer_chime_U16_K4` and
  * `CHIMEFRBBeamformer_chime_U16_K8`; the gain buffer is the same for both input
  * bit depths.
+ *
+ * The output frames have a leading length-1 `TW` axis whose `dimscaling` is
+ * `frb1_phase_lifetime_in_samples`. That must equal the lifetime of the bad feed
+ * mask frames, which clock the output.
+ *
+ * The FRB1 kernel locates weight element `k` at `k * lifetime` FPGA samples after the beginning
+ * of its input, the upchannelizers' output, which begins later than the voltages (see
+ * `upchan_output_offset`). The output frames are stamped accordingly: the weights made from mask
+ * frame `k` apply to the upchannelized samples beginning at that offset after the mask frame.
+ *
+ * @conf frb1_phase_lifetime_in_samples Int. How many FPGA samples one output frame covers.
+ * @conf max_upchannelization_factor    Int. The largest upchannelization factor of the run; it
+ *                                      determines the upchannelizers' output offset.
  *
  * @author Liam Gray
  *
@@ -38,6 +52,7 @@ private:
 
     // config parameters required for metadata
     uint32_t num_polarizations;
+    std::int64_t frb1_phase_lifetime_in_samples;
 
     bool frb1_swap_MN;
     int num_dishes_M;
