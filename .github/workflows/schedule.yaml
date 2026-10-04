@@ -17,6 +17,9 @@ on:
         default: ''
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   determine-branches:
     runs-on: ubuntu-latest

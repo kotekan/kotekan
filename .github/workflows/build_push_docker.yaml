@@ -42,6 +42,9 @@ on:
         description: "Full Intel-compiler image name (including tag) built or selected by this workflow"
         value: ${{ jobs.build-push-docker.outputs.docker_intel_img_name }}
 
+permissions:
+  contents: read
+
 jobs:
 
   build-push-docker:

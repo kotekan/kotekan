@@ -20,6 +20,10 @@ concurrency:
 env:
   REGISTRY: ghcr.io
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
 
   # Kotekan docker image build and push
@@ -385,6 +389,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      packages: read
     env:
       SOURCE_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

@@ -27,6 +27,10 @@ env:
   REGISTRY: ghcr.io
   PYTEST_TIMEOUT: 60
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   log-execution:
     runs-on: ubuntu-latest
