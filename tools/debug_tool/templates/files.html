@@ -1,8 +1,8 @@
 <ul>
     {% for file in files %}
     <li>
-        <a href="{{ (request.path + '/' if request.path != '/' else '') + file }}">
-            {{ (request.path + '/' if request.path != '/' else '') + file }}
+        <a href="{{ url_for('dir_listing', req_path=((request.view_args.req_path + '/') if request.view_args.req_path else '') + file) }}">
+            {{ file }}
         </a>
     </li>
     {% endfor %}

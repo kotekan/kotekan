@@ -1,6 +1,7 @@
-from flask import Flask, render_template, request, send_file, abort
+from flask import Flask, render_template, request, send_from_directory, abort
 from flask_cors import CORS
 from requests import get
+from werkzeug.security import safe_join
 import os
 
 app = Flask(__name__)
@@ -10,29 +11,47 @@ CORS(app, support_credentials=True)
 KOTEKAN_ADDRESS = "http://localhost:12048"
 DUMP_DIR = "./"
 
-# Load file
-@app.route("/", defaults={"req_path": ""})
-@app.route("/<path:req_path>")
+
+@app.route("/")
+@app.route("/templates/pipeline_tree.html")
+def pipeline_viewer():
+    return render_template("pipeline_tree.html")
+
+
+@app.route("/templates/dump_viewer.html")
+def dump_viewer():
+    return render_template("dump_viewer.html")
+
+
+@app.route("/dump_dir", defaults={"req_path": ""})
+@app.route("/dump_dir/<path:req_path>")
 def dir_listing(req_path):
-    BASE_DIR = os.getcwd()
+    base_dir = os.path.realpath(DUMP_DIR)
+    abs_path = safe_join(base_dir, req_path)
+    if abs_path is None:
+        abort(404)
 
-    # Joining the base and the requested path
-    req_path = req_path.replace("dump_dir", DUMP_DIR)
-    abs_path = os.path.join(BASE_DIR, req_path)
-
-    # Return 404 if path doesn't exist
-    if not os.path.exists(abs_path):
-        return abort(404)
-
-    # Check if path is a file and serve
+    # Resolve symlinks before checking the dump directory boundary.
+    abs_path = os.path.realpath(abs_path)
+    if os.path.commonpath([base_dir, abs_path]) != base_dir:
+        abort(404)
     if os.path.isfile(abs_path):
-        file_name = os.path.basename(abs_path)
-        if "html" in file_name:
-            return render_template(file_name)
-        return send_file(abs_path)
+        response = send_from_directory(
+            base_dir,
+            os.path.relpath(abs_path, base_dir),
+            mimetype="application/octet-stream",
+            as_attachment=True,
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+    if not os.path.isdir(abs_path):
+        abort(404)
 
-    # Show directory contents
-    files = os.listdir(abs_path)
+    files = []
+    for name in sorted(os.listdir(abs_path)):
+        child = os.path.realpath(os.path.join(abs_path, name))
+        if os.path.commonpath([base_dir, child]) == base_dir:
+            files.append(name)
     return render_template("files.html", files=files)
 
 
