@@ -15,6 +15,8 @@
 #include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
 #include <sys/types.h> // for uint
 
+#include "unistd.h"
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -147,16 +149,35 @@ void processFeedGains::main_thread() {
         gain_buffer_frame_ids.emplace_back(gain_buffers.at(iter));
     }
 
-    bool set_coarse_freqs_once = true;
+    bool first_time = true;
 
-    std::vector<bool> gains_received(gain_buffers.size(), false);
-    bool mask_received = false;
     while (!stop_thread) {
-        // Whether the gains or the mask changed in this iteration. Each iteration emits one
-        // output frame (or returns).
-        bool gains_changed = false;
+    
+        // to lockstep all stages, we require only 1 frame depth and that we
+        // only free our input once we no longer need it. This ripples through
+        // to the upstream as a requirement to first get a new output frame,
+        // then release a held input frame, essentially negating any buffering.
 
-        // Poll all possible producing buffers
+        // Get an output buffer
+        float16_t* out_frame =
+            (float16_t*)out_buf->wait_for_empty_frame(unique_name, out_buf_frame_id);
+        if (out_frame == nullptr) {
+            return;
+        }
+
+        if (!first_time) {
+          // release the previously held input buffers
+          for (size_t beam_id = 0; beam_id < gain_buffers.size(); beam_id++) {
+            Buffer* buf = gain_buffers.at(beam_id);
+            N2::frameID& frame_id = gain_buffer_frame_ids.at(beam_id);
+
+            buf->mark_frame_empty(unique_name, frame_id);
+
+            frame_id++;
+          }
+        }
+
+        // Wait for fresh input and send onward
         for (size_t beam_id = 0; beam_id < gain_buffers.size(); beam_id++) {
             Buffer* buf = gain_buffers.at(beam_id);
             N2::frameID& frame_id = gain_buffer_frame_ids.at(beam_id);
@@ -226,53 +247,52 @@ void processFeedGains::main_thread() {
             return;
         }
 
-        // Get an output buffer
-        float16_t* out_frame =
-            (float16_t*)out_buf->wait_for_empty_frame(unique_name, out_buf_frame_id);
-        if (out_frame == nullptr) {
-            return;
-        }
+        if(first_time) {
+            first_time = false;
 
-        assert(
-            mask_received
-            && std::all_of(gains_received.begin(), gains_received.end(), [](bool b) { return b; })
-            && !set_coarse_freqs_once);
+            assert(
+                mask_received
+                && std::all_of(gains_received.begin(), gains_received.end(), [](bool b) { return b; })
+                && !set_coarse_freqs_once);
 
-        // Set metadata from the frame desc, and other metadata
-        out_buf->allocate_new_metadata_object(out_buf_frame_id);
-        auto meta = get_chord_metadata(out_buf, out_buf_frame_id);
-        meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
-        meta->set_name("W");
-        // Set the frequency upchannelization metadata
-        meta->set_freq_upchan_factor(freq_upchan_factor);
-        meta->set_freq_upchan_index(freq_upchan_index);
-        meta->set_coarse_freq(coarse_freq);
-        // Verify that frame desc and metadata match
-        meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
+            // Set metadata from the frame desc, and other metadata
+            out_buf->allocate_new_metadata_object(out_buf_frame_id);
+            auto meta = get_chord_metadata(out_buf, out_buf_frame_id);
+            meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
+            meta->set_name("W");
+            // Set the frequency upchannelization metadata
+            meta->set_freq_upchan_factor(freq_upchan_factor);
+            meta->set_freq_upchan_index(freq_upchan_index);
+            meta->set_coarse_freq(coarse_freq);
+            // Verify that frame desc and metadata match
+            meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
-        // copy from permanent buffer to output buffer
-        // NB: this needs to happen every time, since the mask and gain buffers
-        // can change at a different cadence and thus can't be stored together
-        std::copy_n(gain_store_buf.begin(), out_num_values, out_frame);
-        // apply the element (feed) mask
-        // assume that there are far more good feed than bad feeds, so the mask
-        // as the outer loop should minimize the amount of data being touched
-        for (size_t e = 0; e < num_elements; e++) {
-            if (mask_store_buf[e] == 0) {
-                // zero out this element for all other indices
-                for (size_t k = num_components * e; k < out_num_values;
-                     k += num_components * num_elements) {
-                    for (size_t j = 0; j < num_components; ++j) {
-                        out_frame[k + j] = float16_t(0.0);
+            // copy from permanent buffer to output buffer
+            // NB: this needs to happen every time, since the mask and gain buffers
+            // can change at a different cadence and thus can't be stored together
+            std::copy_n(gain_store_buf.begin(), out_num_values, out_frame);
+            // apply the element (feed) mask
+            // assume that there are far more good feed than bad feeds, so the mask
+            // as the outer loop should minimize the amount of data being touched
+            for (size_t e = 0; e < num_elements; e++) {
+                if (mask_store_buf[e] == 0) {
+                    // zero out this element for all other indices
+                    for (size_t k = num_components * e; k < out_num_values;
+                         k += num_components * num_elements) {
+                        for (size_t j = 0; j < num_components; ++j) {
+                            out_frame[k + j] = float16_t(0.0);
+                        }
                     }
                 }
             }
+
+            if (gains_changed)
+                check_gains(out_frame);
+
+            out_buf->mark_frame_full(unique_name, out_buf_frame_id);
+            out_buf_frame_id++;
+        } else {
+            sleep(1);
         }
-
-        if (gains_changed)
-            check_gains(out_frame);
-
-        out_buf->mark_frame_full(unique_name, out_buf_frame_id);
-        out_buf_frame_id++;
     }
 }
