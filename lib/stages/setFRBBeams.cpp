@@ -160,7 +160,7 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
         FATAL_ERROR("Unknown mode: {:s}", mode);
     }
 
-    if (beams.size() != num_beams)
+    if (beams.size() != 16*num_beams)
         FATAL_ERROR("num_beams {:d} != number of constructed beams {:d}", num_beams, beams.size());
 
     using namespace std::placeholders;
@@ -168,8 +168,8 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     rest_server.register_get_callback(unique_name + "/beams",
                                       std::bind(&setFRBBeams::send_beams, this, _1));
 
-    out_pos_buf->require_frame_desc(kotekan::NDArray<float, 2>::describe(
-        "frb2_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"R", "X/Y"}, {1, 1}));
+    out_pos_buf->require_frame_desc(kotekan::NDArray<float, 3>::describe(
+        "frb2_beam_positions", {16, static_cast<ptrdiff_t>(num_beams), 2}, {"F", "R", "X/Y"}, {1, 1, 1}));
     out_id_buf->require_frame_desc(kotekan::NDArray<uint64_t, 1>::describe(
         "frb2_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"R"}, {1}));
 }
@@ -287,7 +287,10 @@ void setFRBBeams::main_thread() {
               out_pos_buf->buffer_name, out_id_buf->buffer_name, seq_num);
 
         for (size_t b = 0; b < beams.size(); b++) {
-            beam_id[b] = beams.at(b).id;
+            if(b < num_beams)
+                beam_id[b] = beams.at(b).id;
+            else
+                assert(beam_id[b % num_beams] == beams.at(b).id);
             beam_pos[2 * b + 0] = beams.at(b).x_dir_grid;
             beam_pos[2 * b + 1] = beams.at(b).y_dir_grid;
         }
