@@ -1,10 +1,9 @@
 {#-
   common.j2
   Keys every CHORD pathfinder config shares (X-engine and receiver): kotekan's document
-  type, logging, the F-engine controller and its tracker, the element and frequency
-  counts, and the controller monitor stage.  Included right after the `---` document
-  start; the includer sets num_dishes and num_local_freq first (see pathfinder.j2 and
-  recv.j2).
+  type, logging, the F-engine controller and its tracker, the element counts, and the
+  controller monitor stage.  Included right after the `---` document start; the includer
+  sets num_dishes first (see pathfinder.j2 and recv.j2).
 -#}
 type: config
 
@@ -34,7 +33,6 @@ num_times: samples_per_data_set  # New N2K needs this.
 num_polarizations: 2
 num_dishes: {{ num_dishes }}
 num_elements: num_polarizations * {{ num_dishes }}
-num_local_freq: {{ num_local_freq }}
 num_ev_to_calculate: 2
 
 ## Monitor the F-engine for drift ##
