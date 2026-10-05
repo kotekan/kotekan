@@ -212,7 +212,9 @@ def _generator(case, out_buf):
     return gen
 
 
-def _siphon(tmpdir, case, single_file, write_extra=None, expect_failure=False):
+def _siphon(
+    tmpdir, case, single_file, write_extra=None, expect_failure=False, frames_per_file=1
+):
     """Session A: generate frames and write them. Returns the runner."""
     write = dict(
         kotekan_stage="hdf5FileWrite",
@@ -222,6 +224,7 @@ def _siphon(tmpdir, case, single_file, write_extra=None, expect_failure=False):
         prefix_hostname=False,
         max_frames=NUM_FRAMES,
         create_single_file=single_file,
+        frames_per_file=frames_per_file,
     )
     write.update(write_extra or {})
     r = runner.KotekanRunner(
@@ -234,33 +237,45 @@ def _siphon(tmpdir, case, single_file, write_extra=None, expect_failure=False):
     return r
 
 
-def _check_files(tmpdir, case, single_file):
+def _check_files(tmpdir, case, single_file, frames_per_file=1):
     extents = case["buf"]["extents"]
     indexed = sorted(glob.glob(os.path.join(str(tmpdir), FILE_NAME + ".*.h5")))
+
     if single_file:
         assert indexed == []
         files = [os.path.join(str(tmpdir), FILE_NAME + ".h5")]
         frames_per_file = NUM_FRAMES
     else:
-        assert [os.path.basename(f) for f in indexed] == [
-            "%s.%08d.h5" % (FILE_NAME, i) for i in range(NUM_FRAMES)
+        expected_files = [
+            f"{FILE_NAME}.{i:08d}.h5" for i in range(0, NUM_FRAMES, frames_per_file)
         ]
+        assert [os.path.basename(f) for f in indexed] == expected_files
         assert not os.path.exists(os.path.join(str(tmpdir), FILE_NAME + ".h5"))
         files = indexed
-        frames_per_file = 1
-    for i, path in enumerate(files):
+
+    # if there are multiple frames in each file and the number of frames per
+    # file does not divide the total number of frames, then the last file
+    # will have fewer total frames
+    nframes = [frames_per_file] * (NUM_FRAMES // frames_per_file)
+    if len(nframes) < len(files):
+        nframes.append(NUM_FRAMES % frames_per_file)
+
+    for i, (path, nf) in enumerate(zip(files, nframes)):
         with h5py.File(path, "r") as f:
             assert list(f.keys()) == [FILE_NAME]
             ds = f[FILE_NAME]
             assert ds.dtype == np.dtype(case["dtype"])
-            assert list(ds.shape) == [frames_per_file * extents[0]] + extents[1:]
+            assert list(ds.shape) == [nf * extents[0]] + extents[1:]
             a = ds.attrs
             assert list(a["chord_metadata_version"]) == [2, 0]
             assert a["name"] == case["buf"]["quantity_name"]
             assert a["type"] == case["buf"]["value_type"]
+            assert (
+                a["fpga_seq_num"]
+                == i * frames_per_file * case["gen"]["samples_per_data_set"]
+            )
             assert list(a["dim_names"]) == case["buf"]["dimnames"]
             assert list(a["dim_scalings"]) == case["buf"]["dimscalings"]
-            assert a["fpga_seq_num"] == i * case["gen"]["samples_per_data_set"]
             assert list(a["coarse_freq"]) == list(range(case["gen"]["num_local_freq"]))
             for key in ("telescope_name", "num_dishes", "num_polarizations"):
                 assert key in a
@@ -552,6 +567,22 @@ def test_singlefile_read_rejects_dim_scaling_tds_mismatch(
     r = _read_only(tmpdir, case["buf"])
     assert r.return_code != 0
     assert "dim_scalings[0] (1) != time_downsampling_fpga (2)" in r.output
+
+
+def test_multiframe_produces_expected_num_files(tmpdir_factory):
+    """Should produce int(`NUM_FRAMES` / frames_per_file) files."""
+    case = CASES["int8_random"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe")
+    _siphon(tmpdir, case, False, frames_per_file=4)
+    _check_files(tmpdir, case, False, frames_per_file=4)
+
+
+def test_multiframe_ramp(tmpdir_factory):
+    """Should produce int(`NUM_FRAMES` / frames_per_file) files."""
+    case = CASES["uint8_ramp"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_multiframe_ramp")
+    _siphon(tmpdir, case, False, frames_per_file=3)
+    _check_files(tmpdir, case, False, frames_per_file=3)
 
 
 def test_voltage_reader_roundtrip(tmpdir_factory):
