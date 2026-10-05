@@ -468,6 +468,16 @@ public:
     virtual vec3d_t station_id_to_feed_position_m(station_id_t st_id) const = 0;
 
     /**
+     * @brief Whether visibilities of this station ID are fringestopped. Defaults to all stations.
+     *
+     * @param st_id Station ID of an input element.
+     **/
+    virtual bool station_id_is_fringestopped(station_id_t st_id) const {
+        (void)st_id;
+        return true;
+    }
+
+    /**
      * @brief   Return the feed separation in the Grid-X direction in meters.
      **/
     virtual double get_feed_separation_x_m() const = 0;
@@ -497,6 +507,14 @@ public:
      *{0, 0, 1}), for CHORD this is the boresight of the dishes, and depends on their co-elevation.
      **/
     virtual vec3d_t get_phase_center_in_grid_frame() const = 0;
+
+    /**
+     * @brief   Whether the phase center is set, rather than left at a default. Fringestopping
+     *          stages require it. Defaults to true.
+     **/
+    virtual bool phase_center_is_set() const {
+        return true;
+    }
 
     /**
      * @brief   Return a copy of the current EOP table.
@@ -662,6 +680,7 @@ public:
     std::vector<grid_idx_2d_t> get_main_array_grid_indices(uint64_t num_elements,
                                                            ElementOrder ord) const;
     std::vector<vec3d_t> get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const;
+    std::vector<bool> get_fringestop_mask(uint64_t num_elements, ElementOrder ord) const;
 
     /**
      * @brief   Compute the fringestopping phases for the given feed locations.
@@ -672,11 +691,14 @@ public:
      *                  1.0
      * @param   feed_posisions_m    The 3D feed positions in the telescope grid frame in meters. The
      *                  positions returned from `station_id_to_feed_position_m`.
+     * @param   fringestop_mask     Per-position flag from `get_fringestop_mask`. Positions with
+     *                  a false flag get a phase of 1.0.
      * @param   phases  Vector of std::complex<double>, with size equal to feed_positions_m. The
      *                  phase for each position will be written to this vector.
      **/
     void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
                                    const std::vector<vec3d_t> feed_positions_m,
+                                   const std::vector<bool>& fringestop_mask,
                                    std::vector<std::complex<float>>& phases) const;
 
 
