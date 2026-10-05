@@ -4,6 +4,159 @@
 
 ################################################################################
 
+# Buffers
+
+# Host copies of GPU data, filled by the run_recv_* and run_frb23 stages for write_data
+
+host_pl_expanded_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint1x8
+    extents: [num_times / 64, num_frequencies, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask_exp"
+    dimnames: ["Thi64", "F", "P", "D8", "Tlo64"]
+    dimscalings: [64, 1, 1, 8, 8]
+    metadata_pool: main_pool
+
+host_rfi_S012_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [rfi_num_times, num_frequencies, 3, num_polarizations, num_dishes]
+    quantity_name: "S012"
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    dimscalings: [rfi_downsampling_factor, 1, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_rfi_S012bar_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
+    quantity_name: "S012bar"
+    dimnames: ["Trfibar", "F", "S", "P", "D"]
+    dimscalings: [rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_rfi_S012tilde_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [rfi_num_times, num_frequencies, 3]
+    quantity_name: "S012tilde"
+    dimnames: ["Trfi", "F", "S"]
+    dimscalings: [rfi_downsampling_factor, 1, 1]
+    metadata_pool: main_pool
+
+host_rfi_SKbar_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float32
+    extents: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
+    quantity_name: "SKbar"
+    dimnames: ["Trfibar", "F", "SK", "P", "D"]
+    dimscalings: [rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_rfi_SKbartilde_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float32
+    extents: [rfi_num_times_bar, num_frequencies, 3]
+    quantity_name: "SKbartilde"
+    dimnames: ["Trfibar", "F", "SK"]
+    dimscalings: [rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1]
+    metadata_pool: main_pool
+
+host_frb1_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
+    value_type: float16
+    extents: [frb_num_output_times, upchan_U16_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "I"
+    dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+    dimscalings: [frb_downsampling_factor, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_frb2_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: sizeof_float16 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times
+    value_type: float16
+    extents: [1, frb2_num_beams, upchan_U16_max_num_output_channels, frb_num_output_times]
+    quantity_name: "I2"
+    dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+    dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
+    metadata_pool: main_pool
+
+host_xposed_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    quantity_name: "E"
+    dimnames: ["T", "F", "P", "D"]
+    dimscalings: [1, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_hfb1_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float16
+    extents: [hfb_num_output_times * hfb_second_downsampling_factor, upchan_hfb_upchan_U128_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "I"
+    dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+    dimscalings: [hfb_downsampling_factor, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_hfb1_accumulated_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float16
+    extents: [hfb_num_output_times, upchan_hfb_upchan_U128_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "I"
+    dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+    dimscalings: [hfb_downsampling_factor * hfb_second_downsampling_factor, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_upchan_U16_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U16_max_num_channels * (num_times / 64 / 16)
+    metadata_pool: main_pool
+
+host_upchan_U16_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * 16) * (num_times / 16)
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times / 16, upchan_U16_max_num_channels * 16, num_polarizations, num_dishes]
+    quantity_name: "Ebar"
+    dimnames: ["Tbar", "Fbar", "P", "D"]
+    dimscalings: [16, 1, 1, 1]
+    metadata_pool: main_pool
+
+host_upchan_hfb_U128_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
+    metadata_pool: main_pool
+
+host_upchan_hfb_U128_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: num_dishes * num_polarizations * (upchan_hfb_upchan_U128_max_num_channels * 128) * (num_times / 128)
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times / 128, upchan_hfb_upchan_U128_max_num_channels * 128, num_polarizations, num_dishes]
+    quantity_name: "Ebar"
+    dimnames: ["Tbar", "Fbar", "P", "D"]
+    dimscalings: [128, 1, 1, 1]
+    metadata_pool: main_pool
+
+################################################################################
+
 # Stages
 
 run_recv_pl_expanded_mask:

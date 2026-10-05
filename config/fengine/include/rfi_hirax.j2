@@ -24,45 +24,18 @@ rfi_mu_max: 20.0
 rfi_num_times: 32               # 1.31072 ms cadence
 rfi_num_times_bar: 1            # 41.94304 ms cadence
 
-host_rfi_S012_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: uint64
-    extents: [rfi_num_times, num_frequencies, 3, num_polarizations, num_dishes]
-    quantity_name: "S012"
-    dimnames: ["Trfi", "F", "S", "P", "D"]
-    dimscalings: [rfi_downsampling_factor, 1, 1, 1, 1]
-    metadata_pool: main_pool
 host_rfi_S012_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
     ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times
     metadata_pool: main_pool
 
-host_rfi_S012bar_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: uint64
-    extents: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
-    quantity_name: "S012bar"
-    dimnames: ["Trfibar", "F", "S", "P", "D"]
-    dimscalings: [rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1, 1, 1]
-    metadata_pool: main_pool
 host_rfi_S012bar_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
     ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
     metadata_pool: main_pool
 
-host_rfi_S012tilde_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: uint64
-    extents: [rfi_num_times, num_frequencies, 3]
-    quantity_name: "S012tilde"
-    dimnames: ["Trfi", "F", "S"]
-    dimscalings: [rfi_downsampling_factor, 1, 1]
-    metadata_pool: main_pool
 host_rfi_S012tilde_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
@@ -99,30 +72,12 @@ host_rfi_RFImask_ringbuffer:
     ring_buffer_size: buffer_depth * num_frequencies * num_times / 8
     metadata_pool: main_pool
 
-host_rfi_SKbar_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: float32
-    extents: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
-    quantity_name: "SKbar"
-    dimnames: ["Trfibar", "F", "SK", "P", "D"]
-    dimscalings: [rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1, 1, 1]
-    metadata_pool: main_pool
 host_rfi_SKbar_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
     ring_buffer_size: buffer_depth * sizeof_float32 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
     metadata_pool: main_pool
 
-host_rfi_SKbartilde_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: float32
-    extents: [rfi_num_times_bar, num_frequencies, 3]
-    quantity_name: "SKbartilde"
-    dimnames: ["Trfibar", "F", "SK"]
-    dimscalings: [rfi_downsampling_factor * rfi_second_downsampling_factor, 1, 1]
-    metadata_pool: main_pool
 host_rfi_SKbartilde_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
