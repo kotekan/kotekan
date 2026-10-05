@@ -283,3 +283,14 @@ std::optional<std::vector<int>> wait_for_coarse_freq(const std::vector<Buffer*>&
     }
     return coarse_freq;
 }
+
+std::int64_t upchan_output_offset(kotekan::Config& config, const std::string& unique_name) {
+    const int max_upchannelization_factor =
+        config.get<int>(unique_name, "max_upchannelization_factor");
+    if (!(max_upchannelization_factor >= 1
+          && (upchan_num_taps - 1) * max_upchannelization_factor % 2 == 0))
+        FATAL_ERROR_NON_OO("{:s}: max_upchannelization_factor={:d} must be positive, and "
+                           "(taps-1)*max_upchannelization_factor must be even (taps={:d})",
+                           unique_name, max_upchannelization_factor, upchan_num_taps);
+    return std::int64_t(upchan_num_taps - 1) * max_upchannelization_factor / 2;
+}

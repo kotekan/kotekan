@@ -27,7 +27,14 @@
  * `frb1_phase_lifetime_in_samples`. That must equal the lifetime of the bad feed
  * mask frames, which clock the output.
  *
+ * The FRB1 kernel locates weight element `k` at `k * lifetime` FPGA samples after the beginning
+ * of its input, the upchannelizers' output, which begins later than the voltages (see
+ * `upchan_output_offset`). The output frames are stamped accordingly: the weights made from mask
+ * frame `k` apply to the upchannelized samples beginning at that offset after the mask frame.
+ *
  * @conf frb1_phase_lifetime_in_samples Int. How many FPGA samples one output frame covers.
+ * @conf max_upchannelization_factor    Int. The largest upchannelization factor of the run; it
+ *                                      determines the upchannelizers' output offset.
  *
  * @author Liam Gray
  *

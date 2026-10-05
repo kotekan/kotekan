@@ -1,13 +1,14 @@
 #include "Config.hpp"   // for Config
 #include "DataType.hpp" // for float16_t
 #include "NDArray.hpp"
-#include "Stage.hpp"              // for Stage
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "chordMetadata.hpp"      // for chordMetadata, get_chord_metadata
-#include "frb1IntensityBound.hpp" // for frb1_intensity_bound, frb1_intensity_limit
-#include "kotekanLogging.hpp"     // for DEBUG, FATAL_ERROR, INFO
+#include "Stage.hpp"                    // for Stage
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "UpchannelizationSchedule.hpp" // for upchan_output_offset
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
+#include "frb1IntensityBound.hpp"       // for frb1_intensity_bound, frb1_intensity_limit
+#include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR, INFO
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
@@ -29,10 +30,12 @@
  * @brief Produce the FRB1 beamforming weights `W` as a stream of frames.
  *
  * Each frame holds one set of weights, valid for `frb1_phase_lifetime_in_samples` FPGA samples.
- * Frame `k` is stamped with the FPGA sequence number `seq0 + k * frb1_phase_lifetime_in_samples`,
- * where `seq0` is the sequence number of the first frame of the `metadata_source` voltage
- * buffer(s): the FRB1 kernels locate weight element `k` at `k * lifetime` FPGA samples after the
- * logical beginning of their voltage ring buffer, so both streams have to share an origin.
+ * Frame `k` is stamped with the FPGA sequence number
+ * `seq0 + offset + k * frb1_phase_lifetime_in_samples`, where `seq0` is the sequence number of the
+ * first frame of the `metadata_source` voltage buffer(s) and `offset` is the time offset of the
+ * upchannelizers' output (see `upchan_output_offset`): the FRB1 kernels locate weight element `k`
+ * at `k * lifetime` FPGA samples after the beginning of their output, which starts that much
+ * after the voltages, so both streams have to share an origin.
  *
  * The frame has a leading length-1 time axis `TW` whose `dimscaling` is the lifetime; that is how
  * the GPU ring buffer learns how many FPGA samples one set of weights covers.
@@ -46,6 +49,8 @@
  *                         read, for its `fpga_seq_num`; then this stage stops consuming it.
  *
  * @conf frb1_phase_lifetime_in_samples Int. How many FPGA samples one set of weights covers.
+ * @conf max_upchannelization_factor    Int. The largest upchannelization factor of the run; it
+ *                                      determines the upchannelizers' output offset.
  */
 class setFRB1Phase : public kotekan::Stage {
     // Telescope layout
@@ -73,6 +78,8 @@ class setFRB1Phase : public kotekan::Stage {
     // stage produces frames, and the `dimscaling` of the weights' leading time axis.
     const std::int64_t frb1_phase_lifetime_in_samples =
         config.get<std::int64_t>(unique_name, "frb1_phase_lifetime_in_samples");
+    // The FRB1 output begins this many FPGA samples after the voltages
+    const std::int64_t output_offset = upchan_output_offset(config, unique_name);
 
     Buffer* const frb1_phase_buffer;
     const std::vector<Buffer*> metadata_sources;
@@ -202,7 +209,8 @@ public:
             const auto& frb1_phase_meta =
                 get_chord_metadata(frb1_phase_buffer->get_metadata(frame_id));
             frb1_phase_meta->set_from_frame_desc(frame_desc);
-            frb1_phase_meta->set_fpga_seq_num(*seq0 + frame_index * frb1_phase_lifetime_in_samples);
+            frb1_phase_meta->set_fpga_seq_num(*seq0 + output_offset
+                                              + frame_index * frb1_phase_lifetime_in_samples);
             frb1_phase_meta->set_time_downsampling_fpga(int(frb1_phase_lifetime_in_samples));
             frb1_phase_meta->set_coarse_freq(coarse_freq);
             frb1_phase_meta->set_freq_upchan_factor(freq_upchan_factor);
