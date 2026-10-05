@@ -683,6 +683,47 @@ public:
     }
 
     /**
+     * @brief Fatal unless @p peer_config's `telescope` block equals ours.
+     *
+     * The frame descriptor checks a sender's frame shape, not which telescope
+     * it describes: two dish tables with the same connected count pass it, and
+     * the receiver would write the sender's data under its own labels. A direct
+     * upstream peer must therefore run the same `telescope` block as we do.
+     * No-op when we have no local config or it has no `telescope` block.
+     *
+     * @param host         Peer host, for the message.
+     * @param port         Peer port, for the message.
+     * @param peer_config  The peer's config as served by /config_tracker_local.
+     */
+    void requireMatchingTelescope(const std::string& host, uint16_t port,
+                                  const nlohmann::json& peer_config) const {
+        nlohmann::json local_telescope;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            if (!_local_config.has_value() || !_local_config->config.contains("telescope"))
+                return;
+            local_telescope = _local_config->config.at("telescope");
+        }
+        if (!peer_config.contains("telescope"))
+            FATAL_ERROR_NON_OO("ConfigTracker: upstream {}:{} has no telescope block, but we do",
+                               host, port);
+        const nlohmann::json& peer_telescope = peer_config.at("telescope");
+        if (peer_telescope == local_telescope)
+            return;
+        std::string keys;
+        for (const auto& item : local_telescope.items())
+            if (!peer_telescope.contains(item.key())
+                || peer_telescope.at(item.key()) != item.value())
+                keys += " " + item.key();
+        for (const auto& item : peer_telescope.items())
+            if (!local_telescope.contains(item.key()))
+                keys += " " + item.key();
+        FATAL_ERROR_NON_OO(
+            "ConfigTracker: telescope config of upstream {}:{} differs from ours in:{}", host, port,
+            keys);
+    }
+
+    /**
      * @brief Fetch and insert an upstream peer's tracker state.
      *
      * Two-step protocol against the peer at (host, port):
@@ -696,9 +737,11 @@ public:
      *      upstream entries and ride along on this same path.
      *
      * Any network/parse failure (after the configured HTTP retries) or
-     * any content-validation failure is fatal. The flag used by buffer send/recv
-     * is sent once per sender-side hash change, so a silently-skipped update
-     * will leave downstream state permanently stale.
+     * any content-validation failure is fatal, as is a peer whose `telescope`
+     * block differs from ours (see @c requireMatchingTelescope). The flag used
+     * by buffer send/recv is sent on the first frame of each connection and on
+     * each sender-side hash change, so a silently-skipped update would leave
+     * downstream state stale until the next one.
      */
     void getUpstreamConfigs(const std::string& host, uint16_t port) {
         // Snapshot the fetch policy under the lock; it is used for all
@@ -750,6 +793,7 @@ public:
             peer_local.config = filtered;
             peer_local.json_hash = _jsonHashWithEndpoint(filtered, host, port);
 
+            requireMatchingTelescope(host, port, peer_local.config);
             _insertUpstream(host, port, peer_local);
             _record_upstream_fetch(host, port, true);
         }
