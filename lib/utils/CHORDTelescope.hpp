@@ -28,7 +28,7 @@ using dish_index_t =
  */
 enum class DishType : int32_t {
     Missing = -1,  // An unpopulated dish element
-    ArrayDish = 0, // A standard dish in the main array.
+    ArrayDish = 0, // A standard dish in the main array. The only type that is fringestopped.
     RFIDish = 1,   // A site for an RFI antenna
 };
 
@@ -137,6 +137,9 @@ struct DishParams {
     /// Dish pointing angle.  Measured in degrees from vertical.
     double dish_coelev_deg = 0.0;
 
+    /// Whether dish_coelev_deg came from the config or a pointing query, not the default.
+    bool dish_coelev_set = false;
+
     /// Dish positions in dish coordinate system.
     std::vector<vec3d_t> dish_positions;
 
@@ -151,7 +154,16 @@ struct DishParams {
      * from the config for this telescope.
      *
      * @par Configuration
-     * - @c dish_coelev_deg      double. Dish pointing co-elevation angle.
+     * - @c dish_coelev_deg      double. Dish pointing co-elevation angle, in [-90, 90].
+     *                              Default: 0.0. Must not be set with pointing_host_info.
+     * - @c pointing_host_info   string. Optional. Path to a block holding ``host`` and ``port``
+     *                              of a service that returns ``{"dish_coelev_deg": <float>}``.
+     *                              If set, the pointing is queried at startup, retrying until a
+     *                              reply arrives or pointing_query_timeout_s passes.
+     * - @c pointing_endpoint    string. Endpoint of the pointing service. Required with
+     *                              pointing_host_info.
+     * - @c pointing_query_timeout_s  uint32. Time to keep retrying the pointing query before
+     *                              failing. Default: 60.
      * - @c dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
      *                              See struct dishInfo for field descriptions.
      * - @c check_duplicate_dish_grid  bool. Fatal on duplicate dish grid locations.
@@ -433,6 +445,12 @@ public:
     station_id_t encode_station_id(uint64_t dish, uint64_t polarization) const;
 
     vec3d_t get_phase_center_in_grid_frame() const override;
+
+    /// Only ArrayDish stations are fringestopped.
+    bool station_id_is_fringestopped(station_id_t st_id) const override;
+
+    /// True if dish_coelev_deg was set in the config or by a pointing query.
+    bool phase_center_is_set() const override;
 
     /**
      * @brief   Queries the source of the GPS time0_ns value. Returns true on success, and updates
