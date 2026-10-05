@@ -67,6 +67,11 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
 
     feed_positions_m = Telescope::instance().get_feed_positions_m(
         num_elements, Telescope::instance().fiducial_element_order());
+    fringestop_mask = Telescope::instance().get_fringestop_mask(
+        num_elements, Telescope::instance().fiducial_element_order());
+    if (do_fringestop && !Telescope::instance().phase_center_is_set())
+        FATAL_ERROR("do_fringestop is set but the telescope phase center (dish_coelev_deg) is "
+                    "not.");
 }
 
 void N2TimeDownsample::main_thread() {
@@ -245,7 +250,7 @@ void N2TimeDownsample::main_thread() {
             if (do_fringestop) {
                 // Get the per-dish fringestopping phases.
                 tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, feed_positions_m,
-                                              fringe_phase);
+                                              fringestop_mask, fringe_phase);
 
                 size_t idx = 0;
                 for (size_t i = 0; i < num_elements; i++) {
@@ -292,7 +297,7 @@ void N2TimeDownsample::main_thread() {
             // Recalculate fringestop phases
             if (do_fringestop)
                 tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, feed_positions_m,
-                                              fringe_phase);
+                                              fringestop_mask, fringe_phase);
             // Accumulate contents of buffer
             size_t idx = 0;
             for (size_t i = 0; i < num_elements; i++) {
