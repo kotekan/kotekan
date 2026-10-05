@@ -10,7 +10,9 @@ test configurations. The file layout depends on the metadata type of the
 input buffer:
 
 * **CHORD metadata** (n-dimensional GPU-pipeline buffers): one extensible
-  dataset per file, frames appended along the first axis;
+  dataset per file, frames appended along the first axis. Files may
+  contain a single frame, a fixed number of frames, or an unlimited
+  number of frames;
 * **N2 metadata** (visibility frames): one file per frame holding a fixed
   set of datasets and attributes.
 
@@ -148,6 +150,15 @@ a gap-free frame stream.
 The checks run per frame, so a single-file writer that aborts part-way leaves
 a truncated (but still readable) file behind; a dump that ended in a ``FATAL``
 should therefore not be trusted without checking the log.
+
+Multi-frame constraints
+-----------------------
+Multi-frame files (with a fixed number of frames per file) use the same path
+as the single-file mode, and are thus subject to most of the same restrictions.
+The only difference is that the multi-frame write mode allows for non-contiguous
+``fpga_seq_num``s; however, a new file is created whenever a non-contiguous
+sample is received, which can result in significantly more files than expected
+being created.
 
 N2-metadata layout
 ==================
@@ -298,6 +309,8 @@ ndarray``; the reader validates the declared frame descriptor against the file.
   be a time axis and ``dim_scalings[0]`` has to equal
   ``time_downsampling_fpga`` --- and aborts if they do not hold, because the
   reconstruction below would otherwise silently mislabel the frames.
+* **Multi-frame files**: the read does _not_ currently handle multi-frame files
+  as a single batch --- they must be read as individual files in single file mode.
 
 In both modes the attributes ``chord_metadata_version``, ``name``, ``type``,
 ``dim_names`` and ``dim_scalings`` are mandatory and the HDF5 storage type of
