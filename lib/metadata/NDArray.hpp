@@ -187,7 +187,8 @@ public:
     describe(const Symbol quantity_name, const std::array<std::ptrdiff_t, D>& extents,
              const std::array<Symbol, D>& dimnames,
              const std::array<std::ptrdiff_t, D>& dimscalings) {
-        return std::make_shared<NDArray<T, D>>(quantity_name, extents, dimnames, dimscalings);
+        return std::make_shared<NDArray<T, D>>(quantity_name, extents, dimnames, dimscalings,
+                                               nullptr);
     }
 
     /// Construct from extents and dimension names
