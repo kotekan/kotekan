@@ -795,13 +795,6 @@ host_rfi_SKbar_ringbuffer:
     shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizaions, num_dishes]
     metadata_pool: main_pool
 
-host_rfi_SKbartilde_buffer:
-    kotekan_buffer: ndarray
-    num_frames: gpu_buffer_depth
-    value_type: float32
-    # GPU producer cudaRFISKbar rfi_SKbartilde (leading = per-frame rfi_num_times_bar).
-    extents: [rfi_num_times_bar, num_freq_gpu_buf, 3]
-    metadata_pool: main_pool
 host_rfi_SKbartilde_ringbuffer:
     kotekan_buffer: ring
     num_frames: gpu_buffer_depth
@@ -1348,7 +1341,9 @@ FRB:
         dimscalings: [1]
         metadata_pool: main_pool
 
-    # Upchannelized voltages
+    # Upchannelized voltages. The host buffer is the fake input without DPDK, and a copy of the
+    # GPU data for do_once_and_dump.
+{%- if not using_dpdk or do_once_and_dump %}
     host_upchan_U16_voltage_buffer:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
@@ -1358,6 +1353,7 @@ FRB:
         dimnames: ["Tbar", "Fbar", "P", "D"]
         dimscalings: [16, 1, 1, 1]
         metadata_pool: main_pool
+{%- endif %}
     host_upchan_U16_voltage_ringbuffer:
         kotekan_buffer: ring
         ring_buffer_size: gpu_buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
@@ -1422,7 +1418,8 @@ FRB:
         ring_buffer_size: frb2_weights_ring_depth * sizeof_float16 * upchan_U16_max_num_output_channels * frb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
         metadata_pool: main_pool
 
-    # (Intermediate) Beams
+    # (Intermediate) Beams. The FRB1 and FRB2 beams are copied to the host only for do_once_and_dump.
+{%- if do_once_and_dump %}
 
     host_frb1_beams_buffer:
         kotekan_buffer: ndarray
@@ -1433,12 +1430,14 @@ FRB:
         dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
         dimscalings: [frb_downsampling_factor, 1, 1, 1]
         metadata_pool: main_pool
+{%- endif %}
     host_frb1_beams_ringbuffer:
         kotekan_buffer: ring
         num_frames: gpu_buffer_depth
         ring_buffer_size: gpu_buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
         metadata_pool: main_pool
 
+{%- if do_once_and_dump %}
     host_frb2_beams_buffer:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
@@ -1448,6 +1447,7 @@ FRB:
         dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
         dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
         metadata_pool: main_pool
+{%- endif %}
 
     host_frb3_beams_buffer:
         kotekan_buffer: ndarray
@@ -1568,6 +1568,7 @@ FRB:
               Fmin: upchan_U16_min_channel
               Fmax: upchan_U16_max_channel
             - name: cudaSyncOutput
+{%- if do_once_and_dump %}
 
     run_recv_upchan_U16_voltage:
         gpu_0:
@@ -1588,6 +1589,7 @@ FRB:
               output_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
               ring_buffer_size: buffer_depth * output_size
               out_buf: host_upchan_U16_voltage_buffer
+{%- endif %}
 {%- endif %}
 
     # FRB 1
@@ -1797,8 +1799,10 @@ FRB:
                 host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
                 host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
             out_buffers:
+{%- if do_once_and_dump %}
                 host_frb1_beams_buffer: host_frb1_beams_buffer
                 host_frb2_beams_buffer: host_frb2_beams_buffer
+{%- endif %}
                 host_frb3_beams_buffer: host_frb3_beams_buffer
                 host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
             commands:
@@ -1825,17 +1829,17 @@ FRB:
               gpu_mem_output: frb3_beams
               gpu_mem_offsetscale: frb3_beams_offsetscale
             - name: cudaSyncOutput
+{%- if do_once_and_dump %}
             - name: cudaCopyFromRingbuffer
-              # TODO: Don't do this in production
               host_signal: host_frb1_beams_ringbuffer
               gpu_mem_input: frb1_beams_buffer
               output_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
               ring_buffer_size: gpu_buffer_depth * output_size
               out_buf: host_frb1_beams_buffer
             - name: cudaOutputData
-              # TODO: Don't do this in production
               gpu_mem: frb2_beams_buffer
               out_buf: host_frb2_beams_buffer
+{%- endif %}
             - name: cudaOutputData
               gpu_mem: frb3_beams_buffer
               out_buf: host_frb3_beams_buffer
