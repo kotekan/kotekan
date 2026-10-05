@@ -13,6 +13,9 @@ base_dir: data/fengine_benchmark_chord # unused
 prefix_hostname: false
 prefix_host_rank: true
 
+# Copy to the host only what output_benchmark*.j2 consumes
+{% set benchmark = True %}
+
 {% include "include/defs.j2" %}
 {% include "include/fengine_chord.j2" %}
 
