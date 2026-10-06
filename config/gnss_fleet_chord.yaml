@@ -575,6 +575,13 @@ common:
   # traffic of those chains: ~235 MB/s per 7-channel instance for the three chains, ~800 GB
   # fleet-wide per 5 min. Off again at the next config wave after the capture.
   vis-capture-bb: true
+  # n2-dual-merged: one (N+M)^2 correlator pass per GPU. A GPU's path-B chains share one
+  # gnss<g>_n2dual process and a compact 384-lane synth array (chains sharing channels get
+  # disjoint lane ranges), with a gather per chain and one capture gather, so the capture is
+  # one gate per GPU (`viscap.py` defaults) and spans every captured chain's replicas. cx51
+  # canary 2026-10-06 21:10Z: host thread 34 % of a core per GPU (was 7-8 threads at 20-45 %
+  # each), GPU memory 3.8 GB per GPU (was 17-19 GB), synthesis 13 ms per frame per GPU.
+  n2-dual-merged: true
   # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
   # closes any connection whose frame_size disagrees with its buffer -- so changing either one
   # means regenerating the GATHER config in the same commit, and restarting both ends. Left at
@@ -761,7 +768,6 @@ nodes:
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
   cx44: {search-port-base: 11048}
-  # cx51 was the phase-3a canary (live 2026-10-03 12:37Z); its settings are common's now.
-  # Stage-1 canary 2026-10-06: one (N+M)^2 correlator pass per GPU (the chains' replicas share
-  # a compact synth array; a gather per chain). The node binary runs either layout.
-  cx51: {search-port-base: 11050, n2-dual-merged: true}
+  # cx51 was the phase-3a canary (live 2026-10-03 12:37Z) and the n2-dual-merged canary
+  # (2026-10-06 21:10Z); its settings are common's now.
+  cx51: {search-port-base: 11050}
