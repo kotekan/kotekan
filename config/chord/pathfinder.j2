@@ -1003,7 +1003,7 @@ n2_accumulate:
     variance_mode: EvenOddPosDef
     bin_in_ERA: true
     num_bins_per_rotation: 8640
-    do_fringestop: false
+    do_fringestop: true
     num_workers: 1
 {% for n in numa_halves %}
     accum_{{ n.id }}:
