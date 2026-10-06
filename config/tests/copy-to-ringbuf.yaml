@@ -13,6 +13,11 @@ frame_arrival_period: 0.001
 
 buffer_depth: 4
 
+# Telescope
+num_polarizations: 2
+num_dishes: 64
+num_local_freq: 1
+
 # data gen:
 num_frames: 20
 
@@ -36,7 +41,11 @@ host_in_buffer:
 # Buffer used for signalling only, between the two GPU pipelines.
 host_signal_buffer:
     kotekan_buffer: ring
-    #ring_buffer_size: 
+    #ring_buffer_size:
+    # Nothing else describes the ring's layout: one byte per time sample
+    value_type: int8
+    extents: [ring_buffer_size]
+    dimnames: ["T"]
     metadata_pool: main_pool
 
 host_out_buffer:
@@ -50,7 +59,7 @@ gen_data:
     type: const8
     values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] #, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     #    array_shape: [64, 16]
-    #dim_name: ["X", "Y"]
+    dim_name: ["T"]
     out_buf: host_in_buffer
 
 gpuA:
