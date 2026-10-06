@@ -228,19 +228,20 @@ def vis_capture_chain(args, chain, sig):
     return name in [c.strip() for c in args.vis_capture.split(",") if c.strip()]
 
 
-def n2_tiles_per_chan(n_live, num_synth, gather_aa):
+def n2_tiles_per_chan(n_live, num_synth, gather_aa, gather_bb=False):
     """Gathered tiles per comb channel: mixed (synth rows x live antenna columns), then the
-    live antennas' own N^2 lower triangle when the visibility capture is armed, and the BB
-    (synth x synth) block, which is never gathered -- its one reader used the true
-    pre-quantization energy from the ctl block instead.
+    live antennas' own N^2 lower triangle when the visibility capture is armed, then the BB
+    (synth x synth) lower triangle when the capture wants the replica side too (the tracker
+    reads neither: its normalization uses the true pre-quantization energy from the ctl block).
     ⚠️ ONE CONTRACT, THREE SITES: this, cudaCorrelatorDual::build_tile_selection and
     GnssN2RecordAssemble's _n_mixed/_n_aa/_n_bb. Disagree and the assembler's frame-size
     guard fires at startup -- which is the good outcome, and is why that guard exists."""
     na16, nt16 = 128 // 16, (128 + num_synth) // 16
     nlive16 = (n_live + 15) // 16
-    mixed = (nt16 - na16) * nlive16
+    nsb16 = nt16 - na16
+    mixed = nsb16 * nlive16
     aa = nlive16 * (nlive16 + 1) // 2 if gather_aa else 0
-    bb = 0
+    bb = nsb16 * (nsb16 + 1) // 2 if gather_bb else 0
     return mixed + aa + bb
 
 
@@ -850,8 +851,9 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     # --- frame sizes (see build_n2dual_branch for the scars behind each) -----------------
     n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
     viscap = vis_capture_chain(args, chain, sig)
-    tiles_frame_bytes = (n_rec_per_frame * n_chan * n2_tiles_per_chan(n_live, num_synth, viscap)
-                         * 512 * 4)
+    viscap_bb = viscap and bool(args.vis_capture_bb)
+    tiles_frame_bytes = (n_rec_per_frame * n_chan
+                         * n2_tiles_per_chan(n_live, num_synth, viscap, viscap_bb) * 512 * 4)
     prnctl = prnctl_bytes()          # READ, never restated -- it took the fleet down once
     epl_bytes = (48 + 8 * 16 + prnctl * 16 * n_prn
                  + 16 * 4 * n_prn * 16 * n_chan * n_live
@@ -1352,9 +1354,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # --vis-capture: this chain's correlator also gathers the live antennas' N^2 and the
     # tiles/ctl frames get a gated leg to disk (see the viscap blocks below).
     viscap = vis_capture_chain(args, chain, sig)
+    viscap_bb = viscap and bool(args.vis_capture_bb)
     # nt_outer = records per frame now that the dual correlator integrates one record
-    tiles_frame_bytes = (n_rec_per_frame * n_chan * n2_tiles_per_chan(n_live, num_synth, viscap)
-                         * 512 * 4)
+    tiles_frame_bytes = (n_rec_per_frame * n_chan
+                         * n2_tiles_per_chan(n_live, num_synth, viscap, viscap_bb) * 512 * 4)
 
     if 4 * n_prn > num_synth:
         raise SystemExit(f"--n2-dual{tag}: 4*{n_prn} PRNs exceeds {num_synth} synthetic "
@@ -1575,6 +1578,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                  # WHICH columns, not just how many -- the live set is {0..15, 64..79}.
                  "live_element_tiles": live_tile_columns(arr),
                  "gnss_gather_aa": viscap,
+                 **({"gnss_gather_bb": True} if viscap_bb else {}),
                  "gnss_local_channels": chan_idx},
                 {"name": "cudaSyncOutput"},
                 {"name": "cudaOutputData",
@@ -1639,6 +1643,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "n_prn": n_prn,
             "hops_per_record": args.hops_per_record,
             "gnss_gather_aa": viscap,
+            **({"gnss_gather_bb": True} if viscap_bb else {}),
             "cpu_affinity": [V["cores"]["tiles"]],
         },
         # ... and then the EXISTING record assembler, unchanged.
@@ -1798,11 +1803,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # is the absolute sample of the frame's first hop and the same number the tiles frame
     # describes; the buffers' GnssChanMetadata is not reliably populated on this path.
     #
-    # Per frame this is n_rec x n_chan x n_tile x 2048 B of tiles (~1.2 MB for 7 channels with
-    # the AA block) plus the ctl block that names the lanes (PRN, f_nco, cp_seed, the
-    # quantizer energies) -- ~30 MB/s per instance, ~9 GB per instance per 5 minutes on the
-    # node's nvme. The writer bundles ~1 s per file; a reader (scripts/gnss/viscap_read.py)
-    # supplies the fixed layout, hence allow_ndarray.
+    # Per frame this is n_rec x n_chan x n_tile x 2048 B of tiles (~1.1 MB for 7 channels with
+    # the AA block, ~3.2 MB with --vis-capture-bb) plus the ctl block that names the lanes
+    # (PRN, f_nco, cp_seed, the quantizer energies) -- ~30 (~80) MB/s per instance per chain,
+    # ~9 (~24) GB per 5 minutes on the node's nvme. The writer bundles ~1 s per file; a reader
+    # (scripts/gnss/viscap_read.py) supplies the fixed layout, hence allow_ndarray.
     if viscap:
         vc_tiles = f"{pre}viscap_tiles_buf"
         vc_ctl = f"{pre}viscap_ctl_buf"
@@ -2945,6 +2950,10 @@ def main():
                          "gathers the live antennas' N^2, and a REST-gated FrameWindowGate feeds "
                          "the tiles + ctl frames to rawFileWrites under <record_dir>/viscap. "
                          "Nothing is written until scripts/gnss/viscap.py arms a window.")
+    ap.add_argument("--vis-capture-bb", action="store_true", dest="vis_capture_bb",
+                    help="with --vis-capture: the captured chains also gather the BB (synth x "
+                         "synth) block, completing the (N+M)^2 triangle per chain. Triples the "
+                         "tiles traffic of those chains (36 more tiles per channel).")
     ap.add_argument("--vis-capture-frames-per-file", type=int, default=24, metavar="N",
                     dest="vis_capture_frames_per_file",
                     help="frames per --vis-capture file (default 24, ~1 s at 41.94 ms frames)")

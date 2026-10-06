@@ -17,12 +17,15 @@ sub-integration r (2048 hops = 33554432 samples apart). energy[(job0+t)*n_chan +
 replica energy of lane row t of that PRN slot over one record.
 
 TILES FRAME: int32 [n_rec][n_chan][n_tile][16][16][2] (re, im), n_tile per channel =
-  mixed  : 8 synth rows (ihi 8..15) x nlive16 live columns -> tile (ihi-8)*nlive16 + slot
-  AA     : lower triangle over live columns, tile k1*(k1+1)/2 + k2 (k1 >= k2)
+  mixed  : nsb16 synth rows (ihi 8..) x nlive16 live columns -> tile (ihi-8)*nlive16 + slot
+  AA     : lower triangle over live columns, tile n_mixed + k1*(k1+1)/2 + k2 (k1 >= k2)
+  BB     : lower triangle over the synth rows, tile n_mixed + n_aa + k1*(k1+1)/2 + k2
+           (gnss_gather_bb: the replica x replica block that completes the (N+M)^2)
 Synth lane L = 4*slot + row (row 0 E, 1 P, 2 L, 3 P_HEAD) sits at gi = 128 + L: ihi = gi>>4,
 ilo = gi&15. Element e (0..n_live-1, in live-column slot order) is at jhi = e>>4, jlo = e&15.
 V_mixed[lane, e] = sum synth * conj(antenna)  (cudaCorrelatorDual: synth on the row side).
 V_aa[i, j]       = sum E_i * conj(E_j), i >= j.
+V_bb[a, b]       = sum synth_a * conj(synth_b), a >= b (raw tile units: divide by s_a * s_b).
 The replica lanes were quantized to 4 bits with s = 7 / (3 * sqrt(energy_rec0 / hops_per_record))
 frozen at record 0 of the frame; divide V_mixed by s for the tracker's absolute units.
 
@@ -111,12 +114,27 @@ def config_axes(config_path, gpu, tag, node_yaml):
     return [int(c) for c in inj["channel_ids"]], elems, hops, bool(corr.get("gnss_gather_aa"))
 
 
-def tile_counts(n_live, has_aa):
-    """(n_tile, n_mixed, n_aa, nlive16) for an instance's live-column count."""
+def config_lanes(config_path, gpu, tag):
+    """The instance's replica side: {has_aa, has_bb, num_synth} from its correlator block."""
+    import yaml
+    dual = yaml.safe_load(open(config_path))["gnss%d%s_n2dual" % (gpu, tag)]
+    corr = next(c for c in dual["commands"] if c.get("name") == "cudaCorrelatorDual")
+    return dict(has_aa=bool(corr.get("gnss_gather_aa")), has_bb=bool(corr.get("gnss_gather_bb")),
+                num_synth=int(corr.get("num_synth", 128)))
+
+
+def tile_counts(n_live, has_aa, has_bb=False, num_synth=128):
+    """(n_tile, n_mixed, n_aa, nlive16) for an instance's live-column count; n_tile includes
+    the BB block when the instance gathers it (bb_tiles)."""
     nlive16 = (n_live + 15) // 16
-    n_mixed = 8 * nlive16
+    n_mixed = (num_synth // 16) * nlive16
     n_aa = nlive16 * (nlive16 + 1) // 2 if has_aa else 0
-    return n_mixed + n_aa, n_mixed, n_aa, nlive16
+    return n_mixed + n_aa + bb_tiles(has_bb, num_synth), n_mixed, n_aa, nlive16
+
+
+def bb_tiles(has_bb, num_synth=128):
+    nsb16 = num_synth // 16
+    return nsb16 * (nsb16 + 1) // 2 if has_bb else 0
 
 
 def read_pair(ctl_paths, tile_paths, n_tile, n_chan_expect=None, max_frames=0):
@@ -144,12 +162,13 @@ def read_pair(ctl_paths, tile_paths, n_tile, n_chan_expect=None, max_frames=0):
     return frames
 
 
-def decode(frames, n_live, hops, has_aa):
+def decode(frames, n_live, hops, has_aa, has_bb=False, num_synth=128):
     """Frames -> dict of record-indexed arrays (R = frames x n_rec):
     winstart[R] i8, prn/run/fcar_report/f_nco/fcar/cp_seed[R, n_prn], energy/scale[R, n_prn, 4, n_chan],
     vis_mixed[R, n_chan, n_prn, 4, n_live] c8 (raw tile units; divide by scale),
-    vis_aa[R, n_chan, n_live, n_live] c8 (Hermitian-completed) or None."""
-    _, n_mixed, n_aa, nlive16 = tile_counts(n_live, has_aa)
+    vis_aa[R, n_chan, n_live, n_live] c8 (Hermitian-completed) or None,
+    vis_bb[R, n_chan, num_synth, num_synth] c8 (Hermitian-completed, lane = 4*slot + row) or None."""
+    _, n_mixed, n_aa, nlive16 = tile_counts(n_live, has_aa, has_bb, num_synth)
     h0 = frames[0][0]
     n_prn, n_chan = int(h0["n_prn"]), int(h0["n_chan"])
     # mixed: lane L=4p+row at gi=128+L -> tile (ihi-8)*nlive16 + jhi, cell [ilo, jlo]
@@ -164,9 +183,14 @@ def decode(frames, n_live, hops, has_aa):
     k1, k2 = i_ >> 4, j_ >> 4
     k_a = n_mixed + k1 * (k1 + 1) // 2 + k2
     ilo_a, jlo_a = i_ & 15, j_ & 15
+    # BB: tile n_mixed + n_aa + k1(k1+1)/2 + k2 over the synth rows, lanes a >= b
+    a_, b_ = np.tril_indices(num_synth)
+    ka1, ka2 = a_ >> 4, b_ >> 4
+    k_b = n_mixed + n_aa + ka1 * (ka1 + 1) // 2 + ka2
+    ilo_b, jlo_b = a_ & 15, b_ & 15
 
     out = {k: [] for k in ("winstart", "prn", "run", "fcar_report", "f_nco", "fcar", "cp_seed",
-                           "energy", "scale", "vis_mixed", "vis_aa")}
+                           "energy", "scale", "vis_mixed", "vis_aa", "vis_bb")}
     for h, wstart, ctl, energy, tiles in frames:
         nr = int(h["n_rec"])
         t = tiles[..., 0].astype(np.float32) + 1j * tiles[..., 1].astype(np.float32)
@@ -190,9 +214,15 @@ def decode(frames, n_live, hops, has_aa):
         if n_aa:
             aa = np.zeros((nr, n_chan, n_live, n_live), np.complex64)
             v = t[:, :, k_a, ilo_a, jlo_a]
+            aa[:, :, j_, i_] = np.conj(v)     # upper first, so the diagonal keeps v itself
             aa[:, :, i_, j_] = v
-            aa[:, :, j_, i_] = np.conj(v)
             out["vis_aa"].append(aa)
+        if has_bb:
+            bb = np.zeros((nr, n_chan, num_synth, num_synth), np.complex64)
+            v = t[:, :, k_b, ilo_b, jlo_b]
+            bb[:, :, b_, a_] = np.conj(v)
+            bb[:, :, a_, b_] = v
+            out["vis_bb"].append(bb)
     res = {k: (np.concatenate(v) if v else None) for k, v in out.items()}
     return res
 
@@ -201,16 +231,18 @@ def load(d, node, gpu, config, node_yaml, tag="", files=None, max_frames=0):
     """One call for notebooks: (axes dict, decoded dict). `files` = slice into the numbered
     file list (each file holds a few frames), e.g. slice(120, 140)."""
     freq_ids, elems, hops, has_aa = config_axes(config, gpu, tag, node_yaml)
-    n_tile = tile_counts(len(elems), has_aa)[0]
+    lanes = config_lanes(config, gpu, tag)
+    n_tile = tile_counts(len(elems), has_aa, lanes["has_bb"], lanes["num_synth"])[0]
     ctl_paths = series(d, node, gpu, tag, "visctl")
     tile_paths = series(d, node, gpu, tag, "vistiles")
     if files is not None:
         ctl_paths, tile_paths = ctl_paths[files], tile_paths[files]
     frames = read_pair(ctl_paths, tile_paths, n_tile, len(freq_ids), max_frames)
     axes = dict(freq_id=np.array(freq_ids, np.int32), element_id=np.array(elems, np.int32),
-                hops_per_record=hops, has_aa=has_aa, utc0=float(frames[0][0]["utc0"]),
+                hops_per_record=hops, has_aa=has_aa, has_bb=lanes["has_bb"],
+                num_synth=lanes["num_synth"], utc0=float(frames[0][0]["utc0"]),
                 sample_rate_hz=3.2e9)
-    return axes, decode(frames, len(elems), hops, has_aa)
+    return axes, decode(frames, len(elems), hops, has_aa, lanes["has_bb"], lanes["num_synth"])
 
 
 def main():
@@ -228,10 +260,16 @@ def main():
     a = ap.parse_args()
 
     freq_ids, elems, hops, has_aa = config_axes(a.config, a.gpu, a.tag, a.node_yaml)
+    lanes = config_lanes(a.config, a.gpu, a.tag)
+    has_bb, num_synth = lanes["has_bb"], lanes["num_synth"]
     n_live = len(elems)
-    n_tile, n_mixed, n_aa, _ = tile_counts(n_live, has_aa)
+    n_tile, n_mixed, n_aa, _ = tile_counts(n_live, has_aa, has_bb, num_synth)
+    n_bb = bb_tiles(has_bb, num_synth)
     if not has_aa:
         print("NOTE: this instance was not built with gnss_gather_aa -- no AA (N^2) block",
+              file=sys.stderr)
+    if not has_bb:
+        print("NOTE: this instance was not built with gnss_gather_bb -- no BB (M^2) block",
               file=sys.stderr)
     frames = read_pair(series(a.dir, a.node, a.gpu, a.tag, "visctl"),
                        series(a.dir, a.node, a.gpu, a.tag, "vistiles"),
@@ -243,8 +281,9 @@ def main():
     gaps = np.diff(seqs) // seq_step - 1 if seq_step else np.zeros(0, int)
     print("%d frames, seq0 %d .. %d (step %d), utc0 %.6f; %d frames missing inside the span"
           % (len(frames), h0["seq0"], hN["seq0"], seq_step, h0["utc0"], int(gaps.sum())))
-    print("n_rec %d, n_chan %d (freq_ids %s), n_prn %d, n_live %d, tiles/chan %d (%d mixed + %d AA)"
-          % (h0["n_rec"], h0["n_chan"], freq_ids, h0["n_prn"], n_live, n_tile, n_mixed, n_aa))
+    print("n_rec %d, n_chan %d (freq_ids %s), n_prn %d, n_live %d, tiles/chan %d (%d mixed + %d AA"
+          " + %d BB)" % (h0["n_rec"], h0["n_chan"], freq_ids, h0["n_prn"], n_live, n_tile,
+                         n_mixed, n_aa, n_bb))
     live = [(p, int(c["prn"])) for p, c in enumerate(frames[0][2][0]) if c["run"]]
     print("record 0 live slots (slot, PRN): %s" % live)
 
@@ -253,7 +292,7 @@ def main():
 
     import h5py
     n_rec = int(h0["n_rec"])
-    d = decode(frames, n_live, hops, has_aa)
+    d = decode(frames, n_live, hops, has_aa, has_bb, num_synth)
     R = len(d["winstart"])
     with h5py.File(a.to_h5, "w") as f:
         f.attrs.update(node=a.node, gpu=a.gpu, tag=a.tag, hops_per_record=hops,
@@ -261,6 +300,7 @@ def main():
                        utc0_sample0=float(h0["utc0"]), sample_rate_hz=3.2e9,
                        orientation_mixed="V[lane, e] = sum synth_lane * conj(antenna_e)",
                        orientation_aa="V[i, j] = sum E_i * conj(E_j)",
+                       orientation_bb="V[a, b] = sum synth_a * conj(synth_b); lane = 4*slot + row",
                        note="divide vis_mixed by scale[rec, slot, row, chan] for absolute units")
         f["freq_id"] = np.array(freq_ids, np.int32)
         f["element_id"] = np.array(elems, np.int32)
@@ -272,6 +312,9 @@ def main():
         if d["vis_aa"] is not None:
             f.create_dataset("vis_aa", data=d["vis_aa"], compression="lzf",
                              chunks=(n_rec,) + d["vis_aa"].shape[1:])
+        if d["vis_bb"] is not None:
+            f.create_dataset("vis_bb", data=d["vis_bb"], compression="lzf",
+                             chunks=(n_rec,) + d["vis_bb"].shape[1:])
     print("wrote %s: %d records" % (a.to_h5, R))
 
 

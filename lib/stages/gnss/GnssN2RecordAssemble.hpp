@@ -61,6 +61,8 @@
  * @conf  n_gnss_channels Int. Comb channels gathered.
  * @conf  gnss_gather_aa  Bool, default false. Mirror of the correlator's flag: the tiles frame
  *                       then carries nlive16*(nlive16+1)/2 AA tiles after the mixed block.
+ * @conf  gnss_gather_bb  Bool, default false. Mirror of the correlator's flag: the tiles frame
+ *                       then carries nsb16*(nsb16+1)/2 BB tiles after the AA block.
  * @conf  n_prn, hops_per_record, samples_per_data_set
  */
 class GnssN2RecordAssemble : public kotekan::Stage {

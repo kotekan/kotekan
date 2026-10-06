@@ -142,6 +142,10 @@ def main():
                     help="comma list; host or host:port (default port %d)" % PORT)
     ap.add_argument("--gates", default=",".join(GATES),
                     help="gate stage names (default %s)" % ",".join(GATES))
+    ap.add_argument("--tags", default=None, metavar="TAGS",
+                    help="chain tags whose gates to address, comma list with '' for the primary, "
+                         "e.g. ',_e5a,_b2a' -> gnss<g>{,_e5a,_b2a}_viscap_gate on both GPUs. "
+                         "Overrides --gates.")
     ap.add_argument("--start-in", type=float, default=30.0, metavar="S",
                     help="arm: open the window this many seconds from now (default 30)")
     ap.add_argument("--duration", type=float, default=300.0, metavar="S",
@@ -152,6 +156,8 @@ def main():
     a = ap.parse_args()
     nodes = [n for n in a.nodes.split(",") if n]
     gates = [g for g in a.gates.split(",") if g]
+    if a.tags is not None:
+        gates = ["gnss%d%s_viscap_gate" % (g, t) for g in (0, 1) for t in a.tags.split(",")]
     if a.cmd == "status":
         status(nodes, gates)
     elif a.cmd == "arm":

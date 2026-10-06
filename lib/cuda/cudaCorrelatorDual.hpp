@@ -71,6 +71,10 @@
  *                             the mixed block) and, with gnss_freq_map, compute the AA block
  *                             on the comb channels. This is the visibility-capture feed; the
  *                             tracker never reads these tiles.
+ * @conf  gnss_gather_bb       Bool, default false. Also gather the BB (synth x synth) lower
+ *                             triangle, appended after the AA block: the replica side of the
+ *                             capture's (N+M)^2. The block is computed either way; the
+ *                             tracker never reads it.
  * @conf  gnss_tiles_name      String. Base name for the gathered-tiles output buffer.
  * @conf  gnss_synth_name      String. Name of the synthetic-input GPU array. Default
  *                             "gnss_synth".
@@ -119,6 +123,9 @@ private:
     /// in freq-map mode, compute the AA block on the comb channels. Off for the tracker,
     /// on for the visibility capture.
     const bool _gather_aa;
+
+    /// gnss_gather_bb: also gather the BB (synth x synth) tiles, after the AA block.
+    const bool _gather_bb;
 
     /// (freq, int32-offset-within-slice) of each gathered tile, in output order.
     std::vector<int2> _tile_sel;

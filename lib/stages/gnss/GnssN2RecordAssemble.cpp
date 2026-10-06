@@ -41,18 +41,17 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
     _nt16 = (_num_elements + _num_synth) / 16;
     _nlive16 = (_n_live + 15) / 16;
     _n_mixed = (_nt16 - _na16) * _nlive16;
-    // BB (synth x synth) IS NOT GATHERED (2026-08-28) -- see cudaCorrelatorDual's
-    // build_tile_selection for the argument. It was 69%% of the copied bytes and its only
-    // read here was `m2`, immediately (void)-cast: the normalization uses the TRUE
-    // pre-quantization energy from the ctl block, never the quantized M^2. Kept as a named
-    // zero rather than deleted so the three sites that state this contract still line up
-    // (here, build_tile_selection, gen_chord_gnss_config.py's tiles_frame_bytes).
-    _n_bb = 0;
     // AA (live antenna x live antenna) rides after the mixed block when the correlator has
-    // gnss_gather_aa -- the visibility capture's N^2. The lower triangle over nlive16
-    // columns; this stage never reads it, only steps over it.
+    // gnss_gather_aa, and BB (synth x synth) after that with gnss_gather_bb -- the visibility
+    // capture's two other blocks. This stage never reads either, only steps over them; the
+    // normalization uses the TRUE pre-quantization energy from the ctl block, never the
+    // quantized M^2 in BB.
     _n_aa = config.get_default<bool>(unique_name, "gnss_gather_aa", false)
                 ? _nlive16 * (_nlive16 + 1) / 2
+                : 0;
+    const int nsb16 = _nt16 - _na16;
+    _n_bb = config.get_default<bool>(unique_name, "gnss_gather_bb", false)
+                ? nsb16 * (nsb16 + 1) / 2
                 : 0;
     _n_tile = _n_mixed + _n_aa + _n_bb;
 

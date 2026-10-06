@@ -56,7 +56,8 @@ static std::vector<int> live_tile_columns(Config& config, const std::string& uni
 static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& chans,
                                               int num_elements, int num_synth,
                                               const std::vector<int>& live_cols,
-                                              bool compacted = false, bool gather_aa = false) {
+                                              bool compacted = false, bool gather_aa = false,
+                                              bool gather_bb = false) {
     // compacted: with a freq map the kernel writes slice k for chans[k], so the gather must
     // index by k, not by the real channel number.
     std::vector<int2> sel;
@@ -73,24 +74,12 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
         for (int ihi = na16; ihi < nt16; ihi++)
             for (size_t k = 0; k < live_cols.size(); k++)
                 sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + live_cols[k])});
-        // ── THE BB (synth x synth) BLOCK IS NOT GATHERED (2026-08-28) ──────────────────
-        // It was 36 of 52 tiles per channel -- 69%% of every byte copied off the GPU and
-        // through the EPL buffer -- and it had NO CONSUMER. The one read of it,
-        // GnssN2RecordAssemble's `m2` (the quantized replica's own frame-integrated
-        // energy, from the diagonal element of each diagonal tile), was immediately
-        // `(void)`-cast: the amplitude normalization uses the TRUE pre-quantization
-        // energy, which arrives independently through the ctl block (d_energy0). So the
-        // gather was shipping 18,432 int32 per channel to read 128 numbers and discard
-        // them.
-        // ⚠️ THIS IS ONE CONTRACT STATED IN THREE PLACES: here, GnssN2RecordAssemble's
-        // _n_bb, and gen_chord_gnss_config.py's `bb` in tiles_frame_bytes. They must move
-        // together or the stage's frame-size guard fires at startup (loudly -- that guard
-        // is the monument to the PrnCtl 64-vs-80 incident).
-        // The correlator still COMPUTES the BB block; skipping it needs
-        // n2k_dual's block_class_mask plumbed through, which is a kernel-path change with
-        // its own gate (docs/CHORD_GPU_TODO.md item 1b).
+        // ⚠️ THE TILE COUNT IS ONE CONTRACT STATED IN THREE PLACES: here, GnssN2RecordAssemble's
+        // _n_mixed/_n_aa/_n_bb, and gen_chord_gnss_config.py's n2_tiles_per_chan. They must
+        // move together or the stage's frame-size guard fires at startup (loudly -- that
+        // guard is the monument to the PrnCtl 64-vs-80 incident).
         //
-        // AA (antenna x antenna, the live N^2) LAST, and only on request: the lower triangle
+        // AA (antenna x antenna, the live N^2) next, and only on request: the lower triangle
         // of live tile columns, row-major with column <= row, so the (k1, k2) tile sits at
         // k1*(k1+1)/2 + k2 in this block. With gnss_freq_map the kernel only writes the AA
         // block when BLOCK_MASK_AA is in its mask -- the constructor adds it iff gather_aa.
@@ -99,6 +88,15 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
                 for (size_t k2 = 0; k2 <= k1; k2++)
                     sel.push_back({f, 512 * (live_cols[k1] * (live_cols[k1] + 1) / 2
                                              + live_cols[k2])});
+        // BB (synth x synth) LAST, and only on request: the lower triangle over the synth
+        // tile rows, (ihi - na16, jhi - na16) at k1*(k1+1)/2 + k2 in this block. The kernel
+        // computes it regardless (dropping it measured no win); the tracker never reads it,
+        // only the visibility capture does -- 36 tiles per channel at num_synth 128, which is
+        // why it is off by default.
+        if (gather_bb)
+            for (int ihi = na16; ihi < nt16; ihi++)
+                for (int jhi = na16; jhi <= ihi; jhi++)
+                    sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + jhi)});
     }
     return sel;
 }
@@ -137,10 +135,10 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
                                                                "gnss_local_channels")),
     _live_tile_cols(live_tile_columns(config, unique_name, _num_live_elements)),
     _gather_aa(config.get_default<bool>(unique_name, "gnss_gather_aa", false)),
-    _tile_sel(build_tile_selection(_gnss_local_channels, _num_elements, _num_synth,
-                                   _live_tile_cols,
+    _gather_bb(config.get_default<bool>(unique_name, "gnss_gather_bb", false)),
+    _tile_sel(build_tile_selection(_gnss_local_channels, _num_elements, _num_synth, _live_tile_cols,
                                    config.get_default<bool>(unique_name, "gnss_freq_map", false),
-                                   _gather_aa)),
+                                   _gather_aa, _gather_bb)),
     _rfi_all_pass(config.get_default<bool>(unique_name, "rfi_all_pass", false)),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
