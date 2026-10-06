@@ -34,6 +34,10 @@ add_executable(test_gnss_broker test_gnss_broker.cpp ../../lib/stages/gnss/gnssB
                                 ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_broker PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# The shared element model's fleet-common phase pin (#154): header-only, no Telescope/FFTW.
+add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
+target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Pure PFB core (prototype design + polyphase fold): no FFTW; the test uses a
 # reference DFT to check channel isolation against a straight-FFT channelizer.
 add_executable(test_pfb_prototype test_pfb_prototype.cpp ../../lib/stages/pfbPrototype.cpp)

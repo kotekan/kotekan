@@ -130,6 +130,32 @@ private:
     /// element, which is what makes the instances agree to begin with.
     std::vector<std::complex<double>> _g_pin_ref;
     bool _g_pin_ref_ok = false;
+    /// THE FLEET REFERENCE (#154). The own pin above comes from one shadow, so a poor first one
+    /// (noise before the broker re-anchors after an F-engine re-base, a weak shadow at a cold
+    /// start) leaves this instance's global phase arbitrary against the others and the fleet sum
+    /// loses it until a restart. F (config elem_sum_shared_ref, live /set_elem_sum_shared_ref) is
+    /// one vector per band shared by every instance, a snapshot of the fleet consensus
+    /// (python/scripts/gnss/elem_shared_ref.py). Mode "live" pins each pol <F, G> real positive
+    /// instead: in full for a first model, slewed at _fleet_slew_rad_s for a warm one
+    /// (gnssSharedPin.hpp). "log" only reports the offset; "off" ignores F. A half F does not
+    /// describe (sim < _fleet_min_sim) keeps the own pin, which tracks the model's phase in live
+    /// mode so that falling back never steps it.
+    std::vector<std::complex<double>> _g_fleet_ref; ///< [n_elem]; empty = no reference
+    std::atomic<int> _fleet_mode{0};                ///< 0 off, 1 log, 2 live
+    std::atomic<bool> _fleet_ref_present{false};    ///< _g_fleet_ref non-empty (for REST)
+    double _fleet_slew_rad_s = M_PI / 180.0;
+    double _fleet_min_sim = 0.5; ///< a 16-element noise model scores ~0.2 against any F
+    /// Per pol, after the last consensus update (diagnostics, read unlocked by REST):
+    double _fleet_err_deg[2] = {0.0, 0.0}; ///< arg<F, G>: the offset still to remove
+    double _fleet_sim[2] = {0.0, 0.0};     ///< |<F, G>| / (|F| |G|)
+    bool _fleet_applied[2] = {false, false};
+    bool _fleet_slewing[2] = {false, false}; ///< one WARN per slew episode, one when done
+    /// REST staging (under _gain_mtx), consumed by shared_consensus on the main thread.
+    std::vector<std::complex<double>> _pending_fleet_ref;
+    bool _pending_fleet_ref_set = false;
+    int _pending_fleet_mode = -1;
+    double _pending_fleet_slew_deg_s = -1.0;
+    void fleet_ref_apply_pending();
     bool shared_frozen(double now_s);
     std::vector<std::complex<double>> _pol_num; ///< per PRN: EMA of B1 conj(B0)
     std::vector<double> _pol_den;               ///< per PRN: EMA of |B0|^2
@@ -382,6 +408,10 @@ private:
     void set_sat_geometry_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_adapt_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     void set_elem_sum_shared_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    /// #154: {"ref": [[re, im], ...] ([] clears), "mode": "off|log|live", "slew_deg_s": x}, every
+    /// field optional; staged, applied at the next consensus update.
+    void set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
+                                          nlohmann::json& request);
     void get_elem_cal_callback(kotekan::connectionInstance& conn);
     void set_reference_element_callback(kotekan::connectionInstance& conn,
                                         nlohmann::json& request);

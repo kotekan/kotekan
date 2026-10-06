@@ -5,6 +5,7 @@
 #include "visUtil.hpp" // for frameID
 #include "gnssGpuChain.hpp"
 #include "gnssRecord.hpp"
+#include "gnssSharedPin.hpp" // for ref_offset, pin_rotation (#154)
 #include "json.hpp" // for the /get_spectrum reply
 
 #include <algorithm>
@@ -93,6 +94,50 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         INFO("GnssGpuRecordAssemble[{:s}]: SHARED element model ON (consensus tau {:.0f} s, "
              "inter-pol tau {:.1f} s); per-PRN weights held to it",
              unique_name, _elem_shared_tau_s, _elem_pol_tau_s);
+    }
+    // #154 THE FLEET REFERENCE (hpp note): flat [re0, im0, re1, im1, ...] over n_elements, the
+    // generator's copy of one band's entry in the committed snapshot (--elem-shared-ref).
+    {
+        const auto flat =
+            config.get_default<std::vector<double>>(unique_name, "elem_sum_shared_ref", {});
+        if (!flat.empty()) {
+            if ((int)flat.size() != 2 * _n_elements) {
+                FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: elem_sum_shared_ref has {:d} values, "
+                            "need 2 x n_elements = {:d} (re, im per element) -- regenerate the "
+                            "config against this array",
+                            unique_name, flat.size(), 2 * _n_elements);
+                return;
+            }
+            _g_fleet_ref.resize((size_t)_n_elements);
+            for (int e = 0; e < _n_elements; ++e)
+                _g_fleet_ref[(size_t)e] =
+                    std::complex<double>(flat[(size_t)2 * e], flat[(size_t)2 * e + 1]);
+            _fleet_ref_present = true;
+        }
+        const std::string mode =
+            config.get_default<std::string>(unique_name, "elem_sum_shared_ref_mode", "off");
+        if (mode == "off")
+            _fleet_mode = 0;
+        else if (mode == "log")
+            _fleet_mode = 1;
+        else if (mode == "live")
+            _fleet_mode = 2;
+        else {
+            FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: elem_sum_shared_ref_mode '{:s}' is not "
+                        "off | log | live",
+                        unique_name, mode);
+            return;
+        }
+        _fleet_slew_rad_s =
+            config.get_default<double>(unique_name, "elem_sum_shared_ref_slew_deg_s", 1.0) * M_PI
+            / 180.0;
+        _fleet_min_sim =
+            config.get_default<double>(unique_name, "elem_sum_shared_ref_min_sim", 0.5);
+        if (_fleet_mode != 0)
+            INFO("GnssGpuRecordAssemble[{:s}]: fleet reference {:s} ({:s}), slew {:.2f} deg/s, "
+                 "min sim {:.2f}",
+                 unique_name, mode, _g_fleet_ref.empty() ? "NONE configured: own pin" : "loaded",
+                 _fleet_slew_rad_s * 180.0 / M_PI, _fleet_min_sim);
     }
     // ── #102 ELEMENT STEERING: geometric per-(sat, channel, element) phasors ─────────
     // OFF unless elem_positions_enu is provided (flat [n_elements][3], metres ENU of any
@@ -473,6 +518,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_elem_sum_shared",
             std::bind(&GnssGpuRecordAssemble::set_elem_sum_shared_callback, this, _1, _2));
+        kotekan::restServer::instance().register_post_callback(
+            unique_name + "/set_elem_sum_shared_ref",
+            std::bind(&GnssGpuRecordAssemble::set_elem_sum_shared_ref_callback, this, _1, _2));
         kotekan::restServer::instance().register_get_callback(
             unique_name + "/get_elem_cal",
             std::bind(&GnssGpuRecordAssemble::get_elem_cal_callback, this, _1));
@@ -2118,6 +2166,7 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
         return;
     const double dt = now_s - _g_shared_t;
     _g_shared_t = now_s;
+    fleet_ref_apply_pending();
     // Transit: the model in force stays exactly as it was, and none is FORMED from captured
     // learners either (before a model exists the PRNs ride their own, as always).
     if (shared_frozen(now_s))
@@ -2194,18 +2243,32 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
                                        : 1.0;
     for (int e = 0; e < n; ++e)
         _g_shared[(size_t)e] += beta * (acc[(size_t)e] / A - _g_shared[(size_t)e]);
+    // #154: pinned to the FLEET reference where it applies (live mode, F describes this half)
+    // -- in full for a first model, slewed for a warm one -- else to the instance's own pin.
+    const bool fleet_live = _fleet_mode.load() == 2 && !_g_fleet_ref.empty();
+    bool fleet_used[2] = {false, false};
     for (int pol = 0; pol < n_pol; ++pol) {
         const int e0 = pol * h, e1 = std::min(n, e0 + h);
         const int anchor = std::min(e1 - 1, e0 + _reference_element);
         cd pin(1.0, 0.0);
-        cd y(0.0, 0.0);
-        if (_g_pin_ref_ok)
-            for (int e = e0; e < e1; ++e)
-                y += std::conj(_g_pin_ref[(size_t)e]) * _g_shared[(size_t)e];
-        if (std::abs(y) > 0.0)
-            pin = std::conj(y) / std::abs(y);   // <ref, G*pin> real positive, whole pol
-        else if (std::abs(_g_shared[(size_t)anchor]) > 0.0)
-            pin = std::conj(_g_shared[(size_t)anchor]) / std::abs(_g_shared[(size_t)anchor]);
+        if (fleet_live) {
+            const auto o = gnss::ref_offset(_g_fleet_ref.data(), _g_shared.data(), e0, e1);
+            if (o.ok && o.sim >= _fleet_min_sim) {
+                pin = gnss::pin_rotation(o, _g_shared_warm,
+                                         _fleet_slew_rad_s * std::min(std::max(dt, 0.0), 2.0));
+                fleet_used[pol] = true;
+            }
+        }
+        if (!fleet_used[pol]) {
+            cd y(0.0, 0.0);
+            if (_g_pin_ref_ok)
+                for (int e = e0; e < e1; ++e)
+                    y += std::conj(_g_pin_ref[(size_t)e]) * _g_shared[(size_t)e];
+            if (std::abs(y) > 0.0)
+                pin = std::conj(y) / std::abs(y); // <ref, G*pin> real positive, whole pol
+            else if (std::abs(_g_shared[(size_t)anchor]) > 0.0)
+                pin = std::conj(_g_shared[(size_t)anchor]) / std::abs(_g_shared[(size_t)anchor]);
+        }
         double s = 0.0;
         for (int e = e0; e < e1; ++e)
             s += std::abs(_g_shared[(size_t)e]);
@@ -2238,6 +2301,143 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
         _g_pin_ref = _g_shared;
         _g_pin_ref_ok = true;
     }
+    // The own pin follows every half the fleet reference moved, so that a fall back to it (F
+    // cleared, mode changed, a shape F no longer describes) holds the phase the model HAS.
+    for (int pol = 0; pol < n_pol; ++pol)
+        if (fleet_used[pol])
+            for (int e = pol * h, e1 = std::min(n, pol * h + h); e < e1; ++e)
+                _g_pin_ref[(size_t)e] = _g_shared[(size_t)e];
+    if (_fleet_mode.load() != 0 && !_g_fleet_ref.empty()) {
+        const double slew_deg = _fleet_slew_rad_s * 180.0 / M_PI;
+        for (int pol = 0; pol < n_pol && pol < 2; ++pol) {
+            const int e0 = pol * h, e1 = std::min(n, e0 + h);
+            const auto o = gnss::ref_offset(_g_fleet_ref.data(), _g_shared.data(), e0, e1);
+            const double err = o.ok ? o.err_rad * 180.0 / M_PI : 0.0;
+            _fleet_err_deg[pol] = err;
+            _fleet_sim[pol] = o.ok ? o.sim : 0.0;
+            _fleet_applied[pol] = fleet_used[pol];
+            if (fleet_used[pol] && std::abs(err) > 5.0 && !_fleet_slewing[pol]) {
+                _fleet_slewing[pol] = true;
+                WARN("elem_sum_shared: pol-{:d} model {:+.0f} deg off the fleet reference (sim "
+                     "{:.2f}) -- slewing at {:.2f} deg/s, ~{:.0f} s",
+                     pol, err, o.sim, slew_deg, slew_deg > 0.0 ? std::abs(err) / slew_deg : 0.0);
+            } else if (_fleet_slewing[pol] && (!fleet_used[pol] || std::abs(err) < 1.0)) {
+                _fleet_slewing[pol] = false;
+                WARN("elem_sum_shared: pol-{:d} {:s} ({:+.1f} deg, sim {:.2f})", pol,
+                     fleet_used[pol] ? "on the fleet reference"
+                                     : "slew stopped: the reference no longer applies",
+                     err, o.sim);
+            }
+        }
+    }
+}
+
+namespace {
+const char* fleet_mode_name(int m) {
+    return m == 2 ? "live" : (m == 1 ? "log" : "off");
+}
+} // namespace
+
+void GnssGpuRecordAssemble::fleet_ref_apply_pending() {
+    // REST staging -> state, on the main thread (shared_consensus).
+    std::vector<std::complex<double>> ref;
+    bool ref_set = false;
+    int mode = -1;
+    double slew = -1.0;
+    {
+        std::lock_guard<std::mutex> lk(_gain_mtx);
+        if (_pending_fleet_ref_set) {
+            ref.swap(_pending_fleet_ref);
+            ref_set = true;
+            _pending_fleet_ref_set = false;
+        }
+        mode = _pending_fleet_mode;
+        _pending_fleet_mode = -1;
+        slew = _pending_fleet_slew_deg_s;
+        _pending_fleet_slew_deg_s = -1.0;
+    }
+    if (!ref_set && mode < 0 && slew < 0.0)
+        return;
+    const int was = _fleet_mode.load();
+    if (ref_set) {
+        _g_fleet_ref.swap(ref);
+        _fleet_ref_present = !_g_fleet_ref.empty();
+    }
+    if (mode >= 0)
+        _fleet_mode = mode;
+    if (slew >= 0.0)
+        _fleet_slew_rad_s = slew * M_PI / 180.0;
+    // Leaving live, or losing F: the own pin takes over from the model's CURRENT phase, so the
+    // switch itself never steps it.
+    if (((was == 2 && _fleet_mode.load() != 2) || (ref_set && _g_fleet_ref.empty()))
+        && _g_shared_warm) {
+        _g_pin_ref = _g_shared;
+        _g_pin_ref_ok = true;
+    }
+    _fleet_slewing[0] = _fleet_slewing[1] = false;
+    WARN("elem_sum_shared: fleet reference {:s} -> {:s}{:s}, slew {:.2f} deg/s",
+         fleet_mode_name(was), fleet_mode_name(_fleet_mode.load()),
+         ref_set ? (_g_fleet_ref.empty() ? " (reference CLEARED: own pin)" : " (new reference)")
+                 : "",
+         _fleet_slew_rad_s * 180.0 / M_PI);
+}
+
+void GnssGpuRecordAssemble::set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
+                                                             nlohmann::json& request) {
+    // {"ref": [[re, im], ...] (n_elements pairs; [] clears), "mode": "off|log|live",
+    //  "slew_deg_s": x} -- every field optional. Staged; the next consensus update (~1 s, not
+    // during a transit freeze) applies it. python/scripts/gnss/elem_shared_ref.py post.
+    std::vector<std::complex<double>> ref;
+    bool ref_set = false;
+    int mode = -1;
+    double slew = -1.0;
+    try {
+        if (request.contains("ref")) {
+            auto& arr = request.at("ref");
+            if (!arr.is_array())
+                throw std::runtime_error("'ref' must be an array of [re, im] pairs");
+            for (auto& e : arr) {
+                if (!e.is_array() || e.size() != 2)
+                    throw std::runtime_error("each ref element must be [re, im]");
+                ref.emplace_back(e[0].get<double>(), e[1].get<double>());
+            }
+            if (!ref.empty() && (int)ref.size() != _n_elements)
+                throw std::runtime_error(fmt::format("'ref' has {:d} elements, n_elements is {:d}",
+                                                     ref.size(), _n_elements));
+            ref_set = true;
+        }
+        if (request.contains("mode")) {
+            const std::string m = request.at("mode").get<std::string>();
+            mode = (m == "off") ? 0 : (m == "log") ? 1 : (m == "live") ? 2 : -2;
+            if (mode == -2)
+                throw std::runtime_error("'mode' must be off | log | live");
+        }
+        if (request.contains("slew_deg_s")) {
+            slew = request.at("slew_deg_s").get<double>();
+            if (!(slew >= 0.0) || slew > 180.0)
+                throw std::runtime_error("'slew_deg_s' must be in [0, 180]");
+        }
+    } catch (const std::exception& ex) {
+        conn.send_error(std::string("set_elem_sum_shared_ref: ") + ex.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(_gain_mtx);
+        if (ref_set) {
+            _pending_fleet_ref.swap(ref);
+            _pending_fleet_ref_set = true;
+        }
+        if (mode >= 0)
+            _pending_fleet_mode = mode;
+        if (slew >= 0.0)
+            _pending_fleet_slew_deg_s = slew;
+    }
+    conn.send_json_reply(nlohmann::json{
+        {"mode", fleet_mode_name(_fleet_mode.load())},
+        {"present", _fleet_ref_present.load()},
+        {"staged", {{"ref", ref_set}, {"mode", mode >= 0}, {"slew_deg_s", slew >= 0.0}}},
+        {"applies", "next consensus update"}});
 }
 
 bool GnssGpuRecordAssemble::shared_frozen(double now_s) {
@@ -2331,6 +2531,13 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
         out["bore_post_age_s"] = now_s - _bore_post_t.load();
         out["pin_ref_ok"] = _g_pin_ref_ok;
     }
+    out["fleet_ref"] = {{"mode", fleet_mode_name(_fleet_mode.load())},
+                        {"present", _fleet_ref_present.load()},
+                        {"slew_deg_s", _fleet_slew_rad_s * 180.0 / M_PI},
+                        {"min_sim", _fleet_min_sim},
+                        {"err_deg", {_fleet_err_deg[0], _fleet_err_deg[1]}},
+                        {"sim", {_fleet_sim[0], _fleet_sim[1]}},
+                        {"applied", {_fleet_applied[0], _fleet_applied[1]}}};
     nlohmann::json gs = nlohmann::json::array();
     for (const auto& g : _g_shared)
         gs.push_back({g.real(), g.imag()});
