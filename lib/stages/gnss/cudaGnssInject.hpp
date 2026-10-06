@@ -92,10 +92,20 @@ private:
     const std::int32_t _num_times;
     const std::int32_t _num_elements; // voltage ring station axis (for the ring declaration)
     const std::int32_t _num_local_freq;
-    const std::int32_t _num_synth;
+    const std::int32_t _num_synth; ///< lanes THIS chain writes (4 per PRN slot)
     const std::string _voltage_name;
     const std::string _gnss_synth_name;
     std::vector<std::int32_t> _gnss_local_channels;
+    /// A SHARED synth array (several chains, one correlator pass): this chain's lanes start at
+    /// synth_lane_base in a lane axis of synth_lane_pitch, and the array's channel axis is
+    /// gnss_synth_channels (local indices, the correlator's comb) rather than every local
+    /// channel -- the compact layout cudaCorrelatorDual reads with gnss_synth_compact. Defaults
+    /// (0, num_synth, empty) are the one-chain-per-array layout.
+    const std::int32_t _synth_lane_base;
+    const std::int32_t _synth_lane_pitch;
+    std::vector<std::int32_t> _gnss_synth_channels;
+    std::int32_t _synth_n_chan;   ///< the synth array's channel axis
+    std::vector<int> _h_chan_map; ///< covering channel -> index on that axis
 
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
 

@@ -12,6 +12,7 @@
 #include "n2k_dual/DualCorrelator.hpp" // for DualCorrelator
 
 #include <cstdint>  // for int32_t, uint32_t
+#include <memory>   // for unique_ptr (the gathers' buffers)
 #include <optional> // for optional (rfi_all_pass)
 #include <string>   // for string
 #include <vector>   // for vector
@@ -76,6 +77,20 @@
  *                             capture's (N+M)^2. The block is computed either way; the
  *                             tracker never reads it.
  * @conf  gnss_tiles_name      String. Base name for the gathered-tiles output buffer.
+ * @conf  gnss_gathers         List of String, default empty. SEVERAL CHAINS, ONE PASS: the
+ *                             synth axis holds every chain's lanes at its own offset and each
+ *                             named gather copies out one buffer. Per name G:
+ *                             gather_G_tiles_name (String), gather_G_channels (local, a
+ *                             subset of gnss_local_channels; default all), gather_G_lane_base
+ *                             and gather_G_lanes (default 0 and num_synth: whole tile rows),
+ *                             gather_G_aa, gather_G_bb (Bool). Tile order inside a buffer is
+ *                             the one above restricted to those rows. When the list is empty
+ *                             gnss_gather_aa, gnss_gather_bb and gnss_tiles_name describe the
+ *                             one gather (the one-chain-per-correlator layout).
+ * @conf  gnss_synth_compact   Bool, default false. The synth array is [T][comb][num_synth]
+ *                             -- one slice per gnss_local_channels entry, in that order --
+ *                             instead of [T][num_local_freq][num_synth]. Needs gnss_freq_map;
+ *                             the injectors must write the same axis (gnss_synth_channels).
  * @conf  gnss_synth_name      String. Name of the synthetic-input GPU array. Default
  *                             "gnss_synth".
  * @conf  rfi_all_pass         Bool, default false. True = do not consume an RFI-mask ring;
@@ -119,16 +134,19 @@ private:
     /// {0, 4}. Its POSITIONS define the record's element axis (see build_tile_selection).
     const std::vector<int> _live_tile_cols;
 
-    /// gnss_gather_aa: also gather the live antennas' N^2 tiles (after the mixed block) and,
-    /// in freq-map mode, compute the AA block on the comb channels. Off for the tracker,
-    /// on for the visibility capture.
-    const bool _gather_aa;
+    /// gnss_synth_compact: the synth array has one slice per comb channel.
+    const bool _synth_compact;
 
-    /// gnss_gather_bb: also gather the BB (synth x synth) tiles, after the AA block.
-    const bool _gather_bb;
-
-    /// (freq, int32-offset-within-slice) of each gathered tile, in output order.
-    std::vector<int2> _tile_sel;
+    /// One gathered-tile output: a selection over the extended triangle into its own buffer.
+    struct Gather {
+        std::string name;
+        std::vector<int2> sel; ///< (slice, int32 offset within the slice) per tile, in order
+        int n_chan = 0;
+        int2* d_sel = nullptr;
+        std::unique_ptr<NDArrayBuffer<std::int32_t, 6>> buf; // [Tc][chan][tile][16][16][2]
+    };
+    std::vector<Gather> _gathers;
+    size_t _synth_len = 0; ///< bytes per synth frame slot (set in the constructor)
 
     const bool _rfi_all_pass;
 
@@ -137,7 +155,6 @@ private:
     /// Absent when rfi_all_pass (a constant all-ones device mask is used instead).
     std::optional<NDArrayRingBuffer<kotekan::uint1x8_t, 3>> rfi_RFImask;
     NDArrayBuffer<std::int32_t, 6> n2k_correlation; // standard N^2 out, shape as cudaCorrelator
-    NDArrayBuffer<std::int32_t, 6> gnss_tiles;      // [Tc][gnss chan][tile][16][16][2]
 
     /// Cuda kernel wrapper object (the two-input clone; n2k itself is untouched).
     n2k_dual::DualCorrelator dual_correlator;

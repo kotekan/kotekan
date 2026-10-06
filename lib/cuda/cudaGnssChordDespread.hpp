@@ -192,12 +192,18 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
  *        reads noise at every code phase. Not fixable downstream: the correlator forms
  *        sum_t R conj(D) and the tracker sum_t conj(D) conj(R), which are not conjugates of
  *        each other once summed.
- * @param synth      base of THIS RECORD's rows: [n_hops][frame_chan_stride][num_synth] bytes
+ * @param n_lanes    lanes this chain writes (4 per slot); every one of them is written, inactive
+ *                   slots as 0x88
+ * @param lane_base  first lane of this chain in the synth array's lane axis (a multiple of 16:
+ *                   tile rows), so several chains can share one array
+ * @param lane_pitch the synth array's lane axis (num_synth of the correlator reading it)
+ * @param synth      base of THIS RECORD's rows: [n_hops][frame_chan_stride][lane_pitch] bytes
  */
 cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
                           const int* slot2spec, int n_slot, int n_chan, int n_hops,
-                          const int* chan_map, int frame_chan_stride, int num_synth,
-                          bool conj_replica, unsigned char* synth, cudaStream_t stream);
+                          const int* chan_map, int frame_chan_stride, int n_lanes, int lane_base,
+                          int lane_pitch, bool conj_replica, unsigned char* synth,
+                          cudaStream_t stream);
 
 } // namespace gnss_cuda
 

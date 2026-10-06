@@ -7,6 +7,7 @@
 #include "gnssSeedTransport.hpp"      // for propagate_seed
 #include "kotekanLogging.hpp"
 
+#include <algorithm> // for find
 #include <array>
 #include <cassert>
 #include <chordMetadata.hpp>
@@ -32,6 +33,10 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
         config.get_default<std::string>(unique_name, "gnss_synth_name", "gnss_synth")),
     _gnss_local_channels(
         config.get<std::vector<std::int32_t>>(unique_name, "gnss_local_channels")),
+    _synth_lane_base(config.get_default<int>(unique_name, "synth_lane_base", 0)),
+    _synth_lane_pitch(config.get_default<int>(unique_name, "synth_lane_pitch", _num_synth)),
+    _gnss_synth_channels(
+        config.get_default<std::vector<std::int32_t>>(unique_name, "gnss_synth_channels", {})),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
                                           _num_elements / 2},
@@ -55,6 +60,31 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     if (S.n_hops_frame != _num_times)
         FATAL_ERROR("cudaGnssInject: state samples_per_data_set {:d} != num_times {:d}",
                     S.n_hops_frame, _num_times);
+    // The lane range must be whole tile rows (16 lanes) inside the shared axis, or the
+    // correlator's tile arithmetic and this pack disagree about which lane is whose.
+    if (_synth_lane_base < 0 || _synth_lane_base % 16 || _synth_lane_pitch % 16
+        || _synth_lane_base + _num_synth > _synth_lane_pitch)
+        FATAL_ERROR("cudaGnssInject: lanes [{:d}, {:d}) do not fit a synth lane axis of {:d} "
+                    "on 16-lane tile rows (synth_lane_base / synth_lane_pitch / num_synth)",
+                    _synth_lane_base, _synth_lane_base + _num_synth, _synth_lane_pitch);
+    // The synth array's channel axis: every local channel (the one-chain layout), or the
+    // correlator's comb (compact). Each covering channel maps to its index on that axis.
+    if (_gnss_synth_channels.empty()) {
+        _synth_n_chan = _num_local_freq;
+        _h_chan_map.assign(_gnss_local_channels.begin(), _gnss_local_channels.end());
+    } else {
+        _synth_n_chan = (int)_gnss_synth_channels.size();
+        for (std::int32_t f : _gnss_local_channels) {
+            const auto it =
+                std::find(_gnss_synth_channels.begin(), _gnss_synth_channels.end(), f);
+            if (it == _gnss_synth_channels.end())
+                FATAL_ERROR("cudaGnssInject: covering channel {:d} is not on the synth array's "
+                            "channel axis (gnss_synth_channels) -- the correlator would never "
+                            "read this chain's replica there",
+                            f);
+            _h_chan_map.push_back((int)(it - _gnss_synth_channels.begin()));
+        }
+    }
 
     voltage.register_consumer();
 
@@ -81,9 +111,11 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
         WARN("cudaGnssInject: conjugate=false. On CHORD the F-engine output IS conjugated "
              "relative to the decode (measured on sky 2026-07-30); with this false the "
              "synthetic lanes despread the conjugate of the sky and every tile reads NOISE.");
-    INFO("cudaGnssInject: {:d} PRN slots x 4 lanes into '{:s}' [{:d}][{:d}][{:d}], {:d} "
-         "records/frame, channels {:d}, conjugate {:s}",
-         S.n_prn, _gnss_synth_name, _num_times, _num_local_freq, _num_synth, n_rec, S.n_chan,
+    INFO("cudaGnssInject: {:d} PRN slots x 4 lanes into '{:s}' [{:d}][{:d}][{:d}] at lanes "
+         "[{:d}, {:d}), {:d} records/frame, channels {:d}{:s}, conjugate {:s}",
+         S.n_prn, _gnss_synth_name, _num_times, _synth_n_chan, _synth_lane_pitch,
+         _synth_lane_base, _synth_lane_base + _num_synth, n_rec, S.n_chan,
+         _gnss_synth_channels.empty() ? "" : " (compact channel axis)",
          S._conjugate ? "ON" : "off");
 }
 
@@ -149,7 +181,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     auto* d_chan_map =
         (int*)device.get_gpu_memory(unique_name + "_chan_map", (size_t)S.n_chan * sizeof(int));
     if (!_uploaded_static) {
-        CHECK_CUDA_ERROR(cudaMemcpyAsync(d_chan_map, _gnss_local_channels.data(),
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(d_chan_map, _h_chan_map.data(),
                                          (size_t)S.n_chan * sizeof(int), cudaMemcpyHostToDevice,
                                          stream));
         _uploaded_static = true;
@@ -158,7 +190,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     auto* d_ctl = (char*)device.get_gpu_memory_array(_mem_ctl, pipestate.gpu_frame_id,
                                                      _gpu_buffer_depth, _ctl_bytes);
 
-    const size_t synth_len = (size_t)_num_times * _num_local_freq * _num_synth;
+    const size_t synth_len = (size_t)_num_times * _synth_n_chan * _synth_lane_pitch;
     auto* d_synth = (unsigned char*)device.get_gpu_memory_array(
         _gnss_synth_name, pipestate.gpu_frame_id, _gpu_buffer_depth, synth_len);
 
@@ -392,11 +424,11 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         n_jobs_frame += (int)specs.size();
 
         unsigned char* d_synth_rec =
-            d_synth + (size_t)r * S.hops_per_record * _num_local_freq * _num_synth;
+            d_synth + (size_t)r * S.hops_per_record * _synth_n_chan * _synth_lane_pitch;
         CHECK_CUDA_ERROR(gnss_cuda::launch_pack44(
             d_wave, d_energy0, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn, S.n_chan,
-            S.hops_per_record, d_chan_map, _num_local_freq, _num_synth, S._conjugate,
-            d_synth_rec, stream));
+            S.hops_per_record, d_chan_map, _synth_n_chan, _num_synth, _synth_lane_base,
+            _synth_lane_pitch, S._conjugate, d_synth_rec, stream));
     }
 
     hdr->n_jobs = n_jobs_frame * gnss_gpu::ROWS_PLAIN;

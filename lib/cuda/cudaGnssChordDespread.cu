@@ -818,12 +818,13 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
                                    const gnss_cuda::DespreadJob* __restrict__ jobs,
                                    const int* __restrict__ slot2spec, int n_slot, int n_chan,
                                    int n_hops, const int* __restrict__ chan_map,
-                                   int frame_chan_stride, int num_synth, int conj_replica,
+                                   int frame_chan_stride, int n_lanes, int lane_base,
+                                   int lane_pitch, int conj_replica,
                                    unsigned char* __restrict__ synth) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int lane = idx % num_synth;
-    const int c = (idx / num_synth) % n_chan;
-    const int m = idx / (num_synth * n_chan);
+    const int lane = idx % n_lanes;
+    const int c = (idx / n_lanes) % n_chan;
+    const int m = idx / (n_lanes * n_chan);
     if (m >= n_hops)
         return;
 
@@ -856,21 +857,22 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
             }
         }
     }
-    synth[((size_t)m * frame_chan_stride + chan_map[c]) * num_synth + lane] = out;
+    synth[((size_t)m * frame_chan_stride + chan_map[c]) * lane_pitch + lane_base + lane] = out;
 }
 
 } // namespace
 
 cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
                           const int* slot2spec, int n_slot, int n_chan, int n_hops,
-                          const int* chan_map, int frame_chan_stride, int num_synth,
-                          bool conj_replica, unsigned char* synth, cudaStream_t stream) {
-    const long total = (long)n_hops * n_chan * num_synth;
+                          const int* chan_map, int frame_chan_stride, int n_lanes, int lane_base,
+                          int lane_pitch, bool conj_replica, unsigned char* synth,
+                          cudaStream_t stream) {
+    const long total = (long)n_hops * n_chan * n_lanes;
     const int threads = 256;
     const long blocks = (total + threads - 1) / threads;
     gnss_pack44_kernel<<<(unsigned)blocks, threads, 0, stream>>>(
         wave, energy, jobs, slot2spec, n_slot, n_chan, n_hops, chan_map, frame_chan_stride,
-        num_synth, conj_replica ? 1 : 0, synth);
+        n_lanes, lane_base, lane_pitch, conj_replica ? 1 : 0, synth);
     return cudaGetLastError();
 }
 
