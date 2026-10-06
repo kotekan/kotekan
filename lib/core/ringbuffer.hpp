@@ -34,8 +34,18 @@
  * In the yaml config file, one of these can be created by setting the
  * @c kotekan_buffer value to @c "ring".
  *
+ * A ring can carry a frame descriptor that describes the whole ring: the
+ * slowest dimension's extent is the ring's capacity along that dimension, and
+ * the descriptor's byte size equals @c ring_buffer_size. It can be declared in
+ * the config with the same keys as an @c ndarray buffer, and is otherwise
+ * attached by the GPU commands that use the ring.
+ *
  * @conf ring_buffer_size: the number of elements in the ring buffer
  * @conf metadata_pool The name of the metadata pool to associate with the buffer
+ * @conf value_type Optional: the element type of the ring's frame descriptor;
+ *                  if given, @c extents is required, and @c quantity_name,
+ *                  @c dimnames and @c dimscalings are optional, as for an
+ *                  @c ndarray buffer
  */
 class RingBuffer : public GenericBuffer {
 public:
@@ -197,6 +207,11 @@ public:
     // consumer has finished reading a chunk of data.  "last_read_tail
     // = min(read_tails)".
     std::ptrdiff_t last_read_tail;
+
+private:
+    std::size_t frame_desc_byte_size() const override {
+        return std::size_t(size);
+    }
 };
 
 #endif

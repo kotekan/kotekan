@@ -141,6 +141,10 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
                     type_name, name, ringbuf_size, metadataPool_name, numa_node);
         buf = new RingBuffer(ringbuf_size, pool, name, type_name);
 
+        // A ring may declare its frame descriptor like an `ndarray` buffer
+        if (config.exists(location, "value_type"))
+            buf->ensure_frame_desc(GenericNDArray::from_config(config, location));
+
         // Ring buffers are not peekable yet, so peek_hold would otherwise be
         // read by nothing and leave the buffer quietly unpeekable.
         if (config.get_default<bool>(location, "peek_hold", false))

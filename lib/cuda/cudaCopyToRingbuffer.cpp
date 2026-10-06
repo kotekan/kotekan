@@ -1,10 +1,11 @@
 #include "cudaCopyToRingbuffer.hpp"
 
+#include "NDArray.hpp"        // for GenericNDArray
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaMemcpyAsync, cudaHostGetFlags, cudaHostUnregister
 #include "gpuCommand.hpp"     // for gpuCommandType
-#include "kotekanLogging.hpp" // for DEBUG
+#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -16,6 +17,7 @@
 #include <stdint.h>    // for uint8_t
 #include <sys/types.h> // for uint
 #include <tuple>       // for tuple, make_tuple
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -27,7 +29,7 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
                                            cudaDeviceInterface& device, int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "cudaCopyToRingbuffer", ""),
-    output_cursor(0), initial_fpga_seq_num(-1) {
+    output_cursor(0), initial_fpga_seq_num(-1), did_set_frame_desc(false) {
     _input_size = config.get<size_t>(unique_name, "input_size");
     _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
@@ -145,6 +147,15 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         // Copy (reference to) metadata also
         in_meta = std::dynamic_pointer_cast<chordMetadata>(in_buffer->metadata[buf_index]);
         DEBUG("Metadata from input buffer frame: {:p}", static_cast<void*>(in_meta.get()));
+
+        // Give the ring the layout of the input frames, with the ring's capacity in the slowest
+        // dimension. This attaches the ring's descriptor, or checks the input layout against the
+        // one from the config or the GPU commands.
+        if (!did_set_frame_desc) {
+            did_set_frame_desc = true;
+            if (const auto in_desc = in_buffer->get_frame_desc<kotekan::GenericNDArray>())
+                set_ring_frame_desc(*in_desc);
+        }
     }
     if (in_meta) {
         if (initial_fpga_seq_num == -1) { // first time
@@ -167,9 +178,8 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                            % out_meta->sample_bytes()
                        == 0);
                 assert(out_meta->dims > 0);
-                assert(in_buffer->frame_size % in_meta->sample_bytes() == 0);
-                assert(out_meta->dim[0]
-                       == std::ptrdiff_t(in_buffer->frame_size / in_meta->sample_bytes()));
+                assert(_input_size % in_meta->sample_bytes() == 0);
+                assert(out_meta->dim[0] == std::ptrdiff_t(_input_size / in_meta->sample_bytes()));
 
                 signal_buffer->set_metadata(0, out_meta);
             } else { // handle one of the later frames, frame 0 handler has set metadata
@@ -185,6 +195,21 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
     }
 
     return record_end_event();
+}
+
+void cudaCopyToRingbuffer::set_ring_frame_desc(const kotekan::GenericNDArray& in_desc) {
+    const std::ptrdiff_t granularity =
+        std::ptrdiff_t(in_desc.get_byte_size()) / in_desc.get_extent(0);
+    if (signal_buffer->size % granularity != 0)
+        FATAL_ERROR("{:s}: ring buffer {:s} holds {:d} bytes, which is not a multiple of {:d} "
+                    "bytes, the size of one index of the slowest dimension of input buffer {:s}",
+                    unique_name, signal_buffer->buffer_name, signal_buffer->size, granularity,
+                    in_buffer->buffer_name);
+    std::vector<std::ptrdiff_t> extents = in_desc.get_extents();
+    extents.at(0) = signal_buffer->size / granularity;
+    signal_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+        in_desc.get_value_datatype(), in_desc.get_quantity_name(), extents, in_desc.get_dimnames(),
+        in_desc.get_dimscalings()));
 }
 
 void cudaCopyToRingbuffer::finalize_frame() {

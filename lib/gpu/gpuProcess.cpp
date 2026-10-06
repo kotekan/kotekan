@@ -477,13 +477,20 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         node.add_line(buffer_name);
 
         // The layout: from the descriptor a command registered for it (the
-        // NDArray wrappers do), else from the metadata on the memory itself,
-        // which hand-written kernels attach instead. Then its size, from the
-        // device, which knows whether it is one region or an array of them.
+        // NDArray wrappers do), else from its signal ring's descriptor, else
+        // from the metadata on the memory itself, which hand-written kernels
+        // attach instead. Then its size, from the device, which knows whether
+        // it is one region or an array of them.
         std::shared_ptr<const kotekan::FrameDesc> desc;
         for (auto& command : commands)
             if ((desc = command[0]->get_gpu_buffer_desc(buffer_name)))
                 break;
+        if (!desc && !signal.empty()) {
+            const auto& host_buffers = local_buffer_container.get_buffer_map();
+            auto ring = host_buffers.find(signal);
+            if (ring != host_buffers.end())
+                desc = ring->second->get_frame_desc();
+        }
         const std::optional<gpuMemoryInfo> info = dev->get_gpu_memory_info(buffer_name);
         if (auto array = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(desc)) {
             std::vector<std::string> dimnames;

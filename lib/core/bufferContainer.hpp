@@ -21,6 +21,7 @@ public:
     Buffer* get_buffer(const std::string& name);
 
     std::map<std::string, GenericBuffer*>& get_buffer_map();
+    const std::map<std::string, GenericBuffer*>& get_buffer_map() const;
     void set_buffer_map(std::map<std::string, GenericBuffer*>& buffer_map);
 
 protected:

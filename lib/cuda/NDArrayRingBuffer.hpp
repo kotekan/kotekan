@@ -245,6 +245,8 @@ public:
     //
     {
         set_log_level(cuda_command.get_log_level());
+        // Every command on the ring must agree on its layout
+        ringbuffer->ensure_frame_desc(frame_desc());
     }
 
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
