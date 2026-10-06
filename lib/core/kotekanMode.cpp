@@ -379,15 +379,21 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
         const bool in_chain = producers.size() == 1 && consumers.size() == 1;
         const std::string weight = in_chain ? "4" : "1";
 
+        // A host ring paired with its GPU region: the region's edges already
+        // show where the data goes, and a second set crosses every stage box.
+        const bool draw_edges = !graph.add_node(buf.first).flow_drawn_elsewhere;
+
         std::vector<std::string> touched_by;
         for (const auto& consumer : consumers) {
             const std::string node = endpoint(consumer);
-            graph.add_edge(buf.first, node).set_attr("weight", weight);
+            if (draw_edges)
+                graph.add_edge(buf.first, node).set_attr("weight", weight);
             touched_by.push_back(node);
         }
         for (const auto& producer : producers) {
             const std::string node = endpoint(producer);
-            graph.add_edge(node, buf.first).set_attr("weight", weight);
+            if (draw_edges)
+                graph.add_edge(node, buf.first).set_attr("weight", weight);
             touched_by.push_back(node);
         }
         // Draw the buffer wherever everything using it lives: private buffers

@@ -3,9 +3,16 @@
 #include "Config.hpp"
 #include "StageFactory.hpp"
 #include "Telescope.hpp"
+#include "UpchannelizationSchedule.hpp"
 #include "bufferContainer.hpp"
+#include "frb1IntensityBound.hpp"
+#include "kotekanLogging.hpp"
 #include "processFeedGains.hpp"
 
+#include <cassert>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 using kotekan::bufferContainer;
@@ -18,7 +25,10 @@ processFRBFeedGains::processFRBFeedGains(Config& config, const std::string& uniq
     processFeedGains(config, unique_name, buffer_container) {
     // get the additional config parameters needed for the frame desc
     num_polarizations = config.get<uint32_t>(unique_name, "num_polarizations");
+    frb1_phase_lifetime_in_samples =
+        config.get<std::int64_t>(unique_name, "frb1_phase_lifetime_in_samples");
     frb1_swap_MN = config.get_default<bool>(unique_name, "frb1_swap_MN", false);
+    fpga_seq_num_offset = upchan_output_offset(config, unique_name);
 
     // telescope layout
     const int num_dishes_x = Telescope::instance().get_grid_size_x();
@@ -40,14 +50,66 @@ void processFRBFeedGains::copy_upchannelize_f(const float* src_f, float16_t* dst
     }
 }
 
+void processFRBFeedGains::check_gains(const float16_t* frame) {
+    // Output frame layout: [beam][Fbar][P][dishN][dishM][C]. `num_components` is the number of
+    // components of a complex number; it is always 2, and is only named in the configs to avoid
+    // a magic number.
+    assert(num_components == 2);
+    if (num_elements != num_polarizations * num_dishes_M * num_dishes_N) {
+        WARN("Cannot check the FRB1 gains for overflow: num_elements={:d} differs from "
+             "num_polarizations * num_dishes_M * num_dishes_N = {:d} * {:d} * {:d}",
+             num_elements, num_polarizations, num_dishes_M, num_dishes_N);
+        return;
+    }
+    const std::ptrdiff_t num_freqs = std::ptrdiff_t(num_local_freq) * upchan_factor;
+    const std::ptrdiff_t str_freq = std::ptrdiff_t(num_elements) * num_components;
+    const std::ptrdiff_t str_beam = str_freq * num_freqs;
+
+    // Find the (beam, frequency) with the largest worst-case intensity
+    std::ptrdiff_t num_bad = 0;
+    std::ptrdiff_t worst_beam = -1, worst_freq = -1;
+    double worst_bound = 0;
+    for (std::ptrdiff_t beam = 0; beam < std::ptrdiff_t(num_beams); ++beam) {
+        for (std::ptrdiff_t freq = 0; freq < num_freqs; ++freq) {
+            const double bound =
+                kotekan::frb1_intensity_bound(frame + str_beam * beam + str_freq * freq,
+                                              num_polarizations, num_dishes_M, num_dishes_N);
+            if (bound > kotekan::frb1_intensity_limit)
+                ++num_bad;
+            if (bound > worst_bound) {
+                worst_beam = beam;
+                worst_freq = freq;
+                worst_bound = bound;
+            }
+        }
+    }
+
+    // Don't abort: the gains are updated while the pipeline runs, and the kernel only
+    // overflows for strong coherent signals
+    if (num_bad > 0)
+        WARN("The FRB1 gains can overflow Float16 for {:d} of {:d} (beam, frequency) pairs: "
+             "beam {:d}, frequency {:d} has a worst-case intensity of {:g}, above the limit "
+             "{:g}. The gains need to be reduced by at least a factor {:.3g}.",
+             num_bad, std::ptrdiff_t(num_beams) * num_freqs, worst_beam, worst_freq, worst_bound,
+             kotekan::frb1_intensity_limit, std::sqrt(worst_bound / kotekan::frb1_intensity_limit));
+    else
+        DEBUG("FRB1 gains: largest worst-case intensity {:g} (beam {:d}, frequency {:d}), "
+              "limit {:g}",
+              worst_bound, worst_beam, worst_freq, kotekan::frb1_intensity_limit);
+}
+
 void processFRBFeedGains::set_frame_desc(Buffer* buf) {
-    // Attach the frame description, or check the declared one
-    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 5>::describe(
+    // Attach the frame description, or check the declared one. The leading axis has length 1
+    // and carries the lifetime as its `dimscaling`; that is how the GPU ring buffer learns how
+    // many FPGA samples one set of weights covers. One frame is emitted per bad feed mask frame,
+    // so this must equal the mask's lifetime (checked in the main loop).
+    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 6>::describe(
         "W",
-        {static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
+        {1, static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
          static_cast<ptrdiff_t>(num_polarizations), static_cast<ptrdiff_t>(num_dishes_N),
          static_cast<ptrdiff_t>(num_dishes_M), static_cast<ptrdiff_t>(num_components)},
-        {"Fbar", "P", "dishN", "dishM", "C"}, {1, 1, 1, 1, 1}));
+        {"TW", "Fbar", "P", "dishN", "dishM", "C"},
+        {static_cast<ptrdiff_t>(frb1_phase_lifetime_in_samples), 1, 1, 1, 1, 1}));
 
     // everything below here ends up being the same as the parent class
     freq_upchan_factor = std::vector<int>(num_local_freq * upchan_factor, upchan_factor);

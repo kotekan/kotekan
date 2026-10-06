@@ -11,6 +11,7 @@
 #include "bufferContainer.hpp"
 #include "processFeedGains.hpp"
 
+#include <cstdint>
 #include <string>
 
 /**
@@ -18,7 +19,22 @@
  * @brief Merge, upchannelize, and apply weights to gain files.
  *
  * Applies the same processing as the parent, but sets the buffer metadata
- * expected by `CHIMEFRBBeamformer_chime_U16`.
+ * expected by `CHIMEFRBBeamformer_chime_U16_K4` and
+ * `CHIMEFRBBeamformer_chime_U16_K8`; the gain buffer is the same for both input
+ * bit depths.
+ *
+ * The output frames have a leading length-1 `TW` axis whose `dimscaling` is
+ * `frb1_phase_lifetime_in_samples`. That must equal the lifetime of the bad feed
+ * mask frames, which clock the output.
+ *
+ * The FRB1 kernel locates weight element `k` at `k * lifetime` FPGA samples after the beginning
+ * of its input, the upchannelizers' output, which begins later than the voltages (see
+ * `upchan_output_offset`). The output frames are stamped accordingly: the weights made from mask
+ * frame `k` apply to the upchannelized samples beginning at that offset after the mask frame.
+ *
+ * @conf frb1_phase_lifetime_in_samples Int. How many FPGA samples one output frame covers.
+ * @conf max_upchannelization_factor    Int. The largest upchannelization factor of the run; it
+ *                                      determines the upchannelizers' output offset.
  *
  * @author Liam Gray
  *
@@ -31,9 +47,12 @@ public:
 private:
     void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) override;
     void set_frame_desc(Buffer* buf) override;
+    /// Warn if the gains can make the FRB1 kernel overflow Float16
+    void check_gains(const float16_t* frame) override;
 
     // config parameters required for metadata
     uint32_t num_polarizations;
+    std::int64_t frb1_phase_lifetime_in_samples;
 
     bool frb1_swap_MN;
     int num_dishes_M;

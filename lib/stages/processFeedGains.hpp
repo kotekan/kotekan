@@ -13,6 +13,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
+#include <cstdint>  // for int64_t
 #include <queue>    // for queue
 #include <stdint.h> // for int32_t, uint8_t, int16_t, uint32_t
 #include <string>   // for string
@@ -32,17 +33,26 @@ using std::vector;
  * For beamformers which support multiple beams, this stage expects to receive a
  * separate buffer for each beam, as implemented in `loadFeedGains`.
  *
- * In order to be compatible with existing copy-to-GPU methods, this stage will
- * continuously emit kotekan buffers containing the current gains.
+ * The output is a stream clocked by the input mask: for every mask frame this stage emits one
+ * output frame, containing the current gains with the masked elements zeroed, and stamped with
+ * the mask frame's `fpga_seq_num` (plus `fpga_seq_num_offset`, see there) and
+ * `time_downsampling_fpga`. The output frame description must
+ * have a leading time axis whose `dimscaling` equals the mask's `time_downsampling_fpga`, i.e.
+ * the number of FPGA samples one frame covers. The gain buffers are polled without blocking
+ * (except for the first frame), since gains are updated rarely.
  *
  * @par Buffers
  * @buffer gain_buf_<n> Each buffer is an array of arbitrary gains for a given beam
  *     @buffer_format float32
  *     @buffer_shape [freq][element][real/imag]
  *     @buffer_metadata chordMetadata
- * @buffer processed_gains_buf Array of processed gains
- *     @buffer_format float32
- *     @buffer_shape [beams][freq][upchan_factor][element][real/imag]
+ * @buffer in_mask_buf The element (feed) mask, one frame per mask lifetime
+ *     @buffer_format uint8
+ *     @buffer_shape [element]
+ *     @buffer_metadata chordMetadata
+ * @buffer out_buf Array of processed gains
+ *     @buffer_format float16
+ *     @buffer_shape [time=1][beams][freq][upchan_factor][element][real/imag]
  *     @buffer_metadata chordMetadata
  *
  * @conf   num_elements                          Int. Number of elements
@@ -83,6 +93,10 @@ protected:
     /// fixed scaling factor
     float scaling_factor;
 
+    /// Added to the mask frames' `fpga_seq_num` when stamping the output frames, for consumers
+    /// whose data begin later than the voltages. 0 by default.
+    std::int64_t fpga_seq_num_offset = 0;
+
     /// Store gain upchannelization factors
     std::vector<int> freq_upchan_factor;
     std::vector<int> freq_upchan_index;
@@ -98,6 +112,10 @@ private:
 
     /// Create a frame desc for the output buffer.
     virtual void set_frame_desc(Buffer* buf) = 0;
+
+    /// Check the processed and masked gains of an output frame. Called whenever the gains or
+    /// the mask changed. The default does nothing.
+    virtual void check_gains(const float16_t* /*frame*/) {}
 
     std::vector<Buffer*> gain_buffers;
     Buffer* in_mask_buf;

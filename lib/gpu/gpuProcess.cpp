@@ -1,11 +1,16 @@
 #include "gpuProcess.hpp"
 
 #include "Config.hpp"             // for Config
+#include "DataType.hpp"           // for type_to_string
+#include "FrameDesc.hpp"          // for FrameDesc
+#include "NDArray.hpp"            // for GenericNDArray
 #include "PipelineGraph.hpp"      // for PipelineGraph, GraphNode
+#include "Symbol.hpp"             // for Symbol
+#include "chordMetadata.hpp"      // for chordMetadata
 #include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
 #include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
-#include "kotekanLogging.hpp"     // for DEBUG2, INFO
+#include "kotekanLogging.hpp"     // for DEBUG2, ERROR, INFO
 #include "restServer.hpp"         // for restServer, connectionInstance
 #include "util.h"                 // for e_time
 #include "visUtil.hpp"            // for StatTracker
@@ -13,11 +18,14 @@
 #include "fmt.hpp"  // for format, compile_string_to_view, format_string, fmt
 #include "json.hpp" // for json_ref, basic_json, json, iter_impl
 
+#include <algorithm>   // for find
 #include <assert.h>    // for assert
 #include <cmath>       // for isnan
+#include <cstdlib>     // for abort
 #include <functional>  // for bind, ref, function, _1
 #include <map>         // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
-#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <memory>      // for __shared_ptr_access, shared_ptr, dynamic_pointer_cast
+#include <optional>    // for optional
 #include <pthread.h>   // for pthread_setaffinity_np
 #include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <set>         // for set
@@ -72,6 +80,17 @@ gpuProcess::~gpuProcess() {
     // remove_get_callback() waits for an in-flight invocation to finish, so the
     // callback cannot still be walking `commands` once this returns.
     restServer::instance().remove_get_callback(_profile_endpoint);
+    // main_thread() joins the results thread on every exit path, so it can still be joinable here
+    // only if this stage is destroyed while its main_thread runs: a stage deleted without stop()
+    // and join(), which is undefined behaviour before this line (the derived destructors have
+    // already run). Joining could not make that safe, and deleting the signals below would block
+    // forever in pthread_cond_destroy on the live waiter, so fail loudly instead of hanging.
+    if (results_thread_handle.joinable()) {
+        ERROR("{:s}: destroyed with its results thread still running (the stage was deleted "
+              "without stop() and join()); aborting instead of hanging in teardown.",
+              unique_name);
+        std::abort();
+    }
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
@@ -162,11 +181,10 @@ void gpuProcess::main_thread() {
     // takes in execute() without having listed it belongs to this stage. See gpuMemoryClaims.hpp.
     dev->claim_memory_owner_thread(unique_name);
 
-    // A FatalError thrown from a command's execute() after the first frame (the results thread
-    // starts then; a command gated by required_flag, say) leaves this function without reaching
-    // exit_loop below; the results thread would then wait forever on signals nobody stops, and
-    // ~gpuProcess would destroy a joinable std::thread, which terminates the process instead of
-    // shutting it down. Stop and join on the way out too.
+    // A FatalError thrown from a command below leaves this function without reaching exit_loop;
+    // the results thread would then wait forever on signals nobody stops, and ~gpuProcess would
+    // block in pthread_cond_destroy on the very condition variable it waits on. Stop and join on
+    // the way out too.
     struct results_unwind {
         gpuProcess& proc;
         bool armed = true;
@@ -192,6 +210,18 @@ void gpuProcess::main_thread() {
 
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[ic]->wait_for_free_slot();
+
+        // The slot came free because the results thread finished that slot's previous frame. Once
+        // a stop is set it finishes frames WITHOUT finalize_frame(), so that frame's ring-buffer
+        // claims and host frames may still be held: an NDArrayRingBuffer reader would raise a
+        // FatalError over an ordinary shutdown, and a frame-buffer command would reuse the stale
+        // frame. Never start a frame after a stop.
+        if (stop_thread) {
+            INFO(
+                "Stop requested while GPU[{:d}] waited for a free slot; leaving before frame {:d}.",
+                gpu_id, gpu_frame_counter);
+            break;
+        }
 
         // Update the gpu_frame_counter and perform any reset actions on the command object
         // for this frame.
@@ -301,8 +331,8 @@ void gpuProcess::results_thread() {
     }
 }
 
-std::string gpuProcess::gpu_mem_node_prefix(const std::string& stage_name) {
-    return fmt::format("{:s}/mem/", stage_name);
+std::string gpuProcess::gpu_mem_node_prefix(uint32_t gpu_id) {
+    return fmt::format("__gpu/{:d}/mem/", gpu_id);
 }
 
 void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
@@ -397,37 +427,103 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         previous = id;
     }
 
-    // GPU memory, in a region of its own inside this stage's box.
-    auto& mem = graph.add_cluster(fmt::format("{:s}/mem", name));
-    mem.parent = work.id;
-    mem.label = "device memory";
-    mem.set_attr("style", "rounded").set_attr("color", kotekan::graph_cluster_line);
-    // GPU memory names are local to a gpuProcess ("voltage" on one device is not
-    // the "voltage" on the next), so the node ids carry the stage they belong to.
-    const std::string mem_prefix = gpu_mem_node_prefix(name);
+    // GPU memory. The memory is the device's, shared by every gpuProcess driving
+    // it (cudaDeviceInterface::get hands them the same object), so a region a
+    // copy fills in one stage and a kernel reads in another is a single node
+    // with edges from both. "voltage" on one device is still not the "voltage"
+    // on the next, so the ids carry the device.
+    //
+    // A region is drawn in the box of the stage that writes it, so the edges
+    // leaving a box are exactly the regions read elsewhere; one that nothing
+    // here writes sits at the device level until a writer claims it. Gathering
+    // the regions in a box of their own instead doubles the edge crossings.
+    const std::string mem_prefix = gpu_mem_node_prefix(gpu_id);
+
     std::set<std::string> gpu_buffers;
-    std::set<std::string> gpu_buffer_arrays;
+    std::set<std::string> written_here;
     for (auto& command : commands) {
         for (auto& buff : command[0]->get_gpu_buffers()) {
-            if (std::get<1>(buff))
-                gpu_buffer_arrays.insert(std::get<0>(buff));
-            else
-                gpu_buffers.insert(std::get<0>(buff));
+            gpu_buffers.insert(std::get<0>(buff));
+            if (std::get<3>(buff))
+                written_here.insert(std::get<0>(buff));
         }
     }
-    // Arrays are per-frame (one region per buffer_depth slot); the rest is a
-    // single region shared by every frame in flight.
-    for (const auto& buffer_name : gpu_buffer_arrays) {
-        auto& node = graph.add_node(mem_prefix + buffer_name);
-        node.add_line(buffer_name);
-        node.add_line(fmt::format(fmt("array ×{:d}"), _gpu_buffer_depth));
-        node.cluster = mem.id;
-        node.set_category(kotekan::GraphCategory::Memory);
-    }
+
     for (const auto& buffer_name : gpu_buffers) {
         auto& node = graph.add_node(mem_prefix + buffer_name);
+        // Another stage on this device may have described it already; a writer
+        // still claims it into its own box.
+        const bool is_new = node.cluster.empty();
+        if (written_here.count(buffer_name))
+            node.cluster = work.id;
+        else if (is_new)
+            node.cluster = device.id;
+
+        // A ring region is tracked by a host RingBuffer, whose node the graph
+        // already has as a buffer: mark that node as the ring's signal and tie
+        // the two together, so it is not mistaken for data living on the host.
+        // The region's edges show where the data goes, so the ring drops its
+        // own; drawing both roughly triples the crossings on a large pipeline.
+        std::string signal;
+        for (auto& command : commands)
+            if (signal.empty())
+                signal = command[0]->get_gpu_buffer_signal(buffer_name);
+        if (!signal.empty() && graph.has_node(signal)) {
+            auto& ring = graph.add_node(signal);
+            const std::string mark = "signal for " + buffer_name;
+            if (std::find(ring.label_lines.begin(), ring.label_lines.end(), mark)
+                == ring.label_lines.end()) {
+                ring.add_line(mark);
+                ring.set_attr("fillcolor",
+                              kotekan::graph_style(kotekan::GraphCategory::Memory).fill);
+                ring.flow_drawn_elsewhere = true;
+                graph.add_edge(signal, mem_prefix + buffer_name)
+                    .set_attr("style", "dashed")
+                    .set_attr("arrowhead", "none");
+            }
+        }
+
+        if (!is_new)
+            continue;
         node.add_line(buffer_name);
-        node.cluster = mem.id;
+
+        // The layout: from the descriptor a command registered for it (the
+        // NDArray wrappers do), else from the metadata on the memory itself,
+        // which hand-written kernels attach instead. Then its size, from the
+        // device, which knows whether it is one region or an array of them.
+        std::shared_ptr<const kotekan::FrameDesc> desc;
+        for (auto& command : commands)
+            if ((desc = command[0]->get_gpu_buffer_desc(buffer_name)))
+                break;
+        const std::optional<gpuMemoryInfo> info = dev->get_gpu_memory_info(buffer_name);
+        if (auto array = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(desc)) {
+            std::vector<std::string> dimnames;
+            for (const kotekan::Symbol& dimname : array->get_dimnames())
+                dimnames.push_back(dimname ? dimname.get_string() : std::string());
+            node.add_line(kotekan::array_layout_line(type_to_string(array->get_value_datatype()),
+                                                     array->get_extents(), dimnames));
+        } else if (info) {
+            if (auto chord = std::dynamic_pointer_cast<chordMetadata>(info->metadata)) {
+                std::vector<std::ptrdiff_t> extents;
+                std::vector<std::string> dimnames;
+                for (int d = 0; d < chord->dims; d++) {
+                    extents.push_back(chord->dim[d]);
+                    dimnames.push_back(chord->get_dimension_name(d));
+                }
+                node.add_line(
+                    kotekan::array_layout_line(type_to_string(chord->type), extents, dimnames));
+            }
+        }
+        if (info) {
+            if (info->depth > 1)
+                node.add_line(
+                    fmt::format(fmt("{:s} ×{:d}"), kotekan::human_bytes(info->len), info->depth));
+            else if (!signal.empty())
+                node.add_line(fmt::format(fmt("{:s} · ring"), kotekan::human_bytes(info->len)));
+            else
+                node.add_line(kotekan::human_bytes(info->len));
+        }
+
         node.set_category(kotekan::GraphCategory::Memory);
     }
 

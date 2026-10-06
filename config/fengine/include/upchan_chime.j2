@@ -11,6 +11,11 @@ upchannelization_factor: 16
 
 
 
+# The largest upchannelization factor used in this run. All upchannelizers delay their
+# output so that it is aligned in time with that of the largest factor. (That is the
+# HFB upchannelizer's U=128, see `upchan_hfb_chime.j2`.)
+max_upchannelization_factor: 128
+
 upchan_factors: [16]
 # ranges are [min, max)
 upchan_channel_ranges:
@@ -44,11 +49,6 @@ host_upchan_U16_gain_buffer:
 
 # Packet loss masks
 
-host_upchan_U16_expanded_pl_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U16_max_num_channels * (num_times / 64 / 16)
-    metadata_pool: main_pool
 host_upchan_U16_expanded_pl_mask_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U16_max_num_channels * (num_times / 64 / 16)
@@ -56,16 +56,6 @@ host_upchan_U16_expanded_pl_mask_ringbuffer:
 
 # Voltages
 
-host_upchan_U16_voltage_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    # frame_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * 16) * (num_times / 16)
-    value_type: int4x2_swapped_withoffset
-    extents: [num_times / 16, upchan_U16_max_num_channels * 16, num_polarizations, num_dishes]
-    quantity_name: "Ebar"
-    dimnames: ["Tbar", "Fbar", "P", "D"]
-    dimscalings: [16, 1, 1, 1]
-    metadata_pool: main_pool
 host_upchan_U16_voltage_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * 16) * (num_times / 16)
@@ -118,7 +108,7 @@ run_upchan_U16:
           in_buf: host_upchan_U16_gain_buffer
           gpu_mem: upchan_U16_gain_buffer
         - name: cudaSyncInput
-        - name: cudaUpchannelizer_chime_U16
+        - name: cudaUpchannelizer_chime_U16_K4
           voltage_name: xposed_voltage
           upchan_U16_gain_name: upchan_U16_gain
           upchan_U16_voltage_name: upchan_U16_voltage

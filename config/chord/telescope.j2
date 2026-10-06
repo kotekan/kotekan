@@ -1,0 +1,121 @@
+{#-
+  telescope.j2
+  The CHORD pathfinder telescope: site geometry, the dish table and the EOP hook.
+  Included by pathfinder.j2 (X-engine) and recv.j2 (receiver) so both label the same
+  element axis from one dish_inputs table; the receiver's hdf5N2Write would write files
+  mislabeled if its table ever diverged from the X-engine's at the same connected count.
+-#}
+telescope:
+    name: CHORDTelescope
+    sampling_rate_MHz: 3200.0
+    fft_length: 16384
+    nyquist_zone: 1
+    min_science_freq_MHz: 300
+    max_science_freq_MHz: 1500
+
+    origin_itrs_lat_deg: 49.32075144444
+    origin_itrs_lon_deg: -119.62081125
+
+    grid_x_axis: [ 0.999974342398359362,
+                -0.000037539331442772,
+                -0.007163318767675494]
+    grid_y_axis: [0.000065403387739210,
+                0.999992433220348809,
+                0.003889630373557614]
+
+    dish_elev_axis: [0.99999999838132391,
+                   -0.000056897733584327,
+                   0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+
+    dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
+    check_duplicate_dish_grid: true  # Only ArrayDish entries are checked; Missing and RFIDish rows are exempt
+
+    dish_grid_size_x: 8
+    dish_grid_size_y: 12
+    dish_separation_x_m: 6.300156854906823
+    dish_separation_y_m: 8.500057809796308
+    # Live wiring (Oct 1 2026): 6 CRS boards x 8 ADCs = 48 inputs, dishes A01-A08 and B01-B08
+    # (source_id 0-3, dish slots 0-15) plus the RFI antennas in dish slots 56-63 (source_id
+    # 14-15). Element order is [P][D] (CHORDBeamformer): the X-engine's crs_board_remap groups
+    # the polarizations and this table defines the D axis. RFIDish rows are correlated but
+    # always masked on the X-engine and kept in the DishInputs subset; Missing rows are not
+    # connected, flip to ArrayDish when wired.
+    dish_inputs: [
+        {dish_idx:  0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01},
+        {dish_idx:  1, grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A02},
+        {dish_idx:  2, grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A03},
+        {dish_idx:  3, grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A04},
+        {dish_idx:  4, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B01},
+        {dish_idx:  5, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B02},
+        {dish_idx:  6, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B03},
+        {dish_idx:  7, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B04},
+        {dish_idx:  8, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A05},
+        {dish_idx:  9, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06},
+        {dish_idx: 10, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07},
+        {dish_idx: 11, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A08},
+        {dish_idx: 12, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B05},
+        {dish_idx: 13, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B06},
+        {dish_idx: 14, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B07},
+        {dish_idx: 15, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B08},
+        {dish_idx: 16, grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C01},
+        {dish_idx: 17, grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C02},
+        {dish_idx: 18, grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C03},
+        {dish_idx: 19, grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C04},
+        {dish_idx: 20, grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D01},
+        {dish_idx: 21, grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D02},
+        {dish_idx: 22, grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D03},
+        {dish_idx: 23, grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D04},
+        {dish_idx: 24, grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C05},
+        {dish_idx: 25, grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C06},
+        {dish_idx: 26, grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C07},
+        {dish_idx: 27, grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: C08},
+        {dish_idx: 28, grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D05},
+        {dish_idx: 29, grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D06},
+        {dish_idx: 30, grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D07},
+        {dish_idx: 31, grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: D08},
+        {dish_idx: 32, grid_x_idx: 0,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E01},
+        {dish_idx: 33, grid_x_idx: 1,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E02},
+        {dish_idx: 34, grid_x_idx: 2,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E03},
+        {dish_idx: 35, grid_x_idx: 3,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E04},
+        {dish_idx: 36, grid_x_idx: 0,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F01},
+        {dish_idx: 37, grid_x_idx: 1,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F02},
+        {dish_idx: 38, grid_x_idx: 2,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F03},
+        {dish_idx: 39, grid_x_idx: 3,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F04},
+        {dish_idx: 40, grid_x_idx: 4,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E05},
+        {dish_idx: 41, grid_x_idx: 5,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E06},
+        {dish_idx: 42, grid_x_idx: 6,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E07},
+        {dish_idx: 43, grid_x_idx: 7,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: E08},
+        {dish_idx: 44, grid_x_idx: 4,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F05},
+        {dish_idx: 45, grid_x_idx: 5,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F06},
+        {dish_idx: 46, grid_x_idx: 6,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F07},
+        {dish_idx: 47, grid_x_idx: 7,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: F08},
+        {dish_idx: 48, grid_x_idx: 0,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: G01},
+        {dish_idx: 49, grid_x_idx: 1,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: G02},
+        {dish_idx: 50, grid_x_idx: 2,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: G03},
+        {dish_idx: 51, grid_x_idx: 3,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: G04},
+        {dish_idx: 52, grid_x_idx: 0,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: H01},
+        {dish_idx: 53, grid_x_idx: 1,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: H02},
+        {dish_idx: 54, grid_x_idx: 2,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: H03},
+        {dish_idx: 55, grid_x_idx: 3,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Missing,   label: H04},
+        {dish_idx: 56, grid_x_idx: 4,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIA1},
+        {dish_idx: 57, grid_x_idx: 5,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIA2},
+        {dish_idx: 58, grid_x_idx: 6,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIA3},
+        {dish_idx: 59, grid_x_idx: 7,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIA4},
+        {dish_idx: 60, grid_x_idx: 4,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB1},
+        {dish_idx: 61, grid_x_idx: 5,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB2},
+        {dish_idx: 62, grid_x_idx: 6,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB3},
+        {dish_idx: 63, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFIB4}
+    ]
+
+    require_gps: true
+    query_gps: true
+    gps_host_info: /fpga_controller
+    auto_correct_gps_week_rollover: true
+
+    eop_updatable_config: /earth_rotation_data
+    fatal_eop_out_of_range: true  # Shut down rather than clamp to the ends of the EOP table
+
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table: []

@@ -23,6 +23,7 @@ cudaOutputDataZero::cudaOutputDataZero(Config& config, const std::string& unique
     output_zeros = malloc(output_len);
     memset(output_zeros, 0, output_len);
     CHECK_CUDA_ERROR(cudaHostRegister(output_zeros, output_len, 0));
+    gpu_buffers_used.push_back(std::make_tuple("output", true, false, true));
 
     // Taken in execute(); attribute it to this stage now (see gpuMemoryClaims.hpp).
     device.register_gpu_memory_name("output");

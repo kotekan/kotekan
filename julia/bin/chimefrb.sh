@@ -9,7 +9,8 @@ scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
 setups='
-    chime_U16 chime_U128
+    chime_U16_K4 chime_U128_K4
+    chime_U16_K8 chime_U128_K8
 '
 
 mkdir -p output

@@ -15,7 +15,7 @@
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cuda_fp16.h"             // for __half
-#include "div.hpp"                 // for mod
+#include "div.hpp"                 // for div, mod
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, ERROR, FATAL_ERROR
 
@@ -24,6 +24,7 @@
 #include <array>          // for array
 #include <cassert>        // for assert
 #include <cstddef>        // for ptrdiff_t
+#include <cstdint>        // for int64_t
 #include <cstdlib>        // for abort
 #include <cublas_api.h>   // for cublasGetStatusString, CUBLAS_STATUS_SUCCESS, cublasH...
 #include <cublas_v2.h>    // for cublasCreate, cublasDestroy, cublasSetStream
@@ -44,6 +45,23 @@ using kotekan::mod;
  * The weights matrix for the beam locations uses the correct math but
  * with a lot of placeholder assumptions.  This will need to get
  * revisited in post-MVP development.
+ *
+ * @conf  accumulate_float32  Bool (default true). Accumulate the matrix product in float32
+ *                            (`cublasGemmStridedBatchedEx` with `CUBLAS_COMPUTE_32F`) instead
+ *                            of float16 (`cublasHgemmStridedBatched`). Inputs and outputs are
+ *                            float16 either way. The product sums over all
+ *                            `frb1_num_beams_P * frb1_num_beams_Q` input beams (4096 for CHIME),
+ *                            and float32 accumulation of this sum is about 10x more accurate.
+ * @conf  frb2_weights_lifetime_in_samples  Int. Number of FPGA samples one weights matrix `W2`
+ *                            is valid for. The weights arrive through a ring buffer, one matrix
+ *                            per lifetime; every kernel invocation reads the matrix covering its
+ *                            input and claims it on the last invocation of its lifetime. The
+ *                            output `frb2_beams` is a regular buffer, so an invocation always
+ *                            covers `frb2_num_times * frb_downsampling_factor` FPGA samples, and
+ *                            the lifetime has to be a multiple of that.
+ * @conf  frb2_weights_ring_depth  Int (default 2). Number of weights matrices in the `W2` ring
+ *                            buffer. Must agree with the producer (cudaCalcFRB2Weights) and with
+ *                            the ring buffer's size.
  */
 class cudaFRBBeamReformer : public cudaCommand {
 public:
@@ -58,6 +76,7 @@ public:
 
 private:
     const bool poison_buffers;
+    const bool accumulate_float32;
 
     const int frb_downsampling_factor;
 
@@ -71,15 +90,22 @@ private:
     const int frb2_num_beams;
     const int frb2_num_times;
 
+    // Lifetime of a weights matrix in FPGA samples, and the number of matrices in the ring buffer
+    const std::ptrdiff_t frb2_weights_lifetime_in_samples;
+    const int frb2_weights_ring_depth;
+
     // Kotekan buffer names
     const std::string frb2_weights_name;
     const std::string frb1_beams_name;
     const std::string frb2_beams_name;
 
     // Buffers
-    NDArrayBuffer<float16_t, 4> frb2_weights_buffer;
+    NDArrayRingBuffer<float16_t, 5> frb2_weights_buffer;
     NDArrayRingBuffer<float16_t, 4> frb1_beams_buffer;
     NDArrayBuffer<float16_t, 4> frb2_beams_buffer;
+
+    // Checked once per instance, on its first frame; see `execute`
+    bool did_check_origin;
 
     cublasHandle_t handle;
 };
@@ -93,6 +119,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
                 "cudaFRBBeamReformer"),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
+    accumulate_float32(config.get_default<bool>(unique_name, "accumulate_float32", true)),
 
     frb_downsampling_factor(config.get<int>(unique_name, "frb_downsampling_factor")),
 
@@ -105,15 +132,20 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
     frb2_num_beams(config.get<int>(unique_name, "frb2_num_beams")),
     frb2_num_times(config.get<int>(unique_name, "frb2_num_times")),
 
+    frb2_weights_lifetime_in_samples(
+        config.get<std::int64_t>(unique_name, "frb2_weights_lifetime_in_samples")),
+    frb2_weights_ring_depth(config.get_default<int>(unique_name, "frb2_weights_ring_depth", 2)),
+
     frb2_weights_name(config.get<std::string>(unique_name, "frb2_weights_name")),
     frb1_beams_name(config.get<std::string>(unique_name, "frb1_beams_name")),
     frb2_beams_name(config.get<std::string>(unique_name, "frb2_beams_name")),
 
     frb2_weights_buffer(frb2_weights_name, "W2",
-                        std::array<std::ptrdiff_t, 4>{frb2_num_frequencies, frb2_num_beams,
-                                                      frb1_num_beams_Q, frb1_num_beams_P},
-                        std::array<std::string, 4>{"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1},
-                        *this, buffer_type_t::do_once),
+                        std::array<std::ptrdiff_t, 5>{frb2_weights_ring_depth, frb2_num_frequencies,
+                                                      frb2_num_beams, frb1_num_beams_Q,
+                                                      frb1_num_beams_P},
+                        std::array<std::string, 5>{"TW2", "Fbar", "R", "beamQ", "beamP"},
+                        {frb2_weights_lifetime_in_samples, 1, 1, 1, 1}, *this),
     frb1_beams_buffer(frb1_beams_name, "I",
                       std::array<std::ptrdiff_t, 4>{frb1_max_num_times, frb1_max_num_frequencies,
                                                     frb1_num_beams_Q, frb1_num_beams_P},
@@ -123,9 +155,26 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
         frb2_beams_name, "I2",
         std::array<std::ptrdiff_t, 4>{1, frb2_num_beams, frb2_num_frequencies, frb2_num_times},
         std::array<std::string, 4>{"Ttildehi256", "R", "Fbar", "Ttildelo256"},
-        {frb_downsampling_factor * frb2_num_times, 1, 1, frb_downsampling_factor}, *this)
+        {frb_downsampling_factor * frb2_num_times, 1, 1, frb_downsampling_factor}, *this),
+
+    did_check_origin(false)
 
 {
+    // The output is a regular buffer, so the number of FPGA samples per kernel invocation is fixed
+    // by the output frame size, and a weights matrix cannot be swapped in the middle of an
+    // invocation. Hence the lifetime has to be a whole number of invocations.
+    const std::ptrdiff_t samples_per_invocation =
+        std::ptrdiff_t(frb2_num_times) * frb_downsampling_factor;
+    if (frb2_weights_lifetime_in_samples <= 0
+        || frb2_weights_lifetime_in_samples % samples_per_invocation != 0)
+        FATAL_ERROR("frb2_weights_lifetime_in_samples {:d} must be a positive multiple of the "
+                    "processing cadence of frb2_num_times * frb_downsampling_factor = {:d} * {:d} "
+                    "= {:d} FPGA samples",
+                    frb2_weights_lifetime_in_samples, frb2_num_times, frb_downsampling_factor,
+                    samples_per_invocation);
+    if (frb2_weights_ring_depth <= 0)
+        FATAL_ERROR("frb2_weights_ring_depth {:d} must be positive", frb2_weights_ring_depth);
+
     frb2_weights_buffer.register_consumer();
     frb1_beams_buffer.register_consumer();
     frb2_beams_buffer.register_producer();
@@ -172,6 +221,39 @@ int cudaFRBBeamReformer::wait_on_precondition() {
             return errcode;
     }
 
+    // The weights change slowly: locate the matrix covering the beams we just claimed, then read
+    // it. We read the same matrix on every invocation within its lifetime, and claim it only on the
+    // last one, so that the producer can recycle it afterwards.
+    {
+        const std::ptrdiff_t T_begin =
+            frb1_beams_buffer.get_read_valid().begin() * frb_downsampling_factor;
+        const std::ptrdiff_t T_end =
+            frb1_beams_buffer.get_read_valid().end() * frb_downsampling_factor;
+        const std::ptrdiff_t element = kotekan::div(T_begin, frb2_weights_lifetime_in_samples);
+        const std::ptrdiff_t lifetime_end = (element + 1) * frb2_weights_lifetime_in_samples;
+        // The constructor checks the cadences against each other, and every invocation claims the
+        // same number of samples, so this cannot fail unless the ring buffer bookkeeping is broken.
+        if (T_end > lifetime_end)
+            FATAL_ERROR("FRB1 beam samples [{:d},{:d}) straddle the end {:d} of weights matrix "
+                        "{:d}; frb2_weights_lifetime_in_samples {:d} and the FRB1 beam stream "
+                        "are not aligned",
+                        T_begin, T_end, lifetime_end, element, frb2_weights_lifetime_in_samples);
+        const bool last_use = T_end == lifetime_end;
+        DEBUG("Waiting for {:s} input ringbuffer data for frame {:d}...", frb2_weights_name,
+              gpu_frame_id);
+        const int errcode =
+            frb2_weights_buffer.wait_and_claim_readable([&](const std::ptrdiff_t available) {
+                if (available < 1)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                return read_descriptor_t{.claimed = last_use ? 1 : 0, .read = 1};
+            });
+        if (errcode < 0)
+            return errcode;
+        DEBUG("Done waiting for {:s} input ringbuffer data for frame {:d}; using element {:d}{:s}",
+              frb2_weights_name, gpu_frame_id, element, last_use ? " (last use)" : "");
+        assert(frb2_weights_buffer.get_read_valid().begin() == element);
+    }
+
     return 0;
 }
 
@@ -183,6 +265,28 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     frb2_weights_buffer.check_metadata();
     frb1_beams_buffer.check_metadata();
 
+    // Weights matrix `k` covers the samples `k * lifetime` onwards, counted from the FRB1 beam
+    // ring buffer's logical beginning -- so the two streams have to start at the same sequence
+    // number. Both ring buffers' metadata are written once by their producers, so checking once
+    // suffices.
+    if (!did_check_origin) {
+        did_check_origin = true;
+        const std::shared_ptr<const chordMetadata> weights_meta =
+            frb2_weights_buffer.get_metadata();
+        const std::shared_ptr<const chordMetadata> beams_meta = frb1_beams_buffer.get_metadata();
+        if (weights_meta->get_fpga_seq_num() != beams_meta->get_fpga_seq_num())
+            FATAL_ERROR("The {:s} stream starts at fpga_seq_num {:d}, but the {:s} stream starts "
+                        "at {:d}; clock the beam positions (setFRBBeams' metadata_source) to this "
+                        "GPU's voltage buffer",
+                        frb2_weights_name, weights_meta->get_fpga_seq_num(), frb1_beams_name,
+                        beams_meta->get_fpga_seq_num());
+        if (weights_meta->get_time_downsampling_fpga() != frb2_weights_lifetime_in_samples)
+            FATAL_ERROR("The {:s} stream has time_downsampling_fpga {:d}, but "
+                        "frb2_weights_lifetime_in_samples is {:d}",
+                        frb2_weights_name, weights_meta->get_time_downsampling_fpga(),
+                        frb2_weights_lifetime_in_samples);
+    }
+
     // `frb2_beams_buffer` is not a ring buffer, so every frame gets its own metadata object
     // (`NDArrayBuffer::set_metadata` takes a fresh one from the pool): `fpga_seq_num` below is
     // frame-dependent, and frames already downstream still reference their own objects.
@@ -193,12 +297,11 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t frb1_beams_extent = frb1_beams_buffer.get_ndarray().get_extent(0);
     const std::ptrdiff_t frb1_beams_stride = frb1_beams_buffer.get_ndarray().get_stride(0);
     // Ensure there is no wrap-around
-    if (mod(frb1_beams_offset, frb1_beams_extent) + frb2_num_times > frb1_beams_stride) {
+    if (mod(frb1_beams_offset, frb1_beams_extent) + frb2_num_times > frb1_beams_extent) {
         FATAL_ERROR("Inconsistent values for frb1_beams_offset={}, frb1_beams_extent={}, "
                     "frb2_num_times={}, and frb1_beams_stride={}. These would result in a "
                     "wrap-around in the ringbuffer which is not implemented.",
                     frb1_beams_offset, frb1_beams_extent, frb2_num_times, frb1_beams_stride);
-        std::abort();
     }
 
     // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
@@ -283,7 +386,6 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     const int K = frb1_num_beams_P * frb1_num_beams_Q; // input beams
 
     // Matrix A
-    const float16_t alpha = 1;
     const float16_t* A = frb1_beams_buffer.get_ndarray().data()
                          + frb1_beams_stride * mod(frb1_beams_offset, frb1_beams_extent);
     assert(std::string(frb1_beams_buffer.get_ndarray().get_dimname(0)) == "Ttilde");
@@ -291,15 +393,20 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     assert(std::string(frb1_beams_buffer.get_ndarray().get_dimname(1)) == "Fbar");
     const std::ptrdiff_t strideA = frb1_beams_buffer.get_ndarray().get_stride(1); // frequency
 
-    // Matrix B
-    const float16_t* B = frb2_weights_buffer.get_ndarray().data();
-    assert(std::string(frb2_weights_buffer.get_ndarray().get_dimname(1)) == "R");
-    const int ldB = frb2_weights_buffer.get_ndarray().get_stride(1); // output beams
-    assert(std::string(frb2_weights_buffer.get_ndarray().get_dimname(0)) == "Fbar");
-    const std::ptrdiff_t strideB = frb2_weights_buffer.get_ndarray().get_stride(0); // frequency
+    // Matrix B: the weights matrix claimed in `wait_on_precondition`, a single element of the ring
+    // buffer
+    const std::ptrdiff_t frb2_weights_element = frb2_weights_buffer.get_read_valid().begin();
+    assert(std::string(frb2_weights_buffer.get_ndarray().get_dimname(0)) == "TW2");
+    const float16_t* B =
+        frb2_weights_buffer.get_ndarray().data()
+        + frb2_weights_buffer.get_ndarray().get_stride(0)
+              * mod(frb2_weights_element, frb2_weights_buffer.get_ndarray().get_extent(0));
+    assert(std::string(frb2_weights_buffer.get_ndarray().get_dimname(2)) == "R");
+    const int ldB = frb2_weights_buffer.get_ndarray().get_stride(2); // output beams
+    assert(std::string(frb2_weights_buffer.get_ndarray().get_dimname(1)) == "Fbar");
+    const std::ptrdiff_t strideB = frb2_weights_buffer.get_ndarray().get_stride(1); // frequency
 
     // Matrix C
-    const float16_t beta = 0;
     float16_t* C = frb2_beams_buffer.get_ndarray().data();
     assert(std::string(frb2_beams_buffer.get_ndarray().get_dimname(1)) == "R");
     const int ldC = frb2_beams_buffer.get_ndarray().get_stride(1); // output beams
@@ -318,17 +425,33 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     //                     const T* beta,
     //                     T* C, int ldC, int strideC,
     //                     int batchCount)
+    // GemmStridedBatchedEx takes the same arguments, plus the data type of each matrix and the
+    // compute type. `alpha` and `beta` then have the compute type.
     DEBUG("M={} N={} K={} A={} ldA={} strideA={} B={} ldB={} strideB={} C={} ldC={} strideC={} "
-          "batchCount={}",
+          "batchCount={} accumulate_float32={}",
           M, N, K, (const void*)A, ldA, strideA, (const void*)B, ldB, strideB, (void*)C, ldC,
-          strideC, batchCount);
-    cublasStatus_t stat =
-        cublasHgemmStridedBatched(handle, transA, transB, M, N, K, &alpha, A, ldA, strideA, B, ldB,
-                                  strideB, &beta, C, ldC, strideC, batchCount);
-    if (stat != CUBLAS_STATUS_SUCCESS) {
-        ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
-              cublasGetStatusString(stat));
-        std::abort();
+          strideC, batchCount, accumulate_float32);
+    if (accumulate_float32) {
+        const float alpha = 1;
+        const float beta = 0;
+        cublasStatus_t stat = cublasGemmStridedBatchedEx(
+            handle, transA, transB, M, N, K, &alpha, A, CUDA_R_16F, ldA, strideA, B, CUDA_R_16F,
+            ldB, strideB, &beta, C, CUDA_R_16F, ldC, strideC, batchCount, CUBLAS_COMPUTE_32F,
+            CUBLAS_GEMM_DEFAULT);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+            FATAL_ERROR("Error at {:s}:{:d}: cublasGemmStridedBatchedEx: {:s}", __FILE__, __LINE__,
+                        cublasGetStatusString(stat));
+        }
+    } else {
+        const float16_t alpha = 1;
+        const float16_t beta = 0;
+        cublasStatus_t stat =
+            cublasHgemmStridedBatched(handle, transA, transB, M, N, K, &alpha, A, ldA, strideA, B,
+                                      ldB, strideB, &beta, C, ldC, strideC, batchCount);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+            FATAL_ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
+                        cublasGetStatusString(stat));
+        }
     }
 
     if (poison_buffers)
@@ -338,8 +461,9 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
 }
 
 void cudaFRBBeamReformer::finalize_frame() {
-    // Advance the input ringbuffer
+    // Advance the input ringbuffers. The weights matrix is released only after its last use.
     frb1_beams_buffer.finish_read();
+    frb2_weights_buffer.finish_read();
 
     cudaCommand::finalize_frame();
 }
