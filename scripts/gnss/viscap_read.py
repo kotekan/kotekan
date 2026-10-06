@@ -100,8 +100,12 @@ def series(d, node, gpu, tag, kind):
 def config_axes(config_path, gpu, tag, node_yaml):
     import yaml
     cfg = yaml.safe_load(open(config_path))
-    dual = cfg["gnss%d%s_n2dual" % (gpu, tag)]
-    inj = next(c for c in dual["commands"] if c.get("name") == "cudaGnssInject")
+    # one process per chain, or (several chains in one pass) the GPU's process holding this
+    # chain's injector among others
+    dual = cfg.get("gnss%d%s_n2dual" % (gpu, tag)) or cfg["gnss%d_n2dual" % gpu]
+    inj = next(c for c in dual["commands"] if c.get("name") == "cudaGnssInject"
+               and c.get("gnss_ctl_name", "gnss%d%s_n2ctl" % (gpu, tag))
+               == "gnss%d%s_n2ctl" % (gpu, tag))
     corr = next(c for c in dual["commands"] if c.get("name") == "cudaCorrelatorDual")
     hops = int(inj["hops_per_record"])
     ncfg = yaml.safe_load(open(node_yaml))
@@ -124,9 +128,13 @@ def config_lanes(config_path, gpu, tag, gather="cap"):
     corr = next(c for c in dual["commands"] if c.get("name") == "cudaCorrelatorDual")
     if gather in corr.get("gnss_gathers", []):
         pre = "gather_%s_" % gather
+        cap_base = int(corr.get(pre + "lane_base", 0))
+        # this chain's injector: where its 4-per-slot lanes sit on the shared axis
+        inj = next(c for c in dual["commands"] if c.get("name") == "cudaGnssInject"
+                   and c.get("gnss_ctl_name") == "gnss%d%s_n2ctl" % (gpu, tag))
         return dict(has_aa=bool(corr.get(pre + "aa")), has_bb=bool(corr.get(pre + "bb")),
                     num_synth=int(corr.get(pre + "lanes", corr.get("num_synth", 128))),
-                    lane_base=int(corr.get(pre + "lane_base", 0)), merged=True)
+                    lane_base=int(inj.get("synth_lane_base", 0)) - cap_base, merged=True)
     return dict(has_aa=bool(corr.get("gnss_gather_aa")), has_bb=bool(corr.get("gnss_gather_bb")),
                 num_synth=int(corr.get("num_synth", 128)), lane_base=0, merged=False)
 
@@ -170,20 +178,22 @@ def read_pair(ctl_paths, tile_paths, n_tile, n_chan_expect=None, max_frames=0):
     return frames
 
 
-def decode(frames, n_live, hops, has_aa, has_bb=False, num_synth=128):
+def decode(frames, n_live, hops, has_aa, has_bb=False, num_synth=128, lane_base=0):
     """Frames -> dict of record-indexed arrays (R = frames x n_rec):
     winstart[R] i8, prn/run/fcar_report/f_nco/fcar/cp_seed[R, n_prn], energy/scale[R, n_prn, 4, n_chan],
-    vis_mixed[R, n_chan, n_prn, 4, n_live] c8 (raw tile units; divide by scale),
+    vis_mixed[R, n_chan, n_prn, 4, n_live] c8 (raw tile units; divide by scale) -- this ctl's
+    slots, whose lanes start at lane_base on the frame's synth axis,
     vis_aa[R, n_chan, n_live, n_live] c8 (Hermitian-completed) or None,
-    vis_bb[R, n_chan, num_synth, num_synth] c8 (Hermitian-completed, lane = 4*slot + row) or None."""
+    vis_bb[R, n_chan, num_synth, num_synth] c8 (Hermitian-completed, the whole synth axis;
+    this ctl's slot p, row r is lane lane_base + 4p + r) or None."""
     _, n_mixed, n_aa, nlive16 = tile_counts(n_live, has_aa, has_bb, num_synth)
     h0 = frames[0][0]
     n_prn, n_chan = int(h0["n_prn"]), int(h0["n_chan"])
-    # mixed: lane L=4p+row at gi=128+L -> tile (ihi-8)*nlive16 + jhi, cell [ilo, jlo]
+    # mixed: lane L=lane_base+4p+row at gi=128+L -> tile (ihi-8)*nlive16 + jhi, cell [ilo, jlo]
     p_ = np.arange(n_prn)[:, None, None]
     row_ = np.arange(ROWS)[None, :, None]
     e_ = np.arange(n_live)[None, None, :]
-    gi = 128 + 4 * p_ + row_
+    gi = 128 + lane_base + 4 * p_ + row_
     k_m = ((gi >> 4) - 8) * nlive16 + (e_ >> 4)
     ilo_m, jlo_m = np.broadcast_to(gi & 15, k_m.shape), np.broadcast_to(e_ & 15, k_m.shape)
     # AA: tile n_mixed + k1(k1+1)/2 + k2 holds rows 16k1.., cols 16k2.., k1 >= k2
@@ -252,9 +262,10 @@ def load(d, node, gpu, config, node_yaml, tag="", files=None, max_frames=0):
     frames = read_pair(ctl_paths, tile_paths, n_tile, len(freq_ids), max_frames)
     axes = dict(freq_id=np.array(freq_ids, np.int32), element_id=np.array(elems, np.int32),
                 hops_per_record=hops, has_aa=has_aa, has_bb=lanes["has_bb"],
-                num_synth=lanes["num_synth"], utc0=float(frames[0][0]["utc0"]),
-                sample_rate_hz=3.2e9)
-    return axes, decode(frames, len(elems), hops, has_aa, lanes["has_bb"], lanes["num_synth"])
+                num_synth=lanes["num_synth"], lane_base=lanes["lane_base"],
+                utc0=float(frames[0][0]["utc0"]), sample_rate_hz=3.2e9)
+    return axes, decode(frames, len(elems), hops, has_aa, lanes["has_bb"], lanes["num_synth"],
+                        lanes["lane_base"])
 
 
 def main():
@@ -306,10 +317,11 @@ def main():
 
     import h5py
     n_rec = int(h0["n_rec"])
-    d = decode(frames, n_live, hops, has_aa, has_bb, num_synth)
+    d = decode(frames, n_live, hops, has_aa, has_bb, num_synth, lanes["lane_base"])
     R = len(d["winstart"])
     with h5py.File(a.to_h5, "w") as f:
         f.attrs.update(node=a.node, gpu=a.gpu, tag=a.tag, hops_per_record=hops,
+                       lane_base=lanes["lane_base"], num_synth=num_synth,
                        n_rec_per_frame=n_rec, seq_step_per_frame=seq_step,
                        utc0_sample0=float(h0["utc0"]), sample_rate_hz=3.2e9,
                        orientation_mixed="V[lane, e] = sum synth_lane * conj(antenna_e)",

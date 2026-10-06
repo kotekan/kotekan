@@ -47,7 +47,11 @@ gathered), `winstart`, `prn`, `run`, `fcar_report`, `f_nco`, `fcar`, `cp_seed`, 
 `V_aa[i,j] = E_i·conj(E_j)`, `V_bb[a,b] = synth_a·conj(synth_b)`. `viscap_read.load(...)` gives
 the same arrays in memory for a slice of files (what the tutorial uses); `--tag _e5a` selects a
 tagged chain's series. `scripts/gnss/viscap_selftest.py` checks the decoder cell by cell on
-synthetic frames (mixed, AA, BB, the ctl join).
+synthetic frames (mixed, AA, BB, the ctl join). `scripts/gnss/viscap_triangle.py` is the
+deliverable's shape: per record and channel the packed upper triangle over
+[elements | lanes], `tri[rec, chan, M(M+1)/2]`, with a lane table (chain, slot, row, PRN and run
+flag per record), the quantizer scale divided out, blocks the capture did not gather as NaN;
+`--tags ,_e5a,_b2a` joins several chains' ctl series, `--p-only` keeps the prompt lane per slot.
 
 Sidecar metadata: `scripts/gnss/viscap_metadata.py <capture dir>` writes `<dir>/metadata/`
 — `timing.json` (clock geometry, both windows in seq and UTC), `channels.csv` ((node, gpu) →
