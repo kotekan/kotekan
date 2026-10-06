@@ -55,6 +55,9 @@ def main():
     # the lane geometry from the first chain's view of the frame
     freq_ids, elems, hops, has_aa0 = vr.config_axes(a.config, a.gpu, tags[0], a.node_yaml)
     lanes0 = vr.config_lanes(a.config, a.gpu, tags[0])
+    if not lanes0["merged"] and len(tags) > 1:
+        sys.exit("one correlator pass per chain in this capture: each chain is its own "
+                 "(N+M) triangle with its own tiles series -- run once per --tags entry")
     L, N = lanes0["num_synth"], len(elems)
     has_aa, has_bb = has_aa0 or lanes0["has_aa"], lanes0["has_bb"]
     n_files = len(vr.series(a.dir, a.node, a.gpu, tags[0], "visctl"))
