@@ -546,10 +546,53 @@ started into. Twice on 09-28:
   and xcoh 0.86–0.99.
 
 With #153's silent relaunches, every node is a candidate at any hour.
-**Fix:** latch the pin only once the consensus includes ≥ ~4 warm shadows, and re-latch when the pinned
-model's normalised overlap with the current one falls below a bound. **Check:** a node started into a
-thin sky reaches R ≥ 0.95 against the fleet without a second restart
-(`fixtures/fix0928/canary/snap_xinst.py`).
+
+**2026-10-04, twice more, and the first fix idea is not enough.**
+- The F-engine came back re-based at 01:22Z and every node's unit relaunched itself within seconds, three
+  minutes before the broker's anchor: R pol0/pol1 read E5a 0.69/0.56, B3I 0.61/0.74, E6 0.67/0.52 and L2C
+  0.33/0.74, while L5, which re-acquires from its own search, read 1.00. KV cycled all six at 02:16Z.
+  Because the units now relaunch themselves, this is the default outcome of every re-base.
+- After that clean restart, cx43 GPU 0 (E6, +87/+120°) and cx42 GPU 1 (B2b, +83/+21°) pinned wrong at their
+  FIRST model: no collapse anywhere since. The offsets wander as the shape matures: cx42's B2b drifted back
+  to +16/+20° within half an hour, while cx43's E6 read +52/+133°.
+- Re-latching from the node's own model cannot repair a GLOBAL phase offset: the current model already
+  carries it. The node has no local truth either: reference element 0's phase in the pinned models scatters
+  over ~150° across HEALTHY instances, so "anchor real positive" would flag healthy instances.
+
+**Fix (staged for the week of 10-05, KV):** (1) ROOT: pin `<F, G>` real positive with F ONE reference vector per
+band and pol shared by every instance: a committed snapshot of the fleet consensus per array epoch (like the
+element positions file), loaded from config and settable over REST. Apply a correction as a rate-limited
+slew, ~1°/s, so it never steps the carrier phase; fall back to the own-first-model pin only when no F exists.
+This covers startup mis-pins, collapses and the post-re-base case with no restart. (2) SAFETY NET:
+`snap_xinst.py`'s math as a 5-min cron with gauges and an ALERT file like `chain_health_cron`. An instance
+> 45° from the fleet for > 15 min outside a freeze gets the fleet consensus POSTed as its reference.
+Canary first in a log-only mode. **Check:** after an F-engine re-base the fleet reaches R ≥ 0.95 in every
+band within ~10 min, with no node restart (`fixtures/fix0928/canary/snap_xinst.py`).
+
+**2026-10-06: built, not yet deployed.** The 10-05 16:55Z F-engine outage (back re-based 03:36Z) did not
+noise-pin the fleet: every relaunch died on the configs' EOP table (ended 10-06 00:00Z) until the hourly
+push reached it, so the nodes came up 03:54–05:17Z, after the broker's 03:40Z anchor. Startup mis-pins
+remained: cx27 GPU 0 L5 at −155/+57° (shape similarity 0.82/0.88, so purely a global phase) and five B3I
+halves 31–46° off.
+- Node (`GnssGpuRecordAssemble`, `gnssSharedPin.hpp`, boost test `test_gnss_shared_pin`): config
+  `elem_sum_shared_ref` / `_mode` (off|log|live) / `_slew_deg_s` (1.0) / `_min_sim` (0.5), REST
+  `set_elem_sum_shared_ref`, and a `fleet_ref` block in `/get_elem_cal`.
+- Generator `--elem-shared-ref FILE --elem-shared-ref-mode`, refused on an epoch mismatch. Manifest:
+  `config/elem_shared_ref_20261006.json`, mode `log`.
+- Tool `python/scripts/gnss/elem_shared_ref.py` (snapshot | post | status | watch). The 10-06 snapshot is
+  R 0.94–0.99 in every band, and healthy instances match its shape at a median similarity of 0.88–0.99
+  (a noise model scores ~0.2).
+- Safety net `scripts/gnss/elem_ref_cron.sh` (log-only unless `ELEM_REF_ACT=1`); not yet in cron.
+- Binary `~/gnss/builds/fleet-pin154-20261006` (md5 08949ff5). Rollback: `build/kotekan/kotekan.prev_27ea60023`.
+
+**2026-10-06 LIVE fleet-wide.** Restarted 15:46–15:47Z on the new binary in log mode. Every node's own
+offset and similarity matched the tool exactly on all 89 assemblers. The restart left R ≥ 0.98 except
+E6 pol1 at 0.85: two clusters 58° apart, cx19/cx42/cx27 GPU 0 at about −23° and the rest at about +36°.
+cx43 went live by REST at 16:00:33Z: 21 slews of up to 36°, all done by 16:01:13Z (about 40 s at 1°/s),
+and nothing in the broker log. The other five went live at 16:01:43Z. By 16:02:21Z all 89 were within
+1° of F, and R read 1.00 in every band and pol. No restarts, no FATAL, no half below min_sim. The
+manifest is now mode live (regenerated 16:02:50Z), so a relaunch comes back live. **Still to confirm:** the
+next F-engine re-base reaches R ≥ 0.95 within ~10 min with no node restart.
 
 ### #131 — the gather dies when a telemetry client flaps
 **[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no

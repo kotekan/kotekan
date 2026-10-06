@@ -37,6 +37,31 @@ Without `--user` systemd looks for system units, finds nothing, and says so conf
 **The eight chains** are `gps_l5`, `gps_l2c`, `gal_e5a`, `gal_e5b`, `gal_e6`, `bds_b2a`,
 `bds_b2b`, `bds_b3i`.
 
+### Scheduled jobs
+
+Every periodic job we run, from kvand's crontabs (the nodes have none). Each crontab line carries
+a one-line comment. Before restoring an entry, run `crontab -l`: installing a file replaces the
+whole table.
+
+| host | when | job | does | output |
+|---|---|---|---|---|
+| gnss | hourly :17 | `scripts/gnss/eop_cron.sh` | pushes choco's EOP table to every running node whose live table ends earlier | `/var/tmp/gnss-logs/eop_cron.log` |
+| gnss | every 5 min | `scripts/gnss/bad_inputs_cron.py` | pushes bffs's bad-input list to the running nodes when it changes (choco skips ours: maintenance mode) | `/var/tmp/gnss-logs/bad_inputs_cron.log` |
+| gnss | every 5 min | `scripts/gnss/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference; report-only unless `ELEM_REF_ACT=1` | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log}` |
+| cf06 | every 15 min | `scripts/gnss/chain_health_cron.sh` | flags a chain under 30 % fleet_present for 15+ min | `fixtures/obs/health/{ALERT,current.json,health.log}` |
+
+Nothing pages. An ALERT file exists only while its condition holds:
+`ls /home/kvand/gnss/fixtures/obs/{health,elem_ref}/ALERT`.
+
+⚠️ **The EOP and bad-input jobs patch the RUNNING nodes, not the config files.** A relaunched node
+loads `config/generated/chord_gnss_<node>_multi.yaml` with the tables of the last regeneration.
+Regenerate before the files' EOP table ends: on 10-06 it ended at 00:00Z, and after the F-engine
+outage every relaunch died on it until the next hourly push happened to reach the node.
+
+Periodic but not cron: the cube compactor (`cubecompact_loop.sh` on cf06, which also refreshes the
+beam-cube viewer), and cf06's system `auto-updates-reboot.timer`. That timer checks daily at
+02:30Z and reboots cf06 about weekly near 03:03Z, which takes down only the cube leg (section 6).
+
 ## 3. Is it healthy? Four numbers, one minute
 
 ```sh
@@ -132,7 +157,11 @@ retrying a dead listener is ~2 log lines a second across the fleet.
 (its 3-strike relaunch, `starting 8 chain(s)`, then the new epoch in its time-anchor line). A node that
 starts first pins its shared element models on noise (09-28 20:15Z: R pol0 E6 0.15). The nodes'
 own `Restart=on-failure` relaunches will usually beat the broker, so plan on a `restart` loop
-afterwards.
+afterwards. **Since 10-06 (#154) the models pin to a fleet reference** (`elem-shared-ref`, mode
+live), so a noise pin should heal by itself within ~10 min of the anchor, with no restart. Until a
+re-base has confirmed that, check `fixtures/fix0928/canary/snap_xinst.py` (R ≥ 0.95 in every band)
+before reaching for the `restart` loop. Per-instance offsets from the reference:
+`python/scripts/gnss/elem_shared_ref.py status <the manifest's elem-shared-ref file>`.
 
 **After any long node outage, restart the broker once the nodes are back, re-base or not.** An
 F-engine outage usually forces this on its own: the new frame0 trips the broker's 3-strike relaunch.
