@@ -22,7 +22,7 @@ prod_config = {
     "num_subintegrations_per_bin": 2,
     # One bad feed mask frame covers exactly one correlation frame, as required
     # (N2Accumulate: "each bad feed mask frame must cover exactly one correlation
-    # frame") and as chord_pathfinder.j2 configures it in production.
+    # frame") and as config/chord/pathfinder.j2 configures it in production.
     "bf_mask_lifetime_in_samples": 16384,
     "variance_mode": "EvenOddPosDef",
     "num_ev": 0,

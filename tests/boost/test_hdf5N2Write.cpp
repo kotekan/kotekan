@@ -682,16 +682,18 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 
 // The bad feed mask streams land in /bad_feed_mask: one row per mask frame on the streams'
 // common FPGA grid over the file's tick span, one column per stream (an X-engine half,
-// identified by the coarse frequencies it applied the mask to), -1 where a stream's frame
-// did not arrive.
-BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
+// owning every num_bad_feed_mask_streams-th frequency), -1 where a stream's frame did not
+// arrive. With `b_late`, stream B registers only after the file has written its first row,
+// as when an X-engine half connects late after a start: that row is -1 for B, and B's
+// frequencies are still recorded.
+static void run_writer_bad_feed_mask(const std::string& tag, bool b_late) {
 
     kotekan_test_logging::configure();
 
-    const std::string unique_name = "/hdf5_vis_writer_bfmask";
-    const std::string in_buf_name = "n2buf";
-    const std::string mask_buf_name = "maskbuf";
-    const std::string base_dir = "test_hdf5N2Write_bad_feed_mask";
+    const std::string unique_name = "/hdf5_vis_writer_bfmask_" + tag;
+    const std::string in_buf_name = "n2buf_" + tag;
+    const std::string mask_buf_name = "maskbuf_" + tag;
+    const std::string base_dir = "test_hdf5N2Write_bad_feed_mask_" + tag;
     rm_tree_if_exists(base_dir);
 
     const size_t num_input = 3;
@@ -711,13 +713,14 @@ BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
     {
         auto cfg = conf.get_full_config_json();
         cfg[unique_name.substr(1)]["in_bad_feed_mask_buf"] = mask_buf_name;
+        cfg[unique_name.substr(1)]["num_bad_feed_mask_streams"] = 2;
         conf.update_config(cfg);
     }
 
     // Vis buffer
     const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
     const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
-    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_bfmask", "N2Metadata");
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_bfmask_" + tag, "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
     buf.ensure_frame_desc(
@@ -728,7 +731,7 @@ BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
     const size_t mask_row_len = 3;
     const uint64_t step = 10;
     auto chord_pool =
-        metadataPool::create(8, sizeof(chordMetadata), "pool_bfmask_mask", "chordMetadata");
+        metadataPool::create(8, sizeof(chordMetadata), "pool_bfmask_mask_" + tag, "chordMetadata");
     Buffer mask_buf(4, mask_row_len, chord_pool, mask_buf_name, "ndarray", /*numa*/ 0,
                     /*huge*/ false, /*mlock*/ false, /*producers*/ std::vector<int>{},
                     /*zero_new_frames*/ true);
@@ -746,43 +749,47 @@ BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
 
     // The vis frames below cover ticks [100, 201): bins start at 100 and 101 (test helper)
     // and are 100 ticks long, so the grid rows are 100, 110, ..., 200. Two streams: A covers
-    // the file's frequencies 0 and (an absent) 3, B covers frequencies 1 and 2. A's masks
+    // the file's frequencies 0 and 2, B covers frequencies 1 and (an absent) 3. A's masks
     // run from before the span to after it with a change at 130 and its frame at 150
     // missing; B's frames cover the span exactly.
-    const int32_t freq_a0 = (int32_t)get_abs_freq_id(0), freq_a3 = (int32_t)get_abs_freq_id(3);
-    const int32_t freq_b1 = (int32_t)get_abs_freq_id(1), freq_b2 = (int32_t)get_abs_freq_id(2);
-    const std::vector<int> stream_a = {freq_a0, freq_a3};
-    const std::vector<int> stream_b = {freq_b1, freq_b2};
+    const int32_t freq_a0 = (int32_t)get_abs_freq_id(0), freq_a2 = (int32_t)get_abs_freq_id(2);
+    const int32_t freq_b1 = (int32_t)get_abs_freq_id(1), freq_b3 = (int32_t)get_abs_freq_id(3);
+    const std::vector<int> stream_a = {freq_a0, freq_a2};
+    const std::vector<int> stream_b = {freq_b1, freq_b3};
     struct MaskFrame {
         uint64_t seq;
         const std::vector<int>* stream;
         std::array<int8_t, 3> mask;
     };
-    std::vector<MaskFrame> frames;
+    std::vector<MaskFrame> frames_a, frames_b;
     for (uint64_t seq = 90; seq <= 210; seq += step) {
         if (seq != 150)
-            frames.push_back(
+            frames_a.push_back(
                 {seq, &stream_a,
                  seq < 130 ? std::array<int8_t, 3>{1, 1, 1} : std::array<int8_t, 3>{1, 0, 1}});
         if (seq >= 100 && seq <= 200)
-            frames.push_back({seq, &stream_b, {0, 1, 1}});
+            frames_b.push_back({seq, &stream_b, {0, 1, 1}});
     }
     int mask_fid = 0;
-    for (const auto& rec : frames) {
-        int8_t* frame = (int8_t*)mask_buf.wait_for_empty_frame("test-producer", mask_fid);
-        BOOST_REQUIRE(frame != nullptr);
-        std::copy(rec.mask.begin(), rec.mask.end(), frame);
-        mask_buf.allocate_new_metadata_object(mask_fid);
-        auto meta = get_chord_metadata(&mask_buf, mask_fid);
-        meta->set_fpga_seq_num(rec.seq);
-        meta->set_time_downsampling_fpga(step);
-        meta->set_coarse_freq(*rec.stream);
-        mask_buf.mark_frame_full("test-producer", mask_fid);
-        mask_fid = (mask_fid + 1) % mask_buf.num_frames;
-    }
-    // Every mask frame is in before the vis frames start defining the file's stream axis.
-    wait_until_frame_empty(&mask_buf, (mask_fid + mask_buf.num_frames - 1) % mask_buf.num_frames,
-                           30.0);
+    auto send_masks = [&](const std::vector<MaskFrame>& frames) {
+        for (const auto& rec : frames) {
+            int8_t* frame = (int8_t*)mask_buf.wait_for_empty_frame("test-producer", mask_fid);
+            BOOST_REQUIRE(frame != nullptr);
+            std::copy(rec.mask.begin(), rec.mask.end(), frame);
+            mask_buf.allocate_new_metadata_object(mask_fid);
+            auto meta = get_chord_metadata(&mask_buf, mask_fid);
+            meta->set_fpga_seq_num(rec.seq);
+            meta->set_time_downsampling_fpga(step);
+            meta->set_coarse_freq(*rec.stream);
+            mask_buf.mark_frame_full("test-producer", mask_fid);
+            mask_fid = (mask_fid + 1) % mask_buf.num_frames;
+        }
+        wait_until_frame_empty(&mask_buf,
+                               (mask_fid + mask_buf.num_frames - 1) % mask_buf.num_frames, 30.0);
+    };
+    send_masks(frames_a);
+    if (!b_late)
+        send_masks(frames_b);
 
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t base_time_ns = 10'000'000'000ULL;
@@ -799,6 +806,9 @@ BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
     }
 
     wait_until_frame_empty(&buf, fid - 1, 30.0);
+    // The second bin has written row 100; B's frame for it is now late.
+    if (b_late)
+        send_masks(frames_b);
     stage.stop();
     buf.send_shutdown_signal();
     mask_buf.send_shutdown_signal();
@@ -819,8 +829,13 @@ BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
         std::vector<std::vector<int32_t>> table;
         f.getDataSet("/bad_feed_mask/stream_freq_id").read(table);
         BOOST_REQUIRE_EQUAL(table.size(), 2u);
-        BOOST_CHECK(table[0] == (std::vector<int32_t>{freq_a0, freq_a3}));
-        BOOST_CHECK(table[1] == (std::vector<int32_t>{freq_b1, freq_b2}));
+        BOOST_REQUIRE_GE(table[0].size(), 2u);
+        BOOST_CHECK(std::vector<int32_t>(table[0].begin(), table[0].begin() + 2)
+                    == (std::vector<int32_t>{freq_a0, freq_a2}));
+        BOOST_CHECK(std::vector<int32_t>(table[1].begin(), table[1].begin() + 2)
+                    == (std::vector<int32_t>{freq_b1, freq_b3}));
+        BOOST_CHECK(
+            std::all_of(table[0].begin() + 2, table[0].end(), [](int32_t v) { return v == -1; }));
 
         auto mask_ds = f.getDataSet("/bad_feed_mask/mask");
         const std::vector<size_t> dims = mask_ds.getDimensions();
@@ -840,11 +855,20 @@ BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
                                         : seq < 130 ? a_before
                                                     : a_after),
                                 "stream A row at seq " << seq);
-            BOOST_CHECK_MESSAGE(row(r, 1) == b, "stream B row at seq " << seq);
+            BOOST_CHECK_MESSAGE(row(r, 1) == (b_late && seq == 100 ? missing : b),
+                                "stream B row at seq " << seq);
         }
     }
 
     rm_tree_if_exists(base_dir);
+}
+
+BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask) {
+    run_writer_bad_feed_mask("ontime", /*b_late*/ false);
+}
+
+BOOST_AUTO_TEST_CASE(test_writer_bad_feed_mask_late_stream) {
+    run_writer_bad_feed_mask("late", /*b_late*/ true);
 }
 
 // Test 3: Partial flush triggered on exit (incomplete time block)

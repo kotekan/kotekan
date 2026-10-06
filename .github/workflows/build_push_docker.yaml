@@ -47,7 +47,9 @@ jobs:
   build-push-docker:
     name: "Build and push CPU and GPU docker images"
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: read
+      packages: write
 
     outputs:
       docker_cpu_img_name: ${{ steps.docker_img.outputs.cpu_img_name }}
@@ -55,35 +57,48 @@ jobs:
       docker_intel_img_name: ${{ steps.docker_img.outputs.intel_img_name }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          # `changed-files` with `since_last_remote_commit` needs the history: on a newly
-          # opened PR it falls back to `HEAD^`, which a depth-1 checkout does not have.
+          # The Dockerfile change check below diffs against the base branch and
+          # the previous push, which a depth-1 checkout does not have.
           fetch-depth: 0
 
-      # Has the Dockerfile ever changed vs base branch? (for tag selection)
-      - name: Check Dockerfile diff vs base
-        id: changed-vs-base
-        uses: tj-actions/changed-files@v47
-        with:
-          files: |
-            tools/docker/24.04/Dockerfile
-
-       # Has the Dockerfile changed in the latest push? (for rebuild decision)
-      - name: Check Dockerfile diff in latest push
-        id: changed-latest
-        uses: tj-actions/changed-files@v47
-        with:
-          files: |
-            tools/docker/24.04/Dockerfile
-          since_last_remote_commit: true
+      # Did the Dockerfile change in this PR (tag selection), and in the
+      # latest push (rebuild decision)? On a PR, compare the PR head rather
+      # than the checked-out merge commit, so base-branch changes do not count.
+      - name: Check Dockerfile changes
+        id: dockerfile
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          f=tools/docker/24.04/Dockerfile
+          head="${PR_HEAD:-HEAD}"
+          ever=false
+          recent=false
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            git fetch -q origin "$GITHUB_BASE_REF"
+            git diff --quiet "origin/$GITHUB_BASE_REF...$head" -- "$f" || ever=true
+          fi
+          # github.event.before is the previous head on a push or PR synchronize.
+          # It is empty on a newly opened PR and may be gone after a force-push.
+          if [[ -n "$EVENT_BEFORE" ]] && git cat-file -e "$EVENT_BEFORE^{commit}" 2>/dev/null; then
+            git diff --quiet "$EVENT_BEFORE" "$head" -- "$f" || recent=true
+          elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            recent=$ever
+          else
+            git diff --quiet "$head^" "$head" -- "$f" || recent=true
+          fi
+          echo "ever_changed=$ever" >> "$GITHUB_OUTPUT"
+          echo "recent_changed=$recent" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Login to GitHub Container Registry
         if: ${{ env.ACT == '' }} # Don't log in if running locally
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -92,8 +107,8 @@ jobs:
       - name: Check to see if Docker rebuild is needed
         id: docker_img
         env:
-          DOCKERFILE_EVER_CHANGED: ${{ steps.changed-vs-base.outputs.any_changed }}
-          DOCKERFILE_RECENT_CHANGED: ${{ steps.changed-latest.outputs.any_changed }}
+          DOCKERFILE_EVER_CHANGED: ${{ steps.dockerfile.outputs.ever_changed }}
+          DOCKERFILE_RECENT_CHANGED: ${{ steps.dockerfile.outputs.recent_changed }}
           BUILD_BRANCH: ${{ inputs.build_branch }}
         run: |
           set -euo pipefail
@@ -241,7 +256,7 @@ jobs:
 
       - name: Build CPU (target=cpu) image
         if: steps.docker_img.outputs.docker_build == '1'
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: tools/docker/24.04/Dockerfile
@@ -254,7 +269,7 @@ jobs:
 
       - name: Build Intel (target=intel) image
         if: steps.docker_img.outputs.docker_build == '1'
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: tools/docker/24.04/Dockerfile
@@ -267,7 +282,7 @@ jobs:
 
       - name: Build GPU (target=gpu) image
         if: steps.docker_img.outputs.docker_build == '1'
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: tools/docker/24.04/Dockerfile

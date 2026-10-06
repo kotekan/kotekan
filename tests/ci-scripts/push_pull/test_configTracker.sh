@@ -3,6 +3,10 @@
 # Runs three kotekan instances in an A -> B -> C chain (see the yaml comments)
 # and checks that the configTrackerWriter on C writes A's, B's and its own
 # config to disk, matching what each instance serves on its /config endpoint.
+# C is then restarted while A and B keep running and checked again: B's
+# bufferSend reconnects with an unchanged tracker hash, so the restarted C
+# learns B's and A's configs only if the sender flags a config tracker update
+# on the first frame of every connection.
 #
 # Usage: test_configTracker.sh [kotekan_binary]
 # Without an argument the binary is taken from <repo>/${KOTEKAN_BUILD_DIRNAME:-build}.
@@ -27,23 +31,33 @@ REST_PORT_1=12048
 REST_PORT_2=12748
 REST_PORT_3=12848
 
+# start_instance_3 <log>: launch C, logging to <log>; sets KOTEKAN_PID_3.
+start_instance_3() {
+    "${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_3.yaml" -b 127.0.0.1:${REST_PORT_3} > "$1" 2>&1 &
+    KOTEKAN_PID_3=$!
+}
+
 "${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_1.yaml" > kotekan_1.log 2>&1 &
 KOTEKAN_PID_1=$!
 "${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_2.yaml" -b 127.0.0.1:${REST_PORT_2} > kotekan_2.log 2>&1 &
 KOTEKAN_PID_2=$!
-"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_3.yaml" -b 127.0.0.1:${REST_PORT_3} > kotekan_3.log 2>&1 &
-KOTEKAN_PID_3=$!
+start_instance_3 kotekan_3.log
 
-# Wait for C to hold both upstream configs (B's via step 1, A's via step 2).
-for _ in $(seq 60); do
-    sleep 1
-    n=$(curl -sf "127.0.0.1:${REST_PORT_3}/config_tracker_upstream_hashes" 2>/dev/null | grep -c '"host"')
-    [ "$n" -ge 2 ] && break
-done
-if [ "$n" -lt 2 ]; then
-    echo "Timed out waiting for instance 3 to fetch both upstream configs (got $n)"
-fi
-sleep 1 # let the writer flush
+# wait_for_upstreams <label>: wait for C to hold both upstream configs (B's
+# via step 1, A's via step 2).
+wait_for_upstreams() {
+    local n=0
+    for _ in $(seq 60); do
+        sleep 1
+        n=$(curl -sf "127.0.0.1:${REST_PORT_3}/config_tracker_upstream_hashes" 2>/dev/null | grep -c '"host"')
+        [ "$n" -ge 2 ] && break
+    done
+    if [ "$n" -lt 2 ]; then
+        echo "$1: timed out waiting for instance 3 to fetch both upstream configs (got $n)"
+    fi
+    sleep 1 # let the writer flush
+}
+wait_for_upstreams "first run"
 
 # Snapshot each instance's full config before shutting down.
 curl -sf "127.0.0.1:${REST_PORT_1}/config" > config_1.json
@@ -51,18 +65,19 @@ curl -sf "127.0.0.1:${REST_PORT_2}/config" > config_2.json
 curl -sf "127.0.0.1:${REST_PORT_3}/config" > config_3.json
 
 ERROR=0
-for i in 1 2 3; do
-    eval pid=\$KOTEKAN_PID_$i
-    kill $pid
-    wait $pid
-    status=$?
-    echo "kotekan instance $i exit status: $status"
+
+# stop_instance <label> <pid> <log>: stop one instance and report a non-zero exit.
+stop_instance() {
+    kill $2
+    wait $2
+    local status=$?
+    echo "kotekan instance $1 exit status: $status"
     if [ $status -ne 0 ]; then
-        echo "kotekan instance $i did not exit cleanly! Log follows:"
-        cat kotekan_$i.log
+        echo "kotekan instance $1 did not exit cleanly! Log follows:"
+        cat "$3"
         ERROR=1
     fi
-done
+}
 
 # Each written file must hold the matching instance's config, minus the blocks
 # with a kotekan_update_endpoint, which the tracker strips.
@@ -84,20 +99,43 @@ if got != want:
     sys.exit(1)
 PY
 }
-compare_config "${CONFIG_OUT_DIR}/127.0.0.1_${REST_PORT_1}.json" config_1.json || ERROR=1
-compare_config "${CONFIG_OUT_DIR}/127.0.0.1_${REST_PORT_2}.json" config_2.json || ERROR=1
-compare_config "${CONFIG_OUT_DIR}/local.json" config_3.json || ERROR=1
 
-if [ "$(ls -1 "${CONFIG_OUT_DIR}" | wc -l)" -ne 3 ]; then
-    echo "Expected exactly 3 files in ${CONFIG_OUT_DIR}:"
-    ls -1 "${CONFIG_OUT_DIR}"
-    ERROR=1
-fi
+# check_outputs <label>: the three files, and nothing else, with matching content.
+check_outputs() {
+    echo "== checking config writes: $1"
+    compare_config "${CONFIG_OUT_DIR}/127.0.0.1_${REST_PORT_1}.json" config_1.json || ERROR=1
+    compare_config "${CONFIG_OUT_DIR}/127.0.0.1_${REST_PORT_2}.json" config_2.json || ERROR=1
+    compare_config "${CONFIG_OUT_DIR}/local.json" config_3.json || ERROR=1
+
+    if [ "$(ls -1 "${CONFIG_OUT_DIR}" | wc -l)" -ne 3 ]; then
+        echo "$1: expected exactly 3 files in ${CONFIG_OUT_DIR}:"
+        ls -1 "${CONFIG_OUT_DIR}"
+        ERROR=1
+    fi
+}
+
+# Phase 1: stop C alone and check what it wrote. A and B keep running.
+stop_instance 3 $KOTEKAN_PID_3 kotekan_3.log
+check_outputs "first run"
+
+# Phase 2: restart C while A and B keep running. B's bufferSend reconnects
+# (reconnect_time: 1) with an unchanged tracker hash, so the restarted C,
+# whose tracker starts empty, learns B's and A's configs only if the sender
+# flags an update on the first frame of the new connection. Without that
+# flag only local.json appears here.
+rm -f "${CONFIG_OUT_DIR}"/*
+start_instance_3 kotekan_3b.log
+wait_for_upstreams "after restarting instance 3"
+
+stop_instance 1 $KOTEKAN_PID_1 kotekan_1.log
+stop_instance 2 $KOTEKAN_PID_2 kotekan_2.log
+stop_instance "3 (restarted)" $KOTEKAN_PID_3 kotekan_3b.log
+check_outputs "after restarting instance 3"
 
 if [ $ERROR -ne 0 ]; then
     echo "configTrackerWriter test failed!"
     exit 1
 fi
 
-echo "configTrackerWriter test passed."
+echo "configTrackerWriter test passed, before and after restarting instance 3."
 exit 0
