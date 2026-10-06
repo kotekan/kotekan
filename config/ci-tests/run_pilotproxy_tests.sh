@@ -8,6 +8,11 @@ export PYTHONPATH="$SRC/python${PYTHONPATH:+:$PYTHONPATH}"
 python3 "$SRC/tools/check_vendored_pilotproxy.py" --offline
 PP_COMMIT="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["upstream_commit"])' "$SRC/external/pilotproxy/VENDOR.json")"
 PP_REPO="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["upstream_repo"])' "$SRC/external/pilotproxy/VENDOR.json")"
+# pilot-proxy is not public, so a runner without access can only do the vendored-copy check above.
+if ! GIT_TERMINAL_PROMPT=0 git ls-remote "$PP_REPO" > /dev/null 2>&1; then
+    echo "::warning::${PP_REPO} is not reachable; only the vendored-copy check ran"
+    exit 0
+fi
 python3 -m pip install --upgrade "git+${PP_REPO}@${PP_COMMIT}"
 PP_CONFIGS="$(python3 -c 'from pilot_proxy.paths import CONFIGS_DIR; print(CONFIGS_DIR)')"
 PP_BUNDLE="$BUILD/pilotproxy_bundle"
