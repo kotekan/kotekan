@@ -284,16 +284,6 @@ jobs:
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
             runs_on: self-hosted
 
-          # /data dir test"
-          - id: data-test
-            cmake_defs: ""
-            post_build: |
-              # Try something with the persistent /data directory.
-              touch /data/tmp
-              ls /data
-              rm /data/tmp
-            runs_on: self-hosted
-
 
   # Run the linter as its own top-level job (rather than as a matrix entry
   # inside kotekan-cpu-tests) so the auto-lint-fix job below can run conditioned
