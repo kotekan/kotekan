@@ -216,6 +216,9 @@ def main():
                     help="restrict to these nodes (repeatable); default is every node")
     ap.add_argument("--print-cmd", action="store_true",
                     help="print the full generator command line instead of running it")
+    ap.add_argument("--preview-dir", default=None, metavar="DIR",
+                    help="write the configs and j2 vars under DIR instead of the tree: a "
+                         "regen to look at, never one the nodes can start on")
     ap.add_argument("--print-path", action="store_true",
                     help="print the config path this manifest owns for each node and exit. "
                          "Lets a caller ask 'is THIS file one you own?' exactly, rather than "
@@ -266,8 +269,8 @@ def main():
 
     bad, written = [], []
     for node in nodes:
-        out = os.path.join(OUTDIR, "chord_gnss_%s%s.yaml" % (node, suffix))
-        vars_out = os.path.join(VARSDIR, "gnss_vars_%s.j2" % node)
+        out = os.path.join(a.preview_dir or OUTDIR, "chord_gnss_%s%s.yaml" % (node, suffix))
+        vars_out = os.path.join(a.preview_dir or VARSDIR, "gnss_vars_%s.j2" % node)
         cmd = ([sys.executable, GEN, "--base", base, "--node", node]
                + common + flags_from(man["nodes"][node] or {}))
 

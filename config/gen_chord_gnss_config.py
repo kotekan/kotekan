@@ -228,6 +228,13 @@ def vis_capture_chain(args, chain, sig):
     return name in [c.strip() for c in args.vis_capture.split(",") if c.strip()]
 
 
+def vis_capture_own_gate(args, chain, sig):
+    """True when this chain's OWN tiles carry the capture (its gate, its AA/BB tiles). With
+    --n2-dual-merged the chains share one correlator pass and the capture is one gather per
+    GPU instead (merge_n2dual_gpu), so the chain's own frame stays the tracker's."""
+    return vis_capture_chain(args, chain, sig) and not getattr(args, "n2_dual_merged", False)
+
+
 def n2_tiles_per_chan(n_live, num_synth, gather_aa, gather_bb=False):
     """Gathered tiles per comb channel: mixed (synth rows x live antenna columns), then the
     live antennas' own N^2 lower triangle when the visibility capture is armed, then the BB
@@ -850,7 +857,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
 
     # --- frame sizes (see build_n2dual_branch for the scars behind each) -----------------
     n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
-    viscap = vis_capture_chain(args, chain, sig)
+    viscap = vis_capture_own_gate(args, chain, sig)
     viscap_bb = viscap and bool(args.vis_capture_bb)
     tiles_frame_bytes = (n_rec_per_frame * n_chan
                          * n2_tiles_per_chan(n_live, num_synth, viscap, viscap_bb) * 512 * 4)
@@ -1353,7 +1360,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
     # --vis-capture: this chain's correlator also gathers the live antennas' N^2 and the
     # tiles/ctl frames get a gated leg to disk (see the viscap blocks below).
-    viscap = vis_capture_chain(args, chain, sig)
+    viscap = vis_capture_own_gate(args, chain, sig)
     viscap_bb = viscap and bool(args.vis_capture_bb)
     # nt_outer = records per frame now that the dual correlator integrates one record
     tiles_frame_bytes = (n_rec_per_frame * n_chan
@@ -2003,6 +2010,148 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             },
         })
     return blocks
+
+
+def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
+    """--n2-dual-merged: ONE cudaProcess per GPU for every path-B chain on it.
+
+    build_n2dual_branch builds each chain as its own process (injector, correlator, outputs).
+    Here those processes are folded into one: every chain's injector writes its lanes into
+    one COMPACT synth array [T][comb][num_synth] at its own lane offset, one cudaCorrelatorDual
+    correlates the (N+M)^2 over the union of the combs, and one gather per chain copies out
+    exactly the tiles frame its assembler consumed before -- nothing on the host side moves.
+    The capture (--vis-capture) becomes one gather per GPU: the live N^2 once, every captured
+    chain's mixed rows, and the replica block across those chains, gated with their ctl blocks.
+
+    Lanes: chains that share a channel get disjoint 128-lane ranges; chains on disjoint
+    channels reuse a range, since their replicas never meet in a product. The ranges are whole
+    multiples of 128 so a chain's slot arithmetic (4 lanes per slot from its range start) and
+    its 8 tile rows are untouched.
+    """
+    sig = cfg["signals"]
+    rt = cfg["runtime"]
+    lanes = 128
+    pres = []
+    for c in chains:
+        ch = c["chain"]
+        tag = ch["tag"] if ch else ""
+        pres.append(dict(pre=f"gnss{gpu}{tag}_", tag=tag, chain=ch,
+                         name=broker_chain_name(ch["signal"] if ch else sig["primary"]),
+                         chan_idx=[int(x) for x in c["chan_idx"]],
+                         chan=set(int(x) for x in c["chan_idx"]),
+                         viscap=vis_capture_chain(args, ch, sig)))
+    union = sorted(set().union(*[p["chan"] for p in pres]))
+    for p in pres:
+        base = 0
+        while any(q["chan"] & p["chan"] and q["base"] < base + lanes and base < q["base"] + lanes
+                  for q in pres if "base" in q):
+            base += lanes
+        p["base"] = base
+    num_synth = max(p["base"] for p in pres) + lanes
+
+    procs = {p["pre"]: blocks.pop(f"{p['pre']}n2dual") for p in pres}
+    primary = procs[f"gnss{gpu}_"]
+    merged = {k: v for k, v in primary.items() if k not in ("commands", "out_buffers")}
+    # one process on this GPU now: the primary's private streams serve it
+    merged["cuda_stream_base"] = 3
+    merged["num_cuda_streams"] = 6
+    out_buffers = {k: v for k, v in primary["out_buffers"].items() if k == "host_correlation"}
+    injects, outputs = [], []
+    for p in pres:
+        inj = dict(next(c for c in procs[p["pre"]]["commands"] if c["name"] == "cudaGnssInject"))
+        inj["gnss_synth_name"] = f"gnss{gpu}_synth"
+        inj["synth_lane_base"] = p["base"]
+        inj["synth_lane_pitch"] = num_synth
+        inj["gnss_synth_channels"] = union
+        injects.append(inj)
+        out_buffers[f"host_{p['pre']}tiles"] = f"{p['pre']}n2tiles_buf"
+        out_buffers[f"host_{p['pre']}n2ctl"] = f"{p['pre']}n2ctl_buf"
+        outputs += [{"name": "cudaOutputData", "gpu_mem": f"{p['pre']}tiles_buffer",
+                     "out_buf": f"host_{p['pre']}tiles"},
+                    {"name": "cudaOutputData", "gpu_mem": f"{p['pre']}n2ctl",
+                     "out_buf": f"host_{p['pre']}n2ctl"}]
+    outputs += [c for c in primary["commands"]
+                if c["name"] == "cudaOutputData" and c.get("out_buf") == "host_correlation"]
+
+    corr = dict(next(c for c in primary["commands"] if c["name"] == "cudaCorrelatorDual"))
+    corr["gnss_synth_name"] = f"gnss{gpu}_synth"
+    corr["num_synth"] = num_synth
+    corr["gnss_local_channels"] = union
+    corr["gnss_synth_compact"] = True
+    corr.pop("gnss_gather_aa", None)
+    corr.pop("gnss_gather_bb", None)
+    names = []
+    for p in pres:
+        names.append(p["name"])
+        corr[f"gather_{p['name']}_tiles_name"] = f"{p['pre']}tiles"
+        corr[f"gather_{p['name']}_channels"] = p["chan_idx"]
+        corr[f"gather_{p['name']}_lane_base"] = p["base"]
+        corr[f"gather_{p['name']}_lanes"] = lanes
+
+    # THE CAPTURE: one gather over the captured chains' channels and lane rows, the live N^2
+    # with it, the replica block across those chains on request; one gate holding that frame
+    # in lockstep with every captured chain's ctl block (the slot -> PRN map per chain).
+    cap_blocks = {}
+    captured = [p for p in pres if p["viscap"]]
+    if captured:
+        cap_chans = sorted(set().union(*[p["chan"] for p in captured]))
+        base = min(p["base"] for p in captured)
+        cap_lanes = max(p["base"] for p in captured) + lanes - base
+        bb = bool(args.vis_capture_bb)
+        names.append("cap")
+        corr.update({"gather_cap_tiles_name": f"gnss{gpu}_captiles",
+                     "gather_cap_channels": cap_chans, "gather_cap_lane_base": base,
+                     "gather_cap_lanes": cap_lanes, "gather_cap_aa": True, "gather_cap_bb": bb})
+        # The gathered tile count mirrors cudaCorrelatorDual::build_tile_selection for this
+        # gather: mixed rows x live columns, the AA triangle, the BB triangle over the rows.
+        nlive16 = (live_element_count(cfg["array"]) + 15) // 16
+        nrows = cap_lanes // 16
+        n_tile = (nrows * nlive16 + nlive16 * (nlive16 + 1) // 2
+                  + (nrows * (nrows + 1) // 2 if bb else 0))
+        n_rec = max(1, int(spds) // args.hops_per_record)
+        cap_bytes = n_rec * len(cap_chans) * n_tile * 512 * 4
+        cap_buf = f"gnss{gpu}_captiles_buf"
+        out_buffers["host_gnss_captiles"] = cap_buf
+        outputs.append({"name": "cudaOutputData", "gpu_mem": f"gnss{gpu}_captiles_buffer",
+                        "out_buf": "host_gnss_captiles"})
+        sink_core = J2_VARS[gpu][0]["cores"]["sink"]
+        vc_dir = (args.record_dir or rt["record_dir"]) + "/viscap"
+        vc_tiles = f"gnss{gpu}_viscap_tiles_buf"
+        vc_ctls = [f"{p['pre']}viscap_ctl_buf" for p in captured]
+        cap_blocks[cap_buf] = {"kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
+                               "num_frames": args.buffer_depth, "frame_size": cap_bytes}
+        cap_blocks[vc_tiles] = {"kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
+                                "num_frames": args.vis_capture_depth, "frame_size": cap_bytes}
+        for p, vb in zip(captured, vc_ctls):
+            cap_blocks[vb] = {"kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
+                              "num_frames": args.vis_capture_depth,
+                              "frame_size": blocks[f"{p['pre']}n2ctl_buf"]["frame_size"]}
+        cap_blocks[f"gnss{gpu}_viscap_gate"] = {
+            "kotekan_stage": "FrameWindowGate",
+            "in_bufs": [cap_buf] + [f"{p['pre']}n2ctl_buf" for p in captured],
+            "out_bufs": [vc_tiles] + vc_ctls,
+            "clock_buf": 1, "clock_source": "frame", "clock_offset": 16,
+            "cpu_affinity": [sink_core]}
+        sink = {"kotekan_stage": "rawFileWrite", "base_dir": vc_dir, "file_ext": "raw",
+                "prefix_hostname": False,
+                "num_frames_per_file": args.vis_capture_frames_per_file,
+                "allow_ndarray": True, "continue_numbering": True, "create_base_dir": True,
+                "cpu_affinity": [sink_core]}
+        cap_blocks[f"gnss{gpu}_viscap_tiles_sink"] = dict(
+            sink, in_buf=vc_tiles, file_name=f"{node}_gnss{gpu}_capvistiles")
+        for p, vb in zip(captured, vc_ctls):
+            cap_blocks[f"{p['pre']}viscap_ctl_sink"] = dict(
+                sink, in_buf=vb, file_name=f"{node}_gnss{gpu}{p['tag']}_visctl")
+
+    corr["gnss_gathers"] = names
+    merged["in_buffers"] = primary["in_buffers"]
+    merged["out_buffers"] = out_buffers
+    merged["commands"] = injects + [corr, {"name": "cudaSyncOutput"}] + outputs
+    blocks[f"gnss{gpu}_n2dual"] = merged
+    blocks.update(cap_blocks)
+    print(f"  gpu{gpu}: {len(pres)} path-B chains in one pass, {len(union)} channels, "
+          f"{num_synth} synth lanes" + (f", capture over {len(captured)} chain(s)"
+                                        if captured else ""), file=sys.stderr)
 
 
 def _comb_g(chan_ids, fft_len):
@@ -2950,6 +3099,14 @@ def main():
                          "gathers the live antennas' N^2, and a REST-gated FrameWindowGate feeds "
                          "the tiles + ctl frames to rawFileWrites under <record_dir>/viscap. "
                          "Nothing is written until scripts/gnss/viscap.py arms a window.")
+    ap.add_argument("--n2-dual-merged", action="store_true", dest="n2_dual_merged",
+                    help="with --n2-dual: one GPU process per GPU for every path-B chain on it "
+                         "-- the injectors share one compact synth array (gnss<g>_synth, one "
+                         "slice per comb channel, 128 lanes per chain), one cudaCorrelatorDual "
+                         "correlates the (N+M)^2 over the union of the combs, and a gather per "
+                         "chain hands its assembler the frame it always had. The capture is "
+                         "then one gather per GPU (N^2 once, the replica block across the "
+                         "captured chains). The j2 vars still describe the per-chain layout.")
     ap.add_argument("--vis-capture-bb", action="store_true", dest="vis_capture_bb",
                     help="with --vis-capture: the captured chains also gather the BB (synth x "
                          "synth) block, completing the (N+M)^2 triangle per chain. Triples the "
@@ -4145,10 +4302,12 @@ def main():
         blocks, record_floats, n_elem = build_gnss_branch(
             cfg, args.node, gpu, [i for _, i in pairs], args,
             freq_ids=[f for f, _ in pairs])
+        n2dual_chains = []
         if args.n2_dual:
             blocks.update(build_n2dual_branch(cfg, args.node, gpu, [i for _, i in pairs],
                                               [f for f, _ in pairs], args,
                                               out.get("samples_per_data_set", 8192)))
+            n2dual_chains.append(dict(chain=None, chan_idx=[i for _, i in pairs]))
         # EXTRA SIGNAL CHAINS on this GPU. Each is a full tracker branch (GPU process,
         # assembler, combiner, writer) under its own tag; a chain on the primary's channels
         # shares the voltage tap, so the marginal cost is GPU + CPU, not ingest.
@@ -4173,10 +4332,14 @@ def main():
                                                   [f for f, _ in ch_pairs], args,
                                                   out.get("samples_per_data_set", 8192),
                                                   chain=ch))
+                n2dual_chains.append(dict(chain=ch, chan_idx=[i for _, i in ch_pairs]))
             else:
                 xb, _, _ = build_gnss_branch(cfg, args.node, gpu, [i for _, i in ch_pairs], args,
                                              freq_ids=[f for f, _ in ch_pairs], chain=ch)
                 blocks.update(xb)
+        if args.n2_dual_merged and n2dual_chains:
+            merge_n2dual_gpu(blocks, cfg, args, args.node, gpu, n2dual_chains,
+                             out.get("samples_per_data_set", 8192))
 
         if args.combine_gpus and gpu != 0:
             # GPU 0's combiner consumed this GPU's rec_buf too, so its own combiner would be a

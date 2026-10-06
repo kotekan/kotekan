@@ -114,13 +114,21 @@ def config_axes(config_path, gpu, tag, node_yaml):
     return [int(c) for c in inj["channel_ids"]], elems, hops, bool(corr.get("gnss_gather_aa"))
 
 
-def config_lanes(config_path, gpu, tag):
-    """The instance's replica side: {has_aa, has_bb, num_synth} from its correlator block."""
+def config_lanes(config_path, gpu, tag, gather="cap"):
+    """The capture's replica side: {has_aa, has_bb, num_synth, lane_base} from the correlator
+    block. One chain per correlator: its own keys. Several chains in one pass (gnss_gathers):
+    the named gather's keys -- the capture gather 'cap' spans the captured chains' lanes."""
     import yaml
-    dual = yaml.safe_load(open(config_path))["gnss%d%s_n2dual" % (gpu, tag)]
+    cfg = yaml.safe_load(open(config_path))
+    dual = cfg.get("gnss%d%s_n2dual" % (gpu, tag)) or cfg["gnss%d_n2dual" % gpu]
     corr = next(c for c in dual["commands"] if c.get("name") == "cudaCorrelatorDual")
+    if gather in corr.get("gnss_gathers", []):
+        pre = "gather_%s_" % gather
+        return dict(has_aa=bool(corr.get(pre + "aa")), has_bb=bool(corr.get(pre + "bb")),
+                    num_synth=int(corr.get(pre + "lanes", corr.get("num_synth", 128))),
+                    lane_base=int(corr.get(pre + "lane_base", 0)), merged=True)
     return dict(has_aa=bool(corr.get("gnss_gather_aa")), has_bb=bool(corr.get("gnss_gather_bb")),
-                num_synth=int(corr.get("num_synth", 128)))
+                num_synth=int(corr.get("num_synth", 128)), lane_base=0, merged=False)
 
 
 def tile_counts(n_live, has_aa, has_bb=False, num_synth=128):
@@ -232,9 +240,13 @@ def load(d, node, gpu, config, node_yaml, tag="", files=None, max_frames=0):
     file list (each file holds a few frames), e.g. slice(120, 140)."""
     freq_ids, elems, hops, has_aa = config_axes(config, gpu, tag, node_yaml)
     lanes = config_lanes(config, gpu, tag)
+    has_aa = has_aa or lanes["has_aa"]
     n_tile = tile_counts(len(elems), has_aa, lanes["has_bb"], lanes["num_synth"])[0]
     ctl_paths = series(d, node, gpu, tag, "visctl")
-    tile_paths = series(d, node, gpu, tag, "vistiles")
+    # several chains in one pass: the capture tiles are one series per GPU (every captured
+    # chain's lanes side by side); this chain's ctl names its own slots at lanes lane_base..
+    tile_paths = (series(d, node, gpu, "", "capvistiles") if lanes["merged"]
+                  else series(d, node, gpu, tag, "vistiles"))
     if files is not None:
         ctl_paths, tile_paths = ctl_paths[files], tile_paths[files]
     frames = read_pair(ctl_paths, tile_paths, n_tile, len(freq_ids), max_frames)
@@ -261,6 +273,7 @@ def main():
 
     freq_ids, elems, hops, has_aa = config_axes(a.config, a.gpu, a.tag, a.node_yaml)
     lanes = config_lanes(a.config, a.gpu, a.tag)
+    has_aa = has_aa or lanes["has_aa"]
     has_bb, num_synth = lanes["has_bb"], lanes["num_synth"]
     n_live = len(elems)
     n_tile, n_mixed, n_aa, _ = tile_counts(n_live, has_aa, has_bb, num_synth)
@@ -272,7 +285,8 @@ def main():
         print("NOTE: this instance was not built with gnss_gather_bb -- no BB (M^2) block",
               file=sys.stderr)
     frames = read_pair(series(a.dir, a.node, a.gpu, a.tag, "visctl"),
-                       series(a.dir, a.node, a.gpu, a.tag, "vistiles"),
+                       (series(a.dir, a.node, a.gpu, "", "capvistiles") if lanes["merged"]
+                        else series(a.dir, a.node, a.gpu, a.tag, "vistiles")),
                        n_tile, len(freq_ids), a.max_frames)
 
     h0, hN = frames[0][0], frames[-1][0]
