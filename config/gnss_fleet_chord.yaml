@@ -563,9 +563,18 @@ common:
   # carries N^2 + NxM, not NxM alone. That changes the tiles frame size (917504 -> 1089536 B
   # for 7 channels); the assembler FATALs on mismatch rather than mis-decode.
   # Value = the chain name whose n2dual is captured (a comma list is accepted).
-  # Volume when armed: ~30 MB/s per instance -> ~18 GB/node per 5 min, on the node nvme.
-  # Disarm = delete this key, regenerate, restart. docs/CHORD_VIS_CAPTURE.md.
-  vis-capture: gps_l5
+  # Volume when armed: ~30 MB/s per instance per chain -> ~18 GB/node per 5 min (one chain,
+  # no BB), on the node nvme. Disarm = delete this key, regenerate, restart.
+  # docs/CHORD_VIS_CAPTURE.md.
+  # 2026-10-06: all three 1176 MHz chains, for the re-take of the 09-07 set with M spanning
+  # L5 + E5a + B2a. The three gates on a GPU share the clock, so one `viscap.py arm --tags
+  # ,_e5a,_b2a` captures the same records on all of them.
+  vis-capture: gps_l5,gal_e5a,bds_b2a
+  # vis-capture-bb: the captured chains also gather the BB (replica x replica) block, so each
+  # chain's capture is its complete (N+M)(N+M+1)/2 triangle per record. Triples the tiles
+  # traffic of those chains: ~235 MB/s per 7-channel instance for the three chains, ~800 GB
+  # fleet-wide per 5 min. Off again at the next config wave after the capture.
+  vis-capture-bb: true
   # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
   # closes any connection whose frame_size disagrees with its buffer -- so changing either one
   # means regenerating the GATHER config in the same commit, and restarting both ends. Left at
@@ -587,7 +596,10 @@ common:
   # second kernel instantiation (docs 11, path-B plan). Both lists below are at or under it.
   extra-signal:
     # Galileo: the range 1-36 minus the slots with no active satellite. Exactly 32 -- full.
-    - GAL_E5A_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+    # 2026-10-06: E36 (peaks at 83 deg here) replaces E1, which is no longer in the BRDC --
+    # the broker had been swapping it in live after every restart (gen_fleet --check-prns).
+    # Same swap in the E5b and E6 lists below. Dead slots 14, 18, 22, 24 remain.
+    - GAL_E5A_Q_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
     # BeiDou B2a. BDS-3 ONLY (PRN >= 19 -- B1I/B2I-era BDS-2 birds do not broadcast B2a), and
     # further cut to the 24 that ACTUALLY RISE HERE. The BRDC carries 38 BDS-3 PRNs, but
     # 43-52/56-60 are IGSO/GEO parked over Asia and never clear the horizon at 49.3N/119.6W --
@@ -641,7 +653,7 @@ common:
     # the real per-PRN CS100 overlay flips sign every millisecond, so coherent integration
     # past 1 ms cancels itself. Same reason E5a and B2a use _CS above -- which is exactly
     # what the two lines above should have told me before I wrote the bare name (#34).
-    - GAL_E5B_Q_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+    - GAL_E5B_Q_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
     # BDS_B2B_I is the PPP-B2b DATA channel and has NO secondary overlay at all
     # (secondary_length=0: B-CNAV3 runs 1000 sps = one symbol per 1 ms code period). That
     # makes it the most SEARCHABLE signal in the descriptor set -- no per-PRN CS to hunt --
@@ -662,7 +674,7 @@ common:
     # The _NH/_CS suffixes are load-bearing (gal_e5b's lesson above): trackers run the
     # BAKED variants; blind search does not exist for either (searcher stays GPS-only).
     - BDS_B3I_NH:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
-    - GAL_E6_C_CS:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34
+    - GAL_E6_C_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
 
     # -- 1227.6 MHz: GPS L2C (2026-08-31) ------------------------------------------------
     # ⚠️ THE "0-1 CHANNELS PER NODE" VERDICT THAT PARKED THIS WAS A PER-INSTANCE ERROR (KV).
