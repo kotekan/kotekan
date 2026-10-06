@@ -1031,23 +1031,14 @@ std::vector<std::int32_t> N2FileData::freq_ids_with_frames() const {
     return freq_ids;
 }
 
-void N2FileData::create_bad_feed_mask(const BfMaskStreams& streams, std::size_t num_pol,
-                                      std::size_t num_dish) {
-    const std::size_t num_stream = streams.size();
-    std::size_t num_freq = 0;
-    for (const auto& stream : streams)
-        num_freq = std::max(num_freq, stream.second.size());
-
+void N2FileData::create_bad_feed_mask(std::size_t num_stream, std::size_t num_freq,
+                                      std::size_t num_pol, std::size_t num_dish) {
     h5_file->createGroup("/bad_feed_mask");
 
-    // The frequencies each stream's masks were applied to, -1 padding shorter lists.
-    std::vector<std::int32_t> table(num_stream * num_freq, -1);
-    for (std::size_t i = 0; i < num_stream; ++i)
-        std::copy(streams[i].second.begin(), streams[i].second.end(), table.begin() + i * num_freq);
+    // Filled in when the file closes, with the streams registered by then.
     _check_create_dataset(*h5_file, "/bad_feed_mask/stream_freq_id", {num_stream, num_freq},
                           {"stream", "freq_in_stream"}, HighFive::create_datatype<std::int32_t>(),
                           HighFive::DataSetCreateProps::Empty());
-    h5_file->getDataSet("/bad_feed_mask/stream_freq_id").write_raw(table.data());
 
     // Rows are appended as the file's time bins arrive, so the time axis is unlimited.
     HighFive::DataSetCreateProps mask_props = _compressed_props();
@@ -1063,11 +1054,11 @@ void N2FileData::create_bad_feed_mask(const BfMaskStreams& streams, std::size_t 
                                        HighFive::DataSpace({0}, {HighFive::DataSpace::UNLIMITED}),
                                        seq_props)
         .createAttribute("axis", std::vector<std::string>{"time"});
-
-    bad_feed_mask_stream_ids.clear();
-    for (const auto& stream : streams)
-        bad_feed_mask_stream_ids.push_back(stream.first);
     bad_feed_mask_started = true;
+}
+
+void N2FileData::write_bad_feed_mask_freqs(const std::vector<std::int32_t>& table) {
+    h5_file->getDataSet("/bad_feed_mask/stream_freq_id").write_raw(table.data());
 }
 
 void N2FileData::append_bad_feed_mask(const std::vector<std::uint64_t>& seqs,
@@ -1278,7 +1269,9 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _bad_feed_mask_missing_metric(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_hdf5N2Write_bad_feed_mask_missing_frames_total", unique_name, {"stream"})),
     _bad_feed_mask_late_metric(kotekan::prometheus::Metrics::instance().add_counter(
-        "kotekan_hdf5N2Write_bad_feed_mask_late_frames_total", unique_name, {"stream"})) {
+        "kotekan_hdf5N2Write_bad_feed_mask_late_frames_total", unique_name, {"stream"})),
+    _bad_feed_mask_unmasked_metric(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_hdf5N2Write_bad_feed_mask_unmasked_freqs_total", unique_name, {"stream"})) {
 
     _buffer->register_consumer(unique_name);
 
@@ -1293,6 +1286,17 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         _bad_feed_mask_num_pol = mask_desc->get_extent(1);
         _bad_feed_mask_num_dish = mask_desc->get_extent(2);
         _bad_feed_mask_row_len = _bad_feed_mask_num_pol * _bad_feed_mask_num_dish;
+
+        const std::size_t num_science_freqs =
+            Telescope::instance().cast<CHORDTelescope>().num_science_freqs();
+        _bad_feed_mask_num_stream =
+            config.get<std::uint32_t>(unique_name, "num_bad_feed_mask_streams");
+        if (_bad_feed_mask_num_stream == 0 || _bad_feed_mask_num_stream > num_science_freqs)
+            FATAL_ERROR("num_bad_feed_mask_streams must be in [1, {:d}], got {:d}",
+                        num_science_freqs, _bad_feed_mask_num_stream);
+        _bad_feed_mask_num_freq =
+            (num_science_freqs + _bad_feed_mask_num_stream - 1) / _bad_feed_mask_num_stream;
+        _bad_feed_mask_streams.resize(_bad_feed_mask_num_stream);
     }
 
     // Resolve baseband_gain_host_info once: it names a config path (e.g.
@@ -1380,7 +1384,12 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     }
 }
 
-hdf5N2Write::~hdf5N2Write() {}
+hdf5N2Write::~hdf5N2Write() {
+    // main_thread joins it unless a FatalError cut it short.
+    _bad_feed_mask_stop = true;
+    if (_bad_feed_mask_thread.joinable())
+        _bad_feed_mask_thread.join();
+}
 
 size_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     // Get the absolute file index based on the absolute frame index and
@@ -1421,14 +1430,13 @@ void hdf5N2Write::_bad_feed_mask_ingest_loop() {
         const std::shared_ptr<chordMetadata> meta =
             get_chord_metadata(_bad_feed_mask_buf, frame_id);
 
-        // The stream is identified by the frequencies its X-engine half applied the mask to.
         if (!meta->has_coarse_freq() || meta->get_coarse_freq().empty()) {
             FATAL_ERROR("Bad feed mask frame on {:s} carries no coarse frequencies, so the stream "
                         "that applied it cannot be identified.",
                         _bad_feed_mask_buf->buffer_name);
         }
         const std::vector<int> coarse_freq = meta->get_coarse_freq();
-        const std::int32_t stream_id = coarse_freq.front();
+        const std::size_t stream_id = _bad_feed_mask_stream(coarse_freq.front());
         const std::int64_t step = meta->get_time_downsampling_fpga();
         const std::uint64_t seq = meta->get_fpga_seq_num();
         if (step <= 0) {
@@ -1450,14 +1458,24 @@ void hdf5N2Write::_bad_feed_mask_ingest_loop() {
             }
             BfMaskStream& stream = _bad_feed_mask_streams[stream_id];
             if (stream.coarse_freq.empty()) {
+                for (const int freq_id : coarse_freq)
+                    if (_bad_feed_mask_stream(freq_id) != stream_id)
+                        FATAL_ERROR("Bad feed mask frame on {:s} has frequencies {:d} and {:d}, "
+                                    "which belong to different streams of {:d}.",
+                                    _bad_feed_mask_buf->buffer_name, coarse_freq.front(), freq_id,
+                                    _bad_feed_mask_num_stream);
+                if (coarse_freq.size() > _bad_feed_mask_num_freq)
+                    FATAL_ERROR("Bad feed mask stream {:d} has {:d} frequencies, more than the "
+                                "{:d} it can own.",
+                                stream_id, coarse_freq.size(), _bad_feed_mask_num_freq);
                 stream.coarse_freq.assign(coarse_freq.begin(), coarse_freq.end());
                 INFO("Bad feed mask stream {:d}: {:d} coarse frequencies, first frame at seq {:d}",
                      stream_id, coarse_freq.size(), seq);
             } else if (!std::equal(stream.coarse_freq.begin(), stream.coarse_freq.end(),
                                    coarse_freq.begin(), coarse_freq.end())) {
-                WARN("Bad feed mask stream {:d}: coarse frequencies changed ({:d} -> {:d} of them)",
-                     stream_id, stream.coarse_freq.size(), coarse_freq.size());
-                stream.coarse_freq.assign(coarse_freq.begin(), coarse_freq.end());
+                FATAL_ERROR("Bad feed mask stream {:d}: coarse frequencies changed ({:d} -> {:d} "
+                            "of them), so two senders share the stream or one was reconfigured.",
+                            stream_id, stream.coarse_freq.size(), coarse_freq.size());
             }
             if (stream.has_last && seq > stream.last_seq)
                 missing = (seq - stream.last_seq) / step - 1;
@@ -1468,8 +1486,13 @@ void hdf5N2Write::_bad_feed_mask_ingest_loop() {
             stream.has_last = true;
             // A frame whose row a file has already written stays recorded as not received.
             late = seq < stream.written_upto;
-            if (!late)
-                stream.samples[seq].assign(frame, frame + _bad_feed_mask_row_len);
+            if (!late
+                && !stream.samples
+                        .emplace(seq,
+                                 std::vector<std::int8_t>(frame, frame + _bad_feed_mask_row_len))
+                        .second)
+                FATAL_ERROR("Bad feed mask stream {:d}: a second frame for seq {:d}", stream_id,
+                            seq);
             // Bound what is held while no file takes it.
             while (stream.samples.size() > bad_feed_mask_max_samples)
                 stream.samples.erase(stream.samples.begin());
@@ -1495,20 +1518,16 @@ void hdf5N2Write::_bad_feed_mask_append(N2FileData& filedata, std::uint64_t upto
     if (_bad_feed_mask_buf == nullptr)
         return;
     std::lock_guard<std::mutex> lock(_bad_feed_mask_lock);
-    if (_bad_feed_mask_streams.empty())
-        return; // no stream has delivered a frame yet
     const std::uint64_t step = _bad_feed_mask_step;
+    if (step == 0)
+        return; // no stream has delivered a frame yet
     try {
         if (!filedata.bad_feed_mask_started) {
-            // The stream axis is every stream seen so far, in first-frequency order. A
-            // stream that first appears while this file is open starts in the next file.
             const auto [span_start, span_end] = filedata.fpga_tick_span();
             if (span_end == 0)
                 return;
-            N2FileData::BfMaskStreams streams;
-            for (const auto& [id, stream] : _bad_feed_mask_streams)
-                streams.emplace_back(id, stream.coarse_freq);
-            filedata.create_bad_feed_mask(streams, _bad_feed_mask_num_pol, _bad_feed_mask_num_dish);
+            filedata.create_bad_feed_mask(_bad_feed_mask_num_stream, _bad_feed_mask_num_freq,
+                                          _bad_feed_mask_num_pol, _bad_feed_mask_num_dish);
             // The first grid sample overlapping the file's span.
             filedata.bad_feed_mask_next_seq = span_start - span_start % step;
         }
@@ -1517,8 +1536,7 @@ void hdf5N2Write::_bad_feed_mask_append(N2FileData& filedata, std::uint64_t upto
         std::uint64_t seq = filedata.bad_feed_mask_next_seq;
         for (; seq < upto_seq; seq += step) {
             seqs.push_back(seq);
-            for (const std::int32_t id : filedata.bad_feed_mask_stream_ids) {
-                const BfMaskStream& stream = _bad_feed_mask_streams.at(id);
+            for (const BfMaskStream& stream : _bad_feed_mask_streams) {
                 const auto sample = stream.samples.find(seq);
                 if (sample == stream.samples.end())
                     masks.insert(masks.end(), _bad_feed_mask_row_len, static_cast<std::int8_t>(-1));
@@ -1527,10 +1545,8 @@ void hdf5N2Write::_bad_feed_mask_append(N2FileData& filedata, std::uint64_t upto
             }
         }
         filedata.bad_feed_mask_next_seq = seq;
-        for (const std::int32_t id : filedata.bad_feed_mask_stream_ids) {
-            BfMaskStream& stream = _bad_feed_mask_streams.at(id);
+        for (BfMaskStream& stream : _bad_feed_mask_streams)
             stream.written_upto = std::max(stream.written_upto, seq);
-        }
         filedata.append_bad_feed_mask(seqs, masks);
     } catch (const std::exception& e) {
         FATAL_ERROR("Failed to write /bad_feed_mask to {}: {}", filedata.partial_filepath,
@@ -1549,8 +1565,18 @@ void hdf5N2Write::_bad_feed_mask_prune(const std::map<size_t, std::unique_ptr<N2
     if (keep_from == std::numeric_limits<std::uint64_t>::max())
         return;
     std::lock_guard<std::mutex> lock(_bad_feed_mask_lock);
-    for (auto& [id, stream] : _bad_feed_mask_streams)
+    for (BfMaskStream& stream : _bad_feed_mask_streams)
         stream.samples.erase(stream.samples.begin(), stream.samples.lower_bound(keep_from));
+}
+
+std::size_t hdf5N2Write::_bad_feed_mask_stream(std::int32_t freq_id) const {
+    const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
+    const std::int64_t min_freq_id = telescope.min_science_freq_id();
+    const std::int64_t max_freq_id = telescope.max_science_freq_id();
+    if (freq_id < min_freq_id || freq_id > max_freq_id)
+        FATAL_ERROR("Bad feed mask frequency {:d} is outside the science band [{:d}, {:d}].",
+                    freq_id, min_freq_id, max_freq_id);
+    return (freq_id - min_freq_id) % _bad_feed_mask_num_stream;
 }
 
 void hdf5N2Write::_bad_feed_mask_finish(N2FileData& filedata) {
@@ -1561,26 +1587,47 @@ void hdf5N2Write::_bad_feed_mask_finish(N2FileData& filedata) {
         return;
     _bad_feed_mask_append(filedata, span_end);
 
-    // Masks and data come from the same X-engine process, so every frequency with data
-    // must belong to one of the file's streams; anything else is a miswired mask send.
-    if (!filedata.bad_feed_mask_started)
-        FATAL_ERROR("File {:d} has data but no bad feed mask stream delivered a frame while it "
-                    "was open.",
-                    filedata.abs_file_idx);
     std::lock_guard<std::mutex> lock(_bad_feed_mask_lock);
+    if (!filedata.bad_feed_mask_started)
+        WARN("File {:d} has data but no bad feed mask frame has arrived; /bad_feed_mask has no "
+             "rows.",
+             filedata.abs_file_idx);
+    // A frequency's data and mask come from the same X-engine process, so data its registered
+    // stream does not list is from a miswired sender. A stream yet to register (a late start, a
+    // dead node) has its rows recorded as not received.
+    std::vector<std::uint64_t> unmasked(_bad_feed_mask_num_stream, 0);
     for (const std::int32_t freq_id : filedata.freq_ids_with_frames()) {
-        bool covered = false;
-        for (const std::int32_t id : filedata.bad_feed_mask_stream_ids) {
-            const std::vector<std::int32_t>& freqs = _bad_feed_mask_streams.at(id).coarse_freq;
-            if (std::find(freqs.begin(), freqs.end(), freq_id) != freqs.end()) {
-                covered = true;
-                break;
-            }
-        }
-        if (!covered)
-            FATAL_ERROR("File {:d} has data at frequency {:d}, which no bad feed mask stream "
-                        "covers.",
-                        filedata.abs_file_idx, freq_id);
+        const std::size_t stream_id = _bad_feed_mask_stream(freq_id);
+        const std::vector<std::int32_t>& freqs = _bad_feed_mask_streams[stream_id].coarse_freq;
+        if (freqs.empty())
+            ++unmasked[stream_id];
+        else if (std::find(freqs.begin(), freqs.end(), freq_id) == freqs.end())
+            FATAL_ERROR("File {:d} has data at frequency {:d}, which its bad feed mask stream "
+                        "{:d} does not list.",
+                        filedata.abs_file_idx, freq_id, stream_id);
+    }
+    for (std::size_t i = 0; i < _bad_feed_mask_num_stream; ++i) {
+        if (unmasked[i] == 0)
+            continue;
+        _bad_feed_mask_unmasked_metric.labels({std::to_string(i)}).inc(unmasked[i]);
+        WARN("File {:d} has data at {:d} frequencies of bad feed mask stream {:d}, which has not "
+             "registered; their mask rows are -1.",
+             filedata.abs_file_idx, unmasked[i], i);
+    }
+
+    std::vector<std::int32_t> table(_bad_feed_mask_num_stream * _bad_feed_mask_num_freq, -1);
+    for (std::size_t i = 0; i < _bad_feed_mask_num_stream; ++i) {
+        const std::vector<std::int32_t>& freqs = _bad_feed_mask_streams[i].coarse_freq;
+        std::copy(freqs.begin(), freqs.end(), table.begin() + i * _bad_feed_mask_num_freq);
+    }
+    try {
+        if (!filedata.bad_feed_mask_started)
+            filedata.create_bad_feed_mask(_bad_feed_mask_num_stream, _bad_feed_mask_num_freq,
+                                          _bad_feed_mask_num_pol, _bad_feed_mask_num_dish);
+        filedata.write_bad_feed_mask_freqs(table);
+    } catch (const std::exception& e) {
+        FATAL_ERROR("Failed to write /bad_feed_mask to {}: {}", filedata.partial_filepath,
+                    e.what());
     }
 }
 
