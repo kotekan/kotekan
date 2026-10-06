@@ -26,9 +26,6 @@
 # of sub-integrations produced per frame. Choose any positive divisor of samples_per_data_set (does not need to be 1024).
 {% set sub_integration_ntime = 8192 %}
 
-# n2k sub-integrations to combine into each output N2 frame by N2Accumulate. 238 ~= 10 seconds.
-{% set num_subintegrations_per_bin = 238 %}
-
 # RFI Detection Parameters
 {% set rfi_downsampling_factor = 256 %}
 {% set rfi_second_downsampling_factor = 32 %}
@@ -588,19 +585,17 @@ dpdk:
         - dpdk_handler: crs16BoardDistributor
           worker_rings: [{{ 2 * n.id }},{{ 2 * n.id + 1 }}]
 {% endfor %}
-    # Exactly One worker must be given per worker ring
+    # Exactly one worker per worker ring, in ring order: worker i reads worker_ring_i.
     workers:
 {% for n in numa_halves %}
         - dpdk_handler: crs16BoardCaptureWorker
           frame_service_cpu_affinity: [{{ n.frame_service_cpu }}]
-          worker_ring: {{ 2 * n.id }}
           port: {{ n.id }}
           allocate_metadata: true
           out_buf: network_input_buffer_{{ n.id }}
           receipt_bitmap_buf: packet_receipt_bitmap_buffer_{{ 2 * n.id }}
         - dpdk_handler: crs16BoardCaptureWorker
           frame_service_cpu_affinity: [{{ n.frame_service_cpu }}]
-          worker_ring: {{ 2 * n.id + 1 }}
           port: {{ n.id }}
           out_buf: network_input_buffer_{{ n.id }}
           receipt_bitmap_buf: packet_receipt_bitmap_buffer_{{ 2 * n.id + 1 }}
@@ -964,12 +959,6 @@ run_n2k:
 
 # Accumulate N2K visibilities on CPU
 
-hex_dump:
-    #kotekan_stage: hexDump
-    cpu_affinity: [29]
-    in_buf: n2_buffer_1
-    len: 4096
-
 {% for n in numa_halves %}
 count_rfi_mask{{ n.sfx }}:
     kotekan_stage: RfiMaskSum
@@ -1008,7 +997,6 @@ rfi_second_stage_thresholds:
 n2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
-    num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     # Correlation frames and the bad feed mask both arrive in [P][D] (CHORDBeamformer)
     # order and the output stays in it, so the mask maps onto the flags without reordering.
     input_order: CHORDBeamformer
