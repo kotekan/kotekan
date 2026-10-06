@@ -10345,8 +10345,8 @@ updatable_config:
     - 118
     - 119
     kotekan_update_endpoint: json
-    start_time: 1791309065.817103
-    update_id: bffs-1791309060817
+    start_time: 1791320607.494695
+    update_id: bffs-1791320602494
 vis_blocksize: 16
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 vis_num_blocks_lin: num_elements / vis_blocksize

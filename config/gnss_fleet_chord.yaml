@@ -762,4 +762,6 @@ nodes:
   cx43: {search-port-base: 11046}
   cx44: {search-port-base: 11048}
   # cx51 was the phase-3a canary (live 2026-10-03 12:37Z); its settings are common's now.
-  cx51: {search-port-base: 11050}
+  # Stage-1 canary 2026-10-06: one (N+M)^2 correlator pass per GPU (the chains' replicas share
+  # a compact synth array; a gather per chain). The node binary runs either layout.
+  cx51: {search-port-base: 11050, n2-dual-merged: true}
