@@ -38,6 +38,10 @@ class inventPLMask : public kotekan::Stage {
     const std::vector<int> frequency_channels =
         config.get<std::vector<int>>(unique_name, "frequency_channels");
 
+    // Packets are lost in the FPGA samples [box_begin, box_end), and nowhere else
+    const std::int64_t box_begin = config.get_default<std::int64_t>(unique_name, "box_begin", 0);
+    const std::int64_t box_end = config.get_default<std::int64_t>(unique_name, "box_end", 0);
+
     Buffer* const buffer;
 
 public:
@@ -54,6 +58,10 @@ public:
             FATAL_ERROR("inventPLMask: frequency_channels has {:d} entries, expected "
                         "num_frequencies={:d}",
                         frequency_channels.size(), num_frequencies);
+        // Each byte of the mask covers 16 FPGA samples
+        if (!(box_begin % 16 == 0 && box_end % 16 == 0))
+            FATAL_ERROR("box_begin={:d} and box_end={:d} must be multiples of 16", box_begin,
+                        box_end);
     }
 
     virtual ~inventPLMask() {}
@@ -113,7 +121,9 @@ public:
                             const std::ptrdiff_t idx =
                                 str4 * idx4 + str3 * idx3 + str2 * idx2 + str1 * idx1 + str0 * idx0;
                             assert(idx >= 0 && idx < std::ptrdiff_t(buffer->frame_size));
-                            frame[idx] = 0xff; // no packets were lost
+                            const std::int64_t seq = std::int64_t(frame_index) * num_times + time;
+                            const bool lost = seq >= box_begin && seq < box_end;
+                            frame[idx] = lost ? 0x00 : 0xff;
                         }
                     }
                 }
