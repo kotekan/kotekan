@@ -1,12 +1,13 @@
-#include "Config.hpp"          // for Config
-#include "N2Util.hpp"          // for frameID
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "beamUtil.hpp"        // for FRBBeam
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
-#include "restServer.hpp"      // for restServer, connectionInstance
+#include "Config.hpp"                   // for Config
+#include "N2Util.hpp"                   // for frameID
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "UpchannelizationSchedule.hpp" // for upchan_output_offset
+#include "beamUtil.hpp"                 // for FRBBeam
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"  // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
+#include "kotekanLogging.hpp" // for FATAL_ERROR, DEBUG, INFO
+#include "restServer.hpp"     // for restServer, connectionInstance
 
 #include <vector>
 
@@ -53,7 +54,8 @@ constexpr double deg2rad = M_PI / 180.0;
  * @par Buffers
  * @buffer metadata_source  Any time-dependent buffer with an `fpga_seq_num`, typically the voltage
  *                          buffer. Only its first frame is read; the output stream starts at its
- *                          `fpga_seq_num`.
+ *                          `fpga_seq_num` plus the time offset of the upchannelizers' output
+ *                          (see `upchan_output_offset`), where the FRB1 output begins.
  *      @buffer_format      Any
  *      @buffer_metadata    chordMetadata
  * @buffer out_pos_buf      Output beam positions in the GRID frame.
@@ -68,6 +70,8 @@ constexpr double deg2rad = M_PI / 180.0;
  *                          consistent with mode.
  * @conf time_downsampling_fpga   uint64. Number of fpga sequence number ticks between output
  *                          frames.
+ * @conf max_upchannelization_factor  int. The largest upchannelization factor of the run; it
+ *                          determines the upchannelizers' output offset.
  * @conf beams      List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
  * @conf num_x      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid X
  *                          direction (~East/West)
@@ -104,6 +108,8 @@ private:
     const std::string mode;
     const uint32_t num_beams;
     const uint64_t time_downsampling_fpga;
+    // The FRB1 output begins this many FPGA samples after the voltages
+    const uint64_t output_offset;
     const std::vector<FRBBeam> beam_table;
     const uint32_t num_x;
     const uint32_t num_y;
@@ -122,6 +128,7 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     mode(config.get<std::string>(unique_name, "mode")),
     num_beams(config.get<uint32_t>(unique_name, "num_beams")),
     time_downsampling_fpga(config.get<uint64_t>(unique_name, "time_downsampling_fpga")),
+    output_offset(upchan_output_offset(config, unique_name)),
     beam_table(config.get_default<std::vector<FRBBeam>>(unique_name, "beams", {})),
     num_x(config.get_default<uint32_t>(unique_name, "num_x", 0)),
     num_y(config.get_default<uint32_t>(unique_name, "num_y", 0)),
@@ -265,12 +272,12 @@ void setFRBBeams::main_thread() {
     // in)
     metadata_source->unregister_consumer(unique_name);
 
-    // Start this stream at the voltage stream's first sequence number, without rounding to our
-    // own cadence: cudaFRBBeamReformer locates weights matrix `k` at `k * time_downsampling_fpga`
-    // FPGA samples after the logical beginning of its input ring buffer, so both streams have to
-    // share an origin. (Same reasoning as setBBBeams.)
-    uint64_t num_frames = 0;         // Total number of frame output
-    const uint64_t seq0 = input_seq; // seq number of 1st output frame
+    // Start this stream where the FRB1 output begins, without rounding to our own cadence:
+    // cudaFRBBeamReformer locates weights matrix `k` at `k * time_downsampling_fpga` FPGA samples
+    // after the logical beginning of its input ring buffer, the FRB1 output, so both streams have
+    // to share an origin. (Same reasoning as setBBBeams.)
+    uint64_t num_frames = 0;                         // Total number of frame output
+    const uint64_t seq0 = input_seq + output_offset; // seq number of 1st output frame
 
     while (!stop_thread) {
         float* beam_pos = (float*)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);

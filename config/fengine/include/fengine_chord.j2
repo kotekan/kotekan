@@ -127,15 +127,6 @@ host_pl_mask_ringbuffer:
     ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
     metadata_pool: main_pool
 
-host_pl_expanded_mask_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: uint1x8
-    extents: [num_times / 64, num_frequencies, num_polarizations, num_dishes / 8, 64 / 8]
-    quantity_name: "pl_mask_exp"
-    dimnames: ["Thi64", "F", "P", "D8", "Tlo64"]
-    dimscalings: [64, 1, 1, 8, 8]
-    metadata_pool: main_pool
 host_pl_expanded_mask_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)

@@ -34,6 +34,9 @@ frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
 # Upchannelization schedule: 4 coarse channels, each upchannelized by 8
 frequency_channels: &frequency_channels [1000, 2000, 3000, 4000]
 upchan_factors: [8]
+# The largest upchannelization factor. setFRBBeams starts its stream where the upchannelizers'
+# output would begin.
+max_upchannelization_factor: 8
 # ranges are [min, max)
 upchan_channel_ranges:
     8: [0, 8192]

@@ -87,31 +87,10 @@ host_frb2_weights_ringbuffer:
 
 # Beams
 
-host_frb1_beams_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    # frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
-    value_type: float16
-    extents: [frb_num_output_times, upchan_all_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
-    quantity_name: "I"
-    dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
-    dimscalings: [frb_downsampling_factor, 1, 1, 1]
-    metadata_pool: main_pool
 host_frb1_beams_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
     ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
-    metadata_pool: main_pool
-
-host_frb2_beams_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    # frame_size: sizeof_float16 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times
-    value_type: float16
-    extents: [1, frb2_num_beams, upchan_all_max_output_channel - upchan_all_min_output_channel, frb_num_output_times]
-    quantity_name: "I2"
-    dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
-    dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
     metadata_pool: main_pool
 
 host_frb3_beams_buffer:
@@ -264,7 +243,9 @@ run_frb23:
             host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
             host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
         out_buffers:
+{%- if not benchmark %}
             host_frb2_beams_buffer: host_frb2_beams_buffer
+{%- endif %}
             host_frb3_beams_buffer: host_frb3_beams_buffer
             host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
         commands:
@@ -287,10 +268,11 @@ run_frb23:
           gpu_mem_output: frb3_beams
           gpu_mem_offsetscale: frb3_beams_offsetscale
         - name: cudaSyncOutput
+{%- if not benchmark %}
         - name: cudaOutputData
-          # TODO: Don't do this in production
           gpu_mem: frb2_beams_buffer
           out_buf: host_frb2_beams_buffer
+{%- endif %}
         - name: cudaOutputData
           gpu_mem: frb3_beams_buffer
           out_buf: host_frb3_beams_buffer

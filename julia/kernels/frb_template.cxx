@@ -123,6 +123,15 @@ private:
     const int Fbar_in_min, Fbar_in_max;
     const int Fbar_out_min, Fbar_out_max;
 
+    // The upchannelizers skip input samples at startup so that all their outputs begin at input
+    // sample `(M-1) * max_upchannelization_factor / 2` (see `upchan_template.cxx`). Without
+    // upchannelization (U=1) we read the input voltages directly and skip the same number of
+    // samples ourselves, so that all producers of the shared output buffer `I` are aligned.
+    // Only needed for U=1.
+    const int max_upchannelization_factor;
+    // Number of input samples we skip at startup
+    const std::ptrdiff_t Tbar_skip;
+
     // Kernel arguments:
     enum class args {
         {{#kernel_arguments}}
@@ -241,6 +250,12 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
+    max_upchannelization_factor(cuda_upchannelization_factor == 1
+                                    ? config.get<int>(unique_name, "max_upchannelization_factor")
+                                    : 0),
+    Tbar_skip(cuda_upchannelization_factor == 1
+                  ? (cuda_upchan_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor) / 2
+                  : 0),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -310,6 +325,13 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     did_init_host_S_buffer(false),
     did_set_metadata(false)
 {
+    if (cuda_upchannelization_factor == 1
+        && !(max_upchannelization_factor >= 1
+             && (cuda_upchan_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
+        FATAL_ERROR("Kernel {{{kernel_name}}}: max_upchannelization_factor={:d} must be positive, "
+                    "and (taps-1)*max_upchannelization_factor must be even (taps={:d})",
+                    max_upchannelization_factor, int(cuda_upchan_number_of_taps));
+
     // Register host memory
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -408,18 +430,40 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
 
+    // Skip `Tbar_skip` input samples once, at startup (see `Tbar_skip`). (Only the main thread
+    // moves the shared read head, so it is 0 exactly until the first claim.)
+    if (Tbar_skip > 0) {
+        const std::ptrdiff_t Tbar_head = Ebar_buffer.peek_read_head();
+        if (Tbar_head < 0)
+            return -1; // shutting down
+        if (Tbar_head == 0) {
+            if (!(Tbar_skip <= Tbar_read_max))
+                FATAL_ERROR("Kernel {{{kernel_name}}} needs to skip {:d} input samples, but its "
+                            "input ring buffer Ebar holds only {:d}",
+                            Tbar_skip, Tbar_ringbuf);
+            const int errcode = Ebar_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tbar_available) {
+                return Tbar_available >= Tbar_skip ? read_descriptor_t{.claimed = Tbar_skip, .read = Tbar_skip}
+                                                   : read_descriptor_t{.claimed = 0, .read = 0};
+            });
+            if (errcode < 0)
+                return errcode;
+            Ebar_buffer.finish_read();
+        }
+    }
+
     // Where will our read begin? Ask the ringbuffer. We must not use our own `read_valid` for
     // this: every instance of this command shares one ringbuffer read head, so our own position
     // lags it by whatever the other instances have claimed since our previous frame.
     const std::ptrdiff_t Tbar_begin = Ebar_buffer.peek_read_head();
     if (Tbar_begin < 0)
         return -1; // shutting down
-    // We only ever claim multiples of `Tbar_quantum`
-    assert(Tbar_begin % Tbar_quantum == 0);
+    // After the skip we only ever claim multiples of `Tbar_quantum`
+    assert(Tbar_begin >= Tbar_skip && (Tbar_begin - Tbar_skip) % Tbar_quantum == 0);
 
     // Slowly varying inputs: find the element covering the samples we are about to read, and do
     // not read past the end of its lifetime. (The constructor checked that lifetimes are
-    // multiples of `Tbar_quantum`, so we can stop exactly there.)
+    // multiples of `Tbar_quantum`, so we can stop exactly there.) Element `k` covers the output
+    // samples `k * lifetime` onwards, i.e. the input samples from `Tbar_skip + k * lifetime`.
     std::ptrdiff_t Tbar_read_limit = Tbar_read_max;
     {{#kernel_arguments}}
         {{#haslifetime}}
@@ -427,8 +471,9 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
             const std::ptrdiff_t {{{name}}}_lifetime_in_Tbar =
                 div_noremainder({{{name}}}_lifetime_in_samples, std::ptrdiff_t(cuda_upchannelization_factor));
             // (`kotekan::div` must be qualified; an unqualified `div` finds C's `::div`)
-            const std::ptrdiff_t {{{name}}}_element = kotekan::div(Tbar_begin, {{{name}}}_lifetime_in_Tbar);
-            const std::ptrdiff_t {{{name}}}_lifetime_end = ({{{name}}}_element + 1) * {{{name}}}_lifetime_in_Tbar;
+            const std::ptrdiff_t {{{name}}}_element = kotekan::div(Tbar_begin - Tbar_skip, {{{name}}}_lifetime_in_Tbar);
+            const std::ptrdiff_t {{{name}}}_lifetime_end =
+                Tbar_skip + ({{{name}}}_element + 1) * {{{name}}}_lifetime_in_Tbar;
             Tbar_read_limit = std::min(Tbar_read_limit, {{{name}}}_lifetime_end - Tbar_begin);
         {{/haslifetime}}
     {{/kernel_arguments}}
@@ -662,23 +707,42 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                             "kernel {{{kernel_name}}} processes coarse frequency {:d} there",
                             W_coarse_freq.at(freq), freq, I_coarse_freq.at(Fbar_out_min + freq));
 
-        // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards,
-        // counted from the voltage ring buffer's logical beginning -- so the two streams have
-        // to start at the same sequence number. A misaligned input would be applied to the
-        // wrong samples, silently corrupting the output. Ring buffer metadata are written once,
-        // so checking once suffices.
+        // All producers of `I` must agree on its start time. (The upchannelizers align their
+        // outputs via `max_upchannelization_factor`; for U=1 we skip input samples ourselves.)
+        // We set the metadata only once since we use a ring buffer.
+        if (Ebar_meta->has_fpga_seq_num()) {
+            const std::int64_t I_fpga_seq_num =
+                Ebar_meta->get_fpga_seq_num() + Tbar_skip * Ebar_meta->get_time_downsampling_fpga();
+            if (!I_has_metadata)
+                I_meta->set_fpga_seq_num(I_fpga_seq_num);
+            else if (!I_meta->has_fpga_seq_num() || I_meta->get_fpga_seq_num() != I_fpga_seq_num)
+                FATAL_ERROR("Another producer of buffer I starts at fpga_seq_num={:d}, but kernel "
+                            "{{{kernel_name}}} starts at {:d}. (Are all upchannelizers and the U=1 "
+                            "FRB beamformer using the same max_upchannelization_factor?)",
+                            I_meta->has_fpga_seq_num() ? I_meta->get_fpga_seq_num() : -1,
+                            I_fpga_seq_num);
+        } else if (I_has_metadata && I_meta->has_fpga_seq_num()) {
+            FATAL_ERROR("Another producer of buffer I starts at fpga_seq_num={:d}, but the input "
+                        "of kernel {{{kernel_name}}} has no fpga_seq_num",
+                        I_meta->get_fpga_seq_num());
+        }
+
+        // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards, counted
+        // from the beginning of the output I -- so the two streams have to start at the same
+        // sequence number. A misaligned input would be applied to the wrong samples, silently
+        // corrupting the output. Ring buffer metadata are written once, so checking once suffices.
         {{#kernel_arguments}}
             {{#haslifetime}}
-                if ({{{name}}}_buffer.get_metadata()->get_fpga_seq_num() != Ebar_meta->get_fpga_seq_num())
+                if ({{{name}}}_buffer.get_metadata()->get_fpga_seq_num()
+                    != Ebar_meta->get_fpga_seq_num() + Tbar_skip * Ebar_meta->get_time_downsampling_fpga())
                     FATAL_ERROR("Buffer {{{name}}} begins at FPGA sequence number {:d}, but the "
-                                "voltage buffer Ebar begins at {:d}; kernel {{{kernel_name}}} "
-                                "requires them to be aligned",
+                                "output I of kernel {{{kernel_name}}} begins at {:d}; they must be "
+                                "aligned",
                                 {{{name}}}_buffer.get_metadata()->get_fpga_seq_num(),
-                                Ebar_meta->get_fpga_seq_num());
+                                Ebar_meta->get_fpga_seq_num()
+                                    + Tbar_skip * Ebar_meta->get_time_downsampling_fpga());
             {{/haslifetime}}
         {{/kernel_arguments}}
-
-        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
     } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();

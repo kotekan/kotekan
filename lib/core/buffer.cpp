@@ -52,12 +52,11 @@ GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string&
 
 GenericBuffer::~GenericBuffer() {}
 
-bool GenericBuffer::set_metadata(int ID, std::shared_ptr<metadataObject> meta) {
+void GenericBuffer::set_metadata(int ID, std::shared_ptr<metadataObject> meta) {
     assert(ID >= 0);
     assert(ID < num_frames);
     buffer_lock lock(mutex);
     metadata[ID] = meta;
-    return true;
 }
 
 void GenericBuffer::register_consumer(const std::string& name) {
@@ -146,8 +145,7 @@ void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID)
         return;
     }
     std::shared_ptr<metadataObject> metadata_container = metadata[from_ID];
-    bool set = to_buf->set_metadata(to_ID, metadata_container);
-    assert(set);
+    to_buf->set_metadata(to_ID, metadata_container);
 }
 
 void GenericBuffer::copy_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {

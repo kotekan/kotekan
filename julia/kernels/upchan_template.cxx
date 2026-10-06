@@ -109,6 +109,15 @@ private:
     // How many frequencies we will process
     const int Fmin, Fmax;
 
+    // The largest upchannelization factor used in this run. All upchannelizers of a run label
+    // their output with the same time offset `T_offset = (M-1) * max_upchannelization_factor / 2`
+    // (in input samples), so that their outputs are aligned in time. See `wait_on_precondition`.
+    const int max_upchannelization_factor;
+    // Output time offset relative to the input, in input samples
+    const std::ptrdiff_t T_offset;
+    // Number of input samples we skip at startup
+    const std::ptrdiff_t T_skip;
+
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
         static constexpr const char *{{{name}}}_quantity = "{{{name}}}";
@@ -198,6 +207,9 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx"),
     Fmin(config.get<int>(unique_name, "Fmin")),
     Fmax(config.get<int>(unique_name, "Fmax")),
+    max_upchannelization_factor(config.get<int>(unique_name, "max_upchannelization_factor")),
+    T_offset((cuda_number_of_taps - 1) * std::ptrdiff_t(max_upchannelization_factor) / 2),
+    T_skip(T_offset - (cuda_number_of_taps - 1) * std::ptrdiff_t(cuda_upchannelization_factor) / 2),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -256,6 +268,15 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     did_set_metadata(false),
     dummy()                      // avoid trailing comma
 {
+    if (!(max_upchannelization_factor >= cuda_upchannelization_factor
+          && (cuda_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
+        FATAL_ERROR("Kernel {{{kernel_name}}} has upchannelization factor {:d} and {:d} taps; "
+                    "max_upchannelization_factor={:d} must not be smaller, and "
+                    "(taps-1)*max_upchannelization_factor must be even",
+                    int(cuda_upchannelization_factor), int(cuda_number_of_taps),
+                    max_upchannelization_factor);
+    assert(T_skip >= 0);
+
     // Register host memory
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -319,9 +340,35 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
             return errcode;
     }
 
-    // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t T_read_max = T_ringbuf / 4;
+
+    // Output sample `tbar` is calculated from the `M * U` input samples starting at `U * tbar`.
+    // Timestamps point to the beginning of a sample, so the output sample centred on this
+    // window begins at input sample `U * tbar + (M-1) * U / 2`. To align the outputs of all
+    // upchannelizers of a run we skip `T_skip` input samples once, at startup, so that every
+    // upchannelizer's output begins at input sample `T_offset`, independent of `U`. (Only the
+    // main thread moves the shared read head, so it is 0 exactly until the first claim.)
+    if (T_skip > 0) {
+        const std::ptrdiff_t T_head = E_buffer.peek_read_head();
+        if (T_head < 0)
+            return -1; // shutting down
+        if (T_head == 0) {
+            if (!(T_skip <= T_read_max))
+                FATAL_ERROR("Kernel {{{kernel_name}}} needs to skip {:d} input samples, but its "
+                            "input ring buffer E holds only {:d}",
+                            T_skip, T_ringbuf);
+            const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
+                return T_available >= T_skip ? read_descriptor_t{.claimed = T_skip, .read = T_skip}
+                                             : read_descriptor_t{.claimed = 0, .read = 0};
+            });
+            if (errcode < 0)
+                return errcode;
+            E_buffer.finish_read();
+        }
+    }
+
+    // Wait for data to be available in input ringbuffer
     std::ptrdiff_t T_read = -1;
     {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
@@ -443,7 +490,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                         "dimension of its output buffer Ebar has extent {:d}",
                         Ebar_nfreq, Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Fbar]);
 
-        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+        // Output sample `tbar` begins at input sample `T_offset + U * tbar` (see
+        // `wait_on_precondition`). We set the metadata only once since we use a ring buffer.
+        if (E_meta->has_fpga_seq_num())
+            Ebar_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num() + T_offset * E_time_downsampling_fpga);
     } // if !did_set_metadata
 
     if (!Ebar_buffer.has_metadata())

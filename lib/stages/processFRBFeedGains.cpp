@@ -3,6 +3,7 @@
 #include "Config.hpp"
 #include "StageFactory.hpp"
 #include "Telescope.hpp"
+#include "UpchannelizationSchedule.hpp"
 #include "bufferContainer.hpp"
 #include "frb1IntensityBound.hpp"
 #include "kotekanLogging.hpp"
@@ -27,6 +28,7 @@ processFRBFeedGains::processFRBFeedGains(Config& config, const std::string& uniq
     frb1_phase_lifetime_in_samples =
         config.get<std::int64_t>(unique_name, "frb1_phase_lifetime_in_samples");
     frb1_swap_MN = config.get_default<bool>(unique_name, "frb1_swap_MN", false);
+    fpga_seq_num_offset = upchan_output_offset(config, unique_name);
 
     // telescope layout
     const int num_dishes_x = Telescope::instance().get_grid_size_x();

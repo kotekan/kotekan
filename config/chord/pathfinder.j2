@@ -4,7 +4,7 @@
 -#}
 
 
-# num_local_freq: number of frequency IDs to simulate on this GPU;
+# num_local_freq: number of frequency IDs processed on this GPU;
 #    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
 {% set num_local_freq = 384 %}
 
@@ -47,6 +47,8 @@
 
 ---
 {% include "common.j2" %}
+
+num_local_freq: {{ num_local_freq }}
 
 numa_node: 0
 

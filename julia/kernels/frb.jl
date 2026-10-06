@@ -2495,6 +2495,9 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
                 Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$Tbar"),
                 Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Touter"),
+                # Number of PFB taps of the upchannelizers; must match `M` in `upchan.jl`. This
+                # defines the time offset of the upchannelized voltages (see `frb_template.cxx`).
+                Dict("type" => "int", "name" => "cuda_upchan_number_of_taps", "value" => "4"),
             ],
             "minthreads" => num_threads * num_warps,
             "num_blocks_per_sm" => num_blocks_per_sm,

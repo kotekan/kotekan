@@ -13,6 +13,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
+#include <cstdint>  // for int64_t
 #include <queue>    // for queue
 #include <stdint.h> // for int32_t, uint8_t, int16_t, uint32_t
 #include <string>   // for string
@@ -34,7 +35,8 @@ using std::vector;
  *
  * The output is a stream clocked by the input mask: for every mask frame this stage emits one
  * output frame, containing the current gains with the masked elements zeroed, and stamped with
- * the mask frame's `fpga_seq_num` and `time_downsampling_fpga`. The output frame description must
+ * the mask frame's `fpga_seq_num` (plus `fpga_seq_num_offset`, see there) and
+ * `time_downsampling_fpga`. The output frame description must
  * have a leading time axis whose `dimscaling` equals the mask's `time_downsampling_fpga`, i.e.
  * the number of FPGA samples one frame covers. The gain buffers are polled without blocking
  * (except for the first frame), since gains are updated rarely.
@@ -90,6 +92,10 @@ protected:
 
     /// fixed scaling factor
     float scaling_factor;
+
+    /// Added to the mask frames' `fpga_seq_num` when stamping the output frames, for consumers
+    /// whose data begin later than the voltages. 0 by default.
+    std::int64_t fpga_seq_num_offset = 0;
 
     /// Store gain upchannelization factors
     std::vector<int> freq_upchan_factor;

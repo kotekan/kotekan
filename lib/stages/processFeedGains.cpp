@@ -241,8 +241,9 @@ void processFeedGains::main_thread() {
         auto meta = get_chord_metadata(out_buf, out_buf_frame_id);
         meta->set_from_frame_desc(out_frame_desc);
         meta->set_name("W");
-        // This frame covers the same FPGA samples as the mask frame it was made from
-        meta->set_fpga_seq_num(mask_fpga_seq_num);
+        // This frame covers the same FPGA samples as the mask frame it was made from, shifted to
+        // where the consumer's data begin
+        meta->set_fpga_seq_num(mask_fpga_seq_num + fpga_seq_num_offset);
         meta->set_time_downsampling_fpga(int(mask_lifetime));
         // Set the frequency upchannelization metadata
         meta->set_freq_upchan_factor(freq_upchan_factor);

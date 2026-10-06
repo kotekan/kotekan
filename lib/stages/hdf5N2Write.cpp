@@ -1436,15 +1436,6 @@ void hdf5N2Write::_bad_feed_mask_ingest_loop() {
                         _bad_feed_mask_buf->buffer_name);
         }
         const std::vector<int> coarse_freq = meta->get_coarse_freq();
-        const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
-        for (const int freq_id : coarse_freq) {
-            if (freq_id < (int)telescope.min_science_freq_id()
-                || freq_id > (int)telescope.max_science_freq_id())
-                FATAL_ERROR("Bad feed mask frame on {:s} has frequency {:d}, outside the science "
-                            "band [{:d}, {:d}].",
-                            _bad_feed_mask_buf->buffer_name, freq_id,
-                            telescope.min_science_freq_id(), telescope.max_science_freq_id());
-        }
         const std::size_t stream_id = _bad_feed_mask_stream(coarse_freq.front());
         const std::int64_t step = meta->get_time_downsampling_fpga();
         const std::uint64_t seq = meta->get_fpga_seq_num();
@@ -1579,8 +1570,12 @@ void hdf5N2Write::_bad_feed_mask_prune(const std::map<size_t, std::unique_ptr<N2
 }
 
 std::size_t hdf5N2Write::_bad_feed_mask_stream(std::int32_t freq_id) const {
-    const freq_id_t min_freq_id =
-        Telescope::instance().cast<CHORDTelescope>().min_science_freq_id();
+    const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
+    const std::int64_t min_freq_id = telescope.min_science_freq_id();
+    const std::int64_t max_freq_id = telescope.max_science_freq_id();
+    if (freq_id < min_freq_id || freq_id > max_freq_id)
+        FATAL_ERROR("Bad feed mask frequency {:d} is outside the science band [{:d}, {:d}].",
+                    freq_id, min_freq_id, max_freq_id);
     return (freq_id - min_freq_id) % _bad_feed_mask_num_stream;
 }
 
