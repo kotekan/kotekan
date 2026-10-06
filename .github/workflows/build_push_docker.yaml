@@ -264,8 +264,10 @@ jobs:
           tags: ${{ steps.docker_img.outputs.cpu_img_name }}
           push: ${{ env.ACT == '' }} # true on GitHub, false under act
           load: ${{ env.ACT != '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=${{ steps.docker_img.outputs.cpu_img_name }}
+            type=registry,ref=${{ env.CPU_IMG }}:develop
+          cache-to: type=inline
 
       - name: Build Intel (target=intel) image
         if: steps.docker_img.outputs.docker_build == '1'
@@ -277,8 +279,10 @@ jobs:
           tags: ${{ steps.docker_img.outputs.intel_img_name }}
           push: ${{ env.ACT == '' }} # true on GitHub, false under act
           load: ${{ env.ACT != '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=${{ steps.docker_img.outputs.intel_img_name }}
+            type=registry,ref=${{ env.INTEL_IMG }}:develop
+          cache-to: type=inline
 
       - name: Build GPU (target=gpu) image
         if: steps.docker_img.outputs.docker_build == '1'
@@ -290,5 +294,7 @@ jobs:
           tags: ${{ steps.docker_img.outputs.gpu_img_name }}
           push: ${{ env.ACT == '' }} # true on GitHub, false under act
           load: ${{ env.ACT != '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=${{ steps.docker_img.outputs.gpu_img_name }}
+            type=registry,ref=${{ env.GPU_IMG }}:develop
+          cache-to: type=inline
