@@ -39,7 +39,7 @@
  * - Upchannelized voltages: every output sample with nonzero power has its window of M*U input
  *   samples overlap the box, and the power-weighted centre equals the box centre.
  * - Upchannelized PL masks: the masked output samples are exactly those whose window overlaps
- *   the box.
+ *   the box, and the coarse frequencies are those of the upchannelized voltages.
  *
  * @par Buffers
  * @buffer frb1_beams      The FRB1 beams I, [Ttilde][Fbar][beamQ][beamP], float16
@@ -80,6 +80,8 @@ class testUpchanAlignment : public kotekan::Stage {
         std::map<int, std::map<std::int64_t, double>> power;
         // FPGA samples per output sample
         int tds = 0;
+        // Coarse frequency of each output frequency, from the first frame
+        std::vector<int> coarse_freq;
 
         stream_t(Buffer* const buffer, const kind_t kind, const int upchan_factor) :
             buffer(buffer), kind(kind), upchan_factor(upchan_factor) {}
@@ -133,7 +135,8 @@ public:
             else if (stream.kind == kind_t::upchan_voltage)
                 check_upchan_voltage(stream);
             else
-                check_upchan_pl_mask(stream);
+                check_upchan_pl_mask(stream,
+                                     find_stream(kind_t::upchan_voltage, stream.upchan_factor));
         }
         INFO("All outputs are aligned with the signal at FPGA samples [{:d}, {:d})", box_begin,
              box_end);
@@ -165,6 +168,8 @@ private:
         if (!frame)
             return false;
         const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(buffer, frame_id);
+        if (stream.frame_index == 0)
+            stream.coarse_freq = meta->get_coarse_freq();
         const std::int64_t seq0 = meta->get_fpga_seq_num();
         const int ntimes = meta->dim[0];
         const std::ptrdiff_t time_stride = buffer->frame_size / ntimes;
@@ -213,14 +218,13 @@ private:
                 stream.power[0][seq] = power;
             }
         } else {
-            // [Thi64][F][P][D8][Tlo64]. Only frequency 0 is checked: the frequency metadata
-            // describe the input, not which output frequencies were written.
+            // [Thi64][F][P][D8][Tlo64]; only the first `get_nfreq()` frequencies are written
             const int U = stream.upchan_factor;
             stream.tds = U;
             if (meta->get_time_downsampling_fpga() != 64 * U)
                 FATAL_ERROR("Buffer {:s} has time_downsampling_fpga={:d}, expected {:d}",
                             buffer->buffer_name, meta->get_time_downsampling_fpga(), 64 * U);
-            const int nwords = meta->dim[2] * meta->dim[3]; // P * D8
+            const int nwords = meta->get_nfreq() * meta->dim[2] * meta->dim[3]; // F * P * D8
             for (int t = 0; t < ntimes; ++t) {
                 for (int bit = 0; bit < 64; ++bit) {
                     const std::int64_t seq = seq0 + (std::int64_t(t) * 64 + bit) * U;
@@ -324,8 +328,25 @@ private:
                         U, centre, box_centre);
     }
 
-    void check_upchan_pl_mask(const stream_t& stream) const {
+    const stream_t& find_stream(const kind_t kind, const int upchan_factor) const {
+        for (const stream_t& stream : streams)
+            if (stream.kind == kind && stream.upchan_factor == upchan_factor)
+                return stream;
+        FATAL_ERROR("No stream for upchannelization factor {:d}", upchan_factor);
+        return streams.at(0); // not reached
+    }
+
+    void check_upchan_pl_mask(const stream_t& stream, const stream_t& voltage) const {
         const int U = stream.upchan_factor;
+        // The voltages list each coarse frequency once per fine frequency
+        std::vector<int> voltage_coarse_freq;
+        for (std::size_t f = 0; f < voltage.coarse_freq.size(); f += U)
+            voltage_coarse_freq.push_back(voltage.coarse_freq.at(f));
+        if (stream.coarse_freq != voltage_coarse_freq)
+            FATAL_ERROR("Upchannelized PL mask, U={:d}: coarse frequencies [{}], but the "
+                        "upchannelized voltages have [{}]",
+                        U, fmt::join(stream.coarse_freq, ", "),
+                        fmt::join(voltage_coarse_freq, ", "));
         const auto& masked = stream.power.at(0);
         const std::set<std::int64_t> found =
             select_seqs(masked, [](std::int64_t, double m) { return m != 0; });

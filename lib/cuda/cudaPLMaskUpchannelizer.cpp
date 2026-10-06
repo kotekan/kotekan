@@ -261,12 +261,30 @@ cudaEvent_t cudaPLMaskUpchannelizer::execute(cudaPipelineState& /*pipestate*/,
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
         pl_upchannelized_expanded_mask.set_metadata(pl_expanded_mask.get_metadata());
-        // The upchannelizer downsamples the time axis by `upchannelization_factor`; the frequency
-        // layout is unchanged (all other metadata is copied by set_metadata above).
+        // The upchannelizer downsamples the time axis by `upchannelization_factor`, and output
+        // frequency `f` is input frequency `Fmin + f` (all other metadata is copied by
+        // set_metadata above).
         const auto& in_meta = pl_expanded_mask.get_metadata();
         const auto& out_meta = pl_upchannelized_expanded_mask.get_metadata();
         out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga()
                                              * upchannelization_factor);
+        const std::vector<int> in_coarse_freq = in_meta->get_coarse_freq();
+        const std::vector<int> in_freq_upchan_factor = in_meta->get_freq_upchan_factor();
+        const std::vector<int> in_freq_upchan_index = in_meta->get_freq_upchan_index();
+        if (!(std::ptrdiff_t(in_coarse_freq.size()) == num_frequencies
+              && in_freq_upchan_factor.size() == in_coarse_freq.size()
+              && in_freq_upchan_index.size() == in_coarse_freq.size()))
+            FATAL_ERROR("Input buffer pl_expanded_mask has {:d} frequencies, but its metadata "
+                        "list {:d} coarse frequencies, {:d} upchannelization factors and {:d} "
+                        "upchannelization indices",
+                        num_frequencies, in_coarse_freq.size(), in_freq_upchan_factor.size(),
+                        in_freq_upchan_index.size());
+        out_meta->set_coarse_freq(
+            std::vector<int>(in_coarse_freq.begin() + Fmin, in_coarse_freq.begin() + Fmax));
+        out_meta->set_freq_upchan_factor(std::vector<int>(in_freq_upchan_factor.begin() + Fmin,
+                                                          in_freq_upchan_factor.begin() + Fmax));
+        out_meta->set_freq_upchan_index(std::vector<int>(in_freq_upchan_index.begin() + Fmin,
+                                                         in_freq_upchan_index.begin() + Fmax));
         // Output bit `tbar` covers input samples [T_skip + U * tbar, T_skip + U * tbar + M * U).
         // Timestamps point to the beginning of a sample, so the output sample centred on this
         // window begins at input sample `T_offset + U * tbar`, as for the voltage upchannelizers.
