@@ -11,10 +11,11 @@ upchannelization_factor: 16
 
 
 
-# The largest upchannelization factor used in this run. All upchannelizers delay their
-# output so that it is aligned in time with that of the largest factor. (That is the
-# HFB upchannelizer's U=128, see `upchan_hfb_chime.j2`.)
-max_upchannelization_factor: 128
+# The largest upchannelization factor of the FRB chain. Its upchannelizers delay their
+# output so that it is aligned in time with that of the largest factor. The HFB chain does
+# not share an output buffer with the FRB chain and sets its own value, see
+# `upchan_hfb_chime.j2` and `hfb_chime.j2`.
+max_upchannelization_factor: 16
 
 upchan_factors: [16]
 # ranges are [min, max)

@@ -41,6 +41,7 @@ add_library(
     cudaPLMaskUpchannelizer.cpp
     cudaPLMaskUpchannelizer.cu
     testPLMaskUpchannelizer.cpp
+    testUpchanAlignment.cpp
     cudaPL1bitCorrelator.cpp
     cudaQuantize4.cpp
     cudaQuantize8.cpp
