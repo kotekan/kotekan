@@ -27,6 +27,10 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   test:
     runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
