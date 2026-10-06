@@ -23,6 +23,9 @@ on:
       cmake_defs: # Compiler flags to build kotekan with, if building
         required: false
         type: string
+      build_target: # make target to build, all of kotekan if not specified
+        required: false
+        type: string
       post_build: # Commands to run (from the main kotekan directory) after building
         required: false
         type: string
@@ -97,7 +100,7 @@ jobs:
           mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
           ccache -s
           cmake -DARCH=haswell -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ inputs.cmake_defs }} ..
-          make -j $(nproc)
+          make -j $(nproc) ${{ inputs.build_target }}
           ccache -s
 
       - name: Run commands
