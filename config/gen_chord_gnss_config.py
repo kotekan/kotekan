@@ -1201,6 +1201,38 @@ def elem_shared_keys(args):
     return out
 
 
+def elem_shared_ref_keys(args, band, steer, n_elem):
+    """#154: one band's entry of the fleet reference snapshot (python/scripts/gnss/
+    elem_shared_ref.py snapshot) for the shared model's phase pin; nothing unless
+    --elem-shared-ref-mode is log or live, so a fleet without it is byte-identical. The
+    snapshot is of the STEERED instrument, so it is refused unless it was taken against the
+    epoch these positions came from."""
+    mode = getattr(args, "elem_shared_ref_mode", "off") or "off"
+    if mode == "off" or not getattr(args, "elem_sum_shared", False):
+        return {}
+    if not args.elem_shared_ref:
+        raise SystemExit("--elem-shared-ref-mode %s needs --elem-shared-ref FILE" % mode)
+    snap = json.load(open(args.elem_shared_ref))
+    epoch = steer.get("elem_positions_epoch")
+    if snap.get("epoch") != epoch:
+        raise SystemExit("--elem-shared-ref %s was taken against epoch %s, these positions are %s "
+                         "-- take a new snapshot (elem_shared_ref.py snapshot)"
+                         % (args.elem_shared_ref, snap.get("epoch"), epoch))
+    entry = snap["bands"].get(band)
+    if entry is None:
+        print("note: %s has no '%s' entry: that band keeps its own pin" % (args.elem_shared_ref, band),
+              file=sys.stderr)
+        return {}
+    if len(entry["ref"]) != n_elem:
+        raise SystemExit("--elem-shared-ref %s: band %s has %d elements, the assembler has %d"
+                         % (args.elem_shared_ref, band, len(entry["ref"]), n_elem))
+    out = {"elem_sum_shared_ref": [round(float(x), 6) for pair in entry["ref"] for x in pair],
+           "elem_sum_shared_ref_mode": mode}
+    if getattr(args, "elem_shared_ref_slew_deg_s", None) is not None:
+        out["elem_sum_shared_ref_slew_deg_s"] = args.elem_shared_ref_slew_deg_s
+    return out
+
+
 def elem_steer_keys(args, arr, n_elem):
     """The assembler keys that ARM steering for one band: positions (from the source chosen by
     --elem-positions-from), the measured sign, and -- for the arraymap source -- the epoch key
@@ -1355,6 +1387,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # -- the exact drift config/gnss_record_layout.py was written to make impossible, left behind
     # in this branch when the path-A one was fixed (2026-08-07).
     record_floats = record_stride(n_live)
+    steer = (elem_steer_keys(args, arr, n_live)
+             if args.elem_steer_bands == "all"
+             or tag.strip("_") in [b for b in args.elem_steer_bands.split(",") if b]
+             else {})
 
     blocks = {
         tiles_buf: {
@@ -1638,13 +1674,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # dish-layout reference; presence of elem_positions_enu is what ARMS the
             # steering in GnssGpuRecordAssemble (geometry then arrives from the broker's
             # --post-sat-geometry feed). The SIGN is a measured convention.
-            **(elem_steer_keys(args, arr, n_live)
-               if args.elem_steer_bands == "all"
-               or tag.strip("_") in [b for b in args.elem_steer_bands.split(",") if b]
-               else {}),
+            **steer,
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
             **elem_shared_keys(args),
+            **elem_shared_ref_keys(args, (tag or signal_tag(sig["primary"])).strip("_"), steer,
+                                   n_live),
             **elem_proj_keys(args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
@@ -3120,6 +3155,16 @@ def main():
                          "Emitted only when given, with --elem-sum-shared.")
     ap.add_argument("--elem-sum-shared-tau-s", type=float, default=300.0,
                     help="consensus EMA time constant (s) for --elem-sum-shared")
+    ap.add_argument("--elem-shared-ref", default="",
+                    help="#154: the fleet reference snapshot (elem_shared_ref.py snapshot), one "
+                         "vector per band, for the shared model's phase pin")
+    ap.add_argument("--elem-shared-ref-mode", default="off", choices=("off", "log", "live"),
+                    help="off: no reference keys (byte-identical); log: each assembler reports "
+                         "its offset from the reference; live: it pins to it, slewed when warm. "
+                         "Also a live switch (POST <assemble>/set_elem_sum_shared_ref)")
+    ap.add_argument("--elem-shared-ref-slew-deg-s", type=float, default=None,
+                    help="slew rate of a warm model onto the reference (assembler default 1.0); "
+                         "emitted only when given")
     ap.add_argument("--elem-sum-pol-tau-s", type=float, default=3.0,
                     help="per-satellite inter-pol coefficient EMA time constant (s)")
     ap.add_argument("--elem-sum-tau-s", type=float, default=2.0,
