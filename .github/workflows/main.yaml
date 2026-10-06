@@ -29,15 +29,41 @@ jobs:
       packages: write
     uses: ./.github/workflows/build_push_docker.yaml
 
+  # Decide which test jobs a PR needs from the files it changes. Pushes run everything.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      cpu: ${{ steps.filter.outputs.cpu }}
+      gpu: ${{ steps.filter.outputs.gpu }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "cpu=true" >> "$GITHUB_OUTPUT"
+            echo "gpu=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch -q origin "$GITHUB_BASE_REF"
+          git diff --name-only "origin/$GITHUB_BASE_REF...$PR_HEAD" > changed.txt
+          cat changed.txt
+          python3 tools/ci_select_jobs.py < changed.txt | tee -a "$GITHUB_OUTPUT"
+
   kotekan-cpu-tests:
     name: CPU
-    needs: kotekan-docker
+    needs: [kotekan-docker, changes]
+    if: needs.changes.outputs.cpu == 'true'
     uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
       ccache_key: ${{ matrix.ccache_key }}
       cmake_defs: ${{ matrix.cmake_defs }}
-      build_target: ${{ matrix.build_target }}
       post_build: ${{ matrix.post_build }}
       runs_on: ${{ matrix.runs_on }} # Optional, but for these tests should generally be ubuntu-latest (GH)
     strategy:
@@ -147,19 +173,24 @@ jobs:
               for t in $GITHUB_WORKSPACE/tests/ci-scripts/push_pull/*.sh; do bash $t $GITHUB_WORKSPACE/build-2404/kotekan/kotekan || rc=1; done
               exit $rc
 
-          # Test gcc build with docs
-          - id: local-docs
-            ccache_key: kotekan-test-gcc-docs
-            cmake_defs: >-
-              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
-              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
-              -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
-              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
-              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=OFF
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF -DCOMPILE_DOCS=ON
-            build_target: docs
-            post_build: ""
+
+  # Sphinx and doxygen docs; these do not need the kotekan build.
+  kotekan-docs:
+    name: Docs
+    needs: kotekan-docker
+    uses: ./.github/workflows/test_kotekan_build.yaml
+    with:
+      container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
+      ccache_key: kotekan-test-gcc-docs
+      cmake_defs: >-
+        -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+        -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+        -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
+        -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+        -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+        -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=OFF
+        -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF -DCOMPILE_DOCS=ON
+      build_target: docs
 
 
   # Run the CPU test suites built with the Intel oneAPI compilers (icx/icpx).
@@ -167,7 +198,8 @@ jobs:
   # running the pytest and boost-test suites.
   kotekan-intel-tests:
     name: Intel
-    needs: kotekan-docker
+    needs: [kotekan-docker, changes]
+    if: needs.changes.outputs.cpu == 'true'
     uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_intel_img_name }}
@@ -206,8 +238,10 @@ jobs:
   # so only PRs from branches in this repository get to run it.
   kotekan-gpu-tests:
     name: "GPU"
-    needs: kotekan-docker
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: [kotekan-docker, changes]
+    if: >-
+      needs.changes.outputs.gpu == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_gpu_img_name }}
