@@ -137,6 +137,19 @@ common:
   # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
   # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
   keep-n2: true
+  # PHASE 3a: THE SATELLITES OUT OF THE SCIENCE N2 (cx51 canary LIVE 2026-10-03 12:37Z; the rest
+  # of the fleet the same evening). GnssN2Project solves the dominant SPREAD components of each
+  # channel's live block per frame and writes (I-QQ^H)V(I-QQ^H) into the copy N2Accumulate reads
+  # -- only in the excision-exempt lobes ('exempt' = rfi-excision-exempt-freq-ids above), which
+  # are lost to cosmology anyway. Needs keep-n2. B04X (correlator station 7) is LEFT OUT of the
+  # projected stations: saturated, and its cross-pol pair with B04Y was the dominant 'component'
+  # of every quiet channel (10-03). Judged at G32 2.94 deg and E36 1.43 deg on cx51: the satellite
+  # gone from cx51's channels in recv1's files, present on everyone else's; what remains at a
+  # close pass is the F-engine's 4-bit clipping product, which is in the data on every node
+  # (fixtures/projtest/phase3/out/e36_ca_20261003/). cx19 overrides this to "off": the CONTROL.
+  n2-project: live
+  n2-project-live-freq-ids: exempt
+  n2-project-stations: "0-6,8-15,56-79,120-127"
   n2-dual: true
 
   # ── SYNTHESIS ~4x (GPU TODO items 3+6, ARMED FLEET-WIDE 2026-08-31) ─────────────────────
@@ -448,6 +461,16 @@ common:
   # victims' rows clean in transit; inside 2 deg the victim in the bright satellite's own beam is
   # lost anyway. Hold stays 60 s (assembler default).
   elem-freeze-deg: 2
+  # #154 FLEET REFERENCE for the shared model's phase pin. The pin was each instance's own first
+  # model (one shadow), so a poor first shadow -- every node after an F-engine re-base, one or
+  # two at any cold start -- left that instance's global phase arbitrary and the fleet sum lost
+  # it until a restart. The reference is one vector per band, a snapshot of the fleet consensus
+  # (python/scripts/gnss/elem_shared_ref.py snapshot), refused unless taken against the epoch of
+  # elem-positions-file. live = pin to it (a first model in full, a warm one slewed at 1 deg/s);
+  # log = each assembler reports its offset only. Live switch: elem_shared_ref.py post FILE
+  # --mode live. Safety net: scripts/gnss/elem_ref_cron.sh.
+  elem-shared-ref: config/elem_shared_ref_20261006.json
+  elem-shared-ref-mode: live
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
   # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
@@ -715,14 +738,16 @@ nodes:
   # subset leg parks eigencalc again, and with it the Hermitian diagonal check that is our
   # only detector for #89. Restore `n2-send-legs: both` here once recv1 is confirmed writing
   # our full-leg frames.
-  cx19: {search-port-base: 11040}
+  # cx19 = THE PHASE-3a CONTROL (2026-10-03): no GnssN2Project, so recv1's files keep the
+  # satellites at full power on cx19's stream phases (4, 12) beside the projected ones -- same
+  # sky, same time (fixtures/projtest/phase3/n2proj_ab.py --control cx19). The stock nodes cannot
+  # serve: they excise the lobes (97 % at E36's 1.4-deg closest approach). ⚠️ "off" IS QUOTED:
+  # a bare `off` is YAML boolean false, which flags_from() omits, and the node would inherit
+  # common's `live`. Node flags follow common's on the generator's argv, so the last one wins.
+  cx19: {search-port-base: 11040, n2-project: "off"}
   cx27: {search-port-base: 11042}
   cx42: {search-port-base: 11044}
   cx43: {search-port-base: 11046}
   cx44: {search-port-base: 11048}
-  # cx51 = the phase-3a canary: GnssN2Project LIVE, writing only the GNSS lobes exempted from
-  # first-stage excision ('exempt' = the rfi-excision-exempt-freq-ids ranges); shadow metrics
-  # everywhere. B04X (station 7, saturated) is dropped from the projected stations: its
-  # cross-pol pair with B04Y was the dominant 'component' in every quiet channel (10-03).
-  cx51: {search-port-base: 11050, n2-project: live, n2-project-live-freq-ids: exempt,
-         n2-project-stations: "0-6,8-15,56-79,120-127"}
+  # cx51 was the phase-3a canary (live 2026-10-03 12:37Z); its settings are common's now.
+  cx51: {search-port-base: 11050}
