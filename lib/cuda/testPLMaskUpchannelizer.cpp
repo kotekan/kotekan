@@ -11,6 +11,7 @@
 #include "cuda_runtime.h"              // for cudaMalloc, cudaMemcpy, ...
 #include "errors.h"                    // for TEST_PASSED
 #include "kotekanLogging.hpp"          // for FATAL_ERROR, INFO
+#include "upchannelizeReference.hpp"   // for upchan_default_num_taps
 
 #include <cmath>      // for pow
 #include <cstddef>    // for ptrdiff_t
@@ -145,7 +146,8 @@ public:
         for (const int U : factors) {
             // With density 0.5 almost every output bit (an AND of M*U input bits) is 0. At this
             // density about half of them are 1, so that a misplaced input bit shows.
-            const double half_density = std::pow(0.5, 1.0 / (4 * U));
+            constexpr int M = kotekan::upchan_default_num_taps;
+            const double half_density = std::pow(0.5, 1.0 / (M * U));
             const double densities[] = {0.5, half_density, 1.0};
             for (const auto& r : ranges)
                 for (const auto& g : geoms)

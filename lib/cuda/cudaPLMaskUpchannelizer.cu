@@ -4,6 +4,8 @@
 
 #include "cudaPLMaskUpchannelizer.hpp"
 
+#include "upchannelizeReference.hpp" // for upchan_default_num_taps
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -217,7 +219,7 @@ void launch_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
     assert(ringbuf_pos_out_64 >= 0);
 
     // M = number of PFB taps; N = output words produced per thread.
-    constexpr int M = 4;
+    constexpr int M = kotekan::upchan_default_num_taps;
     constexpr int N = 256;
     constexpr int threads_x = 256;
 
@@ -298,7 +300,7 @@ void cpu_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
     assert(ringbuf_pos_out_64 >= 0);
     assert(num_times_64 % U == 0);
 
-    constexpr int M = 4; // PFB taps
+    constexpr int M = kotekan::upchan_default_num_taps; // PFB taps
 
     // Read input channels [Fmin, Fmax) (contiguous inner sub-range); write output channels
     // [0, Fmax-Fmin). The output buffer may over-allocate frequencies, so its row stride uses

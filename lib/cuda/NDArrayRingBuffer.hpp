@@ -449,6 +449,39 @@ public:
         return 0;
     }
 
+    // Skip the first `skipped_elements` elements of the ringbuffer, once, before the first
+    // read: claim and release them without reading them. This does nothing once the read head
+    // has moved, so it can be called before every read. (Only the thread that claims from this
+    // ringbuffer moves the read head, so it is 0 exactly until the first claim.)
+    //
+    // Returns 0 if all is good, -1 if we should terminate.
+    int skip_at_start(const std::ptrdiff_t skipped_elements) {
+        RINGBUF_CHECK(skipped_elements >= 0);
+        if (skipped_elements == 0)
+            return 0;
+        const std::ptrdiff_t read_head = peek_read_head();
+        if (read_head < 0)
+            return -1;
+        if (read_head > 0)
+            return 0;
+        // Our callers read at most a quarter of the ringbuffer at a time
+        const std::ptrdiff_t ringbuf_size = ndarray.extent(0);
+        if (!(skipped_elements <= ringbuf_size / 4))
+            FATAL_ERROR("kernel {:s}, buffer {:s}: need to skip {:d} elements, but the "
+                        "ringbuffer holds only {:d}",
+                        cuda_command.get_unique_name(), buffer_name, skipped_elements,
+                        ringbuf_size);
+        const int errcode = wait_and_claim_readable([&](const std::ptrdiff_t available) {
+            return available >= skipped_elements
+                       ? read_descriptor_t{.claimed = skipped_elements, .read = skipped_elements}
+                       : read_descriptor_t{.claimed = 0, .read = 0};
+        });
+        if (errcode < 0)
+            return errcode;
+        finish_read();
+        return 0;
+    }
+
     void finish_read() {
         RINGBUF_CHECK(read_valid.size() > 0);
         RINGBUF_CHECK(read_claimed.size() >= 0);
