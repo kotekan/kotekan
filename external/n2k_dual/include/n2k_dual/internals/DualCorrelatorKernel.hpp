@@ -524,8 +524,8 @@ struct DualCorrelatorKernel
 
     static __device__ void kernel_body(int* dst, const int8_t* srcA, const int8_t* srcB,
                                        const uint* rfimask, const int* ptable,
-                                       const int* freq_map, int n_freq_out, int nt_inner,
-                                       int nt_outer)
+                                       const int* freq_map, int n_freq_out, int b_fstride,
+                                       int nt_inner, int nt_outer)
     {
         extern __shared__ int shmem[];
 
@@ -568,8 +568,14 @@ struct DualCorrelatorKernel
         int* sp = shmem + ptable[i + 3 * n];
 
         const int ts = ptable[i + 6 * n];
-        const int8_t* src = ptable[i + 7 * n] ? srcB : srcA;
-        const int* gp = ((const int*)src) + (f * (ts / NF)) + ptable[i + 2 * n];
+        const bool is_b = ptable[i + 7 * n] != 0;
+        const int8_t* src = is_b ? srcB : srcA;
+        // COMPACT B (b_fstride > 0): the replica input holds only the computed channels,
+        // [T][n_freq_out][NSB] in freq_map order, so it is addressed by the OUTPUT slice;
+        // the antenna input and the mask keep the real channel f. ts is already that
+        // input's own time stride (precompute_offsets row 6).
+        const int fofs = (is_b && b_fstride > 0) ? (int)blockIdx.y * b_fstride : f * (ts / NF);
+        const int* gp = ((const int*)src) + fofs + ptable[i + 2 * n];
 
         const int touter = blockIdx.z;
         gp += ssize_t(touter * nt_inner) * ts;
@@ -645,11 +651,11 @@ struct DualCorrelatorKernel
 template<int NS, int NF>
 __global__ void __launch_bounds__(DualCorrelatorParams::threads_per_block, 1)
     n2k_dual_kernel(int* dst, const int8_t* srcA, const int8_t* srcB, const uint* rfimask,
-                    const int* ptable, const int* freq_map, int n_freq_out, int ntime,
-                    int nt_outer)
+                    const int* ptable, const int* freq_map, int n_freq_out, int b_fstride,
+                    int ntime, int nt_outer)
 {
     DualCorrelatorKernel<NS, NF>::kernel_body(dst, srcA, srcB, rfimask, ptable, freq_map,
-                                              n_freq_out, ntime, nt_outer);
+                                              n_freq_out, b_fstride, ntime, nt_outer);
 }
 
 

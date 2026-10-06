@@ -95,9 +95,14 @@ struct DualCorrelatorParams
     ///        7 channels of 384, and the mixed/BB blocks on the other 377 correlate synthetic
     ///        lanes that are identically zero -- this is the lever that takes path B from
     ///        2.97x stock N^2 to ~1.2x (see docs/gnss_gpu_search.md 11.2).
+    /// @param compact_b the B input holds only the computed channels: int8[T][n_freq_out]
+    ///        [nstations_b], one slice per freq_map entry in that order, addressed by the
+    ///        OUTPUT slice. The A input and the RFI mask keep the full nfreq axis. This is
+    ///        what lets one replica buffer per GPU be sized by the GNSS comb (tens of
+    ///        channels) instead of every channel the GPU holds.
     DualCorrelatorParams(int nstations_a, int nstations_b, int nfreq,
                          int block_class_mask = BLOCK_MASK_ALL,
-                         const std::vector<int>& freq_map = {});
+                         const std::vector<int>& freq_map = {}, bool compact_b = false);
 
     const int nstations_a;
     const int nstations_b;
@@ -106,6 +111,7 @@ struct DualCorrelatorParams
     const int block_class_mask;
     const std::vector<int> freq_map; ///< input channels computed; empty = all
     const int n_freq_out;     ///< vis_out slices = freq_map.size(), or nfreq if empty
+    const bool compact_b;     ///< B input is [T][n_freq_out][nstations_b], not [T][nfreq][..]
 
     // Derived parameters (computed in constructor, or compile-time constants).
 
@@ -186,7 +192,8 @@ public:
     //
     //  - 'e_in_a' is int8[nt_outer*nt_inner][nfreq][nstations_a], all axes contiguous,
     //    complex (4+4) as int8 (imag in low nibble, real in high nibble, offset-encoded).
-    //  - 'e_in_b' is int8[nt_outer*nt_inner][nfreq][nstations_b], same encoding.
+    //  - 'e_in_b' is int8[nt_outer*nt_inner][nfreq][nstations_b], same encoding, or
+    //    int8[nt_outer*nt_inner][n_freq_out][nstations_b] with params.compact_b.
     //    Must be nullptr iff nstations_b == 0.
     //  - 'vis_out' covers the (nstations_a + nstations_b) triangle; tile (t,f,i,j) layout
     //    and offsets exactly as documented in n2k/Correlator.hpp, with
@@ -213,9 +220,10 @@ public:
     // Initialized by constructor.
     const DualCorrelatorParams params;
 
-    // Kernel args are (dst, srcA, srcB, rfimask, ptable, nt_inner, nt_outer).
+    // Kernel args are (dst, srcA, srcB, rfimask, ptable, freq_map, n_freq_out, b_fstride,
+    // nt_inner, nt_outer); b_fstride = emat_fstride_b when compact_b, else 0.
     using kernel_t = void (*)(int*, const int8_t*, const int8_t*, const uint*, const int*,
-                              const int*, int, int, int);
+                              const int*, int, int, int, int);
 
 protected:
     int cuda_device;

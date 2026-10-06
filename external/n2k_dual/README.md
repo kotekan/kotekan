@@ -29,8 +29,9 @@ production pipeline is a strided copy.
 | `DualCorrelatorParams` | `(nstations_a, nstations_b, nfreq, block_class_mask)`; per-input `emat_*stride_{a,b}`; `ptable_nrows = 8` |
 | ptable | 8 rows/thread instead of 6: row 6 = warp's input time stride (int32), row 7 = input select. Built per **enabled** block (`block_class_mask` can skip AA / mixed / BB block classes). blockId → (atile,btile) decode hoisted into `dual_enumerate_blocks()` (same order as n2k's `_init_block_data`). |
 | `kernel_body` | takes `srcA`+`srcB`; warp-uniform base-pointer select; per-freq offset `f*(ts/NF)`; time stride `ts` is runtime per-warp instead of `constexpr emat_tstride`, threaded through `prefetch_chunk` / `do_initial_prefetch` / `correlate_t64` / `correlate_t128` |
-| `kernel_t` | `(int*, const int8_t*, const int8_t*, const uint*, const int*, int, int)` |
-| instantiations | `dual_kernel_{NS_total}_{NF}.cu`; the template depends only on the total |
+| `kernel_t` | `(int*, const int8_t*, const int8_t*, const uint*, const int*, const int*, int, int, int, int)`: freq_map, n_freq_out, b_fstride, nt_inner, nt_outer |
+| `compact_b` | `DualCorrelatorParams(..., freq_map, compact_b)`: the B input is `[T][n_freq_out][nstations_b]`, one slice per `freq_map` entry, addressed by the OUTPUT slice (`b_fstride`); A and the mask keep the real channel. One replica array per GPU sized by the comb, not by every channel. |
+| instantiations | `dual_kernel_{NS_total}_{NF}.cu`; the template depends only on the total. 256_384 (one chain per pass) and 512_384 (128 antennas + 384 shared synthetic lanes) ship; 128_8 / 256_8 / 512_8 are the tests' |
 
 Everything else — shared-memory layout, in-register transposes, MMA core, RFI masking,
 output tiling/write path — is a verbatim copy.

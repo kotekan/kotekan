@@ -25,7 +25,7 @@ static int count_enabled_blocks(int ntiles_1d, int ntiles_a, int block_class_mas
 
 DualCorrelatorParams::DualCorrelatorParams(int nstations_a_, int nstations_b_, int nfreq_,
                                            int block_class_mask_,
-                                           const std::vector<int>& freq_map_) :
+                                           const std::vector<int>& freq_map_, bool compact_b_) :
     nstations_a(nstations_a_),
     nstations_b(nstations_b_),
     nstations(nstations_a_ + nstations_b_),
@@ -33,10 +33,12 @@ DualCorrelatorParams::DualCorrelatorParams(int nstations_a_, int nstations_b_, i
     block_class_mask(block_class_mask_),
     freq_map(freq_map_),
     n_freq_out(freq_map_.empty() ? nfreq_ : (int)freq_map_.size()),
+    compact_b(compact_b_),
     emat_fstride_a(nstations_a / 4),               // int32 stride, not bytes
     emat_tstride_a(nfreq * emat_fstride_a),        // int32 stride, not bytes
     emat_fstride_b(nstations_b / 4),               // int32 stride, not bytes
-    emat_tstride_b(nfreq * emat_fstride_b),        // int32 stride, not bytes
+    // compact B: the time stride spans only the computed channels
+    emat_tstride_b((compact_b ? n_freq_out : nfreq) * emat_fstride_b), // int32 stride
     vmat_ntiles(((nstations / 16) * (nstations / 16 + 1)) / 2),
     vmat_fstride(vmat_ntiles * 16 * 16 * 2), // int32 stride, not int32+32
     vmat_tstride(nfreq * vmat_fstride),      // int32 stride, not int32+32
@@ -119,9 +121,9 @@ void DualCorrelator::launch(int* vis_out, const int8_t* e_in_a, const int8_t* e_
     int shmem_nbytes = DualCorrelatorParams::shmem_nbytes;
     const int* poffsets = this->precomputed_offsets.get();
 
-    kernel<<<nblocks, nthreads, shmem_nbytes, stream>>>(vis_out, e_in_a, e_in_b, rfimask, poffsets,
-                                                        this->d_freq_map.get(),
-                                                        params.n_freq_out, nt_inner, nt_outer);
+    kernel<<<nblocks, nthreads, shmem_nbytes, stream>>>(
+        vis_out, e_in_a, e_in_b, rfimask, poffsets, this->d_freq_map.get(), params.n_freq_out,
+        params.compact_b ? params.emat_fstride_b : 0, nt_inner, nt_outer);
     CUDA_PEEK("DualCorrelator::launch");
 
     if (sync)
@@ -149,11 +151,12 @@ void DualCorrelator::launch(Array<int>& vis_out, const Array<int8_t>& e_in_a,
         throw runtime_error(ss.str());
     }
 
-    if ((nstat_b > 0) && !e_in_b.shape_equals({nt_expected, nfreq, nstat_b})) {
+    const int nfreq_b = params.compact_b ? params.n_freq_out : nfreq; // compact B: comb only
+    if ((nstat_b > 0) && !e_in_b.shape_equals({nt_expected, nfreq_b, nstat_b})) {
         stringstream ss;
         ss << "DualCorrelator::launch(nfreq=" << nfreq << ", nt_outer=" << nt_outer
            << ", nt_inner=" << nt_inner << ")"
-           << ": expected emat_b shape=(" << nt_expected << "," << nfreq << "," << nstat_b << ")"
+           << ": expected emat_b shape=(" << nt_expected << "," << nfreq_b << "," << nstat_b << ")"
            << ", got shape=" << e_in_b.shape_str();
         throw runtime_error(ss.str());
     }

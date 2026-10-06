@@ -49,6 +49,10 @@ static constexpr int T = NT_OUTER * NT_INNER;
 static constexpr int NSA = 128;
 static constexpr int NSB = 128;
 static constexpr int NS = NSA + NSB;
+// The shared-synth geometry (one pass per GPU, 2026-10-06): three chains' 128 lanes each.
+static constexpr int NSB3 = 384;
+static constexpr int NS3 = NSA + NSB3;
+static constexpr int NCHAIN = NSB3 / NSB;
 
 static int ntiles(int ns) {
     int m = ns / 16;
@@ -365,6 +369,130 @@ int main(int argc, char** argv) {
                     }
             }
         fails += report("[6] freq_map {5,2,7,0} vs full, bitwise", st);
+
+        // [7] COMPACT B: the replica input holds only the mapped channels, [T][4][NSB] in
+        // freq_map order, and must reproduce the padded freq-map launch bitwise. The map is
+        // out of order on purpose: a kernel that addressed B by the real channel would read
+        // the wrong slices and fail here.
+        {
+            std::vector<uint8_t> hbc((size_t)T * fmap.size() * NSB);
+            for (int t = 0; t < T; t++)
+                for (size_t k = 0; k < fmap.size(); k++)
+                    memcpy(&hbc[((size_t)t * fmap.size() + k) * NSB],
+                           &hb[((size_t)t * NF + fmap[k]) * NSB], NSB);
+            int8_t* dbc = (int8_t*)up(hbc.data(), hbc.size());
+            n2k_dual::DualCorrelatorParams pc(NSA, NSB, NF, n2k_dual::BLOCK_MASK_ALL, fmap, true);
+            n2k_dual::DualCorrelator dcomp(pc);
+            int* vc = nullptr;
+            CK(cudaMalloc(&vc, nvis_f * 4));
+            CK(cudaMemset(vc, 0xa5, nvis_f * 4));
+            dcomp.launch(vc, da, dbc, drm, NT_OUTER, NT_INNER, nullptr, true);
+            std::vector<int> hvc(nvis_f);
+            CK(cudaMemcpy(hvc.data(), vc, nvis_f * 4, cudaMemcpyDeviceToHost));
+            CmpStats sc;
+            for (size_t k = 0; k < (size_t)NT_OUTER * fmap.size(); k++) {
+                const int* got = hvc.data() + k * fstride;
+                const int* want = hvf.data() + k * fstride;
+                for (int ihi = 0; ihi < NS / 16; ihi++)
+                    for (int jhi = 0; jhi <= ihi; jhi++) {
+                        size_t to = 512 * ((size_t)ihi * (ihi + 1) / 2 + jhi);
+                        for (int ilo = 0; ilo < 16; ilo++)
+                            for (int jlo = 0; jlo < 16; jlo++) {
+                                if (16 * ihi + ilo < 16 * jhi + jlo)
+                                    continue;
+                                size_t o = to + 32 * ilo + 2 * jlo;
+                                sc.checked += 2;
+                                for (int c2 = 0; c2 < 2; c2++)
+                                    if (got[o + c2] != want[o + c2])
+                                        sc.bad++;
+                            }
+                    }
+            }
+            fails += report("[7] compact B [T][4][NSB] vs padded freq_map, bitwise", sc);
+        }
+    }
+
+    // [8] + [9] THE SHARED SYNTH AXIS: one launch over 128 + 384 stations, three chains' lanes
+    // side by side. [8] the whole 512-station triangle against the CPU reference (the new
+    // instantiation); [9] each chain's mixed and BB tiles, read out of the shared launch at
+    // its own rows, are bitwise what a one-chain launch over its lanes alone produces -- the
+    // property that lets the assemblers keep their frames when the chains share a pass.
+    {
+        std::vector<uint8_t> hb3((size_t)T * NF * NSB3);
+        for (auto& v : hb3)
+            v = (uint8_t)((nib(rng) << 4) | nib(rng));
+        std::vector<uint8_t> hab3((size_t)T * NF * NS3);
+        for (int t = 0; t < T; t++)
+            for (int f = 0; f < NF; f++) {
+                memcpy(&hab3[((size_t)t * NF + f) * NS3], &ha[((size_t)t * NF + f) * NSA], NSA);
+                memcpy(&hab3[((size_t)t * NF + f) * NS3 + NSA], &hb3[((size_t)t * NF + f) * NSB3],
+                       NSB3);
+            }
+        int8_t* db3 = (int8_t*)up(hb3.data(), hb3.size());
+        const size_t nvis3 = (size_t)NT_OUTER * NF * ntiles(NS3) * 512;
+        int* v3 = nullptr;
+        CK(cudaMalloc(&v3, nvis3 * 4));
+        CK(cudaMemset(v3, 0xa5, nvis3 * 4));
+        n2k_dual::DualCorrelator d3(NSA, NSB3, NF);
+        d3.launch(v3, da, db3, drm, NT_OUTER, NT_INNER, nullptr, true);
+        std::vector<int> hv3(nvis3);
+        CK(cudaMemcpy(hv3.data(), v3, nvis3 * 4, cudaMemcpyDeviceToHost));
+        {
+            std::vector<int> ref3 = cpu_reference(hab3, hrm, NS3);
+            CmpStats st;
+            cmp_tiles(st, "dual512", hv3.data(), NS3, ref3.data(), NS3, tiles_all);
+            fails += report("[8] dual(128+384) vs CPU reference (512)", st);
+        }
+        for (int c = 0; c < NCHAIN; c++) {
+            // this chain's lanes alone, as its own B input
+            std::vector<uint8_t> hbc((size_t)T * NF * NSB);
+            for (int t = 0; t < T; t++)
+                for (int f = 0; f < NF; f++)
+                    memcpy(&hbc[((size_t)t * NF + f) * NSB],
+                           &hb3[((size_t)t * NF + f) * NSB3 + (size_t)c * NSB], NSB);
+            int8_t* dbc = (int8_t*)up(hbc.data(), hbc.size());
+            int* vc = nullptr;
+            CK(cudaMalloc(&vc, nvis_d * 4));
+            CK(cudaMemset(vc, 0xa5, nvis_d * 4));
+            dual.launch(vc, da, dbc, drm, NT_OUTER, NT_INNER, nullptr, true);
+            std::vector<int> hvc(nvis_d);
+            CK(cudaMemcpy(hvc.data(), vc, nvis_d * 4, cudaMemcpyDeviceToHost));
+            // the chain's rows in the shared triangle vs its rows in its own
+            const int na16 = NSA / 16, nb16 = NSB / 16, row0 = na16 + c * nb16;
+            CmpStats st;
+            const size_t f3 = (size_t)ntiles(NS3) * 512, fc = (size_t)ntiles(NS) * 512;
+            for (int tout = 0; tout < NT_OUTER; tout++)
+                for (int f = 0; f < NF; f++) {
+                    const int* x = hv3.data() + ((size_t)tout * NF + f) * f3;
+                    const int* y = hvc.data() + ((size_t)tout * NF + f) * fc;
+                    for (int r = 0; r < nb16; r++) {
+                        const int ihi3 = row0 + r, ihic = na16 + r;
+                        // mixed: every antenna column; BB: this chain's rows at or below
+                        for (int jhi = 0; jhi < na16 + nb16; jhi++) {
+                            if (jhi > ihic)
+                                continue;
+                            const int jhi3 = jhi < na16 ? jhi : jhi - na16 + row0;
+                            const size_t ox = 512 * ((size_t)ihi3 * (ihi3 + 1) / 2 + jhi3);
+                            const size_t oy = 512 * ((size_t)ihic * (ihic + 1) / 2 + jhi);
+                            for (int ilo = 0; ilo < 16; ilo++)
+                                for (int jlo = 0; jlo < 16; jlo++) {
+                                    if (16 * ihic + ilo < 16 * jhi + jlo)
+                                        continue; // above-diagonal garbage
+                                    for (int c2 = 0; c2 < 2; c2++) {
+                                        st.checked++;
+                                        if (x[ox + 32 * ilo + 2 * jlo + c2]
+                                            != y[oy + 32 * ilo + 2 * jlo + c2])
+                                            st.bad++;
+                                    }
+                                }
+                        }
+                    }
+                }
+            char name[80];
+            snprintf(name, sizeof name, "[9.%d] chain %d rows of dual(128+384) == dual(128+128)",
+                     c, c);
+            fails += report(name, st);
+        }
     }
 
     printf(fails ? "*** %d comparison(s) FAILED\n" : "ALL PASS\n", fails);
