@@ -15,8 +15,10 @@ WHAT IS BEING PINNED:
   * an incumbent GONE from BRDC is evictable sooner, but not instantly;
   * a candidate below the admit mask claims nothing, however long a slot has been free;
   * `report` posts NOTHING, ever -- the property that makes it safe to arm first;
-  * nodes that disagree stop the stage dead rather than being driven to a consensus nobody
-    chose (nothing in this pipeline is per-node, so a split map is a fault, not a state).
+  * two unwanted satellites never trade a slot (the map is a fixed point, not a flip-flop);
+  * a node that left the fleet's map (a restart, a missed post) is put back on it, alone and
+    once per interval; a split with no reference -- no majority, nothing this broker posted
+    -- or one still mid-crossing changes nothing (nothing here is per-node).
 
 @author Keith Vanderlinde
 """
@@ -210,6 +212,30 @@ def main():
     check(any("36" in str(pl) for _u, pl in POSTS),
           "... but with only 2 needed, the shallowest deep slot IS free to be traded")
 
+    # ---- 4c. AN UNWANTED SATELLITE DOES NOT DISPLACE ANOTHER ---------------------------
+    # Every slot holds a real satellite and one more has none, all of them below the horizon
+    # and none a probe. The leftover-slot fill used to give the deepest unwanted occupant's
+    # slot to the unslotted one, and the next cycle traded them back: BeiDou's slot 12 flipped
+    # every interval from 01:25 to 06:37Z on 2026-10-07, each flip a cold acquisition on
+    # twelve instances. Production thresholds.
+    POSTS[:] = []
+    sky = {1: 40.0, 2: 30.0, 3: -70.0, 4: -55.0, 5: -20.0, 6: -54.0}   # 6 has no slot
+    ctx = Ctx([1, 2, 3, 4, 5], sky, prn_reconfig_admit_deg=0.0, prn_reconfig_evict_deg=-2.0,
+              noise_probes=1, prn_reconfig_interval_s=120.0)
+    for k in range(6):
+        run_cycle(ctx, 1000.0 + k * 121.0)
+    check(not POSTS,
+          "two unwanted satellites never trade a slot: the map is a fixed point, not a swap "
+          "every interval")
+    sky_dead = dict(sky)
+    del sky_dead[5]                                     # ... but a DEAD slot still fills
+    POSTS[:] = []
+    ctx = Ctx([1, 2, 3, 4, 5], sky_dead, prn_reconfig_admit_deg=0.0,
+              prn_reconfig_evict_deg=-2.0, noise_probes=1, prn_reconfig_interval_s=120.0)
+    run_cycle(ctx, 1000.0)
+    check(POSTS and POSTS[0][1]["prns"] == [1, 2, 3, 4, 6],
+          "... while a slot whose PRN has no prediction is still handed to the unslotted one")
+
     # ---- 5. report mode posts nothing, ever -------------------------------------------
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="report")
@@ -237,8 +263,85 @@ def main():
     split_cycle(1000.0)
     split_cycle(1000.0 + 100000.0)
     check(not POSTS,
-          "nodes that disagree stop the stage -- nothing here is per-node, so a split map "
-          "is a fault to fix and not a state to drive out of")
+          "a 1-1 split with no reference (no majority, nothing this broker posted) changes "
+          "nothing -- nothing here is per-node, and neither side is the fleet's")
+
+    # ---- 7b. A NODE BACK ON ITS BOOT LIST IS PUT BACK ON THE FLEET'S MAP -----------------
+    # A node restart reverts that node to its config's list. The stage used to treat that
+    # split like any other and change nothing, indefinitely: cx19 restarted at 06:37Z on
+    # 2026-10-07 and held two BeiDou satellites the fleet had swapped out, and lacked the two
+    # it had swapped in, until the broker was changed.
+    fleet, boot = [1, 2, 36], [1, 2, 3]
+    nodes = ["http://node%d" % i for i in range(1, 5)]
+    sky = {1: 40.0, 2: 30.0, 36: 83.0, 3: -5.0}
+    odd = {n: list(fleet) for n in nodes}
+    odd["http://node4"] = list(boot)
+
+    def sweep(ctx, maps, t, pending=None):
+        CTX[0] = None   # a resync reaches ONE node, not the shared node_state
+        ctx.t0 = t
+        ctx.prnmap.poll_t = t
+        ctx.prnmap.maps = {k: list(v) for k, v in maps.items()}
+        if pending is not None:
+            ctx.prnmap.pending = dict(pending)
+        prnmap.stage_prn_membership(ctx)
+
+    POSTS[:] = []
+    ctx = Ctx(fleet, sky)
+    ctx.trackers = nodes
+    sweep(ctx, odd, 1000.0)
+    check([u for u, _ in POSTS] == ["http://node4/set_prns"],
+          "a 3-1 split (no broker history, as after a broker restart): the odd node, and "
+          "only it, is sent the majority's map")
+    check(POSTS and POSTS[0][1] == {"prns": fleet},
+          "... the whole map, unscheduled -- one node crosses, there is no fleet frame to share")
+    check("http://node4" not in ctx.prnmap.maps,
+          "... and its map is read back before anything else is decided")
+    n_posts = len(POSTS)
+    sweep(ctx, {n: list(fleet) for n in nodes}, 1001.0)
+    check(len(POSTS) == n_posts, "once it holds the map again, nothing more is posted")
+
+    # ---- 7c. THE MAP THIS BROKER LAST POSTED IS THE REFERENCE ---------------------------
+    POSTS[:] = []
+    ctx = Ctx(fleet, sky)
+    ctx.prnmap.applied = list(fleet)
+    sweep(ctx, {"http://node1": list(fleet), "http://node2": list(boot)}, 1000.0)
+    check([u for u, _ in POSTS] == ["http://node2/set_prns"],
+          "a 1-1 split where one node holds the map this broker last posted: the other node "
+          "missed it (a timeout, a restart) and is sent it")
+
+    # ---- 7d. MID-CROSSING IS NOT A SPLIT -------------------------------------------------
+    POSTS[:] = []
+    LOGS[:] = []
+    ctx = Ctx(fleet, sky)
+    ctx.trackers = nodes
+    sweep(ctx, odd, 1000.0, pending={"http://node1": True})
+    check(not POSTS, "a swap still pending on any node: the fleet is mid-crossing, so nothing "
+                     "is resynced on a read-back that is not final")
+    check(not any("DISAGREE" in m for m in LOGS), "... and the crossing is not called a split")
+
+    # ---- 7e. report logs it, off does nothing --------------------------------------------
+    for mode in ("report", "off"):
+        POSTS[:] = []
+        LOGS[:] = []
+        ctx = Ctx(fleet, sky, prn_reconfig=mode)
+        ctx.args.probe_require_slot = True   # so that off still polls
+        ctx.trackers = nodes
+        sweep(ctx, odd, 1000.0)
+        check(not POSTS, "%s mode posts no resync" % mode)
+        if mode == "report":
+            check(any("REPORT ONLY" in m and "node4" in m for m in LOGS),
+                  "... and report mode names the node it would put back")
+
+    # ---- 7f. A NODE THAT STAYS OFF THE MAP IS RETRIED ONCE PER INTERVAL ------------------
+    POSTS[:] = []
+    ctx = Ctx(fleet, sky, prn_reconfig_interval_s=120.0)
+    ctx.trackers = nodes
+    sweep(ctx, odd, 1000.0)
+    sweep(ctx, odd, 1010.0)   # still on its boot list: refused, or restarted again
+    check(len(POSTS) == 1, "a node still off the map 10 s later is not re-posted every cycle")
+    sweep(ctx, odd, 1121.0)
+    check(len(POSTS) == 2, "... and is retried once the interval has passed")
 
     # ---- 8. no prediction this cycle -> change nothing ---------------------------------
     POSTS[:] = []

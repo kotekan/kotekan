@@ -30,7 +30,9 @@ the same finding. Arm `apply` deliberately.
 GETs the live map. So the map it diffs against is what the node actually holds, including
 after a node restart reverted it to the config's list -- which it will, because this mechanism
 is deliberately NOT persistent. The config remains the boot state; this is a runtime overlay,
-and a restart is a clean slate rather than a silently-inherited history.
+and a restart is a clean slate rather than a silently-inherited history. A node that comes
+back on its boot list while the rest of the fleet holds the broker's map is put back on that
+map (_resync_split); until it is, the fleet is split and no other change is made.
 
 @author Keith Vanderlinde
 """
@@ -46,10 +48,13 @@ class PrnMapState(object):
     """One chain's view of node membership, and the hysteresis that governs changes."""
 
     __slots__ = ("maps", "poll_t", "cursor", "last_swap_t", "down_since", "gone_since", "err",
-                 "swaps", "refused", "beat_t", "consensus")
+                 "swaps", "refused", "beat_t", "consensus", "pending", "applied", "resync_t")
 
     def __init__(self):
         self.maps = {}          # endpoint -> [prn per slot]
+        self.pending = {}       # endpoint -> a staged swap had not crossed when it was read
+        self.applied = None     # the last map this broker posted and a node accepted
+        self.resync_t = {}      # endpoint -> t of the last resync posted to it
         self.poll_t = 0.0       # last GET of the endpoint at `cursor`
         self.cursor = 0         # round-robin: ONE endpoint per cycle (see _poll)
         self.last_swap_t = 0.0  # rate limit
@@ -110,8 +115,10 @@ def _poll(ctx, st, eps):
         m = r.get("prns")
         if isinstance(m, list) and m:
             st.maps[ep] = [int(x) for x in m]
+            st.pending[ep] = bool(r.get("pending"))
         else:
             st.maps.pop(ep, None)
+            st.pending.pop(ep, None)
         # ⚠️ IS THE DEADLINE EVEN TESTABLE? A node that answers this GET is running, so its
         # frame loop is turning; last_hop < 0 then means NO producer is feeding the deadline
         # clock, and every scheduled swap silently degrades to apply-immediately. That is
@@ -130,18 +137,20 @@ def _poll(ctx, st, eps):
     except Exception as e:
         st.err = "%s: %s" % (ep, e)
         st.maps.pop(ep, None)
+        st.pending.pop(ep, None)
     # Endpoints that have left the configured list must not linger in the consensus.
     for gone in [k for k in st.maps if k not in eps]:
         st.maps.pop(gone, None)
+        st.pending.pop(gone, None)
 
 
 def _consensus(maps):
     """The map every reporting node agrees on, or None.
 
     ⚠️ DISAGREEMENT IS NOT AVERAGED. Nothing here is per-node -- a per-node PRN list would be a
-    bug on its own (chord-nothing-is-per-node) -- so if two nodes report different maps the
-    right response is to say so and change nothing, not to pick one and drive the fleet toward
-    it from a state nobody chose.
+    bug on its own (chord-nothing-is-per-node) -- so a split map never drives a decision. It is
+    either a node that lost the fleet's map, which _resync_split puts back, or ambiguous, in
+    which case nothing changes.
     """
     if not maps:
         return None
@@ -152,6 +161,65 @@ def _consensus(maps):
         elif m != first:
             return None
     return first
+
+
+def _resync_split(ctx, st, eps, now):
+    """Put endpoints that left the fleet's map back on it. False if the split is ambiguous.
+
+    A complete sweep splits for two ordinary reasons: a node restart reverts that node to its
+    config's list, and a post that failed leaves a node on the previous map. In both cases the
+    rest of the fleet still holds a map the broker chose, so the reference is the last map this
+    broker posted, if any node holds it, else the map a strict majority holds (the case after a
+    broker restart). With neither, nothing moves. Nor does it while any node has a swap
+    pending: the fleet is mid-crossing and the read-back is not final.
+
+    The resync is unscheduled. Only the odd node changes, and its moved slots acquire cold
+    whenever they cross, so there is no fleet-wide frame to agree on.
+    """
+    a = ctx.args
+    if any(st.pending.get(ep) for ep in eps):
+        return True
+    ref = None
+    if st.applied is not None and any(st.maps.get(ep) == st.applied for ep in eps):
+        ref = st.applied
+    else:
+        counts = {}
+        for ep in eps:
+            if ep in st.maps:
+                k = tuple(st.maps[ep])
+                counts[k] = counts.get(k, 0) + 1
+        if counts:
+            best, n = max(counts.items(), key=lambda kv: kv[1])
+            if 2 * n > len(eps):
+                ref = list(best)
+    if ref is None:
+        return False
+    tag = log_tag() or a.signal
+    odd = [ep for ep in eps if st.maps.get(ep) != ref]
+    if a.prn_reconfig != "apply":
+        _log_rl("prnmap-resync",
+                "PRN MAP %s (REPORT ONLY, nothing posted): %d endpoint(s) hold a map the rest "
+                "of the fleet does not (%s); apply would put them back on it."
+                % (tag, len(odd), ", ".join(odd[:4])), every_s=300.0)
+        return True
+    for ep in odd:
+        # A node that keeps refusing is retried once per interval, not every cycle.
+        if now - st.resync_t.get(ep, -1e18) < a.prn_reconfig_interval_s:
+            continue
+        st.resync_t[ep] = now
+        n_moved = sum(1 for x, y in zip(st.maps[ep], ref) if x != y)
+        try:
+            _post("%s/set_prns" % ep, {"prns": ref}, timeout=a.prn_reconfig_timeout_s)
+            _log("PRN MAP %s: %s held a different map in %d slot(s) (a restart reverts a node "
+                 "to its config list) -- put back on the fleet's map. Those slots acquire COLD."
+                 % (tag, ep, n_moved))
+        except Exception as e:
+            st.err = "%s: %s" % (ep, e)
+            _log("PRN MAP %s: resync of %s REFUSED (%s)" % (tag, ep, e))
+        # Read it back before believing it.
+        st.maps.pop(ep, None)
+        st.pending.pop(ep, None)
+    return True
 
 
 # ---------------------------------------------------------------------------------------
@@ -288,11 +356,13 @@ def stage_prn_membership(ctx):
     st.consensus = cur
     if cur is None:
         if st.maps and len(st.maps) >= len(eps):
-            _log_rl("prnmap-split",
-                    "PRN MAP: nodes DISAGREE about slot membership (%d reporting) -- changing "
-                    "nothing. Nothing in this pipeline is per-node, so a split map is a fault "
-                    "to fix, not a state to drive out of." % len(st.maps),
-                    every_s=300.0)
+            if a.prn_reconfig == "off" or not _resync_split(ctx, st, eps, now):
+                _log_rl("prnmap-split",
+                        "PRN MAP: nodes DISAGREE about slot membership (%d reporting), and no "
+                        "map is held by a majority or was last posted by this broker -- "
+                        "changing nothing. Nothing in this pipeline is per-node, so a split "
+                        "map is a fault to fix." % len(st.maps),
+                        every_s=300.0)
         return
     if a.prn_reconfig == "off":
         return  # poll-only: --probe-require-slot wanted the map and nothing more
@@ -463,15 +533,17 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg):
     for i, prn in zip(free, place):
         want_map[i] = prn
     unplaced = place[len(free):]
-    # ⚠️ AND A SLOT LEFT OVER GOES TO WHOEVER IS LEFT. A slot the wanted set did not claim is
-    # holding a PRN we do not want -- usually one with no ephemeris at all, producing nothing.
-    # Handing it to ANY real satellite is pure gain, and there is no re-acquisition to pay for
-    # because nothing was being tracked. This is the 2026-08-27 lesson restated: the admit
-    # mask exists to justify an EVICTION, and a free slot is not an eviction. Without this a
-    # satellite at +4 deg -- too low to admit, too high to be a probe -- falls in the gap and
-    # is refused a slot that is standing empty.
+    # ⚠️ AND A DEAD SLOT LEFT OVER GOES TO WHOEVER IS LEFT. A slot whose PRN has no prediction
+    # at all produces nothing, so handing it to ANY real satellite is pure gain, with nothing
+    # to re-acquire. This is the 2026-08-27 lesson restated: the admit mask exists to justify
+    # an EVICTION, and a free slot is not an eviction. Without this a satellite at +4 deg --
+    # too low to admit, too high to be a probe -- falls in the gap and is refused a slot that
+    # is standing empty.
+    # ⚠️ ONLY A DEAD SLOT. A slot holding a real satellite we merely do not want keeps it:
+    # trading it for another unwanted satellite gains nothing and costs a cold acquisition,
+    # and with one satellite left unslotted the two trade places every interval.
     if len(place) < len(free):
-        spare = [i for i in free[len(place):]]
+        spare = [i for i in free[len(place):] if cur[i] not in el]
         rest = sorted((p for p in el if p not in want and p not in want_map),
                       key=lambda p: -el[p])
         for i, prn in zip(spare, rest):
@@ -585,6 +657,7 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
         _log("PRN MAP %s: %s REFUSED by every node (%s)" % (tag, why, bad))
         return
     st.swaps += 1
+    st.applied = list(want_map)
     # ⚠️ THE LOCAL MAP IS NOT UPDATED HERE. The next poll reads it back from the nodes, so
     # what this stage diffs against is always what the nodes actually hold -- a POST that
     # 200s but does not take (a slot the node refuses because the PRN has no code for that
