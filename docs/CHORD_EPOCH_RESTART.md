@@ -36,28 +36,16 @@ power, the wall clock for time.
 
 ## Layer by layer
 
-### 1. Node DPDK capture — ⚠️ THE BLOCKER, not fixed
+### 1. Node DPDK capture — ✅ fixed 2026-10-07: the node stops and the unit restarts it
 
-`crs16BoardCaptureWorker` has an **ahead-only** resync (`--dpdk-resync-max-advances 32`,
-added for the cx19 wedge): it walks the window forward to follow a stream that ran ahead, and
-comments "Only when purely AHEAD (never rewind)". A backwards re-base is therefore a permanent
-drop, and **only a node restart clears it**.
-
-The rewind restriction is correct as stated — `FramePrefetchService` hands frames downstream
-as it advances, so it cannot un-hand them. But recovery does not need a rewind. It needs a
-**re-seed**: the service already exposes `stop()` / `start(start_seq, stream_ids)`, which is
-exactly what startup does. The missing piece is a detector and a policy:
-
-* **detect**: behind-drops at ~100% for N consecutive seconds *while the incoming seq itself
-  advances monotonically*. That is unambiguous — a reorder is small and transient, a re-base is
-  total and sustained. The counters already exist (`range_drop_count`, and the seq is in hand).
-* **act**: `stop()`, `start(seq_now, ids)`, and log it as loudly as a restart, because
-  downstream metadata epochs are now stale (§4).
-
-⚠️ **This is `lib/dpdk/`, shared with the N² correlator and every other CHORD pipeline** — not
-GNSS-local like everything else in this document. It is the one change here that needs the
-wider CHORD team's agreement, and it should be armed per-config (default off) before it is
-default-on.
+A re-base puts every packet outside the capture window (and sends each stream's seq backwards).
+`crs16BoardCaptureWorker` now stops kotekan with a FATAL exit code on either, and the unit's
+`Restart=on-failure` (node_up.sh) brings the node back on the new epoch once chive serves it.
+Before, the worker dropped every packet and the node stayed up blind until something stopped it
+(2026-08-26, 2026-09-03, 2026-10-07). The ahead-only resync (`dpdk-resync-max-advances`) is
+retired with it, so a downstream stall that leaves a worker without frames now also restarts
+the node. Expect that occasionally in the first minutes after a start: the resync caught it 4
+times on 3 of 6 nodes across the two starts of 2026-10-06.
 
 ### 2. Gather / fast DLL — ✅ already done
 

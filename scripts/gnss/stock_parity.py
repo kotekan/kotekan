@@ -45,8 +45,6 @@ DECLARED = [
      "startup FPGA-config fetch budget 2 -> 5: chive measured p90 6.5 s, max 16.2 s (08-08)"),
     ("config_tracker.upstream_fetch_timeout_seconds", "~",
      "10 -> 30 s, same reason; startup only"),
-    ("dpdk.resync_max_advances", "+",
-     "bounded capture resync instead of a wedge (our dpdk code; 0, the default, is stock)"),
     ("run_recv_rfi_*.gpu_*.commands.*.expect_quantity_name", "+",
      "ring-copy descriptor guard (our cudaCopyFromRingbuffer; startup FATALs 08-31)"),
     ("run_rfi_sktilde.gpu_*.commands.*.rfi_first_stage_excision_exempt_freq_ids", "+",

@@ -116,9 +116,8 @@ prediction per row; fixed, and the buffer raised to 8192 frames, ~3.9 s). Check 
 
 * **A node restart is needed** whenever `telem-host` or `search-host` changes in
   `config/gnss_fleet_chord.yaml` — nodes read those once at startup (§5).
-* **An F-engine restart** needs chive refreshed *first*, then the nodes. Symptom: every DPDK
-  worker logs `frames are being stamped <big>s from the wall clock`, the fleet looks alive and
-  acquires nothing. Compare chive's `start_ctime` against when the F-engine actually restarted —
+* **An F-engine restart** needs chive refreshed *first*, then the nodes. Symptom: the fleet looks
+  alive and acquires nothing. Compare chive's `start_ctime` against when the F-engine actually restarted —
   the nodes will faithfully latch a stale epoch. **The broker and the obs writers do fix
   themselves** here: both re-read `/telescope/time0_ns` every 60 s and exit 3 when it has moved,
   and systemd restarts them on the new epoch (the writers open a new day file). A writer that

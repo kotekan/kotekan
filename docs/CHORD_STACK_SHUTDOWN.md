@@ -122,9 +122,8 @@ Each is now a refusal or a script default; they are listed so the symptom is rec
 2. **choco's per-node maintenance mode was off.** Symptom: nodes die within ~60 s of coming up
    with `ERROR: /kill endpoint called` as the last log line, one per minute (a sweep). Nothing in
    this tree sends `/kill`. Maintenance mode must be ON on all six before any node start.
-3. **chive still published the epoch from before an F-engine re-base.** Symptom: every DPDK
-   worker logs `THE WIRE'S SEQ AXIS IS <big>s FROM THE WALL CLOCK`, `port_axis_gate.py` says both
-   ports agree, the broker sees nothing. Order is chive refresh → nodes (frame0 is read once per
+3. **chive still published the epoch from before an F-engine re-base.** Symptom:
+   `port_axis_gate.py` says both ports agree, the broker sees nothing. Order is chive refresh → nodes (frame0 is read once per
    process). `node_up.sh` now refuses if chive does not answer; it cannot know whether the
    answer is *current* -- compare `start_ctime` with when the F-engine actually restarted.
 4. **The broker came up under the GIL** (`broker_restart.sh` defaulted to the 3.12 venv).
