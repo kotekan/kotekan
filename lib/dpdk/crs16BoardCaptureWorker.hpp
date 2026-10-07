@@ -376,11 +376,14 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             return 0;
         }
 
-        // Packet is outside the range of the two active frames, drop it
-        ERROR("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} outside active "
-              "frame range [{:d}, {:d}]",
-              port, worker_id, seq_num, active_f0->start_seq,
-              active_f1->start_seq + time_samples_per_frame);
+        // Packet is outside the range of the two active frames: late, or after an FPGA reset, a
+        // gap in the input, or a downstream stall that left this worker without frames. Stop
+        // kotekan, since ending only this worker leaves the frames it shares unfinished.
+        FATAL_ERROR("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} (source ID {:d}, "
+                    "stream ID {:d}) is outside active frame range [{:d}, {:d}), kotekan "
+                    "stopping...",
+                    port, worker_id, seq_num, source_id, stream_id, active_f0->start_seq,
+                    active_f1->start_seq + time_samples_per_frame);
         return -1;
     }
 
