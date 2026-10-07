@@ -237,7 +237,17 @@ PYEOP
 # replaced since the process started, which a live deploy does. A core is ~44 GB, mostly the
 # hugepage voltage rings (the default coredump_filter includes private hugepages), and a crash
 # loop writes one per relaunch.
+# ⚠️ NEEDRESTART MUST NEVER RESTART THE NODE. Ubuntu's daily unattended-upgrade (06:00-07:00Z)
+# runs needrestart, which restarts every service mapping an upgraded library; kotekan maps
+# libfreetype, so cx19 restarted mid-run on 2026-10-07 06:37Z (and on 09-29 at 06:52Z), and the
+# restart dropped every REST-set state. The override below exempts this unit, so an upgraded
+# library is picked up at the next planned restart. Written only if needrestart is installed
+# and the line is not already there.
+NR_CONF=/etc/needrestart/conf.d/gnss-node.conf
+NR_LINE='$nrconf{override_rc}{qr(^gnss-node\.service$)} = 0;'
 REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
+      { [ -d $(dirname $NR_CONF) ] && ! grep -qxF '$NR_LINE' $NR_CONF 2>/dev/null \
+        && echo '$NR_LINE' | sudo tee $NR_CONF >/dev/null; true; }; \
       { [ -f '$LOG' ] && sudo mv -f '$LOG' '$LOG.1'; true; }; \
       test -r '$CFG' && sudo systemd-run --unit=gnss-node \
         --working-directory=$K \
