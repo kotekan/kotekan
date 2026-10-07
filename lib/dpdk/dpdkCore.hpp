@@ -70,9 +70,9 @@ public:
      * Implement your own packet processing in the subclass of this object.
      *
      * @param mbuf Pointer to the DPDK rte_mbuf object containing the packet
-     * @return int This function should return 0 if the packet was handled correctly.
-     *             And return any other value if a critical error was encountered
-     *             which requires the system shutdown.
+     * @return int 0 to continue. Any other value ends this lcore's loop without stopping
+     *             kotekan (e.g. capture complete, or a buffer shut down); use FATAL_ERROR
+     *             for an error that requires shutdown.
      */
     virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
 
@@ -188,6 +188,18 @@ private:
      * @return int Always returns 0
      */
     static int lcore_rx(void* args);
+
+    /**
+     * @brief The function launched on each lcore: runs @c lcore_rx, and returns -1 if it
+     *        throws a FatalError.
+     *
+     * An exception that leaves an lcore function ends in std::terminate. FATAL_ERROR has
+     * already started the shutdown when it throws, so the lcore only returns, as
+     * Stage::start does for a stage thread.
+     *
+     * @param args A pointer to the dpdkCore object
+     */
+    static int lcore_main(void* args);
 
     /**
      * @brief Starts the DPDK framework (ELA)
