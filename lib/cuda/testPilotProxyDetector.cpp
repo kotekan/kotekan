@@ -1,5 +1,5 @@
 // Compare the GPU packer and PilotProxy kernels with CPU references:
-// packed samples, coarse powers, row sums, fine powers and both masks.
+// packed samples, coarse powers, row sums, fine powers and the fine mask.
 // Fine powers use the vendored fixed-point FFT reference; fine decisions
 // use a C++ port of pilot-proxy's fine_decision.py with wide-integer comparisons.
 // Pipeline and metadata tests are in tests/test_pilotproxy_integration.py.
@@ -240,8 +240,6 @@ public:
         unsigned long long* d_powers = nullptr;
         std::int32_t* d_row_sums = nullptr;
         unsigned long long* d_fine_powers = nullptr;
-        unsigned long long* d_numden = nullptr;
-        unsigned char* d_mask_u8 = nullptr;
         int* d_mask_i32 = nullptr;
         int* d_support = nullptr;
         CHECK_CUDA_ERROR(cudaMalloc(&d_ring, ring.size()));
@@ -251,8 +249,6 @@ public:
             cudaMalloc(&d_row_sums, std::size_t(NUM_TERMS) * detector_rows * 2 * sizeof(int)));
         CHECK_CUDA_ERROR(cudaMalloc(&d_fine_powers, std::size_t(NUM_TERMS) * FINE_BINS
                                                         * sizeof(unsigned long long)));
-        CHECK_CUDA_ERROR(cudaMalloc(&d_numden, 2 * sizeof(unsigned long long)));
-        CHECK_CUDA_ERROR(cudaMalloc(&d_mask_u8, 1));
         CHECK_CUDA_ERROR(cudaMalloc(&d_mask_i32, sizeof(int)));
         CHECK_CUDA_ERROR(cudaMalloc(&d_support, 2 * sizeof(int)));
         CHECK_CUDA_ERROR(cudaMemcpy(d_ring, ring.data(), ring.size(), cudaMemcpyHostToDevice));
@@ -334,41 +330,6 @@ public:
                         if (fused_powers_gpu[t] != powers_cpu[t])
                             FATAL_ERROR("fused coarse marginal mismatch: term {:d}", t);
 
-                    // --- Coarse rational mask: exercise both outcomes by
-                    // bracketing the measured num/den ratio.
-                    const unsigned long long num = powers_cpu[0];
-                    const unsigned long long den = powers_cpu[1] + powers_cpu[2];
-                    const struct {
-                        unsigned long long half_num, half_den;
-                    } thresholds[] = {
-                        {1, 1000000000ULL},                 // ~always fires (den > 0)
-                        {~0ULL / 4, 1},                     // ~never fires
-                        {num, 2 * den > den ? 2 * den : 1}, // near the operating point
-                    };
-                    for (const auto& threshold : thresholds) {
-                        unsigned char mask_gpu = 0;
-                        unsigned long long numden_gpu[2];
-                        FStat_Compute_NumDen_Mask_RationalHalf(
-                            handle, weights.data(), threshold.half_num, threshold.half_den,
-                            d_numden, d_numden + 1, d_mask_u8);
-                        CHECK_CUDA_ERROR(cudaDeviceSynchronize());
-                        CHECK_CUDA_ERROR(
-                            cudaMemcpy(&mask_gpu, d_mask_u8, 1, cudaMemcpyDeviceToHost));
-                        CHECK_CUDA_ERROR(cudaMemcpy(numden_gpu, d_numden, sizeof numden_gpu,
-                                                    cudaMemcpyDeviceToHost));
-                        if (numden_gpu[0] != num || numden_gpu[1] != den)
-                            FATAL_ERROR("numden mismatch: gpu=({:d},{:d}) cpu=({:d},{:d})",
-                                        numden_gpu[0], numden_gpu[1], num, den);
-                        const int mask_cpu =
-                            den != 0
-                            && less_u256(mul_u128(u128(threshold.half_num), u128(den)),
-                                         mul_u128(u128(num), u128(threshold.half_den)));
-                        if (int(mask_gpu) != mask_cpu)
-                            FATAL_ERROR("coarse mask mismatch: half={:d}/{:d} gpu={:d} cpu={:d}",
-                                        threshold.half_num, threshold.half_den, int(mask_gpu),
-                                        mask_cpu);
-                    }
-
                     // --- Fine designated-set CFAR mask: GPU epilogue vs the
                     // fine decision v1 port, over several calibrations
                     // (independent-bin bulk; guard-excluded designated set;
@@ -449,8 +410,6 @@ public:
         CHECK_CUDA_ERROR(cudaFree(d_powers));
         CHECK_CUDA_ERROR(cudaFree(d_row_sums));
         CHECK_CUDA_ERROR(cudaFree(d_fine_powers));
-        CHECK_CUDA_ERROR(cudaFree(d_numden));
-        CHECK_CUDA_ERROR(cudaFree(d_mask_u8));
         CHECK_CUDA_ERROR(cudaFree(d_mask_i32));
         CHECK_CUDA_ERROR(cudaFree(d_support));
 

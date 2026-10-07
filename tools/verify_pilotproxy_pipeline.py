@@ -3,15 +3,19 @@
 
 The config in config/tests/verify_pilotproxy_pipeline.yaml defines the raw
 array layouts. Frame metadata supplies timing and frequency IDs. The runtime
-bundle supplies channel bindings, preprocessing, weights and thresholds.
-Coarse powers and masks use NumPy integer calculations; fine masks use the
-matching pilot-proxy reference package.
+bundle supplies channel bindings, preprocessing, weights and fine calibration.
+Coarse powers use NumPy integer calculations; fine masks use the matching
+pilot-proxy reference package.
 
 Usage:
+    python3 tools/verify_pilotproxy_pipeline.py --calibrate \
+        --bundle-dir fake_data/pilotproxy_bundle
     python3 tools/verify_pilotproxy_pipeline.py \
         --dump-dir fake_data/pilotproxy_verify --bundle-dir fake_data/pilotproxy_bundle
 
-Returns 0 when all expected captures and detector products agree, 1 otherwise.
+--calibrate writes a synthetic fine calibration into the bundle for this test.
+Otherwise returns 0 when all expected captures and detector products agree,
+1 otherwise.
 """
 
 import argparse
@@ -170,26 +174,42 @@ def expected_row_sums(real, imag, weights_packed):
     return np.stack(projections)
 
 
-def expected_powers(real, imag, weights_packed):
-    """Exact uint64 power sums for the 3 packed weight terms [3, K]."""
-    projections = expected_row_sums(real, imag, weights_packed)
-    return (projections * projections).sum(axis=(1, 2), dtype=np.int64).tolist()
+def synthetic_calibration(bundle):
+    """Write a synthetic fine calibration into every bundle profile.
+
+    Anchors alternate between an even and an odd fine bin. The bulk is every
+    second bin more than four fine bins from the anchor. For tests only.
+    """
+    for index, row in enumerate(bundle["profiles"]):
+        anchor, half_width = (254 if index % 2 == 0 else 1), 2
+        excluded = {(anchor + offset) % 256 for offset in range(-4, 5)}
+        bulk = [b for b in range(0, 256, 2) if b not in excluded]
+        words = [
+            sum(1 << (b % 64) for b in bulk if b // 64 == word) for word in range(4)
+        ]
+        row["fine_calibration"] = {
+            "status": "calibrated",
+            "decision_version": "fine_decision_v1",
+            "anchor_bin": anchor,
+            "designated_half_width": half_width,
+            "cfar_rank": len(bulk) // 2,
+            "cfar_multiplier_q16": (1 << 14) if index % 2 == 0 else (4 << 16),
+            "bulk_mask_words_hex": [f"0x{word:016x}" for word in words],
+            "provenance": {"note": "Synthetic test calibration; not for deployment."},
+        }
 
 
 def expected_products(
-    block_bytes,
-    freq_ids,
-    bundle,
-    weight_bank,
-    *,
-    num_dishes=NUM_DISHES,
-    decision_mode="auto",
+    block_bytes, freq_ids, bundle, weight_bank, *, num_dishes=NUM_DISHES
 ):
-    """Reference coarse powers and coarse/fine masks for a complete detector block.
+    """Reference coarse powers and fine masks for a complete detector block.
 
     Fine decisions use PilotProxy's fixed-point Python FFT and integer CFAR
     reference. No GPU output is used to construct the expected products.
     """
+    from pilot_proxy.fine_decision import fine_mask_decision
+    from pilot_proxy.fxfft import fine_power_fx
+
     profiles = {row.get("chord_channel_id"): row for row in bundle["profiles"]}
     reverse = bundle["input_preprocessing"][
         "time_reverse_detector_windows_before_kernel"
@@ -208,29 +228,19 @@ def expected_products(
         projections = expected_row_sums(real, imag, weights)
         powers[index] = (projections * projections).sum(axis=(1, 2), dtype=np.uint64)
         calibration = profile["fine_calibration"]
-        if decision_mode == "auto" and calibration["status"] == "calibrated":
-            from pilot_proxy.fine_decision import fine_mask_decision
-            from pilot_proxy.fxfft import fine_power_fx
-
-            fine = fine_power_fx(projections, num_streams=NUM_POL * num_dishes)
-            masks[index] = fine_mask_decision(
-                fine,
-                anchor_bin=calibration["anchor_bin"],
-                designated_half_width=calibration["designated_half_width"],
-                bulk_mask=[
-                    int(word, 16) for word in calibration["bulk_mask_words_hex"]
-                ],
-                cfar_rank=calibration["cfar_rank"],
-                multiplier_q16=calibration["cfar_multiplier_q16"],
-            ).mask
-        else:
-            target, lower, upper = map(int, powers[index])
-            denominator = lower + upper
-            masks[index] = int(
-                denominator != 0
-                and target * profile["positive_excess_half_threshold_den"]
-                > profile["positive_excess_half_threshold_num"] * denominator
+        if calibration["status"] != "calibrated":
+            raise ValueError(
+                f"physical channel {profile['physical_channel']} is not calibrated"
             )
+        fine = fine_power_fx(projections, num_streams=NUM_POL * num_dishes)
+        masks[index] = fine_mask_decision(
+            fine,
+            anchor_bin=calibration["anchor_bin"],
+            designated_half_width=calibration["designated_half_width"],
+            bulk_mask=[int(word, 16) for word in calibration["bulk_mask_words_hex"]],
+            cfar_rank=calibration["cfar_rank"],
+            multiplier_q16=calibration["cfar_multiplier_q16"],
+        ).mask
     return masks, powers
 
 
@@ -244,10 +254,22 @@ def main():
         default=NUM_INPUT_FRAMES,
         help="expected voltage frame count (default: %(default)s)",
     )
+    parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="write a synthetic fine calibration into the bundle and exit",
+    )
     args = parser.parse_args()
 
-    with open(os.path.join(args.bundle_dir, "pilot_profiles.json")) as f:
+    profiles_path = os.path.join(args.bundle_dir, "pilot_profiles.json")
+    with open(profiles_path) as f:
         pilot_profiles = json.load(f)
+    if args.calibrate:
+        synthetic_calibration(pilot_profiles)
+        with open(profiles_path, "w") as f:
+            json.dump(pilot_profiles, f, indent=2)
+        print(f"wrote synthetic fine calibration to {profiles_path}")
+        return 0
     with open(os.path.join(args.bundle_dir, "weights.bin"), "rb") as f:
         weight_bank = f.read()
     time_reverse_windows = bool(
@@ -299,24 +321,17 @@ def main():
             .reshape(NUM_FREQ, 3)
             .tolist()
         )
+        try:
+            want_masks, want_block_powers = expected_products(
+                block_bytes, FREQ_IDS, pilot_profiles, weight_bank
+            )
+        except ValueError as exc:
+            print(f"FAIL: {exc}")
+            return 1
         for f, freq_id in enumerate(FREQ_IDS):
             profile = profiles_by_id.get(freq_id)
-            if profile is None:
-                want_powers, want_mask = [0, 0, 0], 0
-            else:
-                offset = profile["weight_bank_offset_bytes"]
-                nbytes = profile["weight_bank_nbytes"]
-                real, imag = detector_rows_from_voltage(
-                    block_bytes, f, time_reverse_windows
-                )
-                want_powers = expected_powers(
-                    real, imag, weight_bank[offset : offset + nbytes]
-                )
-                num = want_powers[0]
-                den = want_powers[1] + want_powers[2]
-                half_num = profile["positive_excess_half_threshold_num"]
-                half_den = profile["positive_excess_half_threshold_den"]
-                want_mask = int(den != 0 and num * half_den > half_num * den)
+            want_powers = want_block_powers[f].tolist()
+            want_mask = int(want_masks[f])
             ok_powers = got_powers[f] == want_powers
             ok_mask = int(got_mask[f]) == want_mask
             status = "ok" if (ok_powers and ok_mask) else "MISMATCH"

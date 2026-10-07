@@ -29,7 +29,11 @@ matching PilotProxy package, export the CHORD bundle and run the tests:
 
 
 For telescope runs, set ``dtv_runtime_bundle_dir`` to a CHORD bundle calibrated
-for the active inputs. The exported development bundle is for testing.
+for the active inputs. Every pilot channel bound on a node needs a calibrated
+fine profile, or the detector stops at the first frame. Leave an uncalibrated
+channel out of the bundle, or list its receiver ID in
+``dtv_permanent_mask_freq_ids``. The exported development bundle is for
+testing and is not calibrated.
 
 The integration tests compare every mask, coarse power and FPGA timestamp
 against the CPU reference using synthetic calibration.
@@ -84,8 +88,8 @@ The optional ``dtv_fine_support_name`` detector output is an ``int32[F, 2]``
 product named ``dtv_fine_support``. Each row contains the rank-valid flag and
 the number of usable positive-denominator reference bins. A valid fine test
 has flag 1; insufficient rank support has flag 0. The pair ``[-1, -1]`` means
-that no fine test was evaluated, including an unbound, coarse, or permanently
-masked frequency. This support product does not establish packet-loss,
+that no fine test was evaluated, including an unbound or permanently masked
+frequency. This support product does not establish packet-loss,
 input-health, target-support, or scientific-calibration validity.
 
 Set ``dtv_enabled: true`` in the CHORD F-engine configuration to record DTV

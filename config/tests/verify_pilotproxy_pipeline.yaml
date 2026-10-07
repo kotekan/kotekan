@@ -3,11 +3,13 @@
 # The four test channels include two ATSC pilots (2408 and 2623) and two
 # non-pilot channels. Voltage, power and mask files retain their frame metadata.
 #
-# This config uses coarse mode so it can run with an exported development
-# bundle. tests/test_pilotproxy_integration.py also checks fine mode with
-# synthetic calibration; see docs/sphinx/dev/dev_pilotproxy_testing.rst.
+# The detector needs calibrated profiles, so the exported development bundle
+# gets a synthetic calibration first. It is for this test only; see
+# docs/sphinx/dev/dev_pilotproxy_testing.rst.
 #
 # After exporting a bundle to fake_data/pilotproxy_bundle:
+#   python3 tools/verify_pilotproxy_pipeline.py --calibrate \
+#       --bundle-dir fake_data/pilotproxy_bundle
 #   mkdir -p fake_data/pilotproxy_verify
 #   ./kotekan -c config/tests/verify_pilotproxy_pipeline.yaml
 #   python3 tools/verify_pilotproxy_pipeline.py \
@@ -128,8 +130,6 @@ run_dtv_detector:
               dtv_mask_name: dtv_mask
               dtv_powers_name: dtv_powers
               num_frequencies: num_local_freq
-              decision_mode: coarse
-              require_fine_calibration: false
               # pilot_profiles_path / weights_path inherited from the top level
             - name: cudaSyncOutput
             - name: cudaOutputData

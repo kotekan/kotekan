@@ -115,29 +115,10 @@ class Pipeline:
         self.config["gen_voltage"]["wait"] = False
         self.generator = self.config["gen_voltage"]
         self.detector = self.config["run_dtv_detector"]["gpu_0"]["commands"][0]
-        self.detector.update(decision_mode="auto", require_fine_calibration=True)
         self.elapsed = 0.0
 
     def calibrate(self):
-        for index, row in enumerate(self.bundle["profiles"]):
-            anchor, half_width = (254 if index % 2 == 0 else 1), 2
-            excluded = {(anchor + offset) % 256 for offset in range(-4, 5)}
-            bulk = [b for b in range(0, 256, 2) if b not in excluded]
-            words = [
-                sum(1 << (b % 64) for b in bulk if b // 64 == word) for word in range(4)
-            ]
-            row["fine_calibration"] = {
-                "status": "calibrated",
-                "decision_version": "fine_decision_v1",
-                "anchor_bin": anchor,
-                "designated_half_width": half_width,
-                "cfar_rank": len(bulk) // 2,
-                "cfar_multiplier_q16": (1 << 14) if index % 2 == 0 else (4 << 16),
-                "bulk_mask_words_hex": [f"0x{word:016x}" for word in words],
-                "provenance": {
-                    "note": "Synthetic integration fixture; not for deployment."
-                },
-            }
+        reference.synthetic_calibration(self.bundle)
 
     def run(self, timeout=60):
         (self.directory / "bundle/pilot_profiles.json").write_text(
@@ -208,7 +189,6 @@ class Pipeline:
                 -1, 8192 * num_freq * 2 * num_dishes
             )
         if fine_support:
-            assert self.detector["decision_mode"] == "auto"
             expected = [
                 expected_fine_products_with_support(
                     block, freq_ids, self.bundle, weights, num_dishes
@@ -218,12 +198,7 @@ class Pipeline:
         else:
             expected = [
                 reference.expected_products(
-                    block,
-                    freq_ids,
-                    self.bundle,
-                    weights,
-                    num_dishes=num_dishes,
-                    decision_mode=self.detector["decision_mode"],
+                    block, freq_ids, self.bundle, weights, num_dishes=num_dishes
                 )
                 for block in blocks
             ]
@@ -304,7 +279,6 @@ def test_independent_detectors_share_gpu(pipeline):
             other_bundle,
             other_weights,
             num_dishes=config["num_dishes"],
-            decision_mode="auto",
         )
         np.testing.assert_array_equal(mask.payload, expected_mask)
         np.testing.assert_array_equal(
@@ -313,21 +287,12 @@ def test_independent_detectors_share_gpu(pipeline):
 
 
 @pytest.mark.parametrize("reverse", [True, False])
-@pytest.mark.parametrize("mode", ["fine", "mixed", "pending", "coarse", "disabled"])
+@pytest.mark.parametrize("mode", ["fine", "disabled"])
 def test_pipeline_decisions(pipeline, reverse, mode):
-    if mode != "pending":
-        pipeline.calibrate()
+    pipeline.calibrate()
     pipeline.bundle["input_preprocessing"][
         "time_reverse_detector_windows_before_kernel"
     ] = reverse
-    if mode in ("mixed", "pending", "coarse"):
-        pipeline.detector["require_fine_calibration"] = False
-    if mode == "mixed":
-        for row in pipeline.bundle["profiles"]:
-            if row["chord_channel_id"] == 2623:
-                row["fine_calibration"]["status"] = "pending_campaign"
-    if mode == "coarse":
-        pipeline.detector["decision_mode"] = "coarse"
     if mode == "disabled":
         for row in pipeline.bundle["profiles"]:
             row["fine_calibration"]["status"] = "pending_campaign"
@@ -432,8 +397,6 @@ def test_pathfinder_sparse_padded_inputs(pipeline, active_inputs):
         "chord_channel_id",
         "weight_bank_offset_bytes",
         "weight_bank_nbytes",
-        "positive_excess_half_threshold_num",
-        "positive_excess_half_threshold_den",
         "fine_calibration.anchor_bin",
         "fine_calibration.designated_half_width",
         "fine_calibration.cfar_rank",
@@ -477,10 +440,6 @@ def test_uint64_fine_multiplier_limit(pipeline):
         ("profiles.0.weight_bank_offset_bytes", -1, "weight bank range"),
         ("profiles.0.weight_bank_offset_bytes", (1 << 63) - 1, "weight bank range"),
         ("profiles.0.weight_bank_offset_bytes", 1, "expected contiguous offset"),
-        ("profiles.0.positive_excess_half_threshold_num", 0, "threshold"),
-        ("profiles.0.positive_excess_half_threshold_den", 0, "threshold"),
-        ("profiles.0.positive_excess_half_threshold_num", -1, "threshold"),
-        ("profiles.0.positive_excess_half_threshold_den", 1.5, "threshold"),
         ("profiles.0.fine_calibration", None, "missing fine_calibration"),
         (
             "profiles.0.fine_calibration.decision_version",
@@ -539,8 +498,6 @@ def test_rejects_invalid_bundle(pipeline, field, value, diagnostic):
         ("truncated_weights", "weight bank range"),
         ("extra_weights", "profile table accounts for"),
         ("missing_channel_ids", "no chord_channel_id"),
-        ("decision_mode", "decision_mode"),
-        ("coarse_required", "require_fine_calibration"),
         ("window_alignment", "multiple"),
         ("fine_geometry", "128"),
         ("zero_block", "positive"),
@@ -562,16 +519,11 @@ def test_rejects_invalid_runtime(pipeline, case, diagnostic):
     elif case == "missing_channel_ids":
         for row in pipeline.bundle["profiles"]:
             row["chord_channel_id"] = None
-    elif case == "decision_mode":
-        pipeline.detector["decision_mode"] = "bad"
-    elif case == "coarse_required":
-        pipeline.detector["decision_mode"] = "coarse"
     elif case == "window_alignment":
         pipeline.config["samples_per_detector_frame"] = 8191
     elif case == "fine_geometry":
         pipeline.config["samples_per_detector_frame"] = 4096
     elif case in ("zero_block", "negative_block"):
-        pipeline.detector.update(decision_mode="coarse", require_fine_calibration=False)
         pipeline.config["samples_per_detector_frame"] = (
             0 if case == "zero_block" else -64
         )

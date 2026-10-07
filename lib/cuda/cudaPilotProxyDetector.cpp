@@ -67,8 +67,6 @@ public:
         double pilot_frequency_hz = 0.0;
         std::ptrdiff_t weight_offset_bytes = 0;
         std::ptrdiff_t weight_nbytes = 0;
-        unsigned long long half_threshold_num = 0;
-        unsigned long long half_threshold_den = 0;
         // fine_calibration (kernel core 2.3.0 mask epilogue); usable only
         // when status == "calibrated".
         bool fine_calibrated = false;
@@ -83,7 +81,6 @@ public:
     struct BoundChannel {
         int freq_index = -1; // local F index on this node
         const PilotChannelProfile* profile = nullptr;
-        bool use_fine_mask = false;
         void* fstat_handle = nullptr;    // FStat_Create handle (d_in bound)
         std::int8_t* d_packed = nullptr; // this channel's packed staging region
     };
@@ -201,15 +198,6 @@ private:
             profile.weight_offset_bytes =
                 read_integer<std::ptrdiff_t>(row, "weight_bank_offset_bytes");
             profile.weight_nbytes = read_integer<std::ptrdiff_t>(row, "weight_bank_nbytes");
-            profile.half_threshold_num =
-                read_integer<unsigned long long>(row, "positive_excess_half_threshold_num");
-            profile.half_threshold_den =
-                read_integer<unsigned long long>(row, "positive_excess_half_threshold_den");
-            if (profile.half_threshold_num == 0 || profile.half_threshold_den == 0)
-                throw std::runtime_error(fmt::format(
-                    fmt("cudaPilotProxyDetector: positive-excess threshold must have positive "
-                        "numerator and denominator for physical channel {:d}"),
-                    profile.physical_channel));
             if (profile.weight_nbytes != profile_nbytes)
                 throw std::runtime_error(fmt::format(
                     fmt("cudaPilotProxyDetector: weight_bank_nbytes {:d} does not match the "
@@ -339,8 +327,9 @@ private:
  * Each detector block is packed into stream-major rows. Packing removes the
  * offset-binary encoding and reverses each window when the bundle requests it.
  * CHORD uses 8192 samples per block, or 128 windows of 64 samples per stream.
- * Calibrated channels use the fine CFAR mask; auto mode falls back to the
- * coarse rational mask for uncalibrated channels unless calibration is required.
+ * Each bound pilot channel uses the fine CFAR mask and must have a calibrated
+ * profile; otherwise the stage stops at the first frame. Leave an uncalibrated
+ * channel out of the bundle, or list it in permanent_mask_freq_ids.
  *
  * dtv_mask contains one byte per frequency (1 = reject). dtv_powers contains
  * the target, lower-reference and upper-reference coarse powers as uint64.
@@ -405,14 +394,6 @@ private:
  *                                  evaluation; DtvRfiMask applies their mask.
  * @conf pilot_profiles_path        String. Runtime bundle pilot_profiles.json.
  * @conf weights_path               String. Runtime bundle weights.bin.
- * @conf decision_mode              String. "auto" (default; fine mask for
- *                                  calibrated channels, coarse otherwise)
- *                                  or "coarse" (force the coarse rational
- *                                  mask for every channel).
- * @conf require_fine_calibration   Bool. Refuse a bound pilot channel whose
- *                                  fine calibration is not ready. Production
- *                                  telescope configs set true; default false
- *                                  allows tests with uncalibrated bundles.
  */
 class cudaPilotProxyDetector : public cudaCommand {
 public:
@@ -440,8 +421,6 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
-    const std::string decision_mode; // "auto" or "coarse"
-    const bool require_fine_calibration;
     std::set<int> permanent_mask_freq_ids;
 
     // Kotekan buffer names
@@ -487,9 +466,6 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
-    decision_mode(config.get_default<std::string>(unique_name, "decision_mode", "auto")),
-    require_fine_calibration(
-        config.get_default<bool>(unique_name, "require_fine_calibration", false)),
     // Buffer names
     voltage_name(config.get_default<std::string>(unique_name, "voltage_name", "voltage")),
     dtv_mask_name(config.get_default<std::string>(unique_name, "dtv_mask_name", "dtv_mask")),
@@ -513,10 +489,6 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
                std::array<std::string, 2>{"F", "W"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this)
 //
 {
-    if (decision_mode != "auto" && decision_mode != "coarse")
-        FATAL_ERROR("decision_mode must be \"auto\" or \"coarse\"; got {:s}", decision_mode);
-    if (require_fine_calibration && decision_mode != "auto")
-        FATAL_ERROR("require_fine_calibration is only valid with decision_mode: \"auto\"");
     const auto permanent = config.get_default<nlohmann::json>(
         unique_name, "permanent_mask_freq_ids", nlohmann::json::array());
     if (!permanent.is_array())
@@ -545,17 +517,12 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
 
     int fine_windows = 0;
     FStat_GetFineSpecs(&fine_windows, nullptr, nullptr);
-    // Require the fine-transform geometry in auto mode; coarse mode is explicit.
-    if (decision_mode == "auto" && windows_per_stream != fine_windows)
+    if (windows_per_stream != fine_windows)
         FATAL_ERROR("samples_per_detector_frame ({:d}) / detector_window_samples ({:d}) gives "
-                    "{:d} windows/stream, but the compiled core's frozen fine-transform length "
-                    "is {:d}. In decision_mode \"auto\" the fine CFAR path is unavailable at "
-                    "this geometry. Set samples_per_detector_frame to a multiple of {:d} that "
-                    "yields {:d} windows/stream (i.e. {:d}), or set decision_mode: \"coarse\" "
-                    "to accept the positive-excess survey flag explicitly.",
+                    "{:d} windows/stream, but the compiled core's fine transform needs {:d}; "
+                    "set samples_per_detector_frame to {:d}",
                     samples_per_detector_frame, detector_window_samples, windows_per_stream,
-                    fine_windows, detector_window_samples, fine_windows,
-                    fine_windows * detector_window_samples);
+                    fine_windows, fine_windows * detector_window_samples);
 
     voltage.register_consumer();
     dtv_mask.register_producer();
@@ -607,10 +574,6 @@ void cudaPilotProxyDetector::bind_first_frame(
             FATAL_ERROR("permanent_mask_freq_ids contains receiver ID {:d} absent from this node",
                         id);
 
-    int fine_windows = 0;
-    FStat_GetFineSpecs(&fine_windows, nullptr, nullptr);
-    const bool fine_geometry_ok = windows_per_stream == fine_windows;
-
     int num_without_id = 0;
     for (int f = 0; f < num_frequencies; ++f) {
         if (permanent_mask_freq_ids.count(coarse_freq[f])) {
@@ -625,21 +588,19 @@ void cudaPilotProxyDetector::bind_first_frame(
             }
             if (profile.chord_channel_id != coarse_freq[f])
                 continue;
+            if (!profile.fine_calibrated)
+                FATAL_ERROR("PilotProxy: physical channel {:d} is bound on this node but its "
+                            "fine calibration is not deployable; remove it from the bundle or "
+                            "list receiver ID {:d} in permanent_mask_freq_ids",
+                            profile.physical_channel, coarse_freq[f]);
             State::BoundChannel channel;
             channel.freq_index = f;
             channel.profile = &profile;
-            channel.use_fine_mask =
-                decision_mode == "auto" && profile.fine_calibrated && fine_geometry_ok;
-            if (require_fine_calibration && !channel.use_fine_mask)
-                FATAL_ERROR("PilotProxy: physical channel {:d} is bound on this node but its "
-                            "fine calibration is not deployable; refusing to fall back to the "
-                            "coarse survey flag",
-                            profile.physical_channel);
             state.bound_channels.push_back(channel);
             INFO("PilotProxy: bound ATSC physical channel {:d} (pilot {:.6f} MHz, "
-                 "chord_channel_id {:d}) to local frequency index {:d}; decision path: {:s}",
+                 "chord_channel_id {:d}) to local frequency index {:d}",
                  profile.physical_channel, profile.pilot_frequency_hz * 1e-6,
-                 profile.chord_channel_id, f, channel.use_fine_mask ? "fine_mask" : "coarse");
+                 profile.chord_channel_id, f);
         }
     }
     for (const auto& profile : state.bundle_profiles)
@@ -729,7 +690,7 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaMemsetAsync(powers_memory, 0,
                                      std::size_t(num_frequencies) * 3 * sizeof(std::uint64_t),
                                      kotekan_stream));
-    // (-1,-1) means no fine decision: unbound, disabled, or explicit coarse path.
+    // (-1,-1) means no fine decision: unbound, permanently masked, or disabled.
     if (support_memory)
         CHECK_CUDA_ERROR(cudaMemsetAsync(support_memory, 0xff,
                                          std::size_t(num_frequencies) * 2 * sizeof(std::int32_t),
@@ -754,71 +715,45 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
                                samples_per_detector_frame, ring_size, ring_pos,
                                detector_window_samples, state.time_reverse_windows, kotekan_stream);
 
-    // Per-channel scratch: fine-power working accumulator (required by the
-    // fused mask entry), an int32 mask cell per channel, and a num/den pair
-    // per channel for the coarse entry.
+    // Scratch: the fine-power working accumulator required by the fused mask
+    // entry, and an int32 mask cell per channel.
     const std::ptrdiff_t num_bound = std::ptrdiff_t(state.bound_channels.size());
     unsigned long long* const fine_power_scratch =
         static_cast<unsigned long long*>(device.get_gpu_memory(unique_name + "/fine_power_scratch",
                                                                3 * 256 * sizeof(std::uint64_t)));
     int* const mask_i32_scratch = static_cast<int*>(
         device.get_gpu_memory(unique_name + "/mask_i32_scratch", num_bound * sizeof(int)));
-    unsigned long long* const numden_scratch =
-        static_cast<unsigned long long*>(device.get_gpu_memory(
-            unique_name + "/numden_scratch", num_bound * 2 * sizeof(unsigned long long)));
 
     for (std::ptrdiff_t i = 0; i < num_bound; ++i) {
         const auto& channel = state.bound_channels[i];
         const auto& profile = *channel.profile;
         const InputType* const weights =
             reinterpret_cast<const InputType*>(state.weights_for(profile));
-        std::uint64_t* const channel_powers = powers_memory + 3 * channel.freq_index;
-        if (channel.use_fine_mask) {
-            // Compute the fine CFAR decision and save coarse powers for validation.
-            if (support_memory) {
-                // Rank support is not packet-loss or feed-health qualification.
-                FStat_Compute_FusedFineMaskWithSupport_U64(
-                    channel.fstat_handle, weights, profile.anchor_bin,
-                    profile.designated_half_width, profile.bulk_mask_words.data(),
-                    profile.cfar_rank, profile.multiplier_q16, fine_power_scratch,
-                    mask_i32_scratch + i, support_memory + 2 * channel.freq_index,
-                    support_memory + 2 * channel.freq_index + 1,
-                    reinterpret_cast<unsigned long long*>(channel_powers), nullptr);
-            } else {
-                FStat_Compute_FusedFineMask_U64(
-                    channel.fstat_handle, weights, profile.anchor_bin,
-                    profile.designated_half_width, profile.bulk_mask_words.data(),
-                    profile.cfar_rank, profile.multiplier_q16, fine_power_scratch,
-                    mask_i32_scratch + i, reinterpret_cast<unsigned long long*>(channel_powers),
-                    nullptr);
-            }
-            if (const char* error = FStat_LastError(); error != nullptr && error[0] != '\0')
-                FATAL_ERROR("PilotProxy fine detector failed for physical channel {:d}: {:s}",
-                            profile.physical_channel, error);
+        unsigned long long* const channel_powers =
+            reinterpret_cast<unsigned long long*>(powers_memory + 3 * channel.freq_index);
+        // Compute the fine CFAR decision and save coarse powers for validation.
+        if (support_memory) {
+            // Rank support is not packet-loss or feed-health qualification.
+            FStat_Compute_FusedFineMaskWithSupport_U64(
+                channel.fstat_handle, weights, profile.anchor_bin, profile.designated_half_width,
+                profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
+                fine_power_scratch, mask_i32_scratch + i, support_memory + 2 * channel.freq_index,
+                support_memory + 2 * channel.freq_index + 1, channel_powers, nullptr);
         } else {
-            // Coarse norm-corrected positive-excess rule: exact uint64
-            // powers plus the rational half-threshold mask.
-            FStat_Compute_Powers_U64(channel.fstat_handle, weights,
-                                     reinterpret_cast<unsigned long long*>(channel_powers));
-            if (const char* error = FStat_LastError(); error != nullptr && error[0] != '\0')
-                FATAL_ERROR("PilotProxy power diagnostic failed for physical channel {:d}: {:s}",
-                            profile.physical_channel, error);
-            FStat_Compute_NumDen_Mask_RationalHalf(
-                channel.fstat_handle, weights, profile.half_threshold_num,
-                profile.half_threshold_den, numden_scratch + 2 * i, numden_scratch + 2 * i + 1,
-                reinterpret_cast<unsigned char*>(mask_memory) + channel.freq_index);
-            if (const char* error = FStat_LastError(); error != nullptr && error[0] != '\0')
-                FATAL_ERROR("PilotProxy coarse detector failed for physical channel {:d}: {:s}",
-                            profile.physical_channel, error);
+            FStat_Compute_FusedFineMask_U64(
+                channel.fstat_handle, weights, profile.anchor_bin, profile.designated_half_width,
+                profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
+                fine_power_scratch, mask_i32_scratch + i, channel_powers, nullptr);
         }
+        if (const char* error = FStat_LastError(); error != nullptr && error[0] != '\0')
+            FATAL_ERROR("PilotProxy fine detector failed for physical channel {:d}: {:s}",
+                        profile.physical_channel, error);
     }
-    // Fine-mask channels: fold the int32 mask cells into the int8 mask
-    // product. The values are 0/1, so copying the little-endian low byte is
-    // exact (both CUDA targets are little-endian).
+    // Fold the int32 mask cells into the int8 mask product. The values are
+    // 0/1, so copying the little-endian low byte is exact (both CUDA targets
+    // are little-endian).
     for (std::ptrdiff_t i = 0; i < num_bound; ++i) {
         const auto& channel = state.bound_channels[i];
-        if (!channel.use_fine_mask)
-            continue;
         CHECK_CUDA_ERROR(cudaMemcpyAsync(mask_memory + channel.freq_index, mask_i32_scratch + i, 1,
                                          cudaMemcpyDeviceToDevice, kotekan_stream));
     }

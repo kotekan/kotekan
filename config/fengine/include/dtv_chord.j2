@@ -63,9 +63,6 @@ run_dtv_detector:
           dtv_fine_support_name: dtv_fine_support
           permanent_mask_freq_ids: {{ dtv_permanent_mask_freq_ids|default([]) }}
           samples_per_detector_frame: 8192
-          # Use calibrated fine CFAR decisions on every bound pilot channel.
-          decision_mode: auto
-          require_fine_calibration: true
           pilot_profiles_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/weights.bin
         - name: cudaSyncOutput

@@ -25,6 +25,7 @@ pilot-proxy validate-runtime-weight-bundle --bundle-dir "$PP_BUNDLE"
 PIPELINE_DIR="${RUNNER_TEMP:-/tmp}/pilotproxy_pipeline_test"
 mkdir -p "$PIPELINE_DIR/fake_data/pilotproxy_bundle" "$PIPELINE_DIR/fake_data/pilotproxy_verify"
 cp "$PP_BUNDLE/"* "$PIPELINE_DIR/fake_data/pilotproxy_bundle/"
+python3 "$SRC/tools/verify_pilotproxy_pipeline.py" --calibrate --bundle-dir "$PIPELINE_DIR/fake_data/pilotproxy_bundle"
 (cd "$PIPELINE_DIR" && "$BUILD/kotekan/kotekan" --config "$SRC/config/tests/verify_pilotproxy_pipeline.yaml")
 python3 "$SRC/tools/verify_pilotproxy_pipeline.py" --dump-dir "$PIPELINE_DIR/fake_data/pilotproxy_verify" --bundle-dir "$PIPELINE_DIR/fake_data/pilotproxy_bundle"
 PILOTPROXY_TEST_BINARY="$BUILD/kotekan/kotekan" PILOTPROXY_TEST_BUNDLE="$PP_BUNDLE" \
