@@ -178,11 +178,12 @@ def synthetic_calibration(bundle):
     """Write a synthetic fine calibration into every bundle profile.
 
     Anchors alternate between an even and an odd fine bin. The bulk is every
-    second bin more than four fine bins from the anchor. For tests only.
+    second bin except those within two fine bins of the anchor: the designated
+    set and one independent bin on each side. For tests only.
     """
     for index, row in enumerate(bundle["profiles"]):
         anchor, half_width = (254 if index % 2 == 0 else 1), 2
-        excluded = {(anchor + offset) % 256 for offset in range(-4, 5)}
+        excluded = {(anchor + offset) % 256 for offset in range(-2, 3)}
         bulk = [b for b in range(0, 256, 2) if b not in excluded]
         words = [
             sum(1 << (b % 64) for b in bulk if b // 64 == word) for word in range(4)

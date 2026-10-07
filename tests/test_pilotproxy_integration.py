@@ -490,6 +490,24 @@ def test_rejects_invalid_bundle(pipeline, field, value, diagnostic):
     assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
 
 
+@pytest.mark.parametrize("index", [0, 1], ids=["even-anchor", "odd-anchor"])
+@pytest.mark.parametrize("half_width", [0, 2])
+@pytest.mark.parametrize("side", [-1, 1])
+def test_bulk_mask_excludes_anchor_guard(pipeline, index, half_width, side):
+    # The bulk must exclude max(half_width, 2) fine bins on each side of the anchor.
+    pipeline.calibrate()
+    calibration = pipeline.bundle["profiles"][index]["fine_calibration"]
+    calibration["designated_half_width"] = half_width
+    guard_bin = (calibration["anchor_bin"] + 2 * side) % 256
+    words = [int(word, 16) for word in calibration["bulk_mask_words_hex"]]
+    words[guard_bin // 64] |= 1 << (guard_bin % 64)
+    calibration["bulk_mask_words_hex"] = [f"0x{word:016x}" for word in words]
+    code, output = pipeline.run()
+    assert code != 0, "guard bin in the bulk was accepted"
+    assert "designated/guard" in output, output[-12000:]
+    assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
+
+
 @pytest.mark.parametrize(
     "case,diagnostic",
     [

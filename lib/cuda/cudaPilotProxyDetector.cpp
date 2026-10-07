@@ -16,7 +16,7 @@
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json
 
-#include <algorithm>          // for find
+#include <algorithm>          // for find, max
 #include <array>              // for array
 #include <bitset>             // for bitset
 #include <cassert>            // for assert
@@ -289,8 +289,9 @@ private:
                 if (profile.cfar_rank >= bulk_population)
                     throw std::runtime_error(
                         "cudaPilotProxyDetector: fine cfar_rank exceeds the bulk population");
-                // Exclude the designated set and one independent-bin guard per side.
-                const int exclusion_half_width = profile.designated_half_width + 2;
+                // Exclude the designated set and one independent bin (two fine bins)
+                // on each side of the anchor.
+                const int exclusion_half_width = std::max(profile.designated_half_width, 2);
                 for (int offset = -exclusion_half_width; offset <= exclusion_half_width; ++offset) {
                     const int bin = (profile.anchor_bin + offset + fine_bins) % fine_bins;
                     if ((profile.bulk_mask_words[bin >> 6] >> (bin & 63)) & 1ULL)
