@@ -21,6 +21,15 @@ Doxygen strings should exist where appropriate. Higher-level sphinx documentatio
 When reviewing, attempt to understand both the intent of previously existing code, and incoming changes, before providing feedback. Rather than merely providing feedback, explicit suggestions for changes are preferred.
 
 
+GPU stages
+----------
+
+Several `cudaProcess` stages often share one GPU, and two things are shared across all of them:
+
+- CUDA streams. Each command runs on one stream, chosen by role from its stage's `cuda_stream_base`: copy-in on `3*base+0`, copy-out on `3*base+1`, kernel on `3*base+2`. A command's own `cuda_stream` overrides this. Command queuing is locked per stream, so stages at the same base serialise against each other; independent pipelines should use different bases. A command must enqueue only onto its own `cuda_stream_id`. `execute()` should only enqueue, since the stage holds its stream locks while it runs; blocking waits belong in `wait_on_precondition()`. A stage whose commands use streams above its own three must raise `num_cuda_streams`, or startup refuses it.
+- Named GPU memory. `get_gpu_memory` and `get_gpu_memory_array` look regions up by name across the whole device. A region belongs to the first stage that takes it, and a second stage taking it is refused unless both stages list it under `shared_gpu_memory`. Only do that when something outside the GPU, such as a host buffer passed between the stages, orders their accesses. GPU ring buffers declare their shared memory themselves. A command that first allocates a region in `execute()` must call `register_gpu_memory_name` from its constructor, so `--dry-run` catches the conflict.
+
+
 Writing
 -------
 
