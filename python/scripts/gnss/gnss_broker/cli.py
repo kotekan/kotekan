@@ -1240,15 +1240,6 @@ def build_parser(description):
         "NEVER leave armed: the chain cannot track while scanning.",
     )
     ap.add_argument(
-        "--tle-name-filter",
-        type=str,
-        default=None,
-        help="regex on the TLE NAME; almanac keeps only matching sats. Encodes "
-        "signal capability the TLE group can't (e.g. 'BEIDOU-3' for B1C: "
-        "BDS-2 birds don't transmit it -- their predictions poison the clock "
-        "bias and their PRNs only manufacture cross-correlation locks).",
-    )
-    ap.add_argument(
         "--code-length",
         type=float,
         default=1023.0,
@@ -3287,7 +3278,7 @@ def build_parser(description):
         "GPS and GLONASS: for R the block marker is the Celestrak 'K' suffix on "
         "the Uragan number, and GLO_L3OC_* -> K satellites only (the CDMA "
         "signals are GLONASS-K's; the FDMA L1OF/L2OF are on every satellite, so "
-        "they get no filter). E/C use --tle-name-filter instead.",
+        "they get no filter).",
     )
     ap.add_argument(
         "--dr-min-prn",

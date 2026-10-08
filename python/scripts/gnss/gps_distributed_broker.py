@@ -635,19 +635,6 @@ def main(argv=None, rx=None, publisher=None):
             from gps_beamtrack import DEFAULT_TLE_URL
 
             almanac_sats = load_gps_satellites(args.tle or DEFAULT_TLE_URL)
-            if args.tle_name_filter:
-                import re as _re
-
-                n0 = len(almanac_sats)
-                almanac_sats = {
-                    p: s
-                    for p, s in almanac_sats.items()
-                    if _re.search(args.tle_name_filter, s.name or "")
-                }
-                _log(
-                    "tle-name-filter %r: %d/%d sats kept"
-                    % (args.tle_name_filter, len(almanac_sats), n0)
-                )
             _log(
                 "almanac: loaded %d TLEs; predicting Doppler @ (%.4f, %.4f)"
                 % (len(almanac_sats), args.lat, args.lon)
