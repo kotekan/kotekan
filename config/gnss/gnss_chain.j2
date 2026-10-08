@@ -34,6 +34,7 @@
     * sub_integration_ntime    -- equals hops_per_record here, NOT the stock 8192
     * num_synth: 128           -- the synthetic lane count the dual correlator is built for
 #}
+{% if gnss is defined %}
 {% for g in gnss.gpus %}
 {% for c in g.chains %}
 {% set pre = "gnss" ~ g.gpu ~ c.tag %}
@@ -246,3 +247,4 @@ gnss{{ g.gpu }}_srch_send:
 gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: {{ gnss.pool_objects }}
+{% endif %}
