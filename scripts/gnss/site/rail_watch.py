@@ -302,7 +302,8 @@ if __name__ == "__main__":
     ap.add_argument(
         "--out",
         default=None,
-        help="strftime path; default %s (record) or %s" % (REC_OUT, DEF_OUT),
+        help="strftime path; default %s (record) or %s"
+        % (REC_OUT.replace("%", "%%"), DEF_OUT.replace("%", "%%")),
     )
     ap.add_argument(
         "--poll",
