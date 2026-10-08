@@ -28,15 +28,13 @@
 #include "gnssChannelizedReplica.hpp"
 #include "gnssSignal.hpp"
 
-#include <n2k_dual/DualCorrelator.hpp>
-
-#include <cuda_runtime.h>
-
 #include <cmath>
 #include <complex>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cuda_runtime.h>
+#include <n2k_dual/DualCorrelator.hpp>
 #include <random>
 #include <string>
 #include <vector>
@@ -44,13 +42,13 @@
 using cf = std::complex<float>;
 using cd = std::complex<double>;
 
-#define CK(x)                                                                                     \
-    do {                                                                                          \
-        cudaError_t e_ = (x);                                                                     \
-        if (e_ != cudaSuccess) {                                                                  \
-            printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__);       \
-            return 1;                                                                             \
-        }                                                                                         \
+#define CK(x)                                                                                      \
+    do {                                                                                           \
+        cudaError_t e_ = (x);                                                                      \
+        if (e_ != cudaSuccess) {                                                                   \
+            printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__);        \
+            return 1;                                                                              \
+        }                                                                                          \
     } while (0)
 
 // Deployed CHORD L5 geometry.
@@ -150,8 +148,8 @@ int main(int argc, char** argv) {
 
     printf("n2dualxval: %d specs x %d chan x %d hops, seed %u\n", N_SPEC, n_chan, N_HOPS, seed);
     for (int i = 0; i < N_SPEC; i++)
-        printf("  spec %d: PRN slot %d dop %+.0f Hz cp %.3f m_head %d n_chips %d\n", i,
-               specs[i].p, specs[i].doppler_hz, specs[i].cp_seed, jobs[i].m_head, jobs[i].n_chips);
+        printf("  spec %d: PRN slot %d dop %+.0f Hz cp %.3f m_head %d n_chips %d\n", i, specs[i].p,
+               specs[i].doppler_hz, specs[i].cp_seed, jobs[i].m_head, jobs[i].n_chips);
 
     // ---- build the REAL frame: noise + per-antenna signal from the P replica ---------------
     // Antenna 0: signal only, amplitude 5 lsb (clean quantization-loss channel).
@@ -308,8 +306,8 @@ int main(int argc, char** argv) {
         for (double p : phase_mr)
             prms += p * p;
         prms = sqrt(prms / phase_mr.size());
-        printf("%-4s %10.4g %10.4g %+12.4f %12.3f\n", row_name[t], rel[rel.size() / 2],
-               rel.back(), 20.0 * log10(amp_num / amp_den), prms);
+        printf("%-4s %10.4g %10.4g %+12.4f %12.3f\n", row_name[t], rel[rel.size() / 2], rel.back(),
+               20.0 * log10(amp_num / amp_den), prms);
     }
 
     // ---- the clean channel: pure quantization loss -----------------------------------------
@@ -344,7 +342,10 @@ int main(int argc, char** argv) {
             for (int m = 0; m < N_HOPS; m++) {
                 cf a = wat(i, ta, c, m), b = wat(i, tb, c, m);
                 cd A = cd(a.real(), a.imag()), B = cd(b.real(), b.imag());
-                if (CONJ) { A = std::conj(A); B = std::conj(B); }
+                if (CONJ) {
+                    A = std::conj(A);
+                    B = std::conj(B);
+                }
                 R += A * std::conj(B);
             }
             printf("  <%s,%s>: tile %+.5g%+.5gi  float %+.5g%+.5gi  rel %.3g\n", row_name[ta],

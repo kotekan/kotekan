@@ -1,4 +1,5 @@
 import os
+
 """Detections into seeds, and the coast/drop decision that retires them.
 
 `stage_detections_to_seeds` is the longest stage in the cycle and the one every other depends
@@ -31,8 +32,15 @@ from gnss_broker.sky import C_LIGHT
 from gnss_broker.transport import _log, _log_rl
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
-    retag_seed_doppler, code_clock_bias_sample, fit_cp_rate, fit_dop_rate, tracker_phase_at,
-    cp_rate_from_code_bias, dr_seed_phys, dr_cp0, seed_phase_at_ref,
+    retag_seed_doppler,
+    code_clock_bias_sample,
+    fit_cp_rate,
+    fit_dop_rate,
+    tracker_phase_at,
+    cp_rate_from_code_bias,
+    dr_seed_phys,
+    dr_cp0,
+    seed_phase_at_ref,
 )
 
 
@@ -43,8 +51,8 @@ def _present_streak(ctx, prn):
     line (survivors only) and NOT amp_snr (the coherent arc). Returns 0 when the series
     has never seen the PRN.
     """
-    hist = ctx.qpop.hist.get(prn)   # qpop is an unconditional ctx slot: no swallow --
-    if not hist:                    # a missing attribute must CRASH, not run inert (#93)
+    hist = ctx.qpop.hist.get(prn)  # qpop is an unconditional ctx slot: no swallow --
+    if not hist:  # a missing attribute must CRASH, not run inert (#93)
         return 0
     n = 0
     for _t, _q, state in reversed(hist):
@@ -61,6 +69,7 @@ def _nh_joint_pred_chips(ctx, prn, t_utc):
     Same convention as the nh_assist hint (almanac.py) and the CL time-assist, both proven
     on sky; the broadcast sat clock matters here because segments are 1 ms, not 1.5 s."""
     import gnss_ephemeris as _eph
+
     v = ctx.pred[prn]
     t_tx = _eph.gpst_of_utc(t_utc) - v[3] / C_LIGHT + v[4]
     return (t_tx % ctx.lc_epoch) * ctx.args.chip_rate_hz
@@ -135,8 +144,9 @@ def _nh_joint_consensus(ctx, now):
     if cs == 0.0 and sn == 0.0:
         return ctx.cpt.nh_common
     mu = (math.atan2(sn, cs) / two_pi * LLc) % LLc
-    devs = sorted((((d - mu + LLc / 2) % LLc) - LLc / 2, w, p)
-                  for p, (_, d, w) in votes.items())
+    devs = sorted(
+        (((d - mu + LLc / 2) % LLc) - LLc / 2, w, p) for p, (_, d, w) in votes.items()
+    )
     half = 0.5 * sum(w for _, w, _ in devs)
     acc = 0.0
     med = devs[-1][0]
@@ -146,26 +156,47 @@ def _nh_joint_consensus(ctx, now):
             med = dv
             break
     dstar = (mu + med) % LLc
-    inliers = [(p, ((d - dstar + LLc / 2) % LLc) - LLc / 2, w)
-               for p, (_, d, w) in votes.items()]
+    inliers = [
+        (p, ((d - dstar + LLc / 2) % LLc) - LLc / 2, w)
+        for p, (_, d, w) in votes.items()
+    ]
     inl = [(p, dv, w) for p, dv, w in inliers if abs(dv) <= a.nh_joint_tol_chips]
     w_tot = sum(w for _, _, w in inliers)
     w_in = sum(w for _, _, w in inl)
     spread = max((abs(dv) for _, dv, _ in inl), default=0.0)
-    _log_rl("nhjoint", "NH-JOINT: delta %+.1f chips (%.3f ms, seg %d) from %d/%d sats "
-            "(weight %.0f/%.0f), max inlier dev %.1f chips"
-            % (dstar, dstar / a.chip_rate_hz * 1e3,
-               int(round(dstar / ctx.code_len)) % ctx.lc_seg,
-               len(inl), len(votes), w_in, w_tot, spread), every_s=60.0)
+    _log_rl(
+        "nhjoint",
+        "NH-JOINT: delta %+.1f chips (%.3f ms, seg %d) from %d/%d sats "
+        "(weight %.0f/%.0f), max inlier dev %.1f chips"
+        % (
+            dstar,
+            dstar / a.chip_rate_hz * 1e3,
+            int(round(dstar / ctx.code_len)) % ctx.lc_seg,
+            len(inl),
+            len(votes),
+            w_in,
+            w_tot,
+            spread,
+        ),
+        every_s=60.0,
+    )
     if len(inl) >= a.nh_joint_min_prns and w_in >= 0.6 * w_tot:
         prev = ctx.cpt.nh_common
-        moved = (prev is None
-                 or abs(((dstar - prev[0] + LLc / 2) % LLc) - LLc / 2) > 0.5 * ctx.code_len)
+        moved = (
+            prev is None
+            or abs(((dstar - prev[0] + LLc / 2) % LLc) - LLc / 2) > 0.5 * ctx.code_len
+        )
         if moved:
-            _log("NH-JOINT: common overlay offset %s %+.1f chips (%.3f ms) from %d sats%s"
-                 % ("RESOLVED" if prev is None else "MOVED to", dstar,
-                    dstar / a.chip_rate_hz * 1e3, len(inl),
-                    "" if prev is None else " -- was %+.1f" % prev[0]))
+            _log(
+                "NH-JOINT: common overlay offset %s %+.1f chips (%.3f ms) from %d sats%s"
+                % (
+                    "RESOLVED" if prev is None else "MOVED to",
+                    dstar,
+                    dstar / a.chip_rate_hz * 1e3,
+                    len(inl),
+                    "" if prev is None else " -- was %+.1f" % prev[0],
+                )
+            )
         ctx.cpt.nh_common = (dstar, now, len(inl), (w_in / w_tot) if w_tot else 0.0)
         # Contribute the resolved clock-mod-epoch to the Receiver AS A TIME: this is the
         # epoch extension a short-window donor clock needs to bootstrap a chain whose code
@@ -173,8 +204,9 @@ def _nh_joint_consensus(ctx, now):
         # exactly the case the cross-band bootstrap's modulus guard rightly refuses
         # without it). Chips are a unit; the clock is a time.
         if getattr(ctx, "rx", None) is not None:
-            ctx.rx.contribute_clock_mod_epoch(ctx.chain_id, dstar / a.chip_rate_hz,
-                                              ctx.lc_epoch, len(inl), now)
+            ctx.rx.contribute_clock_mod_epoch(
+                ctx.chain_id, dstar / a.chip_rate_hz, ctx.lc_epoch, len(inl), now
+            )
     return ctx.cpt.nh_common
 
 
@@ -199,8 +231,11 @@ def stage_coast_drop(ctx):
     for prn in list(ctx.seeds):
         if prn in ctx.probe_set:
             continue
-        if (ctx.up is not None and prn not in ctx.up
-                and not (ctx.dr_state is not None and prn in ctx.dr_state["seeded"])):
+        if (
+            ctx.up is not None
+            and prn not in ctx.up
+            and not (ctx.dr_state is not None and prn in ctx.dr_state["seeded"])
+        ):
             # (model-owned sats are exempt: the TLE up-set mismaps some BDS birds;
             # their BRDC elevation governs the drop, in the dead-reckon block)
             _log("drop PRN %d (set below horizon)" % prn)
@@ -209,7 +244,9 @@ def stage_coast_drop(ctx):
             ctx.hold.miss.pop(prn, None)
             ctx.hold.low_hits.pop(prn, None)
             continue
-        if prn in ctx.best:  # re-detected -> re-anchored in the seed loop above (coast reset there)
+        if (
+            prn in ctx.best
+        ):  # re-detected -> re-anchored in the seed loop above (coast reset there)
             continue
         # not re-detected this poll but still visible -> COAST: forecast the Doppler forward.
         if ctx.dr_state is not None and prn in ctx.dr_state["seeded"]:
@@ -248,9 +285,14 @@ def stage_coast_drop(ctx):
             _rate_eff = _rate_new if "doppler_rate_hz_s" in ctx.seeds[prn] else 0.0
             _age = 0.0
             if ctx.utc0_sample0:
-                _age = max(0.0, (ctx.drp.now_w - ctx.utc0_sample0)
-                           - ctx.seeds[prn].get("ref_hop", 0) / ctx.args.hops_per_sec)
-            new_dop = ctx.pred[prn][0] + ctx.cb.seed            # the forecast AT NOW (#105: seed bias)
+                _age = max(
+                    0.0,
+                    (ctx.drp.now_w - ctx.utc0_sample0)
+                    - ctx.seeds[prn].get("ref_hop", 0) / ctx.args.hops_per_sec,
+                )
+            new_dop = (
+                ctx.pred[prn][0] + ctx.cb.seed
+            )  # the forecast AT NOW (#105: seed bias)
             _old_rate = ctx.seeds[prn].get("doppler_rate_hz_s", 0.0)
             # what the tracker is APPLYING at this instant, i.e. the currency cp is in
             old_dop = ctx.seeds[prn].get("doppler_hz", new_dop) + _old_rate * _age
@@ -271,19 +313,33 @@ def stage_coast_drop(ctx):
                 # dr_seed_phys, with its own regression test. When the sample-0 anchor
                 # is not known (no utc0_sample0), keep the old anchor-epoch behaviour:
                 # a partial correction still beats the raw-dop overwrite it replaced.
-                _t_retag = ((ctx.drp.now_w - ctx.utc0_sample0) if ctx.utc0_sample0
-                            else ctx.seeds[prn].get("ref_hop", 0) / ctx.args.hops_per_sec)
+                _t_retag = (
+                    (ctx.drp.now_w - ctx.utc0_sample0)
+                    if ctx.utc0_sample0
+                    else ctx.seeds[prn].get("ref_hop", 0) / ctx.args.hops_per_sec
+                )
                 ctx.seeds[prn].put(
-                    "coast_retag", epoch=ctx.seeds[prn].get("ref_hop"),
+                    "coast_retag",
+                    epoch=ctx.seeds[prn].get("ref_hop"),
                     code_phase_chips=retag_seed_doppler(
-                        ctx.seeds[prn].get("code_phase_chips", 0.0), old_dop, new_dop,
-                        _t_retag, ctx.args.chip_rate_hz, ctx.args.carrier_hz,
-                        ctx.args.code_doppler_sign, ctx.code_len),
+                        ctx.seeds[prn].get("code_phase_chips", 0.0),
+                        old_dop,
+                        new_dop,
+                        _t_retag,
+                        ctx.args.chip_rate_hz,
+                        ctx.args.carrier_hz,
+                        ctx.args.code_doppler_sign,
+                        ctx.code_len,
+                    ),
                     # STORE AT ref_hop, not at now (see the note above).
-                    doppler_hz=new_dop - _rate_eff * _age)
+                    doppler_hz=new_dop - _rate_eff * _age,
+                )
             if "doppler_rate_hz_s" in ctx.seeds[prn]:
-                ctx.seeds[prn].put("coast_retag", epoch=ctx.seeds[prn].get("ref_hop"),
-                               doppler_rate_hz_s=_rate_new)
+                ctx.seeds[prn].put(
+                    "coast_retag",
+                    epoch=ctx.seeds[prn].get("ref_hop"),
+                    doppler_rate_hz_s=_rate_new,
+                )
         rec = ctx.status.get(prn, {})
         if ctx.have_sig:
             metric, thresh = ctx.sig_of(rec), ctx.args.lock_snr
@@ -291,17 +347,31 @@ def stage_coast_drop(ctx):
             metric, thresh = float(rec.get("amplitude", 0.0)), ctx.args.drop_amplitude
         # FOLD-INDEPENDENT HOLD (#58). OR-ed against its own bar, never max()-ed into
         # `metric`: prompt hold is a power ratio and `metric` is a debiased sigma.
-        if metric >= thresh or (ctx.args.lock_prompt_hold > 0.0
-                                and ctx.hold.prev.get(prn, 0.0) >= ctx.args.lock_prompt_hold):
-            ctx.hold.low_hits[prn] = 0  # lock holding through the dropout -> reset coast
+        if metric >= thresh or (
+            ctx.args.lock_prompt_hold > 0.0
+            and ctx.hold.prev.get(prn, 0.0) >= ctx.args.lock_prompt_hold
+        ):
+            ctx.hold.low_hits[
+                prn
+            ] = 0  # lock holding through the dropout -> reset coast
         else:
             ctx.hold.low_hits[prn] = ctx.hold.low_hits.get(prn, 0) + 1
             # dead-reckoned seeds are MODEL-owned: visible + predicted = keep despreading
             # (their whole point is sats with no signal above the search threshold)
-            if (ctx.hold.low_hits[prn] >= ctx.coast_polls and not ctx.args.coast_to_horizon
-                    and not (ctx.dr_state is not None and prn in ctx.dr_state["seeded"])):
-                _log("drop PRN %d (coast %.0fs expired, %s=%.2f)"
-                     % (prn, ctx.args.coast_budget, "sig" if ctx.have_sig else "|A|", metric))
+            if (
+                ctx.hold.low_hits[prn] >= ctx.coast_polls
+                and not ctx.args.coast_to_horizon
+                and not (ctx.dr_state is not None and prn in ctx.dr_state["seeded"])
+            ):
+                _log(
+                    "drop PRN %d (coast %.0fs expired, %s=%.2f)"
+                    % (
+                        prn,
+                        ctx.args.coast_budget,
+                        "sig" if ctx.have_sig else "|A|",
+                        metric,
+                    )
+                )
                 del ctx.seeds[prn]
                 ctx.hold.low_hits.pop(prn, None)
 
@@ -334,16 +404,23 @@ def stage_detections_to_seeds(ctx):
         # referee (sign-flipping cp_err never sustains 5 consecutive). So: measure,
         # never modify. The census still maps which chains/sats ride alias bins (the
         # B1C zombie-birth investigation continues on that data).
-        if (ctx.args.det_alias_fold and ctx.args.almanac and prn in ctx.pred
-                and ctx.cb.ema is not None and not ctx.cb.stale):
+        if (
+            ctx.args.det_alias_fold
+            and ctx.args.almanac
+            and prn in ctx.pred
+            and ctx.cb.ema is not None
+            and not ctx.cb.stale
+        ):
             _aref = ctx.pred[prn][0] + ctx.cb.seed
             _k = round((dop - _aref) / ctx.q_alias_hz)
             if _k != 0 and abs(dop - _aref) < 3.5 * ctx.q_alias_hz:
-                _log_rl("afold-%d" % prn,
-                        "ALIAS BIN PRN %d: det dop %+.1f = model %+.1f %+d bin(s) of "
-                        "%.0f Hz (census only; cp round-trip is exact)"
-                        % (prn, dop, _aref, _k, ctx.q_alias_hz),
-                        every_s=30.0)
+                _log_rl(
+                    "afold-%d" % prn,
+                    "ALIAS BIN PRN %d: det dop %+.1f = model %+.1f %+d bin(s) of "
+                    "%.0f Hz (census only; cp round-trip is exact)"
+                    % (prn, dop, _aref, _k, ctx.q_alias_hz),
+                    every_s=30.0,
+                )
         v_dr = ctx.dr_pd.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd else None
         if ctx.up is not None and prn not in ctx.up:
             # accept the detection anyway if BRDC says it's up: the TLE up-set
@@ -355,10 +432,17 @@ def stage_detections_to_seeds(ctx):
         # cannot arm a correction, and before every seeding-policy filter below, because
         # eligibility asks "is this satellite up and detectable", not "did this cycle
         # like the detection well enough to re-seed from it".
-        if ctx.args.dll_deep_gate_from_search > 0.0 and snr >= ctx.args.dll_deep_gate_from_search:
+        if (
+            ctx.args.dll_deep_gate_from_search > 0.0
+            and snr >= ctx.args.dll_deep_gate_from_search
+        ):
             ctx.dls.deep_gate_seen[prn] = ctx.t0
         _dop_src = "pred" if (ctx.args.almanac and prn in ctx.pred) else "DET(grid)"
-        seed_dop = (ctx.pred[prn][0] + ctx.cb.seed) if (ctx.args.almanac and prn in ctx.pred) else dop
+        seed_dop = (
+            (ctx.pred[prn][0] + ctx.cb.seed)
+            if (ctx.args.almanac and prn in ctx.pred)
+            else dop
+        )
         # Dead-reckon armed: prefer the BRDC doppler for EVERY seed -- the same model
         # that owns the undetected sats. Mixing sources stepped the seed doppler by
         # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
@@ -372,19 +456,26 @@ def stage_detections_to_seeds(ctx):
         # satellite flipping trust no longer switches its seed between two BRDC
         # evaluations -- and the seed IS the replica's carrier phase.
         _unt = ctx.dr_untrusted.get(prn)
-        _dop_trusted = (_unt is None
-                        or (ctx.args.dr_doppler_ignores_integrity
-                            and not str(_unt).startswith("ephemeris")))
+        _dop_trusted = _unt is None or (
+            ctx.args.dr_doppler_ignores_integrity
+            and not str(_unt).startswith("ephemeris")
+        )
         if v_dr is not None and _dop_trusted:
             _dop_src = "dr" if _unt is None else "dr(code-untrusted)"
-            seed_dop = (ctx.args.doppler_sign * (-v_dr["range_rate_mps"] / C_LIGHT
-                                             * ctx.args.carrier_hz) + ctx.cb.seed)
+            seed_dop = (
+                ctx.args.doppler_sign
+                * (-v_dr["range_rate_mps"] / C_LIGHT * ctx.args.carrier_hz)
+                + ctx.cb.seed
+            )
             if _unt is not None:
-                _log_rl("dopkeep-%d" % prn,
-                        "PRN %d: code model untrusted (%s) but KEEPING the BRDC Doppler "
-                        "-- an integrity residual is a code-phase statement, and "
-                        "switching the seed switches the replica's carrier phase"
-                        % (prn, _unt), every_s=120.0)
+                _log_rl(
+                    "dopkeep-%d" % prn,
+                    "PRN %d: code model untrusted (%s) but KEEPING the BRDC Doppler "
+                    "-- an integrity residual is a code-phase statement, and "
+                    "switching the seed switches the replica's carrier phase"
+                    % (prn, _unt),
+                    every_s=120.0,
+                )
         # ...unless the measured Doppler is explicitly preferred (--seed-doppler det). Last
         # word, so it overrides the model AND the DR: those two exist to keep the seed
         # smooth and to own undetected sats, but neither helps a sat we HAVE measured, and
@@ -418,10 +509,20 @@ def stage_detections_to_seeds(ctx):
         if _prev_sd is None:
             # FIRST seed: full attribution (the rail onsets coincide with first seeding,
             # and a first seed has no previous value for the step tripwire to fire on).
-            _log("PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f, trim %+.1f)"
-                 % (prn, seed_dop, _dop_src, dop,
-                    ("%.1f" % (ctx.pred[prn][0])) if (ctx.args.almanac and prn in ctx.pred) else "n/a",
-                    ctx.cb.seed, ctx.car.trim.get(prn, 0.0)))
+            _log(
+                "PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f, trim %+.1f)"
+                % (
+                    prn,
+                    seed_dop,
+                    _dop_src,
+                    dop,
+                    ("%.1f" % (ctx.pred[prn][0]))
+                    if (ctx.args.almanac and prn in ctx.pred)
+                    else "n/a",
+                    ctx.cb.seed,
+                    ctx.car.trim.get(prn, 0.0),
+                )
+            )
         elif abs(seed_dop - _prev_sd) > 10.0 and prn in ctx.cp_held:
             # HELD sat: the candidate walks while the emitted tuple stays frozen /
             # translated -- this "step" is never applied as-is, and logging it every
@@ -430,8 +531,10 @@ def stage_detections_to_seeds(ctx):
             # the un-held branch below.
             pass
         elif abs(seed_dop - _prev_sd) > 10.0:
-            _log("PRN %d SEED DOP STEP %+.1f Hz (%.1f -> %.1f, src=%s, det=%.1f)"
-                 % (prn, seed_dop - _prev_sd, _prev_sd, seed_dop, _dop_src, dop))
+            _log(
+                "PRN %d SEED DOP STEP %+.1f Hz (%.1f -> %.1f, src=%s, det=%.1f)"
+                % (prn, seed_dop - _prev_sd, _prev_sd, seed_dop, _dop_src, dop)
+            )
 
         # Maintain a per-PRN cp0-vs-hop history (only distinct snapshots; the search
         # holds its detection between updates) and fit the first-order code drift.
@@ -453,7 +556,7 @@ def stage_detections_to_seeds(ctx):
             dh_ = []
         if not dh_ or ref_hop != dh_[-1][0]:
             dh_.append((ref_hop, dop))
-            dh_ = dh_[-ctx.hist_len:]
+            dh_ = dh_[-ctx.hist_len :]
         ctx.cpt.dop_hist[prn] = dh_
 
         h = ctx.cpt.hist.get(prn, [])
@@ -469,12 +572,14 @@ def stage_detections_to_seeds(ctx):
         if not h or ref_hop != h[-1][0]:
             if snr >= ctx.args.fit_min_snr:
                 h.append((ref_hop, cp, dop))
-                h = h[-ctx.hist_len:]
+                h = h[-ctx.hist_len :]
             elif h:
-                _log_rl("fitsnr-%d" % prn,
-                        "PRN %d cp-fit: skipping snr %.0f point (< --fit-min-snr %.0f); "
-                        "%d in history" % (prn, snr, ctx.args.fit_min_snr, len(h)),
-                        every_s=120.0)
+                _log_rl(
+                    "fitsnr-%d" % prn,
+                    "PRN %d cp-fit: skipping snr %.0f point (< --fit-min-snr %.0f); "
+                    "%d in history" % (prn, snr, ctx.args.fit_min_snr, len(h)),
+                    every_s=120.0,
+                )
         ctx.cpt.hist[prn] = h
 
         # The bare-detection cp is in the DETECTION's Doppler currency; the tracker will
@@ -482,9 +587,14 @@ def stage_detections_to_seeds(ctx):
         # t_abs*f_chip*(dop-seed_dop)/f_c offset -- chips off-peak for any mid-run
         # acquisition, before tracking even starts).
         ((_, cp_seed_cur),) = ctx.cp_to_seed_currency([(ref_hop, cp, dop)], seed_dop)
-        seed = Seed.born("det", epoch=ref_hop,
-                         doppler_hz=seed_dop, code_phase_chips=cp_seed_cur,
-                         code_phase_rate=0.0, ref_hop=ref_hop)
+        seed = Seed.born(
+            "det",
+            epoch=ref_hop,
+            doppler_hz=seed_dop,
+            code_phase_chips=cp_seed_cur,
+            code_phase_rate=0.0,
+            ref_hop=ref_hop,
+        )
         # The doppler SOURCE was arbitrated above (_dop_src: pred | dr | det), BEFORE
         # the tuple existed, so the constructor's blanket "det" under-describes the
         # one field three estimators fight over. Re-attribute -- same value, provenance
@@ -500,20 +610,30 @@ def stage_detections_to_seeds(ctx):
         if v2_dr is not None and v0_dr is not None:
             # BRDC doppler rate, CENTRAL difference over the +/-2 s pair straddling now_w
             # (task #52). Centred, so the rate is tagged at now_w rather than 2 s late.
-            seed.put("dop_model", epoch=ref_hop,
-                     doppler_rate_hz_s=(ctx.args.doppler_sign
-                                        * (-(v2_dr["range_rate_mps"]
-                                             - v0_dr["range_rate_mps"]) / 4.0)
-                                        / C_LIGHT * ctx.args.carrier_hz))
+            seed.put(
+                "dop_model",
+                epoch=ref_hop,
+                doppler_rate_hz_s=(
+                    ctx.args.doppler_sign
+                    * (-(v2_dr["range_rate_mps"] - v0_dr["range_rate_mps"]) / 4.0)
+                    / C_LIGHT
+                    * ctx.args.carrier_hz
+                ),
+            )
         elif v_dr is not None and v2_dr is not None:
             # Fallback for the first cycle, before pd0 exists: the OLD forward form, and
             # it is deliberately still here rather than silently emitting nothing -- but it
             # is 2 s mis-tagged, so it must not be the steady state.
-            seed.put("dop_model", epoch=ref_hop,
-                     doppler_rate_hz_s=(ctx.args.doppler_sign
-                                        * (-(v2_dr["range_rate_mps"]
-                                             - v_dr["range_rate_mps"]) / 2.0)
-                                        / C_LIGHT * ctx.args.carrier_hz))
+            seed.put(
+                "dop_model",
+                epoch=ref_hop,
+                doppler_rate_hz_s=(
+                    ctx.args.doppler_sign
+                    * (-(v2_dr["range_rate_mps"] - v_dr["range_rate_mps"]) / 2.0)
+                    / C_LIGHT
+                    * ctx.args.carrier_hz
+                ),
+            )
         elif ctx.args.almanac and prn in ctx.pred:
             seed.put("dop_model", epoch=ref_hop, doppler_rate_hz_s=ctx.pred[prn][1])
         # MEASURED rate beats the model's, and it is the LAST word here for the same reason
@@ -531,11 +651,19 @@ def stage_detections_to_seeds(ctx):
         # +-0.8 sails through. Its error costs twice: the carrier NCO extrapolation AND the
         # quadratic code term both use it.
         _model_dr = seed.get("doppler_rate_hz_s")
-        _dr = fit_dop_rate(ctx.cpt.dop_hist.get(prn, []), ctx.args.hops_per_sec,
-                           ctx.args.dop_rate_min_pts, ctx.args.dop_rate_min_span_s,
-                           ctx.args.dop_rate_max)
-        if (_dr is not None and _model_dr is not None and ctx.args.dop_rate_model_tol > 0.0
-                and abs(_dr - _model_dr) > ctx.args.dop_rate_model_tol):
+        _dr = fit_dop_rate(
+            ctx.cpt.dop_hist.get(prn, []),
+            ctx.args.hops_per_sec,
+            ctx.args.dop_rate_min_pts,
+            ctx.args.dop_rate_min_span_s,
+            ctx.args.dop_rate_max,
+        )
+        if (
+            _dr is not None
+            and _model_dr is not None
+            and ctx.args.dop_rate_model_tol > 0.0
+            and abs(_dr - _model_dr) > ctx.args.dop_rate_model_tol
+        ):
             # The two disagree by more than the model's own accuracy: trust the MODEL, which
             # comes from an orbit rather than from detection noise, and say so.
             ctx.dop_rate_rejected[prn] = (_dr, _model_dr)
@@ -545,12 +673,17 @@ def stage_detections_to_seeds(ctx):
         elif ctx.args.force_doppler_rate is not None:
             # Replay-bench override: a recorded capture's sky is at another epoch (no almanac),
             # so inject a known rate into every seed to exercise the NCO feed-forward offline.
-            seed.put("dop_force", epoch=ref_hop,
-                     doppler_rate_hz_s=ctx.args.force_doppler_rate)
+            seed.put(
+                "dop_force",
+                epoch=ref_hop,
+                doppler_rate_hz_s=ctx.args.force_doppler_rate,
+            )
         fit = fit_cp_rate(
-            ctx.cp_to_seed_currency(h, seed_dop,
-                                float(seed.get("doppler_rate_hz_s", 0.0) or 0.0)),
-            ctx.code_len)
+            ctx.cp_to_seed_currency(
+                h, seed_dop, float(seed.get("doppler_rate_hz_s", 0.0) or 0.0)
+            ),
+            ctx.code_len,
+        )
         if fit is not None:
             rate, h0, cp_ref = fit
             # ── THE CODE-RATE CROSS-CHECK (#96, --cp-rate-model-tol) ──────────────────
@@ -602,20 +735,33 @@ def stage_detections_to_seeds(ctx):
             _seed_rate = rate
             _tol = getattr(ctx.args, "cp_rate_model_tol", 0.0)
             if _tol > 0.0 and ctx.cb.code_ema is not None:
-                _model = cp_rate_from_code_bias(seed_dop, ctx.cb.code_ema,
-                                                ctx.args.hops_per_sec,
-                                                ctx.args.chip_rate_hz, ctx.args.carrier_hz)
-                _dev = (rate - _model) * ctx.args.hops_per_sec      # chips/s
+                _model = cp_rate_from_code_bias(
+                    seed_dop,
+                    ctx.cb.code_ema,
+                    ctx.args.hops_per_sec,
+                    ctx.args.chip_rate_hz,
+                    ctx.args.carrier_hz,
+                )
+                _dev = (rate - _model) * ctx.args.hops_per_sec  # chips/s
                 if abs(_dev) > _tol:
-                    ctx.cp_rate_rejected[prn] = (rate * ctx.args.hops_per_sec,
-                                                 _model * ctx.args.hops_per_sec)
-                    _log_rl("cprate-rej-%d" % prn,
-                            "PRN %d cp-rate REJECTED: fit %+.3f chips/s vs pooled clock "
-                            "%+.3f (dev %+.3f > --cp-rate-model-tol %.3f) -- position kept, "
-                            "clock rate seeded"
-                            % (prn, rate * ctx.args.hops_per_sec,
-                               _model * ctx.args.hops_per_sec, _dev, _tol),
-                            every_s=60.0)
+                    ctx.cp_rate_rejected[prn] = (
+                        rate * ctx.args.hops_per_sec,
+                        _model * ctx.args.hops_per_sec,
+                    )
+                    _log_rl(
+                        "cprate-rej-%d" % prn,
+                        "PRN %d cp-rate REJECTED: fit %+.3f chips/s vs pooled clock "
+                        "%+.3f (dev %+.3f > --cp-rate-model-tol %.3f) -- position kept, "
+                        "clock rate seeded"
+                        % (
+                            prn,
+                            rate * ctx.args.hops_per_sec,
+                            _model * ctx.args.hops_per_sec,
+                            _dev,
+                            _tol,
+                        ),
+                        every_s=60.0,
+                    )
                     _seed_rate = _model
                     # ── #100 (--fit-flush-on-reject): a rejected fit is not just a bad
                     # RATE -- the seed's POSITION is the same fit EVALUATED at ref_hop,
@@ -632,12 +778,18 @@ def stage_detections_to_seeds(ctx):
                     if _flush_n > 0 and _n >= _flush_n:
                         ctx.cpt.hist.pop(prn, None)
                         ctx.cpt.rej_streak.pop(prn, None)
-                        _log("PRN %d cp-fit history FLUSHED: %d consecutive rejected "
-                             "rates (last %+.2f chips/s vs clock %+.2f) -- wrap-poisoned "
-                             "history dropped, sat rides the birth path while a clean "
-                             "fit rebuilds"
-                             % (prn, _n, rate * ctx.args.hops_per_sec,
-                                _model * ctx.args.hops_per_sec))
+                        _log(
+                            "PRN %d cp-fit history FLUSHED: %d consecutive rejected "
+                            "rates (last %+.2f chips/s vs clock %+.2f) -- wrap-poisoned "
+                            "history dropped, sat rides the birth path while a clean "
+                            "fit rebuilds"
+                            % (
+                                prn,
+                                _n,
+                                rate * ctx.args.hops_per_sec,
+                                _model * ctx.args.hops_per_sec,
+                            )
+                        )
                     else:
                         ctx.cpt.rej_streak[prn] = _n
                 else:
@@ -656,12 +808,17 @@ def stage_detections_to_seeds(ctx):
             # still feeds fit_slope and the l-a pool below (measurements, not commands).
             # Cold start (code_ema None) falls back to the fitted rate, exactly as the
             # tol guard does.
-            if (getattr(ctx.args, "cp_rate_model_primary", 0)
-                    and ctx.cb.code_ema is not None):
-                _seed_rate = cp_rate_from_code_bias(seed_dop, ctx.cb.code_ema,
-                                                    ctx.args.hops_per_sec,
-                                                    ctx.args.chip_rate_hz,
-                                                    ctx.args.carrier_hz)
+            if (
+                getattr(ctx.args, "cp_rate_model_primary", 0)
+                and ctx.cb.code_ema is not None
+            ):
+                _seed_rate = cp_rate_from_code_bias(
+                    seed_dop,
+                    ctx.cb.code_ema,
+                    ctx.args.hops_per_sec,
+                    ctx.args.chip_rate_hz,
+                    ctx.args.carrier_hz,
+                )
             # ⚠️ SUBSTITUTE THE COMMAND ONLY, NEVER THE MEASUREMENT. `rate` stays the
             # FITTED slope below this line, because the two consumers underneath are
             # measurements: ctx.cpt.fit_slope feeds CARRIER-FROM-CODE (a shadow), and
@@ -669,24 +826,38 @@ def stage_detections_to_seeds(ctx):
             # pool `_model` was computed from. Overwriting `rate` here would feed the clock
             # a sample derived from the clock -- a self-reference that reinforces whatever
             # the pool already believes, which is the mirror #33/GAP-2 was.
-            seed.put("cp_fit", epoch=h0,
-                     code_phase_rate=_seed_rate, ref_hop=h0, code_phase_chips=cp_ref)
+            seed.put(
+                "cp_fit",
+                epoch=h0,
+                code_phase_rate=_seed_rate,
+                ref_hop=h0,
+                code_phase_chips=cp_ref,
+            )
             ctx.fitted.add(prn)
-            ctx.cpt.fit_slope[prn] = rate * ctx.args.hops_per_sec   # chips/s, for CARRIER-FROM-CODE
+            ctx.cpt.fit_slope[prn] = (
+                rate * ctx.args.hops_per_sec
+            )  # chips/s, for CARRIER-FROM-CODE
             # This fit contributes an (l-a) sample: its code_frac minus the sat's carrier_frac.
             # Only strong, geometry-clean detections (SNR gate) -- weak/noisy slopes would bias it.
-            la = code_clock_bias_sample(rate, seed_dop, ctx.args.hops_per_sec,
-                                        ctx.args.chip_rate_hz, ctx.args.carrier_hz)
+            la = code_clock_bias_sample(
+                rate,
+                seed_dop,
+                ctx.args.hops_per_sec,
+                ctx.args.chip_rate_hz,
+                ctx.args.carrier_hz,
+            )
             # PER-SAMPLE gate: a single noisy/unwrap-blown slope fit is a large l-a outlier
             # that the few-sat median can't reject -- and a wandering pooled l-a swings the
             # seeded code rate (+-1 ppm = +-1 chip/s), walking the deep integration off-peak
             # within its ~1 s window (the 2026-07-07 L1 deep decay). Bound to --code-bias-max.
             if snr >= ctx.args.acquire_snr and abs(la) < ctx.args.code_bias_max * 1e-6:
                 ctx.la_samples.append(la)
-            _log_rl("cpfit-%d" % prn,
-                    "PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s "
-                    "(%d pts, l-a %+.3f ppm)"
-                    % (prn, cp_ref, h0, rate * ctx.args.hops_per_sec, len(h), la * 1e6))
+            _log_rl(
+                "cpfit-%d" % prn,
+                "PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s "
+                "(%d pts, l-a %+.3f ppm)"
+                % (prn, cp_ref, h0, rate * ctx.args.hops_per_sec, len(h), la * 1e6),
+            )
         # L2C CL TIME-ASSIST: the trackers despread the CL pilot, whose absolute code phase
         # is cp_CL = cp_CM + k*10230 with k the CL segment index -- COMPUTED, not searched.
         # CL's 1.5 s epoch is locked to GPS time in Z-count (1.5 s) units, and GPS-UTC (18 s)
@@ -709,9 +880,14 @@ def stage_detections_to_seeds(ctx):
             # carries the period. Reconstructing it here -- from `nh`, or from absolute
             # time via --cl-assist -- means re-deriving a convention the search already
             # knows, which is where every previous attempt went wrong.
-            seed.put("nh_lift", epoch=ref_hop,
-                     code_phase_chips=((cp_long + ctx.args.nh_period_offset * ctx.code_len)
-                                       % (ctx.lc_seg * ctx.code_len)))
+            seed.put(
+                "nh_lift",
+                epoch=ref_hop,
+                code_phase_chips=(
+                    (cp_long + ctx.args.nh_period_offset * ctx.code_len)
+                    % (ctx.lc_seg * ctx.code_len)
+                ),
+            )
             ctx.cl_report.append("PRN %d long-cp (search)" % prn)
             # And carry the PHASE at the search's own epoch. cp0 back-references to sample
             # 0 through a Doppler-scaled rate, which multiplies the reported Doppler's
@@ -723,8 +899,12 @@ def stage_detections_to_seeds(ctx):
                 # ── THE JOINT OVERLAY FIT (--nh-joint): vote on the RAW measured phase,
                 # before the debounce or any offset touches it. One common unknown, every
                 # satellite's word counts once; see _nh_joint_vote.
-                _nhj_ok = (ctx.args.nh_joint != "off" and ctx.utc0_sample0
-                           and ctx.args.almanac and prn in ctx.pred)
+                _nhj_ok = (
+                    ctx.args.nh_joint != "off"
+                    and ctx.utc0_sample0
+                    and ctx.args.almanac
+                    and prn in ctx.pred
+                )
                 _ph_raw = ph  # the source's own word, before the debounce touches it --
                 # the vote, the referee, and the apply-side snap all read THIS, never the
                 # mutated ph (first deployment read post-debounce ph and faithfully
@@ -761,26 +941,53 @@ def stage_detections_to_seeds(ctx):
                     dh = ref_hop - h0
                     gap_s = dh / ctx.args.hops_per_sec
                     if 0 < gap_s <= 900.0:
-                        rate = (ctx.args.chip_rate_hz / ctx.args.hops_per_sec
-                                * (1.0 + ctx.args.code_doppler_sign * 0.5 * (dop0 + dop)
-                                   / ctx.args.carrier_hz))
-                        ph_pred = (ph0 + dh * rate) % LLc  # NB not `pred` -- that is the
+                        rate = (
+                            ctx.args.chip_rate_hz
+                            / ctx.args.hops_per_sec
+                            * (
+                                1.0
+                                + ctx.args.code_doppler_sign
+                                * 0.5
+                                * (dop0 + dop)
+                                / ctx.args.carrier_hz
+                            )
+                        )
+                        ph_pred = (
+                            ph0 + dh * rate
+                        ) % LLc  # NB not `pred` -- that is the
                         # almanac prediction dict in this scope, and shadowing it breaks
                         # the alias census a hundred lines down with a TypeError.
-                        m = int(round(((ph_pred - ph) % LLc) / ctx.code_len)) % ctx.lc_seg
+                        m = (
+                            int(round(((ph_pred - ph) % LLc) / ctx.code_len))
+                            % ctx.lc_seg
+                        )
                         if m:
-                            resid = ((ph + m * ctx.code_len - ph_pred + LLc / 2) % LLc) - LLc / 2
+                            resid = (
+                                (ph + m * ctx.code_len - ph_pred + LLc / 2) % LLc
+                            ) - LLc / 2
                             # Only a STRONG disagreement is evidence about the source; a
                             # marginal detection disagreeing tells us about the detection.
-                            sev = ("SOURCE PERIOD DISAGREES"
-                                   if snr >= ctx.args.period_check_snr else "weak det")
-                            _log_rl("phcont-%d" % prn,
-                                    "PRN %d period continuity %s: %+d periods "
-                                    "(snr %.0f, gap %.0f s, residual %+.1f chips) "
-                                    "-- NOT applied (%s)"
-                                    % (prn, sev, m, snr, gap_s, resid,
-                                       ctx.args.period_continuity),
-                                    every_s=60.0)
+                            sev = (
+                                "SOURCE PERIOD DISAGREES"
+                                if snr >= ctx.args.period_check_snr
+                                else "weak det"
+                            )
+                            _log_rl(
+                                "phcont-%d" % prn,
+                                "PRN %d period continuity %s: %+d periods "
+                                "(snr %.0f, gap %.0f s, residual %+.1f chips) "
+                                "-- NOT applied (%s)"
+                                % (
+                                    prn,
+                                    sev,
+                                    m,
+                                    snr,
+                                    gap_s,
+                                    resid,
+                                    ctx.args.period_continuity,
+                                ),
+                                every_s=60.0,
+                            )
                         if ctx.args.period_continuity == "correct":
                             ph = (ph + m * ctx.code_len) % LLc
                         elif m and ctx.args.nh_period_debounce > 0:
@@ -817,16 +1024,20 @@ def stage_detections_to_seeds(ctx):
                             if _pc < ctx.args.nh_period_debounce:
                                 ph = (ph + m * ctx.code_len) % LLc
                                 _nh_deferred = True
-                                _log_rl("phdeb-%d" % prn,
-                                        "PRN %d period DEBOUNCED: measured %+d period(s) "
-                                        "off the standing one (%d/%d consecutive) -- "
-                                        "standing period kept, measured fine phase seeded"
-                                        % (prn, m, _pc, ctx.args.nh_period_debounce),
-                                        every_s=60.0)
+                                _log_rl(
+                                    "phdeb-%d" % prn,
+                                    "PRN %d period DEBOUNCED: measured %+d period(s) "
+                                    "off the standing one (%d/%d consecutive) -- "
+                                    "standing period kept, measured fine phase seeded"
+                                    % (prn, m, _pc, ctx.args.nh_period_debounce),
+                                    every_s=60.0,
+                                )
                             else:
                                 ctx.cpt.nh_pending.pop(prn, None)
-                                _log("PRN %d period ADOPTED: %+d period(s), confirmed by "
-                                     "%d consecutive detection(s)" % (prn, m, _pc))
+                                _log(
+                                    "PRN %d period ADOPTED: %+d period(s), confirmed by "
+                                    "%d consecutive detection(s)" % (prn, m, _pc)
+                                )
                         elif not m:
                             ctx.cpt.nh_pending.pop(prn, None)
                 # Feed history only from detections whose phase means something. Below the
@@ -835,8 +1046,9 @@ def stage_detections_to_seeds(ctx):
                 # comparison until that PRN is seen again -- 90-270 s at CHORD's revisit.
                 # A DEBOUNCE-DEFERRED period feeds nothing: the corrected phase is our own
                 # word (the 2026-08-02 poison) and the measured one is unconfirmed.
-                if not _nh_deferred and (snr >= ctx.args.period_check_snr
-                                         or prn not in ctx.cpt.ph_hist):
+                if not _nh_deferred and (
+                    snr >= ctx.args.period_check_snr or prn not in ctx.cpt.ph_hist
+                ):
                     ctx.cpt.ph_hist[prn] = (ref_hop, ph, dop)
                 # ── THE JOINT OVERLAY FIT, apply side: below --period-check-snr the
                 # measured label is noise (G1's ran uniform over 0..19, stepping the seed
@@ -860,19 +1072,33 @@ def stage_detections_to_seeds(ctx):
                         # 2026-08-31) -- can move its own seed. The measurement keeps
                         # sub-chip authority through its fine phase; a nonzero k on a
                         # STRONG detection is the referee's alarm about the source.
-                        _ph_j, _k_j = _nh_joint_snap(ctx, prn, _ph_raw, ref_hop, _nhc[0])
+                        _ph_j, _k_j = _nh_joint_snap(
+                            ctx, prn, _ph_raw, ref_hop, _nhc[0]
+                        )
                         if _k_j:
-                            _log_rl(("nhjref-%d" if snr >= ctx.args.period_check_snr
-                                     else "nhjapp-%d") % prn,
-                                    "PRN %d overlay segment DERIVED from consensus: %+d "
-                                    "period(s) off the %s measurement (snr %.0f)%s"
-                                    % (prn, _k_j,
-                                       "STRONG" if snr >= ctx.args.period_check_snr
-                                       else "weak", snr,
-                                       " -- if this persists across sats the consensus "
-                                       "or the prediction is wrong"
-                                       if snr >= ctx.args.period_check_snr else ""),
-                                    every_s=60.0)
+                            _log_rl(
+                                (
+                                    "nhjref-%d"
+                                    if snr >= ctx.args.period_check_snr
+                                    else "nhjapp-%d"
+                                )
+                                % prn,
+                                "PRN %d overlay segment DERIVED from consensus: %+d "
+                                "period(s) off the %s measurement (snr %.0f)%s"
+                                % (
+                                    prn,
+                                    _k_j,
+                                    "STRONG"
+                                    if snr >= ctx.args.period_check_snr
+                                    else "weak",
+                                    snr,
+                                    " -- if this persists across sats the consensus "
+                                    "or the prediction is wrong"
+                                    if snr >= ctx.args.period_check_snr
+                                    else "",
+                                ),
+                                every_s=60.0,
+                            )
                         ph = _ph_j
                 # --nh-period-offset: applied HERE, after the continuity check has had its
                 # say, and to the phase rather than the argument -- propagate_seed prefers
@@ -889,28 +1115,52 @@ def stage_detections_to_seeds(ctx):
             # substitute here: relating a cp0 argument to the prediction rides the
             # 0.58-periods-per-Hz Doppler lever, which is exactly the route the
             # comment above retired.
-            if (ctx.args.nh_joint == "apply" and ctx.cpt.nh_common is not None
-                    and snr < ctx.args.period_check_snr):
-                _log_rl("nhjskip-%d" % prn,
-                        "PRN %d weak raw det_nh=%d SKIPPED (snr %.0f, consensus stands)"
-                        % (prn, det_nh, snr), every_s=60.0)
+            if (
+                ctx.args.nh_joint == "apply"
+                and ctx.cpt.nh_common is not None
+                and snr < ctx.args.period_check_snr
+            ):
+                _log_rl(
+                    "nhjskip-%d" % prn,
+                    "PRN %d weak raw det_nh=%d SKIPPED (snr %.0f, consensus stands)"
+                    % (prn, det_nh, snr),
+                    every_s=60.0,
+                )
             else:
-                seed.put("nh_lift", epoch=ref_hop,
-                         code_phase_chips=((seed["code_phase_chips"] % ctx.code_len)
-                                           + (det_nh % ctx.lc_seg) * ctx.code_len)
-                                          % (ctx.lc_seg * ctx.code_len))
+                seed.put(
+                    "nh_lift",
+                    epoch=ref_hop,
+                    code_phase_chips=(
+                        (seed["code_phase_chips"] % ctx.code_len)
+                        + (det_nh % ctx.lc_seg) * ctx.code_len
+                    )
+                    % (ctx.lc_seg * ctx.code_len),
+                )
                 ctx.cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
-        elif ctx.args.cl_assist and ctx.utc0_sample0 and ctx.args.almanac and prn in ctx.pred:
+        elif (
+            ctx.args.cl_assist
+            and ctx.utc0_sample0
+            and ctx.args.almanac
+            and prn in ctx.pred
+        ):
             tau = ctx.pred[prn][3] / C_LIGHT
-            cl_chips = (((ctx.utc0_sample0 - tau + ctx.args.cl_time_adjust) % ctx.lc_epoch)
-                        * ctx.args.chip_rate_hz)
+            cl_chips = (
+                (ctx.utc0_sample0 - tau + ctx.args.cl_time_adjust) % ctx.lc_epoch
+            ) * ctx.args.chip_rate_hz
             cp_cm = seed["code_phase_chips"]
             k = int(round((cl_chips - cp_cm) / ctx.code_len))
-            fine_ms = (cl_chips - cp_cm - k * ctx.code_len) / ctx.args.chip_rate_hz * 1e3
-            seed.put("cl_assist", epoch=ref_hop,
-                     code_phase_chips=(cp_cm + (k % ctx.lc_seg) * ctx.code_len)
-                                      % (ctx.lc_seg * ctx.code_len))
-            ctx.cl_report.append("PRN %d k=%d fine %+.1f ms" % (prn, k % ctx.lc_seg, fine_ms))
+            fine_ms = (
+                (cl_chips - cp_cm - k * ctx.code_len) / ctx.args.chip_rate_hz * 1e3
+            )
+            seed.put(
+                "cl_assist",
+                epoch=ref_hop,
+                code_phase_chips=(cp_cm + (k % ctx.lc_seg) * ctx.code_len)
+                % (ctx.lc_seg * ctx.code_len),
+            )
+            ctx.cl_report.append(
+                "PRN %d k=%d fine %+.1f ms" % (prn, k % ctx.lc_seg, fine_ms)
+            )
         # HOLD-ON-LOCK: once a PRN shows a real lock, FREEZE its cp anchor + rate and let the
         # DLL trim own the sub-chip residual. The search's per-fix cp is only good to ~1-2
         # chips (hop-resolution coarse + refine), so re-anchoring from the fit at every cycle
@@ -950,17 +1200,21 @@ def stage_detections_to_seeds(ctx):
         # correct in every regime, including the release ramp when both exist. Until
         # #76 every consumer here used dll_trim alone: an armed PRN was judged as if
         # untrimmed while up to 3 chips of command stood at the trackers.
-        _trim_eff = (ctx.dls.trim.get(prn, 0.0)
-                     + ((ctx.dls.readback.get(prn) or {}).get("trim_chips", 0.0)))
+        _trim_eff = ctx.dls.trim.get(prn, 0.0) + (
+            (ctx.dls.readback.get(prn) or {}).get("trim_chips", 0.0)
+        )
         # THE DETECTION'S OWN PHYSICAL PHASE at its epoch: cp0 and dop were published
         # together, so undoing the pair reintroduces no translation -- which is the
         # entire #42 fix. (cp_at_ref would be better conditioned but lives in the C++
         # last-sample convention and carries the anchor Doppler term; see
         # track_vs_fit_chips.) Hoisted out of the hold branch: the innovation below
         # wants it for every detection.
-        _cpe_recon = (cp + (ref_hop / ctx.args.hops_per_sec) * ctx.args.chip_rate_hz
-                      * (1.0 + ctx.args.code_doppler_sign * dop / ctx.args.carrier_hz)
-                      ) % ctx.code_len
+        _cpe_recon = (
+            cp
+            + (ref_hop / ctx.args.hops_per_sec)
+            * ctx.args.chip_rate_hz
+            * (1.0 + ctx.args.code_doppler_sign * dop / ctx.args.carrier_hz)
+        ) % ctx.code_len
         # ── #83 2(d): THE INNOVATION, computed for EVERY accepted detection ──
         # Measurement minus forecast (chips, wrapped to one period), evaluated BEFORE
         # this cycle overwrites the seed with the very detection being judged. SERVED
@@ -981,11 +1235,23 @@ def stage_detections_to_seeds(ctx):
         # the dr-owned satellites' referee; INNOV resumes when the search re-anchors.
         # Under --dr-fengine-axis the dr stamps ride the F-engine axis and
         # --innov-dr-seeds re-admits them (both flags, or the exclusion stands).
-        if (prev is not None
-                and ((ctx.args.innov_dr_seeds and ctx.args.dr_fengine_axis)
-                     or ctx.dr_state is None or prn not in ctx.dr_state["seeded"])
-                and all(k in prev for k in ("code_phase_chips", "code_phase_rate",
-                                            "ref_hop", "doppler_hz"))):
+        if (
+            prev is not None
+            and (
+                (ctx.args.innov_dr_seeds and ctx.args.dr_fengine_axis)
+                or ctx.dr_state is None
+                or prn not in ctx.dr_state["seeded"]
+            )
+            and all(
+                k in prev
+                for k in (
+                    "code_phase_chips",
+                    "code_phase_rate",
+                    "ref_hop",
+                    "doppler_hz",
+                )
+            )
+        ):
             # FORECAST WHAT THE TRACKER RUNS, not the cp0 fiction. The first deploy of
             # this block used track_vs_fit_chips (= dr_seed_phys, the cp0-argument
             # path): every PRN read thousands of chips, sign-flipping, p95 ~5000 --
@@ -997,17 +1263,27 @@ def stage_detections_to_seeds(ctx):
             # propagate_seed does (#45 step 7 -- same lesson as #43's 90,000-chip
             # fiction). The measurement moves to the same LAST-SAMPLE convention with
             # its OWN doppler (the hop-epoch convention: 52.37 chips if mixed).
-            _fc = tracker_phase_at(prev, ref_hop, ctx.args.hops_per_sec,
-                                   ctx.args.chip_rate_hz, ctx.args.carrier_hz,
-                                   ctx.args.code_doppler_sign, ctx.code_len,
-                                   ctx.args.search_fft_len or None)
-            _hop_off_det = (ctx.args.chip_rate_hz / ctx.args.hops_per_sec
-                            * (1.0 + ctx.args.code_doppler_sign * dop
-                               / ctx.args.carrier_hz))
+            _fc = tracker_phase_at(
+                prev,
+                ref_hop,
+                ctx.args.hops_per_sec,
+                ctx.args.chip_rate_hz,
+                ctx.args.carrier_hz,
+                ctx.args.code_doppler_sign,
+                ctx.code_len,
+                ctx.args.search_fft_len or None,
+            )
+            _hop_off_det = (
+                ctx.args.chip_rate_hz
+                / ctx.args.hops_per_sec
+                * (1.0 + ctx.args.code_doppler_sign * dop / ctx.args.carrier_hz)
+            )
             if ctx.args.search_fft_len:
                 _hop_off_det *= 1.0 - 1.0 / ctx.args.search_fft_len
-            _inv = ((_cpe_recon + _hop_off_det - _fc - _trim_eff + ctx.code_len / 2.0)
-                    % ctx.code_len) - ctx.code_len / 2.0
+            _inv = (
+                (_cpe_recon + _hop_off_det - _fc - _trim_eff + ctx.code_len / 2.0)
+                % ctx.code_len
+            ) - ctx.code_len / 2.0
             _ih = ctx.innov_hist.setdefault(prn, [])
             _ih.append((ctx.t0, _inv))
             # Bounds MEMORY only: the 10-minute statistic is cut by time at read
@@ -1024,9 +1300,13 @@ def stage_detections_to_seeds(ctx):
         if prn in ctx.mp_flipped:
             ctx.mp_last_det[prn] = ctx.t0
             continue
-        if (prev is not None and prn in ctx.cp_held
-                and all(k in seed for k in ("code_phase_chips", "code_phase_rate",
-                                            "ref_hop"))):
+        if (
+            prev is not None
+            and prn in ctx.cp_held
+            and all(
+                k in seed for k in ("code_phase_chips", "code_phase_rate", "ref_hop")
+            )
+        ):
             # AT-EPOCH COMPARISON (#42 -> #45 step 1, 2026-08-12). The sample-0
             # currency comparison that lived here manufactured -t_abs*k*d(clock_bias)
             # chips of phantom whenever the seed-vs-detection dop bias moved (an EMA
@@ -1054,15 +1334,22 @@ def stage_detections_to_seeds(ctx):
             # p95 1.6-2.3 chips.
             cp_err = _inv
             if cp_err is not None and abs(cp_err) > ctx.args.hold_max_cp_err:
-                _log_rl("cperr-%d" % prn,
-                        "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
-                        "search cp_at_ref vs held propagation; trim %+.2f "
-                        "= py %+.2f + cpp %+.2f, hold_age %.0f s)"
-                        % (prn, cp_err, ref_hop, _trim_eff,
-                           ctx.dls.trim.get(prn, 0.0),
-                           (ctx.dls.readback.get(prn) or {}).get("trim_chips", 0.0),
-                           (ref_hop - prev["ref_hop"]) / ctx.args.hops_per_sec),
-                        every_s=60.0)
+                _log_rl(
+                    "cperr-%d" % prn,
+                    "CP_ERR PRN %d: %+.2f chips at det hop %d (at-epoch: "
+                    "search cp_at_ref vs held propagation; trim %+.2f "
+                    "= py %+.2f + cpp %+.2f, hold_age %.0f s)"
+                    % (
+                        prn,
+                        cp_err,
+                        ref_hop,
+                        _trim_eff,
+                        ctx.dls.trim.get(prn, 0.0),
+                        (ctx.dls.readback.get(prn) or {}).get("trim_chips", 0.0),
+                        (ref_hop - prev["ref_hop"]) / ctx.args.hops_per_sec,
+                    ),
+                    every_s=60.0,
+                )
             if cp_err is not None:
                 ctx.cpt.err_hist.setdefault(prn, []).append(cp_err)
                 del ctx.cpt.err_hist[prn][:-9]
@@ -1090,15 +1377,19 @@ def stage_detections_to_seeds(ctx):
         # (the birth zombies the watchdog had to keep cleaning). A 30 s floor makes the
         # curvature term observable on every chain; on L1 (6 points ~ 60-80 s) it is a
         # no-op. This gate feeds BOTH the escape referee and hold admission.
-        fit_span_s = ((h[-1][0] - h[0][0]) / ctx.args.hops_per_sec) if len(h) >= 2 else 0.0
-        fit_trusted = (fit is not None and len(h) >= 6
-                       and fit_span_s >= ctx.args.fit_maturity_span_s
-                       and snr >= 2.0 * ctx.args.acquire_snr)
+        fit_span_s = (
+            ((h[-1][0] - h[0][0]) / ctx.args.hops_per_sec) if len(h) >= 2 else 0.0
+        )
+        fit_trusted = (
+            fit is not None
+            and len(h) >= 6
+            and fit_span_s >= ctx.args.fit_maturity_span_s
+            and snr >= 2.0 * ctx.args.acquire_snr
+        )
         # AMP VETO (see --escape-amp-veto): a full-amplitude hold is on the main peak
         # by construction -- refuse the fit's accusation rather than drag it off.
         amp_now = float((ctx.status.get(prn) or {}).get("amp_snr", 0) or 0)
-        amp_veto = (ctx.args.escape_amp_veto > 0.0
-                    and amp_now > ctx.args.escape_amp_veto)
+        amp_veto = ctx.args.escape_amp_veto > 0.0 and amp_now > ctx.args.escape_amp_veto
         # INTEGRITY VETO (2026-07-19 eve, audit follow-up): never re-anchor onto a fit
         # the BRDC model itself disputes. The dead-reckon machinery already computes a
         # per-sat integrity residual (search-vs-model, solved clock removed, normally
@@ -1126,14 +1417,23 @@ def stage_detections_to_seeds(ctx):
                         _iv_dev = _iv[0] - statistics.median(_base)
                 if abs(_iv_dev) > ctx.args.hold_max_cp_err:
                     integ_veto = True
-        cp_err_med_ok = (cp_err is not None and len(ctx.cpt.err_hist.get(prn, [])) >= 5
-                         and abs(statistics.median(ctx.cpt.err_hist[prn]))
-                         > ctx.args.hold_max_cp_err)
-        if (cp_err is not None and abs(cp_err) > ctx.args.hold_max_cp_err
-                and cp_err_med_ok and fit_trusted and not amp_veto
-                and not integ_veto):
+        cp_err_med_ok = (
+            cp_err is not None
+            and len(ctx.cpt.err_hist.get(prn, [])) >= 5
+            and abs(statistics.median(ctx.cpt.err_hist[prn])) > ctx.args.hold_max_cp_err
+        )
+        if (
+            cp_err is not None
+            and abs(cp_err) > ctx.args.hold_max_cp_err
+            and cp_err_med_ok
+            and fit_trusted
+            and not amp_veto
+            and not integ_veto
+        ):
             n_prev = ctx.cpt.escape.get(prn, 0)
-            same_sign = (n_prev == 0) or (cp_err * ctx.cpt.escape_sign.get(prn, 0.0) > 0)
+            same_sign = (n_prev == 0) or (
+                cp_err * ctx.cpt.escape_sign.get(prn, 0.0) > 0
+            )
             ctx.cpt.escape[prn] = n_prev + 1 if same_sign else 1
             ctx.cpt.escape_sign[prn] = cp_err
         else:
@@ -1152,24 +1452,41 @@ def stage_detections_to_seeds(ctx):
         # the fit-referenced referee stays quiet (veto / immature fit): those are the
         # cases an upgraded model-referenced referee would catch. Decide on enforcement
         # from this census, not from theory (the referee has bitten guessers before).
-        if (cp_err is not None and ctx.dr_state is not None and ctx.dr_state.get("integ")):
+        if (
+            cp_err is not None
+            and ctx.dr_state is not None
+            and ctx.dr_state.get("integ")
+        ):
             _iv2 = ctx.dr_state["integ"].get(prn)
             if _iv2 is not None and ctx.t0 - _iv2[1] < 10.0:
                 _tm = _iv2[0] - cp_err
                 if abs(_tm) > ctx.args.hold_max_cp_err:
-                    _log_rl("tvm-%d" % prn,
-                            "TRACK-vs-MODEL PRN %d: %+.2f chips past the escape bar "
-                            "(fit-ref cp_err %+.2f, integ %+.2f; fit-referee %s) -- "
-                            "monitor only"
-                            % (prn, _tm, cp_err, _iv2[0],
-                               "AMP-VETOED" if amp_veto else
-                               "INTEG-VETOED" if integ_veto else
-                               "fit-untrusted" if not fit_trusted else "active"),
-                            every_s=120.0)
+                    _log_rl(
+                        "tvm-%d" % prn,
+                        "TRACK-vs-MODEL PRN %d: %+.2f chips past the escape bar "
+                        "(fit-ref cp_err %+.2f, integ %+.2f; fit-referee %s) -- "
+                        "monitor only"
+                        % (
+                            prn,
+                            _tm,
+                            cp_err,
+                            _iv2[0],
+                            "AMP-VETOED"
+                            if amp_veto
+                            else "INTEG-VETOED"
+                            if integ_veto
+                            else "fit-untrusted"
+                            if not fit_trusted
+                            else "active",
+                        ),
+                        every_s=120.0,
+                    )
         if ctx.cpt.escape.get(prn, 0) >= 5:
-            _log("ESCAPE PRN %d: track %+.2f chips off the search fit (5 consecutive,"
-                 " sign-consistent) -> release hold + DLL trim, re-anchor on the fit"
-                 % (prn, cp_err))
+            _log(
+                "ESCAPE PRN %d: track %+.2f chips off the search fit (5 consecutive,"
+                " sign-consistent) -> release hold + DLL trim, re-anchor on the fit"
+                % (prn, cp_err)
+            )
             ctx.cpt.escape[prn] = 0
             ctx.cpt.err_hist.pop(prn, None)
             ctx.dls.trim.pop(prn, None)
@@ -1183,7 +1500,9 @@ def stage_detections_to_seeds(ctx):
             if prn in ctx.car.locked:
                 ctx.car.locked.discard(prn)
                 ctx.car.fade.pop(prn, None)
-                _log("CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn)
+                _log(
+                    "CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn
+                )
         # HOLD ADMISSION REQUIRES FIT MATURITY (2026-07-19 eve, the Tier-3 burn-in fix):
         # a birth-window anchor (wide margins, unsolved bias, <6-point fit) can be chips
         # wrong, and granting it hold protection created the zombie cohorts that made
@@ -1194,22 +1513,28 @@ def stage_detections_to_seeds(ctx):
         # self-correcting. Only a mature anchor earns protection; expected burn-in
         # collapses to the fit-maturation time (~6 search snapshots, ~60-80 s).
         # Already-held sats are unaffected (the cp_held alternative below).
-        elif (prev is not None
-                and ((ctx.sig_of_last(ctx.status.get(prn)) >= ctx.args.hold_snr
-                      and (prn in ctx.cp_held or fit_trusted))
-                     # ── #96/#97 CLOSURE: HOLD ON THE LOCK STATISTIC (--hold-on-present) ──
-                     # The freeze below IS the architecture -- frozen tuple, DLL owns the
-                     # residual, CP_ERR referee -- but amp_snr rides the coherent arc,
-                     # which flickers with the deep fold (#58), so locked satellites sat
-                     # un-held taking per-detection REPLACEs. Presence here is the
-                     # population-honest fleet gate (ctx.qpop, the series that admits
-                     # trims): the sat this branch protects is exactly the sat whose
-                     # trims the fleet controller is already trusting. fit_trusted still
-                     # required: a birth-window anchor must mature before it earns
-                     # protection (the 2026-07-19 zombie-cohort lesson).
-                     or (ctx.args.hold_on_present > 0 and fit_trusted
-                         and _present_streak(ctx, prn) >= ctx.args.hold_on_present)
-                     or (prn in ctx.cp_held and ctx.hold.miss.get(prn, 0) < 3))):
+        elif prev is not None and (
+            (
+                ctx.sig_of_last(ctx.status.get(prn)) >= ctx.args.hold_snr
+                and (prn in ctx.cp_held or fit_trusted)
+            )
+            # ── #96/#97 CLOSURE: HOLD ON THE LOCK STATISTIC (--hold-on-present) ──
+            # The freeze below IS the architecture -- frozen tuple, DLL owns the
+            # residual, CP_ERR referee -- but amp_snr rides the coherent arc,
+            # which flickers with the deep fold (#58), so locked satellites sat
+            # un-held taking per-detection REPLACEs. Presence here is the
+            # population-honest fleet gate (ctx.qpop, the series that admits
+            # trims): the sat this branch protects is exactly the sat whose
+            # trims the fleet controller is already trusting. fit_trusted still
+            # required: a birth-window anchor must mature before it earns
+            # protection (the 2026-07-19 zombie-cohort lesson).
+            or (
+                ctx.args.hold_on_present > 0
+                and fit_trusted
+                and _present_streak(ctx, prn) >= ctx.args.hold_on_present
+            )
+            or (prn in ctx.cp_held and ctx.hold.miss.get(prn, 0) < 3)
+        ):
             # PERSISTENT-loss release (2026-07-12 evening): a single blank/stale status
             # read (sig 0.0 -- a poll racing the emit, a slow combiner cycle) used to
             # release the hold instantly: 562 of 736 releases in 2.7 h fired at
@@ -1269,11 +1594,15 @@ def stage_detections_to_seeds(ctx):
             # integrate). Escape horizon at the dr drift's settled ~1-7 mchips/s error:
             # 3-20 min instead of the frozen-noisy-rate 40-120 s.
             _hrs = getattr(ctx.args, "hold_rate_source", "none")
-            if (_hrs in ("dr", "dr-entry") and ctx.dr_state is not None
-                    and ctx.dr_state.get("drift") is not None
-                    and ctx.dr_state.get("clk") is not None
-                    and (prn not in ctx.cp_held or _hrs == "dr")
-                    and prev.get("ref_hop") is not None and ref_hop > prev["ref_hop"]):
+            if (
+                _hrs in ("dr", "dr-entry")
+                and ctx.dr_state is not None
+                and ctx.dr_state.get("drift") is not None
+                and ctx.dr_state.get("clk") is not None
+                and (prn not in ctx.cp_held or _hrs == "dr")
+                and prev.get("ref_hop") is not None
+                and ref_hop > prev["ref_hop"]
+            ):
                 # dr drift is the receiver-clock code drift in chips/s; the seed's
                 # code_phase_rate is the same RESIDUAL in chips/hop (the replica applies
                 # the geometric code Doppler itself -- cp_rate_from_code_bias's note).
@@ -1286,7 +1615,7 @@ def stage_detections_to_seeds(ctx):
                 if _hrs == "dr-entry":
                     _hr_new = _hr_tgt
                 else:
-                    _slew = 0.005 / ctx.args.hops_per_sec           # 5 mchips/s per refresh
+                    _slew = 0.005 / ctx.args.hops_per_sec  # 5 mchips/s per refresh
                     _hr_new = _hr_cur + max(-_slew, min(_slew, _hr_tgt - _hr_cur))
                 # Plausibility bound (chips/s) on the TARGET: a dr drift further than this
                 # from the held rate is the estimator misbehaving, not the satellite.
@@ -1305,50 +1634,84 @@ def stage_detections_to_seeds(ctx):
                     if _ar is not None and _ar >= 0.0:
                         # last-sample commanded phase at the present, from the preferred
                         # reference -- becomes the new at-ref field verbatim
-                        _ph_last = tracker_phase_at(prev, ref_hop, ctx.args.hops_per_sec,
-                                                    ctx.args.chip_rate_hz,
-                                                    ctx.args.carrier_hz,
-                                                    ctx.args.code_doppler_sign,
-                                                    ctx.code_len, _fft)
-                        _per_hop = (ctx.args.chip_rate_hz / ctx.args.hops_per_sec
-                                    * (1.0 + ctx.args.code_doppler_sign
-                                       * prev["doppler_hz"] / ctx.args.carrier_hz))
+                        _ph_last = tracker_phase_at(
+                            prev,
+                            ref_hop,
+                            ctx.args.hops_per_sec,
+                            ctx.args.chip_rate_hz,
+                            ctx.args.carrier_hz,
+                            ctx.args.code_doppler_sign,
+                            ctx.code_len,
+                            _fft,
+                        )
+                        _per_hop = (
+                            ctx.args.chip_rate_hz
+                            / ctx.args.hops_per_sec
+                            * (
+                                1.0
+                                + ctx.args.code_doppler_sign
+                                * prev["doppler_hz"]
+                                / ctx.args.carrier_hz
+                            )
+                        )
                         _hop_off = _per_hop * (1.0 - 1.0 / _fft) if _fft else _per_hop
                         _phys_first = (_ph_last - _hop_off) % ctx.code_len
-                        prev.put("hold_retag", epoch=ref_hop,
-                                 code_phase_chips=dr_cp0(_phys_first, _t_now,
-                                                         prev["doppler_hz"],
-                                                         ctx.args.chip_rate_hz,
-                                                         ctx.args.carrier_hz,
-                                                         ctx.args.code_doppler_sign,
-                                                         ctx.code_len),
-                                 code_phase_at_ref_chips=_ph_last,
-                                 code_phase_rate=_hr_new,
-                                 ref_hop=ref_hop)
+                        prev.put(
+                            "hold_retag",
+                            epoch=ref_hop,
+                            code_phase_chips=dr_cp0(
+                                _phys_first,
+                                _t_now,
+                                prev["doppler_hz"],
+                                ctx.args.chip_rate_hz,
+                                ctx.args.carrier_hz,
+                                ctx.args.code_doppler_sign,
+                                ctx.code_len,
+                            ),
+                            code_phase_at_ref_chips=_ph_last,
+                            code_phase_rate=_hr_new,
+                            ref_hop=ref_hop,
+                        )
                     else:
                         # argument-branch tuple: the cp0 stream IS what the tracker reads
-                        _phys_first = dr_seed_phys(prev, ref_hop, ctx.args.hops_per_sec,
-                                                   ctx.args.chip_rate_hz,
-                                                   ctx.args.carrier_hz,
-                                                   ctx.args.code_doppler_sign,
-                                                   ctx.code_len)
-                        prev.put("hold_retag", epoch=ref_hop,
-                                 code_phase_chips=dr_cp0(_phys_first, _t_now,
-                                                         prev["doppler_hz"],
-                                                         ctx.args.chip_rate_hz,
-                                                         ctx.args.carrier_hz,
-                                                         ctx.args.code_doppler_sign,
-                                                         ctx.code_len),
-                                 code_phase_rate=_hr_new,
-                                 ref_hop=ref_hop)
+                        _phys_first = dr_seed_phys(
+                            prev,
+                            ref_hop,
+                            ctx.args.hops_per_sec,
+                            ctx.args.chip_rate_hz,
+                            ctx.args.carrier_hz,
+                            ctx.args.code_doppler_sign,
+                            ctx.code_len,
+                        )
+                        prev.put(
+                            "hold_retag",
+                            epoch=ref_hop,
+                            code_phase_chips=dr_cp0(
+                                _phys_first,
+                                _t_now,
+                                prev["doppler_hz"],
+                                ctx.args.chip_rate_hz,
+                                ctx.args.carrier_hz,
+                                ctx.args.code_doppler_sign,
+                                ctx.code_len,
+                            ),
+                            code_phase_rate=_hr_new,
+                            ref_hop=ref_hop,
+                        )
                     if abs(_hr_d) > 0.005:
-                        _log_rl("holdrate-%d" % prn,
-                                "HOLD-RATE PRN %d: residual rate %+.4f -> %+.4f chips/s "
-                                "(dr-drift target %+.4f, slew-bounded; anchor "
-                                "re-expressed at the present, command continuous)"
-                                % (prn, _hr_cur * ctx.args.hops_per_sec,
-                                   _hr_new * ctx.args.hops_per_sec,
-                                   _hr_tgt * ctx.args.hops_per_sec), every_s=300.0)
+                        _log_rl(
+                            "holdrate-%d" % prn,
+                            "HOLD-RATE PRN %d: residual rate %+.4f -> %+.4f chips/s "
+                            "(dr-drift target %+.4f, slew-bounded; anchor "
+                            "re-expressed at the present, command continuous)"
+                            % (
+                                prn,
+                                _hr_cur * ctx.args.hops_per_sec,
+                                _hr_new * ctx.args.hops_per_sec,
+                                _hr_tgt * ctx.args.hops_per_sec,
+                            ),
+                            every_s=300.0,
+                        )
             ddop = seed["doppler_hz"] - prev["doppler_hz"]
             # SAFETY NET (design (b)): bound a single cycle's Doppler move. A real MEO
             # Doppler moves <1 Hz per 0.2 s cycle; this only fires on a bad model, and it
@@ -1356,20 +1719,27 @@ def stage_detections_to_seeds(ctx):
             if abs(ddop) > ctx.args.dop_max_rate_hz:
                 if prn not in ctx.cpt.dop_clamped:
                     ctx.cpt.dop_clamped.add(prn)
-                    _log("DOP-CLAMP PRN %d: model wanted %+.1f Hz in one cycle (max %.1f)"
-                         " -- clamping. A real MEO moves <1 Hz/cycle: SUSPECT THE MODEL."
-                         % (prn, ddop, ctx.args.dop_max_rate_hz))
+                    _log(
+                        "DOP-CLAMP PRN %d: model wanted %+.1f Hz in one cycle (max %.1f)"
+                        " -- clamping. A real MEO moves <1 Hz/cycle: SUSPECT THE MODEL."
+                        % (prn, ddop, ctx.args.dop_max_rate_hz)
+                    )
                 ddop = math.copysign(ctx.args.dop_max_rate_hz, ddop)
                 seed.put("dop_clamp", doppler_hz=prev["doppler_hz"] + ddop)
             # DESIGN (b): translate EVERY cycle (no fence). The freeze branch survives only
             # for --no-dop-continuous, and for the zero-motion case where it is a no-op.
-            if (not ctx.args.dop_continuous and abs(ddop) <= ctx.args.hold_max_dop_hz) or ddop == 0.0:
+            if (
+                not ctx.args.dop_continuous and abs(ddop) <= ctx.args.hold_max_dop_hz
+            ) or ddop == 0.0:
                 # Currency frozen: the whole tuple rides unchanged.
-                seed.put("hold_freeze", epoch=prev["ref_hop"],
-                         doppler_hz=prev["doppler_hz"],
-                         code_phase_chips=prev["code_phase_chips"],
-                         code_phase_rate=prev["code_phase_rate"],
-                         ref_hop=prev["ref_hop"])
+                seed.put(
+                    "hold_freeze",
+                    epoch=prev["ref_hop"],
+                    doppler_hz=prev["doppler_hz"],
+                    code_phase_chips=prev["code_phase_chips"],
+                    code_phase_rate=prev["code_phase_rate"],
+                    ref_hop=prev["ref_hop"],
+                )
                 # #80 FIX (2026-08-16): the at-ref phase is PART of the tuple and the
                 # tracker PREFERS it (gnssSeedTransport.cpp:325 -- phase_ref_chips >= 0
                 # wins over cp_chips unconditionally). Leaving the DETECTION's fresh
@@ -1384,8 +1754,11 @@ def stage_detections_to_seeds(ctx):
                 # not at all -- the tracker then falls back to the frozen (cp0, dop)
                 # argument pair, which is the hold's original contract.
                 if "code_phase_at_ref_chips" in prev:
-                    seed.put("hold_freeze", epoch=prev["ref_hop"],
-                             code_phase_at_ref_chips=prev["code_phase_at_ref_chips"])
+                    seed.put(
+                        "hold_freeze",
+                        epoch=prev["ref_hop"],
+                        code_phase_at_ref_chips=prev["code_phase_at_ref_chips"],
+                    )
                 else:
                     seed.pop("code_phase_at_ref_chips", None)
             else:
@@ -1418,46 +1791,74 @@ def stage_detections_to_seeds(ctx):
                 # doppler_hz keeps its NEW value -- that is the point -- and is
                 # re-attributed here because the translation is what makes the
                 # (cp0, dop) pair valid at the shipped ref_hop by construction.
-                seed.put("translate", epoch=prev["ref_hop"],
-                         code_phase_chips=(
-                             prev["code_phase_chips"]
-                             - t_now * ctx.args.chip_rate_hz * ctx.args.code_doppler_sign
-                             * ddop / ctx.args.carrier_hz) % ctx.code_len,
-                         code_phase_rate=prev["code_phase_rate"],
-                         ref_hop=prev["ref_hop"],
-                         doppler_hz=seed["doppler_hz"])
+                seed.put(
+                    "translate",
+                    epoch=prev["ref_hop"],
+                    code_phase_chips=(
+                        prev["code_phase_chips"]
+                        - t_now
+                        * ctx.args.chip_rate_hz
+                        * ctx.args.code_doppler_sign
+                        * ddop
+                        / ctx.args.carrier_hz
+                    )
+                    % ctx.code_len,
+                    code_phase_rate=prev["code_phase_rate"],
+                    ref_hop=prev["ref_hop"],
+                    doppler_hz=seed["doppler_hz"],
+                )
                 # #80 FIX, translate arm (the LIVE arm under --dop-continuous): same
                 # as the freeze arm above. prev's at-ref phase is a PHYSICAL phase at
                 # prev's ref_hop -- a doppler update does not move it (the new doppler
                 # enters the forward propagation, not the anchor), so it rides
                 # unchanged where the fresh detection's phase must not.
                 if "code_phase_at_ref_chips" in prev:
-                    seed.put("translate", epoch=prev["ref_hop"],
-                             code_phase_at_ref_chips=prev["code_phase_at_ref_chips"])
+                    seed.put(
+                        "translate",
+                        epoch=prev["ref_hop"],
+                        code_phase_at_ref_chips=prev["code_phase_at_ref_chips"],
+                    )
                 else:
                     seed.pop("code_phase_at_ref_chips", None)
                 if prn not in ctx.cpt.translated:
                     ctx.cpt.translated.add(prn)
-                    _log("TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.2f Hz) -> cp0 shifted "
-                         "%+.2f chips; SAME physical code phase, anchor KEPT%s"
-                         % (prn, prev["doppler_hz"], seed["doppler_hz"], ddop,
-                            -t_now * ctx.args.chip_rate_hz * ctx.args.code_doppler_sign
-                            * ddop / ctx.args.carrier_hz,
+                    _log(
+                        "TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.2f Hz) -> cp0 shifted "
+                        "%+.2f chips; SAME physical code phase, anchor KEPT%s"
+                        % (
+                            prn,
+                            prev["doppler_hz"],
+                            seed["doppler_hz"],
+                            ddop,
+                            -t_now
+                            * ctx.args.chip_rate_hz
+                            * ctx.args.code_doppler_sign
+                            * ddop
+                            / ctx.args.carrier_hz,
                             " (continuous: every cycle, no fence)"
-                            if ctx.args.dop_continuous else ""))
+                            if ctx.args.dop_continuous
+                            else "",
+                        )
+                    )
             if prn not in ctx.cp_held:
                 _sig = ctx.sig_of_last(ctx.status.get(prn))
-                _via = ("amp_snr %.1f >= %.1f" % (_sig, ctx.args.hold_snr)
-                        if _sig >= ctx.args.hold_snr
-                        else "PRESENT x%d cycles (fleet gate)" % _present_streak(ctx, prn))
-                _log("HOLD PRN %d: seed currency frozen (%s, dop %+.0f)"
-                     % (prn, _via, prev["doppler_hz"]))
+                _via = (
+                    "amp_snr %.1f >= %.1f" % (_sig, ctx.args.hold_snr)
+                    if _sig >= ctx.args.hold_snr
+                    else "PRESENT x%d cycles (fleet gate)" % _present_streak(ctx, prn)
+                )
+                _log(
+                    "HOLD PRN %d: seed currency frozen (%s, dop %+.0f)"
+                    % (prn, _via, prev["doppler_hz"])
+                )
             ctx.cp_held.add(prn)
         else:
             if prn in ctx.cp_held:
                 ddop_rel = (seed["doppler_hz"] - prev["doppler_hz"]) if prev else 0.0
-                _log("RELEASE PRN %d: seed currency unfrozen (amp_snr %.1f, ddop %+.0f)"
-                     % (prn, ctx.sig_of_last(ctx.status.get(prn)), ddop_rel))
+                _log(
+                    "RELEASE PRN %d: seed currency unfrozen (amp_snr %.1f, ddop %+.0f)"
+                    % (prn, ctx.sig_of_last(ctx.status.get(prn)), ddop_rel)
+                )
                 # A release used to STEP the tracker's f_ref by ddop while the TRACK-mode
                 # trim carried the hold-era compensation -> instant residual ~ -ddop,
                 # latched by the coh/innovation gates (C20 parked at -6.2 Hz for 40 min,
@@ -1469,8 +1870,10 @@ def stage_detections_to_seeds(ctx):
                 if abs(ddop_rel) > 1.0 and prn in ctx.car.locked:
                     ctx.car.locked.discard(prn)
                     ctx.car.fade.pop(prn, None)
-                    _log("CARRIER REACQ PRN %d: hold released with dop step %+.1f Hz "
-                         "-> BOOTSTRAP re-pull" % (prn, ddop_rel))
+                    _log(
+                        "CARRIER REACQ PRN %d: hold released with dop step %+.1f Hz "
+                        "-> BOOTSTRAP re-pull" % (prn, ddop_rel)
+                    )
             ctx.cp_held.discard(prn)
             ctx.hold.miss.pop(prn, None)
         ctx.seeds[prn] = seed
@@ -1504,11 +1907,14 @@ def stage_push_seeds(ctx):
             # slow trim has been a NO-OP on every phase-carrying seed, and enabling
             # --seed-phase-transport on the DR chains would have silently disabled
             # their only code loop. One trim, both currencies, same instant.
-            if d.get("code_phase_at_ref_chips", -1.0) is not None \
-                    and d.get("code_phase_at_ref_chips", -1.0) >= 0.0:
+            if (
+                d.get("code_phase_at_ref_chips", -1.0) is not None
+                and d.get("code_phase_at_ref_chips", -1.0) >= 0.0
+            ):
                 _tmod = (ctx.lc_seg * ctx.code_len) if ctx.lc_seg > 1 else ctx.code_len
                 d["code_phase_at_ref_chips"] = (
-                    d["code_phase_at_ref_chips"] + ctx.dls.trim[prn]) % _tmod
+                    d["code_phase_at_ref_chips"] + ctx.dls.trim[prn]
+                ) % _tmod
         if ctx.car.trim.get(prn):
             d["carrier_trim_hz"] = ctx.car.trim[prn]
         if ctx.jrc is not None and prn not in ctx.probe_set:
@@ -1525,12 +1931,15 @@ def stage_push_seeds(ctx):
             # the fold) counts as NOT detected: no evidence, no command.
             _cmd_sig_ok = True
             if ctx.args.rrate_cmd_min_sig > 0.0:
-                _cmd_sig_ok = (((ctx.dllp.kcoh or {}).get(prn) or {}).get("sig") or 0.0) \
-                              >= ctx.args.rrate_cmd_min_sig
+                _cmd_sig_ok = (
+                    ((ctx.dllp.kcoh or {}).get(prn) or {}).get("sig") or 0.0
+                ) >= ctx.args.rrate_cmd_min_sig
             if _cmd_sig_ok and ctx.jrc.rrate_sigma(_k) <= ctx.args.rrate_cmd_max_sigma:
                 _cmd = ctx.jrc.carrier_correction_hz(_k, ctx.args.carrier_hz)
                 if ctx.args.carrier_max_hz > 0.0:
-                    _cmd = max(-ctx.args.carrier_max_hz, min(ctx.args.carrier_max_hz, _cmd))
+                    _cmd = max(
+                        -ctx.args.carrier_max_hz, min(ctx.args.carrier_max_hz, _cmd)
+                    )
                 # SLEW toward the target from the command actually POSTED last poll
                 # (--rrate-cmd-slew-hz): the feed's reference is only exact for a
                 # command that holds still over the emit lag, so the step is bounded
@@ -1539,8 +1948,10 @@ def stage_push_seeds(ctx):
                 # a target out of reach, not convergence in progress.
                 _prev = ctx.rf.cmd_applied.get(prn, 0.0)
                 if ctx.args.rrate_cmd_slew_hz > 0.0:
-                    _stp = max(-ctx.args.rrate_cmd_slew_hz,
-                               min(ctx.args.rrate_cmd_slew_hz, _cmd - _prev))
+                    _stp = max(
+                        -ctx.args.rrate_cmd_slew_hz,
+                        min(ctx.args.rrate_cmd_slew_hz, _cmd - _prev),
+                    )
                     if abs(_cmd - _prev) > ctx.args.rrate_cmd_slew_hz:
                         ctx.rf.railed += 1
                     _cmd = _prev + _stp
@@ -1552,10 +1963,16 @@ def stage_push_seeds(ctx):
         # discontinuity the slew bound exists to prevent, taken at release instead
         # of at pull-in. Walk it back at the same bounded rate; drop out only once
         # within one step of zero.
-        if (ctx.args.rrate_command and prn not in ctx.rr_cmd_new and prn not in ctx.probe_set
-                and ctx.rf.cmd_applied.get(prn)):
+        if (
+            ctx.args.rrate_command
+            and prn not in ctx.rr_cmd_new
+            and prn not in ctx.probe_set
+            and ctx.rf.cmd_applied.get(prn)
+        ):
             _prev = ctx.rf.cmd_applied[prn]
-            _stp = ctx.args.rrate_cmd_slew_hz if ctx.args.rrate_cmd_slew_hz > 0.0 else 0.0
+            _stp = (
+                ctx.args.rrate_cmd_slew_hz if ctx.args.rrate_cmd_slew_hz > 0.0 else 0.0
+            )
             if _stp > 0.0 and abs(_prev) > _stp:
                 _cmd = _prev - math.copysign(_stp, _prev)
                 d["carrier_trim_hz"] = _cmd
@@ -1579,8 +1996,10 @@ def stage_push_seeds(ctx):
         # A source the health monitor has condemned for THIS satellite is skipped at
         # SELECTION time, so the chain genuinely falls back (pred -> lnav -> brdc)
         # instead of re-picking the vetoed source and going dark every cycle.
-        _src_ok = (lambda _s: ctx.nav.health is None
-                   or ctx.nav.health.verdict(prn, _s) != "bad")
+        _src_ok = (
+            lambda _s: ctx.nav.health is None
+            or ctx.nav.health.verdict(prn, _s) != "bad"
+        )
         # Wire schema is COMPONENT-KEYED: nav_bits = {"P": table, "D": table, ...},
         # "P" = the component this chain's replica correlates (relational, not a signal
         # name -- see docs/navbit_supply_architecture.md C1). The tracker also accepts a
@@ -1600,9 +2019,12 @@ def stage_push_seeds(ctx):
             _utc = _row.get("utc")
             if _utc:
                 nb_lnav = ctx.nav.navbits.predict(prn, float(_utc), horizon_s=4.0)
-                nb_brdc = (ctx.nav.brdc.predict(prn, float(_utc), horizon_s=30.0)
-                           if ctx.nav.brdc is not None else None)
-                if ctx.nav.health is not None:      # shadow-remember BOTH candidates
+                nb_brdc = (
+                    ctx.nav.brdc.predict(prn, float(_utc), horizon_s=30.0)
+                    if ctx.nav.brdc is not None
+                    else None
+                )
+                if ctx.nav.health is not None:  # shadow-remember BOTH candidates
                     ctx.nav.health.remember(prn, nb_lnav, "lnav")
                     ctx.nav.health.remember(prn, nb_brdc, "brdc")
                 nb = nb_lnav if (nb_lnav is not None and _src_ok("lnav")) else None
@@ -1645,7 +2067,11 @@ def stage_push_seeds(ctx):
         # wrong bits mean subtracting at the wrong sign on ~40% of records (measured
         # 2026-07-26: HURTING 0-1 -> 7-8). Then remember what we are about to publish, so
         # next cycle's observations score THIS table rather than a re-derived one.
-        if "nav_bits" in d and ctx.nav.health is not None and ctx.nav.health.veto(prn, _bsrc):
+        if (
+            "nav_bits" in d
+            and ctx.nav.health is not None
+            and ctx.nav.health.veto(prn, _bsrc)
+        ):
             # FALL BACK, do not go dark: a bad decoded table must not darken a PRN whose
             # constructed table is fine. The chain re-runs with the vetoed source skipped
             # next cycle via the per-(prn,source) verdict; this cycle just drops the bits
@@ -1657,5 +2083,6 @@ def stage_push_seeds(ctx):
         ctx.bit_src[_bsrc] = ctx.bit_src.get(_bsrc, 0) + 1
         if _bsrc != "none" and "nav_bits" in d:
             ctx.bit_known[_bsrc] = ctx.bit_known.get(_bsrc, 0) + sum(
-                1 for t in d["nav_bits"].values() for b in t["bits"] if b)
+                1 for t in d["nav_bits"].values() for b in t["bits"] if b
+            )
         ctx.payload.append(d)

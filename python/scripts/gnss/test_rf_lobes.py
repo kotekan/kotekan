@@ -20,17 +20,28 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_broker.fits import rf_lobes  # noqa: E402
 
-CX19_G0 = list(range(277, 284)) + list(range(287, 294))   # as generated, verified 08-18
+CX19_G0 = list(range(277, 284)) + list(range(287, 294))  # as generated, verified 08-18
 
 # cx19/gnss1, as generated 2026-09-02: L5 | E5b | L2C(one channel) | B3I+E6 (abutting).
-CX19_G1 = (list(range(277, 284)) + list(range(287, 293)) + [296] + list(range(306, 315)))
-FIRST16_G1 = 1548                       # freq_id = FIRST16 + 16*local on that instance
+CX19_G1 = list(range(277, 284)) + list(range(287, 293)) + [296] + list(range(306, 315))
+FIRST16_G1 = 1548  # freq_id = FIRST16 + 16*local on that instance
 G1_FIDS = [FIRST16_G1 + 16 * c for c in CX19_G1]
 
 # The bands the receiver actually flies, as the broker resolves --rf-bands.
 from gnss_broker import signals  # noqa: E402
+
 CHORD_CARRIERS = signals.carriers_for_chains(
-    ["gps_l5", "gal_e5a", "bds_b2a", "gal_e5b", "bds_b2b", "gps_l2c", "bds_b3i", "gal_e6"])
+    [
+        "gps_l5",
+        "gal_e5a",
+        "bds_b2a",
+        "gal_e5b",
+        "bds_b2b",
+        "gps_l2c",
+        "bds_b3i",
+        "gal_e6",
+    ]
+)
 
 
 def main():
@@ -41,8 +52,12 @@ def main():
     lob = rf_lobes(CX19_G0, [1.0] * n, [0.0] * n, [0.0] * n)
     if len(lob) != 2:
         fails.append("expected 2 lobes from the deployed layout, got %d" % len(lob))
-    elif (lob[0]["chan0"], lob[0]["chan1"],
-          lob[1]["chan0"], lob[1]["chan1"]) != (277, 283, 287, 293):
+    elif (lob[0]["chan0"], lob[0]["chan1"], lob[1]["chan0"], lob[1]["chan1"]) != (
+        277,
+        283,
+        287,
+        293,
+    ):
         fails.append("lobe edges wrong: %s" % [(l["chan0"], l["chan1"]) for l in lob])
     else:
         print("ok  14 channels -> 2 lobes, 277-283 and 287-293 (the two bands)")
@@ -54,20 +69,26 @@ def main():
     if abs(lob[0]["power"] - 40.0) > 1e-9 or abs(lob[1]["power"] - 1.0) > 1e-9:
         fails.append("band-selective power blended: %s" % [l["power"] for l in lob])
     else:
-        print("ok  +16 dB on lobe 0 only -> 40.0 vs 1.0, kept apart (the 08-18 signature)")
+        print(
+            "ok  +16 dB on lobe 0 only -> 40.0 vs 1.0, kept apart (the 08-18 signature)"
+        )
 
     # 3. CLIP IS MAXED, NOT MEANED. One railing channel among seven quiet ones is the
     #    narrowband case this exists to catch; a mean would report 0.14 and hide it.
     cl = [0.0] * 14
-    cl[3] = 1.0                       # local channel 280 pinned at the rail
+    cl[3] = 1.0  # local channel 280 pinned at the rail
     lob = rf_lobes(CX19_G0, [1.0] * 14, cl, [0.0] * 14)
     if abs(lob[0]["clip_lo"] - 1.0) > 1e-9:
-        fails.append("one railing channel was averaged away: clip_lo=%.4f (mean would be "
-                     "%.4f)" % (lob[0]["clip_lo"], 1.0 / 7))
+        fails.append(
+            "one railing channel was averaged away: clip_lo=%.4f (mean would be "
+            "%.4f)" % (lob[0]["clip_lo"], 1.0 / 7)
+        )
     elif lob[0]["clip_lo_chan"] != 280:
         fails.append("named the wrong channel: %s" % lob[0]["clip_lo_chan"])
     else:
-        print("ok  1 railing channel of 7 -> clip_lo 1.00 and NAMED (280), not meaned to 0.14")
+        print(
+            "ok  1 railing channel of 7 -> clip_lo 1.00 and NAMED (280), not meaned to 0.14"
+        )
 
     # 4. THE RAILS STAY APART. -8 is what negate_4bit corrupts; +7 is only headroom.
     lo, hi = [0.0] * 14, [0.0] * 14
@@ -82,13 +103,16 @@ def main():
 
     # 5. UNSORTED INPUT must not invent lobes -- the tap serves whatever order it walks.
     import random
+
     sh = list(CX19_G0)
     random.Random(7).shuffle(sh)
     pw = [40.0 if c < 285 else 1.0 for c in sh]
     lob = rf_lobes(sh, pw, [0.0] * 14, [0.0] * 14)
     if len(lob) != 2 or abs(lob[0]["power"] - 40.0) > 1e-9:
-        fails.append("shuffled input broke the grouping: %s"
-                     % [(l["chan0"], l["chan1"], l["power"]) for l in lob])
+        fails.append(
+            "shuffled input broke the grouping: %s"
+            % [(l["chan0"], l["chan1"], l["power"]) for l in lob]
+        )
     else:
         print("ok  shuffled channel order -> same 2 lobes (sorted internally)")
 
@@ -105,29 +129,47 @@ def main():
     n = len(CX19_G1)
     lob = rf_lobes(CX19_G1, [1.0] * n, [0.0] * n, [0.0] * n, G1_FIDS, CHORD_CARRIERS)
     got = [(l.get("band"), l["chan0"], l["chan1"]) for l in lob]
-    want = [("L5", 277, 283), ("E5b", 287, 292), ("L2", 296, 296),
-            ("B3", 306, 310), ("E6", 311, 314)]
+    want = [
+        ("L5", 277, 283),
+        ("E5b", 287, 292),
+        ("L2", 296, 296),
+        ("B3", 306, 310),
+        ("E6", 311, 314),
+    ]
     if got != want:
-        fails.append("8-chain layout mis-grouped:\n     got  %s\n     want %s" % (got, want))
+        fails.append(
+            "8-chain layout mis-grouped:\n     got  %s\n     want %s" % (got, want)
+        )
     else:
-        print("ok  8 chains -> 5 named bands; abutting B3I/E6 split by BAND, not by gap")
+        print(
+            "ok  8 chains -> 5 named bands; abutting B3I/E6 split by BAND, not by gap"
+        )
 
     # 8. ⚠️ THE FAILURE THAT NEARLY SHIPPED: without a declared band set, "nearest carrier
     #    in the full table" labels E5b's lower shoulder (1199.2, 1202.3 MHz) as GLONASS L3,
     #    which CHORD does not fly. No declaration must mean NO NAME, never a plausible one.
     lob = rf_lobes(CX19_G1, [1.0] * n, [0.0] * n, [0.0] * n, G1_FIDS, None)
     if any(l.get("band") for l in lob):
-        fails.append("named bands without a declared set: %s"
-                     % [l.get("band") for l in lob])
-    elif [(l["chan0"], l["chan1"]) for l in lob] != [(277, 283), (287, 292), (296, 296),
-                                                     (306, 314)]:
-        fails.append("undeclared fallback did not reproduce plain contiguity: %s"
-                     % [(l["chan0"], l["chan1"]) for l in lob])
+        fails.append(
+            "named bands without a declared set: %s" % [l.get("band") for l in lob]
+        )
+    elif [(l["chan0"], l["chan1"]) for l in lob] != [
+        (277, 283),
+        (287, 292),
+        (296, 296),
+        (306, 314),
+    ]:
+        fails.append(
+            "undeclared fallback did not reproduce plain contiguity: %s"
+            % [(l["chan0"], l["chan1"]) for l in lob]
+        )
     else:
         print("ok  no declared band set -> no names, plain contiguity (never a guess)")
 
     # 9. A RAGGED freq_ids ARRAY must not label channel k with channel j's frequency.
-    lob = rf_lobes(CX19_G1, [1.0] * n, [0.0] * n, [0.0] * n, G1_FIDS[:3], CHORD_CARRIERS)
+    lob = rf_lobes(
+        CX19_G1, [1.0] * n, [0.0] * n, [0.0] * n, G1_FIDS[:3], CHORD_CARRIERS
+    )
     if any(l.get("band") for l in lob):
         fails.append("a short freq_ids array still produced band names")
     else:
@@ -135,8 +177,14 @@ def main():
 
     # 10. OLD NODE BINARY (no freq_ids at all) on a fleet whose broker DOES declare bands:
     #     the rolling-restart case. Must be unnamed, and identical to arm 1's behaviour.
-    lob = rf_lobes(CX19_G0, [1.0] * len(CX19_G0), [0.0] * len(CX19_G0), [0.0] * len(CX19_G0),
-                   None, CHORD_CARRIERS)
+    lob = rf_lobes(
+        CX19_G0,
+        [1.0] * len(CX19_G0),
+        [0.0] * len(CX19_G0),
+        [0.0] * len(CX19_G0),
+        None,
+        CHORD_CARRIERS,
+    )
     if [(l["chan0"], l["chan1"]) for l in lob] != [(277, 283), (287, 293)]:
         fails.append("no-freq_ids path changed the legacy grouping")
     elif any(l.get("band") for l in lob):
@@ -149,7 +197,9 @@ def main():
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 10 arms on the real deployed channel layouts (2-band and 8-chain)")
+    print(
+        "GATE GOOD: 10 arms on the real deployed channel layouts (2-band and 8-chain)"
+    )
     return 0
 
 

@@ -83,34 +83,68 @@ import collections
 import math
 from fractions import Fraction
 
-from gnss_broker.telem import (_HDR_BYTES, REC_DOPPLER, REC_P_RE, REC_P_IM, REC_P_ENERGY,
-                               REC_PH_RE, REC_PH_IM, REC_TRIM_INC, REC_PHI0)
+from gnss_broker.telem import (
+    _HDR_BYTES,
+    REC_DOPPLER,
+    REC_P_RE,
+    REC_P_IM,
+    REC_P_ENERGY,
+    REC_PH_RE,
+    REC_PH_IM,
+    REC_TRIM_INC,
+    REC_PHI0,
+)
 
-HPS = Fraction(390625, 2)   # F-engine hops per second (3.2e9 / 16384), exact
-GRID_HOPS = 96 * 2048       # ~1.0066 s: a record hop common to every chain (see SatAdr.grid)
-GRID_KEEP = 4               # grid snapshots retained per satellite (see SatAdr.grid)
+HPS = Fraction(390625, 2)  # F-engine hops per second (3.2e9 / 16384), exact
+GRID_HOPS = 96 * 2048  # ~1.0066 s: a record hop common to every chain (see SatAdr.grid)
+GRID_KEEP = 4  # grid snapshots retained per satellite (see SatAdr.grid)
 
 
 class SatAdr(object):
     """One satellite's running arc."""
-    __slots__ = ("hop", "hop0", "s_prev", "adr", "trim", "res", "arc", "n", "n_inst",
-                 "inst_prev", "inst_x", "breaks", "t", "grid", "dark", "last_break")
+
+    __slots__ = (
+        "hop",
+        "hop0",
+        "s_prev",
+        "adr",
+        "trim",
+        "res",
+        "arc",
+        "n",
+        "n_inst",
+        "inst_prev",
+        "inst_x",
+        "breaks",
+        "t",
+        "grid",
+        "dark",
+        "last_break",
+    )
 
     def __init__(self):
-        self.hop = None        # hop of the last record folded
-        self.hop0 = None       # first hop of the current arc
-        self.s_prev = None     # sum of the previous record's S_i (diagnostic amplitude only)
-        self.adr = 0.0         # DOPPLER-ONLY cycles since hop0 (commanded minus residual, minus
-                               # the nominal f_c*dt, which is added back exactly at publish)
-        self.trim = 0.0        # commanded carrier-trim cycles over the same arc
-        self.res = 0.0         # residual cycles over the same arc: model minus received
-        self.arc = 0           # increments at every break
-        self.n = 0             # records folded into this arc
-        self.n_inst = 0        # instances behind the last record
-        self.inst_prev = {}    # inst -> (hop, dop_hz, S_i) of that instance's last record seen
-        self.inst_x = {}       # inst -> that instance's own continuous residual phase, cycles
-        self.breaks = 0        # arcs ended by a gap or an unaccountable increment
-        self.t = 0.0           # wall time of the last fold
+        self.hop = None  # hop of the last record folded
+        self.hop0 = None  # first hop of the current arc
+        self.s_prev = (
+            None  # sum of the previous record's S_i (diagnostic amplitude only)
+        )
+        self.adr = (
+            0.0  # DOPPLER-ONLY cycles since hop0 (commanded minus residual, minus
+        )
+        # the nominal f_c*dt, which is added back exactly at publish)
+        self.trim = 0.0  # commanded carrier-trim cycles over the same arc
+        self.res = 0.0  # residual cycles over the same arc: model minus received
+        self.arc = 0  # increments at every break
+        self.n = 0  # records folded into this arc
+        self.n_inst = 0  # instances behind the last record
+        self.inst_prev = (
+            {}
+        )  # inst -> (hop, dop_hz, S_i) of that instance's last record seen
+        self.inst_x = (
+            {}
+        )  # inst -> that instance's own continuous residual phase, cycles
+        self.breaks = 0  # arcs ended by a gap or an unaccountable increment
+        self.t = 0.0  # wall time of the last fold
         # THE GRID SNAPSHOTS [(hop, adr, arc, n), ...], oldest first, at most GRID_KEEP of
         # them: the state at each recent record whose hop is a multiple of GRID_HOPS. Every
         # chain's records sit on hops that are multiples of the record length, so grid hops
@@ -125,8 +159,8 @@ class SatAdr(object):
         # Four snapshots span ~4 s, so consecutive 2 s polls overlap by two and no hop is lost
         # unless a poll is more than GRID_KEEP grid hops late.
         self.grid = []
-        self.dark = 0            # consecutive energy-less records since the last good fold
-        self.last_break = None   # why the last arc ended (see fold_record)
+        self.dark = 0  # consecutive energy-less records since the last good fold
+        self.last_break = None  # why the last arc ended (see fold_record)
 
 
 def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
@@ -146,20 +180,27 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
             st.inst_prev[i] = (hop, v[0], v[2], v[3])
         return False
     prev = st.hop
-    contiguous = (prev is not None and 0 < hop - prev <= max_gap_rec * hpr)
+    contiguous = prev is not None and 0 < hop - prev <= max_gap_rec * hpr
     dt = (hop - prev) / float(hps) if contiguous else 0.0
     # instances present at prev vouch for the step: their Doppler ran the replica from prev,
     # and their cross-product carries the received increment with the constant cancelled
-    vouch = [(i, v) for i, v in usable.items()
-             if contiguous and i in st.inst_prev and st.inst_prev[i][0] == prev
-             and st.inst_prev[i][2] != 0]
+    vouch = [
+        (i, v)
+        for i, v in usable.items()
+        if contiguous
+        and i in st.inst_prev
+        and st.inst_prev[i][0] == prev
+        and st.inst_prev[i][2] != 0
+    ]
     if len(vouch) >= min_inst:
         dcmd = sorted(st.inst_prev[i][1] * dt for i, _v in vouch)[len(vouch) // 2]
         trim = sorted(v[1] for _i, v in vouch)[len(vouch) // 2]
         # each voucher advances ITS OWN phase; the fleet value is the median of the phases
         for i, v in vouch:
             x = st.inst_x.get(i, st.res)
-            st.inst_x[i] = x + cmath.phase(v[2] * st.inst_prev[i][2].conjugate()) / (4.0 * math.pi)
+            st.inst_x[i] = x + cmath.phase(v[2] * st.inst_prev[i][2].conjugate()) / (
+                4.0 * math.pi
+            )
         xs = sorted(st.inst_x[i] for i, _v in vouch)
         res = xs[len(xs) // 2]
         # ⚠️ A SLIP IS REPAIRED BEFORE THE MEDIAN IS TAKEN, NOT RE-SEATED AFTER. The squared
@@ -184,10 +225,10 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
             xs = sorted(st.inst_x[i] for i, _v in vouch)
             res = xs[len(xs) // 2]
         for i, _v in vouch:
-            if abs(st.inst_x[i] - res) > 0.3:   # not a slip: an excursion, re-seat it
+            if abs(st.inst_x[i] - res) > 0.3:  # not a slip: an excursion, re-seat it
                 st.inst_x[i] = res
         for i in usable:
-            if i not in st.inst_x:              # (re)joining: adopt the fleet's phase
+            if i not in st.inst_x:  # (re)joining: adopt the fleet's phase
                 st.inst_x[i] = res
         st.dark = 0
         dres = res - st.res
@@ -206,9 +247,14 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
             # instances' last-seen hops say whether the telemetry stopped or the trackers did.
             _gap = (hop - prev) / float(hpr) if prev is not None else float("nan")
             _seen = sorted(st.inst_prev.get(i, (None,))[0] or 0 for i in per_inst)
-            st.last_break = {"hop": hop, "gap_rec": _gap, "dark_rec": getattr(st, "dark", 0),
-                             "n_usable": len(usable), "n_vouch": len(vouch),
-                             "inst_lag_rec": [(hop - h) / float(hpr) for h in _seen[-3:]]}
+            st.last_break = {
+                "hop": hop,
+                "gap_rec": _gap,
+                "dark_rec": getattr(st, "dark", 0),
+                "n_usable": len(usable),
+                "n_vouch": len(vouch),
+                "inst_lag_rec": [(hop - h) / float(hpr) for h in _seen[-3:]],
+            }
         st.dark = 0
         st.arc += 1
         st.hop0 = hop
@@ -222,7 +268,7 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     for i, v in per_inst.items():
         st.inst_prev[i] = (hop, v[0], v[2], v[3])
     for i in [i for i in st.inst_x if i not in usable]:
-        del st.inst_x[i]                        # gone: it rejoins at the fleet's phase
+        del st.inst_x[i]  # gone: it rejoins at the fleet's phase
     if hop % GRID_HOPS == 0:
         st.grid.append((hop, st.adr, st.arc, st.n))
         del st.grid[:-GRID_KEEP]
@@ -241,7 +287,7 @@ def records_of_frame(f, want):
         return {}
     stride = f.row_total
     a = array.array("f")
-    a.frombytes(f._buf[_HDR_BYTES:_HDR_BYTES + f.n_rec * f.n_prn * stride * 4])
+    a.frombytes(f._buf[_HDR_BYTES : _HDR_BYTES + f.n_rec * f.n_prn * stride * 4])
     out = {}
     for r in range(f.n_rec):
         if not f.has_record(r):
@@ -255,11 +301,16 @@ def records_of_frame(f, want):
             A = complex(a[b + REC_P_RE] / e, a[b + REC_P_IM] / e)
             H = complex(a[b + REC_PH_RE] / e, a[b + REC_PH_IM] / e)
             if H == 0:
-                H = A          # an unsegmented tracker: head == A, tail 0
+                H = A  # an unsegmented tracker: head == A, tail 0
             T = A - H
             S = H * H + T * T
-            out.setdefault(prn, {})[r] = (float(a[b + REC_DOPPLER]), float(a[b + REC_TRIM_INC]), S,
-                                          float(a[b + REC_PHI0]), r)
+            out.setdefault(prn, {})[r] = (
+                float(a[b + REC_DOPPLER]),
+                float(a[b + REC_TRIM_INC]),
+                S,
+                float(a[b + REC_PHI0]),
+                r,
+            )
     return out
 
 
@@ -278,14 +329,17 @@ class FleetAdr(object):
     def fold_windows(self, client, chain, prns, now, lag=1):
         """Fold every window newer than the last one folded. Returns the number of windows."""
         want = set(int(p) for p in prns)
-        wins = [w for w in client.windows(chain, lag=lag)
-                if self.last_win is None or w > self.last_win]
+        wins = [
+            w
+            for w in client.windows(chain, lag=lag)
+            if self.last_win is None or w > self.last_win
+        ]
         if self.last_win is not None and wins and wins[0] > self.last_win + 1:
             # windows the ring already dropped: the arcs will break honestly on the gap
             self.windows_lost += wins[0] - self.last_win - 1
         for w in wins:
             frames = client.frame_set(chain, w)
-            by_hop = {}       # hop -> prn -> inst -> (dcmd, trim, S)
+            by_hop = {}  # hop -> prn -> inst -> (dcmd, trim, S)
             for inst, f in frames.items():
                 for prn, recs in records_of_frame(f, want).items():
                     for r, v in recs.items():
@@ -295,8 +349,14 @@ class FleetAdr(object):
                     st = self.sats.get(prn)
                     if st is None:
                         st = self.sats[prn] = SatAdr()
-                    fold_record(st, hop, per_inst, self.hpr, max_gap_rec=self.max_gap_rec,
-                                min_inst=self.min_inst)
+                    fold_record(
+                        st,
+                        hop,
+                        per_inst,
+                        self.hpr,
+                        max_gap_rec=self.max_gap_rec,
+                        min_inst=self.min_inst,
+                    )
                     st.t = now
             self.last_win = w
         # satellites that stopped arriving: forget them after a while so a return is a new arc
@@ -304,18 +364,31 @@ class FleetAdr(object):
             del self.sats[prn]
         # one line per cycle naming every arc that broke and why -- a fleet-wide break reads as
         # one line with every PRN and the same gap, which is the signature to look for
-        broke = [(p, s.last_break) for p, s in self.sats.items()
-                 if s.last_break is not None and s.last_break.get("logged") is None]
+        broke = [
+            (p, s.last_break)
+            for p, s in self.sats.items()
+            if s.last_break is not None and s.last_break.get("logged") is None
+        ]
         if broke and self.log is not None:
             parts = []
             for p, b in sorted(broke):
                 b["logged"] = True
-                parts.append("%d:gap%.0f/dark%d/usable%d/vouch%d/lag%s"
-                             % (p, b["gap_rec"], b["dark_rec"], b["n_usable"], b["n_vouch"],
-                                ",".join("%.0f" % x for x in b["inst_lag_rec"])))
-            self.log("FADR BREAK %s: %d arc(s) ended -- prn:gap(records)/dark(records without "
-                     "energy)/usable/vouchers/instance-lag(records) %s"
-                     % (chain, len(broke), " ".join(parts)))
+                parts.append(
+                    "%d:gap%.0f/dark%d/usable%d/vouch%d/lag%s"
+                    % (
+                        p,
+                        b["gap_rec"],
+                        b["dark_rec"],
+                        b["n_usable"],
+                        b["n_vouch"],
+                        ",".join("%.0f" % x for x in b["inst_lag_rec"]),
+                    )
+                )
+            self.log(
+                "FADR BREAK %s: %d arc(s) ended -- prn:gap(records)/dark(records without "
+                "energy)/usable/vouchers/instance-lag(records) %s"
+                % (chain, len(broke), " ".join(parts))
+            )
         return len(wins)
 
     def publish(self, carrier_hz, now):
@@ -327,26 +400,43 @@ class FleetAdr(object):
             if s.hop is None or s.n < 2:
                 continue
             nominal = Fraction(s.hop - s.hop0) / HPS * fc
-            out[prn] = {"dop_cycles": s.adr, "hop": s.hop, "hop0": s.hop0, "arc": s.arc,
-                        "n_rec": s.n, "n_inst": s.n_inst, "trim_cycles": s.trim,
-                        "res_cycles": s.res, "breaks": s.breaks,
-                        # the full received phase, the exact nominal added back to the
-                        # Doppler-only accumulator (a double holds ~3e13 cycles to 4e-3)
-                        "cycles": float(Fraction(s.adr) + nominal),
-                        "age_s": round(now - s.t, 2)}
+            out[prn] = {
+                "dop_cycles": s.adr,
+                "hop": s.hop,
+                "hop0": s.hop0,
+                "arc": s.arc,
+                "n_rec": s.n,
+                "n_inst": s.n_inst,
+                "trim_cycles": s.trim,
+                "res_cycles": s.res,
+                "breaks": s.breaks,
+                # the full received phase, the exact nominal added back to the
+                # Doppler-only accumulator (a double holds ~3e13 cycles to 4e-3)
+                "cycles": float(Fraction(s.adr) + nominal),
+                "age_s": round(now - s.t, 2),
+            }
             # Only this arc's snapshots: a break resets the accumulator, so an older arc's
             # phase is not continuous with the current one and must never pair against it.
             g = [t for t in s.grid if t[2] == s.arc]
             if g:
                 gh, ga, _garc, gn = g[-1]
-                out[prn].update({"g_hop": gh, "g_dop_cycles": ga, "g_n_rec": gn,
-                                 "g_cycles": float(Fraction(ga) + Fraction(gh - s.hop0) / HPS * fc)})
+                out[prn].update(
+                    {
+                        "g_hop": gh,
+                        "g_dop_cycles": ga,
+                        "g_n_rec": gn,
+                        "g_cycles": float(
+                            Fraction(ga) + Fraction(gh - s.hop0) / HPS * fc
+                        ),
+                    }
+                )
                 # The same four quantities for each retained hop, newest last. The scalars
                 # above are unchanged and remain the newest, so every existing consumer keeps
                 # working and only a consumer that wants the phase-independent grid reads this.
                 out[prn]["g_hist"] = [
                     [h, a, float(Fraction(a) + Fraction(h - s.hop0) / HPS * fc), n]
-                    for h, a, _arc, n in g]
+                    for h, a, _arc, n in g
+                ]
         return out
 
 
@@ -360,8 +450,15 @@ def stage_fleet_adr(ctx):
     fa = _STATE.get(ctx.chain_id)
     if fa is None:
         from gnss_broker.transport import _log
-        fa = _STATE[ctx.chain_id] = FleetAdr(hpr=int(getattr(ctx.args, "hops_per_record", 2048) or 2048),
-                                             log=_log)
+
+        fa = _STATE[ctx.chain_id] = FleetAdr(
+            hpr=int(getattr(ctx.args, "hops_per_record", 2048) or 2048), log=_log
+        )
     now = ctx.drp.now_w or 0.0
-    fa.fold_windows(ctx.telem_client, ctx.telem_chain, set(ctx.seeds) | set(ctx.dllp.fleet or {}), now)
+    fa.fold_windows(
+        ctx.telem_client,
+        ctx.telem_chain,
+        set(ctx.seeds) | set(ctx.dllp.fleet or {}),
+        now,
+    )
     return fa.publish(ctx.args.carrier_hz, now)

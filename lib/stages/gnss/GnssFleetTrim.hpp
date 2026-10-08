@@ -10,11 +10,11 @@
 
 #include <condition_variable>
 #include <cstdint>
+#include <map>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
-#include <map>
-#include <string>
 
 /**
  * @class GnssFleetTrim
@@ -251,7 +251,7 @@ private:
     double _policy_ttl_s = 60.0;                ///< drop a chain's policy after this silence
     double _first_close_t = 0.0; ///< wall time of the first window close, for the rate
     uint64_t _first_close_n = 0;
-    double _close_hz = 0.0;      ///< MEASURED window closes/s, fleet-wide
+    double _close_hz = 0.0;                     ///< MEASURED window closes/s, fleet-wide
     std::map<std::string, uint64_t> _late_seen; ///< A1 alarm: chain -> last n_late sample
     double _late_seen_t = 0.0;
     uint64_t _policy_posts = 0;

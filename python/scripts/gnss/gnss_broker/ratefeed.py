@@ -33,9 +33,14 @@ def stage_rate_feed_coarse(ctx):
     mirror)."""
     if ctx.args.rrate_state and ctx.rf.resid2 and ctx.drp.t_now_abs is not None:
         try:
-            _jrr = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len, rereference=ctx.args.joint_rereference, gauge_mode=ctx.args.joint_gauge)
+            _jrr = ctx.rx.joint_receiver(
+                ctx.band_id,
+                ctx.code_len,
+                rereference=ctx.args.joint_rereference,
+                gauge_mode=ctx.args.joint_gauge,
+            )
             _n_ok = 0
-            _n_gov = 0   # sats in the PHASE-GOVERNED regime this poll
+            _n_gov = 0  # sats in the PHASE-GOVERNED regime this poll
             _n_rec_fed = 0
             for _p, _rv in sorted(ctx.rf.resid2.items()):
                 # THE REFERENCE. deep_rate is measured on records the tracker already
@@ -48,8 +53,11 @@ def stage_rate_feed_coarse(ctx):
                 # ⚠️ ONLY on the command-AWARE plant (--rrate-feed-applied). On the
                 # folded assembler the observable never lost the command, and adding
                 # it back is the arm-12 integrator runaway. See the flag's help.
-                _y = _rv + (ctx.rf.cmd_applied.get(_p, ctx.car.trim.get(_p, 0.0))
-                            if ctx.args.rrate_feed_applied else 0.0)
+                _y = _rv + (
+                    ctx.rf.cmd_applied.get(_p, ctx.car.trim.get(_p, 0.0))
+                    if ctx.args.rrate_feed_applied
+                    else 0.0
+                )
                 _k = (ctx.args.dr_constellation, int(_p))
                 # FLL->PLL HANDOFF: a phase-governed satellite takes its coarse
                 # measurements at inflated sigma (see --rrate-coarse-deweight). Never
@@ -96,39 +104,73 @@ def stage_rate_feed_coarse(ctx):
                 _fcr = (ctx.dllp.fcoh or {}).get(_p) or {}
                 _rrec, _srec = _fcr.get("rate_hz"), _fcr.get("rate_sigma_hz")
                 if _use_rec and _rrec is not None and _srec is not None:
-                    _y = _rrec + (ctx.rf.cmd_applied.get(_p, ctx.car.trim.get(_p, 0.0))
-                                  if ctx.args.rrate_feed_applied else 0.0)
+                    _y = _rrec + (
+                        ctx.rf.cmd_applied.get(_p, ctx.car.trim.get(_p, 0.0))
+                        if ctx.args.rrate_feed_applied
+                        else 0.0
+                    )
                     # never claim better than the fold's grid can resolve, and never
                     # worse than the old blanket 0.2 -- a split-half of exactly 0 is
                     # two halves landing in one bin, not infinite precision.
                     _sig_c = min(max(_srec, 0.02), 0.2)
                     _n_rec_fed += 1
-                if (ctx.args.rrate_coarse_deweight > 1.0
-                        and (ctx.t0 - ctx.rf.fine_t.get(_p, -1e9) <= ctx.args.rrate_fine_hold_s
-                             or ctx.t0 - ctx.rf.kcoh_t.get(_p, -1e9)
-                             <= ctx.args.rrate_fine_hold_s)):
+                if ctx.args.rrate_coarse_deweight > 1.0 and (
+                    ctx.t0 - ctx.rf.fine_t.get(_p, -1e9) <= ctx.args.rrate_fine_hold_s
+                    or ctx.t0 - ctx.rf.kcoh_t.get(_p, -1e9)
+                    <= ctx.args.rrate_fine_hold_s
+                ):
                     _sig_c *= ctx.args.rrate_coarse_deweight
                     _n_gov += 1
-                if _jrr.update_rrate(_k, _y, ctx.drp.t_now_abs, ctx.args.carrier_hz,
-                                     sigma_hz=_sig_c) is not None:
+                if (
+                    _jrr.update_rrate(
+                        _k, _y, ctx.drp.t_now_abs, ctx.args.carrier_hz, sigma_hz=_sig_c
+                    )
+                    is not None
+                ):
                     _n_ok += 1
             _jrr.gauge_rrate()
             _rows = " ".join(
-                "%d:%+.2f+-%s" % (_p, _jrr.rrate((ctx.args.dr_constellation, int(_p))),
-                                  ("%.2f" % _s if (_s := _jrr.rrate_sigma(
-                                      (ctx.args.dr_constellation, int(_p)))) < 99.0
-                                   else "inf"))
-                for _p in sorted(ctx.rf.resid2))
-            _log_rl("jrr",
-                    "JRR[%s%s] rrate m/s: %s | f_car %+.3f+-%.3f Hz "
-                    "(%d/%d accepted this poll%s; n=%d rej=%d)"
-                    % (ctx.args.dr_constellation, "" if ctx.rf.full_ok else " CAPPED-FALLBACK",
-                       _rows, _jrr.f_carrier(),
-                       _jrr.f_carrier_sigma(), _n_ok, len(ctx.rf.resid2),
-                       ((", %d PHASE-GOVERNED" % _n_gov) if _n_gov else "")
-                       + ((", %d/%d from RECORD STREAM" % (_n_rec_fed, len(ctx.rf.resid2)))
-                          if _n_rec_fed else ", fold-fed"),
-                       _jrr.n_rrate, _jrr.rrate_rejected), every_s=60.0)
+                "%d:%+.2f+-%s"
+                % (
+                    _p,
+                    _jrr.rrate((ctx.args.dr_constellation, int(_p))),
+                    (
+                        "%.2f" % _s
+                        if (
+                            _s := _jrr.rrate_sigma((ctx.args.dr_constellation, int(_p)))
+                        )
+                        < 99.0
+                        else "inf"
+                    ),
+                )
+                for _p in sorted(ctx.rf.resid2)
+            )
+            _log_rl(
+                "jrr",
+                "JRR[%s%s] rrate m/s: %s | f_car %+.3f+-%.3f Hz "
+                "(%d/%d accepted this poll%s; n=%d rej=%d)"
+                % (
+                    ctx.args.dr_constellation,
+                    "" if ctx.rf.full_ok else " CAPPED-FALLBACK",
+                    _rows,
+                    _jrr.f_carrier(),
+                    _jrr.f_carrier_sigma(),
+                    _n_ok,
+                    len(ctx.rf.resid2),
+                    ((", %d PHASE-GOVERNED" % _n_gov) if _n_gov else "")
+                    + (
+                        (
+                            ", %d/%d from RECORD STREAM"
+                            % (_n_rec_fed, len(ctx.rf.resid2))
+                        )
+                        if _n_rec_fed
+                        else ", fold-fed"
+                    ),
+                    _jrr.n_rrate,
+                    _jrr.rrate_rejected,
+                ),
+                every_s=60.0,
+            )
         except Exception as e:
             _log_rl("jrr-err", "rrate feed skipped: %s" % e, every_s=300.0)
 
@@ -145,7 +187,12 @@ def stage_rate_feed_fine(ctx):
             _rec_dt = 2048.0 / ctx.args.hops_per_sec
             _jpp = []
             _n_fine = 0
-            _jrf = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len, rereference=ctx.args.joint_rereference, gauge_mode=ctx.args.joint_gauge)
+            _jrf = ctx.rx.joint_receiver(
+                ctx.band_id,
+                ctx.code_len,
+                rereference=ctx.args.joint_rereference,
+                gauge_mode=ctx.args.joint_gauge,
+            )
             for _p, _rec in (ctx.status or {}).items():
                 if not isinstance(_rec, dict):
                     continue
@@ -164,7 +211,10 @@ def stage_rate_feed_fine(ctx):
                 # the arc gate exactly like a last-poll one.
                 _ring = ctx.rf.adr_ring.setdefault(_p, [])
                 if ctx.args.rrate_phase_span_s > 0.0:
-                    while _ring and (ctx.t0 - _ring[0][2]) > 2.0 * ctx.args.rrate_phase_span_s:
+                    while (
+                        _ring
+                        and (ctx.t0 - _ring[0][2]) > 2.0 * ctx.args.rrate_phase_span_s
+                    ):
                         _ring.pop(0)
                     _pv = None
                     for _e in reversed(_ring):
@@ -174,8 +224,11 @@ def stage_rate_feed_fine(ctx):
                 else:
                     _pv = ctx.rf.adr_prev.get(_p)
                 if _pv is not None:
-                    _snap = {"adr_arc": _pv[0][0], "adr_records": _pv[0][1],
-                             "res_cycles": _pv[0][2]}
+                    _snap = {
+                        "adr_arc": _pv[0][0],
+                        "adr_records": _pv[0][1],
+                        "res_cycles": _pv[0][2],
+                    }
                     _snap["trim_cycles"] = _pv[0][3] if len(_pv[0]) > 3 else None
                     # wall_dt arms the serving-churn discriminator (see
                     # adr_fine_rate): the row is best-of-instance and the winner
@@ -198,12 +251,21 @@ def stage_rate_feed_fine(ctx):
                         # bound is the same 20 Hz as the feed.
                         _sg93 = ctx.args.rrate_phase_sign or 1.0
                         if abs(_sg93 * _fy) < 20.0:
-                            _ap93 = (_applied
-                                     if (_applied is not None
-                                         and abs(_applied) <= 50.0) else None)
-                            _cm93 = ((_sg93 * _ap93) if _ap93 is not None
-                                     else 0.5 * (_cmd_now + _pv[1]))
-                            ctx.rf.adr_span_now[_p] = (_sg93 * _fy + _cm93, ctx.t0, _nrec)
+                            _ap93 = (
+                                _applied
+                                if (_applied is not None and abs(_applied) <= 50.0)
+                                else None
+                            )
+                            _cm93 = (
+                                (_sg93 * _ap93)
+                                if _ap93 is not None
+                                else 0.5 * (_cmd_now + _pv[1])
+                            )
+                            ctx.rf.adr_span_now[_p] = (
+                                _sg93 * _fy + _cm93,
+                                ctx.t0,
+                                _nrec,
+                            )
                         # COMMAND MOTION over the span enters the REFERENCE, not a
                         # stillness gate (a strict gate starved the feed to ~1/min --
                         # the coarse loop nudges the command every poll). Span-mean
@@ -220,14 +282,21 @@ def stage_rate_feed_fine(ctx):
                         # overconfident. In span mode a sat feeds at most once per
                         # span, so fed measurements are disjoint windows. The SHADOW
                         # (JRRP) stays per-poll; only the feed is throttled.
-                        _span_ok = (ctx.args.rrate_phase_span_s <= 0.0
-                                    or ctx.t0 - ctx.rf.span_fed_t.get(_p, 0.0)
-                                    >= ctx.args.rrate_phase_span_s)
-                        if (ctx.args.rrate_phase_feed and ctx.args.rrate_phase_sign != 0.0
-                                and _span_ok
-                                and abs(_dcmd) <= 0.6
-                                and ((_rec.get("coherence_s") or 0.0) > 0.0
-                                     or (_rec.get("coh_frac") or 0.0) >= 0.3)):
+                        _span_ok = (
+                            ctx.args.rrate_phase_span_s <= 0.0
+                            or ctx.t0 - ctx.rf.span_fed_t.get(_p, 0.0)
+                            >= ctx.args.rrate_phase_span_s
+                        )
+                        if (
+                            ctx.args.rrate_phase_feed
+                            and ctx.args.rrate_phase_sign != 0.0
+                            and _span_ok
+                            and abs(_dcmd) <= 0.6
+                            and (
+                                (_rec.get("coherence_s") or 0.0) > 0.0
+                                or (_rec.get("coh_frac") or 0.0) >= 0.3
+                            )
+                        ):
                             _yf = ctx.args.rrate_phase_sign * _fy
                             # NO CONVERGENCE REGIME (00:2x, measured): res_cycles is
                             # UNWRAPPED -- summed per-record increments, no mod-2pi
@@ -257,8 +326,10 @@ def stage_rate_feed_fine(ctx):
                                     _sig_f = ctx.args.rrate_phase_sigma
                                 else:
                                     _cmd_mid = 0.5 * (_cmd_now + _pv[1])
-                                    _sig_f = (ctx.args.rrate_phase_sigma ** 2
-                                              + (0.5 * _dcmd) ** 2) ** 0.5
+                                    _sig_f = (
+                                        ctx.args.rrate_phase_sigma ** 2
+                                        + (0.5 * _dcmd) ** 2
+                                    ) ** 0.5
                                 if ctx.args.rrate_phase_span_s > 0.0:
                                     # sigma is defined AT THE 1-POLL SPAN and the
                                     # noise telescopes (1/span, measured); the
@@ -268,21 +339,41 @@ def stage_rate_feed_fine(ctx):
                                     # predicts forward only), so the lag lives HERE,
                                     # in the weight, not in the epoch.
                                     _span_s = _nrec * _rec_dt
-                                    _sig_f = ((_sig_f * ctx.args.interval
-                                               / max(_span_s, ctx.args.interval)) ** 2
-                                              + (0.02 * 0.5 * _span_s) ** 2) ** 0.5
-                                if _jrf.update_rrate(
-                                        _k, _yf + _cmd_mid, ctx.drp.t_now_abs, ctx.args.carrier_hz,
-                                        sigma_hz=_sig_f) is not None:
+                                    _sig_f = (
+                                        (
+                                            _sig_f
+                                            * ctx.args.interval
+                                            / max(_span_s, ctx.args.interval)
+                                        )
+                                        ** 2
+                                        + (0.02 * 0.5 * _span_s) ** 2
+                                    ) ** 0.5
+                                if (
+                                    _jrf.update_rrate(
+                                        _k,
+                                        _yf + _cmd_mid,
+                                        ctx.drp.t_now_abs,
+                                        ctx.args.carrier_hz,
+                                        sigma_hz=_sig_f,
+                                    )
+                                    is not None
+                                ):
                                     _n_fine += 1
                                     # ACCEPTED fine measurements arm the handoff --
                                     # not attempts, so a sat whose fine values the
                                     # gate keeps rejecting stays coarse-governed.
                                     ctx.rf.fine_t[_p] = ctx.t0
                                     ctx.rf.span_fed_t[_p] = ctx.t0
-                ctx.rf.adr_prev[_p] = ((_rec.get("adr_arc"), _rec.get("adr_records") or 0,
-                                 _rec.get("res_cycles"), _rec.get("trim_cycles")),
-                                _cmd_now, ctx.t0)
+                ctx.rf.adr_prev[_p] = (
+                    (
+                        _rec.get("adr_arc"),
+                        _rec.get("adr_records") or 0,
+                        _rec.get("res_cycles"),
+                        _rec.get("trim_cycles"),
+                    ),
+                    _cmd_now,
+                    ctx.t0,
+                )
                 if ctx.args.rrate_phase_span_s > 0.0:
                     _ring.append(ctx.rf.adr_prev[_p])
             # A sat that has left the seed set is RE-ACQUIRING when it returns, which
@@ -293,13 +384,18 @@ def stage_rate_feed_fine(ctx):
                 ctx.rf.adr_prev.pop(_dead, None)
                 ctx.rf.adr_ring.pop(_dead, None)
             if _jpp:
-                _log_rl("jrrp",
-                        "JRRP[%s%s] fine|coarse Hz (fine in INTERNAL sign): %s%s"
-                        % (ctx.args.dr_constellation,
-                           (" span %.0fs" % ctx.args.rrate_phase_span_s)
-                           if ctx.args.rrate_phase_span_s > 0.0 else "",
-                           " ".join("%d:%+.3f|%+.3f" % t for t in _jpp),
-                           (" -- %d fine-fed" % _n_fine) if _n_fine else ""),
-                        every_s=60.0)
+                _log_rl(
+                    "jrrp",
+                    "JRRP[%s%s] fine|coarse Hz (fine in INTERNAL sign): %s%s"
+                    % (
+                        ctx.args.dr_constellation,
+                        (" span %.0fs" % ctx.args.rrate_phase_span_s)
+                        if ctx.args.rrate_phase_span_s > 0.0
+                        else "",
+                        " ".join("%d:%+.3f|%+.3f" % t for t in _jpp),
+                        (" -- %d fine-fed" % _n_fine) if _n_fine else "",
+                    ),
+                    every_s=60.0,
+                )
         except Exception as e:
             _log_rl("jrrp-err", "phase-step feed skipped: %s" % e, every_s=300.0)

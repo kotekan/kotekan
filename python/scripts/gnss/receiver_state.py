@@ -191,16 +191,29 @@ def sources_from(rec):
     if fc and c.get("raw_hz") is not None:
         se = se_of_median(c.get("mad_hz"), c.get("n"))
         if se:
-            out.append({"chain": rec.get("chain"), "family": "carrier",
-                        "ppm": float(c["raw_hz"]) / float(fc) * 1e6,
-                        "se_ppm": se / float(fc) * 1e6, "n": c.get("n")})
+            out.append(
+                {
+                    "chain": rec.get("chain"),
+                    "family": "carrier",
+                    "ppm": float(c["raw_hz"]) / float(fc) * 1e6,
+                    "se_ppm": se / float(fc) * 1e6,
+                    "n": c.get("n"),
+                }
+            )
     d = rec.get("code") or {}
     if d.get("raw_ppm") is not None:
         se = se_of_median(d.get("mad_ppm"), d.get("n"))
         if se:
             # OPPOSITE SIGN CONVENTION: l-a is +0.0956 ppm where the carrier reads -0.0958.
-            out.append({"chain": rec.get("chain"), "family": "code",
-                        "ppm": -float(d["raw_ppm"]), "se_ppm": se, "n": d.get("n")})
+            out.append(
+                {
+                    "chain": rec.get("chain"),
+                    "family": "code",
+                    "ppm": -float(d["raw_ppm"]),
+                    "se_ppm": se,
+                    "n": d.get("n"),
+                }
+            )
     return out
 
 
@@ -230,7 +243,11 @@ def fuse_dongle(records, floor_ppm=0.0, reject_sigma=0.0):
     def _fit(items):
         num = den = 0.0
         for s in items:
-            se = max(float(s["se_ppm"]), float(floor_ppm)) if floor_ppm else float(s["se_ppm"])
+            se = (
+                max(float(s["se_ppm"]), float(floor_ppm))
+                if floor_ppm
+                else float(s["se_ppm"])
+            )
             if se <= 0:
                 continue
             w = 1.0 / (se * se)
@@ -245,8 +262,11 @@ def fuse_dongle(records, floor_ppm=0.0, reject_sigma=0.0):
         return None
 
     def _se(s):
-        return (max(float(s["se_ppm"]), float(floor_ppm)) if floor_ppm
-                else float(s["se_ppm"]))
+        return (
+            max(float(s["se_ppm"]), float(floor_ppm))
+            if floor_ppm
+            else float(s["se_ppm"])
+        )
 
     for s in src:
         s["rejected"] = False
@@ -264,7 +284,9 @@ def fuse_dongle(records, floor_ppm=0.0, reject_sigma=0.0):
         # "one poisoned input hits every chain" coupling risk, occurring inside the fuser
         # meant to contain it. The median is uncontaminated by a minority of bad sources.
         centre = statistics.median([float(s["ppm"]) for s in src])
-        keep = [s for s in src if abs(float(s["ppm"]) - centre) / _se(s) <= reject_sigma]
+        keep = [
+            s for s in src if abs(float(s["ppm"]) - centre) / _se(s) <= reject_sigma
+        ]
         if not keep:
             # Every source disagrees with the robust centre: pathological, and NOT
             # something to paper over by silently keeping everything. Publish the
@@ -302,11 +324,19 @@ def fuse_dongle(records, floor_ppm=0.0, reject_sigma=0.0):
         "n_src": len(src),
         "n_rejected": n_rej,
         "all_outliers": all_out,
-        "n_carrier": sum(1 for s in src if s["family"] == "carrier" and not s["rejected"]),
+        "n_carrier": sum(
+            1 for s in src if s["family"] == "carrier" and not s["rejected"]
+        ),
         "n_code": sum(1 for s in src if s["family"] == "code" and not s["rejected"]),
         "chains": sorted({s["chain"] for s in src if s["chain"] and not s["rejected"]}),
-        "worst_sigma": max([s["resid_sigma"] for s in src
-                            if s["resid_sigma"] is not None and not s["rejected"]] or [None]),
+        "worst_sigma": max(
+            [
+                s["resid_sigma"]
+                for s in src
+                if s["resid_sigma"] is not None and not s["rejected"]
+            ]
+            or [None]
+        ),
         "sources": src,
     }
 

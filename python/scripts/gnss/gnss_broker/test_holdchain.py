@@ -56,11 +56,15 @@ def test_hold_elif_chains_to_the_escape_if():
     if not is_elif:
         return
     hold = o[0]
-    check("hold_on_present" in ast.unparse(hold.test),
-          "the elif is the hold branch (mentions hold_on_present)")
-    check(bool(hold.orelse) and not (len(hold.orelse) == 1
-                                     and isinstance(hold.orelse[0], ast.If)),
-          "the hold elif has a plain else (the release)")
+    check(
+        "hold_on_present" in ast.unparse(hold.test),
+        "the elif is the hold branch (mentions hold_on_present)",
+    )
+    check(
+        bool(hold.orelse)
+        and not (len(hold.orelse) == 1 and isinstance(hold.orelse[0], ast.If)),
+        "the hold elif has a plain else (the release)",
+    )
 
 
 def test_monitor_is_not_a_chain_member():
@@ -77,9 +81,11 @@ def test_monitor_is_not_a_chain_member():
     V().visit(_seeding_tree())
     check(len(found) >= 1, "the monitor if exists")
     for n in found:
-        check(not n.orelse,
-              "monitor if at line %d carries no elif/else (log-only means log-only)"
-              % n.lineno)
+        check(
+            not n.orelse,
+            "monitor if at line %d carries no elif/else (log-only means log-only)"
+            % n.lineno,
+        )
 
 
 if __name__ == "__main__":

@@ -85,7 +85,7 @@ def token_expiry_days(tok=_UNSET):
         return None
     parts = tok.split(".")
     if len(parts) != 3:
-        return None                       # not a JWT: no expiry to read, not an error
+        return None  # not a JWT: no expiry to read, not an error
     try:
         pad = parts[1] + "=" * (-len(parts[1]) % 4)
         exp = json.loads(base64.urlsafe_b64decode(pad)).get("exp")
@@ -105,7 +105,9 @@ def product_age_days(path, when=None):
     m = re.search(r"_(\d{4})(\d{3})0000_", os.path.basename(path))
     if not m:
         return None
-    d = datetime(int(m.group(1)), 1, 1, tzinfo=timezone.utc) + timedelta(days=int(m.group(2)) - 1)
+    d = datetime(int(m.group(1)), 1, 1, tzinfo=timezone.utc) + timedelta(
+        days=int(m.group(2)) - 1
+    )
     return ((when or datetime.now(timezone.utc)) - d).total_seconds() / 86400.0
 
 
@@ -124,8 +126,14 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
     `token_expiry_days`. The caller is expected to complain about age, not just absence.
     """
     st = status if status is not None else {}
-    st.update(reason="no-token", path=None, age_days=None, http=None,
-              token_expiry_days=None, served_from_cache=None)
+    st.update(
+        reason="no-token",
+        path=None,
+        age_days=None,
+        http=None,
+        token_expiry_days=None,
+        served_from_cache=None,
+    )
     tok = _token()
     if not tok:
         return None
@@ -137,17 +145,27 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
         d = when - timedelta(days=back)
         doy = d.timetuple().tm_yday
         # Two generations of the CAS naming; try the current one first.
-        for name in ("CAS0OPSRAP_%04d%03d0000_01D_01D_DCB.BIA.gz" % (d.year, doy),
-                     "CAS0MGXRAP_%04d%03d0000_01D_01D_DCB.BSX.gz" % (d.year, doy)):
+        for name in (
+            "CAS0OPSRAP_%04d%03d0000_01D_01D_DCB.BIA.gz" % (d.year, doy),
+            "CAS0MGXRAP_%04d%03d0000_01D_01D_DCB.BSX.gz" % (d.year, doy),
+        ):
             local = os.path.join(cache_dir, name)
             if os.path.exists(local) and os.path.getsize(local) > 1000:
-                st.update(reason="ok", path=local, served_from_cache=True,
-                          age_days=product_age_days(local, when))
+                st.update(
+                    reason="ok",
+                    path=local,
+                    served_from_cache=True,
+                    age_days=product_age_days(local, when),
+                )
                 return local
-            url = ("https://cddis.nasa.gov/archive/gnss/products/bias/%04d/%s"
-                   % (d.year, name))
+            url = "https://cddis.nasa.gov/archive/gnss/products/bias/%04d/%s" % (
+                d.year,
+                name,
+            )
             try:
-                req = urllib.request.Request(url, headers={"Authorization": "Bearer " + tok})
+                req = urllib.request.Request(
+                    url, headers={"Authorization": "Bearer " + tok}
+                )
                 with urllib.request.urlopen(req, timeout=45) as r:
                     raw = r.read()
                 if len(raw) < 1000:
@@ -155,9 +173,13 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
                 tmp = local + ".tmp"
                 with open(tmp, "wb") as f:
                     f.write(raw)
-                os.replace(tmp, local)          # atomic: shared cache, see _atomic_write_bytes
-                st.update(reason="ok", path=local, served_from_cache=False,
-                          age_days=product_age_days(local, when))
+                os.replace(tmp, local)  # atomic: shared cache, see _atomic_write_bytes
+                st.update(
+                    reason="ok",
+                    path=local,
+                    served_from_cache=False,
+                    age_days=product_age_days(local, when),
+                )
                 return local
             except urllib.error.HTTPError as e:
                 # 401/403 is the credential, not the calendar: every remaining day will
@@ -234,7 +256,7 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
         d_1w_2w = _dsb(tab, "C1W", "C2W")
         if d_1c_5x is None or d_1c_1w is None or d_1w_2w is None:
             return None
-        d_1w_5 = d_1c_5x - d_1c_1w                      # b_C1W - b_C5X
+        d_1w_5 = d_1c_5x - d_1c_1w  # b_C1W - b_C5X
         return d_1w_5 + d_1w_2w / (GAMMA_L1L2 - 1.0)
     if sysc == "E":
         # The datum depends on the RECORD TYPE, which the caller knows and we do not:
@@ -270,7 +292,7 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
                 d15 = _dsb(tab, one, five)
                 d16 = _dsb(tab, one, "C6I")
                 if d15 is not None and d16 is not None:
-                    return d15 - d16                    # = b_C6I - b_C5P
+                    return d15 - d16  # = b_C6I - b_C5P
             return None
         if "b2b" in sig:
             for one, seven in (("C1P", "C7D"), ("C1X", "C7D"), ("C1X", "C7Z")):
@@ -285,18 +307,37 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
 
 if __name__ == "__main__":
     import statistics as st
+
     p = fetch_dcb()
     print("DCB:", p)
     tab = parse_dcb(p)
     print("satellites: %d (%s)" % (len(tab), "".join(sorted({k[0] for k in tab}))))
-    for sysc, sig in (("G", "gps_l5"), ("E", "gal_e5a"), ("E", "gal_e5b"),
-                      ("C", "bds_b2a"), ("C", "bds_b2b")):
-        v = [(k[1], signal_bias_s(tab, sysc, k[1], sig)) for k in sorted(tab) if k[0] == sysc]
+    for sysc, sig in (
+        ("G", "gps_l5"),
+        ("E", "gal_e5a"),
+        ("E", "gal_e5b"),
+        ("C", "bds_b2a"),
+        ("C", "bds_b2b"),
+    ):
+        v = [
+            (k[1], signal_bias_s(tab, sysc, k[1], sig))
+            for k in sorted(tab)
+            if k[0] == sysc
+        ]
         v = [(p_, x) for p_, x in v if x is not None]
         if not v:
             print("%-8s none" % sig)
             continue
         ns = [x * 1e9 for _, x in v]
-        print("%-8s n=%2d  median %+7.3f ns (%+.3f chips)  mean %+7.3f  range %+7.2f..%+7.2f"
-              % (sig, len(ns), st.median(ns), st.median(ns) * 1e-9 * 1.023e7,
-                 st.mean(ns), min(ns), max(ns)))
+        print(
+            "%-8s n=%2d  median %+7.3f ns (%+.3f chips)  mean %+7.3f  range %+7.2f..%+7.2f"
+            % (
+                sig,
+                len(ns),
+                st.median(ns),
+                st.median(ns) * 1e-9 * 1.023e7,
+                st.mean(ns),
+                min(ns),
+                max(ns),
+            )
+        )

@@ -79,9 +79,15 @@ def cmd_transits(args):
             # coherent map is never thinned by the incoherent estimator's gaps.
             inc = d.get("cn0_inc_dbhz")
             per.setdefault(int(d["prn"]), []).append(
-                (t, float(az), float(el), float(cn0),
-                 float(inc) if inc is not None else np.nan,
-                 float(d.get("sig") or 0.0)))
+                (
+                    t,
+                    float(az),
+                    float(el),
+                    float(cn0),
+                    float(inc) if inc is not None else np.nan,
+                    float(d.get("sig") or 0.0),
+                )
+            )
     outdir = os.path.join(args.outdir, "transits", args.night)
     os.makedirs(outdir, exist_ok=True)
     for stale in glob.glob(os.path.join(outdir, f"{args.tag}_*.npz")):
@@ -95,12 +101,23 @@ def cmd_transits(args):
             if len(seg) < MIN_TRANSIT_PTS:
                 continue
             path = os.path.join(outdir, f"{args.tag}_{prn:02d}_t{k}.npz")
-            np.savez_compressed(path, t=seg[:, 0], az=seg[:, 1], el=seg[:, 2],
-                                cn0=seg[:, 3], cn0_inc=seg[:, 4], sig=seg[:, 5],
-                                tag=args.tag, prn=prn, night=args.night)
+            np.savez_compressed(
+                path,
+                t=seg[:, 0],
+                az=seg[:, 1],
+                el=seg[:, 2],
+                cn0=seg[:, 3],
+                cn0_inc=seg[:, 4],
+                sig=seg[:, 5],
+                tag=args.tag,
+                prn=prn,
+                night=args.night,
+            )
             n_tr += 1
-    print(f"{args.night}/{args.tag}: {n_rows} rows in window, {n_geo} w/ geometry, "
-          f"{n_cn0} w/ cn0 -> {n_tr} transits ({len(per)} sats)")
+    print(
+        f"{args.night}/{args.tag}: {n_rows} rows in window, {n_geo} w/ geometry, "
+        f"{n_cn0} w/ cn0 -> {n_tr} transits ({len(per)} sats)"
+    )
 
 
 def _new_acc():
@@ -111,13 +128,16 @@ def _new_acc():
 def _load_q(z, quantity, path=""):
     key = QUANTITY[quantity]
     if key not in z.files:
-        raise SystemExit(f"{path}: no '{key}' -- transit predates the two-estimator "
-                         f"format (2026-07-24); re-run `transits` for this night")
+        raise SystemExit(
+            f"{path}: no '{key}' -- transit predates the two-estimator "
+            f"format (2026-07-24); re-run `transits` for this night"
+        )
     return np.asarray(z[key], float)
 
 
 def cmd_coadd(args):
     import healpy as hp
+
     n, s1, s2 = _new_acc()
     files = sorted(glob.glob(args.transits))
     n_nan = 0
@@ -126,18 +146,28 @@ def cmd_coadd(args):
         q = _load_q(z, args.quantity, f)
         good = np.isfinite(q)
         n_nan += int((~good).sum())
-        pix = hp.ang2pix(NSIDE, np.radians(90.0 - z["el"][good]),
-                         np.radians(z["az"][good]))
+        pix = hp.ang2pix(
+            NSIDE, np.radians(90.0 - z["el"][good]), np.radians(z["az"][good])
+        )
         q = q[good]
         np.add.at(n, pix, 1)
         np.add.at(s1, pix, q)
         np.add.at(s2, pix, q ** 2)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    np.savez_compressed(args.out, n=n, s1=s1, s2=s2, nside=NSIDE,
-                        n_transits=len(files), quantity=args.quantity)
-    print(f"{args.out}: {len(files)} transits, {int(n.sum())} samples, "
-          f"{int((n > 0).sum())} pixels hit"
-          + (f", {n_nan} dropped (no {args.quantity})" if n_nan else ""))
+    np.savez_compressed(
+        args.out,
+        n=n,
+        s1=s1,
+        s2=s2,
+        nside=NSIDE,
+        n_transits=len(files),
+        quantity=args.quantity,
+    )
+    print(
+        f"{args.out}: {len(files)} transits, {int(n.sum())} samples, "
+        f"{int((n > 0).sum())} pixels hit"
+        + (f", {n_nan} dropped (no {args.quantity})" if n_nan else "")
+    )
 
 
 def cmd_combine(args):
@@ -153,13 +183,18 @@ def cmd_combine(args):
         # coh and inc differ by up to 13 dB on BOC signals -- summing them would be
         # a silent physical error, so refuse rather than warn.
         assert q == quant, f"{f}: quantity '{q}' != '{quant}' -- cannot combine"
-        n += z["n"]; s1 += z["s1"]; s2 += z["s2"]
+        n += z["n"]
+        s1 += z["s1"]
+        s2 += z["s2"]
         ntr += int(z["n_transits"])
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    np.savez_compressed(args.out, n=n, s1=s1, s2=s2, nside=NSIDE, n_transits=ntr,
-                        quantity=quant)
-    print(f"{args.out}: combined {len(args.inputs)} maps, {int(n.sum())} samples, "
-          f"{int((n > 0).sum())} pixels hit")
+    np.savez_compressed(
+        args.out, n=n, s1=s1, s2=s2, nside=NSIDE, n_transits=ntr, quantity=quant
+    )
+    print(
+        f"{args.out}: combined {len(args.inputs)} maps, {int(n.sum())} samples, "
+        f"{int((n > 0).sum())} pixels hit"
+    )
 
 
 def _sky_grid(npx):
@@ -169,7 +204,7 @@ def _sky_grid(npx):
     with imshow(origin='lower', extent=[-1, 1, -1, 1]).
     """
     u = np.linspace(-1.0, 1.0, npx)
-    X, Y = np.meshgrid(u, u)          # +X east, +Y north
+    X, Y = np.meshgrid(u, u)  # +X east, +Y north
     R = np.hypot(X, Y)
     inside = R <= 1.0
     el = np.degrees(np.arccos(np.clip(R, 0.0, 1.0)))
@@ -186,6 +221,7 @@ def _sky_xy(az, el):
 
 def _sky_image(vals, el, az, inside, npx):
     import healpy as hp
+
     img = np.full((npx, npx), np.nan)
     pix = hp.ang2pix(NSIDE, np.radians(90.0 - el[inside]), np.radians(az[inside]))
     img[inside] = vals[pix]
@@ -193,8 +229,10 @@ def _sky_image(vals, el, az, inside, npx):
 
 
 def _sky_axes(ax, title):
-    ax.set_xlim(-1.08, 1.08); ax.set_ylim(-1.08, 1.08)
-    ax.set_aspect("equal"); ax.axis("off")
+    ax.set_xlim(-1.08, 1.08)
+    ax.set_ylim(-1.08, 1.08)
+    ax.set_aspect("equal")
+    ax.axis("off")
     ax.set_title(title, fontsize=10)
     th = np.linspace(0, 2 * np.pi, 361)
     for el_ring in (0, 30, 60):
@@ -202,17 +240,28 @@ def _sky_axes(ax, title):
         ax.plot(r * np.sin(th), r * np.cos(th), color="0.5", lw=0.5, alpha=0.6)
     for a in range(0, 360, 45):
         r = np.array([0.0, 1.0])
-        ax.plot(r * np.sin(np.radians(a)), r * np.cos(np.radians(a)),
-                color="0.5", lw=0.4, alpha=0.4)
-    for lab, (x, y) in (("N", (0, 1.045)), ("E", (1.045, 0)),
-                        ("S", (0, -1.045)), ("W", (-1.045, 0))):
+        ax.plot(
+            r * np.sin(np.radians(a)),
+            r * np.cos(np.radians(a)),
+            color="0.5",
+            lw=0.4,
+            alpha=0.4,
+        )
+    for lab, (x, y) in (
+        ("N", (0, 1.045)),
+        ("E", (1.045, 0)),
+        ("S", (0, -1.045)),
+        ("W", (-1.045, 0)),
+    ):
         ax.text(x, y, lab, ha="center", va="center", fontsize=9, color="0.25")
 
 
 def cmd_render(args):
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     z = np.load(args.map)
     n, s1, s2 = z["n"], z["s1"], z["s2"]
     quant = str(z["quantity"]) if "quantity" in z.files else "coh"
@@ -228,17 +277,29 @@ def cmd_render(args):
     el, az, inside = _sky_grid(npx)
     fig, axs = plt.subplots(1, 3, figsize=(15, 5.4))
     est = "coherent" if quant == "coh" else "incoherent"
-    panels = [(mean, f"mean C/N0 ({est}, dB-Hz)", "viridis", args.vmin, args.vmax),
-              (std, "per-pixel scatter (dB)", "magma", 0.0, args.stdmax),
-              (hits, "hits", "cividis", None, None)]
+    panels = [
+        (mean, f"mean C/N0 ({est}, dB-Hz)", "viridis", args.vmin, args.vmax),
+        (std, "per-pixel scatter (dB)", "magma", 0.0, args.stdmax),
+        (hits, "hits", "cividis", None, None),
+    ]
     for ax, (vals, title, cmap, lo, hi) in zip(axs, panels):
         img = _sky_image(vals, el, az, inside, npx)
-        im = ax.imshow(img, origin="lower", extent=[-1, 1, -1, 1], cmap=cmap,
-                       vmin=lo, vmax=hi, interpolation="nearest")
+        im = ax.imshow(
+            img,
+            origin="lower",
+            extent=[-1, 1, -1, 1],
+            cmap=cmap,
+            vmin=lo,
+            vmax=hi,
+            interpolation="nearest",
+        )
         _sky_axes(ax, title)
         fig.colorbar(im, ax=ax, fraction=0.045, pad=0.02)
-    fig.suptitle(f"{args.title}   ({int(n.sum())} samples, "
-                 f"{int(m.sum())} pixels, nside {NSIDE})", fontsize=11)
+    fig.suptitle(
+        f"{args.title}   ({int(n.sum())} samples, "
+        f"{int(m.sum())} pixels, nside {NSIDE})",
+        fontsize=11,
+    )
     os.makedirs(os.path.dirname(args.png) or ".", exist_ok=True)
     fig.savefig(args.png, dpi=110, bbox_inches="tight")
     plt.close(fig)
@@ -247,8 +308,11 @@ def cmd_render(args):
 
 def _load_points(pattern, quantity):
     """All transit samples under a glob, time-sorted, with per-sample prn."""
-    files = sorted(glob.glob(pattern)) if isinstance(pattern, str) else \
-        sorted(sum([glob.glob(p) for p in pattern], []))
+    files = (
+        sorted(glob.glob(pattern))
+        if isinstance(pattern, str)
+        else sorted(sum([glob.glob(p) for p in pattern], []))
+    )
     if not files:
         raise SystemExit(f"no transits matched {pattern}")
     T, AZ, EL, Q, PRN, TAG = [], [], [], [], [], []
@@ -256,19 +320,29 @@ def _load_points(pattern, quantity):
         z = np.load(f)
         q = _load_q(z, quantity, f)
         good = np.isfinite(q)
-        T.append(z["t"][good]); AZ.append(z["az"][good]); EL.append(z["el"][good])
+        T.append(z["t"][good])
+        AZ.append(z["az"][good])
+        EL.append(z["el"][good])
         Q.append(q[good])
         PRN.append(np.full(int(good.sum()), int(z["prn"])))
         TAG.append(np.full(int(good.sum()), str(z["tag"])))
-    T = np.concatenate(T); o = np.argsort(T)
-    return dict(t=T[o], az=np.concatenate(AZ)[o], el=np.concatenate(EL)[o],
-                q=np.concatenate(Q)[o], prn=np.concatenate(PRN)[o],
-                tag=np.concatenate(TAG)[o], n_files=len(files))
+    T = np.concatenate(T)
+    o = np.argsort(T)
+    return dict(
+        t=T[o],
+        az=np.concatenate(AZ)[o],
+        el=np.concatenate(EL)[o],
+        q=np.concatenate(Q)[o],
+        prn=np.concatenate(PRN)[o],
+        tag=np.concatenate(TAG)[o],
+        n_files=len(files),
+    )
 
 
 def cmd_movie(args):
     import healpy as hp
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import cm, colors
@@ -278,8 +352,9 @@ def cmd_movie(args):
     t, npx = P["t"], args.npx
     el_g, az_g, inside = _sky_grid(npx)
     pix_g = np.full((npx, npx), -1)
-    pix_g[inside] = hp.ang2pix(NSIDE, np.radians(90.0 - el_g[inside]),
-                               np.radians(az_g[inside]))
+    pix_g[inside] = hp.ang2pix(
+        NSIDE, np.radians(90.0 - el_g[inside]), np.radians(az_g[inside])
+    )
     pix_pt = hp.ang2pix(NSIDE, np.radians(90.0 - P["el"]), np.radians(P["az"]))
     sx, sy = _sky_xy(P["az"], P["el"])
 
@@ -303,12 +378,12 @@ def cmd_movie(args):
         nxt = cur + width
         lo = int(np.searchsorted(t, cur, "left"))
         hi = int(np.searchsorted(t, nxt, "left"))
-        if hi > lo:                       # frame has samples: spend one
+        if hi > lo:  # frame has samples: spend one
             edge_t.append(nxt)
             spans.append(width)
             k += 1
             cur = nxt
-        else:                             # empty: jump the gap without spending a frame
+        else:  # empty: jump the gap without spending a frame
             if lo >= len(t):
                 break
             cur = float(t[lo])
@@ -327,7 +402,7 @@ def cmd_movie(args):
         tt = t[sel]
         if len(tt) > 8:
             d = np.diff(tt)
-            d = d[(d > 0) & (d < 60.0)]   # drop restart gaps
+            d = d[(d > 0) & (d < 60.0)]  # drop restart gaps
             if len(d):
                 dts.append(np.median(d))
     dwell = float(np.median(dts)) if dts else float("nan")
@@ -346,8 +421,9 @@ def cmd_movie(args):
     cax = fig.add_axes([0.855, 0.10, 0.025, 0.72])
     # ONCE, not per frame: a fresh colorbar each frame stacks transforms on cax and
     # blows the recursion limit a few hundred frames in. The norm is fixed anyway.
-    fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
-                 label="mean C/N0 (dB-Hz)")
+    fig.colorbar(
+        cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax, label="mean C/N0 (dB-Hz)"
+    )
     try:
         for k in range(n_frames):
             lo, hi = edges[k], edges[k + 1]
@@ -359,8 +435,14 @@ def cmd_movie(args):
             img = np.full((npx, npx), np.nan)
             img[inside] = mean[pix_g[inside]]
             ax.clear()
-            ax.imshow(img, origin="lower", extent=[-1, 1, -1, 1], cmap=cmap,
-                      norm=norm, interpolation="nearest")
+            ax.imshow(
+                img,
+                origin="lower",
+                extent=[-1, 1, -1, 1],
+                cmap=cmap,
+                norm=norm,
+                interpolation="nearest",
+            )
             # Trail: everything within --tail of the frame's last sample, so a
             # satellite shows where it just came from; head marker + PRN label.
             t_now = t[hi - 1]
@@ -379,45 +461,76 @@ def cmd_movie(args):
                 if t_now - t[i] > fresh:
                     continue
                 ax.plot(sx[i], sy[i], "o", ms=6, mfc="white", mec="black", mew=1.0)
-                ax.text(sx[i] + 0.035, sy[i] + 0.025, f"{tag}{prn:02d}",
-                        color="white", fontsize=7,
-                        path_effects=[pe.withStroke(linewidth=1.6, foreground="black")])
+                ax.text(
+                    sx[i] + 0.035,
+                    sy[i] + 0.025,
+                    f"{tag}{prn:02d}",
+                    color="white",
+                    fontsize=7,
+                    path_effects=[pe.withStroke(linewidth=1.6, foreground="black")],
+                )
             when = np.datetime64(int(t_now), "s")
             # Integration = samples x per-sample dwell (see `dwell` above), plus the
             # current playback speed so the ramp is legible rather than mysterious.
             n_s = int(n_acc.sum())
             integ = n_s * dwell / 3600.0
             speed = spans[k] / args.step if k < len(spans) else 1.0
-            _sky_axes(ax, f"{args.title}\n{str(when).replace('T', ' ')} UTC   "
-                          f"{n_s} samples x {dwell:.1f}s = {integ:.1f} h integrated   "
-                          f"{100.0 * m.sum() / n_vis:.0f}% of sky   "
-                          f"[{speed:.0f}x]")
+            _sky_axes(
+                ax,
+                f"{args.title}\n{str(when).replace('T', ' ')} UTC   "
+                f"{n_s} samples x {dwell:.1f}s = {integ:.1f} h integrated   "
+                f"{100.0 * m.sum() / n_vis:.0f}% of sky   "
+                f"[{speed:.0f}x]",
+            )
             fig.savefig(os.path.join(tmp, f"f{k:05d}.png"))
             if k % 100 == 0:
                 print(f"  frame {k}/{n_frames}", flush=True)
         plt.close(fig)
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate",
-                        str(args.fps), "-i", os.path.join(tmp, "f%05d.png"),
-                        "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p",
-                        args.out], check=True)
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-framerate",
+                str(args.fps),
+                "-i",
+                os.path.join(tmp, "f%05d.png"),
+                "-c:v",
+                "libx264",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                args.out,
+            ],
+            check=True,
+        )
     finally:
         for f in glob.glob(os.path.join(tmp, "*.png")):
             os.remove(f)
         os.rmdir(tmp)
-    print(f"{args.out}: {n_frames} frames from {P['n_files']} transits "
-          f"({len(t)} samples, dwell {dwell:.1f}s -> {len(t) * dwell / 3600.0:.1f} h), "
-          f"{n_frames / args.fps:.0f} s video, "
-          f"data span {(t[-1] - t[0]) / 3600.0:.1f} h")
+    print(
+        f"{args.out}: {n_frames} frames from {P['n_files']} transits "
+        f"({len(t)} samples, dwell {dwell:.1f}s -> {len(t) * dwell / 3600.0:.1f} h), "
+        f"{n_frames / args.fps:.0f} s video, "
+        f"data span {(t[-1] - t[0]) / 3600.0:.1f} h"
+    )
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("transits")
-    p.add_argument("--obs", required=True, nargs="+",
-                   help="one or more obs jsonl (concatenated; rows are re-sorted)")
+    p.add_argument(
+        "--obs",
+        required=True,
+        nargs="+",
+        help="one or more obs jsonl (concatenated; rows are re-sorted)",
+    )
     p.add_argument("--tag", required=True, help="constellation tag (G/E/C/L)")
     p.add_argument("--night", required=True)
     p.add_argument("--tmin", type=float, required=True)
@@ -443,17 +556,24 @@ def main():
     p.add_argument("--npx", type=int, default=420)
     p.set_defaults(fn=cmd_render)
     p = sub.add_parser("movie")
-    p.add_argument("--transits", required=True, nargs="+", help="glob(s) of transit npzs")
+    p.add_argument(
+        "--transits", required=True, nargs="+", help="glob(s) of transit npzs"
+    )
     p.add_argument("--out", required=True)
     p.add_argument("--quantity", choices=list(QUANTITY), default="coh")
     p.add_argument("--step", type=float, default=60.0, help="data seconds per frame")
     p.add_argument("--tail", type=float, default=1800.0, help="trail length, seconds")
     p.add_argument("--fps", type=int, default=30)
-    p.add_argument("--ramp-s", type=float, default=15.0,
-                   help="VIDEO seconds at each speed tier before the step doubles "
-                        "(0 = constant cadence)")
-    p.add_argument("--ramp-max", type=int, default=2,
-                   help="max doublings (2 = 1x, 2x, 4x)")
+    p.add_argument(
+        "--ramp-s",
+        type=float,
+        default=15.0,
+        help="VIDEO seconds at each speed tier before the step doubles "
+        "(0 = constant cadence)",
+    )
+    p.add_argument(
+        "--ramp-max", type=int, default=2, help="max doublings (2 = 1x, 2x, 4x)"
+    )
     p.add_argument("--vmin", type=float, default=None)
     p.add_argument("--vmax", type=float, default=None)
     p.add_argument("--npx", type=int, default=700)

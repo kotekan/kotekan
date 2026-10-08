@@ -21,25 +21,23 @@
  * coarse-time blocks). Data: random 4+4 offset-encoded, values in [-7,7] (never -8).
  */
 
-#include <n2k/Correlator.hpp>
-#include <n2k_dual/DualCorrelator.hpp>
-
-#include <cuda_runtime.h>
-
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cuda_runtime.h>
+#include <n2k/Correlator.hpp>
+#include <n2k_dual/DualCorrelator.hpp>
 #include <random>
 #include <vector>
 
-#define CK(x)                                                                                     \
-    do {                                                                                          \
-        cudaError_t e_ = (x);                                                                     \
-        if (e_ != cudaSuccess) {                                                                  \
-            printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__);       \
-            exit(1);                                                                              \
-        }                                                                                         \
+#define CK(x)                                                                                      \
+    do {                                                                                           \
+        cudaError_t e_ = (x);                                                                      \
+        if (e_ != cudaSuccess) {                                                                   \
+            printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__);        \
+            exit(1);                                                                               \
+        }                                                                                          \
     } while (0)
 
 static constexpr int NF = 8;
@@ -170,8 +168,8 @@ static bool tiles_aa(int ihi, int jhi) {
 static bool tiles_mixed_bb(int ihi, int jhi) {
     return !tiles_aa(ihi, jhi);
 }
-/// The block classes the GNSS chain actually SHIPS with (31896a862:docs/CHORD_GPU_TODO.md 1b): AA is
-/// production's N^2 prefix, MIXED is the despread. BB (synth x synth) has no consumer -- its
+/// The block classes the GNSS chain actually SHIPS with (31896a862:docs/CHORD_GPU_TODO.md 1b): AA
+/// is production's N^2 prefix, MIXED is the despread. BB (synth x synth) has no consumer -- its
 /// only reader threw the value away -- so it is masked off. Gate [5] masks off AA, which is
 /// the MIRROR of this; a mask path can be right in one direction and wrong in the other, so
 /// the shipped combination gets its own case.
@@ -183,8 +181,8 @@ static bool tiles_aa_mixed(int ihi, int jhi) {
 }
 
 static int report(const char* name, const CmpStats& st) {
-    printf("[%s] %-42s : %ld entries, %ld mismatches\n", st.bad ? "FAIL" : " OK ", name,
-           st.checked, st.bad);
+    printf("[%s] %-42s : %ld entries, %ld mismatches\n", st.bad ? "FAIL" : " OK ", name, st.checked,
+           st.bad);
     return st.bad ? 1 : 0;
 }
 
@@ -322,7 +320,8 @@ int main(int argc, char** argv) {
                         if (!tiles_bb_only(ihi, jhi))
                             continue;
                         const size_t o = ((size_t)(t * NF + f) * ntiles(NS)
-                                          + (size_t)(ihi * (ihi + 1) / 2 + jhi)) * 512;
+                                          + (size_t)(ihi * (ihi + 1) / 2 + jhi))
+                                         * 512;
                         for (int c = 0; c < 512; c++)
                             (hvam[o + c] == (int)0xa5a5a5a5 ? untouched : touched)++;
                     }
@@ -489,8 +488,8 @@ int main(int argc, char** argv) {
                     }
                 }
             char name[80];
-            snprintf(name, sizeof name, "[9.%d] chain %d rows of dual(128+384) == dual(128+128)",
-                     c, c);
+            snprintf(name, sizeof name, "[9.%d] chain %d rows of dual(128+384) == dual(128+128)", c,
+                     c);
             fails += report(name, st);
         }
     }

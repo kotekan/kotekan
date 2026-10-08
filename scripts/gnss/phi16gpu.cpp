@@ -26,18 +26,22 @@
 #include "cudaGnssDespreadKernel.hpp" // sizeof(DespreadJob) for the device arena
 #include "gnssChannelizedReplica.hpp"
 #include "gnssSignal.hpp"
+
 #include <chrono>
 #include <cmath>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cuda_runtime.h>
 #include <random>
 #include <vector>
-#include <cuda_runtime.h>
 
 static void ck(cudaError_t e, const char* what) {
-    if (e != cudaSuccess) { printf("CUDA %s: %s\n", what, cudaGetErrorString(e)); exit(2); }
+    if (e != cudaSuccess) {
+        printf("CUDA %s: %s\n", what, cudaGetErrorString(e));
+        exit(2);
+    }
 }
 
 int main(int argc, char** argv) {
@@ -48,11 +52,14 @@ int main(int argc, char** argv) {
     const int SPEC_LEN = 8192, NTAPS = 4, N_HOPS = 2048;
 
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
-    if (!sig) { printf("no GPS_L5_Q\n"); return 2; }
+    if (!sig) {
+        printf("no GPS_L5_Q\n");
+        return 2;
+    }
     std::vector<int> prns;
-    for (int i = 0; i < n_prn; ++i) prns.push_back(1 + i);
-    gnss::ChannelizedReplicaBank bank(*sig, FS, F_OFF, SPEC_LEN, NTAPS, dsp::Window::Hamming,
-                                      prns);
+    for (int i = 0; i < n_prn; ++i)
+        prns.push_back(1 + i);
+    gnss::ChannelizedReplicaBank bank(*sig, FS, F_OFF, SPEC_LEN, NTAPS, dsp::Window::Hamming, prns);
     const std::vector<int> chans{5972, 5988, 6004, 6020, 6036, 6052, 6068};
     const int n_chan = (int)chans.size();
 
@@ -87,8 +94,8 @@ int main(int argc, char** argv) {
         ck(cudaMemcpy(en.data(), d_energy, nen * sizeof(double), cudaMemcpyDeviceToHost), "de");
     };
 
-    printf("phi16gpu: %d PRNs x %d channels x %d hops (production record shape)\n", n_prn,
-           n_chan, N_HOPS);
+    printf("phi16gpu: %d PRNs x %d channels x %d hops (production record shape)\n", n_prn, n_chan,
+           N_HOPS);
     std::vector<std::complex<float>> w32, w32b, w16;
     std::vector<double> e32, e32b, e16;
     eng.set_phi_fp16(false);
@@ -100,11 +107,18 @@ int main(int argc, char** argv) {
 
     const bool took = eng.set_phi_fp16(true);
     printf("  set_phi_fp16(true) -> %s\n", took ? "IN EFFECT" : "REFUSED");
-    if (!took) { printf("  cannot gate what did not arm\n"); return 2; }
+    if (!took) {
+        printf("  cannot gate what did not arm\n");
+        return 2;
+    }
 
     // Guardrails while armed.
     bool threw = false;
-    try { (void)eng.despread_batch(specs); } catch (const std::exception&) { threw = true; }
+    try {
+        (void)eng.despread_batch(specs);
+    } catch (const std::exception&) {
+        threw = true;
+    }
     printf("  despread_batch under fp16: %s\n", threw ? "THREW (correct)" : "RAN <-- FAIL");
     const bool sh = eng.set_shared_phi(true);
     printf("  set_shared_phi under fp16: %s\n", sh ? "TOOK <-- FAIL" : "REFUSED (correct)");
@@ -116,7 +130,8 @@ int main(int argc, char** argv) {
     std::mt19937 rng(9876);
     std::normal_distribution<float> g(0.f, 1.f);
     std::vector<std::complex<float>> data((size_t)n_chan * N_HOPS);
-    for (auto& v : data) v = std::complex<float>(g(rng), g(rng));
+    for (auto& v : data)
+        v = std::complex<float>(g(rng), g(rng));
 
     printf("\n  %-4s %9s   %11s %11s %11s\n", "PRN", "doppler", "wave rel", "energy rel",
            "corr rel");
@@ -150,15 +165,16 @@ int main(int argc, char** argv) {
         // corr on RANDOM data is a noise-noise quotient and can only be looser; 1e-2 catches a
         // wrong-table/wrong-branch failure (those read ~1e0) without flagging statistics.
         const bool fail = wrel > 2e-3 || erel > 2e-3 || crel > 1e-2;
-        if (fail) bad++;
+        if (fail)
+            bad++;
         worst_w = std::max(worst_w, wrel);
         worst_e = std::max(worst_e, erel);
         worst_c = std::max(worst_c, crel);
         printf("  %-4d %+9.0f   %11.3e %11.3e %11.3e%s\n", prns[(size_t)i],
                specs[(size_t)i].doppler_hz, wrel, erel, crel, fail ? "   <-- FAIL" : "");
     }
-    printf("  worst: wave %.3e  energy %.3e  corr %.3e  (storage floor 3.3e-4)\n", worst_w,
-           worst_e, worst_c);
+    printf("  worst: wave %.3e  energy %.3e  corr %.3e  (storage floor 3.3e-4)\n", worst_w, worst_e,
+           worst_c);
 
     // Round-trip: disarm and the fp32 answer must come back byte-for-byte.
     eng.set_phi_fp16(false);

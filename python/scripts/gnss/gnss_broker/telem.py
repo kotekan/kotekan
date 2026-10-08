@@ -57,9 +57,9 @@ _HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
 _HDR_BYTES = 112
 _MAX_CHAN = 8
 _CHAN_FLOATS = 9
-CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2          # PROMPT (unchanged from v2)
-CHAN_E_RE, CHAN_E_IM, CHAN_E_ENERGY = 3, 4, 5    # EARLY
-CHAN_L_RE, CHAN_L_IM, CHAN_L_ENERGY = 6, 7, 8    # LATE
+CHAN_RE, CHAN_IM, CHAN_ENERGY = 0, 1, 2  # PROMPT (unchanged from v2)
+CHAN_E_RE, CHAN_E_IM, CHAN_E_ENERGY = 3, 4, 5  # EARLY
+CHAN_L_RE, CHAN_L_IM, CHAN_L_ENERGY = 6, 7, 8  # LATE
 # gnssRecord.hpp RECORD_FLOATS. Verified against every frame's own n_row field, because a
 # tracker rebuilt with a wider record and a broker that was not is precisely the silent
 # mis-stride this transport exists to stop tolerating.
@@ -119,18 +119,53 @@ class TelemFrame(object):
     actually asks about.
     """
 
-    __slots__ = ("chain", "inst", "win", "seq", "n_rec", "n_prn", "n_chan", "n_elem",
-                 "hops_per_record", "fft_len", "wstart0", "utc0", "present", "_buf", "_idx",
-                 "rx", "max_chan", "row_total", "chan_ids")
+    __slots__ = (
+        "chain",
+        "inst",
+        "win",
+        "seq",
+        "n_rec",
+        "n_prn",
+        "n_chan",
+        "n_elem",
+        "hops_per_record",
+        "fft_len",
+        "wstart0",
+        "utc0",
+        "present",
+        "_buf",
+        "_idx",
+        "rx",
+        "max_chan",
+        "row_total",
+        "chan_ids",
+    )
 
     def __init__(self, hdr, buf, rx):
-        (_magic, _ver, self.n_rec, self.n_prn, _n_row, self.n_chan, self.n_elem,
-         self.hops_per_record, self.fft_len, self.win, self.seq, self.wstart0, self.utc0,
-         self.present, self.max_chan, self.row_total, chain, inst) = hdr[:18]
+        (
+            _magic,
+            _ver,
+            self.n_rec,
+            self.n_prn,
+            _n_row,
+            self.n_chan,
+            self.n_elem,
+            self.hops_per_record,
+            self.fft_len,
+            self.win,
+            self.seq,
+            self.wstart0,
+            self.utc0,
+            self.present,
+            self.max_chan,
+            self.row_total,
+            chain,
+            inst,
+        ) = hdr[:18]
         # THE COMB'S COLUMN LABELS ride on the frame, never configured here: a configured copy
         # is one more thing that can drift out of step with the node it describes, and a delay
         # fit over mislabelled frequencies is confidently wrong rather than absent.
-        self.chan_ids = list(hdr[18:18 + _MAX_CHAN])[:self.n_chan]
+        self.chan_ids = list(hdr[18 : 18 + _MAX_CHAN])[: self.n_chan]
         self.chain = chain.split(b"\0", 1)[0].decode("ascii", "replace")
         self.inst = inst.split(b"\0", 1)[0].decode("ascii", "replace")
         self._buf = buf
@@ -173,7 +208,7 @@ class TelemFrame(object):
             return None
         off = _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4
         a = array.array("f")
-        a.frombytes(self._buf[off:off + _ROW_FLOATS * 4])   # the record header only
+        a.frombytes(self._buf[off : off + _ROW_FLOATS * 4])  # the record header only
         return a
 
     def comb(self, r, prn):
@@ -204,16 +239,23 @@ class TelemFrame(object):
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r) or not self.n_chan:
             return []
-        base = _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + _ROW_FLOATS * 4
+        base = (
+            _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + _ROW_FLOATS * 4
+        )
         a = array.array("f")
-        a.frombytes(self._buf[base:base + self.n_chan * _CHAN_FLOATS * 4])
+        a.frombytes(self._buf[base : base + self.n_chan * _CHAN_FLOATS * 4])
         out = []
         for ch in range(self.n_chan):
             b = ch * _CHAN_FLOATS
             e = a[b + CHAN_ENERGY]
             if e > 0.0:
-                out.append((self.chan_ids[ch],
-                            complex(a[b + CHAN_RE] / e, a[b + CHAN_IM] / e), e))
+                out.append(
+                    (
+                        self.chan_ids[ch],
+                        complex(a[b + CHAN_RE] / e, a[b + CHAN_IM] / e),
+                        e,
+                    )
+                )
         return out
 
     def comb_epl(self, r, prn):
@@ -227,9 +269,11 @@ class TelemFrame(object):
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r) or not self.n_chan:
             return []
-        base = _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + _ROW_FLOATS * 4
+        base = (
+            _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + _ROW_FLOATS * 4
+        )
         a = array.array("f")
-        a.frombytes(self._buf[base:base + self.n_chan * _CHAN_FLOATS * 4])
+        a.frombytes(self._buf[base : base + self.n_chan * _CHAN_FLOATS * 4])
         out = []
         for ch in range(self.n_chan):
             b = ch * _CHAN_FLOATS
@@ -238,11 +282,15 @@ class TelemFrame(object):
                 continue
             eE = a[b + CHAN_E_ENERGY] or eP
             eL = a[b + CHAN_L_ENERGY] or eP
-            out.append((self.chan_ids[ch],
-                        complex(a[b + CHAN_E_RE] / eE, a[b + CHAN_E_IM] / eE),
-                        complex(a[b + CHAN_RE] / eP, a[b + CHAN_IM] / eP),
-                        complex(a[b + CHAN_L_RE] / eL, a[b + CHAN_L_IM] / eL),
-                        (eE, eP, eL)))
+            out.append(
+                (
+                    self.chan_ids[ch],
+                    complex(a[b + CHAN_E_RE] / eE, a[b + CHAN_E_IM] / eE),
+                    complex(a[b + CHAN_RE] / eP, a[b + CHAN_IM] / eP),
+                    complex(a[b + CHAN_L_RE] / eL, a[b + CHAN_L_IM] / eL),
+                    (eE, eP, eL),
+                )
+            )
         return out
 
     def utc(self, r, prn):
@@ -276,10 +324,20 @@ class TelemClient(object):
     takes the ring lock. Nothing the consumers do can stop the socket draining.
     """
 
-    def __init__(self, host="127.0.0.1", port=11061, depth=64, retry_s=5.0, chains=None,
-                 read_timeout_s=30.0, epoch_margin=64, epoch_strikes=8,
-                 pending_max_bytes=128 << 20, fast_retry_after_s=10.0,
-                 rcvbuf_bytes=32 << 20):
+    def __init__(
+        self,
+        host="127.0.0.1",
+        port=11061,
+        depth=64,
+        retry_s=5.0,
+        chains=None,
+        read_timeout_s=30.0,
+        epoch_margin=64,
+        epoch_strikes=8,
+        pending_max_bytes=128 << 20,
+        fast_retry_after_s=10.0,
+        rcvbuf_bytes=32 << 20,
+    ):
         self.host = host
         self.port = port
         self.depth = int(depth)
@@ -289,8 +347,12 @@ class TelemClient(object):
         self.epoch_margin = int(epoch_margin)
         self.epoch_strikes = int(epoch_strikes)
         self.epoch_resets = 0
-        self.far_behind = 0    # frames more than epoch_margin behind the newest window (counted, kept)
-        self._backwards = {}   # chain -> consecutive such frames; epoch_strikes of them re-anchor
+        self.far_behind = (
+            0  # frames more than epoch_margin behind the newest window (counted, kept)
+        )
+        self._backwards = (
+            {}
+        )  # chain -> consecutive such frames; epoch_strikes of them re-anchor
         # Optional chain filter, applied at PARSE time. The stream carries all five chains on
         # one connection, so a long collection (tens of seconds of records) otherwise costs 5x
         # the memory for data the caller will throw away -- which is the difference between a
@@ -320,8 +382,10 @@ class TelemClient(object):
         self._pending_bytes = 0
         self._pending_cv = threading.Condition(threading.Lock())
         self.pending_max_bytes = int(pending_max_bytes)
-        self.pending_peak = 0     # most frames ever queued at once
-        self.pending_dropped = 0  # frames discarded because the queue was over its bound
+        self.pending_peak = 0  # most frames ever queued at once
+        self.pending_dropped = (
+            0  # frames discarded because the queue was over its bound
+        )
         # A connection that LIVED and was then closed by the gather is reconnected at once: a
         # dropped client is a momentary stall on our side, and every second before the
         # reconnect is a second of records lost on every chain. The backoff (retry_s) is for a
@@ -339,15 +403,16 @@ class TelemClient(object):
         self.bad = 0
         self.connects = 0
         self.last_rx = 0.0
-        self._seen_seq = {}   # (chain, inst) -> last seq
+        self._seen_seq = {}  # (chain, inst) -> last seq
         self.gaps = 0
 
     # -- lifecycle ---------------------------------------------------------------------------
     def start(self):
         if self._thread is not None:
             return self
-        self._store_thread = threading.Thread(target=self._store_loop, name="telem-store",
-                                              daemon=True)
+        self._store_thread = threading.Thread(
+            target=self._store_loop, name="telem-store", daemon=True
+        )
         self._store_thread.start()
         self._thread = threading.Thread(target=self._run, name="telem", daemon=True)
         self._thread.start()
@@ -396,20 +461,30 @@ class TelemClient(object):
                 # _read_loop): silence is now tolerated, so the ONLY thing left to notice a
                 # gather whose host vanished without closing the socket is the kernel's probe.
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                for opt, val in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 10),
-                                 ("TCP_KEEPCNT", 3)):
+                for opt, val in (
+                    ("TCP_KEEPIDLE", 30),
+                    ("TCP_KEEPINTVL", 10),
+                    ("TCP_KEEPCNT", 3),
+                ):
                     if hasattr(socket, opt):
                         sock.setsockopt(socket.IPPROTO_TCP, getattr(socket, opt), val)
                 self.connected = True
                 self.connects += 1
                 t_up = time.monotonic()
-                _log("telem: connected to gather %s:%d (connection #%d, receive buffer "
-                     "%.1f MB%s)"
-                     % (self.host, self.port, self.connects,
+                _log(
+                    "telem: connected to gather %s:%d (connection #%d, receive buffer "
+                    "%.1f MB%s)"
+                    % (
+                        self.host,
+                        self.port,
+                        self.connects,
                         (self.rcvbuf_actual or 0) / 1048576.0,
-                        "" if (self.rcvbuf_actual or 0) >= self.rcvbuf_bytes
+                        ""
+                        if (self.rcvbuf_actual or 0) >= self.rcvbuf_bytes
                         else " -- CLAMPED by net.core.rmem_max, which is the ceiling on how "
-                             "long a reader stall the link survives"))
+                        "long a reader stall the link survives",
+                    )
+                )
                 self._read_loop(sock)
             except Exception as e:
                 lived = None if t_up is None else time.monotonic() - t_up
@@ -419,13 +494,18 @@ class TelemClient(object):
                     self.fast_reconnects += 1
                     # An EVENT line, not rate-limited: each one is a fleet-wide arc break and
                     # the autopsy needs every timestamp.
-                    _log("telem: gather %s:%d closed a connection that lived %.0f s (%s) -- "
-                         "reconnecting now; the frames in between are lost on every chain and "
-                         "the REST path is unaffected" % (self.host, self.port, lived, e))
+                    _log(
+                        "telem: gather %s:%d closed a connection that lived %.0f s (%s) -- "
+                        "reconnecting now; the frames in between are lost on every chain and "
+                        "the REST path is unaffected" % (self.host, self.port, lived, e)
+                    )
                 else:
-                    _log_rl("telem-conn", "telem: gather %s:%d unavailable (%s) -- retry in "
-                            "%.0f s; the REST path is unaffected"
-                            % (self.host, self.port, e, self.retry_s))
+                    _log_rl(
+                        "telem-conn",
+                        "telem: gather %s:%d unavailable (%s) -- retry in "
+                        "%.0f s; the REST path is unaffected"
+                        % (self.host, self.port, e, self.retry_s),
+                    )
             finally:
                 self.connected = False
                 if sock is not None:
@@ -495,7 +575,9 @@ class TelemClient(object):
                 self.pending_peak = n
             # Over the bound: shed the OLDEST, keep the connection. Never shed the frame just
             # appended -- a bound smaller than one frame must still let frames through.
-            while self._pending_bytes > self.pending_max_bytes and len(self._pending) > 1:
+            while (
+                self._pending_bytes > self.pending_max_bytes and len(self._pending) > 1
+            ):
                 old, _ = self._pending.popleft()
                 self._pending_bytes -= len(old)
                 self.pending_dropped += 1
@@ -519,15 +601,20 @@ class TelemClient(object):
                 self._parse_and_store(buf, rx)
             except Exception as e:  # one bad frame must not take the store thread down
                 self.bad += 1
-                _log_rl("telem-parse", "telem: dropping a frame the parser refused (%s)" % e)
+                _log_rl(
+                    "telem-parse", "telem: dropping a frame the parser refused (%s)" % e
+                )
 
     def _parse_and_store(self, buf, rx):
         hdr = _HDR.unpack_from(buf, 0)
         if hdr[0] != _MAGIC or hdr[1] != _VERSION or hdr[4] != _ROW_FLOATS:
             self.bad += 1
-            _log_rl("telem-bad", "telem: rejecting a frame (magic %#x v%d n_row %d, want "
-                    "%#x v%d %d) -- a tracker and this broker are on different builds"
-                    % (hdr[0], hdr[1], hdr[4], _MAGIC, _VERSION, _ROW_FLOATS))
+            _log_rl(
+                "telem-bad",
+                "telem: rejecting a frame (magic %#x v%d n_row %d, want "
+                "%#x v%d %d) -- a tracker and this broker are on different builds"
+                % (hdr[0], hdr[1], hdr[4], _MAGIC, _VERSION, _ROW_FLOATS),
+            )
             return
         # THE SHAPE IS THE SENDER'S AND IT IS CHECKED AGAINST THE LENGTH PREFIX. Senders
         # ship different widths (their own comb columns) and different row counts (their
@@ -535,13 +622,19 @@ class TelemClient(object):
         # bytes on the wire is exactly the failure that reads plausible numbers off the
         # wrong rows. n_rec, n_prn, max_chan, row_total are hdr[2], [3], [14], [15].
         length = len(buf)
-        if (hdr[14] > _MAX_CHAN or hdr[5] > hdr[14]
-                or hdr[15] != _ROW_FLOATS + hdr[14] * _CHAN_FLOATS
-                or _HDR_BYTES + hdr[2] * hdr[3] * hdr[15] * 4 != length):
+        if (
+            hdr[14] > _MAX_CHAN
+            or hdr[5] > hdr[14]
+            or hdr[15] != _ROW_FLOATS + hdr[14] * _CHAN_FLOATS
+            or _HDR_BYTES + hdr[2] * hdr[3] * hdr[15] * 4 != length
+        ):
             self.bad += 1
-            _log_rl("telem-shape", "telem: rejecting a frame whose header shape does not "
-                    "match its %d bytes (n_rec %d n_prn %d n_chan %d max_chan %d row_total "
-                    "%d)" % (length, hdr[2], hdr[3], hdr[5], hdr[14], hdr[15]))
+            _log_rl(
+                "telem-shape",
+                "telem: rejecting a frame whose header shape does not "
+                "match its %d bytes (n_rec %d n_prn %d n_chan %d max_chan %d row_total "
+                "%d)" % (length, hdr[2], hdr[3], hdr[5], hdr[14], hdr[15]),
+            )
             return
         self._store_frame(TelemFrame(hdr, buf, rx))
 
@@ -585,9 +678,11 @@ class TelemClient(object):
                     if self._backwards[f.chain] >= self.epoch_strikes:
                         self._backwards[f.chain] = 0
                         self.epoch_resets += 1
-                        _log("telem: chain %s window counter went back %d -> %d and stayed "
-                             "there: epoch reset #%d, ring cleared (an F-engine re-base)"
-                             % (f.chain, newest, f.win, self.epoch_resets))
+                        _log(
+                            "telem: chain %s window counter went back %d -> %d and stayed "
+                            "there: epoch reset #%d, ring cleared (an F-engine re-base)"
+                            % (f.chain, newest, f.win, self.epoch_resets)
+                        )
                         ring.clear()
                         newest = None
                 else:
@@ -641,7 +736,7 @@ class TelemClient(object):
         wins = self.windows(chain, lag=lag)
         if not wins:
             return {}, 0
-        wins = wins[-int(n_win):]
+        wins = wins[-int(n_win) :]
         want = None if prns is None else set(int(p) for p in prns)
         got = {}
         fleet_now = 0
@@ -664,7 +759,9 @@ class TelemClient(object):
                         if e <= 0.0:
                             continue
                         per.setdefault(prn, {})[hop] = (
-                            complex(row[REC_P_RE] / e, row[REC_P_IM] / e), e)
+                            complex(row[REC_P_RE] / e, row[REC_P_IM] / e),
+                            e,
+                        )
         return got, fleet_now
 
     def record_stream(self, chain, inst, prn, n_win=16, lag=1):
@@ -685,7 +782,7 @@ class TelemClient(object):
         out = []
         step = None
         prev_hop = None
-        for w in self.windows(chain, lag=lag)[-int(n_win):]:
+        for w in self.windows(chain, lag=lag)[-int(n_win) :]:
             f = self.frame_set(chain, w).get(inst)
             if f is None:
                 continue
@@ -707,17 +804,21 @@ class TelemClient(object):
                     if gap < 0:
                         gap = 0
                 prev_hop = hop
-                out.append({"hop": hop,
-                            "utc": f.utc(r, prn),
-                            "dphi_cmd": row[REC_CPHASE],
-                            "trim_inc": row[REC_TRIM_INC],
-                            "A": complex(row[REC_P_RE] / e, row[REC_P_IM] / e),
-                            "energy": e,
-                            "doppler_hz": row[REC_DOPPLER],
-                            "code_phase_chips": row[REC_CP],
-                            "e_pow": row[REC_E_ENERGY],
-                            "l_pow": row[REC_L_ENERGY],
-                            "gap": gap})
+                out.append(
+                    {
+                        "hop": hop,
+                        "utc": f.utc(r, prn),
+                        "dphi_cmd": row[REC_CPHASE],
+                        "trim_inc": row[REC_TRIM_INC],
+                        "A": complex(row[REC_P_RE] / e, row[REC_P_IM] / e),
+                        "energy": e,
+                        "doppler_hz": row[REC_DOPPLER],
+                        "code_phase_chips": row[REC_CP],
+                        "e_pow": row[REC_E_ENERGY],
+                        "l_pow": row[REC_L_ENERGY],
+                        "gap": gap,
+                    }
+                )
         return out
 
     def stats(self, stale_after_s=5.0):
@@ -745,30 +846,43 @@ class TelemClient(object):
                             last[inst] = win
                         if f.rx > seen.get(inst, 0.0):
                             seen[inst] = f.rx
-                live = {i: w for i, w in last.items()
-                        if stale_after_s <= 0 or (now - seen.get(i, 0.0)) <= stale_after_s}
+                live = {
+                    i: w
+                    for i, w in last.items()
+                    if stale_after_s <= 0 or (now - seen.get(i, 0.0)) <= stale_after_s
+                }
                 stale = sorted(set(last) - set(live))
-                row = {"instances": len(last), "live": len(live), "stale": stale,
-                       "windows_held": len(ring)}
+                row = {
+                    "instances": len(last),
+                    "live": len(live),
+                    "stale": stale,
+                    "windows_held": len(ring),
+                }
                 if live:
-                    row.update({"win_min": min(live.values()),
-                                "win_max": max(live.values()),
-                                "spread": max(live.values()) - min(live.values())})
+                    row.update(
+                        {
+                            "win_min": min(live.values()),
+                            "win_max": max(live.values()),
+                            "spread": max(live.values()) - min(live.values()),
+                        }
+                    )
                 per_chain[chain] = row
-            return {"connected": self.connected,
-                    "frames": self.frames,
-                    "gaps": self.gaps,
-                    "bad": self.bad,
-                    "far_behind": self.far_behind,
-                    "epoch_resets": self.epoch_resets,
-                    "connects": self.connects,
-                    "fast_reconnects": self.fast_reconnects,
-                    "rcvbuf": self.rcvbuf_actual,
-                    "pending": len(self._pending),
-                    "pending_peak": self.pending_peak,
-                    "pending_dropped": self.pending_dropped,
-                    "age_s": (now - self.last_rx) if self.last_rx else None,
-                    "chains": per_chain}
+            return {
+                "connected": self.connected,
+                "frames": self.frames,
+                "gaps": self.gaps,
+                "bad": self.bad,
+                "far_behind": self.far_behind,
+                "epoch_resets": self.epoch_resets,
+                "connects": self.connects,
+                "fast_reconnects": self.fast_reconnects,
+                "rcvbuf": self.rcvbuf_actual,
+                "pending": len(self._pending),
+                "pending_peak": self.pending_peak,
+                "pending_dropped": self.pending_dropped,
+                "age_s": (now - self.last_rx) if self.last_rx else None,
+                "chains": per_chain,
+            }
 
 
 _shared = {}
@@ -793,7 +907,9 @@ def shared_client(host, port, depth=256):
     with _shared_lock:
         c = _shared.get(key)
         if c is None:
-            c = _shared[key] = TelemClient(host=host, port=int(port), depth=depth).start()
+            c = _shared[key] = TelemClient(
+                host=host, port=int(port), depth=depth
+            ).start()
     return c
 
 

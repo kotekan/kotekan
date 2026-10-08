@@ -274,8 +274,8 @@ if(CUDAToolkit_FOUND)
     message(STATUS "${STAGES_INCLUDES}")
 endif()
 
-# GPU GNSS stages: only with CUDA; GNSS_CUDA enables the search's device paths.
-# One-way link stages -> kotekan_cuda (kernel only).
+# GPU GNSS stages: only with CUDA; GNSS_CUDA enables the search's device paths. One-way link stages
+# -> kotekan_cuda (kernel only).
 if(USE_CUDA)
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaDespread.cpp)
     # Host record assembler for the GPU tracking commands.

@@ -20,7 +20,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gnss_ephemeris import (group_delay_s, GAMMA_L1L5, GAMMA_E1E5A, GAMMA_E1E5B)
+from gnss_ephemeris import group_delay_s, GAMMA_L1L5, GAMMA_E1E5A, GAMMA_E1E5B
 
 NS = 1e-9
 
@@ -42,13 +42,17 @@ class TestGPS(unittest.TestCase):
         """IS-GPS-705: an L5 user owes gamma_15 * TGD, subtracted from the clock. The live
         median TGD is -8.38 ns, so the correction is POSITIVE ~+15 ns -- if this comes out
         negative the seeds move the wrong way by twice the term."""
-        self.assertAlmostEqual(group_delay_s(_g(tgd=-8.38 * NS), "gps_l5"),
-                               +GAMMA_L1L5 * 8.38 * NS, places=15)
+        self.assertAlmostEqual(
+            group_delay_s(_g(tgd=-8.38 * NS), "gps_l5"),
+            +GAMMA_L1L5 * 8.38 * NS,
+            places=15,
+        )
         self.assertAlmostEqual(GAMMA_L1L5, 1.79329, places=4)
 
     def test_l1_is_the_unscaled_term(self):
-        self.assertAlmostEqual(group_delay_s(_g(tgd=-8.38 * NS), "gps_l1"), +8.38 * NS,
-                               places=15)
+        self.assertAlmostEqual(
+            group_delay_s(_g(tgd=-8.38 * NS), "gps_l1"), +8.38 * NS, places=15
+        )
 
     def test_iodc_is_not_mistaken_for_a_second_delay(self):
         """orb[23] is IODC for GPS, not a group delay. A value of 7.0 (seconds!) must not
@@ -58,10 +62,16 @@ class TestGPS(unittest.TestCase):
 
 class TestGalileo(unittest.TestCase):
     def test_fnav_e5a_and_inav_e5b_are_the_native_cases(self):
-        self.assertAlmostEqual(group_delay_s(_e(bgd_a=3.0 * NS, fnav=True), "gal_e5a"),
-                               -GAMMA_E1E5A * 3.0 * NS, places=15)
-        self.assertAlmostEqual(group_delay_s(_e(bgd_b=3.0 * NS, fnav=False), "gal_e5b"),
-                               -GAMMA_E1E5B * 3.0 * NS, places=15)
+        self.assertAlmostEqual(
+            group_delay_s(_e(bgd_a=3.0 * NS, fnav=True), "gal_e5a"),
+            -GAMMA_E1E5A * 3.0 * NS,
+            places=15,
+        )
+        self.assertAlmostEqual(
+            group_delay_s(_e(bgd_b=3.0 * NS, fnav=False), "gal_e5b"),
+            -GAMMA_E1E5B * 3.0 * NS,
+            places=15,
+        )
 
     def test_e1_clock_is_reference_invariant(self):
         """THE IDENTITY THE CROSS-TYPE CONVERSIONS EXIST FOR. t_E1 = t_IF_a - BGD_a =
@@ -92,8 +102,9 @@ class TestGalileo(unittest.TestCase):
 
     def test_unflagged_record_defaults_to_fnav(self):
         e = dict(sys="E", tgd=3.0 * NS, iodc=0.0, l2_codes=0)
-        self.assertAlmostEqual(group_delay_s(e, "gal_e5a"), -GAMMA_E1E5A * 3.0 * NS,
-                               places=15)
+        self.assertAlmostEqual(
+            group_delay_s(e, "gal_e5a"), -GAMMA_E1E5A * 3.0 * NS, places=15
+        )
 
 
 class TestBeiDou(unittest.TestCase):
@@ -101,11 +112,14 @@ class TestBeiDou(unittest.TestCase):
         """NOT an omission. TGD_B2ap is a B-CNAV2 parameter and RINEX 3 carries only
         TGD1 (B1I/B3I) and TGD2 (B2I/B3I). Borrowing TGD2 would apply a 1207 MHz delay to
         an 1176 MHz signal -- confidently wrong beats honestly absent."""
-        self.assertEqual(group_delay_s(_c(tgd1=-4.3 * NS, tgd2=-4.3 * NS), "bds_b2a"), 0.0)
+        self.assertEqual(
+            group_delay_s(_c(tgd1=-4.3 * NS, tgd2=-4.3 * NS), "bds_b2a"), 0.0
+        )
 
     def test_b2b_uses_tgd2(self):
-        self.assertAlmostEqual(group_delay_s(_c(tgd2=-4.3 * NS), "bds_b2b"), +4.3 * NS,
-                               places=15)
+        self.assertAlmostEqual(
+            group_delay_s(_c(tgd2=-4.3 * NS), "bds_b2b"), +4.3 * NS, places=15
+        )
 
 
 class TestNegativeControls(unittest.TestCase):
@@ -125,11 +139,17 @@ class TestNegativeControls(unittest.TestCase):
     def test_magnitude_stays_in_the_measured_band(self):
         """A guard against a units slip: the live BRDC spans -45..+47 ns, so no correction
         may exceed ~100 ns (0.9 chips). A ppm/seconds mix-up would blow straight past it."""
-        for e, sig in ((_g(tgd=-45 * NS), "gps_l5"), (_e(-16 * NS, 4 * NS), "gal_e5a"),
-                       (_e(-16 * NS, 4 * NS, fnav=False), "gal_e5b"),
-                       (_c(tgd2=47 * NS), "bds_b2b")):
-            self.assertLess(abs(group_delay_s(e, sig)), 100 * NS,
-                            "%s correction implausibly large -- units?" % sig)
+        for e, sig in (
+            (_g(tgd=-45 * NS), "gps_l5"),
+            (_e(-16 * NS, 4 * NS), "gal_e5a"),
+            (_e(-16 * NS, 4 * NS, fnav=False), "gal_e5b"),
+            (_c(tgd2=47 * NS), "bds_b2b"),
+        ):
+            self.assertLess(
+                abs(group_delay_s(e, sig)),
+                100 * NS,
+                "%s correction implausibly large -- units?" % sig,
+            )
 
 
 class TestDcbSource(unittest.TestCase):
@@ -140,17 +160,23 @@ class TestDcbSource(unittest.TestCase):
 
     def setUp(self):
         import gnss_dcb
+
         self.m = gnss_dcb
         # b_C1C - b_C5Q = -4 ns, b_C1C - b_C7Q = -6 ns, b_C1P - b_C5P = +3, b_C1P - b_C6I = -2
-        self.tab = {("E", 7): {("C1C", "C5Q"): -4e-9, ("C1C", "C7Q"): -6e-9},
-                    ("C", 26): {("C1P", "C5P"): 3e-9, ("C1P", "C6I"): -2e-9}}
+        self.tab = {
+            ("E", 7): {("C1C", "C5Q"): -4e-9, ("C1C", "C7Q"): -6e-9},
+            ("C", 26): {("C1P", "C5P"): 3e-9, ("C1P", "C6I"): -2e-9},
+        }
 
     def test_bds_b2a_is_reachable_where_broadcast_is_not(self):
         """THE WHOLE REASON THIS EXISTS. b_C6I - b_C5P = DSB(C1P,C5P) - DSB(C1P,C6I)."""
         v = self.m.signal_bias_s(self.tab, "C", 26, "bds_b2a")
         self.assertAlmostEqual(v, 5e-9, places=15)
-        self.assertEqual(group_delay_s(_c(tgd1=-4.3 * NS, tgd2=-4.3 * NS), "bds_b2a"), 0.0,
-                         "broadcast path must still be zero for B2a")
+        self.assertEqual(
+            group_delay_s(_c(tgd1=-4.3 * NS, tgd2=-4.3 * NS), "bds_b2a"),
+            0.0,
+            "broadcast path must still be zero for B2a",
+        )
 
     def test_dcb_overrides_the_broadcast_term(self):
         e = dict(sys="C", prn=26, tgd=0.0, iodc=-4.3 * NS, l2_codes=0)
@@ -159,7 +185,9 @@ class TestDcbSource(unittest.TestCase):
     def test_missing_satellite_falls_back_to_broadcast(self):
         """A partial product must degrade per-satellite, not all-or-nothing."""
         e = dict(sys="C", prn=99, tgd=0.0, iodc=-4.3 * NS, l2_codes=0)
-        self.assertAlmostEqual(group_delay_s(e, "bds_b2b", self.tab), +4.3 * NS, places=15)
+        self.assertAlmostEqual(
+            group_delay_s(e, "bds_b2b", self.tab), +4.3 * NS, places=15
+        )
 
     def test_galileo_agrees_across_record_types(self):
         """Same invariance as the broadcast path: reaching E5a from an I/NAV record must
@@ -169,8 +197,9 @@ class TestDcbSource(unittest.TestCase):
         inav = self.m.signal_bias_s(self.tab, "E", 7, "gal_e5a", gal_inav=True)
         d15, d17 = -4e-9, -6e-9
         # the two DATUMS differ by  b_IF(1,5) - b_IF(1,7); removing it must reconcile them
-        offset = (GAMMA_E1E5A * d15 / (GAMMA_E1E5A - 1.0)
-                  - (d17 / (GAMMA_E1E5B - 1.0) + d15))
+        offset = GAMMA_E1E5A * d15 / (GAMMA_E1E5A - 1.0) - (
+            d17 / (GAMMA_E1E5B - 1.0) + d15
+        )
         self.assertAlmostEqual(fnav - inav, offset, places=18)
 
     def test_zero_mean_is_a_property_of_the_product(self):
@@ -178,16 +207,22 @@ class TestDcbSource(unittest.TestCase):
         condition this test fails and the 'cannot explain a common offset' caveat must be
         rewritten rather than silently carried forward."""
         import os
+
         p = self.m.fetch_dcb()
         if not p or not os.path.exists(p):
             self.skipTest("no DCB product available (no token/network)")
         tab = self.m.parse_dcb(p)
-        v = [self.m.signal_bias_s(tab, "C", k[1], "bds_b2a") for k in tab if k[0] == "C"]
+        v = [
+            self.m.signal_bias_s(tab, "C", k[1], "bds_b2a") for k in tab if k[0] == "C"
+        ]
         v = [x for x in v if x is not None]
         self.assertGreater(len(v), 10)
-        self.assertLess(abs(sum(v) / len(v)) * 1e9, 0.5,
-                        "constellation mean is no longer ~0 -- the zero-mean condition "
-                        "changed and the 'per-sat only' caveat must be revisited")
+        self.assertLess(
+            abs(sum(v) / len(v)) * 1e9,
+            0.5,
+            "constellation mean is no longer ~0 -- the zero-mean condition "
+            "changed and the 'per-sat only' caveat must be revisited",
+        )
 
 
 class TestDcbStaleness(unittest.TestCase):
@@ -197,24 +232,39 @@ class TestDcbStaleness(unittest.TestCase):
 
     def setUp(self):
         import gnss_dcb
+
         self.m = gnss_dcb
 
     def test_product_age_comes_from_the_filename_not_the_mtime(self):
         from datetime import datetime, timezone
-        when = datetime(2026, 9, 10, tzinfo=timezone.utc)          # doy 253
-        a = self.m.product_age_days("/x/CAS0OPSRAP_20262490000_01D_01D_DCB.BIA.gz", when)
+
+        when = datetime(2026, 9, 10, tzinfo=timezone.utc)  # doy 253
+        a = self.m.product_age_days(
+            "/x/CAS0OPSRAP_20262490000_01D_01D_DCB.BIA.gz", when
+        )
         self.assertAlmostEqual(a, 4.0, places=6)
-        b = self.m.product_age_days("/x/CAS0MGXRAP_20262390000_01D_01D_DCB.BSX.gz", when)
+        b = self.m.product_age_days(
+            "/x/CAS0MGXRAP_20262390000_01D_01D_DCB.BSX.gz", when
+        )
         self.assertAlmostEqual(b, 14.0, places=6)
         self.assertIsNone(self.m.product_age_days("/x/not-a-product.gz", when))
         self.assertIsNone(self.m.product_age_days(None, when))
 
     def test_token_expiry_reads_a_jwt_and_declines_anything_else(self):
         import base64, json, time
+
         exp = time.time() + 30 * 86400
-        pl = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
-        self.assertAlmostEqual(self.m.token_expiry_days("h.%s.sig" % pl), 30.0, places=2)
-        self.assertIsNone(self.m.token_expiry_days("an-opaque-token"))   # not a JWT, not an error
+        pl = (
+            base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode())
+            .decode()
+            .rstrip("=")
+        )
+        self.assertAlmostEqual(
+            self.m.token_expiry_days("h.%s.sig" % pl), 30.0, places=2
+        )
+        self.assertIsNone(
+            self.m.token_expiry_days("an-opaque-token")
+        )  # not a JWT, not an error
         self.assertIsNone(self.m.token_expiry_days(""))
 
     def test_no_token_is_reported_as_such_not_as_unreachable(self):

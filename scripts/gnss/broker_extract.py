@@ -28,58 +28,137 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BROKER = os.path.normpath(os.path.join(HERE, "..", "..", "python", "scripts", "gnss",
-                                       "gps_distributed_broker.py"))
+BROKER = os.path.normpath(
+    os.path.join(
+        HERE, "..", "..", "python", "scripts", "gnss", "gps_distributed_broker.py"
+    )
+)
 PKG = os.path.join(os.path.dirname(BROKER), "gnss_broker")
 
-_spec = importlib.util.spec_from_file_location("bi", os.path.join(HERE, "broker_iface.py"))
+_spec = importlib.util.spec_from_file_location(
+    "bi", os.path.join(HERE, "broker_iface.py")
+)
 bi = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bi)
 
 # free name in main()  ->  attribute on ChainContext
 NAME_MAP = {
-    "args": "args", "band_id": "band_id", "chain_id": "chain_id", "CODE_LEN": "code_len",
-    "telem_chain": "telem_chain", "base": "base", "alm_sys": "alm_sys",
-    "alm_min_prn": "alm_min_prn", "LC_SEG": "lc_seg", "LC_EPOCH": "lc_epoch",
-    "rx": "rx", "publisher": "publisher", "telem_client": "telem_client",
-    "detectors": "detectors", "dll_combiners": "dll_combiners",
-    "spectrum_endpoints": "spectrum_endpoints", "_spec_writer": "spec_writer",
-    "_state_dir": "state_dir", "_xb_read_dir": "xb_read_dir", "sig_of": "sig_of",
-    "_dllp": "dllp", "_drp": "drp", "_handover": "handover", "_adm_gate": "adm_gate",
+    "args": "args",
+    "band_id": "band_id",
+    "chain_id": "chain_id",
+    "CODE_LEN": "code_len",
+    "telem_chain": "telem_chain",
+    "base": "base",
+    "alm_sys": "alm_sys",
+    "alm_min_prn": "alm_min_prn",
+    "LC_SEG": "lc_seg",
+    "LC_EPOCH": "lc_epoch",
+    "rx": "rx",
+    "publisher": "publisher",
+    "telem_client": "telem_client",
+    "detectors": "detectors",
+    "dll_combiners": "dll_combiners",
+    "spectrum_endpoints": "spectrum_endpoints",
+    "_spec_writer": "spec_writer",
+    "_state_dir": "state_dir",
+    "_xb_read_dir": "xb_read_dir",
+    "sig_of": "sig_of",
+    "_dllp": "dllp",
+    "_drp": "drp",
+    "_handover": "handover",
+    "_adm_gate": "adm_gate",
     "_g3_ramp": "g3_ramp",
-    "seeds": "seeds", "dr_state": "dr_state", "bsat": "bsat", "cp_held": "cp_held",
+    "seeds": "seeds",
+    "dr_state": "dr_state",
+    "bsat": "bsat",
+    "cp_held": "cp_held",
     "dr_untrusted": "dr_untrusted",
-    "_est_last": "est_last", "_kcoh_rates": "kcoh_rates", "_rf_last": "rf_last",
-    "_elem_arch_t": "elem_arch_t", "_elem_poll_t": "elem_poll_t",
-    "mp_cooldown": "mp_cooldown", "mp_flipped": "mp_flipped", "mp_last_det": "mp_last_det",
-    "t0": "t0", "best": "best", "status": "status", "pred": "pred", "up": "up",
+    "_est_last": "est_last",
+    "_kcoh_rates": "kcoh_rates",
+    "_rf_last": "rf_last",
+    "_elem_arch_t": "elem_arch_t",
+    "_elem_poll_t": "elem_poll_t",
+    "mp_cooldown": "mp_cooldown",
+    "mp_flipped": "mp_flipped",
+    "mp_last_det": "mp_last_det",
+    "t0": "t0",
+    "best": "best",
+    "status": "status",
+    "pred": "pred",
+    "up": "up",
     "probe_set": "probe_set",
-    "utc0_sample0": "utc0_sample0", "_xb_pred": "xb_pred", "coast_polls": "coast_polls",
-    "have_sig": "have_sig", "la_samples": "la_samples", "fitted": "fitted",
-    "cl_report": "cl_report", "dr_pd": "dr_pd", "dr_pd0": "dr_pd0", "dr_pd2": "dr_pd2",
-    "innov_hist": "innov_hist", "minnov_hist": "minnov_hist", "p2c": "p2c",
-    "dop_rate_fitted": "dop_rate_fitted", "dop_rate_rejected": "dop_rate_rejected",
-    "dll_hop_window": "dll_hop_window", "_deep_gate": "deep_gate",
-    "_dg_auto_last": "dg_auto_last", "_est_next": "est_next",
-    "combiner": "combiner", "gating": "gating", "_capable": "capable",
-    "receiver_state": "receiver_state", "_alm_now": "alm_now", "_cb": "cb",
-    "almanac_sats": "almanac_sats", "brdc_alm": "brdc_alm", "det_fresh": "det_fresh",
-    "state_w": "state_w", "_clk_persist_t": "clk_persist_t",
-    "_carrier": "car", "_watchdog": "wd", "_nho": "nho",
-    "_dls": "dls", "_hold": "hold", "_cpt": "cpt", "_rf": "rf", "_nav": "nav", "_cls": "cls", "payload": "payload",
-    "n2_combiners": "n2_combiners", "last_dets": "last_dets",
-    "_decfb": "decfb", "_decfb_log_t": "decfb_log_t", "dr_bad": "dr_bad",
-    "_jrc": "jrc", "_rr_cmd_new": "rr_cmd_new", "bit_known": "bit_known",
-    "bit_src": "bit_src", "bp_pushed": "bp_pushed",
-    "fe_axis": "fe_axis", "fe_off": "fe_off",
-    "HIST_LEN": "hist_len", "MAX_GAP_HOPS": "max_gap_hops", "Q_ALIAS_HZ": "q_alias_hz",
-    "CARRIER_EXPLAIN_HZ": "carrier_explain_hz", "CARRIER_VERIFY_EMITS": "carrier_verify_emits",
-    "trackers": "trackers", "joint_consume": "joint_consume", "broker_t0": "broker_t0",
-    "_fuse_cached": "fuse_cached", "cp_to_seed_currency": "cp_to_seed_currency",
-    "_dh_obs": "dh_obs", "cp_predicted": "cp_predicted", "_joint_state": "joint_state",
-    "_track_ok": "track_ok", "_p2c_tick": "p2c_tick", "_p2c_hold": "p2c_hold",
+    "utc0_sample0": "utc0_sample0",
+    "_xb_pred": "xb_pred",
+    "coast_polls": "coast_polls",
+    "have_sig": "have_sig",
+    "la_samples": "la_samples",
+    "fitted": "fitted",
+    "cl_report": "cl_report",
+    "dr_pd": "dr_pd",
+    "dr_pd0": "dr_pd0",
+    "dr_pd2": "dr_pd2",
+    "innov_hist": "innov_hist",
+    "minnov_hist": "minnov_hist",
+    "p2c": "p2c",
+    "dop_rate_fitted": "dop_rate_fitted",
+    "dop_rate_rejected": "dop_rate_rejected",
+    "dll_hop_window": "dll_hop_window",
+    "_deep_gate": "deep_gate",
+    "_dg_auto_last": "dg_auto_last",
+    "_est_next": "est_next",
+    "combiner": "combiner",
+    "gating": "gating",
+    "_capable": "capable",
+    "receiver_state": "receiver_state",
+    "_alm_now": "alm_now",
+    "_cb": "cb",
+    "almanac_sats": "almanac_sats",
+    "brdc_alm": "brdc_alm",
+    "det_fresh": "det_fresh",
+    "state_w": "state_w",
+    "_clk_persist_t": "clk_persist_t",
+    "_carrier": "car",
+    "_watchdog": "wd",
+    "_nho": "nho",
+    "_dls": "dls",
+    "_hold": "hold",
+    "_cpt": "cpt",
+    "_rf": "rf",
+    "_nav": "nav",
+    "_cls": "cls",
+    "payload": "payload",
+    "n2_combiners": "n2_combiners",
+    "last_dets": "last_dets",
+    "_decfb": "decfb",
+    "_decfb_log_t": "decfb_log_t",
+    "dr_bad": "dr_bad",
+    "_jrc": "jrc",
+    "_rr_cmd_new": "rr_cmd_new",
+    "bit_known": "bit_known",
+    "bit_src": "bit_src",
+    "bp_pushed": "bp_pushed",
+    "fe_axis": "fe_axis",
+    "fe_off": "fe_off",
+    "HIST_LEN": "hist_len",
+    "MAX_GAP_HOPS": "max_gap_hops",
+    "Q_ALIAS_HZ": "q_alias_hz",
+    "CARRIER_EXPLAIN_HZ": "carrier_explain_hz",
+    "CARRIER_VERIFY_EMITS": "carrier_verify_emits",
+    "trackers": "trackers",
+    "joint_consume": "joint_consume",
+    "broker_t0": "broker_t0",
+    "_fuse_cached": "fuse_cached",
+    "cp_to_seed_currency": "cp_to_seed_currency",
+    "_dh_obs": "dh_obs",
+    "cp_predicted": "cp_predicted",
+    "_joint_state": "joint_state",
+    "_track_ok": "track_ok",
+    "_p2c_tick": "p2c_tick",
+    "_p2c_hold": "p2c_hold",
     "_decoded_entries": "decoded_entries",
-    "sig_of_last": "sig_of_last", "dr_eph_mod": "dr_eph_mod", "dr_min_prn": "dr_min_prn",
+    "sig_of_last": "sig_of_last",
+    "dr_eph_mod": "dr_eph_mod",
+    "dr_min_prn": "dr_min_prn",
 }
 
 # `_ctx` is the context itself, not a slot on it: a stage that already writes through the
@@ -105,11 +184,22 @@ def _module_level(tree):
 def analyze_free(tree, main, fn):
     """The free names `fn` reads out of main() -- its closure interface."""
     import builtins
+
     mod = _module_level(tree)
-    local = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+    local = {
+        n.id
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
+    }
     local |= bi._scoped_names(fn) | bi._import_aliases(fn)
-    local |= {g.name for g in ast.walk(fn) if isinstance(g, ast.FunctionDef) and g is not fn}
-    reads = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    local |= {
+        g.name for g in ast.walk(fn) if isinstance(g, ast.FunctionDef) and g is not fn
+    }
+    reads = {
+        n.id
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+    }
     return sorted(reads - local - set(dir(builtins)) - mod)
 
 
@@ -120,13 +210,19 @@ def main_():
     src = open(BROKER).read().splitlines(True)
     tree = ast.parse("".join(src))
     main = [n for n in tree.body if getattr(n, "name", "") == "main"][0]
-    fn = [n for n in ast.walk(main) if isinstance(n, ast.FunctionDef) and n.name == routine][0]
+    fn = [
+        n
+        for n in ast.walk(main)
+        if isinstance(n, ast.FunctionDef) and n.name == routine
+    ][0]
 
     _, carry, outs = bi.analyze(main, fn.lineno, fn.end_lineno)
     shared = sorted(set(carry) | set(outs))
-    assert not shared, ("REFUSING: `%s` writes shared state %s. `nonlocal` cannot cross a "
-                        "module boundary -- give that state an owner object first."
-                        % (routine, ", ".join(shared)))
+    assert not shared, (
+        "REFUSING: `%s` writes shared state %s. `nonlocal` cannot cross a "
+        "module boundary -- give that state an owner object first."
+        % (routine, ", ".join(shared))
+    )
 
     # ⚠️ A MODULE-LEVEL NAME IS FREE ONLY IF THE TARGET MODULE HAS IT TOO. `analyze_free`
     # discounts everything bound at the broker's module level -- imports and constants -- on
@@ -137,31 +233,44 @@ def main_():
     tpath = os.path.join(PKG, module + ".py")
     if os.path.exists(tpath):
         target_src = open(tpath).read()
-    ttree = ast.parse(target_src) if target_src else ast.Module(body=[], type_ignores=[])
+    ttree = (
+        ast.parse(target_src) if target_src else ast.Module(body=[], type_ignores=[])
+    )
     have = _module_level(ttree) | set(dir(builtins_mod))
-    mod_used = {n.id for n in ast.walk(fn)
-                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
-                and n.id in _module_level(tree)}
+    mod_used = {
+        n.id
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Name)
+        and isinstance(n.ctx, ast.Load)
+        and n.id in _module_level(tree)
+    }
     # A reference to the TARGET MODULE ITSELF becomes a plain local call once the routine
     # lives inside it: `deadreckon.dr_seed(ctx)` is just `dr_seed(ctx)` from within
     # deadreckon.py. Strip the prefix rather than importing the module into itself.
     self_ref = module in mod_used
     mod_used.discard(module)
     absent = sorted(mod_used - have)
-    assert not absent, ("REFUSING: %s uses module-level %s, which `%s` does not import. Add "
-                        "the import (or give the constant a shared home) first."
-                        % (routine, ", ".join(absent), module))
+    assert not absent, (
+        "REFUSING: %s uses module-level %s, which `%s` does not import. Add "
+        "the import (or give the constant a shared home) first."
+        % (routine, ", ".join(absent), module)
+    )
 
     free = analyze_free(tree, main, fn)
     unmapped = [f for f in free if f not in NAME_MAP and f != SELF_NAME]
-    assert not unmapped, ("REFUSING: no ChainContext slot for %s. Give that state a home "
-                          "before moving `%s` out." % (", ".join(unmapped), routine))
+    assert not unmapped, (
+        "REFUSING: no ChainContext slot for %s. Give that state a home "
+        "before moving `%s` out." % (", ".join(unmapped), routine)
+    )
 
     # ---- rewrite the body: free names -> ctx.attr, AST-precise -------------------------
-    body = src[fn.lineno - 1:fn.end_lineno]
+    body = src[fn.lineno - 1 : fn.end_lineno]
     ind = min(len(l) - len(l.lstrip()) for l in body if l.strip())
-    hits = [n for n in ast.walk(fn)
-            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id in free]
+    hits = [
+        n
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id in free
+    ]
     by_line = {}
     for n in hits:
         by_line.setdefault(n.lineno, []).append(n)
@@ -176,9 +285,13 @@ def main_():
         for n in sorted(nodes, key=lambda x: -x.col_offset):
             c = n.col_offset
             tok = n.id.encode("utf-8")
-            assert raw[c:c + len(tok)] == tok, "mismatch at %d:%d" % (ln, c)
-            repl = b"ctx" if n.id == SELF_NAME else b"ctx." + NAME_MAP[n.id].encode("utf-8")
-            raw = raw[:c] + repl + raw[c + len(tok):]
+            assert raw[c : c + len(tok)] == tok, "mismatch at %d:%d" % (ln, c)
+            repl = (
+                b"ctx"
+                if n.id == SELF_NAME
+                else b"ctx." + NAME_MAP[n.id].encode("utf-8")
+            )
+            raw = raw[:c] + repl + raw[c + len(tok) :]
         body[i] = raw.decode("utf-8")
 
     body = [(l[ind:] if l.strip() else l) for l in body]
@@ -189,17 +302,22 @@ def main_():
     assert body[0].startswith("def %s(ctx):" % newname), body[0][:60]
 
     if not apply_:
-        print("%s -> %s.%s(ctx)\n  free (%d): %s"
-              % (routine, module, newname, len(free), ", ".join(free)))
+        print(
+            "%s -> %s.%s(ctx)\n  free (%d): %s"
+            % (routine, module, newname, len(free), ", ".join(free))
+        )
         return
 
     target = os.path.join(PKG, module + ".py")
     with open(target, "a") as f:
         f.write("\n\n" + "".join(body).rstrip("\n") + "\n")
-    rest = src[:fn.lineno - 1] + src[fn.end_lineno:]
+    rest = src[: fn.lineno - 1] + src[fn.end_lineno :]
     txt = "".join(rest).replace("%s()\n" % routine, "%s.%s(_ctx)\n" % (module, newname))
     open(BROKER, "w").write(txt)
-    print("moved %s -> %s.%s(ctx)  [%d free names]" % (routine, module, newname, len(free)))
+    print(
+        "moved %s -> %s.%s(ctx)  [%d free names]"
+        % (routine, module, newname, len(free))
+    )
 
 
 if __name__ == "__main__":

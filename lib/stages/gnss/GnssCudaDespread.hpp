@@ -74,10 +74,10 @@ public:
     /// One (PRN x E/P/L) despread request against the uploaded window. @c covering holds this
     /// subband's LOCAL channel indices.
     struct Spec {
-        int p;                ///< PRN slot
-        double cp_seed;       ///< commanded prompt code phase (chips, signal units)
-        double spacing_chips; ///< Early/Late offset
-        double doppler_hz;    ///< replica carrier (the tracker's fixed f_ref)
+        int p;                     ///< PRN slot
+        double cp_seed;            ///< commanded prompt code phase (chips, signal units)
+        double spacing_chips;      ///< Early/Late offset
+        double doppler_hz;         ///< replica carrier (the tracker's fixed f_ref)
         std::vector<int> covering; ///< local channel indices in this PRN's covering set
         /// Broker carrier trim (Hz), added to the replica CARRIER only -- never to the code
         /// rate, because carrier and code are separate control paths. Before 2026-08-04 this
@@ -98,8 +98,7 @@ public:
     /// Batched despread: ALL requested PRNs' E/P/L triples in ONE kernel launch (G1c -- one
     /// launch per record instead of one per PRN). Results parallel to @c specs, each ordered
     /// {early, prompt, late}, channel-summed, matching gnss::channelized_despread's fields.
-    std::vector<std::array<gnss::DespreadResult, 3>>
-    despread_batch(const std::vector<Spec>& specs);
+    std::vector<std::array<gnss::DespreadResult, 3>> despread_batch(const std::vector<Spec>& specs);
 
     /// BENCH ONLY: cap chip_gather's depth. The gather runs n_chips deep per hop, where
     /// n_chips is the chips the PFB filter spans -- 210 at CHORD against the 13 the kernel

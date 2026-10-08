@@ -51,23 +51,31 @@ from datetime import datetime, timezone
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gnss_ephemeris import parse_rinex_nav, predict_all, gpst_of_utc, C_LIGHT  # noqa: E402
+from gnss_ephemeris import (
+    parse_rinex_nav,
+    predict_all,
+    gpst_of_utc,
+    C_LIGHT,
+)  # noqa: E402
 
-HPS = 3.2e9 / 16384.0            # F-engine hops per second
-FRAC = 0.000002861               # the constant sub-second part of every CHORD anchor seen so far
+HPS = 3.2e9 / 16384.0  # F-engine hops per second
+FRAC = 0.000002861  # the constant sub-second part of every CHORD anchor seen so far
 SITE = (49.32001414, -119.62262691, 545.0)
 CACHE = os.path.expanduser("~/.cache/kotekan_gps")
 SYSOF = {"gps": "G", "gal": "E", "bds": "C"}
 GEOM_KEYS = ("az", "el", "range_m", "range_rate_mps", "sat_clk_s", "eph_age_s")
-MIN_SEG_ROWS = 50                # fewer rows than this is stray rows, not a session
+MIN_SEG_ROWS = 50  # fewer rows than this is stray rows, not a session
 
 
 def load_eph(days_back=12):
     """One merged ephemeris from every cached daily of the last `days_back` days: predict_all
     picks per epoch inside its toe window, so one object serves any instant in the span."""
     now = time.time()
-    files = [f for f in glob.glob(os.path.join(CACHE, "BRDC00WRD_*_01D_MN.rnx.gz"))
-             if now - os.path.getmtime(f) < days_back * 86400.0]
+    files = [
+        f
+        for f in glob.glob(os.path.join(CACHE, "BRDC00WRD_*_01D_MN.rnx.gz"))
+        if now - os.path.getmtime(f) < days_back * 86400.0
+    ]
     if not files:
         raise SystemExit("no cached BRDC dailies under %s" % CACHE)
     return parse_rinex_nav(sorted(files))
@@ -101,13 +109,13 @@ def segments(path):
     idx = np.array(idx)
     if not len(ts):
         return []
-    bounds = []                     # positions (into ts) where a new segment begins
+    bounds = []  # positions (into ts) where a new segment begins
     glitch = set()
     runmax = ts[0]
     j = 1
     while j < len(ts):
         if ts[j] < runmax - 60.0:
-            look = ts[j:j + 50]
+            look = ts[j : j + 50]
             med = float(np.median(look))
             if med < runmax - 60.0:
                 # a new session. Its axis is the MEDIAN of the first rows, not the first row:
@@ -137,8 +145,15 @@ def segments(path):
             # first row, a session too short to date); its rows are glitches, not a segment
             glitch.update(int(x) for x in idx[a:b])
             continue
-        segs.append({"i0": int(idx[a]), "i1": int(idx[b - 1]) + 1, "t0": float(ts[a]),
-                     "t_last": float(ts[b - 1]), "f0": []})
+        segs.append(
+            {
+                "i0": int(idx[a]),
+                "i1": int(idx[b - 1]) + 1,
+                "t0": float(ts[a]),
+                "t_last": float(ts[b - 1]),
+                "f0": [],
+            }
+        )
     # the latched anchor of each segment from its rows' hops, snapped: t is stamped from
     # fleet_hop while the row keeps fadr_hop/rec_hop, so the median sits a fraction of a second
     # off; an anchor is an integer second plus FRAC, so the retime comes out as whole seconds
@@ -171,8 +186,11 @@ def scan_offset(path, seg, eph, sysid, lam, probes=3, cn0_min=30.0, max_rms_hz=0
     `probes` instants across the segment; None when no instant has 4 strong PRNs."""
     span = seg["t_last"] - seg["t0"]
     if span > 900:
-        centres = [seg["t0"] + max(300.0, 0.1 * span), seg["t0"] + 0.5 * span,
-                   seg["t_last"] - max(300.0, 0.1 * span)]
+        centres = [
+            seg["t0"] + max(300.0, 0.1 * span),
+            seg["t0"] + 0.5 * span,
+            seg["t_last"] - max(300.0, 0.1 * span),
+        ]
     else:
         centres = [seg["t0"] + 0.5 * span]
     picks = {c: {} for c in centres[:probes]}
@@ -181,20 +199,34 @@ def scan_offset(path, seg, eph, sysid, lam, probes=3, cn0_min=30.0, max_rms_hz=0
             continue
         if i >= seg["i1"]:
             break
-        t, dop, hop, cn = d.get("t"), d.get("dop_rec_hz"), d.get("rec_hop"), d.get("cn0_kcoh_dbhz")
+        t, dop, hop, cn = (
+            d.get("t"),
+            d.get("dop_rec_hz"),
+            d.get("rec_hop"),
+            d.get("cn0_kcoh_dbhz"),
+        )
         if dop is None or not hop or cn is None or cn < cn0_min:
             continue
         for c in picks:
             if abs(t - c) < 3.0 and d["prn"] not in picks[c]:
                 # the record's own epoch on the latched axis, not the poll instant
-                picks[c][int(d["prn"])] = (seg["frame0_latched"] + hop / HPS, float(dop))
+                picks[c][int(d["prn"])] = (
+                    seg["frame0_latched"] + hop / HPS,
+                    float(dop),
+                )
 
     def rms_at(pk, delta):
         r = []
         for prn, (t_rec, dop) in pk.items():
-            v = predict_all(eph, SITE[0], SITE[1], SITE[2],
-                            datetime.fromtimestamp(t_rec + delta, tz=timezone.utc),
-                            mask_deg=-90.0, max_age=7200.0).get((sysid, prn))
+            v = predict_all(
+                eph,
+                SITE[0],
+                SITE[1],
+                SITE[2],
+                datetime.fromtimestamp(t_rec + delta, tz=timezone.utc),
+                mask_deg=-90.0,
+                max_age=7200.0,
+            ).get((sysid, prn))
             if v is not None:
                 r.append(dop + v["range_rate_mps"] / lam)
         if len(r) < 4:
@@ -224,7 +256,10 @@ def scan_offset(path, seg, eph, sysid, lam, probes=3, cn0_min=30.0, max_rms_hz=0
         best = best_in(pk, best[1] - 15, best[1] + 15, 1.0)
         rec = {"t_row": c, "n_prn": len(pk), "offset_s": best[1], "rms_hz": best[0]}
         if best[0] > max_rms_hz:
-            rec["rejected"] = "rms %.2f Hz > %.2f: a false minimum, not a match" % (best[0], max_rms_hz)
+            rec["rejected"] = "rms %.2f Hz > %.2f: a false minimum, not a match" % (
+                best[0],
+                max_rms_hz,
+            )
         results.append(rec)
     return results
 
@@ -232,19 +267,38 @@ def scan_offset(path, seg, eph, sysid, lam, probes=3, cn0_min=30.0, max_rms_hz=0
 def census(args):
     band = args.band
     if band == "gps_l5":
-        raise SystemExit("gps_l5 cannot date a segment: its replicas run on +-100 Hz lobes (see the module note); census a GAL or BDS band")
+        raise SystemExit(
+            "gps_l5 cannot date a segment: its replicas run on +-100 Hz lobes (see the module note); census a GAL or BDS band"
+        )
     sysid = SYSOF[band.split("_")[0]]
-    lam = C_LIGHT / float(args.carrier_hz or {"gps_l5": 1176.45e6, "gal_e5a": 1176.45e6,
-                                                 "bds_b2a": 1176.45e6, "gps_l2c": 1227.6e6,
-                                                 "gal_e5b": 1207.14e6, "bds_b2b": 1207.14e6,
-                                                 "gal_e6": 1278.75e6, "bds_b3i": 1268.52e6}[band])
+    lam = C_LIGHT / float(
+        args.carrier_hz
+        or {
+            "gps_l5": 1176.45e6,
+            "gal_e5a": 1176.45e6,
+            "bds_b2a": 1176.45e6,
+            "gps_l2c": 1227.6e6,
+            "gal_e5b": 1207.14e6,
+            "bds_b2b": 1207.14e6,
+            "gal_e6": 1278.75e6,
+            "bds_b3i": 1268.52e6,
+        }[band]
+    )
     path = os.path.join(args.obs_dir, "%s_%s.jsonl" % (band, args.day))
     eph = load_eph()
     anchors = sorted(float(a) for a in args.anchor)
     out = {"day": args.day, "band": band, "path": path, "segments": []}
     for k, seg in enumerate(segments(path)):
-        rec = {"seg": k, "i0": seg["i0"], "i1": seg["i1"], "t0": seg["t0"], "t1": seg["t_last"],
-               "frame0_latched": seg["frame0_latched"], "glitch_rows": len(seg["glitch"]), "probes": []}
+        rec = {
+            "seg": k,
+            "i0": seg["i0"],
+            "i1": seg["i1"],
+            "t0": seg["t0"],
+            "t1": seg["t_last"],
+            "frame0_latched": seg["frame0_latched"],
+            "glitch_rows": len(seg["glitch"]),
+            "probes": [],
+        }
         if seg["frame0_latched"] is None or seg["i1"] - seg["i0"] < 50:
             rec["status"] = "skipped: no hop axis or too short"
             out["segments"].append(rec)
@@ -254,8 +308,11 @@ def census(args):
         rec["probes"] = res
         good = [r for r in res if "rejected" not in r]
         if not good:
-            rec["status"] = ("undated: fewer than 4 strong PRNs at every probe" if not res
-                             else "undated: every probe rejected (rms > %.2f Hz)" % args.max_rms_hz)
+            rec["status"] = (
+                "undated: fewer than 4 strong PRNs at every probe"
+                if not res
+                else "undated: every probe rejected (rms > %.2f Hz)" % args.max_rms_hz
+            )
         else:
             offs = np.array([r["offset_s"] for r in good])
             spread = float(offs.max() - offs.min())
@@ -264,23 +321,54 @@ def census(args):
             near = [a for a in anchors if abs(a - f0_new) <= args.snap_s]
             if near:
                 a = min(near, key=lambda a: abs(a - f0_new))
-                rec.update({"frame0_true": a, "anchor_src": "logged anchor",
-                            "retime_s": a - seg["frame0_latched"]})
+                rec.update(
+                    {
+                        "frame0_true": a,
+                        "anchor_src": "logged anchor",
+                        "retime_s": a - seg["frame0_latched"],
+                    }
+                )
             else:
                 a = math.floor(f0_new) + FRAC
-                rec.update({"frame0_true": a, "anchor_src": "scan (no logged anchor within %.0f s)" % args.snap_s,
-                            "retime_s": a - seg["frame0_latched"]})
+                rec.update(
+                    {
+                        "frame0_true": a,
+                        "anchor_src": "scan (no logged anchor within %.0f s)"
+                        % args.snap_s,
+                        "retime_s": a - seg["frame0_latched"],
+                    }
+                )
             rec["scan_spread_s"] = spread
-            rec["status"] = "ok" if spread <= 6.0 else "inconsistent: probes disagree by %.0f s" % spread
+            rec["status"] = (
+                "ok"
+                if spread <= 6.0
+                else "inconsistent: probes disagree by %.0f s" % spread
+            )
         out["segments"].append(rec)
-        print("seg %d rows %d-%d  t %s..%s  latched %.0f  -> %s  retime %+.3f h  (%s; probes %s)"
-              % (k, seg["i0"], seg["i1"],
-                 time.strftime("%m-%d %H:%M", time.gmtime(seg["t0"])),
-                 time.strftime("%m-%d %H:%M", time.gmtime(seg["t_last"])),
-                 seg["frame0_latched"],
-                 ("%.6f" % rec["frame0_true"]) if "frame0_true" in rec else "-",
-                 rec.get("retime_s", float("nan")) / 3600.0, rec["status"],
-                 ["%+.0f s rms %.2f Hz n%d%s" % (r["offset_s"], r["rms_hz"], r["n_prn"], " REJECTED" if "rejected" in r else "") for r in res]))
+        print(
+            "seg %d rows %d-%d  t %s..%s  latched %.0f  -> %s  retime %+.3f h  (%s; probes %s)"
+            % (
+                k,
+                seg["i0"],
+                seg["i1"],
+                time.strftime("%m-%d %H:%M", time.gmtime(seg["t0"])),
+                time.strftime("%m-%d %H:%M", time.gmtime(seg["t_last"])),
+                seg["frame0_latched"],
+                ("%.6f" % rec["frame0_true"]) if "frame0_true" in rec else "-",
+                rec.get("retime_s", float("nan")) / 3600.0,
+                rec["status"],
+                [
+                    "%+.0f s rms %.2f Hz n%d%s"
+                    % (
+                        r["offset_s"],
+                        r["rms_hz"],
+                        r["n_prn"],
+                        " REJECTED" if "rejected" in r else "",
+                    )
+                    for r in res
+                ],
+            )
+        )
     os.makedirs(os.path.dirname(os.path.abspath(args.out_map)), exist_ok=True)
     json.dump(out, open(args.out_map, "w"), indent=1)
     print("wrote", args.out_map)
@@ -301,15 +389,21 @@ def apply(args):
     for m in maps[1:]:
         m["segments"] = [s for s in m["segments"] if s["i1"] - s["i0"] >= MIN_SEG_ROWS]
         if len(m["segments"]) != len(base):
-            raise SystemExit("%s has %d segments, %s has %d: not the same writer generation"
-                             % (args.map[0], len(base), m.get("band"), len(m["segments"])))
+            raise SystemExit(
+                "%s has %d segments, %s has %d: not the same writer generation"
+                % (args.map[0], len(base), m.get("band"), len(m["segments"]))
+            )
         for k, s in enumerate(m["segments"]):
             if base[k].get("status") != "ok" and s.get("status") == "ok":
-                base[k] = s          # another band dated the segment this one could not
+                base[k] = s  # another band dated the segment this one could not
     eph = load_eph()
     os.makedirs(args.out_dir, exist_ok=True)
-    manifest = {"maps": [os.path.abspath(m) for m in args.map], "segments": base,
-                "inputs": [], "outputs": {}}
+    manifest = {
+        "maps": [os.path.abspath(m) for m in args.map],
+        "segments": base,
+        "inputs": [],
+        "outputs": {},
+    }
     handles = {}
     # predict_all evaluates the whole sky for one epoch; every PRN of a poll shares its epoch
     # to the microsecond, so one call serves ~20 rows. Without this the rewrite is hours.
@@ -320,9 +414,15 @@ def apply(args):
         v = geo_cache.get(k)
         if v is None:
             try:
-                v = predict_all(eph, SITE[0], SITE[1], SITE[2],
-                                datetime.fromtimestamp(t_utc, tz=timezone.utc),
-                                mask_deg=-90.0, max_age=21600.0)
+                v = predict_all(
+                    eph,
+                    SITE[0],
+                    SITE[1],
+                    SITE[2],
+                    datetime.fromtimestamp(t_utc, tz=timezone.utc),
+                    mask_deg=-90.0,
+                    max_age=21600.0,
+                )
             except Exception:
                 v = {}
             geo_cache[k] = v
@@ -344,9 +444,18 @@ def apply(args):
         band = os.path.basename(path).rsplit("_", 1)[0]
         sysid = SYSOF[band.split("_")[0]]
         fsegs = segments(path)
-        rec = {"path": path, "segments": len(fsegs), "rows": 0, "written": 0, "skipped": 0}
+        rec = {
+            "path": path,
+            "segments": len(fsegs),
+            "rows": 0,
+            "written": 0,
+            "skipped": 0,
+        }
         if len(fsegs) != len(base):
-            rec["refused"] = "%d segments in the file, %d in the map" % (len(fsegs), len(base))
+            rec["refused"] = "%d segments in the file, %d in the map" % (
+                len(fsegs),
+                len(base),
+            )
             print("%s: REFUSED -- %s" % (os.path.basename(path), rec["refused"]))
             manifest["inputs"].append(rec)
             continue
@@ -355,13 +464,21 @@ def apply(args):
             if ms.get("status") != "ok" or fs["frame0_latched"] is None:
                 plan.append(None)
                 continue
-            if (abs(fs["frame0_latched"] - ms["frame0_latched"]) > 2.0
-                    or not (fs["t0"] < ms["t1"] + 120 and ms["t0"] < fs["t_last"] + 120)):
-                rec["refused"] = ("segment %d: file has anchor %.0f over %s..%s, map has %.0f over %s..%s"
-                                  % (k, fs["frame0_latched"], time.strftime("%m-%d %H:%M", time.gmtime(fs["t0"])),
-                                     time.strftime("%m-%d %H:%M", time.gmtime(fs["t_last"])), ms["frame0_latched"],
-                                     time.strftime("%m-%d %H:%M", time.gmtime(ms["t0"])),
-                                     time.strftime("%m-%d %H:%M", time.gmtime(ms["t1"]))))
+            if abs(fs["frame0_latched"] - ms["frame0_latched"]) > 2.0 or not (
+                fs["t0"] < ms["t1"] + 120 and ms["t0"] < fs["t_last"] + 120
+            ):
+                rec["refused"] = (
+                    "segment %d: file has anchor %.0f over %s..%s, map has %.0f over %s..%s"
+                    % (
+                        k,
+                        fs["frame0_latched"],
+                        time.strftime("%m-%d %H:%M", time.gmtime(fs["t0"])),
+                        time.strftime("%m-%d %H:%M", time.gmtime(fs["t_last"])),
+                        ms["frame0_latched"],
+                        time.strftime("%m-%d %H:%M", time.gmtime(ms["t0"])),
+                        time.strftime("%m-%d %H:%M", time.gmtime(ms["t1"])),
+                    )
+                )
                 break
             plan.append(ms)
         if "refused" in rec:
@@ -381,7 +498,12 @@ def apply(args):
                 continue
             dt = seg["retime_s"]
             t_new = round(d["t"] + dt, 4)
-            d["t_raw"], d["frame0_raw"], d["frame0"], d["retime_s"] = d["t"], seg["frame0_latched"], seg["frame0_true"], dt
+            d["t_raw"], d["frame0_raw"], d["frame0"], d["retime_s"] = (
+                d["t"],
+                seg["frame0_latched"],
+                seg["frame0_true"],
+                dt,
+            )
             d["retime_src"] = seg["anchor_src"]
             d["t"] = t_new
             d["t_gps"] = round(gpst_of_utc(t_new), 4)
@@ -403,7 +525,9 @@ def apply(args):
                 # range at that hop; the single-instance adr form at the row epoch as fallback
                 fh, fd = d.get("fadr_hop"), d.get("fadr_dop_cycles")
                 if fh and fd is not None:
-                    va = sky_at(seg["frame0_true"] + fh / HPS).get((sysid, int(d["prn"])))
+                    va = sky_at(seg["frame0_true"] + fh / HPS).get(
+                        (sysid, int(d["prn"]))
+                    )
                     if va is not None:
                         d["carr_resid_m"] = -fd * lam - va["range_m"]
                         d["carr_resid_src"] = "fadr"
@@ -415,8 +539,17 @@ def apply(args):
             manifest["outputs"][key] += 1
             rec["written"] += 1
         manifest["inputs"].append(rec)
-        print("%s: %d rows in %d segments, %d re-timed, %d skipped (undated segment or %d boundary glitch rows)"
-              % (os.path.basename(path), rec["rows"], len(fsegs), rec["written"], rec["skipped"], rec["glitch_rows"]))
+        print(
+            "%s: %d rows in %d segments, %d re-timed, %d skipped (undated segment or %d boundary glitch rows)"
+            % (
+                os.path.basename(path),
+                rec["rows"],
+                len(fsegs),
+                rec["written"],
+                rec["skipped"],
+                rec["glitch_rows"],
+            )
+        )
     for fh in handles.values():
         fh.close()
     if args.sort:
@@ -433,21 +566,36 @@ def apply(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("census")
     c.add_argument("band")
     c.add_argument("day")
     c.add_argument("--obs-dir", default="/home/kvand/gnss/fixtures/obs")
     c.add_argument("--carrier-hz", type=float, default=None)
-    c.add_argument("--anchor", action="append", default=[],
-                   help="a known F-engine anchor (s); repeatable. Scan results within --snap-s snap to it")
+    c.add_argument(
+        "--anchor",
+        action="append",
+        default=[],
+        help="a known F-engine anchor (s); repeatable. Scan results within --snap-s snap to it",
+    )
     c.add_argument("--snap-s", type=float, default=10.0)
-    c.add_argument("--max-rms-hz", type=float, default=0.2,
-                   help="a probe whose best fit is worse than this is a false minimum")
+    c.add_argument(
+        "--max-rms-hz",
+        type=float,
+        default=0.2,
+        help="a probe whose best fit is worse than this is a false minimum",
+    )
     c.add_argument("--out-map", required=True)
     a = sub.add_parser("apply")
-    a.add_argument("--map", action="append", required=True, help="census map(s) for ONE day; repeatable")
+    a.add_argument(
+        "--map",
+        action="append",
+        required=True,
+        help="census map(s) for ONE day; repeatable",
+    )
     a.add_argument("inputs", nargs="+")
     a.add_argument("--out-dir", required=True)
     a.add_argument("--append", action="store_true")

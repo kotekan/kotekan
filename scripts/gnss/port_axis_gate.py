@@ -48,8 +48,14 @@ def main() -> int:
             bad += 1
             continue
         df = (s1 - s0) / SAMPLES_PER_FRAME
-        verdict = "ok" if abs(df) <= TOL_FRAMES else "STALE AXIS -- an F-engine link is desynced"
-        print(f"  {n}: port1-port0 {df:+9.1f} frames ({df * FRAME_S:+8.2f} s)  {verdict}")
+        verdict = (
+            "ok"
+            if abs(df) <= TOL_FRAMES
+            else "STALE AXIS -- an F-engine link is desynced"
+        )
+        print(
+            f"  {n}: port1-port0 {df:+9.1f} frames ({df * FRAME_S:+8.2f} s)  {verdict}"
+        )
         if abs(df) > TOL_FRAMES:
             bad += 1
     return 1 if bad else 0

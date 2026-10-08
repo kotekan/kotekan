@@ -51,7 +51,6 @@ def _ctx():
 
 
 class TestReloadCadence(unittest.TestCase):
-
     def setUp(self):
         self.calls = []
         fake = types.ModuleType("gnss_dcb")
@@ -97,8 +96,17 @@ class TestReloadCadence(unittest.TestCase):
 
     def test_failed_reload_retries_in_ten_minutes(self):
         c = _ctx()
-        dr._dr_apply_reload(c, {"eph": None, "dcb": None, "has_dcb": False,
-                                "error": "no network", "fatal": None, "t0": 0.0})
+        dr._dr_apply_reload(
+            c,
+            {
+                "eph": None,
+                "dcb": None,
+                "has_dcb": False,
+                "error": "no network",
+                "fatal": None,
+                "t0": 0.0,
+            },
+        )
         due_in = dr._DR_EPH_REFRESH_S - (c.drp.now_w - c.dr_state["eph_t"])
         self.assertAlmostEqual(due_in, 600.0)
 
@@ -107,10 +115,15 @@ class TestReloadCadence(unittest.TestCase):
         with open(os.path.join(HERE, "deadreckon.py")) as f:
             src = f.read()
         tree = ast.parse(src)
-        fn = next(n for n in ast.walk(tree)
-                  if isinstance(n, ast.FunctionDef) and n.name == "stage_dead_reckon")
+        fn = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "stage_dead_reckon"
+        )
         body = ast.unparse(fn)
-        self.assertIn('ctx.dr_state["eph_t"] > _DR_EPH_REFRESH_S'.replace('"', "'"), body)
+        self.assertIn(
+            'ctx.dr_state["eph_t"] > _DR_EPH_REFRESH_S'.replace('"', "'"), body
+        )
         self.assertNotIn("> 7200", body)
         self.assertIn("_DR_DCB_REFRESH_S", body)
 

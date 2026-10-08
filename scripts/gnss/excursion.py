@@ -67,11 +67,18 @@ def per_record(frames, prn):
                 per_ch[fid] = (abs(E * eE) ** 2, abs(P * eP) ** 2, abs(L * eL) ** 2)
             if wP <= 0.0:
                 continue
-            out.append((win, r, inst,
-                        (abs(gE) / wE) ** 2 if wE > 0 else 0.0,
-                        (abs(gP) / wP) ** 2,
-                        (abs(gL) / wL) ** 2 if wL > 0 else 0.0,
-                        len(cmb), per_ch))
+            out.append(
+                (
+                    win,
+                    r,
+                    inst,
+                    (abs(gE) / wE) ** 2 if wE > 0 else 0.0,
+                    (abs(gP) / wP) ** 2,
+                    (abs(gL) / wL) ** 2 if wL > 0 else 0.0,
+                    len(cmb),
+                    per_ch,
+                )
+            )
     return out
 
 
@@ -81,13 +88,16 @@ def disc_q(e, p, l):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--gather", default="127.0.0.1:11061")
     ap.add_argument("--chain", default="gps_l5")
     ap.add_argument("--prn", type=int, default=23)
     ap.add_argument("--seconds", type=float, default=20.0)
-    ap.add_argument("--show", type=int, default=60, help="records to print around the worst step")
+    ap.add_argument(
+        "--show", type=int, default=60, help="records to print around the worst step"
+    )
     a = ap.parse_args()
 
     host, port = telem.parse_endpoint(a.gather)
@@ -101,15 +111,20 @@ def main():
             frames[(w, inst)] = f
     cl.stop()
     if not frames:
-        raise SystemExit("no frames for chain %s -- is the gather serving on %s?" % (a.chain, a.gather))
+        raise SystemExit(
+            "no frames for chain %s -- is the gather serving on %s?"
+            % (a.chain, a.gather)
+        )
 
     rows = per_record(frames, a.prn)
     if not rows:
         raise SystemExit("PRN %d has no live comb in %d frames" % (a.prn, len(frames)))
     insts = sorted({r[2] for r in rows})
     keys = sorted({(r[0], r[1]) for r in rows})
-    print("%d windows x %d instances, %d record-samples, PRN %d, %d instances: %s"
-          % (len(wins), len(insts), len(rows), a.prn, len(insts), ", ".join(insts)))
+    print(
+        "%d windows x %d instances, %d record-samples, PRN %d, %d instances: %s"
+        % (len(wins), len(insts), len(rows), a.prn, len(insts), ", ".join(insts))
+    )
     print("record cadence 10.486 ms (95.4/s); frame = 4 records = 41.94 ms\n")
 
     # ---- (1) THE FLEET SERIES, PER RECORD -------------------------------------------------
@@ -129,13 +144,19 @@ def main():
     jumps = [(abs(series[i + 1][1] - series[i][1]), i) for i in range(len(series) - 1)]
     jumps.sort(reverse=True)
     big, at = jumps[0]
-    print("BIGGEST ONE-RECORD disc STEP: %.3f, between record %d and %d (10.5 ms apart)"
-          % (big, at, at + 1))
+    print(
+        "BIGGEST ONE-RECORD disc STEP: %.3f, between record %d and %d (10.5 ms apart)"
+        % (big, at, at + 1)
+    )
     dd = sorted(j for j, _ in jumps)
-    print("  one-record |ddisc|: median %.3f  p90 %.3f  max %.3f" %
-          (dd[len(dd) // 2], dd[int(0.9 * len(dd))], dd[-1]))
-    print("  fleet disc range over the capture: %+.3f .. %+.3f\n"
-          % (min(s[1] for s in series), max(s[1] for s in series)))
+    print(
+        "  one-record |ddisc|: median %.3f  p90 %.3f  max %.3f"
+        % (dd[len(dd) // 2], dd[int(0.9 * len(dd))], dd[-1])
+    )
+    print(
+        "  fleet disc range over the capture: %+.3f .. %+.3f\n"
+        % (min(s[1] for s in series), max(s[1] for s in series))
+    )
 
     lo = max(0, at - a.show // 2)
     hi = min(len(series), at + a.show // 2)
@@ -143,7 +164,10 @@ def main():
     for i in range(lo, hi):
         (w, r), d, q, P, n = series[i]
         mark = "  <<<" if i in (at, at + 1) else ""
-        print("  %4d  %d/%d  %+8.3f %7.2f  %9.3e  %2d%s" % (i, w % 100000, r, d, q, P, n, mark))
+        print(
+            "  %4d  %d/%d  %+8.3f %7.2f  %9.3e  %2d%s"
+            % (i, w % 100000, r, d, q, P, n, mark)
+        )
 
     # ---- (2) IS THE STEP COMMON ACROSS INSTANCES? -----------------------------------------
     print("\nAT THE STEP -- every instance's own disc, same record:")
@@ -152,10 +176,15 @@ def main():
         print("  record %d (win %d slot %d):" % (idx, w % 100000, r))
         for inst, e, p, l, ch in sorted(by_key[(w, r)]):
             d, q = disc_q(e, p, l)
-            print("    %-9s disc %+7.3f  q %6.2f  e %9.3e p %9.3e l %9.3e" % (inst, d, q, e, p, l))
+            print(
+                "    %-9s disc %+7.3f  q %6.2f  e %9.3e p %9.3e l %9.3e"
+                % (inst, d, q, e, p, l)
+            )
 
     # ---- (3) IS IT COMMON ACROSS CHANNELS? ------------------------------------------------
-    print("\nAT THE STEP -- per CHANNEL, summed over instances (a delay is a RAMP, not a collapse):")
+    print(
+        "\nAT THE STEP -- per CHANNEL, summed over instances (a delay is a RAMP, not a collapse):"
+    )
     for idx in (at, at + 1):
         (w, r) = series[idx][0]
         acc = collections.defaultdict(lambda: [0.0, 0.0, 0.0])

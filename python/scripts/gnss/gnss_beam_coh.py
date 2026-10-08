@@ -38,6 +38,7 @@ import sys
 import numpy as np
 import healpy as hp
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
@@ -50,16 +51,18 @@ n_c, n_i = coh["n"], inc["n"]
 if not np.array_equal(n_c, n_i):
     # Not fatal, but it means the two maps did NOT come from one sample set, and the identity
     # above no longer holds. Say so rather than quietly differencing incomparable means.
-    print("⚠️ hit counts differ (%d vs %d pixels populated) -- restricting to the intersection"
-          % (int((n_c > 0).sum()), int((n_i > 0).sum())))
+    print(
+        "⚠️ hit counts differ (%d vs %d pixels populated) -- restricting to the intersection"
+        % (int((n_c > 0).sum()), int((n_i > 0).sum()))
+    )
 
 ok = (n_c > 0) & (n_i > 0)
 d = np.full(n_c.size, np.nan)
 d[ok] = coh["s1"][ok] / n_c[ok] - inc["s1"][ok] / n_i[ok]
 
-n_live = 22.0                        # elements actually carrying power (08-26 element_power)
-rand_db = -20.0 * np.log10(np.sqrt(n_live))   # random phases sit BELOW the phased sum
-full_db = 0.0                                  # fully phased == one element, post-normalisation
+n_live = 22.0  # elements actually carrying power (08-26 element_power)
+rand_db = -20.0 * np.log10(np.sqrt(n_live))  # random phases sit BELOW the phased sum
+full_db = 0.0  # fully phased == one element, post-normalisation
 
 # Zenith-centred orthographic, NORTH UP / EAST RIGHT -- the sky as seen looking up, matching
 # gnss_beam_map.py's convention so the two renders can be laid side by side.
@@ -76,15 +79,16 @@ pix = hp.ang2pix(nside, np.radians(90.0 - el[inside]), np.radians(az[inside]))
 img[inside] = d[pix]
 
 fig, ax = plt.subplots(1, 2, figsize=(13, 5.6))
-im = ax[0].imshow(img, origin="lower", cmap="magma",
-                  vmin=float(np.nanpercentile(img, 2)), vmax=0.0)
-ax[0].set_title("coherent sum vs one element (dB); 0 = phased, %.1f = random"
-                % rand_db)
+im = ax[0].imshow(
+    img, origin="lower", cmap="magma", vmin=float(np.nanpercentile(img, 2)), vmax=0.0
+)
+ax[0].set_title("coherent sum vs one element (dB); 0 = phased, %.1f = random" % rand_db)
 cb = fig.colorbar(im, ax=ax[0])
 cb.ax.axhline(rand_db, color="cyan", lw=2)
 cb.ax.axhline(full_db, color="lime", lw=2)
 for a in ax[:1]:
-    a.set_xticks([]); a.set_yticks([])
+    a.set_xticks([])
+    a.set_yticks([])
     a.text(npx / 2, npx * 0.98, "N", ha="center", va="top", fontsize=11)
     a.text(npx * 0.98, npx / 2, "E", ha="right", va="center", fontsize=11)
     a.text(npx * 0.02, npx / 2, "W", ha="left", va="center", fontsize=11)
@@ -92,17 +96,23 @@ for a in ax[:1]:
 
 v = d[np.isfinite(d)]
 ax[1].hist(v, bins=60, color="0.3")
-ax[1].axvline(rand_db, color="c", lw=2,
-              label="random phases, %.0f elem (%.1f dB)" % (n_live, rand_db))
-ax[1].axvline(full_db, color="limegreen", lw=2,
-              label="fully phased (0 dB)")
-ax[1].axvline(np.median(v), color="orange", ls="--", lw=2,
-              label="median %.1f dB" % np.median(v))
+ax[1].axvline(
+    rand_db,
+    color="c",
+    lw=2,
+    label="random phases, %.0f elem (%.1f dB)" % (n_live, rand_db),
+)
+ax[1].axvline(full_db, color="limegreen", lw=2, label="fully phased (0 dB)")
+ax[1].axvline(
+    np.median(v), color="orange", ls="--", lw=2, label="median %.1f dB" % np.median(v)
+)
 ax[1].set_xlabel("coherent sum vs one element (dB)")
 ax[1].set_ylabel("pixels")
 ax[1].legend(fontsize=8)
 fig.suptitle("%s   (%d pixels)" % (title, int(np.isfinite(d).sum())))
 fig.tight_layout()
 fig.savefig(png, dpi=110)
-print("%s: median %+.1f dB, 10-90%% %+.1f..%+.1f  (random %.1f, phased %.1f)"
-      % (png, np.median(v), np.percentile(v, 10), np.percentile(v, 90), rand_db, full_db))
+print(
+    "%s: median %+.1f dB, 10-90%% %+.1f..%+.1f  (random %.1f, phased %.1f)"
+    % (png, np.median(v), np.percentile(v, 10), np.percentile(v, 90), rand_db, full_db)
+)

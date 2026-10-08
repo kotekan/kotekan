@@ -33,9 +33,20 @@ def read(path, timeout=20.0):
     """`host:/path` over ssh (BatchMode), or a local path."""
     host, _, remote = path.partition(":")
     if remote:
-        return subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host,
-                               "cat " + remote],
-                              capture_output=True, timeout=timeout, check=True).stdout.decode()
+        return subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=10",
+                host,
+                "cat " + remote,
+            ],
+            capture_output=True,
+            timeout=timeout,
+            check=True,
+        ).stdout.decode()
     with open(path) as fh:
         return fh.read()
 
@@ -50,11 +61,15 @@ def update_body(state, conf):
     labels, bad = list(state["labels"]), list(state["bad_inputs"])
     missing = [lb for lb in bad if lb not in labels]
     if missing:
-        raise ValueError("bffs flags labels that are not in its own label list: %s" % missing[:5])
+        raise ValueError(
+            "bffs flags labels that are not in its own label list: %s" % missing[:5]
+        )
     delay = float(((conf or {}).get("choco") or {}).get("sync_delay", 0.0))
-    return {"bad_inputs": sorted(labels.index(lb) for lb in bad),
-            "start_time": float(state["updated"]) + delay,
-            "update_id": str(state["update_id"])}
+    return {
+        "bad_inputs": sorted(labels.index(lb) for lb in bad),
+        "start_time": float(state["updated"]) + delay,
+        "update_id": str(state["update_id"]),
+    }
 
 
 def fetch(state_path=STATE, conf_path=CONF, timeout=20.0):
@@ -65,9 +80,12 @@ def fetch(state_path=STATE, conf_path=CONF, timeout=20.0):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--state", default=STATE, help="bffs state.json (host:/path or local)")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--state", default=STATE, help="bffs state.json (host:/path or local)"
+    )
     ap.add_argument("--conf", default=CONF, help="bffs.yaml, for sync_delay")
     ap.add_argument("--out", default=None, help="write the body here instead of stdout")
     a = ap.parse_args()
@@ -78,7 +96,9 @@ def main():
             fh.write(text + "\n")
     else:
         print(text)
-    sys.stderr.write("bffs: %d bad inputs, %s\n" % (len(body["bad_inputs"]), body["update_id"]))
+    sys.stderr.write(
+        "bffs: %d bad inputs, %s\n" % (len(body["bad_inputs"]), body["update_id"])
+    )
 
 
 if __name__ == "__main__":

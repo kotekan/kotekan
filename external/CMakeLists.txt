@@ -16,8 +16,8 @@ if(CUDAToolkit_FOUND)
     target_link_libraries(libexternal INTERFACE ksgpu)
     add_subdirectory(n2k)
     target_link_libraries(libexternal INTERFACE n2k)
-    # n2k_dual: two-input clone of n2k for the GNSS path-B integration (n2k itself is
-    # deliberately untouched -- see external/n2k_dual/README.md).
+    # n2k_dual: two-input clone of n2k for the GNSS path-B integration (n2k itself is deliberately
+    # untouched -- see external/n2k_dual/README.md).
     add_subdirectory(n2k_dual)
     target_link_libraries(libexternal INTERFACE n2k_dual)
 

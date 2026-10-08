@@ -18,6 +18,7 @@ tau_min_dual=0 / birth_gate_after=huge restore it exactly, which is what makes t
 rather than a decoration.
 """
 import sys, os
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_broker.state_filter import JointReceiverState
 
@@ -39,7 +40,9 @@ def _run(**kw):
 
 def test_no_row_when_unobservable():
     js = _run()
-    assert MEAS not in js._band_idx, "a tau row was created with zero dual-band satellites"
+    assert (
+        MEAS not in js._band_idx
+    ), "a tau row was created with zero dual-band satellites"
     assert js.tau(MEAS) == 0.0, "tau must be pinned at 0, got %r" % js.tau(MEAS)
     print("  no tau row when dual=0                      OK")
 
@@ -47,8 +50,13 @@ def test_no_row_when_unobservable():
 def test_clock_converges():
     js = _run()
     sig = js.sigma()
-    assert sig < 1.0, "sigma(clk) did not converge: %.3f (the incident sat at 19.901)" % sig
-    assert abs(js.clk - CLK) < 2.0, "clk %.3f is nowhere near truth %.1f" % (js.clk, CLK)
+    assert sig < 1.0, (
+        "sigma(clk) did not converge: %.3f (the incident sat at 19.901)" % sig
+    )
+    assert abs(js.clk - CLK) < 2.0, "clk %.3f is nowhere near truth %.1f" % (
+        js.clk,
+        CLK,
+    )
     print("  sigma(clk) converged to %.4f                OK" % sig)
 
 
@@ -57,17 +65,19 @@ def test_old_behaviour_reproduces_the_failure():
     js = _run(tau_min_dual=0)
     assert MEAS in js._band_idx, "control did not even create the row"
     sig = js.sigma()
-    assert sig > 5.0, ("control converged (%.3f) -- then this test proves nothing and the "
-                       "fix is untested" % sig)
+    assert sig > 5.0, (
+        "control converged (%.3f) -- then this test proves nothing and the "
+        "fix is untested" % sig
+    )
     print("  control (tau_min_dual=0) stuck at %.3f     OK" % sig)
 
 
 def test_birth_gate_cannot_be_held_open_by_a_stuck_P00():
     """birth_max must apply on evidence, not only on P00 < 100."""
-    js = _run(tau_min_dual=0)          # the degenerate state: P00 pinned high
+    js = _run(tau_min_dual=0)  # the degenerate state: P00 pinned high
     assert js.P[0, 0] > 100.0, "control P00 %.1f is not the stuck regime" % js.P[0, 0]
     n0 = len(js._idx)
-    js.update(("gal_e5a", 99), CLK + 900.0, 0.3, 200.0, band=MEAS)   # absurd newcomer
+    js.update(("gal_e5a", 99), CLK + 900.0, 0.3, 200.0, band=MEAS)  # absurd newcomer
     assert len(js._idx) == n0, "a 900-chip newcomer was born despite birth_max"
     print("  birth_max applies with P00=%.0f              OK" % js.P[0, 0])
 
@@ -78,15 +88,19 @@ def test_birth_gate_control():
     js = _run(tau_min_dual=0, birth_gate_after=10 ** 9)
     n0 = len(js._idx)
     js.update(("gal_e5a", 99), CLK + 900.0, 0.3, 200.0, band=MEAS)
-    assert len(js._idx) == n0 + 1, ("control refused the birth too -- birth_gate_after is "
-                                    "not what admitted it")
+    assert len(js._idx) == n0 + 1, (
+        "control refused the birth too -- birth_gate_after is " "not what admitted it"
+    )
     print("  control admits it without the bound         OK")
 
 
 if __name__ == "__main__":
-    for fn in (test_no_row_when_unobservable, test_clock_converges,
-               test_old_behaviour_reproduces_the_failure,
-               test_birth_gate_cannot_be_held_open_by_a_stuck_P00,
-               test_birth_gate_control):
+    for fn in (
+        test_no_row_when_unobservable,
+        test_clock_converges,
+        test_old_behaviour_reproduces_the_failure,
+        test_birth_gate_cannot_be_held_open_by_a_stuck_P00,
+        test_birth_gate_control,
+    ):
         fn()
     print("test_tau_observability: ALL PASS")

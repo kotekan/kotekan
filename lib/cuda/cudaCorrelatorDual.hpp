@@ -1,14 +1,14 @@
 #ifndef KOTEKAN_CUDA_CORRELATOR_DUAL_H
 #define KOTEKAN_CUDA_CORRELATOR_DUAL_H
 
-#include "Config.hpp"              // for Config
-#include "DataType.hpp"            // for int4x2_swapped_withoffset_t
-#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
-#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "driver_types.h"          // for cudaEvent_t
+#include "Config.hpp"                  // for Config
+#include "DataType.hpp"                // for int4x2_swapped_withoffset_t
+#include "NDArrayBuffer.hpp"           // for NDArrayBuffer
+#include "NDArrayRingBuffer.hpp"       // for NDArrayRingBuffer
+#include "bufferContainer.hpp"         // for bufferContainer
+#include "cudaCommand.hpp"             // for cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp"     // for cudaDeviceInterface
+#include "driver_types.h"              // for cudaEvent_t
 #include "n2k_dual/DualCorrelator.hpp" // for DualCorrelator
 
 #include <cstdint>  // for int32_t, uint32_t

@@ -71,8 +71,10 @@ sys.path.insert(0, "/home/kvand/gnss/kotekan/python/scripts/gnss")
 from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all  # noqa: E402
 
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
-R_REF = 20.2e6          # m, the GPS semi-synchronous slant range -- the dB zero for --range-norm
-MIN_ELEMS = 8           # an instance with fewer live elements says nothing about the beam
+R_REF = (
+    20.2e6  # m, the GPS semi-synchronous slant range -- the dB zero for --range-norm
+)
+MIN_ELEMS = 8  # an instance with fewer live elements says nothing about the beam
 
 
 def main():
@@ -82,8 +84,12 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--tmin", type=float, default=0.0)
     ap.add_argument("--tmax", type=float, default=4e9)
-    ap.add_argument("--every", type=float, default=0.0,
-                    help="decimate: keep at most one row per PRN per this many seconds")
+    ap.add_argument(
+        "--every",
+        type=float,
+        default=0.0,
+        help="decimate: keep at most one row per PRN per this many seconds",
+    )
     ap.add_argument("--no-range-norm", action="store_true")
     ap.add_argument("--mask-deg", type=float, default=0.0)
     args = ap.parse_args()
@@ -94,7 +100,7 @@ def main():
     # PASS 0: the probe pedestal, per (instance, element, 5-min bin). Per ELEMENT, never
     # medianed across them -- elements differ in gain by design, and a floor averaged over
     # elements would over-subtract the quiet ones into negative power.
-    floors = defaultdict(lambda: defaultdict(list))    # (inst, tbin) -> {e: [p2 ...]}
+    floors = defaultdict(lambda: defaultdict(list))  # (inst, tbin) -> {e: [p2 ...]}
     for path in args.elem:
         with open(path, errors="replace") as fh:
             for line in fh:
@@ -110,10 +116,12 @@ def main():
                 for e, v in enumerate(d.get("p2") or []):
                     if v > 0.0:
                         floors[(d["inst"], int(t // 300))][e].append(float(v))
-    floor = {k: {e: statistics.median(v) for e, v in d.items()} for k, d in floors.items()}
+    floor = {
+        k: {e: statistics.median(v) for e, v in d.items()} for k, d in floors.items()
+    }
     print("probe pedestal: %d (instance, 5-min) bin(s)" % len(floor))
 
-    per = defaultdict(dict)        # (prn, t) -> {inst: (arr, beam, sig)}
+    per = defaultdict(dict)  # (prn, t) -> {inst: (arr, beam, sig)}
     n_rows = n_probe = 0
 
     for path in args.elem:
@@ -132,14 +140,14 @@ def main():
                 n_rows += 1
                 if d.get("probe"):
                     n_probe += 1
-                    continue              # a probe is the FLOOR, never a beam sample
+                    continue  # a probe is the FLOOR, never a beam sample
                 fl = floor.get((d["inst"], int(t // 300))) or {}
                 pw, rat, sre, sim, sq = [], [], 0.0, 0.0, 0.0
                 for e, pair in enumerate(u):
                     qe = q[e] if e < len(q) else 0.0
                     re_, im_ = float(pair[0]), float(pair[1])
                     if re_ == 0.0 and im_ == 0.0:
-                        continue          # a DARK element, not a zero measurement
+                        continue  # a DARK element, not a zero measurement
                     if qe > 0.0:
                         sre += re_
                         sim += im_
@@ -156,27 +164,39 @@ def main():
                 if len(pw) < MIN_ELEMS or sq <= 0.0:
                     continue
                 per[(int(d["prn"]), round(float(t), 1))][d["inst"]] = (
-                    math.hypot(sre, sim) / sq, statistics.median(pw),
-                    statistics.median(rat))
+                    math.hypot(sre, sim) / sq,
+                    statistics.median(pw),
+                    statistics.median(rat),
+                )
 
-    print("rows %d (%d probe) -> %d (prn, tick) sample(s)" % (n_rows, n_probe, len(per)))
+    print(
+        "rows %d (%d probe) -> %d (prn, tick) sample(s)" % (n_rows, n_probe, len(per))
+    )
     if not per:
         sys.exit("no usable rows")
 
     # ---- geometry: BRDC once per (prn, minute), interpolation-free like mkobs.py ----------
     days = sorted({int(t // 86400) for _, t in per})
     eph = None
-    for dnum in days:                     # one fetch covers the span; last wins if it spans
-        eph = parse_rinex_nav(fetch_brdc(
-            datetime.fromtimestamp(dnum * 86400 + 43200, tz=timezone.utc)))
+    for dnum in days:  # one fetch covers the span; last wins if it spans
+        eph = parse_rinex_nav(
+            fetch_brdc(datetime.fromtimestamp(dnum * 86400 + 43200, tz=timezone.utc))
+        )
     geo = {}
 
     def geom(prn, t):
         key = (prn, int(t // 60))
         if key not in geo:
             try:
-                v = predict_all(eph, LAT, LON, ALT, key[1] * 60 + 30,
-                                mask_deg=-90.0, max_age=86400.0).get((args.sys, prn))
+                v = predict_all(
+                    eph,
+                    LAT,
+                    LON,
+                    ALT,
+                    key[1] * 60 + 30,
+                    mask_deg=-90.0,
+                    max_age=86400.0,
+                ).get((args.sys, prn))
             except Exception:
                 v = None
             geo[key] = (v["el"], v["az"], v["range_m"]) if v else None
@@ -207,15 +227,28 @@ def main():
             # ratio ... which is the same 20 log10 in amplitude. Spelled out because mixing
             # the two conventions is the classic factor-of-two in a beam map.
             corr = 0.0 if args.no_range_norm else 20.0 * math.log10(rng / R_REF)
-            fh.write(json.dumps({
-                "t": t, "prn": prn, "sys": args.sys, "az": az, "el": el,
-                "range_m": rng, "n_inst": len(insts),
-                "cn0_inc_dbhz": 10.0 * math.log10(beam) + corr,
-                "cn0_coh_dbhz": 20.0 * math.log10(arr) + corr,
-                "sig": round(sig, 3)}) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "t": t,
+                        "prn": prn,
+                        "sys": args.sys,
+                        "az": az,
+                        "el": el,
+                        "range_m": rng,
+                        "n_inst": len(insts),
+                        "cn0_inc_dbhz": 10.0 * math.log10(beam) + corr,
+                        "cn0_coh_dbhz": 20.0 * math.log10(arr) + corr,
+                        "sig": round(sig, 3),
+                    }
+                )
+                + "\n"
+            )
             n_out += 1
-    print("wrote %d row(s) -> %s   (dropped: %d no-geometry, %d below %.0f deg)"
-          % (n_out, args.out, n_nogeo, n_low, args.mask_deg))
+    print(
+        "wrote %d row(s) -> %s   (dropped: %d no-geometry, %d below %.0f deg)"
+        % (n_out, args.out, n_nogeo, n_low, args.mask_deg)
+    )
 
 
 if __name__ == "__main__":

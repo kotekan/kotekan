@@ -23,13 +23,24 @@ def stage_narrow_search(ctx):
     ⚠️ THE HINT IS ONLY AS GOOD AS THE CLOCK IT CARRIES. When the receiver clock bias is stale the
     margin must widen rather than the hint narrow -- a confidently wrong narrow window is worse
     than no hint at all, because the search then cannot find what it was told to look near."""
-    if (ctx.args.narrow_search and ctx.args.almanac and ctx.pred) or (ctx.xb_pred and ctx.args.xband_seed):
-        margin = (ctx.args.search_margin_hz
-                  if ctx.cb.ema is not None and not ctx.cb.stale
-                  else ctx.args.search_margin_wide_hz)
-        hints = [dict(prn=p, doppler_hz=ctx.pred[p][0] + ctx.cb.value, margin_hz=margin)
-                 for p in sorted(ctx.pred) if (ctx.up is None or p in ctx.up)
-                 and (ctx.capable is None or p in ctx.capable)] if (ctx.args.almanac and ctx.pred) else []
+    if (ctx.args.narrow_search and ctx.args.almanac and ctx.pred) or (
+        ctx.xb_pred and ctx.args.xband_seed
+    ):
+        margin = (
+            ctx.args.search_margin_hz
+            if ctx.cb.ema is not None and not ctx.cb.stale
+            else ctx.args.search_margin_wide_hz
+        )
+        hints = (
+            [
+                dict(prn=p, doppler_hz=ctx.pred[p][0] + ctx.cb.value, margin_hz=margin)
+                for p in sorted(ctx.pred)
+                if (ctx.up is None or p in ctx.up)
+                and (ctx.capable is None or p in ctx.capable)
+            ]
+            if (ctx.args.almanac and ctx.pred)
+            else []
+        )
         # RESCUE: for a sat the sibling band tracks but BRDC did NOT just hint (no pred /
         # no almanac), add a cross-band hint so the search narrows instead of going blind.
         # Wider margin than a BRDC hint -- the cross-band seed accuracy is the inter-band
@@ -44,10 +55,12 @@ def stage_narrow_search(ctx):
                 if ctx.up is not None and _p not in ctx.up:
                     continue
                 hints.append(dict(prn=_p, doppler_hz=_xd, margin_hz=_xb_margin))
-                _log_rl("xbandseed-%d" % _p,
-                        "XBAND RESCUE HINT PRN %d: %+.0f Hz (sibling tracks it, BRDC does "
-                        "not) -> search narrows instead of blind" % (_p, _xd),
-                        every_s=30.0)
+                _log_rl(
+                    "xbandseed-%d" % _p,
+                    "XBAND RESCUE HINT PRN %d: %+.0f Hz (sibling tracks it, BRDC does "
+                    "not) -> search narrows instead of blind" % (_p, _xd),
+                    every_s=30.0,
+                )
         # SECONDARY-CODE ALIGNMENT HINT, the Doppler hint's twin and the bigger saving:
         # the acquire builds a FULL surface per alignment, so 20 of them are ~92% of a pass.
         # We echo back the stage's OWN last reported nh with the hop it was measured at, and
@@ -87,11 +100,25 @@ def stage_narrow_search(ctx):
         if ctx.args.nh_hint and ctx.pred and ctx.utc0_sample0:
             try:
                 import gnss_ephemeris as _nh2
+
                 _per = ctx.args.code_length / ctx.args.chip_rate_hz
+
                 def _pred_nh(_p, _t):
                     _v = ctx.pred[_p]
-                    return int(round((_nh2.gpst_of_utc(_t) - _v[3] / _nh2.C_LIGHT
-                                      + (_v[4] if len(_v) > 4 else 0.0)) / _per)) % ctx.args.nh_overlay_len
+                    return (
+                        int(
+                            round(
+                                (
+                                    _nh2.gpst_of_utc(_t)
+                                    - _v[3] / _nh2.C_LIGHT
+                                    + (_v[4] if len(_v) > 4 else 0.0)
+                                )
+                                / _per
+                            )
+                        )
+                        % ctx.args.nh_overlay_len
+                    )
+
                 # (a) re-measure the constant from every fresh detection we have
                 #
                 # ⚠️ "FRESH" MEANS A NEW DETECTION, NOT A NEW CYCLE. This loop used to
@@ -119,35 +146,73 @@ def stage_narrow_search(ctx):
                         continue
                     ctx.nho.last_rh[_p] = _rh
                     _t = ctx.utc0_sample0 + _rh / ctx.args.hops_per_sec
-                    ctx.nho.off_hist.append((ctx.t0, (_pred_nh(_p, _t) - _nh) % ctx.args.nh_overlay_len))
+                    ctx.nho.off_hist.append(
+                        (ctx.t0, (_pred_nh(_p, _t) - _nh) % ctx.args.nh_overlay_len)
+                    )
                 del ctx.nho.off_hist[:-64]
-                _fresh = [o for (_ts, o) in ctx.nho.off_hist
-                          if ctx.t0 - _ts <= ctx.args.nh_hint_max_age_s]
-                if len(_fresh) < ctx.args.nh_hint_min_samples and ctx.nho.offset[0] is not None:
-                    _log("nh hint EXPIRED: %d sample(s) inside %.0f s (need %d) -- "
-                         "dropping the offset so the search widens instead of staying "
-                         "narrowed on a stale one"
-                         % (len(_fresh), ctx.args.nh_hint_max_age_s, ctx.args.nh_hint_min_samples))
+                _fresh = [
+                    o
+                    for (_ts, o) in ctx.nho.off_hist
+                    if ctx.t0 - _ts <= ctx.args.nh_hint_max_age_s
+                ]
+                if (
+                    len(_fresh) < ctx.args.nh_hint_min_samples
+                    and ctx.nho.offset[0] is not None
+                ):
+                    _log(
+                        "nh hint EXPIRED: %d sample(s) inside %.0f s (need %d) -- "
+                        "dropping the offset so the search widens instead of staying "
+                        "narrowed on a stale one"
+                        % (
+                            len(_fresh),
+                            ctx.args.nh_hint_max_age_s,
+                            ctx.args.nh_hint_min_samples,
+                        )
+                    )
                     ctx.nho.offset[0] = None
                 # (b) circular median: the offsets cluster, so rotate to the mode before
                 # taking it, or a cluster straddling the 0/20 wrap averages to nonsense.
                 if len(_fresh) >= ctx.args.nh_hint_min_samples:
                     _mode = max(set(_fresh), key=_fresh.count)
-                    _rot = [((o - _mode + ctx.args.nh_overlay_len // 2) % ctx.args.nh_overlay_len)
-                            - ctx.args.nh_overlay_len // 2 for o in _fresh]
+                    _rot = [
+                        (
+                            (o - _mode + ctx.args.nh_overlay_len // 2)
+                            % ctx.args.nh_overlay_len
+                        )
+                        - ctx.args.nh_overlay_len // 2
+                        for o in _fresh
+                    ]
                     _rot.sort()
-                    ctx.nho.offset[0] = (_mode + _rot[len(_rot) // 2]) % ctx.args.nh_overlay_len
+                    ctx.nho.offset[0] = (
+                        _mode + _rot[len(_rot) // 2]
+                    ) % ctx.args.nh_overlay_len
                 # (c) hint EVERY visible sat, detected or not, at a hop the stage can
                 # propagate over a few seconds rather than a minute
                 if ctx.nho.offset[0] is not None:
-                    _rh_now = int(round((ctx.t0 - ctx.utc0_sample0) * ctx.args.hops_per_sec))
-                    nh_hints = [dict(prn=int(_p),
-                                     nh=(_pred_nh(_p, ctx.t0) - ctx.nho.offset[0]) % ctx.args.nh_overlay_len,
-                                     ref_hop=_rh_now)
-                                for _p in ctx.pred if ctx.pred[_p][2] >= ctx.args.mask_deg]
-                    _log_rl("nhhint", "nh hint: offset %d (%d samples) -> %d sat(s), span %d"
-                            % (ctx.nho.offset[0], len(_fresh), len(nh_hints),
-                               ctx.args.nh_hint_span), every_s=60.0)
+                    _rh_now = int(
+                        round((ctx.t0 - ctx.utc0_sample0) * ctx.args.hops_per_sec)
+                    )
+                    nh_hints = [
+                        dict(
+                            prn=int(_p),
+                            nh=(_pred_nh(_p, ctx.t0) - ctx.nho.offset[0])
+                            % ctx.args.nh_overlay_len,
+                            ref_hop=_rh_now,
+                        )
+                        for _p in ctx.pred
+                        if ctx.pred[_p][2] >= ctx.args.mask_deg
+                    ]
+                    _log_rl(
+                        "nhhint",
+                        "nh hint: offset %d (%d samples) -> %d sat(s), span %d"
+                        % (
+                            ctx.nho.offset[0],
+                            len(_fresh),
+                            len(nh_hints),
+                            ctx.args.nh_hint_span,
+                        ),
+                        every_s=60.0,
+                    )
             except Exception as e:
                 _log_rl("nhhint-err", "nh hint failed: %s" % e, every_s=60.0)
         pushed = 0
@@ -165,13 +230,25 @@ def stage_narrow_search(ctx):
                 try:
                     _post("%s/set_nh_hint" % d_ep, nh_hints)
                 except Exception as e:
-                    _log_rl("nhpost-%s" % d_ep,
-                            "set_nh_hint %s failed (old binary?): %s" % (d_ep, e),
-                            every_s=120.0)
-        _log_rl("narrow",
-                "narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
-                % (len(hints), int(margin),
-                   ("bias solved" if ctx.cb.ema is not None and not ctx.cb.stale
-                    else "bias STALE, wide re-solve" if ctx.cb.ema is not None
-                    else "pre-solve wide"),
-                   pushed, len(ctx.detectors)))
+                    _log_rl(
+                        "nhpost-%s" % d_ep,
+                        "set_nh_hint %s failed (old binary?): %s" % (d_ep, e),
+                        every_s=120.0,
+                    )
+        _log_rl(
+            "narrow",
+            "narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
+            % (
+                len(hints),
+                int(margin),
+                (
+                    "bias solved"
+                    if ctx.cb.ema is not None and not ctx.cb.stale
+                    else "bias STALE, wide re-solve"
+                    if ctx.cb.ema is not None
+                    else "pre-solve wide"
+                ),
+                pushed,
+                len(ctx.detectors),
+            ),
+        )

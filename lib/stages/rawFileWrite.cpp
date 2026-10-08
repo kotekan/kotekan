@@ -65,8 +65,7 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
         std::error_code ec;
         std::filesystem::create_directories(_base_dir, ec);
         if (ec)
-            FATAL_ERROR("rawFileWrite: cannot create base_dir {:s}: {:s}", _base_dir,
-                        ec.message());
+            FATAL_ERROR("rawFileWrite: cannot create base_dir {:s}: {:s}", _base_dir, ec.message());
     }
 
     if (_exit_after_n_files > 0)
@@ -93,9 +92,8 @@ void rawFileWrite::main_thread() {
         // Files are "<prefix>_<7 digits>.<ext>"; resume one past the largest number seen.
         // Anything else in the directory (other prefixes, other runs) is ignored, so two
         // writers with different file_name values can share a base_dir.
-        std::string prefix = _prefix_hostname
-                                 ? fmt::format("{:s}_{:s}_", hostname, _file_name)
-                                 : fmt::format("{:s}_", _file_name);
+        std::string prefix = _prefix_hostname ? fmt::format("{:s}_{:s}_", hostname, _file_name)
+                                              : fmt::format("{:s}_", _file_name);
         std::string suffix = "." + _file_ext;
         std::error_code ec;
         for (auto& ent : std::filesystem::directory_iterator(_base_dir, ec)) {

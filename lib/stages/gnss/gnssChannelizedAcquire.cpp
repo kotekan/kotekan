@@ -3,13 +3,13 @@
 #include "fftwPlannerLock.hpp" // for fftw_planner_mutex
 
 #include <algorithm> // for max
-#include <cmath>   // for cos, sin, fmod, M_PI, round
-#include <chrono>  // for the opt-in ms-split stage timers
-#include <cstdio>  // for fprintf (ditto)
-#include <cstdlib> // for abs, getenv
-#include <mutex>   // for lock_guard
-#include <numeric> // for gcd
-#include <thread>  // for thread (aggregate d-parallelism)
+#include <chrono>    // for the opt-in ms-split stage timers
+#include <cmath>     // for cos, sin, fmod, M_PI, round
+#include <cstdio>    // for fprintf (ditto)
+#include <cstdlib>   // for abs, getenv
+#include <mutex>     // for lock_guard
+#include <numeric>   // for gcd
+#include <thread>    // for thread (aggregate d-parallelism)
 
 namespace gnss {
 
@@ -47,10 +47,11 @@ AcquireWorkspace::~AcquireWorkspace() {
         fftwf_free(out);
 }
 
-std::vector<std::vector<cf>>
-channel_correlate(const std::vector<cf>& data, const std::vector<cf>& repl0,
-                  const std::vector<double>& doppler_grid, double sample_rate, int samples_per_hop,
-                  AcquireWorkspace& ws) {
+std::vector<std::vector<cf>> channel_correlate(const std::vector<cf>& data,
+                                               const std::vector<cf>& repl0,
+                                               const std::vector<double>& doppler_grid,
+                                               double sample_rate, int samples_per_hop,
+                                               AcquireWorkspace& ws) {
     std::vector<std::vector<cf>> P;
     channel_correlate_into(data, repl0, doppler_grid, sample_rate, samples_per_hop, ws, P);
     return P;
@@ -168,10 +169,9 @@ AcquisitionSurface surface_dims(const std::vector<int>& chan_freq, int samples_p
     return AcquisitionSurface{n_dop, Mp, sph, s_stored, s_step};
 }
 
-AcquisitionSurface
-aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
-                     const std::vector<int>& chan_freq, int samples_per_hop,
-                     std::vector<double>& surf, int n_threads, int fine_step) {
+AcquisitionSurface aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
+                                        const std::vector<int>& chan_freq, int samples_per_hop,
+                                        std::vector<double>& surf, int n_threads, int fine_step) {
     const int nc = (int)P.size();
     const int nd = nc ? (int)P[0].size() : 0;
     const int Mp = (nc && nd) ? (int)P[0][0].size() : 0;
@@ -322,13 +322,13 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
 // ---------------------------------------------------------------------------------------------
 // Sub-window ("ms-split") accumulation. Header carries the argument; this is the mechanics.
 // ---------------------------------------------------------------------------------------------
-AcquisitionSurface
-ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
-                    const std::vector<std::vector<std::complex<float>>>& data_ch,
-                    const std::vector<int>& chan_ids, long long window_start_sample, int sub_hops,
-                    int n_sub, const std::vector<double>& doppler_grid, double sample_rate,
-                    std::vector<double>& surf, AcquireWorkspace& ws, int fine_step,
-                    int n_threads) {
+AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
+                                       const std::vector<std::vector<std::complex<float>>>& data_ch,
+                                       const std::vector<int>& chan_ids,
+                                       long long window_start_sample, int sub_hops, int n_sub,
+                                       const std::vector<double>& doppler_grid, double sample_rate,
+                                       std::vector<double>& surf, AcquireWorkspace& ws,
+                                       int fine_step, int n_threads) {
     const int nc = (int)chan_ids.size();
     const int N = sub_hops;
     const int fft_len = bank.fft_len();
@@ -344,8 +344,8 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
     const bool prof = std::getenv("GNSS_MSSPLIT_PROFILE") != nullptr;
     double t_repl = 0.0, t_corr = 0.0, t_agg = 0.0;
     const auto now = [] {
-        return std::chrono::duration<double>(
-                   std::chrono::steady_clock::now().time_since_epoch()).count();
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
     };
 
     // EVERYTHING THE SUB-WINDOW LOOP TOUCHES IS ALLOCATED ONCE, HERE.
@@ -536,7 +536,8 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     double surf_sum = 0.0;
     long surf_n = 0;
     int best_d = 0, best_q = 0, best_i = 0;
-    std::vector<double> dop_peak(dims.n_dop, 0.0); // per-Doppler max-over-tau (for the sub-grid fit)
+    std::vector<double> dop_peak(dims.n_dop,
+                                 0.0); // per-Doppler max-over-tau (for the sub-grid fit)
 
     // Index by the STORED fine-lag COLUMNS, and form the absolute delay through dims.tau(),
     // which reapplies both the coarse stride sph and the fine decimation s_step. The surface
@@ -633,9 +634,8 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     // reported delay is the negative of the surface lag). It is split out so the GPU path, which
     // produces the same reduction on the device, calls THIS rather than growing a second copy.
     const double mean0 = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
-    const double dop_u = (data_hops > 0 && data_hops < dims.Mp)
-                             ? (double)data_hops / (double)dims.Mp
-                             : 1.0;
+    const double dop_u =
+        (data_hops > 0 && data_hops < dims.Mp) ? (double)data_hops / (double)dims.Mp : 1.0;
     return peak_from_reduction(dims, doppler_grid, sample_rate, chip_rate, code_length, best.peak,
                                mean0, best_d, best_q, best_i, dop_peak, fine_lag_sign, dop_loc_m,
                                dop_loc_p, dop_u);
@@ -726,8 +726,8 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                         best_d, nd, dop_loc_m, s0, dop_loc_p, r_meas, r_model(0.0), dop_u,
                         (up ? delta : -delta),
                         (up ? delta : -delta) * (doppler_grid[best_d + 1] - doppler_grid[best_d]));
-            best.doppler_hz += (up ? delta : -delta)
-                               * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
+            best.doppler_hz +=
+                (up ? delta : -delta) * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
         } else if (const double denom = sm - 2.0 * s0 + sp; denom < 0.0) {
             double delta = 0.5 * (sm - sp) / denom; // parabola vertex, in grid cells (|delta|<=0.5)
             delta = std::max(-0.5, std::min(0.5, delta));
@@ -808,12 +808,13 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
     return best;
 }
 
-AcquisitionResult
-channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch,
-                    const std::vector<std::vector<std::complex<float>>>& repl0_ch,
-                    const std::vector<int>& covering, const std::vector<double>& doppler_grid,
-                    double sample_rate, double chip_rate, int num_chan, long code_length,
-                    const std::vector<int>& chan_freq, int samples_per_hop, int fine_lag_sign) {
+AcquisitionResult channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch,
+                                      const std::vector<std::vector<std::complex<float>>>& repl0_ch,
+                                      const std::vector<int>& covering,
+                                      const std::vector<double>& doppler_grid, double sample_rate,
+                                      double chip_rate, int num_chan, long code_length,
+                                      const std::vector<int>& chan_freq, int samples_per_hop,
+                                      int fine_lag_sign) {
     // Single-window acquire = one accumulation + reduce (local FFT workspace).
     std::vector<double> surf;
     AcquireWorkspace ws;

@@ -23,10 +23,10 @@
 #ifndef PFB_PROTOTYPE_HPP
 #define PFB_PROTOTYPE_HPP
 
-#include <complex>  // for complex
-#include <cstring>  // for memmove
-#include <string>   // for string
-#include <vector>   // for vector
+#include <complex> // for complex
+#include <cstring> // for memmove
+#include <string>  // for string
+#include <vector>  // for vector
 
 namespace dsp {
 

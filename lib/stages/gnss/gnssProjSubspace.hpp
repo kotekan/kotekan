@@ -363,8 +363,9 @@ public:
             // first eigenvalue and frac_next_min of the energy that was left after the ones
             // before it -- a noise-only remainder gives ~4/n_live (about 0.15 at 26).
             const double lam0 = std::fabs(_lam[(size_t)ch * _kmax]);
-            if (j > 0 && (std::fabs(lam) < rel_min * lam0
-                          || _frac[(size_t)ch * _kmax + j] < frac_next_min))
+            if (j > 0
+                && (std::fabs(lam) < rel_min * lam0
+                    || _frac[(size_t)ch * _kmax + j] < frac_next_min))
                 break;
             ++k;
         }
@@ -414,14 +415,14 @@ private:
 
 /// One chain's published subspace for one channel.
 struct ProjEntry {
-    std::string owner;   ///< the publishing stage's unique_name (+ "/probe" for a probe stack)
-    char sys = '?';      ///< constellation letter of the satellite (row sources)
-    int prn = 0;         ///< 0 = not a named satellite (probe stack)
-    int src = 0;         ///< 0 = the satellite's own row, 1 = probe-stack eigenvector
+    std::string owner;      ///< the publishing stage's unique_name (+ "/probe" for a probe stack)
+    char sys = '?';         ///< constellation letter of the satellite (row sources)
+    int prn = 0;            ///< 0 = not a named satellite (probe stack)
+    int src = 0;            ///< 0 = the satellite's own row, 1 = probe-stack eigenvector
     double sep_deg = 1.0e9; ///< boresight separation (row sources; 1e9 unknown)
-    double frac = 0.0;   ///< component-0 energy fraction (probe stacks: the trigger level)
-    int64_t wstart = 0;  ///< F-engine sample of the record it describes
-    double t_pub = 0.0;  ///< steady seconds of publication
+    double frac = 0.0;      ///< component-0 energy fraction (probe stacks: the trigger level)
+    int64_t wstart = 0;     ///< F-engine sample of the record it describes
+    double t_pub = 0.0;     ///< steady seconds of publication
     int n = 0, k = 0;
     std::vector<std::complex<float>> q; ///< [k][n]
 };
@@ -454,9 +455,9 @@ public:
     }
     /// Visit every fresh entry for (group, freq_id) not published by @p not_owner (nor its
     /// probe stack) under the lock, without copying: the per-record path.
-    template <typename F>
-    void for_each(const std::string& group, int freq_id, const std::string& not_owner,
-                  double now_s, double max_age_s, F&& f) const {
+    template<typename F>
+    void for_each(const std::string& group, int freq_id, const std::string& not_owner, double now_s,
+                  double max_age_s, F&& f) const {
         std::lock_guard<std::mutex> lk(_m);
         for (const auto& [key, e] : _e) {
             if (std::get<0>(key) != group || std::get<1>(key) != freq_id)

@@ -28,9 +28,20 @@ sys.path.insert(0, HERE)
 from gnss_broker import combdll, telem  # noqa: E402
 
 
-def make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=2,
-               chan_ids=(5972, 5988, 6004), taps=None, present=None,
-               hops_per_record=2048, fft_len=16384, phi0=0.0):
+def make_frame(
+    chain="gps_l5",
+    inst="cx19.0",
+    win=100,
+    seq=0,
+    n_rec=4,
+    n_prn=2,
+    chan_ids=(5972, 5988, 6004),
+    taps=None,
+    present=None,
+    hops_per_record=2048,
+    fft_len=16384,
+    phi0=0.0,
+):
     """One wire frame with an EXPLICIT comb.
 
     `taps` is {(record, prn_index, channel_index): (A_early, A_prompt, A_late, energy)} with
@@ -45,10 +56,27 @@ def make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=2,
     # The stride is the SENDER'S: rows carry this instance's comb columns only.
     row_total = telem._ROW_FLOATS + n_chan * telem._CHAN_FLOATS
     wstart0 = win * n_rec * hops_per_record * fft_len
-    hdr = telem._HDR.pack(telem._MAGIC, telem._VERSION, n_rec, n_prn, telem._ROW_FLOATS,
-                          n_chan, 32, hops_per_record, fft_len, win, seq, wstart0, 0.0,
-                          present, n_chan, row_total,
-                          chain.encode(), inst.encode(), *ids)
+    hdr = telem._HDR.pack(
+        telem._MAGIC,
+        telem._VERSION,
+        n_rec,
+        n_prn,
+        telem._ROW_FLOATS,
+        n_chan,
+        32,
+        hops_per_record,
+        fft_len,
+        win,
+        seq,
+        wstart0,
+        0.0,
+        present,
+        n_chan,
+        row_total,
+        chain.encode(),
+        inst.encode(),
+        *ids
+    )
     body = [0.0] * (n_rec * n_prn * row_total)
     taps = taps or {}
     for r in range(n_rec):
@@ -63,11 +91,20 @@ def make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=2,
                 E, P, L = E * derot, P * derot, L * derot
                 cb = base + telem._ROW_FLOATS + ch * telem._CHAN_FLOATS
                 # The wire carries G = A*energy; comb_epl() divides it back out.
-                body[cb + telem.CHAN_E_RE], body[cb + telem.CHAN_E_IM] = (E * en).real, (E * en).imag
+                body[cb + telem.CHAN_E_RE], body[cb + telem.CHAN_E_IM] = (
+                    (E * en).real,
+                    (E * en).imag,
+                )
                 body[cb + telem.CHAN_E_ENERGY] = en
-                body[cb + telem.CHAN_RE], body[cb + telem.CHAN_IM] = (P * en).real, (P * en).imag
+                body[cb + telem.CHAN_RE], body[cb + telem.CHAN_IM] = (
+                    (P * en).real,
+                    (P * en).imag,
+                )
                 body[cb + telem.CHAN_ENERGY] = en
-                body[cb + telem.CHAN_L_RE], body[cb + telem.CHAN_L_IM] = (L * en).real, (L * en).imag
+                body[cb + telem.CHAN_L_RE], body[cb + telem.CHAN_L_IM] = (
+                    (L * en).real,
+                    (L * en).imag,
+                )
                 body[cb + telem.CHAN_L_ENERGY] = en
     return hdr + struct.pack("<%df" % len(body), *body)
 
@@ -95,7 +132,7 @@ class TestInstancePowers(unittest.TestCase):
         self.assertAlmostEqual(d["p"], 1.0, places=6)
         self.assertAlmostEqual(d["e"], 0.25, places=6)
         self.assertAlmostEqual(d["l"], 0.0625, places=6)
-        self.assertEqual(d["n_rec"], 8)          # 2 windows x 4 records
+        self.assertEqual(d["n_rec"], 8)  # 2 windows x 4 records
         self.assertAlmostEqual(d["n_chan"], 3.0, places=6)
 
     def test_the_channel_combine_is_COHERENT(self):
@@ -142,15 +179,17 @@ class TestInstancePowers(unittest.TestCase):
         c = client_with([make_frame(present=0b0101)])
         d = one(c, [100])[1]
         self.assertEqual(d["n_rec"], 2)
-        self.assertAlmostEqual(d["p"], 1.0, places=6)   # NOT 0.5
+        self.assertAlmostEqual(d["p"], 1.0, places=6)  # NOT 0.5
 
 
 class TestFleetCombine(unittest.TestCase):
     """B. Across senders: ONE coherent sum over the lobe, and the sender is not a unit."""
 
     def _fleet(self, phi=(0.0, 0.0), **kw):
-        frames = [make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004), phi0=phi[0], **kw),
-                  make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), phi0=phi[1], **kw)]
+        frames = [
+            make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004), phi0=phi[0], **kw),
+            make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), phi0=phi[1], **kw),
+        ]
         return combdll.fleet_dll_comb(client_with(frames), "gps_l5", n_win=4, lag=0)
 
     def test_the_lobe_sum_is_normalised_and_the_ratios_are_the_combiners(self):
@@ -182,12 +221,18 @@ class TestFleetCombine(unittest.TestCase):
         """Same two senders, but the SECOND's comb genuinely sits at -A (no phi0 to explain
         it): the lobe sum cancels. An instance-coherent combine would have reported full
         power from each and summed them -- blind to the cross-sender phase."""
-        taps = {(r, p, ch): (-0.5 + 0j, -1 + 0j, -0.25 + 0j, 1.0)
-                for r in range(4) for p in range(2) for ch in range(3)}
-        frames = [make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004)),
-                  make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), taps=taps)]
+        taps = {
+            (r, p, ch): (-0.5 + 0j, -1 + 0j, -0.25 + 0j, 1.0)
+            for r in range(4)
+            for p in range(2)
+            for ch in range(3)
+        }
+        frames = [
+            make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004)),
+            make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), taps=taps),
+        ]
         out = combdll.fleet_dll_comb(client_with(frames), "gps_l5", n_win=4, lag=0)
-        self.assertEqual(out, {})   # E + L == 0: no discriminator can be formed
+        self.assertEqual(out, {})  # E + L == 0: no discriminator can be formed
         t = combdll.lobe_taps(client_with(frames), "gps_l5", [100])[1]
         self.assertAlmostEqual(t["p"], 0.0, places=9)
         self.assertAlmostEqual(t["chan"][5976][1], 1.0, places=6)
@@ -196,8 +241,10 @@ class TestFleetCombine(unittest.TestCase):
         """min_instances is a COMPLETENESS gate on the record. Sender B drops records 1 and 3;
         with min_instances=2 those records leave the mean; with 1 they stay, at the same
         normalised power (three channels at A=1 read 1.0 exactly as six do)."""
-        frames = [make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004)),
-                  make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), present=0b0101)]
+        frames = [
+            make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004)),
+            make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), present=0b0101),
+        ]
         t2 = combdll.lobe_taps(client_with(frames), "gps_l5", [100], min_instances=2)[1]
         self.assertEqual(t2["n_rec"], 2)
         self.assertAlmostEqual(t2["n_chan"], 6.0, places=6)
@@ -209,8 +256,9 @@ class TestFleetCombine(unittest.TestCase):
 
     def test_one_instance_is_not_a_fleet(self):
         c = client_with([make_frame(inst="cx19.0")])
-        self.assertEqual(combdll.fleet_dll_comb(c, "gps_l5", n_win=4, lag=0,
-                                                min_instances=2), {})
+        self.assertEqual(
+            combdll.fleet_dll_comb(c, "gps_l5", n_win=4, lag=0, min_instances=2), {}
+        )
 
     def test_channels_from_both_instances_appear_once_each(self):
         v = self._fleet()[1]
@@ -224,12 +272,14 @@ class TestFleetCombine(unittest.TestCase):
         Adding the two together would report a power that is neither instance's measurement,
         and it would look perfectly ordinary in the profile.
         """
-        frames = [make_frame(inst="cx19.0", chan_ids=(5972, 5988)),
-                  make_frame(inst="cx42.0", chan_ids=(5988, 6004))]
+        frames = [
+            make_frame(inst="cx19.0", chan_ids=(5972, 5988)),
+            make_frame(inst="cx42.0", chan_ids=(5988, 6004)),
+        ]
         v = combdll.fleet_dll_comb(client_with(frames), "gps_l5", n_win=4, lag=0)[1]
         self.assertEqual(v["chan_dup"], [5988])
         self.assertEqual(sorted(v["chan"]), [5972, 6004])
-        self.assertAlmostEqual(v["p_pow"], 1.0, places=6)   # the lobe sum is untouched
+        self.assertAlmostEqual(v["p_pow"], 1.0, places=6)  # the lobe sum is untouched
 
     def test_presence_policy_is_the_shared_one(self):
         """The keys apply_presence writes must be here -- it is the SAME function fleet_dll
@@ -240,16 +290,24 @@ class TestFleetCombine(unittest.TestCase):
             self.assertIn(k, v)
 
     def test_deep_statistics_are_supplied_never_invented(self):
-        frames = [make_frame(inst="cx19.0", chan_ids=(5972,)),
-                  make_frame(inst="cx42.0", chan_ids=(5988,))]
+        frames = [
+            make_frame(inst="cx19.0", chan_ids=(5972,)),
+            make_frame(inst="cx42.0", chan_ids=(5988,)),
+        ]
         c = client_with(frames)
         bare = combdll.fleet_dll_comb(c, "gps_l5", n_win=4, lag=0)[1]
         for k in combdll.COH_KEYS:
             self.assertIsNone(bare[k], k)
-        polled = {1: {"coh_row": {"deep_snr": 40.0, "deep_floor": 2.0, "coherence_s": 1.0},
-                      "coh_src": "http://cx19:12048/x", "coh_quad": (55.0, 7)}}
-        fed = combdll.fleet_dll_comb(c, "gps_l5", n_win=4, lag=0, coh_from=polled,
-                                     deep_gate_prns=True)[1]
+        polled = {
+            1: {
+                "coh_row": {"deep_snr": 40.0, "deep_floor": 2.0, "coherence_s": 1.0},
+                "coh_src": "http://cx19:12048/x",
+                "coh_quad": (55.0, 7),
+            }
+        }
+        fed = combdll.fleet_dll_comb(
+            c, "gps_l5", n_win=4, lag=0, coh_from=polled, deep_gate_prns=True
+        )[1]
         # No probes in this fixture, so presence is UNANCHORED and admits nobody -- by
         # design (fleet.apply_presence). What is pinned here is that the deep statistics
         # TRAVEL, whatever the verdict.
@@ -275,7 +333,9 @@ class TestPhaseSensitivity(unittest.TestCase):
         taps = {}
         for r in range(4):
             for ch in range(len(ids)):
-                rot = cmath.exp(2j * cmath.pi * ch / len(ids))   # a full turn across the comb
+                rot = cmath.exp(
+                    2j * cmath.pi * ch / len(ids)
+                )  # a full turn across the comb
                 taps[(r, 0, ch)] = (0j, rot, 0j, 1.0)
         c = client_with([make_frame(chan_ids=ids, taps=taps, n_prn=1)])
         d = one(c, [100])[1]

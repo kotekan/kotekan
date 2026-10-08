@@ -30,18 +30,27 @@ def main():
         if need not in cls:
             print("FAIL: %s not found in publish.py" % need)
             return 1
-    pub_m = {n.name for n in cls["FleetPublisher"].body
-             if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")}
-    view_m = {n.name for n in cls["_ChainView"].body
-              if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")}
+    pub_m = {
+        n.name
+        for n in cls["FleetPublisher"].body
+        if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")
+    }
+    view_m = {
+        n.name
+        for n in cls["_ChainView"].body
+        if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")
+    }
 
     # What does the broker actually call on its publisher handle?
     src = open(BROKER).read()
     called = set()
     for node in ast.walk(ast.parse(src)):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "publisher"):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "publisher"
+        ):
             called.add(node.func.attr)
 
     print("FleetPublisher public methods : %s" % ", ".join(sorted(pub_m)))
@@ -53,19 +62,27 @@ def main():
     # legitimately does not appear on the view. Anything else that the broker calls and the
     # view lacks is a live AttributeError waiting for the chain that arms it.
     FACTORY = {"register"}
-    missing = sorted(m for m in called if m in pub_m and m not in view_m and m not in FACTORY)
+    missing = sorted(
+        m for m in called if m in pub_m and m not in view_m and m not in FACTORY
+    )
     unknown = sorted(m for m in called if m not in pub_m and m not in view_m)
     if missing:
         for m in missing:
-            print("FAIL: broker calls publisher.%s(), FleetPublisher has it, "
-                  "_ChainView does NOT -> AttributeError at runtime, per chain." % m)
+            print(
+                "FAIL: broker calls publisher.%s(), FleetPublisher has it, "
+                "_ChainView does NOT -> AttributeError at runtime, per chain." % m
+            )
         return 1
     if unknown:
         # Not fatal: could be a builtin or a differently-named handle. Say so rather than
         # failing on something this crude cannot resolve.
-        print("note: %s called but not found on either class -- check by hand"
-              % ", ".join(unknown))
-    print("GATE GOOD: every publisher method the broker calls is reachable through the view")
+        print(
+            "note: %s called but not found on either class -- check by hand"
+            % ", ".join(unknown)
+        )
+    print(
+        "GATE GOOD: every publisher method the broker calls is reachable through the view"
+    )
     return 0
 
 

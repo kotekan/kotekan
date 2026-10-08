@@ -18,21 +18,21 @@ import numpy as np
 
 import gps_cnav2 as C2
 
-SYM_S = C2.SYM_S               # 0.010
-FRAME = C2.FRAME_SYMS          # 1800
-NEED = FRAME + C2.N_SF1        # 1852 (frame + next SF1) for a sync+decode
-EMIT_MAX = 48                 # ~48 s of 1 s emits -> >2 frames of history, bounds the find scan
-EPH_TTL_S = 3600.0           # a cached ephemeris older than this is stale (~hourly)
+SYM_S = C2.SYM_S  # 0.010
+FRAME = C2.FRAME_SYMS  # 1800
+NEED = FRAME + C2.N_SF1  # 1852 (frame + next SF1) for a sync+decode
+EMIT_MAX = 48  # ~48 s of 1 s emits -> >2 frames of history, bounds the find scan
+EPH_TTL_S = 3600.0  # a cached ephemeris older than this is stale (~hourly)
 
 
 class _PrnState:
     def __init__(self):
-        self.emits = {}          # slot0 -> np.array(0/1) one per distinct nav_obs emit
+        self.emits = {}  # slot0 -> np.array(0/1) one per distinct nav_obs emit
         self.grid0 = None
         self.last_obs = None
         self.rev = None
-        self.sf2 = None          # (bits[600], t_decoded)
-        self.sf3 = None          # (bits[274], t_decoded)
+        self.sf2 = None  # (bits[600], t_decoded)
+        self.sf3 = None  # (bits[274], t_decoded)
         self.toi = None
         self.n_frames = 0
         self.last_decode = 0.0
@@ -49,8 +49,11 @@ class Cnav2Predictor:
     def ingest(self, prn, obs):
         st = self._p.setdefault(prn, _PrnState())
         try:
-            utc_ref = float(obs["utc_ref"]); rec_dt = float(obs["rec_dt"])
-            phase = int(obs["phase"]); br = int(obs["br"]); pairs = obs["bits"]
+            utc_ref = float(obs["utc_ref"])
+            rec_dt = float(obs["rec_dt"])
+            phase = int(obs["phase"])
+            br = int(obs["br"])
+            pairs = obs["bits"]
         except (KeyError, TypeError, ValueError):
             return
         if rec_dt <= 0 or br <= 0 or not pairs:
@@ -79,7 +82,9 @@ class Cnav2Predictor:
             if i + 1 == len(slots) or slots[i + 1] != slots[i] + 1:
                 s0, s1 = slots[seg], slots[i]
                 if s1 - s0 + 1 >= 2:
-                    st.emits[s0] = np.array([m[s] for s in range(s0, s1 + 1)], dtype=np.int8)
+                    st.emits[s0] = np.array(
+                        [m[s] for s in range(s0, s1 + 1)], dtype=np.int8
+                    )
                 seg = i + 1
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
@@ -95,7 +100,8 @@ class Cnav2Predictor:
         if not st.emits:
             return []
         runs = []
-        cur0 = None; cur = None
+        cur0 = None
+        cur = None
         for s0 in sorted(st.emits):
             a = st.emits[s0]
             if cur is None:
@@ -107,7 +113,8 @@ class Cnav2Predictor:
                 if ov < len(a):
                     cur = np.concatenate([cur, a[ov:]])
             else:
-                runs.append((cur0, cur)); cur0, cur = s0, a.copy()
+                runs.append((cur0, cur))
+                cur0, cur = s0, a.copy()
         runs.append((cur0, cur))
         return runs
 
@@ -156,10 +163,15 @@ class Cnav2Predictor:
         if st is None:
             return None
         tr = self.symbol_transition_rate(prn)
-        return {"pages": st.n_frames, "words": st.n_frames, "toi": st.toi,
-                "have": ([2, 3] if st.sf2 else []), "eph": self.ephemeris(prn) is not None,
-                # ~0.5 = a real message; ~0 on a strong sat = an UNMODULATED data channel
-                "trans": None if tr is None else round(tr, 4)}
+        return {
+            "pages": st.n_frames,
+            "words": st.n_frames,
+            "toi": st.toi,
+            "have": ([2, 3] if st.sf2 else []),
+            "eph": self.ephemeris(prn) is not None,
+            # ~0.5 = a real message; ~0 on a strong sat = an UNMODULATED data channel
+            "trans": None if tr is None else round(tr, 4),
+        }
 
 
 # ------------------------------------------------------------------- self-test
@@ -168,6 +180,7 @@ def _selftest():
     br=1 10 ms emits, recover the SF2/SF3 + TOI through the full predictor."""
     import gps_cnav2 as C
     from galileo_inav import crc24q
+
     rng = np.random.default_rng(4)
     prn = 23
 
@@ -177,26 +190,37 @@ def _selftest():
         return m + [(c >> (23 - j)) & 1 for j in range(24)]
 
     def build(toi):
-        sf2 = crc_append(C.K_SF2); sf3 = crc_append(C.K_SF3)
-        deint = np.array(sf2 + rng.integers(0, 2, C.N_SF2 - C.K_SF2).tolist()
-                         + sf3 + rng.integers(0, 2, C.N_SF3 - C.K_SF3).tolist(), dtype=np.int8)
+        sf2 = crc_append(C.K_SF2)
+        sf3 = crc_append(C.K_SF3)
+        deint = np.array(
+            sf2
+            + rng.integers(0, 2, C.N_SF2 - C.K_SF2).tolist()
+            + sf3
+            + rng.integers(0, 2, C.N_SF3 - C.K_SF3).tolist(),
+            dtype=np.int8,
+        )
         il = deint.reshape(C.IL_COLS, C.IL_ROWS).T.ravel()
         return np.hstack([C._sf1(toi), il]).astype(np.int8), sf2, sf3
 
     # two consecutive frames so find_frames sees frame + next SF1
     f0, sf2_0, sf3_0 = build(100)
     f1, _, _ = build(101)
-    stream = np.hstack([f0, f1]).astype(np.int8)          # 3600 symbols
+    stream = np.hstack([f0, f1]).astype(np.int8)  # 3600 symbols
 
     pred = Cnav2Predictor(log=print)
     pred._min_gap = 0.0
     e = 0
     ELEN = 100
-    sgn = -1              # ONE polarity for the whole contiguous run (carrier stays locked);
-                         # find_frames' both-polarity check resolves the global flip.
+    sgn = -1  # ONE polarity for the whole contiguous run (carrier stays locked);
+    # find_frames' both-polarity check resolves the global flip.
     while e + ELEN <= len(stream):
-        obs = {"utc_ref": e * SYM_S, "rec_dt": 0.010, "phase": 0, "br": 1,
-               "bits": [[i, int((1 - 2 * int(stream[e + i])) * sgn)] for i in range(ELEN)]}
+        obs = {
+            "utc_ref": e * SYM_S,
+            "rec_dt": 0.010,
+            "phase": 0,
+            "br": 1,
+            "bits": [[i, int((1 - 2 * int(stream[e + i])) * sgn)] for i in range(ELEN)],
+        }
         pred.ingest(prn, obs)
         e += ELEN
 
@@ -214,4 +238,5 @@ def st_sf2(pred, prn):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(0 if _selftest() else 1)

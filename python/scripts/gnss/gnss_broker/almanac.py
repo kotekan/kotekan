@@ -42,8 +42,16 @@ def stage_almanac_predict(ctx):
             t_pred = ctx.alm_now()
             if ctx.brdc_alm is not None:
                 ctx.brdc_alm["eph_rebase"] = bool(getattr(ctx.args, "eph_rebase", 0))
-                raw = brdc_predict(ctx.brdc_alm, ctx.args.lat, ctx.args.lon, ctx.args.alt,
-                                   ctx.alm_sys, ctx.alm_min_prn, t_pred, ctx.args.carrier_hz)
+                raw = brdc_predict(
+                    ctx.brdc_alm,
+                    ctx.args.lat,
+                    ctx.args.lon,
+                    ctx.args.alt,
+                    ctx.alm_sys,
+                    ctx.alm_min_prn,
+                    t_pred,
+                    ctx.args.carrier_hz,
+                )
                 # ── EPH-REBASE (#101): an ephemeris refresh just STEPPED the model by a
                 # KNOWN per-sat delta; hand the equal-and-opposite trim adjustment to the
                 # gather through the #92 handover (same-cycle ledger transfer) instead of
@@ -57,10 +65,13 @@ def stage_almanac_predict(ctx):
                 _es = ctx.brdc_alm.pop("eph_step", None)
                 if _es is not None and getattr(ctx.args, "eph_rebase", 0):
                     if not ctx.handover.enabled:
-                        _log_rl("ephreb-noho",
-                                "eph-rebase ARMED but --fleet-trim-rebase-adjust is OFF: "
-                                "the handover transport is disabled, steps NOT posted "
-                                "(armed-but-inert)", every_s=600.0)
+                        _log_rl(
+                            "ephreb-noho",
+                            "eph-rebase ARMED but --fleet-trim-rebase-adjust is OFF: "
+                            "the handover transport is disabled, steps NOT posted "
+                            "(armed-but-inert)",
+                            every_s=600.0,
+                        )
                     else:
                         _stepd, _ts = _es
                         # CENSUS FIRST, unconditionally: without this line, zero posts
@@ -68,41 +79,77 @@ def stage_almanac_predict(ctx):
                         # steps-never-computed all look identical (the armed-but-inert
                         # trap). One line per refresh names which.
                         _mx = max(_stepd.values(), key=abs) * ctx.args.chip_rate_hz
-                        _log("EPH-REBASE census: refresh stepped %d sat model(s), "
-                             "largest %+.3f chips, %d over the 0.02 post floor"
-                             % (len(_stepd), _mx,
-                                sum(1 for v in _stepd.values()
-                                    if abs(v * ctx.args.chip_rate_hz) >= 0.02)))
+                        _log(
+                            "EPH-REBASE census: refresh stepped %d sat model(s), "
+                            "largest %+.3f chips, %d over the 0.02 post floor"
+                            % (
+                                len(_stepd),
+                                _mx,
+                                sum(
+                                    1
+                                    for v in _stepd.values()
+                                    if abs(v * ctx.args.chip_rate_hz) >= 0.02
+                                ),
+                            )
+                        )
                         _n_post = 0
                         for _k, _ds in sorted(_stepd.items()):
                             _prn = _k[1] if isinstance(_k, tuple) else _k
                             _dchips = _ds * ctx.args.chip_rate_hz
                             if abs(_dchips) < 0.02:
-                                continue    # sub-noise; not worth a post
-                            if ctx.handover.offer(_prn, _dchips,
-                                                  _prn in ctx.dls.armed_last,
-                                                  ctx.telem_chain,
-                                                  ctx.args.fleet_trim_url,
-                                                  _post, _log):
+                                continue  # sub-noise; not worth a post
+                            if ctx.handover.offer(
+                                _prn,
+                                _dchips,
+                                _prn in ctx.dls.armed_last,
+                                ctx.telem_chain,
+                                ctx.args.fleet_trim_url,
+                                _post,
+                                _log,
+                            ):
                                 _n_post += 1
                         if _n_post:
-                            _log("EPH-REBASE: %d per-sat model step(s) handed to the "
-                                 "gather at the refresh (largest %+0.3f chips)"
-                                 % (_n_post, max((v * ctx.args.chip_rate_hz
-                                                  for v in _stepd.values()), key=abs)))
+                            _log(
+                                "EPH-REBASE: %d per-sat model step(s) handed to the "
+                                "gather at the refresh (largest %+0.3f chips)"
+                                % (
+                                    _n_post,
+                                    max(
+                                        (
+                                            v * ctx.args.chip_rate_hz
+                                            for v in _stepd.values()
+                                        ),
+                                        key=abs,
+                                    ),
+                                )
+                            )
             else:
                 from gps_beamtrack import predict_dopplers
-                raw = predict_dopplers(ctx.args.lat, ctx.args.lon, ctx.args.alt, t_utc=t_pred,
-                                       _sats=ctx.almanac_sats,
-                                       f_carrier_hz=ctx.args.carrier_hz)
+
+                raw = predict_dopplers(
+                    ctx.args.lat,
+                    ctx.args.lon,
+                    ctx.args.alt,
+                    t_utc=t_pred,
+                    _sats=ctx.almanac_sats,
+                    f_carrier_hz=ctx.args.carrier_hz,
+                )
             # doppler_sign flips to the receiver's observed convention -- apply it to BOTH the
             # Doppler and its rate so the 2nd-order feed-forward ramps the right way. (Range
             # is geometry, no sign; it feeds the CL time-assist propagation delay. The 5th
             # element -- broadcast sat clock -- is BRDC-only; the TLE path has none.)
-            ctx.pred = {p: (ctx.args.doppler_sign * v[0], ctx.args.doppler_sign * v[1], v[2],
-                            v[3], (v[4] if len(v) > 4 else 0.0),
-                            (v[5] if len(v) > 5 else 0.0)) + tuple(v[6:9])
-                        for p, v in raw.items()}
+            ctx.pred = {
+                p: (
+                    ctx.args.doppler_sign * v[0],
+                    ctx.args.doppler_sign * v[1],
+                    v[2],
+                    v[3],
+                    (v[4] if len(v) > 4 else 0.0),
+                    (v[5] if len(v) > 5 else 0.0),
+                )
+                + tuple(v[6:9])
+                for p, v in raw.items()
+            }
             # ── #102 GEOMETRY FEED (--post-sat-geometry): every ~30 s, post each sat's
             # az/el to the record assemblers' /set_sat_geometry so the element steering
             # (elem_positions_enu in the node config) has fresh directions. With the rates and
@@ -112,15 +159,26 @@ def stage_almanac_predict(ctx):
             # derived from the combiner list (n2combine -> n2assemble). Harmless where
             # the assembler has no positions configured (the endpoint then does not
             # exist and the post fails quietly into the rate-limited log).
-            if (getattr(ctx.args, "post_sat_geometry", 0) and ctx.dll_combiners
-                    and ctx.t0 - ctx.geom_post_t[0] >= 30.0):
+            if (
+                getattr(ctx.args, "post_sat_geometry", 0)
+                and ctx.dll_combiners
+                and ctx.t0 - ctx.geom_post_t[0] >= 30.0
+            ):
                 ctx.geom_post_t[0] = ctx.t0
                 _body = {}
                 for _p2, _v2 in ctx.pred.items():
-                    if len(_v2) > 5 and _v2[2] > 0.0:      # above horizon; az is element 5
-                        _body[str(_p2)] = ([float(_v2[5]), float(_v2[2]), float(_v2[6]),
-                                            float(_v2[7]), float(_v2[8])]
-                                           if len(_v2) > 8 else [float(_v2[5]), float(_v2[2])])
+                    if len(_v2) > 5 and _v2[2] > 0.0:  # above horizon; az is element 5
+                        _body[str(_p2)] = (
+                            [
+                                float(_v2[5]),
+                                float(_v2[2]),
+                                float(_v2[6]),
+                                float(_v2[7]),
+                                float(_v2[8]),
+                            ]
+                            if len(_v2) > 8
+                            else [float(_v2[5]), float(_v2[2])]
+                        )
                 # THE TRANSIT GATE for the assemblers' shared element model: the POOLED nearest-to-
                 # boresight separation over every constellation (ctx.dr_pd carries all three --
                 # the same sky the railing veto reads). A bright satellite of ANOTHER system
@@ -133,16 +191,25 @@ def stage_almanac_predict(ctx):
                     _okc = 0
                     for _u2 in ctx.dll_combiners:
                         try:
-                            _post("%s/set_sat_geometry"
-                                  % _u2.replace("n2combine", "n2assemble"), _body,
-                                  timeout=2.0)
+                            _post(
+                                "%s/set_sat_geometry"
+                                % _u2.replace("n2combine", "n2assemble"),
+                                _body,
+                                timeout=2.0,
+                            )
                             _okc += 1
                         except Exception as _e2:
-                            _log_rl("geom-post", "sat-geometry post failed (%s): %s"
-                                    % (_u2, _e2), every_s=300.0)
-                    _log_rl("geom-post-ok",
-                            "SAT-GEOMETRY posted: %d sat(s) to %d/%d assembler(s)"
-                            % (len(_body), _okc, len(ctx.dll_combiners)), every_s=300.0)
+                            _log_rl(
+                                "geom-post",
+                                "sat-geometry post failed (%s): %s" % (_u2, _e2),
+                                every_s=300.0,
+                            )
+                    _log_rl(
+                        "geom-post-ok",
+                        "SAT-GEOMETRY posted: %d sat(s) to %d/%d assembler(s)"
+                        % (len(_body), _okc, len(ctx.dll_combiners)),
+                        every_s=300.0,
+                    )
             # SERVE THE SKY. The broker already knows every satellite's az/el; publishing it
             # is what lets the viewer stop deriving its own (and stop writing the shared nav
             # cache to do it -- 2026-08-27). Receiver-wide by construction: each chain
@@ -151,8 +218,9 @@ def stage_almanac_predict(ctx):
             # withheld rather than served as az=0 -- a satellite drawn due north because we
             # had no azimuth is worse than one absent from the plot.
             if ctx.publisher is not None and len(next(iter(raw.values()), ())) > 5:
-                ctx.publisher.set_sky(ctx.alm_sys,
-                                      {p: (v[2], v[5]) for p, v in ctx.pred.items()}, _now())
+                ctx.publisher.set_sky(
+                    ctx.alm_sys, {p: (v[2], v[5]) for p, v in ctx.pred.items()}, _now()
+                )
         except Exception as e:
             _log("almanac predict failed: %s" % e)
         ctx.up = {p for p, v in ctx.pred.items() if v[2] >= ctx.args.mask_deg}
@@ -168,15 +236,28 @@ def stage_almanac_predict(ctx):
         if ctx.args.nh_assist and ctx.pred:
             try:
                 import gnss_ephemeris as _nh_eph
+
                 period = ctx.args.code_length / ctx.args.chip_rate_hz
                 t_ref = ctx.args.almanac_epoch or _now()
-                hints = [{"prn": int(p),
-                          "nh": int(round((_nh_eph.gpst_of_utc(t_ref)
-                                           - v[3] / _nh_eph.C_LIGHT
-                                           + (v[4] if len(v) > 4 else 0.0)) / period))
-                                % ctx.args.nh_overlay_len}
-                         for p, v in ctx.pred.items() if v[2] >= ctx.args.mask_deg
-                         and (ctx.capable is None or p in ctx.capable)]
+                hints = [
+                    {
+                        "prn": int(p),
+                        "nh": int(
+                            round(
+                                (
+                                    _nh_eph.gpst_of_utc(t_ref)
+                                    - v[3] / _nh_eph.C_LIGHT
+                                    + (v[4] if len(v) > 4 else 0.0)
+                                )
+                                / period
+                            )
+                        )
+                        % ctx.args.nh_overlay_len,
+                    }
+                    for p, v in ctx.pred.items()
+                    if v[2] >= ctx.args.mask_deg
+                    and (ctx.capable is None or p in ctx.capable)
+                ]
                 if hints:
                     _post("%s/set_nh_hint" % ctx.combiner, hints)
             except Exception as e:
@@ -206,9 +287,14 @@ def stage_almanac_predict(ctx):
         # this) beats the detection's own (~2 Hz): at N=8 it should reach ~0.4 Hz.
         # Default 0 keeps every point -- the prototype's behaviour, right for detections
         # that sit far above threshold.
-        resid = [ctx.best[p][1] - ctx.pred[p][0] for p in ctx.best
-                 if p in ctx.pred and ctx.t0 - ctx.det_fresh.get(p, (None, 0.0))[1] < ctx.args.bias_det_fresh_s
-                 and ctx.best[p][0] >= ctx.args.bias_min_snr]
+        resid = [
+            ctx.best[p][1] - ctx.pred[p][0]
+            for p in ctx.best
+            if p in ctx.pred
+            and ctx.t0 - ctx.det_fresh.get(p, (None, 0.0))[1]
+            < ctx.args.bias_det_fresh_s
+            and ctx.best[p][0] >= ctx.args.bias_min_snr
+        ]
         # ── TIME BASE: the same residuals, read for their SPREAD rather than their median.
         # The median is the clock bias; a spread that one epoch shift explains is a stale
         # sample-0 epoch on the nodes -- the fault that filed a day of data onto the wrong
@@ -230,8 +316,8 @@ def stage_almanac_predict(ctx):
         # search_snr == 0.0, 2h45m of nothing, ended only when a second GPS satellite
         # physically rose high enough. The band knew the answer the whole time.
         n_sib = 0
-        _sib_bw = 0.0   # sum(bias * n) over fresh siblings
-        _sib_w = 0.0    # sum(n)
+        _sib_bw = 0.0  # sum(bias * n) over fresh siblings
+        _sib_w = 0.0  # sum(n)
         if ctx.args.clock_bias_siblings:
             for _sp in ctx.args.clock_bias_siblings:
                 try:
@@ -278,15 +364,19 @@ def stage_almanac_predict(ctx):
                 # Local count below the bar: the band's answer stands ALONE. The local
                 # residual is deliberately discarded, not down-weighted.
                 raw_bias = _sib_bw / _sib_w
-            _cb_snap = ctx.cb.ema is None or ctx.cb.stale   # captured before the branch clears it
+            _cb_snap = (
+                ctx.cb.ema is None or ctx.cb.stale
+            )  # captured before the branch clears it
             if _cb_snap:
                 # First solve, or stale-rescue re-solve: SNAP to the fresh median. An
                 # EMA crawl (a=0.05) from a mid-walk latch kHz off truth would spend
                 # minutes converging through exactly the hint region it just vacated.
                 if ctx.cb.stale:
-                    _log("CLOCK BIAS RE-SOLVED %+.1f Hz after %.0f s stale (held %+.1f, "
-                         "%d sats)"
-                         % (raw_bias, ctx.t0 - ctx.cb.meas_t, ctx.cb.ema, len(resid)))
+                    _log(
+                        "CLOCK BIAS RE-SOLVED %+.1f Hz after %.0f s stale (held %+.1f, "
+                        "%d sats)"
+                        % (raw_bias, ctx.t0 - ctx.cb.meas_t, ctx.cb.ema, len(resid))
+                    )
                     # ⚠️⚠️ A STARVED RE-SOLVE MUST NOT BECOME THE REFERENCE.
                     # This adopted `raw_bias` as the new warm-start calibration
                     # unconditionally -- ONE median, from however few satellites happened to
@@ -313,20 +403,31 @@ def stage_almanac_predict(ctx):
                     # None`), the EMA still seeds normally, and we wait for a reference worth
                     # having -- which is strictly better than adopting one that is noise.
                     if _n_cal < ctx.args.clock_bias_cal_min_sats:
-                        _log("CLOCK BIAS: re-solve %+.1f Hz on only %d sat(s) (need %d) -- "
-                             "%s. A starved re-solve is noise (sd ~13 Hz at this count), and "
-                             "a wrong reference poisons every later comparison."
-                             % (raw_bias, _n_cal, ctx.args.clock_bias_cal_min_sats,
+                        _log(
+                            "CLOCK BIAS: re-solve %+.1f Hz on only %d sat(s) (need %d) -- "
+                            "%s. A starved re-solve is noise (sd ~13 Hz at this count), and "
+                            "a wrong reference poisons every later comparison."
+                            % (
+                                raw_bias,
+                                _n_cal,
+                                ctx.args.clock_bias_cal_min_sats,
                                 ("HELD the calibration at %+.1f" % ctx.cb.cal)
-                                if ctx.cb.cal is not None else
-                                "NO calibration set yet -- the drift alarm stays silent "
-                                "until there is a reference worth comparing against"))
+                                if ctx.cb.cal is not None
+                                else "NO calibration set yet -- the drift alarm stays silent "
+                                "until there is a reference worth comparing against",
+                            )
+                        )
                     else:
-                        if (ctx.cb.cal is not None
-                                and abs(raw_bias - ctx.cb.cal) > ctx.args.clock_bias_alarm_hz):
-                            _log("CLOCK BIAS RECALIBRATED %+.1f -> %+.1f Hz on %d sats -- "
-                                 "hardware news (GPSDO re-settled?); new warm-start reference"
-                                 % (ctx.cb.cal, raw_bias, _n_cal))
+                        if (
+                            ctx.cb.cal is not None
+                            and abs(raw_bias - ctx.cb.cal)
+                            > ctx.args.clock_bias_alarm_hz
+                        ):
+                            _log(
+                                "CLOCK BIAS RECALIBRATED %+.1f -> %+.1f Hz on %d sats -- "
+                                "hardware news (GPSDO re-settled?); new warm-start reference"
+                                % (ctx.cb.cal, raw_bias, _n_cal)
+                            )
                         ctx.cb.cal = raw_bias
                     ctx.cb.stale = False
                 ctx.cb.ema = raw_bias
@@ -335,8 +436,9 @@ def stage_almanac_predict(ctx):
             ctx.cb.meas_t = ctx.t0
             ctx.cb.value = ctx.cb.ema
             # #105: the seed consumers' bias -- ClockBias.update_seed has the invariant.
-            ctx.cb.update_seed(raw_bias, ctx.args.seed_bias_source,
-                               ctx.args.seed_bias_alpha, _cb_snap)
+            ctx.cb.update_seed(
+                raw_bias, ctx.args.seed_bias_source, ctx.args.seed_bias_alpha, _cb_snap
+            )
             # CONTRIBUTE (task #27 M3). Receiver scope -- one reference, one frequency
             # error -- so every co-hosted chain can have this without solving it. A
             # chain that HAS its own estimate never reads back, which is why publishing
@@ -344,24 +446,33 @@ def stage_almanac_predict(ctx):
             ctx.rx.contribute_carrier_bias(ctx.chain_id, ctx.cb.ema, len(resid), ctx.t0)
             # `alarming` (TIGHT bar) gates the PERSIST only -- conservative: never write a
             # walking bias to the cal file (the 2026-07-20 GPSDO-walk-poisoning guard).
-            alarming = (ctx.cb.cal is not None
-                        and abs(ctx.cb.ema - ctx.cb.cal) > ctx.args.clock_bias_alarm_hz)
+            alarming = (
+                ctx.cb.cal is not None
+                and abs(ctx.cb.ema - ctx.cb.cal) > ctx.args.clock_bias_alarm_hz
+            )
             # rec D persist (10 s rate limit). The file is a CALIBRATION, not an EMA
             # mirror -- NEVER overwrite it while the live bias is in alarm (2026-07-20:
             # the GPSDO free-run walk was faithfully persisted all the way to -2 ppm
             # and poisoned the next warm-start kHz off truth).
-            if (ctx.args.clock_bias_file and not alarming
-                    and ctx.t0 - ctx.clk_persist_t[0] > 10.0):
+            if (
+                ctx.args.clock_bias_file
+                and not alarming
+                and ctx.t0 - ctx.clk_persist_t[0] > 10.0
+            ):
                 ctx.clk_persist_t[0] = ctx.t0
                 # COLD CAL STAMP -- wait for a TRUSTWORTHY sat count. A cal stamped from a
                 # noisy 1-2 sat first solve lands far from the settled bias and then cries
                 # wolf forever (2026-07-21: L5 cold-solved +75 with 2 sats, settled to -5
                 # -> a phantom 80 Hz "drift" alarmed all morning). No stamp yet = no alarm
                 # yet, which is correct: a chain with <3 sats has no trustworthy reference.
-                if ctx.cb.cal is None and len(resid) >= max(ctx.args.bias_min_sats + 1, 3):
+                if ctx.cb.cal is None and len(resid) >= max(
+                    ctx.args.bias_min_sats + 1, 3
+                ):
                     ctx.cb.cal = ctx.cb.ema
-                    _log("clock-freq bias calibrated %+.1f Hz (%d sats, cold start) -> %s"
-                         % (ctx.cb.ema, len(resid), ctx.args.clock_bias_file))
+                    _log(
+                        "clock-freq bias calibrated %+.1f Hz (%d sats, cold start) -> %s"
+                        % (ctx.cb.ema, len(resid), ctx.args.clock_bias_file)
+                    )
                 if ctx.cb.cal is not None:
                     try:
                         with open(ctx.args.clock_bias_file, "w") as f:
@@ -377,18 +488,22 @@ def stage_almanac_predict(ctx):
             # solo alarm is almost always noise). Widen it below 5 sats; a real event is
             # large + sustained so it still trips. Persist above keeps the TIGHT bar.
             if ctx.cb.cal is not None:
-                _abar = ctx.args.clock_bias_alarm_hz * max(1.0, (5.0 / max(len(resid), 1)) ** 0.5)
+                _abar = ctx.args.clock_bias_alarm_hz * max(
+                    1.0, (5.0 / max(len(resid), 1)) ** 0.5
+                )
                 if abs(ctx.cb.ema - ctx.cb.cal) > _abar:
-                    _log_rl("clkalarm",
-                            "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
-                            "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
-                            % (ctx.cb.ema, ctx.cb.cal, _abar, len(resid)),
-                            # ⚠️ 60 s WAS FAR TOO HOT for an advisory nobody can act on in a
-                            # minute. Against a poisoned calibration it fired once a minute
-                            # for hours (2026-08-27) and buried everything else in the log --
-                            # an alarm that repeats faster than it can be investigated is
-                            # noise, and it would have hidden a real one.
-                            every_s=ctx.args.clock_bias_alarm_every_s)
+                    _log_rl(
+                        "clkalarm",
+                        "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
+                        "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
+                        % (ctx.cb.ema, ctx.cb.cal, _abar, len(resid)),
+                        # ⚠️ 60 s WAS FAR TOO HOT for an advisory nobody can act on in a
+                        # minute. Against a poisoned calibration it fired once a minute
+                        # for hours (2026-08-27) and buried everything else in the log --
+                        # an alarm that repeats faster than it can be investigated is
+                        # noise, and it would have hidden a real one.
+                        every_s=ctx.args.clock_bias_alarm_every_s,
+                    )
         # S2 OBSERVER: publish the carrier-side estimate. OUTSIDE the solve gate on
         # purpose -- an unsolved chain is exactly the case the fused state exists to
         # rescue, so it has to be visible, and `null` is how that is said (never 0).
@@ -408,34 +523,61 @@ def stage_almanac_predict(ctx):
                     sib_n=n_sib,
                     cal_hz=ctx.cb.cal,
                     stale=bool(ctx.cb.stale),
-                    meas_age_s=round(ctx.t0 - ctx.cb.meas_t, 2))
+                    meas_age_s=round(ctx.t0 - ctx.cb.meas_t, 2),
+                )
             except Exception:
                 pass
         for p in sorted(ctx.best):
             if p in ctx.pred:
-                _log_rl("meas-%d" % p,
-                        "PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
-                        % (p, ctx.best[p][1], ctx.pred[p][0], ctx.best[p][1] - ctx.pred[p][0], ctx.pred[p][2]))
+                _log_rl(
+                    "meas-%d" % p,
+                    "PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
+                    % (
+                        p,
+                        ctx.best[p][1],
+                        ctx.pred[p][0],
+                        ctx.best[p][1] - ctx.pred[p][0],
+                        ctx.pred[p][2],
+                    ),
+                )
         if _local_ok or _sib_ok:
-            _log_rl("clkbias",
-                    "clock-freq bias %+.0f Hz (raw %+.0f, %d sats%s + %d sib, EMA a=%.2f) "
-                    "-> hints; seeds ride %+.1f Hz (%s)"
-                    % (ctx.cb.value, raw_bias, len(resid),
-                       "" if _local_ok else " LOCAL-UNTRUSTED(band consensus)",
-                       n_sib, ctx.args.bias_alpha, ctx.cb.seed,
-                       "slow a=%.3f" % ctx.args.seed_bias_alpha
-                       if ctx.args.seed_bias_source == "slow"
-                       else "zero: fixed, the solve is hints-only"
-                       if ctx.args.seed_bias_source == "zero" else "= hint EMA"))
+            _log_rl(
+                "clkbias",
+                "clock-freq bias %+.0f Hz (raw %+.0f, %d sats%s + %d sib, EMA a=%.2f) "
+                "-> hints; seeds ride %+.1f Hz (%s)"
+                % (
+                    ctx.cb.value,
+                    raw_bias,
+                    len(resid),
+                    "" if _local_ok else " LOCAL-UNTRUSTED(band consensus)",
+                    n_sib,
+                    ctx.args.bias_alpha,
+                    ctx.cb.seed,
+                    "slow a=%.3f" % ctx.args.seed_bias_alpha
+                    if ctx.args.seed_bias_source == "slow"
+                    else "zero: fixed, the solve is hints-only"
+                    if ctx.args.seed_bias_source == "zero"
+                    else "= hint EMA",
+                ),
+            )
         else:
             # Say WHY, with both counts -- "1 sat" alone sent this investigation looking
             # at the clock, the sky and the front end before anyone asked whether the
             # BAND had already solved it (2026-07-27).
-            _log_rl("clkbias",
-                    "clock-freq bias %s (%d local + %d sibling sats < --bias-min-sats "
-                    "%d: residual not trusted)"
-                    % ("held %+.0f Hz" % ctx.cb.value if ctx.cb.ema is not None
-                       else "UNSOLVED (wide margins)", len(resid), n_sib,
-                       ctx.args.bias_min_sats))
+            _log_rl(
+                "clkbias",
+                "clock-freq bias %s (%d local + %d sibling sats < --bias-min-sats "
+                "%d: residual not trusted)"
+                % (
+                    "held %+.0f Hz" % ctx.cb.value
+                    if ctx.cb.ema is not None
+                    else "UNSOLVED (wide margins)",
+                    len(resid),
+                    n_sib,
+                    ctx.args.bias_min_sats,
+                ),
+            )
     elif ctx.gating:
-        ctx.up = visible_prns(ctx.args.lat, ctx.args.lon, ctx.args.alt, ctx.args.mask_deg, 0.0)
+        ctx.up = visible_prns(
+            ctx.args.lat, ctx.args.lon, ctx.args.alt, ctx.args.mask_deg, 0.0
+        )

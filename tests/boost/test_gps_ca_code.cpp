@@ -2,7 +2,7 @@
 
 #include "gpsCACode.hpp" // for generate_ca_code, g2_phase_taps, CA_CODE_LENGTH
 
-#include <array>                            // for array
+#include <array> // for array
 #include <boost/test/included/unit_test.hpp>
 #include <cstdint>   // for int8_t
 #include <stdexcept> // for out_of_range
@@ -73,9 +73,9 @@ BOOST_AUTO_TEST_CASE(ca_crosscorrelation_is_three_valued) {
         const auto cq = generate_ca_code(q);
         for (int shift = 0; shift < CA_CODE_LENGTH; ++shift) {
             const int x = periodic_correlation(cp, cq, shift);
-            BOOST_CHECK_MESSAGE(x == -1 || x == -65 || x == 63,
-                                "PRN " << p << "x" << q << " crosscorr at shift " << shift << " = "
-                                       << x);
+            BOOST_CHECK_MESSAGE(x == -1 || x == -65 || x == 63, "PRN " << p << "x" << q
+                                                                       << " crosscorr at shift "
+                                                                       << shift << " = " << x);
         }
     }
 }
@@ -91,8 +91,8 @@ BOOST_AUTO_TEST_CASE(ca_first_chips_match_is_gps_200) {
     };
     // Octal literals from IS-GPS-200 Table 3-Ia.
     const std::vector<Expected> expected = {
-        {1, 01440},  {2, 01620},  {3, 01710},  {4, 01744},
-        {5, 01133},  {6, 01455},  {7, 01131},  {19, 01633},
+        {1, 01440}, {2, 01620}, {3, 01710}, {4, 01744},
+        {5, 01133}, {6, 01455}, {7, 01131}, {19, 01633},
     };
     for (const auto& e : expected) {
         const auto code = generate_ca_code(e.prn);

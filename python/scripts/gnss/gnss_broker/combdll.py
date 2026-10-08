@@ -137,7 +137,9 @@ def _lobe_fold(client, chain, wins, want, per_channel):
                     if eP <= 0.0:
                         continue
                     row = f.row(r, prn)
-                    rot = cmath.exp(1j * float(row[REC_PHI0])) if row is not None else 1.0
+                    rot = (
+                        cmath.exp(1j * float(row[REC_PHI0])) if row is not None else 1.0
+                    )
                     # PROJECTION-COST WEIGHT (REC_PROJ_COST): this sender kept (1 - b) of the
                     # satellite's amplitude, so its partial enters with weight (1 - b) on the
                     # numerator and the energies alike -- maximal-ratio across senders, and
@@ -148,7 +150,8 @@ def _lobe_fold(client, chain, wins, want, per_channel):
                     if pw <= 0.0:
                         continue
                     d = acc.setdefault((w, r), {}).setdefault(
-                        prn, [0j, 0j, 0j, 0.0, 0.0, 0.0, 0, 0, -1, 0j, 0.0])
+                        prn, [0j, 0j, 0j, 0.0, 0.0, 0.0, 0, 0, -1, 0j, 0.0]
+                    )
                     d[0] += gE * rot * pw
                     d[1] += gP * rot * pw
                     d[2] += gL * rot * pw
@@ -158,7 +161,9 @@ def _lobe_fold(client, chain, wins, want, per_channel):
                     d[6] += len(cmb)
                     d[7] += 1
                     d[8] = max(d[8], hop)
-                    a = gP / eP * rot   # normalise FIRST, then rotate -- the C++ arm's order
+                    a = (
+                        gP / eP * rot
+                    )  # normalise FIRST, then rotate -- the C++ arm's order
                     d[9] += a
                     d[10] += a.real * a.real + a.imag * a.imag
                     if per_channel:
@@ -227,15 +232,28 @@ def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1)
     want = None if prns is None else set(int(p) for p in prns)
     acc, chan_w = _lobe_fold(client, chain, wins, want, per_channel)
     out = {}
-    complete = set()   # (win, prn) with at least one record that passed the gate
+    complete = set()  # (win, prn) with at least one record that passed the gate
     for (w, _r), per_prn in acc.items():
         for prn, d in per_prn.items():
             if d[7] < min_instances:
                 continue
             complete.add((w, prn))
-            t = out.setdefault(prn, {"e": 0.0, "p": 0.0, "l": 0.0, "hop": -1, "n_chan": 0.0,
-                                     "n_rec": 0, "n_inst": 0, "xcoh": None, "n_xcoh": 0,
-                                     "chan": {}, "chan_dup": set()})
+            t = out.setdefault(
+                prn,
+                {
+                    "e": 0.0,
+                    "p": 0.0,
+                    "l": 0.0,
+                    "hop": -1,
+                    "n_chan": 0.0,
+                    "n_rec": 0,
+                    "n_inst": 0,
+                    "xcoh": None,
+                    "n_xcoh": 0,
+                    "chan": {},
+                    "chan_dup": set(),
+                },
+            )
             t["e"] += (abs(d[0]) / d[3]) ** 2 if d[3] > 0.0 else 0.0
             t["p"] += (abs(d[1]) / d[4]) ** 2
             t["l"] += (abs(d[2]) / d[5]) ** 2 if d[5] > 0.0 else 0.0
@@ -298,7 +316,9 @@ def lobe_records(client, chain, wins, prns=None):
                 (abs(d[0]) / d[3]) ** 2 if d[3] > 0.0 else 0.0,
                 (abs(d[1]) / d[4]) ** 2,
                 (abs(d[2]) / d[5]) ** 2 if d[5] > 0.0 else 0.0,
-                d[7], d[6]]
+                d[7],
+                d[6],
+            ]
     return recs
 
 
@@ -338,21 +358,42 @@ def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
             continue
         if int(v["n_rec"]) <= 0:
             continue
-        out[p] = {"e": float(v["e"]), "p": float(v["p"]), "l": float(v["l"]),
-                  "n_chan": float(v["n_chan"]), "n_rec": int(v["n_rec"]),
-                  "n_inst": int(v["n_inst"]), "hop": int(v["hop"]),
-                  "xcoh": None if v.get("xcoh") is None else float(v["xcoh"]),
-                  "n_xcoh": int(v.get("n_xcoh") or 0),
-                  "chan": {int(f): [float(c[0]), float(c[1]), float(c[2]), float(c[3])]
-                           for f, c in (v.get("chan") or {}).items()},
-                  "chan_dup": []}
+        out[p] = {
+            "e": float(v["e"]),
+            "p": float(v["p"]),
+            "l": float(v["l"]),
+            "n_chan": float(v["n_chan"]),
+            "n_rec": int(v["n_rec"]),
+            "n_inst": int(v["n_inst"]),
+            "hop": int(v["hop"]),
+            "xcoh": None if v.get("xcoh") is None else float(v["xcoh"]),
+            "n_xcoh": int(v.get("n_xcoh") or 0),
+            "chan": {
+                int(f): [float(c[0]), float(c[1]), float(c[2]), float(c[3])]
+                for f, c in (v.get("chan") or {}).items()
+            },
+            "chan_dup": [],
+        }
     return out
 
 
-def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
-                   q_fallback=2.2, prns=None, probe_prns=None, deep_gate_prns=None,
-                   deep_gate_margin=3.0, coh_from=None, per_channel=True, taps_src=None,
-                   admit_displaced=None):
+def fleet_dll_comb(
+    client,
+    chain,
+    n_win=32,
+    lag=1,
+    min_instances=2,
+    k_sigma=3.0,
+    q_fallback=2.2,
+    prns=None,
+    probe_prns=None,
+    deep_gate_prns=None,
+    deep_gate_margin=3.0,
+    coh_from=None,
+    per_channel=True,
+    taps_src=None,
+    admit_displaced=None,
+):
     """fleet_dll's dict, from the comb. {prn: {disc, q, p_pow, hop, n_src, n_chan, ...}}.
 
     Same keys, same meanings, same presence policy (apply_presence, shared with fleet_dll so
@@ -385,9 +426,15 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
         wins = client.windows(chain, lag=lag)
         if not wins:
             return {}
-        wins = wins[-int(n_win):]
-        per_prn = lobe_taps(client, chain, wins, prns=prns, per_channel=per_channel,
-                            min_instances=min_instances)
+        wins = wins[-int(n_win) :]
+        per_prn = lobe_taps(
+            client,
+            chain,
+            wins,
+            prns=prns,
+            per_channel=per_channel,
+            min_instances=min_instances,
+        )
     coh_from = coh_from or {}
     out = {}
     for prn, t in per_prn.items():
@@ -401,29 +448,42 @@ def fleet_dll_comb(client, chain, n_win=32, lag=1, min_instances=2, k_sigma=3.0,
         if per_channel:
             for fid, c in t["chan"].items():
                 ce, cp, cl = c[0], c[1], c[2]
-                chan[fid] = {"e": ce, "p": cp, "l": cl, "n_rec": c[3],
-                             "disc": (ce - cl) / (ce + cl) if ce + cl > 0.0 else 0.0,
-                             "q": 2.0 * cp / (ce + cl) if ce + cl > 0.0 else 0.0}
-        out[prn] = {"disc": (E - L) / (E + L),
-                    "q": 2.0 * P / (E + L),
-                    "p_pow": P,
-                    "e_pow": E,
-                    "l_pow": L,
-                    "hop": t["hop"],
-                    "n_src": t["n_inst"],
-                    "n_chan": t["n_chan"],
-                    "n_rec": t["n_rec"],
-                    "xcoh": t.get("xcoh"),
-                    "n_xcoh": int(t.get("n_xcoh") or 0),
-                    "src": "comb",
-                    "chan": chan,
-                    "chan_dup": list(t.get("chan_dup") or [])}
+                chan[fid] = {
+                    "e": ce,
+                    "p": cp,
+                    "l": cl,
+                    "n_rec": c[3],
+                    "disc": (ce - cl) / (ce + cl) if ce + cl > 0.0 else 0.0,
+                    "q": 2.0 * cp / (ce + cl) if ce + cl > 0.0 else 0.0,
+                }
+        out[prn] = {
+            "disc": (E - L) / (E + L),
+            "q": 2.0 * P / (E + L),
+            "p_pow": P,
+            "e_pow": E,
+            "l_pow": L,
+            "hop": t["hop"],
+            "n_src": t["n_inst"],
+            "n_chan": t["n_chan"],
+            "n_rec": t["n_rec"],
+            "xcoh": t.get("xcoh"),
+            "n_xcoh": int(t.get("n_xcoh") or 0),
+            "src": "comb",
+            "chan": chan,
+            "chan_dup": list(t.get("chan_dup") or []),
+        }
         # The deep statistics: carried across, never invented (module header).
         for k in COH_KEYS:
             out[prn][k] = src.get(k)
-    return apply_presence(out, k_sigma, q_fallback, probe_prns=probe_prns,
-                          deep_gate_prns=deep_gate_prns, deep_gate_margin=deep_gate_margin,
-                          admit_displaced=admit_displaced)
+    return apply_presence(
+        out,
+        k_sigma,
+        q_fallback,
+        probe_prns=probe_prns,
+        deep_gate_prns=deep_gate_prns,
+        deep_gate_margin=deep_gate_margin,
+        admit_displaced=admit_displaced,
+    )
 
 
 def recs_from_rest(get, url, chain, prns=None, timeout=5.0):
@@ -443,19 +503,35 @@ def recs_from_rest(get, url, chain, prns=None, timeout=5.0):
     d = get("%s/get_rec_taps" % url.rstrip("/"), timeout=timeout) or {}
     want = None if prns is None else set(int(p) for p in prns)
     recs = {}
-    for row in (d.get(chain) or []):
+    for row in d.get(chain) or []:
         win, slot, prn, n_inst, n_chan, e, p, l = row
         prn = int(prn)
         if want is not None and prn not in want:
             continue
-        recs.setdefault((int(win), int(slot)), {})[prn] = [float(e), float(p), float(l),
-                                                           int(n_inst), int(n_chan)]
+        recs.setdefault((int(win), int(slot)), {})[prn] = [
+            float(e),
+            float(p),
+            float(l),
+            int(n_inst),
+            int(n_chan),
+        ]
     return recs, int((d.get("hops_per_record") or {}).get(chain) or 0)
 
 
-def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
-               min_sig=5.0, min_instances=2, hop_s=5.12e-6, keep_records=False,
-               min_used=8, recs_src=None):
+def prompt_cn0(
+    client,
+    chain,
+    n_win=32,
+    lag=1,
+    prns=None,
+    probe_prns=None,
+    min_sig=5.0,
+    min_instances=2,
+    hop_s=5.12e-6,
+    keep_records=False,
+    min_used=8,
+    recs_src=None,
+):
     """THE SERVED C/N0 (task #57): per-record prompt power, q-gated, probe-debiased.
 
     Replaces the deep fold as the radiometry. The fold RE-SEARCHES a residual rate per
@@ -541,9 +617,9 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
         wins = client.windows(chain, lag=lag)
         if not wins:
             return {}
-        wins = wins[-int(n_win):]
+        wins = wins[-int(n_win) :]
         t_rec = None
-        recs = {}   # (win, slot) -> {prn: [e, p, l, n_inst, n_chan]}
+        recs = {}  # (win, slot) -> {prn: [e, p, l, n_inst, n_chan]}
     for w in wins:
         for _inst, f in client.frame_set(chain, w).items():
             if t_rec is None and getattr(f, "hops_per_record", 0) > 0:
@@ -557,7 +633,7 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
     # the WINDOW's summed taps (see the docstring: the conditional's noise is what biases
     # the served number, and a window is the shortest span an off-peak episode can have).
     series = {}
-    by_win = {}   # (prn, win) -> [E, P, L] summed over the window's records
+    by_win = {}  # (prn, win) -> [E, P, L] summed over the window's records
     for key in sorted(recs):
         for prn, (e, p, l, n, _nch) in recs[key].items():
             if n < min_instances:
@@ -569,8 +645,17 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
             t[1] += p
             t[2] += l
     for prn, rows in series.items():
-        series[prn] = [(w, r, p, q, by_win[(prn, w)][1] > by_win[(prn, w)][0]
-                        and by_win[(prn, w)][1] > by_win[(prn, w)][2]) for w, r, p, q in rows]
+        series[prn] = [
+            (
+                w,
+                r,
+                p,
+                q,
+                by_win[(prn, w)][1] > by_win[(prn, w)][0]
+                and by_win[(prn, w)][1] > by_win[(prn, w)][2],
+            )
+            for w, r, p, q in rows
+        ]
 
     # THE NOISE ANCHOR. Pooled over the whole capture rather than per record: the per-record
     # median of 3 probes carries ~20% scatter, the pooled one ~1/sqrt(N); the #56 power
@@ -581,7 +666,7 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
             probe_p.append(p)
             probe_q.append(q)
     if len(probe_p) < 16:
-        return {}   # no anchor, no estimate -- never a peer fallback
+        return {}  # no anchor, no estimate -- never a peer fallback
     probe_p.sort()
     probe_q.sort()
     # ⚠️ THE DEBIAS NEEDS THE MEAN, NOT THE MEDIAN. E[|P|^2] = |s|^2 + sigma^2 with
@@ -646,10 +731,12 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
         # -- this is (see also the no-peer-fallback rule for the floor). duty/n_used/sig_inc
         # are still served, so "tracked but not measurable" stays visible and is
         # distinguishable from "never seen".
-        rho_mean = ((sum(rho_gated) / n_used)
-                    if present and n_used >= min_used else None)
-        cn0 = (10.0 * math.log10(rho_mean / t_rec)
-               if rho_mean is not None and rho_mean > 0.0 else None)
+        rho_mean = (sum(rho_gated) / n_used) if present and n_used >= min_used else None
+        cn0 = (
+            10.0 * math.log10(rho_mean / t_rec)
+            if rho_mean is not None and rho_mean > 0.0
+            else None
+        )
         # Even/odd split of the GATED records: the self-consistency of the number served.
         split_db = None
         if present and n_used >= 8:
@@ -657,23 +744,39 @@ def prompt_cn0(client, chain, n_win=32, lag=1, prns=None, probe_prns=None,
             ro_ = sum(rho_gated[1::2]) / len(rho_gated[1::2])
             if re_ > 0.0 and ro_ > 0.0:
                 split_db = 10.0 * math.log10(re_ / ro_)
-        out[prn] = {"cn0_db": cn0,
-                    "rho": rho_mean,
-                    "sig_inc": sig_inc,
-                    "duty": n_used / float(n_tot) if n_tot else 0.0,
-                    "n_used": n_used, "n_rec": n_tot,
-                    "split_db": split_db,
-                    "sigma2": sigma2, "q_noise": q_noise, "min_sig": min_sig,
-                    "t_rec_s": t_rec,
-                    "n_probe_rec": len(probe_p),
-                    "probe": prn in probe_prns}
+        out[prn] = {
+            "cn0_db": cn0,
+            "rho": rho_mean,
+            "sig_inc": sig_inc,
+            "duty": n_used / float(n_tot) if n_tot else 0.0,
+            "n_used": n_used,
+            "n_rec": n_tot,
+            "split_db": split_db,
+            "sigma2": sigma2,
+            "q_noise": q_noise,
+            "min_sig": min_sig,
+            "t_rec_s": t_rec,
+            "n_probe_rec": len(probe_p),
+            "probe": prn in probe_prns,
+        }
         if keep_records:
             out[prn]["recs"] = rec_rows
     return out
 
 
-def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=None,
-            min_instances=2, hop_s=5.12e-6, keep_series=False, resid_s=0.025):
+def coh_cn0(
+    client,
+    chain,
+    rates=None,
+    n_win=32,
+    lag=1,
+    prns=None,
+    probe_prns=None,
+    min_instances=2,
+    hop_s=5.12e-6,
+    keep_series=False,
+    resid_s=0.025,
+):
     """THE KNOWN-RATE COHERENT C/N0 (task #57 step 3): the ~1 s fold, with NO fit in it.
 
     ⚠️ #57 AMENDMENT (2026-08-17): "no fit in it" is no longer literally true -- see THE
@@ -763,9 +866,9 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
     wins = client.windows(chain, lag=lag)
     if not wins:
         return {}
-    wins = wins[-int(n_win):]
+    wins = wins[-int(n_win) :]
     t_rec = None
-    ser = {}   # (prn, inst) -> [(hop, A_raw, A_sky|None)]
+    ser = {}  # (prn, inst) -> [(hop, A_raw, A_sky|None)]
     for w in wins:
         for inst, f in client.frame_set(chain, w).items():
             if t_rec is None and getattr(f, "hops_per_record", 0) > 0:
@@ -780,12 +883,14 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
                     row = f.row(r, prn)
                     if row is None:
                         continue
-                    en = row[5]                       # REC_P_ENERGY
+                    en = row[5]  # REC_P_ENERGY
                     if en <= 0.0:
                         continue
                     a = complex(row[3], row[4]) / en  # REC_P_RE/IM
-                    skr, ski = row[24], row[25]       # REC_SKY_RE/IM (0 = absent)
-                    sky = (complex(skr, ski) / en) if (skr != 0.0 or ski != 0.0) else None
+                    skr, ski = row[24], row[25]  # REC_SKY_RE/IM (0 = absent)
+                    sky = (
+                        (complex(skr, ski) / en) if (skr != 0.0 or ski != 0.0) else None
+                    )
                     ser.setdefault((prn, inst), []).append((hop, a, sky))
     if not ser or t_rec is None:
         return {}
@@ -827,12 +932,13 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
         by_prn.setdefault(prn, {})[inst] = rows
     acc = {}
     clamped = set()
-    resid = {}   # prn -> (f_res_hz, n_lag_pairs)
+    resid = {}  # prn -> (f_res_hz, n_lag_pairs)
     for prn, insts in by_prn.items():
         f_hz = float(rates.get(prn) or 0.0)
         if abs(f_hz) > RATE_MAX_HZ:
             f_hz = 0.0
             clamped.add(prn)
+
         def _fit_about(f_c):
             """Two-stage residual about center rate f_c: (f_res, n_pair, |R|_lag1).
 
@@ -851,7 +957,8 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
                 for hop, a, sky in rows:
                     t = hop * hop_s
                     seg.setdefault(int(t / resid_s), []).append(
-                        a * cmath.exp(-2j * math.pi * f_c * t))
+                        a * cmath.exp(-2j * math.pi * f_c * t)
+                    )
                 segs.append({k: sum(v) for k, v in seg.items()})
             R = 0j
             n1 = 0
@@ -903,8 +1010,18 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
             ps, ns, pinc_s = _fold(rows, f_center + f_res, 1)
             if pr is None:
                 continue
-            d = acc.setdefault(prn, {"raw": [], "sky": [], "inc": [], "inc_sky": [],
-                                     "n": [], "insts": 0, "series": {}})
+            d = acc.setdefault(
+                prn,
+                {
+                    "raw": [],
+                    "sky": [],
+                    "inc": [],
+                    "inc_sky": [],
+                    "n": [],
+                    "insts": 0,
+                    "series": {},
+                },
+            )
             d["raw"].append(pr)
             d["inc"].append(pinc)
             d["n"].append(nr)
@@ -913,10 +1030,16 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
                 d["inc_sky"].append(pinc_s)
             d["insts"] += 1
             if keep_series:
-                d["series"][inst] = [(h, a.real, a.imag,
-                                      s.real if s is not None else None,
-                                      s.imag if s is not None else None)
-                                     for h, a, s in rows]
+                d["series"][inst] = [
+                    (
+                        h,
+                        a.real,
+                        a.imag,
+                        s.real if s is not None else None,
+                        s.imag if s is not None else None,
+                    )
+                    for h, a, s in rows
+                ]
 
     def _mean(v):
         return sum(v) / len(v) if v else None
@@ -945,15 +1068,19 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
     probe_raw = [x for p in probe_prns for x in acc.get(p, {}).get("raw", ())]
     probe_sky = [x for p in probe_prns for x in acc.get(p, {}).get("sky", ())]
     s2_inc = _floor([x for p in probe_prns for x in acc.get(p, {}).get("inc", ())])
-    s2_inc_sky = _floor([x for p in probe_prns for x in acc.get(p, {}).get("inc_sky", ())])
+    s2_inc_sky = _floor(
+        [x for p in probe_prns for x in acc.get(p, {}).get("inc_sky", ())]
+    )
     if s2_inc is None or s2_inc <= 0.0:
-        return {}   # no anchor, no estimate -- never a peer fallback
+        return {}  # no anchor, no estimate -- never a peer fallback
     probe_n = [x for p in probe_prns for x in acc.get(p, {}).get("n", ())]
     n_pr = _mean(probe_n) or 0.0
-    fw_raw = (_floor(probe_raw) / (s2_inc / n_pr)
-              if probe_raw and n_pr > 0 else None)
-    fw_sky = (_floor(probe_sky) / (s2_inc_sky / n_pr)
-              if probe_sky and s2_inc_sky and n_pr > 0 else None)
+    fw_raw = _floor(probe_raw) / (s2_inc / n_pr) if probe_raw and n_pr > 0 else None
+    fw_sky = (
+        _floor(probe_sky) / (s2_inc_sky / n_pr)
+        if probe_sky and s2_inc_sky and n_pr > 0
+        else None
+    )
 
     out = {}
     for prn, d in acc.items():
@@ -965,35 +1092,48 @@ def coh_cn0(client, chain, rates=None, n_win=32, lag=1, prns=None, probe_prns=No
         if pw is None or n_rec < 4:
             continue
         t_coh = n_rec * t_rec
-        fl = s2_inc / n_rec                     # the white-noise fold floor for THIS n
+        fl = s2_inc / n_rec  # the white-noise fold floor for THIS n
         rho = (pw - fl) / fl
-        row = {"cn0_db": (10.0 * math.log10(rho / t_coh) if rho > 0.0 else None),
-               "sig": pw / fl,
-               "rho": rho,
-               "n_rec": int(round(n_rec)), "n_src": d["insts"],
-               # coherence efficiency: n for coherent, ~1 for noise. Uses the DEBIASED
-               # numerator against the debiased per-record power so a strong satellite's
-               # eta is not diluted by the noise term.
-               "eta": ((pw - fl) * n_rec / (pinc - s2_inc)
-                       if (pinc is not None and pinc > s2_inc and rho > 0.0) else None),
-               "rate_hz": 0.0 if prn in clamped else float(rates.get(prn) or 0.0),
-               # #57: the within-integration residual (see the docstring amendment) --
-               # the fold above ran at rate_hz + rate_resid_hz. This is the per-satellite
-               # carrier-rate innovation the #83 Phase 3 controller will consume.
-               "rate_resid_hz": resid.get(prn, (0.0, 0))[0],
-               "rate_pairs": resid.get(prn, (0.0, 0))[1],
-               "rate_src": ("clamped" if prn in clamped
-                            else "rate" if rates.get(prn) else "zero"),
-               "t_coh_s": t_coh,
-               "sigma2": fl, "n_probe": len(probe_raw),
-               "floor_white": fw_raw, "floor_white_sky": fw_sky,
-               "probe": prn in probe_prns,
-               "cn0_sky_db": None, "sig_sky": None, "eta_sky": None}
+        row = {
+            "cn0_db": (10.0 * math.log10(rho / t_coh) if rho > 0.0 else None),
+            "sig": pw / fl,
+            "rho": rho,
+            "n_rec": int(round(n_rec)),
+            "n_src": d["insts"],
+            # coherence efficiency: n for coherent, ~1 for noise. Uses the DEBIASED
+            # numerator against the debiased per-record power so a strong satellite's
+            # eta is not diluted by the noise term.
+            "eta": (
+                (pw - fl) * n_rec / (pinc - s2_inc)
+                if (pinc is not None and pinc > s2_inc and rho > 0.0)
+                else None
+            ),
+            "rate_hz": 0.0 if prn in clamped else float(rates.get(prn) or 0.0),
+            # #57: the within-integration residual (see the docstring amendment) --
+            # the fold above ran at rate_hz + rate_resid_hz. This is the per-satellite
+            # carrier-rate innovation the #83 Phase 3 controller will consume.
+            "rate_resid_hz": resid.get(prn, (0.0, 0))[0],
+            "rate_pairs": resid.get(prn, (0.0, 0))[1],
+            "rate_src": (
+                "clamped" if prn in clamped else "rate" if rates.get(prn) else "zero"
+            ),
+            "t_coh_s": t_coh,
+            "sigma2": fl,
+            "n_probe": len(probe_raw),
+            "floor_white": fw_raw,
+            "floor_white_sky": fw_sky,
+            "probe": prn in probe_prns,
+            "cn0_sky_db": None,
+            "sig_sky": None,
+            "eta_sky": None,
+        }
         pws = _mean(d["sky"])
         if pws is not None and s2_inc_sky is not None and s2_inc_sky > 0.0:
             fls = s2_inc_sky / n_rec
             rho_s = (pws - fls) / fls
-            row["cn0_sky_db"] = (10.0 * math.log10(rho_s / t_coh) if rho_s > 0.0 else None)
+            row["cn0_sky_db"] = (
+                10.0 * math.log10(rho_s / t_coh) if rho_s > 0.0 else None
+            )
             row["sig_sky"] = pws / fls
         if keep_series:
             row["series"] = d["series"]
@@ -1008,7 +1148,9 @@ def chan_profile(row):
     neighbours sit at 3 is either interference or a dead subband, and either way it was being
     summed straight into the discriminator before this.
     """
-    return [(fid, c["q"], c["disc"]) for fid, c in sorted((row.get("chan") or {}).items())]
+    return [
+        (fid, c["q"], c["disc"]) for fid, c in sorted((row.get("chan") or {}).items())
+    ]
 
 
 def db(x, ref):

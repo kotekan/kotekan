@@ -48,8 +48,15 @@ import os
 import subprocess
 import sys
 
-BROKER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                      "..", "..", "python", "scripts", "gnss", "gps_distributed_broker.py")
+BROKER = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "..",
+    "python",
+    "scripts",
+    "gnss",
+    "gps_distributed_broker.py",
+)
 BROKER = os.path.normpath(BROKER)
 
 
@@ -109,14 +116,20 @@ def _augmented(node):
     the seed-push stage was promoted without a nonlocal, and gal_e5a died with an
     UnboundLocalError 20 seconds into the live swap on 2026-08-26.
     """
-    return {n.target.id for n in ast.walk(node)
-            if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name)}
+    return {
+        n.target.id
+        for n in ast.walk(node)
+        if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name)
+    }
 
 
 def analyze(main, lo, hi):
     skip = _scoped_names(main) | _import_aliases(main)
-    uses = sorted((n.lineno, n.id, isinstance(n.ctx, ast.Load))
-                  for n in ast.walk(main) if isinstance(n, ast.Name))
+    uses = sorted(
+        (n.lineno, n.id, isinstance(n.ctx, ast.Load))
+        for n in ast.walk(main)
+        if isinstance(n, ast.Name)
+    )
     # An augmented target reads at the SAME line it writes, and at the same line a Store sorts
     # first -- so injecting a synthetic Load into `uses` does not work. Handle it directly
     # below via `aug_lines` instead.
@@ -135,15 +148,27 @@ def analyze(main, lo, hi):
     # without a plain assignment first -- the augment's read half needs a value from outside.
     plain_store = {}
     for n in ast.walk(main):
-        if (isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
-                and lo <= n.lineno <= hi and n.lineno not in aug_lines.get(n.id, ())):
+        if (
+            isinstance(n, ast.Name)
+            and isinstance(n.ctx, ast.Store)
+            and lo <= n.lineno <= hi
+            and n.lineno not in aug_lines.get(n.id, ())
+        ):
             plain_store.setdefault(n.id, n.lineno)
-    aug_first = {nm for nm, lns in aug_lines.items()
-                 if any(lo <= l <= hi for l in lns)
-                 and (nm not in plain_store
-                      or plain_store[nm] > min(l for l in lns if lo <= l <= hi))}
-    carry = sorted(nm for nm in writes
-                   if (first.get(nm) is True or nm in aug_first) and nm not in skip)
+    aug_first = {
+        nm
+        for nm, lns in aug_lines.items()
+        if any(lo <= l <= hi for l in lns)
+        and (
+            nm not in plain_store
+            or plain_store[nm] > min(l for l in lns if lo <= l <= hi)
+        )
+    }
+    carry = sorted(
+        nm
+        for nm in writes
+        if (first.get(nm) is True or nm in aug_first) and nm not in skip
+    )
     # ⚠️ LINE ORDER IS NOT EXECUTION ORDER, AND ASSUMING IT WAS COST A RED GATE.
     # Once a stage is promoted, its body sits BEFORE the cycle loop in the file while running
     # LATER in the cycle. So "read at a line after this block" stops meaning "read after this
@@ -161,16 +186,24 @@ def analyze(main, lo, hi):
     # `hints` and `period` are each written-then-read inside three different scopes and shared
     # by none of them. Requiring nonlocal for those is not merely noisy, it is IMPOSSIBLE --
     # there is no main-level binding to attach it to.
-    outs = sorted(nm for nm in writes
-                  if nm not in skip and nm not in carry and _read_before_write_elsewhere(main, nm, lo, hi))
+    outs = sorted(
+        nm
+        for nm in writes
+        if nm not in skip
+        and nm not in carry
+        and _read_before_write_elsewhere(main, nm, lo, hi)
+    )
     return inputs, carry, outs
 
 
 def _other_scopes(main, lo, hi):
     """Every scope that could read a name the block writes: each nested routine outside the
     block, plus main's own body with all nested routines removed."""
-    fns = [n for n in ast.walk(main)
-           if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not main]
+    fns = [
+        n
+        for n in ast.walk(main)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not main
+    ]
     out = [f for f in fns if not (lo <= f.lineno and f.end_lineno <= hi)]
     return out, fns
 
@@ -181,28 +214,49 @@ def _read_before_write_elsewhere(main, name, lo, hi):
         sk = _scoped_names(f) | _import_aliases(f)
         if name in sk:
             continue
-        inner = [g for g in allfns if g is not f and f.lineno <= g.lineno and g.end_lineno <= f.end_lineno]
-        us = sorted((n.lineno, n.col_offset, isinstance(n.ctx, ast.Load))
-                    for n in ast.walk(f) if isinstance(n, ast.Name) and n.id == name
-                    and not any(g.lineno <= n.lineno <= g.end_lineno for g in inner))
+        inner = [
+            g
+            for g in allfns
+            if g is not f and f.lineno <= g.lineno and g.end_lineno <= f.end_lineno
+        ]
+        us = sorted(
+            (n.lineno, n.col_offset, isinstance(n.ctx, ast.Load))
+            for n in ast.walk(f)
+            if isinstance(n, ast.Name)
+            and n.id == name
+            and not any(g.lineno <= n.lineno <= g.end_lineno for g in inner)
+        )
         if us and us[0][2]:
             return True
     # main's own body, outside every routine and outside the block
     sk = _scoped_names(main) | _import_aliases(main)
     if name in sk:
         return False
-    us = sorted((n.lineno, n.col_offset, isinstance(n.ctx, ast.Load))
-                for n in ast.walk(main) if isinstance(n, ast.Name) and n.id == name
-                and not (lo <= n.lineno <= hi)
-                and not any(g.lineno <= n.lineno <= g.end_lineno for g in allfns))
+    us = sorted(
+        (n.lineno, n.col_offset, isinstance(n.ctx, ast.Load))
+        for n in ast.walk(main)
+        if isinstance(n, ast.Name)
+        and n.id == name
+        and not (lo <= n.lineno <= hi)
+        and not any(g.lineno <= n.lineno <= g.end_lineno for g in allfns)
+    )
     return bool(us) and us[0][2]
 
 
 def cmd_map(argv):
     minlines = int(argv[0]) if argv else 60
     _, main, loop = _load(BROKER)
-    print("%-6s %-6s %6s  %-26s %-26s %s"
-          % ("start", "end", "lines", "carry-over (nonlocal)", "live outputs (nonlocal)", "block"))
+    print(
+        "%-6s %-6s %6s  %-26s %-26s %s"
+        % (
+            "start",
+            "end",
+            "lines",
+            "carry-over (nonlocal)",
+            "live outputs (nonlocal)",
+            "block",
+        )
+    )
     total_safe = 0
     for s in loop.body:
         n = s.end_lineno - s.lineno + 1
@@ -215,9 +269,18 @@ def cmd_map(argv):
             lbl = type(s).__name__
         safe = not carry and not outs
         total_safe += n if safe else 0
-        print("%-6d %-6d %6d  %-26s %-26s %s%s"
-              % (s.lineno, s.end_lineno, n, ",".join(carry)[:24] or "-",
-                 ",".join(outs)[:24] or "-", lbl, "   <= promotable as-is" if safe else ""))
+        print(
+            "%-6d %-6d %6d  %-26s %-26s %s%s"
+            % (
+                s.lineno,
+                s.end_lineno,
+                n,
+                ",".join(carry)[:24] or "-",
+                ",".join(outs)[:24] or "-",
+                lbl,
+                "   <= promotable as-is" if safe else "",
+            )
+        )
     print("\n%d lines sit in blocks promotable with no nonlocal at all." % total_safe)
 
 
@@ -230,7 +293,9 @@ def cmd_iface(argv):
     print("  CARRY-OVER   (%d): %s" % (len(carry), ", ".join(carry) or "-"))
     print("  LIVE OUTPUTS (%d): %s" % (len(outs), ", ".join(outs) or "-"))
     if carry or outs:
-        print("\n  promote with: nonlocal %s" % ", ".join(sorted(set(carry) | set(outs))))
+        print(
+            "\n  promote with: nonlocal %s" % ", ".join(sorted(set(carry) | set(outs)))
+        )
     else:
         print("\n  promotable with no nonlocal.")
 
@@ -243,7 +308,9 @@ def cmd_promote(argv):
     real module comes later, once a block's state has been made explicit.
     """
     lo, hi, name, docfile = int(argv[0]), int(argv[1]), argv[2], argv[3]
-    declared = [x for x in (argv[4].split(",") if len(argv) > 4 and argv[4] else []) if x]
+    declared = [
+        x for x in (argv[4].split(",") if len(argv) > 4 and argv[4] else []) if x
+    ]
 
     src = open(BROKER).read().splitlines(True)
     _, main, loop = _load(BROKER)
@@ -254,7 +321,11 @@ def cmd_promote(argv):
         body = getattr(parent, "body", None)
         if not isinstance(body, list):
             continue
-        st = [s for s in body if getattr(s, "lineno", None) and s.lineno >= lo and s.end_lineno <= hi]
+        st = [
+            s
+            for s in body
+            if getattr(s, "lineno", None) and s.lineno >= lo and s.end_lineno <= hi
+        ]
         if st and st[0].lineno == lo and st[-1].end_lineno == hi:
             ok = True
             break
@@ -262,19 +333,27 @@ def cmd_promote(argv):
 
     _, carry, outs = analyze(main, lo, hi)
     missing = [c for c in sorted(set(carry) | set(outs)) if c not in declared]
-    assert not missing, ("REFUSING: undeclared carry-over/output state: %s\n"
-                         "  Declaring these nonlocal is mandatory -- without it the state "
-                         "silently resets or goes stale, and nothing raises." % ", ".join(missing))
+    assert not missing, (
+        "REFUSING: undeclared carry-over/output state: %s\n"
+        "  Declaring these nonlocal is mandatory -- without it the state "
+        "silently resets or goes stale, and nothing raises." % ", ".join(missing)
+    )
     # ⚠️ THE BINDING MUST BE AT main()'s OWN LEVEL. A Store inside an already-promoted stage
     # binds THAT function's local, not main's, so counting it makes `nonlocal` a SyntaxError
     # at import time. (`hints` is written by the almanac stage and read by narrow-search --
     # both now routines -- so once almanac moved, nothing bound it in main at all.)
-    nested = [n for n in ast.walk(main)
-              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
-              and n is not main]
+    nested = [
+        n
+        for n in ast.walk(main)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+        and n is not main
+    ]
+
     def _binds_at_main_level(d):
         for n in ast.walk(main):
-            if not (isinstance(n, ast.Name) and n.id == d and isinstance(n.ctx, ast.Store)):
+            if not (
+                isinstance(n, ast.Name) and n.id == d and isinstance(n.ctx, ast.Store)
+            ):
                 continue
             if lo <= n.lineno <= hi:
                 continue
@@ -282,26 +361,39 @@ def cmd_promote(argv):
                 continue
             return True
         return False
-    for d in declared:
-        assert _binds_at_main_level(d), \
-            ("REFUSING: `%s` has no binding at main()'s own level outside the block, so "
-             "`nonlocal %s` is a SyntaxError. Give the state an explicit home first." % (d, d))
 
-    block = src[lo - 1:hi]
+    for d in declared:
+        assert _binds_at_main_level(d), (
+            "REFUSING: `%s` has no binding at main()'s own level outside the block, so "
+            "`nonlocal %s` is a SyntaxError. Give the state an explicit home first."
+            % (d, d)
+        )
+
+    block = src[lo - 1 : hi]
     ind = min(len(l) - len(l.lstrip()) for l in block if l.strip())
     assert ind >= 8 and ind % 4 == 0, "unexpected block indent %d" % ind
-    if ind > 8:                      # a block nested inside another: dedent to routine body
+    if ind > 8:  # a block nested inside another: dedent to routine body
         cut = ind - 8
         block = [(l[cut:] if l.strip() else l) for l in block]
     doc = open(docfile).read().rstrip("\n")
-    head = ["    def %s():\n" % name, '        """%s"""\n' % doc.replace("\n", "\n        ")]
+    head = [
+        "    def %s():\n" % name,
+        '        """%s"""\n' % doc.replace("\n", "\n        "),
+    ]
     if declared:
         head.append("        nonlocal %s\n" % ", ".join(declared))
     # The CALL keeps the block's original indent -- a poll nested inside the DLL stage sits at
     # 12, not at the loop body's 8. (Getting this wrong is an IndentationError, not a silent
     # bug, but it wastes a gate run.)
-    new = (src[:loop.lineno - 1] + head + block + ["\n"]
-           + src[loop.lineno - 1:lo - 1] + [" " * ind + "%s()\n" % name] + src[hi:])
+    new = (
+        src[: loop.lineno - 1]
+        + head
+        + block
+        + ["\n"]
+        + src[loop.lineno - 1 : lo - 1]
+        + [" " * ind + "%s()\n" % name]
+        + src[hi:]
+    )
     open(BROKER, "w").writelines(new)
     print("promoted %s: %d lines -> 1 call" % (name, hi - lo + 1))
 

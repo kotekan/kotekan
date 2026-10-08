@@ -29,21 +29,21 @@ void ckf(cufftResult e, const char* what) {
 
 struct GnssCudaAcquire::Impl {
     // device buffers
-    float2* dSnap = nullptr;  // [M][n_chan_total]
-    float2* dA = nullptr;     // [nc][Mp]   FFT(data), computed once per snapshot
-    float2* dHead = nullptr;  // [nc][Mp]
-    float2* dTail = nullptr;  // [nc][Mp]
-    float2* dR = nullptr;     // [nc][Mp]   materialised replica, then its FFT in place
-    float2* dX = nullptr;     // [nc][n_dop][Mp]  wiped product (channel-major: see the header)
+    float2* dSnap = nullptr; // [M][n_chan_total]
+    float2* dA = nullptr;    // [nc][Mp]   FFT(data), computed once per snapshot
+    float2* dHead = nullptr; // [nc][Mp]
+    float2* dTail = nullptr; // [nc][Mp]
+    float2* dR = nullptr;    // [nc][Mp]   materialised replica, then its FFT in place
+    float2* dX = nullptr;    // [nc][n_dop][Mp]  wiped product (channel-major: see the header)
 
-    float* dSurf = nullptr;   // [n_dop][Mp][s_cols]
-    float* dSgn0 = nullptr;   // [Mp]
-    float* dSgn1 = nullptr;   // [Mp]
-    int* dCov = nullptr;      // [nc]
-    int* dBin = nullptr;      // [nc]
-    int* dShift = nullptr;    // [max_dop]
-    float2* dTw = nullptr;    // [s_cols/2]
-    float2* dVal = nullptr;   // peak {max, sum}
+    float* dSurf = nullptr; // [n_dop][Mp][s_cols]
+    float* dSgn0 = nullptr; // [Mp]
+    float* dSgn1 = nullptr; // [Mp]
+    int* dCov = nullptr;    // [nc]
+    int* dBin = nullptr;    // [nc]
+    int* dShift = nullptr;  // [max_dop]
+    float2* dTw = nullptr;  // [s_cols/2]
+    float2* dVal = nullptr; // peak {max, sum}
     long long* dIdx = nullptr;
     void* dScratch = nullptr;
 
@@ -56,9 +56,9 @@ struct GnssCudaAcquire::Impl {
     size_t bytes = 0;
 };
 
-GnssCudaAcquire::GnssCudaAcquire(int nc, int Mp, int M, int n_chan_total, int max_dop, int s_cols)
-    : _p(new Impl), _nc(nc), _Mp(Mp), _M(M), _nchan(n_chan_total), _max_dop(max_dop),
-      _s_cols(s_cols) {
+GnssCudaAcquire::GnssCudaAcquire(int nc, int Mp, int M, int n_chan_total, int max_dop, int s_cols) :
+    _p(new Impl), _nc(nc), _Mp(Mp), _M(M), _nchan(n_chan_total), _max_dop(max_dop),
+    _s_cols(s_cols) {
     if (nc <= 0 || Mp <= 0 || M <= 0 || max_dop <= 0 || s_cols <= 0)
         throw std::runtime_error("GnssCudaAcquire: bad dimensions");
     // The folded aggregate needs a power-of-two fine axis (it is sph/fine_step, both powers of
@@ -299,14 +299,13 @@ GnssCudaAcquire::Peak GnssCudaAcquire::peak() const {
 gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurface& dims,
                                                      const std::vector<double>& doppler_grid,
                                                      double sample_rate, double chip_rate,
-                                                     long code_length,
-                                                     bool pairsum_select) const {
+                                                     long code_length, bool pairsum_select) const {
     const long cells_per_dop = (long)_Mp * _s_cols;
     std::vector<float> dmax((size_t)_nd);
     std::vector<double> dsum((size_t)_nd);
     std::vector<long long> didx((size_t)_nd);
-    gnss_cuda::launch_peak_dop(_p->dSurf, _nd, cells_per_dop, dmax.data(), dsum.data(),
-                               didx.data(), _p->dScratch, _p->stream);
+    gnss_cuda::launch_peak_dop(_p->dSurf, _nd, cells_per_dop, dmax.data(), dsum.data(), didx.data(),
+                               _p->dScratch, _p->stream);
 
     double peak = -1.0, sum = 0.0;
     int best_d = 0;
@@ -333,8 +332,8 @@ gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurf
             if (dop_peak[(size_t)d] < dop_peak[(size_t)d - 1]
                 || dop_peak[(size_t)d] < dop_peak[(size_t)d + 1])
                 continue;
-            const double ps = dop_peak[(size_t)d]
-                              + std::max(dop_peak[(size_t)d - 1], dop_peak[(size_t)d + 1]);
+            const double ps =
+                dop_peak[(size_t)d] + std::max(dop_peak[(size_t)d - 1], dop_peak[(size_t)d + 1]);
             if (ps > bestps) {
                 bestps = ps;
                 sel = d;
@@ -361,10 +360,9 @@ gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurf
                 const int i0 = std::max(0, best_i - 1);
                 const int i1 = std::min(_s_cols - 1, best_i + 1);
                 float row[3] = {0.f, 0.f, 0.f};
-                ck(cudaMemcpyAsync(row,
-                                   _p->dSurf + (long)d * cells_per_dop + (long)q * _s_cols + i0,
-                                   (size_t)(i1 - i0 + 1) * sizeof(float), cudaMemcpyDeviceToHost,
-                                   _p->stream),
+                ck(cudaMemcpyAsync(
+                       row, _p->dSurf + (long)d * cells_per_dop + (long)q * _s_cols + i0,
+                       (size_t)(i1 - i0 + 1) * sizeof(float), cudaMemcpyDeviceToHost, _p->stream),
                    "dop_loc row");
                 ck(cudaStreamSynchronize(_p->stream), "dop_loc sync");
                 for (int i = 0; i <= i1 - i0; ++i)

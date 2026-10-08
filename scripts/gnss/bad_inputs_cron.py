@@ -51,9 +51,12 @@ def log(msg):
 
 
 def http(url, body=None, timeout=10):
-    req = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"},
-                                 method="GET" if body is None else "POST")
+    req = urllib.request.Request(
+        url,
+        data=None if body is None else json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+        method="GET" if body is None else "POST",
+    )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.status, r.read().decode()
 
@@ -62,17 +65,47 @@ def stage():
     """Refresh the staged bffs files if choco's state.json changed. Returns a note for the log."""
     host, _, path = bffs_bad_inputs.STATE.partition(":")
     try:
-        meta = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host,
-                               "stat -c '%Y %s' " + path], capture_output=True, timeout=30,
-                              check=True).stdout.decode().strip()
+        meta = (
+            subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=10",
+                    host,
+                    "stat -c '%Y %s' " + path,
+                ],
+                capture_output=True,
+                timeout=30,
+                check=True,
+            )
+            .stdout.decode()
+            .strip()
+        )
     except Exception as e:
         return "choco unreachable (%s); using the staged list" % type(e).__name__
     have = open(STAGE_META).read().strip() if os.path.exists(STAGE_META) else ""
     if meta == have and os.path.exists(STAGE) and os.path.exists(STAGE_CONF):
         return None
-    for src, dst in ((bffs_bad_inputs.STATE, STAGE), (bffs_bad_inputs.CONF, STAGE_CONF)):
-        subprocess.run(["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", src,
-                        dst + ".new"], timeout=60, check=True)
+    for src, dst in (
+        (bffs_bad_inputs.STATE, STAGE),
+        (bffs_bad_inputs.CONF, STAGE_CONF),
+    ):
+        subprocess.run(
+            [
+                "scp",
+                "-q",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=10",
+                src,
+                dst + ".new",
+            ],
+            timeout=60,
+            check=True,
+        )
         os.replace(dst + ".new", dst)
     with open(STAGE_META, "w") as fh:
         fh.write(meta + "\n")
@@ -81,13 +114,18 @@ def stage():
 
 def late_count(n):
     _, text = http("http://%s:12048/metrics" % n, timeout=15)
-    return sum(float(ln.split()[1]) for ln in text.splitlines() if ln.startswith(LATE + "{"))
+    return sum(
+        float(ln.split()[1]) for ln in text.splitlines() if ln.startswith(LATE + "{")
+    )
 
 
 def same(live, body):
-    return (isinstance(live, dict) and live.get("update_id") == body["update_id"]
-            and sorted(live.get("bad_inputs") or []) == body["bad_inputs"]
-            and abs(float(live.get("start_time") or 0.0) - body["start_time"]) < 1e-3)
+    return (
+        isinstance(live, dict)
+        and live.get("update_id") == body["update_id"]
+        and sorted(live.get("bad_inputs") or []) == body["bad_inputs"]
+        and abs(float(live.get("start_time") or 0.0) - body["start_time"]) < 1e-3
+    )
 
 
 def main():
@@ -98,7 +136,10 @@ def main():
         conf = bffs_bad_inputs.yaml.safe_load(open(STAGE_CONF))
         body = bffs_bad_inputs.update_body(state, conf)
     except Exception as e:
-        log("== %s bad_inputs_cron: NO LIST (%s: %s); nothing pushed" % (now, type(e).__name__, e))
+        log(
+            "== %s bad_inputs_cron: NO LIST (%s: %s); nothing pushed"
+            % (now, type(e).__name__, e)
+        )
         return 1
     lines, fail, current = [], 0, 0
     for n in NODES:
@@ -133,17 +174,29 @@ def main():
             fail += 1
             continue
         if status != 200 or not same(back, body):
-            lines.append("  %s FAIL (POST %s, readback %s)" % (n, status, back and back.get("update_id")))
+            lines.append(
+                "  %s FAIL (POST %s, readback %s)"
+                % (n, status, back and back.get("update_id"))
+            )
             fail += 1
         elif late1 > late0:
-            lines.append("  %s DROPPED by bufferBadInputs as out of order (late %d -> %d): a newer"
-                         " update is queued there" % (n, late0, late1))
+            lines.append(
+                "  %s DROPPED by bufferBadInputs as out of order (late %d -> %d): a newer"
+                " update is queued there" % (n, late0, late1)
+            )
             fail += 1
         else:
-            lines.append("  %s PUSHED %s -> %s (%d bad)" % (n, was, body["update_id"],
-                                                             len(body["bad_inputs"])))
+            lines.append(
+                "  %s PUSHED %s -> %s (%d bad)"
+                % (n, was, body["update_id"], len(body["bad_inputs"]))
+            )
     head = "== %s bad_inputs_cron %s (%d bad)%s: %d current" % (
-        now, body["update_id"], len(body["bad_inputs"]), " DRY" if DRY else "", current)
+        now,
+        body["update_id"],
+        len(body["bad_inputs"]),
+        " DRY" if DRY else "",
+        current,
+    )
     log(head + ("; " + note if note else ""))
     for ln in lines:
         log(ln)

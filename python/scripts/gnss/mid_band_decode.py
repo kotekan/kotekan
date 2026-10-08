@@ -21,9 +21,9 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 FS = 20e6
-IF = 5e6           # Fs/4 (real capture, high-side by convention)
+IF = 5e6  # Fs/4 (real capture, high-side by convention)
 T_SKIP = 0.5
-HDR = 4            # rawFileWrite per-frame header bytes (size word)
+HDR = 4  # rawFileWrite per-frame header bytes (size word)
 FRAME_SAMP = 49920
 
 
@@ -40,8 +40,9 @@ def load_stream(path):
         print("stitching %d frames -> %s ..." % (len(files), out))
         buf = np.empty(len(files) * FRAME_SAMP, dtype=np.int16)
         for i, f in enumerate(files):
-            buf[i * FRAME_SAMP:(i + 1) * FRAME_SAMP] = np.fromfile(
-                f, dtype=np.int16, count=FRAME_SAMP, offset=HDR)
+            buf[i * FRAME_SAMP : (i + 1) * FRAME_SAMP] = np.fromfile(
+                f, dtype=np.int16, count=FRAME_SAMP, offset=HDR
+            )
         buf.tofile(out)
     return np.memmap(out, dtype=np.int16, mode="r")
 
@@ -49,15 +50,30 @@ def load_stream(path):
 def code_fn(sig):
     if sig == "b2b":
         from b2b_code_check import generate_b2bi_code
-        return lambda prn: np.array(generate_b2bi_code(prn), dtype=np.int8), 10.23e6, 10230
+
+        return (
+            lambda prn: np.array(generate_b2bi_code(prn), dtype=np.int8),
+            10.23e6,
+            10230,
+        )
     # Galileo E5b (1207.14 MHz, same capture as B2b). Acquire on the PILOT E5b-Q (dataless ->
     # cleanest peak); e5bi is the data component for the eventual I/NAV chain.
     if sig in ("e5b", "e5bq"):
         from e5b_code_check import generate_e5bq_code
-        return lambda prn: np.array(generate_e5bq_code(prn), dtype=np.int8), 10.23e6, 10230
+
+        return (
+            lambda prn: np.array(generate_e5bq_code(prn), dtype=np.int8),
+            10.23e6,
+            10230,
+        )
     if sig == "e5bi":
         from e5b_code_check import generate_e5bi_code
-        return lambda prn: np.array(generate_e5bi_code(prn), dtype=np.int8), 10.23e6, 10230
+
+        return (
+            lambda prn: np.array(generate_e5bi_code(prn), dtype=np.int8),
+            10.23e6,
+            10230,
+        )
     raise SystemExit("unknown signal %s (b2b, e5b/e5bq, e5bi)" % sig)
 
 
@@ -79,23 +95,27 @@ def measure(raw, name, code, chip_rate, L, dops, n_blocks, flip, thresh=1.6):
         acc = np.zeros(n_samp, np.float64)
         for b in range(n_blocks):
             o = off0 + b * n_samp
-            x = raw[o:o + n_samp].astype(np.float32)
+            x = raw[o : o + n_samp].astype(np.float32)
             if flip:
                 x = x * np.where(np.arange(o, o + n_samp) % 2, -1, 1).astype(np.float32)
             xb = x * np.exp(-2j * np.pi * f0 * (tt + o / FS)).astype(np.complex64)
             acc += np.abs(np.fft.ifft(np.fft.fft(xb) * REPF)) ** 2
         pk = int(np.argmax(acc))
         m = np.ones(n_samp, bool)
-        m[max(0, pk - guard):pk + guard] = False
+        m[max(0, pk - guard) : pk + guard] = False
         ratio = float(acc[pk] / acc[m].max())
         if ratio > best[0]:
             best = (ratio, dop, pk, float(acc[pk] / acc[m].mean()))
     ratio, dop, pk, pom = best
-    cn0 = 10 * np.log10(max(pom, 1e-9) / T_p)  # rough C/N0 off the peak/mean (floor-biased)
+    cn0 = 10 * np.log10(
+        max(pom, 1e-9) / T_p
+    )  # rough C/N0 off the peak/mean (floor-biased)
     cp = pk * chip_rate / FS % L
     hit = "  <== ACQUIRED" if ratio > thresh else ""
-    print("%-16s best dop %+7.1f Hz  pk/2nd=%6.2f  ~C/N0=%5.1f  cp=%7.1f%s"
-          % (name, dop, ratio, cn0, cp, hit))
+    print(
+        "%-16s best dop %+7.1f Hz  pk/2nd=%6.2f  ~C/N0=%5.1f  cp=%7.1f%s"
+        % (name, dop, ratio, cn0, cp, hit)
+    )
     return ratio, dop
 
 
@@ -104,7 +124,9 @@ def main():
     ap.add_argument("raw", help="capture .bin or rawFileWrite directory")
     ap.add_argument("--sig", default="b2b")
     ap.add_argument("--prn", default=",".join(str(p) for p in range(19, 47)))
-    ap.add_argument("--flip", type=int, default=-1, help="-1 = auto-calibrate on the first hit")
+    ap.add_argument(
+        "--flip", type=int, default=-1, help="-1 = auto-calibrate on the first hit"
+    )
     ap.add_argument("--nblk", type=int, default=10)
     args = ap.parse_args()
     raw = load_stream(args.raw)
@@ -116,18 +138,35 @@ def main():
     if flip < 0:  # calibrate the (-1)^n flip on whichever PRN detects first
         for prn in prns:
             for f in (False, True):
-                x, _ = measure(raw, "%s%d flip=%d" % (args.sig.upper(), prn, f),
-                               gen(prn), chip, L, dops, args.nblk, f)
+                x, _ = measure(
+                    raw,
+                    "%s%d flip=%d" % (args.sig.upper(), prn, f),
+                    gen(prn),
+                    chip,
+                    L,
+                    dops,
+                    args.nblk,
+                    f,
+                )
                 if x > 1.6:
-                    flip = int(f); break
+                    flip = int(f)
+                    break
             if flip >= 0:
                 break
         if flip < 0:
             raise SystemExit("calibration failed: no detection on any PRN either flip")
         print("-> flip convention: %s\n" % bool(flip))
     for prn in prns:
-        measure(raw, "%s C%02d" % (args.sig.upper(), prn), gen(prn), chip, L, dops,
-                args.nblk, bool(flip))
+        measure(
+            raw,
+            "%s C%02d" % (args.sig.upper(), prn),
+            gen(prn),
+            chip,
+            L,
+            dops,
+            args.nblk,
+            bool(flip),
+        )
 
 
 if __name__ == "__main__":

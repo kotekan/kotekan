@@ -38,17 +38,28 @@ import os
 import re
 
 # python/scripts/gnss/gnss_broker/ -> four levels to the repo root
-_HPP = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..", "..", "..", "..", "lib", "stages", "gnss", "gnssSignal.hpp"))
+_HPP = os.path.normpath(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "..",
+        "..",
+        "..",
+        "lib",
+        "stages",
+        "gnss",
+        "gnssSignal.hpp",
+    )
+)
 
 # name prefix -> the single-letter constellation the broker and RINEX both use
 _SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
 
 _DESC_RX = re.compile(
-    r'inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=\s*\{\s*'
-    r'"[^"]+"\s*,\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)\s*,\s*(\d+)\s*,\s*([0-9.eE+-]+)\s*,')
-_SECONDARY_RX = re.compile(r'/\*secondary_length=\*/\s*(\d+)')
+    r"inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=\s*\{\s*"
+    r'"[^"]+"\s*,\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)\s*,\s*(\d+)\s*,\s*([0-9.eE+-]+)\s*,'
+)
+_SECONDARY_RX = re.compile(r"/\*secondary_length=\*/\s*(\d+)")
 
 
 def _load_descriptors(path=None):
@@ -56,15 +67,21 @@ def _load_descriptors(path=None):
     src = open(path or _HPP).read()
     out = {}
     for m in _DESC_RX.finditer(src):
-        tail = src[m.end():m.end() + 400]
+        tail = src[m.end() : m.end() + 400]
         sec = _SECONDARY_RX.search(tail)
-        out[m.group(1)] = (float(m.group(2)), float(m.group(3)), int(m.group(4)),
-                           float(m.group(5)), int(sec.group(1)) if sec else 0)
+        out[m.group(1)] = (
+            float(m.group(2)),
+            float(m.group(3)),
+            int(m.group(4)),
+            float(m.group(5)),
+            int(sec.group(1)) if sec else 0,
+        )
     if not out:
-        raise RuntimeError("no SignalDescriptors parsed from %s -- the header's shape "
-                           "changed and this parser must be updated. Failing at the door "
-                           "rather than silently serving an empty registry."
-                           % (path or _HPP))
+        raise RuntimeError(
+            "no SignalDescriptors parsed from %s -- the header's shape "
+            "changed and this parser must be updated. Failing at the door "
+            "rather than silently serving an empty registry." % (path or _HPP)
+        )
     return out
 
 
@@ -75,22 +92,22 @@ def _load_descriptors(path=None):
 # are real, healthy, overhead satellites that every other gate waves through. Only
 # capability excludes them (see broker_up_extra.sh).
 _CHAINS = {
-    "gps_l1ca":  ("GPS_L1CA",    None,             None),
-    "gps_l1c":   ("GPS_L1C_P",   None,             None),
-    "gps_l2c":   ("GPS_L2C_CM",  "GPS_L2C_CL",     None),
-    "gps_l5":    ("GPS_L5_Q",    "GPS_L5_Q_NH",    None),
-    "gal_e1c":   ("GAL_E1C",     None,             None),
-    "gal_e5a":   ("GAL_E5A_Q",   "GAL_E5A_Q_CS",   None),
-    "gal_e5b":   ("GAL_E5B_Q",   "GAL_E5B_Q_CS",   None),
-    "gal_e6":    ("GAL_E6_C",    "GAL_E6_C_CS",    None),
-    "bds_b1c":   ("BDS_B1C_P",   None,             19),
-    "bds_b2a":   ("BDS_B2A_P",   "BDS_B2A_P_CS",   19),
-    "bds_b2b":   ("BDS_B2B_I",   None,             19),
+    "gps_l1ca": ("GPS_L1CA", None, None),
+    "gps_l1c": ("GPS_L1C_P", None, None),
+    "gps_l2c": ("GPS_L2C_CM", "GPS_L2C_CL", None),
+    "gps_l5": ("GPS_L5_Q", "GPS_L5_Q_NH", None),
+    "gal_e1c": ("GAL_E1C", None, None),
+    "gal_e5a": ("GAL_E5A_Q", "GAL_E5A_Q_CS", None),
+    "gal_e5b": ("GAL_E5B_Q", "GAL_E5B_Q_CS", None),
+    "gal_e6": ("GAL_E6_C", "GAL_E6_C_CS", None),
+    "bds_b1c": ("BDS_B1C_P", None, 19),
+    "bds_b2a": ("BDS_B2A_P", "BDS_B2A_P_CS", 19),
+    "bds_b2b": ("BDS_B2B_I", None, 19),
     # B3I is NOT BDS-3-only (min_prn None): BDS-2 broadcasts it too. The deployed PRN
     # LIST still mirrors b2a/b2b's 19-42 (the tau_band cross-band discipline wants the
     # same rays); widening to BDS-2 birds is a later, deliberate step.
-    "bds_b3i":   ("BDS_B3I",     "BDS_B3I_NH",     None),
-    "glo_l3oc":  ("GLO_L3OC_P",  None,             None),
+    "bds_b3i": ("BDS_B3I", "BDS_B3I_NH", None),
+    "glo_l3oc": ("GLO_L3OC_P", None, None),
 }
 
 
@@ -101,16 +118,16 @@ _CHAINS = {
 # point of the table. Module-level because two consumers need it WITHOUT a signal in hand:
 # SignalDef.rf_band (carrier -> name) and band_of_freq_id (a bare channel -> name).
 RF_BAND_BY_CARRIER = {
-    1575.42: "L1",     # GPS L1 C/A + L1C, Galileo E1, BeiDou B1C
-    1227.60: "L2",     # GPS L2C
-    1176.45: "L5",     # GPS L5, Galileo E5a, BeiDou B2a  <- CHORD's band today
-    1207.14: "E5b",    # Galileo E5b, BeiDou B2b/B2I
-    1278.75: "E6",     # Galileo E6
-    1268.52: "B3",     # BeiDou B3I
-    1202.025: "L3",    # GLONASS L3OC
-    1561.098: "B1I",   # BeiDou B1I (BDS-2, outside CHORD's band)
-    1246.00: "G2",     # GLONASS L2OF
-    1248.06: "G2",     # GLONASS L2OC
+    1575.42: "L1",  # GPS L1 C/A + L1C, Galileo E1, BeiDou B1C
+    1227.60: "L2",  # GPS L2C
+    1176.45: "L5",  # GPS L5, Galileo E5a, BeiDou B2a  <- CHORD's band today
+    1207.14: "E5b",  # Galileo E5b, BeiDou B2b/B2I
+    1278.75: "E6",  # Galileo E6
+    1268.52: "B3",  # BeiDou B3I
+    1202.025: "L3",  # GLONASS L3OC
+    1561.098: "B1I",  # BeiDou B1I (BDS-2, outside CHORD's band)
+    1246.00: "G2",  # GLONASS L2OF
+    1248.06: "G2",  # GLONASS L2OC
 }
 
 # CHORD's F-engine channel pitch. freq_id is a PHYSICAL bin index, so the centre frequency is
@@ -175,8 +192,11 @@ def band_of_freq_id(freq_id, carriers=None):
         mhz = float(freq_id) * FREQ_ID_MHZ
     except (TypeError, ValueError):
         return (None, None)
-    cands = (list(carriers) if carriers
-             else sorted((c, n) for c, n in RF_BAND_BY_CARRIER.items()))
+    cands = (
+        list(carriers)
+        if carriers
+        else sorted((c, n) for c, n in RF_BAND_BY_CARRIER.items())
+    )
     best, best_d = None, None
     for carrier, name in cands:
         d = abs(mhz - float(carrier))
@@ -190,20 +210,34 @@ def band_of_freq_id(freq_id, carriers=None):
 class SignalDef(object):
     """One named chain: constellation x band x code, frozen at construction."""
 
-    __slots__ = ("key", "primary", "long", "constellation", "carrier_hz", "chip_rate_hz",
-                 "code_length", "code_period_s", "long_code_segments",
-                 "long_code_epoch_s", "nh_overlay_len", "min_prn")
+    __slots__ = (
+        "key",
+        "primary",
+        "long",
+        "constellation",
+        "carrier_hz",
+        "chip_rate_hz",
+        "code_length",
+        "code_period_s",
+        "long_code_segments",
+        "long_code_epoch_s",
+        "nh_overlay_len",
+        "min_prn",
+    )
 
     def __init__(self, key, descs=None):
         descs = descs if descs is not None else _load_descriptors()
         if key not in _CHAINS:
-            raise KeyError("unknown signal %r; known: %s"
-                           % (key, ", ".join(sorted(_CHAINS))))
+            raise KeyError(
+                "unknown signal %r; known: %s" % (key, ", ".join(sorted(_CHAINS)))
+            )
         prim, lng, min_prn = _CHAINS[key]
         for n in (prim, lng):
             if n is not None and n not in descs:
-                raise KeyError("signal %s names descriptor %s, which is not in "
-                               "gnssSignal.hpp" % (key, n))
+                raise KeyError(
+                    "signal %s names descriptor %s, which is not in "
+                    "gnssSignal.hpp" % (key, n)
+                )
         c_hz, chip, clen, per, sec = descs[prim]
         self.key, self.primary, self.long = key, prim, lng
         self.constellation = _SYS[prim.split("_")[0]]
@@ -259,7 +293,10 @@ class SignalDef(object):
     @property
     def label(self):
         """Table form: 'GPS L5-Q', 'Galileo E5a-Q'."""
-        return "%s %s" % (self._SYS_NAME.get(self.primary.split("_")[0], "?"), self.short)
+        return "%s %s" % (
+            self._SYS_NAME.get(self.primary.split("_")[0], "?"),
+            self.short,
+        )
 
     @property
     def q_alias_hz(self):
@@ -278,10 +315,16 @@ class SignalDef(object):
         return self.long_code_epoch_s / self.long_code_segments
 
     def __repr__(self):
-        return ("SignalDef(%s: %s%s, %.3f MHz, %d chips @ %.4f Mcps, %d x %.4g s)"
-                % (self.key, self.primary, "/" + self.long if self.long else "",
-                   self.carrier_hz / 1e6, self.code_length, self.chip_rate_hz / 1e6,
-                   self.long_code_segments, self.long_code_epoch_s))
+        return "SignalDef(%s: %s%s, %.3f MHz, %d chips @ %.4f Mcps, %d x %.4g s)" % (
+            self.key,
+            self.primary,
+            "/" + self.long if self.long else "",
+            self.carrier_hz / 1e6,
+            self.code_length,
+            self.chip_rate_hz / 1e6,
+            self.long_code_segments,
+            self.long_code_epoch_s,
+        )
 
 
 def _derive(descs, prim, lng):
@@ -297,12 +340,16 @@ def _derive(descs, prim, lng):
     if lng is not None:
         _, _, l_len, l_per, _ = descs[lng]
         if l_len % clen:
-            raise ValueError("%s (%d chips) is not a whole number of %s periods (%d)"
-                             % (lng, l_len, prim, clen))
+            raise ValueError(
+                "%s (%d chips) is not a whole number of %s periods (%d)"
+                % (lng, l_len, prim, clen)
+            )
         from_long = (l_len // clen, l_per)
     if from_sec and from_long and from_sec[0] != from_long[0]:
-        raise ValueError("%s: secondary_length %d disagrees with %s/%s = %d"
-                         % (prim, from_sec[0], lng, prim, from_long[0]))
+        raise ValueError(
+            "%s: secondary_length %d disagrees with %s/%s = %d"
+            % (prim, from_sec[0], lng, prim, from_long[0])
+        )
     got = from_long or from_sec
     if got is None:
         # No secondary and no long code: the primary IS the whole code (GPS L1 C/A).

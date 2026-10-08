@@ -1,4 +1,5 @@
-// Synthetic validation of the two phase-floor processing fixes (31896a862:docs/CHORD_GNSS_STATE.md 8.21.5):
+// Synthetic validation of the two phase-floor processing fixes
+// (31896a862:docs/CHORD_GNSS_STATE.md 8.21.5):
 //
 //   [A] gnss::phase_track_loo -- the leave-one-out common-phase tracker. Injects the measured
 //       on-sky wander (AR(1), sigma 0.9 rad, ~42 ms correlation) into a synthetic record
@@ -17,11 +18,11 @@
 #include "gnssChannelizedDespread.hpp"
 #include "gnssElemCal.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdio>
 #include <random>
-#include <algorithm>
 #include <vector>
 
 using cd = std::complex<double>;
@@ -155,8 +156,8 @@ int main() {
         (void)rng2;
         printf("  %-34s per-rec SNR: header %6.2f  ref-elem %6.2f  gain %5.2fx  "
                "(MRC bound %.2fx)%s\n",
-               label, snr_h, snr_r, snr_r > 0.0 ? snr_h / snr_r : 0.0,
-               std::sqrt(p2) / ref_amp, moved ? "  [anchor moved]" : "");
+               label, snr_h, snr_r, snr_r > 0.0 ? snr_h / snr_r : 0.0, std::sqrt(p2) / ref_amp,
+               moved ? "  [anchor moved]" : "");
     };
     run_elemcal(0.6, 0.0, false, "static gains, s_elem 0.6:");
     run_elemcal(0.3, 0.0, false, "static gains, s_elem 0.3:");
@@ -195,8 +196,8 @@ int main() {
             const double phi_sky = sky_sig * g(rng); // WHITE in time, common to all elements
             const cd sig = s_elem * std::polar(1.0, phi_sky);
             for (int e = 0; e < NE2; ++e)
-                gp[(size_t)e] = gains[(size_t)e] * sig
-                                + exn[(size_t)e] * cd(g(rng), g(rng)) * 0.70710678;
+                gp[(size_t)e] =
+                    gains[(size_t)e] * sig + exn[(size_t)e] * cd(g(rng), g(rng)) * 0.70710678;
             const cd h = cal.warm() ? cal.combine(gp.data()) : gp[0];
             if (cal.warm() && k >= NREC2 - 128) {
                 raw.push_back(h);
@@ -222,7 +223,8 @@ int main() {
             const int NR = (int)hist.size();
             std::vector<std::vector<int>> perm((size_t)NE2, std::vector<int>((size_t)NR));
             for (int e = 0; e < NE2; ++e) {
-                for (int k = 0; k < NR; ++k) perm[(size_t)e][(size_t)k] = k;
+                for (int k = 0; k < NR; ++k)
+                    perm[(size_t)e][(size_t)k] = k;
                 std::shuffle(perm[(size_t)e].begin(), perm[(size_t)e].end(), sh);
             }
             std::vector<cd> tmp((size_t)NE2);
@@ -248,34 +250,46 @@ int main() {
             // genie -- and then the "you may not beat it" rule is being applied to the wrong bar.
             auto spread = [](const std::vector<cd>& v, const char* nm) {
                 cd M(0.0, 0.0);
-                for (const cd& x : v) M += x;
+                for (const cd& x : v)
+                    M += x;
                 const double a0 = std::arg(M);
                 double s1 = 0.0, s2 = 0.0, amp = 0.0;
                 for (const cd& x : v) {
                     double d = std::arg(x) - a0;
-                    while (d > M_PI) d -= 2.0 * M_PI;
-                    while (d < -M_PI) d += 2.0 * M_PI;
-                    s1 += d; s2 += d * d; amp += std::abs(x);
+                    while (d > M_PI)
+                        d -= 2.0 * M_PI;
+                    while (d < -M_PI)
+                        d += 2.0 * M_PI;
+                    s1 += d;
+                    s2 += d * d;
+                    amp += std::abs(x);
                 }
                 const double n = (double)v.size();
                 printf("      %-6s |mean|=%9.3f  <|x|>=%9.3f  arg spread=%6.3f rad  bias=%+6.3f\n",
                        nm, std::abs(M) / n, amp / n, std::sqrt(s2 / n - (s1 / n) * (s1 / n)),
                        s1 / n);
             };
-            spread(raw, "raw"); spread(sky, "split"); spread(genie, "genie");
-            double rho2, th, mag; int live = 0;
-            for (int e = 0; e < NE2; ++e) { cal.diag(e, rho2, th, mag); if (mag > 0.0) ++live; }
+            spread(raw, "raw");
+            spread(sky, "split");
+            spread(genie, "genie");
+            double rho2, th, mag;
+            int live = 0;
+            for (int e = 0; e < NE2; ++e) {
+                cal.diag(e, rho2, th, mag);
+                if (mag > 0.0)
+                    ++live;
+            }
             printf("      cal: %d live elements\n", live);
         }
     };
     // s_elem sweep: the split-aperture correction only helps when the REFERENCE half has a
     // per-record SNR comfortably above 1, since arg(B) is the phase estimate. Live CHORD runs at
     // ~9.25 per record per instance over ~8 effective elements, i.e. s_elem ~ 3.
-    run_sky(0.0,  0, 1.0, 0.55, "weak, no sky:");
+    run_sky(0.0, 0, 1.0, 0.55, "weak, no sky:");
     run_sky(0.75, 0, 1.0, 0.55, "weak, 0.75 rad:");
     run_sky(0.75, 2, 3.0, 0.55, "weak, 0.75 + 2 osc:");
     printf("%22s %9s %9s %9s %9s\n", "-- live CHORD level --", "", "", "", "");
-    run_sky(0.0,  0, 1.0, 3.00, "live, no sky:");
+    run_sky(0.0, 0, 1.0, 3.00, "live, no sky:");
     run_sky(0.75, 0, 1.0, 3.00, "live, 0.75 rad:");
     run_sky(0.75, 2, 3.0, 3.00, "live, 0.75 + 2 osc:", true);
     run_sky(1.20, 2, 3.0, 3.00, "live, 1.20 + 2 osc:", true);

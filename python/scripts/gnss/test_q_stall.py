@@ -50,10 +50,12 @@ class TestQStall(unittest.TestCase):
         # a chain that degrades cannot lower its own bar and go quiet again
         best, fired = run([0.9] * 60 + [0.3] * 200)
         self.assertAlmostEqual(best, 0.9, places=6)
-        self.assertTrue(len(fired) > 50, "the guard went quiet as the degradation persisted")
+        self.assertTrue(
+            len(fired) > 50, "the guard went quiet as the degradation persisted"
+        )
 
     def test_waits_for_a_full_window(self):
-        _, fired = run([0.9, 0.1])          # 2 samples: no verdict either way
+        _, fired = run([0.9, 0.1])  # 2 samples: no verdict either way
         self.assertEqual(fired, [])
 
 

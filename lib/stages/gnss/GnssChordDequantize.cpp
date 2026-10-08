@@ -9,8 +9,8 @@
 #include <complex>
 #include <functional>
 
-using kotekan::Config;
 using kotekan::bufferContainer;
+using kotekan::Config;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(GnssChordDequantize);
@@ -110,8 +110,7 @@ void GnssChordDequantize::main_thread() {
                 // PRN 32 gave 10.1 (noise, ceiling ~14); conjugated, 22.5 -- and the
                 // measured Dopplers then match BRDC to ~6 Hz on two satellites with a
                 // common +5.8 Hz receiver clock bias. FIRST LIGHT was behind this flag.
-                dst[_out_idx[(size_t)c]] =
-                    std::complex<float>(re, _conjugate ? -im : im);
+                dst[_out_idx[(size_t)c]] = std::complex<float>(re, _conjugate ? -im : im);
             }
         }
 

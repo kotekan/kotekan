@@ -22,13 +22,15 @@ import tempfile
 import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CPP_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss"))
+CPP_DIR = os.path.normpath(
+    os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss")
+)
 CPP = os.path.join(CPP_DIR, "glonassL2OCCode.cpp")
 L3OC_CPP = os.path.join(CPP_DIR, "glonassL3OCCode.cpp")
 
 BASE_N = 10230
 SUB = (0, 0, 1, -1)
-N = BASE_N * len(SUB)   # 40920
+N = BASE_N * len(SUB)  # 40920
 N_PRN = 63
 
 # L3OC-p reference construction (must match glonassL3OCCode / l3oc_code_check).
@@ -36,14 +38,66 @@ DC1_SEED, DC1_TAP, DC1_N = 0b00110100111000, 0b00010001000011, 14
 SHORT_TAP, SHORT_N, PILOT_OFFSET = 0b0000011, 7, 64
 
 OC2_REF = (
-    1, 1, -1, 1, -1, -1, 1, -1, 1, -1, -1, -1, -1, -1, 1, 1, 1, -1, -1, 1, 1, 1,
-    1, -1, 1, 1, 1, -1, -1, 1, -1, 1, 1, 1, 1, 1, 1, -1, 1, -1, -1, 1, 1, 1, -1,
-    1, 1, 1, -1, 1)
+    1,
+    1,
+    -1,
+    1,
+    -1,
+    -1,
+    1,
+    -1,
+    1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    1,
+    1,
+    1,
+    -1,
+    -1,
+    1,
+    1,
+    1,
+    1,
+    -1,
+    1,
+    1,
+    1,
+    -1,
+    -1,
+    1,
+    -1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    -1,
+    1,
+    -1,
+    -1,
+    1,
+    1,
+    1,
+    -1,
+    1,
+    1,
+    1,
+    -1,
+    1,
+)
 
 # Recorded from the run that passed the bit-exact C++/python + reuse checks. popcount is 10230
 # (half of 40920: every base +1 chip yields one +1 and one -1 after [0,0,+c,-c]).
-FP = {1: (0x802f373e, 10230), 7: (0xe848631e, 10230), 19: (0x52943633, 10230),
-      63: (0xc5622044, 10230)}
+FP = {
+    1: (0x802F373E, 10230),
+    7: (0xE848631E, 10230),
+    19: (0x52943633, 10230),
+    63: (0xC5622044, 10230),
+}
 
 
 def _lfsr(n_out, seed, tap, n):
@@ -79,9 +133,17 @@ def _parse_oc2():
 
 
 def _cpp_codes():
-    cxx = next((c for c in ("g++-12", "g++", "clang++")
-                if subprocess.call(["which", c], stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL) == 0), None)
+    cxx = next(
+        (
+            c
+            for c in ("g++-12", "g++", "clang++")
+            if subprocess.call(
+                ["which", c], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            == 0
+        ),
+        None,
+    )
     if cxx is None:
         return None
     main = r"""
@@ -100,10 +162,15 @@ int main() {
     with tempfile.TemporaryDirectory() as td:
         src, exe = os.path.join(td, "d.cpp"), os.path.join(td, "d")
         open(src, "w").write(main)
-        r = subprocess.run([cxx, "-std=c++17", "-O1", "-I", CPP_DIR, src, CPP, L3OC_CPP, "-o", exe],
-                           capture_output=True, text=True)
+        r = subprocess.run(
+            [cxx, "-std=c++17", "-O1", "-I", CPP_DIR, src, CPP, L3OC_CPP, "-o", exe],
+            capture_output=True,
+            text=True,
+        )
         if r.returncode != 0:
-            print("   (C++ compile failed, skipping bit-exact check)\n%s" % r.stderr[:800])
+            print(
+                "   (C++ compile failed, skipping bit-exact check)\n%s" % r.stderr[:800]
+            )
             return None
         out = subprocess.run([exe], capture_output=True, text=True).stdout
     codes = {}
@@ -114,9 +181,12 @@ int main() {
 
 
 def _fp(code):
-    return (zlib.crc32("".join("+" if x > 0 else ("-" if x < 0 else "0")
-                               for x in code).encode()),
-            sum(1 for x in code if x > 0))
+    return (
+        zlib.crc32(
+            "".join("+" if x > 0 else ("-" if x < 0 else "0") for x in code).encode()
+        ),
+        sum(1 for x in code if x > 0),
+    )
 
 
 def main():
@@ -140,14 +210,17 @@ def main():
     base1 = _l3ocp_base(1)
     bad = 0
     for i, b in enumerate(base1):
-        g = c1[4 * i:4 * i + 4]
+        g = c1[4 * i : 4 * i + 4]
         if g != [0, 0, b, -b]:
             bad += 1
     if bad:
         print("expansion: %d of %d groups are not [0,0,+base,-base]" % (bad, BASE_N))
         ok = False
     else:
-        print("expansion: all %d base chips became [0,0,+c,-c] exactly (BOC(1,1)+TDM)" % BASE_N)
+        print(
+            "expansion: all %d base chips became [0,0,+c,-c] exactly (BOC(1,1)+TDM)"
+            % BASE_N
+        )
 
     nz = sum(1 for x in c1 if x != 0)
     if nz != 2 * BASE_N:
@@ -155,24 +228,33 @@ def main():
         ok = False
     else:
         pos = sum(1 for x in c1 if x > 0)
-        print("zeros: exactly half (%d) are the TDM'd data slots; non-zero split +%d/-%d"
-              % (N - nz, pos, nz - pos))
+        print(
+            "zeros: exactly half (%d) are the TDM'd data slots; non-zero split +%d/-%d"
+            % (N - nz, pos, nz - pos)
+        )
 
     # ---- the reuse claim, checked against the L3OC checker's own construction -------------
     # (the base used here is _l3ocp_base; if l3oc_code_check is importable, cross-check it)
     try:
         sys.path.insert(0, HERE)
         import l3oc_code_check as l3
+
         ref = l3._code(1, True, l3._dc1())  # L3OC-p PRN 1
         if ref != base1:
-            print("reuse: the L2OC base does NOT match l3oc_code_check's L3OC-p PRN 1 -- the "
-                  "'same sequence' claim is wrong")
+            print(
+                "reuse: the L2OC base does NOT match l3oc_code_check's L3OC-p PRN 1 -- the "
+                "'same sequence' claim is wrong"
+            )
             ok = False
         else:
-            print("reuse: L2OC base == l3oc_code_check's L3OC-p code (PRN 1), independently derived")
+            print(
+                "reuse: L2OC base == l3oc_code_check's L3OC-p code (PRN 1), independently derived"
+            )
     except Exception as e:
-        print("reuse: could not import l3oc_code_check to cross-check (%s); used local derivation"
-              % e)
+        print(
+            "reuse: could not import l3oc_code_check to cross-check (%s); used local derivation"
+            % e
+        )
 
     # ---- distinctness ---------------------------------------------------------------------
     if len({tuple(c) for c in codes.values()}) != N_PRN:
@@ -187,8 +269,10 @@ def main():
         print("OC2: could not parse L2OC_OC2 out of the C++")
         ok = False
     elif oc2 != list(OC2_REF):
-        print("OC2: C++ secondary differs from the reference (len %d vs %d)"
-              % (len(oc2), len(OC2_REF)))
+        print(
+            "OC2: C++ secondary differs from the reference (len %d vs %d)"
+            % (len(oc2), len(OC2_REF))
+        )
         ok = False
     else:
         print("OC2: 50-chip secondary matches the reference")
@@ -200,10 +284,16 @@ def main():
     else:
         bad = [p for p in codes if cpp.get(p) != codes[p]]
         if bad:
-            print("bit-exact: %d PRNs differ between C++ and python (e.g. %s)" % (len(bad), bad[:4]))
+            print(
+                "bit-exact: %d PRNs differ between C++ and python (e.g. %s)"
+                % (len(bad), bad[:4])
+            )
             ok = False
         else:
-            print("bit-exact: all %d codes identical between C++ and python, chip for chip" % N_PRN)
+            print(
+                "bit-exact: all %d codes identical between C++ and python, chip for chip"
+                % N_PRN
+            )
 
     for prn in (1, 7, 19, 63):
         got = _fp(codes[prn])
@@ -211,7 +301,10 @@ def main():
         if want is None:
             print("   PRN %2d: crc=0x%08x pop=%d (recording)" % (prn, got[0], got[1]))
         elif got != tuple(want):
-            print("   PRN %2d: crc=0x%08x pop=%d MISMATCH (stored %s)" % (prn, got[0], got[1], want))
+            print(
+                "   PRN %2d: crc=0x%08x pop=%d MISMATCH (stored %s)"
+                % (prn, got[0], got[1], want)
+            )
             ok = False
         else:
             print("   PRN %2d: crc=0x%08x pop=%d OK" % (prn, got[0], got[1]))

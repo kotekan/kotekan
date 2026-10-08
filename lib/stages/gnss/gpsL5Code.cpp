@@ -43,14 +43,12 @@ const std::array<int8_t, L5_CODE_LENGTH>& xb_code() {
 }
 
 // Per-PRN XB advance (chips), PRN 1..32 (IS-GPS-705 Table 3-I / PocketSDR).
-constexpr int L5I_XB_ADV[32] = {266,  365,  804,  1138, 1509, 1559, 1756, 2084,
-                                2170, 2303, 2527, 2687, 2930, 3471, 3940, 4132,
-                                4332, 4924, 5343, 5443, 5641, 5816, 5898, 5918,
-                                5955, 6243, 6345, 6477, 6518, 6875, 7168, 7187};
-constexpr int L5Q_XB_ADV[32] = {1701, 323,  5292, 2020, 5429, 7136, 1041, 5947,
-                                4315, 148,  535,  1939, 5206, 5910, 3595, 5135,
-                                6082, 6990, 3546, 1523, 4548, 4484, 1893, 3961,
-                                7106, 5299, 4660, 276,  4389, 3783, 1591, 1601};
+constexpr int L5I_XB_ADV[32] = {266,  365,  804,  1138, 1509, 1559, 1756, 2084, 2170, 2303, 2527,
+                                2687, 2930, 3471, 3940, 4132, 4332, 4924, 5343, 5443, 5641, 5816,
+                                5898, 5918, 5955, 6243, 6345, 6477, 6518, 6875, 7168, 7187};
+constexpr int L5Q_XB_ADV[32] = {1701, 323,  5292, 2020, 5429, 7136, 1041, 5947, 4315, 148,  535,
+                                1939, 5206, 5910, 3595, 5135, 6082, 6990, 3546, 1523, 4548, 4484,
+                                1893, 3961, 7106, 5299, 4660, 276,  4389, 3783, 1591, 1601};
 
 std::array<int8_t, L5_CODE_LENGTH> l5_code(int prn, const int* adv) {
     if (prn < 1 || prn > 32)
@@ -60,7 +58,7 @@ std::array<int8_t, L5_CODE_LENGTH> l5_code(int prn, const int* adv) {
     const int shift = adv[prn - 1];
     std::array<int8_t, L5_CODE_LENGTH> code{};
     for (int i = 0; i < L5_CODE_LENGTH; ++i) {
-        const int j = (i + shift) % L5_CODE_LENGTH; // XB advanced (left-rolled) by `shift`
+        const int j = (i + shift) % L5_CODE_LENGTH;   // XB advanced (left-rolled) by `shift`
         code[i] = static_cast<int8_t>(xa[i] * xb[j]); // +-1 product == XOR
     }
     return code;
@@ -77,7 +75,7 @@ std::array<int8_t, L5_CODE_LENGTH> generate_l5q_code(int prn) {
 }
 
 const std::array<int8_t, L5_NH10_LENGTH> L5_NH10 = {1, 1, 1, 1, -1, -1, 1, -1, 1, -1};
-const std::array<int8_t, L5_NH20_LENGTH> L5_NH20 = {1,  1,  1, 1,  1,  -1, 1,  1,  -1, -1,
-                                                    1, -1, 1, -1, 1,  1,  -1, -1, -1, 1};
+const std::array<int8_t, L5_NH20_LENGTH> L5_NH20 = {1, 1,  1, 1,  1, -1, 1,  1,  -1, -1,
+                                                    1, -1, 1, -1, 1, 1,  -1, -1, -1, 1};
 
 } // namespace gps

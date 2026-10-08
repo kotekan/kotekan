@@ -18,13 +18,13 @@ using cf = std::complex<float>;
 namespace {
 
 constexpr double CHIP_RATE = 1.023e6;
-constexpr int SP = 4;                          // samples per chip
-constexpr double FS = CHIP_RATE * SP;          // 4.092 MHz
-constexpr int N = 31;                          // channels (31 | 4092, one period)
-constexpr int P = 4;                           // PFB taps
+constexpr int SP = 4;                 // samples per chip
+constexpr double FS = CHIP_RATE * SP; // 4.092 MHz
+constexpr int N = 31;                 // channels (31 | 4092, one period)
+constexpr int P = 4;                  // PFB taps
 constexpr long CODE_LEN = 1023;
-constexpr int NS = CODE_LEN * SP;              // 4092 = one code period
-constexpr int M = NS / N;                      // 132 hops
+constexpr int NS = CODE_LEN * SP; // 4092 = one code period
+constexpr int M = NS / N;         // 132 hops
 
 std::vector<int8_t> ca(int prn) {
     auto a = gps::generate_ca_code(prn);
@@ -163,7 +163,8 @@ BOOST_AUTO_TEST_CASE(recovers_with_fftwengine_convention) {
     const long true_tau = 20; // q=1, s=8 -> exercises fine lag
     const double true_dop = 200.0;
 
-    auto data = analyze_fftwe(gen(5, true_tau * CHIP_RATE / FS, true_dop, cf(1.0f, 0.0f)), Nc, proto);
+    auto data =
+        analyze_fftwe(gen(5, true_tau * CHIP_RATE / FS, true_dop, cf(1.0f, 0.0f)), Nc, proto);
     auto repl0 = analyze_fftwe(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), Nc, proto);
     const auto cov = energy_covering_n(repl0, Nc);
 
@@ -173,16 +174,17 @@ BOOST_AUTO_TEST_CASE(recovers_with_fftwengine_convention) {
         chan_freq.push_back(c - Nc / 2);
 
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
-    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, Nc, CODE_LEN,
-                                       chan_freq);
-    BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop), 100.0); // sub-grid refine: within half a 200 Hz cell
+    auto r =
+        gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, Nc, CODE_LEN, chan_freq);
+    BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop),
+                   100.0); // sub-grid refine: within half a 200 Hz cell
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP);
     BOOST_CHECK_GT(r.snr, 15.0);
 }
 
 BOOST_AUTO_TEST_CASE(recovers_code_phase_and_doppler) {
     const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
-    const long true_tau = 50;   // not hop-aligned: q=1, s=19 -> exercises fine lag
+    const long true_tau = 50; // not hop-aligned: q=1, s=19 -> exercises fine lag
     const double true_dop = 200.0;
 
     const double cp = true_tau * CHIP_RATE / FS;
@@ -194,9 +196,10 @@ BOOST_AUTO_TEST_CASE(recovers_code_phase_and_doppler) {
     auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
                                        gnss::FINE_LAG_SIGN_NATURAL);
 
-    BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop), 100.0); // sub-grid refine: within half a 200 Hz cell
+    BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop),
+                   100.0); // sub-grid refine: within half a 200 Hz cell
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP); // within one chip
-    BOOST_CHECK_GT(r.snr, 20.0);                                        // sharp peak
+    BOOST_CHECK_GT(r.snr, 20.0);                                       // sharp peak
 }
 
 BOOST_AUTO_TEST_CASE(hop_aligned_phase_recovered) {
@@ -236,16 +239,16 @@ BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
 
     auto rw = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
-                                       gnss::FINE_LAG_SIGN_NATURAL);
+                                        gnss::FINE_LAG_SIGN_NATURAL);
 
     gnss::AcquireWorkspace ws;
     std::vector<double> surf;
     const auto dims = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surf, ws);
     auto rs = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
-                                        gnss::FINE_LAG_SIGN_NATURAL);
+                                     gnss::FINE_LAG_SIGN_NATURAL);
 
     BOOST_CHECK_EQUAL(dims.n_dop, (int)grid.size());
-    BOOST_CHECK_EQUAL(dims.Mp, M); // repl0 hop-period
+    BOOST_CHECK_EQUAL(dims.Mp, M);  // repl0 hop-period
     BOOST_CHECK_EQUAL(dims.sph, N); // complex bank: hop == channel count (samples_per_hop=0)
     BOOST_CHECK_EQUAL(rs.peak_tau_samples, rw.peak_tau_samples);
     BOOST_CHECK_EQUAL(rs.doppler_hz, rw.doppler_hz);
@@ -362,7 +365,7 @@ BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
 
     const gnss::AcquisitionSurface wide_dims{nd, Mp, sph, sph};
     const auto r_red = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
-                                        gnss::FINE_LAG_SIGN_NATURAL);
+                                              gnss::FINE_LAG_SIGN_NATURAL);
     // BOTH sides take the same sign: this case compares a reduced surface against the tiled-out
     // wide one, so it is convention-agnostic -- but only if the two agree.
     const auto r_wide = gnss::channelized_peak(wide, wide_dims, grid, FS, CHIP_RATE, CODE_LEN,
@@ -394,14 +397,14 @@ BOOST_AUTO_TEST_CASE(accumulation_scales_surface_linearly) {
         dimsK = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surfK, ws);
 
     auto r1 = gnss::channelized_peak(surf1, dims1, grid, FS, CHIP_RATE, CODE_LEN,
-                                        gnss::FINE_LAG_SIGN_NATURAL);
+                                     gnss::FINE_LAG_SIGN_NATURAL);
     auto rK = gnss::channelized_peak(surfK, dimsK, grid, FS, CHIP_RATE, CODE_LEN,
-                                        gnss::FINE_LAG_SIGN_NATURAL);
+                                     gnss::FINE_LAG_SIGN_NATURAL);
 
     BOOST_CHECK_EQUAL(rK.peak_tau_samples, r1.peak_tau_samples);
     BOOST_CHECK_EQUAL(rK.doppler_hz, r1.doppler_hz);
     BOOST_CHECK_CLOSE(rK.peak, K * r1.peak, 1e-2); // surface scales by K
-    BOOST_CHECK_CLOSE(rK.snr, r1.snr, 1e-2);        // ratio invariant
+    BOOST_CHECK_CLOSE(rK.snr, r1.snr, 1e-2);       // ratio invariant
 }
 
 // A signal too weak to acquire in one window (a noise spike wins the surface) is
@@ -412,8 +415,8 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
     const long true_tau = 50;
     const double true_dop = 200.0;
     const double cp = true_tau * CHIP_RATE / FS;
-    constexpr float AMP = 0.30f;   // per-sample signal amplitude
-    constexpr float SIGMA = 6.0f;  // per-I/Q noise sigma (signal well below noise)
+    constexpr float AMP = 0.30f;  // per-sample signal amplitude
+    constexpr float SIGMA = 6.0f; // per-I/Q noise sigma (signal well below noise)
     constexpr int K = 32;
 
     auto repl0 = stft(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), proto);
@@ -437,10 +440,11 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
         }
     }
     auto rK = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
-                                        gnss::FINE_LAG_SIGN_NATURAL);
+                                     gnss::FINE_LAG_SIGN_NATURAL);
 
-    BOOST_CHECK_GT(std::abs(tau1 - true_tau), (long)SP);      // single window: misses
-    BOOST_CHECK_LT(std::abs(rK.doppler_hz - true_dop), 100.0); // K windows: Doppler right (sub-grid refine)
+    BOOST_CHECK_GT(std::abs(tau1 - true_tau), (long)SP); // single window: misses
+    BOOST_CHECK_LT(std::abs(rK.doppler_hz - true_dop),
+                   100.0); // K windows: Doppler right (sub-grid refine)
     BOOST_CHECK_LE(std::abs(rK.peak_tau_samples - true_tau), (long)SP); // ...and code phase
 }
 
@@ -452,7 +456,7 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
 // to localize: does acquire+replica work for L2C (-> bug is in the search STAGE wrapper), and is
 // the live hops_per_record window a legal incoherent window?
 namespace {
-constexpr double FS_L2C = 5.0e6;   // airspy 5 MSPS real
+constexpr double FS_L2C = 5.0e6;    // airspy 5 MSPS real
 constexpr double FOFF_L2C = 1.25e6; // L1/L2 IF = Fs/4
 constexpr int N_L2C = 12;           // the airspy L2C config's spectrum_length
 constexpr int TAPS_L2C = 4;
@@ -467,8 +471,9 @@ BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     BOOST_REQUIRE(sig != nullptr);
     gnss::ChannelizedReplicaBank bank(*sig, FS_L2C, FOFF_L2C, N_L2C, TAPS_L2C, dsp::Window::Hamming,
                                       {1});
-    const int fft_len = 2 * N_L2C;            // 24 real samples / hop (r2c)
-    const int Mp = bank.repl_period_hops();   // 12500 hops = 3 code periods (24 does not divide 100000)
+    const int fft_len = 2 * N_L2C; // 24 real samples / hop (r2c)
+    const int Mp =
+        bank.repl_period_hops(); // 12500 hops = 3 code periods (24 does not divide 100000)
     const long long anchor = (long long)Mp * fft_len; // warm-up reads the periodic code
 
     // repl0 (code 0, Doppler 0) over one replica period; covering = channels carrying energy.
@@ -489,20 +494,21 @@ BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     BOOST_TEST_MESSAGE("L2C single-window: snr=" << r.snr << " dop=" << r.doppler_hz
                                                  << " cp=" << r.code_phase_chips << " (true "
                                                  << true_cp << ")");
-    BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - true_dop), 100.0); // grid value (sign per bank convention)
-    BOOST_CHECK_GT(r.snr, 15.0);                         // sharp coherent peak
+    BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - true_dop),
+                   100.0);       // grid value (sign per bank convention)
+    BOOST_CHECK_GT(r.snr, 15.0); // sharp coherent peak
     double cp_err = std::fabs(r.code_phase_chips - true_cp);
     cp_err = std::min(cp_err, (double)sig->code_length - cp_err);
     BOOST_CHECK_LT(cp_err, 2.0); // within ~1 CM chip
 }
 
-// The live-config failure mode. The airspy L2C config set hops_per_record: 4166 (~1 code period). But at
-// N=12 / Fs=5 MHz one L2C code period is 100000 samples = 4166.67 hops -- NOT an integer number of
-// hops. The incoherent search slices CONTIGUOUS windows of hops_per_record, so a 4166-hop stride
-// advances the code phase by 99984 mod 100000 = -16 samples each window: the |D|^2 peak walks and
-// the incoherent sum smears it away (-> no detection). An integer number of code periods (here the
-// 12500-hop replica period = 3 periods) keeps the peak stationary so the sum builds. This is the
-// invariant the stage must honour: the incoherent window must span an integer number of code
+// The live-config failure mode. The airspy L2C config set hops_per_record: 4166 (~1 code period).
+// But at N=12 / Fs=5 MHz one L2C code period is 100000 samples = 4166.67 hops -- NOT an integer
+// number of hops. The incoherent search slices CONTIGUOUS windows of hops_per_record, so a 4166-hop
+// stride advances the code phase by 99984 mod 100000 = -16 samples each window: the |D|^2 peak
+// walks and the incoherent sum smears it away (-> no detection). An integer number of code periods
+// (here the 12500-hop replica period = 3 periods) keeps the peak stationary so the sum builds. This
+// is the invariant the stage must honour: the incoherent window must span an integer number of code
 // periods. (For L1 it does -- 5000 samples, repl_period_hops=625=3 periods, all integer.)
 BOOST_AUTO_TEST_CASE(l2c_incoherent_window_must_span_integer_code_periods) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L2C_CM");
@@ -542,17 +548,18 @@ BOOST_AUTO_TEST_CASE(l2c_incoherent_window_must_span_integer_code_periods) {
             .snr;
     };
 
-    const double snr_int = run(Mp);    // 12500 hops = 3 code periods (integer) -> stationary peak
-    const double snr_live = run(4166); // the airspy L2C config's value (~1 period, NON-integer) -> smears
+    const double snr_int = run(Mp); // 12500 hops = 3 code periods (integer) -> stationary peak
+    const double snr_live =
+        run(4166); // the airspy L2C config's value (~1 period, NON-integer) -> smears
 
-    BOOST_TEST_MESSAGE("L2C incoherent snr: integer-period(12500)=" << snr_int << "  live(4166)="
-                                                                    << snr_live);
+    BOOST_TEST_MESSAGE("L2C incoherent snr: integer-period(12500)=" << snr_int
+                                                                    << "  live(4166)=" << snr_live);
     BOOST_CHECK_GT(snr_int, 15.0);           // legal window detects
     BOOST_CHECK_LT(snr_live, snr_int * 0.5); // non-integer window smears the peak away
 }
 
-// L5 (the airspy L5 config): the wide signal -- 10.23 Mcps at the 20 MSPS front end. At Fs=20 MHz we
-// capture the central ~10 MHz (carrier +-5 MHz) of L5's ~20 MHz main lobe -- about half, but the
+// L5 (the airspy L5 config): the wide signal -- 10.23 Mcps at the 20 MSPS front end. At Fs=20 MHz
+// we capture the central ~10 MHz (carrier +-5 MHz) of L5's ~20 MHz main lobe -- about half, but the
 // ChannelizedReplicaBank band-limits the replica identically (same r2c PFB / Fs), so the despread
 // stays matched and recovers the code phase + Doppler. N=10 -> fft_len 20 | 20000 = 1 code period
 // (1 ms), so the search window is exactly 1 period (stationary + within one NH-overlay chip). We
@@ -564,8 +571,8 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     constexpr double FOFF_L5 = 5.0e6; // = Fs/4
     constexpr int N_L5 = 10;          // the airspy L5 config's spectrum_length
     gnss::ChannelizedReplicaBank bank(*sig, FS_L5, FOFF_L5, N_L5, 4, dsp::Window::Hamming, {1});
-    const int fft_len = 2 * N_L5;            // 20
-    const int Mp = bank.repl_period_hops();  // 20000 / gcd(20,20000) = 1000 hops = 1 ms (1 period)
+    const int fft_len = 2 * N_L5;           // 20
+    const int Mp = bank.repl_period_hops(); // 20000 / gcd(20,20000) = 1000 hops = 1 ms (1 period)
     const long long anchor = (long long)Mp * fft_len;
     BOOST_REQUIRE_EQUAL(Mp, 1000); // one code period is an integer number of hops at N=10
 
@@ -573,7 +580,7 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     const auto cov = energy_covering_n(repl0, N_L5);
     BOOST_REQUIRE(!cov.empty());
 
-    const double true_cp = 137.0;  // L5 chips (~1.96 samples/chip -> sub-hop lag exercised)
+    const double true_cp = 137.0; // L5 chips (~1.96 samples/chip -> sub-hop lag exercised)
     const double true_dop = 200.0;
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
 
@@ -584,8 +591,9 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     BOOST_TEST_MESSAGE("L5 acquire: snr=" << r.snr << " dop=" << r.doppler_hz
                                           << " cp=" << r.code_phase_chips << " (true " << true_cp
                                           << ")  cov=" << cov.size() << " chans");
-    BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - true_dop), 100.0); // detects with the right Doppler
-    BOOST_CHECK_GT(r.snr, 15.0);                          // strong peak
+    BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - true_dop),
+                   100.0);       // detects with the right Doppler
+    BOOST_CHECK_GT(r.snr, 15.0); // strong peak
     // Acquire localizes the coarse lag to ~1 hop: at 20 MSPS we hold only ~half L5's main lobe, so
     // the autocorrelation peak is ~2x broader and the raw cp is hop-coarse (here ~0.8 hop off).
     const long true_tau = (long)std::llround(true_cp * FS_L5 / sig->chip_rate_hz);
@@ -622,9 +630,10 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
 // scans a tight grid centred at -hint (the REAL bank's r2c flip: reported = -grid value, as the
 // L5/L2C cases above show). This checks, through the real ChannelizedReplicaBank, that a narrow
 // grid around -true_dop still recovers the sat (narrowing doesn't break detection) AND pins the
-// sign -- a sign error would search the wrong half and find nothing, the failure the broker<->search
-// handoff must avoid. Uses a large Doppler so the wrong-sign window (2*dop away) is a clean miss,
-// not just coarsely off (at small Doppler the 1 ms coherent resolution forgives a sign slip).
+// sign -- a sign error would search the wrong half and find nothing, the failure the
+// broker<->search handoff must avoid. Uses a large Doppler so the wrong-sign window (2*dop away) is
+// a clean miss, not just coarsely off (at small Doppler the 1 ms coherent resolution forgives a
+// sign slip).
 BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
     BOOST_REQUIRE(sig != nullptr);
@@ -652,8 +661,9 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     auto r = gnss::channelized_acquire(data, repl0, cov, narrow, FS_L5, sig->chip_rate_hz, N_L5,
                                        sig->code_length, cov, fft_len);
     BOOST_TEST_MESSAGE("narrow(-hint): snr=" << r.snr << " dop=" << r.doppler_hz);
-    BOOST_CHECK_LT(std::abs(r.doppler_hz + true_dop), 25.0); // ~-physical within half a 50 Hz cell (r2c + sub-grid refine)
-    BOOST_CHECK_GT(r.snr, 15.0);                // narrowing kept the detection
+    BOOST_CHECK_LT(std::abs(r.doppler_hz + true_dop),
+                   25.0);        // ~-physical within half a 50 Hz cell (r2c + sub-grid refine)
+    BOOST_CHECK_GT(r.snr, 15.0); // narrowing kept the detection
 
     // Wrong sign: centre at +hint (2*dop from the true peak) -> a clean miss.
     const auto wrong = grid_around(hint);
@@ -717,11 +727,11 @@ BOOST_AUTO_TEST_CASE(doppler_refine_beats_grid) {
         if (std::abs(f - ref) < std::abs(cell - ref))
             cell = f;
     const double err_grid = std::abs(cell - ref), err_ref = std::abs(refined - ref);
-    BOOST_TEST_MESSAGE("refine: fine-ref=" << ref << " coarse-cell=" << cell << " refined="
-                                           << refined << " | grid_err=" << err_grid
+    BOOST_TEST_MESSAGE("refine: fine-ref=" << ref << " coarse-cell=" << cell
+                                           << " refined=" << refined << " | grid_err=" << err_grid
                                            << " refined_err=" << err_ref);
-    BOOST_CHECK_LT(err_ref, err_grid);        // closer to truth than the raw cell (0.3 bin)
-    BOOST_CHECK_LT(err_ref, 0.1 * bin_hz);    // and inside a tenth of a bin
+    BOOST_CHECK_LT(err_ref, err_grid);     // closer to truth than the raw cell (0.3 bin)
+    BOOST_CHECK_LT(err_ref, 0.1 * bin_hz); // and inside a tenth of a bin
 }
 
 // Galileo E1-C at the L1 front-end geometry (5 MSPS / N=20, the live_l1 configs): the BOC(1,1)
@@ -732,12 +742,12 @@ BOOST_AUTO_TEST_CASE(doppler_refine_beats_grid) {
 BOOST_AUTO_TEST_CASE(gal_e1c_single_window_acquire_recovers) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GAL_E1C");
     BOOST_REQUIRE(sig != nullptr);
-    constexpr double FS = 5.0e6;   // live L1 front end
+    constexpr double FS = 5.0e6; // live L1 front end
     constexpr double FOFF = 1.25e6;
-    constexpr int N = 20;          // live_l1 spectrum_length
+    constexpr int N = 20; // live_l1 spectrum_length
     gnss::ChannelizedReplicaBank bank(*sig, FS, FOFF, N, 4, dsp::Window::Hamming, {11});
-    BOOST_REQUIRE_EQUAL(bank.comb_mult(), 2);             // BOC(1,1) -> expanded x2
-    BOOST_REQUIRE_EQUAL(bank.eff_code_length(), 8184);    // 4092 * 2
+    BOOST_REQUIRE_EQUAL(bank.comb_mult(), 2);          // BOC(1,1) -> expanded x2
+    BOOST_REQUIRE_EQUAL(bank.eff_code_length(), 8184); // 4092 * 2
     const int fft_len = 2 * N;
     const int Mp = bank.repl_period_hops(); // 20000 samples / gcd(40, 20000) = 500 hops = 4 ms
     BOOST_REQUIRE_EQUAL(Mp, 500); // one 4 ms E1 period is an integer number of hops at N=20

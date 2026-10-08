@@ -29,9 +29,8 @@ std::vector<int8_t> generate_l2ocp_code(int prn) {
 // PocketSDR G2OCP_OC2 (50 chips), the shared L2OC-p secondary overlay. One chip per 20 ms
 // primary period -> 1 s cycle.
 const std::array<int8_t, L2OC_OC2_LENGTH> L2OC_OC2 = {
-    1,  1,  -1, 1,  -1, -1, 1,  -1, 1,  -1, -1, -1, -1, -1, 1,  1,  1,
-    -1, -1, 1,  1,  1,  1,  -1, 1,  1,  1,  -1, -1, 1,  -1, 1,  1,  1,
-    1,  1,  1,  -1, 1,  -1, -1, 1,  1,  1,  -1, 1,  1,  1,  -1, 1,
+    1, 1, -1, 1,  -1, -1, 1, -1, 1, -1, -1, -1, -1, -1, 1,  1,  1, -1, -1, 1,  1, 1, 1, -1, 1,
+    1, 1, -1, -1, 1,  -1, 1, 1,  1, 1,  1,  1,  -1, 1,  -1, -1, 1, 1,  1,  -1, 1, 1, 1, -1, 1,
 };
 
 } // namespace glonass

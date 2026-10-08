@@ -47,23 +47,39 @@ from gnss_broker.transport import _get, _post, _log, _log_rl, log_tag
 class PrnMapState(object):
     """One chain's view of node membership, and the hysteresis that governs changes."""
 
-    __slots__ = ("maps", "poll_t", "cursor", "last_swap_t", "down_since", "gone_since", "err",
-                 "swaps", "refused", "beat_t", "consensus", "pending", "applied", "resync_t")
+    __slots__ = (
+        "maps",
+        "poll_t",
+        "cursor",
+        "last_swap_t",
+        "down_since",
+        "gone_since",
+        "err",
+        "swaps",
+        "refused",
+        "beat_t",
+        "consensus",
+        "pending",
+        "applied",
+        "resync_t",
+    )
 
     def __init__(self):
-        self.maps = {}          # endpoint -> [prn per slot]
-        self.pending = {}       # endpoint -> a staged swap had not crossed when it was read
-        self.applied = None     # the last map this broker posted and a node accepted
-        self.resync_t = {}      # endpoint -> t of the last resync posted to it
-        self.poll_t = 0.0       # last GET of the endpoint at `cursor`
-        self.cursor = 0         # round-robin: ONE endpoint per cycle (see _poll)
+        self.maps = {}  # endpoint -> [prn per slot]
+        self.pending = {}  # endpoint -> a staged swap had not crossed when it was read
+        self.applied = None  # the last map this broker posted and a node accepted
+        self.resync_t = {}  # endpoint -> t of the last resync posted to it
+        self.poll_t = 0.0  # last GET of the endpoint at `cursor`
+        self.cursor = 0  # round-robin: ONE endpoint per cycle (see _poll)
         self.last_swap_t = 0.0  # rate limit
-        self.down_since = {}    # prn -> t it was first seen below evict_deg (and never above)
-        self.gone_since = {}    # prn -> t it first went missing from BRDC entirely
+        self.down_since = (
+            {}
+        )  # prn -> t it was first seen below evict_deg (and never above)
+        self.gone_since = {}  # prn -> t it first went missing from BRDC entirely
         self.err = ""
         self.swaps = 0
         self.refused = 0
-        self.beat_t = 0.0    # last heartbeat (see the note in stage_prn_membership)
+        self.beat_t = 0.0  # last heartbeat (see the note in stage_prn_membership)
         # The unanimous live slot->PRN list, or None. READ by the probe selector;
         # None whenever the sweep is incomplete or the nodes disagree.
         self.consensus = None
@@ -128,12 +144,14 @@ def _poll(ctx, st, eps):
         # the swap depends on, out loud, every time.
         _lh = r.get("last_hop")
         if _lh is None or int(_lh) < 0:
-            _log_rl("prnmap-noclock",
-                    "PRN MAP %s: %s reports last_hop=%s -- its deadline clock is DEAD, so "
-                    "scheduled swaps there apply IMMEDIATELY and the fleet does not cross "
-                    "together. Armed-but-inert: check that the stage owning the frame loop "
-                    "calls note_frame_hop()."
-                    % (log_tag() or ctx.args.signal, ep, _lh), every_s=600.0)
+            _log_rl(
+                "prnmap-noclock",
+                "PRN MAP %s: %s reports last_hop=%s -- its deadline clock is DEAD, so "
+                "scheduled swaps there apply IMMEDIATELY and the fleet does not cross "
+                "together. Armed-but-inert: check that the stage owning the frame loop "
+                "calls note_frame_hop()." % (log_tag() or ctx.args.signal, ep, _lh),
+                every_s=600.0,
+            )
     except Exception as e:
         st.err = "%s: %s" % (ep, e)
         st.maps.pop(ep, None)
@@ -197,10 +215,13 @@ def _resync_split(ctx, st, eps, now):
     tag = log_tag() or a.signal
     odd = [ep for ep in eps if st.maps.get(ep) != ref]
     if a.prn_reconfig != "apply":
-        _log_rl("prnmap-resync",
-                "PRN MAP %s (REPORT ONLY, nothing posted): %d endpoint(s) hold a map the rest "
-                "of the fleet does not (%s); apply would put them back on it."
-                % (tag, len(odd), ", ".join(odd[:4])), every_s=300.0)
+        _log_rl(
+            "prnmap-resync",
+            "PRN MAP %s (REPORT ONLY, nothing posted): %d endpoint(s) hold a map the rest "
+            "of the fleet does not (%s); apply would put them back on it."
+            % (tag, len(odd), ", ".join(odd[:4])),
+            every_s=300.0,
+        )
         return True
     for ep in odd:
         # A node that keeps refusing is retried once per interval, not every cycle.
@@ -210,9 +231,11 @@ def _resync_split(ctx, st, eps, now):
         n_moved = sum(1 for x, y in zip(st.maps[ep], ref) if x != y)
         try:
             _post("%s/set_prns" % ep, {"prns": ref}, timeout=a.prn_reconfig_timeout_s)
-            _log("PRN MAP %s: %s held a different map in %d slot(s) (a restart reverts a node "
-                 "to its config list) -- put back on the fleet's map. Those slots acquire COLD."
-                 % (tag, ep, n_moved))
+            _log(
+                "PRN MAP %s: %s held a different map in %d slot(s) (a restart reverts a node "
+                "to its config list) -- put back on the fleet's map. Those slots acquire COLD."
+                % (tag, ep, n_moved)
+            )
         except Exception as e:
             st.err = "%s: %s" % (ep, e)
             _log("PRN MAP %s: resync of %s REFUSED (%s)" % (tag, ep, e))
@@ -225,8 +248,9 @@ def _resync_split(ctx, st, eps, now):
 # ---------------------------------------------------------------------------------------
 # SIGNAL CAPABILITY: which satellites can carry this chain's signal at all
 # ---------------------------------------------------------------------------------------
-_IGS_SNX = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps",
-                        "igs_satellite_metadata.snx")
+_IGS_SNX = os.path.join(
+    os.path.expanduser("~"), ".cache", "kotekan_gps", "igs_satellite_metadata.snx"
+)
 
 # Which IGS metadata BLOCK strings carry each civil signal. Block names come from the SINEX
 # SATELLITE/IDENTIFIER column ("GPS-IIA", "GPS-IIR-A", "GPS-IIR-M", "GPS-IIF", "GPS-IIIA").
@@ -240,10 +264,14 @@ def _block_carries(signal, block):
     if "L5" in s:
         return b.startswith("GPS-IIF") or b.startswith("GPS-III")
     if "L2C" in s or "L2_CM" in s:
-        return b.startswith("GPS-IIR-M") or b.startswith("GPS-IIF") or b.startswith("GPS-III")
+        return (
+            b.startswith("GPS-IIR-M")
+            or b.startswith("GPS-IIF")
+            or b.startswith("GPS-III")
+        )
     if "L1C" in s:
         return b.startswith("GPS-III")
-    return True                      # a signal we do not model: exclude nothing
+    return True  # a signal we do not model: exclude nothing
 
 
 def signal_incapable_prns(signal):
@@ -299,9 +327,11 @@ def gps_prn_blocks():
         now = time.strftime("%Y:%j:00000", time.gmtime())
         for line in open(_IGS_SNX, errors="replace"):
             if line.startswith("+SATELLITE/"):
-                section = line.strip().lstrip("+"); continue
+                section = line.strip().lstrip("+")
+                continue
             if line.startswith("-SATELLITE/"):
-                section = None; continue
+                section = None
+                continue
             if line.startswith("*") or not line.strip():
                 continue
             f = line.split()
@@ -309,14 +339,15 @@ def gps_prn_blocks():
                 svn_block[f[0]] = f[3]
             elif section == "SATELLITE/PRN" and len(f) >= 4:
                 svn, t_to, prn = f[0], f[2], f[3]
-                if ((t_to == "0000:000:00000" or t_to >= now)
-                        and re.fullmatch(r"[A-Z]\d{2}", prn)):
+                if (t_to == "0000:000:00000" or t_to >= now) and re.fullmatch(
+                    r"[A-Z]\d{2}", prn
+                ):
                     svn_prn[svn] = prn
     except Exception:
         return {}
     out = {}
     for svn, prn in svn_prn.items():
-        if prn[0] != "G":                      # only GPS blocks gate a signal here
+        if prn[0] != "G":  # only GPS blocks gate a signal here
             continue
         b = svn_block.get(svn)
         if b:
@@ -357,12 +388,14 @@ def stage_prn_membership(ctx):
     if cur is None:
         if st.maps and len(st.maps) >= len(eps):
             if a.prn_reconfig == "off" or not _resync_split(ctx, st, eps, now):
-                _log_rl("prnmap-split",
-                        "PRN MAP: nodes DISAGREE about slot membership (%d reporting), and no "
-                        "map is held by a majority or was last posted by this broker -- "
-                        "changing nothing. Nothing in this pipeline is per-node, so a split "
-                        "map is a fault to fix." % len(st.maps),
-                        every_s=300.0)
+                _log_rl(
+                    "prnmap-split",
+                    "PRN MAP: nodes DISAGREE about slot membership (%d reporting), and no "
+                    "map is held by a majority or was last posted by this broker -- "
+                    "changing nothing. Nothing in this pipeline is per-node, so a split "
+                    "map is a fault to fix." % len(st.maps),
+                    every_s=300.0,
+                )
         return
     if a.prn_reconfig == "off":
         return  # poll-only: --probe-require-slot wanted the map and nothing more
@@ -381,12 +414,18 @@ def stage_prn_membership(ctx):
         _drop = sorted(p for p in el if p in _incap)
         if _drop:
             el = {p: e for p, e in el.items() if p not in _incap}
-            _log_rl("prnmap-incap",
-                    "PRN MAP %s: %d satellite(s) excluded -- they do not broadcast this "
-                    "signal at all (%s). They were holding tracker slots and folding noise "
-                    "rows into the presence population."
-                    % (log_tag() or a.signal, len(_drop),
-                       ", ".join("PRN %d" % p for p in _drop[:10])), every_s=600.0)
+            _log_rl(
+                "prnmap-incap",
+                "PRN MAP %s: %d satellite(s) excluded -- they do not broadcast this "
+                "signal at all (%s). They were holding tracker slots and folding noise "
+                "rows into the presence population."
+                % (
+                    log_tag() or a.signal,
+                    len(_drop),
+                    ", ".join("PRN %d" % p for p in _drop[:10]),
+                ),
+                every_s=600.0,
+            )
     if not el:
         return  # no prediction this cycle: say nothing rather than evict the whole map
 
@@ -431,11 +470,22 @@ def stage_prn_membership(ctx):
         st.beat_t = now
         n_dead = sum(1 for p in held if p in st.gone_since)
         n_down = sum(1 for p in held if p in st.down_since)
-        _log("PRN MAP %s: %s, %d slots, %d nodes agree | %d dead, %d below %.0f deg, "
-             "%d satellite(s) waiting for a slot | %d swap(s) so far%s"
-             % (tag, a.prn_reconfig.upper(), len(cur), len(st.maps), n_dead, n_down,
-                a.prn_reconfig_evict_deg, len(want), st.swaps,
-                (" | last error: %s" % st.err) if st.err else ""))
+        _log(
+            "PRN MAP %s: %s, %d slots, %d nodes agree | %d dead, %d below %.0f deg, "
+            "%d satellite(s) waiting for a slot | %d swap(s) so far%s"
+            % (
+                tag,
+                a.prn_reconfig.upper(),
+                len(cur),
+                len(st.maps),
+                n_dead,
+                n_down,
+                a.prn_reconfig_evict_deg,
+                len(want),
+                st.swaps,
+                (" | last error: %s" % st.err) if st.err else "",
+            )
+        )
     # ---- 3a. THE WHOLE MAP, EVERY CYCLE ---------------------------------------------------
     # KV, 2026-08-27: "the broker should push regular updates of available PRNs to all
     # trackers. 3 below horizon + all above." One statement of intent, re-evaluated each
@@ -459,33 +509,49 @@ def stage_prn_membership(ctx):
     # manufacture and then be believed about, so it is checked where the numbers are used,
     # not left to a docstring.
     if a.prn_reconfig_admit_deg <= a.prn_reconfig_evict_deg:
-        _log_rl("prnmap-hyst",
-                "PRN MAP %s: --prn-reconfig-admit-deg %.1f is not ABOVE "
-                "--prn-reconfig-evict-deg %.1f, so there is no hysteresis band and a "
-                "satellite at the threshold will flap in and out of its slot, paying a cold "
-                "acquisition each time. Fix the pair; the map is left alone this cycle."
-                % (tag, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg), every_s=300.0)
+        _log_rl(
+            "prnmap-hyst",
+            "PRN MAP %s: --prn-reconfig-admit-deg %.1f is not ABOVE "
+            "--prn-reconfig-evict-deg %.1f, so there is no hysteresis band and a "
+            "satellite at the threshold will flap in and out of its slot, paying a cold "
+            "acquisition each time. Fix the pair; the map is left alone this cycle."
+            % (tag, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg),
+            every_s=300.0,
+        )
         return
-    want_map, unplaced = desired_map(cur, el, n_probe,
-                                     a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg)
+    want_map, unplaced = desired_map(
+        cur, el, n_probe, a.prn_reconfig_admit_deg, a.prn_reconfig_evict_deg
+    )
     moved = [i for i in range(len(cur)) if want_map[i] != cur[i]]
     if unplaced:
         # A REAL CAPACITY DECISION, and it must be said rather than silently absorbed.
-        _log_rl("prnmap-full",
-                "PRN MAP %s: %d satellite(s) want a slot and cannot have one (%s) -- every "
-                "slot holds something we also want. Raise the slot count (node restart) or "
-                "accept the loss."
-                % (tag, len(unplaced), ", ".join("PRN %d el %+.0f" % (p, el.get(p, -99.0))
-                                                 for p in unplaced[:6])),
-                every_s=600.0)
+        _log_rl(
+            "prnmap-full",
+            "PRN MAP %s: %d satellite(s) want a slot and cannot have one (%s) -- every "
+            "slot holds something we also want. Raise the slot count (node restart) or "
+            "accept the loss."
+            % (
+                tag,
+                len(unplaced),
+                ", ".join(
+                    "PRN %d el %+.0f" % (p, el.get(p, -99.0)) for p in unplaced[:6]
+                ),
+            ),
+            every_s=600.0,
+        )
     if not moved:
         return
     _why = "%d slot(s): %s" % (
-        len(moved), ", ".join("s%d %d->%d" % (i, cur[i], want_map[i]) for i in moved[:6]))
+        len(moved),
+        ", ".join("s%d %d->%d" % (i, cur[i], want_map[i]) for i in moved[:6]),
+    )
     if a.prn_reconfig == "report":
-        _log_rl("prnmap-report",
-                "PRN MAP %s (REPORT ONLY, nothing posted): would move %s. Arm with "
-                "--prn-reconfig apply." % (tag, _why), every_s=300.0)
+        _log_rl(
+            "prnmap-report",
+            "PRN MAP %s (REPORT ONLY, nothing posted): would move %s. Arm with "
+            "--prn-reconfig apply." % (tag, _why),
+            every_s=300.0,
+        )
         return
     # ONE POST, WHOLE MAP, ONE DEADLINE. Moving several slots in a single scheduled swap is
     # strictly better than dribbling them out one per interval: the nodes cross once instead
@@ -519,20 +585,26 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg):
     """
     held = set(cur)
     # WANTED: everything up (with hysteresis), then the deepest below-horizon as probes.
-    up = sorted((p for p, e in el.items() if e >= admit_deg or (p in held and e >= evict_deg)),
-                key=lambda p: -el[p])
-    probes = sorted((p for p, e in el.items() if e < -15.0), key=lambda p: el[p])[:n_probe]
-    want = list(dict.fromkeys(up + probes))          # ordered, de-duplicated: up wins ties
+    up = sorted(
+        (p for p, e in el.items() if e >= admit_deg or (p in held and e >= evict_deg)),
+        key=lambda p: -el[p],
+    )
+    probes = sorted((p for p, e in el.items() if e < -15.0), key=lambda p: el[p])[
+        :n_probe
+    ]
+    want = list(dict.fromkeys(up + probes))  # ordered, de-duplicated: up wins ties
     place = [p for p in want if p not in held]
     # Reusable slots, worst-first: PRNs the sky has nothing to say about at all (gone from
     # BRDC -- no ephemeris, so they produce literally nothing), then the ones furthest below
     # the horizon. Never a slot we still want.
-    free = sorted((i for i, p in enumerate(cur) if p not in want),
-                  key=lambda i: (cur[i] in el, el.get(cur[i], -91.0)))
+    free = sorted(
+        (i for i, p in enumerate(cur) if p not in want),
+        key=lambda i: (cur[i] in el, el.get(cur[i], -91.0)),
+    )
     want_map = list(cur)
     for i, prn in zip(free, place):
         want_map[i] = prn
-    unplaced = place[len(free):]
+    unplaced = place[len(free) :]
     # ⚠️ AND A DEAD SLOT LEFT OVER GOES TO WHOEVER IS LEFT. A slot whose PRN has no prediction
     # at all produces nothing, so handing it to ANY real satellite is pure gain, with nothing
     # to re-acquire. This is the 2026-08-27 lesson restated: the admit mask exists to justify
@@ -543,9 +615,10 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg):
     # trading it for another unwanted satellite gains nothing and costs a cold acquisition,
     # and with one satellite left unslotted the two trade places every interval.
     if len(place) < len(free):
-        spare = [i for i in free[len(place):] if cur[i] not in el]
-        rest = sorted((p for p in el if p not in want and p not in want_map),
-                      key=lambda p: -el[p])
+        spare = [i for i in free[len(place) :] if cur[i] not in el]
+        rest = sorted(
+            (p for p in el if p not in want and p not in want_map), key=lambda p: -el[p]
+        )
         for i, prn in zip(spare, rest):
             want_map[i] = prn
     return want_map, unplaced
@@ -578,11 +651,14 @@ def _at_hop(ctx, a, now):
     fh = getattr(ctx, "fe_hop_now", None)
     ft = getattr(ctx, "fe_hop_t", None)
     if fh is None or ft is None:
-        _log_rl("prnmap-noaxis",
-                "PRN MAP %s: no F-engine axis this cycle -- a swap will post UNSCHEDULED, so "
-                "the nodes will cross on different frames. Degraded, deliberately: an "
-                "unsynchronised swap beats a slot stuck on a satellite that has set."
-                % (log_tag() or a.signal), every_s=300.0)
+        _log_rl(
+            "prnmap-noaxis",
+            "PRN MAP %s: no F-engine axis this cycle -- a swap will post UNSCHEDULED, so "
+            "the nodes will cross on different frames. Degraded, deliberately: an "
+            "unsynchronised swap beats a slot stuck on a satellite that has set."
+            % (log_tag() or a.signal),
+            every_s=300.0,
+        )
         return None
     try:
         hps = float(a.hops_per_sec)
@@ -594,12 +670,14 @@ def _at_hop(ctx, a, now):
         # already-past deadline is indistinguishable from a met one.
         age = float(now) - float(ft)
         if not (0.0 <= age <= float(a.prn_reconfig_axis_max_age_s)):
-            _log_rl("prnmap-axisage",
-                    "PRN MAP %s: the F-engine axis sample is %.1f s old (limit %.0f) -- "
-                    "extrapolating it that far would be a FABRICATED deadline, so this swap "
-                    "posts UNSCHEDULED. Check the status poll and pow_hop."
-                    % (log_tag() or a.signal, age, a.prn_reconfig_axis_max_age_s),
-                    every_s=300.0)
+            _log_rl(
+                "prnmap-axisage",
+                "PRN MAP %s: the F-engine axis sample is %.1f s old (limit %.0f) -- "
+                "extrapolating it that far would be a FABRICATED deadline, so this swap "
+                "posts UNSCHEDULED. Check the status poll and pow_hop."
+                % (log_tag() or a.signal, age, a.prn_reconfig_axis_max_age_s),
+                every_s=300.0,
+            )
             return None
         lead = float(a.prn_reconfig_lead_s)
         return int(round(float(fh) + (age + lead) * hps))
@@ -608,10 +686,13 @@ def _at_hop(ctx, a, now):
         # like a healthy fleet with a quiet sky -- the silent-fallback shape purged on
         # 2026-08-27. A missing or unparseable knob is a CONFIG fault; it must be loud even
         # though the swap still goes out.
-        _log_rl("prnmap-sched",
-                "PRN MAP %s: cannot compute a swap deadline (%s) -- posting UNSCHEDULED. "
-                "This is a configuration fault, not a sky condition."
-                % (log_tag() or a.signal, e), every_s=300.0)
+        _log_rl(
+            "prnmap-sched",
+            "PRN MAP %s: cannot compute a swap deadline (%s) -- posting UNSCHEDULED. "
+            "This is a configuration fault, not a sky condition."
+            % (log_tag() or a.signal, e),
+            every_s=300.0,
+        )
         return None
 
 
@@ -643,14 +724,18 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
             # test one against -- it applies between passes -- and a deadline it cannot
             # honour would just wedge its map. It is also not in the record path, so an
             # early swap there costs a re-scan, not a corrupted accumulator.
-            _post("%s/set_prns" % ep, {"prns": want_map}, timeout=a.prn_reconfig_timeout_s)
+            _post(
+                "%s/set_prns" % ep, {"prns": want_map}, timeout=a.prn_reconfig_timeout_s
+            )
             n_follow += 1
         except Exception as e:
             # A search whose list did not move searches for a satellite that has no slot and
             # misses one that does: a real degradation, and one worth naming, but not a reason
             # to leave the producer half-swapped.
-            _log("PRN MAP: follower %s refused the map (%s) -- it now searches a DIFFERENT "
-                 "set from the one the tracker holds." % (ep, e))
+            _log(
+                "PRN MAP: follower %s refused the map (%s) -- it now searches a DIFFERENT "
+                "set from the one the tracker holds." % (ep, e)
+            )
     if ok == 0:
         st.refused += 1
         st.err = bad
@@ -662,13 +747,21 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
     # what this stage diffs against is always what the nodes actually hold -- a POST that
     # 200s but does not take (a slot the node refuses because the PRN has no code for that
     # signal) would otherwise be invisible for as long as the broker ran.
-    st.maps.clear()   # force a FULL re-sweep before the next decision
+    st.maps.clear()  # force a FULL re-sweep before the next decision
     st.poll_t = 0.0
-    _log("PRN MAP %s: %s -- posted to %d/%d node(s)%s%s, %s. Every moved slot acquires COLD: "
-         "expect them dark for a minute or two. New satellites at el %s."
-         % (tag, why, ok, len(_endpoints(ctx)),
+    _log(
+        "PRN MAP %s: %s -- posted to %d/%d node(s)%s%s, %s. Every moved slot acquires COLD: "
+        "expect them dark for a minute or two. New satellites at el %s."
+        % (
+            tag,
+            why,
+            ok,
+            len(_endpoints(ctx)),
             (" (%d failed: %s)" % (len(_endpoints(ctx)) - ok, bad)) if bad else "",
             (" + %d searcher(s)" % n_follow) if n_follow else "",
-            ("all crossing together at hop %d" % at_hop) if at_hop is not None
+            ("all crossing together at hop %d" % at_hop)
+            if at_hop is not None
             else "UNSCHEDULED (no axis) -- the nodes will cross on different frames",
-            ", ".join("%+.0f" % el.get(want_map[i], -99.0) for i in moved[:6])))
+            ", ".join("%+.0f" % el.get(want_map[i], -99.0) for i in moved[:6]),
+        )
+    )

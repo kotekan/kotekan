@@ -98,7 +98,7 @@ BOOST_AUTO_TEST_CASE(prototype_is_symmetric_linear_phase) {
 BOOST_AUTO_TEST_CASE(unit_passband_gain_at_channel_center) {
     auto h = pfb_prototype(N, P, Window::Hamming);
     auto mag = channel_response(h, P, 4.0); // tone at channel-4 center
-    BOOST_CHECK_CLOSE(mag[4], 1.0, 1.0); // within 1%
+    BOOST_CHECK_CLOSE(mag[4], 1.0, 1.0);    // within 1%
 }
 
 BOOST_AUTO_TEST_CASE(dc_tone_isolated_to_channel_zero) {
@@ -119,9 +119,9 @@ BOOST_AUTO_TEST_CASE(pfb_far_leakage_beats_straight_fft) {
     const double pfb_leak = far_leakage(pfb, f, 2);
     const double fft_leak = far_leakage(fft, f, 2);
 
-    BOOST_CHECK_SMALL(pfb_leak, 0.05);          // deep stopband
-    BOOST_CHECK_GT(fft_leak, 0.1);              // sinc sidelobes leak badly
-    BOOST_CHECK_LT(pfb_leak * 3.0, fft_leak);   // PFB >> straight FFT
+    BOOST_CHECK_SMALL(pfb_leak, 0.05);        // deep stopband
+    BOOST_CHECK_GT(fft_leak, 0.1);            // sinc sidelobes leak badly
+    BOOST_CHECK_LT(pfb_leak * 3.0, fft_leak); // PFB >> straight FFT
 }
 
 BOOST_AUTO_TEST_CASE(stronger_window_gives_deeper_stopband) {

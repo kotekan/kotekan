@@ -1,9 +1,8 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
-#include "gnssSeedTransport.hpp"
-
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
+#include "gnssSeedTransport.hpp"
 #ifdef GNSS_CUDA
 #include "GnssCudaDespread.hpp" // A5: the GPU refine reuses the tracker's despread driver
 #endif
@@ -57,8 +56,8 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
     // PER-THREAD SCRATCH, allocated once. hoprate_stream returns ~2.6 MB by value, so the
     // by-value form had every one of these threads calling the allocator inside the loop, on
     // every detection. The same churn took the ms-split refine from 89 s to 874 s when it was
-    // found in that path (31896a862:docs/CHORD_GNSS_MS_SPLIT_SEARCH.md section 8); the ordinary refine
-    // still had it. Sized by thread id, so no two threads share a buffer.
+    // found in that path (31896a862:docs/CHORD_GNSS_MS_SPLIT_SEARCH.md section 8); the ordinary
+    // refine still had it. Sized by thread id, so no two threads share a buffer.
     const int nthr = n_threads > 0 ? n_threads : 1;
     std::vector<std::vector<std::vector<std::complex<float>>>> scratch((size_t)nthr);
     // n_hops may be SHORTER than the data (a caller trading integration for speed -- the refine
@@ -124,7 +123,8 @@ double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedR
         g.stage.resize((size_t)g.n_hops * (size_t)ng);
         for (int m = 0; m < g.n_hops; ++m)
             for (int i = 0; i < ng; ++i)
-                g.stage[(size_t)m * ng + i] = window[(size_t)m * window_stride + g.local[(size_t)i]];
+                g.stage[(size_t)m * ng + i] =
+                    window[(size_t)m * window_stride + g.local[(size_t)i]];
         g.gpu->upload_window(g.stage.data(), anchor);
     }
 
@@ -254,8 +254,7 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     const double lift = ((double)best_nh + (double)lag_periods) * L;
 
     const long double LL = (long double)L * (long double)n_nh;
-    const long double adv =
-        (long double)snap_start_hop * (long double)fft_len * (long double)cps;
+    const long double adv = (long double)snap_start_hop * (long double)fft_len * (long double)cps;
     const long double off_l = adv - std::floor(adv / LL) * LL;
     const double drift_l = std::fmod((double)snap_start_hop * (double)fft_len * cps
                                          * (bank.code_doppler_sign * dop / bank.carrier_hz()),
@@ -292,9 +291,8 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     const long double cps_d =
         (long double)cps * (1.0L + (long double)(bank.code_doppler_sign * dop / bank.carrier_hz()));
     const long double a_adv = n_anc * cps_d;
-    double phr = std::fmod(best_cp + lift
-                               + (double)(a_adv - std::floor(a_adv / LL) * LL),
-                           (double)LL);
+    double phr =
+        std::fmod(best_cp + lift + (double)(a_adv - std::floor(a_adv / LL) * LL), (double)LL);
     if (phr < 0.0)
         phr += (double)LL;
     out.cp_at_ref = phr;
@@ -345,10 +343,10 @@ SeedPropagation propagate_seed(const ChannelizedReplicaBank& bank, const SeedSta
     // from the sky: ~4700 CM chips = 9 ms in the e2e reproduction with a broker-unit seed,
     // P/P_true 1e-3, q 1.05 -- the exact on-sky signature of the chain that never locked
     // (2026-09-02). Identity for comb_mult == 1, i.e. every other deployed signal.
-    out.phase_ref = (sd.phase_ref_chips >= 0.0)
-                        ? (double)bank.comb_mult() * sd.phase_ref_chips
-                        : bank.phase_from_arg(sd.cp_chips, sd.ref_hop * (long long)fft_len,
-                                              sd.doppler_hz);
+    out.phase_ref =
+        (sd.phase_ref_chips >= 0.0)
+            ? (double)bank.comb_mult() * sd.phase_ref_chips
+            : bank.phase_from_arg(sd.cp_chips, sd.ref_hop * (long long)fft_len, sd.doppler_hz);
     out.phase_now = out.phase_ref + (chips_per_hop + sd.cp_rate) * dh + quad + trim_chips;
     out.cp = bank.arg_from_phase(out.phase_now, hop0 * (long long)fft_len, out.doppler_hz);
     return out;

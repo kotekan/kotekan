@@ -19,10 +19,10 @@ import numpy as np
 
 import beidou_bcnav1 as B
 
-SYM_S = B.SYM_S               # 0.010
-FRAME = B.FRAME_SYMS          # 1800 symbols per frame (18 s)
-EMIT_MAX = 96                 # bound the stitched emit cache per PRN
-SF2_TTL_S = 3600.0           # a cached SF2 older than this is stale (ephemeris ~ hourly)
+SYM_S = B.SYM_S  # 0.010
+FRAME = B.FRAME_SYMS  # 1800 symbols per frame (18 s)
+EMIT_MAX = 96  # bound the stitched emit cache per PRN
+SF2_TTL_S = 3600.0  # a cached SF2 older than this is stale (ephemeris ~ hourly)
 
 
 class _PrnState:
@@ -31,7 +31,7 @@ class _PrnState:
         self.last_obs = None
         self.pol = None
         self.soh = None
-        self.sf2 = None          # (sf2_bits[600], t_decoded)
+        self.sf2 = None  # (sf2_bits[600], t_decoded)
         self.n_frames = 0
         self.n_crc = 0
         self.last_decode = 0.0
@@ -48,8 +48,11 @@ class Bcnav1Predictor:
     def ingest(self, prn, obs):
         st = self._p.setdefault(prn, _PrnState())
         try:
-            utc_ref = float(obs["utc_ref"]); rec_dt = float(obs["rec_dt"])
-            phase = int(obs["phase"]); br = int(obs["br"]); pairs = obs["bits"]
+            utc_ref = float(obs["utc_ref"])
+            rec_dt = float(obs["rec_dt"])
+            phase = int(obs["phase"])
+            br = int(obs["br"])
+            pairs = obs["bits"]
         except (KeyError, TypeError, ValueError):
             return
         if rec_dt <= 0 or br <= 0 or not pairs:
@@ -89,7 +92,8 @@ class Bcnav1Predictor:
         if not st.emits:
             return []
         runs = []
-        cur0 = None; cur = None
+        cur0 = None
+        cur = None
         for s0 in sorted(st.emits):
             a = st.emits[s0]
             if cur is None:
@@ -101,7 +105,8 @@ class Bcnav1Predictor:
                 if ov < len(a):
                     cur = np.concatenate([cur, a[ov:]])
             else:
-                runs.append((cur0, cur)); cur0, cur = s0, a.copy()
+                runs.append((cur0, cur))
+                cur0, cur = s0, a.copy()
         runs.append((cur0, cur))
         return runs
 
@@ -136,8 +141,13 @@ class Bcnav1Predictor:
         st = self._p.get(prn)
         if st is None:
             return None
-        return {"pol": st.pol, "pages": st.n_frames, "words": st.n_crc,
-                "have": ([2] if st.sf2 is not None else []), "eph": self.ephemeris(prn) is not None}
+        return {
+            "pol": st.pol,
+            "pages": st.n_frames,
+            "words": st.n_crc,
+            "have": ([2] if st.sf2 is not None else []),
+            "eph": self.ephemeris(prn) is not None,
+        }
 
 
 # ------------------------------------------------------------------- self-test
@@ -153,13 +163,17 @@ def _selftest():
         for k in range(length):
             sf2[start + k] = (code >> (length - 1 - k)) & 1
         truth[name] = B._field(sf2, start, length, signed, scale)
-    crc = B.crc24q(sf2[0:B.SF2_CRC_AT])
-    sf2[B.SF2_CRC_AT:B.SF2_CRC_AT + 24] = [(crc >> (23 - k)) & 1 for k in range(24)]
+    crc = B.crc24q(sf2[0 : B.SF2_CRC_AT])
+    sf2[B.SF2_CRC_AT : B.SF2_CRC_AT + 24] = [(crc >> (23 - k)) & 1 for k in range(24)]
     sf3 = [0] * B.SF3_BITS
-    crc3 = B.crc24q(sf3[0:B.SF3_CRC_AT])
-    sf3[B.SF3_CRC_AT:B.SF3_CRC_AT + 24] = [(crc3 >> (23 - k)) & 1 for k in range(24)]
-    syms2 = B._NB.encode_systematic(B.H_SF2_IDX, B.H_SF2_ELE, 100, 200, B._NB.bin2gf(np.array(sf2, dtype=np.uint8)))
-    syms3 = B._NB.encode_systematic(B.H_SF3_IDX, B.H_SF3_ELE, 44, 88, B._NB.bin2gf(np.array(sf3, dtype=np.uint8)))
+    crc3 = B.crc24q(sf3[0 : B.SF3_CRC_AT])
+    sf3[B.SF3_CRC_AT : B.SF3_CRC_AT + 24] = [(crc3 >> (23 - k)) & 1 for k in range(24)]
+    syms2 = B._NB.encode_systematic(
+        B.H_SF2_IDX, B.H_SF2_ELE, 100, 200, B._NB.bin2gf(np.array(sf2, dtype=np.uint8))
+    )
+    syms3 = B._NB.encode_systematic(
+        B.H_SF3_IDX, B.H_SF3_ELE, 44, 88, B._NB.bin2gf(np.array(sf3, dtype=np.uint8))
+    )
     il = B._interleave(syms2, syms3)
     sf1 = np.concatenate([B._sf1a(prn), B._sf1b_all()[soh]])
     frame_bits = np.concatenate([sf1, il]).astype(np.uint8)
@@ -178,8 +192,13 @@ def _selftest():
     ELEN = 100
     e = 0
     while e + ELEN <= len(pm):
-        obs = {"utc_ref": e * SYM_S, "rec_dt": 0.010, "phase": 0, "br": 1,
-               "bits": [[i, int(np.sign(pm[e + i]) * sgn)] for i in range(ELEN)]}
+        obs = {
+            "utc_ref": e * SYM_S,
+            "rec_dt": 0.010,
+            "phase": 0,
+            "br": 1,
+            "bits": [[i, int(np.sign(pm[e + i]) * sgn)] for i in range(ELEN)],
+        }
         pred.ingest(prn, obs)
         e += ELEN
 
@@ -187,20 +206,26 @@ def _selftest():
     print("health:", h)
     ok = True
     if not (h and h["words"] >= 1 and 2 in h["have"]):
-        print("FAIL: SF2 not assembled"); ok = False
+        print("FAIL: SF2 not assembled")
+        ok = False
     eph = pred.ephemeris(prn)
     if eph is None:
-        print("FAIL: no ephemeris"); ok = False
+        print("FAIL: no ephemeris")
+        ok = False
     else:
         bad = [k for k in truth if abs(eph[k] - truth[k]) > 1e-9 * (abs(truth[k]) + 1)]
         if bad:
-            print("FAIL: ephemeris fields disagree:", bad); ok = False
+            print("FAIL: ephemeris fields disagree:", bad)
+            ok = False
         else:
-            print("ephemeris recovered, all fields match; SatType", round(eph["SatType"]))
+            print(
+                "ephemeris recovered, all fields match; SatType", round(eph["SatType"])
+            )
     print("PASS" if ok else "FAIL")
     return ok
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(0 if _selftest() else 1)

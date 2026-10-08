@@ -20,7 +20,7 @@ from gnss_observables import cn0_dbhz
 def prompt_lock(s4_raw, fleet_present):
     """The rule as implemented in publish.py, isolated so the truth table is testable without
     standing up a FleetPublisher. Blind only when BOTH witnesses agree."""
-    rayleigh = (s4_raw is not None and s4_raw >= PROMPT_RAYLEIGH_S4)
+    rayleigh = s4_raw is not None and s4_raw >= PROMPT_RAYLEIGH_S4
     return not (rayleigh and not fleet_present)
 
 
@@ -71,20 +71,29 @@ class TestObservablesUsesPublishedCn0(unittest.TestCase):
     def test_published_value_wins_over_recomputation(self):
         # A quadrature-fallback row: deep_snr is the inflated fleet-population number, while
         # cn0_coh_db is the best single instance's honest one. They must not be interchangeable.
-        row = {"cn0_coh_db": 21.98, "deep_snr": 39.26,
-               "coherence_s": 1.0486, "coh_src": "quad:12"}
+        row = {
+            "cn0_coh_db": 21.98,
+            "deep_snr": 39.26,
+            "coherence_s": 1.0486,
+            "coh_src": "quad:12",
+        }
         got = cn0_dbhz(row, row["deep_snr"], row["coherence_s"])
         self.assertAlmostEqual(got, 21.98, places=6)
         naive = 20 * math.log10(39.26) - 10 * math.log10(1.0486)
-        self.assertGreater(naive - got, 9.0,
-                           "fixture no longer reproduces the inflation this test pins")
+        self.assertGreater(
+            naive - got,
+            9.0,
+            "fixture no longer reproduces the inflation this test pins",
+        )
 
     def test_falls_back_only_when_broker_is_old(self):
         """An older broker publishes no cn0_coh_db; we must still emit something rather than
         drop the observable entirely."""
         row = {"deep_snr": 39.26, "coherence_s": 1.0486}
         got = cn0_dbhz(row, row["deep_snr"], row["coherence_s"])
-        self.assertAlmostEqual(got, 20 * math.log10(39.26) - 10 * math.log10(1.0486), places=6)
+        self.assertAlmostEqual(
+            got, 20 * math.log10(39.26) - 10 * math.log10(1.0486), places=6
+        )
 
     def test_no_coherence_yields_none(self):
         self.assertIsNone(cn0_dbhz({}, 39.26, 0.0))
@@ -93,8 +102,11 @@ class TestObservablesUsesPublishedCn0(unittest.TestCase):
         """Axis test: if the two paths ever agree on this fixture, the test above proves
         nothing about which one is being used."""
         row = {"cn0_coh_db": 21.98, "deep_snr": 39.26, "coherence_s": 1.0486}
-        self.assertNotAlmostEqual(cn0_dbhz(row, row["deep_snr"], row["coherence_s"]),
-                                  cn0_dbhz({}, row["deep_snr"], row["coherence_s"]), places=3)
+        self.assertNotAlmostEqual(
+            cn0_dbhz(row, row["deep_snr"], row["coherence_s"]),
+            cn0_dbhz({}, row["deep_snr"], row["coherence_s"]),
+            places=3,
+        )
 
 
 if __name__ == "__main__":

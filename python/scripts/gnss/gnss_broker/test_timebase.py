@@ -16,7 +16,10 @@ def sky(n, seed=1):
 
 def pairs_for(rates, dt_s=0.0, bias_hz=0.0, noise_hz=2.0, seed=2):
     rng = random.Random(seed)
-    return {i: (bias_hz + a * dt_s + rng.gauss(0.0, noise_hz), a) for i, a in enumerate(rates)}
+    return {
+        i: (bias_hz + a * dt_s + rng.gauss(0.0, noise_hz), a)
+        for i, a in enumerate(rates)
+    }
 
 
 class TimeBaseTests(unittest.TestCase):
@@ -27,22 +30,34 @@ class TimeBaseTests(unittest.TestCase):
     def test_clock_bias_is_not_an_epoch_error(self):
         rates = sky(8)
         for k in range(10):
-            msg = self.det.note(1000.0 + k, pairs_for(rates, bias_hz=180.0), chain="gps_l5")
+            msg = self.det.note(
+                1000.0 + k, pairs_for(rates, bias_hz=180.0), chain="gps_l5"
+            )
             self.assertIsNone(msg)
-        self.assertFalse(timebase.VERDICT.suspect, "a 180 Hz common offset is the receiver clock")
+        self.assertFalse(
+            timebase.VERDICT.suspect, "a 180 Hz common offset is the receiver clock"
+        )
 
     def test_epoch_shift_is_found_and_measured(self):
         rates = sky(8)
         msgs = []
         for k in range(5):
-            m = self.det.note(1000.0 + k, pairs_for(rates, dt_s=84350.0, bias_hz=40.0), chain="gps_l5")
+            m = self.det.note(
+                1000.0 + k, pairs_for(rates, dt_s=84350.0, bias_hz=40.0), chain="gps_l5"
+            )
             if m:
                 msgs.append((k, m))
         self.assertEqual(len(msgs), 1, "announced exactly once")
-        self.assertEqual(msgs[0][0], self.det.persist - 1, "after `persist` consecutive cycles, not before")
+        self.assertEqual(
+            msgs[0][0],
+            self.det.persist - 1,
+            "after `persist` consecutive cycles, not before",
+        )
         v = timebase.VERDICT
         self.assertTrue(v.suspect and v.explained)
-        self.assertAlmostEqual(v.dt_s / 84350.0, 1.0, delta=0.02, msg="dt recovered to 2%%: %s" % v.dt_s)
+        self.assertAlmostEqual(
+            v.dt_s / 84350.0, 1.0, delta=0.02, msg="dt recovered to 2%%: %s" % v.dt_s
+        )
         self.assertIn("STALE", msgs[0][1])
         self.assertIn("+23.43 h", msgs[0][1])
 
@@ -50,7 +65,10 @@ class TimeBaseTests(unittest.TestCase):
         rates = sky(8)
         for k in range(6):
             self.det.note(1000.0 + k, pairs_for(rates, dt_s=60.0), chain="gps_l5")
-        self.assertFalse(timebase.VERDICT.suspect, "a minute of error is ~25 Hz of spread: below the bar")
+        self.assertFalse(
+            timebase.VERDICT.suspect,
+            "a minute of error is ~25 Hz of spread: below the bar",
+        )
 
     def test_unexplained_spread_is_a_different_message(self):
         rates = sky(8)
@@ -82,15 +100,24 @@ class TimeBaseTests(unittest.TestCase):
     def test_too_few_satellites_is_not_evidence(self):
         rates = sky(3)
         for k in range(6):
-            self.assertIsNone(self.det.note(1000.0 + k, pairs_for(rates, dt_s=84350.0), chain="gps_l5"))
-        self.assertFalse(timebase.VERDICT.suspect, "3 satellites cannot separate a shift from scatter")
+            self.assertIsNone(
+                self.det.note(
+                    1000.0 + k, pairs_for(rates, dt_s=84350.0), chain="gps_l5"
+                )
+            )
+        self.assertFalse(
+            timebase.VERDICT.suspect,
+            "3 satellites cannot separate a shift from scatter",
+        )
 
     def test_verdict_is_shared_across_chains(self):
         rates = sky(8)
         for k in range(4):
             self.det.note(1000.0 + k, pairs_for(rates, dt_s=84350.0), chain="gps_l5")
         other = timebase.TimeBaseDetector()
-        self.assertTrue(other.verdict.suspect, "every chain reads the one telescope-wide verdict")
+        self.assertTrue(
+            other.verdict.suspect, "every chain reads the one telescope-wide verdict"
+        )
 
 
 if __name__ == "__main__":

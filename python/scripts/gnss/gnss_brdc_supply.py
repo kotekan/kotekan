@@ -89,8 +89,10 @@ def _earthdata_token():
 
 # CDDIS's merged daily mixed-nav products, by the `kind` slot the caller is filling. These are
 # NOT the BKG filename -- see _brdc_sources.
-_CDDIS_DAILY = {"R": "BRDC00IGS_R_%04d%03d0000_01D_MN.rnx.gz",    # IGS merged broadcast
-                "S": "BRDM00DLR_S_%04d%03d0000_01D_MN.rnx.gz"}    # DLR multi-GNSS
+_CDDIS_DAILY = {
+    "R": "BRDC00IGS_R_%04d%03d0000_01D_MN.rnx.gz",  # IGS merged broadcast
+    "S": "BRDM00DLR_S_%04d%03d0000_01D_MN.rnx.gz",
+}  # DLR multi-GNSS
 
 
 def _brdc_sources(kind, year, doy):
@@ -121,13 +123,23 @@ def _brdc_sources(kind, year, doy):
     (_fetch_station_hourly). That is why its coverage test is load-bearing, not cosmetic.
     """
     name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, year, doy)
-    srcs = [("https://igs.bkg.bund.de/root_ftp/IGS/BRDC/%04d/%03d/%s" % (year, doy, name), {})]
+    srcs = [
+        (
+            "https://igs.bkg.bund.de/root_ftp/IGS/BRDC/%04d/%03d/%s"
+            % (year, doy, name),
+            {},
+        )
+    ]
     tok = _earthdata_token()
     cd = _CDDIS_DAILY.get(kind)
     if tok and cd:
-        srcs.append(("https://cddis.nasa.gov/archive/gnss/data/daily/%04d/%03d/%02dp/%s"
-                     % (year, doy, year % 100, cd % (year, doy)),
-                     {"Authorization": "Bearer " + tok}))
+        srcs.append(
+            (
+                "https://cddis.nasa.gov/archive/gnss/data/daily/%04d/%03d/%02dp/%s"
+                % (year, doy, year % 100, cd % (year, doy)),
+                {"Authorization": "Bearer " + tok},
+            )
+        )
     return srcs
 
 
@@ -151,9 +163,20 @@ def _brdc_sources(kind, year, doy):
 #
 # Ordered best-coverage-first (BRUX/KIRU are strong on all three constellations) so the
 # coverage test below can stop early on a good hour instead of walking the whole list.
-_HOURLY_STATIONS = ["BRUX00BEL", "KIRU00SWE", "ALGO00CAN", "AL2H00CAN", "DARW00AUS",
-                    "IISC00IND", "MGUE00ARG", "STJO00CAN", "USN700USA", "JFNG00CHN",
-                    "CUT000AUS", "NRC100CAN"]
+_HOURLY_STATIONS = [
+    "BRUX00BEL",
+    "KIRU00SWE",
+    "ALGO00CAN",
+    "AL2H00CAN",
+    "DARW00AUS",
+    "IISC00IND",
+    "MGUE00ARG",
+    "STJO00CAN",
+    "USN700USA",
+    "JFNG00CHN",
+    "CUT000AUS",
+    "NRC100CAN",
+]
 
 # What "enough coverage" means, per constellation: (min_prn, distinct PRNs >= min_prn) across
 # the merged bodies.
@@ -169,17 +192,23 @@ _HOURLY_STATIONS = ["BRUX00BEL", "KIRU00SWE", "ALGO00CAN", "AL2H00CAN", "DARW00A
 # The targets sit below a full constellation (G ~32, E ~28, BDS-3 ~24 reachable) because one
 # hour never sees all of it: they mean "this merge is not obviously starved", not "complete".
 _HOURLY_TARGET = {"G": (1, 20), "E": (1, 18), "C": (19, 20)}
-_HOURLY_MIN_STATIONS = 2  # never trust ONE file, however wide: a truncated or mid-write hourly
-                          # is indistinguishable from a thin sky, and a second source is ~5 s
-_HOURLY_MAX_FETCH = 12    # bound the cost: ~1.5 MB and a few seconds. It is a budget over the
-                          # WHOLE walk now, not per hour -- the walk unions hours until the
-                          # coverage target is met, so a per-hour cap would let one thin hour
-                          # spend the entire allowance and still come back short.
-_HOURLY_TTL_S = 1800.0      # reuse a merge that MET its target for half an hour
-_HOURLY_THIN_TTL_S = 300.0  # ...but retry a BELOW-TARGET one in five minutes. The usual cause
-                            # is merging early in the hour, before the slow stations have
-                            # uploaded the hour that just closed, and they are typically there
-                            # a few minutes later -- so the retry is cheap and usually wins.
+_HOURLY_MIN_STATIONS = (
+    2  # never trust ONE file, however wide: a truncated or mid-write hourly
+)
+# is indistinguishable from a thin sky, and a second source is ~5 s
+_HOURLY_MAX_FETCH = (
+    12  # bound the cost: ~1.5 MB and a few seconds. It is a budget over the
+)
+# WHOLE walk now, not per hour -- the walk unions hours until the
+# coverage target is met, so a per-hour cap would let one thin hour
+# spend the entire allowance and still come back short.
+_HOURLY_TTL_S = 1800.0  # reuse a merge that MET its target for half an hour
+_HOURLY_THIN_TTL_S = (
+    300.0  # ...but retry a BELOW-TARGET one in five minutes. The usual cause
+)
+# is merging early in the hour, before the slow stations have
+# uploaded the hour that just closed, and they are typically there
+# a few minutes later -- so the retry is cheap and usually wins.
 _HOURLY_COV = "hourly_MN.cov.json"
 
 
@@ -188,9 +217,12 @@ def _hourly_cov_write(cache_dir, thin, got):
     cheaply (it would have to parse and re-count every call), and a gate that cannot tell a
     thin file from a full one is exactly the defect this pair of functions exists to close."""
     try:
-        _atomic_write_bytes(os.path.join(cache_dir, _HOURLY_COV),
-                            json.dumps({"thin": bool(thin), "got": got,
-                                        "t": time.time()}).encode("ascii"))
+        _atomic_write_bytes(
+            os.path.join(cache_dir, _HOURLY_COV),
+            json.dumps({"thin": bool(thin), "got": got, "t": time.time()}).encode(
+                "ascii"
+            ),
+        )
     except Exception:
         pass
 
@@ -219,11 +251,19 @@ def _hourly_cov_read(cache_dir):
         with open(cov) as f:
             d = json.load(f)
         merged = os.path.join(cache_dir, "hourly_MN.rnx.gz")
-        if os.path.exists(merged) and os.path.getmtime(merged) > os.path.getmtime(cov) + 1.0:
-            return True, ("FOREIGN WRITE: hourly_MN.rnx.gz is %.0f s newer than its coverage "
-                          "record, so another process (or another version of this code) wrote "
-                          "it -- treating as thin and re-merging"
-                          % (os.path.getmtime(merged) - os.path.getmtime(cov)))
+        if (
+            os.path.exists(merged)
+            and os.path.getmtime(merged) > os.path.getmtime(cov) + 1.0
+        ):
+            return (
+                True,
+                (
+                    "FOREIGN WRITE: hourly_MN.rnx.gz is %.0f s newer than its coverage "
+                    "record, so another process (or another version of this code) wrote "
+                    "it -- treating as thin and re-merging"
+                    % (os.path.getmtime(merged) - os.path.getmtime(cov))
+                ),
+            )
         return bool(d.get("thin", True)), str(d.get("got", "?"))
     except Exception:
         return True, "no coverage record"
@@ -260,16 +300,25 @@ def _rec_is_fresh(line, when, window_s=None):
         f = line[4:23].split()
         if len(f) < 6:
             return True
-        toc = datetime(int(f[0]), int(f[1]), int(f[2]), int(f[3]), int(f[4]),
-                       int(float(f[5])), tzinfo=timezone.utc)
+        toc = datetime(
+            int(f[0]),
+            int(f[1]),
+            int(f[2]),
+            int(f[3]),
+            int(f[4]),
+            int(float(f[5])),
+            tzinfo=timezone.utc,
+        )
         return abs((when - toc).total_seconds()) <= (window_s or _HOURLY_KEEP_S)
     except Exception:
         return True
 
 
 def _hourly_target_met(seen, fetched):
-    return (fetched >= _HOURLY_MIN_STATIONS
-            and all(len(seen[k2]) >= v[1] for k2, v in _HOURLY_TARGET.items()))
+    return fetched >= _HOURLY_MIN_STATIONS and all(
+        len(seen[k2]) >= v[1] for k2, v in _HOURLY_TARGET.items()
+    )
+
 
 # This module is a LIBRARY -- imported by the broker, the gates and half a dozen one-shot
 # scripts -- so it owns no logger. LOG_HOOK lets a host install its own tagged one (the broker
@@ -295,15 +344,26 @@ def _rinex_newest_epoch(path):
     """Newest broadcast epoch (UTC datetime) in a gzipped RINEX-3 nav file, or None. RINEX-3
     nav epoch lines are 'SYS PRN YYYY MM DD HH MM SS ...' (SYS in G/E/C)."""
     import gzip
+
     newest = None
     try:
         with gzip.open(path, "rt", errors="replace") as f:
             for line in f:
-                if len(line) > 23 and line[0] in "GEC" and line[1:3].isdigit() \
-                        and line[4:8].strip().isdigit():
+                if (
+                    len(line) > 23
+                    and line[0] in "GEC"
+                    and line[1:3].isdigit()
+                    and line[4:8].strip().isdigit()
+                ):
                     try:
-                        e = datetime(int(line[4:8]), int(line[9:11]), int(line[12:14]),
-                                     int(line[15:17]), int(line[18:20]), tzinfo=timezone.utc)
+                        e = datetime(
+                            int(line[4:8]),
+                            int(line[9:11]),
+                            int(line[12:14]),
+                            int(line[15:17]),
+                            int(line[18:20]),
+                            tzinfo=timezone.utc,
+                        )
                     except Exception:
                         continue
                     if newest is None or e > newest:
@@ -331,11 +391,20 @@ def _hourly_sources(station, when, token):
     doy = when.timetuple().tm_yday
     name = "%s_R_%04d%03d%02d00_01H_MN.rnx.gz" % (station, when.year, doy, when.hour)
     if token:
-        srcs.append(("https://cddis.nasa.gov/archive/gnss/data/hourly/%04d/%03d/%02d/%s"
-                     % (when.year, doy, when.hour, name),
-                     {"Authorization": "Bearer " + token}))
-    srcs.append(("ftp://gssc.esa.int/gnss/data/hourly/%04d/%03d/%02d/%s"
-                 % (when.year, doy, when.hour, name), {}))
+        srcs.append(
+            (
+                "https://cddis.nasa.gov/archive/gnss/data/hourly/%04d/%03d/%02d/%s"
+                % (when.year, doy, when.hour, name),
+                {"Authorization": "Bearer " + token},
+            )
+        )
+    srcs.append(
+        (
+            "ftp://gssc.esa.int/gnss/data/hourly/%04d/%03d/%02d/%s"
+            % (when.year, doy, when.hour, name),
+            {},
+        )
+    )
     return srcs
 
 
@@ -372,8 +441,15 @@ def _toc_of(key, default=None):
     """datetime of a record key's toc field, or `default` if it will not parse."""
     try:
         f = key[2].split()
-        return datetime(int(f[0]), int(f[1]), int(f[2]), int(f[3]), int(f[4]),
-                        int(float(f[5])), tzinfo=timezone.utc)
+        return datetime(
+            int(f[0]),
+            int(f[1]),
+            int(f[2]),
+            int(f[3]),
+            int(f[4]),
+            int(float(f[5])),
+            tzinfo=timezone.utc,
+        )
     except Exception:
         return default
 
@@ -385,6 +461,7 @@ def _store_load(cache_dir, when):
     discards what it can prove is expired; it never discards on doubt.
     """
     import gzip
+
     path = os.path.join(cache_dir, "hourly_MN.rnx.gz")
     if not os.path.exists(path):
         return {}, None
@@ -432,6 +509,7 @@ def _fetch_station_hourly(when, cache_dir, token):
     reproduces the OUTPUT (a file) while dropping the SAFEGUARD (that the file is complete).
     """
     import gzip
+
     # Cache-gate: hourly station files update ~hourly, and fetch_brdc now includes this in EVERY
     # merge (not just during a daily outage), so reuse a recent local rather than re-pulling a
     # handful of station files each call. 30 min keeps it fresh without hammering CDDIS.
@@ -448,10 +526,12 @@ def _fetch_station_hourly(when, cache_dir, token):
         thin, cov = _hourly_cov_read(cache_dir)
         if age < (_HOURLY_THIN_TTL_S if thin else _HOURLY_TTL_S):
             if thin:
-                _log_hourly("BRDC hourly merge: serving a BELOW-TARGET merge from cache "
-                            "(%s, %.0f s old, retry in %.0f s). Prediction is thin -- probes, "
-                            "drop gates and search hints all ride this."
-                            % (cov, age, _HOURLY_THIN_TTL_S - age))
+                _log_hourly(
+                    "BRDC hourly merge: serving a BELOW-TARGET merge from cache "
+                    "(%s, %.0f s old, retry in %.0f s). Prediction is thin -- probes, "
+                    "drop gates and search hints all ride this."
+                    % (cov, age, _HOURLY_THIN_TTL_S - age)
+                )
             return local
     # ---- THE ROLLING STORE ---------------------------------------------------------------
     # ⚠️⚠️ ACCUMULATE, DO NOT REBUILD. Every earlier version built the file from ONLY the hours
@@ -483,7 +563,7 @@ def _fetch_station_hourly(when, cache_dir, token):
             t = _toc_of((sysc, prn, toc))
             if t is None or abs((when - t).total_seconds()) <= _HOURLY_KEEP_S:
                 seen[sysc].add(prn)
-    done = set()                      # (station, hour) already fetched -- never pay twice
+    done = set()  # (station, hour) already fetched -- never pay twice
     for dh in (0, 1, 2, 3):
         h = when - timedelta(hours=dh)
         # ⚠️ THE EXIT TEST GOVERNS HOW FAR BACK TO WALK, NOT WHETHER TO FETCH AT ALL. With a
@@ -516,13 +596,15 @@ def _fetch_station_hourly(when, cache_dir, token):
                     with urllib.request.urlopen(req, timeout=20) as r:
                         raw = r.read()
                     if raw[:2] != b"\x1f\x8b":
-                        continue          # a 200 that is not gzip: this hour, not this host
+                        continue  # a 200 that is not gzip: this hour, not this host
                     _src_ok(url)
                     txt = gzip.decompress(raw).decode("ascii", "replace")
                     break
                 except Exception as e:
-                    _src_failed(url, exc=e)   # 404 = this hour is not published yet, not a
-                    continue                  # dead host -- _src_failed knows the difference
+                    _src_failed(
+                        url, exc=e
+                    )  # 404 = this hour is not published yet, not a
+                    continue  # dead host -- _src_failed knows the difference
             if txt is None:
                 continue
             k = txt.find("END OF HEADER")
@@ -561,7 +643,9 @@ def _fetch_station_hourly(when, cache_dir, token):
     thin = [k2 for k2, v in _HOURLY_TARGET.items() if len(seen[k2]) < v[1]]
     hours = sorted({hh for _, hh in done})
     # Oldest first, so best_eph's scan and any human reading the file both see time order.
-    order = sorted(store, key=lambda k: (_toc_of(k, datetime(1980, 1, 6, tzinfo=timezone.utc)), k))
+    order = sorted(
+        store, key=lambda k: (_toc_of(k, datetime(1980, 1, 6, tzinfo=timezone.utc)), k)
+    )
     bodies = [store[k] for k in order]
     # ⚠️ A NEGATIVE AGE IS NORMAL, NOT A BUG. GPS/Galileo centre toe in the fit interval, so a
     # freshly broadcast record is routinely stamped up to ~1 h AHEAD of now. Say "ahead" rather
@@ -571,26 +655,45 @@ def _fetch_station_hourly(when, cache_dir, token):
         _n = (when - max(span)).total_seconds() / 60.0
         _o = (when - min(span)).total_seconds() / 60.0
         age = "newest %s, oldest %.0f min old" % (
-            ("%.0f min ahead" % -_n) if _n < 0 else ("%.0f min old" % _n), _o)
+            ("%.0f min ahead" % -_n) if _n < 0 else ("%.0f min old" % _n),
+            _o,
+        )
     else:
         age = "?"
     if thin:
         # ⚠️ SAY SO. A merge that never reached its target still returns a file, and a thin
         # file is indistinguishable from a healthy one downstream -- it just makes a
         # constellation's prediction collapse an hour later, somewhere else.
-        _log_hourly("BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s; BELOW TARGET "
-                    "for %s (want %s). Prediction for %s will be thin -- probes, drop gates "
-                    "and search hints all ride this. Retrying in %.0f s."
-                    % (fetched, ",".join("%02d" % x for x in hours), got, "+".join(thin),
-                       "/".join("%s%d" % (k2, _HOURLY_TARGET[k2][1]) for k2 in "GEC"),
-                       "+".join(thin), _HOURLY_THIN_TTL_S))
+        _log_hourly(
+            "BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s; BELOW TARGET "
+            "for %s (want %s). Prediction for %s will be thin -- probes, drop gates "
+            "and search hints all ride this. Retrying in %.0f s."
+            % (
+                fetched,
+                ",".join("%02d" % x for x in hours),
+                got,
+                "+".join(thin),
+                "/".join("%s%d" % (k2, _HOURLY_TARGET[k2][1]) for k2 in "GEC"),
+                "+".join(thin),
+                _HOURLY_THIN_TTL_S,
+            )
+        )
     else:
-        _log_hourly("BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s, target met. "
-                    "Store %d -> %d record(s); %s."
-                    % (fetched, ",".join("%02d" % x for x in hours), got,
-                       n_start, len(store), age))
-    _atomic_write_bytes(local, gzip.compress(
-        (header + "".join(bodies)).encode("ascii", "replace")))
+        _log_hourly(
+            "BRDC hourly merge: %d station-file(s) over hour(s) %s -> %s, target met. "
+            "Store %d -> %d record(s); %s."
+            % (
+                fetched,
+                ",".join("%02d" % x for x in hours),
+                got,
+                n_start,
+                len(store),
+                age,
+            )
+        )
+    _atomic_write_bytes(
+        local, gzip.compress((header + "".join(bodies)).encode("ascii", "replace"))
+    )
     _hourly_cov_write(cache_dir, bool(thin), got)
     return local
 
@@ -608,14 +711,14 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
     tried = 0
     for url, headers in _brdc_sources(kind, year, doy):
         if _src_skip(url):
-            continue                      # known dead, still cooling down -- do not pay for it
+            continue  # known dead, still cooling down -- do not pay for it
         tried += 1
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=30) as r:
                 data = r.read()
             if data[:2] != b"\x1f\x8b":
-                _src_failed(url)          # login/error/404 page: this mirror is not serving
+                _src_failed(url)  # login/error/404 page: this mirror is not serving
                 continue
             _src_ok(url)
             _atomic_write_bytes(local, data)
@@ -628,7 +731,6 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
     if tried == 0:
         _src_dead.clear()
     return local if os.path.exists(local) else None
-
 
 
 # ── NEGATIVE CACHE FOR DEAD SOURCES (2026-08-27) ───────────────────────────────────────────
@@ -645,7 +747,7 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
 # cooldown, and the merge is per-PRN freshest-wins, so skipping a live-but-slow mirror for a
 # few minutes costs nothing a later merge cannot repair.
 _SRC_COOLDOWN_S = 300.0
-_src_dead = {}          # url prefix -> time.time() when it may be retried
+_src_dead = {}  # url prefix -> time.time() when it may be retried
 
 
 def _src_key(url):
@@ -658,7 +760,7 @@ def _src_key(url):
 
 
 def _src_skip(url, now=None):
-    return (_src_dead.get(_src_key(url), 0.0) > (now or time.time()))
+    return _src_dead.get(_src_key(url), 0.0) > (now or time.time())
 
 
 # Statuses that are a statement about the PATH, not about the host. Everything else -- a
@@ -713,7 +815,7 @@ def _src_ok(url):
 # A daily older than this cannot carry a record inside predict_all's 4 h toe window, so a
 # read-only consumer gains nothing by parsing it. Generous (dailies are written once and then
 # only re-fetched when stale) but bounded.
-_CACHED_DAILY_MAX_AGE_S = 172800.0        # 2 days
+_CACHED_DAILY_MAX_AGE_S = 172800.0  # 2 days
 
 
 def cached_brdc(cache_dir=CACHE):
@@ -737,8 +839,11 @@ def cached_brdc(cache_dir=CACHE):
     """
     pin = os.environ.get("GNSS_BRDC_DIR")
     if pin:
-        return sorted(os.path.join(pin, f) for f in os.listdir(pin)
-                      if f.endswith((".rnx", ".rnx.gz")))
+        return sorted(
+            os.path.join(pin, f)
+            for f in os.listdir(pin)
+            if f.endswith((".rnx", ".rnx.gz"))
+        )
     # ⚠️ THE SAME SHORT LIST fetch_brdc BUILDS, NOT THE WHOLE DIRECTORY. The cache accumulates
     # every daily ever downloaded -- 59 files here on the first try -- and handing all of them
     # to parse_rinex_nav would parse tens of megabytes to produce records that best_eph then
@@ -758,7 +863,7 @@ def cached_brdc(cache_dir=CACHE):
             continue
         if f.startswith("hourly_") or age <= _CACHED_DAILY_MAX_AGE_S:
             out.append((age, full))
-    out.sort()                       # freshest first
+    out.sort()  # freshest first
     return [f for _, f in out]
 
 
@@ -785,8 +890,10 @@ def _cached_sources(when, cache_dir):
         d = when - timedelta(days=back)
         doy = d.timetuple().tm_yday
         for kind in ("S", "R"):
-            p = os.path.join(cache_dir,
-                             "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy))
+            p = os.path.join(
+                cache_dir,
+                "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy),
+            )
             if os.path.exists(p):
                 out.append(p)
         if out:
@@ -809,15 +916,22 @@ def _refresh_in_background(when, cache_dir):
             try:
                 _t0 = time.time()
                 _got = _fetch_brdc_now(when, cache_dir)
-                _new = [os.path.basename(f) for f in _got
-                        if os.path.exists(f) and os.path.getmtime(f) >= _t0 - 1.0]
+                _new = [
+                    os.path.basename(f)
+                    for f in _got
+                    if os.path.exists(f) and os.path.getmtime(f) >= _t0 - 1.0
+                ]
                 if _new:
-                    _log_hourly("BRDC background refresh: %d source(s), %d rewritten in %.1f s: %s"
-                                % (len(_got), len(_new), time.time() - _t0, " ".join(_new)))
+                    _log_hourly(
+                        "BRDC background refresh: %d source(s), %d rewritten in %.1f s: %s"
+                        % (len(_got), len(_new), time.time() - _t0, " ".join(_new))
+                    )
             except Exception as e:
                 _REFRESH["err"] = e
-                _log_hourly("BRDC background refresh failed (%s); the cached sources stay "
-                            "in service until the next refresh" % e)
+                _log_hourly(
+                    "BRDC background refresh failed (%s); the cached sources stay "
+                    "in service until the next refresh" % e
+                )
 
         t = threading.Thread(target=run, name="brdc-refresh", daemon=True)
         _REFRESH["thread"] = t
@@ -871,11 +985,16 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
     See cached_brdc for what a second writer did to this cache on 2026-08-27."""
     pin = os.environ.get("GNSS_BRDC_DIR")
     if pin:
-        pinned = sorted(os.path.join(pin, f) for f in os.listdir(pin)
-                        if f.endswith((".rnx", ".rnx.gz")))
+        pinned = sorted(
+            os.path.join(pin, f)
+            for f in os.listdir(pin)
+            if f.endswith((".rnx", ".rnx.gz"))
+        )
         if not pinned:
-            raise RuntimeError("GNSS_BRDC_DIR=%s contains no .rnx/.rnx.gz nav files -- a "
-                               "pinned replay must not fall through to the live sky" % pin)
+            raise RuntimeError(
+                "GNSS_BRDC_DIR=%s contains no .rnx/.rnx.gz nav files -- a "
+                "pinned replay must not fall through to the live sky" % pin
+            )
         return pinned
     when = when or datetime.now(timezone.utc)
     # ⚠️⚠️ THE DAILY IS PREFERRED, NOT REQUIRED -- AND LETTING IT RAISE TOOK THE FLEET DOWN
@@ -895,12 +1014,14 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
     # 30 satellites above the horizon. The sky was sitting in the cache the whole time.
     srcs = []
     try:
-        srcs.append(_fetch_brdc_merged(when, cache_dir))   # authoritative daily
+        srcs.append(_fetch_brdc_merged(when, cache_dir))  # authoritative daily
     except Exception as _e:
-        _log_hourly("BRDC daily unavailable (%s) -- continuing on the station-hourly merge "
-                    "alone. Expected while BKG is down and CDDIS has not yet closed the day; "
-                    "the hourly IS the current-day source in that regime. The sky is thinner "
-                    "than a daily+hourly union, NOT absent." % _e)
+        _log_hourly(
+            "BRDC daily unavailable (%s) -- continuing on the station-hourly merge "
+            "alone. Expected while BKG is down and CDDIS has not yet closed the day; "
+            "the hourly IS the current-day source in that regime. The sky is thinner "
+            "than a daily+hourly union, NOT absent." % _e
+        )
     tok = _earthdata_token()
     doy = when.timetuple().tm_yday
     # Both daily variants (S first = widest), then the station-hourly -- each best-effort and
@@ -916,9 +1037,11 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
     if not srcs:
         # BOTH paths gone. NOW it is fatal, and says which two things failed rather than
         # naming only the last one tried.
-        raise RuntimeError("no BRDC source at all: the daily is unreachable/uncached AND the "
-                           "station-hourly merge returned nothing. Check BKG/CDDIS/GSSC "
-                           "reachability and %s" % cache_dir)
+        raise RuntimeError(
+            "no BRDC source at all: the daily is unreachable/uncached AND the "
+            "station-hourly merge returned nothing. Check BKG/CDDIS/GSSC "
+            "reachability and %s" % cache_dir
+        )
     return srcs
 
 
@@ -943,14 +1066,22 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
         # for the same variant (BKG BRDC00WRD vs CDDIS BRDC00IGS/BRDM00DLR), so the download
         # loop below needs to know which variant slot it is filling. A bare path list left
         # `kind` leaking out of the loop that built it -- always "R" by the time it was read.
-        locals_ = [(kind, os.path.join(
-            cache_dir, "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy)))
-            for kind in ("S", "R")]
+        locals_ = [
+            (
+                kind,
+                os.path.join(
+                    cache_dir,
+                    "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy),
+                ),
+            )
+            for kind in ("S", "R")
+        ]
         # 1) a FRESH current-day cache (< 2 h) or ANY cached previous-day file (final/immutable)
         #    is usable as-is, no network needed.
         for _kind, local in locals_:
-            if os.path.exists(local) and (back == 1
-                                          or time.time() - os.path.getmtime(local) < 7200):
+            if os.path.exists(local) and (
+                back == 1 or time.time() - os.path.getmtime(local) < 7200
+            ):
                 return local
         # 2) (re-)download this day (current-day files GROW through the day, so refresh a stale
         #    cache to pull the newest toe's). Try each mirror (BKG, then CDDIS if a token exists);
@@ -984,5 +1115,3 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
                 return local
         # nothing for this day at all -> fall back to the previous day (early-UTC-morning case).
     raise RuntimeError("no BRDC file reachable (network?) and no cache")
-
-

@@ -119,16 +119,24 @@ def _phys_chips(cp_arg, comb_mult, hop, t_abs, dop_hz, args):
     scale = 1.0 + args.code_doppler_sign * dop_hz / args.carrier_hz
     if hop:
         n = Fraction(int(hop) * int(args.samples_per_hop))
-        chips = (Fraction(comb_mult) * Fraction(cp_arg).limit_denominator(10 ** 12)
-                 + n * Fraction(args.chip_rate_hz).limit_denominator(10 ** 9)
-                 * Fraction(scale).limit_denominator(10 ** 15)
-                 / Fraction(args.sample_rate_hz).limit_denominator(10 ** 9))
+        chips = Fraction(comb_mult) * Fraction(cp_arg).limit_denominator(
+            10 ** 12
+        ) + n * Fraction(args.chip_rate_hz).limit_denominator(10 ** 9) * Fraction(
+            scale
+        ).limit_denominator(
+            10 ** 15
+        ) / Fraction(
+            args.sample_rate_hz
+        ).limit_denominator(
+            10 ** 9
+        )
         return float(chips % Fraction(int(args.code_length)))
     return (comb_mult * cp_arg + t_abs * args.chip_rate_hz * scale) % args.code_length
 
 
-def row_epoch(r, frame0, hop_key, samples_per_hop, sample_rate_hz, to_unix, utc0, now,
-              max_skew_s):
+def row_epoch(
+    r, frame0, hop_key, samples_per_hop, sample_rate_hz, to_unix, utc0, now, max_skew_s
+):
     """(t_epoch, t_abs, hop, None) for a row this writer may record, else (None, None, hop, why).
 
     ON CHORD (frame0 set) THE EPOCH IS THE HOP, OR THERE IS NO ROW. The epoch is
@@ -197,7 +205,8 @@ def make_obs_writer(path_tmpl, label="", log=None):
             state["fh"] = open(path, "a", buffering=1)
             state["path"] = path
             (log or (lambda m: print(m, file=sys.stderr)))(
-                "gnss_observables: %s -> %s" % (label, path))
+                "gnss_observables: %s -> %s" % (label, path)
+            )
         state["fh"].write(json.dumps(row, separators=(",", ":")) + "\n")
         return path
 
@@ -212,121 +221,203 @@ def make_obs_writer(path_tmpl, label="", log=None):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--url", default="http://localhost:12048")
-    ap.add_argument("--airspy", default="airspy_in", help="airspy stage for the capture-clock anchor (adcstat); band-prefixed in a merged instance")
+    ap.add_argument(
+        "--airspy",
+        default="airspy_in",
+        help="airspy stage for the capture-clock anchor (adcstat); band-prefixed in a merged instance",
+    )
     ap.add_argument("--combiner", default="gps_combiner")
     ap.add_argument("--search", default="gps_search")
-    ap.add_argument("--sys", default="G", choices=("G", "E", "C"),
-                    help="RINEX constellation letter (selects the BRDC records)")
-    ap.add_argument("--band", default="GPS_L1CA",
-                    help="signal name (gnssSignal.hpp): identifies the observable's frequency")
+    ap.add_argument(
+        "--sys",
+        default="G",
+        choices=("G", "E", "C"),
+        help="RINEX constellation letter (selects the BRDC records)",
+    )
+    ap.add_argument(
+        "--band",
+        default="GPS_L1CA",
+        help="signal name (gnssSignal.hpp): identifies the observable's frequency",
+    )
     ap.add_argument("--carrier-hz", type=float, default=1575.42e6)
     ap.add_argument("--chip-rate-hz", type=float, default=1.023e6)
     ap.add_argument("--code-length", type=float, default=1023.0)
-    ap.add_argument("--code-doppler-sign", type=float, default=1.0,
-                    help="must match the search stage's code_doppler_sign (CMC reconstruction)")
+    ap.add_argument(
+        "--code-doppler-sign",
+        type=float,
+        default=1.0,
+        help="must match the search stage's code_doppler_sign (CMC reconstruction)",
+    )
     ap.add_argument("--lat", type=float, default=43.968697)
     ap.add_argument("--lon", type=float, default=-79.252106)
     ap.add_argument("--alt", type=float, default=260.0)
-    ap.add_argument("--eph-geom-window-s", type=float, default=21600.0,
-                    help="toe validity window for GEOMETRY (az/el/range). Wider than the "
-                         "4 h dead-reckon default so a stale-in-memory or offline ephemeris "
-                         "still yields az/el through an overnight network gap (Keplerian "
-                         "propagation is sub-degree for many hours). toe_age_s is logged per "
-                         "row so precision consumers can still gate on freshness.")
-    ap.add_argument("--interval", type=float, default=1.0,
-                    help="poll period (s); rows are written once per COMBINER EMIT (deduped "
-                         "on the arc/record counters), so polling faster than the emit is free")
-    ap.add_argument("--out", default="/tmp/gpswipe/observables.jsonl",
-                    help="obs-log path. %%Y%%m%%d etc are strftime-expanded PER ROW, against "
-                         "that row's own epoch, so the file rolls at UTC midnight without a "
-                         "restart and every row lands under the day it was measured. (Until "
-                         "2026-09-10 the expansion happened once at launch: a logger begun on "
-                         "the 5th wrote the 5th's filename for four days and the days between "
-                         "had no file at all.)")
+    ap.add_argument(
+        "--eph-geom-window-s",
+        type=float,
+        default=21600.0,
+        help="toe validity window for GEOMETRY (az/el/range). Wider than the "
+        "4 h dead-reckon default so a stale-in-memory or offline ephemeris "
+        "still yields az/el through an overnight network gap (Keplerian "
+        "propagation is sub-degree for many hours). toe_age_s is logged per "
+        "row so precision consumers can still gate on freshness.",
+    )
+    ap.add_argument(
+        "--interval",
+        type=float,
+        default=1.0,
+        help="poll period (s); rows are written once per COMBINER EMIT (deduped "
+        "on the arc/record counters), so polling faster than the emit is free",
+    )
+    ap.add_argument(
+        "--out",
+        default="/tmp/gpswipe/observables.jsonl",
+        help="obs-log path. %%Y%%m%%d etc are strftime-expanded PER ROW, against "
+        "that row's own epoch, so the file rolls at UTC midnight without a "
+        "restart and every row lands under the day it was measured. (Until "
+        "2026-09-10 the expansion happened once at launch: a logger begun on "
+        "the 5th wrote the 5th's filename for four days and the days between "
+        "had no file at all.)",
+    )
     # ── THE CHORD ANCHOR. The airspy path anchors absolute time on the dongle's
     # adcstat/utc0_sample0; CHORD has no such endpoint, and the broker answers an unknown
     # path with a 200 and a chain summary, so `.get("utc0_sample0") or 0.0` silently yields
     # zero and every code residual comes out null. The F-engine's own sample-0 epoch is
     # served exactly (nanoseconds, identical on every node) at /telescope/time0_ns.
-    ap.add_argument("--frame0-url", default="",
-                    help="node REST base (e.g. http://cx43:12048) serving /telescope/time0_ns, "
-                         "the UTC of F-engine sample 0. Sets the absolute-time anchor for the "
-                         "code residual. Without it (or --frame0-utc) this falls back to the "
-                         "airspy adcstat anchor.")
-    ap.add_argument("--frame0-utc", type=float, default=0.0,
-                    help="the same anchor as a literal, for replay.")
-    ap.add_argument("--frame0-recheck-s", type=float, default=60.0,
-                    help="re-read /telescope/time0_ns this often and EXIT 3 when it has moved. "
-                         "An F-engine re-base restarts the hop counter; a writer holding the "
-                         "old anchor then files the new session onto the old day, hours or "
-                         "days in the past, with its geometry evaluated there. 0 disables.")
-    ap.add_argument("--hop-key", default="fleet_hop",
-                    help="status field holding the emit's ABSOLUTE F-engine hop. The epoch is "
-                         "built from this integer, never from a UTC difference: two 1.79e9 "
-                         "floats subtract to 2.4e-7 s of resolution, which is 2.4 chips (73 m) "
-                         "of code. Which hop field is used barely matters -- both sides of the "
-                         "residual are evaluated at the SAME hop, so the choice cancels to "
-                         "first order (5e-5 chips over 12288 hops of Doppler mismatch).")
-    ap.add_argument("--max-epoch-skew-s", type=float, default=60.0,
-                    help="drop a row whose epoch is more than this far from wall clock (0 "
-                         "disables). Rows from a live broker are ~1.5 s old; one that is not "
-                         "is mis-stamped -- the re-base case is in row_epoch().")
-    ap.add_argument("--integ-max-age-s", type=float, default=90.0,
-                    help="how stale the broker's dead-reckon integrity residual may be before "
-                         "this falls back to reconstructing one (it refreshes ~30 s).")
+    ap.add_argument(
+        "--frame0-url",
+        default="",
+        help="node REST base (e.g. http://cx43:12048) serving /telescope/time0_ns, "
+        "the UTC of F-engine sample 0. Sets the absolute-time anchor for the "
+        "code residual. Without it (or --frame0-utc) this falls back to the "
+        "airspy adcstat anchor.",
+    )
+    ap.add_argument(
+        "--frame0-utc",
+        type=float,
+        default=0.0,
+        help="the same anchor as a literal, for replay.",
+    )
+    ap.add_argument(
+        "--frame0-recheck-s",
+        type=float,
+        default=60.0,
+        help="re-read /telescope/time0_ns this often and EXIT 3 when it has moved. "
+        "An F-engine re-base restarts the hop counter; a writer holding the "
+        "old anchor then files the new session onto the old day, hours or "
+        "days in the past, with its geometry evaluated there. 0 disables.",
+    )
+    ap.add_argument(
+        "--hop-key",
+        default="fleet_hop",
+        help="status field holding the emit's ABSOLUTE F-engine hop. The epoch is "
+        "built from this integer, never from a UTC difference: two 1.79e9 "
+        "floats subtract to 2.4e-7 s of resolution, which is 2.4 chips (73 m) "
+        "of code. Which hop field is used barely matters -- both sides of the "
+        "residual are evaluated at the SAME hop, so the choice cancels to "
+        "first order (5e-5 chips over 12288 hops of Doppler mismatch).",
+    )
+    ap.add_argument(
+        "--max-epoch-skew-s",
+        type=float,
+        default=60.0,
+        help="drop a row whose epoch is more than this far from wall clock (0 "
+        "disables). Rows from a live broker are ~1.5 s old; one that is not "
+        "is mis-stamped -- the re-base case is in row_epoch().",
+    )
+    ap.add_argument(
+        "--integ-max-age-s",
+        type=float,
+        default=90.0,
+        help="how stale the broker's dead-reckon integrity residual may be before "
+        "this falls back to reconstructing one (it refreshes ~30 s).",
+    )
     ap.add_argument("--samples-per-hop", type=int, default=16384)
     ap.add_argument("--sample-rate-hz", type=float, default=3.2e9)
-    ap.add_argument("--comb-mult", type=int, default=1,
-                    help="replica comb multiplier: the generator forms "
-                         "C(n) = comb_mult*code_phase_chips + n*cps(doppler). 2 on L2C (CM).")
+    ap.add_argument(
+        "--comb-mult",
+        type=int,
+        default=1,
+        help="replica comb multiplier: the generator forms "
+        "C(n) = comb_mult*code_phase_chips + n*cps(doppler). 2 on L2C (CM).",
+    )
     args = ap.parse_args()
 
     args.combiner = resolve_stage(args.url, args.combiner)
     args.search = resolve_stage(args.url, args.search)
-    to_unix = capture_clock(args.url, args.airspy)  # capture clock -> unix (band-prefixed stage)
-    utc0 = 0.0                          # capture sample-0 UTC (CMC needs the absolute age)
+    to_unix = capture_clock(
+        args.url, args.airspy
+    )  # capture clock -> unix (band-prefixed stage)
+    utc0 = 0.0  # capture sample-0 UTC (CMC needs the absolute age)
     frame0 = float(args.frame0_utc or 0.0)
     if not frame0 and args.frame0_url:
         # FATAL rather than 0.0: a missing anchor is not a degraded mode, it is every code
         # residual silently null -- which is how this went unnoticed for as long as it did.
-        with urllib.request.urlopen(args.frame0_url.rstrip("/") + "/telescope/time0_ns",
-                                    timeout=10) as _r:
+        with urllib.request.urlopen(
+            args.frame0_url.rstrip("/") + "/telescope/time0_ns", timeout=10
+        ) as _r:
             _t0 = json.loads(_r.read().decode()).get("time0_ns")
         if not _t0:
-            raise SystemExit("no time0_ns at %s -- the code residual needs the F-engine "
-                             "sample-0 epoch; refusing to write null residuals" % args.frame0_url)
+            raise SystemExit(
+                "no time0_ns at %s -- the code residual needs the F-engine "
+                "sample-0 epoch; refusing to write null residuals" % args.frame0_url
+            )
         frame0 = float(_t0) * 1e-9
-        print("gnss_observables: F-engine sample 0 at %.9f (%s)" % (frame0, args.frame0_url),
-              file=sys.stderr)
+        print(
+            "gnss_observables: F-engine sample 0 at %.9f (%s)"
+            % (frame0, args.frame0_url),
+            file=sys.stderr,
+        )
     t_rec = args.code_length / args.chip_rate_hz
-    lam = C_LIGHT / args.carrier_hz          # carrier wavelength (m/cycle)
+    lam = C_LIGHT / args.carrier_hz  # carrier wavelength (m/cycle)
 
     eph, eph_t, eph_probe_t = None, 0.0, 0.0
     frame0_check_t, frame0_warn_t = time.time(), 0.0
-    last = {}   # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
-    dropped, dropped_t = {}, time.time()   # rows refused by row_epoch(), reported once a minute
+    last = {}  # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
+    dropped, dropped_t = (
+        {},
+        time.time(),
+    )  # rows refused by row_epoch(), reported once a minute
     n = 0
     write_row = make_obs_writer(
-        args.out, "%s [%s/%s]" % (args.band, args.sys, args.combiner))
+        args.out, "%s [%s/%s]" % (args.band, args.sys, args.combiner)
+    )
     # The first file is not opened until the first row, so announce the PATTERN here: a
     # chain that never emits would otherwise leave an empty log, with no way to tell
     # "wrong flags" from "nothing to record".
-    print("gnss_observables: %s [%s/%s] -> %s (rolls at UTC midnight, on the row's epoch)"
-          % (args.band, args.sys, args.combiner, args.out), file=sys.stderr)
+    print(
+        "gnss_observables: %s [%s/%s] -> %s (rolls at UTC midnight, on the row's epoch)"
+        % (args.band, args.sys, args.combiner, args.out),
+        file=sys.stderr,
+    )
 
     while True:
         t0 = time.time()
         if dropped and t0 - dropped_t >= 60.0:
-            print("gnss_observables: %s [%s/%s] dropped in the last %.0f s: %s%s"
-                  % (args.band, args.sys, args.combiner, t0 - dropped_t,
-                     ", ".join("%s %d" % (k, v) for k, v in sorted(dropped.items())
-                               if not k.startswith("_")),
-                     (" (largest skew %+.0f s: a stale hop, e.g. the previous F-engine "
-                      "session's right after a re-base)" % dropped["_skew_max"])
-                     if "_skew_max" in dropped else ""), file=sys.stderr)
+            print(
+                "gnss_observables: %s [%s/%s] dropped in the last %.0f s: %s%s"
+                % (
+                    args.band,
+                    args.sys,
+                    args.combiner,
+                    t0 - dropped_t,
+                    ", ".join(
+                        "%s %d" % (k, v)
+                        for k, v in sorted(dropped.items())
+                        if not k.startswith("_")
+                    ),
+                    (
+                        " (largest skew %+.0f s: a stale hop, e.g. the previous F-engine "
+                        "session's right after a re-base)" % dropped["_skew_max"]
+                    )
+                    if "_skew_max" in dropped
+                    else "",
+                ),
+                file=sys.stderr,
+            )
             dropped, dropped_t = {}, t0
         status = _get("%s/%s/get_status" % (args.url, args.combiner))
         dets = _get("%s/%s/get_detections" % (args.url, args.search)) or []
@@ -342,19 +433,30 @@ def main():
         # this is the same rule here: exit 3 is a failure to systemd, which restarts the unit
         # on the new epoch and a new day file. An unreadable endpoint keeps the latched
         # anchor and is logged, not fatal -- only a DIFFERENT value is.
-        if (frame0 and args.frame0_url and args.frame0_recheck_s > 0
-                and now - frame0_check_t >= args.frame0_recheck_s):
+        if (
+            frame0
+            and args.frame0_url
+            and args.frame0_recheck_s > 0
+            and now - frame0_check_t >= args.frame0_recheck_s
+        ):
             frame0_check_t = now
             try:
-                with urllib.request.urlopen(args.frame0_url.rstrip("/") + "/telescope/time0_ns",
-                                            timeout=3) as _r:
+                with urllib.request.urlopen(
+                    args.frame0_url.rstrip("/") + "/telescope/time0_ns", timeout=3
+                ) as _r:
                     _t0 = json.loads(_r.read().decode()).get("time0_ns")
                 if _t0 and abs(float(_t0) * 1e-9 - frame0) > 1e-6:
-                    print("gnss_observables: *** F-ENGINE SAMPLE-0 EPOCH MOVED %.9f -> %.9f "
-                          "(%+.3f h). Every further row would be stamped on the old epoch; "
-                          "exiting 3 for the supervisor to restart this writer on the new one."
-                          % (frame0, float(_t0) * 1e-9, (float(_t0) * 1e-9 - frame0) / 3600.0),
-                          file=sys.stderr)
+                    print(
+                        "gnss_observables: *** F-ENGINE SAMPLE-0 EPOCH MOVED %.9f -> %.9f "
+                        "(%+.3f h). Every further row would be stamped on the old epoch; "
+                        "exiting 3 for the supervisor to restart this writer on the new one."
+                        % (
+                            frame0,
+                            float(_t0) * 1e-9,
+                            (float(_t0) * 1e-9 - frame0) / 3600.0,
+                        ),
+                        file=sys.stderr,
+                    )
                     sys.stderr.flush()
                     sys.exit(3)
             except SystemExit:
@@ -362,9 +464,12 @@ def main():
             except Exception as _e:
                 if now - frame0_warn_t > 600.0:
                     frame0_warn_t = now
-                    print("gnss_observables: time0_ns unreadable at %s (%s); keeping the "
-                          "latched anchor" % (args.frame0_url, _e), file=sys.stderr)
-        if to_unix(1.0) == 1.0:         # anchor wasn't up at startup: retry until it is
+                    print(
+                        "gnss_observables: time0_ns unreadable at %s (%s); keeping the "
+                        "latched anchor" % (args.frame0_url, _e),
+                        file=sys.stderr,
+                    )
+        if to_unix(1.0) == 1.0:  # anchor wasn't up at startup: retry until it is
             to_unix = capture_clock(args.url, args.airspy)
         if not utc0:
             a = _get("%s/%s/adcstat" % (args.url, args.airspy)) or {}
@@ -379,9 +484,15 @@ def main():
         if eph is not None and now - eph_probe_t > 300.0:
             eph_probe_t = now
             try:
-                probe = predict_all(eph, args.lat, args.lon, args.alt,
-                                    datetime.fromtimestamp(now, tz=timezone.utc),
-                                    mask_deg=-90.0, max_age=args.eph_geom_window_s)
+                probe = predict_all(
+                    eph,
+                    args.lat,
+                    args.lon,
+                    args.alt,
+                    datetime.fromtimestamp(now, tz=timezone.utc),
+                    mask_deg=-90.0,
+                    max_age=args.eph_geom_window_s,
+                )
                 stale_geom = not any(k[0] == args.sys for k in probe)
             except Exception:
                 stale_geom = True
@@ -392,12 +503,16 @@ def main():
                 # own schedule. An empty cache is "geometry omitted", never a fetch.
                 srcs = cached_brdc()
                 if not srcs:
-                    raise RuntimeError("nav cache empty -- the broker has not fetched yet")
+                    raise RuntimeError(
+                        "nav cache empty -- the broker has not fetched yet"
+                    )
                 eph = parse_rinex_nav(srcs)
                 eph_t = now
                 if stale_geom:
-                    print("BRDC geometry was stale for %s; re-fetched" % args.sys,
-                          file=sys.stderr)
+                    print(
+                        "BRDC geometry was stale for %s; re-fetched" % args.sys,
+                        file=sys.stderr,
+                    )
             except Exception as e:
                 print("BRDC unavailable (%s); geometry omitted" % e, file=sys.stderr)
                 eph_t = now - 7200 + 600
@@ -410,12 +525,15 @@ def main():
                 prn = int(prn)
                 arc = r.get("adr_arc") or 0
                 nrec = r.get("adr_records") or 0
-                sig = ((max(r.get("deep_snr") or 0.0, r.get("amp_snr") or 0.0))
-                       if (r.get("coherence_s") or 0) > 0 else (r.get("amp_snr") or 0.0))
+                sig = (
+                    (max(r.get("deep_snr") or 0.0, r.get("amp_snr") or 0.0))
+                    if (r.get("coherence_s") or 0) > 0
+                    else (r.get("amp_snr") or 0.0)
+                )
                 if sig <= 0 and not (r.get("amplitude") or 0):
-                    continue                       # PRN not despread this emit: a gap, not a row
+                    continue  # PRN not despread this emit: a gap, not a row
                 if last.get(prn) == (arc, nrec):
-                    continue                       # same combiner emit, already recorded
+                    continue  # same combiner emit, already recorded
                 last[prn] = (arc, nrec)
                 # EPOCH = the emit's own capture time. Wall-clock-at-poll is a different
                 # (and wrong) instant: pipeline latency and emit jitter of 0.1 s smear a
@@ -425,15 +543,27 @@ def main():
                 # by two integers -- never (t_now - utc0) on two 1.79e9 floats. No hop, or an
                 # epoch far from wall clock, is no row (row_epoch says why).
                 t_epoch, t_abs, hop, why = row_epoch(
-                    r, frame0, args.hop_key, args.samples_per_hop, args.sample_rate_hz,
-                    to_unix, utc0, now, args.max_epoch_skew_s)
+                    r,
+                    frame0,
+                    args.hop_key,
+                    args.samples_per_hop,
+                    args.sample_rate_hz,
+                    to_unix,
+                    utc0,
+                    now,
+                    args.max_epoch_skew_s,
+                )
                 if why is not None:
                     dropped[why] = dropped.get(why, 0) + 1
                     if why == "skew" and frame0 and hop:
-                        _sk = frame0 + hop * args.samples_per_hop / args.sample_rate_hz - now
+                        _sk = (
+                            frame0
+                            + hop * args.samples_per_hop / args.sample_rate_hz
+                            - now
+                        )
                         if abs(_sk) > abs(dropped.get("_skew_max", 0.0)):
                             dropped["_skew_max"] = _sk
-                    last.pop(prn, None)        # never dedup a later good row against this one
+                    last.pop(prn, None)  # never dedup a later good row against this one
                     continue
                 v = None
                 # ⚠️ WHILE THE BROKER SAYS THE EPOCH IS SUSPECT, THERE IS NO GEOMETRY. A row
@@ -449,10 +579,15 @@ def main():
                 _eph1 = {_k1: eph[_k1]} if (eph and _k1 in eph) else {}
                 if eph and not epoch_suspect:
                     try:
-                        v = predict_all(_eph1, args.lat, args.lon, args.alt,
-                                        datetime.fromtimestamp(t_epoch, tz=timezone.utc),
-                                        mask_deg=-90.0,
-                                        max_age=args.eph_geom_window_s).get((args.sys, prn))
+                        v = predict_all(
+                            _eph1,
+                            args.lat,
+                            args.lon,
+                            args.alt,
+                            datetime.fromtimestamp(t_epoch, tz=timezone.utc),
+                            mask_deg=-90.0,
+                            max_age=args.eph_geom_window_s,
+                        ).get((args.sys, prn))
                     except Exception:
                         v = None
                 adr = r.get("adr_cycles")
@@ -512,7 +647,9 @@ def main():
                     if _ts is not None and (_ta is None or _ta <= args.integ_max_age_s):
                         code_resid_m = float(_ts) * C_LIGHT
                         code_resid_src = "trk"
-                    elif _ic is not None and (_ia is None or _ia <= args.integ_max_age_s):
+                    elif _ic is not None and (
+                        _ia is None or _ia <= args.integ_max_age_s
+                    ):
                         code_resid_m = float(_ic) * C_LIGHT / args.chip_rate_hz
                         code_resid_src = "dr_integ"
                     dop_used = r.get("doppler_applied_hz")
@@ -520,17 +657,31 @@ def main():
                         dop_used = r.get("doppler_hz") or 0.0
                         _warn_dop[0] = _warn_dop[0] + 1
                         if _warn_dop[0] == 1:
-                            print("gnss_observables: no doppler_applied_hz -- falling back to "
-                                  "the reported Doppler; the code residual carries the "
-                                  "5095 chips/Hz argument lever and is NOT metre-good",
-                                  file=sys.stderr)
-                    cp_phys = _phys_chips(r.get("code_phase_chips") or 0.0, args.comb_mult,
-                                          hop if (frame0 and hop) else None, t_abs,
-                                          float(dop_used), args) if code_resid_src is None else 0.0
-                    t_tx = (gpst_of_utc(t_epoch) - v["range_m"] / C_LIGHT + v["sat_clk_s"])
+                            print(
+                                "gnss_observables: no doppler_applied_hz -- falling back to "
+                                "the reported Doppler; the code residual carries the "
+                                "5095 chips/Hz argument lever and is NOT metre-good",
+                                file=sys.stderr,
+                            )
+                    cp_phys = (
+                        _phys_chips(
+                            r.get("code_phase_chips") or 0.0,
+                            args.comb_mult,
+                            hop if (frame0 and hop) else None,
+                            t_abs,
+                            float(dop_used),
+                            args,
+                        )
+                        if code_resid_src is None
+                        else 0.0
+                    )
+                    t_tx = (
+                        gpst_of_utc(t_epoch) - v["range_m"] / C_LIGHT + v["sat_clk_s"]
+                    )
                     cp_pred = (t_tx % t_rec) / t_rec * args.code_length
-                    d = ((cp_phys - cp_pred + args.code_length / 2.0) % args.code_length
-                         - args.code_length / 2.0)
+                    d = (
+                        cp_phys - cp_pred + args.code_length / 2.0
+                    ) % args.code_length - args.code_length / 2.0
                     if code_resid_src is None and not frame0:
                         # AIRSPY ONLY. On CHORD the reconstruction rides the argument's
                         # ~5095 chips/Hz Doppler lever, so it lands within a code period at
@@ -551,11 +702,19 @@ def main():
                     _fd = r.get("fadr_dop_cycles")
                     if frame0 and _fh and _fd is not None and eph:
                         try:
-                            _ta = frame0 + _fh * args.samples_per_hop / args.sample_rate_hz
-                            _va = predict_all(_eph1, args.lat, args.lon, args.alt,
-                                              datetime.fromtimestamp(_ta, tz=timezone.utc),
-                                              mask_deg=-90.0,
-                                              max_age=args.eph_geom_window_s).get((args.sys, prn))
+                            _ta = (
+                                frame0
+                                + _fh * args.samples_per_hop / args.sample_rate_hz
+                            )
+                            _va = predict_all(
+                                _eph1,
+                                args.lat,
+                                args.lon,
+                                args.alt,
+                                datetime.fromtimestamp(_ta, tz=timezone.utc),
+                                mask_deg=-90.0,
+                                max_age=args.eph_geom_window_s,
+                            ).get((args.sys, prn))
                         except Exception:
                             _va = None
                         if _va is not None:
@@ -564,28 +723,38 @@ def main():
                 row = {
                     "t": round(t_epoch, 4),
                     "t_gps": round(gpst_of_utc(t_epoch), 4),
-                    "sys": args.sys, "prn": prn, "band": args.band,
+                    "sys": args.sys,
+                    "prn": prn,
+                    "band": args.band,
                     "carrier_hz": args.carrier_hz,
                     # --- CODE: commanded code phase + the DLL's unapplied sub-chip residual.
                     # Kept separate on purpose: the trim is a loop state, the discriminator is
                     # a measurement, and offline gets to decide how much of it to believe.
                     "cp_chips": r.get("code_phase_chips"),
                     "dll_disc": r.get("dll_disc"),
-                    "code_len": args.code_length, "chip_rate_hz": args.chip_rate_hz,
+                    "code_len": args.code_length,
+                    "chip_rate_hz": args.chip_rate_hz,
                     # --- PHASE: cycles on THIS arc (0 at an arc start). Ambiguous by an
                     # integer; arc id is what tells you when the ambiguity changed.
                     "adr_cycles": adr,
                     "trim_cycles": trim,
                     "adr_m": (adr * lam) if adr is not None else None,
-                    "adr_arc": arc, "adr_records": nrec,
-                    "code_resid_m": code_resid_m,     # model-removed code range (CMC input)
+                    "adr_arc": arc,
+                    "adr_records": nrec,
+                    "code_resid_m": code_resid_m,  # model-removed code range (CMC input)
                     "code_resid_src": code_resid_src,  # trk | dr_integ | reconstructed
-                    "code_resid_clk": _clk_in,         # True: receiver clock IN (range form)
+                    "code_resid_clk": _clk_in,  # True: receiver clock IN (range form)
                     # the tracker residual's own scatter and support (metres, records)
-                    "code_resid_sd_m": ((r.get("trk_resid_sd_chips") or 0.0) * C_LIGHT
-                                        / args.chip_rate_hz
-                                        if code_resid_src == "trk" else None),
-                    "code_resid_n": (r.get("trk_resid_n") if code_resid_src == "trk" else None),
+                    "code_resid_sd_m": (
+                        (r.get("trk_resid_sd_chips") or 0.0)
+                        * C_LIGHT
+                        / args.chip_rate_hz
+                        if code_resid_src == "trk"
+                        else None
+                    ),
+                    "code_resid_n": (
+                        r.get("trk_resid_n") if code_resid_src == "trk" else None
+                    ),
                     # the record's own (argument, Doppler, hop) triple, verbatim: the RAW code
                     # observable, from which any residual can be re-derived offline against a
                     # better model. Only meaningful as a triple (chord-cp-currency).
@@ -593,10 +762,12 @@ def main():
                     "dop_rec_hz": r.get("dop_rec_hz"),
                     "rec_hop": r.get("rec_hop"),
                     "dll_trim_cpp": r.get("dll_trim_cpp"),
-                    "carr_resid_m": carr_resid_m,     # model-removed carrier range (CMC input)
+                    "carr_resid_m": carr_resid_m,  # model-removed carrier range (CMC input)
                     "carr_resid_src": carr_resid_src,  # fadr (exact hop) | adr (epoch hidden)
                     # the arc the carrier residual lives on: fleet ADR's when it is the source
-                    "carr_arc": (r.get("fadr_arc") if carr_resid_src == "fadr" else arc),
+                    "carr_arc": (
+                        r.get("fadr_arc") if carr_resid_src == "fadr" else arc
+                    ),
                     # THE FLEET ADR, verbatim: Doppler-only cycles and the full phase, both at
                     # fadr_hop, on arc fadr_arc that began at fadr_hop0. Every chain's rows carry
                     # hops on the one F-engine axis, so two bands pair at EQUAL hops exactly.
@@ -616,7 +787,9 @@ def main():
                     "fadr_g_cycles": r.get("fadr_g_cycles"),
                     "adr_lock_s": r.get("adr_lock_s"),
                     # --- POWER
-                    "cn0_coh_dbhz": cn0_dbhz(r, r.get("deep_snr"), r.get("coherence_s")),
+                    "cn0_coh_dbhz": cn0_dbhz(
+                        r, r.get("deep_snr"), r.get("coherence_s")
+                    ),
                     # IS THE PROMPT TAP ACTUALLY ON THE SIGNAL? (task #47) Every C/N0 above is
                     # blind to code error -- deep_snr comes from the RE-SEARCHING deep fold, so
                     # it re-finds the satellite wherever the tap was commanded. Carried per-row
@@ -626,11 +799,14 @@ def main():
                     "prompt_lock": r.get("prompt_lock"),
                     "prompt_rayleigh": r.get("prompt_rayleigh"),
                     "fleet_present": r.get("fleet_present"),
-                    "time_base_suspect": epoch_suspect,   # geometry withheld when true
+                    "time_base_suspect": epoch_suspect,  # geometry withheld when true
                     "coh_src": r.get("coh_src"),
-                    "cn0_inc_dbhz": cn0_inc_dbhz(r.get("amplitude"),
-                                                 r.get("unbiased_amplitude"), t_rec),
-                    "cn0_q_dbhz": cn0_q_dbhz(r.get("snr_q"), t_rec),  # modulation-immune (BOC pilots)
+                    "cn0_inc_dbhz": cn0_inc_dbhz(
+                        r.get("amplitude"), r.get("unbiased_amplitude"), t_rec
+                    ),
+                    "cn0_q_dbhz": cn0_q_dbhz(
+                        r.get("snr_q"), t_rec
+                    ),  # modulation-immune (BOC pilots)
                     # --- THE SERVED RADIOMETRY (task #57, 2026-08-15). Per-record prompt
                     # power, q-gated, debiased against the below-horizon probes; NO fit
                     # anywhere in it, unlike cn0_coh above (whose deep fold re-searches a
@@ -657,7 +833,8 @@ def main():
                     "kcoh_eta": r.get("kcoh_eta"),
                     "kcoh_rate_hz": r.get("kcoh_rate_hz"),
                     "kcoh_t_coh_s": r.get("kcoh_t_coh_s"),
-                    "sig": sig, "coherence_s": r.get("coherence_s"),
+                    "sig": sig,
+                    "coherence_s": r.get("coherence_s"),
                     "search_snr": det_snr.get(prn),
                     "doppler_hz": r.get("doppler_hz"),
                     "carrier_hz_resid": r.get("carrier_hz_resid"),
@@ -677,11 +854,16 @@ def main():
                 # a downstream job, and a row that has had a model subtracted can never be
                 # un-subtracted when the model improves.
                 if v is not None:
-                    row.update({"az": round(v["az"], 3), "el": round(v["el"], 3),
-                                "range_m": round(v["range_m"], 3),
-                                "range_rate_mps": round(v["range_rate_mps"], 4),
-                                "sat_clk_s": v["sat_clk_s"],
-                                "eph_age_s": round(v["toe_age_s"], 1)})
+                    row.update(
+                        {
+                            "az": round(v["az"], 3),
+                            "el": round(v["el"], 3),
+                            "range_m": round(v["range_m"], 3),
+                            "range_rate_mps": round(v["range_rate_mps"], 4),
+                            "sat_clk_s": v["sat_clk_s"],
+                            "eph_age_s": round(v["toe_age_s"], 1),
+                        }
+                    )
                 write_row(t_epoch, row)
                 n += 1
         # PHASE-LOCK the cadence to the wall-clock interval grid (2026-07-19): dTEC pairing

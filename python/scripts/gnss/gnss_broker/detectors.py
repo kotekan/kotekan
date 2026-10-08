@@ -21,9 +21,9 @@ the instrument is no longer measuring it.
 # ── D0: THE POPULATION-HONEST q SERIES ────────────────────────────────────────────────────
 
 #: What the series knows about a satellite on a given cycle.
-PRESENT = "present"        # in the fleet aggregate and passing the presence gate
-ABSENT = "absent"          # SEEDED, and the model says it is up -- but the gate says no
-DROPPED = "dropped"        # no longer seeded at all (set, or retired)
+PRESENT = "present"  # in the fleet aggregate and passing the presence gate
+ABSENT = "absent"  # SEEDED, and the model says it is up -- but the gate says no
+DROPPED = "dropped"  # no longer seeded at all (set, or retired)
 
 
 class QSeries(object):
@@ -132,14 +132,25 @@ class QSeries(object):
         rows.sort()
         parts = []
         for frac, prn, npres, n, mean, sd in rows[:max_prns]:
-            parts.append("%d:%d%%(%d/%d)%s" % (
-                prn, int(round(frac * 100)), npres, n,
-                "" if mean is None else " q%.2f+-%.2f" % (mean, sd)))
+            parts.append(
+                "%d:%d%%(%d/%d)%s"
+                % (
+                    prn,
+                    int(round(frac * 100)),
+                    npres,
+                    n,
+                    "" if mean is None else " q%.2f+-%.2f" % (mean, sd),
+                )
+            )
         return "QPOP %s (present%% over %ds, worst first): %s" % (
-            chain, int(self.window_s), " ".join(parts))
+            chain,
+            int(self.window_s),
+            " ".join(parts),
+        )
 
 
 # ── D1: THE BROWNOUT DETECTOR (#91) ───────────────────────────────────────────────────────
+
 
 class BrownoutDetector(object):
     """A chain-wide collapse in how many satellites are present, as a labelled EPISODE.
@@ -171,10 +182,10 @@ class BrownoutDetector(object):
         # not the ordinary dip a brownout describes.
         self.dark_at = int(dark_at)
         self.last_dark_t = None
-        self.pop = []            # [(t, n_present)] over the window
-        self.open_ep = None      # [t_start, baseline, deepest] while in a brownout
-        self.announced = False   # has the open episode been logged yet?
-        self.episodes = []       # closed: (t_start, t_end, baseline, deepest)
+        self.pop = []  # [(t, n_present)] over the window
+        self.open_ep = None  # [t_start, baseline, deepest] while in a brownout
+        self.announced = False  # has the open episode been logged yet?
+        self.episodes = []  # closed: (t_start, t_end, baseline, deepest)
 
     def note_cycle(self, t, n_present):
         """Record the count. Returns a message when an episode opens or closes, else None."""
@@ -197,14 +208,19 @@ class BrownoutDetector(object):
         if low:
             if self.open_ep is None:
                 self.open_ep = [t, base, n_present]
-                return None                   # do not announce until it has lasted
+                return None  # do not announce until it has lasted
             self.open_ep[2] = min(self.open_ep[2], n_present)
             if t - self.open_ep[0] >= self.min_len_s and not self.announced:
                 self.announced = True
-                return ("BROWNOUT open: %d present vs %d baseline (%d%%), %.0f s so far"
-                        % (n_present, self.open_ep[1],
-                           int(round(100.0 * n_present / max(self.open_ep[1], 1))),
-                           t - self.open_ep[0]))
+                return (
+                    "BROWNOUT open: %d present vs %d baseline (%d%%), %.0f s so far"
+                    % (
+                        n_present,
+                        self.open_ep[1],
+                        int(round(100.0 * n_present / max(self.open_ep[1], 1))),
+                        t - self.open_ep[0],
+                    )
+                )
             return None
 
         if self.open_ep is not None:
@@ -213,8 +229,10 @@ class BrownoutDetector(object):
             self.open_ep, self.announced = None, False
             if t - t0 >= self.min_len_s:
                 self.episodes.append((t0, t, b, deep))
-                return ("BROWNOUT closed: %.0f s, %d present at worst vs %d baseline (%d%%)"
-                        % (t - t0, deep, b, int(round(100.0 * deep / max(b, 1)))))
+                return (
+                    "BROWNOUT closed: %.0f s, %d present at worst vs %d baseline (%d%%)"
+                    % (t - t0, deep, b, int(round(100.0 * deep / max(b, 1))))
+                )
             if was:
                 return "BROWNOUT closed: %.0f s (under the reporting length)" % (t - t0)
         return None
@@ -231,8 +249,11 @@ class BrownoutDetector(object):
         #90 flight 3's startup-convergence population arriving through a door the startup
         hold-off does not cover.
         """
-        return (hold_s > 0.0 and self.last_dark_t is not None
-                and t - self.last_dark_t < hold_s)
+        return (
+            hold_s > 0.0
+            and self.last_dark_t is not None
+            and t - self.last_dark_t < hold_s
+        )
 
     def established(self):
         """Open AND past `min_len_s` -- the trigger for POLICY, as opposed to suppression.
@@ -255,6 +276,7 @@ class BrownoutDetector(object):
 
 
 # ── D2: THE DEEP-LATCH DETECTOR (#90 v3's targeting, running UNARMED) ─────────────────────
+
 
 class LatchDetector(object):
     """A satellite that was healthy, went absent, and STAYED absent -- with no chain-wide cause.
@@ -293,19 +315,28 @@ class LatchDetector(object):
     # #90's disease is defined by having NO RE-ADMISSION PATH -- a satellite that returns in
     # seven minutes had one. An absence is evidence of a latch only once it outlasts the
     # dropout population, and this is where that population ends.
-    def __init__(self, min_absence_s=1200.0, lookback_s=900.0, healthy_q=2.0, cooldown_s=1800.0,
-                 startup_hold_s=900.0):
+    def __init__(
+        self,
+        min_absence_s=1200.0,
+        lookback_s=900.0,
+        healthy_q=2.0,
+        cooldown_s=1800.0,
+        startup_hold_s=900.0,
+    ):
         self.min_absence_s = float(min_absence_s)
         self.lookback_s = float(lookback_s)
         self.healthy_q = float(healthy_q)
         self.cooldown_s = float(cooldown_s)
         self.startup_hold_s = float(startup_hold_s)
-        self.reported = {}       # prn -> t of last report (one per episode, not per cycle)
+        self.reported = {}  # prn -> t of last report (one per episode, not per cycle)
         self.suppressed_startup = 0
-        self.suppressed_transit = 0   # how many reports the hold-off swallowed, for honesty
+        self.suppressed_transit = (
+            0  # how many reports the hold-off swallowed, for honesty
+        )
 
-    def scan(self, t, qseries, browned_out, uptime_s=None, recovering=False,
-             in_transit=False):
+    def scan(
+        self, t, qseries, browned_out, uptime_s=None, recovering=False, in_transit=False
+    ):
         """[(prn, absent_s, q_before)] for satellites that look latched right now.
 
         `browned_out` suppresses everything: during a chain-wide collapse a missing satellite
@@ -330,8 +361,9 @@ class LatchDetector(object):
             # individual satellites is exactly what gave flight 3 eight fires and zero targets.
             self.suppressed_transit += len(qseries.hist)
             return []
-        startup = ((uptime_s is not None and uptime_s < self.startup_hold_s)
-                   or bool(recovering))
+        startup = (uptime_s is not None and uptime_s < self.startup_hold_s) or bool(
+            recovering
+        )
         out = []
         for prn, h in qseries.hist.items():
             if not h or h[-1][2] != ABSENT:
@@ -343,8 +375,13 @@ class LatchDetector(object):
                 start = tt
             if start is None or t - start < self.min_absence_s:
                 continue
-            qs = [q for tt, q, s in h
-                  if s == PRESENT and q is not None and start - self.lookback_s <= tt < start]
+            qs = [
+                q
+                for tt, q, s in h
+                if s == PRESENT
+                and q is not None
+                and start - self.lookback_s <= tt < start
+            ]
             if not qs or max(qs) < self.healthy_q:
                 continue
             if t - self.reported.get(prn, -1e9) < self.cooldown_s:
@@ -361,6 +398,7 @@ class LatchDetector(object):
 
 
 # ── D3: THE HANDOVER SAWTOOTH (#92) ───────────────────────────────────────────────────────
+
 
 class SawtoothDetector(object):
     """A standing trim that ramps, then gets wiped -- the shape #92 exists to remove.
@@ -386,8 +424,15 @@ class SawtoothDetector(object):
     heterogeneous in the first place.
     """
 
-    def __init__(self, ramp_chips=0.5, window_s=1800.0, wipe_frac=0.5, cooldown_s=600.0,
-                 startup_hold_s=900.0, rebase_window_s=30.0):
+    def __init__(
+        self,
+        ramp_chips=0.5,
+        window_s=1800.0,
+        wipe_frac=0.5,
+        cooldown_s=600.0,
+        startup_hold_s=900.0,
+        rebase_window_s=30.0,
+    ):
         self.ramp_chips = float(ramp_chips)
         self.window_s = float(window_s)
         self.wipe_frac = float(wipe_frac)
@@ -402,15 +447,25 @@ class SawtoothDetector(object):
         # trim's content transfers into it -- the tap barely moves and the cost is chopped
         # ramp windows, not lost lock). Superposing them is E3's heterogeneity mistake.
         self.rebase_window_s = float(rebase_window_s)
-        self.hist = {}          # prn -> [(t, trim)]
-        self.reported = {}      # prn -> t of last report
-        self.episodes = []      # (prn, t, peak_trim, after_trim, kind)
+        self.hist = {}  # prn -> [(t, trim)]
+        self.reported = {}  # prn -> t of last report
+        self.episodes = []  # (prn, t, peak_trim, after_trim, kind)
         self.suppressed_startup = 0
         self.suppressed_weak = 0
         self.suppressed_transit = 0
 
-    def note(self, t, prn, trim, browned_out=False, uptime_s=None, rebase_age_s=None,
-             present_frac=None, q_mean=None, in_transit=False):
+    def note(
+        self,
+        t,
+        prn,
+        trim,
+        browned_out=False,
+        uptime_s=None,
+        rebase_age_s=None,
+        present_frac=None,
+        q_mean=None,
+        in_transit=False,
+    ):
         """Feed one satellite's standing trim. Returns a message on a wipe, else None.
 
         `trim` should already have #92's own handover deltas removed (see
@@ -447,16 +502,22 @@ class SawtoothDetector(object):
             if uptime_s is not None and uptime_s < self.startup_hold_s:
                 self.suppressed_startup += 1
                 return None
-            if ((present_frac is not None and present_frac < 0.5)
-                    or (q_mean is not None and q_mean < 2.0)):
+            if (present_frac is not None and present_frac < 0.5) or (
+                q_mean is not None and q_mean < 2.0
+            ):
                 self.suppressed_weak += 1
                 return None
             if t - self.reported.get(prn, -1e9) < self.cooldown_s:
                 return None
             self.reported[prn] = t
-            kind = ("REBASE-WIPE" if (rebase_age_s is not None
-                                      and 0.0 <= rebase_age_s <= self.rebase_window_s)
-                    else "BARE-WIPE")
+            kind = (
+                "REBASE-WIPE"
+                if (
+                    rebase_age_s is not None
+                    and 0.0 <= rebase_age_s <= self.rebase_window_s
+                )
+                else "BARE-WIPE"
+            )
             self.episodes.append((prn, t, prev, trim, kind))
             # ⚠️⚠️ THE SPAN IS CENSORED BY MY OWN WINDOW, AND IT MUST SAY SO.
             # `hist` is trimmed to window_s, so a ramp older than that reports a span pinned
@@ -477,15 +538,27 @@ class SawtoothDetector(object):
             # dll_integrate; a corrected value can and does exceed it (3.77 and 4.15 seen on
             # 2026-08-27), and I misread exactly that as "the trim broke its clamp". Say
             # which quantity this is, in the line itself, so the next reader cannot.
-            return ("SAWTOOTH PRN %d: standing trim %+.2f -> %+.2f chips in one cycle "
-                    "(peak %+.2f HANDOVER-CORRECTED, not the raw clamped trim; over %s%.0f s%s)"
-                    " -- ramp discarded, not handed over | %s%s"
-                    % (prn, prev, trim, peak, ">=" if censored else "", span,
-                       ", CENSORED at my %.0f s window -- a LOWER BOUND, not a period"
-                       % self.window_s if censored else "",
-                       kind,
-                       (" (birth-step %.0f s before)" % rebase_age_s)
-                       if kind == "REBASE-WIPE" else " (no birth-step in window: slew/other)"))
+            return (
+                "SAWTOOTH PRN %d: standing trim %+.2f -> %+.2f chips in one cycle "
+                "(peak %+.2f HANDOVER-CORRECTED, not the raw clamped trim; over %s%.0f s%s)"
+                " -- ramp discarded, not handed over | %s%s"
+                % (
+                    prn,
+                    prev,
+                    trim,
+                    peak,
+                    ">=" if censored else "",
+                    span,
+                    ", CENSORED at my %.0f s window -- a LOWER BOUND, not a period"
+                    % self.window_s
+                    if censored
+                    else "",
+                    kind,
+                    (" (birth-step %.0f s before)" % rebase_age_s)
+                    if kind == "REBASE-WIPE"
+                    else " (no birth-step in window: slew/other)",
+                )
+            )
         return None
 
     def drop(self, prn):

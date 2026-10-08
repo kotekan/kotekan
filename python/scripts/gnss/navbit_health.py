@@ -43,11 +43,15 @@ satellite -- including ones that are provably 100% correct. That mistake was mad
 therefore scored at its OWN better polarity, which is what stitch() does for the decoder.
 """
 
-MIN_SNR = 60.0       # below this the AIR is the unreliable party, not the prediction
-MIN_BITS = 400       # samples before a verdict is allowed to condemn anything
-BAD_RATE = 0.85      # sustained agreement below this = the source is wrong for this satellite
-GOOD_RATE = 0.92     # ...and this much is needed to come back (hysteresis, not a knife edge)
-ALPHA = 0.05         # EMA on the per-emit agreement rate
+MIN_SNR = 60.0  # below this the AIR is the unreliable party, not the prediction
+MIN_BITS = 400  # samples before a verdict is allowed to condemn anything
+BAD_RATE = (
+    0.85  # sustained agreement below this = the source is wrong for this satellite
+)
+GOOD_RATE = (
+    0.92  # ...and this much is needed to come back (hysteresis, not a knife edge)
+)
+ALPHA = 0.05  # EMA on the per-emit agreement rate
 
 
 class BitAgreement:
@@ -55,11 +59,11 @@ class BitAgreement:
 
     def __init__(self, log=None):
         self._log = log or (lambda m: None)
-        self.rate = {}      # (prn, source) -> EMA agreement in [0,1]
-        self.n = {}         # (prn, source) -> bits compared (cumulative)
-        self.bad = set()    # (prn, source) pairs currently vetoed
-        self.n_veto = 0     # vetoes applied since the last report
-        self._last = {}     # (prn, source) -> table last GENERATED (shipped OR shadow)
+        self.rate = {}  # (prn, source) -> EMA agreement in [0,1]
+        self.n = {}  # (prn, source) -> bits compared (cumulative)
+        self.bad = set()  # (prn, source) pairs currently vetoed
+        self.n_veto = 0  # vetoes applied since the last report
+        self._last = {}  # (prn, source) -> table last GENERATED (shipped OR shadow)
 
     def remember(self, prn, nb, source="?"):
         """Stash a source's latest table for this PRN -- SHIPPED or SHADOW -- to score against
@@ -113,16 +117,17 @@ class BitAgreement:
             if k < 0 or k >= len(tab):
                 continue
             b = tab[k]
-            if b == 0:                      # unknown bit: not a disagreement
+            if b == 0:  # unknown bit: not a disagreement
                 continue
             n += 1
-            agree += (b == int(sgn))
-        if n < 10:                          # too few to resolve this emit's polarity
+            agree += b == int(sgn)
+        if n < 10:  # too few to resolve this emit's polarity
             return
-        r = max(agree, n - agree) / float(n)    # THIS EMIT at its own better polarity
+        r = max(agree, n - agree) / float(n)  # THIS EMIT at its own better polarity
         k = (prn, source)
-        self.rate[k] = r if k not in self.rate else (
-            (1.0 - ALPHA) * self.rate[k] + ALPHA * r)
+        self.rate[k] = (
+            r if k not in self.rate else ((1.0 - ALPHA) * self.rate[k] + ALPHA * r)
+        )
         self.n[k] = self.n.get(k, 0) + n
 
     # ---- verdict -----------------------------------------------------------------------
@@ -138,15 +143,19 @@ class BitAgreement:
         if k in self.bad:
             if r >= GOOD_RATE:
                 self.bad.discard(k)
-                self._log("navbit-health: PRN %d source=%s recovered (agreement %.1f%%)"
-                          % (prn, source, 100 * r))
+                self._log(
+                    "navbit-health: PRN %d source=%s recovered (agreement %.1f%%)"
+                    % (prn, source, 100 * r)
+                )
                 return "ok"
             return "bad"
         if r < BAD_RATE:
             self.bad.add(k)
-            self._log("navbit-health: PRN %d source=%s VETOED -- published bits agree with "
-                      "the air only %.1f%% (n=%d); subtracting them would flip signs"
-                      % (prn, source, 100 * r, n))
+            self._log(
+                "navbit-health: PRN %d source=%s VETOED -- published bits agree with "
+                "the air only %.1f%% (n=%d); subtracting them would flip signs"
+                % (prn, source, 100 * r, n)
+            )
             return "bad"
         return "ok"
 
@@ -168,7 +177,17 @@ class BitAgreement:
         parts = []
         for (p, src), r in sorted(self.rate.items()):
             v = self.verdict(p, src)
-            parts.append("%d/%s:%.0f%%/%d%s" % (p, src, 100 * r, self.n.get((p, src), 0),
-                                                "*" if v == "bad" else ("?" if v == "unknown" else "")))
-        return "navbit-health: %s (rate/n; * vetoed, ? below %d samples; %d veto(es))" % (
-            " ".join(parts), MIN_BITS, self.n_veto)
+            parts.append(
+                "%d/%s:%.0f%%/%d%s"
+                % (
+                    p,
+                    src,
+                    100 * r,
+                    self.n.get((p, src), 0),
+                    "*" if v == "bad" else ("?" if v == "unknown" else ""),
+                )
+            )
+        return (
+            "navbit-health: %s (rate/n; * vetoed, ? below %d samples; %d veto(es))"
+            % (" ".join(parts), MIN_BITS, self.n_veto)
+        )

@@ -65,20 +65,35 @@ def poll_one(url, timeout=6.0):
     el, el_m = _stats(d.get("elem_clip"))
     pw, pw_m = _stats(d.get("power"))
     ep, ep_m = _stats(d.get("elem_power"))
-    return {"url": url, "state": "ok",
-            "age_s": d.get("age_s"), "fpga_seq": d.get("fpga_seq"),
-            "passes": d.get("passes"), "period_s": d.get("period_s"),
-            "clip_hi_max": ch_hi, "clip_hi_mean": ch_hi_m, "clip_lo_max": ch_lo,
-            "elem_clip_max": el, "elem_clip_mean": el_m,
-            "power_max": pw, "power_mean": pw_m,
-            "elem_power_max": ep, "elem_power_mean": ep_m,
-            "n_chan": len(d.get("chans") or []), "n_elem": len(d.get("elem_clip") or [])}
+    return {
+        "url": url,
+        "state": "ok",
+        "age_s": d.get("age_s"),
+        "fpga_seq": d.get("fpga_seq"),
+        "passes": d.get("passes"),
+        "period_s": d.get("period_s"),
+        "clip_hi_max": ch_hi,
+        "clip_hi_mean": ch_hi_m,
+        "clip_lo_max": ch_lo,
+        "elem_clip_max": el,
+        "elem_clip_mean": el_m,
+        "power_max": pw,
+        "power_mean": pw_m,
+        "elem_power_max": ep,
+        "elem_power_mean": ep_m,
+        "n_chan": len(d.get("chans") or []),
+        "n_elem": len(d.get("elem_clip") or []),
+    }
 
 
 def watch(args):
     eps = args.endpoints.split(",") if args.endpoints else DEF_EP
-    print("rail_watch: %d endpoint(s), period %.1f s -> %s" % (len(eps), args.period, args.out),
-          file=sys.stderr, flush=True)
+    print(
+        "rail_watch: %d endpoint(s), period %.1f s -> %s"
+        % (len(eps), args.period, args.out),
+        file=sys.stderr,
+        flush=True,
+    )
     while True:
         t = time.time()
         rows = [poll_one(u, args.timeout) for u in eps]
@@ -86,10 +101,13 @@ def watch(args):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         ok = [r for r in rows if r.get("state") == "ok"]
         rec = {"t": round(t, 2), "n_ok": len(ok), "n": len(rows), "inst": rows}
-        if ok:   # the fleet-wide headline, so a plot needs no per-instance reduction
-            rec["clip_worst"] = max(r["clip_hi_max"] for r in ok if r["clip_hi_max"] is not None)
-            rec["elem_clip_worst"] = max(r["elem_clip_max"] for r in ok
-                                         if r["elem_clip_max"] is not None)
+        if ok:  # the fleet-wide headline, so a plot needs no per-instance reduction
+            rec["clip_worst"] = max(
+                r["clip_hi_max"] for r in ok if r["clip_hi_max"] is not None
+            )
+            rec["elem_clip_worst"] = max(
+                r["elem_clip_max"] for r in ok if r["elem_clip_max"] is not None
+            )
             _p = [r["elem_power_mean"] for r in ok if r["elem_power_mean"] is not None]
             rec["elem_power_mean"] = sum(_p) / len(_p) if _p else None
         with open(path, "a") as f:
@@ -122,11 +140,17 @@ def record(args):
     local comb index means a different frequency on every node.
     """
     from concurrent.futures import ThreadPoolExecutor
+
     eps = args.endpoints.split(",") if args.endpoints else DEF_EP
-    name = {u: u.split("//")[1].split(":")[0] + "." + u.rsplit("gnss", 1)[1][0] for u in eps}
+    name = {
+        u: u.split("//")[1].split(":")[0] + "." + u.rsplit("gnss", 1)[1][0] for u in eps
+    }
     last_pass, last_f, last_state, cur_path = {}, {}, {}, [None]
-    print("rail_watch record: %d endpoint(s) -> %s" % (len(eps), args.out),
-          file=sys.stderr, flush=True)
+    print(
+        "rail_watch record: %d endpoint(s) -> %s" % (len(eps), args.out),
+        file=sys.stderr,
+        flush=True,
+    )
 
     def get(u):
         try:
@@ -139,27 +163,45 @@ def record(args):
         while True:
             t0 = time.time()
             path = time.strftime(args.out, time.gmtime(t0))
-            if path != cur_path[0]:          # new file: every instance restates its freq_ids
+            if path != cur_path[0]:  # new file: every instance restates its freq_ids
                 cur_path[0] = path
                 last_f.clear()
                 os.makedirs(os.path.dirname(path), exist_ok=True)
             lines = []
             for u, d in pool.map(get, eps):
                 inst = name[u]
-                state = ("unreachable" if "_err" in d else
-                         "off" if not d.get("enabled") else "ok")
+                state = (
+                    "unreachable"
+                    if "_err" in d
+                    else "off"
+                    if not d.get("enabled")
+                    else "ok"
+                )
                 if state != last_state.get(inst):
                     last_state[inst] = state
-                    lines.append({"t": round(t0, 3), "inst": inst, "state": state,
-                                  **({"err": d["_err"]} if "_err" in d else {})})
+                    lines.append(
+                        {
+                            "t": round(t0, 3),
+                            "inst": inst,
+                            "state": state,
+                            **({"err": d["_err"]} if "_err" in d else {}),
+                        }
+                    )
                 if state != "ok" or d.get("passes") == last_pass.get(inst):
                     continue
-                if not d.get("clip_hi"):     # enabled but no frame measured yet
+                if not d.get("clip_hi"):  # enabled but no frame measured yet
                     continue
                 last_pass[inst] = d["passes"]
-                rec = {"t": round(t0, 3), "inst": inst, "pass": d["passes"],
-                       "seq": d.get("fpga_seq"), "age": round(d.get("age_s", -1), 3),
-                       "hi": _r(d["clip_hi"]), "lo": _r(d["clip_lo"]), "pw": _r(d["power"])}
+                rec = {
+                    "t": round(t0, 3),
+                    "inst": inst,
+                    "pass": d["passes"],
+                    "seq": d.get("fpga_seq"),
+                    "age": round(d.get("age_s", -1), 3),
+                    "hi": _r(d["clip_hi"]),
+                    "lo": _r(d["clip_lo"]),
+                    "pw": _r(d["power"]),
+                }
                 f = d.get("freq_ids") or []
                 if f != last_f.get(inst):
                     last_f[inst] = f
@@ -169,13 +211,18 @@ def record(args):
                 lines.append(rec)
             if lines:
                 with open(path, "a") as fh:
-                    fh.write("".join(json.dumps(x, separators=(",", ":")) + "\n" for x in lines))
+                    fh.write(
+                        "".join(
+                            json.dumps(x, separators=(",", ":")) + "\n" for x in lines
+                        )
+                    )
             time.sleep(max(0.05, args.poll - (time.time() - t0)))
 
 
 def plot(args):
     import datetime as dt
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.dates import DateFormatter
@@ -190,8 +237,11 @@ def plot(args):
                 pass
     if args.since:
         h, m = (args.since.split(":") + ["0"])[:2]
-        cut = dt.datetime.now(dt.timezone.utc).replace(hour=int(h), minute=int(m),
-                                                       second=0, microsecond=0).timestamp()
+        cut = (
+            dt.datetime.now(dt.timezone.utc)
+            .replace(hour=int(h), minute=int(m), second=0, microsecond=0)
+            .timestamp()
+        )
         rows = [r for r in rows if r["t"] >= cut]
     if not rows:
         sys.exit("no rows in %s for the requested window" % path)
@@ -199,43 +249,76 @@ def plot(args):
 
     fig, ax = plt.subplots(2, 1, figsize=(13, 7), sharex=True)
     fig.patch.set_facecolor("white")
-    ax[0].plot(t, [100 * (r.get("clip_worst") or 0) for r in rows], lw=1.6, color="#c65d21",
-               label="worst per-channel clip (% of nibbles)")
-    ax[0].plot(t, [100 * (r.get("elem_clip_worst") or 0) for r in rows], lw=1.2, alpha=.8,
-               color="#d64550", label="worst per-element clip")
+    ax[0].plot(
+        t,
+        [100 * (r.get("clip_worst") or 0) for r in rows],
+        lw=1.6,
+        color="#c65d21",
+        label="worst per-channel clip (% of nibbles)",
+    )
+    ax[0].plot(
+        t,
+        [100 * (r.get("elem_clip_worst") or 0) for r in rows],
+        lw=1.2,
+        alpha=0.8,
+        color="#d64550",
+        label="worst per-element clip",
+    )
     ax[0].axhline(1.0, ls="--", lw=1, color="#888")
     ax[0].set_ylabel("rail / clip  (%)")
     ax[0].legend(loc="upper left", fontsize=9)
-    ax[0].grid(alpha=.25)
-    ax[0].set_title("ADC rail fraction and band power, fixed %.0f s cadence"
-                    % (rows[0].get("inst", [{}])[0].get("period_s") or 10), weight="bold")
-    ax[1].plot(t, [r.get("elem_power_mean") for r in rows], lw=1.6, color="#4d9de0",
-               label="mean per-element band power (arb.)")
+    ax[0].grid(alpha=0.25)
+    ax[0].set_title(
+        "ADC rail fraction and band power, fixed %.0f s cadence"
+        % (rows[0].get("inst", [{}])[0].get("period_s") or 10),
+        weight="bold",
+    )
+    ax[1].plot(
+        t,
+        [r.get("elem_power_mean") for r in rows],
+        lw=1.6,
+        color="#4d9de0",
+        label="mean per-element band power (arb.)",
+    )
     ax[1].set_ylabel("band power (arb.)")
     ax[1].legend(loc="upper left", fontsize=9)
-    ax[1].grid(alpha=.25)
+    ax[1].grid(alpha=0.25)
     ax[1].set_xlabel("UTC")
     for a in ax:
         a.xaxis.set_major_formatter(DateFormatter("%H:%M", tz=dt.timezone.utc))
     plt.tight_layout()
     plt.savefig(args.png, dpi=125)
-    print("wrote %s  (%d samples, %s..%s)"
-          % (args.png, len(rows), t[0].strftime("%H:%M"), t[-1].strftime("%H:%M")))
+    print(
+        "wrote %s  (%d samples, %s..%s)"
+        % (args.png, len(rows), t[0].strftime("%H:%M"), t[-1].strftime("%H:%M"))
+    )
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("mode", choices=["record", "watch", "plot"])
-    ap.add_argument("--out", default=None,
-                    help="strftime path; default %s (record) or %s" % (REC_OUT, DEF_OUT))
-    ap.add_argument("--poll", type=float, default=0.5,
-                    help="record: seconds between polls; half the node's pass period, so no "
-                         "pass is skipped")
+    ap.add_argument(
+        "--out",
+        default=None,
+        help="strftime path; default %s (record) or %s" % (REC_OUT, DEF_OUT),
+    )
+    ap.add_argument(
+        "--poll",
+        type=float,
+        default=0.5,
+        help="record: seconds between polls; half the node's pass period, so no "
+        "pass is skipped",
+    )
     ap.add_argument("--endpoints", default="")
-    ap.add_argument("--period", type=float, default=10.0,
-                    help="seconds; the node integrates over period_s (10 s), so faster buys "
-                         "nothing but load")
+    ap.add_argument(
+        "--period",
+        type=float,
+        default=10.0,
+        help="seconds; the node integrates over period_s (10 s), so faster buys "
+        "nothing but load",
+    )
     ap.add_argument("--timeout", type=float, default=6.0)
     ap.add_argument("--since", default="", help="plot: UTC HH:MM to start from")
     ap.add_argument("--png", default="/tmp/rf_rail.png")

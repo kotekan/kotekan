@@ -16,10 +16,11 @@
  */
 #include "gnssChannelizedReplica.hpp"
 #include "gnssSignal.hpp"
+
 #include <cmath>
+#include <complex>
 #include <cstdio>
 #include <cstdlib>
-#include <complex>
 #include <vector>
 
 int main(int argc, char** argv) {
@@ -36,8 +37,8 @@ int main(int argc, char** argv) {
     gnss::ChannelizedReplicaBank bank(*sig, FS, F_OFF, NFFT, NTAPS, dsp::Window::Hamming, {prn});
     std::vector<int> want{5972, 5988, 6004, 6020, 6036, 6052, 6068};
 
-    printf("phishare: PRN %d, %d hops, %zu channels, fs %.1f GHz, f_off %.2f MHz\n",
-           prn, n_hops, want.size(), FS / 1e9, F_OFF / 1e6);
+    printf("phishare: PRN %d, %d hops, %zu channels, fs %.1f GHz, f_off %.2f MHz\n", prn, n_hops,
+           want.size(), FS / 1e9, F_OFF / 1e6);
     printf("  the SHARED pair is built ONCE at doppler 0 and reused for every Doppler below\n\n");
     // ONE shared, Doppler-free filter -- built once, exactly as production would hold it.
     auto shared = bank.hoprate_filter(want, 0.0, -1, /*want_psi=*/true);
@@ -49,14 +50,18 @@ int main(int argc, char** argv) {
     // tables to float here and see whether the CPU reproduces the GPU's failure; if it does,
     // the diagnosis is storage precision and not the algebra or the kernel wiring.
     if (getenv("PHISHARE_F32")) {
-        for (auto& v : shared.PhiA) for (auto& z : v)
-            z = std::complex<double>((float)z.real(), (float)z.imag());
-        for (auto& v : shared.PhiB) for (auto& z : v)
-            z = std::complex<double>((float)z.real(), (float)z.imag());
-        for (auto& v : shared.PsiA) for (auto& z : v)
-            z = std::complex<double>((float)z.real(), (float)z.imag());
-        for (auto& v : shared.PsiB) for (auto& z : v)
-            z = std::complex<double>((float)z.real(), (float)z.imag());
+        for (auto& v : shared.PhiA)
+            for (auto& z : v)
+                z = std::complex<double>((float)z.real(), (float)z.imag());
+        for (auto& v : shared.PhiB)
+            for (auto& z : v)
+                z = std::complex<double>((float)z.real(), (float)z.imag());
+        for (auto& v : shared.PsiA)
+            for (auto& z : v)
+                z = std::complex<double>((float)z.real(), (float)z.imag());
+        for (auto& v : shared.PsiB)
+            for (auto& z : v)
+                z = std::complex<double>((float)z.real(), (float)z.imag());
         printf("  *** PHISHARE_F32: shared tables rounded to fp32 storage ***\n");
     }
 
@@ -70,7 +75,8 @@ int main(int argc, char** argv) {
         size_t n = 0;
         for (size_t c = 0; c < A.size(); ++c)
             for (size_t m = 0; m < A[c].size(); ++m) {
-                const double e = std::abs(std::complex<double>(A[c][m]) - std::complex<double>(B[c][m]));
+                const double e =
+                    std::abs(std::complex<double>(A[c][m]) - std::complex<double>(B[c][m]));
                 const double r = std::abs(std::complex<double>(A[c][m]));
                 emax = std::max(emax, e);
                 rmax = std::max(rmax, r);

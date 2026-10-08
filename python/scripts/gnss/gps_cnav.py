@@ -28,11 +28,11 @@ from gps_beamtrack import read_records  # noqa: E402  (shared record reader)
 
 PREAMBLE = [1, 0, 0, 0, 1, 0, 1, 1]
 MSG_BITS = 300
-DATA_BITS = MSG_BITS - 24            # 276; CRC-24Q is computed over these
+DATA_BITS = MSG_BITS - 24  # 276; CRC-24Q is computed over these
 K = 7
-POLY = (0o171, 0o133)                # G1, G2 (IS-GPS-200 FEC)
+POLY = (0o171, 0o133)  # G1, G2 (IS-GPS-200 FEC)
 G2_INVERT = True
-NSTATES = 1 << (K - 1)               # 64
+NSTATES = 1 << (K - 1)  # 64
 CRC24Q_POLY = 0x1864CFB
 
 
@@ -40,19 +40,19 @@ CRC24Q_POLY = 0x1864CFB
 # rate-1/2 K=7 convolutional code (encoder + soft Viterbi)
 # --------------------------------------------------------------------------
 def _tables():
-    out = np.zeros((NSTATES, 2, 2), dtype=np.int8)   # output symbols per (state, input)
+    out = np.zeros((NSTATES, 2, 2), dtype=np.int8)  # output symbols per (state, input)
     nxt = np.zeros((NSTATES, 2), dtype=np.int64)
     for s in range(NSTATES):
         for b in (0, 1):
-            reg = (b << (K - 1)) | s                  # K-bit register: input at MSB, state below
+            reg = (b << (K - 1)) | s  # K-bit register: input at MSB, state below
             out[s, b, 0] = bin(reg & POLY[0]).count("1") & 1
             out[s, b, 1] = (bin(reg & POLY[1]).count("1") & 1) ^ (1 if G2_INVERT else 0)
-            nxt[s, b] = reg >> 1                       # drop oldest -> next state
+            nxt[s, b] = reg >> 1  # drop oldest -> next state
     return out, nxt
 
 
 _OUT, _NXT = _tables()
-_EXP = np.where(_OUT == 0, 1.0, -1.0)                  # bipolar expected symbols (0->+1, 1->-1)
+_EXP = np.where(_OUT == 0, 1.0, -1.0)  # bipolar expected symbols (0->+1, 1->-1)
 
 
 def conv_encode(bits, flush=True):
@@ -71,7 +71,7 @@ def viterbi_decode(symbols, known_start=False):
     known_start pins the initial state to 0 (use for a message encoded from
     state 0); otherwise all states start equal and the survivor converges."""
     n = len(symbols) // 2
-    r = np.asarray(symbols[:2 * n], dtype=float).reshape(n, 2)
+    r = np.asarray(symbols[: 2 * n], dtype=float).reshape(n, 2)
     NEG = -1e18
     pm = np.full(NSTATES, NEG if known_start else 0.0)
     if known_start:
@@ -136,8 +136,8 @@ def build_cnav_message(prn, msg_type, tow, alert=0, data=None):
     _set(bits, 20, 17, tow)
     bits[37] = alert & 1
     if data is not None:
-        d = list(int(x) for x in data)[:DATA_BITS - 38]
-        bits[38:38 + len(d)] = d
+        d = list(int(x) for x in data)[: DATA_BITS - 38]
+        bits[38 : 38 + len(d)] = d
     _set(bits, DATA_BITS, 24, crc24q(bits[0:DATA_BITS]))
     return bits
 
@@ -148,15 +148,19 @@ def parse_cnav_message(bits):
         return None
     if crc24q(bits[0:DATA_BITS]) != _uint(bits[DATA_BITS:MSG_BITS]):
         return None
-    return {"prn": _uint(bits[8:14]), "type": _uint(bits[14:20]),
-            "tow": _uint(bits[20:37]), "alert": int(bits[37])}
+    return {
+        "prn": _uint(bits[8:14]),
+        "type": _uint(bits[14:20]),
+        "tow": _uint(bits[20:37]),
+        "alert": int(bits[37]),
+    }
 
 
 def find_cnav_messages(bits):
     msgs, i, n = [], 0, len(bits)
     while i + MSG_BITS <= n:
-        if list(int(b) for b in bits[i:i + 8]) == PREAMBLE:
-            window = [int(b) for b in bits[i:i + MSG_BITS]]
+        if list(int(b) for b in bits[i : i + 8]) == PREAMBLE:
+            window = [int(b) for b in bits[i : i + MSG_BITS]]
             m = parse_cnav_message(window)
             if m is not None:
                 m["index"] = i
@@ -190,34 +194,34 @@ import math  # noqa: E402
 GPS_PI = 3.1415926535898
 MU = 3.986005e14
 OMEGA_E = 7.2921151467e-5
-AREF = 26559710.0                  # CNAV reference semi-major axis, m (DELTA_A is relative)
-OMEGADOT_REF = -2.6e-9 * GPS_PI    # reference rate, rad/s (DELTA_OMEGA_DOT is relative)
-_P = lambda n: 2.0 ** (-n)         # 2^-n
+AREF = 26559710.0  # CNAV reference semi-major axis, m (DELTA_A is relative)
+OMEGADOT_REF = -2.6e-9 * GPS_PI  # reference rate, rad/s (DELTA_OMEGA_DOT is relative)
+_P = lambda n: 2.0 ** (-n)  # 2^-n
 
 # name -> (message type, 1-indexed start bit, length, signed, scale). From
 # IS-GPS-200 Table 30-I (transcribed from GNSS-SDR's GPS_CNAV.h field table).
 CNAV_EPH_FIELDS = {
-    "WN":         (10, 39, 13, False, 1.0),
-    "top":        (10, 55, 11, False, 300.0),
-    "toe":        (10, 71, 11, False, 300.0),
-    "dA":         (10, 82, 26, True, _P(9)),
-    "A_dot":      (10, 108, 25, True, _P(21)),
-    "dn0":        (10, 133, 17, True, _P(44) * GPS_PI),
-    "dn0_dot":    (10, 150, 23, True, _P(57) * GPS_PI),
-    "M0":         (10, 173, 33, True, _P(32) * GPS_PI),
-    "e":          (10, 206, 33, False, _P(34)),
-    "omega":      (10, 239, 33, True, _P(32) * GPS_PI),
-    "toe2":       (11, 39, 11, False, 300.0),
-    "OMEGA0":     (11, 50, 33, True, _P(32) * GPS_PI),
-    "i0":         (11, 83, 33, True, _P(32) * GPS_PI),
+    "WN": (10, 39, 13, False, 1.0),
+    "top": (10, 55, 11, False, 300.0),
+    "toe": (10, 71, 11, False, 300.0),
+    "dA": (10, 82, 26, True, _P(9)),
+    "A_dot": (10, 108, 25, True, _P(21)),
+    "dn0": (10, 133, 17, True, _P(44) * GPS_PI),
+    "dn0_dot": (10, 150, 23, True, _P(57) * GPS_PI),
+    "M0": (10, 173, 33, True, _P(32) * GPS_PI),
+    "e": (10, 206, 33, False, _P(34)),
+    "omega": (10, 239, 33, True, _P(32) * GPS_PI),
+    "toe2": (11, 39, 11, False, 300.0),
+    "OMEGA0": (11, 50, 33, True, _P(32) * GPS_PI),
+    "i0": (11, 83, 33, True, _P(32) * GPS_PI),
     "dOMEGA_dot": (11, 116, 17, True, _P(44) * GPS_PI),
-    "i0_dot":     (11, 133, 15, True, _P(44) * GPS_PI),
-    "Cis":        (11, 148, 16, True, _P(30)),
-    "Cic":        (11, 164, 16, True, _P(30)),
-    "Crs":        (11, 180, 24, True, _P(8)),
-    "Crc":        (11, 204, 24, True, _P(8)),
-    "Cus":        (11, 228, 21, True, _P(30)),
-    "Cuc":        (11, 249, 21, True, _P(30)),
+    "i0_dot": (11, 133, 15, True, _P(44) * GPS_PI),
+    "Cis": (11, 148, 16, True, _P(30)),
+    "Cic": (11, 164, 16, True, _P(30)),
+    "Crs": (11, 180, 24, True, _P(8)),
+    "Crc": (11, 204, 24, True, _P(8)),
+    "Cus": (11, 228, 21, True, _P(30)),
+    "Cuc": (11, 249, 21, True, _P(30)),
 }
 
 
@@ -226,10 +230,10 @@ def parse_cnav_ephemeris(msg10_bits, msg11_bits):
     src = {10: msg10_bits, 11: msg11_bits}
     eph = {}
     for name, (mt, start, length, signed, scale) in CNAV_EPH_FIELDS.items():
-        bits = src[mt][start - 1:start - 1 + length]
+        bits = src[mt][start - 1 : start - 1 + length]
         v = _uint(bits)
         if signed and bits and bits[0] == 1:
-            v -= (1 << length)
+            v -= 1 << length
         eph[name] = v * scale
     return eph
 
@@ -241,7 +245,7 @@ def assemble_cnav_ephemeris(msgs):
         a, b = msgs[i], msgs[i + 1]
         if a["type"] == 10 and b["type"] == 11 and a["prn"] == b["prn"]:
             eph = parse_cnav_ephemeris(a["bits"], b["bits"])
-            if abs(eph["toe"] - eph["toe2"]) < 1e-6:   # consistent ephemeris set
+            if abs(eph["toe"] - eph["toe2"]) < 1e-6:  # consistent ephemeris set
                 out.append(eph)
     return out
 
@@ -289,6 +293,7 @@ def read_symbols(paths, prn, n_prn):
     (lib/stages/gnss/gnssRecord.hpp). The soft symbol is the carrier-locked
     prompt's real part, same quantity either way."""
     import struct
+
     buf = open(paths[0], "rb").read()
     strides = {11: 4 + n_prn * 44, 24: 4 + n_prn * 96}
     fits = [k for k, s in strides.items() if len(buf) % s == 0 and len(buf) >= s]
@@ -307,9 +312,9 @@ def read_symbols(paths, prn, n_prn):
                 continue
             v = np.frombuffer(buf, dtype="<f4", count=6, offset=ro)
             t = struct.unpack_from("<d", buf, ro + 9 * 4)[0]
-            if v[5] > 0.0 and t > 0.0:                    # P_energy > 0: a real record
+            if v[5] > 0.0 and t > 0.0:  # P_energy > 0: a real record
                 utc.append(t)
-                sym.append(float(v[3]))                   # REC_P_RE
+                sym.append(float(v[3]))  # REC_P_RE
     return np.asarray(utc), np.asarray(sym)
 
 
@@ -318,6 +323,7 @@ def prn_index(buf, base, prn, n_prn, rb):
     Records carry their PRN in slot 0; the row order is fixed per chain, so scan
     once per call (cheap at 24 floats x n_prn)."""
     import struct
+
     for p in range(n_prn):
         if int(struct.unpack_from("<f", buf, base + p * rb)[0]) == int(prn):
             return p * rb
@@ -325,15 +331,21 @@ def prn_index(buf, base, prn, n_prn, rb):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("path", help="GPS_L2C_CM record file, directory, or glob")
     ap.add_argument("--n-prn", type=int, required=True, help="PRNs per record frame")
-    ap.add_argument("--prn", type=int, action="append", required=True, help="PRN(s) to decode")
+    ap.add_argument(
+        "--prn", type=int, action="append", required=True, help="PRN(s) to decode"
+    )
     args = ap.parse_args(argv)
 
-    paths = (sorted(glob.glob(os.path.join(args.path, "*.raw")))
-             if os.path.isdir(args.path) else sorted(glob.glob(args.path)))
+    paths = (
+        sorted(glob.glob(os.path.join(args.path, "*.raw")))
+        if os.path.isdir(args.path)
+        else sorted(glob.glob(args.path))
+    )
     if not paths:
         ap.error("no record files matched: %s" % args.path)
 
@@ -345,8 +357,10 @@ def main(argv=None):
             print("   type=%-2d  PRN=%-2d  TOW=%d" % (m["type"], m["prn"], m["tow"]))
         for eph in assemble_cnav_ephemeris(msgs):
             x, y, z = sv_position_cnav(eph, eph["toe"])
-            print("   ephemeris WN=%d toe=%ds  ECEF=(%.1f, %.1f, %.1f) km"
-                  % (eph["WN"], eph["toe"], x / 1e3, y / 1e3, z / 1e3))
+            print(
+                "   ephemeris WN=%d toe=%ds  ECEF=(%.1f, %.1f, %.1f) km"
+                % (eph["WN"], eph["toe"], x / 1e3, y / 1e3, z / 1e3)
+            )
 
 
 if __name__ == "__main__":

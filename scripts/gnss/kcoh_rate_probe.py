@@ -64,42 +64,62 @@ def sweep(series, grid, hop_s):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--gather", default="127.0.0.1:11061")
     ap.add_argument("--broker", default="http://127.0.0.1:12060")
     ap.add_argument("--chain", default="gps_l5")
     ap.add_argument("--prn", type=int, default=None, help="default: strongest held")
     ap.add_argument("--span-hz", type=float, default=15.0)
     ap.add_argument("--step-hz", type=float, default=0.25)
-    ap.add_argument("--windows", type=int, default=32, help="fold span, windows (~1.34 s)")
-    ap.add_argument("--blocks", type=int, default=4, help="disjoint time blocks (stability)")
-    ap.add_argument("--all", action="store_true",
-                    help="sweep EVERY held satellite in the same block and split the residual "
-                         "into a chain COMMON MODE and per-sat remainders. A receiver clock "
-                         "frequency error (the never-implemented f_carrier state) is common "
-                         "to every satellite on the chain; an orbit/model error is not. One "
-                         "satellite's rate cannot tell those apart.")
+    ap.add_argument(
+        "--windows", type=int, default=32, help="fold span, windows (~1.34 s)"
+    )
+    ap.add_argument(
+        "--blocks", type=int, default=4, help="disjoint time blocks (stability)"
+    )
+    ap.add_argument(
+        "--all",
+        action="store_true",
+        help="sweep EVERY held satellite in the same block and split the residual "
+        "into a chain COMMON MODE and per-sat remainders. A receiver clock "
+        "frequency error (the never-implemented f_carrier state) is common "
+        "to every satellite on the chain; an orbit/model error is not. One "
+        "satellite's rate cannot tell those apart.",
+    )
     ap.add_argument("--seconds", type=float, default=20.0, help="collect per block")
     a = ap.parse_args()
 
-    with urllib.request.urlopen("%s/%s/get_status" % (a.broker.rstrip("/"), a.chain),
-                                timeout=10) as r:
+    with urllib.request.urlopen(
+        "%s/%s/get_status" % (a.broker.rstrip("/"), a.chain), timeout=10
+    ) as r:
         rows = json.loads(r.read().decode())
     probes = {int(x["prn"]) for x in rows if x.get("noise_probe")}
-    held = [x for x in rows if not x.get("noise_probe")
-            and x.get("cn0_prompt_db") is not None
-            and (x.get("cn0_prompt_duty") or 0) >= 0.9]
+    held = [
+        x
+        for x in rows
+        if not x.get("noise_probe")
+        and x.get("cn0_prompt_db") is not None
+        and (x.get("cn0_prompt_duty") or 0) >= 0.9
+    ]
     if not held:
-        raise SystemExit("INCONCLUSIVE: nothing held at duty >= 0.9 on %s -- a rate measured "
-                         "on an intermittent track is a measurement of the gaps." % a.chain)
-    tgt = ([x for x in held if int(x["prn"]) == a.prn] or [None])[0] if a.prn else \
-        max(held, key=lambda x: x["cn0_prompt_db"])
+        raise SystemExit(
+            "INCONCLUSIVE: nothing held at duty >= 0.9 on %s -- a rate measured "
+            "on an intermittent track is a measurement of the gaps." % a.chain
+        )
+    tgt = (
+        ([x for x in held if int(x["prn"]) == a.prn] or [None])[0]
+        if a.prn
+        else max(held, key=lambda x: x["cn0_prompt_db"])
+    )
     if tgt is None:
         raise SystemExit("PRN %d not held at duty >= 0.9 on %s" % (a.prn, a.chain))
     prn = int(tgt["prn"])
-    print("chain %s PRN %d: cn0_inc %.1f dB-Hz, duty %.2f, probes %s"
-          % (a.chain, prn, tgt["cn0_prompt_db"], tgt["cn0_prompt_duty"], sorted(probes)))
+    print(
+        "chain %s PRN %d: cn0_inc %.1f dB-Hz, duty %.2f, probes %s"
+        % (a.chain, prn, tgt["cn0_prompt_db"], tgt["cn0_prompt_duty"], sorted(probes))
+    )
 
     n = int(a.span_hz / a.step_hz)
     grid = [i * a.step_hz for i in range(-n, n + 1)]
@@ -114,17 +134,26 @@ def main():
         # per-sat rate and so cannot see the difference -- and neither can a one-satellite
         # sweep, which is why "PRN 3 sits at +12.8 Hz" is not yet a diagnosis.
         print("\n  ALL HELD SATELLITES, same records, same grid:")
-        print("    %-5s %-9s %-9s %-9s %-8s" % ("prn", "broker_hz", "best_f", "eta_peak",
-                                                "cn0_inc"))
+        print(
+            "    %-5s %-9s %-9s %-9s %-8s"
+            % ("prn", "broker_hz", "best_f", "eta_peak", "cn0_inc")
+        )
         rowsout = []
         try:
             for b in range(a.blocks):
                 time.sleep(a.seconds)
-                with urllib.request.urlopen("%s/%s/get_status" % (a.broker.rstrip("/"),
-                                                                  a.chain), timeout=10) as r:
+                with urllib.request.urlopen(
+                    "%s/%s/get_status" % (a.broker.rstrip("/"), a.chain), timeout=10
+                ) as r:
                     live = {int(x["prn"]): x for x in json.loads(r.read().decode())}
-                got = combdll.coh_cn0(cl, a.chain, rates={}, n_win=a.windows,
-                                      probe_prns=probes, keep_series=True)
+                got = combdll.coh_cn0(
+                    cl,
+                    a.chain,
+                    rates={},
+                    n_win=a.windows,
+                    probe_prns=probes,
+                    keep_series=True,
+                )
                 if not got:
                     print("    (block %d: no fold)" % b)
                     continue
@@ -135,24 +164,39 @@ def main():
                     if not v or "series" not in v:
                         continue
                     bf, be = max(sweep(v["series"], grid, HOP_S), key=lambda t: t[1])
-                    if be < 3.0 * 2.5:        # below the probe null scale: no carrier, no rate
+                    if (
+                        be < 3.0 * 2.5
+                    ):  # below the probe null scale: no carrier, no rate
                         continue
-                    pn.append((p, live.get(p, {}).get("rec_rate_hz"), bf, be,
-                               x["cn0_prompt_db"]))
+                    pn.append(
+                        (
+                            p,
+                            live.get(p, {}).get("rec_rate_hz"),
+                            bf,
+                            be,
+                            x["cn0_prompt_db"],
+                        )
+                    )
                 if len(pn) < 2:
-                    print("    (block %d: %d satellite(s) beat the null -- need 2+)" % (b,
-                                                                                        len(pn)))
+                    print(
+                        "    (block %d: %d satellite(s) beat the null -- need 2+)"
+                        % (b, len(pn))
+                    )
                     continue
                 print("    -- block %d --" % b)
                 for p, br, bf, be, c in pn:
-                    print("    %-5d %-9s %+9.2f %9.1f %8.1f"
-                          % (p, ("%+.2f" % br) if br is not None else "--", bf, be, c))
+                    print(
+                        "    %-5d %-9s %+9.2f %9.1f %8.1f"
+                        % (p, ("%+.2f" % br) if br is not None else "--", bf, be, c)
+                    )
                 cm = statistics.median([x[2] for x in pn])
                 rem = [x[2] - cm for x in pn]
                 spr = max(rem) - min(rem)
                 rowsout.append((cm, spr, len(pn)))
-                print("    common mode (median) %+.2f Hz;  per-sat remainder spread %.2f Hz "
-                      "over %d sats" % (cm, spr, len(pn)))
+                print(
+                    "    common mode (median) %+.2f Hz;  per-sat remainder spread %.2f Hz "
+                    "over %d sats" % (cm, spr, len(pn))
+                )
         finally:
             cl.stop()
         if not rowsout:
@@ -160,35 +204,54 @@ def main():
             return 1
         cms = [x[0] for x in rowsout]
         sprs = [x[1] for x in rowsout]
-        print("\n  common mode over %d block(s): %s Hz" % (len(cms),
-                                                           " ".join("%+.2f" % c for c in cms)))
-        print("  per-sat remainder spread:     %s Hz" % " ".join("%.2f" % v for v in sprs))
+        print(
+            "\n  common mode over %d block(s): %s Hz"
+            % (len(cms), " ".join("%+.2f" % c for c in cms))
+        )
+        print(
+            "  per-sat remainder spread:     %s Hz" % " ".join("%.2f" % v for v in sprs)
+        )
         width0 = 1.0 / (a.windows * 4 * 2048 * HOP_S)
         if statistics.median(sprs) < abs(statistics.median(cms)) / 2.0:
-            print("\n✅ MOSTLY COMMON MODE: the satellites share %+.2f Hz and differ by only "
-                  "%.2f Hz. That is a RECEIVER-side carrier frequency error (the f_carrier "
-                  "state that was declared and never implemented), not per-satellite orbit "
-                  "or model error -- one number per chain would remove most of it."
-                  % (statistics.median(cms), statistics.median(sprs)))
+            print(
+                "\n✅ MOSTLY COMMON MODE: the satellites share %+.2f Hz and differ by only "
+                "%.2f Hz. That is a RECEIVER-side carrier frequency error (the f_carrier "
+                "state that was declared and never implemented), not per-satellite orbit "
+                "or model error -- one number per chain would remove most of it."
+                % (statistics.median(cms), statistics.median(sprs))
+            )
         else:
-            print("\n⚠️ NOT COMMON MODE: per-sat remainders spread %.2f Hz about a %+.2f Hz "
-                  "median, so this is not one receiver clock term. A per-satellite rate is "
-                  "genuinely needed." % (statistics.median(sprs), statistics.median(cms)))
-        print("   (peak width 1/T = %.2f Hz, so anything above that is resolved)" % width0)
+            print(
+                "\n⚠️ NOT COMMON MODE: per-sat remainders spread %.2f Hz about a %+.2f Hz "
+                "median, so this is not one receiver clock term. A per-satellite rate is "
+                "genuinely needed." % (statistics.median(sprs), statistics.median(cms))
+            )
+        print(
+            "   (peak width 1/T = %.2f Hz, so anything above that is resolved)" % width0
+        )
         return 0
 
-    print("\n  block  broker_rate   best_f   eta_peak  eta@0   n_rec   | probe best_f  "
-          "probe eta")
+    print(
+        "\n  block  broker_rate   best_f   eta_peak  eta@0   n_rec   | probe best_f  "
+        "probe eta"
+    )
     peaks, probe_peaks = [], []
     try:
         for b in range(a.blocks):
             time.sleep(a.seconds)
-            with urllib.request.urlopen("%s/%s/get_status" % (a.broker.rstrip("/"), a.chain),
-                                        timeout=10) as r:
+            with urllib.request.urlopen(
+                "%s/%s/get_status" % (a.broker.rstrip("/"), a.chain), timeout=10
+            ) as r:
                 live = {int(x["prn"]): x for x in json.loads(r.read().decode())}
             br = live.get(prn, {}).get("rec_rate_hz")
-            got = combdll.coh_cn0(cl, a.chain, rates={}, n_win=a.windows,
-                                  probe_prns=probes, keep_series=True)
+            got = combdll.coh_cn0(
+                cl,
+                a.chain,
+                rates={},
+                n_win=a.windows,
+                probe_prns=probes,
+                keep_series=True,
+            )
             v = (got or {}).get(prn)
             if not v or "series" not in v:
                 print("  %-6d (no fold -- no records this block)" % b)
@@ -203,25 +266,44 @@ def main():
                 pv = (got or {}).get(p)
                 if pv and "series" in pv:
                     pb.append(max(sweep(pv["series"], grid, HOP_S), key=lambda t: t[1]))
-            pbf, pbe = (max(pb, key=lambda t: t[1]) if pb else (float("nan"), float("nan")))
+            pbf, pbe = (
+                max(pb, key=lambda t: t[1]) if pb else (float("nan"), float("nan"))
+            )
             peaks.append((bf, be))
             probe_peaks.append(pbe)
-            print("  %-6d %-13s %+7.2f  %8.1f  %5.1f  %6d   | %+8.2f  %8.1f"
-                  % (b, ("%+.3f" % br) if br is not None else "--", bf, be, e0, nrec,
-                     pbf, pbe))
+            print(
+                "  %-6d %-13s %+7.2f  %8.1f  %5.1f  %6d   | %+8.2f  %8.1f"
+                % (
+                    b,
+                    ("%+.3f" % br) if br is not None else "--",
+                    bf,
+                    be,
+                    e0,
+                    nrec,
+                    pbf,
+                    pbe,
+                )
+            )
     finally:
         cl.stop()
 
     if len(peaks) < 2:
-        print("\nINCONCLUSIVE: %d usable block(s); stability needs at least 2." % len(peaks))
+        print(
+            "\nINCONCLUSIVE: %d usable block(s); stability needs at least 2."
+            % len(peaks)
+        )
         return 1
     fs = [p[0] for p in peaks]
     es = [p[1] for p in peaks]
     spread = max(fs) - min(fs)
-    print("\n  best_f over %d blocks: %s Hz   spread %.2f Hz   median eta %.1f"
-          % (len(fs), " ".join("%+.2f" % f for f in fs), spread, statistics.median(es)))
-    print("  probe best eta (the null): median %.1f, max %.1f"
-          % (statistics.median(probe_peaks), max(probe_peaks)))
+    print(
+        "\n  best_f over %d blocks: %s Hz   spread %.2f Hz   median eta %.1f"
+        % (len(fs), " ".join("%+.2f" % f for f in fs), spread, statistics.median(es))
+    )
+    print(
+        "  probe best eta (the null): median %.1f, max %.1f"
+        % (statistics.median(probe_peaks), max(probe_peaks))
+    )
     beats = statistics.median(es) > 3.0 * max(probe_peaks)
     t_span = a.windows * 4 * 2048 * HOP_S
     width = 1.0 / t_span
@@ -239,30 +321,44 @@ def main():
     med_e = statistics.median(es)
     eta_frac = med_e / float(a.windows * 4)
     print("  peak width ~1/T = %.2f Hz for T = %.2f s" % (width, t_span))
-    print("  argmax block-to-block: spread %.2f Hz = %.0f peak widths (scatter, not a ramp)"
-          % (spread, spread / width))
+    print(
+        "  argmax block-to-block: spread %.2f Hz = %.0f peak widths (scatter, not a ramp)"
+        % (spread, spread / width)
+    )
     print()
     if not beats:
-        print("⚠️ THE SATELLITE DOES NOT BEAT ITS OWN NULL. A free choice of rate scores "
-              "about as well on the noise probes, so this sweep has not found a carrier -- "
-              "do not read the argmax as a rate.")
+        print(
+            "⚠️ THE SATELLITE DOES NOT BEAT ITS OWN NULL. A free choice of rate scores "
+            "about as well on the noise probes, so this sweep has not found a carrier -- "
+            "do not read the argmax as a rate."
+        )
         return 1
-    print("✅ COHERENT AT THIS SPAN: median eta %.1f of %d records (eta/n %.2f) against a "
-          "probe null of %.1f -- the carrier holds for the full %.2f s AT THE RIGHT RATE."
-          % (med_e, a.windows * 4, eta_frac, max(probe_peaks), t_span))
+    print(
+        "✅ COHERENT AT THIS SPAN: median eta %.1f of %d records (eta/n %.2f) against a "
+        "probe null of %.1f -- the carrier holds for the full %.2f s AT THE RIGHT RATE."
+        % (med_e, a.windows * 4, eta_frac, max(probe_peaks), t_span)
+    )
     if eta_frac < 0.5:
-        print("⚠️ but eta/n < 0.5 even at the best rate, so something OTHER than the rate is "
-              "costing this fold -- do not blame the injected rate alone.")
+        print(
+            "⚠️ but eta/n < 0.5 even at the best rate, so something OTHER than the rate is "
+            "costing this fold -- do not blame the injected rate alone."
+        )
         return 0
-    print("   eta/n %.2f at T = %.2f s IS the within-fold stability measurement: the rate "
-          "held across all %d records. So the SPAN is not the limit." % (eta_frac, t_span,
-                                                                        a.windows * 4))
-    print("   WHAT COSTS THE SERVED FOLD is the injected rate. Compare best_f against "
-          "broker_rate per block above: every %.2f Hz of error is one whole peak width, and "
-          "the fold falls off as sinc^2." % width)
+    print(
+        "   eta/n %.2f at T = %.2f s IS the within-fold stability measurement: the rate "
+        "held across all %d records. So the SPAN is not the limit."
+        % (eta_frac, t_span, a.windows * 4)
+    )
+    print(
+        "   WHAT COSTS THE SERVED FOLD is the injected rate. Compare best_f against "
+        "broker_rate per block above: every %.2f Hz of error is one whole peak width, and "
+        "the fold falls off as sinc^2." % width
+    )
     errs = [abs(f) for f in fs]
-    print("   |best_f| over blocks: %s Hz -- the residual the fold actually wants."
-          % " ".join("%.2f" % e for e in errs))
+    print(
+        "   |best_f| over blocks: %s Hz -- the residual the fold actually wants."
+        % " ".join("%.2f" % e for e in errs)
+    )
     return 0
 
 

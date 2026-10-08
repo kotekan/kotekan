@@ -19,11 +19,11 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 from gnss_broker.fits import instance_stall_verdict  # noqa: E402
 
-HEALTHY_PER_S = 5_900_000.0 / 30.0     # measured on sky
+HEALTHY_PER_S = 5_900_000.0 / 30.0  # measured on sky
 WEDGED = ["cx42:gnss0", "cx43:gnss0", "cx44:gnss1", "cx51:gnss0"]
 ALL = ["cx%d:gnss%d" % (n, g) for n in (19, 27, 42, 43, 44, 51) for g in (0, 1)]
-CYCLE = 13.0                            # broker cycle, measured
-BAR = 90.0                              # --instance-stall-s default
+CYCLE = 13.0  # broker cycle, measured
+BAR = 90.0  # --instance-stall-s default
 
 
 def run(n_cycles, wedged=WEDGED, t_start=1000.0):
@@ -73,17 +73,23 @@ def main():
     if hi <= 600_000_000.0:
         fails.append("fixture is wrong -- the fleet maximum did not advance")
     else:
-        print("ok  the fleet MAXIMUM advanced %.1fM hops while 4 instances sat frozen"
-              % ((hi - 600_000_000.0) / 1e6))
-        print("    -> --fe-axis-stale-s watches that maximum and is correctly silent here;")
+        print(
+            "ok  the fleet MAXIMUM advanced %.1fM hops while 4 instances sat frozen"
+            % ((hi - 600_000_000.0) / 1e6)
+        )
+        print(
+            "    -> --fe-axis-stale-s watches that maximum and is correctly silent here;"
+        )
         print("       the per-instance axis is the one it cannot resolve.")
 
     # 4. THE CONTROL CLAUSE: if MOST of the fleet stops, this is global (paused F-engine,
     #    replay, clock step) and blaming instances would misdirect the next hour.
     hist_all, _ = run(12, wedged=ALL)
     if any(hist_all):
-        fails.append("accused instances during a FLEET-WIDE stop: %s"
-                     % [h for h in hist_all if h])
+        fails.append(
+            "accused instances during a FLEET-WIDE stop: %s"
+            % [h for h in hist_all if h]
+        )
     else:
         print("ok  whole fleet frozen -> says nothing (global, not per-instance)")
 
@@ -95,13 +101,17 @@ def main():
     for i in range(12):
         for u in ALL:
             hops[u] += HEALTHY_PER_S * CYCLE
-        cur = {u: h for u, h in hops.items() if u != "cx27:gnss1"}   # one vanishes entirely
+        cur = {
+            u: h for u, h in hops.items() if u != "cx27:gnss1"
+        }  # one vanishes entirely
         prev, stalled = instance_stall_verdict(prev, cur, t, BAR)
         t += CYCLE
     if stalled:
         fails.append("accused an UNREACHABLE instance: %s" % stalled)
     elif "cx27:gnss1" in prev:
-        fails.append("kept an unreachable instance in the state (it will look stuck forever)")
+        fails.append(
+            "kept an unreachable instance in the state (it will look stuck forever)"
+        )
     else:
         print("ok  unreachable instance -> dropped from state, never accused")
 
@@ -110,7 +120,7 @@ def main():
     hops = {u: 600_000_000.0 for u in ALL}
     for i in range(20):
         for u in ALL:
-            if u not in WEDGED or i >= 12:      # the node is restarted at cycle 12
+            if u not in WEDGED or i >= 12:  # the node is restarted at cycle 12
                 hops[u] += HEALTHY_PER_S * CYCLE
         prev, stalled = instance_stall_verdict(prev, dict(hops), t, BAR)
         t += CYCLE
@@ -124,7 +134,9 @@ def main():
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 6 arms, including the fleet-max blind spot and the global control")
+    print(
+        "GATE GOOD: 6 arms, including the fleet-max blind spot and the global control"
+    )
     return 0
 
 

@@ -267,8 +267,8 @@ void GnssTelemPack::main_thread() {
                         WARN("GnssTelemPack[{:s}]: more live PRNs than the {:d} wire rows -- "
                              "shipping the lowest-numbered and DROPPING the rest (PRN {:.0f} "
                              "onwards); raise telem_max_prn. {:d} windows so far",
-                             unique_name, _max_prn,
-                             in[(size_t)p * in_stride + gnss::REC_PRN], _prn_overflow);
+                             unique_name, _max_prn, in[(size_t)p * in_stride + gnss::REC_PRN],
+                             _prn_overflow);
                     break;
                 }
                 _row_of[(size_t)p] = next++;
@@ -281,10 +281,9 @@ void GnssTelemPack::main_thread() {
             const int wrow = _row_of[(size_t)p];
             if (wrow < 0)
                 continue;
-            float* row = &_rows[gnss::telem_row_offset(slot, wrow, _max_prn,
-                                                       gnss::telem_row_floats(_cols))];
-            std::memcpy(row, in + (size_t)p * in_stride,
-                        gnss::RECORD_FLOATS * sizeof(float));
+            float* row =
+                &_rows[gnss::telem_row_offset(slot, wrow, _max_prn, gnss::telem_row_floats(_cols))];
+            std::memcpy(row, in + (size_t)p * in_stride, gnss::RECORD_FLOATS * sizeof(float));
             // THE COMB, copied column by column: the input's column stride is the tracker's
             // and the row's is the wire's, and they are only equal by accident. A memcpy of
             // n_chan*CHAN_FLOATS would be equivalent today and would silently break the moment

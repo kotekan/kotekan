@@ -28,9 +28,11 @@ def _locked(fn):
     every birth appended into inconsistent geometry (the mismatch grew to 771) and the
     broker's per-consumer guard reported "disabled this cycle" for three hours. The
     matrices are ~100x100 -- the lock costs nothing against a 2 s poll cycle."""
+
     def _wrap(self, *a, **k):
         with self._lk:
             return fn(self, *a, **k)
+
     _wrap.__name__ = fn.__name__
     _wrap.__qualname__ = getattr(fn, "__qualname__", fn.__name__)
     _wrap.__doc__ = fn.__doc__
@@ -65,17 +67,18 @@ class SatBiasFilter:
     below the iono timescale. Clamped because no physical bias at this band is a chip.
     """
 
-    def __init__(self, gain=0.02, clamp=1.0, innovation_max=1.0, max_age_s=600.0,
-                 min_inst=6):
+    def __init__(
+        self, gain=0.02, clamp=1.0, innovation_max=1.0, max_age_s=600.0, min_inst=6
+    ):
         self.gain = float(gain)
         self.clamp = float(clamp)
         self.innovation_max = float(innovation_max)
         self.max_age_s = float(max_age_s)
         self.min_inst = int(min_inst)
-        self._b = {}        # prn -> chips
-        self._t = {}        # prn -> last accepted-measurement time
-        self._n = {}        # prn -> accepted count
-        self.rejected = 0   # innovation-gate rejections (lobes), for the log
+        self._b = {}  # prn -> chips
+        self._t = {}  # prn -> last accepted-measurement time
+        self._n = {}  # prn -> accepted count
+        self.rejected = 0  # innovation-gate rejections (lobes), for the log
 
     def update(self, prn, tau_chips, n_inst, t_now):
         """Feed one presence-gated tau. Returns True if accepted."""
@@ -103,8 +106,10 @@ class SatBiasFilter:
         parts = []
         for prn in sorted(self._b):
             stale = (t_now - self._t.get(prn, 0.0)) > self.max_age_s
-            parts.append("%d:%+.3f%s(n%d)" % (prn, self._b[prn],
-                                              "*" if stale else "", self._n.get(prn, 0)))
+            parts.append(
+                "%d:%+.3f%s(n%d)"
+                % (prn, self._b[prn], "*" if stale else "", self._n.get(prn, 0))
+            )
         return "%s rej=%d" % (" ".join(parts) if parts else "-", self.rejected)
 
 
@@ -172,22 +177,53 @@ class JointReceiverState:
     a chain solve its own clock in isolation.
     """
 
-    def __init__(self, code_len=10230.0, sigma_clk0=200.0, sigma_rate0=0.05,
-                 sigma_b0=10.0, q_clk=1e-3, q_rate=1e-4, q_b=0.013, rereference=False,
-                 gauge_sigma=0.1, gauge_mode="median", gauge_prior_sigma=2.0,
-                 max_age_s=900.0, innov_max=200.0, innov_nsigma=6.0,
-                 reject_escape=5, escape_spread=5.0,
-                 birth_max=12.0, gauge_max_b=60.0, escape_max_step=100.0, rate_max=1.0,
-                 ref_band=None, sigma_tau0=20.0, q_tau=1e-5,
-                 sigma_fcar0=50.0, q_fcar=0.01,
-                 sigma_rr0=2.0, q_rr=0.02, rr_gauge_sigma=0.5, f_ref_hz=None,
-                 sigma_rrd0=0.0, q_rrd=0.0, rrd_max=8e-3,
-                 rr_bsat_chips_per_m=0.0,
-                 clk0=0.0, escape_min_sats=3, p_floor=0.04,
-                 tau_min_dual=1, birth_gate_after=30):
+    def __init__(
+        self,
+        code_len=10230.0,
+        sigma_clk0=200.0,
+        sigma_rate0=0.05,
+        sigma_b0=10.0,
+        q_clk=1e-3,
+        q_rate=1e-4,
+        q_b=0.013,
+        rereference=False,
+        gauge_sigma=0.1,
+        gauge_mode="median",
+        gauge_prior_sigma=2.0,
+        max_age_s=900.0,
+        innov_max=200.0,
+        innov_nsigma=6.0,
+        reject_escape=5,
+        escape_spread=5.0,
+        birth_max=12.0,
+        gauge_max_b=60.0,
+        escape_max_step=100.0,
+        rate_max=1.0,
+        ref_band=None,
+        sigma_tau0=20.0,
+        q_tau=1e-5,
+        sigma_fcar0=50.0,
+        q_fcar=0.01,
+        sigma_rr0=2.0,
+        q_rr=0.02,
+        rr_gauge_sigma=0.5,
+        f_ref_hz=None,
+        sigma_rrd0=0.0,
+        q_rrd=0.0,
+        rrd_max=8e-3,
+        rr_bsat_chips_per_m=0.0,
+        clk0=0.0,
+        escape_min_sats=3,
+        p_floor=0.04,
+        tau_min_dual=1,
+        birth_gate_after=30,
+    ):
         import numpy as np
+
         self._np = np
-        self._lk = threading.RLock()   # see _locked: five chain threads share this object
+        self._lk = (
+            threading.RLock()
+        )  # see _locked: five chain threads share this object
         self.L = float(code_len)
         self.sigma_clk0 = float(sigma_clk0)
         # ⚠️ THE RATE PRIOR IS PHYSICS, NOT A CEILING (2026-08-21; task #86's root).
@@ -211,7 +247,7 @@ class JointReceiverState:
         self.sigma_rate0 = float(sigma_rate0)
         self.sigma_b0 = float(sigma_b0)
         # process noise, per sqrt(second)
-        self.q_clk = float(q_clk)      # clock white walk beyond what clk_rate explains
+        self.q_clk = float(q_clk)  # clock white walk beyond what clk_rate explains
         # clk_rate random walk -- the l-a EMA's job. MEASURED CHOICE, not taste: at 6 sats
         # and sigma 0.3 chips, q_rate 2e-3 gives a rate estimate with sd 0.0035 chips/s
         # (3.4e-4 ppm) while 1e-4 gives 0.00035 and still tracks a 0.01 chips/s ramp with
@@ -225,7 +261,7 @@ class JointReceiverState:
         # (see _membership_changed). Default off: this changes filter behaviour on a state
         # that has diverged twice, so it arms deliberately.
         self.rereference = bool(rereference)
-        self.q_b = float(q_b)          # per-sat bias walk: SLOW is the whole point
+        self.q_b = float(q_b)  # per-sat bias walk: SLOW is the whole point
         self.gauge_sigma = float(gauge_sigma)
         # ── THE GAUGE'S REFERENCE: "median" (population) or "prior" (absolute) ──────────
         # #94/S2 (KV, 2026-08-27): the median gauge defines b_i as "this satellite's
@@ -234,7 +270,9 @@ class JointReceiverState:
         # with a per-satellite absolute prior b_i ~ N(0, gauge_prior_sigma) -- see gauge().
         self.gauge_mode = str(gauge_mode)
         if self.gauge_mode not in ("median", "prior"):
-            raise ValueError("gauge_mode must be 'median' or 'prior', not %r" % gauge_mode)
+            raise ValueError(
+                "gauge_mode must be 'median' or 'prior', not %r" % gauge_mode
+            )
         # PHYSICALLY MOTIVATED, not tuned: b_sat is the residual per-satellite code bias
         # after the BRDC model -- ephemeris residual (~1-2 m), satellite group-delay /
         # DCB mismatch (~1-3 m), and the DIFFERENTIAL part of iono+tropo at 1176 MHz
@@ -244,13 +282,17 @@ class JointReceiverState:
         self.gauge_prior_sigma = float(gauge_prior_sigma)
         self.max_age_s = float(max_age_s)
         # ROBUSTNESS, ALL THREE FROM ONE INCIDENT (2026-08-09, see the class note below).
-        self.innov_max = innov_max     # absolute garbage ceiling (chips), any state
-        self.innov_nsigma = innov_nsigma  # and the UNCERTAINTY-SCALED gate that does the work
-        self.reject_escape = reject_escape  # consecutive rejections before we believe reality
-        self._rej_run = {}             # key -> consecutive rejections
+        self.innov_max = innov_max  # absolute garbage ceiling (chips), any state
+        self.innov_nsigma = (
+            innov_nsigma  # and the UNCERTAINTY-SCALED gate that does the work
+        )
+        self.reject_escape = (
+            reject_escape  # consecutive rejections before we believe reality
+        )
+        self._rej_run = {}  # key -> consecutive rejections
         # ...and the innovations THEMSELVES, because the escape hatch tests whether the run
         # agrees with itself, not merely that it is long (2026-08-10; see update()).
-        self._rej_hist = {}            # key -> recent rejected innovations (rolling)
+        self._rej_hist = {}  # key -> recent rejected innovations (rolling)
         self.escape_spread = float(escape_spread)
         # An escape may believe a run that AGREES; it may not believe one that is
         # physically impossible. Same separation argument as the clock solve's MAD
@@ -278,9 +320,11 @@ class JointReceiverState:
         # independent samples -- they are nine satellites and a correlation time -- so the
         # evidence is counted in SATELLITES, never in samples.
         self.escape_min_sats = int(escape_min_sats)
-        self._rej_band = {}            # key -> band of its rejected run, for the corroboration
-        self.rate_max = float(rate_max)   # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
-        self.diverged = False   # latched: an escape was refused as non-physical
+        self._rej_band = {}  # key -> band of its rejected run, for the corroboration
+        self.rate_max = float(
+            rate_max
+        )  # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
+        self.diverged = False  # latched: an escape was refused as non-physical
         # DEAFNESS DETECTOR (2026-08-21). A state that is badly wrong rejects every
         # measurement, so it never corrects, so it stays wrong -- and meanwhile predict()
         # keeps integrating clk_rate, which walks the clock away at whatever rate it last
@@ -293,17 +337,17 @@ class JointReceiverState:
         # noticed. Consumers were safe only because their own delta bounds refused it,
         # which is luck rather than design: a state that has stopped listening must SAY SO
         # and must not be served as if healthy.
-        self.deaf_after = 40       # consecutive rejections with zero accepts -> DEAF
-        self.rej_since_upd = 0     # rejections since the last ACCEPTED update
-        self.deaf = False          # latched: this state has stopped accepting anything
+        self.deaf_after = 40  # consecutive rejections with zero accepts -> DEAF
+        self.rej_since_upd = 0  # rejections since the last ACCEPTED update
+        self.deaf = False  # latched: this state has stopped accepting anything
         self.escapes = 0
         # birth_max default 50 -> 12 (2026-08-12): the 00:08 zombie's garbage biases
         # (+-20-46 chips) all slid UNDER 50. Real biases measure <= ~6 (G28 -5.7 the
         # largest ever seen healthy); 12 is 2x margin. Note the gate is open during
         # bootstrap BY DESIGN (P00 >= 100), so this alone cannot stop garbage-era
         # births -- that is the feed warmup's job (broker --joint-feed-warmup-s).
-        self.birth_max = birth_max     # refuse to BIRTH a sat implausibly far from clk
-        self.gauge_max_b = gauge_max_b # a wild bias does not get a vote in the gauge
+        self.birth_max = birth_max  # refuse to BIRTH a sat implausibly far from clk
+        self.gauge_max_b = gauge_max_b  # a wild bias does not get a vote in the gauge
         # P FLOOR (2026-08-12, the zombie's terminal symptom). A flood of self-consistent
         # measurements crushed P[0,0] to ~1e-7: gain ~0, sigma printed 0.000, rej=0 -- a
         # zero-gain state cannot MOVE and cannot REJECT, so no escape hatch can ever
@@ -314,7 +358,7 @@ class JointReceiverState:
         # tau is estimated only where it is OBSERVABLE (see _add_band); 0 restores the old
         # unconditional behaviour for anyone reproducing the failure.
         self.tau_min_dual = int(tau_min_dual)
-        self._tau_denied = {}      # band -> True once its row has been refused (log once)
+        self._tau_denied = {}  # band -> True once its row has been refused (log once)
         # ...and bootstrap is bounded by accepted updates as well as by P00 (see update()).
         self.birth_gate_after = int(birth_gate_after)
         # Events worth an operator's attention (escapes, incoherent runs, gauge fallbacks).
@@ -344,12 +388,12 @@ class JointReceiverState:
         # q_tau is TINY: cable and filter delays drift on hours, not seconds (section 3a's
         # timescale table). It is a state that costs almost no degrees of freedom, which is
         # the whole DOF argument for putting it here rather than fitting it per epoch.
-        self.ref_band = ref_band       # None -> the first band seen becomes the reference
+        self.ref_band = ref_band  # None -> the first band seen becomes the reference
         self.sigma_tau0 = float(sigma_tau0)
         self.q_tau = float(q_tau)
-        self._band_idx = {}            # band -> row in x (the reference band has none)
-        self._band_seen = {}           # band -> last time a measurement carried it
-        self._dual = {}                # sat key -> set of bands it has been measured in
+        self._band_idx = {}  # band -> row in x (the reference band has none)
+        self._band_seen = {}  # band -> last time a measurement carried it
+        self._dual = {}  # sat key -> set of bands it has been measured in
         # -- f_carrier (P2, 2026-08-10): the RECEIVER-WIDE carrier frequency offset -------
         # Declared as the 3rd element of x in CHORD_JOINT_TRACKING.md section 1 and never
         # built until now. It is created LAZILY, on the first carrier measurement, so a
@@ -372,9 +416,9 @@ class JointReceiverState:
         # by split-half on strong sats, with the gate --carrier-rate-min-q 10.0. Pass that
         # gate's q as the quality cut and ~0.2 Hz as sigma_hz.
         self.sigma_fcar0 = float(sigma_fcar0)
-        self.q_fcar = float(q_fcar)    # Hz per sqrt(s); a GPSDO-disciplined LO, so SLOW
-        self._fcar_idx = None          # row in x, or None until the first carrier update
-        self.n_fcar = 0                # accepted carrier measurements
+        self.q_fcar = float(q_fcar)  # Hz per sqrt(s); a GPSDO-disciplined LO, so SLOW
+        self._fcar_idx = None  # row in x, or None until the first carrier update
+        self.n_fcar = 0  # accepted carrier measurements
         self.fcar_rejected = 0
 
         # -- rrate_sat: the PER-SATELLITE ORBITAL DOPPLER ERROR (task #33 P3, 2026-08-14) --
@@ -418,7 +462,7 @@ class JointReceiverState:
         # cannot silently redefine what f_carrier means.
         self.f_ref_hz = float(f_ref_hz) if f_ref_hz else None
         self.sigma_rr0 = float(sigma_rr0)
-        self.q_rr = float(q_rr)        # m/s per sqrt(s); orbit error, so SLOW
+        self.q_rr = float(q_rr)  # m/s per sqrt(s); orbit error, so SLOW
         # Moderate on purpose, but NOT because a stiffer one breaks it -- that was my first
         # diagnosis and it is WRONG. The freeze measured while building this (one satellite
         # rejected 298 times of 300, innov 17.6 Hz against a 3.1 Hz bar) came from the BIRTH
@@ -441,8 +485,10 @@ class JointReceiverState:
         # window, if it exists, must be set from the MEASURED drift autocorrelation --
         # the overnight JRRP fine series provides exactly that by morning. Enable by
         # passing measured values; zero priors make the dot rows exact RW-equivalents.
-        self.sigma_rrd0 = float(sigma_rrd0)   # prior, m/s/s: ~2x the measured drift scale
-        self.q_rrd = float(q_rrd)             # dot random walk, m/s/s per sqrt(s)
+        self.sigma_rrd0 = float(
+            sigma_rrd0
+        )  # prior, m/s/s: ~2x the measured drift scale
+        self.q_rrd = float(q_rrd)  # dot random walk, m/s/s per sqrt(s)
         # Plausibility clamp (the joint_max_rate_ppm lesson: never carry a physically
         # impossible number). 8e-3 m/s/s = 4x the measured churn-population drift.
         self.rrd_max = float(rrd_max)
@@ -473,14 +519,14 @@ class JointReceiverState:
         # been read off the sky by regressing measured d(b_sat)/dt against rrate, then
         # pass +/- f_chip/c.
         self.rr_bsat_chips_per_m = float(rr_bsat_chips_per_m)
-        self._rrd_idx = {}             # key -> the dot row (always rrate row + 1)
-        self._rr_idx = {}              # key -> row in x
-        self._rr_t_seen = {}           # key -> last carrier measurement time
-        self._rr_reject_run = {}       # key -> consecutive rejections (escape)
+        self._rrd_idx = {}  # key -> the dot row (always rrate row + 1)
+        self._rr_idx = {}  # key -> row in x
+        self._rr_t_seen = {}  # key -> last carrier measurement time
+        self._rr_reject_run = {}  # key -> consecutive rejections (escape)
         self.rr_escape_runs = 8
         self.n_rrate = 0
         self.rrate_rejected = 0
-        self.x = np.zeros(2)           # [clk chips, clk_rate chips/s]
+        self.x = np.zeros(2)  # [clk chips, clk_rate chips/s]
         # WARM START (2026-08-11). Starting at 0 when the receiver clock is ~151 chips is
         # not a neutral prior, it is a DEADLOCK: every measurement then arrives ~151 chips
         # out, which is beyond escape_max_step (100), so the escape hatch refuses the
@@ -501,10 +547,10 @@ class JointReceiverState:
         # estimate to offer.
         self.x[0] = float(clk0)
         self.P = np.diag([sigma_clk0 ** 2, sigma_rate0 ** 2])
-        self._idx = {}                 # key -> row in x
-        self._t_seen = {}              # key -> last accepted measurement time
-        self._n = {}                   # key -> accepted count
-        self._t = None                 # state epoch
+        self._idx = {}  # key -> row in x
+        self._t_seen = {}  # key -> last accepted measurement time
+        self._n = {}  # key -> accepted count
+        self._t = None  # state epoch
         self.rejected = 0
         self.n_updates = 0
 
@@ -557,16 +603,19 @@ class JointReceiverState:
         # OBSERVABILITY PRECONDITION. Counted on history, so the row appears on the cycle
         # AFTER the first dual-band satellite -- which is the correct order: the evidence
         # must exist before the parameter does.
-        _dual_n = sum(1 for _bs in self._dual.values()
-                      if band in _bs and self.ref_band in _bs)
+        _dual_n = sum(
+            1 for _bs in self._dual.values() if band in _bs and self.ref_band in _bs
+        )
         if _dual_n < self.tau_min_dual:
             self._band_seen[band] = t_now
             if not self._tau_denied.get(band):
                 self._tau_denied[band] = True
-                self._note("TAU-PINNED %s: no satellite measured in both this band and the "
-                           "reference (%s) -- tau is degenerate with clk here, so it is "
-                           "pinned at 0 rather than estimated (needs %d dual-band sat(s))"
-                           % (band, self.ref_band, self.tau_min_dual))
+                self._note(
+                    "TAU-PINNED %s: no satellite measured in both this band and the "
+                    "reference (%s) -- tau is degenerate with clk here, so it is "
+                    "pinned at 0 rather than estimated (needs %d dual-band sat(s))"
+                    % (band, self.ref_band, self.tau_min_dual)
+                )
             return None
         i = self.x.size
         self.x = np.append(self.x, 0.0)
@@ -577,8 +626,10 @@ class JointReceiverState:
         self._band_idx[band] = i
         self._band_seen[band] = t_now
         self._tau_denied[band] = False
-        self._note("TAU-ROW %s: %d dual-band satellite(s) now separate tau from clk -- "
-                   "estimating it" % (band, _dual_n))
+        self._note(
+            "TAU-ROW %s: %d dual-band satellite(s) now separate tau from clk -- "
+            "estimating it" % (band, _dual_n)
+        )
         return i
 
     @staticmethod
@@ -598,13 +649,20 @@ class JointReceiverState:
         self.rej_since_upd += 1
         if (not self.deaf) and self.rej_since_upd >= self.deaf_after:
             self.deaf = True
-            self._note("DEAF: %d consecutive rejections with NOTHING accepted (clk %+.1f "
-                       "chips, rate %+.4f chips/s, sigma %.3f, n=%d). The state is refusing "
-                       "every measurement, so it cannot correct itself, and predict() keeps "
-                       "integrating the rate. NOT FIT TO CONSUME until it accepts again%s"
-                       % (self.rej_since_upd, float(self.x[0]), float(self.x[1]),
-                          math.sqrt(max(0.0, self.P[0, 0])), len(self._idx),
-                          "" if why is None else " (%s)" % why))
+            self._note(
+                "DEAF: %d consecutive rejections with NOTHING accepted (clk %+.1f "
+                "chips, rate %+.4f chips/s, sigma %.3f, n=%d). The state is refusing "
+                "every measurement, so it cannot correct itself, and predict() keeps "
+                "integrating the rate. NOT FIT TO CONSUME until it accepts again%s"
+                % (
+                    self.rej_since_upd,
+                    float(self.x[0]),
+                    float(self.x[1]),
+                    math.sqrt(max(0.0, self.P[0, 0])),
+                    len(self._idx),
+                    "" if why is None else " (%s)" % why,
+                )
+            )
 
     def _note(self, msg):
         """Queue a one-line operator note; the broker drains `notes` each cycle. Bounded, so
@@ -650,10 +708,17 @@ class JointReceiverState:
             self._fcar_idx = remap.get(self._fcar_idx)
         # rrate rides the same remap. A per-satellite row that is not remapped points at
         # ANOTHER satellite's state after a drop -- silent, and wrong in the worst way.
-        self._rr_idx = {k: remap[i] for k, i in self._rr_idx.items() if remap.get(i) is not None}
-        self._rrd_idx = {k: remap[i] for k, i in self._rrd_idx.items()
-                         if remap.get(i) is not None and k in self._rr_idx}
-        self._rr_t_seen = {k: v for k, v in self._rr_t_seen.items() if k in self._rr_idx}
+        self._rr_idx = {
+            k: remap[i] for k, i in self._rr_idx.items() if remap.get(i) is not None
+        }
+        self._rrd_idx = {
+            k: remap[i]
+            for k, i in self._rrd_idx.items()
+            if remap.get(i) is not None and k in self._rr_idx
+        }
+        self._rr_t_seen = {
+            k: v for k, v in self._rr_t_seen.items() if k in self._rr_idx
+        }
         for k in keys:
             self._dual.pop(k, None)
         self._membership_changed()
@@ -710,8 +775,11 @@ class JointReceiverState:
         # (mean - median) step for the next gauge() to grind out through gauge_sigma.
         _ordered = sorted(idx, key=lambda i: float(self.x[i]))
         _n = len(_ordered)
-        _sel = ([( _ordered[_n // 2], 1.0)] if _n % 2 else
-                [(_ordered[_n // 2 - 1], 0.5), (_ordered[_n // 2], 0.5)])
+        _sel = (
+            [(_ordered[_n // 2], 1.0)]
+            if _n % 2
+            else [(_ordered[_n // 2 - 1], 0.5), (_ordered[_n // 2], 0.5)]
+        )
         delta = sum(w * float(self.x[j]) for j, w in _sel)
         if delta == 0.0:
             return
@@ -720,9 +788,9 @@ class JointReceiverState:
         # stays the correct covariance transport.
         A = np.eye(self.x.size)
         for j, w in _sel:
-            A[0, j] += w              # clk picks up the median of the biases
+            A[0, j] += w  # clk picks up the median of the biases
             for i in idx:
-                A[i, j] -= w          # every bias loses it
+                A[i, j] -= w  # every bias loses it
         self.x = A @ self.x
         self.P = A @ self.P @ A.T
         # KEEP THE RATE SHIELD. The legacy treatment's other half is still right and is
@@ -740,9 +808,11 @@ class JointReceiverState:
         # again the cause is a NEW unlocked mutation path, and the loud named error beats
         # three hours of "matmul: core dimension" (the 07:05 incident's actual symptom).
         if self.x.size != self.P.shape[0]:
-            raise RuntimeError("JOINT STATE DESYNC: x has %d rows, P has %d -- an "
-                               "unlocked mutation path corrupted the filter"
-                               % (self.x.size, self.P.shape[0]))
+            raise RuntimeError(
+                "JOINT STATE DESYNC: x has %d rows, P has %d -- an "
+                "unlocked mutation path corrupted the filter"
+                % (self.x.size, self.P.shape[0])
+            )
         if self._t is None:
             self._t = t_now
             return
@@ -768,7 +838,7 @@ class JointReceiverState:
                 if _ib is not None:
                     F[_ib, _ir] = self.rr_bsat_chips_per_m * dt
         self.x = F @ self.x
-        for _i in self._rrd_idx.values():   # the dot clamp, every cycle
+        for _i in self._rrd_idx.values():  # the dot clamp, every cycle
             if self.x[_i] > self.rrd_max:
                 self.x[_i] = self.rrd_max
             elif self.x[_i] < -self.rrd_max:
@@ -854,11 +924,21 @@ class JointReceiverState:
         _dr = float(K[1] * y) if self.x.size > 1 else 0.0
         if abs(_dr) > 0.01:
             _hn = [i for i in range(len(H)) if H[i] != 0.0]
-            self._note("RATE-TEACH %+.4f chips/s (rate %+.4f -> %+.4f): innov %+.3f, "
-                       "K1 %+.5f, H rows %s, P01 %+.3f P11 %+.5f S %.4f"
-                       % (_dr, float(self.x[1]), float(self.x[1]) + _dr, y,
-                          float(K[1]), _hn[:6], float(self.P[0, 1]),
-                          float(self.P[1, 1]), S))
+            self._note(
+                "RATE-TEACH %+.4f chips/s (rate %+.4f -> %+.4f): innov %+.3f, "
+                "K1 %+.5f, H rows %s, P01 %+.3f P11 %+.5f S %.4f"
+                % (
+                    _dr,
+                    float(self.x[1]),
+                    float(self.x[1]) + _dr,
+                    y,
+                    float(K[1]),
+                    _hn[:6],
+                    float(self.P[0, 1]),
+                    float(self.P[1, 1]),
+                    S,
+                )
+            )
         self.x = self.x + K * y
         # Joseph form: this filter runs for days at 2 s cadence with sats entering and
         # leaving, and the simple (I-KH)P loses symmetry/positivity over that many updates.
@@ -950,10 +1030,12 @@ class JointReceiverState:
             # condition can be held false forever by an unrelated fault is not a gate.
             # So bootstrap is ALSO bounded by evidence: once the state has accepted
             # birth_gate_after updates it is past bootstrap by definition, whatever P00 says.
-            if (self.birth_max is not None and len(self._idx) >= 2
-                    and (self.P[0, 0] < 100.0
-                         or self.n_updates >= self.birth_gate_after)
-                    and abs(self.wrap(y_chips - self.x[0] - _tau_val)) > self.birth_max):
+            if (
+                self.birth_max is not None
+                and len(self._idx) >= 2
+                and (self.P[0, 0] < 100.0 or self.n_updates >= self.birth_gate_after)
+                and abs(self.wrap(y_chips - self.x[0] - _tau_val)) > self.birth_max
+            ):
                 self._reject("birth")
                 return None
             self._add(key, 0.0, t_now)
@@ -984,8 +1066,9 @@ class JointReceiverState:
             PH_ = self.P @ H
             S_ = float(H @ PH_ + sigma_chips ** 2)
             z_ = abs(innov) / math.sqrt(S_) if S_ > 0 else 0.0
-            _bad = z_ > self.innov_nsigma or (self.innov_max is not None
-                                              and abs(innov) > self.innov_max)
+            _bad = z_ > self.innov_nsigma or (
+                self.innov_max is not None and abs(innov) > self.innov_max
+            )
             if _bad:
                 # ESCAPE HATCH. A gate with no way out is a deadlock: a genuine step (a
                 # clock event, a re-anchor) is rejected, so the state never follows it, so
@@ -1026,9 +1109,9 @@ class JointReceiverState:
                 # a static truth agree no matter what the filter did in between.
                 hist = self._rej_hist.setdefault(key, [])
                 hist.append(y_chips)
-                self._rej_band[key] = band   # so _corroborators can remove its tau
+                self._rej_band[key] = band  # so _corroborators can remove its tau
                 if len(hist) > self.reject_escape:
-                    del hist[:-self.reject_escape]
+                    del hist[: -self.reject_escape]
                 self._rej_run[key] = self._rej_run.get(key, 0) + 1
                 spread = None
                 if len(hist) >= self.reject_escape:
@@ -1041,11 +1124,17 @@ class JointReceiverState:
                         # The run is long but INCOHERENT: this satellite is feeding noise,
                         # which is a tracking failure and not a state failure. Say so --
                         # silence here is what let the 2026-08-10 event pass unremarked.
-                        self._note("REJECT-RUN %s: %d consecutive, spread %.1f chips "
-                                   "(> escape_spread %.1f) -- incoherent, NOT believed; "
-                                   "this sat is feeding noise"
-                                   % (self._key_str(key), self._rej_run[key], spread,
-                                      self.escape_spread))
+                        self._note(
+                            "REJECT-RUN %s: %d consecutive, spread %.1f chips "
+                            "(> escape_spread %.1f) -- incoherent, NOT believed; "
+                            "this sat is feeding noise"
+                            % (
+                                self._key_str(key),
+                                self._rej_run[key],
+                                spread,
+                                self.escape_spread,
+                            )
+                        )
                     return None
                 # HOW BIG A STEP IS THE RUN ASKING US TO BELIEVE? The consistency test above
                 # only asks whether the rejected measurements agree with EACH OTHER. They
@@ -1072,24 +1161,42 @@ class JointReceiverState:
                     if _corr + 1 < self.escape_min_sats:
                         self._reject("escape-refused")
                         self.diverged = True
-                        self._note("ESCAPE REFUSED %s: %d rejections agreeing to %.2f chips "
-                                   "but implying a %+.1f chip step (bound %.0f on a %.0f-chip "
-                                   "code) and only %d/%d satellites agree -- one satellite's "
-                                   "self-consistency is not evidence about the CLOCK. The "
-                                   "STATE may still be wrong; corroboration, or a warm start, "
-                                   "is the way out -- not a jump on one sat's word"
-                                   % (self._key_str(key), self._rej_run[key], spread, innov,
-                                      self.escape_max_step, self.L, _corr + 1,
-                                      self.escape_min_sats))
+                        self._note(
+                            "ESCAPE REFUSED %s: %d rejections agreeing to %.2f chips "
+                            "but implying a %+.1f chip step (bound %.0f on a %.0f-chip "
+                            "code) and only %d/%d satellites agree -- one satellite's "
+                            "self-consistency is not evidence about the CLOCK. The "
+                            "STATE may still be wrong; corroboration, or a warm start, "
+                            "is the way out -- not a jump on one sat's word"
+                            % (
+                                self._key_str(key),
+                                self._rej_run[key],
+                                spread,
+                                innov,
+                                self.escape_max_step,
+                                self.L,
+                                _corr + 1,
+                                self.escape_min_sats,
+                            )
+                        )
                         return None
-                    self._note("ESCAPE CORROBORATED %s: %+.1f chip step exceeds the %.0f "
-                               "bound, but %d satellites independently agree to within %.1f "
-                               "chips -- that is a clock event, not one sat's noise"
-                               % (self._key_str(key), innov, self.escape_max_step,
-                                  _corr + 1, self.escape_spread))
-                self._note("ESCAPE %s: %d consecutive rejections agreeing to %.2f chips "
-                           "-- believing a %+.1f chip step and inflating P"
-                           % (self._key_str(key), self._rej_run[key], spread, innov))
+                    self._note(
+                        "ESCAPE CORROBORATED %s: %+.1f chip step exceeds the %.0f "
+                        "bound, but %d satellites independently agree to within %.1f "
+                        "chips -- that is a clock event, not one sat's noise"
+                        % (
+                            self._key_str(key),
+                            innov,
+                            self.escape_max_step,
+                            _corr + 1,
+                            self.escape_spread,
+                        )
+                    )
+                self._note(
+                    "ESCAPE %s: %d consecutive rejections agreeing to %.2f chips "
+                    "-- believing a %+.1f chip step and inflating P"
+                    % (self._key_str(key), self._rej_run[key], spread, innov)
+                )
                 self.escapes += 1
                 self.P[0, 0] += 25.0
                 self.P[i, i] += 25.0
@@ -1101,7 +1208,7 @@ class JointReceiverState:
         self._t_seen[key] = t_now
         self._n[key] = self._n.get(key, 0) + 1
         self.n_updates += 1
-        self.rej_since_upd = 0      # it is listening again
+        self.rej_since_upd = 0  # it is listening again
         self.deaf = False
         return z
 
@@ -1209,15 +1316,21 @@ class JointReceiverState:
             return
         b = [float(self.x[i]) for i in idx]
         med = float(np.median(b))
-        use = [i for i in idx
-               if self.gauge_max_b is None or abs(float(self.x[i]) - med) <= self.gauge_max_b]
+        use = [
+            i
+            for i in idx
+            if self.gauge_max_b is None
+            or abs(float(self.x[i]) - med) <= self.gauge_max_b
+        ]
         if len(use) < 2:
             # Cannot happen with the median centre (the median's own neighbours are always
             # within range), but if it ever does, that is an alarm and not a reason to skip:
             # pin on everything rather than leave the common mode floating.
             self.gauge_fallbacks += 1
-            self._note("GAUGE: only %d inlier(s) of %d about median %+.2f -- pinning on ALL"
-                       % (len(use), len(idx), med))
+            self._note(
+                "GAUGE: only %d inlier(s) of %d about median %+.2f -- pinning on ALL"
+                % (len(use), len(idx), med)
+            )
             use = idx
         H = np.zeros(self.x.size)
         # The median element(s) of b over the inlier set: one row for an odd count, the two
@@ -1251,9 +1364,10 @@ class JointReceiverState:
             if k2 == key or len(h2) < self.reject_escape:
                 continue
             if max(abs(self.wrap(v - h2[0])) for v in h2) > self.escape_spread:
-                continue          # that sat is feeding noise; it gets no vote
-            innov2 = self.wrap(h2[-1] - self.predicted(k2)
-                               - self.tau(self._rej_band.get(k2)))
+                continue  # that sat is feeding noise; it gets no vote
+            innov2 = self.wrap(
+                h2[-1] - self.predicted(k2) - self.tau(self._rej_band.get(k2))
+            )
             if abs(self.wrap(innov2 - innov)) <= self.escape_spread:
                 n += 1
         return n
@@ -1289,12 +1403,13 @@ class JointReceiverState:
             self.P[1, 1] += _was ** 2
             self.P[0, 1] = self.P[1, 0] = 0.0
             self.diverged = True
-            self._note("RATE CLAMPED %+.3f -> %+.1f chips/s (bound %.1f = 0.1 ppm, "
-                       "2500x the GPSDO truth): a common-mode step is an OFFSET, never a "
-                       "frequency -- the state was diverging" % (_was, float(self.x[1]),
-                                                                 self.rate_max))
-        self._drop([k for k, t in self._t_seen.items()
-                    if (t_now - t) > self.max_age_s])
+            self._note(
+                "RATE CLAMPED %+.3f -> %+.1f chips/s (bound %.1f = 0.1 ppm, "
+                "2500x the GPSDO truth): a common-mode step is an OFFSET, never a "
+                "frequency -- the state was diverging"
+                % (_was, float(self.x[1]), self.rate_max)
+            )
+        self._drop([k for k, t in self._t_seen.items() if (t_now - t) > self.max_age_s])
         return n_ok
 
     # -- readout -----------------------------------------------------------------
@@ -1341,8 +1456,10 @@ class JointReceiverState:
         # under an absolute ceiling so a wild value cannot ride a wide P through it.
         if var > 0.0 and abs(innov) > self.innov_nsigma * var ** 0.5:
             self.fcar_rejected += 1
-            self._note("f_carrier REJECT: innov %+.3f Hz vs %.1f-sigma bar %.3f"
-                       % (innov, self.innov_nsigma, self.innov_nsigma * var ** 0.5))
+            self._note(
+                "f_carrier REJECT: innov %+.3f Hz vs %.1f-sigma bar %.3f"
+                % (innov, self.innov_nsigma, self.innov_nsigma * var ** 0.5)
+            )
             return None
         self._scalar_update(H, innov, float(sigma_hz) ** 2)
         self.n_fcar += 1
@@ -1459,13 +1576,21 @@ class JointReceiverState:
                     self.P[:, _id] = 0.0
                     self.P[_id, _id] = self.sigma_rrd0 ** 2
                 self._rr_reject_run[key] = 0
-                self._note("rrate ESCAPE %s: %d consistent rejections -- re-opening the "
-                           "row WITHOUT adopting (x held)" % (self._key_str(key),
-                                                              self.rr_escape_runs))
+                self._note(
+                    "rrate ESCAPE %s: %d consistent rejections -- re-opening the "
+                    "row WITHOUT adopting (x held)"
+                    % (self._key_str(key), self.rr_escape_runs)
+                )
             else:
-                self._note("rrate REJECT %s: innov %+.3f Hz vs %.1f-sigma bar %.3f"
-                           % (self._key_str(key), innov, self.innov_nsigma,
-                              self.innov_nsigma * var ** 0.5))
+                self._note(
+                    "rrate REJECT %s: innov %+.3f Hz vs %.1f-sigma bar %.3f"
+                    % (
+                        self._key_str(key),
+                        innov,
+                        self.innov_nsigma,
+                        self.innov_nsigma * var ** 0.5,
+                    )
+                )
             return None
         self._rr_reject_run[key] = 0
         self._scalar_update(H, innov, float(sigma_hz) ** 2)
@@ -1489,7 +1614,11 @@ class JointReceiverState:
             return
         v = [float(self.x[i]) for i in idx]
         med = float(np.median(v))
-        use = [i for i in idx if abs(float(self.x[i]) - med) <= max(10.0 * self.sigma_rr0, 1.0)]
+        use = [
+            i
+            for i in idx
+            if abs(float(self.x[i]) - med) <= max(10.0 * self.sigma_rr0, 1.0)
+        ]
         if len(use) < 2:
             use = idx
         H = np.zeros(self.x.size)
@@ -1593,8 +1722,11 @@ class JointReceiverState:
         while every individual chain looked healthy."""
         if band == self.ref_band or self.ref_band is None:
             return len(self._dual)
-        return sum(1 for bands in self._dual.values()
-                   if band in bands and self.ref_band in bands)
+        return sum(
+            1
+            for bands in self._dual.values()
+            if band in bands and self.ref_band in bands
+        )
 
     @property
     def clk(self):
@@ -1647,9 +1779,23 @@ class JointReceiverState:
             if len(parts) >= max_sats:
                 break
             stale = (t_now - self._t_seen.get(key, 0.0)) > self.max_age_s
-            parts.append("%s:%+.2f%s" % (key if isinstance(key, str) else
-                                         "%s%d" % (str(key[0])[:1], key[1]),
-                                         self.x[i], "*" if stale else ""))
-        return ("clk %+.3f+-%.3f chips  rate %+.4f chips/s  n=%d sat(s) upd=%d rej=%d | %s"
-                % (self.clk, self.sigma(), self.clk_rate, len(self._idx),
-                   self.n_updates, self.rejected, " ".join(parts) if parts else "-"))
+            parts.append(
+                "%s:%+.2f%s"
+                % (
+                    key if isinstance(key, str) else "%s%d" % (str(key[0])[:1], key[1]),
+                    self.x[i],
+                    "*" if stale else "",
+                )
+            )
+        return (
+            "clk %+.3f+-%.3f chips  rate %+.4f chips/s  n=%d sat(s) upd=%d rej=%d | %s"
+            % (
+                self.clk,
+                self.sigma(),
+                self.clk_rate,
+                len(self._idx),
+                self.n_updates,
+                self.rejected,
+                " ".join(parts) if parts else "-",
+            )
+        )

@@ -41,14 +41,21 @@ import os
 import sys
 
 C = 299792458.0
-K = 40.308e16            # m^3/s^2/TECU
-GRID_HOPS = 96 * 2048    # fleetadr.GRID_HOPS
+K = 40.308e16  # m^3/s^2/TECU
+GRID_HOPS = 96 * 2048  # fleetadr.GRID_HOPS
 GRID_SECONDS = 1.006632  # wall seconds per GRID_HOPS: the grid cadence
 
 # Carrier centres, Hz -- these MUST match the SignalDef the broker runs (obs_up.sh's table).
-FREQ = {"gps_l5": 1176.45e6, "gps_l2c": 1227.60e6,
-        "gal_e5a": 1176.45e6, "gal_e5b": 1207.14e6, "gal_e6": 1278.75e6,
-        "bds_b2a": 1176.45e6, "bds_b2b": 1207.14e6, "bds_b3i": 1268.52e6}
+FREQ = {
+    "gps_l5": 1176.45e6,
+    "gps_l2c": 1227.60e6,
+    "gal_e5a": 1176.45e6,
+    "gal_e5b": 1207.14e6,
+    "gal_e6": 1278.75e6,
+    "bds_b2a": 1176.45e6,
+    "bds_b2b": 1207.14e6,
+    "bds_b3i": 1268.52e6,
+}
 SYSOF = {"gps": "G", "gal": "E", "bds": "C"}
 # Default pairs: the widest frequency lever each constellation has, so the m/TECU factor is
 # large and the phase noise divides down. E5a x E6 = 0.0447 m/TECU, B2a x B3I 0.0407,
@@ -97,16 +104,20 @@ def load(path, since_s, cn0_min):
             # The hops were never missing from the broker, only from the poll.
             # setdefault: the same grid hop carries the same snapshot whichever row reported
             # it, so first-writer-wins is deterministic and costs nothing.
-            for e in (d.get("fadr_g_hist") or []):
+            for e in d.get("fadr_g_hist") or []:
                 h, a = e[0], e[1]
                 if h == gh or h in out[d["prn"]]:
                     continue
                 # The row's `t` is the poll instant; each earlier grid hop happened one grid
                 # cadence further back. az/el move ~0.01 deg over that span, far below
                 # anything the pairing or the mapping function resolves.
-                out[d["prn"]][h] = (a, arc,
-                                    d["t"] - (gh - h) / GRID_HOPS * GRID_SECONDS,
-                                    d.get("az"), d.get("el"))
+                out[d["prn"]][h] = (
+                    a,
+                    arc,
+                    d["t"] - (gh - h) / GRID_HOPS * GRID_SECONDS,
+                    d.get("az"),
+                    d.get("el"),
+                )
                 kept += 1
     return out, n, kept
 
@@ -121,9 +132,15 @@ def joint_arcs(A, B, prn, max_gap_hops):
             # Name the boundary: the census of WHY arcs end is the diagnostic the plot cannot
             # give (an arc restart in a band, or a hole in the common grid -- which is a
             # dropout or the C/N0 gate, not the ADR).
-            r = ("arc_a" if A[prn][h][1] != A[prn][p][1] else
-                 "arc_b" if B[prn][h][1] != B[prn][p][1] else
-                 "gap" if h - p > max_gap_hops else None)
+            r = (
+                "arc_a"
+                if A[prn][h][1] != A[prn][p][1]
+                else "arc_b"
+                if B[prn][h][1] != B[prn][p][1]
+                else "gap"
+                if h - p > max_gap_hops
+                else None
+            )
             if r is not None:
                 segs.append(cur)
                 cur = []
@@ -137,32 +154,56 @@ def joint_arcs(A, B, prn, max_gap_hops):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--obs-dir", default="/home/kvand/gnss/fixtures/obs")
-    ap.add_argument("--day", default=None,
-                    help="YYYYMMDD, or a comma list of consecutive days (default: today UTC). A run "
-                         "spans the midnight file roll; listing both days joins it at the grid hop, "
-                         "which is continuous across the roll.")
-    ap.add_argument("--pair", action="append", default=[],
-                    help="A_BAND:B_BAND, repeatable (default: %s)" % ", ".join(DEFAULT_PAIRS))
+    ap.add_argument(
+        "--day",
+        default=None,
+        help="YYYYMMDD, or a comma list of consecutive days (default: today UTC). A run "
+        "spans the midnight file roll; listing both days joins it at the grid hop, "
+        "which is continuous across the roll.",
+    )
+    ap.add_argument(
+        "--pair",
+        action="append",
+        default=[],
+        help="A_BAND:B_BAND, repeatable (default: %s)" % ", ".join(DEFAULT_PAIRS),
+    )
     ap.add_argument("--since-h", type=float, default=6.0)
-    ap.add_argument("--cn0-min", type=float, default=25.0,
-                    help="coherent C/N0 gate, BOTH bands; a dead PRN's ADR is a noise walk "
-                         "that reads as tens of TECU")
+    ap.add_argument(
+        "--cn0-min",
+        type=float,
+        default=25.0,
+        help="coherent C/N0 gate, BOTH bands; a dead PRN's ADR is a noise walk "
+        "that reads as tens of TECU",
+    )
     ap.add_argument("--min-arc-s", type=float, default=300.0)
-    ap.add_argument("--max-gap-s", type=float, default=30.0,
-                    help="a hole longer than this ends a joint arc even if fadr_arc held")
-    ap.add_argument("--step-m", type=float, default=0.05,
-                    help="a 1-s change of the geometry-free combination beyond this is not sky "
-                         "(the 1-s noise is ~3 mm, the ionosphere moves ~1 mm/s at most): the arc "
-                         "is split there. 0 disables.")
-    ap.add_argument("--max-noise-tecu", type=float, default=0.5,
-                    help="drop an arc whose 1-s measurement noise exceeds this: a replica parked "
-                         "on noise still exports a fleet ADR, and it reads as tens of TECU of "
-                         "'ionosphere'. 0 disables.")
+    ap.add_argument(
+        "--max-gap-s",
+        type=float,
+        default=30.0,
+        help="a hole longer than this ends a joint arc even if fadr_arc held",
+    )
+    ap.add_argument(
+        "--step-m",
+        type=float,
+        default=0.05,
+        help="a 1-s change of the geometry-free combination beyond this is not sky "
+        "(the 1-s noise is ~3 mm, the ionosphere moves ~1 mm/s at most): the arc "
+        "is split there. 0 disables.",
+    )
+    ap.add_argument(
+        "--max-noise-tecu",
+        type=float,
+        default=0.5,
+        help="drop an arc whose 1-s measurement noise exceeds this: a replica parked "
+        "on noise still exports a fleet ADR, and it reads as tens of TECU of "
+        "'ionosphere'. 0 disables.",
+    )
     ap.add_argument("--out", default="/tmp/tec_chord")
     ap.add_argument("--no-plot", action="store_true")
     args = ap.parse_args()
 
     import time
+
     day = args.day or time.strftime("%Y%m%d", time.gmtime())
     since = time.time() - args.since_h * 3600.0
     pairs = [p.split(":") for p in (args.pair or DEFAULT_PAIRS)]
@@ -184,14 +225,16 @@ def main():
                 data[b][prn].update(hops)
             n += n1
             kept += k1
-        print("%-9s %8d rows read, %7d kept (C/N0 >= %.0f), %2d sats"
-              % (b, n, kept, args.cn0_min, len(data[b])))
+        print(
+            "%-9s %8d rows read, %7d kept (C/N0 >= %.0f), %2d sats"
+            % (b, n, kept, args.cn0_min, len(data[b]))
+        )
 
     rows, summary = [], []
     for a, b in pairs:
         fa, fb = FREQ[a], FREQ[b]
         la, lb = C / fa, C / fb
-        mpt = K * (1.0 / fa ** 2 - 1.0 / fb ** 2)      # metres of gf per TECU
+        mpt = K * (1.0 / fa ** 2 - 1.0 / fb ** 2)  # metres of gf per TECU
         sysid = SYSOF[a.split("_")[0]]
         A, B = data[a], data[b]
         nseg = 0
@@ -210,9 +253,13 @@ def main():
                     cur = [seg[0]]
                     cwhy.append(w)
                     for h0, h in zip(seg, seg[1:]):
-                        d = ((la * A[prn][h][0] - lb * B[prn][h][0])
-                             - (la * A[prn][h0][0] - lb * B[prn][h0][0]))
-                        if abs(d) > args.step_m and (A[prn][h][2] - A[prn][h0][2]) < 3.0 * GRID_SECONDS:
+                        d = (la * A[prn][h][0] - lb * B[prn][h][0]) - (
+                            la * A[prn][h0][0] - lb * B[prn][h0][0]
+                        )
+                        if (
+                            abs(d) > args.step_m
+                            and (A[prn][h][2] - A[prn][h0][2]) < 3.0 * GRID_SECONDS
+                        ):
                             cut.append(cur)
                             cur = []
                             cwhy.append("step")
@@ -235,7 +282,7 @@ def main():
                 # obliquity is POSITIVE (it is the vertical TEC): see --check-obliquity.
                 gf = [(la * A[prn][h][0] - lb * B[prn][h][0]) / mpt for h in seg]
                 m = sum(gf) / len(gf)
-                gf = [x - m for x in gf]               # RELATIVE: the arc constant is unknowable
+                gf = [x - m for x in gf]  # RELATIVE: the arc constant is unknowable
                 sd = math.sqrt(sum(x * x for x in gf) / len(gf))
                 # scatter about a 31-point local mean = the measurement noise, not the arc shape
                 res = []
@@ -244,29 +291,51 @@ def main():
                     res.append(gf[i] - sum(gf[lo:hi]) / (hi - lo))
                 noise = math.sqrt(sum(x * x for x in res) / len(res))
                 if args.max_noise_tecu > 0 and noise > args.max_noise_tecu:
-                    continue                           # a replica on noise, not a satellite
+                    continue  # a replica on noise, not a satellite
                 for h, x in zip(seg, gf):
                     _, _, t_, az_, el_ = A[prn][h]
-                    rows.append((t_, sysid, prn, nseg, x,
-                                 float("nan") if az_ is None else az_,
-                                 float("nan") if el_ is None else el_))
+                    rows.append(
+                        (
+                            t_,
+                            sysid,
+                            prn,
+                            nseg,
+                            x,
+                            float("nan") if az_ is None else az_,
+                            float("nan") if el_ is None else el_,
+                        )
+                    )
                 boundaries[w] += 1
-                summary.append({"pair": "%s x %s" % (a, b), "sys": sysid, "prn": prn,
-                                "arc": nseg, "span_s": round(span, 1), "n": len(seg),
-                                "starts_at": w,
-                                "m_per_TECU": round(mpt, 4),
-                                "range_TECU": round(max(gf) - min(gf), 3),
-                                "rms_TECU": round(sd, 3), "noise_TECU": round(noise, 4)})
+                summary.append(
+                    {
+                        "pair": "%s x %s" % (a, b),
+                        "sys": sysid,
+                        "prn": prn,
+                        "arc": nseg,
+                        "span_s": round(span, 1),
+                        "n": len(seg),
+                        "starts_at": w,
+                        "m_per_TECU": round(mpt, 4),
+                        "range_TECU": round(max(gf) - min(gf), 3),
+                        "rms_TECU": round(sd, 3),
+                        "noise_TECU": round(noise, 4),
+                    }
+                )
                 nseg += 1
-        print("%-9s x %-9s %.4f m/TECU  %3d joint arc(s) >= %.0f s"
-              % (a, b, mpt, nseg, args.min_arc_s))
-        print("          kept arcs begin at: %s | pieces too short (< %.0f s or 30 hops) begin at: %s"
-              % (dict(boundaries), args.min_arc_s, dict(short)))
+        print(
+            "%-9s x %-9s %.4f m/TECU  %3d joint arc(s) >= %.0f s"
+            % (a, b, mpt, nseg, args.min_arc_s)
+        )
+        print(
+            "          kept arcs begin at: %s | pieces too short (< %.0f s or 30 hops) begin at: %s"
+            % (dict(boundaries), args.min_arc_s, dict(short))
+        )
 
     if not rows:
         sys.exit("no joint arcs -- try --since-h larger or --cn0-min lower")
     json.dump(summary, open(args.out + "_arcs.json", "w"), indent=1)
     import numpy as np
+
     rows.sort(key=lambda r: r[0])
     np.savez_compressed(
         args.out + "_series.npz",
@@ -276,17 +345,29 @@ def main():
         arc=np.array([r[3] for r in rows], dtype=np.int32),
         tecu=np.array([r[4] for r in rows]),
         az=np.array([r[5] for r in rows]),
-        el=np.array([r[6] for r in rows]))
+        el=np.array([r[6] for r in rows]),
+    )
     noises = sorted(s["noise_TECU"] for s in summary)
-    print("\nwrote %s_series.npz  (%d epochs, %d arcs, %d sats)"
-          % (args.out, len(rows), len(summary), len({(s["sys"], s["prn"]) for s in summary})))
-    print("per-arc measurement noise (1 s): median %.3f TECU, best %.3f, worst %.3f"
-          % (noises[len(noises) // 2], noises[0], noises[-1]))
+    print(
+        "\nwrote %s_series.npz  (%d epochs, %d arcs, %d sats)"
+        % (
+            args.out,
+            len(rows),
+            len(summary),
+            len({(s["sys"], s["prn"]) for s in summary}),
+        )
+    )
+    print(
+        "per-arc measurement noise (1 s): median %.3f TECU, best %.3f, worst %.3f"
+        % (noises[len(noises) // 2], noises[0], noises[-1])
+    )
 
     if not args.no_plot:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         fig, ax = plt.subplots(figsize=(13, 6))
         t0 = rows[0][0]
         key = collections.defaultdict(list)
@@ -294,12 +375,13 @@ def main():
             key[(s_, p_, k_)].append(((t_ - t0) / 60.0, x_))
         for (s_, p_, _), v in sorted(key.items()):
             ax.plot([q[0] for q in v], [q[1] for q in v], ".", ms=1)
-        ax.set_xlabel("minutes since %s UTC"
-                      % time.strftime("%H:%M", time.gmtime(t0)))
+        ax.set_xlabel("minutes since %s UTC" % time.strftime("%H:%M", time.gmtime(t0)))
         ax.set_ylabel("relative slant TEC (TECU, arc mean removed)")
-        ax.set_title("CHORD geometry-free TEC -- fleet ADR paired at exact grid hops "
-                     "(%d arcs, %d sats)"
-                     % (len(summary), len({(s['sys'], s['prn']) for s in summary})))
+        ax.set_title(
+            "CHORD geometry-free TEC -- fleet ADR paired at exact grid hops "
+            "(%d arcs, %d sats)"
+            % (len(summary), len({(s["sys"], s["prn"]) for s in summary}))
+        )
         ax.grid(alpha=0.3)
         fig.tight_layout()
         fig.savefig(args.out + "_tec.png", dpi=110)

@@ -31,9 +31,13 @@ WGS84_E2 = 6.69437999014e-3
 def _llh_to_ecef(lat, lon, alt):
     la, lo = math.radians(lat), math.radians(lon)
     n = WGS84_A / math.sqrt(1.0 - WGS84_E2 * math.sin(la) ** 2)
-    return np.array([(n + alt) * math.cos(la) * math.cos(lo),
-                     (n + alt) * math.cos(la) * math.sin(lo),
-                     (n * (1.0 - WGS84_E2) + alt) * math.sin(la)])
+    return np.array(
+        [
+            (n + alt) * math.cos(la) * math.cos(lo),
+            (n + alt) * math.cos(la) * math.sin(lo),
+            (n * (1.0 - WGS84_E2) + alt) * math.sin(la),
+        ]
+    )
 
 
 def _ecef_to_llh(p):
@@ -55,9 +59,7 @@ def _enu_axes(lat, lon):
     position correction into ECEF and to project the LOS unit vector into ENU."""
     la, lo = math.radians(lat), math.radians(lon)
     sl, cl, so, co = math.sin(la), math.cos(la), math.sin(lo), math.cos(lo)
-    return np.array([[-so, co, 0.0],
-                     [-sl * co, -sl * so, cl],
-                     [cl * co, cl * so, sl]])
+    return np.array([[-so, co, 0.0], [-sl * co, -sl * so, cl], [cl * co, cl * so, sl]])
 
 
 def _los_enu(az_deg, el_deg):
@@ -122,16 +124,26 @@ def _solve(rows, n_groups, group_of, reject_floor=60.0, reject_k=5.0):
     # never report an error smaller than the weights alone imply: a lucky low chi^2 on few
     # degrees of freedom is not a tighter measurement
     cov = max(1.0, sigma0) ** 2 * Ninv
-    return (x[0:3], x[3:], sigma0, np.sqrt(np.clip(np.diag(cov), 0.0, None)), Ninv_unit,
-            len(kept), n_rej, math.sqrt(float(post @ post) / dof))
+    return (
+        x[0:3],
+        x[3:],
+        sigma0,
+        np.sqrt(np.clip(np.diag(cov), 0.0, None)),
+        Ninv_unit,
+        len(kept),
+        n_rej,
+        math.sqrt(float(post @ post) / dof),
+    )
 
 
 def _dops(Ninv3):
     """PDOP/HDOP/VDOP from the position block of (H^T H)^-1 (unit-weighted geometry)."""
     d = np.clip(np.diag(Ninv3), 0.0, None)
-    return dict(pdop=float(math.sqrt(d[0] + d[1] + d[2])),
-                hdop=float(math.sqrt(d[0] + d[1])),
-                vdop=float(math.sqrt(d[2])))
+    return dict(
+        pdop=float(math.sqrt(d[0] + d[1] + d[2])),
+        hdop=float(math.sqrt(d[0] + d[1])),
+        vdop=float(math.sqrt(d[2])),
+    )
 
 
 def hatch_smooth(rows, window_s, wrap_m=None):
@@ -151,8 +163,14 @@ def hatch_smooth(rows, window_s, wrap_m=None):
     Falls back to a plain boxcar of the code when no carrier is available, and to the single
     newest row when the window holds nothing else.
     """
-    rows = sorted((r for r in rows if r.get("code_resid_m") is not None and r.get("t") is not None),
-                  key=lambda r: r["t"])
+    rows = sorted(
+        (
+            r
+            for r in rows
+            if r.get("code_resid_m") is not None and r.get("t") is not None
+        ),
+        key=lambda r: r["t"],
+    )
     if not rows:
         return None
     new = rows[-1]
@@ -185,8 +203,9 @@ def hatch_smooth(rows, window_s, wrap_m=None):
     # row) makes it catastrophically worse, and the obs logs have carried exactly that. So
     # both estimates are formed and the quieter one is reported. When the carrier is healthy
     # this picks Hatch by orders of magnitude; when it is not, nothing is lost.
-    carr_ok = (new.get("carr_resid_m") is not None
-               and all(r.get("carr_resid_m") is not None for r in sel))
+    carr_ok = new.get("carr_resid_m") is not None and all(
+        r.get("carr_resid_m") is not None for r in sel
+    )
     if carr_ok:
         d = [ci - float(r["carr_resid_m"]) for ci, r in zip(c, sel)]
         m_h, sd_h = _msd(d)
@@ -195,8 +214,15 @@ def hatch_smooth(rows, window_s, wrap_m=None):
     return m_box, len(c), sd_box, "boxcar"
 
 
-def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0, sigma_floor_m=0.5,
-          sigma_default_m=5.0):
+def solve(
+    measurements,
+    lat0,
+    lon0,
+    alt0,
+    min_el_deg=10.0,
+    sigma_floor_m=0.5,
+    sigma_default_m=5.0,
+):
     """PVT self-survey. `measurements`: iterable of dicts {group, az, el, resid_m} where `group`
     is a (constellation, band) label, optionally with `sd_m` and `n` (the smoother's scatter and
     support): each row is weighted 1/sigma^2 with sigma = max(sigma_floor_m, sd_m/sqrt(n)), or
@@ -213,7 +239,7 @@ def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0, sigma_floor_m=0.5,
     groups jointly with one clock per group -- the best-fit position + error. `combined_if` is the
     few-metre iono-free answer; `combined` the single-frequency (iono-limited) one for comparison."""
     apr = _llh_to_ecef(lat0, lon0, alt0)
-    R = _enu_axes(lat0, lon0)   # rows E,N,U in ECEF
+    R = _enu_axes(lat0, lon0)  # rows E,N,U in ECEF
     # bucket usable measurements by group
     by_group = {}
     for m in measurements:
@@ -222,8 +248,11 @@ def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0, sigma_floor_m=0.5,
         if az is None or el is None or res is None or g is None or el < min_el_deg:
             continue
         sd, n = m.get("sd_m"), m.get("n")
-        sig = (max(sigma_floor_m, float(sd) / math.sqrt(max(1, int(n or 1))))
-               if sd is not None else sigma_default_m)
+        sig = (
+            max(sigma_floor_m, float(sd) / math.sqrt(max(1, int(n or 1))))
+            if sd is not None
+            else sigma_default_m
+        )
         by_group.setdefault(g, []).append((_los_enu(az, el), float(res), sig))
     # GROSS pre-filter: the good satellites cluster within ~tens of metres of the group median
     # while bad ones (wrong sub-code-period ambiguity / mislock) sit km away. Cut those against
@@ -243,15 +272,26 @@ def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0, sigma_floor_m=0.5,
         return n_used > npar and pd < 30.0 and float(np.max(sig_diag[0:3])) < 1000.0
 
     def _pack(dx_enu, clock_m, sigma0, sig_diag, Ninv, n_used, n_rej, rms_m):
-        pos = apr + R.T @ dx_enu           # ENU correction -> ECEF
+        pos = apr + R.T @ dx_enu  # ENU correction -> ECEF
         lat, lon, alt = _ecef_to_llh(pos)
-        return dict(n_sats=n_used, n_rejected=n_rej,
-                    lat=lat, lon=lon, alt=alt, ecef=pos.tolist(),
-                    d_e=float(dx_enu[0]), d_n=float(dx_enu[1]), d_u=float(dx_enu[2]),
-                    clock_m=float(clock_m), resid_rms_m=float(rms_m), sigma0=float(sigma0),
-                    sigma_e=float(sig_diag[0]), sigma_n=float(sig_diag[1]),
-                    sigma_u=float(sig_diag[2]),
-                    **_dops(Ninv[0:3, 0:3]))
+        return dict(
+            n_sats=n_used,
+            n_rejected=n_rej,
+            lat=lat,
+            lon=lon,
+            alt=alt,
+            ecef=pos.tolist(),
+            d_e=float(dx_enu[0]),
+            d_n=float(dx_enu[1]),
+            d_u=float(dx_enu[2]),
+            clock_m=float(clock_m),
+            resid_rms_m=float(rms_m),
+            sigma0=float(sigma0),
+            sigma_e=float(sig_diag[0]),
+            sigma_n=float(sig_diag[1]),
+            sigma_u=float(sig_diag[2]),
+            **_dops(Ninv[0:3, 0:3])
+        )
 
     out = {"groups": {}, "combined": None}
     for g, obs in sorted(by_group.items()):
@@ -293,29 +333,51 @@ if __name__ == "__main__":
     # NOT absorbable by a constant per-group clock, so the single-frequency solve is biased (mostly
     # vertical); the iono-free combination must remove it and recover the a-priori position.
     import random
+
     random.seed(1)
     lat0, lon0, alt0 = 43.9687, -79.2521, 260.0
     fq = {"L1": 1575.42e6, "L5": 1176.45e6}
-    dx_true = np.array([4.0, -3.0, 6.0])           # ENU offset (m) we must recover
-    clk = {"L1": 12.0, "L5": -5.0}                 # independent per-band dongle clocks (m)
+    dx_true = np.array([4.0, -3.0, 6.0])  # ENU offset (m) we must recover
+    clk = {"L1": 12.0, "L5": -5.0}  # independent per-band dongle clocks (m)
     m_l1, m_if = [], []
     for _ in range(14):
         az, el = random.uniform(0, 360), random.uniform(15, 85)
         los = _los_enu(az, el)
-        iono_l1 = 3.0 / math.sin(math.radians(el))  # L1 slant iono delay (m), bigger at low el
+        iono_l1 = 3.0 / math.sin(
+            math.radians(el)
+        )  # L1 slant iono delay (m), bigger at low el
         base = -float(los @ dx_true)
         r1 = base + clk["L1"] + iono_l1 + random.gauss(0, 0.3)
-        r5 = base + clk["L5"] + iono_l1 * (fq["L1"] / fq["L5"]) ** 2 + random.gauss(0, 0.3)
+        r5 = (
+            base
+            + clk["L5"]
+            + iono_l1 * (fq["L1"] / fq["L5"]) ** 2
+            + random.gauss(0, 0.3)
+        )
         m_l1.append({"group": "G-L1", "az": az, "el": el, "resid_m": r1})
-        rif = (fq["L1"] ** 2 * r1 - fq["L5"] ** 2 * r5) / (fq["L1"] ** 2 - fq["L5"] ** 2)
+        rif = (fq["L1"] ** 2 * r1 - fq["L5"] ** 2 * r5) / (
+            fq["L1"] ** 2 - fq["L5"] ** 2
+        )
         m_if.append({"group": "G-IF", "az": az, "el": el, "resid_m": rif})
     r_l1 = solve(m_l1, lat0, lon0, alt0)["groups"]["G-L1"]
     r_if = solve(m_if, lat0, lon0, alt0)["groups"]["G-IF"]
-    e_l1 = math.sqrt(sum((r_l1[k] - dx_true[i]) ** 2 for i, k in enumerate(("d_e", "d_n", "d_u"))))
-    e_if = math.sqrt(sum((r_if[k] - dx_true[i]) ** 2 for i, k in enumerate(("d_e", "d_n", "d_u"))))
-    print("single-freq L1 position error: %.2f m  (sigma_u %.2f, iono-biased)"
-          % (e_l1, r_l1["sigma_u"]))
-    print("iono-free    IF position error: %.2f m  (sigma_u %.2f)" % (e_if, r_if["sigma_u"]))
-    assert e_if < e_l1, "iono-free did not beat single-frequency (%.2f vs %.2f)" % (e_if, e_l1)
+    e_l1 = math.sqrt(
+        sum((r_l1[k] - dx_true[i]) ** 2 for i, k in enumerate(("d_e", "d_n", "d_u")))
+    )
+    e_if = math.sqrt(
+        sum((r_if[k] - dx_true[i]) ** 2 for i, k in enumerate(("d_e", "d_n", "d_u")))
+    )
+    print(
+        "single-freq L1 position error: %.2f m  (sigma_u %.2f, iono-biased)"
+        % (e_l1, r_l1["sigma_u"])
+    )
+    print(
+        "iono-free    IF position error: %.2f m  (sigma_u %.2f)"
+        % (e_if, r_if["sigma_u"])
+    )
+    assert e_if < e_l1, "iono-free did not beat single-frequency (%.2f vs %.2f)" % (
+        e_if,
+        e_l1,
+    )
     assert e_if < 2.0, "iono-free residual too large: %.2f m" % e_if
     print("PASS: dual-frequency iono-free removes the elevation-dependent iono bias")

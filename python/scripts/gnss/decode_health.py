@@ -22,9 +22,13 @@ SCHEMA = 1
 # Display order + the frequency band each decoded signal sits on, so the viewer groups them
 # without re-deriving it. Keyed by the `signal` string the broker observes under.
 SIGNAL_BAND = {
-    "GPS_L1_LNAV": ("G", "L1"), "GPS_L2C_CNAV": ("G", "L2"), "GPS_L5_CNAV": ("G", "L5"),
-    "GAL_E1B_INAV": ("E", "L1"), "GAL_E5AI_FNAV": ("E", "L5"),
-    "BDS_B1C_BCNAV1": ("C", "L1"), "BDS_B2A_BCNAV2": ("C", "L5"),
+    "GPS_L1_LNAV": ("G", "L1"),
+    "GPS_L2C_CNAV": ("G", "L2"),
+    "GPS_L5_CNAV": ("G", "L5"),
+    "GAL_E1B_INAV": ("E", "L1"),
+    "GAL_E5AI_FNAV": ("E", "L5"),
+    "BDS_B1C_BCNAV1": ("C", "L1"),
+    "BDS_B2A_BCNAV2": ("C", "L5"),
 }
 
 
@@ -35,8 +39,16 @@ class DecodeHealthWriter:
     silently publishes nothing is acceptable; one that raises into the broker is an outage.
     """
 
-    def __init__(self, path, chain, sys=None, log=None, flush_s=5.0, stale_sat_s=300.0,
-                 dead_decode_s=1800.0):
+    def __init__(
+        self,
+        path,
+        chain,
+        sys=None,
+        log=None,
+        flush_s=5.0,
+        stale_sat_s=300.0,
+        dead_decode_s=1800.0,
+    ):
         self.path = path
         self.chain = chain
         self.sys = sys
@@ -48,9 +60,11 @@ class DecodeHealthWriter:
         # PERSISTENT current state: observe() runs on the 60 s health cadence but flush() runs
         # every broker cycle (~0.2 s), so _sats must survive flushes -- else the file is empty
         # 99% of the time. A sat not re-observed for stale_sat_s is dropped (set / decoder gone).
-        self._sats = {}      # (signal, prn) -> field dict (current state)
-        self._seen_t = {}    # (signal, prn) -> wall-clock t of last observe (for aging out)
-        self._count = {}     # (signal, prn) -> last seen monotonic decode count
+        self._sats = {}  # (signal, prn) -> field dict (current state)
+        self._seen_t = (
+            {}
+        )  # (signal, prn) -> wall-clock t of last observe (for aging out)
+        self._count = {}  # (signal, prn) -> last seen monotonic decode count
         self._decode_t = {}  # (signal, prn) -> wall-clock t when count last INCREASED
         self._fails = 0
 
@@ -91,7 +105,9 @@ class DecodeHealthWriter:
             for key in list(self._seen_t):
                 seen = self._seen_t.get(key, 0.0)
                 dec = self._decode_t.get(key, seen)
-                if (t_now - seen > self.stale_sat_s) or (t_now - dec > self.dead_decode_s):
+                if (t_now - seen > self.stale_sat_s) or (
+                    t_now - dec > self.dead_decode_s
+                ):
                     for d in (self._sats, self._seen_t, self._count, self._decode_t):
                         d.pop(key, None)
             sats = []
@@ -102,8 +118,13 @@ class DecodeHealthWriter:
                 row["last_s"] = round(t_now - dt, 1) if dt is not None else None
                 row.update(f)
                 sats.append(row)
-            rec = {"schema": SCHEMA, "t": round(float(t_now), 3),
-                   "chain": self.chain, "sys": self.sys, "sats": sats}
+            rec = {
+                "schema": SCHEMA,
+                "t": round(float(t_now), 3),
+                "chain": self.chain,
+                "sys": self.sys,
+                "sats": sats,
+            }
             d = os.path.dirname(self.path)
             if d:
                 try:
@@ -149,6 +170,7 @@ def read_all(dirpath, max_age_s=120.0, t_now=None):
     shows the signal going dark, which is the honest thing on a decode outage.
     """
     import statistics
+
     out_sig, chains = {}, []
     try:
         names = sorted(os.listdir(dirpath))
@@ -161,20 +183,24 @@ def read_all(dirpath, max_age_s=120.0, t_now=None):
         if rec is None:
             continue
         if t_now is not None:
-            chains.append({"chain": rec.get("chain"),
-                           "t_age_s": round(t_now - float(rec.get("t", 0.0)), 1)})
+            chains.append(
+                {
+                    "chain": rec.get("chain"),
+                    "t_age_s": round(t_now - float(rec.get("t", 0.0)), 1),
+                }
+            )
         for s in rec.get("sats", []):
             sig = s.get("signal")
             if sig is None:
                 continue
-            g = out_sig.setdefault(sig, {"sys": s.get("sys"), "band": s.get("band"),
-                                         "sats": []})
+            g = out_sig.setdefault(
+                sig, {"sys": s.get("sys"), "band": s.get("band"), "sats": []}
+            )
             g["sats"].append(s)
     for sig, g in out_sig.items():
         rows = g["sats"]
         rows.sort(key=lambda r: r.get("prn") or 0)
-        dpos = [r["dpos_m"] for r in rows
-                if r.get("dpos_m") is not None]
+        dpos = [r["dpos_m"] for r in rows if r.get("dpos_m") is not None]
         last = [r["last_s"] for r in rows if r.get("last_s") is not None]
         g["n_sats"] = len(rows)
         g["n_sync"] = sum(1 for r in rows if r.get("synced"))

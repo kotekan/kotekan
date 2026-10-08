@@ -18,7 +18,11 @@ def load_beam_cube(path, chain=None):
         if chain and c["chain"] != chain:
             continue
         pix = z["pix_%d" % i]
-        d = {"freq_ids": [f[0] for f in c["freq_ids"]], "n_sub": c["n_sub"], "n_elem": c["n_elem"]}
+        d = {
+            "freq_ids": [f[0] for f in c["freq_ids"]],
+            "n_sub": c["n_sub"],
+            "n_elem": c["n_elem"],
+        }
         for q, dt in (("n", np.int64), ("s1", np.float64), ("s2", np.float64)):
             a = np.zeros((c["n_sub"], c["n_elem"], npix), dt)
             a[:, :, pix] = z["%s_%d" % (q, i)]
@@ -29,14 +33,30 @@ def load_beam_cube(path, chain=None):
 
 if __name__ == "__main__":
     import sys
+
     cube = load_beam_cube(sys.argv[1], chain="gps_l5")
     m, c = cube["meta"], cube["chains"]["gps_l5"]
-    print("day %s  nside %d  units %s  pointing %s" % (m["day"], m["nside"], m["units"], m["pointing"]))
-    print("gps_l5: n%s  freq_ids %d..%d" % (c["n"].shape, c["freq_ids"][0], c["freq_ids"][-1]))
+    print(
+        "day %s  nside %d  units %s  pointing %s"
+        % (m["day"], m["nside"], m["units"], m["pointing"])
+    )
+    print(
+        "gps_l5: n%s  freq_ids %d..%d"
+        % (c["n"].shape, c["freq_ids"][0], c["freq_ids"][-1])
+    )
     with np.errstate(all="ignore"):
-        mean = np.where(c["n"].sum((0, 1)) > 0,
-                        c["s1"].sum((0, 1)) / np.maximum(c["n"].sum((0, 1)), 1), np.nan)
+        mean = np.where(
+            c["n"].sum((0, 1)) > 0,
+            c["s1"].sum((0, 1)) / np.maximum(c["n"].sum((0, 1)), 1),
+            np.nan,
+        )
     good = np.isfinite(mean) & (mean > 0)
-    print("sky map: %d/%d pixels hit, peak %.1f dB, median %.1f dB"
-          % (good.sum(), mean.size, 10 * np.log10(mean[good].max()),
-             10 * np.log10(np.median(mean[good]))))
+    print(
+        "sky map: %d/%d pixels hit, peak %.1f dB, median %.1f dB"
+        % (
+            good.sum(),
+            mean.size,
+            10 * np.log10(mean[good].max()),
+            10 * np.log10(np.median(mean[good])),
+        )
+    )

@@ -33,16 +33,31 @@ BEAM_MAP = os.path.join(HERE, "gnss_beam_map.py")
 
 # band -> (kotekan output dir name, {constellation tag: obs file})
 BANDS = {
-    "L1": ("gpswipe", {"G": "obs_gps_l1.jsonl", "E": "obs_gal_e1.jsonl",
-                       "C": "obs_bds_b1c.jsonl", "L": "obs_gps_l1c.jsonl"}),
+    "L1": (
+        "gpswipe",
+        {
+            "G": "obs_gps_l1.jsonl",
+            "E": "obs_gal_e1.jsonl",
+            "C": "obs_bds_b1c.jsonl",
+            "L": "obs_gps_l1c.jsonl",
+        },
+    ),
     "L2C": ("gps_l2c_gpu", {"G": "obs_gps_l2c.jsonl"}),
-    "L5": ("gps_l5_gpu", {"G": "obs_gps_l5.jsonl", "E": "obs_gal_e5a.jsonl",
-                          "C": "obs_bds_b2a.jsonl"}),
+    "L5": (
+        "gps_l5_gpu",
+        {"G": "obs_gps_l5.jsonl", "E": "obs_gal_e5a.jsonl", "C": "obs_bds_b2a.jsonl"},
+    ),
 }
-SIGNAL = {("L1", "G"): "GPS L1 C/A", ("L1", "E"): "Galileo E1C",
-          ("L1", "C"): "BeiDou B1C", ("L1", "L"): "GPS L1C",
-          ("L2C", "G"): "GPS L2C", ("L5", "G"): "GPS L5",
-          ("L5", "E"): "Galileo E5a", ("L5", "C"): "BeiDou B2a"}
+SIGNAL = {
+    ("L1", "G"): "GPS L1 C/A",
+    ("L1", "E"): "Galileo E1C",
+    ("L1", "C"): "BeiDou B1C",
+    ("L1", "L"): "GPS L1C",
+    ("L2C", "G"): "GPS L2C",
+    ("L5", "G"): "GPS L5",
+    ("L5", "E"): "Galileo E5a",
+    ("L5", "C"): "BeiDou B2a",
+}
 
 
 def parse_time(s):
@@ -65,10 +80,14 @@ def obs_files(args, band, fname):
     consecutive archives are disjoint in t -- no dedup needed.)
     """
     subdir = BANDS[band][0]
-    cands = [(os.path.getmtime(p), p) for p in
-             glob.glob(os.path.join(args.archive, "run_*", subdir, fname))]
+    cands = [
+        (os.path.getmtime(p), p)
+        for p in glob.glob(os.path.join(args.archive, "run_*", subdir, fname))
+    ]
     cands.sort()
-    live = os.path.join(args.live_root, subdir, fname)  # /tmp/gpswipe, /tmp/gps_l5_gpu, ...
+    live = os.path.join(
+        args.live_root, subdir, fname
+    )  # /tmp/gpswipe, /tmp/gps_l5_gpu, ...
     if os.path.exists(live):
         cands.append((float("inf"), live))
     out, prev = [], float("-inf")
@@ -92,20 +111,63 @@ def build_one(args, band, tag):
     if not files:
         return f"{band}/{tag}: no obs logs in window"
     night = f"{args.label}_{band}"
-    lines = [run([sys.executable, BEAM_MAP, "transits", "--obs", *files,
-                  "--tag", tag, "--night", night, "--tmin", str(args.tmin),
-                  "--tmax", str(args.tmax), "--outdir", args.beamdir])]
+    lines = [
+        run(
+            [
+                sys.executable,
+                BEAM_MAP,
+                "transits",
+                "--obs",
+                *files,
+                "--tag",
+                tag,
+                "--night",
+                night,
+                "--tmin",
+                str(args.tmin),
+                "--tmax",
+                str(args.tmax),
+                "--outdir",
+                args.beamdir,
+            ]
+        )
+    ]
     tr = os.path.join(args.beamdir, "transits", night, f"{tag}_*.npz")
     if not glob.glob(tr):
         return "\n".join(lines + [f"{band}/{tag}: no transits -> no map"])
     for q in ("coh", "inc"):
         mp = os.path.join(args.beamdir, "maps", args.label, f"{band}_{tag}_{q}.npz")
         png = os.path.join(args.beamdir, "plots", args.label, f"{band}_{tag}_{q}.png")
-        lines.append(run([sys.executable, BEAM_MAP, "coadd", "--transits", tr,
-                          "--out", mp, "--quantity", q]))
-        lines.append(run([sys.executable, BEAM_MAP, "render", "--map", mp,
-                          "--png", png, "--title",
-                          f"{SIGNAL[(band, tag)]} -- {args.label} ({q})"]))
+        lines.append(
+            run(
+                [
+                    sys.executable,
+                    BEAM_MAP,
+                    "coadd",
+                    "--transits",
+                    tr,
+                    "--out",
+                    mp,
+                    "--quantity",
+                    q,
+                ]
+            )
+        )
+        lines.append(
+            run(
+                [
+                    sys.executable,
+                    BEAM_MAP,
+                    "render",
+                    "--map",
+                    mp,
+                    "--png",
+                    png,
+                    "--title",
+                    f"{SIGNAL[(band, tag)]} -- {args.label} ({q})",
+                ]
+            )
+        )
     return "\n".join(lines)
 
 
@@ -113,6 +175,7 @@ def merge(args):
     """Sum day accumulators into one label, then render everything on ONE colour
     scale per signal so the days are actually comparable to each other."""
     import numpy as np
+
     out = []
     for band in args.bands.split(","):
         tags = list(BANDS[band][1])
@@ -121,15 +184,20 @@ def merge(args):
             if len(tags) > 1:
                 groups.append(("ALL", tags))
             for gname, gtags in groups:
-                ins = [os.path.join(args.beamdir, "maps", lab, f"{band}_{t}_{q}.npz")
-                       for lab in args.merge.split(",") for t in gtags]
+                ins = [
+                    os.path.join(args.beamdir, "maps", lab, f"{band}_{t}_{q}.npz")
+                    for lab in args.merge.split(",")
+                    for t in gtags
+                ]
                 ins = [p for p in ins if os.path.exists(p)]
                 if not ins:
                     continue
-                mp = os.path.join(args.beamdir, "maps", args.label,
-                                  f"{band}_{gname}_{q}.npz")
-                r = run([sys.executable, BEAM_MAP, "combine",
-                         "--inputs", *ins, "--out", mp])
+                mp = os.path.join(
+                    args.beamdir, "maps", args.label, f"{band}_{gname}_{q}.npz"
+                )
+                r = run(
+                    [sys.executable, BEAM_MAP, "combine", "--inputs", *ins, "--out", mp]
+                )
                 out.append(r)
                 if r.startswith("FAILED"):
                     continue
@@ -141,30 +209,55 @@ def merge(args):
                 lo, hi = float(np.floor(lo)), float(np.ceil(hi))
                 sig = SIGNAL.get((band, gname), f"{band} all constellations")
                 for lab in [args.label] + args.merge.split(","):
-                    src = os.path.join(args.beamdir, "maps", lab,
-                                       f"{band}_{gname}_{q}.npz")
+                    src = os.path.join(
+                        args.beamdir, "maps", lab, f"{band}_{gname}_{q}.npz"
+                    )
                     if not os.path.exists(src):
                         continue
-                    png = os.path.join(args.beamdir, "plots", lab,
-                                       f"{band}_{gname}_{q}.png")
-                    out.append(run([sys.executable, BEAM_MAP, "render", "--map", src,
-                                    "--png", png, "--vmin", str(lo), "--vmax", str(hi),
-                                    "--title", f"{sig} -- {lab} ({q})"]))
+                    png = os.path.join(
+                        args.beamdir, "plots", lab, f"{band}_{gname}_{q}.png"
+                    )
+                    out.append(
+                        run(
+                            [
+                                sys.executable,
+                                BEAM_MAP,
+                                "render",
+                                "--map",
+                                src,
+                                "--png",
+                                png,
+                                "--vmin",
+                                str(lo),
+                                "--vmax",
+                                str(hi),
+                                "--title",
+                                f"{sig} -- {lab} ({q})",
+                            ]
+                        )
+                    )
     print("\n".join(x for x in out if x))
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--label", required=True, help="e.g. d2026-07-24")
-    ap.add_argument("--merge", help="comma-separated labels to sum into --label "
-                                    "(skips the build; also adds per-band ALL maps)")
+    ap.add_argument(
+        "--merge",
+        help="comma-separated labels to sum into --label "
+        "(skips the build; also adds per-band ALL maps)",
+    )
     ap.add_argument("--tmin")
     ap.add_argument("--tmax", help="'now' or 'YYYY-MM-DD HH:MM'")
     ap.add_argument("--bands", default="L1,L2C,L5")
     ap.add_argument("--archive", default="/home/lwlab/gnss_archive")
-    ap.add_argument("--live-root", default="/tmp",
-                    help="holds the LIVE run's dirs (gpswipe/, gps_l2c_gpu/, ...)")
+    ap.add_argument(
+        "--live-root",
+        default="/tmp",
+        help="holds the LIVE run's dirs (gpswipe/, gps_l2c_gpu/, ...)",
+    )
     ap.add_argument("--beamdir", default="data/beam")
     ap.add_argument("--jobs", type=int, default=4)
     args = ap.parse_args()
@@ -174,8 +267,10 @@ def main():
         ap.error("--tmin/--tmax required unless --merge")
     args.tmin, args.tmax = parse_time(args.tmin), parse_time(args.tmax)
     f = lambda u: datetime.datetime.fromtimestamp(u).strftime("%Y-%m-%d %H:%M")
-    print(f"{args.label}: {f(args.tmin)} -> {f(args.tmax)} "
-          f"({(args.tmax - args.tmin) / 3600.0:.1f} h)")
+    print(
+        f"{args.label}: {f(args.tmin)} -> {f(args.tmax)} "
+        f"({(args.tmax - args.tmin) / 3600.0:.1f} h)"
+    )
     jobs = [(b, t) for b in args.bands.split(",") for t in BANDS[b][1]]
     with cf.ThreadPoolExecutor(args.jobs) as ex:
         for out in ex.map(lambda bt: build_one(args, *bt), jobs):

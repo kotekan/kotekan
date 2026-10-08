@@ -43,14 +43,25 @@ import statistics
 import sys
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "python", "scripts", "gnss"))
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "..",
+        "python",
+        "scripts",
+        "gnss",
+    ),
+)
 
 from gnss_broker import telem  # noqa: E402
 
 
 def collect(host, port, chain, windows, timeout_s):
-    c = telem.TelemClient(host=host, port=port, depth=max(64, windows + 8), retry_s=1.0).start()
+    c = telem.TelemClient(
+        host=host, port=port, depth=max(64, windows + 8), retry_s=1.0
+    ).start()
     t0 = time.time()
     while time.time() - t0 < timeout_s:
         if len(c.windows(chain, lag=1)) >= windows:
@@ -71,7 +82,7 @@ def reduce_frames(client, chain, wins):
     for w in wins:
         fs = client.frame_set(chain, w)
         # per (slot, prn): the per-sender partial sums for this record
-        per = collections.defaultdict(dict)   # (r, prn) -> inst -> dict
+        per = collections.defaultdict(dict)  # (r, prn) -> inst -> dict
         for inst, f in fs.items():
             for r in range(f.n_rec):
                 if not f.has_record(r):
@@ -93,11 +104,21 @@ def reduce_frames(client, chain, wins):
                         wL += eL
                     if wP <= 0.0:
                         continue
-                    per[(r, prn)][inst] = dict(gE=gE, gP=gP, gL=gL, wE=wE, wP=wP, wL=wL,
-                                               rot=cmath.exp(1j * phi0), n_chan=len(cmb))
+                    per[(r, prn)][inst] = dict(
+                        gE=gE,
+                        gP=gP,
+                        gL=gL,
+                        wE=wE,
+                        wP=wP,
+                        wL=wL,
+                        rot=cmath.exp(1j * phi0),
+                        n_chan=len(cmb),
+                    )
         for (r, prn), insts in per.items():
-            d = out.setdefault(prn, {"A": [], "B": [], "B0": [], "n_inst": [], "n_chan": [],
-                                     "xcoh": []})
+            d = out.setdefault(
+                prn,
+                {"A": [], "B": [], "B0": [], "n_inst": [], "n_chan": [], "xcoh": []},
+            )
             # A: power per sender, summed
             eA = sum(_pow(v["gE"], v["wE"]) for v in insts.values())
             pA = sum(_pow(v["gP"], v["wP"]) for v in insts.values())
@@ -142,8 +163,9 @@ def summarise(rows):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=11061)
     ap.add_argument("--chain", default="gps_l5")
@@ -154,16 +176,37 @@ def main():
     probes = {int(x) for x in a.probes.split(",") if x.strip()}
 
     c = collect(a.host, a.port, a.chain, a.windows, a.timeout)
-    wins = c.windows(a.chain, lag=1)[-a.windows:]
+    wins = c.windows(a.chain, lag=1)[-a.windows :]
     if not wins:
-        sys.exit("no windows for chain %r -- is the gather up and is that chain sending?" % a.chain)
+        sys.exit(
+            "no windows for chain %r -- is the gather up and is that chain sending?"
+            % a.chain
+        )
     insts = sorted({i for w in wins for i in c.frame_set(a.chain, w)})
-    print("chain %s: %d windows [%d..%d], %d senders" % (a.chain, len(wins), wins[0], wins[-1],
-                                                          len(insts)))
+    print(
+        "chain %s: %d windows [%d..%d], %d senders"
+        % (a.chain, len(wins), wins[0], wins[-1], len(insts))
+    )
     res = reduce_frames(c, a.chain, wins)
-    print("%-5s %-4s %-5s %-4s | %-7s %-6s %-7s | %-7s %-6s %-7s | %-7s %-6s | %-6s %s"
-          % ("PRN", "nrec", "ninst", "nch", "A.disc", "A.q", "A.sd", "B.disc", "B.q", "B.sd",
-             "B0.disc", "B0.q", "XCOH", "P(B)/P(A)"))
+    print(
+        "%-5s %-4s %-5s %-4s | %-7s %-6s %-7s | %-7s %-6s %-7s | %-7s %-6s | %-6s %s"
+        % (
+            "PRN",
+            "nrec",
+            "ninst",
+            "nch",
+            "A.disc",
+            "A.q",
+            "A.sd",
+            "B.disc",
+            "B.q",
+            "B.sd",
+            "B0.disc",
+            "B0.q",
+            "XCOH",
+            "P(B)/P(A)",
+        )
+    )
     for prn in sorted(res):
         d = res[prn]
         A, B, B0 = summarise(d["A"]), summarise(d["B"]), summarise(d["B0"])
@@ -173,15 +216,37 @@ def main():
         nch = statistics.median(d["n_chan"])
         xc = statistics.median(d["xcoh"]) if d["xcoh"] else float("nan")
         tag = "  probe" if prn in probes else ""
-        print("%-5d %-4d %-5.0f %-4.0f | %+7.3f %6.2f %7.3f | %+7.3f %6.2f %7.3f | %+7.3f %6.2f | "
-              "%6.3f %.3g%s"
-              % (prn, len(d["A"]), ninst, nch, A["disc"], A["q"], A["sd"], B["disc"], B["q"],
-                 B["sd"], B0["disc"], B0["q"], xc,
-                 B["p"] / A["p"] * ninst if A["p"] > 0 else float("nan"), tag))
+        print(
+            "%-5d %-4d %-5.0f %-4.0f | %+7.3f %6.2f %7.3f | %+7.3f %6.2f %7.3f | %+7.3f %6.2f | "
+            "%6.3f %.3g%s"
+            % (
+                prn,
+                len(d["A"]),
+                ninst,
+                nch,
+                A["disc"],
+                A["q"],
+                A["sd"],
+                B["disc"],
+                B["q"],
+                B["sd"],
+                B0["disc"],
+                B0["q"],
+                xc,
+                B["p"] / A["p"] * ninst if A["p"] > 0 else float("nan"),
+                tag,
+            )
+        )
     print()
-    print("P(B)/P(A)*n_inst: 1.0 = the senders' prompts add coherently after phi0 (signal, one")
-    print("reference); 1/n_inst = they add as noise (a probe, or a bug in the reference).")
-    print("XCOH is the same question asked per record: ~1 coherent, ~0 no common phase.")
+    print(
+        "P(B)/P(A)*n_inst: 1.0 = the senders' prompts add coherently after phi0 (signal, one"
+    )
+    print(
+        "reference); 1/n_inst = they add as noise (a probe, or a bug in the reference)."
+    )
+    print(
+        "XCOH is the same question asked per record: ~1 coherent, ~0 no common phase."
+    )
 
 
 if __name__ == "__main__":

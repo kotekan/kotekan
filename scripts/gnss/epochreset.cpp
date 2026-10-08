@@ -75,9 +75,15 @@ std::vector<char> make_frame(const std::string& inst, uint64_t win, uint64_t seq
                 continue;
             for (int c = 0; c < N_CHAN; ++c) {
                 float* cc = row + telem_chan_offset(c);
-                cc[CHAN_RE] = 1.0f;         cc[CHAN_IM] = 0.0f; cc[CHAN_ENERGY] = 1.0f;
-                cc[CHAN_E_RE] = (float)(1.0 + off); cc[CHAN_E_IM] = 0.0f; cc[CHAN_E_ENERGY] = 1.0f;
-                cc[CHAN_L_RE] = (float)(1.0 - off); cc[CHAN_L_IM] = 0.0f; cc[CHAN_L_ENERGY] = 1.0f;
+                cc[CHAN_RE] = 1.0f;
+                cc[CHAN_IM] = 0.0f;
+                cc[CHAN_ENERGY] = 1.0f;
+                cc[CHAN_E_RE] = (float)(1.0 + off);
+                cc[CHAN_E_IM] = 0.0f;
+                cc[CHAN_E_ENERGY] = 1.0f;
+                cc[CHAN_L_RE] = (float)(1.0 - off);
+                cc[CHAN_L_IM] = 0.0f;
+                cc[CHAN_L_ENERGY] = 1.0f;
             }
         }
     }
@@ -154,7 +160,7 @@ int main() {
             push(d, w, w, 0.20);
         const uint64_t newest_before = d.chains().at("gal_e5a").newest;
         for (int i = 0; i < 30; ++i)
-            push(d, 5000, 9000 + i, 0.20);   // 40 windows back, repeatedly
+            push(d, 5000, 9000 + i, 0.20); // 40 windows back, repeatedly
         const auto& c = d.chains().at("gal_e5a");
         check(c.n_epoch_reset == 0, "a 40-window laggard does NOT re-anchor");
         check(c.newest == newest_before, "the high-water mark is unmoved by the laggard");
@@ -166,11 +172,11 @@ int main() {
         FleetDll d(4, 2, 8);
         for (uint64_t w = 5000; w < 5040; ++w)
             push(d, w, w, 0.20);
-        auto f = make_frame("cx19.0", 3, 9999, 0.20);   // single wild frame
+        auto f = make_frame("cx19.0", 3, 9999, 0.20); // single wild frame
         d.fold(f.data(), f.size());
         check(d.chains().at("gal_e5a").n_epoch_reset == 0,
               "a single far-back frame does NOT re-anchor");
-        for (uint64_t w = 5040; w < 5050; ++w)          // stream carries on normally
+        for (uint64_t w = 5040; w < 5050; ++w) // stream carries on normally
             push(d, w, w, 0.20);
         check(d.chains().at("gal_e5a").n_epoch_reset == 0,
               "and an in-order frame clears the strike run");

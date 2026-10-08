@@ -25,12 +25,30 @@ BROKER = os.path.join(os.path.dirname(HERE), "gps_distributed_broker.py")
 
 # Written by whichever stage computes them, once the cycle is under way -- never passed in.
 PER_CYCLE = {
-    "t0", "best", "status", "pred", "up", "probe_set", "utc0_sample0",
-    "xb_pred", "coast_polls", "have_sig", "la_samples", "fitted", "cl_report",
-    "dr_pd", "dr_pd0", "dr_pd2", "payload",
-    "jrc", "rr_cmd_new", "bit_known", "bit_src",
+    "t0",
+    "best",
+    "status",
+    "pred",
+    "up",
+    "probe_set",
+    "utc0_sample0",
+    "xb_pred",
+    "coast_polls",
+    "have_sig",
+    "la_samples",
+    "fitted",
+    "cl_report",
+    "dr_pd",
+    "dr_pd0",
+    "dr_pd2",
+    "payload",
+    "jrc",
+    "rr_cmd_new",
+    "bit_known",
+    "bit_src",
     # Re-stamped from the status poll every cycle, None whenever the axis is unknown.
-    "fe_hop_now", "fe_hop_t",
+    "fe_hop_now",
+    "fe_hop_t",
 }
 
 _fails = []
@@ -55,20 +73,29 @@ def test_chainview_covers_the_publisher():
     This is the check that would have caught it, and it is cheap.
     """
     from gnss_broker.publish import FleetPublisher, _ChainView
+
     print("\n_ChainView covers FleetPublisher's public surface")
-    pub = {n for n in dir(FleetPublisher)
-           if not n.startswith("_") and callable(getattr(FleetPublisher, n, None))}
+    pub = {
+        n
+        for n in dir(FleetPublisher)
+        if not n.startswith("_") and callable(getattr(FleetPublisher, n, None))
+    }
     view = {n for n in dir(_ChainView) if not n.startswith("_")}
     # `register` makes a view and is not itself a view operation.
     missing = sorted(pub - view - {"register", "start", "stop"})
-    check(not missing,
-          "no FleetPublisher method is missing from _ChainView (missing: %s)" % (missing or "none"))
+    check(
+        not missing,
+        "no FleetPublisher method is missing from _ChainView (missing: %s)"
+        % (missing or "none"),
+    )
 
 
 def main():
     print("ChainContext slot coverage\n")
     ctx = ast.parse(open(os.path.join(HERE, "context.py")).read())
-    cls = [n for n in ctx.body if isinstance(n, ast.ClassDef) and n.name == "ChainContext"][0]
+    cls = [
+        n for n in ctx.body if isinstance(n, ast.ClassDef) and n.name == "ChainContext"
+    ][0]
     slots, defaults = [], set()
     for n in ast.walk(cls):
         if isinstance(n, ast.Assign):
@@ -80,26 +107,45 @@ def main():
 
     broker = ast.parse(open(BROKER).read())
     main_fn = [n for n in broker.body if getattr(n, "name", "") == "main"][0]
-    calls = [n for n in ast.walk(main_fn)
-             if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "ChainContext"]
+    calls = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "ChainContext"
+    ]
     check(len(calls) == 1, "the broker constructs exactly one ChainContext")
     passed = {k.arg for k in calls[0].keywords} if calls else set()
 
-    unaccounted = [s for s in slots if s not in passed and s not in defaults and s not in PER_CYCLE]
-    check(not unaccounted, "every slot is passed, defaulted, or per-cycle"
-          + ("" if not unaccounted else " -- MISSING: " + ", ".join(unaccounted)))
+    unaccounted = [
+        s for s in slots if s not in passed and s not in defaults and s not in PER_CYCLE
+    ]
+    check(
+        not unaccounted,
+        "every slot is passed, defaulted, or per-cycle"
+        + ("" if not unaccounted else " -- MISSING: " + ", ".join(unaccounted)),
+    )
 
     stale = sorted(p for p in passed if p not in slots)
-    check(not stale, "no keyword is passed that has no slot"
-          + ("" if not stale else " -- EXTRA: " + ", ".join(stale)))
+    check(
+        not stale,
+        "no keyword is passed that has no slot"
+        + ("" if not stale else " -- EXTRA: " + ", ".join(stale)),
+    )
 
     # A mutable default on the class would be shared by every chain in the process.
     for n in ast.walk(cls):
-        if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "DEFAULTS" for t in n.targets):
-            bad = [k.value for k, v in zip(n.value.keys, n.value.values)
-                   if not isinstance(v, ast.Name)]
-            check(not bad, "DEFAULTS holds factories, not values (5 chains share one process)"
-                  + ("" if not bad else " -- LITERAL: " + ", ".join(map(str, bad))))
+        if isinstance(n, ast.Assign) and any(
+            getattr(t, "id", "") == "DEFAULTS" for t in n.targets
+        ):
+            bad = [
+                k.value
+                for k, v in zip(n.value.keys, n.value.values)
+                if not isinstance(v, ast.Name)
+            ]
+            check(
+                not bad,
+                "DEFAULTS holds factories, not values (5 chains share one process)"
+                + ("" if not bad else " -- LITERAL: " + ", ".join(map(str, bad))),
+            )
 
     test_chainview_covers_the_publisher()
 

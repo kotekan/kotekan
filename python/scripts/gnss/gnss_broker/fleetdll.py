@@ -45,50 +45,68 @@ def stage_fleet_dll(ctx):
         # is currently detecting. `True` (--dll-deep-gate all) stays absorbing.
         ctx.dllp.deep_gate_eff = ctx.deep_gate
         if ctx.args.dll_deep_gate_from_search > 0.0 and ctx.deep_gate is not True:
-            _fresh_dg = {p for p, _ts in ctx.dls.deep_gate_seen.items()
-                         if ctx.t0 - _ts <= ctx.args.dll_deep_gate_search_hold_s}
+            _fresh_dg = {
+                p
+                for p, _ts in ctx.dls.deep_gate_seen.items()
+                if ctx.t0 - _ts <= ctx.args.dll_deep_gate_search_hold_s
+            }
             if _fresh_dg:
                 ctx.dllp.deep_gate_eff = set(ctx.deep_gate or ()) | _fresh_dg
                 if _fresh_dg != ctx.dg_auto_last[0]:
-                    _log("DEEP GATE (auto, #79): search-admitted PRN %s at snr >= %.0f "
-                         "(hold %.0f s)%s"
-                         % (",".join(str(p) for p in sorted(_fresh_dg)),
+                    _log(
+                        "DEEP GATE (auto, #79): search-admitted PRN %s at snr >= %.0f "
+                        "(hold %.0f s)%s"
+                        % (
+                            ",".join(str(p) for p in sorted(_fresh_dg)),
                             ctx.args.dll_deep_gate_from_search,
                             ctx.args.dll_deep_gate_search_hold_s,
-                            "" if not ctx.deep_gate else
-                            " + hand-listed %s"
-                            % ",".join(str(p) for p in sorted(ctx.deep_gate))))
+                            ""
+                            if not ctx.deep_gate
+                            else " + hand-listed %s"
+                            % ",".join(str(p) for p in sorted(ctx.deep_gate)),
+                        )
+                    )
                     ctx.dg_auto_last[0] = set(_fresh_dg)
         ctx.dllp.inst_hops = {}
         # THE E3 ADMISSION (--presence-admit-displaced): thresholds bundled once so the
         # polled arm, the comb arm and its shadow all judge with the SAME numbers -- two
         # copies of an admission policy is how an A/B stops measuring the powers.
-        ctx.dllp.admit_disp = ({"pedestal_max": ctx.args.presence_disp_pedestal_max,
-                                "off_max_chips": ctx.args.presence_disp_off_max,
-                                # the OFFSET-BLIND evidence bar (see apply_presence): a
-                                # detector that re-searches code phase, so it does not
-                                # inherit the displacement it is being asked to judge
-                                "deep_margin": ctx.args.presence_disp_deep_margin}
-                               if ctx.args.presence_admit_displaced else None)
-        ctx.dllp.fleet = fleet_dll(ctx.dll_combiners, ctx.dll_hop_window, ctx.args.dll_min_instances,
-                          ctx.args.dll_quality_sigma, ctx.args.dll_quality_min,
-                          deep_gate_prns=ctx.dllp.deep_gate_eff,
-                          deep_gate_margin=ctx.args.dll_deep_gate_margin,
-                          # the noise ANCHOR for the presence floor (#49): without it
-                          # the bar is built from the tracked population and becomes a
-                          # peer competition. See the note in fleet_dll.
-                          probe_prns=ctx.probe_set,
-                          # #70: collect the per-instance newest hop from the poll we are
-                          # already making. No extra HTTP -- fleet_dll parses pow_hop for
-                          # the currency check and then aggregates the axis away.
-                          src_hops=ctx.dllp.inst_hops,
-                          admit_displaced=ctx.dllp.admit_disp,
-                          # judge each instance before its rows count: a pre-re-base row
-                          # (ahead of the anchor) or one that stopped advancing must not set
-                          # the fleet hop (fleet.live_instances)
-                          hop_hist=ctx.fleet_hop_hist,
-                          anchor_utc=ctx.utc0_sample0 or None,
-                          hops_per_sec=ctx.args.hops_per_sec)
+        ctx.dllp.admit_disp = (
+            {
+                "pedestal_max": ctx.args.presence_disp_pedestal_max,
+                "off_max_chips": ctx.args.presence_disp_off_max,
+                # the OFFSET-BLIND evidence bar (see apply_presence): a
+                # detector that re-searches code phase, so it does not
+                # inherit the displacement it is being asked to judge
+                "deep_margin": ctx.args.presence_disp_deep_margin,
+            }
+            if ctx.args.presence_admit_displaced
+            else None
+        )
+        ctx.dllp.fleet = fleet_dll(
+            ctx.dll_combiners,
+            ctx.dll_hop_window,
+            ctx.args.dll_min_instances,
+            ctx.args.dll_quality_sigma,
+            ctx.args.dll_quality_min,
+            deep_gate_prns=ctx.dllp.deep_gate_eff,
+            deep_gate_margin=ctx.args.dll_deep_gate_margin,
+            # the noise ANCHOR for the presence floor (#49): without it
+            # the bar is built from the tracked population and becomes a
+            # peer competition. See the note in fleet_dll.
+            probe_prns=ctx.probe_set,
+            # #70: collect the per-instance newest hop from the poll we are
+            # already making. No extra HTTP -- fleet_dll parses pow_hop for
+            # the currency check and then aggregates the axis away.
+            src_hops=ctx.dllp.inst_hops,
+            admit_displaced=ctx.dllp.admit_disp,
+            # judge each instance before its rows count: a pre-re-base row
+            # (ahead of the anchor) or one that stopped advancing must not set
+            # the fleet hop (fleet.live_instances)
+            hop_hist=ctx.fleet_hop_hist,
+            anchor_utc=ctx.utc0_sample0 or None,
+            hops_per_sec=ctx.args.hops_per_sec,
+        )
         # TASK #63: THE SAME DISCRIMINATOR, FORMED HERE FROM THE UN-SUMMED COMB. The powers
         # above were built by each tracker summing across its own channels -- "the one
         # combine the broker can never undo" -- and everything derived from them inherits
@@ -107,13 +125,16 @@ def stage_fleet_dll(ctx):
         # afternoon was spent removing. Say WHY, and say what to do about it.
         _fl0 = next(iter((ctx.dllp.fleet or {}).values()), None)
         if _fl0 is not None and _fl0.get("present_gate") == "UNANCHORED":
-            _log_rl("unanchored",
-                    "⚠️ PRESENCE UNANCHORED: only %d probe(s) reporting (need 3). NOBODY is "
-                    "admitted and nothing is trimmed -- deliberately, because the alternative "
-                    "is a floor built from the SATELLITES, which passes about half of them by "
-                    "construction. Fix the PROBE SUPPLY: check that the selected probe PRNs "
-                    "have slots on the nodes (--probe-require-slot), not this gate."
-                    % _fl0.get("n_probe_q", 0), every_s=60.0)
+            _log_rl(
+                "unanchored",
+                "⚠️ PRESENCE UNANCHORED: only %d probe(s) reporting (need 3). NOBODY is "
+                "admitted and nothing is trimmed -- deliberately, because the alternative "
+                "is a floor built from the SATELLITES, which passes about half of them by "
+                "construction. Fix the PROBE SUPPLY: check that the selected probe PRNs "
+                "have slots on the nodes (--probe-require-slot), not this gate."
+                % _fl0.get("n_probe_q", 0),
+                every_s=60.0,
+            )
         instruments.instr_tap_walk(ctx)
         # PROMPT HOLD for the NEXT cycle's lock gate (fold-independent, see
         # --lock-prompt-hold). Mutated in place, never rebound: the gate closes over it.
@@ -153,55 +174,82 @@ def stage_fleet_dll(ctx):
             if not _cs:
                 _msg = "chain %s: nothing yet" % ctx.telem_chain
             elif not _cs.get("live"):
-                _msg = ("chain %s: ALL %d instances stale (%s)"
-                        % (ctx.telem_chain, _cs["instances"], ",".join(_cs["stale"])))
+                _msg = "chain %s: ALL %d instances stale (%s)" % (
+                    ctx.telem_chain,
+                    _cs["instances"],
+                    ",".join(_cs["stale"]),
+                )
             else:
                 # SPREAD IS OVER LIVE INSTANCES ONLY; the stale ones are NAMED. A stopped
                 # instance keeps its last window forever, so folding it into the spread
                 # turns every instance death into a four-digit alarm about alignment --
                 # which is the one number here that must stay trustworthy.
-                _msg = ("chain %s: %d live, win %d..%d spread %d%s"
-                        % (ctx.telem_chain, _cs["live"], _cs["win_min"], _cs["win_max"],
-                           _cs["spread"],
-                           (" | STALE %s" % ",".join(_cs["stale"])) if _cs["stale"] else ""))
-            _log_rl("telem-stat",
-                    "TELEM %s frames %d gaps %d bad %d | %s"
-                    % ("up" if _st["connected"] else "DOWN", _st["frames"], _st["gaps"],
-                       _st["bad"], _msg),
-                    every_s=30.0)
+                _msg = "chain %s: %d live, win %d..%d spread %d%s" % (
+                    ctx.telem_chain,
+                    _cs["live"],
+                    _cs["win_min"],
+                    _cs["win_max"],
+                    _cs["spread"],
+                    (" | STALE %s" % ",".join(_cs["stale"])) if _cs["stale"] else "",
+                )
+            _log_rl(
+                "telem-stat",
+                "TELEM %s frames %d gaps %d bad %d | %s"
+                % (
+                    "up" if _st["connected"] else "DOWN",
+                    _st["frames"],
+                    _st["gaps"],
+                    _st["bad"],
+                    _msg,
+                ),
+                every_s=30.0,
+            )
         if ctx.args.telem_coherent and ctx.telem_client is not None:
             try:
                 _tsrc = ctx.telem_client.coherent_source(
-                    ctx.telem_chain, prns=set(ctx.seeds) or None, n_win=ctx.args.telem_windows, lag=1)
+                    ctx.telem_chain,
+                    prns=set(ctx.seeds) or None,
+                    n_win=ctx.args.telem_windows,
+                    lag=1,
+                )
                 if not _tsrc[0]:
                     _tsrc = None
-                    _log_rl("telem-empty",
-                            "telem: no windows for chain %r yet -- falling back to "
-                            "/get_records (gather stats: %s)"
-                            % (ctx.telem_chain, ctx.telem_client.stats()))
+                    _log_rl(
+                        "telem-empty",
+                        "telem: no windows for chain %r yet -- falling back to "
+                        "/get_records (gather stats: %s)"
+                        % (ctx.telem_chain, ctx.telem_client.stats()),
+                    )
             except Exception as e:
                 _tsrc = None
-                _log_rl("telem-src", "telem: source failed (%s); using /get_records" % e)
+                _log_rl(
+                    "telem-src", "telem: source failed (%s); using /get_records" % e
+                )
         if ctx.args.fleet_coherent:
             try:
-                ctx.dllp.fcoh = fleet_coherent(ctx.dll_combiners, ctx.args.coh_min_instances,
-                                      ctx.args.coh_min_records, prns=set(ctx.seeds) or None,
-                                      log=None, floor_margin=ctx.args.coh_floor_margin,
-                                      seed=int(_now()),
-                                      # lets it fit the record-stream carrier rate off
-                                      # the records it already fetched (#33 coarse feed).
-                                      # ⚠️ HOPS, NOT RECORDS. get_records' first tuple
-                                      # element is a HOP COUNT -- phaseslope.py divides
-                                      # it by 195312.5, not by the record rate. Passing
-                                      # hops_per_sec/2048 made the time axis 2048x too
-                                      # long, so every fitted rate came out 2048x too
-                                      # SMALL: +-0.005 Hz where the fold read +-10,
-                                      # ratio 1907-2140 across satellites.
-                                      hop_rate_hz=ctx.args.hops_per_sec,
-                                      # #59: when set, the poll is skipped entirely and
-                                      # this identical estimator runs on the gathered
-                                      # records instead.
-                                      source=_tsrc)
+                ctx.dllp.fcoh = fleet_coherent(
+                    ctx.dll_combiners,
+                    ctx.args.coh_min_instances,
+                    ctx.args.coh_min_records,
+                    prns=set(ctx.seeds) or None,
+                    log=None,
+                    floor_margin=ctx.args.coh_floor_margin,
+                    seed=int(_now()),
+                    # lets it fit the record-stream carrier rate off
+                    # the records it already fetched (#33 coarse feed).
+                    # ⚠️ HOPS, NOT RECORDS. get_records' first tuple
+                    # element is a HOP COUNT -- phaseslope.py divides
+                    # it by 195312.5, not by the record rate. Passing
+                    # hops_per_sec/2048 made the time axis 2048x too
+                    # long, so every fitted rate came out 2048x too
+                    # SMALL: +-0.005 Hz where the fold read +-10,
+                    # ratio 1907-2140 across satellites.
+                    hop_rate_hz=ctx.args.hops_per_sec,
+                    # #59: when set, the poll is skipped entirely and
+                    # this identical estimator runs on the gathered
+                    # records instead.
+                    source=_tsrc,
+                )
             except Exception as e:
                 _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
         # PATH B, same estimator, separate population. Reported side by side rather than
@@ -212,10 +260,15 @@ def stage_fleet_dll(ctx):
         ctx.dllp.fcoh_n2 = {}
         if ctx.args.fleet_coherent and ctx.n2_combiners:
             try:
-                ctx.dllp.fcoh_n2 = fleet_coherent(ctx.n2_combiners, ctx.args.coh_min_instances,
-                                         ctx.args.coh_min_records, prns=set(ctx.seeds) or None,
-                                         log=None, floor_margin=ctx.args.coh_floor_margin,
-                                         seed=int(_now()))
+                ctx.dllp.fcoh_n2 = fleet_coherent(
+                    ctx.n2_combiners,
+                    ctx.args.coh_min_instances,
+                    ctx.args.coh_min_records,
+                    prns=set(ctx.seeds) or None,
+                    log=None,
+                    floor_margin=ctx.args.coh_floor_margin,
+                    seed=int(_now()),
+                )
             except Exception as e:
                 _log_rl("fleet-coh-n2", "fleet coherent (path B): skipped (%s)" % e)
         instruments.instr_coherent_rows(ctx)
@@ -240,8 +293,9 @@ def stage_fleet_dll(ctx):
         # Throttle (--estimator-every-s): both telemetry-walk estimators run together,
         # at most this often; the last values keep being served in between. Defined
         # HERE because this is the FIRST of the two blocks in cycle order.
-        ctx.dllp.run_est = (ctx.telem_client is not None and ctx.probe_set
-                    and _now() >= ctx.est_next[0])
+        ctx.dllp.run_est = (
+            ctx.telem_client is not None and ctx.probe_set and _now() >= ctx.est_next[0]
+        )
         if ctx.dllp.run_est:
             ctx.est_next[0] = _now() + ctx.args.estimator_every_s
         # ⚠️ THE THROTTLE EXISTS FOR THE *WALK*, NOT FOR THE ESTIMATOR. Its whole
@@ -255,8 +309,12 @@ def stage_fleet_dll(ctx):
         #
         # KCOH still walks and stays throttled. They were gated together because they had
         # the same cost; they no longer do, so they no longer share a gate.
-        ctx.dllp.run_pcn0 = ctx.dllp.run_est or (ctx.args.comb_taps_cpp >= 2 and ctx.args.fleet_trim_url
-                                 and ctx.telem_client is not None and ctx.probe_set)
+        ctx.dllp.run_pcn0 = ctx.dllp.run_est or (
+            ctx.args.comb_taps_cpp >= 2
+            and ctx.args.fleet_trim_url
+            and ctx.telem_client is not None
+            and ctx.probe_set
+        )
         ctx.dllp.pcn0 = ctx.est_last["pcn0"]
         instruments.instr_prompt_cn0(ctx)
         # THE KNOWN-RATE COHERENT C/N0 (task #57 step 3): the ~1 s fold with the rate
@@ -339,10 +397,13 @@ def stage_fleet_dll(ctx):
             if not _win:
                 continue
             _av = sorted(abs(vv) for _, vv in _win)
-            ctx.dllp.innov_pub.setdefault(_p, {}).update({
-                "minnov_chips": _win[-1][1],
-                "minnov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
-                "minnov_n_10m": len(_win)})
+            ctx.dllp.innov_pub.setdefault(_p, {}).update(
+                {
+                    "minnov_chips": _win[-1][1],
+                    "minnov_p95_10m": _av[max(0, math.ceil(0.95 * len(_av)) - 1)],
+                    "minnov_n_10m": len(_win),
+                }
+            )
         # ── #83 P3-3b: THE FLIP DECISION (see --model-primacy-max) ──
         # One writer for mp_flipped, once per cycle, from the MEASURED p95s built
         # above. ENTER: p95 < gate with enough samples; the best-p95 eligible PRNs
@@ -352,23 +413,33 @@ def stage_fleet_dll(ctx):
         # whose firing cannot be seen is how gates fail here.
         instruments.instr_model_primacy(ctx)
         if ctx.dllp.innov_pub:
-            _log_rl("innov",
-                    "INNOV %s: %s"
-                    % (log_tag() or ctx.args.signal,
-                       " ".join("%d:%+.2f(p95 %.2f, n%d)"
-                                % (_p, v["innov_chips"], v["innov_p95_10m"],
-                                   v["innov_n_10m"])
-                                for _p, v in sorted(ctx.dllp.innov_pub.items())
-                                if "innov_chips" in v)),
-                    every_s=60.0)
-            _mv = ["%d:%+.2f(p95 %.2f, n%d)"
-                   % (_p, v["minnov_chips"], v["minnov_p95_10m"], v["minnov_n_10m"])
-                   for _p, v in sorted(ctx.dllp.innov_pub.items()) if "minnov_chips" in v]
+            _log_rl(
+                "innov",
+                "INNOV %s: %s"
+                % (
+                    log_tag() or ctx.args.signal,
+                    " ".join(
+                        "%d:%+.2f(p95 %.2f, n%d)"
+                        % (_p, v["innov_chips"], v["innov_p95_10m"], v["innov_n_10m"])
+                        for _p, v in sorted(ctx.dllp.innov_pub.items())
+                        if "innov_chips" in v
+                    ),
+                ),
+                every_s=60.0,
+            )
+            _mv = [
+                "%d:%+.2f(p95 %.2f, n%d)"
+                % (_p, v["minnov_chips"], v["minnov_p95_10m"], v["minnov_n_10m"])
+                for _p, v in sorted(ctx.dllp.innov_pub.items())
+                if "minnov_chips" in v
+            ]
             if _mv:
-                _log_rl("minnov",
-                        "MINNOV %s (model vs sky, flip-gate statistic): %s"
-                        % (log_tag() or ctx.args.signal, " ".join(_mv)),
-                        every_s=60.0)
+                _log_rl(
+                    "minnov",
+                    "MINNOV %s (model vs sky, flip-gate statistic): %s"
+                    % (log_tag() or ctx.args.signal, " ".join(_mv)),
+                    every_s=60.0,
+                )
         # The tracker's code residual, from this cycle's records against this cycle's model
         # and clock. Failure here must cost the loop nothing: it is a published
         # measurement, not an input to any actuator.
@@ -378,11 +449,18 @@ def stage_fleet_dll(ctx):
             ctx.dllp.trk = {}
             _log_rl("trkresid", "tracker residual failed (%s)" % _te, every_s=60.0)
         if ctx.dllp.trk:
-            _log_rl("trkres", "TRKRES %s (tracker code residual, chips, clock removed): %s"
-                    % (log_tag() or ctx.args.signal,
-                       " ".join("%d:%+.3f(n%d sd%.2f)" % (_p, _v["chips"], _v["n"], _v["sd"])
-                                for _p, _v in sorted(ctx.dllp.trk.items()))),
-                    every_s=60.0)
+            _log_rl(
+                "trkres",
+                "TRKRES %s (tracker code residual, chips, clock removed): %s"
+                % (
+                    log_tag() or ctx.args.signal,
+                    " ".join(
+                        "%d:%+.3f(n%d sd%.2f)" % (_p, _v["chips"], _v["n"], _v["sd"])
+                        for _p, _v in sorted(ctx.dllp.trk.items())
+                    ),
+                ),
+                every_s=60.0,
+            )
         # The fleet ADR: this cycle's records folded into each satellite's carrier arc, at
         # exact hops. A measurement, not an actuator input: failure costs the loop nothing.
         try:
@@ -391,23 +469,42 @@ def stage_fleet_dll(ctx):
             ctx.dllp.fadr = {}
             _log_rl("fleetadr", "fleet ADR failed (%s)" % _fe, every_s=60.0)
         if ctx.dllp.fadr:
-            _log_rl("fadr", "FADR %s (fleet ADR: arc/records/instances, Doppler-only cycles): %s"
-                    % (log_tag() or ctx.args.signal,
-                       " ".join("%d:a%d/n%d/i%d %+.1f" % (_p, _v["arc"], _v["n_rec"], _v["n_inst"],
-                                                      _v["dop_cycles"])
-                                for _p, _v in sorted(ctx.dllp.fadr.items()))),
-                    every_s=60.0)
+            _log_rl(
+                "fadr",
+                "FADR %s (fleet ADR: arc/records/instances, Doppler-only cycles): %s"
+                % (
+                    log_tag() or ctx.args.signal,
+                    " ".join(
+                        "%d:a%d/n%d/i%d %+.1f"
+                        % (_p, _v["arc"], _v["n_rec"], _v["n_inst"], _v["dop_cycles"])
+                        for _p, _v in sorted(ctx.dllp.fadr.items())
+                    ),
+                ),
+                every_s=60.0,
+            )
         if ctx.publisher is not None:
             # Published BEFORE the trim update so the row shows the state the loop acted
             # on, not the state after it acted -- otherwise a reader can never see the
             # input that produced a given correction.
-            ctx.publisher.update(ctx.dllp.fleet, ctx.seeds, ctx.dls.trim, len(ctx.dll_combiners), ctx.last_dets, ctx.dllp.fcoh,
-                             pcn0=ctx.dllp.pcn0, kcoh=ctx.dllp.kcoh, innov=ctx.dllp.innov_pub,
-                             cpp_trim={_p: (_r.get("trim_chips") or 0.0)
-                                       for _p, _r in ctx.dls.readback.items()},
-                             integ=(ctx.dr_state or {}).get("integ"),
-                             integ_now=getattr(ctx.dllp, "now_w", None),
-                             trk=ctx.dllp.trk, fadr=ctx.dllp.fadr)
+            ctx.publisher.update(
+                ctx.dllp.fleet,
+                ctx.seeds,
+                ctx.dls.trim,
+                len(ctx.dll_combiners),
+                ctx.last_dets,
+                ctx.dllp.fcoh,
+                pcn0=ctx.dllp.pcn0,
+                kcoh=ctx.dllp.kcoh,
+                innov=ctx.dllp.innov_pub,
+                cpp_trim={
+                    _p: (_r.get("trim_chips") or 0.0)
+                    for _p, _r in ctx.dls.readback.items()
+                },
+                integ=(ctx.dr_state or {}).get("integ"),
+                integ_now=getattr(ctx.dllp, "now_w", None),
+                trk=ctx.dllp.trk,
+                fadr=ctx.dllp.fadr,
+            )
         ctx.dllp.report = []
         codeloop.stage_dll_control(ctx)
         if ctx.dllp.report:
@@ -425,8 +522,11 @@ def stage_fleet_dll(ctx):
         # ── D1: the chain-wide brownout, as a labelled episode ────────────────────────
         # Promoted out of #90's admission gate, where it silently suppressed fires and
         # nothing downstream could tell a window had contained one.
-        _npres = sum(1 for _f in (ctx.dllp.fleet or {}).values()
-                     if isinstance(_f, dict) and _f.get("present"))
+        _npres = sum(
+            1
+            for _f in (ctx.dllp.fleet or {}).values()
+            if isinstance(_f, dict) and _f.get("present")
+        )
         _bmsg = ctx.brown.note_cycle(ctx.t0, _npres)
         if _bmsg:
             _log("%s: %s" % (_tag, _bmsg))
@@ -436,27 +536,38 @@ def stage_fleet_dll(ctx):
         # shared, so a per-chain answer would be worse than none (it would clean the chain
         # carrying the bright satellite and leave the rest looking like clean controls).
         # Transits recur on the SIDEREAL day, so this is predictable rather than bad luck.
-        _near = nearest_boresight(ctx.dr_pd) if ctx.args.detector_transit_veto_deg > 0.0 else None
+        _near = (
+            nearest_boresight(ctx.dr_pd)
+            if ctx.args.detector_transit_veto_deg > 0.0
+            else None
+        )
         _in_transit = bool(_near and _near[0] < ctx.args.detector_transit_veto_deg)
         if _in_transit:
-            _log_rl("transit-veto",
-                    "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight; D2/D3 suppressed "
-                    "(the quantiser rails and satellites drop across every chain at once)"
-                    % (_tag, _near[1][0], _near[1][1], _near[0]),
-                    every_s=120.0)
+            _log_rl(
+                "transit-veto",
+                "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight; D2/D3 suppressed "
+                "(the quantiser rails and satellites drop across every chain at once)"
+                % (_tag, _near[1][0], _near[1][1], _near[0]),
+                every_s=120.0,
+            )
 
         # ── D2: the deep latch, UNARMED ───────────────────────────────────────────────
         # #90's four armed flights produced zero genuine targets, so the base rate is the
         # missing number. This measures it at no risk; it actuates nothing.
         for _lp, _labs, _lq in ctx.latch.scan(
-                ctx.t0, ctx.qpop, ctx.brown.active(),
-                uptime_s=ctx.t0 - ctx.broker_t0,
-                # The plant's own convergence window, not the process's -- a broker that has
-                # been up for hours is still looking at a sky that just came back.
-                recovering=ctx.brown.recovering(ctx.t0, ctx.latch.startup_hold_s),
-                in_transit=_in_transit):
-            _log("%s: LATCH PRN %d absent %.0f s after q %.2f -- #90 v3 would have fired "
-                 "here (detector only, nothing armed)" % (_tag, _lp, _labs, _lq))
+            ctx.t0,
+            ctx.qpop,
+            ctx.brown.active(),
+            uptime_s=ctx.t0 - ctx.broker_t0,
+            # The plant's own convergence window, not the process's -- a broker that has
+            # been up for hours is still looking at a sky that just came back.
+            recovering=ctx.brown.recovering(ctx.t0, ctx.latch.startup_hold_s),
+            in_transit=_in_transit,
+        ):
+            _log(
+                "%s: LATCH PRN %d absent %.0f s after q %.2f -- #90 v3 would have fired "
+                "here (detector only, nothing armed)" % (_tag, _lp, _labs, _lq)
+            )
 
         # ── D3: the handover sawtooth ─────────────────────────────────────────────────
         # Fed the HANDOVER-CORRECTED trim: without that subtraction a successful #92
@@ -465,18 +576,21 @@ def stage_fleet_dll(ctx):
             if not isinstance(_sr, dict) or _sr.get("trim_chips") is None:
                 continue
             if not _sr.get("armed"):
-                ctx.saw.drop(_sp)     # a released trim decays by the LEAK, not a wipe
+                ctx.saw.drop(_sp)  # a released trim decays by the LEAK, not a wipe
                 continue
             _sq = ctx.qpop.summary(_sp)
             _sbt = ctx.birth_steps.get(_sp)
-            _smsg = ctx.saw.note(ctx.t0, _sp,
-                                 ctx.handover.corrected(_sp, float(_sr["trim_chips"])),
-                                 browned_out=ctx.brown.active(),
-                                 uptime_s=ctx.t0 - ctx.broker_t0,
-                                 rebase_age_s=(ctx.t0 - _sbt) if _sbt is not None else None,
-                                 present_frac=_sq[4] if _sq else None,
-                                 q_mean=_sq[2] if _sq else None,
-                                 in_transit=_in_transit)
+            _smsg = ctx.saw.note(
+                ctx.t0,
+                _sp,
+                ctx.handover.corrected(_sp, float(_sr["trim_chips"])),
+                browned_out=ctx.brown.active(),
+                uptime_s=ctx.t0 - ctx.broker_t0,
+                rebase_age_s=(ctx.t0 - _sbt) if _sbt is not None else None,
+                present_frac=_sq[4] if _sq else None,
+                q_mean=_sq[2] if _sq else None,
+                in_transit=_in_transit,
+            )
             if _smsg:
                 _log("%s: %s" % (_tag, _smsg))
         # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.
@@ -503,16 +617,27 @@ def stage_fleet_dll(ctx):
                 _sig = ctx.sig_of(_rec)
                 if _sig < ctx.args.lock_snr:
                     continue
-                _rows.append("PRN %d code->%+.2f Hz meas %+.2f Hz (sig %.1f)"
-                             % (_p, ctx.cpt.fit_slope[_p] * _k, _meas, _sig))
+                _rows.append(
+                    "PRN %d code->%+.2f Hz meas %+.2f Hz (sig %.1f)"
+                    % (_p, ctx.cpt.fit_slope[_p] * _k, _meas, _sig)
+                )
             if _rows:
-                _log_rl("carfromcode", "CARRIER-FROM-CODE (shadow): " + "; ".join(_rows[:6]),
-                        every_s=30.0)
+                _log_rl(
+                    "carfromcode",
+                    "CARRIER-FROM-CODE (shadow): " + "; ".join(_rows[:6]),
+                    every_s=30.0,
+                )
         if ctx.dop_rate_rejected:
-            _log("dop-rate: %d fit(s) REJECTED against the model (kept the model): %s"
-                 % (len(ctx.dop_rate_rejected),
-                    ", ".join("PRN %d fit %+.3f vs model %+.3f" % (k, v[0], v[1])
-                              for k, v in sorted(ctx.dop_rate_rejected.items())[:5])))
+            _log(
+                "dop-rate: %d fit(s) REJECTED against the model (kept the model): %s"
+                % (
+                    len(ctx.dop_rate_rejected),
+                    ", ".join(
+                        "PRN %d fit %+.3f vs model %+.3f" % (k, v[0], v[1])
+                        for k, v in sorted(ctx.dop_rate_rejected.items())[:5]
+                    ),
+                )
+            )
             # Cleared after logging, for the reason spelled out under cp_rate_rejected below:
             # an uncleared reject dict replays every PRN ever rejected, verbatim, forever, and
             # identical stale values repeating for minutes are read as a live fault.
@@ -521,45 +646,69 @@ def stage_fleet_dll(ctx):
         # above: these reject against the POOLED CLOCK rather than an orbit model, and a
         # reader who cannot tell which reference rejected a fit cannot act on it.
         if ctx.cp_rate_rejected:
-            _log("cp-rate: %d fit(s) REJECTED against the pooled clock (kept the clock "
-                 "rate, kept the fitted position): %s"
-                 % (len(ctx.cp_rate_rejected),
-                    ", ".join("PRN %d fit %+.3f vs clock %+.3f chips/s" % (k, v[0], v[1])
-                              for k, v in sorted(ctx.cp_rate_rejected.items())[:5])))
+            _log(
+                "cp-rate: %d fit(s) REJECTED against the pooled clock (kept the clock "
+                "rate, kept the fitted position): %s"
+                % (
+                    len(ctx.cp_rate_rejected),
+                    ", ".join(
+                        "PRN %d fit %+.3f vs clock %+.3f chips/s" % (k, v[0], v[1])
+                        for k, v in sorted(ctx.cp_rate_rejected.items())[:5]
+                    ),
+                )
+            )
             # Cleared after logging: without this the line replays every PRN ever
             # rejected, verbatim and forever (measured 2026-08-28 22:46 -- '11 fits
             # REJECTED' repeating identical stale values for minutes, which misread as
             # a live clock fault). The dop-rate report above clears for the same reason.
             ctx.cp_rate_rejected.clear()
-        _absent = sorted(p for p in ctx.seeds
-                         if ctx.seeds[p].get("doppler_rate_hz_s") is None)
+        _absent = sorted(
+            p for p in ctx.seeds if ctx.seeds[p].get("doppler_rate_hz_s") is None
+        )
         if _absent:
             # No carrier extrapolation AND no quadratic code term for these sats.
-            _log("dop-rate: %d seeded PRN(s) have NO doppler rate at all: %s"
-                 % (len(_absent), _absent[:8]))
+            _log(
+                "dop-rate: %d seeded PRN(s) have NO doppler rate at all: %s"
+                % (len(_absent), _absent[:8])
+            )
         if ctx.dop_rate_fitted:
-            _log_rl("doprate", "doppler-rate FIT seeded on %d sat(s): %s"
-                    % (len(ctx.dop_rate_fitted),
-                       "; ".join("PRN %d %+.4f Hz/s" % (k, v)
-                                 for k, v in sorted(ctx.dop_rate_fitted.items())[:5])),
-                    every_s=60.0)
+            _log_rl(
+                "doprate",
+                "doppler-rate FIT seeded on %d sat(s): %s"
+                % (
+                    len(ctx.dop_rate_fitted),
+                    "; ".join(
+                        "PRN %d %+.4f Hz/s" % (k, v)
+                        for k, v in sorted(ctx.dop_rate_fitted.items())[:5]
+                    ),
+                ),
+                every_s=60.0,
+            )
         # The BAR, every cycle it is measured. A threshold on a noisy statistic that is
         # never printed is a threshold nobody can audit -- and this one legitimately moves
         # with the fleet size, so a reader has to be able to see where it went.
         if ctx.dllp.fleet:
             any_fl = next(iter(ctx.dllp.fleet.values()))
-            _log_rl("dll-floor",
-                    # WHICH ARM produced these numbers. Since #63 this line can describe
-                    # either the polled powers or the ones formed here from the comb, and
-                    # a floor with no provenance is exactly the kind of number that gets
-                    # compared across a switch without anyone noticing it changed source.
-                    "fleet DLL [%s]: %d PRN(s) over %d combiner(s), %d present, "
-                    "q floor %.2f%s"
-                    % (any_fl.get("src") or "polled", len(ctx.dllp.fleet), len(ctx.dll_combiners),
-                       sum(1 for v in ctx.dllp.fleet.values() if v["present"]), any_fl["q_floor"],
-                       "" if any_fl["q_med"] is None
-                       else " (noise median %.2f, sigma %.3f)"
-                            % (any_fl["q_med"], any_fl["q_sigma"])))
+            _log_rl(
+                "dll-floor",
+                # WHICH ARM produced these numbers. Since #63 this line can describe
+                # either the polled powers or the ones formed here from the comb, and
+                # a floor with no provenance is exactly the kind of number that gets
+                # compared across a switch without anyone noticing it changed source.
+                "fleet DLL [%s]: %d PRN(s) over %d combiner(s), %d present, "
+                "q floor %.2f%s"
+                % (
+                    any_fl.get("src") or "polled",
+                    len(ctx.dllp.fleet),
+                    len(ctx.dll_combiners),
+                    sum(1 for v in ctx.dllp.fleet.values() if v["present"]),
+                    any_fl["q_floor"],
+                    ""
+                    if any_fl["q_med"] is None
+                    else " (noise median %.2f, sigma %.3f)"
+                    % (any_fl["q_med"], any_fl["q_sigma"]),
+                ),
+            )
         # ── THE INSTANCE LIVENESS GUARD (#70, 2026-08-18) ──────────────────────────
         # WHY THIS EXISTS, and why the guard we already had could not do it. On 08-18's
         # full-fleet restart FOUR instances came up wedged -- cx42/gnss0, cx43/gnss0,
@@ -600,19 +749,32 @@ def stage_fleet_dll(ctx):
         # is impossible for a processed record and names the instance serving it.
         if ctx.utc0_sample0 and ctx.dllp.inst_hops:
             _w = _now()
-            _ia = sorted(((ctx.utc0_sample0 + float(h) / ctx.args.hops_per_sec) - _w, str(k))
-                         for k, h in ctx.dllp.inst_hops.items() if h)
+            _ia = sorted(
+                ((ctx.utc0_sample0 + float(h) / ctx.args.hops_per_sec) - _w, str(k))
+                for k, h in ctx.dllp.inst_hops.items()
+                if h
+            )
             if _ia:
                 _fut = [k for d, k in _ia if d > 0.5]
-                _log_rl("axis-inst",
-                        "AXIS INST: n=%d  lag median %+.2f s  worst %+.2f s (%s)  "
-                        "freshest %+.2f s (%s)  spread %.2f s%s"
-                        % (len(_ia), _ia[len(_ia) // 2][0], _ia[0][0], _ia[0][1],
-                           _ia[-1][0], _ia[-1][1], _ia[-1][0] - _ia[0][0],
-                           "" if not _fut else
-                           "  *** %d FUTURE instance(s) >0.5 s AHEAD: %s"
-                           % (len(_fut), ",".join(sorted(_fut)[:4]))),
-                        every_s=30.0)
+                _log_rl(
+                    "axis-inst",
+                    "AXIS INST: n=%d  lag median %+.2f s  worst %+.2f s (%s)  "
+                    "freshest %+.2f s (%s)  spread %.2f s%s"
+                    % (
+                        len(_ia),
+                        _ia[len(_ia) // 2][0],
+                        _ia[0][0],
+                        _ia[0][1],
+                        _ia[-1][0],
+                        _ia[-1][1],
+                        _ia[-1][0] - _ia[0][0],
+                        ""
+                        if not _fut
+                        else "  *** %d FUTURE instance(s) >0.5 s AHEAD: %s"
+                        % (len(_fut), ",".join(sorted(_fut)[:4])),
+                    ),
+                    every_s=30.0,
+                )
         # ⚠️⚠️ dr_state CAN BE None, AND DEREFERENCING IT HERE KILLED ALL FIVE CHAINS
         # (2026-08-28 00:11). It starts None and is only assigned when the dead-reckon block
         # succeeds -- which is inside a try/except that DISABLES dead reckoning and logs
@@ -626,30 +788,46 @@ def stage_fleet_dll(ctx):
         #
         # ⚠️ SAY SO RATHER THAN SKIPPING QUIETLY. A silent skip here would make a chain with
         # no dead reckoning indistinguishable from one whose instances are simply healthy.
-        if ctx.args.instance_stall_s > 0 and ctx.dllp.inst_hops and ctx.dr_state is None:
-            _log_rl("inststall-nodr",
-                    "instance-stall check SKIPPED: dr_state is None, so dead reckoning never "
-                    "initialised on this chain (look for 'dead-reckon unavailable' at "
-                    "startup). The chain is running DEGRADED -- seeds are not being "
-                    "dead-reckoned -- which is a bigger problem than the skipped check.",
-                    every_s=120.0)
+        if (
+            ctx.args.instance_stall_s > 0
+            and ctx.dllp.inst_hops
+            and ctx.dr_state is None
+        ):
+            _log_rl(
+                "inststall-nodr",
+                "instance-stall check SKIPPED: dr_state is None, so dead reckoning never "
+                "initialised on this chain (look for 'dead-reckon unavailable' at "
+                "startup). The chain is running DEGRADED -- seeds are not being "
+                "dead-reckoned -- which is a bigger problem than the skipped check.",
+                every_s=120.0,
+            )
         elif ctx.args.instance_stall_s > 0 and ctx.dllp.inst_hops:
             _ih, _stalled = instance_stall_verdict(
-                ctx.dr_state.get("inst_hops", {}), ctx.dllp.inst_hops, ctx.t0,
-                ctx.args.instance_stall_s)
+                ctx.dr_state.get("inst_hops", {}),
+                ctx.dllp.inst_hops,
+                ctx.t0,
+                ctx.args.instance_stall_s,
+            )
             ctx.dr_state["inst_hops"] = _ih
             if _stalled:
-                _log_rl("inststall",
-                        "⚠️ INSTANCE STALLED: %d of %d serving but NOT ADVANCING -- %s. "
-                        "These answer 200 with plausible rows; their pow_hop has not "
-                        "moved (healthy is ~5.9M hops/30 s). The usual cause is a frozen "
-                        "DPDK capture window dropping the whole stream, which no amount "
-                        "of waiting clears -- check the node log for RESYNC lines, then "
-                        "restart that node. Bandwidth is degraded fleet-wide until then."
-                        % (len(_stalled), len(_ih),
-                           ", ".join("%s stuck at hop %d for %.0f s" % (u, h, dt_)
-                                     for u, h, dt_ in _stalled[:4])),
-                        every_s=300.0)
+                _log_rl(
+                    "inststall",
+                    "⚠️ INSTANCE STALLED: %d of %d serving but NOT ADVANCING -- %s. "
+                    "These answer 200 with plausible rows; their pow_hop has not "
+                    "moved (healthy is ~5.9M hops/30 s). The usual cause is a frozen "
+                    "DPDK capture window dropping the whole stream, which no amount "
+                    "of waiting clears -- check the node log for RESYNC lines, then "
+                    "restart that node. Bandwidth is degraded fleet-wide until then."
+                    % (
+                        len(_stalled),
+                        len(_ih),
+                        ", ".join(
+                            "%s stuck at hop %d for %.0f s" % (u, h, dt_)
+                            for u, h, dt_ in _stalled[:4]
+                        ),
+                    ),
+                    every_s=300.0,
+                )
 
         # ── THE q STALL GUARD (#70/#87, 2026-08-18) ────────────────────────────────
         # WHY THIS EXISTS: on 08-18 three chains sat in a degraded steady state for
@@ -674,29 +852,44 @@ def stage_fleet_dll(ctx):
         if ctx.args.q_stall_window > 0 and ctx.dllp.fleet:
             _qs = [v["q"] for v in ctx.dllp.fleet.values() if v.get("q") is not None]
             if _qs:
-                _duty = sum(1 for q in _qs if q >= ctx.args.q_stall_bar) / float(len(_qs))
+                _duty = sum(1 for q in _qs if q >= ctx.args.q_stall_bar) / float(
+                    len(_qs)
+                )
                 _qh = ctx.dr_state.setdefault("q_hist", [])
                 _qh.append((ctx.t0, _duty))
-                del _qh[:max(0, len(_qh) - 4000)]
+                del _qh[: max(0, len(_qh) - 4000)]
                 # The decision itself is a PURE function in fits.py so it can be
                 # tested against a constructed collapse (test_q_stall.py) -- the
                 # on-sky fixtures run ~11 cycles at a duty that never falls, so a
                 # replay cannot distinguish "did not fire" from "cannot fire".
-                _qb, _qv = q_stall_verdict(_qh, ctx.t0, ctx.args.q_stall_window,
-                                           ctx.args.q_stall_frac, ctx.args.q_stall_min_best,
-                                           ctx.dr_state.get("q_duty_best"))
+                _qb, _qv = q_stall_verdict(
+                    _qh,
+                    ctx.t0,
+                    ctx.args.q_stall_window,
+                    ctx.args.q_stall_frac,
+                    ctx.args.q_stall_min_best,
+                    ctx.dr_state.get("q_duty_best"),
+                )
                 ctx.dr_state["q_duty_best"] = _qb
                 if _qv is not None:
-                    _log_rl("qstall",
-                            "⚠️ q STALL: duty %.2f over the last %.0f s vs %.2f best "
-                            "this session (%.0f%% of it, bar q>=%.1f, %d sat(s)). "
-                            "This chain has been degraded, not absent -- the usual "
-                            "cause is railed C++ trim state, which a BROKER restart "
-                            "does NOT clear (#87). Judge against the same time of day, "
-                            "then a NODE restart."
-                            % (_qv[0], ctx.args.q_stall_window, _qv[1], 100.0 * _qv[2],
-                               ctx.args.q_stall_bar, len(_qs)),
-                            every_s=ctx.args.q_stall_notice_s)
+                    _log_rl(
+                        "qstall",
+                        "⚠️ q STALL: duty %.2f over the last %.0f s vs %.2f best "
+                        "this session (%.0f%% of it, bar q>=%.1f, %d sat(s)). "
+                        "This chain has been degraded, not absent -- the usual "
+                        "cause is railed C++ trim state, which a BROKER restart "
+                        "does NOT clear (#87). Judge against the same time of day, "
+                        "then a NODE restart."
+                        % (
+                            _qv[0],
+                            ctx.args.q_stall_window,
+                            _qv[1],
+                            100.0 * _qv[2],
+                            ctx.args.q_stall_bar,
+                            len(_qs),
+                        ),
+                        every_s=ctx.args.q_stall_notice_s,
+                    )
         for k in list(ctx.dls.trim):
             if k not in ctx.seeds:
                 del ctx.dls.trim[k]

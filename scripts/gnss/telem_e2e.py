@@ -44,13 +44,18 @@ import tempfile
 import time
 import urllib.request
 
-K = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+K = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
 sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 sys.path.insert(0, os.path.join(K, "config"))
 
 from gnss_broker import telem  # noqa: E402
-from gnss_record_layout import (record_stride, telem_frame_bytes,  # noqa: E402
-                                telem_max_chan)
+from gnss_record_layout import (
+    record_stride,
+    telem_frame_bytes,  # noqa: E402
+    telem_max_chan,
+)
 
 # Ports deliberately far from anything live (11040-11061, 12048-12051 are all in use on the
 # site). A gate that collides with production is worse than no gate.
@@ -80,10 +85,10 @@ LIVE_PRNS = [p for p in PRNS if p != DEAD_PRN]
 INSTANCES = [("cx19.0", 0), ("cx42.1", 0), ("cx51.1", 3)]
 
 REC_STRIDE = record_stride(N_ELEM)
-N_CHAN = 5          # < TELEM_MAX_CHAN: the sender's row is narrower than the format's
-                    # ceiling, so the receive buffer is bigger than the frames and the
-                    # short-frame path through bufferRecv is what this exercises
-CHAN_FLOATS = 9      # E/P/L per channel (gnssRecord.hpp v3)
+N_CHAN = 5  # < TELEM_MAX_CHAN: the sender's row is narrower than the format's
+# ceiling, so the receive buffer is bigger than the frames and the
+# short-frame path through bufferRecv is what this exercises
+CHAN_FLOATS = 9  # E/P/L per channel (gnssRecord.hpp v3)
 CHAN_IDS = [5972 + 16 * k for k in range(N_CHAN)]
 
 
@@ -103,7 +108,9 @@ def _mark(inst, wstart, prn, slot):
     """
     ih = [i for i, (n, _) in enumerate(INSTANCES) if n == inst][0]
     rec = wstart // (HOPS_PER_RECORD * FFT_LEN)
-    return float(ih * 4000000 + rec * 1000 + prn * 10 + slot)  # < 2^24, exact in float32
+    return float(
+        ih * 4000000 + rec * 1000 + prn * 10 + slot
+    )  # < 2^24, exact in float32
 
 
 def write_record_files(dirpath, inst, start_win, drop=(), comb_epl=None):
@@ -138,7 +145,9 @@ def write_record_files(dirpath, inst, start_win, drop=(), comb_epl=None):
                     body[base + telem.REC_PRN] = float(prn)
                     # Replica energy is what marks a PRN as despread, and it is what the pack
                     # compacts on. DEAD_PRN gets zero and must therefore reach no wire row.
-                    body[base + telem.REC_P_ENERGY] = 0.0 if prn == DEAD_PRN else float(prn)
+                    body[base + telem.REC_P_ENERGY] = (
+                        0.0 if prn == DEAD_PRN else float(prn)
+                    )
                     # Element blocks: filled with a sentinel that must NEVER appear on the
                     # wire. The transport ships the record HEADER only, and a stride bug would
                     # smuggle these through looking like data.
@@ -153,16 +162,16 @@ def write_record_files(dirpath, inst, start_win, drop=(), comb_epl=None):
                         cb = cb0 + ch * CHAN_FLOATS
                         if comb_epl is not None:
                             _e, _p, _l = comb_epl
-                            body[cb + 0], body[cb + 2] = _p, 1.0        # P re, energy
-                            body[cb + 3], body[cb + 5] = _e, 1.0        # E re, energy
-                            body[cb + 6], body[cb + 8] = _l, 1.0        # L re, energy
+                            body[cb + 0], body[cb + 2] = _p, 1.0  # P re, energy
+                            body[cb + 3], body[cb + 5] = _e, 1.0  # E re, energy
+                            body[cb + 6], body[cb + 8] = _l, 1.0  # L re, energy
                             continue
-                        body[cb + 0] = _mark(inst, wstart, prn, 100 + ch)   # P
+                        body[cb + 0] = _mark(inst, wstart, prn, 100 + ch)  # P
                         body[cb + 1] = _mark(inst, wstart, prn, 200 + ch)
                         body[cb + 2] = float(ch + 1)
-                        body[cb + 3] = _mark(inst, wstart, prn, 300 + ch)   # E
+                        body[cb + 3] = _mark(inst, wstart, prn, 300 + ch)  # E
                         body[cb + 5] = float(ch + 1)
-                        body[cb + 6] = _mark(inst, wstart, prn, 400 + ch)   # L
+                        body[cb + 6] = _mark(inst, wstart, prn, 400 + ch)  # L
                         body[cb + 8] = float(ch + 1)
                 fh.write(struct.pack("<%df" % len(body), *body))
     return path
@@ -189,7 +198,8 @@ def write_config(dirpath):
         # and the reason `allow_short_frames` is on: it holds the widest row the format admits
         # while every sender here ships N_CHAN columns.
         "telem_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 256,"
-        " frame_size: %d}" % telem_frame_bytes(REC_PER_FRAME, MAX_PRN, telem_max_chan()),
+        " frame_size: %d}"
+        % telem_frame_bytes(REC_PER_FRAME, MAX_PRN, telem_max_chan()),
         "telem_recv: {kotekan_stage: bufferRecv, buf: telem_buf, listen_port: %d,"
         " num_threads: 2, drop_frames: false, use_config_tracker: false,"
         " allow_short_frames: true}" % PORT_RECV,
@@ -200,9 +210,11 @@ def write_config(dirpath):
         tag = "s%d" % i
         lines += [
             "%s_rec_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 16,"
-            " frame_size: %d}" % (tag, (N_PRN * REC_STRIDE + N_PRN * N_CHAN * CHAN_FLOATS) * 4),
+            " frame_size: %d}"
+            % (tag, (N_PRN * REC_STRIDE + N_PRN * N_CHAN * CHAN_FLOATS) * 4),
             "%s_out_buf: {kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 64,"
-            " frame_size: %d}" % (tag, telem_frame_bytes(REC_PER_FRAME, MAX_PRN, N_CHAN)),
+            " frame_size: %d}"
+            % (tag, telem_frame_bytes(REC_PER_FRAME, MAX_PRN, N_CHAN)),
             "%s_read: {kotekan_stage: rawFileRead, buf: %s_rec_buf, base_dir: %s,"
             " file_name: %s, file_ext: raw, prefix_hostname: false, end_interrupt: false}"
             % (tag, tag, dirpath, inst.replace(".", "_")),
@@ -210,8 +222,20 @@ def write_config(dirpath):
             " chain: gps_l5, inst: %s, n_prn: %d, n_elements: %d, max_prn: %d,"
             " records_per_frame: %d, hops_per_record: %d, fft_len: %d, n_chan: %d,"
             " chan_export: true, channel_ids: [%s]}"
-            % (tag, tag, tag, inst, N_PRN, N_ELEM, MAX_PRN, REC_PER_FRAME, HOPS_PER_RECORD,
-               FFT_LEN, N_CHAN, ", ".join(str(c) for c in CHAN_IDS)),
+            % (
+                tag,
+                tag,
+                tag,
+                inst,
+                N_PRN,
+                N_ELEM,
+                MAX_PRN,
+                REC_PER_FRAME,
+                HOPS_PER_RECORD,
+                FFT_LEN,
+                N_CHAN,
+                ", ".join(str(c) for c in CHAN_IDS),
+            ),
             "%s_send: {kotekan_stage: bufferSend, buf: %s_out_buf, server_ip: 127.0.0.1,"
             " server_port: %d, drop_frames: false, use_config_tracker: false}"
             % (tag, tag, PORT_RECV),
@@ -226,8 +250,11 @@ def kotekan_binary():
     same reason: /home is NFS with two build trees and the wrong one fails in a way that reads
     as a config problem."""
     host = socket.gethostname().split(".")[0]
-    cand = ([os.path.join(K, "build", "kotekan", "kotekan")] if host.startswith("cx")
-            else [os.path.join(K, "build_nodpdk", "kotekan", "kotekan")])
+    cand = (
+        [os.path.join(K, "build", "kotekan", "kotekan")]
+        if host.startswith("cx")
+        else [os.path.join(K, "build_nodpdk", "kotekan", "kotekan")]
+    )
     cand.append(os.path.join(K, "build_nodpdk", "kotekan", "kotekan"))
     cand.append(os.path.join(K, "build", "kotekan", "kotekan"))
     for c in cand:
@@ -237,9 +264,12 @@ def kotekan_binary():
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--keep", action="store_true", help="keep the scratch dir and the log")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--keep", action="store_true", help="keep the scratch dir and the log"
+    )
     ap.add_argument("--timeout", type=float, default=25.0)
     a = ap.parse_args()
 
@@ -257,9 +287,11 @@ def main():
     # ⚠️ --bind-address IS NOT OPTIONAL HERE. Without it kotekan's REST server takes its
     # built-in default of 0.0.0.0:12048 -- which on a cx node is PRODUCTION's port. A gate that
     # can steal the instrument's REST port is not a gate.
-    proc = subprocess.Popen([binary, "--config", cfg,
-                             "--bind-address", "127.0.0.1:%d" % PORT_REST],
-                            stdout=open(log, "wb"), stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(
+        [binary, "--config", cfg, "--bind-address", "127.0.0.1:%d" % PORT_REST],
+        stdout=open(log, "wb"),
+        stderr=subprocess.STDOUT,
+    )
     client = telem.TelemClient(host="127.0.0.1", port=PORT_SERVE, depth=64, retry_s=0.5)
     fails = []
     try:
@@ -275,29 +307,38 @@ def main():
         time.sleep(1.0)  # let the tail arrive so `lag` has a newer window to hide
 
         st = client.stats()
-        print("frames   %d (wanted %d)  gaps %d  bad %d  connected %s"
-              % (client.frames, want, st["gaps"], st["bad"], st["connected"]))
+        print(
+            "frames   %d (wanted %d)  gaps %d  bad %d  connected %s"
+            % (client.frames, want, st["gaps"], st["bad"], st["connected"])
+        )
         if client.frames == 0:
             fails.append("NO FRAMES arrived -- see %s" % log)
 
         # -- the gather's own view, over REST ------------------------------------------------
         try:
             with urllib.request.urlopen(
-                    "http://127.0.0.1:%d/telem_gather/get_stats" % PORT_REST, timeout=5) as r:
+                "http://127.0.0.1:%d/telem_gather/get_stats" % PORT_REST, timeout=5
+            ) as r:
                 gs = json.load(r)
-            print("gather   %d senders, %d bad, %d client drops"
-                  % (len(gs["senders"]), gs["bad_frames"], gs["client_drops"]))
+            print(
+                "gather   %d senders, %d bad, %d client drops"
+                % (len(gs["senders"]), gs["bad_frames"], gs["client_drops"])
+            )
             if gs["bad_frames"]:
                 fails.append("gather rejected %d frames" % gs["bad_frames"])
             if len(gs["senders"]) != len(INSTANCES):
-                fails.append("gather saw %d senders, expected %d"
-                             % (len(gs["senders"]), len(INSTANCES)))
+                fails.append(
+                    "gather saw %d senders, expected %d"
+                    % (len(gs["senders"]), len(INSTANCES))
+                )
         except Exception as e:
             fails.append("gather /get_stats unreachable: %s" % e)
 
         wins = client.windows("gps_l5", lag=1)
-        print("windows  %d held: %s..%s" % (len(wins), wins[0] if wins else "-",
-                                            wins[-1] if wins else "-"))
+        print(
+            "windows  %d held: %s..%s"
+            % (len(wins), wins[0] if wins else "-", wins[-1] if wins else "-")
+        )
 
         # -- [1] PROVENANCE: every row is byte-identical to what was written for its address --
         checked = 0
@@ -312,29 +353,45 @@ def main():
                     # ever rebuilt mid-frame, some record would disagree here.
                     got_prns = f.prns()
                     if got_prns != LIVE_PRNS:
-                        fails.append("%s w%d r%d: wire carries PRNs %s, expected %s "
-                                     "(row compaction)" % (inst, w, r, got_prns, LIVE_PRNS))
+                        fails.append(
+                            "%s w%d r%d: wire carries PRNs %s, expected %s "
+                            "(row compaction)" % (inst, w, r, got_prns, LIVE_PRNS)
+                        )
                     if DEAD_PRN in got_prns:
-                        fails.append("%s w%d r%d: PRN %d was never despread but occupies a wire "
-                                     "row -- silence is being shipped as data"
-                                     % (inst, w, r, DEAD_PRN))
+                        fails.append(
+                            "%s w%d r%d: PRN %d was never despread but occupies a wire "
+                            "row -- silence is being shipped as data"
+                            % (inst, w, r, DEAD_PRN)
+                        )
                     for prn in LIVE_PRNS:
                         row = f.row(r, prn)
                         if row is None:
-                            fails.append("%s w%d r%d: PRN %d missing" % (inst, w, r, prn))
+                            fails.append(
+                                "%s w%d r%d: PRN %d missing" % (inst, w, r, prn)
+                            )
                             continue
-                        for s in (telem.REC_DOPPLER, telem.REC_CP, telem.REC_P_RE,
-                                  telem.REC_CPHASE, telem.REC_TRIM_INC, telem.REC_SKY_IM):
+                        for s in (
+                            telem.REC_DOPPLER,
+                            telem.REC_CP,
+                            telem.REC_P_RE,
+                            telem.REC_CPHASE,
+                            telem.REC_TRIM_INC,
+                            telem.REC_SKY_IM,
+                        ):
                             want_v = _mark(inst, wstart, prn, s)
                             # EXACT: the mark is an integer below 2^24, so a float32 round trip
                             # is lossless and any difference at all is a real mis-addressing.
                             if row[s] != want_v:
-                                fails.append("%s w%d r%d PRN %d slot %d: %g != %g (the row came "
-                                             "from a different record or instance)"
-                                             % (inst, w, r, prn, s, row[s], want_v))
+                                fails.append(
+                                    "%s w%d r%d PRN %d slot %d: %g != %g (the row came "
+                                    "from a different record or instance)"
+                                    % (inst, w, r, prn, s, row[s], want_v)
+                                )
                         if any(v == -12345.0 for v in row):
-                            fails.append("%s w%d r%d PRN %d: an ELEMENT block leaked into the "
-                                         "wire row -- the stride is wrong" % (inst, w, r, prn))
+                            fails.append(
+                                "%s w%d r%d PRN %d: an ELEMENT block leaked into the "
+                                "wire row -- the stride is wrong" % (inst, w, r, prn)
+                            )
                         # [1b] THE COMB, v2. Same provenance rule: every column must be the
                         # value written for that (instance, hop, PRN, channel), and its label
                         # must be the freq_id the sender was configured with. A comb whose
@@ -342,27 +399,40 @@ def main():
                         # delay fit downstream would be confidently wrong.
                         cmb = f.comb(r, prn)
                         if len(cmb) != N_CHAN:
-                            fails.append("%s w%d r%d PRN %d: %d comb columns, expected %d"
-                                         % (inst, w, r, prn, len(cmb), N_CHAN))
+                            fails.append(
+                                "%s w%d r%d PRN %d: %d comb columns, expected %d"
+                                % (inst, w, r, prn, len(cmb), N_CHAN)
+                            )
                         # E/L too: a tap that survives with the wrong VALUE is the failure a
                         # shape-only check would miss.
                         for ch, (fid, E, P, L, _en) in enumerate(f.comb_epl(r, prn)):
-                            for tag, got, off in (("E", E.real, 300), ("L", L.real, 400)):
+                            for tag, got, off in (
+                                ("E", E.real, 300),
+                                ("L", L.real, 400),
+                            ):
                                 wv = _mark(inst, wstart, prn, off + ch) / (ch + 1)
                                 if abs(got - wv) > 1e-3 * max(1.0, abs(wv)):
-                                    fails.append("%s win%d r%d PRN %d ch%d %s: %g != %g"
-                                                 % (inst, w, r, prn, ch, tag, got, wv))
+                                    fails.append(
+                                        "%s win%d r%d PRN %d ch%d %s: %g != %g"
+                                        % (inst, w, r, prn, ch, tag, got, wv)
+                                    )
                         for ch, (fid, A, e) in enumerate(cmb):
                             if fid != CHAN_IDS[ch]:
-                                fails.append("%s w%d r%d PRN %d ch%d: freq_id %d != %d"
-                                             % (inst, w, r, prn, ch, fid, CHAN_IDS[ch]))
+                                fails.append(
+                                    "%s w%d r%d PRN %d ch%d: freq_id %d != %d"
+                                    % (inst, w, r, prn, ch, fid, CHAN_IDS[ch])
+                                )
                             want_re = _mark(inst, wstart, prn, 100 + ch) / (ch + 1)
                             if abs(A.real - want_re) > 1e-3 * max(1.0, abs(want_re)):
-                                fails.append("%s w%d r%d PRN %d ch%d: comb %g != %g"
-                                             % (inst, w, r, prn, ch, A.real, want_re))
+                                fails.append(
+                                    "%s w%d r%d PRN %d ch%d: comb %g != %g"
+                                    % (inst, w, r, prn, ch, A.real, want_re)
+                                )
                         checked += 1
-        print("rows     %d checked against their own written address (record + %d-column comb)"
-              % (checked, N_CHAN))
+        print(
+            "rows     %d checked against their own written address (record + %d-column comb)"
+            % (checked, N_CHAN)
+        )
         if checked == 0:
             fails.append("no rows were checked -- the gate could not have failed")
 
@@ -373,11 +443,15 @@ def main():
         both = [w for w in wins if w >= late_start]
         for w in early_only:
             if late in client.frame_set("gps_l5", w):
-                fails.append("%s appears in window %d, before it started: frames are being "
-                             "grouped by ARRIVAL ORDER, which is the whole defect" % (late, w))
+                fails.append(
+                    "%s appears in window %d, before it started: frames are being "
+                    "grouped by ARRIVAL ORDER, which is the whole defect" % (late, w)
+                )
         joined = [w for w in both if late in client.frame_set("gps_l5", w)]
-        print("late     %s absent from %d early windows, present in %d/%d shared"
-              % (late, len(early_only), len(joined), len(both)))
+        print(
+            "late     %s absent from %d early windows, present in %d/%d shared"
+            % (late, len(early_only), len(joined), len(both))
+        )
         if both and not joined:
             fails.append("%s never joined a shared window" % late)
         if not early_only:
@@ -389,23 +463,31 @@ def main():
             fs = client.frame_set("gps_l5", w)
             if len(fs) < 2:
                 continue
-            sets = {inst: set(f.hop(r) for r in range(f.n_rec) if f.has_record(r))
-                    for inst, f in fs.items()}
+            sets = {
+                inst: set(f.hop(r) for r in range(f.n_rec) if f.has_record(r))
+                for inst, f in fs.items()
+            }
             full = max(sets.values(), key=len)
             for inst, s in sets.items():
                 if not s <= full:
-                    fails.append("window %d: %s has hops its peers do not -- %s"
-                                 % (w, inst, sorted(s - full)))
+                    fails.append(
+                        "window %d: %s has hops its peers do not -- %s"
+                        % (w, inst, sorted(s - full))
+                    )
             if all(s == full for s in sets.values()):
                 agreed += 1
         shared = len([w for w in both if len(client.frame_set("gps_l5", w)) > 1])
         # The one expected exception is the window whose record this script deliberately drops
         # ([3]); everything else must agree exactly, with no tolerance.
-        print("aligned  %d/%d shared windows have IDENTICAL hop sets across instances "
-              "(1 exception expected: the dropped record)" % (agreed, shared))
+        print(
+            "aligned  %d/%d shared windows have IDENTICAL hop sets across instances "
+            "(1 exception expected: the dropped record)" % (agreed, shared)
+        )
         if shared and agreed < shared - 1:
-            fails.append("%d shared windows disagree on hops; only the deliberate drop should"
-                         % (shared - agreed))
+            fails.append(
+                "%d shared windows disagree on hops; only the deliberate drop should"
+                % (shared - agreed)
+            )
 
         # -- [3] the dropped record is a hole, and its neighbours keep their hops -------------
         dw = 5 + 3
@@ -413,34 +495,55 @@ def main():
         if late in fs:
             f = fs[late]
             if f.has_record(2):
-                fails.append("window %d: %s should have dropped record slot 2" % (dw, late))
+                fails.append(
+                    "window %d: %s should have dropped record slot 2" % (dw, late)
+                )
             ref = [g for i, g in fs.items() if i != late]
             if ref:
                 mine = set(f.hop(r) for r in range(f.n_rec) if f.has_record(r))
-                theirs = set(ref[0].hop(r) for r in range(ref[0].n_rec) if ref[0].has_record(r))
+                theirs = set(
+                    ref[0].hop(r) for r in range(ref[0].n_rec) if ref[0].has_record(r)
+                )
                 if len(mine) != 3 or not mine < theirs:
-                    fails.append("window %d: the dropped record SHIFTED the others (%s vs %s)"
-                                 % (dw, sorted(mine), sorted(theirs)))
+                    fails.append(
+                        "window %d: the dropped record SHIFTED the others (%s vs %s)"
+                        % (dw, sorted(mine), sorted(theirs))
+                    )
                 else:
-                    print("hole     window %d slot 2 missing; the other 3 kept their own hops"
-                          % dw)
+                    print(
+                        "hole     window %d slot 2 missing; the other 3 kept their own hops"
+                        % dw
+                    )
         else:
-            fails.append("window %d not received from %s -- [3] could not have failed"
-                         % (dw, late))
+            fails.append(
+                "window %d not received from %s -- [3] could not have failed"
+                % (dw, late)
+            )
 
         # -- the shape the broker consumes ---------------------------------------------------
         got, now = client.coherent_source("gps_l5", prns=LIVE_PRNS)
-        print("coherent %d instances, %d PRNs on cx19.0, fleet_now hop %d"
-              % (len(got), len(got.get("cx19.0", {})), now))
+        print(
+            "coherent %d instances, %d PRNs on cx19.0, fleet_now hop %d"
+            % (len(got), len(got.get("cx19.0", {})), now)
+        )
         if len(got) != len(INSTANCES):
-            fails.append("coherent_source saw %d instances, expected %d"
-                         % (len(got), len(INSTANCES)))
-        hopsets = [set(g.get(LIVE_PRNS[0], {})) for g in got.values() if g.get(LIVE_PRNS[0])]
+            fails.append(
+                "coherent_source saw %d instances, expected %d"
+                % (len(got), len(INSTANCES))
+            )
+        hopsets = [
+            set(g.get(LIVE_PRNS[0], {})) for g in got.values() if g.get(LIVE_PRNS[0])
+        ]
         if len(hopsets) > 1:
             common = set.intersection(*hopsets)
             if not common:
-                fails.append("no hop is shared by every instance -- the fleet cannot combine")
-            print("common   %d hops shared by all %d instances" % (len(common), len(hopsets)))
+                fails.append(
+                    "no hop is shared by every instance -- the fleet cannot combine"
+                )
+            print(
+                "common   %d hops shared by all %d instances"
+                % (len(common), len(hopsets))
+            )
     finally:
         client.stop()
         proc.terminate()
@@ -455,7 +558,9 @@ def main():
             print("  - %s" % m)
         print("\nlog: %s" % log)
         return 1
-    print("\nPASS -- packer, bufferSend/Recv, gather, socket and client all agree end to end")
+    print(
+        "\nPASS -- packer, bufferSend/Recv, gather, socket and client all agree end to end"
+    )
     if not a.keep:
         shutil.rmtree(d, ignore_errors=True)
     else:

@@ -44,11 +44,18 @@ import sys
 import threading
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__)))), "python", "scripts", "gnss"))
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "python",
+        "scripts",
+        "gnss",
+    ),
+)
 
-from gnss_broker import receiver as rx_mod            # noqa: E402
-from gnss_broker import state_filter                  # noqa: E402
+from gnss_broker import receiver as rx_mod  # noqa: E402
+from gnss_broker import state_filter  # noqa: E402
 
 CHAINS = ["gps_l5", "gal_e5a", "bds_b2a", "gal_e5b", "bds_b2b"]
 
@@ -67,10 +74,13 @@ def _run(fns, name):
             fn(i)
         except BaseException:
             import traceback
+
             err[i] = traceback.format_exc()
 
-    ts = [threading.Thread(target=wrap, args=(i, f), name="%s%d" % (name, i))
-          for i, f in enumerate(fns)]
+    ts = [
+        threading.Thread(target=wrap, args=(i, f), name="%s%d" % (name, i))
+        for i, f in enumerate(fns)
+    ]
     for t in ts:
         t.start()
     for t in ts:
@@ -94,18 +104,26 @@ def lane_receiver(iters, nthread):
             hz = float(i * 1000 + k)
             rx.contribute_carrier_bias(chain, hz, n, t)
             rx.contribute_code_bias(chain, "1176.45", hz * 1e-9, n, t)
-            rx.contribute_dr_clock(chain, "1176.45", float(k % 10230), 0.001, t, 10230.0)
-            for got in (rx.carrier_bias(t_now=t), rx.code_bias("1176.45", t_now=t),
-                        rx.dr_clock("1176.45", t_now=t),
-                        rx.code_bias_any_band(t_now=t), rx.dr_clock_any_band(t_now=t)):
+            rx.contribute_dr_clock(
+                chain, "1176.45", float(k % 10230), 0.001, t, 10230.0
+            )
+            for got in (
+                rx.carrier_bias(t_now=t),
+                rx.code_bias("1176.45", t_now=t),
+                rx.dr_clock("1176.45", t_now=t),
+                rx.code_bias_any_band(t_now=t),
+                rx.dr_clock_any_band(t_now=t),
+            ):
                 if got is None:
                     continue
                 owner = getattr(got, "chain", None)
                 nsat = getattr(got, "n_sats", None)
                 if owner in CHAINS and nsat is not None:
                     if nsat != CHAINS.index(owner) + 1:
-                        bad.append("torn: owner %s carries n_sats %r (its own is %d)"
-                                   % (owner, nsat, CHAINS.index(owner) + 1))
+                        bad.append(
+                            "torn: owner %s carries n_sats %r (its own is %d)"
+                            % (owner, nsat, CHAINS.index(owner) + 1)
+                        )
             if rng.random() < 0.05:
                 rx.summary()
 
@@ -136,9 +154,12 @@ def lane_joint(iters, nthread):
                 js.gauge()
                 # The read accessors that are deliberately unlocked, plus locked ones that
                 # index by membership -- this is the 2026-08-15 shape.
-                js.clk; js.clk_rate
+                js.clk
+                js.clk_rate
                 for prn in prns:
-                    js.bias(("gps", prn)); js.sigma(("gps", prn)); js.age(("gps", prn), t)
+                    js.bias(("gps", prn))
+                    js.sigma(("gps", prn))
+                    js.age(("gps", prn), t)
                 js.summary(t)
                 n = len(js._idx)
                 P = js.P
@@ -190,33 +211,45 @@ def lane_notes(iters, nthread):
     bad, inconclusive = [], None
     in_flight = nthread * 5
     if in_flight >= 200:
-        inconclusive = ("%d threads can queue ~%d notes between drains, against the 200-deep "
-                        "trim in _note -- drops would be legitimate. Use fewer threads."
-                        % (nthread, in_flight))
+        inconclusive = (
+            "%d threads can queue ~%d notes between drains, against the 200-deep "
+            "trim in _note -- drops would be legitimate. Use fewer threads."
+            % (nthread, in_flight)
+        )
     elif len(drained) + left != written:
         # BOTH DIRECTIONS ARE THE SAME DEFECT. The unlocked swap is read-then-rebind, so two
         # drainers take the SAME list object and both return its contents: the dominant
         # failure is DUPLICATION (drained > written), not loss. An operator reading the log
         # sees a note twice and concludes the filter did something twice.
         d = len(drained) + left - written
-        bad.append("MISCOUNT %+d note(s) (%s): wrote %d, drained %d, queued %d"
-                   % (d, "duplicated" if d > 0 else "lost", written, len(drained), left))
+        bad.append(
+            "MISCOUNT %+d note(s) (%s): wrote %d, drained %d, queued %d"
+            % (d, "duplicated" if d > 0 else "lost", written, len(drained), left)
+        )
     return err, bad, inconclusive
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--iters", type=int, default=400)
-    ap.add_argument("--lane", action="append", default=[],
-                    choices=["receiver", "joint", "notes"],
-                    help="run only these lanes (repeatable)")
-    ap.add_argument("--selftest", action="store_true",
-                    help="put the PRE-FIX unlocked drain_notes back and require the NOTES "
-                         "lane to FAIL. A race detector that has never been seen detecting "
-                         "is indistinguishable from a no-op, and this one is fast enough "
-                         "and green enough to be exactly that by accident.")
+    ap.add_argument(
+        "--lane",
+        action="append",
+        default=[],
+        choices=["receiver", "joint", "notes"],
+        help="run only these lanes (repeatable)",
+    )
+    ap.add_argument(
+        "--selftest",
+        action="store_true",
+        help="put the PRE-FIX unlocked drain_notes back and require the NOTES "
+        "lane to FAIL. A race detector that has never been seen detecting "
+        "is indistinguishable from a no-op, and this one is fast enough "
+        "and green enough to be exactly that by accident.",
+    )
     a = ap.parse_args()
 
     gil = getattr(sys, "_is_gil_enabled", lambda: True)()
@@ -227,13 +260,19 @@ def main():
         def unlocked_drain(self):
             out, self.notes = self.notes, []
             return out
+
         state_filter.JointReceiverState.drain_notes = unlocked_drain
         print("SELFTEST: unlocked drain_notes installed; the NOTES lane must now FAIL")
         for attempt in range(1, 21):
             err, bad, _inc = lane_notes(a.iters, a.threads)
             if err or bad:
-                print("  detected on attempt %d: %s" % (attempt, (bad or ["thread died"])[0]))
-                print("SELFTEST PASS -- the lane can fail, so a pass from it means something")
+                print(
+                    "  detected on attempt %d: %s"
+                    % (attempt, (bad or ["thread died"])[0])
+                )
+                print(
+                    "SELFTEST PASS -- the lane can fail, so a pass from it means something"
+                )
                 return 0
         print("  20 attempts, nothing detected")
         if gil:
@@ -241,15 +280,21 @@ def main():
             # so the defect is INVISIBLE here -- which is the finding, not a shortfall: it
             # is section 6's argument ("a race would pass every gate") reproduced on demand.
             # Run this arm under the free-threaded interpreter to see the lane bite.
-            print("SELFTEST INCONCLUSIVE UNDER THE GIL -- expected. The GIL hides this "
-                  "defect; that is WHY the audit had to be an audit. Re-run free-threaded.")
+            print(
+                "SELFTEST INCONCLUSIVE UNDER THE GIL -- expected. The GIL hides this "
+                "defect; that is WHY the audit had to be an audit. Re-run free-threaded."
+            )
             return 0
-        print("SELFTEST FAIL -- free-threaded and still blind: the NOTES lane cannot see "
-              "the defect it exists to catch, so a pass from it means nothing")
+        print(
+            "SELFTEST FAIL -- free-threaded and still blind: the NOTES lane cannot see "
+            "the defect it exists to catch, so a pass from it means nothing"
+        )
         return 1
 
-    print("%s  GIL %s  threads=%d iters=%d"
-          % (sys.version.split()[0], "ON" if gil else "OFF", a.threads, a.iters))
+    print(
+        "%s  GIL %s  threads=%d iters=%d"
+        % (sys.version.split()[0], "ON" if gil else "OFF", a.threads, a.iters)
+    )
 
     lanes = [("RECEIVER", lane_receiver), ("JOINT", lane_joint), ("NOTES", lane_notes)]
     if a.lane:

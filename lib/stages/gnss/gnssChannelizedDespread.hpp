@@ -33,9 +33,9 @@ namespace gnss {
 
 /// Result of a channelized despread over a carrier's covering channels.
 struct DespreadResult {
-    std::complex<double> amplitude;              ///< matched-filter estimate (G / replica_energy)
-    std::complex<double> correlation;            ///< raw coherent sum G
-    double replica_energy;                       ///< sum_c sum_m |R_c[m]|^2
+    std::complex<double> amplitude;                ///< matched-filter estimate (G / replica_energy)
+    std::complex<double> correlation;              ///< raw coherent sum G
+    double replica_energy;                         ///< sum_c sum_m |R_c[m]|^2
     std::vector<std::complex<double>> per_channel; ///< g_c per provided channel
 };
 
@@ -52,8 +52,9 @@ DespreadResult channelized_despread(const std::vector<std::vector<std::complex<f
 /// Result of a known-secondary-overlay deep wipe (@ref overlay_wipe).
 struct OverlayWipeResult {
     double amplitude = 0.0; ///< deep coherent |A| = |sum of overlay-corrected per-record A| / nrec
-    double snr = 0.0;       ///< significance = coherent sum / its orthogonal-noise std (~1 noise, >>1 real)
-    int phase = 0;          ///< overlay alignment (0..len-1) that maximised the coherent sum
+    double snr =
+        0.0;       ///< significance = coherent sum / its orthogonal-noise std (~1 noise, >>1 real)
+    int phase = 0; ///< overlay alignment (0..len-1) that maximised the coherent sum
 };
 
 /**

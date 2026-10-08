@@ -24,13 +24,13 @@ L = 204600.0
 F_L5 = 1176.45e6
 CHIP_HZ = 10.23e6
 C = 299792458.0
-K_PHYS = CHIP_HZ / C          # 0.03412 chips per (m/s)
+K_PHYS = CHIP_HZ / C  # 0.03412 chips per (m/s)
 
 
 def mk(**kw):
     kw.setdefault("code_len", L)
     kw.setdefault("ref_band", "L5")
-    kw.setdefault("clk0", 150.0)   # warm start; cold bootstrap is test_joint_bootstrap's
+    kw.setdefault("clk0", 150.0)  # warm start; cold bootstrap is test_joint_bootstrap's
     return JointReceiverState(**kw)
 
 
@@ -54,15 +54,18 @@ class TestCouplingMoves(unittest.TestCase):
     def test_predict_drags_bias_at_the_documented_scale(self):
         """rrate = +1 m/s held for 60 s of pure predicts must move b_sat by k*60
         chips -- exactly, it is one F-matrix term -- and k=0 must not move it."""
-        for k_c, want in ((+K_PHYS, +K_PHYS * 60.0), (-K_PHYS, -K_PHYS * 60.0),
-                          (0.0, 0.0)):
+        for k_c, want in (
+            (+K_PHYS, +K_PHYS * 60.0),
+            (-K_PHYS, -K_PHYS * 60.0),
+            (0.0, 0.0),
+        ):
             js = mk(rr_bsat_chips_per_m=k_c)
             key = ("G", 5)
             t = 0.0
             for i in range(20):
                 js.update(key, 150.0, 0.3, t)
                 t += 1.0
-            js.predict(t)              # sync the filter clock: update() predicted to t-1
+            js.predict(t)  # sync the filter clock: update() predicted to t-1
             js._add_rrate(key, 1.0, t)
             i_b = js._idx[key]
             b0 = float(js.x[i_b])
@@ -70,9 +73,12 @@ class TestCouplingMoves(unittest.TestCase):
                 t += 1.0
                 js.predict(t)
             moved = float(js.x[i_b]) - b0
-            self.assertAlmostEqual(moved, want, places=9,
-                                   msg="k=%+.5f moved %+.6f want %+.6f"
-                                       % (k_c, moved, want))
+            self.assertAlmostEqual(
+                moved,
+                want,
+                places=9,
+                msg="k=%+.5f moved %+.6f want %+.6f" % (k_c, moved, want),
+            )
 
     def test_no_coupling_without_a_matching_bias_row(self):
         """A key with an rrate row but no b_sat row must not couple anywhere --
@@ -105,8 +111,10 @@ class TestMassBirthReEarned(unittest.TestCase):
             js.gauge_rrate()
             js.predict(t + 1.0)
             t += 1.0
-        errs = [abs(js.wrap(float(js.x[js._idx[("G", p)]]) - (b - mean_b)))
-                for p, b in truth.items()]
+        errs = [
+            abs(js.wrap(float(js.x[js._idx[("G", p)]]) - (b - mean_b)))
+            for p, b in truth.items()
+        ]
         rrs = [abs(js.rrate(("G", p))) for p in truth]
         return max(errs), max(rrs)
 
@@ -116,12 +124,16 @@ class TestMassBirthReEarned(unittest.TestCase):
             err, rr = self._run(k_c)
             # a rate-absorbs-offset runaway shows up as chips of bias error and
             # m/s of phantom rrate -- orders beyond these bars
-            self.assertLess(err, max(3.0 * base_err, 0.15),
-                            msg="k=%+.5f bias err %.4f (base %.4f)"
-                                % (k_c, err, base_err))
-            self.assertLess(rr, max(3.0 * base_rr, 0.5),
-                            msg="k=%+.5f phantom rrate %.4f (base %.4f)"
-                                % (k_c, rr, base_rr))
+            self.assertLess(
+                err,
+                max(3.0 * base_err, 0.15),
+                msg="k=%+.5f bias err %.4f (base %.4f)" % (k_c, err, base_err),
+            )
+            self.assertLess(
+                rr,
+                max(3.0 * base_rr, 0.5),
+                msg="k=%+.5f phantom rrate %.4f (base %.4f)" % (k_c, rr, base_rr),
+            )
 
 
 if __name__ == "__main__":

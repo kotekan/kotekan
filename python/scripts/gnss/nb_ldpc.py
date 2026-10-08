@@ -15,23 +15,146 @@ import math
 import numpy as np
 
 N_GF = 6
-Q_GF = 1 << N_GF               # 64
+Q_GF = 1 << N_GF  # 64
 MAX_ITER = 15
 NM_EMS = 4
 ERR_PROB = 1e-5
 
 GF_VEC = (
-    1, 2, 4, 8, 16, 32, 3, 6, 12, 24, 48, 35, 5, 10, 20, 40,
-    19, 38, 15, 30, 60, 59, 53, 41, 17, 34, 7, 14, 28, 56, 51, 37,
-    9, 18, 36, 11, 22, 44, 27, 54, 47, 29, 58, 55, 45, 25, 50, 39,
-    13, 26, 52, 43, 21, 42, 23, 46, 31, 62, 63, 61, 57, 49, 33)
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    3,
+    6,
+    12,
+    24,
+    48,
+    35,
+    5,
+    10,
+    20,
+    40,
+    19,
+    38,
+    15,
+    30,
+    60,
+    59,
+    53,
+    41,
+    17,
+    34,
+    7,
+    14,
+    28,
+    56,
+    51,
+    37,
+    9,
+    18,
+    36,
+    11,
+    22,
+    44,
+    27,
+    54,
+    47,
+    29,
+    58,
+    55,
+    45,
+    25,
+    50,
+    39,
+    13,
+    26,
+    52,
+    43,
+    21,
+    42,
+    23,
+    46,
+    31,
+    62,
+    63,
+    61,
+    57,
+    49,
+    33,
+)
 GF_POW = (
-    0, 0, 1, 6, 2, 12, 7, 26, 3, 32, 13, 35, 8, 48, 27, 18,
-    4, 24, 33, 16, 14, 52, 36, 54, 9, 45, 49, 38, 28, 41, 19, 56,
-    5, 62, 25, 11, 34, 31, 17, 47, 15, 23, 53, 51, 37, 44, 55, 40,
-    10, 61, 46, 30, 50, 22, 39, 43, 29, 60, 42, 21, 20, 59, 57, 58)
+    0,
+    0,
+    1,
+    6,
+    2,
+    12,
+    7,
+    26,
+    3,
+    32,
+    13,
+    35,
+    8,
+    48,
+    27,
+    18,
+    4,
+    24,
+    33,
+    16,
+    14,
+    52,
+    36,
+    54,
+    9,
+    45,
+    49,
+    38,
+    28,
+    41,
+    19,
+    56,
+    5,
+    62,
+    25,
+    11,
+    34,
+    31,
+    17,
+    47,
+    15,
+    23,
+    53,
+    51,
+    37,
+    44,
+    55,
+    40,
+    10,
+    61,
+    46,
+    30,
+    50,
+    22,
+    39,
+    43,
+    29,
+    60,
+    42,
+    21,
+    20,
+    59,
+    57,
+    58,
+)
 
 _GF_MUL = None
+
+
 def init_gf():
     global _GF_MUL
     if _GF_MUL is not None:
@@ -74,6 +197,8 @@ def gf2bin(code):
 
 
 _EDGE_CACHE = {}
+
+
 def _edges(H_idx, H_ele, n_check, n_var):
     key = id(H_idx)
     c = _EDGE_CACHE.get(key)
@@ -82,7 +207,9 @@ def _edges(H_idx, H_ele, n_check, n_var):
     ie, je, he = [], [], []
     for i in range(len(H_idx)):
         for j in range(len(H_idx[i])):
-            ie.append(i); je.append(H_idx[i][j]); he.append(H_ele[i][j])
+            ie.append(i)
+            je.append(H_idx[i][j])
+            he.append(H_ele[i][j])
     ne = len(he)
     check_edges = [[] for _ in range(n_check)]
     var_edges = [[] for _ in range(n_var)]
@@ -151,7 +278,7 @@ def decode(H_idx, H_ele, m, n, syms):
     for _ in range(MAX_ITER):
         if _check_parity(GM, ie, je, he, m, code):
             dec = gf2bin(code)
-            return dec[:m * N_GF], int(np.count_nonzero(dec ^ s))
+            return dec[: m * N_GF], int(np.count_nonzero(dec ^ s))
         for cn in range(m):
             es = check_edges[cn]
             for e in es:
@@ -175,7 +302,7 @@ def decode(H_idx, H_ele, m, n, syms):
             for e in var_edges[vn]:
                 Lp = Lp + C2V[e]
             code[vn] = int(np.argmin(Lp))
-    return gf2bin(code)[:m * N_GF], -1
+    return gf2bin(code)[: m * N_GF], -1
 
 
 def encode_systematic(H_idx, H_ele, m, n, info_syms):
@@ -199,15 +326,18 @@ def encode_systematic(H_idx, H_ele, m, n, info_syms):
         pr = next((rr for rr in range(r, m) if Hp[rr][col] != 0), None)
         if pr is None:
             continue
-        Hp[r], Hp[pr] = Hp[pr], Hp[r]; rhs[r], rhs[pr] = rhs[pr], rhs[r]
+        Hp[r], Hp[pr] = Hp[pr], Hp[r]
+        rhs[r], rhs[pr] = rhs[pr], rhs[r]
         inv = gf_inv(Hp[r][col])
-        Hp[r] = [gf_mul(inv, x) for x in Hp[r]]; rhs[r] = gf_mul(inv, rhs[r])
+        Hp[r] = [gf_mul(inv, x) for x in Hp[r]]
+        rhs[r] = gf_mul(inv, rhs[r])
         for rr in range(m):
             if rr != r and Hp[rr][col]:
                 f = Hp[rr][col]
                 Hp[rr] = [Hp[rr][cc] ^ gf_mul(f, Hp[r][cc]) for cc in range(npar)]
                 rhs[rr] ^= gf_mul(f, rhs[r])
-        piv_col[r] = col; r += 1
+        piv_col[r] = col
+        r += 1
     p = [0] * npar
     for rr in range(r):
         p[piv_col[rr]] = rhs[rr]

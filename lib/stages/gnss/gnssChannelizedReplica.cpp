@@ -1,23 +1,23 @@
 #include "gnssChannelizedReplica.hpp"
 
-#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
-#include "gnssBandPlan.hpp"    // for ChannelBand, covering_channels
-#include "gpsCACode.hpp"       // for generate_ca_code
-#include "gpsL1CCode.hpp"      // for generate_l1cp_code
-#include "gpsL2CCode.hpp"      // for generate_l2cm_code, generate_l2cl_code
 #include "beidouB1CCode.hpp"
 #include "beidouB1ICode.hpp"
-#include "beidouB3ICode.hpp"
-#include "glonassCACode.hpp"
-#include "glonassL2OCCode.hpp"
-#include "glonassL3OCCode.hpp"
 #include "beidouB2aCode.hpp"
 #include "beidouB2bCode.hpp"
+#include "beidouB3ICode.hpp"
+#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
 #include "galileoE1Code.hpp"
 #include "galileoE5aCode.hpp"
 #include "galileoE5bCode.hpp"
 #include "galileoE6Code.hpp"
-#include "gpsL5Code.hpp"       // for generate_l5i_code, generate_l5q_code
+#include "glonassCACode.hpp"
+#include "glonassL2OCCode.hpp"
+#include "glonassL3OCCode.hpp"
+#include "gnssBandPlan.hpp" // for ChannelBand, covering_channels
+#include "gpsCACode.hpp"    // for generate_ca_code
+#include "gpsL1CCode.hpp"   // for generate_l1cp_code
+#include "gpsL2CCode.hpp"   // for generate_l2cm_code, generate_l2cl_code
+#include "gpsL5Code.hpp"    // for generate_l5i_code, generate_l5q_code
 
 #include <algorithm> // for max
 #include <cassert>   // for assert (FDMA filter/PRN pairing)
@@ -154,7 +154,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         return std::vector<int8_t>(a.begin(), a.end());
     }
     if (name == "GAL_E6_C_CS") // per-PRN CS100 baked in, exactly as GAL_E5A_Q_CS below
-        return bake_secondary(galileo::generate_e6c_code(prn), galileo::generate_e6c_secondary(prn));
+        return bake_secondary(galileo::generate_e6c_code(prn),
+                              galileo::generate_e6c_secondary(prn));
     if (name == "GAL_E5A_Q") {
         auto a = galileo::generate_e5aq_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
@@ -254,16 +255,13 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
         else if (name == "GAL_E5A_I") {
             const auto o = galileo::e5ai_secondary(); // shared CS20 (20 ms = one F/NAV symbol)
             _secondary.assign(o.begin(), o.end());
-        }
-        else if (name == "BDS_B2A_D") {
+        } else if (name == "BDS_B2A_D") {
             const auto o = beidou::b2ad_secondary(); // shared 5-chip (5 ms = one B-CNAV2 symbol)
             _secondary.assign(o.begin(), o.end());
-        }
-        else if (name == "GAL_E5B_I") {
+        } else if (name == "GAL_E5B_I") {
             const auto o = galileo::e5bi_secondary(); // shared CS4 (4 ms = one I/NAV symbol)
             _secondary.assign(o.begin(), o.end());
-        }
-        else if (name == "BDS_B3I") // shared NH20 spreading D1 (20 ms = one NAV symbol)
+        } else if (name == "BDS_B3I") // shared NH20 spreading D1 (20 ms = one NAV symbol)
             _secondary.assign(beidou::B3I_NH20.begin(), beidou::B3I_NH20.end());
         else if (name == "BDS_B1I") // same D1 NH20 one band up
             _secondary.assign(beidou::B1I_NH20.begin(), beidou::B1I_NH20.end());
@@ -376,9 +374,8 @@ double ChannelizedReplicaBank::window_advance_chips(long long window_start_sampl
 double ChannelizedReplicaBank::phase_from_arg(double arg, long long window_start_sample,
                                               double doppler_hz) const {
     const double L = (double)_eff_code_length;
-    double ph = std::fmod((double)_comb_mult * arg + window_advance_chips(window_start_sample,
-                                                                         doppler_hz),
-                          L);
+    double ph = std::fmod(
+        (double)_comb_mult * arg + window_advance_chips(window_start_sample, doppler_hz), L);
     return (ph < 0.0) ? ph + L : ph;
 }
 
@@ -417,8 +414,7 @@ double ChannelizedReplicaBank::carrier_offset(int prn_index) const {
     return _f_offset + _prn_df[(size_t)prn_index];
 }
 
-std::vector<int> ChannelizedReplicaBank::covering_bins(double doppler_hz,
-                                                       double doppler_margin_hz,
+std::vector<int> ChannelizedReplicaBank::covering_bins(double doppler_hz, double doppler_margin_hz,
                                                        int prn_index) const {
     // Global r2c bin grid: bin j centred at j*Fs/(2N) over [0, Fs/2), natural order.
     std::vector<ChannelBand> chans(_N);
@@ -480,8 +476,8 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     // reaches ~7e15 at CHORD's absolute sample index, where a double quantises to 1 rad. This
     // path is the REFERENCE the fast path is validated against, so it has to be at least as
     // exact or the comparison certifies the wrong thing.
-    const long double wcL =
-        2.0L * (long double)M_PI * (long double)(carrier_offset(p) + doppler_hz) / (long double)_sample_rate;
+    const long double wcL = 2.0L * (long double)M_PI * (long double)(carrier_offset(p) + doppler_hz)
+                            / (long double)_sample_rate;
     std::complex<double> cph = // phasor at n=start
         std::polar(1.0, (double)std::fmod(wcL * (long double)start, 2.0L * (long double)M_PI));
 
@@ -616,13 +612,10 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
     return chan_out;
 }
 
-void
-ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
-                                            long long window_start_sample, double code_phase_chips,
-                                            double doppler_hz, int n_hops,
-                                            const std::function<float(long long)>& nav_bit,
-                                            int nh_phase,
-                                            std::vector<std::vector<cf>>& chan) const {
+void ChannelizedReplicaBank::hoprate_stream_into(
+    const HopRateFilter& f, int p, long long window_start_sample, double code_phase_chips,
+    double doppler_hz, int n_hops, const std::function<float(long long)>& nav_bit, int nh_phase,
+    std::vector<std::vector<cf>>& chan) const {
     // Per-hop carrier + code phase use the CURRENT Doppler (exact); the filter shape f is
     // built for a nearby Doppler (it barely moves). R_j[m] = 1/2 ( e^{+i wc n_m} Σ_d code·d̂·
     // (PhiA over chip d) + e^{-i wc n_m} ... PhiB ), d the chip relative to the window edge.
@@ -657,11 +650,12 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
     // 4.8e-7 rad), and it is SLOW-ONSET here: the error grows with the sample counter, so a
     // freshly-started F-engine looks fine and a long-running one does not. long double's 64-bit
     // mantissa puts the ULP at 7.4e-4 rad (0.04 deg) at the same n0.
-    const long double wcL =
-        2.0L * (long double)M_PI * (long double)(carrier_offset(p) + doppler_hz) / (long double)_sample_rate;
+    const long double wcL = 2.0L * (long double)M_PI * (long double)(carrier_offset(p) + doppler_hz)
+                            / (long double)_sample_rate;
     std::complex<double> pa =
         std::polar(1.0, (double)std::fmod(wcL * (long double)n0, 2.0L * (long double)M_PI));
-    const std::complex<double> pstep = std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
+    const std::complex<double> pstep =
+        std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
     // Per-chip tap range + code value for one hop. Identical for every channel (the channel
     // only enters through Phi), so it is computed once per hop rather than once per hop per
     // channel as it used to be -- nw times less of this work, and it leaves room to make the
@@ -733,8 +727,8 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
             klo = khi + 1;
         }
 
-        // SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2). When the filter was built at a
-        // DIFFERENT carrier than this stream's -- i.e. Doppler-free, shared by every PRN --
+        // SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2). When the filter was built at
+        // a DIFFERENT carrier than this stream's -- i.e. Doppler-free, shared by every PRN --
         // reconstruct each chip window's difference instead of reading it directly:
         //
         //   dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
@@ -744,8 +738,7 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
         // stream's Doppler baked in and every branch below is skipped -- the shared path is
         // then bit-identical to the per-PRN one by construction, which is what makes the
         // fallback safe.
-        const double wc_stream =
-            2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
+        const double wc_stream = 2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
         const double ddw = (f.PsiA.empty()) ? 0.0 : (wc_stream - f.wc_built);
         for (int ci = 0; ci < nw; ++ci) {
             std::complex<double> sA(0.0, 0.0), sB(0.0, 0.0);
@@ -774,12 +767,10 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
     }
 }
 
-std::vector<std::vector<cf>>
-ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
-                                         double code_phase_chips, double doppler_hz, int n_hops,
-                                         const std::vector<int>& want,
-                                         const std::function<float(long long)>& nav_bit,
-                                         int nh_phase) const {
+std::vector<std::vector<cf>> ChannelizedReplicaBank::channels_hoprate(
+    int p, long long window_start_sample, double code_phase_chips, double doppler_hz, int n_hops,
+    const std::vector<int>& want, const std::function<float(long long)>& nav_bit,
+    int nh_phase) const {
     return hoprate_stream(hoprate_filter(want, doppler_hz, p), p, window_start_sample,
                           code_phase_chips, doppler_hz, n_hops, nav_bit, nh_phase);
 }

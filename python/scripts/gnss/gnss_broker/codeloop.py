@@ -88,11 +88,14 @@ def stage_dll_control(ctx):
             # the null from the same points, values reassigned within each instance), so
             # >= the bar means the fold beat its own null -- not a tuned constant.
             _rs = None
-            _rs_qual = (ctx.dls.reseed_prns and fl is not None
-                        and (ctx.dls.reseed_prns is True or prn in ctx.dls.reseed_prns)
-                        and fl.get("q", 9.9) < ctx.args.reseed_q_max  # taps carry no gradient
-                        and (fl.get("spec_ratio") or 0.0) >= ctx.args.reseed_min_ratio
-                        and fl.get("spec_tau") is not None)
+            _rs_qual = (
+                ctx.dls.reseed_prns
+                and fl is not None
+                and (ctx.dls.reseed_prns is True or prn in ctx.dls.reseed_prns)
+                and fl.get("q", 9.9) < ctx.args.reseed_q_max  # taps carry no gradient
+                and (fl.get("spec_ratio") or 0.0) >= ctx.args.reseed_min_ratio
+                and fl.get("spec_tau") is not None
+            )
             # #90 ADMISSION CLAUSE: `present` is the #49 deep gate, and on the searchless
             # chains it is a one-way door -- off-peak kills presence, and with no search
             # to re-admit (#79 is gps_l5-only) the PRN can never earn its correction
@@ -113,22 +116,32 @@ def stage_dll_control(ctx):
                 # gnss_broker/admission.py; the strike clock is the REAL wall clock
                 # (not the frozen cycle clock) because decorrelation is a statement
                 # about fold windows, not about cycles.
-                _npn = sum(1 for _f0 in ctx.dllp.fleet.values()
-                           if isinstance(_f0, dict) and _f0.get("present"))
-                _adm = ctx.adm_gate.decide(prn, float(fl["spec_tau"]), prn in ctx.seeds,
-                                        time.time(), ctx.t0, _npn,
-                                        time.time() - ctx.broker_t0)
+                _npn = sum(
+                    1
+                    for _f0 in ctx.dllp.fleet.values()
+                    if isinstance(_f0, dict) and _f0.get("present")
+                )
+                _adm = ctx.adm_gate.decide(
+                    prn,
+                    float(fl["spec_tau"]),
+                    prn in ctx.seeds,
+                    time.time(),
+                    ctx.t0,
+                    _npn,
+                    time.time() - ctx.broker_t0,
+                )
                 _rs_admit = _adm.fire
                 for _ak, _am, _ae in _adm.logs:
                     _log_rl(_ak, _am, every_s=_ae)
                 if _adm.reason == "strike1":
-                    _log_rl("rs-admit-%d" % prn,
-                            "RESEED-ADMIT PRN %d: strike 1 (tau %+.3f, "
-                            "pk/fl %.2f, absent) -- fires on a consistent "
-                            "(|dtau|<=0.5) qualifying fit 60-600 s from now"
-                            % (prn, float(fl["spec_tau"]),
-                               fl.get("spec_ratio") or 0.0),
-                            every_s=60.0)
+                    _log_rl(
+                        "rs-admit-%d" % prn,
+                        "RESEED-ADMIT PRN %d: strike 1 (tau %+.3f, "
+                        "pk/fl %.2f, absent) -- fires on a consistent "
+                        "(|dtau|<=0.5) qualifying fit 60-600 s from now"
+                        % (prn, float(fl["spec_tau"]), fl.get("spec_ratio") or 0.0),
+                        every_s=60.0,
+                    )
             elif fl.get("present"):
                 ctx.adm_gate.note_present(prn)
             if _rs_qual and (fl.get("present") or _rs_admit):
@@ -137,13 +150,21 @@ def stage_dll_control(ctx):
                 # gnss_broker/admission.py: the direction is validated, the MAGNITUDE
                 # is not, so this converges over several opportunities rather than
                 # betting the correction on one unproven number.
-                _step, _rs = reseed_step(_t, ctx.args.spec_span_chips,
-                                         ctx.args.reseed_gain, ctx.args.reseed_max_chips)
+                _step, _rs = reseed_step(
+                    _t,
+                    ctx.args.spec_span_chips,
+                    ctx.args.reseed_gain,
+                    ctx.args.reseed_max_chips,
+                )
                 if _step is not None:
                     ctx.seeds[prn].put(
-                        "reseed", epoch=ctx.seeds[prn].get("ref_hop"),
-                        code_phase_chips=(ctx.seeds[prn].get("code_phase_chips", 0.0)
-                                          + _step) % ctx.args.code_length)
+                        "reseed",
+                        epoch=ctx.seeds[prn].get("ref_hop"),
+                        code_phase_chips=(
+                            ctx.seeds[prn].get("code_phase_chips", 0.0) + _step
+                        )
+                        % ctx.args.code_length,
+                    )
                     # The at-ref phase is a DERIVED leg of the same triple; leaving it
                     # stale would ship a seed whose two phases disagree, which is the
                     # transport disease of #45 in miniature. Drop it and let the normal
@@ -158,9 +179,13 @@ def stage_dll_control(ctx):
                     # path would have given it.
                     if _rs_admit and ctx.args.fleet_trim_url:
                         ctx.dls.hold[prn] = time.time()
-                    _rs = ("tau %+.3f pk/fl %.2f q %.2f -> seed %+.3f chips%s"
-                           % (_t, fl.get("spec_ratio") or 0.0, fl.get("q", 0.0), _step,
-                              " [#90 ADMIT: absent, 2-strike]" if _rs_admit else ""))
+                    _rs = "tau %+.3f pk/fl %.2f q %.2f -> seed %+.3f chips%s" % (
+                        _t,
+                        fl.get("spec_ratio") or 0.0,
+                        fl.get("q", 0.0),
+                        _step,
+                        " [#90 ADMIT: absent, 2-strike]" if _rs_admit else "",
+                    )
             if _rs:
                 _log("RESEED PRN %d: %s" % (prn, _rs))
         if fl is not None:
@@ -179,8 +204,10 @@ def stage_dll_control(ctx):
             # pull-in, unrecoverable, and it would read as the DLL diverging rather than
             # the feed-forward being absent. So HOLD instead of integrating.
             if not float(ctx.seeds[prn].get("code_phase_rate", 0.0) or 0.0):
-                _log_rl("dll-norate-%d" % prn,
-                        "fleet DLL PRN %d: no live code_phase_rate, holding trim" % prn)
+                _log_rl(
+                    "dll-norate-%d" % prn,
+                    "fleet DLL PRN %d: no live code_phase_rate, holding trim" % prn,
+                )
                 continue
             if not fl["present"]:
                 continue
@@ -261,25 +288,41 @@ def stage_dll_control(ctx):
         # the pre-existing expiry-is-a-step hazard (audit section 6), not new here.
         if prn not in ctx.dls.armed_last:
             ctx.dls.trim[prn] = combdll.dll_integrate(
-                ctx.dls.trim.get(prn, 0.0), disc, ctx.args.dll_gain, leak, 3.0,
-                ctx.args.dll_spacing)
+                ctx.dls.trim.get(prn, 0.0),
+                disc,
+                ctx.args.dll_gain,
+                leak,
+                3.0,
+                ctx.args.dll_spacing,
+            )
         ctx.dllp.report.append(
             "PRN %d disc %+.3f trim %+.2f%s"
             # .get: when the C++ fleet loop owns this chain the integrator above is
             # skipped and dll_trim may have no entry -- indexing it killed the gps_l5
             # chain thread with KeyError(20) at 13:17:11 on 2026-08-15, and the seeds
             # expired 60 s later. The DLL line still reports disc/q; trim reads 0.
-            % (prn, disc, ctx.dls.trim.get(prn, 0.0),
-               "" if fl is None
-               else " [fleet %d/%d q %.2f p %.1fx%s]"
-                    % (fl["n_src"], len(ctx.dll_combiners), fl["q"],
-                       fl["p_pow"] / fl["p_med"] if fl.get("p_med") else 0.0,
-                       # Which gate admitted this PRN (#49). Printed only for the
-                       # deep gate, so the opt-in set is identifiable in the log
-                       # without diffing against the prompt-gated majority.
-                       "" if fl.get("present_gate") != "deep" else
-                       " DEEP %.1f/%.1f" % (fl.get("deep_gate_snr", 0.0),
-                                            fl.get("deep_gate_floor", 0.0)))))
+            % (
+                prn,
+                disc,
+                ctx.dls.trim.get(prn, 0.0),
+                ""
+                if fl is None
+                else " [fleet %d/%d q %.2f p %.1fx%s]"
+                % (
+                    fl["n_src"],
+                    len(ctx.dll_combiners),
+                    fl["q"],
+                    fl["p_pow"] / fl["p_med"] if fl.get("p_med") else 0.0,
+                    # Which gate admitted this PRN (#49). Printed only for the
+                    # deep gate, so the opt-in set is identifiable in the log
+                    # without diffing against the prompt-gated majority.
+                    ""
+                    if fl.get("present_gate") != "deep"
+                    else " DEEP %.1f/%.1f"
+                    % (fl.get("deep_gate_snr", 0.0), fl.get("deep_gate_floor", 0.0)),
+                ),
+            )
+        )
 
 
 def stage_watchdog(ctx):
@@ -307,56 +350,85 @@ def stage_watchdog(ctx):
             # the det bar (100) hid them from this watchdog at E1's det snr ~45). The
             # rail IS the evidence, so a railed sat is judged at the ordinary presence
             # bar (2x acquire) instead of the strong det bar.
-            _railed = (ctx.args.carrier_max_hz > 0.0
-                       and abs(ctx.car.trim.get(prn, 0.0)) >= 0.95 * ctx.args.carrier_max_hz)
-            _det_bar = (2.0 * ctx.args.acquire_snr if _railed else ctx.args.watchdog_det_snr)
+            _railed = (
+                ctx.args.carrier_max_hz > 0.0
+                and abs(ctx.car.trim.get(prn, 0.0)) >= 0.95 * ctx.args.carrier_max_hz
+            )
+            _det_bar = (
+                2.0 * ctx.args.acquire_snr if _railed else ctx.args.watchdog_det_snr
+            )
             _reseed = None
-            if (ctx.t0 - ctx.wd.birth[prn] > ctx.args.watchdog_s
-                    and ctx.t0 - ctx.wd.coh_t.get(prn, ctx.t0) > ctx.args.watchdog_s
-                    and _fr is not None and ctx.t0 - _fr[1] < 10.0
-                    and prn in ctx.best and ctx.best[prn][0] >= _det_bar):
-                _reseed = ("det snr %.0f but ZERO coherent emits for >%.0f s%s"
-                           % (ctx.best[prn][0], ctx.args.watchdog_s,
-                              " (trim RAILED %+.0f Hz)" % ctx.car.trim[prn]
-                              if _railed else ""))
+            if (
+                ctx.t0 - ctx.wd.birth[prn] > ctx.args.watchdog_s
+                and ctx.t0 - ctx.wd.coh_t.get(prn, ctx.t0) > ctx.args.watchdog_s
+                and _fr is not None
+                and ctx.t0 - _fr[1] < 10.0
+                and prn in ctx.best
+                and ctx.best[prn][0] >= _det_bar
+            ):
+                _reseed = "det snr %.0f but ZERO coherent emits for >%.0f s%s" % (
+                    ctx.best[prn][0],
+                    ctx.args.watchdog_s,
+                    " (trim RAILED %+.0f Hz)" % ctx.car.trim[prn] if _railed else "",
+                )
             # WEAK-TRACK RESEED (2026-07-20): the coherent-but-weak zombie -- track
             # correlating ~20 dB off-peak with just enough coherence to hide from the
             # zero-coherence test above (C21/C42: sig 11-18 vs det snr strong, 70 min,
             # every rescuer blind). Judge track significance against the det bar:
             # strong det + persistently floor-level track = broken by construction.
             _tsig = max(_r.get("deep_snr") or 0.0, _r.get("amp_snr") or 0.0)
-            if (ctx.args.watchdog_weak_sig > 0.0
-                    and _fr is not None and ctx.t0 - _fr[1] < 10.0
-                    and prn in ctx.best and ctx.best[prn][0] >= ctx.args.watchdog_det_snr):
+            if (
+                ctx.args.watchdog_weak_sig > 0.0
+                and _fr is not None
+                and ctx.t0 - _fr[1] < 10.0
+                and prn in ctx.best
+                and ctx.best[prn][0] >= ctx.args.watchdog_det_snr
+            ):
                 if _tsig >= ctx.args.watchdog_weak_sig:
                     ctx.wd.strong_t[prn] = ctx.t0
                     ctx.wd.weak_n.pop(prn, None)  # cleared the bar -> backoff resets
-                elif (_reseed is None
-                      # 3x birth grace (2026-07-20 13:12 soak): a reseed resets the
-                      # deep ladder and sig takes 60-120 s to rebuild past the bar, so
-                      # a 1x window re-fired on its own aftermath -- metronomic churn
-                      # on healthy ramping sats (E3 at 50 dB-Hz reseeded 3x at birth).
-                      # A real zombie (70 min) doesn't care about a 135 s judgment.
-                      # EXPONENTIAL BACKOFF (14:05 soak): track sig alone cannot
-                      # separate a zombie from a LEGIT-WEAK sat (E1 PRN 8: 29 dB-Hz,
-                      # det snr 112 -- det snr barely scales with C/N0 on E1, so the
-                      # weak-det exemption fails there) and the bar churned weak sats
-                      # at exactly grace cadence. A real zombie is cured by fire #1;
-                      # a sat that fires AGAIN earns doubled grace each time (135 s ->
-                      # 270 -> 540 -> ... capped 16x), so persistent-weak sats are
-                      # left alone while one-shot rescues stay fast.
-                      and ctx.t0 - ctx.wd.birth[prn] > (3.0 * ctx.args.watchdog_s
-                                                * (2 ** min(ctx.wd.weak_n.get(prn, 0), 4)))
-                      and ctx.t0 - ctx.wd.strong_t.get(prn, ctx.wd.birth[prn]) > ctx.args.watchdog_s):
+                elif (
+                    _reseed is None
+                    # 3x birth grace (2026-07-20 13:12 soak): a reseed resets the
+                    # deep ladder and sig takes 60-120 s to rebuild past the bar, so
+                    # a 1x window re-fired on its own aftermath -- metronomic churn
+                    # on healthy ramping sats (E3 at 50 dB-Hz reseeded 3x at birth).
+                    # A real zombie (70 min) doesn't care about a 135 s judgment.
+                    # EXPONENTIAL BACKOFF (14:05 soak): track sig alone cannot
+                    # separate a zombie from a LEGIT-WEAK sat (E1 PRN 8: 29 dB-Hz,
+                    # det snr 112 -- det snr barely scales with C/N0 on E1, so the
+                    # weak-det exemption fails there) and the bar churned weak sats
+                    # at exactly grace cadence. A real zombie is cured by fire #1;
+                    # a sat that fires AGAIN earns doubled grace each time (135 s ->
+                    # 270 -> 540 -> ... capped 16x), so persistent-weak sats are
+                    # left alone while one-shot rescues stay fast.
+                    and ctx.t0 - ctx.wd.birth[prn]
+                    > (
+                        3.0
+                        * ctx.args.watchdog_s
+                        * (2 ** min(ctx.wd.weak_n.get(prn, 0), 4))
+                    )
+                    and ctx.t0 - ctx.wd.strong_t.get(prn, ctx.wd.birth[prn])
+                    > ctx.args.watchdog_s
+                ):
                     ctx.wd.weak_n[prn] = ctx.wd.weak_n.get(prn, 0) + 1
-                    _reseed = ("det snr %.0f but track sig %.0f < %.0f for >%.0f s "
-                               "(coherence %.2f, fire #%d -- WEAK-TRACK zombie)"
-                               % (ctx.best[prn][0], _tsig, ctx.args.watchdog_weak_sig,
-                                  ctx.args.watchdog_s, _r.get("coherence_s") or 0.0,
-                                  ctx.wd.weak_n[prn]))
+                    _reseed = (
+                        "det snr %.0f but track sig %.0f < %.0f for >%.0f s "
+                        "(coherence %.2f, fire #%d -- WEAK-TRACK zombie)"
+                        % (
+                            ctx.best[prn][0],
+                            _tsig,
+                            ctx.args.watchdog_weak_sig,
+                            ctx.args.watchdog_s,
+                            _r.get("coherence_s") or 0.0,
+                            ctx.wd.weak_n[prn],
+                        )
+                    )
             if _reseed is not None:
-                _log("WATCHDOG RESEED PRN %d: %s -> drop + fresh seed (tracker "
-                     "state resets via the active-list gap)" % (prn, _reseed))
+                _log(
+                    "WATCHDOG RESEED PRN %d: %s -> drop + fresh seed (tracker "
+                    "state resets via the active-list gap)" % (prn, _reseed)
+                )
                 del ctx.seeds[prn]
                 ctx.dls.trim.pop(prn, None)
                 ctx.dls.last.pop(prn, None)
@@ -365,7 +437,7 @@ def stage_watchdog(ctx):
                 ctx.cpt.escape.pop(prn, None)
                 ctx.cpt.err_hist.pop(prn, None)
         for k in list(ctx.wd.birth):
-            if k not in ctx.seeds:   # any unseeding path re-stamps birth on re-entry
+            if k not in ctx.seeds:  # any unseeding path re-stamps birth on re-entry
                 ctx.wd.birth.pop(k, None)
                 ctx.wd.coh_t.pop(k, None)
                 ctx.wd.strong_t.pop(k, None)

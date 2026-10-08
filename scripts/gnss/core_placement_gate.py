@@ -31,7 +31,10 @@ from collections import defaultdict
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-NUMA = {0: set(range(0, 16)) | set(range(32, 48)), 1: set(range(16, 32)) | set(range(48, 64))}
+NUMA = {
+    0: set(range(0, 16)) | set(range(32, 48)),
+    1: set(range(16, 32)) | set(range(48, 64)),
+}
 # lcores and their SMT siblings (+32 on this 2x16x2 topology).
 DPDK = {5, 6, 7, 21, 22, 23} | {37, 38, 39, 53, 54, 55}
 
@@ -47,18 +50,25 @@ def check(path):
         for core in st.get("cpu_affinity") or []:
             owner[core].append(name)
             if core in DPDK:
-                problems.append(f"{name}: core {core} is a DPDK poll core or its SMT sibling")
+                problems.append(
+                    f"{name}: core {core} is a DPDK poll core or its SMT sibling"
+                )
             if gpu in NUMA and core not in NUMA[gpu]:
                 problems.append(f"{name}: core {core} is not on GPU{gpu}'s NUMA node")
     for core, names in sorted(owner.items()):
         if len(names) > 1:
-            problems.append(f"core {core} shared by cudaProcess stages: {', '.join(names)}")
+            problems.append(
+                f"core {core} shared by cudaProcess stages: {', '.join(names)}"
+            )
     return sorted(owner), problems
 
 
 def main():
     paths = sys.argv[1:] or sorted(
-        glob.glob(os.path.join(ROOT, "config", "generated", "chord_gnss_cx*_multi.yaml")))
+        glob.glob(
+            os.path.join(ROOT, "config", "generated", "chord_gnss_cx*_multi.yaml")
+        )
+    )
     if not paths:
         print("no generated node configs found")
         return 1
@@ -75,11 +85,15 @@ def main():
             print(f"ok   {name}  cudaProcess cores {cores}")
     print()
     if bad:
-        print(f"*** {bad} config(s) violate CPU placement. Fix runtime.cpu_affinity_gpu{{0,1}} "
-              "in config/chord_gnss_node.yaml, or dual_core() in the generator.")
+        print(
+            f"*** {bad} config(s) violate CPU placement. Fix runtime.cpu_affinity_gpu{{0,1}} "
+            "in config/chord_gnss_node.yaml, or dual_core() in the generator."
+        )
         return 1
-    print("ALL NODE CONFIGS: distinct logical cpus per cudaProcess, correct NUMA node, "
-          "no DPDK cores.")
+    print(
+        "ALL NODE CONFIGS: distinct logical cpus per cudaProcess, correct NUMA node, "
+        "no DPDK cores."
+    )
     return 0
 
 

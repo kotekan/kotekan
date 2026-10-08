@@ -17,17 +17,82 @@ N = 10230
 N_L = 10223
 
 # IS-GPS-800 L1C-D Weil + insertion indices (== gpsL1CCode.cpp L1CD_WEIL / L1CD_INS), PRN 1..32.
-L1CD_WEIL = (5097, 5110, 5079, 4403, 4121, 5043, 5042, 5104, 4940, 5035, 4372, 5064,
-             5084, 5048, 4950, 5019, 5076, 3736, 4993, 5060, 5061, 5096, 4983, 4783,
-             4991, 4815, 4443, 4769, 4879, 4894, 4985, 5056)
-L1CD_INS = (181, 359, 72, 1110, 1480, 5034, 4622, 1, 4547, 826, 6284, 4195,
-            368, 1, 4796, 523, 151, 713, 9850, 5734, 34, 6142, 190, 644,
-            467, 5384, 801, 594, 4450, 9437, 4307, 5906)
+L1CD_WEIL = (
+    5097,
+    5110,
+    5079,
+    4403,
+    4121,
+    5043,
+    5042,
+    5104,
+    4940,
+    5035,
+    4372,
+    5064,
+    5084,
+    5048,
+    4950,
+    5019,
+    5076,
+    3736,
+    4993,
+    5060,
+    5061,
+    5096,
+    4983,
+    4783,
+    4991,
+    4815,
+    4443,
+    4769,
+    4879,
+    4894,
+    4985,
+    5056,
+)
+L1CD_INS = (
+    181,
+    359,
+    72,
+    1110,
+    1480,
+    5034,
+    4622,
+    1,
+    4547,
+    826,
+    6284,
+    4195,
+    368,
+    1,
+    4796,
+    523,
+    151,
+    713,
+    9850,
+    5734,
+    34,
+    6142,
+    190,
+    644,
+    467,
+    5384,
+    801,
+    594,
+    4450,
+    9437,
+    4307,
+    5906,
+)
 _INS7 = (1, -1, -1, 1, -1, 1, 1)  # "0110100" bipolar
 
 # PocketSDR-verified fingerprints: (crc32 of the +/-1 code as a "01" bitstring, popcount of +1).
 _FINGERPRINT = {
-    1: (29149742, 5115), 7: (1054620445, 5115), 19: (4184466511, 5115), 32: (3058363443, 5115),
+    1: (29149742, 5115),
+    7: (1054620445, 5115),
+    19: (4184466511, 5115),
+    32: (3058363443, 5115),
 }
 
 
@@ -65,6 +130,7 @@ def main():
     fails = 0
     try:
         import sdr_code  # PocketSDR, optional
+
         pocket = True
     except Exception:
         pocket = False
@@ -77,10 +143,16 @@ def main():
             got = _fp(code)
             ok = got == _FINGERPRINT[prn]
             fails += 0 if ok else 1
-            line += " crc=0x%08x pop=%d vs stored: %s" % (got[0], got[1], "OK" if ok else "MISMATCH")
+            line += " crc=0x%08x pop=%d vs stored: %s" % (
+                got[0],
+                got[1],
+                "OK" if ok else "MISMATCH",
+            )
             checked = True
         if pocket:
-            ref = list(sdr_code.gen_code_L1CPD(N, L1CD_WEIL[prn - 1], L1CD_INS[prn - 1]))
+            ref = list(
+                sdr_code.gen_code_L1CPD(N, L1CD_WEIL[prn - 1], L1CD_INS[prn - 1])
+            )
             bx = ref == code
             fails += 0 if bx else 1
             line += "  | PocketSDR: %s" % ("BIT-EXACT" if bx else "MISMATCH")

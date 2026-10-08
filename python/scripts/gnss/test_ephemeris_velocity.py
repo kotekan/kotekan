@@ -17,8 +17,8 @@ rather than the ephemeris.
 import math
 import unittest
 
-R_GPS = 26.56e6        # GPS orbit radius, m
-T_GPS = 43082.0        # sidereal-ish period, s
+R_GPS = 26.56e6  # GPS orbit radius, m
+T_GPS = 43082.0  # sidereal-ish period, s
 CARRIER = 1176.45e6
 C = 2.99792458e8
 
@@ -49,7 +49,6 @@ def err(v, t):
 
 
 class TestSchemeNotEphemeris(unittest.TestCase):
-
     def test_forward_error_is_a_time_offset_of_h_over_2(self):
         """THE DIAGNOSIS, as an assertion: the forward difference's error is not random, it is
         v(t + h/2) - v(t). If this ever stops holding, the error has a different origin and the
@@ -58,8 +57,11 @@ class TestSchemeNotEphemeris(unittest.TestCase):
         t = 1234.0
         got = vel_forward(t, h)
         predicted = vel_true(t + h / 2.0)
-        self.assertLess(err(got, t + h / 2.0), 0.05 * err(got, t),
-                        "forward difference did not land on v(t+h/2): %r" % (got,))
+        self.assertLess(
+            err(got, t + h / 2.0),
+            0.05 * err(got, t),
+            "forward difference did not land on v(t+h/2): %r" % (got,),
+        )
         for k in range(3):
             self.assertAlmostEqual(got[k], predicted[k], delta=0.02)
 
@@ -68,24 +70,29 @@ class TestSchemeNotEphemeris(unittest.TestCase):
         t = 1234.0
         ef = err(vel_forward(t, h), t)
         ec = err(vel_central(t, h), t)
-        self.assertGreater(ef / max(ec, 1e-12), 1000.0,
-                           "central %.3g m/s vs forward %.3g m/s -- expected >1000x" % (ec, ef))
+        self.assertGreater(
+            ef / max(ec, 1e-12),
+            1000.0,
+            "central %.3g m/s vs forward %.3g m/s -- expected >1000x" % (ec, ef),
+        )
 
     def test_the_forward_bias_equals_acceleration_times_h_over_2(self):
         """Closed form, so the size is predicted rather than measured: |a| h/2."""
         h = 0.5
         w = 2 * math.pi / T_GPS
         a_mag = R_GPS * w * w
-        self.assertAlmostEqual(err(vel_forward(1234.0, h), 1234.0), a_mag * h / 2.0, delta=0.01)
+        self.assertAlmostEqual(
+            err(vel_forward(1234.0, h), 1234.0), a_mag * h / 2.0, delta=0.01
+        )
 
     def test_it_exceeded_the_whole_cross_window_phase_budget(self):
         """The number that makes this worth fixing rather than noting. Line-of-sight
         acceleration implied by a real fleet Doppler rate, times h/2, in Hz."""
-        budget_hz = 0.1 / (2 * math.pi * 1.0485760)      # 0.1 rad across one window
+        budget_hz = 0.1 / (2 * math.pi * 1.0485760)  # 0.1 rad across one window
         self.assertAlmostEqual(budget_hz, 0.0152, places=4)
-        for dop_rate in (0.036, 0.369):                   # measured E5a fleet range
-            a_los = dop_rate * C / CARRIER                # m/s^2
-            dop_err = (a_los * 0.25) * CARRIER / C        # Hz  == dop_rate * 0.25
+        for dop_rate in (0.036, 0.369):  # measured E5a fleet range
+            a_los = dop_rate * C / CARRIER  # m/s^2
+            dop_err = (a_los * 0.25) * CARRIER / C  # Hz  == dop_rate * 0.25
             self.assertAlmostEqual(dop_err, dop_rate * 0.25, places=9)
             if dop_rate > 0.3:
                 self.assertGreater(dop_err, 5 * budget_hz)
@@ -94,19 +101,23 @@ class TestSchemeNotEphemeris(unittest.TestCase):
         """⚠️ The tempting repair. The forward bias is FIRST order in h, so halving h only
         halves it and costs precision elsewhere; centring removes it outright at the same h."""
         t = 1234.0
-        self.assertAlmostEqual(err(vel_forward(t, 0.25), t),
-                               err(vel_forward(t, 0.5), t) / 2.0, delta=0.01)
+        self.assertAlmostEqual(
+            err(vel_forward(t, 0.25), t), err(vel_forward(t, 0.5), t) / 2.0, delta=0.01
+        )
         self.assertLess(err(vel_central(t, 0.5), t), err(vel_forward(t, 0.001), t))
 
 
 class TestShippedFunction(unittest.TestCase):
-
     def test_sat_pos_clk_uses_a_central_difference(self):
         """Reads the shipped source rather than trusting the comment -- this defect WAS a
         comment that said "adequate: range-rate to ~mm/s" over a scheme that was not."""
         import os
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "gnss_ephemeris.py")) as fh:
+
+        with open(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "gnss_ephemeris.py"
+            )
+        ) as fh:
             src = fh.read()
         self.assertIn("pm = _pos_only(e2, t_gpst - dt)", src)
         self.assertIn("(pp[k] - pm[k]) / (2.0 * dt)", src)

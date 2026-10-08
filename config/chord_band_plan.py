@@ -75,19 +75,25 @@ def signal_table(header=None):
                     boc_m, boc_n}}.
     """
     if header is None:
-        header = os.path.join(os.path.dirname(CONF), "lib", "stages", "gnss", "gnssSignal.hpp")
+        header = os.path.join(
+            os.path.dirname(CONF), "lib", "stages", "gnss", "gnssSignal.hpp"
+        )
     import re
+
     text = open(header).read()
     pat = re.compile(
-        r'inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=\s*\{\s*'
+        r"inline\s+constexpr\s+SignalDescriptor\s+(\w+)\s*=\s*\{\s*"
         r'"(\w+)"\s*,\s*([\d.eE+-]+)\s*,\s*([\d.eE+-]+)\s*,\s*(\d+)\s*,\s*([\d.eE+-]+)\s*,\s*'
-        r'Modulation::(\w+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,')
+        r"Modulation::(\w+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,"
+    )
     out = {}
     for m in pat.finditer(text):
         var, name = m.group(1), m.group(2)
         if var != name:
-            raise SystemExit(f"{header}: descriptor {var} declares name '{name}' -- "
-                             "the two must match or config lookups by name go wrong")
+            raise SystemExit(
+                f"{header}: descriptor {var} declares name '{name}' -- "
+                "the two must match or config lookups by name go wrong"
+            )
         out[name] = {
             "carrier_hz": float(m.group(3)),
             "chip_rate_hz": float(m.group(4)),
@@ -98,8 +104,10 @@ def signal_table(header=None):
             "boc_n": int(m.group(9)),
         }
     if not out:
-        raise SystemExit(f"{header}: parsed zero SignalDescriptors -- the header's shape "
-                         "changed and this parser needs updating")
+        raise SystemExit(
+            f"{header}: parsed zero SignalDescriptors -- the header's shape "
+            "changed and this parser needs updating"
+        )
     return out
 
 
@@ -119,7 +127,10 @@ def all_band_channels(cfg):
     """Every science-band freq_id, regardless of which node holds it."""
     sb = cfg["science_band"]
     width = cfg["fengine"]["channel_width_hz"]
-    return [(fid, fid * width, width) for fid in range(sb["min_freq_id"], sb["max_freq_id"] + 1)]
+    return [
+        (fid, fid * width, width)
+        for fid in range(sb["min_freq_id"], sb["max_freq_id"] + 1)
+    ]
 
 
 def delay_response(freq_ids, width_hz, carrier_hz, span_ns=3000.0, n=300001):
@@ -139,11 +150,16 @@ def delay_response(freq_ids, width_hz, carrier_hz, span_ns=3000.0, n=300001):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--node-file", default=DEFAULT_NODE_FILE)
-    ap.add_argument("--nodes", nargs="*", default=None,
-                    help="nodes to combine (default: report each, then cumulative)")
+    ap.add_argument(
+        "--nodes",
+        nargs="*",
+        default=None,
+        help="nodes to combine (default: report each, then cumulative)",
+    )
     args = ap.parse_args()
 
     with open(args.node_file) as fh:
@@ -157,15 +173,23 @@ def main():
 
     lo, hi = occupied_band(carrier, chip, dopp)
     full = covering_channels(all_band_channels(cfg), carrier, chip, dopp)
-    print(f"signal      : {sig['primary']} (+ {', '.join(sig['also_available'])}, same channels)")
+    print(
+        f"signal      : {sig['primary']} (+ {', '.join(sig['also_available'])}, same channels)"
+    )
     print(f"carrier     : {carrier/1e6:.2f} MHz, chip rate {chip/1e6:.2f} MHz")
-    print(f"occupied    : {lo/1e6:.3f} .. {hi/1e6:.3f} MHz  (|Doppler| <= {dopp/1e3:.1f} kHz)")
-    print(f"main lobe   : {len(full)} channels of {cfg['fengine']['num_bins']} "
-          f"({width/1e3:.4f} kHz each)")
+    print(
+        f"occupied    : {lo/1e6:.3f} .. {hi/1e6:.3f} MHz  (|Doppler| <= {dopp/1e3:.1f} kHz)"
+    )
+    print(
+        f"main lobe   : {len(full)} channels of {cfg['fengine']['num_bins']} "
+        f"({width/1e3:.4f} kHz each)"
+    )
     print()
 
     order = args.nodes if args.nodes else cfg["nodes"]["bringup_order"]
-    hdr = f"{'nodes':<22}{'ch':>4}{'% lobe':>9}{'dSNR':>8}{'1st alias':>12}{'height':>9}"
+    hdr = (
+        f"{'nodes':<22}{'ch':>4}{'% lobe':>9}{'dSNR':>8}{'1st alias':>12}{'height':>9}"
+    )
     print(hdr)
     print("-" * len(hdr))
 
@@ -174,20 +198,33 @@ def main():
         got = covering_channels(node_channels(cfg, node), carrier, chip, dopp)
         cumulative.append(node)
         combined = sorted(
-            set().union(*[set(covering_channels(node_channels(cfg, n), carrier, chip, dopp))
-                          for n in cumulative]))
+            set().union(
+                *[
+                    set(covering_channels(node_channels(cfg, n), carrier, chip, dopp))
+                    for n in cumulative
+                ]
+            )
+        )
         frac = len(combined) / len(full)
         ns, db = delay_response(combined, width, carrier)
         label = "+".join(n[2:] for n in cumulative)
-        print(f"{label:<22}{len(combined):>4}{frac*100:>8.1f}%{10*math.log10(frac):>+7.1f}dB"
-              f"{ns:>10.0f} ns{db:>8.1f} dB")
+        print(
+            f"{label:<22}{len(combined):>4}{frac*100:>8.1f}%{10*math.log10(frac):>+7.1f}dB"
+            f"{ns:>10.0f} ns{db:>8.1f} dB"
+        )
         if len(cumulative) == 1:
-            print(f"  {node} alone holds freq_ids {got[:3]}...{got[-1]} "
-                  f"({got[0]*width/1e6:.2f}..{got[-1]*width/1e6:.2f} MHz)")
+            print(
+                f"  {node} alone holds freq_ids {got[:3]}...{got[-1]} "
+                f"({got[0]*width/1e6:.2f}..{got[-1]*width/1e6:.2f} MHz)"
+            )
 
     print()
-    print("dSNR is relative to seeing the whole main lobe; the alias is the first delay")
-    print("ambiguity outside the main lobe. Compare against a BRDC model delay uncertainty")
+    print(
+        "dSNR is relative to seeing the whole main lobe; the alias is the first delay"
+    )
+    print(
+        "ambiguity outside the main lobe. Compare against a BRDC model delay uncertainty"
+    )
     print("of roughly 10-40 ns -- every configuration above clears it by >=16x.")
 
 

@@ -26,21 +26,23 @@ import numpy as np
 
 import galileo_inav as G
 
-SYM_S = G.SYM_S                 # 0.004
-PAGE = G.PAGE_PART_SYMS         # 250 symbols per page part
-EMIT_MAX = 64                   # bound the stitched emit cache per PRN
-WORD_TTL_S = 3600.0            # a cached word older than this is stale (ephemeris ~ hourly)
+SYM_S = G.SYM_S  # 0.004
+PAGE = G.PAGE_PART_SYMS  # 250 symbols per page part
+EMIT_MAX = 64  # bound the stitched emit cache per PRN
+WORD_TTL_S = 3600.0  # a cached word older than this is stale (ephemeris ~ hourly)
 
 
 class _PrnState:
     def __init__(self):
-        self.emits = {}          # slot0 -> np.array(+-1) one per distinct nav_obs emit
-        self.grid0 = None        # per-PRN symbol-grid origin (abs time of the first emit's sym 0)
-        self.last_obs = None     # (utc_ref, phase, br) dedup
-        self.pol = None          # resolved carrier polarity (+1/-1), None until first CRC-OK
-        self.words = {}          # word_type -> (iodnav, word_bits[128], t_decoded)
-        self.n_pages = 0         # page parts decoded (sync-valid)
-        self.n_words = 0         # words assembled with valid CRC
+        self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
+        self.grid0 = (
+            None  # per-PRN symbol-grid origin (abs time of the first emit's sym 0)
+        )
+        self.last_obs = None  # (utc_ref, phase, br) dedup
+        self.pol = None  # resolved carrier polarity (+1/-1), None until first CRC-OK
+        self.words = {}  # word_type -> (iodnav, word_bits[128], t_decoded)
+        self.n_pages = 0  # page parts decoded (sync-valid)
+        self.n_words = 0  # words assembled with valid CRC
         self.last_decode = 0.0
 
 
@@ -48,15 +50,20 @@ class InavPredictor:
     def __init__(self, log=None):
         self._p = {}
         self._log = log or (lambda m: None)
-        self._min_gap = 1.0      # s between decode attempts across all PRNs (0 = off, self-test)
+        self._min_gap = (
+            1.0  # s between decode attempts across all PRNs (0 = off, self-test)
+        )
         self._last_decode = 0.0
 
     # ----------------------------------------------------------------- ingest
     def ingest(self, prn, obs):
         st = self._p.setdefault(prn, _PrnState())
         try:
-            utc_ref = float(obs["utc_ref"]); rec_dt = float(obs["rec_dt"])
-            phase = int(obs["phase"]); br = int(obs["br"]); pairs = obs["bits"]
+            utc_ref = float(obs["utc_ref"])
+            rec_dt = float(obs["rec_dt"])
+            phase = int(obs["phase"])
+            br = int(obs["br"])
+            pairs = obs["bits"]
         except (KeyError, TypeError, ValueError):
             return
         if rec_dt <= 0 or br <= 0 or not pairs:
@@ -81,7 +88,7 @@ class InavPredictor:
             bi, sg = int(bi), int(sg)
             if sg not in (1, -1):
                 continue
-            slot = base + bi            # symbols are contiguous within an emit
+            slot = base + bi  # symbols are contiguous within an emit
             m[slot] = sg
         if len(m) < 2:
             return
@@ -95,7 +102,9 @@ class InavPredictor:
             if i + 1 == len(slots) or slots[i + 1] != slots[i] + 1:
                 s0, s1 = slots[seg], slots[i]
                 if s1 - s0 + 1 >= 2:
-                    st.emits[s0] = np.array([m[s] for s in range(s0, s1 + 1)], dtype=np.int8)
+                    st.emits[s0] = np.array(
+                        [m[s] for s in range(s0, s1 + 1)], dtype=np.int8
+                    )
                 seg = i + 1
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
@@ -113,19 +122,21 @@ class InavPredictor:
         if not st.emits:
             return []
         runs = []
-        cur0 = None; cur = None
+        cur0 = None
+        cur = None
         for s0 in sorted(st.emits):
             a = st.emits[s0]
             if cur is None:
                 cur0, cur = s0, a.copy()
                 continue
             end = cur0 + len(cur)
-            if s0 <= end:                     # overlap/abut: splice (shared slot signs agree)
+            if s0 <= end:  # overlap/abut: splice (shared slot signs agree)
                 ov = end - s0
                 if ov < len(a):
                     cur = np.concatenate([cur, a[ov:]])
             else:
-                runs.append((cur0, cur)); cur0, cur = s0, a.copy()
+                runs.append((cur0, cur))
+                cur0, cur = s0, a.copy()
         runs.append((cur0, cur))
         return runs
 
@@ -133,7 +144,7 @@ class InavPredictor:
         for run0, signs in self._runs(st):
             soft = signs.astype(float)
             # collect sync-aligned page parts (both polarities unless already locked)
-            parts = {}   # start_slot -> content_bits[114]
+            parts = {}  # start_slot -> content_bits[114]
             i = 0
             n = len(soft)
             while i + PAGE <= n:
@@ -143,12 +154,13 @@ class InavPredictor:
                 # decoded content is absolute regardless of the raw emit sign.
                 got = None
                 for pol in (1, -1):
-                    seg = pol * soft[i:i + PAGE]
-                    hard = (seg[:G.N_SYNC] < 0).astype(np.int8)
+                    seg = pol * soft[i : i + PAGE]
+                    hard = (seg[: G.N_SYNC] < 0).astype(np.int8)
                     if np.array_equal(hard, np.array(G.SYNC, dtype=np.int8)):
                         bits, ok = G.decode_page_part(seg, want_sync=True)
                         if ok and bits is not None:
-                            got = (pol, bits); break
+                            got = (pol, bits)
+                            break
                 if got is not None:
                     parts[run0 + i] = got
                     st.n_pages += 1
@@ -175,7 +187,7 @@ class InavPredictor:
                 word, crc_ok, wt = res
                 if not crc_ok:
                     continue
-                st.pol = pol_e                       # last resolved sign (health only)
+                st.pol = pol_e  # last resolved sign (health only)
                 iod = G._uint(word[6:16])
                 st.words[wt] = (iod, word, time.time())
                 st.n_words += 1
@@ -191,7 +203,7 @@ class InavPredictor:
         if not all(t in fresh for t in (1, 2, 3, 4)):
             return None
         iods = {fresh[t][0] for t in (1, 2, 3, 4)}
-        if len(iods) != 1:                            # words from different ephemeris sets
+        if len(iods) != 1:  # words from different ephemeris sets
             return None
         eph = G.parse_inav_ephemeris({t: fresh[t][1] for t in (1, 2, 3, 4)})
         if eph is None or not eph.get("_iod_consistent"):
@@ -208,8 +220,13 @@ class InavPredictor:
         st = self._p.get(prn)
         if st is None:
             return None
-        return {"pol": st.pol, "pages": st.n_pages, "words": st.n_words,
-                "have": sorted(st.words), "eph": self.ephemeris(prn) is not None}
+        return {
+            "pol": st.pol,
+            "pages": st.n_pages,
+            "words": st.n_words,
+            "have": sorted(st.words),
+            "eph": self.ephemeris(prn) is not None,
+        }
 
 
 # ------------------------------------------------------------------- self-test
@@ -222,7 +239,7 @@ def _selftest():
     for wt in (1, 2, 3, 4):
         w = [0] * G.WORD_BITS
         w[0:6] = [(wt >> (5 - i)) & 1 for i in range(6)]
-        w[6:16] = [0] * 10                      # IODnav = 42 -> set below (consistent)
+        w[6:16] = [0] * 10  # IODnav = 42 -> set below (consistent)
         iod = 42
         w[6:16] = [(iod >> (9 - i)) & 1 for i in range(10)]
         words[wt] = w
@@ -239,7 +256,7 @@ def _selftest():
             even, odd = G.build_page(words[wt])
             sym.append(np.where(G.encode_page_part(even) == 0, 1.0, -1.0))
             sym.append(np.where(G.encode_page_part(odd) == 0, 1.0, -1.0))
-    pm = np.concatenate(sym).astype(np.int8)     # transmitted +-1 (0->+1, 1->-1)
+    pm = np.concatenate(sym).astype(np.int8)  # transmitted +-1 (0->+1, 1->-1)
 
     # Feed as page-aligned emits (one 250-symbol page part each) with an INDEPENDENT
     # random polarity per emit -- the combiner's deep-integration sign is arbitrary per
@@ -251,12 +268,17 @@ def _selftest():
     # settle against the real E1B combiner's emit cadence, not a correctness gap here.)
     pred = InavPredictor(log=print)
     pred._min_gap = 0.0
-    ELEN = PAGE                                  # 250 = one page part per emit
+    ELEN = PAGE  # 250 = one page part per emit
     e = 0
     while e + ELEN <= len(pm):
         sgn = 1 - 2 * rng.randint(0, 2)
-        obs = {"utc_ref": e * SYM_S, "rec_dt": SYM_S, "phase": 0, "br": 1,
-               "bits": [[i, int(pm[e + i]) * sgn] for i in range(ELEN)]}
+        obs = {
+            "utc_ref": e * SYM_S,
+            "rec_dt": SYM_S,
+            "phase": 0,
+            "br": 1,
+            "bits": [[i, int(pm[e + i]) * sgn] for i in range(ELEN)],
+        }
         pred.ingest(prn, obs)
         e += ELEN
 
@@ -264,15 +286,23 @@ def _selftest():
     print("health:", h)
     ok = True
     if not (h and h["words"] >= 4 and set((1, 2, 3, 4)) <= set(h["have"])):
-        print("FAIL: not all four word types assembled"); ok = False
+        print("FAIL: not all four word types assembled")
+        ok = False
     eph = pred.ephemeris(prn)
     if eph is None:
-        print("FAIL: no ephemeris"); ok = False
+        print("FAIL: no ephemeris")
+        ok = False
     else:
-        bad = [k for k in truth if not k.startswith("_") and k != "IODnav"
-               and abs(eph[k] - truth[k]) > 1e-9 * (abs(truth[k]) + 1)]
+        bad = [
+            k
+            for k in truth
+            if not k.startswith("_")
+            and k != "IODnav"
+            and abs(eph[k] - truth[k]) > 1e-9 * (abs(truth[k]) + 1)
+        ]
         if bad:
-            print("FAIL: ephemeris fields disagree:", bad); ok = False
+            print("FAIL: ephemeris fields disagree:", bad)
+            ok = False
         else:
             print("ephemeris recovered, all fields match; IODnav", eph["IODnav"])
     print("PASS" if ok else "FAIL")
@@ -281,4 +311,5 @@ def _selftest():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(0 if _selftest() else 1)

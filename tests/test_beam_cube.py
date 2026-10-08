@@ -20,8 +20,12 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "python", "scripts", "gnss"))
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "python", "scripts", "gnss"
+    ),
+)
 
 # RUNNABLE WITHOUT PYTEST, ON PURPOSE. No venv on this host currently has pytest, and healpy
 # lives only in /home/kvand/gnss/venv -- so a pytest-only test here would be a test nobody
@@ -30,7 +34,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # the same assertions today.
 try:
     import pytest
-except ImportError:                                                    # pragma: no cover
+except ImportError:  # pragma: no cover
+
     class _Approx:
         def __init__(self, v, abs=0.0):
             self.v, self.abs = v, abs
@@ -49,6 +54,7 @@ except ImportError:                                                    # pragma:
                 def deco(fn):
                     fn._params = values
                     return fn
+
                 return deco
 
         @staticmethod
@@ -57,10 +63,18 @@ except ImportError:                                                    # pragma:
 
     pytest = _Pytest()
 
-hp = pytest.importorskip("healpy", reason="healpy lives in /home/kvand/gnss/venv, not venv-ft")
+hp = pytest.importorskip(
+    "healpy", reason="healpy lives in /home/kvand/gnss/venv, not venv-ft"
+)
 
 from gnss_beam_cube import (  # noqa: E402
-    ang2pix_ring, azel_to_pix, nest2ring, ring2nest, ring_downgrade, angsep_deg)
+    ang2pix_ring,
+    azel_to_pix,
+    nest2ring,
+    ring2nest,
+    ring_downgrade,
+    angsep_deg,
+)
 
 NSIDES = [4, 8, 16, 32, 64, 128]
 N = 20000
@@ -78,8 +92,9 @@ def test_ang2pix_ring_matches_healpy(nside):
     # that never leaves the upper hemisphere.
     theta = np.arccos(r.uniform(-1.0, 1.0, N))
     phi = r.uniform(0.0, 2.0 * np.pi, N)
-    assert np.array_equal(ang2pix_ring(nside, theta, phi),
-                          hp.ang2pix(nside, theta, phi, nest=False))
+    assert np.array_equal(
+        ang2pix_ring(nside, theta, phi), hp.ang2pix(nside, theta, phi, nest=False)
+    )
 
 
 @pytest.mark.parametrize("nside", NSIDES)
@@ -104,8 +119,9 @@ def test_downgrade_equals_reprojection(pair):
     nin, nout = pair
     r = _rng()
     p = r.integers(0, 12 * nin * nin, 5000)
-    assert np.array_equal(ring_downgrade(p, nin, nout),
-                          hp.ang2pix(nout, *hp.pix2ang(nin, p)))
+    assert np.array_equal(
+        ring_downgrade(p, nin, nout), hp.ang2pix(nout, *hp.pix2ang(nin, p))
+    )
 
 
 def test_downgrade_refuses_nothing_silently():
@@ -128,18 +144,28 @@ def test_azel_convention_is_the_local_horizon_frame():
     """
     az = np.array([0.0, 90.0, 180.0, 270.0])
     z = azel_to_pix(32, az, np.full(4, 90.0))
-    assert np.array_equal(z, hp.ang2pix(32, np.zeros(4), np.radians(az))), \
-        "the pole must be pixelised exactly as healpy does, four pixels and all"
-    assert sorted(z.tolist()) == [0, 1, 2, 3], "el 90 must land in the top RING of the cap"
+    assert np.array_equal(
+        z, hp.ang2pix(32, np.zeros(4), np.radians(az))
+    ), "the pole must be pixelised exactly as healpy does, four pixels and all"
+    assert sorted(z.tolist()) == [
+        0,
+        1,
+        2,
+        3,
+    ], "el 90 must land in the top RING of the cap"
     horizon = azel_to_pix(32, az, np.zeros(4))
-    assert len(set(horizon.tolist())) == 4, "the four cardinal horizon points must differ"
+    assert (
+        len(set(horizon.tolist())) == 4
+    ), "the four cardinal horizon points must differ"
     # Colatitude, not latitude: zenith sits in the north polar cap, i.e. at a LOW ring index,
     # and the horizon in the equatorial belt. Inverting the two is the classic sign error, and
     # it produces a map that is upside down but perfectly smooth.
     assert z.max() < horizon.min()
     # Monotone in elevation along one azimuth: zenith -> horizon must not jump around.
     ring = azel_to_pix(32, np.full(5, 180.0), np.array([90.0, 70.0, 50.0, 30.0, 10.0]))
-    assert list(ring) == sorted(ring), "descending elevation must give ascending RING index"
+    assert list(ring) == sorted(
+        ring
+    ), "descending elevation must give ascending RING index"
 
 
 def test_boresight_separation_is_the_documented_pointing():
@@ -153,7 +179,8 @@ def test_boresight_separation_is_the_documented_pointing():
     assert angsep_deg(180.0, 81.41, 180.0, 81.41) == pytest.approx(0.0, abs=1e-9)
     # Symmetric, and blind to a 360 wrap in azimuth.
     assert angsep_deg(0.0, 30.0, 359.0, 30.0) == pytest.approx(
-        angsep_deg(359.0, 30.0, 0.0, 30.0), abs=1e-12)
+        angsep_deg(359.0, 30.0, 0.0, 30.0), abs=1e-12
+    )
     assert angsep_deg(370.0, 30.0, 10.0, 30.0) == pytest.approx(0.0, abs=1e-9)
 
 
@@ -161,8 +188,12 @@ if __name__ == "__main__":
     # Standalone driver: same assertions, no pytest. Exits nonzero on the first failure so it
     # is usable as a gate, not just as a report.
     import traceback
-    fns = [(k, v) for k, v in sorted(globals().items())
-           if k.startswith("test_") and callable(v)]
+
+    fns = [
+        (k, v)
+        for k, v in sorted(globals().items())
+        if k.startswith("test_") and callable(v)
+    ]
     n_run = n_fail = 0
     for name, fn in fns:
         cases = getattr(fn, "_params", [None])

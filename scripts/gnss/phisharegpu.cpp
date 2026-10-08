@@ -1,6 +1,7 @@
 /**
  * @file
- * @brief THE KERNEL GATE for the shared Doppler-free tables (31896a862:docs/CHORD_GPU_TODO.md item 2).
+ * @brief THE KERNEL GATE for the shared Doppler-free tables (31896a862:docs/CHORD_GPU_TODO.md item
+ * 2).
  *
  * phibits validates the algebra; phishare validates the CPU generator. Neither touches the GPU,
  * and #71 is the monument to why that is not enough: "the gate tested the FORMULA not the kernel
@@ -19,14 +20,15 @@
 #include "GnssCudaDespread.hpp"
 #include "gnssChannelizedReplica.hpp"
 #include "gnssSignal.hpp"
+
+#include <chrono>
 #include <cmath>
+#include <complex>
 #include <cstdio>
 #include <cstdlib>
-#include <complex>
+#include <cuda_runtime.h>
 #include <random>
 #include <vector>
-#include <chrono>
-#include <cuda_runtime.h>
 
 int main(int argc, char** argv) {
     const int n_prn = (argc > 1) ? atoi(argv[1]) : 8;
@@ -39,10 +41,14 @@ int main(int argc, char** argv) {
     const int SPEC_LEN = 8192, NTAPS = 4, N_HOPS = 256;
 
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
-    if (!sig) { printf("no GPS_L5_Q\n"); return 2; }
+    if (!sig) {
+        printf("no GPS_L5_Q\n");
+        return 2;
+    }
 
     std::vector<int> prns;
-    for (int i = 0; i < n_prn; ++i) prns.push_back(1 + i);
+    for (int i = 0; i < n_prn; ++i)
+        prns.push_back(1 + i);
     gnss::ChannelizedReplicaBank bank(*sig, FS, F_OFF, SPEC_LEN, NTAPS, dsp::Window::Hamming, prns);
     std::vector<int> chans{5972, 5988, 6004, 6020, 6036, 6052, 6068};
 
@@ -53,7 +59,8 @@ int main(int argc, char** argv) {
     std::mt19937 rng(12345);
     std::normal_distribution<float> g(0.f, 1.f);
     std::vector<std::complex<float>> win((size_t)N_HOPS * chans.size());
-    for (auto& v : win) v = std::complex<float>(g(rng), g(rng));
+    for (auto& v : win)
+        v = std::complex<float>(g(rng), g(rng));
     dsp.upload_window(win.data(), 0);
 
     // Deliberately spans zero and both signs at the full GPS range.
@@ -70,12 +77,16 @@ int main(int argc, char** argv) {
         specs.push_back(sp);
     }
 
-    if (!dsp.set_shared_phi(false)) { /* expected: returns false when off */ }
+    if (!dsp.set_shared_phi(false)) { /* expected: returns false when off */
+    }
     const auto per_prn = dsp.despread_batch(specs);
     const bool took = dsp.set_shared_phi(true);
     printf("phisharegpu: %d PRNs x %zu channels, %d hops\n", n_prn, chans.size(), N_HOPS);
     printf("  set_shared_phi(true) -> %s\n", took ? "IN EFFECT" : "REFUSED (FDMA?)");
-    if (!took) { printf("  cannot gate what did not arm\n"); return 2; }
+    if (!took) {
+        printf("  cannot gate what did not arm\n");
+        return 2;
+    }
     const auto shared = dsp.despread_batch(specs);
 
     printf("\n  %-4s %9s   %12s %12s %11s\n", "PRN", "doppler", "|per-PRN|", "|shared|", "rel err");
@@ -94,7 +105,8 @@ int main(int argc, char** argv) {
         // error there means the correction is firing when it should be identically absent,
         // which would be a sign/branch bug hiding behind an otherwise-small number.
         const bool fail = (rel > 1e-3) || (zero_dop && worst != 0.0);
-        if (fail) bad++;
+        if (fail)
+            bad++;
         printf("  %-4d %+9.0f   %12.5e %12.5e %11.3e%s%s\n", prns[(size_t)i],
                specs[(size_t)i].doppler_hz, ref, std::abs(shared[(size_t)i][1].correlation), rel,
                zero_dop ? "  (ddw=0: must be EXACT)" : "", fail ? "   <-- FAIL" : "");
@@ -117,10 +129,12 @@ int main(int argc, char** argv) {
         const int REP = 30, WARM = 5;
         auto bench = [&](bool shared) {
             dsp.set_shared_phi(shared);
-            for (int r = 0; r < WARM; ++r) (void)dsp.despread_batch(specs);
+            for (int r = 0; r < WARM; ++r)
+                (void)dsp.despread_batch(specs);
             cudaDeviceSynchronize();
             const auto t0 = std::chrono::steady_clock::now();
-            for (int r = 0; r < REP; ++r) (void)dsp.despread_batch(specs);
+            for (int r = 0; r < REP; ++r)
+                (void)dsp.despread_batch(specs);
             cudaDeviceSynchronize();
             const auto t1 = std::chrono::steady_clock::now();
             return std::chrono::duration<double, std::milli>(t1 - t0).count() / REP;
@@ -133,8 +147,9 @@ int main(int argc, char** argv) {
         printf("    shared tables  : %8.3f ms   (tables 14.7 MB, flat in n_prn)\n", syn_sh);
         if (syn_sh > 0.0)
             printf("    -> %.2fx %s\n", syn_per / syn_sh,
-                   (syn_per / syn_sh > 1.05) ? "FASTER" : (syn_per / syn_sh < 0.95) ? "SLOWER"
-                                                                                   : "(no change)");
+                   (syn_per / syn_sh > 1.05)   ? "FASTER"
+                   : (syn_per / syn_sh < 0.95) ? "SLOWER"
+                                               : "(no change)");
     }
 
     printf("\n  bar: 1e-3 relative; fp16 storage alone costs 3.3e-4\n");

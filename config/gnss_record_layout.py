@@ -18,12 +18,30 @@ raises rather than silently returning a stale default.
 import os
 import re
 
-HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                      "..", "lib", "stages", "gnss", "gnssRecord.hpp")
-TELEM_HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "..", "lib", "stages", "gnss", "gnssTelem.hpp")
-CHAIN_HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "..", "lib", "stages", "gnss", "gnssGpuChain.hpp")
+HEADER = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "lib",
+    "stages",
+    "gnss",
+    "gnssRecord.hpp",
+)
+TELEM_HEADER = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "lib",
+    "stages",
+    "gnss",
+    "gnssTelem.hpp",
+)
+CHAIN_HEADER = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "lib",
+    "stages",
+    "gnss",
+    "gnssGpuChain.hpp",
+)
 
 
 def _read(name, header=None):
@@ -32,8 +50,10 @@ def _read(name, header=None):
         text = fh.read()
     m = re.search(r"^\s*constexpr\s+int\s+%s\s*=\s*(\d+)\s*;" % name, text, re.M)
     if not m:
-        raise SystemExit("%s: could not parse `constexpr int %s` -- the header's shape "
-                         "changed and config/gnss_record_layout.py needs updating" % (path, name))
+        raise SystemExit(
+            "%s: could not parse `constexpr int %s` -- the header's shape "
+            "changed and config/gnss_record_layout.py needs updating" % (path, name)
+        )
     return int(m.group(1))
 
 
@@ -75,9 +95,11 @@ def prnctl_bytes():
         text = fh.read()
     m = re.search(r"static_assert\s*\(\s*sizeof\s*\(\s*PrnCtl\s*\)\s*==\s*(\d+)", text)
     if not m:
-        raise SystemExit("%s: could not parse the sizeof(PrnCtl) static_assert -- the header's "
-                         "shape changed and config/gnss_record_layout.py needs updating"
-                         % CHAIN_HEADER)
+        raise SystemExit(
+            "%s: could not parse the sizeof(PrnCtl) static_assert -- the header's "
+            "shape changed and config/gnss_record_layout.py needs updating"
+            % CHAIN_HEADER
+        )
     return int(m.group(1))
 
 
@@ -133,12 +155,18 @@ def cube_header_bytes():
     """
     with open(HEADER) as fh:
         text = fh.read()
-    m = re.search(r"^\s*constexpr\s+size_t\s+CUBE_HEADER_BYTES\s*=\s*"
-                  r"(\d+)\s*\+\s*CUBE_CHAIN_CHARS\s*;", text, re.M)
+    m = re.search(
+        r"^\s*constexpr\s+size_t\s+CUBE_HEADER_BYTES\s*=\s*"
+        r"(\d+)\s*\+\s*CUBE_CHAIN_CHARS\s*;",
+        text,
+        re.M,
+    )
     if not m:
-        raise SystemExit("%s: could not parse `constexpr size_t CUBE_HEADER_BYTES = N + "
-                         "CUBE_CHAIN_CHARS` -- the header's shape changed and "
-                         "config/gnss_record_layout.py needs updating" % HEADER)
+        raise SystemExit(
+            "%s: could not parse `constexpr size_t CUBE_HEADER_BYTES = N + "
+            "CUBE_CHAIN_CHARS` -- the header's shape changed and "
+            "config/gnss_record_layout.py needs updating" % HEADER
+        )
     return int(m.group(1)) + cube_chain_chars()
 
 
@@ -151,16 +179,22 @@ def cube_frame_bytes(max_prn, max_bins, n_elem):
     frame is sized for the maxima and the unused rows are zero -- padding on the wire, stripped
     by the archiver.
     """
-    return (cube_header_bytes()
-            + max_bins * 2 * 4          # freq_id lo/hi (int32)
-            + max_prn * 3 * 4           # prn, n_rec, n_reanchor (int32)
-            + max_prn * 8               # phi0 (double)
-            + max_prn * max_bins * 2 * 4       # w, energy (float)
-            + max_prn * max_bins * n_elem * 3 * 4)  # coh_re, coh_im, incoh (float)
+    return (
+        cube_header_bytes()
+        + max_bins * 2 * 4  # freq_id lo/hi (int32)
+        + max_prn * 3 * 4  # prn, n_rec, n_reanchor (int32)
+        + max_prn * 8  # phi0 (double)
+        + max_prn * max_bins * 2 * 4  # w, energy (float)
+        + max_prn * max_bins * n_elem * 3 * 4
+    )  # coh_re, coh_im, incoh (float)
 
 
 if __name__ == "__main__":
-    print("RECORD_FLOATS %d  ELEM_FLOATS %d  TELEM_HEADER_BYTES %d"
-          % (record_floats(), elem_floats(), telem_header_bytes()))
-    print("CUBE_HEADER_BYTES %d  cube_frame_bytes(32, 8, 32) %d"
-          % (cube_header_bytes(), cube_frame_bytes(32, 8, 32)))
+    print(
+        "RECORD_FLOATS %d  ELEM_FLOATS %d  TELEM_HEADER_BYTES %d"
+        % (record_floats(), elem_floats(), telem_header_bytes())
+    )
+    print(
+        "CUBE_HEADER_BYTES %d  cube_frame_bytes(32, 8, 32) %d"
+        % (cube_header_bytes(), cube_frame_bytes(32, 8, 32))
+    )

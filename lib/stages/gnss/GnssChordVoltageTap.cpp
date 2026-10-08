@@ -10,8 +10,8 @@
 #include <cstring> // for memcpy
 #include <functional>
 
-using kotekan::Config;
 using kotekan::bufferContainer;
+using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
@@ -91,8 +91,8 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
                 return;
             }
             const int old = _element_offset.exchange(e);
-            INFO("GnssChordVoltageTap[{:s}]: element_offset {:d} -> {:d} (live)", unique_name,
-                 old, e);
+            INFO("GnssChordVoltageTap[{:s}]: element_offset {:d} -> {:d} (live)", unique_name, old,
+                 e);
             nlohmann::json r;
             r["element_offset"] = e;
             r["previous"] = old;
@@ -100,11 +100,10 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
         });
 
     kotekan::restServer::instance().register_get_callback(
-        unique_name + "/element_power",
-        [this](kotekan::connectionInstance& conn) {
+        unique_name + "/element_power", [this](kotekan::connectionInstance& conn) {
             nlohmann::json r;
             std::lock_guard<std::mutex> lk(_pow_lock);
-            r["element_power"] = _elem_power;   // index = ABSOLUTE element, not tap-relative
+            r["element_power"] = _elem_power; // index = ABSOLUTE element, not tap-relative
             r["element_offset"] = _element_offset.load();
             r["frames"] = _pow_frames;
             conn.send_json_reply(r);
@@ -123,7 +122,7 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
             nlohmann::json r;
             std::lock_guard<std::mutex> lk(_rf_lock);
             r["enabled"] = !_bp_chans.empty();
-            r["chans"] = _bp_chans;             // LOCAL channel indices, as configured
+            r["chans"] = _bp_chans; // LOCAL channel indices, as configured
             // ⚠️ THE ONE FIELD THAT MAKES A LOBE NAMEABLE, and it comes from the FRAME, not
             // the config. Local comb position has no meaning off the node: nodes hold
             // different channel subsets, so local 296 is 1227.34 MHz here and something else
@@ -135,17 +134,17 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
             // `chans`; empty if no chord-metadata frame has been measured yet, which the
             // consumer must treat as "unknown", never as freq_id 0.
             r["freq_ids"] = _bp_freq_ids;
-            r["power"] = _bp_power;             // mean |x|^2 per monitored channel
-            r["clip_lo"] = _bp_clip_lo;         // fraction of nibbles at -8, per channel
-            r["clip_hi"] = _bp_clip_hi;         // fraction at +7, per channel
-            r["elem_power"] = _bp_elem_pow;     // per ABSOLUTE element, over the monitored set
-            r["elem_clip"] = _bp_elem_clip;     // per ABSOLUTE element, (lo+hi)
+            r["power"] = _bp_power;         // mean |x|^2 per monitored channel
+            r["clip_lo"] = _bp_clip_lo;     // fraction of nibbles at -8, per channel
+            r["clip_hi"] = _bp_clip_hi;     // fraction at +7, per channel
+            r["elem_power"] = _bp_elem_pow; // per ABSOLUTE element, over the monitored set
+            r["elem_clip"] = _bp_elem_clip; // per ABSOLUTE element, (lo+hi)
             r["passes"] = _bp_passes;
             r["period_s"] = _bp_period_s;
             r["hop_stride"] = _bp_hop_stride;
             r["cost_ms"] = _bp_cost_ms;
-            r["fpga_seq"] = _bp_seq;            // WHICH frame this describes -- one frame, not
-                                                // an average over the period
+            r["fpga_seq"] = _bp_seq; // WHICH frame this describes -- one frame, not
+                                     // an average over the period
             r["age_s"] = _bp_last_s > 0.0 ? current_time() - _bp_last_s : -1.0;
             conn.send_json_reply(r);
         });
@@ -280,7 +279,7 @@ void GnssChordVoltageTap::main_thread() {
                     const double cost = (current_time() - t_start) * 1e3;
                     std::lock_guard<std::mutex> lk(_rf_lock);
                     if (!fids.empty())
-                        _bp_freq_ids.swap(fids);   // keep the last known map if this frame had none
+                        _bp_freq_ids.swap(fids); // keep the last known map if this frame had none
                     _bp_power.swap(pw);
                     _bp_clip_lo.swap(clo);
                     _bp_clip_hi.swap(chi);
@@ -315,15 +314,14 @@ void GnssChordVoltageTap::main_thread() {
 
         // [hop][frame_chan][elem] -> [hop][chan][elem]. The element run is contiguous in both,
         // so each (hop, channel) is a single memcpy of n_elements bytes.
-        const int elem_off = _element_offset.load();   // one read: a mid-frame change is fine,
-                                                       // but must not split THIS frame's copy
+        const int elem_off = _element_offset.load(); // one read: a mid-frame change is fine,
+                                                     // but must not split THIS frame's copy
         for (int m = 0; m < _n_hops; ++m) {
             const size_t in_hop = (size_t)m * _frame_chan_stride * _frame_elem_stride;
             const size_t out_hop = (size_t)m * n_chan * _n_elements;
             for (int c = 0; c < n_chan; ++c)
                 std::memcpy(out + out_hop + (size_t)c * _n_elements,
-                            in + in_hop + (size_t)_chan_ids[c] * _frame_elem_stride
-                                + elem_off,
+                            in + in_hop + (size_t)_chan_ids[c] * _frame_elem_stride + elem_off,
                             (size_t)_n_elements);
         }
 

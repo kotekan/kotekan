@@ -52,7 +52,9 @@ import time
 
 import numpy as np
 
-K = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+K = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
 sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 sys.path.insert(0, os.path.join(K, "config"))
 
@@ -69,31 +71,36 @@ HOPS_PER_RECORD = 2048
 FFT_LEN = 16384
 SAMPLE_RATE = 3.2e9
 REC_SAMPLES = HOPS_PER_RECORD * FFT_LEN
-REC_PER_FRAME = 4            # records per GPU frame, as on CHORD
-REC_PER_WIN = 8              # records per cube window (production is 96; the arithmetic is
-                             # identical and this keeps the gate to seconds)
-N_WINDOWS = 6                # windows of data replayed; N_WINDOWS-1 are provably complete
+REC_PER_FRAME = 4  # records per GPU frame, as on CHORD
+REC_PER_WIN = 8  # records per cube window (production is 96; the arithmetic is
+# identical and this keeps the gate to seconds)
+N_WINDOWS = 6  # windows of data replayed; N_WINDOWS-1 are provably complete
 N_PRN = 4
 PRNS = [3, 7, 19, 25]
-DEAD_PRN = 19                # never runs: must be SILENCE on the wire
-LATE_PRN = 25                # runs from window LATE_FROM on
+DEAD_PRN = 19  # never runs: must be SILENCE on the wire
+LATE_PRN = 25  # runs from window LATE_FROM on
 LATE_FROM = 3
-REANCHOR_AT = (2, 1)         # (window, record) where PRN 3 sees a FRESH acquisition (reanchored 1)
+REANCHOR_AT = (
+    2,
+    1,
+)  # (window, record) where PRN 3 sees a FRESH acquisition (reanchored 1)
 N_CHAN = 7
 CHAN_IDS = [5972, 5988, 6004, 6020, 6036, 6052, 6068]
 N_ELEM = 4
-ROWS_SPEC = 4                # E, P, L, P_HEAD
-MAX_REC = 16                 # gnss_gpu::MAX_REC
-CUBE_MAX_PRN = 32            # frame maxima > actual extents on purpose: exercises the pad
+ROWS_SPEC = 4  # E, P, L, P_HEAD
+MAX_REC = 16  # gnss_gpu::MAX_REC
+CUBE_MAX_PRN = 32  # frame maxima > actual extents on purpose: exercises the pad
 CUBE_MAX_BINS = 8
 CUBE_GPU = 1
 CHAIN = "cube_e2e/gate"
 
 # gnss_gpu layout (gnssGpuChain.hpp). Restated here ONLY as sizes; the assembler is the reader.
-HDR_FMT = "<iiiiqdiiq"       # n_rec n_prn n_chan n_jobs seq0 utc0 n_rows_spec _pad0 _pad1
+HDR_FMT = "<iiiiqdiiq"  # n_rec n_prn n_chan n_jobs seq0 utc0 n_rows_spec _pad0 _pad1
 assert struct.calcsize(HDR_FMT) == 48
-PRNCTL_FMT = "<BBHiffddQddddd"  # run reanchored prn job0 fcar_report n_owned cp_seed f_nco
-                                # chan_mask ctrim_hz ang0 phi_ddop fcar dcyc
+PRNCTL_FMT = (
+    "<BBHiffddQddddd"  # run reanchored prn job0 fcar_report n_owned cp_seed f_nco
+)
+# chan_mask ctrim_hz ang0 phi_ddop fcar dcyc
 assert struct.calcsize(PRNCTL_FMT) == 80
 OFF_WINSTART = 48
 OFF_PRNCTL = OFF_WINSTART + 8 * MAX_REC
@@ -146,11 +153,25 @@ def write_gpu_file(dirpath):
                     run = prn_runs(p, w)
                     job0 = job if run else -1
                     rean = 1 if (run and PRNS[p] == 3 and (w, rr) == REANCHOR_AT) else 0
-                    struct.pack_into(PRNCTL_FMT, frame, OFF_PRNCTL + 80 * (r * N_PRN + p),
-                                     1 if run else 0, rean, PRNS[p], job0,
-                                     0.0, float(N_CHAN), 0.0, 0.0,        # fcar_report n_owned cp_seed f_nco
-                                     (1 << N_CHAN) - 1,                    # chan_mask: all channels
-                                     0.0, 0.0, 0.0, 0.0, 0.0)              # ctrim ang0 phi_ddop fcar dcyc
+                    struct.pack_into(
+                        PRNCTL_FMT,
+                        frame,
+                        OFF_PRNCTL + 80 * (r * N_PRN + p),
+                        1 if run else 0,
+                        rean,
+                        PRNS[p],
+                        job0,
+                        0.0,
+                        float(N_CHAN),
+                        0.0,
+                        0.0,  # fcar_report n_owned cp_seed f_nco
+                        (1 << N_CHAN) - 1,  # chan_mask: all channels
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                    )  # ctrim ang0 phi_ddop fcar dcyc
                     if not run:
                         continue
                     for t in range(ROWS_SPEC):
@@ -165,10 +186,22 @@ def write_gpu_file(dirpath):
                                 corr[job0 + t, ch, el, 1] = 0.0
                     job += ROWS_SPEC
                 rec_global += 1
-            struct.pack_into(HDR_FMT, frame, 0, REC_PER_FRAME, N_PRN, N_CHAN, job,
-                             (rec_global - REC_PER_FRAME) * REC_SAMPLES, 1.7e9, ROWS_SPEC, 0, 0)
-            frame[OFF_CORR:OFF_CORR + corr.nbytes] = corr.tobytes()
-            frame[OFF_ENERGY:OFF_ENERGY + energy.nbytes] = energy.tobytes()
+            struct.pack_into(
+                HDR_FMT,
+                frame,
+                0,
+                REC_PER_FRAME,
+                N_PRN,
+                N_CHAN,
+                job,
+                (rec_global - REC_PER_FRAME) * REC_SAMPLES,
+                1.7e9,
+                ROWS_SPEC,
+                0,
+                0,
+            )
+            frame[OFF_CORR : OFF_CORR + corr.nbytes] = corr.tobytes()
+            frame[OFF_ENERGY : OFF_ENERGY + energy.nbytes] = energy.tobytes()
             fh.write(struct.pack("<qI", (rec_global - REC_PER_FRAME) * REC_SAMPLES, 0))
             fh.write(frame)
     return path
@@ -202,9 +235,18 @@ def write_config(dirpath, out_dir):
         " beam_cube: true, beam_cube_bin_width: 0, beam_cube_window_samples: %d,"
         " beam_cube_ring_depth: 4, beam_cube_max_prn: %d, beam_cube_max_bins: %d,"
         " beam_cube_gpu: %d, beam_cube_chain: %s, cube_buf: cube_buf}"
-        % (", ".join(map(str, PRNS)), SAMPLE_RATE, N_ELEM, ", ".join(map(str, CHAN_IDS)),
-           REC_PER_WIN * REC_SAMPLES, REC_PER_WIN * REC_SAMPLES, CUBE_MAX_PRN, CUBE_MAX_BINS,
-           CUBE_GPU, CHAIN),
+        % (
+            ", ".join(map(str, PRNS)),
+            SAMPLE_RATE,
+            N_ELEM,
+            ", ".join(map(str, CHAN_IDS)),
+            REC_PER_WIN * REC_SAMPLES,
+            REC_PER_WIN * REC_SAMPLES,
+            CUBE_MAX_PRN,
+            CUBE_MAX_BINS,
+            CUBE_GPU,
+            CHAIN,
+        ),
         "rec_sink: {kotekan_stage: dropAllFrames, in_buf: rec_buf}",
         "cube_send: {kotekan_stage: bufferSend, buf: cube_buf, server_ip: 127.0.0.1,"
         " server_port: %d, drop_frames: false, use_config_tracker: false}" % PORT_RECV,
@@ -224,8 +266,11 @@ def write_config(dirpath, out_dir):
 
 def kotekan_binary():
     host = socket.gethostname().split(".")[0]
-    cand = ([os.path.join(K, "build", "kotekan", "kotekan")] if host.startswith("cx")
-            else [os.path.join(K, "build_nodpdk", "kotekan", "kotekan")])
+    cand = (
+        [os.path.join(K, "build", "kotekan", "kotekan")]
+        if host.startswith("cx")
+        else [os.path.join(K, "build_nodpdk", "kotekan", "kotekan")]
+    )
     cand.append(os.path.join(K, "build_nodpdk", "kotekan", "kotekan"))
     cand.append(os.path.join(K, "build", "kotekan", "kotekan"))
     for c in cand:
@@ -235,14 +280,20 @@ def kotekan_binary():
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--binary", help="kotekan binary (default: the tree for this host)")
-    ap.add_argument("--keep", action="store_true", help="keep the scratch dir and the log")
+    ap.add_argument(
+        "--keep", action="store_true", help="keep the scratch dir and the log"
+    )
     ap.add_argument("--timeout", type=float, default=20.0)
-    ap.add_argument("--expect-crash", action="store_true",
-                    help="PASS iff kotekan dies with SIGSEGV before any window is archived "
-                         "(the #110 mechanism, run against a pre-fix binary)")
+    ap.add_argument(
+        "--expect-crash",
+        action="store_true",
+        help="PASS iff kotekan dies with SIGSEGV before any window is archived "
+        "(the #110 mechanism, run against a pre-fix binary)",
+    )
     a = ap.parse_args()
 
     d = tempfile.mkdtemp(prefix="cube_e2e-")
@@ -258,8 +309,11 @@ def main():
     want_windows = N_WINDOWS - 1
     # ⚠️ --bind-address IS NOT OPTIONAL: kotekan's REST default is 0.0.0.0:12048, PRODUCTION's
     # port on a node.
-    proc = subprocess.Popen([binary, "--config", cfg, "--bind-address", "127.0.0.1:%d" % PORT_REST],
-                            stdout=open(log, "wb"), stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(
+        [binary, "--config", cfg, "--bind-address", "127.0.0.1:%d" % PORT_REST],
+        stdout=open(log, "wb"),
+        stderr=subprocess.STDOUT,
+    )
     fails = []
     try:
         t0 = time.time()
@@ -280,16 +334,25 @@ def main():
             crashed = rc is not None and rc < 0 and (-rc) in (11,)  # SIGSEGV
             print("exit     %s  windows archived %d" % (rc, len(frames)))
             if not crashed:
-                fails.append("expected SIGSEGV (the #110 mechanism) and got rc=%s with %d windows"
-                             % (rc, len(frames)))
+                fails.append(
+                    "expected SIGSEGV (the #110 mechanism) and got rc=%s with %d windows"
+                    % (rc, len(frames))
+                )
             elif frames:
-                fails.append("crashed, but %d windows were archived first -- not the #110 shape "
-                             "(zero frames)" % len(frames))
+                fails.append(
+                    "crashed, but %d windows were archived first -- not the #110 shape "
+                    "(zero frames)" % len(frames)
+                )
             return finish(fails, d, log, a.keep, proc, crash_mode=True)
         if rc is not None:
-            fails.append("kotekan EXITED rc=%s before the replay finished (SIGSEGV = %s) -- see %s"
-                         % (rc, rc == -11, log))
-        print("alive    %s  windows archived %d (wanted %d)" % (rc is None, len(frames), want_windows))
+            fails.append(
+                "kotekan EXITED rc=%s before the replay finished (SIGSEGV = %s) -- see %s"
+                % (rc, rc == -11, log)
+            )
+        print(
+            "alive    %s  windows archived %d (wanted %d)"
+            % (rc is None, len(frames), want_windows)
+        )
 
         # -- [1] every window, in order, no drops ---------------------------------------------
         idxs = [h["idx"] for h, _ in frames]
@@ -297,59 +360,111 @@ def main():
             fails.append("window indices %s != %s" % (idxs, list(range(want_windows))))
         for h, _ in frames:
             if h["dropped"] != 0:
-                fails.append("window %d reports %d sender drops" % (h["idx"], h["dropped"]))
+                fails.append(
+                    "window %d reports %d sender drops" % (h["idx"], h["dropped"])
+                )
 
         # -- [2]/[3]/[4] per window ------------------------------------------------------------
         for h, arr in frames:
             w = h["idx"]
             tag = "w%d" % w
             # [4] self-description
-            exp = dict(version=3, n_prn=N_PRN, n_bin=N_CHAN, n_elem=N_ELEM, max_prn=CUBE_MAX_PRN,
-                       max_bins=CUBE_MAX_BINS, gpu=CUBE_GPU, bin_width=1, chain=CHAIN,
-                       win_samples=float(REC_PER_WIN * REC_SAMPLES), sample_rate=SAMPLE_RATE,
-                       wstart0=w * REC_PER_WIN * REC_SAMPLES,
-                       wstart1=(w * REC_PER_WIN + REC_PER_WIN - 1) * REC_SAMPLES,
-                       utc0=1.7e9)  # v3: the producer's frame0 epoch, carried not inferred
+            exp = dict(
+                version=3,
+                n_prn=N_PRN,
+                n_bin=N_CHAN,
+                n_elem=N_ELEM,
+                max_prn=CUBE_MAX_PRN,
+                max_bins=CUBE_MAX_BINS,
+                gpu=CUBE_GPU,
+                bin_width=1,
+                chain=CHAIN,
+                win_samples=float(REC_PER_WIN * REC_SAMPLES),
+                sample_rate=SAMPLE_RATE,
+                wstart0=w * REC_PER_WIN * REC_SAMPLES,
+                wstart1=(w * REC_PER_WIN + REC_PER_WIN - 1) * REC_SAMPLES,
+                utc0=1.7e9,
+            )  # v3: the producer's frame0 epoch, carried not inferred
             for k, v in exp.items():
                 if h[k] != v:
                     fails.append("%s header %s = %r, expected %r" % (tag, k, h[k], v))
-            if list(arr["freq_id_lo"]) != CHAN_IDS or list(arr["freq_id_hi"]) != CHAN_IDS:
-                fails.append("%s freq_id lo/hi %s/%s != channel_ids"
-                             % (tag, list(arr["freq_id_lo"]), list(arr["freq_id_hi"])))
+            if (
+                list(arr["freq_id_lo"]) != CHAN_IDS
+                or list(arr["freq_id_hi"]) != CHAN_IDS
+            ):
+                fails.append(
+                    "%s freq_id lo/hi %s/%s != channel_ids"
+                    % (tag, list(arr["freq_id_lo"]), list(arr["freq_id_hi"]))
+                )
             for p in range(N_PRN):
                 runs = prn_runs(p, w)
                 if not runs:
                     # [2] silence
                     if arr["prn"][p] != 0 or arr["n_rec"][p] != 0:
-                        fails.append("%s slot %d: PRN %d never ran but the frame says prn=%d "
-                                     "n_rec=%d" % (tag, p, PRNS[p], arr["prn"][p], arr["n_rec"][p]))
+                        fails.append(
+                            "%s slot %d: PRN %d never ran but the frame says prn=%d "
+                            "n_rec=%d"
+                            % (tag, p, PRNS[p], arr["prn"][p], arr["n_rec"][p])
+                        )
                     for key in ("w", "energy", "coh_re", "coh_im", "incoh"):
                         if np.any(arr[key][p] != 0):
-                            fails.append("%s slot %d (silent): %s is not all zero" % (tag, p, key))
+                            fails.append(
+                                "%s slot %d (silent): %s is not all zero"
+                                % (tag, p, key)
+                            )
                     continue
                 # [3] the numbers
                 if arr["prn"][p] != PRNS[p]:
-                    fails.append("%s slot %d prn %d != %d" % (tag, p, arr["prn"][p], PRNS[p]))
+                    fails.append(
+                        "%s slot %d prn %d != %d" % (tag, p, arr["prn"][p], PRNS[p])
+                    )
                 if arr["n_rec"][p] != REC_PER_WIN:
-                    fails.append("%s PRN %d n_rec %d != %d" % (tag, PRNS[p], arr["n_rec"][p], REC_PER_WIN))
+                    fails.append(
+                        "%s PRN %d n_rec %d != %d"
+                        % (tag, PRNS[p], arr["n_rec"][p], REC_PER_WIN)
+                    )
                 want_nre = 1 if (PRNS[p] == 3 and w == REANCHOR_AT[0]) else 0
                 if arr["n_reanchor"][p] != want_nre:
-                    fails.append("%s PRN %d n_reanchor %d != %d" % (tag, PRNS[p], arr["n_reanchor"][p], want_nre))
+                    fails.append(
+                        "%s PRN %d n_reanchor %d != %d"
+                        % (tag, PRNS[p], arr["n_reanchor"][p], want_nre)
+                    )
                 if arr["phi0"][p] != 0.0:
-                    fails.append("%s PRN %d phi0 %r != 0 (f_nco was 0)" % (tag, PRNS[p], arr["phi0"][p]))
+                    fails.append(
+                        "%s PRN %d phi0 %r != 0 (f_nco was 0)"
+                        % (tag, PRNS[p], arr["phi0"][p])
+                    )
                 for ch in range(N_CHAN):
                     ec = energy_of(ch)
                     if arr["w"][p, ch] != REC_PER_WIN:
-                        fails.append("%s PRN %d ch %d w %r != %d" % (tag, PRNS[p], ch, arr["w"][p, ch], REC_PER_WIN))
-                    if not math.isclose(arr["energy"][p, ch], REC_PER_WIN * ec, rel_tol=1e-6):
-                        fails.append("%s PRN %d ch %d energy %r != %r" % (tag, PRNS[p], ch, arr["energy"][p, ch], REC_PER_WIN * ec))
+                        fails.append(
+                            "%s PRN %d ch %d w %r != %d"
+                            % (tag, PRNS[p], ch, arr["w"][p, ch], REC_PER_WIN)
+                        )
+                    if not math.isclose(
+                        arr["energy"][p, ch], REC_PER_WIN * ec, rel_tol=1e-6
+                    ):
+                        fails.append(
+                            "%s PRN %d ch %d energy %r != %r"
+                            % (tag, PRNS[p], ch, arr["energy"][p, ch], REC_PER_WIN * ec)
+                        )
                     for el in range(N_ELEM):
                         m = mark(p, ch, el)
-                        got = (arr["coh_re"][p, ch, el], arr["coh_im"][p, ch, el], arr["incoh"][p, ch, el])
+                        got = (
+                            arr["coh_re"][p, ch, el],
+                            arr["coh_im"][p, ch, el],
+                            arr["incoh"][p, ch, el],
+                        )
                         want = (REC_PER_WIN * m, 0.0, REC_PER_WIN * m * m)
-                        if not all(math.isclose(g, x, rel_tol=1e-6, abs_tol=1e-9) for g, x in zip(got, want)):
-                            fails.append("%s PRN %d ch %d el %d (coh_re, coh_im, incoh) %s != %s -- a "
-                                         "stride, normalisation or pad error" % (tag, PRNS[p], ch, el, got, want))
+                        if not all(
+                            math.isclose(g, x, rel_tol=1e-6, abs_tol=1e-9)
+                            for g, x in zip(got, want)
+                        ):
+                            fails.append(
+                                "%s PRN %d ch %d el %d (coh_re, coh_im, incoh) %s != %s -- a "
+                                "stride, normalisation or pad error"
+                                % (tag, PRNS[p], ch, el, got, want)
+                            )
                         if got[0] == -777.0 * REC_PER_WIN:
                             fails.append("%s: a NON-PROMPT row reached the cube" % tag)
         return finish(fails, d, log, a.keep, proc)
@@ -391,10 +506,14 @@ def finish(fails, d, log, keep, proc, crash_mode=False):
         print("log: %s" % log)
         return 1
     if crash_mode:
-        print("\nPASS -- the pre-fix binary SEGFAULTS at its first emit with nothing archived: the "
-              "#110 mechanism reproduces offline")
+        print(
+            "\nPASS -- the pre-fix binary SEGFAULTS at its first emit with nothing archived: the "
+            "#110 mechanism reproduces offline"
+        )
     else:
-        print("\nPASS -- assembler, bufferSend/Recv, rawFileWrite and the reader agree end to end")
+        print(
+            "\nPASS -- assembler, bufferSend/Recv, rawFileWrite and the reader agree end to end"
+        )
     if not keep:
         shutil.rmtree(d, ignore_errors=True)
     return 0

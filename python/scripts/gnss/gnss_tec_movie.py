@@ -38,8 +38,10 @@ def load_series(path):
 def highpass(d, tau):
     """Per (sys, prn, arc): subtract a running mean of width tau seconds."""
     out = np.array(d["tecu"], dtype=float)
-    key = np.char.add(np.char.add(d["sys"].astype(str), d["prn"].astype(str)),
-                      np.char.add("_", d["arc"].astype(str)))
+    key = np.char.add(
+        np.char.add(d["sys"].astype(str), d["prn"].astype(str)),
+        np.char.add("_", d["arc"].astype(str)),
+    )
     for k in np.unique(key):
         m = key == k
         t = d["t"][m]
@@ -87,15 +89,15 @@ def accessible_sky(GX, GY, lat_deg, incl_deg, alt_km, el_mask_deg):
     cutout is a cap around the pole that widens toward the horizon (a horseshoe on the dome).
     """
     R = 6371.0
-    rr = np.hypot(GX, GY)                      # sky_xy: r = (90-el)/90
+    rr = np.hypot(GX, GY)  # sky_xy: r = (90-el)/90
     el = 90.0 - 90.0 * rr
-    az = np.degrees(np.arctan2(GX, GY))        # sky_xy: x = sin(az) r, y = cos(az) r
+    az = np.degrees(np.arctan2(GX, GY))  # sky_xy: x = sin(az) r, y = cos(az) r
     with np.errstate(invalid="ignore"):
         c = np.clip(R / (R + alt_km) * np.cos(np.radians(el)), -1.0, 1.0)
         gamma = np.degrees(np.arccos(c)) - el
-        sin_psi = (np.sin(np.radians(lat_deg)) * np.cos(np.radians(gamma))
-                   + np.cos(np.radians(lat_deg)) * np.sin(np.radians(gamma))
-                   * np.cos(np.radians(az)))
+        sin_psi = np.sin(np.radians(lat_deg)) * np.cos(np.radians(gamma)) + np.cos(
+            np.radians(lat_deg)
+        ) * np.sin(np.radians(gamma)) * np.cos(np.radians(az))
     return (np.abs(sin_psi) <= np.sin(np.radians(incl_deg))) & (el >= el_mask_deg)
 
 
@@ -103,28 +105,32 @@ def _in_hull(grid, pts):
     """Boolean: which grid points fall inside the convex hull of pts (for --voronoi masking).
     Delaunay.find_simplex >= 0 iff the point is inside the triangulated hull."""
     from scipy.spatial import Delaunay
+
     try:
         return Delaunay(pts).find_simplex(grid) >= 0
     except Exception:  # degenerate (collinear) point set
         return np.zeros(len(grid), dtype=bool)
 
 
-
 # ---------------- IONEX (absolute leveling) ----------------
+
 
 def fetch_ionex(day):
     """Fetch (with cache) one UTC day's GIM: rapid first, CODE 1-day predicted fallback."""
     import subprocess
     import urllib.request
+
     cache = "/tmp/ionex_cache"
     os.makedirs(cache, exist_ok=True)
     y, j = day.year, int(day.strftime("%j"))
     base = f"ftp://gssc.esa.int/gnss/products/ionex/{y}/{j:03d}"
-    names = [f"COD0OPSRAP_{y}{j:03d}0000_01D_01H_GIM.INX.gz",
-             f"ESA0OPSRAP_{y}{j:03d}0000_01D_02H_GIM.INX.gz",
-             f"JPL0OPSRAP_{y}{j:03d}0000_01D_02H_GIM.INX.gz",
-             f"c1pg{j:03d}0.{y%100:02d}i.Z",
-             f"c2pg{j:03d}0.{y%100:02d}i.Z"]
+    names = [
+        f"COD0OPSRAP_{y}{j:03d}0000_01D_01H_GIM.INX.gz",
+        f"ESA0OPSRAP_{y}{j:03d}0000_01D_02H_GIM.INX.gz",
+        f"JPL0OPSRAP_{y}{j:03d}0000_01D_02H_GIM.INX.gz",
+        f"c1pg{j:03d}0.{y%100:02d}i.Z",
+        f"c2pg{j:03d}0.{y%100:02d}i.Z",
+    ]
     for n in names:
         raw = os.path.join(cache, n)
         txt = raw.rsplit(".", 1)[0] + ".txt"
@@ -144,6 +150,7 @@ def fetch_ionex(day):
 def parse_ionex(path):
     """-> (epochs unix[], lats[], lons[], maps[n_ep, n_lat, n_lon] TECU, shell height km)."""
     from datetime import datetime, timezone
+
     eps, maps = [], []
     lats = lons = None
     hgt = 450.0
@@ -176,8 +183,11 @@ def parse_ionex(path):
                     vals = []
                     while len(vals) < n_lon:
                         i += 1
-                        vals += [int(lines[i][k:k + 5]) for k in range(0, len(lines[i]), 5)
-                                 if lines[i][k:k + 5].strip()]
+                        vals += [
+                            int(lines[i][k : k + 5])
+                            for k in range(0, len(lines[i]), 5)
+                            if lines[i][k : k + 5].strip()
+                        ]
                     grid_rows[lat] = np.array(vals[:n_lon], float) * (10.0 ** exp)
                     if lons is None:
                         lons = lo1 + dlo * np.arange(n_lon)
@@ -194,6 +204,7 @@ def parse_ionex(path):
 def load_ionex_days(spec, t):
     """spec = 'auto' (fetch every UTC day t covers) or a local file path."""
     from datetime import datetime, timezone, timedelta
+
     if spec != "auto":
         e, la, lo, mp, h = parse_ionex(spec)
         return e, la, lo, mp, h
@@ -205,8 +216,9 @@ def load_ionex_days(spec, t):
     day = d0
     while day <= d1:
         try:
-            path, name = fetch_ionex(datetime(day.year, day.month, day.day,
-                                              tzinfo=timezone.utc))
+            path, name = fetch_ionex(
+                datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+            )
             e, la, lo, mp, h = parse_ionex(path)
             eps.append(e)
             mps.append(mp)
@@ -249,10 +261,15 @@ def ionex_at(eps, lats, lons, maps, t, la, lo):
         v = 0.0
         for dt_, wt in ((0, 1 - w_t[k]), (1, w_t[k])):
             m = maps[ti[k] + dt_]
-            v += wt * ((1 - w_la[k]) * ((1 - w_lo[k]) * m[li[k], oi[k]]
-                                        + w_lo[k] * m[li[k], oi[k] + 1])
-                       + w_la[k] * ((1 - w_lo[k]) * m[li[k] + 1, oi[k]]
-                                    + w_lo[k] * m[li[k] + 1, oi[k] + 1]))
+            v += wt * (
+                (1 - w_la[k])
+                * ((1 - w_lo[k]) * m[li[k], oi[k]] + w_lo[k] * m[li[k], oi[k] + 1])
+                + w_la[k]
+                * (
+                    (1 - w_lo[k]) * m[li[k] + 1, oi[k]]
+                    + w_lo[k] * m[li[k] + 1, oi[k] + 1]
+                )
+            )
         out[k] = v
     return out
 
@@ -261,55 +278,99 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("series")
     ap.add_argument("--outdir", default="/tmp/tec_movie")
-    ap.add_argument("--frame-s", type=float, default=120.0, help="one frame per this many s")
-    ap.add_argument("--window-s", type=float, default=300.0,
-                    help="frame uses measurements within +-window/2")
-    ap.add_argument("--highpass-s", type=float, default=1200.0,
-                    help="per-arc running-mean removal (0 = off; raw arc-relative levels)")
-    ap.add_argument("--mask-deg", type=float, default=18.0,
-                    help="blank map cells farther than this from any measurement")
+    ap.add_argument(
+        "--frame-s", type=float, default=120.0, help="one frame per this many s"
+    )
+    ap.add_argument(
+        "--window-s",
+        type=float,
+        default=300.0,
+        help="frame uses measurements within +-window/2",
+    )
+    ap.add_argument(
+        "--highpass-s",
+        type=float,
+        default=1200.0,
+        help="per-arc running-mean removal (0 = off; raw arc-relative levels)",
+    )
+    ap.add_argument(
+        "--mask-deg",
+        type=float,
+        default=18.0,
+        help="blank map cells farther than this from any measurement",
+    )
     ap.add_argument("--el-mask", type=float, default=10.0)
-    ap.add_argument("--vmax", type=float, default=0.0,
-                    help="color scale (TECU); 0 = auto (95th pct of |values| AFTER gating)")
-    ap.add_argument("--max-abs", type=float, default=30.0,
-                    help="drop measurements with |dTEC| above this before interpolating "
-                         "(instrument-junk gate: one wild arc otherwise fabricates a "
-                         "sky-wide gradient; 0 = off)")
-    ap.add_argument("--ionex", default=None,
-                    help="'auto' (fetch rapid GIM, predicted fallback, per covered UTC day) "
-                         "or a local IONEX file: level arcs to the GIM -> ABSOLUTE vertical-"
-                         "equivalent TEC")
+    ap.add_argument(
+        "--vmax",
+        type=float,
+        default=0.0,
+        help="color scale (TECU); 0 = auto (95th pct of |values| AFTER gating)",
+    )
+    ap.add_argument(
+        "--max-abs",
+        type=float,
+        default=30.0,
+        help="drop measurements with |dTEC| above this before interpolating "
+        "(instrument-junk gate: one wild arc otherwise fabricates a "
+        "sky-wide gradient; 0 = off)",
+    )
+    ap.add_argument(
+        "--ionex",
+        default=None,
+        help="'auto' (fetch rapid GIM, predicted fallback, per covered UTC day) "
+        "or a local IONEX file: level arcs to the GIM -> ABSOLUTE vertical-"
+        "equivalent TEC",
+    )
     ap.add_argument("--lat", type=float, default=43.968697)
     ap.add_argument("--lon", type=float, default=-79.252106)
     ap.add_argument("--video", default="tec_sky.mp4")
     ap.add_argument("--fps", type=int, default=10)
-    ap.add_argument("--max-hold-s", type=float, default=0.0,
-                    help="bridge per-sat dropouts: if a sat has no measurement in the frame "
-                         "window but its samples bracket the frame time by <= this gap, linearly "
-                         "interpolate its position+TEC to the frame (0=off). Kills the flicker "
-                         "from tracks briefly dropping/re-acquiring; only sensible in --ionex "
-                         "absolute mode, where arcs share one GIM level so bridging is continuous. "
-                         "NOTE the window already bridges gaps <= window_s, so use hold > window_s.")
-    ap.add_argument("--smooth-frames", type=int, default=1,
-                    help="temporal smoothing: display a trailing nanmean of the last N rendered "
-                         "fields (1=off). Damps the frame-to-frame RBF jump when a sat "
-                         "appears/disappears -- the dominant flicker once dropouts are bridged. "
-                         "Safe for absolute VTEC (slowly varying); N=3 ~ 3 min at frame_s=60.")
-    ap.add_argument("--incl", type=float, default=58.0,
-                    help="inclination bound (deg) setting the polar cutout. 58 is MEASURED, "
-                         "not nominal: inverting the geometry on a night of real sky gives max "
-                         "sub-satellite |lat| = GPS 55.6, BeiDou 56.5, GALILEO 57.2 -- Galileo "
-                         "has drifted above its nominal 56 -- so 56 excluded 3%% of real Galileo "
-                         "samples. 58 keeps ~1 deg of margin over the worst observed.")
-    ap.add_argument("--orbit-km", type=float, default=23222.0,
-                    help="orbit ALTITUDE (km) for the elevation->earth-angle conversion; "
-                         "Galileo 23222 (the outermost MEO tracked, and the one that sets the "
-                         "bound), GPS 20200, BeiDou MEO 21528")
-    ap.add_argument("--voronoi", action="store_true",
-                    help="render nearest-satellite (Voronoi) cells over the covered sky (convex "
-                         "hull of the sat points) instead of RBF discs. Each pixel takes its "
-                         "nearest sat's TEC -> the whole covered dome is tiled; with "
-                         "--smooth-frames the moving cell boundaries blend into gradients.")
+    ap.add_argument(
+        "--max-hold-s",
+        type=float,
+        default=0.0,
+        help="bridge per-sat dropouts: if a sat has no measurement in the frame "
+        "window but its samples bracket the frame time by <= this gap, linearly "
+        "interpolate its position+TEC to the frame (0=off). Kills the flicker "
+        "from tracks briefly dropping/re-acquiring; only sensible in --ionex "
+        "absolute mode, where arcs share one GIM level so bridging is continuous. "
+        "NOTE the window already bridges gaps <= window_s, so use hold > window_s.",
+    )
+    ap.add_argument(
+        "--smooth-frames",
+        type=int,
+        default=1,
+        help="temporal smoothing: display a trailing nanmean of the last N rendered "
+        "fields (1=off). Damps the frame-to-frame RBF jump when a sat "
+        "appears/disappears -- the dominant flicker once dropouts are bridged. "
+        "Safe for absolute VTEC (slowly varying); N=3 ~ 3 min at frame_s=60.",
+    )
+    ap.add_argument(
+        "--incl",
+        type=float,
+        default=58.0,
+        help="inclination bound (deg) setting the polar cutout. 58 is MEASURED, "
+        "not nominal: inverting the geometry on a night of real sky gives max "
+        "sub-satellite |lat| = GPS 55.6, BeiDou 56.5, GALILEO 57.2 -- Galileo "
+        "has drifted above its nominal 56 -- so 56 excluded 3%% of real Galileo "
+        "samples. 58 keeps ~1 deg of margin over the worst observed.",
+    )
+    ap.add_argument(
+        "--orbit-km",
+        type=float,
+        default=23222.0,
+        help="orbit ALTITUDE (km) for the elevation->earth-angle conversion; "
+        "Galileo 23222 (the outermost MEO tracked, and the one that sets the "
+        "bound), GPS 20200, BeiDou MEO 21528",
+    )
+    ap.add_argument(
+        "--voronoi",
+        action="store_true",
+        help="render nearest-satellite (Voronoi) cells over the covered sky (convex "
+        "hull of the sat points) instead of RBF discs. Each pixel takes its "
+        "nearest sat's TEC -> the whole covered dome is tiled; with "
+        "--smooth-frames the moving cell boundaries blend into gradients.",
+    )
     args = ap.parse_args()
 
     d = load_series(args.series)
@@ -324,12 +385,16 @@ def main():
         ipla, iplo, M = ipp(d["az"], d["el"], args.lat, args.lon, hgt)
         vpred = ionex_at(eps, lats, lons, maps, d["t"], ipla, iplo)
         spred = vpred * M
-        key = np.char.add(np.char.add(d["sys"].astype(str), d["prn"].astype(str)),
-                          np.char.add("_", d["arc"].astype(str)))
+        key = np.char.add(
+            np.char.add(d["sys"].astype(str), d["prn"].astype(str)),
+            np.char.add("_", d["arc"].astype(str)),
+        )
         x = np.array(d["tecu"], dtype=float)
         for kk in np.unique(key):
             m = key == kk
-            x[m] += np.median(spred[m] - x[m])   # per-arc carrier ambiguity -> IONEX level
+            x[m] += np.median(
+                spred[m] - x[m]
+            )  # per-arc carrier ambiguity -> IONEX level
         # junk gate on the residual-to-IONEX (same spirit as the relative gate)
         if args.max_abs > 0:
             g = np.abs(x - spred) <= args.max_abs
@@ -337,7 +402,7 @@ def main():
             for k in d:
                 d[k] = d[k][g]
             x, M = x[g], M[g]
-        x = x / M          # vertical-equivalent TECU
+        x = x / M  # vertical-equivalent TECU
         absolute = True
     else:
         x = highpass(d, args.highpass_s) if args.highpass_s > 0 else np.array(d["tecu"])
@@ -350,6 +415,7 @@ def main():
         x = x[g]
 
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import cm
@@ -370,8 +436,9 @@ def main():
     # map grid (cartesian over the dome)
     g = np.linspace(-1, 1, 181)
     GX, GY = np.meshgrid(g, g)
-    horizon = GX**2 + GY**2 <= 1.0
+    horizon = GX ** 2 + GY ** 2 <= 1.0
     from datetime import datetime, timezone
+
     # Per-sat time-sorted (t, value, sky-x, sky-y) for window-median + short-gap bridging. sky_xy
     # is precomputed per measurement so the hold interpolates CARTESIAN sky position (no azimuth
     # wraparound) and TEC together.
@@ -383,24 +450,37 @@ def main():
     # discs around every observed sample, then morphological repair) estimated this same
     # region from data and was ragged wherever passes were sparse.
     ACCESS = accessible_sky(GX, GY, args.lat, args.incl, args.orbit_km, args.el_mask)
-    print(f"accessible sky (analytic, lat {args.lat:.1f}, incl {args.incl:.0f} deg, "
-          f"alt {args.orbit_km:.0f} km): "
-          f"{100.0 * (ACCESS & horizon).sum() / horizon.sum():.1f}% of the dome "
-          f"(el >= {args.el_mask:.0f} deg)")
+    print(
+        f"accessible sky (analytic, lat {args.lat:.1f}, incl {args.incl:.0f} deg, "
+        f"alt {args.orbit_km:.0f} km): "
+        f"{100.0 * (ACCESS & horizon).sum() / horizon.sum():.1f}% of the dome "
+        f"(el >= {args.el_mask:.0f} deg)"
+    )
     _satid = np.char.add(d["sys"].astype(str), d["prn"].astype(str))
     sat_series = {}
     for sid in np.unique(_satid):
         mm = _satid == sid
         tt = d["t"][mm]
         o = np.argsort(tt)
-        sat_series[sid] = (tt[o], x[mm][o], _pxall[mm][o], _pyall[mm][o],
-                           str(d["sys"][mm][0]), int(d["prn"][mm][0]))
-    print(f"{n_frames} frames, {len(x)} epochs, vmax {vmax:.2f} TECU"
-          + (f", max-hold {args.max_hold_s:.0f}s" if args.max_hold_s > 0 else ""))
+        sat_series[sid] = (
+            tt[o],
+            x[mm][o],
+            _pxall[mm][o],
+            _pyall[mm][o],
+            str(d["sys"][mm][0]),
+            int(d["prn"][mm][0]),
+        )
+    print(
+        f"{n_frames} frames, {len(x)} epochs, vmax {vmax:.2f} TECU"
+        + (f", max-hold {args.max_hold_s:.0f}s" if args.max_hold_s > 0 else "")
+    )
     written = 0
     import collections
     import warnings
-    zbuf = collections.deque(maxlen=max(1, args.smooth_frames))  # trailing fields for --smooth-frames
+
+    zbuf = collections.deque(
+        maxlen=max(1, args.smooth_frames)
+    )  # trailing fields for --smooth-frames
     for fi in range(n_frames):
         tc = t0 + (fi + 0.5) * args.frame_s
         # one point per sat: median over the frame window, OR (if the sat dropped out but its
@@ -418,8 +498,12 @@ def main():
                 i = np.searchsorted(tt, tc)
                 if 0 < i < len(tt) and (tt[i] - tt[i - 1]) <= args.max_hold_s:
                     f = (tc - tt[i - 1]) / (tt[i] - tt[i - 1])
-                    pts.append((pxs[i - 1] + f * (pxs[i] - pxs[i - 1]),
-                                pys[i - 1] + f * (pys[i] - pys[i - 1])))
+                    pts.append(
+                        (
+                            pxs[i - 1] + f * (pxs[i] - pxs[i - 1]),
+                            pys[i - 1] + f * (pys[i] - pys[i - 1]),
+                        )
+                    )
                     vals.append(xx[i - 1] + f * (xx[i] - xx[i - 1]))
                     labs.append(f"{s_}{p_}")
         if len(pts) < 4:
@@ -427,8 +511,8 @@ def main():
         pts = np.array(pts)
         vals = np.array(vals)
         if not absolute:
-            vals = vals - np.median(vals)   # arc-relative levels are arbitrary; the
-                                            # frame's spatial median is the honest zero
+            vals = vals - np.median(vals)  # arc-relative levels are arbitrary; the
+            # frame's spatial median is the honest zero
         grid = np.column_stack([GX.ravel(), GY.ravel()])
         if args.voronoi:
             # Nearest-satellite (Voronoi) tiling, masked to the convex hull of the sat points so
@@ -456,8 +540,12 @@ def main():
             except Exception:
                 continue
             # mask: no data invented far from measurements
-            dist = np.min(np.sqrt((GX[..., None] - pts[:, 0])**2
-                                  + (GY[..., None] - pts[:, 1])**2), axis=-1)
+            dist = np.min(
+                np.sqrt(
+                    (GX[..., None] - pts[:, 0]) ** 2 + (GY[..., None] - pts[:, 1]) ** 2
+                ),
+                axis=-1,
+            )
             Z[(dist > args.mask_deg / 90.0) | ~horizon] = np.nan
         # temporal smoothing: trailing nanmean of the last N fields -> the displayed field damps
         # the RBF jump when a sat enters/leaves. Per-pixel nanmean so a briefly-uncovered pixel
@@ -465,30 +553,56 @@ def main():
         zbuf.append(Z)
         if len(zbuf) > 1:
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=RuntimeWarning)  # all-NaN pixels -> NaN
+                warnings.simplefilter(
+                    "ignore", category=RuntimeWarning
+                )  # all-NaN pixels -> NaN
                 Zdisp = np.nanmean(np.stack(zbuf), axis=0)
         else:
             Zdisp = Z
 
         fig, ax = plt.subplots(figsize=(7.2, 7.6))
-        im = ax.pcolormesh(GX, GY, Zdisp, cmap="viridis" if absolute else "RdBu_r",
-                           vmin=vmin_, vmax=vmax, shading="auto")
+        im = ax.pcolormesh(
+            GX,
+            GY,
+            Zdisp,
+            cmap="viridis" if absolute else "RdBu_r",
+            vmin=vmin_,
+            vmax=vmax,
+            shading="auto",
+        )
         th = np.linspace(0, 2 * np.pi, 361)
         for el_ring in (0, 30, 60):
             rr = (90 - el_ring) / 90.0
             ax.plot(np.sin(th) * rr, np.cos(th) * rr, color="0.6", lw=0.5)
         for lab_az in (0, 90, 180, 270):
             xx, yy = sky_xy(lab_az, 0)
-            ax.annotate("NESW"[lab_az // 90], (xx * 1.06, yy * 1.06),
-                        ha="center", va="center", color="0.4")
+            ax.annotate(
+                "NESW"[lab_az // 90],
+                (xx * 1.06, yy * 1.06),
+                ha="center",
+                va="center",
+                color="0.4",
+            )
         colors = {"G": "tab:blue", "E": "tab:orange", "C": "tab:red"}
         for (px, py), v, lab in zip(pts, vals, labs):
             cmap_ = cm.viridis if absolute else cm.RdBu_r
-            ax.plot(px, py, "o", ms=5,
-                    mfc=cmap_(np.clip((v - vmin_) / (vmax - vmin_ + 1e-9), 0, 1)),
-                    mec=colors.get(lab[0], "k"), mew=1.4)
-            ax.annotate(lab, (px, py), textcoords="offset points", xytext=(5, 4),
-                        fontsize=7, color=colors.get(lab[0], "k"))
+            ax.plot(
+                px,
+                py,
+                "o",
+                ms=5,
+                mfc=cmap_(np.clip((v - vmin_) / (vmax - vmin_ + 1e-9), 0, 1)),
+                mec=colors.get(lab[0], "k"),
+                mew=1.4,
+            )
+            ax.annotate(
+                lab,
+                (px, py),
+                textcoords="offset points",
+                xytext=(5, 4),
+                fontsize=7,
+                color=colors.get(lab[0], "k"),
+            )
         ax.set_xlim(-1.15, 1.15)
         ax.set_ylim(-1.15, 1.15)
         ax.set_aspect("equal")
@@ -498,8 +612,11 @@ def main():
             mode = "IONEX-leveled, vertical-equivalent"
             ax.set_title(f"TEC -- {ts}\n({mode}; {len(pts)} sats)")
         else:
-            mode = "arc-relative, high-passed %.0f min" % (args.highpass_s / 60) \
-                if args.highpass_s > 0 else "arc-relative"
+            mode = (
+                "arc-relative, high-passed %.0f min" % (args.highpass_s / 60)
+                if args.highpass_s > 0
+                else "arc-relative"
+            )
             ax.set_title(f"differential slant TEC -- {ts}\n({mode}; {len(pts)} sats)")
         cb = fig.colorbar(im, ax=ax, shrink=0.75)
         cb.set_label("vTEC (TECU)" if absolute else "dTEC (TECU)")
@@ -512,8 +629,11 @@ def main():
         # Absolute --video paths are honoured as given; bare names land in --outdir.
         # (os.path.join silently produced outdir/data/beam/... for an absolute-looking
         # relative path and ffmpeg failed AFTER all frames were rendered.)
-        out = (args.video if os.path.isabs(args.video)
-               else os.path.join(args.outdir, args.video))
+        out = (
+            args.video
+            if os.path.isabs(args.video)
+            else os.path.join(args.outdir, args.video)
+        )
         os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         # ⚠️ THERE IS NO ffmpeg ON THIS CLUSTER (checked cx43 and cf06, 2026-09-10) and
         # installing one needs root. Every frame rendered and then the encode raised
@@ -521,20 +641,44 @@ def main():
         # animated GIF via Pillow, already a matplotlib dependency: bigger, but it plays
         # anywhere and needs nothing installed. mp4 stays the default where ffmpeg exists.
         if shutil.which("ffmpeg"):
-            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(args.fps),
-                            "-i", os.path.join(args.outdir, "frame_%05d.png"),
-                            "-pix_fmt", "yuv420p", "-vf",
-                            "pad=ceil(iw/2)*2:ceil(ih/2)*2", out], check=True)
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-framerate",
+                    str(args.fps),
+                    "-i",
+                    os.path.join(args.outdir, "frame_%05d.png"),
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-vf",
+                    "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                    out,
+                ],
+                check=True,
+            )
             print("wrote", out)
         else:
             from PIL import Image
+
             gif = os.path.splitext(out)[0] + ".gif"
             frames = sorted(glob.glob(os.path.join(args.outdir, "frame_*.png")))
             imgs = [Image.open(f).convert("P", palette=Image.ADAPTIVE) for f in frames]
-            imgs[0].save(gif, save_all=True, append_images=imgs[1:],
-                         duration=int(1000 / max(args.fps, 1)), loop=0, optimize=True)
-            print("no ffmpeg on this host -- wrote", gif,
-                  "(%.1f MB, %d frames)" % (os.path.getsize(gif) / 1e6, len(imgs)))
+            imgs[0].save(
+                gif,
+                save_all=True,
+                append_images=imgs[1:],
+                duration=int(1000 / max(args.fps, 1)),
+                loop=0,
+                optimize=True,
+            )
+            print(
+                "no ffmpeg on this host -- wrote",
+                gif,
+                "(%.1f MB, %d frames)" % (os.path.getsize(gif) / 1e6, len(imgs)),
+            )
 
 
 if __name__ == "__main__":

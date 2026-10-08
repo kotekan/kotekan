@@ -117,10 +117,10 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
                                   int n_chan, const DespreadParams& p, float2* wave, double* energy,
                                   int threads_hint, int fuse3, int phi16, cudaStream_t stream);
 
-/// TILED-STREAMING variant of @ref launch_waveform (BENCH -- 31896a862:docs/CHORD_GPU_TODO.md). Streams
-/// each block's Phi slice through shared-memory tiles so every table byte crosses DRAM exactly
-/// once, coalesced, instead of scattering ~2 gather re-walks through L1 (§10.6c: the kernel is
-/// DRAM-FOOTPRINT bound, and this removes the re-walk AND the scatter residue without any cache
+/// TILED-STREAMING variant of @ref launch_waveform (BENCH -- 31896a862:docs/CHORD_GPU_TODO.md).
+/// Streams each block's Phi slice through shared-memory tiles so every table byte crosses DRAM
+/// exactly once, coalesced, instead of scattering ~2 gather re-walks through L1 (§10.6c: the kernel
+/// is DRAM-FOOTPRINT bound, and this removes the re-walk AND the scatter residue without any cache
 /// hypothesis). @c wave AND @c energy are BIT-IDENTICAL to the fused/1024 gather -- the walk order
 /// per (hop, trial) is untouched; a tile boundary only pauses it (scripts/gnss/wavebench.cpp
 /// --tiled is the gate).
@@ -134,9 +134,9 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
 /// @param phi16 as @ref launch_waveform_tuned: tables are __half2 (bench-only).
 /// Requires n_hops <= 2*blockDim (2 hops of walk state per thread is the register budget).
 cudaError_t launch_waveform_tiled(const int8_t* code, const DespreadJob* jobs, int n_job,
-                                  int n_chan, const DespreadParams& p, float2* wave,
-                                  double* energy, int tile_entries, int halo_entries,
-                                  int code_len_max, int phi16, cudaStream_t stream);
+                                  int n_chan, const DespreadParams& p, float2* wave, double* energy,
+                                  int tile_entries, int halo_entries, int code_len_max, int phi16,
+                                  cudaStream_t stream);
 
 /**
  * @brief Correlate N antenna voltages against the M generated references.

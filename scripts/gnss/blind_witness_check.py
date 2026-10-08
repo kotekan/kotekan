@@ -67,25 +67,41 @@ def describe(rows, label):
     print("  bright-looking samples (served cn0_coh >= 30): %d" % len(hi))
     if not hi:
         return None
-    print("  of those, BLIND by the offline witnesses:      %d  (%.1f%%)"
-          % (len(b), 100.0 * len(b) / len(hi)))
+    print(
+        "  of those, BLIND by the offline witnesses:      %d  (%.1f%%)"
+        % (len(b), 100.0 * len(b) / len(hi))
+    )
     for name, pop in (("BLIND", b), ("tracking", g)):
         if len(pop) < 20:
             continue
+
         def med(k):
             v = [d[k] for d in pop if d.get(k) is not None]
             return st.median(v) if v else float("nan")
+
         disc = [abs(d["dll_disc"]) for d in pop if d.get("dll_disc") is not None]
-        print("    %-9s n=%-6d served_cn0 %5.1f | s4_raw %5.2f  cn0_inc %5.1f  |disc| %5.3f"
-              % (name, len(pop), med("cn0_coh_dbhz"), med("s4_raw"),
-                 med("cn0_inc_dbhz"), st.median(disc) if disc else float("nan")))
+        print(
+            "    %-9s n=%-6d served_cn0 %5.1f | s4_raw %5.2f  cn0_inc %5.1f  |disc| %5.3f"
+            % (
+                name,
+                len(pop),
+                med("cn0_coh_dbhz"),
+                med("s4_raw"),
+                med("cn0_inc_dbhz"),
+                st.median(disc) if disc else float("nan"),
+            )
+        )
     # Does the broker's own flag agree with the offline witnesses? Only meaningful once the
     # broker publishing prompt_lock has been deployed; older rows carry None.
     have = [d for d in hi if d.get("prompt_lock") is not None]
     if have:
-        agree = sum(1 for d in have if (d["prompt_lock"] is False) == (blind(d) is True))
-        print("  broker prompt_lock agrees with the offline witnesses on %d/%d (%.1f%%)"
-              % (agree, len(have), 100.0 * agree / len(have)))
+        agree = sum(
+            1 for d in have if (d["prompt_lock"] is False) == (blind(d) is True)
+        )
+        print(
+            "  broker prompt_lock agrees with the offline witnesses on %d/%d (%.1f%%)"
+            % (agree, len(have), 100.0 * agree / len(have))
+        )
     else:
         print("  broker prompt_lock: not present in these rows (pre-#47 broker)")
     return b, g
@@ -94,13 +110,21 @@ def describe(rows, label):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("paths", nargs="+")
-    ap.add_argument("--window", nargs=2, metavar=("FROM", "TO"),
-                    help="ISO UTC interval to characterise separately (e.g. a blind episode)")
+    ap.add_argument(
+        "--window",
+        nargs=2,
+        metavar=("FROM", "TO"),
+        help="ISO UTC interval to characterise separately (e.g. a blind episode)",
+    )
     a = ap.parse_args()
 
     if a.window:
+
         def ts(s):
-            return dt.datetime.fromisoformat(s).replace(tzinfo=dt.timezone.utc).timestamp()
+            return (
+                dt.datetime.fromisoformat(s).replace(tzinfo=dt.timezone.utc).timestamp()
+            )
+
         lo, hi = ts(a.window[0]), ts(a.window[1])
         allr = load(a.paths)
         inside = [d for d in allr if lo <= d.get("t", 0) < hi]
@@ -110,12 +134,17 @@ def main():
         if r1 and r2:
             fi = len(r1[0]) / max(1, len(r1[0]) + len(r1[1]))
             fo = len(r2[0]) / max(1, len(r2[0]) + len(r2[1]))
-            print("\n  blind fraction inside %.1f%% vs outside %.1f%%" % (100 * fi, 100 * fo))
+            print(
+                "\n  blind fraction inside %.1f%% vs outside %.1f%%"
+                % (100 * fi, 100 * fo)
+            )
             # A window that is genuinely a blind episode must be dominated by it, and the rest
             # of the record must not be -- otherwise the witnesses are not discriminating and
             # nothing downstream should trust them.
             if fi < 0.5 or fo > 0.5:
-                print("  FAIL: the witnesses do not separate this window from the rest.")
+                print(
+                    "  FAIL: the witnesses do not separate this window from the rest."
+                )
                 return 1
             print("  PASS: the witnesses separate the window from the rest.")
         return 0

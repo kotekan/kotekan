@@ -28,10 +28,10 @@
 
 #include "json.hpp"
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <array>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -41,8 +41,9 @@
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s <frames.bin> [--n-win N] [--min-instances N] "
-                             "[--max-open-win N] [--taps-win N] [--trim-in F] [--no-flush]\n",
+        std::fprintf(stderr,
+                     "usage: %s <frames.bin> [--n-win N] [--min-instances N] "
+                     "[--max-open-win N] [--taps-win N] [--trim-in F] [--no-flush]\n",
                      argv[0]);
         return 2;
     }
@@ -133,8 +134,9 @@ int main(int argc, char** argv) {
         if (!f.read((char*)&len, sizeof(len)))
             break; // clean EOF
         if (len == 0 || len > (1u << 24)) {
-            std::fprintf(stderr, "frame %llu: implausible length %u -- the stream is "
-                                 "desynchronised, refusing to guess\n",
+            std::fprintf(stderr,
+                         "frame %llu: implausible length %u -- the stream is "
+                         "desynchronised, refusing to guess\n",
                          (unsigned long long)n_frames, len);
             return 3;
         }
@@ -201,11 +203,17 @@ int main(int argc, char** argv) {
         nlohmann::json prns = nlohmann::json::object();
         for (const auto& pv : cv.second.row) {
             const gnss::FleetDllRow& s = pv.second;
-            prns[std::to_string(pv.first)] = {
-                {"disc", s.disc},     {"q", s.q},         {"e_pow", s.e_pow},
-                {"p_pow", s.p_pow},   {"l_pow", s.l_pow}, {"n_src", s.n_src},
-                {"n_chan", s.n_chan}, {"n_rec", s.n_rec}, {"hop", s.hop},
-                {"win", s.win},       {"n_updates", s.n_updates}};
+            prns[std::to_string(pv.first)] = {{"disc", s.disc},
+                                              {"q", s.q},
+                                              {"e_pow", s.e_pow},
+                                              {"p_pow", s.p_pow},
+                                              {"l_pow", s.l_pow},
+                                              {"n_src", s.n_src},
+                                              {"n_chan", s.n_chan},
+                                              {"n_rec", s.n_rec},
+                                              {"hop", s.hop},
+                                              {"win", s.win},
+                                              {"n_updates", s.n_updates}};
         }
         chains[cv.first] = {{"prns", prns},
                             {"windows_closed", cv.second.n_closed},
@@ -230,15 +238,15 @@ int main(int argc, char** argv) {
             const gnss::FleetDll::LobeTap& t = pv.second;
             nlohmann::json cj = nlohmann::json::object();
             // JSON has no NaN: a PRN no two senders reached says so with null, not a number
-            const nlohmann::json xc = std::isfinite(t.xcoh) ? nlohmann::json(t.xcoh) : nlohmann::json();
+            const nlohmann::json xc =
+                std::isfinite(t.xcoh) ? nlohmann::json(t.xcoh) : nlohmann::json();
             for (const auto& ch : t.chan)
                 cj[std::to_string(ch.first)] = {ch.second[0], ch.second[1], ch.second[2],
                                                 ch.second[3]};
-            pj[std::to_string(pv.first)] = {{"e", t.e},         {"p", t.p},
-                                            {"l", t.l},         {"n_chan", t.n_chan},
-                                            {"n_rec", t.n_rec}, {"n_inst", t.n_inst},
-                                            {"xcoh", xc},       {"n_xcoh", t.n_xcoh},
-                                            {"hop", t.hop},     {"chan", cj}};
+            pj[std::to_string(pv.first)] = {
+                {"e", t.e},         {"p", t.p},           {"l", t.l},   {"n_chan", t.n_chan},
+                {"n_rec", t.n_rec}, {"n_inst", t.n_inst}, {"xcoh", xc}, {"n_xcoh", t.n_xcoh},
+                {"hop", t.hop},     {"chan", cj}};
         }
         taps[cv.first] = pj;
     }

@@ -12,9 +12,10 @@ import argparse
 import numpy as np
 
 FS = 20e6
-IF = 5e6          # Fs/4 after the (-1)^n flip (real capture, high-side by convention)
+IF = 5e6  # Fs/4 after the (-1)^n flip (real capture, high-side by convention)
 T_SKIP = 0.5
 L = 10230
+
 
 def lfsr(count, reg, tap, n):
     out = np.empty(count, np.int8)
@@ -24,21 +25,59 @@ def lfsr(count, reg, tap, n):
         reg = (fb << (n - 1)) | (reg >> 1)
     return out
 
+
 def _xa():
-    base = lfsr(8190, 0x1FFF, 0b0000000011011, 13)  # XA: restarts at 8190 (gpsL5Code.cpp)
-    return np.concatenate([base, base[:L - 8190]])
+    base = lfsr(
+        8190, 0x1FFF, 0b0000000011011, 13
+    )  # XA: restarts at 8190 (gpsL5Code.cpp)
+    return np.concatenate([base, base[: L - 8190]])
+
 
 def _xb():
-    return lfsr(L, 0x1FFF, 0b1011011100011, 13)     # XB: free-runs the full 10230
+    return lfsr(L, 0x1FFF, 0b1011011100011, 13)  # XB: free-runs the full 10230
 
-L5Q_XB_ADV = [1701, 323, 5292, 2020, 5429, 7136, 1041, 5947, 4315, 148, 535, 1939,
-              5206, 5910, 3595, 5135, 6082, 6990, 3546, 1523, 4548, 4484, 1893, 3961,
-              7106, 5299, 4660, 276, 4389, 3783, 1591, 1601]
+
+L5Q_XB_ADV = [
+    1701,
+    323,
+    5292,
+    2020,
+    5429,
+    7136,
+    1041,
+    5947,
+    4315,
+    148,
+    535,
+    1939,
+    5206,
+    5910,
+    3595,
+    5135,
+    6082,
+    6990,
+    3546,
+    1523,
+    4548,
+    4484,
+    1893,
+    3961,
+    7106,
+    5299,
+    4660,
+    276,
+    4389,
+    3783,
+    1591,
+    1601,
+]
+
 
 def l5q_code(prn):
     xa, xb = _xa(), _xb()
     s = L5Q_XB_ADV[prn - 1]
-    return xa * np.roll(xb, -s)   # XB advanced (left-rolled) by s, like the C++
+    return xa * np.roll(xb, -s)  # XB advanced (left-rolled) by s, like the C++
+
 
 def measure(raw, name, code, chip_rate, T_p, dops, n_blocks, flip):
     n_samp = int(round(FS * T_p))
@@ -55,14 +94,14 @@ def measure(raw, name, code, chip_rate, T_p, dops, n_blocks, flip):
         pks = []
         for b in range(n_blocks):
             o = off0 + b * n_samp
-            x = raw[o:o + n_samp].astype(np.float32)
+            x = raw[o : o + n_samp].astype(np.float32)
             if flip:
                 x = x * np.where(np.arange(o, o + n_samp) % 2, -1, 1).astype(np.float32)
             xb_ = x * np.exp(-2j * np.pi * f0 * (tt + o / FS)).astype(np.complex64)
             c = np.abs(np.fft.ifft(np.fft.fft(xb_) * REPF)) ** 2
             pk = int(np.argmax(c))
             m = np.ones(n_samp, bool)
-            m[max(0, pk - guard):pk + guard] = False
+            m[max(0, pk - guard) : pk + guard] = False
             xs.append((c[pk] - c[m].mean()) / c[m].mean())
             pks.append(pk)
         mx = float(np.mean(xs))
@@ -71,9 +110,12 @@ def measure(raw, name, code, chip_rate, T_p, dops, n_blocks, flip):
     x, dop, pk = best
     cn0 = 10 * np.log10(max(x, 1e-9) / T_p)
     cp = pk * chip_rate / FS % L
-    print("%-14s best dop %+7.1f Hz  x=%8.2f  C/N0=%5.1f dB-Hz  cp=%7.1f chips"
-          % (name, dop, x, cn0, cp))
+    print(
+        "%-14s best dop %+7.1f Hz  x=%8.2f  C/N0=%5.1f dB-Hz  cp=%7.1f chips"
+        % (name, dop, x, cn0, cp)
+    )
     return x, dop
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
@@ -88,8 +130,16 @@ if __name__ == "__main__":
     flip = args.flip
     if flip < 0:
         for f in (False, True):
-            x, _ = measure(raw, "G%d flip=%d" % (prns[0], f), l5q_code(prns[0]),
-                           10.23e6, 1e-3, dops, 10, f)
+            x, _ = measure(
+                raw,
+                "G%d flip=%d" % (prns[0], f),
+                l5q_code(prns[0]),
+                10.23e6,
+                1e-3,
+                dops,
+                10,
+                f,
+            )
             if x > 3:
                 flip = f
                 break
@@ -97,4 +147,6 @@ if __name__ == "__main__":
             raise SystemExit("calibration failed: no detection either flip")
         print("-> flip convention: %s" % flip)
     for prn in prns:
-        measure(raw, "G%d L5Q" % prn, l5q_code(prn), 10.23e6, 1e-3, dops, 10, bool(flip))
+        measure(
+            raw, "G%d L5Q" % prn, l5q_code(prn), 10.23e6, 1e-3, dops, 10, bool(flip)
+        )

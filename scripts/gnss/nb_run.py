@@ -33,8 +33,9 @@ def run_cell(src, ns):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("notebook")
     ap.add_argument("--cwd", default=None)
     a = ap.parse_args()
@@ -42,6 +43,7 @@ def main():
     if a.cwd:
         os.chdir(a.cwd)
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -64,25 +66,53 @@ def main():
         except Exception:
             val = None
             tb = traceback.format_exc()
-            outs.append({"output_type": "error", "ename": "Error", "evalue": "",
-                         "traceback": tb.splitlines()})
+            outs.append(
+                {
+                    "output_type": "error",
+                    "ename": "Error",
+                    "evalue": "",
+                    "traceback": tb.splitlines(),
+                }
+            )
             failed = True
             print("cell %d FAILED:\n%s" % (count, tb), file=sys.stderr)
         if out.getvalue():
-            outs.insert(0, {"output_type": "stream", "name": "stdout",
-                            "text": out.getvalue().splitlines(True)})
+            outs.insert(
+                0,
+                {
+                    "output_type": "stream",
+                    "name": "stdout",
+                    "text": out.getvalue().splitlines(True),
+                },
+            )
         if err.getvalue():
-            outs.insert(len(outs) - (1 if failed else 0),
-                        {"output_type": "stream", "name": "stderr",
-                         "text": err.getvalue().splitlines(True)})
+            outs.insert(
+                len(outs) - (1 if failed else 0),
+                {
+                    "output_type": "stream",
+                    "name": "stderr",
+                    "text": err.getvalue().splitlines(True),
+                },
+            )
         if val is not None:
-            outs.append({"output_type": "execute_result", "execution_count": count,
-                         "metadata": {}, "data": {"text/plain": [repr(val)]}})
+            outs.append(
+                {
+                    "output_type": "execute_result",
+                    "execution_count": count,
+                    "metadata": {},
+                    "data": {"text/plain": [repr(val)]},
+                }
+            )
         for num in plt.get_fignums():
             buf = io.BytesIO()
             plt.figure(num).savefig(buf, format="png", dpi=90, bbox_inches="tight")
-            outs.append({"output_type": "display_data", "metadata": {},
-                         "data": {"image/png": base64.b64encode(buf.getvalue()).decode()}})
+            outs.append(
+                {
+                    "output_type": "display_data",
+                    "metadata": {},
+                    "data": {"image/png": base64.b64encode(buf.getvalue()).decode()},
+                }
+            )
         plt.close("all")
         cell["outputs"] = outs
     json.dump(nb, open(a.notebook, "w"), indent=1)

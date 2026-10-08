@@ -100,17 +100,28 @@ def _tree_state():
     one line instead of three worktree replays, and a dirty tree is recorded as dirty
     because a bless from uncommitted work describes something unreproducible.
     """
+
     def _git(*a):
         try:
-            return subprocess.run(["git"] + list(a), cwd=K, capture_output=True,
-                                  text=True).stdout.strip()
+            return subprocess.run(
+                ["git"] + list(a), cwd=K, capture_output=True, text=True
+            ).stdout.strip()
         except Exception:
             return ""
+
     sha = _git("rev-parse", "--short", "HEAD") or "unknown"
     # The harness counts too: `replay` builds the argv, so a change here can move the digest
     # every bit as much as a change in the broker.
-    dirty = bool(_git("status", "--porcelain", "--", BROKER, os.path.abspath(__file__),
-                      os.path.join(K, "python", "scripts", "gnss", "gnss_broker")))
+    dirty = bool(
+        _git(
+            "status",
+            "--porcelain",
+            "--",
+            BROKER,
+            os.path.abspath(__file__),
+            os.path.join(K, "python", "scripts", "gnss", "gnss_broker"),
+        )
+    )
     return sha, dirty
 
 
@@ -136,7 +147,9 @@ def _brdc_fingerprint(cache=None):
     task #29) -- but it makes a moved digest self-explaining instead of a mystery that costs
     an afternoon.
     """
-    cache = cache or BRDC_PIN  # what replays READ -- never the live cache, which refreshes daily
+    cache = (
+        cache or BRDC_PIN
+    )  # what replays READ -- never the live cache, which refreshes daily
     h = hashlib.sha256()
     try:
         for name in sorted(os.listdir(cache)):
@@ -195,8 +208,12 @@ def replay(path, extra=(), env=None):
     # --publish-port 0 disables the REST publisher: replays must not fight over a port, and
     # two of them running concurrently is the normal case when bisecting.
     argv = _strip(argv, "--publish-port")
-    cmd = ([PY, "-u", BROKER] + argv
-           + ["--transcript-read", path, "--publish-port", "0"] + list(extra))
+    cmd = (
+        [PY, "-u", BROKER]
+        + argv
+        + ["--transcript-read", path, "--publish-port", "0"]
+        + list(extra)
+    )
     e = dict(os.environ)
     # PIN THE SKY (task #29). The ephemeris is a replay input every bit as much as the
     # transcript: gnss_ephemeris.fetch_brdc pulls it through its own urllib into a cache that
@@ -230,13 +247,18 @@ def _strip(argv, flag):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["record", "digest", "check", "bless", "selftest",
-                                       "census"])
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "action", choices=["record", "digest", "check", "bless", "selftest", "census"]
+    )
     ap.add_argument("transcript")
-    ap.add_argument("rest", nargs=argparse.REMAINDER,
-                    help="for `record`: the broker flags to run under, after a bare --")
+    ap.add_argument(
+        "rest",
+        nargs=argparse.REMAINDER,
+        help="for `record`: the broker flags to run under, after a bare --",
+    )
     a = ap.parse_args()
     # ⚠️ ABSOLUTE, BEFORE ANYTHING USES IT. The replay runs the broker as a subprocess with
     # cwd=K (the repo root), so a transcript named relative to the CALLER's directory --
@@ -250,7 +272,9 @@ def main():
     if a.action == "record":
         flags = [x for x in a.rest if x != "--"]
         if not flags:
-            sys.exit("record needs the broker flags: broker_equiv.py record f.jsonl -- --trackers ...")
+            sys.exit(
+                "record needs the broker flags: broker_equiv.py record f.jsonl -- --trackers ..."
+            )
         cmd = [PY, "-u", BROKER] + flags + ["--transcript-write", a.transcript]
         sys.stderr.write("+ %s\n" % " ".join(cmd))
         raise SystemExit(subprocess.call(cmd, cwd=K))
@@ -270,16 +294,22 @@ def main():
     if a.action == "bless":
         d, _ = replay(a.transcript)
         sha, dirty = _tree_state()
-        prov = "blessed-at %s%s brdc %s" % (sha, " DIRTY" if dirty else "",
-                                            _brdc_fingerprint(_pin_for(a.transcript)))
+        prov = "blessed-at %s%s brdc %s" % (
+            sha,
+            " DIRTY" if dirty else "",
+            _brdc_fingerprint(_pin_for(a.transcript)),
+        )
         with open(gold, "w") as f:
             f.write("%s  %s\n" % (d, prov))
         print("blessed %s = %s (%s)" % (os.path.basename(gold), d, prov))
         if dirty:
-            print("⚠️  BLESSED FROM A DIRTY TREE. This digest describes uncommitted broker\n"
-                  "    code, so nothing in git reproduces it. Commit the broker change and\n"
-                  "    re-bless, or the gate guards a phantom (that is exactly how the E5a\n"
-                  "    golden was born).", file=sys.stderr)
+            print(
+                "⚠️  BLESSED FROM A DIRTY TREE. This digest describes uncommitted broker\n"
+                "    code, so nothing in git reproduces it. Commit the broker change and\n"
+                "    re-bless, or the gate guards a phantom (that is exactly how the E5a\n"
+                "    golden was born).",
+                file=sys.stderr,
+            )
         return
 
     if a.action == "check":
@@ -301,24 +331,31 @@ def main():
                 "times a day, and a MODEL-PRIMARY chain\n    (E5a/B2a) seeds every satellite "
                 "from it -- a changed toe moves a seed's cp0 with no\n    code change at "
                 "all. Check that before concluding anything about the diff."
-                % (prov.split("brdc ")[-1].split()[0], now_brdc))
-        sys.exit("DIGEST MOVED\n  golden %s%s\n  now    %s\nThe POST stream changed: the "
-                 "refactor is not behaviour-preserving.\nIf the change is intended, "
-                 "`bless` FROM A CLEAN TREE and commit the .digest with the code.%s"
-                 % (want, "  [%s]" % prov if prov else "", got, brdc_note))
+                % (prov.split("brdc ")[-1].split()[0], now_brdc)
+            )
+        sys.exit(
+            "DIGEST MOVED\n  golden %s%s\n  now    %s\nThe POST stream changed: the "
+            "refactor is not behaviour-preserving.\nIf the change is intended, "
+            "`bless` FROM A CLEAN TREE and commit the .digest with the code.%s"
+            % (want, "  [%s]" % prov if prov else "", got, brdc_note)
+        )
 
     if a.action == "selftest":
         n, _, _ = _census(a.transcript)
         if n["post"] == 0:
-            sys.exit("transcript contains ZERO posts -- it exercises nothing. Capture one "
-                     "against a chain that is actually seeding (see 31896a862:docs/CHORD_BROKER_REFACTOR.md "
-                     "3.2: a frozen chain replays perfectly and tests nothing).")
+            sys.exit(
+                "transcript contains ZERO posts -- it exercises nothing. Capture one "
+                "against a chain that is actually seeding (see 31896a862:docs/CHORD_BROKER_REFACTOR.md "
+                "3.2: a frozen chain replays perfectly and tests nothing)."
+            )
         d1, _ = replay(a.transcript)
         d2, _ = replay(a.transcript)
         if d1 != d2:
-            sys.exit("NOT DETERMINISTIC: two replays of the same transcript disagree\n"
-                     "  %s\n  %s\nSomething outside the transcript is leaking in (a clock, "
-                     "an unseeded RNG, a set iteration)." % (d1, d2))
+            sys.exit(
+                "NOT DETERMINISTIC: two replays of the same transcript disagree\n"
+                "  %s\n  %s\nSomething outside the transcript is leaking in (a clock, "
+                "an unseeded RNG, a set iteration)." % (d1, d2)
+            )
         print("determinism OK   %s  (%d cycles, %d posts)" % (d1, n["now"], n["post"]))
         # The gate must be able to FAIL. Nudge each knob by one part in a million -- far
         # below anything physical (0.25 -> 0.25000025) -- and require the digest to move.
@@ -335,21 +372,35 @@ def main():
         # double resolves ~1e-12. The perturbation vanished BELOW the number it was added
         # to. A sensitivity test must clear the representation of what it perturbs.
         moved = []
-        for knob in ("carrier_hz", "hops_per_sec", "dll_gain", "carrier_gain",
-                     "code_bias_alpha", "bias_alpha"):
-            d3, _ = replay(a.transcript,
-                           env={"GNSS_BROKER_EQUIV_PERTURB": "%s:1e-6" % knob})
+        for knob in (
+            "carrier_hz",
+            "hops_per_sec",
+            "dll_gain",
+            "carrier_gain",
+            "code_bias_alpha",
+            "bias_alpha",
+        ):
+            d3, _ = replay(
+                a.transcript, env={"GNSS_BROKER_EQUIV_PERTURB": "%s:1e-6" % knob}
+            )
             if d3 != d1:
                 moved.append(knob)
         if not moved:
-            sys.exit("GATE IS BLIND: no knob moved the digest. The transcript's POSTs do "
-                     "not depend on anything this broker computes -- it is inert, and this "
-                     "gate would pass a broken refactor.")
+            sys.exit(
+                "GATE IS BLIND: no knob moved the digest. The transcript's POSTs do "
+                "not depend on anything this broker computes -- it is inert, and this "
+                "gate would pass a broken refactor."
+            )
         print("sensitivity OK   moved by: %s" % ", ".join(moved))
-        skipped = [k for k in ("dll_gain", "carrier_gain", "code_bias_alpha", "bias_alpha")
-                   if k not in moved]
+        skipped = [
+            k
+            for k in ("dll_gain", "carrier_gain", "code_bias_alpha", "bias_alpha")
+            if k not in moved
+        ]
         if skipped:
-            print("coverage NOTE    this fixture does NOT reach: %s" % ", ".join(skipped))
+            print(
+                "coverage NOTE    this fixture does NOT reach: %s" % ", ".join(skipped)
+            )
         print("\nGATE GOOD.")
         return
 

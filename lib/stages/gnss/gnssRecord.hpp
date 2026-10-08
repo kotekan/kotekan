@@ -150,8 +150,8 @@ constexpr int REC_E_RE = 11;
 constexpr int REC_E_IM = 12;
 constexpr int REC_L_RE = 13;
 constexpr int REC_L_IM = 14;
-constexpr int REC_CPHASE = 15; ///< commanded carrier-phase INCREMENT, cycles since this
-                               ///< PRN's previous record (0 = arc start). See the header note.
+constexpr int REC_CPHASE = 15;    ///< commanded carrier-phase INCREMENT, cycles since this
+                                  ///< PRN's previous record (0 = arc start). See the header note.
 constexpr int REC_PH_RE = 16;     ///< prompt HEAD segment (hops before the code-period boundary)
 constexpr int REC_PH_IM = 17;     ///< -- see the header note; tail = P - PH
 constexpr int REC_PH_ENERGY = 18; ///< head replica energy; /P_energy = boundary fraction f
@@ -274,32 +274,32 @@ constexpr int CMB_E_POW = 11;
 constexpr int CMB_L_POW = 12;
 constexpr int CMB_DLL_DISC = 13;
 constexpr int CMB_CARRIER_RESID = 14;
-constexpr int CMB_ARC = 15; ///< phase arc id: ++ on every cycle slip / continuity break
-constexpr int CMB_HEAD_FRAC = 16; ///< window-mean boundary fraction f = <PH_energy>/<P_energy>
-                                  ///< (0/1 = period boundary at the window edge -- benign;
-                                  ///< ~0.5 = the old bistable's null zone; now fixed, diagnostic)
-constexpr int CMB_PEEL_DEEP = 17; ///< deep |A| of the PEEL RESIDUAL (the CMB_DEEP estimator run on
-                                  ///< slots 20-23) -> depth_dB = 20*log10(CMB_DEEP/CMB_PEEL_DEEP)
-constexpr int CMB_PEEL_INCOH = 18;///< incoherent |A| of the peel residual (the CMB_AMP_INCOH twin).
-                                  ///< Both zero when no peel ran.
-constexpr int CMB_HOP_SLOT = 19;  ///< absolute HOP index (int64 aliased at slots 19-20) the E/P/L
-                                  ///< window ends on = GnssChanMetadata::sample_seq / fft_len.
-                                  ///< -1 (or 0 from an older writer) = unset. int64 and not a
-                                  ///< float because the whole point is an EXACT integer key: the
-                                  ///< fleet DLL groups instances by equal hop, and the hop reaches
-                                  ///< ~1.7e10/day -- past float32's 2^24 by three orders of
-                                  ///< magnitude, so a float slot would quantize the key into
-                                  ///< collisions. UTC at slot 9 stays: overlay_apply and coh_span
-                                  ///< use it, and this is additive.
-                                  ///< COMBINER RECORDS ONLY -- tracker records use 19-23 for
-                                  ///< REC_TRIM_INC / REC_RES_*, and the two flavours never share
-                                  ///< a buffer. See docs/CHORD_GNSS_SHARED_DLL.md.
-constexpr int CMB_COH_FRAC = 21;  ///< coherence fraction |sum A|/sum|A| of the WINNING deep
-                                  ///< stream (after rate/phase-track derotation). THE chopping-
-                                  ///< independent coherence measure: deep_snr scales with the
-                                  ///< record count when phase-limited (8.20.24), this does not.
-                                  ///< exp(-sigma_phi^2/2) for Gaussian wander; 0 = not computed
-                                  ///< (non-plain deep paths, for now). COMBINER RECORDS ONLY.
+constexpr int CMB_ARC = 15;        ///< phase arc id: ++ on every cycle slip / continuity break
+constexpr int CMB_HEAD_FRAC = 16;  ///< window-mean boundary fraction f = <PH_energy>/<P_energy>
+                                   ///< (0/1 = period boundary at the window edge -- benign;
+                                   ///< ~0.5 = the old bistable's null zone; now fixed, diagnostic)
+constexpr int CMB_PEEL_DEEP = 17;  ///< deep |A| of the PEEL RESIDUAL (the CMB_DEEP estimator run on
+                                   ///< slots 20-23) -> depth_dB = 20*log10(CMB_DEEP/CMB_PEEL_DEEP)
+constexpr int CMB_PEEL_INCOH = 18; ///< incoherent |A| of the peel residual (the CMB_AMP_INCOH
+                                   ///< twin). Both zero when no peel ran.
+constexpr int CMB_HOP_SLOT = 19;   ///< absolute HOP index (int64 aliased at slots 19-20) the E/P/L
+                                   ///< window ends on = GnssChanMetadata::sample_seq / fft_len.
+                                   ///< -1 (or 0 from an older writer) = unset. int64 and not a
+                                   ///< float because the whole point is an EXACT integer key: the
+                                   ///< fleet DLL groups instances by equal hop, and the hop reaches
+                                   ///< ~1.7e10/day -- past float32's 2^24 by three orders of
+                                   ///< magnitude, so a float slot would quantize the key into
+                                   ///< collisions. UTC at slot 9 stays: overlay_apply and coh_span
+                                   ///< use it, and this is additive.
+                                   ///< COMBINER RECORDS ONLY -- tracker records use 19-23 for
+                                   ///< REC_TRIM_INC / REC_RES_*, and the two flavours never share
+                                   ///< a buffer. See docs/CHORD_GNSS_SHARED_DLL.md.
+constexpr int CMB_COH_FRAC = 21;   ///< coherence fraction |sum A|/sum|A| of the WINNING deep
+                                   ///< stream (after rate/phase-track derotation). THE chopping-
+                                   ///< independent coherence measure: deep_snr scales with the
+                                   ///< record count when phase-limited (8.20.24), this does not.
+                                   ///< exp(-sigma_phi^2/2) for Gaussian wander; 0 = not computed
+                                   ///< (non-plain deep paths, for now). COMBINER RECORDS ONLY.
 
 // ---------------------------------------------------------------------------------------
 // ELEMENT AXIS (CHORD)
@@ -339,15 +339,15 @@ constexpr int CMB_COH_FRAC = 21;  ///< coherence fraction |sum A|/sum|A| of the 
 /// output until each PRN's cal warms (~3 tau) or when elem_sum is off (the default).
 constexpr int ELEM_FLOATS = 12;
 
-constexpr int ELEM_P_RE = 0;  ///< prompt correlation for this antenna
+constexpr int ELEM_P_RE = 0; ///< prompt correlation for this antenna
 constexpr int ELEM_P_IM = 1;
-constexpr int ELEM_E_RE = 2;  ///< early / late, same taps as REC_E_*/REC_L_*
+constexpr int ELEM_E_RE = 2; ///< early / late, same taps as REC_E_*/REC_L_*
 constexpr int ELEM_E_IM = 3;
 constexpr int ELEM_L_RE = 4;
 constexpr int ELEM_L_IM = 5;
-constexpr int ELEM_PH_RE = 6; ///< prompt HEAD segment (hops before the code-period boundary);
-constexpr int ELEM_PH_IM = 7; ///< tail = P - PH, exactly as in the header. Required for deep
-                              ///< integration across an overlay/nav sign flip.
+constexpr int ELEM_PH_RE = 6;      ///< prompt HEAD segment (hops before the code-period boundary);
+constexpr int ELEM_PH_IM = 7;      ///< tail = P - PH, exactly as in the header. Required for deep
+                                   ///< integration across an overlay/nav sign flip.
 constexpr int ELEM_RES_RE = 8;     ///< PEEL RESIDUAL prompt, per antenna. RESERVED -- the peel
 constexpr int ELEM_RES_IM = 9;     ///< is deferred until acq/track and beam mapping are up
 constexpr int ELEM_RES_PH_RE = 10; ///< (a single-PRN replica is likely sub-quantization at
@@ -411,13 +411,13 @@ constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>| -- coherent amplitude. Below 
 /// against the 3-float comb still reads correctly; E and L are appended. That is deliberate --
 /// a widening that renumbered the existing columns would silently re-point every reader.
 constexpr int CHAN_FLOATS = 9;
-constexpr int CHAN_RE = 0;       ///< per-channel PROMPT, NCO-derotated + element-combined
+constexpr int CHAN_RE = 0; ///< per-channel PROMPT, NCO-derotated + element-combined
 constexpr int CHAN_IM = 1;
-constexpr int CHAN_ENERGY = 2;   ///< that channel's prompt replica energy (the ML weight)
-constexpr int CHAN_E_RE = 3;     ///< EARLY, same channel, same rotation, same element combine
+constexpr int CHAN_ENERGY = 2; ///< that channel's prompt replica energy (the ML weight)
+constexpr int CHAN_E_RE = 3;   ///< EARLY, same channel, same rotation, same element combine
 constexpr int CHAN_E_IM = 4;
 constexpr int CHAN_E_ENERGY = 5;
-constexpr int CHAN_L_RE = 6;     ///< LATE
+constexpr int CHAN_L_RE = 6; ///< LATE
 constexpr int CHAN_L_IM = 7;
 constexpr int CHAN_L_ENERGY = 8;
 
@@ -502,11 +502,10 @@ constexpr size_t CUBE_HEADER_BYTES = 104 + CUBE_CHAIN_CHARS;
 /// Bytes in a beam-cube frame sized for @c max_prn PRN slots, @c max_bins subband bins and
 /// @c n_elem antennas. The ONE size rule -- the stage, the buffer and any reader all call this.
 constexpr size_t cube_frame_bytes(int max_prn, int max_bins, int n_elem) {
-    return CUBE_HEADER_BYTES
-           + (size_t)max_bins * 2 * sizeof(int32_t)               // freq_id lo/hi
-           + (size_t)max_prn * 3 * sizeof(int32_t)                // prn, n_rec, n_reanchor
-           + (size_t)max_prn * sizeof(double)                     // phi0
-           + (size_t)max_prn * max_bins * 2 * sizeof(float)       // w, energy
+    return CUBE_HEADER_BYTES + (size_t)max_bins * 2 * sizeof(int32_t) // freq_id lo/hi
+           + (size_t)max_prn * 3 * sizeof(int32_t)                    // prn, n_rec, n_reanchor
+           + (size_t)max_prn * sizeof(double)                         // phi0
+           + (size_t)max_prn * max_bins * 2 * sizeof(float)           // w, energy
            + (size_t)max_prn * max_bins * n_elem * 3 * sizeof(float); // coh_re/im, incoh
 }
 
@@ -555,8 +554,7 @@ static_assert(elem_offset(0, 0, 4) == RECORD_FLOATS,
               "element 0 must start immediately after the PRN header");
 static_assert(elem_offset(0, 1, 4) - elem_offset(0, 0, 4) == ELEM_FLOATS,
               "consecutive elements must be ELEM_FLOATS apart");
-static_assert(record_offset(1, 4) == record_stride(4),
-              "consecutive PRNs must be one stride apart");
+static_assert(record_offset(1, 4) == record_stride(4), "consecutive PRNs must be one stride apart");
 static_assert(elem_offset(1, 0, 4) == record_stride(4) + RECORD_FLOATS,
               "PRN 1's first element must follow PRN 1's header");
 // The last element of PRN p must end exactly where PRN p+1 begins -- no gap, no overlap.

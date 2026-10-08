@@ -88,11 +88,14 @@ def frame_increments(series):
             w = by_hop.get(h + HOPS_PER_REC)
             if w is None:
                 continue
-            j = (h // HOPS_PER_REC) % REC_PER_FRAME     # position of the EARLIER record
-            acc[j] += w * v.conjugate()                  # amplitude-weighted: no unwrapping
+            j = (h // HOPS_PER_REC) % REC_PER_FRAME  # position of the EARLIER record
+            acc[j] += w * v.conjugate()  # amplitude-weighted: no unwrapping
             cnt[j] += 1
-    return {j: (cmath.phase(acc[j]), abs(acc[j]), cnt[j]) for j in range(REC_PER_FRAME)
-            if cnt[j]}
+    return {
+        j: (cmath.phase(acc[j]), abs(acc[j]), cnt[j])
+        for j in range(REC_PER_FRAME)
+        if cnt[j]
+    }
 
 
 def curve(series, lags):
@@ -105,38 +108,51 @@ def curve(series, lags):
                 out.setdefault(m, []).append(mag)
             if m == 1 and ph is not None:
                 rate.append(ph / (2 * math.pi * T_REC))
-    return ({m: statistics.mean(v) for m, v in out.items() if v},
-            statistics.median(rate) if rate else None)
+    return (
+        {m: statistics.mean(v) for m, v in out.items() if v},
+        statistics.median(rate) if rate else None,
+    )
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--gather", default="127.0.0.1:11061")
     ap.add_argument("--broker", default="http://127.0.0.1:12060")
     ap.add_argument("--chain", default="gps_l5")
     ap.add_argument("--windows", type=int, default=32)
     ap.add_argument("--blocks", type=int, default=3)
     ap.add_argument("--seconds", type=float, default=15.0)
-    ap.add_argument("--split-gpu", action="store_true",
-                    help="#71: report each GPU's instances SEPARATELY. Instances are keyed "
-                         "<node>.<gpu>, and gen_fleet's carrier-phase-mode 'ab' puts arm 2 "
-                         "(the accumulating NCO) on gpu 0 and arm 1 on gpu 1 across the whole "
-                         "fleet -- so this reads BOTH ARMS OFF THE SAME RECORDS in one poll. "
-                         "A before/after across two restarts cannot resolve it.")
+    ap.add_argument(
+        "--split-gpu",
+        action="store_true",
+        help="#71: report each GPU's instances SEPARATELY. Instances are keyed "
+        "<node>.<gpu>, and gen_fleet's carrier-phase-mode 'ab' puts arm 2 "
+        "(the accumulating NCO) on gpu 0 and arm 1 on gpu 1 across the whole "
+        "fleet -- so this reads BOTH ARMS OFF THE SAME RECORDS in one poll. "
+        "A before/after across two restarts cannot resolve it.",
+    )
     a = ap.parse_args()
 
-    with urllib.request.urlopen("%s/%s/get_status" % (a.broker.rstrip("/"), a.chain),
-                                timeout=10) as r:
+    with urllib.request.urlopen(
+        "%s/%s/get_status" % (a.broker.rstrip("/"), a.chain), timeout=10
+    ) as r:
         rows = json.loads(r.read().decode())
     probes = {int(x["prn"]) for x in rows if x.get("noise_probe")}
-    held = [x for x in rows if not x.get("noise_probe")
-            and x.get("cn0_prompt_db") is not None
-            and (x.get("cn0_prompt_duty") or 0) >= 0.9]
+    held = [
+        x
+        for x in rows
+        if not x.get("noise_probe")
+        and x.get("cn0_prompt_db") is not None
+        and (x.get("cn0_prompt_duty") or 0) >= 0.9
+    ]
     if not held:
         raise SystemExit("INCONCLUSIVE: nothing held at duty >= 0.9 on %s." % a.chain)
-    print("chain %s: %d held sat(s) %s, probes %s"
-          % (a.chain, len(held), sorted(int(x["prn"]) for x in held), sorted(probes)))
+    print(
+        "chain %s: %d held sat(s) %s, probes %s"
+        % (a.chain, len(held), sorted(int(x["prn"]) for x in held), sorted(probes))
+    )
 
     lags = [1, 2, 4, 8, 16, 32, 64]
     host, port = telem.parse_endpoint(a.gather)
@@ -148,15 +164,25 @@ def main():
     try:
         for b in range(a.blocks):
             time.sleep(a.seconds)
-            got = combdll.coh_cn0(cl, a.chain, rates={}, n_win=a.windows,
-                                  probe_prns=probes, keep_series=True)
+            got = combdll.coh_cn0(
+                cl,
+                a.chain,
+                rates={},
+                n_win=a.windows,
+                probe_prns=probes,
+                keep_series=True,
+            )
             if not got:
                 print("  (block %d: no fold)" % b)
                 continue
-            print("\n  -- block %d --   |r_m| / mean|A|^2   (m in RECORDS, 1 = %.1f ms)"
-                  % (b, 1000 * T_REC))
-            print("    %-6s %-7s %s" % ("prn", "rate1", "  ".join("m=%-6d" % m
-                                                                  for m in lags)))
+            print(
+                "\n  -- block %d --   |r_m| / mean|A|^2   (m in RECORDS, 1 = %.1f ms)"
+                % (b, 1000 * T_REC)
+            )
+            print(
+                "    %-6s %-7s %s"
+                % ("prn", "rate1", "  ".join("m=%-6d" % m for m in lags))
+            )
             if a.split_gpu:
                 # ⚠️ SAME RECORDS, SAME SATELLITES, SAME POLL -- only the arm differs. The two
                 # groups are disjoint sets of INSTANCES, so nothing is shared between them
@@ -168,15 +194,24 @@ def main():
                         v = got.get(p)
                         if not v or "series" not in v:
                             continue
-                        sub = {k: r for k, r in v["series"].items() if k.endswith(suffix)}
+                        sub = {
+                            k: r for k, r in v["series"].items() if k.endswith(suffix)
+                        }
                         if not sub:
                             continue
                         c, r1 = curve(sub, lags)
                         if 1 not in c or 4 not in c or c[4] <= 0:
                             continue
-                        print("    %-6d %-7s %s" % (p, ("%+.2f" % r1) if r1 is not None else "--",
-                                                    "  ".join("%-8.3f" % c.get(m, float("nan"))
-                                                              for m in lags)))
+                        print(
+                            "    %-6d %-7s %s"
+                            % (
+                                p,
+                                ("%+.2f" % r1) if r1 is not None else "--",
+                                "  ".join(
+                                    "%-8.3f" % c.get(m, float("nan")) for m in lags
+                                ),
+                            )
+                        )
                         fi = frame_increments(sub)
                         if fi:
                             incs.setdefault((arm, p), {}).update(fi)
@@ -193,9 +228,15 @@ def main():
                 if 1 not in c:
                     continue
                 tag = "probe" if x.get("_probe") else "     "
-                print("    %-6d %-7s %s %s"
-                      % (p, ("%+.2f" % r1) if r1 is not None else "--",
-                         "  ".join("%-8.3f" % c.get(m, float("nan")) for m in lags), tag))
+                print(
+                    "    %-6d %-7s %s %s"
+                    % (
+                        p,
+                        ("%+.2f" % r1) if r1 is not None else "--",
+                        "  ".join("%-8.3f" % c.get(m, float("nan")) for m in lags),
+                        tag,
+                    )
+                )
                 dst = probe_raw if x.get("_probe") else sat_raw
                 for m in lags:
                     if m in c:
@@ -217,12 +258,27 @@ def main():
             if not raw.get(4):
                 continue
             med = {m: statistics.median(v) for m, v in raw.items() if v}
-            print("    %-10s %s" % (name, "  ".join("%-8.3f" % (med[m] / med[4])
-                                                    if m in med else "--" for m in lags)))
+            print(
+                "    %-10s %s"
+                % (
+                    name,
+                    "  ".join(
+                        "%-8.3f" % (med[m] / med[4]) if m in med else "--" for m in lags
+                    ),
+                )
+            )
         print("\n  PHASE STEP BY POSITION IN FRAME, per arm (rad)")
-        print("    %-4s %-5s %s" % ("arm", "prn",
-                                    "  ".join("%d->%d    " % (j, (j + 1) % REC_PER_FRAME)
-                                              for j in range(REC_PER_FRAME))))
+        print(
+            "    %-4s %-5s %s"
+            % (
+                "arm",
+                "prn",
+                "  ".join(
+                    "%d->%d    " % (j, (j + 1) % REC_PER_FRAME)
+                    for j in range(REC_PER_FRAME)
+                ),
+            )
+        )
         for (arm, p), inc in sorted(incs.items()):
             steps = [inc.get(j, (float("nan"),))[0] for j in range(REC_PER_FRAME)]
             print("    %-4d %-5d %s" % (arm, p, "  ".join("%+8.3f" % v for v in steps)))
@@ -239,17 +295,41 @@ def main():
     if ref not in sat:
         print("INCONCLUSIVE: no m=%d lag collected." % ref)
         return 1
-    print("    %-10s %s" % ("satellites", "  ".join("%-8.3f" % (sat[m] / sat[ref])
-                                                    if m in sat else "--" for m in lags)))
-    print("    %-10s %s" % ("probes", "  ".join("%-8.3f" % (prb[m] / prb[ref])
-                                                if m in prb and prb.get(ref) else "--"
-                                                for m in lags)))
-    print("    absolute |r_m|/mean|A|^2: satellites m=4 %.3f, probes m=4 %.3f"
-          % (sat[ref], prb.get(ref, float("nan"))))
+    print(
+        "    %-10s %s"
+        % (
+            "satellites",
+            "  ".join(
+                "%-8.3f" % (sat[m] / sat[ref]) if m in sat else "--" for m in lags
+            ),
+        )
+    )
+    print(
+        "    %-10s %s"
+        % (
+            "probes",
+            "  ".join(
+                "%-8.3f" % (prb[m] / prb[ref]) if m in prb and prb.get(ref) else "--"
+                for m in lags
+            ),
+        )
+    )
+    print(
+        "    absolute |r_m|/mean|A|^2: satellites m=4 %.3f, probes m=4 %.3f"
+        % (sat[ref], prb.get(ref, float("nan")))
+    )
 
     print("\n  PHASE STEP BY POSITION WITHIN THE FRAME (rad, amplitude-weighted)")
-    print("    %-6s %s" % ("prn", "  ".join("%d->%d    " % (j, (j + 1) % REC_PER_FRAME)
-                                            for j in range(REC_PER_FRAME))))
+    print(
+        "    %-6s %s"
+        % (
+            "prn",
+            "  ".join(
+                "%d->%d    " % (j, (j + 1) % REC_PER_FRAME)
+                for j in range(REC_PER_FRAME)
+            ),
+        )
+    )
     # ⚠️ THE FALSIFIABLE PREDICTION. If the phase is referenced to the FRAME START rather
     # than accumulating, the intra-frame steps are all D and the boundary step is exactly
     # -(REC_PER_FRAME-1)*D -- the ramp unwinding in one go. That is a hard number, not a
@@ -263,8 +343,11 @@ def main():
     ramps, resids = [], []
     for p, inc in sorted(incs.items()):
         steps = [inc.get(j, (float("nan"),))[0] for j in range(REC_PER_FRAME)]
-        good = [v for j, v in enumerate(steps) if j != REC_PER_FRAME - 1
-                and math.isfinite(v)]
+        good = [
+            v
+            for j, v in enumerate(steps)
+            if j != REC_PER_FRAME - 1 and math.isfinite(v)
+        ]
         bnd = steps[REC_PER_FRAME - 1]
         note = ""
         if len(good) == REC_PER_FRAME - 1 and math.isfinite(bnd):
@@ -273,20 +356,27 @@ def main():
             ramps.append(D)
             resids.append(r)
             note = "  pred %+.3f  resid %+.3f%s" % (
-                -(REC_PER_FRAME - 1) * D, r,
-                "  [+pi SIGN FLIP]" if abs(abs(r) - math.pi) < 0.6
-                else ("  [MATCH]" if abs(r) < 0.6 else ""))
+                -(REC_PER_FRAME - 1) * D,
+                r,
+                "  [+pi SIGN FLIP]"
+                if abs(abs(r) - math.pi) < 0.6
+                else ("  [MATCH]" if abs(r) < 0.6 else ""),
+            )
         # ⚠️ THE MAGNITUDE DECIDES CONSTANT vs RANDOM, and the phase alone cannot. These are
         # VECTOR averages over many frames: a jump that is the same every frame keeps |acc|
         # high, a jump that is random collapses it toward 0 while still printing some angle.
         # |r_4| staying HIGH already implies constant (every m=4 pair crosses one boundary),
         # but this measures it at the boundary directly instead of inferring it.
-        mags = [inc.get(j, (0, 0.0, 1))[1] / max(1, inc.get(j, (0, 0.0, 1))[2])
-                for j in range(REC_PER_FRAME)]
+        mags = [
+            inc.get(j, (0, 0.0, 1))[1] / max(1, inc.get(j, (0, 0.0, 1))[2])
+            for j in range(REC_PER_FRAME)
+        ]
         mx = max(mags) or 1.0
         print("    %-6d %s%s" % (p, "  ".join("%+8.3f" % v for v in steps), note))
-        print("    %-6s %s   <- |vector avg| / max (low = the step is RANDOM)"
-              % ("", "  ".join("%8.2f" % (m / mx) for m in mags)))
+        print(
+            "    %-6s %s   <- |vector avg| / max (low = the step is RANDOM)"
+            % ("", "  ".join("%8.2f" % (m / mx) for m in mags))
+        )
     print()
     if not ramps:
         print("INCONCLUSIVE: no per-position increments.")
@@ -296,36 +386,59 @@ def main():
     if resids:
         near0 = [r for r in resids if abs(r) < 0.6]
         nearpi = [r for r in resids if abs(abs(r) - math.pi) < 0.6]
-        print("  boundary residual vs the -(n-1)*D prediction: %d/%d at ~0, %d/%d at ~pi "
-              "(sign flip), %d other"
-              % (len(near0), len(resids), len(nearpi), len(resids),
-                 len(resids) - len(near0) - len(nearpi)))
+        print(
+            "  boundary residual vs the -(n-1)*D prediction: %d/%d at ~0, %d/%d at ~pi "
+            "(sign flip), %d other"
+            % (
+                len(near0),
+                len(resids),
+                len(nearpi),
+                len(resids),
+                len(resids) - len(near0) - len(nearpi),
+            )
+        )
         if len(near0) + len(nearpi) >= max(2, int(0.6 * len(resids))):
-            print("  => THE FRAME-REFERENCED MODEL HOLDS: the boundary step IS the "
-                  "intra-frame ramp unwinding.%s"
-                  % ("  Some satellites carry an extra pi -- an unremoved SIGN (secondary "
-                     "code / nav bit) on top of it." if nearpi else ""))
+            print(
+                "  => THE FRAME-REFERENCED MODEL HOLDS: the boundary step IS the "
+                "intra-frame ramp unwinding.%s"
+                % (
+                    "  Some satellites carry an extra pi -- an unremoved SIGN (secondary "
+                    "code / nav bit) on top of it."
+                    if nearpi
+                    else ""
+                )
+            )
     within = sat.get(1, 0.0) / sat[ref] if sat.get(ref) else float("nan")
     if within < 0.75 and sat[ref] > 5.0 * prb.get(ref, 1.0):
-        print("⚠️ THE PHASE RESETS EVERY FRAME. Coherence at one FRAME (m=4, %.3f) is full, "
-              "while m=1 keeps only %.2f of it -- records inside a frame are less coherent "
-              "with each other than records a whole frame apart, which no physical "
-              "decoherence can do." % (sat[ref], within))
-        print("   The steps above are a SAWTOOTH: %+.3f rad per record within the frame "
-              "(= %+.1f Hz), reset at the frame boundary. That intra-frame ramp is what a "
-              "rate search folding ACROSS frames reports as a bogus few-Hz 'residual rate' "
-              "-- and it is why those rates never replicated." % (ramp, hz))
-        print("   ⚠️ The carrier phase is being referenced to the FRAME rather than "
-              "accumulating. Fix that and the fold has %.2f s of real coherence to use; "
-              "until then no injected rate can work, because the series it folds is not one "
-              "carrier." % (a.windows * REC_PER_FRAME * T_REC))
+        print(
+            "⚠️ THE PHASE RESETS EVERY FRAME. Coherence at one FRAME (m=4, %.3f) is full, "
+            "while m=1 keeps only %.2f of it -- records inside a frame are less coherent "
+            "with each other than records a whole frame apart, which no physical "
+            "decoherence can do." % (sat[ref], within)
+        )
+        print(
+            "   The steps above are a SAWTOOTH: %+.3f rad per record within the frame "
+            "(= %+.1f Hz), reset at the frame boundary. That intra-frame ramp is what a "
+            "rate search folding ACROSS frames reports as a bogus few-Hz 'residual rate' "
+            "-- and it is why those rates never replicated." % (ramp, hz)
+        )
+        print(
+            "   ⚠️ The carrier phase is being referenced to the FRAME rather than "
+            "accumulating. Fix that and the fold has %.2f s of real coherence to use; "
+            "until then no injected rate can work, because the series it folds is not one "
+            "carrier." % (a.windows * REC_PER_FRAME * T_REC)
+        )
     elif sat[ref] <= 5.0 * prb.get(ref, 1.0):
-        print("⚠️ the satellites barely beat the probes at m=%d -- no coherence to diagnose."
-              % ref)
+        print(
+            "⚠️ the satellites barely beat the probes at m=%d -- no coherence to diagnose."
+            % ref
+        )
     else:
-        print("✅ NO FRAME STRUCTURE: m=1 keeps %.2f of the one-frame value, so the phase is "
-              "not being re-referenced per frame. Step %+.3f rad/record = %+.1f Hz is then a "
-              "genuine residual rate." % (within, ramp, hz))
+        print(
+            "✅ NO FRAME STRUCTURE: m=1 keeps %.2f of the one-frame value, so the phase is "
+            "not being re-referenced per frame. Step %+.3f rad/record = %+.1f Hz is then a "
+            "genuine residual rate." % (within, ramp, hz)
+        )
     return 0
 
 

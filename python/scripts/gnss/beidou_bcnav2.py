@@ -29,26 +29,27 @@ import numpy as np
 # reuse CRC-24Q (BDS B-CNAV uses the same polynomial as GPS/Galileo) + bit helpers
 from galileo_inav import crc24q, _uint, _field, _P
 
-SYM_S = 0.005                  # B2a-data symbol = 5 ms (200 sps), one 5-chip B2AD secondary
+SYM_S = 0.005  # B2a-data symbol = 5 ms (200 sps), one 5-chip B2AD secondary
 PREAMBLE = [1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0]
-N_PRE = len(PREAMBLE)          # 24
-N_LDPC_SYM = 576               # coded bits per frame (= 96 GF(64) symbols)
+N_PRE = len(PREAMBLE)  # 24
+N_LDPC_SYM = 576  # coded bits per frame (= 96 GF(64) symbols)
 FRAME_SYMS = N_PRE + N_LDPC_SYM  # 600
-FRAME_BITS = 288               # info bits after LDPC
-CRC_AT = FRAME_BITS - 24       # 264: CRC-24 occupies bits [264:288]
+FRAME_BITS = 288  # info bits after LDPC
+CRC_AT = FRAME_BITS - 24  # 264: CRC-24 occupies bits [264:288]
 
 # BDS-3 constants (BDS-SIS-ICD)
 BDS_MU = 3.986004418e14
 BDS_OMEGA_E = 7.292115e-5
 BDS_PI = 3.1415926535898
-A_REF_MEO = 27906100.0         # reference semi-major axis, MEO (m) -- IGSO/MEO CNAV eph
-A_REF_IGSO = 42162200.0        # reference semi-major axis, IGSO (m)
+A_REF_MEO = 27906100.0  # reference semi-major axis, MEO (m) -- IGSO/MEO CNAV eph
+A_REF_IGSO = 42162200.0  # reference semi-major axis, IGSO (m)
 
 # ------------------------------------------------------------------ GF(64) NB-LDPC (shared)
 # The decoder + GF(64) tables live in nb_ldpc.py (shared with B-CNAV1). Re-exported here under
 # the names this module's self-test + bcnav2_predictor already use.
 import nb_ldpc as _NB
 from nb_ldpc import GF_VEC, GF_POW, Q_GF, N_GF  # noqa: F401  (re-export for tests)
+
 _init_gf = _NB.init_gf
 _bin2gf = _NB.bin2gf
 _gf2bin = _NB.gf2bin
@@ -56,32 +57,106 @@ _gf_mul = _NB.gf_mul
 
 # B-CNAV2 LDPC H-matrix ([BDS-ICD-B2a 6.2.2] via PocketSDR): 48 checks x 96 vars, weight 4
 H_BCNV2_IDX = (
-    (19, 46, 49, 76), (5, 29, 53, 71), (17, 30, 64, 72), (22, 36, 59, 82),
-    (22, 41, 68, 94), (20, 44, 54, 75), (9, 41, 61, 86), (6, 47, 60, 89),
-    (8, 40, 60, 87), (15, 26, 66, 81), (19, 24, 67, 95), (2, 26, 50, 72),
-    (5, 38, 70, 89), (16, 34, 64, 92), (21, 45, 55, 74), (0, 24, 48, 78),
-    (23, 37, 58, 83), (15, 43, 56, 91), (18, 47, 48, 77), (14, 42, 57, 90),
-    (6, 30, 54, 76), (14, 27, 67, 80), (17, 35, 65, 93), (7, 46, 61, 88),
-    (1, 25, 49, 79), (12, 45, 69, 79), (18, 25, 66, 94), (23, 40, 69, 95),
-    (8, 36, 51, 84), (3, 38, 56, 86), (0, 29, 62, 85), (2, 39, 57, 87),
-    (11, 33, 59, 81), (20, 43, 74, 93), (13, 32, 63, 91), (11, 35, 52, 83),
-    (16, 31, 65, 73), (4, 28, 52, 70), (1, 28, 63, 84), (12, 33, 62, 90),
-    (21, 42, 75, 92), (7, 31, 55, 77), (9, 37, 50, 85), (10, 34, 53, 82),
-    (4, 39, 71, 88), (13, 44, 68, 78), (3, 27, 51, 73), (10, 32, 58, 80))
+    (19, 46, 49, 76),
+    (5, 29, 53, 71),
+    (17, 30, 64, 72),
+    (22, 36, 59, 82),
+    (22, 41, 68, 94),
+    (20, 44, 54, 75),
+    (9, 41, 61, 86),
+    (6, 47, 60, 89),
+    (8, 40, 60, 87),
+    (15, 26, 66, 81),
+    (19, 24, 67, 95),
+    (2, 26, 50, 72),
+    (5, 38, 70, 89),
+    (16, 34, 64, 92),
+    (21, 45, 55, 74),
+    (0, 24, 48, 78),
+    (23, 37, 58, 83),
+    (15, 43, 56, 91),
+    (18, 47, 48, 77),
+    (14, 42, 57, 90),
+    (6, 30, 54, 76),
+    (14, 27, 67, 80),
+    (17, 35, 65, 93),
+    (7, 46, 61, 88),
+    (1, 25, 49, 79),
+    (12, 45, 69, 79),
+    (18, 25, 66, 94),
+    (23, 40, 69, 95),
+    (8, 36, 51, 84),
+    (3, 38, 56, 86),
+    (0, 29, 62, 85),
+    (2, 39, 57, 87),
+    (11, 33, 59, 81),
+    (20, 43, 74, 93),
+    (13, 32, 63, 91),
+    (11, 35, 52, 83),
+    (16, 31, 65, 73),
+    (4, 28, 52, 70),
+    (1, 28, 63, 84),
+    (12, 33, 62, 90),
+    (21, 42, 75, 92),
+    (7, 31, 55, 77),
+    (9, 37, 50, 85),
+    (10, 34, 53, 82),
+    (4, 39, 71, 88),
+    (13, 44, 68, 78),
+    (3, 27, 51, 73),
+    (10, 32, 58, 80),
+)
 H_BCNV2_ELE = (
-    (1, 45, 15, 6), (1, 44, 53, 24), (45, 15, 6, 1), (30, 24, 1, 44),
-    (18, 15, 32, 61), (3, 55, 9, 34), (35, 31, 50, 44), (45, 15, 6, 1),
-    (24, 1, 44, 53), (30, 24, 1, 44), (32, 42, 47, 37), (6, 1, 45, 15),
-    (44, 53, 24, 1), (39, 36, 34, 33), (44, 53, 24, 1), (44, 53, 24, 1),
-    (45, 15, 6, 1), (6, 1, 45, 15), (24, 1, 44, 53), (9, 41, 57, 58),
-    (32, 61, 18, 40), (1, 45, 15, 6), (22, 14, 2, 50), (24, 1, 44, 30),
-    (30, 24, 1, 44), (15, 46, 45, 44), (45, 15, 6, 1), (1, 44, 30, 24),
-    (24, 1, 44, 53), (15, 6, 1, 45), (53, 24, 1, 44), (7, 38, 23, 54),
-    (1, 45, 15, 6), (44, 53, 24, 1), (57, 25, 9, 41), (35, 13, 51, 60),
-    (33, 45, 36, 34), (6, 1, 45, 15), (6, 1, 45, 15), (6, 1, 45, 15),
-    (44, 35, 31, 50), (26, 27, 37, 5), (24, 1, 44, 30), (33, 42, 14, 5),
-    (24, 1, 44, 30), (24, 1, 44, 30), (1, 44, 53, 24), (1, 44, 30, 24))
-N_CHECK = len(H_BCNV2_IDX)     # 48
+    (1, 45, 15, 6),
+    (1, 44, 53, 24),
+    (45, 15, 6, 1),
+    (30, 24, 1, 44),
+    (18, 15, 32, 61),
+    (3, 55, 9, 34),
+    (35, 31, 50, 44),
+    (45, 15, 6, 1),
+    (24, 1, 44, 53),
+    (30, 24, 1, 44),
+    (32, 42, 47, 37),
+    (6, 1, 45, 15),
+    (44, 53, 24, 1),
+    (39, 36, 34, 33),
+    (44, 53, 24, 1),
+    (44, 53, 24, 1),
+    (45, 15, 6, 1),
+    (6, 1, 45, 15),
+    (24, 1, 44, 53),
+    (9, 41, 57, 58),
+    (32, 61, 18, 40),
+    (1, 45, 15, 6),
+    (22, 14, 2, 50),
+    (24, 1, 44, 30),
+    (30, 24, 1, 44),
+    (15, 46, 45, 44),
+    (45, 15, 6, 1),
+    (1, 44, 30, 24),
+    (24, 1, 44, 53),
+    (15, 6, 1, 45),
+    (53, 24, 1, 44),
+    (7, 38, 23, 54),
+    (1, 45, 15, 6),
+    (44, 53, 24, 1),
+    (57, 25, 9, 41),
+    (35, 13, 51, 60),
+    (33, 45, 36, 34),
+    (6, 1, 45, 15),
+    (6, 1, 45, 15),
+    (6, 1, 45, 15),
+    (44, 35, 31, 50),
+    (26, 27, 37, 5),
+    (24, 1, 44, 30),
+    (33, 42, 14, 5),
+    (24, 1, 44, 30),
+    (24, 1, 44, 30),
+    (1, 44, 53, 24),
+    (1, 44, 30, 24),
+)
+N_CHECK = len(H_BCNV2_IDX)  # 48
 N_VAR = 96
 
 
@@ -97,7 +172,7 @@ def check_crc(bits):
     b = [int(x) & 1 for x in bits]
     if len(b) != FRAME_BITS:
         return False, None, None, None
-    ok = (crc24q(b[0:CRC_AT]) == _uint(b[CRC_AT:CRC_AT + 24]))
+    ok = crc24q(b[0:CRC_AT]) == _uint(b[CRC_AT : CRC_AT + 24])
     return ok, _uint(b[0:6]), _uint(b[6:12]), _uint(b[12:30])
 
 
@@ -111,13 +186,13 @@ def find_frames(symbols):
     i = 0
     while i + FRAME_SYMS <= n:
         for pol in (1.0, -1.0):
-            hard = (pol * s[i:i + N_PRE] < 0).astype(np.int8)
+            hard = (pol * s[i : i + N_PRE] < 0).astype(np.int8)
             if np.array_equal(hard, pre):
                 # the 576 LDPC symbols after the preamble, as hard bits (0/1)
-                ldpc = (pol * s[i + N_PRE:i + FRAME_SYMS] < 0).astype(np.uint8)
+                ldpc = (pol * s[i + N_PRE : i + FRAME_SYMS] < 0).astype(np.uint8)
                 bits, nerr = decode_nb_ldpc(ldpc)
                 if nerr >= 0:
-                    lb = [int(b) for b in bits]        # list: composes with _field (I/NAV)
+                    lb = [int(b) for b in bits]  # list: composes with _field (I/NAV)
                     ok, prn, mt, sow = check_crc(lb)
                     if ok:
                         yield i, int(pol), lb, prn, mt, sow
@@ -135,28 +210,28 @@ def find_frames(symbols):
 # so the pair is matched by temporal freshness (BDS eph ~hourly), validated by the dpos check.
 BCNV2_EPH_FIELDS = {
     # Type 10 -- Ephemeris I
-    "t_oe":     (10, 61, 11, False, 300.0),
-    "SatType":  (10, 72, 2, False, 1.0),
-    "dA":       (10, 74, 26, True, _P(9)),                # [m] off A_ref(SatType)
-    "A_dot":    (10, 100, 25, True, _P(21)),              # [m/s]
-    "dn_0":     (10, 125, 17, True, _P(44) * BDS_PI),     # [rad/s]
-    "dn_0_dot": (10, 142, 23, True, _P(57) * BDS_PI),     # [rad/s^2]
-    "M_0":      (10, 165, 33, True, _P(32) * BDS_PI),     # [rad]
-    "e":        (10, 198, 33, False, _P(34)),
-    "omega":    (10, 231, 33, True, _P(32) * BDS_PI),     # [rad]
+    "t_oe": (10, 61, 11, False, 300.0),
+    "SatType": (10, 72, 2, False, 1.0),
+    "dA": (10, 74, 26, True, _P(9)),  # [m] off A_ref(SatType)
+    "A_dot": (10, 100, 25, True, _P(21)),  # [m/s]
+    "dn_0": (10, 125, 17, True, _P(44) * BDS_PI),  # [rad/s]
+    "dn_0_dot": (10, 142, 23, True, _P(57) * BDS_PI),  # [rad/s^2]
+    "M_0": (10, 165, 33, True, _P(32) * BDS_PI),  # [rad]
+    "e": (10, 198, 33, False, _P(34)),
+    "omega": (10, 231, 33, True, _P(32) * BDS_PI),  # [rad]
     # Type 11 -- Ephemeris II
-    "Omega_0":  (11, 42, 33, True, _P(32) * BDS_PI),
-    "i_0":      (11, 75, 33, True, _P(32) * BDS_PI),
-    "Omega_dot":(11, 108, 19, True, _P(44) * BDS_PI),
-    "i_0_dot":  (11, 127, 15, True, _P(44) * BDS_PI),
-    "C_IS":     (11, 142, 16, True, _P(30)),
-    "C_IC":     (11, 158, 16, True, _P(30)),
-    "C_RS":     (11, 174, 24, True, _P(8)),
-    "C_RC":     (11, 198, 24, True, _P(8)),
-    "C_US":     (11, 222, 21, True, _P(30)),
-    "C_UC":     (11, 243, 21, True, _P(30)),
+    "Omega_0": (11, 42, 33, True, _P(32) * BDS_PI),
+    "i_0": (11, 75, 33, True, _P(32) * BDS_PI),
+    "Omega_dot": (11, 108, 19, True, _P(44) * BDS_PI),
+    "i_0_dot": (11, 127, 15, True, _P(44) * BDS_PI),
+    "C_IS": (11, 142, 16, True, _P(30)),
+    "C_IC": (11, 158, 16, True, _P(30)),
+    "C_RS": (11, 174, 24, True, _P(8)),
+    "C_RC": (11, 198, 24, True, _P(8)),
+    "C_US": (11, 222, 21, True, _P(30)),
+    "C_UC": (11, 243, 21, True, _P(30)),
 }
-_IODE_10 = (53, 8)   # (start, len) -- IODE in type 10 (type 11 has none)
+_IODE_10 = (53, 8)  # (start, len) -- IODE in type 10 (type 11 has none)
 
 
 def parse_bcnav2_ephemeris(frames_by_type):
@@ -167,8 +242,10 @@ def parse_bcnav2_ephemeris(frames_by_type):
     eph = {}
     for name, (mt, start, length, signed, scale) in BCNV2_EPH_FIELDS.items():
         eph[name] = _field(frames_by_type[mt], start, length, signed, scale)
-    eph["A_ref"] = A_REF_IGSO if int(round(eph["SatType"])) in (1, 2) else A_REF_MEO  # 1 GEO,2 IGSO,3 MEO
-    eph["IODE"] = _uint(frames_by_type[10][_IODE_10[0]:_IODE_10[0] + _IODE_10[1]])
+    eph["A_ref"] = (
+        A_REF_IGSO if int(round(eph["SatType"])) in (1, 2) else A_REF_MEO
+    )  # 1 GEO,2 IGSO,3 MEO
+    eph["IODE"] = _uint(frames_by_type[10][_IODE_10[0] : _IODE_10[0] + _IODE_10[1]])
     eph["_iod_consistent"] = True
     return eph
 
@@ -212,7 +289,11 @@ def sv_position_bcnav2(eph, t):
         y = -math.sin(phi_z) * xg + math.cos(phi_z) * y1
         z = z1
         return x, y, z
-    Ok = eph["Omega_0"] + (eph["Omega_dot"] - BDS_OMEGA_E) * tk - BDS_OMEGA_E * eph["t_oe"]
+    Ok = (
+        eph["Omega_0"]
+        + (eph["Omega_dot"] - BDS_OMEGA_E) * tk
+        - BDS_OMEGA_E * eph["t_oe"]
+    )
     x = xp * math.cos(Ok) - yp * math.cos(i) * math.sin(Ok)
     y = xp * math.sin(Ok) + yp * math.cos(i) * math.cos(Ok)
     z = yp * math.sin(i)
@@ -245,14 +326,17 @@ def _nullspace_codeword(rng):
         if piv is None:
             continue
         H[row], H[piv] = H[piv], H[row]
-        inv = GF_VEC[(Q_GF - 1 - GF_POW[H[row][col]]) % (Q_GF - 1)]  # multiplicative inverse
+        inv = GF_VEC[
+            (Q_GF - 1 - GF_POW[H[row][col]]) % (Q_GF - 1)
+        ]  # multiplicative inverse
         H[row] = [_gf_mul(inv, x) for x in H[row]]
         for r in range(N_CHECK):
             if r != row and H[r][col] != 0:
                 f = H[r][col]
                 H[r] = [H[r][c] ^ _gf_mul(f, H[row][c]) for c in range(N_VAR)]
         where[col] = row
-        pivots.append(col); row += 1
+        pivots.append(col)
+        row += 1
     free = [c for c in range(N_VAR) if where[c] == -1]
     # assign random values to free columns, solve pivots
     c = [0] * N_VAR
@@ -264,12 +348,13 @@ def _nullspace_codeword(rng):
         for fc in range(N_VAR):
             if fc != col and H[r][fc] != 0:
                 acc ^= _gf_mul(H[r][fc], c[fc])
-        c[col] = acc   # pivot coeff is 1 after normalization
+        c[col] = acc  # pivot coeff is 1 after normalization
     return c
 
 
 if __name__ == "__main__":
     import sys
+
     _init_gf()
     rng = np.random.default_rng(3)
     fails = 0
@@ -297,8 +382,10 @@ if __name__ == "__main__":
         bits, nerr = decode_nb_ldpc(syms)
         if nerr != 0:
             p2 += 1
-    print("2. valid codeword: zero syndrome + decoder clean (nerr 0): %s"
-          % ("OK" if p2 == 0 else "FAIL %d/5" % p2))
+    print(
+        "2. valid codeword: zero syndrome + decoder clean (nerr 0): %s"
+        % ("OK" if p2 == 0 else "FAIL %d/5" % p2)
+    )
     fails += p2
 
     # 3. NB-LDPC error correction: inject symbol errors, decoder recovers the info bits
@@ -308,7 +395,7 @@ if __name__ == "__main__":
         for _ in range(4):
             cw = _nullspace_codeword(rng)
             syms = _gf2bin(np.array(cw, dtype=np.uint8)).copy()
-            info_true = syms[:N_CHECK * N_GF].copy()
+            info_true = syms[: N_CHECK * N_GF].copy()
             flip = rng.choice(N_LDPC_SYM, size=nbit, replace=False)
             syms[flip] ^= 1
             bits, nerr = decode_nb_ldpc(syms)
@@ -317,7 +404,9 @@ if __name__ == "__main__":
         print("   %2d-bit errors: recovered %d/4" % (nbit, okc))
         if okc < 3:
             p3 += 1
-    print("3. NB-LDPC correction: %s" % ("OK" if p3 == 0 else "WEAK (%d rungs <3/4)" % p3))
+    print(
+        "3. NB-LDPC correction: %s" % ("OK" if p3 == 0 else "WEAK (%d rungs <3/4)" % p3)
+    )
     fails += p3
 
     # 4. CRC-24Q frame roundtrip + preamble sync + polarity (both) + corruption caught
@@ -325,16 +414,20 @@ if __name__ == "__main__":
     for pol in (1, -1):
         frame = list(rng.integers(0, 2, CRC_AT))
         crc = crc24q(frame)
-        frame += [(crc >> (23 - k)) & 1 for k in range(24)]           # 288-bit info frame
-        cw = _nullspace_codeword(rng)                                  # a valid LDPC codeword...
+        frame += [(crc >> (23 - k)) & 1 for k in range(24)]  # 288-bit info frame
+        cw = _nullspace_codeword(rng)  # a valid LDPC codeword...
         cwsyms = _gf2bin(np.array(cw, dtype=np.uint8))
-        cwsyms[:FRAME_BITS] = frame                                    # ...but self-test only
+        cwsyms[:FRAME_BITS] = frame  # ...but self-test only
         # NOTE: cwsyms is no longer a valid LDPC word after overwriting info; test CRC path only
         ok, prn, mt, sow = check_crc(frame)
-        bad = list(frame); bad[100] ^= 1
+        bad = list(frame)
+        bad[100] ^= 1
         if not ok or check_crc(bad)[0]:
             p4 += 1
-    print("4. CRC-24Q frame check + corruption caught: %s" % ("OK" if p4 == 0 else "FAIL %d" % p4))
+    print(
+        "4. CRC-24Q frame check + corruption caught: %s"
+        % ("OK" if p4 == 0 else "FAIL %d" % p4)
+    )
     fails += p4
 
     # 5. ephemeris field table self-consistency: no overlap/overrun per type, pack/unpack
@@ -361,13 +454,33 @@ if __name__ == "__main__":
         if any(x > 1 for x in occ):
             p5 += 1
     eph = parse_bcnav2_ephemeris(frames)
-    if eph is None or any(abs(eph[n] - truth[n]) > 1e-9 * (abs(truth[n]) + 1) for n in truth):
+    if eph is None or any(
+        abs(eph[n] - truth[n]) > 1e-9 * (abs(truth[n]) + 1) for n in truth
+    ):
         p5 += 1
     # a real orbit sanity: plug a plausible MEO eph -> radius in the BDS MEO shell (~27906 km)
-    demo = {"A_ref": A_REF_MEO, "dA": 1500.0, "A_dot": 0.0, "t_oe": 0.0, "SatType": 3.0,
-            "dn_0": 0.0, "dn_0_dot": 0.0, "M_0": 0.3, "e": 1e-3, "omega": 0.1,
-            "Omega_0": 0.2, "i_0": 0.96, "Omega_dot": -2e-9, "i_0_dot": 0.0,
-            "C_IS": 0, "C_IC": 0, "C_RS": 0, "C_RC": 0, "C_US": 0, "C_UC": 0}
+    demo = {
+        "A_ref": A_REF_MEO,
+        "dA": 1500.0,
+        "A_dot": 0.0,
+        "t_oe": 0.0,
+        "SatType": 3.0,
+        "dn_0": 0.0,
+        "dn_0_dot": 0.0,
+        "M_0": 0.3,
+        "e": 1e-3,
+        "omega": 0.1,
+        "Omega_0": 0.2,
+        "i_0": 0.96,
+        "Omega_dot": -2e-9,
+        "i_0_dot": 0.0,
+        "C_IS": 0,
+        "C_IC": 0,
+        "C_RS": 0,
+        "C_RC": 0,
+        "C_US": 0,
+        "C_UC": 0,
+    }
     x, y, z = sv_position_bcnav2(demo, 0.0)
     rad = math.sqrt(x * x + y * y + z * z)
     if not (2.6e7 < rad < 2.9e7):
@@ -375,9 +488,18 @@ if __name__ == "__main__":
         print("   demo orbit radius %.0f m OUT of MEO shell" % rad)
     else:
         print("   demo MEO orbit radius %.0f m (BDS MEO shell ~27.9e6) OK" % rad)
-    print("5. ephemeris field table + CNAV propagation: %s" % ("OK" if p5 == 0 else "FAIL %d" % p5))
+    print(
+        "5. ephemeris field table + CNAV propagation: %s"
+        % ("OK" if p5 == 0 else "FAIL %d" % p5)
+    )
     fails += p5
 
-    print("\n%s" % ("NB-LDPC + frame + ephemeris codec SELF-CONSISTENT (live CRC + dpos pend deploy)"
-                    if not fails else "SELF-TEST FAILURES: %d" % fails))
+    print(
+        "\n%s"
+        % (
+            "NB-LDPC + frame + ephemeris codec SELF-CONSISTENT (live CRC + dpos pend deploy)"
+            if not fails
+            else "SELF-TEST FAILURES: %d" % fails
+        )
+    )
     sys.exit(1 if fails else 0)

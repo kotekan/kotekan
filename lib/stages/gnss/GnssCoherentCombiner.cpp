@@ -1,20 +1,20 @@
 #include "GnssCoherentCombiner.hpp"
 
-#include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata (the record's absolute hop)
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "visUtil.hpp"          // for frameID
-
+#include "GnssChanMetadata.hpp"        // for get_gnss_chan_metadata (the record's absolute hop)
+#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
 #include "gnssChannelizedDespread.hpp" // for overlay_wipe
 #include "gnssOverlay.hpp"             // for overlay_by_name (the secondary-overlay registry)
+#include "visUtil.hpp"                 // for frameID
 
-#include "json.hpp"   // for json
-#include <algorithm> // for max
+#include "json.hpp" // for json
+
+#include <algorithm>  // for max
 #include <cmath>      // for hypot, sqrt
 #include <functional> // for bind
 #include <string>     // for string
 
-using kotekan::Config;
 using kotekan::bufferContainer;
+using kotekan::Config;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(GnssCoherentCombiner);
@@ -58,8 +58,10 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         }
     }
 
-    _integration_length = std::max(1, config.get_default<int>(unique_name, "integration_length", 1));
-    const std::string mode = config.get_default<std::string>(unique_name, "integration_mode", "block");
+    _integration_length =
+        std::max(1, config.get_default<int>(unique_name, "integration_length", 1));
+    const std::string mode =
+        config.get_default<std::string>(unique_name, "integration_mode", "block");
     _rolling = (mode == "rolling");
     // Rolling output cadence: every output_every records (default ~10 outputs per time
     // constant). Block mode emits once per integration_length records (ignores this).
@@ -102,8 +104,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // speaks (see the hpp). Unset is not an error -- pow_fft_len ships alongside so the currency
     // is always self-declared.
     _fft_len = config.get_default<int>(unique_name, "fft_len", 0);
-    _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty()
-                    || _deep_plain);
+    _wipe_buffer =
+        (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty() || _deep_plain);
 
     // Real-time cost instrumentation -- see the header note. The derived quantity is the DUTY
     // CYCLE: (d ingest_us + d emit_us) / (d records x record_period). < 1 keeps up; >= 1 is
@@ -164,10 +166,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
 
     // Per-record phase dump (debug instrumentation; see the header comment). Append mode so a
     // relaunch extends the record rather than destroying the episode it was launched to catch.
-    const auto dump_prns =
-        config.get_default<std::vector<int>>(unique_name, "phase_dump_prns", {});
-    _phase_dump_stride =
-        std::max(1, config.get_default<int>(unique_name, "phase_dump_stride", 16));
+    const auto dump_prns = config.get_default<std::vector<int>>(unique_name, "phase_dump_prns", {});
+    _phase_dump_stride = std::max(1, config.get_default<int>(unique_name, "phase_dump_stride", 16));
     if (!dump_prns.empty()) {
         const std::string dump_path = config.get_default<std::string>(
             unique_name, "phase_dump_path", "/tmp/gnss_phase_dump.txt");
@@ -307,9 +307,10 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_deep_rate_q.assign(_n_prn, 0.0f);
     _st_deep_rate_full.assign(_n_prn, 0.0f);
     _st_deep_rate_full_q.assign(_n_prn, 0.0f);
-    // COMMON-PHASE TRACKER (see the hpp note / 31896a862:docs/CHORD_GNSS_STATE.md 8.21.5). The half-width list
-    // brackets the wander's measured >42 ms correlation time in records; each is a candidate
-    // and the floor pays the selection, so more widths cost floor height, not correctness.
+    // COMMON-PHASE TRACKER (see the hpp note / 31896a862:docs/CHORD_GNSS_STATE.md 8.21.5). The
+    // half-width list brackets the wander's measured >42 ms correlation time in records; each is a
+    // candidate and the floor pays the selection, so more widths cost floor height, not
+    // correctness.
     _phase_track = config.get_default<bool>(unique_name, "phase_track", false);
     // SKY-CORRECTED DEEP RUNG (record slots 24/25, gnssElemCal split aperture). Default OFF
     // pending the open bound violation: on synthetic data at 1.20 rad injected phase the split
@@ -317,8 +318,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // not understood yet (2026-08-05). The assembler still WRITES the slots when elem_sum is on,
     // so the correction can be measured on sky without being believed.
     _sky_deep = config.get_default<bool>(unique_name, "sky_deep", false);
-    _pt_widths = config.get_default<std::vector<int>>(unique_name, "phase_track_widths",
-                                                      {1, 2, 4, 8});
+    _pt_widths =
+        config.get_default<std::vector<int>>(unique_name, "phase_track_widths", {1, 2, 4, 8});
     _st_coh_frac.assign(_n_prn, 0.0f);
     _st_pt_hw.assign(_n_prn, 0.0f);
 
@@ -382,7 +383,7 @@ void GnssCoherentCombiner::main_thread() {
     std::vector<double> car_prev_utc(_n_prn, -1.0);
     std::vector<float> ref_prn(_n_prn), ref_dop(_n_prn), ref_cp(_n_prn);
     std::vector<double> ref_utc(_n_prn);
-    int n_acc = 0;              // block: records in the current block
+    int n_acc = 0; // block: records in the current block
     // Per-antenna state (empty and untouched when n_elements == 0).
     _ge_r.assign((size_t)_n_elements, 0.0);
     _ge_i.assign((size_t)_n_elements, 0.0);
@@ -393,9 +394,9 @@ void GnssCoherentCombiner::main_thread() {
     _acc_eu_i.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_euq.assign((size_t)_n_prn * _n_elements, 0.0);
     _alpha_el = 1.0 / (double)_integration_length;
-    long long n_roll = 0;      // rolling: total records seen (for EMA bias correction)
-    long long win_hop = -1;    // absolute hop index labelling the current E/P/L window
-    int since_emit = 0;        // rolling: records since the last emit
+    long long n_roll = 0;   // rolling: total records seen (for EMA bias correction)
+    long long win_hop = -1; // absolute hop index labelling the current E/P/L window
+    int since_emit = 0;     // rolling: records since the last emit
     const double alpha = 1.0 / (double)_integration_length; // rolling EMA weight
 
     while (!stop_thread) {
@@ -476,11 +477,11 @@ void GnssCoherentCombiner::main_thread() {
         {
             double newest_utc = 0.0;
             for (const float* fin : ins)
-                newest_utc = std::max(
-                    newest_utc, *reinterpret_cast<const double*>(fin + RECORD_UTC_SLOT));
-            const double wall = std::chrono::duration<double>(
-                                    std::chrono::system_clock::now().time_since_epoch())
-                                    .count();
+                newest_utc =
+                    std::max(newest_utc, *reinterpret_cast<const double*>(fin + RECORD_UTC_SLOT));
+            const double wall =
+                std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+                    .count();
             std::lock_guard<std::mutex> lk(_st_mtx);
             _ingest_utc = newest_utc;
             _ingest_unix = wall;
@@ -634,9 +635,9 @@ void GnssCoherentCombiner::main_thread() {
             // code-period boundary inside the record (head chip k, tail chip k+1, same convention
             // as overlay_wipe), so straddling records DON'T cancel. The result is overlay-free at
             // full amplitude for any boundary_f. Hoisted above p2 (2026-07-22) because it now feeds
-            // THREE straddle-immune consumers: the incoherent power (p2 below), the carrier residual
-            // fit (emit), and the ADR increment. Until an anchor is pinned (or after a re-seed),
-            // v_ok is false and each consumer falls back to its raw/segment form.
+            // THREE straddle-immune consumers: the incoherent power (p2 below), the carrier
+            // residual fit (emit), and the ADR increment. Until an anchor is pinned (or after a
+            // re-seed), v_ok is false and each consumer falls back to its raw/segment form.
             const int prn_p = (int)std::lround(ref[0]);
             const std::vector<int8_t>* ov_adr = overlay_for(prn_p);
             bool v_ok = false;
@@ -644,15 +645,13 @@ void GnssCoherentCombiner::main_thread() {
             if (ov_adr && !ov_adr->empty() && energy > 0.0 && _dr_phase[p] >= 0
                 && _dr_rec_dt[p] > 0.0 && _dr_prn[p] == prn_p) {
                 const int L_ov = (int)ov_adr->size();
-                const long long idx =
-                    (long long)std::llround((utc_p - _dr_utc[p]) / _dr_rec_dt[p]);
+                const long long idx = (long long)std::llround((utc_p - _dr_utc[p]) / _dr_rec_dt[p]);
                 const int k = (int)(((_dr_phase[p] + idx) % L_ov + L_ov) % L_ov);
                 const double c0 = (double)(*ov_adr)[(size_t)k];
                 const double c1 = (double)(*ov_adr)[(size_t)((k + 1) % L_ov)];
                 // head (ahr/ahi) belongs to chip k, tail (A - head) to chip k+1; a tracker
                 // that doesn't segment writes head == A (tail 0) -> whole-record de-rotate.
-                const std::complex<double> H =
-                    h_energy > 0.0 ? std::complex<double>(ahr, ahi) : A;
+                const std::complex<double> H = h_energy > 0.0 ? std::complex<double>(ahr, ahi) : A;
                 v_cur = H * c0 + (A - H) * c1;
                 v_ok = true;
             }
@@ -704,8 +703,7 @@ void GnssCoherentCombiner::main_thread() {
                     // and take the cross-BLOCK product. Requires the anchor for EVERY record
                     // (an unanchored record would re-inject the overlay into the block sum),
                     // so anchor loss breaks the arc -- honest, like a gap.
-                    const bool smooth_mode =
-                        _adr_smooth > 1 && ov_adr && !ov_adr->empty();
+                    const bool smooth_mode = _adr_smooth > 1 && ov_adr && !ov_adr->empty();
                     if (energy <= 0.0) {
                         _adr_ok[p] = 0; // not despread this record (inactive PRN): no phase
                     } else if (smooth_mode && !v_ok) {
@@ -737,8 +735,7 @@ void GnssCoherentCombiner::main_thread() {
                                     / (2.0 * M_PI);
                                 _adr_cyc[p] += _adr_blk_dcmd[p] - dres_blk;
                                 _res_cyc[p] += dres_blk;
-                            }
-                            else
+                            } else
                                 _adr_blk_rate_ok[p] = 0; // no product -> rate not continuous
                             // (no-product case = the arc's FIRST block -- its dcmd only sets
                             // the arbitrary, per-arc-ambiguous origin; dropping it is a
@@ -841,9 +838,8 @@ void GnssCoherentCombiner::main_thread() {
             if (_phase_dump && energy > 0.0 && (int)ref[0] >= 0
                 && (int)ref[0] < (int)_phase_dump_prn.size() && _phase_dump_prn[(int)ref[0]]
                 && (_phase_dump_n++ % _phase_dump_stride) == 0) {
-                std::fprintf(_phase_dump,
-                             "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f %.6e %.6e", utc_p,
-                             (int)ref[0], ar, ai, e2, l2, (double)ref[gnss::REC_CPHASE],
+                std::fprintf(_phase_dump, "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f %.6e %.6e",
+                             utc_p, (int)ref[0], ar, ai, e2, l2, (double)ref[gnss::REC_CPHASE],
                              (double)ref[1], (double)ref[2], ahr, ahi);
                 // ...then EVERY ANTENNA's prompt, A_e = G_e / E, same normalisation and the same
                 // shared replica energy as `ar, ai` above, so the reference element and the
@@ -891,8 +887,7 @@ void GnssCoherentCombiner::main_thread() {
                     _navutc[p].push_back(utc_p);
                     // Head segment (0 when the tracker doesn't segment -> h_energy 0 -> treat
                     // the whole record as head so the segmented wipe reduces to unsegmented).
-                    _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar,
-                                             h_energy > 0.0 ? ahi : ai);
+                    _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar, h_energy > 0.0 ? ahi : ai);
                     // Overlay-wiped record for the LINEAR carrier fit; 0 when unanchored (the fit
                     // skips zero-norm records) so no un-wiped overlay pollutes it.
                     _navwipe[p].push_back(v_ok ? v_cur : std::complex<double>(0.0, 0.0));
@@ -944,8 +939,7 @@ void GnssCoherentCombiner::main_thread() {
                     _navbuf[p].emplace_back(ar, ai);
                     _navsky[p].push_back(A_sky);
                     _navutc[p].push_back(utc_p);
-                    _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar,
-                                             h_energy > 0.0 ? ahi : ai);
+                    _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar, h_energy > 0.0 ? ahi : ai);
                     _navwipe[p].push_back(v_ok ? v_cur : std::complex<double>(0.0, 0.0));
                     if (_peel_depth) {
                         // Residual prompt (slots 20-23), normalized by the SAME prompt energy so
@@ -1001,22 +995,23 @@ void GnssCoherentCombiner::main_thread() {
         const double _t_emit0 = current_time();
         // block: divide sums by the block count. rolling: the EMA is already a mean, so just
         // undo the warm-up bias (1-(1-alpha)^n_roll) -> a true running mean from record 1.
-        const double inv = _rolling ? 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll))
-                                    : 1.0 / (double)n_acc;
+        const double inv =
+            _rolling ? 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll)) : 1.0 / (double)n_acc;
         std::vector<float> p_pow_out(_n_prn, 0.0f); // fleet-DLL prompt power (see acc_ppow)
-        std::vector<double> deep_snr(_n_prn, 0.0); // significance of the deep detection (for REST)
-        std::vector<double> amp_snr(_n_prn, 0.0);  // noise-debiased incoherent significance (REST)
-        std::vector<int> nh_phase(_n_prn, -1);     // secondary-overlay alignment found (L5; -1 = n/a)
-        std::vector<double> amp_dbi(_n_prn, 0.0);  // noise-debiased (unbiased) signal amplitude
-        std::vector<double> s4_raw(_n_prn, 0.0);   // amplitude scintillation index (raw)
-        std::vector<double> sigma_phi(_n_prn, NAN); // carrier-phase jitter (rad); NaN = NOT MEASURED
-                                                    // this emit (short window / no-wipe fallback /
-                                                    // no carrier data). Overwritten with a real value
-                                                    // only when carrier_resid_hz actually fits.
-        std::vector<double> snr_q(_n_prn, NAN);     // modulation-immune per-record SNR (LINEAR pilots
-                                                    // only); NaN = not available (data fit / no fit)
-        std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
-        std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
+        std::vector<double> deep_snr(_n_prn, 0.0);  // significance of the deep detection (for REST)
+        std::vector<double> amp_snr(_n_prn, 0.0);   // noise-debiased incoherent significance (REST)
+        std::vector<int> nh_phase(_n_prn, -1); // secondary-overlay alignment found (L5; -1 = n/a)
+        std::vector<double> amp_dbi(_n_prn, 0.0); // noise-debiased (unbiased) signal amplitude
+        std::vector<double> s4_raw(_n_prn, 0.0);  // amplitude scintillation index (raw)
+        std::vector<double> sigma_phi(_n_prn,
+                                      NAN);     // carrier-phase jitter (rad); NaN = NOT MEASURED
+                                                // this emit (short window / no-wipe fallback /
+                                                // no carrier data). Overwritten with a real value
+                                                // only when carrier_resid_hz actually fits.
+        std::vector<double> snr_q(_n_prn, NAN); // modulation-immune per-record SNR (LINEAR pilots
+                                                // only); NaN = not available (data fit / no fit)
+        std::vector<double> coh_s(_n_prn, 0.0); // measured coherence: span of the winning window
+        std::vector<int> deep_rec(_n_prn, 0);   // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
         // EVERY rung, not only the winner (2026-08-04). deep_snr is a MAX over the ladder, and a
         // max cannot say WHY it is small: "the phase never cohered" (short rungs also at floor)
@@ -1024,13 +1019,13 @@ void GnssCoherentCombiner::main_thread() {
         // are opposite diagnoses wanting opposite fixes. Costs nothing -- the rungs are already
         // computed and thrown away. (len, snr, span_s), longest-first as walked.
         std::vector<std::vector<std::array<float, 3>>> rungs(_n_prn);
-        std::vector<double> deep_rate(_n_prn, 0.0);   // phase-rate removed before the deep sum
-        std::vector<double> deep_rate_q(_n_prn, 0.0); // its peak/median -- the gate, and the SNR
-        std::vector<double> deep_rate_full(_n_prn, 0.0);   // UNCAPPED argmax (#40): the carrier
+        std::vector<double> deep_rate(_n_prn, 0.0);      // phase-rate removed before the deep sum
+        std::vector<double> deep_rate_q(_n_prn, 0.0);    // its peak/median -- the gate, and the SNR
+        std::vector<double> deep_rate_full(_n_prn, 0.0); // UNCAPPED argmax (#40): the carrier
         std::vector<double> deep_rate_full_q(_n_prn, 0.0); // loop's measurement, never the fold's
-        std::vector<double> coh_frac(_n_prn, 0.0); // |sum|/sum|.| of the winning deep stream
-        std::vector<int> pt_hw(_n_prn, 0);         // winning tracker half-width (0 = straight)
-        std::vector<double> peel_rsnr(_n_prn, 0.0);  // residual deep significance (peel_depth)
+        std::vector<double> coh_frac(_n_prn, 0.0);  // |sum|/sum|.| of the winning deep stream
+        std::vector<int> pt_hw(_n_prn, 0);          // winning tracker half-width (0 = straight)
+        std::vector<double> peel_rsnr(_n_prn, 0.0); // residual deep significance (peel_depth)
         std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions (P7a)
         // FIXED-WINDOW, noise-debiased coherent power (Hz) for the beam map: the coherent
         // twin of the incoherent x = s^2/N. Computed from the FULL window's wipe every emit
@@ -1116,8 +1111,8 @@ void GnssCoherentCombiner::main_thread() {
         // records, a strong sat's spectrum has ONE clean peak, q 19-27, no comb). The fold
         // keeps the capped pick; the carrier loop reads the full-band one.
         auto rate_search = [rate_max_hz](const std::vector<std::complex<double>>& x,
-                              const std::vector<double>& u, double& best_f, double& q,
-                              double* full_f = nullptr, double* full_q = nullptr) {
+                                         const std::vector<double>& u, double& best_f, double& q,
+                                         double* full_f = nullptr, double* full_q = nullptr) {
             best_f = 0.0;
             q = 0.0;
             if (full_f)
@@ -1215,11 +1210,11 @@ void GnssCoherentCombiner::main_thread() {
             rec[0] = ref_prn[p];
             rec[1] = ref_dop[p];
             rec[2] = ref_cp[p];
-            rec[3] = (float)std::sqrt(acc_pow[p] * inv);             // |A|_incoh = sqrt<|A|^2>
-            rec[4] = (float)(acc_ar[p] * inv);                       // <A>.re (coherent mean)
-            rec[5] = (float)(acc_ai[p] * inv);                       // <A>.im
-            rec[6] = (float)std::hypot(acc_ar[p], acc_ai[p]) * inv;  // |<A>|_coh
-            rec[7] = (float)(acc_nchan[p] * inv);                    // covering channels used
+            rec[3] = (float)std::sqrt(acc_pow[p] * inv);            // |A|_incoh = sqrt<|A|^2>
+            rec[4] = (float)(acc_ar[p] * inv);                      // <A>.re (coherent mean)
+            rec[5] = (float)(acc_ai[p] * inv);                      // <A>.im
+            rec[6] = (float)std::hypot(acc_ar[p], acc_ai[p]) * inv; // |<A>|_coh
+            rec[7] = (float)(acc_nchan[p] * inv);                   // covering channels used
             // PER-ANTENNA BEAM MAP. Same `inv` normalization as the reference element above, so
             // CMB_ELEM_AMP_INCOH is directly comparable with rec[3] -- for a single-antenna
             // configuration with reference_element = e they are the same number.
@@ -1262,16 +1257,16 @@ void GnssCoherentCombiner::main_thread() {
                 // and acc_ppow is reset here in block mode, so it has to be carried out.
                 p_pow_out[p] = (float)(acc_ppow[p] * inv);
                 // Boundary fraction f (diagnostic; the inv normalization cancels in the ratio).
-                rec[gnss::CMB_HEAD_FRAC] =
-                    acc_pe[p] > 0.0 ? (float)(acc_he[p] / acc_pe[p]) : 0.0f;
+                rec[gnss::CMB_HEAD_FRAC] = acc_pe[p] > 0.0 ? (float)(acc_he[p] / acc_pe[p]) : 0.0f;
                 // Shared carrier observable: full-band residual carrier (Hz). The broker
                 // integrates this into carrier_trim_hz for every subband tracker -- ONE loop at
                 // full-band SNR instead of N noise-driven per-channel FLLs. PREFER a bit-robust
                 // phase-SLOPE fit over the whole deep-wipe window (_navbuf): its long baseline
                 // gives a low-variance frequency, the clean measurement the loop needs to hold
-                // <0.5 Hz over a 1 s coherent window (OFFLINE-VALIDATED: with this residual removed,
-                // the L1 deep builds 77 sigma@1 s / 94@2 s vs a ~20 ms wall without). The old
-                // consecutive-record product (car_S) is short-baseline and doubly-noisy (squaring)
+                // <0.5 Hz over a 1 s coherent window (OFFLINE-VALIDATED: with this residual
+                // removed, the L1 deep builds 77 sigma@1 s / 94@2 s vs a ~20 ms wall without). The
+                // old consecutive-record product (car_S) is short-baseline and doubly-noisy
+                // (squaring)
                 // -> it made the shared loop noise-inject; kept only as the fallback for non-wipe
                 // configs where _navbuf isn't populated.
                 double resid_hz = 0.0;
@@ -1286,11 +1281,10 @@ void GnssCoherentCombiner::main_thread() {
                     for (const auto& z : _navwipe[p])
                         if (std::norm(z) > 0.0)
                             ++nw;
-                    resid_hz = (nw >= 16)
-                        ? carrier_resid_hz(_navwipe[p], _navutc[p], &sigma_phi[p], /*prewiped=*/true,
-                                           &snr_q[p])
-                        : carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p], /*prewiped=*/false,
-                                           &snr_q[p]);
+                    resid_hz = (nw >= 16) ? carrier_resid_hz(_navwipe[p], _navutc[p], &sigma_phi[p],
+                                                             /*prewiped=*/true, &snr_q[p])
+                                          : carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p],
+                                                             /*prewiped=*/false, &snr_q[p]);
                 } else if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
                     const double dphi = std::arg(car_S[p]) / (carrier_raw() ? 1.0 : 2.0);
                     resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
@@ -1314,7 +1308,8 @@ void GnssCoherentCombiner::main_thread() {
                 const double var = std::max(0.0, m4 - m2 * m2);
                 const double s2 = std::sqrt(std::max(0.0, m2 * m2 - var));
                 const double noise = m2 - s2;
-                amp_dbi[p] = std::sqrt(s2); // unbiased signal amplitude (~0 for noise, =signal for a sat)
+                amp_dbi[p] =
+                    std::sqrt(s2); // unbiased signal amplitude (~0 for noise, =signal for a sat)
                 // Normalise by the H0 std of the s^2 estimator (~N/K^{1/4}) so the significance is
                 // ~1 for noise REGARDLESS of K (a stable lock threshold) and grows for real signal.
                 amp_snr[p] = noise > 1e-12 ? s2 * std::pow(Keff, 0.25) / noise : 0.0;
@@ -1462,9 +1457,9 @@ void GnssCoherentCombiner::main_thread() {
                         if (pin >= 0 && rec_dt_full > 0.0) {
                             const long long d =
                                 (long long)std::llround((us.front() - ub.front()) / rec_dt_full);
-                            const long long m = ((pin + d) % _navwipe_bit_records
-                                                 + _navwipe_bit_records)
-                                                % _navwipe_bit_records;
+                            const long long m =
+                                ((pin + d) % _navwipe_bit_records + _navwipe_bit_records)
+                                % _navwipe_bit_records;
                             pin_here = (int)m;
                         }
                         // Export the per-symbol decisions on the full window only -- same rule as
@@ -1474,7 +1469,7 @@ void GnssCoherentCombiner::main_thread() {
                             aw, us, &snr, &hw, (is_full && _bit_export) ? &nav_obs[p] : nullptr,
                             pin_here, &used_ph);
                         if (pin < 0 && used_ph >= 0)
-                            pin = used_ph; // first (longest) rung searched: pin the rest to it
+                            pin = used_ph;   // first (longest) rung searched: pin the rest to it
                         if (full_len == 0) { // ladder walks longest-first
                             full_amp = amp;
                             full_snr = snr;
@@ -1531,7 +1526,8 @@ void GnssCoherentCombiner::main_thread() {
                     // L5: _secondary already points at the shared overlay.
                 } else {
                     const int prn = (int)std::lround(ref_prn[p]);
-                    ov = (prn >= 1 && prn <= (int)_l1co.size()) ? &_l1co[(size_t)(prn - 1)] : nullptr;
+                    ov = (prn >= 1 && prn <= (int)_l1co.size()) ? &_l1co[(size_t)(prn - 1)]
+                                                                : nullptr;
                 }
                 if (ov && !ov->empty()) {
                     const auto& ab = _navbuf[p];
@@ -1595,13 +1591,12 @@ void GnssCoherentCombiner::main_thread() {
                         && _navhead_res[p].size() == _navbuf_res[p].size()
                         && (size_t)deep_rec[p] <= _navbuf_res[p].size()) {
                         const size_t len = (size_t)deep_rec[p];
-                        const std::vector<std::complex<double>> rs(
-                            _navbuf_res[p].end() - (long)len, _navbuf_res[p].end());
+                        const std::vector<std::complex<double>> rs(_navbuf_res[p].end() - (long)len,
+                                                                   _navbuf_res[p].end());
                         const std::vector<double> us(ub.end() - (long)len, ub.end());
                         const std::vector<std::complex<double>> hs(
                             _navhead_res[p].end() - (long)len, _navhead_res[p].end());
-                        const auto rw =
-                            gnss::overlay_wipe_at(rs, us, *ov, nh_phase[p], &hs);
+                        const auto rw = gnss::overlay_wipe_at(rs, us, *ov, nh_phase[p], &hs);
                         rec[gnss::CMB_PEEL_DEEP] = (float)rw.amplitude;
                         peel_rsnr[p] = rw.snr;
                         double s2 = 0.0;
@@ -1624,7 +1619,8 @@ void GnssCoherentCombiner::main_thread() {
                         // Record period over the winning window (UTC-exact) -> the ADR wipe
                         // projects any later record's overlay chip index from this anchor.
                         _dr_rec_dt[p] = deep_rec[p] > 1
-                            ? (ub.back() - _dr_utc[p]) / (double)(deep_rec[p] - 1) : 0.0;
+                                            ? (ub.back() - _dr_utc[p]) / (double)(deep_rec[p] - 1)
+                                            : 0.0;
                     } else if (_dr_prn[p] != (int)std::lround(ref_prn[p])) {
                         _dr_phase[p] = -1; // slot reassigned to another sat: anchor invalid
                         _dr_rec_dt[p] = 0.0;
@@ -1642,8 +1638,7 @@ void GnssCoherentCombiner::main_thread() {
                         const double t0w = ub[ub.size() - (size_t)deep_rec[p]];
                         const long long stp =
                             (long long)std::llround((t0w - _dr_utc[p]) / _dr_rec_dt[p]);
-                        const int proj =
-                            (int)(((_dr_phase[p] + stp) % L_ov2 + L_ov2) % L_ov2);
+                        const int proj = (int)(((_dr_phase[p] + stp) % L_ov2 + L_ov2) % L_ov2);
                         if (proj != nh_phase[p]) {
                             _bp_agree[p] = false;
                             ++_bp_veto[p];
@@ -1674,8 +1669,8 @@ void GnssCoherentCombiner::main_thread() {
                                 dr_ok = false;
                         }
                         if (!dr_ok) { // no anchor yet: searched full window, selection-debiased
-                            const double bias = 2.0
-                                * (std::log((double)std::max<size_t>(ov->size(), 2)) + 0.5772);
+                            const double bias =
+                                2.0 * (std::log((double)std::max<size_t>(ov->size(), 2)) + 0.5772);
                             if (T > 0.0)
                                 deep_pow[p] = (full.snr * full.snr - bias) / (2.0 * T);
                         }
@@ -1775,12 +1770,11 @@ void GnssCoherentCombiner::main_thread() {
                         (deep_rec[p] > 0 && (size_t)deep_rec[p] <= _navbuf_res[p].size())
                             ? (size_t)deep_rec[p]
                             : _navbuf_res[p].size();
-                    const std::vector<std::complex<double>> rs(
-                        _navbuf_res[p].end() - (long)len, _navbuf_res[p].end());
-                    const std::vector<double> us(_navutc[p].end() - (long)len,
-                                                 _navutc[p].end());
-                    const std::vector<std::complex<double>> hs(
-                        _navhead_res[p].end() - (long)len, _navhead_res[p].end());
+                    const std::vector<std::complex<double>> rs(_navbuf_res[p].end() - (long)len,
+                                                               _navbuf_res[p].end());
+                    const std::vector<double> us(_navutc[p].end() - (long)len, _navutc[p].end());
+                    const std::vector<std::complex<double>> hs(_navhead_res[p].end() - (long)len,
+                                                               _navhead_res[p].end());
                     double rsnr = 0.0;
                     const double ramp = navwipe_amplitude(rs, us, &rsnr, &hs);
                     rec[gnss::CMB_PEEL_DEEP] = (float)ramp;
@@ -1938,8 +1932,7 @@ void GnssCoherentCombiner::main_thread() {
                     // records have their own magnitudes; scoring the winner against the raw
                     // stream's sum|.| would silently mix two normalizations).
                     const double sum_abs = (hw_used == -1) ? sum_abs_sky : sum_abs_raw;
-                    const double cf =
-                        sum_abs > 0.0 ? cs.amplitude * (double)len / sum_abs : 0.0;
+                    const double cf = sum_abs > 0.0 ? cs.amplitude * (double)len / sum_abs : 0.0;
                     if (full_len == 0) { // ladder walks longest-first
                         full = cs;
                         full_len = len;
@@ -2002,7 +1995,8 @@ void GnssCoherentCombiner::main_thread() {
             // DLL groups on. Same value for every PRN: one window, one hop.
             *reinterpret_cast<long long*>(rec + gnss::CMB_HOP_SLOT) = win_hop;
             if (!_rolling) {
-                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] = acc_lpow[p] = acc_ppow[p] = acc_he[p] = acc_pe[p] = 0.0; // block: reset
+                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] =
+                    acc_lpow[p] = acc_ppow[p] = acc_he[p] = acc_pe[p] = 0.0; // block: reset
                 for (int el = 0; el < _n_elements; ++el) { // per-antenna block reset
                     const size_t k = (size_t)p * _n_elements + el;
                     _acc_epow_el[k] = _acc_ear[k] = _acc_eai[k] = 0.0;
@@ -2117,10 +2111,11 @@ void GnssCoherentCombiner::main_thread() {
                         }
                         {
                             char b[96];
-                            snprintf(b, sizeof b, " C%d:h%d+o=%d snr%.1f/blind%.1f%s", prn,
-                                     h, hph, dw.snr, deep_snr[p],
+                            snprintf(b, sizeof b, " C%d:h%d+o=%d snr%.1f/blind%.1f%s", prn, h, hph,
+                                     dw.snr, deep_snr[p],
                                      (dw.snr > FLOOR_MARGIN * flr && dw.snr > deep_snr[p])
-                                         ? "*ADOPT" : "");
+                                         ? "*ADOPT"
+                                         : "");
                             dbg += b;
                         }
                         if (dw.snr > FLOOR_MARGIN * flr && dw.snr > deep_snr[p]) {
@@ -2133,8 +2128,8 @@ void GnssCoherentCombiner::main_thread() {
                             const double t0r = ub[ub.size() - dlen];
                             coh_s[p] = coh_span(ub, dlen);
                             const double span = ub.back() - t0r;
-                            const double T = dlen > 1
-                                ? span * (double)dlen / (double)(dlen - 1) : 0.0;
+                            const double T =
+                                dlen > 1 ? span * (double)dlen / (double)(dlen - 1) : 0.0;
                             if (T > 0.0) // 17-trial selection, ~2-dof debias still fair
                                 deep_pow[p] = (dw.snr * dw.snr - 2.0) / (2.0 * T);
                             _dr_phase[p] = hph; // seed the anchor: future emits dead-reckon it
@@ -2240,13 +2235,11 @@ void GnssCoherentCombiner::main_thread() {
                     // counts within 15 min). Time-difference step counts are gap-immune;
                     // count-based reconstructions are not.
                     if (ov && !ov->empty() && _dr_phase[p] >= 0 && _dr_rec_dt[p] > 0.0
-                        && _dr_prn[p] == prn_e && t_e > 0.0 && anchor_fresh
-                        && _bp_agree[p]) {
+                        && _dr_prn[p] == prn_e && t_e > 0.0 && anchor_fresh && _bp_agree[p]) {
                         const int L_ov = (int)ov->size();
                         const double dt_r = _dr_rec_dt[p];
                         // start at the first primary period at/after this emit
-                        const long long i0 =
-                            (long long)std::ceil((t_e - _dr_utc[p]) / dt_r);
+                        const long long i0 = (long long)std::ceil((t_e - _dr_utc[p]) / dt_r);
                         const int n = (int)std::ceil(_bit_pred_horizon_s / dt_r) + 2;
                         // TABLE SEMANTICS, DECLARED (2026-07-27; see BitPred::record_grid).
                         // utc0 is the RAW RECORD-START time of cell 0 and the table is
@@ -2303,8 +2296,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_trim[p] = _adr_ok[p] ? _trim_cyc[p] : 0.0;
                 _st_adr_arc[p] = _adr_arc[p];
                 _st_adr_n[p] = _adr_ok[p] ? _adr_n[p] : 0;
-                _st_adr_lock[p] =
-                    (_adr_ok[p] && _adr_t0[p] > 0.0) ? (utc_e - _adr_t0[p]) : 0.0;
+                _st_adr_lock[p] = (_adr_ok[p] && _adr_t0[p] > 0.0) ? (utc_e - _adr_t0[p]) : 0.0;
             }
         }
         {
@@ -2418,129 +2410,129 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
     nlohmann::json reply = nlohmann::json::array();
     std::lock_guard<std::mutex> lk(_st_mtx);
     for (int p = 0; p < _n_prn; ++p)
-        reply.push_back({{"prn", _st_prn[p]},
-                         {"amplitude", _st_amp[p]},
-                         {"coh_amplitude", _st_coh[p]},
-                         {"deep_amplitude", _st_deep[p]},
-                         {"deep_snr", _st_deep_snr[p]},
-                         {"amp_snr", _st_amp_snr[p]},
-                         {"nh_phase", _st_nh_phase[p]},
-                         {"unbiased_amplitude", _st_amp_dbi[p]},
-                         {"doppler_hz", _st_dop[p]},
-                         {"code_phase_chips", _st_cp[p]},
-                         {"coherence_s", _st_coh_s[p]},
-                         {"deep_records", _st_deep_rec[p]},
-                         {"deep_floor", _st_deep_floor[p]},
-                         {"deep_pow_hz", _st_deep_pow[p]},
-                         // EVERY ladder rung this emit, longest-first: [[records, snr, span_s], ...].
-                         // deep_snr is the MAX over these, and a max hides the shape. A signal that
-                         // never coheres sits at the floor on EVERY rung; one that coheres but is
-                         // too weak rises as the rung shortens (less phase loss) or peaks mid-ladder
-                         // at the knee. Same floor applies to all rungs on the plain branch
-                         // (deep_floor); the wipe branches' floor grows with rung length.
-                         {"rungs", _st_rungs[p]},
-                         // PHASE-RATE SEARCH: the linear rate removed before the deep sum (Hz,
-                         // signed, modulo the record rate -- the true ramp exceeds that Nyquist),
-                         // and the peak/median of its spectrum. deep_rate_q is the honest
-                         // detection statistic for the coherent rung: measured on sky at 17.9-22.0
-                         // on signal and 2.8-6.1 on noise. 0 = the search did not run or found
-                         // nothing and the straight sum was scored instead.
-                         {"deep_rate_hz", _st_deep_rate[p]},
-                         {"deep_rate_q", _st_deep_rate_q[p]},
-                         // #40: the UNCAPPED argmax of the same spectrum (+-47.7 Hz at
-                         // 2048-hop records). deep_rate_hz above is the fold's pick and is
-                         // clamped to deep_rate_max_hz -- beyond the cap it reports the best
-                         // in-cap bin, i.e. NOISE, which is unusable as a loop measurement.
-                         // The carrier loop (#33 rrate feed) reads THESE two; the fold's
-                         // derotation still uses the capped pick, so nothing about deep_snr
-                         // or the sideband protection changes.
-                         {"deep_rate_full_hz", _st_deep_rate_full[p]},
-                         {"deep_rate_full_q", _st_deep_rate_full_q[p]},
-                         // COMMON-PHASE TRACKER (8.21.5). coh_frac = |sum|/sum|.| of the winning
-                         // deep stream -- the chopping-independent coherence measure (deep_snr
-                         // scales with record count when phase-limited; THIS is what a detection
-                         // threshold should mean). pt_hw = winning leave-one-out half-width in
-                         // records; 0 = the straight sum won (tracker off, or nothing to track).
-                         {"coh_frac", _st_coh_frac[p]},
-                         {"pt_hw", _st_pt_hw[p]},
-                         // PEEL DEPTH (docs/gnss_voltage_peel_live.md): deep/incoherent |A| of the
-                         // voltage-peel RESIDUAL. depth_db = 20*log10(deep_amplitude/peel_deep);
-                         // 0 when this chain does not peel. At the combiner floor -> a LOWER BOUND.
-                         {"peel_deep", _st_peel_deep[p]},
-                         {"peel_incoh", _st_peel_incoh[p]},
-                         // The residual deep's SIGNIFICANCE: compare THIS against deep_floor for
-                         // the at-floor / lower-bound decision (peel_deep is an amplitude and
-                         // deep_floor a significance -- comparing those is a units error).
-                         {"peel_deep_snr", _st_peel_deep_snr[p]},
-                         {"dll_disc", _st_dll_disc[p]},
-                         // FLEET DLL (docs/CHORD_GNSS_SHARED_DLL.md). dll_disc is a RATIO and
-                         // ratios do not sum: one instance correlates 7 x 195.3 kHz = 6.7% of
-                         // the L5 lobe, and the full-band discriminator is
-                         // (SUM e_pow - SUM l_pow)/(SUM e_pow + SUM l_pow) over every instance,
-                         // which is not any function of the per-instance dll_disc values. So
-                         // the three POWERS ship raw. All are built the same way -- |sum of
-                         // subband correlations|^2 / energy^2 -- so q = 2*p_pow/(e_pow+l_pow)
-                         // is comparable instance to instance and, summed, is the fleet's.
-                         {"e_pow", _st_e_pow[p]},
-                         {"p_pow", _st_p_pow[p]},
-                         {"l_pow", _st_l_pow[p]},
-                         {"n_chan", _st_nchan[p]},
-                         // The GROUPING KEY: absolute hop index of the window these powers were
-                         // accumulated over, from the F-engine sample counter every node shares.
-                         // Equal hop IS the same sky, exactly -- no tolerance, unlike "utc".
-                         // pow_fft_len declares the currency: 0 means pow_hop is a raw SAMPLE
-                         // index (this stage was configured without fft_len), so a consumer can
-                         // never mix hops and samples by accident. -1 = no metadata on the
-                         // record frames at all.
-                         {"pow_hop", _st_pow_hop},
-                         {"pow_fft_len", _fft_len},
-                         // boundary fraction f: where the code-period boundary sits inside
-                         // the despread window (segmented-wipe diagnostic; ~0.5 was the old
-                         // bistable's null zone, now harmless).
-                         {"boundary_f", _st_head_frac[p]},
-                         // multipath / scintillation pair (2026-07-14): S4 = amplitude
-                         // fluctuation (thermal floor removed), sigma_phi = carrier-phase
-                         // jitter about the slope fit, radians. Multipath moves BOTH.
-                         {"s4", _st_s4[p]},
-                         {"s4_raw", _st_s4_raw[p]},
-                         {"sigma_phi", _st_sigma_phi[p]},
-                         {"snr_q", _st_snr_q[p]},
-                         // Nonzero means a subband dropped a frame relative to the others and
-                         // was realigned. Index-lockstep gathering absorbed that silently as a
-                         // permanent epoch offset, so it is worth being able to see.
-                         {"subband_realigns", (double)_realigns},
-                         {"carrier_hz_resid", _st_car_resid[p]},
-                         // Accumulated carrier phase (cycles) on the current unbroken arc,
-                         // its id, its length in records, and how long it has held (s). 0
-                         // cycles with a bumped arc id means the arc just restarted.
-                         {"utc", _st_utc[p]},
-                         // #46: the three clocks that make staleness a MEASUREMENT.
-                         // serve_unix = wall clock of THIS reply (epoch sanity in one poll:
-                         // |utc - serve_unix| hours off = a stale F-engine frame0, the
-                         // 2026-08-20 chive trap). ingest_utc = newest capture UTC the node
-                         // has INGESTED (vs utc = newest PROCESSED: the gap is processing
-                         // lag, not sky). ingest_unix = the wall clock at that ingestion
-                         // (serve_unix - ingest_unix = how stale this snapshot is).
-                         {"serve_unix",
-                          std::chrono::duration<double>(
-                              std::chrono::system_clock::now().time_since_epoch())
-                              .count()},
-                         {"ingest_utc", _ingest_utc},
-                         {"ingest_unix", _ingest_unix},
-                         {"adr_cycles", _st_adr[p]},
-                         // #33 PLL fine observable: the RESIDUAL half of the ADR alone
-                         // (sum of measured dres, same arc). d(res_cycles)/d(adr_records)
-                         // over a poll span is a mHz-class carrier-rate measurement with
-                         // no commanded-integral transport: the broker's phase-step feed
-                         // reads THIS, never adr_cycles.
-                         {"res_cycles", _st_res[p]},
-                         // Commanded-trim integral on the SAME arc (subtract from
-                         // adr_cycles to remove the carrier loop's known transients --
-                         // docs/adr_trim_subtraction.md)
-                         {"trim_cycles", _st_trim[p]},
-                         {"adr_arc", _st_adr_arc[p]},
-                         {"adr_records", _st_adr_n[p]},
-                         {"adr_lock_s", _st_adr_lock[p]}});
+        reply.push_back(
+            {{"prn", _st_prn[p]},
+             {"amplitude", _st_amp[p]},
+             {"coh_amplitude", _st_coh[p]},
+             {"deep_amplitude", _st_deep[p]},
+             {"deep_snr", _st_deep_snr[p]},
+             {"amp_snr", _st_amp_snr[p]},
+             {"nh_phase", _st_nh_phase[p]},
+             {"unbiased_amplitude", _st_amp_dbi[p]},
+             {"doppler_hz", _st_dop[p]},
+             {"code_phase_chips", _st_cp[p]},
+             {"coherence_s", _st_coh_s[p]},
+             {"deep_records", _st_deep_rec[p]},
+             {"deep_floor", _st_deep_floor[p]},
+             {"deep_pow_hz", _st_deep_pow[p]},
+             // EVERY ladder rung this emit, longest-first: [[records, snr, span_s], ...].
+             // deep_snr is the MAX over these, and a max hides the shape. A signal that
+             // never coheres sits at the floor on EVERY rung; one that coheres but is
+             // too weak rises as the rung shortens (less phase loss) or peaks mid-ladder
+             // at the knee. Same floor applies to all rungs on the plain branch
+             // (deep_floor); the wipe branches' floor grows with rung length.
+             {"rungs", _st_rungs[p]},
+             // PHASE-RATE SEARCH: the linear rate removed before the deep sum (Hz,
+             // signed, modulo the record rate -- the true ramp exceeds that Nyquist),
+             // and the peak/median of its spectrum. deep_rate_q is the honest
+             // detection statistic for the coherent rung: measured on sky at 17.9-22.0
+             // on signal and 2.8-6.1 on noise. 0 = the search did not run or found
+             // nothing and the straight sum was scored instead.
+             {"deep_rate_hz", _st_deep_rate[p]},
+             {"deep_rate_q", _st_deep_rate_q[p]},
+             // #40: the UNCAPPED argmax of the same spectrum (+-47.7 Hz at
+             // 2048-hop records). deep_rate_hz above is the fold's pick and is
+             // clamped to deep_rate_max_hz -- beyond the cap it reports the best
+             // in-cap bin, i.e. NOISE, which is unusable as a loop measurement.
+             // The carrier loop (#33 rrate feed) reads THESE two; the fold's
+             // derotation still uses the capped pick, so nothing about deep_snr
+             // or the sideband protection changes.
+             {"deep_rate_full_hz", _st_deep_rate_full[p]},
+             {"deep_rate_full_q", _st_deep_rate_full_q[p]},
+             // COMMON-PHASE TRACKER (8.21.5). coh_frac = |sum|/sum|.| of the winning
+             // deep stream -- the chopping-independent coherence measure (deep_snr
+             // scales with record count when phase-limited; THIS is what a detection
+             // threshold should mean). pt_hw = winning leave-one-out half-width in
+             // records; 0 = the straight sum won (tracker off, or nothing to track).
+             {"coh_frac", _st_coh_frac[p]},
+             {"pt_hw", _st_pt_hw[p]},
+             // PEEL DEPTH (docs/gnss_voltage_peel_live.md): deep/incoherent |A| of the
+             // voltage-peel RESIDUAL. depth_db = 20*log10(deep_amplitude/peel_deep);
+             // 0 when this chain does not peel. At the combiner floor -> a LOWER BOUND.
+             {"peel_deep", _st_peel_deep[p]},
+             {"peel_incoh", _st_peel_incoh[p]},
+             // The residual deep's SIGNIFICANCE: compare THIS against deep_floor for
+             // the at-floor / lower-bound decision (peel_deep is an amplitude and
+             // deep_floor a significance -- comparing those is a units error).
+             {"peel_deep_snr", _st_peel_deep_snr[p]},
+             {"dll_disc", _st_dll_disc[p]},
+             // FLEET DLL (docs/CHORD_GNSS_SHARED_DLL.md). dll_disc is a RATIO and
+             // ratios do not sum: one instance correlates 7 x 195.3 kHz = 6.7% of
+             // the L5 lobe, and the full-band discriminator is
+             // (SUM e_pow - SUM l_pow)/(SUM e_pow + SUM l_pow) over every instance,
+             // which is not any function of the per-instance dll_disc values. So
+             // the three POWERS ship raw. All are built the same way -- |sum of
+             // subband correlations|^2 / energy^2 -- so q = 2*p_pow/(e_pow+l_pow)
+             // is comparable instance to instance and, summed, is the fleet's.
+             {"e_pow", _st_e_pow[p]},
+             {"p_pow", _st_p_pow[p]},
+             {"l_pow", _st_l_pow[p]},
+             {"n_chan", _st_nchan[p]},
+             // The GROUPING KEY: absolute hop index of the window these powers were
+             // accumulated over, from the F-engine sample counter every node shares.
+             // Equal hop IS the same sky, exactly -- no tolerance, unlike "utc".
+             // pow_fft_len declares the currency: 0 means pow_hop is a raw SAMPLE
+             // index (this stage was configured without fft_len), so a consumer can
+             // never mix hops and samples by accident. -1 = no metadata on the
+             // record frames at all.
+             {"pow_hop", _st_pow_hop},
+             {"pow_fft_len", _fft_len},
+             // boundary fraction f: where the code-period boundary sits inside
+             // the despread window (segmented-wipe diagnostic; ~0.5 was the old
+             // bistable's null zone, now harmless).
+             {"boundary_f", _st_head_frac[p]},
+             // multipath / scintillation pair (2026-07-14): S4 = amplitude
+             // fluctuation (thermal floor removed), sigma_phi = carrier-phase
+             // jitter about the slope fit, radians. Multipath moves BOTH.
+             {"s4", _st_s4[p]},
+             {"s4_raw", _st_s4_raw[p]},
+             {"sigma_phi", _st_sigma_phi[p]},
+             {"snr_q", _st_snr_q[p]},
+             // Nonzero means a subband dropped a frame relative to the others and
+             // was realigned. Index-lockstep gathering absorbed that silently as a
+             // permanent epoch offset, so it is worth being able to see.
+             {"subband_realigns", (double)_realigns},
+             {"carrier_hz_resid", _st_car_resid[p]},
+             // Accumulated carrier phase (cycles) on the current unbroken arc,
+             // its id, its length in records, and how long it has held (s). 0
+             // cycles with a bumped arc id means the arc just restarted.
+             {"utc", _st_utc[p]},
+             // #46: the three clocks that make staleness a MEASUREMENT.
+             // serve_unix = wall clock of THIS reply (epoch sanity in one poll:
+             // |utc - serve_unix| hours off = a stale F-engine frame0, the
+             // 2026-08-20 chive trap). ingest_utc = newest capture UTC the node
+             // has INGESTED (vs utc = newest PROCESSED: the gap is processing
+             // lag, not sky). ingest_unix = the wall clock at that ingestion
+             // (serve_unix - ingest_unix = how stale this snapshot is).
+             {"serve_unix",
+              std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+                  .count()},
+             {"ingest_utc", _ingest_utc},
+             {"ingest_unix", _ingest_unix},
+             {"adr_cycles", _st_adr[p]},
+             // #33 PLL fine observable: the RESIDUAL half of the ADR alone
+             // (sum of measured dres, same arc). d(res_cycles)/d(adr_records)
+             // over a poll span is a mHz-class carrier-rate measurement with
+             // no commanded-integral transport: the broker's phase-step feed
+             // reads THIS, never adr_cycles.
+             {"res_cycles", _st_res[p]},
+             // Commanded-trim integral on the SAME arc (subtract from
+             // adr_cycles to remove the carrier loop's known transients --
+             // docs/adr_trim_subtraction.md)
+             {"trim_cycles", _st_trim[p]},
+             {"adr_arc", _st_adr_arc[p]},
+             {"adr_records", _st_adr_n[p]},
+             {"adr_lock_s", _st_adr_lock[p]}});
     // P7a nav_obs: the last emit's per-bit sign decisions, only on rows that have any --
     // the broker's LNAV stitcher consumes these (see NavObs for the timing convention).
     if (_bit_export)
@@ -2568,22 +2560,17 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
             nlohmann::json bits = nlohmann::json::array();
             for (const auto& b : o.bits)
                 bits.push_back({b.first, (int)b.second});
-            reply[(size_t)p]["nav_obs"] = {{"utc_ref", o.utc_ref},
-                                           {"rec_dt", o.rec_dt},
-                                           {"phase", o.phase},
-                                           {"br", o.br},
-                                           {"rot_re", o.rot_re},
-                                           {"rot_im", o.rot_im},
-                                           {"bits", bits}};
+            reply[(size_t)p]["nav_obs"] = {
+                {"utc_ref", o.utc_ref}, {"rec_dt", o.rec_dt}, {"phase", o.phase}, {"br", o.br},
+                {"rot_re", o.rot_re},   {"rot_im", o.rot_im}, {"bits", bits}};
         }
     conn.send_json_reply(reply);
 }
 
-double
-GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>& a,
-                                        const std::vector<double>& utc, double* snr_out,
-                                        const std::vector<std::complex<double>>* head, NavObs* obs,
-                                        int pin_phase, int* out_phase) const {
+double GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>& a,
+                                               const std::vector<double>& utc, double* snr_out,
+                                               const std::vector<std::complex<double>>* head,
+                                               NavObs* obs, int pin_phase, int* out_phase) const {
     const int br = _navwipe_bit_records;
     const int nrec = (int)a.size();
     if (br <= 0 || nrec < 2 * br)
@@ -2690,7 +2677,7 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
     const cd rot = std::polar(1.0, -0.5 * std::arg(sumsq));
     cd deep(0.0, 0.0);
     double noise2 = 0.0; // sum of squared orthogonal (noise) components, one per bit
-    if (obs) { // export the per-bit decisions the wipe is about to apply (P7a nav_obs)
+    if (obs) {           // export the per-bit decisions the wipe is about to apply (P7a nav_obs)
         obs->utc_ref = utc[0];
         obs->rec_dt = rec_dt;
         obs->phase = best_phase;
@@ -2719,11 +2706,9 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
     return std::abs(deep) / (double)nrec; // coherent mean of the wiped per-record A
 }
 
-double
-GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& a,
-                                       const std::vector<double>& utc,
-                                       double* sigma_phi_out, bool prewiped,
-                                       double* snr_q_out) const {
+double GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& a,
+                                              const std::vector<double>& utc, double* sigma_phi_out,
+                                              bool prewiped, double* snr_q_out) const {
     const int n = (int)a.size();
     // snr_q_out defaults to NaN ("not available"): it is only produced on the LINEAR (pilot /
     // prewiped) path below, and every early return must leave it as the not-measured sentinel.
@@ -2880,13 +2865,15 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
             *sigma_phi_out = (Sw2 > 0.0) ? std::sqrt(Sr2 / Sw2) / mult : NAN; // unmeasured -> NaN
         if (want_q && Kq >= 16.0) {
             const double mean_im = S_im / Kq;
-            const double var_im = std::max(0.0, S_im2 / Kq - mean_im * mean_im); // per-component noise
-            const double noise = 2.0 * var_im;             // complex thermal power / record
-            const double m2 = S_pow / Kq;                  // total power / record
-            const double sig = std::max(0.0, m2 - noise);  // modulation-immune signal power / record
-            *snr_q_out = (noise > 1e-300) ? sig / noise : NAN; // per-record SNR; /t_rec -> C/N0 downstream
+            const double var_im =
+                std::max(0.0, S_im2 / Kq - mean_im * mean_im); // per-component noise
+            const double noise = 2.0 * var_im;                 // complex thermal power / record
+            const double m2 = S_pow / Kq;                      // total power / record
+            const double sig = std::max(0.0, m2 - noise); // modulation-immune signal power / record
+            *snr_q_out =
+                (noise > 1e-300) ? sig / noise : NAN; // per-record SNR; /t_rec -> C/N0 downstream
         }
     }
     // Total residual = the slip-free coarse stage PLUS the fine LSQ slope of what it left.
-    return f_coarse + slope / mult / (2.0 * M_PI);      // -> residual carrier (Hz)
+    return f_coarse + slope / mult / (2.0 * M_PI); // -> residual carrier (Hz)
 }

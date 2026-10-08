@@ -67,9 +67,9 @@ faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 
-import yaml                                              # noqa: E402
-import gps_distributed_broker as broker                  # noqa: E402
-from gnss_broker import publish, receiver, transport     # noqa: E402
+import yaml  # noqa: E402
+import gps_distributed_broker as broker  # noqa: E402
+from gnss_broker import publish, receiver, transport  # noqa: E402
 
 
 def flags(d):
@@ -113,28 +113,40 @@ def run_chain(name, argv, rx, alive, pub=None):
         # on a perfectly successful gate run -- and, worse, prints no digest, so the driver
         # itself cannot be gated against a recording. That is exactly backwards: the piece
         # with the new concurrency is the piece most in need of the gate.
-        transport._log("transcript replay complete (%s); %d posts, digest %s"
-                       % (e, len(transport._TR.posts), transport._TR.digest()))
+        transport._log(
+            "transcript replay complete (%s); %d posts, digest %s"
+            % (e, len(transport._TR.posts), transport._TR.digest())
+        )
         print(transport._TR.digest())
     except SystemExit as e:
         # argparse's ap.error() lands here. In a thread it would otherwise be invisible.
-        transport._log("*** CHAIN REFUSED TO START: %s. Its signal is DARK; the others "
-                       "keep running." % e)
+        transport._log(
+            "*** CHAIN REFUSED TO START: %s. Its signal is DARK; the others "
+            "keep running." % e
+        )
     except Exception as e:
         import traceback
+
         transport._log("*** CHAIN DIED: %r\n%s" % (e, traceback.format_exc()))
     finally:
         alive.discard(name)
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("config")
-    ap.add_argument("--only", action="append", default=[],
-                    help="run just these chains (repeatable) -- for bisecting a fleet "
-                         "problem down to one signal without editing the config")
-    ap.add_argument("--list", action="store_true", help="print the resolved flags and exit")
+    ap.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        help="run just these chains (repeatable) -- for bisecting a fleet "
+        "problem down to one signal without editing the config",
+    )
+    ap.add_argument(
+        "--list", action="store_true", help="print the resolved flags and exit"
+    )
     a, extra = ap.parse_known_args()
 
     chains = load(a.config)
@@ -161,23 +173,29 @@ def main():
             if port is None and p not in ("0", ""):
                 port, owner = int(p), name
             elif p not in ("0", "") and int(p) != port:
-                transport._log("chain %s asks for publish-port %s; ignoring -- one process "
-                               "publishes on ONE port (%d, from %s). Select with "
-                               "?chain=%s or /%s/get_status." % (name, p, port, owner,
-                                                                 name, name))
+                transport._log(
+                    "chain %s asks for publish-port %s; ignoring -- one process "
+                    "publishes on ONE port (%d, from %s). Select with "
+                    "?chain=%s or /%s/get_status." % (name, p, port, owner, name, name)
+                )
     # Before any chain starts polling: name resolution was this process's cycle time.
     transport.install_dns_cache()
     pub = publish.FleetPublisher(port, transport._log) if port else None
     if pub:
         transport._log("fleet publisher shared by every chain on :%d" % port)
-    transport._log("starting %d chain(s): %s"
-                   % (len(chains), ", ".join(n for n, _ in chains)))
+    transport._log(
+        "starting %d chain(s): %s" % (len(chains), ", ".join(n for n, _ in chains))
+    )
 
     alive = set(n for n, _ in chains)
     threads = []
     for name, argv in chains:
-        t = threading.Thread(target=run_chain, args=(name, argv + extra, rx, alive, pub),
-                             name=name, daemon=True)
+        t = threading.Thread(
+            target=run_chain,
+            args=(name, argv + extra, rx, alive, pub),
+            name=name,
+            daemon=True,
+        )
         t.start()
         threads.append(t)
         # Stagger the starts. Not a settling wait -- there is no such thing here (every
@@ -223,11 +241,15 @@ def main():
                     transport._log(ln)
     except KeyboardInterrupt:
         transport.set_log_tag("driver")
-        transport._log("interrupted; chains are daemon threads and exit with the process")
+        transport._log(
+            "interrupted; chains are daemon threads and exit with the process"
+        )
         return
     transport.set_log_tag("driver")
-    transport._log("*** EVERY CHAIN HAS EXITED -- the broker is doing nothing. This is not "
-                   "an idle state, it is an outage.")
+    transport._log(
+        "*** EVERY CHAIN HAS EXITED -- the broker is doing nothing. This is not "
+        "an idle state, it is an outage."
+    )
     sys.exit(1)
 
 

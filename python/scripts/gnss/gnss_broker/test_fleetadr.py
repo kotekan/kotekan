@@ -25,13 +25,13 @@ class Sky(object):
     def __init__(self, n_inst=12, resid_hz=0.3, noise_rad=0.0, seed=1):
         random.seed(seed)
         self.dop_cmd = -2182.9
-        self.resid_hz = resid_hz           # true minus commanded carrier rate
+        self.resid_hz = resid_hz  # true minus commanded carrier rate
         self.phi0 = [random.uniform(-math.pi, math.pi) for _ in range(n_inst)]
         self.amp = [random.uniform(0.5, 1.5) for _ in range(n_inst)]
         self.noise = noise_rad
         self.chip = 1.0
-        self.fold_step = -0.97                 # rad per record, the assembler's in-frame fold
-        self.bad_boundary = 0.0               # extra (wrong) fold at each frame's first record
+        self.fold_step = -0.97  # rad per record, the assembler's in-frame fold
+        self.bad_boundary = 0.0  # extra (wrong) fold at each frame's first record
 
     def t(self, hop):
         return hop / HPS
@@ -53,18 +53,24 @@ class Sky(object):
         nfr = (hop - HOP0) // (4 * HPR)
         ang -= self.bad_boundary * nfr
         out = {}
-        for i in (insts if insts is not None else range(len(self.phi0))):
-            a = self.amp[i] * cmath.exp(1j * (ang + random.gauss(0.0, self.noise) - self.phi0[i]))
+        for i in insts if insts is not None else range(len(self.phi0)):
+            a = self.amp[i] * cmath.exp(
+                1j * (ang + random.gauss(0.0, self.noise) - self.phi0[i])
+            )
             if straddle > 0.0:
                 H = straddle * a * self.chip
-                T = (1.0 - straddle) * a * (-self.chip)      # the chip flips inside the record
+                T = (
+                    (1.0 - straddle) * a * (-self.chip)
+                )  # the chip flips inside the record
             else:
                 H, T = a * self.chip, 0.0
-            S = H * H + T * T                 # as exported: the instance's constant stays in
+            S = H * H + T * T  # as exported: the instance's constant stays in
             # phi0: the assembler's NCO accumulator. A perfect fold steps it by the same
             # amount every record; `bad_boundary` mimics the live defect (a wrong step at r0).
             r = ((hop - HOP0) // HPR) % 4
-            phi0 = self.fold_step * ((hop - HOP0) // HPR) + self.bad_boundary * ((hop - HOP0) // (4 * HPR))
+            phi0 = self.fold_step * ((hop - HOP0) // HPR) + self.bad_boundary * (
+                (hop - HOP0) // (4 * HPR)
+            )
             out[i] = (self.dop_cmd, 0.0, S, phi0, r)
         return out
 
@@ -72,7 +78,9 @@ class Sky(object):
 def dop_only(sky, hop, hop0):
     """The received phase between two hops with the nominal f_c*dt removed: the commanded
     Doppler's advance plus what the residual did."""
-    return sky.dop_cmd * (sky.t(hop) - sky.t(hop0)) + sky.phi_res(hop) - sky.phi_res(hop0)
+    return (
+        sky.dop_cmd * (sky.t(hop) - sky.t(hop0)) + sky.phi_res(hop) - sky.phi_res(hop0)
+    )
 
 
 def run(sky, hops, st=None, kw=None):
@@ -102,7 +110,10 @@ class TestFold(unittest.TestCase):
         kw = {}
         for k, h in enumerate(hops):
             if k % 7 == 3:
-                kw[h] = {"flip": True, "straddle": 0.5}     # the |2f-1| null of a linear sum
+                kw[h] = {
+                    "flip": True,
+                    "straddle": 0.5,
+                }  # the |2f-1| null of a linear sum
             elif k % 5 == 1:
                 kw[h] = {"straddle": 0.3}
         st = run(sky, hops, kw=kw)
@@ -131,11 +142,15 @@ class TestFold(unittest.TestCase):
         does not telescope and its sum random-walks. Per-instance phases do telescope: with white
         per-record noise the fleet error must stay at the single-record level after thousands
         of records, not grow as sqrt(N)."""
+
         class Flicker(Sky):
             def record(self, hop, prev_hop, **kw):
                 out = Sky.record(self, hop, prev_hop, **kw)
-                return {i: (v[0], v[1], v[2] * random.uniform(0.05, 1.0) ** 2, v[3], v[4])
-                        for i, v in out.items()}
+                return {
+                    i: (v[0], v[1], v[2] * random.uniform(0.05, 1.0) ** 2, v[3], v[4])
+                    for i, v in out.items()
+                }
+
         sky = Flicker(noise_rad=0.3)
         hops = [HOP0 + k * HPR for k in range(4000)]
         st = run(sky, hops)
@@ -157,14 +172,24 @@ class TestFold(unittest.TestCase):
         tested.)"""
         errs = []
         for seed in (1, 2, 3, 4, 5):
+
             class Clustered(Sky):
                 def record(self, hop, prev_hop, **kw):
                     out = Sky.record(self, hop, prev_hop, **kw)
                     if random.random() < 0.01:
-                        for i in random.sample(range(12), random.choice((2, 2, 3, 3, 4))):
+                        for i in random.sample(
+                            range(12), random.choice((2, 2, 3, 3, 4))
+                        ):
                             v = out[i]
-                            out[i] = (v[0], v[1], -v[2], v[3], v[4])   # S -> -S: a half-cycle slip
+                            out[i] = (
+                                v[0],
+                                v[1],
+                                -v[2],
+                                v[3],
+                                v[4],
+                            )  # S -> -S: a half-cycle slip
                     return out
+
             sky = Clustered(noise_rad=0.15, seed=seed)
             hops = [HOP0 + k * HPR for k in range(8000)]
             st = run(sky, hops)
@@ -172,16 +197,20 @@ class TestFold(unittest.TestCase):
         # judged on the rms over seeds: a walk is a distribution, not one draw. The re-seat
         # measured 0.086 here (0.03-0.17 per seed); the repair ~0.02.
         rms = math.sqrt(sum(e * e for e in errs) / len(errs))
-        self.assertLess(rms, 0.04, "rms %.3f over seeds %s" % (rms, [round(e, 3) for e in errs]))
+        self.assertLess(
+            rms, 0.04, "rms %.3f over seeds %s" % (rms, [round(e, 3) for e in errs])
+        )
 
     def test_commanded_trim_does_not_enter_the_adr(self):
         """The export is relative to the model Doppler: the assembler rotates the commanded
         carrier trim back out. Slot 19 must therefore be recorded (trim_cycles) but never added
         to the accumulated phase."""
+
         class Trimmed(Sky):
             def record(self, hop, prev_hop, **kw):
                 out = Sky.record(self, hop, prev_hop, **kw)
                 return {i: (v[0], 0.004, v[2], v[3], v[4]) for i, v in out.items()}
+
         sky = Trimmed()
         hops = [HOP0 + k * HPR for k in range(400)]
         st = run(sky, hops)
@@ -190,7 +219,9 @@ class TestFold(unittest.TestCase):
 
     def test_gap_breaks_the_arc(self):
         sky = Sky()
-        hops = [HOP0 + k * HPR for k in range(50)] + [HOP0 + k * HPR for k in range(60, 100)]
+        hops = [HOP0 + k * HPR for k in range(50)] + [
+            HOP0 + k * HPR for k in range(60, 100)
+        ]
         st = run(sky, hops)
         self.assertEqual(st.arc, 2)
         self.assertEqual(st.breaks, 1)
@@ -263,7 +294,7 @@ class TestFold(unittest.TestCase):
 
 
 class FakeClient(object):
-    def __init__(self, frames):          # {win: {inst: TelemFrame}}
+    def __init__(self, frames):  # {win: {inst: TelemFrame}}
         self.f = frames
 
     def windows(self, chain, lag=1):
@@ -280,9 +311,11 @@ class TestFrames(unittest.TestCase):
         import struct
         import sys
         import os
+
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         import test_telem
         from gnss_broker import telem
+
         sky = Sky(n_inst=2)
         n_rec = 4
         frames = {}
@@ -299,10 +332,17 @@ class TestFrames(unittest.TestCase):
                     rows[(r, 0, telem.REC_PHI0)] = sky.fold_step * ((hop - HOP0) // HPR)
                     rows[(r, 0, telem.REC_DOPPLER)] = sky.dop_cmd
                     rows[(r, 0, telem.REC_TRIM_INC)] = 0.0
-                raw = test_telem._make_frame(inst=inst, win=win, n_rec=n_rec, n_prn=1,
-                                             hops_per_record=HPR, rows=rows)
+                raw = test_telem._make_frame(
+                    inst=inst,
+                    win=win,
+                    n_rec=n_rec,
+                    n_prn=1,
+                    hops_per_record=HPR,
+                    rows=rows,
+                )
                 frames.setdefault(win, {})[inst] = telem.TelemFrame(
-                    telem._HDR.unpack_from(raw, 0), raw, 0.0)
+                    telem._HDR.unpack_from(raw, 0), raw, 0.0
+                )
         # the builder's PRN in row 0 is 1
         fl = fa.FleetAdr(hpr=HPR)
         n = fl.fold_windows(FakeClient(frames), "gps_l5", {1}, now=1000.0)

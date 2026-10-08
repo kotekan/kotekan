@@ -56,11 +56,11 @@ struct AcquireWorkspace {
     /// (Re)allocate plans + buffers for length-@c n circular transforms.
     void ensure(int n);
 
-    int Mp = 0;                  ///< current transform length (0 = unallocated)
-    fftwf_complex* in = nullptr; ///< scratch input  (length Mp)
-    fftwf_complex* out = nullptr;///< scratch output (length Mp)
-    fftwf_plan fwd = nullptr;    ///< length-Mp c2c forward  (in -> out)
-    fftwf_plan inv = nullptr;    ///< length-Mp c2c backward (in -> out, unnormalized)
+    int Mp = 0;                   ///< current transform length (0 = unallocated)
+    fftwf_complex* in = nullptr;  ///< scratch input  (length Mp)
+    fftwf_complex* out = nullptr; ///< scratch output (length Mp)
+    fftwf_plan fwd = nullptr;     ///< length-Mp c2c forward  (in -> out)
+    fftwf_plan inv = nullptr;     ///< length-Mp c2c backward (in -> out, unnormalized)
 };
 
 /// Outcome of a channelized acquisition search.
@@ -106,8 +106,8 @@ struct AcquisitionResult {
 /// Stepping s costs only scalloping: at step 32 the worst-case peak offset is 16 samples,
 /// ~0.15 dB. Nothing downstream needs better, because the refine that follows the acquire
 /// rescans +-refine_span samples anyway. This is NOT the coarse-axis fold that was tried and
-/// reverted (see 31896a862:docs/CHORD_GNSS_STATE.md 5o): it assumes no periodicity, so the secondary
-/// code cannot invalidate it.
+/// reverted (see 31896a862:docs/CHORD_GNSS_STATE.md 5o): it assumes no periodicity, so the
+/// secondary code cannot invalidate it.
 struct AcquisitionSurface {
     int n_dop;        ///< Doppler trials (= doppler_grid.size())
     int Mp;           ///< replica hop-period (coarse-lag range)
@@ -121,8 +121,12 @@ struct AcquisitionSurface {
         return (w + st - 1) / st;
     }
     /// Absolute delay of surface cell (q, i), full-rate samples.
-    long tau(int q, int i) const { return (long)q * sph + (long)i * (s_step > 0 ? s_step : 1); }
-    long size() const { return (long)n_dop * Mp * fine(); }
+    long tau(int q, int i) const {
+        return (long)q * sph + (long)i * (s_step > 0 ? s_step : 1);
+    }
+    long size() const {
+        return (long)n_dop * Mp * fine();
+    }
 };
 
 /// Which way the FINE-lag axis runs, relative to the coarse (hop) axis: +1 same sense, -1
@@ -137,7 +141,7 @@ struct AcquisitionSurface {
 /// Getting it wrong is nearly invisible: the coarse phase is only a SEED for refine_peak, so a
 /// refine with a full-hop span silently absorbs the error. It shows up when the span is tightened
 /// -- at CHORD's shipped refine_span 512 the wrong sign costs +8..+19 chips (measured 2026-08-07).
-constexpr int FINE_LAG_SIGN_PFB = -1;   ///< newest-first fold (both deployed banks)
+constexpr int FINE_LAG_SIGN_PFB = -1;     ///< newest-first fold (both deployed banks)
 constexpr int FINE_LAG_SIGN_NATURAL = +1; ///< oldest-first fold
 
 /**
@@ -165,13 +169,14 @@ constexpr int FINE_LAG_SIGN_NATURAL = +1; ///< oldest-first fold
  *                    hop equals the channel count. An r2c real-FFT bank consumes
  *                    2N real samples per hop, so pass 2*num_chan there.
  */
-AcquisitionResult
-channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch,
-                    const std::vector<std::vector<std::complex<float>>>& repl0_ch,
-                    const std::vector<int>& covering, const std::vector<double>& doppler_grid,
-                    double sample_rate, double chip_rate, int num_chan, long code_length,
-                    const std::vector<int>& chan_freq = {}, int samples_per_hop = 0,
-                    int fine_lag_sign = FINE_LAG_SIGN_PFB);
+AcquisitionResult channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch,
+                                      const std::vector<std::vector<std::complex<float>>>& repl0_ch,
+                                      const std::vector<int>& covering,
+                                      const std::vector<double>& doppler_grid, double sample_rate,
+                                      double chip_rate, int num_chan, long code_length,
+                                      const std::vector<int>& chan_freq = {},
+                                      int samples_per_hop = 0,
+                                      int fine_lag_sign = FINE_LAG_SIGN_PFB);
 
 /**
  * Add one data window's |D|^2 acquisition surface into @c surf (incoherent
@@ -263,13 +268,13 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<std::complex<floa
 /// @param sub_hops   N, hops per sub-window: ceil(code period in hops) = 196 at CHORD.
 /// @param n_sub      K, how many sub-windows to accumulate (100 = ~100 ms).
 /// @return surface dimensions; @c surf accumulates |D|^2 exactly as channelized_accumulate does.
-AcquisitionSurface
-ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
-                    const std::vector<std::vector<std::complex<float>>>& data_ch,
-                    const std::vector<int>& chan_ids, long long window_start_sample, int sub_hops,
-                    int n_sub, const std::vector<double>& doppler_grid, double sample_rate,
-                    std::vector<double>& surf, AcquireWorkspace& ws, int fine_step = 1,
-                    int n_threads = 1);
+AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
+                                       const std::vector<std::vector<std::complex<float>>>& data_ch,
+                                       const std::vector<int>& chan_ids,
+                                       long long window_start_sample, int sub_hops, int n_sub,
+                                       const std::vector<double>& doppler_grid, double sample_rate,
+                                       std::vector<double>& surf, AcquireWorkspace& ws,
+                                       int fine_step = 1, int n_threads = 1);
 
 /// Surface dimensions for a given covering set, WITHOUT computing a surface.
 ///
@@ -282,9 +287,7 @@ AcquisitionSurface surface_dims(const std::vector<int>& chan_freq, int samples_p
                                 int Mp, int fine_step);
 
 
-
-AcquisitionResult channelized_peak(const std::vector<double>& surf,
-                                   const AcquisitionSurface& dims,
+AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length,
                                    int fine_lag_sign = FINE_LAG_SIGN_PFB,
@@ -316,14 +319,12 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf,
 ///                 measured r matches sin(pi x u)/x to 3 decimals across delta 0.05-0.45).
 ///                 Pass -1 (the default) to keep the old behaviour. SELECTION statistics
 ///                 (#41 peak_interp, #97 pair-sum) are untouched either way.
-AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
-                                      const std::vector<double>& doppler_grid, double sample_rate,
-                                      double chip_rate, long code_length, double peak, double mean,
-                                      int best_d, int best_q, int best_i,
-                                      const std::vector<double>& dop_peak,
-                                      int fine_lag_sign = FINE_LAG_SIGN_PFB,
-                                      double dop_loc_m = -1.0, double dop_loc_p = -1.0,
-                                      double dop_u = 1.0);
+AcquisitionResult
+peak_from_reduction(const AcquisitionSurface& dims, const std::vector<double>& doppler_grid,
+                    double sample_rate, double chip_rate, long code_length, double peak,
+                    double mean, int best_d, int best_q, int best_i,
+                    const std::vector<double>& dop_peak, int fine_lag_sign = FINE_LAG_SIGN_PFB,
+                    double dop_loc_m = -1.0, double dop_loc_p = -1.0, double dop_u = 1.0);
 
 /// Peak-pick an ms-split surface. NOT channelized_peak: that one's tau -> code-phase mapping
 /// silently assumes two things the shipped geometry arranges and the ms-split cannot.

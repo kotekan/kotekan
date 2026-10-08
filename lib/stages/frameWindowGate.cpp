@@ -17,8 +17,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheus::Metrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(FrameWindowGate);
 
@@ -43,10 +43,10 @@ FrameWindowGate::FrameWindowGate(Config& config, const std::string& unique_name,
 
     _clock_buf = config.get_default<int>(unique_name, "clock_buf", 0);
     if (_clock_buf < 0 || (size_t)_clock_buf >= _in_bufs.size())
-        throw std::runtime_error(
-            fmt::format(fmt("FrameWindowGate[{:s}]: clock_buf {:d} out of range"), unique_name,
-                        _clock_buf));
-    const std::string src = config.get_default<std::string>(unique_name, "clock_source", "metadata");
+        throw std::runtime_error(fmt::format(
+            fmt("FrameWindowGate[{:s}]: clock_buf {:d} out of range"), unique_name, _clock_buf));
+    const std::string src =
+        config.get_default<std::string>(unique_name, "clock_source", "metadata");
     if (src == "metadata")
         _clock_from_frame = false;
     else if (src == "frame")
@@ -63,8 +63,8 @@ FrameWindowGate::FrameWindowGate(Config& config, const std::string& unique_name,
 
     auto& rest = kotekan::restServer::instance();
     rest.register_post_callback(
-        unique_name + "/arm", [this, unique_name](kotekan::connectionInstance& conn,
-                                                  nlohmann::json& json) {
+        unique_name + "/arm",
+        [this, unique_name](kotekan::connectionInstance& conn, nlohmann::json& json) {
             int64_t s, e;
             try {
                 s = json.at("start_seq").get<int64_t>();
@@ -89,8 +89,8 @@ FrameWindowGate::FrameWindowGate(Config& config, const std::string& unique_name,
                 _end_seq = e;
                 last = _last_seq;
             }
-            INFO("FrameWindowGate[{:s}]: armed [{:d}, {:d}) (last seen seq {:d})", unique_name,
-                 s, e, last);
+            INFO("FrameWindowGate[{:s}]: armed [{:d}, {:d}) (last seen seq {:d})", unique_name, s,
+                 e, last);
             nlohmann::json r;
             r["armed"] = true;
             r["start_seq"] = s;
@@ -165,14 +165,13 @@ void FrameWindowGate::main_thread() {
     const size_t n = _in_bufs.size();
     std::vector<int> in_id(n, 0), out_id(n, 0);
 
-    auto& passed_total = Metrics::instance().add_counter(
-        "kotekan_framewindowgate_passed_frames_total", unique_name);
+    auto& passed_total =
+        Metrics::instance().add_counter("kotekan_framewindowgate_passed_frames_total", unique_name);
     auto& dropped_total = Metrics::instance().add_counter(
         "kotekan_framewindowgate_dropped_frames_total", unique_name);
     auto& window_dropped_total = Metrics::instance().add_counter(
         "kotekan_framewindowgate_window_dropped_frames_total", unique_name);
-    auto& armed_gauge =
-        Metrics::instance().add_gauge("kotekan_framewindowgate_armed", unique_name);
+    auto& armed_gauge = Metrics::instance().add_gauge("kotekan_framewindowgate_armed", unique_name);
 
     bool in_window_prev = false;
     int64_t prev_seq = -1;
@@ -210,8 +209,8 @@ void FrameWindowGate::main_thread() {
         armed_gauge.set(in_window ? 1 : 0);
 
         if (in_window && !in_window_prev)
-            INFO("FrameWindowGate[{:s}]: window OPEN at seq {:d} (armed [{:d}, {:d}))",
-                 unique_name, seq, start, end);
+            INFO("FrameWindowGate[{:s}]: window OPEN at seq {:d} (armed [{:d}, {:d}))", unique_name,
+                 seq, start, end);
         if (past_end || (!in_window && in_window_prev)) {
             uint64_t p, dw;
             {

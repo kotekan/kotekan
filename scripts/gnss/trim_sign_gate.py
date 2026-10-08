@@ -40,8 +40,11 @@ ROW = re.compile(r"^\s+0\s+\S+\s+\S+\s+(\S+)\s+\S+\s+\|\s+(\S+)\s+(\S+)\s+(\S+)"
 
 def run(exe, trim, extra):
     """(err_chips, q, disc) for one commanded trim."""
-    r = subprocess.run([exe, "--skip-search", "--nrec", "1", "--trim", "%.6f" % trim] + extra,
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [exe, "--skip-search", "--nrec", "1", "--trim", "%.6f" % trim] + extra,
+        capture_output=True,
+        text=True,
+    )
     if r.returncode != 0:
         raise SystemExit("e2e failed (%d): %s" % (r.returncode, r.stderr.strip()[:400]))
     for line in r.stdout.splitlines():
@@ -52,13 +55,18 @@ def run(exe, trim, extra):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--exe", default=os.path.join(HERE, "e2e"))
-    ap.add_argument("--span", type=float, default=0.40, help="sweep half-width about the null")
+    ap.add_argument(
+        "--span", type=float, default=0.40, help="sweep half-width about the null"
+    )
     ap.add_argument("--step", type=float, default=0.10)
     ap.add_argument("-v", "--verbose", action="store_true")
-    ap.add_argument("extra", nargs="*", help="extra e2e flags (e.g. --signal GAL_E5A_Q_CS)")
+    ap.add_argument(
+        "extra", nargs="*", help="extra e2e flags (e.g. --signal GAL_E5A_Q_CS)"
+    )
     a = ap.parse_args()
     if not os.path.exists(a.exe):
         raise SystemExit("no %s -- build it with ./build_tool.sh e2e" % a.exe)
@@ -81,37 +89,51 @@ def main():
 
     # ---- THE VERDICT ------------------------------------------------------------------
     bad = []
-    inside = [r for r in rows if abs(r[1]) < 0.45]   # the pull-in region; outside it the
-    if len(inside) < 5:                              # discriminator has no gradient at all
-        bad.append("only %d samples inside the pull-in region -- the sweep is not testing the "
-                   "discriminator" % len(inside))
+    inside = [r for r in rows if abs(r[1]) < 0.45]  # the pull-in region; outside it the
+    if len(inside) < 5:  # discriminator has no gradient at all
+        bad.append(
+            "only %d samples inside the pull-in region -- the sweep is not testing the "
+            "discriminator" % len(inside)
+        )
     for t, e, q, d in inside:
         if abs(e) < 0.02:
-            continue                                  # at the null both signs are ~0
+            continue  # at the null both signs are ~0
         tau = -d / 4.0
         if tau * e >= 0.0:
-            bad.append("trim %+.3f: err %+.4f and tau %+.4f have the SAME sign -- POSITIVE "
-                       "feedback, the loop diverges here" % (t, e, tau))
+            bad.append(
+                "trim %+.3f: err %+.4f and tau %+.4f have the SAME sign -- POSITIVE "
+                "feedback, the loop diverges here" % (t, e, tau)
+            )
     # disc must actually cross zero, and q must peak at the null: a discriminator that is
     # merely one-signed would pass a sign test while carrying no information.
-    if not (min(d for _t, _e, _q, d in inside) < 0.0 < max(d for _t, _e, _q, d in inside)):
-        bad.append("disc never changes sign across the null -- it is not a discriminator here")
+    if not (
+        min(d for _t, _e, _q, d in inside) < 0.0 < max(d for _t, _e, _q, d in inside)
+    ):
+        bad.append(
+            "disc never changes sign across the null -- it is not a discriminator here"
+        )
     qn = max(rows, key=lambda r: r[2])
     if abs(qn[1]) > a.step:
-        bad.append("q peaks at err %+.4f, not at the null -- the prompt tap and the "
-                   "discriminator disagree about where the peak is" % qn[1])
+        bad.append(
+            "q peaks at err %+.4f, not at the null -- the prompt tap and the "
+            "discriminator disagree about where the peak is" % qn[1]
+        )
 
     if bad:
         print("\nFAIL -- the actuator's sign is not verified:")
         for b in bad:
             print("  " + b)
         return 1
-    slope = [( -d / 4.0) / e for _t, e, _q, d in inside if abs(e) > 0.05]
-    print("\nPASS -- negative feedback confirmed over %d samples in the pull-in region."
-          % len(inside))
+    slope = [(-d / 4.0) / e for _t, e, _q, d in inside if abs(e) > 0.05]
+    print(
+        "\nPASS -- negative feedback confirmed over %d samples in the pull-in region."
+        % len(inside)
+    )
     print("  disc crosses zero at the null; q peaks there (%.3f)." % qn[2])
-    print("  tau/err = %.2f .. %.2f (must be negative; ~-1 means tau estimates the error)"
-          % (min(slope), max(slope)))
+    print(
+        "  tau/err = %.2f .. %.2f (must be negative; ~-1 means tau estimates the error)"
+        % (min(slope), max(slope))
+    )
     return 0
 
 

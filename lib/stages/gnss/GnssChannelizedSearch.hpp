@@ -14,7 +14,7 @@
 #include "bufferContainer.hpp"        // for bufferContainer
 #include "gnssChannelizedAcquire.hpp" // for AcquireWorkspace
 #include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank
-#include "gnssSeedTransport.hpp"     // for gnss::CudaRefineGroup
+#include "gnssSeedTransport.hpp"      // for gnss::CudaRefineGroup
 #include "restServer.hpp"             // for connectionInstance
 
 #include <complex>            // for complex
@@ -101,13 +101,14 @@ private:
     /// would change the code under a surface that is half built.
     void apply_prn_swaps();
 
-    std::mutex _prn_mtx;             ///< guards @c _prns and the staging below
+    std::mutex _prn_mtx; ///< guards @c _prns and the staging below
     std::vector<int> _pending_prns;
     bool _prn_pending = false;
     uint64_t _prn_swaps = 0;
     std::string _prn_last_err;
 
-    void set_doppler_hints_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
+    void set_doppler_hints_callback(kotekan::connectionInstance& conn,
+                                    nlohmann::json& json_request);
     void set_nh_hint_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
     struct Detection {
@@ -156,9 +157,9 @@ private:
     int _chan_offset;
     int _n_chan;
     std::vector<int> _chan_ids; ///< global index per local channel; empty = contiguous
-    int _hops_per_record; ///< hops per integration window
-    int _acquire_windows; ///< windows accumulated per snapshot
-    int _hold_snapshots;  ///< keep a detection valid this many non-detecting snapshots
+    int _hops_per_record;       ///< hops per integration window
+    int _acquire_windows;       ///< windows accumulated per snapshot
+    int _hold_snapshots;        ///< keep a detection valid this many non-detecting snapshots
     double _sample_rate;
     double _doppler_margin_hz;
     double _acquire_snr;
@@ -170,8 +171,8 @@ private:
 
     /// Per-PRN almanac Doppler hint from the broker (POST set_doppler_hints): when valid, the
     /// search scans only doppler +- margin for that PRN instead of the blind grid. `t_recv` is a
-    /// steady-clock stamp (s) at receipt -> a hint the broker stops refreshing (the sat set) EXPIRES
-    /// after _hint_ttl_s, so with _require_hint the PRN drops out of the active scan set.
+    /// steady-clock stamp (s) at receipt -> a hint the broker stops refreshing (the sat set)
+    /// EXPIRES after _hint_ttl_s, so with _require_hint the PRN drops out of the active scan set.
     struct DopHint {
         bool valid = false;
         double doppler = 0.0;
@@ -218,15 +219,16 @@ private:
     /// MEASURED ON SKY 2026-08-16 (112 transitions, 241 s, gps_l5, all dhop = 8192):
     ///     d = best_nh - pred:   0: 37.5%   -1: 23.2%   |d| == span: 20.5%   |d| > span: 16.1%
     /// |d| > span is IMPOSSIBLE with a fresh hint, so ~16% of passes ran the blind scan. The
-    /// scatter tracks SNR, not the counter -- see task #41 and 31896a862:docs/CHORD_CONTROL_AUDIT.md §3.
+    /// scatter tracks SNR, not the counter -- see task #41 and
+    /// 31896a862:docs/CHORD_CONTROL_AUDIT.md §3.
     ///
     /// Accuracy also degrades with revisit. An entirely unmodelled 4 kHz Doppler slips the period
     /// count by 0.041 periods over 12 s -- but 4.3 periods over the 1276 s revisit this fleet had
     /// before 2026-08-04, where the hint would have been worse than useless.
     struct NhHint {
         bool valid = false;
-        int nh = 0;             ///< alignment index measured at ref_hop
-        long long ref_hop = 0;  ///< absolute hop it was measured at
+        int nh = 0;            ///< alignment index measured at ref_hop
+        long long ref_hop = 0; ///< absolute hop it was measured at
         double t_recv = 0.0;
     };
     std::vector<NhHint> _nh_hints;      ///< live, updated by REST
@@ -256,14 +258,15 @@ private:
     /// true peak. The served snr stays the chosen cell's raw peak/mean.
     bool _acq_pairsum_select = false;
     std::mutex _hint_mtx;
-    /// require_hint: scan ONLY PRNs with a fresh broker hint (visible sats), SKIP the rest (no blind
-    /// grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap) when
-    /// `prns` lists the whole constellation. hint_ttl_s: a hint older than this counts as absent.
+    /// require_hint: scan ONLY PRNs with a fresh broker hint (visible sats), SKIP the rest (no
+    /// blind grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap)
+    /// when `prns` lists the whole constellation. hint_ttl_s: a hint older than this counts as
+    /// absent.
     bool _require_hint = false;
-    int _acquire_threads = 1; ///< parallelism of the aggregate (see channelized_accumulate)
-    int _acquire_fine_step = 1; ///< fine-lag decimation of the surface (see AcquisitionSurface)
-    int _prns_per_pass = 0;     ///< eligible PRNs searched per snapshot (0 = all, as before)
-    int _prn_cursor = 0;        ///< round-robin start into the ELIGIBLE list, advanced per pass
+    int _acquire_threads = 1;     ///< parallelism of the aggregate (see channelized_accumulate)
+    int _acquire_fine_step = 1;   ///< fine-lag decimation of the surface (see AcquisitionSurface)
+    int _prns_per_pass = 0;       ///< eligible PRNs searched per snapshot (0 = all, as before)
+    int _prn_cursor = 0;          ///< round-robin start into the ELIGIBLE list, advanced per pass
     double _hint_dop_sign = -1.0; ///< physical->internal Doppler map (see the hint window note)
     long _last_surface_cells = 0; ///< cells in the last surface (for the noise-ceiling log)
     long _empty_hint_passes = 0;  ///< require_hint passes that scanned nothing (rate-limited WARN)
@@ -281,7 +284,7 @@ private:
     /// gives cold-start reacquisition at a bounded, predictable duty cycle, which is the whole
     /// point of moving to the GPU: leave headroom for other constellations rather than spend it.
     int _blind_prns_per_pass = 0;
-    int _blind_cursor = 0; ///< rotates through the unhinted set, advanced once per pass
+    int _blind_cursor = 0;    ///< rotates through the unhinted set, advanced once per pass
     long _grid_bin_warns = 0; ///< times a non-bin-aligned Doppler grid was seen (#128)
 
 #ifdef GNSS_CUDA
@@ -348,7 +351,7 @@ private:
     std::vector<long long> _repl_k0; ///< [hop] period index of that hop's first chip
     std::vector<std::vector<std::complex<float>>> _repl_scratch; ///< materialised R_nh, reused
     std::vector<float> _sgn0, _sgn1; ///< per-hop overlay sign pair for the current alignment
-    std::vector<int> _repl0_cover; ///< the covering set _repl0 was built for (rebuild key)
+    std::vector<int> _repl0_cover;   ///< the covering set _repl0 was built for (rebuild key)
     /// Search every secondary-code (Neuman-Hofman) alignment and keep the best peak. Costs
     /// secondary_length() acquires per PRN and buys back the coherent loss that an
     /// overlay-blind replica suffers over a multi-period window -- 12.7 dB rms on L5 Q5,

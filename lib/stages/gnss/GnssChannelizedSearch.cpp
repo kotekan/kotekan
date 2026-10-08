@@ -1,34 +1,37 @@
 #include "GnssChannelizedSearch.hpp"
 
-#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
 #include "GnssChanMetadata.hpp"        // for get_gnss_chan_metadata, metadata_is_gnss_chan
-#include "clockProfile.hpp"           // for resolve_clock_profile, clock_doppler_half_range_hz
-#include "gnssSeedTransport.hpp"       // for detection_phase
+#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
+#include "clockProfile.hpp"            // for resolve_clock_profile, clock_doppler_half_range_hz
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
+#include "gnssSeedTransport.hpp"       // for detection_phase
 #include "gnssSignal.hpp"              // for SignalDescriptor, signal_by_name
 #include "kotekanLogging.hpp"          // for INFO, FATAL_ERROR
 #include "pfbPrototype.hpp"            // for window_from_string
 #ifdef GNSS_CUDA
-#include "GnssCudaAcquire.hpp" // device-resident acquire (docs/gnss_gpu_search.md A2)
+#include "GnssCudaAcquire.hpp"  // device-resident acquire (docs/gnss_gpu_search.md A2)
 #include "GnssCudaDespread.hpp" // A5: the refine reuses the tracker's despread driver
 #endif
+
+#include "json.hpp" // for json
 
 #include <algorithm>  // for min, max
 #include <chrono>     // for steady_clock (hint TTL)
 #include <cmath>      // for fabs, fmod, norm
 #include <cstdio>     // for fopen/fread/fwrite (the replica disk cache)
-#include <map>        // for the #97 label-consensus vote
 #include <cstring>    // for memcpy
 #include <functional> // for bind
-#include "json.hpp"   // for json
+#include <map>        // for the #97 label-consensus vote
 
-// Monotonic seconds, for the Doppler-hint time-to-live (a hint the broker stops refreshing expires).
+// Monotonic seconds, for the Doppler-hint time-to-live (a hint the broker stops refreshing
+// expires).
 static inline double steady_s() {
-    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
 }
 
-using kotekan::Config;
 using kotekan::bufferContainer;
+using kotekan::Config;
 using kotekan::Stage;
 using cf = std::complex<float>;
 
@@ -99,8 +102,8 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // require_hint: scan only broker-hinted (visible) PRNs, skip the rest -> `prns` can list the
     // whole constellation and the active-scan set follows the sky (mid-run PRN swap) at a cost that
     // tracks the visible count, never blind-gridding a below-horizon sat. hint_ttl_s expires a hint
-    // the broker stopped refreshing (a set sat) so it drops out. Off by default (blind-grid legacy).
-    // Threads for the aggregate half of the acquire (parallel over Doppler bins). 1 -- the
+    // the broker stopped refreshing (a set sat) so it drops out. Off by default (blind-grid
+    // legacy). Threads for the aggregate half of the acquire (parallel over Doppler bins). 1 -- the
     // exact serial path -- unless configured: the airspy chains are sized for one core, while
     // the aggregator's 27-channel surface is ~10 s/window serial and owns several cores.
     _acquire_threads = config.get_default<int>(unique_name, "acquire_threads", 1);
@@ -129,7 +132,8 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // Bounded cold-start: with require_hint false, EVERY unhinted PRN would otherwise get a full
     // blind grid (~30x a hinted one), so a sky full of below-horizon satellites dominates the
     // pass. 0 keeps the historical behaviour exactly.
-    _blind_prns_per_pass = std::max(0, config.get_default<int>(unique_name, "blind_prns_per_pass", 0));
+    _blind_prns_per_pass =
+        std::max(0, config.get_default<int>(unique_name, "blind_prns_per_pass", 0));
 #ifdef GNSS_CUDA
     _cuda_acq_wanted = config.get_default<bool>(unique_name, "use_cuda_acquire", false);
     // Defaults to following use_cuda_acquire: with the acquire on the GPU the refine is 98% of
@@ -147,18 +151,22 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // Clock-profile Doppler sizing: the top-level /clock_profile block (shared by every stage) sets
     // the receiver clock quality; when present, the carrier search extent is DERIVED from its
     // frequency-accuracy bound + the band's max sky Doppler, so one knob sizes every band and clock
-    // (airspy TCXO ... GPSDO ... maser). Absent -> legacy explicit doppler_min/max. See clockProfile.hpp.
+    // (airspy TCXO ... GPSDO ... maser). Absent -> legacy explicit doppler_min/max. See
+    // clockProfile.hpp.
     const std::string clk_name =
         config.get_default<std::string>("/clock_profile", "name", std::string(""));
-    const double clk_acc = config.get_default<double>("/clock_profile", "accuracy_ppm", std::nan(""));
-    const double clk_coh = config.get_default<double>("/clock_profile", "coherence_s", std::nan(""));
+    const double clk_acc =
+        config.get_default<double>("/clock_profile", "accuracy_ppm", std::nan(""));
+    const double clk_coh =
+        config.get_default<double>("/clock_profile", "coherence_s", std::nan(""));
     if (!clk_name.empty() || !std::isnan(clk_acc)) {
         const gnss::ClockProfile cp =
             gnss::resolve_clock_profile(clk_name.empty() ? "auto" : clk_name, clk_acc, clk_coh);
         const double half = gnss::clock_doppler_half_range_hz(sig->carrier_hz, cp.accuracy_ppm);
         dmin = -half;
         dmax = half;
-        INFO("GnssChannelizedSearch: clock_profile '{:s}' ({:.3g} ppm) -> Doppler search +-{:.0f} Hz",
+        INFO("GnssChannelizedSearch: clock_profile '{:s}' ({:.3g} ppm) -> Doppler search +-{:.0f} "
+             "Hz",
              clk_name.empty() ? "auto" : clk_name, cp.accuracy_ppm, half);
     }
     for (double f = dmin; f <= dmax + 1e-6; f += _doppler_step)
@@ -257,10 +265,9 @@ void GnssChannelizedSearch::search_snapshot() {
     const int Mp = _replica->repl_period_hops();
     const int hpr = _hops_per_record;
     const long long anchor = (long long)Mp * _fft_len; // warm-up reads periodic code
-    const double dmax = _doppler_grid.empty()
-                            ? 0.0
-                            : std::max(std::fabs(_doppler_grid.front()),
-                                       std::fabs(_doppler_grid.back()));
+    const double dmax = _doppler_grid.empty() ? 0.0
+                                              : std::max(std::fabs(_doppler_grid.front()),
+                                                         std::fabs(_doppler_grid.back()));
     const int nwin = std::min(_acquire_windows, (int)(_snap_hops / (size_t)hpr));
 
     // Covering channels (global) for this carrier that fall in this subband.
@@ -291,7 +298,8 @@ void GnssChannelizedSearch::search_snapshot() {
              _replica->f_offset() / (_sample_rate / _fft_len));
     else if ((int)cov_local.size() != _last_cov_n || cov_global.front() != _last_cov_first
              || cov_global.back() != _last_cov_last) { // once per SET, not per snapshot
-        INFO("GnssChannelizedSearch[{:s}]: {:d} covering channels in this subband (global {:d}..{:d})",
+        INFO("GnssChannelizedSearch[{:s}]: {:d} covering channels in this subband (global "
+             "{:d}..{:d})",
              unique_name, (int)cov_local.size(), cov_global.front(), cov_global.back());
         _last_cov_n = (int)cov_local.size();
         _last_cov_first = cov_global.front();
@@ -337,15 +345,21 @@ void GnssChannelizedSearch::search_snapshot() {
         uint64_t ckey = 1469598103934665603ull;
         const auto mix = [&ckey](const void* d, size_t n) {
             const auto* b = static_cast<const unsigned char*>(d);
-            for (size_t i = 0; i < n; ++i) { ckey ^= b[i]; ckey *= 1099511628211ull; }
+            for (size_t i = 0; i < n; ++i) {
+                ckey ^= b[i];
+                ckey *= 1099511628211ull;
+            }
         };
         {
             const uint32_t ver = CACHE_VERSION;
             const long cl = _replica->code_length(), ecl = _replica->eff_code_length();
             const double cr = _replica->chip_rate_hz();
             const int sl = _replica->secondary_length();
-            mix(&ver, sizeof ver); mix(&cl, sizeof cl); mix(&ecl, sizeof ecl);
-            mix(&cr, sizeof cr);   mix(&sl, sizeof sl);
+            mix(&ver, sizeof ver);
+            mix(&cl, sizeof cl);
+            mix(&ecl, sizeof ecl);
+            mix(&cr, sizeof cr);
+            mix(&sl, sizeof sl);
             mix(&_sample_rate, sizeof _sample_rate);
             mix(&_fft_len, sizeof _fft_len);
             mix(&Mp, sizeof Mp);
@@ -356,8 +370,7 @@ void GnssChannelizedSearch::search_snapshot() {
             mix(cov_local.data(), cov_local.size() * sizeof(int));
         }
         char cpath[128];
-        std::snprintf(cpath, sizeof cpath, "/tmp/gnss_repl_%016llx.bin",
-                      (unsigned long long)ckey);
+        std::snprintf(cpath, sizeof cpath, "/tmp/gnss_repl_%016llx.bin", (unsigned long long)ckey);
         const size_t per_bytes = (size_t)Mp * sizeof(cf);
         const size_t want_bytes = 2u * (size_t)n_prn * cov_local.size() * per_bytes;
         // EVERY local channel index must be inside the row before anything indexes by it. The
@@ -399,32 +412,33 @@ void GnssChannelizedSearch::search_snapshot() {
             }
         }
         if (!from_cache) {
-        _repl_head.assign((size_t)n_prn, {});
-        _repl_tail.assign((size_t)n_prn, {});
-        for (int p = 0; p < n_prn; ++p) {
-            // A: no overlay -> head + tail.   B: (-1)^period -> (-1)^k0 * (head - tail).
-            const auto A = _replica->channels_hoprate(p, anchor, 0.0, 0.0, Mp, cov_global, {}, -1);
-            const auto B = _replica->channels_hoprate(
-                p, anchor, 0.0, 0.0, Mp, cov_global,
-                [Lc](long long chip) {
-                    const long long k = (long long)std::floor((double)chip / (double)Lc);
-                    return ((k % 2 + 2) % 2 == 0) ? 1.0f : -1.0f;
-                },
-                -1);
-            _repl_head[(size_t)p].assign((size_t)_n_chan, {});
-            _repl_tail[(size_t)p].assign((size_t)_n_chan, {});
-            for (size_t i = 0; i < cov_local.size(); ++i) {
-                const size_t lc = (size_t)cov_local[i];
-                _repl_head[(size_t)p][lc].assign((size_t)Mp, cf(0.0f, 0.0f));
-                _repl_tail[(size_t)p][lc].assign((size_t)Mp, cf(0.0f, 0.0f));
-                for (int m = 0; m < Mp; ++m) {
-                    const float sgn = ((_repl_k0[(size_t)m] % 2 + 2) % 2 == 0) ? 1.0f : -1.0f;
-                    const cf d = B[i][(size_t)m] * sgn; // = head - tail
-                    _repl_head[(size_t)p][lc][(size_t)m] = 0.5f * (A[i][(size_t)m] + d);
-                    _repl_tail[(size_t)p][lc][(size_t)m] = 0.5f * (A[i][(size_t)m] - d);
+            _repl_head.assign((size_t)n_prn, {});
+            _repl_tail.assign((size_t)n_prn, {});
+            for (int p = 0; p < n_prn; ++p) {
+                // A: no overlay -> head + tail.   B: (-1)^period -> (-1)^k0 * (head - tail).
+                const auto A =
+                    _replica->channels_hoprate(p, anchor, 0.0, 0.0, Mp, cov_global, {}, -1);
+                const auto B = _replica->channels_hoprate(
+                    p, anchor, 0.0, 0.0, Mp, cov_global,
+                    [Lc](long long chip) {
+                        const long long k = (long long)std::floor((double)chip / (double)Lc);
+                        return ((k % 2 + 2) % 2 == 0) ? 1.0f : -1.0f;
+                    },
+                    -1);
+                _repl_head[(size_t)p].assign((size_t)_n_chan, {});
+                _repl_tail[(size_t)p].assign((size_t)_n_chan, {});
+                for (size_t i = 0; i < cov_local.size(); ++i) {
+                    const size_t lc = (size_t)cov_local[i];
+                    _repl_head[(size_t)p][lc].assign((size_t)Mp, cf(0.0f, 0.0f));
+                    _repl_tail[(size_t)p][lc].assign((size_t)Mp, cf(0.0f, 0.0f));
+                    for (int m = 0; m < Mp; ++m) {
+                        const float sgn = ((_repl_k0[(size_t)m] % 2 + 2) % 2 == 0) ? 1.0f : -1.0f;
+                        const cf d = B[i][(size_t)m] * sgn; // = head - tail
+                        _repl_head[(size_t)p][lc][(size_t)m] = 0.5f * (A[i][(size_t)m] + d);
+                        _repl_tail[(size_t)p][lc][(size_t)m] = 0.5f * (A[i][(size_t)m] - d);
+                    }
                 }
             }
-        }
         }
         if (!from_cache) { // persist for every future restart; a partial file simply misses above
             if (FILE* fp = std::fopen(cpath, "wb")) {
@@ -457,9 +471,8 @@ void GnssChannelizedSearch::search_snapshot() {
              unique_name, _refine_span, _refine_step, evals, (int)cov_local.size(),
              1e-6 * cov_local.size() * _sample_rate / _fft_len, res_samp,
              res_samp * _replica->chip_rate_hz() / _sample_rate,
-             (double)_refine_step < res_samp / 8.0
-                 ? " -- OVERSAMPLED, consider raising refine_step"
-                 : "");
+             (double)_refine_step < res_samp / 8.0 ? " -- OVERSAMPLED, consider raising refine_step"
+                                                   : "");
 
 #ifdef GNSS_CUDA
         // Build the device engine once the covering set and Mp are known. Anything it cannot
@@ -496,9 +509,8 @@ void GnssChannelizedSearch::search_snapshot() {
                     const size_t ng = std::min((size_t)GMAX, cov_local.size() - i0);
                     std::vector<int> gl(cov_local.begin() + i0, cov_local.begin() + i0 + ng);
                     std::vector<int> gg(cov_global.begin() + i0, cov_global.begin() + i0 + ng);
-                    _cuda_ref.emplace_back(
-                        new GnssCudaDespread(*_replica, n_prn, gg, rh, _sample_rate,
-                                             _replica->f_offset()));
+                    _cuda_ref.emplace_back(new GnssCudaDespread(
+                        *_replica, n_prn, gg, rh, _sample_rate, _replica->f_offset()));
                     gnss::CudaRefineGroup grp;
                     grp.gpu = _cuda_ref.back().get();
                     grp.local = gl;
@@ -548,8 +560,8 @@ void GnssChannelizedSearch::search_snapshot() {
         {
             std::lock_guard<std::mutex> lk(_hint_mtx);
             for (int p = 0; p < n_prn; ++p) {
-                const DopHint& hh =
-                    _snap_hints.size() == _prns.size() ? _snap_hints[(size_t)p] : _dop_hints[(size_t)p];
+                const DopHint& hh = _snap_hints.size() == _prns.size() ? _snap_hints[(size_t)p]
+                                                                       : _dop_hints[(size_t)p];
                 const bool hinted =
                     hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s);
                 if (!hinted)
@@ -572,8 +584,8 @@ void GnssChannelizedSearch::search_snapshot() {
         {
             std::lock_guard<std::mutex> lk(_hint_mtx);
             for (int p = 0; p < n_prn; ++p) {
-                const DopHint& hh =
-                    _snap_hints.size() == _prns.size() ? _snap_hints[(size_t)p] : _dop_hints[(size_t)p];
+                const DopHint& hh = _snap_hints.size() == _prns.size() ? _snap_hints[(size_t)p]
+                                                                       : _dop_hints[(size_t)p];
                 const bool hinted =
                     hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s);
                 if (!_require_hint || hinted)
@@ -736,8 +748,8 @@ void GnssChannelizedSearch::search_snapshot() {
         std::vector<int> nh_scan;
         {
             std::lock_guard<std::mutex> lk(_hint_mtx);
-            const NhHint& nhh = (_nh_snap_hints.size() == _prns.size())
-                                    ? _nh_snap_hints[(size_t)p] : NhHint{};
+            const NhHint& nhh =
+                (_nh_snap_hints.size() == _prns.size()) ? _nh_snap_hints[(size_t)p] : NhHint{};
             const bool fresh = nhh.valid && _n_nh > 1
                                && (_hint_ttl_s <= 0.0 || _snap_taken_s - nhh.t_recv < _hint_ttl_s);
             if (fresh) {
@@ -745,15 +757,15 @@ void GnssChannelizedSearch::search_snapshot() {
                 const double per_hops = (_replica->code_length() / _replica->chip_rate_hz())
                                         * _sample_rate / (double)_fft_len;
                 const long long dperiods =
-                    (per_hops > 0.0)
-                        ? (long long)std::llround((double)(_snap_start_hop - nhh.ref_hop) / per_hops)
-                        : 0;
+                    (per_hops > 0.0) ? (long long)std::llround(
+                                           (double)(_snap_start_hop - nhh.ref_hop) / per_hops)
+                                     : 0;
                 const int pred = (int)(((nhh.nh + dperiods) % _n_nh + _n_nh) % _n_nh);
                 for (int d = -_nh_hint_span; d <= _nh_hint_span; ++d)
                     nh_scan.push_back(((pred + d) % _n_nh + _n_nh) % _n_nh);
             }
         }
-        if (nh_scan.empty())                       // no fresh hint -> the full blind scan
+        if (nh_scan.empty()) // no fresh hint -> the full blind scan
             for (int i = 0; i < _n_nh; ++i)
                 nh_scan.push_back(i);
         for (int nh : nh_scan) {
@@ -783,7 +795,8 @@ void GnssChannelizedSearch::search_snapshot() {
                     outv[m] = hd[m] * a0[m] + tl[m] * a1[m];
             }
             const std::vector<std::vector<cf>>& repl0 = _repl_scratch;
-            if (prof) t_mat += steady_s() - _t_m0;
+            if (prof)
+                t_mat += steady_s() - _t_m0;
             const double _t_a0 = prof ? steady_s() : 0.0;
             gnss::AcquisitionResult ai{};
 #ifdef GNSS_CUDA
@@ -803,11 +816,13 @@ void GnssChannelizedSearch::search_snapshot() {
                     _cuda_acq->accumulate(_sgn0.data(), _sgn1.data());
                 }
                 _last_surface_cells = dims.size();
-                if (prof) t_acq += steady_s() - _t_a0;
+                if (prof)
+                    t_acq += steady_s() - _t_a0;
                 const double _t_p0 = prof ? steady_s() : 0.0;
                 ai = _cuda_acq->peak_result(dims, grid, _sample_rate, _replica->chip_rate_hz(),
                                             _replica->code_length(), _acq_pairsum_select);
-                if (prof) t_acq += steady_s() - _t_p0;
+                if (prof)
+                    t_acq += steady_s() - _t_p0;
             } else
 #endif
             {
@@ -816,18 +831,19 @@ void GnssChannelizedSearch::search_snapshot() {
                     for (int lc = 0; lc < _n_chan; ++lc)
                         for (int m = 0; m < hpr; ++m)
                             dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
-                    dims = gnss::channelized_accumulate(dch, repl0, cov_local, grid, _sample_rate,
-                                                        _n_chan, surf, _acq_ws, cov_global,
-                                                        _fft_len, _acquire_threads,
-                                                        _acquire_fine_step);
+                    dims = gnss::channelized_accumulate(
+                        dch, repl0, cov_local, grid, _sample_rate, _n_chan, surf, _acq_ws,
+                        cov_global, _fft_len, _acquire_threads, _acquire_fine_step);
                 }
                 _last_surface_cells = dims.size();
-                if (prof) t_acq += steady_s() - _t_a0;
+                if (prof)
+                    t_acq += steady_s() - _t_a0;
                 const double _t_p0 = prof ? steady_s() : 0.0;
                 ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
                                             _replica->chip_rate_hz(), _replica->code_length(),
                                             gnss::FINE_LAG_SIGN_PFB, _acq_pairsum_select, hpr);
-                if (prof) t_acq += steady_s() - _t_p0;
+                if (prof)
+                    t_acq += steady_s() - _t_p0;
             }
             // #41: ALIGNMENTS ARE COMPARED ON THE SCALLOPING-CORRECTED PEAK, never the raw
             // grid sample. The overlay decision is a GLRT with Doppler as a continuous
@@ -859,8 +875,8 @@ void GnssChannelizedSearch::search_snapshot() {
         if (detected && a.snr >= 100.0 && !_nh_prof.empty()) {
             std::string prof_s;
             for (const auto& e : _nh_prof)
-                prof_s += fmt::format(" {:d}:{:.0f}@{:d}d{:+.0f}", e.nh, e.snr,
-                                      (long long)e.tau, e.dop);
+                prof_s +=
+                    fmt::format(" {:d}:{:.0f}@{:d}d{:+.0f}", e.nh, e.snr, (long long)e.tau, e.dop);
             INFO("GnssChannelizedSearch[{:s}]: PRN {:d} NHPROF snr {:.0f} best_nh {:d} "
                  "|{:s}",
                  unique_name, _prns[p], a.snr, best_nh, prof_s);
@@ -880,8 +896,7 @@ void GnssChannelizedSearch::search_snapshot() {
         // The vote moves ONLY the label: tau and the refined fine phase are the winner's,
         // untouched. Ties keep the winner's label. Skipped below 3 voters (a 1-1 split
         // plus the winner is not a consensus).
-        if (_nh_label_consensus && detected && _n_nh > 1 && best_nh >= 0
-            && _nh_prof.size() >= 3) {
+        if (_nh_label_consensus && detected && _n_nh > 1 && best_nh >= 0 && _nh_prof.size() >= 3) {
             const double per_samp =
                 (_replica->code_length() / _replica->chip_rate_hz()) * _sample_rate;
             const int span = (int)std::llround((double)Mp * (double)_fft_len / per_samp);
@@ -946,21 +961,22 @@ void GnssChannelizedSearch::search_snapshot() {
             } else
 #endif
             {
-                best_cp = gnss::refine_peak(*_replica, p, d, cov_global, a.code_phase_chips, dims,
-                                            (_n_nh > 1) ? best_nh : -1, dop, anchor, rh,
-                                            _sample_rate, _refine_span, _refine_step,
-                                            _acquire_threads);
+                best_cp =
+                    gnss::refine_peak(*_replica, p, d, cov_global, a.code_phase_chips, dims,
+                                      (_n_nh > 1) ? best_nh : -1, dop, anchor, rh, _sample_rate,
+                                      _refine_span, _refine_step, _acquire_threads);
             }
-            if (prof) t_ref += steady_s() - _t_r0;
+            if (prof)
+                t_ref += steady_s() - _t_r0;
             // Peak -> reported phases. The arithmetic lives in gnssSeedTransport so the
             // offline end-to-end harness (scripts/e2e.cpp) drives THIS code rather than a
             // second copy of it -- see that header for why.
-            const gnss::DetectionPhase dp = gnss::detection_phase(
-                *_replica, best_cp, best_nh, _n_nh, dop, _snap_start_hop, anchor, _sample_rate,
-                a.peak_tau_samples);
+            const gnss::DetectionPhase dp =
+                gnss::detection_phase(*_replica, best_cp, best_nh, _n_nh, dop, _snap_start_hop,
+                                      anchor, _sample_rate, a.peak_tau_samples);
             det.doppler_hz = dop;
             det.code_phase_chips = dp.cp0;
-            det.ref_hop = _snap_start_hop; // capture-time anchor for cp0 (for the slope fit)
+            det.ref_hop = _snap_start_hop;       // capture-time anchor for cp0 (for the slope fit)
             det.nh = (_n_nh > 1) ? best_nh : -1; // MEASURED overlay alignment, not reconstructed
             det.code_phase_long_chips = dp.cp_long;
             det.code_phase_at_ref_chips = dp.cp_at_ref;
@@ -1102,8 +1118,7 @@ void GnssChannelizedSearch::main_thread() {
     // LIVE PRN MEMBERSHIP. The broker pushes the SAME map here as to the producer, so the
     // search hunts the satellites the tracker can actually hold.
     kotekan::restServer::instance().register_get_callback(
-        unique_name + "/get_prns",
-        std::bind(&GnssChannelizedSearch::get_prns_callback, this, _1));
+        unique_name + "/get_prns", std::bind(&GnssChannelizedSearch::get_prns_callback, this, _1));
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_prns",
         std::bind(&GnssChannelizedSearch::set_prns_callback, this, _1, _2));
@@ -1120,15 +1135,18 @@ void GnssChannelizedSearch::main_thread() {
 
     int frame_in = 0;
     bool filling = false;
-    size_t filled_hops = 0;  // hops actually copied into the current snapshot (for the drop log)
-    long long abs_hops = 0;  // total hops consumed from the stream (absolute reference)
+    size_t filled_hops = 0; // hops actually copied into the current snapshot (for the drop log)
+    long long abs_hops = 0; // total hops consumed from the stream (absolute reference)
 
     while (!stop_thread) {
         const double _t_w0 = cprof ? steady_s() : 0.0;
         auto* in_local = (cf*)in_buf->wait_for_full_frame(unique_name, frame_in);
         if (in_local == nullptr)
             break;
-        if (cprof) { t_wait += steady_s() - _t_w0; ++n_frames; }
+        if (cprof) {
+            t_wait += steady_s() - _t_w0;
+            ++n_frames;
+        }
         const int frame_hops = in_buf->frame_size / (int)sizeof(cf) / _n_chan;
 
         // Absolute hop index of this frame's first hop, from the F-engine's sample_seq
@@ -1160,8 +1178,7 @@ void GnssChannelizedSearch::main_thread() {
             // Place this frame at its absolute time position in the snapshot (drop-tolerant).
             const long long off = frame_first_hop - _snap_start_hop;
             if (off >= 0 && off < (long long)_snap_hops) {
-                const size_t take =
-                    std::min((size_t)frame_hops, _snap_hops - (size_t)off);
+                const size_t take = std::min((size_t)frame_hops, _snap_hops - (size_t)off);
                 std::memcpy(&_snapshot[(size_t)off * (size_t)_n_chan], in_local,
                             take * (size_t)_n_chan * sizeof(cf));
                 filled_hops += take;
@@ -1179,7 +1196,8 @@ void GnssChannelizedSearch::main_thread() {
                     // Freeze the hint table at the data's epoch -- see _snap_hints.
                     std::lock_guard<std::mutex> hk(_hint_mtx);
                     _snap_hints = _dop_hints;
-                    _nh_snap_hints = _nh_hints; // freeze with the data, same reason as the Doppler hints
+                    _nh_snap_hints =
+                        _nh_hints; // freeze with the data, same reason as the Doppler hints
                     _snap_taken_s = steady_s();
                 }
                 std::lock_guard<std::mutex> lk(_m);
@@ -1193,7 +1211,10 @@ void GnssChannelizedSearch::main_thread() {
                          "the worker was busy ({:.0f}%), {:d} snapshots",
                          unique_name, el, n_frames, n_frames / el, t_wait, 100.0 * t_wait / el,
                          n_skipped_busy, 100.0 * n_skipped_busy / std::max(1L, n_frames), n_snaps);
-                    t_cyc0 = steady_s(); t_wait = 0.0; n_frames = 0; n_skipped_busy = 0;
+                    t_cyc0 = steady_s();
+                    t_wait = 0.0;
+                    n_frames = 0;
+                    n_skipped_busy = 0;
                 }
             }
         }

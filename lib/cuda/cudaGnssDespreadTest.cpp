@@ -7,22 +7,22 @@
 //
 //   ./cuda_gnss_despread_test            (prints PASS/FAIL per trial + max relative error)
 
+#include "GnssCudaDespread.hpp"
 #include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
-#include "GnssCudaDespread.hpp"
-#include "gnssChannelizedReplica.hpp"
 #include "gnssChannelizedDespread.hpp"
+#include "gnssChannelizedReplica.hpp"
 #include "gnssSignal.hpp"
 #include "gpsCACode.hpp"
 #include "pfbPrototype.hpp"
 
 #include <chrono>
 #include <cmath>
-#include <cublas_v2.h>
-#include <cuda_runtime.h>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <cublas_v2.h>
+#include <cuda_runtime.h>
 #include <numeric>
 #include <vector>
 
@@ -133,7 +133,8 @@ int main(int argc, char** argv) {
     std::vector<double> cpu_energy;
     for (const auto& ft : ftrials)
         for (int t = 0; t < 4; ++t) {
-            const auto repl = bank.hoprate_stream(filt, 0, window_start, row_cp(ft, t), dop, n_hops);
+            const auto repl =
+                bank.hoprate_stream(filt, 0, window_start, row_cp(ft, t), dop, n_hops);
             const int hi = row_hops(ft, t);
             for (int c = 0; c < n_chan; ++c) {
                 std::complex<double> g(0.0, 0.0);
@@ -187,9 +188,8 @@ int main(int argc, char** argv) {
     // itself. Keep the two expressions equivalent by hand.
     const auto ang0_of = [&](long long n0) {
         constexpr long double TWO_PI_L = 6.283185307179586476925286766559005768L;
-        long double fr = fmodl(((long double)f_off + (long double)dop) / (long double)fs
-                                   * (long double)n0,
-                               1.0L);
+        long double fr = fmodl(
+            ((long double)f_off + (long double)dop) / (long double)fs * (long double)n0, 1.0L);
         if (fr < 0.0L)
             fr += 1.0L;
         return (double)(TWO_PI_L * fr);
@@ -254,12 +254,20 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(d_phiA, phiA.data(), phiA.size() * sizeof(float2), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_phiB, phiB.data(), phiB.size() * sizeof(float2), cudaMemcpyHostToDevice));
     for (int b = 0; b < n_spec; ++b) // component -> combined chips, as production does
-        jobs[b] = {(double)comb * ftrials[b].cp_prompt, (double)comb * spacing,
+        jobs[b] = {(double)comb * ftrials[b].cp_prompt,
+                   (double)comb * spacing,
                    cp_ref_of((double)comb * ftrials[b].cp_prompt, window_start + fft_len - 1),
-                   cps,           1.0 / cps,
-                   wc,            ang0_of(window_start + fft_len - 1),
-                   0,             (int)code8.size(), all_mask,
-                   d_phiA,        d_phiB,    filt.n_chips,  ftrials[b].m_head};
+                   cps,
+                   1.0 / cps,
+                   wc,
+                   ang0_of(window_start + fft_len - 1),
+                   0,
+                   (int)code8.size(),
+                   all_mask,
+                   d_phiA,
+                   d_phiB,
+                   filt.n_chips,
+                   ftrials[b].m_head};
     CK(cudaMemcpy(d_jobs, jobs.data(), jobs.size() * sizeof(gnss_cuda::DespreadJob),
                   cudaMemcpyHostToDevice));
 
@@ -349,8 +357,8 @@ int main(int argc, char** argv) {
         const double XC_INVARIANCE_TOL = 1e-6;
         double max_reorder = 0.0;
         for (size_t i = 0; i < g_corr_xc.size(); ++i) {
-            const std::complex<double> a(g_corr[i].x, g_corr[i].y), b(g_corr_xc[i].x,
-                                                                     g_corr_xc[i].y);
+            const std::complex<double> a(g_corr[i].x, g_corr[i].y),
+                b(g_corr_xc[i].x, g_corr_xc[i].y);
             max_reorder = std::max(max_reorder, std::abs(b - a) / std::max(1e-30, std::abs(a)));
             max_reorder = std::max(max_reorder, std::fabs(g_energy_xc[i] - g_energy[i])
                                                     / std::max(1e-30, g_energy[i]));
@@ -362,8 +370,8 @@ int main(int argc, char** argv) {
         // CPU cross-terms: <R_P, R_k> = sum_hop r_P conj(r_k), whole window and head-restricted.
         double max_xc = 0.0;
         for (int b = 0; b < n_spec; ++b) {
-            const auto rP = bank.hoprate_stream(filt, 0, window_start, ftrials[b].cp_prompt, dop,
-                                                n_hops);
+            const auto rP =
+                bank.hoprate_stream(filt, 0, window_start, ftrials[b].cp_prompt, dop, n_hops);
             for (int k = 0; k < 2; ++k) { // 0 = Early, 1 = Late
                 const double cpk = ftrials[b].cp_prompt + (k == 0 ? -spacing : spacing);
                 const auto rk = bank.hoprate_stream(filt, 0, window_start, cpk, dop, n_hops);
@@ -398,8 +406,8 @@ int main(int argc, char** argv) {
         for (int c = 0; c < n_chan; ++c) {
             const double ph = 0.37 * c + 0.11;
             const float re = (float)(2.4 * std::cos(ph)), im = (float)(2.4 * std::sin(ph));
-            gains[c] = make_float2(re, im);                    // head
-            gains[n_chan + c] = make_float2(-re, -im);         // tail: the overlay flipped
+            gains[c] = make_float2(re, im);            // head
+            gains[n_chan + c] = make_float2(-re, -im); // tail: the overlay flipped
         }
         float2* d_gain;
         float2* d_resid;
@@ -407,24 +415,23 @@ int main(int argc, char** argv) {
         CK(cudaMalloc(&d_gain, gains.size() * sizeof(float2)));
         CK(cudaMalloc(&d_resid, (size_t)n_chan * n_hops * sizeof(float2)));
         CK(cudaMalloc(&d_pjobs, sizeof(gnss_cuda::PeelJob)));
-        CK(cudaMemcpy(d_gain, gains.data(), gains.size() * sizeof(float2),
-                      cudaMemcpyHostToDevice));
-        gnss_cuda::PeelJob pj{(double)comb * ftrials[0].cp_prompt,
-                              cp_ref_of((double)comb * ftrials[0].cp_prompt,
-                                        window_start + fft_len - 1),
-                              cps,
-                              1.0 / cps,
-                              wc,
-                              ang0_of(window_start + fft_len - 1),
-                              0,
-                              (int)code8.size(),
-                              all_mask,
-                              d_phiA,
-                              d_phiB,
-                              filt.n_chips,
-                              m_head_peel,
-                              d_gain,
-                              d_gain + n_chan};
+        CK(cudaMemcpy(d_gain, gains.data(), gains.size() * sizeof(float2), cudaMemcpyHostToDevice));
+        gnss_cuda::PeelJob pj{
+            (double)comb * ftrials[0].cp_prompt,
+            cp_ref_of((double)comb * ftrials[0].cp_prompt, window_start + fft_len - 1),
+            cps,
+            1.0 / cps,
+            wc,
+            ang0_of(window_start + fft_len - 1),
+            0,
+            (int)code8.size(),
+            all_mask,
+            d_phiA,
+            d_phiB,
+            filt.n_chips,
+            m_head_peel,
+            d_gain,
+            d_gain + n_chan};
         CK(cudaMemcpy(d_pjobs, &pj, sizeof(pj), cudaMemcpyHostToDevice));
         CK(gnss_cuda::launch_peel(d_data, d_code, d_pjobs, 1, n_chan, p, d_resid, 0));
         CK(cudaDeviceSynchronize());
@@ -465,8 +472,8 @@ int main(int argc, char** argv) {
         double* d_energy_r;
         CK(cudaMalloc(&d_corr_r, (size_t)4 * n_chan * sizeof(double2)));
         CK(cudaMalloc(&d_energy_r, (size_t)4 * n_chan * sizeof(double)));
-        CK(gnss_cuda::launch_despread(d_resid, d_code, d_jobs, 1, n_chan, pr, d_corr_r,
-                                      d_energy_r, 0));
+        CK(gnss_cuda::launch_despread(d_resid, d_code, d_jobs, 1, n_chan, pr, d_corr_r, d_energy_r,
+                                      0));
         CK(cudaDeviceSynchronize());
         std::vector<double2> r_corr((size_t)4 * n_chan);
         CK(cudaMemcpy(r_corr.data(), d_corr_r, r_corr.size() * sizeof(double2),
@@ -500,7 +507,8 @@ int main(int argc, char** argv) {
             const double rel = std::abs(vfull - vtrue) / std::max(1e-30, std::abs(vtrue));
             max_ab = std::max(max_ab, rel);
             printf("  add-back %-4s: |V_full|=%12.4f  |V_unpeeled|=%12.4f  rel %.3e %s\n",
-                   row_name[t], std::abs(vfull), std::abs(vtrue), rel, (rel < 1e-5) ? "OK" : "FAIL");
+                   row_name[t], std::abs(vfull), std::abs(vtrue), rel,
+                   (rel < 1e-5) ? "OK" : "FAIL");
         }
         printf("ADD-BACK IDENTITY: max rel %.3e %s  (gain deliberately wrong + sign-flipped -- "
                "the identity does not depend on it)\n",
@@ -580,8 +588,8 @@ int main(int argc, char** argv) {
             for (int m = 0; m < n_hops; ++m) {
                 const size_t k = (size_t)c * n_hops + m;
                 int railed = 0;
-                q[k] = gnss_cuda::pack_44(
-                    make_float2(data_ch[c][m].real(), data_ch[c][m].imag()), h_inv[c], &railed);
+                q[k] = gnss_cuda::pack_44(make_float2(data_ch[c][m].real(), data_ch[c][m].imag()),
+                                          h_inv[c], &railed);
                 deq[k] = gnss_cuda::unpack_44(q[k], h_scale[c]); // what the q kernel will see
             }
         unsigned char* d_q;
@@ -601,8 +609,8 @@ int main(int argc, char** argv) {
         // float kernel on the DEQUANTIZED data = the reference for the q kernel on the bytes.
         CK(gnss_cuda::launch_despread(d_deq, d_code, d_jobs, n_spec, n_chan, p, d_corr, d_energy,
                                       0));
-        CK(gnss_cuda::launch_despread_q(d_q, d_scale, d_code, d_jobs, n_spec, n_chan, p, d_qc,
-                                        d_qe, 0));
+        CK(gnss_cuda::launch_despread_q(d_q, d_scale, d_code, d_jobs, n_spec, n_chan, p, d_qc, d_qe,
+                                        0));
         CK(cudaDeviceSynchronize());
         std::vector<double2> fc((size_t)n_out * n_chan), qc((size_t)n_out * n_chan);
         CK(cudaMemcpy(fc.data(), d_corr, fc.size() * sizeof(double2), cudaMemcpyDeviceToHost));
@@ -659,7 +667,8 @@ int main(int argc, char** argv) {
             std::vector<double2> nc((size_t)4 * n_spec * n_chan * n_elem);
             std::vector<double> ne((size_t)4 * n_spec * n_chan), qe((size_t)n_out * n_chan);
             CK(cudaMemcpy(nc.data(), d_ncorr, nc.size() * sizeof(double2), cudaMemcpyDeviceToHost));
-            CK(cudaMemcpy(ne.data(), d_nenergy, ne.size() * sizeof(double), cudaMemcpyDeviceToHost));
+            CK(cudaMemcpy(ne.data(), d_nenergy, ne.size() * sizeof(double),
+                          cudaMemcpyDeviceToHost));
             CK(cudaMemcpy(qe.data(), d_qe, qe.size() * sizeof(double), cudaMemcpyDeviceToHost));
 
             double cmax = 0.0, emax = 0.0;
@@ -691,13 +700,14 @@ int main(int argc, char** argv) {
             {
                 const int NIT = 200;
                 cudaEvent_t e0, e1, e2;
-                CK(cudaEventCreate(&e0)); CK(cudaEventCreate(&e1)); CK(cudaEventCreate(&e2));
+                CK(cudaEventCreate(&e0));
+                CK(cudaEventCreate(&e1));
+                CK(cudaEventCreate(&e2));
                 // warm-up
-                CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_wave,
-                                              d_nenergy, 0));
-                CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs,
-                                                  n_spec, n_chan, n_elem, n_elem, n_chan, p,
-                                                  d_ncorr, 0));
+                CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_wave, d_nenergy,
+                                              0));
+                CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs, n_spec,
+                                                  n_chan, n_elem, n_elem, n_chan, p, d_ncorr, 0));
                 CK(cudaDeviceSynchronize());
                 CK(cudaEventRecord(e0, 0));
                 for (int it = 0; it < NIT; ++it)
@@ -713,13 +723,15 @@ int main(int argc, char** argv) {
                 float ms_syn = 0.f, ms_cor = 0.f;
                 CK(cudaEventElapsedTime(&ms_syn, e0, e1));
                 CK(cudaEventElapsedTime(&ms_cor, e1, e2));
-                ms_syn /= NIT; ms_cor /= NIT;
-                printf("KERNEL SPLIT (%d spec x %d chan x %d elem x %d hops):\n"
-                       "   synthesis  (waveform)     %8.4f ms  %5.1f%%   <- N^2 CANNOT absorb this\n"
-                       "   correlation(nm, %2d elem) %8.4f ms  %5.1f%%   <- this is the N^2 candidate\n",
-                       n_spec, n_chan, n_elem, p.n_hops, ms_syn,
-                       100.0 * ms_syn / (ms_syn + ms_cor), n_elem, ms_cor,
-                       100.0 * ms_cor / (ms_syn + ms_cor));
+                ms_syn /= NIT;
+                ms_cor /= NIT;
+                printf(
+                    "KERNEL SPLIT (%d spec x %d chan x %d elem x %d hops):\n"
+                    "   synthesis  (waveform)     %8.4f ms  %5.1f%%   <- N^2 CANNOT absorb this\n"
+                    "   correlation(nm, %2d elem) %8.4f ms  %5.1f%%   <- this is the N^2 "
+                    "candidate\n",
+                    n_spec, n_chan, n_elem, p.n_hops, ms_syn, 100.0 * ms_syn / (ms_syn + ms_cor),
+                    n_elem, ms_cor, 100.0 * ms_cor / (ms_syn + ms_cor));
                 // ELEMENT SWEEP. Synthesis is n_elem-INDEPENDENT (one replica per PRN/chan/hop,
                 // broadcast across element lanes); the correlation scales with it. So a
                 // 1-element measurement flatters synthesis, and any claim that "the MAC is 0% of
@@ -738,9 +750,9 @@ int main(int argc, char** argv) {
                     CK(cudaEventCreate(&a1));
                     CK(cudaEventRecord(a0, 0));
                     for (int it = 0; it < NIT; ++it)
-                        CK(gnss_cuda::launch_correlate_nm(d_q2, d_scale, d_chan_ids, d_wave,
-                                                          d_jobs, n_spec, n_chan, ne, ne, n_chan,
-                                                          p, d_c2, 0));
+                        CK(gnss_cuda::launch_correlate_nm(d_q2, d_scale, d_chan_ids, d_wave, d_jobs,
+                                                          n_spec, n_chan, ne, ne, n_chan, p, d_c2,
+                                                          0));
                     CK(cudaEventRecord(a1, 0));
                     CK(cudaDeviceSynchronize());
                     float ms = 0.f;
@@ -755,7 +767,9 @@ int main(int argc, char** argv) {
                     cudaFree(d_q2);
                     cudaFree(d_c2);
                 }
-                cudaEventDestroy(e0); cudaEventDestroy(e1); cudaEventDestroy(e2);
+                cudaEventDestroy(e0);
+                cudaEventDestroy(e1);
+                cudaEventDestroy(e2);
             }
             pass = pass && split_ok;
 
@@ -873,8 +887,8 @@ int main(int argc, char** argv) {
                 float mx = 1e-12f;
                 for (int c = 0; c < n_chan; ++c)
                     for (int m = 0; m < hi; ++m)
-                        mx = std::max({mx, std::fabs(repl[c][m].real()),
-                                       std::fabs(repl[c][m].imag())});
+                        mx = std::max(
+                            {mx, std::fabs(repl[c][m].real()), std::fabs(repl[c][m].imag())});
                 rsc[col] = mx / 127.0f;
                 for (int c = 0; c < n_chan; ++c)
                     for (int m = 0; m < hi; ++m) {
@@ -913,8 +927,7 @@ int main(int argc, char** argv) {
             if (gemm_ok) {
                 CK(cudaDeviceSynchronize());
                 std::vector<int32_t> hC((size_t)4 * n_chan * 4 * M);
-                CK(cudaMemcpy(hC.data(), dC, hC.size() * sizeof(int32_t),
-                              cudaMemcpyDeviceToHost));
+                CK(cudaMemcpy(hC.data(), dC, hC.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
                 auto cint = [&](int quad, int c, int col) {
                     return hC[(size_t)quad * n_chan * 4 * M + ((size_t)c * M + col) * 4];
                 };
@@ -925,16 +938,15 @@ int main(int argc, char** argv) {
                         // GEMM result, rescaled: corr = Sum d*conj(r) * dsc[c] * rsc[col]
                         const double s = (double)dsc[c] * rsc[col];
                         gg += std::complex<double>(
-                            (cint(0, c, col) + cint(1, c, col)) * s,   // dr*rr + di*ri
-                            (cint(2, c, col) - cint(3, c, col)) * s);  // di*rr - dr*ri
+                            (cint(0, c, col) + cint(1, c, col)) * s,  // dr*rr + di*ri
+                            (cint(2, c, col) - cint(3, c, col)) * s); // di*rr - dr*ri
                         // EXACT reference from the same dequantized integers
                         std::complex<double> e(0, 0);
                         const int hi = row_hops(ftrials[col / 4], col % 4);
                         for (int m = 0; m < hi; ++m) {
                             const unsigned char b = qbytes[(size_t)c * n_hops + m];
-                            const std::complex<double> dv(
-                                (((b >> 4) & 0x0f) - 8) * (double)dsc[c],
-                                ((b & 0x0f) - 8) * (double)dsc[c]);
+                            const std::complex<double> dv((((b >> 4) & 0x0f) - 8) * (double)dsc[c],
+                                                          ((b & 0x0f) - 8) * (double)dsc[c]);
                             const size_t o = ((size_t)c * M + col) * TP + m;
                             const std::complex<double> rv(hRr[o] * (double)rsc[col],
                                                           hRi[o] * (double)rsc[col]);
@@ -942,15 +954,14 @@ int main(int argc, char** argv) {
                         }
                         ee += e;
                     }
-                    const double rel =
-                        std::abs(gg - ee) / std::max(1e-30, std::abs(ee));
+                    const double rel = std::abs(gg - ee) / std::max(1e-30, std::abs(ee));
                     max_exact = std::max(max_exact, rel);
                     if (col == 1) // strong prompt: physics delta vs the true float reference
                         phys_p = std::abs(gg
-                                          - std::accumulate(
-                                              cpu_corr.begin() + (size_t)col * n_chan,
-                                              cpu_corr.begin() + (size_t)(col + 1) * n_chan,
-                                              std::complex<double>(0, 0)))
+                                          - std::accumulate(cpu_corr.begin() + (size_t)col * n_chan,
+                                                            cpu_corr.begin()
+                                                                + (size_t)(col + 1) * n_chan,
+                                                            std::complex<double>(0, 0)))
                                  / std::abs(gg);
                 }
                 const bool ok = max_exact < 1e-6;
@@ -1016,12 +1027,12 @@ int main(int argc, char** argv) {
             gpu.upload_window(win.data(), window_start + (long long)r * bn_hops * bfft_len);
             (void)gpu.despread_batch(specs);
         }
-        const double dt = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
-                              .count();
+        const double dt =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         printf("BENCH(live 20MSPS) %2d PRN x E/P/L x %2d chan x %d hops (%.1f hops/thread): "
                "%6.0f rec/s (%.1fx realtime @1kHz, %.0f PRN-despreads/s)\n",
-               bench_prn, bN, bn_hops, (double)bn_hops / (bn_hops < 256 ? bn_hops : 256),
-               NREC / dt, NREC / dt / 1000.0, 3.0 * bench_prn * NREC / dt);
+               bench_prn, bN, bn_hops, (double)bn_hops / (bn_hops < 256 ? bn_hops : 256), NREC / dt,
+               NREC / dt / 1000.0, 3.0 * bench_prn * NREC / dt);
 
         // ⚠️ AND the PRODUCTION path. despread_batch above is the CPU-tracker fallback, whose
         // 3-trial contract carries NO head job -- so it benches a job mix no band flies, and it
@@ -1062,7 +1073,10 @@ int main(int argc, char** argv) {
             {
                 std::vector<GnssCudaDespread::PeelSpec> pspecs(bench_prn);
                 for (int q = 0; q < bench_prn; ++q) {
-                    pspecs[q] = {q, specs[q].cp_seed, specs[q].doppler_hz, allch,
+                    pspecs[q] = {q,
+                                 specs[q].cp_seed,
+                                 specs[q].doppler_hz,
+                                 allch,
                                  std::vector<std::complex<float>>((size_t)bN, {0.3f, 0.1f}),
                                  std::vector<std::complex<float>>((size_t)bN, {-0.3f, -0.1f})};
                 }

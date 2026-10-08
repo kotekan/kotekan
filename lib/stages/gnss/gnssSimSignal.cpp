@@ -1,7 +1,7 @@
 #include "gnssSimSignal.hpp"
 
-#include <cmath>   // for cos, sin, M_PI
-#include <random>  // for mt19937, normal_distribution
+#include <cmath>  // for cos, sin, M_PI
+#include <random> // for mt19937, normal_distribution
 
 namespace gnss {
 

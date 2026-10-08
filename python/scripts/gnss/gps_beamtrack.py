@@ -36,11 +36,20 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
-RECORD_SLOTS = 11          # float32 slots per PRN record
+RECORD_SLOTS = 11  # float32 slots per PRN record
 RECORD_BYTES = RECORD_SLOTS * 4
-UTC_SLOT = 9               # trailing float64 occupies slots 9-10
-FIELDS = ["prn", "doppler_hz", "code_phase_chips", "peak_amp", "peak_re",
-          "peak_im", "snr", "nav_sign", "phase_cont"]
+UTC_SLOT = 9  # trailing float64 occupies slots 9-10
+FIELDS = [
+    "prn",
+    "doppler_hz",
+    "code_phase_chips",
+    "peak_amp",
+    "peak_re",
+    "peak_im",
+    "snr",
+    "nav_sign",
+    "phase_cont",
+]
 
 # Celestrak GPS operational TLEs.
 DEFAULT_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle"
@@ -59,7 +68,8 @@ def _infer_n_prn(path):
     if payload <= 0 or payload % RECORD_BYTES != 0:
         raise ValueError(
             "%s: size %d not a single frame of %d-byte records (pass --n-prn for "
-            "multi-frame files)" % (path, size, RECORD_BYTES))
+            "multi-frame files)" % (path, size, RECORD_BYTES)
+        )
     return payload // RECORD_BYTES
 
 
@@ -139,17 +149,22 @@ def _igs_prn_by_catnum():
     Cached beside the TLEs for 30 days; empty dict if unavailable (offline -> those sats
     are skipped with a warning)."""
     import re, time, urllib.request
+
     cache = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
     os.makedirs(cache, exist_ok=True)
     snx = os.path.join(cache, "igs_satellite_metadata.snx")
     if not os.path.exists(snx) or time.time() - os.path.getmtime(snx) > 30 * 86400:
         try:
             urllib.request.urlretrieve(
-                "https://files.igs.org/pub/station/general/igs_satellite_metadata.snx", snx)
+                "https://files.igs.org/pub/station/general/igs_satellite_metadata.snx",
+                snx,
+            )
         except Exception as e:
             if not os.path.exists(snx):
-                print("[gps_beamtrack] IGS satellite metadata unavailable (%s)" % e,
-                      file=sys.stderr)
+                print(
+                    "[gps_beamtrack] IGS satellite metadata unavailable (%s)" % e,
+                    file=sys.stderr,
+                )
                 return {}
     svn_cat, svn_prn = {}, {}
     section = None
@@ -229,8 +244,11 @@ def load_gps_satellites(tle_source):
             if prn is not None:
                 by_prn[prn] = s
             else:
-                print("[gps_beamtrack] unmapped Galileo %s -- refresh GSAT_TO_PRN"
-                      % g.group(0), file=sys.stderr)
+                print(
+                    "[gps_beamtrack] unmapped Galileo %s -- refresh GSAT_TO_PRN"
+                    % g.group(0),
+                    file=sys.stderr,
+                )
             continue
         # No PRN in the name (BeiDou et al.): NORAD catalog number -> IGS SINEX registry.
         global _IGS_CAT_MAP
@@ -252,6 +270,7 @@ def gps_block_by_prn(tle_source=DEFAULT_TLE_URL, _sats=None):
     the sat name, so we read it from the SAME live feed the visibility uses instead of
     hardcoding a list that goes stale as satellites launch / commission / retire."""
     import re
+
     sats = _sats if _sats is not None else load_gps_satellites(tle_source)
     blocks = {}
     for prn, s in sats.items():
@@ -272,6 +291,7 @@ def glonass_block_by_prn(tle_source=GLONASS_TLE_URL, _sats=None):
     distinction that matters here is K vs not-K, and calling the remainder 'M' is accurate for
     every currently-operational non-K satellite."""
     import re
+
     sats = _sats if _sats is not None else load_gps_satellites(tle_source)
     blocks = {}
     for slot, s in sats.items():
@@ -287,24 +307,24 @@ def _signal_block_filter(signal):
     `signal:` token (e.g. GPS_L1CA, GPS_L2C_CM, GPS_L5_Q, GPS_L1C_P). Which block first carried
     each civil signal: L1 C/A -> all; L2C -> Block IIR-M+; L5 -> Block IIF+; L1C -> Block III."""
     s = (signal or "").upper()
-    if "L1CA" in s:                         # L1 C/A: every GPS satellite (check before 'L1C')
+    if "L1CA" in s:  # L1 C/A: every GPS satellite (check before 'L1C')
         return None
-    if "L5" in s:                           # L5: Block IIF and newer
+    if "L5" in s:  # L5: Block IIF and newer
         return lambda b: b == "IIF" or b.startswith("III")
-    if "L2C" in s or "L2_CM" in s:          # L2C: Block IIR-M and newer
+    if "L2C" in s or "L2_CM" in s:  # L2C: Block IIR-M and newer
         return lambda b: b == "IIRM" or b == "IIF" or b.startswith("III")
-    if "L1C" in s:                          # L1C: Block III only
+    if "L1C" in s:  # L1C: Block III only
         return lambda b: b.startswith("III")
-    return None                             # unknown -> don't filter
+    return None  # unknown -> don't filter
 
 
 def _glonass_block_filter(signal):
     """The GLONASS counterpart of _signal_block_filter. The CDMA signals (L3OC, and later L2OC /
     L1OC) are GLONASS-K only; the FDMA signals (L1OF/L2OF) are on every satellite."""
     s = (signal or "").upper()
-    if "OC" in s:                           # L3OC / L2OC / L1OC -- CDMA, K satellites only
+    if "OC" in s:  # L3OC / L2OC / L1OC -- CDMA, K satellites only
         return lambda b: b == "K"
-    return None                             # L1OF/L2OF (and unknown) -- every satellite
+    return None  # L1OF/L2OF (and unknown) -- every satellite
 
 
 def glonass_fdma_trackable(_cache={}):
@@ -319,15 +339,20 @@ def glonass_fdma_trackable(_cache={}):
     Cached for an hour; empty set on failure => caller disables the filter rather than darking
     the chain (the standing fail-open-is-worse-than-fail-loud tradeoff for capability lookups)."""
     import time
+
     now = time.monotonic()
     if _cache.get("t") and now - _cache["t"] < 3600.0:
         return _cache["v"]
     try:
         import gnss_ephemeris as ge
+
         v = set(ge.glonass_freq_channels())
     except Exception as e:
-        print("[gps_beamtrack] GLONASS frequency plan unavailable (%s); FDMA capability filter "
-              "DISABLED" % e, file=sys.stderr)
+        print(
+            "[gps_beamtrack] GLONASS frequency plan unavailable (%s); FDMA capability filter "
+            "DISABLED" % e,
+            file=sys.stderr,
+        )
         v = set()
     _cache["t"], _cache["v"] = now, v
     return v
@@ -355,7 +380,8 @@ def signal_capable_prns(signal, tle_source=DEFAULT_TLE_URL, _sats=None):
         # "lookup failed -> filter disabled". Substitute the right group instead of silently
         # producing a filter that does nothing.
         blocks = glonass_block_by_prn(
-            GLONASS_TLE_URL if tle_source == DEFAULT_TLE_URL else tle_source, _sats)
+            GLONASS_TLE_URL if tle_source == DEFAULT_TLE_URL else tle_source, _sats
+        )
         pred = _glonass_block_filter(signal)
     else:
         blocks = gps_block_by_prn(tle_source, _sats)
@@ -372,8 +398,16 @@ def l1c_capable_prns(tle_source=DEFAULT_TLE_URL, _sats=None):
     return signal_capable_prns("GPS_L1C_P", tle_source, _sats)
 
 
-def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.42e6,
-                     tle_source=DEFAULT_TLE_URL, _sats=None):
+def predict_dopplers(
+    lat,
+    lon,
+    alt_m,
+    prns=None,
+    t_utc=None,
+    f_carrier_hz=1575.42e6,
+    tle_source=DEFAULT_TLE_URL,
+    _sats=None,
+):
     """Predict {prn: (doppler_hz, doppler_rate_hz_per_s, elevation_deg, range_m)} for GPS sats
     at a receiver (lat, lon, alt_m WGS84) and time t_utc (UTC datetime, default now).
     range_m is the slant range (for propagation delay, ~64-89 ms; TLE accuracy ~km -> ~us,
@@ -390,6 +424,7 @@ def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.4
     (a {prn: EarthSatellite} from load_gps_satellites) to avoid reloading TLEs.
     """
     from skyfield.api import load, wgs84
+
     C = 299792458.0
     ts = load.timescale()
     observer = wgs84.latlon(lat, lon, elevation_m=alt_m)
@@ -402,13 +437,13 @@ def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.4
 
     def _doppler(sat, t):
         g = (sat - observer).at(t)
-        r = g.position.km * 1e3          # m  (sat relative to observer)
-        v = g.velocity.km_per_s * 1e3    # m/s
+        r = g.position.km * 1e3  # m  (sat relative to observer)
+        v = g.velocity.km_per_s * 1e3  # m/s
         range_rate = float(np.dot(r, v) / np.linalg.norm(r))  # +ve = receding
-        return -f_carrier_hz * range_rate / C                 # +ve = approaching
+        return -f_carrier_hz * range_rate / C  # +ve = approaching
 
     out = {}
-    for prn in (prns if prns is not None else list(by_prn)):
+    for prn in prns if prns is not None else list(by_prn):
         sat = by_prn.get(int(prn))
         if sat is None:
             continue
@@ -421,8 +456,9 @@ def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.4
     return out
 
 
-def predict_skypos(lat, lon, alt_m, prns=None, t_utc=None,
-                   tle_source=DEFAULT_TLE_URL, _sats=None):
+def predict_skypos(
+    lat, lon, alt_m, prns=None, t_utc=None, tle_source=DEFAULT_TLE_URL, _sats=None
+):
     """Predict {prn: (az_deg, el_deg)} for GPS sats at a receiver (lat, lon,
     alt_m WGS84) and time t_utc (UTC datetime, default now).
 
@@ -433,6 +469,7 @@ def predict_skypos(lat, lon, alt_m, prns=None, t_utc=None,
     load_gps_satellites) to avoid reloading TLEs. Requires skyfield.
     """
     from skyfield.api import load, wgs84
+
     ts = load.timescale()
     observer = wgs84.latlon(lat, lon, elevation_m=alt_m)
     by_prn = _sats if _sats is not None else load_gps_satellites(tle_source)
@@ -441,7 +478,7 @@ def predict_skypos(lat, lon, alt_m, prns=None, t_utc=None,
     t0 = ts.from_datetime(t_utc)
 
     out = {}
-    for prn in (prns if prns is not None else list(by_prn)):
+    for prn in prns if prns is not None else list(by_prn):
         sat = by_prn.get(int(prn))
         if sat is None:
             continue
@@ -468,7 +505,8 @@ def attach_altaz(records, lat, lon, alt_m, tle_source=DEFAULT_TLE_URL):
             continue
         sel = records["prn"].astype(int) == prn
         times = ts.from_datetimes(
-            [datetime.fromtimestamp(u, tz=timezone.utc) for u in records["utc"][sel]])
+            [datetime.fromtimestamp(u, tz=timezone.utc) for u in records["utc"][sel]]
+        )
         topo = (sat - observer).at(times).altaz()
         alt[sel] = topo[0].degrees
         az[sel] = topo[1].degrees
@@ -476,19 +514,31 @@ def attach_altaz(records, lat, lon, alt_m, tle_source=DEFAULT_TLE_URL):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("path", help="record file, directory, or glob")
-    ap.add_argument("--n-prn", type=int, default=None,
-                    help="PRNs per frame (default: infer from a single-frame file)")
+    ap.add_argument(
+        "--n-prn",
+        type=int,
+        default=None,
+        help="PRNs per frame (default: infer from a single-frame file)",
+    )
     ap.add_argument("--lat", type=float, help="observer latitude, deg")
     ap.add_argument("--lon", type=float, help="observer longitude, deg")
     ap.add_argument("--alt", type=float, default=0.0, help="observer height, m")
     ap.add_argument("--tle", default=DEFAULT_TLE_URL, help="TLE file path or URL")
-    ap.add_argument("--no-altaz", action="store_true", help="skip alt/az (just dump records)")
-    ap.add_argument("--locked-only", action="store_true",
-                    help="keep only phase-locked detections (nav_sign != 0)")
-    ap.add_argument("--min-snr", type=float, default=0.0, help="drop records below this SNR")
+    ap.add_argument(
+        "--no-altaz", action="store_true", help="skip alt/az (just dump records)"
+    )
+    ap.add_argument(
+        "--locked-only",
+        action="store_true",
+        help="keep only phase-locked detections (nav_sign != 0)",
+    )
+    ap.add_argument(
+        "--min-snr", type=float, default=0.0, help="drop records below this SNR"
+    )
     ap.add_argument("--out", default="-", help="output CSV path ('-' = stdout)")
     args = ap.parse_args(argv)
 
@@ -514,13 +564,15 @@ def main(argv=None):
             alt, az = attach_altaz(recs, args.lat, args.lon, args.alt, args.tle)
             cols += ["alt_deg", "az_deg"]
         except ImportError:
-            print("warning: skyfield not installed; emitting records without alt/az",
-                  file=sys.stderr)
+            print(
+                "warning: skyfield not installed; emitting records without alt/az",
+                file=sys.stderr,
+            )
 
     out = sys.stdout if args.out == "-" else open(args.out, "w")
     out.write(",".join(cols) + "\n")
     for i, r in enumerate(recs):
-        vals = ["%d" % int(r["prn"])] + ["%.6g" % r[c] for c in cols[1:len(FIELDS)]]
+        vals = ["%d" % int(r["prn"])] + ["%.6g" % r[c] for c in cols[1 : len(FIELDS)]]
         vals.append("%.6f" % r["utc"])
         if alt is not None:
             vals += ["%.4f" % alt[i], "%.4f" % az[i]]

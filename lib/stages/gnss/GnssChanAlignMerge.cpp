@@ -6,19 +6,18 @@
 #include "prometheusMetrics.hpp" // for Metrics
 #include "visUtil.hpp"           // for frameID
 
-#include <cmath>   // for floor
-#include <cstring> // for memcpy, memset
-#include <ctime>   // for clock_gettime, timespec
-
 #include <algorithm> // for min, max
 #include <chrono>    // for the warn rate limit
-#include <complex> // for complex
-#include <cstring> // for memcpy
-#include <numeric> // for accumulate
-#include <string>  // for string (the rate-limited warn helper)
+#include <cmath>     // for floor
+#include <complex>   // for complex
+#include <cstring>   // for memcpy, memset
+#include <cstring>   // for memcpy
+#include <ctime>     // for clock_gettime, timespec
+#include <numeric>   // for accumulate
+#include <string>    // for string (the rate-limited warn helper)
 
-using kotekan::Config;
 using kotekan::bufferContainer;
+using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 using cf = std::complex<float>;
@@ -45,8 +44,8 @@ GnssChanAlignMerge::GnssChanAlignMerge(Config& config, const std::string& unique
     _absent_probe_s = config.get_default<double>(unique_name, "absent_probe_s", 0.002);
 
     if (in_bufs.empty() || _in_chans.size() != in_bufs.size()) {
-        FATAL_ERROR("GnssChanAlignMerge: {:d} in_bufs but {:d} in_channels entries",
-                    in_bufs.size(), _in_chans.size());
+        FATAL_ERROR("GnssChanAlignMerge: {:d} in_bufs but {:d} in_channels entries", in_bufs.size(),
+                    _in_chans.size());
         return;
     }
     _out_chan = std::accumulate(_in_chans.begin(), _in_chans.end(), 0);
@@ -120,8 +119,9 @@ void GnssChanAlignMerge::main_thread() {
     // looks like the sky. A present feed must be genuinely waited for. If a SLOW-but-alive feed
     // ever needs bounding, measure that it exists first: it is not what #81 was.
     std::vector<uint8_t> present(n_in, 0);
-    std::vector<uint8_t> ever(n_in, 0);      // acquired at least once -- gates the spread check
-    std::vector<uint8_t> announced(n_in, 0); // so join/leave logs once per transition, not per frame
+    std::vector<uint8_t> ever(n_in, 0); // acquired at least once -- gates the spread check
+    std::vector<uint8_t> announced(n_in,
+                                   0); // so join/leave logs once per transition, not per frame
     struct timespec ts_timeout;
 
     // CONTROLLER-RESET GUARD. The alignment below advances every input to the MAXIMUM sequence
@@ -137,8 +137,8 @@ void GnssChanAlignMerge::main_thread() {
     // too large to be sender lag.
     std::vector<int64_t> last_seq(n_in, -1);
     const auto now_s = [] {
-        return std::chrono::duration<double>(
-                   std::chrono::steady_clock::now().time_since_epoch()).count();
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
     };
     double last_warn = 0.0;
     const auto warn_rate_limited = [&](const std::string& msg) {
@@ -163,11 +163,11 @@ void GnssChanAlignMerge::main_thread() {
                 ts_timeout.tv_nsec -= 1000000000L;
                 ts_timeout.tv_sec += 1;
             }
-            const int rc = in_bufs[i]->wait_for_full_frame_timeout(unique_name, in_ids[i],
-                                                                  ts_timeout);
+            const int rc =
+                in_bufs[i]->wait_for_full_frame_timeout(unique_name, in_ids[i], ts_timeout);
             if (rc < 0)
-                return false;            // shutdown
-            if (rc > 0) {                // timed out: treat as absent for this frame
+                return false; // shutdown
+            if (rc > 0) {     // timed out: treat as absent for this frame
                 present[i] = 0;
                 frames[i] = nullptr;
                 if (!announced[i]) {
@@ -179,7 +179,7 @@ void GnssChanAlignMerge::main_thread() {
                          "automatically.",
                          unique_name, i, _input_timeout_s, _in_chans[i]);
                 }
-                return true;             // NOT a failure: carry on without it
+                return true; // NOT a failure: carry on without it
             }
             frames[i] = in_bufs[i]->frames[in_ids[i]];
         } else {
@@ -265,7 +265,7 @@ void GnssChanAlignMerge::main_thread() {
                 if (present[i])
                     target = std::max(target, seqs[i]);
             if (target == INT64_MIN)
-                break;   // nothing present at all: nothing to align to, retry the outer loop
+                break; // nothing present at all: nothing to align to, retry the outer loop
             aligned = true;
             for (int i = 0; i < n_in; ++i) {
                 while (present[i] && seqs[i] < target) {
@@ -304,7 +304,10 @@ void GnssChanAlignMerge::main_thread() {
         out_buf->allocate_new_metadata_object(out_id);
         int64_t out_seq = 0;
         for (int i = 0; i < n_in; ++i)
-            if (present[i]) { out_seq = seqs[i]; break; }
+            if (present[i]) {
+                out_seq = seqs[i];
+                break;
+            }
         get_gnss_chan_metadata(out_buf, out_id)->sample_seq = (uint64_t)out_seq;
         if (!logged_first) {
             INFO("GnssChanAlignMerge[{:s}]: first aligned frame at sample_seq {:d} across {:d} "

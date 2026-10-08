@@ -115,9 +115,9 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
 /// here rather than widening chan_mask keeps the kernel the six live tracker nodes run
 /// untouched.
 struct CudaRefineGroup {
-    ::GnssCudaDespread* gpu = nullptr; ///< engine over exactly this group's channels
-    std::vector<int> local;            ///< the group's channel indices in the CALLER's row
-    int n_hops = 0;                    ///< hops the engine was built for
+    ::GnssCudaDespread* gpu = nullptr;      ///< engine over exactly this group's channels
+    std::vector<int> local;                 ///< the group's channel indices in the CALLER's row
+    int n_hops = 0;                         ///< hops the engine was built for
     std::vector<std::complex<float>> stage; ///< de-interleave scratch, reused across calls
 };
 

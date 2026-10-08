@@ -23,21 +23,21 @@ import numpy as np
 
 import beidou_bcnav3 as B
 
-SYM_S = B.SYM_S               # 0.001
-FRAME = B.FRAME_SYMS          # 1000 symbols per frame (1 s)
-EMIT_MAX = 16                # bound the stitched emit cache per PRN (a 1000-sym frame is 1 s of
-                            # emits; ~16 frames of history is ample AND bounds the find_frames scan)
-FRAME_TTL_S = 3600.0        # a cached frame older than this is stale (ephemeris ~ hourly)
+SYM_S = B.SYM_S  # 0.001
+FRAME = B.FRAME_SYMS  # 1000 symbols per frame (1 s)
+EMIT_MAX = 16  # bound the stitched emit cache per PRN (a 1000-sym frame is 1 s of
+# emits; ~16 frames of history is ample AND bounds the find_frames scan)
+FRAME_TTL_S = 3600.0  # a cached frame older than this is stale (ephemeris ~ hourly)
 
 
 class _PrnState:
     def __init__(self):
-        self.emits = {}          # slot0 -> np.array(+-1) one per distinct nav_obs emit
-        self.grid0 = None        # per-PRN symbol-grid origin (E5b-I stitcher fix)
+        self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
+        self.grid0 = None  # per-PRN symbol-grid origin (E5b-I stitcher fix)
         self.last_obs = None
         self.pol = None
-        self.frames = {}         # mestype -> (frame_bits[486], sow, t_decoded)
-        self.n_frames = 0        # frames decoded (preamble+LDPC found + CRC ok)
+        self.frames = {}  # mestype -> (frame_bits[486], sow, t_decoded)
+        self.n_frames = 0  # frames decoded (preamble+LDPC found + CRC ok)
         self.last_sow = None
         self.last_decode = 0.0
 
@@ -53,8 +53,11 @@ class Bcnav3Predictor:
     def ingest(self, prn, obs):
         st = self._p.setdefault(prn, _PrnState())
         try:
-            utc_ref = float(obs["utc_ref"]); rec_dt = float(obs["rec_dt"])
-            phase = int(obs["phase"]); br = int(obs["br"]); pairs = obs["bits"]
+            utc_ref = float(obs["utc_ref"])
+            rec_dt = float(obs["rec_dt"])
+            phase = int(obs["phase"])
+            br = int(obs["br"])
+            pairs = obs["bits"]
         except (KeyError, TypeError, ValueError):
             return
         if rec_dt <= 0 or br <= 0 or not pairs:
@@ -85,7 +88,9 @@ class Bcnav3Predictor:
             if i + 1 == len(slots) or slots[i + 1] != slots[i] + 1:
                 s0, s1 = slots[seg], slots[i]
                 if s1 - s0 + 1 >= 2:
-                    st.emits[s0] = np.array([m[s] for s in range(s0, s1 + 1)], dtype=np.int8)
+                    st.emits[s0] = np.array(
+                        [m[s] for s in range(s0, s1 + 1)], dtype=np.int8
+                    )
                 seg = i + 1
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
@@ -105,7 +110,8 @@ class Bcnav3Predictor:
         if not st.emits:
             return []
         runs = []
-        cur0 = None; cur = None
+        cur0 = None
+        cur = None
         for s0 in sorted(st.emits):
             a = st.emits[s0]
             if cur is None:
@@ -117,7 +123,8 @@ class Bcnav3Predictor:
                 if ov < len(a):
                     cur = np.concatenate([cur, a[ov:]])
             else:
-                runs.append((cur0, cur)); cur0, cur = s0, a.copy()
+                runs.append((cur0, cur))
+                cur0, cur = s0, a.copy()
         runs.append((cur0, cur))
         return runs
 
@@ -154,16 +161,28 @@ class Bcnav3Predictor:
         if st is None or mt not in st.frames:
             return None
         b = st.frames[mt][0]
-        return "".join("%x" % (B._uint(b[i:i + 4]) if i + 4 <= len(b)
-                               else B._uint(b[i:] + [0] * (i + 4 - len(b)))) for i in range(0, len(b), 4))
+        return "".join(
+            "%x"
+            % (
+                B._uint(b[i : i + 4])
+                if i + 4 <= len(b)
+                else B._uint(b[i:] + [0] * (i + 4 - len(b)))
+            )
+            for i in range(0, len(b), 4)
+        )
 
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
             return None
-        return {"pol": st.pol, "pages": st.n_frames, "words": st.n_frames,
-                "have": sorted(st.frames), "sow": st.last_sow,
-                "eph": self.ephemeris(prn) is not None}
+        return {
+            "pol": st.pol,
+            "pages": st.n_frames,
+            "words": st.n_frames,
+            "have": sorted(st.frames),
+            "sow": st.last_sow,
+            "eph": self.ephemeris(prn) is not None,
+        }
 
 
 # ------------------------------------------------------------------- self-test
@@ -171,13 +190,14 @@ def _selftest():
     """Encode chosen 486-bit frames into valid LDPC codewords, wrap with the PRN preamble, feed as
     br=1 symbol emits, and recover the frames (message types + CRC) through the full predictor."""
     import beidou_bcnav3 as G
+
     rng = np.random.RandomState(7)
     prn = 33
     G._init_gf()
 
     # info-systematic LDPC encode: solve H c = 0 with the first 81 GF symbols = the frame.
     def encode_frame(frame486):
-        info = G._bin2gf(np.array(frame486, dtype=np.uint8))            # 81 GF symbols
+        info = G._bin2gf(np.array(frame486, dtype=np.uint8))  # 81 GF symbols
         H = [[0] * G.N_VAR for _ in range(G.N_CHECK)]
         for i in range(G.N_CHECK):
             for k in range(len(G.H_BCNV3_IDX[i])):
@@ -189,20 +209,26 @@ def _selftest():
                     rhs[i] ^= G._gf_mul(H[i][col], int(info[col]))
         Hp = [[H[i][G.N_CHECK + j] for j in range(G.N_CHECK)] for i in range(G.N_CHECK)]
         p = [0] * G.N_CHECK
-        r = 0; piv_col = [-1] * G.N_CHECK
+        r = 0
+        piv_col = [-1] * G.N_CHECK
         for col in range(G.N_CHECK):
             pr = next((rr for rr in range(r, G.N_CHECK) if Hp[rr][col] != 0), None)
             if pr is None:
                 continue
-            Hp[r], Hp[pr] = Hp[pr], Hp[r]; rhs[r], rhs[pr] = rhs[pr], rhs[r]
+            Hp[r], Hp[pr] = Hp[pr], Hp[r]
+            rhs[r], rhs[pr] = rhs[pr], rhs[r]
             inv = G.GF_VEC[(G.Q_GF - 1 - G.GF_POW[Hp[r][col]]) % (G.Q_GF - 1)]
-            Hp[r] = [G._gf_mul(inv, x) for x in Hp[r]]; rhs[r] = G._gf_mul(inv, rhs[r])
+            Hp[r] = [G._gf_mul(inv, x) for x in Hp[r]]
+            rhs[r] = G._gf_mul(inv, rhs[r])
             for rr in range(G.N_CHECK):
                 if rr != r and Hp[rr][col]:
                     f = Hp[rr][col]
-                    Hp[rr] = [Hp[rr][cc] ^ G._gf_mul(f, Hp[r][cc]) for cc in range(G.N_CHECK)]
+                    Hp[rr] = [
+                        Hp[rr][cc] ^ G._gf_mul(f, Hp[r][cc]) for cc in range(G.N_CHECK)
+                    ]
                     rhs[rr] ^= G._gf_mul(f, rhs[r])
-            piv_col[r] = col; r += 1
+            piv_col[r] = col
+            r += 1
         for rr in range(r):
             p[piv_col[rr]] = rhs[rr]
         code = list(int(x) for x in info) + p
@@ -216,15 +242,16 @@ def _selftest():
         f[6:26] = [(sow >> (19 - k)) & 1 for k in range(20)]
         crc = G.crc24q(f)
         f += [(crc >> (23 - k)) & 1 for k in range(24)]
-        frames[mt] = f; truth[mt] = sow
+        frames[mt] = f
+        truth[mt] = sow
 
     sym = []
     for _ in range(3):
         for mt in (10, 30):
-            body = encode_frame(frames[mt])                            # 972 symbols
-            pre = G.preamble_for(prn)                                   # 22
-            resv = np.zeros(G.LDPC_OFFSET - G.N_PRE, dtype=np.int8)     # 6 reserved
-            frame_syms = np.concatenate([pre, resv, body])             # 1000
+            body = encode_frame(frames[mt])  # 972 symbols
+            pre = G.preamble_for(prn)  # 22
+            resv = np.zeros(G.LDPC_OFFSET - G.N_PRE, dtype=np.int8)  # 6 reserved
+            frame_syms = np.concatenate([pre, resv, body])  # 1000
             sym.append(np.where(frame_syms == 0, 1.0, -1.0))
     pm = np.concatenate(sym)
 
@@ -233,8 +260,13 @@ def _selftest():
     e = 0
     while e + FRAME <= len(pm):
         sgn = 1 - 2 * rng.randint(0, 2)
-        obs = {"utc_ref": e * SYM_S, "rec_dt": 0.001, "phase": 0, "br": 1,
-               "bits": [[i, int(np.sign(pm[e + i]) * sgn)] for i in range(FRAME)]}
+        obs = {
+            "utc_ref": e * SYM_S,
+            "rec_dt": 0.001,
+            "phase": 0,
+            "br": 1,
+            "bits": [[i, int(np.sign(pm[e + i]) * sgn)] for i in range(FRAME)],
+        }
         pred.ingest(prn, obs)
         e += FRAME
 
@@ -243,7 +275,8 @@ def _selftest():
     ok = bool(h and h["words"] >= 2 and set((10, 30)) <= set(h["have"]))
     msgs = {m["mestype"]: m["sow"] for m in pred.messages(prn)}
     if msgs.get(10) != truth[10] or msgs.get(30) != truth[30]:
-        print("FAIL: SOW mismatch", msgs, truth); ok = False
+        print("FAIL: SOW mismatch", msgs, truth)
+        ok = False
     print("recovered message types + SOW:", msgs)
     print("PASS" if ok else "FAIL")
     return ok
@@ -251,4 +284,5 @@ def _selftest():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(0 if _selftest() else 1)

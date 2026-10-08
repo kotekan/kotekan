@@ -38,8 +38,19 @@ sys.path.insert(0, HERE)
 from gnss_broker import telem  # noqa: E402
 
 
-def _make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=4,
-                hops_per_record=2048, fft_len=16384, present=None, rows=None, utc0=0.0):
+def _make_frame(
+    chain="gps_l5",
+    inst="cx19.0",
+    win=100,
+    seq=0,
+    n_rec=4,
+    n_prn=4,
+    hops_per_record=2048,
+    fft_len=16384,
+    present=None,
+    rows=None,
+    utc0=0.0,
+):
     """Build one wire frame in Python -- for the BEHAVIOURAL tests only.
 
     The layout it assumes is the one test_wire_format_matches_cpp proves correct, so these
@@ -52,10 +63,27 @@ def _make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=4,
     n_chan = 5
     chan_ids = [5972 + 16 * k for k in range(n_chan)] + [0] * (telem._MAX_CHAN - n_chan)
     row_total = telem._ROW_FLOATS + n_chan * telem._CHAN_FLOATS
-    hdr = telem._HDR.pack(telem._MAGIC, telem._VERSION, n_rec, n_prn, telem._ROW_FLOATS,
-                          n_chan, 32, hops_per_record, fft_len, win, seq, wstart0, utc0,
-                          present, n_chan, row_total,
-                          chain.encode(), inst.encode(), *chan_ids)
+    hdr = telem._HDR.pack(
+        telem._MAGIC,
+        telem._VERSION,
+        n_rec,
+        n_prn,
+        telem._ROW_FLOATS,
+        n_chan,
+        32,
+        hops_per_record,
+        fft_len,
+        win,
+        seq,
+        wstart0,
+        utc0,
+        present,
+        n_chan,
+        row_total,
+        chain.encode(),
+        inst.encode(),
+        *chan_ids
+    )
     body = [0.0] * (n_rec * n_prn * row_total)
     for r in range(n_rec):
         for p in range(n_prn):
@@ -67,15 +95,17 @@ def _make_frame(chain="gps_l5", inst="cx19.0", win=100, seq=0, n_rec=4, n_prn=4,
                 body[cb + telem.CHAN_RE] = 1.0
                 body[cb + telem.CHAN_IM] = 0.0
                 body[cb + telem.CHAN_ENERGY] = 1.0
-                body[cb + telem.CHAN_E_RE] = 0.5      # E and L distinct from P, so a slot
-                body[cb + telem.CHAN_E_ENERGY] = 1.0  # mix-up shows up as a value, not a shape
+                body[cb + telem.CHAN_E_RE] = 0.5  # E and L distinct from P, so a slot
+                body[
+                    cb + telem.CHAN_E_ENERGY
+                ] = 1.0  # mix-up shows up as a value, not a shape
                 body[cb + telem.CHAN_L_RE] = 0.25
                 body[cb + telem.CHAN_L_ENERGY] = 1.0
             body[base + telem.REC_PRN] = float(1 + p)
             body[base + telem.REC_P_ENERGY] = 2.0
-            body[base + telem.REC_P_RE] = 2.0 * (1 + p)   # A = 1+p exactly
+            body[base + telem.REC_P_RE] = 2.0 * (1 + p)  # A = 1+p exactly
             body[base + telem.REC_P_IM] = 0.0
-            body[base + telem.REC_CPHASE] = 0.25          # a per-record INCREMENT, cycles
+            body[base + telem.REC_CPHASE] = 0.25  # a per-record INCREMENT, cycles
             body[base + telem.REC_TRIM_INC] = 0.01
     if rows:
         for (r, p, slot), v in rows.items():
@@ -91,14 +121,26 @@ class TestWireFormat(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix="telemfmt-")
         src = os.path.join(K, "scripts", "gnss", "telemfmt.cpp")
         cls.bin = os.path.join(cls.tmp, "telemfmt")
-        p = subprocess.run(["c++", "-std=c++17", "-O1",
-                            "-I", os.path.join(K, "lib", "stages", "gnss"),
-                            "-o", cls.bin, src],
-                           capture_output=True, text=True)
+        p = subprocess.run(
+            [
+                "c++",
+                "-std=c++17",
+                "-O1",
+                "-I",
+                os.path.join(K, "lib", "stages", "gnss"),
+                "-o",
+                cls.bin,
+                src,
+            ],
+            capture_output=True,
+            text=True,
+        )
         if p.returncode != 0:
             raise unittest.SkipTest("cannot compile telemfmt.cpp:\n%s" % p.stderr)
         cls.frame_path = os.path.join(cls.tmp, "frame.bin")
-        r = subprocess.run([cls.bin, cls.frame_path], capture_output=True, text=True, check=True)
+        r = subprocess.run(
+            [cls.bin, cls.frame_path], capture_output=True, text=True, check=True
+        )
         cls.meta = json.loads(r.stdout)
         with open(cls.frame_path, "rb") as fh:
             cls.raw = fh.read()
@@ -113,9 +155,18 @@ class TestWireFormat(unittest.TestCase):
         self.assertEqual(m["version"], telem._VERSION)
         # Field offsets, one by one. A same-size layout with two fields transposed passes a
         # size check and fails here, which is the point.
-        for name, want in (("win", 24), ("seq", 32), ("wstart0", 40), ("utc0", 48),
-                           ("present", 56), ("chain", 64), ("inst", 80)):
-            self.assertEqual(m["off_" + name], want, "gnssTelem.hpp moved field %r" % name)
+        for name, want in (
+            ("win", 24),
+            ("seq", 32),
+            ("wstart0", 40),
+            ("utc0", 48),
+            ("present", 56),
+            ("chain", 64),
+            ("inst", 80),
+        ):
+            self.assertEqual(
+                m["off_" + name], want, "gnssTelem.hpp moved field %r" % name
+            )
 
     def test_parses_cpp_frame(self):
         m = self.meta
@@ -166,8 +217,10 @@ class TestWireFormat(unittest.TestCase):
         self.assertEqual(self.meta["max_chan_const"], telem._MAX_CHAN)
         self.assertLess(self.meta["max_chan"], self.meta["max_chan_const"])
         self.assertEqual(self.meta["chan_floats"], telem._CHAN_FLOATS)
-        self.assertEqual(self.meta["row_floats"],
-                         telem._ROW_FLOATS + self.meta["max_chan"] * telem._CHAN_FLOATS)
+        self.assertEqual(
+            self.meta["row_floats"],
+            telem._ROW_FLOATS + self.meta["max_chan"] * telem._CHAN_FLOATS,
+        )
         self.assertEqual(f.row_total, self.meta["row_floats"])
         self.assertEqual(f.chan_ids, [5972 + 16 * ch for ch in range(5)])
         comb = f.comb(3, 102)  # r=3, p=2
@@ -176,10 +229,12 @@ class TestWireFormat(unittest.TestCase):
             self.assertEqual(fid, 5972 + 16 * ch)
             self.assertEqual(e, ch + 1)
             # comb() normalises by energy, matching the header slots' G/E convention
-            self.assertAlmostEqual(A.real, (100000 * 3 + 1000 * 2 + 10 * ch + 1) / (ch + 1),
-                                   places=3)
-            self.assertAlmostEqual(A.imag, (100000 * 3 + 1000 * 2 + 10 * ch + 2) / (ch + 1),
-                                   places=3)
+            self.assertAlmostEqual(
+                A.real, (100000 * 3 + 1000 * 2 + 10 * ch + 1) / (ch + 1), places=3
+            )
+            self.assertAlmostEqual(
+                A.imag, (100000 * 3 + 1000 * 2 + 10 * ch + 2) / (ch + 1), places=3
+            )
 
     def test_comb_epl_carries_all_three_taps(self):
         # v3: E/P/L per channel is what lets the DLL leave the tracker's summed slots. telemfmt
@@ -200,8 +255,9 @@ class TestWireFormat(unittest.TestCase):
         # The two accessors must not drift: comb() is the v2 view of the same bytes comb_epl()
         # reads, and a reader using either must get the same prompt.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
-        for (fid, A, e), (fid2, _E, P, _L, (_eE, eP, _eL)) in zip(f.comb(1, 101),
-                                                                  f.comb_epl(1, 101)):
+        for (fid, A, e), (fid2, _E, P, _L, (_eE, eP, _eL)) in zip(
+            f.comb(1, 101), f.comb_epl(1, 101)
+        ):
             self.assertEqual(fid, fid2)
             self.assertAlmostEqual(A.real, P.real, places=6)
             self.assertEqual(e, eP)
@@ -227,7 +283,9 @@ class TestWireFormat(unittest.TestCase):
         # UTC is a double aliased over two float slots. A float-by-float parse gets a
         # plausible-looking wrong number here rather than an error.
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
-        self.assertAlmostEqual(f.utc(1, 103), 1786285988.5 + 0.0104857 * 1 + 0.001 * 3, places=6)
+        self.assertAlmostEqual(
+            f.utc(1, 103), 1786285988.5 + 0.0104857 * 1 + 0.001 * 3, places=6
+        )
 
     def test_hop_is_the_absolute_fengine_index(self):
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
@@ -251,7 +309,9 @@ class TestWindowRing(unittest.TestCase):
         c = self._client()
         for inst in ("cx19.0", "cx19.1", "cx42.0"):
             self._feed(c, _make_frame(inst=inst, win=10))
-        self.assertEqual(sorted(c.frame_set("gps_l5", 10).keys()), ["cx19.0", "cx19.1", "cx42.0"])
+        self.assertEqual(
+            sorted(c.frame_set("gps_l5", 10).keys()), ["cx19.0", "cx19.1", "cx42.0"]
+        )
 
     def test_lag_hides_the_newest_window(self):
         # #53's defect in one assertion: the newest window is ALWAYS still filling, because the
@@ -293,7 +353,6 @@ class TestWindowRing(unittest.TestCase):
         self.assertEqual(c.chains(), ["gal_e5a", "gps_l5"])
         self.assertEqual(list(c.frame_set("gal_e5a", 10)), ["cx19.0"])
 
-
     # -- epoch resets (2026-09-14): an F-engine re-base restarts the window counter ------------
     def _fill(self, c, lo, hi, insts=("cx19.0", "cx42.0")):
         for w in range(lo, hi):
@@ -305,12 +364,18 @@ class TestWindowRing(unittest.TestCase):
         # every one discarded, every instance stale, for as long as the process lived.
         c = self._client(depth=16)
         self._fill(c, 1000, 1010)
-        for w in range(5, 5 + c.epoch_strikes - 1):        # strikes 1..7: counted, kept as before
+        for w in range(
+            5, 5 + c.epoch_strikes - 1
+        ):  # strikes 1..7: counted, kept as before
             self._feed(c, _make_frame(inst="cx19.0", win=w))
         self.assertEqual(c.epoch_resets, 0)
         self.assertEqual(c.far_behind, c.epoch_strikes - 1)
-        self.assertTrue(any(w >= 1000 for w in c._store["gps_l5"]))    # old epoch still held
-        self._feed(c, _make_frame(inst="cx19.0", win=5 + c.epoch_strikes - 1))   # strike 8
+        self.assertTrue(
+            any(w >= 1000 for w in c._store["gps_l5"])
+        )  # old epoch still held
+        self._feed(
+            c, _make_frame(inst="cx19.0", win=5 + c.epoch_strikes - 1)
+        )  # strike 8
         self.assertEqual(c.epoch_resets, 1)
         self.assertEqual(list(c._store["gps_l5"]), [5 + c.epoch_strikes - 1])
         self._feed(c, _make_frame(inst="cx42.0", win=5 + c.epoch_strikes))
@@ -324,20 +389,25 @@ class TestWindowRing(unittest.TestCase):
         self._feed(c, _make_frame(inst="cx43.0", win=1010 - c.epoch_margin))
         self.assertEqual(c.epoch_resets, 0)
         self.assertEqual(c.far_behind, 0)
-        self.assertIn(1010 - c.epoch_margin, c._store["gps_l5"])   # accepted and re-sorted
+        self.assertIn(
+            1010 - c.epoch_margin, c._store["gps_l5"]
+        )  # accepted and re-sorted
         self.assertEqual(list(c._store["gps_l5"]), sorted(c._store["gps_l5"]))
 
     def test_one_corrupt_header_does_not_reset(self):
         c = self._client(depth=16)
         self._fill(c, 1000, 1010)
-        self._feed(c, _make_frame(inst="cx19.0", win=3))          # one wild header
-        self._feed(c, _make_frame(inst="cx19.0", win=1010))       # in order again
-        for w in range(4, 4 + c.epoch_strikes - 1):               # never reaches a full run
+        self._feed(c, _make_frame(inst="cx19.0", win=3))  # one wild header
+        self._feed(c, _make_frame(inst="cx19.0", win=1010))  # in order again
+        for w in range(4, 4 + c.epoch_strikes - 1):  # never reaches a full run
             self._feed(c, _make_frame(inst="cx19.0", win=w))
             self._feed(c, _make_frame(inst="cx42.0", win=1011 + w))
         self.assertEqual(c.epoch_resets, 0)
-        self.assertEqual(c.far_behind, c.epoch_strikes)           # counted, never acted on
-        self.assertIn(1011 + 4 + c.epoch_strikes - 2, c._store["gps_l5"])   # the last in-order window fed
+        self.assertEqual(c.far_behind, c.epoch_strikes)  # counted, never acted on
+        self.assertIn(
+            1011 + 4 + c.epoch_strikes - 2, c._store["gps_l5"]
+        )  # the last in-order window fed
+
 
 class TestQuietGatherDoesNotReconnect(unittest.TestCase):
     """C. Silence is not a broken link.
@@ -350,7 +420,6 @@ class TestQuietGatherDoesNotReconnect(unittest.TestCase):
     nothing at all -- REST included -- exactly as the fleet came back.
     """
 
-
     def _serve(self, sock, gap_s):
         """One frame, then GAP (longer than the client's read timeout), then a second frame."""
         conn, _ = sock.accept()
@@ -361,7 +430,7 @@ class TestQuietGatherDoesNotReconnect(unittest.TestCase):
                     time.sleep(gap_s)
                     continue
                 conn.sendall(struct.pack("<I", len(raw)) + raw)
-            time.sleep(1.0)   # hold the connection open so a reconnect would be visible
+            time.sleep(1.0)  # hold the connection open so a reconnect would be visible
         except Exception:
             pass
         finally:
@@ -370,6 +439,7 @@ class TestQuietGatherDoesNotReconnect(unittest.TestCase):
     def test_a_silent_gather_is_waited_out_not_reconnected(self):
         import socket as _s
         import threading
+
         srv = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
         srv.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
         srv.bind(("127.0.0.1", 0))
@@ -378,8 +448,13 @@ class TestQuietGatherDoesNotReconnect(unittest.TestCase):
         t = threading.Thread(target=self._serve, args=(srv, 0.30), daemon=True)
         t.start()
 
-        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=8,
-                              retry_s=0.05, read_timeout_s=0.10)
+        c = telem.TelemClient(
+            host="127.0.0.1",
+            port=srv.getsockname()[1],
+            depth=8,
+            retry_s=0.05,
+            read_timeout_s=0.10,
+        )
         c.start()
         try:
             deadline = time.time() + 5.0
@@ -438,11 +513,15 @@ class TestCoherentSource(unittest.TestCase):
 
     def test_zero_energy_rows_are_silence_not_zeros(self):
         c = self._client()
-        self._feed(c, _make_frame(inst="cx19.0", win=10,
-                                  rows={(0, 1, telem.REC_P_ENERGY): 0.0}))
+        self._feed(
+            c,
+            _make_frame(inst="cx19.0", win=10, rows={(0, 1, telem.REC_P_ENERGY): 0.0}),
+        )
         self._feed(c, _make_frame(inst="cx19.0", win=11))
         got, _ = c.coherent_source("gps_l5", prns=[2])
-        self.assertEqual(len(got["cx19.0"][2]), 3)  # slot 0 dropped, not carried as 0+0j
+        self.assertEqual(
+            len(got["cx19.0"][2]), 3
+        )  # slot 0 dropped, not carried as 0+0j
 
     def test_missing_record_slot_does_not_shift_hops(self):
         c = self._client()
@@ -487,8 +566,12 @@ class TestRecordStream(unittest.TestCase):
         s = c.record_stream("gps_l5", "cx19.0", 1)
         gaps = [x["gap"] for x in s]
         self.assertEqual(gaps[:4], [0, 0, 0, 0])
-        self.assertEqual(gaps[4], 4, "a missing window is 4 missing records, and the consumer "
-                                     "must be told so rather than left to difference across it")
+        self.assertEqual(
+            gaps[4],
+            4,
+            "a missing window is 4 missing records, and the consumer "
+            "must be told so rather than left to difference across it",
+        )
 
     def test_one_instance_only(self):
         c = self._client()
@@ -524,7 +607,9 @@ class TestStaleness(unittest.TestCase):
         self.assertEqual(st["instances"], 3)
         self.assertEqual(st["live"], 2)
         self.assertEqual(st["stale"], ["cx43.0"])
-        self.assertEqual(st["spread"], 1, "the dead instance must not be in the verdict")
+        self.assertEqual(
+            st["spread"], 1, "the dead instance must not be in the verdict"
+        )
 
     def test_all_stale_reports_no_live_rather_than_a_healthy_spread(self):
         # Silence must never read as health. With every sender stale there is no spread to
@@ -558,7 +643,9 @@ class TestStats(unittest.TestCase):
 
         def feed(inst, win, rx=None):
             raw = _make_frame(inst=inst, win=win)
-            c._store_frame(telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, rx or now))
+            c._store_frame(
+                telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, rx or now)
+            )
 
         feed("cx19.0", 10)
         feed("cx42.0", 10)
@@ -573,6 +660,7 @@ class TestStats(unittest.TestCase):
 
 def _listen():
     import socket as _s
+
     srv = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
     srv.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
     # A SMALL SEND BUFFER, set before accept so every accepted connection inherits it, and set
@@ -614,14 +702,20 @@ class TestSocketDrainsIndependentOfTheRing(unittest.TestCase):
 
     def test_a_held_ring_lock_does_not_stall_the_socket(self):
         import threading
+
         srv = _listen()
-        n = 450   # ~2.2 MB of frames vs a 64 kB send buffer
+        n = 450  # ~2.2 MB of frames vs a 64 kB send buffer
         self.t_sent = None
         self.err = None
-        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=1024,
-                              retry_s=0.05, read_timeout_s=5.0)
+        c = telem.TelemClient(
+            host="127.0.0.1",
+            port=srv.getsockname()[1],
+            depth=1024,
+            retry_s=0.05,
+            read_timeout_s=5.0,
+        )
         hold_s = 1.5
-        with c._lock:                      # every consumer's lock, held for a long pass
+        with c._lock:  # every consumer's lock, held for a long pass
             t0 = time.monotonic()
             threading.Thread(target=self._serve, args=(srv, n), daemon=True).start()
             c.start()
@@ -641,9 +735,13 @@ class TestSocketDrainsIndependentOfTheRing(unittest.TestCase):
         self.assertEqual(frames_during, 0)
         # ...yet the socket was drained: the server finished sending well before the release.
         self.assertIsNotNone(self.t_sent, "the server never finished sending")
-        self.assertLess(self.t_sent, t_release - 0.3,
-                        "sendall finished only %.2f s before the lock was released: the "
-                        "socket thread was blocked behind the ring lock" % (t_release - self.t_sent))
+        self.assertLess(
+            self.t_sent,
+            t_release - 0.3,
+            "sendall finished only %.2f s before the lock was released: the "
+            "socket thread was blocked behind the ring lock"
+            % (t_release - self.t_sent),
+        )
         self.assertGreaterEqual(pending_during, n // 2)
         # Nothing lost, one connection: the gather would have had no reason to drop us.
         self.assertEqual(c.frames, n)
@@ -655,13 +753,20 @@ class TestSocketDrainsIndependentOfTheRing(unittest.TestCase):
 
     def test_the_pending_queue_sheds_the_oldest_and_keeps_the_connection(self):
         import threading
+
         srv = _listen()
         one = len(_make_frame())
         n = 40
         self.t_sent = None
         self.err = None
-        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=1024,
-                              retry_s=0.05, read_timeout_s=5.0, pending_max_bytes=4 * one)
+        c = telem.TelemClient(
+            host="127.0.0.1",
+            port=srv.getsockname()[1],
+            depth=1024,
+            retry_s=0.05,
+            read_timeout_s=5.0,
+            pending_max_bytes=4 * one,
+        )
         with c._lock:
             threading.Thread(target=self._serve, args=(srv, n), daemon=True).start()
             c.start()
@@ -710,12 +815,18 @@ class TestReconnectPolicy(unittest.TestCase):
 
     def _run(self, live_s, fast_after_s, retry_s):
         import threading
+
         srv = _listen()
         self.accepts, self.closes = [], []
         threading.Thread(target=self._serve, args=(srv, live_s, 2), daemon=True).start()
-        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=64,
-                              retry_s=retry_s, read_timeout_s=5.0,
-                              fast_retry_after_s=fast_after_s)
+        c = telem.TelemClient(
+            host="127.0.0.1",
+            port=srv.getsockname()[1],
+            depth=64,
+            retry_s=retry_s,
+            read_timeout_s=5.0,
+            fast_retry_after_s=fast_after_s,
+        )
         c.start()
         try:
             deadline = time.time() + 5.0
@@ -729,16 +840,23 @@ class TestReconnectPolicy(unittest.TestCase):
 
     def test_a_connection_that_lived_is_reconnected_immediately(self):
         c, gap = self._run(live_s=0.5, fast_after_s=0.2, retry_s=2.0)
-        self.assertLess(gap, 0.3, "waited %.2f s (the backoff) after a live connection was "
-                        "closed" % gap)
+        self.assertLess(
+            gap,
+            0.3,
+            "waited %.2f s (the backoff) after a live connection was " "closed" % gap,
+        )
         self.assertEqual(c.fast_reconnects, 1)
         self.assertGreaterEqual(c.last_lived_s, 0.2)
 
     def test_a_connection_that_died_young_waits_the_backoff(self):
         c, gap = self._run(live_s=0.02, fast_after_s=5.0, retry_s=0.4)
-        self.assertGreaterEqual(gap, 0.3, "reconnected after %.2f s to a gather that keeps "
-                                "dropping us at once -- that is the churn the backoff exists "
-                                "for" % gap)
+        self.assertGreaterEqual(
+            gap,
+            0.3,
+            "reconnected after %.2f s to a gather that keeps "
+            "dropping us at once -- that is the churn the backoff exists "
+            "for" % gap,
+        )
         self.assertEqual(c.fast_reconnects, 0)
 
 
@@ -753,6 +871,7 @@ class TestReceiveBufferIsPinned(unittest.TestCase):
 
     def _connected_client(self, **kw):
         import threading
+
         srv = _listen()
         holder = {}
 
@@ -763,9 +882,16 @@ class TestReceiveBufferIsPinned(unittest.TestCase):
                 time.sleep(1.5)
             except Exception:
                 pass
+
         threading.Thread(target=serve, daemon=True).start()
-        c = telem.TelemClient(host="127.0.0.1", port=srv.getsockname()[1], depth=8,
-                              retry_s=0.05, read_timeout_s=1.0, **kw)
+        c = telem.TelemClient(
+            host="127.0.0.1",
+            port=srv.getsockname()[1],
+            depth=8,
+            retry_s=0.05,
+            read_timeout_s=1.0,
+            **kw
+        )
         c.start()
         deadline = time.time() + 5.0
         while time.time() < deadline and c.rcvbuf_actual is None:
@@ -775,11 +901,13 @@ class TestReceiveBufferIsPinned(unittest.TestCase):
         return c
 
     def test_the_kernel_grants_what_was_asked_for_within_its_ceiling(self):
-        req = 256 * 1024          # small enough to be under any plausible rmem_max
+        req = 256 * 1024  # small enough to be under any plausible rmem_max
         with open("/proc/sys/net/core/rmem_max") as f:
             rmem_max = int(f.read().strip())
         c = self._connected_client(rcvbuf_bytes=req)
-        self.assertIsNotNone(c.rcvbuf_actual, "the client never recorded a receive buffer")
+        self.assertIsNotNone(
+            c.rcvbuf_actual, "the client never recorded a receive buffer"
+        )
         # Linux stores 2x the request, then clamps to rmem_max.
         self.assertGreaterEqual(c.rcvbuf_actual, min(2 * req, rmem_max))
         self.assertEqual(c.stats()["rcvbuf"], c.rcvbuf_actual)

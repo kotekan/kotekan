@@ -54,7 +54,7 @@ std::vector<float> pfb_prototype(int num_chan, int num_taps, Window window, doub
     std::vector<float> h(L);
     double sum = 0.0;
     for (int r = 0; r < L; ++r) {
-        const double x = (r - (L - 1) / 2.0) / num_chan;           // sinc arg, cutoff pi/N
+        const double x = (r - (L - 1) / 2.0) / num_chan; // sinc arg, cutoff pi/N
         const double v = sinc(x) * window_value(window, r, L, kaiser_beta);
         h[r] = static_cast<float>(v);
         sum += v;

@@ -51,10 +51,13 @@ class TestSeedBias(unittest.TestCase):
         raws = [true_bias + 10.0 * math.sin(2 * math.pi * i / 30.0) for i in range(600)]
         seeds = run_solves(cb, raws, "slow")
         settled = seeds[300:]
-        hint_swing = max(abs(cb.value - true_bias), 4.0)  # the hint EMA demonstrably wobbles
+        hint_swing = max(
+            abs(cb.value - true_bias), 4.0
+        )  # the hint EMA demonstrably wobbles
         seed_swing = max(abs(s - true_bias) for s in settled)
-        self.assertLess(seed_swing, 1.0,
-                        "seed still carries the wander: %.2f Hz" % seed_swing)
+        self.assertLess(
+            seed_swing, 1.0, "seed still carries the wander: %.2f Hz" % seed_swing
+        )
         self.assertGreater(hint_swing, 3.0)
 
     def test_slow_follows_thermal_drift(self):
@@ -69,12 +72,12 @@ class TestSeedBias(unittest.TestCase):
         """A measurement gap outranks the slow memory, exactly as it does the fast one."""
         cb = ClockBias()
         run_solves(cb, [7.0], "slow")
-        self.assertEqual(cb.seed, 7.0)          # first solve snaps
+        self.assertEqual(cb.seed, 7.0)  # first solve snaps
         run_solves(cb, [8.0] * 5, "slow")
         self.assertLess(abs(cb.seed - 7.0), 0.1)  # then crawls
-        cb.stale = True                          # gap: the GPSDO may have walked
+        cb.stale = True  # gap: the GPSDO may have walked
         run_solves(cb, [-40.0], "slow")
-        self.assertEqual(cb.seed, -40.0)         # stale re-solve snaps
+        self.assertEqual(cb.seed, -40.0)  # stale re-solve snaps
 
     def test_seed_numeric_before_first_solve(self):
         """Consumers add cb.seed to predictions from cycle 1 -- it starts 0.0 like value."""
@@ -85,12 +88,12 @@ class TestSeedBias(unittest.TestCase):
         """'zero': first solve, crawl, and stale re-solve all leave the seed at exactly 0.0
         (the measured snaps were +16, -23, +11, -12 Hz), and every return value agrees."""
         cb = ClockBias()
-        seeds = run_solves(cb, [16.0], "zero")          # first solve: 'slow' snaps here
+        seeds = run_solves(cb, [16.0], "zero")  # first solve: 'slow' snaps here
         self.assertIs(type(cb.seed), float)
         self.assertEqual(seeds, [0.0])
         self.assertEqual(cb.seed, 0.0)
-        seeds += run_solves(cb, [-23.0, 11.0, -12.0, 40.0], "zero")   # crawl
-        cb.stale = True                                  # gap: 'slow' snaps again here
+        seeds += run_solves(cb, [-23.0, 11.0, -12.0, 40.0], "zero")  # crawl
+        cb.stale = True  # gap: 'slow' snaps again here
         seeds += run_solves(cb, [-23.0], "zero")
         self.assertEqual(seeds, [0.0] * 6)
         self.assertEqual(cb.seed, 0.0)
@@ -115,7 +118,7 @@ class TestSeedBias(unittest.TestCase):
         """A --clock-bias-file warm start writes `ema` (and `cal`), never `seed`: the seed
         is 0.0 before the first solve and stays there after it."""
         cb = ClockBias()
-        cb.ema = cb.cal = -17.9                          # what the warm start does
+        cb.ema = cb.cal = -17.9  # what the warm start does
         self.assertEqual(cb.seed, 0.0)
         run_solves(cb, [-15.0, -16.0], "zero")
         self.assertEqual(cb.seed, 0.0)
@@ -145,8 +148,9 @@ def _cb_attrs(path):
         if not isinstance(node, ast.Attribute):
             continue
         base = node.value
-        is_cb = ((isinstance(base, ast.Attribute) and base.attr == "cb")
-                 or (isinstance(base, ast.Name) and base.id in ("cb", "_cb")))
+        is_cb = (isinstance(base, ast.Attribute) and base.attr == "cb") or (
+            isinstance(base, ast.Name) and base.id in ("cb", "_cb")
+        )
         if is_cb:
             (writes if isinstance(node.ctx, ast.Store) else reads).add(node.attr)
     return reads, writes
@@ -156,10 +160,14 @@ class TestSeedBiasWiring(unittest.TestCase):
     """'zero' is only as good as the claim that update_seed is the seed's ONLY writer and
     that the seed builders read `seed`, never the hint bias. Both are structural."""
 
-    SOURCES = [os.path.join(HERE, n) for n in sorted(os.listdir(HERE))
-               if n.endswith(".py") and not n.startswith("test_") and n != "selftest.py"
-               and n != "clockbias.py"] + [os.path.join(os.path.dirname(HERE),
-                                                         "gps_distributed_broker.py")]
+    SOURCES = [
+        os.path.join(HERE, n)
+        for n in sorted(os.listdir(HERE))
+        if n.endswith(".py")
+        and not n.startswith("test_")
+        and n != "selftest.py"
+        and n != "clockbias.py"
+    ] + [os.path.join(os.path.dirname(HERE), "gps_distributed_broker.py")]
 
     def test_nothing_but_update_seed_writes_the_seed(self):
         bad = [os.path.basename(p) for p in self.SOURCES if "seed" in _cb_attrs(p)[1]]
@@ -169,8 +177,11 @@ class TestSeedBiasWiring(unittest.TestCase):
         for name in ("seeding.py", "deadreckon.py"):
             reads, _ = _cb_attrs(os.path.join(HERE, name))
             self.assertIn("seed", reads, name)
-            self.assertNotIn("value", reads,
-                             "%s reads cb.value: the hint bias would reach a seed" % name)
+            self.assertNotIn(
+                "value",
+                reads,
+                "%s reads cb.value: the hint bias would reach a seed" % name,
+            )
 
     def test_first_seed_guard_is_mode_independent(self):
         """The guard withholds first seeds until a bias exists, in EVERY seed-bias mode. Under
@@ -180,8 +191,11 @@ class TestSeedBiasWiring(unittest.TestCase):
         _nh_joint_consensus on None - None."""
         with open(os.path.join(HERE, "seeding.py")) as f:
             tree = ast.parse(f.read())
-        tests = [ast.unparse(n.test) for n in ast.walk(tree)
-                 if isinstance(n, ast.If) and "cb.available" in ast.unparse(n.test)]
+        tests = [
+            ast.unparse(n.test)
+            for n in ast.walk(tree)
+            if isinstance(n, ast.If) and "cb.available" in ast.unparse(n.test)
+        ]
         self.assertEqual(len(tests), 1, tests)
         self.assertNotIn("seed_bias_source", tests[0])
 

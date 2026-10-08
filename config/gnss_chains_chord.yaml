@@ -1,3 +1,4 @@
+---
 # CHORD GNSS chains -- one broker process, every signal (task #27).
 #
 #   scripts/gnss/broker_multi.py config/gnss_chains_chord.yaml
@@ -20,20 +21,20 @@
 
 common:
   # -- the RECEIVER: one telescope, one site, one F-engine ------------------------------
-  rest-url: http://cx19:12048      # must name a real NODE; cf06 runs no gnss node itself
-  time0-endpoint: telescope/time0_ns
-  hops-per-sec: 195312.5           # F-engine record geometry -- not a signal property
+    rest-url: http://cx19:12048    # must name a real NODE; cf06 runs no gnss node itself
+    time0-endpoint: telescope/time0_ns
+    hops-per-sec: 195312.5         # F-engine record geometry -- not a signal property
   # #102 geometry feed for the per-element steering: each chain posts its constellation's
   # az/el to its record assemblers every 30 s. Every band is steered (gnss_fleet_chord.yaml
   # elem-steer-bands: all); an unsteered assembler acknowledges {"steering":"off"}.
-  post-sat-geometry: 1
+    post-sat-geometry: 1
   # #104 (2026-08-30): bound sibling clock adoption -- the unbounded path relayed gps's
   # poisoned clock fleet-wide in ~2 s during the #103 outage while JOINT-CLK's 5-chip
   # bound refused the same values. Fresh-local refusals only; stale local (>300 s) adopts.
   # #104 v2 (16:0x): the guard now exempts PRIMED clocks (a 0.00-chip startup placeholder
   # is not a measurement to defend -- v1 refused the sibling's real +149.44 against it and
   # locked both 1176 MHz chains out seedless, 15:51-15:56).
-  dr-clock-adopt-max-chips: 5.0
+    dr-clock-adopt-max-chips: 5.0
   # #141: seeds ride 0 Hz of clock-frequency bias; the search hints keep the solved bias.
   # The F-engine LO is on the site reference, and the chains that never solve a bias
   # (gal_e5a, bds_b2a on the same GPUs and channels as gps_l5) read carrier residuals of
@@ -41,7 +42,7 @@ common:
   # median after every restart and stale gap) is estimator noise, and with carrier-gain 0
   # seeding it IS every L5 satellite's residual carrier (slope 0.975, r 0.94 over 49 h).
   # Set at common: a no-op on unsolved chains, whose seed bias is 0 by construction.
-  seed-bias-source: zero
+    seed-bias-source: zero
   # #99 ROOT FIX (2026-08-29, KV-approved): the previous coordinates (49.32075144444,
   # -119.62081125 -- the array ORIGIN, likely the CHIME reference) sit ~155 m from the
   # dishes' effective phase centre. Solved by LSQ on 6,971 banked overnight integrity
@@ -57,29 +58,29 @@ common:
   # approximation was wrong. Solve + verify (expect q ~ 0):
   #   SOLVE_LAT=<lat> SOLVE_LON=<lon> fixtures/gap3_position_solve.py <broker log>
   # alt kept (U weakly observed).
-  lat: 49.32001414
-  lon: -119.62262691
-  alt: 545
-  mask-deg: 0
-  interval: 2
+    lat: 49.32001414
+    lon: -119.62262691
+    alt: 545
+    mask-deg: 0
+    interval: 2
   # ONE PORT FOR EVERY CHAIN (M6). Select with /<chain>/get_status or ?chain=<id>.
-  publish-port: 12060
+    publish-port: 12060
 
   # -- shared loop settings (identical in both launch scripts today) ---------------------
-  almanac: true
-  almanac-source: brdc
-  dead-reckon: true
-  dr-clock-chips: 0.0
+    almanac: true
+    almanac-source: brdc
+    dead-reckon: true
+    dr-clock-chips: 0.0
   # MEASURED CODE BIASES over the broadcast term (A0b part 2, 2026-08-23). Every chain:
   # the per-satellite spread is real on all three constellations, and for bds_b2a it is the
   # ONLY source there is (TGD_B2ap is B-CNAV2; RINEX 3 has nothing). ⚠️ Zero-mean per
   # constellation by construction -> per-sat only, never a common offset.
-  dcb-bias: true
-  carrier-from-code: true
-  cl-assist: true
-  seed-doppler: auto
-  dll-gain: 0.25
-  carrier-gain: 0.0
+    dcb-bias: true
+    carrier-from-code: true
+    cl-assist: true
+    seed-doppler: auto
+    dll-gain: 0.25
+    carrier-gain: 0.0
   # -- task #33 P3: the per-sat carrier state (rrate rows + receiver f_carrier) ----------
   # SHADOW ON EVERYWHERE (2026-08-13): measurement-only by construction -- with
   # rrate-command off this cannot change a seed or a POST. Every chain feeds so the
@@ -96,14 +97,14 @@ common:
   # 1/12, bds_b2a 1/9. A satellite fails the moment it drifts below its peers, i.e. exactly
   # when it needs trimming. 3 probes (deepest below-horizon PRNs, exempt from the
   # below-horizon drop, invisible to every other gate because their sig ~ 0).
-  noise-probes: 3
+    noise-probes: 3
   # ── RESPONSIVENESS (KV: updates "~every time a sat rises or sets") ──────────────────────
   # 900 s was right when a swap moved ONE slot and cost a re-acquisition each time. The
   # whole-map policy posts every needed move in a SINGLE scheduled swap, so the rate limit
   # now bounds how often the fleet crosses a discontinuity, not how fast the map can follow
   # the sky. 120 s tracks a rise or set closely while leaving every moved slot ample time to
   # acquire cold before the next post is even considered.
-  prn-reconfig-interval-s: 120
+    prn-reconfig-interval-s: 120
   # ── FLEET-WIDE, 2026-08-28 (KV: "shouldn't we always want these?") ────────────────────
   # Yes. Neither is an experiment: probe-require-slot prevents the probe selector picking
   # PRNs the nodes have no slot for (which drops a chain under 3 reporting probes and into
@@ -116,8 +117,8 @@ common:
   # computes zero moves. A knob that does nothing on the chain you look at most is a knob
   # whose absence is invisible -- which is why it belongs in common rather than being
   # remembered per chain.
-  probe-require-slot: true
-  prn-reconfig: apply
+    probe-require-slot: true
+    prn-reconfig: apply
   # ── THE HORIZON, 2026-08-27 (KV): "treat all sats at el>0 as up." ──────────────────────
   # The 10 deg admit mask was never motivated -- it arrived as a default and was never
   # measured against. It is not a sky property: mask-deg is already 0, so a satellite at
@@ -135,8 +136,8 @@ common:
   # and kept through 2 deg of setting, so a sat hovering at the horizon costs ONE cold
   # acquisition, not one per cycle. Capacity is self-reporting -- `unplaced` is logged as
   # "N satellite(s) waiting for a slot" and BeiDou b2a is the tight one at 24 slots.
-  prn-reconfig-admit-deg: 0
-  prn-reconfig-evict-deg: -2
+    prn-reconfig-admit-deg: 0
+    prn-reconfig-evict-deg: -2
   # ── ARMED 2026-08-27 15:1x: THE PRIOR GAUGE (#94/S2, KV) ──────────────────────────────
   # The joint filter's common mode was pinned by median(b)=0 over the ACTIVE sats -- a
   # POPULATION statement, so bare clk stepped when the middle element changed and b_i was
@@ -149,20 +150,20 @@ common:
   # circular-median clock (SEED-OFFSET joint-vs-legacy line), plus every consumer's own
   # 5-chip refusal bound. Pre-registered: fixtures/expectations_20260827_prior_gauge.txt.
   # Revert: delete this line + broker restart.
-  joint-gauge: prior
+    joint-gauge: prior
   # TASK #57 step 2: poll the combiners' /get_elements and serve the per-element complex
   # gain (amplitude AND phase per antenna, per instance -- the beam/peel coefficients) on
   # the publisher's /get_elements, with the raw parts archived to NFS for the offline beam
   # map. The node endpoint ships with the NEXT NODE RESTART; until then every poll 404s,
   # which the broker counts and skips (rate-limited log), so this is safe to leave on.
-  element-poll: true
-  element-archive-dir: /home/kvand/gnss/fixtures/obs
-  rrate-state: true
+    element-poll: true
+    element-archive-dir: /home/kvand/gnss/fixtures/obs
+    rrate-state: true
   # #83 Phase 3 step 1 (2026-08-17): the fleet-coherent carrier-rate feed -- KCOH's
   # remaining rate (rate_hz + rate_resid_hz, #57's phase-progression estimator,
   # probe-calibrated) into the joint rrate state, sig-gated, coarse-deweighting like the
   # fine hold. The DR chains' first credible carrier-rate measurement.
-  rrate-kcoh-feed: 1
+    rrate-kcoh-feed: 1
   # ── JOINT GAUGE: a membership change is a change of COORDINATES (2026-08-21) ─────────
   # b_i -= mean(b); clk += mean(b); P through the same map. clk + b_i -- the only thing a
   # consumer reads -- is invariant, mean(b)=0 holds exactly, and NO uncertainty is injected
@@ -176,12 +177,12 @@ common:
   # default-off code, not withdrawn -- but it is unobservable on a healthy state, so it
   # rides with the feed when the rebuild problem above is fixed.
   # ── ATTEMPT 6, ARMED 2026-08-21 22:1x (as attempt 4; rereference rides the birth)
-  joint-rereference: true
+    joint-rereference: true
   # #83 THE AXIS FIX (2026-08-17): dead-reckon time base from the F-engine hop counter.
   # Measured: node hop->utc is PPS-true to 3 us; the wall axis carries ~1.45 ms absolute
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip
   # slew target, both = that number times 10.23 Mcps.
-  dr-fengine-axis: 1
+    dr-fengine-axis: 1
   # #83 2(d) re-validation: ⚠️ ARMED 22:11, FALSIFIED 22:30, DISARMED. The axis fix did
   # NOT make INNOV valid for dr-owned seeds. First flip after arming (PRN 4, 22:30:01):
   # INNOV +2201.31 chips, p95 2198.42, while every unflipped sat in the SAME line read
@@ -195,7 +196,7 @@ common:
   # its sub-ms residue lands straight in the chip domain of any cross-axis comparison.
   # The exclusion stands; MINNOV remains the referee for dr-owned/flipped sats. Re-arming
   # needs lag COMPENSATION on t_now_abs first, not a flag flip.
-  innov-dr-seeds: 0
+    innov-dr-seeds: 0
   # TASK #53: gather the per-channel spectra BY WINDOW INDEX, so every instance sums the
   # SAME records and each reply lands on one phase reference. Without this the per-instance
   # phase is free and the fit absorbs it -- which is #52's defect, not a modelling choice.
@@ -221,7 +222,7 @@ common:
   # with n_reanchor > 0 -- discarded 100% of its points. Measured before/after the tracker
   # cycle on cx42: re-anchored fraction 1.00 -> 0.00 on gps_l5/gal_e5a/bds_b2a, 0.01 on
   # gal_e5b (one genuine re-acquisition in 99).
-  spectrum-aligned: true
+    spectrum-aligned: true
   # #84 THE SPEC-WINDOW PIN (2026-08-17): the aligned gather's common index was min(hi)
   # over ALL addressable instances, and cx19's bench-state n2assemble (frozen buffer, hi
   # never advancing) pinned SPEC-WINDOW at 605351 on all five chains -- 11/12 healthy
@@ -232,7 +233,7 @@ common:
   # cx19 named as stale; SPEC-FIT p/f rises off ~1; the BSAT feed (min_inst 6, innovation
   # 1.0, clamp 1.0) resumes its designed function -- watch BSAT lines and judge taus
   # against disc before anything new consumes them.
-  spectrum-stale-margin: 8
+    spectrum-stale-margin: 8
   # TASK #59: the frame-synced telemetry gather. CONNECT ONLY -- this fills the store and logs
   # the TELEM line; it consumes NOTHING and changes no number this broker publishes. Turning
   # the feed on is a separate flag (--telem-coherent), deliberately, so the transport can be
@@ -255,14 +256,14 @@ common:
   # 1 GbE (eno8303) carrying 620 Mbps of telemetry, and the senders are frame-synced by
   # design, so they burst together. See task #64: ~65% of every frame is zero-filled PRN
   # rows (max_prn 40 vs 11-14 live).
-  telem-gather: 127.0.0.1:11061
+    telem-gather: 127.0.0.1:11061
   # ⚠️ MATCHED TO THE REST FEED, NOT LEFT AT THE DEFAULT. The combiners serve
   # `record_export: 128` records on /get_records, so 32 windows x 4 records/frame = 128 gives
   # the two feeds the SAME integration length. At the 8-window default the telemetry arm would
   # see a QUARTER of the records and score lower for a reason that has nothing to do with
   # alignment -- an unfair comparison that reads as "the new transport is worse". Change this
   # whenever record_export changes.
-  telem-windows: 32
+    telem-windows: 32
   # -- TASK #63: EVERY CHAIN'S CODE LOOP CLOSES ON THE COMB -------------------------------
   # The discriminator is formed HERE from the per-channel Early/Prompt/Late the #59 transport
   # ships, instead of from powers the trackers built by summing across each instance's own
@@ -292,7 +293,7 @@ common:
   # Watch the COMB-DLL log line: it prints the same paired comparison on the loop's own cycles,
   # so the swap keeps monitoring itself. Per-cycle fallback to the polled discriminator
   # whenever the gather has no windows for a chain.
-  telem-dll: true
+    telem-dll: true
   # ⚠️ ARMED 2026-08-24. fleet_coherent now reads the GATHERED stream instead of polling
   # /get_records from twelve combiners. ONE ESTIMATOR, the other transport -- the flag only
   # chooses what fills `got`; when a source is passed the endpoint list is emptied and the
@@ -317,7 +318,7 @@ common:
   # ⚠️ This does NOT remove fleet_dll's poll (0.53 s of cycle): deep_snr/deep_floor/
   # coherence_s and the quadrature fallback come from the combiner's DEEP FOLD, which is not
   # in the gathered stream. That poll still must be made.
-  telem-coherent: true
+    telem-coherent: true
   # ⚠️ SHADOW (1), NOT ARMED (2) -- 2026-08-23. Takes the comb DLL's per-PRN lobe and
   # per-channel taps from the gather's C++ reduction (<fleet-trim-url>/get_taps) instead of
   # rebuilding them here by walking every (window, instance, record, PRN, channel) of the
@@ -343,15 +344,15 @@ common:
   #     arm averages the broker's ring as of its cycle start -- measured 772 records = 8.1 s
   #     apart. The C++ arm is FRESHER, which is the direction the code loop wants.
   # A failed GET falls back to the polled discriminator, as a failed comb always has.
-  comb-taps-cpp: 2
+    comb-taps-cpp: 2
   # rrate-command: true  -- P3 step 3, closes the carrier loop: carrier_correction_hz()
   # posted as carrier_trim_hz, REPLACING the trim loop (one controller, one state -- the
   # #52 fix). ⚠️ ENABLE PER CHAIN, HALF THE FLEET AT A TIME, so each arm has a same-poll
   # control: gal_e5a commanded vs bds_b2a open on the SAME carrier is the clean pair.
   # A before/after across restarts cannot resolve it -- the sky churns faster.
-  code-bias-alpha: 0.05
-  code-bias-min-sats: 2
-  fit-gap-s: 3600
+    code-bias-alpha: 0.05
+    code-bias-min-sats: 2
+    fit-gap-s: 3600
   # ARMED 2026-08-28 (#96), 0 -> 30. The cp-rate fit is the ONLY estimator here with no SNR
   # gate: acquire-snr 30 already decides whether to believe this same fit's l-a contribution,
   # and bias-min-snr 60 gates the doppler clock pool, but every near-threshold detection was
@@ -362,15 +363,15 @@ common:
   # from 0.4% to 21.4%. 30 rather than the help's "~60": it is the value the code ALREADY
   # trusts this fit at, not a new number. gal_e5a/bds_b2a have zero cp-fits and are the
   # same-poll controls -- if they move, the sky moved and the verdict is void.
-  fit-min-snr: 30
-  bias-min-snr: 60
-  nh-period-offset: 0
+    fit-min-snr: 30
+    bias-min-snr: 60
+    nh-period-offset: 0
 
 chains:
 
   # GPS L5 -- the only chain with a SEARCH. Its detections are what solve the receiver
   # clock, which every other chain here now consumes in-process.
-  gps_l5:
+    gps_l5:
     # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
     # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
     # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
@@ -378,7 +379,7 @@ chains:
     # chips/Hz clock lever (root #2 churn: fleet clock wobble x lever = the INEXACT
     # large-step class in SEEDAUDIT). Judge on: SEEDAUDIT step census, INNOV p95,
     # q duty. Revert: delete this line on the affected chain + broker restart.
-    seed-phase-transport: true
+        seed-phase-transport: true
     # ARMED 2026-08-28 (#97): a CHANGED measured overlay period needs 2 consecutive
     # detections agreeing before it may rewrite the seed; until then the seed carries the
     # measured fine phase with the STANDING period, and ph_hist is not fed. The search's
@@ -389,28 +390,28 @@ chains:
     # ADOPTED lines rare; gal/bds are no-detection controls and must not move.
     # ⚠️ MITIGATION, not the fix -- the source defect (search period at high snr) is #97's
     # open half. Revert: delete this line + broker restart.
-    nh-period-debounce: 2
-    nh-joint: apply
+        nh-period-debounce: 2
+        nh-joint: apply
     # ARMED 2026-08-28 (#96/#97 closure): locked sats enter the cp_held seed freeze on
     # 5 consecutive fleet-PRESENT cycles (~10 s) -- the inversion: frozen tuple, DLL owns
     # the residual, CP_ERR referee. amp_snr entry alone fired 5x/day while q-3.8 sats
     # took per-detection REPLACEs. Judge: HOLD-via-PRESENT entries ~all present sats in
     # ~1 min; SEEDAUDIT re-anchor steps collapse; CP_ERR small; RELEASE churn low.
     # Revert: delete hold-on-present + cp-rate-model-tol + restart.
-    hold-on-present: 5
+        hold-on-present: 5
     # ARMED with it: 8 points at CHORD's 8 Hz search cadence span ~1 s, so the 30 s fit
     # maturity floor -- which gates hold admission AND the escape referee -- could never
     # pass on a strong sat. 256 spans ~32 s. Observable: fit_trusted flips true ~30 s
     # after a sat's detections begin; HOLD entries follow.
-    fit-hist-len: 256
+        fit-hist-len: 256
     # ARMED with it (#96 layer 2): a held sat's rate FREEZES at entry, so the entry rate
     # must be clean -- reject fits departing the pooled clock by >0.5 chips/s.
     # Observable: cp-rate REJECTED lines.
-    cp-rate-model-tol: 0.5
+        cp-rate-model-tol: 0.5
     # #103 (2026-08-30): fitted code rates are monitor-only; the command rides the pooled
     # clock, as the model-primary chains always have. Pre-reg:
     # fixtures/expectations_20260830_cp_rate_model_primary.txt
-    cp-rate-model-primary: 1
+        cp-rate-model-primary: 1
     # #103 ROOT FIX (2026-08-30): a hold freezes the MEASUREMENT, not the physics -- held
     # residual code rates re-slaved to the pooled clock each cycle, anchor re-expressed at
     # the present (command-continuous; gate: test_track_vs_fit.py TestHoldRetagContinuity).
@@ -430,7 +431,7 @@ chains:
     # v3 (armed 2026-08-30 ~14:2x): rate swap at HOLD ENTRY ONLY -- the tuple's last
     # per-cycle rewrite happens there anyway, so zero marginal re-pins; immune by
     # construction to v1's noise coupling AND v2's suspected rewrite cost.
-    hold-rate-source: "none"  # v3a DISARMED 14:4x -- FLEET-WIDE q=1.0 flatline from ~14:27, see #103
+        hold-rate-source: "none" # v3a DISARMED 14:4x -- FLEET-WIDE q=1.0 flatline from ~14:27, see #103
     # ARMED 2026-08-28 late (#98 follow-on): the escape referee's INTEGRITY VETO judged on
     # the EXCURSION from the sat's own 10-min integ median, not the absolute value. #99's
     # chronic per-sat model offsets (G28 -8 chips all evening) made the absolute veto
@@ -440,7 +441,7 @@ chains:
     # p recovers; REVERT if any sat logs >4 ESCAPEs in 10 min (escape churn is what the
     # veto exists to prevent) or gps dropout exceeds 2x the bds_b2a control.
     # Revert: delete this line + broker restart (absolute veto returns).
-    integ-veto-baseline-s: 600
+        integ-veto-baseline-s: 600
     # ARMED 2026-08-28 late (#100): flush a PRN's cp-fit history after 3 consecutive
     # cp-rate rejections -- a rejected fit also poisons the seed POSITION (evaluated from
     # the same blown fit), and the poison self-sustains for ~8 min at fit-hist-len 256
@@ -448,14 +449,14 @@ chains:
     # event-churned sats, slope returns ~0.0x within ~1 min, sat re-locks; REVERT if
     # flushes fire on healthy sats (>1/sat/h outside events).
     # Revert: delete this line + broker restart.
-    fit-flush-on-reject: 3
-    signal: gps_l5
+        fit-flush-on-reject: 3
+        signal: gps_l5
     # 2026-08-31 (KV): 11 IIR/IIR-M satellites never transmit L5 -- the slot manager already
     # excluded them (prnmap, IGS SINEX registry), but hints + seeds still probed them: 2-3
     # permanent "--" rows, periodic noise-blip births, and with the search's require_hint a
     # skipped hint means the PRN is never scanned at all. Source = the IGS registry, NOT
     # Celestrak (rejected twice now for block identity).
-    signal-capability: gps_l5
+        signal-capability: gps_l5
     # ⚠️ TEMPORARY EXPERIMENT (task #52, 2026-08-14) -- ON THIS CHAIN ONLY, deliberately.
     #
     # CLOSE THE SHARED CARRIER LOOP. The airspy prototype held carrier coherence for ~4 s and
@@ -492,8 +493,8 @@ chains:
     # despread so deep_rate could not respond, fixed; now this). Do NOT re-enable it as a knob.
     # It needs the seed and the carrier trim to be ONE controller -- task #33's shared per-sat
     # vector state. See #52.
-    carrier-gain: 0.0
-    detectors: http://localhost:12050/gps_search
+        carrier-gain: 0.0
+        detectors: http://localhost:12050/gps_search
     # -- PATH B (task #26, 2026-08-09). GPS L5 ran on BOTH paths simultaneously: path A
     # (gnss*_track / gnss*_assemble / gnss*_combine) and a fully-built path B
     # (gnss*_inject / gnss*_n2assemble / gnss*_n2combine). Measured, path A costs 7x path B
@@ -507,24 +508,14 @@ chains:
     # and path B alike -- reads 2048. Same cadence, so --coh-min-records, the DLL hop window
     # and fit-gap all see exactly what they saw before. Path B at this cadence is already
     # proven in production by E5a/B2a, which have run on nothing else.
-    trackers: "http://cx19:12048/gnss{0..1}_inject,\
-http://cx27:12048/gnss{0..1}_inject,\
-http://cx42:12048/gnss{0..1}_inject,\
-http://cx43:12048/gnss{0..1}_inject,\
-http://cx44:12048/gnss{0..1}_inject,\
-http://cx51:12048/gnss{0..1}_inject"
-    combiner: gnss0_n2combine
+        trackers: "http://cx19:12048/gnss{0..1}_inject,http://cx27:12048/gnss{0..1}_inject,http://cx42:12048/gnss{0..1}_inject,http://cx43:12048/gnss{0..1}_inject,http://cx44:12048/gnss{0..1}_inject,http://cx51:12048/gnss{0..1}_inject"
+        combiner: gnss0_n2combine
     # NOT uniform: cx19 and cx51 were regenerated with --combine-gpus and expose ONE merged
     # 14-channel combiner; the rest predate it and expose two 7-channel ones. Regenerate all
     # node configs and this collapses to the {0..1} form everywhere.
     # Path B's combiners are uniform {0..1} on every node -- the --combine-gpus asymmetry
     # that forced the hand-written list below was a path-A artefact and dies with it.
-    dll-combiners: &l5_cmb "http://cx19:12048/gnss{0..1}_n2combine,\
-http://cx27:12048/gnss{0..1}_n2combine,\
-http://cx42:12048/gnss{0..1}_n2combine,\
-http://cx43:12048/gnss{0..1}_n2combine,\
-http://cx44:12048/gnss{0..1}_n2combine,\
-http://cx51:12048/gnss{0..1}_n2combine"
+        dll-combiners: &l5_cmb "http://cx19:12048/gnss{0..1}_n2combine,http://cx27:12048/gnss{0..1}_n2combine,http://cx42:12048/gnss{0..1}_n2combine,http://cx43:12048/gnss{0..1}_n2combine,http://cx44:12048/gnss{0..1}_n2combine,http://cx51:12048/gnss{0..1}_n2combine"
     # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
     # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
     # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
@@ -618,7 +609,7 @@ http://cx51:12048/gnss{0..1}_n2combine"
     # see the gal_e5a note below: a gated change took 22 MINUTES to bite once, and was misread
     # as a regression from the restart that shipped it.
     # Revert: delete this line and restart the broker.
-    dll-deep-gate: "4 9 27"
+        dll-deep-gate: "4 9 27"
     # -- #79: LET THE SEARCH DECIDE WHO MAY BE CORRECTED -----------------------------------
     # The hand list above is three PRNs from #49's rollout, and a hand list cannot track a
     # sky that turns over. Worse, everything NOT on it falls back to the prompt gate, which
@@ -637,8 +628,8 @@ http://cx51:12048/gnss{0..1}_n2combine"
     # --dll-deep-gate note warns that admitting the whole fleet at once trades the latch for
     # an oscillation and makes the A/B unreadable. Widen only after this pair is judged.
     # Revert: delete these two lines and restart.
-    dll-deep-gate-from-search: 100
-    dll-deep-gate-search-hold-s: 90
+        dll-deep-gate-from-search: 100
+        dll-deep-gate-search-hold-s: 90
     # -- #51: THE CODE LOOP ON THE TELEMETRY CLOCK, THIS CHAIN ONLY -------------------------
     # THE DEFECT: the DLL's authority is a step PER UPDATE and the update rate was the ~12 s
     # policy cycle, so the loop ran 23x slower than the drift and could never hold lock.
@@ -696,19 +687,19 @@ http://cx51:12048/gnss{0..1}_n2combine"
     # per-target backoff, and no path that can terminate the process. Verified against a
     # deliberately HUNG tracker and a REFUSED one: the gather survives and the healthy targets
     # hold 22.9-23.9 posts/s.
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
     # Bandwidth 2.5/s (slew 0.62 chips/s) against the MEASURED plant: the tap sweeps through
     # the peak with an ~18 s period -- the documented +-1-chip clock breathing, peak slew
     # ~0.31 chips/s, plus the 0.12 drift = ~0.43 chips/s the loop must outrun. At the first
     # stable setting (1.4/s -> 0.35 chips/s) the loop chased and lost: disc ramped -0.9 -> +0.9
     # through each q maximum. Paired with fleet-trim-windows 2 at the gather, which halves the
     # measurement delay that bounds this bandwidth (stability wants bandwidth x delay < ~0.5).
-    fleet-trim-bandwidth: 2.5
+        fleet-trim-bandwidth: 2.5
     # #76 (2026-08-17): read back the C++ loop's standing per-PRN trims each cycle. The
     # broker commanded up to 3 chips of correction it could not see; seed + this readback
     # is where the tap actually sits. Read-only (log + _ft_readback) until #83 2(d).
-    fleet-trim-readback: 1
-    narrow-search: true
+        fleet-trim-readback: 1
+        narrow-search: true
     # Task #32: per-channel spectra for the fleet phase-slope delay fit (measurement-only).
     # Path B's assemblers; same node set as the trackers.
     # ── #8 THE RF-PATH MONITOR, ARMED ON THIS CHAIN ONLY (2026-08-18) ─────────────────
@@ -723,17 +714,14 @@ http://cx51:12048/gnss{0..1}_n2combine"
     # means every tap reports enabled=false, which the broker records as OFF and never
     # publishes as zeros. So this line can land now and start reporting the moment the
     # nodes come up with the monitor on -- no second broker restart needed.
-    rf-stats-endpoints: "http://cx19:12048/gnss{0..1}_srch_tap,\
-http://cx27:12048/gnss{0..1}_srch_tap,http://cx42:12048/gnss{0..1}_srch_tap,\
-http://cx43:12048/gnss{0..1}_srch_tap,http://cx44:12048/gnss{0..1}_srch_tap,\
-http://cx51:12048/gnss{0..1}_srch_tap"
+        rf-stats-endpoints: "http://cx19:12048/gnss{0..1}_srch_tap,http://cx27:12048/gnss{0..1}_srch_tap,http://cx42:12048/gnss{0..1}_srch_tap,http://cx43:12048/gnss{0..1}_srch_tap,http://cx44:12048/gnss{0..1}_srch_tap,http://cx51:12048/gnss{0..1}_srch_tap"
     # #8+ stream health: fold RFI (spectral kurtosis) and drop counters into the same
     # get_rf payload the rf-stats poll already publishes. Default-off flags; the SK url is
     # derived per instance from the rf-stats endpoints above, drops come from each host
     # /metrics. Both are receiver-wide, so they live on THIS chain only (same rule as
     # rf-stats-endpoints), not in common:.
-    rfi-stats: true
-    drop-stats: true
+        rfi-stats: true
+        drop-stats: true
     # #8+ THE ROWS OF THE STREAM HEALTH PANEL, declared rather than inferred (2026-09-02).
     # Chain NAMES, not frequencies -- the carriers come from gnssSignal.hpp, so no number is
     # typed twice. The eight chains collapse to five RF bands: L5 (1176.45, shared by gps_l5
@@ -750,15 +738,13 @@ http://cx51:12048/gnss{0..1}_srch_tap"
     # ⚠️ FLEET-SCOPE, like rf-stats-endpoints: the tap is per GPU and watches the union of
     # every chain on it, so this is every band the RECEIVER flies, not this chain's.
     # Add the chain here when a ninth chain arrives, or its channels join a neighbour's row.
-    rf-bands: "gps_l5,gal_e5a,bds_b2a,gal_e5b,bds_b2b,gps_l2c,bds_b3i,gal_e6"
-    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_n2assemble,http://cx27:12048/gnss{0..1}_n2assemble,\
-http://cx42:12048/gnss{0..1}_n2assemble,http://cx43:12048/gnss{0..1}_n2assemble,\
-http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
-    nh-hint: true
-    nh-hint-span: 2
-    acquire-snr: 30
-    search-margin-wide-hz: 200
-    search-margin-hz: 100
+        rf-bands: "gps_l5,gal_e5a,bds_b2a,gal_e5b,bds_b2b,gps_l2c,bds_b3i,gal_e6"
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_n2assemble,http://cx27:12048/gnss{0..1}_n2assemble,http://cx42:12048/gnss{0..1}_n2assemble,http://cx43:12048/gnss{0..1}_n2assemble,http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
+        nh-hint: true
+        nh-hint-span: 2
+        acquire-snr: 30
+        search-margin-wide-hz: 200
+        search-margin-hz: 100
     # ONLY THIS CHAIN NEEDS IT, because only this chain has detectors: the integrity check
     # that populates dr_untrusted needs measured code phases, so on E5a/B2a/E5b/B2b it never
     # fires and their Doppler already comes straight from BRDC every cycle. That is exactly
@@ -766,7 +752,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # 0.478 Hz -- and why gps_l5's deep fold inflates scatter +5.55 dB against their
     # +0.36..+0.77 (docs/CHORD_JOINT_TRACKING.md 3d). This makes GPS's Doppler behave like
     # theirs. Revert by deleting this line.
-    dr-doppler-ignores-integrity: true
+        dr-doppler-ignores-integrity: true
     # P2b CONSUMER 1 of 3 (task #33), enabled 2026-08-11 00:1x after the shadow
     # re-qualified post-divergence-fix: 36 min, clk 150.8 sigma ~0.07 stable, rate
     # +-0.0006 chips/s, 14/2198 rejections (0.64%), b_sat +-5, zero guard firings,
@@ -789,7 +775,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # The model-primary chains do it MORE, by 20x, and that is what the E5a feed below is
     # meant to attack. The gate that qualified this consumer on GPS stands on its own
     # measurements and is unaffected.
-    joint-consume: rate,slew
+        joint-consume: rate,slew
     # #83 Phase 3 step 2 (2026-08-17): the ROTATING COAST TEST -- withhold the
     # best-established satellite from the joint solve, coast 600 s, log the
     # residual-vs-age curve, rotate. Measurement-only (the masked sat is still seeded
@@ -798,7 +784,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # the model-primacy flip gate's number, and a measurement of q_b. gps_l5 only: the
     # coast residual needs detections to be measured against, and only this chain has a
     # search.
-    joint-p2c-rotate: true
+        joint-p2c-rotate: true
     # #83 P3-3b ARMED (2026-08-17, KV-approved): up to TWO PRNs run model-primary on the
     # measured MINNOV gate; the remaining eligible PRNs are the in-poll controls. Judge
     # flipped-vs-control on MINNOV/INNOV p95, q, trim behavior; every ENTER/EXIT is one
@@ -809,7 +795,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # seeds these sats better; the cap was A/B posture. Admission = built-in warmup
     # (p95 < 2.0 over >=30 innov/10 min), MINNOV referee auto-exits at 3.0. Pre-reg in
     # fixtures/expectations_20260830_cp_rate_model_primary.txt (final section).
-    model-primacy-max: 32
+        model-primacy-max: 32
     # PER-SUBBAND ARCHIVE (task #25) -- RETIRED. It persisted fleet_spectrum's per-channel,
     # per-instance points before the tau fit collapsed them, on the argument that a combined
     # number rebuilds from the parts and never the reverse. Nothing came to read it: the beam
@@ -832,7 +818,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
   # is in this process and has already contributed the clock to the Receiver, so the
   # transfer is an attribute read rather than a JSON file with a flush cadence, an age gate
   # and a two-read slew test. (Those still exist, unchanged, for cross-PROCESS siblings.)
-  gal_e5a:
+    gal_e5a:
     # #46/A1 THE FORECAST EPOCH, armed HERE ONLY 2026-08-18 (d4c679f2b). Seeds are built
     # for hop H = newest pow_hop + 1.0 s instead of for "now", so the measured ~217 ms
     # telemetry lag (105 ms window quantisation + ~100 ms pipeline, 59 ms IQR) stops
@@ -843,7 +829,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # to correct, which is directly measurable. The other four chains are the IN-POLL
     # CONTROLS (pair in time, never against history).
     # REVERT: delete this line + broker restart.
-    dr-forecast-lead-s: 1.0
+        dr-forecast-lead-s: 1.0
     # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
     # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
     # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
@@ -865,9 +851,9 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # longer enters the seed epoch, so the walk should be GONE. If trims climb
     # common-signed again within ~15 min: re-set to false + broker restart, and the
     # mechanism hunt reopens.
-    seed-phase-transport: true
-    signal: gal_e5a
-    dr-clock-adopt: true
+        seed-phase-transport: true
+        signal: gal_e5a
+        dr-clock-adopt: true
     # ── #49 ARMED 2026-08-15 20:30: the code loop, on the chains that could not hold ──────
     # THE MEASUREMENT THAT FORCED IT. Same C++ instrument, same windows, same fleet, read off
     # /fleet_trim/get_dll for the PRNs the whole fleet folds (n_src 12):
@@ -941,12 +927,12 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # This is an experiment with a control, not a fix. If disc ramps -0.9 -> +0.9 through
     # each q maximum (the 1.4/s failure mode named above), bandwidth is the number to move.
     # Revert: re-comment these two lines and restart the broker (broker-only, no node restart).
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
     # #76: same readback as gps_l5 -- and on THIS chain it doubles as the arm-verdict
     # instrument for #49 (the standing trims are the direct record of what the re-armed
     # loop is doing to each Galileo PRN).
-    fleet-trim-readback: 1
+        fleet-trim-readback: 1
     # ── #33 P3 step 3, LIVE ARM (2026-08-13, KV): the carrier loop CLOSED on this chain ──
     # carrier_correction_hz() -> carrier_trim_hz per (sat, band): receiver f_carrier + this
     # sat's orbital rrate, one command, one controller. CONTROLS, both in the same poll:
@@ -1072,8 +1058,8 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     #     can ever ride past what the sky can mean.
     # Flag-off identity: all 4 digest fixtures EQUIVALENT. Watch = fixtures/gap1_watch.py
     # loop (trip at |cmd| >= 9.0, sustained rails, payoff vs controls, auto-disarm on 2).
-    rrate-cmd-min-sig: 100
-    carrier-max-hz: 10.0
+        rrate-cmd-min-sig: 100
+        carrier-max-hz: 10.0
     # ── ARM 13 (2026-08-20 ~11:4x): the feed stops integrating its own command ─────────
     # Arm 12's E25 runaway was STRUCTURAL, not junk: since the 08-14 tracker cycle the
     # assembler folds the applied ctrim out of every record (e2e [4e] measured commanded
@@ -1096,7 +1082,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # weak spot ("only exact under a constant command"). NEXT: from the archived log
     # (gnss_broker_20260820_arm13_*.log.gz), per-sat feed attribution -- which feed
     # served E10/E2's rows vs E25's during the arm. Do NOT re-arm before that.
-    rrate-feed-applied: 0
+        rrate-feed-applied: 0
     # ── ARM 17 (2026-08-21 ~01:4x, KV): the fold folds at the ROW's rate ────────────────
     # The kcoh fold's injected rate comes from the previous cycle's record-stream fit,
     # whose ±10 Hz cycle-to-cycle noise IS the eta duty-cycling (the fleet-wide "sig
@@ -1129,7 +1115,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # calibration continues). Judge: converge-and-hold on ALL commanded sats; then the
     # benefit gates (q/eta duty vs controls, same polls).
     # Pre-registered: fixtures/expectations_20260820_arm14.txt.
-    rrate-phase-feed: false
+        rrate-phase-feed: false
     # ── ARM 14b (12:0x): 14's auto-disarm was a FALSE POSITIVE -- cx43-e5a's payoff
     # excess persists at 38-48 mHz with ZERO commands (measured disarmed, 3 polls; cx27
     # normal; first "trip" fired 16 s after broker start, before any command). The flight
@@ -1199,7 +1185,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # commanding the ~2 Hz common residual pays even while per-sat targets churn at the
     # row noise floor. JUDGE FROM NOW ON: per-sat q SD vs in-poll controls (the metric
     # that showed the effect); |dcmd| is descriptive only. Same safety gates unchanged.
-    rrate-command: true
+        rrate-command: true
     # ── #92 THE HANDOVER (2026-08-25 19:0x): ARMED ON THIS CHAIN ONLY, e5b = control ─────
     # A (slew)->(cp0) seed re-birth steps the seed while the C++ standing trim keeps
     # carrying the same chips: the tap lands off the sky, q craters, trim wiped and
@@ -1208,7 +1194,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # shared-clock births are skipped loudly). Needs the 08-25 gather binary.
     # Pre-reg: fixtures/expectations_20260825_92_handover.txt (P2 = paired no-crater
     # vs e5b; F2 = refusals dominate -> the same-cycle premise is wrong).
-    fleet-trim-rebase-adjust: 1
+        fleet-trim-rebase-adjust: 1
     # ── #101 ARMED 2026-08-29 (KV: "proceed with brdc refresh fixes"): at each eph
     # refresh, hand the KNOWN per-sat model step to the gather through the handover
     # above, same cycle -- instead of the leak-limited ~15-30 min rebuild the GAP 3
@@ -1216,7 +1202,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # the band-sibling control. Sign calibrated by the merge-epoch instrument, not by
     # derivation: if e5a's post-merge kicks GROW vs e5b, flip and re-judge.
     # Pre-reg: fixtures/expectations_20260829_eph_rebase.txt. Revert: delete + restart.
-    eph-rebase: 1
+        eph-rebase: 1
     # ── #102 ARMED 2026-08-29 (KV: first-order positions, generate overnight data): post
     # each sat's az/el to the record assemblers every 30 s -- the geometry feed for the
     # per-element steering (elem_positions_enu lives in the NODE configs, e5a only; e5b
@@ -1232,7 +1218,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # zero inversions). Gates per sat: same arc, counter advanced, command HELD over the
     # span, coherent, |fine| < 0.3 Hz. Fed at sigma 0.02 Hz into the SAME rrate rows --
     # the Kalman blends coarse acquisition and fine tracking with no mode switch.
-    rrate-phase-sign: 1.0
+        rrate-phase-sign: 1.0
     # rrate-phase-feed: true  # ← ARM 14: superseded by the `false` above (was a duplicate
     #                            key -- loader last-wins would have silently re-armed it).
     #                            Sign stays for the shadow JRRP calibration.
@@ -1248,7 +1234,7 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # order for a linearly drifting command, so that gate can be relaxed a long way (~1 Hz)
     # -- do that in daylight, confirm fine fires every poll, and only THEN re-try the
     # handoff. Overnight state = flat weights + fine feed live (stable 20:49-23:43).
-    rrate-coarse-deweight: 1.0
+        rrate-coarse-deweight: 1.0
     # ── LIVE PRN MEMBERSHIP, REPORT ONLY (armed 2026-08-26 21:2x, docs/CHORD_LIVE_PRN_
     # RECONFIG.md). `report` GETs each node's live map, logs the swap it WOULD make, and
     # POSTS NOTHING -- the unit test pins that property, which is what makes it safe to arm
@@ -1294,10 +1280,8 @@ http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
     # and e5b makes every cross-band comparison asymmetric, and the cross-band anti-
     # correlation work (#93) is judged on exactly those pairs.
     # Controls kept: bds_b2b (same-band pair to the armed b2a) and gps_l5, both unarmed.
-    trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,\
-http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,\
-http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
-    combiner: gnss0_e5a_n2combine
+        trackers: "http://cx19:12048/gnss{0..1}_e5a_inject,http://cx27:12048/gnss{0..1}_e5a_inject,http://cx42:12048/gnss{0..1}_e5a_inject,http://cx43:12048/gnss{0..1}_e5a_inject,http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
+        combiner: gnss0_e5a_n2combine
     # ARM 17 RE-FLY (2026-08-25 12:2x UTC): row-injected fold rates on the v1-fed rows.
     # The 08-21 "wash" was VOID (dead gather loop); the 08-23 staleness objection is
     # answered by the 16 s span feed (rows ~0.3 Hz, e5b-fed, shared per (E,prn)).
@@ -1316,15 +1300,9 @@ http://cx44:12048/gnss{0..1}_e5a_inject,http://cx51:12048/gnss{0..1}_e5a_inject"
     # GAP-1 v1 SHADOW ARM (2026-08-25 00:23 UTC): 16 s baseline for the fine phase
     # observable. This chain's rrate-phase-feed is FALSE, so only the JRRP shadow changes;
     # e5b (per-poll) is the control. Pre-reg: expectations_20260825_gap1_spanv1.txt.
-    rrate-phase-span-s: 16
-    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5a_n2assemble,\
-http://cx27:12048/gnss{0..1}_e5a_n2assemble,http://cx42:12048/gnss{0..1}_e5a_n2assemble,\
-http://cx43:12048/gnss{0..1}_e5a_n2assemble,http://cx44:12048/gnss{0..1}_e5a_n2assemble,\
-http://cx51:12048/gnss{0..1}_e5a_n2assemble"
-    dll-combiners: &e5a_cmb "http://cx19:12048/gnss{0..1}_e5a_n2combine,\
-http://cx27:12048/gnss{0..1}_e5a_n2combine,http://cx42:12048/gnss{0..1}_e5a_n2combine,\
-http://cx43:12048/gnss{0..1}_e5a_n2combine,http://cx44:12048/gnss{0..1}_e5a_n2combine,\
-http://cx51:12048/gnss{0..1}_e5a_n2combine"
+        rrate-phase-span-s: 16
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5a_n2assemble,http://cx27:12048/gnss{0..1}_e5a_n2assemble,http://cx42:12048/gnss{0..1}_e5a_n2assemble,http://cx43:12048/gnss{0..1}_e5a_n2assemble,http://cx44:12048/gnss{0..1}_e5a_n2assemble,http://cx51:12048/gnss{0..1}_e5a_n2assemble"
+        dll-combiners: &e5a_cmb "http://cx19:12048/gnss{0..1}_e5a_n2combine,http://cx27:12048/gnss{0..1}_e5a_n2combine,http://cx42:12048/gnss{0..1}_e5a_n2combine,http://cx43:12048/gnss{0..1}_e5a_n2combine,http://cx44:12048/gnss{0..1}_e5a_n2combine,http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
     # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
     # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
@@ -1730,7 +1708,7 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # gauge gave 0.92 treated vs 0.24 -- 4x WORSE); no lost locks vs e5b; behaviour through
     # the next thin-GPS/bootstrap patch. If treated > control again, the median gauge did
     # not fix what its commit claims -- revert to `rate` and say so.
-    joint-consume: clk,rate
+        joint-consume: clk,rate
     # ── #85 SPEC-ANCHORED FEED, ARMED 2026-08-23 ~13:4x — THIS CHAIN ONLY ────────────
     # y = held + applied_trim + spec_tau - cp_pred = (sky - model) IDENTICALLY, so this
     # chain may feed AND consume: a consumed clock moving the seed moves trim+spec_tau
@@ -1741,9 +1719,9 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # one sign for >10 min (the 08-22 loop walked +0.065 chips/s) or e5a q duty falling
     # vs e5b in-poll. JUDGE: JFEED n>=3 spread>0 acc>50%; joint sigma; P2C coast on a
     # masked GPS sat improving through the next thin-GPS patch.
-    joint-shadow: true
-    joint-model-primary: true
-    joint-feed-spec: true
+        joint-shadow: true
+        joint-model-primary: true
+        joint-feed-spec: true
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
     # when the tap is off-peak -- so an off-peak satellite fails the gate and is never trimmed
@@ -1791,7 +1769,7 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # admitted (PRN 31 q 0.98->2.99, PRN 16 0.89->2.64), so ordinary prompt-power presence
     # works fine on a healthy loop and the latch was not what was binding. Re-judge the
     # latch, if at all, one variable at a time on the healthy instrument.
-    dll-deep-gate: "33"
+        dll-deep-gate: "33"
     # ── ARMED 2026-08-27 12:5x: THE SEARCH-DERIVED DEEP GATE (#79), KV's call ────────────
     # ⚠️ THE ARMING SET IS THE PRESENT SET, AND PRESENCE IS COMPUTED FROM THE TAPS.
     # trimarm arms exactly the rows presence marks present, and the C++ fast loop only ever
@@ -1845,7 +1823,7 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # FALSIFIER: admitted rows do not converge, or railed/BARE-WIPE rises above the control.
     # Pre-registered: fixtures/expectations_20260827_deepgate_arm.txt (amended).
     # Revert: delete this line + broker restart.
-    presence-admit-displaced: true
+        presence-admit-displaced: true
     # ── ADDED 13:47, 10 MIN LATER: THE TWO ARMS ARE COMPLEMENTARY AND MUST RIDE TOGETHER ──
     # Measured, and it is the whole point of the pair. With admit-displaced ALONE, presence
     # admits the displaced row and the C++ then throws it away: four consecutive readbacks,
@@ -1928,7 +1906,7 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
   # a full day). The broker will predict them, find them below the mask, and never seed them --
   # but the node's lane budget is spent at generation time, so the trim lives in
   # config/gnss_fleet_chord.yaml.
-  bds_b2a:
+    bds_b2a:
     # ── ARMED 2026-08-27 23:0x: THE DISPLACED ADMISSION ON BeiDou (KV) ───────────────────
     # Built this afternoon for E3 and armed on both Galileo chains; BeiDou never got it, and
     # it is BeiDou that was paying. Measured at 23:00 on the live fleet, 8 BDS-3 above the
@@ -1949,7 +1927,7 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     #
     # ⚠️ NO CONTROL PAIR HERE, deliberately: the gal_e5a/gal_e5b pair was the controlled test
     # this afternoon and the effect is established. Revert = delete this line + broker restart.
-    presence-admit-displaced: true
+        presence-admit-displaced: true
     # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
     # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
     # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
@@ -1969,19 +1947,19 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # 2d9c8c160, keeps it out of the seed epoch) -- confirmed on gal_e5a as the
     # discriminating pair: 25 min of transport under the fix, chain-common climb GONE,
     # only per-sat #85-class error remains. Revert: false + broker restart.
-    seed-phase-transport: true
-    signal: bds_b2a
-    dr-clock-adopt: true
+        seed-phase-transport: true
+        signal: bds_b2a
+        dr-clock-adopt: true
     # ── clk ROLLOUT 2026-08-23 ~12:4x: the median-gauge A/B paid out on e5a ──────────
     # 9 h verdict, e5a treated vs e5b control: paired lock diff 0.0 (the mean-gauge harm
     # gone); and conditioned on the moments joint and legacy DISAGREE by >1.5 chips, the
     # control's trims grew 1.89x vs the treated chain's 1.35x -- when the clocks split,
     # THE SKY SIDES WITH THE JOINT CLOCK. The JOINT-CLK line stays as the per-cycle
     # counterfactual. gps_l5 stays on its own solve (it is the filter's INPUT).
-    joint-consume: clk,rate
+        joint-consume: clk,rate
     # rrate-command extension (2026-08-30) -- see gal_e5b note / pre-reg file.
-    rrate-command: true
-    rrate-cmd-min-sig: 100
+        rrate-command: true
+        rrate-cmd-min-sig: 100
     # ── THE FIRST NON-GPS CLOCK FEEDER (armed 2026-08-23 ~00:xx) ─────────────────────
     # y = dr_seed_phys(seed) + APPLIED trim - cp_predicted, the P3 model-primary feed.
     # WHY THIS CHAIN, AND WHY ONLY NOW. The feed's two historical failure modes are both
@@ -2052,9 +2030,9 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # slope -0.00045 chips/s at r=-0.04, against gal_e5a's -0.0056 at r=-0.68).
     # JUDGE ON (~10 min): bds_b2a trims going NONZERO in /fleet_trim/get_dll and armed-PRN
     # count > 0 in the FLEET-TRIM policy line. REVERT: re-comment these three lines.
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
-    fleet-trim-readback: 1
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
     # #33: COMMAND-OFF on purpose -- the same-carrier control arm for gal_e5a's closed
     # loop (its feed auto-prefers deep_rate_full_* once the tracker restart serves them).
     # ── PROBE SLOT FILTER, ARMED 2026-08-27 ~02:3x (KV) ──────────────────────────────
@@ -2139,18 +2117,10 @@ http://cx51:12048/gnss{0..1}_e5a_n2combine"
     # test was repaired today (it required prompt power, the same on-peak quantity it exists
     # to bypass, and would have rescued 2 of the 7); it is one line here when A is judged.
     # Revert: delete this line + broker restart.
-    trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,\
-http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,\
-http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"
-    combiner: gnss0_b2a_n2combine
-    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2a_n2assemble,\
-http://cx27:12048/gnss{0..1}_b2a_n2assemble,http://cx42:12048/gnss{0..1}_b2a_n2assemble,\
-http://cx43:12048/gnss{0..1}_b2a_n2assemble,http://cx44:12048/gnss{0..1}_b2a_n2assemble,\
-http://cx51:12048/gnss{0..1}_b2a_n2assemble"
-    dll-combiners: &b2a_cmb "http://cx19:12048/gnss{0..1}_b2a_n2combine,\
-http://cx27:12048/gnss{0..1}_b2a_n2combine,http://cx42:12048/gnss{0..1}_b2a_n2combine,\
-http://cx43:12048/gnss{0..1}_b2a_n2combine,http://cx44:12048/gnss{0..1}_b2a_n2combine,\
-http://cx51:12048/gnss{0..1}_b2a_n2combine"
+        trackers: "http://cx19:12048/gnss{0..1}_b2a_inject,http://cx27:12048/gnss{0..1}_b2a_inject,http://cx42:12048/gnss{0..1}_b2a_inject,http://cx43:12048/gnss{0..1}_b2a_inject,http://cx44:12048/gnss{0..1}_b2a_inject,http://cx51:12048/gnss{0..1}_b2a_inject"
+        combiner: gnss0_b2a_n2combine
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2a_n2assemble,http://cx27:12048/gnss{0..1}_b2a_n2assemble,http://cx42:12048/gnss{0..1}_b2a_n2assemble,http://cx43:12048/gnss{0..1}_b2a_n2assemble,http://cx44:12048/gnss{0..1}_b2a_n2assemble,http://cx51:12048/gnss{0..1}_b2a_n2assemble"
+        dll-combiners: &b2a_cmb "http://cx19:12048/gnss{0..1}_b2a_n2combine,http://cx27:12048/gnss{0..1}_b2a_n2combine,http://cx42:12048/gnss{0..1}_b2a_n2combine,http://cx43:12048/gnss{0..1}_b2a_n2combine,http://cx44:12048/gnss{0..1}_b2a_n2combine,http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
     # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
     # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
@@ -2185,7 +2155,7 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
   # consumes the receiver clock GPS solves (receiver.py: ONE clock, and now genuinely
   # across two bands -- the code clock is per BAND by doctrine, and this is the first
   # configuration that can actually test that claim rather than assert it).
-  gal_e5b:
+    gal_e5b:
     # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
     # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
     # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
@@ -2205,7 +2175,7 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # 2d9c8c160, keeps it out of the seed epoch) -- confirmed on gal_e5a as the
     # discriminating pair: 25 min of transport under the fix, chain-common climb GONE,
     # only per-sat #85-class error remains. Revert: false + broker restart.
-    seed-phase-transport: true
+        seed-phase-transport: true
     # ── GAP-3 BLOCKER DISCRIMINATOR: FLOWN AND JUDGED 2026-08-24 (armed ~16:10, verdict
     # ~18:55; the two F-engine site outages between voided two windows first). Slew cap was
     # HALVED here (0.025) against every other chain's 0.05, 18.8 min, same 6 satellites
@@ -2217,8 +2187,8 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # (e5b q rose slightly while armed, 2.57→2.67: a slower slew fights less. Palliative
     # only; reverted for single-variable hygiene. fixtures/expectations_20260824_slewcap_
     # discriminator.txt holds the pre-registration; /tmp/slewcap_samples.jsonl the data.)
-    signal: gal_e5b
-    dr-clock-adopt: true
+        signal: gal_e5b
+        dr-clock-adopt: true
     # ── #33 PLL FINE STAGE armed 2026-08-18 (second chain) ──────────────────────────────
     # Sign +1 measured by the COMMANDED-STEP PAIR (±2 Hz /set_carrier_trim holds,
     # 03:00-03:22, pre-registered: fixtures/expectations_20260818_jrrp_sign_probe.txt):
@@ -2268,7 +2238,7 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # drops 0.160 -> mHz-class on fine-fed sats; rate series smooth; G/C rows =
     # same-poll controls, unchanged. Falsifier: E-row rates WALK vs controls, or the
     # reject counter ramps => wrong sign or a bad reference; disarm (re-comment).
-    rrate-phase-sign: 1.0
+        rrate-phase-sign: 1.0
     # ── ARM 15 RE-FLOWN 2026-08-23 ~13:2x (GAP 3 step 1 of the ordered path) ─────────
     # The original arm 15 ran INSIDE the gather wedge (C++ loop dead) and its verdict is
     # VOID; this re-fly is on a VERIFIED-LIVE loop (hop advancing, pre-flight logged).
@@ -2280,7 +2250,7 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # from the fold feed's m/s; e5a controls unchanged in-poll; q duty flat vs e5a.
     # THEN: step 2 = regress d(b_sat)/dt vs the fine-fed rrate for the coupling sign;
     # step 3 = arm --rr-bsat-chips-per-m (GAP 3); step 4 = rrate-command on e5a (GAP 1).
-    rrate-phase-feed: true
+        rrate-phase-feed: true
     # ── #49 ARMED 2026-08-15 21:15Z (KV): the last two chains, control group RETIRED ──────
     # THE A/B ALREADY PAID OUT, on a single satellite through boresight. E28's served C/N0,
     # same PRN, same instant, both bands, across the 20:32Z arming of gal_e5a:
@@ -2327,9 +2297,9 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # Rows are shared per (tag, prn), so e5b's fine feed is what makes e5a's rows quiet --
     # symmetry there would cost the precision the pair exists to exploit. Any carrier A/B
     # across this pair must account for it.
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
-    fleet-trim-readback: 1
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
     # ── MATCHED TO gal_e5a 2026-08-22 ─────────────────────────────────────────────
     # e5b was NOT on e5a's baseline despite the R7/#49 pass: it still took its seed code
     # rate from the l-a EMA while e5a takes it from the joint state. Measured on the SAME
@@ -2357,8 +2327,8 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     #   rrate-command / -phase-feed-> OFF on BOTH. Their verdicts are void, so arming a
     #     second chain on an unproven feature is the wrong direction; the clean baseline is
     #     the lower-authority one. Re-fly them later as a single-axis A/B on a live loop.
-    dr-forecast-lead-s: 1.0
-    rrate-coarse-deweight: 1.0
+        dr-forecast-lead-s: 1.0
+        rrate-coarse-deweight: 1.0
     # ── clk DROPPED 2026-08-23 ~00:1x, twinned with e5a (the A/B paid out twice) ──
     # (1) VARIANCE: paired in time vs gps_l5 over n=80, this chain's clock read sd 0.920
     # chips against e5a's 0.243 post-disarm -- 5.6x, same satellites, same sky, one flag.
@@ -2373,15 +2343,15 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # control's trims grew 1.89x vs the treated chain's 1.35x -- when the clocks split,
     # THE SKY SIDES WITH THE JOINT CLOCK. The JOINT-CLK line stays as the per-cycle
     # counterfactual. gps_l5 stays on its own solve (it is the filter's INPUT).
-    joint-consume: clk,rate
-    dll-deep-gate: "33"
-    rrate-cmd-min-sig: 100
+        joint-consume: clk,rate
+        dll-deep-gate: "33"
+        rrate-cmd-min-sig: 100
     # rrate-command extension (2026-08-30, the vector-tracker bow): e5a has commanded
     # since 08-23 (q SD 0.23->0.14, degraded on disarm, controls flat). e5b next; b2b and
     # gps_l5 are the in-poll controls. Pre-reg: fixtures/expectations_20260830_rrate_fleet.txt
-    rrate-command: true
-    carrier-max-hz: 10.0
-    rrate-feed-applied: 0
+        rrate-command: true
+        carrier-max-hz: 10.0
+        rrate-feed-applied: 0
     # ── LIVE PRN MEMBERSHIP, REPORT ONLY (armed 2026-08-26 21:2x, docs/CHORD_LIVE_PRN_
     # RECONFIG.md). `report` GETs each node's live map, logs the swap it WOULD make, and
     # POSTS NOTHING -- the unit test pins that property, which is what makes it safe to arm
@@ -2438,18 +2408,13 @@ http://cx51:12048/gnss{0..1}_b2a_n2combine"
     # peak, refused by the q bar and left there. KV: "an unambiguous win, we should do it."
     # The control is retired for cause -- keeping it would be leaving three satellites
     # stranded to preserve a comparison already made. bds_b2b remains untreated.
-    presence-admit-displaced: true
-    trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,\
-http://cx27:12048/gnss{0..1}_e5b_inject,\
-http://cx42:12048/gnss{0..1}_e5b_inject,\
-http://cx43:12048/gnss{0..1}_e5b_inject,\
-http://cx44:12048/gnss{0..1}_e5b_inject,\
-http://cx51:12048/gnss{0..1}_e5b_inject"
-    combiner: gnss0_e5b_n2combine
+        presence-admit-displaced: true
+        trackers: "http://cx19:12048/gnss{0..1}_e5b_inject,http://cx27:12048/gnss{0..1}_e5b_inject,http://cx42:12048/gnss{0..1}_e5b_inject,http://cx43:12048/gnss{0..1}_e5b_inject,http://cx44:12048/gnss{0..1}_e5b_inject,http://cx51:12048/gnss{0..1}_e5b_inject"
+        combiner: gnss0_e5b_n2combine
     # GAP-1 v1 LIVE-FEED ARM (2026-08-25 11:2x UTC): 16 s span for the fine observable ON
     # THE FED CHAIN (rrate-phase-feed true here) with the non-overlap feed throttle.
     # Pre-reg: expectations_20260825_spanv1_e5b_feed.txt. e5a stays shadow reference.
-    rrate-phase-span-s: 16
+        rrate-phase-span-s: 16
     # #90 ARM re-fly (2026-08-25 ~00:2x UTC): the e5a arm never fired -- the 23:55 restart's
     # fresh solve healed e5a's E32 at birth (mechanism UNJUDGED), and the first flight found
     # the admission clause sitting BELOW the loop's own `if not present: continue` (dead code
@@ -2470,18 +2435,8 @@ http://cx51:12048/gnss{0..1}_e5b_inject"
     # sat present within 300 s).
     # reseed-spec-tau: "all"    # DISARMED 23:3x 08-25: F3 TRIPPED (fires on threshold-
     # reseed-admit-absent: 1     # flicker sats present 100-210 s prior; see fixture)
-    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,\
-http://cx27:12048/gnss{0..1}_e5b_n2assemble,\
-http://cx42:12048/gnss{0..1}_e5b_n2assemble,\
-http://cx43:12048/gnss{0..1}_e5b_n2assemble,\
-http://cx44:12048/gnss{0..1}_e5b_n2assemble,\
-http://cx51:12048/gnss{0..1}_e5b_n2assemble"
-    dll-combiners: &e5b_cmb "http://cx19:12048/gnss{0..1}_e5b_n2combine,\
-http://cx27:12048/gnss{0..1}_e5b_n2combine,\
-http://cx42:12048/gnss{0..1}_e5b_n2combine,\
-http://cx43:12048/gnss{0..1}_e5b_n2combine,\
-http://cx44:12048/gnss{0..1}_e5b_n2combine,\
-http://cx51:12048/gnss{0..1}_e5b_n2combine"
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e5b_n2assemble,http://cx27:12048/gnss{0..1}_e5b_n2assemble,http://cx42:12048/gnss{0..1}_e5b_n2assemble,http://cx43:12048/gnss{0..1}_e5b_n2assemble,http://cx44:12048/gnss{0..1}_e5b_n2assemble,http://cx51:12048/gnss{0..1}_e5b_n2assemble"
+        dll-combiners: &e5b_cmb "http://cx19:12048/gnss{0..1}_e5b_n2combine,http://cx27:12048/gnss{0..1}_e5b_n2combine,http://cx42:12048/gnss{0..1}_e5b_n2combine,http://cx43:12048/gnss{0..1}_e5b_n2combine,http://cx44:12048/gnss{0..1}_e5b_n2combine,http://cx51:12048/gnss{0..1}_e5b_n2combine"
     # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
     # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
     # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
@@ -2519,7 +2474,7 @@ http://cx51:12048/gnss{0..1}_e5b_n2combine"
   # cudaGnssChordTrack does not have (task #31). Expect it to TRACK with modest deep until
   # that lands. It is here for the BAND, not yet for the sensitivity -- judge it on
   # tau/lock, not on deep_snr, and do not "fix" a low deep that is simply this.
-  bds_b2b:
+    bds_b2b:
     # ── PROMOTED 2026-08-27 23:4x (KV): b2b was the untreated CONTROL and never caught up ──
     # It carried neither of these while gal_e5a, gal_e5b and bds_b2a all did, because it was
     # this morning's control for the probe/presence work. That control has served its purpose
@@ -2558,7 +2513,7 @@ http://cx51:12048/gnss{0..1}_e5b_n2combine"
     #
     # ⚠️ NO CONTROL PAIR HERE, deliberately: the gal_e5a/gal_e5b pair was the controlled test
     # this afternoon and the effect is established. Revert = delete this line + broker restart.
-    presence-admit-displaced: true
+        presence-admit-displaced: true
     # #83 2(b) ENABLED 2026-08-17 ~03:40 (audit sec4.6 fixed first, 5e4b93a17: the
     # trim now rides code_phase_at_ref_chips too, so a phase-preferring seed keeps
     # its code loop). DR/slew seeds now ship the PHASE at ref_hop; propagate_seed
@@ -2578,16 +2533,16 @@ http://cx51:12048/gnss{0..1}_e5b_n2combine"
     # 2d9c8c160, keeps it out of the seed epoch) -- confirmed on gal_e5a as the
     # discriminating pair: 25 min of transport under the fix, chain-common climb GONE,
     # only per-sat #85-class error remains. Revert: false + broker restart.
-    seed-phase-transport: true
-    signal: bds_b2b
-    dr-clock-adopt: true
+        seed-phase-transport: true
+        signal: bds_b2b
+        dr-clock-adopt: true
     # ── clk ROLLOUT 2026-08-23 ~12:4x: the median-gauge A/B paid out on e5a ──────────
     # 9 h verdict, e5a treated vs e5b control: paired lock diff 0.0 (the mean-gauge harm
     # gone); and conditioned on the moments joint and legacy DISAGREE by >1.5 chips, the
     # control's trims grew 1.89x vs the treated chain's 1.35x -- when the clocks split,
     # THE SKY SIDES WITH THE JOINT CLOCK. The JOINT-CLK line stays as the per-cycle
     # counterfactual. gps_l5 stays on its own solve (it is the filter's INPUT).
-    joint-consume: clk,rate
+        joint-consume: clk,rate
     # #49 ARMED 2026-08-15 21:15Z -- see gal_e5b's note. All five chains now run the C++ code
     # loop; nothing is left on the 11.5 s Python cycle, which never had the authority to hold
     # a lock (0.0054 chips/s against a plant that moves at ~0.43).
@@ -2621,28 +2576,13 @@ http://cx51:12048/gnss{0..1}_e5b_n2combine"
     # ⚠️ This spends b2b's unarmed-control role from the 08-22 code-loop arming -- that
     # experiment concluded (locks 1->5, rails cleared, verdict banked), so the control's
     # residual value is smaller than this discriminator.
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
-    fleet-trim-readback: 1
-    trackers: "http://cx19:12048/gnss{0..1}_b2b_inject,\
-http://cx27:12048/gnss{0..1}_b2b_inject,\
-http://cx42:12048/gnss{0..1}_b2b_inject,\
-http://cx43:12048/gnss{0..1}_b2b_inject,\
-http://cx44:12048/gnss{0..1}_b2b_inject,\
-http://cx51:12048/gnss{0..1}_b2b_inject"
-    combiner: gnss0_b2b_n2combine
-    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2b_n2assemble,\
-http://cx27:12048/gnss{0..1}_b2b_n2assemble,\
-http://cx42:12048/gnss{0..1}_b2b_n2assemble,\
-http://cx43:12048/gnss{0..1}_b2b_n2assemble,\
-http://cx44:12048/gnss{0..1}_b2b_n2assemble,\
-http://cx51:12048/gnss{0..1}_b2b_n2assemble"
-    dll-combiners: &b2b_cmb "http://cx19:12048/gnss{0..1}_b2b_n2combine,\
-http://cx27:12048/gnss{0..1}_b2b_n2combine,\
-http://cx42:12048/gnss{0..1}_b2b_n2combine,\
-http://cx43:12048/gnss{0..1}_b2b_n2combine,\
-http://cx44:12048/gnss{0..1}_b2b_n2combine,\
-http://cx51:12048/gnss{0..1}_b2b_n2combine"
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: "http://cx19:12048/gnss{0..1}_b2b_inject,http://cx27:12048/gnss{0..1}_b2b_inject,http://cx42:12048/gnss{0..1}_b2b_inject,http://cx43:12048/gnss{0..1}_b2b_inject,http://cx44:12048/gnss{0..1}_b2b_inject,http://cx51:12048/gnss{0..1}_b2b_inject"
+        combiner: gnss0_b2b_n2combine
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b2b_n2assemble,http://cx27:12048/gnss{0..1}_b2b_n2assemble,http://cx42:12048/gnss{0..1}_b2b_n2assemble,http://cx43:12048/gnss{0..1}_b2b_n2assemble,http://cx44:12048/gnss{0..1}_b2b_n2assemble,http://cx51:12048/gnss{0..1}_b2b_n2assemble"
+        dll-combiners: &b2b_cmb "http://cx19:12048/gnss{0..1}_b2b_n2combine,http://cx27:12048/gnss{0..1}_b2b_n2combine,http://cx42:12048/gnss{0..1}_b2b_n2combine,http://cx43:12048/gnss{0..1}_b2b_n2combine,http://cx44:12048/gnss{0..1}_b2b_n2combine,http://cx51:12048/gnss{0..1}_b2b_n2combine"
     # ⚠️ RETIRED 2026-08-23 -- THIS WAS ~15% OF THE BROKER, FOR A COMPARISON THAT HAD
     # STOPPED HAPPENING. The Path-B arm is a SECOND full fleet_coherent: another 12-endpoint
     # poll (3.9 MB of JSON) plus another _solve INCLUDING its shuffled null, per chain per
@@ -2692,36 +2632,21 @@ http://cx51:12048/gnss{0..1}_b2b_n2combine"
   # restart that loads these chains -- a broker polling stages that do not exist yet is
   # noise at best. First-cut minimal keys; rrate-command deliberately absent (the 08-31
   # overnight judge found no fleet-scale benefit).
-  bds_b3i:
-    signal: bds_b3i
-    dr-clock-adopt: true
-    seed-phase-transport: true
-    presence-admit-displaced: true
-    joint-consume: clk,rate
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
-    fleet-trim-readback: 1
-    trackers: "http://cx19:12048/gnss{0..1}_b3i_inject,\
-http://cx27:12048/gnss{0..1}_b3i_inject,\
-http://cx42:12048/gnss{0..1}_b3i_inject,\
-http://cx43:12048/gnss{0..1}_b3i_inject,\
-http://cx44:12048/gnss{0..1}_b3i_inject,\
-http://cx51:12048/gnss{0..1}_b3i_inject"
-    combiner: gnss0_b3i_n2combine
-    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b3i_n2assemble,\
-http://cx27:12048/gnss{0..1}_b3i_n2assemble,\
-http://cx42:12048/gnss{0..1}_b3i_n2assemble,\
-http://cx43:12048/gnss{0..1}_b3i_n2assemble,\
-http://cx44:12048/gnss{0..1}_b3i_n2assemble,\
-http://cx51:12048/gnss{0..1}_b3i_n2assemble"
-    dll-combiners: "http://cx19:12048/gnss{0..1}_b3i_n2combine,\
-http://cx27:12048/gnss{0..1}_b3i_n2combine,\
-http://cx42:12048/gnss{0..1}_b3i_n2combine,\
-http://cx43:12048/gnss{0..1}_b3i_n2combine,\
-http://cx44:12048/gnss{0..1}_b3i_n2combine,\
-http://cx51:12048/gnss{0..1}_b3i_n2combine"
+    bds_b3i:
+        signal: bds_b3i
+        dr-clock-adopt: true
+        seed-phase-transport: true
+        presence-admit-displaced: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: "http://cx19:12048/gnss{0..1}_b3i_inject,http://cx27:12048/gnss{0..1}_b3i_inject,http://cx42:12048/gnss{0..1}_b3i_inject,http://cx43:12048/gnss{0..1}_b3i_inject,http://cx44:12048/gnss{0..1}_b3i_inject,http://cx51:12048/gnss{0..1}_b3i_inject"
+        combiner: gnss0_b3i_n2combine
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_b3i_n2assemble,http://cx27:12048/gnss{0..1}_b3i_n2assemble,http://cx42:12048/gnss{0..1}_b3i_n2assemble,http://cx43:12048/gnss{0..1}_b3i_n2assemble,http://cx44:12048/gnss{0..1}_b3i_n2assemble,http://cx51:12048/gnss{0..1}_b3i_n2assemble"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_b3i_n2combine,http://cx27:12048/gnss{0..1}_b3i_n2combine,http://cx42:12048/gnss{0..1}_b3i_n2combine,http://cx43:12048/gnss{0..1}_b3i_n2combine,http://cx44:12048/gnss{0..1}_b3i_n2combine,http://cx51:12048/gnss{0..1}_b3i_n2combine"
 
-  gal_e6:
+    gal_e6:
     # ── BRING-UP ROOT FOUND AND FIXED 2026-08-31 13:37: CHIPS ARE A UNIT, THE CLOCK IS A
     # TIME. The cross-band clock bootstrap adopted the donor's chips RAW; every consumer
     # before this chain shared gps_l5's 10.23 Mcps, so the missing rate conversion was
@@ -2733,35 +2658,20 @@ http://cx51:12048/gnss{0..1}_b3i_n2combine"
     # selftest-gated with the incident's exact numbers. TEN sats tracking within 8 min of
     # the fix (amp_snr to 125). The DLL steady-state residual vs the converted bootstrap
     # is tau_band(1278.75 vs 1176.45) -- the third band's first science number.
-    signal: gal_e6
-    dr-clock-adopt: true
-    seed-phase-transport: true
-    presence-admit-displaced: true
-    joint-consume: clk,rate
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
-    fleet-trim-readback: 1
-    trackers: "http://cx19:12048/gnss{0..1}_e6_inject,\
-http://cx27:12048/gnss{0..1}_e6_inject,\
-http://cx42:12048/gnss{0..1}_e6_inject,\
-http://cx43:12048/gnss{0..1}_e6_inject,\
-http://cx44:12048/gnss{0..1}_e6_inject,\
-http://cx51:12048/gnss{0..1}_e6_inject"
-    combiner: gnss0_e6_n2combine
-    spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e6_n2assemble,\
-http://cx27:12048/gnss{0..1}_e6_n2assemble,\
-http://cx42:12048/gnss{0..1}_e6_n2assemble,\
-http://cx43:12048/gnss{0..1}_e6_n2assemble,\
-http://cx44:12048/gnss{0..1}_e6_n2assemble,\
-http://cx51:12048/gnss{0..1}_e6_n2assemble"
-    dll-combiners: "http://cx19:12048/gnss{0..1}_e6_n2combine,\
-http://cx27:12048/gnss{0..1}_e6_n2combine,\
-http://cx42:12048/gnss{0..1}_e6_n2combine,\
-http://cx43:12048/gnss{0..1}_e6_n2combine,\
-http://cx44:12048/gnss{0..1}_e6_n2combine,\
-http://cx51:12048/gnss{0..1}_e6_n2combine"
+        signal: gal_e6
+        dr-clock-adopt: true
+        seed-phase-transport: true
+        presence-admit-displaced: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: "http://cx19:12048/gnss{0..1}_e6_inject,http://cx27:12048/gnss{0..1}_e6_inject,http://cx42:12048/gnss{0..1}_e6_inject,http://cx43:12048/gnss{0..1}_e6_inject,http://cx44:12048/gnss{0..1}_e6_inject,http://cx51:12048/gnss{0..1}_e6_inject"
+        combiner: gnss0_e6_n2combine
+        spectrum-endpoints: "http://cx19:12048/gnss{0..1}_e6_n2assemble,http://cx27:12048/gnss{0..1}_e6_n2assemble,http://cx42:12048/gnss{0..1}_e6_n2assemble,http://cx43:12048/gnss{0..1}_e6_n2assemble,http://cx44:12048/gnss{0..1}_e6_n2assemble,http://cx51:12048/gnss{0..1}_e6_n2assemble"
+        dll-combiners: "http://cx19:12048/gnss{0..1}_e6_n2combine,http://cx27:12048/gnss{0..1}_e6_n2combine,http://cx42:12048/gnss{0..1}_e6_n2combine,http://cx43:12048/gnss{0..1}_e6_n2combine,http://cx44:12048/gnss{0..1}_e6_n2combine,http://cx51:12048/gnss{0..1}_e6_n2combine"
 
-  gps_l2c:
+    gps_l2c:
     # ── THE FOURTH CARRIER: GPS L2C @ 1227.6 MHz (2026-08-31) ────────────────────────────
     # ⚠️ UNPARKED BY CORRECTING AN ERROR OF MINE, NOT BY NEW HARDWARE. L2C sat parked on the
     # verdict "0-1 covering channels per node", which is true and IRRELEVANT: fleet_dll sums
@@ -2789,7 +2699,7 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     # a 10.23 Mcps donor is exactly the case clock_chips_convert exists for). The settled DLL
     # residual against that bootstrap is tau_band(1227.6 vs 1176.45) -- a FOURTH equation, and
     # the first from a same-constellation pair.
-    signal: gps_l2c
+        signal: gps_l2c
     # SAME GATE AS gps_l5, DIFFERENT CUT (2026-09-02). L2C is Block IIR-M and newer, so
     # the IGS registry proves 4 of the 32 PRNs can never carry it: 2, 16, 19, 22 (IIR-A/
     # IIR-B). Unlike L5's 11, these are few enough to look like ordinary dead rows -- which
@@ -2797,8 +2707,8 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     # (via require_hint) search slots, and land as permanent q~1.0 rows in the presence
     # population. Registry, never Celestrak. Verify after a restart: the startup log line
     # "signal-capability gps_l2c: 4 PRN(s) excluded ... 2, 16, 19, 22".
-    signal-capability: gps_l2c
-    dr-clock-adopt: true
+        signal-capability: gps_l2c
+        dr-clock-adopt: true
     # REQUIRES THE propagate_seed comb_mult FIX (gnssSeedTransport.cpp 2fe49e77f, 2026-09-02) IN
     # THE NODE BINARY. Before it, nodes read code_phase_at_ref_chips as COMBINED chips while the
     # broker ships CM chips -- on a comb_mult-2 signal that put every L2C replica ~phase/2 mod
@@ -2807,7 +2717,7 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     # first L2C locks at 15:28 UTC that day; flipped back to true for the restart that carries
     # the fix (the phase path is the better-conditioned one). If L2C goes dark after a restart
     # onto an OLDER binary, this flag is the first suspect.
-    seed-phase-transport: true
+        seed-phase-transport: true
     # E/L TAP OFFSET, CM chips: MUST MATCH the node's dll_spacing (config/gen_chord_gnss_config.py
     # dll_spacing_chips), and the nodes must be cycled FIRST so the taps lead the law. Every
     # L2C instance despreads ONE 195 kHz channel (the mainlobe is narrower than the comb
@@ -2815,31 +2725,19 @@ http://cx51:12048/gnss{0..1}_e6_n2combine"
     # channels: a 5-channel Dirichlet with its first null at 1/(5B) = 0.52 CM chips, not the
     # per-channel |sinc|^2 null at 2.6. Taps outside that null land on sidelobes, where the
     # discriminator reverses sign and the loop false-locks ~half a chip off peak.
-    dll-spacing: 0.4
-    presence-admit-displaced: true
-    joint-consume: clk,rate
-    fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    fleet-trim-bandwidth: 2.5
-    fleet-trim-readback: 1
+        dll-spacing: 0.4
+        presence-admit-displaced: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
     # ⚠️ ENUMERATED, NOT gnss{0..1} ON EVERY NODE. L2C's mainlobe is SIX freq_ids, so exactly
     # ONE GPU per node owns a covering channel and cx44 owns none -- the blanket pattern every
     # other chain uses produced 7 x "set_seeds ... 404 NOT_FOUND" per cycle here. The instance
     # per node is a BAND-PLAN FACT (freq_id % 16 -> gpu), not a preference: cx19/1 6284,
     # cx27/0 6288, cx42/1 6285, cx43/1 6286, cx51/1 6287. If the comb offsets ever change,
     # regenerate and re-read these from the node endpoints rather than guessing.
-    trackers: "http://cx19:12048/gnss1_l2c_inject,\
-http://cx27:12048/gnss0_l2c_inject,\
-http://cx42:12048/gnss1_l2c_inject,\
-http://cx43:12048/gnss1_l2c_inject,\
-http://cx51:12048/gnss1_l2c_inject"
-    combiner: gnss1_l2c_n2combine   # cx19/cx42/cx43/cx51 are gpu1; cx27 is gpu0
-    spectrum-endpoints: "http://cx19:12048/gnss1_l2c_n2assemble,\
-http://cx27:12048/gnss0_l2c_n2assemble,\
-http://cx42:12048/gnss1_l2c_n2assemble,\
-http://cx43:12048/gnss1_l2c_n2assemble,\
-http://cx51:12048/gnss1_l2c_n2assemble"
-    dll-combiners: "http://cx19:12048/gnss1_l2c_n2combine,\
-http://cx27:12048/gnss0_l2c_n2combine,\
-http://cx42:12048/gnss1_l2c_n2combine,\
-http://cx43:12048/gnss1_l2c_n2combine,\
-http://cx51:12048/gnss1_l2c_n2combine"
+        trackers: "http://cx19:12048/gnss1_l2c_inject,http://cx27:12048/gnss0_l2c_inject,http://cx42:12048/gnss1_l2c_inject,http://cx43:12048/gnss1_l2c_inject,http://cx51:12048/gnss1_l2c_inject"
+        combiner: gnss1_l2c_n2combine # cx19/cx42/cx43/cx51 are gpu1; cx27 is gpu0
+        spectrum-endpoints: "http://cx19:12048/gnss1_l2c_n2assemble,http://cx27:12048/gnss0_l2c_n2assemble,http://cx42:12048/gnss1_l2c_n2assemble,http://cx43:12048/gnss1_l2c_n2assemble,http://cx51:12048/gnss1_l2c_n2assemble"
+        dll-combiners: "http://cx19:12048/gnss1_l2c_n2combine,http://cx27:12048/gnss0_l2c_n2combine,http://cx42:12048/gnss1_l2c_n2combine,http://cx43:12048/gnss1_l2c_n2combine,http://cx51:12048/gnss1_l2c_n2combine"

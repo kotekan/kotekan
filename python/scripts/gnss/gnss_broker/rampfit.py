@@ -40,7 +40,9 @@ class RampTracker:
     GNSS-specific beyond the trap notes above.
     """
 
-    def __init__(self, window_s=600.0, step_reset_chips=0.3, min_points=4, min_span_s=120.0):
+    def __init__(
+        self, window_s=600.0, step_reset_chips=0.3, min_points=4, min_span_s=120.0
+    ):
         self.window_s = float(window_s)
         self.step_reset_chips = float(step_reset_chips)
         self.min_points = int(min_points)

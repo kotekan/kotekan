@@ -38,8 +38,8 @@ def fit_cp_rate(hist, code_len):
     den = n * shh - sh * sh
     if den == 0.0:
         return None
-    rate = (n * shc - sh * sc) / den          # chips per hop
-    cp_ref = (sc - rate * sh) / n             # fitted cp0 at h0
+    rate = (n * shc - sh * sc) / den  # chips per hop
+    cp_ref = (sc - rate * sh) / n  # fitted cp0 at h0
     return rate, h0, cp_ref % code_len
 
 
@@ -78,7 +78,9 @@ def fit_dop_rate(hist, hops_per_sec, min_pts, min_span_s, max_rate):
     return rate if abs(rate) <= max_rate else None
 
 
-def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz, carrier_hz):
+def code_clock_bias_sample(
+    rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz, carrier_hz
+):
     """One satellite's estimate of the receiver LO-vs-ADC clock offset (l - a), dimensionless.
 
     CONVENTION (the 2026-07-04 L5 finding): the fitted slope here is the drift of the SEARCH's
@@ -99,9 +101,21 @@ def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz
     return rate_chips_per_hop * hops_per_sec / chip_hz
 
 
-def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, fft_len=16384,
-                   rec_hops=2048, prev_val=None, max_step=3.0, unit_hop=None,
-                   rate_field="deep_rate_hz", q_field="deep_rate_q"):
+def rate_residuals(
+    status,
+    min_q,
+    clip_hz,
+    log=None,
+    prev_hop=None,
+    max_gap=2,
+    fft_len=16384,
+    rec_hops=2048,
+    prev_val=None,
+    max_step=3.0,
+    unit_hop=None,
+    rate_field="deep_rate_hz",
+    q_field="deep_rate_q",
+):
     """Per-PRN carrier residual (Hz) from the combiner's phase-rate search.
 
     TWO FAILURE MODES, TWO DEFENCES. Measured on sky 2026-08-04 by splitting each PRN's records
@@ -156,7 +170,7 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
             ph = prev_hop.get(int(prn))
             prev_hop[int(prn)] = h
             if ph is None or h == ph:
-                continue                       # first sight, or the same window again
+                continue  # first sight, or the same window again
             # SPACING IS ONE EMIT, NOT ONE RECORD. This compared (h - ph) against
             # max_gap * rec_hops = 4096 hops, i.e. two RECORDS -- but successive observations
             # are one EMIT apart, measured at 389120 hops = 190 records = 1.99 s. So the test
@@ -170,9 +184,9 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
             if unit_hop:
                 unit_hop[0] = min(unit_hop[0], step) if unit_hop[0] else step
             u = (unit_hop[0] if unit_hop and unit_hop[0] else float(rec_hops)) or 1.0
-            if step > max_gap * u * 1.5:       # 1.5: jitter margin on the derived unit
+            if step > max_gap * u * 1.5:  # 1.5: jitter margin on the derived unit
                 gapped.append(int(prn))
-                continue                       # re-anchored: re-baselined above, skip
+                continue  # re-anchored: re-baselined above, skip
             # SLEW GATE. The hop gap above only catches re-anchors that COINCIDE with a dropped
             # window, and the tracker's f_ref fence does not: it fires mid-tracking whenever
             # |f_ref - dop| exceeds fll_reacq_hz, adopting the new seed wholesale. The
@@ -187,24 +201,34 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
                 prev_val[int(prn)] = float(f)
                 if pf is not None and abs(float(f) - pf) > max_step:
                     stepped.append(int(prn))
-                    continue                   # f_ref re-pinned: re-baselined, do not integrate
+                    continue  # f_ref re-pinned: re-baselined, do not integrate
         w = float(rec.get("amp_snr") or 0.0)
         if w > 0.0:
             cand[int(prn)] = (float(f), w)
     if log and gapped:
-        log("carrier-rate: %d PRN(s) skipped across a window gap (re-anchor, not a "
-            "measurement): %s" % (len(gapped), sorted(gapped)))
+        log(
+            "carrier-rate: %d PRN(s) skipped across a window gap (re-anchor, not a "
+            "measurement): %s" % (len(gapped), sorted(gapped))
+        )
     if log and stepped:
-        log("carrier-rate: %d PRN(s) skipped on a slew step >%.1f Hz (f_ref re-pin, not a "
-            "measurement): %s" % (len(stepped), max_step, sorted(stepped)))
+        log(
+            "carrier-rate: %d PRN(s) skipped on a slew step >%.1f Hz (f_ref re-pin, not a "
+            "measurement): %s" % (len(stepped), max_step, sorted(stepped))
+        )
     if not cand:
-        return {}, None   # (residuals, consensus) -- ALWAYS a 2-tuple; a bare {} here killed
-                          # the broker the first time every PRN was gated out at once
+        return (
+            {},
+            None,
+        )  # (residuals, consensus) -- ALWAYS a 2-tuple; a bare {} here killed
+        # the broker the first time every PRN was gated out at once
     vals = sorted(v[0] for v in cand.values())
     med = vals[len(vals) // 2]
     # Clip about the median, then weight. clip_hz <= 0 disables the clip (keep everything gated).
-    keep = {p: (f, w) for p, (f, w) in cand.items()
-            if clip_hz <= 0.0 or abs(f - med) <= clip_hz}
+    keep = {
+        p: (f, w)
+        for p, (f, w) in cand.items()
+        if clip_hz <= 0.0 or abs(f - med) <= clip_hz
+    }
     if keep:
         sw = sum(w for _, w in keep.values())
         consensus = sum(f * w for f, w in keep.values()) / sw if sw > 0 else med
@@ -213,8 +237,10 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
     out = {p: f for p, (f, _) in keep.items()}
     dropped = [p for p in cand if p not in keep]
     if log and dropped:
-        log("carrier-rate: %d PRN(s) clipped as outliers (>%.1f Hz from median %+.2f): %s"
-            % (len(dropped), clip_hz, med, sorted(dropped)))
+        log(
+            "carrier-rate: %d PRN(s) clipped as outliers (>%.1f Hz from median %+.2f): %s"
+            % (len(dropped), clip_hz, med, sorted(dropped))
+        )
     return out, consensus
 
 
@@ -314,6 +340,7 @@ def adr_fine_rate(rec, prev, rec_dt, wall_dt=None):
 # clock slope in chips/HOP (see cp_rate_from_code_bias above), and the quadratic term is
 # 0.5*(f_chip/f_carrier)*dop_rate*dt^2 from the seed's reference hop.
 
+
 def dr_cp0(phys_chips, t_abs, doppler_hz, chip_hz, carrier_hz, code_doppler_sign, mod):
     """Physical code phase (incl. receiver clock) at t_abs -> the sample-0 seed currency.
 
@@ -322,8 +349,10 @@ def dr_cp0(phys_chips, t_abs, doppler_hz, chip_hz, carrier_hz, code_doppler_sign
     must be the same instant the seed's ref_hop encodes (ref_hop = round(t_abs * hps));
     the sub-hop rounding cancels because the physical phase and the back-reference advance
     at the same rate to first order."""
-    return (phys_chips
-            - t_abs * chip_hz * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)) % mod
+    return (
+        phys_chips
+        - t_abs * chip_hz * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)
+    ) % mod
 
 
 def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod):
@@ -337,15 +366,25 @@ def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign,
     walked away from what a held seed is actually despreading at."""
     t1 = h1 / hops_per_sec
     dt = (h1 - seed["ref_hop"]) / hops_per_sec
-    return (seed["code_phase_chips"]
-            + t1 * chip_hz * (1.0 + code_doppler_sign * seed["doppler_hz"] / carrier_hz)
-            + seed.get("code_phase_rate", 0.0) * (h1 - seed["ref_hop"])
-            + 0.5 * (chip_hz / carrier_hz)
-              * seed.get("doppler_rate_hz_s", 0.0) * dt * dt) % mod
+    return (
+        seed["code_phase_chips"]
+        + t1 * chip_hz * (1.0 + code_doppler_sign * seed["doppler_hz"] / carrier_hz)
+        + seed.get("code_phase_rate", 0.0) * (h1 - seed["ref_hop"])
+        + 0.5 * (chip_hz / carrier_hz) * seed.get("doppler_rate_hz_s", 0.0) * dt * dt
+    ) % mod
 
 
-def track_vs_fit_chips(held_seed, det_cp_loc, det_ref_hop, dll_trim_chips,
-                       hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, code_len):
+def track_vs_fit_chips(
+    held_seed,
+    det_cp_loc,
+    det_ref_hop,
+    dll_trim_chips,
+    hops_per_sec,
+    chip_hz,
+    carrier_hz,
+    code_doppler_sign,
+    code_len,
+):
     """Track-vs-search residual, both sides physical, at the DETECTION's epoch
     (#42 / #45 step 1).
 
@@ -376,14 +415,23 @@ def track_vs_fit_chips(held_seed, det_cp_loc, det_ref_hop, dll_trim_chips,
     """
     if det_cp_loc is None or det_cp_loc < 0.0:
         return None
-    held = dr_seed_phys(held_seed, det_ref_hop, hops_per_sec, chip_hz, carrier_hz,
-                        code_doppler_sign, code_len)
-    return ((det_cp_loc - held - dll_trim_chips + code_len / 2.0) % code_len
-            ) - code_len / 2.0
+    held = dr_seed_phys(
+        held_seed,
+        det_ref_hop,
+        hops_per_sec,
+        chip_hz,
+        carrier_hz,
+        code_doppler_sign,
+        code_len,
+    )
+    return (
+        (det_cp_loc - held - dll_trim_chips + code_len / 2.0) % code_len
+    ) - code_len / 2.0
 
 
-def retag_seed_doppler(cp_chips, old_dop, new_dop, t_eval_s, chip_hz, carrier_hz,
-                       code_doppler_sign, mod):
+def retag_seed_doppler(
+    cp_chips, old_dop, new_dop, t_eval_s, chip_hz, carrier_hz, code_doppler_sign, mod
+):
     """Re-express a sample-0 cp in a new Doppler's currency, preserving the physical
     phase AT t_eval_s (#44 / #45 step 4).
 
@@ -398,16 +446,22 @@ def retag_seed_doppler(cp_chips, old_dop, new_dop, t_eval_s, chip_hz, carrier_hz
     path always used the current epoch; now both go through this one function, kept
     beside dr_cp0/dr_seed_phys so the three transport directions cannot drift apart.
     """
-    return ((cp_chips
-             - t_eval_s * chip_hz * code_doppler_sign * (new_dop - old_dop) / carrier_hz)
-            % mod)
+    return (
+        cp_chips
+        - t_eval_s * chip_hz * code_doppler_sign * (new_dop - old_dop) / carrier_hz
+    ) % mod
 
 
-
-
-
-def seed_phase_at_ref(phys_chips, doppler_hz, chip_hz, hops_per_sec, carrier_hz,
-                      code_doppler_sign, mod, fft_len=None):
+def seed_phase_at_ref(
+    phys_chips,
+    doppler_hz,
+    chip_hz,
+    hops_per_sec,
+    carrier_hz,
+    code_doppler_sign,
+    mod,
+    fft_len=None,
+):
     """Broker-held physical phase -> `code_phase_at_ref_chips`, the field the tracker
     prefers over the sample-0 argument (#45 step 6).
 
@@ -434,13 +488,16 @@ def seed_phase_at_ref(phys_chips, doppler_hz, chip_hz, hops_per_sec, carrier_hz,
     the residual is 0.0064 chips (two orders below the DLL's pull-in, and a constant, so it
     lands in the clock rather than in tracking).
     """
-    per_hop = chip_hz / hops_per_sec * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)
+    per_hop = (
+        chip_hz / hops_per_sec * (1.0 + code_doppler_sign * doppler_hz / carrier_hz)
+    )
     off = per_hop * (1.0 - 1.0 / fft_len) if fft_len else per_hop
     return (phys_chips + off) % mod
 
 
-def tracker_phase_at(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod,
-                     fft_len=None):
+def tracker_phase_at(
+    seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign, mod, fft_len=None
+):
     """The phase the TRACKER will command at hop h1 for this seed -- mirroring
     gnss::propagate_seed, including WHICH code reference it actually uses (#45 step 7).
 
@@ -455,23 +512,39 @@ def tracker_phase_at(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_s
     Returns the phase in the C++ last-sample convention (see seed_phase_at_ref), so it is
     directly comparable between consecutive seeds -- which is the seed audit's whole job.
     """
-    per_hop = chip_hz / hops_per_sec * (1.0 + code_doppler_sign * seed["doppler_hz"]
-                                        / carrier_hz)
+    per_hop = (
+        chip_hz
+        / hops_per_sec
+        * (1.0 + code_doppler_sign * seed["doppler_hz"] / carrier_hz)
+    )
     hop_off = per_hop * (1.0 - 1.0 / fft_len) if fft_len else per_hop
     ph_ref = seed.get("code_phase_at_ref_chips", -1.0)
     if ph_ref is None or ph_ref < 0.0:
         # the argument branch: undo the sample-0 back-reference, then move to the
         # tracker's reference point
-        ph_ref = (dr_seed_phys({k: v for k, v in seed.items()
-                                if k != "code_phase_at_ref_chips"},
-                               seed["ref_hop"], hops_per_sec, chip_hz, carrier_hz,
-                               code_doppler_sign, mod) + hop_off)
+        ph_ref = (
+            dr_seed_phys(
+                {k: v for k, v in seed.items() if k != "code_phase_at_ref_chips"},
+                seed["ref_hop"],
+                hops_per_sec,
+                chip_hz,
+                carrier_hz,
+                code_doppler_sign,
+                mod,
+            )
+            + hop_off
+        )
     dh = h1 - seed["ref_hop"]
     dt = dh / hops_per_sec
-    return (ph_ref
-            + (per_hop + seed.get("code_phase_rate", 0.0) or 0.0) * dh
-            + 0.5 * (chip_hz / carrier_hz)
-              * (seed.get("doppler_rate_hz_s", 0.0) or 0.0) * dt * dt) % mod
+    return (
+        ph_ref
+        + (per_hop + seed.get("code_phase_rate", 0.0) or 0.0) * dh
+        + 0.5
+        * (chip_hz / carrier_hz)
+        * (seed.get("doppler_rate_hz_s", 0.0) or 0.0)
+        * dt
+        * dt
+    ) % mod
 
 
 def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
@@ -522,8 +595,12 @@ def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
     # `carriers` is the DECLARED band set (broker --rf-bands). Without it the labeller has
     # the whole RF_BAND_BY_CARRIER table as candidates and will name a band we do not fly --
     # E5b's lower shoulder came back as GLONASS "L3". No declaration, no names.
-    named = [signals.band_of_freq_id(fids[i], carriers) if (fids and carriers)
-             else (None, None) for i in range(n)]
+    named = [
+        signals.band_of_freq_id(fids[i], carriers)
+        if (fids and carriers)
+        else (None, None)
+        for i in range(n)
+    ]
     band = [b for b, _ in named]
     carrier = [c for _, c in named]
 
@@ -537,11 +614,15 @@ def rf_lobes(chans, power, clip_lo, clip_hi, freq_ids=None, carriers=None):
         hi = max(range(len(run)), key=lambda k: clip_hi[run[k]])
         rec = {
             "lobe": len(out),
-            "chan0": chans[run[0]], "chan1": chans[run[-1]], "n_chan": len(run),
+            "chan0": chans[run[0]],
+            "chan1": chans[run[-1]],
+            "n_chan": len(run),
             "power": sum(power[i] for i in run) / float(len(run)),
             "power_max": max(power[i] for i in run),
-            "clip_lo": clip_lo[run[lo]], "clip_lo_chan": chans[run[lo]],
-            "clip_hi": clip_hi[run[hi]], "clip_hi_chan": chans[run[hi]],
+            "clip_lo": clip_lo[run[lo]],
+            "clip_lo_chan": chans[run[lo]],
+            "clip_hi": clip_hi[run[hi]],
+            "clip_hi_chan": chans[run[hi]],
         }
         if fids:
             rec["band"] = band[run[0]]
@@ -597,7 +678,7 @@ def instance_stall_verdict(prev, cur, now, min_stall_s, min_frac_advancing=0.5):
         return new, []
     advancing = sum(1 for url, (hop, t0) in new.items() if t0 >= now)
     if advancing < max(1, int(round(min_frac_advancing * len(new)))):
-        return new, []          # fleet-wide, not per-instance -- say nothing
+        return new, []  # fleet-wide, not per-instance -- say nothing
     stalled = []
     for url, (hop, t0) in sorted(new.items()):
         stuck = now - t0

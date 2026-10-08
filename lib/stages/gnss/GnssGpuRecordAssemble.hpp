@@ -9,7 +9,8 @@
 #include "gnssElemSteer.hpp"
 #include "gnssProjSubspace.hpp"
 #include "restServer.hpp"
-#include "json.hpp"    // nlohmann::json for the set_elem_gain POST
+
+#include "json.hpp" // nlohmann::json for the set_elem_gain POST
 
 #include <atomic>
 #include <complex>
@@ -57,33 +58,33 @@ private:
     /// derives its grid from the MINIMUM consecutive spacing, so a burst of near-equal stamps
     /// scrambles the record order inside the transform. Anchoring once and extrapolating by
     /// wstart keeps the same (host-clock) origin while making the grid exactly uniform.
-    double _wall_anchor = 0.0; ///< now() - wstart/rate at the first unanchored frame; 0 = unset
+    double _wall_anchor = 0.0;    ///< now() - wstart/rate at the first unanchored frame; 0 = unset
     uint64_t _no_utc0_frames = 0; ///< frames stamped from the fallback (for the rate-limited warn)
 
     /// Element axis (CHORD). 0 = single-antenna airspy layout, byte-for-byte.
     int _n_elements = 0;
     /// Which antenna the record HEADER's correlation slots carry -- the broker's loop reference.
     int _reference_element = 0;
-    bool _elem_hold_on_reanchor = true;  ///< keep element cal across a carrier re-anchor
-    std::vector<uint8_t> _elem_prev_ok;  ///< element-cal continuity, decoupled from carrier
-    std::vector<double> _fnco_prev;      ///< previous record's f_nco: the slope in force over
-                                         ///< the gap [t_prev, t_now] (the [4e] pairing fix)
-    /// SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp; 31896a862:docs/CHORD_GNSS_STATE.md 8.21.5). When enabled the
-    /// header correlation slots carry the calibrated weighted MEAN over all elements instead of
-    /// the bare reference element: same phase convention (reference-anchored), same "one
-    /// element" scale, per-record SNR up ~sqrt(N_healthy) -- which is what makes the per-record
-    /// carrier phase estimable from one instance (the phase-floor fix) and hands the broker's
-    /// DLL/carrier loops the array gain for free. Until each PRN's cal is warm (~3 tau of
+    bool _elem_hold_on_reanchor = true; ///< keep element cal across a carrier re-anchor
+    std::vector<uint8_t> _elem_prev_ok; ///< element-cal continuity, decoupled from carrier
+    std::vector<double> _fnco_prev;     ///< previous record's f_nco: the slope in force over
+                                        ///< the gap [t_prev, t_now] (the [4e] pairing fix)
+    /// SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp; 31896a862:docs/CHORD_GNSS_STATE.md 8.21.5).
+    /// When enabled the header correlation slots carry the calibrated weighted MEAN over all
+    /// elements instead of the bare reference element: same phase convention (reference-anchored),
+    /// same "one element" scale, per-record SNR up ~sqrt(N_healthy) -- which is what makes the
+    /// per-record carrier phase estimable from one instance (the phase-floor fix) and hands the
+    /// broker's DLL/carrier loops the array gain for free. Until each PRN's cal is warm (~3 tau of
     /// updates) the header is the reference element, byte-identical to the historical output.
     bool _elem_sum = false;
-    double _elem_sum_tau_s = 0.5;  ///< cal EMA time constant -- fast enough to follow the
-                                   ///< inter-element fringe rotation as a satellite transits
+    double _elem_sum_tau_s = 0.5; ///< cal EMA time constant -- fast enough to follow the
+                                  ///< inter-element fringe rotation as a satellite transits
     // ── #102 ELEMENT STEERING (see gnssElemSteer.hpp) ─────────────────────────────
-    gnss::ElemSteer _steer;      ///< per-(sat, channel, element) geometric phasors
-    std::mutex _steer_mtx;       ///< REST update vs combine-loop read
-    double _steer_t0 = 0.0;      ///< steady-clock epoch for freshness
-    double _elem_sum_min_w = 0.02; ///< weight gate vs the strongest element: absent/unpowered
-                                   ///< elements (EMA of pure noise) fall below and are excluded
+    gnss::ElemSteer _steer;          ///< per-(sat, channel, element) geometric phasors
+    std::mutex _steer_mtx;           ///< REST update vs combine-loop read
+    double _steer_t0 = 0.0;          ///< steady-clock epoch for freshness
+    double _elem_sum_min_w = 0.02;   ///< weight gate vs the strongest element: absent/unpowered
+                                     ///< elements (EMA of pure noise) fall below and are excluded
     std::vector<gnss::ElemCal> _cal; ///< per PRN slot
     /// HOLD vs ADAPT (config elem_sum_adapt, live /set_elem_sum_adapt): false freezes every
     /// PRN's live weights and lets _cal_shadow learn instead; _cal_sim[p] is the shadow's
@@ -104,13 +105,13 @@ private:
     /// shared implies held (_elem_adapt = false): the live weights are rebuilt from the model
     /// every record and the learners only ever feed the consensus.
     std::atomic<bool> _elem_shared{false};
-    double _elem_shared_tau_s = 300.0;   ///< consensus EMA (slower than any transit)
-    double _elem_pol_tau_s = 3.0;        ///< per-PRN inter-pol coefficient EMA
+    double _elem_shared_tau_s = 300.0;           ///< consensus EMA (slower than any transit)
+    double _elem_pol_tau_s = 3.0;                ///< per-PRN inter-pol coefficient EMA
     std::vector<std::complex<double>> _g_shared; ///< [n_elem]: pol-0 half then pol-1 half
     bool _g_shared_warm = false;
-    uint8_t _g_shared_collapsed = 0;     ///< last consensus refused (one element > 50%)
-    int _g_shared_n = 0;                 ///< PRNs that fed the last consensus
-    double _g_shared_t = 0.0;            ///< steady time of the last consensus refresh
+    uint8_t _g_shared_collapsed = 0; ///< last consensus refused (one element > 50%)
+    int _g_shared_n = 0;             ///< PRNs that fed the last consensus
+    double _g_shared_t = 0.0;        ///< steady time of the last consensus refresh
     /// THE TRANSIT FREEZE. A satellite near boresight captures every weak satellite's per-PRN
     /// learner at once (its leakage dominates their per-element despread), and a consensus of
     /// captured learners is a captured model. The broker posts the pooled (all-constellation)
@@ -119,9 +120,9 @@ private:
     /// nor any inter-pol coefficient learns. Written by the REST thread, read by main.
     double _elem_shared_freeze_deg = 6.0;
     double _elem_shared_freeze_hold_s = 60.0;
-    std::atomic<double> _bore_sep_deg{1.0e9};   ///< last posted pooled boresight separation
-    std::atomic<double> _bore_post_t{-1.0e18};  ///< steady time of that post
-    double _freeze_until = -1.0e18;             ///< main thread: frozen while now < this
+    std::atomic<double> _bore_sep_deg{1.0e9};  ///< last posted pooled boresight separation
+    std::atomic<double> _bore_post_t{-1.0e18}; ///< steady time of that post
+    double _freeze_until = -1.0e18;            ///< main thread: frozen while now < this
     /// THE PHASE PIN. The model's global phase per pol is pinned to the FIRST healthy model
     /// (all elements, <ref, G> real positive), not to one element: an element's weight can
     /// collapse, and a pin on it then goes to noise independently on every instance, which
@@ -165,7 +166,8 @@ private:
     void shared_consensus(double now_s);
     void shared_hold(size_t p);
     void shared_pol_update(size_t p, const std::complex<double>* g_prompt, double dt_s);
-    std::vector<gnss::ElemSteer::cf> _steer_buf; ///< this PRN's [n_chan][n_elem] phasors, copied under _steer_mtx
+    std::vector<gnss::ElemSteer::cf>
+        _steer_buf; ///< this PRN's [n_chan][n_elem] phasors, copied under _steer_mtx
     uint8_t _steer_nchan_warned = 0;
     std::vector<uint8_t> _anchor_warned; ///< one WARN per PRN when the phase anchor moves off
                                          ///< the reference element (a one-time phase step
@@ -176,8 +178,8 @@ private:
 
     // NCO state per PRN slot (pass-2's half of the carrier machinery).
     std::vector<double> _phi;
-    std::vector<double> _phi_cyc;   ///< NCO phase, UNWRAPPED, in cycles (the export's time base;
-                                    ///< _phi is the same phase wrapped for the rotation)
+    std::vector<double> _phi_cyc;      ///< NCO phase, UNWRAPPED, in cycles (the export's time base;
+                                       ///< _phi is the same phase wrapped for the rotation)
     std::vector<double> _phi_cmd_prev; ///< previous record's commanded phase (cycles)
     std::vector<uint8_t> _phi_cmd_ok;
     std::vector<double> _fcar_prev; ///< previous record's replica f_ref (to size the re-pin step)
@@ -197,7 +199,7 @@ private:
     int _chan_dump_decim = 10; ///< dump every Nth record of that PRN
     long long _chan_dump_ctr = 0;
     FILE* _chan_dump = nullptr;
-    int _phi_dump_prn = -1;   ///< --phase-dump-prn (see the .cpp): the fold's inputs and effect
+    int _phi_dump_prn = -1; ///< --phase-dump-prn (see the .cpp): the fold's inputs and effect
     int _phi_dump_left = 0;
     FILE* _phi_dump = nullptr;
 
@@ -237,28 +239,28 @@ private:
     /// spectrum ring accumulates, but PER RECORD, because a cross-record rate fit cannot be
     /// done on a window sum. Off by default; requires channel_ids.
     bool _chan_export = false;
-    std::vector<int> _spec_freq_ids;             ///< [n_chan] F-engine freq_id per channel
-    int64_t _spec_win_samples = 0;               ///< window length, SAMPLES (0 = legacy mode)
+    std::vector<int> _spec_freq_ids; ///< [n_chan] F-engine freq_id per channel
+    int64_t _spec_win_samples = 0;   ///< window length, SAMPLES (0 = legacy mode)
     /// One accumulated window. Slot for index i is _spec_ring[i % depth], so a window is
     /// evicted only when the ring wraps past it -- no bookkeeping list, and the slot's own
     /// `idx` is what says whether it still holds what you asked for.
     struct SpecWindow {
-        int64_t idx = -1;                        ///< window index, or -1 for an unused slot
-        int64_t w0 = -1, w1 = -1;                ///< wstart of the first/last record in it
-        std::vector<double> re, im, energy;      ///< [n_prn * n_chan]
-        std::vector<int> nrec;                   ///< [n_prn]
+        int64_t idx = -1;                   ///< window index, or -1 for an unused slot
+        int64_t w0 = -1, w1 = -1;           ///< wstart of the first/last record in it
+        std::vector<double> re, im, energy; ///< [n_prn * n_chan]
+        std::vector<int> nrec;              ///< [n_prn]
         /// [n_prn] the NCO phase _phi[p] at this window's FIRST record, and how many times
         /// the PRN re-anchored inside it. PUBLISHED, NOT SUBTRACTED (task #52) -- the export's
         /// phase currency, without which windows cannot be related to each other at all.
         std::vector<double> phi0;
         std::vector<int> nreanchor;
     };
-    std::vector<SpecWindow> _spec_ring;          ///< depth from config; index -> idx % depth
-    int64_t _spec_max_idx = -1;                  ///< newest index SEEN; complete windows are < this
-    std::mutex _spec_mtx;                        ///< guards _spec_* between main_thread and REST
+    std::vector<SpecWindow> _spec_ring; ///< depth from config; index -> idx % depth
+    int64_t _spec_max_idx = -1;         ///< newest index SEEN; complete windows are < this
+    std::mutex _spec_mtx;               ///< guards _spec_* between main_thread and REST
     // PATH B: an injected per-element complex gain prior (e.g. N^2 eigenvector, sky removed).
     // The REST callback stages it here; main_thread swaps it out and seeds every PRN's ElemCal.
-    std::mutex _gain_mtx;                         ///< guards _pending_gain between REST and main_thread
+    std::mutex _gain_mtx; ///< guards _pending_gain between REST and main_thread
     std::vector<std::complex<double>> _pending_gain;
     bool _pending_gain_set = false;
     /// LIVE REFERENCE SWAP (KV, 2026-08-20): /set_reference_element stages the new element
@@ -303,7 +305,7 @@ private:
     /// the instrument can produce. Binning trades frequency resolution for archive volume,
     /// which is the binding constraint here -- NOT memory, and not compute.
     int _cube_bin_width = 0;
-    int _cube_bins = 0;                    ///< derived: number of subband bins
+    int _cube_bins = 0; ///< derived: number of subband bins
 
     /// ── ARC PRESERVATION: WHY THIS IS A WINDOW RING AND NOT A RESET-ON-READ SUM ─────────
     /// The first version of this accumulator kept only SUM |A|^2 and was reset on read. That
@@ -339,9 +341,9 @@ private:
     /// every instance assigns a record to the same window WITHOUT talking to any other
     /// instance, and a second consumer no longer steals anyone's data.
     struct CubeWindow {
-        int64_t idx = -1;                  ///< window index, or -1 for an unused slot
-        int64_t w0 = -1, w1 = -1;          ///< wstart of the first/last record in it
-        double utc0 = 0.0;                 ///< UTC of sample 0 as stamped on its records (v3)
+        int64_t idx = -1;                   ///< window index, or -1 for an unused slot
+        int64_t w0 = -1, w1 = -1;           ///< wstart of the first/last record in it
+        double utc0 = 0.0;                  ///< UTC of sample 0 as stamped on its records (v3)
         std::vector<double> coh_re, coh_im; ///< [n_prn * n_bin * n_elem] SUM A_e,c * rot
         std::vector<double> incoh;          ///< [n_prn * n_bin * n_elem] SUM |A_e,c|^2
         std::vector<double> w;              ///< [n_prn * n_bin] (record, channel) term count
@@ -354,12 +356,12 @@ private:
         /// record is what a window length given in hops rather than samples looks like.
         int nrec_seen = 0;
     };
-    std::vector<CubeWindow> _cube_ring;    ///< depth from config; index -> idx % depth
-    int64_t _cube_win_samples = 0;         ///< window length in F-engine samples
-    int64_t _cube_max_idx = -1;            ///< newest index SEEN; complete windows are < this
+    std::vector<CubeWindow> _cube_ring; ///< depth from config; index -> idx % depth
+    int64_t _cube_win_samples = 0;      ///< window length in F-engine samples
+    int64_t _cube_max_idx = -1;         ///< newest index SEEN; complete windows are < this
     int _cube_singleton_windows = 0;    ///< consecutive windows that held exactly one record
     bool _cube_win_warned = false;      ///< the unit-error warning fires once, not per record
-    std::mutex _cube_mtx;                  ///< guards _cube_* between main_thread and REST
+    std::mutex _cube_mtx;               ///< guards _cube_* between main_thread and REST
     /// ── THE PUSH LEG: completed windows go OUT, they are not fetched ───────────────────
     /// ⚠️ A POLLED ENDPOINT CANNOT PRODUCE A COMPLETE DATASET, and this stage's own
     /// neighbourhood already learned that: task #59's leg exists because "the broker used to
@@ -386,11 +388,11 @@ private:
     /// somewhere else (bufferSend's drop_frames, the far side) -- a distinction worth having.
     Buffer* _cube_out_buf = nullptr;
     int _cube_out_id = 0;
-    int _cube_max_bins = 0;               ///< frame is sized for this many bins, zero-padded
-    int _cube_max_prn = 0;                ///< and this many PRN slots -- UNIFORM across senders
-    int64_t _cube_dropped = 0;            ///< windows lost to a full buffer, cumulative
-    std::string _cube_chain;              ///< "<host>/<stage>" stamped in every frame
-    int _cube_gpu = -1;                   ///< which GPU, for the reader's convenience
+    int _cube_max_bins = 0;    ///< frame is sized for this many bins, zero-padded
+    int _cube_max_prn = 0;     ///< and this many PRN slots -- UNIFORM across senders
+    int64_t _cube_dropped = 0; ///< windows lost to a full buffer, cumulative
+    std::string _cube_chain;   ///< "<host>/<stage>" stamped in every frame
+    int _cube_gpu = -1;        ///< which GPU, for the reader's convenience
     /// Pack one completed window into `_cube_out_buf` and mark it full. Caller holds _cube_mtx.
     void emit_cube_window(const CubeWindow& C);
 
@@ -412,8 +414,7 @@ private:
     void set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
                                           nlohmann::json& request);
     void get_elem_cal_callback(kotekan::connectionInstance& conn);
-    void set_reference_element_callback(kotekan::connectionInstance& conn,
-                                        nlohmann::json& request);
+    void set_reference_element_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 
     /// LIVE SLOT MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md). Reconcile @c _prns against the
     /// PRN the PRODUCER stamped into this frame's @ref gnss_gpu::PrnCtl, and cold-reset every
@@ -445,7 +446,7 @@ private:
     std::atomic<int> _proj_rank_max{2};
     std::atomic<double> _proj_max_age_s{2.0};
     std::atomic<double> _proj_probe_frac_min{0.5};
-    int _proj_kmax_alloc = 2;                 ///< basis columns allocated (config elem_proj_rank_max)
+    int _proj_kmax_alloc = 2; ///< basis columns allocated (config elem_proj_rank_max)
     /// Covariance horizons. The own-row tracker accumulates in the SOURCE'S STEERED frame (its
     /// geometric phase ramp removed), so it can average for seconds without smearing the
     /// direction as the satellite moves -- the offline result: a re-steered 10-window mean
@@ -456,50 +457,52 @@ private:
     std::vector<gnss::ElemSteer::cf> _proj_steer; ///< [kmax][n_chan][n_elem] the sources' steering
     double _proj_probe_since_s = 90.0;
     double _bore_az_deg = 180.0, _bore_el_deg = 81.41;
-    std::string _proj_group;                  ///< board key: the GPU instance ("gnss0")
-    char _proj_sys = '?';                     ///< constellation letter of this chain's PRNs
-    std::vector<int> _proj_fids;              ///< [n_chan] freq_id per channel (channel_ids)
+    std::string _proj_group;     ///< board key: the GPU instance ("gnss0")
+    char _proj_sys = '?';        ///< constellation letter of this chain's PRNs
+    std::vector<int> _proj_fids; ///< [n_chan] freq_id per channel (channel_ids)
     bool _proj_ready = false;
     uint8_t _proj_nchan_warned = 0;
     std::vector<std::unique_ptr<gnss::ProjSubspace>> _proj_own; ///< per slot, while it is a source
-    gnss::ProjSubspace _proj_probe;           ///< the probe-row stack
-    std::vector<gnss::ProjBasis> _proj_Q;     ///< [n_chan] the basis in force this record
-    std::vector<uint8_t> _proj_isB;           ///< [n_prn] slot is a source this record
-    std::vector<uint8_t> _proj_isProbe;       ///< [n_prn] slot fed the probe stack this record
-    std::vector<uint8_t> _slot_was_run;       ///< [n_prn] run flag of the previous record
-    std::vector<double> _slot_run_since;      ///< [n_prn] steady time the slot started running
-    std::vector<uint8_t> _slot_probe_broker;  ///< [n_prn] named a probe by the broker (under _steer_mtx)
+    gnss::ProjSubspace _proj_probe;                             ///< the probe-row stack
+    std::vector<gnss::ProjBasis> _proj_Q; ///< [n_chan] the basis in force this record
+    std::vector<uint8_t> _proj_isB;       ///< [n_prn] slot is a source this record
+    std::vector<uint8_t> _proj_isProbe;   ///< [n_prn] slot fed the probe stack this record
+    std::vector<uint8_t> _slot_was_run;   ///< [n_prn] run flag of the previous record
+    std::vector<double> _slot_run_since;  ///< [n_prn] steady time the slot started running
+    std::vector<uint8_t>
+        _slot_probe_broker; ///< [n_prn] named a probe by the broker (under _steer_mtx)
     std::atomic<bool> _probes_from_broker{false};
     int64_t _proj_wstart_prev = 0;
-    int _proj_k_rec = 0;                      ///< max k over channels this record (0 = inert)
+    int _proj_k_rec = 0; ///< max k over channels this record (0 = inert)
     uint64_t _proj_solve_ctr = 0;
     bool _proj_pub_own = false, _proj_pub_probe = false;
-    std::vector<gnss::ElemCal> _cal_proj;     ///< per slot: the learner fed the PROJECTED prompt
+    std::vector<gnss::ElemCal> _cal_proj; ///< per slot: the learner fed the PROJECTED prompt
     std::vector<double> _cap_plain, _cap_proj, _b_cos2, _sim_pp; ///< per slot (-1 = not measured)
-    std::vector<std::complex<double>> _g_proj;    ///< [n_elem] projected, steered, channel-summed prompt
+    std::vector<std::complex<double>>
+        _g_proj; ///< [n_elem] projected, steered, channel-summed prompt
     std::vector<std::complex<double>> _v_scratch; ///< [n_elem]
-    std::vector<gnss::ElemSteer::cf> _proj_steer_all; ///< [n_prn][n_chan][n_elem] every steered slot's table this record
-    std::vector<uint8_t> _proj_steered;           ///< [n_prn] slot had a fresh table this record
-    std::string _proj_owner_probe;                ///< unique_name + "/probe" (the board owner of the probe stack)
-    std::vector<int> _proj_sig;                   ///< signature of the source set, for change detection
-    std::vector<uint8_t> _proj_probe_used;        ///< [n_chan] a probe direction was used this record
-    const double* _proj_corr_rec = nullptr;       ///< this record's raw corr rows (proj_identify)
+    std::vector<gnss::ElemSteer::cf>
+        _proj_steer_all; ///< [n_prn][n_chan][n_elem] every steered slot's table this record
+    std::vector<uint8_t> _proj_steered; ///< [n_prn] slot had a fresh table this record
+    std::string _proj_owner_probe; ///< unique_name + "/probe" (the board owner of the probe stack)
+    std::vector<int> _proj_sig;    ///< signature of the source set, for change detection
+    std::vector<uint8_t> _proj_probe_used;  ///< [n_chan] a probe direction was used this record
+    const double* _proj_corr_rec = nullptr; ///< this record's raw corr rows (proj_identify)
     // Served state: written by main_thread, read by REST without a lock (torn reads of a
     // diagnostic double are acceptable; a lock on the per-record path is not).
-    std::vector<double> _proj_probe_frac;     ///< [n_chan] probe-stack component-0 energy fraction
-    std::vector<uint8_t> _proj_probe_on;      ///< [n_chan] probe trigger latched (hysteresis)
-    double _proj_log_t = -1.0e18;             ///< steady time of the last source-change log line
-    std::vector<int> _proj_k_ch;              ///< [n_chan] k in force
-    std::vector<int> _proj_src_ch;            ///< [n_chan] bitmask: 1 own row, 2 sibling, 4 probe stack
-    double _proj_us = 0.0;                    ///< EMA of the per-record projection CPU time
+    std::vector<double> _proj_probe_frac; ///< [n_chan] probe-stack component-0 energy fraction
+    std::vector<uint8_t> _proj_probe_on;  ///< [n_chan] probe trigger latched (hysteresis)
+    double _proj_log_t = -1.0e18;         ///< steady time of the last source-change log line
+    std::vector<int> _proj_k_ch;          ///< [n_chan] k in force
+    std::vector<int> _proj_src_ch;        ///< [n_chan] bitmask: 1 own row, 2 sibling, 4 probe stack
+    double _proj_us = 0.0;                ///< EMA of the per-record projection CPU time
     uint64_t _proj_active_records = 0;
-    std::string _proj_desc;                   ///< the current sources (log/REST); under _proj_mtx
+    std::string _proj_desc; ///< the current sources (log/REST); under _proj_mtx
     std::mutex _proj_mtx;
     void proj_prepare_record(const double* corr, const void* pctl_rec, int n_chan, int n_e,
                              int64_t wstart, double utc, double now_s);
     void proj_reset_slot(size_t p, double now_s);
-    void proj_slot_inplace(double* corr_rw, const void* pctl_slot, int n_chan, int n_e,
-                           int n_rows);
+    void proj_slot_inplace(double* corr_rw, const void* pctl_slot, int n_chan, int n_e, int n_rows);
     void proj_slot_shadow(const double* corr, const void* pctl_slot, int n_chan, int n_e,
                           bool steered);
     void proj_slot_diag(size_t p, const void* pctl_slot, int n_chan, int n_e, bool steered);
@@ -511,7 +514,8 @@ private:
     /// receives the count of rows along q.
     int proj_identify(const std::complex<double>* q, int ch, int n_e, const void* pctl_rec,
                       int* n_along);
-    std::vector<uint8_t> _proj_dropped; ///< [n_prn] a probe direction was this steered slot's own signature and was dropped this record
+    std::vector<uint8_t> _proj_dropped; ///< [n_prn] a probe direction was this steered slot's own
+                                        ///< signature and was dropped this record
     void set_elem_proj_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 };
 

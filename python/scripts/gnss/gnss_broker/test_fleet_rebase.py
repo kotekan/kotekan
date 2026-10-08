@@ -18,16 +18,19 @@ import gnss_broker.fleet as fleet
 from gnss_broker.fleet import fleet_dll, live_instances
 
 RATE = 195312.5
-FRAME0_NEW = 1790626549.0          # 09-28 20:15:49 re-base
-NOW = 1790626598.0                  # 09-28 20:16:38
-H_OLD = 53825781250                 # the 09-25 session's last hop (09-28 19:04:24)
+FRAME0_NEW = 1790626549.0  # 09-28 20:15:49 re-base
+NOW = 1790626598.0  # 09-28 20:16:38
+H_OLD = 53825781250  # the 09-25 session's last hop (09-28 19:04:24)
 H_NEW = int((NOW - 2.0 - FRAME0_NEW) * RATE)
 
 _fails = []
 
 
 def check(name, ok, detail=""):
-    print("  [%s] %s%s" % ("PASS" if ok else "FAIL", name, (" -- " + detail) if detail else ""))
+    print(
+        "  [%s] %s%s"
+        % ("PASS" if ok else "FAIL", name, (" -- " + detail) if detail else "")
+    )
     if not ok:
         _fails.append(name)
 
@@ -44,51 +47,105 @@ def test_live_instances():
     ex = live_instances({u: h for u, (h, _) in hist.items()}, hist, NOW)
     check("outage: nobody advances, nobody accused", ex == {}, str(ex))
     # the re-base: a and b relaunch (a backwards jump IS a change), c and d still serve old rows
-    ex = live_instances({"a": H_NEW, "b": H_NEW - 4096, "c": H_OLD - 2, "d": H_OLD - 3}, hist, NOW)
-    check("re-base, broker still on the OLD anchor: the pre-outage instances are frozen",
-          ex == {"c": "frozen", "d": "frozen"}, str(ex))
+    ex = live_instances(
+        {"a": H_NEW, "b": H_NEW - 4096, "c": H_OLD - 2, "d": H_OLD - 3}, hist, NOW
+    )
+    check(
+        "re-base, broker still on the OLD anchor: the pre-outage instances are frozen",
+        ex == {"c": "frozen", "d": "frozen"},
+        str(ex),
+    )
 
     # a broker restarted on the NEW anchor has no history -- the anchor alone must do it
-    ex = live_instances({"a": H_NEW, "c": H_OLD - 2}, {}, NOW,
-                        anchor_utc=FRAME0_NEW, hops_per_sec=RATE)
-    check("re-base, new anchor, no history: the old row is AHEAD", ex == {"c": "ahead"}, str(ex))
-    ex = live_instances({"a": H_OLD, "c": H_OLD - 2}, {}, NOW,
-                        anchor_utc=FRAME0_NEW, hops_per_sec=RATE)
-    check("everyone ahead: the anchor is wrong, so nobody is excluded", ex == {}, str(ex))
-    ex = live_instances({"a": H_NEW + int(30 * RATE)}, {}, NOW,
-                        anchor_utc=FRAME0_NEW, hops_per_sec=RATE)
+    ex = live_instances(
+        {"a": H_NEW, "c": H_OLD - 2}, {}, NOW, anchor_utc=FRAME0_NEW, hops_per_sec=RATE
+    )
+    check(
+        "re-base, new anchor, no history: the old row is AHEAD",
+        ex == {"c": "ahead"},
+        str(ex),
+    )
+    ex = live_instances(
+        {"a": H_OLD, "c": H_OLD - 2}, {}, NOW, anchor_utc=FRAME0_NEW, hops_per_sec=RATE
+    )
+    check(
+        "everyone ahead: the anchor is wrong, so nobody is excluded", ex == {}, str(ex)
+    )
+    ex = live_instances(
+        {"a": H_NEW + int(30 * RATE)}, {}, NOW, anchor_utc=FRAME0_NEW, hops_per_sec=RATE
+    )
     check("30 s ahead is inside the 60 s margin", ex == {}, str(ex))
-    check("no hop yet (-1) is ignored, not judged",
-          live_instances({"a": -1, "b": 5}, {}, NOW) == {})
+    check(
+        "no hop yet (-1) is ignored, not judged",
+        live_instances({"a": -1, "b": 5}, {}, NOW) == {},
+    )
 
 
 def row(prn, hop, deep):
-    return {"prn": prn, "pow_hop": hop, "pow_fft_len": 16384, "e_pow": 1.0, "p_pow": 4.0,
-            "l_pow": 1.0, "n_chan": 7.0, "deep_snr": deep, "amp_snr": 10.0,
-            "coherence_s": 1.0, "utc": 0.0}
+    return {
+        "prn": prn,
+        "pow_hop": hop,
+        "pow_fft_len": 16384,
+        "e_pow": 1.0,
+        "p_pow": 4.0,
+        "l_pow": 1.0,
+        "n_chan": 7.0,
+        "deep_snr": deep,
+        "amp_snr": 10.0,
+        "coherence_s": 1.0,
+        "utc": 0.0,
+    }
 
 
 def test_fleet_dll_end_to_end():
-    polls = {"u0": [row(3, H_NEW, 50.0), row(5, H_NEW, 50.0)],
-             "u1": [row(3, H_NEW - 4096, 40.0), row(5, H_NEW - 4096, 40.0)],
-             "u2": [row(3, H_OLD, 99.0), row(5, H_OLD, 99.0)]}   # stale, and the "best" deep
+    polls = {
+        "u0": [row(3, H_NEW, 50.0), row(5, H_NEW, 50.0)],
+        "u1": [row(3, H_NEW - 4096, 40.0), row(5, H_NEW - 4096, 40.0)],
+        "u2": [row(3, H_OLD, 99.0), row(5, H_OLD, 99.0)],
+    }  # stale, and the "best" deep
     real_get = fleet._get
     fleet._get = lambda url, timeout=5.0: polls[url.rsplit("/", 1)[0]]
     try:
         src = {}
-        out = fleet_dll(list(polls), hop_window=int(2 * RATE), min_instances=2, k_sigma=3.0,
-                        q_fallback=2.2, src_hops=src, hop_hist={}, anchor_utc=FRAME0_NEW,
-                        hops_per_sec=RATE, now=NOW)
-        check("the fleet hop is the live instances'", out.get(3, {}).get("hop") == H_NEW,
-              str(out.get(3, {}).get("hop")))
-        check("the coherent row comes from a live instance",
-              (out.get(3, {}).get("coh_row") or {}).get("pow_hop") == H_NEW)
-        check("the excluded instance still reports its hop to the instruments", src.get("u2") == H_OLD,
-              str(src))
-        out = fleet_dll(list(polls), hop_window=int(2 * RATE), min_instances=2, k_sigma=3.0,
-                        q_fallback=2.2, now=NOW)
-        check("without hop_hist the old behaviour is unchanged (the stale max wins)",
-              out.get(3, {}).get("hop") == H_OLD or 3 not in out, str(out.get(3, {}).get("hop")))
+        out = fleet_dll(
+            list(polls),
+            hop_window=int(2 * RATE),
+            min_instances=2,
+            k_sigma=3.0,
+            q_fallback=2.2,
+            src_hops=src,
+            hop_hist={},
+            anchor_utc=FRAME0_NEW,
+            hops_per_sec=RATE,
+            now=NOW,
+        )
+        check(
+            "the fleet hop is the live instances'",
+            out.get(3, {}).get("hop") == H_NEW,
+            str(out.get(3, {}).get("hop")),
+        )
+        check(
+            "the coherent row comes from a live instance",
+            (out.get(3, {}).get("coh_row") or {}).get("pow_hop") == H_NEW,
+        )
+        check(
+            "the excluded instance still reports its hop to the instruments",
+            src.get("u2") == H_OLD,
+            str(src),
+        )
+        out = fleet_dll(
+            list(polls),
+            hop_window=int(2 * RATE),
+            min_instances=2,
+            k_sigma=3.0,
+            q_fallback=2.2,
+            now=NOW,
+        )
+        check(
+            "without hop_hist the old behaviour is unchanged (the stale max wins)",
+            out.get(3, {}).get("hop") == H_OLD or 3 not in out,
+            str(out.get(3, {}).get("hop")),
+        )
     finally:
         fleet._get = real_get
 

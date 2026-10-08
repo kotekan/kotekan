@@ -11,9 +11,10 @@
 #include "metadata.hpp" // for metadataObject
 
 #include "json.hpp" // for json
-#include <cstdint>  // for int64_t
-#include <vector>   // for chan_scale
-#include <memory>   // for shared_ptr
+
+#include <cstdint> // for int64_t
+#include <memory>  // for shared_ptr
+#include <vector>  // for chan_scale
 
 /**
  * @class GnssChanMetadata

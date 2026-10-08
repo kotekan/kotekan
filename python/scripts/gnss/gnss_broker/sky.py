@@ -40,6 +40,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # every merge line would go to stderr instead of this chain's log -- silently, which is
     # the failure mode the split was designed not to introduce.
     import gnss_brdc_supply as _supply
+
     if getattr(_supply, "LOG_HOOK", "unset") is None:
         _supply.LOG_HOOK = _log
     now = _now()
@@ -70,7 +71,9 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
             _old_eph = state["eph"]
             # block only while there is NO sky at all; with one in hand the fetch must not
             # stall the pass (gnss_brdc_supply: the refresh runs on a thread).
-            state["eph"] = ge.parse_rinex_nav(ge.fetch_brdc(t_utc, block=_old_eph is None))
+            state["eph"] = ge.parse_rinex_nav(
+                ge.fetch_brdc(t_utc, block=_old_eph is None)
+            )
             state["eph_t"] = now
             # ── EPH-REBASE (#101, --eph-rebase): a refresh STEPS the per-sat model, and
             # on a model-primary chain the slewing seed drags the code loop through the
@@ -83,50 +86,84 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
             # own those). Never let this computation take the refresh down.
             if _old_eph is not None and state.get("eph_rebase"):
                 try:
-                    _pa_o = ge.predict_all(_old_eph, state["_lat"], state["_lon"],
-                                           state["_alt"], t_utc, mask_deg=-90.0)
-                    _pa_n = ge.predict_all(state["eph"], state["_lat"], state["_lon"],
-                                           state["_alt"], t_utc, mask_deg=-90.0)
+                    _pa_o = ge.predict_all(
+                        _old_eph,
+                        state["_lat"],
+                        state["_lon"],
+                        state["_alt"],
+                        t_utc,
+                        mask_deg=-90.0,
+                    )
+                    _pa_n = ge.predict_all(
+                        state["eph"],
+                        state["_lat"],
+                        state["_lon"],
+                        state["_alt"],
+                        t_utc,
+                        mask_deg=-90.0,
+                    )
                     _steps = {}
                     for _k, _vn in _pa_n.items():
                         _vo = _pa_o.get(_k)
                         if _vo is None:
                             continue
-                        _ds = ((_vn["range_m"] - _vo["range_m"]) / C_LIGHT
-                               - (_vn["sat_clk_s"] - _vo["sat_clk_s"]))
+                        _ds = (_vn["range_m"] - _vo["range_m"]) / C_LIGHT - (
+                            _vn["sat_clk_s"] - _vo["sat_clk_s"]
+                        )
                         if abs(_ds) > 1e-12:
                             _steps[_k] = _ds
                     # Census at EVERY re-parse, zero included -- 08-29's lesson twice
                     # over: silence must be self-describing (a re-parse between merges
                     # sees identical records and steps nothing; only merge-adjacent
                     # re-parses carry deltas).
-                    _log("eph-rebase census: re-parse stepped %d sat model(s)%s"
-                         % (len(_steps),
-                            (", largest %.4f us" % (max((abs(v) for v in _steps.values()))
-                                                    * 1e6)) if _steps else ""))
+                    _log(
+                        "eph-rebase census: re-parse stepped %d sat model(s)%s"
+                        % (
+                            len(_steps),
+                            (
+                                ", largest %.4f us"
+                                % (max((abs(v) for v in _steps.values())) * 1e6)
+                            )
+                            if _steps
+                            else "",
+                        )
+                    )
                     if _steps:
                         state["eph_step"] = (_steps, now)
                 except Exception as _e2:
-                    _log("eph-rebase: step computation failed (%s) -- refresh stands, "
-                         "no handover this time" % _e2)
+                    _log(
+                        "eph-rebase: step computation failed (%s) -- refresh stands, "
+                        "no handover this time" % _e2
+                    )
             _n = len(state["eph"])
             # Say so only when the SET changed. At a 15 min cadence an unconditional line is
             # 96 lines a day of "still 101 sats", which is how a real thinning gets missed.
             if _n != state.get("eph_n"):
-                _log("brdc almanac: ephemeris refreshed (%d sats%s)"
-                     % (_n, "" if state.get("eph_n") is None
-                        else ", was %d" % state["eph_n"]))
+                _log(
+                    "brdc almanac: ephemeris refreshed (%d sats%s)"
+                    % (
+                        _n,
+                        ""
+                        if state.get("eph_n") is None
+                        else ", was %d" % state["eph_n"],
+                    )
+                )
             state["eph_n"] = _n
         except Exception as e:
-            state["eph_t"] = now - 7200.0 + 600.0  # coast on the old set, retry in 10 min
+            state["eph_t"] = (
+                now - 7200.0 + 600.0
+            )  # coast on the old set, retry in 10 min
             if state["eph"] is None:
                 raise
-            _log("brdc almanac: refresh failed (%s); coasting on the previous set "
-                 "(sats thin out as toe ages past 4 h)" % e)
+            _log(
+                "brdc almanac: refresh failed (%s); coasting on the previous set "
+                "(sats thin out as toe ages past 4 h)" % e
+            )
     dt = 4.0
     pa = ge.predict_all(state["eph"], lat, lon, alt_m, t_utc, mask_deg=-90.0)
-    pb = ge.predict_all(state["eph"], lat, lon, alt_m, t_utc + timedelta(seconds=dt),
-                        mask_deg=-90.0)
+    pb = ge.predict_all(
+        state["eph"], lat, lon, alt_m, t_utc + timedelta(seconds=dt), mask_deg=-90.0
+    )
     C = C_LIGHT
     out = {}
     for (s, prn), v in pa.items():
@@ -134,8 +171,11 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
             continue
         dop = -v["range_rate_mps"] / C * f_carrier_hz
         v2 = pb.get((s, prn))
-        rate = (-(v2["range_rate_mps"] - v["range_rate_mps"]) / dt / C * f_carrier_hz
-                if v2 else 0.0)
+        rate = (
+            -(v2["range_rate_mps"] - v["range_rate_mps"]) / dt / C * f_carrier_hz
+            if v2
+            else 0.0
+        )
         # ⚠️ AZIMUTH IS ELEMENT 5 AND IT IS APPENDED, NEVER INSERTED. Every consumer indexes
         # this tuple positionally (pred[p][0], [1], [2], [3]) and nothing unpacks it strictly,
         # so growing it at the end is safe and reordering it would be silent corruption.
@@ -154,8 +194,17 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
             _az_rate, _el_rate = _daz / dt, (v2["el"] - v["el"]) / dt
         else:
             _az_rate = _el_rate = 0.0
-        out[prn] = (dop, rate, v["el"], v["range_m"], v["sat_clk_s"], v["az"],
-                    _az_rate, _el_rate, t_utc.timestamp())
+        out[prn] = (
+            dop,
+            rate,
+            v["el"],
+            v["range_m"],
+            v["sat_clk_s"],
+            v["az"],
+            _az_rate,
+            _el_rate,
+            t_utc.timestamp(),
+        )
     # PREDICTION-COLLAPSE GUARD (2026-07-19): the daily BRDC's C/E nav records can LAG the
     # GPS ones by hours, so an entire constellation's newest toe crosses best_eph's window
     # at ONE instant -- measured 11:59:57Z: 13 seeded sats dropped 'set below horizon' in
@@ -210,19 +259,28 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
             # selector and the search hints all read as live. bds_b2a bridged for 25 minutes on
             # one line of log. Rate-limited, but on its own key, and it carries the AGE.
             sc.setdefault("bridge_since", now)
-            _log_rl("brdc-bridge",
-                    "brdc almanac: PREDICTION COLLAPSE (%d of peak %d %s sats%s in the eph "
-                    "window) -> BRIDGING on a sky frozen %.0f s ago (%d sats); early refresh "
-                    "forced. Elevations are STALE -- probes, drops and hints all ride this."
-                    % (len(out), peak, sysc,
-                       " with PRN >= %d" % min_prn if min_prn > 1 else "",
-                       now - sc["bridge_since"], len(lg)),
-                    every_s=120.0)
+            _log_rl(
+                "brdc-bridge",
+                "brdc almanac: PREDICTION COLLAPSE (%d of peak %d %s sats%s in the eph "
+                "window) -> BRIDGING on a sky frozen %.0f s ago (%d sats); early refresh "
+                "forced. Elevations are STALE -- probes, drops and hints all ride this."
+                % (
+                    len(out),
+                    peak,
+                    sysc,
+                    " with PRN >= %d" % min_prn if min_prn > 1 else "",
+                    now - sc["bridge_since"],
+                    len(lg),
+                ),
+                every_s=120.0,
+            )
             return lg
     else:
         if sc.pop("bridge_since", None) is not None:
-            _log("brdc almanac: %s prediction RECOVERED (%d sats) -- off the bridge, live sky"
-                 % (sysc, len(out)))
+            _log(
+                "brdc almanac: %s prediction RECOVERED (%d sats) -- off the bridge, live sky"
+                % (sysc, len(out))
+            )
         sc["last_good"] = out
     return out
 
@@ -246,6 +304,7 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
     fault or a week mismatch (shown via the toe delta). Kepler propagation only, no Viterbi."""
     try:
         import gps_cnav as _C
+
         ge = brdc_alm["mod"]
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
@@ -272,6 +331,7 @@ def _cnav2_brdc_xcheck(brdc_alm, sys, prn, cnav2_eph, log):
     CNV2_EPH_FIELDS is filled the ephemeris is None so this is never reached."""
     try:
         import gps_cnav2 as _C2
+
         ge = brdc_alm["mod"]
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
@@ -298,6 +358,7 @@ def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
     Kepler only, no Viterbi."""
     try:
         import galileo_inav as _I
+
         ge = brdc_alm["mod"]
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
@@ -311,7 +372,10 @@ def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
         cx, cy, cz = _I.sv_position_inav(inav_eph, t0e)
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODnav %d)" % (
-            dpos, be["toe_sow"] - t0e, inav_eph.get("IODnav", -1))
+            dpos,
+            be["toe_sow"] - t0e,
+            inav_eph.get("IODnav", -1),
+        )
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
@@ -326,6 +390,7 @@ def _lnav_brdc_xcheck(brdc_alm, sys, prn, lnav_eph, log):
     note). Kepler only, no framing."""
     try:
         import gps_nav_decode as _L
+
         ge = brdc_alm["mod"]
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
@@ -339,7 +404,11 @@ def _lnav_brdc_xcheck(brdc_alm, sys, prn, lnav_eph, log):
         cx, cy, cz = _L.sv_position_lnav(lnav_eph, toe)
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d/%d)" % (
-            dpos, be["toe_sow"] - toe, int(lnav_eph.get("IODE", -1)), int(be.get("iode", -1)))
+            dpos,
+            be["toe_sow"] - toe,
+            int(lnav_eph.get("IODE", -1)),
+            int(be.get("iode", -1)),
+        )
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
@@ -352,6 +421,7 @@ def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
     flagged as ICD-owned, pending live symbols) or a week straddle. Kepler only."""
     try:
         import galileo_fnav as _F
+
         ge = brdc_alm["mod"]
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
@@ -365,7 +435,10 @@ def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
         cx, cy, cz = _F.sv_position_fnav(fnav_eph, t0e)
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODnav %d)" % (
-            dpos, be["toe_sow"] - t0e, fnav_eph.get("IODnav", -1))
+            dpos,
+            be["toe_sow"] - t0e,
+            fnav_eph.get("IODnav", -1),
+        )
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
@@ -378,6 +451,7 @@ def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
     ICD-owned, pending live symbols). Kepler/CNAV only."""
     try:
         import beidou_bcnav2 as _B
+
         ge = brdc_alm["mod"]
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
@@ -391,8 +465,11 @@ def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
         cx, cy, cz = _B.sv_position_bcnav2(bcnav2_eph, t0e)
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
-            dpos, be["toe_sow"] - t0e, bcnav2_eph.get("IODE", -1),
-            int(round(bcnav2_eph.get("SatType", -1))))
+            dpos,
+            be["toe_sow"] - t0e,
+            bcnav2_eph.get("IODE", -1),
+            int(round(bcnav2_eph.get("SatType", -1))),
+        )
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
@@ -403,6 +480,7 @@ def _bcnav3_brdc_xcheck(brdc_alm, sys, prn, bcnav3_eph, log):
     the ephemeris is None so this is never reached. Kepler/CNAV-style."""
     try:
         import beidou_bcnav3 as _B
+
         ge = brdc_alm["mod"]
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
@@ -416,8 +494,11 @@ def _bcnav3_brdc_xcheck(brdc_alm, sys, prn, bcnav3_eph, log):
         cx, cy, cz = _B.sv_position_bcnav3(bcnav3_eph, t0e)
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
-            dpos, be["toe_sow"] - t0e, bcnav3_eph.get("IODE", -1),
-            int(round(bcnav3_eph.get("SatType", -1))))
+            dpos,
+            be["toe_sow"] - t0e,
+            bcnav3_eph.get("IODE", -1),
+            int(round(bcnav3_eph.get("SatType", -1))),
+        )
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
@@ -428,6 +509,7 @@ def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
     decode matches BRDC to a few metres. Same CNAV propagation as B-CNAV2."""
     try:
         import beidou_bcnav1 as _B
+
         ge = brdc_alm["mod"]
         recs = brdc_alm["eph"].get((sys, prn))
         if not recs:
@@ -441,8 +523,11 @@ def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
         cx, cy, cz = _B.sv_position_bcnav1(bcnav1_eph, t0e)
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
         return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
-            dpos, be["toe_sow"] - t0e, bcnav1_eph.get("IODE", -1),
-            int(round(bcnav1_eph.get("SatType", -1))))
+            dpos,
+            be["toe_sow"] - t0e,
+            bcnav1_eph.get("IODE", -1),
+            int(round(bcnav1_eph.get("SatType", -1))),
+        )
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
@@ -477,7 +562,9 @@ def _unit(el_deg, az_deg):
 def boresight_sep_deg(el_deg, az_deg, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
     """Angular separation from boresight, degrees."""
     u, b = _unit(el_deg, az_deg), _unit(el0, az0)
-    return math.degrees(math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(u, b))))))
+    return math.degrees(
+        math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(u, b)))))
+    )
 
 
 def nearest_boresight(pd, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):

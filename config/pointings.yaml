@@ -1,3 +1,4 @@
+---
 # Declared dish-pointing epochs for the beam-cube archive (recording plan P3).
 #
 # ⚠️ A POINTING IS DECLARED, NEVER INFERRED FROM THE DATA. Every repoint needs a fresh beam map,
@@ -11,8 +12,8 @@
 #
 # ⚠️ HISTORY BEFORE 2026-09-05 IS UNVERIFIED (KV to confirm/extend): the raw cube archive
 # starts 2026-09-05 15:xx UTC, so only the current epoch matters to it today.
-- id: p0_dec40p73
-  from: 2026-07-01T00:00:00Z
-  to: null
-  boresight_dec_deg: 40.73
-  note: first CHORD GNSS pointing; 09-02 beam maps (peak 6.3/6.6 deg off boresight) were taken here
+    - id: p0_dec40p73
+      from: 2026-07-01T00:00:00Z
+      to:
+      boresight_dec_deg: 40.73
+      note: first CHORD GNSS pointing; 09-02 beam maps (peak 6.3/6.6 deg off boresight) were taken here

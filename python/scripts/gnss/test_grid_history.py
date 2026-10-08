@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_broker import fleetadr as F
 
 
-HPR = 2048                              # hops per record, the production shape
-RECS_PER_GRID = F.GRID_HOPS // HPR      # 96 records between grid hops
+HPR = 2048  # hops per record, the production shape
+RECS_PER_GRID = F.GRID_HOPS // HPR  # 96 records between grid hops
 
 
 def _fold(st, hop, dop=1000.0, n_inst=3):
@@ -44,14 +44,16 @@ class TestGridRetention(unittest.TestCase):
         """The history is bounded: it is a window, not a leak."""
         st = _run(F.SatAdr(), 11)
         self.assertLessEqual(len(st.grid), F.GRID_KEEP)
-        self.assertEqual([g[0] for g in st.grid],
-                         [k * F.GRID_HOPS for k in range(12 - F.GRID_KEEP, 12)])
+        self.assertEqual(
+            [g[0] for g in st.grid],
+            [k * F.GRID_HOPS for k in range(12 - F.GRID_KEEP, 12)],
+        )
 
     def test_only_grid_multiples_are_snapshotted(self):
         """A record off the grid never enters the history -- the grid is the pairing key."""
-        st = _run(F.SatAdr(), 1)           # lands exactly one record past the first grid hop
+        st = _run(F.SatAdr(), 1)  # lands exactly one record past the first grid hop
         self.assertEqual([g[0] for g in st.grid], [0, F.GRID_HOPS])
-        _fold(st, (RECS_PER_GRID + 2) * HPR)   # a record, but not a grid hop
+        _fold(st, (RECS_PER_GRID + 2) * HPR)  # a record, but not a grid hop
         self.assertEqual([g[0] for g in st.grid], [0, F.GRID_HOPS])
 
     def test_newest_is_last(self):
@@ -72,7 +74,11 @@ class TestPairingYield(unittest.TestCase):
         newest, withhist = set(), set()
         t = phase_s
         while t < span_s:
-            k = int(t / F.GRID_SECONDS) if hasattr(F, "GRID_SECONDS") else int(t / 1.006632)
+            k = (
+                int(t / F.GRID_SECONDS)
+                if hasattr(F, "GRID_SECONDS")
+                else int(t / 1.006632)
+            )
             newest.add(k)
             for j in range(F.GRID_KEEP):
                 if k - j >= 0:
@@ -82,9 +88,11 @@ class TestPairingYield(unittest.TestCase):
 
     def test_newest_only_loses_half_the_grid_and_most_of_the_pairs(self):
         a_new, _ = self._polls(0.0)
-        b_new, _ = self._polls(1.0)      # the other chain, half a grid hop out of phase
+        b_new, _ = self._polls(1.0)  # the other chain, half a grid hop out of phase
         total = max(max(a_new), max(b_new)) + 1
-        self.assertLess(len(a_new) / total, 0.65, "a 2 s poll cannot see every 1.0066 s hop")
+        self.assertLess(
+            len(a_new) / total, 0.65, "a 2 s poll cannot see every 1.0066 s hop"
+        )
         shared = len(a_new & b_new) / total
         self.assertLess(shared, 0.65, "newest-only pairing is limited by poll phase")
 
@@ -97,9 +105,11 @@ class TestPairingYield(unittest.TestCase):
             hi = min(max(a), max(b))
             grid = set(range(lo, hi + 1))
             shared = len(a & b & grid) / len(grid)
-            self.assertGreater(shared, 0.99,
-                               "phase %.2f s: history should make pairing poll-independent"
-                               % phase)
+            self.assertGreater(
+                shared,
+                0.99,
+                "phase %.2f s: history should make pairing poll-independent" % phase,
+            )
 
 
 class TestPublishedHistory(unittest.TestCase):
@@ -111,20 +121,27 @@ class TestPublishedHistory(unittest.TestCase):
         self.assertIsNotNone(row, "a folded PRN must publish")
         self.assertIn("g_hist", row)
         self.assertLessEqual(len(row["g_hist"]), F.GRID_KEEP)
-        self.assertEqual(row["g_hist"][-1][0], row["g_hop"], "newest entry is the scalar hop")
+        self.assertEqual(
+            row["g_hist"][-1][0], row["g_hop"], "newest entry is the scalar hop"
+        )
         self.assertEqual(row["g_hist"][-1][1], row["g_dop_cycles"])
-        self.assertEqual([e[0] for e in row["g_hist"]],
-                         sorted(e[0] for e in row["g_hist"]), "oldest first")
+        self.assertEqual(
+            [e[0] for e in row["g_hist"]],
+            sorted(e[0] for e in row["g_hist"]),
+            "oldest first",
+        )
 
     def test_history_never_crosses_an_arc(self):
         """A break resets the accumulator, so an older arc's phase must not pair forward."""
         st = _run(F.SatAdr(), 3)
         arc_before = st.arc
-        st.arc += 1                                  # simulate a break
+        st.arc += 1  # simulate a break
         _run(st, 1, first_rec=4 * RECS_PER_GRID)
         current = [g for g in st.grid if g[2] == st.arc]
-        self.assertTrue(all(g[2] != arc_before for g in current),
-                        "snapshots from the previous arc must not be published as current")
+        self.assertTrue(
+            all(g[2] != arc_before for g in current),
+            "snapshots from the previous arc must not be published as current",
+        )
 
 
 if __name__ == "__main__":

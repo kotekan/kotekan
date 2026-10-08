@@ -36,18 +36,26 @@ ap.add_argument("--port", type=int, default=12777)
 ap.add_argument("--prns", default="3,19,26,32")
 ap.add_argument("--hop0", type=int, default=114436200145)
 ap.add_argument("--hops-per-sec", type=float, default=195312.5)
-ap.add_argument("--revisit-s", type=float, default=1.0,
-                help="snapshot-hop advance between successive detection sets")
+ap.add_argument(
+    "--revisit-s",
+    type=float,
+    default=1.0,
+    help="snapshot-hop advance between successive detection sets",
+)
 ap.add_argument("--code-length", type=float, default=10230.0)
-ap.add_argument("--time0", type=float, default=1786167610.000002870,
-                help="the anchor served at telescope/time0_ns (CHORD's real one by default, "
-                     "so the CL/dead-reckon arithmetic sees a plausible epoch)")
+ap.add_argument(
+    "--time0",
+    type=float,
+    default=1786167610.000002870,
+    help="the anchor served at telescope/time0_ns (CHORD's real one by default, "
+    "so the CL/dead-reckon arithmetic sees a plausible epoch)",
+)
 a = ap.parse_args()
 
 PRNS = [int(x) for x in a.prns.split(",") if x.strip()]
-_n = [0]           # detection-poll counter: the ONLY state, so output is a pure function
+_n = [0]  # detection-poll counter: the ONLY state, so output is a pure function
 _lock = threading.Lock()
-_seeds = [[]]      # last seed payload received, echoed into the status table
+_seeds = [[]]  # last seed payload received, echoed into the status table
 
 
 def _detections():
@@ -60,16 +68,20 @@ def _detections():
     dh = int(a.revisit_s * a.hops_per_sec)
     for i, prn in enumerate(PRNS):
         t = k * a.revisit_s
-        dop = -1500.0 + 120.0 * i + 0.42 * t          # Hz, drifting like a real pass
+        dop = -1500.0 + 120.0 * i + 0.42 * t  # Hz, drifting like a real pass
         cp = (137.5 * (i + 1) + 0.0361 * dop * t) % a.code_length
-        out.append({"prn": prn,
-                    "snr": 34.0 + 3.0 * math.sin(0.7 * k + i),
-                    "doppler_hz": dop,
-                    "code_phase_chips": cp,
-                    "ref_hop": a.hop0 + k * dh,
-                    "nh": (k + i) % 20,
-                    "code_phase_long_chips": cp + a.code_length * ((k + i) % 20),
-                    "code_phase_at_ref_chips": cp})
+        out.append(
+            {
+                "prn": prn,
+                "snr": 34.0 + 3.0 * math.sin(0.7 * k + i),
+                "doppler_hz": dop,
+                "code_phase_chips": cp,
+                "ref_hop": a.hop0 + k * dh,
+                "nh": (k + i) % 20,
+                "code_phase_long_chips": cp + a.code_length * ((k + i) % 20),
+                "code_phase_at_ref_chips": cp,
+            }
+        )
     return out
 
 
@@ -84,17 +96,31 @@ def _status():
         # A small, changing E-L imbalance so the DLL has a real discriminator to act on,
         # and a deep that clears the floor so coherence_s > 0 certifies the lock.
         d = 0.04 * math.sin(0.31 * k + 0.9 * i)
-        rows.append({"prn": prn,
-                     "amplitude": 8.0 + i, "amp_snr": 21.0 + 2.0 * i,
-                     "deep_snr": 60.0 + 5.0 * i, "deep_amplitude": 40.0 + i,
-                     "coherence_s": 1.048576, "deep_records": 100, "deep_floor": 7.0,
-                     "unbiased_amplitude": 7.5 + i, "coh_amplitude": 30.0 + i,
-                     "doppler_hz": float(s.get("doppler_hz", 0.0)),
-                     "deep_rate_hz": 0.31 * math.cos(0.17 * k + i), "deep_rate_q": 3.4,
-                     "carrier_hz_resid": 0.5 * math.sin(0.11 * k + i),
-                     "e_pow": 100.0 * (1.0 - d), "p_pow": 140.0, "l_pow": 100.0 * (1.0 + d),
-                     "dll_disc": d, "records": 100, "n_chan": 7,
-                     "hop": a.hop0 + k * int(a.revisit_s * a.hops_per_sec)})
+        rows.append(
+            {
+                "prn": prn,
+                "amplitude": 8.0 + i,
+                "amp_snr": 21.0 + 2.0 * i,
+                "deep_snr": 60.0 + 5.0 * i,
+                "deep_amplitude": 40.0 + i,
+                "coherence_s": 1.048576,
+                "deep_records": 100,
+                "deep_floor": 7.0,
+                "unbiased_amplitude": 7.5 + i,
+                "coh_amplitude": 30.0 + i,
+                "doppler_hz": float(s.get("doppler_hz", 0.0)),
+                "deep_rate_hz": 0.31 * math.cos(0.17 * k + i),
+                "deep_rate_q": 3.4,
+                "carrier_hz_resid": 0.5 * math.sin(0.11 * k + i),
+                "e_pow": 100.0 * (1.0 - d),
+                "p_pow": 140.0,
+                "l_pow": 100.0 * (1.0 + d),
+                "dll_disc": d,
+                "records": 100,
+                "n_chan": 7,
+                "hop": a.hop0 + k * int(a.revisit_s * a.hops_per_sec),
+            }
+        )
     return rows
 
 

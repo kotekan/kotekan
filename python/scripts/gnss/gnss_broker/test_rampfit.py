@@ -31,13 +31,17 @@ def test_recovers_a_known_slope():
     print("the fit itself")
 
     r = RampTracker()
-    feed(r, 7, 1000.0, 40, 10.0, -1.20, +0.0009)     # 0.9 mchips/s over 390 s
+    feed(r, 7, 1000.0, 40, 10.0, -1.20, +0.0009)  # 0.9 mchips/s over 390 s
     f = r.fit(7)
     check(f is not None, "a 390 s window of 40 points qualifies")
     slope, mean, span, n = f
     check(abs(slope - 0.0009) < 1e-9, "the slope is recovered exactly on clean data")
-    check(abs(mean - (-1.20 + 0.0009 * 195.0)) < 1e-9, "the mean value comes back with it")
-    check(abs(span - 390.0) < 1e-9 and n == 40, "span and count describe what was fitted")
+    check(
+        abs(mean - (-1.20 + 0.0009 * 195.0)) < 1e-9, "the mean value comes back with it"
+    )
+    check(
+        abs(span - 390.0) < 1e-9 and n == 40, "span and count describe what was fitted"
+    )
 
     # A flat series must read as flat, not as a small spurious trend.
     r = RampTracker()
@@ -84,8 +88,11 @@ def test_a_short_window_is_not_a_measurement():
 
     r = RampTracker()
     for _ in range(10):
-        r.update(7, 1000.0, 0.5)                     # all at the SAME instant
-    check(r.fit(7) is None, "a zero-variance time axis returns None, never divides by zero")
+        r.update(7, 1000.0, 0.5)  # all at the SAME instant
+    check(
+        r.fit(7) is None,
+        "a zero-variance time axis returns None, never divides by zero",
+    )
 
     check(r.fit("never-seen") is None, "an unknown key is None, not an exception")
 
@@ -94,7 +101,7 @@ def test_window_and_lifecycle():
     print("window and lifecycle")
 
     r = RampTracker(window_s=600.0)
-    feed(r, 7, 1000.0, 200, 10.0, 0.0, 0.0)          # 2000 s of history, 600 s window
+    feed(r, 7, 1000.0, 200, 10.0, 0.0, 0.0)  # 2000 s of history, 600 s window
     check(r.fit(7)[2] <= 600.0, "history older than the window is dropped")
 
     r = RampTracker()
@@ -106,14 +113,20 @@ def test_window_and_lifecycle():
     feed(r, 7, 1000.0, 40, 10.0, 0.0, 1e-4)
     feed(r, 9, 1000.0, 40, 10.0, 0.0, 1e-4)
     r.retain({7})
-    check(r.fit(7) is not None and r.fit(9) is None,
-          "retain() keeps the live set and forgets a vanished satellite")
+    check(
+        r.fit(7) is not None and r.fit(9) is None,
+        "retain() keeps the live set and forgets a vanished satellite",
+    )
 
 
 if __name__ == "__main__":
     print("#93 shadow ramp estimation\n")
-    for fn in (test_recovers_a_known_slope, test_a_discontinuity_is_not_a_rate,
-               test_a_short_window_is_not_a_measurement, test_window_and_lifecycle):
+    for fn in (
+        test_recovers_a_known_slope,
+        test_a_discontinuity_is_not_a_rate,
+        test_a_short_window_is_not_a_measurement,
+        test_window_and_lifecycle,
+    ):
         fn()
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     sys.exit(1 if _fails else 0)

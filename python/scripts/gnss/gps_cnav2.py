@@ -24,14 +24,14 @@ import numpy as np
 
 from galileo_inav import crc24q, _uint  # CRC-24Q + MSB-first bit->uint (shared)
 
-SYM_S = 0.010                  # L1C-D symbol = 10 ms (100 sps), one 10 ms BOC(1,1) code period
-FRAME_SYMS = 1800              # 18 s frame
-N_SF1 = 52                     # subframe 1 (TOI) symbols
-N_IL = FRAME_SYMS - N_SF1      # 1748 interleaved SF2+SF3 symbols
-IL_ROWS, IL_COLS = 46, 38      # block interleaver: syms[52:].reshape(46,38).T.ravel()
-N_SF2, K_SF2 = 1200, 600       # SF2 LDPC(1200,600)
-N_SF3, K_SF3 = 548, 274        # SF3 LDPC(548,274)
-N_TOI = 400                    # TOI counts 0..399 (2 s each -> 800 s / 18 s frames... sync only)
+SYM_S = 0.010  # L1C-D symbol = 10 ms (100 sps), one 10 ms BOC(1,1) code period
+FRAME_SYMS = 1800  # 18 s frame
+N_SF1 = 52  # subframe 1 (TOI) symbols
+N_IL = FRAME_SYMS - N_SF1  # 1748 interleaved SF2+SF3 symbols
+IL_ROWS, IL_COLS = 46, 38  # block interleaver: syms[52:].reshape(46,38).T.ravel()
+N_SF2, K_SF2 = 1200, 600  # SF2 LDPC(1200,600)
+N_SF3, K_SF3 = 548, 274  # SF3 LDPC(548,274)
+N_TOI = 400  # TOI counts 0..399 (2 s each -> 800 s / 18 s frames... sync only)
 
 
 # ------------------------------------------------------------------ SF1 (TOI) sync pattern
@@ -105,10 +105,10 @@ def decode_frame(syms1852, toi=None, rev=None):
         toi, rev = sync_cnv2(s)
         if toi is None:
             return None
-    frame = s[:FRAME_SYMS] ^ (rev & 1)                 # de-rotate to normal polarity
-    d = deinterleave(frame[N_SF1:])                    # 1748 -> SF2(1200) + SF3(548)
-    sf2 = d[:K_SF2].tolist()                            # systematic prefix = info bits
-    sf3 = d[N_SF2:N_SF2 + K_SF3].tolist()
+    frame = s[:FRAME_SYMS] ^ (rev & 1)  # de-rotate to normal polarity
+    d = deinterleave(frame[N_SF1:])  # 1748 -> SF2(1200) + SF3(548)
+    sf2 = d[:K_SF2].tolist()  # systematic prefix = info bits
+    sf3 = d[N_SF2 : N_SF2 + K_SF3].tolist()
     if not (_crc_ok(sf2) and _crc_ok(sf3)):
         return None
     return toi, sf2, sf3
@@ -141,10 +141,10 @@ def find_frames(syms):
     lut = _sf1_lut()
     i = 0
     while i + FRAME_SYMS + N_SF1 <= n:
-        if s[i:i + N_SF1].tobytes() in lut:
-            toi, rev = sync_cnv2(s[i:i + FRAME_SYMS + N_SF1])
+        if s[i : i + N_SF1].tobytes() in lut:
+            toi, rev = sync_cnv2(s[i : i + FRAME_SYMS + N_SF1])
             if toi is not None:
-                r = decode_frame(s[i:i + FRAME_SYMS + N_SF1], toi, rev)
+                r = decode_frame(s[i : i + FRAME_SYMS + N_SF1], toi, rev)
                 if r is not None:
                     yield i, r[0], r[1], r[2]
         i += 1
@@ -154,7 +154,7 @@ def find_frames(syms):
 # The CNAV-2 SF2 carries the standard GPS CNAV Keplerian set; sv_position reuses gps_cnav's
 # propagation. The bit offsets in the 600-bit SF2 are ICD-owned and filled against LIVE frames +
 # the BRDC dpos (the B-CNAV3 method). Empty table -> parse returns None (frame decode still runs).
-CNV2_EPH_FIELDS = {}           # {name: (start, length, signed, scale)} -- live-mapped
+CNV2_EPH_FIELDS = {}  # {name: (start, length, signed, scale)} -- live-mapped
 
 
 def parse_cnav2_ephemeris(sf2_bits):
@@ -162,29 +162,35 @@ def parse_cnav2_ephemeris(sf2_bits):
     if not CNV2_EPH_FIELDS:
         return None
     import gps_cnav as C
+
     eph = {}
     for name, (start, length, signed, scale) in CNV2_EPH_FIELDS.items():
-        eph[name] = C._field(sf2_bits, start, length, signed, scale) if hasattr(C, "_field") \
+        eph[name] = (
+            C._field(sf2_bits, start, length, signed, scale)
+            if hasattr(C, "_field")
             else _field(sf2_bits, start, length, signed, scale)
+        )
     return eph
 
 
 def _field(bits, start, length, signed, scale):
-    v = _uint([int(x) & 1 for x in bits[start:start + length]])
+    v = _uint([int(x) & 1 for x in bits[start : start + length]])
     if signed and (v & (1 << (length - 1))):
-        v -= (1 << length)
+        v -= 1 << length
     return v * scale
 
 
 def sv_position_cnav2(eph, t):
     """ECEF (x,y,z) m -- reuses the GPS CNAV propagation (SF2 is the CNAV Keplerian set)."""
     import gps_cnav as C
+
     return C.sv_position_cnav(eph, t)
 
 
 # ------------------------------------------------------------------ self-test
 if __name__ == "__main__":
     import sys
+
     rng = np.random.default_rng(11)
     fails = 0
 
@@ -198,7 +204,7 @@ if __name__ == "__main__":
     # 2. frame roundtrip: build a frame from chosen SF2/SF3 info (systematic prefix + CRC + random
     #    parity), SF1 for a TOI, interleave -> decode recovers the info + TOI, both polarities.
     def crc_append(msg_bits, total):
-        m = list(msg_bits[:total - 24])
+        m = list(msg_bits[: total - 24])
         c = crc24q(m)
         return m + [(c >> (23 - k)) & 1 for k in range(24)]
 
@@ -207,24 +213,33 @@ if __name__ == "__main__":
         for rev in (0, 1):
             sf2 = crc_append(rng.integers(0, 2, K_SF2).tolist(), K_SF2)
             sf3 = crc_append(rng.integers(0, 2, K_SF3).tolist(), K_SF3)
-            cw2 = sf2 + rng.integers(0, 2, N_SF2 - K_SF2).tolist()   # systematic + arbitrary parity
+            cw2 = (
+                sf2 + rng.integers(0, 2, N_SF2 - K_SF2).tolist()
+            )  # systematic + arbitrary parity
             cw3 = sf3 + rng.integers(0, 2, N_SF3 - K_SF3).tolist()
-            deint = np.array(cw2 + cw3, dtype=np.int8)               # 1748
-            il = deint.reshape(IL_COLS, IL_ROWS).T.ravel()           # inverse of deinterleave
+            deint = np.array(cw2 + cw3, dtype=np.int8)  # 1748
+            il = deint.reshape(IL_COLS, IL_ROWS).T.ravel()  # inverse of deinterleave
             frame = np.hstack([_sf1(toi), il]).astype(np.int8)
             stream = np.hstack([frame, _sf1((toi + 1) % N_TOI)]) ^ (rev & 1)
             r = decode_frame(stream)
             if r is None or r[0] != toi or r[1] != sf2 or r[2] != sf3:
                 p2 += 1
-    print("2. frame sync + deinterleave + systematic extract + CRC (both pol): %s"
-          % ("OK" if p2 == 0 else "FAIL %d/6" % p2))
+    print(
+        "2. frame sync + deinterleave + systematic extract + CRC (both pol): %s"
+        % ("OK" if p2 == 0 else "FAIL %d/6" % p2)
+    )
     fails += p2
 
     # 3. corruption caught: flip an info bit -> CRC fails -> frame dropped
     sf2 = crc_append(rng.integers(0, 2, K_SF2).tolist(), K_SF2)
     sf3 = crc_append(rng.integers(0, 2, K_SF3).tolist(), K_SF3)
-    deint = np.array(sf2 + rng.integers(0, 2, N_SF2 - K_SF2).tolist()
-                     + sf3 + rng.integers(0, 2, N_SF3 - K_SF3).tolist(), dtype=np.int8)
+    deint = np.array(
+        sf2
+        + rng.integers(0, 2, N_SF2 - K_SF2).tolist()
+        + sf3
+        + rng.integers(0, 2, N_SF3 - K_SF3).tolist(),
+        dtype=np.int8,
+    )
     deint[10] ^= 1
     il = deint.reshape(IL_COLS, IL_ROWS).T.ravel()
     stream = np.hstack([_sf1(7), il, _sf1(8)]).astype(np.int8)
@@ -232,6 +247,12 @@ if __name__ == "__main__":
     print("3. corrupted info bit -> CRC rejects: %s" % ("OK" if p3 == 0 else "FAIL"))
     fails += p3
 
-    print("\n%s" % ("CNAV-2 frame codec SELF-CONSISTENT (SF2 ephemeris fields = live-mapped next)"
-                    if not fails else "SELF-TEST FAILURES: %d" % fails))
+    print(
+        "\n%s"
+        % (
+            "CNAV-2 frame codec SELF-CONSISTENT (SF2 ephemeris fields = live-mapped next)"
+            if not fails
+            else "SELF-TEST FAILURES: %d" % fails
+        )
+    )
     sys.exit(1 if fails else 0)

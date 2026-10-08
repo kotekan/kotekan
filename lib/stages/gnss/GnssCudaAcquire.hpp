@@ -101,9 +101,15 @@ public:
     /// exists to avoid. Used by scripts/gnss/acqbench to compare against the CPU reference.
     void download_surface(std::vector<double>& out) const;
 
-    int n_dop() const { return _nd; }
-    int s_cols() const { return _s_cols; }
-    long surface_cells() const { return (long)_nd * _Mp * _s_cols; }
+    int n_dop() const {
+        return _nd;
+    }
+    int s_cols() const {
+        return _s_cols;
+    }
+    long surface_cells() const {
+        return (long)_nd * _Mp * _s_cols;
+    }
     /// Bytes of device memory held, so a caller can budget several engines per GPU.
     size_t device_bytes() const;
 

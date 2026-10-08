@@ -1,31 +1,21 @@
 cmake_minimum_required(VERSION 3.5)
 project(n2k_dual)
 
-# Two-input clone of n2k -- see README.md and include/n2k_dual/DualCorrelator.hpp.
-# n2k itself is NOT modified; this module reuses its headers (device_inlines.hpp).
+# Two-input clone of n2k -- see README.md and include/n2k_dual/DualCorrelator.hpp. n2k itself is NOT
+# modified; this module reuses its headers (device_inlines.hpp).
 
-# Kernel files (to generate), filename syntax is dual_kernel_{nstations_total}_{nfreq}.cu.
-# The kernel template depends only on the TOTAL station count; one instantiation serves
-# every 128-multiple A/B split of that total.
-#   128_8  / 256_8 / 512_8 -- unit/regression tests (small NF for compile + test speed)
-#   256_384          -- CHORD pathfinder, one pass per chain (128 antennas + 128 synthetic)
-#   512_384          -- CHORD pathfinder, one pass per GPU (128 antennas + 384 synthetic lanes
-#                       shared by every chain on the GPU)
-set(KERNELFILES
-    dual_kernel_128_8.cu
-    dual_kernel_256_8.cu
-    dual_kernel_512_8.cu
-    dual_kernel_256_384.cu
-    dual_kernel_512_384.cu)
+# Kernel files (to generate), filename syntax is dual_kernel_{nstations_total}_{nfreq}.cu. The
+# kernel template depends only on the TOTAL station count; one instantiation serves every
+# 128-multiple A/B split of that total. 128_8  / 256_8 / 512_8 -- unit/regression tests (small NF
+# for compile + test speed) 256_384          -- CHORD pathfinder, one pass per chain (128 antennas +
+# 128 synthetic) 512_384          -- CHORD pathfinder, one pass per GPU (128 antennas + 384
+# synthetic lanes shared by every chain on the GPU)
+set(KERNELFILES dual_kernel_128_8.cu dual_kernel_256_8.cu dual_kernel_512_8.cu
+                dual_kernel_256_384.cu dual_kernel_512_384.cu)
 
-set(CUFILES
-    src_lib/DualCorrelator.cu
-    src_lib/kernel_table.cu
-    src_lib/precompute_offsets.cu)
+set(CUFILES src_lib/DualCorrelator.cu src_lib/kernel_table.cu src_lib/precompute_offsets.cu)
 
-set(HFILES
-    include/n2k_dual/DualCorrelator.hpp
-    include/n2k_dual/internals/DualCorrelatorKernel.hpp)
+set(HFILES include/n2k_dual/DualCorrelator.hpp include/n2k_dual/internals/DualCorrelatorKernel.hpp)
 
 # Special rule for generating dual_kernel_%d_%d.cu
 foreach(file ${KERNELFILES})

@@ -63,17 +63,19 @@ class BrdcLnavSource:
 
     def __init__(self, log=None):
         self._log = log or (lambda m: None)
-        self.offset = None        # capture-clock UTC minus GPS seconds-of-week
-        self.spread = None        # disagreement between calibrating satellites (s)
+        self.offset = None  # capture-clock UTC minus GPS seconds-of-week
+        self.spread = None  # disagreement between calibrating satellites (s)
         self.n_cal = 0
-        self.n_rej = 0            # calibrating sats discarded as outliers (see OUTLIER_S)
-        self.n_ambig = 0          # PRNs refused for ambiguous ephemeris (rival toe)
-        self.n_masked = 0         # PRNs refused for being below MASK_DEG
-        self.borrow = None        # constellation-common words (TLM + sf1 reserved)
+        self.n_rej = 0  # calibrating sats discarded as outliers (see OUTLIER_S)
+        self.n_ambig = 0  # PRNs refused for ambiguous ephemeris (rival toe)
+        self.n_masked = 0  # PRNs refused for being below MASK_DEG
+        self.borrow = None  # constellation-common words (TLM + sf1 reserved)
         self.week = None
         self._eph = None
         self._geom = None
-        self._fleet = None        # FleetPages (Layer 2): cross-sat sf4/5 words, set by update()
+        self._fleet = (
+            None  # FleetPages (Layer 2): cross-sat sf4/5 words, set by update()
+        )
 
     # ---- per-cycle refresh -------------------------------------------------------------
     def update(self, eph, geom, predictor):
@@ -101,14 +103,16 @@ class BrdcLnavSource:
             self.week = int(recs[-1]["week"])
             if borrow is None and 1 in st.sf_data:
                 w = st.sf_data[1]
-                borrow = {"tlm": w[0],
-                          "sf1_resv": [w[3], w[4], w[5], np.asarray(w[6])[:16]]}
+                borrow = {
+                    "tlm": w[0],
+                    "sf1_resv": [w[3], w[4], w[5], np.asarray(w[6])[:16]],
+                }
         if not offs:
             self.offset, self.spread, self.n_cal = None, None, 0
             self.n_rej = 0
             return
         offs.sort()
-        med = offs[len(offs) // 2]                  # median: robust to a bad sync
+        med = offs[len(offs) // 2]  # median: robust to a bad sync
         # ...and the GATE has to be as robust as the estimator. Gating on max-min meant ONE
         # satellite whose sync sat a bit off disabled the whole source: measured live
         # 2026-07-25, spread read 19.1 ms (~one bit period) across 8 satellites and refused to
@@ -122,16 +126,20 @@ class BrdcLnavSource:
         self.spread = keep[-1] - keep[0]
         self.n_cal = len(keep)
         if borrow is not None:
-            self.borrow = borrow                     # sticky: survives losing every sync
+            self.borrow = borrow  # sticky: survives losing every sync
 
     def ready(self):
         # n_cal >= 2: a single calibrating satellite has NO cross-check -- at startup its own
         # sync can be half-baked and the whole clock offset lands wrong, which shifts every
         # constructed table and scored 64-76% against the air (2026-07-26, the fossilized
         # startup transient that first exposed the absorbing-veto flaw). Two sats must agree.
-        return (self.offset is not None and self.borrow is not None
-                and self.week is not None and self.n_cal >= 2
-                and self.spread <= MAX_OFFSET_SPREAD_S)
+        return (
+            self.offset is not None
+            and self.borrow is not None
+            and self.week is not None
+            and self.n_cal >= 2
+            and self.spread <= MAX_OFFSET_SPREAD_S
+        )
 
     def why_not(self):
         if self.offset is None:
@@ -141,8 +149,10 @@ class BrdcLnavSource:
         if self.borrow is None:
             return "no decoded sf1 to borrow the reserved words from"
         if self.n_cal >= 2 and self.spread > MAX_OFFSET_SPREAD_S:
-            return (f"offset spread {self.spread * 1e3:.1f} ms across {self.n_cal} sats"
-                    f" ({self.n_rej} outliers already dropped)")
+            return (
+                f"offset spread {self.spread * 1e3:.1f} ms across {self.n_cal} sats"
+                f" ({self.n_rej} outliers already dropped)"
+            )
         return ""
 
     # ---- the supplier contract ---------------------------------------------------------
@@ -155,7 +165,7 @@ class BrdcLnavSource:
         recs = (self._eph or {}).get(("G", prn))
         if not g or not recs:
             return None
-        if g[2] < MASK_DEG:          # below the mask: not up, nothing to peel (see MASK_DEG)
+        if g[2] < MASK_DEG:  # below the mask: not up, nothing to peel (see MASK_DEG)
             self.n_masked += 1
             return None
         # rx_capture(T) = T*6 + range/c - clk + offset  ->  invert for the subframe index
@@ -184,10 +194,13 @@ class BrdcLnavSource:
                 # tow_next); fleet arrays are 10-slot with 0-1 = TLM/HOW placeholders.
                 pm10 = self._fleet.prefix_mask([True, True] + fk[2:])
                 known8 = [fk[w] and pm10[w] for w in range(2, 10)]
-                bits, kn = L.assemble_subframe(T + 1, sfid, fw[2:],
-                                               tlm=self.borrow["tlm"], known29=known8)
-                sf = [int(1 - 2 * int(bits[i])) if (kn[i] and pm10[i // 30]) else 0
-                      for i in range(SF_BITS)]
+                bits, kn = L.assemble_subframe(
+                    T + 1, sfid, fw[2:], tlm=self.borrow["tlm"], known29=known8
+                )
+                sf = [
+                    int(1 - 2 * int(bits[i])) if (kn[i] and pm10[i // 30]) else 0
+                    for i in range(SF_BITS)
+                ]
                 self._fleet.n_fill += 1
                 self._fleet.n_word += sum(fk[2:])
                 out.extend(sf)
@@ -209,14 +222,17 @@ class BrdcLnavSource:
                 words[1], words[2], words[3] = r[0], r[1], r[2]
                 words[4] = L._w(list(r[3][:16]), list(np.asarray(words[4])[16:]))
             if sfid == 2:
-                known[7] = False                     # fit + AODO are not in RINEX
-            bits, kn = L.assemble_subframe(T + 1, sfid, words,
-                                           tlm=self.borrow["tlm"], known29=known)
-            out.extend(int(np.where(kn[i], 1 - 2 * int(bits[i]), 0)) for i in range(SF_BITS))
+                known[7] = False  # fit + AODO are not in RINEX
+            bits, kn = L.assemble_subframe(
+                T + 1, sfid, words, tlm=self.borrow["tlm"], known29=known
+            )
+            out.extend(
+                int(np.where(kn[i], 1 - 2 * int(bits[i]), 0)) for i in range(SF_BITS)
+            )
         # trim to the requested window
         i0 = int(round((utc_now - utc0) / BIT_S))
         i0 = max(0, min(i0, len(out)))
-        out = out[i0:i0 + int(math.ceil(horizon_s / BIT_S)) + 2]
+        out = out[i0 : i0 + int(math.ceil(horizon_s / BIT_S)) + 2]
         if not any(out):
             return None
         return {"utc0": utc0 + i0 * BIT_S, "bit_s": BIT_S, "bits": out}
@@ -255,7 +271,8 @@ class BrdcLnavSource:
         blk_n = blk_ag = 0
         for j, b in enumerate(nb["bits"]):
             if j and j % SF_BITS == 0:
-                n += blk_n; ag += max(blk_ag, blk_n - blk_ag)
+                n += blk_n
+                ag += max(blk_ag, blk_n - blk_ag)
                 blk_n = blk_ag = 0
             if b == 0:
                 continue
@@ -265,5 +282,6 @@ class BrdcLnavSource:
                 continue
             blk_n += 1
             blk_ag += int(v == b)
-        n += blk_n; ag += max(blk_ag, blk_n - blk_ag)
+        n += blk_n
+        ag += max(blk_ag, blk_n - blk_ag)
         return (n, ag) if n else None

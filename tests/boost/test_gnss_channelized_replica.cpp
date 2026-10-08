@@ -81,15 +81,16 @@ BOOST_AUTO_TEST_CASE(l5q_nh20_overlay) {
     }
     BOOST_CHECK_LE(std::abs(s), 4); // NH20 is (near-)balanced -> overlay-blind sum decorrelates
 
-    const int K = 20, H = K * bank.repl_period_hops(); // span a full NH period (20 ms)
-    auto data = bank.channels(0, 0, 0.0, 0.0, H, 0);      // overlaid signal, alignment 0
-    auto aligned = bank.channels(0, 0, 0.0, 0.0, H, 0);   // matching replica
-    auto shifted = bank.channels(0, 0, 0.0, 0.0, H, 1);   // overlay off by one NH chip
+    const int K = 20, H = K * bank.repl_period_hops();  // span a full NH period (20 ms)
+    auto data = bank.channels(0, 0, 0.0, 0.0, H, 0);    // overlaid signal, alignment 0
+    auto aligned = bank.channels(0, 0, 0.0, 0.0, H, 0); // matching replica
+    auto shifted = bank.channels(0, 0, 0.0, 0.0, H, 1); // overlay off by one NH chip
 
     BOOST_TEST_MESSAGE("overlay: aligned=" << despread_mag(data, aligned)
                                            << " shifted=" << despread_mag(data, shifted));
-    BOOST_CHECK_CLOSE(despread_mag(data, aligned), 1.0, 1e-2); // aligned -> coherent over 20 periods
-    BOOST_CHECK_LT(despread_mag(data, shifted), 0.2);          // one-chip NH misalignment decorrelates
+    BOOST_CHECK_CLOSE(despread_mag(data, aligned), 1.0,
+                      1e-2);                          // aligned -> coherent over 20 periods
+    BOOST_CHECK_LT(despread_mag(data, shifted), 0.2); // one-chip NH misalignment decorrelates
 
     // sanity: a single primary period is overlay-phase-INSENSITIVE (one constant chip)
     const int H1 = bank.repl_period_hops();
@@ -161,14 +162,14 @@ BOOST_AUTO_TEST_CASE(e5aq_cs_multiperiod_coherence) {
 
     const int H = cs.repl_period_hops(); // one full baked period = 100 primary periods
     BOOST_CHECK_EQUAL(H, 100 * q.repl_period_hops());
-    auto data = cs.channels(0, 0, 0.0, 0.0, H);  // the real pilot: overlay signs in
-    auto blind = q.channels(0, 0, 0.0, 0.0, H);  // primary tiled with NO overlay signs
+    auto data = cs.channels(0, 0, 0.0, 0.0, H); // the real pilot: overlay signs in
+    auto blind = q.channels(0, 0, 0.0, 0.0, H); // primary tiled with NO overlay signs
 
     const double blind_mag = despread_mag(data, blind);
     BOOST_TEST_MESSAGE("baked-vs-blind despread = " << blind_mag);
-    BOOST_CHECK_CLOSE(despread_mag(data, data), 1.0, 1e-2);       // self == matched filter
-    BOOST_CHECK_LT(blind_mag, std::abs(s) / 100.0 + 0.1);         // ~|sum|/100, the design bound
-    BOOST_CHECK_LT(blind_mag, 0.3);                               // and it genuinely decorrelates
+    BOOST_CHECK_CLOSE(despread_mag(data, data), 1.0, 1e-2); // self == matched filter
+    BOOST_CHECK_LT(blind_mag, std::abs(s) / 100.0 + 0.1);   // ~|sum|/100, the design bound
+    BOOST_CHECK_LT(blind_mag, 0.3);                         // and it genuinely decorrelates
 }
 
 // BOC(1,1) sub-carrier (the first non-BPSK modulation, for L1C / Galileo): applied here to the
@@ -196,8 +197,8 @@ BOOST_AUTO_TEST_CASE(l1cp_self_and_cross_prn) {
     std::vector<int> prns = {1, 2};
     auto bank = make_bank("GPS_L1C_P", prns);
     const int H = bank.repl_period_hops();
-    auto rA = bank.channels(0, 0, 0.0, 0.0, H); // PRN 1
-    auto rB = bank.channels(1, 0, 0.0, 0.0, H); // PRN 2
+    auto rA = bank.channels(0, 0, 0.0, 0.0, H);         // PRN 1
+    auto rB = bank.channels(1, 0, 0.0, 0.0, H);         // PRN 2
     BOOST_CHECK_CLOSE(despread_mag(rA, rA), 1.0, 1e-2); // self == matched filter
     BOOST_CHECK_LT(despread_mag(rA, rB), 0.3);          // different PRN decorrelates
 }
@@ -243,9 +244,9 @@ BOOST_AUTO_TEST_CASE(l2c_cm_time_multiplexed) {
     // Partial window: the full 20 ms CM period is ~20k hops; a few hundred hops already give a
     // clean matched filter (self is energy-normalised to 1) without the slow full-period run.
     const int H = 400;
-    auto cmA = bcm.channels(0, 0, 0.0, 0.0, H);  // PRN 1 CM  (even combined chips)
-    auto cmB = bcm.channels(1, 0, 0.0, 0.0, H);  // PRN 2 CM
-    auto clA = bcl.channels(0, 0, 0.0, 0.0, H);  // PRN 1 CL  (odd combined chips)
+    auto cmA = bcm.channels(0, 0, 0.0, 0.0, H); // PRN 1 CM  (even combined chips)
+    auto cmB = bcm.channels(1, 0, 0.0, 0.0, H); // PRN 2 CM
+    auto clA = bcl.channels(0, 0, 0.0, 0.0, H); // PRN 1 CL  (odd combined chips)
 
     BOOST_CHECK_CLOSE(despread_mag(cmA, cmA), 1.0, 1e-2); // self == matched filter
     BOOST_CHECK_LT(despread_mag(cmA, cmB), 0.3);          // different PRN decorrelates
@@ -277,8 +278,8 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
         auto hop = bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want);
         // Constant nav bit -1 must just negate the result (per-chip wipe plumbing). The
         // edge-exactness (bit edge on a code-period boundary) is covered in the python.
-        auto wiped = bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want,
-                                           [](long long) { return -1.0f; });
+        auto wiped =
+            bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want, [](long long) { return -1.0f; });
         for (size_t ci = 0; ci < want.size(); ++ci) {
             BOOST_CHECK_MESSAGE(rel_err(hop[ci], exact[want[ci]]) < 1e-5,
                                 "dop " << dop << " ch " << want[ci] << " hop-rate err "
@@ -404,11 +405,12 @@ BOOST_AUTO_TEST_CASE(fdma_offset_is_exactly_a_carrier_shift) {
     const long long ws = 3 * 2 * N * 7;
     const int n_hops = 200;
     for (double dop : {0.0, 1200.0, -1200.0}) {
-        auto shifted = bank.channels(1, ws, 61.0, dop, n_hops);     // offset X, Doppler dop
-        auto by_dop = bank.channels(0, ws, 61.0, dop + X, n_hops);  // no offset, Doppler dop+X
+        auto shifted = bank.channels(1, ws, 61.0, dop, n_hops);    // offset X, Doppler dop
+        auto by_dop = bank.channels(0, ws, 61.0, dop + X, n_hops); // no offset, Doppler dop+X
         for (int c = 0; c < N; ++c)
             BOOST_CHECK_MESSAGE(rel_err(shifted[c], by_dop[c]) < 1e-6,
-                                "dop " << dop << " ch " << c << ": FDMA offset != carrier shift, err "
+                                "dop " << dop << " ch " << c
+                                       << ": FDMA offset != carrier shift, err "
                                        << rel_err(shifted[c], by_dop[c]));
     }
 }
@@ -449,7 +451,8 @@ BOOST_AUTO_TEST_CASE(fdma_hoprate_matches_exact_with_offset) {
     auto hop = bank.channels_hoprate(1, ws, 23.0, 900.0, n_hops, want);
     for (size_t ci = 0; ci < want.size(); ++ci)
         BOOST_CHECK_MESSAGE(rel_err(hop[ci], exact[want[ci]]) < 1e-5,
-                            "ch " << want[ci] << ": hop-rate/exact disagree under an FDMA offset, err "
+                            "ch " << want[ci]
+                                  << ": hop-rate/exact disagree under an FDMA offset, err "
                                   << rel_err(hop[ci], exact[want[ci]]));
 }
 

@@ -23,22 +23,26 @@
  *   --dop-center: per-PRN Doppler window centre (the model is verified; a narrow window
  *   spends the compute on the axis under test, the CODE/CS phase).
  */
-#include "gnssChannelizedReplica.hpp"
-#include "gnssChannelizedAcquire.hpp"
-#include "gnssSignal.hpp"
-#include "galileoE6Code.hpp"
 #include "beidouB3ICode.hpp"
+#include "galileoE6Code.hpp"
+#include "gnssChannelizedAcquire.hpp"
+#include "gnssChannelizedReplica.hpp"
+#include "gnssSignal.hpp"
+
+#include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <complex>
 #include <string>
 #include <vector>
 
 using cf = std::complex<float>;
 
 int main(int argc, char** argv) {
-    if (argc < 6) { printf("usage: see header\n"); return 2; }
+    if (argc < 6) {
+        printf("usage: see header\n");
+        return 2;
+    }
     const char* binpath = argv[1];
     const char* signame = argv[2];
     const double f_off = atof(argv[3]);
@@ -50,8 +54,14 @@ int main(int argc, char** argv) {
     int n_el = 1;
     std::vector<double> dopc;
     for (int i = 5; i < argc; ++i) {
-        if (!strcmp(argv[i], "--dop-span")) { dop_span = atof(argv[++i]); continue; }
-        if (!strcmp(argv[i], "--elems")) { n_el = atoi(argv[++i]); continue; }
+        if (!strcmp(argv[i], "--dop-span")) {
+            dop_span = atof(argv[++i]);
+            continue;
+        }
+        if (!strcmp(argv[i], "--elems")) {
+            n_el = atoi(argv[++i]);
+            continue;
+        }
         if (!strcmp(argv[i], "--dop-center")) {
             for (char* t = strtok(argv[++i], ","); t; t = strtok(nullptr, ","))
                 dopc.push_back(atof(t));
@@ -64,19 +74,26 @@ int main(int argc, char** argv) {
     const double fs = 3.2e9;
 
     const gnss::SignalDescriptor* sig = gnss::signal_by_name(signame);
-    if (!sig) { printf("no signal %s\n", signame); return 2; }
+    if (!sig) {
+        printf("no signal %s\n", signame);
+        return 2;
+    }
 
     // data: n_el planes of [M][nc]
     std::vector<std::vector<std::vector<cf>>> dche(
         (size_t)n_el, std::vector<std::vector<cf>>((size_t)nc, std::vector<cf>((size_t)M)));
     {
         FILE* fp = fopen(binpath, "rb");
-        if (!fp) { printf("cannot open %s\n", binpath); return 2; }
+        if (!fp) {
+            printf("cannot open %s\n", binpath);
+            return 2;
+        }
         std::vector<float> row((size_t)2 * nc);
         for (int e = 0; e < n_el; ++e)
             for (int m = 0; m < M; ++m) {
                 if (fread(row.data(), sizeof(float), (size_t)2 * nc, fp) != (size_t)2 * nc) {
-                    printf("short read at elem %d hop %d\n", e, m); return 2;
+                    printf("short read at elem %d hop %d\n", e, m);
+                    return 2;
                 }
                 for (int c = 0; c < nc; ++c)
                     dche[(size_t)e][(size_t)c][(size_t)m] =
@@ -122,13 +139,13 @@ int main(int argc, char** argv) {
         const int n_nh = (int)sec.size();
         // head/tail exactly as GnssChannelizedSearch builds them
         const auto A = bank.channels_hoprate((int)pi, anchor, 0.0, 0.0, Mp, gids, {}, -1);
-        const auto B = bank.channels_hoprate(
-            (int)pi, anchor, 0.0, 0.0, Mp, gids,
-            [Lc](long long chip) {
-                const long long k = (long long)std::floor((double)chip / (double)Lc);
-                return ((k % 2 + 2) % 2 == 0) ? 1.0f : -1.0f;
-            },
-            -1);
+        const auto B = bank.channels_hoprate((int)pi, anchor, 0.0, 0.0, Mp, gids,
+                                             [Lc](long long chip) {
+                                                 const long long k = (long long)std::floor(
+                                                     (double)chip / (double)Lc);
+                                                 return ((k % 2 + 2) % 2 == 0) ? 1.0f : -1.0f;
+                                             },
+                                             -1);
         std::vector<std::vector<cf>> head((size_t)nc), tail((size_t)nc), repl0((size_t)nc);
         for (int c = 0; c < nc; ++c) {
             head[(size_t)c].assign((size_t)Mp, cf(0, 0));
@@ -152,26 +169,30 @@ int main(int argc, char** argv) {
         for (int nh = 0; nh < n_nh; ++nh) {
             for (int c = 0; c < nc; ++c)
                 for (int m = 0; m < Mp; ++m) {
-                    const float s0 = (float)sec[(size_t)(((k0[(size_t)m] + nh) % n_nh + n_nh) % n_nh)];
-                    const float s1 = (float)sec[(size_t)(((k0[(size_t)m] + 1 + nh) % n_nh + n_nh) % n_nh)];
+                    const float s0 =
+                        (float)sec[(size_t)(((k0[(size_t)m] + nh) % n_nh + n_nh) % n_nh)];
+                    const float s1 =
+                        (float)sec[(size_t)(((k0[(size_t)m] + 1 + nh) % n_nh + n_nh) % n_nh)];
                     repl0[(size_t)c][(size_t)m] =
                         head[(size_t)c][(size_t)m] * s0 + tail[(size_t)c][(size_t)m] * s1;
                 }
             surf.assign(surf.size(), 0.0);
             gnss::AcquisitionSurface dims{};
             for (int e = 0; e < n_el; ++e)
-                dims = gnss::channelized_accumulate(dche[(size_t)e], repl0, cov_local, grid, fs,
-                                                    nc, surf, ws, gids, fft_len, 16, fine_step);
-            const auto pk = gnss::channelized_peak(surf, dims, grid, fs, bank.chip_rate_hz(),
-                                                   (long)sig->code_length,
-                                                   gnss::FINE_LAG_SIGN_PFB, false, M);
+                dims = gnss::channelized_accumulate(dche[(size_t)e], repl0, cov_local, grid, fs, nc,
+                                                    surf, ws, gids, fft_len, 16, fine_step);
+            const auto pk =
+                gnss::channelized_peak(surf, dims, grid, fs, bank.chip_rate_hz(),
+                                       (long)sig->code_length, gnss::FINE_LAG_SIGN_PFB, false, M);
             if (pk.snr > best_snr) {
-                best_snr = pk.snr; best_dop = pk.doppler_hz; best_tau = pk.peak_tau_samples;
+                best_snr = pk.snr;
+                best_dop = pk.doppler_hz;
+                best_tau = pk.peak_tau_samples;
                 best_nh = nh;
             }
         }
-        printf("  PRN %2d: best snr %8.2f  dop %+8.1f Hz  nh %3d/%d  tau %ld\n", prns[pi],
-               best_snr, best_dop, best_nh, n_nh, best_tau);
+        printf("  PRN %2d: best snr %8.2f  dop %+8.1f Hz  nh %3d/%d  tau %ld\n", prns[pi], best_snr,
+               best_dop, best_nh, n_nh, best_tau);
         fflush(stdout);
     }
     return 0;

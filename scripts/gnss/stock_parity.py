@@ -39,28 +39,52 @@ TEMPLATE = os.path.join(ROOT, "config", "chord_pathfinder.j2")
 # is DATA-NEUTRAL --
 # none changes what reaches recv1 -- and each is ours to upstream or retire.
 DECLARED = [
-    ("rest_server", "+",
-     "GNSS viewer: CORS and the REST thread's cores; the same port (12048) stock serves on"),
-    ("config_tracker.upstream_fetch_retries", "~",
-     "startup FPGA-config fetch budget 2 -> 5: chive measured p90 6.5 s, max 16.2 s (08-08)"),
-    ("config_tracker.upstream_fetch_timeout_seconds", "~",
-     "10 -> 30 s, same reason; startup only"),
-    ("run_recv_rfi_*.gpu_*.commands.*.expect_quantity_name", "+",
-     "ring-copy descriptor guard (our cudaCopyFromRingbuffer; startup FATALs 08-31)"),
-    ("run_rfi_sktilde.gpu_*.commands.*.rfi_first_stage_excision_exempt_freq_ids", "+",
-     "GNSS lobes exempt from first-stage excision (our cudaRFISKtilde key, default off): their "
-     "N2 feeds the satellite projection and is lost to cosmology anyway (KV, 10-02)"),
-    ("n2_accumulate.accum_*.in_buf", "~",
-     "live GNSS N2 projection (phase 3a): N2Accumulate reads the projected copy "
-     "gnss_n2_proj_buffer{,_1} written by gnss_n2_project; shadow mode leaves this alone"),
+    (
+        "rest_server",
+        "+",
+        "GNSS viewer: CORS and the REST thread's cores; the same port (12048) stock serves on",
+    ),
+    (
+        "config_tracker.upstream_fetch_retries",
+        "~",
+        "startup FPGA-config fetch budget 2 -> 5: chive measured p90 6.5 s, max 16.2 s (08-08)",
+    ),
+    (
+        "config_tracker.upstream_fetch_timeout_seconds",
+        "~",
+        "10 -> 30 s, same reason; startup only",
+    ),
+    (
+        "run_recv_rfi_*.gpu_*.commands.*.expect_quantity_name",
+        "+",
+        "ring-copy descriptor guard (our cudaCopyFromRingbuffer; startup FATALs 08-31)",
+    ),
+    (
+        "run_rfi_sktilde.gpu_*.commands.*.rfi_first_stage_excision_exempt_freq_ids",
+        "+",
+        "GNSS lobes exempt from first-stage excision (our cudaRFISKtilde key, default off): their "
+        "N2 feeds the satellite projection and is lost to cosmology anyway (KV, 10-02)",
+    ),
+    (
+        "n2_accumulate.accum_*.in_buf",
+        "~",
+        "live GNSS N2 projection (phase 3a): N2Accumulate reads the projected copy "
+        "gnss_n2_proj_buffer{,_1} written by gnss_n2_project; shadow mode leaves this alone",
+    ),
 ]
 # Values stock gets by REST at runtime; the generator injects the current ones. Different from
 # the bare render by design, and EQUAL to a live stock node's -- so --live does not allow them.
 LIVE = [
-    ("earth_rotation_data.earth_orientation_parameter_table", "~",
-     "choco's EOP table (stock: pushed by choco)"),
-    ("updatable_config.bad_inputs.*", "~",
-     "bffs's bad-input list (stock: relayed by choco)"),
+    (
+        "earth_rotation_data.earth_orientation_parameter_table",
+        "~",
+        "choco's EOP table (stock: pushed by choco)",
+    ),
+    (
+        "updatable_config.bad_inputs.*",
+        "~",
+        "bffs's bad-input list (stock: relayed by choco)",
+    ),
 ]
 
 
@@ -71,9 +95,11 @@ def is_gnss(key):
 def render_stock(path=TEMPLATE):
     """The template rendered stock, exactly as kotekan does (see kotekan/kotekan.cpp)."""
     import jinja2
+
     d, f = os.path.split(os.path.abspath(path))
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(d),
-                             autoescape=jinja2.select_autoescape())
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(d), autoescape=jinja2.select_autoescape()
+    )
     return yaml.safe_load(env.get_template(f).render({}))
 
 
@@ -85,7 +111,11 @@ def load(src):
     if src.endswith(".j2"):
         return render_stock(src)
     with open(src) as fh:
-        return json.load(fh) if src.endswith(".json") else yaml.load(fh, Loader=yaml.CSafeLoader)
+        return (
+            json.load(fh)
+            if src.endswith(".json")
+            else yaml.load(fh, Loader=yaml.CSafeLoader)
+        )
 
 
 def differences(ref, cfg):
@@ -102,15 +132,25 @@ def differences(ref, cfg):
                     out.append(("-", p, json.dumps(a[k])[:120]))
                 else:
                     walk(a[k], b[k], p)
-        elif (isinstance(a, list) and isinstance(b, list) and len(a) == len(b) and a
-              and all(isinstance(x, dict) for x in a + b)):
+        elif (
+            isinstance(a, list)
+            and isinstance(b, list)
+            and len(a) == len(b)
+            and a
+            and all(isinstance(x, dict) for x in a + b)
+        ):
             for i, (x, y) in enumerate(zip(a, b)):
                 walk(x, y, "%s[%d]" % (path, i))
         elif a != b:
-            out.append(("~", path, "%s -> %s" % (json.dumps(a)[:60], json.dumps(b)[:60])))
+            out.append(
+                ("~", path, "%s -> %s" % (json.dumps(a)[:60], json.dumps(b)[:60]))
+            )
 
-    walk({k: v for k, v in ref.items() if not is_gnss(k)},
-         {k: v for k, v in cfg.items() if not is_gnss(k)}, "")
+    walk(
+        {k: v for k, v in ref.items() if not is_gnss(k)},
+        {k: v for k, v in cfg.items() if not is_gnss(k)},
+        "",
+    )
     return out
 
 
@@ -121,22 +161,35 @@ def classify(diffs, live=False):
     declared, undeclared = [], []
     for kind, path, detail in diffs:
         flat = re.sub(r"\[(\d+)\]", r".\1", path)
-        why = next((w for pat, kinds, w in allowed
-                    if kind in kinds and fnmatch.fnmatchcase(flat, pat)), None)
+        why = next(
+            (
+                w
+                for pat, kinds, w in allowed
+                if kind in kinds and fnmatch.fnmatchcase(flat, pat)
+            ),
+            None,
+        )
         (declared if why else undeclared).append((kind, path, detail, why))
     return declared, undeclared
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("config", help="a generated node config (yaml)")
-    ap.add_argument("--stock", default=TEMPLATE,
-                    help="reference: a .j2 (rendered stock), .json/.yaml, or http URL "
-                         "(default: config/chord_pathfinder.j2)")
-    ap.add_argument("--live", metavar="HOST",
-                    help="reference = HOST's live /config on 12048 (a STOCK node, e.g. cx47); "
-                         "the runtime-pushed values must then match too")
+    ap.add_argument(
+        "--stock",
+        default=TEMPLATE,
+        help="reference: a .j2 (rendered stock), .json/.yaml, or http URL "
+        "(default: config/chord_pathfinder.j2)",
+    )
+    ap.add_argument(
+        "--live",
+        metavar="HOST",
+        help="reference = HOST's live /config on 12048 (a STOCK node, e.g. cx47); "
+        "the runtime-pushed values must then match too",
+    )
     ap.add_argument("-q", "--quiet", action="store_true", help="print only failures")
     a = ap.parse_args()
 
@@ -145,8 +198,10 @@ def main():
     declared, undeclared = classify(differences(ref, cfg), live=bool(a.live))
     n_stock = sum(1 for k in cfg if not is_gnss(k))
     if not a.quiet or undeclared:
-        print("%s vs %s: %d stock blocks, %d declared deviation(s), %d UNDECLARED"
-              % (a.config, ref_src, n_stock, len(declared), len(undeclared)))
+        print(
+            "%s vs %s: %d stock blocks, %d declared deviation(s), %d UNDECLARED"
+            % (a.config, ref_src, n_stock, len(declared), len(undeclared))
+        )
     if not a.quiet:
         for kind, path, detail, why in declared:
             print("  ok  %s %s  -- %s" % (kind, path, why))

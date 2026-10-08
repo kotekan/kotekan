@@ -58,9 +58,10 @@ public:
     /// @ref overlay_wipe, can find the alignment from the per-record A); set it >=0 once the
     /// alignment is known (from GPS time, or that search). No effect for signals without a
     /// secondary code (L1 C/A, L2C).
-    std::vector<std::vector<std::complex<float>>>
-    channels(int p, long long window_start_sample, double code_phase_chips, double doppler_hz,
-             int n_hops, int nh_phase = -1);
+    std::vector<std::vector<std::complex<float>>> channels(int p, long long window_start_sample,
+                                                           double code_phase_chips,
+                                                           double doppler_hz, int n_hops,
+                                                           int nh_phase = -1);
 
     /// Hop-rate channelized replica for the listed channels -- numerically EQUAL to
     /// @ref channels() (to ~machine precision) but built per chip, not per sample. The
@@ -201,7 +202,9 @@ public:
     // exactly how a hand-written config list drifts away from the sky with nothing to notice.
 
     /// The PRN in each slot, in construction order (@c code_chip / @c channels index into it).
-    const std::vector<int>& prns() const { return _prns; }
+    const std::vector<int>& prns() const {
+        return _prns;
+    }
     /// PRN in slot @c p; -1 if @c p is out of range.
     int prn_at(int p) const {
         return (p >= 0 && p < (int)_prns.size()) ? _prns[(size_t)p] : -1;
@@ -228,7 +231,9 @@ public:
     /// Secondary (Neuman-Hofman) overlay length in primary periods (NH10=10 on L5 I5,
     /// NH20=20 on L5 Q5); 0 if the signal has no overlay. Also the number of @c nh_phase
     /// alignments to search.
-    int secondary_length() const { return _secondary_length; }
+    int secondary_length() const {
+        return _secondary_length;
+    }
 
     /// Bipolar (+-1) secondary-overlay chip for absolute primary-period index @c period at
     /// alignment @c nh_phase; +1 if the signal has no secondary code (so it composes as a no-op).
@@ -272,33 +277,61 @@ public:
     double phase_from_arg(double arg, long long window_start_sample, double doppler_hz) const;
     double arg_from_phase(double phase, long long window_start_sample, double doppler_hz) const;
 
-    int spectrum_length() const { return _N; }
-    int fft_len() const { return _fft_len; }
-    double f_offset() const { return _f_offset; }
-    int repl_period_hops() const { return _repl_period_hops; }
-    double chip_rate_hz() const { return _sig.chip_rate_hz; }
-    double carrier_hz() const { return _sig.carrier_hz; } ///< sky carrier (for code-Doppler)
-    long code_length() const { return _sig.code_length; }
+    int spectrum_length() const {
+        return _N;
+    }
+    int fft_len() const {
+        return _fft_len;
+    }
+    double f_offset() const {
+        return _f_offset;
+    }
+    int repl_period_hops() const {
+        return _repl_period_hops;
+    }
+    double chip_rate_hz() const {
+        return _sig.chip_rate_hz;
+    }
+    double carrier_hz() const {
+        return _sig.carrier_hz;
+    } ///< sky carrier (for code-Doppler)
+    long code_length() const {
+        return _sig.code_length;
+    }
     // Combined-stream (TDM zero-stuffed) quantities + the raw code table -- what an external
     // (GPU) despread needs to reproduce hoprate_stream exactly (see GnssCudaDespread).
-    double eff_chip_rate() const { return _eff_chip_rate; }
+    double eff_chip_rate() const {
+        return _eff_chip_rate;
+    }
     /// Truncate the per-hop chip gather to at most this many chips (0 = the filter's true
     /// span). Synthesis is LINEAR in the gather depth and is 89% of the tracker's GPU kernel,
     /// so this is the biggest single lever on GPU load -- and it is NOT free: the PFB span is
     /// the channel response, so a shorter gather is a DIFFERENT replica. Set it here rather
     /// than on the GPU so the CPU despread, the search refine and the e2e harness all see the
     /// same replica and the accuracy cost is measurable at the real geometry.
-    void set_max_chips(int n) { _max_chips = n; }
-    int max_chips() const { return _max_chips; }
+    void set_max_chips(int n) {
+        _max_chips = n;
+    }
+    int max_chips() const {
+        return _max_chips;
+    }
     /// CENTER the max_chips window on the prototype peak instead of anchoring it at chip 0.
     /// See HopRateFilter::d_first. BENCH/e2e for now: only the CPU hoprate path honours
     /// d_first -- the GPU despread and refine_peak_cuda would need the walk-start plumbed
     /// before this can arm in production.
-    void set_chips_centered(bool c) { _chips_centered = c; }
+    void set_chips_centered(bool c) {
+        _chips_centered = c;
+    }
 
-    long eff_code_length() const { return _eff_code_length; }
-    int comb_mult() const { return _comb_mult; }
-    const std::vector<int8_t>& full_code(int p) const { return _full_code[(size_t)p]; }
+    long eff_code_length() const {
+        return _eff_code_length;
+    }
+    int comb_mult() const {
+        return _comb_mult;
+    }
+    const std::vector<int8_t>& full_code(int p) const {
+        return _full_code[(size_t)p];
+    }
 
 private:
     /// Expand one PRN's component code into the combined stream this bank works in (TDM
@@ -308,14 +341,14 @@ private:
     /// being untrackable.
     std::vector<int8_t> build_full_code(int prn) const;
 
-    int _max_chips = 0; ///< 0 = the filter's true span (see set_max_chips)
+    int _max_chips = 0;           ///< 0 = the filter's true span (see set_max_chips)
     bool _chips_centered = false; ///< see set_chips_centered
     SignalDescriptor _sig;
     double _sample_rate;
     std::vector<double> _prn_df; ///< per-PRN FDMA carrier offset, Hz (empty/0 = CDMA)
     double _f_offset;
     int _N;
-    int _fft_len;   ///< 2*N real samples per hop (r2c)
+    int _fft_len; ///< 2*N real samples per hop (r2c)
     int _num_taps;
     int _repl_period_hops; ///< code_samples / gcd(fft_len, code_samples)
     // Time-multiplexed signals (L2C CM/CL) interleave their component with a sibling at
@@ -323,14 +356,14 @@ private:
     // at its tdm_phase parity of the combined chips, zeros at the sibling's. So the bank
     // works at the combined rate/length, and _full_code holds the combined (zero-stuffed)
     // sequence. comb_mult=1 (eff_*=_sig.*) for ordinary signals -> exact no-op.
-    int _comb_mult;          ///< 2 if time_multiplexed, else 1
-    double _eff_chip_rate;   ///< _sig.chip_rate_hz * _comb_mult (combined chipping rate)
-    long _eff_code_length;   ///< _sig.code_length * _comb_mult (combined-stream length)
+    int _comb_mult;        ///< 2 if time_multiplexed, else 1
+    double _eff_chip_rate; ///< _sig.chip_rate_hz * _comb_mult (combined chipping rate)
+    long _eff_code_length; ///< _sig.code_length * _comb_mult (combined-stream length)
     std::vector<float> _proto;
-    std::vector<int> _prns;   ///< PRN per slot; mutable via @ref set_prn
+    std::vector<int> _prns; ///< PRN per slot; mutable via @ref set_prn
     std::vector<std::vector<int8_t>> _full_code;
-    std::vector<int8_t> _secondary;   ///< +-1 Neuman-Hofman overlay (NH10/NH20); empty if none
-    int _secondary_length = 0;        ///< overlay period in primary periods; 0 = no overlay
+    std::vector<int8_t> _secondary; ///< +-1 Neuman-Hofman overlay (NH10/NH20); empty if none
+    int _secondary_length = 0;      ///< overlay period in primary periods; 0 = no overlay
 
     float* _fold;
     fftwf_complex* _spec;
@@ -369,7 +402,9 @@ public:
              const std::function<float(long long)>& nav_bit = {});
 
     /// Filter rebuilds so far (diagnostics; ~0 in steady lock).
-    long rebuilds() const { return _rebuilds; }
+    long rebuilds() const {
+        return _rebuilds;
+    }
 
 private:
     const ChannelizedReplicaBank& _bank;

@@ -42,8 +42,8 @@
  */
 namespace glonass {
 
-constexpr int L2OC_BASE_LENGTH = 10230;    ///< the shared L3OC-p base, before expansion
-constexpr int L2OC_SUBCARRIER = 4;         ///< [0,0,1,-1] -> 4 sub-chips per base chip
+constexpr int L2OC_BASE_LENGTH = 10230; ///< the shared L3OC-p base, before expansion
+constexpr int L2OC_SUBCARRIER = 4;      ///< [0,0,1,-1] -> 4 sub-chips per base chip
 constexpr int L2OC_CODE_LENGTH = L2OC_BASE_LENGTH * L2OC_SUBCARRIER; // 40920
 constexpr int L2OC_OC2_LENGTH = 50;
 constexpr double L2OC_CARRIER_HZ = 1248.06e6;

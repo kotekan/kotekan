@@ -21,24 +21,22 @@
  * 2026-08-06 during the synthesis work). Run it on an idle GPU.
  */
 
-#include <n2k/Correlator.hpp>
-#include <n2k_dual/DualCorrelator.hpp>
-
-#include <cuda_runtime.h>
-
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cuda_runtime.h>
+#include <n2k/Correlator.hpp>
+#include <n2k_dual/DualCorrelator.hpp>
 #include <vector>
 
-#define CK(x)                                                                                     \
-    do {                                                                                          \
-        cudaError_t e_ = (x);                                                                     \
-        if (e_ != cudaSuccess) {                                                                  \
-            printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__);       \
-            return 1;                                                                             \
-        }                                                                                         \
+#define CK(x)                                                                                      \
+    do {                                                                                           \
+        cudaError_t e_ = (x);                                                                      \
+        if (e_ != cudaSuccess) {                                                                   \
+            printf("CUDA error %s at %s:%d\n", cudaGetErrorString(e_), __FILE__, __LINE__);        \
+            return 1;                                                                              \
+        }                                                                                          \
     } while (0)
 
 static constexpr int NT_INNER = 8192; // = sub_integration_ntime, production
@@ -125,14 +123,12 @@ int main(int argc, char** argv) {
         std::vector<int> comb;
         for (int k = 0; k < 7; k++)
             comb.push_back(277 + k); // cx19 GPU0's local comb indices
-        n2k_dual::DualCorrelatorParams pc(NSA, NSB, NF,
-                                          n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB,
-                                          comb);
+        n2k_dual::DualCorrelatorParams pc(
+            NSA, NSB, NF, n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB, comb);
         n2k_dual::DualCorrelator dcomb(pc);
         int* v_comb;
         CK(cudaMalloc(&v_comb, (size_t)comb.size() * ntiles(NSA + NSB) * 512 * 4));
-        const double t_comb = bench("[4] dual   MIXED|BB over the 7-channel COMB (freq map)",
-                                    [&] {
+        const double t_comb = bench("[4] dual   MIXED|BB over the 7-channel COMB (freq map)", [&] {
             dcomb.launch(v_comb, dA, dB, drm, 1, NT_INNER, nullptr, false);
         });
 
@@ -147,8 +143,8 @@ int main(int argc, char** argv) {
         const double t_mx = bench("[5] dual   MIXED ONLY over the comb (SHIPPED, 1b)", [&] {
             dmx.launch(v_comb, dA, dB, drm, 1, NT_INNER, nullptr, false);
         });
-        printf("      -> 1b saving vs [4]: %.2fx (%.3f ms -> %.3f ms)\n",
-               t_comb / t_mx, t_comb, t_mx);
+        printf("      -> 1b saving vs [4]: %.2fx (%.3f ms -> %.3f ms)\n", t_comb / t_mx, t_comb,
+               t_mx);
         printf("\n    stock + comb-only path B : %.3f ms = %.2fx stock  (+%.3f ms marginal)\n",
                t_stock + t_comb, (t_stock + t_comb) / t_stock, t_comb);
     }
@@ -173,8 +169,8 @@ int main(int argc, char** argv) {
     printf("\nWHAT PATH B COSTS OVER STOCK N^2:\n");
     printf("  as deployed now  : %.3f ms vs %.3f ms = %.2fx stock  (+%.3f ms)\n", t_dual, t_stock,
            t_dual / t_stock, t_dual - t_stock);
-    printf("  stock + MIXED|BB : %.3f ms = %.2fx stock  (+%.3f ms marginal)\n",
-           t_stock + t_mask, (t_stock + t_mask) / t_stock, t_mask);
+    printf("  stock + MIXED|BB : %.3f ms = %.2fx stock  (+%.3f ms marginal)\n", t_stock + t_mask,
+           (t_stock + t_mask) / t_stock, t_mask);
     printf("  stock + freq-map : %.3f ms = %.2fx stock  (+%.3f ms marginal)  <- the target\n",
            t_stock + t_small, (t_stock + t_small) / t_stock, t_small);
     return 0;

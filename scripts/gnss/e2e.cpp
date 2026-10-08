@@ -63,17 +63,17 @@
 // frame codec, so the harness can run the kernels the sky actually runs, not only the fused one.
 #include "cudaGnssDespreadKernel.hpp"
 #include "gnss44.hpp"
-#include <cuda_runtime.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
-#include <cctype>
-#include <limits>
 #include <cstring>
+#include <cuda_runtime.h>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
@@ -87,8 +87,8 @@ using cf = std::complex<float>;
 // ---------------------------------------------------------------------------------------------
 struct Opt {
     int prn = 3;
-    double cp204 = 137456.75; ///< the INJECTED truth: generator argument, mod 204600
-    double dop = 1893.4;      ///< the INJECTED truth Doppler, Hz
+    double cp204 = 137456.75;        ///< the INJECTED truth: generator argument, mod 204600
+    double dop = 1893.4;             ///< the INJECTED truth Doppler, Hz
     long long hop0 = 114436200145LL; ///< snapshot start hop (~6.8 days of uptime, as on sky)
     double age_s = 27.0;             ///< seed age at the first tracker record (live: <= ~27 s)
     int nrec = 4;                    ///< tracker records to propagate through
@@ -190,7 +190,7 @@ struct Opt {
     int bench_cmd_every = 4;      ///< records between staircase steps (4 = one GPU frame)
     double bench_cmd_max = 3.0;   ///< staircase turnaround (Hz)
     int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
-    int quantize = 0;                ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
+    int quantize = 0;      ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
     /// THE TRACKER'S PATH, NOT THE FUSED ONE. cudaGnssChordTrack despreads through
     /// enqueue_batch_nm -- launch_waveform materialises the replicas, launch_correlate_nm
     /// correlates them against every antenna of a 4+4b [hop][chan][elem] frame -- while this
@@ -207,15 +207,15 @@ struct Opt {
     /// the commanded replica with the bank, quantises it exactly as the pack does, and
     /// correlates it with the window on the CPU (and the unquantised one beside it).
     int cpu_pack44 = 0;
-    int phi16 = 0;                   ///< with --nm: set_phi_fp16(true), the nodes' live mode
-    int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
+    int phi16 = 0;       ///< with --nm: set_phi_fp16(true), the nodes' live mode
+    int skip_search = 0; ///< 1 = seed straight from truth (isolates the tracker leg)
     /// Write the detection in /get_detections wire format. e2e_broker.py serves this to the
     /// REAL broker, so its seed arithmetic can be put in the loop too (--seed-file the result).
     const char* emit_det = nullptr;
     const char* dump_refine = nullptr; ///< dump the refine objective over a full hop
-    bool cuda_refine = false;         ///< also run the GPU refine and compare (A5)
-    int max_chips = 0;                ///< truncate the PFB chip gather (0 = full span)
-    bool chips_centered = false;      ///< center the truncation window on the prototype peak
+    bool cuda_refine = false;          ///< also run the GPU refine and compare (A5)
+    int max_chips = 0;                 ///< truncate the PFB chip gather (0 = full span)
+    bool chips_centered = false;       ///< center the truncation window on the prototype peak
     int ms_split = 0;   ///< >0 = run the ms-split acquire with this many ~1 ms sub-windows
     int sub_hops = 196; ///< N: ceil(code period in hops) at CHORD
     const char* dump_ms = nullptr; ///< dump the ms-split surface along the lag axis
@@ -225,8 +225,8 @@ struct Opt {
     /// far UNDER the noise floor and every margin the refine relies on -- notably "the true
     /// grating lobe beats its neighbour by 15%" -- is an infinite-SNR statement without it.
     double noise = 0.0;
-    int trials = 1;            ///< independent noise realizations (>1 prints a distribution)
-    unsigned nseed = 12345;    ///< RNG seed, so a run is reproducible
+    int trials = 1;         ///< independent noise realizations (>1 prints a distribution)
+    unsigned nseed = 12345; ///< RNG seed, so a run is reproducible
 };
 
 static void usage() {
@@ -295,7 +295,9 @@ static void usage() {
         "  --bench-cmd-max X    [4e] staircase turnaround (default 3.0 Hz)\n");
 }
 
-static bool arg_eq(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
+static bool arg_eq(const char* a, const char* b) {
+    return std::strcmp(a, b) == 0;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Wrap a chip difference into (-half, +half]. Every error in this tool is a phase difference
@@ -370,63 +372,128 @@ int main(int argc, char** argv) {
         const char* a = argv[i];
         auto next_d = [&]() { return atof(argv[++i]); };
         auto next_i = [&]() { return atoi(argv[++i]); };
-        if (arg_eq(a, "--help") || arg_eq(a, "-h")) { usage(); return 0; }
-        else if (arg_eq(a, "--prn")) o.prn = next_i();
-        else if (arg_eq(a, "--cp204")) o.cp204 = next_d();
-        else if (arg_eq(a, "--dop")) o.dop = next_d();
-        else if (arg_eq(a, "--hop0")) o.hop0 = atoll(argv[++i]);
-        else if (arg_eq(a, "--age-s")) o.age_s = next_d();
-        else if (arg_eq(a, "--nrec")) o.nrec = next_i();
-        else if (arg_eq(a, "--rec-gap-s")) o.rec_gap_s = next_d();
-        else if (arg_eq(a, "--dop-half")) o.dop_half = next_d();
-        else if (arg_eq(a, "--dop-step")) o.dop_step = next_d();
-        else if (arg_eq(a, "--windows")) o.acquire_windows = next_i();
-        else if (arg_eq(a, "--refine-windows")) o.refine_windows = next_i();
-        else if (arg_eq(a, "--fine-step")) o.fine_step = next_i();
-        else if (arg_eq(a, "--threads")) o.threads = next_i();
-        else if (arg_eq(a, "--refine-span")) o.refine_span = next_i();
-        else if (arg_eq(a, "--refine-hops")) o.refine_hops = next_i();
-        else if (arg_eq(a, "--refine-step")) o.refine_step = next_i();
-        else if (arg_eq(a, "--seed-dop-err")) o.seed_dop_err = next_d();
-        else if (arg_eq(a, "--seed-cp-err")) o.seed_cp_err = next_d();
-        else if (arg_eq(a, "--seed-cp-rate")) o.seed_cp_rate = next_d();
-        else if (arg_eq(a, "--seed-dop-rate")) o.seed_dop_rate = next_d();
-        else if (arg_eq(a, "--truth-dop-rate")) o.truth_dop_rate = next_d();
-        else if (arg_eq(a, "--bench-ctrim")) o.bench_ctrim = next_d();
-        else if (arg_eq(a, "--bench-cmd-const")) o.bench_cmd_const = next_d();
-        else if (arg_eq(a, "--bench-cmd-slew")) o.bench_cmd_slew = next_d();
-        else if (arg_eq(a, "--bench-cmd-every")) o.bench_cmd_every = (int)next_d();
-        else if (arg_eq(a, "--bench-cmd-max")) o.bench_cmd_max = next_d();
-        else if (arg_eq(a, "--trim")) o.trim_chips = next_d();
-        else if (arg_eq(a, "--dll-spacing")) o.dll_spacing = next_d();
-        else if (arg_eq(a, "--signal")) o.signal = argv[++i];
-        else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
-        else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
-        else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
-        else if (arg_eq(a, "--cuda-refine")) o.cuda_refine = true;
-        else if (arg_eq(a, "--max-chips")) o.max_chips = next_i();
-        else if (arg_eq(a, "--chips-centered")) o.chips_centered = true;
-        else if (arg_eq(a, "--ms-split")) o.ms_split = next_i();
-        else if (arg_eq(a, "--sub-hops")) o.sub_hops = next_i();
-        else if (arg_eq(a, "--t-stride")) o.t_stride = next_i();
-        else if (arg_eq(a, "--t-nchan")) o.t_nchan = next_i();
-        else if (arg_eq(a, "--t-chan0")) { o.t_chan0 = next_i(); t_chan0_set = 1; }
-        else if (arg_eq(a, "--s-stride")) o.s_stride = next_i();
-        else if (arg_eq(a, "--s-nchan")) o.s_nchan = next_i();
-        else if (arg_eq(a, "--s-chan0")) { o.s_chan0 = next_i(); s_chan0_set = 1; }
-        else if (arg_eq(a, "--dump-mssplit")) o.dump_ms = argv[++i];
-        else if (arg_eq(a, "--noise")) o.noise = next_d();
-        else if (arg_eq(a, "--trials")) o.trials = next_i();
-        else if (arg_eq(a, "--nseed")) o.nseed = (unsigned)next_i();
-        else if (arg_eq(a, "--fix-fine-sign")) o.fix_fine_sign = 1;
-        else if (arg_eq(a, "--quantize")) o.quantize = 1;
-        else if (arg_eq(a, "--nm")) { o.nm = 1; o.quantize = 1; }
-        else if (arg_eq(a, "--cpu-pack44")) o.cpu_pack44 = 1;
-        else if (arg_eq(a, "--phi16")) o.phi16 = 1;
-        else if (arg_eq(a, "--skip-search")) o.skip_search = 1;
-        else if (arg_eq(a, "--code-doppler-sign")) o.code_doppler_sign = next_d();
-        else if (arg_eq(a, "--f-offset")) { o.f_offset = next_d(); f_offset_set = 1; }
-        else { printf("unknown option %s\n", a); usage(); return 2; }
+        if (arg_eq(a, "--help") || arg_eq(a, "-h")) {
+            usage();
+            return 0;
+        } else if (arg_eq(a, "--prn"))
+            o.prn = next_i();
+        else if (arg_eq(a, "--cp204"))
+            o.cp204 = next_d();
+        else if (arg_eq(a, "--dop"))
+            o.dop = next_d();
+        else if (arg_eq(a, "--hop0"))
+            o.hop0 = atoll(argv[++i]);
+        else if (arg_eq(a, "--age-s"))
+            o.age_s = next_d();
+        else if (arg_eq(a, "--nrec"))
+            o.nrec = next_i();
+        else if (arg_eq(a, "--rec-gap-s"))
+            o.rec_gap_s = next_d();
+        else if (arg_eq(a, "--dop-half"))
+            o.dop_half = next_d();
+        else if (arg_eq(a, "--dop-step"))
+            o.dop_step = next_d();
+        else if (arg_eq(a, "--windows"))
+            o.acquire_windows = next_i();
+        else if (arg_eq(a, "--refine-windows"))
+            o.refine_windows = next_i();
+        else if (arg_eq(a, "--fine-step"))
+            o.fine_step = next_i();
+        else if (arg_eq(a, "--threads"))
+            o.threads = next_i();
+        else if (arg_eq(a, "--refine-span"))
+            o.refine_span = next_i();
+        else if (arg_eq(a, "--refine-hops"))
+            o.refine_hops = next_i();
+        else if (arg_eq(a, "--refine-step"))
+            o.refine_step = next_i();
+        else if (arg_eq(a, "--seed-dop-err"))
+            o.seed_dop_err = next_d();
+        else if (arg_eq(a, "--seed-cp-err"))
+            o.seed_cp_err = next_d();
+        else if (arg_eq(a, "--seed-cp-rate"))
+            o.seed_cp_rate = next_d();
+        else if (arg_eq(a, "--seed-dop-rate"))
+            o.seed_dop_rate = next_d();
+        else if (arg_eq(a, "--truth-dop-rate"))
+            o.truth_dop_rate = next_d();
+        else if (arg_eq(a, "--bench-ctrim"))
+            o.bench_ctrim = next_d();
+        else if (arg_eq(a, "--bench-cmd-const"))
+            o.bench_cmd_const = next_d();
+        else if (arg_eq(a, "--bench-cmd-slew"))
+            o.bench_cmd_slew = next_d();
+        else if (arg_eq(a, "--bench-cmd-every"))
+            o.bench_cmd_every = (int)next_d();
+        else if (arg_eq(a, "--bench-cmd-max"))
+            o.bench_cmd_max = next_d();
+        else if (arg_eq(a, "--trim"))
+            o.trim_chips = next_d();
+        else if (arg_eq(a, "--dll-spacing"))
+            o.dll_spacing = next_d();
+        else if (arg_eq(a, "--signal"))
+            o.signal = argv[++i];
+        else if (arg_eq(a, "--seed-file"))
+            o.seed_file = argv[++i];
+        else if (arg_eq(a, "--emit-detection"))
+            o.emit_det = argv[++i];
+        else if (arg_eq(a, "--dump-refine"))
+            o.dump_refine = argv[++i];
+        else if (arg_eq(a, "--cuda-refine"))
+            o.cuda_refine = true;
+        else if (arg_eq(a, "--max-chips"))
+            o.max_chips = next_i();
+        else if (arg_eq(a, "--chips-centered"))
+            o.chips_centered = true;
+        else if (arg_eq(a, "--ms-split"))
+            o.ms_split = next_i();
+        else if (arg_eq(a, "--sub-hops"))
+            o.sub_hops = next_i();
+        else if (arg_eq(a, "--t-stride"))
+            o.t_stride = next_i();
+        else if (arg_eq(a, "--t-nchan"))
+            o.t_nchan = next_i();
+        else if (arg_eq(a, "--t-chan0")) {
+            o.t_chan0 = next_i();
+            t_chan0_set = 1;
+        } else if (arg_eq(a, "--s-stride"))
+            o.s_stride = next_i();
+        else if (arg_eq(a, "--s-nchan"))
+            o.s_nchan = next_i();
+        else if (arg_eq(a, "--s-chan0")) {
+            o.s_chan0 = next_i();
+            s_chan0_set = 1;
+        } else if (arg_eq(a, "--dump-mssplit"))
+            o.dump_ms = argv[++i];
+        else if (arg_eq(a, "--noise"))
+            o.noise = next_d();
+        else if (arg_eq(a, "--trials"))
+            o.trials = next_i();
+        else if (arg_eq(a, "--nseed"))
+            o.nseed = (unsigned)next_i();
+        else if (arg_eq(a, "--fix-fine-sign"))
+            o.fix_fine_sign = 1;
+        else if (arg_eq(a, "--quantize"))
+            o.quantize = 1;
+        else if (arg_eq(a, "--nm")) {
+            o.nm = 1;
+            o.quantize = 1;
+        } else if (arg_eq(a, "--cpu-pack44"))
+            o.cpu_pack44 = 1;
+        else if (arg_eq(a, "--phi16"))
+            o.phi16 = 1;
+        else if (arg_eq(a, "--skip-search"))
+            o.skip_search = 1;
+        else if (arg_eq(a, "--code-doppler-sign"))
+            o.code_doppler_sign = next_d();
+        else if (arg_eq(a, "--f-offset")) {
+            o.f_offset = next_d();
+            f_offset_set = 1;
+        } else {
+            printf("unknown option %s\n", a);
+            usage();
+            return 2;
+        }
     }
 
     const int FFT = 2 * o.spectrum_length;
@@ -469,22 +536,30 @@ int main(int argc, char** argv) {
             const long centre = (long)phase + k * (long)stride;
             return (int)(centre - (long)stride * (long)(nchan / 2));
         };
-        if (!t_chan0_set) o.t_chan0 = recentre(o.t_chan0, o.t_stride, o.t_nchan);
-        if (!s_chan0_set) o.s_chan0 = recentre(o.s_chan0, o.s_stride, o.s_nchan);
+        if (!t_chan0_set)
+            o.t_chan0 = recentre(o.t_chan0, o.t_stride, o.t_nchan);
+        if (!s_chan0_set)
+            o.s_chan0 = recentre(o.s_chan0, o.s_stride, o.s_nchan);
         printf("band: f_offset %.6f MHz -> carrier bin %.4f (%+.4f ch off centre); "
                "tracker comb %d..%d step %d, search comb %d..%d step %d\n",
                o.f_offset / 1e6, o.f_offset / bin_w,
-               o.f_offset / bin_w - (double)llround(o.f_offset / bin_w),
-               o.t_chan0, o.t_chan0 + o.t_stride * (o.t_nchan - 1), o.t_stride,
-               o.s_chan0, o.s_chan0 + o.s_stride * (o.s_nchan - 1), o.s_stride);
+               o.f_offset / bin_w - (double)llround(o.f_offset / bin_w), o.t_chan0,
+               o.t_chan0 + o.t_stride * (o.t_nchan - 1), o.t_stride, o.s_chan0,
+               o.s_chan0 + o.s_stride * (o.s_nchan - 1), o.s_stride);
     }
     if (o.refine_span <= 0)
         o.refine_span = FFT; // the stage's own default
     const long long W0 = o.hop0 * (long long)FFT;
 
     std::vector<int> s_chans, t_chans, s_cov, t_cov;
-    for (int c = 0; c < o.s_nchan; ++c) { s_chans.push_back(o.s_chan0 + o.s_stride * c); s_cov.push_back(c); }
-    for (int c = 0; c < o.t_nchan; ++c) { t_chans.push_back(o.t_chan0 + o.t_stride * c); t_cov.push_back(c); }
+    for (int c = 0; c < o.s_nchan; ++c) {
+        s_chans.push_back(o.s_chan0 + o.s_stride * c);
+        s_cov.push_back(c);
+    }
+    for (int c = 0; c < o.t_nchan; ++c) {
+        t_chans.push_back(o.t_chan0 + o.t_stride * c);
+        t_cov.push_back(c);
+    }
 
     // TWO banks, exactly as production runs them, and the difference between them is the whole
     // reason this harness exists: the SEARCH works in the primary code (e.g. GPS_L5_Q,
@@ -564,8 +639,8 @@ int main(int argc, char** argv) {
 
     printf("================================================================================\n");
     printf("INJECTED TRUTH   %s (search %s)   PRN %d\n", tname.c_str(), sname.c_str(), o.prn);
-    printf("  cp %.4f mod %.0f  (primary %.4f, overlay period %d)   dop %+.4f Hz\n", o.cp204,
-           LL, std::fmod(o.cp204, L), (int)(o.cp204 / L), o.dop);
+    printf("  cp %.4f mod %.0f  (primary %.4f, overlay period %d)   dop %+.4f Hz\n", o.cp204, LL,
+           std::fmod(o.cp204, L), (int)(o.cp204 / L), o.dop);
     printf("  snapshot hop %lld (sample %lld, %.2f days of uptime)\n", o.hop0, W0,
            (double)W0 / o.sample_rate / 86400.0);
     printf("  geometry: record %d hops = %.4f code periods | replica period %d hops = %.0f "
@@ -603,17 +678,20 @@ int main(int argc, char** argv) {
         // K=16 gave 1 window = 3125 hops where 16*196 = 3136 are needed, i.e. a read past the
         // end of the buffer. Every ms-split number measured before this fix came off that
         // out-of-bounds memory, which is why the lag offsets would not sit still.
-        const int nwin = o.ms_split > 0
-                             ? (o.ms_split * o.sub_hops + Mp - 1) / Mp
-                             : std::max(std::max(1, o.acquire_windows),
-                                        std::max(1, o.refine_windows));
+        const int nwin = o.ms_split > 0 ? (o.ms_split * o.sub_hops + Mp - 1) / Mp
+                                        : std::max(std::max(1, o.acquire_windows),
+                                                   std::max(1, o.refine_windows));
         printf("[1] SEARCH -- synthesizing %d x %d hops (%.1f ms) on %d channels...\n", nwin, Mp,
                1e3 * nwin * Mp * hop_s, o.s_nchan);
-        const auto clean = tbank.channels_hoprate(0, W0, o.cp204, o.dop, nwin * Mp, s_chans, {}, -1);
+        const auto clean =
+            tbank.channels_hoprate(0, W0, o.cp204, o.dop, nwin * Mp, s_chans, {}, -1);
         double sig2 = 0.0;
         size_t nsamp = 0;
         for (const auto& ch : clean)
-            for (const cf& v : ch) { sig2 += std::norm(v); ++nsamp; }
+            for (const cf& v : ch) {
+                sig2 += std::norm(v);
+                ++nsamp;
+            }
         const double sig_rms = std::sqrt(sig2 / (double)std::max<size_t>(nsamp, 1));
         if (o.noise > 0.0)
             printf("    noise: std = %.3f x signal rms (%.4g), %d trial(s), seed %u\n", o.noise,
@@ -635,326 +713,345 @@ int main(int argc, char** argv) {
         if (o.dop_half <= 0.0)
             grid.push_back(-o.dop); // r2c fold: the grid runs in the flipped convention
         else {
-            const double lo =
-                std::ceil((-o.dop - o.dop_half) / o.dop_step) * o.dop_step;
+            const double lo = std::ceil((-o.dop - o.dop_half) / o.dop_step) * o.dop_step;
             for (double f = lo; f <= -o.dop + o.dop_half + 1e-9; f += o.dop_step)
                 grid.push_back(f);
         }
 
-      // STAGE TIMERS. The ms-split acquire profiles at 9.1 s inside a 748 s run, so the
-      // acquire -- the thing the whole ms-split plan optimises -- is not where the time is.
-      // Measure the stages before optimising any of them again.
-      double T_acq = 0.0, T_nh = 0.0, T_ref = 0.0;
-      const auto tnow = [] { return std::chrono::duration<double>(
-              std::chrono::steady_clock::now().time_since_epoch()).count(); };
-      gnss::AcquireWorkspace ws;
-      gnss::AcquisitionSurface adims{}; // hoisted: the summary below needs s_stored
-      for (int trial = 0; trial < std::max(1, o.trials); ++trial) {
-        // Fresh realization each trial; the CLEAN signal is never overwritten.
-        if (o.noise > 0.0) {
-            for (size_t c = 0; c < clean.size(); ++c)
-                for (size_t m = 0; m < clean[c].size(); ++m)
-                    data[c][m] = clean[c][m] + cf((float)gauss(rng), (float)gauss(rng));
-        }
-        if (o.quantize)
-            quantize44(data);
-        gnss::AcquisitionResult a{};
-        const double t_acq0 = tnow();
-        best_nh = -1;
-        std::vector<double> surf;
-        std::vector<std::vector<cf>> w((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
-        if (o.ms_split > 0) {
-            // MS-SPLIT: one pass, no NH alignment axis at all -- a ~1 ms sub-window spans
-            // exactly one overlay chip, a constant +-1, which |D|^2 cannot see. That is the
-            // 20x. The lag axis is one code period, not sixteen: the other 12.5x.
-            surf.assign(surf.size(), 0.0);
-            gnss::AcquisitionSurface dm = gnss::ms_split_accumulate(
-                sbank, 0, data, s_chans, W0, o.sub_hops, o.ms_split, grid, o.sample_rate, surf,
-                ws, o.fine_step, o.threads);
-            // DUMP THE SURFACE SHAPE BEFORE trusting any peak location. The lag offset
-            // would not sit still across injections and the SNR swung 2.5x on identical
-            // noiseless data -- both say the peak may be split or wrapped, and fitting a
-            // mapping to a peak you have not looked at is how the last three wrong stories
-            // started. Profile = max over the fine axis at each coarse lag.
-            if (o.dump_ms) {
-                const int F = dm.fine();
-                // The truth, in the SHORT code currency the ms-split can carry. A ~1 ms
-                // sub-window spans one overlay chip, so this path resolves the phase modulo the
-                // primary code (10230), never the NH-long 204600 -- comparing against the long
-                // phase would print a "failure" that is only the missing overlay period.
-                const double Lp = (double)sbank.code_length();
-                const double truth_s = std::fmod(truth_phase_at(W0), Lp);
-                // Reproduce channelized_peak's OWN mapping per cell rather than re-deriving it:
-                // the question here is which q that shipped mapping sends to the right phase, so
-                // a second implementation of it would answer a different question.
-                const long Ns = (long)dm.Mp * dm.sph;
-                // The mapping channelized_peak applies assumes the replica's own code phase at
-                // its index 0 is zero, which the SHIPPED path arranges by anchoring repl0 at
-                // Mp*fft_len = 16 exact code periods. The ms-split cannot: its replica must sit
-                // N hops before the data, at an arbitrary absolute sample, so it starts at
-                // whatever phase that sample implies. Ask the bank for that phase instead of
-                // re-deriving it -- hoprate_stream's C = cp0 + n_m*cps is exactly what
-                // phase_from_arg reports, so this cannot drift away from the generator.
-                const long long W_repl = W0 - (long long)o.sub_hops * FFT;
-                const double phi_r0 = sbank.phase_from_arg(0.0, W_repl, 0.0);
-                const double cps_c = sbank.chip_rate_hz() / o.sample_rate;
-                FILE* fp = fopen(o.dump_ms, "w");
-                fprintf(fp, "# Mp=%d fine=%d sph=%d s_stored=%d s_step=%d ndop=%d\n", dm.Mp, F,
-                        dm.sph, dm.s_stored, dm.s_step, dm.n_dop);
-                fprintf(fp, "# N=%d (one sub-window) truth_cp_mod_%.0f=%.4f\n", o.sub_hops, Lp,
-                        truth_s);
-                fprintf(fp, "# W_repl=%lld phi_r0=%.4f  Ns=%ld Ns*cps mod L=%.4f\n", W_repl, phi_r0,
-                        Ns, std::fmod((double)Ns * cps_c, Lp));
-                fprintf(fp, "# q tau_samples tau_chips max_over_fine best_i cp_implied err_chips "
+        // STAGE TIMERS. The ms-split acquire profiles at 9.1 s inside a 748 s run, so the
+        // acquire -- the thing the whole ms-split plan optimises -- is not where the time is.
+        // Measure the stages before optimising any of them again.
+        double T_acq = 0.0, T_nh = 0.0, T_ref = 0.0;
+        const auto tnow = [] {
+            return std::chrono::duration<double>(
+                       std::chrono::steady_clock::now().time_since_epoch())
+                .count();
+        };
+        gnss::AcquireWorkspace ws;
+        gnss::AcquisitionSurface adims{}; // hoisted: the summary below needs s_stored
+        for (int trial = 0; trial < std::max(1, o.trials); ++trial) {
+            // Fresh realization each trial; the CLEAN signal is never overwritten.
+            if (o.noise > 0.0) {
+                for (size_t c = 0; c < clean.size(); ++c)
+                    for (size_t m = 0; m < clean[c].size(); ++m)
+                        data[c][m] = clean[c][m] + cf((float)gauss(rng), (float)gauss(rng));
+            }
+            if (o.quantize)
+                quantize44(data);
+            gnss::AcquisitionResult a{};
+            const double t_acq0 = tnow();
+            best_nh = -1;
+            std::vector<double> surf;
+            std::vector<std::vector<cf>> w((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
+            if (o.ms_split > 0) {
+                // MS-SPLIT: one pass, no NH alignment axis at all -- a ~1 ms sub-window spans
+                // exactly one overlay chip, a constant +-1, which |D|^2 cannot see. That is the
+                // 20x. The lag axis is one code period, not sixteen: the other 12.5x.
+                surf.assign(surf.size(), 0.0);
+                gnss::AcquisitionSurface dm = gnss::ms_split_accumulate(
+                    sbank, 0, data, s_chans, W0, o.sub_hops, o.ms_split, grid, o.sample_rate, surf,
+                    ws, o.fine_step, o.threads);
+                // DUMP THE SURFACE SHAPE BEFORE trusting any peak location. The lag offset
+                // would not sit still across injections and the SNR swung 2.5x on identical
+                // noiseless data -- both say the peak may be split or wrapped, and fitting a
+                // mapping to a peak you have not looked at is how the last three wrong stories
+                // started. Profile = max over the fine axis at each coarse lag.
+                if (o.dump_ms) {
+                    const int F = dm.fine();
+                    // The truth, in the SHORT code currency the ms-split can carry. A ~1 ms
+                    // sub-window spans one overlay chip, so this path resolves the phase modulo the
+                    // primary code (10230), never the NH-long 204600 -- comparing against the long
+                    // phase would print a "failure" that is only the missing overlay period.
+                    const double Lp = (double)sbank.code_length();
+                    const double truth_s = std::fmod(truth_phase_at(W0), Lp);
+                    // Reproduce channelized_peak's OWN mapping per cell rather than re-deriving it:
+                    // the question here is which q that shipped mapping sends to the right phase,
+                    // so a second implementation of it would answer a different question.
+                    const long Ns = (long)dm.Mp * dm.sph;
+                    // The mapping channelized_peak applies assumes the replica's own code phase at
+                    // its index 0 is zero, which the SHIPPED path arranges by anchoring repl0 at
+                    // Mp*fft_len = 16 exact code periods. The ms-split cannot: its replica must sit
+                    // N hops before the data, at an arbitrary absolute sample, so it starts at
+                    // whatever phase that sample implies. Ask the bank for that phase instead of
+                    // re-deriving it -- hoprate_stream's C = cp0 + n_m*cps is exactly what
+                    // phase_from_arg reports, so this cannot drift away from the generator.
+                    const long long W_repl = W0 - (long long)o.sub_hops * FFT;
+                    const double phi_r0 = sbank.phase_from_arg(0.0, W_repl, 0.0);
+                    const double cps_c = sbank.chip_rate_hz() / o.sample_rate;
+                    FILE* fp = fopen(o.dump_ms, "w");
+                    fprintf(fp, "# Mp=%d fine=%d sph=%d s_stored=%d s_step=%d ndop=%d\n", dm.Mp, F,
+                            dm.sph, dm.s_stored, dm.s_step, dm.n_dop);
+                    fprintf(fp, "# N=%d (one sub-window) truth_cp_mod_%.0f=%.4f\n", o.sub_hops, Lp,
+                            truth_s);
+                    fprintf(fp, "# W_repl=%lld phi_r0=%.4f  Ns=%ld Ns*cps mod L=%.4f\n", W_repl,
+                            phi_r0, Ns, std::fmod((double)Ns * cps_c, Lp));
+                    fprintf(fp,
+                            "# q tau_samples tau_chips max_over_fine best_i cp_implied err_chips "
                             "cp_fixed err_fixed\n");
-                for (int q = 0; q < dm.Mp; ++q) {
-                    double best = -1.0;
-                    int bi = 0;
-                    for (int i = 0; i < F; ++i) {
-                        const double v = surf[(size_t)(0 * dm.Mp + q) * (size_t)F + (size_t)i];
-                        if (v > best) { best = v; bi = i; }
+                    for (int q = 0; q < dm.Mp; ++q) {
+                        double best = -1.0;
+                        int bi = 0;
+                        for (int i = 0; i < F; ++i) {
+                            const double v = surf[(size_t)(0 * dm.Mp + q) * (size_t)F + (size_t)i];
+                            if (v > best) {
+                                best = v;
+                                bi = i;
+                            }
+                        }
+                        const long tau = dm.tau(q, bi);
+                        const long pt = ((Ns - tau) % Ns + Ns) % Ns;
+                        double cp =
+                            std::fmod((double)pt * sbank.chip_rate_hz() / o.sample_rate, Lp);
+                        if (cp < 0.0)
+                            cp += Lp;
+                        // The peak condition is phi_r0 + Ns*cps - tau*cps == phi_data(0). Three
+                        // separate things, each measured, none assumed:
+                        //   phi_r0   the replica's OWN code phase at its index 0. The shipped path
+                        //            gets away without this because it anchors repl0 at Mp*fft_len
+                        //            = 16 exact code periods, i.e. phase ~0; the ms-split anchors N
+                        //            hops before the data at an arbitrary absolute sample.
+                        //   Ns*cps   the cyclic wrap: at the peak the correlation reads replica
+                        //            indices (m-q) mod Mp, a whole Mp hops further on. Zero for the
+                        //            shipped geometry (Mp*sph = 16 code periods), 72 chips here.
+                        //   tau*cps  the delay itself -- but the COARSE and FINE halves of tau
+                        //   enter
+                        //            with OPPOSITE signs. Measured, not assumed: injecting +5 chips
+                        //            moves the peak's fine index +49 columns (9.8/chip = 1/cps
+                        //            exactly), i.e. i grows WITH the code phase while q shrinks.
+                        //            dims.tau() adds them, so it is only usable where a following
+                        //            refine re-scans a full hop -- which is what the shipped path
+                        //            does, and why this never had to be right before.
+                        const long tau_eff = (long)q * dm.sph - (long)bi * dm.s_step;
+                        double cpf = std::fmod(phi_r0 + (double)(Ns - tau_eff) * cps_c, Lp);
+                        if (cpf < 0.0)
+                            cpf += Lp;
+                        fprintf(fp, "%d %ld %.4f %.6e %d %.4f %+.4f %.4f %+.4f\n", q, tau,
+                                (double)tau * sbank.chip_rate_hz() / o.sample_rate, best, bi, cp,
+                                wrap(cp - truth_s, Lp), cpf, wrap(cpf - truth_s, Lp));
                     }
-                    const long tau = dm.tau(q, bi);
-                    const long pt = ((Ns - tau) % Ns + Ns) % Ns;
-                    double cp = std::fmod((double)pt * sbank.chip_rate_hz() / o.sample_rate, Lp);
+                    fclose(fp);
+                    printf("    dumped ms-split lag profile -> %s (truth cp mod %.0f = %.4f)\n",
+                           o.dump_ms, Lp, truth_s);
+                }
+                // ms_split_peak, NOT channelized_peak: the ms-split replica starts N hops before
+                // the data at an arbitrary absolute sample, and 2N*sph is not a whole number of
+                // code periods. See the function's own comments for what each term is worth.
+                const double phi_r0 =
+                    sbank.phase_from_arg(0.0, W0 - (long long)o.sub_hops * FFT, 0.0);
+                const auto ai =
+                    gnss::ms_split_peak(surf, dm, grid, o.sample_rate, sbank.chip_rate_hz(),
+                                        sbank.code_length(), phi_r0, o.sub_hops);
+                a = ai;
+                best_nh = 0;
+                adims = dm;
+                printf("    ms-split: %d sub-windows x %d hops (%.1f ms each, %.0f ms total), "
+                       "lag axis %d, no NH axis\n",
+                       o.ms_split, o.sub_hops, o.sub_hops * hop_s * 1e3,
+                       o.ms_split * o.sub_hops * hop_s * 1e3, dm.Mp);
+            }
+            for (int nh = 0; o.ms_split == 0 && nh < n_nh; ++nh) {
+                // repl0: code 0, Doppler 0, overlay alignment nh -- what the stage precomputes.
+                auto repl0 = sbank.channels_hoprate(0, anchor, 0.0, 0.0, Mp, s_chans, {}, nh);
+                gnss::AcquisitionSurface dims{};
+                surf.assign(surf.size(), 0.0);
+                // ACQUIRE accumulates acquire_windows, NOT nwin. nwin is only how much data was
+                // synthesized (max of acquire_windows and refine_windows); conflating them made
+                // --refine-windows silently raise acquire_windows, which smears across NH bins --
+                // acquire snr fell 185->55 and the period broke 0/12 -> 10/12, all of it artifact.
+                for (int wi = 0; wi < std::max(1, o.acquire_windows); ++wi) {
+                    for (int c = 0; c < o.s_nchan; ++c)
+                        for (int m = 0; m < Mp; ++m)
+                            w[(size_t)c][(size_t)m] = data[(size_t)c][(size_t)(wi * Mp + m)];
+                    dims = gnss::channelized_accumulate(w, repl0, s_cov, grid, o.sample_rate,
+                                                        o.s_nchan, surf, ws, s_chans, FFT,
+                                                        o.threads, o.fine_step);
+                }
+                auto ai = gnss::channelized_peak(surf, dims, grid, o.sample_rate,
+                                                 sbank.chip_rate_hz(), sbank.code_length());
+                // --fix-fine-sign: apply ms_split_peak's correction to the SHIPPED coarse phase.
+                // channelized_peak forms tau = q*sph + i*s_step, but the coarse and fine halves of
+                // the lag carry OPPOSITE signs (measured 2026-08-02), and i is reported mod sph so
+                // a small negative offset comes back near the top of the axis. Nobody noticed
+                // because refine_peak re-scans a full hop and finds the peak regardless -- which is
+                // precisely why refine_span has to be a full hop, and why the refine costs 426
+                // evaluations. If the sign is the reason, fixing it should collapse the refine's
+                // chosen offset toward zero, and the span with it.
+                if (o.fix_fine_sign) {
+                    const long Ns = (long)dims.Mp * dims.sph;
+                    long tau = ((Ns - (long)ai.peak_tau_samples) % Ns + Ns) % Ns;
+                    long fine = tau % dims.sph, q = tau / dims.sph;
+                    if (fine > dims.sph / 2)
+                        fine -= dims.sph;
+                    const long tau_eff = q * (long)dims.sph - fine;
+                    ai.peak_tau_samples = ((Ns - tau_eff) % Ns + Ns) % Ns;
+                    double cp = std::fmod((double)ai.peak_tau_samples * sbank.chip_rate_hz()
+                                              / o.sample_rate,
+                                          (double)sbank.code_length());
                     if (cp < 0.0)
-                        cp += Lp;
-                    // The peak condition is phi_r0 + Ns*cps - tau*cps == phi_data(0). Three
-                    // separate things, each measured, none assumed:
-                    //   phi_r0   the replica's OWN code phase at its index 0. The shipped path
-                    //            gets away without this because it anchors repl0 at Mp*fft_len
-                    //            = 16 exact code periods, i.e. phase ~0; the ms-split anchors N
-                    //            hops before the data at an arbitrary absolute sample.
-                    //   Ns*cps   the cyclic wrap: at the peak the correlation reads replica
-                    //            indices (m-q) mod Mp, a whole Mp hops further on. Zero for the
-                    //            shipped geometry (Mp*sph = 16 code periods), 72 chips here.
-                    //   tau*cps  the delay itself -- but the COARSE and FINE halves of tau enter
-                    //            with OPPOSITE signs. Measured, not assumed: injecting +5 chips
-                    //            moves the peak's fine index +49 columns (9.8/chip = 1/cps
-                    //            exactly), i.e. i grows WITH the code phase while q shrinks.
-                    //            dims.tau() adds them, so it is only usable where a following
-                    //            refine re-scans a full hop -- which is what the shipped path
-                    //            does, and why this never had to be right before.
-                    const long tau_eff = (long)q * dm.sph - (long)bi * dm.s_step;
-                    double cpf =
-                        std::fmod(phi_r0 + (double)(Ns - tau_eff) * cps_c, Lp);
-                    if (cpf < 0.0)
-                        cpf += Lp;
-                    fprintf(fp, "%d %ld %.4f %.6e %d %.4f %+.4f %.4f %+.4f\n", q, tau,
-                            (double)tau * sbank.chip_rate_hz() / o.sample_rate, best, bi, cp,
-                            wrap(cp - truth_s, Lp), cpf, wrap(cpf - truth_s, Lp));
+                        cp += (double)sbank.code_length();
+                    ai.code_phase_chips = cp;
+                }
+                if (best_nh < 0 || ai.snr > a.snr) {
+                    a = ai;
+                    best_nh = nh;
+                    adims = dims;
+                }
+            }
+            T_acq += tnow() - t_acq0;
+            snr = a.snr;
+            det_dop = -a.doppler_hz; // r2c fold conjugates the channel frequency axis
+            const double cps = sbank.chip_rate_hz() / o.sample_rate;
+
+            // ---- THE SHIPPED REFINE (de-alias, then localize) ----
+            const int rhops = Mp * std::max(1, o.refine_windows);
+            std::vector<std::vector<cf>> d((size_t)o.s_nchan, std::vector<cf>((size_t)rhops));
+            for (int c = 0; c < o.s_nchan; ++c)
+                for (int m = 0; m < rhops; ++m)
+                    d[(size_t)c][(size_t)m] = data[(size_t)c][(size_t)m];
+            // DIAGNOSTIC: dump the refine's own objective over a full hop, so the shape of the
+            // ambiguity is MEASURED rather than inferred from a coincidence. 13.09 chips is both
+            // s_stored*cps and (the old) refine_span*cps -- two completely different explanations
+            // for one number, which is exactly how a wrong story gets confirmed.
+            if (o.dump_refine) {
+                const auto rf = sbank.hoprate_filter(s_chans, det_dop);
+                FILE* fp = fopen(o.dump_refine, "w");
+                const double ph_t = truth_phase_at(W0);
+                fprintf(fp, "# off_samples off_chips power  (truth ph@ref %.4f)\n", ph_t);
+                for (int off = -FFT / 2; off <= FFT / 2; off += 16) {
+                    const double cp = a.code_phase_chips + off * cps;
+                    const auto r =
+                        sbank.hoprate_stream(rf, 0, anchor, cp, det_dop, Mp, {}, best_nh);
+                    fprintf(fp, "%d %.4f %.6e\n", off, off * cps,
+                            std::norm(gnss::channelized_despread(d, r).amplitude));
                 }
                 fclose(fp);
-                printf("    dumped ms-split lag profile -> %s (truth cp mod %.0f = %.4f)\n",
-                       o.dump_ms, Lp, truth_s);
+                printf("    dumped refine profile -> %s\n", o.dump_refine);
             }
-            // ms_split_peak, NOT channelized_peak: the ms-split replica starts N hops before
-            // the data at an arbitrary absolute sample, and 2N*sph is not a whole number of
-            // code periods. See the function's own comments for what each term is worth.
-            const double phi_r0 =
-                sbank.phase_from_arg(0.0, W0 - (long long)o.sub_hops * FFT, 0.0);
-            const auto ai =
-                gnss::ms_split_peak(surf, dm, grid, o.sample_rate, sbank.chip_rate_hz(),
-                                    sbank.code_length(), phi_r0, o.sub_hops);
-            a = ai; best_nh = 0; adims = dm;
-            printf("    ms-split: %d sub-windows x %d hops (%.1f ms each, %.0f ms total), "
-                   "lag axis %d, no NH axis\n",
-                   o.ms_split, o.sub_hops, o.sub_hops * hop_s * 1e3,
-                   o.ms_split * o.sub_hops * hop_s * 1e3, dm.Mp);
-        }
-        for (int nh = 0; o.ms_split == 0 && nh < n_nh; ++nh) {
-            // repl0: code 0, Doppler 0, overlay alignment nh -- what the stage precomputes.
-            auto repl0 = sbank.channels_hoprate(0, anchor, 0.0, 0.0, Mp, s_chans, {}, nh);
-            gnss::AcquisitionSurface dims{};
-            surf.assign(surf.size(), 0.0);
-            // ACQUIRE accumulates acquire_windows, NOT nwin. nwin is only how much data was
-            // synthesized (max of acquire_windows and refine_windows); conflating them made
-            // --refine-windows silently raise acquire_windows, which smears across NH bins --
-            // acquire snr fell 185->55 and the period broke 0/12 -> 10/12, all of it artifact.
-            for (int wi = 0; wi < std::max(1, o.acquire_windows); ++wi) {
-                for (int c = 0; c < o.s_nchan; ++c)
-                    for (int m = 0; m < Mp; ++m)
-                        w[(size_t)c][(size_t)m] = data[(size_t)c][(size_t)(wi * Mp + m)];
-                dims = gnss::channelized_accumulate(w, repl0, s_cov, grid, o.sample_rate, o.s_nchan,
-                                                    surf, ws, s_chans, FFT, o.threads,
-                                                    o.fine_step);
+            // ---- PHASE A's MISSING HALF: recover the overlay period ----
+            // ms_split_accumulate carries NO NH axis (that is where its 20x comes from -- a ~1 ms
+            // sub-window spans one overlay chip, a constant sign that |D|^2 cannot see), so it
+            // resolves the phase mod 10230 and the seed would carry LESS than the current search
+            // reports. The design plan's answer was Phase B (coherent NH recombination); this is
+            // the cheaper one, and it works because the expensive part is already done:
+            //
+            // once the lag is known to a fraction of a chip, "which of the 20 overlay periods" is
+            // 20 SINGLE despreads at that one phase -- not 20 acquisition surfaces. The 20x saving
+            // is kept; only a rounding error of it is handed back.
+            const double t_nh0 = tnow();
+            if (o.ms_split > 0) {
+                const auto rf = sbank.hoprate_filter(s_chans, det_dop);
+                double bestp = -1.0;
+                for (int nh = 0; nh < n_nh; ++nh) {
+                    const auto r = sbank.hoprate_stream(rf, 0, anchor, a.code_phase_chips, det_dop,
+                                                        rhops, {}, nh);
+                    const double p = std::norm(gnss::channelized_despread(d, r).amplitude);
+                    if (p > bestp) {
+                        bestp = p;
+                        best_nh = nh;
+                    }
+                }
+                printf("    NH postfix: overlay period %d of %d recovered by %d despreads\n",
+                       best_nh, n_nh, n_nh);
             }
-            auto ai = gnss::channelized_peak(surf, dims, grid, o.sample_rate,
-                                                   sbank.chip_rate_hz(), sbank.code_length());
-            // --fix-fine-sign: apply ms_split_peak's correction to the SHIPPED coarse phase.
-            // channelized_peak forms tau = q*sph + i*s_step, but the coarse and fine halves of
-            // the lag carry OPPOSITE signs (measured 2026-08-02), and i is reported mod sph so
-            // a small negative offset comes back near the top of the axis. Nobody noticed
-            // because refine_peak re-scans a full hop and finds the peak regardless -- which is
-            // precisely why refine_span has to be a full hop, and why the refine costs 426
-            // evaluations. If the sign is the reason, fixing it should collapse the refine's
-            // chosen offset toward zero, and the span with it.
-            if (o.fix_fine_sign) {
-                const long Ns = (long)dims.Mp * dims.sph;
-                long tau = ((Ns - (long)ai.peak_tau_samples) % Ns + Ns) % Ns;
-                long fine = tau % dims.sph, q = tau / dims.sph;
-                if (fine > dims.sph / 2)
-                    fine -= dims.sph;
-                const long tau_eff = q * (long)dims.sph - fine;
-                ai.peak_tau_samples = ((Ns - tau_eff) % Ns + Ns) % Ns;
-                double cp = std::fmod((double)ai.peak_tau_samples * sbank.chip_rate_hz()
-                                          / o.sample_rate, (double)sbank.code_length());
-                if (cp < 0.0) cp += (double)sbank.code_length();
-                ai.code_phase_chips = cp;
-            }
-            if (best_nh < 0 || ai.snr > a.snr) { a = ai; best_nh = nh; adims = dims; }
-        }
-        T_acq += tnow() - t_acq0;
-        snr = a.snr;
-        det_dop = -a.doppler_hz; // r2c fold conjugates the channel frequency axis
-        const double cps = sbank.chip_rate_hz() / o.sample_rate;
+            T_nh += tnow() - t_nh0;
+            const double t_ref0 = tnow();
+            const double best_cp = gnss::refine_peak(
+                sbank, 0, d, s_chans, a.code_phase_chips, adims, best_nh, det_dop, anchor,
+                (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops, o.sample_rate,
+                o.refine_span, o.refine_step, o.threads);
 
-        // ---- THE SHIPPED REFINE (de-alias, then localize) ----
-        const int rhops = Mp * std::max(1, o.refine_windows);
-        std::vector<std::vector<cf>> d((size_t)o.s_nchan, std::vector<cf>((size_t)rhops));
-        for (int c = 0; c < o.s_nchan; ++c)
-            for (int m = 0; m < rhops; ++m)
-                d[(size_t)c][(size_t)m] = data[(size_t)c][(size_t)m];
-        // DIAGNOSTIC: dump the refine's own objective over a full hop, so the shape of the
-        // ambiguity is MEASURED rather than inferred from a coincidence. 13.09 chips is both
-        // s_stored*cps and (the old) refine_span*cps -- two completely different explanations
-        // for one number, which is exactly how a wrong story gets confirmed.
-        if (o.dump_refine) {
-            const auto rf = sbank.hoprate_filter(s_chans, det_dop);
-            FILE* fp = fopen(o.dump_refine, "w");
-            const double ph_t = truth_phase_at(W0);
-            fprintf(fp, "# off_samples off_chips power  (truth ph@ref %.4f)\n", ph_t);
-            for (int off = -FFT / 2; off <= FFT / 2; off += 16) {
-                const double cp = a.code_phase_chips + off * cps;
-                const auto r = sbank.hoprate_stream(rf, 0, anchor, cp, det_dop, Mp, {}, best_nh);
-                fprintf(fp, "%d %.4f %.6e\n", off, off * cps,
-                        std::norm(gnss::channelized_despread(d, r).amplitude));
-            }
-            fclose(fp);
-            printf("    dumped refine profile -> %s\n", o.dump_refine);
-        }
-        // ---- PHASE A's MISSING HALF: recover the overlay period ----
-        // ms_split_accumulate carries NO NH axis (that is where its 20x comes from -- a ~1 ms
-        // sub-window spans one overlay chip, a constant sign that |D|^2 cannot see), so it
-        // resolves the phase mod 10230 and the seed would carry LESS than the current search
-        // reports. The design plan's answer was Phase B (coherent NH recombination); this is
-        // the cheaper one, and it works because the expensive part is already done:
-        //
-        // once the lag is known to a fraction of a chip, "which of the 20 overlay periods" is
-        // 20 SINGLE despreads at that one phase -- not 20 acquisition surfaces. The 20x saving
-        // is kept; only a rounding error of it is handed back.
-        const double t_nh0 = tnow();
-        if (o.ms_split > 0) {
-            const auto rf = sbank.hoprate_filter(s_chans, det_dop);
-            double bestp = -1.0;
-            for (int nh = 0; nh < n_nh; ++nh) {
-                const auto r = sbank.hoprate_stream(rf, 0, anchor, a.code_phase_chips, det_dop,
-                                                    rhops, {}, nh);
-                const double p = std::norm(gnss::channelized_despread(d, r).amplitude);
-                if (p > bestp) { bestp = p; best_nh = nh; }
-            }
-            printf("    NH postfix: overlay period %d of %d recovered by %d despreads\n", best_nh,
-                   n_nh, n_nh);
-        }
-        T_nh += tnow() - t_nh0;
-        const double t_ref0 = tnow();
-        const double best_cp =
-            gnss::refine_peak(sbank, 0, d, s_chans, a.code_phase_chips, adims, best_nh, det_dop,
-                              anchor,
-                              (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops,
-                              o.sample_rate, o.refine_span, o.refine_step,
-                              o.threads);
-
-        T_ref += tnow() - t_ref0;
-        printf("    [stages] acquire %.2fs | nh-postfix %.2fs | refine %.2fs\n", T_acq, T_nh, T_ref);
+            T_ref += tnow() - t_ref0;
+            printf("    [stages] acquire %.2fs | nh-postfix %.2fs | refine %.2fs\n", T_acq, T_nh,
+                   T_ref);
 #ifdef GNSS_CUDA
-        // A5 VALIDATION. The GPU refine must return the SAME code phase as the CPU one, on the
-        // same data, with the same scan geometry -- it is a reuse of GnssCudaDespread, not a
-        // different algorithm, so anything but agreement to float precision is a bug. Run both
-        // and print the delta rather than trusting the speedup.
-        if (o.cuda_refine) {
-            const int rh = (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops;
-            const size_t nc = d.size();
-            // refine_peak takes [chan][hop]; the GPU driver takes the stage's native
-            // [hop][chan] interleave. Transpose here so the comparison is like for like.
-            std::vector<std::complex<float>> win((size_t)rh * nc);
-            for (size_t c = 0; c < nc; ++c)
-                for (int m = 0; m < rh; ++m)
-                    win[(size_t)m * nc + c] = d[c][(size_t)m];
-            std::vector<int> loc(nc);
-            for (size_t i = 0; i < nc; ++i)
-                loc[i] = (int)i;
-            // One engine per <=64-channel group: chan_mask is a uint64_t. The harness comb is
-            // 27 channels so this is a single group, but exercise the same code path the live
-            // 79-channel aggregator takes.
-            std::vector<std::unique_ptr<GnssCudaDespread>> engines;
-            std::vector<gnss::CudaRefineGroup> rgroups;
-            const size_t GMAX = 64;
-            for (size_t i0 = 0; i0 < nc; i0 += GMAX) {
-                const size_t ng = std::min(GMAX, nc - i0);
-                std::vector<int> gg(s_chans.begin() + i0, s_chans.begin() + i0 + ng);
-                engines.emplace_back(
-                    new GnssCudaDespread(sbank, 1, gg, rh, o.sample_rate, sbank.f_offset()));
-                gnss::CudaRefineGroup grp;
-                grp.gpu = engines.back().get();
-                grp.local.resize(ng);
-                for (size_t i = 0; i < ng; ++i)
-                    grp.local[i] = (int)(i0 + i);
-                grp.n_hops = rh;
-                rgroups.push_back(std::move(grp));
+            // A5 VALIDATION. The GPU refine must return the SAME code phase as the CPU one, on the
+            // same data, with the same scan geometry -- it is a reuse of GnssCudaDespread, not a
+            // different algorithm, so anything but agreement to float precision is a bug. Run both
+            // and print the delta rather than trusting the speedup.
+            if (o.cuda_refine) {
+                const int rh = (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops;
+                const size_t nc = d.size();
+                // refine_peak takes [chan][hop]; the GPU driver takes the stage's native
+                // [hop][chan] interleave. Transpose here so the comparison is like for like.
+                std::vector<std::complex<float>> win((size_t)rh * nc);
+                for (size_t c = 0; c < nc; ++c)
+                    for (int m = 0; m < rh; ++m)
+                        win[(size_t)m * nc + c] = d[c][(size_t)m];
+                std::vector<int> loc(nc);
+                for (size_t i = 0; i < nc; ++i)
+                    loc[i] = (int)i;
+                // One engine per <=64-channel group: chan_mask is a uint64_t. The harness comb is
+                // 27 channels so this is a single group, but exercise the same code path the live
+                // 79-channel aggregator takes.
+                std::vector<std::unique_ptr<GnssCudaDespread>> engines;
+                std::vector<gnss::CudaRefineGroup> rgroups;
+                const size_t GMAX = 64;
+                for (size_t i0 = 0; i0 < nc; i0 += GMAX) {
+                    const size_t ng = std::min(GMAX, nc - i0);
+                    std::vector<int> gg(s_chans.begin() + i0, s_chans.begin() + i0 + ng);
+                    engines.emplace_back(
+                        new GnssCudaDespread(sbank, 1, gg, rh, o.sample_rate, sbank.f_offset()));
+                    gnss::CudaRefineGroup grp;
+                    grp.gpu = engines.back().get();
+                    grp.local.resize(ng);
+                    for (size_t i = 0; i < ng; ++i)
+                        grp.local[i] = (int)(i0 + i);
+                    grp.n_hops = rh;
+                    rgroups.push_back(std::move(grp));
+                }
+                const double t_g0 = tnow();
+                const double gcp = gnss::refine_peak_cuda(
+                    rgroups, sbank, 0, win.data(), (int)nc, anchor, a.code_phase_chips, det_dop,
+                    o.sample_rate, o.refine_span, o.refine_step);
+                const double t_g = tnow() - t_g0;
+                printf("    CUDA refine: cp %.6f  CPU %.6f  delta %+.3e chips  |  %.3f s vs %.3f s "
+                       "= %.1fx  %s\n",
+                       gcp, best_cp, gcp - best_cp, t_g, T_ref, T_ref / t_g,
+                       std::fabs(gcp - best_cp) < 1e-6 ? "OK" : "MISMATCH");
             }
-            const double t_g0 = tnow();
-            const double gcp =
-                gnss::refine_peak_cuda(rgroups, sbank, 0, win.data(), (int)nc, anchor,
-                                       a.code_phase_chips, det_dop, o.sample_rate, o.refine_span,
-                                       o.refine_step);
-            const double t_g = tnow() - t_g0;
-            printf("    CUDA refine: cp %.6f  CPU %.6f  delta %+.3e chips  |  %.3f s vs %.3f s "
-                   "= %.1fx  %s\n",
-                   gcp, best_cp, gcp - best_cp, t_g, T_ref, T_ref / t_g,
-                   std::fabs(gcp - best_cp) < 1e-6 ? "OK" : "MISMATCH");
-        }
 #endif
-        // ---- THE SHIPPED REPORTING ARITHMETIC ----
-        // The lag-period lift is for the SHIPPED geometry, where the coarse lag runs over
-        // Mp = 3125 hops = 16 code periods and therefore carries a whole-period count that
-        // detection_phase has to fold back in. The ms-split's lag axis is [N, 2N) -- one code
-        // period, by construction (8.7.7 / the ms-split doc) -- so that count is always zero
-        // here, and letting detection_phase derive it from the BANK's Mp (16) instead of the
-        // ms-split's 2N (2.007) adds a period that was never there. Measured: err +1 with the
-        // lift, 0 without.
-        const long lift_tau = (o.ms_split > 0) ? 0L : a.peak_tau_samples;
-        dp = gnss::detection_phase(sbank, best_cp, best_nh, n_nh, det_dop, o.hop0, anchor,
-                                   o.sample_rate, lift_tau);
+            // ---- THE SHIPPED REPORTING ARITHMETIC ----
+            // The lag-period lift is for the SHIPPED geometry, where the coarse lag runs over
+            // Mp = 3125 hops = 16 code periods and therefore carries a whole-period count that
+            // detection_phase has to fold back in. The ms-split's lag axis is [N, 2N) -- one code
+            // period, by construction (8.7.7 / the ms-split doc) -- so that count is always zero
+            // here, and letting detection_phase derive it from the BANK's Mp (16) instead of the
+            // ms-split's 2N (2.007) adds a period that was never there. Measured: err +1 with the
+            // lift, 0 without.
+            const long lift_tau = (o.ms_split > 0) ? 0L : a.peak_tau_samples;
+            dp = gnss::detection_phase(sbank, best_cp, best_nh, n_nh, det_dop, o.hop0, anchor,
+                                       o.sample_rate, lift_tau);
 
-        const double ph_true = truth_phase_at(W0);
-        const double e_ref = wrap(dp.cp_at_ref - ph_true, LL);
+            const double ph_true = truth_phase_at(W0);
+            const double e_ref = wrap(dp.cp_at_ref - ph_true, LL);
 
-        // PERIOD DIAGNOSTICS. The acquire's coarse lag runs over a FULL replica period,
-        // Mp*sph samples = 16 primary code periods at CHORD -- but `code_phase_chips` is that
-        // lag reduced mod ONE period, so the whole-period part of the lag is discarded before
-        // anything downstream sees it. The overlay is 20 periods and 16 is not 0 mod 20, so
-        // that discarded count is exactly the term the nh lift needs and does not have.
-        // Printed here so the relationship can be READ OFF ground truth rather than derived on
-        // paper for a fourth time.
-        const double tau_chips = (double)a.peak_tau_samples * sbank.chip_rate_hz() / o.sample_rate;
-        const int tau_per = ((int)std::floor(tau_chips / L)) % n_nh;
-        const int true_per = (int)std::floor(ph_true / L);
-        const int got_per = (int)std::floor(dp.cp_at_ref / L);
-        printf("    tau %ld samp = %.2f chips = %d periods + %.2f | nh %d | period true %d "
-               "got %d (err %+d)\n",
-               a.peak_tau_samples, tau_chips, tau_per, std::fmod(tau_chips, L), best_nh, true_per,
-               got_per, ((got_per - true_per + 30) % n_nh) - 10);
-        printf("    snr %.1f   dop %+.4f (err %+.4f Hz)   nh %d   coarse %.2f refine %+.2f\n",
-               snr, det_dop, det_dop - o.dop, best_nh, a.code_phase_chips,
-               best_cp - a.code_phase_chips);
-        printf("    reported cp0 %.3f | cp_long %.3f | ph@ref %.3f   (truth ph@ref %.3f)\n",
-               dp.cp0, dp.cp_long, dp.cp_at_ref, ph_true);
-        printf("    >>> SEARCH LEG ERROR: %+.3f chips   (= %+.3f periods %+.3f within-period)\n",
-               e_ref, std::round(e_ref / L), wrap(e_ref, L));
-        errs.push_back(e_ref);
-        snrs.push_back(snr);
-      } // trial
+            // PERIOD DIAGNOSTICS. The acquire's coarse lag runs over a FULL replica period,
+            // Mp*sph samples = 16 primary code periods at CHORD -- but `code_phase_chips` is that
+            // lag reduced mod ONE period, so the whole-period part of the lag is discarded before
+            // anything downstream sees it. The overlay is 20 periods and 16 is not 0 mod 20, so
+            // that discarded count is exactly the term the nh lift needs and does not have.
+            // Printed here so the relationship can be READ OFF ground truth rather than derived on
+            // paper for a fourth time.
+            const double tau_chips =
+                (double)a.peak_tau_samples * sbank.chip_rate_hz() / o.sample_rate;
+            const int tau_per = ((int)std::floor(tau_chips / L)) % n_nh;
+            const int true_per = (int)std::floor(ph_true / L);
+            const int got_per = (int)std::floor(dp.cp_at_ref / L);
+            printf("    tau %ld samp = %.2f chips = %d periods + %.2f | nh %d | period true %d "
+                   "got %d (err %+d)\n",
+                   a.peak_tau_samples, tau_chips, tau_per, std::fmod(tau_chips, L), best_nh,
+                   true_per, got_per, ((got_per - true_per + 30) % n_nh) - 10);
+            printf("    snr %.1f   dop %+.4f (err %+.4f Hz)   nh %d   coarse %.2f refine %+.2f\n",
+                   snr, det_dop, det_dop - o.dop, best_nh, a.code_phase_chips,
+                   best_cp - a.code_phase_chips);
+            printf("    reported cp0 %.3f | cp_long %.3f | ph@ref %.3f   (truth ph@ref %.3f)\n",
+                   dp.cp0, dp.cp_long, dp.cp_at_ref, ph_true);
+            printf(
+                "    >>> SEARCH LEG ERROR: %+.3f chips   (= %+.3f periods %+.3f within-period)\n",
+                e_ref, std::round(e_ref / L), wrap(e_ref, L));
+            errs.push_back(e_ref);
+            snrs.push_back(snr);
+        } // trial
         if (o.trials > 1) {
             // A "wrong lobe" is a within-period error beyond half a grating spacing. The comb's
             // fine-lag response repeats every s_stored samples, so that is the natural unit:
@@ -965,19 +1062,24 @@ int main(int argc, char** argv) {
             double s1 = 0.0, s2 = 0.0, worst = 0.0;
             for (double e : errs) {
                 const double w = wrap(e, L);
-                if (std::fabs(e) > L / 2.0) ++badper;
-                if (std::fabs(w) > lobe / 2.0) ++wrong;
-                s1 += w; s2 += w * w; worst = std::max(worst, std::fabs(w));
+                if (std::fabs(e) > L / 2.0)
+                    ++badper;
+                if (std::fabs(w) > lobe / 2.0)
+                    ++wrong;
+                s1 += w;
+                s2 += w * w;
+                worst = std::max(worst, std::fabs(w));
             }
             const double n = (double)errs.size();
             double msnr = 0.0;
-            for (double v : snrs) msnr += v;
+            for (double v : snrs)
+                msnr += v;
             printf("\n    ===== %d trials at noise %.3f =====\n", (int)n, o.noise);
             printf("    acquire snr   mean %.1f\n", msnr / n);
-            printf("    within-period error: mean %+.3f  rms %.3f  worst %.3f chips\n",
-                   s1 / n, std::sqrt(s2 / n), worst);
-            printf("    grating lobe spacing %.2f chips -> WRONG LOBE in %d/%d (%.0f%%)\n",
-                   lobe, wrong, (int)n, 100.0 * wrong / n);
+            printf("    within-period error: mean %+.3f  rms %.3f  worst %.3f chips\n", s1 / n,
+                   std::sqrt(s2 / n), worst);
+            printf("    grating lobe spacing %.2f chips -> WRONG LOBE in %d/%d (%.0f%%)\n", lobe,
+                   wrong, (int)n, 100.0 * wrong / n);
             printf("    wrong PERIOD in %d/%d\n", badper, (int)n);
         }
         printf("\n");
@@ -985,7 +1087,8 @@ int main(int argc, char** argv) {
         dp.cp_at_ref = truth_phase_at(W0);
         dp.cp_long = -1.0;
         printf("[1] SEARCH -- SKIPPED (--skip-search): seeding straight from truth, "
-               "ph@ref %.3f\n\n", dp.cp_at_ref);
+               "ph@ref %.3f\n\n",
+               dp.cp_at_ref);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -998,7 +1101,10 @@ int main(int argc, char** argv) {
     // then the truth, which is the useful control case for the broker's own arithmetic).
     if (o.emit_det) {
         FILE* fp = fopen(o.emit_det, "wb");
-        if (!fp) { printf("cannot write %s\n", o.emit_det); return 3; }
+        if (!fp) {
+            printf("cannot write %s\n", o.emit_det);
+            return 3;
+        }
         fprintf(fp,
                 "[{\"prn\":%d,\"doppler_hz\":%.10g,\"code_phase_chips\":%.10g,\"ref_hop\":%lld,"
                 "\"nh\":%d,\"code_phase_long_chips\":%.10g,\"code_phase_at_ref_chips\":%.10g,"
@@ -1017,7 +1123,10 @@ int main(int argc, char** argv) {
     sd.dop_rate = o.seed_dop_rate;
     if (o.seed_file) {
         FILE* fp = fopen(o.seed_file, "rb");
-        if (!fp) { printf("cannot open %s\n", o.seed_file); return 3; }
+        if (!fp) {
+            printf("cannot open %s\n", o.seed_file);
+            return 3;
+        }
         std::string blob;
         char buf[65536];
         size_t n;
@@ -1039,8 +1148,11 @@ int main(int argc, char** argv) {
         std::string took, missed;
         auto take = [&](const char* key, auto&& apply) {
             double x;
-            if (seed_field(blob, o.prn, key, x)) { apply(x); took += std::string(" ") + key; }
-            else                                   missed += std::string(" ") + key;
+            if (seed_field(blob, o.prn, key, x)) {
+                apply(x);
+                took += std::string(" ") + key;
+            } else
+                missed += std::string(" ") + key;
         };
         take("code_phase_at_ref_chips", [&](double x) { sd.phase_ref_chips = x; });
         take("doppler_hz", [&](double x) { sd.doppler_hz = x; });
@@ -1074,19 +1186,19 @@ int main(int argc, char** argv) {
             return 4;
         }
         if (!std::isfinite(sd.phase_ref_chips))
-            sd.phase_ref_chips = -1.0;   // the "no phase, use the argument" sentinel
+            sd.phase_ref_chips = -1.0; // the "no phase, use the argument" sentinel
     } else {
         printf("[2] SEED (direct from the detection)\n");
     }
-    printf("    ref_hop %lld  ph@ref %.3f  dop %+.4f  cp_rate %.6e  dop_rate %+.4f\n\n",
-           sd.ref_hop, sd.phase_ref_chips, sd.doppler_hz, sd.cp_rate, sd.dop_rate);
+    printf("    ref_hop %lld  ph@ref %.3f  dop %+.4f  cp_rate %.6e  dop_rate %+.4f\n\n", sd.ref_hop,
+           sd.phase_ref_chips, sd.doppler_hz, sd.cp_rate, sd.dop_rate);
 
     // -----------------------------------------------------------------------------------------
     // LEG 3: the tracker. Propagate through the shipped gnss::propagate_seed(), synthesize the
     // record at its true window, and despread on the GPU with the shipped kernel.
     // -----------------------------------------------------------------------------------------
-    printf("[3] TRACK + DESPREAD  (seed age %.1f s at record 0, records %.1f s apart)\n",
-           o.age_s, o.rec_gap_s);
+    printf("[3] TRACK + DESPREAD  (seed age %.1f s at record 0, records %.1f s apart)\n", o.age_s,
+           o.rec_gap_s);
     GnssCudaDespread ds(tbank, 3, t_chans, o.hops_per_record, o.sample_rate, o.f_offset);
     // ---- --nm: the tracker's despread path, buffers as cudaGnssChordTrack lays them out ----
     // n_elem 1, elem_stride 1, frame_chan_stride n_chan: byte (hop, chan) at hop*n_chan + chan.
@@ -1115,26 +1227,35 @@ int main(int argc, char** argv) {
         ck(cudaMalloc(&d_nm_ids, (size_t)o.t_nchan * sizeof(int)), "nm ids");
         ck(cudaMalloc(&d_nm_wave, (size_t)3 * nm_max_jobs * nsamp * sizeof(float2)), "nm wave");
         ck(cudaMalloc(&d_nm_jobs, (size_t)nm_max_jobs * sizeof(gnss_cuda::DespreadJob)), "nm jobs");
-        ck(cudaMalloc(&d_nm_corr, (size_t)4 * nm_max_jobs * o.t_nchan * sizeof(double2)), "nm corr");
-        ck(cudaMalloc(&d_nm_energy, (size_t)4 * nm_max_jobs * o.t_nchan * sizeof(double)), "nm energy");
+        ck(cudaMalloc(&d_nm_corr, (size_t)4 * nm_max_jobs * o.t_nchan * sizeof(double2)),
+           "nm corr");
+        ck(cudaMalloc(&d_nm_energy, (size_t)4 * nm_max_jobs * o.t_nchan * sizeof(double)),
+           "nm energy");
         std::vector<float> h_scale((size_t)o.t_nchan, 1.0f);
         std::vector<int> h_ids((size_t)o.t_nchan);
-        for (int c = 0; c < o.t_nchan; ++c) h_ids[(size_t)c] = c;
-        ck(cudaMemcpy(d_nm_scale, h_scale.data(), h_scale.size() * sizeof(float), cudaMemcpyHostToDevice), "nm scale up");
-        ck(cudaMemcpy(d_nm_ids, h_ids.data(), h_ids.size() * sizeof(int), cudaMemcpyHostToDevice), "nm ids up");
-        printf("    [--nm] despreading through enqueue_batch_nm (waveform + N x M correlate, n_elem 1, "
-               "4+4b frame, %s Phi)\n", o.phi16 ? "fp16" : "fp32");
+        for (int c = 0; c < o.t_nchan; ++c)
+            h_ids[(size_t)c] = c;
+        ck(cudaMemcpy(d_nm_scale, h_scale.data(), h_scale.size() * sizeof(float),
+                      cudaMemcpyHostToDevice),
+           "nm scale up");
+        ck(cudaMemcpy(d_nm_ids, h_ids.data(), h_ids.size() * sizeof(int), cudaMemcpyHostToDevice),
+           "nm ids up");
+        printf("    [--nm] despreading through enqueue_batch_nm (waveform + N x M correlate, "
+               "n_elem 1, "
+               "4+4b frame, %s Phi)\n",
+               o.phi16 ? "fp16" : "fp32");
     }
-    printf("    rec   age_s        cp cmd    phase err     per   |   P/P_true    q=2P/(E+L)      disc\n");
+    printf("    rec   age_s        cp cmd    phase err     per   |   P/P_true    q=2P/(E+L)      "
+           "disc\n");
 
     const long long age_hops = (long long)std::llround(o.age_s / hop_s);
     const long long gap_hops = (long long)std::llround(o.rec_gap_s / hop_s);
     double worst = 0.0;
     std::vector<std::complex<double>> prompts; // per-record P, for the deep fold below
     std::vector<std::complex<double>> prompts_cpu, prompts_q44; // --cpu-pack44 series
-    std::vector<double> rec_dop, rec_tabs;     // per-record (dop, t_abs) for the [4b] fold
-    std::vector<double> rec_tage;              // per-record seed AGE, for the [4c] candidate
-    std::vector<double> rec_ctrim;             // per-record applied ctrim, for the [4d] bench
+    std::vector<double> rec_dop, rec_tabs; // per-record (dop, t_abs) for the [4b] fold
+    std::vector<double> rec_tage;          // per-record seed AGE, for the [4c] candidate
+    std::vector<double> rec_ctrim;         // per-record applied ctrim, for the [4d] bench
     // Independent of the search realization, so a tracker sweep is reproducible on its own.
     std::mt19937 trk_rng(o.nseed + 1000u);
     // [4e] the command staircase state, and the control job's prompt series.
@@ -1166,8 +1287,7 @@ int main(int argc, char** argv) {
         // is the exact mistake this whole tool exists to catch, made inside the tool, caught in
         // one run by the despread power disagreeing with the arithmetic. Leave the warning here.
         // pr.phase_now is the bank's currency (COMBINED chips); the truth is in wire units.
-        const double err =
-            wrap(pr.phase_now / (double)tbank.comb_mult() - truth_phase_at(W), LL);
+        const double err = wrap(pr.phase_now / (double)tbank.comb_mult() - truth_phase_at(W), LL);
 
         auto rec = tbank.channels_hoprate(0, W, o.cp204, o.dop, o.hops_per_record, t_chans, {}, -1);
         // RAMPED-CARRIER TRUTH (--truth-dop-rate): quadratic phase about the seed epoch,
@@ -1193,7 +1313,10 @@ int main(int argc, char** argv) {
             double s2 = 0.0;
             size_t ns = 0;
             for (const auto& ch : rec)
-                for (const cf& v : ch) { s2 += std::norm(v); ++ns; }
+                for (const cf& v : ch) {
+                    s2 += std::norm(v);
+                    ++ns;
+                }
             const double rms = std::sqrt(s2 / (double)std::max<size_t>(ns, 1));
             std::normal_distribution<double> g(0.0, o.noise * rms / std::sqrt(2.0));
             for (auto& ch : rec)
@@ -1217,12 +1340,10 @@ int main(int argc, char** argv) {
                 cmd_dir = -cmd_dir;
         }
         const double ctrim_r =
-            cmd_bench ? cmd_now
-                      : ((o.bench_ctrim != 0.0 && r >= o.nrec / 2) ? o.bench_ctrim : 0.0);
+            cmd_bench ? cmd_now : ((o.bench_ctrim != 0.0 && r >= o.nrec / 2) ? o.bench_ctrim : 0.0);
         GnssCudaDespread::Spec s0{0, pr.cp, o.dll_spacing, pr.doppler_hz, t_cov};
         s0.ctrim_hz = ctrim_r;
-        std::vector<GnssCudaDespread::Spec> jobs{s0,
-                                                 {1, o.cp204, o.dll_spacing, o.dop, t_cov}};
+        std::vector<GnssCudaDespread::Spec> jobs{s0, {1, o.cp204, o.dll_spacing, o.dop, t_cov}};
         if (cmd_bench) // the in-run control: same seed, ctrim 0 -- the unarmed chain
             jobs.push_back({2, pr.cp, o.dll_spacing, pr.doppler_hz, t_cov});
         std::vector<std::array<gnss::DespreadResult, 3>> res;
@@ -1239,21 +1360,24 @@ int main(int argc, char** argv) {
                     bytes[(size_t)m * (size_t)o.t_nchan + (size_t)c] =
                         gnss44::pack(v.real(), v.imag(), 1.0f, &railed);
                 }
-            if (cudaMemcpy(d_nm_frame, bytes.data(), bytes.size(), cudaMemcpyHostToDevice) != cudaSuccess) {
+            if (cudaMemcpy(d_nm_frame, bytes.data(), bytes.size(), cudaMemcpyHostToDevice)
+                != cudaSuccess) {
                 fprintf(stderr, "CUDA nm frame upload failed\n");
                 exit(2);
             }
-            const int n_rows = ds.enqueue_batch_nm(d_nm_frame, d_nm_scale, d_nm_ids, d_nm_wave, 1, 1,
-                                                   o.t_nchan, W, jobs, d_nm_jobs, d_nm_corr,
-                                                   d_nm_energy, nullptr, false);
+            const int n_rows =
+                ds.enqueue_batch_nm(d_nm_frame, d_nm_scale, d_nm_ids, d_nm_wave, 1, 1, o.t_nchan, W,
+                                    jobs, d_nm_jobs, d_nm_corr, d_nm_energy, nullptr, false);
             if (cudaDeviceSynchronize() != cudaSuccess) {
                 fprintf(stderr, "CUDA nm sync failed\n");
                 exit(2);
             }
             std::vector<double2> h_corr((size_t)n_rows * o.t_nchan);
             std::vector<double> h_energy((size_t)n_rows * o.t_nchan);
-            cudaMemcpy(h_corr.data(), d_nm_corr, h_corr.size() * sizeof(double2), cudaMemcpyDeviceToHost);
-            cudaMemcpy(h_energy.data(), d_nm_energy, h_energy.size() * sizeof(double), cudaMemcpyDeviceToHost);
+            cudaMemcpy(h_corr.data(), d_nm_corr, h_corr.size() * sizeof(double2),
+                       cudaMemcpyDeviceToHost);
+            cudaMemcpy(h_energy.data(), d_nm_energy, h_energy.size() * sizeof(double),
+                       cudaMemcpyDeviceToHost);
             // The fused path's own reduction (despread_batch): plain sum over channels of the
             // per-channel correlation and energy, rows 4i+0..2 = E/P/L.
             res.resize(jobs.size());
@@ -1289,7 +1413,8 @@ int main(int argc, char** argv) {
                     g_raw += std::complex<double>(d) * std::conj(std::complex<double>(rr));
                     int qr = std::clamp((int)std::lround(sq * rr.real()), -7, 7);
                     int qi = std::clamp((int)std::lround(sq * rr.imag()), -7, 7);
-                    g_q += std::complex<double>(d) * std::conj(std::complex<double>((float)qr, (float)qi));
+                    g_q += std::complex<double>(d)
+                           * std::conj(std::complex<double>((float)qr, (float)qi));
                 }
             }
             prompts_cpu.push_back(g_raw);
@@ -1305,8 +1430,8 @@ int main(int argc, char** argv) {
         const double Pt = std::norm(res[1][1].correlation);
         const double disc = (E + La) > 0 ? (E - La) / (E + La) : 0.0;
         printf("    %3d %7.1f  %13.3f  %+12.3f  %+5.0f   |   %8.4f    %8.3f  %+8.4f\n", r,
-               (double)(h - o.hop0) * hop_s, pr.cp, err, std::round(err / L),
-               Pt > 0 ? P / Pt : 0.0, (E + La) > 0 ? 2.0 * P / (E + La) : 0.0, disc);
+               (double)(h - o.hop0) * hop_s, pr.cp, err, std::round(err / L), Pt > 0 ? P / Pt : 0.0,
+               (E + La) > 0 ? 2.0 * P / (E + La) : 0.0, disc);
         worst = std::max(worst, std::fabs(err));
         prompts.push_back(res[0][1].correlation);
         rec_dop.push_back(pr.doppler_hz);
@@ -1328,18 +1453,32 @@ int main(int argc, char** argv) {
         // about the ramp is 0.0115 rad, i.e. clean. Comparing that raw number against the live
         // deep_snr (which IS derotated by the rate search) compares two different quantities.
         std::vector<std::complex<double>> der = prompts;
-        {   // best-fit linear phase over the record index, removed as a frequency
+        { // best-fit linear phase over the record index, removed as a frequency
             std::vector<double> p0(prompts.size());
             double acc = 0.0, pv = 0.0;
             for (size_t i = 0; i < prompts.size(); ++i) {
                 const double q = std::arg(prompts[i]);
-                if (i) { double d = q - pv; while (d > M_PI) d -= 2*M_PI; while (d < -M_PI) d += 2*M_PI; acc += d; }
-                pv = q; p0[i] = acc;
+                if (i) {
+                    double d = q - pv;
+                    while (d > M_PI)
+                        d -= 2 * M_PI;
+                    while (d < -M_PI)
+                        d += 2 * M_PI;
+                    acc += d;
+                }
+                pv = q;
+                p0[i] = acc;
             }
-            double sx=0, sy=0, sxx=0, sxy=0;
-            for (int i = 0; i < N; ++i) { sx+=i; sy+=p0[i]; sxx+=(double)i*i; sxy+=(double)i*p0[i]; }
-            const double dn = N*sxx - sx*sx, sl = dn != 0.0 ? (N*sxy - sx*sy)/dn : 0.0;
-            for (int i = 0; i < N; ++i) der[i] = prompts[i] * std::polar(1.0, -sl*i);
+            double sx = 0, sy = 0, sxx = 0, sxy = 0;
+            for (int i = 0; i < N; ++i) {
+                sx += i;
+                sy += p0[i];
+                sxx += (double)i * i;
+                sxy += (double)i * p0[i];
+            }
+            const double dn = N * sxx - sx * sx, sl = dn != 0.0 ? (N * sxy - sx * sy) / dn : 0.0;
+            for (int i = 0; i < N; ++i)
+                der[i] = prompts[i] * std::polar(1.0, -sl * i);
         }
         const gnss::OverlayWipeResult cs = gnss::coherent_sum(der);
         // ... and again after removing a best-fit LINEAR phase ramp, which is what the
@@ -1348,19 +1487,36 @@ int main(int argc, char** argv) {
         double pu = 0.0, prev = 0.0;
         for (size_t i = 0; i < prompts.size(); ++i) { // unwrapped phase
             const double a = std::arg(prompts[i]);
-            if (i) { double d = a - prev; while (d > M_PI) d -= 2*M_PI; while (d < -M_PI) d += 2*M_PI; pu += d; }
-            prev = a; ph[i] = pu;
+            if (i) {
+                double d = a - prev;
+                while (d > M_PI)
+                    d -= 2 * M_PI;
+                while (d < -M_PI)
+                    d += 2 * M_PI;
+                pu += d;
+            }
+            prev = a;
+            ph[i] = pu;
         }
         double sx = 0, sy = 0, sxx = 0, sxy = 0;
-        for (int i = 0; i < N; ++i) { sx += i; sy += ph[i]; sxx += (double)i*i; sxy += (double)i*ph[i]; }
-        const double den = N*sxx - sx*sx;
-        const double b = den != 0.0 ? (N*sxy - sx*sy)/den : 0.0, a0 = (sy - b*sx)/N;
+        for (int i = 0; i < N; ++i) {
+            sx += i;
+            sy += ph[i];
+            sxx += (double)i * i;
+            sxy += (double)i * ph[i];
+        }
+        const double den = N * sxx - sx * sx;
+        const double b = den != 0.0 ? (N * sxy - sx * sy) / den : 0.0, a0 = (sy - b * sx) / N;
         double s2 = 0.0;
-        for (int i = 0; i < N; ++i) { const double e = ph[i] - (a0 + b*i); s2 += e*e; }
-        const double sig_res = std::sqrt(s2/N);
+        for (int i = 0; i < N; ++i) {
+            const double e = ph[i] - (a0 + b * i);
+            s2 += e * e;
+        }
+        const double sig_res = std::sqrt(s2 / N);
         printf("\n[4] DEEP FOLD over %d records (the combiner's own coherent_sum)\n", N);
         printf("    coherent snr %.2f   amplitude %.6g\n", cs.snr, cs.amplitude);
-        printf("    implied sigma_phi = sqrt(N)/snr = %.4f rad\n", cs.snr > 0 ? std::sqrt((double)N)/cs.snr : 0.0);
+        printf("    implied sigma_phi = sqrt(N)/snr = %.4f rad\n",
+               cs.snr > 0 ? std::sqrt((double)N) / cs.snr : 0.0);
         // ⚠️ IS THE UNWRAP EVEN VALID? sig_res unwraps the per-record phase, which assumes the
         // step between records is under pi. When it is not -- and with a real Doppler rate at
         // days of uptime it routinely is not -- the unwrap aliases and sig_res stops being a
@@ -1373,8 +1529,10 @@ int main(int argc, char** argv) {
             std::vector<double> st;
             for (int i = 1; i < N; ++i) {
                 double d = std::arg(prompts[i]) - std::arg(prompts[i - 1]);
-                while (d > M_PI) d -= 2 * M_PI;
-                while (d < -M_PI) d += 2 * M_PI;
+                while (d > M_PI)
+                    d -= 2 * M_PI;
+                while (d < -M_PI)
+                    d += 2 * M_PI;
                 st.push_back(std::fabs(d));
             }
             std::sort(st.begin(), st.end());
@@ -1388,16 +1546,17 @@ int main(int argc, char** argv) {
         else
             printf("    per-record phase residual about a linear ramp: %.4f rad rms\n", sig_res);
         printf("    LIVE reads sigma_phi ~0.745 rad, flat across a 9x amp_snr range.\n");
-        printf("    %s\n", med_step > 1.5
-               ? ">>> cannot tell: the per-record step aliases the unwrap (see above)"
-               : sig_res > 0.2
-               ? ">>> the floor REPRODUCES with no noise -- it is in our arithmetic OR in the\n"
-                 "        seed model extrapolated over this record spacing. Re-run with\n"
-                 "        --rec-gap-s 0.0104858 (the live cadence, which is what the deep fold\n"
-                 "        actually integrates) to separate the two: arithmetic survives that,\n"
-                 "        a multi-second extrapolation residual does not."
-               : ">>> noiseless chain is phase-clean; the live floor comes from something this "
-                 "harness does not model (overlay/nav wipe, straddle, multi-channel, or the sky)");
+        printf(
+            "    %s\n",
+            med_step > 1.5 ? ">>> cannot tell: the per-record step aliases the unwrap (see above)"
+            : sig_res > 0.2
+                ? ">>> the floor REPRODUCES with no noise -- it is in our arithmetic OR in the\n"
+                  "        seed model extrapolated over this record spacing. Re-run with\n"
+                  "        --rec-gap-s 0.0104858 (the live cadence, which is what the deep fold\n"
+                  "        actually integrates) to separate the two: arithmetic survives that,\n"
+                  "        a multi-second extrapolation residual does not."
+                : ">>> noiseless chain is phase-clean; the live floor comes from something this "
+                  "harness does not model (overlay/nav wipe, straddle, multi-channel, or the sky)");
 
         // ---- [4a] THE PER-RECORD STEP SERIES, the statistic that discriminates on sky ----
         // A smooth model mismatch (a quadratic phase) gives a per-record step that is nearly
@@ -1415,14 +1574,17 @@ int main(int argc, char** argv) {
             if (stp.size() < 4)
                 return;
             double m = 0.0;
-            for (double v : stp) m += v;
+            for (double v : stp)
+                m += v;
             m /= (double)stp.size();
             double v2 = 0.0, c1 = 0.0;
             int big = 0;
             for (size_t i = 0; i < stp.size(); ++i) {
                 v2 += (stp[i] - m) * (stp[i] - m);
-                if (i + 1 < stp.size()) c1 += (stp[i] - m) * (stp[i + 1] - m);
-                if (std::fabs(stp[i] - m) > 0.2) ++big;
+                if (i + 1 < stp.size())
+                    c1 += (stp[i] - m) * (stp[i + 1] - m);
+                if (std::fabs(stp[i] - m) > 0.2)
+                    ++big;
             }
             const double sd = std::sqrt(v2 / (double)stp.size());
             printf("    [4a] %-7s per-record step: mean %+9.5f cyc  sd %.5f cyc  lag-1 %+.3f"
@@ -1455,32 +1617,46 @@ int main(int argc, char** argv) {
             double pu2 = 0.0, pv2 = 0.0;
             for (size_t i = 0; i < fp.size(); ++i) {
                 const double a2 = std::arg(fp[i]);
-                if (i) { double d = a2 - pv2; while (d > M_PI) d -= 2*M_PI;
-                         while (d < -M_PI) d += 2*M_PI; pu2 += d; }
-                pv2 = a2; ph2[i] = pu2;
+                if (i) {
+                    double d = a2 - pv2;
+                    while (d > M_PI)
+                        d -= 2 * M_PI;
+                    while (d < -M_PI)
+                        d += 2 * M_PI;
+                    pu2 += d;
+                }
+                pv2 = a2;
+                ph2[i] = pu2;
             }
-            double qx=0, qy=0, qxx=0, qxy=0;
-            for (int i = 0; i < N; ++i) { qx+=i; qy+=ph2[i]; qxx+=(double)i*i; qxy+=(double)i*ph2[i]; }
-            const double qd = N*qxx - qx*qx;
-            const double qb = qd != 0.0 ? (N*qxy - qx*qy)/qd : 0.0, qa = (qy - qb*qx)/N;
+            double qx = 0, qy = 0, qxx = 0, qxy = 0;
+            for (int i = 0; i < N; ++i) {
+                qx += i;
+                qy += ph2[i];
+                qxx += (double)i * i;
+                qxy += (double)i * ph2[i];
+            }
+            const double qd = N * qxx - qx * qx;
+            const double qb = qd != 0.0 ? (N * qxy - qx * qy) / qd : 0.0, qa = (qy - qb * qx) / N;
             double qs2 = 0.0;
-            for (int i = 0; i < N; ++i) { const double e2v = ph2[i] - (qa + qb*i); qs2 += e2v*e2v; }
+            for (int i = 0; i < N; ++i) {
+                const double e2v = ph2[i] - (qa + qb * i);
+                qs2 += e2v * e2v;
+            }
             std::vector<std::complex<double>> fd = fp;
-            for (int i = 0; i < N; ++i) fd[i] = fp[i] * std::polar(1.0, -qb*i);
+            for (int i = 0; i < N; ++i)
+                fd[i] = fp[i] * std::polar(1.0, -qb * i);
             const gnss::OverlayWipeResult cf2 = gnss::coherent_sum(fd);
             printf("\n[4b] SAME records with the ASSEMBLER'S dcyc fold applied\n");
-            printf("    coherent snr %.2f   residual about a linear ramp: %.4f rad rms\n",
-                   cf2.snr, std::sqrt(qs2 / N));
+            printf("    coherent snr %.2f   residual about a linear ramp: %.4f rad rms\n", cf2.snr,
+                   std::sqrt(qs2 / N));
             step_stats(fp, "FOLDED");
             // THE DISCRIMINATOR: apparent frequencies. A constant per-record reference step
             // is INVISIBLE to the about-a-ramp statistic (it IS a frequency), so compare the
             // fitted rates against the prediction remainder(ddop*t_abs, 1)/dT directly.
-            const double dT = (rec_tabs.back() - rec_tabs.front())
-                              / (double)(rec_tabs.size() - 1);
+            const double dT = (rec_tabs.back() - rec_tabs.front()) / (double)(rec_tabs.size() - 1);
             double mean_step = 0.0;
             for (size_t k = 1; k < rec_dop.size(); ++k)
-                mean_step += std::remainder(
-                    (rec_dop[k] - rec_dop[k - 1]) * rec_tabs[k], 1.0);
+                mean_step += std::remainder((rec_dop[k] - rec_dop[k - 1]) * rec_tabs[k], 1.0);
             mean_step /= (double)(rec_dop.size() - 1);
             printf("    fitted rate: raw %+9.3f Hz | folded %+9.3f Hz | predicted alias "
                    "step %+9.3f Hz (dT %.4f s)\n",
@@ -1506,17 +1682,26 @@ int main(int argc, char** argv) {
                     cy += (rec_dop[k] - rec_dop[k - 1]) * tref[k];
                     f2[k] *= std::polar(1.0, sgn * 2.0 * M_PI * std::remainder(cy, 1.0));
                 }
-                double u = 0.0, pvv = std::arg(f2[0]), s_x=0, s_y=0, s_xx=0, s_xy=0;
+                double u = 0.0, pvv = std::arg(f2[0]), s_x = 0, s_y = 0, s_xx = 0, s_xy = 0;
                 std::vector<double> uw(f2.size(), 0.0);
                 for (size_t i = 1; i < f2.size(); ++i) {
                     double d = std::arg(f2[i]) - pvv;
-                    while (d > M_PI) d -= 2*M_PI;
-                    while (d < -M_PI) d += 2*M_PI;
-                    u += d; pvv = std::arg(f2[i]); uw[i] = u;
+                    while (d > M_PI)
+                        d -= 2 * M_PI;
+                    while (d < -M_PI)
+                        d += 2 * M_PI;
+                    u += d;
+                    pvv = std::arg(f2[i]);
+                    uw[i] = u;
                 }
-                for (int i = 0; i < N; ++i) { s_x+=i; s_y+=uw[i]; s_xx+=(double)i*i; s_xy+=(double)i*uw[i]; }
-                const double dnm = N*s_xx - s_x*s_x;
-                return dnm != 0.0 ? ((N*s_xy - s_x*s_y)/dnm) / (2.0*M_PI*dT) : 0.0;
+                for (int i = 0; i < N; ++i) {
+                    s_x += i;
+                    s_y += uw[i];
+                    s_xx += (double)i * i;
+                    s_xy += (double)i * uw[i];
+                }
+                const double dnm = N * s_xx - s_x * s_x;
+                return dnm != 0.0 ? ((N * s_xy - s_x * s_y) / dnm) / (2.0 * M_PI * dT) : 0.0;
             };
             if (o.bench_ctrim != 0.0) {
                 // [4d] THE CTRIM FOLD, read directly. Derotate each record by its OWN
@@ -1532,7 +1717,10 @@ int main(int argc, char** argv) {
                 double inhalf = 0.0;
                 int nin = 0;
                 for (int i = 1; i < N; ++i)
-                    if (i != h2) { inhalf += stepat(i); ++nin; }
+                    if (i != h2) {
+                        inhalf += stepat(i);
+                        ++nin;
+                    }
                 inhalf /= std::max(nin, 1);
                 // the ctrim itself rotates the second half at -s*ctrim: subtract the known
                 // rate part over one record so what is left is the pure REFERENCE step
@@ -1544,8 +1732,8 @@ int main(int argc, char** argv) {
                        "     measured boundary step %+8.4f cyc (rate part %+0.4f removed)\n"
                        "     candidates: +ctrim*t_abs -> %+8.4f   -ctrim*t_abs -> %+8.4f   "
                        "ctrim*dT -> %+8.4f\n",
-                       o.bench_ctrim, h2, wrapc(meas), inhalf,
-                       wrapc(cand), wrapc(-cand), wrapc(o.bench_ctrim * dTb));
+                       o.bench_ctrim, h2, wrapc(meas), inhalf, wrapc(cand), wrapc(-cand),
+                       wrapc(o.bench_ctrim * dTb));
             }
             if (cmd_bench) {
                 // [4e] THE COMMAND-STREAM BENCH. Replicate the assembler's NCO fold
@@ -1572,9 +1760,8 @@ int main(int argc, char** argv) {
                         const double dtk =
                             k > 0 ? rec_tabs[(size_t)k] - rec_tabs[(size_t)k - 1] : 0.0;
                         if (have) {
-                            const double dcyc =
-                                (applied - prev_applied) * rec_tabs[(size_t)k];
-                            phi += 2.0 * M_PI * dcyc;    // the re-pin fold (reanchored=3)
+                            const double dcyc = (applied - prev_applied) * rec_tabs[(size_t)k];
+                            phi += 2.0 * M_PI * dcyc; // the re-pin fold (reanchored=3)
                             // MIDPOINT pairing: neither endpoint survives the bench --
                             // ct(new) and ct(prev) both leave ~|dctrim|*dt-class rms
                             // under an aggressive staircase, because a step also moves
@@ -1634,8 +1821,7 @@ int main(int argc, char** argv) {
                         for (int i = i0; i < i1; ++i) {
                             const double x = rec_tabs[(size_t)i] - rec_tabs[0];
                             const std::complex<double> v =
-                                f[(size_t)i]
-                                * std::polar(1.0, -2.0 * M_PI * st.rate * x);
+                                f[(size_t)i] * std::polar(1.0, -2.0 * M_PI * st.rate * x);
                             sum += v;
                             mag += std::abs(v);
                             ph.push_back(std::arg(v));
@@ -1651,9 +1837,9 @@ int main(int argc, char** argv) {
                                 d += 2.0 * M_PI;
                             s2 += d * d;
                         }
-                        rms = ph.empty() ? 0.0
-                                         : std::sqrt(s2 / (double)ph.size())
-                                               / (2.0 * M_PI) * 1e3; // mcyc
+                        rms = ph.empty()
+                                  ? 0.0
+                                  : std::sqrt(s2 / (double)ph.size()) / (2.0 * M_PI) * 1e3; // mcyc
                     };
                     half(0, n / 2, st.c1, st.rms1);
                     half(n / 2, n, st.c2, st.rms2);
@@ -1685,13 +1871,12 @@ int main(int argc, char** argv) {
                        "       control     %+10.4f   %12.3f   %.4f/%.4f   %6.3f   %8.3f/%8.3f\n"
                        "       old-pairing drip (sum |dctrim|*dt, now charged to the "
                        "correct gap): %.3f mcyc\n",
-                       o.bench_cmd_const, o.bench_cmd_slew, o.bench_cmd_every,
-                       o.bench_cmd_max, Ne, sc.rate, sc.eo * 1e3, sc.c1, sc.c2,
-                       sc.c2 > 0.0 ? sc.c1 / sc.c2 : 0.0, sc.rms1, sc.rms2, sk.rate,
-                       sk.eo * 1e3, sk.c1, sk.c2, sk.c2 > 0.0 ? sk.c1 / sk.c2 : 0.0,
-                       sk.rms1, sk.rms2, drip * 1e3);
-                const bool repro = (sc.rms2 > 5.0 * std::max(sk.rms2, 1e-9)
-                                    && sc.rms2 > 2.0 * drip * 1e3);
+                       o.bench_cmd_const, o.bench_cmd_slew, o.bench_cmd_every, o.bench_cmd_max, Ne,
+                       sc.rate, sc.eo * 1e3, sc.c1, sc.c2, sc.c2 > 0.0 ? sc.c1 / sc.c2 : 0.0,
+                       sc.rms1, sc.rms2, sk.rate, sk.eo * 1e3, sk.c1, sk.c2,
+                       sk.c2 > 0.0 ? sk.c1 / sk.c2 : 0.0, sk.rms1, sk.rms2, drip * 1e3);
+                const bool repro =
+                    (sc.rms2 > 5.0 * std::max(sk.rms2, 1e-9) && sc.rms2 > 2.0 * drip * 1e3);
                 printf("       VERDICT: %s\n",
                        repro ? "COMMANDED EXCESS -- the fold arithmetic degrades under a "
                                "command stream (reproduced offline)"
@@ -1701,8 +1886,7 @@ int main(int argc, char** argv) {
             printf("[4c] fitted rate after fold (Hz):  t_abs sgn- %+8.3f  sgn+ %+8.3f | "
                    "age sgn- %+8.3f  sgn+ %+8.3f | raw %+8.3f\n",
                    fitted_rate(-1.0, rec_tabs), fitted_rate(+1.0, rec_tabs),
-                   fitted_rate(-1.0, rec_tage), fitted_rate(+1.0, rec_tage),
-                   b / (2.0 * M_PI * dT));
+                   fitted_rate(-1.0, rec_tage), fitted_rate(+1.0, rec_tage), b / (2.0 * M_PI * dT));
         }
     }
 

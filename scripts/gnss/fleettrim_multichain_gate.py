@@ -46,26 +46,41 @@ def _get(url, timeout=5.0):
 
 def _post(url, payload, timeout=5.0):
     req = urllib.request.Request(
-        url, data=json.dumps(payload).encode(), method="POST",
-        headers={"Content-Type": "application/json"})
+        url,
+        data=json.dumps(payload).encode(),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.status
 
 
 def policy_for(chain, armed, targets=("http://127.0.0.1:9/set_trim",)):
-    return {"chains": {chain: {
-        "armed": list(armed), "gain_per_s": 2.5, "leak_per_s": 0.5,
-        "clamp": 3.0, "spacing": 0.5, "targets": list(targets)}}}
+    return {
+        "chains": {
+            chain: {
+                "armed": list(armed),
+                "gain_per_s": 2.5,
+                "leak_per_s": 0.5,
+                "clamp": 3.0,
+                "spacing": 0.5,
+                "targets": list(targets),
+            }
+        }
+    }
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bin", default=os.path.join(K, "build_nodpdk/kotekan/kotekan"))
-    ap.add_argument("--config", default=os.path.join(K, "config/generated/chord_gnss_gather.yaml"))
+    ap.add_argument(
+        "--config", default=os.path.join(K, "config/generated/chord_gnss_gather.yaml")
+    )
     ap.add_argument("--stage", default="fleet_trim")
     a = ap.parse_args()
 
     import yaml
+
     with open(a.config) as f:
         cfg = yaml.safe_load(f)
     cfg["rest_server"]["port"] = REST
@@ -77,8 +92,12 @@ def main():
     tmp.close()
 
     log = open(os.path.join(tempfile.gettempdir(), "fleettrim_gate.log"), "w")
-    proc = subprocess.Popen([a.bin, "--config", tmp.name, "--bind-address", "0.0.0.0:%d" % REST],
-                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    proc = subprocess.Popen(
+        [a.bin, "--config", tmp.name, "--bind-address", "0.0.0.0:%d" % REST],
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
     base = "http://127.0.0.1:%d/%s" % (REST, a.stage)
     fails = []
     try:
@@ -89,7 +108,9 @@ def main():
             except Exception:
                 time.sleep(0.2)
         else:
-            print("FAILED: gather did not serve REST on :%d -- see %s" % (REST, log.name))
+            print(
+                "FAILED: gather did not serve REST on :%d -- see %s" % (REST, log.name)
+            )
             return 1
 
         # ── LEG 1: two chains, posted separately, must BOTH stay armed ────────────────
@@ -99,25 +120,36 @@ def main():
         req = st.get("policy_armed_requested", {})
         print("LEG 1 two chains posted separately -> policy_armed_requested = %s" % req)
         if req.get("gps_l5") != 3 or req.get("gal_e5a") != 4:
-            fails.append("LEG 1: expected gps_l5=3 and gal_e5a=4 armed, got %s. The second "
-                         "chain's POST wiped the first -- the wholesale-replace clobber." % req)
+            fails.append(
+                "LEG 1: expected gps_l5=3 and gal_e5a=4 armed, got %s. The second "
+                "chain's POST wiped the first -- the wholesale-replace clobber." % req
+            )
         if st.get("post_targets", 0) != 2:
-            fails.append("LEG 1: expected 2 post targets (one per chain), got %s -- the target "
-                         "list is being replaced wholesale even if the policy is not."
-                         % st.get("post_targets"))
+            fails.append(
+                "LEG 1: expected 2 post targets (one per chain), got %s -- the target "
+                "list is being replaced wholesale even if the policy is not."
+                % st.get("post_targets")
+            )
 
         # ── LEG 2: re-posting ONE chain must not disturb the other, and must still
         #    expire a PRN that chain stopped naming (per-chain replace, not merge) ─────
         _post(base + "/set_policy", policy_for("gps_l5", [1]))
         st = _get(base + "/get_stats")
         req = st.get("policy_armed_requested", {})
-        print("LEG 2 gps_l5 re-posted with 1 PRN      -> policy_armed_requested = %s" % req)
+        print(
+            "LEG 2 gps_l5 re-posted with 1 PRN      -> policy_armed_requested = %s"
+            % req
+        )
         if req.get("gal_e5a") != 4:
-            fails.append("LEG 2: gal_e5a should be untouched at 4, got %s" % req.get("gal_e5a"))
+            fails.append(
+                "LEG 2: gal_e5a should be untouched at 4, got %s" % req.get("gal_e5a")
+            )
         if req.get("gps_l5") != 1:
-            fails.append("LEG 2: gps_l5 should REPLACE to 1 (not merge to 3), got %s -- a merge "
-                         "leaves a PRN armed forever after policy stops naming it."
-                         % req.get("gps_l5"))
+            fails.append(
+                "LEG 2: gps_l5 should REPLACE to 1 (not merge to 3), got %s -- a merge "
+                "leaves a PRN armed forever after policy stops naming it."
+                % req.get("gps_l5")
+            )
 
         # ── LEG 3: a chain that STOPS posting must disarm. Keep gps_l5 alive across the
         #    TTL so the sweep is proven selective, not a global timeout. ───────────────
@@ -127,17 +159,25 @@ def main():
             time.sleep(1.0)
         st = _get(base + "/get_stats")
         req = st.get("policy_armed_requested", {})
-        print("LEG 3 gal_e5a silent %.0fs (gps_l5 alive) -> policy_armed_requested = %s, "
-              "policy_expired = %s" % (TTL + 4.0, req, st.get("policy_expired")))
+        print(
+            "LEG 3 gal_e5a silent %.0fs (gps_l5 alive) -> policy_armed_requested = %s, "
+            "policy_expired = %s" % (TTL + 4.0, req, st.get("policy_expired"))
+        )
         if "gal_e5a" in req:
-            fails.append("LEG 3: gal_e5a POSTed nothing for >%.0fs and is still armed (%s). A "
-                         "dead broker chain thread would command forever." % (TTL, req))
+            fails.append(
+                "LEG 3: gal_e5a POSTed nothing for >%.0fs and is still armed (%s). A "
+                "dead broker chain thread would command forever." % (TTL, req)
+            )
         if req.get("gps_l5") != 1:
-            fails.append("LEG 3: gps_l5 kept posting and must survive, got %s -- the expiry "
-                         "swept a live chain." % req.get("gps_l5"))
+            fails.append(
+                "LEG 3: gps_l5 kept posting and must survive, got %s -- the expiry "
+                "swept a live chain." % req.get("gps_l5")
+            )
         if not st.get("policy_expired"):
-            fails.append("LEG 3: policy_expired is %s; the expiry never fired, so this leg "
-                         "could not have failed." % st.get("policy_expired"))
+            fails.append(
+                "LEG 3: policy_expired is %s; the expiry never fired, so this leg "
+                "could not have failed." % st.get("policy_expired")
+            )
     finally:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
@@ -150,7 +190,10 @@ def main():
     print()
     for f in fails:
         print("  FAIL " + f)
-    print("fleettrim_multichain_gate: %s" % ("FAILED (%d)" % len(fails) if fails else "PASS"))
+    print(
+        "fleettrim_multichain_gate: %s"
+        % ("FAILED (%d)" % len(fails) if fails else "PASS")
+    )
     return 1 if fails else 0
 
 

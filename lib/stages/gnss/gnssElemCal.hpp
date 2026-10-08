@@ -51,8 +51,7 @@ public:
 
     ElemCal() = default;
     ElemCal(int n_elem, int ref, double tau_s, double min_w_frac) :
-        _n(n_elem), _ref(ref), _tau(tau_s > 0.0 ? tau_s : 0.5),
-        _min_w(std::max(0.0, min_w_frac)) {
+        _n(n_elem), _ref(ref), _tau(tau_s > 0.0 ? tau_s : 0.5), _min_w(std::max(0.0, min_w_frac)) {
         reset();
     }
 
@@ -89,7 +88,7 @@ public:
         double s = 0.0;
         for (int e = 0; e < _n; ++e)
             s += std::norm(g_prior[(size_t)e]);
-        if (!(s > 0.0)) {                 // all-zero prior = "no prior"
+        if (!(s > 0.0)) { // all-zero prior = "no prior"
             _prior.clear();
             return;
         }
@@ -291,20 +290,20 @@ private:
     void apply_prior() {
         if ((int)_prior.size() != _n)
             return;
-        constexpr double SEED_SNR = 4.0;  // signal/noise the prior is trusted at, per element
+        constexpr double SEED_SNR = 4.0; // signal/noise the prior is trusted at, per element
         for (int e = 0; e < _n; ++e) {
             const cd g = _prior[(size_t)e];
-            _u[(size_t)e] = g;                               // per-element gain direction+mag
-            _q[(size_t)e] = 1.0;                             // reference power normalization
-            _p[(size_t)e] = std::norm(g) * (1.0 + 1.0 / SEED_SNR);  // total = signal + floor
+            _u[(size_t)e] = g;                                     // per-element gain direction+mag
+            _q[(size_t)e] = 1.0;                                   // reference power normalization
+            _p[(size_t)e] = std::norm(g) * (1.0 + 1.0 / SEED_SNR); // total = signal + floor
         }
         // rebuild_weights gates each element at GATE sigma, and the bar is GATE^2 / n_eff with
         // n_eff set by _alpha. A trusted prior stands in for many integrated records, so give it
         // a small alpha (large n_eff): otherwise the default n_eff=1 makes the 3-sigma bar 9,
         // which the correlation coefficient (<=1) can never clear and every seeded element is
         // rejected. update() overwrites _alpha from dt_s on the first real record.
-        _alpha = 0.1;     // n_eff ~ 19 -> gate ~ 0.47, comfortably below the seed's rho^2 ~ 0.8
-        _warmth = 0.96;   // just past warm() so the seeded combine is used immediately
+        _alpha = 0.1;   // n_eff ~ 19 -> gate ~ 0.47, comfortably below the seed's rho^2 ~ 0.8
+        _warmth = 0.96; // just past warm() so the seeded combine is used immediately
         rebuild_weights();
     }
 
@@ -317,7 +316,7 @@ private:
         std::vector<double> mag((size_t)_n, 0.0);
         double mmax = 0.0;
         int strongest = _ref;
-        int self_ref = -1;   // element whose only reference is the sum it belongs to (see below)
+        int self_ref = -1; // element whose only reference is the sum it belongs to (see below)
         // STATISTICAL GATE, not a fraction-of-the-strongest. u_e is an EMA of G_e*conj(ref) over
         // ~n_eff records; a DEAD element's u_e is not zero, it is a random walk of magnitude
         // ~sqrt(p_e*q_e/n_eff). Gating on a fraction of the max let dead elements in at ~2/3 the
@@ -325,9 +324,9 @@ private:
         // noise enters the sum and their random phases cost coherence. So each element must beat
         // its OWN noise-only expectation by GATE sigma -- self-calibrating, no per-feed list.
         const double n_eff = (_alpha > 0.0) ? (2.0 - _alpha) / _alpha : 1.0;
-        constexpr double GATE = 3.0;   // 3 sigma: measured live rho^2 >= 0.0114, dead <= 0.0024,
-                                       // so the bar at 0.0095 keeps every live feed with 4x
-                                       // margin over the worst dead one. 4 sigma lost 2 of 8.
+        constexpr double GATE = 3.0; // 3 sigma: measured live rho^2 >= 0.0114, dead <= 0.0024,
+                                     // so the bar at 0.0095 keeps every live feed with 4x
+                                     // margin over the worst dead one. 4 sigma lost 2 of 8.
         for (int e = 0; e < _n; ++e) {
             if (_q[(size_t)e] <= 0.0 || _p[(size_t)e] <= 0.0)
                 continue;
@@ -428,9 +427,8 @@ private:
                 live.emplace_back(std::abs(_w[(size_t)e]), e);
         if (live.size() < 2)
             return; // one live element: no independent reference exists, no correction possible
-        std::sort(live.begin(), live.end(), [](const auto& a, const auto& b) {
-            return a.first > b.first;
-        });
+        std::sort(live.begin(), live.end(),
+                  [](const auto& a, const auto& b) { return a.first > b.first; });
         double wa = 0.0, wb = 0.0;
         for (const auto& [w, e] : live) {
             if (wa <= wb) {
@@ -449,15 +447,15 @@ private:
     int _anchor = 0;
     double _tau = 0.5;
     double _min_w = 0.02;
-    double _warmth = 0.0;  ///< approaches 1 with ~tau; warm at > 0.95 (~3 tau)
-    double _wsum = 0.0;    ///< sum |w_e| -- the "one element" normalization
-    std::vector<cd> _u;    ///< EMA of G_e * conj(LOO reference) -- the per-element complex gain
+    double _warmth = 0.0;   ///< approaches 1 with ~tau; warm at > 0.95 (~3 tau)
+    double _wsum = 0.0;     ///< sum |w_e| -- the "one element" normalization
+    std::vector<cd> _u;     ///< EMA of G_e * conj(LOO reference) -- the per-element complex gain
     std::vector<double> _p; ///< EMA of |G_e|^2 -- total per-element power
     std::vector<double> _q; ///< EMA of |LOO reference|^2 -- normalizes the signal-power estimate
     std::vector<cd> _w;     ///< anchored MRC weights u_e/sigma_e^2 (magnitude), gated
     std::vector<uint8_t> _half; ///< split-aperture side per element (0=A, 1=B)
-    int _split_ok = 0;      ///< both halves non-empty -> combine_split() is available
-    double _alpha = 0.0;    ///< last EMA coefficient (sets n_eff for the significance gate)
+    int _split_ok = 0;          ///< both halves non-empty -> combine_split() is available
+    double _alpha = 0.0;        ///< last EMA coefficient (sets n_eff for the significance gate)
     std::vector<cd> _prior; ///< injected per-element gain prior (path B); empty = cold bootstrap
 };
 

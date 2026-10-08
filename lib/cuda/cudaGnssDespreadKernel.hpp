@@ -33,9 +33,9 @@ namespace gnss_cuda {
 /// accumulator: it is the prompt's own MAC, gated on the hop (the despread MAC measured at 0% of
 /// the kernel -- 2026-07-16 ablation).
 struct DespreadJob {
-    double cp0;          ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
-    double ds;           ///< Early/Late displacement from the prompt (combined-stream chips):
-                         ///< row 0 = cp0-ds, row 1 = cp0, row 2 = cp0+ds
+    double cp0; ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
+    double ds;  ///< Early/Late displacement from the prompt (combined-stream chips):
+                ///< row 0 = cp0-ds, row 1 = cp0, row 2 = cp0+ds
     /// PROMPT CODE PHASE AT THE WINDOW'S REFERENCE SAMPLE (p.n0), combined-stream chips,
     /// reduced mod code_len on the host in LONG DOUBLE. Task #54.
     ///
@@ -52,9 +52,9 @@ struct DespreadJob {
     ///
     /// Same n0 as ang0 and as m_head_for: window_start + fft_len - 1, the hop's LAST sample.
     double cp_ref;
-    double cps;          ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
-    double inv_cps;      ///< 1/cps (tap-boundary indices via multiply, not the costly FP64 divide)
-    double wc;           ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
+    double cps;     ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
+    double inv_cps; ///< 1/cps (tap-boundary indices via multiply, not the costly FP64 divide)
+    double wc;      ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
     /// CARRIER PHASE AT THE WINDOW'S REFERENCE SAMPLE (p.n0), radians in [0, 2*pi), computed on
     /// the host in LONG DOUBLE. Task #52.
     ///
@@ -77,24 +77,23 @@ struct DespreadJob {
     /// m_head_for. The first/last-sample convention has produced a 52-chip error before; if this
     /// disagrees with par.n0 the whole record rotates by a constant.
     double ang0;
-    int code_offset;     ///< this PRN's offset into the shared code table
-    int code_len;        ///< combined-stream code length (chips)
-    uint64_t chan_mask;  ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
-    const float2* phiA;  ///< [n_chan][Lf+1] cumulative filter table, this PRN's Doppler bucket
-    const float2* phiB;  ///< (float32: see the kernel's mixed-precision note)
-    int n_chips;         ///< chips spanned by this bucket's filter (gather depth per hop)
-    int m_head;          ///< row 3 (P_HEAD) = the PROMPT accumulated over hops [0, m_head) only:
-                         ///< the record's slice BEFORE the code-period boundary, where the
-                         ///< secondary overlay flips sign (gnssRecord.hpp slots 16-18). 0 = emit
-                         ///< an all-zero head row (the plain 3-trial contract).
-    /// SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi and
-    /// this PRN's Doppler offset from the table's OWN carrier, radians/sample. With
-    /// psiA == nullptr or ddw == 0 the gather takes its original path and the result is
-    /// bit-identical -- that is what makes the fallback safe rather than merely tested.
-    /// ⚠️ THE PEEL JOB CARRIES THE SAME THREE FIELDS AND MUST BE SET THE SAME WAY: the peel
-    /// and the despread must generate bit-identical replicas or the analytic add-back
-    /// (docs/gnss_voltage_peel_live.md) stops being exact.
-    /// ⚠️ LAST IN THE STRUCT ON PURPOSE. Both structs are built with POSITIONAL aggregate
+    int code_offset;    ///< this PRN's offset into the shared code table
+    int code_len;       ///< combined-stream code length (chips)
+    uint64_t chan_mask; ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
+    const float2* phiA; ///< [n_chan][Lf+1] cumulative filter table, this PRN's Doppler bucket
+    const float2* phiB; ///< (float32: see the kernel's mixed-precision note)
+    int n_chips;        ///< chips spanned by this bucket's filter (gather depth per hop)
+    int m_head;         ///< row 3 (P_HEAD) = the PROMPT accumulated over hops [0, m_head) only:
+                        ///< the record's slice BEFORE the code-period boundary, where the
+                        ///< secondary overlay flips sign (gnssRecord.hpp slots 16-18). 0 = emit
+                        ///< an all-zero head row (the plain 3-trial contract).
+    /// SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi
+    /// and this PRN's Doppler offset from the table's OWN carrier, radians/sample. With psiA ==
+    /// nullptr or ddw == 0 the gather takes its original path and the result is bit-identical --
+    /// that is what makes the fallback safe rather than merely tested. ⚠️ THE PEEL JOB CARRIES THE
+    /// SAME THREE FIELDS AND MUST BE SET THE SAME WAY: the peel and the despread must generate
+    /// bit-identical replicas or the analytic add-back (docs/gnss_voltage_peel_live.md) stops being
+    /// exact. ⚠️ LAST IN THE STRUCT ON PURPOSE. Both structs are built with POSITIONAL aggregate
     /// initializers at three call sites, so a field inserted anywhere else silently retypes
     /// every field after it (caught as "no match for operator=" -- the good outcome).
     const float2* psiA = nullptr;
@@ -128,13 +127,13 @@ struct DespreadJob {
 /// that way). @c a_head applies to hops [0, m_head), @c a_tail to [m_head, n_hops) -- the same
 /// boundary the despread's P_HEAD row uses, computed ONCE on the host and shared.
 struct PeelJob {
-    double cp0;         ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
+    double cp0; ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
     /// Prompt code phase at p.n0 -- see DespreadJob::cp_ref. MUST be built by the SAME
     /// expression as the despread's or the replicas stop being bit-identical.
     double cp_ref;
-    double cps;         ///< chips per sample incl. code Doppler (== DespreadJob::cps)
-    double inv_cps;     ///< 1/cps
-    double wc;          ///< carrier angular rate 2*pi*(f_offset + doppler)/fs
+    double cps;     ///< chips per sample incl. code Doppler (== DespreadJob::cps)
+    double inv_cps; ///< 1/cps
+    double wc;      ///< carrier angular rate 2*pi*(f_offset + doppler)/fs
     /// Carrier phase at p.n0 -- see DespreadJob::ang0. MUST be built by the SAME expression:
     /// the peel and the despread have to generate bit-identical replicas or the analytic
     /// add-back stops being exact.
@@ -144,19 +143,18 @@ struct PeelJob {
     uint64_t chan_mask; ///< bit ci set = channel ci is in this PRN's covering set
     const float2* phiA; ///< cumulative filter tables, this PRN's Doppler bucket (as DespreadJob)
     const float2* phiB;
-    int n_chips;        ///< chips spanned by this bucket's filter
-    int m_head;         ///< code-period boundary hop: a_head below it, a_tail at and above it.
-                        ///< 0 = no boundary in this window -> a_tail applies throughout.
+    int n_chips;          ///< chips spanned by this bucket's filter
+    int m_head;           ///< code-period boundary hop: a_head below it, a_tail at and above it.
+                          ///< 0 = no boundary in this window -> a_tail applies throughout.
     const float2* a_head; ///< [n_chan] gain to subtract, hops [0, m_head)
     const float2* a_tail; ///< [n_chan] gain to subtract, hops [m_head, n_hops)
-    /// SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi and
-    /// this PRN's Doppler offset from the table's OWN carrier, radians/sample. With
-    /// psiA == nullptr or ddw == 0 the gather takes its original path and the result is
-    /// bit-identical -- that is what makes the fallback safe rather than merely tested.
-    /// ⚠️ THE PEEL JOB CARRIES THE SAME THREE FIELDS AND MUST BE SET THE SAME WAY: the peel
-    /// and the despread must generate bit-identical replicas or the analytic add-back
-    /// (docs/gnss_voltage_peel_live.md) stops being exact.
-    /// ⚠️ LAST IN THE STRUCT ON PURPOSE. Both structs are built with POSITIONAL aggregate
+    /// SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi
+    /// and this PRN's Doppler offset from the table's OWN carrier, radians/sample. With psiA ==
+    /// nullptr or ddw == 0 the gather takes its original path and the result is bit-identical --
+    /// that is what makes the fallback safe rather than merely tested. ⚠️ THE PEEL JOB CARRIES THE
+    /// SAME THREE FIELDS AND MUST BE SET THE SAME WAY: the peel and the despread must generate
+    /// bit-identical replicas or the analytic add-back (docs/gnss_voltage_peel_live.md) stops being
+    /// exact. ⚠️ LAST IN THE STRUCT ON PURPOSE. Both structs are built with POSITIONAL aggregate
     /// initializers at three call sites, so a field inserted anywhere else silently retypes
     /// every field after it (caught as "no match for operator=" -- the good outcome).
     const float2* psiA = nullptr;
@@ -192,11 +190,11 @@ struct DespreadParams {
                            ///< also carries the peel residual rows, so the despread writes its
                            ///< E/P/L/P_HEAD into the same stride the add-back and the assembler
                            ///< use. (xcorr keeps its own stride of 4 -- it is scratch, not frame.)
-    int conj_data = 0; ///< negate the imag of every unpacked data sample. The CHORD F-engine's
-                       ///< output is CONJUGATED relative to the gnss44 decode (measured on sky
-                       ///< 2026-07-30 -- see GnssChordDequantize.cpp for the evidence). A flag
-                       ///< here rather than in gnss44: the airspy chain uses gnss44 as a matched
-                       ///< encoder/decoder PAIR, which must stay self-consistent.
+    int conj_data = 0;     ///< negate the imag of every unpacked data sample. The CHORD F-engine's
+                           ///< output is CONJUGATED relative to the gnss44 decode (measured on sky
+                           ///< 2026-07-30 -- see GnssChordDequantize.cpp for the evidence). A flag
+    ///< here rather than in gnss44: the airspy chain uses gnss44 as a matched
+    ///< encoder/decoder PAIR, which must stay self-consistent.
     /// BENCH: [n_job][n_hops] permutation of the hop index. Thread lane m processes
     /// hop_perm[b*n_hops + m] instead of m. Sorting hops by their FRACTIONAL code phase puts a
     /// warp's 32 lanes inside ~5 Phi entries instead of ~313, because the per-lane offset
@@ -209,12 +207,12 @@ struct DespreadParams {
                      ///< per-record staging buffer, or the ring length when a window is read in
                      ///< place from the device ring (phase F: ring_hops is a multiple of n_hops,
                      ///< so a record window is always CONTIGUOUS within a channel row)
-    /// SHARED, DOPPLER-FREE Phi/Psi tables (31896a862:docs/CHORD_GPU_TODO.md item 2). Selects a separate
-    /// kernel instantiation rather than a runtime branch, so the per-PRN path keeps its
+    /// SHARED, DOPPLER-FREE Phi/Psi tables (31896a862:docs/CHORD_GPU_TODO.md item 2). Selects a
+    /// separate kernel instantiation rather than a runtime branch, so the per-PRN path keeps its
     /// register budget -- registers cap MAXT, and MAXT is what sets the DRAM traffic.
     bool shared = false;
-    /// fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): job.phiA/phiB point at __half2 storage
-    /// and @ref launch_waveform takes the __half2 gather instantiation. HALVES THE RESIDENT
+    /// fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): job.phiA/phiB point at __half2
+    /// storage and @ref launch_waveform takes the __half2 gather instantiation. HALVES THE RESIDENT
     /// TABLE, which is the one lever §10.6c's DRAM-footprint verdict says pays (measured
     /// 1.27-1.37x); storage error 3.3e-4 relative (scripts/gnss/phibits), gated through the
     /// shipped engine by scripts/gnss/phi16gpu. ⚠️ ONLY the templated waveform kernels honour

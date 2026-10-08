@@ -36,8 +36,12 @@ def _get(url, timeout=6):
 
 
 def _post(url, payload, timeout=6):
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json"}, method="POST")
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.load(r)
 
@@ -57,16 +61,38 @@ def status(nodes, gates, quiet=False):
         except Exception as e:
             out[(n, g)] = {"error": str(e)}
     if not quiet:
-        print("%-6s %-18s %6s %16s %16s %16s %8s %8s %8s" % (
-            "node", "gate", "armed", "last_seq", "start_seq", "end_seq", "passed",
-            "dropped", "in-win-drop"))
+        print(
+            "%-6s %-18s %6s %16s %16s %16s %8s %8s %8s"
+            % (
+                "node",
+                "gate",
+                "armed",
+                "last_seq",
+                "start_seq",
+                "end_seq",
+                "passed",
+                "dropped",
+                "in-win-drop",
+            )
+        )
         for (n, g), s in sorted(out.items()):
             if "error" in s:
                 print("%-6s %-18s  UNREACHABLE: %s" % (n, g, s["error"]))
                 continue
-            print("%-6s %-18s %6s %16d %16d %16d %8d %8d %8d" % (
-                n, g, "yes" if s["armed"] else "no", s["last_seq"], s["start_seq"],
-                s["end_seq"], s["passed"], s["dropped"], s["dropped_in_window"]))
+            print(
+                "%-6s %-18s %6s %16d %16d %16d %8d %8d %8d"
+                % (
+                    n,
+                    g,
+                    "yes" if s["armed"] else "no",
+                    s["last_seq"],
+                    s["start_seq"],
+                    s["end_seq"],
+                    s["passed"],
+                    s["dropped"],
+                    s["dropped_in_window"],
+                )
+            )
     return out
 
 
@@ -94,9 +120,12 @@ def measure_rate(nodes, gates, dt=2.0):
     step = steps[0]
     expect = step / FRAME_S
     if abs(rate / expect - 1.0) > 0.05:
-        print("  WARNING: measured seq rate %.4g/s is %.1f%% off the geometric %.4g/s "
-              "(8192 hops x 5.12 us per frame) -- check the clock source before trusting "
-              "the window length" % (rate, 100 * (rate / expect - 1), expect), file=sys.stderr)
+        print(
+            "  WARNING: measured seq rate %.4g/s is %.1f%% off the geometric %.4g/s "
+            "(8192 hops x 5.12 us per frame) -- check the clock source before trusting "
+            "the window length" % (rate, 100 * (rate / expect - 1), expect),
+            file=sys.stderr,
+        )
     return rate, step, last
 
 
@@ -109,14 +138,26 @@ def arm(nodes, gates, start_in, duration, start_seq=None, end_seq=None):
     if end_seq is None:
         end_seq = start_seq + max(1, int(round(duration * rate / step))) * step
     n_frames = (end_seq - start_seq) // step
-    print("seq rate %.6g /s, %d seq/frame (%.2f ms), fleet last_seq %d" % (
-        rate, step, 1e3 * step / rate, last))
-    print("window [%d, %d): %d frames = %.1f s, opening in ~%.1f s" % (
-        start_seq, end_seq, n_frames, n_frames * step / rate, (start_seq - last) / rate))
+    print(
+        "seq rate %.6g /s, %d seq/frame (%.2f ms), fleet last_seq %d"
+        % (rate, step, 1e3 * step / rate, last)
+    )
+    print(
+        "window [%d, %d): %d frames = %.1f s, opening in ~%.1f s"
+        % (
+            start_seq,
+            end_seq,
+            n_frames,
+            n_frames * step / rate,
+            (start_seq - last) / rate,
+        )
+    )
     ok = 0
     for n, g, base in each_gate(nodes, gates):
         try:
-            r = _post(base + "/arm", {"start_seq": int(start_seq), "end_seq": int(end_seq)})
+            r = _post(
+                base + "/arm", {"start_seq": int(start_seq), "end_seq": int(end_seq)}
+            )
             print("  %s/%s: armed (last_seq %d)" % (n, g, r.get("last_seq", -1)))
             ok += 1
         except Exception as e:
@@ -129,27 +170,51 @@ def disarm(nodes, gates):
     for n, g, base in each_gate(nodes, gates):
         try:
             r = _post(base + "/disarm", {})
-            print("  %s/%s: disarmed, %d frames passed in total" % (n, g, r.get("passed", -1)))
+            print(
+                "  %s/%s: disarmed, %d frames passed in total"
+                % (n, g, r.get("passed", -1))
+            )
         except Exception as e:
             print("  %s/%s: FAILED (%s)" % (n, g, e), file=sys.stderr)
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("cmd", choices=["status", "arm", "disarm", "watch"])
-    ap.add_argument("--nodes", default=",".join(NODES),
-                    help="comma list; host or host:port (default port %d)" % PORT)
-    ap.add_argument("--gates", default=",".join(GATES),
-                    help="gate stage names (default %s)" % ",".join(GATES))
-    ap.add_argument("--tags", default=None, metavar="TAGS",
-                    help="chain tags whose gates to address, comma list with '' for the primary, "
-                         "e.g. ',_e5a,_b2a' -> gnss<g>{,_e5a,_b2a}_viscap_gate on both GPUs. "
-                         "Overrides --gates.")
-    ap.add_argument("--start-in", type=float, default=30.0, metavar="S",
-                    help="arm: open the window this many seconds from now (default 30)")
-    ap.add_argument("--duration", type=float, default=300.0, metavar="S",
-                    help="arm: window length in seconds (default 300)")
+    ap.add_argument(
+        "--nodes",
+        default=",".join(NODES),
+        help="comma list; host or host:port (default port %d)" % PORT,
+    )
+    ap.add_argument(
+        "--gates",
+        default=",".join(GATES),
+        help="gate stage names (default %s)" % ",".join(GATES),
+    )
+    ap.add_argument(
+        "--tags",
+        default=None,
+        metavar="TAGS",
+        help="chain tags whose gates to address, comma list with '' for the primary, "
+        "e.g. ',_e5a,_b2a' -> gnss<g>{,_e5a,_b2a}_viscap_gate on both GPUs. "
+        "Overrides --gates.",
+    )
+    ap.add_argument(
+        "--start-in",
+        type=float,
+        default=30.0,
+        metavar="S",
+        help="arm: open the window this many seconds from now (default 30)",
+    )
+    ap.add_argument(
+        "--duration",
+        type=float,
+        default=300.0,
+        metavar="S",
+        help="arm: window length in seconds (default 300)",
+    )
     ap.add_argument("--start-seq", type=int, default=None)
     ap.add_argument("--end-seq", type=int, default=None)
     ap.add_argument("--every", type=float, default=5.0, help="watch: poll period (s)")
@@ -157,7 +222,9 @@ def main():
     nodes = [n for n in a.nodes.split(",") if n]
     gates = [g for g in a.gates.split(",") if g]
     if a.tags is not None:
-        gates = ["gnss%d%s_viscap_gate" % (g, t) for g in (0, 1) for t in a.tags.split(",")]
+        gates = [
+            "gnss%d%s_viscap_gate" % (g, t) for g in (0, 1) for t in a.tags.split(",")
+        ]
     if a.cmd == "status":
         status(nodes, gates)
     elif a.cmd == "arm":

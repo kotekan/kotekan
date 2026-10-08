@@ -101,10 +101,13 @@ def arcs(series, max_gap_s, coh_bridge_s=30.0):
     put 18000-TECU scatter arcs into the movie, measured 2026-07-20). Trimming creates
     gaps, so arcs re-split on max_gap_s after the mask."""
     import bisect
+
     out = []
     cur = []
     for r in series:
-        if cur and (r["adr_arc"] != cur[-1]["adr_arc"] or r["t"] - cur[-1]["t"] > max_gap_s):
+        if cur and (
+            r["adr_arc"] != cur[-1]["adr_arc"] or r["t"] - cur[-1]["t"] > max_gap_s
+        ):
             out.append(cur)
             cur = []
         cur.append(r)
@@ -118,8 +121,10 @@ def arcs(series, max_gap_s, coh_bridge_s=30.0):
         cur = []
         for r in a:
             i = bisect.bisect_left(coh_ts, r["t"])
-            near = min((abs(coh_ts[j] - r["t"]) for j in (i - 1, i) if 0 <= j < len(coh_ts)),
-                       default=1e9)
+            near = min(
+                (abs(coh_ts[j] - r["t"]) for j in (i - 1, i) if 0 <= j < len(coh_ts)),
+                default=1e9,
+            )
             if near > coh_bridge_s:
                 if cur:
                     trimmed.append(cur)
@@ -137,6 +142,7 @@ def arcs(series, max_gap_s, coh_bridge_s=30.0):
 def interp_adr(arc, t):
     """Linear ADR at time t within an arc (None outside / across a gap)."""
     import bisect
+
     ts = [r["t"] for r in arc]
     i = bisect.bisect_left(ts, t)
     if i == 0 or i >= len(ts):
@@ -158,26 +164,37 @@ def main():
     ap.add_argument("--a", help="band A observables jsonl (e.g. L1)")
     ap.add_argument("--b", help="band B observables jsonl (e.g. L5 or L2C)")
     ap.add_argument("--sys", default="G")
-    ap.add_argument("--pair", action="append", default=[],
-                    help="A_PATH:B_PATH:SYS, repeatable. POOLING IS THE POINT: E1/B1C/L1 and "
-                         "E5a/B2a/L5 are the same frequency pairs on the same two dongles, so "
-                         "the inter-band clock (the common mode, ~34 m/s) is IDENTICAL across "
-                         "constellations -- pooling triples the sats constraining it and fills "
-                         "the holes where any one constellation has <3 certified sats (measured "
-                         "07-17: single-constellation coverage 19%%, and every hole leaks the "
-                         "full clock rate = 264 TECU/s into every arc).")
+    ap.add_argument(
+        "--pair",
+        action="append",
+        default=[],
+        help="A_PATH:B_PATH:SYS, repeatable. POOLING IS THE POINT: E1/B1C/L1 and "
+        "E5a/B2a/L5 are the same frequency pairs on the same two dongles, so "
+        "the inter-band clock (the common mode, ~34 m/s) is IDENTICAL across "
+        "constellations -- pooling triples the sats constraining it and fills "
+        "the holes where any one constellation has <3 certified sats (measured "
+        "07-17: single-constellation coverage 19%%, and every hole leaks the "
+        "full clock rate = 264 TECU/s into every arc).",
+    )
     ap.add_argument("--since-min", type=float, default=720.0)
     ap.add_argument("--max-gap-s", type=float, default=10.0)
     ap.add_argument("--min-arc-s", type=float, default=120.0)
-    ap.add_argument("--min-sig", type=float, default=20.0,
-                    help="per-row lock-significance gate, BOTH bands (coasting sats export "
-                         "model+noise ADR; measured 07-17: phase does NOT survive a >10 s "
-                         "sub-sig fade -- rms jump 22 m at 10-20 s, km beyond -- so gated "
-                         "gaps are REAL arc breaks)")
+    ap.add_argument(
+        "--min-sig",
+        type=float,
+        default=20.0,
+        help="per-row lock-significance gate, BOTH bands (coasting sats export "
+        "model+noise ADR; measured 07-17: phase does NOT survive a >10 s "
+        "sub-sig fade -- rms jump 22 m at 10-20 s, km beyond -- so gated "
+        "gaps are REAL arc breaks)",
+    )
     ap.add_argument("--out", default="/tmp/tec")
-    ap.add_argument("--dump-series", action="store_true",
-                    help="also write <out>_series.npz: per-epoch differential TEC with sky "
-                         "position (t, sys, prn, arc, tecu, az, el) -- the TEC-movie input")
+    ap.add_argument(
+        "--dump-series",
+        action="store_true",
+        help="also write <out>_series.npz: per-epoch differential TEC with sky "
+        "position (t, sys, prn, arc, tecu, az, el) -- the TEC-movie input",
+    )
     args = ap.parse_args()
 
     pairs = [tuple(p.split(":")) for p in args.pair]
@@ -195,19 +212,25 @@ def main():
         rb = load(path_b, args.since_min * 60, sysid, args.min_sig)
         common = sorted(set(ra) & set(rb))
         if not common:
-            print(f"{sysid}: no common satellites with ADR in the window", file=sys.stderr)
+            print(
+                f"{sysid}: no common satellites with ADR in the window", file=sys.stderr
+            )
             continue
         pfa = ra[common[0]][0]["carrier_hz"]
         pfb = rb[common[0]][0]["carrier_hz"]
         if fa is None:
             fa, fb = pfa, pfb
-            fac = K * (1.0 / fa**2 - 1.0 / fb**2)  # m of L_gf per TECU (signed)
+            fac = K * (1.0 / fa ** 2 - 1.0 / fb ** 2)  # m of L_gf per TECU (signed)
         elif (pfa, pfb) != (fa, fb):
-            sys.exit(f"{sysid}: bands {pfa/1e6:.2f}/{pfb/1e6:.2f} != pooled "
-                     f"{fa/1e6:.2f}/{fb/1e6:.2f} MHz -- pooling requires identical pairs")
+            sys.exit(
+                f"{sysid}: bands {pfa/1e6:.2f}/{pfb/1e6:.2f} != pooled "
+                f"{fa/1e6:.2f}/{fb/1e6:.2f} MHz -- pooling requires identical pairs"
+            )
         lam_a, lam_b = C / pfa, C / pfb
-        print(f"{sysid}: bands {pfa/1e6:.2f} / {pfb/1e6:.2f} MHz: {fac:+.4f} m/TECU; "
-              f"sats {common}")
+        print(
+            f"{sysid}: bands {pfa/1e6:.2f} / {pfb/1e6:.2f} MHz: {fac:+.4f} m/TECU; "
+            f"sats {common}"
+        )
         for prn in common:
             for aa in arcs(ra[prn], args.max_gap_s):
                 for bb in arcs(rb[prn], args.max_gap_s):
@@ -225,8 +248,9 @@ def main():
                         ts.append(r["t"])
                         gf.append(lam_a * r["adr_cycles"] - lam_b * adr_b)
                         el.append(r.get("el"))
-                        geo.append((r.get("range_rate_mps"), r.get("range_m"),
-                                    r.get("az")))
+                        geo.append(
+                            (r.get("range_rate_mps"), r.get("range_m"), r.get("az"))
+                        )
                     if len(ts) >= 10:
                         sat_arcs.setdefault((sysid, prn), []).append((ts, gf, el, geo))
 
@@ -240,6 +264,7 @@ def main():
     # on the first overnight). Rates are start-time-invariant: per 1 s bin, median across sats
     # of d(gf)/dt = the clock rate (+ median TEC rate, slow); integrate to a common-mode level.
     from collections import defaultdict
+
     rates = defaultdict(list)
     for prn, arcs_ in sat_arcs.items():
         for ts, gf, _, _ in arcs_:
@@ -275,13 +300,13 @@ def main():
         num = den = 0.0
         j = ki
         while j >= 0 and t - keys[j] <= 60:
-            w = math.exp(-((t - keys[j]) / 10.0) ** 2 / 2.0)
+            w = math.exp(-(((t - keys[j]) / 10.0) ** 2) / 2.0)
             num += w * med_rate[keys[j]]
             den += w
             j -= 1
         j = ki + 1
         while j < len(keys) and keys[j] - t <= 60:
-            w = math.exp(-((keys[j] - t) / 10.0) ** 2 / 2.0)
+            w = math.exp(-(((keys[j] - t) / 10.0) ** 2) / 2.0)
             num += w * med_rate[keys[j]]
             den += w
             j += 1
@@ -291,8 +316,10 @@ def main():
         else:
             dead.add(t)
             med[t] = acc  # flat across a dead span; med_at refuses to serve it anyway
-    print(f"common-mode: {len(keys)} rate bins over {t_hi - t_lo}s, "
-          f"{len(dead)}s dead; sats with joint arcs: {sorted(sat_arcs)}")
+    print(
+        f"common-mode: {len(keys)} rate bins over {t_hi - t_lo}s, "
+        f"{len(dead)}s dead; sats with joint arcs: {sorted(sat_arcs)}"
+    )
 
     def med_at(t):
         k = math.floor(t)
@@ -303,10 +330,13 @@ def main():
     summary = []
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 8), sharex=True,
-                                       gridspec_kw={"height_ratios": [3, 1]})
+
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, figsize=(13, 8), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+        )
     except ImportError:
         fig = None
     t00 = min(min(ts) for a in sat_arcs.values() for ts, _, _, _ in a)
@@ -322,9 +352,9 @@ def main():
                 m = med_at(t)
                 if m is None:
                     continue
-                if prev_t is not None and any(s in dead
-                                              for s in range(math.floor(prev_t),
-                                                             math.floor(t) + 1)):
+                if prev_t is not None and any(
+                    s in dead for s in range(math.floor(prev_t), math.floor(t) + 1)
+                ):
                     segs.append([])
                 segs[-1].append((t, g - m, gg))
                 prev_t = t
@@ -338,34 +368,64 @@ def main():
             drift = tecu[-1] - tecu[0]
             mean = sum(tecu) / len(tecu)
             rms = math.sqrt(sum((x - mean) ** 2 for x in tecu) / len(tecu))
-            summary.append({"sys": sysid, "prn": prn, "arc": k, "span_s": round(span, 1),
-                            "n": len(rel), "dTEC_drift_TECU": round(drift, 3),
-                            "scatter_TECU_rms": round(rms, 3),
-                            "el_range": [el[0], el[-1]] if el[0] is not None else None})
+            summary.append(
+                {
+                    "sys": sysid,
+                    "prn": prn,
+                    "arc": k,
+                    "span_s": round(span, 1),
+                    "n": len(rel),
+                    "dTEC_drift_TECU": round(drift, 3),
+                    "scatter_TECU_rms": round(rms, 3),
+                    "el_range": [el[0], el[-1]] if el[0] is not None else None,
+                }
+            )
             if span > 1500:
-                long_arcs.append({"sys": sysid, "prn": prn, "arc": k,
-                                  "t": [round(r[0], 4) for r in rel],
-                                  "rel_m": [round(r[1], 5) for r in rel],
-                                  "rr": [g[0] for _, _, g in seg],
-                                  "rng": [g[1] for _, _, g in seg]})
+                long_arcs.append(
+                    {
+                        "sys": sysid,
+                        "prn": prn,
+                        "arc": k,
+                        "t": [round(r[0], 4) for r in rel],
+                        "rel_m": [round(r[1], 5) for r in rel],
+                        "rr": [g[0] for _, _, g in seg],
+                        "rng": [g[1] for _, _, g in seg],
+                    }
+                )
             if args.dump_series:
                 # az rides geo[2]; el needs realigning to the surviving seg epochs
                 el_by_t = {t_: e_ for t_, e_ in zip(ts, el)}
                 for (t_, g_, gg_), x in zip(seg, tecu):
                     az_ = gg_[2] if gg_[2] is not None else float("nan")
                     el_ = el_by_t.get(t_)
-                    series_rows.append((t_, sysid, prn, k, x, az_,
-                                        el_ if el_ is not None else float("nan")))
+                    series_rows.append(
+                        (
+                            t_,
+                            sysid,
+                            prn,
+                            k,
+                            x,
+                            az_,
+                            el_ if el_ is not None else float("nan"),
+                        )
+                    )
             if fig:
-                ax1.plot([(r[0] - t00) / 60 for r in rel], tecu, ".", ms=2,
-                         label=f"{sysid}{prn}" if k == 0 else None)
+                ax1.plot(
+                    [(r[0] - t00) / 60 for r in rel],
+                    tecu,
+                    ".",
+                    ms=2,
+                    label=f"{sysid}{prn}" if k == 0 else None,
+                )
     if fig:
         mts = sorted(med)
         ax2.plot([(t - t00) / 60 for t in mts], [med[t] for t in mts], "k.", ms=1)
         ax1.set_ylabel("differential slant TEC (TECU, arc-relative)")
         ax1.legend(ncol=6, fontsize=8)
-        ax1.set_title(f"geometry-free carrier {fa/1e6:.0f}/{fb/1e6:.0f} MHz -- "
-                      f"arc-segmented, common-mode removed")
+        ax1.set_title(
+            f"geometry-free carrier {fa/1e6:.0f}/{fb/1e6:.0f} MHz -- "
+            f"arc-segmented, common-mode removed"
+        )
         ax2.set_ylabel("common mode (m)\n[inter-band clk]")
         ax2.set_xlabel(f"minutes since {t00:.0f}")
         fig.tight_layout()
@@ -378,19 +438,25 @@ def main():
         print("wrote", args.out + "_long.json", f"({len(long_arcs)} arcs >1500s)")
     if args.dump_series and series_rows:
         import numpy as _np
+
         t_ = _np.array([r[0] for r in series_rows])
         sys_ = _np.array([r[1] for r in series_rows])
-        _np.savez_compressed(args.out + "_series.npz",
-                             t=t_, sys=sys_,
-                             prn=_np.array([r[2] for r in series_rows], dtype=_np.int16),
-                             arc=_np.array([r[3] for r in series_rows], dtype=_np.int32),
-                             tecu=_np.array([r[4] for r in series_rows]),
-                             az=_np.array([r[5] for r in series_rows]),
-                             el=_np.array([r[6] for r in series_rows]))
+        _np.savez_compressed(
+            args.out + "_series.npz",
+            t=t_,
+            sys=sys_,
+            prn=_np.array([r[2] for r in series_rows], dtype=_np.int16),
+            arc=_np.array([r[3] for r in series_rows], dtype=_np.int32),
+            tecu=_np.array([r[4] for r in series_rows]),
+            az=_np.array([r[5] for r in series_rows]),
+            el=_np.array([r[6] for r in series_rows]),
+        )
         print("wrote", args.out + "_series.npz", f"({len(series_rows)} epochs)")
     for s in summary:
-        print(f"  {s['sys']}{s['prn']:2d} arc{s['arc']} {s['span_s']:7.0f}s n={s['n']:5d} "
-              f"drift {s['dTEC_drift_TECU']:+7.3f} TECU  scatter {s['scatter_TECU_rms']:.3f} TECU")
+        print(
+            f"  {s['sys']}{s['prn']:2d} arc{s['arc']} {s['span_s']:7.0f}s n={s['n']:5d} "
+            f"drift {s['dTEC_drift_TECU']:+7.3f} TECU  scatter {s['scatter_TECU_rms']:.3f} TECU"
+        )
 
 
 if __name__ == "__main__":

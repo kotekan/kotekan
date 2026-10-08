@@ -60,10 +60,10 @@ public:
     ElemSteer(std::vector<double> positions_enu, std::vector<double> freq_mhz, int n_prn,
               double sign, double hold_s, double rebuild_s = 0.5) :
         _pos(std::move(positions_enu)), _f_mhz(std::move(freq_mhz)),
-        _n_elem((int)(_pos.size() / 3)), _n_chan((int)_f_mhz.size()), _sign(sign),
-        _hold_s(hold_s), _rebuild_s(rebuild_s > 0.0 ? rebuild_s : 0.5),
-        _tab((size_t)n_prn * _n_chan * _n_elem, cf(1.0f, 0.0f)),
-        _fresh_t((size_t)n_prn, -1.0e18), _trk((size_t)n_prn) {}
+        _n_elem((int)(_pos.size() / 3)), _n_chan((int)_f_mhz.size()), _sign(sign), _hold_s(hold_s),
+        _rebuild_s(rebuild_s > 0.0 ? rebuild_s : 0.5),
+        _tab((size_t)n_prn * _n_chan * _n_elem, cf(1.0f, 0.0f)), _fresh_t((size_t)n_prn, -1.0e18),
+        _trk((size_t)n_prn) {}
 
     bool enabled() const {
         return _n_elem > 0 && _n_chan > 0;
@@ -131,8 +131,7 @@ public:
         if (!k.moving || std::fabs(t_utc - k.built_utc) < _rebuild_s)
             return;
         const double dt = std::max(-_hold_s, std::min(_hold_s, t_utc - k.t0_utc));
-        double e[3] = {k.e[0] + k.edot[0] * dt, k.e[1] + k.edot[1] * dt,
-                       k.e[2] + k.edot[2] * dt};
+        double e[3] = {k.e[0] + k.edot[0] * dt, k.e[1] + k.edot[1] * dt, k.e[2] + k.edot[2] * dt};
         const double n = std::sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
         if (!(n > 0.0))
             return;
@@ -159,8 +158,7 @@ public:
         double dt = 0.0;
         if (k.moving && t_utc > 0.0)
             dt = std::max(-_hold_s, std::min(_hold_s, t_utc - k.t0_utc));
-        double e[3] = {k.e[0] + k.edot[0] * dt, k.e[1] + k.edot[1] * dt,
-                       k.e[2] + k.edot[2] * dt};
+        double e[3] = {k.e[0] + k.edot[0] * dt, k.e[1] + k.edot[1] * dt, k.e[2] + k.edot[2] * dt};
         const double n = std::sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
         if (!(n > 0.0))
             return false;
@@ -179,9 +177,9 @@ private:
     struct Track {
         double e[3] = {0.0, 0.0, 1.0};
         double edot[3] = {0.0, 0.0, 0.0};
-        double t0_utc = 0.0;     ///< the instant e describes (unix s); 0 = no epoch
-        double built_utc = 0.0;  ///< the instant the table currently describes
-        bool moving = false;     ///< rates and epoch present: refresh() extrapolates
+        double t0_utc = 0.0;    ///< the instant e describes (unix s); 0 = no epoch
+        double built_utc = 0.0; ///< the instant the table currently describes
+        bool moving = false;    ///< rates and epoch present: refresh() extrapolates
     };
 
     /// Fill one slot's [n_chan][n_elem] table for line-of-sight unit vector @p e (ENU).

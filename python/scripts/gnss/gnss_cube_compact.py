@@ -55,7 +55,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gnss_cube_read as raw  # noqa: E402
 
 TOOL_VERSION = 1
-L0_ROWS = ("idx", "slot", "prn", "n_rec", "n_reanchor", "phi0", "w", "energy", "coh", "incoh")
+L0_ROWS = (
+    "idx",
+    "slot",
+    "prn",
+    "n_rec",
+    "n_reanchor",
+    "phi0",
+    "w",
+    "energy",
+    "coh",
+    "incoh",
+)
 DEFAULT_POINTINGS = "/home/kvand/gnss/kotekan/config/pointings.yaml"
 
 
@@ -63,8 +74,10 @@ def h5py_mod():
     try:
         import h5py
     except ImportError:
-        raise SystemExit("h5py missing -- run with /home/kvand/gnss/venv/bin/python (venv-ft "
-                         "has no h5py)")
+        raise SystemExit(
+            "h5py missing -- run with /home/kvand/gnss/venv/bin/python (venv-ft "
+            "has no h5py)"
+        )
     return h5py
 
 
@@ -73,7 +86,9 @@ def utc_day(t):
 
 
 def iso(t):
-    return datetime.datetime.fromtimestamp(t, datetime.UTC).isoformat(timespec="milliseconds")
+    return datetime.datetime.fromtimestamp(t, datetime.UTC).isoformat(
+        timespec="milliseconds"
+    )
 
 
 def sender_name(chain):
@@ -106,9 +121,14 @@ def load_pointings(path):
     for e in epochs:
         if "id" not in e or "from" not in e:
             continue
-        t0 = datetime.datetime.fromisoformat(e["from"].replace("Z", "+00:00")).timestamp()
-        t1 = (datetime.datetime.fromisoformat(e["to"].replace("Z", "+00:00")).timestamp()
-              if e.get("to") not in (None, "", "null", "~") else None)
+        t0 = datetime.datetime.fromisoformat(
+            e["from"].replace("Z", "+00:00")
+        ).timestamp()
+        t1 = (
+            datetime.datetime.fromisoformat(e["to"].replace("Z", "+00:00")).timestamp()
+            if e.get("to") not in (None, "", "null", "~")
+            else None
+        )
         out.append((t0, t1, e["id"]))
     return sorted(out)
 
@@ -155,9 +175,11 @@ class L0File:
             a["created"] = iso(time.time())
             a["cube_versions"] = json.dumps([h["version"]])
             a["source_files"] = json.dumps([])
-            a["units"] = ("w: (record,channel) term count; energy: SUM replica energy; incoh: "
-                          "SUM |A|^2 (beam); coh: SUM A*rot referenced to phi0 (arc); all linear "
-                          "SUMS over the window's records, float32 as shipped")
+            a["units"] = (
+                "w: (record,channel) term count; energy: SUM replica energy; incoh: "
+                "SUM |A|^2 (beam); coh: SUM A*rot referenced to phi0 (arc); all linear "
+                "SUMS over the window's records, float32 as shipped"
+            )
             w = self.f.create_group("win")
             self._mk(w, "idx", np.int64)
             self._mk(w, "utc", np.float64)
@@ -180,11 +202,17 @@ class L0File:
             self._mk(r, "incoh", np.float32, (nb, ne))
         else:
             a = self.f.attrs
-            for k, v in (("n_bin", nb), ("n_elem", ne), ("win_samples", h["win_samples"]),
-                         ("sample_rate", h["sample_rate"])):
+            for k, v in (
+                ("n_bin", nb),
+                ("n_elem", ne),
+                ("win_samples", h["win_samples"]),
+                ("sample_rate", h["sample_rate"]),
+            ):
                 if a[k] != v:
-                    raise SystemExit(f"{path}: existing file has {k}={a[k]}, frame says {v} -- "
-                                     f"the sender's geometry changed mid-day; refusing to mix")
+                    raise SystemExit(
+                        f"{path}: existing file has {k}={a[k]}, frame says {v} -- "
+                        f"the sender's geometry changed mid-day; refusing to mix"
+                    )
             # An F-engine re-base mid-day puts two epochs in one day. That is NOT a reason to
             # refuse the day: every consumer reads ABSOLUTE time -- win/utc here, rows/utc0|utc1
             # after `rung`, and gnss_beam_cube.py reads those two and never this attribute -- and
@@ -195,20 +223,49 @@ class L0File:
             # ⚠️ THE GUARD THAT MATTERS IS THE MTIME GATE in cmd_compact. That is what catches a
             # frame stamped with a STALE epoch -- the real corruption, and a different thing from
             # a day that honestly contains two. Do not relax that one to make a day fold.
-        self.win = {k: [] for k in ("idx", "utc", "wstart0", "wstart1", "dropped", "n_live",
-                                    "freq_id_lo", "freq_id_hi")}
+        self.win = {
+            k: []
+            for k in (
+                "idx",
+                "utc",
+                "wstart0",
+                "wstart1",
+                "dropped",
+                "n_live",
+                "freq_id_lo",
+                "freq_id_hi",
+            )
+        }
         self.rows = {k: [] for k in L0_ROWS}
         self.versions = set(json.loads(self.f.attrs["cube_versions"]))
         prior = self.f.attrs.get("utc0_set")
-        self.utc0_set = set(json.loads(str(prior.decode() if isinstance(prior, bytes) else prior))
-                            ) if prior is not None else {float(self.f.attrs["utc0"])}
+        self.utc0_set = (
+            set(json.loads(str(prior.decode() if isinstance(prior, bytes) else prior)))
+            if prior is not None
+            else {float(self.f.attrs["utc0"])}
+        )
         self.utc0_set.add(float(utc0))
         self.sources = list(json.loads(self.f.attrs["source_files"]))
 
     def _mk(self, g, name, dtype, inner=()):
-        chunk = 4096 if not inner else max(1, min(1024, (1 << 20) // max(1, int(np.prod(inner)) * np.dtype(dtype).itemsize)))
-        g.create_dataset(name, shape=(0,) + inner, maxshape=(None,) + inner, dtype=dtype,
-                         chunks=(chunk,) + inner)
+        chunk = (
+            4096
+            if not inner
+            else max(
+                1,
+                min(
+                    1024,
+                    (1 << 20) // max(1, int(np.prod(inner)) * np.dtype(dtype).itemsize),
+                ),
+            )
+        )
+        g.create_dataset(
+            name,
+            shape=(0,) + inner,
+            maxshape=(None,) + inner,
+            dtype=dtype,
+            chunks=(chunk,) + inner,
+        )
 
     def add(self, h, a, utc):
         live = np.nonzero(a["n_rec"] > 0)[0]
@@ -231,8 +288,10 @@ class L0File:
             self.rows["w"].append(a["w"][p])
             self.rows["energy"].append(a["energy"][p])
             # complex64 from the two float32 planes: re/im survive exactly (same 24-bit mantissa)
-            self.rows["coh"].append(a["coh_re"][p].astype(np.float32)
-                                    + 1j * a["coh_im"][p].astype(np.float32))
+            self.rows["coh"].append(
+                a["coh_re"][p].astype(np.float32)
+                + 1j * a["coh_im"][p].astype(np.float32)
+            )
             self.rows["incoh"].append(a["incoh"][p])
 
     def flush(self, source_files):
@@ -306,7 +365,10 @@ def cmd_compact(args):
     h5py = h5py_mod()
     epochs = load_pointings(args.pointings)
     if not epochs:
-        print(f"⚠️ no pointing epochs in {args.pointings}; files go under l0/unknown/", file=sys.stderr)
+        print(
+            f"⚠️ no pointing epochs in {args.pointings}; files go under l0/unknown/",
+            file=sys.stderr,
+        )
     manifest = load_manifest(args.out)
     files = raw_files(args.raw, args.include_open)
     todo = []
@@ -329,19 +391,21 @@ def cmd_compact(args):
             # Grew since we folded it: rows already in L0 cannot be un-appended, and appending
             # the whole file again would duplicate. Only the newest file is ever open, so this
             # means --include-open was used on it earlier; it needs a --redo of that day.
-            print(f"⚠️ {key}: size {prev['size']} -> {st.st_size} since it was compacted "
-                  f"(--include-open earlier?). SKIPPED; rebuild the day with --redo.",
-                  file=sys.stderr)
+            print(
+                f"⚠️ {key}: size {prev['size']} -> {st.st_size} since it was compacted "
+                f"(--include-open earlier?). SKIPPED; rebuild the day with --redo.",
+                file=sys.stderr,
+            )
             continue
         todo.append(p)
     if args.limit:
-        todo = todo[:args.limit]
+        todo = todo[: args.limit]
     if not todo:
         print("nothing to do")
         return
     print(f"{len(todo)} raw file(s) to fold into {args.out}/l0")
 
-    open_files = {}   # (pointing, sender, day) -> L0File
+    open_files = {}  # (pointing, sender, day) -> L0File
     stats = dict(frames=0, rows=0, files=0, refused=0)
     t_start = time.time()
     batch_sources = []
@@ -358,31 +422,45 @@ def cmd_compact(args):
         st = os.stat(path)
         frames = list(raw.iter_frames(path))
         if not frames:
-            manifest[key] = dict(size=st.st_size, mtime=st.st_mtime, frames=0, note="empty")
+            manifest[key] = dict(
+                size=st.st_size, mtime=st.st_mtime, frames=0, note="empty"
+            )
             continue
         # -- epoch: from the frame (v3) or the flag (v2), gated against the file's mtime --------
         per_frame_utc0 = [h["utc0"] for h, _ in frames if h.get("utc0")]
         if per_frame_utc0:
             utc0, src = float(per_frame_utc0[-1]), "frame"
             if args.utc0 is not None and abs(args.utc0 - utc0) > 1e-3:
-                print(f"⚠️ {key}: frames carry utc0 {utc0!r}, --utc0 {args.utc0!r} ignored",
-                      file=sys.stderr)
+                print(
+                    f"⚠️ {key}: frames carry utc0 {utc0!r}, --utc0 {args.utc0!r} ignored",
+                    file=sys.stderr,
+                )
         elif args.utc0 is not None:
             utc0, src = float(args.utc0), "flag"
         else:
-            print(f"✗ {key}: v2 frames carry no utc0 and no --utc0 given -- REFUSED (an archive "
-                  f"dated by guess is worse than one not dated)", file=sys.stderr)
-            manifest[key] = dict(size=st.st_size, mtime=st.st_mtime, frames=len(frames),
-                                 refused="no utc0 in frames and no --utc0",
-                                 done=iso(time.time()))
+            print(
+                f"✗ {key}: v2 frames carry no utc0 and no --utc0 given -- REFUSED (an archive "
+                f"dated by guess is worse than one not dated)",
+                file=sys.stderr,
+            )
+            manifest[key] = dict(
+                size=st.st_size,
+                mtime=st.st_mtime,
+                frames=len(frames),
+                refused="no utc0 in frames and no --utc0",
+                done=iso(time.time()),
+            )
             stats["refused"] += 1
             continue
         last_utc = max(frame_utc(h, utc0) for h, _ in frames)
         gap = st.st_mtime - last_utc
         if not args.no_mtime_gate and not (-args.mtime_tol <= gap <= args.mtime_tol):
-            print(f"✗ {key}: last window dated {iso(last_utc)} but the file was last written "
-                  f"{iso(st.st_mtime)} ({gap:+.1f} s): the epoch ({src} utc0={utc0!r}) does not "
-                  f"describe this file. REFUSED.", file=sys.stderr)
+            print(
+                f"✗ {key}: last window dated {iso(last_utc)} but the file was last written "
+                f"{iso(st.st_mtime)} ({gap:+.1f} s): the epoch ({src} utc0={utc0!r}) does not "
+                f"describe this file. REFUSED.",
+                file=sys.stderr,
+            )
             # RECORD THE REFUSAL, do not just skip it. The verdict is a property of the file's
             # own bytes (its frames' utc0 against its mtime), so it cannot change on a retry --
             # but every pass was re-READING the file to reach that verdict again. With 349 of
@@ -390,9 +468,16 @@ def cmd_compact(args):
             # the compactor never idled and cf06's 1 GbE stayed saturated, for no work at all.
             # `--redo` still retries, and the end-of-run line below keeps the count visible so
             # a growing refusal set cannot hide in the manifest.
-            manifest[key] = dict(size=st.st_size, mtime=st.st_mtime, frames=len(frames),
-                                 refused="epoch does not describe file (mtime gate)",
-                                 utc0=utc0, utc0_source=src, gap_s=gap, done=iso(time.time()))
+            manifest[key] = dict(
+                size=st.st_size,
+                mtime=st.st_mtime,
+                frames=len(frames),
+                refused="epoch does not describe file (mtime gate)",
+                utc0=utc0,
+                utc0_source=src,
+                gap_s=gap,
+                done=iso(time.time()),
+            )
             stats["refused"] += 1
             continue
         for h, a in frames:
@@ -403,24 +488,41 @@ def cmd_compact(args):
             k = (pid, snd, day)
             lf = open_files.get(k)
             if lf is None:
-                lf = L0File(h5py, os.path.join(args.out, "l0", pid, snd, day + ".h5"), h, utc0,
-                            src, pid, day)
+                lf = L0File(
+                    h5py,
+                    os.path.join(args.out, "l0", pid, snd, day + ".h5"),
+                    h,
+                    utc0,
+                    src,
+                    pid,
+                    day,
+                )
                 open_files[k] = lf
             lf.add(h, a, utc)
             stats["frames"] += 1
         batch_sources.append(key)
-        manifest[key] = dict(size=st.st_size, mtime=st.st_mtime, frames=len(frames),
-                             utc0=utc0, utc0_source=src, first_utc=frame_utc(frames[0][0], utc0),
-                             last_utc=last_utc, done=iso(time.time()))
+        manifest[key] = dict(
+            size=st.st_size,
+            mtime=st.st_mtime,
+            frames=len(frames),
+            utc0=utc0,
+            utc0_source=src,
+            first_utc=frame_utc(frames[0][0], utc0),
+            last_utc=last_utc,
+            done=iso(time.time()),
+        )
         stats["files"] += 1
         if (i + 1) % args.batch == 0 or i + 1 == len(todo):
             stats["rows"] += sum(len(lf.rows["idx"]) for lf in open_files.values())
             flush_all()
             save_manifest(args.out, manifest)
             el = time.time() - t_start
-            print(f"  {i + 1}/{len(todo)} raw files, {stats['frames']} frames, "
-                  f"{len(open_files)} L0 files open, {el:.0f} s "
-                  f"({stats['frames'] / max(el, 1e-9):.0f} frames/s)", flush=True)
+            print(
+                f"  {i + 1}/{len(todo)} raw files, {stats['frames']} frames, "
+                f"{len(open_files)} L0 files open, {el:.0f} s "
+                f"({stats['frames'] / max(el, 1e-9):.0f} frames/s)",
+                flush=True,
+            )
             # Close files for days that can no longer receive rows (keeps handles bounded).
             days = sorted({k[2] for k in open_files})
             if len(days) > 1:
@@ -433,9 +535,15 @@ def cmd_compact(args):
     # never persist its refusals and would re-read every one of them again next pass.
     save_manifest(args.out, manifest)
     el = time.time() - t_start
-    print(f"done: {stats['files']} raw files, {stats['frames']} frames, {stats['rows']} live rows "
-          f"in {el:.0f} s; {stats['refused']} refused"
-          + (f"; {reskipped} previously-refused skipped (--redo to retry)" if reskipped else ""))
+    print(
+        f"done: {stats['files']} raw files, {stats['frames']} frames, {stats['rows']} live rows "
+        f"in {el:.0f} s; {stats['refused']} refused"
+        + (
+            f"; {reskipped} previously-refused skipped (--redo to retry)"
+            if reskipped
+            else ""
+        )
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -475,11 +583,20 @@ def cmd_ls(args):
                 info.append((p, None))
                 continue
             order = np.argsort(idx)
-            d = dict(idx=idx[order], dropped=f["win/dropped"][:][order], utc=f["win/utc"][:][order],
-                     nrows=f["rows/idx"].shape[0], host=str(f.attrs["sender"]).split("_", 1)[0])
+            d = dict(
+                idx=idx[order],
+                dropped=f["win/dropped"][:][order],
+                utc=f["win/utc"][:][order],
+                nrows=f["rows/idx"].shape[0],
+                host=str(f.attrs["sender"]).split("_", 1)[0],
+            )
             dd = np.diff(d["idx"])
-            d["gaps"] = {(int(d["idx"][j]), int(d["idx"][j + 1])): int(d["dropped"][j + 1] - d["dropped"][j])
-                         for j in np.nonzero(dd > 1)[0]}
+            d["gaps"] = {
+                (int(d["idx"][j]), int(d["idx"][j + 1])): int(
+                    d["dropped"][j + 1] - d["dropped"][j]
+                )
+                for j in np.nonzero(dd > 1)[0]
+            }
             info.append((p, d))
     # host-wide = every other sender file of that host has a gap at the same place. The edges never
     # match exactly: senders close their last window a second apart, and the GPU-1 stages come up
@@ -491,19 +608,25 @@ def cmd_ls(args):
     by_host = {}
     for p, d in info:
         if d:
-            by_host.setdefault(d["host"], []).append((int(d["idx"][0]), int(d["idx"][-1]), list(d["gaps"])))
+            by_host.setdefault(d["host"], []).append(
+                (int(d["idx"][0]), int(d["idx"][-1]), list(d["gaps"]))
+            )
 
     def is_hostwide(host, a, b):
         others = [g for i0, i1, g in by_host.get(host, []) if i0 <= a and i1 >= b]
         if len(others) < 2:
             return False
+
         def same(a2, b2):
             ov = min(b, b2) - max(a, a2)
             return ov >= 0.8 * max(b - a, b2 - a2)
+
         return all(any(same(a2, b2) for a2, b2 in g) for g in others)
 
-    print(f"{'file':<58} {'wins':>6} {'span':>6} {'holes':>5} {'sdrop':>5} {'rows':>8} "
-          f"{'live/w':>6} {'MB':>7}  first .. last (UTC)")
+    print(
+        f"{'file':<58} {'wins':>6} {'span':>6} {'holes':>5} {'sdrop':>5} {'rows':>8} "
+        f"{'live/w':>6} {'MB':>7}  first .. last (UTC)"
+    )
     tot = dict(holes=0, sdrop=0, hostwide=0, downstream=0)
     for p, d in info:
         name = os.path.relpath(p, args.rel) if args.rel else p
@@ -516,10 +639,14 @@ def cmd_ls(args):
         holes = span - uniq
         sdrop = int(dropped[-1] - dropped[0])
         mb = os.path.getsize(p) / 1e6
-        print(f"{name:<58} {uniq:>6} {span:>6} {holes:>5} {sdrop:>5} {d['nrows']:>8} "
-              f"{d['nrows'] / max(uniq, 1):>6.2f} {mb:>7.1f}  {iso(utc[0])[11:23]} .. {iso(utc[-1])[11:23]}")
+        print(
+            f"{name:<58} {uniq:>6} {span:>6} {holes:>5} {sdrop:>5} {d['nrows']:>8} "
+            f"{d['nrows'] / max(uniq, 1):>6.2f} {mb:>7.1f}  {iso(utc[0])[11:23]} .. {iso(utc[-1])[11:23]}"
+        )
         if uniq != len(idx):
-            print(f"   ⚠️ {len(idx) - uniq} DUPLICATE window(s) -- a raw file folded twice?")
+            print(
+                f"   ⚠️ {len(idx) - uniq} DUPLICATE window(s) -- a raw file folded twice?"
+            )
         tot["holes"] += holes
         tot["sdrop"] += sdrop
         pos = {int(v): k for k, v in enumerate(idx)}
@@ -528,13 +655,23 @@ def cmd_ls(args):
             if sd:
                 kind = f"sender dropped {sd}"
             elif is_hostwide(d["host"], a, b):
-                kind, tot["hostwide"] = "host-wide (node down/restart)", tot["hostwide"] + n
+                kind, tot["hostwide"] = (
+                    "host-wide (node down/restart)",
+                    tot["hostwide"] + n,
+                )
             else:
-                kind, tot["downstream"] = "DOWNSTREAM (transport/archiver)", tot["downstream"] + n
+                kind, tot["downstream"] = (
+                    "DOWNSTREAM (transport/archiver)",
+                    tot["downstream"] + n,
+                )
             if args.gaps or kind.startswith("DOWNSTREAM"):
-                print(f"   gap {n:>5} win after idx {a} ({iso(utc[pos[a]])[11:19]})  {kind}")
-    print(f"\nholes {tot['holes']}: host-wide {tot['hostwide']}, downstream {tot['downstream']}, "
-          f"sender-side drops {tot['sdrop']} (never added: different faults)")
+                print(
+                    f"   gap {n:>5} win after idx {a} ({iso(utc[pos[a]])[11:19]})  {kind}"
+                )
+    print(
+        f"\nholes {tot['holes']}: host-wide {tot['hostwide']}, downstream {tot['downstream']}, "
+        f"sender-side drops {tot['sdrop']} (never added: different faults)"
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -575,13 +712,20 @@ def cmd_rung(args):
             inv = inv.ravel()
             m = len(uk)
             out = dict(
-                blk=uk[:, 0], slot=uk[:, 1].astype(np.int16), prn=uk[:, 2].astype(np.int16),
-                idx0=np.full(m, np.iinfo(np.int64).max, np.int64), idx1=np.full(m, -1, np.int64),
-                n_win=np.zeros(m, np.int32), n_rec=np.zeros(m, np.int64), n_reanchor=np.zeros(m, np.int64),
-                w=np.zeros((m,) + w.shape[1:], np.float64), energy=np.zeros((m,) + en.shape[1:], np.float64),
+                blk=uk[:, 0],
+                slot=uk[:, 1].astype(np.int16),
+                prn=uk[:, 2].astype(np.int16),
+                idx0=np.full(m, np.iinfo(np.int64).max, np.int64),
+                idx1=np.full(m, -1, np.int64),
+                n_win=np.zeros(m, np.int32),
+                n_rec=np.zeros(m, np.int64),
+                n_reanchor=np.zeros(m, np.int64),
+                w=np.zeros((m,) + w.shape[1:], np.float64),
+                energy=np.zeros((m,) + en.shape[1:], np.float64),
                 incoh=np.zeros((m,) + incoh.shape[1:], np.float64),
                 cohpow=np.zeros((m,) + incoh.shape[1:], np.float64),
-                cohref=np.zeros((m,) + coh.shape[1:], np.complex128))
+                cohref=np.zeros((m,) + coh.shape[1:], np.complex128),
+            )
             np.minimum.at(out["idx0"], inv, idx)
             np.maximum.at(out["idx1"], inv, idx)
             np.add.at(out["n_win"], inv, 1)
@@ -590,9 +734,13 @@ def cmd_rung(args):
             np.add.at(out["w"], inv, w.astype(np.float64))
             np.add.at(out["energy"], inv, en.astype(np.float64))
             np.add.at(out["incoh"], inv, incoh.astype(np.float64))
-            np.add.at(out["cohpow"], inv, (coh.real.astype(np.float64) ** 2 + coh.imag.astype(np.float64) ** 2))
+            np.add.at(
+                out["cohpow"],
+                inv,
+                (coh.real.astype(np.float64) ** 2 + coh.imag.astype(np.float64) ** 2),
+            )
             c128 = coh.astype(np.complex128)
-            np.add.at(out["cohref"], inv, c128 * np.conj(c128[:, :, ref:ref + 1]))
+            np.add.at(out["cohref"], inv, c128 * np.conj(c128[:, :, ref : ref + 1]))
             # block time: from the window table (utc of the block's first/last window present)
             worder = np.argsort(widx)
             widx_s, wutc_s = widx[worder], wutc[worder]
@@ -603,7 +751,11 @@ def cmd_rung(args):
             # windows present per block, for completeness
             wblk = widx // n
             ub, cnt = np.unique(wblk, return_counts=True)
-            rel = os.path.relpath(p, os.path.join(args.l0_root, "l0")) if args.l0_root else os.path.basename(p)
+            rel = (
+                os.path.relpath(p, os.path.join(args.l0_root, "l0"))
+                if args.l0_root
+                else os.path.basename(p)
+            )
             dst = os.path.join(args.out, f"rung{n}", rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             if os.path.exists(dst):
@@ -620,10 +772,12 @@ def cmd_rung(args):
                 g.attrs["freq_id_lo"] = f["win/freq_id_lo"][0]
                 g.attrs["freq_id_hi"] = f["win/freq_id_hi"][0]
                 g.attrs["created"] = iso(time.time())
-                g.attrs["units"] = ("SUMS over the block's windows of the L0 sums (float64); cohpow = "
-                                    "SUM |coh|^2 per window; cohref = SUM coh[e]*conj(coh[ref_elem]) "
-                                    "-- the per-element relative response, blind to the per-window "
-                                    "phase reference; n_win = windows with this (slot, prn) present")
+                g.attrs["units"] = (
+                    "SUMS over the block's windows of the L0 sums (float64); cohpow = "
+                    "SUM |coh|^2 per window; cohref = SUM coh[e]*conj(coh[ref_elem]) "
+                    "-- the per-element relative response, blind to the per-window "
+                    "phase reference; n_win = windows with this (slot, prn) present"
+                )
                 b = g.create_group("blk")
                 b.create_dataset("blk", data=ub)
                 b.create_dataset("n_win_present", data=cnt.astype(np.int32))
@@ -637,9 +791,11 @@ def cmd_rung(args):
                         v = v.astype(np.complex64)
                     r.create_dataset(k, data=v)
             split = int(np.sum(np.unique(uk[:, :2], axis=0, return_counts=True)[1] > 1))
-            print(f"{dst}: {m} rows from {len(idx)} L0 rows, {len(ub)} blocks, ref_elem {ref}, "
-                  f"{split} (block,slot) pairs split by a prn swap, "
-                  f"{os.path.getsize(dst) / 1e6:.1f} MB (L0 {os.path.getsize(p) / 1e6:.1f} MB)")
+            print(
+                f"{dst}: {m} rows from {len(idx)} L0 rows, {len(ub)} blocks, ref_elem {ref}, "
+                f"{split} (block,slot) pairs split by a prn swap, "
+                f"{os.path.getsize(dst) / 1e6:.1f} MB (L0 {os.path.getsize(p) / 1e6:.1f} MB)"
+            )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -656,7 +812,11 @@ def cmd_verify(args):
     utc0 = float(per_frame_utc0[-1]) if per_frame_utc0 else args.utc0
     if utc0 is None:
         raise SystemExit("v2 frames: pass --utc0")
-    cells = [(fi, p) for fi, (h, a) in enumerate(frames) for p in np.nonzero(a["n_rec"] > 0)[0]]
+    cells = [
+        (fi, p)
+        for fi, (h, a) in enumerate(frames)
+        for p in np.nonzero(a["n_rec"] > 0)[0]
+    ]
     pick = rng.choice(len(cells), size=min(args.n, len(cells)), replace=False)
     bad = 0
     cache = {}
@@ -664,8 +824,13 @@ def cmd_verify(args):
         fi, p = cells[c]
         h, a = frames[fi]
         utc = frame_utc(h, utc0)
-        path = os.path.join(args.l0, "l0", pointing_at(epochs, utc), sender_name(h["chain"]),
-                            utc_day(utc) + ".h5")
+        path = os.path.join(
+            args.l0,
+            "l0",
+            pointing_at(epochs, utc),
+            sender_name(h["chain"]),
+            utc_day(utc) + ".h5",
+        )
         if path not in cache:
             if not os.path.exists(path):
                 print(f"✗ missing {path}")
@@ -682,7 +847,9 @@ def cmd_verify(args):
         f, ridx, rslot = cache[path]
         hit = np.nonzero((ridx == h["idx"]) & (rslot == p))[0]
         if len(hit) != 1:
-            print(f"✗ idx {h['idx']} slot {p}: {len(hit)} row(s) in {os.path.basename(path)}")
+            print(
+                f"✗ idx {h['idx']} slot {p}: {len(hit)} row(s) in {os.path.basename(path)}"
+            )
             bad += 1
             continue
         r = int(hit[0])
@@ -698,8 +865,14 @@ def cmd_verify(args):
             ("coh_im", np.array_equal(f["rows/coh"][r].imag, a["coh_im"][p])),
         ]
         wi = np.nonzero(f["win/idx"][:] == h["idx"])[0]
-        checks.append(("win", len(wi) == 1 and abs(float(f["win/utc"][wi[0]]) - utc) < 1e-6
-                       and int(f["win/wstart0"][wi[0]]) == h["wstart0"]))
+        checks.append(
+            (
+                "win",
+                len(wi) == 1
+                and abs(float(f["win/utc"][wi[0]]) - utc) < 1e-6
+                and int(f["win/wstart0"][wi[0]]) == h["wstart0"],
+            )
+        )
         fails = [k for k, ok in checks if not ok]
         if fails:
             print(f"✗ idx {h['idx']} slot {p} prn {a['prn'][p]}: {fails}")
@@ -707,42 +880,66 @@ def cmd_verify(args):
     for v in cache.values():
         if v:
             v[0].close()
-    print(f"{'PASS' if not bad else 'FAIL'}: {len(pick) - bad}/{len(pick)} cells bit-identical "
-          f"({len(cache)} L0 file(s), {len(frames)} frames in {os.path.basename(args.raw)})")
+    print(
+        f"{'PASS' if not bad else 'FAIL'}: {len(pick) - bad}/{len(pick)} cells bit-identical "
+        f"({len(cache)} L0 file(s), {len(frames)} frames in {os.path.basename(args.raw)})"
+    )
     return 1 if bad else 0
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("compact", help="raw -> L0 HDF5 per (pointing, sender, day)")
     p.add_argument("--raw", default="/mnt/cs00/data/kvand/gnss_cube/raw")
     p.add_argument("--out", default="/mnt/cs00/data/kvand/gnss_cube")
-    p.add_argument("--utc0", type=float, help="UTC of F-engine sample 0 (REQUIRED for v2 frames)")
-    p.add_argument("--mtime-tol", type=float, default=60.0,
-                   help="max |utc(last window) - file mtime| before the epoch is refused "
-                        "(measured 09-05: mtime - last window = +1.2 .. +2.6 s)")
+    p.add_argument(
+        "--utc0", type=float, help="UTC of F-engine sample 0 (REQUIRED for v2 frames)"
+    )
+    p.add_argument(
+        "--mtime-tol",
+        type=float,
+        default=60.0,
+        help="max |utc(last window) - file mtime| before the epoch is refused "
+        "(measured 09-05: mtime - last window = +1.2 .. +2.6 s)",
+    )
     p.add_argument("--no-mtime-gate", action="store_true")
-    p.add_argument("--include-open", action="store_true", help="also fold the newest (open) file")
+    p.add_argument(
+        "--include-open", action="store_true", help="also fold the newest (open) file"
+    )
     p.add_argument("--batch", type=int, default=12, help="raw files per HDF5 flush")
     p.add_argument("--limit", type=int, default=0)
-    p.add_argument("--redo", action="store_true", help="ignore the manifest (DUPLICATES rows in "
-                   "existing L0 files -- delete the day's L0 first)")
+    p.add_argument(
+        "--redo",
+        action="store_true",
+        help="ignore the manifest (DUPLICATES rows in "
+        "existing L0 files -- delete the day's L0 first)",
+    )
     p.add_argument("--pointings", default=DEFAULT_POINTINGS)
     p.set_defaults(fn=cmd_compact)
     p = sub.add_parser("ls", help="completeness of L0 files")
     p.add_argument("paths", nargs="+")
-    p.add_argument("--gaps", action="store_true", help="list every hole with its attribution")
+    p.add_argument(
+        "--gaps", action="store_true", help="list every hole with its attribution"
+    )
     p.add_argument("--rel", help="print paths relative to this dir")
     p.set_defaults(fn=cmd_ls)
     p = sub.add_parser("rung", help="L0 -> exact n-window sums")
     p.add_argument("files", nargs="+")
     p.add_argument("--n", type=int, required=True, choices=(12, 60))
     p.add_argument("--out", default="/mnt/cs00/data/kvand/gnss_cube")
-    p.add_argument("--l0-root", default="/mnt/cs00/data/kvand/gnss_cube",
-                   help="root whose l0/ prefix is replaced by rung<n>/ in the output path")
-    p.add_argument("--ref-elem", type=int, help="element for cohref (default: strongest mean incoh)")
+    p.add_argument(
+        "--l0-root",
+        default="/mnt/cs00/data/kvand/gnss_cube",
+        help="root whose l0/ prefix is replaced by rung<n>/ in the output path",
+    )
+    p.add_argument(
+        "--ref-elem",
+        type=int,
+        help="element for cohref (default: strongest mean incoh)",
+    )
     p.set_defaults(fn=cmd_rung)
     p = sub.add_parser("verify", help="raw <-> L0 bit-for-bit round trip")
     p.add_argument("--raw", required=True)

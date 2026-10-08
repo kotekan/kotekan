@@ -99,8 +99,8 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
         if (gather_aa)
             for (size_t k1 = 0; k1 < live_cols.size(); k1++)
                 for (size_t k2 = 0; k2 <= k1; k2++)
-                    sel.push_back({f, 512 * (live_cols[k1] * (live_cols[k1] + 1) / 2
-                                             + live_cols[k2])});
+                    sel.push_back(
+                        {f, 512 * (live_cols[k1] * (live_cols[k1] + 1) / 2 + live_cols[k2])});
         // BB (synth x synth) LAST, and only on request: the lower triangle over the synth
         // tile rows, (ihi - na16, jhi - na16) at k1*(k1+1)/2 + k2 in this block. The kernel
         // computes it regardless (dropping it measured no win); the tracker never reads it,
@@ -147,18 +147,15 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
     _num_times(config.get<int>(unique_name, "num_times")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_synth(config.get_default<int>(unique_name, "num_synth", 128)),
-    _num_live_elements(
-        config.get_default<int>(unique_name, "num_live_elements", _num_elements)),
+    _num_live_elements(config.get_default<int>(unique_name, "num_live_elements", _num_elements)),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
     _sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
     _n2k_correlation_name(config.get<std::string>(unique_name, "n2k_correlation_name")),
     _gnss_tiles_name(config.get<std::string>(unique_name, "gnss_tiles_name")),
-    _gnss_synth_name(
-        config.get_default<std::string>(unique_name, "gnss_synth_name", "gnss_synth")),
-    _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name,
-                                                               "gnss_local_channels")),
+    _gnss_synth_name(config.get_default<std::string>(unique_name, "gnss_synth_name", "gnss_synth")),
+    _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name, "gnss_local_channels")),
     _live_tile_cols(live_tile_columns(config, unique_name, _num_live_elements)),
     _synth_compact(config.get_default<bool>(unique_name, "gnss_synth_compact", false)),
     _rfi_all_pass(config.get_default<bool>(unique_name, "rfi_all_pass", false)),
@@ -372,9 +369,9 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
 
     // The input ringbuffer metadata do not contain time-dependent metadata,
     // so we must reconstruct it here. (fpga_seq_num)
-    const auto seq0 = voltage_meta->get_fpga_seq_num()
-                      + voltage.get_read_valid().begin()
-                            * voltage_meta->get_time_downsampling_fpga();
+    const auto seq0 =
+        voltage_meta->get_fpga_seq_num()
+        + voltage.get_read_valid().begin() * voltage_meta->get_time_downsampling_fpga();
     n2k_corr_meta->set_fpga_seq_num(seq0);
     n2k_corr_meta->set_time_downsampling_fpga(_sub_integration_ntime
                                               * voltage_meta->get_time_downsampling_fpga());
@@ -437,13 +434,12 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
     // computed there (MIXED|BB only) and the surviving channels are the comb, not all of them,
     // so there is no standard N^2 to pass through.
     if (!_freq_map_mode) {
-    const size_t width_bytes =
-        (size_t)num_triangle_blocks(_num_elements, 16) * 512 * sizeof(std::int32_t);
-    const size_t src_pitch = (size_t)dp.vmat_fstride * sizeof(std::int32_t);
-    CHECK_CUDA_ERROR(cudaMemcpy2DAsync(n2k_correlation.get_ndarray().data(), width_bytes, d_vis,
-                                       src_pitch, width_bytes,
-                                       (size_t)num_subintegrations * _num_local_freq,
-                                       cudaMemcpyDeviceToDevice, stream));
+        const size_t width_bytes =
+            (size_t)num_triangle_blocks(_num_elements, 16) * 512 * sizeof(std::int32_t);
+        const size_t src_pitch = (size_t)dp.vmat_fstride * sizeof(std::int32_t);
+        CHECK_CUDA_ERROR(cudaMemcpy2DAsync(
+            n2k_correlation.get_ndarray().data(), width_bytes, d_vis, src_pitch, width_bytes,
+            (size_t)num_subintegrations * _num_local_freq, cudaMemcpyDeviceToDevice, stream));
     }
 
     // SPLIT 2: the GNSS tiles of the comb channels only, one gather per output buffer.

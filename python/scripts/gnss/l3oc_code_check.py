@@ -37,7 +37,9 @@ import tempfile
 import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CPP_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss"))
+CPP_DIR = os.path.normpath(
+    os.path.join(HERE, "..", "..", "..", "lib", "stages", "gnss")
+)
 CPP = os.path.join(CPP_DIR, "glonassL3OCCode.cpp")
 
 N = 10230
@@ -56,10 +58,18 @@ REF = {
 # (crc32 of the code as a "01" string with +1 -> "1", popcount of +1). Recorded from the run
 # that passed the bit-exact C++/python comparison, so these pin BOTH implementations.
 FINGERPRINTS = {
-    "L3OCd": {1: (0x05d98a18, 5094), 7: (0x901857c4, 5200),
-              19: (0xc8ad7d00, 5074), 63: (0x5bff8816, 5034)},
-    "L3OCp": {1: (0x78f17598, 5095), 7: (0xed30a844, 5103),
-              19: (0xb5858280, 5177), 63: (0x26d77796, 5129)},
+    "L3OCd": {
+        1: (0x05D98A18, 5094),
+        7: (0x901857C4, 5200),
+        19: (0xC8AD7D00, 5074),
+        63: (0x5BFF8816, 5034),
+    },
+    "L3OCp": {
+        1: (0x78F17598, 5095),
+        7: (0xED30A844, 5103),
+        19: (0xB5858280, 5177),
+        63: (0x26D77796, 5129),
+    },
 }
 
 
@@ -87,8 +97,10 @@ def _code(prn, pilot, dc1):
 
 
 def _fp(code):
-    return (zlib.crc32("".join("1" if x > 0 else "0" for x in code).encode()),
-            sum(1 for x in code if x > 0))
+    return (
+        zlib.crc32("".join("1" if x > 0 else "0" for x in code).encode()),
+        sum(1 for x in code if x > 0),
+    )
 
 
 def _parse_cpp_constants():
@@ -116,8 +128,12 @@ def _cpp_codes():
     {(component, prn): [chips]} or None if no compiler is available."""
     cxx = None
     for cand in ("g++-12", "g++", "clang++"):
-        if subprocess.call(["which", cand], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL) == 0:
+        if (
+            subprocess.call(
+                ["which", cand], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            == 0
+        ):
             cxx = cand
             break
     if cxx is None:
@@ -141,17 +157,23 @@ int main() {
         src = os.path.join(td, "dump.cpp")
         exe = os.path.join(td, "dump")
         open(src, "w").write(main)
-        r = subprocess.run([cxx, "-std=c++17", "-O1", "-I", CPP_DIR, src, CPP, "-o", exe],
-                           capture_output=True, text=True)
+        r = subprocess.run(
+            [cxx, "-std=c++17", "-O1", "-I", CPP_DIR, src, CPP, "-o", exe],
+            capture_output=True,
+            text=True,
+        )
         if r.returncode != 0:
-            print("   (C++ compile failed, skipping bit-exact check)\n%s" % r.stderr[:800])
+            print(
+                "   (C++ compile failed, skipping bit-exact check)\n%s" % r.stderr[:800]
+            )
             return None
         out = subprocess.run([exe], capture_output=True, text=True).stdout
     codes = {}
     for line in out.splitlines():
         prn, pilot, bits = line.split()
-        codes[("L3OCp" if int(pilot) else "L3OCd", int(prn))] = [1 if b == "1" else -1
-                                                                 for b in bits]
+        codes[("L3OCp" if int(pilot) else "L3OCd", int(prn))] = [
+            1 if b == "1" else -1 for b in bits
+        ]
     return codes
 
 
@@ -177,13 +199,18 @@ def main():
     got = _parse_cpp_constants()
     for k, want in REF.items():
         if k not in got:
-            print("constants: could not parse %s out of the C++ -- check the literal's shape" % k)
+            print(
+                "constants: could not parse %s out of the C++ -- check the literal's shape"
+                % k
+            )
             ok = False
         elif got[k] != want:
             print("constants: %s = %s in C++, reference says %s" % (k, got[k], want))
             ok = False
     if ok:
-        print("constants: DC1 seed/tap/len + short tap/len + pilot offset all match the reference")
+        print(
+            "constants: DC1 seed/tap/len + short tap/len + pilot offset all match the reference"
+        )
 
     # ---- 2. algorithm -------------------------------------------------------
     dc1 = _dc1()
@@ -196,27 +223,40 @@ def main():
     # the C++ is guarding something real rather than being decorative.
     zero = _code(0, False, dc1)
     if zero != dc1:
-        print("index 0: expected the degenerate case to reproduce DC1 exactly -- it did not, so"
-              " the LFSR convention here and in the C++ may have drifted")
+        print(
+            "index 0: expected the degenerate case to reproduce DC1 exactly -- it did not, so"
+            " the LFSR convention here and in the C++ may have drifted"
+        )
         ok = False
     else:
-        print("index 0: confirmed DEGENERATE (collapses to DC1) -- the 1..63 range check is load"
-              "-bearing")
+        print(
+            "index 0: confirmed DEGENERATE (collapses to DC1) -- the 1..63 range check is load"
+            "-bearing"
+        )
 
     allc = {k: tuple(v) for k, v in codes.items()}
     if len(set(allc.values())) != 2 * N_PRN:
-        print("codes: NOT distinct across data+pilot (%d unique of %d)"
-              % (len(set(allc.values())), 2 * N_PRN))
+        print(
+            "codes: NOT distinct across data+pilot (%d unique of %d)"
+            % (len(set(allc.values())), 2 * N_PRN)
+        )
         ok = False
     else:
-        print("codes: all %d distinct (data 1..63 and pilot 1..63 disjoint)" % (2 * N_PRN))
+        print(
+            "codes: all %d distinct (data 1..63 and pilot 1..63 disjoint)" % (2 * N_PRN)
+        )
 
-    bal = {c: [sum(codes[(c, p)]) for p in range(1, N_PRN + 1)] for c in ("L3OCd", "L3OCp")}
+    bal = {
+        c: [sum(codes[(c, p)]) for p in range(1, N_PRN + 1)] for c in ("L3OCd", "L3OCp")
+    }
     for c, b in bal.items():
         # A product of two truncated m-sequences is not perfectly balanced; a few hundred out of
         # 10230 is normal. Orders of magnitude more would mean a stuck register.
         if max(abs(x) for x in b) > 600:
-            print("%s: balance out of range: %d..%d (suspect a stuck LFSR)" % (c, min(b), max(b)))
+            print(
+                "%s: balance out of range: %d..%d (suspect a stuck LFSR)"
+                % (c, min(b), max(b))
+            )
             ok = False
         else:
             print("%s: balance %d..%d over 10230 chips" % (c, min(b), max(b)))
@@ -225,7 +265,10 @@ def main():
     if sl is None:
         print("sidelobes: numpy unavailable, skipped")
     elif sl > -20.0:
-        print("sidelobes: worst autocorrelation sidelobe %.1f dB -- too high for a ranging code" % sl)
+        print(
+            "sidelobes: worst autocorrelation sidelobe %.1f dB -- too high for a ranging code"
+            % sl
+        )
         ok = False
     else:
         print("sidelobes: worst autocorrelation sidelobe %.1f dB (L3OCd PRN 1)" % sl)
@@ -237,12 +280,16 @@ def main():
     else:
         bad = [k for k in codes if cpp.get(k) != codes[k]]
         if bad:
-            print("bit-exact: %d of %d codes DIFFER between C++ and python (e.g. %s)"
-                  % (len(bad), len(codes), bad[:4]))
+            print(
+                "bit-exact: %d of %d codes DIFFER between C++ and python (e.g. %s)"
+                % (len(bad), len(codes), bad[:4])
+            )
             ok = False
         else:
-            print("bit-exact: all %d codes identical between C++ and python, chip for chip"
-                  % len(codes))
+            print(
+                "bit-exact: all %d codes identical between C++ and python, chip for chip"
+                % len(codes)
+            )
 
     # ---- fingerprints -------------------------------------------------------
     for comp in ("L3OCd", "L3OCp"):
@@ -250,10 +297,15 @@ def main():
             crc, pop = _fp(codes[(comp, prn)])
             want = FINGERPRINTS[comp].get(prn)
             if want is None:
-                print("   %s PRN %2d: crc=0x%08x pop=%d (recording)" % (comp, prn, crc, pop))
+                print(
+                    "   %s PRN %2d: crc=0x%08x pop=%d (recording)"
+                    % (comp, prn, crc, pop)
+                )
             elif (crc, pop) != tuple(want):
-                print("   %s PRN %2d: crc=0x%08x pop=%d MISMATCH (stored %s)"
-                      % (comp, prn, crc, pop, want))
+                print(
+                    "   %s PRN %2d: crc=0x%08x pop=%d MISMATCH (stored %s)"
+                    % (comp, prn, crc, pop, want)
+                )
                 ok = False
             else:
                 print("   %s PRN %2d: crc=0x%08x pop=%d OK" % (comp, prn, crc, pop))

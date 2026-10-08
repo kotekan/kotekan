@@ -34,7 +34,9 @@ def stage_fleet_trim_arming(ctx):
     and never by neither. Recording after a POST would mean a failed POST leaves both sides
     believing the other is driving."""
     if ctx.args.fleet_trim_url:
-        _now_present = [_p for _p in (ctx.dllp.fleet or {}) if ctx.dllp.fleet[_p].get("present")]
+        _now_present = [
+            _p for _p in (ctx.dllp.fleet or {}) if ctx.dllp.fleet[_p].get("present")
+        ]
         for _p in _now_present:
             ctx.dls.hold[_p] = time.time()
         # ── #91(b): THE BROWNOUT FREEZE ──────────────────────────────────────────────
@@ -52,7 +54,9 @@ def stage_fleet_trim_arming(ctx):
         # dll_integrate((1-0)*trim + 0*tau) == trim, exactly.
         #
         # Per-chain is the right granularity precisely BECAUSE a brownout is chain-wide.
-        _brown_hold = (ctx.args.fleet_trim_brownout_hold_s > 0.0 and ctx.brown.established())
+        _brown_hold = (
+            ctx.args.fleet_trim_brownout_hold_s > 0.0 and ctx.brown.established()
+        )
         # ── #106 ESTABLISHMENT FREEZE: BUILT, FLOWN, FALSIFIED, DEFAULT OFF (2026-09-02) ──
         # ⚠️⚠️ DO NOT TURN THIS ON WITHOUT NEW EVIDENCE. It is kept because the instrument
         # is worth having and the flight is worth recording, not because it works.
@@ -97,11 +101,14 @@ def stage_fleet_trim_arming(ctx):
         # blind to by construction for the same reason; the coverage lives in
         # test_trimarm.py instead, where the clock is an argument.
         _estab_left = 0.0
-        if (ctx.args.fleet_trim_establish_hold_s > 0.0
-                and not getattr(ctx.args, "transcript_read", None)):
-            _estab_left = (ctx.args.joint_feed_warmup_s
-                           + ctx.args.fleet_trim_establish_hold_s
-                           - (time.time() - ctx.broker_t0))
+        if ctx.args.fleet_trim_establish_hold_s > 0.0 and not getattr(
+            ctx.args, "transcript_read", None
+        ):
+            _estab_left = (
+                ctx.args.joint_feed_warmup_s
+                + ctx.args.fleet_trim_establish_hold_s
+                - (time.time() - ctx.broker_t0)
+            )
         _estab_hold = _estab_left > 0.0
         # ⚠️ A FREEZE, NOT A DISARM, for exactly the reason #91(b) records below: disarming
         # ERASES the standing trim (an unarmed trim leaks to zero in ~5.6 s), which would
@@ -110,11 +117,15 @@ def stage_fleet_trim_arming(ctx):
         # change. The PRNs stay armed so the Python integrator still stands down and
         # authority is never held by both arms.
         _freeze = _brown_hold or _estab_hold
-        _hold_s = (max(ctx.args.fleet_trim_hold_s, ctx.args.fleet_trim_brownout_hold_s)
-                   if _brown_hold else ctx.args.fleet_trim_hold_s)
+        _hold_s = (
+            max(ctx.args.fleet_trim_hold_s, ctx.args.fleet_trim_brownout_hold_s)
+            if _brown_hold
+            else ctx.args.fleet_trim_hold_s
+        )
         # PRESENCE WITH A HOLD, not presence sampled at an instant -- see the flag.
-        _armed = sorted(_p for _p, _t in ctx.dls.hold.items()
-                        if time.time() - _t < _hold_s)
+        _armed = sorted(
+            _p for _p, _t in ctx.dls.hold.items() if time.time() - _t < _hold_s
+        )
         # THE HANDOVER'S HALF-STEP: record what we are about to hand the fast loop, so
         # NEXT cycle's slow integrator stands down for exactly the PRNs the C++ side is
         # actuating. Recorded before the POST rather than after, because a failed POST
@@ -138,18 +149,23 @@ def stage_fleet_trim_arming(ctx):
         # local median, unchanged. And the floor rides EVERY policy POST rather than being
         # latched: probes come and go with the sky, and a stale floor held across a
         # brightness change is a gate nobody chose.
-        _pol = {"chains": {ctx.telem_chain: {
-            "armed": _armed,
-            # BANDWIDTH, not per-update gain -- the controller converts with its measured
-            # rate. The slow DLL's dll_gain/dll_leak_present are NOT reused here: those
-            # constants are per-update at THIS process's cadence, and reusing them at
-            # 23.84 Hz is exactly the limit cycle of 2026-08-15. See the two flags.
-            # #91(b): frozen during a brownout -- retained, driven by nothing.
-            "gain_per_s": 0.0 if _freeze else ctx.args.fleet_trim_bandwidth,
-            "leak_per_s": 0.0 if _freeze else ctx.args.fleet_trim_leak_per_s,
-            "clamp": 3.0,
-            "spacing": ctx.args.dll_spacing,
-            "targets": ["%s/set_trim" % t for t in ctx.trackers]}}}
+        _pol = {
+            "chains": {
+                ctx.telem_chain: {
+                    "armed": _armed,
+                    # BANDWIDTH, not per-update gain -- the controller converts with its measured
+                    # rate. The slow DLL's dll_gain/dll_leak_present are NOT reused here: those
+                    # constants are per-update at THIS process's cadence, and reusing them at
+                    # 23.84 Hz is exactly the limit cycle of 2026-08-15. See the two flags.
+                    # #91(b): frozen during a brownout -- retained, driven by nothing.
+                    "gain_per_s": 0.0 if _freeze else ctx.args.fleet_trim_bandwidth,
+                    "leak_per_s": 0.0 if _freeze else ctx.args.fleet_trim_leak_per_s,
+                    "clamp": 3.0,
+                    "spacing": ctx.args.dll_spacing,
+                    "targets": ["%s/set_trim" % t for t in ctx.trackers],
+                }
+            }
+        }
         # ⚠️ ALWAYS SHIPPED NOW (2026-08-27). This used to be behind
         # --fleet-trim-floor-from-probes, with the key ABSENT when off so the equivalence
         # digests would not move -- absent parsed as 0.0 in the C++, which selected the
@@ -163,12 +179,16 @@ def stage_fleet_trim_arming(ctx):
             # Chain-level fact, identical on every row: read one, deliberately. And ONLY a
             # probe-anchored floor ships -- passing anything else through as absolute would
             # rebuild the competition this removes, one level up.
-            if str(_v.get("p_floor_src", "")).startswith("probes:") and _v.get("p_floor"):
+            if str(_v.get("p_floor_src", "")).startswith("probes:") and _v.get(
+                "p_floor"
+            ):
                 _floor_abs = float(_v["p_floor"])
             break
         _pol["chains"][ctx.telem_chain]["p_floor_abs"] = _floor_abs
         try:
-            _post("%s/set_policy" % ctx.args.fleet_trim_url.rstrip("/"), _pol, timeout=2.0)
+            _post(
+                "%s/set_policy" % ctx.args.fleet_trim_url.rstrip("/"), _pol, timeout=2.0
+            )
             ctx.dls.stat["posts"] += 1
             ctx.dls.stat["armed"] = len(_armed)
         except Exception as _e:
@@ -180,30 +200,42 @@ def stage_fleet_trim_arming(ctx):
         if _brown_hold:
             # Loud and rate-limited: a frozen loop is a state someone must be able to see
             # in the log, or "the trims stopped moving" reads as a dead controller.
-            _log_rl("fleet-trim-freeze",
-                    "%s: #91 BROWNOUT FREEZE -- %d PRN(s) HELD (gain=leak=0, hold %.0f s): "
-                    "standing trims retained, loop driving nothing until presence returns"
-                    % (log_tag() or ctx.args.signal, len(_armed), _hold_s),
-                    every_s=30.0)
+            _log_rl(
+                "fleet-trim-freeze",
+                "%s: #91 BROWNOUT FREEZE -- %d PRN(s) HELD (gain=leak=0, hold %.0f s): "
+                "standing trims retained, loop driving nothing until presence returns"
+                % (log_tag() or ctx.args.signal, len(_armed), _hold_s),
+                every_s=30.0,
+            )
         elif _estab_hold:
             # Named apart from the brownout on purpose: same actuation, completely
             # different cause, and reading an establishment freeze as a presence collapse
             # would send someone hunting a fade that never happened.
-            _log_rl("fleet-trim-estab",
-                    "%s: ESTABLISHMENT FREEZE -- %d PRN(s) HELD (gain=leak=0, %.0f s "
-                    "remain): standing trims retained while the clock, the seed audit and "
-                    "the joint feed settle. Without this the fast loop chases the "
-                    "establishment step common-mode into its %.1f-chip clamp for ~8 min "
-                    "(measured 2026-09-02) and every q-gated instrument reads the thrash."
-                    % (log_tag() or ctx.args.signal, len(_armed), _estab_left, 3.0),
-                    every_s=60.0)
-        _log_rl("fleet-trim",
-                "FLEET-TRIM %s: %d PRN(s) armed to %s, %d posts / %d failed%s"
-                % (log_tag() or ctx.args.signal, len(_armed), ctx.args.fleet_trim_url,
-                   ctx.dls.stat["posts"], ctx.dls.stat["fail"],
-                   ("  last err %s" % ctx.dls.stat["last_err"])
-                   if ctx.dls.stat["last_err"] else ""),
-                every_s=30.0)
+            _log_rl(
+                "fleet-trim-estab",
+                "%s: ESTABLISHMENT FREEZE -- %d PRN(s) HELD (gain=leak=0, %.0f s "
+                "remain): standing trims retained while the clock, the seed audit and "
+                "the joint feed settle. Without this the fast loop chases the "
+                "establishment step common-mode into its %.1f-chip clamp for ~8 min "
+                "(measured 2026-09-02) and every q-gated instrument reads the thrash."
+                % (log_tag() or ctx.args.signal, len(_armed), _estab_left, 3.0),
+                every_s=60.0,
+            )
+        _log_rl(
+            "fleet-trim",
+            "FLEET-TRIM %s: %d PRN(s) armed to %s, %d posts / %d failed%s"
+            % (
+                log_tag() or ctx.args.signal,
+                len(_armed),
+                ctx.args.fleet_trim_url,
+                ctx.dls.stat["posts"],
+                ctx.dls.stat["fail"],
+                ("  last err %s" % ctx.dls.stat["last_err"])
+                if ctx.dls.stat["last_err"]
+                else "",
+            ),
+            every_s=30.0,
+        )
         # #76 THE READBACK -- close the loop this block opened. GET the controller's
         # standing trims right after handing it policy, so this cycle's view of "where
         # does the tracker's tap actually sit" is seed + trim rather than seed alone.
@@ -213,22 +245,33 @@ def stage_fleet_trim_arming(ctx):
         # "missing = unknown" is the truthful state ([[chord-stale-artifacts]]).
         if ctx.args.fleet_trim_readback:
             try:
-                _rb = _get("%s/get_dll" % ctx.args.fleet_trim_url.rstrip("/"), timeout=2.0)
+                _rb = _get(
+                    "%s/get_dll" % ctx.args.fleet_trim_url.rstrip("/"), timeout=2.0
+                )
                 _rows = (_rb or {}).get(ctx.telem_chain) or {}
                 ctx.dls.readback.clear()
                 for _p, _r in _rows.items():
                     if isinstance(_r, dict) and "trim_chips" in _r:
                         ctx.dls.readback[int(_p)] = _r
                 ctx.dls.stat["rb"] += 1
-                _log_rl("fleet-trim-rb",
-                        "FLEET-TRIM READBACK %s: %s"
-                        % (log_tag() or ctx.args.signal,
-                           " ".join("%d:%+.3f%s"
-                                    % (_p, ctx.dls.readback[_p]["trim_chips"],
-                                       "" if ctx.dls.readback[_p].get("armed") else "(rel)")
-                                    for _p in sorted(ctx.dls.readback))
-                           or "no standing trim"),
-                        every_s=30.0)
+                _log_rl(
+                    "fleet-trim-rb",
+                    "FLEET-TRIM READBACK %s: %s"
+                    % (
+                        log_tag() or ctx.args.signal,
+                        " ".join(
+                            "%d:%+.3f%s"
+                            % (
+                                _p,
+                                ctx.dls.readback[_p]["trim_chips"],
+                                "" if ctx.dls.readback[_p].get("armed") else "(rel)",
+                            )
+                            for _p in sorted(ctx.dls.readback)
+                        )
+                        or "no standing trim",
+                    ),
+                    every_s=30.0,
+                )
             except Exception as _e:
                 # Same rule as the POST above: never take the cycle down for the fast
                 # loop. Counted and surfaced, and the dict stays empty until a poll
@@ -251,8 +294,12 @@ def stage_fleet_trim_arming(ctx):
                 _t_rb = time.time()
                 _jg = None
                 try:
-                    _jg = ctx.rx.joint_receiver(ctx.band_id, ctx.code_len,
-                                            rereference=ctx.args.joint_rereference, gauge_mode=ctx.args.joint_gauge)
+                    _jg = ctx.rx.joint_receiver(
+                        ctx.band_id,
+                        ctx.code_len,
+                        rereference=ctx.args.joint_rereference,
+                        gauge_mode=ctx.args.joint_gauge,
+                    )
                 except Exception:
                     _jg = None
                 _g3_rows = []
@@ -267,8 +314,9 @@ def stage_fleet_trim_arming(ctx):
                     # gather applied them to the trim, so removing them makes the
                     # series continuous across re-bases (longer windows) and keeps
                     # sub-0.3-chip adjustments out of the slope.
-                    ctx.g3_ramp.update(_p, _t_rb,
-                                    ctx.handover.corrected(_p, float(_r["trim_chips"])))
+                    ctx.g3_ramp.update(
+                        _p, _t_rb, ctx.handover.corrected(_p, float(_r["trim_chips"]))
+                    )
                     _fit3 = ctx.g3_ramp.fit(_p)
                     if _fit3 is None:
                         continue
@@ -282,25 +330,38 @@ def stage_fleet_trim_arming(ctx):
                     # code chips/s (K = f_chip/f_carrier ~ 0.0087). Fresh within
                     # 60 s or absent.
                     _av = ctx.rf.adr_span_now.get(_p)
-                    _adr = ((_av[0] * ctx.args.chip_rate_hz / ctx.args.carrier_hz)
-                            if (_av is not None and _t_rb - _av[1] <= 60.0)
-                            else None)
+                    _adr = (
+                        (_av[0] * ctx.args.chip_rate_hz / ctx.args.carrier_hz)
+                        if (_av is not None and _t_rb - _av[1] <= 60.0)
+                        else None
+                    )
                     _g3_rows.append((_p, _prd, _adr, _msl, _ym, _spn))
                 ctx.g3_ramp.retain(ctx.dls.readback)
                 if _g3_rows:
-                    _log_rl("gap3-shadow",
-                            "GAP3-SHADOW %s (chips/s; p=row a=ADR-span "
-                            "m=trim slope @mean trim): %s"
-                            % (log_tag() or ctx.args.signal,
-                               " ".join("%d:p%s/a%s/m%+.5f@%+.2f(%ds)"
-                                        % (_p, ("%+.5f" % _pr)
-                                           if _pr is not None else "--",
-                                           ("%+.5f" % _ad)
-                                           if _ad is not None else "--",
-                                           _ms, _tmn, int(_sp))
-                                        for _p, _pr, _ad, _ms, _tmn, _sp
-                                        in _g3_rows)),
-                            every_s=60.0)
+                    _log_rl(
+                        "gap3-shadow",
+                        "GAP3-SHADOW %s (chips/s; p=row a=ADR-span "
+                        "m=trim slope @mean trim): %s"
+                        % (
+                            log_tag() or ctx.args.signal,
+                            " ".join(
+                                "%d:p%s/a%s/m%+.5f@%+.2f(%ds)"
+                                % (
+                                    _p,
+                                    ("%+.5f" % _pr) if _pr is not None else "--",
+                                    ("%+.5f" % _ad) if _ad is not None else "--",
+                                    _ms,
+                                    _tmn,
+                                    int(_sp),
+                                )
+                                for _p, _pr, _ad, _ms, _tmn, _sp in _g3_rows
+                            ),
+                        ),
+                        every_s=60.0,
+                    )
             except Exception as _e:
-                _log_rl("gap3-shadow-err", "GAP3-SHADOW error (shadow only): %s" % _e,
-                        every_s=300.0)
+                _log_rl(
+                    "gap3-shadow-err",
+                    "GAP3-SHADOW error (shadow only): %s" % _e,
+                    every_s=300.0,
+                )

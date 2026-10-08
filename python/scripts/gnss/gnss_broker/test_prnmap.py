@@ -50,7 +50,9 @@ class Args(object):
         self.prn_reconfig_lead_s = 2.0
         self.prn_reconfig_axis_max_age_s = 30.0
         self.hops_per_sec = 125000.0
-        self.prn_reconfig_heartbeat_s = 1e18   # off by default in tests; check 11 arms it
+        self.prn_reconfig_heartbeat_s = (
+            1e18  # off by default in tests; check 11 arms it
+        )
         self.probe_require_slot = False
         self.noise_probes = 0
         self.signal = "GAL_E5A_Q_CS"
@@ -63,7 +65,7 @@ class Ctx(object):
     def __init__(self, slots, pred, t0=1000.0, **kw):
         self.args = Args(**kw)
         self.trackers = ["http://node1", "http://node2"]
-        self.detectors = ["http://search1"]   # a follower: gets the map, is not polled
+        self.detectors = ["http://search1"]  # a follower: gets the map, is not polled
         self.t0 = t0
         self.pred = {p: (0.0, 0.0, el, 0.0, 0.0) for p, el in pred.items()}
         self.prnmap = prnmap.PrnMapState()
@@ -77,8 +79,11 @@ class Ctx(object):
         # was sampled. None models "the axis is unknown", which must degrade to an UNSCHEDULED
         # post, not to no post. fe_hop_t defaults to t0 -- i.e. the poll happened at the top of
         # this cycle, which is where the real one happens.
-        self.fe_hop_now = kw.pop("fe_hop_now", 1_000_000_000.0) \
-            if "fe_hop_now" in kw else 1_000_000_000.0
+        self.fe_hop_now = (
+            kw.pop("fe_hop_now", 1_000_000_000.0)
+            if "fe_hop_now" in kw
+            else 1_000_000_000.0
+        )
         self.fe_hop_t = kw.pop("fe_hop_t", t0) if "fe_hop_t" in kw else t0
 
 
@@ -134,15 +139,21 @@ def main():
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {1: -20.0, 2: 40.0, 3: 30.0, 36: 83.0})
     run_cycle(ctx, 1000.0)
-    check(len([u for u, _ in POSTS if "node" in u]) == 2,
-          "a satellite up at 83 deg takes a below-horizon incumbent's slot IMMEDIATELY, on "
-          "both nodes -- no hold timer, because a slot below the horizon is idle NOW")
-    check(len([u for u, _ in POSTS if "search" in u]) == 1,
-          "the SEARCH is driven with the same map (it holds its own copy and has no frame to "
-          "learn it from, unlike the assembler)")
+    check(
+        len([u for u, _ in POSTS if "node" in u]) == 2,
+        "a satellite up at 83 deg takes a below-horizon incumbent's slot IMMEDIATELY, on "
+        "both nodes -- no hold timer, because a slot below the horizon is idle NOW",
+    )
+    check(
+        len([u for u, _ in POSTS if "search" in u]) == 1,
+        "the SEARCH is driven with the same map (it holds its own copy and has no frame to "
+        "learn it from, unlike the assembler)",
+    )
     if POSTS:
-        check(POSTS[0][1]["prns"] == [36, 2, 3],
-              "the swap replaces the down incumbent in ITS slot, leaving the rest alone")
+        check(
+            POSTS[0][1]["prns"] == [36, 2, 3],
+            "the swap replaces the down incumbent in ITS slot, leaving the rest alone",
+        )
 
     # ---- 2. HYSTERESIS: a held satellite is not dropped the instant it dips -------------
     # The lesson the down-clock encoded, and it still holds: BRDC visibility flickers, and a
@@ -153,20 +164,29 @@ def main():
     ctx = Ctx([1, 2, 3], {1: 2.0, 2: 40.0, 3: 30.0, 9: 2.0})
     run_cycle(ctx, 1000.0)
     _held_kept = not POSTS or all(1 in pl["prns"] for _u, pl in POSTS)
-    check(_held_kept, "a HELD satellite at +2 deg (below the 10 deg admit mask) is KEPT -- "
-                      "that is the hysteresis band, and dropping it would be the flap")
-    check(not any(9 in pl["prns"] for _u, pl in POSTS),
-          "... while a NEW satellite at the same +2 deg is not admitted: the band has two "
-          "edges or it is not hysteresis")
+    check(
+        _held_kept,
+        "a HELD satellite at +2 deg (below the 10 deg admit mask) is KEPT -- "
+        "that is the hysteresis band, and dropping it would be the flap",
+    )
+    check(
+        not any(9 in pl["prns"] for _u, pl in POSTS),
+        "... while a NEW satellite at the same +2 deg is not admitted: the band has two "
+        "edges or it is not hysteresis",
+    )
 
     # ---- 3. A DEAD SLOT IS REUSED AT ONCE ----------------------------------------------
     # A PRN with no ephemeris produces literally nothing. Waiting 2 h to reclaim its slot was
     # never justified by a re-acquisition cost, because there was nothing to re-acquire.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0})   # PRN 1 absent from BRDC entirely
+    ctx = Ctx(
+        [1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}
+    )  # PRN 1 absent from BRDC entirely
     run_cycle(ctx, 1000.0)
-    check(any(36 in pl["prns"] for _u, pl in POSTS),
-          "a slot holding a PRN with NO ephemeris is reclaimed on sight")
+    check(
+        any(36 in pl["prns"] for _u, pl in POSTS),
+        "a slot holding a PRN with NO ephemeris is reclaimed on sight",
+    )
 
     # ---- 4. A FREE SLOT GOES TO ANYONE, INCLUDING A LOW SATELLITE ----------------------
     # ⚠️ THIS TEST ASSERTED THE BUG until 2026-08-27 and then CAUGHT ITS REGRESSION the same
@@ -175,11 +195,13 @@ def main():
     # (below the 10 deg admit mask) nor a probe (above -15 deg), so it fell in the gap and was
     # refused a slot that was standing empty.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 4.0})   # PRN 1 GONE -> slot 0 is FREE
+    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 4.0})  # PRN 1 GONE -> slot 0 is FREE
     run_cycle(ctx, 1000.0)
-    check(any(36 in pl["prns"] for _u, pl in POSTS),
-          "a FREE slot IS filled by a 4 deg satellite -- nothing to re-acquire, and it is a "
-          "probe today and a tracked satellite tomorrow")
+    check(
+        any(36 in pl["prns"] for _u, pl in POSTS),
+        "a FREE slot IS filled by a 4 deg satellite -- nothing to re-acquire, and it is a "
+        "probe today and a tracked satellite tomorrow",
+    )
 
     # ... but it must NOT buy an eviction. Every slot occupied by a satellite that is UP:
     # nothing is free, and a 4 deg candidate is not worth a re-acquisition.
@@ -187,30 +209,42 @@ def main():
     ctx = Ctx([1, 2, 3], {1: 20.0, 2: 40.0, 3: 30.0, 36: 4.0})
     run_cycle(ctx, 1000.0)
     run_cycle(ctx, 1000.0 + 100000.0)
-    check(not POSTS,
-          "a 4 deg satellite does NOT evict anyone (the up-now bar still governs swaps)")
+    check(
+        not POSTS,
+        "a 4 deg satellite does NOT evict anyone (the up-now bar still governs swaps)",
+    )
 
     # ---- 4b. the probe supply is never evicted -----------------------------------------
     # A satellite deep below the horizon for hours IS the chain's noise anchor. Trading it
     # for one more tracked satellite costs the presence gate its floor, which is worth far
     # more than the satellite the swap bought.
     POSTS[:] = []
-    deep = {1: -70.0, 2: -65.0, 3: -60.0, 36: 83.0}      # all three held sats are deep probes
+    deep = {
+        1: -70.0,
+        2: -65.0,
+        3: -60.0,
+        36: 83.0,
+    }  # all three held sats are deep probes
     ctx = Ctx([1, 2, 3], deep)
     ctx.args.noise_probes = 3
     run_cycle(ctx, 1000.0)
     run_cycle(ctx, 1000.0 + 100000.0)
-    check(not POSTS,
-          "with noise_probes=3 and exactly 3 deep-below-horizon slots, NONE is evicted even "
-          "for an 83 deg satellite -- the probe supply is not spare capacity")
-    deep4 = dict(deep); deep4[4] = -55.0   # a 4th deep satellite exists, unslotted
+    check(
+        not POSTS,
+        "with noise_probes=3 and exactly 3 deep-below-horizon slots, NONE is evicted even "
+        "for an 83 deg satellite -- the probe supply is not spare capacity",
+    )
+    deep4 = dict(deep)
+    deep4[4] = -55.0  # a 4th deep satellite exists, unslotted
     ctx2 = Ctx([1, 2, 3], deep4)
-    ctx2.args.noise_probes = 2                            # only 2 must be held back
+    ctx2.args.noise_probes = 2  # only 2 must be held back
     POSTS[:] = []
     run_cycle(ctx2, 1000.0)
     run_cycle(ctx2, 1000.0 + 100000.0)
-    check(any("36" in str(pl) for _u, pl in POSTS),
-          "... but with only 2 needed, the shallowest deep slot IS free to be traded")
+    check(
+        any("36" in str(pl) for _u, pl in POSTS),
+        "... but with only 2 needed, the shallowest deep slot IS free to be traded",
+    )
 
     # ---- 4c. AN UNWANTED SATELLITE DOES NOT DISPLACE ANOTHER ---------------------------
     # Every slot holds a real satellite and one more has none, all of them below the horizon
@@ -219,29 +253,48 @@ def main():
     # every interval from 01:25 to 06:37Z on 2026-10-07, each flip a cold acquisition on
     # twelve instances. Production thresholds.
     POSTS[:] = []
-    sky = {1: 40.0, 2: 30.0, 3: -70.0, 4: -55.0, 5: -20.0, 6: -54.0}   # 6 has no slot
-    ctx = Ctx([1, 2, 3, 4, 5], sky, prn_reconfig_admit_deg=0.0, prn_reconfig_evict_deg=-2.0,
-              noise_probes=1, prn_reconfig_interval_s=120.0)
+    sky = {1: 40.0, 2: 30.0, 3: -70.0, 4: -55.0, 5: -20.0, 6: -54.0}  # 6 has no slot
+    ctx = Ctx(
+        [1, 2, 3, 4, 5],
+        sky,
+        prn_reconfig_admit_deg=0.0,
+        prn_reconfig_evict_deg=-2.0,
+        noise_probes=1,
+        prn_reconfig_interval_s=120.0,
+    )
     for k in range(6):
         run_cycle(ctx, 1000.0 + k * 121.0)
-    check(not POSTS,
-          "two unwanted satellites never trade a slot: the map is a fixed point, not a swap "
-          "every interval")
+    check(
+        not POSTS,
+        "two unwanted satellites never trade a slot: the map is a fixed point, not a swap "
+        "every interval",
+    )
     sky_dead = dict(sky)
-    del sky_dead[5]                                     # ... but a DEAD slot still fills
+    del sky_dead[5]  # ... but a DEAD slot still fills
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3, 4, 5], sky_dead, prn_reconfig_admit_deg=0.0,
-              prn_reconfig_evict_deg=-2.0, noise_probes=1, prn_reconfig_interval_s=120.0)
+    ctx = Ctx(
+        [1, 2, 3, 4, 5],
+        sky_dead,
+        prn_reconfig_admit_deg=0.0,
+        prn_reconfig_evict_deg=-2.0,
+        noise_probes=1,
+        prn_reconfig_interval_s=120.0,
+    )
     run_cycle(ctx, 1000.0)
-    check(POSTS and POSTS[0][1]["prns"] == [1, 2, 3, 4, 6],
-          "... while a slot whose PRN has no prediction is still handed to the unslotted one")
+    check(
+        POSTS and POSTS[0][1]["prns"] == [1, 2, 3, 4, 6],
+        "... while a slot whose PRN has no prediction is still handed to the unslotted one",
+    )
 
     # ---- 5. report mode posts nothing, ever -------------------------------------------
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="report")
     run_cycle(ctx, 1000.0)
     run_cycle(ctx, 1000.0 + 100000.0)
-    check(not POSTS, "report mode NEVER posts -- the property that makes it safe to arm first")
+    check(
+        not POSTS,
+        "report mode NEVER posts -- the property that makes it safe to arm first",
+    )
 
     # ---- 6. off does nothing at all ---------------------------------------------------
     POSTS[:] = []
@@ -262,9 +315,11 @@ def main():
 
     split_cycle(1000.0)
     split_cycle(1000.0 + 100000.0)
-    check(not POSTS,
-          "a 1-1 split with no reference (no majority, nothing this broker posted) changes "
-          "nothing -- nothing here is per-node, and neither side is the fleet's")
+    check(
+        not POSTS,
+        "a 1-1 split with no reference (no majority, nothing this broker posted) changes "
+        "nothing -- nothing here is per-node, and neither side is the fleet's",
+    )
 
     # ---- 7b. A NODE BACK ON ITS BOOT LIST IS PUT BACK ON THE FLEET'S MAP -----------------
     # A node restart reverts that node to its config's list. The stage used to treat that
@@ -278,7 +333,7 @@ def main():
     odd["http://node4"] = list(boot)
 
     def sweep(ctx, maps, t, pending=None):
-        CTX[0] = None   # a resync reaches ONE node, not the shared node_state
+        CTX[0] = None  # a resync reaches ONE node, not the shared node_state
         ctx.t0 = t
         ctx.prnmap.poll_t = t
         ctx.prnmap.maps = {k: list(v) for k, v in maps.items()}
@@ -290,13 +345,19 @@ def main():
     ctx = Ctx(fleet, sky)
     ctx.trackers = nodes
     sweep(ctx, odd, 1000.0)
-    check([u for u, _ in POSTS] == ["http://node4/set_prns"],
-          "a 3-1 split (no broker history, as after a broker restart): the odd node, and "
-          "only it, is sent the majority's map")
-    check(POSTS and POSTS[0][1] == {"prns": fleet},
-          "... the whole map, unscheduled -- one node crosses, there is no fleet frame to share")
-    check("http://node4" not in ctx.prnmap.maps,
-          "... and its map is read back before anything else is decided")
+    check(
+        [u for u, _ in POSTS] == ["http://node4/set_prns"],
+        "a 3-1 split (no broker history, as after a broker restart): the odd node, and "
+        "only it, is sent the majority's map",
+    )
+    check(
+        POSTS and POSTS[0][1] == {"prns": fleet},
+        "... the whole map, unscheduled -- one node crosses, there is no fleet frame to share",
+    )
+    check(
+        "http://node4" not in ctx.prnmap.maps,
+        "... and its map is read back before anything else is decided",
+    )
     n_posts = len(POSTS)
     sweep(ctx, {n: list(fleet) for n in nodes}, 1001.0)
     check(len(POSTS) == n_posts, "once it holds the map again, nothing more is posted")
@@ -306,9 +367,11 @@ def main():
     ctx = Ctx(fleet, sky)
     ctx.prnmap.applied = list(fleet)
     sweep(ctx, {"http://node1": list(fleet), "http://node2": list(boot)}, 1000.0)
-    check([u for u, _ in POSTS] == ["http://node2/set_prns"],
-          "a 1-1 split where one node holds the map this broker last posted: the other node "
-          "missed it (a timeout, a restart) and is sent it")
+    check(
+        [u for u, _ in POSTS] == ["http://node2/set_prns"],
+        "a 1-1 split where one node holds the map this broker last posted: the other node "
+        "missed it (a timeout, a restart) and is sent it",
+    )
 
     # ---- 7d. MID-CROSSING IS NOT A SPLIT -------------------------------------------------
     POSTS[:] = []
@@ -316,30 +379,41 @@ def main():
     ctx = Ctx(fleet, sky)
     ctx.trackers = nodes
     sweep(ctx, odd, 1000.0, pending={"http://node1": True})
-    check(not POSTS, "a swap still pending on any node: the fleet is mid-crossing, so nothing "
-                     "is resynced on a read-back that is not final")
-    check(not any("DISAGREE" in m for m in LOGS), "... and the crossing is not called a split")
+    check(
+        not POSTS,
+        "a swap still pending on any node: the fleet is mid-crossing, so nothing "
+        "is resynced on a read-back that is not final",
+    )
+    check(
+        not any("DISAGREE" in m for m in LOGS),
+        "... and the crossing is not called a split",
+    )
 
     # ---- 7e. report logs it, off does nothing --------------------------------------------
     for mode in ("report", "off"):
         POSTS[:] = []
         LOGS[:] = []
         ctx = Ctx(fleet, sky, prn_reconfig=mode)
-        ctx.args.probe_require_slot = True   # so that off still polls
+        ctx.args.probe_require_slot = True  # so that off still polls
         ctx.trackers = nodes
         sweep(ctx, odd, 1000.0)
         check(not POSTS, "%s mode posts no resync" % mode)
         if mode == "report":
-            check(any("REPORT ONLY" in m and "node4" in m for m in LOGS),
-                  "... and report mode names the node it would put back")
+            check(
+                any("REPORT ONLY" in m and "node4" in m for m in LOGS),
+                "... and report mode names the node it would put back",
+            )
 
     # ---- 7f. A NODE THAT STAYS OFF THE MAP IS RETRIED ONCE PER INTERVAL ------------------
     POSTS[:] = []
     ctx = Ctx(fleet, sky, prn_reconfig_interval_s=120.0)
     ctx.trackers = nodes
     sweep(ctx, odd, 1000.0)
-    sweep(ctx, odd, 1010.0)   # still on its boot list: refused, or restarted again
-    check(len(POSTS) == 1, "a node still off the map 10 s later is not re-posted every cycle")
+    sweep(ctx, odd, 1010.0)  # still on its boot list: refused, or restarted again
+    check(
+        len(POSTS) == 1,
+        "a node still off the map 10 s later is not re-posted every cycle",
+    )
     sweep(ctx, odd, 1121.0)
     check(len(POSTS) == 2, "... and is retried once the interval has passed")
 
@@ -348,8 +422,11 @@ def main():
     ctx = Ctx([1, 2, 3], {})
     run_cycle(ctx, 1000.0)
     run_cycle(ctx, 1000.0 + 100000.0)
-    check(not POSTS, "an empty prediction evicts nobody (a BRDC outage is not a constellation "
-                     "outage -- the 2026-08-19 stale-EOP lesson)")
+    check(
+        not POSTS,
+        "an empty prediction evicts nobody (a BRDC outage is not a constellation "
+        "outage -- the 2026-08-19 stale-EOP lesson)",
+    )
 
     # ---- 9. MANY SLOTS, ONE POST, ONE DEADLINE -----------------------------------------
     # ⚠️ SUPERSEDES "one slot per interval" (2026-08-27). The old policy dribbled one slot out
@@ -362,29 +439,38 @@ def main():
     run_cycle(ctx, 1000.0)
     _node_posts = [(u, pl) for u, pl in POSTS if "node" in u]
     check(len(_node_posts) == 2, "one swap, posted to both nodes")
-    check(_node_posts and all(30 in pl["prns"] and 36 in pl["prns"] for _u, pl in _node_posts),
-          "BOTH waiting satellites land in the SAME post -- not one per interval")
-    check(_node_posts and len({pl.get("at_hop") for _u, pl in _node_posts}) == 1,
-          "... on ONE deadline, so both slots move on the same frame fleet-wide")
+    check(
+        _node_posts
+        and all(30 in pl["prns"] and 36 in pl["prns"] for _u, pl in _node_posts),
+        "BOTH waiting satellites land in the SAME post -- not one per interval",
+    )
+    check(
+        _node_posts and len({pl.get("at_hop") for _u, pl in _node_posts}) == 1,
+        "... on ONE deadline, so both slots move on the same frame fleet-wide",
+    )
     n_first = len(POSTS)
     run_cycle(ctx, 1000.0 + 1.0)
-    check(len(POSTS) == n_first,
-          "nothing further is posted: the map now matches the sky, and the read-back loop "
-          "has to complete before another decision anyway")
+    check(
+        len(POSTS) == n_first,
+        "nothing further is posted: the map now matches the sky, and the read-back loop "
+        "has to complete before another decision anyway",
+    )
 
     # ---- 10. the loop CONVERGES: once the nodes hold the map, nothing more is posted ----
     # The stage decides from the READ-BACK map, so a POST that took must stop being re-issued.
     # If it did not, this would swap one slot every interval forever.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {3: 30.0, 36: 83.0})   # PRN 1 and 2 gone, one candidate
+    ctx = Ctx([1, 2, 3], {3: 30.0, 36: 83.0})  # PRN 1 and 2 gone, one candidate
     run_cycle(ctx, 1000.0)
     run_cycle(ctx, 1000.0 + 7201.0)
     n_after = len(POSTS)
     for k in range(1, 8):
         run_cycle(ctx, 1000.0 + 7201.0 + k * 1000.0)
-    check(len(POSTS) == n_after,
-          "once the nodes hold the new map, no further swap is posted (the read-back loop "
-          "converges instead of re-issuing)")
+    check(
+        len(POSTS) == n_after,
+        "once the nodes hold the new map, no further swap is posted (the read-back loop "
+        "converges instead of re-issuing)",
+    )
     check(36 in ctx.node_state, "... and the nodes ended up holding the new satellite")
 
     # ---- 11. the heartbeat: armed-and-idle must be VISIBLE -----------------------------
@@ -396,16 +482,22 @@ def main():
     ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0}, prn_reconfig="report")
     ctx.args.prn_reconfig_heartbeat_s = 900.0
     run_cycle(ctx, 1000.0)
-    check(any("PRN MAP" in m and "REPORT" in m for m in LOGS),
-          "an armed chain with NOTHING to propose still says so (the heartbeat)")
+    check(
+        any("PRN MAP" in m and "REPORT" in m for m in LOGS),
+        "an armed chain with NOTHING to propose still says so (the heartbeat)",
+    )
     check(not POSTS, "... and still posts nothing")
     n_beats = len([m for m in LOGS if "REPORT" in m])
     run_cycle(ctx, 1000.0 + 100.0)
-    check(len([m for m in LOGS if "REPORT" in m]) == n_beats,
-          "... rate-limited: not once per cycle")
+    check(
+        len([m for m in LOGS if "REPORT" in m]) == n_beats,
+        "... rate-limited: not once per cycle",
+    )
     run_cycle(ctx, 1000.0 + 901.0)
-    check(len([m for m in LOGS if "REPORT" in m]) == n_beats + 1,
-          "... and it does beat again after the interval")
+    check(
+        len([m for m in LOGS if "REPORT" in m]) == n_beats + 1,
+        "... and it does beat again after the interval",
+    )
 
     # ---- 12. the map is PUBLISHED for read-only consumers, and fails OPEN ---------------
     # --probe-require-slot needs the live map but proposes no swaps, so "off" must still
@@ -415,8 +507,10 @@ def main():
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="off")
     ctx.args.probe_require_slot = True
     run_cycle(ctx, 1000.0)
-    check(ctx.prnmap.consensus == [1, 2, 3],
-          "prn_reconfig=off + probe_require_slot: the map is polled and PUBLISHED")
+    check(
+        ctx.prnmap.consensus == [1, 2, 3],
+        "prn_reconfig=off + probe_require_slot: the map is polled and PUBLISHED",
+    )
     check(not POSTS, "... and still nothing is posted (off is off for SWAPS)")
 
     ctx2 = Ctx([1, 2, 3], {2: 40.0, 3: 30.0}, prn_reconfig="off")
@@ -424,19 +518,23 @@ def main():
     CTX[0] = ctx2
     ctx2.t0 = 1000.0
     ctx2.prnmap.poll_t = 1000.0
-    ctx2.prnmap.maps = {"http://node1": [1, 2, 3]}          # HALF a sweep (2 endpoints)
+    ctx2.prnmap.maps = {"http://node1": [1, 2, 3]}  # HALF a sweep (2 endpoints)
     prnmap.stage_prn_membership(ctx2)
-    check(ctx2.prnmap.consensus is None,
-          "a HALF-SWEPT fleet publishes None -- consumers fail open, never on a partial map")
+    check(
+        ctx2.prnmap.consensus is None,
+        "a HALF-SWEPT fleet publishes None -- consumers fail open, never on a partial map",
+    )
 
-    ctx2.prnmap.maps = {"http://node1": [1, 2, 3], "http://node2": [1, 2, 9]}   # split
+    ctx2.prnmap.maps = {"http://node1": [1, 2, 3], "http://node2": [1, 2, 9]}  # split
     prnmap.stage_prn_membership(ctx2)
     check(ctx2.prnmap.consensus is None, "... and so does a SPLIT fleet")
 
-    ctx3 = Ctx([1, 2, 3], {2: 40.0}, prn_reconfig="off")   # flag off entirely
+    ctx3 = Ctx([1, 2, 3], {2: 40.0}, prn_reconfig="off")  # flag off entirely
     run_cycle(ctx3, 1000.0)
-    check(ctx3.prnmap.consensus is None,
-          "with BOTH off the stage does nothing at all (no new GET -- replay stays exact)")
+    check(
+        ctx3.prnmap.consensus is None,
+        "with BOTH off the stage does nothing at all (no new GET -- replay stays exact)",
+    )
 
     # ---- 12. SCHEDULED SWAPS: one frame, fleet-wide ------------------------------------
     # ⚠️ THE DEFECT THIS PREVENTS IS INVISIBLE DOWNSTREAM. A map posted "now" lands on
@@ -446,9 +544,13 @@ def main():
     # with a network delay for a cause.
     print("scheduled swaps: every node crosses on the SAME frame")
     POSTS[:] = []
-    _c = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-             prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
-             prn_reconfig_down_hold_s=0.0)
+    _c = Ctx(
+        [1, 2, 3],
+        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
+        prn_reconfig="apply",
+        prn_reconfig_gone_hold_s=0.0,
+        prn_reconfig_down_hold_s=0.0,
+    )
     # The axis was polled 3 s ago -- at the TOP of the cycle that is now posting. The
     # deadline must be advanced across that gap, not written against the stale hop.
     _c.fe_hop_now = 1_000_000_000.0
@@ -457,54 +559,76 @@ def main():
     _tracker_posts = [(u, b) for u, b in POSTS if "search" not in u]
     _follow_posts = [(u, b) for u, b in POSTS if "search" in u]
     check(bool(_tracker_posts), "a swap is posted at all")
-    check(all("at_hop" in b for _, b in _tracker_posts),
-          "every TRACKER post carries an at_hop deadline")
+    check(
+        all("at_hop" in b for _, b in _tracker_posts),
+        "every TRACKER post carries an at_hop deadline",
+    )
     _seqs = {b["at_hop"] for _, b in _tracker_posts}
-    check(len(_seqs) == 1,
-          "and it is the SAME hop on every node -- that is the whole point (%s)" % _seqs)
-    _want = 1_000_000_000 + int(round((3.0 + _c.args.prn_reconfig_lead_s)
-                                      * _c.args.hops_per_sec))
-    check(_seqs == {_want},
-          "the deadline is HOPS: axis + (age + lead) x hops_per_sec, NOT samples "
-          "(%d, got %s)" % (_want, _seqs))
+    check(
+        len(_seqs) == 1,
+        "and it is the SAME hop on every node -- that is the whole point (%s)" % _seqs,
+    )
+    _want = 1_000_000_000 + int(
+        round((3.0 + _c.args.prn_reconfig_lead_s) * _c.args.hops_per_sec)
+    )
+    check(
+        _seqs == {_want},
+        "the deadline is HOPS: axis + (age + lead) x hops_per_sec, NOT samples "
+        "(%d, got %s)" % (_want, _seqs),
+    )
     # ⚠️ THE REGRESSION: without the age term the deadline is 3 s of hops in the PAST, which
     # every node meets on its very next frame -- an unscheduled swap wearing a schedule.
-    check(min(_seqs) > 1_000_000_000 + int(round(3.0 * _c.args.hops_per_sec)),
-          "... and it is strictly AHEAD of the fleet's position at post time")
+    check(
+        min(_seqs) > 1_000_000_000 + int(round(3.0 * _c.args.hops_per_sec)),
+        "... and it is strictly AHEAD of the fleet's position at post time",
+    )
 
     # A STALE AXIS IS NOT EXTRAPOLATED. Past the age cap the swap still posts -- fail-open,
     # a slot stuck on a set satellite is worse -- but without a fabricated coordination point.
     POSTS[:] = []
     LOGS[:] = []
-    _c4 = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
-              prn_reconfig_down_hold_s=0.0)
+    _c4 = Ctx(
+        [1, 2, 3],
+        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
+        prn_reconfig="apply",
+        prn_reconfig_gone_hold_s=0.0,
+        prn_reconfig_down_hold_s=0.0,
+    )
     _c4.fe_hop_now = 1_000_000_000.0
-    _c4.fe_hop_t = 2000.0 - 120.0          # two minutes stale, cap is 30 s
+    _c4.fe_hop_t = 2000.0 - 120.0  # two minutes stale, cap is 30 s
     run_cycle(_c4, 2000.0)
     _sp = [(u, b) for u, b in POSTS if "search" not in u]
     check(bool(_sp), "a 120 s-stale axis still POSTS the map (fail-open)")
-    check(all("at_hop" not in b for _, b in _sp),
-          "... but names no deadline it cannot stand behind")
-    check(any("FABRICATED deadline" in m for m in LOGS),
-          "... and says so out loud")
-    check(_follow_posts and all("at_hop" not in b for _, b in _follow_posts),
-          "the SEARCH gets the map but NOT the deadline -- it has no frame boundary to test "
-          "one against, and a deadline it cannot honour would wedge its map")
+    check(
+        all("at_hop" not in b for _, b in _sp),
+        "... but names no deadline it cannot stand behind",
+    )
+    check(any("FABRICATED deadline" in m for m in LOGS), "... and says so out loud")
+    check(
+        _follow_posts and all("at_hop" not in b for _, b in _follow_posts),
+        "the SEARCH gets the map but NOT the deadline -- it has no frame boundary to test "
+        "one against, and a deadline it cannot honour would wedge its map",
+    )
 
     # ⚠️ NO AXIS -> POST ANYWAY, UNSCHEDULED. An unsynchronised swap is worse than a
     # synchronised one and far better than none: a slot stuck on a set satellite produces
     # nothing at all. This is the fail-open direction, and it is deliberate.
     POSTS[:] = []
-    _c2 = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
-              prn_reconfig_down_hold_s=0.0)
+    _c2 = Ctx(
+        [1, 2, 3],
+        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
+        prn_reconfig="apply",
+        prn_reconfig_gone_hold_s=0.0,
+        prn_reconfig_down_hold_s=0.0,
+    )
     _c2.fe_hop_now = None
     run_cycle(_c2, 2000.0)
     _tp = [(u, b) for u, b in POSTS if "search" not in u]
     check(bool(_tp), "with NO axis the swap is still posted (fail-open)")
-    check(all("at_hop" not in b for _, b in _tp),
-          "... and carries no deadline rather than a fabricated one")
+    check(
+        all("at_hop" not in b for _, b in _tp),
+        "... and carries no deadline rather than a fabricated one",
+    )
     check(all(b.get("prns") for _, b in _tp), "... and still carries the map")
 
     # ---- 4b. THE HYSTERESIS BAND MUST BE A BAND ---------------------------------------
@@ -514,29 +638,45 @@ def main():
     print("\nthe hysteresis band: admit must be ABOVE evict")
     POSTS[:] = []
     LOGS[:] = []
-    _c5 = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
-              prn_reconfig_down_hold_s=0.0,
-              prn_reconfig_admit_deg=0.0, prn_reconfig_evict_deg=0.0)
+    _c5 = Ctx(
+        [1, 2, 3],
+        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
+        prn_reconfig="apply",
+        prn_reconfig_gone_hold_s=0.0,
+        prn_reconfig_down_hold_s=0.0,
+        prn_reconfig_admit_deg=0.0,
+        prn_reconfig_evict_deg=0.0,
+    )
     run_cycle(_c5, 2000.0)
-    check(any("no hysteresis band" in m for m in LOGS),
-          "admit == evict is REFUSED and named")
+    check(
+        any("no hysteresis band" in m for m in LOGS),
+        "admit == evict is REFUSED and named",
+    )
     check(not POSTS, "... and nothing is posted on a degenerate band")
 
     # The armed setting itself: admit AT the horizon, evict below it, is a valid band.
     POSTS[:] = []
     LOGS[:] = []
-    _c6 = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +3.0},
-              prn_reconfig="apply", prn_reconfig_gone_hold_s=0.0,
-              prn_reconfig_down_hold_s=0.0,
-              prn_reconfig_admit_deg=0.0, prn_reconfig_evict_deg=-2.0)
+    _c6 = Ctx(
+        [1, 2, 3],
+        {1: +40.0, 2: -50.0, 3: -60.0, 9: +3.0},
+        prn_reconfig="apply",
+        prn_reconfig_gone_hold_s=0.0,
+        prn_reconfig_down_hold_s=0.0,
+        prn_reconfig_admit_deg=0.0,
+        prn_reconfig_evict_deg=-2.0,
+    )
     _c6.fe_hop_t = 2000.0 - 1.0
     run_cycle(_c6, 2000.0)
-    check(not any("no hysteresis band" in m for m in LOGS),
-          "admit 0 / evict -2 is a valid band")
+    check(
+        not any("no hysteresis band" in m for m in LOGS),
+        "admit 0 / evict -2 is a valid band",
+    )
     _p6 = [b for u, b in POSTS if "search" not in u]
-    check(_p6 and 9 in _p6[0]["prns"],
-          "... and a satellite at +3 deg -- refused by the old 10 deg mask -- gets a slot")
+    check(
+        _p6 and 9 in _p6[0]["prns"],
+        "... and a satellite at +3 deg -- refused by the old 10 deg mask -- gets a slot",
+    )
 
     # ---- 5. THE DEADLINE CLOCK IS ALIVE ----------------------------------------------
     # ⚠️ THE REGRESSION THIS EXISTS FOR: a node that answers get_prns is a node whose frame
@@ -554,20 +694,26 @@ def main():
         return {"prns": [1, 2, 3], "last_hop": 1_000_000_000, "pending_at_hop": -1}
 
     def _get_absent(url, timeout=5.0):
-        return {"prns": [1, 2, 3]}          # an OLD node binary: no field at all
+        return {"prns": [1, 2, 3]}  # an OLD node binary: no field at all
 
-    for _fn, _want_alarm, _what in ((_get_dead, True, "last_hop = -1"),
-                                    (_get_absent, True, "no last_hop field (old binary)"),
-                                    (_get_live, False, "last_hop advancing")):
+    for _fn, _want_alarm, _what in (
+        (_get_dead, True, "last_hop = -1"),
+        (_get_absent, True, "no last_hop field (old binary)"),
+        (_get_live, False, "last_hop advancing"),
+    ):
         prnmap._get = _fn
         LOGS[:] = []
         _c3.prnmap.maps = {}
         prnmap._poll(_c3, _c3.prnmap, [_ep])
         _hit = any("deadline clock is DEAD" in m for m in LOGS)
-        check(_hit is _want_alarm,
-              "%s -> %s" % (_what, "ALARM" if _want_alarm else "quiet"))
-        check(_c3.prnmap.maps.get(_ep) == [1, 2, 3],
-              "... and the map is still read back either way (%s)" % _what)
+        check(
+            _hit is _want_alarm,
+            "%s -> %s" % (_what, "ALARM" if _want_alarm else "quiet"),
+        )
+        check(
+            _c3.prnmap.maps.get(_ep) == [1, 2, 3],
+            "... and the map is still read back either way (%s)" % _what,
+        )
     prnmap._get = _no_get
 
     # ---- 6. A SATELLITE THAT CANNOT BROADCAST THE SIGNAL IS NOT A CANDIDATE ------------
@@ -577,6 +723,7 @@ def main():
     print("\nsignal capability: from the IGS metadata SINEX, not Celestrak")
     import tempfile as _tf, os as _os
     from gnss_broker import prnmap as _pm
+
     _saved = _pm._IGS_SNX
     try:
         with _tf.TemporaryDirectory() as _d:
@@ -594,30 +741,45 @@ def main():
                 " G058 2005:257:00000 0000:000:00000 G07\n"
                 " G062 2010:146:00000 0000:000:00000 G01\n"
                 " G074 2018:357:00000 0000:000:00000 G04\n"
-                "-SATELLITE/PRN\n")
+                "-SATELLITE/PRN\n"
+            )
             _pm._IGS_SNX = _f
-            check(_pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
-                  "L5: IIR-A and IIR-M excluded, IIF and IIIA kept (got %s)"
-                  % sorted(_pm.signal_incapable_prns("GPS_L5_Q_NH")))
-            check(_pm.signal_incapable_prns("GPS_L1C_P") == {22, 7, 1},
-                  "L1C: Block III ONLY -- IIF is excluded too, so the predicate is really "
-                  "reading the block rather than passing anything modern")
-            check(_pm.signal_incapable_prns("GPS_L1CA") == set(),
-                  "L1 C/A: every GPS satellite carries it")
-            check(_pm.signal_incapable_prns("GAL_E5A_Q_CS") == set(),
-                  "Galileo: not modelled, so nothing excluded -- a filter that pretended "
-                  "otherwise would be a second way for a constellation to go dark")
+            check(
+                _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
+                "L5: IIR-A and IIR-M excluded, IIF and IIIA kept (got %s)"
+                % sorted(_pm.signal_incapable_prns("GPS_L5_Q_NH")),
+            )
+            check(
+                _pm.signal_incapable_prns("GPS_L1C_P") == {22, 7, 1},
+                "L1C: Block III ONLY -- IIF is excluded too, so the predicate is really "
+                "reading the block rather than passing anything modern",
+            )
+            check(
+                _pm.signal_incapable_prns("GPS_L1CA") == set(),
+                "L1 C/A: every GPS satellite carries it",
+            )
+            check(
+                _pm.signal_incapable_prns("GAL_E5A_Q_CS") == set(),
+                "Galileo: not modelled, so nothing excluded -- a filter that pretended "
+                "otherwise would be a second way for a constellation to go dark",
+            )
             # ⚠️ AND A RE-USED PRN MUST RESOLVE TO TODAY'S SATELLITE. G22 was IIR-A; if a
             # retired assignment won, a live satellite could be excluded by a dead one's block.
-            open(_f, "a").write("+SATELLITE/PRN\n"
-                                " G099 1990:001:00000 1995:001:00000 G01\n"
-                                "-SATELLITE/PRN\n")
-            check(_pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
-                  "an EXPIRED PRN assignment is ignored -- current validity only")
+            open(_f, "a").write(
+                "+SATELLITE/PRN\n"
+                " G099 1990:001:00000 1995:001:00000 G01\n"
+                "-SATELLITE/PRN\n"
+            )
+            check(
+                _pm.signal_incapable_prns("GPS_L5_Q_NH") == {22, 7},
+                "an EXPIRED PRN assignment is ignored -- current validity only",
+            )
             _pm._IGS_SNX = _os.path.join(_d, "missing")
-            check(_pm.signal_incapable_prns("GPS_L5_Q_NH") == set(),
-                  "a MISSING registry excludes NOTHING -- wrongly dropping a real satellite "
-                  "is far worse than keeping a dead slot, and nothing would say why")
+            check(
+                _pm.signal_incapable_prns("GPS_L5_Q_NH") == set(),
+                "a MISSING registry excludes NOTHING -- wrongly dropping a real satellite "
+                "is far worse than keeping a dead slot, and nothing would say why",
+            )
     finally:
         _pm._IGS_SNX = _saved
 

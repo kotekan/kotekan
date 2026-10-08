@@ -36,7 +36,9 @@ def phys_chips(cp_arg, dop_hz, hop, hps, chip_rate_hz, carrier_hz, code_len, sgn
     own slot 2 / slot 1 -- they MUST come from the same record (the argument is only meaningful
     against the Doppler it was expressed in).
     """
-    n_num = hop * hps.denominator * int(chip_rate_hz)     # t_abs*f_chip = n_num / hps.numerator
+    n_num = (
+        hop * hps.denominator * int(chip_rate_hz)
+    )  # t_abs*f_chip = n_num / hps.numerator
     nominal = (n_num % (int(code_len) * hps.numerator)) / float(hps.numerator)
     t_abs = hop / float(hps)
     dopp = t_abs * chip_rate_hz * (sgn * dop_hz / carrier_hz)
@@ -54,9 +56,10 @@ def telem_records(client, chain, prns, n_win=2, lag=1):
     coherent_source skips them.
     """
     from gnss_broker.telem import REC_CP, REC_DOPPLER, REC_P_ENERGY
+
     out = {}
     want = set(int(p) for p in prns)
-    for w in client.windows(chain, lag=lag)[-int(n_win):]:
+    for w in client.windows(chain, lag=lag)[-int(n_win) :]:
         for _inst, f in client.frame_set(chain, w).items():
             for r in range(f.n_rec):
                 if not f.has_record(r):
@@ -68,13 +71,26 @@ def telem_records(client, chain, prns, n_win=2, lag=1):
                     row = f.row(r, prn)
                     if row is None or row[REC_P_ENERGY] <= 0.0:
                         continue
-                    out.setdefault(prn, []).append((hop, float(row[REC_CP]),
-                                                    float(row[REC_DOPPLER])))
+                    out.setdefault(prn, []).append(
+                        (hop, float(row[REC_CP]), float(row[REC_DOPPLER]))
+                    )
     return out
 
 
-def residuals(records, pd, tag, cp_predicted, clk, drift, t_now_abs, hps, chip_rate_hz,
-              carrier_hz, code_len, sgn=1.0):
+def residuals(
+    records,
+    pd,
+    tag,
+    cp_predicted,
+    clk,
+    drift,
+    t_now_abs,
+    hps,
+    chip_rate_hz,
+    carrier_hz,
+    code_len,
+    sgn=1.0,
+):
     """Per-PRN tracker residual, chips, clock removed. Pure: every input is a number or a dict.
 
     records: {prn: [(hop, cp_arg, dop_hz)]}; pd: {(tag, prn): predict_all row}; cp_predicted(v,
@@ -98,8 +114,11 @@ def residuals(records, pd, tag, cp_predicted, clk, drift, t_now_abs, hps, chip_r
         rs = []
         for hop, cp, dop in recs:
             t_abs = hop / float(hps)
-            d = (phys_chips(cp, dop, hop, hps, chip_rate_hz, carrier_hz, code_len, sgn)
-                 - cp_predicted(v, t_abs) + drift * (t_now_abs - t_abs))
+            d = (
+                phys_chips(cp, dop, hop, hps, chip_rate_hz, carrier_hz, code_len, sgn)
+                - cp_predicted(v, t_abs)
+                + drift * (t_now_abs - t_abs)
+            )
             rs.append(wrap(d - clk, code_len))
         # circular mean about the first record: the wrap is only safe once per record
         r0 = rs[0]
@@ -109,8 +128,13 @@ def residuals(records, pd, tag, cp_predicted, clk, drift, t_now_abs, hps, chip_r
         r_clk = wrap(r0 + m, code_len)
         # `raw` keeps the receiver clock IN (the code RANGE residual, what a carrier residual
         # also carries, so the two can be differenced); `chips` has the solved clock removed
-        out[prn] = {"chips": r_clk, "raw": wrap(r_clk + clk, code_len), "sd": sd, "n": len(rs),
-                    "hop": max(h for h, _c, _d in recs)}
+        out[prn] = {
+            "chips": r_clk,
+            "raw": wrap(r_clk + clk, code_len),
+            "sd": sd,
+            "n": len(rs),
+            "hop": max(h for h, _c, _d in recs),
+        }
     return out
 
 
@@ -128,25 +152,46 @@ def tracker_residuals(ctx, n_win=2):
     # formal error (a replica parked on noise sits still: chips off, sd ~0). The presence
     # verdict is the fleet DLL's own; the below-horizon noise probes are excluded by name.
     probes = ctx.probe_set or set()
-    fleet = {p: v for p, v in (ctx.dllp.fleet or {}).items()
-             if v.get("present") and p not in probes}
+    fleet = {
+        p: v
+        for p, v in (ctx.dllp.fleet or {}).items()
+        if v.get("present") and p not in probes
+    }
     recs = {}
     if ctx.telem_client is not None and ctx.telem_chain:
         try:
-            recs = telem_records(ctx.telem_client, ctx.telem_chain, fleet.keys(), n_win=n_win)
+            recs = telem_records(
+                ctx.telem_client, ctx.telem_chain, fleet.keys(), n_win=n_win
+            )
         except Exception:
             recs = {}
     for prn, v in fleet.items():
         if prn in recs:
             continue
         c = v.get("coh_row") or {}
-        if c.get("code_phase_chips") is None or c.get("doppler_hz") is None \
-                or int(c.get("pow_hop", -1)) < 0:
+        if (
+            c.get("code_phase_chips") is None
+            or c.get("doppler_hz") is None
+            or int(c.get("pow_hop", -1)) < 0
+        ):
             continue
-        recs[prn] = [(int(c["pow_hop"]), float(c["code_phase_chips"]), float(c["doppler_hz"]))]
-    res = residuals(recs, pd, ctx.drp.tag, ctx.cp_predicted, clk, st.get("drift"),
-                    ctx.drp.t_now_abs, ctx.args.hops_per_sec, ctx.args.chip_rate_hz,
-                    ctx.args.carrier_hz, ctx.code_len, ctx.args.code_doppler_sign)
+        recs[prn] = [
+            (int(c["pow_hop"]), float(c["code_phase_chips"]), float(c["doppler_hz"]))
+        ]
+    res = residuals(
+        recs,
+        pd,
+        ctx.drp.tag,
+        ctx.cp_predicted,
+        clk,
+        st.get("drift"),
+        ctx.drp.t_now_abs,
+        ctx.args.hops_per_sec,
+        ctx.args.chip_rate_hz,
+        ctx.args.carrier_hz,
+        ctx.code_len,
+        ctx.args.code_doppler_sign,
+    )
     now = ctx.drp.now_w
     for r in res.values():
         r["t"] = now

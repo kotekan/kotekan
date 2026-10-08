@@ -1,6 +1,6 @@
 #include "cudaGnssInject.hpp"
 
-#include "cudaGnssChordDespread.hpp" // for launch_pack44
+#include "cudaGnssChordDespread.hpp"  // for launch_pack44
 #include "cudaGnssDespreadKernel.hpp" // for DespreadJob
 #include "cudaUtils.hpp"              // for CHECK_CUDA_ERROR
 #include "gnssGpuChain.hpp"           // for max_specs
@@ -29,10 +29,8 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
     _num_synth(config.get_default<int>(unique_name, "num_synth", 128)),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
-    _gnss_synth_name(
-        config.get_default<std::string>(unique_name, "gnss_synth_name", "gnss_synth")),
-    _gnss_local_channels(
-        config.get<std::vector<std::int32_t>>(unique_name, "gnss_local_channels")),
+    _gnss_synth_name(config.get_default<std::string>(unique_name, "gnss_synth_name", "gnss_synth")),
+    _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name, "gnss_local_channels")),
     _synth_lane_base(config.get_default<int>(unique_name, "synth_lane_base", 0)),
     _synth_lane_pitch(config.get_default<int>(unique_name, "synth_lane_pitch", _num_synth)),
     _gnss_synth_channels(
@@ -75,8 +73,7 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     } else {
         _synth_n_chan = (int)_gnss_synth_channels.size();
         for (std::int32_t f : _gnss_local_channels) {
-            const auto it =
-                std::find(_gnss_synth_channels.begin(), _gnss_synth_channels.end(), f);
+            const auto it = std::find(_gnss_synth_channels.begin(), _gnss_synth_channels.end(), f);
             if (it == _gnss_synth_channels.end())
                 FATAL_ERROR("cudaGnssInject: covering channel {:d} is not on the synth array's "
                             "channel axis (gnss_synth_channels) -- the correlator would never "
@@ -97,8 +94,8 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     // M5 control block: the epl layout minus corr (see the header). Sized for the worst case
     // (every PRN active in every record), which is what gnss_gpu::max_jobs already encodes.
     _mem_ctl = config.get_default<std::string>(unique_name, "gnss_ctl_name", "gnss_n2ctl");
-    _ctl_off_energy = gnss_gpu::off_prnctl()
-                      + sizeof(gnss_gpu::PrnCtl) * gnss_gpu::MAX_REC * S.n_prn;
+    _ctl_off_energy =
+        gnss_gpu::off_prnctl() + sizeof(gnss_gpu::PrnCtl) * gnss_gpu::MAX_REC * S.n_prn;
     _ctl_bytes = _ctl_off_energy
                  + sizeof(double) * gnss_gpu::max_jobs(S.n_prn, gnss_gpu::ROWS_PLAIN) * S.n_chan;
     _ctl_stage.resize(_ctl_bytes);
@@ -113,8 +110,8 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
              "synthetic lanes despread the conjugate of the sky and every tile reads NOISE.");
     INFO("cudaGnssInject: {:d} PRN slots x 4 lanes into '{:s}' [{:d}][{:d}][{:d}] at lanes "
          "[{:d}, {:d}), {:d} records/frame, channels {:d}{:s}, conjugate {:s}",
-         S.n_prn, _gnss_synth_name, _num_times, _synth_n_chan, _synth_lane_pitch,
-         _synth_lane_base, _synth_lane_base + _num_synth, n_rec, S.n_chan,
+         S.n_prn, _gnss_synth_name, _num_times, _synth_n_chan, _synth_lane_pitch, _synth_lane_base,
+         _synth_lane_base + _num_synth, n_rec, S.n_chan,
          _gnss_synth_channels.empty() ? "" : " (compact channel axis)",
          S._conjugate ? "ON" : "off");
 }
@@ -167,8 +164,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         (int*)device.get_gpu_memory_array(unique_name + "_slot2spec", pipestate.gpu_frame_id,
                                           _gpu_buffer_depth, (size_t)n_rec * S.n_prn * sizeof(int));
     auto* d_wave = (float2*)device.get_gpu_memory(
-        unique_name + "_wave",
-        (size_t)3 * S.n_prn * S.n_chan * S.hops_per_record * sizeof(float2));
+        unique_name + "_wave", (size_t)3 * S.n_prn * S.n_chan * S.hops_per_record * sizeof(float2));
     auto* d_energy = (double*)device.get_gpu_memory(
         unique_name + "_energy", (size_t)4 * S.n_prn * S.n_chan * sizeof(double));
     // FRAME-CONSTANT QUANTIZER SCALE. The N^2 integrates the whole frame, so the tile is
@@ -253,7 +249,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     const std::vector<double> trim_now = S.snapshot_trims(trim_gone);
     for (int prn : trim_gone)
         WARN("cudaGnssInject: PRN {:d} trim EXPIRED with no /set_trim -- zeroed; the code "
-             "phase has stepped back to the broker's bare model.", prn);
+             "phase has stepped back to the broker's bare model.",
+             prn);
 
     int n_jobs_frame = 0, n_active = 0;
     for (int r = 0; r < n_rec; ++r) {
@@ -325,8 +322,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             // offline: e2e --truth-dop-rate matched-ramp bench shows this dcyc algebra
             // recovers the baseline to mHz when the difference tracks the APPLIED total).
             const double applied = pr.doppler_hz + sd.ctrim_hz;
-            const double dcyc =
-                have_hist ? (applied - FH.dop_prev[(size_t)p]) * t_abs : 0.0;
+            const double dcyc = have_hist ? (applied - FH.dop_prev[(size_t)p]) * t_abs : 0.0;
             if (_dcyc_dump_prn == -1) {
                 // read once; -1 stays -1 when unconfigured, -2 marks "looked, off"
                 const int want = config.get_default<int>(unique_name, "dcyc_dump_prn", -1);
@@ -338,11 +334,12 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                         unique_name, "dcyc_dump_path", "/tmp/gnss_dcyc_dump.txt");
                     _dcyc_dump = std::fopen(path.c_str(), "w");
                     if (_dcyc_dump)
-                        std::fprintf(_dcyc_dump, "# r hop0 wstart seed_ref_hop seed_dop seed_dop_rate "
-                                                 "seed_ctrim dop applied dop_prev t_prev have_hist "
-                                                 "t_abs dcyc cp trim\n");
-                    INFO("cudaGnssInject: dcyc dump ARMED for PRN {:d} -> {:s} ({:d} records)", want,
-                         path, _dcyc_dump_left);
+                        std::fprintf(_dcyc_dump,
+                                     "# r hop0 wstart seed_ref_hop seed_dop seed_dop_rate "
+                                     "seed_ctrim dop applied dop_prev t_prev have_hist "
+                                     "t_abs dcyc cp trim\n");
+                    INFO("cudaGnssInject: dcyc dump ARMED for PRN {:d} -> {:s} ({:d} records)",
+                         want, path, _dcyc_dump_left);
                 }
             }
             if (_dcyc_dump && S.prns[(size_t)p] == _dcyc_dump_prn) {
@@ -351,8 +348,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                              "%.17g %.10g %.10g\n",
                              r, (long long)hop0, (long long)wstart, (long long)sd.ref_hop,
                              sd.doppler_hz, sd.dop_rate, sd.ctrim_hz, pr.doppler_hz, applied,
-                             FH.dop_prev[(size_t)p], FH.t_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc,
-                             pr.cp, trim_now[(size_t)p]);
+                             FH.dop_prev[(size_t)p], FH.t_prev[(size_t)p], have_hist ? 1 : 0, t_abs,
+                             dcyc, pr.cp, trim_now[(size_t)p]);
                 if (--_dcyc_dump_left <= 0) {
                     std::fclose(_dcyc_dump);
                     _dcyc_dump = nullptr;
@@ -393,8 +390,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
 
         gnss_cuda::DespreadJob* d_jobs_r = d_jobs + (size_t)r * S.n_prn;
         if (!specs.empty()) {
-            S.despread->enqueue_waveform(wstart, specs, d_jobs_r, d_wave, d_energy,
-                                         (void*)stream);
+            S.despread->enqueue_waveform(wstart, specs, d_jobs_r, d_wave, d_energy, (void*)stream);
             // #72: ang0 only exists once the despread has built the jobs, so this is a SECOND
             // pass -- pctl above is written before the enqueue. Taken from the despread's own
             // record of what it handed the kernel, never re-derived here.
@@ -409,15 +405,14 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             // response instead of by SNR. D2D on the stream -- no sync, no host round trip.
             // Freeze record 0's energy as the frame's quantizer reference (see d_energy0).
             if (r == 0)
-                CHECK_CUDA_ERROR(cudaMemcpyAsync(
-                    d_energy0, d_energy,
-                    (size_t)gnss_gpu::ROWS_PLAIN * specs.size() * S.n_chan * sizeof(double),
-                    cudaMemcpyDeviceToDevice, stream));
+                CHECK_CUDA_ERROR(cudaMemcpyAsync(d_energy0, d_energy,
+                                                 (size_t)gnss_gpu::ROWS_PLAIN * specs.size()
+                                                     * S.n_chan * sizeof(double),
+                                                 cudaMemcpyDeviceToDevice, stream));
             CHECK_CUDA_ERROR(cudaMemcpyAsync(
                 d_ctl + _ctl_off_energy
                     + (size_t)n_jobs_frame * gnss_gpu::ROWS_PLAIN * S.n_chan * sizeof(double),
-                d_energy,
-                (size_t)gnss_gpu::ROWS_PLAIN * specs.size() * S.n_chan * sizeof(double),
+                d_energy, (size_t)gnss_gpu::ROWS_PLAIN * specs.size() * S.n_chan * sizeof(double),
                 cudaMemcpyDeviceToDevice, stream));
         }
         n_jobs_frame += (int)specs.size();
@@ -433,8 +428,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     hdr->n_jobs = n_jobs_frame * gnss_gpu::ROWS_PLAIN;
     // Header + winstart + PrnCtl only: the energy rows were already written D2D above, so this
     // must NOT overwrite them.
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(d_ctl, _ctl_stage.data(), _ctl_off_energy,
-                                     cudaMemcpyHostToDevice, stream));
+    CHECK_CUDA_ERROR(
+        cudaMemcpyAsync(d_ctl, _ctl_stage.data(), _ctl_off_energy, cudaMemcpyHostToDevice, stream));
 
     if ((++_frames & 0xFF) == 1)
         INFO("cudaGnssInject: frame hop0 {:d}, {:d} active PRNs, {:d} jobs across {:d} records",

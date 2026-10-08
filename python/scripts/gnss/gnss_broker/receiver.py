@@ -55,19 +55,19 @@ class Receiver(object):
     def __init__(self, log=None):
         self._lock = threading.RLock()
         self._log = log or _log
-        self._anchor = None            # utc0_sample0, latched once for the telescope
+        self._anchor = None  # utc0_sample0, latched once for the telescope
         self._anchor_src = None
-        self._brdc = {}                # cache key -> the {"mod","eph","eph_t"} state dict
-        self._carrier = {}             # chain -> _Shared (Hz, receiver scope)
-        self._code = {}                # (band, chain) -> _Shared (dimensionless l-a)
-        self._dr = {}                  # (band, chain) -> _Shared (chips, + drift in extra)
-        self._clkmod = {}              # chain -> _Shared (the receiver clock in SECONDS,
-                                       # known mod extra["epoch_s"] -- e.g. the NH joint
-                                       # fit's consensus, clock mod 20 ms). The epoch
-                                       # EXTENSION a short-window donor clock needs.
-        self._joint = {}               # band -> JointReceiverState (P2a, shadow)
-        self._joint_unit = {}          # chain -> (chip_rate_hz, code_len) of the code
-                                       # phases it FEEDS into the receiver-wide joint state
+        self._brdc = {}  # cache key -> the {"mod","eph","eph_t"} state dict
+        self._carrier = {}  # chain -> _Shared (Hz, receiver scope)
+        self._code = {}  # (band, chain) -> _Shared (dimensionless l-a)
+        self._dr = {}  # (band, chain) -> _Shared (chips, + drift in extra)
+        self._clkmod = {}  # chain -> _Shared (the receiver clock in SECONDS,
+        # known mod extra["epoch_s"] -- e.g. the NH joint
+        # fit's consensus, clock mod 20 ms). The epoch
+        # EXTENSION a short-window donor clock needs.
+        self._joint = {}  # band -> JointReceiverState (P2a, shadow)
+        self._joint_unit = {}  # chain -> (chip_rate_hz, code_len) of the code
+        # phases it FEEDS into the receiver-wide joint state
 
     # -- the joint receiver state (task #33 P2a) ------------------------------------------
     def joint(self, band, **kw):
@@ -82,6 +82,7 @@ class Receiver(object):
         Created on first use so a process that never enables the shadow never imports numpy.
         """
         from .state_filter import JointReceiverState
+
         with self._lock:
             if band not in self._joint:
                 self._joint[band] = JointReceiverState(**kw)
@@ -109,6 +110,7 @@ class Receiver(object):
         well defined, lengthening is not.
         """
         from .state_filter import JointReceiverState
+
         with self._lock:
             cur = self._joint.get("__receiver__")
             # Late-arriving options (the broker learns its flags after the first consumer
@@ -193,7 +195,7 @@ class Receiver(object):
         with self._lock:
             if self._anchor:
                 return self._anchor
-        v = fetch()                     # outside the lock: this is a network call
+        v = fetch()  # outside the lock: this is a network call
         if not v:
             return None
         with self._lock:
@@ -203,11 +205,18 @@ class Receiver(object):
             if abs(self._anchor - float(v)) > 1e-3:
                 # Two chains disagreeing about frame 0 means the F-engine restarted between
                 # their fetches. Neither is trustworthy; say which is in use and by whom.
-                self._log("*** TIME ANCHOR DISAGREEMENT: %s has %.9f, %s fetched %.9f "
-                          "(%+.3f days). The F-engine restarted mid-startup. Restart the "
-                          "nodes AND this broker."
-                          % (self._anchor_src, self._anchor, chain, float(v),
-                             (float(v) - self._anchor) / 86400.0))
+                self._log(
+                    "*** TIME ANCHOR DISAGREEMENT: %s has %.9f, %s fetched %.9f "
+                    "(%+.3f days). The F-engine restarted mid-startup. Restart the "
+                    "nodes AND this broker."
+                    % (
+                        self._anchor_src,
+                        self._anchor,
+                        chain,
+                        float(v),
+                        (float(v) - self._anchor) / 86400.0,
+                    )
+                )
             return self._anchor
 
     def anchor(self):
@@ -225,7 +234,7 @@ class Receiver(object):
         with self._lock:
             if key in self._brdc:
                 return self._brdc[key]
-        st = build()                    # outside the lock: fetch + parse
+        st = build()  # outside the lock: fetch + parse
         with self._lock:
             return self._brdc.setdefault(key, st)
 
@@ -286,8 +295,18 @@ class Receiver(object):
         """
         return self._best(self._code, exclude, max_age_s, t_now, key2=None)
 
-    def contribute_dr_clock(self, chain, band, chips, drift, t, code_length,
-                            chip_rate_hz=None, epoch=None, held=False):
+    def contribute_dr_clock(
+        self,
+        chain,
+        band,
+        chips,
+        drift,
+        t,
+        code_length,
+        chip_rate_hz=None,
+        epoch=None,
+        held=False,
+    ):
         """Publish the dead-reckon receiver clock (chips, mod the code period) + drift.
 
         ⚠️ THIS IS THE SEAM `--dr-clock-adopt` PAPERS OVER. `dr_state` straddles the
@@ -322,10 +341,19 @@ class Receiver(object):
         if chips is None:
             return
         with self._lock:
-            self._dr[(band, chain)] = _Shared(float(chips), chain, 1, t,
-                                              {"drift": drift, "code_length": code_length,
-                                               "chip_rate_hz": chip_rate_hz, "epoch": epoch,
-                                               "held": bool(held)})
+            self._dr[(band, chain)] = _Shared(
+                float(chips),
+                chain,
+                1,
+                t,
+                {
+                    "drift": drift,
+                    "code_length": code_length,
+                    "chip_rate_hz": chip_rate_hz,
+                    "epoch": epoch,
+                    "held": bool(held),
+                },
+            )
 
     def dr_clock(self, band, exclude=None, max_age_s=120.0, t_now=None):
         return self._best(self._dr, exclude, max_age_s, t_now, key2=band)
@@ -362,8 +390,13 @@ class Receiver(object):
         (clock mod 20 ms from every strong GPS sat voting). Consumers use it to extend a
         precise short-window donor clock across their own longer code period."""
         with self._lock:
-            self._clkmod[chain] = _Shared(float(seconds), chain, int(n_sats or 0), t,
-                                          extra={"epoch_s": float(epoch_s)})
+            self._clkmod[chain] = _Shared(
+                float(seconds),
+                chain,
+                int(n_sats or 0),
+                t,
+                extra={"epoch_s": float(epoch_s)},
+            )
 
     def clock_mod_epoch(self, min_epoch_s, exclude=None, max_age_s=3600.0, t_now=None):
         """Freshest clock-mod record whose epoch covers min_epoch_s. The long default age
@@ -376,15 +409,20 @@ class Receiver(object):
                     continue
                 if rec.extra.get("epoch_s", 0.0) < float(min_epoch_s) - 1e-12:
                     continue
-                if t_now is not None and max_age_s is not None and t_now - rec.t > max_age_s:
+                if (
+                    t_now is not None
+                    and max_age_s is not None
+                    and t_now - rec.t > max_age_s
+                ):
                     continue
                 if best is None or rec.t > best.t:
                     best = rec
             return best
 
     @staticmethod
-    def clock_extend_mod(donor_seconds, donor_window_s, mod_seconds, mod_epoch_s,
-                         our_window_s):
+    def clock_extend_mod(
+        donor_seconds, donor_window_s, mod_seconds, mod_epoch_s, our_window_s
+    ):
         """Extend a donor clock known mod its (short) window across OUR (longer) code
         period, using an independent measurement of the same clock mod >= our window.
 
@@ -414,8 +452,9 @@ class Receiver(object):
         return (float(donor_chips) * our_rate_hz / rate) % our_code_len
 
     @staticmethod
-    def joint_clk_delta(joint_chips, joint_rate_hz, joint_code_len,
-                        our_chips, our_rate_hz, our_code_len):
+    def joint_clk_delta(
+        joint_chips, joint_rate_hz, joint_code_len, our_chips, our_rate_hz, our_code_len
+    ):
         """The correction that moves OUR clock onto the joint clock: (delta in our chips,
         the same delta in the joint's chips).
 
@@ -454,10 +493,15 @@ class Receiver(object):
     def summary(self):
         """One line for the periodic log -- what the instrument currently believes."""
         with self._lock:
-            return ("receiver: anchor=%s (%s), brdc=%d store(s), carrier from %s, "
-                    "code from %s, dr from %s"
-                    % ("%.9f" % self._anchor if self._anchor else "none",
-                       self._anchor_src or "-", len(self._brdc),
-                       sorted(self._carrier) or "-",
-                       sorted(c for _, c in self._code) or "-",
-                       sorted(c for _, c in self._dr) or "-"))
+            return (
+                "receiver: anchor=%s (%s), brdc=%d store(s), carrier from %s, "
+                "code from %s, dr from %s"
+                % (
+                    "%.9f" % self._anchor if self._anchor else "none",
+                    self._anchor_src or "-",
+                    len(self._brdc),
+                    sorted(self._carrier) or "-",
+                    sorted(c for _, c in self._code) or "-",
+                    sorted(c for _, c in self._dr) or "-",
+                )
+            )

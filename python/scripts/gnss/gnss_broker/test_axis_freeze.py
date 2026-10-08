@@ -26,7 +26,6 @@ against the shipped source text (see test 0) so the two cannot drift silently.
 """
 
 import os
-import re
 import sys
 
 
@@ -51,8 +50,12 @@ def axis_stale_reference(hops_and_times, stale_s):
         if hop <= 0.0:
             continue
         prev = fe_axis
-        if (prev is not None and hop <= prev[0] and stale_s > 0.0
-                and now - prev[1] > stale_s):
+        if (
+            prev is not None
+            and hop <= prev[0]
+            and stale_s > 0.0
+            and now - prev[1] > stale_s
+        ):
             fired.append(now)
         fe_axis = (hop, now) if (prev is None or hop > prev[0]) else (hop, prev[1])
     return fired
@@ -66,8 +69,12 @@ def axis_stale_broken(hops_and_times, stale_s):
         if hop <= 0.0:
             continue
         prev = fe_axis
-        if (prev is not None and hop <= prev[0] and stale_s > 0.0
-                and now - prev[1] > stale_s):
+        if (
+            prev is not None
+            and hop <= prev[0]
+            and stale_s > 0.0
+            and now - prev[1] > stale_s
+        ):
             fired.append(now)
         fe_axis = (hop, now)
     return fired
@@ -92,65 +99,83 @@ def series(n_live, n_frozen, start_hop=36_373_000_000.0, t0=1000.0):
 
 def main():
     # ---- 0. the transcription is the shipped rule ---------------------------------------
-    src = open(os.path.join(os.path.dirname(__file__), "..",
-                            "gps_distributed_broker.py")).read()
-    m = re.search(r"fe_axis\[0\] = \(\(_fh, _now\(\)\) if \(_fh_prev is None or "
-                  r"_fh > _fh_prev\[0\]\)\s*\n\s*else \(_fh, _fh_prev\[1\]\)\)", src)
-    check(m is not None,
-          "the broker still keeps the stamp of the last ADVANCE (not of this poll)")
+    src = open(
+        os.path.join(os.path.dirname(__file__), "..", "gps_distributed_broker.py")
+    ).read()
+    rule = "fe_axis[0] = ((_fh, _now()) if (_fh_prev is None or _fh > _fh_prev[0]) else (_fh, _fh_prev[1]))"
+    check(
+        "".join(rule.split()) in "".join(src.split()),  # match code, not its formatting
+        "the broker still keeps the stamp of the last ADVANCE (not of this poll)",
+    )
 
     # ---- 1. the pre-fix rule can NEVER fire ---------------------------------------------
     # An hour of total freeze at a 2 s cycle against a 30 s bar.
     s = series(10, 1800)
-    check(axis_stale_broken(s, 30.0) == [],
-          "PRE-FIX: an HOUR of a totally frozen time base produces ZERO warnings "
-          "(the gate could not fire -- this is what shipped)")
+    check(
+        axis_stale_broken(s, 30.0) == [],
+        "PRE-FIX: an HOUR of a totally frozen time base produces ZERO warnings "
+        "(the gate could not fire -- this is what shipped)",
+    )
 
     # ---- 2. the fixed rule fires, and promptly -------------------------------------------
     fired = axis_stale_reference(s, 30.0)
     check(len(fired) > 0, "FIXED: the freeze is reported")
     freeze_began = 1000.0 + 10 * CYCLE
-    check(fired and (fired[0] - freeze_began) <= 34.0,
-          "... within one bar of the freeze (%.0f s after it began)"
-          % ((fired[0] - freeze_began) if fired else -1))
+    check(
+        fired and (fired[0] - freeze_began) <= 34.0,
+        "... within one bar of the freeze (%.0f s after it began)"
+        % ((fired[0] - freeze_began) if fired else -1),
+    )
 
     # ---- 3. it stays quiet on a healthy stream ------------------------------------------
-    check(axis_stale_reference(series(1800, 0), 30.0) == [],
-          "an advancing time base is never accused")
+    check(
+        axis_stale_reference(series(1800, 0), 30.0) == [],
+        "an advancing time base is never accused",
+    )
 
     # ---- 4. a BRIEF stall under the bar is not reported ----------------------------------
     # 10 cycles = 20 s of freeze against a 30 s bar: a poll hiccup, not a frozen axis.
     brief = series(10, 10) + [(36_373_000_000.0 + HPS * CYCLE * 20, 1060.0)]
-    check(axis_stale_reference(brief, 30.0) == [],
-          "a 20 s hiccup under the 30 s bar is not reported")
+    check(
+        axis_stale_reference(brief, 30.0) == [],
+        "a 20 s hiccup under the 30 s bar is not reported",
+    )
 
     # ---- 5. recovery re-arms it ----------------------------------------------------------
     # Freeze, warn, then the stream returns: the stamp must follow the new hop so a LATER
     # freeze is timed from the recovery, not from the original one.
-    s2 = series(5, 40)                      # freeze -> fires
+    s2 = series(5, 40)  # freeze -> fires
     t_end = s2[-1][1] + CYCLE
-    s2 += [(9e11, t_end)]                   # re-based stream, far ahead: an ADVANCE
-    s2 += [(9e11, t_end + CYCLE * k) for k in range(1, 6)]   # 10 s frozen again
+    s2 += [(9e11, t_end)]  # re-based stream, far ahead: an ADVANCE
+    s2 += [(9e11, t_end + CYCLE * k) for k in range(1, 6)]  # 10 s frozen again
     fired2 = axis_stale_reference(s2, 30.0)
-    check(fired2 and max(fired2) <= t_end,
-          "after recovery the clock restarts: a 10 s freeze that follows is NOT reported")
+    check(
+        fired2 and max(fired2) <= t_end,
+        "after recovery the clock restarts: a 10 s freeze that follows is NOT reported",
+    )
 
     # ---- 6. the partition: the per-instance guard is silent here BY DESIGN ---------------
     from gnss_broker.fits import instance_stall_verdict
+
     urls = ["cx%02d/%d" % (n, g) for n in (19, 27, 42, 43, 44, 51) for g in (0, 1)]
     frozen_hop = 36_373_000_000
     prev = {u: (frozen_hop, 1000.0) for u in urls}
-    _new, stalled = instance_stall_verdict(prev, {u: frozen_hop for u in urls},
-                                           1000.0 + 600.0, 90.0)
-    check(stalled == [],
-          "with ALL 12 frozen, instance_stall_verdict accuses nobody -- correct, and exactly "
-          "why the global guard must work: it is the only cover for this case")
+    _new, stalled = instance_stall_verdict(
+        prev, {u: frozen_hop for u in urls}, 1000.0 + 600.0, 90.0
+    )
+    check(
+        stalled == [],
+        "with ALL 12 frozen, instance_stall_verdict accuses nobody -- correct, and exactly "
+        "why the global guard must work: it is the only cover for this case",
+    )
     one = dict(prev)
     cur = {u: frozen_hop + int(HPS * 600) for u in urls}
-    cur[urls[0]] = frozen_hop                      # one wedged, eleven advancing
+    cur[urls[0]] = frozen_hop  # one wedged, eleven advancing
     _new, stalled = instance_stall_verdict(one, cur, 1000.0 + 600.0, 90.0)
-    check([u for u, _h, _d in stalled] == [urls[0]],
-          "... and it DOES catch one-of-twelve, which the global guard cannot see")
+    check(
+        [u for u, _h, _d in stalled] == [urls[0]],
+        "... and it DOES catch one-of-twelve, which the global guard cannot see",
+    )
 
     # ---- 7. EVERY help string must survive format_help() -------------------------------
     # ⚠️ CONSTRUCTING THE PARSER IS NOT THE SAME STATEMENT AS FORMATTING IT. argparse
@@ -159,13 +184,17 @@ def main():
     # (2026-08-26). build_parser() succeeded throughout -- the check I had actually run.
     # The digest gate cannot see this either: replay never formats help.
     from gnss_broker.cli import build_parser
+
     try:
         build_parser("selftest").format_help()
         ok = True
     except Exception as e:
         ok = False
         print("      format_help raised: %r" % (e,))
-    check(ok, "every --flag's help survives format_help() (a bare %% is a format specifier)")
+    check(
+        ok,
+        "every --flag's help survives format_help() (a bare %% is a format specifier)",
+    )
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

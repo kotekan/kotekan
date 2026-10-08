@@ -35,14 +35,14 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 C_LIGHT = 299792458.0
-GPS_UTC_LEAP = 18.0          # GPST - UTC (2026; bump at the next leap second)
-BDT_GPST = -14.0             # BDT = GPST - 14 s
+GPS_UTC_LEAP = 18.0  # GPST - UTC (2026; bump at the next leap second)
+BDT_GPST = -14.0  # BDT = GPST - 14 s
 GPS_EPOCH = datetime(1980, 1, 6, tzinfo=timezone.utc)
 
 # Gravitational parameter / earth rotation per constellation ICD.
 MU = {"G": 3.986005e14, "E": 3.986004418e14, "C": 3.986004418e14}
 OMEGA_E = {"G": 7.2921151467e-5, "E": 7.2921151467e-5, "C": 7.292115e-5}
-F_REL = -4.442807633e-10     # relativistic clock coefficient (s/sqrt(m))
+F_REL = -4.442807633e-10  # relativistic clock coefficient (s/sqrt(m))
 
 
 # ---------------------------------------------------------------------------------------
@@ -68,11 +68,13 @@ def __getattr__(name):
     except AttributeError:
         raise AttributeError(
             "module %r has no attribute %r (and neither does gnss_brdc_supply)"
-            % (__name__, name))
+            % (__name__, name)
+        )
 
 
 def __dir__():
     return sorted(set(list(globals()) + dir(_supply)))
+
 
 def _f(s):
     """RINEX float field ('D' exponents, blanks)."""
@@ -101,8 +103,13 @@ def parse_rinex_nav(paths):
             for key, recs in one.items():
                 b = merged.setdefault(key, {})
                 for e in recs:
-                    b.setdefault(round(e["toe_gpst"], 3), e)  # first (best) source wins same toe
-        return {k: sorted(v.values(), key=lambda e: e["toe_gpst"]) for k, v in merged.items()}
+                    b.setdefault(
+                        round(e["toe_gpst"], 3), e
+                    )  # first (best) source wins same toe
+        return {
+            k: sorted(v.values(), key=lambda e: e["toe_gpst"])
+            for k, v in merged.items()
+        }
     return _parse_rinex_nav_file(paths)
 
 
@@ -181,8 +188,14 @@ def _parse_rinex_nav_file(path):
             continue
         try:
             prn = int(line[1:3])
-            yy, mo, dd, hh, mi, ss = (int(line[4:8]), int(line[9:11]), int(line[12:14]),
-                                      int(line[15:17]), int(line[18:20]), int(line[21:23]))
+            yy, mo, dd, hh, mi, ss = (
+                int(line[4:8]),
+                int(line[9:11]),
+                int(line[12:14]),
+                int(line[15:17]),
+                int(line[18:20]),
+                int(line[21:23]),
+            )
             af = [_f(line[23:42]), _f(line[42:61]), _f(line[61:80])]
             orb = []
             for k in range(1, 8):
@@ -192,39 +205,66 @@ def _parse_rinex_nav_file(path):
             i += 1
             continue
         i += 8
-        toc = datetime(yy, mo, dd, hh, mi, ss, tzinfo=timezone.utc)  # in the SYSTEM time
+        toc = datetime(
+            yy, mo, dd, hh, mi, ss, tzinfo=timezone.utc
+        )  # in the SYSTEM time
         toc_gpst = (toc - GPS_EPOCH).total_seconds()
         if sysc == "C":
             toc_gpst -= BDT_GPST  # BDT epoch -> GPST seconds-since-GPS-epoch
-        e = dict(sys=sysc, prn=prn, af0=af[0], af1=af[1], af2=af[2],
-                 crs=orb[1], dn=orb[2], m0=orb[3],
-                 cuc=orb[4], ecc=orb[5], cus=orb[6], sqrta=orb[7],
-                 toe_sow=orb[8], cic=orb[9], omega0=orb[10], cis=orb[11],
-                 i0=orb[12], crc=orb[13], omega=orb[14], omegadot=orb[15],
-                 # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E) / SatH1 (C).
-                 # It was orb[25] -- field 2 of orbit line 7 -- which is a DIFFERENT quantity in
-                 # every system, and the mistake was invisible in two of the three:
-                 #   G: Fit interval  -> reads 4.0 on every healthy sat -> the strict G/E gate in
-                 #      predict_all rejected THE ENTIRE GPS CONSTELLATION (measured 2026-07-16:
-                 #      predict_all returned 0 GPS of 32 parsed, so every GPS observable row was
-                 #      logged with NO el/az/range -> no CMC, no IPP, and TEC from L1+L2C (both
-                 #      GPS!) was impossible). This is the real cause of the "el 1% populated"
-                 #      symptom that the BRDC staleness fix (6976642e) only partly addressed.
-                 #   E: blank -> 0.0 -> Galileo passed the gate BY ACCIDENT.
-                 #   C: AODC -> ~1 -> BeiDou was let through by the SatH1 exemption below, which
-                 #      was written for orb[21] all along but never actually read it.
-                 idot=orb[16], week=orb[18], health=orb[21], toc_gpst=toc_gpst,
-                 # Fields the ORBIT model does not need but the LNAV BIT ENCODER does
-                 # (gps_lnav_encode.py): subframe 1 carries URA/IODC/TGD/L2 flags and
-                 # subframes 2/3 carry IODE, none of which were kept before 2026-07-25.
-                 # RINEX has them all; dropping them silently is what made "encode the
-                 # ephemeris back into subframe bits" look impossible from BRDC alone.
-                 # ORBIT 1 = [IODE, Crs, dn, M0] (0-3); ORBIT 5 = [IDOT, L2 codes, week,
-                 # L2P flag] (16-19); ORBIT 6 = [accuracy, health, TGD, IODC] (20-23);
-                 # ORBIT 7 = [transmission time, fit interval] (24-25). health=orb[21]
-                 # above is the anchor that fixes this indexing.
-                 iode=orb[0], l2_codes=orb[17], l2p_flag=orb[19], accuracy=orb[20],
-                 tgd=orb[22], iodc=orb[23], fit=orb[25] if len(orb) > 25 else 0.0)
+        e = dict(
+            sys=sysc,
+            prn=prn,
+            af0=af[0],
+            af1=af[1],
+            af2=af[2],
+            crs=orb[1],
+            dn=orb[2],
+            m0=orb[3],
+            cuc=orb[4],
+            ecc=orb[5],
+            cus=orb[6],
+            sqrta=orb[7],
+            toe_sow=orb[8],
+            cic=orb[9],
+            omega0=orb[10],
+            cis=orb[11],
+            i0=orb[12],
+            crc=orb[13],
+            omega=orb[14],
+            omegadot=orb[15],
+            # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E) / SatH1 (C).
+            # It was orb[25] -- field 2 of orbit line 7 -- which is a DIFFERENT quantity in
+            # every system, and the mistake was invisible in two of the three:
+            #   G: Fit interval  -> reads 4.0 on every healthy sat -> the strict G/E gate in
+            #      predict_all rejected THE ENTIRE GPS CONSTELLATION (measured 2026-07-16:
+            #      predict_all returned 0 GPS of 32 parsed, so every GPS observable row was
+            #      logged with NO el/az/range -> no CMC, no IPP, and TEC from L1+L2C (both
+            #      GPS!) was impossible). This is the real cause of the "el 1% populated"
+            #      symptom that the BRDC staleness fix (6976642e) only partly addressed.
+            #   E: blank -> 0.0 -> Galileo passed the gate BY ACCIDENT.
+            #   C: AODC -> ~1 -> BeiDou was let through by the SatH1 exemption below, which
+            #      was written for orb[21] all along but never actually read it.
+            idot=orb[16],
+            week=orb[18],
+            health=orb[21],
+            toc_gpst=toc_gpst,
+            # Fields the ORBIT model does not need but the LNAV BIT ENCODER does
+            # (gps_lnav_encode.py): subframe 1 carries URA/IODC/TGD/L2 flags and
+            # subframes 2/3 carry IODE, none of which were kept before 2026-07-25.
+            # RINEX has them all; dropping them silently is what made "encode the
+            # ephemeris back into subframe bits" look impossible from BRDC alone.
+            # ORBIT 1 = [IODE, Crs, dn, M0] (0-3); ORBIT 5 = [IDOT, L2 codes, week,
+            # L2P flag] (16-19); ORBIT 6 = [accuracy, health, TGD, IODC] (20-23);
+            # ORBIT 7 = [transmission time, fit interval] (24-25). health=orb[21]
+            # above is the anchor that fixes this indexing.
+            iode=orb[0],
+            l2_codes=orb[17],
+            l2p_flag=orb[19],
+            accuracy=orb[20],
+            tgd=orb[22],
+            iodc=orb[23],
+            fit=orb[25] if len(orb) > 25 else 0.0,
+        )
         # toe as absolute GPST: the RINEX week field is the system's own week count --
         # GPS/GAL: GPS-aligned continuous week; BDS: BDT week (epoch 2006-01-01) + 14 s.
         if sysc in "GE":
@@ -290,8 +330,12 @@ def sat_pos_clk(e, t_gpst):
     V = tuple((pp[k] - pm[k]) / (2.0 * dt) for k in range(3))
     # clock: polynomial + relativistic
     tc = t_gpst - e["toc_gpst"]
-    clk = e["af0"] + e["af1"] * tc + e["af2"] * tc * tc \
+    clk = (
+        e["af0"]
+        + e["af1"] * tc
+        + e["af2"] * tc * tc
         + F_REL * e["ecc"] * e["sqrta"] * math.sin(ek)
+    )
     return (X, Y, Z), V, clk
 
 
@@ -300,9 +344,9 @@ def sat_pos_clk(e, t_gpst):
 F_E1 = F_L1 = 1575.42e6
 F_E5A = F_L5 = 1176.45e6
 F_E5B = 1207.14e6
-GAMMA_L1L5 = (F_L1 / F_L5) ** 2          # 1.79329
-GAMMA_E1E5A = (F_E1 / F_E5A) ** 2        # 1.79329
-GAMMA_E1E5B = (F_E1 / F_E5B) ** 2        # 1.70325
+GAMMA_L1L5 = (F_L1 / F_L5) ** 2  # 1.79329
+GAMMA_E1E5A = (F_E1 / F_E5A) ** 2  # 1.79329
+GAMMA_E1E5B = (F_E1 / F_E5B) ** 2  # 1.70325
 
 # RINEX 3 GAL dataSources bits (BROADCAST ORBIT 5 field 2, parsed into e["l2_codes"]):
 # bit 8 = clock referenced to (E5a, E1)  [F/NAV];  bit 9 = referenced to (E5b, E1)  [I/NAV].
@@ -350,15 +394,21 @@ def group_delay_s(e, signal, dcb=None):
     if dcb:
         try:
             import gnss_dcb as _dcbmod
-            _inav = bool(int(e.get("l2_codes") or 0) & _GAL_CLK_E5B) if sysc == "E" else False
-            _v = _dcbmod.signal_bias_s(dcb, sysc, int(e.get("prn") or 0), sig,
-                                       gal_inav=_inav)
+
+            _inav = (
+                bool(int(e.get("l2_codes") or 0) & _GAL_CLK_E5B)
+                if sysc == "E"
+                else False
+            )
+            _v = _dcbmod.signal_bias_s(
+                dcb, sysc, int(e.get("prn") or 0), sig, gal_inav=_inav
+            )
             if _v is not None and math.isfinite(_v):
                 return _v
         except Exception:
             pass
-    tgd = float(e.get("tgd") or 0.0)        # G: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
-    tgd2 = float(e.get("iodc") or 0.0)      # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC(!)
+    tgd = float(e.get("tgd") or 0.0)  # G: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
+    tgd2 = float(e.get("iodc") or 0.0)  # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC(!)
     if sysc == "G":
         # IS-GPS-705: an L5 user owes gamma_15 * TGD (plus ISC_L5I5, which is CNAV-only and
         # not in RINEX 3 -- so this is the larger half of the term, not all of it).
@@ -369,10 +419,14 @@ def group_delay_s(e, signal, dcb=None):
         return 0.0
     if sysc == "E":
         ds = int(e.get("l2_codes") or 0)
-        ref_a = bool(ds & _GAL_CLK_E5A)     # F/NAV: clock is the E1/E5a iono-free combination
-        ref_b = bool(ds & _GAL_CLK_E5B)     # I/NAV: clock is the E1/E5b iono-free combination
+        ref_a = bool(
+            ds & _GAL_CLK_E5A
+        )  # F/NAV: clock is the E1/E5a iono-free combination
+        ref_b = bool(
+            ds & _GAL_CLK_E5B
+        )  # I/NAV: clock is the E1/E5b iono-free combination
         if not (ref_a or ref_b):
-            ref_a = True                    # unflagged records: treat as F/NAV, the ICD default
+            ref_a = True  # unflagged records: treat as F/NAV, the ICD default
         if "e5a" in sig:
             if ref_a:
                 return -GAMMA_E1E5A * tgd
@@ -455,8 +509,9 @@ def best_eph(records, t_gpst, max_age=14400.0):
     return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
 
 
-def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0, signal=None,
-                dcb=None):
+def predict_all(
+    eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0, signal=None, dcb=None
+):
     """Per visible sat: az/el, geometric range (m) with Earth-rotation (Sagnac)
     correction, range-rate (m/s), sat clock (s). Receiver clock NOT included --
     solving it from measured-vs-predicted IS the time bootstrap.
@@ -503,9 +558,15 @@ def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0, signal
         # A0b: the broadcast clock refers to some OTHER signal combination; make it refer
         # to ours. `signal=None` (every non-broker caller) keeps the old, uncorrected value.
         _gd = group_delay_s(e, signal, dcb)
-        out[key] = dict(az=az, el=el, range_m=rng, range_rate_mps=rr,
-                        sat_clk_s=clk + _gd, tgd_s=_gd,
-                        toe_age_s=t - e["toe_gpst"])
+        out[key] = dict(
+            az=az,
+            el=el,
+            range_m=rng,
+            range_rate_mps=rr,
+            sat_clk_s=clk + _gd,
+            tgd_s=_gd,
+            toe_age_s=t - e["toe_gpst"],
+        )
     return out
 
 
@@ -519,6 +580,16 @@ if __name__ == "__main__":
     print("visible now: %d" % len(pred))
     for (s, p), v in sorted(pred.items(), key=lambda kv: -kv[1]["el"])[:12]:
         dop = -v["range_rate_mps"] / C_LIGHT * 1575.42e6
-        print("  %s%02d el %4.1f az %5.1f  range %8.1f km  dop %+7.1f Hz  clk %+9.3f us  toe_age %4.0f min"
-              % (s, p, v["el"], v["az"], v["range_m"] / 1e3, dop,
-                 v["sat_clk_s"] * 1e6, v["toe_age_s"] / 60))
+        print(
+            "  %s%02d el %4.1f az %5.1f  range %8.1f km  dop %+7.1f Hz  clk %+9.3f us  toe_age %4.0f min"
+            % (
+                s,
+                p,
+                v["el"],
+                v["az"],
+                v["range_m"] / 1e3,
+                dop,
+                v["sat_clk_s"] * 1e6,
+                v["toe_age_s"] / 60,
+            )
+        )

@@ -20,8 +20,16 @@ import re
 import sys
 import zlib
 
-CPP = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "..", "..", "..", "lib", "stages", "gnss", "galileoE6Code.cpp")
+CPP = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "..",
+    "..",
+    "lib",
+    "stages",
+    "gnss",
+    "galileoE6Code.cpp",
+)
 
 N_PRN = 50
 CHIPS = 5115
@@ -29,12 +37,24 @@ SEC_CHIPS = 100
 
 # (crc32 of the +/-1 code as a "01" string, popcount of +1) -- from the transcribed tables.
 _FP = {
-    "E6B_HEX": {1: (205759734, 2558), 7: (2199043268, 2558),
-                19: (3558976337, 2558), 36: (2264841301, 2558)},
-    "E6C_HEX": {1: (578628357, 2558), 7: (1079021178, 2558),
-                19: (4085486462, 2558), 36: (1506237582, 2558)},
-    "E6C_SEC_HEX": {1: (4688809, 46), 7: (2603738921, 48),
-                    19: (429929171, 54), 36: (2647661557, 53)},
+    "E6B_HEX": {
+        1: (205759734, 2558),
+        7: (2199043268, 2558),
+        19: (3558976337, 2558),
+        36: (2264841301, 2558),
+    },
+    "E6C_HEX": {
+        1: (578628357, 2558),
+        7: (1079021178, 2558),
+        19: (4085486462, 2558),
+        36: (1506237582, 2558),
+    },
+    "E6C_SEC_HEX": {
+        1: (4688809, 46),
+        7: (2603738921, 48),
+        19: (429929171, 54),
+        36: (2647661557, 53),
+    },
 }
 
 
@@ -62,8 +82,11 @@ def _decode(hexs, n):
 def main():
     text = open(os.path.normpath(CPP)).read()
     ok = True
-    for name, n, per in (("E6B_HEX", CHIPS, 1279), ("E6C_HEX", CHIPS, 1279),
-                         ("E6C_SEC_HEX", SEC_CHIPS, 25)):
+    for name, n, per in (
+        ("E6B_HEX", CHIPS, 1279),
+        ("E6C_HEX", CHIPS, 1279),
+        ("E6C_SEC_HEX", SEC_CHIPS, 25),
+    ):
         tab = _tables(text, name, per)
         if len(tab) != N_PRN or any(len(x) != per for x in tab):
             print("%s: BAD table shape (%d entries)" % (name, len(tab)))
@@ -76,17 +99,27 @@ def main():
         if n == CHIPS:
             bal = {sum(c) for c in codes}
             if bal != {1}:
-                print("%s: balance %s, expected {1} -- PADDING CONVENTION WRONG" % (name, bal))
+                print(
+                    "%s: balance %s, expected {1} -- PADDING CONVENTION WRONG"
+                    % (name, bal)
+                )
                 ok = False
             else:
-                print("%s: 50 codes, all distinct, balance +1 (2558/2557) -- padding OK" % name)
+                print(
+                    "%s: 50 codes, all distinct, balance +1 (2558/2557) -- padding OK"
+                    % name
+                )
         else:
             print("%s: 50 codes, all distinct, %d chips" % (name, n))
         for prn, (crc, pop) in sorted(_FP[name].items()):
             c = codes[prn - 1]
-            got = (zlib.crc32("".join("1" if x > 0 else "0" for x in c).encode()),
-                   sum(1 for x in c if x > 0))
-            status = "OK" if got == (crc, pop) else "MISMATCH (stored %s)" % ((crc, pop),)
+            got = (
+                zlib.crc32("".join("1" if x > 0 else "0" for x in c).encode()),
+                sum(1 for x in c if x > 0),
+            )
+            status = (
+                "OK" if got == (crc, pop) else "MISMATCH (stored %s)" % ((crc, pop),)
+            )
             if got != (crc, pop):
                 ok = False
             print("   PRN %2d: crc=0x%08x pop=%d %s" % (prn, got[0], got[1], status))

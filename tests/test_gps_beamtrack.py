@@ -5,7 +5,9 @@ import sys
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python", "scripts", "gnss"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "python", "scripts", "gnss")
+)
 import gps_beamtrack as gb  # noqa: E402
 
 
@@ -69,6 +71,8 @@ def test_attach_altaz_with_local_tle(tmp_path):
         [(11, 0, 0, 1, 0, 0, 30, 1, 0, 1.70e9), (7, 0, 0, 1, 0, 0, 30, 1, 0, 1.70e9)],
         dtype=[(f, "<f4") for f in gb.FIELDS] + [("utc", "<f8")],
     )
-    alt, az = gb.attach_altaz(recs, lat=43.66, lon=-79.40, alt_m=100.0, tle_source=tle_path)
+    alt, az = gb.attach_altaz(
+        recs, lat=43.66, lon=-79.40, alt_m=100.0, tle_source=tle_path
+    )
     assert np.isfinite(alt[0]) and -90.0 <= alt[0] <= 90.0
     assert np.isnan(alt[1])  # PRN 7 absent from the TLE set

@@ -57,7 +57,7 @@ def auc(pos, neg):
         j = i
         while j < len(allv) and allv[j][0] == allv[i][0]:
             j += 1
-        avg_rank = 0.5 * (i + 1 + j)          # 1-based average rank of the tie group
+        avg_rank = 0.5 * (i + 1 + j)  # 1-based average rank of the tie group
         rank_sum += avg_rank * sum(lab for _v, lab in allv[i:j])
         i = j
     u = rank_sum - 0.5 * len(pos) * (len(pos) + 1)
@@ -67,8 +67,9 @@ def auc(pos, neg):
 def discover_probes(broker, chain):
     """PRNs flagged noise_probe in the broker's served rows, or None if it cannot say."""
     try:
-        with urllib.request.urlopen("%s/get_status?chain=%s" % (broker, chain),
-                                    timeout=5.0) as h:
+        with urllib.request.urlopen(
+            "%s/get_status?chain=%s" % (broker, chain), timeout=5.0
+        ) as h:
             rows = json.loads(h.read().decode())
     except Exception as e:
         print("broker %s unreachable (%s)" % (broker, e))
@@ -77,8 +78,8 @@ def discover_probes(broker, chain):
     if flagged:
         return flagged
     if any("noise_probe" in r for r in rows):
-        return set()      # the broker knows the flag and flags nobody: probes are off
-    return None           # pre-#57 broker: the rows cannot say
+        return set()  # the broker knows the flag and flags nobody: probes are off
+    return None  # pre-#57 broker: the rows cannot say
 
 
 def _poll_once(endpoints, min_instances):
@@ -123,7 +124,7 @@ def polled_cn0(polls, probes, t_rec):
         return {}, None, {}
     pooled.sort()
     med = pooled[len(pooled) // 2]
-    kept = [x for x in pooled if x <= 20.0 * med]    # same clipped MEAN as the estimator
+    kept = [x for x in pooled if x <= 20.0 * med]  # same clipped MEAN as the estimator
     s2 = sum(kept) / len(kept)
     if s2 <= 0.0:
         return {}, None, {}
@@ -170,15 +171,18 @@ class _FakeFrame(object):
         return self._prns
 
     def row(self, r, prn):
-        return None      # no REC_PHI0: every fake sender is already on one phase reference
+        return None  # no REC_PHI0: every fake sender is already on one phase reference
 
     def comb_epl(self, r, prn):
         on = dict(self._sats).get(prn, False)
         out = []
         for fid in self._chans:
+
             def n():
-                return complex(self._rng.gauss(0.0, self._noise),
-                               self._rng.gauss(0.0, self._noise))
+                return complex(
+                    self._rng.gauss(0.0, self._noise), self._rng.gauss(0.0, self._noise)
+                )
+
             s = self._sig if on else 0.0
             # E = L = pure noise (a locked tap: the shoulders hold no power at 0.5-chip
             # spacing only approximately, but for the ARITHMETIC check E/L only feed q).
@@ -187,8 +191,16 @@ class _FakeFrame(object):
 
 
 class _FakeClient(object):
-    def __init__(self, seed=1, n_win=64, n_inst=3, chans_per_inst=6,
-                 sig_amp=3.0, noise_sig=1.0, sats=None):
+    def __init__(
+        self,
+        seed=1,
+        n_win=64,
+        n_inst=3,
+        chans_per_inst=6,
+        sig_amp=3.0,
+        noise_sig=1.0,
+        sats=None,
+    ):
         self._rng = random.Random(seed)
         self._wins = list(range(1000, 1000 + n_win))
         self._frames = {}
@@ -197,7 +209,8 @@ class _FakeClient(object):
             for i in range(n_inst):
                 chans = [i * chans_per_inst + c for c in range(chans_per_inst)]
                 self._frames[(w, "cx%d.0" % i)] = _FakeFrame(
-                    self._rng, w, i, chans, sats, sig_amp, noise_sig)
+                    self._rng, w, i, chans, sats, sig_amp, noise_sig
+                )
         self.n_chan_total = n_inst * chans_per_inst
 
     def windows(self, chain, lag=1):
@@ -211,8 +224,9 @@ def self_test():
     sig_amp, noise_sig, cpi = 3.0, 1.0, 6
     fc = _FakeClient(sig_amp=sig_amp, noise_sig=noise_sig, chans_per_inst=cpi)
     t_rec = 2048 * 5.12e-6
-    got = combdll.prompt_cn0(fc, "fake", n_win=64, probe_prns={91, 92, 93},
-                             keep_records=True)
+    got = combdll.prompt_cn0(
+        fc, "fake", n_win=64, probe_prns={91, 92, 93}, keep_records=True
+    )
     if not got:
         print("SELF-TEST: FAIL -- estimator returned nothing")
         return 1
@@ -228,22 +242,35 @@ def self_test():
             fails.append("PRN %d: no cn0 served" % prn)
             continue
         err = v["cn0_db"] - cn0_true
-        print("SELF-TEST PRN %d: cn0 %.2f dB-Hz (truth %.2f, err %+.2f) duty %.2f "
-              "split %s" % (prn, v["cn0_db"], cn0_true, err, v["duty"],
-                            "%+.2f" % v["split_db"] if v["split_db"] is not None else "--"))
+        print(
+            "SELF-TEST PRN %d: cn0 %.2f dB-Hz (truth %.2f, err %+.2f) duty %.2f "
+            "split %s"
+            % (
+                prn,
+                v["cn0_db"],
+                cn0_true,
+                err,
+                v["duty"],
+                "%+.2f" % v["split_db"] if v["split_db"] is not None else "--",
+            )
+        )
         # 0.3 dB: the mean-vs-median debias bias this test caught was +0.7 dB and a
         # loosened bar is how it would sneak back
         if abs(err) > 0.3:
             fails.append("PRN %d: cn0 off truth by %+.2f dB" % (prn, err))
         if v["duty"] < 0.9:
-            fails.append("PRN %d: duty %.2f on a clean strong signal" % (prn, v["duty"]))
+            fails.append(
+                "PRN %d: duty %.2f on a clean strong signal" % (prn, v["duty"])
+            )
     # A probe served ANY number is the fires-on-noise disease; the old bar here (duty >
     # 0.2) let a per-record q tail serve below-horizon probes at 18-21 dB-Hz, duty 0.1.
     for prn in (91, 92, 93):
         v = got.get(prn)
         if v and v["cn0_db"] is not None:
-            fails.append("probe %d SERVED %.1f dB-Hz at duty %.2f, sig_inc %.1f -- fires "
-                         "on noise" % (prn, v["cn0_db"], v["duty"], v["sig_inc"] or 0.0))
+            fails.append(
+                "probe %d SERVED %.1f dB-Hz at duty %.2f, sig_inc %.1f -- fires "
+                "on noise" % (prn, v["cn0_db"], v["duty"], v["sig_inc"] or 0.0)
+            )
     # the AUC leg on the synthetic records: satellite vs pooled probe rho
     probe_rho = [x[2] for p in (91, 92, 93) for x in got[p]["recs"]]
     a = auc([x[2] for x in got[23]["recs"]], probe_rho)
@@ -254,28 +281,39 @@ def self_test():
     # Per record it read +0.7 dB at duty 0.86 here; per window +0.13 at 0.99 (the probe-q
     # bar it replaced would have dropped ~half the records of a locked satellite this weak).
     weak_amp = 0.6
-    fw = _FakeClient(seed=2, sig_amp=weak_amp, noise_sig=noise_sig, chans_per_inst=cpi,
-                     n_win=192)
+    fw = _FakeClient(
+        seed=2, sig_amp=weak_amp, noise_sig=noise_sig, chans_per_inst=cpi, n_win=192
+    )
     gw = combdll.prompt_cn0(fw, "fake", n_win=192, probe_prns={91, 92, 93})
-    cn0_weak = 10.0 * math.log10(weak_amp ** 2 / (2.0 * noise_sig ** 2 / fw.n_chan_total) / t_rec)
+    cn0_weak = 10.0 * math.log10(
+        weak_amp ** 2 / (2.0 * noise_sig ** 2 / fw.n_chan_total) / t_rec
+    )
     v = gw.get(23)
     if not v or v["cn0_db"] is None:
         fails.append("weak PRN 23 (%.1f dB-Hz): no cn0 served" % cn0_weak)
     else:
         err = v["cn0_db"] - cn0_weak
-        print("SELF-TEST weak PRN 23: cn0 %.2f dB-Hz (truth %.2f, err %+.2f) duty %.2f sig_inc %.1f"
-              % (v["cn0_db"], cn0_weak, err, v["duty"], v["sig_inc"]))
+        print(
+            "SELF-TEST weak PRN 23: cn0 %.2f dB-Hz (truth %.2f, err %+.2f) duty %.2f sig_inc %.1f"
+            % (v["cn0_db"], cn0_weak, err, v["duty"], v["sig_inc"])
+        )
         # 0.5 dB: the estimator's own scatter at 768 records and rho ~3 is ~0.2 dB 1-sigma
         # (record scatter and the probe anchor's), so this bar is the bias, not the noise
         if abs(err) > 0.5:
-            fails.append("weak PRN 23: cn0 off truth by %+.2f dB (selection bias)" % err)
+            fails.append(
+                "weak PRN 23: cn0 off truth by %+.2f dB (selection bias)" % err
+            )
         if v["duty"] < 0.9:
-            fails.append("weak PRN 23: duty %.2f -- the lock conditional is a strength gate"
-                         % v["duty"])
+            fails.append(
+                "weak PRN 23: duty %.2f -- the lock conditional is a strength gate"
+                % v["duty"]
+            )
     for prn in (91, 92, 93):
         v = gw.get(prn)
         if v and v["cn0_db"] is not None:
-            fails.append("probe %d SERVED %.1f dB-Hz in the weak leg" % (prn, v["cn0_db"]))
+            fails.append(
+                "probe %d SERVED %.1f dB-Hz in the weak leg" % (prn, v["cn0_db"])
+            )
     if fails:
         print("SELF-TEST: FAIL\n  " + "\n  ".join(fails))
         return 1
@@ -284,19 +322,28 @@ def self_test():
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--gather", default="127.0.0.1:11061")
     ap.add_argument("--chain", default="gps_l5")
     ap.add_argument("--seconds", type=float, default=25.0)
     ap.add_argument("--windows", type=int, default=512)
-    ap.add_argument("--broker", default="http://127.0.0.1:12060",
-                    help="publisher, for probe discovery (config publish-port)")
-    ap.add_argument("--probes", default="",
-                    help="CSV probe PRNs; overrides broker discovery")
+    ap.add_argument(
+        "--broker",
+        default="http://127.0.0.1:12060",
+        help="publisher, for probe discovery (config publish-port)",
+    )
+    ap.add_argument(
+        "--probes", default="", help="CSV probe PRNs; overrides broker discovery"
+    )
     ap.add_argument("--nodes", default="cx19,cx27,cx42,cx43,cx44,cx51")
-    ap.add_argument("--min-duty", type=float, default=0.5,
-                    help="a PRN below this gate duty is not judged (its cn0 is declinable)")
+    ap.add_argument(
+        "--min-duty",
+        type=float,
+        default=0.5,
+        help="a PRN below this gate duty is not judged (its cn0 is declinable)",
+    )
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -307,24 +354,36 @@ def main():
     else:
         probes = discover_probes(a.broker, a.chain)
         if probes is None:
-            raise SystemExit("broker rows carry no noise_probe flag (pre-#57 broker?) -- "
-                             "pass --probes; the seed log names them "
-                             "('noise probe PRN %d seeded')")
+            raise SystemExit(
+                "broker rows carry no noise_probe flag (pre-#57 broker?) -- "
+                "pass --probes; the seed log names them "
+                "('noise probe PRN %d seeded')"
+            )
         if not probes:
-            raise SystemExit("broker reports no noise probes seeded -- the estimator has "
-                             "no noise anchor; check `noise-probes:` in the chain yaml")
+            raise SystemExit(
+                "broker reports no noise probes seeded -- the estimator has "
+                "no noise anchor; check `noise-probes:` in the chain yaml"
+            )
     print("probes: %s" % sorted(probes))
 
     # ⚠️ COMBINER NAMES ARE PER CHAIN (gnss{0,1}[_<band>]_n2combine). The first run of this
     # tool polled gps_l5's combiners while judging gal_e5b -- no probe rows matched, no pair
     # was computable, and the leg printed PASS on zero data: a gate that cannot fail. The
     # suffix map below and the per-leg judged counts are both consequences of that run.
-    _sfx = {"gps_l5": "", "gal_e5a": "_e5a", "bds_b2a": "_b2a",
-            "gal_e5b": "_e5b", "bds_b2b": "_b2b"}.get(a.chain)
+    _sfx = {
+        "gps_l5": "",
+        "gal_e5a": "_e5a",
+        "bds_b2a": "_b2a",
+        "gal_e5b": "_e5b",
+        "bds_b2b": "_b2b",
+    }.get(a.chain)
     if _sfx is None:
         raise SystemExit("unknown chain %r -- no combiner suffix known" % a.chain)
-    eps = ["http://%s:12049/gnss%d%s_n2combine" % (n, g, _sfx)
-           for n in a.nodes.split(",") for g in (0, 1)]
+    eps = [
+        "http://%s:12049/gnss%d%s_n2combine" % (n, g, _sfx)
+        for n in a.nodes.split(",")
+        for g in (0, 1)
+    ]
 
     host, port = telem.parse_endpoint(a.gather)
     cl = telem.TelemClient(host=host, port=port, depth=4096, chains={a.chain})
@@ -345,25 +404,37 @@ def main():
         time.sleep(max(0.0, _pt0 + (i + 0.5) * _pspan / n_sweeps - time.time()))
         polls.append(_poll_once(eps, min_instances=2))
     time.sleep(max(0.0, t0 + a.seconds - time.time()))
-    got = combdll.prompt_cn0(cl, a.chain, n_win=a.windows, probe_prns=probes,
-                             keep_records=True)
+    got = combdll.prompt_cn0(
+        cl, a.chain, n_win=a.windows, probe_prns=probes, keep_records=True
+    )
     cl.stop()
     if not got:
-        raise SystemExit("no estimate: no windows for %s, or < 16 probe records "
-                         "(gather down? probes not despread?)" % a.chain)
+        raise SystemExit(
+            "no estimate: no windows for %s, or < 16 probe records "
+            "(gather down? probes not despread?)" % a.chain
+        )
     t_rec = next(iter(got.values()))["t_rec_s"]
     poll, poll_s2, poll_se, poll_p = polled_cn0(polls, probes, t_rec)
 
     probe_rho = [x[2] for p in probes for x in (got.get(p, {}).get("recs") or [])]
     sats = sorted(p for p in got if p not in probes)
     v0 = got[sats[0]] if sats else next(iter(got.values()))
-    print("\n%d PRNs, %d probe records, sigma2 %.3e, present at t>=%.0f, q_noise %.2f, "
-          "t_rec %.4f s" % (len(got), v0["n_probe_rec"], v0["sigma2"], v0["min_sig"],
-                            v0["q_noise"], t_rec))
+    print(
+        "\n%d PRNs, %d probe records, sigma2 %.3e, present at t>=%.0f, q_noise %.2f, "
+        "t_rec %.4f s"
+        % (
+            len(got),
+            v0["n_probe_rec"],
+            v0["sigma2"],
+            v0["min_sig"],
+            v0["q_noise"],
+            t_rec,
+        )
+    )
     print("\n  PRN     cn0_db   duty  n_used  split_dB    AUC   polled_dB  pair_dB")
-    legs = {"auc": [], "split": [], "pair": []}      # failures per leg
-    judged = {"auc": [], "split": [], "pair": []}    # PRNs each leg could actually score
-    decomp = []                                      # (prn, signal ratio dB, pair gap dB)
+    legs = {"auc": [], "split": [], "pair": []}  # failures per leg
+    judged = {"auc": [], "split": [], "pair": []}  # PRNs each leg could actually score
+    decomp = []  # (prn, signal ratio dB, pair gap dB)
     # THE ANCHOR CONVENTION OFFSET, measured per run from the probes themselves. The two
     # feeds' noise anchors sit a constant apart (gps_l5 2026-08-15: -1.43 dB, the comb
     # BELOW /get_status's p_pow) while their per-record powers agree to 0.07 dB on the
@@ -381,16 +452,20 @@ def main():
         rho_rec = [x[2] for x in v["recs"]]
         # probes are scored against the OTHER probes' pool -- self-inclusion would drag
         # every probe's AUC toward 0.5 and hide a hot one
-        neg = ([x for p in probes if p != prn
-                for x in (got.get(p, {}).get("recs") or [])] if is_probe else None)
+        neg = (
+            [x for p in probes if p != prn for x in (got.get(p, {}).get("recs") or [])]
+            if is_probe
+            else None
+        )
         A = auc(rho_rec, [x[2] for x in neg] if is_probe else probe_rho)
         # the paired leg compares UNGATED means over the SAME last-PAIR_S span the sweeps
         # covered (see the sweep-schedule comment in main)
         _k = max(8, int(PAIR_S / t_rec))
         rho_pair = rho_rec[-_k:]
         rho_all = sum(rho_pair) / len(rho_pair) if rho_pair else None
-        tele_ug = (10.0 * math.log10(rho_all / t_rec)
-                   if rho_all and rho_all > 0.0 else None)
+        tele_ug = (
+            10.0 * math.log10(rho_all / t_rec) if rho_all and rho_all > 0.0 else None
+        )
         pol = poll.get(prn)
         pair = (tele_ug - pol) if (tele_ug is not None and pol is not None) else None
         # DON'T FIT ACROSS A TRANSIENT: first-half vs second-half of the ungated series,
@@ -401,37 +476,52 @@ def main():
         # pair leg reports it as unscoreable rather than failed OR passed.
         drift = None
         if len(rho_pair) >= 8:
-            h1 = sum(rho_pair[:len(rho_pair) // 2]) / (len(rho_pair) // 2)
-            h2 = sum(rho_pair[len(rho_pair) // 2:]) / (len(rho_pair) - len(rho_pair) // 2)
+            h1 = sum(rho_pair[: len(rho_pair) // 2]) / (len(rho_pair) // 2)
+            h2 = sum(rho_pair[len(rho_pair) // 2 :]) / (
+                len(rho_pair) - len(rho_pair) // 2
+            )
             if h1 > 0.0 and h2 > 0.0:
                 drift = 10.0 * math.log10(h2 / h1)
         # Scoreable = the sky held still (drift) AND the polled arm can resolve the bar
         # (its own standard error across sweeps under 0.5 dB).
         _se = poll_se.get(prn)
-        stationary = (drift is not None and abs(drift) <= 1.0
-                      and _se is not None and _se <= 0.5)
-        print("  %s%-4d %8s  %5.2f  %6d  %8s  %5s  %9s  %7s%s"
-              % ("P" if is_probe else "G", prn,
-                 "%.1f" % v["cn0_db"] if v["cn0_db"] is not None else "--",
-                 v["duty"], v["n_used"],
-                 "%+.2f" % v["split_db"] if v["split_db"] is not None else "--",
-                 "%.3f" % A if A is not None else "--",
-                 "%.1f" % pol if pol is not None else "--",
-                 "%+.2f" % pair if pair is not None else "--",
-                 "" if (pair is None or stationary)
-                 else "~ (drift %s, poll se %s)"
-                 % ("%+.1f dB" % drift if drift is not None else "--",
-                    "%.2f dB" % _se if _se is not None else "--")))
+        stationary = (
+            drift is not None and abs(drift) <= 1.0 and _se is not None and _se <= 0.5
+        )
+        print(
+            "  %s%-4d %8s  %5.2f  %6d  %8s  %5s  %9s  %7s%s"
+            % (
+                "P" if is_probe else "G",
+                prn,
+                "%.1f" % v["cn0_db"] if v["cn0_db"] is not None else "--",
+                v["duty"],
+                v["n_used"],
+                "%+.2f" % v["split_db"] if v["split_db"] is not None else "--",
+                "%.3f" % A if A is not None else "--",
+                "%.1f" % pol if pol is not None else "--",
+                "%+.2f" % pair if pair is not None else "--",
+                ""
+                if (pair is None or stationary)
+                else "~ (drift %s, poll se %s)"
+                % (
+                    "%+.1f dB" % drift if drift is not None else "--",
+                    "%.2f dB" % _se if _se is not None else "--",
+                ),
+            )
+        )
         if is_probe:
             if A is not None and A >= 0.9:
-                legs["auc"].append("probe %d AUC %.3f vs its peers -- FIRES ON NOISE"
-                                   % (prn, A))
+                legs["auc"].append(
+                    "probe %d AUC %.3f vs its peers -- FIRES ON NOISE" % (prn, A)
+                )
             if v["cn0_db"] is not None and v["duty"] > 0.2:
-                legs["auc"].append("probe %d served cn0 %.1f at duty %.2f"
-                                   % (prn, v["cn0_db"], v["duty"]))
+                legs["auc"].append(
+                    "probe %d served cn0 %.1f at duty %.2f"
+                    % (prn, v["cn0_db"], v["duty"])
+                )
             continue
         if v["cn0_db"] is None or v["duty"] < a.min_duty:
-            continue      # declinable by its own published duty; not judged
+            continue  # declinable by its own published duty; not judged
         # A leg only judges a PRN it could actually SCORE -- a missing input must surface
         # as INCONCLUSIVE, never ride a non-empty overall set into PASS.
         if A is not None:
@@ -445,35 +535,56 @@ def main():
         if pair is not None and stationary and anch_db is not None:
             judged["pair"].append(prn)
             if abs(pair + anch_db) > 1.0:
-                legs["pair"].append("PRN %d corrected gap %+.2f dB (raw %+.2f)"
-                                    % (prn, pair + anch_db, pair))
+                legs["pair"].append(
+                    "PRN %d corrected gap %+.2f dB (raw %+.2f)"
+                    % (prn, pair + anch_db, pair)
+                )
         # DECOMPOSE the pair gap for this PRN: gap = (numerator ratio) - (anchor ratio).
         # A uniform gap across satellites with the numerators agreeing convicts the
         # ANCHORS; numerators moving convicts the record paths themselves (#62 territory).
-        if (pair is not None and rho_all is not None and rho_all > 0.0
-                and prn in poll_p and poll_s2):
+        if (
+            pair is not None
+            and rho_all is not None
+            and rho_all > 0.0
+            and prn in poll_p
+            and poll_s2
+        ):
             _s_tele = (rho_all + 1.0) * v["sigma2"]
             decomp.append((prn, 10.0 * math.log10(_s_tele / poll_p[prn]), pair))
 
     if decomp and anch_db is not None:
-        print("\nDECOMPOSITION: anchor ratio (tele sigma2 / polled s2) %+.2f dB "
-              "(a serving-layer convention -- pair verdicts are corrected by it); "
-              "signal ratios (tele/polled): %s"
-              % (anch_db, "  ".join("%s%d %+.2f" % ("P" if p in probes else "G", p, r)
-                                    for p, r, _g in decomp)))
+        print(
+            "\nDECOMPOSITION: anchor ratio (tele sigma2 / polled s2) %+.2f dB "
+            "(a serving-layer convention -- pair verdicts are corrected by it); "
+            "signal ratios (tele/polled): %s"
+            % (
+                anch_db,
+                "  ".join(
+                    "%s%d %+.2f" % ("P" if p in probes else "G", p, r)
+                    for p, r, _g in decomp
+                ),
+            )
+        )
     print()
     rc = 0
-    for name, bar in (("auc", "AUC >= 0.90 (+ no probe fires)"),
-                      ("split", "|split| <= 1.0 dB"), ("pair", "two-feed <= 1.0 dB")):
+    for name, bar in (
+        ("auc", "AUC >= 0.90 (+ no probe fires)"),
+        ("split", "|split| <= 1.0 dB"),
+        ("pair", "two-feed <= 1.0 dB"),
+    ):
         if legs[name]:
             print("%-6s FAIL (%s): %s" % (name.upper(), bar, "; ".join(legs[name])))
             rc = 1
         elif not judged[name]:
-            print("%-6s INCONCLUSIVE: no satellite it could score at duty >= %.2f"
-                  % (name.upper(), a.min_duty))
+            print(
+                "%-6s INCONCLUSIVE: no satellite it could score at duty >= %.2f"
+                % (name.upper(), a.min_duty)
+            )
         else:
-            print("%-6s PASS (%s) on %s" % (name.upper(), bar,
-                                            ", ".join("G%d" % p for p in judged[name])))
+            print(
+                "%-6s PASS (%s) on %s"
+                % (name.upper(), bar, ", ".join("G%d" % p for p in judged[name]))
+            )
     if poll_s2 is None:
         print("PAIRED note: polled arm had < 2 probe rows -- pair column empty")
     return rc

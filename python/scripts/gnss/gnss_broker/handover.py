@@ -72,25 +72,34 @@ class TrimHandover:
 
         if abs(step_chips) > self.bound_chips:
             self.skipped += 1
-            log("REBASE-ADJUST PRN %d skipped: step %+.3f beyond the %.1f-chip handover bound"
-                % (prn, step_chips, self.bound_chips))
+            log(
+                "REBASE-ADJUST PRN %d skipped: step %+.3f beyond the %.1f-chip handover bound"
+                % (prn, step_chips, self.bound_chips)
+            )
             return False
 
         try:
             # `post` returns the HTTP status; the per-PRN adjusted/refused echo is in the
             # GATHER's log and its get_stats, because only the gather knows which PRNs it
             # currently holds armed.
-            rep = post("%s/adjust_trim" % url.rstrip("/"),
-                       {"chains": {chain: {str(prn): -step_chips}}},
-                       timeout=self.timeout_s)
+            rep = post(
+                "%s/adjust_trim" % url.rstrip("/"),
+                {"chains": {chain: {str(prn): -step_chips}}},
+                timeout=self.timeout_s,
+            )
             self.posted += 1
             self.adjcum[prn] = self.adjcum.get(prn, 0.0) - step_chips
-            log("REBASE-ADJUST PRN %d: trim %+.3f posted to the gather (HTTP %s)"
-                % (prn, -step_chips, rep))
+            log(
+                "REBASE-ADJUST PRN %d: trim %+.3f posted to the gather (HTTP %s)"
+                % (prn, -step_chips, rep)
+            )
             return True
         except Exception as e:
             self.failed += 1
-            log("REBASE-ADJUST PRN %d FAILED (%s) -- trim rebuilds the old way" % (prn, e))
+            log(
+                "REBASE-ADJUST PRN %d FAILED (%s) -- trim rebuilds the old way"
+                % (prn, e)
+            )
             return False
 
     def corrected(self, prn, trim_chips):

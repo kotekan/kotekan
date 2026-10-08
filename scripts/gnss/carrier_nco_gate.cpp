@@ -68,9 +68,8 @@ int main() {
         double worst_acc = 0, worst_abs = 0;
         for (int k = 0; k < 8; ++k) {
             const long long n = n_start + (long long)k * REC;
-            const double acc = gnss::carrier_nco_advance(a, f, n, FS,
-                                                         gnss::carrier_phase_absolute(f, n, FS),
-                                                         GAP_MAX, &re);
+            const double acc = gnss::carrier_nco_advance(
+                a, f, n, FS, gnss::carrier_phase_absolute(f, n, FS), GAP_MAX, &re);
             const double abs_ = gnss::carrier_phase_absolute(f, n, FS);
             if (k) {
                 const double t = truth_step(f, f, REC);
@@ -86,8 +85,8 @@ int main() {
         // ~2.3e-4 rad long-double floor that ang0_for's own comment quotes. Measured 2.9e-4.
         // That residue is why arm 1 exists at all -- but it is a PRECISION floor, three orders
         // below the RADIANS that arm 2 removes, so the two must not be conflated.
-        check(worst_abs < 1e-3, "absolute    step == physical to its long-double floor",
-              worst_abs, 0.0);
+        check(worst_abs < 1e-3, "absolute    step == physical to its long-double floor", worst_abs,
+              0.0);
         check(re == 1, "exactly one re-anchor (the first sight)", (double)re, 1.0);
     }
 
@@ -103,9 +102,8 @@ int main() {
         for (int k = 0; k < 32; ++k) {
             const long long n = n_start + (long long)k * REC;
             const double f = F_CARRIER + 1234.0 + dop_rate * dt * k;
-            const double acc = gnss::carrier_nco_advance(a, f, n, FS,
-                                                         gnss::carrier_phase_absolute(f, n, FS),
-                                                         GAP_MAX, &re);
+            const double acc = gnss::carrier_nco_advance(
+                a, f, n, FS, gnss::carrier_phase_absolute(f, n, FS), GAP_MAX, &re);
             const double abs_ = gnss::carrier_phase_absolute(f, n, FS);
             if (k) {
                 const double t = truth_step(f_prev, f, REC);
@@ -133,9 +131,8 @@ int main() {
         const long long n1 = n_start, n2 = n_start + REC;
         gnss::CarrierNco a;
         unsigned long long re = 0;
-        const double a1 = gnss::carrier_nco_advance(a, f0, n1, FS,
-                                                    gnss::carrier_phase_absolute(f0, n1, FS),
-                                                    GAP_MAX, &re);
+        const double a1 = gnss::carrier_nco_advance(
+            a, f0, n1, FS, gnss::carrier_phase_absolute(f0, n1, FS), GAP_MAX, &re);
         const double a2 = gnss::carrier_nco_advance(a, f1, n2, FS, 0.0, GAP_MAX, &re);
         const double t = truth_step(f0, f1, REC);
         const double err_acc = std::fabs(wrap(a2 - a1 - t));
@@ -155,13 +152,11 @@ int main() {
         gnss::CarrierNco a;
         unsigned long long re = 0;
         const double f = F_CARRIER + 500.0;
-        const double p1 = gnss::carrier_nco_advance(a, f, n_start, FS,
-                                                    gnss::carrier_phase_absolute(f, n_start, FS),
-                                                    GAP_MAX, &re);
+        const double p1 = gnss::carrier_nco_advance(
+            a, f, n_start, FS, gnss::carrier_phase_absolute(f, n_start, FS), GAP_MAX, &re);
         const unsigned long long re_after_first = re;
         // 3-record hole: still integrable.
-        const double p2 = gnss::carrier_nco_advance(a, f, n_start + 4 * REC, FS, 0.0, GAP_MAX,
-                                                    &re);
+        const double p2 = gnss::carrier_nco_advance(a, f, n_start + 4 * REC, FS, 0.0, GAP_MAX, &re);
         const double t = truth_step(f, f, 4 * REC);
         check(std::fabs(wrap(p2 - p1 - t)) < 1e-6, "short gap integrates through",
               std::fabs(wrap(p2 - p1 - t)), 0.0);

@@ -23,20 +23,20 @@ import numpy as np
 
 import galileo_fnav as G
 
-SYM_S = G.SYM_S                 # 0.020
-PAGE = G.PAGE_SYMS             # 500 symbols per page
-EMIT_MAX = 64                  # bound the stitched emit cache per PRN
-PAGE_TTL_S = 3600.0           # a cached page older than this is stale (ephemeris ~ hourly)
+SYM_S = G.SYM_S  # 0.020
+PAGE = G.PAGE_SYMS  # 500 symbols per page
+EMIT_MAX = 64  # bound the stitched emit cache per PRN
+PAGE_TTL_S = 3600.0  # a cached page older than this is stale (ephemeris ~ hourly)
 
 
 class _PrnState:
     def __init__(self):
-        self.emits = {}          # slot0 -> np.array(+-1) one per distinct nav_obs emit
-        self.last_obs = None     # (utc_ref, phase, br) dedup
-        self.pol = None          # last resolved carrier polarity (health only)
-        self.pages = {}          # page_type -> (iodnav, content_bits[238], t_decoded)
-        self.n_pages = 0         # pages decoded (sync-valid)
-        self.n_crc = 0           # pages assembled with valid CRC
+        self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
+        self.last_obs = None  # (utc_ref, phase, br) dedup
+        self.pol = None  # last resolved carrier polarity (health only)
+        self.pages = {}  # page_type -> (iodnav, content_bits[238], t_decoded)
+        self.n_pages = 0  # pages decoded (sync-valid)
+        self.n_crc = 0  # pages assembled with valid CRC
         self.last_decode = 0.0
 
 
@@ -44,15 +44,20 @@ class FnavPredictor:
     def __init__(self, log=None):
         self._p = {}
         self._log = log or (lambda m: None)
-        self._min_gap = 1.0      # s between decode attempts across all PRNs (0 = off, self-test)
+        self._min_gap = (
+            1.0  # s between decode attempts across all PRNs (0 = off, self-test)
+        )
         self._last_decode = 0.0
 
     # ----------------------------------------------------------------- ingest
     def ingest(self, prn, obs):
         st = self._p.setdefault(prn, _PrnState())
         try:
-            utc_ref = float(obs["utc_ref"]); rec_dt = float(obs["rec_dt"])
-            phase = int(obs["phase"]); br = int(obs["br"]); pairs = obs["bits"]
+            utc_ref = float(obs["utc_ref"])
+            rec_dt = float(obs["rec_dt"])
+            phase = int(obs["phase"])
+            br = int(obs["br"])
+            pairs = obs["bits"]
         except (KeyError, TypeError, ValueError):
             return
         if rec_dt <= 0 or br <= 0 or not pairs:
@@ -75,7 +80,7 @@ class FnavPredictor:
         arr = np.zeros(hi - slot0 + 1, dtype=np.int8)
         for s, v in m.items():
             arr[s - slot0] = v
-        if (arr == 0).any():     # a gap breaks page contiguity: drop the emit
+        if (arr == 0).any():  # a gap breaks page contiguity: drop the emit
             return
         st.emits[slot0] = arr
         if len(st.emits) > EMIT_MAX:
@@ -93,19 +98,21 @@ class FnavPredictor:
         if not st.emits:
             return []
         runs = []
-        cur0 = None; cur = None
+        cur0 = None
+        cur = None
         for s0 in sorted(st.emits):
             a = st.emits[s0]
             if cur is None:
                 cur0, cur = s0, a.copy()
                 continue
             end = cur0 + len(cur)
-            if s0 <= end:                     # overlap/abut: splice (shared slot signs agree)
+            if s0 <= end:  # overlap/abut: splice (shared slot signs agree)
                 ov = end - s0
                 if ov < len(a):
                     cur = np.concatenate([cur, a[ov:]])
             else:
-                runs.append((cur0, cur)); cur0, cur = s0, a.copy()
+                runs.append((cur0, cur))
+                cur0, cur = s0, a.copy()
         runs.append((cur0, cur))
         return runs
 
@@ -121,8 +128,8 @@ class FnavPredictor:
                 # absolute. Do NOT jump on a bare sync (a false 12-symbol sync ~1/4096 would
                 # derail alignment) -- step by 1 and let the CRC be the true filter.
                 for pol in (1.0, -1.0):
-                    seg = pol * soft[i:i + PAGE]
-                    hard = (seg[:G.N_SYNC] < 0).astype(np.int8)
+                    seg = pol * soft[i : i + PAGE]
+                    hard = (seg[: G.N_SYNC] < 0).astype(np.int8)
                     if np.array_equal(hard, np.array(G.SYNC, dtype=np.int8)):
                         bits, ok = G.decode_page(seg, want_sync=True)
                         if ok and bits is not None:
@@ -162,8 +169,13 @@ class FnavPredictor:
         st = self._p.get(prn)
         if st is None:
             return None
-        return {"pol": st.pol, "pages": st.n_pages, "words": st.n_crc,
-                "have": sorted(st.pages), "eph": self.ephemeris(prn) is not None}
+        return {
+            "pol": st.pol,
+            "pages": st.n_pages,
+            "words": st.n_crc,
+            "have": sorted(st.pages),
+            "eph": self.ephemeris(prn) is not None,
+        }
 
 
 # ------------------------------------------------------------------- self-test
@@ -185,8 +197,8 @@ def _selftest():
             pages[pt][start + k] = (code >> (length - 1 - k)) & 1
     # re-CRC each page after planting fields (so decode's CRC gate passes)
     for pt in (1, 2, 3, 4):
-        crc = G.crc24q(pages[pt][0:G.CRC_AT])
-        pages[pt][G.CRC_AT:G.CRC_AT + 24] = [(crc >> (23 - i)) & 1 for i in range(24)]
+        crc = G.crc24q(pages[pt][0 : G.CRC_AT])
+        pages[pt][G.CRC_AT : G.CRC_AT + 24] = [(crc >> (23 - i)) & 1 for i in range(24)]
     truth = G.parse_fnav_ephemeris(pages)
 
     # build the symbol stream: one page per type, repeated, INDEPENDENT random polarity/emit
@@ -198,12 +210,17 @@ def _selftest():
 
     pred = FnavPredictor(log=print)
     pred._min_gap = 0.0
-    ELEN = PAGE                                  # 500 = one page per emit (clean case)
+    ELEN = PAGE  # 500 = one page per emit (clean case)
     e = 0
     while e + ELEN <= len(pm):
         sgn = 1 - 2 * rng.randint(0, 2)
-        obs = {"utc_ref": e * SYM_S, "rec_dt": 0.001, "phase": 0, "br": 20,
-               "bits": [[i, int(pm[e + i]) * sgn] for i in range(ELEN)]}
+        obs = {
+            "utc_ref": e * SYM_S,
+            "rec_dt": 0.001,
+            "phase": 0,
+            "br": 20,
+            "bits": [[i, int(pm[e + i]) * sgn] for i in range(ELEN)],
+        }
         pred.ingest(prn, obs)
         e += ELEN
 
@@ -211,15 +228,23 @@ def _selftest():
     print("health:", h)
     ok = True
     if not (h and h["words"] >= 3 and set((2, 3, 4)) <= set(h["have"])):
-        print("FAIL: orbit page types not all assembled"); ok = False
+        print("FAIL: orbit page types not all assembled")
+        ok = False
     eph = pred.ephemeris(prn)
     if eph is None:
-        print("FAIL: no ephemeris"); ok = False
+        print("FAIL: no ephemeris")
+        ok = False
     else:
-        bad = [k for k in truth if not k.startswith("_") and k != "IODnav"
-               and abs(eph[k] - truth[k]) > 1e-9 * (abs(truth[k]) + 1)]
+        bad = [
+            k
+            for k in truth
+            if not k.startswith("_")
+            and k != "IODnav"
+            and abs(eph[k] - truth[k]) > 1e-9 * (abs(truth[k]) + 1)
+        ]
         if bad:
-            print("FAIL: ephemeris fields disagree:", bad); ok = False
+            print("FAIL: ephemeris fields disagree:", bad)
+            ok = False
         else:
             print("ephemeris recovered, all fields match; IODnav", eph["IODnav"])
     print("PASS" if ok else "FAIL")
@@ -228,4 +253,5 @@ def _selftest():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(0 if _selftest() else 1)

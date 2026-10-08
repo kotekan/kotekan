@@ -57,8 +57,8 @@ sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 import telem_e2e as T  # noqa: E402  (fixture + kotekan config, reused verbatim)
 
 FAKE_PORT = 12893
-POSTS = []          # (t_wall, [seed dicts])
-DETS = []           # the one detection the fake search serves
+POSTS = []  # (t_wall, [seed dicts])
+DETS = []  # the one detection the fake search serves
 LOCK = threading.Lock()
 
 
@@ -108,15 +108,29 @@ def main():
     d = tempfile.mkdtemp(prefix="fast_trim_e2e-")
     det_prn = T.LIVE_PRNS[0]
     det_path = os.path.join(d, "det.json")
-    print("generating a real detection for PRN %d (e2e --emit-detection, ~20 s)..." % det_prn)
-    subprocess.run([os.path.join(HERE, "e2e"), "--prn", str(det_prn),
-                    "--emit-detection", det_path],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
+    print(
+        "generating a real detection for PRN %d (e2e --emit-detection, ~20 s)..."
+        % det_prn
+    )
+    subprocess.run(
+        [
+            os.path.join(HERE, "e2e"),
+            "--prn",
+            str(det_prn),
+            "--emit-detection",
+            det_path,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=300,
+    )
     if not os.path.exists(det_path):
         raise SystemExit("e2e did not emit a detection -- cannot seed the broker")
     DETS.extend(json.load(open(det_path)))
-    print("detection PRN %d snr %.0f ref_hop %d"
-          % (DETS[0]["prn"], DETS[0]["snr"], DETS[0]["ref_hop"]))
+    print(
+        "detection PRN %d snr %.0f ref_hop %d"
+        % (DETS[0]["prn"], DETS[0]["snr"], DETS[0]["ref_hop"])
+    )
     # ⚠️ COMB VALUES CHOSEN SO EVERY NUMBER BELOW IS PREDICTED, NOT PLAUSIBLE. Per channel
     # E/P/L = 0.5 / 1.0 / 0.25 with unit energy gives, per instance, e = 0.25, p = 1, l =
     # 0.0625; summed over instances the ratios are unchanged, so
@@ -130,9 +144,17 @@ def main():
         T.write_record_files(d, inst, start, comb_epl=(0.5, 1.0, 0.25))
     cfg = T.write_config(d)
     klog = os.path.join(d, "kotekan.log")
-    kp = subprocess.Popen([T.kotekan_binary(), "--config", cfg,
-                           "--bind-address", "127.0.0.1:%d" % T.PORT_REST],
-                          stdout=open(klog, "wb"), stderr=subprocess.STDOUT)
+    kp = subprocess.Popen(
+        [
+            T.kotekan_binary(),
+            "--config",
+            cfg,
+            "--bind-address",
+            "127.0.0.1:%d" % T.PORT_REST,
+        ],
+        stdout=open(klog, "wb"),
+        stderr=subprocess.STDOUT,
+    )
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", FAKE_PORT), Fake)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = "http://127.0.0.1:%d" % FAKE_PORT
@@ -143,28 +165,55 @@ def main():
     # almanac / dead-reckon / cl-assist -- those need BRDC and a live clock, and the question
     # here is the ACTUATOR, not the sky model). dll-gain is the production 0.25, because the
     # step size is exactly what [2] predicts from it.
-    cmd = [sys.executable, "-u", "python/scripts/gnss/gps_distributed_broker.py",
-           "--rest-url", base,
-           "--detectors", base + "/gps_search",
-           "--trackers", base + "/gps_track",
-           "--combiner", base + "/gps_combine",
-           "--dll-combiners", base + "/gps_combine",
-           "--constellation", "G", "--carrier-hz", "1176.45e6",
-           "--chip-rate-hz", "10.23e6", "--code-length", "10230",
-           "--hops-per-sec", "195312.5",
-           "--signal", "gps_l5",          # sets the TELEMETRY CHAIN KEY, which must equal the
-                                          # chain the fixture stamps on every frame or the
-                                          # store lookup silently finds nothing
-           "--seed-doppler", "det", "--acquire-snr", "30",
-           "--dll-gain", "0.25", "--carrier-gain", "0.0",
-           "--interval", "2",
-           "--telem-gather", "127.0.0.1:%d" % T.PORT_SERVE,
-           "--telem-dll",
-           "--telem-dll-windows", "4",
-           "--fast-trim-hz", str(a.hz),
-           "--fast-trim-windows", "4"]
-    bp = subprocess.Popen(cmd, cwd=K, stdout=open(blog, "wb"),
-                          stderr=subprocess.STDOUT)
+    cmd = [
+        sys.executable,
+        "-u",
+        "python/scripts/gnss/gps_distributed_broker.py",
+        "--rest-url",
+        base,
+        "--detectors",
+        base + "/gps_search",
+        "--trackers",
+        base + "/gps_track",
+        "--combiner",
+        base + "/gps_combine",
+        "--dll-combiners",
+        base + "/gps_combine",
+        "--constellation",
+        "G",
+        "--carrier-hz",
+        "1176.45e6",
+        "--chip-rate-hz",
+        "10.23e6",
+        "--code-length",
+        "10230",
+        "--hops-per-sec",
+        "195312.5",
+        "--signal",
+        "gps_l5",  # sets the TELEMETRY CHAIN KEY, which must equal the
+        # chain the fixture stamps on every frame or the
+        # store lookup silently finds nothing
+        "--seed-doppler",
+        "det",
+        "--acquire-snr",
+        "30",
+        "--dll-gain",
+        "0.25",
+        "--carrier-gain",
+        "0.0",
+        "--interval",
+        "2",
+        "--telem-gather",
+        "127.0.0.1:%d" % T.PORT_SERVE,
+        "--telem-dll",
+        "--telem-dll-windows",
+        "4",
+        "--fast-trim-hz",
+        str(a.hz),
+        "--fast-trim-windows",
+        "4",
+    ]
+    bp = subprocess.Popen(cmd, cwd=K, stdout=open(blog, "wb"), stderr=subprocess.STDOUT)
     t0 = time.time()
     try:
         time.sleep(a.seconds)
@@ -187,13 +236,16 @@ def main():
     # -- [1] it actuates at the requested rate -------------------------------------------
     rate = len(posts) / span
     if rate < 0.5 * a.hz:
-        fails.append("[1] POST rate %.2f Hz is far below the requested %.1f Hz -- the fast "
-                     "loop is not running (check --telem-gather reached it, and the log)"
-                     % (rate, a.hz))
+        fails.append(
+            "[1] POST rate %.2f Hz is far below the requested %.1f Hz -- the fast "
+            "loop is not running (check --telem-gather reached it, and the log)"
+            % (rate, a.hz)
+        )
     # the policy cycle alone would give ~1/interval; prove we are well above it
     if rate < 1.0:
-        fails.append("[1] POST rate %.2f Hz is at or below the policy cycle -- no speedup"
-                     % rate)
+        fails.append(
+            "[1] POST rate %.2f Hz is at or below the policy cycle -- no speedup" % rate
+        )
 
     # -- [2]/[3]/[4]: walk the captured seeds --------------------------------------------
     per_prn = {}
@@ -205,28 +257,38 @@ def main():
 
     for prn in per_prn:
         if prn not in T.LIVE_PRNS:
-            fails.append("[4] PRN %d was POSTed but is not one the fixture makes present -- "
-                         "the fast loop is arming PRNs policy did not" % prn)
+            fails.append(
+                "[4] PRN %d was POSTed but is not one the fixture makes present -- "
+                "the fast loop is arming PRNs policy did not" % prn
+            )
 
     moved = 0
     for prn, seq in sorted(per_prn.items()):
         if len(seq) < 4:
             continue
-        cps = [s.get("code_phase_chips") for _t, s in seq if s.get("code_phase_chips") is not None]
+        cps = [
+            s.get("code_phase_chips")
+            for _t, s in seq
+            if s.get("code_phase_chips") is not None
+        ]
         if len(cps) < 4:
             continue
         # [2] direction + size. disc = +0.6 -> tau = -0.15 -> step = 0.25 * -0.15 = -0.0375
         steps = [b - a2 for a2, b in zip(cps, cps[1:])]
-        steps = [s for s in steps if abs(s) < 100.0]     # ignore the modulo wrap
+        steps = [s for s in steps if abs(s) < 100.0]  # ignore the modulo wrap
         if not steps:
             continue
         mn = sorted(steps)[len(steps) // 2]
         moved += 1
-        print("  PRN %-3d %3d posts  median step %+0.5f chips  (predicted -0.0375 while railed"
-              " at disc +0.6)" % (prn, len(seq), mn))
+        print(
+            "  PRN %-3d %3d posts  median step %+0.5f chips  (predicted -0.0375 while railed"
+            " at disc +0.6)" % (prn, len(seq), mn)
+        )
         if mn > 0:
-            fails.append("[2] PRN %d trim is moving the WRONG WAY (median step %+0.5f); disc "
-                         "+0.6 must drive the code phase DOWN" % (prn, mn))
+            fails.append(
+                "[2] PRN %d trim is moving the WRONG WAY (median step %+0.5f); disc "
+                "+0.6 must drive the code phase DOWN" % (prn, mn)
+            )
         # ⚠️ SIGN ALONE IS NOT ENOUGH -- a gain 100x wrong still points the right way. Check
         # the EARLY steps against the predicted -0.0375, before the integrator converges: with
         # disc pinned at +0.6 the loop walks to a fixed point (gain*tau/leak) and its steps
@@ -239,30 +301,39 @@ def main():
         early = [x for x in steps if x != 0.0][:5]
         if len(early) >= 3:
             em = sorted(early)[len(early) // 2]
-            print("           first %d steps median %+0.5f chips (predicted %+0.5f)"
-                  % (len(early), em, -0.0375))
-            if not (-0.1125 <= em <= -0.0125):      # predicted +-3x
-                fails.append("[2] PRN %d: early step %+0.5f chips is not within 3x of the "
-                             "predicted -0.0375 (dll_gain 0.25 x tau -0.15). The loop is "
-                             "actuating, but not by the amount the gain says."
-                             % (prn, em))
+            print(
+                "           first %d steps median %+0.5f chips (predicted %+0.5f)"
+                % (len(early), em, -0.0375)
+            )
+            if not (-0.1125 <= em <= -0.0125):  # predicted +-3x
+                fails.append(
+                    "[2] PRN %d: early step %+0.5f chips is not within 3x of the "
+                    "predicted -0.0375 (dll_gain 0.25 x tau -0.15). The loop is "
+                    "actuating, but not by the amount the gain says." % (prn, em)
+                )
         # [3] consecutive fast POSTs must differ ONLY in code_phase_chips
         for (t1, s1), (t2, s2) in zip(seq, seq[1:]):
             k1, k2 = set(s1), set(s2)
             if k1 != k2:
-                fails.append("[3] PRN %d: the seed's FIELD SET changed between posts (%s) -- "
-                             "the fast path is rebuilding the payload, which drops what "
-                             "policy put there" % (prn, sorted(k1 ^ k2)))
+                fails.append(
+                    "[3] PRN %d: the seed's FIELD SET changed between posts (%s) -- "
+                    "the fast path is rebuilding the payload, which drops what "
+                    "policy put there" % (prn, sorted(k1 ^ k2))
+                )
                 break
             diff = [k for k in k1 if s1[k] != s2[k] and k != "code_phase_chips"]
             if diff:
-                fails.append("[3] PRN %d: fields other than code_phase_chips changed between "
-                             "consecutive posts: %s -- an actuator must not overwrite another "
-                             "loop's fields" % (prn, sorted(diff)))
+                fails.append(
+                    "[3] PRN %d: fields other than code_phase_chips changed between "
+                    "consecutive posts: %s -- an actuator must not overwrite another "
+                    "loop's fields" % (prn, sorted(diff))
+                )
                 break
     if not moved:
-        fails.append("[2] no PRN accumulated enough posts to measure the trim -- the gate "
-                     "could not have failed; see %s" % blog)
+        fails.append(
+            "[2] no PRN accumulated enough posts to measure the trim -- the gate "
+            "could not have failed; see %s" % blog
+        )
 
     print()
     if fails:
@@ -271,8 +342,10 @@ def main():
             print("  - %s" % f)
         print("\nbroker log: %s\nkotekan log: %s" % (blog, klog))
     else:
-        print("PASS -- fast loop actuates at rate, in the right direction, without disturbing "
-              "any field it does not own, on exactly the PRNs policy armed")
+        print(
+            "PASS -- fast loop actuates at rate, in the right direction, without disturbing "
+            "any field it does not own, on exactly the PRNs policy armed"
+        )
     if not a.keep and not fails:
         shutil.rmtree(d, ignore_errors=True)
     else:

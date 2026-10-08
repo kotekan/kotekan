@@ -20,8 +20,14 @@ rather than as a surprise.
 
 from gnss_broker.transport import _now, _get, _log, _log_rl
 from gnss_broker.sky import (
-    _lnav_brdc_xcheck, _cnav_brdc_xcheck, _cnav2_brdc_xcheck, _inav_brdc_xcheck,
-    _fnav_brdc_xcheck, _bcnav1_brdc_xcheck, _bcnav2_brdc_xcheck, _bcnav3_brdc_xcheck,
+    _lnav_brdc_xcheck,
+    _cnav_brdc_xcheck,
+    _cnav2_brdc_xcheck,
+    _inav_brdc_xcheck,
+    _fnav_brdc_xcheck,
+    _bcnav1_brdc_xcheck,
+    _bcnav2_brdc_xcheck,
+    _bcnav3_brdc_xcheck,
 )
 
 
@@ -41,6 +47,7 @@ def stage_nav_bits(ctx):
                 continue
             if ctx.nav.health is None:
                 from navbit_health import BitAgreement
+
                 ctx.nav.health = BitAgreement(log=_log)
             # Route nav_obs to the decoder this band actually speaks. L1CA carries LNAV
             # (periodic subframes -> future bits); L2C-CM / L5-I carry CNAV (FEC+CRC, no
@@ -49,6 +56,7 @@ def stage_nav_bits(ctx):
             if ctx.args.nav_decoder == "cnav":
                 if ctx.nav.cnav is None:
                     from cnav_predictor import CnavPredictor
+
                     ctx.nav.cnav = CnavPredictor(log=_log)
                     _log("CNAV decoder armed (combiner exports nav_obs)")
                 ctx.nav.cnav.ingest(_p, _r["nav_obs"])
@@ -57,12 +65,14 @@ def stage_nav_bits(ctx):
                 # bit-prediction scheme -> no peel role, pure decode + BRDC xcheck).
                 if ctx.nav.bcnav3 is None:
                     from bcnav3_predictor import Bcnav3Predictor
+
                     ctx.nav.bcnav3 = Bcnav3Predictor(log=_log)
                     _log("B-CNAV3 decoder armed (combiner exports nav_obs)")
                 ctx.nav.bcnav3.ingest(_p, _r["nav_obs"])
             else:
                 if ctx.nav.navbits is None:
                     from navbit_predictor import LnavPredictor
+
                     ctx.nav.navbits = LnavPredictor(log=_log)
                     _log("nav-bit predictor armed (combiner exports nav_obs)")
                 ctx.nav.navbits.ingest(_p, _r["nav_obs"])
@@ -80,34 +90,46 @@ def stage_nav_bits(ctx):
         # tracking loop that shares this cycle.
         if ctx.nav.cnav_combiner:
             try:
-                _aux = {int(r["prn"]): r for r in _get("%s/get_status" % ctx.nav.cnav_combiner)
-                        if r.get("prn")}
+                _aux = {
+                    int(r["prn"]): r
+                    for r in _get("%s/get_status" % ctx.nav.cnav_combiner)
+                    if r.get("prn")
+                }
             except Exception as e:
                 _aux = {}
-                _log_rl("cnavaux", "cnav aux combiner %s unreadable: %s"
-                        % (ctx.nav.cnav_combiner, e))
+                _log_rl(
+                    "cnavaux",
+                    "cnav aux combiner %s unreadable: %s" % (ctx.nav.cnav_combiner, e),
+                )
             for _p, _r in _aux.items():
                 if "nav_obs" not in _r:
                     continue
                 if ctx.nav.cnav is None:
                     from cnav_predictor import CnavPredictor
+
                     ctx.nav.cnav = CnavPredictor(log=_log)
                     _log("CNAV decoder armed on aux chain %s" % ctx.nav.cnav_combiner)
                 ctx.nav.cnav.ingest(_p, _r["nav_obs"])
         # S5 D-component #1: Galileo E1B I/NAV, the exact CNAV-aux analogue.
         if ctx.nav.inav_combiner:
             try:
-                _iaux = {int(r["prn"]): r for r in _get("%s/get_status" % ctx.nav.inav_combiner)
-                         if r.get("prn")}
+                _iaux = {
+                    int(r["prn"]): r
+                    for r in _get("%s/get_status" % ctx.nav.inav_combiner)
+                    if r.get("prn")
+                }
             except Exception as e:
                 _iaux = {}
-                _log_rl("inavaux", "inav aux combiner %s unreadable: %s"
-                        % (ctx.nav.inav_combiner, e))
+                _log_rl(
+                    "inavaux",
+                    "inav aux combiner %s unreadable: %s" % (ctx.nav.inav_combiner, e),
+                )
             for _p, _r in _iaux.items():
                 if "nav_obs" not in _r:
                     continue
                 if ctx.nav.inav is None:
                     from inav_predictor import InavPredictor
+
                     ctx.nav.inav = InavPredictor(log=_log)
                     _log("I/NAV decoder armed on aux chain %s" % ctx.nav.inav_combiner)
                 ctx.nav.inav.ingest(_p, _r["nav_obs"])
@@ -116,32 +138,53 @@ def stage_nav_bits(ctx):
             # the decode-health obs by the actual carrier (from the aux combiner name).
             if ctx.nav.inav is not None and _now() - ctx.nav.inav_log_t[0] > 60.0:
                 ctx.nav.inav_log_t[0] = _now()
-                _inav_sig = "GAL_E5BI_INAV" if "e5b" in ctx.nav.inav_combiner else "GAL_E1B_INAV"
+                _inav_sig = (
+                    "GAL_E5BI_INAV"
+                    if "e5b" in ctx.nav.inav_combiner
+                    else "GAL_E1B_INAV"
+                )
                 for _p in sorted(ctx.nav.inav._p):
                     h = ctx.nav.inav.health(_p)
                     if not h or not h["words"]:
                         continue
                     eph = ctx.nav.inav.ephemeris(_p)
-                    xc = (_inav_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
-                          if (eph is not None and ctx.brdc_alm is not None) else "")
-                    _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
-                         % (_p, h["pages"], h["words"], h["have"],
-                            "YES" if eph is not None else "no", xc))
+                    xc = (
+                        _inav_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
+                        if (eph is not None and ctx.brdc_alm is not None)
+                        else ""
+                    )
+                    _log(
+                        "inav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                        % (
+                            _p,
+                            h["pages"],
+                            h["words"],
+                            h["have"],
+                            "YES" if eph is not None else "no",
+                            xc,
+                        )
+                    )
                     ctx.dh_obs(_inav_sig, _p, h, eph, xc)
         # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
         if ctx.nav.fnav_combiner:
             try:
-                _faux = {int(r["prn"]): r for r in _get("%s/get_status" % ctx.nav.fnav_combiner)
-                         if r.get("prn")}
+                _faux = {
+                    int(r["prn"]): r
+                    for r in _get("%s/get_status" % ctx.nav.fnav_combiner)
+                    if r.get("prn")
+                }
             except Exception as e:
                 _faux = {}
-                _log_rl("fnavaux", "fnav aux combiner %s unreadable: %s"
-                        % (ctx.nav.fnav_combiner, e))
+                _log_rl(
+                    "fnavaux",
+                    "fnav aux combiner %s unreadable: %s" % (ctx.nav.fnav_combiner, e),
+                )
             for _p, _r in _faux.items():
                 if "nav_obs" not in _r:
                     continue
                 if ctx.nav.fnav is None:
                     from fnav_predictor import FnavPredictor
+
                     ctx.nav.fnav = FnavPredictor(log=_log)
                     _log("F/NAV decoder armed on aux chain %s" % ctx.nav.fnav_combiner)
                 ctx.nav.fnav.ingest(_p, _r["nav_obs"])
@@ -153,28 +196,49 @@ def stage_nav_bits(ctx):
                     if not h or not h["words"]:
                         continue
                     eph = ctx.nav.fnav.ephemeris(_p)
-                    xc = (_fnav_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
-                          if (eph is not None and ctx.brdc_alm is not None) else "")
-                    _log("fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
-                         % (_p, h["pages"], h["words"], h["have"],
-                            "YES" if eph is not None else "no", xc))
+                    xc = (
+                        _fnav_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
+                        if (eph is not None and ctx.brdc_alm is not None)
+                        else ""
+                    )
+                    _log(
+                        "fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                        % (
+                            _p,
+                            h["pages"],
+                            h["words"],
+                            h["have"],
+                            "YES" if eph is not None else "no",
+                            xc,
+                        )
+                    )
                     ctx.dh_obs("GAL_E5AI_FNAV", _p, h, eph, xc)
         # S5 D-component #3: BeiDou B2a B-CNAV2 (first LDPC), the F/NAV-aux analogue on BDS.
         if ctx.nav.bcnav2_combiner:
             try:
-                _baux = {int(r["prn"]): r for r in _get("%s/get_status" % ctx.nav.bcnav2_combiner)
-                         if r.get("prn")}
+                _baux = {
+                    int(r["prn"]): r
+                    for r in _get("%s/get_status" % ctx.nav.bcnav2_combiner)
+                    if r.get("prn")
+                }
             except Exception as e:
                 _baux = {}
-                _log_rl("bcnav2aux", "bcnav2 aux combiner %s unreadable: %s"
-                        % (ctx.nav.bcnav2_combiner, e))
+                _log_rl(
+                    "bcnav2aux",
+                    "bcnav2 aux combiner %s unreadable: %s"
+                    % (ctx.nav.bcnav2_combiner, e),
+                )
             for _p, _r in _baux.items():
                 if "nav_obs" not in _r:
                     continue
                 if ctx.nav.bcnav2 is None:
                     from bcnav2_predictor import Bcnav2Predictor
+
                     ctx.nav.bcnav2 = Bcnav2Predictor(log=_log)
-                    _log("B-CNAV2 decoder armed on aux chain %s" % ctx.nav.bcnav2_combiner)
+                    _log(
+                        "B-CNAV2 decoder armed on aux chain %s"
+                        % ctx.nav.bcnav2_combiner
+                    )
                 ctx.nav.bcnav2.ingest(_p, _r["nav_obs"])
             # 60 s health + BRDC cross-check (alm_sys is 'C' for the BDS broker)
             if ctx.nav.bcnav2 is not None and _now() - ctx.nav.bcnav2_log_t[0] > 60.0:
@@ -184,28 +248,49 @@ def stage_nav_bits(ctx):
                     if not h or not h["words"]:
                         continue
                     eph = ctx.nav.bcnav2.ephemeris(_p)
-                    xc = (_bcnav2_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
-                          if (eph is not None and ctx.brdc_alm is not None) else "")
-                    _log("bcnav2 PRN %d: %d frames, %d crc, have %s, eph %s%s"
-                         % (_p, h["pages"], h["words"], h["have"],
-                            "YES" if eph is not None else "no", xc))
+                    xc = (
+                        _bcnav2_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
+                        if (eph is not None and ctx.brdc_alm is not None)
+                        else ""
+                    )
+                    _log(
+                        "bcnav2 PRN %d: %d frames, %d crc, have %s, eph %s%s"
+                        % (
+                            _p,
+                            h["pages"],
+                            h["words"],
+                            h["have"],
+                            "YES" if eph is not None else "no",
+                            xc,
+                        )
+                    )
                     ctx.dh_obs("BDS_B2A_BCNAV2", _p, h, eph, xc)
         # S5 D-component #4 (LAST): BeiDou B1C B-CNAV1, the B-CNAV2-aux analogue on L1 BDS.
         if ctx.nav.bcnav1_combiner:
             try:
-                _c1aux = {int(r["prn"]): r for r in _get("%s/get_status" % ctx.nav.bcnav1_combiner)
-                          if r.get("prn")}
+                _c1aux = {
+                    int(r["prn"]): r
+                    for r in _get("%s/get_status" % ctx.nav.bcnav1_combiner)
+                    if r.get("prn")
+                }
             except Exception as e:
                 _c1aux = {}
-                _log_rl("bcnav1aux", "bcnav1 aux combiner %s unreadable: %s"
-                        % (ctx.nav.bcnav1_combiner, e))
+                _log_rl(
+                    "bcnav1aux",
+                    "bcnav1 aux combiner %s unreadable: %s"
+                    % (ctx.nav.bcnav1_combiner, e),
+                )
             for _p, _r in _c1aux.items():
                 if "nav_obs" not in _r:
                     continue
                 if ctx.nav.bcnav1 is None:
                     from bcnav1_predictor import Bcnav1Predictor
+
                     ctx.nav.bcnav1 = Bcnav1Predictor(log=_log)
-                    _log("B-CNAV1 decoder armed on aux chain %s" % ctx.nav.bcnav1_combiner)
+                    _log(
+                        "B-CNAV1 decoder armed on aux chain %s"
+                        % ctx.nav.bcnav1_combiner
+                    )
                 ctx.nav.bcnav1.ingest(_p, _r["nav_obs"])
             if ctx.nav.bcnav1 is not None and _now() - ctx.nav.bcnav1_log_t[0] > 60.0:
                 ctx.nav.bcnav1_log_t[0] = _now()
@@ -214,29 +299,49 @@ def stage_nav_bits(ctx):
                     if not h or not h["words"]:
                         continue
                     eph = ctx.nav.bcnav1.ephemeris(_p)
-                    xc = (_bcnav1_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
-                          if (eph is not None and ctx.brdc_alm is not None) else "")
-                    _log("bcnav1 PRN %d: %d frames, %d crc, have %s, eph %s%s"
-                         % (_p, h["pages"], h["words"], h["have"],
-                            "YES" if eph is not None else "no", xc))
+                    xc = (
+                        _bcnav1_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
+                        if (eph is not None and ctx.brdc_alm is not None)
+                        else ""
+                    )
+                    _log(
+                        "bcnav1 PRN %d: %d frames, %d crc, have %s, eph %s%s"
+                        % (
+                            _p,
+                            h["pages"],
+                            h["words"],
+                            h["have"],
+                            "YES" if eph is not None else "no",
+                            xc,
+                        )
+                    )
                     ctx.dh_obs("BDS_B1C_BCNAV1", _p, h, eph, xc)
         # GPS L1C-D CNAV-2: the bcnav1-aux analogue on the L1C broker (alm_sys 'G'). The broker's
         # own --combiner is the L1C-P pilot; the CNAV-2 data symbols come off the derived L1C-D.
         if ctx.nav.cnav2_combiner:
             try:
-                _c2aux = {int(r["prn"]): r for r in _get("%s/get_status" % ctx.nav.cnav2_combiner)
-                          if r.get("prn")}
+                _c2aux = {
+                    int(r["prn"]): r
+                    for r in _get("%s/get_status" % ctx.nav.cnav2_combiner)
+                    if r.get("prn")
+                }
             except Exception as e:
                 _c2aux = {}
-                _log_rl("cnav2aux", "cnav2 aux combiner %s unreadable: %s"
-                        % (ctx.nav.cnav2_combiner, e))
+                _log_rl(
+                    "cnav2aux",
+                    "cnav2 aux combiner %s unreadable: %s"
+                    % (ctx.nav.cnav2_combiner, e),
+                )
             for _p, _r in _c2aux.items():
                 if "nav_obs" not in _r:
                     continue
                 if ctx.nav.cnav2 is None:
                     from cnav2_predictor import Cnav2Predictor
+
                     ctx.nav.cnav2 = Cnav2Predictor(log=_log)
-                    _log("CNAV-2 decoder armed on aux chain %s" % ctx.nav.cnav2_combiner)
+                    _log(
+                        "CNAV-2 decoder armed on aux chain %s" % ctx.nav.cnav2_combiner
+                    )
                 ctx.nav.cnav2.ingest(_p, _r["nav_obs"])
             if ctx.nav.cnav2 is not None and _now() - ctx.nav.cnav2_log_t[0] > 60.0:
                 ctx.nav.cnav2_log_t[0] = _now()
@@ -245,19 +350,36 @@ def stage_nav_bits(ctx):
                     if not h or not h["words"]:
                         continue
                     eph = ctx.nav.cnav2.ephemeris(_p)
-                    xc = (_cnav2_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
-                          if (eph is not None and ctx.brdc_alm is not None) else "")
-                    _log("cnav2 PRN %d: %d frames CRC-OK, toi=%s, eph %s%s"
-                         % (_p, h["words"], h["toi"], "YES" if eph is not None else "no", xc))
+                    xc = (
+                        _cnav2_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
+                        if (eph is not None and ctx.brdc_alm is not None)
+                        else ""
+                    )
+                    _log(
+                        "cnav2 PRN %d: %d frames CRC-OK, toi=%s, eph %s%s"
+                        % (
+                            _p,
+                            h["words"],
+                            h["toi"],
+                            "YES" if eph is not None else "no",
+                            xc,
+                        )
+                    )
                     ctx.dh_obs("GPS_L1CD_CNAV2", _p, h, eph, xc)
         # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
         # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
         # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
         # source when their encoders exist.
-        if (ctx.args.nav_bits_brdc and ctx.nav.navbits is not None and ctx.alm_sys == "G"
-                and ctx.brdc_alm is not None and ctx.pred):
+        if (
+            ctx.args.nav_bits_brdc
+            and ctx.nav.navbits is not None
+            and ctx.alm_sys == "G"
+            and ctx.brdc_alm is not None
+            and ctx.pred
+        ):
             if ctx.nav.brdc is None:
                 from navbit_brdc import BrdcLnavSource
+
                 ctx.nav.brdc = BrdcLnavSource(log=_log)
                 _log("constructed-bit source armed (BRDC LNAV, un-synced PRNs)")
             try:
@@ -281,19 +403,36 @@ def stage_nav_bits(ctx):
                     if e is not None:
                         eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
                         if ctx.brdc_alm is not None:
-                            eph_s += _lnav_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, e, _log)
-                    _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s%s"
-                         % (_p, h["decoded_sf"], h["pages"],
-                            ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a",
-                            eph_s))
+                            eph_s += _lnav_brdc_xcheck(
+                                ctx.brdc_alm, ctx.alm_sys, _p, e, _log
+                            )
+                    _log(
+                        "navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s%s"
+                        % (
+                            _p,
+                            h["decoded_sf"],
+                            h["pages"],
+                            ("%.4f" % h["mismatch"])
+                            if h["mismatch"] is not None
+                            else "n/a",
+                            eph_s,
+                        )
+                    )
                 else:
                     # NOT synced == this PRN is NOT peeled (peel_require_bits). Say so, with
                     # the reason: contiguous run vs total history vs what sync needs.
-                    _log("navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)%s"
-                         % (_p, h["run"], h["need"], h["hist"],
+                    _log(
+                        "navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)%s"
+                        % (
+                            _p,
+                            h["run"],
+                            h["need"],
+                            h["hist"],
                             " -> CONSTRUCTED from BRDC"
                             if (ctx.nav.brdc is not None and ctx.nav.brdc.ready())
-                            else " -> not peeled"))
+                            else " -> not peeled",
+                        )
+                    )
                 ctx.dh_obs("GPS_L1_LNAV", _p, h, e, eph_s)
             if ctx.nav.brdc is not None:
                 # The calibration IS the trust boundary: a bad offset makes every
@@ -306,10 +445,17 @@ def stage_nav_bits(ctx):
                         r = ctx.nav.brdc.verify(_p, ctx.nav.navbits)
                         if r and r[0] >= 200:
                             chk.append("%d:%.1f%%" % (_p, 100.0 * r[1] / r[0]))
-                    _log("navbrdc: offset %.6f s, spread %.2f ms, %d cal sats "
-                         "(%d outliers dropped); verify %s"
-                         % (ctx.nav.brdc.offset, (ctx.nav.brdc.spread or 0.0) * 1e3,
-                            ctx.nav.brdc.n_cal, ctx.nav.brdc.n_rej, " ".join(chk) or "n/a"))
+                    _log(
+                        "navbrdc: offset %.6f s, spread %.2f ms, %d cal sats "
+                        "(%d outliers dropped); verify %s"
+                        % (
+                            ctx.nav.brdc.offset,
+                            (ctx.nav.brdc.spread or 0.0) * 1e3,
+                            ctx.nav.brdc.n_cal,
+                            ctx.nav.brdc.n_rej,
+                            " ".join(chk) or "n/a",
+                        )
+                    )
                 else:
                     _log("navbrdc: NOT ready (%s)" % ctx.nav.brdc.why_not())
         # CNAV decode health + the live ephemeris (types 10+11). eph toe/e prove a decoded
@@ -333,14 +479,19 @@ def stage_nav_bits(ctx):
                     if e is not None:
                         eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
                         if ctx.brdc_alm is not None:
-                            eph_s += _cnav_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, e, _log)
+                            eph_s += _cnav_brdc_xcheck(
+                                ctx.brdc_alm, ctx.alm_sys, _p, e, _log
+                            )
                 if h["synced"]:
-                    _log("cnav PRN %d: %d msgs decoded, %d stored, %d emits, g2=%s%s"
-                         % (_p, h["decoded"], h["messages"], h["emits"],
-                            h["g2"], eph_s))
+                    _log(
+                        "cnav PRN %d: %d msgs decoded, %d stored, %d emits, g2=%s%s"
+                        % (_p, h["decoded"], h["messages"], h["emits"], h["g2"], eph_s)
+                    )
                 else:
-                    _log("cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
-                         % (_p, h["emits"], h["g2"]))
+                    _log(
+                        "cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
+                        % (_p, h["emits"], h["g2"])
+                    )
                 ctx.dh_obs(ctx.nav.cnav_sig, _p, h, e, eph_s)
         # B-CNAV3 decode health (BeiDou B2b PRIMARY chain). Frame decode is convention-complete
         # (LDPC + CRC); the message-type histogram + SOW logged here is exactly what maps the
@@ -352,9 +503,20 @@ def stage_nav_bits(ctx):
                 if not h or not h["words"]:
                     continue
                 eph = ctx.nav.bcnav3.ephemeris(_p)
-                xc = (_bcnav3_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
-                      if (eph is not None and ctx.brdc_alm is not None) else "")
-                _log("bcnav3 PRN %d: %d frames CRC-OK, have %s, sow=%s, eph %s%s"
-                     % (_p, h["words"], h["have"], h["sow"],
-                        "YES" if eph is not None else "no", xc))
+                xc = (
+                    _bcnav3_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
+                    if (eph is not None and ctx.brdc_alm is not None)
+                    else ""
+                )
+                _log(
+                    "bcnav3 PRN %d: %d frames CRC-OK, have %s, sow=%s, eph %s%s"
+                    % (
+                        _p,
+                        h["words"],
+                        h["have"],
+                        h["sow"],
+                        "YES" if eph is not None else "no",
+                        xc,
+                    )
+                )
                 ctx.dh_obs("BDS_B2B_BCNAV3", _p, h, eph, xc)

@@ -26,13 +26,13 @@
 FIELDS = {
     "doppler_hz": "Hz, absolute; valid AT ref_hop, never at now (7cb011c50)",
     "code_phase_chips": "chips, absolute ARGUMENT back-referenced to sample 0; means "
-                        "nothing unpaired from doppler_hz (the cp-currency rule)",
+    "nothing unpaired from doppler_hz (the cp-currency rule)",
     "code_phase_rate": "chips/hop, RESIDUAL on the geometry propagate_seed feeds forward",
     "ref_hop": "hops, absolute; IS the tuple's epoch",
     "doppler_rate_hz_s": "Hz/s, absolute, at ref_hop",
     "code_phase_at_ref_chips": "chips mod LL, PHYSICAL phase at ref_hop's LAST sample; "
-                               "the tracker PREFERS this over code_phase_chips when >= 0 "
-                               "(gnssSeedTransport.cpp:325-327)",
+    "the tracker PREFERS this over code_phase_chips when >= 0 "
+    "(gnssSeedTransport.cpp:325-327)",
 }
 
 # THE WRITERS (audit section 2, the reverse-engineered arbitration -- now the declared
@@ -40,27 +40,27 @@ FIELDS = {
 # step. Owners are the strings the migration stamps at each site; a new writer must add
 # itself here or its steps audit as "?file:line".
 OWNERS = {
-    "det":          "REPLACE  detection birth / re-detection (whole tuple from the search)",
-    "dop_sel:*":    "REPLACE  doppler source selection, suffixed with the winner "
-                    "(pred | dr | dr(code-untrusted) | det | DET(grid) -- last word wins)",
-    "dop_model":    "REPLACE  doppler_rate_hz_s from BRDC central/forward diff or almanac",
-    "dop_fit":      "REPLACE  doppler_rate_hz_s from the measured-slope fit (model-vetoed)",
-    "cp_fit":       "REPLACE  cp-rate fit: code_phase_rate + ref_hop + code_phase_chips",
-    "nh_lift":      "REPLACE  overlay period lift from the search's cp_long / at-ref phase",
-    "cl_assist":    "REPLACE  overlay period from wall-clock CL time assist",
-    "dop_force":    "REPLACE  --force-doppler-rate replay-bench override",
-    "dop_clamp":    "CORRECT  single-cycle doppler step bound (dop_max_rate_hz)",
-    "hold_freeze":  "REPLACE  hold-on-lock: previous tuple rides over the fresh candidate",
-    "translate":    "CORRECT  currency translation: same physical phase, new doppler",
-    "probe":        "REPLACE  noise probe: whole tuple from the prediction, ref_hop 0",
-    "coast_retag":  "CORRECT  coast: forecast doppler, cp re-expressed at the same instant",
-    "dr_birth":     "REPLACE  dead-reckon birth / re-pin: whole tuple from BRDC + clk",
-    "dr_slew":      "CORRECT  dead-reckon slew: held phase + bounded step toward model",
-    "la_rate":      "REPLACE  pooled (l-a) / joint clock code rate, every non-held PRN",
-    "hold_retag":   "CORRECT  #103 held-rate refresh: anchor re-expressed at the present, "
-                    "residual rate re-slaved to the pooled clock (pure arithmetic)",
-    "reseed":       "CORRECT  far-regime spec_tau re-seed, bounded fractional step",
-    "phase_xport":  "REPLACE  #45 step 6: at-ref phase shipped beside the DR tuple",
+    "det": "REPLACE  detection birth / re-detection (whole tuple from the search)",
+    "dop_sel:*": "REPLACE  doppler source selection, suffixed with the winner "
+    "(pred | dr | dr(code-untrusted) | det | DET(grid) -- last word wins)",
+    "dop_model": "REPLACE  doppler_rate_hz_s from BRDC central/forward diff or almanac",
+    "dop_fit": "REPLACE  doppler_rate_hz_s from the measured-slope fit (model-vetoed)",
+    "cp_fit": "REPLACE  cp-rate fit: code_phase_rate + ref_hop + code_phase_chips",
+    "nh_lift": "REPLACE  overlay period lift from the search's cp_long / at-ref phase",
+    "cl_assist": "REPLACE  overlay period from wall-clock CL time assist",
+    "dop_force": "REPLACE  --force-doppler-rate replay-bench override",
+    "dop_clamp": "CORRECT  single-cycle doppler step bound (dop_max_rate_hz)",
+    "hold_freeze": "REPLACE  hold-on-lock: previous tuple rides over the fresh candidate",
+    "translate": "CORRECT  currency translation: same physical phase, new doppler",
+    "probe": "REPLACE  noise probe: whole tuple from the prediction, ref_hop 0",
+    "coast_retag": "CORRECT  coast: forecast doppler, cp re-expressed at the same instant",
+    "dr_birth": "REPLACE  dead-reckon birth / re-pin: whole tuple from BRDC + clk",
+    "dr_slew": "CORRECT  dead-reckon slew: held phase + bounded step toward model",
+    "la_rate": "REPLACE  pooled (l-a) / joint clock code rate, every non-held PRN",
+    "hold_retag": "CORRECT  #103 held-rate refresh: anchor re-expressed at the present, "
+    "residual rate re-slaved to the pooled clock (pure arithmetic)",
+    "reseed": "CORRECT  far-regime spec_tau re-seed, bounded fractional step",
+    "phase_xport": "REPLACE  #45 step 6: at-ref phase shipped beside the DR tuple",
 }
 
 import sys
@@ -133,11 +133,17 @@ class Seed(dict):
 
     def owners(self):
         """Compact attribution trail for SEEDAUDIT: 'cp0=cp_fit dop=dop_select ...'."""
-        short = {"doppler_hz": "dop", "code_phase_chips": "cp0", "code_phase_rate": "rate",
-                 "ref_hop": "ref", "doppler_rate_hz_s": "drate",
-                 "code_phase_at_ref_chips": "aref"}
-        return " ".join("%s=%s" % (short.get(k, k), self.prov[k][0])
-                        for k in self if k in self.prov)
+        short = {
+            "doppler_hz": "dop",
+            "code_phase_chips": "cp0",
+            "code_phase_rate": "rate",
+            "ref_hop": "ref",
+            "doppler_rate_hz_s": "drate",
+            "code_phase_at_ref_chips": "aref",
+        }
+        return " ".join(
+            "%s=%s" % (short.get(k, k), self.prov[k][0]) for k in self if k in self.prov
+        )
 
     def epoch_skew(self):
         """Fields whose recorded epoch disagrees with the tuple's shipped ref_hop.

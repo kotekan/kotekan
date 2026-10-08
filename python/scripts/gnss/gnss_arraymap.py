@@ -35,7 +35,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
-_HERE = os.path.dirname(os.path.abspath(__file__))            # python/scripts/gnss
+_HERE = os.path.dirname(os.path.abspath(__file__))  # python/scripts/gnss
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
 CONFIG = os.path.join(_ROOT, "config", "chord_array_epochs.json")
 NODE_CONFIG = os.path.join(os.path.dirname(CONFIG), "chord_gnss_node.yaml")
@@ -86,8 +86,16 @@ def day_span(daystr):
 class Element(object):
     """One correlator element as it stood in one epoch."""
 
-    __slots__ = ("index", "dish", "dish_name", "slot", "plane", "plane_confidence",
-                 "enu_m", "position_confidence")
+    __slots__ = (
+        "index",
+        "dish",
+        "dish_name",
+        "slot",
+        "plane",
+        "plane_confidence",
+        "enu_m",
+        "position_confidence",
+    )
 
     def __init__(self, index, d):
         self.index = int(index)
@@ -102,11 +110,17 @@ class Element(object):
     @property
     def known(self):
         """True when the feed plane is pinned. `plane is None` is a real state, not a default."""
-        return self.plane is not None and self.plane_confidence in ("measured", "reported")
+        return self.plane is not None and self.plane_confidence in (
+            "measured",
+            "reported",
+        )
 
     def label(self):
-        return "%s slot%d %s" % (self.dish_name, self.slot,
-                                 "plane %s" % self.plane if self.plane else "plane ?")
+        return "%s slot%d %s" % (
+            self.dish_name,
+            self.slot,
+            "plane %s" % self.plane if self.plane else "plane ?",
+        )
 
     def __repr__(self):
         return "<Element %d %s>" % (self.index, self.label())
@@ -127,7 +141,11 @@ class Pointing(object):
 
     def __repr__(self):
         return "<Pointing %s dec %+.2f, boresight az %.1f el %.2f>" % (
-            self.name, self.dec_deg, self.bore_az_deg, self.bore_el_deg)
+            self.name,
+            self.dec_deg,
+            self.bore_az_deg,
+            self.bore_el_deg,
+        )
 
 
 class ArrayEpoch(object):
@@ -153,11 +171,17 @@ class ArrayEpoch(object):
         place -- a plane pinned, a position re-measured -- artifacts built against the old
         content must stop matching rather than silently claim agreement.
         """
-        body = json.dumps({"cube_order": self.cube_order, "pointing": self.pointing.name,
-                           "elements": {str(k): [e.dish, e.slot, e.plane, e.plane_confidence,
-                                                 list(e.enu_m)]
-                                        for k, e in sorted(self.elements.items())}},
-                          sort_keys=True).encode()
+        body = json.dumps(
+            {
+                "cube_order": self.cube_order,
+                "pointing": self.pointing.name,
+                "elements": {
+                    str(k): [e.dish, e.slot, e.plane, e.plane_confidence, list(e.enu_m)]
+                    for k, e in sorted(self.elements.items())
+                },
+            },
+            sort_keys=True,
+        ).encode()
         return "%s:%s" % (self.name, hashlib.sha1(body).hexdigest()[:8])
 
     def contains(self, t):
@@ -168,14 +192,20 @@ class ArrayEpoch(object):
     def element(self, index=None, cube=None):
         """One element, by correlator index OR by beam-cube index. Exactly one of the two."""
         if (index is None) == (cube is None):
-            raise ValueError("give exactly one of index= (correlator 0..127) or cube= (0..31)")
+            raise ValueError(
+                "give exactly one of index= (correlator 0..127) or cube= (0..31)"
+            )
         if cube is not None:
             if not 0 <= cube < len(self.cube_order):
-                raise KeyError("cube index %r outside the %d-wide axis of epoch %s"
-                               % (cube, len(self.cube_order), self.name))
+                raise KeyError(
+                    "cube index %r outside the %d-wide axis of epoch %s"
+                    % (cube, len(self.cube_order), self.name)
+                )
             index = self.cube_order[cube]
         if index not in self.elements:
-            raise KeyError("correlator element %r is not live in epoch %s" % (index, self.name))
+            raise KeyError(
+                "correlator element %r is not live in epoch %s" % (index, self.name)
+            )
         return self.elements[index]
 
     def cube_elements(self):
@@ -183,18 +213,25 @@ class ArrayEpoch(object):
         return [(i, self.elements[c]) for i, c in enumerate(self.cube_order)]
 
     def dish_elements(self, dish):
-        return sorted((e for e in self.elements.values() if e.dish == dish),
-                      key=lambda e: e.slot)
+        return sorted(
+            (e for e in self.elements.values() if e.dish == dish), key=lambda e: e.slot
+        )
 
     def stamp(self):
         """What an artifact built from this epoch should carry."""
-        return {"array_epoch": self.name, "array_epoch_key": self.key(),
-                "pointing": self.pointing.name}
+        return {
+            "array_epoch": self.name,
+            "array_epoch_key": self.key(),
+            "pointing": self.pointing.name,
+        }
 
     def __repr__(self):
         return "<ArrayEpoch %s %s..%s %s>" % (
-            self.name, self.valid_from.date(),
-            self.valid_to.date() if self.valid_to else "open", self.pointing.name)
+            self.name,
+            self.valid_from.date(),
+            self.valid_to.date() if self.valid_to else "open",
+            self.pointing.name,
+        )
 
 
 # ── backends ───────────────────────────────────────────────────────────────────────────────
@@ -221,7 +258,9 @@ class JsonBackend(Backend):
             with open(self.path) as fh:
                 d = json.load(fh)
             if int(d.get("schema", 0)) != 1:
-                raise ValueError("%s: schema %r, this module speaks 1" % (self.path, d.get("schema")))
+                raise ValueError(
+                    "%s: schema %r, this module speaks 1" % (self.path, d.get("schema"))
+                )
             pts = {k: Pointing(k, v) for k, v in d["pointings"].items()}
             eps = [ArrayEpoch(e, pts) for e in d["epochs"]]
             self._cache = sorted(eps, key=lambda e: e.valid_from)
@@ -254,7 +293,8 @@ class DbBackend(Backend):
     def epochs(self):
         raise NotImplementedError(
             "the array database backend is not written yet; unset GNSS_ARRAYMAP to use %s"
-            % CONFIG)
+            % CONFIG
+        )
 
 
 def backend():
@@ -282,10 +322,21 @@ def at(t, be=None):
         if e.contains(t):
             return e
     known = epochs(be)
-    raise NoEpoch("no recorded array configuration covers %s (known: %s)"
-                  % (t.isoformat(), ", ".join("%s %s..%s" % (
-                      e.name, e.valid_from.date(),
-                      e.valid_to.date() if e.valid_to else "open") for e in known)))
+    raise NoEpoch(
+        "no recorded array configuration covers %s (known: %s)"
+        % (
+            t.isoformat(),
+            ", ".join(
+                "%s %s..%s"
+                % (
+                    e.name,
+                    e.valid_from.date(),
+                    e.valid_to.date() if e.valid_to else "open",
+                )
+                for e in known
+            ),
+        )
+    )
 
 
 def span(t0, t1, be=None):
@@ -293,21 +344,30 @@ def span(t0, t1, be=None):
     t0, t1 = as_utc(t0), as_utc(t1)
     if t1 <= t0:
         raise ValueError("span end %s is not after start %s" % (t1, t0))
-    hit = [e for e in epochs(be)
-           if e.valid_from < t1 and (e.valid_to is None or t0 < e.valid_to)]
+    hit = [
+        e
+        for e in epochs(be)
+        if e.valid_from < t1 and (e.valid_to is None or t0 < e.valid_to)
+    ]
     if not hit:
-        raise NoEpoch("no recorded array configuration covers %s..%s"
-                      % (t0.isoformat(), t1.isoformat()))
+        raise NoEpoch(
+            "no recorded array configuration covers %s..%s"
+            % (t0.isoformat(), t1.isoformat())
+        )
     # A span that reaches into a gap is not covered even though epochs on both sides are hit.
     cursor = t0
     for e in hit:
         if e.valid_from > cursor:
-            raise NoEpoch("%s..%s is not recorded (gap before epoch %s)"
-                          % (cursor.isoformat(), e.valid_from.isoformat(), e.name))
+            raise NoEpoch(
+                "%s..%s is not recorded (gap before epoch %s)"
+                % (cursor.isoformat(), e.valid_from.isoformat(), e.name)
+            )
         cursor = max(cursor, e.valid_to) if e.valid_to else t1
     if cursor < t1:
-        raise NoEpoch("%s..%s is not recorded (past the last epoch)"
-                      % (cursor.isoformat(), t1.isoformat()))
+        raise NoEpoch(
+            "%s..%s is not recorded (past the last epoch)"
+            % (cursor.isoformat(), t1.isoformat())
+        )
     return hit
 
 
@@ -320,8 +380,14 @@ def require_single(t0, t1, be=None):
     if len(hit) > 1:
         raise Straddle(
             "%s..%s crosses %d array configurations (%s) -- these are not one array and must "
-            "not be co-added" % (as_utc(t0).isoformat(), as_utc(t1).isoformat(), len(hit),
-                                 ", ".join(e.name for e in hit)))
+            "not be co-added"
+            % (
+                as_utc(t0).isoformat(),
+                as_utc(t1).isoformat(),
+                len(hit),
+                ", ".join(e.name for e in hit),
+            )
+        )
     return hit[0]
 
 
@@ -353,26 +419,41 @@ def assert_compatible(metas, be=None):
             if ep is None:
                 raise Straddle(
                     "%s is stamped %s, which is not in the current table -- it was built "
-                    "against a configuration that has since been corrected; rebuild it" % (who, key))
+                    "against a configuration that has since been corrected; rebuild it"
+                    % (who, key)
+                )
         else:
             if not m.get("day"):
-                raise Straddle("%s carries neither array_epoch_key nor day; cannot place it" % who)
+                raise Straddle(
+                    "%s carries neither array_epoch_key nor day; cannot place it" % who
+                )
             ep = for_day(m["day"], be)
             unstamped.append(who)
         seen.setdefault(ep.key(), (ep, []))[1].append(who)
         pt = m.get("pointing")
         if pt and pt != ep.pointing.name:
-            raise Straddle("%s says pointing %s but epoch %s is %s"
-                           % (who, pt, ep.name, ep.pointing.name))
+            raise Straddle(
+                "%s says pointing %s but epoch %s is %s"
+                % (who, pt, ep.name, ep.pointing.name)
+            )
     if len(seen) > 1:
-        raise Straddle("these artifacts span %d array configurations and must not be "
-                       "co-added:\n  %s" % (len(seen), "\n  ".join(
-                           "%s: %s" % (ep.name, ", ".join(map(str, w)))
-                           for ep, w in seen.values())))
+        raise Straddle(
+            "these artifacts span %d array configurations and must not be "
+            "co-added:\n  %s"
+            % (
+                len(seen),
+                "\n  ".join(
+                    "%s: %s" % (ep.name, ", ".join(map(str, w)))
+                    for ep, w in seen.values()
+                ),
+            )
+        )
     ep = list(seen.values())[0][0]
     if unstamped:
-        notes.append("%d artifact(s) carry no array_epoch stamp; placed by day into %s: %s"
-                     % (len(unstamped), ep.name, ", ".join(map(str, unstamped))))
+        notes.append(
+            "%d artifact(s) carry no array_epoch stamp; placed by day into %s: %s"
+            % (len(unstamped), ep.name, ", ".join(map(str, unstamped)))
+        )
     if not ep.verified:
         notes.append("epoch %s is NOT verified on sky (%s)" % (ep.name, ep.provenance))
     return ep, notes
@@ -397,28 +478,47 @@ def check(be=None, node_config=NODE_CONFIG):
             bad.append("epoch %s repeats an element in cube_order" % e.name)
         for c in e.cube_order:
             if c not in e.elements:
-                bad.append("epoch %s: cube_order names element %d, which has no record" % (e.name, c))
+                bad.append(
+                    "epoch %s: cube_order names element %d, which has no record"
+                    % (e.name, c)
+                )
         for idx, el in e.elements.items():
             if el.index != idx:
-                bad.append("epoch %s: element %d carries index %d" % (e.name, idx, el.index))
+                bad.append(
+                    "epoch %s: element %d carries index %d" % (e.name, idx, el.index)
+                )
             if el.slot * 64 + el.dish != idx:
-                bad.append("epoch %s: element %d is not pol*64+dish for dish %d slot %d"
-                           % (e.name, idx, el.dish, el.slot))
+                bad.append(
+                    "epoch %s: element %d is not pol*64+dish for dish %d slot %d"
+                    % (e.name, idx, el.dish, el.slot)
+                )
             if el.plane not in (None, "A", "B"):
-                bad.append("epoch %s: element %d has plane %r" % (e.name, idx, el.plane))
+                bad.append(
+                    "epoch %s: element %d has plane %r" % (e.name, idx, el.plane)
+                )
         # Both slots of a dish must carry different planes, or neither must be pinned: a dish
         # whose two feeds read as the same plane is a transcription error, not a measurement.
         for dish in sorted({el.dish for el in e.elements.values()}):
             pl = [el.plane for el in e.dish_elements(dish)]
             if len(pl) == 2 and pl[0] is not None and pl[0] == pl[1]:
-                bad.append("epoch %s: dish %d has plane %s in both slots" % (e.name, dish, pl[0]))
+                bad.append(
+                    "epoch %s: dish %d has plane %s in both slots"
+                    % (e.name, dish, pl[0])
+                )
     # The live epoch's element set must match what the fleet is actually configured to read.
     live = [e for e in eps if e.valid_to is None]
     if live and os.path.exists(node_config):
         want = _live_ranges(node_config)
         if want is not None and want != live[-1].cube_order:
-            bad.append("epoch %s cube_order %s != array.live_element_ranges in %s -> %s"
-                       % (live[-1].name, live[-1].cube_order, os.path.basename(node_config), want))
+            bad.append(
+                "epoch %s cube_order %s != array.live_element_ranges in %s -> %s"
+                % (
+                    live[-1].name,
+                    live[-1].cube_order,
+                    os.path.basename(node_config),
+                    want,
+                )
+            )
     return bad
 
 
@@ -429,6 +529,7 @@ def _live_ranges(path):
     run under venv-ft, where pulling in a yaml parser for one list is not worth the dependency.
     """
     import re
+
     try:
         with open(path) as fh:
             txt = fh.read()
@@ -449,55 +550,102 @@ def _live_ranges(path):
 # ── CLI ────────────────────────────────────────────────────────────────────────────────────
 def _fmt_element(e):
     pos = ("%7.3f %7.3f %5.3f" % e.enu_m) if e.enu_m else " " * 21
-    return ("  elem %3d  cube %-4s  %-4s slot%d  plane %-5s %-10s  ENU %s  (%s)"
-            % (e.index, "-", e.dish_name, e.slot, e.plane or "?", e.plane_confidence,
-               pos, e.position_confidence))
+    return "  elem %3d  cube %-4s  %-4s slot%d  plane %-5s %-10s  ENU %s  (%s)" % (
+        e.index,
+        "-",
+        e.dish_name,
+        e.slot,
+        e.plane or "?",
+        e.plane_confidence,
+        pos,
+        e.position_confidence,
+    )
 
 
 def cmd_epochs(args):
     for e in epochs():
-        print("%-22s %s .. %-10s  %-14s  %d elements  %s"
-              % (e.name, e.valid_from.date(),
-                 e.valid_to.date() if e.valid_to else "open", e.pointing.name,
-                 len(e.elements), "verified" if e.verified else "UNVERIFIED"))
+        print(
+            "%-22s %s .. %-10s  %-14s  %d elements  %s"
+            % (
+                e.name,
+                e.valid_from.date(),
+                e.valid_to.date() if e.valid_to else "open",
+                e.pointing.name,
+                len(e.elements),
+                "verified" if e.verified else "UNVERIFIED",
+            )
+        )
         print("    %s" % e.provenance)
     return 0
 
 
 def cmd_show(args):
     e = at(args.at) if args.at else epochs()[-1]
-    print("%s   %s .. %s   %s" % (e.name, e.valid_from.isoformat(),
-                                  e.valid_to.isoformat() if e.valid_to else "open", e.pointing))
-    print("  %s   key %s" % ("verified" if e.verified else "NOT VERIFIED ON SKY", e.key()))
+    print(
+        "%s   %s .. %s   %s"
+        % (
+            e.name,
+            e.valid_from.isoformat(),
+            e.valid_to.isoformat() if e.valid_to else "open",
+            e.pointing,
+        )
+    )
+    print(
+        "  %s   key %s" % ("verified" if e.verified else "NOT VERIFIED ON SKY", e.key())
+    )
     print("  %s" % e.provenance)
     for n in e.notes:
         print("    - %s" % n)
-    print("  cube axis is %d wide; cube i -> correlator cube_order[i]" % len(e.cube_order))
-    print("   cube  elem  dish  slot  plane   confidence   ENU east   north      up   pos")
+    print(
+        "  cube axis is %d wide; cube i -> correlator cube_order[i]" % len(e.cube_order)
+    )
+    print(
+        "   cube  elem  dish  slot  plane   confidence   ENU east   north      up   pos"
+    )
     for ci, el in e.cube_elements():
-        print("   %4d  %4d  %-4s   %d    %-5s   %-10s  %7.3f %7.3f %7.3f  %s"
-              % (ci, el.index, el.dish_name, el.slot, el.plane or "?", el.plane_confidence,
-                 el.enu_m[0], el.enu_m[1], el.enu_m[2], el.position_confidence))
+        print(
+            "   %4d  %4d  %-4s   %d    %-5s   %-10s  %7.3f %7.3f %7.3f  %s"
+            % (
+                ci,
+                el.index,
+                el.dish_name,
+                el.slot,
+                el.plane or "?",
+                el.plane_confidence,
+                el.enu_m[0],
+                el.enu_m[1],
+                el.enu_m[2],
+                el.position_confidence,
+            )
+        )
     return 0
 
 
 def cmd_element(args):
     e = at(args.at) if args.at else epochs()[-1]
     el = e.element(cube=args.index) if args.cube else e.element(index=args.index)
-    print("epoch %s (%s .. %s)" % (e.name, e.valid_from.date(),
-                                   e.valid_to.date() if e.valid_to else "open"))
-    print("  correlator element %d%s" % (el.index, "  (cube index %d)" % args.index if args.cube
-                                         else ""))
-    print("  dish %s (index %d), slot %d, feed plane %s (%s)"
-          % (el.dish_name, el.dish, el.slot, el.plane or "unknown", el.plane_confidence))
+    print(
+        "epoch %s (%s .. %s)"
+        % (e.name, e.valid_from.date(), e.valid_to.date() if e.valid_to else "open")
+    )
+    print(
+        "  correlator element %d%s"
+        % (el.index, "  (cube index %d)" % args.index if args.cube else "")
+    )
+    print(
+        "  dish %s (index %d), slot %d, feed plane %s (%s)"
+        % (el.dish_name, el.dish, el.slot, el.plane or "unknown", el.plane_confidence)
+    )
     if len(el.enu_m) == 3:
         print("  ENU %.3f %.3f %.3f m (%s)" % (el.enu_m + (el.position_confidence,)))
     else:
         print("  no position")
     other = [o for o in e.dish_elements(el.dish) if o.index != el.index]
     if other:
-        print("  the other feed on this dish: element %d, plane %s"
-              % (other[0].index, other[0].plane or "unknown"))
+        print(
+            "  the other feed on this dish: element %d, plane %s"
+            % (other[0].index, other[0].plane or "unknown")
+        )
     return 0
 
 
@@ -508,10 +656,15 @@ def cmd_diff(args):
         print("  identical: same key %s" % a.key())
         return 0
     if a.pointing.name != b.pointing.name:
-        print("  POINTING CHANGED: %s -> %s -- maps across this boundary must never be co-added"
-              % (a.pointing, b.pointing))
+        print(
+            "  POINTING CHANGED: %s -> %s -- maps across this boundary must never be co-added"
+            % (a.pointing, b.pointing)
+        )
     if a.cube_order != b.cube_order:
-        print("  cube axis changed: %d -> %d elements" % (len(a.cube_order), len(b.cube_order)))
+        print(
+            "  cube axis changed: %d -> %d elements"
+            % (len(a.cube_order), len(b.cube_order))
+        )
     n = 0
     for idx in sorted(set(a.elements) | set(b.elements)):
         ea, eb = a.elements.get(idx), b.elements.get(idx)
@@ -520,9 +673,16 @@ def cmd_diff(args):
             n += 1
             continue
         if (ea.dish, ea.slot, ea.plane) != (eb.dish, eb.slot, eb.plane):
-            ci = (a.cube_order.index(idx) if idx in a.cube_order else None)
-            print("  elem %3d%s  %s  ->  %s" % (
-                idx, "  (cube %d)" % ci if ci is not None else "", ea.label(), eb.label()))
+            ci = a.cube_order.index(idx) if idx in a.cube_order else None
+            print(
+                "  elem %3d%s  %s  ->  %s"
+                % (
+                    idx,
+                    "  (cube %d)" % ci if ci is not None else "",
+                    ea.label(),
+                    eb.label(),
+                )
+            )
             n += 1
     print("  %d element(s) changed identity" % n)
     if n:
@@ -532,7 +692,8 @@ def cmd_diff(args):
 
 def cmd_masters(args):
     """Preflight a co-add of beam-cube masters. Reads only the meta blob, never the arrays."""
-    import numpy as np                       # only this subcommand needs it
+    import numpy as np  # only this subcommand needs it
+
     metas = []
     for path in args.masters:
         z = np.load(path, allow_pickle=False)
@@ -540,8 +701,10 @@ def cmd_masters(args):
         m["path"] = os.path.basename(path)
         metas.append(m)
     ep, notes = assert_compatible(metas)
-    print("OK  %d master(s) are one array: %s  (%s)"
-          % (len(metas), ep.name, ep.pointing.name))
+    print(
+        "OK  %d master(s) are one array: %s  (%s)"
+        % (len(metas), ep.name, ep.pointing.name)
+    )
     print("    key %s" % ep.key())
     for n in notes:
         print("    note: %s" % n)
@@ -554,9 +717,15 @@ def cmd_check(args):
         print("FAIL  %s" % b)
     if not bad:
         eps = epochs()
-        print("OK  %d epoch(s), %s .. %s, no overlaps; live cube_order matches "
-              "array.live_element_ranges" % (len(eps), eps[0].valid_from.date(),
-                                             eps[-1].valid_to.date() if eps[-1].valid_to else "open"))
+        print(
+            "OK  %d epoch(s), %s .. %s, no overlaps; live cube_order matches "
+            "array.live_element_ranges"
+            % (
+                len(eps),
+                eps[0].valid_from.date(),
+                eps[-1].valid_to.date() if eps[-1].valid_to else "open",
+            )
+        )
         for e in eps:
             if not e.verified:
                 print("note  epoch %s is not verified on sky" % e.name)
@@ -570,22 +739,33 @@ def cmd_stamp(args):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__.split("\n\n")[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     sub = p.add_subparsers(dest="cmd")
     sub.add_parser("epochs").set_defaults(fn=cmd_epochs)
-    s = sub.add_parser("show"); s.add_argument("--at", default=None); s.set_defaults(fn=cmd_show)
+    s = sub.add_parser("show")
+    s.add_argument("--at", default=None)
+    s.set_defaults(fn=cmd_show)
     s = sub.add_parser("element")
     s.add_argument("index", type=int)
-    s.add_argument("--cube", action="store_true", help="index the 32-wide beam-cube axis")
+    s.add_argument(
+        "--cube", action="store_true", help="index the 32-wide beam-cube axis"
+    )
     s.add_argument("--at", default=None)
     s.set_defaults(fn=cmd_element)
-    s = sub.add_parser("diff"); s.add_argument("t1"); s.add_argument("t2"); s.set_defaults(fn=cmd_diff)
+    s = sub.add_parser("diff")
+    s.add_argument("t1")
+    s.add_argument("t2")
+    s.set_defaults(fn=cmd_diff)
     s = sub.add_parser("masters")
     s.add_argument("masters", nargs="+", help="cube_<day>_nside<N>.npz")
     s.set_defaults(fn=cmd_masters)
     sub.add_parser("check").set_defaults(fn=cmd_check)
-    s = sub.add_parser("stamp"); s.add_argument("--at", default=None); s.set_defaults(fn=cmd_stamp)
+    s = sub.add_parser("stamp")
+    s.add_argument("--at", default=None)
+    s.set_defaults(fn=cmd_stamp)
     a = p.parse_args(argv)
     if not getattr(a, "fn", None):
         p.print_help()

@@ -27,10 +27,10 @@
 
 namespace gps {
 
-constexpr int L2CM_CODE_LENGTH = 10230;     ///< CM chips (20 ms @ 511.5 kcps)
-constexpr int L2CL_CODE_LENGTH = 767250;    ///< CL chips (1.5 s @ 511.5 kcps)
+constexpr int L2CM_CODE_LENGTH = 10230;  ///< CM chips (20 ms @ 511.5 kcps)
+constexpr int L2CL_CODE_LENGTH = 767250; ///< CL chips (1.5 s @ 511.5 kcps)
 constexpr int L2C_PRN_MIN = 1;
-constexpr int L2C_PRN_MAX = 32;             ///< table covers the GPS constellation
+constexpr int L2C_PRN_MAX = 32; ///< table covers the GPS constellation
 
 /**
  * @brief Generate the L2 CM code for a PRN as bipolar +1 / -1.

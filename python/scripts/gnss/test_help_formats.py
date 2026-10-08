@@ -23,8 +23,16 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 # argparse substitutes a dict of the action's own attributes; the VALUES do not matter, only
 # that a well-formed string consumes them by NAME (%(default)s) rather than positionally.
-PARAMS = {"default": 0, "prog": "p", "choices": "c", "type": "t",
-          "const": 0, "metavar": "m", "dest": "d", "nargs": 1}
+PARAMS = {
+    "default": 0,
+    "prog": "p",
+    "choices": "c",
+    "type": "t",
+    "const": 0,
+    "metavar": "m",
+    "dest": "d",
+    "nargs": 1,
+}
 
 
 def misformats(h):
@@ -68,7 +76,7 @@ def collect_bad(script):
         try:
             runpy.run_path(script, run_name="__main__")
         except SystemExit:
-            pass            # argparse exits on the bad flag -- by then every add_argument ran
+            pass  # argparse exits on the bad flag -- by then every add_argument ran
     finally:
         argparse.ArgumentParser.add_argument = orig
         sys.argv = argv
@@ -76,24 +84,32 @@ def collect_bad(script):
 
 
 class TestHelpFormats(unittest.TestCase):
-
     def test_broker_help_strings_are_formattable(self):
         bad = collect_bad(os.path.join(HERE, "gps_distributed_broker.py"))
-        self.assertEqual(bad, [], "help strings argparse cannot format (double the %% in "
-                                  "any literal percent sign): " + repr(bad))
+        self.assertEqual(
+            bad,
+            [],
+            "help strings argparse cannot format (double the %% in "
+            "any literal percent sign): " + repr(bad),
+        )
 
     def test_the_detector_would_catch_a_regression(self):
         """A test for the test: a bare %% must actually be reported, or this file is a gate
         that cannot fail -- which is the whole reason the original bug survived a day."""
         ap = argparse.ArgumentParser()
-        for h, should_flag in (("plain text", False),
-                               ("default is %(default)s", False),
-                               ("literal 50%% escaped", False),
-                               ("bare 50% sign", True),        # mangles, does NOT raise
-                               ("a %Y date", True),            # raises
-                               ("percent-%-format", True)):    # raises
-            self.assertEqual(bool(misformats(h)), should_flag,
-                             "misjudged help string %r -> %r" % (h, misformats(h)))
+        for h, should_flag in (
+            ("plain text", False),
+            ("default is %(default)s", False),
+            ("literal 50%% escaped", False),
+            ("bare 50% sign", True),  # mangles, does NOT raise
+            ("a %Y date", True),  # raises
+            ("percent-%-format", True),
+        ):  # raises
+            self.assertEqual(
+                bool(misformats(h)),
+                should_flag,
+                "misjudged help string %r -> %r" % (h, misformats(h)),
+            )
 
 
 if __name__ == "__main__":

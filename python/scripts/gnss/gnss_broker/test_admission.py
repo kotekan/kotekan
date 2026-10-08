@@ -54,7 +54,10 @@ def test_startup():
     healthy(g)
     d1 = g.decide(34, +0.62, True, 1000.0, 0.0, 8, 3600.0)
     d2 = g.decide(34, +0.82, True, 1120.0, 0.0, 8, 3600.0)
-    check(not d1.fire and not d2.fire, "PRN 34 (never present) cannot fire, stable tau or not")
+    check(
+        not d1.fire and not d2.fire,
+        "PRN 34 (never present) cannot fire, stable tau or not",
+    )
     check(34 not in g.pending, "and it accrues no strike at all")
 
     # PRN 9: present at q 2.32 at t+28 s, absent by t+2 min, fired legally under was-present
@@ -62,10 +65,12 @@ def test_startup():
     g = gate()
     healthy(g)
     g.note_present(9)
-    d1 = g.decide(9, +0.40, True, 100.0, 0.0, 8, 120.0)     # t+2 min: inside the hold-off
+    d1 = g.decide(9, +0.40, True, 100.0, 0.0, 8, 120.0)  # t+2 min: inside the hold-off
     check(not d1.fire and 9 not in g.pending, "PRN 9 at t+120 s: held off, no strike")
-    d2 = g.decide(9, +0.40, True, 1000.0, 0.0, 8, 700.0)    # past it: normal strike 1
-    check(not d2.fire and d2.reason == "strike1", "the same fit past 600 s takes strike 1")
+    d2 = g.decide(9, +0.40, True, 1000.0, 0.0, 8, 700.0)  # past it: normal strike 1
+    check(
+        not d2.fire and d2.reason == "strike1", "the same fit past 600 s takes strike 1"
+    )
 
 
 # ---- FIRE POPULATION 2: THE BROWNOUT (fires 2-5, flight 3b) ----------------------------
@@ -75,10 +80,12 @@ def test_brownout():
 
     g = gate()
     for i in range(6):
-        g.note_population(float(i) * 60.0, 7)              # the 600 s peak is 7
+        g.note_population(float(i) * 60.0, 7)  # the 600 s peak is 7
     d = g.decide(1, +0.50, True, 1000.0, 400.0, 3, 3600.0)  # 3 < 0.6*7
     check(not d.fire and d.reason == "brownout", "7 -> 3 sats suppresses admission")
-    check(any(k == "rs-admit-bw" for k, _, _ in d.logs), "and it says so, once per 60 s")
+    check(
+        any(k == "rs-admit-bw" for k, _, _ in d.logs), "and it says so, once per 60 s"
+    )
     check(1 not in g.pending, "a suppressed cycle accrues NO strike")
 
     # The same satellite in a steady chain is judged normally -- the guard is about the
@@ -112,49 +119,78 @@ def test_threshold_flicker_is_not_yet_fenced():
     # "still cooling down" from a fire that never happened -- an artifact of the harness, not
     # of the gate. Cost this file one red run.
     T = 1.787e9
-    g.note_present(1)                                       # present at t=0
-    d1 = g.decide(1, +0.45, True, T + 100.0, 100.0, 8, 3600.0)  # absent 100 s later: strike 1
-    d2 = g.decide(1, +0.45, True, T + 170.0, 170.0, 8, 3600.0)  # 70 s on: decorrelated+consistent
-    check(d1.reason == "strike1" and d2.fire,
-          "a sat absent only 170 s STILL fires -- F3's gap, v3 is the fix and is not in")
+    g.note_present(1)  # present at t=0
+    d1 = g.decide(
+        1, +0.45, True, T + 100.0, 100.0, 8, 3600.0
+    )  # absent 100 s later: strike 1
+    d2 = g.decide(
+        1, +0.45, True, T + 170.0, 170.0, 8, 3600.0
+    )  # 70 s on: decorrelated+consistent
+    check(
+        d1.reason == "strike1" and d2.fire,
+        "a sat absent only 170 s STILL fires -- F3's gap, v3 is the fix and is not in",
+    )
 
 
 # ---- THE TWO-STRIKE RULE ITSELF (flight 2) ---------------------------------------------
 def test_two_strike_rule():
     print("two-strike rule (flight 2)")
 
-    g = gate(); healthy(g)
-    check(g.decide(1, +0.50, True, 1000.0, 0.0, 8, 3600.0).reason == "strike1", "first fit strikes")
+    g = gate()
+    healthy(g)
+    check(
+        g.decide(1, +0.50, True, 1000.0, 0.0, 8, 3600.0).reason == "strike1",
+        "first fit strikes",
+    )
     d = g.decide(1, +0.52, True, 1030.0, 0.0, 8, 3600.0)
-    check(not d.fire and d.reason == "too-fresh", "consistent but 30 s on: HOLD, do not fire")
+    check(
+        not d.fire and d.reason == "too-fresh",
+        "consistent but 30 s on: HOLD, do not fire",
+    )
     check(g.pending[1][1] == 1000.0, "and the pending strike's clock is NOT restarted")
-    check(g.decide(1, +0.52, True, 1065.0, 0.0, 8, 3600.0).fire, "65 s on: decorrelated, fires")
+    check(
+        g.decide(1, +0.52, True, 1065.0, 0.0, 8, 3600.0).fire,
+        "65 s on: decorrelated, fires",
+    )
 
     # F2's actual failure: alternating signs on a swinging fit, seconds apart.
-    g = gate(); healthy(g)
+    g = gate()
+    healthy(g)
     g.decide(1, +0.60, True, 1000.0, 0.0, 8, 3600.0)
     d = g.decide(1, -0.55, True, 1090.0, 0.0, 8, 3600.0)
-    check(not d.fire and d.reason == "strike1", "a sign flip cannot fire; it REPLACES the strike")
+    check(
+        not d.fire and d.reason == "strike1",
+        "a sign flip cannot fire; it REPLACES the strike",
+    )
     check(g.pending[1] == (-0.55, 1090.0), "the replacement strike is the new fit")
 
     # Strike memory must survive non-qualifying cycles -- the flight-2 harness bug cleared it
     # on every ratio dip, which is why the rule looked like it never fired.
-    g = gate(); healthy(g)
+    g = gate()
+    healthy(g)
     g.decide(1, +0.50, True, 1000.0, 0.0, 8, 3600.0)
-    g.decide(2, +0.10, True, 1010.0, 0.0, 8, 3600.0)        # a different PRN's cycles
-    check(g.pending[1] == (+0.50, 1000.0), "another PRN's traffic does not clear the strike")
+    g.decide(2, +0.10, True, 1010.0, 0.0, 8, 3600.0)  # a different PRN's cycles
+    check(
+        g.pending[1] == (+0.50, 1000.0),
+        "another PRN's traffic does not clear the strike",
+    )
 
     # Expiry: a strike older than max_gap_s is stale, and replaces rather than fires.
-    g = gate(); healthy(g)
+    g = gate()
+    healthy(g)
     g.decide(1, +0.50, True, 1000.0, 0.0, 8, 3600.0)
-    d = g.decide(1, +0.50, True, 1700.0, 0.0, 8, 3600.0)    # 700 s > 600 s
-    check(not d.fire and g.pending[1][1] == 1700.0, "a 700 s-old strike expires, does not fire")
+    d = g.decide(1, +0.50, True, 1700.0, 0.0, 8, 3600.0)  # 700 s > 600 s
+    check(
+        not d.fire and g.pending[1][1] == 1700.0,
+        "a 700 s-old strike expires, does not fire",
+    )
 
 
 def test_cooldown_and_presence():
     print("cooldown and presence")
 
-    g = gate(); healthy(g)
+    g = gate()
+    healthy(g)
     g.decide(1, +0.50, True, 1000.0, 0.0, 8, 3600.0)
     check(g.decide(1, +0.50, True, 1065.0, 0.0, 8, 3600.0).fire, "fires")
     d = g.decide(1, +0.50, True, 1100.0, 0.0, 8, 3600.0)
@@ -164,16 +200,26 @@ def test_cooldown_and_presence():
     check(d.reason == "strike1", "past the cooldown it may start again")
 
     # Presence is the natural clear: a present sat is not mid-latch.
-    g = gate(); healthy(g)
+    g = gate()
+    healthy(g)
     g.decide(1, +0.50, True, 1000.0, 0.0, 8, 3600.0)
     g.note_present(1)
     check(1 not in g.pending, "presence clears the pending strike")
 
     # Rules 1 and 2: disarmed, or unseeded, decides nothing at all.
-    g = AdmissionGate(armed=False); healthy(g); g.was_present.add(1)
-    check(not g.decide(1, +0.5, True, 1000.0, 0.0, 8, 3600.0).fire, "a DISARMED gate never fires")
-    g = gate(); healthy(g)
-    check(not g.decide(1, +0.5, False, 1000.0, 0.0, 8, 3600.0).fire, "an unseeded PRN never fires")
+    g = AdmissionGate(armed=False)
+    healthy(g)
+    g.was_present.add(1)
+    check(
+        not g.decide(1, +0.5, True, 1000.0, 0.0, 8, 3600.0).fire,
+        "a DISARMED gate never fires",
+    )
+    g = gate()
+    healthy(g)
+    check(
+        not g.decide(1, +0.5, False, 1000.0, 0.0, 8, 3600.0).fire,
+        "an unseeded PRN never fires",
+    )
 
 
 def test_population_window():
@@ -181,11 +227,13 @@ def test_population_window():
 
     g = gate()
     g.note_population(0.0, 9)
-    g.note_population(0.0, 3)                               # same cycle stamp
+    g.note_population(0.0, 3)  # same cycle stamp
     check(len(g.population) == 1, "one entry per cycle, not per PRN")
-    g.note_population(700.0, 4)                             # 700 s later
-    check(len(g.population) == 1 and g.population[0][0] == 700.0,
-          "entries older than the 600 s window are dropped")
+    g.note_population(700.0, 4)  # 700 s later
+    check(
+        len(g.population) == 1 and g.population[0][0] == 700.0,
+        "entries older than the 600 s window are dropped",
+    )
 
 
 def test_reseed_step():
@@ -197,7 +245,10 @@ def test_reseed_step():
     # unrepresentable, so its value says only "at least this far" -- stepping by it steps by a
     # saturation. This is the guard that keeps a rail out of the seed.
     step, why = reseed_step(+1.95, 2.0, 0.5, 0.35)
-    check(step is None and "span edge" in why, "a fit at 0.95*span is REFUSED, not stepped")
+    check(
+        step is None and "span edge" in why,
+        "a fit at 0.95*span is REFUSED, not stepped",
+    )
     step, why = reseed_step(-1.95, 2.0, 0.5, 0.35)
     check(step is None, "and the refusal is symmetric in sign")
     step, why = reseed_step(+1.85, 2.0, 0.5, 0.35)
@@ -206,18 +257,31 @@ def test_reseed_step():
     # The direction is validated, the magnitude is not: step by a FRACTION.
     step, why = reseed_step(+0.40, 2.0, 0.5, 0.35)
     check(abs(step - 0.20) < 1e-12 and why is None, "gain 0.5 on tau +0.40 steps +0.20")
-    check(reseed_step(-0.40, 2.0, 0.5, 0.35)[0] < 0, "+tau raises the phase, -tau lowers it")
+    check(
+        reseed_step(-0.40, 2.0, 0.5, 0.35)[0] < 0,
+        "+tau raises the phase, -tau lowers it",
+    )
 
     # The cap binds before the gain does, both ways.
-    check(abs(reseed_step(+1.60, 2.0, 0.5, 0.35)[0] - 0.35) < 1e-12, "the cap binds (+)")
-    check(abs(reseed_step(-1.60, 2.0, 0.5, 0.35)[0] + 0.35) < 1e-12, "the cap binds (-)")
+    check(
+        abs(reseed_step(+1.60, 2.0, 0.5, 0.35)[0] - 0.35) < 1e-12, "the cap binds (+)"
+    )
+    check(
+        abs(reseed_step(-1.60, 2.0, 0.5, 0.35)[0] + 0.35) < 1e-12, "the cap binds (-)"
+    )
 
 
 if __name__ == "__main__":
     print("#90 admission gate -- the 2026-08-25 flight, offline\n")
-    for fn in (test_startup, test_brownout, test_threshold_flicker_is_not_yet_fenced,
-               test_two_strike_rule, test_cooldown_and_presence, test_population_window,
-               test_reseed_step):
+    for fn in (
+        test_startup,
+        test_brownout,
+        test_threshold_flicker_is_not_yet_fenced,
+        test_two_strike_rule,
+        test_cooldown_and_presence,
+        test_population_window,
+        test_reseed_step,
+    ):
         fn()
     print("\nFAILED (%d)" % len(_fails) if _fails else "\nOK")
     sys.exit(1 if _fails else 0)

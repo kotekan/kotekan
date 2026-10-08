@@ -20,13 +20,14 @@ import unittest
 
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_broker.state_filter import JointReceiverState
 
 C = 299792458.0
 F_E5A = 1176.45e6
 F_E5B = 1207.14e6
-F_B2A = 1176.45e6          # same carrier as E5a -- the CHORD case
+F_B2A = 1176.45e6  # same carrier as E5a -- the CHORD case
 
 
 def y_of(rrate, fcar, f_b, f_ref=F_E5A):
@@ -44,12 +45,11 @@ def run(state, truth, fcar, bands=(F_E5A,), n=400, t0=100.0, sigma=0.2):
 
 
 class TestSeparatesOrbitFromReceiver(unittest.TestCase):
-
     def test_recovers_both_terms(self):
         """The load-bearing case: a receiver-wide offset AND per-satellite orbit errors,
         recovered separately from measurements that only ever see their sum."""
         s = JointReceiverState(code_len=10230.0)
-        truth = {11: -3.0, 21: 2.0, 28: 1.0}          # mean 0, matching the gauge
+        truth = {11: -3.0, 21: 2.0, 28: 1.0}  # mean 0, matching the gauge
         run(s, truth, fcar=0.5)
         self.assertAlmostEqual(s.f_carrier(), 0.5, delta=0.05)
         for prn, rr in truth.items():
@@ -65,19 +65,21 @@ class TestSeparatesOrbitFromReceiver(unittest.TestCase):
         truth = {11: 0.0, 21: 0.0, 28: 0.0, 30: 0.0, 32: 0.0, 34: 0.0}
         run(s, truth, fcar=0.0, n=300)
         base = s.f_carrier()
-        truth[11] = 6.0                                # one orbit goes wrong
+        truth[11] = 6.0  # one orbit goes wrong
         run(s, truth, fcar=0.0, n=300, t0=500.0)
         moved_hz = abs(s.f_carrier() - base)
         # 6 m/s over 6 sats = 1 m/s of fleet mean = (f/c)*1 = 3.92 Hz IF it leaked fully.
         # The gauge's 1/N share is that same 3.92 Hz -- so the test is that it is NOT MORE,
         # i.e. the per-sat term took the rest.
         self.assertLess(moved_hz, 1.1 * (F_E5A / C) * (6.0 / len(truth)))
-        self.assertAlmostEqual(s.rrate(11) - sum(s.rrate(p) for p in truth) / len(truth),
-                               6.0 - 6.0 / len(truth), delta=0.2)
+        self.assertAlmostEqual(
+            s.rrate(11) - sum(s.rrate(p) for p in truth) / len(truth),
+            6.0 - 6.0 / len(truth),
+            delta=0.2,
+        )
 
 
 class TestCrossBandIsOneRow(unittest.TestCase):
-
     def test_two_bands_land_on_the_same_satellite_row(self):
         """THE POINT OF THE TASK. E5a and E5b measurements of one satellite are one quantity
         seen through two carriers; they must reinforce a single row, not create two."""
@@ -113,7 +115,6 @@ class TestCrossBandIsOneRow(unittest.TestCase):
 
 
 class TestTheBugsFoundWhileBuilding(unittest.TestCase):
-
     def test_a_stiff_gauge_is_NOT_what_froze_it(self):
         """⚠️ A CORRECTION TO MY OWN DIAGNOSIS, kept as a test so it stays corrected.
 
@@ -129,7 +130,9 @@ class TestTheBugsFoundWhileBuilding(unittest.TestCase):
             truth = {11: -3.0, 21: 2.0, 28: 1.0}
             run(s, truth, fcar=0.5, n=200)
             err = max(abs(s.rrate(p) - r) for p, r in truth.items())
-            self.assertLess(err, 0.1, "gauge_sigma %.2f: max error %.3f m/s" % (gs, err))
+            self.assertLess(
+                err, 0.1, "gauge_sigma %.2f: max error %.3f m/s" % (gs, err)
+            )
 
     def test_the_first_satellite_can_still_disagree_with_itself(self):
         """The first measurement defines f_carrier because one sample cannot split the two.
@@ -146,12 +149,15 @@ class TestTheBugsFoundWhileBuilding(unittest.TestCase):
         s = JointReceiverState(code_len=10230.0)
         run(s, {11: 0.0, 21: 0.0}, fcar=0.0, n=200)
         i = s._rr_idx[11]
-        s.x[i] = 40.0                       # displace the row far outside its own gate
-        s.P[i, i] = 1e-6                    # ...and make the filter certain about it
+        s.x[i] = 40.0  # displace the row far outside its own gate
+        s.P[i, i] = 1e-6  # ...and make the filter certain about it
         run(s, {11: 0.0, 21: 0.0}, fcar=0.0, n=200, t0=400.0)
-        self.assertLess(abs(s.rrate(11)), 1.0,
-                        "a displaced, over-confident row never recovered (rrate %.2f)"
-                        % s.rrate(11))
+        self.assertLess(
+            abs(s.rrate(11)),
+            1.0,
+            "a displaced, over-confident row never recovered (rrate %.2f)"
+            % s.rrate(11),
+        )
 
 
 class TestClosedLoopReference(unittest.TestCase):
@@ -170,19 +176,22 @@ class TestClosedLoopReference(unittest.TestCase):
         for k in range(n):
             for prn, rr in truth.items():
                 y_true = y_of(rr, fcar, F_E5A)
-                resid[prn] = y_true - cmd[prn]              # what deep_rate_hz reports
+                resid[prn] = y_true - cmd[prn]  # what deep_rate_hz reports
                 y_fed = resid[prn] + (cmd[prn] if add_back else 0.0)
                 s.update_rrate(prn, y_fed, 100.0 + k, F_E5A)
             s.gauge_rrate()
-            for prn in truth:                                # next poll's command
+            for prn in truth:  # next poll's command
                 cmd[prn] = s.carrier_correction_hz(prn, F_E5A)
         return truth, fcar, resid
 
     def test_adding_the_command_back_closes_the_loop(self):
         truth, fcar, resid = self._run_loop(add_back=True)
         for prn in truth:
-            self.assertLess(abs(resid[prn]), 0.05,
-                            "PRN %d standing residual %.3f Hz" % (prn, resid[prn]))
+            self.assertLess(
+                abs(resid[prn]),
+                0.05,
+                "PRN %d standing residual %.3f Hz" % (prn, resid[prn]),
+            )
 
     def test_feeding_the_bare_residual_parks_at_half(self):
         """The equilibrium is exact: feed y_true - cmd while commanding the prediction and
@@ -193,10 +202,13 @@ class TestClosedLoopReference(unittest.TestCase):
         for prn, rr in truth.items():
             y_true = y_of(rr, fcar, F_E5A)
             if abs(y_true) < 1.0:
-                continue                                     # too small to discriminate
-            self.assertGreater(abs(resid[prn]), 0.3 * abs(y_true),
-                               "PRN %d: bare-residual feed should park near y/2, got "
-                               "resid %.3f of y %.3f" % (prn, resid[prn], y_true))
+                continue  # too small to discriminate
+            self.assertGreater(
+                abs(resid[prn]),
+                0.3 * abs(y_true),
+                "PRN %d: bare-residual feed should park near y/2, got "
+                "resid %.3f of y %.3f" % (prn, resid[prn], y_true),
+            )
 
 
 class TestClosedLoopLag(unittest.TestCase):
@@ -208,16 +220,17 @@ class TestClosedLoopLag(unittest.TestCase):
 
     def _run(self, slew, n=400, lag=2, meas_noise=0.0, seed=7):
         import random
+
         rng = random.Random(seed)
         truth = {11: -3.0, 21: 2.0, 28: 1.0}
         fcar = 0.5
         s = JointReceiverState(code_len=10230.0)
-        hist = {p: [0.0] * (lag + 1) for p in truth}   # [0] = latest posted
+        hist = {p: [0.0] * (lag + 1) for p in truth}  # [0] = latest posted
         for k in range(n):
             for prn, rr in truth.items():
                 y_true = y_of(rr, fcar, F_E5A)
-                resid = y_true - hist[prn][-1]          # measured under the OLD command
-                y_fed = resid + hist[prn][0]            # broker adds back the LATEST
+                resid = y_true - hist[prn][-1]  # measured under the OLD command
+                y_fed = resid + hist[prn][0]  # broker adds back the LATEST
                 if meas_noise:
                     y_fed += rng.gauss(0.0, meas_noise)
                 s.update_rrate(prn, y_fed, 100.0 + k, F_E5A)
@@ -249,9 +262,11 @@ class TestClosedLoopLag(unittest.TestCase):
         bounded = max(self._run(slew=0.5, meas_noise=0.3).values())
         free = max(self._run(slew=0.0, meas_noise=0.3).values())
         self.assertLess(bounded, 0.8)
-        self.assertLess(free, 0.8,
-                        "free loop diverged (%.2f Hz): the escape is amplifying again"
-                        % free)
+        self.assertLess(
+            free,
+            0.8,
+            "free loop diverged (%.2f Hz): the escape is amplifying again" % free,
+        )
 
 
 class TestFullBandFields(unittest.TestCase):
@@ -262,21 +277,41 @@ class TestFullBandFields(unittest.TestCase):
 
     def setUp(self):
         from gnss_broker.fits import rate_residuals
+
         self.rr = rate_residuals
 
     @staticmethod
     def _status(prn, capped, full, q=20.0, hop=1000):
-        return {prn: {"deep_rate_hz": capped, "deep_rate_q": q,
-                      "deep_rate_full_hz": full, "deep_rate_full_q": q,
-                      "amp_snr": 50.0, "pow_hop": hop}}
+        return {
+            prn: {
+                "deep_rate_hz": capped,
+                "deep_rate_q": q,
+                "deep_rate_full_hz": full,
+                "deep_rate_full_q": q,
+                "amp_snr": 50.0,
+                "pow_hop": hop,
+            }
+        }
 
     def _two_polls(self, **kw):
         """The continuity gate skips a PRN's first sighting, so drive two polls."""
         ph, pv = {}, {}
-        self.rr(self._status(7, -4.7, -7.9, hop=1000), 10.0, 0.0,
-                prev_hop=ph, prev_val=pv, **kw)
-        out, _ = self.rr(self._status(7, -4.6, -7.8, hop=3048), 10.0, 0.0,
-                         prev_hop=ph, prev_val=pv, **kw)
+        self.rr(
+            self._status(7, -4.7, -7.9, hop=1000),
+            10.0,
+            0.0,
+            prev_hop=ph,
+            prev_val=pv,
+            **kw
+        )
+        out, _ = self.rr(
+            self._status(7, -4.6, -7.8, hop=3048),
+            10.0,
+            0.0,
+            prev_hop=ph,
+            prev_val=pv,
+            **kw
+        )
         return out
 
     def test_default_reads_the_capped_field(self):
@@ -284,7 +319,9 @@ class TestFullBandFields(unittest.TestCase):
         self.assertAlmostEqual(out[7], -4.6)
 
     def test_full_fields_read_the_uncapped_value(self):
-        out = self._two_polls(rate_field="deep_rate_full_hz", q_field="deep_rate_full_q")
+        out = self._two_polls(
+            rate_field="deep_rate_full_hz", q_field="deep_rate_full_q"
+        )
         self.assertAlmostEqual(out[7], -7.8)
 
 
@@ -296,7 +333,7 @@ class TestCoarseFineHandoff(unittest.TestCase):
     0.4-1.1 rad while the fine feed was firing and being out-voted."""
 
     F = F_E5A
-    TRUTH = -2.0                      # m/s on one satellite
+    TRUTH = -2.0  # m/s on one satellite
 
     def _row_after(self, deweight, n_poll=240, fine_every=12, seed=5):
         """Returns |rrate(11) - gauge-centred truth|, m/s.
@@ -308,6 +345,7 @@ class TestCoarseFineHandoff(unittest.TestCase):
         effect under test. Same trap as any statistic quoted before its constraint is
         removed."""
         import random
+
         rng = random.Random(seed)
         s = JointReceiverState(code_len=10230.0)
         # two satellites so the gauge has a fleet; only PRN 11 gets the fine feed
@@ -317,11 +355,17 @@ class TestCoarseFineHandoff(unittest.TestCase):
             for prn, rr in truth.items():
                 y = y_of(rr, 0.0, self.F)
                 sig = 0.2 * (deweight if (prn == 11 and deweight > 1.0) else 1.0)
-                s.update_rrate(prn, y + rng.gauss(0.0, 0.06), 100.0 + k, self.F,
-                               sigma_hz=sig)
-            if k % fine_every == 0:    # the fine feed: rarer, far more precise
-                s.update_rrate(11, y_of(truth[11], 0.0, self.F) + rng.gauss(0.0, 0.016),
-                               100.0 + k, self.F, sigma_hz=0.02)
+                s.update_rrate(
+                    prn, y + rng.gauss(0.0, 0.06), 100.0 + k, self.F, sigma_hz=sig
+                )
+            if k % fine_every == 0:  # the fine feed: rarer, far more precise
+                s.update_rrate(
+                    11,
+                    y_of(truth[11], 0.0, self.F) + rng.gauss(0.0, 0.016),
+                    100.0 + k,
+                    self.F,
+                    sigma_hz=0.02,
+                )
             s.gauge_rrate()
         return abs(s.rrate(11) - centred)
 
@@ -337,9 +381,12 @@ class TestCoarseFineHandoff(unittest.TestCase):
         realisation of a noise comparison is not a result."""
         gov = sum(self._row_after(deweight=8.0, seed=s) for s in range(6)) / 6.0
         flat = sum(self._row_after(deweight=1.0, seed=s) for s in range(6)) / 6.0
-        self.assertLess(gov, flat,
-                        "governed %.4f vs flat %.4f m/s -- the handoff bought nothing"
-                        % (gov, flat))
+        self.assertLess(
+            gov,
+            flat,
+            "governed %.4f vs flat %.4f m/s -- the handoff bought nothing"
+            % (gov, flat),
+        )
 
 
 class TestAdrFineRate(unittest.TestCase):
@@ -347,10 +394,12 @@ class TestAdrFineRate(unittest.TestCase):
     structural and each one exists because its absence is a known disease: an arc break
     means unobserved whole cycles (no measurement, not zero); a frozen counter must read
     ABSENT (a dead feed passing for healthy is the chord-served-cn0 class)."""
+
     R = 2048.0 / 195312.5
 
     def setUp(self):
         from gnss_broker.fits import adr_fine_rate
+
         self.f = adr_fine_rate
 
     @staticmethod
@@ -366,14 +415,15 @@ class TestAdrFineRate(unittest.TestCase):
         rate, n, applied = out
         self.assertAlmostEqual(rate, 2.0 / (1900 * self.R), places=9)
         self.assertEqual(n, 1900)
-        self.assertIsNone(applied)   # no trim_cycles served -> caller falls back, loudly
+        self.assertIsNone(applied)  # no trim_cycles served -> caller falls back, loudly
 
     def test_applied_command_is_measured_not_assumed(self):
         """THE ARM-8 LESSON: the reference must come from the tracker's own integrated
         trim (trim_cycles), same span, same stream -- never from what the broker believes
         it posted. 40 cycles of trim over 1900 records = the applied command in Hz."""
-        out = self.f(self._row(3, 1900, 2.5, trim=41.0), self._row(3, 0, 0.5, trim=1.0),
-                     self.R)
+        out = self.f(
+            self._row(3, 1900, 2.5, trim=41.0), self._row(3, 0, 0.5, trim=1.0), self.R
+        )
         rate, n, applied = out
         self.assertAlmostEqual(applied, 40.0 / (1900 * self.R), places=9)
 
@@ -381,11 +431,14 @@ class TestAdrFineRate(unittest.TestCase):
         self.assertIsNone(self.f(self._row(4, 100, 0.1), self._row(3, 50, 2.0), self.R))
 
     def test_frozen_counter_reads_absent_not_zero(self):
-        self.assertIsNone(self.f(self._row(3, 100, 0.1), self._row(3, 100, 0.1), self.R))
+        self.assertIsNone(
+            self.f(self._row(3, 100, 0.1), self._row(3, 100, 0.1), self.R)
+        )
 
     def test_missing_field_reads_absent(self):
-        self.assertIsNone(self.f({"adr_arc": 3, "adr_records": 100},
-                                 self._row(3, 0, 0.0), self.R))
+        self.assertIsNone(
+            self.f({"adr_arc": 3, "adr_records": 100}, self._row(3, 0, 0.0), self.R)
+        )
 
     def test_serving_churn_span_wall_mismatch_is_no_measurement(self):
         """THE CHURN LESSON (2026-08-14, exposed by the honest trim_cycles): the served
@@ -395,18 +448,29 @@ class TestAdrFineRate(unittest.TestCase):
         trim: same-instance pairs 5.0000 exactly, cross-instance 0.23-16.7 Hz. A span
         that disagrees with the wall clock is not a measurement."""
         # 5660 records claim a 59.3 s span across a 5.0 s wall gap -> rejected.
-        self.assertIsNone(self.f(self._row(1, 5660, 2.5, trim=10.0),
-                                 self._row(1, 0, 0.5, trim=1.0), self.R, wall_dt=5.0))
+        self.assertIsNone(
+            self.f(
+                self._row(1, 5660, 2.5, trim=10.0),
+                self._row(1, 0, 0.5, trim=1.0),
+                self.R,
+                wall_dt=5.0,
+            )
+        )
         # The same difference over a consistent wall span is accepted untouched.
-        out = self.f(self._row(1, 5660, 2.5, trim=10.0), self._row(1, 0, 0.5, trim=1.0),
-                     self.R, wall_dt=5660 * self.R)
+        out = self.f(
+            self._row(1, 5660, 2.5, trim=10.0),
+            self._row(1, 0, 0.5, trim=1.0),
+            self.R,
+            wall_dt=5660 * self.R,
+        )
         self.assertIsNotNone(out)
 
     def test_no_wall_clock_means_no_churn_gate(self):
         """wall_dt is optional: a caller without a poll clock keeps the structural gates
         and simply cannot discriminate churn (the pre-2026-08-14 behavior)."""
-        self.assertIsNotNone(self.f(self._row(1, 5660, 2.5), self._row(1, 0, 0.5),
-                                    self.R))
+        self.assertIsNotNone(
+            self.f(self._row(1, 5660, 2.5), self._row(1, 0, 0.5), self.R)
+        )
 
 
 class TestCarrierAidedCodeLoop(unittest.TestCase):
@@ -416,7 +480,7 @@ class TestCarrierAidedCodeLoop(unittest.TestCase):
     loops sharing a covariance."""
 
     K = ("G", 7)
-    CH_PER_M = 10.23e6 / 299792458.0     # L5/E5a/B2a: 0.03412 chips per (m/s)
+    CH_PER_M = 10.23e6 / 299792458.0  # L5/E5a/B2a: 0.03412 chips per (m/s)
 
     def _f(self, coupling):
         s = JointReceiverState(code_len=10230.0, rr_bsat_chips_per_m=coupling)
@@ -426,6 +490,7 @@ class TestCarrierAidedCodeLoop(unittest.TestCase):
     def test_zero_coupling_is_bit_identical_to_the_uncoupled_filter(self):
         """The default MUST reproduce the old filter exactly -- this ships inert."""
         import numpy as np
+
         a, b = self._f(0.0), self._f(0.0)
         b.rr_bsat_chips_per_m = 0.0
         for s in (a, b):
@@ -437,11 +502,11 @@ class TestCarrierAidedCodeLoop(unittest.TestCase):
     def test_rrate_drags_bsat_at_the_physical_rate(self):
         """1 m/s of range rate moves the code 0.0341 chips/s = 2.05 chips/min."""
         s = self._f(self.CH_PER_M)
-        s.update(self.K, 0.0, 0.5, 1.0)          # birth b_sat at ~0
+        s.update(self.K, 0.0, 0.5, 1.0)  # birth b_sat at ~0
         s.update_rrate(self.K, -1.0, 1.0, F_E5A, sigma_hz=0.2)
         rr = s.rrate(self.K)
         b0 = s.bias(self.K)
-        s.predict(61.0)                                 # +60 s
+        s.predict(61.0)  # +60 s
         moved = s.bias(self.K) - b0
         self.assertAlmostEqual(moved, self.CH_PER_M * rr * 60.0, places=6)
 
@@ -464,8 +529,8 @@ class TestCarrierAidedCodeLoop(unittest.TestCase):
         n_before = s.x.size
         s.predict(61.0)
         self.assertEqual(s.x.size, n_before)
-        self.assertNotIn(self.K, s._idx)   # bias() reads 0.0 for an absent key, so ask
-                                           # the index map: no b_sat row was created
+        self.assertNotIn(self.K, s._idx)  # bias() reads 0.0 for an absent key, so ask
+        # the index map: no b_sat row was created
 
     def test_coupling_grows_bias_uncertainty_through_rrate(self):
         """The point of doing this in the FILTER rather than as a feed-forward nudge: a
@@ -481,7 +546,6 @@ class TestCarrierAidedCodeLoop(unittest.TestCase):
 
 
 class TestUnmeasuredReadsAsUnknown(unittest.TestCase):
-
     def test_sigma_is_inf_before_any_measurement(self):
         """An unmeasured state must not read as a confident zero -- that is how a dead feed
         passes for a healthy one."""

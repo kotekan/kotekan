@@ -114,7 +114,7 @@ BOOST_AUTO_TEST_CASE(occupied_channels_suffice) {
     auto rch = analyze(sim_bpsk_baseband(code, SP, 0.0, cf(1.0f, 0.0f)), proto());
 
     std::vector<std::vector<cf>> ds, rs;
-    occupied_subset(dch, rch, 0.01, ds, rs); // drop near-empty channels
+    occupied_subset(dch, rch, 0.01, ds, rs);             // drop near-empty channels
     BOOST_REQUIRE_LT(ds.size(), static_cast<size_t>(N)); // some really were dropped
     BOOST_REQUIRE_GT(ds.size(), 0u);
 
@@ -201,9 +201,9 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_pilot) {
         utc[r] = r * 1e-3; // 1 ms primary periods
     }
     auto res = gnss::overlay_wipe(a, utc, overlay);
-    BOOST_CHECK_EQUAL(res.phase, true_phase);   // found the NH alignment
-    BOOST_CHECK_CLOSE(res.amplitude, S, 5.0);   // deep |A| ~ the pilot amplitude
-    BOOST_CHECK_GT(res.snr, 20.0);              // strongly significant
+    BOOST_CHECK_EQUAL(res.phase, true_phase); // found the NH alignment
+    BOOST_CHECK_CLOSE(res.amplitude, S, 5.0); // deep |A| ~ the pilot amplitude
+    BOOST_CHECK_GT(res.snr, 20.0);            // strongly significant
 
     cd raw(0.0, 0.0);
     for (const cd& v : a)
@@ -226,7 +226,7 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_noise_floor) {
         utc[r] = r * 1e-3;
     }
     auto res = gnss::overlay_wipe(a, utc, overlay);
-    BOOST_CHECK_LT(res.snr, 4.0);                  // noise stays below a lock threshold
+    BOOST_CHECK_LT(res.snr, 4.0); // noise stays below a lock threshold
     BOOST_CHECK_LT(res.amplitude, 3.0 / std::sqrt((double)nrec)); // ~ noise/sqrt(N), not a signal
 }
 
@@ -251,9 +251,9 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_l1cp_pilot_long_window) {
         utc[r] = r * 10e-3; // 10 ms L1C primary periods
     }
     auto res = gnss::overlay_wipe(a, utc, overlay);
-    BOOST_CHECK_EQUAL(res.phase, true_phase);   // recovered the 1800-long alignment
-    BOOST_CHECK_CLOSE(res.amplitude, S, 10.0);  // deep |A| ~ pilot amplitude
-    BOOST_CHECK_GT(res.snr, 10.0);              // strongly significant after the long coherent sum
+    BOOST_CHECK_EQUAL(res.phase, true_phase);  // recovered the 1800-long alignment
+    BOOST_CHECK_CLOSE(res.amplitude, S, 10.0); // deep |A| ~ pilot amplitude
+    BOOST_CHECK_GT(res.snr, 10.0);             // strongly significant after the long coherent sum
 }
 
 // A residual that has been ANNIHILATED BY CONSTRUCTION must not read as infinite SNR.
@@ -264,10 +264,10 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_l1cp_pilot_long_window) {
 // records were always handled, near-degenerate ones were not.
 BOOST_AUTO_TEST_CASE(degenerate_residual_does_not_explode) {
     using cd = std::complex<double>;
-    std::vector<cd> ident(8, cd(1.0, 0.0));            // bit-identical: residual exactly 0
+    std::vector<cd> ident(8, cd(1.0, 0.0)); // bit-identical: residual exactly 0
     BOOST_CHECK_EQUAL(gnss::coherent_sum(ident).snr, 0.0);
 
-    std::vector<cd> aligned;                            // aligned to ~1e-17: the real case
+    std::vector<cd> aligned; // aligned to ~1e-17: the real case
     for (int i = 0; i < 8; ++i)
         aligned.push_back(cd(1.0, 1e-17 * (i - 3.5)));
     const double snr = gnss::coherent_sum(aligned).snr;

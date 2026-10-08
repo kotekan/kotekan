@@ -59,16 +59,22 @@ from gnss_broker import combdll, telem  # noqa: E402
 # layout drift fails here as a struct error rather than as quietly wrong numbers.
 # ---------------------------------------------------------------------------------------------
 
-N_REC = 4                 # records per frame -- production
-N_PRN = 16                # rows per record   -- production after #64
+N_REC = 4  # records per frame -- production
+N_PRN = 16  # rows per record   -- production after #64
 HOPS_PER_RECORD = 2048
 FFT_LEN = 16384
-SPACING = 0.5             # E/L spacing, chips
+SPACING = 0.5  # E/L spacing, chips
 
 #: (instance, n_chan). Instances carry DIFFERENT channel counts on purpose: n_chan is a
 #: per-sender header field, and a consumer that assumes one value reads the next row's floats.
-INSTANCES = [("cx19.0", 7), ("cx19.1", 6), ("cx27.0", 7), ("cx27.1", 8),
-             ("cx42.0", 7), ("cx42.1", 6)]
+INSTANCES = [
+    ("cx19.0", 7),
+    ("cx19.1", 6),
+    ("cx27.0", 7),
+    ("cx27.1", 8),
+    ("cx42.0", 7),
+    ("cx42.1", 6),
+]
 
 #: The freq_id one sender carries that another also does. A freq_id is ABSOLUTE and belongs to
 #: exactly one sender per window; two senders both carrying it is a routing fault upstream that
@@ -89,30 +95,37 @@ def phi0_for(i, r, prn):
     """The per-sender phase reference: arbitrary per sender, record and PRN, as on the fleet."""
     return 0.9 * i + 0.37 * r + 0.11 * prn
 
+
 #: prn -> (code offset in chips, amplitude). Offset 0 = on peak.
 #: Spread across the pull-in region so `disc` is not a single value: a gate whose fixture
 #: produces one number cannot tell a working discriminator from a constant.
-TARGETS = {4: (0.00, 1.00),    # on peak: disc ~ 0, q high
-           9: (0.22, 0.80),    # early shoulder
-           27: (-0.31, 0.65),  # late shoulder
-           3: (0.55, 0.40),    # far out
-           11: (0.10, 0.50),   # ONE instance only -> must be excluded by min_instances
-           20: (0.15, 0.60),   # TWO instances on odd windows, one on even: complete in HALF
-                               # the windows, so the record-level gate must bite per window
-           16: (0.00, 0.02),   # essentially noise
-           # ⚠️ THE SIGNAL-FREE POPULATION IS LOAD-BEARING, NOT PADDING (added 2026-08-23).
-           # The C++ integrator's information test is `p_pow >= sig_k * MEDIAN(p_pow over this
-           # window's rows)` -- self-calibrating on the assumption that most PRNs are
-           # signal-free at any moment, which is true on sky (24-31 rows per chain, a handful
-           # live) and was NOT true of this fixture. With only 4/9/27/3/16 producing rows the
-           # median WAS a signal level: floor 1.156e-01 against a strongest target of 8.78e-02,
-           # so every armed PRN was SKIPPED, n_steps stayed 0, and the F2 leg could not run.
-           # It reported "the C++ integrator stepped on nothing" -- which read as a code fault
-           # and was a fixture fault. Same disease as the broker's own presence bar before
-           # --noise-probes: a median over a population with no signal-free members is not a
-           # noise level. These six carry rows and no signal, so the floor calibrates.
-           5: (0.00, 0.02), 12: (0.00, 0.015), 18: (0.00, 0.025),
-           21: (0.00, 0.018), 24: (0.00, 0.022), 30: (0.00, 0.017)}
+TARGETS = {
+    4: (0.00, 1.00),  # on peak: disc ~ 0, q high
+    9: (0.22, 0.80),  # early shoulder
+    27: (-0.31, 0.65),  # late shoulder
+    3: (0.55, 0.40),  # far out
+    11: (0.10, 0.50),  # ONE instance only -> must be excluded by min_instances
+    20: (0.15, 0.60),  # TWO instances on odd windows, one on even: complete in HALF
+    # the windows, so the record-level gate must bite per window
+    16: (0.00, 0.02),  # essentially noise
+    # ⚠️ THE SIGNAL-FREE POPULATION IS LOAD-BEARING, NOT PADDING (added 2026-08-23).
+    # The C++ integrator's information test is `p_pow >= sig_k * MEDIAN(p_pow over this
+    # window's rows)` -- self-calibrating on the assumption that most PRNs are
+    # signal-free at any moment, which is true on sky (24-31 rows per chain, a handful
+    # live) and was NOT true of this fixture. With only 4/9/27/3/16 producing rows the
+    # median WAS a signal level: floor 1.156e-01 against a strongest target of 8.78e-02,
+    # so every armed PRN was SKIPPED, n_steps stayed 0, and the F2 leg could not run.
+    # It reported "the C++ integrator stepped on nothing" -- which read as a code fault
+    # and was a fixture fault. Same disease as the broker's own presence bar before
+    # --noise-probes: a median over a population with no signal-free members is not a
+    # noise level. These six carry rows and no signal, so the floor calibrates.
+    5: (0.00, 0.02),
+    12: (0.00, 0.015),
+    18: (0.00, 0.025),
+    21: (0.00, 0.018),
+    24: (0.00, 0.022),
+    30: (0.00, 0.017),
+}
 
 #: PRNs the F2 leg arms: real signal only. 11 is the min_instances exclusion; the noise PRNs
 #: above are deliberately NOT armed -- they exist to calibrate the floor, and arming them would
@@ -125,7 +138,9 @@ def _R(x):
     return max(0.0, 1.0 - abs(x))
 
 
-def _chan_block(rng, prn, fid, dead_energy, dead_el_energy, phi0, ramp=0.7, amp_scale=1.0):
+def _chan_block(
+    rng, prn, fid, dead_energy, dead_el_energy, phi0, ramp=0.7, amp_scale=1.0
+):
     """One channel's nine floats: E, P, L as the assembler writes them (raw, un-normalised),
     on the SENDER'S reference: the common phase rotated by exp(-i*phi0)."""
     d, amp = TARGETS[prn]
@@ -135,8 +150,8 @@ def _chan_block(rng, prn, fid, dead_energy, dead_el_energy, phi0, ramp=0.7, amp_
         # the consumer must SKIP it. Zeroing it in instead would dilute the power exactly the
         # way the deep fold's zero-padding did.
         return [0.0] * 9
-    e_p = 40.0 + 3.0 * (fid % 5)          # replica energy: per-channel, not per-tap
-    phi = ramp * fid + 0.3 * prn - phi0   # a per-channel phase, so |sum| != sum|.|
+    e_p = 40.0 + 3.0 * (fid % 5)  # replica energy: per-channel, not per-tap
+    phi = ramp * fid + 0.3 * prn - phi0  # a per-channel phase, so |sum| != sum|.|
     noise = lambda: rng.gauss(0.0, 0.02 * amp + 0.01)
 
     def tap(off, energy):
@@ -155,8 +170,20 @@ def _chan_block(rng, prn, fid, dead_energy, dead_el_energy, phi0, ramp=0.7, amp_
     return [p[0], p[1], p[2], e[0], e[1], e_e, l[0], l[1], e_l]
 
 
-def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng, dead,
-                ramp=0.7, amp_scale=1.0):
+def build_frame(
+    chain,
+    inst,
+    inst_idx,
+    n_chan,
+    win,
+    seq,
+    prn_rows,
+    present,
+    rng,
+    dead,
+    ramp=0.7,
+    amp_scale=1.0,
+):
     """One wire frame, bytes. `prn_rows` is the row->PRN map (row compaction, #64)."""
     # THE SENDER'S OWN STRIDE, as a real sender builds it: the row carries this instance's
     # comb columns and no reserved ones. The gate's senders have DIFFERENT n_chan, so a fold
@@ -166,9 +193,26 @@ def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng,
     wstart0 = win * N_REC * HOPS_PER_RECORD * FFT_LEN
     chan_ids = chan_ids_for(inst_idx, n_chan) + [0] * (telem._MAX_CHAN - n_chan)
     hdr = telem._HDR.pack(
-        telem._MAGIC, telem._VERSION, N_REC, N_PRN, telem._ROW_FLOATS, n_chan, 32,
-        HOPS_PER_RECORD, FFT_LEN, win, seq, wstart0, 0.0, present,
-        n_chan, row_total, chain.encode(), inst.encode(), *chan_ids)
+        telem._MAGIC,
+        telem._VERSION,
+        N_REC,
+        N_PRN,
+        telem._ROW_FLOATS,
+        n_chan,
+        32,
+        HOPS_PER_RECORD,
+        FFT_LEN,
+        win,
+        seq,
+        wstart0,
+        0.0,
+        present,
+        n_chan,
+        row_total,
+        chain.encode(),
+        inst.encode(),
+        *chan_ids
+    )
 
     rows = [0.0] * (N_REC * N_PRN * row_total)
     for r in range(N_REC):
@@ -183,15 +227,26 @@ def build_frame(chain, inst, inst_idx, n_chan, win, seq, prn_rows, present, rng,
             rows[base + telem.REC_PHI0] = phi0
             # PROJECTION COST (REC_PROJ_COST), a per-sender pattern so the (1 - b) weight path
             # is exercised in both arms: not applicable on instance 0, graded on the others.
-            rows[base + telem.REC_PROJ_COST] = (-1.0 if inst_idx == 0
-                                               else 0.3 if prn % 2 else 0.05 * ((r + inst_idx) % 3))
+            rows[base + telem.REC_PROJ_COST] = (
+                -1.0
+                if inst_idx == 0
+                else 0.3
+                if prn % 2
+                else 0.05 * ((r + inst_idx) % 3)
+            )
             for ch in range(n_chan):
                 cb = base + telem._ROW_FLOATS + ch * telem._CHAN_FLOATS
-                blk = _chan_block(rng, prn, chan_ids[ch],
-                                  dead_energy=(ch, prn) in dead["energy"],
-                                  dead_el_energy=(ch, prn) in dead["el_energy"],
-                                  phi0=phi0, ramp=ramp, amp_scale=amp_scale)
-                rows[cb:cb + telem._CHAN_FLOATS] = blk
+                blk = _chan_block(
+                    rng,
+                    prn,
+                    chan_ids[ch],
+                    dead_energy=(ch, prn) in dead["energy"],
+                    dead_el_energy=(ch, prn) in dead["el_energy"],
+                    phi0=phi0,
+                    ramp=ramp,
+                    amp_scale=amp_scale,
+                )
+                rows[cb : cb + telem._CHAN_FLOATS] = blk
     return hdr + struct.pack("<%df" % len(rows), *rows)
 
 
@@ -203,8 +258,10 @@ def build_fixture(n_win, seed=20260815, ramp=0.7, amp_scale=1.0):
     exactly co-phased (ramp 0) and one that is pure noise (amp_scale 0); the main fixture
     keeps both at their defaults."""
     rng = random.Random(seed)
-    dead = {"energy": {(2, 9), (5, 27)},      # two channels with no live comb
-            "el_energy": {(0, 4)}}            # one channel predating the E/L energies
+    dead = {
+        "energy": {(2, 9), (5, 27)},  # two channels with no live comb
+        "el_energy": {(0, 4)},
+    }  # one channel predating the E/L energies
     frames = []
     for win in range(n_win):
         for chain in ("gps_l5", "gal_e5a"):
@@ -214,23 +271,40 @@ def build_fixture(n_win, seed=20260815, ramp=0.7, amp_scale=1.0):
                 # satellite's comb and produce a confident wrong discriminator.
                 prns = [4, 9, 27, 3, 16, 5, 12, 18, 21, 24, 30]
                 if i == 0:
-                    prns = prns + [11, 20]    # PRN 11 on ONE instance only
+                    prns = prns + [11, 20]  # PRN 11 on ONE instance only
                 if i == 1 and win % 2:
-                    prns = prns + [20]        # PRN 20 reaches two only on odd windows
+                    prns = prns + [20]  # PRN 20 reaches two only on odd windows
                 order = list(prns)
                 rng.shuffle(order)
                 prn_rows = order + [0] * (N_PRN - len(order))
                 # A record slot that did not run is a HOLE AT A KNOWN INDEX. Vary which.
                 present = 0xF if (win + i) % 4 else 0xD
-                frames.append((build_frame(chain, inst, i, n_chan, win, win * 100 + i,
-                                           prn_rows, present, rng, dead, ramp=ramp,
-                                           amp_scale=amp_scale), chain))
+                frames.append(
+                    (
+                        build_frame(
+                            chain,
+                            inst,
+                            i,
+                            n_chan,
+                            win,
+                            win * 100 + i,
+                            prn_rows,
+                            present,
+                            rng,
+                            dead,
+                            ramp=ramp,
+                            amp_scale=amp_scale,
+                        ),
+                        chain,
+                    )
+                )
     return frames
 
 
 # ---------------------------------------------------------------------------------------------
 # The two arms
 # ---------------------------------------------------------------------------------------------
+
 
 def write_stream(path, frames):
     """The gather's own wire protocol: [uint32 LE length][length bytes], repeated."""
@@ -252,9 +326,16 @@ def python_arm(frames, n_win, min_instances):
         # window when a newer one arrives (so the newest is still open == lag 1) and keeps the
         # last n_win closed ones. Run the C++ side with --no-flush or the two disagree by one
         # window, which is a real difference and not a rounding one.
-        out[chain] = combdll.fleet_dll_comb(client, chain, n_win=n_win, lag=1,
-                                            min_instances=min_instances, k_sigma=3.0,
-                                            q_fallback=2.2, per_channel=False)
+        out[chain] = combdll.fleet_dll_comb(
+            client,
+            chain,
+            n_win=n_win,
+            lag=1,
+            min_instances=min_instances,
+            k_sigma=3.0,
+            q_fallback=2.2,
+            per_channel=False,
+        )
     return out
 
 
@@ -273,16 +354,26 @@ def python_taps(frames, n_win, min_instances):
         client._store_frame(telem.TelemFrame(hdr, buf, 0.0))
     out = {}
     for chain in client.chains():
-        wins = client.windows(chain, lag=1)[-int(n_win):]
-        out[chain] = combdll.lobe_taps(client, chain, wins, per_channel=True,
-                                       min_instances=min_instances)
+        wins = client.windows(chain, lag=1)[-int(n_win) :]
+        out[chain] = combdll.lobe_taps(
+            client, chain, wins, per_channel=True, min_instances=min_instances
+        )
     return out
 
 
 #: Per-PRN lobe tap fields, with tolerances. The powers are means over records; `chan` is
 #: compared separately because its denominator is one channel's energy, not the lobe's.
-TAP_FIELDS = [("e", 1e-9), ("p", 1e-9), ("l", 1e-9), ("n_chan", 1e-9),
-              ("n_rec", 0.0), ("n_inst", 0.0), ("hop", 0.0), ("xcoh", 1e-9), ("n_xcoh", 0.0)]
+TAP_FIELDS = [
+    ("e", 1e-9),
+    ("p", 1e-9),
+    ("l", 1e-9),
+    ("n_chan", 1e-9),
+    ("n_rec", 0.0),
+    ("n_inst", 0.0),
+    ("hop", 0.0),
+    ("xcoh", 1e-9),
+    ("n_xcoh", 0.0),
+]
 
 
 def compare_taps(py, cpp):
@@ -293,38 +384,69 @@ def compare_taps(py, cpp):
         p_prns = {int(k): v for k, v in (py.get(chain) or {}).items() if v["n_rec"] > 0}
         c_prns = {int(k): v for k, v in (cj.get(chain) or {}).items()}
         for prn in sorted(set(p_prns) - set(c_prns)):
-            bad.append(("TAP-MISSING", "%s PRN %d: Python has taps, C++ does not" % (chain, prn)))
+            bad.append(
+                (
+                    "TAP-MISSING",
+                    "%s PRN %d: Python has taps, C++ does not" % (chain, prn),
+                )
+            )
         for prn in sorted(set(c_prns) - set(p_prns)):
-            bad.append(("TAP-EXTRA", "%s PRN %d: C++ has taps, Python does not" % (chain, prn)))
+            bad.append(
+                ("TAP-EXTRA", "%s PRN %d: C++ has taps, Python does not" % (chain, prn))
+            )
         for prn in sorted(set(p_prns) & set(c_prns)):
             a, b = p_prns[prn], c_prns[prn]
             for f, tol in TAP_FIELDS:
                 if a.get(f) is None or b.get(f) is None:
                     # xcoh is None/null below two senders -- both arms must say so together
                     if a.get(f) is not None or b.get(f) is not None:
-                        bad.append(("TAP", "%s PRN %d %s: py %r cpp %r"
-                                    % (chain, prn, f, a.get(f), b.get(f))))
+                        bad.append(
+                            (
+                                "TAP",
+                                "%s PRN %d %s: py %r cpp %r"
+                                % (chain, prn, f, a.get(f), b.get(f)),
+                            )
+                        )
                     continue
                 x, y = float(a[f]), float(b[f])
                 if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
-                    bad.append(("TAP", "%s PRN %d %s: py %.17g cpp %.17g"
-                                % (chain, prn, f, x, y)))
+                    bad.append(
+                        (
+                            "TAP",
+                            "%s PRN %d %s: py %.17g cpp %.17g" % (chain, prn, f, x, y),
+                        )
+                    )
             pc = {int(k): v for k, v in a["chan"].items()}
             cc = {int(k): v for k, v in b["chan"].items()}
             if set(pc) != set(cc):
-                bad.append(("TAP-CHAN", "%s PRN %d: freq_id sets differ py %s cpp %s"
-                            % (chain, prn, sorted(pc), sorted(cc))))
+                bad.append(
+                    (
+                        "TAP-CHAN",
+                        "%s PRN %d: freq_id sets differ py %s cpp %s"
+                        % (chain, prn, sorted(pc), sorted(cc)),
+                    )
+                )
                 continue
             if DUP_FID in pc:
-                bad.append(("TAP-DUP", "%s PRN %d: duplicated freq_id %d was AVERAGED into the "
-                            "per-channel table" % (chain, prn, DUP_FID)))
+                bad.append(
+                    (
+                        "TAP-DUP",
+                        "%s PRN %d: duplicated freq_id %d was AVERAGED into the "
+                        "per-channel table" % (chain, prn, DUP_FID),
+                    )
+                )
             for fid in sorted(pc):
                 for k, name in enumerate(("e", "p", "l", "n_rec")):
                     x, y = float(pc[fid][k]), float(cc[fid][k])
                     tol = 0.0 if name == "n_rec" else 1e-9
                     if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
-                        bad.append(("TAP-CHAN", "%s PRN %d fid %d %s: py %.17g cpp %.17g"
-                                    % (chain, prn, fid, name, x, y)))
+                        bad.append(
+                            (
+                                "TAP-CHAN",
+                                "%s PRN %d fid %d %s: py %.17g cpp %.17g"
+                                % (chain, prn, fid, name, x, y),
+                            )
+                        )
     return bad
 
 
@@ -342,7 +464,7 @@ def python_recs(frames, n_win):
         client._store_frame(telem.TelemFrame(hdr, buf, 0.0))
     out = {}
     for chain in client.chains():
-        wins = client.windows(chain, lag=1)[-int(n_win):]
+        wins = client.windows(chain, lag=1)[-int(n_win) :]
         out[chain] = combdll.lobe_records(client, chain, wins)
     return out
 
@@ -354,27 +476,61 @@ def compare_recs(py, cpp):
     for chain in sorted(set(py) | set(cj)):
         p_rows = py.get(chain) or {}
         c_rows = {}
-        for win, slot, prn, n_inst, n_chan, e, p, l in (cj.get(chain) or []):
-            c_rows[(int(win), int(slot), int(prn))] = [e, p, l, int(n_inst), int(n_chan)]
-        p_flat = {(int(w), int(r), int(prn)): v
-                  for (w, r), per in p_rows.items() for prn, v in per.items()}
+        for win, slot, prn, n_inst, n_chan, e, p, l in cj.get(chain) or []:
+            c_rows[(int(win), int(slot), int(prn))] = [
+                e,
+                p,
+                l,
+                int(n_inst),
+                int(n_chan),
+            ]
+        p_flat = {
+            (int(w), int(r), int(prn)): v
+            for (w, r), per in p_rows.items()
+            for prn, v in per.items()
+        }
         for k in sorted(set(p_flat) - set(c_rows))[:5]:
-            bad.append(("REC-MISSING", "%s (win %d, slot %d, PRN %d) only in Python" % ((chain,) + k)))
+            bad.append(
+                (
+                    "REC-MISSING",
+                    "%s (win %d, slot %d, PRN %d) only in Python" % ((chain,) + k),
+                )
+            )
         for k in sorted(set(c_rows) - set(p_flat))[:5]:
-            bad.append(("REC-EXTRA", "%s (win %d, slot %d, PRN %d) only in C++" % ((chain,) + k)))
+            bad.append(
+                (
+                    "REC-EXTRA",
+                    "%s (win %d, slot %d, PRN %d) only in C++" % ((chain,) + k),
+                )
+            )
         for k in sorted(set(p_flat) & set(c_rows)):
             a, b = p_flat[k], c_rows[k]
             for i, name in enumerate(("e", "p", "l", "n_inst", "n_chan")):
                 x, y = float(a[i]), float(b[i])
                 tol = 0.0 if name in ("n_inst", "n_chan") else 1e-9
                 if abs(x - y) > tol * max(1.0, abs(x), abs(y)):
-                    bad.append(("REC", "%s (win %d, slot %d, PRN %d) %s: py %.17g cpp %.17g"
-                                % (chain, k[0], k[1], k[2], name, x, y)))
+                    bad.append(
+                        (
+                            "REC",
+                            "%s (win %d, slot %d, PRN %d) %s: py %.17g cpp %.17g"
+                            % (chain, k[0], k[1], k[2], name, x, y),
+                        )
+                    )
     return bad
 
 
-def cpp_arm(exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None, trim_in=None):
-    cmd = [exe, path, "--n-win", str(n_win), "--min-instances", str(min_instances), "--no-flush"]
+def cpp_arm(
+    exe, path, n_win, min_instances, arm=None, pol=None, taps_win=None, trim_in=None
+):
+    cmd = [
+        exe,
+        path,
+        "--n-win",
+        str(n_win),
+        "--min-instances",
+        str(min_instances),
+        "--no-flush",
+    ]
     if taps_win:
         cmd += ["--taps-win", str(taps_win)]
     if trim_in:
@@ -424,7 +580,7 @@ def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
         client = telem.TelemClient(host="127.0.0.1", port=0, depth=64)
         for buf, _c in frames:
             hdr = telem._HDR.unpack_from(buf, 0)
-            if hdr[9] > w:            # header field 9 is `win`
+            if hdr[9] > w:  # header field 9 is `win`
                 continue
             client._store_frame(telem.TelemFrame(hdr, buf, 0.0))
         # lag=0: the C++ CLOSED w (a newer frame arrived), so w is inside its ring. Slicing to
@@ -432,8 +588,9 @@ def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
         ws = client.windows(chain, lag=0)[-n_win:]
         if not ws:
             continue
-        rows = combdll.lobe_taps(client, chain, ws, per_channel=False,
-                                 min_instances=min_instances)
+        rows = combdll.lobe_taps(
+            client, chain, ws, per_channel=False, min_instances=min_instances
+        )
         got = {}
         for prn, t in rows.items():
             if t["n_rec"] > 0 and t["e"] + t["l"] > 0.0:
@@ -449,8 +606,17 @@ def python_disc_series(frames, chain, wins_seen, n_win, min_instances):
 #: Fields compared, with tolerances. disc and q are what the loop ACTUATES on, so they are held
 #: tightest; the powers are sums whose instance ordering differs between a Python dict and a
 #: std::map, which is float noise at ~1e-16 and nothing else.
-FIELDS = [("disc", 1e-9), ("q", 1e-9), ("e_pow", 1e-9), ("p_pow", 1e-9), ("l_pow", 1e-9),
-          ("n_src", 0.0), ("n_rec", 0.0), ("n_chan", 1e-9), ("hop", 0.0)]
+FIELDS = [
+    ("disc", 1e-9),
+    ("q", 1e-9),
+    ("e_pow", 1e-9),
+    ("p_pow", 1e-9),
+    ("l_pow", 1e-9),
+    ("n_src", 0.0),
+    ("n_rec", 0.0),
+    ("n_chan", 1e-9),
+    ("hop", 0.0),
+]
 
 
 def compare(py, cpp):
@@ -462,9 +628,13 @@ def compare(py, cpp):
         p_prns = set(int(k) for k in p_rows)
         c_prns = set(int(k) for k in c_rows)
         for prn in sorted(p_prns - c_prns):
-            bad.append(("MISSING", "%s PRN %d: Python has a row, C++ does not" % (chain, prn)))
+            bad.append(
+                ("MISSING", "%s PRN %d: Python has a row, C++ does not" % (chain, prn))
+            )
         for prn in sorted(c_prns - p_prns):
-            bad.append(("EXTRA", "%s PRN %d: C++ has a row, Python does not" % (chain, prn)))
+            bad.append(
+                ("EXTRA", "%s PRN %d: C++ has a row, Python does not" % (chain, prn))
+            )
         for prn in sorted(p_prns & c_prns):
             a, b = p_rows[prn], c_rows[str(prn)]
             for key, tol in FIELDS:
@@ -472,8 +642,13 @@ def compare(py, cpp):
                 d = abs(x - y)
                 rel = d / max(abs(x), abs(y), 1e-30)
                 if d > 0.0 and rel > tol:
-                    bad.append(("DIFF", "%s PRN %d %s: py %.12g vs cpp %.12g (rel %.3g)"
-                                % (chain, prn, key, x, y, rel)))
+                    bad.append(
+                        (
+                            "DIFF",
+                            "%s PRN %d %s: py %.12g vs cpp %.12g (rel %.3g)"
+                            % (chain, prn, key, x, y, rel),
+                        )
+                    )
     return bad
 
 
@@ -487,26 +662,44 @@ def describe(py):
             continue
         discs = sorted(v["disc"] for v in rows.values())
         qs = sorted(v["q"] for v in rows.values())
-        lines.append("  %-9s %d PRN  disc %+.3f..%+.3f  q %.2f..%.2f  n_src %d..%d"
-                     % (chain, len(rows), discs[0], discs[-1], qs[0], qs[-1],
-                        min(v["n_src"] for v in rows.values()),
-                        max(v["n_src"] for v in rows.values())))
+        lines.append(
+            "  %-9s %d PRN  disc %+.3f..%+.3f  q %.2f..%.2f  n_src %d..%d"
+            % (
+                chain,
+                len(rows),
+                discs[0],
+                discs[-1],
+                qs[0],
+                qs[-1],
+                min(v["n_src"] for v in rows.values()),
+                max(v["n_src"] for v in rows.values()),
+            )
+        )
     return lines
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--exe", default=os.path.join(_HERE, "fleetdll"))
-    ap.add_argument("--n-win", type=int, default=4, help="windows averaged (broker default 4)")
+    ap.add_argument(
+        "--n-win", type=int, default=4, help="windows averaged (broker default 4)"
+    )
     ap.add_argument("--min-instances", type=int, default=2)
     ap.add_argument("--windows", type=int, default=12, help="windows in the fixture")
-    ap.add_argument("--self-test", action="store_true",
-                    help="ALSO perturb the fixture and require the comparison to fail")
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="ALSO perturb the fixture and require the comparison to fail",
+    )
     ap.add_argument("--keep", help="directory to leave the fixture and both answers in")
-    ap.add_argument("--no-build", action="store_true",
-                    help="do NOT rebuild the C++ tool first (for bisecting a binary you built "
-                         "on purpose; the default builds, see the note below)")
+    ap.add_argument(
+        "--no-build",
+        action="store_true",
+        help="do NOT rebuild the C++ tool first (for bisecting a binary you built "
+        "on purpose; the default builds, see the note below)",
+    )
     args = ap.parse_args()
 
     # ⚠️ BUILD IT. DO NOT TRUST THE BINARY THAT IS THERE (2026-08-23).
@@ -520,11 +713,17 @@ def main():
     # "verify what RUNS, not what you built" is about, and a GATE is the last place that
     # should get it wrong.
     if not args.no_build:
-        b = subprocess.run([os.path.join(_HERE, "build_tool.sh"), "fleetdll"],
-                           capture_output=True, text=True, cwd=_HERE)
+        b = subprocess.run(
+            [os.path.join(_HERE, "build_tool.sh"), "fleetdll"],
+            capture_output=True,
+            text=True,
+            cwd=_HERE,
+        )
         if b.returncode != 0:
-            raise SystemExit("build_tool.sh fleetdll FAILED:\n%s\n%s"
-                             % (b.stdout[-2000:], b.stderr[-2000:]))
+            raise SystemExit(
+                "build_tool.sh fleetdll FAILED:\n%s\n%s"
+                % (b.stdout[-2000:], b.stderr[-2000:])
+            )
     if not os.path.exists(args.exe):
         raise SystemExit("no %s -- build it with ./build_tool.sh fleetdll" % args.exe)
 
@@ -537,11 +736,18 @@ def main():
     py = python_arm(frames, args.n_win, args.min_instances)
     cpp = cpp_arm(args.exe, path, args.n_win, args.min_instances)
 
-    print("fixture: %d frames, %d windows, %d instances, %d B/frame"
-          % (len(frames), args.windows, len(INSTANCES), len(frames[0][0])))
-    print("         C++ read %d, closed %s, late %d"
-          % (cpp["frames"],
-             {k: v["windows_closed"] for k, v in cpp["chains"].items()}, cpp["late_frames"]))
+    print(
+        "fixture: %d frames, %d windows, %d instances, %d B/frame"
+        % (len(frames), args.windows, len(INSTANCES), len(frames[0][0]))
+    )
+    print(
+        "         C++ read %d, closed %s, late %d"
+        % (
+            cpp["frames"],
+            {k: v["windows_closed"] for k, v in cpp["chains"].items()},
+            cpp["late_frames"],
+        )
+    )
     for line in describe(py):
         print(line)
 
@@ -552,22 +758,34 @@ def main():
     for chain, rows in py.items():
         if len(rows) < 4:
             problems.append("%s produced only %d rows" % (chain, len(rows)))
-        if rows and max(v["disc"] for v in rows.values()) \
-                - min(v["disc"] for v in rows.values()) < 0.2:
-            problems.append("%s discriminators span < 0.2 -- the fixture is degenerate" % chain)
+        if (
+            rows
+            and max(v["disc"] for v in rows.values())
+            - min(v["disc"] for v in rows.values())
+            < 0.2
+        ):
+            problems.append(
+                "%s discriminators span < 0.2 -- the fixture is degenerate" % chain
+            )
         if 11 in rows:
-            problems.append("%s PRN 11 was NOT excluded -- min_instances is not being applied,"
-                            " so the gate is not testing what it claims" % chain)
+            problems.append(
+                "%s PRN 11 was NOT excluded -- min_instances is not being applied,"
+                " so the gate is not testing what it claims" % chain
+            )
         # PRN 20 is complete on ODD windows only: it must be present, and with FEWER records
         # than an always-complete PRN. Present with as many says the gate is per PRN, not per
         # record; absent says it is per PRN the other way round.
         if 20 not in rows or 4 not in rows:
-            problems.append("%s PRN 20 or PRN 4 missing -- the half-complete PRN did not reach"
-                            " the answer" % chain)
+            problems.append(
+                "%s PRN 20 or PRN 4 missing -- the half-complete PRN did not reach"
+                " the answer" % chain
+            )
         elif not 0 < rows[20]["n_rec"] < rows[4]["n_rec"]:
-            problems.append("%s PRN 20 n_rec %d vs PRN 4 %d -- the record-level completeness"
-                            " gate did not bite PER RECORD" % (chain, rows[20]["n_rec"],
-                                                                rows[4]["n_rec"]))
+            problems.append(
+                "%s PRN 20 n_rec %d vs PRN 4 %d -- the record-level completeness"
+                " gate did not bite PER RECORD"
+                % (chain, rows[20]["n_rec"], rows[4]["n_rec"])
+            )
     if problems:
         for p in problems:
             print("FIXTURE PROBLEM: %s" % p)
@@ -576,8 +794,12 @@ def main():
     bad = compare(py, cpp)
     if args.keep:
         with open(os.path.join(tmp, "python.json"), "w") as fh:
-            json.dump({c: {str(k): v for k, v in r.items()} for c, r in py.items()}, fh,
-                      indent=2, default=str)
+            json.dump(
+                {c: {str(k): v for k, v in r.items()} for c, r in py.items()},
+                fh,
+                indent=2,
+                default=str,
+            )
         with open(os.path.join(tmp, "cpp.json"), "w") as fh:
             json.dump(cpp, fh, indent=2)
 
@@ -598,17 +820,21 @@ def main():
     # make the aggregate depend on arrival order -- the exact inference #59 removed).
     # Frequency is a fact about the fleet, not an assumption: `late_frames` is served by
     # GnssFleetTrim/get_stats and must be watched on sky, not presumed small.
-    late = frames + [frames[0]]          # replay the very first frame at the end of the stream
+    late = frames + [frames[0]]  # replay the very first frame at the end of the stream
     p3 = os.path.join(tmp, "frames_late.bin")
     write_stream(p3, late)
     c3 = cpp_arm(args.exe, p3, args.n_win, args.min_instances)
     if c3["late_frames"] != 1:
-        print("FAIL -- a frame for a long-closed window was not counted as late "
-              "(late_frames %d, expected 1)." % c3["late_frames"])
+        print(
+            "FAIL -- a frame for a long-closed window was not counted as late "
+            "(late_frames %d, expected 1)." % c3["late_frames"]
+        )
         return 1
     if compare(py, c3):
-        print("FAIL -- a late frame CHANGED the C++ answer. It must be dropped, not folded: "
-              "folding it makes the aggregate depend on arrival order.")
+        print(
+            "FAIL -- a late frame CHANGED the C++ answer. It must be dropped, not folded: "
+            "folding it makes the aggregate depend on arrival order."
+        )
         return 1
     print("LATE-FRAME PASS -- counted (1) and dropped; the answer is unchanged.")
 
@@ -628,16 +854,25 @@ def main():
     n_dup = {c: v.get("dup_chan") for c, v in cpp["chains"].items()}
     closed = {c: v["windows_closed"] for c, v in cpp["chains"].items()}
     if n_dup != closed:
-        print("FAIL -- one freq_id is carried by two senders in EVERY window, so dup_chan must "
-              "equal windows_closed: dup %s vs closed %s" % (n_dup, closed))
+        print(
+            "FAIL -- one freq_id is carried by two senders in EVERY window, so dup_chan must "
+            "equal windows_closed: dup %s vs closed %s" % (n_dup, closed)
+        )
         return 1
     if any(d["chan_dup"] != [DUP_FID] for v in pt.values() for d in v.values()):
-        print("FAIL -- Python did not list freq_id %d as duplicated on every PRN: %s"
-              % (DUP_FID, {c: {p: d["chan_dup"] for p, d in v.items()} for c, v in pt.items()}))
+        print(
+            "FAIL -- Python did not list freq_id %d as duplicated on every PRN: %s"
+            % (
+                DUP_FID,
+                {c: {p: d["chan_dup"] for p, d in v.items()} for c, v in pt.items()},
+            )
+        )
         return 1
-    print("TAPS PASS -- %d PRN lobe taps and %d per-channel rows agree, e/p/l/n_chan to 1e-9 "
-          "and n_rec/n_inst/hop exactly; freq_id %d (two senders) dropped from the channel "
-          "table and counted (%s)." % (n_it, n_ch, DUP_FID, n_dup))
+    print(
+        "TAPS PASS -- %d PRN lobe taps and %d per-channel rows agree, e/p/l/n_chan to 1e-9 "
+        "and n_rec/n_inst/hop exactly; freq_id %d (two senders) dropped from the channel "
+        "table and counted (%s)." % (n_it, n_ch, DUP_FID, n_dup)
+    )
 
     # ---- XCOH MEANS WHAT IT CLAIMS -----------------------------------------------------------
     # TAPS PASS says the arms agree on xcoh; it says nothing about whether xcoh is the
@@ -661,20 +896,25 @@ def main():
             print("FAIL -- arms disagree on an XCOH stream: %s" % bad[:3])
             return None
         return {(c, p): d.get("xcoh") for c, v in py_t.items() for p, d in v.items()}
+
     co = _xc(build_fixture(args.windows, ramp=0.0))
     nz = _xc(build_fixture(args.windows, amp_scale=0.0))
     if co is None or nz is None:
         return 1
     if any(v is None for v in co.values()):
-        print("FAIL -- xcoh is None on a PRN two or more senders reached: %s"
-              % sorted(k for k, v in co.items() if v is None))
+        print(
+            "FAIL -- xcoh is None on a PRN two or more senders reached: %s"
+            % sorted(k for k, v in co.items() if v is None)
+        )
         return 1
     lo_sig = min(v for (c, p), v in co.items() if TARGETS[p][1] >= 0.4)
     hi_nz = max(abs(v) for v in nz.values() if v is not None)
     if lo_sig < 0.9 or hi_nz > 0.3:
-        print("FAIL -- xcoh does not read the reference: min over co-phased signal PRNs %.3f "
-              "(want >= 0.9), max |xcoh| over pure-noise PRNs %.3f (want <= 0.3)"
-              % (lo_sig, hi_nz))
+        print(
+            "FAIL -- xcoh does not read the reference: min over co-phased signal PRNs %.3f "
+            "(want >= 0.9), max |xcoh| over pure-noise PRNs %.3f (want <= 0.3)"
+            % (lo_sig, hi_nz)
+        )
         return 1
     # the reference loss: sender 0's phi0 moved pi on every row of PRN 4, co-phased stream
     lost = []
@@ -698,19 +938,30 @@ def main():
         return 1
     for c in sorted({c for c, _ in co}):
         if not lo[(c, 4)] < co[(c, 4)] - 0.2:
-            print("FAIL -- %s PRN 4: one sender lost its reference and xcoh did not fall "
-                  "(%.3f -> %.3f)" % (c, co[(c, 4)], lo[(c, 4)]))
+            print(
+                "FAIL -- %s PRN 4: one sender lost its reference and xcoh did not fall "
+                "(%.3f -> %.3f)" % (c, co[(c, 4)], lo[(c, 4)])
+            )
             return 1
-        others = [abs(lo[(c, p)] - co[(c, p)]) for (cc, p) in co if cc == c and p != 4
-                  and co[(cc, p)] is not None and lo.get((cc, p)) is not None]
+        others = [
+            abs(lo[(c, p)] - co[(c, p)])
+            for (cc, p) in co
+            if cc == c
+            and p != 4
+            and co[(cc, p)] is not None
+            and lo.get((cc, p)) is not None
+        ]
         if max(others) > 1e-9:
-            print("FAIL -- %s: moving PRN 4's phi0 on one sender moved another PRN's xcoh "
-                  "by %.3g" % (c, max(others)))
+            print(
+                "FAIL -- %s: moving PRN 4's phi0 on one sender moved another PRN's xcoh "
+                "by %.3g" % (c, max(others))
+            )
             return 1
-    print("XCOH PASS -- co-phased signal PRNs >= %.3f, pure noise <= %.3f in |xcoh|; one "
-          "sender's reference loss on PRN 4 read %.2f -> %.2f and touched no other PRN."
-          % (lo_sig, hi_nz, co[("gps_l5", 4)], lo[("gps_l5", 4)]))
-
+    print(
+        "XCOH PASS -- co-phased signal PRNs >= %.3f, pure noise <= %.3f in |xcoh|; one "
+        "sender's reference loss on PRN 4 read %.2f -> %.2f and touched no other PRN."
+        % (lo_sig, hi_nz, co[("gps_l5", 4)], lo[("gps_l5", 4)])
+    )
 
     # ---- THE PER-RECORD SERIES (the served C/N0's input) --------------------------------
     pr = python_recs(frames, args.n_win)
@@ -721,8 +972,10 @@ def main():
             print("  %-12s %s" % (sev, msg))
         return 1
     n_rr = sum(len(v) for ch in pr.values() for v in ch.values())
-    print("REC-SERIES PASS -- %d (window, slot, PRN) records agree, e/p/l to 1e-9 and "
-          "n_inst/n_chan exactly." % n_rr)
+    print(
+        "REC-SERIES PASS -- %d (window, slot, PRN) records agree, e/p/l to 1e-9 and "
+        "n_inst/n_chan exactly." % n_rr
+    )
 
     # ---- THE SHIPPING CONFIGURATION: taps_win != n_win ---------------------------------
     # Production runs the loop on 2 windows and serves the broker 32 -- different questions,
@@ -735,8 +988,10 @@ def main():
     deep = 2 * args.n_win
     c_deep = cpp_arm(args.exe, path, args.n_win, args.min_instances, taps_win=deep)
     if compare(py, c_deep):
-        print("FAIL -- deepening taps_win CHANGED the discriminator. aggregate() must keep "
-              "walking only the newest n_win of the ring.")
+        print(
+            "FAIL -- deepening taps_win CHANGED the discriminator. aggregate() must keep "
+            "walking only the newest n_win of the ring."
+        )
         return 1
     bad_d = compare_taps(python_taps(frames, deep, args.min_instances), c_deep)
     if bad_d:
@@ -745,10 +1000,15 @@ def main():
             print("  %-11s %s" % (sev, msg))
         return 1
     if c_deep.get("taps_win") != deep:
-        print("FAIL -- asked for taps_win %d, tool reports %s" % (deep, c_deep.get("taps_win")))
+        print(
+            "FAIL -- asked for taps_win %d, tool reports %s"
+            % (deep, c_deep.get("taps_win"))
+        )
         return 1
-    print("SPLIT-RING PASS -- taps deepen to %d windows and the %d-window loop is unmoved."
-          % (deep, args.n_win))
+    print(
+        "SPLIT-RING PASS -- taps deepen to %d windows and the %d-window loop is unmoved."
+        % (deep, args.n_win)
+    )
 
     # ---- THE INTEGRATOR (F2) -----------------------------------------------------------
     # Two legs, deliberately separate, because a single end-to-end comparison would let a fold
@@ -757,14 +1017,20 @@ def main():
     #   (b) Python's dll_integrate, driven by that disc series, reproduces the C++ trim series.
     # (b) alone would be circular if (a) were not established; (a) alone is what F1 already did,
     # but only at the last window.
-    ARM = list(SIGNAL_PRNS)   # see SIGNAL_PRNS: the noise PRNs calibrate, they do not arm
+    ARM = list(
+        SIGNAL_PRNS
+    )  # see SIGNAL_PRNS: the noise PRNs calibrate, they do not arm
     cpp2 = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM)
     series = cpp2.get("series", {}).get("gps_l5", {})
     if not series:
-        print("FAIL -- the C++ integrator stepped on nothing. It was armed on %s." % ARM)
+        print(
+            "FAIL -- the C++ integrator stepped on nothing. It was armed on %s." % ARM
+        )
         return 1
     wins_seen = sorted({int(r[0]) for rows in series.values() for r in rows})
-    pyd = python_disc_series(frames, "gps_l5", wins_seen, args.n_win, args.min_instances)
+    pyd = python_disc_series(
+        frames, "gps_l5", wins_seen, args.n_win, args.min_instances
+    )
 
     bad_i = []
     n_disc = n_trim = 0
@@ -776,10 +1042,15 @@ def main():
             # (a) the discriminator, per window
             ref = pyd.get(win, {}).get(prn)
             if ref is None:
-                bad_i.append("PRN %d win %d: C++ stepped, Python formed no discriminator" % (prn, win))
+                bad_i.append(
+                    "PRN %d win %d: C++ stepped, Python formed no discriminator"
+                    % (prn, win)
+                )
                 continue
             if abs(ref - disc) > 1e-9 * max(1.0, abs(ref)):
-                bad_i.append("PRN %d win %d disc: py %.12g vs cpp %.12g" % (prn, win, ref, disc))
+                bad_i.append(
+                    "PRN %d win %d disc: py %.12g vs cpp %.12g" % (prn, win, ref, disc)
+                )
             n_disc += 1
             # (b) the recurrence, driven by the SAME disc
             # ⚠️ THE LOOP CONSTANTS ONLY. p_floor_abs is the window GATE, which lives in
@@ -787,7 +1058,10 @@ def main():
             # in hands dll_integrate a kwarg it has never taken.
             trim = combdll.dll_integrate(trim, disc, **LOOP_POLICY)
             if abs(trim - cpp_trim) > 1e-12 * max(1.0, abs(trim)):
-                bad_i.append("PRN %d win %d trim: py %.12g vs cpp %.12g" % (prn, win, trim, cpp_trim))
+                bad_i.append(
+                    "PRN %d win %d trim: py %.12g vs cpp %.12g"
+                    % (prn, win, trim, cpp_trim)
+                )
             n_trim += 1
     if bad_i:
         print("\nFAIL -- integrator: %d disagreement(s):" % len(bad_i))
@@ -802,10 +1076,15 @@ def main():
     if max(abs(v) for v in finals.values()) < 1e-3:
         print("FAIL -- every trim is ~0. The integrator ran but did not integrate.")
         return 1
-    print("INTEGRATOR PASS -- %d window discriminators and %d integrator steps agree "
-          "(%d PRNs, %d steps each)." % (n_disc, n_trim, len(series),
-                                         len(next(iter(series.values())))))
-    print("  final trims: %s" % ", ".join("PRN %d %+.4f" % (p, v) for p, v in sorted(finals.items())))
+    print(
+        "INTEGRATOR PASS -- %d window discriminators and %d integrator steps agree "
+        "(%d PRNs, %d steps each)."
+        % (n_disc, n_trim, len(series), len(next(iter(series.values()))))
+    )
+    print(
+        "  final trims: %s"
+        % ", ".join("PRN %d %+.4f" % (p, v) for p, v in sorted(finals.items()))
+    )
     # ---- THE TRIM STORE: a gather restart must stop costing the fleet its pull-in --------
     # GnssFleetTrim holds TrimState in process, so restarting it zeroed every integrator:
     # measured 2026-08-23 as q 2.0-3.7 -> ~1.0 fleet-wide with 0-1 "present" per chain, because
@@ -821,11 +1100,15 @@ def main():
         json.dump({"saved_unix": 0.0, "chains": snap}, fh)
 
     # (a) ADOPTED when the broker arms the PRN, and the loop resumes FROM the stored value.
-    c_res = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, trim_in=store)
-    n_stored = sum(len(v) for v in snap.values())   # every chain, not just gps_l5
+    c_res = cpp_arm(
+        args.exe, path, args.n_win, args.min_instances, arm=ARM, trim_in=store
+    )
+    n_stored = sum(len(v) for v in snap.values())  # every chain, not just gps_l5
     if c_res.get("trim_adopted", 0) != n_stored:
-        print("FAIL -- offered %d stored trim(s) across %d chain(s), adopted %d."
-              % (n_stored, len(snap), c_res.get("trim_adopted")))
+        print(
+            "FAIL -- offered %d stored trim(s) across %d chain(s), adopted %d."
+            % (n_stored, len(snap), c_res.get("trim_adopted"))
+        )
         return 1
     # The restored run must NOT reproduce the cold run: it starts from the stored trims.
     cold = cpp2.get("series", {}).get("gps_l5", {})
@@ -833,37 +1116,49 @@ def main():
     first_cold = {p: v[0][2] for p, v in cold.items() if v}
     first_warm = {p: v[0][2] for p, v in warm.items() if v}
     if not first_warm or first_cold == first_warm:
-        print("FAIL -- the restored run's FIRST trim equals the cold run's. The store was "
-              "loaded and had no effect, which is persistence that measures as working.")
+        print(
+            "FAIL -- the restored run's FIRST trim equals the cold run's. The store was "
+            "loaded and had no effect, which is persistence that measures as working."
+        )
         return 1
 
     # (b) REFUSED when nothing armed that PRN. This is the whole reason adoption is gated on
     # arming rather than done at load: policy stays with the broker.
     c_noarm = cpp_arm(args.exe, path, args.n_win, args.min_instances, trim_in=store)
     if c_noarm.get("trim_adopted", 0) != 0:
-        print("FAIL -- adopted %d stored trim(s) with NOTHING armed. A restored trim is a "
-              "proposal; arming is the acceptance." % c_noarm.get("trim_adopted"))
+        print(
+            "FAIL -- adopted %d stored trim(s) with NOTHING armed. A restored trim is a "
+            "proposal; arming is the acceptance." % c_noarm.get("trim_adopted")
+        )
         return 1
 
     # (c) REFUSED when the value is not physical. A store is a file on disk and can be
     # anything; the clamp is the contract.
     bad = os.path.join(tmp, "trims_bad.json")
     with open(bad, "w") as fh:
-        json.dump({"saved_unix": 0.0,
-                   "chains": {"gps_l5": {str(p): 1e9 for p in ARM}}}, fh)
-    c_bad = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, trim_in=bad)
+        json.dump(
+            {"saved_unix": 0.0, "chains": {"gps_l5": {str(p): 1e9 for p in ARM}}}, fh
+        )
+    c_bad = cpp_arm(
+        args.exe, path, args.n_win, args.min_instances, arm=ARM, trim_in=bad
+    )
     if c_bad.get("trim_adopted", 0) != 0:
-        print("FAIL -- adopted a trim beyond the clamp (%d of them)."
-              % c_bad.get("trim_adopted"))
+        print(
+            "FAIL -- adopted a trim beyond the clamp (%d of them)."
+            % c_bad.get("trim_adopted")
+        )
         return 1
-    print("TRIM-STORE PASS -- %d trim(s) across %d chain(s) persist and are adopted AT ARMING "
-          "(max |trim| %.3f chips), refused unarmed (0 adopted) and refused beyond the clamp "
-          "(0 adopted)."
-          % (n_stored, len(snap),
-             max(abs(v) for c in snap.values() for v in c.values())))
+    print(
+        "TRIM-STORE PASS -- %d trim(s) across %d chain(s) persist and are adopted AT ARMING "
+        "(max |trim| %.3f chips), refused unarmed (0 adopted) and refused beyond the clamp "
+        "(0 adopted)."
+        % (n_stored, len(snap), max(abs(v) for c in snap.values() for v in c.values()))
+    )
 
-    print("  leak ceiling gain*0.25/leak = %.3f chips; max |trim| here %.3f"
-          % (ceiling, max(abs(v) for v in finals.values())))
+    print(
+        "  leak ceiling gain*0.25/leak = %.3f chips; max |trim| here %.3f"
+        % (ceiling, max(abs(v) for v in finals.values()))
+    )
 
     # ---- THE ABSOLUTE WINDOW GATE (the E3 fix, 2026-08-26) -----------------------------
     # integrate()'s per-window gate was 3x the window's own population median -- a PEER
@@ -877,33 +1172,48 @@ def main():
     #       and leaves the stronger one's trim series BYTE-IDENTICAL -- it changes exactly
     #       what it claims and nothing else;
     #   (c) a floor below everything reproduces the unset census exactly.
-    rows_a = {int(k): v for k, v in
-              cpp2.get("chains", {}).get("gps_l5", {}).get("prns", {}).items()}
+    rows_a = {
+        int(k): v
+        for k, v in cpp2.get("chains", {}).get("gps_l5", {}).get("prns", {}).items()
+    }
     p_of = {p: rows_a[p]["p_pow"] for p in ARM if p in rows_a}
     if len(p_of) < 2:
-        print("FAIL -- the abs-floor case needs two armed PRNs with rows; got %s" % p_of)
+        print(
+            "FAIL -- the abs-floor case needs two armed PRNs with rows; got %s" % p_of
+        )
         return 1
     lo_prn = min(p_of, key=p_of.get)
     hi_prn = max(p_of, key=p_of.get)
     floor_mid = (p_of[lo_prn] + p_of[hi_prn]) / 2.0
     pol_mid = dict(DEFAULT_POLICY, p_floor_abs=floor_mid)
-    c_mid = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_mid)
+    c_mid = cpp_arm(
+        args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_mid
+    )
     cen_a = cpp2.get("census", {}).get("gps_l5", {})
     cen_m = c_mid.get("census", {}).get("gps_l5", {})
     lo_a, lo_m = cen_a.get(str(lo_prn), {}), cen_m.get(str(lo_prn), {})
     hi_m = cen_m.get(str(hi_prn), {})
-    if not (lo_m.get("skipped", 0) > lo_a.get("skipped", 0) and lo_m.get("steps", 1) == 0):
-        print("FAIL -- abs floor %.3g should turn PRN %d (p %.3g) fully leak-only; census "
-              "went %s -> %s" % (floor_mid, lo_prn, p_of[lo_prn], lo_a, lo_m))
+    if not (
+        lo_m.get("skipped", 0) > lo_a.get("skipped", 0) and lo_m.get("steps", 1) == 0
+    ):
+        print(
+            "FAIL -- abs floor %.3g should turn PRN %d (p %.3g) fully leak-only; census "
+            "went %s -> %s" % (floor_mid, lo_prn, p_of[lo_prn], lo_a, lo_m)
+        )
         return 1
     if hi_m.get("skipped", 0) != cen_a.get(str(hi_prn), {}).get("skipped", 0):
-        print("FAIL -- abs floor %.3g touched PRN %d (p %.3g), which sits ABOVE it."
-              % (floor_mid, hi_prn, p_of[hi_prn]))
+        print(
+            "FAIL -- abs floor %.3g touched PRN %d (p %.3g), which sits ABOVE it."
+            % (floor_mid, hi_prn, p_of[hi_prn])
+        )
         return 1
-    if c_mid.get("series", {}).get("gps_l5", {}).get(str(hi_prn)) \
-            != cpp2.get("series", {}).get("gps_l5", {}).get(str(hi_prn)):
-        print("FAIL -- the above-floor PRN %d's trim SERIES moved under the abs floor. The "
-              "flag must change only who is gated, never the arithmetic." % hi_prn)
+    if c_mid.get("series", {}).get("gps_l5", {}).get(str(hi_prn)) != cpp2.get(
+        "series", {}
+    ).get("gps_l5", {}).get(str(hi_prn)):
+        print(
+            "FAIL -- the above-floor PRN %d's trim SERIES moved under the abs floor. The "
+            "flag must change only who is gated, never the arithmetic." % hi_prn
+        )
         return 1
     # ⚠️ NO FLOOR => REFUSE, and this leg is what stops that regressing to "no gate".
     # Deleting the peer median left a fork in the road: p_floor_abs <= 0 could mean "gate on
@@ -912,20 +1222,29 @@ def main():
     # in 32 s with disc sign-flipping the whole way -- so refusing is the only safe reading,
     # and a future simplification that "helpfully" treats 0 as no-gate must go red here.
     pol_none = dict(DEFAULT_POLICY, p_floor_abs=0.0)
-    c_none = cpp_arm(args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_none)
+    c_none = cpp_arm(
+        args.exe, path, args.n_win, args.min_instances, arm=ARM, pol=pol_none
+    )
     cen_n = c_none.get("census", {}).get("gps_l5", {})
     stepped = {p: cen_n.get(str(p), {}).get("steps", 0) for p in ARM}
     if any(v for v in stepped.values()):
-        print("FAIL -- with NO absolute floor the loop must refuse (leak-only, steps 0) and "
-              "instead it stepped: %s. A missing noise reference is not a licence to gate on "
-              "nothing." % stepped)
+        print(
+            "FAIL -- with NO absolute floor the loop must refuse (leak-only, steps 0) and "
+            "instead it stepped: %s. A missing noise reference is not a licence to gate on "
+            "nothing." % stepped
+        )
         return 1
     if not all(cen_n.get(str(p), {}).get("skipped", 0) > 0 for p in ARM):
-        print("FAIL -- refusal must LEAK every armed PRN, not silently drop them: %s" % cen_n)
+        print(
+            "FAIL -- refusal must LEAK every armed PRN, not silently drop them: %s"
+            % cen_n
+        )
         return 1
-    print("ABS-FLOOR PASS -- floor %.3g: PRN %d (below) fully leak-only, PRN %d (above) "
-          "byte-identical; floor 0 REFUSES every armed PRN (steps 0, all leak-only)."
-          % (floor_mid, lo_prn, hi_prn))
+    print(
+        "ABS-FLOOR PASS -- floor %.3g: PRN %d (below) fully leak-only, PRN %d (above) "
+        "byte-identical; floor 0 REFUSES every armed PRN (steps 0, all leak-only)."
+        % (floor_mid, lo_prn, hi_prn)
+    )
 
     if args.self_test:
         # THE GATE MUST BE ABLE TO FAIL. Nudge one channel of one record by 1% and require the
@@ -957,31 +1276,50 @@ def main():
                 _row = _r
                 break
         if _row is None:
-            raise SystemExit("self-test: no SIGNAL_PRNS row in the poked frame -- the fixture "
-                             "changed shape and the poke would be inert")
-        off = (telem._HDR_BYTES + _row * _row_total * 4
-               + telem._ROW_FLOATS * 4 + telem.CHAN_E_RE * 4)
+            raise SystemExit(
+                "self-test: no SIGNAL_PRNS row in the poked frame -- the fixture "
+                "changed shape and the poke would be inert"
+            )
+        off = (
+            telem._HDR_BYTES
+            + _row * _row_total * 4
+            + telem._ROW_FLOATS * 4
+            + telem.CHAN_E_RE * 4
+        )
         (v,) = struct.unpack_from("<f", buf, off)
         struct.pack_into("<f", buf, off, v * 1.01 + 1.0)
-        poked = frames[:poke_at] + [(bytes(buf), frames[poke_at][1])] + frames[poke_at + 1:]
+        poked = (
+            frames[:poke_at]
+            + [(bytes(buf), frames[poke_at][1])]
+            + frames[poke_at + 1 :]
+        )
         p2 = os.path.join(tmp, "frames_poked.bin")
         write_stream(p2, poked)
-        bad2 = compare(python_arm(poked, args.n_win, args.min_instances),
-                       cpp_arm(args.exe, p2, args.n_win, args.min_instances))
+        bad2 = compare(
+            python_arm(poked, args.n_win, args.min_instances),
+            cpp_arm(args.exe, p2, args.n_win, args.min_instances),
+        )
         # Both arms see the SAME poked bytes, so they must still AGREE with each other -- the
         # self-test proves the arms track each other, and the check below proves the comparison
         # is sensitive at all by requiring the poked answer to differ from the clean one.
         if bad2:
-            print("SELF-TEST FAIL: the arms disagree on the perturbed fixture: %s" % bad2[:3])
+            print(
+                "SELF-TEST FAIL: the arms disagree on the perturbed fixture: %s"
+                % bad2[:3]
+            )
             return 1
         moved = compare(py, cpp_arm(args.exe, p2, args.n_win, args.min_instances))
         if not moved:
-            print("SELF-TEST FAIL: a 1%% perturbation of one channel (window %d, the newest "
-                  "closed one) changed NOTHING -- the comparison, the fixture, or the fold is "
-                  "not doing what it claims." % (args.windows - 2))
+            print(
+                "SELF-TEST FAIL: a 1%% perturbation of one channel (window %d, the newest "
+                "closed one) changed NOTHING -- the comparison, the fixture, or the fold is "
+                "not doing what it claims." % (args.windows - 2)
+            )
             return 1
-        print("SELF-TEST PASS -- the arms still agree on perturbed bytes, and the comparison "
-              "sees the perturbation (%d field(s) moved)." % len(moved))
+        print(
+            "SELF-TEST PASS -- the arms still agree on perturbed bytes, and the comparison "
+            "sees the perturbation (%d field(s) moved)." % len(moved)
+        )
 
         # AND THE ROTATION MUST BE LOAD-BEARING. Move ONE sender's phi0 on that same row by
         # 1 rad without touching its comb: that sender's partial sum now lands off the common
@@ -991,21 +1329,31 @@ def main():
         off = telem._HDR_BYTES + _row * _row_total * 4 + telem.REC_PHI0 * 4
         (v,) = struct.unpack_from("<f", buf, off)
         struct.pack_into("<f", buf, off, v + 1.0)
-        poked = frames[:poke_at] + [(bytes(buf), frames[poke_at][1])] + frames[poke_at + 1:]
+        poked = (
+            frames[:poke_at]
+            + [(bytes(buf), frames[poke_at][1])]
+            + frames[poke_at + 1 :]
+        )
         p4 = os.path.join(tmp, "frames_phi0.bin")
         write_stream(p4, poked)
         c4 = cpp_arm(args.exe, p4, args.n_win, args.min_instances)
         if compare(python_arm(poked, args.n_win, args.min_instances), c4):
-            print("SELF-TEST FAIL: the arms disagree once one sender's phi0 moves -- they do "
-                  "not rotate the same way.")
+            print(
+                "SELF-TEST FAIL: the arms disagree once one sender's phi0 moves -- they do "
+                "not rotate the same way."
+            )
             return 1
         moved = compare(py, c4)
         if not moved:
-            print("SELF-TEST FAIL: moving one sender's REC_PHI0 by 1 rad changed NOTHING. The "
-                  "senders are being added as powers, not as rotated complex sums.")
+            print(
+                "SELF-TEST FAIL: moving one sender's REC_PHI0 by 1 rad changed NOTHING. The "
+                "senders are being added as powers, not as rotated complex sums."
+            )
             return 1
-        print("PHI0 SELF-TEST PASS -- one sender's reference moved 1 rad, both arms agree and "
-              "the lobe power moved (%d field(s))." % len(moved))
+        print(
+            "PHI0 SELF-TEST PASS -- one sender's reference moved 1 rad, both arms agree and "
+            "the lobe power moved (%d field(s))." % len(moved)
+        )
     if not args.keep:
         for f in os.listdir(tmp):
             os.remove(os.path.join(tmp, f))

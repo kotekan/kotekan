@@ -17,15 +17,15 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gnss_observables import row_epoch   # noqa: E402
+from gnss_observables import row_epoch  # noqa: E402
 
 SPH, SR = 16384, 3.2e9
 HOP_S = SPH / SR
-FRAME0_OLD = 1790346673.000002861   # 09-25 session
-FRAME0_NEW = 1790626549.000002861   # 09-28 20:15:49 re-base
-WRITE_T = 1790626598.0              # 09-28 20:16:38, when the bad rows were written
-OLD_LAST = 1790622264.6             # 09-28 19:04:24.6, the old session's last window
-IDENT = (lambda t: t)
+FRAME0_OLD = 1790346673.000002861  # 09-25 session
+FRAME0_NEW = 1790626549.000002861  # 09-28 20:15:49 re-base
+WRITE_T = 1790626598.0  # 09-28 20:16:38, when the bad rows were written
+OLD_LAST = 1790622264.6  # 09-28 19:04:24.6, the old session's last window
+IDENT = lambda t: t
 
 
 def epoch(r, now, frame0=FRAME0_NEW, skew=60.0, to_unix=IDENT):
@@ -33,7 +33,6 @@ def epoch(r, now, frame0=FRAME0_NEW, skew=60.0, to_unix=IDENT):
 
 
 class TestRowEpoch(unittest.TestCase):
-
     def test_a_current_hop_is_recorded(self):
         hop = int((WRITE_T - 1.5 - FRAME0_NEW) / HOP_S)
         t, t_abs, h, why = epoch({"fleet_hop": hop}, WRITE_T)
@@ -42,7 +41,7 @@ class TestRowEpoch(unittest.TestCase):
         self.assertEqual(h, hop)
 
     def test_the_previous_sessions_hop_is_refused(self):
-        stale = int((OLD_LAST - FRAME0_OLD) / HOP_S)   # what the broker still served
+        stale = int((OLD_LAST - FRAME0_OLD) / HOP_S)  # what the broker still served
         t, _, _, why = epoch({"fleet_hop": stale, "pow_hop": 9435136}, WRITE_T)
         self.assertIsNone(t)
         self.assertEqual(why, "skew")
@@ -51,7 +50,11 @@ class TestRowEpoch(unittest.TestCase):
 
     def test_no_hop_is_no_row_on_chord(self):
         # The old fallback: the broker's diagnostic `utc`. Even a plausible one is refused.
-        for r in ({"utc": WRITE_T}, {"fleet_hop": 0, "utc": WRITE_T}, {"fleet_hop": None}):
+        for r in (
+            {"utc": WRITE_T},
+            {"fleet_hop": 0, "utc": WRITE_T},
+            {"fleet_hop": None},
+        ):
             self.assertEqual(epoch(r, WRITE_T)[3], "no-hop", r)
 
     def test_the_combs_no_window_marker_is_not_a_hop(self):
@@ -64,8 +67,8 @@ class TestRowEpoch(unittest.TestCase):
         self.assertIsNone(epoch({"pow_hop": hop}, WRITE_T)[3])
 
     def test_old_rows_are_refused_too(self):
-        now = FRAME0_NEW + 2 * 3600.0                  # two hours into the session
-        hop = int((now - 3600.0 - FRAME0_NEW) / HOP_S)   # a row stamped an hour ago
+        now = FRAME0_NEW + 2 * 3600.0  # two hours into the session
+        hop = int((now - 3600.0 - FRAME0_NEW) / HOP_S)  # a row stamped an hour ago
         self.assertEqual(epoch({"fleet_hop": hop}, now)[3], "skew")
 
     def test_zero_disables_the_gate(self):
@@ -74,8 +77,10 @@ class TestRowEpoch(unittest.TestCase):
 
     def test_the_airspy_path_keeps_its_utc_anchor(self):
         # No frame0: the capture clock (adcstat) is the anchor, and the gate still applies.
-        to_unix = (lambda u: u + 1000.0)
-        t, _, _, why = epoch({"utc": WRITE_T - 1001.0}, WRITE_T, frame0=0.0, to_unix=to_unix)
+        to_unix = lambda u: u + 1000.0
+        t, _, _, why = epoch(
+            {"utc": WRITE_T - 1001.0}, WRITE_T, frame0=0.0, to_unix=to_unix
+        )
         self.assertIsNone(why)
         self.assertAlmostEqual(t, WRITE_T - 1.0)
         self.assertEqual(epoch({}, WRITE_T, frame0=0.0)[3], "no-anchor")

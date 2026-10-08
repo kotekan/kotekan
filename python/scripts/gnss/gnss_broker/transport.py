@@ -58,8 +58,8 @@ from gnss_stages import resolve_stage  # noqa: E402
 # out of the fleet. These are fixed-address lab machines; a stale address is recoverable
 # (the connect fails and the poll is skipped for one cycle), a 5 s stall is not.
 _DNS_TTL_S = 300.0
-_dns_cache = {}          # key -> (expiry, result)
-_dns_good = {}           # key -> result, last one that resolved (never expires)
+_dns_cache = {}  # key -> (expiry, result)
+_dns_good = {}  # key -> result, last one that resolved (never expires)
 _dns_lock = threading.Lock()
 _dns_real = None
 
@@ -133,6 +133,7 @@ def _raise_fd_soft_limit():
     _fd_raised = True
     try:
         import resource
+
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
         want = min(hard, 65536) if hard != resource.RLIM_INFINITY else 65536
         if soft < want:
@@ -174,16 +175,24 @@ def _ka_drop(netloc):
             pass
 
 
-_RETRY_ON = (http.client.RemoteDisconnected, http.client.BadStatusLine,
-             http.client.CannotSendRequest, http.client.ResponseNotReady,
-             BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+_RETRY_ON = (
+    http.client.RemoteDisconnected,
+    http.client.BadStatusLine,
+    http.client.CannotSendRequest,
+    http.client.ResponseNotReady,
+    BrokenPipeError,
+    ConnectionResetError,
+    ConnectionAbortedError,
+)
 
 
 def http_request(method, url, timeout, data=None, headers=None):
     """(status, body bytes) over a pooled keep-alive connection; HTTPError on status >= 400."""
     u = urllib.parse.urlsplit(url)
     if os.environ.get("GNSS_NO_KEEPALIVE"):
-        req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+        req = urllib.request.Request(
+            url, data=data, method=method, headers=headers or {}
+        )
         with urllib.request.urlopen(req, timeout=timeout) as h:
             return h.status, h.read()
     path = u.path or "/"
@@ -245,24 +254,25 @@ def http_request(method, url, timeout, data=None, headers=None):
 # control cadence is unchanged.
 # ---------------------------------------------------------------------------------------
 
+
 class _TranscriptDone(Exception):
     """Replay reached the end of the recording -- a normal, successful termination."""
 
 
 class _Transcript:
     def __init__(self):
-        self.mode = None          # None (live) | "write" | "read"
+        self.mode = None  # None (live) | "write" | "read"
         self._fh = None
         self._rd = {"now": [], "get": [], "post": []}
         self._ix = {"now": 0, "get": 0, "post": 0}
-        self._owner = None        # only the main thread is transcribed; see below
+        self._owner = None  # only the main thread is transcribed; see below
         # PER THREAD, not per process (task #27 M5). One process now runs several chains
         # in several threads, each on its own cycle; a shared frozen clock would have chain
         # B silently stamping chain A's cycle with B's instant -- and the failure would look
         # like clock jitter, not like a data race.
         self._t = threading.local()
-        self.posts = []           # replay+record: the ordered POST stream (the gate output)
-        self.argv = None          # the recording run's own argv, carried in the header
+        self.posts = []  # replay+record: the ordered POST stream (the gate output)
+        self.argv = None  # the recording run's own argv, carried in the header
 
     # -- lifecycle ------------------------------------------------------------------
     def open_write(self, path, argv):
@@ -348,8 +358,10 @@ class _Transcript:
         if self.mode == "read" and self._mine():
             r = self._take("get")
             if r["u"] != url:
-                raise RuntimeError("TRANSCRIPT DIVERGENCE at get #%d: recorded %s, replay "
-                                   "asked for %s" % (self._ix["get"] - 1, r["u"], url))
+                raise RuntimeError(
+                    "TRANSCRIPT DIVERGENCE at get #%d: recorded %s, replay "
+                    "asked for %s" % (self._ix["get"] - 1, r["u"], url)
+                )
             if r.get("e"):
                 raise RuntimeError(r["e"])
             return r["r"]
@@ -381,16 +393,23 @@ class _Transcript:
         if self.mode == "read" and self._mine():
             r = self._take("post")
             if r["u"] != url:
-                raise RuntimeError("TRANSCRIPT DIVERGENCE at post #%d: recorded %s, replay "
-                                   "sent to %s" % (self._ix["post"] - 1, r["u"], url))
+                raise RuntimeError(
+                    "TRANSCRIPT DIVERGENCE at post #%d: recorded %s, replay "
+                    "sent to %s" % (self._ix["post"] - 1, r["u"], url)
+                )
             if r.get("e"):
                 raise RuntimeError(r["e"])
             return r["s"]
         data = json.dumps(payload).encode()
         _t0 = time.perf_counter()
         try:
-            s = http_request("POST", url, timeout, data=data,
-                             headers={"Content-Type": "application/json"})[0]
+            s = http_request(
+                "POST",
+                url,
+                timeout,
+                data=data,
+                headers={"Content-Type": "application/json"},
+            )[0]
             _http_record("post", url, time.perf_counter() - _t0, True)
         except Exception as e:
             _http_record("post", url, time.perf_counter() - _t0, False)
@@ -412,7 +431,6 @@ class _Transcript:
         return h.hexdigest()
 
 
-
 # -- HTTP TIMING ----------------------------------------------------------------------
 # WHY THIS EXISTS. Free-threading landed (2026-08-24) and the cycle did not move: 10.04 s
 # before, 9.98 s after, with the process using 0.72 CORES. Five threads that can now truly
@@ -432,7 +450,7 @@ class _Transcript:
 # broker_equiv POST stream cannot move -- but re-run the four transcripts anyway, because
 # "cannot move" is a claim about code I just wrote.
 _http_lk = threading.RLock()
-_http = {}          # key -> [n, total_s, max_s, n_fail]
+_http = {}  # key -> [n, total_s, max_s, n_fail]
 
 
 def _http_key(url):
@@ -468,7 +486,7 @@ def _http_record(kind, url, dt, ok):
 
 
 _cyc_lk = threading.RLock()
-_cyc = {}           # chain -> [n, total_busy_s, max_busy_s, n_overrun]
+_cyc = {}  # chain -> [n, total_busy_s, max_busy_s, n_overrun]
 
 
 def record_cycle(chain, busy_s, interval_s):
@@ -514,14 +532,26 @@ def cycle_report(interval_s=None, reset=True):
             _cyc.clear()
     if not snap:
         return []
-    out = ["CYCLE: busy time per control pass (interval %s):"
-           % ("?" if interval_s is None else "%.2f s" % interval_s)]
+    out = [
+        "CYCLE: busy time per control pass (interval %s):"
+        % ("?" if interval_s is None else "%.2f s" % interval_s)
+    ]
     for c, (n, tot, mx, over) in snap:
         mean = tot / n
-        out.append("  %-9s n=%4d  mean %5.2fs  max %5.2fs  overran %d (%.0f%%)%s"
-                   % (c, n, mean, mx, over, 100.0 * over / n,
-                      "" if interval_s is None
-                      else "  slack %.0f%%" % (100.0 * (1.0 - mean / interval_s))))
+        out.append(
+            "  %-9s n=%4d  mean %5.2fs  max %5.2fs  overran %d (%.0f%%)%s"
+            % (
+                c,
+                n,
+                mean,
+                mx,
+                over,
+                100.0 * over / n,
+                ""
+                if interval_s is None
+                else "  slack %.0f%%" % (100.0 * (1.0 - mean / interval_s)),
+            )
+        )
     return out
 
 
@@ -540,11 +570,15 @@ def http_timing_report(top=10, reset=True):
             _http.clear()
     if not snap:
         return []
-    out = ["HTTP: %d call(s), %.1f s of thread-seconds waiting, top %d by total:"
-           % (calls, wall, min(top, len(snap)))]
+    out = [
+        "HTTP: %d call(s), %.1f s of thread-seconds waiting, top %d by total:"
+        % (calls, wall, min(top, len(snap)))
+    ]
     for k, (n, tot, mx, nf) in snap[:top]:
-        out.append("  %7.2fs %5d call(s) mean %6.3fs max %6.3fs%s  %s"
-                   % (tot, n, tot / n, mx, "" if not nf else " FAIL %d" % nf, k))
+        out.append(
+            "  %7.2fs %5d call(s) mean %6.3fs max %6.3fs%s  %s"
+            % (tot, n, tot / n, mx, "" if not nf else " FAIL %d" % nf, k)
+        )
     return out
 
 
@@ -595,9 +629,12 @@ def _log(msg):
     # Timestamped (2026-07-19): every autopsy this week had to reconstruct event times by
     # correlating line numbers against the status stream -- the 07-18 carrier-latch hunt
     # lost an hour to it. Wall-clock, subsecond: cheap, greppable, sortable.
-    print("[broker%s %s] %s" % (getattr(_tag, "v", ""),
-                                datetime.now().strftime("%H:%M:%S.%f")[:-3], msg),
-          file=sys.stderr, flush=True)
+    print(
+        "[broker%s %s] %s"
+        % (getattr(_tag, "v", ""), datetime.now().strftime("%H:%M:%S.%f")[:-3], msg),
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 # Rate-limit keys are per THREAD as well: two chains sharing one key would silence each
@@ -613,7 +650,7 @@ def _log_rl(key, msg, every_s=10.0):
     this project has actually run (the 07-18 hunts used >=1 s granularity). EVENT lines
     (HOLD/RELEASE/ESCAPE/REACQ/WATCHDOG/TRANSLATE/fits-changed...) stay unlimited."""
     now = _now()
-    key = (getattr(_tag, "v", ""), key)   # see _log_rl_last: per-chain, not shared
+    key = (getattr(_tag, "v", ""), key)  # see _log_rl_last: per-chain, not shared
     if now - _log_rl_last.get(key, 0.0) >= every_s:
         _log_rl_last[key] = now
         _log(msg)
@@ -635,7 +672,7 @@ def expand_token(tok):
     step = 1 if b >= a else -1
     out = []
     for i in range(a, b + step, step):
-        out.append(tok[:m.start()] + str(i).zfill(width) + tok[m.end():])
+        out.append(tok[: m.start()] + str(i).zfill(width) + tok[m.end() :])
     res = []
     for o in out:  # handle any further ranges in the same token
         res.extend(expand_token(o))
@@ -654,8 +691,9 @@ def resolve_prefix(entry, default_base):
     entry = entry.strip()
     if entry.startswith("http://") or entry.startswith("https://"):
         return entry.rstrip("/")
-    return default_base.rstrip("/") + "/" + resolve_stage(default_base,
-                                                          entry.strip("/"))
+    return (
+        default_base.rstrip("/") + "/" + resolve_stage(default_base, entry.strip("/"))
+    )
 
 
 def parse_endpoints(csv, default_base):

@@ -10,8 +10,13 @@ Wire (use_config_tracker false, use_frame_desc false), per frame:
 GnssChanMetadata serializes as int64 sample_seq | uint32 n_chan_scale | n floats.
 """
 import socket, struct, sys, time
+
 sys.path.insert(0, "/home/kvand/gnss/kotekan/config")
-from gnss_record_layout import cube_frame_bytes, cube_header_bytes, cube_chain_chars  # noqa: E402
+from gnss_record_layout import (
+    cube_frame_bytes,
+    cube_header_bytes,
+    cube_chain_chars,
+)  # noqa: E402
 
 HOST, PORT = "127.0.0.1", int(sys.argv[1])
 MP, MB, NE = 32, 8, 32
@@ -20,8 +25,8 @@ NFRAMES = int(sys.argv[2]) if len(sys.argv) > 2 else 12
 CHAIN = sys.argv[3] if len(sys.argv) > 3 else "faketest/gnss0_n2assemble"
 GPU = int(sys.argv[4]) if len(sys.argv) > 4 else 0
 HDR = cube_header_bytes()
-CHAIN_OFF = HDR - cube_chain_chars()   # v3: 104 (utc0 double sits at 96)
-UTC0 = 1788541059.000002870            # a plausible frame0 epoch, so a reader dates the frames
+CHAIN_OFF = HDR - cube_chain_chars()  # v3: 104 (utc0 double sits at 96)
+UTC0 = 1788541059.000002870  # a plausible frame0 epoch, so a reader dates the frames
 FB = cube_frame_bytes(MP, MB, NE)
 WIN = 96 * 2048 * 16384
 RATE = 3.2e9
@@ -29,25 +34,37 @@ RATE = 3.2e9
 
 def build(idx, dropped):
     f = bytearray(FB)
-    struct.pack_into("<8q", f, 0, 3, idx, idx * WIN, idx * WIN + WIN - 32768,
-                     dropped, NPRN, NBIN, NE)
+    struct.pack_into(
+        "<8q", f, 0, 3, idx, idx * WIN, idx * WIN + WIN - 32768, dropped, NPRN, NBIN, NE
+    )
     struct.pack_into("<2d", f, 64, float(WIN), RATE)
     struct.pack_into("<4i", f, 80, GPU, 1, MP, MB)
     struct.pack_into("<d", f, 96, UTC0)
-    f[CHAIN_OFF:CHAIN_OFF + len(CHAIN)] = CHAIN.encode()
+    f[CHAIN_OFF : CHAIN_OFF + len(CHAIN)] = CHAIN.encode()
     o = HDR
-    struct.pack_into("<%dd" % MP, f, o, *([0.25] * MP)); o += MP * 8
-    struct.pack_into("<%di" % MB, f, o, *([5972 + i for i in range(MB)])); o += MB * 4
-    struct.pack_into("<%di" % MB, f, o, *([5972 + i for i in range(MB)])); o += MB * 4
-    struct.pack_into("<%di" % MP, f, o, *([3, 10, 17, 18, 19, 20, 23, 26, 27] + [0] * (MP - NPRN)))
+    struct.pack_into("<%dd" % MP, f, o, *([0.25] * MP))
+    o += MP * 8
+    struct.pack_into("<%di" % MB, f, o, *([5972 + i for i in range(MB)]))
+    o += MB * 4
+    struct.pack_into("<%di" % MB, f, o, *([5972 + i for i in range(MB)]))
+    o += MB * 4
+    struct.pack_into(
+        "<%di" % MP, f, o, *([3, 10, 17, 18, 19, 20, 23, 26, 27] + [0] * (MP - NPRN))
+    )
     o += MP * 4
-    struct.pack_into("<%di" % MP, f, o, *([96] * NPRN + [0] * (MP - NPRN))); o += MP * 4
-    struct.pack_into("<%di" % MP, f, o, *([0] * MP)); o += MP * 4
-    struct.pack_into("<%df" % (MP * MB), f, o, *([96.0] * (MP * MB))); o += MP * MB * 4
-    struct.pack_into("<%df" % (MP * MB), f, o, *([1.5] * (MP * MB))); o += MP * MB * 4
+    struct.pack_into("<%di" % MP, f, o, *([96] * NPRN + [0] * (MP - NPRN)))
+    o += MP * 4
+    struct.pack_into("<%di" % MP, f, o, *([0] * MP))
+    o += MP * 4
+    struct.pack_into("<%df" % (MP * MB), f, o, *([96.0] * (MP * MB)))
+    o += MP * MB * 4
+    struct.pack_into("<%df" % (MP * MB), f, o, *([1.5] * (MP * MB)))
+    o += MP * MB * 4
     n = MP * MB * NE
-    struct.pack_into("<%df" % n, f, o, *([0.5] * n)); o += n * 4
-    struct.pack_into("<%df" % n, f, o, *([-0.25] * n)); o += n * 4
+    struct.pack_into("<%df" % n, f, o, *([0.5] * n))
+    o += n * 4
+    struct.pack_into("<%df" % n, f, o, *([-0.25] * n))
+    o += n * 4
     # incoh: a recognisable per-element ramp, so a readback proves the ELEMENT axis survived
     vals = [float((e % NE) + 1) for _ in range(MP * MB) for e in range(NE)]
     struct.pack_into("<%df" % n, f, o, *vals)

@@ -2,10 +2,11 @@
 
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
-#include "visUtil.hpp" // for frameID
 #include "gnssGpuChain.hpp"
 #include "gnssRecord.hpp"
 #include "gnssSharedPin.hpp" // for ref_offset, pin_rotation (#154)
+#include "visUtil.hpp"       // for frameID
+
 #include "json.hpp" // for the /get_spectrum reply
 
 #include <algorithm>
@@ -13,9 +14,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <unistd.h>   // for gethostname
 #include <stdexcept>
 #include <string>
+#include <unistd.h> // for gethostname
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -39,16 +40,17 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _phi_dump_prn = config.get_default<int>(unique_name, "phi_dump_prn", -1);
     if (_phi_dump_prn >= 0) {
         _phi_dump_left = config.get_default<int>(unique_name, "phi_dump_records", 6000);
-        const std::string path = config.get_default<std::string>(
-            unique_name, "phi_dump_path", "/tmp/gnss_phi_dump.txt");
+        const std::string path =
+            config.get_default<std::string>(unique_name, "phi_dump_path", "/tmp/gnss_phi_dump.txt");
         _phi_dump = std::fopen(path.c_str(), "w");
         if (_phi_dump)
-            std::fprintf(_phi_dump, "# r wstart reanchored c_dcyc phi_before phi_after f_nco dt ang0 fcar arg_raw arg_out\n");
+            std::fprintf(_phi_dump, "# r wstart reanchored c_dcyc phi_before phi_after f_nco dt "
+                                    "ang0 fcar arg_raw arg_out\n");
     }
     _chan_dump_decim = std::max(1, config.get_default<int>(unique_name, "chan_dump_decim", 10));
     if (_chan_dump_prn >= 0) {
-        const std::string path = config.get_default<std::string>(
-            unique_name, "chan_dump_path", "/tmp/gnss_chan_phase_dump.txt");
+        const std::string path = config.get_default<std::string>(unique_name, "chan_dump_path",
+                                                                 "/tmp/gnss_chan_phase_dump.txt");
         _chan_dump = std::fopen(path.c_str(), "a");
     }
     // ELEMENT AXIS (CHORD). 0 = the single-antenna airspy layout, byte-for-byte -- the default,
@@ -156,8 +158,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             // channel_ids is read into _spec_freq_ids LATER in this constructor (the
             // chan-export block) -- read it locally here; init order bit the fleet once
             // (crash-loop, 2026-08-29 22:5x).
-            auto _st_fids =
-                config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
+            auto _st_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
             if (_st_fids.empty())
                 FATAL_ERROR("GnssGpuRecordAssemble: elem steering needs channel_ids (the "
                             "per-channel RF frequencies)");
@@ -169,8 +170,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             std::vector<double> f_mhz;
             for (int id : _st_fids)
                 f_mhz.push_back(id * 0.1953125);
-            _steer = gnss::ElemSteer(std::move(pos), std::move(f_mhz), (int)_prns.size(),
-                                     st_sign, st_hold);
+            _steer = gnss::ElemSteer(std::move(pos), std::move(f_mhz), (int)_prns.size(), st_sign,
+                                     st_hold);
             INFO("GnssGpuRecordAssemble[{:s}]: #102 element steering READY ({:d} elements, "
                  "{:d} channels, sign {:+.0f}) -- awaiting /set_sat_geometry posts",
                  unique_name, _n_elements, (int)_st_fids.size(), st_sign);
@@ -223,16 +224,16 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             config.get_default<double>(unique_name, "elem_proj_probe_since_s", 90.0);
         _bore_az_deg = config.get_default<double>(unique_name, "boresight_az_deg", 180.0);
         _bore_el_deg = config.get_default<double>(unique_name, "boresight_el_deg", 81.41);
-        _proj_group = config.get_default<std::string>(
-            unique_name, "elem_proj_group", unique_name.substr(0, unique_name.find('_')));
+        _proj_group = config.get_default<std::string>(unique_name, "elem_proj_group",
+                                                      unique_name.substr(0, unique_name.find('_')));
         std::string sys = config.get_default<std::string>(unique_name, "gnss_system", "");
         if (sys.empty()) {
             // Fallback from the stage name (the generator's chain tokens); the key wins when set.
             auto has = [&](const char* t) { return unique_name.find(t) != std::string::npos; };
-            sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))   ? "E"
+            sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))    ? "E"
                   : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1")) ? "C"
-                  : (has("_l1of") || has("_l2of") || has("_l3oc"))           ? "R"
-                                                                             : "G";
+                  : (has("_l1of") || has("_l2of") || has("_l3oc"))            ? "R"
+                                                                              : "G";
         }
         _proj_sys = sys[0];
         _proj_ready = _elem_sum && _n_elements > 0 && !fids.empty();
@@ -377,7 +378,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             _spec_ring[0].nreanchor.assign(n, 0);
             WARN("per-channel spectrum export ON: {:d} channels -- but LEGACY reset-on-read "
                  "windows (no 'spectrum_window_samples' in this config). Instances CANNOT be "
-                 "aligned; regenerate this node's config (task #53).", (int)nc);
+                 "aligned; regenerate this node's config (task #53).",
+                 (int)nc);
         }
         _spec_scratch.assign((size_t)std::max(1, _n_elements), {0.0, 0.0});
     }
@@ -386,8 +388,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     // Requires BOTH axes to exist: channel_ids (so a bin has a frequency) and an element axis
     // (so it has an antenna). Silent no-op otherwise -- this is opt-in and costs exactly
     // nothing when off, which is what makes it safe to ship dark and arm per chain.
-    _cube_on = config.get_default<bool>(unique_name, "beam_cube", false)
-               && !_spec_freq_ids.empty() && _n_elements > 0;
+    _cube_on = config.get_default<bool>(unique_name, "beam_cube", false) && !_spec_freq_ids.empty()
+               && _n_elements > 0;
     if (_cube_on) {
         const int nc = (int)_spec_freq_ids.size();
         _cube_bin_width =
@@ -449,9 +451,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                                                           std::string(hn) + "/" + unique_name);
         }
         _cube_gpu = config.get_default<int>(unique_name, "beam_cube_gpu", -1);
-        _cube_max_bins = std::max(_cube_bins,
-                                  config.get_default<int>(unique_name, "beam_cube_max_bins",
-                                                          _cube_bins));
+        _cube_max_bins = std::max(
+            _cube_bins, config.get_default<int>(unique_name, "beam_cube_max_bins", _cube_bins));
         _cube_max_prn = std::max(n, config.get_default<int>(unique_name, "beam_cube_max_prn", n));
         const std::string cbuf = config.get_default<std::string>(unique_name, "cube_buf", "");
         if (!cbuf.empty()) {
@@ -462,8 +463,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: cube_buf needs a {:d} B frame "
                             "({:d} PRN x {:d} bin x {:d} elem); {:s} is {:d} B. The generator "
                             "sizes this from gnss::cube_frame_bytes -- regenerate the config.",
-                            unique_name, need, _cube_max_prn, _cube_max_bins, _n_elements,
-                            cbuf, (size_t)_cube_out_buf->frame_size);
+                            unique_name, need, _cube_max_prn, _cube_max_bins, _n_elements, cbuf,
+                            (size_t)_cube_out_buf->frame_size);
                 return;
             }
             if (_cube_out_buf->metadata_pool == nullptr)
@@ -475,20 +476,19 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             INFO("GnssGpuRecordAssemble[{:s}]: beam-cube PUSH leg on -> {:s} ({:d} B/frame, "
                  "~{:.2f} MB/s at this window length); backpressure DROPS and the loss is "
                  "counted into the next frame",
-                 unique_name, cbuf, need,
-                 need / ((double)_cube_win_samples / _sample_rate) / 1e6);
+                 unique_name, cbuf, need, need / ((double)_cube_win_samples / _sample_rate) / 1e6);
         }
         INFO("GnssGpuRecordAssemble[{:s}]: BEAM CUBE on -- {:d} PRN x {:d} subband bin(s) "
              "({:d} channel(s), width {:d}) x {:d} element(s); COHERENT + incoherent, "
              "addressable windows of {:d} samples ({:.5f} s), ring depth {:d}; "
              "{:d} cell(s), {:.1f} MB",
-             unique_name, n, _cube_bins, nc, _cube_bin_width ? _cube_bin_width : 1,
-             _n_elements, (long long)_cube_win_samples,
-             (double)_cube_win_samples / _sample_rate, depth, ncell,
+             unique_name, n, _cube_bins, nc, _cube_bin_width ? _cube_bin_width : 1, _n_elements,
+             (long long)_cube_win_samples, (double)_cube_win_samples / _sample_rate, depth, ncell,
              depth * (3.0 * ncell + 2.0 * nbin) * sizeof(double) / 1e6);
     } else if (config.get_default<bool>(unique_name, "beam_cube", false)) {
         WARN("GnssGpuRecordAssemble[{:s}]: beam_cube requested but {:s} -- the cube needs BOTH "
-             "axes and is OFF.", unique_name,
+             "axes and is OFF.",
+             unique_name,
              _spec_freq_ids.empty() ? "this config has no channel_ids (no frequency axis)"
                                     : "n_elements is 0 (no element axis)");
     }
@@ -558,9 +558,9 @@ void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstanc
         return;
     }
     try {
-        const double now_s = std::chrono::duration<double>(
-                                 std::chrono::steady_clock::now().time_since_epoch())
-                                 .count();
+        const double now_s =
+            std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+                .count();
         // "_bore": [sep_deg, t_utc] -- the broker's POOLED nearest-to-boresight separation over
         // every constellation (a satellite of another system rails and leaks into this band
         // just the same). It gates the shared model's learning (see _elem_shared_freeze_deg).
@@ -634,15 +634,14 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
         // would be silent (a warm cal is a plausible cal, a phase history is a plausible
         // history). The reference-element swap above resets the same set for the same reason.
         if (_elem_sum && (size_t)p < _cal.size()) {
-            _cal[(size_t)p] = gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
-                                            _elem_sum_min_w);
+            _cal[(size_t)p] =
+                gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s, _elem_sum_min_w);
             _cal_shadow[(size_t)p] = _cal[(size_t)p];
             _cal_sim[(size_t)p] = -1.0;
             shared_reset_prn((size_t)p);
-            proj_reset_slot((size_t)p,
-                            std::chrono::duration<double>(
-                                std::chrono::steady_clock::now().time_since_epoch())
-                                .count());
+            proj_reset_slot((size_t)p, std::chrono::duration<double>(
+                                           std::chrono::steady_clock::now().time_since_epoch())
+                                           .count());
             if ((size_t)p < _anchor_warned.size())
                 _anchor_warned[(size_t)p] = 0;
         }
@@ -735,8 +734,7 @@ void GnssGpuRecordAssemble::main_thread() {
         FrameHdr hdr;
         std::memcpy(&hdr, in, sizeof(hdr));
         if (hdr.n_prn != n_prn) {
-            FATAL_ERROR("GnssGpuRecordAssemble: frame n_prn {:d} != config {:d}", hdr.n_prn,
-                        n_prn);
+            FATAL_ERROR("GnssGpuRecordAssemble: frame n_prn {:d} != config {:d}", hdr.n_prn, n_prn);
             return;
         }
         // LIVE REFERENCE SWAP, applied at the frame boundary so every record in a frame
@@ -759,9 +757,8 @@ void GnssGpuRecordAssemble::main_thread() {
                 const int oldref = _reference_element;
                 _reference_element = newref;
                 if (_elem_sum) {
-                    _cal.assign(_prns.size(),
-                                gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s,
-                                              _elem_sum_min_w));
+                    _cal.assign(_prns.size(), gnss::ElemCal(_n_elements, _reference_element,
+                                                            _elem_sum_tau_s, _elem_sum_min_w));
                     _cal_shadow = _cal;
                     if (_proj_ready)
                         _cal_proj = _cal;
@@ -803,8 +800,8 @@ void GnssGpuRecordAssemble::main_thread() {
                 for (auto& ec : _cal)
                     if (ec.warm())
                         ++nwarm;
-                WARN("set_elem_gain: seeded, {:d}/{:d} cals warm right after seed",
-                     nwarm, (int)_cal.size());
+                WARN("set_elem_gain: seeded, {:d}/{:d} cals warm right after seed", nwarm,
+                     (int)_cal.size());
             }
         }
         const int n_chan = hdr.n_chan;
@@ -817,7 +814,7 @@ void GnssGpuRecordAssemble::main_thread() {
         // labelled or accumulated. Costs one integer compare per slot per frame in steady
         // state.
         follow_frame_prns(pctl, n_prn);
-        const double* corr = (const double*)(in + off_corr(n_prn));      // double2 rows
+        const double* corr = (const double*)(in + off_corr(n_prn)); // double2 rows
         // The energy block sits AFTER the corr block, whose size scales with the ELEMENT axis
         // -- the writer passes its n_elem (cudaGnssChordTrack: 32), so the reader must too, or
         // every "energy" lands inside the corr block: garbage when enough PRNs run to fill
@@ -874,8 +871,8 @@ void GnssGpuRecordAssemble::main_thread() {
             if (out == nullptr)
                 return;
             const int64_t wstart = winstart[r];
-            const double utc = ((hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor)
-                               + (double)wstart / _sample_rate;
+            const double utc =
+                ((hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor) + (double)wstart / _sample_rate;
 
             // BRIGHT-SATELLITE PROJECTION, per record (hpp note): feed the source trackers
             // from this record's RAW rows, build the per-channel basis, publish it to the
@@ -932,8 +929,8 @@ void GnssGpuRecordAssemble::main_thread() {
                 // exactly the single-antenna one, so that path is unchanged.
                 const int n_e = (_n_elements > 0) ? _n_elements : 1;
                 const int ref_e = (_n_elements > 0) ? _reference_element : 0;
-                std::complex<double> g3[6];  // reference element, for the header + NCO/gain state
-                double e3[6];                // element-independent
+                std::complex<double> g3[6]; // reference element, for the header + NCO/gain state
+                double e3[6];               // element-independent
                 _g_elem.assign((size_t)n_rows_spec * n_e, std::complex<double>(0.0, 0.0));
                 // LIVE PROJECTION (hpp note): a non-source slot's rows are projected IN PLACE
                 // in the input frame before anything reads them, so the sum below, the taps,
@@ -997,8 +994,7 @@ void GnssGpuRecordAssemble::main_thread() {
                 // SHADOW PROJECTION (hpp note): the same prompt, projected per channel before
                 // steering and summing, into _g_proj -- for the projected learner and the
                 // capture diagnostics only. The frame, _g_elem and everything live are untouched.
-                const bool proj_this =
-                    _proj_k_rec > 0 && _proj_mode.load() == 1 && !_proj_isB[p];
+                const bool proj_this = _proj_k_rec > 0 && _proj_mode.load() == 1 && !_proj_isB[p];
                 if (proj_this)
                     proj_slot_shadow(corr, &c, n_chan, n_e, steered);
                 // SELF-CALIBRATED ELEMENT SUM (hpp note). Once this PRN's cal is warm, every
@@ -1060,7 +1056,8 @@ void GnssGpuRecordAssemble::main_thread() {
                                     nl += std::norm(wl[(size_t)e2]);
                                     ns += std::norm(ws[(size_t)e2]);
                                 }
-                                _cal_sim[p] = (nl > 0.0 && ns > 0.0) ? std::norm(x) / (nl * ns) : -1.0;
+                                _cal_sim[p] =
+                                    (nl > 0.0 && ns > 0.0) ? std::norm(x) / (nl * ns) : -1.0;
                             }
                             if (_elem_shared.load())
                                 shared_pol_update(p, &_g_elem[(size_t)1 * n_e], dt_s);
@@ -1076,8 +1073,7 @@ void GnssGpuRecordAssemble::main_thread() {
                             gnss::ElemCal& pj = _cal_proj[p];
                             if (c.reanchored == 1 && !_elem_hold_on_reanchor)
                                 pj.reset();
-                            pj.update(proj_this ? _g_proj.data() : &_g_elem[(size_t)1 * n_e],
-                                      dt_s);
+                            pj.update(proj_this ? _g_proj.data() : &_g_elem[(size_t)1 * n_e], dt_s);
                             proj_slot_diag(p, &c, n_chan, n_e, steered);
                             rec[gnss::REC_PROJ_COST] = (float)_b_cos2[p];
                         }
@@ -1153,7 +1149,8 @@ void GnssGpuRecordAssemble::main_thread() {
                     // step folded and the code-currency step already translated above, the replica
                     // can be re-pinned as often as we like. max_anchor_age_s: 0 re-pins EVERY
                     // record, so f_ref never goes stale and the within-record decoherence that
-                    // grows with anchor age (the OTHER half of the sawtooth, ~(dop_rate*age*t_rec)^2
+                    // grows with anchor age (the OTHER half of the sawtooth,
+                    // ~(dop_rate*age*t_rec)^2
                     // -- negligible on GPS's 1 ms record, ~1 dB on B1C's 10 ms) never accumulates.
                     //
                     // ⚠️ THIS BRANCH WAS DEAD CODE ON CHORD UNTIL 2026-08-13. Both CHORD producers
@@ -1165,8 +1162,8 @@ void GnssGpuRecordAssemble::main_thread() {
                     // common phase is white in time" folklore: it is not the sky, it is this
                     // subtraction never being performed. See task #52.
                     const double t_pin = (double)wstart / _sample_rate;
-                    const double dcyc = (c.reanchored == 3) ? c.dcyc
-                                                            : (c.fcar - _fcar_prev[p]) * t_pin;
+                    const double dcyc =
+                        (c.reanchored == 3) ? c.dcyc : (c.fcar - _fcar_prev[p]) * t_pin;
                     _phi_cyc[p] += dcyc;
                     _phi[p] = std::remainder(_phi[p] + 2.0 * M_PI * dcyc, 2.0 * M_PI);
                 }
@@ -1222,14 +1219,17 @@ void GnssGpuRecordAssemble::main_thread() {
                 rec[gnss::REC_PHI0] = (float)_phi[p];
                 const std::complex<double> g_corr = g3[1] * rot;
                 if (_phi_dump && _prns[p] == _phi_dump_prn) {
-                    std::fprintf(_phi_dump, "%d %lld %d %.17g %.17g %.17g %.17g %.10g %.17g %.17g %.10g %.10g\n",
-                                 r, (long long)wstart, (int)c.reanchored, c.dcyc, phi_before_fold, _phi[p],
-                                 c.f_nco, (double)(wstart - _wstart_prev[p]) / _sample_rate, c.ang0,
-                                 c.fcar, std::arg(g3[1]), std::arg(g_corr));
+                    std::fprintf(
+                        _phi_dump,
+                        "%d %lld %d %.17g %.17g %.17g %.17g %.10g %.17g %.17g %.10g %.10g\n", r,
+                        (long long)wstart, (int)c.reanchored, c.dcyc, phi_before_fold, _phi[p],
+                        c.f_nco, (double)(wstart - _wstart_prev[p]) / _sample_rate, c.ang0, c.fcar,
+                        std::arg(g3[1]), std::arg(g_corr));
                     if (--_phi_dump_left <= 0) {
                         std::fclose(_phi_dump);
                         _phi_dump = nullptr;
-                        INFO("GnssGpuRecordAssemble: phi dump for PRN {:d} complete", _phi_dump_prn);
+                        INFO("GnssGpuRecordAssemble: phi dump for PRN {:d} complete",
+                             _phi_dump_prn);
                     }
                 }
                 rec[3] = (float)g_corr.real();
@@ -1353,8 +1353,7 @@ void GnssGpuRecordAssemble::main_thread() {
                             const gnss::ElemSteer::cf* st =
                                 st_tab ? st_tab + (size_t)ch * n_e : nullptr;
                             for (int el = 0; el < n_e; ++el) {
-                                std::complex<double> x(corr[2 * (b + el)],
-                                                       corr[2 * (b + el) + 1]);
+                                std::complex<double> x(corr[2 * (b + el)], corr[2 * (b + el) + 1]);
                                 if (st)
                                     x *= std::complex<double>(st[el].real(), st[el].imag());
                                 _spec_scratch[el] = x;
@@ -1444,8 +1443,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         // cannot be done on a window sum -- the sum is exactly what a residual
                         // rate destroys.
                         if (_chan_export) {
-                            float* cb = out + gnss::chan_offset(p, ch, n_prn, n_chan,
-                                                                _n_elements);
+                            float* cb = out + gnss::chan_offset(p, ch, n_prn, n_chan, _n_elements);
                             const std::complex<double> ge = tap(erow, ch);
                             const std::complex<double> gl = tap(lrow, ch);
                             cb[gnss::CHAN_RE] = (float)g.real();
@@ -1572,9 +1570,9 @@ GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_
     int64_t idx = wstart / _spec_win_samples;
     if (wstart < 0 && idx * _spec_win_samples != wstart)
         --idx;
-    SpecWindow& W = _spec_ring[(size_t)(((idx % (int64_t)_spec_ring.size())
-                                         + (int64_t)_spec_ring.size())
-                                        % (int64_t)_spec_ring.size())];
+    SpecWindow& W =
+        _spec_ring[(size_t)(((idx % (int64_t)_spec_ring.size()) + (int64_t)_spec_ring.size())
+                            % (int64_t)_spec_ring.size())];
     if (W.idx != idx) {
         // First record of this window (or the ring wrapped past the old occupant): clear.
         std::fill(W.re.begin(), W.re.end(), 0.0);
@@ -1647,8 +1645,7 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
         // consumer's timing.
         if (_cube_out_buf != nullptr && _cube_max_idx >= 0) {
             const int64_t n2 = (int64_t)_cube_ring.size();
-            const CubeWindow& prev =
-                _cube_ring[(size_t)(((_cube_max_idx % n2) + n2) % n2)];
+            const CubeWindow& prev = _cube_ring[(size_t)(((_cube_max_idx % n2) + n2) % n2)];
             if (prev.idx == _cube_max_idx)
                 emit_cube_window(prev);
         }
@@ -1709,17 +1706,27 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
 
     size_t off = gnss::CUBE_HEADER_BYTES;
     // Doubles FIRST -- see gnssRecord.hpp: their alignment must not depend on max_bins/max_prn.
-    double*  phi0   = (double*)(f + off);               off += (size_t)mp * sizeof(double);
-    int32_t* fid_lo = (int32_t*)(f + off);              off += (size_t)mb * sizeof(int32_t);
-    int32_t* fid_hi = (int32_t*)(f + off);              off += (size_t)mb * sizeof(int32_t);
-    int32_t* prn    = (int32_t*)(f + off);              off += (size_t)mp * sizeof(int32_t);
-    int32_t* nrec   = (int32_t*)(f + off);              off += (size_t)mp * sizeof(int32_t);
-    int32_t* nre    = (int32_t*)(f + off);              off += (size_t)mp * sizeof(int32_t);
-    float*   w      = (float*)(f + off);                off += (size_t)mp * mb * sizeof(float);
-    float*   en     = (float*)(f + off);                off += (size_t)mp * mb * sizeof(float);
-    float*   coh_re = (float*)(f + off); off += (size_t)mp * mb * ne * sizeof(float);
-    float*   coh_im = (float*)(f + off); off += (size_t)mp * mb * ne * sizeof(float);
-    float*   incoh  = (float*)(f + off);
+    double* phi0 = (double*)(f + off);
+    off += (size_t)mp * sizeof(double);
+    int32_t* fid_lo = (int32_t*)(f + off);
+    off += (size_t)mb * sizeof(int32_t);
+    int32_t* fid_hi = (int32_t*)(f + off);
+    off += (size_t)mb * sizeof(int32_t);
+    int32_t* prn = (int32_t*)(f + off);
+    off += (size_t)mp * sizeof(int32_t);
+    int32_t* nrec = (int32_t*)(f + off);
+    off += (size_t)mp * sizeof(int32_t);
+    int32_t* nre = (int32_t*)(f + off);
+    off += (size_t)mp * sizeof(int32_t);
+    float* w = (float*)(f + off);
+    off += (size_t)mp * mb * sizeof(float);
+    float* en = (float*)(f + off);
+    off += (size_t)mp * mb * sizeof(float);
+    float* coh_re = (float*)(f + off);
+    off += (size_t)mp * mb * ne * sizeof(float);
+    float* coh_im = (float*)(f + off);
+    off += (size_t)mp * mb * ne * sizeof(float);
+    float* incoh = (float*)(f + off);
 
     const int nc = (int)_spec_freq_ids.size();
     for (int b = 0; b < _cube_bins && b < mb; ++b) {
@@ -1831,10 +1838,16 @@ void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn
             if (C.idx != idx)
                 status = "too_old";
             else {
-                coh_re = C.coh_re; coh_im = C.coh_im; incoh = C.incoh;
-                w = C.w; energy = C.energy; phi0 = C.phi0;
-                nrec = C.nrec; nre = C.nreanchor;
-                w0 = C.w0; w1 = C.w1;
+                coh_re = C.coh_re;
+                coh_im = C.coh_im;
+                incoh = C.incoh;
+                w = C.w;
+                energy = C.energy;
+                phi0 = C.phi0;
+                nrec = C.nrec;
+                nre = C.nreanchor;
+                w0 = C.w0;
+                w1 = C.w1;
             }
         }
     }
@@ -1892,9 +1905,14 @@ void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn
         // has to be reprocessed to add a night. phi0 is the coherent sum's phase reference and
         // n_reanchor > 0 means the arc broke INSIDE this window -- no constant can undo that,
         // so drop those rather than rotating them onto anything.
-        prns.push_back({{"prn", _prns[p]}, {"n_rec", nrec[p]},
-                        {"phi0", phi0[p]}, {"n_reanchor", nre[p]},
-                        {"w", wb}, {"energy", eb}, {"coh", cb}, {"incoh", ib}});
+        prns.push_back({{"prn", _prns[p]},
+                        {"n_rec", nrec[p]},
+                        {"phi0", phi0[p]},
+                        {"n_reanchor", nre[p]},
+                        {"w", wb},
+                        {"energy", eb},
+                        {"coh", cb},
+                        {"incoh", ib}});
     }
     reply["prns"] = prns;
     conn.send_json_reply(reply);
@@ -1976,10 +1994,9 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
             } else if (idx < lo) {
                 status = "too_old";
             } else {
-                const SpecWindow& W =
-                    _spec_ring[(size_t)(((idx % (int64_t)_spec_ring.size())
-                                         + (int64_t)_spec_ring.size())
-                                        % (int64_t)_spec_ring.size())];
+                const SpecWindow& W = _spec_ring[(
+                    size_t)(((idx % (int64_t)_spec_ring.size()) + (int64_t)_spec_ring.size())
+                            % (int64_t)_spec_ring.size())];
                 if (W.idx != idx) {
                     // In range but the slot holds someone else: a gap (no records landed in
                     // that window at all). Report it as too_old rather than inventing zeros --
@@ -2028,7 +2045,8 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
             else
                 chans.push_back({0.0, 0.0, 0.0}); // masked-off channel: weight 0, skipped
         }
-        prns.push_back({{"prn", _prns[p]}, {"n_rec", nrec[p]},
+        prns.push_back({{"prn", _prns[p]},
+                        {"n_rec", nrec[p]},
                         {"phi0", phi0.empty() ? 0.0 : phi0[p]},
                         {"n_reanchor", nre.empty() ? 0 : nre[p]},
                         {"chan", chans}});
@@ -2036,7 +2054,6 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     reply["prns"] = prns;
     conn.send_json_reply(reply);
 }
-
 
 
 // PATH B endpoint: inject a per-element complex gain prior into every PRN's ElemCal so the
@@ -2051,7 +2068,7 @@ void GnssGpuRecordAssemble::set_elem_gain_callback(kotekan::connectionInstance& 
     }
     std::vector<std::complex<double>> gains;
     try {
-        auto& arr = request.at("gain");   // [[re,im], ...], length n_elements; [] or all-zero clears
+        auto& arr = request.at("gain"); // [[re,im], ...], length n_elements; [] or all-zero clears
         if (!arr.is_array())
             throw std::runtime_error("'gain' must be an array of [re, im] pairs");
         gains.reserve(arr.size());
@@ -2070,7 +2087,7 @@ void GnssGpuRecordAssemble::set_elem_gain_callback(kotekan::connectionInstance& 
                         kotekan::HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
-    if (gains.empty())   // explicit "clear the prior": a full-length zero vector -> seed() clears
+    if (gains.empty()) // explicit "clear the prior": a full-length zero vector -> seed() clears
         gains.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
     {
         std::lock_guard<std::mutex> lk(_gain_mtx);
@@ -2121,8 +2138,8 @@ void GnssGpuRecordAssemble::set_elem_sum_shared_callback(kotekan::connectionInst
     if (was != shared)
         WARN("elem_sum_shared {:s} -> {:s}{:s}", was ? "true" : "false", shared ? "true" : "false",
              (shared && adapt_was) ? " (adapt forced false)" : "");
-    conn.send_json_reply(nlohmann::json{{"shared", shared}, {"was", was},
-                                        {"adapt", _elem_adapt.load()}});
+    conn.send_json_reply(
+        nlohmann::json{{"shared", shared}, {"was", was}, {"adapt", _elem_adapt.load()}});
 }
 
 namespace {
@@ -2169,7 +2186,7 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
     // learners either (before a model exists the PRNs ride their own, as always).
     if (shared_frozen(now_s))
         return;
-    const int h = (n % 2 == 0) ? n / 2 : n;   // an odd count is one pol
+    const int h = (n % 2 == 0) ? n / 2 : n; // an odd count is one pol
     const int n_pol = (h < n) ? 2 : 1;
     std::vector<cd> acc((size_t)n, cd(0.0, 0.0));
     std::vector<cd> v((size_t)n, cd(0.0, 0.0));
@@ -2208,7 +2225,7 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
                 if (e != anchor && std::abs(w[(size_t)e]) > 0.0)
                     mags.push_back(std::abs(w[(size_t)e]));
             if (mags.size() < 2)
-                continue;   // one live element besides the anchor is not an instrument
+                continue; // one live element besides the anchor is not an instrument
             std::sort(mags.begin(), mags.end());
             const double cap = mags[mags.size() / 2];
             for (int e = e0; e < e1; ++e)
@@ -2236,9 +2253,9 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
     }
     if (cnt == 0 || A <= 0.0)
         return;
-    const double beta = _g_shared_warm ? std::min(0.25, 1.0 - std::exp(-std::max(dt, 0.0)
-                                                                          / _elem_shared_tau_s))
-                                       : 1.0;
+    const double beta =
+        _g_shared_warm ? std::min(0.25, 1.0 - std::exp(-std::max(dt, 0.0) / _elem_shared_tau_s))
+                       : 1.0;
     for (int e = 0; e < n; ++e)
         _g_shared[(size_t)e] += beta * (acc[(size_t)e] / A - _g_shared[(size_t)e]);
     // #154: pinned to the FLEET reference where it applies (live mode, F describes this half)
@@ -2456,8 +2473,7 @@ void GnssGpuRecordAssemble::shared_hold(size_t p) {
     if (p >= _cal.size() || n <= 0)
         return;
     const double now_s =
-        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
-            .count();
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     if (now_s - _g_shared_t >= 1.0)
         shared_consensus(now_s);
     gnss::ElemCal& ec = _cal[p];
@@ -2584,10 +2600,11 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
         }
         nlohmann::json chans = nlohmann::json::array();
         for (size_t ch = 0; ch < _proj_fids.size(); ++ch)
-            chans.push_back({{"fid", _proj_fids[ch]},
-                             {"k", ch < _proj_k_ch.size() ? _proj_k_ch[ch] : 0},
-                             {"src", ch < _proj_src_ch.size() ? _proj_src_ch[ch] : 0},
-                             {"probe_frac", ch < _proj_probe_frac.size() ? _proj_probe_frac[ch] : 0.0}});
+            chans.push_back(
+                {{"fid", _proj_fids[ch]},
+                 {"k", ch < _proj_k_ch.size() ? _proj_k_ch[ch] : 0},
+                 {"src", ch < _proj_src_ch.size() ? _proj_src_ch[ch] : 0},
+                 {"probe_frac", ch < _proj_probe_frac.size() ? _proj_probe_frac[ch] : 0.0}});
         pj["channels"] = chans;
         out["proj"] = pj;
     }
@@ -2703,15 +2720,15 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
             double e[3];
             const bool fresh = _steer.warm(p, now_s);
             if (fresh && _steer.direction(p, utc, e)) {
-                const double c = std::max(
-                    -1.0, std::min(1.0, e[0] * eb[0] + e[1] * eb[1] + e[2] * eb[2]));
+                const double c =
+                    std::max(-1.0, std::min(1.0, e[0] * eb[0] + e[1] * eb[1] + e[2] * eb[2]));
                 const double sep = std::acos(c) * 180.0 / M_PI;
                 if (sep < deg)
                     cand.emplace_back(sep, p);
-            } else if (broker_probes ? (_slot_probe_broker[(size_t)p] != 0)
-                                     : (!fresh
-                                        && now_s - _slot_run_since[(size_t)p]
-                                               >= _proj_probe_since_s)) {
+            } else if (broker_probes
+                           ? (_slot_probe_broker[(size_t)p] != 0)
+                           : (!fresh
+                              && now_s - _slot_run_since[(size_t)p] >= _proj_probe_since_s)) {
                 probe_flag[(size_t)p] = 1;
             }
         }
@@ -2735,8 +2752,9 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         // impossible while both come from channel_ids, and cheap to refuse if that ever drifts.
         if ((size_t)_steer.n_chan() * _steer.n_elem() > (size_t)n_chan * n_e) {
             if (!_proj_nchan_warned) {
-                WARN("elem projection DISABLED: steer table {:d}x{:d} exceeds the frame's {:d}x{:d}",
-                     _steer.n_chan(), _steer.n_elem(), n_chan, n_e);
+                WARN(
+                    "elem projection DISABLED: steer table {:d}x{:d} exceeds the frame's {:d}x{:d}",
+                    _steer.n_chan(), _steer.n_elem(), n_chan, n_e);
                 _proj_nchan_warned = 1;
             }
             cand.clear();
@@ -2774,8 +2792,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
             const double* v = corr + 2 * (prow + ch) * n_e;
             const gnss::ElemSteer::cf* st = steer_of(ci, ch);
             for (int i = 0; i < n_e; ++i)
-                _v_scratch[(size_t)i] =
-                    cd(v[2 * i], v[2 * i + 1]) * cd(st[i].real(), st[i].imag());
+                _v_scratch[(size_t)i] = cd(v[2 * i], v[2 * i + 1]) * cd(st[i].real(), st[i].imag());
             T->push(ch, _v_scratch.data(), dt_s);
             T->solve(ch, T->warm(ch) ? 1 : 2);
         }
@@ -2904,8 +2921,8 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
                     return; // another element count, or a malformed entry: never index it
                 for (int j = 0; j < e.k; ++j) {
                     for (int i = 0; i < n_e; ++i)
-                        _v_scratch[(size_t)i] = cd(e.q[(size_t)j * n_e + i].real(),
-                                                   e.q[(size_t)j * n_e + i].imag());
+                        _v_scratch[(size_t)i] =
+                            cd(e.q[(size_t)j * n_e + i].real(), e.q[(size_t)j * n_e + i].imag());
                     if (e.src == 1 && !accept_probe_dir(_v_scratch.data()))
                         continue;
                     if (Q.add(_v_scratch.data())) {
@@ -2921,8 +2938,8 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         // 0.8 frac_min, so a level hovering at the threshold does not flicker the basis (and
         // the log) record by record.
         const bool was_on = (_proj_probe_on[(size_t)ch] != 0);
-        const bool probe_on = _proj_probe.warm(ch)
-                              && _proj_probe.frac(ch, 0) >= (was_on ? 0.8 * frac_min : frac_min);
+        const bool probe_on =
+            _proj_probe.warm(ch) && _proj_probe.frac(ch, 0) >= (was_on ? 0.8 * frac_min : frac_min);
         _proj_probe_on[(size_t)ch] = probe_on ? 1 : 0;
         if (probe_on) {
             bool any = false;
@@ -3034,10 +3051,10 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
             if (n_ident > 0) {
                 std::string who;
                 for (int p = 0; p < n_prn; ++p)
-                    if (_proj_isB[(size_t)p] && std::none_of(cand.begin(), cand.end(),
-                                                             [&](const std::pair<double, int>& c) {
-                                                                 return c.second == p;
-                                                             }))
+                    if (_proj_isB[(size_t)p]
+                        && std::none_of(
+                            cand.begin(), cand.end(),
+                            [&](const std::pair<double, int>& c) { return c.second == p; }))
                         who += fmt::format("{}{:c}{:02d}", who.empty() ? "" : ",", _proj_sys,
                                            _prns[(size_t)p]);
                 d += fmt::format("{}identified {:s}", d.empty() ? "" : "; ", who);
@@ -3200,13 +3217,15 @@ void GnssGpuRecordAssemble::set_elem_proj_callback(kotekan::connectionInstance& 
             const int prev = _proj_mode.exchange(mode);
             if (prev != mode)
                 WARN("set_elem_proj[{:s}]: mode {:d} -> {:d} ({:s})", unique_name, prev, mode,
-                     mode == 2 ? "LIVE: rows projected in place" :
-                     mode == 1 ? "SHADOW: projected learner + diagnostics only" : "off");
+                     mode == 2   ? "LIVE: rows projected in place"
+                     : mode == 1 ? "SHADOW: projected learner + diagnostics only"
+                                 : "off");
         }
         if (request.contains("deg"))
             _proj_deg = std::max(0.0, request["deg"].get<double>());
         if (request.contains("rank_max"))
-            _proj_rank_max = std::max(1, std::min(_proj_kmax_alloc, request["rank_max"].get<int>()));
+            _proj_rank_max =
+                std::max(1, std::min(_proj_kmax_alloc, request["rank_max"].get<int>()));
         if (request.contains("max_age_s"))
             _proj_max_age_s = std::max(0.0, request["max_age_s"].get<double>());
         if (request.contains("probe_frac_min")) // > 1 = the probe stack never triggers
@@ -3218,15 +3237,16 @@ void GnssGpuRecordAssemble::set_elem_proj_callback(kotekan::connectionInstance& 
         return;
     }
     const int mode = _proj_mode.load();
-    conn.send_json_reply(nlohmann::json{
-        {"mode", (mode == 2) ? "live" : (mode == 1) ? "shadow" : "off"},
-        {"deg", _proj_deg.load()},
-        {"rank_max", _proj_rank_max.load()},
-        {"rank_alloc", _proj_kmax_alloc},
-        {"max_age_s", _proj_max_age_s.load()},
-        {"probe_frac_min", _proj_probe_frac_min.load()},
-        {"group", _proj_group},
-        {"sys", std::string(1, _proj_sys)}});
+    conn.send_json_reply(nlohmann::json{{"mode", (mode == 2)   ? "live"
+                                                 : (mode == 1) ? "shadow"
+                                                               : "off"},
+                                        {"deg", _proj_deg.load()},
+                                        {"rank_max", _proj_rank_max.load()},
+                                        {"rank_alloc", _proj_kmax_alloc},
+                                        {"max_age_s", _proj_max_age_s.load()},
+                                        {"probe_frac_min", _proj_probe_frac_min.load()},
+                                        {"group", _proj_group},
+                                        {"sys", std::string(1, _proj_sys)}});
 }
 
 int GnssGpuRecordAssemble::proj_identify(const std::complex<double>* q, int ch, int n_e,

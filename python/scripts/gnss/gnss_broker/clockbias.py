@@ -36,8 +36,17 @@ search -- and seeds 0 Hz.
 class ClockBias(object):
     """The receiver clock-frequency bias and its freshness."""
 
-    __slots__ = ("value", "ema", "cal", "meas_t", "stale", "available",
-                 "seed", "code_ema", "code_cal")
+    __slots__ = (
+        "value",
+        "ema",
+        "cal",
+        "meas_t",
+        "stale",
+        "available",
+        "seed",
+        "code_ema",
+        "code_cal",
+    )
 
     def __init__(self, value=0.0, ema=None, cal=None, meas_t=0.0):
         # The bias used for hint centring, in Hz.
@@ -111,8 +120,9 @@ class ClockBias(object):
         A zero or negative `max_age_s` disables the check -- the value is then trusted
         indefinitely, which is a deliberate configuration choice and not an oversight.
         """
-        self.stale = bool(max_age_s > 0.0 and self.ema is not None
-                          and t0 - self.meas_t > max_age_s)
+        self.stale = bool(
+            max_age_s > 0.0 and self.ema is not None and t0 - self.meas_t > max_age_s
+        )
         return self.stale
 
     def age_s(self, t0):

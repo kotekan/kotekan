@@ -15,7 +15,7 @@ the REST call, where the error is legible).
 import json
 import urllib.request
 
-_CACHE = {}   # base url -> set of stage names registered on that pipeline
+_CACHE = {}  # base url -> set of stage names registered on that pipeline
 
 
 def _stages(base):
@@ -29,12 +29,12 @@ def _stages(base):
         for method in ("GET", "POST"):
             for path in eps.get(method, []) or []:
                 parts = path.strip("/").split("/")
-                if len(parts) >= 2:          # "/<stage>/<endpoint>"
+                if len(parts) >= 2:  # "/<stage>/<endpoint>"
                     names.add(parts[0])
     except Exception:
-        names = set()                        # pipeline not up yet: pass names through
+        names = set()  # pipeline not up yet: pass names through
     if names:
-        _CACHE[base] = names                 # only cache a real answer
+        _CACHE[base] = names  # only cache a real answer
     return names
 
 
@@ -86,8 +86,9 @@ def capture_clock(base, adc_stage="airspy_in"):
     rather than a plausible-looking wrong answer)."""
     base = base.rstrip("/")
     try:
-        with urllib.request.urlopen("%s/%s/adcstat" % (base, resolve_stage(base, adc_stage)),
-                                    timeout=5) as r:
+        with urllib.request.urlopen(
+            "%s/%s/adcstat" % (base, resolve_stage(base, adc_stage)), timeout=5
+        ) as r:
             utc0 = float(json.loads(r.read().decode()).get("utc0_sample0", 0.0))
         with urllib.request.urlopen("%s/config" % base, timeout=5) as r:
             off = _find_key(json.loads(r.read().decode()), "capture_utc0")

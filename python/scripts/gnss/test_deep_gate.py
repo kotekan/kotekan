@@ -21,23 +21,54 @@ import gnss_broker.fleet as F
 # E:P:L = 0.11 : 1.0 : 2.0, disc -0.898, deep_snr 35.2 against a deep_floor of 2.67 (13x).
 # The tap triple sits on a near-linear RISING flank -- the peak is well beyond +0.5 chips --
 # so the prompt is suppressed and this satellite is exactly the one the DLL must correct.
-E33 = {"e": 1.019e-08, "p": 9.462e-08, "l": 1.903e-07, "deep_snr": 35.2, "deep_floor": 2.67}
+E33 = {
+    "e": 1.019e-08,
+    "p": 9.462e-08,
+    "l": 1.903e-07,
+    "deep_snr": 35.2,
+    "deep_floor": 2.67,
+}
 # A satellite sitting ON its peak: prompt dominates, disc ~ 0, strongly detected.
-ONPEAK = {"e": 6.0e-08, "p": 2.4e-07, "l": 6.1e-08, "deep_snr": 126.0, "deep_floor": 2.67}
+ONPEAK = {
+    "e": 6.0e-08,
+    "p": 2.4e-07,
+    "l": 6.1e-08,
+    "deep_snr": 126.0,
+    "deep_floor": 2.67,
+}
 # Pure noise: three comparable taps, deep at its rectification floor. Must NEVER be trimmed --
 # trimming on noise is strictly worse than the latch.
-NOISE = {"e": 1.0e-09, "p": 1.02e-09, "l": 0.99e-09, "deep_snr": 2.6, "deep_floor": 2.67}
+NOISE = {
+    "e": 1.0e-09,
+    "p": 1.02e-09,
+    "l": 0.99e-09,
+    "deep_snr": 2.6,
+    "deep_floor": 2.67,
+}
 
 
 def make_fleet(spec, n_inst=12):
     """A fleet of identical instances, in the shape fleet_dll consumes."""
     rows = []
     for _ in range(n_inst):
-        rows.append([{"prn": prn, "pow_hop": 1000, "pow_fft_len": 16384, "n_chan": 7.0,
-                      "e_pow": s["e"], "p_pow": s["p"], "l_pow": s["l"],
-                      "deep_snr": s["deep_snr"], "deep_floor": s["deep_floor"],
-                      "coherence_s": 1.0486, "amp_snr": 1.0}
-                     for prn, s in spec.items()])
+        rows.append(
+            [
+                {
+                    "prn": prn,
+                    "pow_hop": 1000,
+                    "pow_fft_len": 16384,
+                    "n_chan": 7.0,
+                    "e_pow": s["e"],
+                    "p_pow": s["p"],
+                    "l_pow": s["l"],
+                    "deep_snr": s["deep_snr"],
+                    "deep_floor": s["deep_floor"],
+                    "coherence_s": 1.0486,
+                    "amp_snr": 1.0,
+                }
+                for prn, s in spec.items()
+            ]
+        )
     return rows
 
 
@@ -52,7 +83,7 @@ def run(spec, deep_gate_prns=None, n_bright=6, n_noise=3):
     So: 6 on-peak satellites at spread powers (the bar), the satellites under test, and 3 noise
     PRNs -- 10+ rows, which _floor() needs before it will characterise a population at all."""
     full = dict(spec)
-    for i in range(n_bright):                       # the bar: healthy, on-peak, varied
+    for i in range(n_bright):  # the bar: healthy, on-peak, varied
         b = dict(ONPEAK)
         b["p"] = ONPEAK["p"] * (0.85 + 0.05 * i)
         full[800 + i] = b
@@ -63,14 +94,19 @@ def run(spec, deep_gate_prns=None, n_bright=6, n_noise=3):
     orig = F._get
     F._get = lambda url: next(it)
     try:
-        return F.fleet_dll(["u%d" % i for i in range(12)], 0, 2, 3.0, 2.2,
-                           deep_gate_prns=deep_gate_prns)
+        return F.fleet_dll(
+            ["u%d" % i for i in range(12)],
+            0,
+            2,
+            3.0,
+            2.2,
+            deep_gate_prns=deep_gate_prns,
+        )
     finally:
         F._get = orig
 
 
 class TestDeepGate(unittest.TestCase):
-
     def test_prompt_gate_excludes_the_off_peak_satellite(self):
         """The latch, reproduced: E33 is 13x its detection floor and is NOT present."""
         out = run({33: E33, 7: ONPEAK})
@@ -105,7 +141,8 @@ class TestDeepGate(unittest.TestCase):
     def test_missing_floor_falls_through_to_prompt(self):
         """No floor means no bar. Defaulting to present would trim on noise, so the deep gate
         must decline and leave the prompt verdict standing."""
-        spec = dict(E33); spec["deep_floor"] = 0.0
+        spec = dict(E33)
+        spec["deep_floor"] = 0.0
         out = run({33: spec}, deep_gate_prns={33})
         self.assertEqual(out[33]["present_gate"], "prompt")
 
@@ -127,8 +164,10 @@ class TestDeepGate(unittest.TestCase):
         self.assertTrue(weak[7]["present"])
         self.assertFalse(strong[7]["present"])
         for pop in (dict(n_bright=0, n_noise=9), dict(n_bright=6, n_noise=3)):
-            self.assertTrue(run({7: ONPEAK}, deep_gate_prns={7}, **pop)[7]["present"],
-                            "the deep gate must not depend on the population either")
+            self.assertTrue(
+                run({7: ONPEAK}, deep_gate_prns={7}, **pop)[7]["present"],
+                "the deep gate must not depend on the population either",
+            )
 
 
 if __name__ == "__main__":

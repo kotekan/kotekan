@@ -1,26 +1,24 @@
 #include "cudaGnssChordTrack.hpp"
 
+#include "GnssChanMetadata.hpp"
 #include "Telescope.hpp" // for Telescope (the LIVE record epoch, not a config copy)
-
-#include <chrono>
-
 #include "cudaGnssChordDespread.hpp"
+#include "cudaUtils.hpp"
 #include "gnssBandPlan.hpp"
 #include "gnssGpuChain.hpp"
 #include "gnssSeedTransport.hpp"
 #include "gnssSignal.hpp"
-#include "GnssChanMetadata.hpp"
-#include "cudaUtils.hpp"
 #include "kotekanLogging.hpp"
 #include "pfbPrototype.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <functional>
 
-using kotekan::Config;
 using kotekan::bufferContainer;
+using kotekan::Config;
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaGnssChordTrack, cudaGnssChordTrackState);
 
@@ -101,8 +99,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
              "the config was not regenerated. Every record from this node is stamped "
              "{:.3f} days off, and nothing downstream can see it. Clear frame0_utc from "
              "the node file to follow the telescope.",
-             cfg_frame0_utc, tel_frame0_utc,
-             std::abs(cfg_frame0_utc - tel_frame0_utc) / 86400.0,
+             cfg_frame0_utc, tel_frame0_utc, std::abs(cfg_frame0_utc - tel_frame0_utc) / 86400.0,
              std::abs(cfg_frame0_utc - tel_frame0_utc) / 86400.0);
     } else if (tel_frame0_utc > 0.0 && cfg_frame0_utc <= 0.0) {
         INFO("cudaGnssChordTrack: record epoch from the TELESCOPE, frame0_utc {:.9f} "
@@ -163,7 +160,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // global bins 0..6 (DC) while the data sat at 5972..6076: noise at every code phase, which
     // is why nothing ever locked (found 2026-07-31). See GnssCudaDespread.hpp.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
-                                                 sample_rate, f_offset_hz);
+                                                  sample_rate, f_offset_hz);
     // A/B ARM FOR TASK #52 -- ⚠️ TEMPORARY, remove with task #55. Default = the fix (carrier
     // phase from a reference sample). Set false on HALF the fleet to compare the two arms in a
     // SINGLE poll; a before/after across restarts cannot resolve it, because the sky churns
@@ -220,8 +217,8 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                         max_chips, 210.0 / (double)max_chips);
     }
 
-    // fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table -- the one
-    // lever the DRAM-footprint verdict (§10.6c) says pays; 1.27-1.37x measured on synthesis,
+    // fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table -- the
+    // one lever the DRAM-footprint verdict (§10.6c) says pays; 1.27-1.37x measured on synthesis,
     // storage error 3.3e-4 (~0.14 dB class against the 4-bit voltage floor). Default OFF.
     // READ THE RETURN: "armed" and "in effect" are different states (#96/#97) -- the engine
     // refuses fp16 while shared tables are armed.
@@ -316,15 +313,20 @@ void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& con
         at_h = prn_at_hop;
         last_h = last_hop;
     }
-    nlohmann::json reply = {{"prns", out},    {"n_prn", n_prn},   {"slot_gen", gen},
-                            {"swaps", swaps}, {"pending", pend},  {"last_error", err},
+    nlohmann::json reply = {{"prns", out},
+                            {"n_prn", n_prn},
+                            {"slot_gen", gen},
+                            {"swaps", swaps},
+                            {"pending", pend},
+                            {"last_error", err},
                             // So the broker can see WHEN a staged swap is due and whether
                             // this node's clock has reached it -- a swap that is merely
                             // waiting must not read like a swap that was refused. And
                             // last_hop < 0 on a LIVE node is the alarm: it means no producer
                             // is feeding the deadline clock, so every swap silently degrades
                             // to apply-immediately (which is exactly how this shipped inert).
-                            {"pending_at_hop", at_h}, {"last_hop", last_h}};
+                            {"pending_at_hop", at_h},
+                            {"last_hop", last_h}};
     conn.send_json_reply(reply);
 }
 
@@ -398,7 +400,7 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
             pending_prns = want;
             prn_pending = true;
             prn_at_hop = at_hop;
-            prn_stage_hop = last_hop;   // for the re-base guard in apply_prn_swaps
+            prn_stage_hop = last_hop; // for the re-base guard in apply_prn_swaps
         }
     }
     if (n_diff > 0) {
@@ -411,8 +413,7 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
             INFO_NON_OO("set_prns: {:d} slot(s) staged for frame hop >= {:d} "
                         "(now {:d}, {:d} frame(s) ahead)",
                         n_diff, (long long)at_hop, (long long)last_hop,
-                        (long long)((at_hop - last_hop)
-                                    / (n_hops_frame > 0 ? n_hops_frame : 1)));
+                        (long long)((at_hop - last_hop) / (n_hops_frame > 0 ? n_hops_frame : 1)));
         else
             INFO_NON_OO("set_prns: {:d} slot(s) staged for the next frame boundary", n_diff);
     }
@@ -540,9 +541,9 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
         return;
     }
     {
-        const double now = std::chrono::duration<double>(
-                               std::chrono::steady_clock::now().time_since_epoch())
-                               .count();
+        const double now =
+            std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+                .count();
         std::lock_guard<std::mutex> lk(seed_mtx);
         for (auto& u : upd) {
             u.second.t_recv = now;
@@ -568,8 +569,7 @@ void cudaGnssChordTrackState::expire_trims_locked(std::vector<int>& expired) {
     if (trim_ttl_s <= 0.0)
         return;
     const double now =
-        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
-            .count();
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     for (int p = 0; p < n_prn; ++p)
         if (trim_t_recv[(size_t)p] > 0.0 && (now - trim_t_recv[(size_t)p]) > trim_ttl_s) {
             if (trim[(size_t)p] != 0.0)
@@ -591,8 +591,7 @@ cudaGnssChordTrackState::snapshot_seeds(std::vector<int>& expired) {
     // EXPIRE STALE SEEDS, under the same lock that copies them (see the long note at the call
     // site in cudaGnssChordTrack::execute -- the latch-forever failure this replaced).
     const double now =
-        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
-            .count();
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     std::lock_guard<std::mutex> lk(seed_mtx);
     if (seed_ttl_s > 0.0)
         for (int p = 0; p < n_prn; ++p) {
@@ -643,8 +642,7 @@ void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& con
         return;
     }
     const double now =
-        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
-            .count();
+        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     {
         std::lock_guard<std::mutex> lk(trim_mtx);
         // Sweep here too: this callback still runs when execute() has stopped (a wedged GPU
@@ -678,8 +676,7 @@ void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& con
                            {"ema_frames", ema_n[(size_t)p]},
                            {"age_s", trim_t_recv[(size_t)p] > 0.0
                                          ? (std::chrono::duration<double>(
-                                                std::chrono::steady_clock::now()
-                                                    .time_since_epoch())
+                                                std::chrono::steady_clock::now().time_since_epoch())
                                                 .count()
                                             - trim_t_recv[(size_t)p])
                                          : -1.0},
@@ -688,12 +685,9 @@ void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& con
     // `enabled` is the IN-TRACKER loop; `posts` is the fleet controller. Both are reported
     // because "who is writing this trim?" must be answerable from one endpoint -- two writers
     // on one vector is a deployment error, and it should be visible rather than inferred.
-    nlohmann::json reply = {{"enabled", trim_enable},
-                            {"posts", trim_posts},
-                            {"expired", trim_expired},
-                            {"ttl_s", trim_ttl_s},
-                            {"clamp", trim_clamp},
-                            {"trims", out}};
+    nlohmann::json reply = {{"enabled", trim_enable},  {"posts", trim_posts},
+                            {"expired", trim_expired}, {"ttl_s", trim_ttl_s},
+                            {"clamp", trim_clamp},     {"trims", out}};
     conn.send_json_reply(reply);
 }
 
@@ -702,8 +696,7 @@ void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& con
 // ---------------------------------------------------------------------------------------------
 cudaGnssChordTrack::cudaGnssChordTrack(Config& config, const std::string& unique_name,
                                        bufferContainer& host_buffers, cudaDeviceInterface& device,
-                                       int instance_num,
-                                       std::shared_ptr<cudaCommandState> state) :
+                                       int instance_num, std::shared_ptr<cudaCommandState> state) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, state,
                 "cudaGnssChordTrack", "cudaGnssChordTrack") {
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
@@ -733,8 +726,8 @@ cudaGnssChordTrack::cudaGnssChordTrack(Config& config, const std::string& unique
             S.trim_slots.resize((size_t)_gpu_buffer_depth);
             for (auto& sl : S.trim_slots) {
                 CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&sl.ev, cudaEventDisableTiming));
-                CHECK_CUDA_ERROR(cudaHostAlloc(
-                    &sl.host, max_rows * S.n_chan * 2 * sizeof(double), cudaHostAllocDefault));
+                CHECK_CUDA_ERROR(cudaHostAlloc(&sl.host, max_rows * S.n_chan * 2 * sizeof(double),
+                                               cudaHostAllocDefault));
                 sl.job0.assign((size_t)n_rec * S.n_prn, -1);
             }
             INFO("code trim ON: gain {:.3f} leak {:.4f} clamp {:.1f} q_min {:.2f} ref_elem {:d}",
@@ -787,8 +780,8 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     // Replica scratch: [3*specs][n_chan][hops_per_record]. Never leaves the GPU. This is the
     // memory the split buys its reuse with -- generated once per record, read n_elem times.
     auto* d_wave = (float2*)device.get_gpu_memory(
-        _mem_wave, (size_t)3 * gnss_gpu::max_specs(S.n_prn) * S.n_chan * S.hops_per_record
-                       * sizeof(float2));
+        _mem_wave,
+        (size_t)3 * gnss_gpu::max_specs(S.n_prn) * S.n_chan * S.hops_per_record * sizeof(float2));
     auto* d_scale = (float*)device.get_gpu_memory(_mem_scale, (size_t)S.n_chan * sizeof(float));
     auto* d_chanids = (int*)device.get_gpu_memory(_mem_chanids, (size_t)S.n_chan * sizeof(int));
 
@@ -834,13 +827,15 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
         _dcyc_dump_prn = (want >= 0) ? want : -2;
         if (want >= 0) {
             _dcyc_dump_left = config.get_default<int>(unique_name, "dcyc_dump_records", 6000);
-            const std::string path = config.get_default<std::string>(
-                unique_name, "dcyc_dump_path", "/tmp/gnss_dcyc_dump.txt");
+            const std::string path = config.get_default<std::string>(unique_name, "dcyc_dump_path",
+                                                                     "/tmp/gnss_dcyc_dump.txt");
             _dcyc_dump = std::fopen(path.c_str(), "w");
             if (_dcyc_dump)
-                std::fprintf(_dcyc_dump, "# r hop0 wstart seed_ref_hop seed_dop seed_dop_rate seed_ctrim dop applied dop_prev have_hist t_abs dcyc cp trim\n");
-            INFO("cudaGnssChordTrack: dcyc dump ARMED for PRN {:d} -> {:s} ({:d} records)", want, path,
-                 _dcyc_dump_left);
+                std::fprintf(_dcyc_dump,
+                             "# r hop0 wstart seed_ref_hop seed_dop seed_dop_rate seed_ctrim dop "
+                             "applied dop_prev have_hist t_abs dcyc cp trim\n");
+            INFO("cudaGnssChordTrack: dcyc dump ARMED for PRN {:d} -> {:s} ({:d} records)", want,
+                 path, _dcyc_dump_left);
         }
     }
     S.apply_prn_swaps((void*)stream);
@@ -950,9 +945,9 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             std::lock_guard<std::mutex> tlk(S.trim_mtx);
             for (int p = 0; p < S.n_prn; ++p)
                 if (S.trim_n[(size_t)p] > 0)
-                    line += fmt::format(" P{:d} {:+.2f}c (d {:+.3f} q {:.1f})", S.prns[(size_t)p],
-                                        S.trim[(size_t)p], S.trim_disc[(size_t)p],
-                                        S.trim_q[(size_t)p]);
+                    line +=
+                        fmt::format(" P{:d} {:+.2f}c (d {:+.3f} q {:.1f})", S.prns[(size_t)p],
+                                    S.trim[(size_t)p], S.trim_disc[(size_t)p], S.trim_q[(size_t)p]);
             if (!line.empty())
                 INFO("code trim:{:s}", line);
         }
@@ -1002,8 +997,8 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
         if (S.despread->split_timing_ms(syn, cor) && (syn + cor) > 0.0)
             INFO("cudaGnssChordTrack: kernel split -- synthesis {:.3f} ms ({:.1f}%) | "
                  "correlation {:.3f} ms ({:.1f}%) | {:d} spec x {:d} chan x {:d} elem x {:d} hops",
-                 syn, 100.0 * syn / (syn + cor), cor, 100.0 * cor / (syn + cor), n_active,
-                 S.n_chan, S.n_elem, S.hops_per_record);
+                 syn, 100.0 * syn / (syn + cor), cor, 100.0 * cor / (syn + cor), n_active, S.n_chan,
+                 S.n_elem, S.hops_per_record);
     }
     for (int prn : expired)
         INFO("cudaGnssChordTrack: PRN {:d} seed expired after {:.0f} s without a refresh -- "
@@ -1012,7 +1007,8 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
 
     int n_out_rows = 0;
     for (int r = 0; r < n_rec; ++r) {
-        const long long hop0 = (seq0 < 0) ? 0 : (seq0 / S.fft_len) + (long long)r * S.hops_per_record;
+        const long long hop0 =
+            (seq0 < 0) ? 0 : (seq0 / S.fft_len) + (long long)r * S.hops_per_record;
         const long long wstart = hop0 * (long long)S.fft_len; // absolute SAMPLE of the window
         winstart[r] = wstart;
 
@@ -1078,10 +1074,11 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             if (_dcyc_dump && S.prns[(size_t)p] == _dcyc_dump_prn) {
                 // one line per record: everything the fold is made of, at full precision
                 std::fprintf(_dcyc_dump,
-                             "%d %lld %lld %lld %.17g %.17g %.17g %.17g %.17g %.17g %d %.17g %.17g %.10g %.10g\n",
-                             r, hop0, wstart, sd.ref_hop, sd.doppler_hz, sd.dop_rate, sd.ctrim_hz, dop,
-                             applied, FH.dop_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc, cp,
-                             trim_now[(size_t)p]);
+                             "%d %lld %lld %lld %.17g %.17g %.17g %.17g %.17g %.17g %d %.17g %.17g "
+                             "%.10g %.10g\n",
+                             r, hop0, wstart, sd.ref_hop, sd.doppler_hz, sd.dop_rate, sd.ctrim_hz,
+                             dop, applied, FH.dop_prev[(size_t)p], have_hist ? 1 : 0, t_abs, dcyc,
+                             cp, trim_now[(size_t)p]);
                 if (--_dcyc_dump_left <= 0) {
                     std::fclose(_dcyc_dump);
                     _dcyc_dump = nullptr;
@@ -1115,8 +1112,7 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                       + gnss_gpu::off_energy(S.n_prn, S.n_chan, gnss_gpu::ROWS_PLAIN, S.n_elem))
             + (size_t)n_out_rows * S.n_chan;
         const char* d_window =
-            d_frame
-            + (size_t)r * S.hops_per_record * S.frame_chan_stride * S.elem_stride;
+            d_frame + (size_t)r * S.hops_per_record * S.frame_chan_stride * S.elem_stride;
 
         n_out_rows += S.despread->enqueue_batch_nm(d_window, d_scale, d_chanids, d_wave, S.n_elem,
                                                    S.elem_stride, S.frame_chan_stride, wstart,
@@ -1146,11 +1142,11 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                     sl.job0[(size_t)r * S.n_prn + p] = c.run ? c.job0 : -1;
                 }
             sl.n_rows = n_out_rows;
-            const char* src = d_out + gnss_gpu::off_corr(S.n_prn)
-                              + (size_t)S.trim_ref_elem * sizeof(double2);
+            const char* src =
+                d_out + gnss_gpu::off_corr(S.n_prn) + (size_t)S.trim_ref_elem * sizeof(double2);
             CHECK_CUDA_ERROR(cudaMemcpy2DAsync(
-                sl.host, sizeof(double2), src, (size_t)S.n_elem * sizeof(double2),
-                sizeof(double2), (size_t)n_out_rows * S.n_chan, cudaMemcpyDeviceToHost, stream));
+                sl.host, sizeof(double2), src, (size_t)S.n_elem * sizeof(double2), sizeof(double2),
+                (size_t)n_out_rows * S.n_chan, cudaMemcpyDeviceToHost, stream));
             CHECK_CUDA_ERROR(cudaEventRecord(sl.ev, stream));
             sl.pending = true;
         }

@@ -30,6 +30,7 @@
 #include "gnssChannelizedAcquire.hpp"
 #ifdef GNSS_CUDA
 #include "cudaGnssAcquireKernel.hpp"
+
 #include <cuda_runtime.h>
 #endif
 
@@ -147,8 +148,8 @@ static gnss::AcquisitionSurface aggregate_folded(const std::vector<std::vector<s
                 const cf* row = buf.data() + (size_t)r * s_cols;
                 double* out = surf.data() + (rb + r) * s_cols;
                 for (int s = 0; s < s_cols; ++s)
-                    out[s] += (double)(row[s].real() * row[s].real()
-                                       + row[s].imag() * row[s].imag());
+                    out[s] +=
+                        (double)(row[s].real() * row[s].real() + row[s].imag() * row[s].imag());
             }
         }
     };
@@ -406,8 +407,7 @@ int main(int argc, char** argv) {
         printf("\ncheck: max|diff| %.4g vs surface max %.4g  -> rel %.3g\n", maxdiff, maxabs,
                maxdiff / maxabs);
         printf("check: mean ref %.6g  fold %.6g  -> rel %.3g\n", sum_ref / surf_ref.size(),
-               sum_fold / surf_fold.size(),
-               std::fabs(sum_ref - sum_fold) / std::fabs(sum_ref));
+               sum_fold / surf_fold.size(), std::fabs(sum_ref - sum_fold) / std::fabs(sum_ref));
         printf("check: argmax ref %ld  fold %ld  planted %ld  %s\n", argmax_ref, argmax_fold, want,
                (argmax_ref == argmax_fold && argmax_ref == want) ? "OK" : "MISMATCH");
         const double snr_ref = pk_ref / (sum_ref / surf_ref.size());
@@ -447,12 +447,12 @@ int main(int argc, char** argv) {
 
         // Bytes the kernel must touch: read nc complex per row, write s_cols float per row
         // (read-modify-write, so the surface counts twice).
-        const double bytes = (double)dims.size() / dims.fine() * nc * 8.0
-                             + 2.0 * (double)dims.size() * 4.0;
-        printf("GPU direct   : %8.4f s   %7.2f GFlop/s   %6.0f GB/s   %6.1fx vs CPU direct\n",
-               t_gd, 1e-9 * flops_ref / t_gd, 1e-9 * bytes / t_gd, t_ref / t_gd);
-        printf("GPU folded   : %8.4f s   %7.2f GFlop/s*  %6.0f GB/s   %6.1fx vs CPU direct\n",
-               t_gf, 1e-9 * flops_ref / t_gf, 1e-9 * bytes / t_gf, t_ref / t_gf);
+        const double bytes =
+            (double)dims.size() / dims.fine() * nc * 8.0 + 2.0 * (double)dims.size() * 4.0;
+        printf("GPU direct   : %8.4f s   %7.2f GFlop/s   %6.0f GB/s   %6.1fx vs CPU direct\n", t_gd,
+               1e-9 * flops_ref / t_gd, 1e-9 * bytes / t_gd, t_ref / t_gd);
+        printf("GPU folded   : %8.4f s   %7.2f GFlop/s*  %6.0f GB/s   %6.1fx vs CPU direct\n", t_gf,
+               1e-9 * flops_ref / t_gf, 1e-9 * bytes / t_gf, t_ref / t_gf);
         printf("               (*equivalent flops -- the fold actually does ~18x fewer)\n");
 
         auto cmp = [&](const char* tag, const std::vector<double>& s) {

@@ -23,7 +23,7 @@
 namespace gps {
 
 constexpr int L1C_CODE_LENGTH = 10230; ///< chips in one L1C primary period (10 ms @ 1.023 Mcps)
-constexpr int L1CO_LENGTH = 1800;      ///< L1C-P overlay (secondary) length, 18 s (one symbol/10 ms)
+constexpr int L1CO_LENGTH = 1800; ///< L1C-P overlay (secondary) length, 18 s (one symbol/10 ms)
 
 /// L1C-P (pilot) primary spreading code for @p prn (1..32), bipolar +1/-1.
 std::array<int8_t, L1C_CODE_LENGTH> generate_l1cp_code(int prn);

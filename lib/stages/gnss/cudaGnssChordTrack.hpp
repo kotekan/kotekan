@@ -10,10 +10,10 @@
 
 #include "Config.hpp"
 #include "GnssCudaDespread.hpp"
-#include "gnssChannelizedReplica.hpp"
 #include "bufferContainer.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "gnssChannelizedReplica.hpp"
 #include "restServer.hpp"
 
 #include <memory>
@@ -103,8 +103,8 @@ public:
     /// A consistent copy of the slot->PRN map for a thread that does not hold @c prn_mtx.
     std::vector<int> prn_map();
 
-    std::mutex prn_mtx;                ///< OUTERMOST. Guards @c prns and the staging below.
-    std::vector<int> pending_prns;     ///< staged map; empty = nothing staged
+    std::mutex prn_mtx;            ///< OUTERMOST. Guards @c prns and the staging below.
+    std::vector<int> pending_prns; ///< staged map; empty = nothing staged
     bool prn_pending = false;
     /// Per-slot swap counter, monotone. A command instance compares its own remembered copy
     /// against this to learn which slots moved WHILE IT WAS NOT THE INSTANCE THAT APPLIED --
@@ -112,8 +112,8 @@ public:
     /// per-slot Doppler history, and only one of them gets the return value of
     /// @ref apply_prn_swaps.
     std::vector<uint64_t> slot_gen;
-    uint64_t prn_swaps = 0;            ///< slots swapped since start (diagnostics)
-    std::string prn_last_err;          ///< why the last POST was refused, "" if none
+    uint64_t prn_swaps = 0;   ///< slots swapped since start (diagnostics)
+    std::string prn_last_err; ///< why the last POST was refused, "" if none
 
     // ── SCHEDULED SWAPS: the same map, on the same FRAME, on every node ──────────────────
     // A swap posted "now" lands on whatever frame each node happens to be building, so twelve
@@ -137,9 +137,9 @@ public:
     // every swap took the apply-immediately degrade and the whole mechanism read as working.
     // The hop is the fleet's alignment key everywhere else in this pipeline
     // (GnssCoherentCombiner: "equal hop IS the same sky"); it is the currency here too.
-    int64_t prn_at_hop = -1;           ///< apply at the first frame with hop0 >= this; <0 = ASAP
-    int64_t prn_stage_hop = -1;        ///< hop0 last seen when the map was staged (re-base guard)
-    int64_t last_hop = -1;             ///< newest frame hop0 seen; the deadline is tested on it
+    int64_t prn_at_hop = -1;    ///< apply at the first frame with hop0 >= this; <0 = ASAP
+    int64_t prn_stage_hop = -1; ///< hop0 last seen when the map was staged (re-base guard)
+    int64_t last_hop = -1;      ///< newest frame hop0 seen; the deadline is tested on it
 
     /// Record this frame's absolute first HOP. Called by whichever stage owns the frame loop,
     /// at the frame boundary; @ref apply_prn_swaps tests the scheduled deadline against it.
@@ -166,10 +166,10 @@ public:
     struct Seed {
         bool have = false;
         double doppler_hz = 0.0;
-        double cp_chips = 0.0;    ///< prompt code phase at ref_hop
-        double cp_rate = 0.0;     ///< chips per hop (the broker's measured l-a residual)
-        double dop_rate = 0.0;    ///< Hz/s
-        double ctrim_hz = 0.0;    ///< broker carrier trim
+        double cp_chips = 0.0; ///< prompt code phase at ref_hop
+        double cp_rate = 0.0;  ///< chips per hop (the broker's measured l-a residual)
+        double dop_rate = 0.0; ///< Hz/s
+        double ctrim_hz = 0.0; ///< broker carrier trim
         long long ref_hop = 0;
         double phase_ref_chips = -1.0; ///< physical code phase at ref_hop (-1 = derive from cp)
         /// steady_clock seconds when this seed last arrived. A seed used to be LATCHED FOREVER:
@@ -271,14 +271,14 @@ public:
     uint64_t trim_expired = 0;
 
     bool trim_enable = false;
-    double trim_gain = 0.15;        ///< integrator gain per update
-    double trim_leak = 0.002;       ///< leaky-integrator leak per update (noise can't walk it)
-    double trim_clamp = 3.0;        ///< |trim| bound, chips
-    double trim_quality_min = 2.2;  ///< gate on the EMA'd q (~1 noise, ~3.6 locked)
-    double trim_pow_alpha = 0.05;   ///< power EMA (0.05 ~ 20 frames ~ 0.85 s)
-    int trim_ref_elem = 0;          ///< element the loop listens to (match the assembler's)
-    std::mutex trim_mtx;            ///< guards the vectors below (REST getter thread)
-    std::vector<double> trim;       ///< per-PRN cp trim, chips (applied cp = model + trim)
+    double trim_gain = 0.15;       ///< integrator gain per update
+    double trim_leak = 0.002;      ///< leaky-integrator leak per update (noise can't walk it)
+    double trim_clamp = 3.0;       ///< |trim| bound, chips
+    double trim_quality_min = 2.2; ///< gate on the EMA'd q (~1 noise, ~3.6 locked)
+    double trim_pow_alpha = 0.05;  ///< power EMA (0.05 ~ 20 frames ~ 0.85 s)
+    int trim_ref_elem = 0;         ///< element the loop listens to (match the assembler's)
+    std::mutex trim_mtx;           ///< guards the vectors below (REST getter thread)
+    std::vector<double> trim;      ///< per-PRN cp trim, chips (applied cp = model + trim)
     /// THE RE-PIN FOLD HISTORY, SHARED ACROSS A PRODUCER'S INSTANCES. `dcyc` is
     /// (applied - dop_prev) * t_abs: the carrier-phase step between THIS record and the one
     /// immediately before it. cudaCommands are instantiated once per in-flight GPU frame
@@ -291,9 +291,9 @@ public:
     /// frame. One per PRODUCER: path A (cudaGnssChordTrack) and path B (cudaGnssInject) may
     /// both run against this state on one node and must not share a history.
     struct FoldHist {
-        std::vector<double> dop_prev;        ///< previous record's applied carrier (dop + ctrim), Hz
-        std::vector<double> t_prev;          ///< and the absolute time it was pinned at, s
-        std::vector<uint8_t> ok;             ///< 0 = no previous record (arc start)
+        std::vector<double> dop_prev; ///< previous record's applied carrier (dop + ctrim), Hz
+        std::vector<double> t_prev;   ///< and the absolute time it was pinned at, s
+        std::vector<uint8_t> ok;      ///< 0 = no previous record (arc start)
         std::vector<uint64_t> slot_gen_seen; ///< slot_gen already acknowledged (history reset once)
         void init(int n) {
             dop_prev.assign((size_t)n, 0.0);
@@ -302,22 +302,22 @@ public:
             slot_gen_seen.assign((size_t)n, 0);
         }
     };
-    FoldHist fold_a; ///< cudaGnssChordTrack's history
-    FoldHist fold_b; ///< cudaGnssInject's history
-    std::vector<double> trim_disc;  ///< last applied discriminator, diagnostics
-    std::vector<double> trim_q;     ///< EMA'd quality, diagnostics + the gate
-    std::vector<long long> trim_n;  ///< updates applied, diagnostics
+    FoldHist fold_a;                            ///< cudaGnssChordTrack's history
+    FoldHist fold_b;                            ///< cudaGnssInject's history
+    std::vector<double> trim_disc;              ///< last applied discriminator, diagnostics
+    std::vector<double> trim_q;                 ///< EMA'd quality, diagnostics + the gate
+    std::vector<long long> trim_n;              ///< updates applied, diagnostics
     std::vector<double> ema_e2, ema_p2, ema_l2; ///< per-PRN power EMAs (0 = uninitialized)
     std::vector<long long> ema_n;               ///< frames folded in (warm-up guard)
-    uint64_t trim_frames = 0;       ///< frames processed (rate-limits the log line)
+    uint64_t trim_frames = 0;                   ///< frames processed (rate-limits the log line)
 
     /// One in-flight E/P/L readback: host landing zone + the event that says it is real.
     /// One slot per GPU frame slot; the pipeline depth guarantees a slot's previous use has
     /// completed long before it is reused.
     struct TrimSlot {
         cudaEvent_t ev = nullptr;
-        double* host = nullptr;    ///< pinned, [rows][n_chan] x (re, im) of the ref element
-        std::vector<int> job0;     ///< [n_rec*n_prn] global row base this frame, -1 if idle
+        double* host = nullptr; ///< pinned, [rows][n_chan] x (re, im) of the ref element
+        std::vector<int> job0;  ///< [n_rec*n_prn] global row base this frame, -1 if idle
         int n_rows = 0;
         bool pending = false;
     };

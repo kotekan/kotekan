@@ -36,8 +36,10 @@ def stage_carrier_loop(ctx):
     if ctx.args.carrier_gain > 0.0:
         for _p in [p for p in ctx.car.trim_force if p in ctx.seeds]:
             ctx.car.trim[_p] = ctx.car.trim_force.pop(_p)
-            _log("TRIM FORCE (bench): PRN %d car_trim POISONED to %+.1f Hz"
-                 % (_p, ctx.car.trim[_p]))
+            _log(
+                "TRIM FORCE (bench): PRN %d car_trim POISONED to %+.1f Hz"
+                % (_p, ctx.car.trim[_p])
+            )
         # (computed once above -- see the shared-call note; {} when carrier_source
         #  is not "rate", which preserves the old carrier_hz_resid fallback below)
         rate_resid, rate_consensus = ctx.rf.resid, ctx.rf.cons
@@ -76,7 +78,7 @@ def stage_carrier_loop(ctx):
                 # exactly the residual this loop integrates -- no reference change.
                 rr = rate_resid.get(prn)
                 if rr is None and ctx.args.carrier_rate_inherit:
-                    rr = rate_consensus # failed its own gate: take the fleet's answer
+                    rr = rate_consensus  # failed its own gate: take the fleet's answer
                 if rr is None:
                     continue
                 resid = rr
@@ -112,18 +114,22 @@ def stage_carrier_loop(ctx):
                 if coh_ok or abs(resid) < ctx.carrier_explain_hz:
                     del ctx.car.verify[prn]
                     ctx.car.fade.pop(prn, None)
-                    _log("CARRIER STEP VERIFIED PRN %d: healed in %d emit(s) "
-                         "(coh=%s, resid %+.2f Hz)" % (prn, v["emits"], coh_ok, resid))
+                    _log(
+                        "CARRIER STEP VERIFIED PRN %d: healed in %d emit(s) "
+                        "(coh=%s, resid %+.2f Hz)" % (prn, v["emits"], coh_ok, resid)
+                    )
                     # fall through: this emit integrates normally below
                 elif v["emits"] >= ctx.carrier_verify_emits:
                     ctx.car.trim[prn] = v["prev_trim"]  # revert the refuted hypothesis
                     del ctx.car.verify[prn]
-                    ctx.car.locked.discard(prn)         # escalate: BOOTSTRAP re-acquire
-                    ctx.car.step_t[prn] = ctx.t0 + 50.0     # ~60 s hypothesis lockout
+                    ctx.car.locked.discard(prn)  # escalate: BOOTSTRAP re-acquire
+                    ctx.car.step_t[prn] = ctx.t0 + 50.0  # ~60 s hypothesis lockout
                     ctx.car.fade.pop(prn, None)
-                    _log("CARRIER STEP REFUTED PRN %d: no heal after %d emits (resid "
-                         "%+.2f Hz) -> trim reverted to %+.2f, BOOTSTRAP re-pull"
-                         % (prn, ctx.carrier_verify_emits, resid, v["prev_trim"]))
+                    _log(
+                        "CARRIER STEP REFUTED PRN %d: no heal after %d emits (resid "
+                        "%+.2f Hz) -> trim reverted to %+.2f, BOOTSTRAP re-pull"
+                        % (prn, ctx.carrier_verify_emits, resid, v["prev_trim"])
+                    )
                     continue
                 else:
                     continue  # verdict pending: hold, no further corrections
@@ -144,34 +150,62 @@ def stage_carrier_loop(ctx):
                     # miss (the loop re-grows the trim from 0 either way -- and even a mild miss
                     # already REDUCED the standing trim, so the bar is generous).
                     if abs(resid) <= ctx.args.carrier_bleed_ok_hz:
-                        _log("CARRIER BLEED VERIFIED PRN %d: resid settled %+.2f Hz "
-                             "(<= %.2f) over %d emits, trim now %+.2f"
-                             % (prn, resid, ctx.args.carrier_bleed_ok_hz, bv["emits"],
-                                ctx.car.trim.get(prn, 0.0)))
+                        _log(
+                            "CARRIER BLEED VERIFIED PRN %d: resid settled %+.2f Hz "
+                            "(<= %.2f) over %d emits, trim now %+.2f"
+                            % (
+                                prn,
+                                resid,
+                                ctx.args.carrier_bleed_ok_hz,
+                                bv["emits"],
+                                ctx.car.trim.get(prn, 0.0),
+                            )
+                        )
                     else:
-                        _log("CARRIER BLEED REFUTED PRN %d: resid %+.2f Hz (> %.2f) after "
-                             "%d emits -- loop re-grows trim, %.0f s lockout"
-                             % (prn, resid, ctx.args.carrier_bleed_ok_hz, bv["emits"],
-                                ctx.args.carrier_bleed_lockout_s))
-            sig = (max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
-                   if coh_ok else 0.0)
+                        _log(
+                            "CARRIER BLEED REFUTED PRN %d: resid %+.2f Hz (> %.2f) after "
+                            "%d emits -- loop re-grows trim, %.0f s lockout"
+                            % (
+                                prn,
+                                resid,
+                                ctx.args.carrier_bleed_ok_hz,
+                                bv["emits"],
+                                ctx.args.carrier_bleed_lockout_s,
+                            )
+                        )
+            sig = (
+                max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
+                if coh_ok
+                else 0.0
+            )
             tracking = prn in ctx.car.locked
             if coh_ok and sig >= ctx.args.carrier_min_sig > 0.0:
                 ctx.car.locked.add(prn)
-            gated = (tracking and ctx.args.carrier_min_sig > 0.0
-                     and (not coh_ok or sig < ctx.args.carrier_min_sig))
+            gated = (
+                tracking
+                and ctx.args.carrier_min_sig > 0.0
+                and (not coh_ok or sig < ctx.args.carrier_min_sig)
+            )
             fade_gated = gated  # incoherent/weak: the resid estimator is NOT trusted
-            if not gated and tracking and ctx.args.carrier_innov_hz > 0.0 \
-                    and abs(resid) > ctx.args.carrier_innov_hz:
-                gated = True  # certified-but-implausible residual: the estimator is lying
+            if (
+                not gated
+                and tracking
+                and ctx.args.carrier_innov_hz > 0.0
+                and abs(resid) > ctx.args.carrier_innov_hz
+            ):
+                gated = (
+                    True  # certified-but-implausible residual: the estimator is lying
+                )
             if gated:
                 # Presence first (shared by the hypothesis stage AND refade below):
                 # amp OR a fresh strong detection -- see the refade note.
                 _df = ctx.det_fresh.get(prn)
-                present = ((rec.get("amp_snr") or 0.0) >= ctx.args.hold_snr
-                           or (_df is not None and ctx.t0 - _df[1] < 10.0
-                               and prn in ctx.best
-                               and ctx.best[prn][0] >= 2.0 * ctx.args.acquire_snr))
+                present = (rec.get("amp_snr") or 0.0) >= ctx.args.hold_snr or (
+                    _df is not None
+                    and ctx.t0 - _df[1] < 10.0
+                    and prn in ctx.best
+                    and ctx.best[prn][0] >= 2.0 * ctx.args.acquire_snr
+                )
                 # ---- STRONG-INCOHERENT HYPOTHESIS (explain-apply-verify) ----
                 # The innovation gate above is COHERENT physics (a cohering sat cannot
                 # carry a multi-Hz residual, so such a reading is a lie). An INCOHERENT
@@ -188,28 +222,40 @@ def stage_carrier_loop(ctx):
                 if ctx.args.carrier_step_accept > 0 and present:
                     hist = ctx.car.step_hist.setdefault(prn, [])
                     hist.append((ctx.t0, resid))
-                    del hist[:-ctx.args.carrier_step_accept]
+                    del hist[: -ctx.args.carrier_step_accept]
                     band = max(2.0, ctx.args.carrier_innov_hz)
-                    if (len(hist) >= ctx.args.carrier_step_accept
-                            and ctx.t0 - hist[0][0] < 30.0
-                            and ctx.t0 - ctx.car.step_t.get(prn, 0.0) >= 10.0):
+                    if (
+                        len(hist) >= ctx.args.carrier_step_accept
+                        and ctx.t0 - hist[0][0] < 30.0
+                        and ctx.t0 - ctx.car.step_t.get(prn, 0.0) >= 10.0
+                    ):
                         vals = sorted(r for _, r in hist)
                         med = vals[len(vals) // 2]
-                        if (vals[-1] - vals[0] < band
-                                and abs(med) >= ctx.carrier_explain_hz):
+                        if (
+                            vals[-1] - vals[0] < band
+                            and abs(med) >= ctx.carrier_explain_hz
+                        ):
                             prev_trim = ctx.car.trim.get(prn, 0.0)
-                            ctx.car.trim[prn] = max(-ctx.args.carrier_max_hz,
-                                                min(ctx.args.carrier_max_hz,
-                                                    prev_trim + med))
+                            ctx.car.trim[prn] = max(
+                                -ctx.args.carrier_max_hz,
+                                min(ctx.args.carrier_max_hz, prev_trim + med),
+                            )
                             ctx.car.step_t[prn] = ctx.t0
                             ctx.car.step_hist[prn] = []
                             ctx.car.verify[prn] = {"prev_trim": prev_trim, "emits": 0}
-                            _log("CARRIER STEP HYPOTHESIS PRN %d: %d agreeing gated "
-                                 "resids (med %+.2f Hz, spread %.2f) -> trim %+.2f, "
-                                 "VERIFYING (heal in %d emits or revert)"
-                                 % (prn, ctx.args.carrier_step_accept, med,
-                                    vals[-1] - vals[0], ctx.car.trim[prn],
-                                    ctx.carrier_verify_emits))
+                            _log(
+                                "CARRIER STEP HYPOTHESIS PRN %d: %d agreeing gated "
+                                "resids (med %+.2f Hz, spread %.2f) -> trim %+.2f, "
+                                "VERIFYING (heal in %d emits or revert)"
+                                % (
+                                    prn,
+                                    ctx.args.carrier_step_accept,
+                                    med,
+                                    vals[-1] - vals[0],
+                                    ctx.car.trim[prn],
+                                    ctx.carrier_verify_emits,
+                                )
+                            )
                             continue
                 # --carrier-refade: the two gates otherwise form an ABSORBING state for a
                 # sat whose NCO really stepped (hold release / escape re-anchor without
@@ -237,19 +283,28 @@ def stage_carrier_loop(ctx):
                 # sub-gate resid, dark for minutes) still demotes once the sat has been
                 # incoherent longer than the window. Inactive when the watchdog is off
                 # (wd_coh_t empty -> old behavior).
-                _flicker = (ctx.args.refade_flicker_s > 0.0
-                            and abs(resid) < ctx.args.carrier_innov_hz
-                            and ctx.t0 - ctx.wd.coh_t.get(prn, 0.0) < ctx.args.refade_flicker_s)
-                if (ctx.args.carrier_refade > 0 and not _flicker
-                        and ctx.car.fade.get(prn, 0) >= ctx.args.carrier_refade):
+                _flicker = (
+                    ctx.args.refade_flicker_s > 0.0
+                    and abs(resid) < ctx.args.carrier_innov_hz
+                    and ctx.t0 - ctx.wd.coh_t.get(prn, 0.0) < ctx.args.refade_flicker_s
+                )
+                if (
+                    ctx.args.carrier_refade > 0
+                    and not _flicker
+                    and ctx.car.fade.get(prn, 0) >= ctx.args.carrier_refade
+                ):
                     ctx.car.locked.discard(prn)
                     ctx.car.fade.pop(prn, None)
-                    _log("CARRIER REACQ PRN %d: %d consecutive gated emits at full amp "
-                         "(last resid %+.2f Hz) -> BOOTSTRAP re-pull"
-                         % (prn, ctx.args.carrier_refade, resid))
+                    _log(
+                        "CARRIER REACQ PRN %d: %d consecutive gated emits at full amp "
+                        "(last resid %+.2f Hz) -> BOOTSTRAP re-pull"
+                        % (prn, ctx.args.carrier_refade, resid)
+                    )
                 continue  # this emit stays held: coast on the feed-forward
             ctx.car.fade.pop(prn, None)
-            ctx.car.step_hist.pop(prn, None)  # ungated emit: gated-run agreement is stale
+            ctx.car.step_hist.pop(
+                prn, None
+            )  # ungated emit: gated-run agreement is stale
             if not tracking and ctx.args.carrier_det_gate_s > 0.0:
                 # BOOTSTRAP WALK GATE: no fresh detection = no evidence the estimator
                 # has a signal to measure; its residual is noise and integrating it
@@ -275,12 +330,20 @@ def stage_carrier_loop(ctx):
                 if len(_car_seed_vals) >= 3:
                     ctx.car.trim[prn] = _car_seed_vals[len(_car_seed_vals) // 2]
             prev_trim = ctx.car.trim.get(prn, 0.0)
-            trim = (1.0 - ctx.args.carrier_leak) * prev_trim + ctx.args.carrier_gain * resid
+            trim = (
+                1.0 - ctx.args.carrier_leak
+            ) * prev_trim + ctx.args.carrier_gain * resid
             if tracking and ctx.args.carrier_max_step > 0.0:
-                trim = prev_trim + max(-ctx.args.carrier_max_step,
-                                       min(ctx.args.carrier_max_step, trim - prev_trim))
-            ctx.car.trim[prn] = max(-ctx.args.carrier_max_hz, min(ctx.args.carrier_max_hz, trim))
-            car_report.append("PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, ctx.car.trim[prn]))
+                trim = prev_trim + max(
+                    -ctx.args.carrier_max_step,
+                    min(ctx.args.carrier_max_step, trim - prev_trim),
+                )
+            ctx.car.trim[prn] = max(
+                -ctx.args.carrier_max_hz, min(ctx.args.carrier_max_hz, trim)
+            )
+            car_report.append(
+                "PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, ctx.car.trim[prn])
+            )
             # ---- f_ref TRIM-BLEED SHADOW (log-only, no action) ----
             # This emit is COHERENT and TRACKING (it reached the integrator ungated). If the
             # trim has held a STANDING value across the stability window, f_ref is pinned
@@ -288,10 +351,14 @@ def stage_carrier_loop(ctx):
             # candidate so the trigger can be validated on live data before it is ever armed.
             # Recency-windowed like car_step_hist (a decoherence gap ages the window out ->
             # not "converged"), so no per-gate-branch cleanup is needed.
-            if (ctx.args.carrier_bleed_shadow or ctx.args.carrier_bleed) and tracking and coh_ok:
+            if (
+                (ctx.args.carrier_bleed_shadow or ctx.args.carrier_bleed)
+                and tracking
+                and coh_ok
+            ):
                 bh = ctx.car.bleed_hist.setdefault(prn, [])
                 bh.append((ctx.t0, ctx.car.trim[prn]))
-                del bh[:-ctx.args.carrier_bleed_stable_emits]
+                del bh[: -ctx.args.carrier_bleed_stable_emits]
                 vals = [v for _, v in bh]
                 # FLAT-TRIM gate (2026-08-03): a truly converged trim is FLAT; a still-settling
                 # one DRIFTS (low spread but a monotonic climb toward a higher plateau). Bleeding
@@ -306,33 +373,58 @@ def stage_carrier_loop(ctx):
                     den = sum((t - tb) ** 2 for t, _ in bh)
                     if den > 0.0:
                         slope = sum((t - tb) * (v - vb) for t, v in bh) / den
-                converged = (len(bh) >= ctx.args.carrier_bleed_stable_emits
-                             and ctx.t0 - bh[0][0] < 90.0
-                             and abs(ctx.car.trim[prn]) >= ctx.args.carrier_bleed_hz
-                             and max(vals) - min(vals) <= ctx.args.carrier_bleed_stable_hz
-                             and abs(slope) <= ctx.args.carrier_bleed_max_slope)
+                converged = (
+                    len(bh) >= ctx.args.carrier_bleed_stable_emits
+                    and ctx.t0 - bh[0][0] < 90.0
+                    and abs(ctx.car.trim[prn]) >= ctx.args.carrier_bleed_hz
+                    and max(vals) - min(vals) <= ctx.args.carrier_bleed_stable_hz
+                    and abs(slope) <= ctx.args.carrier_bleed_max_slope
+                )
                 # ARMED: re-pin f_ref and zero the trim (one bleed per lockout, never while a
                 # step- or bleed-hypothesis is already under verify for this PRN).
-                if (converged and ctx.args.carrier_bleed and prn not in ctx.car.verify
-                        and prn not in ctx.car.bleed_verify
-                        and ctx.t0 >= ctx.car.bleed_lock_t.get(prn, 0.0)):
+                if (
+                    converged
+                    and ctx.args.carrier_bleed
+                    and prn not in ctx.car.verify
+                    and prn not in ctx.car.bleed_verify
+                    and ctx.t0 >= ctx.car.bleed_lock_t.get(prn, 0.0)
+                ):
                     prev_trim = ctx.car.trim[prn]
-                    ctx.car.trim[prn] = 0.0             # f_ref re-pin absorbs the offset
-                    ctx.car.repin_pending[prn] = prev_trim  # tracker does f_ref += prev_trim
-                    ctx.car.bleed_verify[prn] = {"emits": 0, "prev_trim": prev_trim, "t": ctx.t0}
-                    ctx.car.bleed_lock_t[prn] = ctx.t0 + ctx.args.carrier_bleed_lockout_s
+                    ctx.car.trim[prn] = 0.0  # f_ref re-pin absorbs the offset
+                    ctx.car.repin_pending[
+                        prn
+                    ] = prev_trim  # tracker does f_ref += prev_trim
+                    ctx.car.bleed_verify[prn] = {
+                        "emits": 0,
+                        "prev_trim": prev_trim,
+                        "t": ctx.t0,
+                    }
+                    ctx.car.bleed_lock_t[prn] = (
+                        ctx.t0 + ctx.args.carrier_bleed_lockout_s
+                    )
                     ctx.car.bleed_hist[prn] = []
                     ctx.car.bleed_log_t[prn] = ctx.t0
-                    _log("CARRIER BLEED PRN %d: re-pinning f_ref (%+.2f Hz absorbed, slope "
-                         "%+.3f Hz/s), trim->0, VERIFYING (heal in %d emits)"
-                         % (prn, prev_trim, slope, ctx.args.carrier_bleed_verify_emits))
+                    _log(
+                        "CARRIER BLEED PRN %d: re-pinning f_ref (%+.2f Hz absorbed, slope "
+                        "%+.3f Hz/s), trim->0, VERIFYING (heal in %d emits)"
+                        % (prn, prev_trim, slope, ctx.args.carrier_bleed_verify_emits)
+                    )
                 elif converged and ctx.t0 - ctx.car.bleed_log_t.get(prn, 0.0) >= 60.0:
                     ctx.car.bleed_log_t[prn] = ctx.t0
-                    _log("CAR-BLEED CANDIDATE PRN %d: trim %+.2f Hz stable %d emits "
-                         "(spread %.2f, slope %+.3f Hz/s), coherent -> %s"
-                         % (prn, ctx.car.trim[prn], len(bh), max(vals) - min(vals), slope,
-                            "locked out" if ctx.args.carrier_bleed
-                            else "would re-pin f_ref, predict trim->~0 (shadow, no action)"))
+                    _log(
+                        "CAR-BLEED CANDIDATE PRN %d: trim %+.2f Hz stable %d emits "
+                        "(spread %.2f, slope %+.3f Hz/s), coherent -> %s"
+                        % (
+                            prn,
+                            ctx.car.trim[prn],
+                            len(bh),
+                            max(vals) - min(vals),
+                            slope,
+                            "locked out"
+                            if ctx.args.carrier_bleed
+                            else "would re-pin f_ref, predict trim->~0 (shadow, no action)",
+                        )
+                    )
         if car_report:
             _log("CAR: " + "; ".join(car_report))
         for k in list(ctx.car.trim):

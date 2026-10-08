@@ -34,12 +34,17 @@ struct ClockProfile {
 /// gps_distributed_broker.py parses THESE literals. "auto"/unknown -> a conservative cold bound.
 inline ClockProfile clock_profile_preset(const std::string& name) {
     // name       accuracy_ppm  coherence_s
-    if (name == "tcxo")     return {2.0,   0.08};  // airspy stock TCXO, free-running
-    if (name == "ocxo")     return {0.3,   1.0};   // plain oven-controlled xtal
-    if (name == "gpsdo")    return {0.06,  1.5};   // GPS-disciplined OCXO (measured l-a ~0.06 ppm)
-    if (name == "rubidium") return {1e-3,  30.0};  // Rb standard
-    if (name == "maser")    return {1e-6,  300.0}; // H-maser
-    return {2.0, 0.2};                             // auto / unknown: start wide, narrowed live
+    if (name == "tcxo")
+        return {2.0, 0.08}; // airspy stock TCXO, free-running
+    if (name == "ocxo")
+        return {0.3, 1.0}; // plain oven-controlled xtal
+    if (name == "gpsdo")
+        return {0.06, 1.5}; // GPS-disciplined OCXO (measured l-a ~0.06 ppm)
+    if (name == "rubidium")
+        return {1e-3, 30.0}; // Rb standard
+    if (name == "maser")
+        return {1e-6, 300.0}; // H-maser
+    return {2.0, 0.2};        // auto / unknown: start wide, narrowed live
 }
 
 /// Resolve a profile name plus optional explicit overrides (NaN = unset) to concrete numbers.
@@ -58,7 +63,7 @@ inline ClockProfile resolve_clock_profile(const std::string& name, double accura
 /// per band without per-band constants.
 inline double clock_doppler_half_range_hz(double carrier_hz, double accuracy_ppm,
                                           double margin_hz = 400.0) {
-    constexpr double V_MAX_MPS = 929.0;       // GPS max line-of-sight velocity (near horizon)
+    constexpr double V_MAX_MPS = 929.0; // GPS max line-of-sight velocity (near horizon)
     constexpr double C_MPS = 299792458.0;
     return V_MAX_MPS / C_MPS * carrier_hz + accuracy_ppm * 1e-6 * carrier_hz + margin_hz;
 }

@@ -29,17 +29,27 @@ TRUE_CLK = 148.0
 def _healthy(sigma=0.3, n_sat=6, cycles=60, seed=1):
     """A converged 6-satellite state, the way the sky delivers one."""
     import random
+
     rng = random.Random(seed)
     js = JointReceiverState(code_len=L)
     # the six sats and their biases as the state actually held them at 10:21, one minute
     # before the incident
-    biases = dict(zip([("gps", p) for p in (6, 11, 21, 24, 25, 28)][:n_sat],
-                      (-3.8, -0.9, -1.2, +4.4, +1.2, +0.3)))
+    biases = dict(
+        zip(
+            [("gps", p) for p in (6, 11, 21, 24, 25, 28)][:n_sat],
+            (-3.8, -0.9, -1.2, +4.4, +1.2, +0.3),
+        )
+    )
     t = 1000.0
     for _ in range(cycles):
         t += 30.0
-        js.cycle([(k, TRUE_CLK + b + rng.gauss(0.0, sigma), sigma, None)
-                  for k, b in biases.items()], t)
+        js.cycle(
+            [
+                (k, TRUE_CLK + b + rng.gauss(0.0, sigma), sigma, None)
+                for k, b in biases.items()
+            ],
+            t,
+        )
     return js, biases, t, rng
 
 
@@ -56,43 +66,77 @@ class TestEscapeHatch(unittest.TestCase):
         survive it. Before the fix this drove clk from +148 to -1242 in a single cycle."""
         js, biases, t, rng = _healthy()
         bad = ("gps", 25)
-        for _ in range(40):                      # 20 minutes of a beam-exited satellite
+        for _ in range(40):  # 20 minutes of a beam-exited satellite
             t += 30.0
-            meas = [(k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
-                    for k, b in biases.items() if k != bad]
-            meas.append((bad, rng.uniform(0.0, L), 0.3, None))   # uniform noise, as measured
+            meas = [
+                (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
+                for k, b in biases.items()
+                if k != bad
+            ]
+            meas.append(
+                (bad, rng.uniform(0.0, L), 0.3, None)
+            )  # uniform noise, as measured
             js.cycle(meas, t)
-        self.assertAlmostEqual(js.x[0], TRUE_CLK, delta=1.0,
-                               msg="clk was dragged by a noise satellite")
+        self.assertAlmostEqual(
+            js.x[0], TRUE_CLK, delta=1.0, msg="clk was dragged by a noise satellite"
+        )
         for k, b in biases.items():
             if k == bad:
                 continue
-            self.assertAlmostEqual(js.bias(k), b, delta=1.0,
-                                   msg="bias %s corrupted by a noise satellite" % (k,))
+            self.assertAlmostEqual(
+                js.bias(k),
+                b,
+                delta=1.0,
+                msg="bias %s corrupted by a noise satellite" % (k,),
+            )
 
     def test_genuine_step_is_still_followed(self):
         """The hatch must keep doing its job: a CONSISTENT step is a real re-anchor and has
         to be believed, or the gate is a deadlock. This is the case the hatch exists for."""
         js, biases, t, rng = _healthy()
         moved = ("gps", 24)
-        step = 40.0                              # far outside any normalized gate
+        step = 40.0  # far outside any normalized gate
         for _ in range(30):
             t += 30.0
-            js.cycle([(k, TRUE_CLK + b + (step if k == moved else 0.0) + rng.gauss(0.0, 0.3),
-                       0.3, None)
-                      for k, b in biases.items()], t)
+            js.cycle(
+                [
+                    (
+                        k,
+                        TRUE_CLK
+                        + b
+                        + (step if k == moved else 0.0)
+                        + rng.gauss(0.0, 0.3),
+                        0.3,
+                        None,
+                    )
+                    for k, b in biases.items()
+                ],
+                t,
+            )
         # MEDIAN CONVENTION (2026-08-23; was mean). One sat moving by d does not move the
         # median at all, so the sat keeps the WHOLE step and clk stays put. This is the
         # point of the change: under the mean gauge this same event leaked d/N into every
         # consumer's clock (and a rise/set stepped it by b/n -- the measured +-1.3 chip
         # wander of 2026-08-22). Pinning both numbers documents the new convention.
-        self.assertAlmostEqual(js.bias(moved), biases[moved] + step, delta=1.5,
-                               msg="a real, repeatable step was never followed")
-        self.assertAlmostEqual(js.x[0], TRUE_CLK, delta=1.0,
-                               msg="one satellite's step leaked into the median clock")
+        self.assertAlmostEqual(
+            js.bias(moved),
+            biases[moved] + step,
+            delta=1.5,
+            msg="a real, repeatable step was never followed",
+        )
+        self.assertAlmostEqual(
+            js.x[0],
+            TRUE_CLK,
+            delta=1.0,
+            msg="one satellite's step leaked into the median clock",
+        )
         # ...and the only thing any consumer can actually observe is untouched.
-        self.assertAlmostEqual(js.x[0] + js.bias(moved), TRUE_CLK + biases[moved] + step,
-                               delta=1.0, msg="the observable clk + b was not preserved")
+        self.assertAlmostEqual(
+            js.x[0] + js.bias(moved),
+            TRUE_CLK + biases[moved] + step,
+            delta=1.0,
+            msg="the observable clk + b was not preserved",
+        )
 
     def test_escape_is_logged(self):
         """The most damaging event of 2026-08-10 fired silently. It must not be able to."""
@@ -100,11 +144,26 @@ class TestEscapeHatch(unittest.TestCase):
         moved = ("gps", 24)
         for _ in range(12):
             t += 30.0
-            js.cycle([(k, TRUE_CLK + b + (40.0 if k == moved else 0.0) + rng.gauss(0.0, 0.3),
-                       0.3, None) for k, b in biases.items()], t)
+            js.cycle(
+                [
+                    (
+                        k,
+                        TRUE_CLK
+                        + b
+                        + (40.0 if k == moved else 0.0)
+                        + rng.gauss(0.0, 0.3),
+                        0.3,
+                        None,
+                    )
+                    for k, b in biases.items()
+                ],
+                t,
+            )
         notes = js.drain_notes()
-        self.assertTrue(any("ESCAPE" in n for n in notes),
-                        "an escape happened with no operator note: %r" % (notes,))
+        self.assertTrue(
+            any("ESCAPE" in n for n in notes),
+            "an escape happened with no operator note: %r" % (notes,),
+        )
         self.assertGreater(js.escapes, 0)
 
     def test_incoherent_run_is_reported(self):
@@ -114,12 +173,17 @@ class TestEscapeHatch(unittest.TestCase):
         bad = ("gps", 25)
         for _ in range(20):
             t += 30.0
-            meas = [(k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
-                    for k, b in biases.items() if k != bad]
+            meas = [
+                (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
+                for k, b in biases.items()
+                if k != bad
+            ]
             meas.append((bad, rng.uniform(0.0, L), 0.3, None))
             js.cycle(meas, t)
-        self.assertTrue(any("REJECT-RUN" in n for n in js.drain_notes()),
-                        "a noise satellite produced no diagnostic")
+        self.assertTrue(
+            any("REJECT-RUN" in n for n in js.drain_notes()),
+            "a noise satellite produced no diagnostic",
+        )
 
 
 class TestGauge(unittest.TestCase):
@@ -140,17 +204,26 @@ class TestGauge(unittest.TestCase):
         # The OLD rule, stated explicitly so the regression is documented rather than
         # implied: measured against ZERO, every satellite is an outlier and the set is empty.
         old_use = [i for i in js._idx.values() if abs(float(js.x[i])) <= js.gauge_max_b]
-        self.assertEqual(len(old_use), 0,
-                         "the zero-centred inlier rule would not have emptied here, so this "
-                         "state does not reproduce the incident")
+        self.assertEqual(
+            len(old_use),
+            0,
+            "the zero-centred inlier rule would not have emptied here, so this "
+            "state does not reproduce the incident",
+        )
 
         mean_before = sum(js.bias(k) for k in biases) / len(biases)
         js.gauge()
         mean_after = sum(js.bias(k) for k in biases) / len(biases)
-        self.assertLess(abs(mean_after), abs(mean_before) - 1.0,
-                        "gauge() did not pin the common mode at all (it switched itself off)")
-        self.assertEqual(js.gauge_fallbacks, 0,
-                         "the median-centred set should be full here, needing no fallback")
+        self.assertLess(
+            abs(mean_after),
+            abs(mean_before) - 1.0,
+            "gauge() did not pin the common mode at all (it switched itself off)",
+        )
+        self.assertEqual(
+            js.gauge_fallbacks,
+            0,
+            "the median-centred set should be full here, needing no fallback",
+        )
 
     def test_gauge_still_excludes_a_single_wild_bias(self):
         """...without losing the property it was given gauge_max_b for."""
@@ -160,10 +233,20 @@ class TestGauge(unittest.TestCase):
         clk_before = float(js.x[0])
         for _ in range(10):
             t += 30.0
-            js.cycle([(k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
-                      for k, b in biases.items() if k != wild], t)
-        self.assertAlmostEqual(js.x[0], clk_before, delta=1.0,
-                               msg="a single wild bias got a vote in the gauge")
+            js.cycle(
+                [
+                    (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
+                    for k, b in biases.items()
+                    if k != wild
+                ],
+                t,
+            )
+        self.assertAlmostEqual(
+            js.x[0],
+            clk_before,
+            delta=1.0,
+            msg="a single wild bias got a vote in the gauge",
+        )
 
 
 if __name__ == "__main__":

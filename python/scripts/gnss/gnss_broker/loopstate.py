@@ -40,18 +40,32 @@ class CarrierState(object):
     unreachable code cannot fail its way to your attention.
     """
 
-    __slots__ = ("trim", "last", "locked", "fade", "step_hist", "step_t", "verify",
-                 "bleed_hist", "bleed_log_t", "bleed_verify", "bleed_lock_t", "trim_force",
-                 "repin_pending")
+    __slots__ = (
+        "trim",
+        "last",
+        "locked",
+        "fade",
+        "step_hist",
+        "step_t",
+        "verify",
+        "bleed_hist",
+        "bleed_log_t",
+        "bleed_verify",
+        "bleed_lock_t",
+        "trim_force",
+        "repin_pending",
+    )
 
     def __init__(self):
-        self.trim = {}          # prn -> commanded carrier trim, Hz
-        self.last = {}          # prn -> last emitted value, for step detection
-        self.locked = set()     # prns certified coherent since seed: BOOTSTRAP -> TRACK latch
-        self.fade = {}          # prn -> consecutive faded emits (coast bookkeeping)
-        self.step_hist = {}     # prn -> recent step sizes, for the gated/ungated agreement
-        self.step_t = {}        # prn -> time of the last step
-        self.verify = {}        # prn -> verification counters
+        self.trim = {}  # prn -> commanded carrier trim, Hz
+        self.last = {}  # prn -> last emitted value, for step detection
+        self.locked = (
+            set()
+        )  # prns certified coherent since seed: BOOTSTRAP -> TRACK latch
+        self.fade = {}  # prn -> consecutive faded emits (coast bookkeeping)
+        self.step_hist = {}  # prn -> recent step sizes, for the gated/ungated agreement
+        self.step_t = {}  # prn -> time of the last step
+        self.verify = {}  # prn -> verification counters
         # f_ref TRIM-BLEED SHADOW: log-only. If the trim holds a STANDING value across the
         # stability window then f_ref is pinned somewhere it should not be, and the trim is
         # quietly absorbing a reference error rather than a satellite one.
@@ -78,10 +92,10 @@ class WatchdogState(object):
     __slots__ = ("birth", "coh_t", "strong_t", "weak_n")
 
     def __init__(self):
-        self.birth = {}         # prn -> when this seed was born
-        self.coh_t = {}         # prn -> last time coherence_s was above the floor
-        self.strong_t = {}      # prn -> last time it was strong
-        self.weak_n = {}        # prn -> consecutive weak polls
+        self.birth = {}  # prn -> when this seed was born
+        self.coh_t = {}  # prn -> last time coherence_s was above the floor
+        self.strong_t = {}  # prn -> last time it was strong
+        self.weak_n = {}  # prn -> consecutive weak polls
 
 
 class NhOverlay(object):
@@ -96,15 +110,15 @@ class NhOverlay(object):
     __slots__ = ("last_rh", "off_hist", "offset", "seen")
 
     def __init__(self):
-        self.last_rh = {}       # prn -> ref_hop already folded in, so a stale detection
-                                #        cannot be re-counted and fake a full window of agreement
+        self.last_rh = {}  # prn -> ref_hop already folded in, so a stale detection
+        #        cannot be re-counted and fake a full window of agreement
         # POOLED, not per-PRN: (t, predicted - reported) is ONE receiver-clock constant, and
         # it is timestamped so the offset can EXPIRE rather than harden.
         self.off_hist = []
         # A ONE-CELL LIST, not a scalar: the calibrated constant is read and rewritten from
         # several places, and the cell is what makes those the same object.
         self.offset = [None]
-        self.seen = {}          # prn -> (nh, ref_hop) last REPORTED by the search
+        self.seen = {}  # prn -> (nh, ref_hop) last REPORTED by the search
 
 
 class DllLoopState(object):
@@ -121,25 +135,44 @@ class DllLoopState(object):
     change costs the standing trim.
     """
 
-    __slots__ = ("trim", "last", "last_hop", "readback", "hold", "armed_last", "stat",
-                 "deep_gate_seen", "reseed_prns")
+    __slots__ = (
+        "trim",
+        "last",
+        "last_hop",
+        "readback",
+        "hold",
+        "armed_last",
+        "stat",
+        "deep_gate_seen",
+        "reseed_prns",
+    )
 
     def __init__(self):
-        self.trim = {}          # prn -> the Python integrator's standing trim, chips
-        self.last = {}          # prn -> last discriminator seen (dedup: one integration/emit)
-        self.last_hop = {}      # prn -> last window index integrated (an exact integer test)
+        self.trim = {}  # prn -> the Python integrator's standing trim, chips
+        self.last = {}  # prn -> last discriminator seen (dedup: one integration/emit)
+        self.last_hop = (
+            {}
+        )  # prn -> last window index integrated (an exact integer test)
         # prn -> the gather's reported standing trim. seed + THIS is where the tracker's tap
         # actually sits, which is the number every downstream judge of the seed was missing.
         self.readback = {}
-        self.hold = {}          # prn -> last time PRESENT (the arming hold)
-        self.armed_last = set() # what the C++ loop is actuating right now
+        self.hold = {}  # prn -> last time PRESENT (the arming hold)
+        self.armed_last = set()  # what the C++ loop is actuating right now
         # ⚠️ THE KEY SET IS PART OF THE CONTRACT. `rb`/`rb_fail` count the READBACK poll
         # separately from the arming POST, and a consumer that finds them missing gets a
         # KeyError rather than a zero. Keep this dict exactly as its readers expect.
-        self.stat = {"posts": 0, "fail": 0, "armed": 0, "last_err": "",
-                     "rb": 0, "rb_fail": 0}
-        self.deep_gate_seen = {}  # prn -> last time the SEARCH saw it above the deep bar (#79)
-        self.reseed_prns = None   # the #50 armed set: None, True (all), or a set of PRNs
+        self.stat = {
+            "posts": 0,
+            "fail": 0,
+            "armed": 0,
+            "last_err": "",
+            "rb": 0,
+            "rb_fail": 0,
+        }
+        self.deep_gate_seen = (
+            {}
+        )  # prn -> last time the SEARCH saw it above the deep bar (#79)
+        self.reseed_prns = None  # the #50 armed set: None, True (all), or a set of PRNs
 
 
 class HoldState(object):
@@ -153,11 +186,11 @@ class HoldState(object):
     __slots__ = ("miss", "prev", "q", "low_hits", "polls")
 
     def __init__(self):
-        self.miss = {}          # prn -> consecutive polls with no usable record
-        self.prev = {}          # prn -> the tracker's own last propagation (the slew anchor)
-        self.q = {}             # prn -> last fleet q seen while held
-        self.low_hits = {}      # prn -> consecutive below-threshold polls
-        self.polls = {}         # prn -> coast poll count
+        self.miss = {}  # prn -> consecutive polls with no usable record
+        self.prev = {}  # prn -> the tracker's own last propagation (the slew anchor)
+        self.q = {}  # prn -> last fleet q seen while held
+        self.low_hits = {}  # prn -> consecutive below-threshold polls
+        self.polls = {}  # prn -> coast poll count
 
 
 class CpTracking(object):
@@ -169,32 +202,51 @@ class CpTracking(object):
     histories here exist to make that distinction checkable after the fact.
     """
 
-    __slots__ = ("err_hist", "escape", "escape_sign", "fit_slope", "hist", "translated",
-                 "dop_hist", "ph_hist", "dop_clamped", "nh_pending", "integ_hist",
-                 "rej_streak", "nh_votes", "nh_common")
+    __slots__ = (
+        "err_hist",
+        "escape",
+        "escape_sign",
+        "fit_slope",
+        "hist",
+        "translated",
+        "dop_hist",
+        "ph_hist",
+        "dop_clamped",
+        "nh_pending",
+        "integ_hist",
+        "rej_streak",
+        "nh_votes",
+        "nh_common",
+    )
 
     def __init__(self):
-        self.err_hist = {}      # prn -> recent (predicted - observed) code phase
-        self.escape = {}        # prn -> escape-detector state
-        self.escape_sign = {}   # prn -> the sign it escaped in
-        self.fit_slope = {}     # prn -> fitted cp rate, chips/s
-        self.hist = {}          # prn -> recent (t, cp) for the rate fit
-        self.translated = set() # prns whose cp has been translated this pass
-        self.dop_hist = {}      # prn -> recent Doppler observations
-        self.ph_hist = {}       # prn -> recent carrier-phase observations
+        self.err_hist = {}  # prn -> recent (predicted - observed) code phase
+        self.escape = {}  # prn -> escape-detector state
+        self.escape_sign = {}  # prn -> the sign it escaped in
+        self.fit_slope = {}  # prn -> fitted cp rate, chips/s
+        self.hist = {}  # prn -> recent (t, cp) for the rate fit
+        self.translated = set()  # prns whose cp has been translated this pass
+        self.dop_hist = {}  # prn -> recent Doppler observations
+        self.ph_hist = {}  # prn -> recent carrier-phase observations
         self.dop_clamped = set()  # prns whose Doppler hit a clamp this pass
-        self.nh_pending = {}    # prn -> (m, count): a measured overlay period awaiting
-                                # confirmation before it may rewrite the standing one (#97)
-        self.nh_votes = {}      # prn -> (utc, delta_chips, weight): each detection's measured
-                                # receiver-common overlay offset (chips mod the overlay epoch);
-                                # the NH20 label is ONE receiver clock mod 20 ms that every
-                                # satellite votes on, never N per-sat 20-way guesses (--nh-joint)
-        self.nh_common = None   # (delta_chips, utc_resolved, n_prns, weight_frac) once the
-                                # fleet consensus resolves; a run constant barring clock steps
-        self.integ_hist = {}    # prn -> [(t, integ_chips)]: per-sat integrity baseline for
-                                # the RELATIVE escape veto (--integ-veto-baseline-s, #98/#99)
-        self.rej_streak = {}    # prn -> consecutive cp-rate rejections; at
-                                # --fit-flush-on-reject the wrap-poisoned history is flushed
+        self.nh_pending = {}  # prn -> (m, count): a measured overlay period awaiting
+        # confirmation before it may rewrite the standing one (#97)
+        self.nh_votes = (
+            {}
+        )  # prn -> (utc, delta_chips, weight): each detection's measured
+        # receiver-common overlay offset (chips mod the overlay epoch);
+        # the NH20 label is ONE receiver clock mod 20 ms that every
+        # satellite votes on, never N per-sat 20-way guesses (--nh-joint)
+        self.nh_common = (
+            None  # (delta_chips, utc_resolved, n_prns, weight_frac) once the
+        )
+        # fleet consensus resolves; a run constant barring clock steps
+        self.integ_hist = (
+            {}
+        )  # prn -> [(t, integ_chips)]: per-sat integrity baseline for
+        # the RELATIVE escape veto (--integ-veto-baseline-s, #98/#99)
+        self.rej_streak = {}  # prn -> consecutive cp-rate rejections; at
+        # --fit-flush-on-reject the wrap-poisoned history is flushed
 
 
 class RateFeedState(object):
@@ -219,25 +271,37 @@ class RateFeedState(object):
     computes them can be a module-level function -- an attribute needs no `nonlocal`.
     """
 
-    __slots__ = ("cmd_applied", "fine_t", "kcoh_t", "adr_span_now", "span_fed_t",
-                 "adr_prev", "adr_ring", "resid", "cons", "resid2", "full_ok",
-                 "railed", "released")
+    __slots__ = (
+        "cmd_applied",
+        "fine_t",
+        "kcoh_t",
+        "adr_span_now",
+        "span_fed_t",
+        "adr_prev",
+        "adr_ring",
+        "resid",
+        "cons",
+        "resid2",
+        "full_ok",
+        "railed",
+        "released",
+    )
 
     def __init__(self):
-        self.cmd_applied = {}   # prn -> the standing carrier command, Hz (the reference)
-        self.fine_t = {}        # prn -> last fine-feed time
-        self.kcoh_t = {}        # prn -> last known-rate-fold feed time
+        self.cmd_applied = {}  # prn -> the standing carrier command, Hz (the reference)
+        self.fine_t = {}  # prn -> last fine-feed time
+        self.kcoh_t = {}  # prn -> last known-rate-fold feed time
         # #93 shadow v2: prn -> (ADR span rate, t, n_rec), the DIRECT carrier observable the
         # rrate ROW is being judged against. The row measured ~97% carrier-only (GAP 3 F1).
         self.adr_span_now = {}
-        self.span_fed_t = {}    # prn -> last span feed time (the non-overlap throttle)
-        self.adr_prev = {}      # prn -> previous ADR sample
-        self.adr_ring = {}      # prn -> recent ADR ring buffer
+        self.span_fed_t = {}  # prn -> last span feed time (the non-overlap throttle)
+        self.adr_prev = {}  # prn -> previous ADR sample
+        self.adr_ring = {}  # prn -> recent ADR ring buffer
         # ---- per-cycle, reassigned every pass ----
-        self.resid = {}         # prn -> carrier-rate residual (the shared computation)
-        self.cons = None        # the consensus that came with it
-        self.resid2 = {}        # the rrate-state variant of the same residual
-        self.full_ok = False    # is the full-band rate field present this cycle?
+        self.resid = {}  # prn -> carrier-rate residual (the shared computation)
+        self.cons = None  # the consensus that came with it
+        self.resid2 = {}  # the rrate-state variant of the same residual
+        self.full_ok = False  # is the full-band rate field present this cycle?
         # How many commands hit the slew rail this pass, and how many were released. These
         # are `+=` counters, and an augmented assignment READS before it writes -- which is
         # what made them impossible to leave as loop locals once the stage that increments
@@ -260,25 +324,45 @@ class NavDecoders(object):
     is armed -- the same blind spot the carrier loop has.
     """
 
-    __slots__ = ("navbits", "cnav", "cnav2", "fnav", "inav",
-                 "bcnav1", "bcnav2", "bcnav3", "brdc", "health", "log_t",
-                 "inav_log_t", "fnav_log_t", "bcnav1_log_t", "bcnav2_log_t",
-                 "bcnav3_log_t", "cnav2_log_t", "cnav_sig",
-                 "cnav_combiner", "cnav2_combiner", "fnav_combiner", "inav_combiner",
-                 "bcnav1_combiner", "bcnav2_combiner")
+    __slots__ = (
+        "navbits",
+        "cnav",
+        "cnav2",
+        "fnav",
+        "inav",
+        "bcnav1",
+        "bcnav2",
+        "bcnav3",
+        "brdc",
+        "health",
+        "log_t",
+        "inav_log_t",
+        "fnav_log_t",
+        "bcnav1_log_t",
+        "bcnav2_log_t",
+        "bcnav3_log_t",
+        "cnav2_log_t",
+        "cnav_sig",
+        "cnav_combiner",
+        "cnav2_combiner",
+        "fnav_combiner",
+        "inav_combiner",
+        "bcnav1_combiner",
+        "bcnav2_combiner",
+    )
 
     def __init__(self):
-        self.navbits = None   # GPS LNAV
-        self.cnav = None      # GPS CNAV (L2C-CM / L5-I)
-        self.cnav2 = None     # GPS CNAV-2
-        self.fnav = None      # Galileo F/NAV
-        self.inav = None      # Galileo I/NAV
-        self.bcnav1 = None    # BeiDou B-CNAV1
-        self.bcnav2 = None    # BeiDou B-CNAV2
-        self.bcnav3 = None    # BeiDou B-CNAV3
-        self.brdc = None      # the BRDC source the decodes are cross-checked against
-        self.health = None    # continuous predicted-vs-air agreement monitor
-        self.log_t = 0.0      # last summary-line time (rate limit)
+        self.navbits = None  # GPS LNAV
+        self.cnav = None  # GPS CNAV (L2C-CM / L5-I)
+        self.cnav2 = None  # GPS CNAV-2
+        self.fnav = None  # Galileo F/NAV
+        self.inav = None  # Galileo I/NAV
+        self.bcnav1 = None  # BeiDou B-CNAV1
+        self.bcnav2 = None  # BeiDou B-CNAV2
+        self.bcnav3 = None  # BeiDou B-CNAV3
+        self.brdc = None  # the BRDC source the decodes are cross-checked against
+        self.health = None  # continuous predicted-vs-air agreement monitor
+        self.log_t = 0.0  # last summary-line time (rate limit)
         # ⚠️ ONE-CELL LISTS, not floats. Each is a rate-limit stamp mutated in place by the
         # decoder that owns it; the cell is what makes the reader and the writer the same
         # object. Flattening them to scalars would silently give every writer its own copy.
@@ -317,20 +401,33 @@ class ClSibling(object):
     which silently pinned everything else to segment 0.
     """
 
-    __slots__ = ("tracker", "combiner", "k", "pred0", "toff", "segsearch", "seg_s",
-                 "spiral", "kfmt", "kscan", "kscan_deep", "kscan_frac", "kscan_seq")
+    __slots__ = (
+        "tracker",
+        "combiner",
+        "k",
+        "pred0",
+        "toff",
+        "segsearch",
+        "seg_s",
+        "spiral",
+        "kfmt",
+        "kscan",
+        "kscan_deep",
+        "kscan_frac",
+        "kscan_seq",
+    )
 
     def __init__(self):
-        self.tracker = None     # the sibling tracker endpoint
-        self.combiner = None    # its combiner endpoint
-        self.k = {}             # prn -> adopted segment index
-        self.pred0 = {}         # prn -> model prediction at the fixed anchor epoch
-        self.toff = [0.0]       # a one-cell list: the shared time offset, mutated in place
+        self.tracker = None  # the sibling tracker endpoint
+        self.combiner = None  # its combiner endpoint
+        self.k = {}  # prn -> adopted segment index
+        self.pred0 = {}  # prn -> model prediction at the fixed anchor epoch
+        self.toff = [0.0]  # a one-cell list: the shared time offset, mutated in place
         self.segsearch = {"corr": 0, "idx": 0, "latched": False, "t_step": 0.0}
-        self.seg_s = None       # seconds per long-code segment, for THIS signal
-        self.spiral = None      # the outward-spiral visit order over segments
-        self.kfmt = None        # how to format a segment index in the log (k+n vs c+frac)
-        self.kscan = [0]        # a one-cell list: the current scan position
-        self.kscan_deep = {}    # prn -> deepest correlation seen while scanning
+        self.seg_s = None  # seconds per long-code segment, for THIS signal
+        self.spiral = None  # the outward-spiral visit order over segments
+        self.kfmt = None  # how to format a segment index in the log (k+n vs c+frac)
+        self.kscan = [0]  # a one-cell list: the current scan position
+        self.kscan_deep = {}  # prn -> deepest correlation seen while scanning
         self.kscan_frac = None  # is the scan fractional rather than integer?
-        self.kscan_seq = None   # the scan sequence itself
+        self.kscan_seq = None  # the scan sequence itself

@@ -51,9 +51,12 @@ def poll_elements(endpoints):
         try:
             rows = _get("%s/get_elements" % url)
         except Exception as e:
-            _log_rl("elemgain-%s" % url,
-                    "ELEM-GAIN: %s unreachable (%s) -- a node predating /get_elements, "
-                    "or down" % (url, e), every_s=600.0)
+            _log_rl(
+                "elemgain-%s" % url,
+                "ELEM-GAIN: %s unreachable (%s) -- a node predating /get_elements, "
+                "or down" % (url, e),
+                every_s=600.0,
+            )
             continue
         served += 1
         d = {}
@@ -145,9 +148,11 @@ def gain_table(per_inst, probe_prns, min_keff=8.0):
                 if fl is not None and e < len(fl) and fl[e] > 0.0:
                     sig.append(abs(u) / fl[e])
             row = out.setdefault(prn, {"probe": prn in probe_prns, "inst": {}})
-            ir = {"keff": round(v["keff"], 1),
-                  "amp": [float("%.4g" % x) for x in amp],
-                  "ph": [round(x, 4) for x in ph]}
+            ir = {
+                "keff": round(v["keff"], 1),
+                "amp": [float("%.4g" % x) for x in amp],
+                "ph": [round(x, 4) for x in ph],
+            }
             if sig:
                 ir["sig"] = [float("%.3g" % x) for x in sig]
             row["inst"][tag] = ir

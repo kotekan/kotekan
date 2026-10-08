@@ -136,7 +136,7 @@ OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
         noise2 += std::imag(vr) * std::imag(vr);
     }
     const double noise_sum = std::sqrt(noise2); // noise std of the coherent sum
-    out.amplitude = best_mag / (double)nrec;     // coherent mean of the overlay-corrected A
+    out.amplitude = best_mag / (double)nrec;    // coherent mean of the overlay-corrected A
     out.snr = residual_snr(best_mag, noise_sum, nrec);
     out.phase = best_phase;
     return out;

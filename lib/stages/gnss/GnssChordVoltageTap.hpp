@@ -107,23 +107,23 @@ private:
     /// its own. That per-channel signature is the entire point (#56, and the 08-18 1176 MHz
     /// event was band-selective at +16 dB); a per-element-only number averages it away.
     std::mutex _rf_lock;
-    std::vector<int> _bp_chans;         ///< local channel indices to monitor (empty = OFF)
+    std::vector<int> _bp_chans; ///< local channel indices to monitor (empty = OFF)
     /// Per _bp_chans: the ABSOLUTE freq_id, read from the frame's own chord metadata
     /// (coarse_freq), not from config. Empty until the first pass over a chord-metadata
     /// frame. This is what makes a lobe nameable: local comb position is meaningless off
     /// the node, freq_id x 0.1953125 MHz is not. See the rf_stats callback.
     std::vector<int> _bp_freq_ids;
-    std::vector<double> _bp_power;      ///< per _bp_chans: mean |x|^2 over elements and hops
-    std::vector<double> _bp_clip_lo;    ///< per _bp_chans: fraction of nibbles at -8
-    std::vector<double> _bp_clip_hi;    ///< per _bp_chans: fraction of nibbles at +7
-    std::vector<double> _bp_elem_pow;   ///< per ABSOLUTE element, over _bp_chans
-    std::vector<double> _bp_elem_clip;  ///< per ABSOLUTE element, (lo+hi) fraction
-    double _bp_period_s;                ///< seconds between passes
-    int _bp_hop_stride;                 ///< sample every Nth hop within a pass
-    double _bp_last_s = 0.0;            ///< current_time() of the last pass; 0 = never run
-    double _bp_cost_ms = 0.0;           ///< wall cost of the last pass -- SERVED, not assumed
+    std::vector<double> _bp_power;     ///< per _bp_chans: mean |x|^2 over elements and hops
+    std::vector<double> _bp_clip_lo;   ///< per _bp_chans: fraction of nibbles at -8
+    std::vector<double> _bp_clip_hi;   ///< per _bp_chans: fraction of nibbles at +7
+    std::vector<double> _bp_elem_pow;  ///< per ABSOLUTE element, over _bp_chans
+    std::vector<double> _bp_elem_clip; ///< per ABSOLUTE element, (lo+hi) fraction
+    double _bp_period_s;               ///< seconds between passes
+    int _bp_hop_stride;                ///< sample every Nth hop within a pass
+    double _bp_last_s = 0.0;           ///< current_time() of the last pass; 0 = never run
+    double _bp_cost_ms = 0.0;          ///< wall cost of the last pass -- SERVED, not assumed
     long _bp_passes = 0;
-    int64_t _bp_seq = -1;               ///< fpga_seq_num of the frame the last pass measured
+    int64_t _bp_seq = -1; ///< fpga_seq_num of the frame the last pass measured
     int _frame_chan_stride;
     int _frame_elem_stride;
     int _n_hops;

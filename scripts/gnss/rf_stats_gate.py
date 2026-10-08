@@ -70,24 +70,31 @@ def run_once(kotekan, port, value, chans, timeout_s=25.0):
     """Start kotekan on a config with this byte value, poll /rf_stats, return it."""
     with open(CFG) as f:
         cfg = f.read()
-    cfg = cfg.replace("  type: constu8\n  value: 0\n",
-                      "  type: constu8\n  value: %d\n" % value)
-    cfg = cfg.replace("  band_power_chans: [0, 1, 2]\n",
-                      "  band_power_chans: %s\n" % json.dumps(chans))
+    cfg = cfg.replace(
+        "  type: constu8\n  value: 0\n", "  type: constu8\n  value: %d\n" % value
+    )
+    cfg = cfg.replace(
+        "  band_power_chans: [0, 1, 2]\n",
+        "  band_power_chans: %s\n" % json.dumps(chans),
+    )
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as tf:
         tf.write(cfg)
         path = tf.name
-    proc = subprocess.Popen([kotekan, "-c", path, "-b", "127.0.0.1:%d" % port],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(
+        [kotekan, "-c", path, "-b", "127.0.0.1:%d" % port],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
     url = "http://127.0.0.1:%d/tap/rf_stats" % port
     try:
         deadline = time.time() + timeout_s
         last = None
         while time.time() < deadline:
             if proc.poll() is not None:
-                raise RuntimeError("kotekan exited early (rc %s): %s"
-                                   % (proc.returncode,
-                                      proc.stderr.read().decode()[-800:]))
+                raise RuntimeError(
+                    "kotekan exited early (rc %s): %s"
+                    % (proc.returncode, proc.stderr.read().decode()[-800:])
+                )
             try:
                 with urllib.request.urlopen(url, timeout=1.0) as r:
                     last = json.loads(r.read().decode())
@@ -114,7 +121,9 @@ def approx(a, b, tol=1e-9):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--kotekan", default=os.path.join(ROOT, "build", "kotekan", "kotekan"))
+    ap.add_argument(
+        "--kotekan", default=os.path.join(ROOT, "build", "kotekan", "kotekan")
+    )
     ap.add_argument("--port", type=int, default=12099)
     args = ap.parse_args()
 
@@ -123,8 +132,10 @@ def main():
         return 2
 
     fails = []
-    print("#8 RF-STATS GATE  (%d hops x %d chan x %d elem, stride 1, exhaustive)"
-          % (NHOP, NCHAN, NELEM))
+    print(
+        "#8 RF-STATS GATE  (%d hops x %d chan x %d elem, stride 1, exhaustive)"
+        % (NHOP, NCHAN, NELEM)
+    )
     print("byte  re  im | power   expect | clip_lo  expect | clip_hi  expect | verdict")
     print("-" * 78)
 
@@ -139,11 +150,15 @@ def main():
 
         bad = []
         if len(r.get("power", [])) != len(BP_CHANS):
-            bad.append("power has %d entries, expected %d"
-                       % (len(r.get("power", [])), len(BP_CHANS)))
+            bad.append(
+                "power has %d entries, expected %d"
+                % (len(r.get("power", [])), len(BP_CHANS))
+            )
         if len(r.get("elem_power", [])) != NELEM:
-            bad.append("elem_power has %d entries, expected %d"
-                       % (len(r.get("elem_power", [])), NELEM))
+            bad.append(
+                "elem_power has %d entries, expected %d"
+                % (len(r.get("elem_power", [])), NELEM)
+            )
         for key in ("power", "clip_lo", "clip_hi"):
             for i, got in enumerate(r.get(key, [])):
                 if not approx(got, e[key]):
@@ -151,19 +166,30 @@ def main():
         # per-element must agree with per-channel: same samples, different grouping
         for i, got in enumerate(r.get("elem_power", [])):
             if not approx(got, e["power"]):
-                bad.append("elem_power[%d] = %.6f, expected %.6f" % (i, got, e["power"]))
+                bad.append(
+                    "elem_power[%d] = %.6f, expected %.6f" % (i, got, e["power"])
+                )
         ec = e["clip_lo"] + e["clip_hi"]
         for i, got in enumerate(r.get("elem_clip", [])):
             if not approx(got, ec):
                 bad.append("elem_clip[%d] = %.6f, expected %.6f" % (i, got, ec))
 
         re_, im_ = (value >> 4) - 8, (value & 0x0F) - 8
-        print("0x%02X %+3d %+3d | %6.1f %6.1f  | %7.4f %7.4f | %7.4f %7.4f | %s"
-              % (value, re_, im_,
-                 (r.get("power") or [float("nan")])[0], e["power"],
-                 (r.get("clip_lo") or [float("nan")])[0], e["clip_lo"],
-                 (r.get("clip_hi") or [float("nan")])[0], e["clip_hi"],
-                 "ok" if not bad else "FAIL"))
+        print(
+            "0x%02X %+3d %+3d | %6.1f %6.1f  | %7.4f %7.4f | %7.4f %7.4f | %s"
+            % (
+                value,
+                re_,
+                im_,
+                (r.get("power") or [float("nan")])[0],
+                e["power"],
+                (r.get("clip_lo") or [float("nan")])[0],
+                e["clip_lo"],
+                (r.get("clip_hi") or [float("nan")])[0],
+                e["clip_hi"],
+                "ok" if not bad else "FAIL",
+            )
+        )
         print("        %s" % label)
         for b in bad:
             print("        !! %s" % b)
@@ -178,11 +204,15 @@ def main():
             fails.append(("control", "enabled=true with band_power_chans empty"))
             print("CONTROL  FAIL: enabled=true with no channels configured")
         elif r.get("passes", 0) != 0:
-            fails.append(("control", "passes=%s with the feature off" % r.get("passes")))
+            fails.append(
+                ("control", "passes=%s with the feature off" % r.get("passes"))
+            )
             print("CONTROL  FAIL: passes=%s with the feature off" % r.get("passes"))
         else:
-            print("CONTROL  ok: band_power_chans empty -> enabled=false, passes=0 "
-                  "(the pass does not run, it is not merely quiet)")
+            print(
+                "CONTROL  ok: band_power_chans empty -> enabled=false, passes=0 "
+                "(the pass does not run, it is not merely quiet)"
+            )
     except Exception as ex:
         print("CONTROL  RUN FAILED: %s" % ex)
         fails.append(("control", str(ex)))

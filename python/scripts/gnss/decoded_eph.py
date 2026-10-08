@@ -32,7 +32,7 @@ outage.
 
 import math
 
-from gnss_ephemeris import (BDT_GPST, C_LIGHT, OMEGA_E, _azel, _ecef_of_llh, gpst_of_utc)
+from gnss_ephemeris import BDT_GPST, C_LIGHT, OMEGA_E, _azel, _ecef_of_llh, gpst_of_utc
 
 # Clock reference / coefficient field names per decoder family. The decoded eph dicts differ in
 # casing (Galileo af0/t0c); constellations whose decoder does not surface clock are absent here
@@ -46,9 +46,13 @@ CLOCK_FIELDS = {
     "GPS_L1_LNAV": ("af0", "af1", "af2", "toc"),
 }
 TOE_FIELD = {
-    "GAL_E1B_INAV": "t0e", "GAL_E5AI_FNAV": "t0e",
-    "GPS_L1_LNAV": "toe", "GPS_L2C_CNAV": "toe", "GPS_L5_CNAV": "toe",
-    "BDS_B1C_BCNAV1": "t_oe", "BDS_B2A_BCNAV2": "t_oe",
+    "GAL_E1B_INAV": "t0e",
+    "GAL_E5AI_FNAV": "t0e",
+    "GPS_L1_LNAV": "toe",
+    "GPS_L2C_CNAV": "toe",
+    "GPS_L5_CNAV": "toe",
+    "BDS_B1C_BCNAV1": "t_oe",
+    "BDS_B2A_BCNAV2": "t_oe",
 }
 
 
@@ -93,9 +97,14 @@ def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5
         pb = sv_pos(eph, t_sow - tau - dt)
         vel = [(a - b) / (2.0 * dt) for a, b in zip(pa, pb)]
         rr = sum((p - r) * v for p, r, v in zip(pos_rx, rx, vel)) / rng
-        return dict(az=az, el=el, range_m=rng, range_rate_mps=rr,
-                    sat_clk_s=_sat_clock(eph, signal, t_sow - tau),
-                    toe_age_s=toe_age_s)
+        return dict(
+            az=az,
+            el=el,
+            range_m=rng,
+            range_rate_mps=rr,
+            sat_clk_s=_sat_clock(eph, signal, t_sow - tau),
+            toe_age_s=toe_age_s,
+        )
     except Exception:
         return None
 
@@ -112,7 +121,9 @@ def predict_from_decoders(entries, lat, lon, alt, t_utc, mask_deg=0.0, max_age=1
     Side-effect-free, so a caller can try/except it around the network fetch with zero risk to
     the running loop."""
     t = gpst_of_utc(t_utc)
-    t_sow = t - (t // 604800) * 604800   # continuous GPST -> seconds-of-week for the propagators
+    t_sow = (
+        t - (t // 604800) * 604800
+    )  # continuous GPST -> seconds-of-week for the propagators
     rx = _ecef_of_llh(lat, lon, alt)
     out = {}
     for sys, prn, signal, eph, sv_pos, toe_gpst in entries:

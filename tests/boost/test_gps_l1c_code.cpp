@@ -9,8 +9,8 @@
 #include <numeric>
 #include <stdexcept>
 
-using gps::generate_l1cp_code;
 using gps::generate_l1co_code;
+using gps::generate_l1cp_code;
 using gps::L1C_CODE_LENGTH;
 using gps::L1CO_LENGTH;
 
@@ -36,7 +36,8 @@ int balance(const std::array<int8_t, N>& code) {
 // for the Legendre length 10223 (== 3 mod 4) the quadratic-residue autocorrelation is -1, so the
 // 10223-chip Weil code sums to -1, and the +1-sum 7-chip insertion brings it to exactly 0. A
 // wrong Legendre/Weil would miss this. The first-24-chip octals are regression pins computed from
-// the IS-GPS-800/PocketSDR algorithm + index tables (run PocketSDR sdr_code for a byte-level check).
+// the IS-GPS-800/PocketSDR algorithm + index tables (run PocketSDR sdr_code for a byte-level
+// check).
 BOOST_AUTO_TEST_CASE(l1cp_first24_and_balance) {
     BOOST_CHECK_EQUAL(first_bits(generate_l1cp_code(1), 24), 05752067u);
     BOOST_CHECK_EQUAL(first_bits(generate_l1cp_code(5), 24), 042323273u);

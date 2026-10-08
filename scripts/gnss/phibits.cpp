@@ -68,8 +68,7 @@ int main(int argc, char** argv) {
     const double dmed = dmag[dmag.size() / 2], dmin = dmag.front(), dmaxv = dmag.back();
     printf("\n[1] PRECISION\n");
     printf("    max|Phi| over the table      %12.6g\n", pmax);
-    printf("    |dPhi| over one chip step:   min %.4g  median %.4g  max %.4g\n", dmin, dmed,
-           dmaxv);
+    printf("    |dPhi| over one chip step:   min %.4g  median %.4g  max %.4g\n", dmin, dmed, dmaxv);
     printf("    cancellation: max|Phi|/median|dPhi| = %.1f (%.1f bits), "
            "max|Phi|/min|dPhi| = %.0f (%.1f bits)\n",
            pmax / dmed, std::log2(pmax / dmed), pmax / dmin, std::log2(pmax / dmin));
@@ -102,7 +101,8 @@ int main(int argc, char** argv) {
         printf("        %2d bits -> median %.3e   worst %.3e\n", mant, med, worst);
         return worst;
     };
-    printf("    worst RELATIVE error on dPhi if Phi is stored with N mantissa bits (shared exp):\n");
+    printf(
+        "    worst RELATIVE error on dPhi if Phi is stored with N mantissa bits (shared exp):\n");
     for (int m : {23, 15, 11, 8})
         (void)quant(m);
 
@@ -187,17 +187,17 @@ int main(int argc, char** argv) {
             w_mid = std::max(w_mid, std::abs(rm * base - ex) / std::abs(ex));
             w_non = std::max(w_non, std::abs(base - ex) / std::abs(ex));
         }
-        printf("      %7.0f Hz     %.3e        %.3e     %.3e   %.3e\n",
-               dd, w_cen, w_real, w_mid, w_non);
+        printf("      %7.0f Hz     %.3e        %.3e     %.3e   %.3e\n", dd, w_cen, w_real, w_mid,
+               w_non);
     }
     printf("      (fp16 storage costs 3.3e-04 -- anything below that is free accuracy)\n");
 
     // ---- 2c. THE FORM THAT WOULD SHIP -------------------------------------------------------
     // 2b's complex centroid c = sum_j j*w_j / sum_j w_j is exact to second order but needs a
-    // per-window quantity, i.e. a SECOND prefix table Psi[k] = sum_{j<k} j*proto[j]*e^{-i(off+w0)j}.
-    // Two shared tables still beats one table PER PRN by 12-16x, but the reconstruction must
-    // avoid a complex divide and a transcendental per chip. Split c into the part we know from
-    // the INDICES and the part that needs Psi:
+    // per-window quantity, i.e. a SECOND prefix table Psi[k] = sum_{j<k}
+    // j*proto[j]*e^{-i(off+w0)j}. Two shared tables still beats one table PER PRN by 12-16x, but
+    // the reconstruction must avoid a complex divide and a transcendental per chip. Split c into
+    // the part we know from the INDICES and the part that needs Psi:
     //
     //   exp(-i*ddw*c) = exp(-i*ddw*mid) * exp(-i*ddw*(c - mid)),   mid = (t0+t1)/2
     //
@@ -247,11 +247,10 @@ int main(int argc, char** argv) {
                 const cd got_p = std::exp(cd(0.0, -ddw * tp)) * corr_p;
                 worst_p = std::max(worst_p, std::abs(got_p - ex) / std::abs(ex));
             }
-            printf("      %7.0f Hz   mid %.3e  t_prev %.3e   (fp16/ %.0fx, %.0fx)\n",
-                   dd, worst, worst_p, 3.3e-4 / worst, 3.3e-4 / worst_p);
+            printf("      %7.0f Hz   mid %.3e  t_prev %.3e   (fp16/ %.0fx, %.0fx)\n", dd, worst,
+                   worst_p, 3.3e-4 / worst, 3.3e-4 / worst_p);
         }
     }
-
 
 
     // ---- 3. CAN ONE SHARED TABLE SET COVER A DOPPLER BUCKET? ---------------------------------
@@ -297,6 +296,7 @@ int main(int argc, char** argv) {
             printf("%9.0f %8d %14.3e %14.3e\n", W, order, worst, rel[rel.size() / 2]);
         }
     }
-    printf("    (fp16 storage costs 3.3e-04 -- a reconstruction much better than that is wasted)\n");
+    printf(
+        "    (fp16 storage costs 3.3e-04 -- a reconstruction much better than that is wasted)\n");
     return 0;
 }

@@ -1,18 +1,18 @@
 #include "gnssOverlay.hpp"
 
-#include "gnssSignal.hpp"    // for signal_by_name (the documentary cross-check)
-#include "beidouB1CCode.hpp" // for generate_b1cp_secondary (per-PRN B1C overlay)
-#include "beidouB1ICode.hpp" // for B1I_NH20 (shared legacy-BeiDou D1 overlay)
-#include "beidouB2aCode.hpp" // for b2ap_secondary (per-PRN B2a overlay)
-#include "beidouB3ICode.hpp" // for B3I_NH20 (same sequence, own registry row)
-#include "galileoE1Code.hpp" // for E1C_CS25 (shared Galileo pilot overlay)
-#include "galileoE5aCode.hpp" // for e5aq_secondary (per-PRN E5a-Q overlay)
-#include "galileoE5bCode.hpp" // for e5bq_secondary (per-PRN E5b-Q overlay)
-#include "galileoE6Code.hpp" // for generate_e6c_secondary (per-PRN E6-C overlay)
-#include "gpsL1CCode.hpp"    // for generate_l1co_code (per-PRN L1C-P overlay)
+#include "beidouB1CCode.hpp"   // for generate_b1cp_secondary (per-PRN B1C overlay)
+#include "beidouB1ICode.hpp"   // for B1I_NH20 (shared legacy-BeiDou D1 overlay)
+#include "beidouB2aCode.hpp"   // for b2ap_secondary (per-PRN B2a overlay)
+#include "beidouB3ICode.hpp"   // for B3I_NH20 (same sequence, own registry row)
+#include "galileoE1Code.hpp"   // for E1C_CS25 (shared Galileo pilot overlay)
+#include "galileoE5aCode.hpp"  // for e5aq_secondary (per-PRN E5a-Q overlay)
+#include "galileoE5bCode.hpp"  // for e5bq_secondary (per-PRN E5b-Q overlay)
+#include "galileoE6Code.hpp"   // for generate_e6c_secondary (per-PRN E6-C overlay)
 #include "glonassL2OCCode.hpp" // for L2OC_OC2 (shared 50-chip L2OC-p overlay)
 #include "glonassL3OCCode.hpp" // for L3OC_NH10 / L3OC_BC5 (shared GLONASS CDMA overlays)
-#include "gpsL5Code.hpp"     // for L5_NH10/NH20 (shared Neuman-Hofman overlays)
+#include "gnssSignal.hpp"      // for signal_by_name (the documentary cross-check)
+#include "gpsL1CCode.hpp"      // for generate_l1co_code (per-PRN L1C-P overlay)
+#include "gpsL5Code.hpp"       // for L5_NH10/NH20 (shared Neuman-Hofman overlays)
 
 namespace gnss {
 
@@ -169,9 +169,9 @@ std::vector<std::string> overlay_registry_check() {
             continue;
         }
         if (sd->secondary_length != od.length)
-            out.push_back(std::string(od.name) + ": registry length "
-                          + std::to_string(od.length) + " != " + od.signal
-                          + ".secondary_length " + std::to_string(sd->secondary_length));
+            out.push_back(std::string(od.name) + ": registry length " + std::to_string(od.length)
+                          + " != " + od.signal + ".secondary_length "
+                          + std::to_string(sd->secondary_length));
     }
     return out;
 }

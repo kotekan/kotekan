@@ -109,9 +109,8 @@ int main(int argc, char** argv) {
                 " \"magic\": %u, \"version\": %d, \"win\": %llu, \"seq\": %llu,"
                 " \"wstart0\": %lld, \"present\": %u,"
                 " \"chain\": \"gal_e5a\", \"inst\": \"cx42.1\"}\n",
-                gnss::telem_row_floats(n_cols), n_cols, gnss::TELEM_MAX_CHAN,
-                gnss::CHAN_FLOATS, n_chan,
-                (int)h.chan_id[0], gnss::telem_chan_offset(1) - gnss::telem_chan_offset(0),
+                gnss::telem_row_floats(n_cols), n_cols, gnss::TELEM_MAX_CHAN, gnss::CHAN_FLOATS,
+                n_chan, (int)h.chan_id[0], gnss::telem_chan_offset(1) - gnss::telem_chan_offset(0),
                 sizeof(gnss::TelemHeader), gnss::TELEM_HEADER_BYTES, gnss::RECORD_FLOATS,
                 gnss::telem_frame_bytes(n_rec, n_prn, n_cols), n_rec, n_prn,
                 offsetof(gnss::TelemHeader, win), offsetof(gnss::TelemHeader, seq),

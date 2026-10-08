@@ -39,14 +39,14 @@ namespace gnss_gpu {
 constexpr int MAX_REC = 16;
 
 struct FrameHdr {
-    int32_t n_rec;   ///< complete record windows despread in this frame (<= MAX_REC)
-    int32_t n_prn;   ///< PRN slots (layout stride)
-    int32_t n_chan;  ///< channels per job row (layout stride)
-    int32_t n_jobs;  ///< total job ROWS written this frame (<= max_jobs(n_prn, n_rows_spec);
-                     ///< n_rows_spec per active PRN per record -- see max_specs for the kernel's
-                     ///< job count)
-    int64_t seq0;    ///< absolute sample of the input frame that triggered this output
-    double utc0;     ///< capture UTC of sample 0 (the tracker's capture_utc0 convention)
+    int32_t n_rec;  ///< complete record windows despread in this frame (<= MAX_REC)
+    int32_t n_prn;  ///< PRN slots (layout stride)
+    int32_t n_chan; ///< channels per job row (layout stride)
+    int32_t n_jobs; ///< total job ROWS written this frame (<= max_jobs(n_prn, n_rows_spec);
+                    ///< n_rows_spec per active PRN per record -- see max_specs for the kernel's
+                    ///< job count)
+    int64_t seq0;   ///< absolute sample of the input frame that triggered this output
+    double utc0;    ///< capture UTC of sample 0 (the tracker's capture_utc0 convention)
     int32_t n_rows_spec; ///< OUTPUT rows per active PRN per record: 4 (E, P, L, P_HEAD) normally,
                          ///< 6 when the chain peels -- rows 4/5 are then the PEEL RESIDUAL prompt
                          ///< and its head segment (gnssRecord.hpp slots 20-23). RUNTIME, not a
@@ -123,9 +123,9 @@ struct PrnCtl {
     double ang0;
     /// Phi-cache staleness, Hz (record slot gnss::REC_PHI_DDOP). NaN if no Phi was built.
     double phi_ddop;
-    double fcar;        ///< replica carrier f_ref (Hz): the assembler needs it to reconstruct the
-                        ///< COMMANDED carrier phase f_ref*t_abs + phi/2pi (record slot 15). NOT
-                        ///< derivable from fcar_report, which folds out the re-pin step on purpose.
+    double fcar; ///< replica carrier f_ref (Hz): the assembler needs it to reconstruct the
+                 ///< COMMANDED carrier phase f_ref*t_abs + phi/2pi (record slot 15). NOT
+                 ///< derivable from fcar_report, which folds out the re-pin step on purpose.
     /// RE-PIN PHASE STEP FOR THIS RECORD, CYCLES (reanchored == 3 only; 0.0 otherwise).
     ///
     /// The replica's carrier phase is ABSOLUTELY anchored -- 2*pi*fcar*t_abs -- so when

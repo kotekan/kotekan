@@ -75,7 +75,8 @@ def subframes(merged):
         if b == a + 1:
             cur.append(b)
         else:
-            runs.append(cur); cur = [b]
+            runs.append(cur)
+            cur = [b]
     runs.append(cur)
     run = max(runs, key=len)
     if len(run) < 620:
@@ -99,14 +100,18 @@ def main():
     merged = stitch(sys.argv[1])
     per = {p: subframes(m) for p, m in merged.items()}
     per = {p: v for p, v in per.items() if v}
-    print(f"synced {len(per)} PRNs: " + ", ".join(
-        f"G{p:02d}({len(v)} sf)" for p, v in sorted(per.items())))
+    print(
+        f"synced {len(per)} PRNs: "
+        + ", ".join(f"G{p:02d}({len(v)} sf)" for p, v in sorted(per.items()))
+    )
     if not per:
         print("no PRN synced -- nothing to measure")
         return
 
     print("\nA. WORD STABILITY frame-to-frame (per sat, per subframe id)")
-    print("   word:  0=TLM 1=HOW 2..9=data.  '.'=identical across all frames, digit=#bits changed")
+    print(
+        "   word:  0=TLM 1=HOW 2..9=data.  '.'=identical across all frames, digit=#bits changed"
+    )
     for prn, sfs in sorted(per.items()):
         by = defaultdict(list)
         for tow, sfid, data in sfs:
@@ -119,7 +124,10 @@ def main():
             for w in range(10):
                 ch = max(int((v[0][w] ^ x[w]).sum()) for x in v[1:])
                 marks.append("." if ch == 0 else (str(ch) if ch < 10 else "+"))
-            print(f"   G{prn:02d} sf{sfid} x{len(v):<2d}  " + " ".join(f"{m:>2s}" for m in marks))
+            print(
+                f"   G{prn:02d} sf{sfid} x{len(v):<2d}  "
+                + " ".join(f"{m:>2s}" for m in marks)
+            )
 
     print("\nB. CROSS-SATELLITE word identity at MATCHED TOW")
     print("   (a word identical across sats is borrowable from ANY strong sat)")
@@ -137,7 +145,8 @@ def main():
                 for w in range(10):
                     same = int((d[prns[i]][w] ^ d[prns[j]][w]).sum()) == 0
                     a = agg[(sfid, w)]
-                    a[0] += int(same); a[1] += 1
+                    a[0] += int(same)
+                    a[1] += 1
     if not agg:
         print("   no TOW with >=2 satellites -- need a longer collection")
     else:
@@ -147,8 +156,11 @@ def main():
                 ident, tot = agg.get((sfid, w), [0, 0])
                 row.append("--" if not tot else f"{100 * ident // tot:>3d}")
             npair = max(agg[(sfid, w)][1] for w in range(10) if (sfid, w) in agg)
-            print(f"   sf{sfid}  % identical by word: " + " ".join(f"{x:>3s}" for x in row)
-                  + f"   ({npair} sat-pairs)")
+            print(
+                f"   sf{sfid}  % identical by word: "
+                + " ".join(f"{x:>3s}" for x in row)
+                + f"   ({npair} sat-pairs)"
+            )
 
 
 if __name__ == "__main__":

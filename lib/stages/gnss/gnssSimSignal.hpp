@@ -16,9 +16,9 @@
 #ifndef GNSS_SIM_SIGNAL_HPP
 #define GNSS_SIM_SIGNAL_HPP
 
-#include <complex>  // for complex
-#include <cstdint>  // for int8_t, uint32_t
-#include <vector>   // for vector
+#include <complex> // for complex
+#include <cstdint> // for int8_t, uint32_t
+#include <vector>  // for vector
 
 namespace gnss {
 

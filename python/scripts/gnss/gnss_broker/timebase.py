@@ -66,13 +66,17 @@ def fit_epoch_shift(resid, rate):
 
 
 class TimeBaseDetector(object):
-    def __init__(self, min_sats=4, spread_hz=100.0, persist=3, clear_after=2, fit_frac=0.3):
+    def __init__(
+        self, min_sats=4, spread_hz=100.0, persist=3, clear_after=2, fit_frac=0.3
+    ):
         self.min_sats = int(min_sats)
-        self.spread_hz = float(spread_hz)     # ~0.4 Hz/s x 250 s: below this is noise/bias
+        self.spread_hz = float(spread_hz)  # ~0.4 Hz/s x 250 s: below this is noise/bias
         self.persist = int(persist)
         self.clear_after = int(clear_after)
-        self.fit_frac = float(fit_frac)       # post-fit rms below this fraction of the spread
-        self.bad = 0                          # = "one epoch shift explains it"
+        self.fit_frac = float(
+            fit_frac
+        )  # post-fit rms below this fraction of the spread
+        self.bad = 0  # = "one epoch shift explains it"
         self.quiet = 0
         self.verdict = VERDICT
 
@@ -90,8 +94,11 @@ class TimeBaseDetector(object):
             self.bad = 0
             self.quiet += 1
             if v.suspect and self.quiet >= self.clear_after:
-                msg = ("TIME BASE CLEAR (%s): %d satellites within %.0f Hz rms of the model "
-                       "after %.0f s; geometry resumes" % (chain, len(pairs), pre, t - v.since_t))
+                msg = (
+                    "TIME BASE CLEAR (%s): %d satellites within %.0f Hz rms of the model "
+                    "after %.0f s; geometry resumes"
+                    % (chain, len(pairs), pre, t - v.since_t)
+                )
                 v.clear()
                 return msg
             return None
@@ -112,18 +119,22 @@ class TimeBaseDetector(object):
         if not first:
             return None
         if explained:
-            return ("*** TIME BASE SUSPECT (%s): %d satellites disagree with the model by %.0f Hz "
-                    "rms after the clock bias is removed, and ONE epoch shift of %+.0f s (%+.2f h) "
-                    "explains %.0f%% of it. The nodes are almost certainly serving a STALE "
-                    "sample-0 epoch: refresh chive, then restart the nodes (the broker and the "
-                    "writers restart themselves). Geometry is WITHHELD from every published row "
-                    "until this clears."
-                    % (chain, len(pairs), pre, dt, dt / 3600.0, 100.0 * (1.0 - post / pre)))
-        return ("*** TIME BASE SUSPECT (%s): %d satellites disagree with the model by %.0f Hz rms "
-                "after the clock bias is removed, and an epoch shift does NOT explain it "
-                "(post-fit %.0f Hz): the sky and the model disagree for another reason -- "
-                "ephemeris, front end, or a per-satellite fault. Geometry is WITHHELD from every "
-                "published row until this clears." % (chain, len(pairs), pre, post))
+            return (
+                "*** TIME BASE SUSPECT (%s): %d satellites disagree with the model by %.0f Hz "
+                "rms after the clock bias is removed, and ONE epoch shift of %+.0f s (%+.2f h) "
+                "explains %.0f%% of it. The nodes are almost certainly serving a STALE "
+                "sample-0 epoch: refresh chive, then restart the nodes (the broker and the "
+                "writers restart themselves). Geometry is WITHHELD from every published row "
+                "until this clears."
+                % (chain, len(pairs), pre, dt, dt / 3600.0, 100.0 * (1.0 - post / pre))
+            )
+        return (
+            "*** TIME BASE SUSPECT (%s): %d satellites disagree with the model by %.0f Hz rms "
+            "after the clock bias is removed, and an epoch shift does NOT explain it "
+            "(post-fit %.0f Hz): the sky and the model disagree for another reason -- "
+            "ephemeris, front end, or a per-satellite fault. Geometry is WITHHELD from every "
+            "published row until this clears." % (chain, len(pairs), pre, post)
+        )
 
 
 DETECTOR = TimeBaseDetector()

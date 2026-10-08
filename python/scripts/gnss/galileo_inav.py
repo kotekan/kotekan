@@ -26,24 +26,24 @@ import math
 
 import numpy as np
 
-SYM_S = 0.004               # E1B symbol = 4 ms (250 sps)
+SYM_S = 0.004  # E1B symbol = 4 ms (250 sps)
 K = 7
-POLY = (0o171, 0o133)       # G1, G2 -- identical to GPS CNAV
-G2_INVERT = True            # VERIFIED on live E1B symbols 2026-07-30 (a convention scan
-                            # decoded 160 CRC-valid words at True+swap, 0 otherwise). The
-                            # roundtrip self-test was blind to this -- encode/decode agree on
-                            # any choice -- exactly why it was flagged for the live step.
-NSTATES = 1 << (K - 1)      # 64
-CRC24Q_POLY = 0x1864CFB     # same CRC-24Q as CNAV
+POLY = (0o171, 0o133)  # G1, G2 -- identical to GPS CNAV
+G2_INVERT = True  # VERIFIED on live E1B symbols 2026-07-30 (a convention scan
+# decoded 160 CRC-valid words at True+swap, 0 otherwise). The
+# roundtrip self-test was blind to this -- encode/decode agree on
+# any choice -- exactly why it was flagged for the live step.
+NSTATES = 1 << (K - 1)  # 64
+CRC24Q_POLY = 0x1864CFB  # same CRC-24Q as CNAV
 
 # I/NAV page part: 250 symbols = SYNC (10) + interleaved data (240)
-SYNC = [0, 1, 0, 1, 1, 0, 0, 0, 0, 0]      # Galileo I/NAV synchronisation pattern
-N_SYNC = len(SYNC)                          # 10
+SYNC = [0, 1, 0, 1, 1, 0, 0, 0, 0, 0]  # Galileo I/NAV synchronisation pattern
+N_SYNC = len(SYNC)  # 10
 INTERLEAVE_ROWS = 8
 INTERLEAVE_COLS = 30
-N_DATA_SYM = INTERLEAVE_ROWS * INTERLEAVE_COLS   # 240
-PAGE_PART_SYMS = N_SYNC + N_DATA_SYM             # 250
-PAGE_PART_BITS = N_DATA_SYM // 2 - (K - 1)       # 114 content bits (120 FEC bits - 6 tail)
+N_DATA_SYM = INTERLEAVE_ROWS * INTERLEAVE_COLS  # 240
+PAGE_PART_SYMS = N_SYNC + N_DATA_SYM  # 250
+PAGE_PART_BITS = N_DATA_SYM // 2 - (K - 1)  # 114 content bits (120 FEC bits - 6 tail)
 
 
 # --------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def conv_encode(bits, flush=True):
 
 def viterbi_decode(symbols, known_start=True):
     n = len(symbols) // 2
-    r = np.asarray(symbols[:2 * n], dtype=float).reshape(n, 2)
+    r = np.asarray(symbols[: 2 * n], dtype=float).reshape(n, 2)
     NEG = -1e18
     pm = np.full(NSTATES, NEG if known_start else 0.0)
     if known_start:
@@ -148,9 +148,10 @@ def encode_page_part(content_bits):
     """114 content bits -> 250 page-part symbols (0/1): FEC, interleave, prepend sync."""
     content = list(int(b) for b in content_bits)
     if len(content) != PAGE_PART_BITS:
-        raise ValueError("page part is %d content bits, got %d"
-                         % (PAGE_PART_BITS, len(content)))
-    fec = conv_encode(content, flush=True)              # 120 -> 240 symbols
+        raise ValueError(
+            "page part is %d content bits, got %d" % (PAGE_PART_BITS, len(content))
+        )
+    fec = conv_encode(content, flush=True)  # 120 -> 240 symbols
     il = interleave(fec)
     return np.concatenate([np.array(SYNC, dtype=np.int8), il])
 
@@ -167,8 +168,8 @@ def decode_page_part(symbols, want_sync=True):
     sync_ok = bool(np.array_equal(sync_hard, np.array(SYNC, dtype=np.int8)))
     if want_sync and not sync_ok:
         return None, False
-    data = deinterleave(s[N_SYNC:N_SYNC + N_DATA_SYM])
-    bits = viterbi_decode(data, known_start=True)       # 240 -> 120 bits
+    data = deinterleave(s[N_SYNC : N_SYNC + N_DATA_SYM])
+    bits = viterbi_decode(data, known_start=True)  # 240 -> 120 bits
     return bits[:PAGE_PART_BITS], sync_ok
 
 
@@ -181,9 +182,11 @@ def find_page_parts(symbols):
     i = 0
     while i + PAGE_PART_SYMS <= n:
         for pol in (1.0, -1.0):
-            hard = (pol * s[i:i + N_SYNC] < 0).astype(np.int8)
+            hard = (pol * s[i : i + N_SYNC] < 0).astype(np.int8)
             if np.array_equal(hard, np.array(SYNC, dtype=np.int8)):
-                bits, ok = decode_page_part(pol * s[i:i + PAGE_PART_SYMS], want_sync=True)
+                bits, ok = decode_page_part(
+                    pol * s[i : i + PAGE_PART_SYMS], want_sync=True
+                )
                 if ok and bits is not None:
                     yield i, int(pol), bits
                     break
@@ -200,9 +203,9 @@ def find_page_parts(symbols):
 # CRC-24Q spans the 196 bits even[0:114] + odd[0:82] (everything before the CRC field).
 EVEN_DATA = 112
 ODD_DATA = 16
-WORD_BITS = EVEN_DATA + ODD_DATA        # 128
-CRC_SPAN = 196                          # even[0:114] + odd[0:82]
-ODD_CRC_AT = 82                         # crc-24 occupies odd[82:106]
+WORD_BITS = EVEN_DATA + ODD_DATA  # 128
+CRC_SPAN = 196  # even[0:114] + odd[0:82]
+ODD_CRC_AT = 82  # crc-24 occupies odd[82:106]
 
 
 def assemble_word(even_bits, odd_bits):
@@ -212,11 +215,11 @@ def assemble_word(even_bits, odd_bits):
     o = [int(b) & 1 for b in odd_bits]
     if len(e) != PAGE_PART_BITS or len(o) != PAGE_PART_BITS:
         return None
-    if e[0] != 0 or o[0] != 1:           # even part flag 0, odd part flag 1
+    if e[0] != 0 or o[0] != 1:  # even part flag 0, odd part flag 1
         return None
-    word = e[2:2 + EVEN_DATA] + o[2:2 + ODD_DATA]
+    word = e[2 : 2 + EVEN_DATA] + o[2 : 2 + ODD_DATA]
     crc_calc = crc24q(e[0:PAGE_PART_BITS] + o[0:ODD_CRC_AT])
-    crc_rx = _uint(o[ODD_CRC_AT:ODD_CRC_AT + 24])
+    crc_rx = _uint(o[ODD_CRC_AT : ODD_CRC_AT + 24])
     return word, (crc_calc == crc_rx), _uint(word[0:6])
 
 
@@ -228,10 +231,10 @@ def build_page(word_128, reserved=None):
         raise ValueError("word is %d bits" % WORD_BITS)
     res = list(reserved) if reserved is not None else [0] * (ODD_CRC_AT - 2 - ODD_DATA)
     even = [0, 0] + w[0:EVEN_DATA]
-    odd_head = [1, 0] + w[EVEN_DATA:WORD_BITS] + res    # odd[0:82]
+    odd_head = [1, 0] + w[EVEN_DATA:WORD_BITS] + res  # odd[0:82]
     crc = crc24q(even + odd_head)
     crc_bits = [(crc >> (23 - i)) & 1 for i in range(24)]
-    odd = odd_head + crc_bits + [0] * 8                 # + 8-bit SSP/tail
+    odd = odd_head + crc_bits + [0] * 8  # + 8-bit SSP/tail
     return even, odd
 
 
@@ -239,7 +242,7 @@ def build_page(word_128, reserved=None):
 # I/NAV ephemeris: Word Types 1-4 -> Keplerian set (SI), then ECEF
 # --------------------------------------------------------------------------
 GAL_PI = 3.1415926535898
-GAL_MU = 3.986004418e14                  # Galileo GM (WGS-close; GPS uses 3.986005e14)
+GAL_MU = 3.986004418e14  # Galileo GM (WGS-close; GPS uses 3.986005e14)
 GAL_OMEGA_E = 7.2921151467e-5
 _P = lambda n: 2.0 ** (-n)
 
@@ -252,37 +255,37 @@ _P = lambda n: 2.0 ** (-n)
 # absolute bit index in the 128-bit word.
 INAV_EPH_FIELDS = {
     # Word Type 1: IODnav, t0e, M0, e, sqrtA
-    "t0e":     (1, 16, 14, False, 60.0),
-    "M0":      (1, 30, 32, True,  _P(31) * GAL_PI),
-    "e":       (1, 62, 32, False, _P(33)),
-    "sqrtA":   (1, 94, 32, False, _P(19)),
+    "t0e": (1, 16, 14, False, 60.0),
+    "M0": (1, 30, 32, True, _P(31) * GAL_PI),
+    "e": (1, 62, 32, False, _P(33)),
+    "sqrtA": (1, 94, 32, False, _P(19)),
     # Word Type 2: Omega0, i0, omega, iDot
-    "OMEGA0":  (2, 16, 32, True,  _P(31) * GAL_PI),
-    "i0":      (2, 48, 32, True,  _P(31) * GAL_PI),
-    "omega":   (2, 80, 32, True,  _P(31) * GAL_PI),
-    "iDot":    (2, 112, 14, True, _P(43) * GAL_PI),
+    "OMEGA0": (2, 16, 32, True, _P(31) * GAL_PI),
+    "i0": (2, 48, 32, True, _P(31) * GAL_PI),
+    "omega": (2, 80, 32, True, _P(31) * GAL_PI),
+    "iDot": (2, 112, 14, True, _P(43) * GAL_PI),
     # Word Type 3: OmegaDot, deltaN, Cuc, Cus, Crc, Crs (SISA ignored here)
     "OMEGA_dot": (3, 16, 24, True, _P(43) * GAL_PI),
-    "dn":        (3, 40, 16, True, _P(43) * GAL_PI),
-    "Cuc":       (3, 56, 16, True, _P(29)),
-    "Cus":       (3, 72, 16, True, _P(29)),
-    "Crc":       (3, 88, 16, True, _P(5)),
-    "Crs":       (3, 104, 16, True, _P(5)),
+    "dn": (3, 40, 16, True, _P(43) * GAL_PI),
+    "Cuc": (3, 56, 16, True, _P(29)),
+    "Cus": (3, 72, 16, True, _P(29)),
+    "Crc": (3, 88, 16, True, _P(5)),
+    "Crs": (3, 104, 16, True, _P(5)),
     # Word Type 4: Cic, Cis, t0c, af0, af1, af2 (SVID at 16..22 ignored here)
-    "Cic":     (4, 22, 16, True, _P(29)),
-    "Cis":     (4, 38, 16, True, _P(29)),
-    "t0c":     (4, 54, 14, False, 60.0),
-    "af0":     (4, 68, 31, True, _P(34)),
-    "af1":     (4, 99, 21, True, _P(46)),
-    "af2":     (4, 120, 6, True, _P(59)),
+    "Cic": (4, 22, 16, True, _P(29)),
+    "Cis": (4, 38, 16, True, _P(29)),
+    "t0c": (4, 54, 14, False, 60.0),
+    "af0": (4, 68, 31, True, _P(34)),
+    "af1": (4, 99, 21, True, _P(46)),
+    "af2": (4, 120, 6, True, _P(59)),
 }
 
 
 def _field(word, start, length, signed, scale):
-    bits = word[start:start + length]
+    bits = word[start : start + length]
     v = _uint(bits)
     if signed and bits and bits[0] == 1:
-        v -= (1 << length)
+        v -= 1 << length
     return v * scale
 
 
@@ -324,7 +327,9 @@ def sv_position_inav(eph, t):
     u = phi + eph["Cus"] * s2 + eph["Cuc"] * c2
     r = A * (1 - e * math.cos(E)) + eph["Crs"] * s2 + eph["Crc"] * c2
     i = eph["i0"] + eph["iDot"] * tk + eph["Cis"] * s2 + eph["Cic"] * c2
-    om = eph["OMEGA0"] + (eph["OMEGA_dot"] - GAL_OMEGA_E) * tk - GAL_OMEGA_E * eph["t0e"]
+    om = (
+        eph["OMEGA0"] + (eph["OMEGA_dot"] - GAL_OMEGA_E) * tk - GAL_OMEGA_E * eph["t0e"]
+    )
     xp, yp = r * math.cos(u), r * math.sin(u)
     x = xp * math.cos(om) - yp * math.cos(i) * math.sin(om)
     y = xp * math.sin(om) + yp * math.cos(i) * math.cos(om)
@@ -337,6 +342,7 @@ def sv_position_inav(eph, t):
 # --------------------------------------------------------------------------
 if __name__ == "__main__":
     import sys
+
     rng = np.random.default_rng(0)
     fails = 0
 
@@ -357,12 +363,15 @@ if __name__ == "__main__":
     f1b = 0
     for _ in range(200):
         content = rng.integers(0, 2, PAGE_PART_BITS).astype(np.int8)
-        soft = np.where(encode_page_part(content) == 0, 1.0, -1.0) \
-            + rng.normal(0, 0.35, PAGE_PART_SYMS)
+        soft = np.where(encode_page_part(content) == 0, 1.0, -1.0) + rng.normal(
+            0, 0.35, PAGE_PART_SYMS
+        )
         out, _ = decode_page_part(soft, want_sync=False)
         if out is None or not np.array_equal(out, content):
             f1b += 1
-    print("1b. FEC roundtrip @0.35 AWGN: %s" % ("OK" if f1b == 0 else "FAIL %d/200" % f1b))
+    print(
+        "1b. FEC roundtrip @0.35 AWGN: %s" % ("OK" if f1b == 0 else "FAIL %d/200" % f1b)
+    )
     fails = f1a + f1b
 
     # 2. sync + polarity search finds an embedded page part, either polarity
@@ -380,14 +389,22 @@ if __name__ == "__main__":
     # 3. CRC-24Q detects a single-bit flip (over a 196-bit nav word, I/NAV CRC scope)
     word = list(rng.integers(0, 2, 196).astype(int))
     c = crc24q(word)
-    bad = word[:]; bad[100] ^= 1
+    bad = word[:]
+    bad[100] ^= 1
     print("3. CRC-24Q flip-detect: %s" % ("OK" if crc24q(bad) != c else "FAIL"))
 
     # 4. structural invariants
-    ok4 = (PAGE_PART_SYMS == 250 and N_DATA_SYM == 240 and PAGE_PART_BITS == 114
-           and WORD_BITS == 128 and CRC_SPAN == 196)
-    print("4. page geometry (250 sym = 10+240; 128-bit word; 196-bit CRC span): %s"
-          % ("OK" if ok4 else "FAIL"))
+    ok4 = (
+        PAGE_PART_SYMS == 250
+        and N_DATA_SYM == 240
+        and PAGE_PART_BITS == 114
+        and WORD_BITS == 128
+        and CRC_SPAN == 196
+    )
+    print(
+        "4. page geometry (250 sym = 10+240; 128-bit word; 196-bit CRC span): %s"
+        % ("OK" if ok4 else "FAIL")
+    )
 
     # 5. word assembly roundtrip: word -> even/odd page parts -> word, CRC valid,
     #    and a corrupted odd bit fails the CRC.
@@ -399,13 +416,16 @@ if __name__ == "__main__":
         if res is None or not res[1] or res[0] != w or res[2] != _uint(w[0:6]):
             p5 += 1
     # corruption must be caught
-    w = list(rng.integers(0, 2, WORD_BITS).astype(int)); even, odd = build_page(w)
+    w = list(rng.integers(0, 2, WORD_BITS).astype(int))
+    even, odd = build_page(w)
     odd[20] ^= 1
     r = assemble_word(even, odd)
-    if r is None or r[1]:      # CRC should now be invalid
+    if r is None or r[1]:  # CRC should now be invalid
         p5 += 1
-    print("5. word assembly + CRC roundtrip (even/odd, corruption caught): %s"
-          % ("OK" if p5 == 0 else "FAIL %d" % p5))
+    print(
+        "5. word assembly + CRC roundtrip (even/odd, corruption caught): %s"
+        % ("OK" if p5 == 0 else "FAIL %d" % p5)
+    )
 
     # 6. ephemeris field pack/unpack is SELF-CONSISTENT: place known integer codes in
     #    each word by the field table, parse, recover the scaled values. (This checks
@@ -416,18 +436,27 @@ if __name__ == "__main__":
     for name, (wt, start, length, signed, scale) in INAV_EPH_FIELDS.items():
         words.setdefault(wt, [0] * WORD_BITS)
     for wt in (1, 2, 3, 4):
-        words[wt][0:6] = [(wt >> (5 - i)) & 1 for i in range(6)]   # word type
-        words[wt][6:16] = [0] * 10                                  # IODnav = 0 (consistent)
+        words[wt][0:6] = [(wt >> (5 - i)) & 1 for i in range(6)]  # word type
+        words[wt][6:16] = [0] * 10  # IODnav = 0 (consistent)
     for name, (wt, start, length, signed, scale) in INAV_EPH_FIELDS.items():
-        code = 5 if not (start + length <= WORD_BITS) else (1 << (length - 1)) - 1  # a value
+        code = (
+            5 if not (start + length <= WORD_BITS) else (1 << (length - 1)) - 1
+        )  # a value
         # place a distinctive code, guard overlaps by using a small unique per field
         code = (hash(name) % ((1 << (length - 1)) - 1 if length > 1 else 1)) + 1
         for k in range(length):
             words[wt][start + k] = (code >> (length - 1 - k)) & 1
         truth[name] = _field(words[wt], start, length, signed, scale)
     eph = parse_inav_ephemeris(words)
-    p6 = 0 if (eph is not None and eph.get("_iod_consistent")
-               and all(abs(eph[n] - truth[n]) < 1e-12 * (abs(truth[n]) + 1) for n in truth)) else 1
+    p6 = (
+        0
+        if (
+            eph is not None
+            and eph.get("_iod_consistent")
+            and all(abs(eph[n] - truth[n]) < 1e-12 * (abs(truth[n]) + 1) for n in truth)
+        )
+        else 1
+    )
     # overlap check: no two fields in the same word may share a bit
     for wt in (1, 2, 3, 4):
         occ = [0] * WORD_BITS
@@ -436,14 +465,24 @@ if __name__ == "__main__":
                 continue
             for k in range(start, start + length):
                 occ[k] += 1
-        if any(x > 1 for x in occ) or any(start + length > WORD_BITS
-                                          for n, (w2, start, length, s, sc)
-                                          in INAV_EPH_FIELDS.items() if w2 == wt):
+        if any(x > 1 for x in occ) or any(
+            start + length > WORD_BITS
+            for n, (w2, start, length, s, sc) in INAV_EPH_FIELDS.items()
+            if w2 == wt
+        ):
             p6 += 1
-    print("6. ephemeris field table self-consistent (pack/unpack, no overlaps/overruns): %s"
-          % ("OK" if p6 == 0 else "FAIL %d" % p6))
+    print(
+        "6. ephemeris field table self-consistent (pack/unpack, no overlaps/overruns): %s"
+        % ("OK" if p6 == 0 else "FAIL %d" % p6)
+    )
 
     bad_any = fails or p2 or ok4 is False or crc24q(bad) == c or p5 or p6
-    print("\n%s" % ("ALL SELF-CONSISTENT (ICD-correctness pends live E1B symbols)"
-                    if not bad_any else "SELF-TEST FAILURES"))
+    print(
+        "\n%s"
+        % (
+            "ALL SELF-CONSISTENT (ICD-correctness pends live E1B symbols)"
+            if not bad_any
+            else "SELF-TEST FAILURES"
+        )
+    )
     sys.exit(1 if bad_any else 0)

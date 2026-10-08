@@ -20,13 +20,13 @@
 #include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
 
-#include <cuda_fp16.h>
-#include <cuda_runtime.h>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <algorithm>
 #include <cstring>
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
 #include <string>
 #include <vector>
 
@@ -40,12 +40,12 @@
     } while (0)
 
 // ---- CHORD geometry, from config/generated/chord_gnss_cx19.yaml + the L5 signal table --------
-static constexpr double FS = 3.2e9;         // sample_rate
-static constexpr double CHIP_RATE = 10.23e6;// GPS L5 chipping rate
-static constexpr int FFT_LEN = 16384;       // fft_length (= samples per hop)
-static constexpr int NUM_TAPS = 4;          // PFB taps -> Lf = 65536, Phi has Lf+1 entries
-static constexpr int N_HOPS = 2048;         // hops_per_record
-static constexpr int CODE_LEN = 204600;     // GPS_L5_Q_NH: NH baked in, so the period is 20 ms
+static constexpr double FS = 3.2e9;          // sample_rate
+static constexpr double CHIP_RATE = 10.23e6; // GPS L5 chipping rate
+static constexpr int FFT_LEN = 16384;        // fft_length (= samples per hop)
+static constexpr int NUM_TAPS = 4;           // PFB taps -> Lf = 65536, Phi has Lf+1 entries
+static constexpr int N_HOPS = 2048;          // hops_per_record
+static constexpr int CODE_LEN = 204600;      // GPS_L5_Q_NH: NH baked in, so the period is 20 ms
 static constexpr double F_OFFSET = 1176450000.0;
 
 int main(int argc, char** argv) {
@@ -113,8 +113,9 @@ int main(int argc, char** argv) {
     printf("device: %s  SMs %d  L2 %.2f MB  shmem/block %.0f KB\n", prop.name,
            prop.multiProcessorCount, prop.l2CacheSize / 1048576.0,
            prop.sharedMemPerBlockOptin / 1024.0);
-    printf("geometry: Lf %d  inv_cps %.4f samples/chip  n_hops %d  full span %d chips (capped %d)\n",
-           Lf, inv_cps, N_HOPS, full_chips, n_chips);
+    printf(
+        "geometry: Lf %d  inv_cps %.4f samples/chip  n_hops %d  full span %d chips (capped %d)\n",
+        Lf, inv_cps, N_HOPS, full_chips, n_chips);
 
     gnss_cuda::DespreadParams p{};
     p.n0 = 2950000000000000LL; // ten days of F-engine uptime, as the kernel's fma note assumes
@@ -143,11 +144,11 @@ int main(int argc, char** argv) {
     for (size_t k = 0; k < phi_n; ++k)
         junk4[k] = make_float4(junk[k].x, junk[k].y, junk[k].y, junk[k].x);
     const size_t elem = (phi16 == 1 || phi16 == 6 || tiled == 2) ? sizeof(__half2)
-                        : (phi16 == 4) ? sizeof(float4)
-                                       : sizeof(float2);
+                        : (phi16 == 4)                           ? sizeof(float4)
+                                                                 : sizeof(float2);
     const void* src = (phi16 == 1 || phi16 == 6 || tiled == 2) ? (const void*)junk16.data()
-                      : (phi16 == 4) ? (const void*)junk4.data()
-                                     : (const void*)junk.data();
+                      : (phi16 == 4)                           ? (const void*)junk4.data()
+                                                               : (const void*)junk.data();
     for (int b = 0; b < n_job; ++b) {
         CK(cudaMalloc(&dA[b], phi_n * elem));
         CK(cudaMalloc(&dB[b], phi_n * elem));
@@ -156,7 +157,8 @@ int main(int argc, char** argv) {
     }
     if (lockstep)
         printf("*** --lockstep: cps forced to %.0f chips/hop exactly -> all lanes share one "
-               "`base` (locality CEILING test)\n", std::floor(cps * FFT_LEN));
+               "`base` (locality CEILING test)\n",
+               std::floor(cps * FFT_LEN));
     if (share_phi)
         printf("*** --share-phi: ALL jobs point at job 0's tables (sharing CEILING test)\n");
     printf("Phi footprint: %.1f MB per job-channel slice x %d jobs x %d chan = %.1f MB live\n",
@@ -181,7 +183,8 @@ int main(int argc, char** argv) {
         j.wc = 2.0 * M_PI * (F_OFFSET + dop) / FS;
         // cp0's FRACTIONAL part is what sets `base` and hence the address walk; spread it.
         j.cp0 = 1234.0 + 0.0937 * b;
-        j.ds = 0.5; // DLL early/late spacing in chips -- sets how far the three trials' windows sit apart
+        j.ds = 0.5; // DLL early/late spacing in chips -- sets how far the three trials' windows sit
+                    // apart
         j.code_offset = 0;
         j.code_len = CODE_LEN;
         j.chan_mask = (n_chan >= 64) ? ~0ULL : ((1ULL << n_chan) - 1ULL);
@@ -255,8 +258,7 @@ int main(int argc, char** argv) {
             halo = std::max(halo, (int)j.inv_cps + 2);
         const size_t esz = (tiled == 2) ? sizeof(__half2) : sizeof(float2);
         printf("*** MODE: TILED STREAMING %s   tile %d entries + halo %d = %.1f KB shared\n",
-               tiled == 2 ? "fp16" : "fp32", tile_n, halo,
-               2.0 * (tile_n + halo) * esz / 1024.0);
+               tiled == 2 ? "fp16" : "fp32", tile_n, halo, 2.0 * (tile_n + halo) * esz / 1024.0);
         const int ph = (tiled == 2) ? 1 : 0;
         const size_t en_n = (size_t)4 * n_job * n_chan;
         std::vector<float2> ref(wave_n), got(wave_n);
@@ -285,8 +287,9 @@ int main(int argc, char** argv) {
                 ++bad;
             const double mg = std::hypot((double)ref[k].x, (double)ref[k].y);
             if (mg > 0.0)
-                wrel = std::max(wrel, std::hypot((double)got[k].x - ref[k].x,
-                                                 (double)got[k].y - ref[k].y) / mg);
+                wrel = std::max(wrel,
+                                std::hypot((double)got[k].x - ref[k].x, (double)got[k].y - ref[k].y)
+                                    / mg);
         }
         size_t ebad = 0;
         double erel = 0.0;
@@ -306,15 +309,15 @@ int main(int argc, char** argv) {
         float ms_ref = 0.f, ms_til = 0.f;
         CK(cudaEventRecord(e0, 0));
         for (int it = 0; it < iters; ++it)
-            CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave,
-                                                d_energy, 1024, 1, ph, 0));
+            CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
+                                                1024, 1, ph, 0));
         CK(cudaEventRecord(e1, 0));
         CK(cudaDeviceSynchronize());
         CK(cudaEventElapsedTime(&ms_ref, e0, e1));
         CK(cudaEventRecord(e0, 0));
         for (int it = 0; it < iters; ++it)
-            CK(gnss_cuda::launch_waveform_tiled(d_code, d_jobs, n_job, n_chan, p, d_wave,
-                                                d_energy, tile_n, halo, CODE_LEN, ph, 0));
+            CK(gnss_cuda::launch_waveform_tiled(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
+                                                tile_n, halo, CODE_LEN, ph, 0));
         CK(cudaEventRecord(e1, 0));
         CK(cudaDeviceSynchronize());
         CK(cudaEventElapsedTime(&ms_til, e0, e1));
@@ -324,7 +327,8 @@ int main(int argc, char** argv) {
         printf("\n   gather (shipped %s)  %8.4f ms\n   tiled              %8.4f ms   %5.2fx\n",
                ph ? "fp16" : "fp32", ms_ref, ms_til, ms_ref / ms_til);
         printf("   footprint %.0f MB; at 100%% streaming efficiency the tiled floor is footprint"
-               "/BW + compute\n", slice_mb * n_job);
+               "/BW + compute\n",
+               slice_mb * n_job);
         return (bad || (!tsort && ebad) || (tsort && erel >= 1e-12)) ? 1 : 0;
     }
     // --phi16 is TIMING ONLY. The accuracy of fp16 Phi is answered offline by
@@ -332,12 +336,12 @@ int main(int argc, char** argv) {
     // size, so the fp32 reference path would read them OUT OF BOUNDS -- do not try to compare
     // `wave` across the two. Report the time and stop.
     if (phi16) {
-        printf("*** MODE: %s\n", phi16 == 1 ? "fp16 Phi" :
-                                 phi16 == 2 ? "ABLATION, load address collapsed to 0" :
-                                 phi16 == 4 ? "INTERLEAVED float4 Phi (one 16 B load)" :
-                                 phi16 == 5 ? "HOP-SORTED lane->hop mapping" :
-                                 phi16 == 6 ? "HOP-SORTED + fp16" :
-                                              "fp32 via the isolated timing block");
+        printf("*** MODE: %s\n", phi16 == 1   ? "fp16 Phi"
+                                 : phi16 == 2 ? "ABLATION, load address collapsed to 0"
+                                 : phi16 == 4 ? "INTERLEAVED float4 Phi (one 16 B load)"
+                                 : phi16 == 5 ? "HOP-SORTED lane->hop mapping"
+                                 : phi16 == 6 ? "HOP-SORTED + fp16"
+                                              : "fp32 via the isolated timing block");
         CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
                                             1024, 1, phi16 == 3 ? 0 : phi16, 0));
         CK(cudaDeviceSynchronize());
@@ -354,7 +358,8 @@ int main(int argc, char** argv) {
         printf("   half the table bytes, the SAME number of scattered requests\n");
         return 0;
     }
-    CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256, 0, 0, 0));
+    CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256, 0,
+                                        0, 0));
     CK(cudaDeviceSynchronize());
     CK(cudaEventRecord(e0, 0));
     for (int it = 0; it < iters; ++it)
@@ -372,8 +377,9 @@ int main(int argc, char** argv) {
     if (n_job == 11 && n_chan == 7 && n_chips == 140) {
         const double rel = (ms - 2.4022) / 2.4022;
         printf("   -> %+.1f%% vs in situ  %s\n", 100.0 * rel,
-               (rel > -0.15 && rel < 0.15) ? "FAITHFUL" : "*** NOT FAITHFUL -- do not trust "
-                                                          "anything else from this bench ***");
+               (rel > -0.15 && rel < 0.15) ? "FAITHFUL"
+                                           : "*** NOT FAITHFUL -- do not trust "
+                                             "anything else from this bench ***");
     }
 
     // ---- block-width sweep ---------------------------------------------------------------
@@ -385,7 +391,8 @@ int main(int argc, char** argv) {
     const size_t en_n = (size_t)4 * n_job * n_chan;
     std::vector<float2> ref(wave_n);
     std::vector<double> eref(en_n), egot(en_n);
-    CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256, 0, 0, 0));
+    CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy, 256, 0,
+                                        0, 0));
     CK(cudaDeviceSynchronize());
     CK(cudaMemcpy(ref.data(), d_wave, wave_n * sizeof(float2), cudaMemcpyDeviceToHost));
     CK(cudaMemcpy(eref.data(), d_energy, en_n * sizeof(double), cudaMemcpyDeviceToHost));
@@ -396,8 +403,8 @@ int main(int argc, char** argv) {
     printf("\nre-walk sweep (grid %d x %d):  re-walks = trials x hop passes\n", n_job, n_chan);
     for (int fuse : {0, 1}) {
         for (int w : {256, 512, 1024}) {
-            CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave,
-                                                       d_energy, w, fuse, phi16, 0));
+            CK(gnss_cuda::launch_waveform_tuned(d_code, d_jobs, n_job, n_chan, p, d_wave, d_energy,
+                                                w, fuse, phi16, 0));
             CK(cudaDeviceSynchronize());
             CK(cudaMemcpy(got.data(), d_wave, wave_n * sizeof(float2), cudaMemcpyDeviceToHost));
             CK(cudaMemcpy(egot.data(), d_energy, en_n * sizeof(double), cudaMemcpyDeviceToHost));
@@ -409,8 +416,9 @@ int main(int argc, char** argv) {
                     ++bad;
                 const double m = std::hypot((double)ref[k].x, (double)ref[k].y);
                 if (m > 0.0)
-                    wrel = std::max(wrel, std::hypot((double)got[k].x - ref[k].x,
-                                                     (double)got[k].y - ref[k].y) / m);
+                    wrel = std::max(
+                        wrel,
+                        std::hypot((double)got[k].x - ref[k].x, (double)got[k].y - ref[k].y) / m);
             }
             double emax = 0.0;
             for (size_t k = 0; k < en_n; ++k)
@@ -440,11 +448,12 @@ int main(int argc, char** argv) {
     // [0,inv_cps) for EVERY hop and every trial, so the window does not move with the hop), and
     // that window is re-walked once per (hop pass x trial).
     const int hop_passes = (N_HOPS + 255) / 256;
-    const double win_bytes = (inv_cps + 2.0) * 8.0 * 2.0;   // A and B, float2
+    const double win_bytes = (inv_cps + 2.0) * 8.0 * 2.0; // A and B, float2
     const double ideal = (double)n_job * n_chan * n_chips * win_bytes;
     const double actual = ideal * hop_passes * 3.0;
-    printf("\ntraffic model: %d hop passes x 3 trials = %d re-walks of each block's %.0f KB slice\n",
-           hop_passes, hop_passes * 3, ideal / n_job / n_chan / 1024.0);
+    printf(
+        "\ntraffic model: %d hop passes x 3 trials = %d re-walks of each block's %.0f KB slice\n",
+        hop_passes, hop_passes * 3, ideal / n_job / n_chan / 1024.0);
     printf("   touched once  %8.1f MB     re-walked %8.1f MB     measured %8.1f MB (%.0f GB/s)\n",
            ideal / 1048576.0, actual / 1048576.0, ms * 1e-3 * 669e9 / 1048576.0, 669.0);
     return 0;

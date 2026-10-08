@@ -235,10 +235,10 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
               ip_str);
     }
 
-    connInstance* instance = new connInstance(
-        accept_args->unique_name, accept_args->buf, accept_args->buffer_recv, ip_str, port,
-        read_timeout, use_config_tracker, use_frame_desc, allow_short_frames,
-        conn_upstream_rest_port);
+    connInstance* instance =
+        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
+                         ip_str, port, read_timeout, use_config_tracker, use_frame_desc,
+                         allow_short_frames, conn_upstream_rest_port);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -703,7 +703,8 @@ void connInstance::internal_read_callback() {
                 // declares would read another sender's rows rather than obvious garbage. Clear
                 // it: consumers are supposed to stride by the header, and this makes the cost of
                 // not doing so visible instead of plausible.
-                if (allow_short_frames && buf_frame_header.frame_size < (unsigned int)buf->frame_size)
+                if (allow_short_frames
+                    && buf_frame_header.frame_size < (unsigned int)buf->frame_size)
                     memset(frame_space + buf_frame_header.frame_size, 0,
                            (size_t)buf->frame_size - buf_frame_header.frame_size);
 

@@ -82,9 +82,18 @@ class AdmissionGate:
     test can replay an entire evening in one pass.
     """
 
-    def __init__(self, armed=False, startup_hold_s=600.0, cooldown_s=180.0,
-                 min_gap_s=60.0, max_gap_s=600.0, tau_tol_chips=0.5,
-                 brownout_window_s=600.0, brownout_frac=0.6, brownout_min_base=4):
+    def __init__(
+        self,
+        armed=False,
+        startup_hold_s=600.0,
+        cooldown_s=180.0,
+        min_gap_s=60.0,
+        max_gap_s=600.0,
+        tau_tol_chips=0.5,
+        brownout_window_s=600.0,
+        brownout_frac=0.6,
+        brownout_min_base=4,
+    ):
         self.armed = bool(armed)
         self.startup_hold_s = float(startup_hold_s)
         self.cooldown_s = float(cooldown_s)
@@ -115,13 +124,19 @@ class AdmissionGate:
         """Record this cycle's chain-wide present count, once per cycle, 600 s window."""
         if not self.population or self.population[-1][0] != t_cycle:
             self.population.append((t_cycle, n_present))
-            while self.population and t_cycle - self.population[0][0] > self.brownout_window_s:
+            while (
+                self.population
+                and t_cycle - self.population[0][0] > self.brownout_window_s
+            ):
                 self.population.pop(0)
 
     def browned_out(self, n_present):
         """True when the chain's present count has collapsed against its own recent peak."""
         base = max(n for _, n in self.population)
-        return base >= self.brownout_min_base and n_present < self.brownout_frac * base, base
+        return (
+            base >= self.brownout_min_base and n_present < self.brownout_frac * base,
+            base,
+        )
 
     # ---- the decision --------------------------------------------------------------------
 
@@ -133,25 +148,40 @@ class AdmissionGate:
         false. `seeded` is whether the PRN is in the seed table, `uptime_s` is process age.
         """
         # Rules 1-4: is this PRN's absence even the kind this gate is for?
-        if not (self.armed and seeded and prn in self.was_present
-                and uptime_s >= self.startup_hold_s):
+        if not (
+            self.armed
+            and seeded
+            and prn in self.was_present
+            and uptime_s >= self.startup_hold_s
+        ):
             return Decision()
 
         # Rule 5: is the CHAIN the patient rather than this satellite?
         self.note_population(t_cycle, n_present)
         brown, base = self.browned_out(n_present)
         if brown:
-            return Decision(reason="brownout", logs=[(
-                "rs-admit-bw",
-                "RESEED-ADMIT suppressed: band-wide presence dip (%d present vs %d baseline) "
-                "-- #91-class, holding, not re-seeding" % (n_present, base), 60.0)])
+            return Decision(
+                reason="brownout",
+                logs=[
+                    (
+                        "rs-admit-bw",
+                        "RESEED-ADMIT suppressed: band-wide presence dip (%d present vs %d baseline) "
+                        "-- #91-class, holding, not re-seeding" % (n_present, base),
+                        60.0,
+                    )
+                ],
+            )
 
         # Rule 6: two decorrelated, consistent strikes, outside the cooldown.
         if t_wall - self.cooldown.get(prn, 0.0) < self.cooldown_s:
             return Decision(reason="cooldown")
 
         pv = self.pending.get(prn)
-        if pv and abs(tau - pv[0]) <= self.tau_tol_chips and t_wall - pv[1] < self.max_gap_s:
+        if (
+            pv
+            and abs(tau - pv[0]) <= self.tau_tol_chips
+            and t_wall - pv[1] < self.max_gap_s
+        ):
             if t_wall - pv[1] >= self.min_gap_s:
                 self.pending.pop(prn, None)
                 self.cooldown[prn] = t_wall
@@ -160,8 +190,11 @@ class AdmissionGate:
             # decorrelation clock keeps running.
             return Decision(reason="too-fresh")
 
-        if pv is None or abs(tau - (pv[0] if pv else 0.0)) > self.tau_tol_chips \
-                or t_wall - pv[1] >= self.max_gap_s:
+        if (
+            pv is None
+            or abs(tau - (pv[0] if pv else 0.0)) > self.tau_tol_chips
+            or t_wall - pv[1] >= self.max_gap_s
+        ):
             self.pending[prn] = (tau, t_wall)
             return Decision(reason="strike1")
 

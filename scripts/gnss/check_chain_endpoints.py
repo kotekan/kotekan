@@ -28,8 +28,9 @@ a = ap.parse_args()
 
 cfgs = {}
 for p in glob.glob(os.path.join(a.configs, "chord_gnss_*%s.yaml" % a.suffix)):
-    node = os.path.basename(p)[len("chord_gnss_"):-len("%s.yaml" % a.suffix)]
+    node = os.path.basename(p)[len("chord_gnss_") : -len("%s.yaml" % a.suffix)]
     cfgs[node] = yaml.safe_load(open(p))
+
 
 def endpoints_of(cfg):
     """Every REST name this node config can answer to: stage keys + declared *_endpoint paths."""
@@ -43,7 +44,9 @@ def endpoints_of(cfg):
                         names.add(m.group(1))
     return names
 
+
 have = {n: endpoints_of(c) for n, c in cfgs.items()}
+
 
 def expand(s):
     out = []
@@ -53,17 +56,26 @@ def expand(s):
             continue
         m = re.search(r"\{(\d+)\.\.(\d+)\}", part)
         if m:
-            out += [part[:m.start()] + str(i) + part[m.end():]
-                    for i in range(int(m.group(1)), int(m.group(2)) + 1)]
+            out += [
+                part[: m.start()] + str(i) + part[m.end() :]
+                for i in range(int(m.group(1)), int(m.group(2)) + 1)
+            ]
         else:
             out.append(part)
     return out
+
 
 d = yaml.safe_load(open(a.chains))
 bad, summary = 0, []
 for cname, ch in (d.get("chains") or {}).items():
     counts = {}
-    for key in ("trackers", "dll-combiners", "n2-combiners", "spectrum-endpoints", "detectors"):
+    for key in (
+        "trackers",
+        "dll-combiners",
+        "n2-combiners",
+        "spectrum-endpoints",
+        "detectors",
+    ):
         if not ch.get(key):
             continue
         urls = expand(ch[key])
@@ -71,22 +83,36 @@ for cname, ch in (d.get("chains") or {}).items():
         for u in urls:
             m = re.match(r"https?://([^:/]+):\d+/(\S+)", u)
             if not m:
-                print("  UNPARSED  %-10s %-18s %s" % (cname, key, u)); bad += 1; continue
+                print("  UNPARSED  %-10s %-18s %s" % (cname, key, u))
+                bad += 1
+                continue
             node, stage = m.group(1), m.group(2).rstrip("/")
-            if node not in have:          # localhost/aggregator: not a node, not ours to check
+            if node not in have:  # localhost/aggregator: not a node, not ours to check
                 continue
             if stage not in have[node]:
-                print("  MISSING   %-10s %-18s -> %s/%s" % (cname, key, node, stage)); bad += 1
+                print("  MISSING   %-10s %-18s -> %s/%s" % (cname, key, node, stage))
+                bad += 1
     cmb = ch.get("combiner")
     if cmb and not any(cmb in s for s in have.values()):
-        print("  MISSING   %-10s %-18s -> %s (on any node)" % (cname, "combiner", cmb)); bad += 1
+        print("  MISSING   %-10s %-18s -> %s (on any node)" % (cname, "combiner", cmb))
+        bad += 1
     summary.append((cname, cmb, counts))
 
 print()
 for cname, cmb, counts in summary:
-    print("  %-9s published=%-24s %s" % (
-        cname, cmb, "  ".join("%s=%d" % (k.replace("-combiners", ""), v)
-                              for k, v in sorted(counts.items()))))
-print("\n%d node config(s) checked -- %s" % (
-    len(cfgs), "ALL ENDPOINTS RESOLVE" if not bad else "%d BAD ENDPOINT(S)" % bad))
+    print(
+        "  %-9s published=%-24s %s"
+        % (
+            cname,
+            cmb,
+            "  ".join(
+                "%s=%d" % (k.replace("-combiners", ""), v)
+                for k, v in sorted(counts.items())
+            ),
+        )
+    )
+print(
+    "\n%d node config(s) checked -- %s"
+    % (len(cfgs), "ALL ENDPOINTS RESOLVE" if not bad else "%d BAD ENDPOINT(S)" % bad)
+)
 sys.exit(1 if bad else 0)

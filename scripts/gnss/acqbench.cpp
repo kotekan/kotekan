@@ -50,7 +50,7 @@ static std::vector<int> chord_channels(int nc) {
 int main(int argc, char** argv) {
     int nd = 321, Mp = 3125, nc = 79, fine_step = 128, M = 2048, reps = 3;
     int tau_q = 1234;   // planted COARSE lag (hops)
-    double dop_bin = 7;  // planted Doppler, transform bins (fractional = off-grid plant)
+    double dop_bin = 7; // planted Doppler, transform bins (fractional = off-grid plant)
     bool do_cpu = true;
     const int sph = 16384;
     const double fs = 3.2e9;
@@ -58,15 +58,24 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() { return std::atoi(argv[++i]); };
-        if (a == "--nd") nd = next();
-        else if (a == "--mp") Mp = next();
-        else if (a == "--nc") nc = next();
-        else if (a == "--fine-step") fine_step = next();
-        else if (a == "--m") M = next();
-        else if (a == "--reps") reps = next();
-        else if (a == "--tau") tau_q = next();
-        else if (a == "--dop-bin") dop_bin = atof(argv[++i]);
-        else if (a == "--no-cpu") do_cpu = false;
+        if (a == "--nd")
+            nd = next();
+        else if (a == "--mp")
+            Mp = next();
+        else if (a == "--nc")
+            nc = next();
+        else if (a == "--fine-step")
+            fine_step = next();
+        else if (a == "--m")
+            M = next();
+        else if (a == "--reps")
+            reps = next();
+        else if (a == "--tau")
+            tau_q = next();
+        else if (a == "--dop-bin")
+            dop_bin = atof(argv[++i]);
+        else if (a == "--no-cpu")
+            do_cpu = false;
     }
 
     const std::vector<int> ids = chord_channels(nc);
@@ -139,15 +148,15 @@ int main(int argc, char** argv) {
                 dch[c][m] = snap[(size_t)m * n_chan_total + c];
         gnss::AcquireWorkspace ws;
         const double t0 = now_s();
-        dims = gnss::channelized_accumulate(dch, repl0, local, grid, fs, nc, surf_cpu, ws, ids,
-                                            sph, 16, fine_step);
+        dims = gnss::channelized_accumulate(dch, repl0, local, grid, fs, nc, surf_cpu, ws, ids, sph,
+                                            16, fine_step);
         t_cpu = now_s() - t0;
         const auto pk = gnss::channelized_peak(surf_cpu, dims, grid, fs, 10.23e6, 10230,
                                                gnss::FINE_LAG_SIGN_PFB, false, M);
         printf("\nCPU  : %8.4f s   snr %.3f  peak %.6g  tau %ld  dop %+.2f Hz\n", t_cpu, pk.snr,
                pk.peak, pk.peak_tau_samples, pk.doppler_hz);
-        printf("       planted: coarse lag %d hops (tau %ld), doppler bin %+.3f (%+.2f Hz)\n", tau_q,
-               (long)tau_q * sph, dop_bin, dop_bin * bin_hz);
+        printf("       planted: coarse lag %d hops (tau %ld), doppler bin %+.3f (%+.2f Hz)\n",
+               tau_q, (long)tau_q * sph, dop_bin, dop_bin * bin_hz);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -218,8 +227,14 @@ int main(int argc, char** argv) {
                 maxdiff = std::max(maxdiff, std::fabs(surf_cpu[i] - surf_gpu[i]));
                 sc += surf_cpu[i];
                 sg += surf_gpu[i];
-                if (surf_cpu[i] > pc) { pc = surf_cpu[i]; am_c = (long)i; }
-                if (surf_gpu[i] > pg) { pg = surf_gpu[i]; am_g = (long)i; }
+                if (surf_cpu[i] > pc) {
+                    pc = surf_cpu[i];
+                    am_c = (long)i;
+                }
+                if (surf_gpu[i] > pg) {
+                    pg = surf_gpu[i];
+                    am_g = (long)i;
+                }
             }
             printf("check: surface rel %.3g   mean cpu %.6g gpu %.6g (rel %.3g)\n",
                    maxdiff / maxabs, sc / surf_cpu.size(), sg / surf_gpu.size(),

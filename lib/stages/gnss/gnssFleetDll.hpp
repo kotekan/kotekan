@@ -48,13 +48,13 @@
 #include "gnssTelem.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <deque>
-#include <map>
 #include <limits>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -63,14 +63,14 @@ namespace gnss {
 
 /// What one PRN's fleet discriminator looks like. combdll.fleet_dll_comb's row, minus presence.
 struct FleetDllRow {
-    double disc = 0.0;   ///< (E-L)/(E+L). 0 = on peak; sign is "the tap is early/late".
-    double q = 0.0;      ///< 2P/(E+L). EXACTLY 1.0 = no peak; ~4 = clean lock at 0.5 spacing.
+    double disc = 0.0; ///< (E-L)/(E+L). 0 = on peak; sign is "the tap is early/late".
+    double q = 0.0;    ///< 2P/(E+L). EXACTLY 1.0 = no peak; ~4 = clean lock at 0.5 spacing.
     double e_pow = 0.0, p_pow = 0.0, l_pow = 0.0;
-    double n_chan = 0.0;    ///< channels in the lobe sum, meaned over records
-    int n_src = 0;          ///< senders behind the most complete record -- completeness, not an operand
-    int n_rec = 0;          ///< records averaged
-    int64_t hop = -1;       ///< newest F-engine hop in the average
-    uint64_t win = 0;       ///< newest window in the average
+    double n_chan = 0.0; ///< channels in the lobe sum, meaned over records
+    int n_src = 0;    ///< senders behind the most complete record -- completeness, not an operand
+    int n_rec = 0;    ///< records averaged
+    int64_t hop = -1; ///< newest F-engine hop in the average
+    uint64_t win = 0; ///< newest window in the average
     uint64_t n_updates = 0; ///< discriminators formed for this PRN since start -- THE RATE
 };
 
@@ -81,10 +81,10 @@ enum class FoldStatus { OK, BAD_HEADER, LATE };
 /// The integrator's constants. ONE convention, and the Python arm calls the same expression
 /// (gnss_broker.combdll.dll_tau / dll_integrate) so the two cannot drift.
 struct TrimPolicy {
-    double gain = 0.25;    ///< step = gain * tau
-    double leak = 0.05;    ///< PER UPDATE -- see the warning on dll_integrate
-    double clamp = 3.0;    ///< |trim| bound, chips
-    double spacing = 0.5;  ///< tracker Early/Late spacing, chips
+    double gain = 0.25;   ///< step = gain * tau
+    double leak = 0.05;   ///< PER UPDATE -- see the warning on dll_integrate
+    double clamp = 3.0;   ///< |trim| bound, chips
+    double spacing = 0.5; ///< tracker Early/Late spacing, chips
     /// ABSOLUTE prompt-power floor for the per-window information gate (same currency as the
     /// rows' p_pow). 0 = the original behaviour: 3x the window's own population median.
     ///
@@ -156,8 +156,8 @@ public:
     /// ⚠️ `sig_k` IS GONE, NOT DEFAULTED OFF (2026-08-27). It multiplied a PEER MEDIAN; see
     /// integrate(). Removing the parameter is deliberate -- a knob that only ever selects
     /// between two wrong answers is one a future reader will try to tune.
-    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8,
-             int taps_win = 0, int epoch_margin = 64, int epoch_strikes = 8) :
+    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8, int taps_win = 0,
+             int epoch_margin = 64, int epoch_strikes = 8) :
         _n_win(std::max(1, n_win)), _min_instances(min_instances),
         _max_open_win(std::max(2, max_open_win)),
         _taps_win(taps_win > 0 ? taps_win : std::max(1, n_win)),
@@ -202,8 +202,8 @@ public:
         /// unrelated phasors (~0, and the prompt above is then BELOW the per-sender one). It
         /// is a diagnostic beside the sum, never an operand in it.
         double aP_re = 0, aP_im = 0, aP_sq = 0;
-        int n_chan = 0;  ///< channels behind the sums
-        int n_inst = 0;  ///< senders behind the sums -- completeness, never an operand
+        int n_chan = 0; ///< channels behind the sums
+        int n_inst = 0; ///< senders behind the sums -- completeness, never an operand
         int64_t hop = -1;
     };
 
@@ -228,8 +228,8 @@ public:
 
     struct WindowAcc {
         uint64_t win = 0;
-        std::map<int, std::map<int, RecAcc>> acc;  ///< [record slot][prn], while open
-        std::map<int, std::map<int, RecTap>> rec;  ///< [record slot][prn], once closed
+        std::map<int, std::map<int, RecAcc>> acc;   ///< [record slot][prn], while open
+        std::map<int, std::map<int, RecTap>> rec;   ///< [record slot][prn], once closed
         std::map<int, std::map<int, ChanTap>> chan; ///< [prn][freq_id]
         /// freq_id -> the sender that carried it this window. A channel reaches exactly ONE
         /// sender (freq_id mod 8 routing); a second claimant is a misconfiguration upstream,
@@ -243,7 +243,7 @@ public:
     /// particular seed, so it survives the model being republished every policy cycle.
     struct TrimState {
         double trim = 0.0;
-        uint64_t n_steps = 0;  ///< integrator updates -- THE RATE, measured not assumed
+        uint64_t n_steps = 0;   ///< integrator updates -- THE RATE, measured not assumed
         uint64_t n_railed = 0;  ///< updates that hit the clamp
         uint64_t n_skipped = 0; ///< windows with no signal under the taps: leak only
         double last_disc = 0.0, last_q = 0.0;
@@ -365,8 +365,8 @@ public:
         for (int r = 0; r < (int)h->n_rec; ++r) {
             if (!(h->present & (1u << r)))
                 continue;
-            const int64_t hop = (h->wstart0 + (int64_t)r * h->hops_per_record * h->fft_len)
-                                / (int64_t)h->fft_len;
+            const int64_t hop =
+                (h->wstart0 + (int64_t)r * h->hops_per_record * h->fft_len) / (int64_t)h->fft_len;
             for (int p = 0; p < n_row_map; ++p) {
                 const int prn = prn_of_row[p];
                 if (prn <= 0)
@@ -550,8 +550,7 @@ public:
         auto ci = _chain.find(chain);
         if (ci == _chain.end() || !ci->second.armed.count(prn))
             return false;
-        if (!std::isfinite(trim_chips)
-            || std::abs(trim_chips) > ci->second.policy.clamp)
+        if (!std::isfinite(trim_chips) || std::abs(trim_chips) > ci->second.policy.clamp)
             return false;
         auto ti = ci->second.trim.find(prn);
         if (ti != ci->second.trim.end() && (ti->second.n_steps != 0 || ti->second.trim != 0.0))
@@ -609,11 +608,10 @@ public:
             const auto& ring = cv.second.closed;
             for (size_t k = ring.size() > (size_t)_taps_win ? ring.size() - _taps_win : 0;
                  k < ring.size(); ++k)
-                for (const auto& sv : ring[k].rec)       // slot, ordered
-                    for (const auto& pv : sv.second)     // prn, ordered
+                for (const auto& sv : ring[k].rec)   // slot, ordered
+                    for (const auto& pv : sv.second) // prn, ordered
                         rows.push_back({ring[k].win, sv.first, pv.first, pv.second.n_inst,
-                                        pv.second.n_chan, pv.second.e, pv.second.p,
-                                        pv.second.l});
+                                        pv.second.n_chan, pv.second.e, pv.second.p, pv.second.l});
         }
         return out;
     }
@@ -630,8 +628,8 @@ public:
         /// NaN when none did. The per-PRN answer to "are the senders on one reference".
         double xcoh = std::numeric_limits<double>::quiet_NaN();
         int n_xcoh = 0;
-        int n_rec = 0;   ///< records behind the mean
-        int n_inst = 0;  ///< senders behind the most complete record -- completeness, not an operand
+        int n_rec = 0;  ///< records behind the mean
+        int n_inst = 0; ///< senders behind the most complete record -- completeness, not an operand
         int64_t hop = -1;
         std::map<int, std::array<double, 4>> chan; ///< freq_id -> {e, p, l, n_rec}
     };

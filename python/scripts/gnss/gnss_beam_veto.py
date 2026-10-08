@@ -59,7 +59,9 @@ def main():
 
     def sep(el, az):
         v = uvec(el, az)
-        return math.degrees(math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(v, b))))))
+        return math.degrees(
+            math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(v, b)))))
+        )
 
     # PASS 1: the closest approach at each epoch, pooled over EVERY chain.
     closest = defaultdict(lambda: 1e9)
@@ -74,9 +76,17 @@ def main():
             if s < closest[t]:
                 closest[t] = s
     vetoed = {t for t, s in closest.items() if s < args.deg}
-    print("epochs %d, vetoed %d (%.1f%%) at < %.1f deg from (el %.1f, az %.1f)"
-          % (len(closest), len(vetoed), 100.0 * len(vetoed) / max(len(closest), 1),
-             args.deg, args.el0, args.az0))
+    print(
+        "epochs %d, vetoed %d (%.1f%%) at < %.1f deg from (el %.1f, az %.1f)"
+        % (
+            len(closest),
+            len(vetoed),
+            100.0 * len(vetoed) / max(len(closest), 1),
+            args.deg,
+            args.el0,
+            args.az0,
+        )
+    )
 
     # PASS 2: drop every row in a vetoed epoch -- not just the bright satellite.
     for p in args.obs:

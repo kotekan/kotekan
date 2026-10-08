@@ -20,20 +20,20 @@ import numpy as np
 
 import beidou_bcnav2 as B
 
-SYM_S = B.SYM_S               # 0.005
-FRAME = B.FRAME_SYMS          # 600 symbols per frame
-EMIT_MAX = 96                 # bound the stitched emit cache per PRN (frame is 600 syms = 3 s)
-FRAME_TTL_S = 3600.0         # a cached frame older than this is stale (ephemeris ~ hourly)
+SYM_S = B.SYM_S  # 0.005
+FRAME = B.FRAME_SYMS  # 600 symbols per frame
+EMIT_MAX = 96  # bound the stitched emit cache per PRN (frame is 600 syms = 3 s)
+FRAME_TTL_S = 3600.0  # a cached frame older than this is stale (ephemeris ~ hourly)
 
 
 class _PrnState:
     def __init__(self):
-        self.emits = {}          # slot0 -> np.array(+-1) one per distinct nav_obs emit
+        self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.last_obs = None
         self.pol = None
-        self.frames = {}         # mestype -> (frame_bits[288], sow, t_decoded)
-        self.n_frames = 0        # frames decoded (preamble+LDPC found)
-        self.n_crc = 0           # frames with valid CRC
+        self.frames = {}  # mestype -> (frame_bits[288], sow, t_decoded)
+        self.n_frames = 0  # frames decoded (preamble+LDPC found)
+        self.n_crc = 0  # frames with valid CRC
         self.last_decode = 0.0
 
 
@@ -48,8 +48,11 @@ class Bcnav2Predictor:
     def ingest(self, prn, obs):
         st = self._p.setdefault(prn, _PrnState())
         try:
-            utc_ref = float(obs["utc_ref"]); rec_dt = float(obs["rec_dt"])
-            phase = int(obs["phase"]); br = int(obs["br"]); pairs = obs["bits"]
+            utc_ref = float(obs["utc_ref"])
+            rec_dt = float(obs["rec_dt"])
+            phase = int(obs["phase"])
+            br = int(obs["br"])
+            pairs = obs["bits"]
         except (KeyError, TypeError, ValueError):
             return
         if rec_dt <= 0 or br <= 0 or not pairs:
@@ -89,7 +92,8 @@ class Bcnav2Predictor:
         if not st.emits:
             return []
         runs = []
-        cur0 = None; cur = None
+        cur0 = None
+        cur = None
         for s0 in sorted(st.emits):
             a = st.emits[s0]
             if cur is None:
@@ -101,7 +105,8 @@ class Bcnav2Predictor:
                 if ov < len(a):
                     cur = np.concatenate([cur, a[ov:]])
             else:
-                runs.append((cur0, cur)); cur0, cur = s0, a.copy()
+                runs.append((cur0, cur))
+                cur0, cur = s0, a.copy()
         runs.append((cur0, cur))
         return runs
 
@@ -139,8 +144,13 @@ class Bcnav2Predictor:
         st = self._p.get(prn)
         if st is None:
             return None
-        return {"pol": st.pol, "pages": st.n_frames, "words": st.n_crc,
-                "have": sorted(st.frames), "eph": self.ephemeris(prn) is not None}
+        return {
+            "pol": st.pol,
+            "pages": st.n_frames,
+            "words": st.n_crc,
+            "have": sorted(st.frames),
+            "eph": self.ephemeris(prn) is not None,
+        }
 
 
 # ------------------------------------------------------------------- self-test
@@ -166,8 +176,10 @@ def _selftest():
         for k in range(length):
             frames[mt][start + k] = (code >> (length - 1 - k)) & 1
     for mt in (10, 11):
-        crc = B.crc24q(frames[mt][0:B.CRC_AT])
-        frames[mt][B.CRC_AT:B.CRC_AT + 24] = [(crc >> (23 - k)) & 1 for k in range(24)]
+        crc = B.crc24q(frames[mt][0 : B.CRC_AT])
+        frames[mt][B.CRC_AT : B.CRC_AT + 24] = [
+            (crc >> (23 - k)) & 1 for k in range(24)
+        ]
     truth = B.parse_bcnav2_ephemeris(frames)
 
     # encode each 288-bit frame into a valid 576-bit LDPC codeword: pick a null-space word,
@@ -176,7 +188,7 @@ def _selftest():
     # bits equal the frame by solving parity (info-systematic): the decoder returns first 288.
     def encode_frame(frame288):
         # solve H c = 0 with the first 48 GF symbols fixed to the frame's symbols
-        info = B._bin2gf(np.array(frame288, dtype=np.uint8))       # 48 GF symbols
+        info = B._bin2gf(np.array(frame288, dtype=np.uint8))  # 48 GF symbols
         # dense H, reduce parity columns (48..95) to solve for them given info (0..47)
         H = [[0] * B.N_VAR for _ in range(B.N_CHECK)]
         for i in range(B.N_CHECK):
@@ -199,18 +211,21 @@ def _selftest():
             pr = next((rr for rr in range(r, B.N_CHECK) if Hp[rr][col] != 0), None)
             if pr is None:
                 continue
-            Hp[r], Hp[pr] = Hp[pr], Hp[r]; rhs[r], rhs[pr] = rhs[pr], rhs[r]
+            Hp[r], Hp[pr] = Hp[pr], Hp[r]
+            rhs[r], rhs[pr] = rhs[pr], rhs[r]
             inv = B.GF_VEC[(B.Q_GF - 1 - B.GF_POW[Hp[r][col]]) % (B.Q_GF - 1)]
-            Hp[r] = [B._gf_mul(inv, x) for x in Hp[r]]; rhs[r] = B._gf_mul(inv, rhs[r])
+            Hp[r] = [B._gf_mul(inv, x) for x in Hp[r]]
+            rhs[r] = B._gf_mul(inv, rhs[r])
             for rr in range(B.N_CHECK):
                 if rr != r and Hp[rr][col]:
                     f = Hp[rr][col]
                     Hp[rr] = [Hp[rr][cc] ^ B._gf_mul(f, Hp[r][cc]) for cc in range(48)]
                     rhs[rr] ^= B._gf_mul(f, rhs[r])
-            piv_col[r] = col; r += 1
+            piv_col[r] = col
+            r += 1
         for rr in range(r):
             p[piv_col[rr]] = rhs[rr]
-        code = list(int(x) for x in info) + p                       # 96 GF symbols
+        code = list(int(x) for x in info) + p  # 96 GF symbols
         return B._gf2bin(np.array(code, dtype=np.uint8))
 
     sym = []
@@ -227,8 +242,13 @@ def _selftest():
     e = 0
     while e + ELEN <= len(pm):
         sgn = 1 - 2 * rng.randint(0, 2)
-        obs = {"utc_ref": e * SYM_S, "rec_dt": 0.001, "phase": 0, "br": 5,
-               "bits": [[i, int(np.sign(pm[e + i]) * sgn)] for i in range(ELEN)]}
+        obs = {
+            "utc_ref": e * SYM_S,
+            "rec_dt": 0.001,
+            "phase": 0,
+            "br": 5,
+            "bits": [[i, int(np.sign(pm[e + i]) * sgn)] for i in range(ELEN)],
+        }
         pred.ingest(prn, obs)
         e += ELEN
 
@@ -236,21 +256,32 @@ def _selftest():
     print("health:", h)
     ok = True
     if not (h and h["words"] >= 2 and set((10, 11)) <= set(h["have"])):
-        print("FAIL: types 10 & 11 not both assembled"); ok = False
+        print("FAIL: types 10 & 11 not both assembled")
+        ok = False
     eph = pred.ephemeris(prn)
     if eph is None:
-        print("FAIL: no ephemeris"); ok = False
+        print("FAIL: no ephemeris")
+        ok = False
     else:
-        bad = [k for k in truth if not k.startswith("_") and k not in ("A_ref", "IODE")
-               and abs(eph[k] - truth[k]) > 1e-9 * (abs(truth[k]) + 1)]
+        bad = [
+            k
+            for k in truth
+            if not k.startswith("_")
+            and k not in ("A_ref", "IODE")
+            and abs(eph[k] - truth[k]) > 1e-9 * (abs(truth[k]) + 1)
+        ]
         if bad:
-            print("FAIL: ephemeris fields disagree:", bad); ok = False
+            print("FAIL: ephemeris fields disagree:", bad)
+            ok = False
         else:
-            print("ephemeris recovered, all fields match; SatType", round(eph["SatType"]))
+            print(
+                "ephemeris recovered, all fields match; SatType", round(eph["SatType"])
+            )
     print("PASS" if ok else "FAIL")
     return ok
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(0 if _selftest() else 1)

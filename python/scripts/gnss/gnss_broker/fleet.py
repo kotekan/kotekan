@@ -19,14 +19,13 @@ import statistics
 from .transport import _get, _log_rl, _now
 
 
-
 def sk_url_for(tap_url):
     """Derive the SK-metrics endpoint for a search-tap url:
     .../gnssG_srch_tap -> .../rfi_sk_metrics/sk_metrics_G . Returns None if it does not match."""
     m = re.search(r"/gnss(\d)_srch_tap/?$", tap_url)
     if not m:
         return None
-    return tap_url[:m.start()] + "/rfi_sk_metrics/sk_metrics_" + m.group(1) + "/sk"
+    return tap_url[: m.start()] + "/rfi_sk_metrics/sk_metrics_" + m.group(1) + "/sk"
 
 
 def sk_summary(r):
@@ -62,14 +61,33 @@ def parse_drops(metrics_text, gpu):
     per gnss{gpu} stage; dpdk misses/ring-full are node-level (shared by both GPUs, reported so
     a single congested NIC is visible on every instance rather than nowhere)."""
     out = {}
-    srch = re.search(r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_srch_send"\}\s+([0-9.eE+-]+)' % gpu, metrics_text)
-    telem = re.search(r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_telem_send"\}\s+([0-9.eE+-]+)' % gpu, metrics_text)
+    srch = re.search(
+        r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_srch_send"\}\s+([0-9.eE+-]+)'
+        % gpu,
+        metrics_text,
+    )
+    telem = re.search(
+        r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_telem_send"\}\s+([0-9.eE+-]+)'
+        % gpu,
+        metrics_text,
+    )
     if srch:
         out["srch_send_drops"] = int(float(srch.group(1)))
     if telem:
         out["telem_send_drops"] = int(float(telem.group(1)))
-    miss = [int(float(x)) for x in re.findall(r'kotekan_dpdk_nic_rx_missed_total\{[^}]*\}\s+([0-9.eE+-]+)', metrics_text)]
-    ring = [int(float(x)) for x in re.findall(r'kotekan_dpdk_distributor_ring_full_dropped_packets_total\{[^}]*\}\s+([0-9.eE+-]+)', metrics_text)]
+    miss = [
+        int(float(x))
+        for x in re.findall(
+            r"kotekan_dpdk_nic_rx_missed_total\{[^}]*\}\s+([0-9.eE+-]+)", metrics_text
+        )
+    ]
+    ring = [
+        int(float(x))
+        for x in re.findall(
+            r"kotekan_dpdk_distributor_ring_full_dropped_packets_total\{[^}]*\}\s+([0-9.eE+-]+)",
+            metrics_text,
+        )
+    ]
     if miss:
         out["dpdk_missed"] = max(miss)
     if ring:
@@ -99,6 +117,7 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
         if host_base not in metrics_cache:
             try:
                 import urllib.request
+
                 with urllib.request.urlopen(host_base + "/metrics", timeout=6) as resp:
                     metrics_cache[host_base] = resp.read().decode("utf-8", "replace")
             except Exception:
@@ -118,19 +137,27 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
             continue
         ec = r.get("elem_clip") or []
         ep = r.get("elem_power") or []
-        ep_live = [p for p in ep if p > 0.0]   # the 96 unpopulated slots are exactly 0; a
-                                               # median over all 128 reads 0 and hides the signal
+        ep_live = [
+            p for p in ep if p > 0.0
+        ]  # the 96 unpopulated slots are exactly 0; a
+        # median over all 128 reads 0 and hides the signal
         summ = {
             "state": "on",
             # freq_ids: ABSOLUTE channel identity, served by the tap from the frame's own
             # chord metadata. Older node binaries do not have the field -- [] then, and the
             # labeller degrades to unnamed rows rather than guessing, so a rolling restart
             # shows old-style rows on the not-yet-restarted halves instead of wrong ones.
-            "lobes": lobes_fn(r.get("chans") or [], r.get("power") or [],
-                              r.get("clip_lo") or [], r.get("clip_hi") or [],
-                              r.get("freq_ids") or []),
+            "lobes": lobes_fn(
+                r.get("chans") or [],
+                r.get("power") or [],
+                r.get("clip_lo") or [],
+                r.get("clip_hi") or [],
+                r.get("freq_ids") or [],
+            ),
             "elem_clip_max": max(ec) if ec else None,
-            "elem_clip_worst": (max(range(len(ec)), key=lambda i: ec[i]) if ec else None),
+            "elem_clip_worst": (
+                max(range(len(ec)), key=lambda i: ec[i]) if ec else None
+            ),
             "elem_power_med": (sorted(ep_live)[len(ep_live) // 2] if ep_live else None),
             "n_live_elem": len(ep_live) if ep else None,
             "passes": r.get("passes"),
@@ -155,8 +182,15 @@ def poll_rf_stats(endpoints, lobes_fn, fetch_sk=False, fetch_drops=False):
     return out
 
 
-def live_instances(served, hop_hist, now, anchor_utc=None, hops_per_sec=None, ahead_s=60.0,
-                   frozen_s=10.0):
+def live_instances(
+    served,
+    hop_hist,
+    now,
+    anchor_utc=None,
+    hops_per_sec=None,
+    ahead_s=60.0,
+    frozen_s=10.0,
+):
     """Which instances' rows may enter the fleet sum. -> (excluded {url: reason}).
 
     `served` is {url: newest pow_hop this poll} (-1 = none yet). `hop_hist` is {url: (hop,
@@ -199,10 +233,22 @@ def live_instances(served, hop_hist, now, anchor_utc=None, hops_per_sec=None, ah
     return excluded
 
 
-def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
-              deep_gate_prns=None, deep_gate_margin=3.0, probe_prns=None, src_hops=None,
-              admit_displaced=None, hop_hist=None, anchor_utc=None, hops_per_sec=None,
-              now=None):
+def fleet_dll(
+    endpoints,
+    hop_window,
+    min_instances,
+    k_sigma,
+    q_fallback,
+    deep_gate_prns=None,
+    deep_gate_margin=3.0,
+    probe_prns=None,
+    src_hops=None,
+    admit_displaced=None,
+    hop_hist=None,
+    anchor_utc=None,
+    hops_per_sec=None,
+    now=None,
+):
     """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
 
     THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
@@ -243,8 +289,12 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
     # prn -> list of (hop, e, p, l, n_chan). Unreachable instances are skipped, not fatal:
     # a node down for maintenance must cost sensitivity, never the loop.
     rows = {}
-    best_coh = {}   # prn -> ((deep_snr, amp_snr), row, url): strongest instance's COHERENT view
-    coh_cleared = {}  # prn -> floor-cleared per-instance deep_snrs, for the quadrature fallback
+    best_coh = (
+        {}
+    )  # prn -> ((deep_snr, amp_snr), row, url): strongest instance's COHERENT view
+    coh_cleared = (
+        {}
+    )  # prn -> floor-cleared per-instance deep_snrs, for the quadrature fallback
     polled = {}
     for url in endpoints:
         try:
@@ -255,19 +305,34 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
     # report their hop to src_hops, so the axis and stall instruments keep seeing them.
     excluded = {}
     if hop_hist is not None:
-        served = {u: max([int(r.get("pow_hop", -1)) for r in g if isinstance(r, dict)] or [-1])
-                  for u, g in polled.items()}
+        served = {
+            u: max(
+                [int(r.get("pow_hop", -1)) for r in g if isinstance(r, dict)] or [-1]
+            )
+            for u, g in polled.items()
+        }
         # the CYCLE's frozen clock: live wall time, a replay's recorded instant
-        excluded = live_instances(served, hop_hist, _now() if now is None else now,
-                                  anchor_utc=anchor_utc, hops_per_sec=hops_per_sec)
+        excluded = live_instances(
+            served,
+            hop_hist,
+            _now() if now is None else now,
+            anchor_utc=anchor_utc,
+            hops_per_sec=hops_per_sec,
+        )
         for u, why in sorted(excluded.items()):
-            _log_rl("fleet-dll-excl-%s-%s" % (why, u),
-                    "fleet DLL: %s EXCLUDED (%s) at hop %d -- %s"
-                    % (u, why, served[u],
-                       "past what the F-engine has counted: a previous session's row"
-                       if why == "ahead" else
-                       "not advancing while its peers do: pre-outage state or a wedged chain"),
-                    every_s=60.0)
+            _log_rl(
+                "fleet-dll-excl-%s-%s" % (why, u),
+                "fleet DLL: %s EXCLUDED (%s) at hop %d -- %s"
+                % (
+                    u,
+                    why,
+                    served[u],
+                    "past what the F-engine has counted: a previous session's row"
+                    if why == "ahead"
+                    else "not advancing while its peers do: pre-outage state or a wedged chain",
+                ),
+                every_s=60.0,
+            )
     for url, got in polled.items():
         for r in got:
             hop = int(r.get("pow_hop", -1))
@@ -281,9 +346,11 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
             # than "one config is stale" -- which is exactly why pow_fft_len is published. Drop
             # the odd instance out loudly instead of silently summing a fleet of one.
             if int(r.get("pow_fft_len", 0)) <= 0:
-                _log_rl("fleet-dll-cur-%s" % url,
-                        "fleet DLL: %s has no fft_len (pow_hop is a SAMPLE index) -- excluded; "
-                        "regenerate that node's config" % url)
+                _log_rl(
+                    "fleet-dll-cur-%s" % url,
+                    "fleet DLL: %s has no fft_len (pow_hop is a SAMPLE index) -- excluded; "
+                    "regenerate that node's config" % url,
+                )
                 continue
             prn = int(r["prn"])
             # #70: THE NEWEST HOP THIS INSTANCE SERVED, per URL. Free -- we are already
@@ -294,7 +361,8 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
             if url in excluded:
                 continue
             rows.setdefault(prn, []).append(
-                (hop, e, float(r.get("p_pow", 0.0)), l, float(r.get("n_chan", 0.0))))
+                (hop, e, float(r.get("p_pow", 0.0)), l, float(r.get("n_chan", 0.0)))
+            )
             # BEST-OF for the COHERENT statistics. deep_amplitude / deep_snr / coherence_s come
             # from each instance's own deep integration and CANNOT be merged here: this combine
             # sums powers, which is exactly what makes it phase-blind and cheap. So carry the
@@ -319,8 +387,10 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
             # and manufacture a detection from nothing. coherence_s > 0 is the same rule
             # sig_of() applies, and with it the noise PRNs (0-1 cleared instances) reduce
             # to the argmax exactly (verified on 113 polls, fixtures/fleetcap_20260810).
-            if (float(r.get("coherence_s", 0.0) or 0.0) > 0.0
-                    and float(r.get("deep_snr", 0.0)) > 0.0):
+            if (
+                float(r.get("coherence_s", 0.0) or 0.0) > 0.0
+                and float(r.get("deep_snr", 0.0)) > 0.0
+            ):
                 coh_cleared.setdefault(prn, []).append(float(r["deep_snr"]))
     out = {}
     for prn, rs in rows.items():
@@ -340,35 +410,43 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback,
             continue
         bc = best_coh.get(prn)
         _cl = coh_cleared.get(prn) or []
-        out[prn] = {"disc": (E - L) / (E + L),
-                    # the strongest instance's coherent row + which node it came from
-                    "coh_row": bc[1] if bc else None,
-                    "coh_src": bc[2] if bc else None,
-                    # quadrature over floor-cleared instances (see the comment at the
-                    # accumulator); None when < 2 instances cleared -- then the argmax IS
-                    # the honest answer and the publisher keeps it.
-                    "coh_quad": (sum(x * x for x in _cl) ** 0.5, len(_cl))
-                                if len(_cl) >= 2 else None,
-                    # q = 2P/(E+L): 1.0 with no peak (all three taps equal noise power), 4.0 at
-                    # a clean lock with 0.5-chip spacing. The three powers are built identically
-                    # by the combiner (|sum of subband correlations|^2 / energy^2), which is what
-                    # makes this comparable across instances and meaningful once summed.
-                    "q": 2.0 * P / (E + L),
-                    # kept raw: the gate is built on the summed PROMPT POWER (see below), and a
-                    # ratio cannot answer "is there signal here" -- only "am I on the peak".
-                    "p_pow": P,
-                    "hop": newest,
-                    "n_src": len(use),
-                    "n_chan": sum(r[4] for r in use)}
+        out[prn] = {
+            "disc": (E - L) / (E + L),
+            # the strongest instance's coherent row + which node it came from
+            "coh_row": bc[1] if bc else None,
+            "coh_src": bc[2] if bc else None,
+            # quadrature over floor-cleared instances (see the comment at the
+            # accumulator); None when < 2 instances cleared -- then the argmax IS
+            # the honest answer and the publisher keeps it.
+            "coh_quad": (sum(x * x for x in _cl) ** 0.5, len(_cl))
+            if len(_cl) >= 2
+            else None,
+            # q = 2P/(E+L): 1.0 with no peak (all three taps equal noise power), 4.0 at
+            # a clean lock with 0.5-chip spacing. The three powers are built identically
+            # by the combiner (|sum of subband correlations|^2 / energy^2), which is what
+            # makes this comparable across instances and meaningful once summed.
+            "q": 2.0 * P / (E + L),
+            # kept raw: the gate is built on the summed PROMPT POWER (see below), and a
+            # ratio cannot answer "is there signal here" -- only "am I on the peak".
+            "p_pow": P,
+            "hop": newest,
+            "n_src": len(use),
+            "n_chan": sum(r[4] for r in use),
+        }
 
     # The floors, the presence verdict and the deep gate live in apply_presence() so the
     # COMB path (combdll.fleet_dll_comb) reaches exactly the same verdict from the same
     # numbers. Two copies of a presence policy is how an A/B stops being a measurement of
     # the powers and becomes a measurement of which copy drifted.
-    return apply_presence(out, k_sigma, q_fallback, probe_prns=probe_prns,
-                          deep_gate_prns=deep_gate_prns,
-                          deep_gate_margin=deep_gate_margin,
-                          admit_displaced=admit_displaced)
+    return apply_presence(
+        out,
+        k_sigma,
+        q_fallback,
+        probe_prns=probe_prns,
+        deep_gate_prns=deep_gate_prns,
+        deep_gate_margin=deep_gate_margin,
+        admit_displaced=admit_displaced,
+    )
 
 
 def epl_decompose(q, disc, spacing=0.5):
@@ -416,7 +494,9 @@ def epl_decompose(q, disc, spacing=0.5):
         P = acf(d) + n
         if P <= 0.0:
             continue
-        err = ((acf(d + spacing) + n) / P - e) ** 2 + ((acf(d - spacing) + n) / P - l) ** 2
+        err = ((acf(d + spacing) + n) / P - e) ** 2 + (
+            (acf(d - spacing) + n) / P - l
+        ) ** 2
         if best is None or err < best[0]:
             best = (err, d, n)
     if best is None:
@@ -424,8 +504,15 @@ def epl_decompose(q, disc, spacing=0.5):
     return best[1], best[2]
 
 
-def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=None,
-                   deep_gate_margin=3.0, admit_displaced=None):
+def apply_presence(
+    out,
+    k_sigma,
+    q_fallback,
+    probe_prns=None,
+    deep_gate_prns=None,
+    deep_gate_margin=3.0,
+    admit_displaced=None,
+):
     """Floors, the presence verdict and the deep gate, in place, on a fleet_dll-shaped dict.
 
     Split out of fleet_dll (2026-08-15, task #63) UNCHANGED, so the comb-derived DLL shares one
@@ -473,7 +560,7 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
     _probe_q = [v["q"] for k, v in out.items() if probe_prns and k in probe_prns]
     if len(_probe_q) >= 3:
         q_med, q_sigma, q_floor = _floor(_probe_q, k_sigma, 0.05)
-        if q_med is None:                      # _floor needs 8; do it directly for a few
+        if q_med is None:  # _floor needs 8; do it directly for a few
             _s = sorted(_probe_q)
             q_med = _s[len(_s) // 2]
             _mad = sorted(abs(x - q_med) for x in _probe_q)[len(_probe_q) // 2]
@@ -511,8 +598,11 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
     # (deepest below-horizon PRNs), so their median IS N, and k_sigma becomes "this many
     # times the noise floor" rather than sigmas of a mixed population -- which is also
     # robust to there being only a handful of them, where a MAD would not be.
-    _probe_p = [v["p_pow"] for k, v in out.items()
-                if probe_prns and k in probe_prns and v.get("p_pow")]
+    _probe_p = [
+        v["p_pow"]
+        for k, v in out.items()
+        if probe_prns and k in probe_prns and v.get("p_pow")
+    ]
     if len(_probe_p) >= 2:
         _pm = sorted(_probe_p)[len(_probe_p) // 2]
         p_med, p_sigma, p_floor = _pm, None, _pm * max(k_sigma, 1.0)
@@ -595,8 +685,9 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
             # excluded everything unbright. The populations separate cleanly at that line:
             # every satellite tracking today sits at >=3.1x (3.1, 6.6, 15, 22, 32, 57, 92,
             # 123, 142) and the doubtful ones at 1.3-2.2x.
-            v["present"] = (v["q"] >= v["q_floor"]
-                            and (p_floor is None or v["p_pow"] >= p_floor))
+            v["present"] = v["q"] >= v["q_floor"] and (
+                p_floor is None or v["p_pow"] >= p_floor
+            )
             v["present_gate"] = "q+p:probes"
             # ── THE E3 ADMISSION (--presence-admit-displaced): break q's degeneracy ──────
             # q ~ 1 means "off-peak" OR "weak", and the q bar reads both as weak -- so the
@@ -641,26 +732,31 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
             # BeiDou -- the counts rose and the probe floor and the sky had BOTH moved across
             # the same restart, so nothing could be attributed). Say who was admitted and on
             # what evidence.
-            if (admit_displaced is not None and not v["present"]
-                    and p_floor is not None):
+            if admit_displaced is not None and not v["present"] and p_floor is not None:
                 _c = v.get("coh_row") or {}
                 _ds = float(_c.get("deep_snr", 0.0) or 0.0)
                 _dfl = float(_c.get("deep_floor", 0.0) or 0.0)
-                _blind = _dfl > 0.0 and _ds >= admit_displaced.get("deep_margin", 3.0) * _dfl
+                _blind = (
+                    _dfl > 0.0 and _ds >= admit_displaced.get("deep_margin", 3.0) * _dfl
+                )
                 _bright = v["p_pow"] >= p_floor
                 if _blind or _bright:
                     _off, _ped = epl_decompose(v["q"], v["disc"])
                     v["off_chips"], v["pedestal"] = _off, _ped
-                    if (_ped <= admit_displaced["pedestal_max"]
-                            and abs(_off) <= admit_displaced["off_max_chips"]):
+                    if (
+                        _ped <= admit_displaced["pedestal_max"]
+                        and abs(_off) <= admit_displaced["off_max_chips"]
+                    ):
                         v["present"] = True
                         # ATTRIBUTABLE: which evidence admitted it, so the A/B can separate
                         # "the deep path did the work" from "it would have passed on p anyway".
-                        v["present_gate"] = ("q+p:probes+disp" if _bright
-                                             else "q+deep:probes+disp")
+                        v["present_gate"] = (
+                            "q+p:probes+disp" if _bright else "q+deep:probes+disp"
+                        )
                         v["disp_deep_snr"], v["disp_deep_floor"] = _ds, _dfl
-                        _admitted.append((_prn, _off, _ped,
-                                          v["p_pow"] / p_floor, _bright))
+                        _admitted.append(
+                            (_prn, _off, _ped, v["p_pow"] / p_floor, _bright)
+                        )
         else:
             # ⚠️ UNREACHABLE, AND KEPT AS AN ASSERTION RATHER THAN DELETED SILENTLY. The
             # refusal above returns whenever probes < 3 or p_floor is None, which is exactly
@@ -670,7 +766,8 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
             raise AssertionError(
                 "apply_presence: reached the deleted peer-fallback branch with "
                 "%d probe q rows and p_floor=%r -- a presence verdict was about to be "
-                "formed without a probe anchor" % (len(_probe_q), p_floor))
+                "formed without a probe anchor" % (len(_probe_q), p_floor)
+            )
 
         # ---- DEEP GATE (task #49, opt-in per PRN) --------------------------------------
         # THE PROMPT GATE ABOVE IS ON-PEAK-BIASED, WHICH MAKES IT A LATCH. Prompt power is
@@ -717,18 +814,19 @@ def apply_presence(out, k_sigma, q_fallback, probe_prns=None, deep_gate_prns=Non
                 v["present_gate"] = "deep"
                 v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
     if _admitted:
-        _log_rl("presence-disp",
-                "PRESENCE +displaced: %s -- admitted by the displaced gate, which the q/prompt "
-                "gate had refused. (off = tap offset in chips, ped = noise pedestal; 'p' means "
-                "prompt power carried it, 'deep' means the offset-blind fold did.)"
-                % "; ".join("PRN %s off %+.3f ped %.3f p/floor %.1f via %s"
-                            % (p2, o, pe, r, "p" if b else "deep")
-                            for p2, o, pe, r, b in sorted(_admitted,
-                                                          key=lambda x: -(x[3] or 0))[:8]),
-                every_s=120.0)
+        _log_rl(
+            "presence-disp",
+            "PRESENCE +displaced: %s -- admitted by the displaced gate, which the q/prompt "
+            "gate had refused. (off = tap offset in chips, ped = noise pedestal; 'p' means "
+            "prompt power carried it, 'deep' means the offset-blind fold did.)"
+            % "; ".join(
+                "PRN %s off %+.3f ped %.3f p/floor %.1f via %s"
+                % (p2, o, pe, r, "p" if b else "deep")
+                for p2, o, pe, r, b in sorted(_admitted, key=lambda x: -(x[3] or 0))[:8]
+            ),
+            every_s=120.0,
+        )
     return out
-
-
 
 
 def _coherent_sum(a):
@@ -758,8 +856,8 @@ def _coherent_sum(a):
     mag = math.hypot(sr, si)
     if mag <= 0.0:
         return 0.0, 0.0, 0.0
-    cr, ci = sr / mag, -si / mag          # e^{-i arg(sum)}
-    _im = _a.real * ci + _a.imag * cr     # Im(x * rot)
+    cr, ci = sr / mag, -si / mag  # e^{-i arg(sum)}
+    _im = _a.real * ci + _a.imag * cr  # Im(x * rot)
     denom = math.sqrt(float((_im * _im).sum()))
     tot_abs = float(_np.abs(_a).sum())
     # DEGENERATE-RESIDUAL GUARD -- mirrors gnss::residual_snr in gnssChannelizedDespread.cpp,
@@ -778,7 +876,11 @@ def _coherent_sum(a):
     # Floor far above machine epsilon, far below anything physical: a 60 dB record has an
     # orthogonal residual ~1e-3 of mag. Fail closed (0.0), matching n < 2.
     degen = mag * math.sqrt(n) * 1e-12
-    return (mag / denom if denom > degen else 0.0), mag / n, (mag / tot_abs if tot_abs > 0 else 0.0)
+    return (
+        (mag / denom if denom > degen else 0.0),
+        mag / n,
+        (mag / tot_abs if tot_abs > 0 else 0.0),
+    )
 
 
 def _fit_record_rate(hops, tot, hop_rate_hz):
@@ -822,6 +924,7 @@ def _fit_record_rate(hops, tot, hop_rate_hz):
     Returns (rate_hz, rate_sigma_hz), either possibly None.
     """
     import numpy as _np
+
     n = len(hops)
     if n < 2 or not hop_rate_hz:
         return None, None
@@ -872,13 +975,25 @@ def _fit_record_rate(hops, tot, hop_rate_hz):
     # their disagreement. This is the protocol that measured the fold's noise, applied to its
     # replacement -- so the two are comparable and the filter gets a sigma it can gate on.
     _m = n // 2
-    return _peak(0, _L, True), abs(_peak(0, _idx[_m - 1] + 1, False)
-                                   - _peak(_idx[_m], _L, False)) / 2.0
+    return (
+        _peak(0, _L, True),
+        abs(_peak(0, _idx[_m - 1] + 1, False) - _peak(_idx[_m], _L, False)) / 2.0,
+    )
 
 
-def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
-                   null_trials=1, floor_margin=3.0, seed=0, max_age_hops=1 << 20,
-                   hop_rate_hz=None, source=None):
+def fleet_coherent(
+    endpoints,
+    min_instances,
+    min_records,
+    prns=None,
+    log=None,
+    null_trials=1,
+    floor_margin=3.0,
+    seed=0,
+    max_age_hops=1 << 20,
+    hop_rate_hz=None,
+    source=None,
+):
     """CROSS-NODE COHERENT COMBINE: the per-record sky phase, and the deep folds it unlocks.
 
     WHAT THIS FIXES, measured on sky 2026-08-05. Every instance's deep fold sat at ~14 sigma
@@ -950,7 +1065,7 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
     and keeps the single-instance value otherwise, so a partly-down fleet degrades rather than
     stalls, and a noise-only PRN can never manufacture a fleet detection.
     """
-    import numpy as _np   # the (instance x record) combine below is all matrices
+    import numpy as _np  # the (instance x record) combine below is all matrices
 
     # url -> prn -> {hop: (A, energy)}. Unreachable instances are skipped, never fatal.
     got = {}
@@ -978,14 +1093,16 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
         try:
             recs = _get("%s/get_records" % url)
         except Exception as e:
-            _log_rl("fleet-coh-%s" % url, "fleet coherent: %s unreachable (%s)" % (url, e))
+            _log_rl(
+                "fleet-coh-%s" % url, "fleet coherent: %s unreachable (%s)" % (url, e)
+            )
             continue
         per = {}
         for r in recs or []:
             prn = int(r.get("prn", -1))
             if prn <= 0:
                 continue
-            for _x in (r.get("records") or []):
+            for _x in r.get("records") or []:
                 try:
                     fleet_now_all = max(fleet_now_all, int(_x[0]))
                 except (TypeError, ValueError, IndexError):
@@ -1006,230 +1123,259 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
             got[url] = per
 
     def _solve(store, want_rate=True):
-      out = {}
-      all_prns = set()
-      for per in store.values():
-        all_prns.update(per)
-      # the fleet's own "now": the newest record anywhere, over every satellite
-      fleet_now = max(fleet_now_all,
-                      max((max(d) for per in store.values() for d in per.values() if d),
-                          default=0))
-      stale_prns = {}
-      for prn in sorted(all_prns):
-        src = {u: per[prn] for u, per in store.items() if prn in per}
-        if len(src) < min_instances:
-            continue
-        # ---- ABSOLUTE STALENESS: a SET satellite must not keep reporting ----------------
-        # Combiner buffers never expire a PRN's records: once a satellite stops being
-        # tracked its last window sits there indefinitely (measured 2026-08-12: up to 2.9 h).
-        # The relative test below cannot see that, because when EVERY instance is equally
-        # stale they agree perfectly and the combine proceeds -- publishing an hour-old
-        # detection as current. Observed the same day: gal_e5a PRN 27 combined at deep 35
-        # over 12 instances from records 98 minutes old, and PRN 15 kept "reporting" for
-        # 18 minutes after it set below the horizon at 15:48 UTC. That is the whole fleet
-        # agreeing on a fossil.
-        #
-        # `fleet_now` is the newest record ANY instance holds for ANY satellite -- the
-        # fleet's own clock, needing no wall time and no F-engine epoch. A PRN whose newest
-        # record trails it by more than max_age_hops is not being tracked; drop it rather
-        # than report it.
-        if max_age_hops and fleet_now:
-            prn_now = max(max(d) for d in src.values())
-            if fleet_now - prn_now > max_age_hops:
-                stale_prns[prn] = fleet_now - prn_now
+        out = {}
+        all_prns = set()
+        for per in store.values():
+            all_prns.update(per)
+        # the fleet's own "now": the newest record anywhere, over every satellite
+        fleet_now = max(
+            fleet_now_all,
+            max(
+                (max(d) for per in store.values() for d in per.values() if d), default=0
+            ),
+        )
+        stale_prns = {}
+        for prn in sorted(all_prns):
+            src = {u: per[prn] for u, per in store.items() if prn in per}
+            if len(src) < min_instances:
                 continue
-        # ---- ANCHOR ON THE FRESHEST WINDOW, NOT ON UNANIMITY (2026-08-12) ------------
-        # This used to intersect the hop sets of EVERY contributor. One instance outside the
-        # others' window then emptied the common set for every satellite on every cycle, and
-        # the estimator returned {} -- indistinguishable from an empty sky, with no log line
-        # anywhere. Measured that day: cx19's GPU-0 pipeline froze (all five of its chains
-        # stopped at the same hop, an hour stale) while the other seven agreed to +-0.10 s,
-        # and the cross-node coherent combine was silently dead for the duration. An
-        # estimator that gets MORE fragile as the fleet grows is backwards.
-        #
-        # STALENESS IS ABOUT TIME, so the newest data anchors -- not the largest group. A
-        # first cut took the most-populous window and it was wrong in a way the fixture
-        # caught: several instances frozen TOGETHER outvote the live ones and the fleet
-        # happily combines hour-old records into a confident current number. Records are
-        # stamped by hop, so "freshest" is knowable: anchor on the instance reaching the
-        # newest hop, keep everyone who overlaps it by min_records, and refuse to fall back
-        # onto an anchor that is itself more than one window behind the fleet.
-        fresh_max = max(max(d) for d in src.values())
-        keep, hops, dropped = None, set(), []
-        for anchor in sorted(src, key=lambda u: max(src[u]), reverse=True):
-            span = max(src[anchor]) - min(src[anchor])
-            if max(src[anchor]) < fresh_max - span:
-                break          # this anchor and every later one are stale: decline
-            aset = set(src[anchor])
-            cohort = {u: d for u, d in src.items() if len(set(d) & aset) >= min_records}
-            if len(cohort) < min_instances:
-                continue
-            h = set.intersection(*(set(d) & aset for d in cohort.values()))
-            while len(h) < min_records and len(cohort) > min_instances:
-                worst = min(cohort, key=lambda u: len(set(cohort[u]) & aset))
-                del cohort[worst]
+            # ---- ABSOLUTE STALENESS: a SET satellite must not keep reporting ----------------
+            # Combiner buffers never expire a PRN's records: once a satellite stops being
+            # tracked its last window sits there indefinitely (measured 2026-08-12: up to 2.9 h).
+            # The relative test below cannot see that, because when EVERY instance is equally
+            # stale they agree perfectly and the combine proceeds -- publishing an hour-old
+            # detection as current. Observed the same day: gal_e5a PRN 27 combined at deep 35
+            # over 12 instances from records 98 minutes old, and PRN 15 kept "reporting" for
+            # 18 minutes after it set below the horizon at 15:48 UTC. That is the whole fleet
+            # agreeing on a fossil.
+            #
+            # `fleet_now` is the newest record ANY instance holds for ANY satellite -- the
+            # fleet's own clock, needing no wall time and no F-engine epoch. A PRN whose newest
+            # record trails it by more than max_age_hops is not being tracked; drop it rather
+            # than report it.
+            if max_age_hops and fleet_now:
+                prn_now = max(max(d) for d in src.values())
+                if fleet_now - prn_now > max_age_hops:
+                    stale_prns[prn] = fleet_now - prn_now
+                    continue
+            # ---- ANCHOR ON THE FRESHEST WINDOW, NOT ON UNANIMITY (2026-08-12) ------------
+            # This used to intersect the hop sets of EVERY contributor. One instance outside the
+            # others' window then emptied the common set for every satellite on every cycle, and
+            # the estimator returned {} -- indistinguishable from an empty sky, with no log line
+            # anywhere. Measured that day: cx19's GPU-0 pipeline froze (all five of its chains
+            # stopped at the same hop, an hour stale) while the other seven agreed to +-0.10 s,
+            # and the cross-node coherent combine was silently dead for the duration. An
+            # estimator that gets MORE fragile as the fleet grows is backwards.
+            #
+            # STALENESS IS ABOUT TIME, so the newest data anchors -- not the largest group. A
+            # first cut took the most-populous window and it was wrong in a way the fixture
+            # caught: several instances frozen TOGETHER outvote the live ones and the fleet
+            # happily combines hour-old records into a confident current number. Records are
+            # stamped by hop, so "freshest" is knowable: anchor on the instance reaching the
+            # newest hop, keep everyone who overlaps it by min_records, and refuse to fall back
+            # onto an anchor that is itself more than one window behind the fleet.
+            fresh_max = max(max(d) for d in src.values())
+            keep, hops, dropped = None, set(), []
+            for anchor in sorted(src, key=lambda u: max(src[u]), reverse=True):
+                span = max(src[anchor]) - min(src[anchor])
+                if max(src[anchor]) < fresh_max - span:
+                    break  # this anchor and every later one are stale: decline
+                aset = set(src[anchor])
+                cohort = {
+                    u: d for u, d in src.items() if len(set(d) & aset) >= min_records
+                }
+                if len(cohort) < min_instances:
+                    continue
                 h = set.intersection(*(set(d) & aset for d in cohort.values()))
-            if len(h) >= min_records and len(cohort) >= min_instances:
-                keep, hops = cohort, h
-                dropped = [(u, len(set(src[u]) & aset)) for u in src if u not in cohort]
-                break
-        if keep is None:
-            continue
-        src = keep
-        hops = sorted(hops)
-        drop_note = dropped
-        # ---- THE COMBINE, AS MATRICES (vectorised 2026-08-24) ---------------------------
-        # Every line below this used to be a Python loop over (instance x hop): the alignment,
-        # the fleet sum, the leave-one-out per instance and the S/R split are all the same
-        # (n_inst x n_rec) complex array seen four ways. At 12 instances x 128 records x ~15
-        # satellites, twice per call (the shuffled null re-runs all of it), that is ~46k
-        # complex operations per chain per cycle carried as Python objects -- profiled at
-        # ~2.6 s of the fleet's serialised cycle, on a process whose cycle time IS the sum of
-        # the five chains' Python CPU.
-        #
-        # ⚠️ THE ORDER OF THE SUMS IS PART OF THE ANSWER. `tot`, the S/R halves and the
-        # leave-one-out all sum over instances in SORTED URL order, and the S/R split assigns
-        # halves by position in that same order. numpy's pairwise summation reassociates, so
-        # the numbers move in the last bits -- verified against the loop implementation on
-        # production-sized and degenerate shapes (scratch harness: 12x128, ragged, 3-instance,
-        # 16-hop, 2-instance, single-PRN) to 1e-9 relative, which is 6 orders below the
-        # scatter this estimator has against ITSELF one cycle later (r = 0.077, #61).
-        _U = list(src)                       # dict order: ref_u tie-breaks as the loop did
-        _n = len(hops)
-        _A = _np.empty((len(_U), _n), dtype=complex)
-        _E = _np.empty((len(_U), _n), dtype=float)
-        for _i, _u in enumerate(_U):
-            _d = src[_u]
-            _A[_i] = [_d[h][0] for h in hops]
-            _E[_i] = [_d[h][1] for h in hops]
-        _esum = _E.sum(axis=1)
-        _ref = _A[int(_np.argmax(_esum))]                    # most energetic view
-        _cr = _A @ _np.conj(_ref)
-        _acr = _np.abs(_cr)
-        _keep = _acr > 0.0                                   # the loop's `if abs(cr) <= 0`
-        # Alignment coherence |<A conj(A_ref)>| / sum|A||A_ref|, reported not assumed.
-        _den = _np.abs(_A) @ _np.abs(_ref)
-        _refi = int(_np.argmax(_esum))
-        align_q = [float(_acr[i] / _den[i]) for i in range(len(_U))
-                   if _keep[i] and _den[i] > 0.0 and i != _refi]
-        _idx = [i for i in range(len(_U)) if _keep[i]]
-        if len(_idx) < min_instances:
-            continue
-        _order = sorted(_idx, key=lambda i: _U[i])           # SORTED URL order, as `urls` was
-        urls = [_U[i] for i in _order]
-        nrec = _n
-        # e^{-i arg(<A conj(A_ref)>)} x MRC weight (mean energy), applied per instance
-        _rot = _np.conj(_cr[_order]) / _acr[_order]
-        _w = _esum[_order] / float(_n)
-        _AL = _A[_order] * (_rot * _w)[:, None]
-        aligned = {u: _AL[j] for j, u in enumerate(urls)}
-        tot = _AL.sum(axis=0)
-        # ---- RECORD-STREAM CARRIER RATE (#33) -- see _fit_record_rate's docstring -------
-        # SKIPPED ON THE NULL PASS. _solve runs twice per call: once for real and once on
-        # shuffled data for the measured null floor, and the null reads only deep_snr and
-        # per_inst (see the loop after `nres = _solve(...)`). The rate fit was the single
-        # most expensive thing in the broker and HALF of it was computed for a caller that
-        # throws it away -- ~40% of the whole process, by profile, producing nothing.
-        rate_hz = rate_sig = None
-        if want_rate and hop_rate_hz and nrec >= 16:
-            try:
-                rate_hz, rate_sig = _fit_record_rate(hops, tot, hop_rate_hz)
-            except Exception:
-                rate_hz = rate_sig = None
-        # ---- per instance: leave THAT instance out of its own reference ----
-        _rest = tot[None, :] - _AL
-        _m = _np.abs(_rest)
-        _safe = _np.where(_m > 0.0, _m, 1.0)
-        _corr = _np.where(_m > 0.0, _AL * _np.conj(_rest) / _safe, _AL)
-        per_inst = {u: _coherent_sum(_corr[j])[0] for j, u in enumerate(urls)}
-        # ---- fleet total: ONE-WAY split (S integrated, R only referenced) -- see the note ----
-        # ---- THE S/R SPLIT: balanced in sum|w|^2, and STABLE across polls (task #6) ----
-        #
-        # WAS: sort by descending sum|A| and interleave. Two defects, and the second is the one
-        # that cost us.
-        #
-        #   1. Interleaving balances the COUNT, not the ENERGY. The estimator integrates S and
-        #      spends R on the phase reference, so its variance is set by how sum|w|^2 divides:
-        #      too much in S and the reference is noisy (derotation loses coherence), too much
-        #      in R and S under-integrates. Rank-interleave leaves that to luck, and with an
-        #      odd instance count or one dominant node it is systematically off.
-        #
-        #   2. THE SORT KEY FLUCTUATES, so the MEMBERSHIP did. sum|A| is a noisy per-poll
-        #      quantity; two instances of similar strength swap rank between polls, the halves
-        #      reshuffle, and deep_snr steps because a DIFFERENT APERTURE is being integrated.
-        #      That is a real change in the estimator, not in the sky -- and it is per-chain and
-        #      independent between chains, which is exactly the fast term isolated on
-        #      2026-08-09: the same satellite's two coherent sidebands share their SLOW
-        #      variation (median corr +0.49, geometry through the beam) but NOT their fast
-        #      variation (+0.11), so the fast part is generated downstream of the antennas,
-        #      per chain. A split that reshuffles on noise is precisely such a generator.
-        #
-        # NOW: iterate in a STABLE order (sorted URL -- a constant, not a measurement) and
-        # greedily assign each instance to whichever half currently holds less sum|w|^2. The
-        # iteration order can no longer move, so membership changes only when the energies
-        # genuinely change, and the greedy pass is the standard near-optimal answer to the
-        # number-partitioning this is. `aligned` already carries the MRC weight, so sum|x|^2 IS
-        # sum|w|^2 up to a common scale.
-        # THE SPLIT IS A PURE FUNCTION OF THE URL SET -- no measurement enters it at all.
-        #
-        # Measured over 400 synthetic polls with 18% per-poll amplitude jitter:
-        #     rank-interleave (was)          imbalance 0.062, membership changed 399/399 polls
-        #     greedy on per-poll sum|w|^2    imbalance 0.045, membership changed 395/399
-        #     fixed alternation by url       imbalance 0.084, membership changed     0
-        # Greedy balances best and is STILL unstable, because any rule that reads a noisy
-        # weight re-decides on noise. The trade is not close: an 8% energy imbalance is
-        # second-order on the estimator's variance (the one-way split already concedes
-        # sqrt(2)), whereas re-drawing WHICH APERTURE is integrated every poll is first-order
-        # on the published number -- it steps deep_snr for reasons that have nothing to do
-        # with the sky. Stability is the property worth buying.
-        #
-        # It is also physically sensible rather than arbitrary: sorted URLs alternate
-        # cx19/gnss0, cx19/gnss1, cx27/gnss0, ... so each half receives one GPU from every
-        # node -- equal channel count, equal hardware, balanced in expectation. The instances
-        # are nominally identical (7 channels each off the same comb), so sorting them by
-        # measured amplitude -- what the old code did -- was largely sorting them by noise.
-        #
-        # `split_imbalance` is published so a GENUINE asymmetry (a node with fewer channels, a
-        # merged --combine-gpus instance) shows up as a persistently large value instead of
-        # hiding. If that ever appears, the fix is a stable weight carried across polls, not a
-        # return to deciding on the current one.
-        half = {u: (i % 2) for i, u in enumerate(sorted(urls))}
-        _h = _np.array([half[u] for u in urls])
-        _pw = (_np.abs(_AL) ** 2).sum(axis=1)
-        _tot = [float(_pw[_h == j].sum()) for j in (0, 1)]
-        _imb = (abs(_tot[0] - _tot[1]) / (_tot[0] + _tot[1])) if (_tot[0] + _tot[1]) > 0 else 0.0
-        _s = _AL[_h == 0].sum(axis=0)                          # SIGNAL half
-        _r = _AL[_h == 1].sum(axis=0)                          # REFERENCE half
-        _mr = _np.abs(_r)
-        fleet = _np.where(_mr > 0.0, _s * _np.conj(_r) / _np.where(_mr > 0.0, _mr, 1.0), 0j)
-        snr, amp, cf = _coherent_sum(fleet)
-        out[prn] = {
-            "deep_snr": snr, "deep_amplitude": amp, "coh_frac": cf,
-            "n_src": len(urls), "n_rec": nrec,
-            "align": (sum(align_q) / len(align_q)) if align_q else 0.0,
-            "per_inst": per_inst,
-            "best_inst": max(per_inst, key=per_inst.get) if per_inst else None,
-            "best_inst_snr": max(per_inst.values()) if per_inst else 0.0,
-            # Published so the split can be judged rather than assumed: 0 = perfectly balanced
-            # sum|w|^2, 1 = everything in one half. A value that WANDERS between polls means
-            # membership is still moving and deep_snr will step with it.
-            # record-stream carrier rate + its split-half sigma (Hz). None when the caller
-            # did not supply hop_rate_hz or the arc is too short to fit.
-            "rate_hz": rate_hz, "rate_sigma_hz": rate_sig,
-            "split_imbalance": _imb,
-            "split_s": sorted(u for u in urls if half[u] == 0),
-            # Instances excluded from THIS PRN's combine and why (url, hops it had inside
-            # the candidate window). Non-empty means the fleet degraded rather than failed;
-            # the caller logs it, because the old code's silent {} was the actual defect.
-            "dropped": drop_note,
-        }
-      if stale_prns and log:
-          log("fleet coherent: %d PRN(s) excluded as STALE (their newest record trails "
-              "the fleet by more than %d hops): %s"
-              % (len(stale_prns), max_age_hops,
-                 ", ".join("PRN %d (%.0f s)" % (p, a / 195312.5)
-                           for p, a in sorted(stale_prns.items()))))
-      return out
+                while len(h) < min_records and len(cohort) > min_instances:
+                    worst = min(cohort, key=lambda u: len(set(cohort[u]) & aset))
+                    del cohort[worst]
+                    h = set.intersection(*(set(d) & aset for d in cohort.values()))
+                if len(h) >= min_records and len(cohort) >= min_instances:
+                    keep, hops = cohort, h
+                    dropped = [
+                        (u, len(set(src[u]) & aset)) for u in src if u not in cohort
+                    ]
+                    break
+            if keep is None:
+                continue
+            src = keep
+            hops = sorted(hops)
+            drop_note = dropped
+            # ---- THE COMBINE, AS MATRICES (vectorised 2026-08-24) ---------------------------
+            # Every line below this used to be a Python loop over (instance x hop): the alignment,
+            # the fleet sum, the leave-one-out per instance and the S/R split are all the same
+            # (n_inst x n_rec) complex array seen four ways. At 12 instances x 128 records x ~15
+            # satellites, twice per call (the shuffled null re-runs all of it), that is ~46k
+            # complex operations per chain per cycle carried as Python objects -- profiled at
+            # ~2.6 s of the fleet's serialised cycle, on a process whose cycle time IS the sum of
+            # the five chains' Python CPU.
+            #
+            # ⚠️ THE ORDER OF THE SUMS IS PART OF THE ANSWER. `tot`, the S/R halves and the
+            # leave-one-out all sum over instances in SORTED URL order, and the S/R split assigns
+            # halves by position in that same order. numpy's pairwise summation reassociates, so
+            # the numbers move in the last bits -- verified against the loop implementation on
+            # production-sized and degenerate shapes (scratch harness: 12x128, ragged, 3-instance,
+            # 16-hop, 2-instance, single-PRN) to 1e-9 relative, which is 6 orders below the
+            # scatter this estimator has against ITSELF one cycle later (r = 0.077, #61).
+            _U = list(src)  # dict order: ref_u tie-breaks as the loop did
+            _n = len(hops)
+            _A = _np.empty((len(_U), _n), dtype=complex)
+            _E = _np.empty((len(_U), _n), dtype=float)
+            for _i, _u in enumerate(_U):
+                _d = src[_u]
+                _A[_i] = [_d[h][0] for h in hops]
+                _E[_i] = [_d[h][1] for h in hops]
+            _esum = _E.sum(axis=1)
+            _ref = _A[int(_np.argmax(_esum))]  # most energetic view
+            _cr = _A @ _np.conj(_ref)
+            _acr = _np.abs(_cr)
+            _keep = _acr > 0.0  # the loop's `if abs(cr) <= 0`
+            # Alignment coherence |<A conj(A_ref)>| / sum|A||A_ref|, reported not assumed.
+            _den = _np.abs(_A) @ _np.abs(_ref)
+            _refi = int(_np.argmax(_esum))
+            align_q = [
+                float(_acr[i] / _den[i])
+                for i in range(len(_U))
+                if _keep[i] and _den[i] > 0.0 and i != _refi
+            ]
+            _idx = [i for i in range(len(_U)) if _keep[i]]
+            if len(_idx) < min_instances:
+                continue
+            _order = sorted(
+                _idx, key=lambda i: _U[i]
+            )  # SORTED URL order, as `urls` was
+            urls = [_U[i] for i in _order]
+            nrec = _n
+            # e^{-i arg(<A conj(A_ref)>)} x MRC weight (mean energy), applied per instance
+            _rot = _np.conj(_cr[_order]) / _acr[_order]
+            _w = _esum[_order] / float(_n)
+            _AL = _A[_order] * (_rot * _w)[:, None]
+            aligned = {u: _AL[j] for j, u in enumerate(urls)}
+            tot = _AL.sum(axis=0)
+            # ---- RECORD-STREAM CARRIER RATE (#33) -- see _fit_record_rate's docstring -------
+            # SKIPPED ON THE NULL PASS. _solve runs twice per call: once for real and once on
+            # shuffled data for the measured null floor, and the null reads only deep_snr and
+            # per_inst (see the loop after `nres = _solve(...)`). The rate fit was the single
+            # most expensive thing in the broker and HALF of it was computed for a caller that
+            # throws it away -- ~40% of the whole process, by profile, producing nothing.
+            rate_hz = rate_sig = None
+            if want_rate and hop_rate_hz and nrec >= 16:
+                try:
+                    rate_hz, rate_sig = _fit_record_rate(hops, tot, hop_rate_hz)
+                except Exception:
+                    rate_hz = rate_sig = None
+            # ---- per instance: leave THAT instance out of its own reference ----
+            _rest = tot[None, :] - _AL
+            _m = _np.abs(_rest)
+            _safe = _np.where(_m > 0.0, _m, 1.0)
+            _corr = _np.where(_m > 0.0, _AL * _np.conj(_rest) / _safe, _AL)
+            per_inst = {u: _coherent_sum(_corr[j])[0] for j, u in enumerate(urls)}
+            # ---- fleet total: ONE-WAY split (S integrated, R only referenced) -- see the note ----
+            # ---- THE S/R SPLIT: balanced in sum|w|^2, and STABLE across polls (task #6) ----
+            #
+            # WAS: sort by descending sum|A| and interleave. Two defects, and the second is the one
+            # that cost us.
+            #
+            #   1. Interleaving balances the COUNT, not the ENERGY. The estimator integrates S and
+            #      spends R on the phase reference, so its variance is set by how sum|w|^2 divides:
+            #      too much in S and the reference is noisy (derotation loses coherence), too much
+            #      in R and S under-integrates. Rank-interleave leaves that to luck, and with an
+            #      odd instance count or one dominant node it is systematically off.
+            #
+            #   2. THE SORT KEY FLUCTUATES, so the MEMBERSHIP did. sum|A| is a noisy per-poll
+            #      quantity; two instances of similar strength swap rank between polls, the halves
+            #      reshuffle, and deep_snr steps because a DIFFERENT APERTURE is being integrated.
+            #      That is a real change in the estimator, not in the sky -- and it is per-chain and
+            #      independent between chains, which is exactly the fast term isolated on
+            #      2026-08-09: the same satellite's two coherent sidebands share their SLOW
+            #      variation (median corr +0.49, geometry through the beam) but NOT their fast
+            #      variation (+0.11), so the fast part is generated downstream of the antennas,
+            #      per chain. A split that reshuffles on noise is precisely such a generator.
+            #
+            # NOW: iterate in a STABLE order (sorted URL -- a constant, not a measurement) and
+            # greedily assign each instance to whichever half currently holds less sum|w|^2. The
+            # iteration order can no longer move, so membership changes only when the energies
+            # genuinely change, and the greedy pass is the standard near-optimal answer to the
+            # number-partitioning this is. `aligned` already carries the MRC weight, so sum|x|^2 IS
+            # sum|w|^2 up to a common scale.
+            # THE SPLIT IS A PURE FUNCTION OF THE URL SET -- no measurement enters it at all.
+            #
+            # Measured over 400 synthetic polls with 18% per-poll amplitude jitter:
+            #     rank-interleave (was)          imbalance 0.062, membership changed 399/399 polls
+            #     greedy on per-poll sum|w|^2    imbalance 0.045, membership changed 395/399
+            #     fixed alternation by url       imbalance 0.084, membership changed     0
+            # Greedy balances best and is STILL unstable, because any rule that reads a noisy
+            # weight re-decides on noise. The trade is not close: an 8% energy imbalance is
+            # second-order on the estimator's variance (the one-way split already concedes
+            # sqrt(2)), whereas re-drawing WHICH APERTURE is integrated every poll is first-order
+            # on the published number -- it steps deep_snr for reasons that have nothing to do
+            # with the sky. Stability is the property worth buying.
+            #
+            # It is also physically sensible rather than arbitrary: sorted URLs alternate
+            # cx19/gnss0, cx19/gnss1, cx27/gnss0, ... so each half receives one GPU from every
+            # node -- equal channel count, equal hardware, balanced in expectation. The instances
+            # are nominally identical (7 channels each off the same comb), so sorting them by
+            # measured amplitude -- what the old code did -- was largely sorting them by noise.
+            #
+            # `split_imbalance` is published so a GENUINE asymmetry (a node with fewer channels, a
+            # merged --combine-gpus instance) shows up as a persistently large value instead of
+            # hiding. If that ever appears, the fix is a stable weight carried across polls, not a
+            # return to deciding on the current one.
+            half = {u: (i % 2) for i, u in enumerate(sorted(urls))}
+            _h = _np.array([half[u] for u in urls])
+            _pw = (_np.abs(_AL) ** 2).sum(axis=1)
+            _tot = [float(_pw[_h == j].sum()) for j in (0, 1)]
+            _imb = (
+                (abs(_tot[0] - _tot[1]) / (_tot[0] + _tot[1]))
+                if (_tot[0] + _tot[1]) > 0
+                else 0.0
+            )
+            _s = _AL[_h == 0].sum(axis=0)  # SIGNAL half
+            _r = _AL[_h == 1].sum(axis=0)  # REFERENCE half
+            _mr = _np.abs(_r)
+            fleet = _np.where(
+                _mr > 0.0, _s * _np.conj(_r) / _np.where(_mr > 0.0, _mr, 1.0), 0j
+            )
+            snr, amp, cf = _coherent_sum(fleet)
+            out[prn] = {
+                "deep_snr": snr,
+                "deep_amplitude": amp,
+                "coh_frac": cf,
+                "n_src": len(urls),
+                "n_rec": nrec,
+                "align": (sum(align_q) / len(align_q)) if align_q else 0.0,
+                "per_inst": per_inst,
+                "best_inst": max(per_inst, key=per_inst.get) if per_inst else None,
+                "best_inst_snr": max(per_inst.values()) if per_inst else 0.0,
+                # Published so the split can be judged rather than assumed: 0 = perfectly balanced
+                # sum|w|^2, 1 = everything in one half. A value that WANDERS between polls means
+                # membership is still moving and deep_snr will step with it.
+                # record-stream carrier rate + its split-half sigma (Hz). None when the caller
+                # did not supply hop_rate_hz or the arc is too short to fit.
+                "rate_hz": rate_hz,
+                "rate_sigma_hz": rate_sig,
+                "split_imbalance": _imb,
+                "split_s": sorted(u for u in urls if half[u] == 0),
+                # Instances excluded from THIS PRN's combine and why (url, hops it had inside
+                # the candidate window). Non-empty means the fleet degraded rather than failed;
+                # the caller logs it, because the old code's silent {} was the actual defect.
+                "dropped": drop_note,
+            }
+        if stale_prns and log:
+            log(
+                "fleet coherent: %d PRN(s) excluded as STALE (their newest record trails "
+                "the fleet by more than %d hops): %s"
+                % (
+                    len(stale_prns),
+                    max_age_hops,
+                    ", ".join(
+                        "PRN %d (%.0f s)" % (p, a / 195312.5)
+                        for p, a in sorted(stale_prns.items())
+                    ),
+                )
+            )
+        return out
 
     out = _solve(got)
     if not out:
@@ -1260,10 +1406,22 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
     if log:
         best = max(out, key=lambda p: out[p]["deep_snr"])
         b = out[best]
-        log("fleet coherent: %d PRN (%d clear the floor), best PRN %d deep %.1f vs floor %.1f "
+        log(
+            "fleet coherent: %d PRN (%d clear the floor), best PRN %d deep %.1f vs floor %.1f "
             "(best single instance %.1f, %dx over %d records, align %.3f, coh_frac %.3f)"
-            % (len(out), sum(1 for v in out.values() if v["present"]), best, b["deep_snr"],
-               floor, b["best_inst_snr"], b["n_src"], b["n_rec"], b["align"], b["coh_frac"]))
+            % (
+                len(out),
+                sum(1 for v in out.values() if v["present"]),
+                best,
+                b["deep_snr"],
+                floor,
+                b["best_inst_snr"],
+                b["n_src"],
+                b["n_rec"],
+                b["align"],
+                b["coh_frac"],
+            )
+        )
     return out
 
 
@@ -1291,8 +1449,16 @@ def fleet_coherent(endpoints, min_instances, min_records, prns=None, log=None,
 # real comb, the frequency-phase association (the entire thing the fit locks onto)
 # destroyed. A tau is reported only against that floor, and the caller sees both.
 
-def fit_spectrum_delay(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
-                       coarse_step_chips=0.02, rounds=4, rng=None):
+
+def fit_spectrum_delay(
+    points,
+    chip_rate_hz,
+    chan_width_hz,
+    span_chips=2.0,
+    coarse_step_chips=0.02,
+    rounds=4,
+    rng=None,
+):
     """Joint (tau, phi_i) fit. `points` = [(freq_id, complex A, energy, inst_key)].
 
     Returns (tau_chips, peak, floor, n_pts, n_inst) -- tau of the correlation peak RELATIVE
@@ -1386,11 +1552,18 @@ def fit_spectrum_delay(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
     for k, v in insts.items():
         ph = [cmath.phase(a) for _, a, _ in v]
         rng.shuffle(ph)
-        null_store[k] = [(fid, abs(a) * cmath.exp(1j * ph[i]), en)
-                         for i, (fid, a, en) in enumerate(v)]
+        null_store[k] = [
+            (fid, abs(a) * cmath.exp(1j * ph[i]), en)
+            for i, (fid, a, en) in enumerate(v)
+        ]
     _, floor = run(null_store)
-    return (tau_s * chip_rate_hz, peak, floor, sum(len(v) for v in insts.values()),
-            len(insts))
+    return (
+        tau_s * chip_rate_hz,
+        peak,
+        floor,
+        sum(len(v) for v in insts.values()),
+        len(insts),
+    )
 
 
 def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_margin=0):
@@ -1423,7 +1596,9 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
         try:
             r = _get("%s/get_spectrum" % url)
         except Exception as e:
-            _log_rl("fleet-spec-%s" % url, "fleet spectrum: %s unreachable (%s)" % (url, e))
+            _log_rl(
+                "fleet-spec-%s" % url, "fleet spectrum: %s unreachable (%s)" % (url, e)
+            )
             dropped.append((url, "unreachable"))
             continue
         if not r.get("addressable"):
@@ -1436,9 +1611,14 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
         avail[url] = (int(a[0]), int(a[1]))
     if not avail:
         if degraded and log:
-            log("fleet spectrum: %d instance(s) NOT addressable (pre-#53 config): %s"
-                % (len(degraded), ", ".join(degraded)))
-        return {}, {"window": None, "served": {}, "dropped": dropped, "degraded": degraded}
+            log(
+                "fleet spectrum: %d instance(s) NOT addressable (pre-#53 config): %s"
+                % (len(degraded), ", ".join(degraded))
+            )
+        return (
+            {},
+            {"window": None, "served": {}, "dropped": dropped, "degraded": degraded},
+        )
 
     # ⚠️ #84 (2026-08-17): min(hi) over ALL addressable instances hands the common index
     # to the SLOWEST member forever. A bench-state instance (cx19's n2assemble, frozen
@@ -1453,8 +1633,13 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
     if stale_margin and avail:
         _mx = max(hi for _, hi in avail.values())
         for url in [u for u, (_, hi) in avail.items() if hi < _mx - stale_margin]:
-            dropped.append((url, "stale (hi %d, fleet newest %d, margin %d)"
-                            % (avail[url][1], _mx, stale_margin)))
+            dropped.append(
+                (
+                    url,
+                    "stale (hi %d, fleet newest %d, margin %d)"
+                    % (avail[url][1], _mx, stale_margin),
+                )
+            )
             del avail[url]
     idx = int(window) if window is not None else min(hi for _, hi in avail.values())
     out, w0s, w1s = {}, set(), set()
@@ -1503,18 +1688,40 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
     # loudly instead of combining anyway.
     if len(w0s) > 1 or len(w1s) > 1:
         if log:
-            log("⚠️ fleet spectrum: window %d has DIFFERENT sample spans across instances "
+            log(
+                "⚠️ fleet spectrum: window %d has DIFFERENT sample spans across instances "
                 "(wstart0 %s, wstart1 %s) -- the quantisation is broken, check that every node "
-                "config has the SAME spectrum_window_samples" % (idx, sorted(w0s), sorted(w1s)))
-        return {}, {"window": idx, "served": {}, "dropped": dropped, "degraded": degraded,
-                    "misaligned": True}
+                "config has the SAME spectrum_window_samples"
+                % (idx, sorted(w0s), sorted(w1s))
+            )
+        return (
+            {},
+            {
+                "window": idx,
+                "served": {},
+                "dropped": dropped,
+                "degraded": degraded,
+                "misaligned": True,
+            },
+        )
     if degraded and log:
-        _log_rl("fleet-spec-degraded",
-                "fleet spectrum: excluding %d NOT-addressable instance(s) (pre-#53 config): %s"
-                % (len(degraded), ", ".join(degraded)))
-    return out, {"window": idx, "w0": next(iter(w0s), None), "w1": next(iter(w1s), None),
-                 "served": served, "dropped": dropped, "degraded": degraded,
-                 "reanchored": reanchored}
+        _log_rl(
+            "fleet-spec-degraded",
+            "fleet spectrum: excluding %d NOT-addressable instance(s) (pre-#53 config): %s"
+            % (len(degraded), ", ".join(degraded)),
+        )
+    return (
+        out,
+        {
+            "window": idx,
+            "w0": next(iter(w0s), None),
+            "w1": next(iter(w1s), None),
+            "served": served,
+            "dropped": dropped,
+            "degraded": degraded,
+            "reanchored": reanchored,
+        },
+    )
 
 
 def fleet_spectrum(endpoints, prns=None):
@@ -1531,7 +1738,9 @@ def fleet_spectrum(endpoints, prns=None):
         try:
             r = _get("%s/get_spectrum" % url)
         except Exception as e:
-            _log_rl("fleet-spec-%s" % url, "fleet spectrum: %s unreachable (%s)" % (url, e))
+            _log_rl(
+                "fleet-spec-%s" % url, "fleet spectrum: %s unreachable (%s)" % (url, e)
+            )
             continue
         fids = r.get("freq_ids") or []
         for row in r.get("prns") or []:
@@ -1578,8 +1787,11 @@ def delay_combine(points, chip_rate_hz, chan_width_hz, tau_chips, rng=None, n_nu
     import cmath
     import random as _random
 
-    pts = [(fid, a, en, key) for fid, a, en, key in points
-           if en > 0.0 and (a.real != 0.0 or a.imag != 0.0)]
+    pts = [
+        (fid, a, en, key)
+        for fid, a, en, key in points
+        if en > 0.0 and (a.real != 0.0 or a.imag != 0.0)
+    ]
     if len(pts) < 3:
         return None
     f0 = min(fid for fid, _, _, _ in pts)
@@ -1617,8 +1829,10 @@ def delay_combine(points, chip_rate_hz, chan_width_hz, tau_chips, rng=None, n_nu
     for _ in range(max(1, n_null)):
         sh = list(phases)
         rng.shuffle(sh)
-        null_pts = [(pts[i][0], abs(pts[i][1]) * cmath.exp(1j * sh[i]), pts[i][2], pts[i][3])
-                    for i in range(len(pts))]
+        null_pts = [
+            (pts[i][0], abs(pts[i][1]) * cmath.exp(1j * sh[i]), pts[i][2], pts[i][3])
+            for i in range(len(pts))
+        ]
         floor = max(floor, abs(combine(null_pts)[0]))
     n_inst = len({k for _, _, _, k in pts})
     # EFFECTIVE POINT COUNT of the fold's own weights, w = E*|A|. The coherence statistic is
@@ -1629,19 +1843,31 @@ def delay_combine(points, chip_rate_hz, chan_width_hz, tau_chips, rng=None, n_nu
     _w = [en * abs(a) for _, a, en, _ in pts]
     _sw = sum(_w)
     n_eff = (_sw * _sw / sum(x * x for x in _w)) if _sw > 0.0 else 0.0
-    return {"snr": (mag / floor) if floor > 0.0 else 0.0,
-            "n_eff": n_eff,
-            "amplitude": mag / len(pts),
-            "coh_frac": (mag / abs_sum) if abs_sum > 0.0 else 0.0,
-            "n_pts": len(pts), "n_inst": n_inst, "floor": floor,
-            "tau_chips": tau_chips,
-            # The null is a MAX over shuffles, so clearing it by a margin is a real detection
-            # in the same sense the search's Gamma ceiling is (chord-gamma-noise-ceiling).
-            "present": mag > 0.0 and floor > 0.0 and mag >= 1.5 * floor}
+    return {
+        "snr": (mag / floor) if floor > 0.0 else 0.0,
+        "n_eff": n_eff,
+        "amplitude": mag / len(pts),
+        "coh_frac": (mag / abs_sum) if abs_sum > 0.0 else 0.0,
+        "n_pts": len(pts),
+        "n_inst": n_inst,
+        "floor": floor,
+        "tau_chips": tau_chips,
+        # The null is a MAX over shuffles, so clearing it by a margin is a real detection
+        # in the same sense the search's Gamma ceiling is (chord-gamma-noise-ceiling).
+        "present": mag > 0.0 and floor > 0.0 and mag >= 1.5 * floor,
+    }
 
 
-def fit_tau_coherent(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
-                     coarse_step_chips=0.02, refine=3, rng=None, n_null=16):
+def fit_tau_coherent(
+    points,
+    chip_rate_hz,
+    chan_width_hz,
+    span_chips=2.0,
+    coarse_step_chips=0.02,
+    refine=3,
+    rng=None,
+    n_null=16,
+):
     """Fit ONE tau by maximising the coherence of the gathered points. No nuisance phases.
 
     WHY THIS REPLACES fit_spectrum_delay's SOLVE. That fit solves a free phase PER INSTANCE at
@@ -1671,8 +1897,11 @@ def fit_tau_coherent(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
     import cmath
     import random as _random
 
-    pts = [(fid, en * a) for fid, a, en, _ in points
-           if en > 0.0 and (a.real != 0.0 or a.imag != 0.0)]
+    pts = [
+        (fid, en * a)
+        for fid, a, en, _ in points
+        if en > 0.0 and (a.real != 0.0 or a.imag != 0.0)
+    ]
     if len(pts) < 8:
         return None
     f0 = min(fid for fid, _ in pts)
@@ -1682,8 +1911,10 @@ def fit_tau_coherent(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
 
     def coh_at(tau_chips, seq):
         ts = tau_chips / chip_rate_hz
-        tot = sum(g * cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz * ts)
-                  for fid, g in seq)
+        tot = sum(
+            g * cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz * ts)
+            for fid, g in seq
+        )
         return abs(tot) / wsum
 
     def best_over(seq, lo, hi, step):
@@ -1717,8 +1948,14 @@ def fit_tau_coherent(points, chip_rate_hz, chan_width_hz, span_chips=2.0,
     for _ in range(max(1, n_null)):
         sh = list(phases)
         rng.shuffle(sh)
-        _, c = best_over([(pts[i][0], abs(pts[i][1]) * cmath.exp(1j * sh[i]))
-                          for i in range(len(pts))],
-                         -span_chips, span_chips, coarse_step_chips)
+        _, c = best_over(
+            [
+                (pts[i][0], abs(pts[i][1]) * cmath.exp(1j * sh[i]))
+                for i in range(len(pts))
+            ],
+            -span_chips,
+            span_chips,
+            coarse_step_chips,
+        )
         floor = max(floor, c)
     return (tau, coh, floor, len(pts), len({k for _, _, _, k in points}))

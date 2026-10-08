@@ -94,7 +94,7 @@ private:
     /// Per-sender bookkeeping, keyed "chain/inst".
     struct Sender {
         uint64_t frames = 0;
-        uint64_t gaps = 0;      ///< missed frames inferred from the sender's own seq counter
+        uint64_t gaps = 0; ///< missed frames inferred from the sender's own seq counter
         uint64_t last_seq = 0;
         int64_t last_win = -1;
         double last_utc = 0.0;
@@ -106,10 +106,10 @@ private:
     std::map<std::string, Sender> _senders;
     std::mutex _stat_mtx;
 
-    uint64_t _bad_frames = 0;   ///< failed the magic/version/geometry check
-    uint64_t _client_drops = 0; ///< clients disconnected for being too slow
+    uint64_t _bad_frames = 0;     ///< failed the magic/version/geometry check
+    uint64_t _client_drops = 0;   ///< clients disconnected for being too slow
     uint64_t _client_hangups = 0; ///< clients reaped because THEY closed (see reap_clients)
-    double _last_reap = 0.0;    ///< rate limit for reap_clients: it polls every client fd
+    double _last_reap = 0.0;      ///< rate limit for reap_clients: it polls every client fd
 
     /// Mark senders stale/live and log each TRANSITION once. Called on a timer, not only when
     /// a frame arrives -- a fleet that goes completely silent must still be reported, and that

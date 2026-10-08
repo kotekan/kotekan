@@ -1,7 +1,5 @@
 #include "GnssFleetTrim.hpp"
 
-#include <fstream>
-
 #include "StageFactory.hpp"
 #include "kotekanLogging.hpp"
 #include "visUtil.hpp" // for frameID, current_time
@@ -9,13 +7,13 @@
 #include "json.hpp"
 
 #include <algorithm>
-#include <chrono>
-#include <functional>
-
 #include <arpa/inet.h>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fcntl.h>
+#include <fstream>
+#include <functional>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -73,13 +71,13 @@ int connect_poll(int fd, int timeout_ms) {
 /// socket and leaves *fd == -1: the caller starts a fresh connect next round and the payload
 /// simply goes out one round late -- there is no state to repair and nothing that can throw
 /// or exit.
-bool http_post(int* fd, const std::string& host, const std::string& path,
-               const std::string& body, std::string* err) {
+bool http_post(int* fd, const std::string& host, const std::string& path, const std::string& body,
+               std::string* err) {
     {
-        std::string req = "POST " + path + " HTTP/1.1\r\nHost: " + host
-                          + "\r\nContent-Type: application/json\r\nContent-Length: "
-                          + std::to_string(body.size()) + "\r\nConnection: keep-alive\r\n\r\n"
-                          + body;
+        std::string req =
+            "POST " + path + " HTTP/1.1\r\nHost: " + host
+            + "\r\nContent-Type: application/json\r\nContent-Length: " + std::to_string(body.size())
+            + "\r\nConnection: keep-alive\r\n\r\n" + body;
         size_t sent = 0;
         bool wrote = true;
         while (sent < req.size()) {
@@ -175,8 +173,7 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
          // Python arm computed for itself.
          config.get_default<int>(unique_name, "taps_win", 0)) {
     _trim_state_file = config.get_default<std::string>(unique_name, "trim_state_file", "");
-    _trim_state_max_age_s =
-        config.get_default<double>(unique_name, "trim_state_max_age_s", 300.0);
+    _trim_state_max_age_s = config.get_default<double>(unique_name, "trim_state_max_age_s", 300.0);
     _trim_state_save_s = config.get_default<double>(unique_name, "trim_state_save_s", 2.0);
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
@@ -194,13 +191,11 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
         unique_name + "/get_stats",
         std::bind(&GnssFleetTrim::stats_callback, this, std::placeholders::_1));
     kotekan::restServer::instance().register_post_callback(
-        unique_name + "/set_policy",
-        std::bind(&GnssFleetTrim::policy_callback, this, std::placeholders::_1,
-                  std::placeholders::_2));
+        unique_name + "/set_policy", std::bind(&GnssFleetTrim::policy_callback, this,
+                                               std::placeholders::_1, std::placeholders::_2));
     kotekan::restServer::instance().register_post_callback(
-        unique_name + "/adjust_trim",
-        std::bind(&GnssFleetTrim::adjust_callback, this, std::placeholders::_1,
-                  std::placeholders::_2));
+        unique_name + "/adjust_trim", std::bind(&GnssFleetTrim::adjust_callback, this,
+                                                std::placeholders::_1, std::placeholders::_2));
 
     // THE ACTUATOR'S TARGETS ARRIVE WITH THE POLICY, not from config. The broker already
     // owns the tracker endpoint list (--trackers, brace-expanded), it is the thing that knows
@@ -286,8 +281,7 @@ void GnssFleetTrim::main_thread() {
         post_trims();
         // OUTSIDE THE FOLD LOCK and off the frame path's critical section. Saving on every
         // window close would be ~24 writes/s for a file nothing reads until the next restart.
-        if (_trim_state_save_s > 0.0
-            && current_time() - _trim_saved_at >= _trim_state_save_s) {
+        if (_trim_state_save_s > 0.0 && current_time() - _trim_saved_at >= _trim_state_save_s) {
             _trim_saved_at = current_time();
             save_trims();
         }
@@ -318,8 +312,9 @@ GnssFleetTrim::Target GnssFleetTrim::parse_target(const std::string& url,
     const std::string hostport = url.substr(hb, sl - hb);
     const size_t co = hostport.find(':');
     if (co == std::string::npos)
-        throw std::runtime_error("target '" + url + "' has no port -- state it rather than "
-                                 "relying on a default that differs per stage");
+        throw std::runtime_error("target '" + url
+                                 + "' has no port -- state it rather than "
+                                   "relying on a default that differs per stage");
     Target t;
     t.host = hostport.substr(0, co);
     t.port = (unsigned short)std::stoi(hostport.substr(co + 1));
@@ -500,7 +495,8 @@ void GnssFleetTrim::rearm() {
     }
     const double dt = now - _first_close_t;
     if (_first_close_t > 0.0 && dt > 1.0)
-        _close_hz = (double)(closed - _first_close_n) / dt / std::max<size_t>(1, _dll.chains().size());
+        _close_hz =
+            (double)(closed - _first_close_n) / dt / std::max<size_t>(1, _dll.chains().size());
 
     // A CHAIN THAT HAS GONE SILENT STOPS BEING COMMANDED. Now that the policy is replaced per
     // chain rather than wholesale, this is what keeps the old anti-latch guarantee: a dead
@@ -842,11 +838,18 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
         nlohmann::json prns = nlohmann::json::object();
         for (const auto& pv : cv.second.row) {
             const gnss::FleetDllRow& s = pv.second;
-            prns[std::to_string(pv.first)] = {
-                {"disc", s.disc},   {"q", s.q},         {"e_pow", s.e_pow},
-                {"p_pow", s.p_pow}, {"l_pow", s.l_pow}, {"n_src", s.n_src},
-                {"n_chan", s.n_chan}, {"n_rec", s.n_rec}, {"hop", s.hop},
-                {"win", s.win},     {"n_updates", s.n_updates}, {"src", "comb_cpp"}};
+            prns[std::to_string(pv.first)] = {{"disc", s.disc},
+                                              {"q", s.q},
+                                              {"e_pow", s.e_pow},
+                                              {"p_pow", s.p_pow},
+                                              {"l_pow", s.l_pow},
+                                              {"n_src", s.n_src},
+                                              {"n_chan", s.n_chan},
+                                              {"n_rec", s.n_rec},
+                                              {"hop", s.hop},
+                                              {"win", s.win},
+                                              {"n_updates", s.n_updates},
+                                              {"src", "comb_cpp"}};
         }
         // ⚠️ THE TRIM RIDES THE SAME REPLY (#76). This endpoint served the discriminator but
         // not the integrator: the broker could see the error signal and NOT the standing
@@ -899,15 +902,15 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
             const gnss::FleetDll::LobeTap& t = pv.second;
             nlohmann::json cj = nlohmann::json::object();
             // JSON has no NaN: a PRN no two senders reached says so with null, not a number
-            const nlohmann::json xc = std::isfinite(t.xcoh) ? nlohmann::json(t.xcoh) : nlohmann::json();
+            const nlohmann::json xc =
+                std::isfinite(t.xcoh) ? nlohmann::json(t.xcoh) : nlohmann::json();
             for (const auto& ch : t.chan)
                 cj[std::to_string(ch.first)] = {ch.second[0], ch.second[1], ch.second[2],
                                                 ch.second[3]};
-            pj[std::to_string(pv.first)] = {{"e", t.e},           {"p", t.p},
-                                            {"l", t.l},           {"n_chan", t.n_chan},
-                                            {"n_rec", t.n_rec},   {"n_inst", t.n_inst},
-                                            {"xcoh", xc},         {"n_xcoh", t.n_xcoh},
-                                            {"hop", t.hop},       {"chan", cj}};
+            pj[std::to_string(pv.first)] = {
+                {"e", t.e},         {"p", t.p},           {"l", t.l},   {"n_chan", t.n_chan},
+                {"n_rec", t.n_rec}, {"n_inst", t.n_inst}, {"xcoh", xc}, {"n_xcoh", t.n_xcoh},
+                {"hop", t.hop},     {"chan", cj}};
         }
         reply[cv.first] = pj;
     }
@@ -921,9 +924,9 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
 /// frames a SECOND time, after the comb DLL has already walked them for its own reduction --
 /// the same ~140k channel-tuples per chain per cycle, twice.
 ///
-/// Rows are [win, slot, prn, n_inst, n_chan, e, p, l], flat and time-ordered. Flat rather than nested
-/// because it is a SERIES: nesting it by window invites a consumer to reduce it, and the whole
-/// point of this estimator is that it fits and averages nothing upstream of its own q gate.
+/// Rows are [win, slot, prn, n_inst, n_chan, e, p, l], flat and time-ordered. Flat rather than
+/// nested because it is a SERIES: nesting it by window invites a consumer to reduce it, and the
+/// whole point of this estimator is that it fits and averages nothing upstream of its own q gate.
 ///
 /// ⚠️ MEASUREMENTS ONLY, again. The probe anchor, the Gamma-mean debias, the q gate and the
 /// clip are statistics with judgement in them and stay on the broker's cycle.
@@ -968,7 +971,7 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     reply["frames"] = _frames;
     reply["bad_frames"] = _bad_frames;
     reply["late_frames"] = _late_frames;
-    reply["adjust_ok"] = _adjust_ok;         // #92 handover adjustments applied
+    reply["adjust_ok"] = _adjust_ok; // #92 handover adjustments applied
     reply["adjust_refused"] = _adjust_refused;
     // THE BUDGET. This is a second consumer of the gather's buffer, so time spent here is time
     // the broker's own copy is not being handed out. Served as microseconds per frame so "is it
@@ -992,24 +995,31 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     // grep -- the arming is now per chain and so is its failure mode.
     reply["policy_expired"] = _policy_expired;
     reply["policy_ttl_s"] = _policy_ttl_s;
-    { nlohmann::json a = nlohmann::json::object();
-      const double now = current_time();
-      for (const auto& sv : _policy_seen)
-          a[sv.first] = now - sv.second;
-      reply["policy_age_s"] = a; }
+    {
+        nlohmann::json a = nlohmann::json::object();
+        const double now = current_time();
+        for (const auto& sv : _policy_seen)
+            a[sv.first] = now - sv.second;
+        reply["policy_age_s"] = a;
+    }
     // WHAT THE BROKER ASKED FOR, straight off _policy -- deliberately NOT off _dll.chains()
     // like `policy` below, which only lists chains that have delivered frames. The per-chain
     // clobber this guards against is a property of the POST path alone, so the gate for it has
     // to be readable with no data flowing at all.
-    { nlohmann::json a = nlohmann::json::object();
-      for (const auto& pv : _policy)
-          a[pv.first] = pv.second.armed.size();
-      reply["policy_armed_requested"] = a; }
-    { nlohmann::json a = nlohmann::json::object();
-      for (const auto& cv : _dll.chains())
-          a[cv.first] = {{"armed", cv.second.armed}, {"leak_per_update", cv.second.policy.leak},
-                         {"gain", cv.second.policy.gain}};
-      reply["policy"] = a; }
+    {
+        nlohmann::json a = nlohmann::json::object();
+        for (const auto& pv : _policy)
+            a[pv.first] = pv.second.armed.size();
+        reply["policy_armed_requested"] = a;
+    }
+    {
+        nlohmann::json a = nlohmann::json::object();
+        for (const auto& cv : _dll.chains())
+            a[cv.first] = {{"armed", cv.second.armed},
+                           {"leak_per_update", cv.second.policy.leak},
+                           {"gain", cv.second.policy.gain}};
+        reply["policy"] = a;
+    }
     reply["post_targets"] = _targets.size();
     reply["post_threads"] = _post_threads.size();
     reply["post_every_n_windows"] = _post_every;

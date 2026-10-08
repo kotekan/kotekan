@@ -181,7 +181,7 @@ struct TelemHeader {
 
     uint32_t present; ///< bit r set => record slot r was filled this frame
 
-    uint16_t max_chan; ///< comb columns RESERVED per row (== TELEM_MAX_CHAN at the sender)
+    uint16_t max_chan;    ///< comb columns RESERVED per row (== TELEM_MAX_CHAN at the sender)
     uint16_t n_row_total; ///< floats per row == n_row + max_chan*CHAN_FLOATS. Derivable, but
                           ///< stated: a parser that computes a stride wrong reads plausible
                           ///< numbers at the wrong offsets rather than failing.
@@ -258,8 +258,8 @@ inline size_t telem_frame_bytes(const TelemHeader& h) {
 /// frame instead of rejecting it.
 inline bool telem_shape_ok(const TelemHeader& h, size_t bytes) {
     return h.max_chan <= TELEM_MAX_CHAN && h.n_row == RECORD_FLOATS
-           && h.n_row_total == telem_row_floats(h.max_chan) && h.n_chan <= h.max_chan
-           && h.n_rec > 0 && h.n_rec <= TELEM_MAX_REC && h.n_prn > 0
+           && h.n_row_total == telem_row_floats(h.max_chan) && h.n_chan <= h.max_chan && h.n_rec > 0
+           && h.n_rec <= TELEM_MAX_REC && h.n_prn > 0
            && telem_frame_bytes(h.n_rec, h.n_prn, h.max_chan) == bytes;
 }
 
