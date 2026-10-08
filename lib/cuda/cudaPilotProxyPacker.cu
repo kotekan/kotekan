@@ -3,6 +3,7 @@
 // See cudaPilotProxyPacker.hpp for the input and output layouts.
 
 #include "cudaPilotProxyPacker.hpp"
+#include "cudaUtils.hpp" // for CHECK_CUDA_ERROR_NON_OO
 
 #include <cassert>
 #include <cstddef>
@@ -12,35 +13,47 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Kernel
 
-// Grid-stride gather from [T,F,P,D] with contiguous [row,tap] writes.
+// Streams per tile: one block transposes one K-sample window of TILE_STREAMS streams.
+constexpr int TILE_STREAMS = 128;
+
+// Shared-memory transpose from [T,F,P,D] to [stream,tap], so that both the
+// ring reads (along P*D) and the packed writes (along T) are contiguous.
+// The tile row is padded by 4 bytes to spread the column reads over banks.
 __global__ void
 pilotproxy_pack(std::int8_t* __restrict__ const packed_out,
                 const std::uint8_t* __restrict__ const voltage_ring,
-                const std::ptrdiff_t num_dishes, const std::ptrdiff_t num_polarizations,
-                const std::ptrdiff_t num_frequencies, const int freq_index,
-                const std::ptrdiff_t num_time_samples, const std::ptrdiff_t ringbuf_mask_t,
-                const std::ptrdiff_t ringbuf_pos_t, const int detector_window_samples,
-                const bool time_reverse_windows) {
-    const std::ptrdiff_t num_streams = num_polarizations * num_dishes;
-    const std::ptrdiff_t num_elements = num_streams * num_time_samples;
+                const std::ptrdiff_t num_streams, const std::ptrdiff_t num_frequencies,
+                const int freq_index, const std::ptrdiff_t num_time_samples,
+                const std::ptrdiff_t ringbuf_mask_t, const std::ptrdiff_t ringbuf_pos_t,
+                const int detector_window_samples, const bool time_reverse_windows) {
+    extern __shared__ std::uint8_t tile[]; // [K][TILE_STREAMS + 4]
+    constexpr int row = TILE_STREAMS + 4;
+    const int K = detector_window_samples;
+    const std::ptrdiff_t w = blockIdx.x;
+    const std::ptrdiff_t s0 = std::ptrdiff_t(blockIdx.y) * TILE_STREAMS;
     const std::ptrdiff_t sample_stride = num_frequencies * num_streams; // ring bytes per sample
-    const std::ptrdiff_t K = detector_window_samples;
+    const int tid = threadIdx.x;
 
-    for (std::ptrdiff_t idx = std::ptrdiff_t(blockIdx.x) * blockDim.x + threadIdx.x;
-         idx < num_elements; idx += std::ptrdiff_t(gridDim.x) * blockDim.x) {
-        // Output index decomposition: idx = (s * windows + w) * K + k = s * T + w*K + k.
-        const std::ptrdiff_t s = idx / num_time_samples;
-        const std::ptrdiff_t t_out = idx % num_time_samples; // = w*K + k
-        const std::ptrdiff_t w = t_out / K;
-        const std::ptrdiff_t k = t_out % K;
-        const std::ptrdiff_t k_in = time_reverse_windows ? (K - 1 - k) : k;
-        const std::ptrdiff_t t_logical = w * K + k_in;
-        const std::ptrdiff_t phys = (ringbuf_pos_t + t_logical) & ringbuf_mask_t;
-        // s = p * D + d and the ring inner axes are [P, D], so s is the inner offset directly.
-        const std::uint8_t raw =
-            voltage_ring[phys * sample_stride + std::ptrdiff_t(freq_index) * num_streams + s];
-        packed_out[idx] = std::int8_t(raw ^ std::uint8_t(0x88));
+    // Load: adjacent threads read adjacent streams of one sample. The tile
+    // row is the output tap, so a reversed window is stored reversed.
+    // s = p * D + d and the ring inner axes are [P, D], so s is the inner offset directly.
+    for (int k = tid / TILE_STREAMS; k < K; k += blockDim.x / TILE_STREAMS) {
+        const int sl = tid % TILE_STREAMS;
+        const std::ptrdiff_t phys = (ringbuf_pos_t + w * K + k) & ringbuf_mask_t;
+        if (s0 + sl < num_streams)
+            tile[(time_reverse_windows ? K - 1 - k : k) * row + sl] =
+                voltage_ring[phys * sample_stride + std::ptrdiff_t(freq_index) * num_streams + s0
+                             + sl];
     }
+    __syncthreads();
+
+    // Store: adjacent threads write adjacent taps of one stream's window,
+    // 64 threads per stream.
+    constexpr int lanes = 64;
+    for (int sl = tid / lanes; sl < TILE_STREAMS && s0 + sl < num_streams; sl += blockDim.x / lanes)
+        for (int k = tid % lanes; k < K; k += lanes)
+            packed_out[(s0 + sl) * num_time_samples + w * K + k] =
+                std::int8_t(tile[k * row + sl] ^ std::uint8_t(0x88));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,18 +79,18 @@ void launch_pilotproxy_pack(std::int8_t* const packed_out, const std::uint8_t* c
     assert(ringbuf_size_t > 0 && (ringbuf_size_t & (ringbuf_size_t - 1)) == 0);
     assert(ringbuf_pos_t >= 0);
 
-    const std::ptrdiff_t num_elements = num_polarizations * num_dishes * num_time_samples;
-    constexpr int threads = 256;
-    const int max_blocks = 4096;
-    const std::ptrdiff_t want_blocks = (num_elements + threads - 1) / threads;
-    const int blocks = int(want_blocks < max_blocks ? want_blocks : max_blocks);
-    if (num_elements <= 0)
+    const std::ptrdiff_t num_streams = num_polarizations * num_dishes;
+    if (num_streams <= 0 || num_time_samples <= 0)
         return;
 
-    pilotproxy_pack<<<blocks, threads, 0, stream>>>(
-        packed_out, voltage_ring, num_dishes, num_polarizations, num_frequencies, freq_index,
-        num_time_samples, ringbuf_size_t - 1, ringbuf_pos_t, detector_window_samples,
-        time_reverse_windows);
+    constexpr int threads = 256;
+    const dim3 blocks(unsigned(num_time_samples / detector_window_samples),
+                      unsigned((num_streams + TILE_STREAMS - 1) / TILE_STREAMS));
+    const std::size_t shared_bytes = std::size_t(detector_window_samples) * (TILE_STREAMS + 4);
+    pilotproxy_pack<<<blocks, threads, shared_bytes, stream>>>(
+        packed_out, voltage_ring, num_streams, num_frequencies, freq_index, num_time_samples,
+        ringbuf_size_t - 1, ringbuf_pos_t, detector_window_samples, time_reverse_windows);
+    CHECK_CUDA_ERROR_NON_OO(cudaGetLastError());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
