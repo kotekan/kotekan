@@ -156,6 +156,10 @@ protected:
     uint64_t _last_check_seq = 0;
     uint64_t _seq_check_packet_count = 0;
 
+    /// A packet at least this many frames past the start of the next active frame is treated as
+    /// a fault rather than caught up to (see handle_packet). About 1.3 s of 8192-sample frames.
+    static constexpr uint64_t _max_frames_ahead = 32;
+
     /**
      * @brief Copies one packet's payload into the output frame using non-temporal stores.
      *
@@ -368,7 +372,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     if (seq_num < active_f0->start_seq
-        || seq_num >= active_f1->start_seq + time_samples_per_frame) {
+        || seq_num >= active_f1->start_seq + _max_frames_ahead * time_samples_per_frame) {
 
         // Don't warn if we are just waiting for the first frame
         if (seq_num < active_f0->start_seq
@@ -376,21 +380,37 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             return 0;
         }
 
-        // Packet is outside the range of the two active frames: late, or after an FPGA reset, a
-        // gap in the input, or a downstream stall that left this worker without frames. Stop
-        // kotekan, since ending only this worker leaves the frames it shares unfinished.
-        FATAL_ERROR("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} (source ID {:d}, "
-                    "stream ID {:d}) is outside active frame range [{:d}, {:d}), kotekan "
-                    "stopping...",
-                    port, worker_id, seq_num, source_id, stream_id, active_f0->start_seq,
-                    active_f1->start_seq + time_samples_per_frame);
+        // Behind the active frames (late, or after an FPGA reset), or too far ahead to catch up
+        // to. Stop kotekan, since ending only this worker leaves the frames it shares unfinished.
+        if (seq_num < active_f0->start_seq) {
+            FATAL_ERROR("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} (source ID "
+                        "{:d}, stream ID {:d}) is behind the active frames [{:d}, {:d}), kotekan "
+                        "stopping...",
+                        port, worker_id, seq_num, source_id, stream_id, active_f0->start_seq,
+                        active_f1->start_seq + time_samples_per_frame);
+        } else {
+            FATAL_ERROR("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} (source ID "
+                        "{:d}, stream ID {:d}) is {:d} frames past the start of the next active "
+                        "frame, the limit is {:d}, kotekan stopping...",
+                        port, worker_id, seq_num, source_id, stream_id,
+                        (seq_num - active_f1->start_seq) / time_samples_per_frame,
+                        _max_frames_ahead);
+        }
         return -1;
     }
 
-    // If we are at least 160 time samples past the start of the next frame,
-    // then advance the frames. The 160 time sample margin ensures that we do not
-    // miss any packets that are slightly out of order.
-    if (seq_num >= active_f1->start_seq + 160) {
+    // Advance the frames while we are at least 160 time samples past the start of the next
+    // frame. The 160 time sample margin ensures that we do not miss any packets that are
+    // slightly out of order.
+    if (unlikely(seq_num >= active_f1->start_seq + time_samples_per_frame)) {
+        // Past the next frame: the packets in between were dropped while this worker had no
+        // frames (a downstream stall) or never arrived (a gap in the input). The frames passed
+        // over go downstream with them missing from the receipt bitmap.
+        WARN("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} is {:d} frame(s) past "
+             "the start of the next frame; advancing the frames toward it",
+             port, worker_id, seq_num, (seq_num - active_f1->start_seq) / time_samples_per_frame);
+    }
+    while (seq_num >= active_f1->start_seq + 160) {
         _mm_sfence(); // Ensure all NT stores are complete before advancing
         prefetch_service->advance();
         active_f0 = prefetch_service->get_frame(0);
