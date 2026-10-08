@@ -828,6 +828,73 @@ _FROZEN = dict(
     #   --seed-phase-transport by its '-1 sample' term (0.0064 chips at CHORD). 0 =
     #   omit; the residual is constant and two orders below the DLL's pull-in.
     search_fft_len=0,
+    # --carrier-leak
+    #   shared carrier integrator leak (same role as --dll-leak)
+    carrier_leak=0.05,
+    # --carrier-min-sig
+    #   HOLD the trim (skip the update) when the combiner's lock significance is below this (0 =
+    #   old behavior). The probe exemption above, generalized: a FADED real satellite is the
+    #   same pathology -- its residual is noise, and integrating it at full gain random-walks
+    #   the trim, which drags the model phase off, which DEEPENS the fade. Measured 2026-07-17
+    #   on the 1176 MHz chains: a ~4 s noise-driven limit cycle (dip -> trim walk 1-9 Hz ->
+    #   decoherence -> dip), median certified stretch 4 s, every dip an ADR phase break of ~8
+    #   cycles -- the gf-TEC floor. A held trim coasts on the almanac Doppler-rate feed-forward,
+    #   which carries the true dynamics through the fade. Updates additionally require a
+    #   CERTIFIED coherent window (coherence_s > 0): a residual measured on a decohered window
+    #   is garbage at ANY amplitude (the sig gate alone let re-lock transition rows kick
+    #   converged trims to the +-100 Hz rails -- E36 at 48 dB-Hz).
+    carrier_min_sig=0.0,
+    # --carrier-max-step
+    #   slew clamp on the trim, Hz per update (0 = unclamped). A healthy converged loop corrects
+    #   0.02-0.2 Hz per update and the clock it tracks is GPSDO-smooth, so any large requested
+    #   step is a bad measurement by construction; clamping bounds the damage a single garbage
+    #   residual can do to less than a deep window can absorb. Convergence from a fleet-seeded
+    #   start needs only a few Hz total.
+    carrier_max_step=0.0,
+    # --carrier-step-accept
+    #   EXPLAIN-APPLY-VERIFY hypothesis stage (0 = off): M = this many consecutive fresh GATED
+    #   residuals that agree (spread < max(2 Hz, innov)). For a PRESENT-but-gated sat, when the
+    #   agreed median is also large enough to EXPLAIN the decoherence (>= ~1/(2*T_emit) = 0.5
+    #   Hz), the observables close on one story -- 'the NCO is off by med' -- and the FULL
+    #   correction is applied ONCE, entering a VERIFY window: coherence returns / residual
+    #   collapses within 3 emits, or the hypothesis is REVERTED, the sat escalated to a
+    #   BOOTSTRAP re-acquire, and hypotheses locked out 60 s. The coherent-state innovation gate
+    #   is untouched (it is a physics bound: a cohering sat cannot carry a multi-Hz residual).
+    #   The closed verify loop is what the two retracted open-loop escapes lacked: a wrong
+    #   correction costs one bounded, reverted step. Type specimen: C19 2026-07-22, parked at
+    #   +3.03 Hz / full amp / dark for minutes while every gate held.
+    carrier_step_accept=0,
+    # --carrier-innov-hz
+    #   TRACK-mode innovation gate (0 = off): REJECT any residual larger than this outright.
+    #   After feed-forward, a converged sat's true residual is sub-Hz (the trim tracks a
+    #   slowly-drifting almanac-Doppler error); the resid estimator nevertheless emits
+    #   tens-of-Hz values that pass certification (measured 07-17: 'certified' +40 Hz --
+    #   impossible for a genuinely coherent window). A slew clamp only slows the poisoning (E36
+    #   at 49 dB-Hz walked to 18 Hz off the fleet at 1 Hz/update and collapsed 20 dB); rejection
+    #   stops it. Real step changes re-enter via re-seed -> BOOTSTRAP.
+    carrier_innov_hz=0.0,
+    # --carrier-bleed
+    #   ARM the trim-bleed (0 = shadow-only). On a verified candidate: zero car_trim and flag
+    #   the tracker to re-adopt the seed (f_ref = dop, phase-continuous reanchored==2) --
+    #   folding the frozen sub-fence pin offset into f_ref so the despread runs on-true.
+    #   EXPLAIN-APPLY-VERIFY: heal (stay coherent) or it is logged REFUTED and the loop re-grows
+    #   the trim from 0. Default OFF -- validate on the replay bench (GNSS_TRIM_FORCE) first.
+    carrier_bleed=0,
+    # --carrier-det-gate-s
+    #   BOOTSTRAP walk gate (0 = off): in BOOTSTRAP mode, integrate a residual only if a fresh
+    #   detection exists within this many seconds. A never-detected (almanac-only) or
+    #   long-undetected seed has no signal for the estimator: its 'residual' is noise, and
+    #   integrating it random-walks the trim to the clamp (C40 walked to -42 Hz over the 07-18
+    #   evening; the E36 innovation gate protects only TRACK mode). Held trims coast on the
+    #   fleet prior + Doppler-rate feed-forward, which is the better model anyway.
+    carrier_det_gate_s=0.0,
+    # --carrier-fleet-seed
+    #   initialize a new (or re-seeded) sat's trim to the MEDIAN of the converged fleet trims
+    #   instead of 0. The converged trim is the chain's deterministic frac-N LO offset (same for
+    #   every sat, stable across restarts -- e.g. the L5 chain sits ~+30 Hz), so the fleet
+    #   median is the right prior; the carrier twin of the code-bias seeding above (strong sats
+    #   calibrate the clock so weak ones start on it).
+    carrier_fleet_seed=False,
 )
 # ── end frozen tuning ────────────────────────────────────────────────────────────────────
 
@@ -1617,92 +1684,11 @@ def build_parser(description):
         default=40.0,
         help="clamp on the shared carrier trim (Hz)",
     )
-    ap.add_argument(
-        "--carrier-leak",
-        type=float,
-        default=0.05,
-        help="shared carrier integrator leak (same role as --dll-leak)",
-    )
-    ap.add_argument(
-        "--carrier-min-sig",
-        type=float,
-        default=0.0,
-        help="HOLD the trim (skip the update) when the combiner's lock significance "
-        "is below this (0 = old behavior). The probe exemption above, "
-        "generalized: a FADED real satellite is the same pathology -- its "
-        "residual is noise, and integrating it at full gain random-walks the "
-        "trim, which drags the model phase off, which DEEPENS the fade. "
-        "Measured 2026-07-17 on the 1176 MHz chains: a ~4 s noise-driven "
-        "limit cycle (dip -> trim walk 1-9 Hz -> decoherence -> dip), median "
-        "certified stretch 4 s, every dip an ADR phase break of ~8 cycles -- "
-        "the gf-TEC floor. A held trim coasts on the almanac Doppler-rate "
-        "feed-forward, which carries the true dynamics through the fade. "
-        "Updates additionally require a CERTIFIED coherent window "
-        "(coherence_s > 0): a residual measured on a decohered window is "
-        "garbage at ANY amplitude (the sig gate alone let re-lock transition "
-        "rows kick converged trims to the +-100 Hz rails -- E36 at 48 dB-Hz).",
-    )
-    ap.add_argument(
-        "--carrier-max-step",
-        type=float,
-        default=0.0,
-        help="slew clamp on the trim, Hz per update (0 = unclamped). A healthy "
-        "converged loop corrects 0.02-0.2 Hz per update and the clock it "
-        "tracks is GPSDO-smooth, so any large requested step is a bad "
-        "measurement by construction; clamping bounds the damage a single "
-        "garbage residual can do to less than a deep window can absorb. "
-        "Convergence from a fleet-seeded start needs only a few Hz total.",
-    )
-    ap.add_argument(
-        "--carrier-step-accept",
-        type=int,
-        default=0,
-        help="EXPLAIN-APPLY-VERIFY hypothesis stage (0 = off): M = this many "
-        "consecutive fresh GATED residuals that agree (spread < max(2 Hz, "
-        "innov)). For a PRESENT-but-gated sat, when the agreed median is "
-        "also large enough to EXPLAIN the decoherence (>= ~1/(2*T_emit) = "
-        "0.5 Hz), the observables close on one story -- 'the NCO is off by "
-        "med' -- and the FULL correction is applied ONCE, entering a "
-        "VERIFY window: coherence returns / residual collapses within 3 "
-        "emits, or the hypothesis is REVERTED, the sat escalated to a "
-        "BOOTSTRAP re-acquire, and hypotheses locked out 60 s. The "
-        "coherent-state innovation gate is untouched (it is a physics "
-        "bound: a cohering sat cannot carry a multi-Hz residual). The "
-        "closed verify loop is what the two retracted open-loop escapes "
-        "lacked: a wrong correction costs one bounded, reverted step. "
-        "Type specimen: C19 2026-07-22, parked at +3.03 Hz / full amp / "
-        "dark for minutes while every gate held.",
-    )
-    ap.add_argument(
-        "--carrier-innov-hz",
-        type=float,
-        default=0.0,
-        help="TRACK-mode innovation gate (0 = off): REJECT any residual larger "
-        "than this outright. After feed-forward, a converged sat's true "
-        "residual is sub-Hz (the trim tracks a slowly-drifting almanac-"
-        "Doppler error); the resid estimator nevertheless emits tens-of-Hz "
-        "values that pass certification (measured 07-17: 'certified' +40 Hz "
-        "-- impossible for a genuinely coherent window). A slew clamp only "
-        "slows the poisoning (E36 at 49 dB-Hz walked to 18 Hz off the fleet "
-        "at 1 Hz/update and collapsed 20 dB); rejection stops it. Real step "
-        "changes re-enter via re-seed -> BOOTSTRAP.",
-    )
     # (ALIAS ESCAPE v1/v2 DELETED, 07-19 audit A4. v1 killed the fleet in 15 min
     #  (8208dba6/069e8770); v2 shipped gated-off and never armed. Its two jobs are owned
     #  by surviving mechanisms: a stale/aliased f_ref offset is snapped by the TIGHT
     #  tracker fence (fll_reacq_hz ~15 Hz, free under --dop-continuous), and a walked/
     #  aliased TRIM latch is the watchdog's lifecycle rescue below.)
-    ap.add_argument(
-        "--carrier-bleed",
-        type=int,
-        default=0,
-        help="ARM the trim-bleed (0 = shadow-only). On a verified candidate: zero "
-        "car_trim and flag the tracker to re-adopt the seed (f_ref = dop, phase-"
-        "continuous reanchored==2) -- folding the frozen sub-fence pin offset into "
-        "f_ref so the despread runs on-true. EXPLAIN-APPLY-VERIFY: heal (stay "
-        "coherent) or it is logged REFUTED and the loop re-grows the trim from 0. "
-        "Default OFF -- validate on the replay bench (GNSS_TRIM_FORCE) first.",
-    )
     ap.add_argument(
         "--watchdog-s",
         type=float,
@@ -1725,30 +1711,6 @@ def build_parser(description):
         "sees at this significance -- a sat this strong that cannot "
         "cohere is broken by definition; weak sats legitimately take "
         "minutes and must never be churned by the watchdog.",
-    )
-    ap.add_argument(
-        "--carrier-det-gate-s",
-        type=float,
-        default=0.0,
-        help="BOOTSTRAP walk gate (0 = off): in BOOTSTRAP mode, integrate a "
-        "residual only if a fresh detection exists within this many "
-        "seconds. A never-detected (almanac-only) or long-undetected seed "
-        "has no signal for the estimator: its 'residual' is noise, and "
-        "integrating it random-walks the trim to the clamp (C40 walked to "
-        "-42 Hz over the 07-18 evening; the E36 innovation gate protects "
-        "only TRACK mode). Held trims coast on the fleet prior + Doppler-"
-        "rate feed-forward, which is the better model anyway.",
-    )
-    ap.add_argument(
-        "--carrier-fleet-seed",
-        action="store_true",
-        help="initialize a new (or re-seeded) sat's trim to the MEDIAN of the "
-        "converged fleet trims instead of 0. The converged trim is the "
-        "chain's deterministic frac-N LO offset (same for every sat, stable "
-        "across restarts -- e.g. the L5 chain sits ~+30 Hz), so the fleet "
-        "median is the right prior; the carrier twin of the code-bias "
-        "seeding above (strong sats calibrate the clock so weak ones start "
-        "on it).",
     )
     ap.add_argument(
         "--force-doppler-rate",
