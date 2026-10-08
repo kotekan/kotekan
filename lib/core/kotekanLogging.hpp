@@ -18,20 +18,28 @@ public:
 
 namespace kotekan {
 
-/// The kind of event reported to a log_event_handler.
-enum class log_event { warning, error };
+/**
+ * \enum logLevel
+ * \brief Log level
+ * \note Both DEBUG and DEBUG2 are removed entirely when building in release mode.
+ * \note The macros support fmt's python style string formatting only.
+ * \note The deprecated macros with a `_F` suffix are to be used in C code only and only offer
+ *       printf-style string formatting. They can be found in errors.h.
+ */
+enum class logLevel {
+    OFF = 0,   /*!< No logs at all */
+    ERROR = 1, /*!< Serious error */
+    WARN = 2,  /*!< Warning about something wrong */
+    INFO = 3,  /*!< Helpful ideally short and infrequent, message about system status */
+    DEBUG = 4, /*!< Message for debugging reasons only */
+    DEBUG2 = 5 /*!< Super detailed debugging messages */
+};
 
-/// A handler notified of WARN and ERROR events, in addition to the message being
+/// A handler notified of ERROR and WARN events, in addition to the message being
 /// logged. There is none in production; boost tests install one (see
 /// tests/boost/kotekanLoggingFixture.hpp) so that an error logged by kotekan fails
 /// the test.
-///
-/// This must be a run-time decision, not a compile-time one: the reporting macros
-/// below have to expand to the same tokens in every translation unit, or every
-/// function *defined in a header* that logs gets two different bodies, which is an
-/// ODR violation the linker resolves by keeping one arbitrary copy. tools/lint.sh
-/// enforces the rule; see the git history of this file for how it was broken.
-using log_event_handler = void (*)(log_event kind, const char* file, int line,
+using log_event_handler = void (*)(logLevel level, const char* file, int line,
                                    const std::string& message);
 
 /// The installed handler, or null. Prefer report_log_event() to reading this.
@@ -39,36 +47,32 @@ inline std::atomic<log_event_handler> log_event_hook{nullptr};
 
 /// Reports a log event to the installed handler, if there is one.
 ///
-/// The message is formatted with fmt::vformat, matching what
-/// kotekanLogging::internal_logging does with the same format string: it is passed
-/// as a plain string_view, so it is not checked against the argument types at
-/// compile time. Using fmt::format here instead would subject every ERROR and WARN
-/// format string in the code base to fmt's compile-time checking for the first
-/// time, which is worthwhile but does not compile today.
+/// The message is formatted with fmt::vformat, like
+/// kotekanLogging::internal_logging: the format string is passed as a plain
+/// string_view, so it is not checked against the argument types at compile time.
 template<typename... Args>
-inline void report_log_event(const log_event kind, const char* const file, const int line,
+inline void report_log_event(const logLevel level, const char* const file, const int line,
                              const fmt::basic_string_view<char> format, const Args&... args) {
     if (const log_event_handler handler = log_event_hook.load(std::memory_order_relaxed))
-        handler(kind, file, line, fmt::vformat(format, fmt::make_format_args(args...)));
+        handler(level, file, line, fmt::vformat(format, fmt::make_format_args(args...)));
 }
 
 } // namespace kotekan
 
 // Report an error/warning to the installed log event handler.
 //
-// These must expand to the same tokens in every translation unit; see the comment
-// on kotekan::log_event_handler above. The check for a handler is in the macro
-// rather than only inside report_log_event() so that the arguments are not
-// evaluated either when there is none, which is always the case in production:
-// there it costs one relaxed load per ERROR and WARN and nothing else.
+// These must expand to the same tokens in every translation unit, or a function
+// defined in a header that logs gets two different bodies -- an ODR violation.
+// tools/lint.sh enforces that. The handler check is in the macro so that the
+// arguments are not evaluated when there is none, as in production.
 #define KTK_REPORT_ERROR(m, ...)                                                                   \
     (kotekan::log_event_hook.load(std::memory_order_relaxed)                                       \
-         ? kotekan::report_log_event(kotekan::log_event::error, __FILE__, __LINE__, fmt(m),        \
+         ? kotekan::report_log_event(kotekan::logLevel::ERROR, __FILE__, __LINE__, fmt(m),         \
                                      ##__VA_ARGS__)                                                \
          : (void)0)
 #define KTK_REPORT_WARNING(m, ...)                                                                 \
     (kotekan::log_event_hook.load(std::memory_order_relaxed)                                       \
-         ? kotekan::report_log_event(kotekan::log_event::warning, __FILE__, __LINE__, fmt(m),      \
+         ? kotekan::report_log_event(kotekan::logLevel::WARN, __FILE__, __LINE__, fmt(m),          \
                                      ##__VA_ARGS__)                                                \
          : (void)0)
 
@@ -80,12 +84,13 @@ inline void report_log_event(const log_event kind, const char* const file, const
 #define CHECK_ERROR(err)                                                                           \
     do {                                                                                           \
         if (err) {                                                                                 \
+            const int ktk_errno = errno;                                                           \
             kotekanLogging::internal_logging(LOG_ERR, __log_prefix,                                \
                                              fmt("Error at {:s}:{:d}; Error type: {:s}"),          \
-                                             __FILE__, __LINE__, strerror(errno));                 \
+                                             __FILE__, __LINE__, strerror(ktk_errno));             \
             KTK_REPORT_ERROR("Error at {}:{}; Error type: {}", __FILE__, __LINE__,                 \
-                             strerror(errno));                                                     \
-            exit(errno);                                                                           \
+                             strerror(ktk_errno));                                                 \
+            exit(ktk_errno);                                                                       \
         }                                                                                          \
     } while (0)
 #define CHECK_MEM(pointer)                                                                         \
@@ -218,23 +223,6 @@ inline void report_log_event(const log_event kind, const char* const file, const
     } while (0)
 
 namespace kotekan {
-
-/**
- * \enum logLevel
- * \brief Log level
- * \note Both DEBUG and DEBUG2 are removed entirely when building in release mode.
- * \note The macros support fmt's python style string formatting only.
- * \note The deprecated macros with a `_F` suffix are to be used in C code only and only offer
- *       printf-style string formatting. They can be found in errors.h.
- */
-enum class logLevel {
-    OFF = 0,   /*!< No logs at all */
-    ERROR = 1, /*!< Serious error */
-    WARN = 2,  /*!< Warning about something wrong */
-    INFO = 3,  /*!< Helpful ideally short and infrequent, message about system status */
-    DEBUG = 4, /*!< Message for debugging reasons only */
-    DEBUG2 = 5 /*!< Super detailed debugging messages */
-};
 
 class kotekanLogging {
 public:

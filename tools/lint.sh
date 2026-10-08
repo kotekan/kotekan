@@ -132,9 +132,10 @@ fi
 # Logging macros must expand to the same tokens in every translation unit. Defining
 # them conditionally on the boost test macros gives every function defined in a
 # header that logs two different bodies, which is an ODR violation the linker
-# resolves by keeping one arbitrary copy. See kotekan::log_event_handler.
+# resolves by keeping one arbitrary copy. Only headers can do this, so only
+# headers are scanned. See kotekan::log_event_handler.
 echo "Checking that lib/ does not branch on the boost test macros..."
-if grep -rn --include='*.hpp' --include='*.h' --include='*.cpp' --include='*.c' \
+if grep -rn --include='*.hpp' --include='*.h' \
         -E '^[[:space:]]*#[[:space:]]*(if|ifdef|elif).*BOOST_TEST_(MODULE|MAIN|DYN_LINK)' \
         "$KOTEKAN_DIR/lib"; then
     echo "Error: lib/ must not change its meaning depending on the boost test macros" >&2
