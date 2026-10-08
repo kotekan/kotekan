@@ -1168,26 +1168,6 @@ def build_parser(description):
         "reference error, and averaging them is meaningless.",
     )
     ap.add_argument(
-        "--state-consume",
-        type=int,
-        default=0,
-        help="S2d, RESCUE-ONLY (revised 2026-07-29): consume the dongle's fused "
-        "LO estimate EXACTLY when this chain has no estimate of its own "
-        "(cold start, below min-sats, warm-start file lost). The original "
-        "always-on scope was tried and REVERTED the same day -- car_trim "
-        "rose 30-36%% at matched node age, because the LO is a CONSTANT and "
-        "the chain's own EMA (minutes of time-averaging) beats one cycle "
-        "of cross-chain averaging; rescored against the EMA, fusion lost "
-        "7 of 8 chains. In the rescue case there is no EMA to lose to, and "
-        "the fused state's unique value is the cross-FAMILY rescue "
-        "(code->carrier) that --clock-bias-siblings structurally cannot "
-        "provide. With the chain solved, this flag is a PROVEN no-op. The "
-        "'untested rescue path' worry is answered by scoring it always "
-        "(the SHADOW log line) and exercising it deliberately "
-        "(offline, and live with the isolated-broker method), not by "
-        "running it always.",
-    )
-    ap.add_argument(
         "--bias-stale-s",
         type=float,
         default=300.0,

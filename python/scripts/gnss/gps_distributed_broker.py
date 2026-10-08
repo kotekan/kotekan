@@ -1644,12 +1644,11 @@ def main(argv=None, rx=None, publisher=None):
     _cb.meas_t = _now()  # last multi-sat bias measurement (stale-rescue clock;
     # birth-stamped so warm-start gets a full grace window)
     _cb.stale = False  # solved-but-unmeasured for > --bias-stale-s
-    _cb.available = False  # is ANY usable bias in hand (own or fused)? S2d gate
+    _cb.available = False  # is a solved bias in hand?
     # Fuse at most once a second and cache: the state files themselves only republish at
     # 1 Hz, so fusing at the broker's 5 Hz cycle would re-read the same bytes four times
     # for the same answer.
     _fus_cache = [0.0, None]
-    _fus_seen = [False]  # have we EVER had a fused state? startup vs fault
 
     def _fuse_cached(t_now):
         if state_w is None or not _state_dir or not args.state_fuse:
@@ -2081,72 +2080,8 @@ def main(argv=None, rx=None, publisher=None):
                 )
                 det_fresh[_p] = (_b[3], t_det)
 
-        # ---- S2d, REVISED SCOPE (2026-07-29): RESCUE-ONLY consumption ---------------
-        # Always-on consumption was tried and REVERTED the same day: car_trim rose +30-36%
-        # at matched node age, and rescored against the EMA the chains actually seed with,
-        # fusion lost 7 of 8 -- the LO is flat within noise (a CONSTANT), and minutes of
-        # time-averaging beat one cycle of cross-chain averaging. The original premise
-        # ("consume always so the rescue path is never untested") was the wrong cure: the
-        # durable one is publish + SCORE always (the SHADOW line below runs regardless) and
-        # EXERCISE deliberately (offline, and live with the isolated-broker method).
-        #
-        # So: the fused state is consumed EXACTLY when this chain has no estimate of its
-        # own -- cold start, below min-sats, warm-start file lost. There it has no EMA to
-        # lose to, and its unique value over --clock-bias-siblings is real: cross-FAMILY
-        # rescue (code -> carrier), which the sibling files structurally cannot provide
-        # (measured: all-carriers-dark recovers to 0.6-1.8 Hz on every dongle from code
-        # fits alone, including the lone-chain L2C dongle where a sibling rescue cannot
-        # exist). When the chain HAS its own estimate, this block is byte-identical to
-        # pre-S2d -- proven exhaustively over the input combinations, not argued.
-        _fus_now = _fuse_cached(t0)
-        _fused_hz = None
-        if (
-            _fus_now
-            and _fus_now.get("lo_ppm") is not None
-            and not _fus_now["all_outliers"]
-        ):
-            _fused_hz = _fus_now["lo_ppm"] * 1e-6 * args.carrier_hz
-        if _fus_now is not None:
-            _fus_seen[0] = True
-        if args.state_consume and _cb.ema is None and _fused_hz is not None:
-            _cb.value = _fused_hz
-            _cb.available = True
-            _log_rl(
-                "fusrescue",
-                "FUSED-STATE RESCUE: this chain is UNSOLVED; consuming the dongle's "
-                "fused LO %+.1f Hz (%d src: %dc/%dd over %s) until it solves itself"
-                % (
-                    _fused_hz,
-                    _fus_now["n_src"],
-                    _fus_now["n_carrier"],
-                    _fus_now["n_code"],
-                    ",".join(_fus_now["chains"]),
-                ),
-                every_s=10.0,
-            )
-        else:
-            _cb.value = _cb.ema if _cb.ema is not None else 0.0
-            _cb.available = _cb.ema is not None
-            if args.state_consume and _cb.ema is None and _fus_now is None:
-                # STARTUP is not a fault. On the first cycles after launch no broker has
-                # published a fresh record yet and the previous run's files are correctly
-                # refused as stale, so "unavailable" is the expected state for a few
-                # seconds. Saying "infrastructure fault" there is a false alarm, and false
-                # alarms are how real ones get ignored -- so only call it a fault once we
-                # have actually HAD a fused state and then lost it.
-                _log_rl(
-                    "fusegone",
-                    (
-                        "FUSED STATE not yet available (starting up) -- using this "
-                        "chain's own bias %s meanwhile"
-                        if not _fus_seen[0]
-                        else "FUSED STATE LOST -- falling back to this chain's own bias %s. "
-                        "We had one and it went away: infrastructure fault (state dir "
-                        "unreadable, or every sibling gone stale), not a normal mode."
-                    )
-                    % (("%+.1f Hz" % _cb.ema) if _cb.ema is not None else "UNSOLVED"),
-                    every_s=30.0,
-                )
+        _cb.value = _cb.ema if _cb.ema is not None else 0.0
+        _cb.available = _cb.ema is not None
 
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
         _ctx.pred = {}  # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]

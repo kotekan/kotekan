@@ -21,8 +21,8 @@ estimated ONCE:
 CONTRIBUTE / CONSUME, NEVER OVERWRITE. A chain that has solved a quantity itself keeps its
 own estimate and merely PUBLISHES it here; a chain that has not solved it (E5a runs
 `--detectors` empty by design and can never solve a clock) CONSUMES a sibling's. That is
-already the shape of `--dr-clock-adopt` and `--state-consume`; this class only replaces
-their transport -- a JSON file written at flush cadence and re-read with a staleness gate
+already the shape of `--dr-clock-adopt`; this class only replaces
+its transport -- a JSON file written at flush cadence and re-read with a staleness gate
 -- with the object the two chains could have shared all along.
 
 ⚠️ IT FOLLOWS THAT A SINGLE CHAIN IS UNAFFECTED, by construction: it always has its own

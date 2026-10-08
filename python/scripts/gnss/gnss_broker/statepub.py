@@ -117,17 +117,7 @@ def stage_publish_state(ctx):
                             ("%+.2f Hz" % (_fhz - _own))
                             if _own is not None
                             else "n/a (this is exactly the case fusion rescues)",
-                            # three honest modes: actively rescuing an unsolved
-                            # chain / armed but idle (steady state, proven no-op) /
-                            # pure shadow. "CONSUMED" when the chain is solved would
-                            # be a lie under rescue-only semantics.
-                            (
-                                "RESCUING (own unsolved)"
-                                if ctx.args.state_consume and ctx.cb.ema is None
-                                else "RESCUE-ARMED, idle"
-                                if ctx.args.state_consume
-                                else "SHADOW"
-                            ),
+                            "SHADOW",
                         ),
                         every_s=60.0,
                     )
