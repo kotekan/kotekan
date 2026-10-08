@@ -82,7 +82,7 @@ re-capture changes is timing.
 
 The synthetic fixture covers the seeding spine and the DLL. It does **not** reach the
 almanac/BRDC predictor, the dead-reckon seeder, the carrier loop (`--carrier-gain` is 0 on
-CHORD), the nav-bit path, or the CM/CL sibling chain. Those need real captures, and all
+CHORD), or the nav-bit path. Those need real captures, and all
 three are cheap the moment their chain is running:
 
 * ~~**GPS L5 on sky**~~ — **DONE 2026-08-08.** Captured with
@@ -105,8 +105,6 @@ three are cheap the moment their chain is running:
   Reaching fewer knobs than the L5 capture is correct, not a defect — a chain with no
   detections runs no DLL and no code-bias pool. It is the *only* fixture that covers the
   model-primary spine, which is exactly where #28's cold-start defect lived.
-* **The CM/CL sibling chain** — `--cl-tracker`. Its only launcher was the airspy
-  prototype's `config/run_live.sh`, removed 2026-10-08 (tag `airspy-prototype-final`).
 
 ### What the e2e harness gives, and what it does not
 

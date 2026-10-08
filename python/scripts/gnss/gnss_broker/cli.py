@@ -573,48 +573,6 @@ _FROZEN = dict(
     #   exactly -X. Same sign => the loop is inverted; no movement => the trim never
     #   reaches the despread.
     carrier_trim_const=None,
-    # --cl-autoseg
-    #   CL segment AUTO-SEARCH (default ON; the durable fix for the ~40%%-of-launches CL
-    #   failure): when the CL-vs-CM verify reads a dead fleet under strong CM, step an
-    #   integer-segment correction through 0,-1,+1,-2,... (one 20 ms segment per step)
-    #   and LATCH on green. Compensates the whole-segment utc0_sample0 anchor error
-    #   (stamped from system_clock::now() on the first USB transfer, tens of ms of
-    #   per-launch jitter; the auto-center absorbs only the fractional part). A working
-    #   launch latches 0 immediately.
-    cl_autoseg=1,
-    # --cl-autoseg-dwell
-    #   seconds per correction step (tracker re-lock + combiner deep build; the k-scan
-    #   measured green appearing well inside 30 s)
-    cl_autoseg_dwell=30.0,
-    # --cl-kscan-chips
-    #   FRACTIONAL scan mode: CSV of CHIP offsets added to the probe PRN's seeded cp
-    #   (e.g. '0,0.25,-0.25,0.5,-0.5,0.75,-0.75,1,-1') instead of whole-segment steps.
-    #   The comb/sub-chip test: CM/CL are chip-interleaved at 1.023 Mcps (one comb slot
-    #   = 0.5 chip of the 511.5 kcps code), and slot parity couples with code phase when
-    #   the replica timeline shifts, so scan a fine grid rather than betting on +-0.5 --
-    #   a half-chip code offset degrades ~6 dB rather than nulling, so any partial
-    #   despread stands far above the ~2 noise floor and names the true offset.
-    cl_kscan_chips="",
-    # --cl-kscan-dwell
-    #   CL k-scan: broker cycles to dwell per offset (the CL combiner's deep integration
-    #   must respond before stepping). 20 cycles ~= 4 s at the 0.2 s interval, matching
-    #   L2C's coherence window.
-    cl_kscan_dwell=20,
-    # --cl-kscan-prn
-    #   DIAGNOSTIC (default 0 = OFF): step the CL segment for THIS probe PRN through {k,
-    #   k-1, k+1, k-2, k+2} and log which offset despreads best. Convention-free test
-    #   for the whole-segment anchor bug that fine_ms cannot see (fine is the residual
-    #   after round()). Only the probe PRN's SEED is shifted; the fleet's pin, the fine,
-    #   and the auto-center are untouched, so this is safe to leave off and harmless
-    #   when on. Pick a strong CM sat as the probe.
-    cl_kscan_prn=0,
-    # --cl-kscan-segs
-    #   explicit CSV of SEGMENT offsets for the scan (e.g. the full-75 sweep
-    #   '0,-1,1,...,-37,37'). The default +-2 neighbourhood only exonerates SMALL anchor
-    #   errors; utc0_sample0 is stamped from system_clock::now() on the FIRST USB
-    #   transfer and carries tens of ms of per-launch startup latency -- several 20 ms
-    #   segments.
-    cl_kscan_segs="",
     # --cl-time-adjust
     #   seconds added to the CL time-assist clock -- escape hatch for a future
     #   non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias
@@ -3147,13 +3105,10 @@ def build_parser(description):
     ap.add_argument(
         "--cl-assist",
         action="store_true",
-        help="LEGACY single-chain CL mode (superseded by --cl-tracker, which keeps "
-        "CM running as the in-run control): lift each seed's code_phase_chips "
-        "IN PLACE by k*10230 with the CL segment k COMPUTED from absolute "
-        "capture time (the airspy /adcstat utc0_sample0 anchor) + almanac "
-        "range. CL's 1.5 s epoch is GPS-time-locked, so k is arithmetic, not "
-        "a 75-way search. Needs --almanac; the main trackers must despread "
-        "GPS_L2C_CL. Mutually exclusive with --cl-tracker.",
+        help="lift each seed's code_phase_chips IN PLACE by k*10230 with the CL "
+        "segment k COMPUTED from absolute capture time (the sample-0 anchor) + "
+        "almanac range. CL's 1.5 s epoch is GPS-time-locked, so k is arithmetic, "
+        "not a 75-way search. Needs --almanac.",
     )
     ap.add_argument(
         "--adc-stage",
@@ -3444,27 +3399,6 @@ def build_parser(description):
         "fit and 21.4%% after one this would reject. 0.5 is mid-plateau: "
         "0.3-1.0 all reject 2.3%% of fits and catch 34.3%% of gps_l5 dropouts. "
         "0 (default) disables the cross-check.",
-    )
-    ap.add_argument(
-        "--cl-tracker",
-        default=None,
-        help="L2C CL SIBLING-CHAIN mode (Mechanism A of the shared-knowledge plan; "
-        "supersedes --cl-assist's in-place lift): derive one CL pilot seed row "
-        "per CM row -- same doppler/dop-rate/carrier-trim/ref_hop (SAME carrier, "
-        "SAME 511.5 kcps chip clock), code_phase lifted by k*10230 with the "
-        "segment k pinned from absolute capture time + model range + SV clock "
-        "(t_sv = t_gpst - range/c + clk, the nh-assist convention proven to "
-        "0.01 chip by c31_convention.py) and SNAPPED to the measured CM cp -- "
-        "and POST them to THIS tracker stage's /set_seeds. The CM chain is "
-        "untouched: it stays up as the in-run control, and CL certification is "
-        "judged against it. Needs --almanac + the airspy utc0_sample0 anchor.",
-    )
-    ap.add_argument(
-        "--cl-combiner",
-        default=None,
-        help="the CL chain's combiner stage: polled each cycle so the CL-vs-CM "
-        "deep_snr comparison (the segment-pin VERIFY -- a wrong k despreads "
-        "as noise) lands in this broker's own log next to the k it verifies.",
     )
     ap.add_argument(
         "--nh-assist",

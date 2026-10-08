@@ -145,7 +145,6 @@ from gnss_broker.loopstate import (  # noqa: E402
     CpTracking,
     RateFeedState,
     NavDecoders,
-    ClSibling,
 )
 from gnss_broker import instruments  # noqa: E402  (the DLL's measurements)
 from gnss_broker import deadreckon  # noqa: E402  (the clock pipeline)
@@ -159,7 +158,6 @@ from gnss_broker import carrierloop  # noqa: E402  (off in production)
 from gnss_broker import searchhint  # noqa: E402  (narrow the search)
 from gnss_broker import seeding  # noqa: E402  (detections -> seeds)
 from gnss_broker import navbits  # noqa: E402  (off in production)
-from gnss_broker import clsibling  # noqa: E402  (the CM/CL sibling)
 from gnss_broker import fleetdll  # noqa: E402  (the fleet DLL shell)
 from gnss_broker.detectors import (  # noqa: E402  (D0-D3)
     QSeries,
@@ -296,7 +294,6 @@ def main(argv=None, rx=None, publisher=None):
     _cpt = CpTracking()  # per-sat code-phase history
     _rf = RateFeedState()  # carrier-rate observables + the commanded reference
     _nav = NavDecoders()  # broadcast nav-message decoders (off in production)
-    _cls = ClSibling()  # the CM/CL long-code sibling's segment search
     # D0: the q series that KEEPS the satellites that stopped reporting. Every arm judges on
     # this, never on the DLL line -- see gnss_broker/detectors.py for what that cost.
     _qpop = QSeries()
@@ -389,14 +386,6 @@ def main(argv=None, rx=None, publisher=None):
     # cycle does, and so a recording captures it explicitly rather than by whichever
     # _now() happened to land first.
     _TR.tick()
-    if args.cl_assist and args.cl_tracker:
-        # In-place lift + copied lift together would hand the CM tracker CL-lifted phases:
-        # broken CM tracking with no error anywhere downstream. Refuse at the door.
-        ap.error(
-            "--cl-assist (in-place, single-chain) and --cl-tracker (sibling-chain) are "
-            "mutually exclusive"
-        )
-
     # --almanac-epoch is a CLOCK OFFSET, not a frozen instant. The broker "lives in the
     # capture's time frame": every prediction site evaluates at now() + _alm_clock_offset, so
     # the sky ADVANCES as the replayed file plays, exactly as it did during the capture.
@@ -588,8 +577,6 @@ def main(argv=None, rx=None, publisher=None):
         )
     else:
         publisher = None
-    _cls.tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None
-    _cls.combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
     _nav.cnav_combiner = (
         resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None
     )
@@ -1300,11 +1287,6 @@ def main(argv=None, rx=None, publisher=None):
     _nhoff_seen = [
         {}
     ]  # the overlay-period knob as last logged (publish.py /set_nh_prn_offset)
-    _cls.seg_s = float(args.long_code_epoch_s) / max(int(args.long_code_segments), 1)
-    _cls.spiral = (
-        [0]
-        + [v for n in range(1, int(args.long_code_segments) // 2 + 1) for v in (-n, n)]
-    )[: max(int(args.long_code_segments), 1)]
     _xb_dir = os.path.dirname(args.state_file) if args.state_file else None
     # WHERE SIBLING STATE IS READ FROM. Deliberately independent of --state-file: a chain that
     # ADOPTS a clock has no reason to publish one (it has no estimate of its own to contribute),
@@ -1313,41 +1295,6 @@ def main(argv=None, rx=None, publisher=None):
     # is given, so the common case needs one flag rather than two.
     _xb_read_dir = args.state_read_dir or _xb_dir
 
-    # CL K-SCAN (diagnostic, --cl-kscan-prn; default 0 = OFF, zero effect). The recurring
-    # "CL despreads noise on ~40% of launches while fine_ms looks perfect" is the signature
-    # of a WHOLE-SEGMENT (N x 20 ms) anchor error: fine is the residual AFTER round(), so an
-    # error that is an exact multiple of the segment folds entirely into k and reports a
-    # perfect margin. A single restart cannot confirm this (60% base rate), and any absolute
-    # cross-check needs the TOW convention + slot mapping exact. A k-scan is CONVENTION-FREE:
-    # it steps the seeded segment for ONE probe PRN through {k-2..k+2}, dwelling long enough
-    # for the CL combiner's deep integration to respond, and the verify names which offset
-    # despreads. If k+-N wins, the whole-segment bug is PROVEN and its magnitude N is known.
-    # Two scan modes share the machinery:
-    #   SEGMENT mode (default): offsets are whole segments k+N -- the whole-segment test.
-    #     RESULT 2026-07-29: falsified. On a broken launch NOTHING in k+-2 despreads
-    #     (incl. k+0); positive control on a working launch shows k+0 winning 39x. The
-    #     segment pin is EXONERATED.
-    #   FRACTIONAL mode (--cl-kscan-chips "0,0.25,-0.25,..."): offsets are CHIPS added to
-    #     the seeded cp -- the comb/sub-chip test. CM/CL are chip-interleaved at 1.023 Mcps
-    #     (one comb slot = 0.5 chip at the 511.5 kcps code), so a TDM comb-phase fault
-    #     lands somewhere on a sub-chip grid. A fine grid rather than a bet on +-0.5
-    #     exactly: slot parity and code phase COUPLE when the replica timeline shifts, and
-    #     a half-chip code offset degrades ~6 dB rather than nulling -- so any partial
-    #     despread (~half of CM's deep) stands far above the noise floor of ~2 and names
-    #     the true offset.
-    if args.cl_kscan_chips:
-        _cls.kscan_seq = [float(x) for x in args.cl_kscan_chips.split(",") if x.strip()]
-        _cls.kscan_frac = True
-    elif args.cl_kscan_segs:
-        # explicit segment list -- built for the FULL-75 sweep after the +-2 scan was
-        # over-read as exoneration (it exonerated |N|<=2 ONLY; the anchor's startup
-        # latency jitter is tens of ms, i.e. potentially several 20 ms segments)
-        _cls.kscan_seq = [int(x) for x in args.cl_kscan_segs.split(",") if x.strip()]
-        _cls.kscan_frac = False
-    else:
-        _cls.kscan_seq = [0, -1, 1, -2, 2]  # true k first (baseline), then neighbours
-        _cls.kscan_frac = False
-    _cls.kfmt = (lambda o: "c%+.2f" % o) if _cls.kscan_frac else (lambda o: "k%+d" % o)
     bp_pushed = {}  # prn -> utc0 of the bit_pred table last ATTACHED to a seed row. The
     # combiner regenerates bit_pred once per EMIT (~1 Hz) but seeds push every
     # --interval (0.25 s), so re-attaching each cycle is 75% redundant payload
@@ -2020,7 +1967,6 @@ def main(argv=None, rx=None, publisher=None):
         cpt=_cpt,
         rf=_rf,
         nav=_nav,
-        cls=_cls,
         qpop=_qpop,
         brown=_brown,
         latch=_latch,
@@ -2331,9 +2277,7 @@ def main(argv=None, rx=None, publisher=None):
             except Exception:
                 pass  # endpoint down is the normal outage case, already logged elsewhere
 
-        if (
-            args.cl_assist or args.cl_tracker or dr_state is not None
-        ) and not _ctx.utc0_sample0:
+        if (args.cl_assist or dr_state is not None) and not _ctx.utc0_sample0:
             try:
                 if args.time0_endpoint:
                     # CHORD: frame 0 is GPS-disciplined, so this is exact rather than an
@@ -3559,27 +3503,6 @@ def main(argv=None, rx=None, publisher=None):
                 ok += 1
             except Exception as e:
                 _log("set_seeds %s failed: %s" % (t_ep, e))
-
-        # L2C CL SIBLING CHAIN (--cl-tracker; Mechanism A of docs/gnss_shared_knowledge_framework
-        # .md). DERIVATION, not acquisition: CM and CL are chip-interleaved on ONE 511.5 kcps
-        # clock, so a CL row is the CM row with its code phase lifted into the 1.5 s CL period --
-        # cp_CL = (cp_CM + k*10230) mod 767250. Everything else (doppler, dop-rate, carrier trim,
-        # residual code rate, ref_hop) is copied VERBATIM: same carrier, same chip clock, so CM's
-        # tracked solution IS CL's. nav_bits are deliberately NOT copied (CL is dataless -- the
-        # whole point).
-        #
-        # The segment index k is CLASS-2 knowledge (integer): computed fresh each cycle from
-        # coarse absolute time, with the CM code phase supplying the fine time --
-        #   k_est = (SV-transmit-time-of-sample-0 mod 1.5)*chip_rate/10230 - cp_CM/10230
-        # where t_sv = utc0_sample0 - range/c + sat_clk (the nh-assist convention, proven to
-        # 0.01 chip). round(k_est)'s margin |fine_ms| < 10 ms is the pin budget; utc0 anchor
-        # (~1-3 ms) + host NTP (~ms) dominate, and fine_ms MEASURES the actual total per sat.
-        # k is derived from the row's FINAL cp (post-DLL-trim, post-hold), so the snap and the
-        # lift always use the same cp value -- a cp near the 0/10230 wrap moves k by +-1 in
-        # exact compensation. k STEPS by +-1 every ~2 h/sat as range advances (tau drifts
-        # ~2.7 us/s): expected, logged at debug cadence; any LARGER step is a clock/anchor
-        # fault and logs loudly. Never averaged, never held against fresh evidence.
-        clsibling.stage_cl_sibling(_ctx)
 
         _log_rl(
             "active",

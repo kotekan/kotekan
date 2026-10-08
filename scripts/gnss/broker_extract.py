@@ -124,7 +124,6 @@ NAME_MAP = {
     "_cpt": "cpt",
     "_rf": "rf",
     "_nav": "nav",
-    "_cls": "cls",
     "payload": "payload",
     "n2_combiners": "n2_combiners",
     "last_dets": "last_dets",

@@ -126,7 +126,6 @@ class ChainContext(object):
         "cpt",
         "rf",
         "nav",
-        "cls",
         "qpop",
         "brown",
         "latch",
