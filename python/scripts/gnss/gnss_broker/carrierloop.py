@@ -57,12 +57,6 @@ def stage_carrier_loop(ctx):
                 # have been fed. Nothing downstream wants a carrier trim on a probe.
                 continue
             rec = ctx.status.get(prn, {})
-            # (ALIAS ESCAPE v1/v2 lived here until the 07-19 audit A4. The alias-capture
-            #  disease it targeted -- resid estimator ambiguous mod 1/(2*T_rec), NCO
-            #  parked on the alias for 40+ min -- is owned by two surviving mechanisms:
-            #  a stale f_ref offset is snapped by the tight tracker fence (free under
-            #  --dop-continuous), and a walked trim latch is the watchdog's lifecycle
-            #  rescue. v1's fleet-kill postmortem lives in git history at 069e8770.)
             resid = float(rec.get("carrier_hz_resid", 0.0))
             if ctx.args.carrier_source == "rate":
                 # THE MEASUREMENT THE LOOP WAS ALWAYS MISSING (2026-08-04). carrier_hz_resid

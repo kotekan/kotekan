@@ -3380,45 +3380,6 @@ def build_parser(description):
         "unfalsifiable -- same reasoning as --bias-min-sats)",
     )
     ap.add_argument(
-        "--dop-continuous",
-        action="store_true",
-        default=False,
-        help="DESIGN (b): update the seed Doppler every cycle (model-primary "
-        "seeding) and currency-translate cp0 on every update. VALIDATED "
-        "2026-07-19 (A/B replay legs, 17:37 capture): B1C parity-or-better "
-        "(coh duty up on every sat, C37 63->79/100, reacq 2->1) and GPS "
-        "better (RELEASE 9->0, CARRIER REACQ 6->1, coh duty up 4/6 sats). "
-        "History: the 2026-07-14 attempt measured E/C WORSE (E 42.0 -> 34.9 "
-        "dB-Hz) because the tracker's f_ref re-pin was not yet code- and "
-        "phase-continuous -- freezing the seed was double-dutying as f_ref "
-        "stabilization. The 07-14 NCO phase fold (reanchored==2) plus "
-        "max_anchor_age_s 0 completed the primitive; the fence became "
-        "moot (f_ref rate-follows the model, seed steps vanished). "
-        "run_band.sh made this the single-band default; the run_3band "
-        "transition silently dropped it (fleet ran frozen 07-18/19 -- the "
-        "release/escape churn era). Fleet default restored 2026-07-19.\n"
-        "Original rationale: update the seed Doppler EVERY cycle and "
-        "currency-translate cp0 each time, instead of freezing it and taking "
-        "a discrete step at hold_max_dop_hz. The fence was never a safety "
-        "mechanism -- it was a GRANULARITY threshold, and the "
-        "piecewise-constant-currency rule it enforced was a defence against a "
-        "NOISY, search-grid Doppler. Dead reckoning made the Doppler "
-        "model-derived and smooth, and the currency translation makes a "
-        "Doppler update cost exactly nothing (the cp0 shift cancels the "
-        "retroactive term by construction, so even jitter moves the code by "
-        "ZERO). We made the defence obsolete ourselves. Resilience now comes "
-        "from checking whether the model is RIGHT (--dr-max-eph-age-s, "
-        "--dop-max-rate-hz, the integrity residual, a railed carrier trim) "
-        "rather than whether it is MOVING. --no-dop-continuous restores the "
-        "fence.",
-    )
-    ap.add_argument(
-        "--no-dop-continuous",
-        dest="dop_continuous",
-        action="store_false",
-        help="restore the discrete hold_max_dop_hz fence (pre-2026-07-14)",
-    )
-    ap.add_argument(
         "--nav-bits-brdc",
         type=int,
         default=0,

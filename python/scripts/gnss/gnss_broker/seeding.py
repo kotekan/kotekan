@@ -1724,11 +1724,9 @@ def stage_detections_to_seeds(ctx):
                     )
                 ddop = math.copysign(ctx.args.dop_max_rate_hz, ddop)
                 seed.put("dop_clamp", doppler_hz=prev["doppler_hz"] + ddop)
-            # DESIGN (b): translate EVERY cycle (no fence). The freeze branch survives only
-            # for --no-dop-continuous, and for the zero-motion case where it is a no-op.
-            if (
-                not ctx.args.dop_continuous and abs(ddop) <= ctx.args.hold_max_dop_hz
-            ) or ddop == 0.0:
+            # Freeze the currency while the Doppler move is inside the hold_max_dop_hz fence;
+            # translate it once the move exceeds the fence.
+            if abs(ddop) <= ctx.args.hold_max_dop_hz or ddop == 0.0:
                 # Currency frozen: the whole tuple rides unchanged.
                 seed.put(
                     "hold_freeze",
@@ -1805,11 +1803,11 @@ def stage_detections_to_seeds(ctx):
                     ref_hop=prev["ref_hop"],
                     doppler_hz=seed["doppler_hz"],
                 )
-                # #80 FIX, translate arm (the LIVE arm under --dop-continuous): same
-                # as the freeze arm above. prev's at-ref phase is a PHYSICAL phase at
-                # prev's ref_hop -- a doppler update does not move it (the new doppler
-                # enters the forward propagation, not the anchor), so it rides
-                # unchanged where the fresh detection's phase must not.
+                # #80 FIX, translate arm: same as the freeze arm above. prev's at-ref
+                # phase is a PHYSICAL phase at prev's ref_hop -- a doppler update does
+                # not move it (the new doppler enters the forward propagation, not the
+                # anchor), so it rides unchanged where the fresh detection's phase must
+                # not.
                 if "code_phase_at_ref_chips" in prev:
                     seed.put(
                         "translate",
@@ -1822,7 +1820,7 @@ def stage_detections_to_seeds(ctx):
                     ctx.cpt.translated.add(prn)
                     _log(
                         "TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.2f Hz) -> cp0 shifted "
-                        "%+.2f chips; SAME physical code phase, anchor KEPT%s"
+                        "%+.2f chips; SAME physical code phase, anchor KEPT"
                         % (
                             prn,
                             prev["doppler_hz"],
@@ -1833,9 +1831,6 @@ def stage_detections_to_seeds(ctx):
                             * ctx.args.code_doppler_sign
                             * ddop
                             / ctx.args.carrier_hz,
-                            " (continuous: every cycle, no fence)"
-                            if ctx.args.dop_continuous
-                            else "",
                         )
                     )
             if prn not in ctx.cp_held:
@@ -1864,7 +1859,6 @@ def stage_detections_to_seeds(ctx):
                 # bench-rejected in both signs and DELETED (07-19 audit A4); the safe
                 # rescuer below stands: the broker KNOWS the NCO stepped -- demote to
                 # BOOTSTRAP and re-pull the trim at full gain (seconds, no arithmetic).
-                # Under --dop-continuous ddop_rel is ~0 and this never fires.
                 if abs(ddop_rel) > 1.0 and prn in ctx.car.locked:
                     ctx.car.locked.discard(prn)
                     ctx.car.fade.pop(prn, None)
