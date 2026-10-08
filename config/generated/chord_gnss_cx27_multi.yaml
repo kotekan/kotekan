@@ -10,9 +10,9 @@
 #       --elem-proj-deg 6 --carrier-phase-from-ref 1 --carrier-phase-mode 1 --keep-n2
 #       --n2-project live --n2-project-live-freq-ids exempt --n2-project-stations
 #       0-6,8-15,56-79,120-127 --n2-dual --phi-fp16 --despread-max-chips 80
-#       --despread-chips-centered --dpdk-resync-max-advances 32 --n2-send --n2-send-legs both
-#       --rf-stats --rf-stats-period-s 1.0 --no-path-a --sky-deep --elem-steer-bands all
-#       --elem-steer-sign 1.0 --elem-positions-from arraymap --elem-positions-file
+#       --despread-chips-centered --n2-send --n2-send-legs both --rf-stats --rf-stats-period-s
+#       1.0 --no-path-a --sky-deep --elem-steer-bands all --elem-steer-sign 1.0
+#       --elem-positions-from arraymap --elem-positions-file
 #       config/elem_positions_refined_20260927.json --elem-sum-shared --elem-freeze-deg 2
 #       --elem-shared-ref config/elem_shared_ref_20261006.json --elem-shared-ref-mode live
 #       --search-host 10.222.0.56 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube
@@ -212,7 +212,6 @@ dpdk:
   - '0000:37:00.1'
   - 0000:b5:00.0
   - 0000:b5:00.1
-  resync_max_advances: 32
   rx_ring_size: 4096
   worker_ring_map:
   - name: worker_ring_0
@@ -261,10 +260,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: -0.0238315
-    t_inst_ns: 1791072000000000000
-    xp_as: 0.171013
-    yp_as: 0.324922
   - delta_UT1_inst: -0.0248022
     t_inst_ns: 1791158400000000000
     xp_as: 0.169591
@@ -285,6 +280,10 @@ earth_rotation_data:
     t_inst_ns: 1791504000000000000
     xp_as: 0.165393
     yp_as: 0.322394
+  - delta_UT1_inst: -0.0306474
+    t_inst_ns: 1791590400000000000
+    xp_as: 0.164266
+    yp_as: 0.322193
   kotekan_update_endpoint: json
 eigencalc:
   cpu_affinity:
@@ -10253,8 +10252,6 @@ updatable_config:
     bad_inputs:
     - 4
     - 5
-    - 7
-    - 15
     - 16
     - 17
     - 18
@@ -10295,9 +10292,9 @@ updatable_config:
     - 53
     - 54
     - 55
+    - 60
     - 68
     - 69
-    - 71
     - 80
     - 81
     - 82
@@ -10339,8 +10336,8 @@ updatable_config:
     - 118
     - 119
     kotekan_update_endpoint: json
-    start_time: 1791329383.5422955
-    update_id: bffs-1791329378542
+    start_time: 1791407623.51545
+    update_id: bffs-1791407618515
 vis_blocksize: 16
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 vis_num_blocks_lin: num_elements / vis_blocksize
