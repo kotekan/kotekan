@@ -73,14 +73,19 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
 }
 
 airspyInput::~airspyInput() {
+    // Wake any REST callback waiting on a pending adcstat request, then remove the callbacks
+    // (which waits for running ones) before the device goes away.
+    adcstat_cv.notify_all();
+    kotekan::restServer& rest_server = kotekan::restServer::instance();
+    rest_server.remove_json_callback(unique_name + "/set_config");
+    rest_server.remove_get_callback(unique_name + "/adcstat");
+    rest_server.remove_get_callback(unique_name + "/get_config");
     if (a_device != nullptr) {
         airspy_stop_rx(a_device);
         airspy_close(a_device);
     }
     if (airspy_opened)
         airspy_exit();
-    // Wake any REST callback waiting on a pending adcstat request.
-    adcstat_cv.notify_all();
 }
 
 void airspyInput::get_config_callback(kotekan::connectionInstance& conn) {
@@ -195,15 +200,6 @@ void airspyInput::set_config_callback(kotekan::connectionInstance& conn,
 }
 
 void airspyInput::main_thread() {
-    using namespace std::placeholders;
-    kotekan::restServer& rest_server = kotekan::restServer::instance();
-    rest_server.register_post_callback(unique_name + "/set_config",
-                                       std::bind(&airspyInput::set_config_callback, this, _1, _2));
-    rest_server.register_get_callback(unique_name + "/adcstat",
-                                      std::bind(&airspyInput::adcstat_callback, this, _1));
-    rest_server.register_get_callback(unique_name + "/get_config",
-                                      std::bind(&airspyInput::get_config_callback, this, _1));
-
     frame_id = 0;
     frame_loc = 0;
     recv_busy = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
@@ -222,6 +218,16 @@ void airspyInput::main_thread() {
     a_device = init_device();
     if (a_device == nullptr)
         return;
+
+    // The callbacks use the device and recv_busy, so register them only now.
+    using namespace std::placeholders;
+    kotekan::restServer& rest_server = kotekan::restServer::instance();
+    rest_server.register_post_callback(unique_name + "/set_config",
+                                       std::bind(&airspyInput::set_config_callback, this, _1, _2));
+    rest_server.register_get_callback(unique_name + "/adcstat",
+                                      std::bind(&airspyInput::adcstat_callback, this, _1));
+    rest_server.register_get_callback(unique_name + "/get_config",
+                                      std::bind(&airspyInput::get_config_callback, this, _1));
 
     err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
     if (err != AIRSPY_SUCCESS) {
