@@ -151,7 +151,6 @@ common:
     n2-project: live
     n2-project-live-freq-ids: exempt
     n2-project-stations: "0-6,8-15,56-79,120-127"
-    n2-dual: true
 
   # ── SYNTHESIS ~4x (GPU TODO items 3+6, ARMED FLEET-WIDE 2026-08-31) ─────────────────────
   # fp16 Phi tables (item 3): halves the RESIDENT table -- the one lever the DRAM-footprint
@@ -357,14 +356,6 @@ common:
   # A pass is one frame read in place, ~1-2 ms at the full union channel set, so 1 s is ~0.1-0.2%
   # of the tap's time. Needs a node restart to take effect.
     rf-stats-period-s: 1.0
-  # PATH A OFF (task #26, 2026-08-09). The primary chain's path-A tracker is not
-  # instantiated: the broker seeds gnss*_inject and reads gnss*_n2combine, validated on sky
-  # before this landed (PRN 10 deep 88.9, same bias structure as path A, clk within 0.6
-  # chips). Worth 17.712 of ~20.2 ms/frame per GPU. The SEARCH leg is untouched -- it is
-  # built alongside path A but taps the voltage buffer directly, and it is what detects GPS
-  # and so solves the clock for all eight chains. Flip this off to get path A back for
-  # single-signal debugging.
-    no-path-a: true
   # SKY-CORRECTED DEEP RUNG (2026-08-10). The combiner scores the LOO element-derotated
   # prompt (record slots 24/25) as a deep-fold candidate. Enablement case: the 2026-08-05
   # "beats the genie" anomaly was a comparator error (the split's honest bound is the
@@ -705,26 +696,6 @@ nodes:
   # GPU-minor order, so these must stay 2 apart and in this sequence or the search instance
   # reads the wrong node's comb.
   #
-  # combine-gpus is GONE from cx19 and cx51 (KV, 2026-08-09), and the fleet is now UNIFORM:
-  # every node exposes two per-GPU combiners, on both paths.
-  #
-  # WHY IT WAS ALWAYS WRONG FOR THIS ARCHITECTURE, not merely inconsistent. The flag merged
-  # GPU 0 and GPU 1 into ONE 14-channel path-A combiner. The whole point of the current design
-  # is to ship per-channel results from every instance back to the broker so it can fit a
-  # phase SLOPE across frequency (task #32 / CHORD_JOINT_TRACKING.md P1) -- and a merge is the
-  # one operation the broker can never undo. Collapsing two instances into one also throws
-  # away the axis fleet_coherent needs most: instances are what give the leave-one-out
-  # reference and the one-way S/R split something to work with, which is why the weak PRNs
-  # measured BETTER split than merged (PRN 3: 5.2 vs 4.0; PRN 7: 3.4 vs 2.5) while the median
-  # fleet ratio was 0.997 -- i.e. the merge bought nothing and cost the margins.
-  #
-  # It was already a dead letter in practice: --no-path-a means path A's combiner is not
-  # instantiated at all, and path B has always built one combiner per GPU on every node. So
-  # this removal changes no running stage today -- it removes a trap. While it was set, the
-  # natural-looking `gnss{0..1}_combine` in a chain file silently pointed 2 of 12 URLs at
-  # stages that did not exist on those two nodes, and fleet_coherent skips an unreachable
-  # instance without failing. scripts/gnss/check_chain_endpoints.py now catches that class,
-  # but not having the asymmetry at all is better than catching it.
   # AHEAD-RESYNC canary (2026-08-18). cx19 ONLY for now: the capture window's advance is
   # reachable only from the in-range path, so once the stream runs past it nothing brings it
   # back -- this node stalled twice in ~30 h (gnss1/port 1 for 25 h from a 5472-sample

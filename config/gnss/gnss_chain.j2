@@ -205,7 +205,7 @@
     on that GPU, which is why it sits outside the chain loop. It taps the voltage buffer
     directly (in_buf host_voltage_buffer_<gpu>), so it survives whatever the tracker
     chains do -- it is what detects GPS and therefore solves the clock for all five
-    chains (see the --no-path-a note in the generator).
+    chains.
     ⚠️ n_elements: 1 -- the search runs on ONE element, not the array. The despread is the
     thing that combines; a search over 32 elements would cost 32x for no acquisition gain.
 #}

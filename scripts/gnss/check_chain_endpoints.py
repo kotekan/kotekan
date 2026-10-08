@@ -4,14 +4,12 @@
 WHY THIS EXISTS. fleet_coherent treats an unreachable instance as "skipped, never fatal" and
 the seed POST logs one rate-limited line, so a chain pointed at a stage that WAS NEVER BUILT
 degrades silently: the broker runs on 10 instances while the file says 12, or seeds a tracker
-that does not exist and the PRN simply never appears. Nothing turns red. The concrete trap is
---combine-gpus: on cx19 and cx51 path A's GPU-1 combiner is not instantiated at all, so the
-natural-looking `gnss{0..1}_combine` silently loses 2 of 12 endpoints.
+that does not exist and the PRN simply never appears. Nothing turns red.
 
 Endpoints come in TWO KINDS and only one is a top-level stage:
   * combiners / assemblers -- top-level keys in the node config (gnss0_combine, ...).
   * trackers -- NOT stage keys. They are REST paths a cudaCommand registers from its own
-    `seed_endpoint` ("/gnss0_track/set_seeds"), declared inside a GPU stage's `commands`
+    `seed_endpoint` ("/gnss0_inject/set_seeds"), declared inside a GPU stage's `commands`
     list. Checking these against top-level keys reports every one of them missing, which is
     how the first version of this script cried wolf 48 times.
 

@@ -422,528 +422,115 @@ def parse_extra_signals(cfg, args, node, primary_chans):
     return chains
 
 
-def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None):
-    """The GNSS stages+buffers to inject, for one GPU's covering channels.
+def build_search_leg(cfg, node, gpu, chan_idx, args, freq_ids=None):
+    """The search leg for one GPU's covering channels: a one-element voltage tap shipped to the
+    aggregator's acquisition search, which detects GPS and so solves the receiver clock every
+    chain on the node is reckoned from.
 
-    @param chain  None = the PRIMARY chain (prefix `gnss{gpu}_`, byte-identical to what the
-                  single-signal generator has always emitted). Otherwise a dict
-                  {tracker, search, prns, tag, shares_tap} describing an EXTRA signal chain:
-                  its blocks are prefixed `gnss{gpu}{tag}_`, and when `shares_tap` it
-                  consumes the primary chain's voltage tap instead of opening a second one
-                  (kotekan buffers are per-consumer, so both chains see every frame).
+    Also returns the record stride and the live element count, which the caller uses.
     """
-    sig = cfg["signals"]
-    rt = cfg["runtime"]
     arr = cfg["array"]
     n_elem = live_element_count(arr)
     elem0 = live_element_ranges(arr)[0][0]
     n_chan = len(chan_idx)
-    cores = gnss_cores(rt, gpu)  # this GPU's own NUMA node (see gnss_cores)
-    tag = chain["tag"] if chain else ""
-    pre = f"gnss{gpu}{tag}_"
-
-    # PER-CHAIN CORE ROTATION. Every affinity below is cores[(gpu + k) % len], a function of
-    # the STAGE and the GPU only, so without a rotation every chain stacks its cudaProcess on
-    # one core, its combiner on another, and so on. The rotation spreads them: 3 per chain,
-    # coprime to the 10-core pool, so N chains walk N distinct cores per stage.
-    #
-    # HONEST STATUS OF THE JUSTIFICATION: this is hygiene, NOT a known-harmful bug being
-    # fixed. A cudaProcess thread mostly blocks on GPU completion rather than burning CPU, so
-    # co-scheduling several is probably fine. An earlier collision (gnss1_n2dual on core 60
-    # with gnss0_gpu) was fixed on 2026-08-06 and INVESTIGATED OUT as the cause of the
-    # degradation it was found near -- the real cause was elsewhere. Do not cite it as
-    # evidence that stacking hurts; it is evidence that it can look guilty. The rotation costs
-    # nothing and makes the assignment deterministic, which is the whole claim.
-    #
-    # It does NOT create free cores -- a multi-chain node oversubscribes a 10-core pool, and
-    # main() prints the resulting load so it is a stated cost rather than a surprise.
-    rot = 3 * (chain["ord"] if chain else 0)
+    cores = gnss_cores(cfg["runtime"], gpu)
+    pre = f"gnss{gpu}_"
 
     def core(k):
-        return cores[(k + rot) % len(cores)]
+        return cores[k % len(cores)]
 
-    # The tap output is SIGNAL-INDEPENDENT -- [hop][chan][elem] 4+4b voltages, no replica
-    # anywhere in it -- so a chain on the same covering channels reads the primary's tap
-    # rather than opening a second one. That is the whole reason E5a/B2a cost no extra
-    # ingest, PCIe or CPU: same carrier, same channels, same bytes.
-    shares_tap = bool(chain and chain.get("shares_tap"))
-    tap_out = f"gnss{gpu}_volt_buf" if shares_tap else f"{pre}volt_buf"
-    rec_buf = f"{pre}rec_buf"
-    cmb_buf = f"{pre}cmb_buf"
-
-    # Which signal this chain tracks, which PRNs, and at WHAT SKY CARRIER. The carrier is
-    # the replica's f_offset and is the single easiest thing to get wrong here (a wrong one
-    # builds every replica in the wrong part of the band and every correlation is noise --
-    # see the f_offset note below), so it comes from the chain, never from the primary.
-    track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
-    prns = chain["prns"] if chain else args.prns
-    carrier_hz = chain["carrier_hz"] if chain else float(sig["carrier_hz"])
-
-    # Record frames carry the element axis: RECORD_FLOATS + n_elem*ELEM_FLOATS per PRN.
-    # READ FROM gnssRecord.hpp, not restated here: this used to be the literal `26 + n_elem*12`
-    # under a comment claiming it was "kept in one place", which is exactly the drift that broke
-    # the airspy configs when RECORD_FLOATS went 24 -> 26 (34 stages FATAL at construction).
     record_floats = record_stride(n_elem)
-    n_prn = len(prns)
-
-    blocks = {}
-    if not shares_tap:
-        blocks[tap_out] = {
+    blocks = {
+        # Nothing reads this buffer since path A was removed. It stays until the next planned
+        # node-config change so the generated configs do not change under running nodes.
+        f"{pre}cmb_buf": {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
             "num_frames": args.buffer_depth,
-            # [hop][chan][elem], one byte per complex sample
-            "frame_size": f"samples_per_data_set * {n_chan} * {n_elem}",
-            # peek_hold: keep the newest full frame until the next lands, so
-            # /buffer/<name>/frame can dump the ACTUAL 4+4b bytes the tracker despreads.
-            # Costs one frame slot. Added 2026-08-06 while chasing a node that despread
-            # noise for every PRN with correct records and correct replicas -- the one
-            # thing there was no way to inspect was the data itself.
-            "peek_hold": True,
-        }
-
-    blocks.update(
-        {
-            rec_buf: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "gnss_pool",
-                "num_frames": args.buffer_depth,
-                "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
-            },
-            cmb_buf: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "gnss_pool",
-                "num_frames": args.buffer_depth,
-                "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
-            },
-        }
-    )
-    if not shares_tap:
-        blocks[f"{pre}tap"] = {
+            "frame_size": f"{len(args.prns)} * {record_floats} * sizeof_float32",
+        },
+        # A SECOND tap on the same voltage buffer, taking ONE element -- the
+        # acquisition search is single-antenna by design, so this is ~57 kB/frame (1.4 MB/s)
+        # rather than the 1.8 MB/frame of all 32 elements. Shipped as 4+4b bytes and
+        # unpacked on the far side, which is 8x cheaper on the wire than sending floats.
+        f"{pre}srch_buf": {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth,
+            "frame_size": f"samples_per_data_set * {n_chan} * 1",
+        },
+        f"{pre}srch_tap": {
             "kotekan_stage": "GnssChordVoltageTap",
             "in_buf": f"host_voltage_buffer_{gpu}",
-            "out_buf": tap_out,
+            "out_buf": f"{pre}srch_buf",
             "chan_ids": chan_idx,
-            "n_elements": n_elem,
-            "element_offset": elem0,
+            "n_elements": 1,
+            "element_offset": elem0 + args.search_element,
             "frame_chan_stride": "num_local_freq",
             "frame_elem_stride": "num_elements",
-            # NB: do NOT emit `samples_per_data_set: samples_per_data_set` here. Config
-            # expressions resolve identifiers by walking UP from the current path, so a key
-            # whose value names ITSELF resolves to itself and recurses until the stack dies --
-            # and it dies inside Config's std::regex tokenizer, so the backtrace is 200 frames
-            # of regex internals with nothing pointing at the config. The stage's lookup already
-            # walks up to the top-level value, so simply omitting the key is both correct and
-            # safe.
             "fft_length": cfg["fengine"]["fft_length"],
-            "cpu_affinity": [core(gpu)],
-        }
-
-    blocks.update(
-        {
-            f"{pre}epl_buf": {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "gnss_pool",
-                "num_frames": args.buffer_depth,
-                # gnss_gpu::frame_bytes(n_prn, n_chan, ROWS_PLAIN=4, n_elem): header + winstart +
-                # PrnCtl + corr[jobs][chan][elem] + energy[jobs][chan]. MAX_REC = 16.
-                "frame_size": (
-                    48
-                    + 8 * 16
-                    + 64 * 16 * n_prn
-                    + 16 * 4 * n_prn * 16 * n_chan * n_elem
-                    + 8 * 4 * n_prn * 16 * n_chan
-                ),
-            },
-            f"{pre}gpu": {
-                "kotekan_stage": "cudaProcess",
-                "gpu_id": gpu,
-                "cpu_affinity": [core(gpu + 6)],
-                "in_buffers": {"gnss_volt_in": tap_out},
-                "out_buffers": {"gnss_epl_out": f"{pre}epl_buf"},
-                "commands": [
-                    {
-                        "name": "cudaInputData",
-                        "in_buf": "gnss_volt_in",
-                        "gpu_mem": f"{pre}voltage",
-                    },
-                    {
-                        "name": "cudaGnssChordTrack",
-                        # TASK #52 A/B ARM -- ⚠️ TEMPORARY, remove with task #55. Emitted on BOTH
-                        # producers because cudaGnssChordTrackState (which owns the despread, and
-                        # therefore the arm) is constructed with the COMMAND's unique_name -- so path A
-                        # and path B each need their own copy or one silently keeps the default.
-                        "carrier_phase_from_ref": (
-                            gpu == 0
-                            if args.carrier_phase_from_ref == "ab"
-                            else args.carrier_phase_from_ref == "1"
-                        ),
-                        # #71: supersedes the bool above (the stage prefers it and falls back). Same
-                        # per-GPU 'ab' trick and for the same reason -- see --carrier-phase-mode.
-                        "carrier_phase_mode": (
-                            2
-                            if (
-                                gpu == 0
-                                if args.carrier_phase_mode == "ab"
-                                else args.carrier_phase_mode == "2"
-                            )
-                            else (1 if args.carrier_phase_from_ref != "0" else 0)
-                        ),
-                        # fp16 Phi tables (GPU TODO item 3): halves the resident synthesis table,
-                        # 1.55x measured through the shipped call (phi16gpu). Default OFF.
-                        "phi_fp16": bool(args.phi_fp16),
-                        **(
-                            {
-                                "dcyc_dump_prn": args.phase_dump_prn,
-                                "dcyc_dump_records": args.phase_dump_records,
-                                "dcyc_dump_path": f"/tmp/gnss_dcyc_{node}_{gpu}{tag}.txt",
-                            }
-                            if args.phase_dump_prn >= 0
-                            else {}
-                        ),
-                        # CENTERED chip-window truncation (item 6). 0 = full ~210-chip span (what has
-                        # always shipped -- the one-sided 140 was measured, never armed). Centered 80
-                        # = 2.6x less synthesis, e2e-EXACT multi-PRN/multi-Doppler.
-                        "despread_max_chips": int(args.despread_max_chips),
-                        "despread_chips_centered": bool(args.despread_chips_centered),
-                        # F-engine conjugation, measured on sky 2026-07-30 (see GnssChordDequantize).
-                        "conjugate": True,
-                        "gpu_mem_input": f"{pre}voltage",
-                        "gpu_mem_output": f"{pre}epl",
-                        # OVERLAY-BAKED tracker code (2026-07-31): multi-period records despread the
-                        # bare primary to ~zero (the NH20/CS100 partial sums cancel by design); see
-                        # chord_gnss_node.yaml and docs/CHORD_MULTIBAND.md section 4.
-                        "signal": track_signal,
-                        # E/L tap offset in the signal's chips -- set by the channel geometry, see
-                        # dll_spacing_chips. Must match the broker chain's --dll-spacing.
-                        "dll_spacing": dll_spacing_chips(track_signal),
-                        # GLOBAL bins of this GPU's covering comb, in the tap's local order. The
-                        # replica for a channel must be built at ITS OWN sky frequency, and CHORD's
-                        # comb is stride-16, so a contiguous chan_offset cannot describe it -- passing
-                        # 0 put every replica at DC and nothing ever locked (2026-07-31).
-                        "channel_ids": list(
-                            freq_ids if freq_ids is not None else chan_idx
-                        ),
-                        "prns": prns,
-                        "n_channels": n_chan,
-                        "n_elements": n_elem,
-                        "elem_stride": n_elem,
-                        "frame_chan_stride": n_chan,
-                        # THE REPLICA'S CARRIER, and on CHORD it is the SKY frequency, not an IF.
-                        # The airspy node downconverts, so its f_offset is the post-mixer IF (a few
-                        # MHz). CHORD does not downconvert at all: the RFSoC samples 0-1600 MHz
-                        # directly and L5 sits at bin 6023 of 8192. Leaving this at the 0.0 default
-                        # generates the replica at DC, so covering_bins lands on bins -51..52 while
-                        # the data is at 5971..6076 -- zero overlap, and every correlation is noise.
-                        "f_offset_hz": float(carrier_hz),
-                        "hops_per_record": args.hops_per_record,
-                        "fft_length": cfg["fengine"]["fft_length"],
-                        "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
-                        "seed_endpoint": f"/{pre}track/set_seeds",
-                        # LIVE PRN MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md). GET is a diagnostic
-                        # ("which satellite is slot 7?"); POST is the broker's actuator.
-                        "get_prns_endpoint": f"/{pre}track/get_prns",
-                        "set_prns_endpoint": f"/{pre}track/set_prns",
-                        "set_trim_endpoint": f"/{pre}track/set_trim",  # see the inject block (#51 F3)
-                        "trim_ttl_s": args.trim_ttl_s,
-                        # In-tracker DLL code trim (ported 2026-07-31): per-frame closure is the only
-                        # loop fast enough for the clock chain's +-1 chip / ~20 s breathing. The
-                        # broker's own DLL (3c) sees disc ~ 0 once this holds and stays quiet.
-                        "code_trim": True,
-                        # LOCAL trim gain, 0 by default -- the fleet DLL owns the code loop.
-                        #
-                        # E, P and L are measured relative to the code phase THIS instance despread at.
-                        # With every instance running its own trim they drift to different delays, and
-                        # summing E/L taken at different delays SMEARS the discriminator instead of
-                        # sharpening it -- the broker's 11.8 dB of combined bandwidth would be thrown
-                        # away silently, with nothing in the logs to say so. So there is exactly one
-                        # code loop, in the broker (--dll-combiners), and this one is off.
-                        #
-                        # Set --local-trim-gain 0.15 to restore the in-tracker loop (the pre-2026-08-03
-                        # behaviour) for a single-node bench, or as the control in a before/after.
-                        "trim_gain": args.local_trim_gain,
-                        "trim_endpoint": f"/{pre}track/get_trim",
-                        # NO reseed_hold_* HERE, AND NO f_ref FENCE AT ALL. cudaGnssChordTrack has no
-                        # f_ref, no fll_reacq_hz and no re-anchor logic. It uses the seed Doppler DIRECTLY
-                        # as the replica carrier, refreshed every window (`ss.doppler_hz = sd.doppler_hz`),
-                        # with the NCO carrying only the trim (`c.f_nco = sd.ctrim_hz`). So on CHORD the
-                        # SEED IS THE REFERENCE, and a jump in the seeded Doppler is a reference jump
-                        # directly -- there is no fence to hold it and nothing to tune. That is why the fix
-                        # that worked was --seed-doppler auto (smooth model+bias seed).
-                        # GPS-disciplined UTC of absolute sample 0 -- without it the assembler
-                        # stamps records with HOST wall clock (see cudaGnssChordTrack.cpp).
-                        **(
-                            {"frame0_utc": float(cfg["fengine"]["frame0_utc"])}
-                            if cfg["fengine"].get("frame0_utc")
-                            else {}
-                        ),
-                    },
-                    {"name": "cudaSyncOutput"},
-                    {
-                        "name": "cudaOutputData",
-                        "gpu_mem": f"{pre}epl",
-                        "out_buf": "gnss_epl_out",
-                    },
-                ],
-            },
-            f"{pre}assemble": {
-                "kotekan_stage": "GnssGpuRecordAssemble",
-                "in_buf": f"{pre}epl_buf",
-                "out_buf": rec_buf,
-                "prns": prns,
-                "n_elements": n_elem,
-                # PER-CHANNEL SPECTRUM EXPORT (task #32, docs/CHORD_JOINT_TRACKING.md P1): the
-                # same GLOBAL-bin list the despread command runs, so /get_spectrum can label each
-                # channel with its sky frequency. A delay is a phase ramp across frequency; this
-                # stage's cross-channel sum is the one combine the broker can never undo, and
-                # this key is what lets it see the spectrum BEFORE the sum -- as sufficient
-                # statistics (per-PRN-per-channel sums), never per-element streams.
-                "channel_ids": list(freq_ids if freq_ids is not None else chan_idx),
-                "reference_element": args.reference_element,
-                # SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp, STATE 8.21.5). The header
-                # correlation slots carry the calibrated weighted mean over all elements instead of
-                # the bare reference element: same reference-anchored phase convention, same "one
-                # element" scale, per-record SNR up ~sqrt(N_healthy) ~ 5x -- the array gain the
-                # DLL/carrier loops and the combiner's phase tracker all inherit for free. The cal
-                # is bootstrap MRC from the satellite itself; until warm (~3 tau) the output is
-                # byte-identical to reference-element-only.
-                "elem_sum": args.elem_sum,
-                "elem_sum_tau_s": args.elem_sum_tau_s,
-                **elem_shared_keys(args),
-                **elem_proj_keys(args),
-                **cube_assembler_keys(args, cfg, gpu, pre),
-                # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
-                # keys unconditionally changed every production node config by three lines for a
-                # feature that was off, which is exactly the drift that makes "is the deployed
-                # config current?" unanswerable. The cross-channel sum inside this stage is the one
-                # combine step the broker can never undo, so whether it is lossless is a question
-                # only the per-channel phases can answer -- and they are what the sum hides.
-                **(
-                    {
-                        "phi_dump_prn": args.phase_dump_prn,
-                        "phi_dump_records": args.phase_dump_records,
-                        "phi_dump_path": f"/tmp/gnss_phi_{node}_{gpu}{tag}.txt",
-                    }
-                    if args.phase_dump_prn >= 0
-                    else {}
-                ),
-                **(
-                    {
-                        "chan_dump_prn": args.chan_dump_prn,
-                        "chan_dump_decim": args.chan_dump_decim,
-                        # ONE FILE PER CHAIN. Both GPUs' assemblers default to the same path, and they
-                        # interleave: 1.2% of lines came out torn, and worse, BOTH chains label their
-                        # channels 0..6 locally, so a shared file cannot be demultiplexed at all -- grouping
-                        # by utc silently mixes two different combs. Found the hard way 2026-08-07.
-                        "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}a{tag}.txt",
-                    }
-                    if args.chan_dump_prn >= 0
-                    else {}
-                ),
-                "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
-                "cpu_affinity": [core(gpu + 8)],
-            },
-        }
-    )
-
-    # SEARCH FEED -- PRIMARY CHAIN ONLY. Extra chains are dead-reckon seeded: the signals we
-    # add first (E5a/B2a) carry PER-PRN secondaries, which the replica bank's single-sequence
-    # overlay slot cannot hold, so `nh_search` on them is a silent no-op and blind multi-period
-    # acquisition does not exist (docs/CHORD_MULTIBAND.md section 5). Emitting a search feed
-    # for them would ship bytes to an acquire that cannot use them. The primary chain's search
-    # measures the instrumental delay and the clock, which is what the extras are reckoned from.
-    if not chain:
-        blocks.update(
-            {
-                # A SECOND tap on the same voltage buffer, taking ONE element -- the
-                # acquisition search is single-antenna by design, so this is ~57 kB/frame (1.4 MB/s)
-                # rather than the 1.8 MB/frame the tracking tap moves. Shipped as 4+4b bytes and
-                # unpacked on the far side, which is 8x cheaper on the wire than sending floats.
-                f"{pre}srch_buf": {
-                    "kotekan_buffer": "standard",
-                    "metadata_pool": "gnss_pool",
-                    "num_frames": args.buffer_depth,
-                    "frame_size": f"samples_per_data_set * {n_chan} * 1",
-                },
-                f"{pre}srch_tap": {
-                    "kotekan_stage": "GnssChordVoltageTap",
-                    "in_buf": f"host_voltage_buffer_{gpu}",
-                    "out_buf": f"{pre}srch_buf",
-                    "chan_ids": chan_idx,
-                    "n_elements": 1,
-                    "element_offset": elem0 + args.search_element,
-                    "frame_chan_stride": "num_local_freq",
-                    "frame_elem_stride": "num_elements",
-                    "fft_length": cfg["fengine"]["fft_length"],
-                    "cpu_affinity": [core(gpu + 1)],
-                    # ── #8: THE RF MONITOR RIDES THE SEARCH TAP ──────────────────────────────────
-                    # Not a new stage, deliberately. This tap already IS the valve (it drops rather
-                    # than blocks so the GNSS branch can never back-pressure the F-engine ingest),
-                    # already holds the whole frame, and already decodes 4+4b for element_power. A
-                    # second consumer on host_voltage_buffer would add another thing that must mark
-                    # frames empty promptly -- another way to stall the science pipeline -- to read
-                    # bytes this stage is holding anyway.
-                    #
-                    # THE CHANNEL SET IS THE UNION ACROSS CHAINS, which is the whole point: the
-                    # chains span 1176.45 AND 1207.14 MHz, and a band-selective source is only
-                    # diagnosable against a band that is quiet in the SAME sample. The search tap's
-                    # own chan_ids are the primary's covering set alone and would see one band.
-                    **(
-                        {
-                            "band_power_chans": rf_monitor_channels(
-                                cfg, node, gpu, args, freq_ids, chan_idx
-                            ),
-                            "band_power_period_s": args.rf_stats_period_s,
-                            "band_power_hop_stride": args.rf_stats_hop_stride,
-                        }
-                        if args.rf_stats
-                        else {}
+            "cpu_affinity": [core(gpu + 1)],
+            # ── #8: THE RF MONITOR RIDES THE SEARCH TAP ──────────────────────────────────
+            # Not a new stage, deliberately. This tap already IS the valve (it drops rather
+            # than blocks so the GNSS branch can never back-pressure the F-engine ingest),
+            # already holds the whole frame, and already decodes 4+4b for element_power. A
+            # second consumer on host_voltage_buffer would add another thing that must mark
+            # frames empty promptly -- another way to stall the science pipeline -- to read
+            # bytes this stage is holding anyway.
+            #
+            # THE CHANNEL SET IS THE UNION ACROSS CHAINS, which is the whole point: the
+            # chains span 1176.45 AND 1207.14 MHz, and a band-selective source is only
+            # diagnosable against a band that is quiet in the SAME sample. The search tap's
+            # own chan_ids are the primary's covering set alone and would see one band.
+            **(
+                {
+                    "band_power_chans": rf_monitor_channels(
+                        cfg, node, gpu, args, freq_ids, chan_idx
                     ),
-                },
-                f"{pre}srch_send": {
-                    "kotekan_stage": "bufferSend",
-                    "buf": f"{pre}srch_buf",
-                    "server_ip": args.search_host,
-                    "server_port": args.search_port_base + gpu,
-                    # The search must NEVER back-pressure the ingest: acquisition is a bootstrap
-                    # convenience, the science chain is not.
-                    "drop_frames": True,
-                    **send_pacing(
-                        args,
-                        cfg,
-                        cfg.get("samples_per_data_set", 8192),
-                        int(cfg.get("samples_per_data_set", 8192)) * n_chan,
-                    ),
-                    # ⚠️ `retry_time` WAS A DEAD KEY -- bufferSend reads `reconnect_time`, and nothing
-                    # warns about a config key nobody consumes. It happened to be set to the same value
-                    # as the default, so the leg behaved correctly for the wrong reason and would have
-                    # kept doing so through any future edit of the number.
-                    "reconnect_time": 5,
-                    # BOUND THE SENDER'S EXPOSURE TO A WEDGED RECEIVER. Default 20 s: an aggregator that
-                    # accepts the connection and then stops reading parks this stage inside send() for
-                    # that long per frame, and with drop_frames the buffer meanwhile fills and discards
-                    # -- so the cost of a half-dead receiver is paid in silence. 2 s is ~48 frames of
-                    # voltage here; past that the connection is worth abandoning and rebuilding.
-                    "send_timeout": 2,
-                    # PIN THE WIRE FORMAT EXPLICITLY on both ends. bufferSend/bufferRecv default
-                    # use_config_tracker to whether the INSTANCE has a /config_tracker block, and the two
-                    # instances differ: the node inherits one from the production base config, the search
-                    # instance has none. The sender then writes a 3-field header and the receiver reads a
-                    # 2-field one, the stream shifts, and frame_size is read out of the neighbouring
-                    # field -- surfacing as "Frame size does not match between server: 57344 and client:
-                    # 12", where 12 is sizeof(GnssChanMetadata). Nothing about that message points at
-                    # config_tracker, so pin it rather than inherit it.
-                    "use_config_tracker": False,
-                    "cpu_affinity": [core(gpu + 3)],
-                },
-            }
-        )
-
-    blocks.update(
-        {
-            f"{pre}combine": {
-                "kotekan_stage": "GnssCoherentCombiner",
-                # --combine-gpus: GPU 0's combiner takes BOTH streams (the other GPU's rec_buf name
-                # is deterministic, so no cross-branch plumbing is needed) and GPU 1's is dropped
-                # below. Order is GPU-major so the subband layout is stable across regenerations.
-                "in_bufs": (
-                    [rec_buf, f"gnss{1 - gpu}{tag}_rec_buf"]
-                    if (args.combine_gpus and gpu == 0)
-                    else [rec_buf]
-                ),
-                "out_buf": cmb_buf,
-                "n_prn": n_prn,
-                "n_elements": n_elem,
-                "integration_length": args.integration_length,
-                "integration_mode": "rolling",
-                # DEEP COHERENT INTEGRATION, no wipe. The tracker despreads GPS_L5_Q_NH -- the
-                # 204600-chip code with NH20 baked in -- so each record's amplitude already has the
-                # overlay removed, chip by chip, and the deep integration is a straight sum. It
-                # cannot use the wipe rungs: overlay_apply advances the overlay one chip per RECORD,
-                # an identity that holds on airspy (record = one primary period) and fails here
-                # (2048 hops = 10.4857 periods). Without this the combiner has NO route to
-                # coherence_s at all and integrates one 10.5 ms record at a time.
-                "deep_coherent": True,
-                # PHASE-RATE SEARCH before that sum (2026-08-04). Measured on sky: the per-record
-                # prompts carry a linear phase ramp beyond the record-rate Nyquist, so the straight
-                # sum recovered 2-5% of the power while the incoherent moments said +10..15 dB per
-                # record -- every ladder rung read the Rayleigh value. Searching the rate and
-                # derotating recovers 65-80%. Gated on peak/median of the search's own spectrum
-                # (17.9-22.0 on signal, 2.8-6.1 on noise), not a closed-form floor, which mispredicts
-                # it badly because oversampled bins are not independent.
-                "deep_rate_search": True,
-                "deep_rate_min_q": 10.0,
-                # COMMON-PHASE TRACKER before the deep sum (STATE 8.21.5): the batch form of the
-                # carrier loop the airspy closed at 1 kHz. Removes the per-satellite ~0.9 rad
-                # propagation wander that capped every deep at ~11-14 sigma; leave-one-out per
-                # record => fail-closed on noise, and the half-width candidates compete with the
-                # straight sum under the same estimator (the floor pays the selection). Exports
-                # coh_frac -- the chopping-independent coherence measure -- beside deep_snr.
-                "phase_track": args.phase_track,
-                "sky_deep": args.sky_deep,
-                # Hops per record frame: turns the frame metadata's sample_seq into the absolute HOP
-                # index, which is what the seed (ref_hop), the replica generators and the search all
-                # speak. Published as pow_hop so the broker can group EVERY node's E/L powers by an
-                # exact integer match and close ONE code loop at full L5 bandwidth -- a single
-                # instance sees 6.7% of the lobe (docs/CHORD_GNSS_SHARED_DLL.md).
-                "fft_len": cfg["fengine"]["fft_length"],
-                # PER-RECORD EXPORT for the fleet's coherent combine (/get_records). One instance
-                # sees 7 of 106 channels -- 8.8 dB below the fleet -- and per-record SNR is what caps
-                # the coherent span. Summing the per-record complex prompts across instances recovers
-                # it; the window means cannot, the phase noise has already eaten those. Sized to the
-                # deep window (integration_length) so a consumer always has the same records the
-                # local ladder ran on, with a little margin for poll jitter.
-                "record_export": args.integration_length + 28,
-                # PER-RECORD PHASE DUMP, off unless asked for. /get_records gives the complex prompt
-                # but NOT the commanded phase increment or the per-record code phase, and those are
-                # what an investigation into the 0.7 rad deep-fold floor (STATE 8.20.9-8.20.15) needs:
-                # the floor is phase-only, per-satellite and shared across nodes, and every mechanism
-                # guessed at from the harness so far has been wrong, because the harness synthesizes
-                # the sky with the same model it despreads against. This dumps the live per-record
-                # trajectory instead of inferring it. One line per record per listed PRN -- keep the
-                # list short.
-                "phase_dump_prns": args.phase_dump_prns,
-                "phase_dump_path": f"/tmp/gnss_phase_dump_{node}_{gpu}{tag}.txt",
-                "cpu_affinity": [core(gpu + 2)],
-            },
-            f"{pre}record": {
-                "kotekan_stage": "rawFileWrite",
-                "in_buf": cmb_buf,
-                "base_dir": args.record_dir or rt["record_dir"],
-                "file_name": f"{node}_gnss{gpu}{tag}_cmb",
-                "file_ext": "raw",
-                "cpu_affinity": [core(gpu + 4)],
-            },
-        }
-    )
-    # -- --no-path-a: drop the path-A TRACKER, keep the search leg (task #26) -------------
-    # Path A costs 17.712 ms/frame against path B's 2.512 (the numbers in the caller's note),
-    # so on a node running both it is ~7/10 of the GNSS budget -- and once the broker seeds
-    # gnss*_inject instead of gnss*_track, every one of those milliseconds buys nothing.
-    #
-    # ⚠️ WHAT MUST SURVIVE, AND WHY IT IS NOT OBVIOUS: `srch_tap`/`srch_send` are built in
-    # THIS function but are NOT part of path A. They tap `host_voltage_buffer_{gpu}`
-    # directly and ship to the aggregator's search, which is what detects GPS, which is what
-    # solves the receiver clock that every other chain consumes in-process. Deleting this
-    # whole branch would therefore take down all five chains, not one. Path B is unaffected
-    # either way: it reads the voltage RINGBUFFER, never path A's tap.
-    #
-    # Kept available deliberately (KV): path A is the reference every path-B number in
-    # section 11 was judged against, so single-signal debugging still wants it. This is a
-    # flag, not a deletion.
-    if getattr(args, "no_path_a", False) and not chain:
-        for _k in (
-            tap_out,
-            f"{pre}tap",
-            f"{pre}epl_buf",
-            rec_buf,
-            f"{pre}gpu",
-            f"{pre}assemble",
-            f"{pre}combine",
-            f"{pre}record",
-        ):
-            blocks.pop(_k, None)
-
+                    "band_power_period_s": args.rf_stats_period_s,
+                    "band_power_hop_stride": args.rf_stats_hop_stride,
+                }
+                if args.rf_stats
+                else {}
+            ),
+        },
+        f"{pre}srch_send": {
+            "kotekan_stage": "bufferSend",
+            "buf": f"{pre}srch_buf",
+            "server_ip": args.search_host,
+            "server_port": args.search_port_base + gpu,
+            # The search must NEVER back-pressure the ingest: acquisition is a bootstrap
+            # convenience, the science chain is not.
+            "drop_frames": True,
+            **send_pacing(
+                args,
+                cfg,
+                cfg.get("samples_per_data_set", 8192),
+                int(cfg.get("samples_per_data_set", 8192)) * n_chan,
+            ),
+            # ⚠️ `retry_time` WAS A DEAD KEY -- bufferSend reads `reconnect_time`, and nothing
+            # warns about a config key nobody consumes. It happened to be set to the same value
+            # as the default, so the leg behaved correctly for the wrong reason and would have
+            # kept doing so through any future edit of the number.
+            "reconnect_time": 5,
+            # BOUND THE SENDER'S EXPOSURE TO A WEDGED RECEIVER. Default 20 s: an aggregator that
+            # accepts the connection and then stops reading parks this stage inside send() for
+            # that long per frame, and with drop_frames the buffer meanwhile fills and discards
+            # -- so the cost of a half-dead receiver is paid in silence. 2 s is ~48 frames of
+            # voltage here; past that the connection is worth abandoning and rebuilding.
+            "send_timeout": 2,
+            # PIN THE WIRE FORMAT EXPLICITLY on both ends. bufferSend/bufferRecv default
+            # use_config_tracker to whether the INSTANCE has a /config_tracker block, and the two
+            # instances differ: the node inherits one from the production base config, the search
+            # instance has none. The sender then writes a 3-field header and the receiver reads a
+            # 2-field one, the stream shifts, and frame_size is read out of the neighbouring
+            # field -- surfacing as "Frame size does not match between server: 57344 and client:
+            # 12", where 12 is sizeof(GnssChanMetadata). Nothing about that message points at
+            # config_tracker, so pin it rather than inherit it.
+            "use_config_tracker": False,
+            "cpu_affinity": [core(gpu + 3)],
+        },
+    }
     return blocks, record_floats, n_elem
 
 
@@ -1223,9 +810,7 @@ def cube_assembler_keys(args, cfg, gpu, pre):
 
     Everything else GnssGpuRecordAssemble emits has collapsed one of the two axes -- element
     blocks are summed over channels, the comb is summed over elements -- and a beam map needs
-    both at once. One helper for BOTH assembler blocks (path A and path B): a recording
-    feature that exists on one path and not the other is the per-instance trap in a new
-    costume, and the two blocks have already drifted before.
+    both at once.
 
     Emitted only when armed, for the reason the chan-dump block gives: dark keys in every
     production config make "is the deployed config current?" unanswerable.
@@ -1510,11 +1095,10 @@ def send_pacing(args, cfg, spds, frame_bytes, frames_per_fengine_frame=1.0):
 
 
 def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
-    """GNSS path B (--n2-dual): one GPU's cudaGnssInject + cudaCorrelatorDual process.
+    """GNSS path B: one GPU's cudaGnssInject + cudaCorrelatorDual process.
 
-    ONE COMPLETE CHAIN PER SIGNAL, exactly as build_gnss_branch does for path A. `chain` is
-    None for the primary and a parse_extra_signals() entry otherwise; every buffer, GPU array
-    and endpoint is tagged from it.
+    ONE COMPLETE CHAIN PER SIGNAL. `chain` is None for the primary and a parse_extra_signals()
+    entry otherwise; every buffer, GPU array and endpoint is tagged from it.
 
     WHY A FULL PARALLEL CHAIN RATHER THAN SHARED LANES. E5a sits on GPS L5's carrier, so the
     two signals cover the SAME channels, and one correlator could in principle serve both if
@@ -1675,8 +1259,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     ),
                     # TASK #52 A/B ARM -- ⚠️ TEMPORARY, remove with task #55. Emitted on BOTH
                     # producers because cudaGnssChordTrackState (which owns the despread, and
-                    # therefore the arm) is constructed with the COMMAND's unique_name -- so path A
-                    # and path B each need their own copy or one silently keeps the default.
+                    # therefore the arm) is constructed with the COMMAND's unique_name -- so each
+                    # command needs its own copy or it silently keeps the default.
                     "carrier_phase_from_ref": (
                         gpu == 0
                         if args.carrier_phase_from_ref == "ab"
@@ -1693,9 +1277,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                         )
                         else (1 if args.carrier_phase_from_ref != "0" else 0)
                     ),
-                    # fp16 Phi tables (GPU TODO item 3) -- same knob as path A's site above.
+                    # fp16 Phi tables: half the resident table (GnssCudaDespread.hpp).
                     "phi_fp16": bool(args.phi_fp16),
-                    # Item 6 -- same knobs as path A's site above.
+                    # Centered chip-window truncation (GnssCudaDespread.hpp).
                     "despread_max_chips": int(args.despread_max_chips),
                     "despread_chips_centered": bool(args.despread_chips_centered),
                     "voltage_name": "voltage",
@@ -1727,7 +1311,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     "gnss_synth_name": f"{pre}synth",
                     "gnss_ctl_name": f"{pre}n2ctl",
                     "seed_endpoint": f"/{pre}inject/set_seeds",
-                    # LIVE PRN MEMBERSHIP -- see the path-A block above.
+                    # LIVE PRN MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md). GET is a
+                    # diagnostic ("which satellite is slot 7?"); POST is the broker's actuator.
                     "get_prns_endpoint": f"/{pre}inject/get_prns",
                     "set_prns_endpoint": f"/{pre}inject/set_prns",
                     "trim_endpoint": f"/{pre}inject/get_trim",
@@ -1912,8 +1497,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "out_buf": n2rec_buf,
             "prns": prns,
             "n_elements": n_live,
-            # Task #32: sky-frequency labels for /get_spectrum -- see the path-A assemble
-            # block's comment; same list the inject command despreads.
+            # PER-CHANNEL SPECTRUM EXPORT (task #32): the same GLOBAL-bin list the inject
+            # command despreads, so /get_spectrum can label each channel with its sky
+            # frequency. A delay is a phase ramp across frequency, and this key lets the
+            # broker see the spectrum before the cross-channel sum.
             "channel_ids": freq_ids,
             # TASK #53: ADDRESSABLE, HOP-QUANTISED SPECTRUM WINDOWS. The window index is
             # floor(wstart / spectrum_window_samples) on the F-engine sample clock, so every
@@ -1981,11 +1568,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "cpu_affinity": [V["cores"]["assemble"]],
         },
         # PATH B'S OWN COMBINER. Gives the path-B record stream a REST endpoint
-        # (/gnssN_n2combine/get_status, /get_records) so path A and path B can be compared
-        # LIVE on the same node, same sky, same PRNs -- which is the M5 validation and stays
-        # useful afterwards. integration_length is scaled by n_rec because path B emits ONE
-        # record per frame where the tracker emits n_rec, so this keeps the same WALL-CLOCK
-        # deep window rather than the same record count.
+        # (/gnssN_n2combine/get_status, /get_records). integration_length is scaled by n_rec because
+        # path B emits ONE record per frame where the tracker emits n_rec, so this keeps the same
+        # WALL-CLOCK deep window rather than the same record count.
         f"{pre}n2cmb_buf": {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
@@ -2009,8 +1594,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             #
             # The GPU boundary is an artefact of which comb landed on which card. Once
             # fleet_coherent exists it carries no information, and collapsing it only reduces the
-            # instance count -- the one axis that does matter at the margins. Same argument
-            # applies to --combine-gpus on the tracker side; see its help.
+            # instance count -- the one axis that does matter at the margins.
             "in_bufs": [n2rec_buf],
             "out_buf": f"{pre}n2cmb_buf",
             "n_prn": n_prn,
@@ -3592,17 +3176,6 @@ def main():
         "needing the root privileges DPDK's hugepages require. Not runnable.",
     )
     ap.add_argument(
-        "--n2-dual",
-        action="store_true",
-        help="GNSS path B (docs/gnss_gpu_search.md 11): keep run_send_voltage (the "
-        "GPU voltage ring) and add a run-per-GPU cudaProcess with "
-        "cudaGnssInject + cudaCorrelatorDual -- the two-input N^2 whose mixed "
-        "tiles ARE the despread. Seeds: the broker POSTs the SAME payload to "
-        "/gnss<N>_inject/set_seeds (add the endpoints to --dll-combiners' "
-        "tracker list in broker_up.sh). RFI mask is all-pass, which is "
-        "behavior-identical to production (first-stage excision is off there).",
-    )
-    ap.add_argument(
         "--n2-debug",
         action="store_true",
         help="with --n2-dual: INFO logging + log_profiling on both cudaProcess "
@@ -3700,19 +3273,7 @@ def main():
         "\n"
         "Measured on cx19 2026-08-08, 200 frames: cudaCorrelatorDual runs "
         "3.698 ms/frame full versus 0.076 ms mapped, and cudaGnssInject 2.443 "
-        "ms, against cudaGnssChordTrack's 17.771 ms for the path it replaces.",
-    )
-    ap.add_argument(
-        "--no-path-a",
-        action="store_true",
-        help="Do not instantiate the path-A tracker for the PRIMARY chain "
-        "(gnss*_gpu / _assemble / _combine / _record / _tap). Requires the "
-        "broker to seed gnss*_inject and read gnss*_n2combine instead -- see "
-        "config/gnss_chains_chord.yaml, where gps_l5 was switched on "
-        "2026-08-09. The SEARCH leg (srch_tap/srch_send) is built in the same "
-        "function and is KEPT: it feeds the aggregator's detector, which "
-        "solves the clock for every chain. Path A measures 17.712 ms/frame "
-        "vs path B's 2.512, so this is ~7/10 of the GNSS frame budget back.",
+        "ms.",
     )
     ap.add_argument(
         "--keep-n2",
@@ -4429,53 +3990,6 @@ def main():
         "against a 0.121 chips/s drift.",
     )
     ap.add_argument(
-        "--combine-gpus",
-        action="store_true",
-        help="ONE GnssCoherentCombiner over BOTH GPUs' tracker record streams "
-        "instead of one per GPU. The stage is documented for exactly this -- "
-        "'Per-subband tracker record streams', combined coherently, 'one loop "
-        "at full-band SNR instead of N noise-driven per-channel FLLs' -- and "
-        "the two GPUs hold INTERLEAVED stride-16 combs (GPU0 5972,5988,...; "
-        "GPU1 5980,5996,...), so together they are the node's full stride-8 "
-        "comb: 14 channels instead of 7, +3 dB per record. Per-record SNR is "
-        "what currently blocks coherent integration -- carrier_resid_hz is a "
-        "phase fit over the buffered records, so incoherent records give a "
-        "noise fit and the carrier loop has nothing to lock to (STATE 8.12). "
-        "GPU 1's combiner and record stage are dropped; the merged pair is "
-        "written by gnss0_record.\n"
-        "\n"
-        "NOT A SENSITIVITY LEVER ANY MORE, and the rationale above is the "
-        "PRE-fleet_coherent one. Once the broker combines across instances the "
-        "GPU boundary carries no information -- it only records which comb "
-        "landed on which card. Measured on sky 2026-08-07 (path B, identical "
-        "records from cx19/cx42/cx43): 6 instances x 7 channels against 3 x 14, "
-        "median fleet deep_snr ratio 0.997, and the WEAK PRNs did BETTER split "
-        "(5.2 vs 4.0) because more instances give the leave-one-out reference "
-        "and the one-way S/R split more to work with. The synthetic version of "
-        "the same test (scripts/gnss/fleetcoh_partition.py at 31896a862) is "
-        "flat to 2%% from 2x6 down to 12x1.\n"
-        "\n"
-        "So use it for what it still does -- HALVE THE ENDPOINT COUNT the "
-        "broker polls, and give a node one published deep_snr instead of two -- "
-        "and not for SNR. If the fleet is small, prefer leaving it OFF: "
-        "instance count is the one axis the combine is mildly sensitive to, "
-        "and collapsing spends it for nothing.",
-    )
-    ap.add_argument(
-        "--local-trim-gain",
-        type=float,
-        default=0.0,
-        help="cudaGnssChordTrack's IN-TRACKER code-trim gain. 0 (the default since "
-        "2026-08-03) hands the code loop to the broker's fleet DLL "
-        "(--dll-combiners, docs/CHORD_GNSS_SHARED_DLL.md), which sums Early/"
-        "Late POWERS across every instance and so closes at the full 20.46 MHz "
-        "L5 bandwidth instead of the 6.7%% one instance can see. Two loops "
-        "cannot coexist: E/L are measured relative to the phase each instance "
-        "despread at, so independent local trims drift apart and the fleet sum "
-        "smears rather than sharpens. 0.15 restores the stage default for a "
-        "single-node bench or an A/B control.",
-    )
-    ap.add_argument(
         "--record-dir",
         default=None,
         help="override runtime.record_dir from the node file. Needed on any node "
@@ -4637,11 +4151,10 @@ def main():
     # and the generator must still work), hard error when something does -- a mismatch is
     # always a real staleness, never noise.
     # ── THE EPOCH IS THE TELESCOPE'S UNLESS AN OPERATOR OVERRODE IT (2026-08-18) ────────
-    # cudaGnssChordTrack now takes frame0_utc from Telescope::to_time_ns(0) -- the live GPS
-    # time0 the process already fetches -- whenever the config does not carry one. So the
-    # DEFAULT path emits no frame0_utc at all and there is nothing left to go stale: the
-    # class of bug that bit on 2026-07-24 (13.78 days) and again tonight (9.165 days) is
-    # gone rather than guarded.
+    # cudaGnssChordTrackState takes frame0_utc from Telescope::to_time_ns(0) -- the live GPS time0
+    # the process already fetches -- whenever the config does not carry one. So the DEFAULT path
+    # emits no frame0_utc at all and there is nothing left to go stale: the class of bug that bit on
+    # 2026-07-24 (13.78 days) and again tonight (9.165 days) is gone rather than guarded.
     #
     # The checks below therefore only apply when a value IS being emitted, i.e. when the
     # node file still pins one or --frame0-nano was passed. Checking a value nobody uses
@@ -5184,16 +4697,15 @@ def main():
             del out[key]
             dropped.append(key)
         elif not args.keep_n2 and key.startswith(N2_STAGE_PREFIXES):
-            # --n2-dual: run_send_voltage survives (the dual correlator consumes the GPU
-            # voltage ring it feeds); run_n2k itself is still dropped -- cudaCorrelatorDual
-            # replaces it and keeps the N^2 prefix on-GPU.
-            if args.n2_dual and key.startswith("run_send_voltage"):
+            # run_send_voltage survives (the dual correlator consumes the GPU voltage ring it
+            # feeds); run_n2k itself is still dropped -- cudaCorrelatorDual replaces it and
+            # keeps the N^2 prefix on-GPU.
+            if key.startswith("run_send_voltage"):
                 continue
             del out[key]
             dropped.append(key)
         elif (
-            args.n2_dual
-            and not args.n2_primary
+            not args.n2_primary
             and not args.keep_n2
             and key.startswith("host_correlation_buffer")
         ):
@@ -5325,7 +4837,7 @@ def main():
 
     record_floats = None
     for gpu, pairs in sorted(per_gpu.items()):
-        blocks, record_floats, n_elem = build_gnss_branch(
+        blocks, record_floats, n_elem = build_search_leg(
             cfg,
             args.node,
             gpu,
@@ -5333,23 +4845,20 @@ def main():
             args,
             freq_ids=[f for f, _ in pairs],
         )
-        n2dual_chains = []
-        if args.n2_dual:
-            blocks.update(
-                build_n2dual_branch(
-                    cfg,
-                    args.node,
-                    gpu,
-                    [i for _, i in pairs],
-                    [f for f, _ in pairs],
-                    args,
-                    out.get("samples_per_data_set", 8192),
-                )
+        blocks.update(
+            build_n2dual_branch(
+                cfg,
+                args.node,
+                gpu,
+                [i for _, i in pairs],
+                [f for f, _ in pairs],
+                args,
+                out.get("samples_per_data_set", 8192),
             )
-            n2dual_chains.append(dict(chain=None, chan_idx=[i for _, i in pairs]))
-        # EXTRA SIGNAL CHAINS on this GPU. Each is a full tracker branch (GPU process,
-        # assembler, combiner, writer) under its own tag; a chain on the primary's channels
-        # shares the voltage tap, so the marginal cost is GPU + CPU, not ingest.
+        )
+        n2dual_chains = [dict(chain=None, chan_idx=[i for _, i in pairs])]
+        # EXTRA SIGNAL CHAINS on this GPU, each under its own tag. A chain on the primary's
+        # channels shares the voltage ring, so the marginal cost is GPU + CPU, not ingest.
         for ch in extra_chains:
             ch_pairs = (
                 [(f, i) for f, i in pairs]
@@ -5364,41 +4873,20 @@ def main():
                     file=sys.stderr,
                 )
                 continue
-            if args.n2_dual:
-                # PATH B FOR EXTRA SIGNALS, and path A only for the primary. Building both for
-                # every constellation is what runs the node out of frame: a path-A tracker
-                # chain measures 17.712 ms/frame against path B's 2.512 (inject 2.435 +
-                # mapped correlator 0.077), and cx19 already sits at ~51% of the 41.94 ms
-                # frame with one of each. Two constellations on path A would be ~93%.
-                #
-                # The primary keeps its path-A chain deliberately: it is the reference every
-                # path-B number in section 11 has been judged against, and losing it would
-                # mean validating each new signal against nothing.
-                blocks.update(
-                    build_n2dual_branch(
-                        cfg,
-                        args.node,
-                        gpu,
-                        [i for _, i in ch_pairs],
-                        [f for f, _ in ch_pairs],
-                        args,
-                        out.get("samples_per_data_set", 8192),
-                        chain=ch,
-                    )
-                )
-                n2dual_chains.append(dict(chain=ch, chan_idx=[i for _, i in ch_pairs]))
-            else:
-                xb, _, _ = build_gnss_branch(
+            blocks.update(
+                build_n2dual_branch(
                     cfg,
                     args.node,
                     gpu,
                     [i for _, i in ch_pairs],
+                    [f for f, _ in ch_pairs],
                     args,
-                    freq_ids=[f for f, _ in ch_pairs],
+                    out.get("samples_per_data_set", 8192),
                     chain=ch,
                 )
-                blocks.update(xb)
-        if args.n2_dual_merged and n2dual_chains:
+            )
+            n2dual_chains.append(dict(chain=ch, chan_idx=[i for _, i in ch_pairs]))
+        if args.n2_dual_merged:
             merge_n2dual_gpu(
                 blocks,
                 cfg,
@@ -5408,17 +4896,6 @@ def main():
                 n2dual_chains,
                 out.get("samples_per_data_set", 8192),
             )
-
-        if args.combine_gpus and gpu != 0:
-            # GPU 0's combiner consumed this GPU's rec_buf too, so its own combiner would be a
-            # duplicate reader of the same stream -- two stages competing for one buffer, each
-            # seeing half the frames. Drop it and its record stage; the merged output is written
-            # by gnss0_record. The BUFFER stays: gnss1_rec_buf is still produced, just consumed
-            # by the other branch.
-            # NB the path-B combiner is deliberately NOT collapsed alongside this one -- see its
-            # in_bufs note: measured on sky, the collapse is worth 0.997 and costs instances.
-            for k in (f"gnss{gpu}_combine", f"gnss{gpu}_record", f"gnss{gpu}_cmb_buf"):
-                blocks.pop(k, None)
         out.update(blocks)
 
     if getattr(args, "n2_debug", False):
@@ -5431,12 +4908,8 @@ def main():
                 if g in out["run_n2k"]:
                     out["run_n2k"][g]["log_level"] = "INFO"
         for g in (0, 1):
-            for blk in (f"gnss{g}_gpu", f"gnss{g}_n2dual"):
-                if blk in out:
-                    out[blk]["log_profiling"] = True
-            for cm in out.get(f"gnss{g}_gpu", {}).get("commands", []):
-                if cm.get("name") == "cudaGnssChordTrack":
-                    cm["log_kernel_split"] = True
+            if f"gnss{g}_n2dual" in out:
+                out[f"gnss{g}_n2dual"]["log_profiling"] = True
 
     # ⚠️ THE HEADER IS THE PROVENANCE, AND IT MUST BE COMPLETE ENOUGH TO REGENERATE FROM.
     #
