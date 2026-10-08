@@ -15,7 +15,7 @@
  *  absorbs it adaptively, so it is NOT a user knob here.)
  *
  * This header is the CANONICAL preset table. The C++ stages read it directly; the Python broker
- * and run_live.sh parse this same file (as they already do for gnssSignal.hpp) so there is one
+ * parses this same file (as it already does for gnssSignal.hpp) so there is one
  * source of truth in one place. Named presets expand to numbers; an explicit number overrides its
  * preset; "auto" (the default) is a conservative cold bound that the broker's clock-bias estimator
  * narrows live -- so any explicit setting is just an override/seed on the automatic behaviour.
@@ -30,8 +30,8 @@ struct ClockProfile {
     double coherence_s;  ///< coherent-integration ceiling (s) -> integration_length / step
 };
 
-/// Canonical preset table. Keep the columns in sync with the doc block above; run_live.sh /
-/// gps_distributed_broker.py parse THESE literals. "auto"/unknown -> a conservative cold bound.
+/// Canonical preset table. Keep the columns in sync with the doc block above;
+/// gps_distributed_broker.py parses THESE literals. "auto"/unknown -> a conservative cold bound.
 inline ClockProfile clock_profile_preset(const std::string& name) {
     // name       accuracy_ppm  coherence_s
     if (name == "tcxo")     return {2.0,   0.08};  // airspy stock TCXO, free-running

@@ -984,7 +984,7 @@ int main(int argc, char** argv) {
     //     GAL E1C  (4 ms)            20 MSPS, N=10  -> 4000 hops  = 15.6
     //     BDS B1C  (10 ms)           20 MSPS, N=10  -> 10000 hops = 39.1
     //     GPS L2C  (20 ms)            5 MSPS, N=10  -> 5000 hops  = 19.5
-    // So bench the wide front end: config/live_l1_dual20.yaml (run_band.sh l1) = 20 MSPS, N=10,
+    // So bench the wide front end: the airspy dual-L1 config = 20 MSPS, N=10,
     // 1000-hop GPS records -- the LEAST favourable of the deployed set, i.e. a lower bound.
     const double bfs = 20.0e6, bf_off = 5.0e6; // 20 MSPS-mode L1 IF = Fs/4
     const int bN = 10;

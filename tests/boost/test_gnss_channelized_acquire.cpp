@@ -445,7 +445,7 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
 }
 
 // --------------------------------------------------------------------------------------------
-// L2C bug hunt: the channelized live_l2c.yaml detects nothing while the monolithic correlator
+// L2C bug hunt: the channelized airspy L2C config detects nothing while the monolithic correlator
 // gets snr ~133 on the same sky -> an algorithmic bug in the CHANNELIZED path. These two cases
 // drive the REAL gnss::ChannelizedReplicaBank (the time-multiplexed CM/CL combined code) through
 // the REAL gnss::channelized_acquire, at the production geometry (Fs=5 MHz, N=12, f_off=1.25 MHz),
@@ -454,7 +454,7 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
 namespace {
 constexpr double FS_L2C = 5.0e6;   // airspy 5 MSPS real
 constexpr double FOFF_L2C = 1.25e6; // L1/L2 IF = Fs/4
-constexpr int N_L2C = 12;           // live_l2c.yaml spectrum_length
+constexpr int N_L2C = 12;           // the airspy L2C config's spectrum_length
 constexpr int TAPS_L2C = 4;
 } // namespace
 
@@ -496,7 +496,7 @@ BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     BOOST_CHECK_LT(cp_err, 2.0); // within ~1 CM chip
 }
 
-// The live-config failure mode. live_l2c.yaml sets hops_per_record: 4166 (~1 code period). But at
+// The live-config failure mode. The airspy L2C config set hops_per_record: 4166 (~1 code period). But at
 // N=12 / Fs=5 MHz one L2C code period is 100000 samples = 4166.67 hops -- NOT an integer number of
 // hops. The incoherent search slices CONTIGUOUS windows of hops_per_record, so a 4166-hop stride
 // advances the code phase by 99984 mod 100000 = -16 samples each window: the |D|^2 peak walks and
@@ -543,7 +543,7 @@ BOOST_AUTO_TEST_CASE(l2c_incoherent_window_must_span_integer_code_periods) {
     };
 
     const double snr_int = run(Mp);    // 12500 hops = 3 code periods (integer) -> stationary peak
-    const double snr_live = run(4166); // live_l2c.yaml value (~1 period, NON-integer) -> smears
+    const double snr_live = run(4166); // the airspy L2C config's value (~1 period, NON-integer) -> smears
 
     BOOST_TEST_MESSAGE("L2C incoherent snr: integer-period(12500)=" << snr_int << "  live(4166)="
                                                                     << snr_live);
@@ -551,7 +551,7 @@ BOOST_AUTO_TEST_CASE(l2c_incoherent_window_must_span_integer_code_periods) {
     BOOST_CHECK_LT(snr_live, snr_int * 0.5); // non-integer window smears the peak away
 }
 
-// L5 (live_l5.yaml): the wide signal -- 10.23 Mcps at the 20 MSPS front end. At Fs=20 MHz we
+// L5 (the airspy L5 config): the wide signal -- 10.23 Mcps at the 20 MSPS front end. At Fs=20 MHz we
 // capture the central ~10 MHz (carrier +-5 MHz) of L5's ~20 MHz main lobe -- about half, but the
 // ChannelizedReplicaBank band-limits the replica identically (same r2c PFB / Fs), so the despread
 // stays matched and recovers the code phase + Doppler. N=10 -> fft_len 20 | 20000 = 1 code period
@@ -562,7 +562,7 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     BOOST_REQUIRE(sig != nullptr);
     constexpr double FS_L5 = 20.0e6;  // 20 MSPS wide front end (airspy sample_bw 10)
     constexpr double FOFF_L5 = 5.0e6; // = Fs/4
-    constexpr int N_L5 = 10;          // live_l5.yaml spectrum_length
+    constexpr int N_L5 = 10;          // the airspy L5 config's spectrum_length
     gnss::ChannelizedReplicaBank bank(*sig, FS_L5, FOFF_L5, N_L5, 4, dsp::Window::Hamming, {1});
     const int fft_len = 2 * N_L5;            // 20
     const int Mp = bank.repl_period_hops();  // 20000 / gcd(20,20000) = 1000 hops = 1 ms (1 period)

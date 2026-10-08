@@ -3,7 +3,7 @@
 
 WHY THIS FILE EXISTS. The record width is a C++ constant (gnssRecord.hpp) but the frame is
 sized in yaml (`n_prn * record_floats * sizeof_float`), and until 2026-08-07 nothing linked
-the two. RECORD_FLOATS went 24 -> 26 on the CHORD branch and config/gnss_node.yaml kept
+the two. RECORD_FLOATS went 24 -> 26 on the CHORD branch and the airspy generator source kept
 saying 24, so 34 airspy stages FATAL'd at construction on a frame 256 B short per PRN. The
 guard that caught it is good (it prints the number to use), but the drift should not be
 possible in the first place -- so both generators now READ the header instead of restating

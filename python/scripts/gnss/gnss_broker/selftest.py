@@ -106,7 +106,7 @@ check("dr clock: carries its code length",
 # -- signals ------------------------------------------------------------------------------
 # Cross-checks against numbers written by other people in other files. gps_l5 -> 20/0.02 is
 # broker_up.sh's; gal_e5a and bds_b2a -> 100/0.1 are broker_up_extra.sh's; gps_l2c -> 75/1.5
-# is the constant the broker's own CL comment names; gps_l1ca is replay_l1gps_leg.sh's.
+# is the constant the broker's own CL comment names; gps_l1ca is the airspy L1 replay bench's.
 for key, want in (("gps_l5", (1176.45e6, 10.23e6, 10230, 20, 0.02)),
                   ("gal_e5a", (1176.45e6, 10.23e6, 10230, 100, 0.1)),
                   ("bds_b2a", (1176.45e6, 10.23e6, 10230, 100, 0.1)),

@@ -114,8 +114,8 @@ namespace gnss {
 ///
 /// ⚠️ This is ALSO a yaml constant: every record buffer is sized `n_prn * record_floats *
 /// sizeof_float`, and NOTHING reads this header to check that. Bumping it means bumping
-/// `record_floats:` in `config/gnss_node.yaml` (the generator source) and re-running the
-/// generators, plus the hand-maintained bench configs. A config left behind under-sizes the
+/// the configs: the generator reads it through `config/gnss_record_layout.py`, so re-run it, and
+/// fix any hand-written config. A config left behind under-sizes the
 /// frame and the producers write past the end of it -- so the record producers now assert the
 /// frame is big enough at construction (see GnssChannelizedTracker / GnssGpuRecordAssemble /
 /// GnssCoherentCombiner) and die loudly instead of corrupting memory.
@@ -400,8 +400,8 @@ constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>| -- coherent amplitude. Below 
 /// ⚠️ BUT A CONSUMER THAT **INFERS** n_prn FROM frame_size IS WRONG THE MOMENT THIS IS ON.
 /// GnssBeamCube does exactly that (`_n_prn = frame_size / sizeof(float) / IN_RECORD_FLOATS`
 /// when no n_prn is configured), so with a comb appended it would infer too many PRNs and read
-/// the comb as records. It is not instantiated on CHORD today -- only in the airspy
-/// config/live_l5.yaml, where chan_export is off -- so nothing is broken now. If it is ever
+/// the comb as records. It is not instantiated on CHORD; the airspy configs that used it (tag
+/// airspy-prototype-final) had chan_export off. If it is ever
 /// wired to a chain with the comb on, GIVE IT AN EXPLICIT `n_prn`. Checked 2026-08-14 after
 /// claiming, too broadly, that a longer frame was invisible to every consumer.
 ///

@@ -41,7 +41,7 @@ import argparse
 _FROZEN = dict(
 
     # --almanac-epoch-utc0
-    #   the tracker's capture_utc0 (gnss_node.yaml shared value, 1.0): subtracted from combiner
+    #   the tracker's capture_utc0 (the airspy configs' shared value, 1.0): subtracted from combiner
     #   row utc to get the FILE POSITION that advances the --almanac-epoch clock at the data's
     #   own rate.
     almanac_epoch_utc0=1.0,
