@@ -31,10 +31,9 @@ public:
                             kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaGnssChordTrackState();
 
-    /// Broker seed contract, identical to cudaGnssTrack's /set_seeds: a JSON array of
+    /// Broker seed contract (/set_seeds): a JSON array of
     /// {prn, doppler_hz, code_phase_chips, code_phase_rate, doppler_rate_hz_s,
-    ///  carrier_trim_hz, ref_hop}. Deliberately the SAME contract so one broker can drive
-    /// either chain and the airspy tooling works unchanged against a CHORD node.
+    ///  carrier_trim_hz, ref_hop}.
     void set_seeds_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 
     /// POST endpoint: the FLEET controller's code trim (task #51 F2). See the long note on
@@ -335,22 +334,9 @@ public:
  * @class cudaGnssChordTrack
  * @brief Despread N antennas against M references, per record window.
  *
- * ⚠️ RELATIONSHIP TO cudaGnssTrack -- READ BEFORE MERGING GNSS-SIDE WORK.
- *
- * This is a SEPARATE command, not a mode of @ref cudaGnssTrack, by explicit decision. It
- * duplicates part of that stage's role, so the two can drift, and a fix to one may need
- * mirroring in the other. What is shared and what is not:
- *
- *   SHARED (single implementation -- changes propagate for free):
- *     * replica synthesis          cudaGnssReplicaDevice.cuh
- *     * job construction           GnssCudaDespread::build_jobs
- *     * the record schema          gnssRecord.hpp
- *     * the output frame layout    gnssGpuChain.hpp
- *     * the broker seed contract   /set_seeds, same JSON as cudaGnssTrack
- *
- *   DUPLICATED (must be mirrored by hand if changed there):
- *     * per-record seed -> Spec construction and code-phase extrapolation
- *     * the PrnCtl / FrameHdr control block the assembler reads
+ * Shared with the other GPU GNSS commands: replica synthesis (cudaGnssReplicaDevice.cuh), job
+ * construction (GnssCudaDespread::build_jobs), the record schema (gnssRecord.hpp) and the
+ * output frame layout (gnssGpuChain.hpp).
  *
  *   PORTED KNOWINGLY (2026-07-31):
  *     * The DLL CODE TRIM (config `code_trim`) -- but IN-TRACKER, not the broker's version.

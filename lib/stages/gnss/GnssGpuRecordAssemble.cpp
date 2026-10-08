@@ -824,8 +824,7 @@ void GnssGpuRecordAssemble::main_thread() {
         // that far (which is why sparse days flickered and broker-full days "worked"), zeros
         // when few do -- and a zero P_ENERGY makes the combiner treat the record as inactive,
         // so 2-PRN seeding produced structurally-perfect numerically-zero records
-        // (found 2026-07-31, first trim-port test). Airspy configs set n_elements 0 -> 1,
-        // matching cudaGnssTrack's element-free layout.
+        // (found 2026-07-31, first trim-port test).
         const double* energy = (const double*)(in
                                                + off_energy(n_prn, n_chan, n_rows_spec,
                                                             (_n_elements > 0) ? _n_elements : 1));
@@ -1157,15 +1156,14 @@ void GnssGpuRecordAssemble::main_thread() {
                     // grows with anchor age (the OTHER half of the sawtooth, ~(dop_rate*age*t_rec)^2
                     // -- negligible on GPS's 1 ms record, ~1 dB on B1C's 10 ms) never accumulates.
                     //
-                    // ⚠️ THIS BRANCH WAS DEAD CODE ON CHORD UNTIL 2026-08-13. The only producer
-                    // that ever set `reanchored` was cudaGnssTrack (the airspy chain); BOTH
-                    // CHORD producers hardcoded 0 (cudaGnssChordTrack.cpp, cudaGnssInject.cpp),
-                    // so the step below -- 109 to 1127 CYCLES per record at 3.37 days of uptime,
+                    // ⚠️ THIS BRANCH WAS DEAD CODE ON CHORD UNTIL 2026-08-13. Both CHORD producers
+                    // hardcoded `reanchored` = 0 (cudaGnssChordTrack.cpp, cudaGnssInject.cpp), so
+                    // the step below -- 109 to 1127 CYCLES per record at 3.37 days of uptime,
                     // measured on gal_e5a -- went straight into every correlation. With
                     // carrier-gain 0.0 making f_nco zero as well, _phi was identically zero and
-                    // this stage applied NO derotation at all. That is the whole of the
-                    // "per-record common phase is white in time" folklore: it is not the sky,
-                    // it is this subtraction never being performed. See task #52.
+                    // this stage applied NO derotation at all. That is the whole of the "per-record
+                    // common phase is white in time" folklore: it is not the sky, it is this
+                    // subtraction never being performed. See task #52.
                     const double t_pin = (double)wstart / _sample_rate;
                     const double dcyc = (c.reanchored == 3) ? c.dcyc
                                                             : (c.fcar - _fcar_prev[p]) * t_pin;
@@ -1537,8 +1535,8 @@ void GnssGpuRecordAssemble::main_thread() {
                 // the combiner's measured arg(A) reconstructs the received carrier phase,
                 // with the re-pin's replica-phase step cancelling instead of slipping.
                 // phi enters NEGATED: f_ref is physical-signed, the NCO is in the r2c-flipped
-                // internal convention (see GnssChannelizedTracker for the on-sky measurement
-                // that settled this -- a satellite with its trim pinned at the clamp).
+                // internal convention (settled on sky by a satellite with its trim pinned at
+                // the clamp).
                 // (no _phi_fix term any more: the re-pin step is folded into _phi_cyc itself,
                 // which leaves fcar*t_abs - phi_cyc continuous on its own.)
                 const double t_abs_w = (double)wstart / _sample_rate;

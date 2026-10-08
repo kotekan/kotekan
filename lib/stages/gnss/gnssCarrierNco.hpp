@@ -21,10 +21,6 @@ namespace gnss {
  * got a large and essentially arbitrary phase offset. Invisible to |A| -- tracking, q, the DLL
  * and the incoherent C/N0 are all POWER -- and fatal to everything cross-record.
  *
- * ⚠️ THE L1 PATH FIXED THIS ON 2026-07-10 and the CHORD path never got the same treatment;
- * GnssChannelizedTracker.cpp states it outright ("retuning its frequency by df mid-stream
- * rotates the whole phase history by 2*pi*df*t_abs ... the root cause of the L1 deep decay").
- *
  * TRAPEZOIDAL IN f. The Doppler moves linearly between records -- dop_rate is precisely that
  * model -- so averaging the interval's endpoint frequencies integrates it EXACTLY rather than
  * to first order, and a dropped record still integrates correctly across the hole.

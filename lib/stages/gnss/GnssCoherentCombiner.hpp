@@ -28,7 +28,7 @@
  * @class GnssCoherentCombiner
  * @brief The reassembly seam of the distributed-band pipeline.
  *
- * Each @ref GnssChannelizedTracker emits, per PRN per window, the un-normalized
+ * Each tracker emits, per PRN per window, the un-normalized
  * coherent correlation @f$ G_m @f$ and replica energy @f$ E_m @f$ over its channel
  * slice. Because the despread is a sum over channels, both are additive across the
  * channel partition, so this stage forms the full-band matched-filter amplitude
@@ -341,8 +341,8 @@ private:
         /// TABLE SEMANTICS, DECLARED (2026-07-27). This table is RECORD-INDEXED: cell j is the
         /// head chip of record i0+j, and utc0 is that record's START. It is NOT a time-domain
         /// table ("the chip covering time t"), which is what the GPS LNAV tables are (their
-        /// utc0 is a true bit edge). The consumer must not guess: cudaGnssTrack reads
-        /// record_grid tables by record index and time-domain tables by time.
+        /// utc0 is a true bit edge). The consumer must not guess: it reads record_grid
+        /// tables by record index and time-domain tables by time.
         ///
         /// WHY THIS FIELD EXISTS. The 2026-07-26 fix made the record-grid table LOOK
         /// time-domain by publishing utc0 shifted by -(1-bf)*dt, so the consumer's

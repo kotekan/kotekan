@@ -190,7 +190,7 @@ struct Opt {
     int bench_cmd_every = 4;      ///< records between staircase steps (4 = one GPU frame)
     double bench_cmd_max = 3.0;   ///< staircase turnaround (Hz)
     int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
-    int quantize = 0;                ///< 1 = 4+4b like GnssQuantize44, 0 = float (noiseless)
+    int quantize = 0;                ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
     /// THE TRACKER'S PATH, NOT THE FUSED ONE. cudaGnssChordTrack despreads through
     /// enqueue_batch_nm -- launch_waveform materialises the replicas, launch_correlate_nm
     /// correlates them against every antenna of a 4+4b [hop][chan][elem] frame -- while this
@@ -310,7 +310,7 @@ static double wrap(double x, double period) {
     return r;
 }
 
-// 4+4b offset-encoded round trip, as GnssQuantize44 -> GnssChordDequantize does it live.
+// 4+4b offset-encoded round trip, as the F-engine -> GnssChordDequantize does it live.
 // Scaled so the peak lands near full scale; that is what the live AGC targets.
 static void quantize44(std::vector<std::vector<cf>>& ch) {
     double peak = 0.0;

@@ -23,16 +23,15 @@
  * @brief Host tail of the phase-F GPU tracking chain: gnssGpuChain frames -> tracker records.
  *
  * Consumes the cudaProcess output (control block + raw per-channel E/P/L correlations, layout
- * gnssGpuChain.hpp) and performs GnssChannelizedTracker's pass-2: cross-channel summation over
+ * gnssGpuChain.hpp) and performs the tracker's pass-2: cross-channel summation over
  * each PRN's covering mask, the carrier-NCO phase integration + derotation (phase continuity
  * state lives here; the slope f_nco = ctrim + ff rides in the control block), and the
  * gnssRecord.hpp record floats. Emits one rec_buf frame per record window with the window's
- * absolute sample in GnssChanMetadata -- byte-compatible with the CPU tracker's output, so the
- * combiner/broker/viewer are untouched.
+ * absolute sample in GnssChanMetadata, in the record format the combiner, broker and viewer read.
  *
  * @conf in_buf   gnssGpuChain frames from the cudaProcess chain
  * @conf out_buf  tracker record frames (n_prn * record_floats * float)
- * @conf prns     PRN list (must match the cudaGnssTrack command's)
+ * @conf prns     PRN list (must match the tracking command's)
  * @conf sample_rate  (for the NCO dt; default 5e6)
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {

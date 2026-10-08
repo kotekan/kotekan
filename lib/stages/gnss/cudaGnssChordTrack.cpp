@@ -505,7 +505,7 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
 void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                                                  nlohmann::json& request) {
     // Parse first, lock last -- the execute path takes seed_mtx every GPU frame, so holding it
-    // across a parse would stall the tracker directly (the same lesson cudaGnssTrack learned).
+    // across a parse would stall the tracker directly.
     std::vector<std::pair<int, Seed>> upd;
     // prn_mtx is the OUTERMOST lock (see the header): the GPU thread can be rewriting `prns`
     // in apply_prn_swaps while this runs, and resolving a PRN against a half-written map would
@@ -757,7 +757,7 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     // "Time: 0.000 ms", which reads as "the kernel is free" when it actually means "the kernel
     // was never measured". That cost real time on 2026-08-05 chasing a GPU at 100% util whose
     // only instrumented commands were the two copies. record_start_event() is itself a no-op
-    // unless profiling is on, so this is free in production. Matches cudaGnssTrack.cpp:900.
+    // unless profiling is on, so this is free in production.
     record_start_event();
     cudaGnssChordTrackState& S = *st();
     const cudaStream_t stream = device.getStream(cuda_stream_id);
@@ -765,11 +765,9 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
 
     // THE DESPREAD MUST FOLLOW THE FRAME'S H2D COPY. cudaInputData is COPY_IN (stream 0), this
     // command is KERNEL (stream 2) -- see cudaCommand::set_command_type -- so the ONLY thing
-    // ordering the kernel after the upload is this wait. cudaGnssTrack has always done it
-    // (cudaGnssTrack.cpp, "The despread work must follow the frame's H2D copy"); this stage
-    // dropped it with a `(void)pre_events`, which is exactly the drift its own header warns
-    // about, and it went unnoticed because stream 0 is otherwise idle in the GNSS-only configs:
-    // the 1.8 MB tap copy always finished before the kernel launched.
+    // ordering the kernel after the upload is this wait. Without it nothing fails in the
+    // GNSS-only configs, where stream 0 is otherwise idle and the 1.8 MB tap copy always
+    // finishes before the kernel launches.
     //
     // FOUND 2026-08-06: adding production's run_send_voltage (402 MB/frame through the same
     // copy engine) delays the tap's upload past the kernel launch, and the tracker then

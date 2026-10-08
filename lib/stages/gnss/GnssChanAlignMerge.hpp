@@ -42,14 +42,11 @@
  * Output column order is the concatenation of the inputs' channel lists in input order --
  * the search takes an explicit channel_ids list, so no sortedness is assumed anywhere.
  *
- * WHY NOT @ref GnssChannelGather. That stage is the same idea for the airspy distributed
- * band, and it is INDEX-LOCKSTEP: it merges the i-th frame of every input without ever
- * reading sample_seq. On an in-process pipeline with no drops that is sound; behind
- * bufferRecv + drop_frames senders it silently combines DIFFERENT EPOCHS from the first
- * drop anywhere, forever after -- no error, just a noise-only search. It also takes one
- * channel per input where the CHORD feeds are 7-channel blocks. Kept untouched for the
- * airspy chain; this stage exists because the network seam makes alignment the hard
- * requirement, not the transpose.
+ * WHY ALIGN ON sample_seq. A merge that takes the i-th frame of every input is sound on an
+ * in-process pipeline with no drops; behind bufferRecv + drop_frames senders it silently
+ * combines DIFFERENT EPOCHS from the first drop anywhere, forever after -- no error, just a
+ * noise-only search. The network seam makes alignment the hard requirement, not the
+ * transpose.
  *
  * @conf in_bufs     list of cfloat32 [hop][chan_i] buffers (GnssChordDequantize outputs)
  * @conf out_buf     cfloat32 [hop][sum chan_i]

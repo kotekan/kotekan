@@ -43,12 +43,6 @@ struct GnssCudaDespread::Impl {
     /// by a large, essentially arbitrary constant. It is invisible to |A| -- tracking, q, the
     /// DLL and the incoherent C/N0 are all POWER -- and fatal to everything cross-record.
     ///
-    /// ⚠️ THIS IS THE SAME BUG THE L1 PATH FIXED ON 2026-07-10. GnssChannelizedTracker.cpp
-    /// says it plainly: "retuning its frequency by df mid-stream rotates the whole phase
-    /// history by 2*pi*df*t_abs ... this was the root cause of the L1 deep decay". That path
-    /// pins the replica frequency between re-anchors and integrates the correction in an NCO
-    /// (phi += 2*pi*f*dt). The CHORD path never got the same treatment.
-    ///
     /// The cure is to stop asking "what is the phase at absolute sample n0" and start asking
     /// "how much phase has accrued since the last record" -- the lever becomes ONE RECORD
     /// (3.36e7 samples) instead of the uptime, and a frequency update changes the SLOPE
@@ -445,10 +439,7 @@ GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn
     _impl(new Impl(bank, n_prn, (int)chan_ids.size(), n_hops, sample_rate, f_offset, refresh_hz,
                    chan_ids)) {
     // FDMA (GLONASS L1OF/L2OF) IS supported: the Phi cache was already indexed per PRN, so it
-    // only needed the per-PRN carrier passed into the filter and the phasor (see wc_for). A
-    // guard here first caught that this path -- reached INTERNALLY from cudaGnssTrack, which is
-    // why grepping the band config for "GnssCudaDespread" found nothing -- was quietly building
-    // every satellite's filter at the band centre.
+    // only needed the per-PRN carrier passed into the filter and the phasor (see wc_for).
     //
     // ⚠️ `chan_ids`, not (n_chan, chan_offset). CHORD's covering set is a STRIDED comb
     // (5972, 5988, ... 6068), and a contiguous range is what put every replica at DC -- the

@@ -74,33 +74,6 @@ def test_attach_altaz_with_local_tle(tmp_path):
     assert np.isnan(alt[1])  # PRN 7 absent from the TLE set
 
 
-def test_cl_seed_gps_seconds():
-    """GPS continuous seconds = UTC-elapsed-from-epoch + leap offset."""
-    import gps_cl_seed as cs
-    from datetime import timedelta
-    assert cs.gps_seconds(cs.GPS_EPOCH + timedelta(seconds=10)) == pytest.approx(28.0)  # 10 + 18
-
-
-def test_cl_seed_chips(tmp_path):
-    """CL time-assist seed: a phase in [0, CL_LEN) and a GPS-altitude prop delay."""
-    pytest.importorskip("skyfield")
-    import gps_cl_seed as cs
-    from datetime import datetime, timezone
-    from skyfield.api import load, wgs84
-
-    tle_path = str(tmp_path / "gps.tle")
-    open(tle_path, "w").write(SAMPLE_TLE)
-    sats = gb.load_gps_satellites(tle_path)
-    ts = load.timescale()
-    obs = wgs84.latlon(43.66, -79.40, elevation_m=100.0)
-    when = datetime(2020, 1, 2, 12, 0, 0, tzinfo=timezone.utc)  # near the TLE epoch
-
-    seed = cs.cl_seed_chips(sats[11], obs, ts, when)
-    assert 0.0 <= seed < cs.CL_LEN
-    tau = (sats[11] - obs).at(ts.from_datetime(when)).distance().m / cs.C
-    assert 0.04 < tau < 0.12   # ~70 ms for a GPS-altitude orbit
-
-
 def test_visibility_altaz_over(tmp_path):
     """gps_visibility.altaz_over returns finite look angles for a known PRN."""
     pytest.importorskip("skyfield")

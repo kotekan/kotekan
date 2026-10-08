@@ -5,13 +5,9 @@
 #include <stdint.h>
 
 /**
- * Shared frame layout for the GPU tracking chain:
+ * Shared frame layout for the GPU tracking chain, written by cudaGnssChordTrack or (path B)
+ * GnssN2RecordAssemble and read by GnssGpuRecordAssemble.
  *
- *   cudaProcess [ cudaInputData -> cudaGnssTrack -> cudaOutputData ] -> GnssGpuRecordAssemble
- *
- * cudaGnssTrack runs the tracker's pass-1 control on the host (seeds -> commanded cp/carrier,
- * currency translation, quadratic code FF, f_ref fence) and the batched E/P/L despread on the
- * device (one launch per record window, read in place from an internal channel-major ring).
  * Everything the downstream host assembler needs to build tracker records -- the per-record
  * control decisions AND the raw per-channel correlations -- travels in ONE output frame with
  * this layout, so the assembler is stateless w.r.t. seeds (only NCO phase continuity lives

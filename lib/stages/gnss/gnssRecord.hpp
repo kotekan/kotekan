@@ -8,7 +8,7 @@
  * A record is RECORD_FLOATS float32 slots per PRN per window. Two flavours share the size and
  * the header slots (0-2) + UTC (9-10, an aliased double):
  *
- *  TRACKER record (GnssChannelizedTracker -> combiner/BeamCube; one per subband):
+ *  TRACKER record (GnssGpuRecordAssemble -> combiner):
  *    0 PRN   1 Doppler_Hz   2 code_phase_chips
  *      -- SLOT-2 CURRENCY CONTRACT (2026-07-31): slot 2 is the sample-0-anchored code phase
  *         expressed in THE SAME RECORD'S slot-1 carrier: cp_phys(t_rec) = slot2 +
@@ -54,8 +54,7 @@
  *         NEW product: 20*log10(|P| / |RES|) is the achieved peel depth, and it is honest
  *         per-record because the subtracted gain is FEED-FORWARD, i.e. statistically
  *         independent of this record's noise. (A gain fitted IN-window subtracts its own
- *         noise back along R and the residual reads ~0 = infinite depth -- the degeneracy
- *         that makes GnssVoltagePeel's own peel_db unusable.)
+ *         noise back along R and the residual reads ~0 = infinite depth.)
  *         Energies are shared with the prompt (same replica), so none are duplicated.
  *         The HEAD slots are REQUIRED, not decorative: the residual carries the same overlay
  *         sign flip at the code-period boundary, so a blind deep integration of RES cancels
@@ -98,9 +97,8 @@
  *      increment stays small across those too -- which is what makes this possible at all.
  *  0 means "no previous record for this PRN": the arc starts here.
  *
- * The monolithic ground-truth path (GpsReplicaCorrelator + gps_mono_watch.py) keeps its own
- * frozen 11-float layout and does NOT include this header. Python tools parse these constants
- * from this file (the gnssSignal.hpp pattern); keep the literals machine-readable.
+ * Python tools parse these constants from this file (the gnssSignal.hpp pattern); keep the
+ * literals machine-readable.
  */
 
 #include <cstddef> // for size_t -- this header is standalone (parsed by the config generator
@@ -117,8 +115,8 @@ namespace gnss {
 /// the configs: the generator reads it through `config/gnss_record_layout.py`, so re-run it, and
 /// fix any hand-written config. A config left behind under-sizes the
 /// frame and the producers write past the end of it -- so the record producers now assert the
-/// frame is big enough at construction (see GnssChannelizedTracker / GnssGpuRecordAssemble /
-/// GnssCoherentCombiner) and die loudly instead of corrupting memory.
+/// frame is big enough at construction (see GnssGpuRecordAssemble / GnssCoherentCombiner) and
+/// die loudly instead of corrupting memory.
 /// 26 -> 28 on 2026-08-16: @ref REC_ANG0 and @ref REC_PHI_DDOP, the two per-(instance, PRN)
 /// carrier-phase quantities #72 needs and that no external measurement can reach.
 /// 28 -> 29 same day: @ref REC_PHI0, the comb's phase currency -- #72's root cause, made
@@ -397,13 +395,9 @@ constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>| -- coherent amplitude. Below 
 /// un-summed path is proven, and only then does the sum go. GnssCoherentCombiner and
 /// rawFileWrite are in that class and are untouched.
 ///
-/// ⚠️ BUT A CONSUMER THAT **INFERS** n_prn FROM frame_size IS WRONG THE MOMENT THIS IS ON.
-/// GnssBeamCube does exactly that (`_n_prn = frame_size / sizeof(float) / IN_RECORD_FLOATS`
-/// when no n_prn is configured), so with a comb appended it would infer too many PRNs and read
-/// the comb as records. It is not instantiated on CHORD; the airspy configs that used it (tag
-/// airspy-prototype-final) had chan_export off. If it is ever
-/// wired to a chain with the comb on, GIVE IT AN EXPLICIT `n_prn`. Checked 2026-08-14 after
-/// claiming, too broadly, that a longer frame was invisible to every consumer.
+/// ⚠️ BUT A CONSUMER THAT **INFERS** n_prn FROM frame_size IS WRONG THE MOMENT THIS IS ON:
+/// with a comb appended it would infer too many PRNs and read the comb as records. Give such
+/// a consumer an explicit `n_prn`.
 ///
 /// The values are the SAME per-channel quantities the /get_spectrum ring accumulates -- NCO-
 /// derotated and element-combined, i.e. one "element-equivalent" per channel -- but PER RECORD

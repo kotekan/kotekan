@@ -62,11 +62,7 @@ add_library(
     gnss/glonassL2OCCode.cpp
     gnss/gnssOverlay.cpp
     gnss/gnssChannelizedDespread.cpp
-    gnss/GnssSubbandSplit.cpp
-    gnss/GnssQuantize44.cpp
     gnss/GnssCoherentCombiner.cpp
-    gnss/GnssBeamCube.cpp
-    gnss/GnssTrackState.cpp
     # Task #59, the tracker->broker telemetry transport. Deliberately OUTSIDE the FFTW block:
     # the gather half runs on the broker host, which has no F-engine, no GPU and no reason to
     # carry an FFTW dependency, and the pack half must build in the same tree as the trackers.
@@ -175,16 +171,12 @@ if(FFTW_FOUND)
     target_sources(
         kotekan_stages
         PRIVATE fftwEngine.cpp
-                gnss/GpsReplicaCorrelator.cpp
                 pfbPrototype.cpp
                 gnss/gnssBandPlan.cpp
                 gnss/gnssChannelizedAcquire.cpp
                 gnss/gnssChannelizedReplica.cpp
                 gnss/gnssSeedTransport.cpp
-                gnss/GnssChannelizedTracker.cpp
                 gnss/GnssChannelizedSearch.cpp
-                gnss/GnssVoltagePeel.cpp
-                gnss/GnssChannelGather.cpp
                 gnss/GnssChordVoltageTap.cpp
                 gnss/GnssN2RecordAssemble.cpp
                 gnss/GnssChordDequantize.cpp
@@ -283,14 +275,12 @@ if(CUDAToolkit_FOUND)
     message(STATUS "${STAGES_INCLUDES}")
 endif()
 
-# GPU GNSS despread driver: only with CUDA; defines GNSS_CUDA so
-# GnssChannelizedTracker exposes use_cuda. One-way link stages -> kotekan_cuda (kernel only).
+# GPU GNSS stages: only with CUDA; GNSS_CUDA enables the search's device paths.
+# One-way link stages -> kotekan_cuda (kernel only).
 if(USE_CUDA)
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaDespread.cpp)
-    # The cudaProcess tracking command + its host
-    # record assembler. The command lives here (not lib/cuda) because it drives the
-    # GnssCudaDespread driver -- keeps the stages -> kotekan_cuda link one-way.
-    target_sources(kotekan_stages PRIVATE gnss/cudaGnssTrack.cpp gnss/GnssGpuRecordAssemble.cpp)
+    # Host record assembler for the GPU tracking commands.
+    target_sources(kotekan_stages PRIVATE gnss/GnssGpuRecordAssemble.cpp)
     # A2 of docs/gnss_gpu_search.md: the device-resident acquisition search. Needs cuFFT (the
     # despread driver did not -- it generates replicas in closed form and never transforms).
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaAcquire.cpp)

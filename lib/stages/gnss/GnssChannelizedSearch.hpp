@@ -36,8 +36,8 @@
  * correlation) over the snapshot on this subband's owned channels. Because each
  * subband holds only a slice of the carrier's code power it is less sensitive than
  * the full band -- but it only has to find a sat in *some* subband; the broker then
- * seeds every subband's @ref GnssChannelizedTracker at one consensus (code phase,
- * Doppler) so the per-subband despreads recombine coherently to full sensitivity.
+ * seeds every tracker at one consensus (code phase, Doppler) so the per-subband
+ * despreads recombine coherently to full sensitivity.
  *
  * Detections (PRN -> Doppler, code phase, SNR) are published over REST
  * (@c GET unique_name/get_detections) for the broker to poll. Code phase + Doppler

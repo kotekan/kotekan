@@ -28,7 +28,7 @@
  * fragile to serialize when only one field is set -- so this purpose-built
  * metadata is used instead. Trivially (and robustly) serializable.
  *
- * chan_scale rides WITH the frame deliberately: the quantizer (GnssQuantize44) freezes its
+ * chan_scale rides WITH the frame deliberately: the quantizer freezes its
  * per-channel gains once at startup, and a consumer that despreads the bytes must use exactly the
  * gains those bytes were encoded with -- carrying them on every frame makes a stale-gain despread
  * impossible by construction (a quantizer restart re-freezes and the new scales simply arrive
@@ -46,7 +46,7 @@ public:
 
     int64_t sample_seq = -1; ///< absolute sample index of the frame's first hop (-1 = unset)
     /// 4+4b dequantization scales, lsb -> volts, one per frame channel (empty = fp32 frame or
-    /// quantizer warmup). See GnssQuantize44 / gnss44.hpp for the format contract.
+    /// quantizer warmup). See gnss44.hpp for the format contract.
     std::vector<float> chan_scale;
 };
 

@@ -139,8 +139,7 @@ def signal_tag(name):
 
     Names must be distinct across the chains on one node -- every buffer, stage and REST
     endpoint of the chain is derived from it, and kotekan's per-consumer bookkeeping is
-    keyed by stage name (a collision is the `gnss_ring` trap in cudaGnssTrack.cpp:382,
-    which cost a whole BDS chain silently degrading on the first tri-constellation night).
+    keyed by stage name (a collision once left a whole BDS chain silently degrading).
     """
     parts = name.split("_")
     body = parts[1] if len(parts) > 1 else parts[0]
@@ -587,16 +586,13 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None, chain=None)
                  # behaviour) for a single-node bench, or as the control in a before/after.
                  "trim_gain": args.local_trim_gain,
                  "trim_endpoint": f"/{pre}track/get_trim",
-                 # NO reseed_hold_* HERE, AND NO f_ref FENCE AT ALL. This stage is
-                 # cudaGnssChordTrack, NOT cudaGnssTrack: it has no f_ref, no fll_reacq_hz and
-                 # no re-anchor logic. It uses the seed Doppler DIRECTLY as the replica carrier,
-                 # refreshed every window (`ss.doppler_hz = sd.doppler_hz`), with the NCO
-                 # carrying only the trim (`c.f_nco = sd.ctrim_hz`). So on CHORD the SEED IS THE
-                 # REFERENCE, and a jump in the seeded Doppler is a reference jump directly --
-                 # there is no fence to hold it and nothing to tune. That is why the fix that
-                 # worked was --seed-doppler auto (smooth model+bias seed) and why the
-                 # cudaGnssTrack lock-hold, which the config used to set here, did NOTHING:
-                 # those keys were being written into a stage that ignores them (2026-08-04).
+                 # NO reseed_hold_* HERE, AND NO f_ref FENCE AT ALL. cudaGnssChordTrack has no
+                 # f_ref, no fll_reacq_hz and no re-anchor logic. It uses the seed Doppler DIRECTLY
+                 # as the replica carrier, refreshed every window (`ss.doppler_hz = sd.doppler_hz`),
+                 # with the NCO carrying only the trim (`c.f_nco = sd.ctrim_hz`). So on CHORD the
+                 # SEED IS THE REFERENCE, and a jump in the seeded Doppler is a reference jump
+                 # directly -- there is no fence to hold it and nothing to tune. That is why the fix
+                 # that worked was --seed-doppler auto (smooth model+bias seed).
                  # GPS-disciplined UTC of absolute sample 0 -- without it the assembler
                  # stamps records with HOST wall clock (see cudaGnssChordTrack.cpp).
                  **({"frame0_utc": float(cfg["fengine"]["frame0_utc"])}

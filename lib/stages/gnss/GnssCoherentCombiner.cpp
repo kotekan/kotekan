@@ -486,13 +486,12 @@ void GnssCoherentCombiner::main_thread() {
             _ingest_unix = wall;
         }
 
-        // ABSOLUTE HOP INDEX of this record's window, from the frame metadata the record
-        // producer already stamps (GnssGpuRecordAssemble / GnssChannelizedTracker set
-        // sample_seq = window_start). This is the fleet DLL's grouping key: every node's
-        // sample_seq descends from the same F-engine fpga_seq_num, so equal hop IS the same sky
-        // -- an integer match, where the record's capture UTC would need a tolerance. Read here
-        // because the frames are released a few lines below. Input 0 only: the realign loop
-        // above has already put every input on the same window.
+        // ABSOLUTE HOP INDEX of this record's window, from the frame metadata the record producer
+        // already stamps (GnssGpuRecordAssemble sets sample_seq = window_start). This is the fleet
+        // DLL's grouping key: every node's sample_seq descends from the same F-engine fpga_seq_num,
+        // so equal hop IS the same sky -- an integer match, where the record's capture UTC would
+        // need a tolerance. Read here because the frames are released a few lines below. Input 0
+        // only: the realign loop above has already put every input on the same window.
         // THIS record's hop, kept alive past the block below: win_hop labels the emitted WINDOW
         // (newest record when rolling, first when blocking), while the per-record export needs
         // the hop of the record actually being buffered -- the same number only in rolling mode.
