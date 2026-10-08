@@ -30,7 +30,7 @@ prefix_host_rank: true
 {% include "include/frb_chord.j2" %}
 
 # DTV pilot detector. Requires calibrated weights for each local pilot channel.
-# See include/dtv_chord.j2 and docs/sphinx/dev/dev_pilotproxy_testing.rst.
+# See include/dtv_chord.j2 and docs/sphinx/user/modules/pilotproxy.rst.
 {% if dtv_enabled|default(false) or dtv_apply_mask|default(false) %}
 {% include "include/dtv_chord.j2" %}
 {% endif %}
