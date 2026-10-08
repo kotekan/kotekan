@@ -79,7 +79,7 @@ run_dtv_detector:
 {% if dtv_apply_mask|default(false) %}
 host_dtv_RFImask_buffer:
     kotekan_buffer: ndarray
-    num_frames: buffer_depth
+    num_frames: 4 * buffer_depth # as deep as host_rfi_RFImask_buffer, which it replaces
     value_type: uint1x8
     extents: [num_times / 1024, num_frequencies, 128]
     quantity_name: "RFImask"
