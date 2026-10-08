@@ -56,11 +56,6 @@ SUFFIXES = (
 CHAIN_RE = re.compile(r"^gnss([01])_(e5a_|e5b_|b2a_|b2b_)?(.+)$")
 # Per-GPU, NOT per-chain: one voltage tap per GPU feeds acquisition for every signal on it.
 SEARCH_SUFFIXES = ("srch_tap", "srch_buf", "srch_send")
-# ⚠️ ORPHANS, deliberately NOT rendered: gnss{0,1}_cmb_buf are defined in every deployed
-# node config and referenced by NOTHING (checked against every string in the config).
-# Templating them would launder dead config into the new structure; they are reported
-# instead, for the generator to stop emitting.
-ORPHANS = ("cmb_buf",)
 
 
 def extract(cfg, node):
@@ -156,8 +151,6 @@ def extract(cfg, node):
         "hops_per_record": inj0["hops_per_record"],
         "num_synth": inj0["num_synth"],
         "trim_ttl_s": inj0["trim_ttl_s"],
-        "carrier_phase_from_ref": str(inj0["carrier_phase_from_ref"]).lower(),
-        "carrier_phase_mode": inj0["carrier_phase_mode"],
         "n_live_elements": corr0["num_live_elements"],
         "num_elements": cfg[pre0 + "n2assemble_tiles"]["num_elements"],
         "reference_element": asm0["reference_element"],
@@ -288,9 +281,6 @@ def main():
         or re.match(r"^gnss[01]_(%s)$" % "|".join(SEARCH_SUFFIXES), k)
         or k == "gnss_pool"
     }
-    orphans = sorted(
-        k for k in cfg if re.match(r"^gnss[01]_(%s)$" % "|".join(ORPHANS), k)
-    )
 
     missing = sorted(set(want) - set(got))
     extra = sorted(set(got) - set(want))
@@ -302,11 +292,6 @@ def main():
             bad.append((k, diff, {f: (wf.get(f), gf.get(f)) for f in diff[:3]}))
 
     print("node %s: %d GNSS blocks expected, %d rendered" % (node, len(want), len(got)))
-    if orphans:
-        print(
-            "  NOT RENDERED (orphans in the generator's output, nothing references "
-            "them): %s" % ", ".join(orphans)
-        )
     if missing:
         print("  MISSING from the template : %s" % ", ".join(missing[:8]))
     if extra:

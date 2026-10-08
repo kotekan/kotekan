@@ -65,8 +65,6 @@
     n_elements: 1
     num_synth: {{ gnss.num_synth }}
     conjugate: true
-    carrier_phase_from_ref: {{ gnss.carrier_phase_from_ref }}
-    carrier_phase_mode: {{ gnss.carrier_phase_mode }}
     phi_fp16: {{ gnss.phi_fp16 | default(false) }}
     despread_max_chips: {{ gnss.despread_max_chips | default(0) }}
     despread_chips_centered: {{ gnss.despread_chips_centered | default(false) }}
@@ -148,8 +146,6 @@
   deep_rate_min_q: {{ gnss.deep_rate_min_q }}
   sky_deep: {{ gnss.sky_deep }}
   phase_track: false
-  phase_dump_prns: []
-  phase_dump_path: /tmp/gnss_n2phase_{{ gnss.node }}_{{ g.gpu }}.txt
 
 {{ pre }}_n2sink:
   kotekan_stage: rawFileWrite

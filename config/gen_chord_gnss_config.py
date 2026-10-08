@@ -441,14 +441,6 @@ def build_search_leg(cfg, node, gpu, chan_idx, args, freq_ids=None):
 
     record_floats = record_stride(n_elem)
     blocks = {
-        # Nothing reads this buffer since path A was removed. It stays until the next planned
-        # node-config change so the generated configs do not change under running nodes.
-        f"{pre}cmb_buf": {
-            "kotekan_buffer": "standard",
-            "metadata_pool": "gnss_pool",
-            "num_frames": args.buffer_depth,
-            "frame_size": f"{len(args.prns)} * {record_floats} * sizeof_float32",
-        },
         # A SECOND tap on the same voltage buffer, taking ONE element -- the
         # acquisition search is single-antenna by design, so this is ~57 kB/frame (1.4 MB/s)
         # rather than the 1.8 MB/frame of all 32 elements. Shipped as 4+4b bytes and
@@ -693,8 +685,6 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         ("hops_per_record", inj0["hops_per_record"]),
         ("num_synth", inj0["num_synth"]),
         ("trim_ttl_s", inj0["trim_ttl_s"]),
-        ("carrier_phase_from_ref", str(inj0["carrier_phase_from_ref"]).lower()),
-        ("carrier_phase_mode", inj0["carrier_phase_mode"]),
         ("phi_fp16", str(inj0["phi_fp16"]).lower()),
         ("despread_max_chips", inj0["despread_max_chips"]),
         ("despread_chips_centered", str(inj0["despread_chips_centered"]).lower()),
@@ -1246,10 +1236,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # synchronization story (no ring semantics on gnss_synth).
                 {
                     "name": "cudaGnssInject",
-                    # Read by nothing since the carrier-phase A/B arm was removed; kept so
-                    # running nodes see no config change until the next planned one.
-                    "carrier_phase_from_ref": True,
-                    "carrier_phase_mode": 1,
                     # fp16 Phi tables: half the resident table (GnssCudaDespread.hpp).
                     "phi_fp16": bool(args.phi_fp16),
                     # Centered chip-window truncation (GnssCudaDespread.hpp).
@@ -1554,10 +1540,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "sky_deep": args.sky_deep,
             "fft_len": cfg["fengine"]["fft_length"],
             "record_export": 128,
-            # Read by nothing since the combiner's phase dump was removed; kept so running
-            # nodes see no config change until the next planned one.
-            "phase_dump_prns": [],
-            "phase_dump_path": f"/tmp/gnss_n2phase_{node}_{gpu}.txt",
             "cpu_affinity": [V["cores"]["combine"]],
         },
         f"{pre}n2sink": (
