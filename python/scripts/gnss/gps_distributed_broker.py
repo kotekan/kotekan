@@ -129,7 +129,11 @@ from gnss_broker.seed import Seed  # noqa: E402  (task #83)
 from gnss_broker.admission import AdmissionGate, reseed_step  # noqa: E402  (#90/#50)
 from gnss_broker.handover import TrimHandover  # noqa: E402  (task #92)
 from gnss_broker.rampfit import RampTracker  # noqa: E402  (task #93 shadow)
-from gnss_broker.cli import build_parser, _FROZEN  # noqa: E402  (task #89 flag surface)
+from gnss_broker.cli import (
+    build_parser,
+    _FROZEN,
+    SIGNAL_IMPLIED,
+)  # noqa: E402  (task #89 flag surface)
 from gnss_broker.context import ChainContext  # noqa: E402  (the stage interface)
 from gnss_broker.clockbias import ClockBias  # noqa: E402  (the receiver LO bias)
 from gnss_broker.loopstate import (  # noqa: E402
@@ -324,6 +328,7 @@ def main(argv=None, rx=None, publisher=None):
         }
         if _sig.min_prn is not None:
             _implied["dr_min_prn"] = _sig.min_prn
+        assert _implied.keys() <= SIGNAL_IMPLIED, _implied.keys() - SIGNAL_IMPLIED
         for _dest, _want in _implied.items():
             _flag = "--" + _dest.replace("_", "-")
             _given = any(a == _flag or a.startswith(_flag + "=") for a in _raw_argv)

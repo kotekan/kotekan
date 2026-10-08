@@ -878,6 +878,23 @@ _FROZEN = dict(
 )
 # ── end frozen tuning ────────────────────────────────────────────────────────────────────
 
+# The names --signal sets after the parse (gps_distributed_broker.main). It would overwrite a
+# frozen value silently, so none of these may ever be frozen.
+SIGNAL_IMPLIED = frozenset(
+    (
+        "carrier_hz",
+        "chip_rate_hz",
+        "code_length",
+        "long_code_segments",
+        "long_code_epoch_s",
+        "nh_overlay_len",
+        "constellation",
+        "dr_constellation",
+        "dr_min_prn",
+    )
+)
+assert not SIGNAL_IMPLIED & _FROZEN.keys(), SIGNAL_IMPLIED & _FROZEN.keys()
+
 
 def build_parser(description):
     """The broker's argument parser. `description` is the BROKER module's docstring."""
