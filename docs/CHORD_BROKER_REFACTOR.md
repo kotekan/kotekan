@@ -231,10 +231,8 @@ Transcripts to capture (all offline-capable, none needs the F-engine):
    adoption. Capturable now against the current (dark) fleet.
 3. **`e2e_broker.py`** — synthetic detections with known truth, `--passes 5` so `cp_hist`
    and `fit_cp_rate` actually run. The only transcript that exercises phase 5's rate fit.
-4. **The CM/CL sibling chain** (`--cl-tracker`, `--cl-autoseg`) — used by
-   `config/run_live.sh`. ⚠️ NOT by `replay_bench_leg.sh`, which runs GPS L1 C/A + BeiDou
-   B1C and no CL; and the airspy replay benches cannot run on CHORD hardware at all
-   (`/home/lwlab/...`, `build_cuda/`, `/tmp/gpsin*` — none present). Checked 2026-08-08.
+4. **The CM/CL sibling chain** (`--cl-tracker`, `--cl-autoseg`) — set only by the airspy
+   prototype's `config/run_live.sh`, removed 2026-10-08 (tag `airspy-prototype-final`).
 
 ⚠️ **A transcript captured against a dead fleet proves less than it appears to.** Before
 trusting one, confirm its POST stream is non-trivial: distinct PRNs, changing
@@ -345,8 +343,9 @@ panel takes the lot. Then retire the second viewer instance.
 
 ### M7 — the flag audit
 Only now, and separately. Census the 175 flags against every live caller
-(`broker_up.sh`, `broker_up_extra.sh`, `config/replay_*.sh`, `run_live.sh`,
-`run_trim_bench.sh`, `e2e_broker.py`, `peel_bench_broker.py`). Retire what nothing sets and
+(`broker_up.sh`, `broker_up_extra.sh`, `e2e_broker.py`, `peel_bench_broker.py`; the airspy
+launchers `config/replay_*.sh`, `run_live.sh` and `run_trim_bench.sh` were removed 2026-10-08,
+tag `airspy-prototype-final`). Retire what nothing sets and
 what the file already documents as falsified. **Keep every scar comment** — the deleted
 mechanisms are documented precisely so nobody rebuilds them (`--trim-precomp`, ALIAS ESCAPE
 v1/v2, the CL k-scan's falsified segment mode). Delete code, keep history.

@@ -105,14 +105,8 @@ three are cheap the moment their chain is running:
   Reaching fewer knobs than the L5 capture is correct, not a defect — a chain with no
   detections runs no DLL and no code-bias pool. It is the *only* fixture that covers the
   model-primary spine, which is exactly where #28's cold-start defect lived.
-* **The CM/CL sibling chain** — `--cl-tracker`, which is used by `config/run_live.sh`
-  (NOT by `replay_bench_leg.sh`; that runs GPS L1 C/A + BeiDou B1C and no CL at all).
-
-⚠️ **The airspy replay benches cannot run on CHORD hardware.** `config/replay_bench_leg.sh`,
-`replay_l1gps_leg.sh` and `replay_l1bds_leg.sh` came in with the prototype merge and still
-point at `/home/lwlab/airspy_gps/kotekan`, `build_cuda/kotekan/kotekan` and raw captures
-under `/tmp/gpsin*` — none of which exist here. Same trap as `airspy_docs/buglist.md`:
-prototype artifacts sitting in this tree that look like CHORD ones. Checked 2026-08-08.
+* **The CM/CL sibling chain** — `--cl-tracker`. Its only launcher was the airspy
+  prototype's `config/run_live.sh`, removed 2026-10-08 (tag `airspy-prototype-final`).
 
 ### What the e2e harness gives, and what it does not
 
