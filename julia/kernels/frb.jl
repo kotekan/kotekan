@@ -132,8 +132,9 @@ end
 const Ttilde = 4 * 256
 
 # The beamforming weights are recalculated periodically, and handed to the GPU through a ring
-# buffer holding this many of them (the Kotekan buffer depth). How many FPGA samples one set of
-# weights covers is a run-time setting, `frb1_phase_lifetime_in_samples`.
+# buffer holding this many of them. This is `buffer_depth` in the configs and `ring_buffer_frames`
+# in `frb_template.cxx`; nothing ties them together. How many FPGA samples one set of weights
+# covers is a run-time setting, `frb1_phase_lifetime_in_samples`.
 const TW = 4
 
 # I = 1/(2 · P · M·N · Tds) · Σ_t Σ_pol |Ẽ|²

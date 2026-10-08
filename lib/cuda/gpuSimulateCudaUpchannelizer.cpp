@@ -147,9 +147,9 @@ private:
     const int _num_taps;
     const int _max_upchannelization_factor;
     /// Output time offset relative to the input, in input samples
-    std::ptrdiff_t _T_offset;
+    const std::ptrdiff_t _T_offset;
     /// Number of input samples we skip at startup
-    std::ptrdiff_t _T_skip;
+    const std::ptrdiff_t _T_skip;
     const int _granularity;
     const int _max_times_per_iteration;
     const int _Fmin;
@@ -190,7 +190,8 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
     _upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
     _num_taps(config.get_default<int>(unique_name, "num_taps", kotekan::upchan_default_num_taps)),
     _max_upchannelization_factor(config.get<int>(unique_name, "max_upchannelization_factor")),
-    _T_offset(-1), _T_skip(-1),
+    _T_offset(std::ptrdiff_t(_num_taps - 1) * _max_upchannelization_factor / 2),
+    _T_skip(_T_offset - std::ptrdiff_t(_num_taps - 1) * _upchannelization_factor / 2),
     _granularity(config.get_default<int>(unique_name, "granularity_number_of_timesamples", 256)),
     _max_times_per_iteration(config.get_default<int>(unique_name, "max_times_per_iteration", 0)),
     _Fmin(config.get<int>(unique_name, "Fmin")), _Fmax(config.get<int>(unique_name, "Fmax")),
@@ -227,8 +228,6 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
         FATAL_ERROR("Upchannelization factor {:d} with {:d} taps: max_upchannelization_factor={:d} "
                     "must not be smaller, and (taps-1)*U must be even for both",
                     _upchannelization_factor, _num_taps, _max_upchannelization_factor);
-    _T_offset = std::ptrdiff_t(_num_taps - 1) * _max_upchannelization_factor / 2;
-    _T_skip = _T_offset - std::ptrdiff_t(_num_taps - 1) * _upchannelization_factor / 2;
     // The ring bookkeeping subtracts a whole number of output samples as overlap.
     if (_granularity % _upchannelization_factor != 0)
         FATAL_ERROR("granularity_number_of_timesamples ({:d}) must be a multiple of the "

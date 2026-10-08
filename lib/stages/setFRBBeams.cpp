@@ -262,6 +262,12 @@ void setFRBBeams::main_thread() {
     if (!metadata_source_meta->has_fpga_seq_num())
         FATAL_ERROR("metadata_source {:s} has no fpga_seq_num, needed for setting clock.",
                     metadata_source->buffer_name);
+    // `output_offset` counts FPGA samples; see `upchan_output_offset`
+    if (!metadata_source_meta->has_time_downsampling_fpga()
+        || metadata_source_meta->get_time_downsampling_fpga() != 1)
+        FATAL_ERROR("metadata_source {:s} must hold voltages with time_downsampling_fpga 1, where "
+                    "the FRB1 output offset is defined",
+                    metadata_source->buffer_name);
 
     // Grab the seq num
     const uint64_t input_seq = metadata_source_meta->get_fpga_seq_num();

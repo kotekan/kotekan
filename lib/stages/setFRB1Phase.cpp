@@ -12,18 +12,19 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
-#include <algorithm>  // for copy
-#include <cassert>    // for assert
-#include <cmath>      // for sqrt
-#include <complex>    // for complex
-#include <cstddef>    // for ptrdiff_t
-#include <cstdint>    // for int64_t
-#include <functional> // for function
-#include <limits>     // for numeric_limits
-#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
-#include <optional>   // for optional
-#include <string>     // for basic_string, string
-#include <vector>     // for vector
+#include <algorithm>   // for copy
+#include <cassert>     // for assert
+#include <cmath>       // for sqrt
+#include <complex>     // for complex
+#include <cstddef>     // for ptrdiff_t
+#include <cstdint>     // for int64_t
+#include <functional>  // for function
+#include <limits>      // for numeric_limits
+#include <memory>      // for allocator, __shared_ptr_access, shared_ptr
+#include <optional>    // for optional
+#include <string>      // for basic_string, string
+#include <type_traits> // for invoke_result_t
+#include <vector>      // for vector
 
 /**
  * @class setFRB1Phase
@@ -74,6 +75,10 @@ class setFRB1Phase : public kotekan::Stage {
     // The FRB1 kernels normalize the weights themselves, so this should be about 1
     const float frb1_input_scale = config.get_default<double>(unique_name, "frb1_input_scale", 1);
 
+    // The type of `time_downsampling_fpga` in the metadata
+    using time_downsampling_t =
+        std::invoke_result_t<decltype(&chordMetadata::get_time_downsampling_fpga), chordMetadata>;
+
     // Each set of weights is valid for this many FPGA samples. It is the cadence at which this
     // stage produces frames, and the `dimscaling` of the weights' leading time axis.
     const std::int64_t frb1_phase_lifetime_in_samples =
@@ -99,10 +104,10 @@ public:
         assert(upchan_max_channel >= upchan_min_channel);
         assert(upchan_num_channels <= upchan_max_num_channels);
         assert(frb1_phase_buffer);
-        // `time_downsampling_fpga` is an `int`
         if (frb1_phase_lifetime_in_samples <= 0
-            || frb1_phase_lifetime_in_samples > std::numeric_limits<int>::max())
-            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be positive and fit into an int",
+            || frb1_phase_lifetime_in_samples > std::numeric_limits<time_downsampling_t>::max())
+            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be positive and fit into "
+                        "time_downsampling_fpga",
                         frb1_phase_lifetime_in_samples);
         if (metadata_sources.empty())
             FATAL_ERROR("metadata_source must name at least one buffer");
@@ -211,7 +216,8 @@ public:
             frb1_phase_meta->set_from_frame_desc(frame_desc);
             frb1_phase_meta->set_fpga_seq_num(*seq0 + output_offset
                                               + frame_index * frb1_phase_lifetime_in_samples);
-            frb1_phase_meta->set_time_downsampling_fpga(int(frb1_phase_lifetime_in_samples));
+            frb1_phase_meta->set_time_downsampling_fpga(
+                time_downsampling_t(frb1_phase_lifetime_in_samples));
             frb1_phase_meta->set_coarse_freq(coarse_freq);
             frb1_phase_meta->set_freq_upchan_factor(freq_upchan_factor);
             frb1_phase_meta->set_freq_upchan_index(freq_upchan_index);
@@ -243,6 +249,11 @@ private:
                             "weight sequence numbers",
                             metadata_source->buffer_name);
             const std::int64_t source_seq0 = meta->get_fpga_seq_num();
+            // `output_offset` counts FPGA samples; see `upchan_output_offset`
+            if (!meta->has_time_downsampling_fpga() || meta->get_time_downsampling_fpga() != 1)
+                FATAL_ERROR("metadata_source {:s} must hold voltages with time_downsampling_fpga "
+                            "1, where the FRB1 output offset is defined",
+                            metadata_source->buffer_name);
             if (seq0 && source_seq0 != *seq0)
                 FATAL_ERROR("The metadata sources disagree on the first FPGA sequence number: "
                             "{:s} starts at {:d}, {:s} at {:d}",
