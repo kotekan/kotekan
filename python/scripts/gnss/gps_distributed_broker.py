@@ -383,37 +383,10 @@ def main(argv=None, rx=None, publisher=None):
     # cycle does, and so a recording captures it explicitly rather than by whichever
     # _now() happened to land first.
     _TR.tick()
-    # --almanac-epoch is a CLOCK OFFSET, not a frozen instant. The broker "lives in the
-    # capture's time frame": every prediction site evaluates at now() + _alm_clock_offset, so
-    # the sky ADVANCES as the replayed file plays, exactly as it did during the capture.
-    # ⚠️ The first implementation evaluated the almanac at the fixed epoch forever. Measured
-    # on the L5 replay bench (2026-07-27): PRN20 locked beautifully for the first ~15 s
-    # (resid +1.6 Hz) while the prediction still matched the file, then the seeds -- refreshed
-    # every cycle from a prediction that never moved while the data did (~1 Hz/s at L5) --
-    # PULLED THE TRACKER OFF the satellite: amplitude collapsed to the noise floor, NH phase
-    # flapped randomly, residuals swung +-95 Hz. Worse than no assist: a stale assist is an
-    # active tug toward where the satellite used to be.
-    # Assumes the replay paces ~realtime (rawFileRead frame_period_us); pacing error over a
-    # few-minute bench is <<1 s, i.e. <1 Hz of Doppler.
-    _alm_clock_offset = (args.almanac_epoch - _now()) if args.almanac_epoch else 0.0
-    # FILE-POSITION clock (fills in once combiner status flows): wall-rate advance assumes the
-    # replay paces at exactly 1.0x, and it does NOT -- measured 0.80x (frame_period_us plus
-    # per-frame file-open overhead), so a wall-advancing epoch runs AHEAD of the data by 0.2 s
-    # per second, i.e. dop_rate x 0.2t Hz of per-satellite seed error, growing without bound.
-    # The combiner's rows carry the CAPTURE-CLOCK utc (capture_utc0 + samples/fs): utc minus
-    # capture_utc0 is the exact file position at any pacing. One cycle stale (~interval) ->
-    # sub-second epoch error -> <1 Hz. Falls back to wall-advance until the first status row.
-    _alm_file_pos = [None]
 
     def _alm_now():
-        """The time the ALMANAC thinks it is: wall clock in live runs; under --almanac-epoch,
-        capture epoch + FILE POSITION (from the combiner's capture-clock utc) when available,
-        else capture epoch + wall elapsed."""
-        if args.almanac_epoch and _alm_file_pos[0] is not None:
-            return datetime.fromtimestamp(
-                args.almanac_epoch + _alm_file_pos[0], tz=timezone.utc
-            )
-        return datetime.fromtimestamp(_now() + _alm_clock_offset, tz=timezone.utc)
+        """The time the almanac evaluates at: the wall clock (the transcript's, in a replay)."""
+        return datetime.fromtimestamp(_now(), tz=timezone.utc)
 
     # ---- RECEIVER SCOPE (task #27 M3) --------------------------------------------------
     # What every chain on this telescope shares: the F-engine time anchor, the BRDC store,
@@ -2275,10 +2248,6 @@ def main(argv=None, rx=None, publisher=None):
         )
         try:
             _ctx.status = {int(r["prn"]): r for r in _get("%s/get_status" % combiner)}
-            if args.almanac_epoch:
-                _u = [float(r["utc"]) for r in _ctx.status.values() if r.get("utc")]
-                if _u:
-                    _alm_file_pos[0] = max(_u) - args.almanac_epoch_utc0
             # #83 THE AXIS FIX: capture the newest F-engine hop AT FETCH TIME. The pair
             # (hop, wall-at-fetch) lets the dr block build its "now" on the F-engine axis
             # with wall entering only as the elapsed-since-fetch difference.

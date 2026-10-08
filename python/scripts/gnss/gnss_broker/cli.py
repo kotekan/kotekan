@@ -39,11 +39,6 @@ import argparse
 #
 # The help text each one carried is kept verbatim: it is incident history, not documentation.
 _FROZEN = dict(
-    # --almanac-epoch-utc0
-    #   the tracker's capture_utc0 (the airspy configs' shared value, 1.0): subtracted from combiner
-    #   row utc to get the FILE POSITION that advances the --almanac-epoch clock at the data's
-    #   own rate.
-    almanac_epoch_utc0=1.0,
     # --bias-alpha
     #   EMA weight for the clock-freq bias (smaller = steadier seed Doppler; ~0.05 =>
     #   few-second time constant, dithers out the 500 Hz grid)
@@ -3296,16 +3291,6 @@ def build_parser(description):
         "rate -- stale-age x dop_rate reads as a fake, GROWING clock bias "
         "that the seeds then chase (measured: a ~90 s-stale detection walked "
         "the bias +4 -> +68 Hz and dragged a 55-sigma tracker off the sky).",
-    )
-    ap.add_argument(
-        "--almanac-epoch",
-        type=float,
-        default=0.0,
-        help="REPLAY BENCH ONLY: unix time of the capture's sample 0. The almanac "
-        "clock is OFFSET to this and then ADVANCES with wall time, so the "
-        "predicted sky moves as the file plays (a frozen epoch actively pulls "
-        "trackers off satellites -- measured 2026-07-27). Assumes ~realtime "
-        "replay pacing. 0 = live (use now).",
     )
     ap.add_argument(
         "--dead-reckon",

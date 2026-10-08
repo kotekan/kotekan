@@ -65,7 +65,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # a fetch. The gate here only decides how soon we NOTICE that something newer exists.
     if state["eph"] is None or now - state["eph_t"] > state.get("eph_refresh_s", 900.0):
         # Current-day BRDC files GROW; fetch_brdc re-fetches a cache older than 2 h. Pass
-        # t_utc so a replay (--almanac-epoch) gets the DAY-MATCHED file -- today's file
+        # t_utc so a replay gets the DAY-MATCHED file -- today's file
         # cannot predict another epoch (best_eph 4 h window).
         try:
             _old_eph = state["eph"]
