@@ -122,8 +122,6 @@ symbol. This stage exists so the first review is a pleasant one.
 * `lib/stages/bufferRecv.cpp` — `SO_REUSEADDR` unconditionally, so a `drop_frames` receiver can
   restart inside TIME_WAIT.
 * `lib/stages/rawFileRead.*`, `rawFileWrite.*` — two opt-in config keys, defaults unchanged.
-* `docs/bfmask_deadlock_upstream_note.md` — written for Jim and Andre; NOT part of #1640 and not
-  filed. File it as an upstream issue instead (its workaround has since been replaced).
 
 **Not yet proposed** (small, no GNSS; each to be checked against `develop` before a PR):
 `LinearAlgebra::to_blaze_herm` real diagonal (listed above but not in #1640), `bufferRecv`
@@ -357,11 +355,12 @@ selftest + `broker_multi --list` base vs branch (`test_skyscope` is a race: base
   --local-trim-gain gone); cudaGnssChordTrack and its in-tracker trim loop removed; the N x M
   despread stays as the reference n2dualxval checks path B against.
 * C10 DONE: beam-map pipeline removed; CHORD_BEAM_MAPS.md kept, marked historical.
-* C11: the bfmask note is overtaken by develop's #1655 (one mask stream per GPU half); proposed
-  deleting it, nothing to file.
-* Generated node configs differ only in the provenance header (removed flags). Dead keys still
-  emitted, to drop at the next planned config change: `gnss{0,1}_cmb_buf`,
-  `carrier_phase_from_ref`, `carrier_phase_mode`, the n2combine's `phase_dump_prns`/`_path`.
+* C11 DONE: the bfmask note is deleted; develop's #1655 (one mask stream per GPU half) answers it.
+* The generator no longer emits the dead keys (`gnss{0,1}_cmb_buf`, `carrier_phase_from_ref`,
+  `carrier_phase_mode`, the n2combine's `phase_dump_prns`/`_path`), so the next regeneration
+  changes the node configs by exactly those keys and the provenance header.
+* KV kept `/set_elem_gain`, `/set_elem_sum_adapt`, `/set_reference_element` ("we may need those
+  again shortly").
 
 ---
 
