@@ -144,3 +144,35 @@ def test_dtv_diagnostics_preserve_per_frame_metadata(apply_mask):
     )
     for name in ("write_dtv_mask", "write_dtv_powers"):
         assert config["write_data"][name]["create_single_file"] is False
+
+
+@pytest.mark.parametrize("apply_mask", [False, True])
+def test_detector_runs_on_its_own_cuda_streams(apply_mask):
+    jinja2 = pytest.importorskip("jinja2")
+    yaml = pytest.importorskip("yaml")
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/fengine"))
+    off = yaml.safe_load(env.get_template("chord.j2").render())
+    on = yaml.safe_load(
+        env.get_template("chord.j2").render(
+            dtv_enabled=not apply_mask, dtv_apply_mask=apply_mask
+        )
+    )
+    detector = on["run_dtv_detector"]["gpu_0"]
+    assert detector["num_cuda_streams"] == 5
+    commands = [(c["name"], c["cuda_stream"]) for c in detector["commands"]]
+    assert commands[:2] == [("cudaPilotProxyDetector", 3), ("cudaSyncOutput", 4)]
+    assert commands[2:] == [("cudaOutputData", 4)] * 3
+
+    # Every other stage keeps the default streams 0 to 2, so 3 and 4 are free.
+    def stream_keys(node, path=""):
+        if isinstance(node, list):
+            node = dict(enumerate(node))
+        if not isinstance(node, dict):
+            return []
+        found = [f"{path}/{key}" for key in node if "cuda_stream" in str(key)]
+        for key, value in node.items():
+            if path or key != "run_dtv_detector":
+                found += stream_keys(value, f"{path}/{key}")
+        return found
+
+    assert stream_keys(on) == stream_keys(off) == []

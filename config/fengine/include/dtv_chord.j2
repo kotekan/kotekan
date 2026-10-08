@@ -5,6 +5,10 @@
 # Non-pilot channels emit zero mask/power products.
 # One 8192-sample block is 41.94304 ms at CHORD's 195.3125 kHz sample rate:
 # 128 detector windows of 64 samples, aligned with one n2k integration.
+# Every cudaProcess on a GPU shares one set of CUDA streams. The F-engine and
+# n2k use the defaults (copies in on 0, copies out on 1, kernels on 2), so the
+# detector runs its kernels on stream 3 and copies its products out on stream 4,
+# and queues behind neither.
 
 
 ################################################################################
@@ -49,6 +53,7 @@ run_dtv_detector:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        num_cuda_streams: 5
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
         out_buffers:
@@ -57,6 +62,7 @@ run_dtv_detector:
             host_dtv_fine_support: host_dtv_fine_support_buffer
         commands:
         - name: cudaPilotProxyDetector
+          cuda_stream: 3
           voltage_name: voltage
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
@@ -65,13 +71,17 @@ run_dtv_detector:
           pilot_profiles_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/weights.bin
         - name: cudaSyncOutput
+          cuda_stream: 4
         - name: cudaOutputData
+          cuda_stream: 4
           gpu_mem: dtv_mask_buffer
           out_buf: host_dtv_mask
         - name: cudaOutputData
+          cuda_stream: 4
           gpu_mem: dtv_powers_buffer
           out_buf: host_dtv_powers
         - name: cudaOutputData
+          cuda_stream: 4
           gpu_mem: dtv_fine_support_buffer
           out_buf: host_dtv_fine_support
 

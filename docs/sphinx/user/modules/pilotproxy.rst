@@ -107,6 +107,25 @@ must not overlap, and every listed ID must be on the node, so they are set per
 node.
 
 
+GPU streams
+===========
+
+Every ``cudaProcess`` on a GPU shares that GPU's CUDA streams. The F-engine and
+n2k stages use the defaults: copies to the GPU on stream 0, copies to the host
+on stream 1 and kernels on stream 2. ``dtv_chord.j2`` gives the detector stage
+``num_cuda_streams: 5``, runs its kernels on stream 3 and copies its products to
+the host on stream 4, so the detector never queues behind the correlator, and
+the correlator never queues behind it. The streams let the two overlap; they
+still share the GPU's cores and memory bandwidth, at the same priority.
+
+The voltage ring orders the two stages: the detector reads a block only after
+the copy that wrote it has finished on the GPU, and the block is overwritten
+only after the detector's last copy of it has finished. In record-only mode n2k
+never waits for the detector. With ``dtv_apply_mask`` n2k reads each block's
+``dtv_RFImask``, so it waits for that block's detector run, the host combine
+and the copy back (on stream 0, like the other copies to the GPU).
+
+
 Pilot frequency only
 ====================
 
