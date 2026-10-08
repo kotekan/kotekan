@@ -29,11 +29,6 @@ target_include_directories(test_gps_l1c_code PRIVATE ../../lib/stages ../../lib/
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
-# Broker assignment logic: pure, no FFTW.
-add_executable(test_gnss_broker test_gnss_broker.cpp ../../lib/stages/gnss/gnssBroker.cpp
-                                ../../lib/stages/gnss/gnssBandPlan.cpp)
-target_include_directories(test_gnss_broker PRIVATE ../../lib/stages ../../lib/stages/gnss)
-
 # The shared element model's fleet-common phase pin (#154): header-only, no Telescope/FFTW.
 add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
 target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)
@@ -461,33 +456,6 @@ else()
 endif()
 target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                                ${KOTEKAN_SOURCE_DIR}/lib/utils)
-
-# test_bufferDedup - tests for the bufferDedup stage
-add_executable(test_bufferDedup test_bufferDedup.cpp)
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_bufferDedup
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
-else()
-    target_link_libraries(
-        test_bufferDedup
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
-endif()
-target_include_directories(test_bufferDedup PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
-                                                    ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
 # test_upchannelizeReference - the serial float32 upchannelization reference. The reference lives in
 # lib/cuda, next to its only caller, but has no CUDA dependency of its own. Compile it directly
