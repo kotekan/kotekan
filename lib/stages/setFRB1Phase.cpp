@@ -12,19 +12,19 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
-#include <algorithm>   // for copy
-#include <cassert>     // for assert
-#include <cmath>       // for sqrt
-#include <complex>     // for complex
-#include <cstddef>     // for ptrdiff_t
-#include <cstdint>     // for int64_t
-#include <functional>  // for function
-#include <limits>      // for numeric_limits
-#include <memory>      // for allocator, __shared_ptr_access, shared_ptr
-#include <optional>    // for optional
-#include <string>      // for basic_string, string
-#include <type_traits> // for invoke_result_t
-#include <vector>      // for vector
+#include <algorithm>  // for copy
+#include <cassert>    // for assert
+#include <cmath>      // for sqrt
+#include <complex>    // for complex
+#include <cstddef>    // for ptrdiff_t
+#include <cstdint>    // for int64_t
+#include <functional> // for function
+#include <limits>     // for numeric_limits
+#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <optional>   // for optional
+#include <string>     // for basic_string, string
+#include <utility>    // for declval
+#include <vector>     // for vector
 
 /**
  * @class setFRB1Phase
@@ -77,7 +77,7 @@ class setFRB1Phase : public kotekan::Stage {
 
     // The type of `time_downsampling_fpga` in the metadata
     using time_downsampling_t =
-        std::invoke_result_t<decltype(&chordMetadata::get_time_downsampling_fpga), chordMetadata>;
+        decltype(std::declval<const chordMetadata&>().get_time_downsampling_fpga());
 
     // Each set of weights is valid for this many FPGA samples. It is the cadence at which this
     // stage produces frames, and the `dimscaling` of the weights' leading time axis.

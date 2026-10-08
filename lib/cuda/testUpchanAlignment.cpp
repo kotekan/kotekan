@@ -40,6 +40,7 @@
  *   samples overlap the box, and the power-weighted centre equals the box centre.
  * - Upchannelized PL masks: the masked output samples are exactly those whose window overlaps
  *   the box, and the coarse frequencies are those of the upchannelized voltages.
+ * - Every stream: consecutive frames are contiguous in `fpga_seq_num`.
  *
  * @par Buffers
  * @buffer frb1_beams      The FRB1 beams I, [Ttilde][Fbar][beamQ][beamP], float16
@@ -50,7 +51,7 @@
  * @conf box_end                 Int. One past the last FPGA sample of the signal.
  * @conf read_until              Int, default 0. Read every stream at least up to this FPGA
  *                               sample before checking, e.g. to run the FRB1 beamformers over
- *                               several weight lifetimes. Frames must be contiguous.
+ *                               several weight lifetimes.
  * @conf upchan_factors          List of int. The upchannelization factor of each buffer in
  *                               `upchan_voltage` and `upchan_pl_mask`.
  * @conf max_centre_offset       Float. How far the power-weighted centre of the upchannelized

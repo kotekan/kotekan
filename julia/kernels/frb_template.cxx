@@ -100,9 +100,10 @@ private:
         std::lcm(std::ptrdiff_t(cuda_granularity_number_of_timesamples),
                  std::ptrdiff_t(cuda_downsampling_factor));
 
-    // The input ring buffer holds this many frames, and one read covers at most one frame. This
-    // is `buffer_depth` in the configs, which size every ring buffer as a multiple of it, and
-    // `TW` in `frb.jl`, the depth of the slowly varying inputs' ring. Nothing ties them together.
+    // The input ring buffer holds this many frames, and one read covers at most one frame. The
+    // configs size every ring buffer as `buffer_depth` frames, and `TW` in `frb.jl` is the depth
+    // of the slowly varying inputs' ring. A mismatch fails at startup: `get_gpu_memory` rejects
+    // a ring whose byte length differs from what `cudaCopyToRingbuffer` allocated.
     static constexpr std::ptrdiff_t ring_buffer_frames = 4;
 
     // Kernel input and output sizes
