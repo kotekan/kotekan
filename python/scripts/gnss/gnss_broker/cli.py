@@ -874,6 +874,46 @@ _FROZEN = dict(
     #   median is the right prior; the carrier twin of the code-bias seeding above (strong sats
     #   calibrate the clock so weak ones start on it).
     carrier_fleet_seed=False,
+    # --coast-budget
+    #   seconds a VISIBLE sat is coasted (seed held + Doppler forecast forward) through a signal
+    #   dropout before dropping it -- so a radar sweep / brief fade doesn't lose the lock. The
+    #   code prediction stays good for ~tens of s on a free-running TCXO; raise it with a
+    #   disciplined clock (OCXO). |A| recovering resets the coast; setting below the horizon
+    #   drops immediately.
+    coast_budget=30.0,
+    # --hold-snr
+    #   incoherent amp_snr above which a tracked PRN's cp anchor is FROZEN (hold-on-lock: DLL
+    #   owns the sub-chip residual; fit re-anchors only on loss). Uses amp_snr ONLY --
+    #   deep_snr's off-peak value is the nav-wipe rectification floor (~7), which would freeze
+    #   bad anchors instantly.
+    hold_snr=8.0,
+    # --hold-max-cp-err
+    #   release a HELD seed when the tracked code phase (held cp + DLL trim) disagrees with the
+    #   search FIT by more than this (chips) on 3 consecutive fixes. This is the DLL's capture
+    #   half-range: a sharp-ACF (BOC) power discriminator has stable FALSE equilibria ~0.75
+    #   chips out (prompt -12 dB) that the hold would otherwise servo forever while the search
+    #   sees the true peak.
+    hold_max_cp_err=0.4,
+    # --bias-det-fresh-s
+    #   clock-bias solve uses only detections FRESHER than this (seconds). A stale detection's
+    #   (meas - pred) grows at the satellite's Doppler rate -- stale-age x dop_rate reads as a
+    #   fake, GROWING clock bias that the seeds then chase (measured: a ~90 s-stale detection
+    #   walked the bias +4 -> +68 Hz and dragged a 55-sigma tracker off the sky).
+    bias_det_fresh_s=30.0,
+    # --bias-min-sats
+    #   detected sats needed before a cycle's median residual may update the clock-freq bias
+    #   (and hence NARROW the search). A single sat's residual is unfalsifiable: one bad
+    #   prediction (wrong TLE mapping, non-transmitting sat cross-corr) gets swallowed as 'clock
+    #   bias' and shifts every other hint out of the narrow window -- a self-locking deadlock
+    #   where no second sat can ever acquire to correct it (2026-07-12: BDS-2 C14 froze the
+    #   whole B1C constellation at -1550 Hz).
+    bias_min_sats=2,
+    # --doppler-sign
+    #   multiply predicted Doppler (set -1 if the convention is inverted)
+    doppler_sign=1.0,
+    # --tle
+    #   GPS TLE file/URL (default: Celestrak gps-ops)
+    tle=None,
 )
 # ── end frozen tuning ────────────────────────────────────────────────────────────────────
 
@@ -954,17 +994,6 @@ def build_parser(description):
         "Probes fail every lock gate naturally; ~2 is plenty.",
     )
     ap.add_argument(
-        "--hold-max-cp-err",
-        type=float,
-        default=0.4,
-        help="release a HELD seed when the tracked code phase (held cp + DLL "
-        "trim) disagrees with the search FIT by more than this (chips) on "
-        "3 consecutive fixes. This is the DLL's capture half-range: a "
-        "sharp-ACF (BOC) power discriminator has stable FALSE equilibria "
-        "~0.75 chips out (prompt -12 dB) that the hold would otherwise "
-        "servo forever while the search sees the true peak.",
-    )
-    ap.add_argument(
         "--post-sat-geometry",
         type=int,
         default=0,
@@ -1009,25 +1038,6 @@ def build_parser(description):
         "still moves integ instantly and vetoes. Absolute test stands until "
         ">=5 baseline samples exist. 0 = absolute veto (pre-#98 behaviour).",
     )
-    ap.add_argument(
-        "--hold-snr",
-        type=float,
-        default=8.0,
-        help="incoherent amp_snr above which a tracked PRN's cp anchor is FROZEN "
-        "(hold-on-lock: DLL owns the sub-chip residual; fit re-anchors only on "
-        "loss). Uses amp_snr ONLY -- deep_snr's off-peak value is the nav-wipe "
-        "rectification floor (~7), which would freeze bad anchors instantly.",
-    )
-    ap.add_argument(
-        "--coast-budget",
-        type=float,
-        default=30.0,
-        help="seconds a VISIBLE sat is coasted (seed held + Doppler forecast forward) "
-        "through a signal dropout before dropping it -- so a radar sweep / brief "
-        "fade doesn't lose the lock. The code prediction stays good for ~tens of s "
-        "on a free-running TCXO; raise it with a disciplined clock (OCXO). |A| "
-        "recovering resets the coast; setting below the horizon drops immediately.",
-    )
     ap.add_argument("--lat", type=float, help="receiver latitude (enables gating)")
     ap.add_argument("--lon", type=float, help="receiver longitude")
     ap.add_argument("--alt", type=float, default=0.0, help="receiver altitude, m")
@@ -1039,9 +1049,6 @@ def build_parser(description):
         "seed trackers with the precise predicted Doppler (geometry + a common "
         "clock-freq bias solved from the measured sats) instead of the coarse "
         "search grid, and gate to visible sats. Code phase still from the search.",
-    )
-    ap.add_argument(
-        "--tle", default=None, help="GPS TLE file/URL (default: Celestrak gps-ops)"
     )
     ap.add_argument(
         "--almanac-source",
@@ -1068,12 +1075,6 @@ def build_parser(description):
     )
     ap.add_argument(
         "--carrier-hz", type=float, default=1575.42e6, help="carrier for Doppler pred"
-    )
-    ap.add_argument(
-        "--doppler-sign",
-        type=float,
-        default=1.0,
-        help="multiply predicted Doppler (set -1 if the convention is inverted)",
     )
     ap.add_argument(
         "--narrow-search",
@@ -1184,18 +1185,6 @@ def build_parser(description):
         "held value still centers the (wide) hints and seeds (hints only under "
         "--seed-bias-source=zero), so a healthy chain that merely has a sparse "
         "sky loses nothing. 0 disables.",
-    )
-    ap.add_argument(
-        "--bias-min-sats",
-        type=int,
-        default=2,
-        help="detected sats needed before a cycle's median residual may update the "
-        "clock-freq bias (and hence NARROW the search). A single sat's residual "
-        "is unfalsifiable: one bad prediction (wrong TLE mapping, non-transmitting "
-        "sat cross-corr) gets swallowed as 'clock bias' and shifts every other "
-        "hint out of the narrow window -- a self-locking deadlock where no second "
-        "sat can ever acquire to correct it (2026-07-12: BDS-2 C14 froze the whole "
-        "B1C constellation at -1550 Hz).",
     )
     ap.add_argument(
         "--seed-bias-source",
@@ -3232,16 +3221,6 @@ def build_parser(description):
         type=int,
         default=1800,
         help="secondary-overlay length in chips (B1C pilot 1800; E5a/B2a CS100 = 100)",
-    )
-    ap.add_argument(
-        "--bias-det-fresh-s",
-        type=float,
-        default=30.0,
-        help="clock-bias solve uses only detections FRESHER than this (seconds). "
-        "A stale detection's (meas - pred) grows at the satellite's Doppler "
-        "rate -- stale-age x dop_rate reads as a fake, GROWING clock bias "
-        "that the seeds then chase (measured: a ~90 s-stale detection walked "
-        "the bias +4 -> +68 Hz and dragged a 55-sigma tracker off the sky).",
     )
     ap.add_argument(
         "--dead-reckon",

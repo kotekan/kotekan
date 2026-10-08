@@ -439,7 +439,7 @@ def stage_almanac_predict(ctx):
             # BAND had already solved it (2026-07-27).
             _log_rl(
                 "clkbias",
-                "clock-freq bias %s (%d sats < --bias-min-sats %d: residual not "
+                "clock-freq bias %s (%d sats < bias_min_sats %d: residual not "
                 "trusted)"
                 % (
                     "held %+.0f Hz" % ctx.cb.value
