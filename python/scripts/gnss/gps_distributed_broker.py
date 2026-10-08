@@ -1305,8 +1305,6 @@ def main(argv=None, rx=None, publisher=None):
         [0]
         + [v for n in range(1, int(args.long_code_segments) // 2 + 1) for v in (-n, n)]
     )[: max(int(args.long_code_segments), 1)]
-    xband = resolve_prefix(args.xband_combiner, base) if args.xband_combiner else None
-    _xb_resid = []  # rolling cross-band prediction residuals (Hz), shadow accumulation
     _xb_dir = os.path.dirname(args.state_file) if args.state_file else None
     # WHERE SIBLING STATE IS READ FROM. Deliberately independent of --state-file: a chain that
     # ADOPTS a clock has no reason to publish one (it has no estimate of its own to contribute),
@@ -1314,25 +1312,6 @@ def main(argv=None, rx=None, publisher=None):
     # no-op on exactly the chains that need it. Defaults to the write directory when only that
     # is given, so the common case needs one flag rather than two.
     _xb_read_dir = args.state_read_dir or _xb_dir
-
-    def _fused_lo_ppm(dongle):
-        # this band's own LO comes from _fuse_cached; a sibling's is read fresh from its file
-        if state_w is not None and dongle == args.state_dongle:
-            f = _fuse_cached(_now())
-        elif _xb_dir:
-            try:
-                f = receiver_state.fuse_dongle(
-                    receiver_state.read_dongle(
-                        _xb_dir, dongle, max_age_s=30.0, t_now=_now()
-                    ),
-                    floor_ppm=0.001,
-                    reject_sigma=5.0,
-                )
-            except Exception:
-                f = None
-        else:
-            f = None
-        return f.get("lo_ppm") if f and not f.get("all_outliers") else None
 
     # CL K-SCAN (diagnostic, --cl-kscan-prn; default 0 = OFF, zero effect). The recurring
     # "CL despreads noise on ~40% of launches while fine_ms looks perfect" is the signature
@@ -2250,68 +2229,6 @@ def main(argv=None, rx=None, publisher=None):
             )
         _ctx.up = None
         almanac_stage.stage_almanac_predict(_ctx)
-
-        # 2a-xband. S5 CROSS-BAND: read the sibling band's per-sat tracked Doppler ONCE and
-        # predict THIS band's by the exact carrier ratio (satellite motion is geometry, common
-        # to both bands, scaling as f_this/f_sib; the LO terms come from each band's own S2
-        # fused state -- the dongle LOs are INDEPENDENT, measured, so neither is borrowed).
-        # Feeds two things below: the SHADOW residual (validate + measure the inter-band bias)
-        # and, when --xband-seed, RESCUE search-Doppler hints for sats BRDC does not predict.
-        _ctx.xb_pred = (
-            {}
-        )  # prn -> cross-band predicted Doppler for THIS band (bias-removed)
-        if xband and args.xband_carrier_hz and args.xband_lo_dongle:
-            try:
-                _sib = {int(r["prn"]): r for r in _get("%s/get_status" % xband)}
-                _lo_sib = _fused_lo_ppm(args.xband_lo_dongle)
-                _lo_own = _fused_lo_ppm(args.state_dongle)
-                if _lo_sib is not None and _lo_own is not None:
-                    _ratio = args.carrier_hz / args.xband_carrier_hz
-                    _LOsib = _lo_sib * 1e-6 * args.xband_carrier_hz
-                    _LOown = _lo_own * 1e-6 * args.carrier_hz
-                    # inter-band bias = the rolling median residual (LO diff + iono divergence);
-                    # it drifts ~20 Hz/day so it must be LIVE, not a constant. Removed from the
-                    # prediction so the hint centers on the truth.
-                    _bias = (
-                        statistics.median(_xb_resid) if len(_xb_resid) >= 20 else 0.0
-                    )
-                    for _p, _sr in _sib.items():
-                        _ds = _sr.get("doppler_hz")
-                        if _ds is None or (_sr.get("amp_snr") or 0) < 30:
-                            continue  # only ride a sat the sibling holds STRONGLY
-                        _ctx.xb_pred[_p] = (_ds - _LOsib) * _ratio + _LOown - _bias
-                        # SHADOW: accumulate the residual for every dual-tracked sat
-                        _own = _ctx.status.get(_p) or {}
-                        _do = _own.get("doppler_hz")
-                        if _do is not None and (_own.get("amp_snr") or 0) >= 30:
-                            _xb_resid.append(_do - ((_ds - _LOsib) * _ratio + _LOown))
-                    if len(_xb_resid) > 4000:
-                        del _xb_resid[: len(_xb_resid) - 4000]
-                    if _xb_resid:
-                        _med = statistics.median(_xb_resid)
-                        _mad = (
-                            receiver_state.mad(_xb_resid, _med)
-                            if len(_xb_resid) > 1
-                            else None
-                        )
-                        _log_rl(
-                            "xband",
-                            "XBAND from %s: %d sibling-tracked; rolling n=%d bias %+.1f "
-                            "mad %s Hz%s"
-                            % (
-                                xband,
-                                len(_ctx.xb_pred),
-                                len(_xb_resid),
-                                _med,
-                                ("%.1f" % _mad) if _mad is not None else "-",
-                                " [seeding rescue hints]"
-                                if args.xband_seed
-                                else " [shadow]",
-                            ),
-                            every_s=30.0,
-                        )
-            except Exception as e:
-                _log_rl("xband", "XBAND read failed: %s" % e)
 
         # 2b. Almanac-narrow the SEARCH: push per-PRN predicted Doppler to the detectors so each
         # scans only doppler +- margin instead of its blind grid -- far cheaper + more sensitive,
@@ -3663,9 +3580,6 @@ def main(argv=None, rx=None, publisher=None):
         # ~2.7 us/s): expected, logged at debug cadence; any LARGER step is a clock/anchor
         # fault and logs loudly. Never averaged, never held against fresh evidence.
         clsibling.stage_cl_sibling(_ctx)
-
-        # (S5 cross-band read + shadow accumulation + rescue hints moved EARLY, block 2a-xband
-        # above -- it must run before the search-hint POST it feeds.)
 
         _log_rl(
             "active",

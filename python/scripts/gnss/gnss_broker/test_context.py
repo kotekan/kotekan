@@ -32,7 +32,6 @@ PER_CYCLE = {
     "up",
     "probe_set",
     "utc0_sample0",
-    "xb_pred",
     "coast_polls",
     "have_sig",
     "la_samples",

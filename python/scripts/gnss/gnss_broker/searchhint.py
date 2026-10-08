@@ -23,44 +23,18 @@ def stage_narrow_search(ctx):
     ⚠️ THE HINT IS ONLY AS GOOD AS THE CLOCK IT CARRIES. When the receiver clock bias is stale the
     margin must widen rather than the hint narrow -- a confidently wrong narrow window is worse
     than no hint at all, because the search then cannot find what it was told to look near."""
-    if (ctx.args.narrow_search and ctx.args.almanac and ctx.pred) or (
-        ctx.xb_pred and ctx.args.xband_seed
-    ):
+    if ctx.args.narrow_search and ctx.args.almanac and ctx.pred:
         margin = (
             ctx.args.search_margin_hz
             if ctx.cb.ema is not None and not ctx.cb.stale
             else ctx.args.search_margin_wide_hz
         )
-        hints = (
-            [
-                dict(prn=p, doppler_hz=ctx.pred[p][0] + ctx.cb.value, margin_hz=margin)
-                for p in sorted(ctx.pred)
-                if (ctx.up is None or p in ctx.up)
-                and (ctx.capable is None or p in ctx.capable)
-            ]
-            if (ctx.args.almanac and ctx.pred)
-            else []
-        )
-        # RESCUE: for a sat the sibling band tracks but BRDC did NOT just hint (no pred /
-        # no almanac), add a cross-band hint so the search narrows instead of going blind.
-        # Wider margin than a BRDC hint -- the cross-band seed accuracy is the inter-band
-        # MAD (~10 Hz) plus this band's own unsolved-LO width -- but far better than the
-        # blind grid. Provably rescue-only: a sat BRDC covered is already in `hints`.
-        if ctx.args.xband_seed and ctx.xb_pred:
-            _hinted = {h["prn"] for h in hints}
-            _xb_margin = max(margin, ctx.args.xband_hint_margin_hz)
-            for _p, _xd in sorted(ctx.xb_pred.items()):
-                if _p in _hinted or (ctx.capable is not None and _p not in ctx.capable):
-                    continue
-                if ctx.up is not None and _p not in ctx.up:
-                    continue
-                hints.append(dict(prn=_p, doppler_hz=_xd, margin_hz=_xb_margin))
-                _log_rl(
-                    "xbandseed-%d" % _p,
-                    "XBAND RESCUE HINT PRN %d: %+.0f Hz (sibling tracks it, BRDC does "
-                    "not) -> search narrows instead of blind" % (_p, _xd),
-                    every_s=30.0,
-                )
+        hints = [
+            dict(prn=p, doppler_hz=ctx.pred[p][0] + ctx.cb.value, margin_hz=margin)
+            for p in sorted(ctx.pred)
+            if (ctx.up is None or p in ctx.up)
+            and (ctx.capable is None or p in ctx.capable)
+        ]
         # SECONDARY-CODE ALIGNMENT HINT, the Doppler hint's twin and the bigger saving:
         # the acquire builds a FULL surface per alignment, so 20 of them are ~92% of a pass.
         # We echo back the stage's OWN last reported nh with the hop it was measured at, and

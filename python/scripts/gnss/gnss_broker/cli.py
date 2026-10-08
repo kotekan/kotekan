@@ -530,11 +530,6 @@ _FROZEN = dict(
     #   the C21/C42 class). Healthy weak chains are exempt via the det bar (their dets are weak
     #   too). 0 disables.
     watchdog_weak_sig=30.0,
-    # --xband-hint-margin-hz
-    #   search margin for a cross-band RESCUE hint (Hz): the cross-band seed accuracy is the
-    #   inter-band MAD (~10 Hz) plus this band's own unsolved-LO width, so wider than a BRDC
-    #   hint but far tighter than the blind grid
-    xband_hint_margin_hz=60.0,
     # --bsat-gain
     #   Per-cycle gain of the b_sat loop (task #33): the per-satellite path-bias filter
     #   fed by the fleet phase-slope tau. 0 disables the UPDATES (b freezes at 0 / its
@@ -3470,53 +3465,6 @@ def build_parser(description):
         help="the CL chain's combiner stage: polled each cycle so the CL-vs-CM "
         "deep_snr comparison (the segment-pin VERIFY -- a wrong k despreads "
         "as noise) lands in this broker's own log next to the k it verifies.",
-    )
-    ap.add_argument(
-        "--xband-combiner",
-        default=None,
-        help="S5 CROSS-BAND ASSIST (SHADOW): a SIBLING band's combiner stage "
-        "(e.g. l1_gps_combiner) whose per-sat tracked Doppler this broker "
-        "reads to predict THIS band's Doppler by the exact carrier ratio. "
-        "The satellite-motion part is geometry -- common to both bands and "
-        "scaling as f_this/f_sibling -- so `(D_sib - LO_sib)*ratio + LO_this` "
-        "predicts this band's observed Doppler; the LO terms come from each "
-        "band's own S2 fused state (the dongle LOs are INDEPENDENT -- "
-        "measured, no GPSDO common-mode -- so neither can be borrowed). "
-        "SHADOW: logs the prediction beside this band's actual acquisition "
-        "for every dual-tracked sat and accumulates the residual; nothing is "
-        "seeded from it yet. The eventual flip is RESCUE-ONLY (seed a sat "
-        "this band cannot predict itself -- cold start / stale BRDC), the "
-        "S2d lesson applied.",
-    )
-    ap.add_argument(
-        "--xband-lo-dongle",
-        default=None,
-        help="the sibling band's S2 state dongle key (e.g. gps_l1), to read its "
-        "fused LO for --xband-combiner",
-    )
-    ap.add_argument(
-        "--xband-carrier-hz",
-        type=float,
-        default=None,
-        help="the sibling band's carrier frequency (Hz), for the Doppler ratio",
-    )
-    ap.add_argument(
-        "--xband-seed",
-        type=int,
-        default=1,
-        help="S5b THE FLIP (default ON; a provable no-op in normal operation): "
-        "emit a SEARCH DOPPLER HINT from the cross-band prediction for a sat "
-        "the SIBLING band tracks but THIS band has NO prediction of its own "
-        "for (not in BRDC pred / no almanac). Cross-band transfers Doppler "
-        "(carrier ratio) but NOT code phase (the codes differ), so it hints "
-        "the SEARCH -- narrowing its Doppler window -- it does not seed the "
-        "tracker. RESCUE-ONLY by construction: for any sat BRDC already "
-        "predicts, the BRDC hint stands and NO cross-band hint is added, so "
-        "with fresh BRDC the cross-band hint list is EMPTY. It fires only "
-        "when BRDC is missing a sat the sibling sees (outage / deep cold "
-        "start / a band too weak to hold its own almanac lock) -- the "
-        "S2d-learned rescue-only scope, structural not just gated. 0 = pure "
-        "shadow (log the residual, emit no hints).",
     )
     ap.add_argument(
         "--nh-assist",

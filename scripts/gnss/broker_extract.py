@@ -88,7 +88,6 @@ NAME_MAP = {
     "up": "up",
     "probe_set": "probe_set",
     "utc0_sample0": "utc0_sample0",
-    "_xb_pred": "xb_pred",
     "coast_polls": "coast_polls",
     "have_sig": "have_sig",
     "la_samples": "la_samples",
