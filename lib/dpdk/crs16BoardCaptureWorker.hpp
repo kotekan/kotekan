@@ -382,12 +382,20 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
         // Behind the active frames (late, or after an FPGA reset), or too far ahead to catch up
         // to. Stop kotekan, since ending only this worker leaves the frames it shares unfinished.
-        FATAL_ERROR(
-            "Port: {:d}, Worker: {:d}; Packet with sequence number {:d} (source ID {:d}, "
-            "stream ID {:d}) is behind the active frames [{:d}, {:d}) or at least {:d} frames "
-            "past the start of the next one, kotekan stopping...",
-            port, worker_id, seq_num, source_id, stream_id, active_f0->start_seq,
-            active_f1->start_seq + time_samples_per_frame, _max_frames_ahead);
+        if (seq_num < active_f0->start_seq) {
+            FATAL_ERROR("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} (source ID "
+                        "{:d}, stream ID {:d}) is behind the active frames [{:d}, {:d}), kotekan "
+                        "stopping...",
+                        port, worker_id, seq_num, source_id, stream_id, active_f0->start_seq,
+                        active_f1->start_seq + time_samples_per_frame);
+        } else {
+            FATAL_ERROR("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} (source ID "
+                        "{:d}, stream ID {:d}) is {:d} frames past the start of the next active "
+                        "frame, the limit is {:d}, kotekan stopping...",
+                        port, worker_id, seq_num, source_id, stream_id,
+                        (seq_num - active_f1->start_seq) / time_samples_per_frame,
+                        _max_frames_ahead);
+        }
         return -1;
     }
 
@@ -399,7 +407,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         // frames (a downstream stall) or never arrived (a gap in the input). The frames passed
         // over go downstream with them missing from the receipt bitmap.
         WARN("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} is {:d} frame(s) past "
-             "the start of the next frame; advancing to it",
+             "the start of the next frame; advancing the frames toward it",
              port, worker_id, seq_num, (seq_num - active_f1->start_seq) / time_samples_per_frame);
     }
     while (seq_num >= active_f1->start_seq + 160) {
