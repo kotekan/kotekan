@@ -8,9 +8,9 @@ Coarse powers use NumPy integer calculations; fine masks use the matching
 pilot-proxy reference package.
 
 Usage:
-    python3 tools/verify_pilotproxy_pipeline.py --calibrate \
+    python3 tests/verify_pilotproxy_pipeline.py --calibrate \
         --bundle-dir fake_data/pilotproxy_bundle
-    python3 tools/verify_pilotproxy_pipeline.py \
+    python3 tests/verify_pilotproxy_pipeline.py \
         --dump-dir fake_data/pilotproxy_verify --bundle-dir fake_data/pilotproxy_bundle
 
 --calibrate writes a synthetic fine calibration into the bundle for this test.

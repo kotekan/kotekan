@@ -28,7 +28,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
-    "pilotproxy_integration_reference", ROOT / "tools/verify_pilotproxy_pipeline.py"
+    "pilotproxy_integration_reference", ROOT / "tests/verify_pilotproxy_pipeline.py"
 )
 reference = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = reference

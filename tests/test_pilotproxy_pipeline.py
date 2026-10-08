@@ -10,7 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
-    "verify_pilotproxy_pipeline", ROOT / "tools/verify_pilotproxy_pipeline.py"
+    "verify_pilotproxy_pipeline", ROOT / "tests/verify_pilotproxy_pipeline.py"
 )
 verifier = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = verifier
