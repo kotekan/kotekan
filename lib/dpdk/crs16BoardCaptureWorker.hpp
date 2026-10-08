@@ -407,22 +407,14 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
 
-    uint8_t* frame_ptr;
-    uint64_t relative_seq_num;
-    if (seq_num < active_f1->start_seq) {
-        // Packet belongs to the current frame
-        frame_ptr = active_f0->frame_ptr;
-        relative_seq_num = seq_num - active_f0->start_seq;
-    } else {
-        // Packet belongs to the next frame
-        frame_ptr = active_f1->frame_ptr;
-        relative_seq_num = seq_num - active_f1->start_seq;
-    }
+    // The packet belongs to the current frame or the next one.
+    const kotekan::FrameInfo* frame = (seq_num < active_f1->start_seq) ? active_f0 : active_f1;
+    const uint64_t relative_seq_num = seq_num - frame->start_seq;
 
     // Map the raw board id to its output slot (identity unless crs_board_remap is set).
     const uint16_t dest_slot = dest_slot_for_source_id[source_id];
 
-    packet_copy_to_frame(mbuf, frame_ptr, relative_seq_num, stream_id, dest_slot);
+    packet_copy_to_frame(mbuf, frame->frame_ptr, relative_seq_num, stream_id, dest_slot);
 
     // Record which packets were received.
     // The layout of the packet receipt bitmap is:
@@ -433,8 +425,8 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     // stream_id = num_stream_ids
     // For the pathfinder this is [512][16][8] = 65536 bits = 8192 bytes
     // The source_id axis is in output-slot order (after crs_board_remap, if configured).
-    active_f0->receipt_bitmap_ptr[(relative_seq_num / time_samples_per_packet) * num_source_ids
-                                  + dest_slot] |= (1 << (stream_id / 16));
+    frame->receipt_bitmap_ptr[(relative_seq_num / time_samples_per_packet) * num_source_ids
+                              + dest_slot] |= (1 << (stream_id / 16));
 
     return 0;
 }
