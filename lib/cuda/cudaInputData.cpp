@@ -33,6 +33,9 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
         register_host_buffer(in_buf);
         _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, false, true));
+        // Taken in execute(); attribute it to this stage now so a conflict is refused at
+        // construction, where --dry-run can see it (see gpuMemoryClaims.hpp).
+        device.register_gpu_memory_name(_gpu_mem);
     } else {
         _gpu_mem = "";
     }

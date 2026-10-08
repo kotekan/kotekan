@@ -47,6 +47,8 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     } else {
         in_buffer = nullptr;
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
+        // Taken in execute(); attribute it to this stage now (see gpuMemoryClaims.hpp).
+        device.register_gpu_memory_name(_gpu_mem_input);
         DEBUG("Initializing cudaCopyToRingbuffer: from GPU memory \"{:s}\" to GPU memory \"{:s}\", "
               "chunk size {:d}, ring buffer size {:d}",
               _gpu_mem_input, _gpu_mem_output, _input_size, _ring_buffer_size);
@@ -55,6 +57,13 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     signal_buffer = dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "signal_buf")));
     assert(signal_buffer);
+    // Producer and consumer stages both name this backing store on purpose, and the ring they
+    // wait on and signal is what orders them. Declare the share through the ring's own name
+    // (config aliases in in/out_buffers resolve to it) so the one-owner check accepts exactly
+    // that pairing, and register the store as this stage's now: it is only taken in execute(),
+    // and a conflict belongs at construction, where --dry-run can see it (gpuMemoryClaims.hpp).
+    device.declare_shared_gpu_memory(_gpu_mem_output, signal_buffer->buffer_name);
+    device.register_gpu_memory_name(_gpu_mem_output);
     if (instance_num == 0)
         signal_buffer->register_producer(unique_name);
 
