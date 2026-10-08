@@ -72,20 +72,3 @@ def test_attach_altaz_with_local_tle(tmp_path):
     alt, az = gb.attach_altaz(recs, lat=43.66, lon=-79.40, alt_m=100.0, tle_source=tle_path)
     assert np.isfinite(alt[0]) and -90.0 <= alt[0] <= 90.0
     assert np.isnan(alt[1])  # PRN 7 absent from the TLE set
-
-
-def test_visibility_altaz_over(tmp_path):
-    """gps_visibility.altaz_over returns finite look angles for a known PRN."""
-    pytest.importorskip("skyfield")
-    import gps_visibility as gv
-
-    tle_path = str(tmp_path / "gps.tle")
-    open(tle_path, "w").write(SAMPLE_TLE)
-
-    from datetime import datetime, timezone
-    sats = gb.load_gps_satellites(tle_path)
-    times = [datetime(2024, 1, 1, h, tzinfo=timezone.utc) for h in (0, 6, 12)]
-    aa = gv.altaz_over(sats, 43.66, -79.40, 100.0, times)
-    assert 11 in aa
-    alt, az = aa[11]
-    assert alt.shape == (3,) and np.all(np.isfinite(alt))

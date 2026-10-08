@@ -1222,8 +1222,8 @@ def build_parser(description):
                          "provide. With the chain solved, this flag is a PROVEN no-op. The "
                          "'untested rescue path' worry is answered by scoring it always "
                          "(the SHADOW log line) and exercising it deliberately "
-                         "(diag/receiver_state_rescue_test.py + the isolated-broker "
-                         "method), not by running it always.")
+                         "(offline, and live with the isolated-broker method), not by "
+                         "running it always.")
     ap.add_argument("--bias-stale-s", type=float, default=300.0,
                     help="STALE-BIAS RESCUE: if the solved bias EMA has gone this long without "
                          "a multi-sat measurement, widen the search margins and RE-SOLVE from "
@@ -2934,8 +2934,8 @@ def build_parser(description):
                     help="seed CODE PHASE from broadcast ephemeris (BRDC) for every visible "
                          "sat the search hasn't detected: predict the absolute transmit-time "
                          "code phase, add the receiver clock solved each cycle from the "
-                         "detected sats (measured-vs-predicted circular median -- the "
-                         "gnss_deadreckon_check.py bootstrap, ~100 ns), and express it in "
+                         "detected sats (measured-vs-predicted circular median, "
+                         "~100 ns), and express it in "
                          "the seed's Doppler currency. The search demotes to bootstrap "
                          "(clock solve), fallback (a detection re-anchors via the normal "
                          "seed loop) and integrity check (per-sat residuals logged); "

@@ -88,8 +88,8 @@ def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz
     slope is f_chip * (l - a) (+ the small Doppler-quantization residue), so
         l - a  =  slope / f_chip
     with NO carrier_frac subtraction: v/c never appears in a residual slope. (The original
-    formula subtracted doppler/carrier, valid for the OFFLINE raw-drift tools like
-    l1_code_drift.py where the code drift is measured without a feed-forward -- but applied to
+    formula subtracted doppler/carrier, valid for OFFLINE raw-drift measurements, where the
+    code drift is measured without a feed-forward -- but applied to
     residual-convention slopes it contaminated l-a by the per-sat carrier_frac: the estimates
     disagreed band-to-band (+0.25 ppm L1 / -0.63 ppm L5) where the residual reading agrees
     (+0.03 / -0.04 ppm, both near the GPSDO's measured +0.06).)

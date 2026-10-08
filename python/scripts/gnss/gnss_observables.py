@@ -461,8 +461,7 @@ def main():
                 # (cp0), back-referenced to sample 0 through the Doppler, so its geometry is
                 # already removed -- it drifts at the receiver clock offset while the carrier
                 # drifts at the range rate. Differencing them cancels nothing (measured: CMC
-                # in KILOMETRES). Reconstruct the PHYSICAL code phase the same way
-                # gnss_deadreckon_check does, then remove the model:
+                # in KILOMETRES). Reconstruct the PHYSICAL code phase, then remove the model:
                 #     cp_phys  = cp0 + t_abs*f_chip*(1 + sign*dop/f_carrier)   (mod L)
                 #     cp_pred  = (t_tx_sv mod T_code)/T_code * L
                 #     code_resid = wrap(cp_phys - cp_pred)  -> SUB-CHIP, unambiguous, metres

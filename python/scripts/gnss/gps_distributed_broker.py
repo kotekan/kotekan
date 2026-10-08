@@ -72,8 +72,7 @@ from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name 
 # `main()` still is. See docs/CHORD_BROKER_REFACTOR.md.
 #
 # Re-exported at module scope rather than referenced through the package, because these
-# names are the file's public surface: test_code_bias.py imports this module for
-# code_clock_bias_sample / cp_rate_from_code_bias, and every launch script drives main().
+# names are the file's public surface: every launch script drives main().
 # ---------------------------------------------------------------------------------------
 from gnss_broker.transport import (           # noqa: E402
     _TranscriptDone, _Transcript, _TR, _now, _get, _post, _log, _log_rl,
@@ -1708,8 +1707,7 @@ def main(argv=None, rx=None, publisher=None):
         # time-averaging beat one cycle of cross-chain averaging. The original premise
         # ("consume always so the rescue path is never untested") was the wrong cure: the
         # durable one is publish + SCORE always (the SHADOW line below runs regardless) and
-        # EXERCISE deliberately (diag/receiver_state_rescue_test.py offline; the
-        # isolated-broker method live).
+        # EXERCISE deliberately (offline, and live with the isolated-broker method).
         #
         # So: the fused state is consumed EXACTLY when this chain has no estimate of its
         # own -- cold start, below min-sats, warm-start file lost. There it has no EMA to
@@ -2163,7 +2161,7 @@ def main(argv=None, rx=None, publisher=None):
         # measure what the model already knows. BRDC ephemeris (~2 m orbits + ~5 ns sat
         # clocks) plus the receiver clock solved from the sats we DO detect predict every
         # other visible sat's code phase to well inside the DLL capture range (0.10 chip
-        # rms validated, gnss_deadreckon_check.py 2026-07-13) -- so seed them all:
+        # rms, validated 2026-07-13) -- so seed them all:
         # sub-threshold sats despread on-peak with no detection ever required (the
         # sidelobe-mapping mode). The search demotes to bootstrap (clock solve), fallback
         # (a detection re-anchors via the normal seed loop, which also removes the PRN
