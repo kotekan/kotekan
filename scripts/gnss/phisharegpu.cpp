@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief THE KERNEL GATE for the shared Doppler-free tables (docs/CHORD_GPU_TODO.md item 2).
+ * @brief THE KERNEL GATE for the shared Doppler-free tables (31896a862:docs/CHORD_GPU_TODO.md item 2).
  *
  * phibits validates the algebra; phishare validates the CPU generator. Neither touches the GPU,
  * and #71 is the monument to why that is not enough: "the gate tested the FORMULA not the kernel

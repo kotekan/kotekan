@@ -5,7 +5,7 @@ Extracted verbatim from gps_distributed_broker.py (task #27 M1).
 ⚠️ THIS IS THE ONE PIECE M6 MUST CHANGE SHAPE. Today one publisher serves one chain on one
 port, which is why CHORD needs a viewer instance per constellation (12060 GPS, 12061 E5a).
 The unified broker publishes every chain on one port, keyed by chain id -- see
-docs/CHORD_BROKER_REFACTOR.md M7. Moved unchanged here so that change is isolated.
+31896a862:docs/CHORD_BROKER_REFACTOR.md M7. Moved unchanged here so that change is isolated.
 """
 import collections
 import json

@@ -58,7 +58,7 @@ def _atomic_write_bytes(path, data):
     # publishes a torn gzip that every reader then fails to parse.
     #
     # Not a free-threading bug -- file writes release the GIL, so this races today. Found by
-    # the concurrency audit for the free-threaded move (docs/CHORD_FREE_THREADING.md).
+    # the concurrency audit for the free-threaded move (31896a862:docs/CHORD_FREE_THREADING.md).
     tmp = "%s.tmp.%d.%d" % (path, os.getpid(), threading.get_ident())
     try:
         with open(tmp, "wb") as f:

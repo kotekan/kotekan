@@ -26,7 +26,7 @@ defects therefore need a test that can actually go red:
      consumed quota, so BRUX -- sixth in a list whose first four were all Canadian, and worth
      15 in-slot BDS on its own -- was never reached.
 
-Both are the audited fallback shape (docs/CHORD_PEER_RELATIVE_AUDIT.md): a path that
+Both are the audited fallback shape (docs/CHORD_PEER_COMPARISON_PURGE.md, appendix): a path that
 reproduces the primary's OUTPUT while dropping one of its invariants, running exactly when
 things are already degraded.
 

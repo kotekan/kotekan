@@ -6,7 +6,7 @@
 # by side. Those two chains sit on the SAME 1176.45 MHz carrier through the same feed and
 # the same clock; splitting them across processes is what forced the receiver clock through
 # a JSON file, fetched the F-engine time anchor twice, parsed BRDC twice, and needed two
-# viewer instances. See docs/CHORD_BROKER_REFACTOR.md.
+# viewer instances. See 31896a862:docs/CHORD_BROKER_REFACTOR.md.
 #
 # Every key becomes a broker flag: `dll-gain: 0.25` -> `--dll-gain 0.25`, `true` -> a bare
 # flag, `false`/null -> omitted. So this file reads as the command lines it replaces, and a

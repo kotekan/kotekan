@@ -32,7 +32,7 @@ coincidence to be re-checked at every call site.
 
 WHAT IS DELIBERATELY NOT HERE: anything per-signal. Seeds, per-PRN track state, the DLL and
 carrier loops, the CL machinery, nav decode -- all of that is the chain's, and the chain is
-still `main()`'s closure (see docs/CHORD_BROKER_REFACTOR.md, the note above M3).
+still `main()`'s closure (see 31896a862:docs/CHORD_BROKER_REFACTOR.md, the note above M3).
 """
 import threading
 

@@ -6,7 +6,7 @@ THIS IS THE SHARED LAYER. Every function here is indexed by constellation and ta
 ephemeris state as an argument -- none of it is per-signal. In the unified broker one Sky
 serves every chain, which is the whole point: a CNAV decode on L5 produces the ephemeris
 E5a needs, and today that is thrown away at the process boundary
-(docs/CHORD_BROKER_REFACTOR.md 1.2).
+(31896a862:docs/CHORD_BROKER_REFACTOR.md 1.2).
 """
 import math
 import re
@@ -185,10 +185,11 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     #           happened to land in 19-42 survived --probe-require-slot, and bds_b2a sat at 2
     #           probes -> UNANCHORED -> nothing admitted, nothing trimmed.
     #
-    # Same shape as the four fallbacks audited on 2026-08-26 (docs/CHORD_PEER_RELATIVE_AUDIT.md):
-    # a fallback reproduces the primary path's OUTPUT while dropping one of its invariants --
-    # here the constellation identity -- and runs exactly when the primary is already degraded.
-    # Scope is (sysc, min_prn) because min_prn is part of what defines this chain's population.
+    # Same shape as the four fallbacks audited on 2026-08-26 (the appendix of
+    # docs/CHORD_PEER_COMPARISON_PURGE.md): a fallback reproduces the primary path's OUTPUT while
+    # dropping one of its invariants -- here the constellation identity -- and runs exactly when the
+    # primary is already degraded. Scope is (sysc, min_prn) because min_prn is part of what defines
+    # this chain's population.
     sc = state.setdefault("scope", {}).setdefault((sysc, min_prn), {})
     peak = sc.get("peak_n", 0)
     if len(out) >= peak:

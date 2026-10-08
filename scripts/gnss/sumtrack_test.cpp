@@ -1,4 +1,4 @@
-// Synthetic validation of the two phase-floor processing fixes (CHORD_GNSS_STATE 8.21.5):
+// Synthetic validation of the two phase-floor processing fixes (31896a862:docs/CHORD_GNSS_STATE.md 8.21.5):
 //
 //   [A] gnss::phase_track_loo -- the leave-one-out common-phase tracker. Injects the measured
 //       on-sky wander (AR(1), sigma 0.9 rad, ~42 ms correlation) into a synthetic record

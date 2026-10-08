@@ -24,7 +24,7 @@
  *    `(f_c - f_0)/g mod s_cols`, so the sum IS an s_cols-point inverse DFT of the channels
  *    folded into s_cols bins. Exact, not approximate -- an identity about the ramp that assumes
  *    nothing whatever about the signal. (This is NOT the coarse-axis fold that was tried and
- *    reverted in docs/CHORD_GNSS_STATE.md 5o; that one assumed the replica was periodic in the
+ *    reverted in 31896a862:docs/CHORD_GNSS_STATE.md 5o; that one assumed the replica was periodic in the
  *    window and died on the NH overlay.) The table collapses to nc ints + an s_cols/2 twiddle
  *    table, both of which fit in shared memory, and the flop count drops ~18x.
  *

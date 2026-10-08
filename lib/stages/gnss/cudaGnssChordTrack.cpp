@@ -220,7 +220,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                         max_chips, 210.0 / (double)max_chips);
     }
 
-    // fp16 Phi tables (docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table -- the one
+    // fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table -- the one
     // lever the DRAM-footprint verdict (§10.6c) says pays; 1.27-1.37x measured on synthesis,
     // storage error 3.3e-4 (~0.14 dB class against the 4-bit voltage floor). Default OFF.
     // READ THE RETURN: "armed" and "in effect" are different states (#96/#97) -- the engine

@@ -307,7 +307,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_deep_rate_q.assign(_n_prn, 0.0f);
     _st_deep_rate_full.assign(_n_prn, 0.0f);
     _st_deep_rate_full_q.assign(_n_prn, 0.0f);
-    // COMMON-PHASE TRACKER (see the hpp note / CHORD_GNSS_STATE 8.21.5). The half-width list
+    // COMMON-PHASE TRACKER (see the hpp note / 31896a862:docs/CHORD_GNSS_STATE.md 8.21.5). The half-width list
     // brackets the wander's measured >42 ms correlation time in records; each is a candidate
     // and the floor pays the selection, so more widths cost floor height, not correctness.
     _phase_track = config.get_default<bool>(unique_name, "phase_track", false);

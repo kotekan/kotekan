@@ -733,7 +733,7 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
             klo = khi + 1;
         }
 
-        // SHARED-TABLE MODE (docs/CHORD_GPU_TODO.md item 2). When the filter was built at a
+        // SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2). When the filter was built at a
         // DIFFERENT carrier than this stream's -- i.e. Doppler-free, shared by every PRN --
         // reconstruct each chip window's difference instead of reading it directly:
         //

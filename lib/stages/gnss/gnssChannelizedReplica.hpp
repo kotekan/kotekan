@@ -102,7 +102,7 @@ public:
         /// Built only when @ref hoprate_filter is asked for them (@c want_psi), because they
         /// double the build cost and only the SHARED-TABLE path needs them.
         ///
-        /// WHAT THEY ARE FOR (docs/CHORD_GPU_TODO.md item 2). Phi is per-PRN today only
+        /// WHAT THEY ARE FOR (31896a862:docs/CHORD_GPU_TODO.md item 2). Phi is per-PRN today only
         /// because the Doppler sits inside wc, and at 1.05 MB per channel per PRN that is
         /// 176-235 MB resident per chain-instance -- on a kernel §10.6c measured to be
         /// DRAM-FOOTPRINT-bound. But the gather never reads Phi; it reads the DIFFERENCE over

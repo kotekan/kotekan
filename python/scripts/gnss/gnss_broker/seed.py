@@ -1,4 +1,4 @@
-# The seed object (task #83, Phase 1 -- docs/CHORD_CONTROL_AUDIT.md section 2).
+# The seed object (task #83, Phase 1 -- 31896a862:docs/CHORD_CONTROL_AUDIT.md section 2).
 #
 # The audit's root finding: the seed was a bare dict with ~14 writers per cycle, half of
 # them REPLACING fields outright, arbitrated by ~20 mode booleans and cycle order -- and

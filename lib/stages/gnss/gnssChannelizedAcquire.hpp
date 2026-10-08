@@ -106,7 +106,7 @@ struct AcquisitionResult {
 /// Stepping s costs only scalloping: at step 32 the worst-case peak offset is 16 samples,
 /// ~0.15 dB. Nothing downstream needs better, because the refine that follows the acquire
 /// rescans +-refine_span samples anyway. This is NOT the coarse-axis fold that was tried and
-/// reverted (see docs/CHORD_GNSS_STATE.md 5o): it assumes no periodicity, so the secondary
+/// reverted (see 31896a862:docs/CHORD_GNSS_STATE.md 5o): it assumes no periodicity, so the secondary
 /// code cannot invalidate it.
 struct AcquisitionSurface {
     int n_dop;        ///< Doppler trials (= doppler_grid.size())
@@ -234,7 +234,7 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<std::complex<floa
 
 /// Reduce an accumulated surface to its peak: code phase, Doppler, lag and SNR
 /// (peak / surface mean). Mirrors @ref channelized_acquire's peak bookkeeping.
-/// SUB-WINDOW ("ms-split") ACCUMULATION -- docs/CHORD_GNSS_MS_SPLIT_SEARCH.md.
+/// SUB-WINDOW ("ms-split") ACCUMULATION -- 31896a862:docs/CHORD_GNSS_MS_SPLIT_SEARCH.md.
 ///
 /// The ordinary acquire integrates coherently over ONE REPLICA PERIOD, because that is what
 /// makes its cyclic correlation exact. On airspy that period IS one code period (fft_len

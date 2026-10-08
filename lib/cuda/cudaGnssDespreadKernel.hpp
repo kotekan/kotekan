@@ -87,7 +87,7 @@ struct DespreadJob {
                          ///< the record's slice BEFORE the code-period boundary, where the
                          ///< secondary overlay flips sign (gnssRecord.hpp slots 16-18). 0 = emit
                          ///< an all-zero head row (the plain 3-trial contract).
-    /// SHARED-TABLE MODE (docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi and
+    /// SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi and
     /// this PRN's Doppler offset from the table's OWN carrier, radians/sample. With
     /// psiA == nullptr or ddw == 0 the gather takes its original path and the result is
     /// bit-identical -- that is what makes the fallback safe rather than merely tested.
@@ -100,7 +100,7 @@ struct DespreadJob {
     const float2* psiA = nullptr;
     const float2* psiB = nullptr;
     float ddw = 0.0f;
-    /// CENTERED chip-window truncation (docs/CHORD_GPU_TODO.md item 6): first chip of the
+    /// CENTERED chip-window truncation (31896a862:docs/CHORD_GPU_TODO.md item 6): first chip of the
     /// gather walk. 0 = the full historical walk, bit-for-bit. With n_chips capped, the pair
     /// (d_first, n_chips) selects the CENTRAL window of the PFB span -- the prototype peaks
     /// mid-span, and the one-sided cap's cliff at 105-120 chips was the cap crossing that
@@ -149,7 +149,7 @@ struct PeelJob {
                         ///< 0 = no boundary in this window -> a_tail applies throughout.
     const float2* a_head; ///< [n_chan] gain to subtract, hops [0, m_head)
     const float2* a_tail; ///< [n_chan] gain to subtract, hops [m_head, n_hops)
-    /// SHARED-TABLE MODE (docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi and
+    /// SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi and
     /// this PRN's Doppler offset from the table's OWN carrier, radians/sample. With
     /// psiA == nullptr or ddw == 0 the gather takes its original path and the result is
     /// bit-identical -- that is what makes the fallback safe rather than merely tested.
@@ -209,11 +209,11 @@ struct DespreadParams {
                      ///< per-record staging buffer, or the ring length when a window is read in
                      ///< place from the device ring (phase F: ring_hops is a multiple of n_hops,
                      ///< so a record window is always CONTIGUOUS within a channel row)
-    /// SHARED, DOPPLER-FREE Phi/Psi tables (docs/CHORD_GPU_TODO.md item 2). Selects a separate
+    /// SHARED, DOPPLER-FREE Phi/Psi tables (31896a862:docs/CHORD_GPU_TODO.md item 2). Selects a separate
     /// kernel instantiation rather than a runtime branch, so the per-PRN path keeps its
     /// register budget -- registers cap MAXT, and MAXT is what sets the DRAM traffic.
     bool shared = false;
-    /// fp16 Phi tables (docs/CHORD_GPU_TODO.md item 3): job.phiA/phiB point at __half2 storage
+    /// fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): job.phiA/phiB point at __half2 storage
     /// and @ref launch_waveform takes the __half2 gather instantiation. HALVES THE RESIDENT
     /// TABLE, which is the one lever §10.6c's DRAM-footprint verdict says pays (measured
     /// 1.27-1.37x); storage error 3.3e-4 relative (scripts/gnss/phibits), gated through the

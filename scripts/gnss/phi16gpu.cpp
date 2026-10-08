@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief THE KERNEL GATE for fp16 Phi tables (docs/CHORD_GPU_TODO.md item 3).
+ * @brief THE KERNEL GATE for fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3).
  *
  * phibits answered the STORAGE error (3.3e-4 worst case on a chip step); wavebench answered
  * the TIMING (1.27-1.37x). Neither drives the shipped engine, and #71 is the monument to why

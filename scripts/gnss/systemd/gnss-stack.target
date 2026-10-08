@@ -1,6 +1,6 @@
 [Unit]
 Description=CHORD GNSS infrastructure stack (broker, gather, observables writers)
-Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_RUNBOOK.md
 # ⚠️ ON THIS HOST ONLY, and every unit says so. The user-unit copies live in the NFS-SHARED home
 # (~/.config/systemd/user), so cf06 and all eight cx nodes see them too -- and any login there
 # starts kvand's user manager, which pulls default.target -> this target -> the whole stack. On

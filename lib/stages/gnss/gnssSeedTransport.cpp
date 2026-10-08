@@ -57,7 +57,7 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
     // PER-THREAD SCRATCH, allocated once. hoprate_stream returns ~2.6 MB by value, so the
     // by-value form had every one of these threads calling the allocator inside the loop, on
     // every detection. The same churn took the ms-split refine from 89 s to 874 s when it was
-    // found in that path (docs/CHORD_GNSS_MS_SPLIT_SEARCH.md section 8); the ordinary refine
+    // found in that path (31896a862:docs/CHORD_GNSS_MS_SPLIT_SEARCH.md section 8); the ordinary refine
     // still had it. Sized by thread id, so no two threads share a buffer.
     const int nthr = n_threads > 0 ? n_threads : 1;
     std::vector<std::vector<std::vector<std::complex<float>>>> scratch((size_t)nthr);

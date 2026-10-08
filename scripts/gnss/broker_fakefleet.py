@@ -20,7 +20,7 @@ detections that ADVANCE (so cp_hist fills, the rate fit runs, freshness stamps m
 status table that reports locks (so the hold/watchdog/DLL/carrier paths execute), and a
 time anchor (so the CL time-assist arithmetic runs). What it must never be is STATIC -- a
 frozen fleet replays perfectly and tests nothing, which is the trap
-docs/CHORD_BROKER_REFACTOR.md 3.2 warns about and which cost two scans on 2026-08-08.
+31896a862:docs/CHORD_BROKER_REFACTOR.md 3.2 warns about and which cost two scans on 2026-08-08.
 
 Everything it emits is a deterministic function of the poll index, so two recordings of the
 same length are identical apart from wall-clock timing (which the transcript pins anyway).

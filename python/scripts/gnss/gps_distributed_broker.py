@@ -69,7 +69,7 @@ from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name 
 # equivalence gate (scripts/gnss/broker_equiv.py) holds the POST stream byte-identical
 # across the move. What changes is that the pieces the UNIFIED broker needs exactly one of
 # -- the transport, the fits, the sky -- are now separable from the per-chain loop that
-# `main()` still is. See docs/CHORD_BROKER_REFACTOR.md.
+# `main()` still is. See 31896a862:docs/CHORD_BROKER_REFACTOR.md.
 #
 # Re-exported at module scope rather than referenced through the package, because these
 # names are the file's public surface: every launch script drives main().

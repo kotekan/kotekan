@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Concurrency stress for the state the GIL has been protecting by accident.
 
-docs/CHORD_FREE_THREADING.md section 6: the four broker_equiv digests and the eight
+31896a862:docs/CHORD_FREE_THREADING.md section 6: the four broker_equiv digests and the eight
 fleetdll_gate legs are good gates and not ONE of them exercises concurrency. A race passes
 all twelve. This is the missing gate, and it is deliberately NOT a longer broker run -- a
 soak over a racy broker returns a plausible number (see the no-burn-in rule).

@@ -428,7 +428,7 @@ private:
     /// form of the closed carrier loop the airspy chain had -- each record derotated by the
     /// leave-one-out phase of its neighbours (gnss::phase_track_loo), which removes the
     /// per-satellite ~0.9 rad propagation wander that capped every deep at ~11-14 sigma
-    /// (CHORD_GNSS_STATE 8.21). Self-excluded => fail-closed: pure noise cannot be aligned.
+    /// (31896a862:docs/CHORD_GNSS_STATE.md 8.21). Self-excluded => fail-closed: pure noise cannot be aligned.
     /// Candidates at several half-widths compete with the straight sum under the SAME
     /// estimator (the optimal width is SNR-dependent: measured on synthetic AR(1) wander,
     /// narrow wins bright, wide wins faint) and the floor pays the selection. Off by default.

@@ -1,6 +1,6 @@
 [Unit]
 Description=CHORD GNSS aggregator (channelised search, GPU)
-Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_VM_MIGRATION.md
+Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_RUNBOOK.md
 # This host only: the user copies sit in the NFS-shared home (see gnss-stack.target).
 ConditionHost=|gnss
 ConditionHost=|gnss.site.chord-observatory.ca

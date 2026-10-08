@@ -233,7 +233,7 @@ class SignalDef(object):
     def band(self):
         """The CODE-clock scope: cable + PFB group delay are per carrier, so a code bias
         measured on one carrier is not another's. (The CARRIER-side clock is
-        receiver-scope -- see docs/CHORD_BROKER_REFACTOR.md 1.4.) Keyed by MHz so L5 and
+        receiver-scope -- see 31896a862:docs/CHORD_BROKER_REFACTOR.md 1.4.) Keyed by MHz so L5 and
         E5a, which really are the same 1176.45 MHz hardware, share one key."""
         return "%.2fMHz" % (self.carrier_hz / 1e6)
 

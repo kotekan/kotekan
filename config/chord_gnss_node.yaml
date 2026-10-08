@@ -191,7 +191,7 @@ gains:
 
 roadmap:
   # ===========================================================================================
-  # RESOLVED 2026-07-30: replica generation cost (was the blocker) -- see docs/CHORD_GNSS_STATE.md
+  # RESOLVED 2026-07-30: replica generation cost (was the blocker) -- see 31896a862:docs/CHORD_GNSS_STATE.md
   #
   # GnssChannelizedSearch called ChannelizedReplicaBank::channels(p, ...), which returns the
   # ENTIRE spectrum [N][Mp] and then slices out the channels it wants. On the airspy node N=10,

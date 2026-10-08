@@ -186,7 +186,7 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
 /// then issues ONE 16-byte load instead of two 8-byte loads into two arrays ~1 MB apart, halving
 /// the transaction count -- which is what this kernel actually pays (docs/gnss_gpu_search 10.6).
 /// SHARED: reconstruct each chip window from a DOPPLER-FREE (Phi, Psi) pair instead of reading
-/// a table built for this PRN's own Doppler (docs/CHORD_GPU_TODO.md item 2). Phi is per-PRN
+/// a table built for this PRN's own Doppler (31896a862:docs/CHORD_GPU_TODO.md item 2). Phi is per-PRN
 /// today only because the Doppler sits inside wc, and at 1.05 MB per channel per PRN that is
 /// 176-235 MB resident per chain-instance, on a kernel §10.6c measured to be DRAM-FOOTPRINT
 /// bound. The gather never reads Phi though -- it reads the DIFFERENCE over one chip window --

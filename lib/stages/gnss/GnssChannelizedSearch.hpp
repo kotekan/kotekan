@@ -218,7 +218,7 @@ private:
     /// MEASURED ON SKY 2026-08-16 (112 transitions, 241 s, gps_l5, all dhop = 8192):
     ///     d = best_nh - pred:   0: 37.5%   -1: 23.2%   |d| == span: 20.5%   |d| > span: 16.1%
     /// |d| > span is IMPOSSIBLE with a fresh hint, so ~16% of passes ran the blind scan. The
-    /// scatter tracks SNR, not the counter -- see task #41 and docs/CHORD_CONTROL_AUDIT.md §3.
+    /// scatter tracks SNR, not the counter -- see task #41 and 31896a862:docs/CHORD_CONTROL_AUDIT.md §3.
     ///
     /// Accuracy also degrades with revisit. An entirely unmodelled 4 kHz Doppler slips the period
     /// count by 0.041 periods over 12 s -- but 4.3 periods over the 1276 s revisit this fleet had

@@ -79,7 +79,7 @@ struct GnssCudaDespread::Impl {
     };
     std::vector<PhiCache> phi;
 
-    /// fp16 Phi (docs/CHORD_GPU_TODO.md item 3): ensure_phi stores __half2 tables and every
+    /// fp16 Phi (31896a862:docs/CHORD_GPU_TODO.md item 3): ensure_phi stores __half2 tables and every
     /// launch_waveform goes through the __half2 gather. HALVES THE RESIDENT TABLE -- §10.6c
     /// measured this kernel DRAM-FOOTPRINT-bound and fp16 is the one lever that paid
     /// (1.27-1.37x, wavebench). ⚠️ launch_despread/launch_peel read Phi as raw float2, so
@@ -87,7 +87,7 @@ struct GnssCudaDespread::Impl {
     /// them is in the shipped inject graph, and a loud throw beats a silent wrong despread.
     bool use_fp16 = false;
 
-    /// THE SHARED, DOPPLER-FREE TABLE SET (docs/CHORD_GPU_TODO.md item 2). One (Phi, Psi) pair
+    /// THE SHARED, DOPPLER-FREE TABLE SET (31896a862:docs/CHORD_GPU_TODO.md item 2). One (Phi, Psi) pair
     /// for EVERY PRN, built at the band carrier alone; each job carries its own
     /// ddw = wc(prn, doppler) - wc_shared and the gather reconstructs. 14.7 MB against the
     /// 176-235 MB the per-PRN caches hold, which is what moves this kernel: §10.6c measured it

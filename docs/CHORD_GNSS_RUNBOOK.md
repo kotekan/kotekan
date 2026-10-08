@@ -123,6 +123,9 @@ prediction per row; fixed, and the buffer raised to 8192 frames, ~3.9 s). Check 
   and systemd restarts them on the new epoch (the writers open a new day file). A writer that
   outlived a re-base used to file the new session onto the old day, tens of hours in the past,
   with its geometry evaluated there; that is what the exit is for.
+  **Check an epoch in one line:** `arriving_seq / 195312.5 + frame0_ctime` must land on the wall
+  clock. A wrong frame0 shifts every sample's time uniformly, so nothing inside the data can see
+  it; on 2026-08-27 the recording looked normal and was 52.6 h out.
 * **A stale epoch on the nodes is now detected** (`gnss_broker/timebase.py`). If the nodes come
   back from a re-base on the epoch chive *used* to serve, the broker log carries one line
   `*** TIME BASE SUSPECT (gps_l5): N satellites disagree with the model by X Hz rms … ONE epoch
@@ -195,10 +198,24 @@ one line in `/tmp/gnss_node.log`.
 of a binary replaced since the process started, which a live deploy does. A core is ~44 GB, and `%e`
 names the faulting thread. The recipe and the gdb line are in bug list #153.
 
-The four things that have stopped a node bring-up, in the order they bit:
-EOP table expired (`node_up.sh` refuses below 12 h headroom) · choco maintenance mode off (a
-per-minute `/kill` sweep) · chive serving a pre-re-base epoch · the broker started under the GIL.
-Details in [`CHORD_STACK_SHUTDOWN.md`](CHORD_STACK_SHUTDOWN.md) §6.
+The four things that have stopped a node bring-up, in the order they bit (2026-09-14), with the
+symptom of each:
+
+1. **The baked EOP table had expired.** Every node runs ~60 s, then exits on `Requesting EOP later
+   than in table`. `node_up.sh` refuses below 12 h of headroom and prints the regen. The live
+   table is REST-only, so a node restart reverts to the config's copy: run `eop_push.sh` after
+   every bring-up.
+2. **choco's maintenance mode was off.** Nodes die within ~60 s with `ERROR: /kill endpoint called`
+   as the last log line, one per minute. Nothing in this tree sends `/kill`.
+3. **chive served the epoch from before an F-engine re-base.** `port_axis_gate.py` says both ports
+   agree and the broker sees nothing. Refresh chive, then start the nodes.
+4. **The broker came up under the GIL.** The gather logs `dropped client fd N ... could not take a
+   frame within 200 ms` every ~15 s, every chain but L5 shows `ALL 12 instances stale`, and nodes
+   log `trim EXPIRED with no /set_trim`. The broker must run on `venv-ft`.
+
+**The obs writers and the broker must run the same generation of the code.** On 2026-09-11 a new
+published field (`fadr_g_hist`, #117) went unrecorded for 26 minutes because only the broker had
+been restarted. If a change spans the two, restart both.
 
 ## 6. ⚠️ cf06: what is still there, and what will hurt you
 

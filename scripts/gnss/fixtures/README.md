@@ -178,7 +178,7 @@ TREE and `selftest` before trusting it.
 ## broker_onsky_l5_20260826 + broker_onsky_b2a_20260826 (2026-08-26 01:1x-01:2x UTC)
 
 The remaining two current-regime captures, closing the coverage plan in
-docs/CHORD_REWORK_PLAN.md step 0. Both blessed at `4176af3de` from a clean tree, both
+31896a862:docs/CHORD_REWORK_PLAN.md step 0. Both blessed at `4176af3de` from a clean tree, both
 carry their own `.brdc/` sidecar (DOY 237+238 daily + hourly, snapshotted at capture time).
 
 * **`broker_onsky_l5_20260826`** -- the search-fed chain: 164 cycles, 2444 posts.

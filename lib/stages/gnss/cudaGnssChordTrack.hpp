@@ -221,7 +221,7 @@ public:
     // ---- In-tracker DLL code trim (config `code_trim`, default false = today's behaviour).
     //
     // WHY IT EXISTS (2026-07-31): the CHORD clock chain breathes ~+-1 chip (+-98 ns) with a
-    // ~20 s period (see docs/CHORD_GNSS_STATE.md 5h). Airspy closes its code loop in the
+    // ~20 s period (see 31896a862:docs/CHORD_GNSS_STATE.md 5h). Airspy closes its code loop in the
     // BROKER from the combiner's windowed E/L powers (~1 Hz), which that clock tolerates;
     // CHORD's +-0.2 chips/s slew defeats any seconds-cadence external loop (REST latency
     // 1.5-3 s, measured). So the same discriminator/leaky-integrator math runs HERE, once per

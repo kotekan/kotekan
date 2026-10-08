@@ -68,7 +68,7 @@ private:
     std::vector<uint8_t> _elem_prev_ok;  ///< element-cal continuity, decoupled from carrier
     std::vector<double> _fnco_prev;      ///< previous record's f_nco: the slope in force over
                                          ///< the gap [t_prev, t_now] (the [4e] pairing fix)
-    /// SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp; CHORD_GNSS_STATE 8.21.5). When enabled the
+    /// SELF-CALIBRATED ELEMENT SUM (gnssElemCal.hpp; 31896a862:docs/CHORD_GNSS_STATE.md 8.21.5). When enabled the
     /// header correlation slots carry the calibrated weighted MEAN over all elements instead of
     /// the bare reference element: same phase convention (reference-anchored), same "one
     /// element" scale, per-record SNR up ~sqrt(N_healthy) -- which is what makes the per-record

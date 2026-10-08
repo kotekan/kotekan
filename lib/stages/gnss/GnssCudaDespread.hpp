@@ -109,7 +109,7 @@ public:
     /// Phi layout -- is synthesis time proportional to the gather depth, or not?
     void set_max_chips(int n);
 
-    /// CENTERED chip-window truncation (docs/CHORD_GPU_TODO.md item 6): place the
+    /// CENTERED chip-window truncation (31896a862:docs/CHORD_GPU_TODO.md item 6): place the
     /// set_max_chips window on the CENTRE of the PFB span instead of its start. The prototype
     /// (a windowed sinc) peaks mid-span, so a one-sided cap crosses the peak -- that was the
     /// measured cliff at 105-120 chips (item 9.5), not a property of short filters. Centered,
@@ -120,14 +120,14 @@ public:
     /// the resulting d_first, and d_first == 0 is the historical walk bit-for-bit.
     void set_chips_centered(bool c);
 
-    /// SHARED, DOPPLER-FREE Phi/Psi tables for every PRN (docs/CHORD_GPU_TODO.md item 2).
+    /// SHARED, DOPPLER-FREE Phi/Psi tables for every PRN (31896a862:docs/CHORD_GPU_TODO.md item 2).
     /// Off by default. Returns whether it actually took: FDMA signals refuse it (there the
     /// satellite identity is IN the carrier, so there is nothing to share), and a caller must
     /// read the return rather than assume -- "armed" and "in effect" are different states, and
     /// a feature that silently did not arm is how #96/#97 hid for a day.
     bool set_shared_phi(bool on);
 
-    /// fp16 Phi tables (docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table, the one
+    /// fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table, the one
     /// lever §10.6c's DRAM-footprint verdict says pays (1.27-1.37x measured, wavebench;
     /// storage error 3.3e-4 relative, ~275x above item 2's reconstruction floor and ~0.14 dB
     /// class against the 4-bit voltage quantization). Off by default. Returns whether it took:

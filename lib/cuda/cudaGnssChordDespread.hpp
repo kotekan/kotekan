@@ -117,7 +117,7 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
                                   int n_chan, const DespreadParams& p, float2* wave, double* energy,
                                   int threads_hint, int fuse3, int phi16, cudaStream_t stream);
 
-/// TILED-STREAMING variant of @ref launch_waveform (BENCH -- docs/CHORD_GPU_TODO.md). Streams
+/// TILED-STREAMING variant of @ref launch_waveform (BENCH -- 31896a862:docs/CHORD_GPU_TODO.md). Streams
 /// each block's Phi slice through shared-memory tiles so every table byte crosses DRAM exactly
 /// once, coalesced, instead of scattering ~2 gather re-walks through L1 (§10.6c: the kernel is
 /// DRAM-FOOTPRINT bound, and this removes the re-walk AND the scatter residue without any cache

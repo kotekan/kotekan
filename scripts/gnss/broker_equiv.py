@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The broker refactor's equivalence gate (task #27 M0, docs/CHORD_BROKER_REFACTOR.md).
+"""The broker refactor's equivalence gate (task #27 M0, 31896a862:docs/CHORD_BROKER_REFACTOR.md).
 
 `gps_distributed_broker.py` is 6400 lines with a 5100-line `main()`, and every comment block
 in it is a scar from a real outage. Restructuring it on inspection is not a plan. So:
@@ -29,7 +29,7 @@ pure code move reproduces the numbers exactly. A moved digest is a real change.
      replays twice (must agree) and then replays with a one-part-in-1e12 perturbation
      injected into the loop gains (must DISAGREE). If the perturbed run still matches, the
      transcript does not exercise the code and the gate is decorative -- see the warning in
-     docs/CHORD_BROKER_REFACTOR.md 3.2 about transcripts captured against a dead fleet.
+     31896a862:docs/CHORD_BROKER_REFACTOR.md 3.2 about transcripts captured against a dead fleet.
 """
 import argparse
 import gzip
@@ -311,7 +311,7 @@ def main():
         n, _, _ = _census(a.transcript)
         if n["post"] == 0:
             sys.exit("transcript contains ZERO posts -- it exercises nothing. Capture one "
-                     "against a chain that is actually seeding (see CHORD_BROKER_REFACTOR "
+                     "against a chain that is actually seeding (see 31896a862:docs/CHORD_BROKER_REFACTOR.md "
                      "3.2: a frozen chain replays perfectly and tests nothing).")
         d1, _ = replay(a.transcript)
         d2, _ = replay(a.transcript)

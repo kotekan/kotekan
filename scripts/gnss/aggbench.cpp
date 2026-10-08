@@ -1,5 +1,5 @@
 // aggbench -- measure and validate the acquisition SURFACE AGGREGATE, which is the whole cost
-// of a search pass (docs/CHORD_GNSS_STATE.md 5o, 5q).
+// of a search pass (31896a862:docs/CHORD_GNSS_STATE.md 5o, 5q).
 //
 // Why this exists: every search speedup so far has been a parameter (fine_step, hint spans,
 // prns_per_pass, require_hint) that buys latency by NOT searching. Before moving the aggregate
