@@ -55,7 +55,7 @@ def stage_narrow_search(ctx):
         #
         # nh is the overlay chip index at TRANSMIT, so BRDC gives it outright:
         #   nh = round((gpst(t) - range/c + clk_sv) / period) mod overlay_len
-        # (the convention --nh-assist already uses for the combiner, proven to 0.01 chip).
+        # (proven to 0.01 chip offline).
         # What that leaves is ONE global constant -- the receiver clock reference -- shared
         # by every satellite and measured from any detection at all. Measured on sky
         # 2026-08-04: PRN 3 gave offset 16 on nine consecutive detections, and pooled across

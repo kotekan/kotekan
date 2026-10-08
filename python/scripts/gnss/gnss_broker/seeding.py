@@ -66,8 +66,8 @@ def _nh_joint_pred_chips(ctx, prn, t_utc):
     """Predicted overlay-epoch phase (chips) of PRN's code at receiver wall time t_utc,
     transmit-aligned: gpst(t) - tau + sat_clock, mod the overlay epoch. Deliberately NO
     receiver-clock term -- that missing term is the ONE common unknown the fleet votes on.
-    Same convention as the nh_assist hint (almanac.py) and the CL time-assist, both proven
-    on sky; the broadcast sat clock matters here because segments are 1 ms, not 1.5 s."""
+    Same convention as the search's nh hint (searchhint.py) and the CL time-assist, both
+    proven on sky; the broadcast sat clock matters here because segments are 1 ms, not 1.5 s."""
     import gnss_ephemeris as _eph
 
     v = ctx.pred[prn]

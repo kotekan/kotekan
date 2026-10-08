@@ -1840,8 +1840,7 @@ def build_parser(description):
         help="hint the search's secondary-code alignment from the EPHEMERIS, so the "
         "acquire scans nh_hint_span alignments instead of all 20 (~92%% of a "
         "pass). nh at transmit is round((gpst - range/c + clk_sv)/period) mod "
-        "overlay_len -- the same convention --nh-assist uses for the combiner "
-        "-- leaving ONE global constant, the receiver clock reference, which "
+        "overlay_len, leaving ONE global constant, the receiver clock reference, which "
         "any detection measures and every satellite shares. Works for sats "
         "NEVER detected, which is where a full 20-way scan hurts most. "
         "Requires --almanac and the capture time anchor.",
@@ -3399,18 +3398,6 @@ def build_parser(description):
         "fit and 21.4%% after one this would reject. 0.5 is mid-plateau: "
         "0.3-1.0 all reject 2.3%% of fits and catch 34.3%% of gps_l5 dropouts. "
         "0 (default) disables the cross-check.",
-    )
-    ap.add_argument(
-        "--nh-assist",
-        action="store_true",
-        help="secondary-overlay TIME-ASSIST for a per-PRN-overlay pilot (B1C/E5a/B2a): "
-        "POST each visible sat's PREDICTED absolute overlay-chip index (from "
-        "almanac range + BeiDou/Galileo-time, one convention, the combiner "
-        "self-calibrates the constant) to the combiner's /set_nh_hint. The weak "
-        "sats that cannot win the combiner's L-way (1800 for B1C) alignment "
-        "search get the geometrically-correct alignment for free. Needs --almanac; "
-        "the combiner needs nh_assist: true. Fail-safe: a wrong hint just fails "
-        "its floor and the blind search result stands.",
     )
     ap.add_argument(
         "--nh-overlay-len",

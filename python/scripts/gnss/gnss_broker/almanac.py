@@ -224,44 +224,6 @@ def stage_almanac_predict(ctx):
         except Exception as e:
             _log("almanac predict failed: %s" % e)
         ctx.up = {p for p, v in ctx.pred.items() if v[2] >= ctx.args.mask_deg}
-        # nh TIME-ASSIST: POST each visible sat's predicted absolute overlay-chip index to the
-        # combiner. period = one primary code period (= one overlay chip); the overlay counter
-        # runs on the SATELLITE's clock, so the predicted chip at transmit is
-        # round((gpst(now) - range/c + clk_sv)/period) mod overlay_len -- the convention
-        # proven to 0.01 chip offline (c31_convention.py). clk_sv is the 5th pred element
-        # (BRDC only; 0.0 on the TLE fallback, a <=~0.1-chip omission the consensus absorbs).
-        # NO absolute-convention care (the combiner self-calibrates the constant from its
-        # confidently-locked sats). Differential + slowly-varying, so the exact reference
-        # instant is immaterial to <<1 chip.
-        if ctx.args.nh_assist and ctx.pred:
-            try:
-                import gnss_ephemeris as _nh_eph
-
-                period = ctx.args.code_length / ctx.args.chip_rate_hz
-                t_ref = ctx.args.almanac_epoch or _now()
-                hints = [
-                    {
-                        "prn": int(p),
-                        "nh": int(
-                            round(
-                                (
-                                    _nh_eph.gpst_of_utc(t_ref)
-                                    - v[3] / _nh_eph.C_LIGHT
-                                    + (v[4] if len(v) > 4 else 0.0)
-                                )
-                                / period
-                            )
-                        )
-                        % ctx.args.nh_overlay_len,
-                    }
-                    for p, v in ctx.pred.items()
-                    if v[2] >= ctx.args.mask_deg
-                    and (ctx.capable is None or p in ctx.capable)
-                ]
-                if hints:
-                    _post("%s/set_nh_hint" % ctx.combiner, hints)
-            except Exception as e:
-                _log("nh-assist POST failed: %s" % e)
         # Common clock-frequency bias = median(measured - predicted) over detected
         # sats. A tight residual spread confirms the sign convention; a wild spread
         # (resid ~ -2x predicted) means flip --doppler-sign.
