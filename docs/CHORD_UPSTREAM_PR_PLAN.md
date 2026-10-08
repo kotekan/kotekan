@@ -122,7 +122,8 @@ symbol. This stage exists so the first review is a pleasant one.
 * `lib/stages/bufferRecv.cpp` — `SO_REUSEADDR` unconditionally, so a `drop_frames` receiver can
   restart inside TIME_WAIT.
 * `lib/stages/rawFileRead.*`, `rawFileWrite.*` — two opt-in config keys, defaults unchanged.
-* `docs/bfmask_deadlock_upstream_note.md` — already written for Jim and Andre.
+* `docs/bfmask_deadlock_upstream_note.md` — written for Jim and Andre; NOT part of #1640 and not
+  filed. File it as an upstream issue instead (its workaround has since been replaced).
 
 **Not yet proposed** (small, no GNSS; each to be checked against `develop` before a PR):
 `LinearAlgebra::to_blaze_herm` real diagonal (listed above but not in #1640), `bufferRecv`
@@ -238,6 +239,79 @@ by line count, lowest by risk — none of it compiles into kotekan.
    our deployment scripts, systemd units and runbooks, which raises the real question for
    stage 9 — which of `scripts/gnss/` and `docs/` belongs upstream at all. ~37 are code or test
    defaults pointing at out-of-repo fixtures and data, tied to item 2.
+
+---
+
+## 6. Cleanup round 3 — the plan (2026-10-08)
+
+Six read-only reviewers at `9f555d4be`; condensed notes with file:line detail in
+`docs/CHORD_CLEANUP_ROUND3_NOTES.md`. About 37k of the ~201k added lines go with high
+confidence and no live behaviour change. Verify every batch with: CUDA `-Werror` build +
+boost tests on cf05, `kotekan --check-config` on the nine live configs, `gen_fleet --check`
+byte-identical, broker `gnss_broker/test_*.py` + `selftest.py` under venv-ft (niced), and for
+broker changes `broker_equiv.py check` on cf05 (never `gate.sh` beside the live stack).
+⚠️ Run heavy scans on cf05, not the gnss VM (six reviewers pushed its load to ~33).
+
+**A. Fix first — blocks every upstream PR's CI.**
+1. CI-flag build: `lib/testing/gpuSimulateRFISK.cpp:565` sign-compare; unused `cps`
+   (GnssChannelizedSearch.cpp) and `ctl_energy` (cudaGnssInject.cpp).
+2. CPU-only build (FFTW on, CUDA off): move `cudaGnssChordTrack.cpp`, `cudaGnssInject.cpp` into
+   the `USE_CUDA` block; fix `_grid_bin_warns` / `gpu_ok` under `!GNSS_CUDA` in the search.
+3. Pytests CI runs: delete `tests/test_gnss_channelized_correlator.py` and
+   `test_gnss_record_collector.py` (stages gone); fix `test_gps_navdecode.py`'s sys.path.
+
+**B. Delete, high confidence**, in batches (notes have the lists):
+1. Stranded airspy C++: the six stages, `cudaGnssTrack`, `GnssTrackState`, `GpsReplicaCorrelator`
+   (+ its two pytests), dead kernel launchers; revert `airspyInput`, `fftwEngine`,
+   `airspyFrameDesc`, `config/airspy_autocorr.yaml` to `3bfbba126` (after broker B5f). ~6.5k.
+2. Dead code inside live stages (reviewer 5's high-confidence list, incl. the
+   `cudaGnssChordTrack` command, combiner overlay/navwipe/nh-assist/bit_export, bench-only kernel
+   variants, ms-split acquire, `gnssBroker`, `bufferDedup`). ~4.9k.
+3. `python/scripts`: ~80 files (airspy-era tools, closed investigations, `diag/`, `fullband`,
+   copy-of-logic tests). ~11k.
+4. `scripts/gnss`: 51 files (closed investigations, dead-endpoint probes, non-compiling
+   `n2skyab.cpp`, the dead shared-phi feature). Repoint provenance citations to commits first.
+   ~8.9k.
+5. `docs`: 17 finished plans/journals/snapshots, after moving the useful bits into the runbook
+   and repointing ~160 code citations (with the comment rewrite). ~7.4k.
+
+**C. KV decisions pending.**
+1. Retire the nav-decode set (26 files, 7.9k; off in production but imported at startup)?
+2. Broker features set only by airspy launchers (xband, CL sibling, nh-assist, state-consume,
+   coast-to-horizon, watchdog, carrier-loop knobs): retire each with its flag (B1 guard first:
+   `SIGNAL_IMPLIED` names can never be frozen), each its own commit with `broker_equiv`.
+3. Code generators: drop the four L1-band ones (above CHORD's band)? GLONASS (in band, no chain)?
+4. `scripts/gnss/site/` boundary for our deployment tooling (needs a planned restart: units,
+   crontabs, cf06 `cubecompact_loop`).
+5. `n2k_dual`: propose the two-input extension to n2k upstream, or ship the clone in stage 8?
+6. `dop-continuous`: retire with the others?
+7. Medium-confidence C++ (carrier-phase A/B arm #55, unused assembler REST levers, debug env
+   vars, FDMA offset).
+8. Take develop's copies at the next merge (NDArrayRingBuffer, `chord_pathfinder_recv.j2`,
+   cpuMonitor, TransposeBasebandArray, two julia `.out`); revert LinearAlgebra; re-derive the
+   premise of the cudaCopyFromRingbuffer gate and the correlators' build-then-publish (kept
+   deliberately on 10-01).
+
+**D. Operations found along the way.** Logs are not rotated (`/var/tmp/gnss-logs` 44 GB in 22
+days, ~2 GB/day, 161 GB free; `systemd/gnss.logrotate` targets a missing dir and is not
+installed). `gate.sh` cannot pass (on-sky digests moved, `holds` nondeterministic): re-bless or
+retire. `test_deep_gate` 7/8 and `test_rrate_state` 1/29 fail; 41 `python/scripts/gnss` tests
+have no runner. `live_element_gate.py` broken since 10-02. `gnss_transit_arcs.py` uses the
+pre-#99 station (155 m off). Viewer: layout key v7, reset clears v6.
+
+**E. Per stage, as each PR is cut.** Comment rewrite to AGENTS.md style (ratio 0.49 vs upstream
+0.28; 245 emoji, 264 dates, 230 task refs; ~1.5-2 weeks total); sphinx stubs per stage + one
+`docs/sphinx/user/gnss.rst`; the test set per stage; `GNSS_FIXTURES` env default with skip.
+
+**F. A separate airspy PR** (KV, 2026-10-08: the airspy/fftw changes are worth upstreaming).
+Source: tag `airspy-prototype-final` — `airspyInput.{cpp,hpp}` (+~294: bounded `/adcstat` wait,
+PFB mode, sample_seq, stream watchdog, `ensure_frame_desc`), `fftwEngine.{cpp,hpp}` (+~99),
+`airspyFrameDesc.hpp`, `config/airspy_autocorr.yaml`. Base `develop`, its own worktree, so it
+does not wait on or collide with this cleanup (B1 reverts those files here; when the PR merges,
+the next develop merge brings them back cleanly). Must: drop the dependency on
+`GnssChanMetadata` (stage 6) or land after it; fix `fftwEngine.cpp:181-188`, which dereferences
+`get_gnss_chan_metadata()` for any pool (nullptr unless GNSS); strip host and dongle specifics
+(gx10, serials); split the `/adcstat` hang fix out as its own small commit; tests per AGENTS.md.
 
 ---
 
