@@ -19,6 +19,12 @@ log_level: info
 
 instrument_name: airspy
 
+# kotekan builds a telescope at startup; the airspy stages do not use it.
+telescope:
+    name: ICETelescope
+    num_polarizations: 1
+    num_dishes: 1
+
 # Permit cross-origin REST access so the browser-based viewer can call
 # airspyInput / lag-align set_config / get_config / adcstat /
 # cal_lag / get_correlation endpoints. Scoped to the viewer's own
