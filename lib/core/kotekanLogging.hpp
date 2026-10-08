@@ -125,17 +125,19 @@ public:
 // Prints an error message, raises a SIGTERM, and throws (caught for stages)
 #define FATAL_ERROR(m, ...)                                                                        \
     do {                                                                                           \
-        ERROR(m, ##__VA_ARGS__);                                                                   \
-        set_error_message(fmt(m), ##__VA_ARGS__);                                                  \
+        const std::string _fatal_msg = FORMAT(m, ##__VA_ARGS__);                                   \
+        ERROR("{:s}", _fatal_msg);                                                                 \
+        set_error_message(fmt("{:s}"), _fatal_msg);                                                \
         exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
-        throw FatalError(fmt::format(FMT_STRING(m), ##__VA_ARGS__));                               \
+        throw FatalError(_fatal_msg);                                                              \
     } while (0)
 #define FATAL_ERROR_NON_OO(m, ...)                                                                 \
     do {                                                                                           \
-        ERROR_NON_OO(m, ##__VA_ARGS__);                                                            \
-        kotekan::kotekanLogging::set_error_message(fmt(m), ##__VA_ARGS__);                         \
+        const std::string _fatal_msg = FORMAT(m, ##__VA_ARGS__);                                   \
+        ERROR_NON_OO("{:s}", _fatal_msg);                                                          \
+        kotekan::kotekanLogging::set_error_message(fmt("{:s}"), _fatal_msg);                       \
         exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
-        throw FatalError(fmt::format(FMT_STRING(m), ##__VA_ARGS__));                               \
+        throw FatalError(_fatal_msg);                                                              \
     } while (0)
 
 
