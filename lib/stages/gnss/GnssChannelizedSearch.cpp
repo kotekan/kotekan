@@ -257,7 +257,6 @@ void GnssChannelizedSearch::search_snapshot() {
     const int Mp = _replica->repl_period_hops();
     const int hpr = _hops_per_record;
     const long long anchor = (long long)Mp * _fft_len; // warm-up reads periodic code
-    const double cps = _replica->chip_rate_hz() / _sample_rate;
     const double dmax = _doppler_grid.empty()
                             ? 0.0
                             : std::max(std::fabs(_doppler_grid.front()),
@@ -692,8 +691,8 @@ void GnssChannelizedSearch::search_snapshot() {
 
         // Per-PRN device setup: the Doppler grid (this PRN's, hinted or blind) and the replica
         // tables. Both are PRN-scoped, so they happen once here rather than per alignment.
-        bool gpu_ok = false;
 #ifdef GNSS_CUDA
+        bool gpu_ok = false;
         if (_cuda_acq) {
             gpu_ok = _cuda_acq->set_doppler_grid(grid, _sample_rate, _fft_len);
             if (!gpu_ok) {

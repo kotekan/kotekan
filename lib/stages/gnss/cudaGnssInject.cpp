@@ -231,7 +231,6 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     auto* hdr = (gnss_gpu::FrameHdr*)_ctl_stage.data();
     auto* winstart = (int64_t*)(_ctl_stage.data() + gnss_gpu::off_winstart());
     auto* pctl = (gnss_gpu::PrnCtl*)(_ctl_stage.data() + gnss_gpu::off_prnctl());
-    auto* ctl_energy = (double*)(_ctl_stage.data() + _ctl_off_energy);
     hdr->n_rec = n_rec;
     hdr->n_prn = S.n_prn;
     hdr->n_chan = S.n_chan;

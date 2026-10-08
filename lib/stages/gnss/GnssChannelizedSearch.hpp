@@ -282,6 +282,7 @@ private:
     /// point of moving to the GPU: leave headroom for other constellations rather than spend it.
     int _blind_prns_per_pass = 0;
     int _blind_cursor = 0; ///< rotates through the unhinted set, advanced once per pass
+    long _grid_bin_warns = 0; ///< times a non-bin-aligned Doppler grid was seen (#128)
 
 #ifdef GNSS_CUDA
     /// Device-resident acquire (docs/gnss_gpu_search.md A2). Null unless `use_cuda_acquire` and
@@ -290,7 +291,6 @@ private:
     std::unique_ptr<class GnssCudaAcquire> _cuda_acq;
     bool _cuda_acq_wanted = false;
     long _cuda_acq_fallbacks = 0; ///< times a pass fell back to the CPU (rate-limited WARN)
-    long _grid_bin_warns = 0;    ///< times a non-bin-aligned Doppler grid was seen (#128)
 
     /// A5: the refine on the GPU. Separate from _cuda_acq because they are different engines
     /// over different geometries (the acquire works on the correlation surface, the refine on

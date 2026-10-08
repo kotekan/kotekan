@@ -61,6 +61,7 @@ add_library(
     gnss/glonassCACode.cpp
     gnss/glonassL2OCCode.cpp
     gnss/gnssOverlay.cpp
+    gnss/gnssChannelizedDespread.cpp
     gnss/GnssSubbandSplit.cpp
     gnss/GnssQuantize44.cpp
     gnss/GnssCoherentCombiner.cpp
@@ -177,7 +178,6 @@ if(FFTW_FOUND)
                 gnss/GpsReplicaCorrelator.cpp
                 pfbPrototype.cpp
                 gnss/gnssBandPlan.cpp
-                gnss/gnssChannelizedDespread.cpp
                 gnss/gnssChannelizedAcquire.cpp
                 gnss/gnssChannelizedReplica.cpp
                 gnss/gnssSeedTransport.cpp
@@ -186,12 +186,13 @@ if(FFTW_FOUND)
                 gnss/GnssVoltagePeel.cpp
                 gnss/GnssChannelGather.cpp
                 gnss/GnssChordVoltageTap.cpp
-                gnss/cudaGnssChordTrack.cpp
-                gnss/cudaGnssInject.cpp
                 gnss/GnssN2RecordAssemble.cpp
                 gnss/GnssChordDequantize.cpp
                 gnss/GnssChanAlignMerge.cpp
                 gnss/GnssN2Project.cpp)
+    if(USE_CUDA)
+        target_sources(kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp)
+    endif()
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()

@@ -562,7 +562,7 @@ void gpuSimulateRFISK::main_thread() {
 
         // Exempt channels: every sample good, whatever SK said (mirrors cudaRFISKtilde).
         for (const int f : _excision_exempt_local_freqs)
-            for (uint64_t t_hi = 0; t_hi < _samples_per_data_set / 1024; ++t_hi)
+            for (uint64_t t_hi = 0; t_hi < nt / 1024; ++t_hi)
                 std::memset(rfi_mask + t_hi * nf * 128 + static_cast<uint64_t>(f) * 128, 0xff, 128);
 
         // Create output SK metadata
