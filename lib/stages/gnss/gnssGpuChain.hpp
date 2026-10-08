@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 /**
- * Shared frame layout for the GPU tracking chain, written by cudaGnssChordTrack or (path B)
- * GnssN2RecordAssemble and read by GnssGpuRecordAssemble.
+ * Shared frame layout for the GPU tracking chain, written by GnssN2RecordAssemble (with
+ * cudaGnssInject's control block) and read by GnssGpuRecordAssemble.
  *
  * Everything the downstream host assembler needs to build tracker records -- the per-record
  * control decisions AND the raw per-channel correlations -- travels in ONE output frame with

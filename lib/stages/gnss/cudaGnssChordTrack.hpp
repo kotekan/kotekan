@@ -1,8 +1,7 @@
 /**
  * @file
- * @brief CHORD N-antenna GNSS despread command: waveform generation + N x M correlation.
+ * @brief Broker seeds and per-PRN control for the GNSS GPU commands.
  *  - cudaGnssChordTrackState : public cudaCommandState
- *  - cudaGnssChordTrack : public cudaCommand
  */
 
 #ifndef CUDA_GNSS_CHORD_TRACK_HPP
@@ -23,13 +22,12 @@
 
 /**
  * @class cudaGnssChordTrackState
- * @brief Broker seeds + per-PRN control, shared across this command's instances.
+ * @brief Broker seeds + per-PRN control, shared across a GNSS command's instances.
  */
 class cudaGnssChordTrackState : public cudaCommandState {
 public:
     cudaGnssChordTrackState(kotekan::Config& config, const std::string& unique_name,
                             kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
-    ~cudaGnssChordTrackState();
 
     /// Broker seed contract (/set_seeds): a JSON array of
     /// {prn, doppler_hz, code_phase_chips, code_phase_rate, doppler_rate_hz_s,
@@ -40,8 +38,8 @@ public:
     /// `trim_ttl_s` in the state class for why this is not `set_seeds` with one more field.
     void set_trim_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 
-    /// GET endpoint: per-PRN code-trim state {prn, trim_chips, disc, quality}, for the
-    /// broker/scripts to watch the in-tracker DLL without touching the record stream.
+    /// GET endpoint: per-PRN code-trim state {prn, trim_chips, age_s, updates}, for watching
+    /// the fleet trim without touching the record stream.
     void get_trim_callback(kotekan::connectionInstance& conn);
 
     // ================= LIVE PRN MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md) =============
@@ -144,22 +142,18 @@ public:
     /// Record this frame's absolute first HOP. Called by whichever stage owns the frame loop,
     /// at the frame boundary; @ref apply_prn_swaps tests the scheduled deadline against it.
     ///
-    /// ⚠️ EVERY PRODUCER MUST CALL THIS. cudaGnssChordTrack (path A) and cudaGnssInject
-    /// (path B) share this state object but have SEPARATE frame loops; the deployed fleet
-    /// runs only path B, so wiring the clock into path A alone left the deadline permanently
-    /// untestable -- last_hop stayed -1 on all twelve nodes and no error was ever raised.
+    /// ⚠️ THE PRODUCER MUST CALL THIS every frame. Without it last_hop stays -1, the deadline
+    /// can never be tested, and no error is raised.
     void note_frame_hop(long long hop);
 
     // Geometry. n_prn is immutable; @c prns is NOT -- see the block above.
     std::vector<int> prns;
     int n_prn = 0, n_chan = 0, n_elem = 0;
-    int elem_stride = 0, frame_chan_stride = 0;
     int hops_per_record = 0, n_hops_frame = 0, fft_len = 16384;
     double sample_rate = 3.2e9, f_offset_hz = 0.0, dll_spacing = 0.5;
     bool _conjugate = false; ///< F-engine conjugation (see DespreadParams::conj_data)
     double frame0_utc = 0.0; ///< GPS-disciplined UTC of absolute sample 0; 0 = unset (the
                              ///< assembler then stamps records with HOST time -- see the cpp)
-    double doppler_margin_hz = 5000.0;
 
     /// One PRN's live seed. Model-primary: the broker owns these and refreshes them every
     /// cycle, so there is no frozen-seed state to age or unfreeze here.
@@ -186,13 +180,6 @@ public:
     double seed_ttl_s = 60.0;
 
     /// Snapshot the live trims, expiring any whose controller stopped posting.
-    ///
-    /// ⚠️ CALLED BY BOTH cudaGnssChordTrack AND cudaGnssInject, and it must stay that way.
-    /// Those two duplicate the per-record seed -> Spec construction by explicit decision (see
-    /// the class note below), and the trim was applied in ONE of them: cudaGnssInject passed a
-    /// hardcoded 0.0, so on path B -- which is what the fleet actually runs, the broker's
-    /// trackers being `gnss{0..1}_inject` -- the fleet controller's trim landed in this vector
-    /// and was then ignored. Found 2026-08-15 while wiring #51 F3. One function, both callers.
     std::vector<double> snapshot_trims(std::vector<int>& expired);
 
     /// The expiry sweep itself. ⚠️ CALLER MUST HOLD trim_mtx.
@@ -209,51 +196,21 @@ public:
 
     /// Snapshot the live seeds, expiring stale ones IN THE SHARED STATE (so /get_trim and
     /// every consumer sees the live set, not the high-water mark). Expired PRN numbers land
-    /// in @c expired for the caller to log OUTSIDE the lock. Shared by cudaGnssChordTrack and
-    /// cudaGnssInject so the TTL semantics cannot fork between the two consumers of one seed
-    /// stream.
+    /// in @c expired for the caller to log OUTSIDE the lock.
     std::vector<Seed> snapshot_seeds(std::vector<int>& expired);
-    /// Report the per-frame synthesis / correlation split (config `log_kernel_split`).
-    bool split_timing = false;
     std::mutex seed_mtx;
     std::vector<Seed> seeds;
 
-    // ---- In-tracker DLL code trim (config `code_trim`, default false = today's behaviour).
-    //
-    // WHY IT EXISTS (2026-07-31): the CHORD clock chain breathes ~+-1 chip (+-98 ns) with a
-    // ~20 s period (see 31896a862:docs/CHORD_GNSS_STATE.md 5h). Airspy closes its code loop in the
-    // BROKER from the combiner's windowed E/L powers (~1 Hz), which that clock tolerates;
-    // CHORD's +-0.2 chips/s slew defeats any seconds-cadence external loop (REST latency
-    // 1.5-3 s, measured). So the same discriminator/leaky-integrator math runs HERE, once per
-    // GPU frame (~24 Hz), on this command's own E/P/L rows: each execute() enqueues a small
-    // D2H copy of its correlator rows (reference element only) with an event, and a later
-    // execute() consumes whatever has completed -- one frame (~42 ms) of loop latency against
-    // a 20 s oscillation. The trim is added to the broker's model cp at the single
-    // Spec-construction point; the broker's own DLL (3c) then sees disc ~ 0 and stays quiet.
-    // The powers are EMA-AVERAGED before the discriminator and the gate touch them. Per-frame
-    // q = 2|P|^2/(|E|^2+|L|^2) cannot tell a lock from noise: at 0.5-chip spacing E and L each
-    // carry R(0.5)^2 = 1/4 of the peak, so q saturates at 4 for ANY signal strength (3.6 for
-    // our strongest satellite, 3.97 at search snr 600) while its own noise tail reaches 7.
-    // Measured 2026-07-31 -- a whole afternoon of sweeps read that noise as "bites" and
-    // "nulls". Averaging ~1 s of frames leaves q_perfect ~3.6 but pulls the noise toward 1,
-    // which is the separation the gate needs; the disc gets the same benefit (this is exactly
-    // what the airspy broker does with the combiner's window-averaged E/L powers).
     // ---- THE FLEET CONTROLLER'S TRIM (task #51 F2, 2026-08-15) ---------------------------
     //
-    // `trim` above is now written by EITHER the in-tracker loop (`code_trim`, still default
-    // false) OR by GnssFleetTrim through /set_trim. It is applied to the model phase either
-    // way -- see the `trim_now` snapshot in the cpp, which no longer zeroes itself when
-    // `code_trim` is off. Nothing writes it unless one of the two is enabled, so this changes
-    // no behaviour on its own.
+    // `trim` below is written by GnssFleetTrim through /set_trim and added to the model phase.
     //
-    // ⚠️ WHY /set_trim AND NOT ONE MORE FIELD ON /set_seeds. set_seeds_callback resets ema_n
-    // for every PRN it touches -- correctly, since a re-seed moves the commanded cp out from
-    // under the power average. At the fleet loop's 23.84 Hz that would pin any tracker-side
-    // average at warm-up forever. And a seed POST that omits a field ZEROES it, so the Python
+    // ⚠️ WHY /set_trim AND NOT ONE MORE FIELD ON /set_seeds. A seed POST that omits a field
+    // ZEROES it, so the Python
     // fast-trim thread had to copy the policy cycle's exact dict and substitute one value; an
     // actuator that can silently undo another loop's field is the worst failure this could
-    // have. /set_trim carries ONE number and touches nothing else: not seeds, not t_recv, not
-    // ema_n. It is ABSOLUTE, not a delta, so a dropped message costs latency and not
+    // have. /set_trim carries ONE number and touches nothing else: not seeds, not t_recv. It
+    // is ABSOLUTE, not a delta, so a dropped message costs latency and not
     // authority.
     //
     // ⚠️ AND IT EXPIRES. A frozen trim from a controller that died is a permanent, silent code
@@ -262,24 +219,16 @@ public:
     // against 6-7 seeded, kernel 14.2 -> 22.6 ms). On expiry the trim goes to ZERO and says
     // so: that is a step of up to `trim_clamp`, but the alternative is a wrong correction held
     // for as long as the process lives, and zero is the state the instrument ran in before
-    // this existed. 0 disables (the in-tracker loop's own trim must not expire -- it is
-    // refreshed from this process and its silence means the SIGNAL went away, not the
-    // controller).
+    // this existed. 0 disables.
     double trim_ttl_s = 0.0;
     std::vector<double> trim_t_recv; ///< steady-clock stamp of the last /set_trim, per PRN
     uint64_t trim_posts = 0;         ///< /set_trim requests accepted (the ACHIEVED post rate)
     uint64_t trim_expired = 0;
 
-    bool trim_enable = false;
-    double trim_gain = 0.15;       ///< integrator gain per update
-    double trim_leak = 0.002;      ///< leaky-integrator leak per update (noise can't walk it)
-    double trim_clamp = 3.0;       ///< |trim| bound, chips
-    double trim_quality_min = 2.2; ///< gate on the EMA'd q (~1 noise, ~3.6 locked)
-    double trim_pow_alpha = 0.05;  ///< power EMA (0.05 ~ 20 frames ~ 0.85 s)
-    int trim_ref_elem = 0;         ///< element the loop listens to (match the assembler's)
-    std::mutex trim_mtx;           ///< guards the vectors below (REST getter thread)
-    std::vector<double> trim;      ///< per-PRN cp trim, chips (applied cp = model + trim)
-    /// THE RE-PIN FOLD HISTORY, SHARED ACROSS A PRODUCER'S INSTANCES. `dcyc` is
+    double trim_clamp = 3.0;  ///< |trim| bound, chips
+    std::mutex trim_mtx;      ///< guards the vectors below (REST getter thread)
+    std::vector<double> trim; ///< per-PRN cp trim, chips (applied cp = model + trim)
+    /// THE RE-PIN FOLD HISTORY, SHARED ACROSS THE PRODUCER'S INSTANCES. `dcyc` is
     /// (applied - dop_prev) * t_abs: the carrier-phase step between THIS record and the one
     /// immediately before it. cudaCommands are instantiated once per in-flight GPU frame
     /// (gpu_buffer_depth) and the frames round-robin over the instances, so a history kept on
@@ -288,8 +237,7 @@ public:
     /// step, and the exported prompt jumped by a uniform random angle at the first record of
     /// every frame. Records are handed over in frame order on the process's one host thread, so
     /// a history that lives here is the true previous record for whichever instance takes the
-    /// frame. One per PRODUCER: path A (cudaGnssChordTrack) and path B (cudaGnssInject) may
-    /// both run against this state on one node and must not share a history.
+    /// frame.
     struct FoldHist {
         std::vector<double> dop_prev; ///< previous record's applied carrier (dop + ctrim), Hz
         std::vector<double> t_prev;   ///< and the absolute time it was pinned at, s
@@ -302,113 +250,14 @@ public:
             slot_gen_seen.assign((size_t)n, 0);
         }
     };
-    FoldHist fold_a;                            ///< cudaGnssChordTrack's history
-    FoldHist fold_b;                            ///< cudaGnssInject's history
-    std::vector<double> trim_disc;              ///< last applied discriminator, diagnostics
-    std::vector<double> trim_q;                 ///< EMA'd quality, diagnostics + the gate
-    std::vector<long long> trim_n;              ///< updates applied, diagnostics
-    std::vector<double> ema_e2, ema_p2, ema_l2; ///< per-PRN power EMAs (0 = uninitialized)
-    std::vector<long long> ema_n;               ///< frames folded in (warm-up guard)
-    uint64_t trim_frames = 0;                   ///< frames processed (rate-limits the log line)
+    FoldHist fold;
+    std::vector<long long> trim_n; ///< updates applied, diagnostics
 
-    /// One in-flight E/P/L readback: host landing zone + the event that says it is real.
-    /// One slot per GPU frame slot; the pipeline depth guarantees a slot's previous use has
-    /// completed long before it is reused.
-    struct TrimSlot {
-        cudaEvent_t ev = nullptr;
-        double* host = nullptr; ///< pinned, [rows][n_chan] x (re, im) of the ref element
-        std::vector<int> job0;  ///< [n_rec*n_prn] global row base this frame, -1 if idle
-        int n_rows = 0;
-        bool pending = false;
-    };
-    std::vector<TrimSlot> trim_slots; ///< lazily sized by the first command instance
-    std::mutex trim_slot_mtx;
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> replica;
     std::unique_ptr<GnssCudaDespread> despread;
     std::vector<int> covering;    ///< local channel indices this signal occupies (0..n_chan-1)
     std::vector<int> channel_ids; ///< GLOBAL bin of each local channel (sparse comb; @conf)
-};
-
-/**
- * @class cudaGnssChordTrack
- * @brief Despread N antennas against M references, per record window.
- *
- * Shared with the other GPU GNSS commands: replica synthesis (cudaGnssReplicaDevice.cuh), job
- * construction (GnssCudaDespread::build_jobs), the record schema (gnssRecord.hpp) and the
- * output frame layout (gnssGpuChain.hpp).
- *
- *   PORTED KNOWINGLY (2026-07-31):
- *     * The DLL CODE TRIM (config `code_trim`) -- but IN-TRACKER, not the broker's version.
- *       Airspy's code loop lives in the broker at ~1 Hz off the combiner's E/L; CHORD's clock
- *       chain breathes +-1 chip / ~20 s and only per-frame closure follows it. Same
- *       discriminator and leaky-integrator math, run here on this command's own E/P/L rows.
- *
- *   DELIBERATELY ABSENT here, and why:
- *     * The FROZEN-SEED machinery (hold-on-lock, anchor ageing, the snap-to-model fence and
- *       the code-currency f_ref re-pin). The airspy node retired all of it in favour of
- *       model-primary seeding (`--dop-continuous`), where the seed follows the BRDC model
- *       every cycle and the re-pin is free. Starting there rather than reproducing the state
- *       machine it replaced is the point; if CHORD ever needs the fence, port it knowingly.
- *     * The VOLTAGE PEEL. Deferred until acq/track and beam mapping are proven -- a single-PRN
- *       replica is likely sub-quantization at 4+4b. rows_spec is therefore always 4.
- *     * The channel-major device RING. The CHORD correlator reads the tap's frame in its native
- *       [hop][chan][elem] order, so there is nothing to transpose into.
- *
- * RECORD LENGTH. hops_per_record defaults to 2048 (10.49 ms at CHORD's 5.12 us hop), which
- * divides the tap's 8192-hop frame exactly 4 ways. TWO LESSONS bought on sky (2026-07-31),
- * both consequences of records NOT being code-period aligned (airspy's are: 1 ms exactly):
- *   1. The extrapolation must add the NOMINAL code advance (52.3776 chips/hop) between
- *      records -- airspy's residual-only formula is correct there ONLY because its nominal
- *      advance mod L is zero per record. See the ABSOLUTE EXTRAPOLATION comment in the cpp.
- *   2. A 10.49 ms record spans ~10 NH20 overlay chips (1 ms EACH -- the 20 ms figure is the
- *      SEQUENCE period, not the transition spacing), whose +-1 partial sums mostly cancel:
- *      the bare-primary record of a snr-40 satellite despreads to noise. Trackers must use
- *      GPS_L5_Q_NH (overlay baked into a 204600-chip code, 20 ms period) -- with which the
- *      code-period boundary IS the overlay boundary, one per record at most, and the
- *      P_HEAD/m_head machinery handles exactly that case as designed.
- *
- * @conf prns, n_channels, n_elements, elem_stride, frame_chan_stride
- * @conf hops_per_record   default 2048
- * @conf signal            gnssSignal.hpp name, e.g. GPS_L5_Q
- * @conf sample_rate       pre-channelization, 3.2e9 on CHORD
- * @conf seed_endpoint     default "/chord_track/set_seeds"
- * @conf code_trim         default false: in-tracker DLL code trim (see the state class)
- * @conf trim_gain, trim_leak, trim_clamp, trim_quality_min, trim_ref_elem
- * @conf trim_endpoint     default "/chord_track/get_trim"
- */
-class cudaGnssChordTrack : public cudaCommand {
-public:
-    cudaGnssChordTrack(kotekan::Config& config, const std::string& unique_name,
-                       kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                       int instance_num, std::shared_ptr<cudaCommandState> state);
-    ~cudaGnssChordTrack() override = default;
-
-    cudaEvent_t execute(cudaPipelineState& pipestate,
-                        const std::vector<cudaEvent_t>& pre_events) override;
-
-private:
-    cudaGnssChordTrackState* st();
-
-    std::string _gpu_mem_input, _gpu_mem_output;
-    std::string _mem_jobs, _mem_wave, _mem_scale, _mem_chanids;
-    size_t _in_frame_len = 0, _out_frame_len = 0;
-    std::vector<char> _ctl_stage; ///< host staging for the FrameHdr + PrnCtl control block
-    bool _uploaded_static = false;
-
-    /// RE-PIN PHASE STEP (task #52), per PRN slot, across frames and records. Identical
-    /// construction and identical reason as cudaGnssInject's -- see that header, and
-    /// gnss_gpu::PrnCtl::dcyc for why the subtraction has to happen here in the Doppler domain.
-    /// The history is cudaGnssChordTrackState::fold_a: shared by this command's instances,
-    /// separate from path B's -- see FoldHist for why neither placement alone was right.
-    /// --phase-dump-prn: per-record dump of the re-pin fold's INPUTS for one PRN (the hop,
-    /// the seed, the propagated Doppler, dop_prev, t_abs, dcyc, reanchored), to a file, for a
-    /// bounded number of records. Off unless the config names a PRN. Diagnostic only: the
-    /// assembler's REC_PHI0 increment differs at each frame's first record while REC_ANG0
-    /// steps regularly, and nothing exported says which side of the hand-off moved.
-    int _dcyc_dump_prn = -1;
-    int _dcyc_dump_left = 0;
-    FILE* _dcyc_dump = nullptr;
 };
 
 #endif // CUDA_GNSS_CHORD_TRACK_HPP

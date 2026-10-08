@@ -34,12 +34,10 @@
  * is computed on noise. One fault, a dozen symptoms. No gain and no clamp fixes it: tau is
  * clamped BY CONSTRUCTION, so the update RATE is the only lever.
  *
- * WHY HERE AND NOT IN THE TRACKER. cudaGnssChordTrack already carries this loop (`code_trim`),
- * already at frame rate, and it is default OFF for a reason that has not changed: an instance
- * sees ~7 of the fleet's ~105 channels and one reference element. It has the authority and not
- * the observability. The rule worth preserving is not "the loop lives in the broker" but ONE
- * PLACE WITH THE FLEET-WIDE VIEW OWNS THE LOOP -- and the gather host is the only other place
- * that has every instance at frame rate.
+ * WHY HERE AND NOT IN THE TRACKER. A tracker instance sees ~7 of the fleet's ~105 channels and
+ * one reference element: it has the authority and not the observability. The rule worth preserving
+ * is not "the loop lives in the broker" but ONE PLACE WITH THE FLEET-WIDE VIEW OWNS THE LOOP -- and
+ * the gather host is the only other place that has every instance at frame rate.
  *
  * WHY THE POLICY DOES NOT COME WITH IT. Everything that is a judgement stays in the Python
  * broker on its 12 s cycle: ephemeris, sky and visibility, the clock solve and the joint state,

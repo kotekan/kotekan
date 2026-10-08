@@ -209,7 +209,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     // looks like a healthy scheduled swap in the broker's log. Whatever owns the frame loop
     // must feed the clock.
     S.note_frame_hop(hop0_frame);
-    auto& FH = S.fold_b; // the re-pin fold history, shared by this command's instances
+    auto& FH = S.fold; // the re-pin fold history, shared by this command's instances
     S.apply_prn_swaps((void*)stream);
     {
         std::lock_guard<std::mutex> lk(S.prn_mtx);
@@ -298,15 +298,14 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             sp.ctrim_hz = sd.ctrim_hz;
             sp.covering = S.covering;
 
-            // PrnCtl, same contract as cudaGnssChordTrack's pass-1 block so the SHIPPED
-            // assembler can consume path B unchanged. job0 indexes the 4 rows (E/P/L/PH) this
-            // spec will occupy in the consumer's corr/energy arrays.
-            // THE RE-PIN PHASE STEP (task #52). propagate_seed just handed back this record's
-            // Doppler; the replica's carrier phase is 2*pi*(f_offset + dop)*t_abs, absolutely
-            // anchored, so a change in dop since the previous record steps that phase by
-            // (dop - dop_prev)*t_abs cycles -- 109-1127 of them at 3.37 days of uptime.
-            // Subtract HERE, in the Doppler domain, while the difference still has full
-            // precision (see PrnCtl::dcyc), and hand the assembler the finished step.
+            // PrnCtl, the gnssGpuChain.hpp contract the assembler reads. job0 indexes the 4 rows
+            // (E/P/L/PH) this spec will occupy in the consumer's corr/energy arrays. THE RE-PIN
+            // PHASE STEP (task #52). propagate_seed just handed back this record's Doppler; the
+            // replica's carrier phase is 2*pi*(f_offset + dop)*t_abs, absolutely anchored, so a
+            // change in dop since the previous record steps that phase by (dop - dop_prev)*t_abs
+            // cycles -- 109-1127 of them at 3.37 days of uptime. Subtract HERE, in the Doppler
+            // domain, while the difference still has full precision (see PrnCtl::dcyc), and hand
+            // the assembler the finished step.
             //
             // t_abs uses THIS record's wstart for both terms: the step being described is the
             // phase difference AT THIS INSTANT between a replica built from the old Doppler and

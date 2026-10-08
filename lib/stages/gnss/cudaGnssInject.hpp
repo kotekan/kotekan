@@ -124,7 +124,7 @@ private:
     ///
     /// Kept in the DOPPLER domain on purpose: the difference must be taken before f_offset
     /// (1.176 GHz) is added, or cancellation costs 0.4 rad. See PrnCtl::dcyc.
-    /// The history is cudaGnssChordTrackState::fold_b: shared by this command's instances (a
+    /// The history is cudaGnssChordTrackState::fold: shared by this command's instances (a
     /// per-instance copy differenced against the record this instance saw a buffer depth of
     /// frames ago -- see FoldHist), separate from path A's.
     /// --phase-dump-prn: per-record dump of the re-pin fold's INPUTS for one PRN (hop, seed,

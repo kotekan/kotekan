@@ -23,7 +23,7 @@
 //     v
 //   seed {code_phase_at_ref_chips, ref_hop, doppler_hz, code_phase_rate, ...}
 //     |
-//     |  gnss::propagate_seed                             <- cudaGnssChordTrack  [SHIPPED]
+//     |  gnss::propagate_seed                             <- cudaGnssInject  [SHIPPED]
 //     v
 //   commanded argument cp per record
 //     |
@@ -59,8 +59,8 @@
 #include "gnssSeedTransport.hpp"
 #include "gnssSignal.hpp"
 #include "pfbPrototype.hpp"
-// --nm: the tracker's OWN despread path (launch_waveform + launch_correlate_nm) and its 4+4b
-// frame codec, so the harness can run the kernels the sky actually runs, not only the fused one.
+// --nm: the N x M despread (launch_waveform + launch_correlate_nm) and its 4+4b frame codec,
+// the reference path B is cross-checked against, not only the fused kernel.
 #include "cudaGnssDespreadKernel.hpp"
 #include "gnss44.hpp"
 
@@ -117,7 +117,7 @@ struct Opt {
     int hops_per_record = 2048;
     double dll_spacing = 0.5;
     /// [#51 F3] THE COMMANDED DLL TRIM, chips, handed to propagate_seed exactly as
-    /// cudaGnssChordTrack hands it the fleet controller's value. With a perfect seed
+    /// cudaGnssInject hands it the fleet controller's value. With a perfect seed
     /// (--skip-search) a nonzero trim IS a known code error of known sign, which makes this
     /// the sign test for the whole actuator: the loop must respond with tau = -disc/4 pointing
     /// BACK toward zero. A sign error here diverges the loop, and no amount of rate fixes it.
@@ -191,12 +191,12 @@ struct Opt {
     double bench_cmd_max = 3.0;   ///< staircase turnaround (Hz)
     int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
     int quantize = 0;      ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
-    /// THE TRACKER'S PATH, NOT THE FUSED ONE. cudaGnssChordTrack despreads through
-    /// enqueue_batch_nm -- launch_waveform materialises the replicas, launch_correlate_nm
-    /// correlates them against every antenna of a 4+4b [hop][chan][elem] frame -- while this
-    /// harness (and cuda_gnss_despread_test) always ran despread_batch, the fused kernel. The
-    /// two share build_jobs and are exact-equal at N=1 in fp32 by test, but ONLY the N x M path
-    /// runs on sky, and only it takes the fp16 Phi gather. --nm runs each record through it
+    /// THE N x M PATH, NOT THE FUSED ONE. enqueue_batch_nm -- launch_waveform materialises the
+    /// replicas, launch_correlate_nm correlates them against every antenna of a 4+4b
+    /// [hop][chan][elem] frame -- is the reference path B is cross-checked against
+    /// (n2dualxval), while this harness otherwise runs despread_batch, the fused kernel. The two
+    /// share build_jobs and are exact-equal at N=1 in fp32 by test, and only the N x M path
+    /// takes the fp16 Phi gather. --nm runs each record through it
     /// (n_elem 1, the window quantised 4+4b and packed in the native order), so a per-record
     /// phase defect that lives in the waveform/correlate kernels is reproducible offline.
     int nm = 0;
@@ -277,7 +277,7 @@ static void usage() {
         "  --trials N         repeat the search on N noise realizations, print the spread\n"
         "  --nseed N          RNG seed (default 12345), so a noisy run is reproducible\n"
         "  --quantize         quantize the synthetic sky to 4+4b (default: noiseless float)\n"
-        "  --nm               despread through the TRACKER'S path (enqueue_batch_nm: waveform +\n"
+        "  --nm               despread through the N x M path (enqueue_batch_nm: waveform +\n"
         "                     N x M correlate, n_elem 1) instead of the fused kernel; implies\n"
         "                     --quantize (the frame is 4+4b bytes)\n"
         "  --phi16            with --nm: fp16 Phi tables, the nodes' live mode\n"
@@ -1200,7 +1200,7 @@ int main(int argc, char** argv) {
     printf("[3] TRACK + DESPREAD  (seed age %.1f s at record 0, records %.1f s apart)\n", o.age_s,
            o.rec_gap_s);
     GnssCudaDespread ds(tbank, 3, t_chans, o.hops_per_record, o.sample_rate, o.f_offset);
-    // ---- --nm: the tracker's despread path, buffers as cudaGnssChordTrack lays them out ----
+    // ---- --nm: the N x M despread path, buffers in the native frame layout ----
     // n_elem 1, elem_stride 1, frame_chan_stride n_chan: byte (hop, chan) at hop*n_chan + chan.
     // Scale 1.0 and ids 0..n_chan-1 exactly as the tracker uploads them (its comment: CHORD's
     // per-bin gain is part of the chain we solve for, so nothing is undone here).
@@ -1739,7 +1739,7 @@ int main(int argc, char** argv) {
                 // [4e] THE COMMAND-STREAM BENCH. Replicate the assembler's NCO fold
                 // (GnssGpuRecordAssemble pass 2) VERBATIM on the commanded prompts:
                 //   dcyc  = d(applied_total) * t_abs   (the producer's re-pin step,
-                //           reanchored == 3 -- cudaGnssChordTrack/_dop_prev history)
+                //           reanchored == 3 -- the producer's dop_prev history)
                 //   phi  += 2*pi*dcyc; phi += 2*pi*f_nco*dt   (f_nco = ctrim on CHORD)
                 //   P^    = P * exp(-i*phi)
                 // The control series rides the IDENTICAL fold with ctrim == 0 (its dcyc

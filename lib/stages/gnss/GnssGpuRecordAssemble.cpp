@@ -816,7 +816,7 @@ void GnssGpuRecordAssemble::main_thread() {
         follow_frame_prns(pctl, n_prn);
         const double* corr = (const double*)(in + off_corr(n_prn)); // double2 rows
         // The energy block sits AFTER the corr block, whose size scales with the ELEMENT axis
-        // -- the writer passes its n_elem (cudaGnssChordTrack: 32), so the reader must too, or
+        // -- the writer passes its n_elem (32 on CHORD), so the reader must too, or
         // every "energy" lands inside the corr block: garbage when enough PRNs run to fill
         // that far (which is why sparse days flickered and broker-full days "worked"), zeros
         // when few do -- and a zero P_ENERGY makes the combiner treat the record as inactive,

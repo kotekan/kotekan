@@ -20,7 +20,7 @@
  * @brief Path B's consumer: N^2 mixed tiles -> the epl frame GnssGpuRecordAssemble already eats.
  *
  * This is the whole point of M5: rather than inventing a second record path, path B emits the
- * EXACT layout cudaGnssChordTrack emits (gnssGpuChain.hpp: FrameHdr + window_start[MAX_REC] +
+ * layout of gnssGpuChain.hpp (FrameHdr + window_start[MAX_REC] +
  * PrnCtl[MAX_REC][n_prn] + corr[jobs][chan][elem] + energy[jobs][chan]), so the shipped
  * assembler, combiner, record schema and broker all work unchanged. The assembler is
  * header-driven -- it never reads hops_per_record -- which is what makes the drop-in possible.

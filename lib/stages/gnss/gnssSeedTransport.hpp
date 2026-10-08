@@ -10,7 +10,7 @@
  * Every seeding bug found in the week to 2026-08-02 lived in the CONVENTION BETWEEN two
  * stages -- what a number means, what it is reduced modulo, which epoch it references --
  * and not one of them was visible to a test of either stage alone. The arithmetic sat
- * inline in GnssChannelizedSearch::process() and cudaGnssChordTrack::run(), i.e. behind a
+ * inline in GnssChannelizedSearch::process() and the path-A tracker, i.e. behind a
  * kotekan buffer graph, a GPU and a REST hop, so the only way to exercise it was to fly it.
  * Bugs were consequently found one at a time, in deployment order, over three days.
  *

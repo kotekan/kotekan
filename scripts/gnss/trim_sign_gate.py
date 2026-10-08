@@ -10,7 +10,7 @@ seeding bug in the week to 2026-08-02 lived between two stages and was invisible
 either alone.
 
 So this measures it end to end rather than reasoning about it. `e2e --skip-search --trim X`
-commands the actuator exactly as cudaGnssChordTrack does, on a synthetic sky with known truth:
+commands the actuator exactly as cudaGnssInject does, on a synthetic sky with known truth:
 a trim is then a KNOWN code error of known sign, and the question is whether the loop's
 response points back.
 
