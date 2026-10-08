@@ -345,7 +345,11 @@ selftest + `broker_multi --list` base vs branch (`test_skyscope` is a race: base
   All 7 fixture digests identical to base. Then the combiner's nh-assist pass, and the airspy
   layer back to develop's version (#1751 is its upstream form).
 * C3 KEEP all code generators (the F-engine carries 0-1.6 GHz; L1 will be forwarded).
-* C4 YES, at a planned restart (units, 3 crontabs, cf06 loop) -- not started.
+* C4 PREPARED on `kv/site-move`: 39 scripts + `systemd/` moved to `scripts/gnss/site/`. Switch-over,
+  away from :17 and 00:15-00:45 UTC: ff the live checkout; `scripts/gnss/site/systemd/
+  install_user_units.sh` (daemon-reload only, nothing restarts); repoint the gnss crontab (3 lines)
+  and cf06's (1); `ssh cf06 .../scripts/gnss/site/cubecompact_up.sh`; then
+  `scripts/gnss/site/stack_contract_gate.sh` (rail differs until gnss-rail restarts).
 * C5 clone `n2k_dual` for now; it ships in stage 8.
 * C7 DONE except: `/set_elem_gain`, `/set_elem_sum_adapt`, `/set_reference_element` are manual
   operator levers (element-cal work), not dead -- asked KV; the kernels' carrier_phase_from_ref
