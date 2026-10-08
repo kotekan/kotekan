@@ -271,7 +271,7 @@ common:
   #
   # ⚠️ UNLIKE --telem-coherent, THIS ONE WAS MEASURED FIRST AND IT PASSED -- and it COULD be,
   # because the DLL is reproducible against itself where fleet_coherent is not (r = 0.077,
-  # #61). scripts/gnss/comb_dll_ab.py, live, WITH the mandatory poll-vs-poll control:
+  # #61). scripts/gnss/comb_dll_ab.py (at 31896a862), live, WITH the mandatory poll-vs-poll control:
   #
   #   gps_l5,  20 cycles, 240 paired PRNs
   #     disc  comb - poll  +0.0015 +- 0.0223   CONTROL (poll - poll)  +0.0014 +- 0.0472
@@ -581,8 +581,8 @@ http://cx51:12048/gnss{0..1}_n2combine"
     # the discordant (McNemar) counts survive the selection.
     #
     # Re-arm when there is a consumer this actually helps -- the #33 record_stream feed is
-    # the candidate, not this. `scripts/gnss/ab_fleetcoh.py` reproduces the analysis, and
-    # ⚠️ RUN THE CONTROL WITH IT: without the REST-vs-REST arm, r = 0.054 reads as an
+    # the candidate, not this. `scripts/gnss/ab_fleetcoh.py` (at 31896a862) reproduces the
+    # analysis, and ⚠️ RUN THE CONTROL WITH IT: without the REST-vs-REST arm, r = 0.054 reads as an
     # indictment of the transport instead of a property of the estimator.
     # telem-coherent: true
     #

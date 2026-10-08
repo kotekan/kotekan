@@ -65,7 +65,8 @@ import gnss_ephemeris as ge  # noqa: E402
 
 OBS = "/home/kvand/gnss/fixtures/obs"
 NAV = os.path.expanduser("~/.cache/kotekan_gps")
-LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0  # passwatch.py's station
+# The station scripts/gnss/passwatch.py used (at 31896a862).
+LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 BORE_AZ, BORE_EL = 180.0, 81.41
 PAIRS = [("gal_e5a", "gal_e6"), ("bds_b2a", "bds_b3i"), ("gps_l5", "gps_l2c")]
 CHAINS = [

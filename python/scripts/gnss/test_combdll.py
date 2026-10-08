@@ -3,12 +3,12 @@
 
     python3 python/scripts/gnss/test_combdll.py
 
-WHAT THESE ARE FOR. The live A/B (scripts/gnss/comb_dll_ab.py) shows the comb path agrees with
-the polled one on sky, but agreement on today's sky cannot tell a coherent channel combine from
-an incoherent one -- with every channel roughly in phase the two differ only in scale, and the
-DLL's ratios divide the scale out. So the properties that MATTER are pinned here on constructed
-data where they separate: a phase-opposed comb must cancel, the sum across SENDERS must be
-coherent too (after the REC_PHI0 rotation -- the lobe is the unit, not the sender), and a
+WHAT THESE ARE FOR. The live A/B (scripts/gnss/comb_dll_ab.py at 31896a862) shows the comb path
+agrees with the polled one on sky, but agreement on today's sky cannot tell a coherent channel
+combine from an incoherent one -- with every channel roughly in phase the two differ only in scale,
+and the DLL's ratios divide the scale out. So the properties that MATTER are pinned here on
+constructed data where they separate: a phase-opposed comb must cancel, the sum across SENDERS must
+be coherent too (after the REC_PHI0 rotation -- the lobe is the unit, not the sender), and a
 missing record must be a hole rather than a zero.
 
 The wire layout these frames assume is proved against the C++ header by test_telem.py's

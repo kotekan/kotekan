@@ -343,7 +343,7 @@ class TestSeedPhaseTransport(unittest.TestCase):
     """seed_phase_at_ref (#45 step 6): the broker's held phase -> the field the tracker
     prefers. The conversion is the whole test -- the unconverted value is 52 chips wrong,
     which is total loss of lock, and the e2e gate measured exactly that
-    (scripts/gnss/e2e_phase_transport.py: arg 0.788 / phase 51.999 / phase+ 0.785)."""
+    (scripts/gnss/e2e_phase_transport.py at 31896a862: arg 0.788 / phase 51.999 / phase+ 0.785)."""
 
     def test_offset_is_one_hop(self):
         from gnss_broker.fits import seed_phase_at_ref

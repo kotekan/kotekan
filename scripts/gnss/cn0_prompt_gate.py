@@ -367,11 +367,11 @@ def main():
     # THE ANCHOR CONVENTION OFFSET, measured per run from the probes themselves. The two
     # feeds' noise anchors sit a constant apart (gps_l5 2026-08-15: -1.43 dB, the comb
     # BELOW /get_status's p_pow) while their per-record powers agree to 0.07 dB on the
-    # same samples -- probe_anchor_ab.py is the instrument that separated those, and it
+    # same samples -- scripts/gnss/probe_anchor_ab.py (at 31896a862) separated those, and it
     # exonerated #62. A constant convention inside one serving layer is not an estimator
-    # disagreement (the coh_source_ab 6.34e9 precedent), so the pair verdict is judged on
-    # the CONVENTION-CORRECTED gap; both raw and anchor are printed so the correction is
-    # never silent.
+    # disagreement (the 6.34e9 precedent in scripts/gnss/coh_source_ab.py at 31896a862), so the
+    # pair verdict is judged on the CONVENTION-CORRECTED gap; both raw and anchor are printed so
+    # the correction is never silent.
     anch_db = None
     if poll_s2:
         anch_db = 10.0 * math.log10(next(iter(got.values()))["sigma2"] / poll_s2)

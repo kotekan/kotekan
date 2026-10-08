@@ -208,9 +208,9 @@ on :8877. All of it is the beam-cube product — offline analysis, not the live 
 where GPU benchmarking should live (`CUDA_VISIBLE_DEVICES=1`); the VM's single GPU is in
 production use.
 
-**⚠️ DO NOT RUN `stack_up.sh` ON cf06.** It predates the move and would start a *second* broker,
-gather and aggregator alongside the VM's. Two brokers command the same fleet. It now refuses;
-if you find a copy that does not, do not use it.
+**⚠️ The cf06 `stack_up.sh` is gone; do not restore it from history.** It predates the move and
+would start a *second* broker, gather and aggregator alongside the VM's, and two brokers would
+command the same fleet.
 
 The per-component `*_up.sh` scripts (`broker_restart.sh`, `gather_up.sh`, `agg_up.sh`,
 `obs_up.sh`, `viewer_up.sh`) are **superseded for the live stack** by the units, but they are not

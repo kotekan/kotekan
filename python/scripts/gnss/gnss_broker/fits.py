@@ -417,8 +417,8 @@ def seed_phase_at_ref(phys_chips, doppler_hz, chip_hz, hops_per_sec, carrier_hz,
     (window_start + fft_len - 1). One hop apart: 52.3713 chips at CHORD. Shipping the
     broker's phase unconverted steps the commanded code by exactly that.
 
-    MEASURED, not asserted (scripts/gnss/e2e_phase_transport.py, real propagate_seed + real
-    GPU despread, PRN 3):
+    MEASURED, not asserted (scripts/gnss/e2e_phase_transport.py at 31896a862, real
+    propagate_seed + real GPU despread, PRN 3):
         arg    (production, cp0 only)          worst |err| 0.788 chips
         phase  (unconverted)                   worst |err| 51.999   <- the whole hop
         phase+ (this function)                 worst |err| 0.785    <- agrees to 0.003
