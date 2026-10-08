@@ -897,22 +897,6 @@ def build_parser(description):
         default=12.0,
         help="min detection SNR to (re)seed a PRN",
     )
-    # (--trim-precomp / --trim-precomp-carrier / --trim-precomp-coast DELETED, 07-19 audit
-    #  A4: the carrier pre-shift was bench-rejected in both signs -- the BOOTSTRAP re-pull
-    #  owns step recovery, and under --dop-continuous steps no longer occur; the coast cp
-    #  currency translation became unconditional -- it is the same algebra as the hold-path
-    #  TRANSLATE, and the flag's OFF default was shipping the known-bad legacy overwrite.)
-    ap.add_argument(
-        "--coast-to-horizon",
-        action="store_true",
-        help="never drop a visible sat for low signal -- coast on the pure model "
-        "(almanac doppler + pooled code rate, currency-corrected) until it "
-        "SETS. The beam-map mode: sidelobe/null transits keep despreading on "
-        "the predicted trajectory so the unbiased incoherent/coherent power "
-        "observables sample the WHOLE beam, not just where the sat is locked. "
-        "The model holds the code peak for ~1-2 min per the pooled l-a "
-        "uncertainty; the search re-anchors whenever the signal returns.",
-    )
     ap.add_argument(
         "--noise-probes",
         type=int,

@@ -358,10 +358,8 @@ def stage_coast_drop(ctx):
             ctx.hold.low_hits[prn] = ctx.hold.low_hits.get(prn, 0) + 1
             # dead-reckoned seeds are MODEL-owned: visible + predicted = keep despreading
             # (their whole point is sats with no signal above the search threshold)
-            if (
-                ctx.hold.low_hits[prn] >= ctx.coast_polls
-                and not ctx.args.coast_to_horizon
-                and not (ctx.dr_state is not None and prn in ctx.dr_state["seeded"])
+            if ctx.hold.low_hits[prn] >= ctx.coast_polls and not (
+                ctx.dr_state is not None and prn in ctx.dr_state["seeded"]
             ):
                 _log(
                     "drop PRN %d (coast %.0fs expired, %s=%.2f)"
