@@ -338,7 +338,6 @@ def test_pathfinder_sparse_padded_inputs(pipeline, active_inputs):
         "host_dtv_powers_buffer",
         "frame_arrival_period",
         "pilot_profiles_path",
-        "samples_per_detector_frame",
         "weights_path",
     ):
         del pipeline.config[key]
@@ -516,10 +515,6 @@ def test_bulk_mask_excludes_anchor_guard(pipeline, index, half_width, side):
         ("truncated_weights", "weight bank range"),
         ("extra_weights", "profile table accounts for"),
         ("missing_channel_ids", "no chord_channel_id"),
-        ("window_alignment", "multiple"),
-        ("fine_geometry", "128"),
-        ("zero_block", "positive"),
-        ("negative_block", "positive"),
         ("metadata_length", "coarse_freq"),
     ],
 )
@@ -537,14 +532,6 @@ def test_rejects_invalid_runtime(pipeline, case, diagnostic):
     elif case == "missing_channel_ids":
         for row in pipeline.bundle["profiles"]:
             row["chord_channel_id"] = None
-    elif case == "window_alignment":
-        pipeline.config["samples_per_detector_frame"] = 8191
-    elif case == "fine_geometry":
-        pipeline.config["samples_per_detector_frame"] = 4096
-    elif case in ("zero_block", "negative_block"):
-        pipeline.config["samples_per_detector_frame"] = (
-            0 if case == "zero_block" else -64
-        )
     elif case == "metadata_length":
         pipeline.config["gen_voltage"]["num_local_freq"] = 2
     code, output = pipeline.run()

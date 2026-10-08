@@ -139,7 +139,6 @@ def setup_pipeline(
         "frame_arrival_period",
         "pilot_profiles_path",
         "weights_path",
-        "samples_per_detector_frame",
         "num_frequencies",
     ):
         cfg.pop(key, None)
@@ -272,7 +271,6 @@ def setup_pipeline(
         for key in (
             "pilot_profiles_path",
             "weights_path",
-            "samples_per_detector_frame",
         ):
             cfg.pop(key)
     cfg["host_dtv_RFImask_buffer"] = buffer(T * F // 8)
