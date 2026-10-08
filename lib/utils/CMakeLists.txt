@@ -37,7 +37,8 @@ add_library(
     CHORDTelescope.cpp
     UpchannelizationSchedule.cpp
     geoUtil.cpp
-    beamUtil.cpp)
+    beamUtil.cpp
+    pfbPrototype.cpp)
 
 target_link_libraries(
     kotekan_utils

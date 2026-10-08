@@ -8,9 +8,12 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "fftwPlannerLock.hpp" // for fftw_planner_mutex
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
+#include "pfbPrototype.hpp"    // for pfb_prototype, pfb_push, pfb_fold, pfb_window_from_string
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <complex>    // for complex
+#include <exception>  // for exception
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr
 #include <mutex>      // for mutex, lock_guard
@@ -52,10 +55,51 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
         return;
     }
 
+    // The complex path swaps the two halves of each spectrum, so it needs an even length.
+    if (_spectrum_length < 1 || (!_real_input && _spectrum_length % 2 != 0)) {
+        FATAL_ERROR("fftwEngine: spectrum_length must be at least 1, and even for complex "
+                    "input; got {:d}.",
+                    _spectrum_length);
+        return;
+    }
+    // A transform reads 4 * spectrum_length bytes of int16 in either mode and writes
+    // spectrum_length fftwf_complex bins, so an output frame is twice the input frame.
+    const size_t transform_bytes = 4 * (size_t)_spectrum_length;
+    if (in_buf->frame_size % transform_bytes != 0
+        || out_buf->frame_size != 2 * in_buf->frame_size) {
+        FATAL_ERROR("fftwEngine: in_buf frames ({:d} B) must hold whole transforms of {:d} B, "
+                    "and out_buf frames ({:d} B) must be twice their size.",
+                    in_buf->frame_size, transform_bytes, out_buf->frame_size);
+        return;
+    }
+
+    const int fft_len = _real_input ? _spectrum_length * 2 : _spectrum_length;
+    _num_taps = config.get_default<int>(unique_name, "num_taps", 1);
+    if (_num_taps < 1) {
+        FATAL_ERROR("fftwEngine: num_taps must be at least 1, got {:d}.", _num_taps);
+        return;
+    }
+    if (_num_taps > 1) {
+        const std::string window =
+            config.get_default<std::string>(unique_name, "pfb_window", "hamming");
+        try {
+            _proto = pfb_prototype(fft_len, _num_taps, pfb_window_from_string(window));
+        } catch (const std::exception& e) {
+            FATAL_ERROR("fftwEngine: {:s}", e.what());
+            return;
+        }
+        if (_real_input) {
+            _hist_real.assign(fft_len * _num_taps, 0.0f);
+            _block_real.resize(fft_len);
+        } else {
+            _hist_complex.assign(fft_len * _num_taps, 0.0f);
+            _block_complex.resize(fft_len);
+        }
+    }
+
     // fftwf_malloc is thread-safe; only the planner call needs the lock.
     std::lock_guard<std::mutex> planner_lock(fftw_planner_mutex());
     if (_real_input) {
-        const int fft_len = _spectrum_length * 2;
         real_samples = (float*)fftwf_malloc(sizeof(float) * fft_len);
         spectrum = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * (fft_len / 2 + 1));
         fft_plan = fftwf_plan_dft_r2c_1d(fft_len, real_samples, spectrum, FFTW_ESTIMATE);
@@ -101,8 +145,16 @@ void fftwEngine::main_thread() {
             const int fft_len = _spectrum_length * 2;
             for (int j = 0; j < samples_per_input_frame; j += fft_len) {
                 DEBUG("Running real FFT, {:d}", in_local[j]);
-                for (int i = 0; i < fft_len; i++) {
-                    real_samples[i] = (float)in_local[i + j] / _spectrum_length;
+                if (_num_taps > 1) {
+                    for (int i = 0; i < fft_len; i++) {
+                        _block_real[i] = (float)in_local[i + j] / _spectrum_length;
+                    }
+                    pfb_push(_hist_real.data(), _block_real.data(), fft_len, _num_taps);
+                    pfb_fold(_hist_real.data(), _proto.data(), fft_len, _num_taps, real_samples);
+                } else {
+                    for (int i = 0; i < fft_len; i++) {
+                        real_samples[i] = (float)in_local[i + j] / _spectrum_length;
+                    }
                 }
                 fftwf_execute(fft_plan);
                 // r2c gives fft_len/2+1 = _spectrum_length+1 bins; we drop Nyquist.
@@ -113,9 +165,21 @@ void fftwEngine::main_thread() {
             // Complex IQ: each input sample is an int16 pair, so step by 2*_spectrum_length ints.
             for (int j = 0; j < samples_per_input_frame / 2; j += _spectrum_length) {
                 DEBUG("Running complex FFT, {:d}", in_local[2 * j]);
-                for (int i = 0; i < _spectrum_length; i++) {
-                    complex_samples[i][0] = in_local[2 * (i + j)];
-                    complex_samples[i][1] = in_local[2 * (i + j) + 1];
+                if (_num_taps > 1) {
+                    for (int i = 0; i < _spectrum_length; i++) {
+                        _block_complex[i] =
+                            std::complex<float>(in_local[2 * (i + j)], in_local[2 * (i + j) + 1]);
+                    }
+                    pfb_push(_hist_complex.data(), _block_complex.data(), _spectrum_length,
+                             _num_taps);
+                    // fftwf_complex has the layout of std::complex<float> (FFTW manual, 4.1.1).
+                    pfb_fold(_hist_complex.data(), _proto.data(), _spectrum_length, _num_taps,
+                             reinterpret_cast<std::complex<float>*>(complex_samples));
+                } else {
+                    for (int i = 0; i < _spectrum_length; i++) {
+                        complex_samples[i][0] = in_local[2 * (i + j)];
+                        complex_samples[i][1] = in_local[2 * (i + j) + 1];
+                    }
                 }
                 fftwf_execute(fft_plan);
                 // Shift DC into the centre.
