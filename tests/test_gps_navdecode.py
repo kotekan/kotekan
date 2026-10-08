@@ -5,7 +5,7 @@ import sys
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python", "scripts", "gnss"))
 import gps_navdecode as nd  # noqa: E402
 
 SYM = nd.SYMS_PER_BIT
