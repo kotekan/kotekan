@@ -1,13 +1,14 @@
 #include "airspyInput.hpp"
 
-#include "Config.hpp"          // for Config
-#include "NDArray.hpp"         // for GenericNDArray
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_input_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO, DEBUG, FATAL_ERROR
-#include "restServer.hpp"      // for connectionInstance, HTTP_RESPONSE, restServer
+#include "Config.hpp"            // for Config
+#include "NDArray.hpp"           // for GenericNDArray
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"   // for make_input_desc
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for ERROR, INFO, DEBUG, FATAL_ERROR, WARN
+#include "prometheusMetrics.hpp" // for Metrics, Counter
+#include "restServer.hpp"        // for connectionInstance, HTTP_RESPONSE, restServer
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
@@ -23,11 +24,13 @@
 #include <stdint.h>           // for uint32_t, uint8_t
 #include <stdlib.h>           // for free, abs, malloc
 #include <string.h>           // for memcpy
+#include <thread>             // for sleep_for
 #include <unistd.h>           // for size_t, close, usleep
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(airspyInput);
 
@@ -226,6 +229,37 @@ void airspyInput::main_thread() {
                     airspy_error_name((enum airspy_error)err), err);
         return;
     }
+
+    stream_watchdog();
+}
+
+void airspyInput::stream_watchdog() {
+    auto& dropped =
+        Metrics::instance().add_counter("kotekan_airspyinput_dropped_samples_total", unique_name);
+    const auto report_interval = std::chrono::seconds(30);
+    uint64_t last_dropped = 0, reported_dropped = 0;
+    auto next_drop_report = std::chrono::steady_clock::now();
+
+    while (!stop_thread) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // libairspy stops for good when a USB transfer fails.
+        if (!airspy_is_streaming(a_device)) {
+            FATAL_ERROR("libairspy stopped streaming, which it does when a USB transfer fails.");
+            return;
+        }
+
+        const uint64_t n_dropped = samples_dropped;
+        dropped.inc(n_dropped - last_dropped);
+        last_dropped = n_dropped;
+        const auto now = std::chrono::steady_clock::now();
+        if (n_dropped > reported_dropped && now >= next_drop_report) {
+            WARN("libairspy dropped {:d} samples ({:d} in total) because the stage fell behind, "
+                 "usually waiting for an empty out_buf frame; the stream has a gap there.",
+                 n_dropped - reported_dropped, n_dropped);
+            reported_dropped = n_dropped;
+            next_drop_report = now + report_interval;
+        }
+    }
 }
 
 int airspyInput::airspy_callback(airspy_transfer_t* transfer) {
@@ -237,6 +271,8 @@ int airspyInput::airspy_callback(airspy_transfer_t* transfer) {
 void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
     // Serialise overlapping callbacks; libairspy can in principle deliver them concurrently.
     pthread_mutex_lock(&recv_busy);
+
+    samples_dropped += transfer->dropped_samples;
 
     void* in = transfer->samples;
     size_t bt = transfer->sample_count * BYTES_PER_SAMPLE;

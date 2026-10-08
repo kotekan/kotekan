@@ -89,6 +89,13 @@ airspy_inputB:
     out_buf: input_bufB
 #  serial: 0x________________   # paste from inputB's "Serial Number:" log line
 
+# Stop kotekan if either device starts but never delivers, or stops delivering.
+input_monitor:
+    kotekan_stage: monitorBuffer
+    bufs: [input_bufA, input_bufB]
+    timeout: 5
+    wait_for_first_frame: false
+
 # Estimate the sample-level lag between the two streams over a window of
 # samples. Lag is exposed via REST and can be applied back to airspyInput's
 # `add_lag` to compensate.

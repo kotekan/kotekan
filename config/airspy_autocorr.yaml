@@ -60,6 +60,13 @@ airspy_input:
     biast_power: false
 #    serial: 0x03A464C834658167  # uncomment & edit to pick a specific dongle
 
+# Stop kotekan if the device starts but never delivers, or stops delivering.
+input_monitor:
+    kotekan_stage: monitorBuffer
+    bufs: [input_buf]
+    timeout: 5
+    wait_for_first_frame: false
+
 
 spectrum_output:
     integration_length: 64

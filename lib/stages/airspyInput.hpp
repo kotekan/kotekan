@@ -74,6 +74,15 @@
  * @conf   adcstat_timeout_ms Int (default 250). How long a GET @c /adcstat waits for the next
  *                      frame before failing. Must exceed the time to fill one frame.
  *
+ * @par Metrics
+ * @metric kotekan_airspyinput_dropped_samples_total
+ *         The number of samples libairspy dropped because the stage fell behind, usually
+ *         while waiting for an empty frame.
+ *
+ * The stage stops kotekan if libairspy stops streaming. A device can also start without an
+ * error and then deliver nothing; run a @c monitorBuffer with @c wait_for_first_frame false on
+ * @c out_buf to catch that, as the example configs do.
+ *
  * @warning If incoming USB transfers ever overlap, sample ordering becomes undefined.
  *
  * @author Keith Vanderlinde
@@ -102,6 +111,10 @@ public:
     void adcstat_callback(kotekan::connectionInstance& conn);
 
 private:
+    /// Runs on the stage thread once streaming starts: publishes the dropped-sample count and
+    /// stops kotekan if libairspy stops streaming.
+    void stream_watchdog();
+
     /// Kotekan buffer object which will be fed.
     Buffer* buf;
     /// Handle to the airspy device.
@@ -141,6 +154,8 @@ private:
     std::string _airspy_fn;
     /// Longest wait in @c adcstat_callback for the producer, in ms.
     int _adcstat_timeout_ms;
+    /// Samples libairspy dropped, counted by the producer for @c stream_watchdog.
+    std::atomic<uint64_t> samples_dropped{0};
 
     /// ADC statistics. The REST adcstat handler requests a dump and waits on
     /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the
