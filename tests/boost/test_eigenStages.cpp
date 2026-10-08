@@ -72,6 +72,9 @@ struct EigenStageTestParams {
     // eigenvalue is noise divided by noise -- so asking the iterative solver to converge more
     // than one eigenpair here cannot succeed.
     size_t num_ev_conv = 1;
+    // Frames are produced for each of these frequencies in turn at every time step;
+    // total_frames counts them all.
+    std::vector<uint32_t> freq_ids = {0};
     size_t total_frames = 6;
     size_t check_start_frame = 0;
     uint32_t num_diagonals_filled = 0;
@@ -131,14 +134,17 @@ static EigenResults run_pipeline(const EigenStageTestParams& p) {
     cfg["num_polarizations"] = 2;
 
     cfg[fake_name]["kotekan_stage"] = "FakeN2";
-    cfg[fake_name]["freq_ids"] = std::vector<uint32_t>{0};
+    cfg[fake_name]["freq_ids"] = p.freq_ids;
     cfg[fake_name]["num_elements"] = p.num_elements;
-    cfg[fake_name]["num_frames"] = p.total_frames;
+    // FakeN2 counts its frame limit in time steps, one frame per frequency each
+    BOOST_REQUIRE_EQUAL(p.total_frames % p.freq_ids.size(), 0u);
+    cfg[fake_name]["num_frames"] = p.total_frames / p.freq_ids.size();
     cfg[fake_name]["cadence"] = 1.0;
     cfg[fake_name]["wait"] = false;
     cfg[fake_name]["out_buf"] = "in_buf";
     cfg[fake_name]["mode"] = p.mode;
     cfg[fake_name]["kill_on_complete"] = false;
+    cfg[fake_name]["sleep_after"] = 0.0;
     if (!p.flagged_inputs.empty()) {
         cfg[fake_name]["flagged_inputs"] = p.flagged_inputs;
         cfg[fake_name]["flag_start_frame"] = p.flag_start_frame;
@@ -318,6 +324,23 @@ BOOST_AUTO_TEST_CASE(eigenN2Iter_flagged_and_excluded_inputs) {
     verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-4f);
 }
 
+// Frames of several frequencies arrive interleaved and are decomposed by one stage
+// with one solver, whose workspace is reused from one to the next. Each frame must
+// still come out as if decomposed on its own, masking and flags included.
+BOOST_AUTO_TEST_CASE(eigenN2Iter_interleaved_frequencies) {
+    EigenStageTestParams params;
+    params.freq_ids = {0, 1, 2};
+    params.total_frames = 6;
+    params.num_elements = 16;
+    params.exclude_inputs = {2};
+    params.flagged_inputs = {5, 10};
+    params.num_ev = 1;
+    params.num_ev_conv = 1;
+    auto res = run_pipeline(params);
+    BOOST_REQUIRE_EQUAL(res.eval0.size(), params.total_frames);
+    verify_results(res, params, 1e-4, 1e-4, 1e-4, 1e-4f);
+}
+
 // With flag masking turned off the frames' flags are ignored. This is what
 // protects a pipeline whose source does not populate the flags at all: an
 // unpopulated flag array reads as every element being bad.
@@ -454,6 +477,7 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a, const EigenStageTestP
         cfg[s.fake_name]["out_buf"] = s.in_buf_name;
         cfg[s.fake_name]["mode"] = s.params.mode;
         cfg[s.fake_name]["kill_on_complete"] = false;
+        cfg[s.fake_name]["sleep_after"] = 0.0;
 
         cfg[s.eigen_name]["kotekan_stage"] = "EigenN2Iter";
         cfg[s.eigen_name]["in_buf"] = s.in_buf_name;
