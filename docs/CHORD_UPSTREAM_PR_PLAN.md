@@ -312,6 +312,31 @@ the next develop merge brings them back cleanly). Must: drop the dependency on
 `GnssChanMetadata` (stage 6) or land after it; fix `fftwEngine.cpp:181-188`, which dereferences
 `get_gnss_chan_metadata()` for any pool (nullptr unless GNSS); strip host and dongle specifics
 (gx10, serials); split the `/adcstat` hang fix out as its own small commit; tests per AGENTS.md.
+Done as draft PR #1751 (branch kv/airspy-pfb, worktree ~/gnss/airspy-wt).
+
+**Progress, 2026-10-08 (second session).** Branch `kv/cleanup-r3` (worktree ~/gnss/cleanup3-wt),
+on `31896a862`, local. Each batch verified on cf05: CI's three `-Werror` builds (CUDA+OpenCL, CPU
+full, CPU bare), boost, CI's pytests, `--check-config` on the nine live configs (it rejects an
+unknown stage type), `gen_fleet` output byte-identical base vs branch, broker unit tests +
+selftest + `broker_multi --list` base vs branch (`test_skyscope` is a race: base fails it 1/5 too).
+* A done (`0fbe5071b`, `04f640012`). Also found: CI's **lint** job was red on our tree; fixed by one
+  formatter pass (`72662e4d8`, black 19.10b0 / clang-format-18 / cmake-format / yamlfix) and a
+  j2lint guard in `gnss_chain.j2` (`79912e69c`).
+* B1 done except the airspy-layer revert (waits on C2's adcstat anchor; #1751 is its upstream
+  form): `a2a2770a8`, `0cd8d3c03`. B2: only `gnssBroker` + `bufferDedup` (`bf5590704`); the rest
+  is not mechanical, see below. B3 `5862dfd5b` (70 files), B4 `48c30fe54` (46), B5 `0e1457783`
+  (14 docs; runbook took the bring-up failures and the epoch check; citations name 31896a862).
+* Held back, with the reason: path A (`cudaGnssChordTrack` + generator branch; the generator
+  records KV keeping it for single-signal debugging -> C9); combiner overlay/navwipe/bit_export
+  and nh-assist (C1/C2); bench-only kernel variants and the GPU gate tools phibits/phishare(gpu)
+  (stage 8, need GPU A/B); assembler chan/phi and dcyc dumps (C7); `navbit_reuse` (C1);
+  `l5_band_decode`, `mid_band_decode`, `gps_l2c_subband_validate`, `gps_hoprate_validate` (cited as
+  references by the generators and a boost test: stage 5/7); `gnss_tec` (feeds gnss_tec_movie);
+  `kcoh_phase_series`/`kcoh_rate_probe` (C7); beam-map pipeline (6 files) and broker benches
+  (medium/low); `bfmask_deadlock_upstream_note` (C11).
+* New decisions: **C9** remove path A? **C10** beam-map pipeline? **C11** file the bfmask note as
+  an upstream issue, then delete it? Facts for C6: `dop_continuous` is neither frozen nor in the
+  live argv, so production runs without it.
 
 ---
 
