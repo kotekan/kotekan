@@ -2987,20 +2987,13 @@ def build_parser(description):
         "not a 75-way search. Needs --almanac.",
     )
     ap.add_argument(
-        "--adc-stage",
-        default="airspy_in",
-        help="airspy input stage name for the utc0_sample0 anchor GET (CL assist)",
-    )
-    ap.add_argument(
         "--time0-endpoint",
         default=None,
         help="CHORD: REST path (relative to --rest-url, e.g. telescope/time0_ns) "
-        "serving the F-engine's GPS-disciplined absolute time of frame 0. Used "
-        "INSTEAD of the airspy /adcstat anchor. The airspy node stamps sample 0 "
-        "with host wall-clock -- good to milliseconds -- which is why it must "
-        "then SOLVE the receiver clock from measured code phases. CHORD's "
-        "frame 0 is disciplined to GPS via IRIG-B/PPS and is exact, so the "
-        "anchor is a fact rather than an estimate.",
+        "serving the F-engine's GPS-disciplined absolute time of frame 0: the "
+        "capture anchor the CL assist and dead reckoning need. Frame 0 is "
+        "disciplined to GPS via IRIG-B/PPS, so the anchor is a fact rather than "
+        "an estimate.",
     )
     ap.add_argument(
         "--dr-clock-chips",

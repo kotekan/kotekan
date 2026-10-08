@@ -2097,9 +2097,9 @@ def main(argv=None, rx=None, publisher=None):
         _ctx.cl_report = (
             []
         )  # CL time-assist per-PRN (k, fine-time residual) log lines this cycle
-        # Capture time anchor: wall-clock UTC of capture sample 0 (airspy stamps it at its
-        # first USB callback; /adcstat serves it). 0.0 until the stream starts -- retry
-        # lazily. Used by the CL time-assist and the dead-reckoned cp seeding.
+        # Capture time anchor: UTC of sample 0, the F-engine's frame 0 (--time0-endpoint).
+        # 0.0 until it answers -- retry lazily. Used by the CL time-assist and the
+        # dead-reckoned cp seeding.
         # THE ANCHOR IS LATCHED (`not utc0_sample0` above): fetched once and kept for the whole
         # run. That is right for a stable F-engine and WRONG ACROSS AN F-ENGINE RESTART, which
         # re-establishes frame 0 -- and the failure is silent. On 2026-08-07 the F-engine came
@@ -2181,54 +2181,40 @@ def main(argv=None, rx=None, publisher=None):
             except Exception:
                 pass  # endpoint down is the normal outage case, already logged elsewhere
 
-        if (args.cl_assist or dr_state is not None) and not _ctx.utc0_sample0:
+        if (
+            (args.cl_assist or dr_state is not None)
+            and not _ctx.utc0_sample0
+            and args.time0_endpoint
+        ):
             try:
-                if args.time0_endpoint:
-                    # CHORD: frame 0 is GPS-disciplined, so this is exact rather than an
-                    # estimate. time0_ns is the absolute time of fpga_seq_num 0.
-                    # NB: NOT `t0` -- that name is the cycle-start timestamp in this loop, and
-                    # shadowing it with a nanosecond epoch made the loop's
-                    # `dt = interval - (_now() - t0)` about 1.8e18 seconds.
-                    #
-                    # THROUGH THE RECEIVER (task #27 M3): frame 0 is a property of the
-                    # INSTRUMENT, not of a signal, so it is fetched at most once per process
-                    # however many chains want it. Two brokers latching it independently can
-                    # straddle an F-engine restart and disagree forever, each certain.
-                    _ctx.utc0_sample0 = (
-                        rx.time_anchor(
-                            lambda: float(
-                                _get(
-                                    "%s/%s" % (base, args.time0_endpoint.strip("/"))
-                                ).get("time0_ns", 0.0)
+                # CHORD: frame 0 is GPS-disciplined, so this is exact rather than an
+                # estimate. time0_ns is the absolute time of fpga_seq_num 0.
+                # NB: NOT `t0` -- that name is the cycle-start timestamp in this loop, and
+                # shadowing it with a nanosecond epoch made the loop's
+                # `dt = interval - (_now() - t0)` about 1.8e18 seconds.
+                #
+                # THROUGH THE RECEIVER (task #27 M3): frame 0 is a property of the
+                # INSTRUMENT, not of a signal, so it is fetched at most once per process
+                # however many chains want it. Two brokers latching it independently can
+                # straddle an F-engine restart and disagree forever, each certain.
+                _ctx.utc0_sample0 = (
+                    rx.time_anchor(
+                        lambda: float(
+                            _get("%s/%s" % (base, args.time0_endpoint.strip("/"))).get(
+                                "time0_ns", 0.0
                             )
-                            / 1e9,
-                            chain_id,
                         )
-                        or 0.0
+                        / 1e9,
+                        chain_id,
                     )
-                    if _ctx.utc0_sample0:
-                        _log(
-                            "time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
-                            % _ctx.utc0_sample0
-                        )
-                        _anchor_seen[0] = _ctx.utc0_sample0
-                else:
-                    _ctx.utc0_sample0 = (
-                        rx.time_anchor(
-                            lambda: float(
-                                _get("%s/%s/adcstat" % (base, args.adc_stage)).get(
-                                    "utc0_sample0", 0.0
-                                )
-                            ),
-                            chain_id,
-                        )
-                        or 0.0
+                    or 0.0
+                )
+                if _ctx.utc0_sample0:
+                    _log(
+                        "time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
+                        % _ctx.utc0_sample0
                     )
-                    if _ctx.utc0_sample0:
-                        _log(
-                            "CL time-assist: capture sample-0 UTC anchor %.3f"
-                            % _ctx.utc0_sample0
-                        )
+                    _anchor_seen[0] = _ctx.utc0_sample0
             except Exception as e:
                 _log("time anchor unavailable (%s); retrying" % e)
         _ctx.dr_pd = (dr_state or {}).get("pd") or {}
