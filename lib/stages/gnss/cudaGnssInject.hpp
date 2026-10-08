@@ -126,14 +126,7 @@ private:
     /// (1.176 GHz) is added, or cancellation costs 0.4 rad. See PrnCtl::dcyc.
     /// The history is cudaGnssChordTrackState::fold: shared by this command's instances (a
     /// per-instance copy differenced against the record this instance saw a buffer depth of
-    /// frames ago -- see FoldHist), separate from path A's.
-    /// --phase-dump-prn: per-record dump of the re-pin fold's INPUTS for one PRN (hop, seed,
-    /// propagated Doppler, dop_prev, t_abs, dcyc, reanchored) to a file, for a bounded number
-    /// of records; off unless the config names a PRN. Pairs with the assembler's phi_dump: the
-    /// two sides of the hand-off.
-    int _dcyc_dump_prn = -1;
-    int _dcyc_dump_left = 0;
-    FILE* _dcyc_dump = nullptr;
+    /// frames ago -- see FoldHist).
 
     /// M5: the epl-format CONTROL BLOCK this command publishes for the path-B consumer --
     /// [FrameHdr][window_start x MAX_REC][PrnCtl x MAX_REC x n_prn][energy x jobs x n_chan],

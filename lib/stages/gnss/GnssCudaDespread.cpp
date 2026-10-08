@@ -2,7 +2,6 @@
 
 #include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
-#include "gnssCarrierNco.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -26,35 +25,6 @@ struct GnssCudaDespread::Impl {
     int n_prn, n_chan, n_hops;
     double fs, f_off, refresh_hz;
     long long window_start = 0;
-    /// A/B arm for task #52 -- see gnss_cuda::DespreadParams::carrier_phase_from_ref.
-    /// ⚠️ TEMPORARY (task #55). Default = the fix.
-    ///   0 = absolute sample (pre-86349ac4d), 1 = referenced to the window (#52's fix),
-    ///   2 = ACCUMULATED (#71) -- see ang0_acc_for. The KERNEL is identical for 1 and 2;
-    ///       only the host's choice of ang0 differs, so arm 2 cannot perturb the arithmetic.
-    int carrier_phase_from_ref = 1;
-
-    /// ── #71: THE ACCUMULATOR, i.e. an actual NCO ────────────────────────────────────────
-    /// Arms 0 and 1 both evaluate the phase as f * n0 with n0 an ABSOLUTE sample index, so
-    /// the replica's whole phase history hangs off the CURRENT frequency estimate. n0/fs is
-    /// the uptime (~5.85e5 s at a week), which makes that a lever of catastrophic length: a
-    /// Doppler change of 2.7e-7 Hz rotates the phase by a full radian. And the Doppler is
-    /// re-propagated EVERY RECORD (cudaGnssChordTrack.cpp: propagate_seed per record, moving
-    /// it by dop_rate * 10.5 ms = 1e-4..6e-3 Hz), so every record's replica phase is offset
-    /// by a large, essentially arbitrary constant. It is invisible to |A| -- tracking, q, the
-    /// DLL and the incoherent C/N0 are all POWER -- and fatal to everything cross-record.
-    ///
-    /// The cure is to stop asking "what is the phase at absolute sample n0" and start asking
-    /// "how much phase has accrued since the last record" -- the lever becomes ONE RECORD
-    /// (3.36e7 samples) instead of the uptime, and a frequency update changes the SLOPE
-    /// going forward rather than teleporting the value.
-    ///
-    /// TRAPEZOIDAL IN f, not the last frequency held constant: the Doppler moves linearly
-    /// between records (dop_rate is exactly that model), so averaging the interval's two
-    /// endpoints integrates it EXACTLY rather than to first order. That is also what makes a
-    /// short gap safe -- a dropped record still integrates correctly across the hole.
-    std::vector<gnss::CarrierNco> pacc;
-    unsigned long long pacc_reanchor = 0;
-
     // Device buffers (persistent).
     float2* d_data = nullptr;                 // [n_chan][n_hops]
     int8_t* d_code = nullptr;                 // all PRNs' combined-stream codes, concatenated
@@ -106,7 +76,7 @@ struct GnssCudaDespread::Impl {
     /// WHAT THE KERNEL ACTUALLY GOT, recorded per PRN slot as build_jobs runs (#72).
     /// ⚠️ RECORDED, NEVER RECOMPUTED. A producer that re-derives ang0 from the same inputs
     /// agrees with itself by construction and would keep agreeing while the kernel diverged --
-    /// exactly how carrier_nco_gate passed at 9e-16 rad against a sky that got worse (#71).
+    /// as a producer-side gate once did, at 9e-16 rad, against a sky that got worse (#71).
     /// NaN means "this PRN built no job this record", which a consumer must read as absent
     /// rather than as zero.
     std::vector<double> last_ang0;     ///< DespreadJob::ang0, radians
@@ -146,7 +116,6 @@ struct GnssCudaDespread::Impl {
         Lf = bank.fft_len() * 4; // num_taps -- matches the bank's prototype (pfb num_taps)
         // NB the bank doesn't expose num_taps; derive Lf from a probe filter below instead.
         all_chans = ids;
-        pacc.assign((size_t)np, gnss::CarrierNco{}); // one NCO per PRN slot (#71)
         // Validate against the spectrum, and reject duplicates: a repeated bin would double
         // that channel's weight in the coherent sum and quietly bias every correlation.
         for (int i = 0; i < nc; ++i) {
@@ -289,32 +258,6 @@ struct GnssCudaDespread::Impl {
         if (fr < 0.0L)
             fr += 1.0L;
         return (double)(TWO_PI_L * fr);
-    }
-
-    /// Arm 2's ang0: the phase ACCRUED since this PRN's previous record, not the phase at an
-    /// absolute sample. See PhaseAcc for why. Stateful and therefore ORDER-DEPENDENT -- it
-    /// must be called once per PRN per record, in record order, which is how build_jobs runs.
-    ///
-    /// ⚠️ THE ABSOLUTE VALUE IS MEANINGLESS AND THAT IS FINE. Only phase DIFFERENCES between
-    /// records are observable in a correlation; the constant of integration cancels. What
-    /// this buys is that the difference is now the physical one instead of
-    /// 2*pi*df*uptime of bookkeeping.
-    double ang0_acc_for(int p, double doppler_hz, double ctrim_hz, long long n0) {
-        const double f_now = bank.carrier_offset(p) + doppler_hz + ctrim_hz;
-        if ((size_t)p >= pacc.size())
-            return ang0_for(p, doppler_hz, ctrim_hz, n0);
-        // A gap longer than this cannot be integrated honestly: only the endpoint frequencies
-        // are known and the Doppler may have been re-seeded inside the hole, so re-anchor and
-        // SAY SO rather than extrapolate. 64 records ~ 0.67 s; the trapezoid's own error over
-        // that is < 1e-3 cycles at a 0.5 Hz/s dop_rate, so the bound is about not trusting the
-        // model through a re-seed, not about arithmetic.
-        const long long GAP_MAX = 64LL * 2048LL * 16384LL;
-        // Seed a re-anchor from the absolute form: any value is admissible (only phase
-        // DIFFERENCES are observable), and this one keeps arm 2 numerically comparable to
-        // arm 1 on the first record of a track.
-        return gnss::carrier_nco_advance(pacc[(size_t)p], f_now, n0, fs,
-                                         ang0_for(p, doppler_hz, ctrim_hz, n0), GAP_MAX,
-                                         &pacc_reanchor);
     }
 
     /// Build the shared, Doppler-free (Phi, Psi) set once. Returns false if this signal is
@@ -489,11 +432,6 @@ bool GnssCudaDespread::set_prn(int p, int prn, void* stream) {
     // hundred microseconds, and a cache keyed to a satellite that has left is precisely the
     // kind of thing that stays right until the day it doesn't.
     im.phi[(size_t)p].valid = false;
-    // The accumulated carrier NCO (#71 arm 2) MUST reset -- its whole content is the phase
-    // history of a satellite this slot no longer holds. Clearing it makes the next record a
-    // fresh anchor, which is the honest description of what just happened.
-    if ((size_t)p < im.pacc.size())
-        im.pacc[(size_t)p] = gnss::CarrierNco{};
     im.last_ang0[(size_t)p] = std::numeric_limits<double>::quiet_NaN();
     im.last_phi_ddop[(size_t)p] = std::numeric_limits<double>::quiet_NaN();
     im.slot_prn[(size_t)p] = prn;
@@ -525,20 +463,6 @@ void GnssCudaDespread::upload_window(const std::complex<float>* window,
                        cudaMemcpyHostToDevice, im.stream),
        "window upload");
     im.window_start = window_start_sample;
-}
-
-void GnssCudaDespread::set_carrier_phase_from_ref(bool on) {
-    _impl->carrier_phase_from_ref = on ? 1 : 0;
-}
-
-void GnssCudaDespread::set_carrier_phase_mode(int mode) {
-    // Clamped rather than trusted: an out-of-range arm would silently fall through to the
-    // absolute-sample path, which is the one arm nobody wants and the hardest to notice.
-    _impl->carrier_phase_from_ref = (mode < 0) ? 0 : ((mode > 2) ? 2 : mode);
-}
-
-unsigned long long GnssCudaDespread::carrier_phase_reanchors() const {
-    return _impl->pacc_reanchor;
 }
 
 void GnssCudaDespread::enable_split_timing(bool on) {
@@ -669,11 +593,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
             // Same n0 as ang0 and par.n0 -- the hop's LAST sample (task #54).
             im.cp_ref_for(cp0_i, cps, im.window_start + im.bank.fft_len() - 1), cps, 1.0 / cps, wc,
             // Same n0 the kernel is handed below (par.n0) -- hop's LAST sample.
-            (im.carrier_phase_from_ref == 2
-                 ? im.ang0_acc_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
-                                   im.window_start + im.bank.fft_len() - 1)
-                 : im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
-                               im.window_start + im.bank.fft_len() - 1)),
+            im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz, im.window_start + im.bank.fft_len() - 1),
             im.code_offset[(size_t)sp.p], (int)im.code_len, mask,
             im.use_shared ? im.shared.d_A : pc.d_A, im.use_shared ? im.shared.d_B : pc.d_B,
             im.use_shared ? im.shared.n_chips : pc.n_chips, 0,
@@ -688,7 +608,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
             im.use_shared ? im.shared.d_first : pc.d_first};
         // #72: record WHAT THE KERNEL IS GETTING -- read back OUT OF THE JOB, never re-derived.
         // A producer-side re-derivation agrees with itself by construction and would keep
-        // agreeing while the kernel diverged (how carrier_nco_gate passed at 9e-16 rad while
+        // agreeing while the kernel diverged (how a producer-side gate passed at 9e-16 rad while
         // the sky got worse, #71).
         im.last_ang0[(size_t)sp.p] = im.h_jobs[i].ang0;
         im.last_phi_ddop[(size_t)sp.p] =
@@ -702,7 +622,6 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     par.shared = im.use_shared;         // item 2: picks the shared-table kernel
     par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = im.window_start + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
-    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
@@ -770,11 +689,8 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
             cp0, (double)im.bank.comb_mult() * sp.spacing_chips,
             im.cp_ref_for(cp0, cps, window_start_sample + im.bank.fft_len() - 1), cps, 1.0 / cps,
             wc,
-            (im.carrier_phase_from_ref == 2
-                 ? im.ang0_acc_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
-                                   window_start_sample + im.bank.fft_len() - 1)
-                 : im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
-                               window_start_sample + im.bank.fft_len() - 1)),
+            im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
+                        window_start_sample + im.bank.fft_len() - 1),
             im.code_offset[(size_t)sp.p], (int)im.code_len, mask,
             im.use_shared ? im.shared.d_A : pc.d_A, im.use_shared ? im.shared.d_B : pc.d_B,
             im.use_shared ? im.shared.n_chips : pc.n_chips, m_head,
@@ -789,7 +705,7 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
             im.use_shared ? im.shared.d_first : pc.d_first};
         // #72: record WHAT THE KERNEL IS GETTING -- read back OUT OF THE JOB, never re-derived.
         // A producer-side re-derivation agrees with itself by construction and would keep
-        // agreeing while the kernel diverged (how carrier_nco_gate passed at 9e-16 rad while
+        // agreeing while the kernel diverged (how a producer-side gate passed at 9e-16 rad while
         // the sky got worse, #71).
         im.last_ang0[(size_t)sp.p] = im.h_jobs[i].ang0;
         im.last_phi_ddop[(size_t)sp.p] =
@@ -821,7 +737,6 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     par.shared = im.use_shared;         // item 2: picks the shared-table kernel
     par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
-    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
@@ -864,7 +779,6 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     par.shared = im.use_shared;         // item 2: picks the shared-table kernel
     par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
-    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
@@ -912,7 +826,6 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
     par.shared = im.use_shared;         // item 2: picks the shared-table kernel
     par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
-    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
@@ -1001,7 +914,6 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
     par.shared = im.use_shared;         // item 2: picks the shared-table kernel
     par.phi_half = im.use_fp16 ? 1 : 0; // item 3: __half2 gather (waveform kernels only)
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // same per-hop reference as the despread
-    par.carrier_phase_from_ref = im.carrier_phase_from_ref;
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;

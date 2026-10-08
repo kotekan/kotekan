@@ -3,10 +3,8 @@
 #include "fftwPlannerLock.hpp" // for fftw_planner_mutex
 
 #include <algorithm> // for max
-#include <chrono>    // for the opt-in ms-split stage timers
 #include <cmath>     // for cos, sin, fmod, M_PI, round
-#include <cstdio>    // for fprintf (ditto)
-#include <cstdlib>   // for abs, getenv
+#include <cstdlib>   // for abs
 #include <mutex>     // for lock_guard
 #include <numeric>   // for gcd
 #include <thread>    // for thread (aggregate d-parallelism)
@@ -337,16 +335,6 @@ AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int p
     if (nc == 0 || N <= 0 || n_sub <= 0)
         return dims;
 
-    // Stage timers, opt-in via GNSS_MSSPLIT_PROFILE=1. This function was written and validated
-    // for CORRECTNESS and never timed, and the design plan's "258x cheaper" is an OP COUNT --
-    // measured end to end it came out 5.7x SLOWER than the shipped path. Op counts are not
-    // seconds, so the breakdown ships with the function.
-    const bool prof = std::getenv("GNSS_MSSPLIT_PROFILE") != nullptr;
-    double t_repl = 0.0, t_corr = 0.0, t_agg = 0.0;
-    const auto now = [] {
-        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
-            .count();
-    };
 
     // EVERYTHING THE SUB-WINDOW LOOP TOUCHES IS ALLOCATED ONCE, HERE.
     //
@@ -376,19 +364,15 @@ AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int p
         // at q = N and the whole [0, one period) lag range inside [N, 2N) -- with every one of
         // the N data hops overlapped, which is the point.
         const long long W_repl = W - (long long)N * fft_len;
-        double t0 = prof ? now() : 0.0;
         // Doppler 0 every call, so the cached filter is never rebuilt after the first.
         const std::vector<std::vector<std::complex<float>>>& repl =
             repl_stream.generate(W_repl, 0.0, 0.0, 2 * N, {});
-        if (prof)
-            t_repl += now() - t0;
 
         // PARALLEL OVER CHANNELS, exactly as channelized_accumulate does it. This loop was
         // serial on the caller's single workspace, which is why the ms-split measured SLOWER
         // than the path it was meant to replace: ~10x fewer ops, run on 1/12 of the machine.
         // Each worker gets its own AcquireWorkspace (worker 0 reuses the caller's, so the
         // single-threaded path keeps its persistent FFTW plans bit-for-bit).
-        t0 = prof ? now() : 0.0;
         const auto run_ch = [&](int t) {
             // Worker 0 reuses the caller's workspace so the single-threaded path keeps its
             // persistent FFTW plans bit-for-bit; the rest are hoisted out of the k-loop too,
@@ -415,19 +399,9 @@ AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int p
             for (auto& th : pool)
                 th.join();
         }
-        if (prof)
-            t_corr += now() - t0;
 
-        t0 = prof ? now() : 0.0;
         dims = aggregate_accumulate(P, chan_ids, sph, surf, n_threads, fine_step);
-        if (prof)
-            t_agg += now() - t0;
     }
-    if (prof)
-        fprintf(stderr,
-                "[ms-split profile] K=%d N=%d nc=%d threads=%d | replica %.2fs  correlate %.2fs  "
-                "aggregate %.2fs  (total %.2fs)\n",
-                n_sub, N, nc, n_threads, t_repl, t_corr, t_agg, t_repl + t_corr + t_agg);
     return dims;
 }
 
@@ -719,13 +693,6 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                 }
                 delta = 0.5 * (lo + hi);
             } // r_meas <= the on-grid shoulder: indistinguishable from 0 -> keep the bin
-            if (std::getenv("GNSS_DOP_DEBUG"))
-                fprintf(stderr,
-                        "GNSS_DOP_DEBUG: d %d/%d  sm %.4g s0 %.4g sp %.4g  r %.4f r0 %.4f "
-                        "u %.3f -> delta %+.4f (%+.2f Hz)\n",
-                        best_d, nd, dop_loc_m, s0, dop_loc_p, r_meas, r_model(0.0), dop_u,
-                        (up ? delta : -delta),
-                        (up ? delta : -delta) * (doppler_grid[best_d + 1] - doppler_grid[best_d]));
             best.doppler_hz +=
                 (up ? delta : -delta) * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
         } else if (const double denom = sm - 2.0 * s0 + sp; denom < 0.0) {

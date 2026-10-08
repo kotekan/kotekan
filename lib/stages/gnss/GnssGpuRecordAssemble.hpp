@@ -39,7 +39,6 @@ class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
     GnssGpuRecordAssemble(kotekan::Config& config, const std::string& unique_name,
                           kotekan::bufferContainer& buffer_container);
-    ~GnssGpuRecordAssemble() override;
     void main_thread() override;
 
 private:
@@ -188,23 +187,8 @@ private:
     std::vector<uint8_t> _a_prev_ok;
     std::vector<int64_t> _wstart_prev;
 
-    /// Per-channel PROMPT-phase dump (chan_dump_prn / chan_dump_decim / chan_dump_path):
-    /// DIAGNOSTIC (2026-07-21, L5 ADR-wander): the channel-width A/B showed the wander
-    /// amplitude depends on the despread channel set (narrow 5-ch = 5-6x WORSE than the
-    /// full 10) -> the mechanism lives in the per-channel phases the cross-channel sum
-    /// normally hides. For the one listed PRN, every decim-th record writes one line per
-    /// covering channel: "utc ch corr_re corr_im energy" (raw, pre-NCO-rotation -- the
-    /// cross-channel RELATIVE phases are the observable). ~60 KB/s at 100 Hz x 10 ch.
-    int _chan_dump_prn = -1;   ///< PRN number to dump (-1 = disabled)
-    int _chan_dump_decim = 10; ///< dump every Nth record of that PRN
-    long long _chan_dump_ctr = 0;
-    FILE* _chan_dump = nullptr;
-    int _phi_dump_prn = -1; ///< --phase-dump-prn (see the .cpp): the fold's inputs and effect
-    int _phi_dump_left = 0;
-    FILE* _phi_dump = nullptr;
-
-    /// PER-CHANNEL PROMPT SPECTRUM (task #32, docs/CHORD_JOINT_TRACKING.md P1). The general
-    /// form of the chan_dump above: for EVERY PRN, accumulate the NCO-derotated, element-
+    /// PER-CHANNEL PROMPT SPECTRUM (task #32, docs/CHORD_JOINT_TRACKING.md P1). For EVERY PRN,
+    /// accumulate the NCO-derotated, element-
     /// combined prompt per covering channel over a window, and serve it on
     /// `<unique_name>/get_spectrum?window=N`. A delay is a phase ramp across frequency, and this
     /// is the

@@ -532,16 +532,6 @@ void GnssChannelizedSearch::search_snapshot() {
 #endif
     }
 
-    // PASS PROFILE, opt-in via GNSS_SEARCH_PROFILE=1. The pass runs at ~30% CPU across 11
-    // cores, so it is not saturating and the interesting question is what the 2.1 s is made of
-    // -- guessing from CPU percentages has already misled twice today. Split it into the parts
-    // we can actually act on: materialising each alignment's replica, the acquire surface, and
-    // the refine.
-    const bool prof = std::getenv("GNSS_SEARCH_PROFILE") != nullptr;
-    double t_mat = 0.0, t_acq = 0.0, t_ref = 0.0;
-    long n_align = 0;
-    const double t_pass0 = steady_s();
-
     double best_any = 0.0;
     int best_any_prn = -1;
     int best_any_nh = -1;
@@ -773,8 +763,6 @@ void GnssChannelizedSearch::search_snapshot() {
             // Materialise this alignment: R[m] = s(k0[m]+nh)*head[m] + s(k0[m]+1+nh)*tail[m].
             // A per-hop complex scale over ~331k elements (~1 ms) against a correlation costing
             // seconds -- so twenty alignments cost one build, not twenty.
-            const double _t_m0 = prof ? steady_s() : 0.0;
-            ++n_align;
             // The sign pair depends on the HOP and the alignment, not on the channel, so hoist
             // it: computing it inside the channel loop evaluated overlay_sign 106x per hop and
             // made a pass SLOWER than the eager bank it replaced (7.14 s vs 4.4 s, measured).
@@ -795,9 +783,6 @@ void GnssChannelizedSearch::search_snapshot() {
                     outv[m] = hd[m] * a0[m] + tl[m] * a1[m];
             }
             const std::vector<std::vector<cf>>& repl0 = _repl_scratch;
-            if (prof)
-                t_mat += steady_s() - _t_m0;
-            const double _t_a0 = prof ? steady_s() : 0.0;
             gnss::AcquisitionResult ai{};
 #ifdef GNSS_CUDA
             if (gpu_ok) {
@@ -816,13 +801,8 @@ void GnssChannelizedSearch::search_snapshot() {
                     _cuda_acq->accumulate(_sgn0.data(), _sgn1.data());
                 }
                 _last_surface_cells = dims.size();
-                if (prof)
-                    t_acq += steady_s() - _t_a0;
-                const double _t_p0 = prof ? steady_s() : 0.0;
                 ai = _cuda_acq->peak_result(dims, grid, _sample_rate, _replica->chip_rate_hz(),
                                             _replica->code_length(), _acq_pairsum_select);
-                if (prof)
-                    t_acq += steady_s() - _t_p0;
             } else
 #endif
             {
@@ -836,14 +816,9 @@ void GnssChannelizedSearch::search_snapshot() {
                         cov_global, _fft_len, _acquire_threads, _acquire_fine_step);
                 }
                 _last_surface_cells = dims.size();
-                if (prof)
-                    t_acq += steady_s() - _t_a0;
-                const double _t_p0 = prof ? steady_s() : 0.0;
                 ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
                                             _replica->chip_rate_hz(), _replica->code_length(),
                                             gnss::FINE_LAG_SIGN_PFB, _acq_pairsum_select, hpr);
-                if (prof)
-                    t_acq += steady_s() - _t_p0;
             }
             // #41: ALIGNMENTS ARE COMPARED ON THE SCALLOPING-CORRECTED PEAK, never the raw
             // grid sample. The overlay decision is a GLRT with Doppler as a continuous
@@ -948,7 +923,6 @@ void GnssChannelizedSearch::search_snapshot() {
             for (size_t i = 0; i < cov_local.size(); ++i)
                 for (int m = 0; m < hpr; ++m)
                     d[i][m] = _snapshot[((size_t)m) * _n_chan + cov_local[i]];
-            const double _t_r0 = prof ? steady_s() : 0.0;
             const int rh = (_refine_hops > 0 && _refine_hops < hpr) ? _refine_hops : hpr;
             double best_cp;
 #ifdef GNSS_CUDA
@@ -966,8 +940,6 @@ void GnssChannelizedSearch::search_snapshot() {
                                       (_n_nh > 1) ? best_nh : -1, dop, anchor, rh, _sample_rate,
                                       _refine_span, _refine_step, _acquire_threads);
             }
-            if (prof)
-                t_ref += steady_s() - _t_r0;
             // Peak -> reported phases. The arithmetic lives in gnssSeedTransport so the
             // offline end-to-end harness (scripts/e2e.cpp) drives THIS code rather than a
             // second copy of it -- see that header for why.
@@ -1038,12 +1010,6 @@ void GnssChannelizedSearch::search_snapshot() {
             for (int it = 0; it < 50; ++it)
                 kx = lnN + (kwin - 1) * std::log(kx) - lgamma_k;
             ceiling = kx / (double)kwin;
-        }
-        if (prof) {
-            const double tot = steady_s() - t_pass0;
-            INFO("GnssChannelizedSearch[{:s}]: [profile] pass {:.3f}s = materialise {:.3f} + "
-                 "acquire {:.3f} + refine {:.3f} (+{:.3f} other) over {:d} alignment(s)",
-                 unique_name, tot, t_mat, t_acq, t_ref, tot - t_mat - t_acq - t_ref, n_align);
         }
         INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}{:s}), threshold {:.2f}, "
              "pure-noise ceiling ~{:.2f}{:s}{:s}",
@@ -1125,28 +1091,15 @@ void GnssChannelizedSearch::main_thread() {
 
     _worker = std::thread(&GnssChannelizedSearch::search_worker, this);
 
-    // CONSUMER PROFILE (GNSS_SEARCH_PROFILE=1). The worker profile showed the pass computing
-    // for 0.25 s on a 1.57 s period -- 82% idle -- so the interesting time is on THIS side.
-    // Split it: blocked in wait_for_full_frame (upstream is slow), vs frames arriving but
-    // discarded because the worker was still busy (we are throwing away sky we could search).
-    const bool cprof = std::getenv("GNSS_SEARCH_PROFILE") != nullptr;
-    double t_wait = 0.0, t_cyc0 = steady_s();
-    long n_frames = 0, n_skipped_busy = 0, n_snaps = 0;
-
     int frame_in = 0;
     bool filling = false;
     size_t filled_hops = 0; // hops actually copied into the current snapshot (for the drop log)
     long long abs_hops = 0; // total hops consumed from the stream (absolute reference)
 
     while (!stop_thread) {
-        const double _t_w0 = cprof ? steady_s() : 0.0;
         auto* in_local = (cf*)in_buf->wait_for_full_frame(unique_name, frame_in);
         if (in_local == nullptr)
             break;
-        if (cprof) {
-            t_wait += steady_s() - _t_w0;
-            ++n_frames;
-        }
         const int frame_hops = in_buf->frame_size / (int)sizeof(cf) / _n_chan;
 
         // Absolute hop index of this frame's first hop, from the F-engine's sample_seq
@@ -1160,8 +1113,6 @@ void GnssChannelizedSearch::main_thread() {
 
         if (!filling) {
             std::lock_guard<std::mutex> lk(_m);
-            if (_worker_busy && cprof)
-                ++n_skipped_busy; // sky arriving while the searcher is occupied -> discarded
             if (!_worker_busy) {
                 filling = true;
                 filled_hops = 0;
@@ -1204,18 +1155,6 @@ void GnssChannelizedSearch::main_thread() {
                 _snap_ready = true;
                 _worker_busy = true;
                 _cv.notify_one();
-                if (cprof && ++n_snaps % 20 == 0) {
-                    const double el = steady_s() - t_cyc0;
-                    INFO("GnssChannelizedSearch[{:s}]: [consumer] {:.1f}s: {:d} frames "
-                         "({:.1f}/s), blocked {:.1f}s ({:.0f}%), {:d} frames discarded while "
-                         "the worker was busy ({:.0f}%), {:d} snapshots",
-                         unique_name, el, n_frames, n_frames / el, t_wait, 100.0 * t_wait / el,
-                         n_skipped_busy, 100.0 * n_skipped_busy / std::max(1L, n_frames), n_snaps);
-                    t_cyc0 = steady_s();
-                    t_wait = 0.0;
-                    n_frames = 0;
-                    n_skipped_busy = 0;
-                }
             }
         }
 

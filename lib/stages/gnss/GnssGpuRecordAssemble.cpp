@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -34,25 +33,6 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     out_buf->register_producer(unique_name);
     _prns = config.get<std::vector<int>>(unique_name, "prns");
     _sample_rate = config.get_default<double>(unique_name, "sample_rate", 5e6);
-    // Per-channel prompt-phase dump (see the hpp note; diagnostic, default off).
-    _chan_dump_prn = config.get_default<int>(unique_name, "chan_dump_prn", -1);
-    // --phase-dump-prn: what the NCO fold is HANDED and what it does, per record, one PRN.
-    _phi_dump_prn = config.get_default<int>(unique_name, "phi_dump_prn", -1);
-    if (_phi_dump_prn >= 0) {
-        _phi_dump_left = config.get_default<int>(unique_name, "phi_dump_records", 6000);
-        const std::string path =
-            config.get_default<std::string>(unique_name, "phi_dump_path", "/tmp/gnss_phi_dump.txt");
-        _phi_dump = std::fopen(path.c_str(), "w");
-        if (_phi_dump)
-            std::fprintf(_phi_dump, "# r wstart reanchored c_dcyc phi_before phi_after f_nco dt "
-                                    "ang0 fcar arg_raw arg_out\n");
-    }
-    _chan_dump_decim = std::max(1, config.get_default<int>(unique_name, "chan_dump_decim", 10));
-    if (_chan_dump_prn >= 0) {
-        const std::string path = config.get_default<std::string>(unique_name, "chan_dump_path",
-                                                                 "/tmp/gnss_chan_phase_dump.txt");
-        _chan_dump = std::fopen(path.c_str(), "a");
-    }
     // ELEMENT AXIS (CHORD). 0 = the single-antenna airspy layout, byte-for-byte -- the default,
     // so nothing existing changes. >0 appends n_elements per-antenna blocks to every PRN record
     // (gnssRecord.hpp). The GPU correlation array grows the same axis: [rows][n_chan][n_elem].
@@ -536,13 +516,6 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_reference_element",
             std::bind(&GnssGpuRecordAssemble::set_reference_element_callback, this, _1, _2));
-}
-
-GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
-    if (_chan_dump)
-        std::fclose(_chan_dump);
-    if (_phi_dump)
-        std::fclose(_phi_dump);
 }
 
 void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstance& conn,
@@ -1088,18 +1061,6 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                     }
                 }
-                // Per-channel PROMPT dump (diagnostic, see hpp): raw pre-rotation per-channel
-                // correlations -- the cross-channel relative phases are the observable.
-                if (_chan_dump && _prns[p] == _chan_dump_prn
-                    && (++_chan_dump_ctr % _chan_dump_decim) == 0) {
-                    const size_t prow = (size_t)(c.job0 + 1) * n_chan; // trial 1 = PROMPT
-                    for (int ch = 0; ch < n_chan; ++ch)
-                        if ((c.chan_mask >> ch) & 1ULL)
-                            std::fprintf(_chan_dump, "%.6f %d %.6e %.6e %.6e\n", utc, ch,
-                                         corr[2 * ((prow + ch) * n_e + ref_e)],
-                                         corr[2 * ((prow + ch) * n_e + ref_e) + 1],
-                                         energy[prow + ch]);
-                }
                 rec[1] = c.fcar_report;
                 rec[2] = (float)c.cp_seed;
                 rec[6] = c.n_owned;
@@ -1118,7 +1079,6 @@ void GnssGpuRecordAssemble::main_thread() {
                 // accurately from fcar (see gnssGpuChain.hpp: differencing two 1.176 GHz
                 // doubles leaves 0.4 rad on the table, the same order as the term itself).
                 const bool repin = (c.reanchored == 2 || c.reanchored == 3);
-                const double phi_before_fold = _phi[p];
                 if (c.reanchored == 1 || (repin && !_fcar_prev_ok[p])) {
                     // FRESH acquisition: no phase history to preserve. Break the arc.
                     _phi[p] = 0.0;
@@ -1218,25 +1178,11 @@ void GnssGpuRecordAssemble::main_thread() {
                 // a different record's phase than the one it rode out with.
                 rec[gnss::REC_PHI0] = (float)_phi[p];
                 const std::complex<double> g_corr = g3[1] * rot;
-                if (_phi_dump && _prns[p] == _phi_dump_prn) {
-                    std::fprintf(
-                        _phi_dump,
-                        "%d %lld %d %.17g %.17g %.17g %.17g %.10g %.17g %.17g %.10g %.10g\n", r,
-                        (long long)wstart, (int)c.reanchored, c.dcyc, phi_before_fold, _phi[p],
-                        c.f_nco, (double)(wstart - _wstart_prev[p]) / _sample_rate, c.ang0, c.fcar,
-                        std::arg(g3[1]), std::arg(g_corr));
-                    if (--_phi_dump_left <= 0) {
-                        std::fclose(_phi_dump);
-                        _phi_dump = nullptr;
-                        INFO("GnssGpuRecordAssemble: phi dump for PRN {:d} complete",
-                             _phi_dump_prn);
-                    }
-                }
                 rec[3] = (float)g_corr.real();
                 rec[4] = (float)g_corr.imag();
                 rec[5] = (float)e3[1];
                 // PER-CHANNEL PROMPT SPECTRUM accumulation (hpp note; task #32). Same source
-                // as the chan_dump above (trial 1 = PROMPT, per channel, pre-sum), same
+                // as the per-channel prompt (trial 1 = PROMPT, per channel, pre-sum), same
                 // element combination as the header (cal when warm, else the reference
                 // element), and the SAME `rot` the record's prompt just got -- one common
                 // phase per record, so the accumulation doesn't wind with the residual

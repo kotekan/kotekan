@@ -210,7 +210,7 @@ constexpr int REC_SKY_IM = 25;    ///< prompt correlation, but with each ELEMENT
 /// ⚠️ RECORDED BY THE DESPREAD, NOT RECOMPUTED BY THE PRODUCER. The value shipped is the one
 /// GnssCudaDespread actually put in DespreadJob::ang0 for this record, so a producer-side
 /// re-derivation cannot agree by construction while the kernel disagrees -- the failure that
-/// let carrier_nco_gate pass at 9e-16 rad while the sky got worse (#71).
+/// let a producer-side gate pass at 9e-16 rad while the sky got worse (#71).
 ///
 /// READING IT: equal ang0 across instances for the same (PRN, record) EXONERATES ang0 and
 /// points at the synthesis (Phi) instead; unequal ang0 IS the bug, located.

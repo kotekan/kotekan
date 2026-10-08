@@ -164,25 +164,6 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
                  "(navwipe_bit_records / secondary_overlay) -- peel depth will read 0");
     }
 
-    // Per-record phase dump (debug instrumentation; see the header comment). Append mode so a
-    // relaunch extends the record rather than destroying the episode it was launched to catch.
-    const auto dump_prns = config.get_default<std::vector<int>>(unique_name, "phase_dump_prns", {});
-    _phase_dump_stride = std::max(1, config.get_default<int>(unique_name, "phase_dump_stride", 16));
-    if (!dump_prns.empty()) {
-        const std::string dump_path = config.get_default<std::string>(
-            unique_name, "phase_dump_path", "/tmp/gnss_phase_dump.txt");
-        _phase_dump = std::fopen(dump_path.c_str(), "a");
-        if (_phase_dump) {
-            _phase_dump_prn.assign(256, false);
-            for (int prn : dump_prns)
-                if (prn >= 0 && prn < 256)
-                    _phase_dump_prn[prn] = true;
-            INFO("phase dump: {:d} PRN(s) -> {:s}", (int)dump_prns.size(), dump_path);
-        } else {
-            WARN("phase dump: cannot open {:s}; disabled", dump_path);
-        }
-    }
-
     _st_prn.assign(_n_prn, 0);
     _st_amp.assign(_n_prn, 0.0f);
     _st_coh.assign(_n_prn, 0.0f);
@@ -328,11 +309,6 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _recex.assign(_n_prn, {});
         _st_recex.assign(_n_prn, {});
     }
-}
-
-GnssCoherentCombiner::~GnssCoherentCombiner() {
-    if (_phase_dump)
-        std::fclose(_phase_dump);
 }
 
 void GnssCoherentCombiner::main_thread() {
@@ -824,44 +800,6 @@ void GnssCoherentCombiner::main_thread() {
                 // routing the next record through arc-start, which skips the product).
                 _adr_vprev[p] = v_cur;
                 _adr_vprev_ok[p] = v_ok ? 1 : 0;
-            }
-            // Per-record phase dump (debug): raw despread A + E/L powers, one line per record.
-            // Enough to reconstruct the intra-window phase trajectory offline (arg A, plus the
-            // commanded increment for ADR-style continuity) and the E-L code-offset signature.
-            // STRIDE, because this ran unthrottled once and throttled the PIPELINE. With the
-            // per-element block it is 75 fields per record per PRN: 3.4 MB/s per file, a 2.5 GB
-            // file in under an hour, and the combiner's mean emit time went 7.5 -> 18.8 ms,
-            // which backed up into GnssChordVoltageTap dropping 16.6 frames/s. The deep window
-            // then spanned 10.8 s of wall clock instead of 1.05 s and every fold failed its
-            // rate gate. A diagnostic that changes what it is measuring is worse than no
-            // diagnostic. Default stride keeps a full 16-record GPU frame out of every burst.
-            if (_phase_dump && energy > 0.0 && (int)ref[0] >= 0
-                && (int)ref[0] < (int)_phase_dump_prn.size() && _phase_dump_prn[(int)ref[0]]
-                && (_phase_dump_n++ % _phase_dump_stride) == 0) {
-                std::fprintf(_phase_dump, "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f %.6e %.6e",
-                             utc_p, (int)ref[0], ar, ai, e2, l2, (double)ref[gnss::REC_CPHASE],
-                             (double)ref[1], (double)ref[2], ahr, ahi);
-                // ...then EVERY ANTENNA's prompt, A_e = G_e / E, same normalisation and the same
-                // shared replica energy as `ar, ai` above, so the reference element and the
-                // element blocks are directly comparable.
-                //
-                // WHY THIS IS THE MEASUREMENT THAT MATTERS. Everything analysed for the 0.7 rad
-                // deep-fold floor so far -- deep_snr, sigma_phi, the +9.7 dB cross-node result --
-                // came from `ar, ai`, and those are the REFERENCE ELEMENT alone (gnssRecord.hpp:
-                // the header slots are one antenna, deliberately, because the broker's loops need
-                // a phase-coherent single-antenna view). So every number is a ONE-of-32-antenna
-                // measurement. The floor is per-satellite, channel-independent (nodes share zero
-                // channels yet correlate at r=0.862) and phase-only; the antenna axis is the only
-                // common axis never looked at. If the per-record residual is COMMON across
-                // antennas the cause is in the signal or a shared model term; if it is
-                // INDEPENDENT per antenna it is per-antenna and the cross-node correlation has
-                // been reporting shared ELEMENTS rather than shared sky.
-                if (_n_elements > 0 && energy > 0.0) {
-                    for (int el = 0; el < _n_elements; ++el)
-                        std::fprintf(_phase_dump, " %.6e %.6e", _ge_r[(size_t)el] / energy,
-                                     _ge_i[(size_t)el] / energy);
-                }
-                std::fputc('\n', _phase_dump);
             }
             if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
                 acc_pow[p] += alpha * (p2 - acc_pow[p]);

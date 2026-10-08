@@ -812,8 +812,8 @@ def cube_assembler_keys(args, cfg, gpu, pre):
     blocks are summed over channels, the comb is summed over elements -- and a beam map needs
     both at once.
 
-    Emitted only when armed, for the reason the chan-dump block gives: dark keys in every
-    production config make "is the deployed config current?" unanswerable.
+    Emitted only when armed: dark keys in every production config make "is the deployed config
+    current?" unanswerable.
 
     ⚠️ WINDOW LENGTH IS IN F-ENGINE SAMPLES -- the same clock as wstart -- AND IS DERIVED
     HERE RATHER THAN CHOSEN, exactly as spectrum_window_samples is and for the same reason:
@@ -1246,37 +1246,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # synchronization story (no ring semantics on gnss_synth).
                 {
                     "name": "cudaGnssInject",
-                    # --phase-dump-prn: the fold's inputs, per record (see the stage). INSIDE the
-                    # command dict: Config::get_default does not inherit from the process level.
-                    **(
-                        {
-                            "dcyc_dump_prn": args.phase_dump_prn,
-                            "dcyc_dump_records": args.phase_dump_records,
-                            "dcyc_dump_path": f"/tmp/gnss_dcyc_{node}_{gpu}{tag}.txt",
-                        }
-                        if args.phase_dump_prn >= 0
-                        else {}
-                    ),
-                    # TASK #52 A/B ARM -- ⚠️ TEMPORARY, remove with task #55. Emitted on BOTH
-                    # producers because cudaGnssChordTrackState (which owns the despread, and
-                    # therefore the arm) is constructed with the COMMAND's unique_name -- so each
-                    # command needs its own copy or it silently keeps the default.
-                    "carrier_phase_from_ref": (
-                        gpu == 0
-                        if args.carrier_phase_from_ref == "ab"
-                        else args.carrier_phase_from_ref == "1"
-                    ),
-                    # #71: supersedes the bool above (the stage prefers it and falls back). Same
-                    # per-GPU 'ab' trick and for the same reason -- see --carrier-phase-mode.
-                    "carrier_phase_mode": (
-                        2
-                        if (
-                            gpu == 0
-                            if args.carrier_phase_mode == "ab"
-                            else args.carrier_phase_mode == "2"
-                        )
-                        else (1 if args.carrier_phase_from_ref != "0" else 0)
-                    ),
+                    # Read by nothing since the carrier-phase A/B arm was removed; kept so
+                    # running nodes see no config change until the next planned one.
+                    "carrier_phase_from_ref": True,
+                    "carrier_phase_mode": 1,
                     # fp16 Phi tables: half the resident table (GnssCudaDespread.hpp).
                     "phi_fp16": bool(args.phi_fp16),
                     # Centered chip-window truncation (GnssCudaDespread.hpp).
@@ -1536,34 +1509,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             ),
             **elem_proj_keys(args),
             **cube_assembler_keys(args, cfg, gpu, pre),
-            # PER-CHANNEL PROMPT DUMP (--chan-dump-prn). Emitted ONLY when enabled: writing the
-            # keys unconditionally changed every production node config by three lines for a
-            # feature that was off, which is exactly the drift that makes "is the deployed
-            # config current?" unanswerable. The cross-channel sum inside this stage is the one
-            # combine step the broker can never undo, so whether it is lossless is a question
-            # only the per-channel phases can answer -- and they are what the sum hides.
-            **(
-                {
-                    "phi_dump_prn": args.phase_dump_prn,
-                    "phi_dump_records": args.phase_dump_records,
-                    "phi_dump_path": f"/tmp/gnss_phi_{node}_{gpu}{tag}.txt",
-                }
-                if args.phase_dump_prn >= 0
-                else {}
-            ),
-            **(
-                {
-                    "chan_dump_prn": args.chan_dump_prn,
-                    "chan_dump_decim": args.chan_dump_decim,
-                    # ONE FILE PER CHAIN. Both GPUs' assemblers default to the same path, and they
-                    # interleave: 1.2% of lines came out torn, and worse, BOTH chains label their
-                    # channels 0..6 locally, so a shared file cannot be demultiplexed at all -- grouping
-                    # by utc silently mixes two different combs. Found the hard way 2026-08-07.
-                    "chan_dump_path": f"/tmp/gnss_chan_phase_{node}_{gpu}b.txt",
-                }
-                if args.chan_dump_prn >= 0
-                else {}
-            ),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [V["cores"]["assemble"]],
         },
@@ -1609,6 +1554,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "sky_deep": args.sky_deep,
             "fft_len": cfg["fengine"]["fft_length"],
             "record_export": 128,
+            # Read by nothing since the combiner's phase dump was removed; kept so running
+            # nodes see no config change until the next planned one.
             "phase_dump_prns": [],
             "phase_dump_path": f"/tmp/gnss_n2phase_{node}_{gpu}.txt",
             "cpu_affinity": [V["cores"]["combine"]],
@@ -3392,58 +3339,6 @@ def main():
         "the calibrated sum)",
     )
     ap.add_argument(
-        "--chan-dump-prn",
-        type=int,
-        default=-1,
-        metavar="PRN",
-        help="DIAGNOSTIC: dump the per-channel PROMPT correlation for this PRN "
-        "(-1 = off) to chan_dump_path, one line per covering channel per "
-        "dumped record: 'utc ch corr_re corr_im energy', raw and "
-        "pre-NCO-rotation so the CROSS-CHANNEL RELATIVE PHASES are the "
-        "observable.\n"
-        "\n"
-        "WHY IT MATTERS BEYOND ITS ORIGINAL USE (the 2026-07-21 ADR-wander "
-        "hunt, where a narrow 5-channel set wandered 5-6x worse than the full "
-        "10): the cross-channel sum in GnssGpuRecordAssemble is the one "
-        "combining step downstream can NEVER undo. Instances, GPUs and nodes "
-        "all stay separable to the broker; channels do not. So if a phase "
-        "varies across FREQUENCY -- a residual code delay tau shows up as a "
-        "ramp 2*pi*df*tau, and 0.1 chip over a 7-channel stride-16 comb "
-        "(~18.75 MHz) is already 1.15 rad -- that coherence is lost inside "
-        "this sum and no amount of fleet combining recovers it. This dump is "
-        "how you find out whether it is happening before rebuilding the record "
-        "format to carry channels.\n"
-        "\n"
-        "~60 KB/s at chan_dump_decim 10; raise the decimation for a long run.",
-    )
-    ap.add_argument(
-        "--chan-dump-decim",
-        type=int,
-        default=10,
-        metavar="N",
-        help="with --chan-dump-prn: dump every Nth record of that PRN.",
-    )
-    ap.add_argument(
-        "--phase-dump-prn",
-        type=int,
-        default=-1,
-        metavar="PRN",
-        help="DIAGNOSTIC: dump the carrier re-pin FOLD for this PRN, per record, on "
-        "both sides of the tracker->assembler hand-off: the tracker writes the "
-        "fold's inputs (seed, propagated Doppler, dop_prev, t_abs, dcyc) to "
-        "dcyc_dump_path and the assembler writes what it applied (c.dcyc, phi "
-        "before/after, ang0, the raw and rotated prompt phase) to phi_dump_path, "
-        "for --phase-dump-records records, then closes. Off (-1) unless set; "
-        "emitted only when set, so production configs do not change.",
-    )
-    ap.add_argument(
-        "--phase-dump-records",
-        type=int,
-        default=6000,
-        metavar="N",
-        help="with --phase-dump-prn: records to dump per file (~63 s at 95/s).",
-    )
-    ap.add_argument(
         "--sky-deep",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -3616,23 +3511,6 @@ def main():
         "STATE 8.21.5 item 1 -- the phase-floor fix's SNR half.",
     )
     ap.add_argument(
-        "--carrier-phase-from-ref",
-        choices=("1", "0", "ab"),
-        default="1",
-        help="TASK #52 A/B ARM -- ⚠️ TEMPORARY, remove with task #55. 1 (default) = "
-        "the carrier phase comes from DespreadJob::ang0 at the window's "
-        "reference sample, so the ~1.18 GHz carrier's rounding never "
-        "multiplies the absolute sample index. 0 = the pre-86349ac4d "
-        "wc*n_abs expression. "
-        "⚠️⚠️ 'ab' IS NOT SAFE AND SHOULD NOT BE USED. An instance is an ARBITRARY GROUP OF FREQUENCY CHANNELS (freq_id mod 8, applied AFTER the signal path -- one PFB, one set of raw samples), so splitting the arm by GPU runs TWO DIFFERENT PHASE CONVENTIONS ON DIFFERENT CHANNELS OF THE SAME SIGNAL and corrupts every across-band phase measurement -- and we DO fit the carrier phase across the band (#32). It reads as a tidy paired A/B only if one believes instances are independent, which they are not: they run in lockstep and any mismatch between them is a BUG. Pick one arm fleet-wide and pair in TIME instead. "
-        "'ab' = GPU 0 gets the fix and GPU 1 the old "
-        "code ON EVERY NODE, which LOOKS like the tightest pairing: same "
-        "node, same sky, same seeds, same poll. A before/after across two "
-        "restarts CANNOT resolve this -- measured 2026-08-13, deep_snr max "
-        "swung 52-197 inside four minutes and the seeded PRN count moved "
-        "12 -> 5 on geometry alone.",
-    )
-    ap.add_argument(
         "--despread-max-chips",
         type=int,
         default=0,
@@ -3660,26 +3538,6 @@ def main():
         "shipped enqueue_waveform (scripts/gnss/phi16gpu, ALL PASS: wave rel "
         "~1e-3 vs the 3.3e-4 storage floor). Default OFF; arming is a node "
         "restart. Fleet-wide or not at all -- nothing is per-node.",
-    )
-    ap.add_argument(
-        "--carrier-phase-mode",
-        choices=("1", "2", "ab"),
-        default="1",
-        help="TASK #71. ⚠️⚠️ 'ab' IS NOT SAFE AND SHOULD NOT BE USED. An instance is an ARBITRARY GROUP OF FREQUENCY CHANNELS (freq_id mod 8, applied AFTER the signal path -- one PFB, one set of raw samples), so splitting the arm by GPU runs TWO DIFFERENT PHASE CONVENTIONS ON DIFFERENT CHANNELS OF THE SAME SIGNAL and corrupts every across-band phase measurement -- and we DO fit the carrier phase across the band (#32). It reads as a tidy paired A/B only if one believes instances are independent, which they are not: they run in lockstep and any mismatch between them is a BUG. Pick one arm fleet-wide and pair in TIME instead. 2 = the replica carrier phase ACCUMULATES across records "
-        "(a real NCO: phi += 2*pi*fbar*dn/fs) instead of being evaluated as "
-        "f*n0 on the ABSOLUTE sample index. The old form hangs the whole "
-        "phase history off the CURRENT frequency estimate over a lever of "
-        "n0/fs = the UPTIME, so a Doppler change of 2.7e-7 Hz rotates it a "
-        "full radian -- and propagate_seed moves the Doppler EVERY RECORD by "
-        "dop_rate*10.5 ms. 1 (default) = arm 1, unchanged. 'ab' = GPU 0 "
-        "accumulates and GPU 1 keeps arm 1 ON EVERY NODE: same node, same "
-        "sky, same seeds, same poll, which is the only pairing that resolves "
-        "this -- a before/after across two restarts cannot (deep_snr swung "
-        "52-197 in four minutes on geometry alone, 2026-08-13).\n"
-        "⚠️ JUDGE IT ON |r_1|/|r_4| (scripts/gnss/kcoh_phase_series.py, run "
-        "ON cf06), which is RATE-BLIND and so cannot be rescued by a better "
-        "rate -- never on C/N0. And do NOT expect eta to recover: this is the "
-        "per-RECORD lever, not the per-FRAME jump that dominates eta.",
     )
     ap.add_argument(
         "--phase-track",
@@ -3996,17 +3854,6 @@ def main():
         "without /data: rawFileWrite takes base_dir from the config, so pointing "
         "the LOGS elsewhere does not move the RECORDS, and the stage fails on a "
         "directory that is not there.",
-    )
-    ap.add_argument(
-        "--phase-dump-prns",
-        type=int,
-        nargs="*",
-        default=[],
-        help="PRNs whose per-record despread trajectory the combiner should dump\n"
-        "(arg A, E/L powers, commanded phase increment, code phase) to\n"
-        "/tmp/gnss_phase_dump_<node>_<gpu>.txt. Empty = off. Diagnostic for\n"
-        "the deep-fold phase floor; one line per record per PRN, so keep it\n"
-        "to one or two bright satellites.",
     )
     ap.add_argument(
         "--search-port-base",

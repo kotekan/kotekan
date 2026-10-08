@@ -19,7 +19,6 @@
 #include <array>   // for array (per-rung ladder dump)
 #include <complex> // for complex
 #include <cstdint> // for int8_t
-#include <cstdio>  // for FILE (phase-dump instrumentation)
 #include <mutex>   // for mutex
 #include <string>  // for string
 #include <vector>  // for vector
@@ -92,7 +91,6 @@ class GnssCoherentCombiner : public kotekan::Stage {
 public:
     GnssCoherentCombiner(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
-    ~GnssCoherentCombiner() override;
     void main_thread() override;
 
     static constexpr int RECORD_FLOATS = gnss::RECORD_FLOATS; // schema: gnssRecord.hpp
@@ -360,21 +358,6 @@ private:
     double _bit_pred_horizon_s = 4.0;
     std::vector<std::vector<std::complex<double>>> _navbuf_res;  ///< residual prompt A per record
     std::vector<std::vector<std::complex<double>>> _navhead_res; ///< residual head segment
-
-    /// Per-record phase-dump instrumentation (phase_dump_prns / phase_dump_path): for the listed
-    /// PRNs append one text line per despread record -- capture-UTC, PRN, Re/Im of the full-band A,
-    /// E^2/L^2 correlator powers, the commanded phase increment, and the seed dop/cp. The offline
-    /// view INSIDE a deep window that the window-integrated sigma_phi cannot give (discrete
-    /// half-cycle slips vs continuous wander, and the +-0.25-chip code-offset signature in E-L).
-    /// Empty list (the default) = disabled, zero cost.
-    std::vector<bool> _phase_dump_prn; ///< indexed by PRN number; true = dump this PRN
-    /// Write one line every N records per PRN. The per-element dump is 75 fields, and
-    /// unthrottled it cost 3.4 MB/s per file and pushed the combiner's emit time from
-    /// 7.5 to 18.8 ms -- enough to make the voltage tap drop frames and destroy the very
-    /// coherence being measured (2026-08-05).
-    int _phase_dump_stride = 16;
-    long long _phase_dump_n = 0;
-    FILE* _phase_dump = nullptr; ///< open dump file (nullptr = disabled)
 
     // Latest combined record snapshot for REST status (full-band |A| per PRN).
     std::vector<int> _st_prn;

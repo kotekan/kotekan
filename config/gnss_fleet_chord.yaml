@@ -66,26 +66,6 @@ common:
   # them ~100 % of the time since 10-01 ~21Z; their N2 feeds the satellite projection (phase 3a)
   # and is lost to cosmology anyway (KV, 10-02). SK statistics are still computed there.
     rfi-excision-exempt-freq-ids: "5971-6076,6128-6338,6442-6573"
-  # ⚠️⚠️ TEMPORARY EXPERIMENT -- REMOVE WITH TASK #55. ⚠️⚠️
-  #
-  # TASK #52 A/B: 'ab' puts the carrier-phase fix (DespreadJob::ang0, phase taken at the
-  # window's reference sample) on GPU 0 and the pre-86349ac4d wc*n_abs expression on GPU 1, on
-  # EVERY node. Same node, same sky, same seeds, same poll, six instances per arm.
-  #
-  # It is here rather than passed by hand because a hand-run generator flag is exactly the
-  # unreproducible state this file exists to abolish -- and because someone (probably me) has
-  # to find it later to take it out. Set back to 1 to ship the fix everywhere, or 0 to revert
-  # the whole change without a rebuild.
-  #
-  # ⚠️ THIS DELIBERATELY MAKES HALF THE FLEET RUN CODE WE BELIEVE IS WRONG. That is the cost of
-  # measuring it: the sky churns faster than a before/after across restarts can resolve
-  # (2026-08-13: deep_snr max swung 52-197 in four minutes, seeded PRNs moved 12 -> 5 on
-  # geometry alone). Do not leave it armed once the comparison is in.
-  # A/B RESULT (2026-08-13, paired, same nodes/seeds/poll, gated to satellites whose cohFIT
-  # clears 1.5x its own shuffled null): the fix has the smoother per-record phase in 9 of 10,
-  # sign test p = 0.011. Modest -- med|dphi| 0.519 vs 0.604 rad -- and cross-instance agreement
-  # was FLAT between arms, so it is a real term and not the dominant one. Fleet set uniform on
-  # the fix; the A/B has told us what it can.
   # BRIGHT-SATELLITE PROJECTION (phase 2, fleet-wide LIVE since 2026-09-29 ~17:00Z): every
   # node projects the transiting satellite's element direction out of the victims' record
   # rows in place, from its own rows (own row / sibling chain / gated probe stack; no
@@ -96,44 +76,6 @@ common:
   # as the freeze below narrows 6 -> 2, so the shared model learns on projected data through
   # 2-6 deg and nothing is left uncovered between the two.
     elem-proj-deg: 6
-    carrier-phase-from-ref: 1
-  # ── #71: THE CARRIER NCO, PAIRED PER GPU (2026-08-16) ───────────────────────────────
-  # 'ab' = GPU 0 accumulates the replica phase across records, GPU 1 keeps arm 1. The old
-  # arm evaluates the phase as f*n0 on the ABSOLUTE sample, so the whole phase history
-  # hangs off the CURRENT frequency estimate over a lever of n0/fs = the UPTIME: a Doppler
-  # change of 2.7e-7 Hz rotates it a full radian, and propagate_seed moves the Doppler
-  # EVERY RECORD by dop_rate*10.5 ms. Offline gate: scripts/gnss/carrier_nco_gate.cpp
-  # (accumulated 9e-16 rad under a ramp vs 1.2-2.8 rad for the absolute arm).
-  #
-  # PAIRED PER GPU BECAUSE THE SKY MOVES FASTER THAN A RESTART. Same node, same seeds,
-  # same poll -- the only pairing that resolves this, exactly as --carrier-phase-from-ref
-  # already does. ⚠️ It DOES cost the #52 ab arm if that is ever re-run: gpu 0 now differs
-  # from gpu 1 in two ways at once. #52's arm is currently pinned at 1 above, so nothing is
-  # confounded today.
-  #
-  # ⚠️ JUDGE ON |r_1|/|r_4| (scripts/gnss/kcoh_phase_series.py, ON cf06) -- RATE-BLIND, so
-  # unlike every C/N0 in this stack it cannot be rescued by a better rate. And do NOT
-  # expect eta to recover: this is the per-RECORD lever, and the per-FRAME jump that
-  # dominates eta is a separate, still-unidentified fault.
-  # Revert: set this to 1 and regenerate.
-  # ⚠️ REVERTED TO 1 ON SKY, 2026-08-16 00:30. Arm 2 measured WORSE in the paired A/B it was
-  # built for (kcoh_phase_series.py --split-gpu, gps_l5, both arms off the SAME records):
-  #     |r_m|/|r_4|      m=1     m=2     m=8     m=32    m=64
-  #     arm2 (NCO)      0.799   0.595   0.977   0.484   0.218
-  #     arm1 (old)      0.788   0.582   0.996   0.691   0.480
-  # and the per-record phase step went from +0.09 rad (arm 1, PRN 4) to -3.11 rad (arm 2),
-  # satellite-dependent: PRN 11 read -0.95. Arm 2 makes the replica phase LESS continuous, not
-  # more. |A| is unaffected (0.909 vs 0.907), so tracking never noticed either way.
-  #
-  # ⚠️ WHY THE OFFLINE GATE MISSED IT. carrier_nco_gate drives the accumulator against MY OWN
-  # model of the truth, in isolation. It never checked the CONTRACT WITH THE KERNEL -- that
-  # ang0 must be the phase at n0 for a ramp the kernel then continues at wc across the record.
-  # A gate on a formula is not a gate on an interface, and this one passed at 9e-16 rad while
-  # the thing it validated was wrong where it meets its caller.
-  #
-  # The prediction that DID hold: |r_1|/|r_4| is unchanged between arms (0.799 vs 0.788), so
-  # the frame-periodic fault is untouched by anything per-record -- exactly as stated.
-    carrier-phase-mode: 1
 
   # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
   # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
