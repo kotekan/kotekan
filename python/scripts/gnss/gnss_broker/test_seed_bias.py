@@ -115,7 +115,7 @@ class TestSeedBias(unittest.TestCase):
         self.assertEqual(z.seed, 0.0)
 
     def test_zero_ignores_a_warm_start(self):
-        """A --clock-bias-file warm start writes `ema` (and `cal`), never `seed`: the seed
+        """A warm start writes `ema` (and `cal`), never `seed`: the seed
         is 0.0 before the first solve and stays there after it."""
         cb = ClockBias()
         cb.ema = cb.cal = -17.9  # what the warm start does

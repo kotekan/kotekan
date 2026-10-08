@@ -1096,14 +1096,6 @@ def build_parser(description):
         "TCXO offset; shrinks to --search-margin-hz once a few sats pin the clock)",
     )
     ap.add_argument(
-        "--clock-bias-file",
-        default=None,
-        help="persist the solved carrier clock-frequency bias (Hz, plain text) "
-        "across runs, and warm-start from it: the bias is then SOLVED from "
-        "cycle 1 (narrow margins, seeding enabled immediately). Audit rec D: "
-        "on the GPSDO this is a per-chain constant, not an estimate.",
-    )
-    ap.add_argument(
         "--state-read-dir",
         default=None,
         help="directory of sibling receiver-state JSON to READ (--dr-clock-adopt). "
@@ -1116,8 +1108,8 @@ def build_parser(description):
         action="store_true",
         help="ADOPT the receiver clock from a BAND SIBLING instead of holding the "
         "primed --dr-clock-chips constant forever. Reads the sibling state "
-        "files receiver_state.StateWriter already publishes (same --state-dir "
-        "and --state-dongle scope as --clock-bias-siblings) and refreshes "
+        "files receiver_state.StateWriter already publishes (--state-read-dir, "
+        "--state-dongle) and refreshes "
         "dr_state['clk'] and its drift from the freshest one, every cycle.\n"
         "\n"
         "WHY: a chain with --detectors EMPTY cannot solve its own clock. The "
@@ -1143,24 +1135,6 @@ def build_parser(description):
         "EXACTLY. It does NOT transfer across a retune -- E5b at 1207 MHz has a "
         "different PFB group delay -- which is why the dongle key gates it and "
         "why this must never be pointed across bands.",
-    )
-    ap.add_argument(
-        "--clock-bias-siblings",
-        nargs="*",
-        default=None,
-        help="BAND-SHARED bias (2026-07-22): the other chains' --clock-bias-file "
-        "paths on the SAME band. All chains of a band despread the SAME "
-        "carrier frequency through ONE LO, so the clock-freq bias is one "
-        "physical number measured independently per chain; a chain with 2 "
-        "tracked sats estimates it at +-30 Hz swing (measured: the L5-GPS "
-        "bias wandered -16..+44 Hz in 70 s while L1-GPS sat at -152 +-1 Hz "
-        "with 5 sats), and that swing feeds EVERY seed's predicted Doppler "
-        "-> fence re-pins -> the 30-45 s NCO kick cycle that decoheres the "
-        "chain. Fusing the siblings' persisted estimates (sat-count "
-        "weighted, <60 s fresh) gives each chain the band's full sat count "
-        "(~8-10) -- an identifiability fix, not a tuning knob. Chains in "
-        "drift-alarm stop persisting, so poisoned estimates go quiet "
-        "automatically.",
     )
     ap.add_argument(
         "--state-file",
@@ -1633,13 +1607,6 @@ def build_parser(description):
         help="warm-start the receiver code-rate clock offset (l-a) in PPM, e.g. from a prior "
         "strong-signal (L1 C/A) run -- so a weak band (L1C) seeds on-peak from cycle 1 "
         "instead of self-calibrating. Live samples still refine it if any sats fit.",
-    )
-    ap.add_argument(
-        "--code-bias-file",
-        type=str,
-        default=None,
-        help="persist the converged (l-a) ppm here: read at startup (unless --code-bias-init "
-        "is set) and rewritten each update, so the offset carries across runs/bands",
     )
     ap.add_argument(
         "--fit-gap-s",

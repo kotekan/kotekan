@@ -115,7 +115,6 @@ NAME_MAP = {
     "brdc_alm": "brdc_alm",
     "det_fresh": "det_fresh",
     "state_w": "state_w",
-    "_clk_persist_t": "clk_persist_t",
     "_carrier": "car",
     "_nho": "nho",
     "_dls": "dls",

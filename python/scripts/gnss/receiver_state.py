@@ -175,11 +175,8 @@ def sources_from(rec):
     own carrier frequency. Fusing in Hz would silently mean three different quantities on a
     three-band node.
 
-    ★ ONLY `raw_*` IS READ, NEVER the smoothed `hz`/`ppm`. The smoothed values already
-    incorporate the siblings via --clock-bias-siblings, so fusing them would feed the
-    estimate back on itself: the result would tighten with every pass and its covariance
-    would be fiction. Raw values are independent per chain, which is what makes the
-    inverse-variance weights mean anything.
+    ★ ONLY `raw_*` IS READ, NEVER the smoothed `hz`/`ppm`. Raw values are independent per
+    chain, which is what makes the inverse-variance weights mean anything.
 
     The two RESIDUAL monitors (car_trim, dr drift) are deliberately NOT sources -- measured
     at 0.000-0.113 of the primary, they are what is left after the seed already carries the

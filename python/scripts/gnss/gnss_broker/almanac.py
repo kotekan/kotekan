@@ -262,48 +262,8 @@ def stage_almanac_predict(ctx):
         # sample-0 epoch on the nodes -- the fault that filed a day of data onto the wrong
         # day, twice, with nothing here complaining (gnss_broker/timebase.py).
         timebase.observe(ctx, _log_rl)
-        # BAND-SHARED bias fusion (--clock-bias-siblings) is read BEFORE the min-sats
-        # gate, and the gate counts LOCAL + SIBLING sats.
-        #
-        # ⚠️ IT USED TO LIVE INSIDE THE GATE, which made the rescue unreachable by
-        # exactly the chains it was written for. The LO is a property of the BAND (one
-        # airspy, one LO): every chain on it is measuring ONE physical number, so the
-        # falsifiability the gate wants is satisfied by the band's detections in
-        # AGGREGATE, not by each constellation independently.
-        # Measured 2026-07-27 (power-outage cold start): L5 GPS could measure exactly
-        # one satellite, fell short of --bias-min-sats 2, and therefore never entered
-        # the block that would have read its siblings -- while L5 GAL and L5 BDS sat in
-        # those very files with 13-16 sats each and the correct answer (+32.1 / +32.9 Hz;
-        # GPS itself settled at +24..+34 once it finally solved). 603 cycles UNSOLVED,
-        # search_snr == 0.0, 2h45m of nothing, ended only when a second GPS satellite
-        # physically rose high enough. The band knew the answer the whole time.
-        n_sib = 0
-        _sib_bw = 0.0  # sum(bias * n) over fresh siblings
-        _sib_w = 0.0  # sum(n)
-        if ctx.args.clock_bias_siblings:
-            for _sp in ctx.args.clock_bias_siblings:
-                try:
-                    _parts = open(_sp).read().split()
-                    _b = float(_parts[0])
-                    _n = int(_parts[1]) if len(_parts) > 1 else 1
-                    _ts = float(_parts[2]) if len(_parts) > 2 else 0.0
-                except Exception:
-                    continue
-                # Freshness still required: a stale sibling is a different epoch's LO.
-                if ctx.t0 - _ts < 60.0 and _n >= 1:
-                    _sib_bw += _b * _n
-                    _sib_w += _n
-                    n_sib += _n
-        # Two INDEPENDENT ways to clear the bar, never a pooled sum:
-        #   * this chain has >= bias_min_sats of its own -> trust local, blend siblings in
-        #   * the BAND (siblings) has >= bias_min_sats    -> use the band consensus ALONE
-        # Summing the two would let a single untrusted local residual into the average --
-        # a bad -450 Hz detection dragged the fused answer 32.5 -> 15.3 Hz in the unit
-        # test, which is exactly the garden path --bias-min-sats exists to prevent. A lone
-        # local residual stays untrusted; it just no longer BLOCKS the band's answer.
         _local_ok = len(resid) >= ctx.args.bias_min_sats
-        _sib_ok = n_sib >= ctx.args.bias_min_sats
-        if _local_ok or _sib_ok:
+        if _local_ok:
             # The per-cycle median is quantized to the 500 Hz search grid and jumps
             # hundreds of Hz as the detected-sat set flickers; the TRUE bias is a slow
             # TCXO drift. EMA-smooth it (sub-grid dither across sats/cycles averages
@@ -317,15 +277,7 @@ def stage_almanac_predict(ctx):
             # estimates, sat-count weighted. With ZERO local sats the band consensus
             # stands alone -- that is not a guess, it is the same physical LO measured
             # by ~27 satellites on the neighbouring chains.
-            if _local_ok:
-                raw_bias = statistics.median(resid)
-                if n_sib:
-                    _w = float(len(resid))
-                    raw_bias = (raw_bias * _w + _sib_bw) / (_w + _sib_w)
-            else:
-                # Local count below the bar: the band's answer stands ALONE. The local
-                # residual is deliberately discarded, not down-weighted.
-                raw_bias = _sib_bw / _sib_w
+            raw_bias = statistics.median(resid)
             _cb_snap = (
                 ctx.cb.ema is None or ctx.cb.stale
             )  # captured before the branch clears it
@@ -406,43 +358,6 @@ def stage_almanac_predict(ctx):
             # chain that HAS its own estimate never reads back, which is why publishing
             # here cannot change single-chain behaviour.
             ctx.rx.contribute_carrier_bias(ctx.chain_id, ctx.cb.ema, len(resid), ctx.t0)
-            # `alarming` (TIGHT bar) gates the PERSIST only -- conservative: never write a
-            # walking bias to the cal file (the 2026-07-20 GPSDO-walk-poisoning guard).
-            alarming = (
-                ctx.cb.cal is not None
-                and abs(ctx.cb.ema - ctx.cb.cal) > ctx.args.clock_bias_alarm_hz
-            )
-            # rec D persist (10 s rate limit). The file is a CALIBRATION, not an EMA
-            # mirror -- NEVER overwrite it while the live bias is in alarm (2026-07-20:
-            # the GPSDO free-run walk was faithfully persisted all the way to -2 ppm
-            # and poisoned the next warm-start kHz off truth).
-            if (
-                ctx.args.clock_bias_file
-                and not alarming
-                and ctx.t0 - ctx.clk_persist_t[0] > 10.0
-            ):
-                ctx.clk_persist_t[0] = ctx.t0
-                # COLD CAL STAMP -- wait for a TRUSTWORTHY sat count. A cal stamped from a
-                # noisy 1-2 sat first solve lands far from the settled bias and then cries
-                # wolf forever (2026-07-21: L5 cold-solved +75 with 2 sats, settled to -5
-                # -> a phantom 80 Hz "drift" alarmed all morning). No stamp yet = no alarm
-                # yet, which is correct: a chain with <3 sats has no trustworthy reference.
-                if ctx.cb.cal is None and len(resid) >= max(
-                    ctx.args.bias_min_sats + 1, 3
-                ):
-                    ctx.cb.cal = ctx.cb.ema
-                    _log(
-                        "clock-freq bias calibrated %+.1f Hz (%d sats, cold start) -> %s"
-                        % (ctx.cb.ema, len(resid), ctx.args.clock_bias_file)
-                    )
-                if ctx.cb.cal is not None:
-                    try:
-                        with open(ctx.args.clock_bias_file, "w") as f:
-                            # value + sat count + timestamp: siblings weight by count
-                            # and ignore stale entries (--clock-bias-siblings).
-                            f.write("%.2f %d %.2f\n" % (ctx.cb.ema, len(resid), ctx.t0))
-                    except Exception:
-                        pass
             # ALARM LOG on a SAT-SCALED bar: the median-of-residuals noise is ~1/sqrt(n),
             # so the fixed bar (tuned for strong chains) cried wolf on the weak-sat chains
             # (L5/E5a/B2a ~730 false alarms/night 2026-07-20 while the strong chains were
@@ -481,8 +396,6 @@ def stage_almanac_predict(ctx):
                     raw_hz=_raw_local,
                     mad_hz=ctx.receiver_state.mad(resid, _raw_local),
                     n=len(resid),
-                    sib_hz=(_sib_bw / _sib_w) if _sib_w else None,
-                    sib_n=n_sib,
                     cal_hz=ctx.cb.cal,
                     stale=bool(ctx.cb.stale),
                     meas_age_s=round(ctx.t0 - ctx.cb.meas_t, 2),
@@ -502,17 +415,15 @@ def stage_almanac_predict(ctx):
                         ctx.pred[p][2],
                     ),
                 )
-        if _local_ok or _sib_ok:
+        if _local_ok:
             _log_rl(
                 "clkbias",
-                "clock-freq bias %+.0f Hz (raw %+.0f, %d sats%s + %d sib, EMA a=%.2f) "
+                "clock-freq bias %+.0f Hz (raw %+.0f, %d sats, EMA a=%.2f) "
                 "-> hints; seeds ride %+.1f Hz (%s)"
                 % (
                     ctx.cb.value,
                     raw_bias,
                     len(resid),
-                    "" if _local_ok else " LOCAL-UNTRUSTED(band consensus)",
-                    n_sib,
                     ctx.args.bias_alpha,
                     ctx.cb.seed,
                     "slow a=%.3f" % ctx.args.seed_bias_alpha
@@ -528,14 +439,13 @@ def stage_almanac_predict(ctx):
             # BAND had already solved it (2026-07-27).
             _log_rl(
                 "clkbias",
-                "clock-freq bias %s (%d local + %d sibling sats < --bias-min-sats "
-                "%d: residual not trusted)"
+                "clock-freq bias %s (%d sats < --bias-min-sats %d: residual not "
+                "trusted)"
                 % (
                     "held %+.0f Hz" % ctx.cb.value
                     if ctx.cb.ema is not None
                     else "UNSOLVED (wide margins)",
                     len(resid),
-                    n_sib,
                     ctx.args.bias_min_sats,
                 ),
             )

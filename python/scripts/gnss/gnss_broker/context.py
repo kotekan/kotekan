@@ -148,7 +148,6 @@ class ChainContext(object):
         "brdc_alm",
         "det_fresh",
         "state_w",
-        "clk_persist_t",
         "innov_hist",
         "minnov_hist",
         "p2c",

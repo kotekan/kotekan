@@ -1571,46 +1571,13 @@ def main(argv=None, rx=None, publisher=None):
     # minutes must WIDEN the search rather than narrow it -- lives with it now; see
     # gnss_broker/clockbias.py for why that is counter-intuitive and what it cost.
     _cb = ClockBias()
-    n_sib = 0  # sibling sat count folded into the last bias fusion (log only)
     if args.code_bias_init is not None:
         _cb.code_ema = args.code_bias_init * 1e-6
         _log(
             "code-rate clock offset warm-started at %+.3f ppm (--code-bias-init)"
             % (_cb.code_ema * 1e6)
         )
-    elif args.code_bias_file:
-        try:
-            with open(args.code_bias_file) as f:
-                _cb.code_ema = float(f.read().strip()) * 1e-6
-            _log(
-                "code-rate clock offset loaded %+.3f ppm from %s"
-                % (_cb.code_ema * 1e6, args.code_bias_file)
-            )
-        except Exception:
-            pass
-    # CLOCK -> CALIBRATION + ALARMS (2026-07-19 audit rec D): the two receiver-clock loops
-    # were built for a 2.6 ppm wandering TCXO; on the GPSDO they track flat constants
-    # (measured all day: per-chain bias -152/-18/+30 Hz +-3, l-a 0.02-0.10 ppm). Warm-start
-    # the carrier bias from its persisted file exactly like l-a -- this marks the bias
-    # SOLVED from cycle 1, so the first-seed gate opens and the search margins start NARROW
-    # (most of the remaining Tier-2 burn-in). The EMAs keep running purely as MONITORS: a
-    # drift beyond the alarm bar means real hardware news (GPSDO unlock, thermal event),
-    # not something to silently absorb.
-    _cb.cal = None  # startup calibration value, Hz (drift-alarm reference)
-    if args.clock_bias_file:
-        try:
-            with open(args.clock_bias_file) as f:
-                # format: "<bias_hz> [n_sats] [unix_ts]" -- extended for --clock-bias-siblings;
-                # the extra fields are ignored here (warm-start wants only the value).
-                _cb.ema = float(f.read().split()[0])
-            _cb.cal = _cb.ema
-            _log(
-                "clock-freq bias warm-started %+.1f Hz from %s (margins narrow, seeding "
-                "enabled from cycle 1)" % (_cb.ema, args.clock_bias_file)
-            )
-        except Exception:
-            pass
-    _clk_persist_t = [0.0]  # last clock-bias-file write (10 s rate limit)
+    _cb.cal = None  # calibration value, Hz (drift-alarm reference)
     _cb.meas_t = _now()  # last multi-sat bias measurement (stale-rescue clock;
     # birth-stamped so warm-start gets a full grace window)
     _cb.stale = False  # solved-but-unmeasured for > --bias-stale-s
@@ -1927,7 +1894,6 @@ def main(argv=None, rx=None, publisher=None):
         brdc_alm=brdc_alm,
         det_fresh=det_fresh,
         state_w=state_w,
-        clk_persist_t=_clk_persist_t,
         car=_carrier,
         nho=_nho,
         dls=_dls,
@@ -2903,12 +2869,6 @@ def main(argv=None, rx=None, publisher=None):
                 rx.contribute_code_bias(
                     chain_id, band_id, _cb.code_ema, len(_ctx.la_samples), t0
                 )
-                if args.code_bias_file:
-                    try:
-                        with open(args.code_bias_file, "w") as f:
-                            f.write("%.4f\n" % (_cb.code_ema * 1e6))
-                    except Exception:
-                        pass
         # S2 OBSERVER: the code-side twin. Outside the min-sats gate, same reason as the
         # carrier export. This one is the honest cross-chain comparison of the two: l-a has
         # NO sibling fusion at all, so its spread across a band's chains is a real measure
