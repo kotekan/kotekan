@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /**
- * Shared frame layout for the phase-F GPU tracking chain (docs/gnss_gpu_migration.md §6):
+ * Shared frame layout for the GPU tracking chain:
  *
  *   cudaProcess [ cudaInputData -> cudaGnssTrack -> cudaOutputData ] -> GnssGpuRecordAssemble
  *

@@ -282,11 +282,11 @@ if(CUDAToolkit_FOUND)
     message(STATUS "${STAGES_INCLUDES}")
 endif()
 
-# GPU GNSS despread driver (docs/gnss_gpu_migration.md G1b): only with CUDA; defines GNSS_CUDA so
+# GPU GNSS despread driver: only with CUDA; defines GNSS_CUDA so
 # GnssChannelizedTracker exposes use_cuda. One-way link stages -> kotekan_cuda (kernel only).
 if(USE_CUDA)
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaDespread.cpp)
-    # Phase F (docs/gnss_gpu_migration.md §6): the cudaProcess tracking command + its host
+    # The cudaProcess tracking command + its host
     # record assembler. The command lives here (not lib/cuda) because it drives the
     # GnssCudaDespread driver -- keeps the stages -> kotekan_cuda link one-way.
     target_sources(kotekan_stages PRIVATE gnss/cudaGnssTrack.cpp gnss/GnssGpuRecordAssemble.cpp)

@@ -824,11 +824,11 @@ int main(int argc, char** argv) {
 
     // --- GEMM-despread cross-validation (the CHORD-shape path) ---
     // The despread as A = D x R^H: per covering channel, a [1 x T] data row against [T x M]
-    // replica columns, int8 tensor GEMM (4 real gemms), batched over channels -- the exact shape
-    // chordShapeBench times at Pathfinder/Full scale. THE CLAIM GATED HERE: the GEMM computes the
-    // IDENTICAL mathematical object to the despread. So the reference is built from the SAME
-    // dequantized integers the GEMM multiplies (data nibbles x int8 replicas): int8 x int8 sums
-    // are int32-EXACT, so GEMM-vs-reference must agree to float rounding (~1e-7), gate 1e-6.
+    // replica columns, int8 tensor GEMM (4 real gemms), batched over channels. THE CLAIM GATED
+    // HERE: the GEMM computes the IDENTICAL mathematical object to the despread. So the
+    // reference is built from the SAME dequantized integers the GEMM multiplies (data nibbles x
+    // int8 replicas): int8 x int8 sums are int32-EXACT, so GEMM-vs-reference must agree to
+    // float rounding (~1e-7), gate 1e-6.
     // The separate physics question (int8 REPLICA quantization -- deterministic, no noise to
     // dither it) is reported against the true float reference, not gated: expect ~1e-2 relative
     // on strong rows (~-50 dB power), well under every peel depth we use.

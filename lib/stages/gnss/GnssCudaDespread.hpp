@@ -16,9 +16,7 @@
  * @c upload_window once per record, then @c despread3 per active PRN for the Early/Prompt/Late
  * triple. Replica semantics == ChannelizedReplicaBank::hoprate_stream (the validated closed form);
  * Phi tables cover ALL subband channels (a job's covering subset is a bitmask), rebuilt on the CPU
- * only when a sat's Doppler moves > refresh_hz. G1b of docs/gnss_gpu_migration.md: correctness
- * first (synchronous launches, one PRN per call); cross-PRN batching + cudaProcess stream overlap
- * is the G1c throughput step.
+ * only when a sat's Doppler moves > refresh_hz. Synchronous launches, one PRN per call.
  *
  * Only built when USE_CUDA=ON (stages CMake guards the source + defines GNSS_CUDA for the tracker).
  */
