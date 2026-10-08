@@ -338,6 +338,31 @@ selftest + `broker_multi --list` base vs branch (`test_skyscope` is a race: base
   an upstream issue, then delete it? Facts for C6: `dop_continuous` is neither frozen nor in the
   live argv, so production runs without it.
 
+**KV's decisions (2026-10-08) and what followed**, same branch:
+* C1 KEEP nav decode (simplify later; keep the function). So `navbit_reuse`, the combiner's
+  overlay/navwipe/bit_export and the broker's nav-bit plumbing stay.
+* C2 + C6 DONE: 14 broker commits (guard on SIGNAL_IMPLIED; xband, CM/CL sibling, nh-assist,
+  state-consume, coast-to-horizon, watchdog, almanac-epoch, the /adcstat anchor, warm-start files,
+  tle-name-filter, --dop-continuous retired; carrier-loop knobs and seven airspy knobs frozen).
+  All 7 fixture digests identical to base. Then the combiner's nh-assist pass, and the airspy
+  layer back to develop's version (#1751 is its upstream form).
+* C3 KEEP all code generators (the F-engine carries 0-1.6 GHz; L1 will be forwarded).
+* C4 YES, at a planned restart (units, 3 crontabs, cf06 loop) -- not started.
+* C5 clone `n2k_dual` for now; it ships in stage 8.
+* C7 DONE except: `/set_elem_gain`, `/set_elem_sum_adapt`, `/set_reference_element` are manual
+  operator levers (element-cal work), not dead -- asked KV; the kernels' carrier_phase_from_ref
+  branch waits for the GPU bench pass (fixed at 1).
+* C8 YES, at the next develop merge.
+* C9 DONE: generator builds path B only (--no-path-a, --n2-dual, --combine-gpus,
+  --local-trim-gain gone); cudaGnssChordTrack and its in-tracker trim loop removed; the N x M
+  despread stays as the reference n2dualxval checks path B against.
+* C10 DONE: beam-map pipeline removed; CHORD_BEAM_MAPS.md kept, marked historical.
+* C11: the bfmask note is overtaken by develop's #1655 (one mask stream per GPU half); proposed
+  deleting it, nothing to file.
+* Generated node configs differ only in the provenance header (removed flags). Dead keys still
+  emitted, to drop at the next planned config change: `gnss{0,1}_cmb_buf`,
+  `carrier_phase_from_ref`, `carrier_phase_mode`, the n2combine's `phase_dump_prns`/`_path`.
+
 ---
 
 ## 5. What this plan is not
