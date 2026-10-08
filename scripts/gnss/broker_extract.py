@@ -117,7 +117,6 @@ NAME_MAP = {
     "state_w": "state_w",
     "_clk_persist_t": "clk_persist_t",
     "_carrier": "car",
-    "_watchdog": "wd",
     "_nho": "nho",
     "_dls": "dls",
     "_hold": "hold",

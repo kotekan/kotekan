@@ -275,22 +275,8 @@ def stage_carrier_loop(ctx):
                 # (`present` computed at the top of the gated branch, shared with the
                 # hypothesis stage.)
                 ctx.car.fade[prn] = ctx.car.fade.get(prn, 0) + 1 if present else 0
-                # FLICKER GUARD (2026-07-20): a SUB-innovation residual on a sat that
-                # cohered seconds ago is certification-bar sig flicker, not a stepped
-                # NCO -- the re-pull has nothing to pull (settled-era E1/B1C: ~700
-                # REACQs/3 h at mean |resid| 1.7 Hz, all no-ops). Suppress the demotion
-                # for those; a STANDING decoherence (the L2C C20 absorbing state:
-                # sub-gate resid, dark for minutes) still demotes once the sat has been
-                # incoherent longer than the window. Inactive when the watchdog is off
-                # (wd_coh_t empty -> old behavior).
-                _flicker = (
-                    ctx.args.refade_flicker_s > 0.0
-                    and abs(resid) < ctx.args.carrier_innov_hz
-                    and ctx.t0 - ctx.wd.coh_t.get(prn, 0.0) < ctx.args.refade_flicker_s
-                )
                 if (
                     ctx.args.carrier_refade > 0
-                    and not _flicker
                     and ctx.car.fade.get(prn, 0) >= ctx.args.carrier_refade
                 ):
                     ctx.car.locked.discard(prn)

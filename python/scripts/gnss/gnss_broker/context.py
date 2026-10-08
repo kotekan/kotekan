@@ -119,7 +119,6 @@ class ChainContext(object):
         "g3_ramp",
         "cb",
         "car",
-        "wd",
         "nho",
         "dls",
         "hold",

@@ -450,14 +450,6 @@ _FROZEN = dict(
     #   enough that a transit or one bad poll cannot trip it, short enough to catch a
     #   degradation in minutes rather than the 3.5 h #87 ran for.
     q_stall_window=600.0,
-    # --refade-flicker-s
-    #   suppress the --carrier-refade demotion when the residual is SUB-innovation AND the sat
-    #   cohered within this many seconds: that is certification-bar sig flicker (settled-era
-    #   E1/B1C: ~700 no-op re-pulls/3 h at |resid| ~1.7 Hz), not a stepped NCO. A STANDING
-    #   decoherence (the L2C C20 absorbing state, dark for minutes at a sub-gate resid) still
-    #   demotes after the window. Needs the track watchdog on for coherence timestamps; 0
-    #   disables the guard.
-    refade_flicker_s=30.0,
     # --reseed-gain
     #   task #50: fraction of the fitted tau applied per opportunity. The SIGN of spec_tau is
     #   validated (r -0.47..-0.62 against disc on the shoulder); the MAGNITUDE is not
@@ -522,14 +514,6 @@ _FROZEN = dict(
     #   back empty and a naive implementation then rejects nothing while publishing the
     #   contaminated estimate. 0 disables.
     state_fuse_reject_sigma=5.0,
-    # --watchdog-weak-sig
-    #   WEAK-TRACK RESEED bar: a sat the search sees at full det snr (>= --watchdog-det-snr)
-    #   whose TRACK significance stays under this for a whole --watchdog-s window is a
-    #   coherent-but-weak zombie (correlating ~20 dB off-peak; nonzero coherence evades the
-    #   zero-coherence watchdog, correct cp evades the referee, folded resid evades refade --
-    #   the C21/C42 class). Healthy weak chains are exempt via the det bar (their dets are weak
-    #   too). 0 disables.
-    watchdog_weak_sig=30.0,
     # --bsat-gain
     #   Per-cycle gain of the b_sat loop (task #33): the per-satellite path-bias filter
     #   fed by the fleet phase-slope tau. 0 disables the UPDATES (b freezes at 0 / its
@@ -1683,34 +1667,6 @@ def build_parser(description):
         type=float,
         default=40.0,
         help="clamp on the shared carrier trim (Hz)",
-    )
-    # (ALIAS ESCAPE v1/v2 DELETED, 07-19 audit A4. v1 killed the fleet in 15 min
-    #  (8208dba6/069e8770); v2 shipped gated-off and never armed. Its two jobs are owned
-    #  by surviving mechanisms: a stale/aliased f_ref offset is snapped by the TIGHT
-    #  tracker fence (fll_reacq_hz ~15 Hz, free under --dop-continuous), and a walked/
-    #  aliased TRIM latch is the watchdog's lifecycle rescue below.)
-    ap.add_argument(
-        "--watchdog-s",
-        type=float,
-        default=0.0,
-        help="TRACK WATCHDOG (0 = off): a sat with a fresh detection at "
-        ">= --watchdog-det-snr that has ZERO coherent emits for this many "
-        "seconds (and has been seeded at least that long) is dropped from "
-        "seeds entirely -- the full re-seed lifecycle (fresh dop blend, "
-        "fleet trim prior, tracker state reset via the active[] gap) is "
-        "the only rescue that fixes every cause (aliased NCO, walked "
-        "trim, poisoned anchor) without guessing which one it is. The "
-        "2026-07-18 targeted-correction attempts (trim-step v1/v2) both "
-        "guessed and both lost; the lifecycle rescue never did.",
-    )
-    ap.add_argument(
-        "--watchdog-det-snr",
-        type=float,
-        default=50.0,
-        help="watchdog presence bar: only judge sats the search currently "
-        "sees at this significance -- a sat this strong that cannot "
-        "cohere is broken by definition; weak sats legitimately take "
-        "minutes and must never be churned by the watchdog.",
     )
     ap.add_argument(
         "--force-doppler-rate",

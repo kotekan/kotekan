@@ -138,7 +138,6 @@ from gnss_broker.context import ChainContext  # noqa: E402  (the stage interface
 from gnss_broker.clockbias import ClockBias  # noqa: E402  (the receiver LO bias)
 from gnss_broker.loopstate import (  # noqa: E402
     CarrierState,
-    WatchdogState,
     NhOverlay,
     DllLoopState,
     HoldState,
@@ -149,7 +148,6 @@ from gnss_broker.loopstate import (  # noqa: E402
 from gnss_broker import instruments  # noqa: E402  (the DLL's measurements)
 from gnss_broker import deadreckon  # noqa: E402  (the clock pipeline)
 from gnss_broker import almanac as almanac_stage  # noqa: E402  (orbit + visibility)
-from gnss_broker import codeloop  # noqa: E402  (the DLL + watchdog)
 from gnss_broker import statepub  # noqa: E402  (the state record)
 from gnss_broker import ratefeed  # noqa: E402  (#33 rate feeds)
 from gnss_broker import trimarm  # noqa: E402  (C++ trim arming)
@@ -287,7 +285,6 @@ def main(argv=None, rx=None, publisher=None):
     _carrier = (
         CarrierState()
     )  # the shared carrier loop's memory; see gnss_broker/loopstate.py
-    _watchdog = WatchdogState()  # the track watchdog's clocks
     _nho = NhOverlay()  # NH overlay alignment (#41: judge on the VERTEX)
     _dls = DllLoopState()  # the code loop + the C++ arming handshake
     _hold = HoldState()  # why a sat is held rather than dropped
@@ -1959,7 +1956,6 @@ def main(argv=None, rx=None, publisher=None):
         state_w=state_w,
         clk_persist_t=_clk_persist_t,
         car=_carrier,
-        wd=_watchdog,
         nho=_nho,
         dls=_dls,
         hold=_hold,
@@ -2531,18 +2527,6 @@ def main(argv=None, rx=None, publisher=None):
                     ref_hop=0,
                     doppler_rate_hz_s=_ctx.pred[p][1],
                 )
-        # TRACK WATCHDOG (--watchdog-s, default off): a sat the SEARCH sees STRONGLY that
-        # has not produced a single coherent emit for this long is broken, whatever the
-        # cause -- aliased NCO (the resid estimator cannot see past +-1/(4*T_rec)), a
-        # noise-walked BOOTSTRAP trim, a poisoned anchor. Every targeted correction tried
-        # on 2026-07-18 (trim-step v1 8208dba6, v2 ce47509e) guessed the cause and lost;
-        # the one rescue that always worked was the full re-seed lifecycle (C20, 19:54).
-        # So: drop the sat from seeds entirely. Next cycle it re-enters as a FIRST SEED --
-        # fresh det/dr dop blend, fleet-median trim, and the tracker's f_ref/phase state
-        # resets via the one-cycle active[] gap. The det-snr bar keeps genuinely weak sats
-        # (legitimately slow to cohere) out of reach; the seed-age bar gives a full window
-        # before judging; firing re-stamps birth, so re-fires need a whole new window.
-        codeloop.stage_watchdog(_ctx)
         seeding.stage_coast_drop(_ctx)
 
         # 3e. DEAD-RECKONED CODE-PHASE SEEDING (--dead-reckon): the search only exists to

@@ -80,24 +80,6 @@ class CarrierState(object):
         self.repin_pending = {}
 
 
-class WatchdogState(object):
-    """How long each seeded satellite has gone without coherence.
-
-    A satellite that is seeded but never locks would otherwise sit in the table forever,
-    indistinguishable from one that is merely between passes. Probe PRNs are exempt: they are
-    seeded deliberately so the combiner emits genuine noise records, and are never expected to
-    lock.
-    """
-
-    __slots__ = ("birth", "coh_t", "strong_t", "weak_n")
-
-    def __init__(self):
-        self.birth = {}  # prn -> when this seed was born
-        self.coh_t = {}  # prn -> last time coherence_s was above the floor
-        self.strong_t = {}  # prn -> last time it was strong
-        self.weak_n = {}  # prn -> consecutive weak polls
-
-
 class NhOverlay(object):
     """Neumann-Hoffman overlay alignment: which overlay chip the sky is on.
 
