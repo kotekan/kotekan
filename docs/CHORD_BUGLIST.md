@@ -81,6 +81,40 @@ seven are dead-reckon.
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
 
+### #159 — the nightly beam-cube build rewrites the live broker's ephemeris store with yesterday's sky (2026-10-08)
+**What happened [live 10-08]:** at 01:34:59Z `beamcube_daily.sh` (cf06) built the 10-07 cube. `Geometry.__init__`
+(`gnss_beam_cube.py:182`) calls `fetch_brdc(<day> 12:00Z)` on the default cache, `~/.cache/kotekan_gps`, which is the
+NFS home the broker reads too. The broker's copy was 42 min old (last merge 00:52Z, past `_HOURLY_TTL_S` = 1800 s), so the
+cube's background refresh merged against `when` = 10-07 12:00, pruned the rolling store to that window and rewrote
+`hourly_MN.rnx.gz` with records at toc 10-07 08:00–14:00. The broker's dead-reckon reload at 01:36:50Z loaded it ("BRDC
+loaded (101 sats)"), logged `PREDICTION COLLAPSE (0 of peak … in the eph window)` for G, E and C, and dropped every
+satellite "below BRDC horizon": no real-satellite observable on any chain from 01:36:50Z, and gps_l5 (the only search
+chain) re-acquired on noise 01:46–01:54Z (lock 0.23, kcoh ~0 dB-Hz). The file's new mtime then pins it for 30 min, so the
+forced reload at 01:51:51Z got the same stale sky.
+**Why not every night:** the cube's merge writes only when the broker's file is over 30 min old. The build normally runs
+~00:25Z, and on 10-02..10-07 the obs files show no empty 5-min bin after it; tonight it ran at 01:34.
+**Fix (scripts, no node cycle):** offline callers must not write the live store. Give `gnss_beam_cube.py` its own
+`cache_dir` (or pin `GNSS_BRDC_DIR`), and make the supply merge read-only for a `when` more than ~1 h from the wall clock;
+a past `when` must never prune the store's newest records. Other past-`when` callers: `gnss_beam_elem2obs.py:170`,
+`b1c_predict_lags.py`, `diag/navbit_brdc_test.py`.
+Check: `[archive]` broker.log 01:36:38–01:36:50Z; newest toc in `zcat ~/.cache/kotekan_gps/hourly_MN.rnx.gz`;
+`grep -rn "fetch_brdc(" python scripts` for the callers.
+
+### #161 — gps_l2c's clock can latch whole milliseconds off from a cross-band bootstrap, and the mod-1-ms JOINT-CLK check then holds it there (2026-10-08)
+**Measured [live 10-08], knock-on of #159:** with no sky, gps_l5 locked noise and its `clock-mod-20-ms` epoch went bad.
+gps_l2c's JOINT-CLK was REFUSED from 01:44:48Z (sigma over 0.5), so its local clock went 300 s stale and the dead-reckon
+re-bootstrapped from gps_l5: 02:16:30Z `clock BOOTSTRAP 2564.97 chips` (+5 ms), 02:21:50Z `5122.47 chips` (+10 ms; it was
+7.47 before). The seeds now carry `off +5122.512`, half the 20-ms CM period, so gps_l2c has had fleet presence 0 since
+the sky came back at 02:22Z while the other seven chains recovered. JOINT-CLK reads `legacy 5122.5 joint 7.51 ... delta
++0.001 -> ADOPTED` every 30 s: the comparison is modulo 1 ms (`diff ... mod 511.5`), so the 10-ms error is invisible,
+the local clock never goes stale again, and the bootstrap that could correct it never re-arms. Only a broker restart
+clears it today.
+**10-08 10:09Z: a broker restart did NOT clear it.** gps_l2c came up at clk +0.23 and re-bootstrapped to 5122.45 at 10:10:07Z. The wrong epoch is gps_l5's NH alignment: during the frozen sky the nh hint offset walked 16 -> 17 -> ... -> 19 -> 0 -> ... -> 10 -> 6 (01:46-02:19Z) and NH-JOINT followed it (0.02 -> 4.8 -> 7.0 -> 10.02 ms); the fresh broker relearned offset 7 from its first 6 detections (10:09:51Z) and NH-JOINT resolved 10.020 ms again. The hint narrows the search to +-2 of the learned offset (`searchhint.py`), so a wrong offset confirms itself while detections keep coming. **Cleared 10:17Z** by stopping the broker, restarting the aggregator and starting the broker: NH-JOINT resolved 0.019 ms, the hint came back at offset 16, gps_l2c bootstrapped to 7.50 chips and was at fleet presence 1.00 from 10:20Z. So the stale phase lives in the aggregator's detection table plus the hint narrowing; the broker alone cannot escape it.
+**Fix direction:** do not bootstrap a clock from a donor whose own lock is not established (gps_l5 was on noise); compare
+JOINT-CLK and the cross-band donor modulo the chain's own code period (20 ms for CM), not 1 ms; and refuse a bootstrap
+that moves the clock by whole milliseconds without a detection that confirms it.
+Check: `[archive]` broker.log gps_l2c 02:16–02:34Z (`BOOTSTRAP`, `JOINT-CLK`, `BIRTH-STEP ... off +5122`).
+
 ### #158 — projection phase 2 leftovers: `b` reaches only the lobe fold, `k`/source are not exported, the dB judge never ran (2026-10-02)
 **Phase 2 is closed on its judge** (KV, 10-02): E5a × E6 arcs through transits 39% (freeze) → 74% (09-30) → 82% (10-01)
 → 97% (28/29, night of 10-01/02, freeze 2°); lock held 149/149; closure median 0.57 TECU = quiet sky. Three items the plan
@@ -506,6 +540,20 @@ carries C56/C58. Small, and separate from the above.
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+
+### #160 — GPU 0's pipeline backs up ~1 s into every node start, so the DPDK workers fall 8–36 frames behind (2026-10-08)
+**Measured [live 10-08, cx19, 7 starts on c4a24dfed]:** about 1 s into capture GPU 0's chain backs up
+(`host_voltage_buffer_0`, `host_bf_mask_buffer` 48/48, `host_pl_mask` / `pl_counts` full; the prefetchers log
+"wait_for_empty_frame … will block" on ring frames 4–6). A `crs16BoardCaptureWorker`'s frames are pinned to the F-engine
+sample counter and advance only when the prefetch service has an empty frame, so the workers drop packets meanwhile and
+the next packet lands 8–36 frames (0.3–1.5 s) past the active frames. PR #1750's advance (e7d5863ff) now catches up in
+under 1 s (cx19 on g054f5ca8d7, 00:55Z: port 0 19 frames, port 1 14); before it, our resync absorbed this silently. Also
+seen: one-frame stalls on 3 of 6 nodes 45–80 s after both 10-06 starts, and cx43 mid-run on 09-02.
+**The cause of the stall is NOT known.** Guess, unverified: first-frame work on GPU 0 (CUDA module load, allocations)
+outlasting the ring's few frames of slack. Next: poll `/buffers` and `/gpu_profile` every 100 ms through the first 5 s of
+a start and compare GPU 0 with GPU 1; if it is first-frame setup, warm the chain before the DPDK start, or start capture
+only once the GPU chain reports ready. Fixing it removes most of #1750's catch-ups.
+Check: `[live]` none yet; the 100-ms poll above at the next node start.
 
 ### #156 — `get_chord_metadata()` reads an object's `parent_pool` while `deepCopy` can be assigning it (object-content race; found 2026-09-30)
 - **What:** `chordMetadata::deepCopy` does `*this = *chord_other` under both objects' locks, and that assigns the weak_ptr
