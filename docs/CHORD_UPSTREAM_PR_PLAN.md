@@ -1,29 +1,33 @@
-# Staged upstream PR plan — `kv/chord-gnss` → `chord`
+# Staged upstream PR plan — `kv/chord-gnss` → `develop`
 
-**Status 2026-09-08.** Stage 1 has **landed**: PR
-[#1640](https://github.com/kotekan/kotekan/pull/1640) was approved and squash-merged into
-`chord` as `a6ce5ac49`. Two fixes split out of the later stages are open and approved-or-clean:
-[#1638](https://github.com/kotekan/kotekan/pull/1638) (caller-side publish-then-mutate, 7
-`lib/cuda` stages) and [#1642](https://github.com/kotekan/kotekan/pull/1642)
-(`cudaCopyFromRingbuffer` reads its own snapshot). **Stage 2 is in progress** — see the split
-recorded under its heading below.
+**Status 2026-10-08.** Upstream PRs now target `develop`; `chord` is rebuilt by Jim as
+`develop` plus selected open PRs ("Sync chord: develop <sha> + PRs ..."), so a PR reaches
+`chord` at his next sync without bypassing review.
 
-PR [#1618](https://github.com/kotekan/kotekan/pull/1618) remains open as a draft, base `chord`,
-head `kv/chord-gnss`, **no description**, carrying the whole branch: **661 files, +220,684 /
-−143, 1,741 commits, one author.** No maintainer has reviewed it, which is the expected outcome
-of asking anyone to read 661 files.
+| PR | Stage | State |
+|---|---|---|
+| [#1640](https://github.com/kotekan/kotekan/pull/1640) | 1, upstream fixes | merged (to `chord`, since folded into `develop`) |
+| [#1642](https://github.com/kotekan/kotekan/pull/1642), #1643, #1647, [#1714](https://github.com/kotekan/kotekan/pull/1714) | 2, buffer/metadata | closed: done upstream |
+| [#1699](https://github.com/kotekan/kotekan/pull/1699), [#1713](https://github.com/kotekan/kotekan/pull/1713) | off-plan fixes | merged |
+| [#1675](https://github.com/kotekan/kotekan/pull/1675) | 3, GPU scheduling | open; Jim approved, waiting on Andre and Erik |
+| [#1750](https://github.com/kotekan/kotekan/pull/1750) | 4, DPDK capture | open; running on all six CHORD GNSS nodes |
+| — | 5–9, GNSS | not started; cleanup round 2 done (below) |
+
+Against `develop`'s merge base (`3bfbba126`) the branch is **682 files, +201,512 / −308**:
+631 added, 51 modified. The draft [#1618](https://github.com/kotekan/kotekan/pull/1618)
+(the whole branch, no description) is superseded by this series.
 
 This document is the plan to make it landable. It is versioned here rather than in the PR
 body because it has to stay in step with the branch as stages land.
 
 ---
 
-## 1. The number that matters is 44, not 661
+## 1. The number that matters is 51, not 682
 
 The diff is **almost purely additive**: only 25 files carry any deletion at all. Added files
 are cheap for a reviewer — they can be read in isolation and cannot break anything that exists
 today. **Modified files are where all the risk and all the review effort live**, and there are
-only 44 of them.
+only 51 of them (44 when this plan was written; stages 3 and 4 account for most of the rest).
 
 So the staging is ordered by *what a modification can break*, not by subsystem tidiness:
 
@@ -70,11 +74,36 @@ And one real defect, which was ours and not upstream's to cause:
 > ⚠️ **The general rule this exposed.** A MODIFIED upstream file is a different risk class from
 > an ADDED one. Each of the 44 needs a reason that survives being read by the file's owner.
 
+### Cleanup round 2 (2026-10-08)
+
+* **Generated configs untracked.** `config/generated/` (21 files, ~65k lines) and the six
+  `config/gnss/gnss_vars_<node>.j2` are generator output; they stay on disk for the services
+  and are gitignored. `config/gnss/example_chord_gnss_cx51_multi.yaml` is one node's output.
+  Every removed file is reproducible: node configs via `gen_fleet.py`, the gather and cube
+  archive from the recipe in their headers, the aggregator from the recipe in `agg_up.sh`
+  (two generator flags were added so the hand-patched live aggregator config is reproducible).
+* **The airspy prototype removed.** 49 files under `config/` (its configs, generators and
+  launchers) that nothing in the CHORD system reads; they were already stale. Tag
+  `airspy-prototype-final` keeps them, including the only GLONASS chain configs and the
+  closed-carrier-loop tuning in `run_live.sh`.
+* **Stale pointers.** Citations of the out-of-repo `gnss_gpu_migration.md` memo, the unbuilt
+  `lib/cuda/benches/chordShapeBench.cu`, and `docs/CHORD_HANDOFF.md` (a July orientation note).
+
+**Left for the review / cruft pass** — code the airspy removal stranded: the stages
+`GnssChannelizedTracker`, `GnssVoltagePeel`, `GnssQuantize44`, `GnssBeamCube`,
+`GnssSubbandSplit`, `GnssChannelGather` and the command `cudaGnssTrack` (no live config uses
+them, but live stages include their headers, so removal needs builds); our +294 lines in
+`airspyInput` and +99 in `fftwEngine`; ~15 Python/shell tools reached only from the removed
+launchers; and 44 broker flags whose only setter was an airspy launcher, with the features
+behind them. ⚠️ Removing those launchers makes the 44 flags eligible for the `_FROZEN` sweep;
+retire each flag with its feature instead, and never freeze `dr-constellation` or
+`nh-overlay-len` (the `--signal` implied-value table overwrites them after `_FROZEN`).
+
 ---
 
 ## 3. The stages
 
-### Stage 1 — upstream fixes with no GNSS in them *(~400 lines, land first)*
+### Stage 1 — upstream fixes with no GNSS in them — merged as #1640
 
 Every one of these helps a CHORD user who will never run a GNSS chain. None mentions a GNSS
 symbol. This stage exists so the first review is a pleasant one.
@@ -94,6 +123,12 @@ symbol. This stage exists so the first review is a pleasant one.
   restart inside TIME_WAIT.
 * `lib/stages/rawFileRead.*`, `rawFileWrite.*` — two opt-in config keys, defaults unchanged.
 * `docs/bfmask_deadlock_upstream_note.md` — already written for Jim and Andre.
+
+**Not yet proposed** (small, no GNSS; each to be checked against `develop` before a PR):
+`LinearAlgebra::to_blaze_herm` real diagonal (listed above but not in #1640), `bufferRecv`
+`allow_short_frames`, `bufferSend` null-metadata fix and opt-in `SO_MAX_PACING_RATE`,
+`cpuMonitor` reaping its tracking thread before the stages it reads, and `rawFileWrite`
+`create_base_dir` / `continue_numbering` (the cube archiver needs them).
 
 ### Stage 2 — shared buffer / metadata data path *(CLOSED 2026-09-11, superseded upstream)*
 
@@ -132,29 +167,23 @@ from `develop`). It still carries the START-ordering bug and the incompatible de
 goes later as its own PR. See §4.
 
 
-### Stage 3 — GPU scheduling *(the highest-risk shared change; goes alone)*
+### Stage 3 — GPU scheduling — [#1675](https://github.com/kotekan/kotekan/pull/1675), open
 
-* `lib/cuda/cudaDeviceInterface.{hpp,cpp}` — **removes the public device-wide
-  `gpu_command_mutex`** in favour of a 64-slot per-stream array. Ten pipelines per GPU were
-  serialising command queuing across blocking driver calls, wedging the whole GPU.
-* `lib/cuda/cudaProcess.{hpp,cpp}` — per-stream locking, and a real multi-stream end-of-frame
-  join that **closes upstream's own `// TODO, this should wait on the last event from every
-  stream!`**. This changes completion semantics for any multi-stream pipeline.
-* `lib/cuda/cudaCommand.cpp` — new `cuda_stream_base` key; **default 0 preserves existing
-  behaviour byte-for-byte.**
+Per-stream command-queuing locks instead of the device-wide `gpu_command_mutex`;
+`cuda_stream_base` as a pipeline index (streams `3*base+0/1/2`, default 0 = existing
+behaviour); a frame signalled only after every stream it used finishes (closes upstream's
+`TODO` in `queue_commands`); and one owner per named GPU memory region unless both stages
+declare the share. The rules are in AGENTS.md's "GPU stages" section.
 
-### Stage 4 — DPDK capture resilience *(largest operational blast radius)*
+### Stage 4 — DPDK capture — [#1750](https://github.com/kotekan/kotekan/pull/1750), open
 
-* `lib/dpdk/crs16BoardCaptureWorker.hpp` — per-stream FPGA-seq monotonicity (the old check
-  compared different boards to each other), **a `FATAL_ERROR` demoted to a counted WARN**,
-  three per-packet log branches throttled (unthrottled logging filled a 3.5 TB root fs), and an
-  opt-in window resync.
-* `lib/dpdk/dpdkCore.{cpp,hpp}` — worker-health metrics and a FATAL when workers are missing.
-  > ⚠️ **`exit_on_worker_failure` defaults to `true`** — the one modified-shared-code default
-  > that changes behaviour in the non-conservative direction. A node that silently lost a
-  > worker now stops instead of limping. Defensible, documented, escape hatch present — but it
-  > must be a maintainer's conscious decision, not a discovery.
-* `lib/dpdk/FramePrefetchService.hpp` — wall-clock-vs-seq axis watchdog.
+`dpdkCore` catches `FatalError` on the lcores (a throw there was `std::terminate`);
+`crs16BoardCaptureWorker` stops kotekan on a packet behind its active frames or 128+ frames
+ahead (returning -1 only ended the worker, leaving its port's shared frames unfinished),
+advances the frames toward a packet ahead of them after a downstream stall, and records each
+packet's receipt bit in the frame it was copied into. The earlier five-piece plan (throttled
+logs, per-stream seq check, worker-health metrics, axis watchdogs, opt-in resync) was dropped
+in favour of this: with the daemon restarting on FATAL, none of it was needed.
 
 ### Stage 5 — GNSS foundation, no framework *(~8k lines, trivially reviewable)*
 
@@ -171,9 +200,9 @@ config throws at startup.
 
 ### Stage 7 — CPU/FFTW GNSS chain
 
-The channelized despread/replica/acquire/search/tracker set, plus the `fftwEngine` and
-`airspyInput` modifications they require (`ensure_frame_desc`, the optional PFB, the bounded
-`/adcstat` wait, the stream watchdog).
+The channelized despread/replica/acquire/search set. ⚠️ With the airspy prototype gone, our
+`fftwEngine` and `airspyInput` modifications serve no CHORD configuration; the cruft pass
+decides whether they revert to upstream rather than ship here.
 
 ### Stage 8 — CUDA GNSS path + `external/n2k_dual`
 
@@ -188,57 +217,27 @@ by line count, lowest by risk — none of it compiles into kotekan.
 
 ---
 
-## 4. Decisions to settle before the later stages
+## 4. Decisions
 
-1. **`config/generated/` is 50,345 lines — 23% of the entire diff.** Six near-identical
-   ~5,700-line node configs, fully reproducible from `gen_chord_gnss_config.py` +
-   `config/gnss/*.j2`, and already gated by `gen_fleet.py --check`. Shipping machine output
-   upstream is a real question. *Recommendation:* ship the generator, the j2 templates and the
-   manifest; consider one example node rather than six.
+1. **Generated configs** — RESOLVED 2026-10-08: untracked; ship the generator, templates,
+   manifest and one example (see cleanup round 2).
 2. **The acceptance gate cannot run upstream.** Six of `gate.sh`'s seven fixtures are 38–100 MB
-   transcripts living **outside git** at `/home/kvand/gnss/fixtures/` (NFS), with only their
-   `.digest` committed — a deliberate, documented choice. Only `broker_fake_l5.jsonl` is
-   in-repo. A reviewer cannot reproduce "7/7 EQUIVALENT". Either say so plainly in the PR or
+   transcripts outside git (`/home/kvand/gnss/fixtures/`, NFS), with only their `.digest`
+   committed; several tests also read fixtures from there. OPEN: say so plainly in the PR, or
    make one on-sky arm fetchable.
-3. **Seven citations to `docs/gnss_gpu_migration.md`**, in shipped `CMakeLists.txt` comments and
-   GNSS headers. The memo was deliberately moved out of the repo in `3f0ffc3b1` and now lives
-   at `airspy_docs/`. Either bring it back (12 KB) or mark the citations external.
-4. **`python/scripts/gnss/gps_distributed_broker.py` (+2,818)** appears superseded by the
-   `gnss_broker/` package. Confirm before shipping both.
-5. **`lib/cuda/benches/chordShapeBench.cu` (+253)** is referenced by no build file or script.
-6. **⚠️ THE BIG ONE — is the gx10 airspy prototype retired, and does it still pull this
-   branch?** This single question gates roughly **600 KB** of `config/`: `gnss_node.yaml`
-   (119 KB), `WIRING.md`, the four `gen_*_config.py` airspy generators, every top-level
-   `live_*.yaml`, `run_live.sh` (58 KB), `run_band.sh`, `run_3band.sh`, `bandctl.sh`,
-   `night_batch.sh`, and the `peel_*` / `replay_*` / `capture_*` benches.
-
-   *Evidence it is still live:* the prototype checkout at `/home/lwlab/airspy_gps/kotekan`
-   **shares this git history** — `config/binomial_trial.sh` even carries a scratch path from
-   that host — so deleting these here removes the prototype's own launchers on its next pull.
-   The family was maintained as recently as 2026-08-07.
-   *Evidence it is retired:* the prototype is documented as a different repo and instrument,
-   and `airspy_docs/buglist.md`'s newest entry is 2026-07-28.
-
-   ⚠️ **And one trap that makes this more than a tidiness question.** `config/run_live.sh` is
-   the ONLY non-definition user of about ten broker flags (`--xband-combiner`,
-   `--coast-to-horizon`, `--adc-stage`, `--xband-seed`, `--xband-lo-dongle`, …). The `_FROZEN`
-   sweep in `gnss_broker/cli.py` freezes a flag on the premise *"not set in the production
-   config, in any launch script, or in any gate or fixture in this repo"* — so **deleting
-   `run_live.sh` silently makes those flags eligible for freezing.** A config deletion would
-   quietly change the tuning contract. Whatever the answer, `run_live.sh` needs the frozen-flag
-   audit re-run, not just a `git rm`.
-
-   Held pending that answer: five prototype-host shell scripts that hardcode
-   `/home/lwlab/airspy_gps/kotekan` and cannot execute on CHORD (`binomial_trial.sh`,
-   `replay_bench_leg.sh`, `replay_l1gps_leg.sh`, `replay_l1bds_leg.sh`, `run_trim_bench.sh`) —
-   the repo's own `scripts/gnss/fixtures/README.md` already names three of them as a known trap.
-
-7. **`config/base/live_config_20260730.json`** is superseded as the fleet base, but
-   `gather_up.sh:42` names it as the input that `generated/chord_gnss_gather.yaml` — a LIVE
-   config — was built from. Confirm that gather config is reproducible without it before
-   deleting.
-8. **19 files hardcode `/home/kvand`** paths (mostly bench/test scripts). Cosmetic, but it is
-   the kind of thing a reviewer notices in file one.
+3. **Citations of `docs/gnss_gpu_migration.md`** — RESOLVED 2026-10-08: dropped.
+4. **`gps_distributed_broker.py`** — RESOLVED: not superseded. It is the broker's main module
+   (`scripts/gnss/broker_multi.py` imports it); `gnss_broker/` holds parts split out of it.
+5. **`lib/cuda/benches/chordShapeBench.cu`** — RESOLVED 2026-10-08: removed.
+6. **The airspy prototype** — RESOLVED 2026-10-08: removed (tag `airspy-prototype-final`); no
+   sign the prototype has pulled this branch since 2026-08-07. Stranded code is listed under
+   cleanup round 2.
+7. **`config/base/live_config_20260730.json`** — RESOLVED: keep. It is the base for the gather,
+   aggregator and cube-archive recipes.
+8. **Hardcoded `/home/kvand` paths** — OPEN, and larger than first counted: 78 files. Most are
+   our deployment scripts, systemd units and runbooks, which raises the real question for
+   stage 9 — which of `scripts/gnss/` and `docs/` belongs upstream at all. ~37 are code or test
+   defaults pointing at out-of-repo fixtures and data, tied to item 2.
 
 ---
 
