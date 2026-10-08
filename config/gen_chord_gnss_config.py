@@ -2177,7 +2177,7 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
     sig = cfg["signals"]
     fe = cfg["fengine"]
     n_chan = len(chan_ids)
-    return {
+    st = {
         "kotekan_stage": "GnssChannelizedSearch",
         "in_buf": in_buf,
         "signal": sig["primary"],
@@ -2295,6 +2295,13 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         "acquire_threads": 1,
         "cpu_affinity": [core],
     }
+    # #97: pick each surface's peak on the mainlobe pair-sum, and vote the NH label across the
+    # pass's alignments. Stage defaults are off; the aggregator runs with both on.
+    if args.acq_pairsum_select:
+        st["acq_pairsum_select"] = True
+    if args.nh_label_consensus:
+        st["nh_label_consensus"] = True
+    return st
 
 
 
@@ -3643,6 +3650,13 @@ def main():
                          "of channel COUNT (the span sets it, not the density) -- so storing it "
                          "per sample is ~156x oversampled and the surface is the whole cost of a "
                          "pass. Step must stay well under the lobe width or the peak is missed.")
+    ap.add_argument("--acq-pairsum-select", action="store_true",
+                    help="#97: choose each acquisition surface's peak cell on the mainlobe "
+                         "pair-sum rather than the raw sample (GnssChannelizedSearch "
+                         "acq_pairsum_select).")
+    ap.add_argument("--nh-label-consensus", action="store_true",
+                    help="#97: vote the NH20 alignment label across the pass's alignments "
+                         "(GnssChannelizedSearch nh_label_consensus).")
     ap.add_argument("--prns-per-pass", type=int, default=1,
                     help="how many ELIGIBLE PRNs to search per snapshot, round-robin. 0 = all "
                          "(airspy's behaviour). A detection's ref_hop is the SNAPSHOT's start "
