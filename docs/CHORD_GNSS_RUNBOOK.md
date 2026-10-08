@@ -45,10 +45,10 @@ whole table.
 
 | host | when | job | does | output |
 |---|---|---|---|---|
-| gnss | hourly :17 | `scripts/gnss/eop_cron.sh` | pushes choco's EOP table to every running node whose live table ends earlier | `/var/tmp/gnss-logs/eop_cron.log` |
-| gnss | every 5 min | `scripts/gnss/bad_inputs_cron.py` | pushes bffs's bad-input list to the running nodes when it changes (choco skips ours: maintenance mode) | `/var/tmp/gnss-logs/bad_inputs_cron.log` |
-| gnss | every 5 min | `scripts/gnss/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference; report-only unless `ELEM_REF_ACT=1` | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log}` |
-| cf06 | every 15 min | `scripts/gnss/chain_health_cron.sh` | flags a chain under 30 % fleet_present for 15+ min | `fixtures/obs/health/{ALERT,current.json,health.log}` |
+| gnss | hourly :17 | `scripts/gnss/site/eop_cron.sh` | pushes choco's EOP table to every running node whose live table ends earlier | `/var/tmp/gnss-logs/eop_cron.log` |
+| gnss | every 5 min | `scripts/gnss/site/bad_inputs_cron.py` | pushes bffs's bad-input list to the running nodes when it changes (choco skips ours: maintenance mode) | `/var/tmp/gnss-logs/bad_inputs_cron.log` |
+| gnss | every 5 min | `scripts/gnss/site/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference; report-only unless `ELEM_REF_ACT=1` | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log}` |
+| cf06 | every 15 min | `scripts/gnss/site/chain_health_cron.sh` | flags a chain under 30 % fleet_present for 15+ min | `fixtures/obs/health/{ALERT,current.json,health.log}` |
 
 Nothing pages. An ALERT file exists only while its condition holds:
 `ls /home/kvand/gnss/fixtures/obs/{health,elem_ref}/ALERT`.
@@ -148,8 +148,8 @@ Not in the target, on purpose — they are six machines, they need sudo, and cyc
 fleet-wide re-arm.
 
 ```sh
-for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/node_up.sh $n restart; done
-scripts/gnss/eop_push.sh        # from a host that reaches the nodes
+for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/site/node_up.sh $n restart; done
+scripts/gnss/site/eop_push.sh        # from a host that reaches the nodes
 ```
 
 **Bring the gather and the aggregator up BEFORE restarting nodes into them.** Sixty senders
@@ -183,8 +183,8 @@ diffs the stock half against the render and fails on any difference not declared
 `stock_parity.py <config> --live cx47` checks the stock half, live values included, against a running
 stock node. When production's template changes, take develop's copy, regenerate, and check.
 **choco has our six in maintenance mode** (it would also push configs we must not have overwritten),
-so it pushes nothing to them. Two gnss cron jobs stand in for it: `scripts/gnss/eop_cron.sh` (hourly at :17,
-the EOP table) and `scripts/gnss/bad_inputs_cron.py` (every 5 min, bffs's bad-input list, pushed only when it
+so it pushes nothing to them. Two gnss cron jobs stand in for it: `scripts/gnss/site/eop_cron.sh` (hourly at :17,
+the EOP table) and `scripts/gnss/site/bad_inputs_cron.py` (every 5 min, bffs's bad-input list, pushed only when it
 changes). Logs: `/var/tmp/gnss-logs/{eop,bad_inputs}_cron.log`.
 **recv1 remembers each sender's config by host:port, and new content from the same node is fatal
 there** (ConfigTracker). After any node-config change, restart the nodes first and then recv1 (Jim).
@@ -273,7 +273,7 @@ Archive before any deliberate teardown you might want to explain later:
 
 ## 10. One definition, two ways to run it
 
-**`scripts/gnss/stack_components.sh` is the single source of truth** for what each component is
+**`scripts/gnss/site/stack_components.sh` is the single source of truth** for what each component is
 — its argv, its environment, and its working directory. Nothing else defines those.
 
 ```
@@ -297,7 +297,7 @@ through a foreground runner.
 ### The gate that makes #134 impossible to repeat
 
 ```sh
-ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/stack_contract_gate.sh'
+ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/site/stack_contract_gate.sh'
 ```
 
 It compares each **running** process against the definition — **argv *and* environment** — and
@@ -310,11 +310,11 @@ reproduced command line with a dropped `export`, which an argv-only comparison w
 ### Editing
 
 ```sh
-# change what a component IS  -> scripts/gnss/stack_components.sh
-# change how it is SUPERVISED -> scripts/gnss/systemd/gnss-<x>.service
-ssh gnss 'sh /home/kvand/gnss/kotekan/scripts/gnss/systemd/install_user_units.sh'
+# change what a component IS  -> scripts/gnss/site/stack_components.sh
+# change how it is SUPERVISED -> scripts/gnss/site/systemd/gnss-<x>.service
+ssh gnss 'sh /home/kvand/gnss/kotekan/scripts/gnss/site/systemd/install_user_units.sh'
 ssh gnss 'systemctl --user restart gnss-<unit>.service'
-ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/stack_contract_gate.sh'
+ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/site/stack_contract_gate.sh'
 ```
 
 ⚠️ One difference is deliberate and visible in the definition rather than hidden: `agg_up.sh`

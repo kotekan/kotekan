@@ -111,7 +111,7 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
 
     // ── #8: GET <unique_name>/rf_stats -- "is the RF path healthy, and in WHICH band?" ─────
     // Deliberately a NEW endpoint rather than extra keys on element_power: that one has a
-    // consumer (scripts/gnss/elemsweep.py) and a documented contract, and widening a served
+    // consumer (scripts/gnss/site/elemsweep.py) and a documented contract, and widening a served
     // shape under a live reader is how the C/N0 pairing bugs happened.
     //
     // `cost_ms` is served on purpose. The whole safety argument for this feature is that a

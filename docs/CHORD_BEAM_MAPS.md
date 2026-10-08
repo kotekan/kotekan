@@ -181,7 +181,7 @@ across. Never quote a fitted FWHM from this without saying so.
   reads the recorded cube archive (`docs/CHORD_CUBE_ARCHIVE.md` §8) — 32 elements × 7 subbands per
   chain, all 8 chains, every second — and reproduces the §6 result (peak 4–8° off axis, +15–21 dB
   over the >15° median) in ~15 s per chain from the 12-window rungs. The elem-archive path below
-  stays for the 08-25..09-02 days only. Viewer: `ssh cf06 scripts/gnss/beamview_up.sh` →
+  stays for the 08-25..09-02 days only. Viewer: `ssh cf06 scripts/gnss/site/beamview_up.sh` →
   http://cf06:8877/.
 * **More nights**: pure addition, no reprocessing. The obvious first extension.
 * **Phased-array map**: apply the elemcal gains before summing `u`, turning the §6 sanity

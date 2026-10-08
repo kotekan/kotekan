@@ -1735,7 +1735,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # per attempt, and there are 60 of them (12 instances x 5 chains): at the
                     # default that is ~12 lines a second of "Connection refused" across the fleet
                     # logs, which buries whatever the real problem is. Bring the gather up first
-                    # (scripts/gnss/gather_up.sh), then restart the nodes.
+                    # (scripts/gnss/site/gather_up.sh), then restart the nodes.
                     "reconnect_time": 30,
                     # Same bound as the search leg, and for the same reason: a gather that accepts
                     # the connection and then stops reading must cost this instance a dropped frame,

@@ -70,7 +70,7 @@ h5py) **on cf06** with absolute paths — the nodes are production trackers.
   - `rung --n 12|60` — L0 → exact sums per (absolute block = idx // n, slot, prn). A PRN swap
     inside a block yields two rows (`n_win` < n), never a mixed sum.
   - `verify --raw F.raw` — N random live cells re-read from L0 and compared BIT-FOR-BIT.
-- `scripts/gnss/cubecompact_up.sh` (cf06 stack style, restarts the loop) →
+- `scripts/gnss/site/cubecompact_up.sh` (cf06 stack style, restarts the loop) →
   `cubecompact_loop.sh`: `compact` every 300 s; after 00:20 UTC, rungs for YESTERDAY once.
   Log `/tmp/gnss_cubecompact.log` on cf06. Refusals ("REFUSED") in that log are the epoch gate.
 
@@ -215,6 +215,6 @@ list position, so one position mixed 5978 (l5) with 6134 (e5b) and clamped E6/L2
 channel.
 
 Viewer: `gnss_beam_cube.py export <masters> --nside 32` → `fixtures/beamcube/web/`, served by
-`scripts/gnss/beamview_up.sh` on cf06 (http://cf06:8877/, port 877 is privileged). Every day in
+`scripts/gnss/site/beamview_up.sh` on cf06 (http://cf06:8877/, port 877 is privileged). Every day in
 one `index.json` must share `units` and `pointing`; the page refuses to sum a day that differs
 and names it. The 08-25..09-02 elem-archive export (raw power units) lives in `web_elem/`.

@@ -1,6 +1,6 @@
 // LIVE PRN MEMBERSHIP: does a slot swap actually reach the code the GPU correlates against?
 //
-//   scripts/gnss/build_tool.sh prnswap && scripts/gnss/prnswap
+//   scripts/gnss/site/build_tool.sh prnswap && scripts/gnss/prnswap
 //
 // WHY THIS TOOL EXISTS. docs/CHORD_LIVE_PRN_RECONFIG.md lets the broker repoint a PRN slot at
 // a different satellite while the pipeline runs. The dangerous failure is not a crash: it is a

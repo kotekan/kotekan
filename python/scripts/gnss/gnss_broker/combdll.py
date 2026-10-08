@@ -824,7 +824,7 @@ def coh_cn0(
            record -- at the one-way split's aperture cost (half the array integrates, half
            references), a CONVENTION offset the probes' own sky fold carries identically.
     Strong satellites tracked by cn0_prompt are the calibration: each fold's offset from
-    the per-record estimator is measured on sky by scripts/gnss/kcoh_gate.py, never argued.
+    the per-record estimator is measured on sky by scripts/gnss/site/kcoh_gate.py, never argued.
 
     Per (PRN, instance): Abar = (1/n) sum_k A_k exp(-2 pi i f t_k), t_k = hop_k * hop_s
     (absolute hops -- exact, shared across the fleet). Fleet: mean over instances of

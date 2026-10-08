@@ -47,7 +47,7 @@
 // Synthesizing a record at window W with argument cp204 gives exactly the continuation of the
 // same signal -- so a 300 s seed age costs one extra 2048-hop synthesis, not 300 s of samples.
 //
-// Build:  scripts/gnss/build_tool.sh e2e
+// Build:  scripts/gnss/site/build_tool.sh e2e
 // Run:    scripts/gnss/e2e --help
 //
 // @author Keith Vanderlinde

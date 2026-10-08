@@ -11,7 +11,7 @@
                       --only cx27/0,cx42).
   status [FILE]       Per instance and pol: offset and shape similarity against FILE (works on any
                       binary), plus the node's own fleet_ref block where the binary has one.
-  watch FILE DIR      The safety net (scripts/gnss/elem_ref_cron.sh, every 5 min): per band, R and
+  watch FILE DIR      The safety net (scripts/gnss/site/elem_ref_cron.sh, every 5 min): per band, R and
                       each instance's offset against FILE into DIR/current.json; DIR/ALERT exists
                       while any instance is > --alert-deg off for > --min-run s outside a freeze.
                       --act re-posts FILE in live mode to such an instance (at most every

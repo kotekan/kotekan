@@ -62,7 +62,7 @@ config snapshot in `<dir>/configs/` and the ctl files, so it can be rerun on any
 
 Tutorial: `scripts/gnss/viscap_tutorial.ipynb` — framing by hand, ctl header/PRN table,
 time, tiles decode, N² and N×M plots, metadata join. Ships with outputs; re-execute with
-`scripts/gnss/nb_run.py scripts/gnss/viscap_tutorial.ipynb` (no Jupyter needed).
+`scripts/gnss/site/nb_run.py scripts/gnss/viscap_tutorial.ipynb` (no Jupyter needed).
 
 ## Volumes
 

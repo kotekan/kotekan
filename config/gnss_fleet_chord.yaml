@@ -293,7 +293,7 @@ common:
   # and rendered in the viewer's stream-health strip. Cost measured at production shape:
   # 1.0-1.2 ms per pass, ~0.01% duty at the 10 s period. Rollback: rf-stats: false.
     rf-stats: true
-  # 1 s, not the 10 s default: the recorder (scripts/gnss/rail_watch.py record) keeps every pass
+  # 1 s, not the 10 s default: the recorder (scripts/gnss/site/rail_watch.py record) keeps every pass
   # per channel, and a boresight transit rails for minutes with structure on tens of seconds.
   # A pass is one frame read in place, ~1-2 ms at the full union channel set, so 1 s is ~0.1-0.2%
   # of the tap's time. Needs a node restart to take effect.
@@ -388,7 +388,7 @@ common:
   # (python/scripts/gnss/elem_shared_ref.py snapshot), refused unless taken against the epoch of
   # elem-positions-file. live = pin to it (a first model in full, a warm one slewed at 1 deg/s);
   # log = each assembler reports its offset only. Live switch: elem_shared_ref.py post FILE
-  # --mode live. Safety net: scripts/gnss/elem_ref_cron.sh.
+  # --mode live. Safety net: scripts/gnss/site/elem_ref_cron.sh.
     elem-shared-ref: config/elem_shared_ref_20261006.json
     elem-shared-ref-mode: live
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
@@ -413,7 +413,7 @@ common:
     search-host: 10.222.0.56
   # TASK #59: the frame-synced tracker->broker telemetry leg. Same host as the search
   # aggregator and the broker -- cf06 already runs a kotekan instance, so this is a second
-  # small one beside it (scripts/gnss/gather_up.sh), not a new kind of thing.
+  # small one beside it (scripts/gnss/site/gather_up.sh), not a new kind of thing.
   #
   # WHAT IT ADDS PER INSTANCE: a second CONSUMER of each chain's record buffer (the combiner
   # is untouched), which strips each record to its gnssRecord.hpp header plus the per-channel

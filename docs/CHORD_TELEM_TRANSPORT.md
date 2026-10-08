@@ -145,7 +145,7 @@ lines a second across the fleet even at `reconnect_time 30`.
 ```bash
 ssh gnss systemctl --user restart gnss-gather.service           # :11060 in, :11061 out, rest :12051
 # then, per node (KV — these need sudo):
-scripts/gnss/node_up.sh <node> restart
+scripts/gnss/site/node_up.sh <node> restart
 ```
 
 `gather_up.sh` prints a health block after start: per chain, the number of senders and

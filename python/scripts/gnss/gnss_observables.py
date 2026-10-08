@@ -812,7 +812,7 @@ def main():
                     # anywhere in it, unlike cn0_coh above (whose deep fold re-searches a
                     # rate per integration and carries ~20 dB of paired self-scatter).
                     # Validated on sky: split-half <= 0.1 dB, two-feed pairing <= 0.35 dB
-                    # corrected (scripts/gnss/cn0_prompt_gate.py). duty is the lock duty
+                    # corrected (scripts/gnss/site/cn0_prompt_gate.py). duty is the lock duty
                     # the value is conditioned on -- offline consumers decline low-duty
                     # rows rather than average them; noise_probe marks the below-horizon
                     # noise references riding the same rows (never satellites).

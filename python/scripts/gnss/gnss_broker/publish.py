@@ -23,7 +23,7 @@ from . import timebase
 # DERIVED FROM SKY, not chosen: over 2026-08-11/12 the measured populations are 1.00-1.05 while
 # blind (broker-wide, all five chains) and 0.17-0.82 while tracking, so the bar sits in an empty
 # gap between them rather than inside either. Re-derive it -- do not nudge it -- if the split
-# ever stops being bimodal; scripts/gnss/blind_witness_check.py prints both populations.
+# ever stops being bimodal; scripts/gnss/site/blind_witness_check.py prints both populations.
 PROMPT_RAYLEIGH_S4 = 0.90
 
 # Trailing window for det_duty_s / inst_snr_med_win (seconds). Chosen as ~12 seed-POST

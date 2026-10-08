@@ -368,7 +368,7 @@ windows sit up to 34 records (~36 s) apart at all? Fix that and the gate stops b
 ## 8. Reproducing the baseline
 
 ```
-KBUILD=build_nodpdk scripts/gnss/build_tool.sh aggbench      # on cf06
+KBUILD=build_nodpdk scripts/gnss/site/build_tool.sh aggbench      # on cf06
 scripts/gnss/aggbench --nd 321 --mp 3125 --threads 16        # blind dims, direct vs folded
 scripts/gnss/aggbench --nd 5 --mp 400                        # fast correctness check
 ```
@@ -613,7 +613,7 @@ which was never the problem -- L1 was already at 78.84%.
 
 ### 9.10 The bench, and why a synthetic one is allowed here
 
-`scripts/gnss/wavebench.cpp` (build: `KBUILD=build scripts/gnss/build_tool.sh wavebench`, run on a
+`scripts/gnss/wavebench.cpp` (build: `KBUILD=build scripts/gnss/site/build_tool.sh wavebench`, run on a
 cx node). Two previous attempts to reason about this kernel died on numbers carried across a
 GEOMETRY -- `n_chips` is 212 at CHORD, ~13 at airspy L5, ~8 at the unit test. The trap was never
 "synthetic", it was the geometry, so the bench hard-codes CHORD's and its FIRST OUTPUT is a
@@ -1731,7 +1731,7 @@ nodes reported active and then exited), and retries 3x inside ONE ssh session.
 ### 11.17.3  Task #27 delivered: one broker, one port, one viewer
 
     scripts/gnss/broker_multi.py config/gnss_chains_chord.yaml
-    scripts/gnss/viewer_up.sh                     ->  http://cf06:8080
+    scripts/gnss/site/viewer_up.sh                     ->  http://cf06:8080
 
 M0 gate / M1 extract / M2 `--signal` / M3 Receiver / M4-M5 driver / M6 one port + unified
 viewer. GPS L5 and Galileo E5a run in ONE process sharing one time anchor, one BRDC store

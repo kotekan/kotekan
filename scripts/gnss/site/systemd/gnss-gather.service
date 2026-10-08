@@ -1,0 +1,43 @@
+[Unit]
+Description=CHORD GNSS telemetry gather and fleet trim
+Documentation=file:///home/kvand/gnss/kotekan/docs/CHORD_GNSS_RUNBOOK.md
+# This host only: the user copies sit in the NFS-shared home (see gnss-stack.target).
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
+RequiresMountsFor=/home/kvand
+After=network-online.target remote-fs.target
+Wants=network-online.target
+PartOf=gnss-stack.target
+# StartLimit* live in [Unit], not [Service] -- systemd silently ignores them
+# in [Service] and the crash loop then has no limit at all.
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=kvand
+# build_nodpdk is ARCH=native for cf06, and this VM is a guest on cf02 -- the same Xeon Gold
+# 5416S -- so it runs here as-is (verified: --help exits 0, no missing libraries). ⚠️ That is
+# true of THIS host and not of a host in general; a -DARCH=x86-64-v2 tree is the insurance.
+
+# It runs at ~201 open fds and has hit EMFILE twice: a 301 GB log filled the table once, and
+# broker reconnect churn did it again. The default 1024 is not enough headroom.
+LimitNOFILE=65536
+# ⚠️ A RESTART WIPES EVERY STANDING TRIM, costing a fleet-wide re-arm of several minutes. Coming
+# back is still better than staying down, but it must not be cheap or silent -- hence the long
+# RestartSec and the low burst limit.
+# ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come
+# from ONE definition (scripts/gnss/site/stack_components.sh), which the *_up.sh scripts also
+# use. Inlining the command here is how #134 happened: the command line was reproduced
+# faithfully and the broker's OPENBLAS_NUM_THREADS export, which is not on it, was not.
+# stack_contract_gate.sh proves a running process still matches the definition.
+ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh gather
+Restart=on-failure
+RestartSec=30
+MemoryAccounting=yes
+MemoryMax=2G
+StandardOutput=append:/var/log/gnss/gather.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target

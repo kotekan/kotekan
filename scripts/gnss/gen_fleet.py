@@ -504,7 +504,7 @@ def main():
     else:
         print("\nwrote %d config(s):\n  %s" % (len(written), "\n  ".join(written)))
         print(
-            "\nNothing restarts on its own -- `scripts/gnss/node_up.sh <node> restart`."
+            "\nNothing restarts on its own -- `scripts/gnss/site/node_up.sh <node> restart`."
         )
 
 

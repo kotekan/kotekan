@@ -43,9 +43,9 @@ Run these on cf06, in this order. Each refuses to run on the wrong host, so an a
 `bash` on cx43 is safe.
 
 ```bash
-ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/cubearch_up.sh'      # ⚠ FIRST — see below
-ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/cubecompact_up.sh'
-ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/beamview_up.sh'
+ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/site/cubearch_up.sh'      # ⚠ FIRST — see below
+ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/site/cubecompact_up.sh'
+ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/site/beamview_up.sh'
 ```
 
 ⚠️ **The archiver goes up before the nodes start pushing.** A `bufferSend` frame arriving with
@@ -102,7 +102,7 @@ B=/home/kvand/gnss/fixtures/beamcube
     $B/cube_*_nside64.npz --outdir $B/web --nside 32
 ```
 
-or just `scripts/gnss/beamcube_daily.sh YYYYMMDD`, which is those two with the traps handled
+or just `scripts/gnss/site/beamcube_daily.sh YYYYMMDD`, which is those two with the traps handled
 (and is what the compactor calls). It skips the build if the master already exists —
 `BEAMCUBE_FORCE=1` to rebuild — takes an `flock` so it cannot collide with the nightly pass,
 and refuses a day whose rungs span two pointings rather than summing them.

@@ -154,7 +154,7 @@ risk. The unit test pins "report NEVER posts", which is what makes it safe to ar
 * `gnss_broker/test_prnmap.py` (19 checks) — the hysteresis, the rate limit, the modes, the
   split-map refusal, that the search is driven with the same payload, and that the read-back
   loop **converges** (the fake nodes apply the map, and nothing further is posted).
-* `scripts/gnss/gate.sh` — 7/7 EQUIVALENT with the flag off, i.e. the broker change is inert
+* `scripts/gnss/site/gate.sh` — 7/7 EQUIVALENT with the flag off, i.e. the broker change is inert
   until armed.
 
 ## Order of work

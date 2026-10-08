@@ -23,7 +23,7 @@ Exit status 1 if any episode is found (so a cron can alert on it).
                  none -- the file's existence is the flag.
 
 Consumers: gnss_beam_cube.py build --health-mask <mask.json> vetoes the masked bins;
-scripts/gnss/chain_health_cron.sh runs the live check.
+scripts/gnss/site/chain_health_cron.sh runs the live check.
 """
 import argparse, json, sys, collections, os, time
 from datetime import datetime, timezone

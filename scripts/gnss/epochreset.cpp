@@ -15,7 +15,7 @@
  * helpers (gnssTelem.hpp) and calls the SHIPPED fold, so a wire-format change breaks it
  * loudly instead of silently.
  *
- *   scripts/gnss/build_tool.sh epochreset && scripts/gnss/epochreset
+ *   scripts/gnss/site/build_tool.sh epochreset && scripts/gnss/epochreset
  *
  * Prints one line per case and exits non-zero on the first failure.
  *
