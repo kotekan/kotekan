@@ -53,17 +53,21 @@ sizeof_float16: 2
 # All outputs begin (M-1) * max_upchannelization_factor / 2 = 96 FPGA samples after the voltages
 max_upchannelization_factor: 64
 
-# The signal covers the FRB1 output samples 8 and 9, i.e. [96 + 8 * 192, 96 + 10 * 192).
-# (It must cover whole FRB1 output samples, and inventPLMask needs multiples of 16.)
+# The FRB1 weights live for 3 frames, the smallest multiple of all three kernels' processing
+# quanta (192, 192 and 768 FPGA samples), and the streams are read over several lifetimes so
+# that the beamformers switch weights and release them. The signal covers the FRB1 output
+# samples 130 and 131, i.e. [96 + 130 * 192, 96 + 132 * 192), in the second lifetime. (It must
+# cover whole FRB1 output samples, and inventPLMask needs multiples of 16.)
 frb_downsampling_factor: 192
-box_begin: 1632
-box_end: 2016
+box_begin: 25056
+box_end: 25440
+frb1_phase_lifetime_in_samples: 3 * num_times
+read_until: 4 * frb1_phase_lifetime_in_samples
 
 frb_num_output_times: 256
 frb1_num_beams_P: 2 * num_dishes_x
 frb1_num_beams_Q: 2 * num_dishes_y
 frb1_num_output_channels: 4096
-frb1_phase_lifetime_in_samples: 24 * num_times
 
 frequency_channels: [{% for f in range(384) %}{{ 1536 + 16 * f }}{{ ", " if not loop.last }}{% endfor %}]
 

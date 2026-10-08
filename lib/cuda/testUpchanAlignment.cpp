@@ -48,6 +48,9 @@
  *
  * @conf box_begin               Int. First FPGA sample of the signal.
  * @conf box_end                 Int. One past the last FPGA sample of the signal.
+ * @conf read_until              Int, default 0. Read every stream at least up to this FPGA
+ *                               sample before checking, e.g. to run the FRB1 beamformers over
+ *                               several weight lifetimes. Frames must be contiguous.
  * @conf upchan_factors          List of int. The upchannelization factor of each buffer in
  *                               `upchan_voltage` and `upchan_pl_mask`.
  * @conf max_centre_offset       Float. How far the power-weighted centre of the upchannelized
@@ -58,6 +61,7 @@
 class testUpchanAlignment : public kotekan::Stage {
     const std::int64_t box_begin = config.get<std::int64_t>(unique_name, "box_begin");
     const std::int64_t box_end = config.get<std::int64_t>(unique_name, "box_end");
+    const std::int64_t read_until = config.get_default<std::int64_t>(unique_name, "read_until", 0);
     const std::vector<int> upchan_factors =
         config.get<std::vector<int>>(unique_name, "upchan_factors");
     const double max_centre_offset = config.get<double>(unique_name, "max_centre_offset");
@@ -177,6 +181,10 @@ private:
             FATAL_ERROR("Buffer {:s} starts at fpga_seq_num={:d}, after the region to check "
                         "[{:d}, {:d})",
                         buffer->buffer_name, seq0, box_begin - margin, box_end + margin);
+        if (stream.frame_index > 0 && seq0 != stream.end_seq_num)
+            FATAL_ERROR("Buffer {:s}: frame {:d} starts at fpga_seq_num={:d}, but the previous "
+                        "frame ended at {:d}",
+                        buffer->buffer_name, stream.frame_index, seq0, stream.end_seq_num);
 
         if (stream.kind == kind_t::frb1_beams) {
             // [Ttilde][Fbar][beamQ][beamP]
@@ -248,7 +256,7 @@ private:
         stream.end_seq_num = seq0 + std::int64_t(ntimes) * meta->get_time_downsampling_fpga();
         buffer->mark_frame_empty(unique_name, frame_id);
         ++stream.frame_index;
-        if (stream.end_seq_num >= box_end + margin) {
+        if (stream.end_seq_num >= box_end + margin && stream.end_seq_num >= read_until) {
             stream.done = true;
             buffer->unregister_consumer(unique_name);
         }
