@@ -541,19 +541,32 @@ carries C56/C58. Small, and separate from the above.
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
 
-### #160 — GPU 0's pipeline backs up ~1 s into every node start, so the DPDK workers fall 8–36 frames behind (2026-10-08)
-**Measured [live 10-08, cx19, 7 starts on c4a24dfed]:** about 1 s into capture GPU 0's chain backs up
-(`host_voltage_buffer_0`, `host_bf_mask_buffer` 48/48, `host_pl_mask` / `pl_counts` full; the prefetchers log
-"wait_for_empty_frame … will block" on ring frames 4–6). A `crs16BoardCaptureWorker`'s frames are pinned to the F-engine
-sample counter and advance only when the prefetch service has an empty frame, so the workers drop packets meanwhile and
-the next packet lands 8–36 frames (0.3–1.5 s) past the active frames. PR #1750's advance (e7d5863ff) now catches up in
-under 1 s (cx19 on g054f5ca8d7, 00:55Z: port 0 19 frames, port 1 14); before it, our resync absorbed this silently. Also
-seen: one-frame stalls on 3 of 6 nodes 45–80 s after both 10-06 starts, and cx43 mid-run on 09-02.
-**The cause of the stall is NOT known.** Guess, unverified: first-frame work on GPU 0 (CUDA module load, allocations)
-outlasting the ring's few frames of slack. Next: poll `/buffers` and `/gpu_profile` every 100 ms through the first 5 s of
-a start and compare GPU 0 with GPU 1; if it is first-frame setup, warm the chain before the DPDK start, or start capture
-only once the GPU chain reports ready. Fixing it removes most of #1750's catch-ups.
-Check: `[live]` none yet; the 100-ms poll above at the next node start.
+### #160 — `gnssN_n2dual` spends 3–4 s on its first frame building per-PRN Phi tables, so both ports' DPDK workers fall 5–39 frames behind at every node start (2026-10-08)
+**Measured [live 10-08, all six nodes, timed from packet sequence numbers]:** every start, both ports, catches up 5–27
+frames (0.2–1.1 s) about 1 s into capture (cx19 18:13Z: 32 and 39). A second trigger mid-run: 02:22:00–01Z on the five
+nodes whose logs cover it, port 1 only, 2–3 s after the broker's BRDC reload re-seeded every chain from ~3 to ~12 sats;
+the 10:09Z and 10:17Z broker restarts, which re-seeded the same set, did not trigger it.
+**Measured [live 10-08, cx19, three traced starts: `/buffers` at 10 Hz, `/gpu_profile` at 1 Hz]:** every stock pipeline
+finishes its first frame within 0.7 s of its port starting; `gnss0_n2dual` at +2.7, +3.6 and +4.0 s, `gnss1_n2dual` at
++6.0, +5.7 and +7.2 s (port 1 starts 1.8–2.8 s after port 0), i.e. 2.7–4.4 s after its own port. `gnssN_n2dual` reads
+`host_voltage_ringbuffer`, so `run_send_voltage` blocks, `host_voltage_buffer_N` is full at +1.2 s, then
+`host_pl_mask_buffer`, the transpose and the 24-frame `network_input_buffer_N`, and the workers run dry. The first
+version of this entry blamed GPU 0 and cited `host_bf_mask_buffer` 48/48; that buffer sits at 48/48 in steady state.
+`CUDA_MODULE_LOADING=EAGER` (cx19 18:13Z) changed nothing, so it is not lazy module loading.
+**Cause [code read, not yet profiled]:** `GnssCudaDespread::build_jobs` calls `Impl::ensure_phi` for every spec. A PRN
+with no table, or whose Doppler moved more than `refresh_hz` (100 Hz), gets `ChannelizedReplicaBank::hoprate_filter`
+(per channel, 65536 taps × two complex-double `std::exp`), an fp16 conversion, a `cudaMalloc` and two synchronous
+`cudaMemcpy`, all on the `gnssN_n2dual` thread and serially across its seven `cudaGnssInject`. The streams are blocking
+(`cudaStreamCreate`) and the uploads use the legacy default stream, so each upload is also a device-wide barrier. On cf06
+the `exp` loop alone is 14–29 ms per 7-channel PRN.
+**Fix options:** (A) generate the taps in `hoprate_filter` with a phasor recurrence re-anchored every 1024 taps: 1.3–2.5 ms
+per 7-channel PRN, within 1.2e-9 of the `exp` loop (cf06 bench); (D) upload with `cudaMemcpyAsync` on the command's
+stream from pinned staging; (B) build tables off the frame thread (at seed arrival, or on a worker) and leave a PRN's lane
+dark for a frame rather than block; (C) arm the shared Doppler-free Phi (`set_shared_phi`), built once per chain, which
+changes the replica and needs validating. A and D should bring the first frame under the ~2 s of slack; fixing this
+removes most of #1750's catch-ups.
+Check: `[live]` perf or offcputime through one start, for the build-versus-barrier split; after a fix, a traced start
+shows `gnssN_n2dual`'s first frame within ~0.7 s of its port and no "frame(s) past" warnings.
 
 ### #156 — `get_chord_metadata()` reads an object's `parent_pool` while `deepCopy` can be assigning it (object-content race; found 2026-09-30)
 - **What:** `chordMetadata::deepCopy` does `*this = *chord_other` under both objects' locks, and that assigns the weak_ptr
