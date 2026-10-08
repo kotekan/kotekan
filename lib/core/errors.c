@@ -100,3 +100,11 @@ void set_error_message_f(const char* format, ...) {
     pthread_mutex_unlock(&status_mutex);
     va_end(args);
 }
+
+void lock_error_message() {
+    pthread_mutex_lock(&status_mutex);
+}
+
+void unlock_error_message() {
+    pthread_mutex_unlock(&status_mutex);
+}

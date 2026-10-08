@@ -67,6 +67,9 @@ const char* get_log_level_string(int log);
 char* get_exit_code_string(enum ReturnCode code);
 char* get_error_message();
 void set_error_message_f(const char* format, ...);
+// Guard writes to `__err_msg` from code that cannot use set_error_message_f.
+void lock_error_message();
+void unlock_error_message();
 
 
 // These macros check if the given value evaluates to True and if so report an error and exit
