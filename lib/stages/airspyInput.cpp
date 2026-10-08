@@ -12,6 +12,7 @@
 #include "fmt.hpp" // for compile_string_to_view, format
 
 #include <algorithm>          // for min
+#include <chrono>             // for milliseconds
 #include <cmath>              // for sqrt
 #include <condition_variable> // for condition_variable
 #include <fcntl.h>            // for open, O_RDWR
@@ -65,6 +66,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
 
     _airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     _airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
+    _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
 }
 
 airspyInput::~airspyInput() {
@@ -91,8 +93,19 @@ void airspyInput::get_config_callback(kotekan::connectionInstance& conn) {
 
 void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     std::unique_lock<std::mutex> lock(adcstat_mutex);
+    // Stats published for an earlier request that timed out are stale.
+    adcstat_ready = false;
     dump_adcstat = true;
-    adcstat_cv.wait(lock, [this] { return adcstat_ready || stop_thread; });
+    // If no frame arrives (device not streaming, or out_buf full) an unbounded wait here would
+    // block every REST endpoint, since they share one thread.
+    if (!adcstat_cv.wait_for(lock, std::chrono::milliseconds(_adcstat_timeout_ms),
+                             [this] { return adcstat_ready || stop_thread; })) {
+        dump_adcstat = false;
+        lock.unlock();
+        conn.send_error("Timed out waiting for a frame from the airspy.",
+                        kotekan::HTTP_RESPONSE::REQUEST_FAILED);
+        return;
+    }
     if (stop_thread) {
         lock.unlock();
         conn.send_error("Stage shutting down.", kotekan::HTTP_RESPONSE::INTERNAL_ERROR);

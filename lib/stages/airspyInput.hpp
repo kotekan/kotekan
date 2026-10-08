@@ -71,6 +71,8 @@
  * @conf   serial       Long (default 0). Specific airspy serial-number to open; 0 = any.
  * @conf   airspy_file  String (default ""). Read from this file instead of a real device; for
  *                      offline testing. Ignored if @c serial is set.
+ * @conf   adcstat_timeout_ms Int (default 250). How long a GET @c /adcstat waits for the next
+ *                      frame before failing. Must exceed the time to fill one frame.
  *
  * @warning If incoming USB transfers ever overlap, sample ordering becomes undefined.
  *
@@ -137,6 +139,8 @@ private:
     long _airspy_sn;
     /// Optional file path to read raw samples from instead of a device.
     std::string _airspy_fn;
+    /// Longest wait in @c adcstat_callback for the producer, in ms.
+    int _adcstat_timeout_ms;
 
     /// ADC statistics. The REST adcstat handler requests a dump and waits on
     /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the
