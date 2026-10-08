@@ -4,7 +4,8 @@
 #include "Config.hpp"
 #include "Telescope.hpp"
 #include "configUpdater.hpp"
-#include "errors.h" // _global_log_level
+#include "errors.h"                  // _global_log_level
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "test_logging.hpp"
 #include "timeUtil.hpp"
@@ -15,7 +16,6 @@
 #include <boost/test/included/unit_test.hpp>
 #include <boost/test/tools/output_test_stream.hpp>
 #include <complex>
-#include <csignal>
 #include <filesystem>
 #include <inttypes.h>
 #include <iostream>
@@ -249,18 +249,9 @@ struct TelescopeFatalEOPFixture : public TelescopeEOPFixture {
     TelescopeFatalEOPFixture() : TelescopeEOPFixture(true) {}
 };
 
-// FATAL_ERROR raises SIGTERM to shut kotekan down before throwing FatalError.
-// Ignore the signal so the tests observe the throw instead of being terminated.
-struct IgnoreSigtermFixture {
-    IgnoreSigtermFixture() {
-        std::signal(SIGTERM, SIG_IGN);
-    }
-};
-
 // Uncomment to show kotekan logs to stdout during test run.
 // BOOST_TEST_GLOBAL_FIXTURE(LoggingFixture);
 BOOST_TEST_GLOBAL_FIXTURE(RestServerFixture);
-BOOST_TEST_GLOBAL_FIXTURE(IgnoreSigtermFixture);
 
 /******************
  *
@@ -268,6 +259,8 @@ BOOST_TEST_GLOBAL_FIXTURE(IgnoreSigtermFixture);
  *
  ******************/
 
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_FIXTURE_TEST_CASE(_name_tel, TelescopeFixture) {
     const Telescope& tel = Telescope::instance();

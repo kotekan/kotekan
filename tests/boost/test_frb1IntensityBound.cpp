@@ -1,7 +1,8 @@
 #define BOOST_TEST_MODULE "test_frb1IntensityBound"
 
-#include "DataType.hpp"           // for float16_t
-#include "frb1IntensityBound.hpp" // for frb1_intensity_bound, frb1_intensity_limit
+#include "DataType.hpp"              // for float16_t
+#include "frb1IntensityBound.hpp"    // for frb1_intensity_bound, frb1_intensity_limit
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>   // for isnan, cos, sin, NAN
@@ -34,6 +35,8 @@ std::vector<float16_t> make_constant_weights(const int M, const int N,
 }
 
 } // namespace
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 // Unit weights on the full CHIME grid reach 49·M·N, just below the limit
 BOOST_AUTO_TEST_CASE(unit_weights_chime) {
