@@ -118,7 +118,7 @@ Each is now a refusal or a script default; they are listed so the symptom is rec
 
 1. **The baked EOP table had expired** (Friday's table, −17 h by Monday). Symptom: every node
    runs ~60 s then exits on `Requesting EOP later than in table`. `node_up.sh` now refuses below
-   12 h of headroom and prints the `gen_fleet.py` regen + `--check`; commit the result.
+   12 h of headroom and prints the `gen_fleet.py` regen + `--check`.
 2. **choco's per-node maintenance mode was off.** Symptom: nodes die within ~60 s of coming up
    with `ERROR: /kill endpoint called` as the last log line, one per minute (a sweep). Nothing in
    this tree sends `/kill`. Maintenance mode must be ON on all six before any node start.

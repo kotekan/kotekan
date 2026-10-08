@@ -210,7 +210,7 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("manifest")
     ap.add_argument("--check", action="store_true",
-                    help="regenerate into memory and compare against the committed files; "
+                    help="regenerate into memory and compare against the files on disk; "
                          "write nothing, exit non-zero on any difference")
     ap.add_argument("--node", action="append", default=None,
                     help="restrict to these nodes (repeatable); default is every node")

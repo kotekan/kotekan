@@ -33,6 +33,15 @@ fi
 # So: pick the _cuda config when this host actually has a GPU and that config exists, and SAY
 # which one was chosen and why. An explicit first argument still wins -- passing the CPU config
 # on a GPU host is a legitimate control run, it just should not be what you get by accident.
+# Both configs are generated and not tracked (config/generated/). The GPU one:
+#   config/gen_chord_gnss_config.py --base config/base/live_config_20260730.json --node cx19 \
+#       --aggregator-instance cx19 cx27 cx42 cx43 cx44 cx51 --rest-port 12050 --cuda-acquire \
+#       --aggregator-cores 0,1,2,3,4,5 --prns-per-pass 0 --acq-pairsum-select \
+#       --nh-label-consensus --out config/generated/chord_gnss_agg6_cuda.yaml
+# (the running copy was hand-patched before those flags existed; this differs from it only in
+# which of the six cores each stage gets, and gps_search's debug log level). The CPU one drops
+# every flag from --cuda-acquire on; it then carries the old search host's (cf06) cores, so add
+# --aggregator-cores before using it here.
 DEF_CFG=$K/config/generated/chord_gnss_agg6.yaml
 CUDA_CFG=$K/config/generated/chord_gnss_agg6_cuda.yaml
 WHY="CPU search (default)"

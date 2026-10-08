@@ -116,7 +116,7 @@ PYEOP
         _min_h=${GNSS_EOP_MIN_H:-12}
         if [ "$_eop_h" = nan ] || [ "$(python3 -c "print(int(float('$_eop_h') < $_min_h))")" = 1 ]; then
             echo "FAILED: the baked EOP table in $CFG has ${_eop_h} h of headroom (< ${_min_h} h)." >&2
-            echo "  Regenerate all six, gate them, commit, then start:" >&2
+            echo "  Regenerate all six and gate them, then start:" >&2
             echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml" >&2
             echo "    python3 $K/scripts/gnss/gen_fleet.py $K/config/gnss_fleet_chord.yaml --check" >&2
             echo "  and push the live table once the nodes answer:  $K/scripts/gnss/eop_push.sh" >&2

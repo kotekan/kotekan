@@ -50,8 +50,9 @@ and the per-chain channel / PRN / size data.
   which is per-GPU rather than per-chain because one voltage tap serves every signal on
   that GPU. Then `gnss_pool`.
 * **`gnss_vars_<node>.j2`** — data. One `set gnss = {...}` with the receiver-wide constants
-  and a `gpus[].chains[]` list. One file per node; all six are committed, and all six are
-  **owned by the fleet driver** — regenerated and checked alongside the node configs:
+  and a `gpus[].chains[]` list. One file per node, **owned by the fleet driver** and
+  regenerated and checked alongside the node configs. Neither is tracked in git;
+  `example_chord_gnss_cx51_multi.yaml` is one node's output:
 
   ```
   python3 scripts/gnss/gen_fleet.py config/gnss_fleet_chord.yaml           # write
