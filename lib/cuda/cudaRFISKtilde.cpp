@@ -481,8 +481,10 @@ bool cudaRFISKtilde::receive_excision_enabled(nlohmann::json& json) {
         // returns uint)
         seq_num = Telescope::instance().to_seq(new_time_ns);
     } else {
-        WARN("Got invalid start time: {:d}", new_time_ns);
-        return false;
+        WARN("Got invalid start time: {:d} - maintaining current state (excision enabled={})",
+             new_time_ns, excision_enabled);
+        // need to return `true` or else kotekan will abort
+        return true;
     }
 
     std::string time_str =
