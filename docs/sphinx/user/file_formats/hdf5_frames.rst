@@ -152,6 +152,15 @@ stream. ``hdf5FileWrite`` enforces that and aborts otherwise:
 * frame decimation (``write_x_frames``/``per_y_frames``) must not be
   combined with ``create_single_file`` (rejected at startup).
 
+A file written with ``frames_per_file`` greater than 1 is built the same way
+--- its frames are concatenated along axis 0 and only its first frame's
+attributes are stored --- so each such file has to satisfy the same rules,
+and decimation cannot be combined with ``frames_per_file`` > 1 either. The
+checks start afresh with every new file: consecutive files need not be
+contiguous, because each one carries its own ``fpga_seq_num``. That is what
+lets ``merge_baseband_freq.py`` place every file in time on its own and
+record the gaps between them.
+
 Time downsampling itself is allowed, as long as the time axis is sampled at
 the downsampling rate of the frame. A buffer that violates one of these rules
 has to be dumped as per-frame files (``create_single_file: false``): per-frame
@@ -285,14 +294,16 @@ Configuration
    * - ``frames_per_file``
      - 1
      - Frames appended to each file before rolling over to a new one (CHORD
-       mode only; mutually exclusive with ``create_single_file``).
+       mode only; mutually exclusive with ``create_single_file``). With more
+       than one frame, each file has to satisfy the
+       `Single-file constraints`_; consecutive files need not be contiguous.
    * - ``use_compression``
      - true
      - Compress the data with bitshuffle+zstd (filter 32008).
    * - ``write_x_frames``, ``per_y_frames``
      - -1
      - Decimation: write only the first X out of every Y frames. Cannot be
-       combined with ``create_single_file``.
+       combined with ``create_single_file`` or ``frames_per_file`` > 1.
    * - ``max_frames``
      - -1
      - Values <= 0 (the default) mean unlimited; N > 0 stops (and shuts
