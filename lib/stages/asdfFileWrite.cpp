@@ -196,7 +196,7 @@ public:
                     frame_copy.resize(size * typesize);
                     if (!(frame_desc->get_stride(frame_desc->get_rank() - 1) == 1)) {
                         const auto extents = frame_desc->get_extents(); // cannot be formatted
-                        ERROR("name={} type={} dims={} laststride={}", meta->name,
+                        ERROR("name={} type={} dims={} laststride={}", meta->get_name(),
                               type_to_string(frame_desc->get_value_datatype()),
                               fmt::join(extents, ", "),
                               frame_desc->get_stride(frame_desc->get_rank() - 1));

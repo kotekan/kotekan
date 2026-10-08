@@ -46,16 +46,15 @@ constexpr double deg2rad = M_PI / 180.0;
  *
  * Beam IDs are u64 values used to identify beams in post.
  *
- * NOTE: This stage is intended to be run continuously, so as to produce the time-dependent
- * tracking beams. However, this will require modification of the calcBBPhases stage and the
- * cudaBBBeamformer wrapper. It was written to demonstrate how beams should be produced and
- * how to use the Telescope for Tracking beams.
+ * This stage runs continuously, emitting one frame every `time_downsampling_fpga` FPGA samples,
+ * so that tracking beams can be time-dependent. The positions are consumed by calcBBPhase, which
+ * turns them into a phase matrix at the same cadence.
  *
  * NOTE: This stage is likely a placeholder, or will require (possibly telescope-specific) upgrades
  * to be used in production (e.g. updating beams via REST).
  *
  * @par Buffers
- * @buffer in_clock_buf     Any time-dependent buffer with an `fpga_seq_num`. Used to synchronize
+ * @buffer metadata_source     Any time-dependent buffer with an `fpga_seq_num`. Used to synchronize
  *                          output buffers. Only first frame is read. `host_voltage_buffer`
  * recommended.
  *      @buffer_format      Any
@@ -101,7 +100,7 @@ protected:
     std::vector<FixedBBBeam> build_grid_deg_beams() const;
 
 private:
-    Buffer* in_buf;
+    Buffer* metadata_source;
     Buffer* out_pos_buf;
     Buffer* out_id_buf;
     const std::string fixed_mode;
@@ -138,8 +137,8 @@ setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
     y_max(config.get_default<double>(unique_name, "y_max", 0.0)) {
 
     // Get Buffer
-    in_buf = get_buffer("in_clock_buf");
-    in_buf->register_consumer(unique_name);
+    metadata_source = get_buffer("metadata_source");
+    metadata_source->register_consumer(unique_name);
     out_pos_buf = get_buffer("out_pos_buf");
     out_pos_buf->register_producer(unique_name);
     out_id_buf = get_buffer("out_id_buf");
@@ -228,7 +227,7 @@ std::vector<FixedBBBeam> setBBBeams::build_grid_deg_beams() const {
 
 void setBBBeams::main_thread() {
 
-    frameID in_frame_id(in_buf);
+    frameID metadata_source_frame_id(metadata_source);
     frameID pos_frame_id(out_pos_buf);
     frameID id_frame_id(out_id_buf);
 
@@ -236,38 +235,36 @@ void setBBBeams::main_thread() {
         return;
 
     // Grab the input buffer we're using for a clock.
-    uint8_t* in_ptr = (uint8_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
-    if (in_ptr == nullptr)
+    uint8_t* metadata_source_frame =
+        (uint8_t*)metadata_source->wait_for_full_frame(unique_name, metadata_source_frame_id);
+    if (metadata_source_frame == nullptr)
         return;
 
     // Grab the metadata and ensure it has the fields we need.
-    const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
-    if (!in_meta->has_fpga_seq_num())
-        FATAL_ERROR("in_buf {:s} has no fpga_seq_num, needed for setting clock.",
-                    in_buf->buffer_name);
+    const std::shared_ptr<const chordMetadata> metadata_source_meta =
+        get_chord_metadata(metadata_source, metadata_source_frame_id);
+    if (!metadata_source_meta->has_fpga_seq_num())
+        FATAL_ERROR("metadata_source {:s} has no fpga_seq_num, needed for setting clock.",
+                    metadata_source->buffer_name);
 
     // Grab the seq num
-    uint64_t input_seq = in_meta->get_fpga_seq_num();
+    uint64_t input_seq = metadata_source_meta->get_fpga_seq_num();
 
     // All we need, release the frame.
-    in_buf->mark_frame_empty(unique_name, in_frame_id++);
+    metadata_source->mark_frame_empty(unique_name, metadata_source_frame_id++);
     // And unregister from the buffer entirely (otherwise would have to mark all frame as they come
     // in)
-    in_buf->unregister_consumer(unique_name);
+    metadata_source->unregister_consumer(unique_name);
 
-    // Set the seq_num of the first output to be on our output cadence and <= the seq_num
-    // of the first frame we saw. This means these beams will already be considered valid.
-    uint64_t num_frames = 0; // Total number of frame output
-    uint64_t seq0 = time_downsampling_fpga
-                    * (input_seq / time_downsampling_fpga); // seq number of 1st output frame
+    // Start this stream at the voltage stream's first sequence number, without rounding to our
+    // own cadence: the GPU-side consumers locate phase-matrix element `k` at
+    // `k * time_downsampling_fpga` FPGA samples after the logical beginning of the voltage ring
+    // buffer, so both streams have to share an origin. (Same reasoning as PR #1644 for the bad
+    // feed mask.)
+    uint64_t num_frames = 0;         // Total number of frame output
+    const uint64_t seq0 = input_seq; // seq number of 1st output frame
 
     while (!stop_thread) {
-        // TODO: remove this (and update the cuda wrappers) to make the beam positions time
-        // dependent.  Have to keep this stage spinning on the input buffer to not stall the
-        // pipeline.
-        if (num_frames > 0)
-            break;
-
         // Grab output buffer frames
         float* beam_pos = (float*)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)

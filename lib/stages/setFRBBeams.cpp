@@ -1,12 +1,13 @@
-#include "Config.hpp"          // for Config
-#include "N2Util.hpp"          // for frameID
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "beamUtil.hpp"        // for FRBBeam
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
-#include "restServer.hpp"      // for restServer, connectionInstance
+#include "Config.hpp"                   // for Config
+#include "N2Util.hpp"                   // for frameID
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "UpchannelizationSchedule.hpp" // for upchan_output_offset
+#include "beamUtil.hpp"                 // for FRBBeam
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"  // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
+#include "kotekanLogging.hpp" // for FATAL_ERROR, DEBUG, INFO
+#include "restServer.hpp"     // for restServer, connectionInstance
 
 #include <vector>
 
@@ -26,7 +27,11 @@ constexpr double deg2rad = M_PI / 180.0;
  * @brief Produce FRB beam positions and ids.
  *
  * This stage produces the FRB beam positions and IDs used downstream. Beams are fixed relative to
- * the telescope, and scan with the Earth's rotation, so they only need to be produced once.
+ * the telescope, and scan with the Earth's rotation.
+ *
+ * This stage runs continuously, emitting one frame every `time_downsampling_fpga` FPGA samples,
+ * the lifetime of the FRB2 beamforming weights calculated from the positions. The positions do not
+ * change yet, but the plumbing allows for time-dependent beams.
  *
  * Beam positions may be set in multiple ways depending on the `mode` parameter:
  *   - `"manual"`: Read beams from the `beams` config parameter, which is a list of
@@ -47,6 +52,12 @@ constexpr double deg2rad = M_PI / 180.0;
  * Beam IDs are u64 values used to identify beams in post.
  *
  * @par Buffers
+ * @buffer metadata_source  Any time-dependent buffer with an `fpga_seq_num`, typically the voltage
+ *                          buffer. Only its first frame is read; the output stream starts at its
+ *                          `fpga_seq_num` plus the time offset of the upchannelizers' output
+ *                          (see `upchan_output_offset`), where the FRB1 output begins.
+ *      @buffer_format      Any
+ *      @buffer_metadata    chordMetadata
  * @buffer out_pos_buf      Output beam positions in the GRID frame.
  *      @buffer_format      NDArray float32 [num_beams, 2]
  *      @buffer_metadata    chordMetadata
@@ -57,6 +68,10 @@ constexpr double deg2rad = M_PI / 180.0;
  * @conf mode       string. Mode to generate beams.
  * @conf num_beams  uint32. Total number of beams being produced (fixed + tracking). Must be
  *                          consistent with mode.
+ * @conf time_downsampling_fpga   uint64. Number of fpga sequence number ticks between output
+ *                          frames.
+ * @conf max_upchannelization_factor  int. The largest upchannelization factor of the run; it
+ *                          determines the upchannelizers' output offset.
  * @conf beams      List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
  * @conf num_x      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid X
  *                          direction (~East/West)
@@ -87,10 +102,14 @@ protected:
     std::vector<FRBBeam> build_seth_beams() const;
 
 private:
+    Buffer* metadata_source;
     Buffer* out_pos_buf;
     Buffer* out_id_buf;
     const std::string mode;
     const uint32_t num_beams;
+    const uint64_t time_downsampling_fpga;
+    // The FRB1 output begins this many FPGA samples after the voltages
+    const uint64_t output_offset;
     const std::vector<FRBBeam> beam_table;
     const uint32_t num_x;
     const uint32_t num_y;
@@ -108,6 +127,8 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&setFRBBeams::main_thread, this)),
     mode(config.get<std::string>(unique_name, "mode")),
     num_beams(config.get<uint32_t>(unique_name, "num_beams")),
+    time_downsampling_fpga(config.get<uint64_t>(unique_name, "time_downsampling_fpga")),
+    output_offset(upchan_output_offset(config, unique_name)),
     beam_table(config.get_default<std::vector<FRBBeam>>(unique_name, "beams", {})),
     num_x(config.get_default<uint32_t>(unique_name, "num_x", 0)),
     num_y(config.get_default<uint32_t>(unique_name, "num_y", 0)),
@@ -116,7 +137,12 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     y_min(config.get_default<double>(unique_name, "y_min", 0.0)),
     y_max(config.get_default<double>(unique_name, "y_max", 0.0)) {
 
+    if (time_downsampling_fpga == 0)
+        FATAL_ERROR("time_downsampling_fpga must be positive");
+
     // Get Buffer
+    metadata_source = get_buffer("metadata_source");
+    metadata_source->register_consumer(unique_name);
     out_pos_buf = get_buffer("out_pos_buf");
     out_pos_buf->register_producer(unique_name);
     out_id_buf = get_buffer("out_id_buf");
@@ -217,8 +243,41 @@ std::vector<FRBBeam> setFRBBeams::build_seth_beams() const {
 
 void setFRBBeams::main_thread() {
 
+    frameID metadata_source_frame_id(metadata_source);
     frameID pos_frame_id(out_pos_buf);
     frameID id_frame_id(out_id_buf);
+
+    if (stop_thread)
+        return;
+
+    // Grab the input buffer we're using for a clock.
+    uint8_t* metadata_source_frame =
+        (uint8_t*)metadata_source->wait_for_full_frame(unique_name, metadata_source_frame_id);
+    if (metadata_source_frame == nullptr)
+        return;
+
+    // Grab the metadata and ensure it has the fields we need.
+    const std::shared_ptr<const chordMetadata> metadata_source_meta =
+        get_chord_metadata(metadata_source, metadata_source_frame_id);
+    if (!metadata_source_meta->has_fpga_seq_num())
+        FATAL_ERROR("metadata_source {:s} has no fpga_seq_num, needed for setting clock.",
+                    metadata_source->buffer_name);
+
+    // Grab the seq num
+    const uint64_t input_seq = metadata_source_meta->get_fpga_seq_num();
+
+    // All we need, release the frame.
+    metadata_source->mark_frame_empty(unique_name, metadata_source_frame_id++);
+    // And unregister from the buffer entirely (otherwise would have to mark all frame as they come
+    // in)
+    metadata_source->unregister_consumer(unique_name);
+
+    // Start this stream where the FRB1 output begins, without rounding to our own cadence:
+    // cudaFRBBeamReformer locates weights matrix `k` at `k * time_downsampling_fpga` FPGA samples
+    // after the logical beginning of its input ring buffer, the FRB1 output, so both streams have
+    // to share an origin. (Same reasoning as setBBBeams.)
+    uint64_t num_frames = 0;                         // Total number of frame output
+    const uint64_t seq0 = input_seq + output_offset; // seq number of 1st output frame
 
     while (!stop_thread) {
         float* beam_pos = (float*)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
@@ -228,8 +287,11 @@ void setFRBBeams::main_thread() {
         if (beam_id == nullptr)
             break;
 
-        DEBUG("Writing {:d} beams to {:s} and {:s}", beams.size(), out_pos_buf->buffer_name,
-              out_id_buf->buffer_name);
+        // Compute the seq_num for this output frame
+        const uint64_t seq_num = seq0 + num_frames * time_downsampling_fpga;
+
+        DEBUG("Writing {:d} beams to {:s} and {:s} for fpga_seq_num {:d}", beams.size(),
+              out_pos_buf->buffer_name, out_id_buf->buffer_name, seq_num);
 
         for (size_t b = 0; b < beams.size(); b++) {
             beam_id[b] = beams.at(b).id;
@@ -242,8 +304,8 @@ void setFRBBeams::main_thread() {
             get_chord_metadata(out_pos_buf, pos_frame_id);
 
         pos_meta->set_from_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
-
-        // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
+        pos_meta->set_fpga_seq_num(seq_num);
+        pos_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         pos_meta->check_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
 
@@ -251,14 +313,15 @@ void setFRBBeams::main_thread() {
         const std::shared_ptr<chordMetadata> id_meta = get_chord_metadata(out_id_buf, id_frame_id);
 
         id_meta->set_from_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
-
-        // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
+        id_meta->set_fpga_seq_num(seq_num);
+        id_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         id_meta->check_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
 
+        // Increment frames so next loop gets a new seq_num
+        num_frames++;
+
         out_pos_buf->mark_frame_full(unique_name, pos_frame_id++);
         out_id_buf->mark_frame_full(unique_name, id_frame_id++);
-
-        break;
     }
 }

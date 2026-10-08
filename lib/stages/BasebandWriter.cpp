@@ -103,6 +103,10 @@ void BasebandWriter::main_thread() {
         in_buf->mark_frame_empty(unique_name, frame_id++);
     }
 
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        closing_stop = true;
+    }
     stop_closing.notify_one();
     closing_thread.join();
 }
@@ -170,14 +174,10 @@ void BasebandWriter::close_old_events() {
         double now = current_time();
         DEBUG("Run file-closing thread {:.1f}", now);
         std::unique_lock lk(mtx);
-        if (stop_closing.wait_for(lk, std::chrono::seconds(sweep_cadence_s))
-            != std::cv_status::timeout) {
-            // is it a notification to exit or a spurious interrupt?
-            if (stop_thread) {
-                return;
-            } else {
-                continue;
-            }
+        if (stop_closing.wait_for(lk, std::chrono::seconds(sweep_cadence_s),
+                                  [this]() { return closing_stop; })) {
+            // notified to exit (the predicate also filters spurious wakeups)
+            return;
         }
 
         // Otherwise, we've waited long enough and can do the sweep

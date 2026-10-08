@@ -7,17 +7,19 @@
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json
 
-#include <atomic>        // for atomic
-#include <event2/util.h> // for evutil_socket_t
-#include <evhttp.h>      // for evhttp  // IWYU pragma: keep
-#include <functional>    // for function
-#include <map>           // for map
-#include <shared_mutex>  // for shared_timed_mutex
-#include <stdint.h>      // for uint8_t
-#include <string>        // for string, allocator, basic_string
-#include <sys/types.h>   // for u_short
-#include <thread>        // for thread
-#include <vector>        // for vector (CORS allowlist)
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <event2/util.h>      // for evutil_socket_t
+#include <evhttp.h>           // for evhttp  // IWYU pragma: keep
+#include <functional>         // for function
+#include <map>                // for map
+#include <mutex>              // for mutex
+#include <shared_mutex>       // for shared_timed_mutex
+#include <stdint.h>           // for uint8_t
+#include <string>             // for string, allocator, basic_string
+#include <sys/types.h>        // for u_short
+#include <thread>             // for thread
+#include <vector>             // for vector (CORS allowlist)
 
 namespace kotekan {
 
@@ -27,7 +29,8 @@ enum class HTTP_RESPONSE {
     BAD_REQUEST = 400,
     REQUEST_FAILED = 402,
     NOT_FOUND = 404,
-    INTERNAL_ERROR = 500
+    INTERNAL_ERROR = 500,
+    SERVICE_UNAVAILABLE = 503
 };
 
 #define PORT_REST_SERVER 12048
@@ -80,11 +83,19 @@ public:
     void send_empty_reply(const HTTP_RESPONSE& status);
 
     /**
-     * Sends an HTTP response with "content-type" header set to "text/plain"
+     * Sends an HTTP response with a text "content-type" header
      *
      * @param[in] reply The body of the reply
+     * @param[in] content_type The MIME type to declare; the default suits plain
+     *                         text, but a caller sending a known format (DOT,
+     *                         CSV, ...) should name it so clients can act on it.
+     *                         Name the charset too: HTTP says a text type with
+     *                         no charset is ISO-8859-1, and clients that follow
+     *                         that rule (`requests`, among others) will mangle
+     *                         any reply holding non-ASCII.
      */
-    void send_text_reply(const std::string& reply);
+    void send_text_reply(const std::string& reply,
+                         const std::string& content_type = "text/plain; charset=utf-8");
 
     /**
      * @brief Returns the message body.
@@ -185,6 +196,39 @@ public:
      * @param port The port to bind.  Default: PORT_REST_SERVER
      */
     void start(const std::string& bind_address = "0.0.0.0", u_short port = PORT_REST_SERVER);
+
+    /**
+     * @brief Quiesce request handling ahead of process teardown.
+     *
+     * Stop dispatching to registered endpoint callbacks and block until any
+     * handler already running on the server thread has returned. After this
+     * call every incoming request is answered with 503 (Service Unavailable)
+     * without touching a callback, so it is safe for the caller to destruct
+     * the stages that own those callbacks.
+     *
+     * This closes a use-after-free on shutdown: an external signal (SIGINT /
+     * SIGTERM) tears the pipeline down on the main thread while the server
+     * thread may be part-way through a handler that captured a stage's @c
+     * this. handle_request looks a callback up under a lock but invokes a
+     * copy after releasing it (so callbacks may re-register endpoints), so the
+     * map lock alone does not keep the stage alive across the call; this
+     * barrier does.
+     *
+     * One-way: requests are refused permanently, so this is only for process
+     * teardown -- not for the @c /stop path, which must leave the server
+     * usable for a later @c /start. The caller must not hold any lock that
+     * request handlers also take (e.g. the kotekan state lock in kotekan.cpp)
+     * while this drains, or drain and handler deadlock against each other.
+     * The drain is bounded: after 30 seconds an error is logged and teardown
+     * proceeds anyway. When called from the server thread itself the drain is
+     * skipped, since the single-threaded event loop guarantees no other
+     * handler is in flight.
+     *
+     * The server thread is left running (endpoints stay resolvable, just
+     * refused) so this composes with the framework's normal singleton
+     * teardown. Idempotent.
+     */
+    void stop_processing();
 
     /**
      * @brief Set the server thread CPU affinity
@@ -406,13 +450,6 @@ private:
      */
     static std::string get_http_responce_code_text(const HTTP_RESPONSE& status);
 
-    /**
-     * @brief Returns the aliases map
-     *
-     * @return Alias map
-     */
-    std::map<std::string, std::string>& get_aliases();
-
     /// Map of GET callbacks
     std::map<std::string, std::function<void(connectionInstance&)>> get_callbacks;
 
@@ -424,6 +461,34 @@ private:
 
     /// Mutex to lock changes to the maps while a request is in progress
     std::shared_timed_mutex callback_map_lock;
+
+    /**
+     * @brief Waits until no request is executing the callback for @c endpoint.
+     *
+     * Callbacks are copied out of the maps and invoked with
+     * @c callback_map_lock released, so erasing a map entry does not stop a
+     * callback that is already running. Endpoints are usually bound to a stage
+     * (e.g. @c gpuProcess::profile_callback), and that stage starts tearing
+     * itself down as soon as the remove call returns, so unregistration has to
+     * wait the running callback out or the callback dereferences freed memory.
+     *
+     * Waits are bounded: a callback stuck for longer than the drain timeout
+     * means the REST thread is wedged and the caller cannot safely free the
+     * callback's resources, so kotekan is shut down with a fatal error.
+     * Must not be called while holding @c callback_map_lock.
+     */
+    void drain_endpoint(const std::string& endpoint);
+
+    /// Endpoint whose callback the libevent dispatch thread is currently
+    /// executing (empty if none). A single thread runs all callbacks, so one
+    /// marker suffices. Protected by @c _inflight_lock.
+    std::string _inflight_endpoint;
+
+    /// Guards @c _inflight_endpoint
+    std::mutex _inflight_lock;
+
+    /// Signalled whenever an in-flight callback finishes
+    std::condition_variable _inflight_cv;
 
     /// The libevent base
     struct event_base* event_base = nullptr;
@@ -442,6 +507,17 @@ private:
 
     /// Flag set to true when exit condition is reached
     std::atomic<bool> stop_thread;
+
+    /// Held shared for the whole duration of a request handler and exclusively
+    /// by @c stop_processing, so shutdown can wait out any in-flight handler
+    /// before the stages those handlers reach into are destructed. Distinct
+    /// from @c callback_map_lock (which only guards the map structure and is
+    /// released before a callback is invoked).
+    std::shared_timed_mutex request_lock;
+
+    /// Cleared by @c stop_processing to refuse further callback dispatch. Once
+    /// false, handle_request answers 503 without invoking any endpoint.
+    std::atomic<bool> accepting_requests{true};
 
     /// Cached value of /rest_server/enable_cors (legacy "*" mode); see
     /// @c set_cors_from_config.

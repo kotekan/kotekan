@@ -1,0 +1,4 @@
+include("setup_chime.jl")
+const U = 4
+const K = 4
+include("upchan.jl")

@@ -60,7 +60,11 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
 
     set_command_type(gpuCommandType::COPY_IN);
 
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, false, false, true));
+    register_gpu_buffer_user({.name = _gpu_mem_output,
+                              .is_array = false,
+                              .does_read = false,
+                              .does_write = true,
+                              .signal_buffer = signal_buffer->buffer_name});
 }
 
 cudaCopyToRingbuffer::~cudaCopyToRingbuffer() {

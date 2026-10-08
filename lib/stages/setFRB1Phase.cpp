@@ -1,24 +1,57 @@
 #include "Config.hpp"   // for Config
 #include "DataType.hpp" // for float16_t
 #include "NDArray.hpp"
-#include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"  // for DEBUG
+#include "Stage.hpp"                    // for Stage
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "UpchannelizationSchedule.hpp" // for upchan_output_offset
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
+#include "frb1IntensityBound.hpp"       // for frb1_intensity_bound, frb1_intensity_limit
+#include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR, INFO
 
 #include "fmt.hpp" // for compile_string_to_view, format
 
+#include <algorithm>  // for copy
 #include <cassert>    // for assert
+#include <cmath>      // for sqrt
 #include <complex>    // for complex
 #include <cstddef>    // for ptrdiff_t
+#include <cstdint>    // for int64_t
 #include <functional> // for function
+#include <limits>     // for numeric_limits
 #include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <optional>   // for optional
 #include <string>     // for basic_string, string
-#include <unistd.h>   // for sleep
 #include <vector>     // for vector
 
+/**
+ * @class setFRB1Phase
+ * @brief Produce the FRB1 beamforming weights `W` as a stream of frames.
+ *
+ * Each frame holds one set of weights, valid for `frb1_phase_lifetime_in_samples` FPGA samples.
+ * Frame `k` is stamped with the FPGA sequence number
+ * `seq0 + offset + k * frb1_phase_lifetime_in_samples`, where `seq0` is the sequence number of the
+ * first frame of the `metadata_source` voltage buffer(s) and `offset` is the time offset of the
+ * upchannelizers' output (see `upchan_output_offset`): the FRB1 kernels locate weight element `k`
+ * at `k * lifetime` FPGA samples after the beginning of their output, which starts that much
+ * after the voltages, so both streams have to share an origin.
+ *
+ * The frame has a leading length-1 time axis `TW` whose `dimscaling` is the lifetime; that is how
+ * the GPU ring buffer learns how many FPGA samples one set of weights covers.
+ *
+ * The weights do not vary yet: every frame has the same content. Making them time dependent is
+ * now a change to this stage alone.
+ *
+ * @par Buffers
+ * @buffer frb1_phase      The weights, [TW=1][Fbar][P][dishN][dishM][C], float16
+ * @buffer metadata_source A voltage buffer, or a list of them. Only the first frame of each is
+ *                         read, for its `fpga_seq_num`; then this stage stops consuming it.
+ *
+ * @conf frb1_phase_lifetime_in_samples Int. How many FPGA samples one set of weights covers.
+ * @conf max_upchannelization_factor    Int. The largest upchannelization factor of the run; it
+ *                                      determines the upchannelizers' output offset.
+ */
 class setFRB1Phase : public kotekan::Stage {
     // Telescope layout
     const int num_components = config.get<int>(unique_name, "num_components");
@@ -38,9 +71,18 @@ class setFRB1Phase : public kotekan::Stage {
     const int upchan_max_channel = config.get<int>(unique_name, "upchan_max_channel");
     const int upchan_num_channels = upchan_max_channel - upchan_min_channel;
     const int upchan_max_num_channels = config.get<int>(unique_name, "upchan_max_num_channels");
-    const float frb1_input_scale = config.get<double>(unique_name, "frb1_input_scale");
+    // The FRB1 kernels normalize the weights themselves, so this should be about 1
+    const float frb1_input_scale = config.get_default<double>(unique_name, "frb1_input_scale", 1);
+
+    // Each set of weights is valid for this many FPGA samples. It is the cadence at which this
+    // stage produces frames, and the `dimscaling` of the weights' leading time axis.
+    const std::int64_t frb1_phase_lifetime_in_samples =
+        config.get<std::int64_t>(unique_name, "frb1_phase_lifetime_in_samples");
+    // The FRB1 output begins this many FPGA samples after the voltages
+    const std::int64_t output_offset = upchan_output_offset(config, unique_name);
 
     Buffer* const frb1_phase_buffer;
+    const std::vector<Buffer*> metadata_sources;
 
 public:
     setFRB1Phase(kotekan::Config& config, const std::string& unique_name,
@@ -49,50 +91,57 @@ public:
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
-        frb1_phase_buffer(get_buffer("frb1_phase"))
+        frb1_phase_buffer(get_buffer("frb1_phase")),
+        metadata_sources(get_buffer_or_array("metadata_source"))
     //
     {
         assert(upchan_min_channel >= 0);
         assert(upchan_max_channel >= upchan_min_channel);
         assert(upchan_num_channels <= upchan_max_num_channels);
         assert(frb1_phase_buffer);
+        // `time_downsampling_fpga` is an `int`
+        if (frb1_phase_lifetime_in_samples <= 0
+            || frb1_phase_lifetime_in_samples > std::numeric_limits<int>::max())
+            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be positive and fit into an int",
+                        frb1_phase_lifetime_in_samples);
+        if (metadata_sources.empty())
+            FATAL_ERROR("metadata_source must name at least one buffer");
+
         frb1_phase_buffer->register_producer(unique_name);
+        for (Buffer* const metadata_source : metadata_sources)
+            metadata_source->register_consumer(unique_name);
+
+        // The leading axis has length 1 and carries the lifetime as its `dimscaling`. Same shape
+        // as the bad feed mask's "Tbf" axis and the baseband phase's "Tbb" axis.
+        frb1_phase_buffer->require_frame_desc(kotekan::NDArray<float16_t, 6>::describe(
+            "W",
+            {1, upchan_max_num_channels * upchan_factor, num_polarizations, num_dishes_N,
+             num_dishes_M, num_components},
+            {"TW", "Fbar", "P", "dishN", "dishM", "C"},
+            {frb1_phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
     }
 
     virtual ~setFRB1Phase() {}
 
     void main_thread() override {
-        // Only calculate a single frame
-        const int frame_index = 0;
-        const int frame_id = frame_index;
-
         if (stop_thread)
             return;
 
-        // Wait for buffer
-        DEBUG("[{:s}/{:d}] Waiting for buffer...", frb1_phase_buffer->buffer_name, frame_index);
-        std::complex<float16_t>* const frb1_phase_frame = static_cast<std::complex<float16_t>*>(
-            static_cast<void*>(frb1_phase_buffer->wait_for_empty_frame(unique_name, frame_id)));
-        if (!frb1_phase_frame)
-            return;
-
         // Check buffer size
-        assert(frb1_phase_buffer->frame_size
-               == sizeof(float16_t) * upchan_max_num_channels * upchan_factor * num_polarizations
-                      * num_dishes_N * num_dishes_M * num_components);
+        const std::ptrdiff_t frame_num_values = std::ptrdiff_t(upchan_max_num_channels)
+                                                * upchan_factor * num_polarizations * num_dishes_N
+                                                * num_dishes_M;
+        assert(std::ptrdiff_t(frb1_phase_buffer->frame_size)
+               == std::ptrdiff_t(sizeof(float16_t)) * frame_num_values * num_components);
 
-        // Set metadata
-        frb1_phase_buffer->require_frame_desc(kotekan::NDArray<float16_t, 5>::describe(
-            "W",
-            {upchan_max_num_channels * upchan_factor, num_polarizations, num_dishes_N, num_dishes_M,
-             num_components},
-            {"Fbar", "P", "dishN", "dishM", "C"}, {1, 1, 1, 1, 1}));
-        frb1_phase_buffer->allocate_new_metadata_object(frame_id);
-        const auto& frb1_phase_meta = get_chord_metadata(frb1_phase_buffer->get_metadata(frame_id));
-        frb1_phase_meta->set_from_frame_desc(
-            frb1_phase_buffer->get_frame_desc<kotekan::GenericNDArray>());
-        frb1_phase_meta->set_fpga_seq_num(0);           // ???
-        frb1_phase_meta->set_time_downsampling_fpga(1); // ???
+        // The FPGA sequence number of the first frame. See the class documentation.
+        const std::optional<std::int64_t> seq0 = wait_for_first_fpga_seq_num();
+        if (!seq0)
+            return;
+        INFO("FRB1 weight FPGA sequence numbers start at {:d}, from the first frame of {:s}", *seq0,
+             metadata_sources.at(0)->buffer_name);
+
+        // Frequency metadata
         std::vector<int> coarse_freq(upchan_num_channels * upchan_factor);
         std::vector<int> freq_upchan_factor(upchan_num_channels * upchan_factor);
         std::vector<int> freq_upchan_index(upchan_num_channels * upchan_factor);
@@ -104,25 +153,20 @@ public:
                 freq_upchan_index.at(idx) = upchan_index;
             }
         }
-        frb1_phase_meta->set_coarse_freq(coarse_freq);
-        frb1_phase_meta->set_freq_upchan_factor(freq_upchan_factor);
-        frb1_phase_meta->set_freq_upchan_index(freq_upchan_index);
 
-        // Set buffer
+        // The weights. They do not vary (yet), so calculate them once.
         const std::ptrdiff_t str_dish_M = 1;
         const std::ptrdiff_t str_dish_N = str_dish_M * num_dishes_M;
         const std::ptrdiff_t str_polr = str_dish_N * num_dishes_N;
         const std::ptrdiff_t str_freq = str_polr * num_polarizations;
+        std::vector<std::complex<float16_t>> weights(frame_num_values);
         for (int freq = 0; freq < upchan_max_num_channels * upchan_factor; ++freq) {
             for (int polr = 0; polr < num_polarizations; ++polr) {
                 for (int dish_N = 0; dish_N < num_dishes_N; ++dish_N) {
                     for (int dish_M = 0; dish_M < num_dishes_M; ++dish_M) {
                         const std::ptrdiff_t idx = str_dish_M * dish_M + str_dish_N * dish_N
                                                    + str_polr * polr + str_freq * freq;
-                        assert(idx >= 0
-                               && idx < std::ptrdiff_t(frb1_phase_buffer->frame_size
-                                                       / sizeof *frb1_phase_frame));
-                        frb1_phase_frame[idx] =
+                        weights.at(idx) =
                             float16_t(freq < upchan_num_channels * upchan_factor ? frb1_input_scale
                                                                                  : 0.0 / 0.0);
                     }
@@ -130,13 +174,85 @@ public:
             }
         }
 
-        // Mark buffers as full
-        DEBUG("[{:s}/{:d}] Marking buffer as full...", frb1_phase_buffer->buffer_name, frame_index);
-        frb1_phase_buffer->mark_frame_full(unique_name, frame_id);
+        // Ensure that the FRB1 kernel cannot overflow for these weights. (The unused
+        // frequencies have NaN weights and are skipped.)
+        for (int freq = 0; freq < upchan_num_channels * upchan_factor; ++freq) {
+            const double bound = kotekan::frb1_intensity_bound(
+                reinterpret_cast<const float16_t*>(&weights.at(str_freq * freq)), num_polarizations,
+                num_dishes_M, num_dishes_N);
+            if (bound > kotekan::frb1_intensity_limit)
+                FATAL_ERROR(
+                    "The FRB1 weights can overflow Float16: frequency {:d} has a worst-case "
+                    "intensity of {:g}, above the limit {:g}. Reduce frb1_input_scale by at "
+                    "least a factor {:.3g}.",
+                    freq, bound, kotekan::frb1_intensity_limit,
+                    std::sqrt(bound / kotekan::frb1_intensity_limit));
+        }
 
-        // Wait for shutdown (don't trigger a shutdown)
-        while (!stop_thread)
-            sleep(1);
+        const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
+            frb1_phase_buffer->get_frame_desc<kotekan::GenericNDArray>();
+
+        // `frame_index` counts all frames produced, not just the current slot: it must keep
+        // increasing so that the weights form one continuous stream.
+        for (std::int64_t frame_index = 0; !stop_thread; ++frame_index) {
+            const int frame_id = frame_index % frb1_phase_buffer->num_frames;
+
+            // Wait for buffer. Blocking here paces production to the consumers.
+            DEBUG("[{:s}/{:d}] Waiting for buffer...", frb1_phase_buffer->buffer_name, frame_index);
+            std::complex<float16_t>* const frb1_phase_frame = static_cast<std::complex<float16_t>*>(
+                static_cast<void*>(frb1_phase_buffer->wait_for_empty_frame(unique_name, frame_id)));
+            if (!frb1_phase_frame)
+                return;
+
+            // Set metadata
+            frb1_phase_buffer->allocate_new_metadata_object(frame_id);
+            const auto& frb1_phase_meta =
+                get_chord_metadata(frb1_phase_buffer->get_metadata(frame_id));
+            frb1_phase_meta->set_from_frame_desc(frame_desc);
+            frb1_phase_meta->set_fpga_seq_num(*seq0 + output_offset
+                                              + frame_index * frb1_phase_lifetime_in_samples);
+            frb1_phase_meta->set_time_downsampling_fpga(int(frb1_phase_lifetime_in_samples));
+            frb1_phase_meta->set_coarse_freq(coarse_freq);
+            frb1_phase_meta->set_freq_upchan_factor(freq_upchan_factor);
+            frb1_phase_meta->set_freq_upchan_index(freq_upchan_index);
+            frb1_phase_meta->check_frame_desc(frame_desc);
+
+            // Set buffer
+            std::copy(weights.begin(), weights.end(), frb1_phase_frame);
+
+            // Mark buffer as full
+            DEBUG("[{:s}/{:d}] Marking buffer as full...", frb1_phase_buffer->buffer_name,
+                  frame_index);
+            frb1_phase_buffer->mark_frame_full(unique_name, frame_id);
+        }
+    }
+
+private:
+    // Read the FPGA sequence number of the first frame of each metadata source, then stop being
+    // a consumer so that the producers do not wait for us on the frames after it. The sources
+    // must agree. Returns nothing if we are shutting down.
+    std::optional<std::int64_t> wait_for_first_fpga_seq_num() {
+        std::optional<std::int64_t> seq0;
+        for (Buffer* const metadata_source : metadata_sources) {
+            if (metadata_source->wait_for_full_frame(unique_name, 0) == nullptr)
+                return std::nullopt;
+            const std::shared_ptr<const chordMetadata> meta =
+                get_chord_metadata(metadata_source, 0);
+            if (!meta->has_fpga_seq_num())
+                FATAL_ERROR("metadata_source {:s} has no fpga_seq_num, needed to start the FRB1 "
+                            "weight sequence numbers",
+                            metadata_source->buffer_name);
+            const std::int64_t source_seq0 = meta->get_fpga_seq_num();
+            if (seq0 && source_seq0 != *seq0)
+                FATAL_ERROR("The metadata sources disagree on the first FPGA sequence number: "
+                            "{:s} starts at {:d}, {:s} at {:d}",
+                            metadata_sources.at(0)->buffer_name, *seq0,
+                            metadata_source->buffer_name, source_seq0);
+            seq0 = source_seq0;
+            metadata_source->mark_frame_empty(unique_name, 0);
+            metadata_source->unregister_consumer(unique_name);
+        }
+        return seq0;
     }
 };
 

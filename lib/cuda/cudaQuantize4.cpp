@@ -126,9 +126,9 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaQuantize4");
 
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_offsetscale, true, false, true));
+    input_buffer.register_consumer();
+    beam_buffer.register_producer();
+    offsetscale_buffer.register_producer();
 }
 
 cudaQuantize4::~cudaQuantize4() {}

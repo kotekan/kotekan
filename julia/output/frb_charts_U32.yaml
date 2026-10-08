@@ -15,7 +15,8 @@ kernel-description:
     number-of-frequencies: 10752
     number-of-polarizations: 2
     number-of-timesamples: 2048
-    output-gain: 0.0125
+    input-gain: 0.0625
+    output-gain: 0.1
     sampling-time-μsec: 3.3333333333333335
     upchannelization-factor: 32
   compile-parameters:

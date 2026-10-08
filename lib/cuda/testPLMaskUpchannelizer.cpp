@@ -11,7 +11,9 @@
 #include "cuda_runtime.h"              // for cudaMalloc, cudaMemcpy, ...
 #include "errors.h"                    // for TEST_PASSED
 #include "kotekanLogging.hpp"          // for FATAL_ERROR, INFO
+#include "upchannelizeReference.hpp"   // for upchan_default_num_taps
 
+#include <cmath>      // for pow
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for uint64_t
 #include <functional> // for function
@@ -49,8 +51,8 @@ public:
         const auto run_case = [&](const int U, const ptrdiff_t num_frequencies,
                                   const ptrdiff_t num_frequencies_out, const int Fmin,
                                   const int Fmax, const ptrdiff_t size_in, const ptrdiff_t pos_in,
-                                  const ptrdiff_t size_out, const ptrdiff_t pos_out,
-                                  const double ones_prob) {
+                                  const int bit_offset, const ptrdiff_t size_out,
+                                  const ptrdiff_t pos_out, const double ones_prob) {
             // `num_times_64` consumes the whole input ring; the kernel's forward look-ahead then
             // wraps within that ring, and both GPU and CPU wrap identically.
             const ptrdiff_t num_times_64 = size_in;
@@ -88,7 +90,7 @@ public:
 
             launch_upchannelize_pl_mask(d_out, d_in, num_elements, num_frequencies,
                                         num_frequencies_out, Fmin, Fmax, num_times_64, size_in,
-                                        pos_in, size_out, pos_out, U, /*stream=*/0);
+                                        pos_in, bit_offset, size_out, pos_out, U, /*stream=*/0);
             CHECK_CUDA_ERROR(cudaDeviceSynchronize());
 
             std::vector<uint64_t> out_gpu(out_count, 0);
@@ -101,7 +103,7 @@ public:
             std::vector<uint64_t> out_cpu(out_count, 0);
             cpu_upchannelize_pl_mask(out_cpu.data(), h_in.data(), num_elements, num_frequencies,
                                      num_frequencies_out, Fmin, Fmax, num_times_64, size_in, pos_in,
-                                     size_out, pos_out, U);
+                                     bit_offset, size_out, pos_out, U);
 
             // Compare the written output rows (s in [0, n_inner)); the over-allocated tail of each
             // row is left zero by both and not compared explicitly.
@@ -112,16 +114,18 @@ public:
                     const ptrdiff_t i = phys * out_stride + s;
                     if (out_gpu[i] != out_cpu[i])
                         FATAL_ERROR("Mismatch: U={}, nfreq={}, Fmin={}, Fmax={}, size_in={}, "
-                                    "pos_in={}, size_out={}, pos_out={}, density={}, out_row={}, "
-                                    "inner={}: gpu={:#018x} cpu={:#018x}",
-                                    U, num_frequencies, Fmin, Fmax, size_in, pos_in, size_out,
-                                    pos_out, ones_prob, o, s, out_gpu[i], out_cpu[i]);
+                                    "pos_in={}, bit_offset={}, size_out={}, pos_out={}, "
+                                    "density={}, out_row={}, inner={}: gpu={:#018x} cpu={:#018x}",
+                                    U, num_frequencies, Fmin, Fmax, size_in, pos_in, bit_offset,
+                                    size_out, pos_out, ones_prob, o, s, out_gpu[i], out_cpu[i]);
                 }
             }
         };
 
         // Test cases: every U; a couple of frequency sub-ranges (full, and an offset/over-allocated
-        // one); an offset geometry and one that forces an output-ring wrap; two bit densities.
+        // one); an offset geometry and one that forces an output-ring wrap; several input bit
+        // offsets (29 and 40 occur for U=2, max_upchannelization_factor=64 and for U=16,
+        // max_upchannelization_factor=128); three bit densities.
         // Data dimensions are deliberately small so the naive CPU oracle stays cheap; this
         // preserves full logical coverage (the exhaustive cross-product is covered by an off-line
         // host test against the same CPU reference).
@@ -137,13 +141,21 @@ public:
             {128, 5, 128, 37},    // independent positions
             {128, 125, 128, 124}, // positions near the end -> wrap
         };
-        const double densities[] = {0.5, 1.0};
+        const int bit_offsets[] = {0, 1, 29, 40, 63};
 
-        for (const int U : factors)
+        for (const int U : factors) {
+            // With density 0.5 almost every output bit (an AND of M*U input bits) is 0. At this
+            // density about half of them are 1, so that a misplaced input bit shows.
+            constexpr int M = kotekan::upchan_default_num_taps;
+            const double half_density = std::pow(0.5, 1.0 / (M * U));
+            const double densities[] = {0.5, half_density, 1.0};
             for (const auto& r : ranges)
                 for (const auto& g : geoms)
-                    for (const double d : densities)
-                        run_case(U, r[0], r[3], int(r[1]), int(r[2]), g[0], g[1], g[2], g[3], d);
+                    for (const int b : bit_offsets)
+                        for (const double d : densities)
+                            run_case(U, r[0], r[3], int(r[1]), int(r[2]), g[0], g[1], b, g[2], g[3],
+                                     d);
+        }
 
         INFO("testPLMaskUpchannelizer: all GPU-vs-CPU cases matched.");
         TEST_PASSED();

@@ -34,6 +34,11 @@
  * @metric kotekan_valve_dropped_frames_total
  *        The number of frames dropped.
  *
+ * @metric kotekan_valve_passed_frames_total
+ *         The number of frames this stage has passed through, labelled by
+ *         `unique_name`. The denominator for the dropped count: a drop total
+ *         on its own does not say whether the valve is shedding a trickle or
+ *         nearly everything.
  *
  * @author  Rick Nitsche
  *

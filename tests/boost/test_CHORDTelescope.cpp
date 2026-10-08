@@ -190,8 +190,8 @@ std::array<double, 3> itrs_to_cirs(std::array<double, 3> v, double ERA_deg, doub
 
 BOOST_AUTO_TEST_CASE(_DishType_to_json) {
 
-    json fake = DishType::Fake;
-    BOOST_CHECK_MESSAGE(fake == "Fake", "to_json(Fake)");
+    json missing = DishType::Missing;
+    BOOST_CHECK_MESSAGE(missing == "Missing", "to_json(Missing)");
 
     json arrayDish = DishType::ArrayDish;
     BOOST_CHECK_MESSAGE(arrayDish == "ArrayDish", "to_json(ArrayDish)");
@@ -202,8 +202,8 @@ BOOST_AUTO_TEST_CASE(_DishType_to_json) {
 
 BOOST_AUTO_TEST_CASE(_DishType_from_json) {
 
-    json fake = "Fake";
-    BOOST_CHECK_MESSAGE(fake.get<DishType>() == DishType::Fake, "from_json(Fake)");
+    json missing = "Missing";
+    BOOST_CHECK_MESSAGE(missing.get<DishType>() == DishType::Missing, "from_json(Missing)");
 
     json array_dish = "ArrayDish";
     BOOST_CHECK_MESSAGE(array_dish.get<DishType>() == DishType::ArrayDish, "from_json(ArrayDish)");
@@ -383,6 +383,33 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
         BOOST_CHECK_EQUAL(static_cast<int32_t>(buf.type[i]), static_cast<int32_t>(d[i].type));
         BOOST_CHECK_EQUAL(buf.label[i], d[i].label);
     }
+}
+
+/*
+ * @brief   Test the connected (non-Missing) element selection
+ */
+BOOST_AUTO_TEST_CASE(_get_connected_elements) {
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
+    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, DishType::ArrayDish, "D2");
+    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::RFIDish, "R1");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["dish_grid_size_x"] = 22;
+    json_config["dish_grid_size_y"] = 24;
+    json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // Dishes 0, 1, 2 and 5 are connected (the RFI antenna included); 3, 4, 6 and 7 are
+    // Missing. CHORDBeamformer blocks polarizations (element = dish + pol * num_dishes),
+    // CHORDEarly interleaves them (element = dish * 2 + pol).
+    const std::vector<uint64_t> beamformer{0, 1, 2, 5, 8, 9, 10, 13};
+    const std::vector<uint64_t> early{0, 1, 2, 3, 4, 5, 10, 11};
+    std::vector<uint64_t> got = tel.get_connected_elements(ElementOrder::CHORDBeamformer);
+    BOOST_CHECK_EQUAL_COLLECTIONS(got.begin(), got.end(), beamformer.begin(), beamformer.end());
+    got = tel.get_connected_elements(ElementOrder::CHORDEarly);
+    BOOST_CHECK_EQUAL_COLLECTIONS(got.begin(), got.end(), early.begin(), early.end());
 }
 
 /*

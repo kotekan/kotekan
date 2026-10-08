@@ -66,7 +66,7 @@ lostSamplesToPLMask::lostSamplesToPLMask(Config& config, const std::string& uniq
         FATAL_ERROR("Unexpected frames sizes for pl_mask {:d} and lost_samples {:d}",
                     pl_mask_buf->frame_size, lost_samples_bufs.at(0)->frame_size);
 
-    pl_mask_buf->require_frame_desc(
+    pl_mask_buf->ensure_frame_desc(
         kotekan::NDArray<kotekan::GetType_t<kotekan::uint1x8>, 5>::describe(
             "pl_mask",
             {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR

@@ -19,6 +19,8 @@ on:
         required: false
         type: string
 
+permissions: {}
+
 jobs:
 
   log-github-execution:

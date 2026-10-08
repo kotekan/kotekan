@@ -30,6 +30,8 @@ add_library(
     cudaCopyToRingbuffer.cpp
     cudaCopyNToRingbuffer.cpp
     cudaFRBBeamReformer.cpp
+    gpuSimulateCudaUpchannelizer.cpp
+    upchannelizeReference.cpp
     cudaHFB1Accumulate.cpp
     cudaHFB1Accumulate.cu
     cudaMemsetInt.cu
@@ -39,6 +41,7 @@ add_library(
     cudaPLMaskUpchannelizer.cpp
     cudaPLMaskUpchannelizer.cu
     testPLMaskUpchannelizer.cpp
+    testUpchanAlignment.cpp
     cudaPL1bitCorrelator.cpp
     cudaQuantize4.cpp
     cudaQuantize8.cpp
@@ -49,7 +52,6 @@ add_library(
     testQuantizeKernel4.cpp
     testQuantizeKernel8.cpp
     testQuantizeKernel8Chime.cpp
-    cudaRechunk.cpp
     cudaRFIS012.cpp
     cudaRFIS012bar.cpp
     cudaRFIS012tilde.cpp
@@ -67,8 +69,10 @@ if(NOT ${IWYU})
                 generated/cudaBasebandBeamformer_chord.cpp
                 generated/cudaBasebandBeamformer_hirax.cpp
                 generated/cudaBasebandBeamformer_pathfinder.cpp
-                generated/cudaCHIMEFRBBeamformer_chime_U16.cpp
-                generated/cudaCHIMEFRBBeamformer_chime_U128.cpp
+                generated/cudaCHIMEFRBBeamformer_chime_U16_K4.cpp
+                generated/cudaCHIMEFRBBeamformer_chime_U128_K4.cpp
+                generated/cudaCHIMEFRBBeamformer_chime_U16_K8.cpp
+                generated/cudaCHIMEFRBBeamformer_chime_U128_K8.cpp
                 generated/cudaFRBBeamformer_charts_U32.cpp
                 generated/cudaFRBBeamformer_chord_U1.cpp
                 generated/cudaFRBBeamformer_chord_U2.cpp
@@ -93,32 +97,40 @@ if(NOT ${IWYU})
                 generated/cudaFRBBeamformer_pathfinder_U16.cpp
                 generated/cudaFRBBeamformer_pathfinder_U32.cpp
                 generated/cudaFRBBeamformer_pathfinder_U64.cpp
-                generated/cudaUpchannelizer_charts_U32.cpp
-                generated/cudaUpchannelizer_chime_U2.cpp
-                generated/cudaUpchannelizer_chime_U4.cpp
-                generated/cudaUpchannelizer_chime_U8.cpp
-                generated/cudaUpchannelizer_chime_U16.cpp
-                generated/cudaUpchannelizer_chime_U32.cpp
-                generated/cudaUpchannelizer_chime_U64.cpp
-                generated/cudaUpchannelizer_chime_U128.cpp
-                generated/cudaUpchannelizer_chord_U2.cpp
-                generated/cudaUpchannelizer_chord_U4.cpp
-                generated/cudaUpchannelizer_chord_U8.cpp
-                generated/cudaUpchannelizer_chord_U16.cpp
-                generated/cudaUpchannelizer_chord_U32.cpp
-                generated/cudaUpchannelizer_chord_U64.cpp
-                generated/cudaUpchannelizer_chord_U128.cpp
-                generated/cudaUpchannelizer_hirax_U8.cpp
-                generated/cudaUpchannelizer_hirax_U16.cpp
-                generated/cudaUpchannelizer_hirax_U32.cpp
-                generated/cudaUpchannelizer_hirax_U64.cpp
-                generated/cudaUpchannelizer_hirax_U128.cpp
-                generated/cudaUpchannelizer_pathfinder_U2.cpp
-                generated/cudaUpchannelizer_pathfinder_U4.cpp
-                generated/cudaUpchannelizer_pathfinder_U8.cpp
-                generated/cudaUpchannelizer_pathfinder_U16.cpp
-                generated/cudaUpchannelizer_pathfinder_U32.cpp
-                generated/cudaUpchannelizer_pathfinder_U64.cpp)
+                generated/cudaUpchannelizer_charts_U32_K4.cpp
+                generated/cudaUpchannelizer_chime_U2_K4.cpp
+                generated/cudaUpchannelizer_chime_U4_K4.cpp
+                generated/cudaUpchannelizer_chime_U8_K4.cpp
+                generated/cudaUpchannelizer_chime_U16_K4.cpp
+                generated/cudaUpchannelizer_chime_U32_K4.cpp
+                generated/cudaUpchannelizer_chime_U64_K4.cpp
+                generated/cudaUpchannelizer_chime_U128_K4.cpp
+                generated/cudaUpchannelizer_chime_U2_K8.cpp
+                generated/cudaUpchannelizer_chime_U4_K8.cpp
+                generated/cudaUpchannelizer_chime_U8_K8.cpp
+                generated/cudaUpchannelizer_chime_U16_K8.cpp
+                generated/cudaUpchannelizer_chime_U32_K8.cpp
+                generated/cudaUpchannelizer_chime_U64_K8.cpp
+                generated/cudaUpchannelizer_chime_U128_K8.cpp
+                generated/cudaUpchannelizer_chord_U2_K4.cpp
+                generated/cudaUpchannelizer_chord_U4_K4.cpp
+                generated/cudaUpchannelizer_chord_U8_K4.cpp
+                generated/cudaUpchannelizer_chord_U16_K4.cpp
+                generated/cudaUpchannelizer_chord_U32_K4.cpp
+                generated/cudaUpchannelizer_chord_U64_K4.cpp
+                generated/cudaUpchannelizer_chord_U128_K4.cpp
+                generated/cudaUpchannelizer_hirax_U8_K4.cpp
+                generated/cudaUpchannelizer_hirax_U16_K4.cpp
+                generated/cudaUpchannelizer_hirax_U32_K4.cpp
+                generated/cudaUpchannelizer_hirax_U64_K4.cpp
+                generated/cudaUpchannelizer_hirax_U128_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U2_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U4_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U8_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U16_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U32_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U64_K4.cpp
+                generated/cudaUpchannelizer_pathfinder_U128_K4.cpp)
 endif()
 
 # C++17
@@ -136,8 +148,6 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 
 target_include_directories(kotekan_cuda INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
 target_include_directories(kotekan_cuda PUBLIC .)
-# For UpchannelizationSchedule.hpp (used by cudaCalcFRB2Weights)
-target_include_directories(kotekan_cuda PRIVATE ../stages)
 
 # Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES (set above); keep
 # -lineinfo for profiling/debug symbols.

@@ -5,7 +5,11 @@
 #include "fmt.hpp" // for format, format_string
 
 #include <cstdint>   // for uint8_t, int64_t, int16_t, int32_t, int8_t, uint16_t, uint32_t
+#include <iomanip>   // for operator<<, setfill, setw
+#include <sstream>   // for basic_ostream, operator<<, basic_ostringstream
 #include <stdexcept> // for runtime_error
+#include <string>    // for string
+#include <unistd.h>  // for gethostname
 
 namespace hdf5 {
 
@@ -47,8 +51,24 @@ HighFive::DataType chord2hdf5(const kotekan::DataType type) {
             return HighFive::AtomicType<double>();
         default:
             throw std::runtime_error(
-                fmt::format("chord2hdf5 given unknown DataType value: {;d} ", (int64_t)type));
+                fmt::format("chord2hdf5 given unknown DataType value: {:d} ", (int64_t)type));
     }
+}
+
+std::string file_path_prefix(const std::string& dir, const std::string& file_name,
+                             const bool prefix_hostname, const bool prefix_host_rank,
+                             const int host_pool_rank) {
+    std::ostringstream buf;
+    buf << dir << "/";
+    if (prefix_hostname) {
+        char hostname[256];
+        gethostname(hostname, sizeof hostname);
+        buf << hostname << "_";
+    }
+    if (prefix_host_rank)
+        buf << "x" << std::setw(4) << std::setfill('0') << host_pool_rank << "_";
+    buf << file_name;
+    return buf.str();
 }
 
 } // namespace hdf5

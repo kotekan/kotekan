@@ -29,7 +29,9 @@
 // [0, Fmax-Fmin). The output buffer may over-allocate frequencies (num_frequencies_out >=
 // Fmax-Fmin); the unwritten channels are left untouched. Logical input row `r` lives at physical
 // row
-// `(ringbuf_pos_in_64 + r) % ringbuf_size_in_64`; likewise for the output.
+// `(ringbuf_pos_in_64 + r) % ringbuf_size_in_64`; likewise for the output. The input time axis
+// starts `bit_offset_in` bits into logical input row 0, i.e. output bit `tbar` is the AND of input
+// bits [bit_offset_in + U*tbar, bit_offset_in + U*tbar + M*U).
 //
 //   pl_mask_exp_U      - output buffer (upchannelized mask)
 //   pl_mask_exp        - input buffer (expanded mask)
@@ -40,6 +42,7 @@
 //   num_times_64       - number of input `time_64` elements to consume (produces num_times_64/U)
 //   ringbuf_size_in_64 - input  ring buffer size in input `time_64`; guaranteed a power of two
 //   ringbuf_pos_in_64  - input  ring buffer current start position in input `time_64`
+//   bit_offset_in      - first input time sample within the first input row, in [0, 64)
 //   ringbuf_size_out_64- output ring buffer size in output `time_64` (uint64 elements, each
 //                        covering 64*U input time samples); guaranteed a power of two
 //   ringbuf_pos_out_64 - output ring buffer current start position in output `time_64`
@@ -49,7 +52,7 @@ void launch_upchannelize_pl_mask(std::uint64_t* pl_mask_exp_U, const std::uint64
                                  std::ptrdiff_t num_elements, std::ptrdiff_t num_frequencies_in,
                                  std::ptrdiff_t num_frequencies_out, int Fmin, int Fmax,
                                  std::ptrdiff_t num_times_64, std::ptrdiff_t ringbuf_size_in_64,
-                                 std::ptrdiff_t ringbuf_pos_in_64,
+                                 std::ptrdiff_t ringbuf_pos_in_64, int bit_offset_in,
                                  std::ptrdiff_t ringbuf_size_out_64,
                                  std::ptrdiff_t ringbuf_pos_out_64, int U, cudaStream_t stream);
 
@@ -60,7 +63,8 @@ void cpu_upchannelize_pl_mask(std::uint64_t* pl_mask_exp_U, const std::uint64_t*
                               std::ptrdiff_t num_elements, std::ptrdiff_t num_frequencies_in,
                               std::ptrdiff_t num_frequencies_out, int Fmin, int Fmax,
                               std::ptrdiff_t num_times_64, std::ptrdiff_t ringbuf_size_in_64,
-                              std::ptrdiff_t ringbuf_pos_in_64, std::ptrdiff_t ringbuf_size_out_64,
-                              std::ptrdiff_t ringbuf_pos_out_64, int U);
+                              std::ptrdiff_t ringbuf_pos_in_64, int bit_offset_in,
+                              std::ptrdiff_t ringbuf_size_out_64, std::ptrdiff_t ringbuf_pos_out_64,
+                              int U);
 
 #endif // CUDA_PL_MASK_UPCHANNELIZER_HPP

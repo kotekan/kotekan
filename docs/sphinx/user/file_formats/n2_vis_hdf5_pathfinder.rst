@@ -6,7 +6,7 @@ CHORD pathfinder visibility files
 
 This page describes the :ref:`hdf5N2Write <hdf5N2Write>` output as
 configured for the CHORD pathfinder receiver
-(``config/chord_pathfinder_recv.j2``). It supplements the generic format
+(``config/chord/recv.j2``). It supplements the generic format
 reference, :ref:`n2_vis_file_format`, with this deployment's array sizes,
 binning, compression settings, and pipeline-specific caveats.
 
@@ -53,8 +53,8 @@ FPGA controller (the ``/fpga_controller`` config block, via
 ``<acq>/.partial/baseband_gains.h5``.
 
 The *subset* stream contains the cross-products of correlator inputs 0--7
-only (the six connected feeds ``A01p1``, ``A01p2``, ``A06p1``, ``A06p2``,
-``A07p1``, ``A07p2`` plus two unconnected inputs; see ``/index_map/label``).
+only (the six connected feeds ``A01X``, ``A01Y``, ``A06X``, ``A06Y``,
+``A07X``, ``A07Y`` plus two unconnected inputs; see ``/index_map/label``).
 The *full* stream contains all :math:`128 \times 129 / 2 = 8256` products of
 the 128 inputs.
 
@@ -88,9 +88,11 @@ stage runs, so the following hold sentinels throughout (see the *Sentinels*
 convention on the generic page):
 
 * ``gain``: -1+0j (the applied F-engine gains are in ``/digital_gains``);
-* ``flags``: 0;
 * ``radiometer_chi2``: -1;
 * ``rfi_frame_excision_enabled``: false, with ``rfi_frame_excision_num`` 0.
+
+With no flagging stage running, ``flags`` is 1.0 throughout: every element is
+reported good rather than holding a sentinel.
 
 The *subset* stream carries real eigen-data: ``EigenN2Iter`` stages run
 upstream on it, so ``eval``, ``evec``, and ``erms`` are populated. The

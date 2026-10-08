@@ -50,7 +50,6 @@
 #include <string.h>                              // for strerror
 #include <string>                                // for basic_string, char_traits, string, oper...
 #include <sys/stat.h>                            // for mkdir
-#include <unistd.h>                              // for gethostname
 #include <vector>                                // for vector
 
 
@@ -83,18 +82,31 @@ using namespace HighFive;
  * @conf prefix_host_rank  Bool. Prepend rank to output file names. Default: false.
  * @conf frequency_pool_rank    Int. This stage's rank in the frequency pool.
  * @conf frequency_pool_size    Int. Number of stages in the frequency pool.
- * @conf max_frames  Int. Stop writing after this many frames, Default 0 = unlimited
- *       frames.
+ * @conf max_frames  Int. Default: -1. Values <= 0 mean unlimited; N > 0 stops after N
+ *       frames and shuts kotekan down.
  * @conf skip_writing  Bool. Do not actually write anything. Default:
  *       false.
- * @conf create_single_file Bool. Write all data to one single file.
+ * @conf use_compression  Bool. Default: true. bitshuffle+zstd (filter 32008).
+ * @conf create_single_file Bool. Default: false. Write all data to one single file,
+ *       concatenating the frames along axis 0. Only supported for chord metadata. The
+ *       metadata attributes are stored only once (from the first frame), so neither the
+ *       per-frame metadata nor the frame boundary is on disk; see hdf5FileRead for how
+ *       they are reconstructed when replaying. Because of that a single file must hold a
+ *       contiguous, uniformly sampled stream, which is enforced here (fatal otherwise):
+ *       - dimension 0 must be a time axis (its name starts with "T");
+ *       - `dim_scaling[0]` must equal `time_downsampling_fpga` (1 if that is not set);
+ *       - consecutive frames must advance `fpga_seq_num` by exactly
+ *         `dim[0] * time_downsampling_fpga`, and must not change the frame shape;
+ *       - frame decimation (@c write_x_frames / @c per_y_frames) must not be used.
+ *       A writer whose buffer violates one of these has to use per-frame files
+ *       (`create_single_file: false`), which have no such constraints.
  * @conf frames_per_file  Int. Append this many frames to each file before rolling
  *       over to a new one (CHORD metadata only). Default: 1 (one file per frame).
  *       Mutually exclusive with create_single_file.
  * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
- *       Default: -1 (disabled).
+ *       Default: -1 (disabled). Cannot be combined with @c create_single_file.
  * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
- *       Default: -1 (disabled).
+ *       Default: -1 (disabled). Cannot be combined with @c create_single_file.
  *
  * @par Metrics
  * @metric kotekan_hdf5filewrite_write_time_seconds
@@ -157,6 +169,17 @@ class hdf5FileWrite : public kotekan::Stage {
     std::shared_ptr<File> current_file;
     std::int64_t frames_in_current_file = 0;
 
+    // The state of the single-file stream: the shape and time downsampling of the first frame,
+    // and the fpga_seq_num the next frame has to start at. See the checks in write_chord.
+    std::size_t single_file_dim0 = 0;
+    std::int64_t single_file_tds = 0;
+    bool single_file_has_seq = false;
+    std::int64_t single_file_next_seq = 0;
+
+    kotekan::prometheus::Gauge& write_time_metric =
+        kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_hdf5filewrite_write_time_seconds", unique_name);
+
 public:
     hdf5FileWrite(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container) :
@@ -172,8 +195,13 @@ public:
         if (create_single_file && frames_per_file != 1)
             throw std::invalid_argument(
                 "hdf5FileWrite: create_single_file and frames_per_file are mutually exclusive");
+        if (create_single_file && write_x_frames >= 0 && per_y_frames > 0)
+            FATAL_ERROR("hdf5FileWrite {:s}: write_x_frames/per_y_frames (frame decimation) cannot "
+                        "be combined with create_single_file; a single file must hold a contiguous "
+                        "stream",
+                        unique_name);
 
-        if (max_frames >= 0)
+        if (max_frames > 0)
             ++waiting_for_max_frames;
 
         buffer->register_consumer(unique_name);
@@ -247,16 +275,8 @@ public:
     std::shared_ptr<File> create_file(const std::int64_t frame_counter) {
         // Define file name
         std::ostringstream buf;
-        buf << output_dir << "/";
-        if (prefix_hostname) {
-            char hostname[256];
-            gethostname(hostname, sizeof hostname);
-            buf << hostname << "_";
-        }
-        if (prefix_host_rank) {
-            buf << "x" << std::setw(4) << std::setfill('0') << host_pool_rank << "_";
-        }
-        buf << file_name;
+        buf << hdf5::file_path_prefix(output_dir, file_name, prefix_hostname, prefix_host_rank,
+                                      host_pool_rank);
         if (create_single_file) {
             // Do not include the frame counter when all output is written to a single file
             if (frame_counter >= 0)
@@ -493,6 +513,48 @@ public:
         }
         fileptr = current_file;
         auto& file = *fileptr;
+
+        if (create_single_file) {
+            // A single file concatenates frames along axis 0 and stores the metadata only once,
+            // so hdf5FileRead can only reconstruct the per-frame fpga_seq_num if axis 0 is a
+            // contiguous, uniformly sampled time axis.
+            const std::string dim0_name = meta->get_dimension_name(0);
+            if (!is_time_axis(dim0_name))
+                FATAL_ERROR("Buffer \"{:s}\": create_single_file requires a time axis as dimension "
+                            "0, but dimension 0 is \"{:s}\"; set create_single_file: false for "
+                            "this writer",
+                            buffer->buffer_name, dim0_name);
+            const std::int64_t tds =
+                meta->has_time_downsampling_fpga() ? meta->get_time_downsampling_fpga() : 1;
+            if (meta->dim_scaling[0] != tds)
+                FATAL_ERROR("Buffer \"{:s}\": create_single_file requires dim_scaling[0] ({:d}) == "
+                            "time_downsampling_fpga ({:d}); set create_single_file: false for this "
+                            "writer",
+                            buffer->buffer_name, meta->dim_scaling[0], tds);
+            if (do_create_dataset) {
+                single_file_dim0 = meta->dim[0];
+                single_file_tds = tds;
+            } else {
+                if (std::size_t(meta->dim[0]) != single_file_dim0 || tds != single_file_tds)
+                    FATAL_ERROR("Buffer \"{:s}\": frame {:d} changes the frame shape/downsampling "
+                                "(dim[0] {:d}->{:d}, time_downsampling_fpga {:d}->{:d}) within a "
+                                "single file",
+                                buffer->buffer_name, frame_counter, single_file_dim0, meta->dim[0],
+                                single_file_tds, tds);
+                if (meta->has_fpga_seq_num() != single_file_has_seq)
+                    FATAL_ERROR("Buffer \"{:s}\": fpga_seq_num is present in some frames but not "
+                                "in others; cannot write a single file",
+                                buffer->buffer_name);
+                if (single_file_has_seq && meta->get_fpga_seq_num() != single_file_next_seq)
+                    FATAL_ERROR("Buffer \"{:s}\": create_single_file requires a contiguous stream, "
+                                "but frame {:d} starts at fpga_seq_num {:d}, expected {:d}",
+                                buffer->buffer_name, frame_counter, meta->get_fpga_seq_num(),
+                                single_file_next_seq);
+            }
+            single_file_has_seq = meta->has_fpga_seq_num();
+            if (single_file_has_seq)
+                single_file_next_seq = meta->get_fpga_seq_num() + std::int64_t(meta->dim[0]) * tds;
+        }
 
         if (do_create_dataset) {
 
@@ -817,9 +879,6 @@ public:
      * This function is responsible for the main logic of the hdf5FileWrite class.
      */
     void main_thread() override {
-        auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
-            "kotekan_hdf5filewrite_write_time_seconds", unique_name);
-
         const double start_time = current_time();
 
         for (std::int64_t frame_counter = 0;; ++frame_counter) {
@@ -871,6 +930,12 @@ public:
                             "Buffer \"{:s}\" has no NDArray frame descriptor; hdf5FileWrite "
                             "needs one to write CHORD-metadata frames",
                             buffer->buffer_name);
+                    if (frame_desc->get_byte_size() != buffer->frame_size)
+                        FATAL_ERROR(
+                            "Buffer \"{:s}\" has inconsistent size in NDArray "
+                            "frame descriptor ({:d}) and buffer ({:d}); hdf5FileWrite needs "
+                            "consistent frame sizes",
+                            buffer->buffer_name, frame_desc->get_byte_size(), buffer->frame_size);
                     write_chord(frame, meta, frame_desc, frame_counter);
                 } else if (metadata_is_N2(mc)) {
                     assert(metadata_is_N2(mc));
@@ -891,7 +956,7 @@ public:
             DEBUG("mark_frame_empty: frame_id={}", frame_id);
             buffer->mark_frame_empty(unique_name, frame_id);
 
-            if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
+            if (max_frames > 0 && frame_counter + 1 >= max_frames) {
                 WARN("Processed {} frames", frame_counter + 1);
                 break;
             }
@@ -900,7 +965,7 @@ public:
         // Close file if necessary
         current_file.reset();
 
-        if (max_frames >= 0) {
+        if (max_frames > 0) {
             // Unregister to allow the pipeline to continue, unless I'm the last
             // consumer on this buffer.
             buffer->unregister_consumer(unique_name, true);

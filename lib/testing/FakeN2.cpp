@@ -90,6 +90,15 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Get end_interrupt option
     end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
 
+    // Elements to report as bad in the frames' flags
+    flagged_inputs = config.get_default<std::vector<size_t>>(unique_name, "flagged_inputs", {});
+    flag_start_frame = config.get_default<int64_t>(unique_name, "flag_start_frame", 0);
+    for (auto i : flagged_inputs) {
+        if (i >= num_elements)
+            FATAL_ERROR("The `flagged_inputs` entry {:d} is out of range for {:d} elements.", i,
+                        num_elements);
+    }
+
     // Validate buffer frame size matches the descriptor (should always match if bufferFactory set
     // it)
     if (out_buf->frame_size != n2_desc->get_byte_size()) {
@@ -215,7 +224,7 @@ void FakeN2::main_thread() {
             // Fill out the non-visibility data sections, these can always be
             // overwritten, it just means that the patterns don't have to bother
             // filling them out if they don't care.
-            fill_non_vis(output_frame);
+            fill_non_vis(output_frame, frame_count + (int64_t)t);
 
             // Fill out the frame with the selected pattern
             pattern->fill(output_frame);
@@ -274,7 +283,7 @@ void FakeN2::main_thread() {
 }
 
 
-void FakeN2::fill_non_vis(N2FrameView& frame) {
+void FakeN2::fill_non_vis(N2FrameView& frame, int64_t time_index) {
     // Set ev section
     for (uint32_t i = 0; i < num_eigenvectors; i++) {
         for (uint32_t j = 0; j < num_elements; j++) {
@@ -296,8 +305,13 @@ void FakeN2::fill_non_vis(N2FrameView& frame) {
         }
     }
 
-    // Set flags and gains
+    // Set flags and gains. 1.0 is a good element; the configured elements are
+    // reported bad once the time index reaches flag_start_frame.
     std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
+    if (time_index >= flag_start_frame) {
+        for (auto i : flagged_inputs)
+            frame.flags[i] = 0.0;
+    }
     std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
 }
 

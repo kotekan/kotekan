@@ -55,16 +55,12 @@ extensions = [
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.inheritance_diagram',
-    'breathe',
-    'sphinxcontrib.plantuml'
+    'breathe'
 ]
 
 
-# this is to make plantuml extension find stuff
-
 if not read_the_docs_build:
     # Paths (@...@) will be modified by cmake
-    plantuml = 'java -jar @PLANTUML_DIR@/plantuml.jar'
     breathe_projects = { "kotekan": "@BINARY_BUILD_DIR@/../doxygen/build/xml/" }
 else:
     breathe_projects = { "kotekan": "../../build-docs/docs/doxygen/build/xml/" }

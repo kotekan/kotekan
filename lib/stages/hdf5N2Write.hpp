@@ -12,15 +12,19 @@
 #include <H5public.h>                  // for hsize_t
 #include <N2FrameView.hpp>             // for N2FrameView
 #include <N2Util.hpp>                  // for cfloat
+#include <atomic>                      // for atomic
 #include <cstdint>                     // for uint64_t, int64_t, int32_t, uint16_t, uint8_t
 #include <highfive/H5DataType.hpp>     // for DataType
 #include <highfive/H5File.hpp>         // for File
 #include <highfive/H5PropertyList.hpp> // for DataSetCreateProps
 #include <map>                         // for map
 #include <memory>                      // for unique_ptr
+#include <mutex>                       // for mutex
 #include <optional>                    // for optional, nullopt
 #include <stddef.h>                    // for size_t
 #include <string>                      // for string, basic_string
+#include <thread>                      // for thread
+#include <utility>                     // for pair
 #include <vector>                      // for vector
 
 /**
@@ -42,8 +46,9 @@
  *   num_file_t, num_elements, num_prod, num_ev, num_freq, n2_layout, telescope
  *   geometry (origin, orientations, dish maps), EOP tables, num_file_f.
  * - Index maps: /index_map/freq (MHz + width per file frequency), /index_map/prod,
- *   /index_map/grid_x_idx, /index_map/grid_y_idx, /index_map/feed_pos_disp_m,
- *   /index_map/coelev_disp_deg, /index_map/type, /index_map/dish_positions_in_grid_coords.
+ *   per-element input tables over the frame's elements (/index_map/dish_idx, pol,
+ *   grid_x_idx, grid_y_idx, feed_pos_disp_m, coelev_disp_deg, type, label), and
+ *   /index_map/dish_positions_in_grid_coords per dish.
  * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /radiometer_chi2,
  * /frames_added; vis_weight, flags, frac_lost, and frac_rfi live at the root (CHORD) or under
  *   /flags/{vis_weight, flags, frac_lost, frac_rfi} when file_mode == CHIME.
@@ -153,6 +158,8 @@ private:
                                const std::vector<std::string>& dim_names,
                                const HighFive::DataType& dtype,
                                HighFive::DataSetCreateProps props) const;
+    /// Dataset creation properties carrying this file's compression filters.
+    HighFive::DataSetCreateProps _compressed_props() const;
 
     /// Open/create/init datasets in h5 file
     std::unique_ptr<HighFive::File> _open_or_create_file(const std::string& filepath,
@@ -193,6 +200,25 @@ public:
     /// Although errors are logged, no further action is taken by this class, and
     /// an attempt is made to write data regardless.
     bool flush_to_disk();
+
+    /// The [start, end) FPGA tick span of the frames added so far; {0, 0} when none.
+    std::pair<std::uint64_t, std::uint64_t> fpga_tick_span() const;
+
+    /// The /bad_feed_mask group, see hdf5N2Write's in_bad_feed_mask_buf. It has one column per
+    /// mask stream; mask rows are appended as the file's time bins arrive.
+    bool bad_feed_mask_started = false;
+    std::uint64_t bad_feed_mask_next_seq = 0; // first grid sample not yet appended
+    /// Create /bad_feed_mask for `num_stream` streams of at most `num_freq` frequencies each,
+    /// masks being `num_pol` x `num_dish` elements.
+    void create_bad_feed_mask(std::size_t num_stream, std::size_t num_freq, std::size_t num_pol,
+                              std::size_t num_dish);
+    /// Append mask rows: one FPGA seq per row, masks flattened as (row, stream, pol, dish).
+    void append_bad_feed_mask(const std::vector<std::uint64_t>& seqs,
+                              const std::vector<std::int8_t>& masks);
+    /// Write each stream's coarse frequencies, flattened as (stream, freq_in_stream), -1 padded.
+    void write_bad_feed_mask_freqs(const std::vector<std::int32_t>& table);
+    /// The science frequency ids with at least one frame in this file.
+    std::vector<std::int32_t> freq_ids_with_frames() const;
 
     /// Close the associated dataset handle if open.
     void close();
@@ -262,9 +288,27 @@ public:
  * @buffer in_buf  Input visibility buffer
  *     @buffer_format VisBuffer
  *     @buffer_metadata N2Metadata
+ * @buffer in_bad_feed_mask_buf  Optional bad feed mask streams as applied by the X-engine: one
+ *     frame per correlation frame per X-engine half, stamped with the FPGA seq of the
+ *     first sample it was applied to, the samples per frame (time_downsampling_fpga) and
+ *     the coarse frequencies of the half that applied it. Stream k owns the frequency ids
+ *     with (freq_id - min_science_freq_id) % num_bad_feed_mask_streams == k; a frame with a
+ *     frequency outside the band, frequencies of more than one stream, a stream's frequency
+ *     list changing, or a second frame for a seq already held stops the stage.
+ *     Taken in on a dedicated thread. Each output file gets a /bad_feed_mask group: one row per
+ *     mask frame over the file's FPGA tick span, one column per stream, -1 where a
+ *     stream's frame did not arrive, and the streams' frequency lists. A frequency with
+ *     data whose stream has not registered is recorded as -1 rows and logged; one whose
+ *     registered stream does not list it stops the stage. Without this input no
+ *     /bad_feed_mask group is written.
+ *     @buffer_format NDArray int8 [1, num_polarizations, num_dishes]
+ *     @buffer_metadata chordMetadata
  *
  * @par Configuration
  * @conf in_buf                   String. N2 buffer supplying frames (`buffer_type` must be "N2").
+ * @conf in_bad_feed_mask_buf           String. Optional; see the buffer description above.
+ * @conf num_bad_feed_mask_streams UInt. Number of X-engine mask streams, one per X-engine half;
+ *                                required with in_bad_feed_mask_buf.
  * @conf base_dir                 String. Output directory (absolute or relative to the process
  *                                working directory where kotekan was invoked). An acquisition
  *                                subdirectory `acq_YYYYMMDD_HHMMSS_NNNNNNNNN` is appended
@@ -311,6 +355,14 @@ public:
  * @metric kotekan_hdf5N2Write_finalize_failures_total   Counter of finalize failures {reason}
  * @metric kotekan_hdf5N2Write_unfinalized_file          Gauge=1 for files left partial/quarantined
  *                                {abs_file_idx, partial_path}
+ * @metric kotekan_hdf5N2Write_bad_feed_mask_frames_total      Bad feed mask frames received
+ *{stream}
+ * @metric kotekan_hdf5N2Write_bad_feed_mask_missing_frames_total Gaps in a mask stream's seqs
+ *{stream}
+ * @metric kotekan_hdf5N2Write_bad_feed_mask_late_frames_total Mask frames that arrived after their
+ *                                row was written, recorded as not received {stream}
+ * @metric kotekan_hdf5N2Write_bad_feed_mask_unmasked_freqs_total Frequencies with data in a
+ *                                closed file whose stream had not registered {stream}
  *
  * @par Example
  * @code{.yaml}
@@ -372,6 +424,52 @@ private:
     const ElementOrder _input_order; /// The element ordering in input buffers.
 
     Buffer* const _buffer;
+    /// Optional bad feed mask stream; null when unwired.
+    Buffer* const _bad_feed_mask_buf;
+    /// Mask frame shape: [1, num_pol, num_dish] elements.
+    std::size_t _bad_feed_mask_row_len = 0;
+    std::size_t _bad_feed_mask_num_pol = 0;
+    std::size_t _bad_feed_mask_num_dish = 0;
+
+    /// Number of mask streams, and the most frequencies one can own.
+    std::size_t _bad_feed_mask_num_stream = 0;
+    std::size_t _bad_feed_mask_num_freq = 0;
+
+    /// One X-engine mask stream (a NUMA half). Its coarse frequencies are empty until its
+    /// first frame arrives.
+    struct BfMaskStream {
+        std::vector<std::int32_t> coarse_freq;
+        /// Masks (1 == good) by the FPGA seq of the first sample they were applied to, kept
+        /// until every open file that needs them has taken them.
+        std::map<std::uint64_t, std::vector<std::int8_t>> samples;
+        std::uint64_t last_seq = 0;
+        bool has_last = false;
+        /// Grid samples below this have been written by some file; later arrivals are late.
+        std::uint64_t written_upto = 0;
+    };
+    /// Most samples held per stream while no file takes them (about three minutes of
+    /// 21 ms frames); older ones are recorded as not received.
+    static constexpr std::size_t bad_feed_mask_max_samples = 8192;
+    /// Streams by index. Guarded by _bad_feed_mask_lock, as is _bad_feed_mask_step.
+    std::vector<BfMaskStream> _bad_feed_mask_streams;
+    /// FPGA samples per mask frame, from the first frame seen; 0 until then.
+    std::int64_t _bad_feed_mask_step = 0;
+    std::mutex _bad_feed_mask_lock;
+    std::thread _bad_feed_mask_thread;
+    std::atomic<bool> _bad_feed_mask_stop{false};
+
+    /// Ingest thread: take mask frames as they arrive and file them by stream.
+    void _bad_feed_mask_ingest();
+    void _bad_feed_mask_ingest_loop();
+    /// Append `filedata`'s mask rows for the grid samples before `upto_seq`.
+    void _bad_feed_mask_append(N2FileData& filedata, std::uint64_t upto_seq);
+    /// Drop the samples no open file still needs.
+    void _bad_feed_mask_prune(const std::map<size_t, std::unique_ptr<N2FileData>>& files);
+    /// The stream that owns `freq_id`, a science frequency id.
+    std::size_t _bad_feed_mask_stream(std::int32_t freq_id) const;
+    /// Append the rows through the file's span end and write the streams' frequencies; stop if
+    /// a frequency with data is not listed by its registered stream.
+    void _bad_feed_mask_finish(N2FileData& filedata);
 
     kotekan::prometheus::Gauge& _write_time_metric;
     kotekan::prometheus::Gauge& _n_datasets_metric;
@@ -382,6 +480,10 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& _last_add_frame_error_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _finalize_failures_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& _unfinalized_file_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _bad_feed_mask_frames_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _bad_feed_mask_missing_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _bad_feed_mask_late_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _bad_feed_mask_unmasked_metric;
 
     /**
      * @brief Get an absolute file number (index) for given metadata.

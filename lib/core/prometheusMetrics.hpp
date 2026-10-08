@@ -31,11 +31,16 @@ public:
     virtual std::string to_string() = 0;
     /// @brief Formats the stored value as a string into the given output stream.
     virtual std::ostringstream& to_string(std::ostringstream& out) = 0;
+    /// @brief Returns true once a value has been set or incremented.
+    bool has_value();
     const std::vector<std::string> label_values;
 
 protected:
     /// Metric updating lock
     std::mutex metric_lock;
+
+    /// Whether a value has been set or incremented
+    bool value_set = false;
 };
 
 /**
@@ -82,7 +87,7 @@ private:
     double value = 0;
 
     /// Time stamp in milliseconds.
-    uint64_t last_update_time_stamp;
+    uint64_t last_update_time_stamp = 0;
 };
 
 /**
@@ -224,6 +229,8 @@ public:
      * "{" label_name "=" `"` label_value `"` { "," label_name "=" `"` label_value `"` } [ "," ] "}"
      * ] value timestamp
      * ```
+     *
+     * Metrics that have not been set or incremented yet are omitted.
      *
      * @remark See [Prometheus
      * documentation](https://prometheus.io/docs/instrumenting/exposition_formats/)

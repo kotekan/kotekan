@@ -84,4 +84,8 @@ gpuCommandType gpuCommand::get_command_type() {
 void gpuCommand::register_gpu_buffer_user(const gpu_buffer_descriptor& desc) {
     gpu_buffers_used.push_back(
         std::make_tuple(desc.name, desc.is_array, desc.does_read, desc.does_write));
+    if (desc.frame_desc)
+        gpu_buffer_descs[desc.name] = desc.frame_desc;
+    if (!desc.signal_buffer.empty())
+        gpu_buffer_signals[desc.name] = desc.signal_buffer;
 }

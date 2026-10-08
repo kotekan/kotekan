@@ -1,8 +1,9 @@
 #include "rfiBroadcast.hpp"
 
-#include "Config.hpp"          // for Config
-#include "N2Util.hpp"          // for frameID, modulo
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Config.hpp"       // for Config
+#include "N2Util.hpp"       // for frameID, modulo
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
@@ -99,6 +100,20 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
         FATAL_ERROR(
             "`rfi_skbar_buf` does not have the expected frame size. Expected {:d}, got {:d}",
             _skbar_expected_frame_size, sk_bar_buf->frame_size);
+
+    // Construct the beamformer -> cylinder reorder table
+    // NB: the CHIME receiver system _always_ expects inputs to be in cylinder order
+    // reorder[beamformer_idx] = cylinder_idx
+    reorder.resize(num_elements);
+
+    const Telescope& tel = Telescope::instance();
+
+    for (size_t beamformer_idx = 0; beamformer_idx < num_elements; ++beamformer_idx) {
+        station_id_t st_id =
+            tel.element_index_to_station_id(beamformer_idx, ElementOrder::CHIMEBeamformer);
+        reorder.at(beamformer_idx) =
+            tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
+    }
 
     // Set up the UDP socket params and validate the the provided ID is valid
     dest_addr.sin_family = AF_INET;
@@ -242,7 +257,7 @@ void rfiBroadcast::main_thread() {
                 float* dst_bar_t = dst_bar + f * num_elements;
 
                 for (size_t e = 0; e < num_elements; ++e) {
-                    dst_bar_t[e] += src[e];
+                    dst_bar_t[reorder[e]] += src[e];
                 }
             }
         }

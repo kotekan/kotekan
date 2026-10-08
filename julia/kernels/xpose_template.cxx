@@ -11,6 +11,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -151,14 +152,16 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    static std::once_flag build_ptx_flag;
-    std::call_once(build_ptx_flag, [&]() {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("{{{kernel_name}}}_" + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name={{{cuda_arch}}}",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
-    });
+    }
 }
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
@@ -192,9 +195,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 assert({{{name}}}_meta->type == {{{name}}}_type);
                 assert({{{name}}}_meta->dims == {{{name}}}_rank);
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
-                    assert(std::strncmp({{{name}}}_meta->dim_name[dim],
-                                        {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
-                                        sizeof {{{name}}}_meta->dim_name[dim]) == 0);
+                    assert({{{name}}}_meta->get_dimension_name(dim)
+                           == {{{name}}}_labels[{{{name}}}_rank - 1 - dim]);
                     assert({{{name}}}_meta->dim[dim] == int({{{name}}}_lengths[{{{name}}}_rank - 1 - dim]));
                     assert({{{name}}}_meta->stride[dim] == int({{{name}}}_lengths[{{{name}}}_rank - 1 - dim]));
                 }
@@ -205,13 +207,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 std::shared_ptr<metadataObject> const {{{name}}}_mc =
                     device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, Ein_mc->parent_pool);
                 std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                *{{{name}}}_meta = *E_meta;
+                {{{name}}}_meta->deepCopy(E_meta);
                 {{{name}}}_meta->type = {{{name}}}_type;
                 {{{name}}}_meta->dims = {{{name}}}_rank;
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
-                    std::strncpy({{{name}}}_meta->dim_name[dim],
-                                 {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
-                                 sizeof {{{name}}}_meta->dim_name[dim]);
+                    {{{name}}}_meta->set_dimension_name(dim, {{{name}}}_labels[{{{name}}}_rank - 1 - dim]);
                     {{{name}}}_meta->dim[dim] = {{{name}}}_lengths[{{{name}}}_rank - 1 - dim];
                     {{{name}}}_meta->stride[dim] = {{{name}}}_lengths[{{{name}}}_rank - 1 - dim];
                 }

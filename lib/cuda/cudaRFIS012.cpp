@@ -82,6 +82,8 @@ private:
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_mask;
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaRFIS012);
@@ -120,7 +122,8 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
              std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"},
-             std::array<std::ptrdiff_t, 5>{rfi_downsampling_factor, 1, 1, 1, 1}, *this)
+             std::array<std::ptrdiff_t, 5>{rfi_downsampling_factor, 1, 1, 1, 1}, *this),
+    did_set_metadata(false)
 //
 {
     // For pl_mask_T128_sample_bytes
@@ -200,11 +203,14 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     pl_mask.check_metadata();
     voltage.check_metadata();
 
-    // TODO: Set these metadata only once
-    rfi_S012.set_metadata(voltage.get_metadata());
-    const auto& rfi_S012_meta = rfi_S012.get_metadata();
-    rfi_S012_meta->set_time_downsampling_fpga(rfi_S012_meta->get_time_downsampling_fpga()
-                                              * rfi_downsampling_factor);
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        rfi_S012.set_metadata(voltage.get_metadata());
+        const auto& rfi_S012_meta = rfi_S012.get_metadata();
+        rfi_S012_meta->set_time_downsampling_fpga(rfi_S012_meta->get_time_downsampling_fpga()
+                                                  * rfi_downsampling_factor);
+    }
 
     // There is no poison value
     // if (poison_buffers)

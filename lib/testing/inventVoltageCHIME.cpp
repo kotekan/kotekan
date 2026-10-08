@@ -47,16 +47,11 @@ class inventVoltageCHIME : public kotekan::Stage {
     const std::string input_kind = config.get<std::string>(unique_name, "input_kind");
     const bool reuse_frames = config.get_default<bool>(unique_name, "reuse_frames", false);
 
-    const std::vector<std::string> startup_buffer_names =
-        config.get<std::vector<std::string>>(unique_name, "startup_buffer_names");
-
     const std::vector<int> frequency_channels =
         config.get<std::vector<int>>(unique_name, "frequency_channels");
 
     const int out_frame_first = config.get_default<int>(unique_name, "out_frame_first", 10);
     const int out_frame_every = config.get_default<int>(unique_name, "out_frame_every", 10);
-
-    std::vector<Buffer*> startup_buffers;
 
     std::vector<Buffer*> buffers;
 
@@ -66,12 +61,6 @@ public:
         Stage(config, unique_name, buffer_container, [](const kotekan::Stage& stage) {
             return const_cast<kotekan::Stage&>(stage).main_thread();
         }) {
-        for (const auto& startup_buffer_name : startup_buffer_names) {
-            auto buffer = buffer_container.get_buffer(startup_buffer_name);
-            startup_buffers.push_back(buffer);
-            buffer->register_consumer(unique_name);
-        }
-
         for (int frequency = 0; frequency < num_frequencies; ++frequency) {
             std::ostringstream buf;
             buf << "voltage_" << frequency;
@@ -93,15 +82,6 @@ public:
 
     void main_thread() override {
         [[maybe_unused]] std::uint32_t rng_state = 0x0ad42ea5; // must not be 0
-
-        // Wait for startup to finish
-        INFO("Waiting for startup to finish:");
-        for (const auto& startup_buffer : startup_buffers) {
-            INFO("Waiting for startup buffer {:s}...", startup_buffer->buffer_name);
-            startup_buffer->wait_for_full_frame(unique_name, 0);
-            startup_buffer->mark_frame_empty(unique_name, 0);
-        }
-        INFO("Done waiting for startup to finish.");
 
         double time_min = 1.0 / 0.0;
         double time_max = 0.0 / 0.0;

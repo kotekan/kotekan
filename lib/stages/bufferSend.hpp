@@ -94,8 +94,8 @@ public:
     /// Main loop for sending data
     void main_thread() override;
 
-    /// Adds the target server to the pipeline dot graph
-    virtual std::string dot_string(const std::string& prefix) const override;
+    /// Adds the target server to the pipeline graph
+    void add_graph_details(kotekan::PipelineGraph& graph) const override;
 
 private:
     /// The input buffer to send frames from.
@@ -126,7 +126,8 @@ private:
     /// (once per connection). Must match use_frame_desc on the receiver.
     bool use_frame_desc;
 
-    /// Serialized list of current config tracker hashes
+    /// Tracker hash as last signalled to the receiver. A differing current
+    /// hash, or the first frame of a connection, sets config_tracker_update.
     std::string config_tracker_combined_hash;
 
     /**

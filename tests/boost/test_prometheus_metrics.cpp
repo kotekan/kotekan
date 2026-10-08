@@ -15,10 +15,8 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
     BOOST_CHECK(metrics.serialize() == "");
 
     auto& foo = metrics.add_counter("foo_metric", "foo");
-    BOOST_CHECK(
-        metrics.serialize().find(
-            "# HELP foo_metric\n# TYPE foo_metric counter\nfoo_metric{stage_name=\"foo\"} 0")
-        != std::string::npos);
+    // not exported until incremented
+    BOOST_CHECK(metrics.serialize() == "");
 
     foo.inc();
     BOOST_CHECK(
@@ -61,8 +59,8 @@ BOOST_AUTO_TEST_CASE(remove_stage_metrics) {
     metrics.remove_stage_metrics("foos");
     BOOST_CHECK(metrics.serialize() == "");
 
-    metrics.add_counter("foo_metric", "foo");
-    metrics.add_counter("foo_metric", "foos");
+    metrics.add_counter("foo_metric", "foo").inc(0);
+    metrics.add_counter("foo_metric", "foos").inc(0);
     auto multi_metrics = metrics.serialize();
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 0") != std::string::npos);
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 0") != std::string::npos);
@@ -86,8 +84,8 @@ BOOST_AUTO_TEST_CASE(remove_stage_metrics) {
     BOOST_CHECK(metrics.serialize() == "");
 
     // re-adding metrics from stages that were deleted once is also OK
-    metrics.add_counter("foo_metric", "foo");
-    metrics.add_counter("foo_metric", "foos");
+    metrics.add_counter("foo_metric", "foo").inc(0);
+    metrics.add_counter("foo_metric", "foos").inc(0);
     multi_metrics = metrics.serialize();
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 0") != std::string::npos);
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 0") != std::string::npos);
@@ -149,4 +147,30 @@ BOOST_AUTO_TEST_CASE(gauges_with_labels) {
                 != std::string::npos);
     BOOST_CHECK(multi_metrics.find("bar_with_labels{stage_name=\"foo\",quux=\"baz\"} 42.0")
                 != std::string::npos);
+}
+
+
+BOOST_AUTO_TEST_CASE(unset_metrics) {
+    Metrics& metrics = Metrics::instance();
+
+    auto& g = metrics.add_gauge("unset_gauge", "unset");
+    auto& c = metrics.add_counter("unset_counter", "unset");
+    auto& f = metrics.add_gauge("unset_gauge_with_labels", "unset", {"quux"});
+    f.labels({"fred"});
+
+    // nothing is exported until a value is set
+    BOOST_CHECK(metrics.serialize().find("unset") == std::string::npos);
+
+    g.set(1);
+    c.inc(0);
+    f.labels({"baz"}).set(2);
+    auto multi_metrics = metrics.serialize();
+
+    BOOST_CHECK(multi_metrics.find("unset_gauge{stage_name=\"unset\"} 1.0") != std::string::npos);
+    BOOST_CHECK(multi_metrics.find("unset_counter{stage_name=\"unset\"} 0") != std::string::npos);
+    BOOST_CHECK(multi_metrics.find("unset_gauge_with_labels{stage_name=\"unset\",quux=\"baz\"} 2.0")
+                != std::string::npos);
+    // a label combination without a value is still omitted
+    BOOST_CHECK(multi_metrics.find("unset_gauge_with_labels{stage_name=\"unset\",quux=\"fred\"}")
+                == std::string::npos);
 }

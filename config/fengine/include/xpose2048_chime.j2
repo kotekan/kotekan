@@ -152,16 +152,6 @@ host_scatter_indices_buffer:
     dimscalings: [1, 1]
     metadata_pool: main_pool
 
-host_xposed_voltage_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    # frame_size: num_dishes * num_polarizations * num_frequencies * num_times
-    value_type: int4x2_swapped_withoffset
-    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
-    quantity_name: "E"
-    dimnames: ["T", "F", "P", "D"]
-    dimscalings: [1, 1, 1, 1]
-    metadata_pool: main_pool
 host_xposed_voltage_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times

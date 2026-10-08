@@ -1,0 +1,416 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# verify_upchan_alignment.j2
+#
+# Check that the upchannelizers, the FRB1 beamformers and the PL mask upchannelizers place a
+# signal at the FPGA sequence numbers their metadata claim, for several upchannelization factors.
+#
+# The voltages are zero except for a constant signal in the FPGA samples [box_begin, box_end),
+# and packets are lost in the same samples. The signal flows through
+#
+#   voltages -> FRB1 U=1                     -> I (shared FRB1 beams)
+#   voltages -> upchannelizer U -> FRB1 U    -> I
+#   PL mask  -> PL mask upchannelizer U
+#
+# and testUpchanAlignment checks every output against where the signal must land, computed on the
+# CPU from box_begin and box_end. With max_upchannelization_factor=64 all outputs begin at FPGA
+# sample (M-1)*64/2 = 96, so the U=1 FRB1 beamformer skips 96 input samples, the U=2 PL mask
+# upchannelizer 93 (one 64-sample row and 29 bits), and the U=16 one 72 (one row and 8 bits).
+#
+# The kernels are the CHORD pathfinder ones (sm_86, A40). Their array sizes are compiled in, so
+# the sizes below must match `julia/kernels/setup_pathfinder.jl`. Only a few frequencies are
+# processed to keep this fast.
+#
+################################################################################
+
+---
+type: config
+log_level: info
+cpu_affinity: []
+
+{% set upchan_factors = [2, 16] %}
+{% set frb_factors = [1, 2, 16] %}
+{# coarse channels [first, end) for each upchannelization factor #}
+{% set channels = {1: [0, 4], 2: [4, 8], 16: [8, 12]} %}
+{# FRB1 output channels: U=16 first, then U=2, then U=1 #}
+{% set out_channels = {16: [0, 64], 2: [64, 72], 1: [72, 76]} %}
+{# max_num_channels of each upchannelization factor (setup_pathfinder.jl: F_per_U) #}
+{% set max_num_channels = {1: 128, 2: 128, 16: 64} %}
+
+buffer_depth: 4
+num_components: 2
+num_polarizations: 2
+num_dishes: 64
+num_dishes_x: 8
+num_dishes_y: 12
+num_frequencies: 384
+num_times: 8192
+frame_arrival_period: num_times * 5.12e-6
+sizeof_float16: 2
+
+# All outputs begin (M-1) * max_upchannelization_factor / 2 = 96 FPGA samples after the voltages
+max_upchannelization_factor: 64
+
+# The signal covers the FRB1 output samples 8 and 9, i.e. [96 + 8 * 192, 96 + 10 * 192).
+# (It must cover whole FRB1 output samples, and inventPLMask needs multiples of 16.)
+frb_downsampling_factor: 192
+box_begin: 1632
+box_end: 2016
+
+frb_num_output_times: 256
+frb1_num_beams_P: 2 * num_dishes_x
+frb1_num_beams_Q: 2 * num_dishes_y
+frb1_num_output_channels: 4096
+frb1_phase_lifetime_in_samples: 24 * num_times
+
+frequency_channels: [{% for f in range(384) %}{{ 1536 + 16 * f }}{{ ", " if not loop.last }}{% endfor %}]
+
+# Upchannelization schedule, in global channel ids
+upchan_factors: {{ upchan_factors }}
+upchan_channel_ranges:
+{% for U in upchan_factors %}
+    {{ U }}: [{{ 1536 + 16 * channels[U][0] }}, {{ 1536 + 16 * channels[U][1] }}]
+{% endfor %}
+
+telescope:
+    name: CHORDTelescope
+    require_gps: false
+    require_eop: false
+    origin_itrs_lat_deg: +49.300000
+    origin_itrs_lon_deg: -119.600000
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    dish_coelev_deg: 0.0
+    dish_grid_size_x: num_dishes_x
+    dish_grid_size_y: num_dishes_y
+    dish_separation_x_m: 6.3
+    dish_separation_y_m: 8.5
+    dish_inputs:
+{% for d in range(64) %}
+    - {dish_idx: {{ d }}, grid_x_idx: {{ d % 7 }}, grid_y_idx: {{ d // 7 }}, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: TEST-{{ "{:02d}".format(d) }}}
+{% endfor %}
+    sampling_rate_MHz: 3200.0
+    fft_length: 16384
+    min_science_freq_MHz: 300.0
+    max_science_freq_MHz: 1500.0
+
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 30 * buffer_depth
+
+################################################################################
+# Buffers
+
+host_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    quantity_name: "E"
+    dimnames: ["T", "F", "P", "D"]
+    dimscalings: [1, 1, 1, 1]
+    metadata_pool: main_pool
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
+    metadata_pool: main_pool
+
+host_pl_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint1x8
+    extents: [num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask"
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dimscalings: [128, 4, 1, 8, 16]
+    metadata_pool: main_pool
+host_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
+    metadata_pool: main_pool
+host_pl_expanded_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
+    metadata_pool: main_pool
+
+{% for U in upchan_factors %}
+host_upchan_U{{ U }}_gain_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float16
+    extents: [{{ max_num_channels[U] * U }}]
+    quantity_name: "G"
+    dimnames: ["Fbar"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+host_upchan_U{{ U }}_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * {{ max_num_channels[U] * U }} * (num_times / {{ U }})
+    metadata_pool: main_pool
+host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * {{ max_num_channels[U] }} * (num_times / 64 / {{ U }})
+    metadata_pool: main_pool
+# Host copies for the check
+host_upchan_U{{ U }}_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_dishes * num_polarizations * {{ max_num_channels[U] * U }} * (num_times / {{ U }})
+    metadata_pool: main_pool
+host_upchan_U{{ U }}_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * {{ max_num_channels[U] }} * (num_times / 64 / {{ U }})
+    metadata_pool: main_pool
+{% endfor %}
+
+{% for U in frb_factors %}
+host_frb1_U{{ U }}_phase_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float16
+    extents: [1, {{ max_num_channels[U] * U }}, num_polarizations, num_dishes_y, num_dishes_x, num_components]
+    quantity_name: "W"
+    dimnames: ["TW", "Fbar", "P", "dishN", "dishM", "C"]
+    dimscalings: [frb1_phase_lifetime_in_samples, 1, 1, 1, 1, 1]
+    metadata_pool: main_pool
+host_frb1_U{{ U }}_phase_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * sizeof_float16 * {{ max_num_channels[U] * U }} * num_polarizations * num_dishes_y * num_dishes_x * num_components
+    metadata_pool: main_pool
+{% endfor %}
+
+host_frb1_beams_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * frb1_num_output_channels * frb_num_output_times
+    metadata_pool: main_pool
+# Host copy for the check, 32 output samples per frame
+host_frb1_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * frb1_num_output_channels * 32
+    metadata_pool: main_pool
+
+################################################################################
+# Stages
+
+generate_voltage:
+    kotekan_stage: inventVoltage
+    voltage: host_voltage_buffer
+    input_kind: box
+
+generate_pl_mask:
+    kotekan_stage: inventPLMask
+    pl_mask: host_pl_mask_buffer
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer: host_voltage_buffer
+        out_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations * num_frequencies * num_times
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_voltage_buffer
+          signal_buf: host_voltage_ringbuffer
+          gpu_mem_output: voltage_buffer
+
+run_send_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_buffer: host_pl_mask_buffer
+        out_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_pl_mask_buffer
+          signal_buf: host_pl_mask_ringbuffer
+          gpu_mem_output: pl_mask_buffer
+
+run_expand_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        out_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskExpander
+          pl_mask_name: pl_mask
+          pl_expanded_mask_name: pl_expanded_mask
+
+{% for U in upchan_factors %}
+run_set_upchan_U{{ U }}_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: {{ U }}
+    upchan_max_num_channels: {{ max_num_channels[U] }}
+    upchan_gain: [{{ ([1] * U) | join(', ') }}]
+    upchan_gain_buffer: host_upchan_U{{ U }}_gain_buffer
+    metadata_source: host_voltage_buffer
+
+run_upchan_U{{ U }}:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_U{{ U }}_gain_buffer: host_upchan_U{{ U }}_gain_buffer
+        out_buffers:
+            host_upchan_U{{ U }}_voltage_ringbuffer: host_upchan_U{{ U }}_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_upchan_U{{ U }}_gain_buffer
+          gpu_mem: upchan_U{{ U }}_gain_buffer
+        - name: cudaSyncInput
+        - name: cudaUpchannelizer_pathfinder_U{{ U }}_K4
+          voltage_name: voltage
+          upchan_U{{ U }}_gain_name: upchan_U{{ U }}_gain
+          upchan_U{{ U }}_voltage_name: upchan_U{{ U }}_voltage
+          Fmin: {{ channels[U][0] }}
+          Fmax: {{ channels[U][1] }}
+
+run_upchan_pl_U{{ U }}:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer: host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskUpchannelizer
+          expanded_pl_mask_name: pl_expanded_mask
+          upchannelized_expanded_pl_mask_name: upchan_U{{ U }}_expanded_pl_mask
+          upchannelization_factor: {{ U }}
+          num_frequencies_out: {{ max_num_channels[U] }}
+          Fmin: {{ channels[U][0] }}
+          Fmax: {{ channels[U][1] }}
+
+run_recv_upchan_U{{ U }}_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_U{{ U }}_voltage_ringbuffer: host_upchan_U{{ U }}_voltage_ringbuffer
+        out_buffers:
+            host_upchan_U{{ U }}_voltage_buffer: host_upchan_U{{ U }}_voltage_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_upchan_U{{ U }}_voltage_ringbuffer
+          gpu_mem_input: upchan_U{{ U }}_voltage_buffer
+          output_size: num_dishes * num_polarizations * {{ max_num_channels[U] * U }} * (num_times / {{ U }})
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_upchan_U{{ U }}_voltage_buffer
+
+run_recv_upchan_U{{ U }}_expanded_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer: host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer
+        out_buffers:
+            host_upchan_U{{ U }}_expanded_pl_mask_buffer: host_upchan_U{{ U }}_expanded_pl_mask_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_upchan_U{{ U }}_expanded_pl_mask_ringbuffer
+          gpu_mem_input: upchan_U{{ U }}_expanded_pl_mask_buffer
+          output_size: (64 / 8) * (num_dishes / 8) * num_polarizations * {{ max_num_channels[U] }} * (num_times / 64 / {{ U }})
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_upchan_U{{ U }}_expanded_pl_mask_buffer
+{% endfor %}
+
+{% for U in frb_factors %}
+run_set_frb1_U{{ U }}_phase:
+    kotekan_stage: setFRB1Phase
+    upchan_factor: {{ U }}
+    upchan_min_channel: {{ channels[U][0] }}
+    upchan_max_channel: {{ channels[U][1] }}
+    upchan_max_num_channels: {{ max_num_channels[U] }}
+    frb1_phase: host_frb1_U{{ U }}_phase_buffer
+    metadata_source: host_voltage_buffer
+
+run_send_frb1_U{{ U }}_phase:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb1_U{{ U }}_phase_buffer: host_frb1_U{{ U }}_phase_buffer
+        out_buffers:
+            host_frb1_U{{ U }}_phase_ringbuffer: host_frb1_U{{ U }}_phase_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: sizeof_float16 * {{ max_num_channels[U] * U }} * num_polarizations * num_dishes_y * num_dishes_x * num_components
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_frb1_U{{ U }}_phase_buffer
+          signal_buf: host_frb1_U{{ U }}_phase_ringbuffer
+          gpu_mem_output: frb1_U{{ U }}_phase_buffer
+
+run_frb1_U{{ U }}:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+{% if U == 1 %}
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+{% else %}
+            host_upchan_U{{ U }}_voltage_ringbuffer: host_upchan_U{{ U }}_voltage_ringbuffer
+{% endif %}
+            host_frb1_U{{ U }}_phase_ringbuffer: host_frb1_U{{ U }}_phase_ringbuffer
+        out_buffers:
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+        commands:
+        - name: cudaFRBBeamformer_pathfinder_U{{ U }}
+{% if U == 1 %}
+          voltage_name: voltage
+          Fbar_in_min: {{ channels[U][0] }}
+          Fbar_in_max: {{ channels[U][1] }}
+{% else %}
+          voltage_name: upchan_U{{ U }}_voltage
+          Fbar_in_min: 0
+          Fbar_in_max: {{ (channels[U][1] - channels[U][0]) * U }}
+{% endif %}
+          frb_phase_name: frb1_U{{ U }}_phase
+          frb_beamgrid_name: frb1_beams
+          Fbar_out_min: {{ out_channels[U][0] }}
+          Fbar_out_max: {{ out_channels[U][1] }}
+{% endfor %}
+
+run_recv_frb1_beams:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+        out_buffers:
+            host_frb1_beams_buffer: host_frb1_beams_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_frb1_beams_ringbuffer
+          gpu_mem_input: frb1_beams_buffer
+          output_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * frb1_num_output_channels * 32
+          ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * frb1_num_output_channels * frb_num_output_times
+          out_buf: host_frb1_beams_buffer
+
+check_alignment:
+    kotekan_stage: testUpchanAlignment
+    frb1_beams: host_frb1_beams_buffer
+    upchan_factors: {{ upchan_factors }}
+    upchan_voltage: [{% for U in upchan_factors %}host_upchan_U{{ U }}_voltage_buffer{{ ", " if not loop.last }}{% endfor %}]
+    upchan_pl_mask: [{% for U in upchan_factors %}host_upchan_U{{ U }}_expanded_pl_mask_buffer{{ ", " if not loop.last }}{% endfor %}]
+    # Measured on an A40: U=2 is centred exactly, U=16 is off by 1.9 FPGA samples (0.12 U).
+    # A label that is off by half an upchannelized sample would be off by 0.5 U.
+    max_centre_offset: 0.25

@@ -1,0 +1,37 @@
+# -*-yaml-*-
+
+# Benchmark output
+
+################################################################################
+
+# Stages
+
+write_data:
+    create_single_file: true
+    skip_writing: true
+    write_rfi_RFImask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_rfi_RFImask_buffer
+        file_name: rfi_RFImask
+    write_n2_vis:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2_vis_buffer
+        file_name: n2_vis
+        create_single_file: false # not implemented
+    write_bb_beams:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_bb_beams_buffer
+        file_name: bb_beams
+    write_frb3_beams:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_frb3_beams_buffer
+        file_name: frb3_beams
+    write_frb3_beams_offsetscale:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_frb3_beams_offsetscale_buffer
+        file_name: frb3_beams_offsetscale
+        max_frames: 32          # each frame has 335.54432 ms
+    write_hfb2_beams:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_hfb2_beams_buffer
+        file_name: hfb2_beams

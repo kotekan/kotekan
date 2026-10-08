@@ -13,7 +13,7 @@
 #include "gpuCommand.hpp"               // for gpuCommandType
 #include "metadata.hpp"                 // for metadataObject
 
-#include <algorithm>          // for max
+#include <algorithm>          // for max, reverse
 #include <array>              // for array
 #include <cassert>            // for assert
 #include <cmath>              //
@@ -142,9 +142,9 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaQuantize8Chime");
 
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_offsetscale, true, false, true));
+    input_buffer.register_consumer();
+    beam_buffer.register_producer();
+    offsetscale_buffer.register_producer();
 
     // these sizes are hard-coded in the CUDA kernel
     if (_num_beams != in_nbeams || _num_frequencies != in_nfreqs || _num_times != in_ntimes) {
@@ -168,6 +168,20 @@ cudaEvent_t cudaQuantize8Chime::execute(cudaPipelineState&, const std::vector<cu
     // Set metadata
     beam_buffer.set_metadata(input_meta);
     offsetscale_buffer.set_metadata(input_meta);
+
+    // we reverse the order of the upchannelized frequency channels so that they
+    // are high-MHz -> low-MHz like the coarse frequency channels. Make sure
+    // metadata reflects this.
+    auto freq_upchan_index = input_meta->get_freq_upchan_index();
+    assert(freq_upchan_index.size() == in_nfreqs
+           && freq_upchan_index.size() % out_nfreqs_chunk == 0);
+    for (size_t chunk = 0; chunk < freq_upchan_index.size() / unsigned(out_nfreqs_chunk); ++chunk) {
+        auto first = freq_upchan_index.begin() + chunk * out_nfreqs_chunk;
+        auto last = first + out_nfreqs_chunk;
+        std::reverse(first, last);
+    }
+    beam_buffer.get_metadata()->set_freq_upchan_index(freq_upchan_index);
+    offsetscale_buffer.get_metadata()->set_freq_upchan_index(freq_upchan_index);
 
     const auto& input_ndarray = input_buffer.get_ndarray();
     const float* const input = input_ndarray.data();

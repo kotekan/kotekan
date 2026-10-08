@@ -1738,14 +1738,6 @@ def has_hdf5():
     return len(missing) == 0
 
 
-def has_eigenvis():
-    """Check for eigenVis via registered stages."""
-
-    config = KotekanRunner.kotekan_config()
-    available = set(config.get("available_stages", []))
-    return "eigenVis" in available
-
-
 def has_openmp():
     """Is OpenMP support build in."""
     return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_OMP"] == "ON"

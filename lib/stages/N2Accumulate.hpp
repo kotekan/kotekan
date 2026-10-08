@@ -96,11 +96,20 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * changes. A bias correction is applied, however, it is not guaranteed the resulting variance value
  * is positive definite.
  *
- * The "EvenOddPosDef" estimator differences normalized visibility samples and accounts for the
- * number of samples in each. It produces an unbiased estimate of the variance and is positive
- * definite, it only produces 0 if the visibilities in each pair are identical or there are no
- * samples in the accumulation bin. On Gaussian data it has the same variance as the CHIMEv1
- * estimator.
+ * The "EvenOddPosDef" estimator sums Q_pair = n0*n1/(n0+n1) * |corr1/n1-corr0/n0|^2
+ * over accepted pairs with samples in both frames. With k such pairs and N accepted samples,
+ * the weight is N*k/Q. A pair with samples in only one frame contributes to the mean, but
+ * not Q or k. The weight is zero if N, k or Q is zero, or if Q or the weight is nonfinite.
+ * Q/(k*N) estimates the variance of the mean for independent sample errors with a common
+ * variance and equal expected visibility within each pair after fringestopping. Masking
+ * based on the data can break these assumptions. Taking its reciprocal does not give an
+ * unbiased estimate of inverse variance. The mean is V = sum_accepted corr / N, and the
+ * output conjugates the lower-triangular input into upper-triangular order.
+ *
+ * The five input streams must agree on coarse frequencies and on the correlation period, which
+ * must equal sub_integration_ntime; correlation frames must be consecutive and start on a frame
+ * boundary; the valid count plus packet loss, and the RFI count, must not exceed
+ * sub_integration_ntime.
  *
  * TODO:    - radiometer_chi2
  *
@@ -133,6 +142,15 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * excise.
  *         @buffer_format   NDArray uint8 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
+ * @buffer  in_bad_feed_mask_buf  Optional bad feed mask (1 == good) in the input order, as
+ * produced by bufferBadInputs and fed to the GPU, folded (AND) over each accumulation
+ * bin into the output frames' per-element flags. Consumed 1:1 with the correlation
+ * frames and checked against them by FPGA sequence number, so the recorded flags are
+ * exactly the masks the GPU applied to the accumulated data. Each mask frame must be one
+ * mask sample covering exactly one correlation frame. Without this input the flags are
+ * all good.
+ *         @buffer_format   NDArray int8 [1, num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
@@ -155,6 +173,10 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          the buffers.
  * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
  *                                          Default: False
+ * @conf    input_order                     String. Ordering of data in input correlation matrix.
+ *                                          Default: Telescope::fiducial_element_order()
+ * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
+ *                                          Default: Telescope::fiducial_element_order()
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -229,12 +251,13 @@ public:
 
 private:
     // Buffers to read/write
-    Buffer* in_buf;              /// Buffer containing input correlations
-    Buffer* in_counts_buf;       /// Buffer containing input counts
-    Buffer* in_rficounts_buf;    /// Buffer containing input rficounts
-    Buffer* in_plcounts_buf;     /// Buffer containing input plcounts
-    Buffer* in_rfiframemask_buf; /// Buffer containing input rfiframemask
-    Buffer* out_buf;             /// Output for the main vis dataset only
+    Buffer* in_buf;               /// Buffer containing input correlations
+    Buffer* in_counts_buf;        /// Buffer containing input counts
+    Buffer* in_rficounts_buf;     /// Buffer containing input rficounts
+    Buffer* in_plcounts_buf;      /// Buffer containing input plcounts
+    Buffer* in_rfiframemask_buf;  /// Buffer containing input rfiframemask
+    Buffer* in_bad_feed_mask_buf; /// Optional buffer containing the bad feed mask; may be null
+    Buffer* out_buf;              /// Output for the main vis dataset only
 
     // Parameters saved from the config files
     const int64_t _num_freq_per_n2k_frame;
@@ -285,8 +308,13 @@ private:
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
     std::vector<float> _n_valid_sample_diff_sq_sum;
+    std::vector<int32_t> _n_usable_variance_pairs; ///< Accepted pairs with samples in both frames
     std::vector<uint64_t> _n_rfi_samples_in_vis;
     std::vector<uint64_t> _n_pl_samples_in_vis;
+    /// Bad feed mask folded (AND) over the current accumulation bin (1 == good), input order
+    std::vector<uint8_t> _accum_bad_feed_mask;
+    /// AND a bad feed mask frame (@c _num_elements bytes, input order) into @c _accum_bad_feed_mask
+    void fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask);
     int64_t _vis_samples_in_out_frame;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
@@ -294,6 +322,11 @@ private:
 
     // The telescope
     const Telescope& _tel;
+
+    // these must bye after _tel sine their initialization requires _tel
+    const ElementOrder _input_order;  ///< ordering of data in input matrix
+    const ElementOrder _output_order; ///< ordering of data in output matrix
+    const std::vector<int> _reorder;  // cache of mapping input_order_index -> output_order_index
 
     const std::vector<vec3d_t>
         _feed_positions_m; ///< The position of each element in the telescope grid frame

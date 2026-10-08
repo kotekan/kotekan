@@ -1,0 +1,87 @@
+@startuml
+skinparam BoxPadding 10
+
+box "kotekan instance"
+participant datasetManager1
+end box
+
+box "broker"
+participant dataset_broker
+end box
+
+box "kotekan instance"
+participant datasetManager2
+end box
+
+box "someone using curl"
+participant curl
+end box
+
+group Register a new state.
+
+    datasetManager1 --> dataset_broker: register-state(request)
+    note over dataset_broker
+        Doesn't know this state,
+        requests it.
+    end note
+    datasetManager1 <-- dataset_broker: reply
+    datasetManager1 --> dataset_broker: send-state(request)
+    datasetManager1 <-- dataset_broker: reply
+end
+
+group Register a new root dataset
+    datasetManager1 --> dataset_broker: register_dataset(request)
+    datasetManager1 <-- dataset_broker: reply
+end
+
+
+group Register the same state.
+    datasetManager2 --> dataset_broker: register_state(request)
+    datasetManager2 <-- dataset_broker: reply
+end
+group Register the same dataset.
+    datasetManager2 --> dataset_broker: register_dataset(request)
+    datasetManager2 <-- dataset_broker: reply
+end
+
+group Register a new state.
+    datasetManager1 --> dataset_broker: register-state(request)
+    note over dataset_broker
+        Doesn't know this state,
+        requests it.
+    end note
+    datasetManager1 <-- dataset_broker: reply
+    datasetManager1 --> dataset_broker: send-state(request)
+    datasetManager1 <-- dataset_broker: reply
+end
+
+group Register a new dataset.
+    datasetManager1 --> dataset_broker: register_dataset(request)
+    datasetManager1 <-- dataset_broker: reply
+end
+
+note over datasetManager2
+    Finds an unknown dataset.
+end note
+
+group Request update on dataset topology.
+    datasetManager2 --> dataset_broker: update-datasets(request)
+    datasetManager2 <-- dataset_broker: reply
+end
+
+group Request state.
+    datasetManager2 --> dataset_broker: request-state(request)
+    datasetManager2 <-- dataset_broker: reply
+end
+
+group Request another state.
+    datasetManager2 --> dataset_broker: request-state(request)
+    datasetManager2 <-- dataset_broker: reply
+end
+
+group Status request.
+    curl --> dataset_broker: status(request)
+    curl <-- dataset_broker: reply
+end
+
+@enduml

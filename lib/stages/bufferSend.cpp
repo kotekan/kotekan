@@ -1,6 +1,7 @@
 #include "bufferSend.hpp"
 
 #include "Config.hpp"            // for Config
+#include "PipelineGraph.hpp"     // for PipelineGraph, GraphNode
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
@@ -113,8 +114,13 @@ void bufferSend::main_thread() {
             bufferFrameHeader header;
             header.metadata_size = static_cast<uint32_t>(meta->get_serialized_size());
             header.frame_size = static_cast<uint32_t>(buf->frame_size);
+            // Flag a tracker update on the first frame of every connection, not
+            // only when this side's tracker hash changes: a receiver that
+            // (re)started after us holds no upstream configs and has no way to
+            // ask for them, so the first frame it sees must carry the flag.
             header.config_tracker_update =
-                config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
+                !first_transmission_sent
+                || config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
             // for legacy CHIME, do not send last field (config_tracker_update)
             size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
                                                    : sizeof(bufferFrameHeaderNoConfigTracker);
@@ -310,12 +316,12 @@ void bufferSend::connect_to_server() {
     }
 }
 
-std::string bufferSend::dot_string(const std::string& prefix) const {
-    std::string dot = Stage::dot_string(prefix);
-    std::string target = fmt::format("{:s}:{:d}", server_ip, server_port);
-    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]", prefix,
-                       target);
-    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, get_unique_name(), target);
-
-    return dot;
+void bufferSend::add_graph_details(kotekan::PipelineGraph& graph) const {
+    // Node id is derived from the stage, not from the address, so that two stages
+    // sending to the same host:port stay distinct nodes.
+    const std::string dest_id = fmt::format("{:s}/destination", get_unique_name());
+    graph.add_node(dest_id)
+        .add_line(fmt::format(fmt("{:s}:{:d}"), server_ip, server_port))
+        .set_category(kotekan::GraphCategory::Endpoint);
+    graph.add_edge(get_unique_name(), dest_id);
 }

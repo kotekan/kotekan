@@ -1,10 +1,16 @@
 #include "gpuProcess.hpp"
 
 #include "Config.hpp"             // for Config
+#include "DataType.hpp"           // for type_to_string
+#include "FrameDesc.hpp"          // for FrameDesc
+#include "NDArray.hpp"            // for GenericNDArray
+#include "PipelineGraph.hpp"      // for PipelineGraph, GraphNode
+#include "Symbol.hpp"             // for Symbol
+#include "chordMetadata.hpp"      // for chordMetadata
 #include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
 #include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
-#include "kotekanLogging.hpp"     // for DEBUG2, INFO
+#include "kotekanLogging.hpp"     // for DEBUG2, ERROR, INFO
 #include "restServer.hpp"         // for restServer, connectionInstance
 #include "util.h"                 // for e_time
 #include "visUtil.hpp"            // for StatTracker
@@ -12,11 +18,14 @@
 #include "fmt.hpp"  // for format, compile_string_to_view, format_string, fmt
 #include "json.hpp" // for json_ref, basic_json, json, iter_impl
 
+#include <algorithm>   // for find
 #include <assert.h>    // for assert
 #include <cmath>       // for isnan
+#include <cstdlib>     // for abort
 #include <functional>  // for bind, ref, function, _1
 #include <map>         // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
-#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <memory>      // for __shared_ptr_access, shared_ptr, dynamic_pointer_cast
+#include <optional>    // for optional
 #include <pthread.h>   // for pthread_setaffinity_np
 #include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <set>         // for set
@@ -39,7 +48,8 @@ using nlohmann::json;
 // TODO Remove the GPU_ID from this constructor
 gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
                        bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container, std::bind(&gpuProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&gpuProcess::main_thread, this)),
+    _profile_endpoint(fmt::format(fmt("/gpu_profile{:s}"), unique_name)) {
     log_profiling = config.get_default<bool>(unique_name, "log_profiling", false);
 
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
@@ -66,7 +76,21 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:s}"), unique_name));
+    // Unregister before deleting the commands that profile_callback reads.
+    // remove_get_callback() waits for an in-flight invocation to finish, so the
+    // callback cannot still be walking `commands` once this returns.
+    restServer::instance().remove_get_callback(_profile_endpoint);
+    // main_thread() joins the results thread on every exit path, so it can still be joinable here
+    // only if this stage is destroyed while its main_thread runs: a stage deleted without stop()
+    // and join(), which is undefined behaviour before this line (the derived destructors have
+    // already run). Joining could not make that safe, and deleting the signals below would block
+    // forever in pthread_cond_destroy on the live waiter, so fail loudly instead of hanging.
+    if (results_thread_handle.joinable()) {
+        ERROR("{:s}: destroyed with its results thread still running (the stage was deleted "
+              "without stop() and join()); aborting instead of hanging in teardown.",
+              unique_name);
+        std::abort();
+    }
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
@@ -146,12 +170,22 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 void gpuProcess::main_thread() {
     dev->set_thread_device();
 
+    // A FatalError thrown from a command below leaves this function without reaching exit_loop;
+    // the results thread would then wait forever on signals nobody stops, and ~gpuProcess would
+    // block in pthread_cond_destroy on the very condition variable it waits on. Stop and join on
+    // the way out too.
+    struct results_unwind {
+        gpuProcess& proc;
+        bool armed = true;
+        ~results_unwind() {
+            if (armed)
+                proc.stop_results_thread();
+        }
+    } unwind{*this};
+
     restServer& rest_server = restServer::instance();
-    // unique_name starts with "/", so this path becomes something like
-    // "/gpu_profile/gpuB/gpu_0" for pipeline B running on GPU 0.
     rest_server.register_get_callback(
-        fmt::format(fmt("/gpu_profile{:s}"), unique_name),
-        std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
+        _profile_endpoint, std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
     int gpu_frame_counter = 0;
@@ -165,6 +199,18 @@ void gpuProcess::main_thread() {
 
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[ic]->wait_for_free_slot();
+
+        // The slot came free because the results thread finished that slot's previous frame. Once
+        // a stop is set it finishes frames WITHOUT finalize_frame(), so that frame's ring-buffer
+        // claims and host frames may still be held: an NDArrayRingBuffer reader would raise a
+        // FatalError over an ordinary shutdown, and a frame-buffer command would reuse the stale
+        // frame. Never start a frame after a stop.
+        if (stop_thread) {
+            INFO(
+                "Stop requested while GPU[{:d}] waited for a free slot; leaving before frame {:d}.",
+                gpu_id, gpu_frame_counter);
+            break;
+        }
 
         // Update the gpu_frame_counter and perform any reset actions on the command object
         // for this frame.
@@ -210,6 +256,11 @@ void gpuProcess::main_thread() {
         gpu_frame_counter++;
     }
 exit_loop:
+    unwind.armed = false;
+    stop_results_thread();
+}
+
+void gpuProcess::stop_results_thread() {
     for (auto& sig_container : final_signals)
         sig_container->stop();
     INFO("Waiting for GPU packet queues to finish up before freeing memory.");
@@ -269,102 +320,214 @@ void gpuProcess::results_thread() {
     }
 }
 
-std::string gpuProcess::dot_string(const std::string& prefix) const {
-    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
+std::string gpuProcess::gpu_mem_node_prefix(uint32_t gpu_id) {
+    return fmt::format("__gpu/{:d}/mem/", gpu_id);
+}
 
-    dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}node [style=filled,color=white];\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
+void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
+    const std::string name = get_unique_name();
 
-    // Draw a node for each gpuCommand
+    auto& stage_node = graph.add_node(name);
+
+    // One region per physical device, holding every stage that drives it. The
+    // config declares these the other way round -- a gpuProcess per section,
+    // each naming a gpu_id -- but a device is the thing that saturates, and
+    // the question the graph gets asked is what GPU 0 is doing. Answering it
+    // from a box per section means reading thirteen of them.
+    //
+    // Shared by unique_name, so every gpuProcess with this gpu_id lands in the
+    // same region; it stays at the top level, since grouping by device and
+    // grouping by config section cannot both hold.
+    auto& device = graph.add_cluster(fmt::format(fmt("__gpu/{:d}"), gpu_id));
+    device.label = fmt::format(fmt("GPU {:d}"), gpu_id);
+    device.set_attr("style", "rounded,filled")
+        .set_attr("fillcolor", kotekan::graph_device_fill)
+        .set_attr("color", kotekan::graph_device_line);
+
+    // Inside it, a box per stage: the commands of thirteen stages in one region
+    // with nothing separating them would be worse than what this replaces. Name
+    // it for the section the stage was declared in -- that is what tells them
+    // apart, since every one of them is called gpu_<n>.
+    auto& work = graph.add_cluster(name + "/work");
+    work.label = stage_node.cluster.empty() ? kotekan::leaf_name(name)
+                                            : kotekan::leaf_name(stage_node.cluster);
+    work.set_attr("style", "rounded").set_attr("color", kotekan::graph_cluster_line);
+    work.parent = device.id;
+
+    // The stage node itself belongs in the region: the host buffer edges are
+    // added centrally and point at the stage, so without a node inside the box
+    // they would end on an empty one drawn beside it.
+    stage_node.cluster = work.id;
+
+    // On a large pipeline the commands and device memory are most of the graph,
+    // and are not what one is looking at when following data between stages.
+    if (!graph.options.kernels)
+        return;
+
+    // A node per gpuCommand, chained in execution order after the stage node.
+    // Only the first instance of each command is drawn; the others are the same
+    // step of the pipeline operating on another frame.
+    std::string previous = name;
     for (auto& command : commands) {
         std::string shape;
+        std::string kind;
         switch (command[0]->get_command_type()) {
             case gpuCommandType::COPY_IN:
                 shape = "trapezium";
+                kind = "copy in";
                 break;
             case gpuCommandType::KERNEL:
                 shape = "box";
+                kind = "kernel";
                 break;
             case gpuCommandType::BARRIER:
                 shape = "parallelogram";
+                kind = "barrier";
                 break;
             case gpuCommandType::COPY_OUT:
                 shape = "invtrapezium";
+                kind = "copy out";
                 break;
             default:
                 // Hopefully one notices the type wasn't set with this shape.
                 shape = "diamond";
+                kind = "type not set";
                 break;
         }
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n", prefix, prefix,
-                           command[0]->get_unique_name(), shape, command[0]->get_name());
-    }
-
-    // Draw edges between gpuCommands
-    dot += fmt::format("{:s}{:s}// start gpu command edges\n", prefix, prefix);
-    bool first_item = true;
-    std::string last_item = "";
-    for (auto& command : commands) {
-        if (first_item) {
-            last_item = command[0]->get_unique_name();
-            first_item = false;
-            continue;
+        const std::string id = command[0]->get_unique_name();
+        auto& node = graph.add_node(id);
+        node.add_line(command[0]->get_name());
+        node.add_line(kind);
+        // What this step of the pipeline costs on the device. The instances of a
+        // command share one tracker, so the first one has the whole picture.
+        const double seconds = command[0]->excute_time->get_avg();
+        if (!std::isnan(seconds) && seconds > 0.0) {
+            std::string timing = fmt::format(fmt("{:.3g} ms"), seconds * 1e3);
+            if (frame_arrival_period > 0.0)
+                timing += fmt::format(fmt(" · {:.3g}% of a frame"),
+                                      100.0 * seconds / frame_arrival_period);
+            node.add_line(timing);
         }
-        dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=dotted];\n", prefix, prefix,
-                           last_item, command[0]->get_unique_name());
-        last_item = command[0]->get_unique_name();
+        node.cluster = work.id;
+        node.set_category(kotekan::GraphCategory::Gpu)
+            .set_attr("shape", shape)
+            .set_attr("style", "filled");
+        graph.add_edge(previous, id).set_attr("style", "dotted");
+        previous = id;
     }
-    dot += fmt::format("{:s}{:s}// end gpu command edges\n", prefix, prefix);
 
-    // Draw GPU buffers (non-array)
+    // GPU memory. The memory is the device's, shared by every gpuProcess driving
+    // it (cudaDeviceInterface::get hands them the same object), so a region a
+    // copy fills in one stage and a kernel reads in another is a single node
+    // with edges from both. "voltage" on one device is still not the "voltage"
+    // on the next, so the ids carry the device.
+    //
+    // A region is drawn in the box of the stage that writes it, so the edges
+    // leaving a box are exactly the regions read elsewhere; one that nothing
+    // here writes sits at the device level until a writer claims it. Gathering
+    // the regions in a box of their own instead doubles the edge crossings.
+    const std::string mem_prefix = gpu_mem_node_prefix(gpu_id);
+
     std::set<std::string> gpu_buffers;
-    std::set<std::string> gpu_buffer_arrays;
+    std::set<std::string> written_here;
     for (auto& command : commands) {
-        auto buffs = command[0]->get_gpu_buffers();
-        for (auto& buff : buffs)
-            if (std::get<1>(buff))
-                gpu_buffer_arrays.insert(std::get<0>(buff));
-            else
-                gpu_buffers.insert(std::get<0>(buff));
-    }
-    dot += fmt::format("{:s}subgraph \"cluster_{:s}_mem\" {{\n", prefix, get_unique_name());
-    for (std::string name : gpu_buffer_arrays) {
-        // shape="box3d"
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape=\"oval\",color=\"hotpink3\",label=\"{:s}\"];\n",
-                           prefix, prefix, name, name);
-    }
-
-    for (std::string name : gpu_buffers) {
-        // shape="rect"
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape=\"oval\",color=\"hotpink\",label=\"{:s}\"];\n",
-                           prefix, prefix, name, name);
-    }
-    dot += fmt::format("{:s} }}\n", prefix);
-
-    // Draw I/O edges on GPU buffers
-    for (auto& command : commands) {
-        auto buffs = command[0]->get_gpu_buffers();
-        for (auto& buff : buffs) {
-            std::string buffname = std::get<0>(buff);
-            if (std::get<2>(buff))
-                // Read
-                dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=solid];\n", prefix, prefix,
-                                   buffname, command[0]->get_unique_name());
+        for (auto& buff : command[0]->get_gpu_buffers()) {
+            gpu_buffers.insert(std::get<0>(buff));
             if (std::get<3>(buff))
-                // Write
-                dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=solid];\n", prefix, prefix,
-                                   command[0]->get_unique_name(), buffname);
+                written_here.insert(std::get<0>(buff));
         }
     }
 
-    // Add any extra DOT commands...
-    for (auto& command : commands) {
-        dot += command[0]->get_extra_dot(prefix);
+    for (const auto& buffer_name : gpu_buffers) {
+        auto& node = graph.add_node(mem_prefix + buffer_name);
+        // Another stage on this device may have described it already; a writer
+        // still claims it into its own box.
+        const bool is_new = node.cluster.empty();
+        if (written_here.count(buffer_name))
+            node.cluster = work.id;
+        else if (is_new)
+            node.cluster = device.id;
+
+        // A ring region is tracked by a host RingBuffer, whose node the graph
+        // already has as a buffer: mark that node as the ring's signal and tie
+        // the two together, so it is not mistaken for data living on the host.
+        // The region's edges show where the data goes, so the ring drops its
+        // own; drawing both roughly triples the crossings on a large pipeline.
+        std::string signal;
+        for (auto& command : commands)
+            if (signal.empty())
+                signal = command[0]->get_gpu_buffer_signal(buffer_name);
+        if (!signal.empty() && graph.has_node(signal)) {
+            auto& ring = graph.add_node(signal);
+            const std::string mark = "signal for " + buffer_name;
+            if (std::find(ring.label_lines.begin(), ring.label_lines.end(), mark)
+                == ring.label_lines.end()) {
+                ring.add_line(mark);
+                ring.set_attr("fillcolor",
+                              kotekan::graph_style(kotekan::GraphCategory::Memory).fill);
+                ring.flow_drawn_elsewhere = true;
+                graph.add_edge(signal, mem_prefix + buffer_name)
+                    .set_attr("style", "dashed")
+                    .set_attr("arrowhead", "none");
+            }
+        }
+
+        if (!is_new)
+            continue;
+        node.add_line(buffer_name);
+
+        // The layout: from the descriptor a command registered for it (the
+        // NDArray wrappers do), else from the metadata on the memory itself,
+        // which hand-written kernels attach instead. Then its size, from the
+        // device, which knows whether it is one region or an array of them.
+        std::shared_ptr<const kotekan::FrameDesc> desc;
+        for (auto& command : commands)
+            if ((desc = command[0]->get_gpu_buffer_desc(buffer_name)))
+                break;
+        const std::optional<gpuMemoryInfo> info = dev->get_gpu_memory_info(buffer_name);
+        if (auto array = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(desc)) {
+            std::vector<std::string> dimnames;
+            for (const kotekan::Symbol& dimname : array->get_dimnames())
+                dimnames.push_back(dimname ? dimname.get_string() : std::string());
+            node.add_line(kotekan::array_layout_line(type_to_string(array->get_value_datatype()),
+                                                     array->get_extents(), dimnames));
+        } else if (info) {
+            if (auto chord = std::dynamic_pointer_cast<chordMetadata>(info->metadata)) {
+                std::vector<std::ptrdiff_t> extents;
+                std::vector<std::string> dimnames;
+                for (int d = 0; d < chord->dims; d++) {
+                    extents.push_back(chord->dim[d]);
+                    dimnames.push_back(chord->get_dimension_name(d));
+                }
+                node.add_line(
+                    kotekan::array_layout_line(type_to_string(chord->type), extents, dimnames));
+            }
+        }
+        if (info) {
+            if (info->depth > 1)
+                node.add_line(
+                    fmt::format(fmt("{:s} ×{:d}"), kotekan::human_bytes(info->len), info->depth));
+            else if (!signal.empty())
+                node.add_line(fmt::format(fmt("{:s} · ring"), kotekan::human_bytes(info->len)));
+            else
+                node.add_line(kotekan::human_bytes(info->len));
+        }
+
+        node.set_category(kotekan::GraphCategory::Memory);
     }
 
-    dot += fmt::format("{:s}}}\n", prefix);
+    // Which commands read and write which GPU memory.
+    for (auto& command : commands) {
+        for (auto& buff : command[0]->get_gpu_buffers()) {
+            const std::string buffer_id = mem_prefix + std::get<0>(buff);
+            if (std::get<2>(buff)) // read
+                graph.add_edge(buffer_id, command[0]->get_unique_name()).set_attr("style", "solid");
+            if (std::get<3>(buff)) // write
+                graph.add_edge(command[0]->get_unique_name(), buffer_id).set_attr("style", "solid");
+        }
+    }
 
-    return dot;
+    // Anything else a command wants to say about its GPU memory.
+    for (auto& command : commands)
+        command[0]->add_graph_details(graph, mem_prefix);
 }

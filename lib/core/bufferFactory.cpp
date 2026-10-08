@@ -6,8 +6,9 @@
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "NDArray.hpp"        // for GenericNDArray
 #include "buffer.hpp"         // for GenericBuffer, Buffer
-#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "kotekanLogging.hpp" // for INFO_NON_OO, WARN_NON_OO
 #include "metadata.hpp"       // for metadataPool
+#include "numaPolicy.hpp"     // for ScopedNumaPolicy
 #include "ringbuffer.hpp"     // for RingBuffer
 #include "visBuffer.hpp"      // for VisFrameView
 
@@ -71,6 +72,12 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     int32_t numa_node = config.get_default<int32_t>(location, "numa_node", 0);
     std::string s_log_level = config.get<std::string>(location, "log_level");
 
+    // Place the buffer object, its frame descriptor, and everything else built
+    // here on the same NUMA node as the frames. The thread building the
+    // pipeline is not pinned, so without this they would land wherever it
+    // happened to be running.
+    ScopedNumaPolicy bind_memory(numa_node);
+
     std::shared_ptr<metadataPool> pool;
     if (metadataPool_name != "none") {
         if (metadataPools.count(metadataPool_name) != 1) {
@@ -119,12 +126,27 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
             static_cast<Buffer*>(buf)->ensure_frame_desc(frame_desc);
         }
 
+        // peek_hold: defer recycling of the newest full frame until the
+        // next one lands, so the /buffer_frame endpoint works on
+        // buffers whose consumers drain frames faster than a peek. No
+        // copies; costs one occupied frame slot, along with the metadata
+        // object that frame holds.
+        if (config.get_default<bool>(location, "peek_hold", false))
+            static_cast<Buffer*>(buf)->enable_peek_hold();
+
     } else if (type_name == "ring") {
         size_t ringbuf_size = config.get<size_t>(location, "ring_buffer_size");
         INFO_NON_OO("Creating {:s}Buffer named {:s} with ring buffer size of {:d} and "
                     "metadata pool {:s} on numa_node {:d}",
                     type_name, name, ringbuf_size, metadataPool_name, numa_node);
         buf = new RingBuffer(ringbuf_size, pool, name, type_name);
+
+        // Ring buffers are not peekable yet, so peek_hold would otherwise be
+        // read by nothing and leave the buffer quietly unpeekable.
+        if (config.get_default<bool>(location, "peek_hold", false))
+            WARN_NON_OO("peek_hold is set on ring buffer {:s} and has no effect: ring buffers "
+                        "have no /buffer_frame endpoint to hold a frame for",
+                        name);
 
     } else {
         // Unknown buffer type

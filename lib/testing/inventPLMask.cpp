@@ -35,6 +35,13 @@ class inventPLMask : public kotekan::Stage {
     const int num_frequencies = config.get<int>(unique_name, "num_frequencies");
     const int num_times = config.get<int>(unique_name, "num_times");
 
+    const std::vector<int> frequency_channels =
+        config.get<std::vector<int>>(unique_name, "frequency_channels");
+
+    // Packets are lost in the FPGA samples [box_begin, box_end), and nowhere else
+    const std::int64_t box_begin = config.get_default<std::int64_t>(unique_name, "box_begin", 0);
+    const std::int64_t box_end = config.get_default<std::int64_t>(unique_name, "box_end", 0);
+
     Buffer* const buffer;
 
 public:
@@ -47,6 +54,14 @@ public:
         buffer(get_buffer("pl_mask")) {
         assert(buffer);
         buffer->register_producer(unique_name);
+        if (frequency_channels.size() != static_cast<size_t>(num_frequencies))
+            FATAL_ERROR("inventPLMask: frequency_channels has {:d} entries, expected "
+                        "num_frequencies={:d}",
+                        frequency_channels.size(), num_frequencies);
+        // Each byte of the mask covers 16 FPGA samples
+        if (!(box_begin % 16 == 0 && box_end % 16 == 0))
+            FATAL_ERROR("box_begin={:d} and box_end={:d} must be multiples of 16", box_begin,
+                        box_end);
     }
 
     virtual ~inventPLMask() {}
@@ -77,6 +92,16 @@ public:
             meta->set_fpga_seq_num(frame_index * num_times);
             meta->set_time_downsampling_fpga(2 * 64);
 
+            // Set frequency information. As in `testLostSamplesToPLMask`, this lists every
+            // frequency, not one entry per `F4` bin; consumers such as `N2Accumulate` compare
+            // it against the voltage frequencies.
+            const std::vector<int>& coarse_freq = frequency_channels;
+            const std::vector<int> freq_upchan_factor(coarse_freq.size(), 1);
+            const std::vector<int> freq_upchan_index(coarse_freq.size(), 0);
+            meta->set_coarse_freq(coarse_freq);
+            meta->set_freq_upchan_factor(freq_upchan_factor);
+            meta->set_freq_upchan_index(freq_upchan_index);
+
             // Fill buffer
             DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
             const std::ptrdiff_t str4 = 1;
@@ -96,7 +121,9 @@ public:
                             const std::ptrdiff_t idx =
                                 str4 * idx4 + str3 * idx3 + str2 * idx2 + str1 * idx1 + str0 * idx0;
                             assert(idx >= 0 && idx < std::ptrdiff_t(buffer->frame_size));
-                            frame[idx] = 0xff; // no packets were lost
+                            const std::int64_t seq = std::int64_t(frame_index) * num_times + time;
+                            const bool lost = seq >= box_begin && seq < box_end;
+                            frame[idx] = lost ? 0x00 : 0xff;
                         }
                     }
                 }

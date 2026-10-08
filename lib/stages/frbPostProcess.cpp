@@ -90,10 +90,10 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
 
 frbPostProcess::~frbPostProcess() {
     free(in_buf);
-    free(frb_header_beam_ids);
-    free(frb_header_coarse_freq_ids);
-    free(frb_header_scale);
-    free(frb_header_offset);
+    delete[] frb_header_beam_ids;
+    delete[] frb_header_coarse_freq_ids;
+    delete[] frb_header_scale;
+    delete[] frb_header_offset;
     free(droppacket);
     free(ib);
 }

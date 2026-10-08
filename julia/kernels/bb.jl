@@ -9,8 +9,6 @@ using Random
 
 const Memory = IndexSpaces.Memory
 
-chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
-unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # shift(x::Number, s) = (@assert s ≥ 0; s == 0 ? x : (x + (1 << (s - 1))) >> s)
 shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
@@ -118,6 +116,11 @@ else
 end
 
 const Tout = idiv(T, 4)         # always process 1/4 of the ringbuffer at a time
+
+# The phase matrix is recalculated periodically, and the matrices are handed to the GPU through a
+# ring buffer holding this many of them (the Kotekan buffer depth). How many FPGA samples one
+# matrix covers is a run-time setting, `bb_phase_lifetime_in_samples`.
+const Tbb = idiv(T, Tout)
 
 # Since we introduced Tmin and Tmax, we don't support Bt != 1 any more
 # const Bt = 16                   # distribute time samples over that many blocks
@@ -1216,6 +1219,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "T_max",
@@ -1226,23 +1230,32 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "A",
                         "kotekan_name" => "bb_phase_name",
                         "type" => "int8",
+                        # The slowest axis is the ring buffer direction. Its `dimscaling` is a
+                        # placeholder; it is overwritten at run time with the configured
+                        # `bb_phase_lifetime_in_samples`. The kernel itself still sees a single
+                        # phase matrix: the wrapper passes it the element covering the voltage
+                        # samples being processed.
                         "axes" => [
                             Dict("label" => "C", "length" => C, "dimscaling" => 1),
                             Dict("label" => "D", "length" => D, "dimscaling" => 1),
                             Dict("label" => "B", "length" => B, "dimscaling" => 1),
                             Dict("label" => "P", "length" => P, "dimscaling" => 1),
                             Dict("label" => "F", "length" => F, "dimscaling" => 1),
+                            Dict("label" => "Tbb", "length" => Tbb, "dimscaling" => 1),
                         ],
                         "isoutput" => false,
                         "isscalar" => false,
                         "hasbuffer" => true,
-                        "hasringbuffer" => false,
-                        "do_once" => true,
+                        "hasringbuffer" => true,
+                        "do_once" => false,
+                        "haslifetime" => true,
+                        "lifetime_config" => "bb_phase_lifetime_in_samples",
                     ),
                     Dict(
                         "name" => "E",
@@ -1259,6 +1272,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => true,
                         "hasringbuffer" => true,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "s",
@@ -1274,6 +1288,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => true,
                         "hasringbuffer" => false,
                         "do_once" => true,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "J",
@@ -1291,6 +1306,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => true,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "info",
@@ -1306,6 +1322,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "log",
@@ -1319,6 +1336,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                 ],
             ),
@@ -1435,7 +1453,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 @assert max(abs(Ju.re), abs(Ju.im)) ≤ 32767
                 J = Ju
                 J = shift(J, s - σ)
-                reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * T + t + 1] = Int4x2(
+                reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * Tout + t + 1] = Int4x2(
                     Int32(clamp(J.re, -7:+7)), Int32(clamp(J.im, -7:+7))
                 )
             end
@@ -1444,9 +1462,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Copying data from CPU to GPU...")
     A_cuda = CuArray(A_memory)
-    E_cuda = CuArray(chimify.(E_memory))
+    E_cuda = CuArray(swap_offset.(E_memory))
     s_cuda = CuArray(s_memory)
-    J_cuda = CUDA.fill(chimify(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(Tout, 4) * P * F * B)
+    J_cuda = CUDA.fill(swap_offset(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(Tout, 4) * P * F * B)
     info_cuda = CUDA.fill(-1i32, num_threads * num_warps * num_blocks)
     log_cuda = CUDA.fill(0i32, num_blocks)
 
@@ -1524,7 +1542,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     println("Copying data back from GPU to CPU...")
-    J_memory = unchimify.(Array(J_cuda))
+    J_memory = swap_offset.(Array(J_cuda))
     info_memory = Array(info_cuda)
     log_memory = Array(log_cuda)
     @assert all(info_memory .== 0)
@@ -1548,6 +1566,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         end
         @assert all(checked_J)
         println("    J: $error_count errors found")
+        error_count == 0 || error("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+        println("Self-test passed.")
     end
 
     println("Done.")

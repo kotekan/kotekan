@@ -34,6 +34,10 @@
  * CHIME orders; when the two are equal -- CHORD flags and masks in the same
  * [P][D] order -- the telescope is not consulted.
  *
+ * Elements the telescope places outside the main array (CHORD's Missing dishes
+ * and RFI antennas) are never valid inputs; they stay masked whatever the
+ * posted list says.
+ *
  * Updates queue by @c start_time and take effect once the wall clock reaches
  * it (a start time already in the past applies immediately).  Mask frames
  * are produced whenever the output buffer has room, so the stage is paced by
@@ -42,7 +46,11 @@
  * Each frame is one bad feed mask sample, valid
  * for @c bf_mask_lifetime_in_samples FPGA samples, and its FPGA sequence
  * number is that sample's seq -- so it grows by the lifetime from frame to
- * frame, which is what the bad feed mask ring buffer requires.
+ * frame, which is what the bad feed mask ring buffer requires.  The
+ * sequence numbers start at the seq of the first frame of @c metadata_source
+ * (normally the voltage buffer, whose first frame also defines the logical
+ * beginning of the voltage ring buffer), or at zero if no clock buffer is
+ * configured.
  *
  * Out-of-order and malformed updates are counted and ignored while running
  * -- a bad POST must not stop the correlator -- but a malformed *initial*
@@ -56,6 +64,13 @@
  * reinterpretation of the mask rather than a reordering of it.
  *
  * @par Buffers
+ * @buffer metadata_source Optional.  Any buffer with an @c fpga_seq_num; only its
+ *     first frame is read, then the stage unregisters as a consumer.  The
+ *     voltage buffer is recommended.  Its coarse frequencies, when present,
+ *     are copied onto every mask frame, so a consumer fed by several
+ *     instances (one per GPU) can tell the streams apart.
+ *     @buffer_format Any
+ *     @buffer_metadata chordMetadata
  * @buffer out_buf Kotekan buffer of bad inputs (1 == good).
  *     @buffer_shape [1, num_polarizations, num_dishes]
  *     @buffer_format int8
@@ -110,6 +125,8 @@ private:
     };
 
     Buffer* out_buf;
+    /// Optional; see the class comment. Null when not configured.
+    Buffer* metadata_source;
     /// The size of the bad input mask.
     size_t num_elements;
     /// The shape of the bad input mask, num_elements == num_polarizations * num_dishes
@@ -117,6 +134,10 @@ private:
     int num_dishes;
     /// Number of FPGA samples that one bad feed mask is valid for
     int64_t bf_mask_lifetime_in_samples;
+
+    /// Mask before any posted flags: 0 for elements outside the telescope's
+    /// main array (CHORD's Missing dishes and RFI antennas).
+    std::vector<uint8_t> baseline_mask;
 
     /// Posted updates, keyed by their start time.
     updateQueue<badInputUpdate> updates;

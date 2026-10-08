@@ -11,6 +11,10 @@ target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
 
+# frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
+add_executable(test_modulo test_modulo.cpp)
+target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
@@ -41,6 +45,41 @@ add_executable(test_ringbuffer_read_without_claiming test_ringbuffer_read_withou
 target_link_libraries(test_ringbuffer_read_without_claiming
                       PRIVATE pthread libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_pipeline_graph - the graph model behind /pipeline_dot
+add_executable(test_pipeline_graph test_pipeline_graph.cpp)
+target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
+                                                  kotekan_core)
+
+# test_numa_policy - NUMA placement of stages and buffers: which node a config block resolves to,
+# and the scoped memory policy that puts an object there
+add_executable(test_numa_policy test_numa_policy.cpp)
+target_link_libraries(test_numa_policy PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
+# test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
+add_executable(test_buffer_peek test_buffer_peek.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_buffer_peek
+        PRIVATE pthread
+                libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_buffer_peek
+        PRIVATE pthread
+                libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
 # target_link_libraries(test_fmt PRIVATE libexternal kotekan_utils)
@@ -53,6 +92,11 @@ target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_u
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)
 target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
+# test_buffer_swap - frame transfer between buffers (safe_swap_frame)
+add_executable(test_buffer_swap test_buffer_swap.cpp)
+target_link_libraries(test_buffer_swap PRIVATE pthread libexternal kotekan_libs kotekan_utils
+                                               kotekan_core kotekan_metadata)
 
 # test_prometheus_metrics needs fmt and prometheusMetrics
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
@@ -128,6 +172,11 @@ endif()
 
 add_executable(test_DataType test_DataType.cpp)
 target_link_libraries(test_DataType kotekan_metadata libexternal)
+
+# test_frb1IntensityBound - the worst-case FRB1 intensity for given weights (header-only helper)
+add_executable(test_frb1IntensityBound test_frb1IntensityBound.cpp)
+target_include_directories(test_frb1IntensityBound PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_link_libraries(test_frb1IntensityBound kotekan_metadata libexternal)
 
 add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
@@ -216,8 +265,8 @@ endif()
 
 # test_FrameDescSerialize - FrameDesc JSON serialization round-trip + adversarial input
 add_executable(test_FrameDescSerialize test_FrameDescSerialize.cpp)
-target_link_libraries(test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_utils
-                                                      kotekan_core kotekan_metadata)
+target_link_libraries(test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_core
+                                                      kotekan_metadata kotekan_utils)
 
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)
@@ -245,3 +294,64 @@ else()
 endif()
 target_include_directories(test_N2Subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                  ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_N2AutoSpectrum - tests for N2AutoSpectrum stage
+add_executable(test_N2AutoSpectrum test_N2AutoSpectrum.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_N2AutoSpectrum
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_N2AutoSpectrum
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_N2AutoSpectrum PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                       ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_TransposeBasebandArray - tests for TransposeBasebandArray stage
+add_executable(test_TransposeBasebandArray test_TransposeBasebandArray.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_TransposeBasebandArray
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_TransposeBasebandArray
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                               ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
+# test_upchannelizeReference - the serial float32 upchannelization reference. The reference lives in
+# lib/cuda, next to its only caller, but has no CUDA dependency of its own. Compile it directly
+# rather than linking kotekan_cuda, so these tests still build and run on a machine without CUDA.
+add_executable(test_upchannelizeReference test_upchannelizeReference.cpp
+                                          ${KOTEKAN_SOURCE_DIR}/lib/cuda/upchannelizeReference.cpp)
+target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)

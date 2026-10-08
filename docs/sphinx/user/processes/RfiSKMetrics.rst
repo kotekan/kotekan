@@ -1,0 +1,5 @@
+************
+RfiSKMetrics
+************
+
+.. doxygenclass:: RfiSKMetrics

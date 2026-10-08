@@ -8,6 +8,10 @@ log_level: debug2   # info
 cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7]
 buffer_depth: 4
 
+# The largest upchannelization factor used in this run. All upchannelizers delay their
+# output so that it is aligned in time with that of the largest factor.
+max_upchannelization_factor: 32
+
 frame_arrival_period: 2.56e-6 * num_times
 
 sizeof_int16: 2
@@ -244,7 +248,7 @@ gpuUpA:
               in_buf: host_upchan_gain
               gpu_mem: upchan_gain_A
             - name: cudaSyncInput
-            - name: cudaUpchannelizer_pathfinder_U16
+            - name: cudaUpchannelizer_pathfinder_U16_K4
               in_signal: host_e_sig
               out_signal: host_up_sig
               gpu_mem_input_voltage: e_ringbuf
@@ -289,7 +293,7 @@ gpuUpB:
               in_buf: host_upchan_gain
               gpu_mem: upchan_gain_B
             - name: cudaSyncInput
-            - name: cudaUpchannelizer_pathfinder_U32
+            - name: cudaUpchannelizer_pathfinder_U32_K4
               in_signal: host_e_sig
               out_signal: host_up_sig
               gpu_mem_input_voltage: e_ringbuf
@@ -334,7 +338,7 @@ gpuUpC:
               in_buf: host_upchan_gain
               gpu_mem: upchan_gain_C
             - name: cudaSyncInput
-            - name: cudaUpchannelizer_pathfinder_U8
+            - name: cudaUpchannelizer_pathfinder_U8_K4
               in_signal: host_e_sig
               out_signal: host_up_sig
               gpu_mem_input_voltage: e_ringbuf

@@ -22,10 +22,13 @@ regular upstream entry: a single combined ``{"config": ..., "timing": ...}``
 JSON, keyed by the controller's REST ``(host, port)``. The hostname is
 resolved to a canonical IPv4 string up front so downstream peers
 transitively land on the same key. Any change to either part after the
-initial fetch indicates a controller reset and is fatal. The FPGA snapshot
-rides along on the same propagation path as peer kotekan configs, so an
-HDF5 writer downstream of the FPGA-adjacent node sees it as an ordinary
-upstream entry.
+initial fetch indicates a controller reset. The startup fetch treats such a
+change as fatal; ``checkFpgaTracking()`` re-reads the controller without
+inserting or exiting, so a poller can decide what a deviation means (see
+:ref:`fpga-monitor`). The
+FPGA snapshot rides along on the same propagation
+path as peer kotekan configs, so an HDF5 writer downstream of the
+FPGA-adjacent node sees it as an ordinary upstream entry.
 
 The tracker exposes four REST endpoints:
 
@@ -59,10 +62,11 @@ The tracker is enabled by default. Its behaviour is configured by an optional to
       upstream_fetch_retries: 2             # retries per HTTP request
       upstream_fetch_timeout_seconds: 10    # per-attempt HTTP timeout
 
-The retry/timeout policy applies to every upstream fetch — both the one-shot
-FPGA controller fetch at startup and the per-frame peer fetches triggered by
-``bufferRecv``'s wire flag. After retries are exhausted on any fetch, the call
-is fatal (no silent skip).
+The retry/timeout policy applies to every upstream fetch — the one-shot FPGA
+controller fetch at startup, the per-frame peer fetches triggered by
+``bufferRecv``'s wire flag, and the repeat reads made by ``checkFpgaTracking()``.
+After retries are exhausted, the first two are fatal (no silent skip);
+``checkFpgaTracking()`` reports the failure to its caller instead.
 
 The controller's two endpoint paths live on the controller block itself so the
 Telescope (which reads ``timing_endpoint`` from the same block via
@@ -128,14 +132,54 @@ Threading & Safety
 - Hash collisions are unlikely in practice. If a different hash is found at the same endpoint,
   execution aborts to avoid state contamination.
 
+.. _fpga-monitor:
+
+Monitoring the FPGA controller
+------------------------------
+The tracker reads the FPGA controller once, at startup, and hands that snapshot
+to every downstream node. Nothing re-reads it afterwards, so a controller that
+is reprogrammed or resynced mid-acquisition leaves the pipeline describing data
+it no longer produced.
+
+The ``FPGAMonitor`` stage closes that gap. It re-reads the two endpoints the
+tracker registered, at the address the tracker resolved, and compares them
+against the record. It requires ``/config_tracker/fpga_host_info`` to be set on
+the same instance::
+
+  fpga_monitor:
+      kotekan_stage: FPGAMonitor
+      poll_interval_seconds: 5     # default
+      fetch_timeout_seconds: 5     # default; keep below poll_interval_seconds
+      fatal_on_change: true        # default
+      fatal_on_unreachable: false  # default
+      max_consecutive_failures: 3  # default
+
+A deviation from the record is fatal by default: every config the tracker has
+already propagated downstream is wrong from that point on. A controller that
+cannot be read is tolerated instead, escalating from a warning to an error after
+``max_consecutive_failures`` polls in a row, so a REST restart does not end an
+acquisition.
+
+Nothing is ever written back to the tracker by a poll — the record stays the
+snapshot taken at startup.
+
 Per-Connection REST Ports
 -------------------------
 When receiving frames over the network, ``bufferRecv`` may need to pull upstream configurations
 from the sender's REST server (only when the config tracker is enabled).
 
-- Default: the receiver assumes the sender's REST server is on port ``12048`` (``PORT_REST_SERVER``).
-- Override: use the stage config key ``upstream_rest_endpoints`` to specify non‑standard ports
-  per client. Entries are matched against the client IP as seen by ``bufferRecv``.
+Nothing on the wire carries the sender's REST port, so it has to come from
+config on the receiving side.
+
+- Default: the port this instance's own REST server is bound to, i.e. whatever
+  ``--bind-address`` gave it. A fleet launched on one port therefore agrees with
+  no extra config.
+- ``upstream_rest_port``: states that port explicitly. Set it when the senders
+  bind a different port than this receiver does — the two are unrelated, and the
+  default only happens to be right when they match.
+- ``upstream_rest_endpoints``: per-client overrides as ``"host:port"`` entries,
+  matched against the client IP as seen by ``bufferRecv``. These win over
+  ``upstream_rest_port``.
 
 Example::
 
@@ -143,13 +187,19 @@ Example::
     type: bufferRecv
     listen_port: 11024
     use_config_tracker: true
+    upstream_rest_port: 12050
     upstream_rest_endpoints:
       - "10.1.2.3:13000"
       - "192.168.5.10:14080"
 
 Notes
-- This setting is only meaningful when ``use_config_tracker: true``.
-- If a client IP:port is not listed, the default port ``12048`` is used for the IP.
+
+- These settings are only meaningful when ``use_config_tracker: true``.
+- If a client IP is not listed in ``upstream_rest_endpoints``, ``upstream_rest_port``
+  is used for it.
+- The default changed: receivers previously always assumed ``12048``. A receiver
+  bound to another port while its senders stay on ``12048`` now needs
+  ``upstream_rest_port: 12048`` set explicitly.
 
 Enabling or disabling the tracker
 ---------------------------------

@@ -50,6 +50,7 @@ add_library(
     FreqSubset.cpp
     prodSubset.cpp
     N2Subset.cpp
+    N2AutoSpectrum.cpp
     countCheck.cpp
     visAccumulate.cpp
     visCompression.cpp
@@ -74,7 +75,6 @@ add_library(
     BufferSplit.cpp
     InputSubset.cpp
     setScatterIndices.cpp
-    UpchannelizationSchedule.cpp
     setBBBeams.cpp
     calcBBPhase.cpp
     setUpchanGain.cpp
@@ -101,8 +101,10 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
+    FPGAMonitor.cpp
     givenDataGen.cpp
     testDataGen.cpp
+    testDataGenFewHot.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp
@@ -119,6 +121,7 @@ add_library(
     N2FrameToVisFrame.cpp
     RfiMaskSum.cpp
     RfiFrameMask.cpp
+    RfiSKMetrics.cpp
     CountLostPLSamplesScalar.cpp
     PLMaskExpandedToCompact.cpp
     # Julia
@@ -192,8 +195,7 @@ if(OpenMP_FOUND)
 endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
-    target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp
-                                          EigenN2Iter.cpp)
+    target_sources(kotekan_stages PRIVATE RingMapMaker.cpp EigenN2Iter.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
     if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)

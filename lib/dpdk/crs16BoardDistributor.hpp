@@ -163,8 +163,6 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
         throw std::runtime_error(fmt::format(
             fmt("num_crs_boards' parameter must be 16. Other configurations are not supported.")));
     }
-
-    packet_size = config.get<uint32_t>(unique_name, "packet_size");
 }
 
 inline int crs16BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {

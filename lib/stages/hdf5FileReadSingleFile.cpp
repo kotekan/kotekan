@@ -1,5 +1,5 @@
 #include "Config.hpp"            // for Config
-#include "DataType.hpp"          // for string_to_type, DataType
+#include "DataType.hpp"          // for string_to_type, type_to_string, DataType
 #include "NDArray.hpp"           // for GenericNDArray
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
@@ -17,17 +17,18 @@
 #include <algorithm>                          // for minmax_element, copy, find
 #include <cassert>                            // for assert
 #include <cstddef>                            // for size_t, ptrdiff_t
-#include <cstdint>                            // for uint8_t
+#include <cstdint>                            // for int64_t, uint8_t
 #include <cstring>                            // for memchr, memcpy, memset
 #include <functional>                         // for function
 #include <highfive/H5Attribute.hpp>           // for Attribute, Attribute::read
 #include <highfive/H5DataSet.hpp>             // for DataSet, AnnotateTraits::getAttribute, Dat...
 #include <highfive/H5DataSpace.hpp>           // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5Exception.hpp>           // for FileException
+#include <highfive/H5Exception.hpp>           // for Exception
 #include <highfive/H5File.hpp>                // for File, File::File, NodeTraits::getDataSet
 #include <highfive/H5Selection.hpp>           // for Selection, SliceTraits::read_raw, SliceTra...
 #include <highfive/bits/H5Selection_misc.hpp> // for Selection::getSpace
 #include <memory>                             // for allocator, __shared_ptr_access, shared_ptr
+#include <optional>                           // for optional
 #include <sstream>                            // for basic_ostream, operator<<, basic_ostringst...
 #include <string>                             // for basic_string, string, char_traits, operator==
 #include <unistd.h>                           // for sleep
@@ -37,6 +38,51 @@
 using namespace hdf5;
 using namespace HighFive;
 
+/**
+ * @class hdf5FileReadSingleFile
+ * @brief Replay CHIME/F-engine voltage data from a single HDF5 file.
+ *
+ * This is a special-purpose reader for baseband voltages: it reads one dataset holding all
+ * time samples of a recording (rank 4, `[T, F, ...]`, element type
+ * @c int4x2_swapped_withoffset), selects a subset of the frequency channels, and hands the
+ * data out one frame of @c num_times time samples at a time. It can transpose time and
+ * frequency and combine the dish and polarization axes into a single element axis, as the
+ * CHIME X-engine pipeline expects. Anything that does not match these expectations is
+ * fatal.
+ *
+ * Time downsampling is supported as long as the file is self-consistent: the time axis'
+ * @c dim_scalings entry has to equal the @c time_downsampling_fpga attribute (1 if that
+ * attribute is absent), because the per-frame @c fpga_seq_num is reconstructed as
+ * `fpga_seq_num + frame_index * num_times * time_downsampling_fpga`.
+ *
+ * This stage is NOT a general replay path for the files written by @c hdf5FileWrite: use
+ * @c hdf5FileRead (with @c read_single_file for a single file) for any other data type,
+ * rank, or axis order. Unlike @c hdf5FileRead, this stage never ends the pipeline; it
+ * idles after the last frame until kotekan is stopped, so something else has to shut the
+ * pipeline down.
+ *
+ * @par Buffers
+ * @buffer out_buf Buffer to fill with the voltage frames
+ *         @buffer_format any format, declared as `kotekan_buffer: ndarray`
+ *         @buffer_metadata chordMetadata
+ *
+ * @conf  input_dir             String. Required. Directory holding the input file.
+ * @conf  file_name             String. Required. The file is `<input_dir>/<file_name>.h5`,
+ *                              and @c file_name is also the name of the dataset in it.
+ * @conf  frequency_channels    Vector of ints. Required. The coarse frequency channels to
+ *                              read, in the order they should appear in the frames. Every
+ *                              one of them has to be present in the file's @c coarse_freq.
+ * @conf  num_times             Int. Required. Number of time samples per frame. The file
+ *                              provides `floor(T / num_times)` frames.
+ * @conf  combine_dishes_and_polarizations  Bool. Default: false. Merge the last two axes
+ *                              of the file into one axis named "E" (for CHIME).
+ * @conf  transpose_frequency_and_time  Bool. Default: false. Emit frequency before time
+ *                              instead of time before frequency (for CHIME).
+ *
+ * @par Metrics
+ * @metric kotekan_hdf5filereadsinglefile_read_time_seconds Time required to read the last
+ *         frame.
+ */
 class hdf5FileReadSingleFile : public kotekan::Stage {
     const std::string input_dir = config.get<std::string>(unique_name, "input_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
@@ -50,6 +96,10 @@ class hdf5FileReadSingleFile : public kotekan::Stage {
         config.get_default<bool>(unique_name, "transpose_frequency_and_time", false);
 
     Buffer* const buffer;
+
+    kotekan::prometheus::Gauge& read_time_metric =
+        kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_hdf5filereadsinglefile_read_time_seconds", unique_name);
 
 public:
     hdf5FileReadSingleFile(kotekan::Config& config, const std::string& unique_name,
@@ -66,9 +116,6 @@ public:
     virtual ~hdf5FileReadSingleFile() {}
 
     void main_thread() override {
-        auto& read_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
-            "kotekan_hdf5filereadsinglefile_read_time_seconds", unique_name);
-
         // Define file name
         std::ostringstream buf;
         buf << input_dir << "/" << file_name << ".h5";
@@ -90,28 +137,54 @@ public:
             const auto name = dataset.getAttribute("name").read<std::string>();
             const auto type =
                 kotekan::string_to_type(dataset.getAttribute("type").read<std::string>());
-            assert(type == kotekan::int4x2_swapped_withoffset);
+            if (type != kotekan::int4x2_swapped_withoffset)
+                FATAL_ERROR("hdf5FileReadSingleFile reads only int4x2_swapped_withoffset voltage "
+                            "files (got {:s}); use hdf5FileRead with read_single_file for other "
+                            "data",
+                            kotekan::type_to_string(type));
             const auto dim_names =
                 dataset.getAttribute("dim_names").read<std::vector<std::string>>();
             const auto dim_scalings =
                 dataset.getAttribute("dim_scalings").read<std::vector<std::ptrdiff_t>>();
 
+            // The frequency mapping is required: this stage selects frequency channels
+            const auto require_attribute = [&](const std::string& key) {
+                if (!dataset.hasAttribute(key))
+                    FATAL_ERROR("Dataset \"{:s}\" in {:s} does not have the required attribute "
+                                "{:s}; hdf5FileReadSingleFile needs the frequency mapping of the "
+                                "voltage file",
+                                file_name, full_path, key);
+            };
+            require_attribute("coarse_freq");
+            require_attribute("freq_upchan_factor");
+            require_attribute("freq_upchan_index");
             const auto coarse_freq = dataset.getAttribute("coarse_freq").read<std::vector<int>>();
             const auto freq_upchan_factor =
                 dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>();
             const auto freq_upchan_index =
                 dataset.getAttribute("freq_upchan_index").read<std::vector<int>>();
 
-            const auto time_downsampling_fpga =
-                dataset.getAttribute("time_downsampling_fpga").read<int>();
-            const auto fpga_seq_num = dataset.getAttribute("fpga_seq_num").read<int>();
-            const auto seq_length_nsec [[maybe_unused]] =
-                dataset.getAttribute("seq_length_nsec").read<double>();
+            const int time_downsampling_fpga =
+                dataset.hasAttribute("time_downsampling_fpga")
+                    ? dataset.getAttribute("time_downsampling_fpga").read<int>()
+                    : 1;
+            const std::optional<std::int64_t> fpga_seq_num =
+                dataset.hasAttribute("fpga_seq_num")
+                    ? std::optional<std::int64_t>(
+                          dataset.getAttribute("fpga_seq_num").read<std::int64_t>())
+                    : std::nullopt;
 
             // Convert dimensions
-            assert(dims.size() == 4);
-            assert(dim_names.size() == 4);
-            assert(dim_scalings.size() == 4);
+            if (dims.size() != 4)
+                FATAL_ERROR("Dataset \"{:s}\" in {:s} has rank {:d}, but hdf5FileReadSingleFile "
+                            "reads only rank-4 voltage data",
+                            file_name, full_path, dims.size());
+            if (dim_names.size() != 4)
+                FATAL_ERROR("Dataset \"{:s}\": attribute dim_names has {:d} entries, expected 4",
+                            file_name, dim_names.size());
+            if (dim_scalings.size() != 4)
+                FATAL_ERROR("Dataset \"{:s}\": attribute dim_scalings has {:d} entries, expected 4",
+                            file_name, dim_scalings.size());
             std::vector<std::ptrdiff_t> new_dims;
             std::vector<kotekan::Symbol> new_dim_names;
             std::vector<std::ptrdiff_t> new_dim_scalings;
@@ -148,8 +221,13 @@ public:
             }
 
             // Find which frequencies to read
-            assert(std::string(dim_names.at(1)) == "F");
-            assert(dim_scalings.at(1) == 1);
+            if (dim_names.at(1) != "F")
+                FATAL_ERROR("Dataset \"{:s}\": dimension 1 is named \"{:s}\", but "
+                            "hdf5FileReadSingleFile requires the frequency axis \"F\" there",
+                            file_name, dim_names.at(1));
+            if (dim_scalings.at(1) != 1)
+                FATAL_ERROR("Dataset \"{:s}\": the frequency axis has dim_scaling {:d}, expected 1",
+                            file_name, dim_scalings.at(1));
             INFO("This file has {} frequencies", dims.at(1));
             INFO("Will read {} frequencies", frequency_channels.size());
             std::vector<int> frequency_indices(frequency_channels.size());
@@ -157,7 +235,10 @@ public:
                 const int frequency_channel = frequency_channels.at(n);
                 const auto frequency_index_iter =
                     std::find(coarse_freq.begin(), coarse_freq.end(), frequency_channel);
-                assert(frequency_index_iter != coarse_freq.end());
+                if (frequency_index_iter == coarse_freq.end())
+                    FATAL_ERROR("Frequency channel {:d} is not in the coarse_freq attribute of "
+                                "dataset \"{:s}\" in {:s}",
+                                frequency_channel, file_name, full_path);
                 const int frequency_index = frequency_index_iter - coarse_freq.begin();
                 frequency_indices.at(n) = frequency_index;
                 INFO("   local array index {}, file dataset index {}, channel {}", n,
@@ -172,8 +253,17 @@ public:
             }
 
             // Calculate available number of frames
-            assert(std::string(dim_names.at(0)) == "T");
-            assert(dim_scalings.at(0) == 1);
+            if (dim_names.at(0) != "T")
+                FATAL_ERROR("Dataset \"{:s}\": dimension 0 is named \"{:s}\", but "
+                            "hdf5FileReadSingleFile requires the time axis \"T\" there",
+                            file_name, dim_names.at(0));
+            // The per-frame fpga_seq_num is reconstructed as
+            // fpga_seq_num + frame_index * num_times * time_downsampling_fpga, which is only
+            // correct if the time axis is sampled at the downsampling rate of the file.
+            if (dim_scalings.at(0) != time_downsampling_fpga)
+                FATAL_ERROR("Dataset \"{:s}\": the time axis has dim_scaling {:d} but "
+                            "time_downsampling_fpga is {:d}",
+                            file_name, dim_scalings.at(0), time_downsampling_fpga);
             const std::ptrdiff_t available_num_times = dims.at(0);
             const std::ptrdiff_t available_num_frames = available_num_times / num_times;
             INFO("This file has {} time samples", available_num_times);
@@ -210,7 +300,9 @@ public:
                 meta->set_freq_upchan_index(new_freq_upchan_index);
 
                 meta->set_time_downsampling_fpga(time_downsampling_fpga);
-                meta->set_fpga_seq_num(fpga_seq_num + 1LL * frame_index * num_times);
+                if (fpga_seq_num)
+                    meta->set_fpga_seq_num(
+                        *fpga_seq_num + 1LL * frame_index * num_times * time_downsampling_fpga);
 
                 // Poison buffer
                 const std::uint8_t voltage_poison = 0x00;
@@ -264,8 +356,8 @@ public:
 
             DEBUG("Done reading frames.");
 
-        } catch (const FileException& ex) {
-            FATAL_ERROR("Could not open HDF5 file {:s}: {:s}", full_path, ex.what());
+        } catch (const HighFive::Exception& ex) {
+            FATAL_ERROR("Could not read HDF5 file {:s}: {:s}", full_path, ex.what());
         }
 
         // Wait for shutdown (don't trigger a shutdown)

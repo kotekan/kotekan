@@ -5,12 +5,12 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"            // for exit_kotekan, ReturnCode
-#include "kotekanLogging.hpp"  // for INFO, ERROR
+#include "kotekanLogging.hpp"  // for INFO, WARN, FATAL_ERROR
 #include "metadata.hpp"        // for metadataObject
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <assert.h>   // for assert
+#include <chrono>     // for microseconds
 #include <cstdio>     // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
 #include <errno.h>    // for errno
 #include <functional> // for bind, function
@@ -18,6 +18,7 @@
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <string.h>   // for strerror
 #include <sys/stat.h> // for stat
+#include <thread>     // for sleep_for
 #include <unistd.h>   // for gethostname, sleep
 
 
@@ -46,6 +47,13 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
 
     // Interrupt Kotekan if run out of files to read.
     end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
+
+    // Optional replay pacing: sleep this many microseconds after publishing each frame,
+    // so a captured file replays at roughly the rate it was acquired at. 0 (the default)
+    // reads as fast as the downstream pipeline drains, which is what you want unless
+    // something downstream is tied to the wall clock. See the class doc: this is a floor
+    // on the frame period, not a rate lock.
+    frame_period_us = config.get_default<uint64_t>(unique_name, "frame_period_us", 0);
 }
 
 rawFileRead::~rawFileRead() {}
@@ -87,25 +95,37 @@ void rawFileRead::main_thread() {
 
         FILE* fp = fopen(full_path, "rb");
         uint32_t metadata_size = 0;
-        uint32_t fileSize, num_frames_per_file;
+        if (!fp)
+            FATAL_ERROR("rawFileRead: cannot open {:s}: {:s}", full_path, strerror(errno));
 
         // Work out the file size, metadata size and no. of frames per file.
         fseek(fp, 0, SEEK_END);
-        fileSize = ftell(fp);
+        const uint64_t fileSize = ftell(fp);
         rewind(fp);
 
-        if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
-            ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
-                  strerror(errno));
-            break;
-        }
+        if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1)
+            FATAL_ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}",
+                        full_path, strerror(errno));
 
-        num_frames_per_file = fileSize / (metadata_size + buf->frame_size);
+        // Each rawFileWrite record includes its own metadata-size header.
+        const uint64_t record_size = sizeof(uint32_t) + uint64_t(metadata_size) + buf->frame_size;
+        if (fileSize % record_size)
+            WARN("rawFileRead: {:s} has {:d} trailing bytes that do not form a whole frame for the "
+                 "configured descriptor, ignoring them",
+                 full_path, fileSize % record_size);
+        const uint64_t num_frames_per_file = fileSize / record_size;
+        rewind(fp);
 
         INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
 
         // Read each frame from the file and copy into the buffer.
-        for (uint32_t i = 0; i < num_frames_per_file; i++) {
+        for (uint64_t i = 0; i < num_frames_per_file; i++) {
+            uint32_t record_metadata_size = 0;
+            if (fread(&record_metadata_size, sizeof(record_metadata_size), 1, fp) != 1)
+                FATAL_ERROR("rawFileRead: cannot read record metadata-size header in {}",
+                            full_path);
+            if (record_metadata_size != metadata_size)
+                FATAL_ERROR("rawFileRead: metadata size changed between records in {}", full_path);
 
             // Get an empty buffer to write into
             frame = buf->wait_for_empty_frame(unique_name, frame_id);
@@ -116,7 +136,9 @@ void rawFileRead::main_thread() {
             if (metadata_size != 0) {
                 buf->allocate_new_metadata_object(frame_id);
                 auto meta = buf->get_metadata(frame_id);
-                assert(metadata_size == meta->get_serialized_size());
+                if (metadata_size != meta->get_serialized_size())
+                    FATAL_ERROR(
+                        "rawFileRead: serialized metadata size does not match configured type");
                 char meta_buf[metadata_size];
                 if (fread(meta_buf, metadata_size, 1, fp) != 1) {
                     ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
@@ -137,6 +159,11 @@ void rawFileRead::main_thread() {
                  buf->buffer_name, frame_id);
             buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
+
+            // sleep_for, not usleep: useconds_t is 32-bit, so a period past
+            // ~4.29 s would silently truncate (and POSIX.1-2008 dropped usleep).
+            if (frame_period_us > 0)
+                std::this_thread::sleep_for(std::chrono::microseconds(frame_period_us));
         }
 
         fclose(fp);

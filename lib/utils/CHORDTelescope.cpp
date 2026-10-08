@@ -68,7 +68,7 @@ DishParams DishParams::from_config(const kotekan::Config& config, const std::str
         //                                            std::vector<dishInfo>());
         config.get<std::vector<dishInfo>>(path, "dish_inputs");
 
-    // Make real dish table full of Fake dishes.
+    // Make real dish table full of Missing dishes.
     std::vector<dishInfo> dish_info_table(num_dishes);
 
     // Set indices for NULL dishes.
@@ -110,7 +110,7 @@ DishParams DishParams::from_config(const kotekan::Config& config, const std::str
                 occupied_loc.at(occ_idx) = true;
             }
         }
-        if (dish_info_table.at(idx).type != DishType::Fake) {
+        if (dish_info_table.at(idx).type != DishType::Missing) {
             FATAL_ERROR_NON_OO("dish {:s} has dish_idx {:d}, which is duplicated in `dish_inputs`",
                                dish.label, dish.idx);
         }
@@ -549,6 +549,18 @@ void CHORDTelescope::fill_input_maps(dishInputFields& input) const {
     }
 }
 
+std::vector<uint64_t> CHORDTelescope::get_connected_elements(ElementOrder ord) const {
+    std::vector<uint64_t> elements;
+    for (uint64_t el = 0; el < _num_elements; el++) {
+        uint64_t dish;
+        uint64_t pol;
+        decode_station_id(element_index_to_station_id(el, ord), dish, pol);
+        if (_dish_params.dish_info_table.at(dish).type != DishType::Missing)
+            elements.push_back(el);
+    }
+    return elements;
+}
+
 size_t CHORDTelescope::get_num_stacks() const {
     FATAL_ERROR("get_num_stacks() has not been implemented in CHORDTelescope yet.");
     return 0;
@@ -749,8 +761,8 @@ void from_json(const nlohmann::json& j, dishInfo& d) {
 
 void to_json(nlohmann::json& j, const DishType& t) {
     switch (t) {
-        case DishType::Fake:
-            j = "Fake";
+        case DishType::Missing:
+            j = "Missing";
             break;
         case DishType::ArrayDish:
             j = "ArrayDish";
@@ -766,8 +778,8 @@ void to_json(nlohmann::json& j, const DishType& t) {
 }
 
 void from_json(const nlohmann::json& j, DishType& t) {
-    if (j == "Fake")
-        t = DishType::Fake;
+    if (j == "Missing")
+        t = DishType::Missing;
     else if (j == "ArrayDish")
         t = DishType::ArrayDish;
     else if (j == "RFIDish")
