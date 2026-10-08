@@ -1,5 +1,10 @@
 # CHORD GNSS beam maps — the production pipeline
 
+⚠️ **The recipe below is historical.** Its scripts (`gnss_beam_elem2obs`, `_veto`, `_map`,
+`_radial`, `_build`, `_coh`) were removed on 2026-10-08 and are at 31896a862; the beam cube
+(`CHORD_BEAMCUBE_RUNBOOK.md`) replaced them. §2 (which field is the beam), §3 (the railing
+veto) and §5 (the boresight) still describe what the cube uses.
+
 How to roll a beam map from the element archive, end to end, without re-deriving anything.
 Written 2026-08-26 after the first maps off `elem_*.jsonl`; supersedes the ad-hoc
 `fixtures/beam/mkobs.py` route (which reconstructed rows from `FLEET-COH` log lines because
