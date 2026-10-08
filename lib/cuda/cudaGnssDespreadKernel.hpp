@@ -120,7 +120,7 @@ struct DespreadJob {
 /// forward one GPU frame, NOT from a despread of this window. That is what buys the single pass,
 /// makes the add-back exact for any gain, and leaves the residual a HONEST depth metric (a gain
 /// fitted in-window subtracts its own noise back along R, and the residual reads ~0 = infinite
-/// depth -- the degeneracy that makes GnssVoltagePeel's own peel_db unusable).
+/// depth).
 ///
 /// TWO GAINS, NOT ONE. The window straddles a code-period boundary at hop @c m_head, and every
 /// overlay/nav sign flip our signals have lives exactly there. One gain per window models a
@@ -242,7 +242,7 @@ struct DespreadParams {
  *
  * The ENCODER is therefore ours to write, and it has to do what the RFSoC does: the bandpass is
  * not flat, so each channel gets its own scale, chosen to put that bin's NOISE rms at ~2-3 lsb
- * (measured at startup -- see cudaGnssTrack's bandpass measurement). That per-bin scaling is what
+ * (measured at startup). That per-bin scaling is what
  * makes 4 bits enough. GNSS lives far below the noise, so the noise dithers the buried signal, and
  * the quantization error -- uncorrelated with a pseudorandom replica -- averages down like thermal
  * noise instead of biasing the correlation. Measured on real sky: < 0.2 dB C/N0 loss at 2 lsb,
@@ -291,17 +291,6 @@ cudaError_t launch_despread(const float2* data, const int8_t* code, const Despre
 /// As launch_despread, but reading a CHORD 4+4b ring: one byte per (channel, hop), unpacked with
 /// @c chan_scale [n_chan] (lsb -> volts, the inverse of the ingest's scale). Same kernel, same
 /// numerics, only the voltage load differs -- the demotion must not fork the despread.
-/// BENCH ONLY: run the despread with part of the work ablated, to attribute the kernel's cost.
-/// abl: 0 = production (nothing ablated), 1 = NO_MAC (synthesis + carrier only, one add kept so
-/// the gather is not eliminated), 2 = NO_SYN (constant replica; carrier + MAC only).
-///   synthesis  ~ T(0) - T(NO_SYN)
-///   correlation~ T(0) - T(NO_MAC)
-/// The production launchers instantiate the un-ablated path and are unaffected. Results from an
-/// ablated run are MEANINGLESS as despread output -- timing only.
-cudaError_t launch_despread_abl(const float2* data, const int8_t* code, const DespreadJob* jobs,
-                                int n_spec, int n_chan, const DespreadParams& p, double2* corr,
-                                double* energy, cudaStream_t stream, int abl);
-
 cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale,
                               const int8_t* code, const DespreadJob* jobs, int n_spec, int n_chan,
                               const DespreadParams& p, double2* corr, double* energy,
@@ -315,9 +304,8 @@ cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale
  * replica removed, one store of the residual. Reuses the despread kernel's chip gather verbatim,
  * so the subtracted waveform is bit-identical to the one the despread correlates against.
  *
- * SIMULTANEOUS, NOT SUCCESSIVE. The CPU GnssVoltagePeel peels PRNs one after another off a
- * running residual, because its gain is fitted in-window and would otherwise see the other sats'
- * cross-talk. A feed-forward gain does not depend on the data at all, so the subtractions are
+ * SIMULTANEOUS, NOT SUCCESSIVE. A feed-forward gain does not depend on the data at all, so the
+ * subtractions are
  * independent and commute -- which is what lets every PRN be handled inside one thread's loop
  * with no atomics and no ordering.
  *
@@ -336,60 +324,6 @@ cudaError_t launch_peel(const float2* data, const int8_t* code, const PeelJob* j
 cudaError_t launch_peel_q(const unsigned char* data, const float* chan_scale, const int8_t* code,
                           const PeelJob* jobs, int n_job, int n_chan, const DespreadParams& p,
                           float2* resid, cudaStream_t stream);
-
-/**
- * THE ANALYTIC ADD-BACK, in place, right after a despread that ran on the peel residual.
- *
- *     V[k] = V'[k] + a_head*<R_P 1_head, R_k> + a_tail*(<R_P, R_k> - <R_P 1_head, R_k>)
- *
- * Rows 0-3 (E, P, L, P_HEAD) arrive holding V' and leave holding V -- the FULL, un-peeled
- * correlation -- so the assembler, combiner, broker, viewer and TEC chain never learn that a peel
- * happened. The residual they would otherwise lose is preserved first, into rows 4 and 5
- * (gnssRecord.hpp slots 20-23), where it becomes the peel-depth observable.
- *
- * Exact for ANY gain, because on this block one side is the known reference: the peel's
- * contribution to <X, R_k> is data-INDEPENDENT. A wrong (even sign-flipped) feed-forward gain
- * therefore costs residual depth and nothing else -- the tracking loop is untouched.
- *
- * Runs on the host side of the pipeline's cadence but on the GPU: it is O(n_spec x n_chan) with
- * no gathers, far too small to be worth a device->host round trip.
- *
- * @param corr    in/out [rows_spec*n_spec][n_chan], rows_spec = gnss_gpu::ROWS_PEEL
- * @param energy  in     same layout: row 1 = <R_P,R_P>, row 3 = <R_P,R_P>|head
- * @param xcorr   in     [4*n_spec][n_chan] from launch_despread: <R_P,R_E>, <R_P,R_L>, + head
- * @param gains   in     [2*n_spec][n_chan] float2, exactly what launch_peel subtracted
- */
-cudaError_t launch_peel_addback(double2* corr, const double* energy, const double2* xcorr,
-                                const float2* gains, int n_spec, int n_chan, int rows_spec,
-                                cudaStream_t stream);
-
-/// launch_chan_ingest for the 4+4b ring: transpose one hop-major byte frame ([hop][chan], as
-/// GnssQuantize44 emits it) into the channel-major ring. A PURE byte transpose -- quantization
-/// happens UPSTREAM on the CPU (GnssQuantize44, the RFSoC's job), where CHORD's boundary actually
-/// is; doing it there also shrinks the H2D copy 8x. The scales the bytes were encoded with arrive
-/// via GnssChanMetadata::chan_scale and feed launch_despread_q.
-cudaError_t launch_chan_ingest_q(const unsigned char* frame, unsigned char* ring, int n_hops_f,
-                                 int n_chan, long long ring_hops, long long write_hop,
-                                 cudaStream_t stream);
-
-/// launch_ring_zero for the 4+4b ring: fills the OFFSET-ENCODED zero (0x88), not 0x00 -- 0x00
-/// decodes to (-8,-8), i.e. a full-scale DC spike where a valve drop should read silence.
-cudaError_t launch_ring_zero_q(unsigned char* ring, int n_chan, long long ring_hops,
-                               long long write_hop, long long count, cudaStream_t stream);
-
-/**
- * Transpose-ingest one hop-major channelized frame into the channel-major device ring
- * (phase F ingest command). frame is [n_hops_f][n_chan] (as the F-engine/bufferRecv delivers),
- * ring is [n_chan][ring_hops]; element (m, c) lands at ring[c][(write_hop + m) % ring_hops].
- */
-cudaError_t launch_chan_ingest(const float2* frame, float2* ring, int n_hops_f, int n_chan,
-                               long long ring_hops, long long write_hop, cudaStream_t stream);
-
-/// Zero-fill @c count hops of every channel row starting at ring hop @c write_hop (mod
-/// ring_hops) -- valve-drop gap fill, so ring position stays identically (absolute hop - hop0)
-/// and a window overlapping a gap despreads against clean zeros (SNR loss, never misalignment).
-cudaError_t launch_ring_zero(float2* ring, int n_chan, long long ring_hops, long long write_hop,
-                             long long count, cudaStream_t stream);
 
 } // namespace gnss_cuda
 
