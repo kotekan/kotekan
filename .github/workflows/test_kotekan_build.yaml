@@ -54,7 +54,6 @@ jobs:
       # runners restore and save it through the Actions cache. Only pushes to develop
       # write the shared /data cache, so a PR branch cannot leave objects in it.
       CCACHE_DIR: ${{ contains(inputs.runs_on || '', 'self-hosted') && format('/data/ccache/{0}', inputs.ccache_key) || format('{0}/.ccache', github.workspace) }}
-      CCACHE_READONLY: ${{ github.event_name == 'pull_request' && contains(inputs.runs_on || '', 'self-hosted') }}
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_COMPRESS: true
       CCACHE_TEMPDIR: /tmp/.ccache
@@ -106,6 +105,9 @@ jobs:
         if: inputs.cmake_defs
         run: |
           set -euo pipefail
+          if ${{ github.event_name == 'pull_request' && contains(inputs.runs_on || '', 'self-hosted') }}; then
+            export CCACHE_READONLY=true
+          fi
           mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
           ccache -s
           cmake -DARCH=haswell -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ inputs.cmake_defs }} ..
