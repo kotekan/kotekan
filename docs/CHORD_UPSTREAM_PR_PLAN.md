@@ -1,6 +1,6 @@
 # Staged upstream PR plan — `kv/chord-gnss` → `develop`
 
-**Status 2026-10-08.** Upstream PRs now target `develop`; `chord` is rebuilt by Jim as
+**Status 2026-10-09.** Upstream PRs now target `develop`; `chord` is rebuilt by Jim as
 `develop` plus selected open PRs ("Sync chord: develop <sha> + PRs ..."), so a PR reaches
 `chord` at his next sync without bypassing review.
 
@@ -11,7 +11,8 @@
 | [#1699](https://github.com/kotekan/kotekan/pull/1699), [#1713](https://github.com/kotekan/kotekan/pull/1713) | off-plan fixes | merged |
 | [#1675](https://github.com/kotekan/kotekan/pull/1675) | 3, GPU scheduling | open; Jim approved, waiting on Andre and Erik |
 | [#1750](https://github.com/kotekan/kotekan/pull/1750) | 4, DPDK capture | open; running on all six CHORD GNSS nodes |
-| — | 5–9, GNSS | not started; cleanup round 2 done (below) |
+| [#1751](https://github.com/kotekan/kotekan/pull/1751), [#1752](https://github.com/kotekan/kotekan/pull/1752) | off-plan: airspyInput, fftwEngine PFB | drafts; waiting on a dongle test |
+| — | 5–8, GNSS | not started; cleanup rounds 2 and 3 done (below) |
 
 Against `develop`'s merge base (`3bfbba126`) the branch is **682 files, +201,512 / −308**:
 631 added, 51 modified. The draft [#1618](https://github.com/kotekan/kotekan/pull/1618)
@@ -184,32 +185,37 @@ packet's receipt bit in the frame it was copied into. The earlier five-piece pla
 logs, per-stream seq check, worker-health metrics, axis watchdogs, opt-in resync) was dropped
 in favour of this: with the daemon restarting on FATAL, none of it was needed.
 
-### Stage 5 — GNSS foundation, no framework *(~8k lines, trivially reviewable)*
+### Stage 5 — GNSS foundation
 
-The 32 signal code generators, the pure value-type headers, and `lib/stages/pfbPrototype.*`.
-These have **zero project includes** — C++ stdlib only — and `tests/boost/` already compiles
-them directly rather than linking `kotekan_stages`, which is an existing working proof that
-the tier builds with no FFTW, no CUDA and no framework. Ship the boost tests in this stage.
+The 16 signal code generators, the pure value-type headers, `lib/stages/pfbPrototype.*`, and
+`GnssChanMetadata` with its `metadataFactory.cpp` pool branch and the CMakeLists wiring. The
+generators and value types include only the C++ standard library, and `tests/boost/` already
+builds them without linking `kotekan_stages`; ship those boost tests here. Everything after
+needs the metadata: 18 GNSS sources use it, and without the factory branch every GNSS config
+throws at startup.
 
-### Stage 6 — `GnssChanMetadata` + build wiring *(small, unlocks everything after)*
+### Stage 6 — GNSS host-side core
 
-`lib/metadata/GnssChanMetadata.*`, the `metadataFactory.cpp` pool branch, and the CMakeLists
-edits. 28 of the 104 GNSS sources depend on this header; without the factory branch every GNSS
-config throws at startup.
+`gnssChannelizedReplica` (`ChannelizedReplicaBank`, the code replicas every GPU correlation
+runs against), `gnssChannelizedDespread` (the despread result type, `overlay_wipe` and a CPU
+despread) and `gnssChannelizedAcquire` (the acquisition definitions and an FFTW engine), with
+their boost tests. This is not a CPU pipeline: the prototype's CPU stages are gone (tag
+`airspy-prototype-final`), and the live GPU path is built on these classes. The CPU despread
+and the FFTW engine do not run in production (the engine is `GnssChannelizedSearch`'s
+fallback when the GPU declines a grid), but they are the reference the boost tests check the
+GPU path's math against, so upstream's CPU CI can test it. Whether the search keeps its CPU
+fallback is a question for this PR.
 
-### Stage 7 — CPU/FFTW GNSS chain
+### Stage 7 — CUDA GNSS path, the GNSS stages, `external/n2k_dual`
 
-The channelized despread/replica/acquire/search set. ⚠️ With the airspy prototype gone, our
-`fftwEngine` and `airspyInput` modifications serve no CHORD configuration; the cruft pass
-decides whether they revert to upstream rather than ship here.
-
-### Stage 8 — CUDA GNSS path + `external/n2k_dual`
-
-The four `.cu` kernels, `cudaCorrelatorDual`, and the `n2k_dual` clone.
+The four `.cu` kernels, `cudaCorrelatorDual`, the `n2k_dual` clone, and the stages the CHORD
+configs run: the node chain, record assembly, combiner, projection, telemetry, fleet trim and
+the aggregator's search. The GPU cleanup pass comes first (the kernels' carrier-phase branch,
+bench-only kernel variants, `enable_split_timing`; it needs an A/B on cf06's L40S).
 **`external/n2k` is byte-untouched and must stay so** — verified: `git diff -- external/n2k`
 is empty.
 
-### Stage 9 — broker, viewer, tooling, configs, docs
+### Stage 8 — broker, viewer, tooling, configs, docs
 
 The Python broker package, the js_viewer panels, `scripts/gnss/`, `config/`, `docs/`. Largest
 by line count, lowest by risk — none of it compiles into kotekan.
@@ -235,7 +241,7 @@ by line count, lowest by risk — none of it compiles into kotekan.
    aggregator and cube-archive recipes.
 8. **Hardcoded `/home/kvand` paths** — OPEN, and larger than first counted: 78 files. Most are
    our deployment scripts, systemd units and runbooks, which raises the real question for
-   stage 9 — which of `scripts/gnss/` and `docs/` belongs upstream at all. ~37 are code or test
+   stage 8 — which of `scripts/gnss/` and `docs/` belongs upstream at all. ~37 are code or test
    defaults pointing at out-of-repo fixtures and data, tied to item 2.
 
 ---
@@ -281,7 +287,7 @@ broker changes `broker_equiv.py check` on cf05 (never `gate.sh` beside the live 
 3. Code generators: drop the four L1-band ones (above CHORD's band)? GLONASS (in band, no chain)?
 4. `scripts/gnss/site/` boundary for our deployment tooling (needs a planned restart: units,
    crontabs, cf06 `cubecompact_loop`).
-5. `n2k_dual`: propose the two-input extension to n2k upstream, or ship the clone in stage 8?
+5. `n2k_dual`: propose the two-input extension to n2k upstream, or ship the clone in stage 7?
 6. `dop-continuous`: retire with the others?
 7. Medium-confidence C++ (carrier-phase A/B arm #55, unused assembler REST levers, debug env
    vars, FDMA offset).
@@ -307,7 +313,7 @@ PFB mode, sample_seq, stream watchdog, `ensure_frame_desc`), `fftwEngine.{cpp,hp
 `airspyFrameDesc.hpp`, `config/airspy_autocorr.yaml`. Base `develop`, its own worktree, so it
 does not wait on or collide with this cleanup (B1 reverts those files here; when the PR merges,
 the next develop merge brings them back cleanly). Must: drop the dependency on
-`GnssChanMetadata` (stage 6) or land after it; fix `fftwEngine.cpp:181-188`, which dereferences
+`GnssChanMetadata` (stage 5) or land after it; fix `fftwEngine.cpp:181-188`, which dereferences
 `get_gnss_chan_metadata()` for any pool (nullptr unless GNSS); strip host and dongle specifics
 (gx10, serials); split the `/adcstat` hang fix out as its own small commit; tests per AGENTS.md.
 Done as draft PR #1751 (branch kv/airspy-pfb, worktree ~/gnss/airspy-wt).
@@ -327,9 +333,9 @@ selftest + `broker_multi --list` base vs branch (`test_skyscope` is a race: base
 * Held back, with the reason: path A (`cudaGnssChordTrack` + generator branch; the generator
   records KV keeping it for single-signal debugging -> C9); combiner overlay/navwipe/bit_export
   and nh-assist (C1/C2); bench-only kernel variants and the GPU gate tools phibits/phishare(gpu)
-  (stage 8, need GPU A/B); assembler chan/phi and dcyc dumps (C7); `navbit_reuse` (C1);
+  (stage 7, need GPU A/B); assembler chan/phi and dcyc dumps (C7); `navbit_reuse` (C1);
   `l5_band_decode`, `mid_band_decode`, `gps_l2c_subband_validate`, `gps_hoprate_validate` (cited as
-  references by the generators and a boost test: stage 5/7); `gnss_tec` (feeds gnss_tec_movie);
+  references by the generators and a boost test: stage 5/6); `gnss_tec` (feeds gnss_tec_movie);
   `kcoh_phase_series`/`kcoh_rate_probe` (C7); beam-map pipeline (6 files) and broker benches
   (medium/low); `bfmask_deadlock_upstream_note` (C11).
 * New decisions: **C9** remove path A? **C10** beam-map pipeline? **C11** file the bfmask note as
@@ -350,7 +356,7 @@ selftest + `broker_multi --list` base vs branch (`test_skyscope` is a race: base
   install_user_units.sh` (daemon-reload only, nothing restarts); repoint the gnss crontab (3 lines)
   and cf06's (1); `ssh cf06 .../scripts/gnss/site/cubecompact_up.sh`; then
   `scripts/gnss/site/stack_contract_gate.sh` (rail differs until gnss-rail restarts).
-* C5 clone `n2k_dual` for now; it ships in stage 8.
+* C5 clone `n2k_dual` for now; it ships in stage 7.
 * C7 DONE except: `/set_elem_gain`, `/set_elem_sum_adapt`, `/set_reference_element` are manual
   operator levers (element-cal work), not dead -- asked KV; the kernels' carrier_phase_from_ref
   branch waits for the GPU bench pass (fixed at 1).
