@@ -179,8 +179,8 @@ and the Galileo position solve was in the hundreds of metres. A restart re-seeds
 from the orbit model. Do it outside a transit freeze, then check broker.log for CHAIN DIED at T+60 s.
 
 **The non-GNSS half of every node config is production's, and a gate holds it there.** The
-generator builds on `config/chord_pathfinder.j2` rendered stock, the same template choco renders
-for its own nodes. It injects the two values stock nodes receive over REST: choco's EOP table, and
+generator builds on `config/chord/pathfinder.j2` rendered stock, the same templates choco renders
+for its own nodes and recv1. It injects the two values stock nodes receive over REST: choco's EOP table, and
 bffs's bad-input list, which choco relays only when the list changes. `scripts/gnss/stock_parity.py`
 diffs the stock half against the render and fails on any difference not declared in the script.
 `gen_fleet.py` runs it on every write and `--check`, and

@@ -11,7 +11,7 @@ stock node runs. Until 2026-10-02 it was not: the generator injected into a capt
 08-31, which went stale without a sound, and our nodes shipped self-consistent, wrong N^2 --
 two boards short, an old dish table, no subset, no mask (fixtures/stock_parity_20261002/).
 
-THE REFERENCE. By default, the STOCK RENDER of config/chord_pathfinder.j2 -- no gnss_node,
+THE REFERENCE. By default, the STOCK RENDER of config/chord/pathfinder.j2 (and its includes),
 rendered exactly as kotekan renders it -- which is also the generator's base. With --live, a
 running stock node's /config, which also carries the values choco PUSHES at runtime (the EOP
 table, bffs's bad inputs): those must then be equal too, so --live checks the live injection
@@ -32,7 +32,7 @@ import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-TEMPLATE = os.path.join(ROOT, "config", "chord_pathfinder.j2")
+TEMPLATE = os.path.join(ROOT, "config", "chord", "pathfinder.j2")
 
 # (path pattern, kinds, why). Kinds: + added, - removed, ~ changed. Patterns are fnmatch over
 # the dotted path with list indices as plain components (commands[0] matches commands.*). Each
@@ -182,7 +182,7 @@ def main():
         "--stock",
         default=TEMPLATE,
         help="reference: a .j2 (rendered stock), .json/.yaml, or http URL "
-        "(default: config/chord_pathfinder.j2)",
+        "(default: config/chord/pathfinder.j2)",
     )
     ap.add_argument(
         "--live",

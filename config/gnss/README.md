@@ -3,14 +3,11 @@
 Jim Mertens' suggestion, 2026-08-18: *"keep the variable gnss data in a separate file, and
 include it from the main j2. Maybe some loops could condense it too."*
 
-**Status: done and wired.** `config/chord_pathfinder.j2` calls the include. It renders
-nothing unless a node is named, and what it does render is field-for-field what we
-deploy -- checked, not asserted: `gen_fleet.py --check` regenerates both the node configs
-and these vars and compares them byte for byte.
-
-```
-kotekan -c config/chord_pathfinder.j2 -j '{"gnss_node": "cx19"}'
-```
+**Status: not wired.** The include lived in the old single-file `config/chord_pathfinder.j2`.
+Production's template is now `config/chord/pathfinder.j2`, which loads its includes from
+`config/chord/`, so the hook has to be added there again, with these files reachable from that
+directory. `gen_fleet.py --check` still regenerates these vars beside the node configs and
+compares them byte for byte.
 
 **Deployment still runs the generator's output** — `node_up.sh` starts
 `config/generated/chord_gnss_<node>_multi.yaml` — but since 2026-10-02 the generator's

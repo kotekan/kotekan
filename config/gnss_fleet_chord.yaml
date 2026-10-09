@@ -27,11 +27,11 @@
 # subset and the bad-feed mask fold + send, while our nodes shipped the August pipeline's N^2 --
 # self-consistent, so nothing failed, and wrong (Jim, 10-02; fixtures/stock_parity_20261002/).
 #
-# Now the base is config/chord_pathfinder.j2 rendered STOCK (no gnss_node), exactly as kotekan
-# renders it -- the same file choco renders for every cx node (develop #1724 == choco's
-# /etc/choco/configs/cx/<node>.yaml, byte for byte, on 10-02). Production's template changes ->
-# merge develop's copy -> regenerate. The two values stock receives by REST at runtime, the
-# EOP table and bffs's bad inputs, are injected live by the generator.
+# Now the base is config/chord/pathfinder.j2 (with the telescope.j2 and common.j2 it includes)
+# rendered STOCK, exactly as kotekan renders it -- the same files choco renders for every cx node
+# and, through recv.j2, for recv1 (/etc/choco/configs/chord/). Production's template changes ->
+# take chord's copy of config/chord/ -> regenerate. The two values stock receives by REST at
+# runtime, the EOP table and bffs's bad inputs, are injected live by the generator.
 #
 # ⚠️ THE STOCK HALF IS GATED. Every config, written or --check'ed, is diffed against the stock
 # render by scripts/gnss/stock_parity.py, and any difference not DECLARED there (with its
@@ -42,7 +42,7 @@
 # output slots 0, 1, 8, 9 under the new remap -- live elements {0..15, 64..79}, the array epoch
 # 2026-09-14-polswap -- and their dish entries are unchanged from the 09-02 table. The two new
 # boards (raw 14, 15 -> slots 15, 7) are the RFI dishes 56-63, which the GNSS branch ignores.
-base: chord_pathfinder.j2
+base: chord/pathfinder.j2
 
 # Where the generated files land: config/generated/chord_gnss_<node><suffix>.yaml
 #
@@ -116,7 +116,7 @@ common:
   # ── SHIP THE N^2 VISIBILITIES (the last hop; 2026-08-18) ────────────────────────────────
   # Flip to `true` to run stock-equivalent on the science pipeline. Everything upstream is
   # ALREADY stock-equivalent and measured so: run_n2k's command list is byte-identical to
-  # chord_pathfinder.j2's, host_correlation_buffer has the identical shape/dtype, and
+  # config/chord/pathfinder.j2's, host_correlation_buffer has the identical shape/dtype, and
   # n2_accumulate carries identical parameters (238 subints/bin, bin_in_ERA over 8640,
   # CHORDBeamformer, EvenOddPosDef, no fringestop). We compute the visibilities every 10 s
   # and currently drop them: n2_eigen_buffer has no consumer and n2_buffer's only reference

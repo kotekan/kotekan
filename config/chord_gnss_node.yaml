@@ -8,7 +8,7 @@
 #   Unlike the airspy node, a CHORD node cannot run a second kotekan instance -- DPDK owns
 #   the NICs exclusively -- so a generated config is the LIVE PRODUCTION CONFIG PLUS a GNSS
 #   branch. The generator takes the production config as its base and injects; it never
-#   restates the production pipeline, so upstream changes to chord_pathfinder.j2 are picked
+#   restates the production pipeline, so upstream changes to config/chord/pathfinder.j2 are picked
 #   up automatically.
 #
 # PROVENANCE. Every value below is either measured on cx19 (2026-07-28/29), read out of the

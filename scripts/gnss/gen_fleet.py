@@ -33,8 +33,8 @@ import stock_parity
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GEN = os.path.join(K, "config", "gen_chord_gnss_config.py")
 OUTDIR = os.path.join(K, "config", "generated")
-# The j2 vars fragments, one per node -- config/gnss/gnss_chain.j2's data half, imported by
-# chord_pathfinder.j2 as `gnss_vars_<node>.j2`. Generated from the SAME run as the config, so
+# The j2 vars fragments, one per node -- config/gnss/gnss_chain.j2's data half, as
+# `gnss_vars_<node>.j2`. Generated from the SAME run as the config, so
 # the two can never describe different fleets.
 #
 # ⚠️ THEY ROTTED FOR TWO WEEKS BECAUSE NOTHING OWNED THEM (found 2026-09-02). All six were

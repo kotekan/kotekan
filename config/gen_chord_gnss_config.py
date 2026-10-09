@@ -4,13 +4,13 @@
 A CHORD node cannot run a second kotekan instance -- DPDK owns the NICs
 exclusively -- so the GNSS chain has to live in the SAME process as the ingest.
 This generator therefore takes the production config as a BASE and injects into
-it, rather than restating the pipeline. Upstream changes to chord_pathfinder.j2
+it, rather than restating the pipeline. Upstream changes to config/chord/pathfinder.j2
 are picked up for free, and the ingest stages we depend on are preserved by
 construction rather than by copy.
 
     # the base is production's own template, rendered stock (no gnss_node) exactly as
     # kotekan renders it -- never a capture, which goes stale without a sound
-    python3 config/gen_chord_gnss_config.py --base config/chord_pathfinder.j2 --node cx19 \
+    python3 config/gen_chord_gnss_config.py --base config/chord/pathfinder.j2 --node cx19 \
         --out config/generated/chord_gnss_cx19.yaml
 
 Safety switches, both ON by default because the intended use is a shared node:
@@ -30,6 +30,7 @@ the N2 chain as well competes for the same GPUs for no benefit while debugging.
 import argparse
 import copy
 import datetime
+import glob
 import hashlib
 import json
 import os
@@ -720,7 +721,7 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         "  The variable GNSS data for %s, emitted by" % node,
         "  gen_chord_gnss_config.py --emit-j2-vars from gnss_chain_vars().",
         "",
-        "  Structure lives in gnss_chain.j2 and is included by chord_pathfinder.j2;",
+        "  Structure lives in gnss_chain.j2;",
         "  this file is only numbers. DO NOT HAND-EDIT -- regenerate.",
         "#}",
         "{% set gnss = {",
@@ -1154,7 +1155,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             f"ring. Shrink this chain's PRN list, or raise NSB to 256."
         )
 
-    ring = "host_voltage_ringbuffer" + ("" if gpu == 0 else f"_{gpu}")
+    ring = f"host_voltage_ringbuffer_{gpu}"
     tiles_buf = f"{pre}n2tiles_buf"
     ctl_buf = f"{pre}n2ctl_buf"
     epl_buf = f"{pre}n2epl_buf"
@@ -1224,8 +1225,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 {
                     "host_gnss_tiles": tiles_buf,
                     "host_gnss_n2ctl": ctl_buf,
-                    "host_correlation": "host_correlation_buffer"
-                    + ("" if gpu == 0 else "_1"),
+                    "host_correlation": f"host_correlation_buffer_{gpu}",
                 }
                 if args.n2_primary
                 else {"host_gnss_tiles": tiles_buf, "host_gnss_n2ctl": ctl_buf}
@@ -2721,8 +2721,7 @@ def build_search_instance(cfg, node, per_gpu, args, port):
 def render_stock_template(path):
     """A kotekan .j2 config rendered EXACTLY as kotekan renders it (kotekan/kotekan.cpp): jinja2
     with a FileSystemLoader on the template's own directory and select_autoescape(), then
-    yaml.safe_load. No options, so this is the STOCK render -- chord_pathfinder.j2's GNSS hook
-    renders nothing unless gnss_node is set.
+    yaml.safe_load. No options, so this is the STOCK render.
 
     WHY A RENDER AND NOT A CAPTURE. Until 2026-10-02 the base was a JSON captured from a running
     node (config/base/live_config_20260831.json). It went stale silently: production moved on --
@@ -2948,7 +2947,7 @@ def main():
         "--base",
         required=True,
         help="production config: a .j2 template, rendered STOCK exactly as kotekan "
-        "renders it (config/chord_pathfinder.j2 -- what the manifest uses), or "
+        "renders it (config/chord/pathfinder.j2 -- what the manifest uses), or "
         "a JSON/yaml config",
     )
     ap.add_argument("--node", required=True)
@@ -2977,7 +2976,7 @@ def main():
         help="write config/gnss/gnss_vars_<node>.j2 -- the variable GNSS data "
         "for this node, computed by gnss_chain_vars() as the branch is "
         "built. config/gnss/gnss_chain.j2 renders the stage graph from "
-        "it, and chord_pathfinder.j2 includes that. Emitting is "
+        "it. Emitting is "
         "side-effect-free: the YAML this run writes is unchanged.",
     )
     ap.add_argument(
@@ -3055,7 +3054,7 @@ def main():
         "not a destination you can grep for before a deploy.\n"
         "\n"
         "MEASURED 2026-08-18: our nodes already COMPUTE these products. The "
-        "run_n2k command list is byte-identical to chord_pathfinder.j2's, "
+        "run_n2k command list is byte-identical to config/chord/pathfinder.j2's, "
         "host_correlation_buffer has the identical shape/dtype, and "
         "n2_accumulate carries identical parameters (238 subints/bin, "
         "bin_in_ERA over 8640, CHORDBeamformer, EvenOddPosDef, no fringestop) "
@@ -3076,7 +3075,7 @@ def main():
         "--n2-send-ip",
         default="10.222.0.51",
         help="destination host for --n2-send (default: the standard CHORD N^2 "
-        "receiver, matching chord_pathfinder.j2)",
+        "receiver, matching config/chord/pathfinder.j2)",
     )
     ap.add_argument(
         "--n2-send-port-full",
@@ -4116,7 +4115,7 @@ def main():
             if isinstance(_v, dict) and "use_config_tracker" in _v:
                 _v["use_config_tracker"] = False
 
-    # WIDEN THE STARTUP FETCH BUDGET (2026-08-08). chord_pathfinder.j2 -- production's
+    # WIDEN THE STARTUP FETCH BUDGET (2026-08-08). config/chord/pathfinder.j2 -- production's
     # template, not ours to change -- ships upstream_fetch_retries 2 / timeout 10 s, and
     # ConfigTracker's failure is FATAL at construction. Against the real service that is far
     # too tight.
@@ -4514,7 +4513,7 @@ def main():
                 # RFI stages and N2Accumulate also read.
                 for _k in (
                     "copy_bad_feed_mask",
-                    "host_bad_feed_mask_send_buffer",
+                    "host_bad_feed_mask_send_buffer_0",
                     "host_bad_feed_mask_send_buffer_1",
                 ):
                     if out.pop(_k, None) is not None:
@@ -4604,16 +4603,15 @@ def main():
         _pool1 = gnss_cores(cfg["runtime"], 1)
         out["gnss_n2_project"] = {}
         for _gpu, _pool in ((0, _pool0), (1, _pool1)):
+            _corr = "host_correlation_buffer_%d" % _gpu
             _suf = "" if _gpu == 0 else "_1"
-            if ("host_correlation_buffer" + _suf) not in out:
-                raise SystemExit(
-                    "--n2-project: host_correlation_buffer%s is not in the base" % _suf
-                )
+            if _corr not in out:
+                raise SystemExit("--n2-project: %s is not in the base" % _corr)
             _stage = {
                 "kotekan_stage": "GnssN2Project",
                 # The telemetry packer's core: a light host stage on this GPU's own NUMA pool.
                 "cpu_affinity": [_pool[(_gpu + 5) % len(_pool)]],
-                "in_buf": "host_correlation_buffer" + _suf,
+                "in_buf": _corr,
                 # num_elements / num_local_freq / samples_per_data_set / sub_integration_ntime
                 # are read from the globals (a local `num_elements: num_elements` is a
                 # self-reference that recurses the expression evaluator to a stack overflow).
@@ -4644,9 +4642,7 @@ def main():
                         _a, _, _b = _part.strip().partition("-")
                         _lids.update(range(int(_a), int(_b or _a) + 1))
                     _stage["live_freq_ids"] = sorted(_lids)
-                _buf = copy.deepcopy(
-                    out["host_correlation_buffer" + _suf]
-                )  # no YAML aliases
+                _buf = copy.deepcopy(out[_corr])  # no YAML aliases
                 out["gnss_n2_proj_buffer" + _suf] = _buf
                 _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
                 out["n2_accumulate"]["accum_%d" % _gpu]["in_buf"] = (
@@ -4755,9 +4751,18 @@ def main():
     # generator's git SHA: the check that matters is "do these inputs still produce this
     # file", which compares OUTPUT, so it goes red exactly when the generator's behaviour
     # moves -- and then a regeneration is what you want, reviewed as a diff.
+    # A .j2 base includes the templates beside it, so all of them are hashed.
+    _base_files = [args.base]
+    if args.base.endswith(".j2"):
+        _base_files = sorted(
+            glob.glob(os.path.join(os.path.dirname(args.base), "*.j2"))
+        )
     try:
-        with open(args.base, "rb") as _bf:
-            base_sha = hashlib.sha256(_bf.read()).hexdigest()[:16]
+        _h = hashlib.sha256()
+        for _f in _base_files:
+            with open(_f, "rb") as _bf:
+                _h.update(_bf.read())
+        base_sha = _h.hexdigest()[:16]
     except Exception:
         base_sha = "unreadable"
 
@@ -4799,6 +4804,11 @@ def main():
         _i += 1
     argv_line = " ".join(shlex.quote(_rel(a)) for a in _keep)
     base_disp = _rel(args.base)
+    base_hashed = (
+        os.path.join(os.path.dirname(base_disp), "*.j2")
+        if args.base.endswith(".j2")
+        else base_disp
+    )
     hdr = (
         [
             "# GENERATED by config/gen_chord_gnss_config.py -- DO NOT HAND-EDIT.",
@@ -4806,7 +4816,7 @@ def main():
             f"# covering channels {len(chans)}: freq_id {chans[0]}..{chans[-1]}",
             f"# rest port {port} (our nodes replace production's kotekan on these six)",
             f"# outputs disabled: {sorted(dropped)[:4]}{' ...' if len(dropped) > 4 else ''}",
-            f"# base sha256 {base_sha} ({base_disp})",
+            f"# base sha256 {base_sha} ({base_hashed})",
             "# REGENERATE WITH (this is the whole recipe -- flags included):",
         ]
         + [
