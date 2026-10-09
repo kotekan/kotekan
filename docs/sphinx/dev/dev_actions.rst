@@ -29,7 +29,7 @@ On pull requests, ``tools/ci_select_jobs.py`` reads the list of changed files an
 - The GPU job runs when a changed file matches ``GPU_NEED`` (GPU libraries, build and CI files), or when the GPU build reaches it through ``#include`` from ``lib/core``, ``lib/metadata``, the GPU libraries, the kotekan executable, or the stages used by ``config/ci-tests/gpu_batch``. The stage list is read from those configs. It also runs when a changed source uses ``float16_t``, ``KOTEKAN_FLOAT16`` or a ``WITH_CUDA``, ``WITH_HIP`` or ``WITH_OPENCL`` conditional: the CPU builds compile such a file with a different ``float16_t``.
 - The PTX job runs when a file under ``lib/cuda/generated`` changes. It assembles every generated kernel with ``ptxas`` from the ``nvidia-cuda-nvcc-cu12`` wheel through ``tools/check_ptx.sh``, on a GitHub runner without a GPU. The kotekan build never compiles these kernels, and the GPU job runs only the ones ``config/ci-tests/gpu_batch`` uses.
 
-``tools/ci_select_jobs.py --self-test`` checks a table of cases; the Lint job runs it. Update the patterns, and add a case, when:
+``tools/ci_select_jobs.py --self-test`` checks a table of cases; the Changes job runs it. Update the patterns, and add a case, when:
 
 - a CPU build or test starts using a file in one of the directories ``CPU_NEED`` skips, e.g. a boost test that compiles a source from ``lib/cuda``;
 - GPU code moves to a new directory;

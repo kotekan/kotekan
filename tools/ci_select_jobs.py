@@ -3,7 +3,7 @@
 
 Reads changed file paths from the arguments or stdin and prints ``cpu=true|false``,
 ``gpu=true|false`` and ``ptx=true|false`` lines for $GITHUB_OUTPUT.
-``--self-test`` checks the cases in CASES instead; the Lint job runs it.
+``--self-test`` checks SELF_TEST_CASES instead; the Changes job runs it.
 
 - cpu: the gcc/clang/Intel jobs. Run when any file matches CPU_NEED.
 - gpu: the self-hosted GPU job. Run when any file matches GPU_NEED, or is a
@@ -12,7 +12,6 @@ Reads changed file paths from the arguments or stdin and prints ``cpu=true|false
   config/ci-tests/gpu_batch uses. A .cpp counts when its header is reached.
   Also run when a changed source uses float16_t or a GPU conditional: the
   CPU builds compile it, but with another float16_t (see DataType.hpp).
-  Boost tests do not count: the CPU jobs build and run them.
 - ptx: the ptxas check of the generated kernels. Run when a generated
   kernel or its wrapper changes.
 """
@@ -124,7 +123,7 @@ def select(files):
 
 
 # (changed paths, cpu, gpu, ptx)
-CASES = [
+SELF_TEST_CASES = [
     (["lib/stages/AirspyAlign.cpp"], True, False, False),
     (["./lib/stages/setFRB1Phase.cpp"], True, True, False),  # as typed by hand
     (["lib/stages/setFRB1Phase.cpp"], True, True, False),  # stage in gpu_batch
@@ -143,12 +142,12 @@ CASES = [
 
 def self_test():
     bad = 0
-    for files, *want in CASES:
+    for files, *want in SELF_TEST_CASES:
         got = list(select([os.path.relpath(f) for f in files]))
         if got != want:
             print(f"{files}: want cpu,gpu,ptx={want}, got {got}")
             bad += 1
-    print(f"{len(CASES) - bad}/{len(CASES)} cases pass")
+    print(f"{len(SELF_TEST_CASES) - bad}/{len(SELF_TEST_CASES)} cases pass")
     return bad == 0
 
 

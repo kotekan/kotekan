@@ -50,6 +50,7 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          python3 tools/ci_select_jobs.py --self-test
           if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
             echo "cpu=true" >> "$GITHUB_OUTPUT"
             echo "gpu=true" >> "$GITHUB_OUTPUT"
@@ -261,7 +262,8 @@ jobs:
         include:
 
           # Test gcc build + CUDA/OpenCL, run yamls in config/ci-tests/gpu_batch.
-          # Boost tests are built and run by the CPU jobs; none needs a GPU.
+          # Boost tests are built but not run: none needs a GPU, but they
+          # compile against CUDA's float16_t here (see DataType.hpp).
           - id: test-gcc-gpu-yaml
             ccache_key: kotekan-test-gcc-gpu
             cmake_defs: >-
@@ -271,7 +273,7 @@ jobs:
               -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=ON
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
             runs_on: self-hosted
@@ -320,7 +322,6 @@ jobs:
       post_build: |
         cd $GITHUB_WORKSPACE
         git config --global --add safe.directory $GITHUB_WORKSPACE
-        python3 tools/ci_select_jobs.py --self-test
         bash ./tools/lint.sh
 
   # If kotekan-lint failed, open a PR with lint fixes back to the branch
