@@ -12,6 +12,7 @@ setups='
     charts_U32
     chord_U1 chord_U2 chord_U4 chord_U8 chord_U16 chord_U32 chord_U64 chord_U128
     hirax_U1 hirax_U2 hirax_U4 hirax_U8 hirax_U16 hirax_U32 hirax_U64 hirax_U128
+    hirax128_U1 hirax128_U2 hirax128_U4 hirax128_U8 hirax128_U16 hirax128_U32 hirax128_U64 hirax128_U128
     pathfinder_U1 pathfinder_U2 pathfinder_U4 pathfinder_U8 pathfinder_U16 pathfinder_U32 pathfinder_U64
 '
 # smallfinder_U1 smallfinder_U2 smallfinder_U4 smallfinder_U8 smallfinder_U16 smallfinder_U32 smallfinder_U64
