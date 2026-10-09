@@ -61,7 +61,7 @@ public:
      * @brief The packet processor, called each time there is a new packet
      *
      * @param mbuf The DPDK rte_mbuf containing the packet.
-     * @return -1 if there is a serious error requiring shutdown, 0 otherwise.
+     * @return 0 to continue; see dpdkRXhandler::handle_packet.
      */
     virtual int handle_packet(struct rte_mbuf* mbuf) override;
 
