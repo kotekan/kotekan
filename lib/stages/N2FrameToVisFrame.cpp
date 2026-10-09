@@ -1,21 +1,22 @@
 #include "N2FrameToVisFrame.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for operator!=, Hash
-#include "N2FrameDesc.hpp"     // for N2FrameDesc
-#include "N2FrameView.hpp"     // for N2FrameView
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetState.hpp"    // for eigenvalueState, freqState, gatingState, inputState, meta...
-#include "gateSpec.hpp"        // for gateSpec
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, logLevel
-#include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, freq_ctype, modulo, par...
+#include "Config.hpp"                   // for Config
+#include "Hash.hpp"                     // for operator!=, Hash
+#include "N2FrameDesc.hpp"              // for N2FrameDesc
+#include "N2FrameView.hpp"              // for N2FrameView
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"                // for Telescope
+#include "UpchannelizationSchedule.hpp" // for wait_for_coarse_freq
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "datasetState.hpp"   // for eigenvalueState, freqState, gatingState, inputState, meta...
+#include "gateSpec.hpp"       // for gateSpec
+#include "kotekanLogging.hpp" // for FATAL_ERROR, DEBUG, logLevel
+#include "version.h"          // for get_git_commit_hash
+#include "visBuffer.hpp"      // for VisFrameView
+#include "visUtil.hpp"        // for prod_ctype, input_ctype, frameID, freq_ctype, modulo, par...
 
-#include <algorithm>    // for transform
+#include <algorithm>    // for find, transform
 #include <cassert>      // for assert
 #include <complex>      // for complex, conj
 #include <functional>   // for bind, function
@@ -67,51 +68,61 @@ n2FrameToVisFrame::n2FrameToVisFrame(Config& config, const std::string& unique_n
 
     // Get everything we need for registering dataset states
 
-    const auto& tel = Telescope::instance();
-
     // --> get metadata
-    std::string instrument_name =
-        config.get_default<std::string>(unique_name, "instrument_name", "chime");
+    instrument_name = config.get_default<std::string>(unique_name, "instrument_name", "chime");
 
-    // Get the frequency IDs that are on this stream, check the config or just
-    // assume all CHIME channels
-    std::vector<uint32_t> freq_ids;
-    if (config.exists(unique_name, "freq_ids")) {
+    // The frequency IDs that are on this stream: from the metadata of the first frame of each
+    // metadata_source buffer (read in main_thread) if given, else from the config, else all
+    // channels of the telescope.
+    if (config.exists(unique_name, "metadata_source")) {
+        metadata_sources = get_buffer_or_array("metadata_source");
+        for (Buffer* const metadata_source : metadata_sources)
+            metadata_source->register_consumer(unique_name);
+    } else if (config.exists(unique_name, "freq_ids")) {
         freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     } else {
-        freq_ids.resize(tel.num_freq());
+        freq_ids.resize(Telescope::instance().num_freq());
         std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
     }
 
-    // Create the frequency specification
-    std::vector<std::pair<uint32_t, freq_ctype>> freqs;
-    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
-                   [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {tel.to_freq_MHz(id), tel.freq_width_MHz(id)}};
-                   });
-
     // The input specification from the config
     const auto& input_reorder = parse_reorder_default(config, unique_name);
-    std::vector<input_ctype> inputs = std::get<1>(input_reorder);
+    inputs = std::get<1>(input_reorder);
 
     size_t num_elements = inputs.size();
 
     // Create the product specification
-    std::vector<prod_ctype> prods;
     prods.reserve(num_elements * (num_elements + 1) / 2);
     for (uint16_t i = 0; i < num_elements; i++) {
         for (uint16_t j = i; j < num_elements; j++) {
             prods.push_back({i, j});
         }
     }
-
-    // register base dataset states to prepare for getting dataset IDs for out frames
-    register_base_dataset_states(instrument_name, freqs, inputs, prods);
 }
 
 n2FrameToVisFrame::~n2FrameToVisFrame() {}
 
 void n2FrameToVisFrame::main_thread() {
+
+    // The frequencies of this stream, from the metadata of the first frame of each
+    // metadata_source buffer. This marks those frames empty and unregisters from the buffers.
+    if (!metadata_sources.empty()) {
+        const auto coarse_freq = wait_for_coarse_freq(metadata_sources, unique_name);
+        if (!coarse_freq)
+            return;
+        freq_ids.assign(coarse_freq->begin(), coarse_freq->end());
+    }
+
+    // Create the frequency specification
+    const auto& tel = Telescope::instance();
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs;
+    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
+                   [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+                       return {id, {tel.to_freq_MHz(id), tel.freq_width_MHz(id)}};
+                   });
+
+    // register base dataset states to prepare for getting dataset IDs for out frames
+    register_base_dataset_states(instrument_name, freqs, inputs, prods);
 
     // base dataset_id of visAccumulate (before gating)
     dset_id_t base_dataset_id;
@@ -140,6 +151,12 @@ void n2FrameToVisFrame::main_thread() {
             vis_buf, vis_buf_frame_id, n2_frame.num_elements, n2_frame.num_prod, n2_frame.num_ev);
 
         // items set in VisFrameView::fill_metadata
+        if (std::find(freq_ids.begin(), freq_ids.end(), n2_frame.freq_id) == freq_ids.end()) {
+            FATAL_ERROR("N2 frame carries frequency {:d}, which is not one of the frequencies "
+                        "registered for this stream",
+                        n2_frame.freq_id);
+            return;
+        }
         vis_frame.freq_id = n2_frame.freq_id;
         const uint64_t fpga_seq = n2_frame.fpga_start_tick;
         const timespec ts = {.tv_sec = time_t(n2_frame.frame_start_time_ns / 1'000'000'000),

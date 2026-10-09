@@ -173,10 +173,10 @@ void frbNetworkSend::main_thread() {
     assert(kotekan::GetDataType_v<std::remove_reference_t<decltype(*offsetscale_buffer)>>
            == offsetscale_frame_desc->get_value_datatype());
 
-    // 384 is integration factor and 2560 fpga sampling time in ns
+    // FPGA samples per FRB time sample (384) and 2560 ns FPGA sampling time. The frame
+    // metadata's time_downsampling_fpga describes the whole frame (dimension 0), not one sample.
     const uint32_t fpga_ns = tel.seq_length_nsec();
-    const int time_downsampling_fpga = metadata->get_time_downsampling_fpga();
-    assert(time_downsampling_fpga == 384); // for now
+    const int time_downsampling_fpga = config.get<int>(unique_name, "frb_downsampling_factor");
     const unsigned samples_per_frame =
         16 / packets_per_stream * // 16 is from ttilde16_lo16
         samples_per_packet * packets_per_stream
