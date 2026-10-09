@@ -71,6 +71,15 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
     udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4272);
     udp_frb_port_number = config.get_default<int>(unique_name, "udp_frb_port_number", 1313);
     number_of_subnets = config.get_default<int>(unique_name, "number_of_subnets", 4);
+    local_ips = config.get_default<std::vector<std::string>>(unique_name, "local_ips", {});
+    if (!local_ips.empty() && (int)local_ips.size() != number_of_subnets)
+        FATAL_ERROR("local_ips has {:d} entries but number_of_subnets is {:d}", local_ips.size(),
+                    number_of_subnets);
+    for (size_t i = 0; i < local_ips.size(); i++)
+        if (get_vlan_from_ip(local_ips[i].c_str()) != (int)i + 6)
+            FATAL_ERROR("local_ips[{:d}] = {:s} is not on VLAN 10.{:d}.0.0/16; list the addresses "
+                        "in VLAN order",
+                        i, local_ips[i], i + 6);
     packets_per_stream = config.get_default<int>(unique_name, "packets_per_stream", 8);
     beam_offset = config.get_default<int>(unique_name, "beam_offset", 0);
     column_mode = config.get_default<bool>(unique_name, "column_mode", false);
@@ -481,26 +490,31 @@ void frbNetworkSend::main_thread() {
 }
 
 int frbNetworkSend::initialize_source_sockets() {
-    int rack, node, nos, my_node_id;
-    if (number_of_subnets > 0)
+    // One local address per VLAN 10.6.0.0/16..10.9.0.0/16: from local_ips if given, otherwise
+    // derived from the CHIME GPU node name. The loopback test mode (number_of_subnets == 0) uses
+    // 127.0.0.1 and needs neither.
+    int rack = 0, node = 0, nos = 0, my_node_id = 0;
+    if (local_ips.empty() && number_of_subnets > 0)
         parse_chime_host_name(rack, node, nos, my_node_id);
-    else
-        rack = node = nos = my_node_id = 0;
     for (int i = 0; i < (number_of_subnets > 0 ? number_of_subnets : 1); i++) {
-        // construct an local address for each of the four VLANs 10.6.0.0/16..10.9.0.0/16
-        std::string ip_addr = number_of_subnets > 0
-                                  ? fmt::format("10.{:d}.{:d}.1{:d}", i + 6, nos + rack, node)
-                                  : "127.0.0.1";
+        std::string ip_addr;
+        if (number_of_subnets == 0)
+            ip_addr = "127.0.0.1";
+        else if (!local_ips.empty())
+            ip_addr = local_ips.at(i);
+        else
+            ip_addr = fmt::format("10.{:d}.{:d}.1{:d}", i + 6, nos + rack, node);
         DEBUG("{} ", ip_addr);
 
-        // parse the local address and port into a `sockaddr` struct
+        // parse the local address into a `sockaddr` struct; the OS assigns the source port, so
+        // several senders (one per NUMA domain) can share the address
         struct sockaddr_in addr;
         std::memset((char*)&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
         inet_pton(AF_INET, ip_addr.c_str(), &addr.sin_addr);
-        addr.sin_port = htons(udp_frb_port_number);
+        addr.sin_port = 0;
 
-        // bind a sending UDP socket to the local address and port
+        // bind a sending UDP socket to the local address
         int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (sock_fd < 0) {
             FATAL_ERROR("Network Thread: socket() failed: {:s} ", strerror(errno));
@@ -508,7 +522,7 @@ int frbNetworkSend::initialize_source_sockets() {
         }
         if (number_of_subnets > 0) {
             if (bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-                FATAL_ERROR("port binding failed ");
+                FATAL_ERROR("binding to {:s} failed: {:s}", ip_addr, strerror(errno));
                 return -1;
             }
         }

@@ -340,9 +340,9 @@ dpdk:
   main_lcore_cpu: 3
   status_cadence: 60
   max_rx_pkt_len: 5000
-  rx_ring_size: 1024
+  rx_ring_size: 256
   tx_ring_size: 128
-  num_mbufs: 2048
+  num_mbufs: 1024
   mbuf_cache_size: 128
   # Hugepage memory preallocated by the EAL (--socket-mem), one entry per NUMA node
   init_mem_alloc: "{% for n in numa_domains %}256{{ "," if not loop.last }}{% endfor %}"
@@ -1501,6 +1501,10 @@ numa_{{ numa }}:
         # The L1 nodes are on the VLANs 10.6.0.0/16 to 10.9.0.0/16; this node
         # needs an address on each of them.
         number_of_subnets: 4
+        # This node's addresses on the L1 VLANs, in VLAN order. Without this list
+        # they are derived from the CHIME GPU node name (cnXgY), which this node
+        # does not follow.
+        local_ips: [10.6.200.10, 10.7.200.10, 10.8.200.10, 10.9.200.10]
         ping_dead_threshold: 30
         # From the legacy CHIME config
         L1_node_ips:
@@ -1776,7 +1780,7 @@ numa_{{ numa }}:
 
     # Transmit baseband data to the baseband receiver
     baseband_send:
-        server_ip: 10.13.60.2
+        server_ip: 10.5.60.2
         reconnect_time: 60
         send_timeout: 600 # 10 minutes
         log_level: warn
