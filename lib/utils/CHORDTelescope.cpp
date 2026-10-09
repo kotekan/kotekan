@@ -582,6 +582,10 @@ uint64_t CHORDTelescope::get_num_dishes() const {
     return _num_dishes;
 }
 
+uint64_t CHORDTelescope::get_num_polarizations() const {
+    return _num_polarizations;
+}
+
 const dishInfo& CHORDTelescope::get_dish_at_idx(dish_index_t idx) const {
     return _dish_params.dish_info_table.at(idx);
 }

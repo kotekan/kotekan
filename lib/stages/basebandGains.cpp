@@ -9,6 +9,7 @@
 #include <complex>
 #include <cstdint>
 #include <filesystem>
+#include <fmt/ranges.h> // IWYU pragma: keep, to format crs_board_remap
 #include <fstream>
 #include <hdf5.h>
 #include <highfive/H5DataSet.hpp>
@@ -103,7 +104,17 @@ BasebandGains::BasebandGains(kotekan::Config& config, const std::string& unique_
                              const std::string& stage_label) :
     _stage_label(stage_label),
     _gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
-    _update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)) {
+    _update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
+    _crs_board_remap(
+        config.get_default<std::vector<std::uint32_t>>(unique_name, "crs_board_remap", {})) {
+
+    std::vector<bool> seen(_crs_board_remap.size(), false);
+    for (const std::uint32_t board : _crs_board_remap) {
+        if (board >= seen.size() || seen[board])
+            FATAL_ERROR_NON_OO("{:s}: crs_board_remap {} is not a permutation of 0..{:d}",
+                               _stage_label, _crs_board_remap, _crs_board_remap.size() - 1);
+        seen[board] = true;
+    }
 
     // baseband_gain_host_info names a config path (e.g. /fpga_controller) to a block exposing
     // host, port, and an optional gains_endpoint. The fetch itself happens in
@@ -141,6 +152,12 @@ std::optional<std::uint64_t> BasebandGains::content_hash() const {
         _hash_computed = true;
     }
     return _hash_cache;
+}
+
+std::optional<std::uint64_t> BasebandGains::current_content_hash() const {
+    if (_gain_file.empty())
+        return std::nullopt;
+    return hash_file_contents(_gain_file);
 }
 
 void BasebandGains::resolve_local_copy(const std::string& partial_dir,
@@ -205,10 +222,45 @@ void BasebandGains::copy_into(HighFive::File& file) const {
     }
 }
 
-void BasebandGains::write_by_dish(HighFive::File& file, const std::vector<int>& gain_input,
-                                  std::size_t n_pol, std::size_t n_dish) const {
-    if (_gain_file.empty())
+void BasebandGains::write_by_dish(HighFive::File& file, const std::vector<std::uint64_t>& elements,
+                                  const std::uint64_t num_dishes) const {
+    if (_gain_file.empty() || elements.empty())
         return;
+
+    // Polarization-major: the dishes under the first polarization, then the same dishes under
+    // each following one.
+    std::size_t n_dish = 0;
+    while (n_dish < elements.size() && elements[n_dish] < num_dishes)
+        n_dish++;
+    bool pol_major = n_dish > 0 && elements.size() % n_dish == 0;
+    for (std::size_t i = 0; pol_major && i < elements.size(); i++)
+        pol_major = elements[i] == (i / n_dish) * num_dishes + elements[i % n_dish];
+    if (!pol_major) {
+        WARN_NON_OO("{:s}: the file's elements are not polarization-major, so its gains cannot "
+                    "be written in [P][D] order; writing only the verbatim archive",
+                    _stage_label);
+        return;
+    }
+
+    constexpr std::uint64_t channels_per_board = 8;
+    std::vector<int> gain_input;
+    gain_input.reserve(elements.size());
+    for (const std::uint64_t e : elements) {
+        std::uint64_t board = e / channels_per_board;
+        if (!_crs_board_remap.empty()) {
+            if (board >= _crs_board_remap.size())
+                FATAL_ERROR_NON_OO("{:s}: element {:d} is in board slot {:d}, but "
+                                   "crs_board_remap has only {:d} entries",
+                                   _stage_label, e, board, _crs_board_remap.size());
+            board = _crs_board_remap[board];
+        }
+        gain_input.push_back((int)(board * channels_per_board + e % channels_per_board));
+    }
+    write_gain_datasets(file, gain_input, elements.size() / n_dish, n_dish);
+}
+
+void BasebandGains::write_gain_datasets(HighFive::File& file, const std::vector<int>& gain_input,
+                                        std::size_t n_pol, std::size_t n_dish) const {
     if (file.exist("/digital_gains/gain_coeff_by_dish"))
         return;
 

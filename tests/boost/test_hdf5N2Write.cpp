@@ -12,6 +12,7 @@
 #include "NDArray.hpp"     // for GenericNDArray
 #include "Stage.hpp"       // for Stage
 #include "Telescope.hpp"
+#include "basebandGains.hpp"   // for BasebandGains
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
@@ -28,6 +29,7 @@
 #include <boost/test/included/unit_test.hpp>
 #include <cerrno>
 #include <chrono>
+#include <complex>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -95,12 +97,21 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
 }
 
 
+/// The digital gains of the test gains archive, as a writer stage would configure them.
+static std::shared_ptr<const kotekan::BasebandGains> make_test_gains() {
+    nlohmann::json cfg;
+    cfg["gains"]["baseband_gain_file"] = TEST_GAINS_FILE;
+    kotekan::Config conf;
+    conf.update_config(cfg);
+    return std::make_shared<const kotekan::BasebandGains>(conf, "/gains", "test");
+}
+
 /// Simple class to expose N2FileData internals without modifying production code.
 class TestVisFileData : public N2FileData {
 public:
     TestVisFileData(const N2FrameView& fv, uint64_t num_file_t, double open_wall_s,
                     uint64_t abs_file_idx, std::string base_dir,
-                    std::string gains_file = TEST_GAINS_FILE) :
+                    std::shared_ptr<const kotekan::BasebandGains> gains = make_test_gains()) :
         N2FileData(N2FileData::CHORD, num_file_t, fv, open_wall_s, abs_file_idx,
                    /*input_order*/ ElementOrder::CHORDBeamformer,
                    /*blocksize_f*/ 0,
@@ -108,8 +119,7 @@ public:
                    /*blocksize_t*/ num_file_t,
                    /*compression*/ "none",
                    /*compression_level*/ 0,
-                   /*use_bitshuffle*/ false, std::move(base_dir),
-                   /*baseband_gain_file*/ std::move(gains_file)) {}
+                   /*use_bitshuffle*/ false, std::move(base_dir), std::move(gains)) {}
 
     N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
         return vis[idx_fpt(f, p, t)];
@@ -435,6 +445,81 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_index_map_dish_inputs) {
     }
     rm_tree_if_exists(base_dir);
     set_test_telescope(true);
+}
+
+// Opens a file for a one-frame N2 buffer and checks the gains of its elements in
+// /digital_gains. test_gains.h5 has 4 inputs and 16 channels; without a crs_board_remap,
+// element e of the array (CHORDBeamformer: e = dish + pol * 2) takes archive input e. An empty
+// expected_index means the elements are not polarization-major, so only the verbatim archive
+// is written.
+static void check_gains_by_dish(N2Layout layout, size_t num_input,
+                                const std::vector<int32_t>& expected_index, size_t num_dish) {
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, layout);
+    const size_t num_ev = 1;
+    const std::string name =
+        "gains_" + std::to_string(num_input) + "_" + N2Layout_to_string(layout);
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
+    auto pool = metadataPool::create(1, sizeof(N2Metadata), "pool_" + name, "N2Metadata");
+    Buffer buf(1, frame_size, pool, name, "N2", 1, false, false, std::vector<int>{}, true);
+    buf.ensure_frame_desc(
+        std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod, layout));
+    buf.allocate_new_metadata_object(0);
+    auto meta = get_N2_metadata(&buf, 0);
+    BOOST_REQUIRE(meta);
+    meta->freq_id = get_abs_freq_id(0);
+    N2FrameView fv(&buf, 0);
+    fv.zero_frame();
+
+    const std::string base_dir = "test_visfiledata_" + name;
+    rm_tree_if_exists(base_dir);
+    ensure_directory(base_dir);
+    ensure_directory(base_dir + "/.partial");
+    {
+        TestVisFileData data(fv, 1, 100.0, 0, base_dir);
+        File& file = *data.h5_file;
+        BOOST_CHECK(file.exist("/digital_gains/gain_coeff"));
+        BOOST_CHECK(file.hasAttribute("digital_gains_hash"));
+        BOOST_REQUIRE_EQUAL(file.exist("/digital_gains/gain_coeff_by_dish"),
+                            !expected_index.empty());
+        if (!expected_index.empty()) {
+            const size_t num_pol = expected_index.size() / num_dish;
+            const auto ctype = HighFive::CompoundType{{"r", HighFive::AtomicType<float>{}},
+                                                      {"i", HighFive::AtomicType<float>{}}};
+
+            auto ds_index = file.getDataSet("/digital_gains/gain_input_index");
+            BOOST_CHECK(ds_index.getDimensions() == std::vector<size_t>({num_pol, num_dish}));
+            std::vector<int32_t> index(expected_index.size());
+            ds_index.read_raw(index.data());
+            BOOST_CHECK_EQUAL_COLLECTIONS(index.begin(), index.end(), expected_index.begin(),
+                                          expected_index.end());
+
+            const size_t num_chan = 16, num_archive_input = 4;
+            std::vector<std::complex<float>> archive(num_chan * num_archive_input);
+            file.getDataSet("/digital_gains/gain_coeff").read_raw(archive.data(), ctype);
+            auto ds_coeff = file.getDataSet("/digital_gains/gain_coeff_by_dish");
+            BOOST_CHECK(ds_coeff.getDimensions()
+                        == std::vector<size_t>({1, num_chan, num_pol, num_dish}));
+            std::vector<std::complex<float>> by_dish(num_chan * expected_index.size());
+            ds_coeff.read_raw(by_dish.data(), ctype);
+            for (size_t c = 0; c < num_chan; c++)
+                for (size_t s = 0; s < expected_index.size(); s++)
+                    BOOST_CHECK(by_dish[c * expected_index.size() + s]
+                                == archive[c * num_archive_input + expected_index[s]]);
+        }
+    }
+    rm_tree_if_exists(base_dir);
+}
+
+// The gains in /digital_gains follow the elements the file holds: only D01's two
+// polarizations (elements 1 and 3) for a DishInputs frame with D00 disconnected, the whole
+// array in [P][D] order for a full frame, and none for a full frame of 3 elements, which is
+// not a whole number of dishes per polarization.
+BOOST_AUTO_TEST_CASE(test_visfiledata_gains_by_dish) {
+    set_test_telescope(false);
+    check_gains_by_dish(N2Layout::DishInputs, 2, {1, 3}, 1);
+    set_test_telescope(true);
+    check_gains_by_dish(N2Layout::FullUpperTri, 4, {0, 1, 2, 3}, 2);
+    check_gains_by_dish(N2Layout::FullUpperTri, 3, {}, 0);
 }
 
 BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {

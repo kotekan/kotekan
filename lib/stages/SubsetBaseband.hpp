@@ -34,8 +34,11 @@
  * first frame).
  *
  * The selected dish indices are published in the output metadata as `dish_index` (the
- * position of each output dish in the telescope's `dish_inputs` table), so the file writers
- * can record which dishes the subset actually holds.
+ * position of each output dish in the telescope's `dish_inputs` table, which assumes the
+ * input's dish axis is in table order, as `crs_board_remap` arranges it), so the file writers
+ * can record which dishes the subset actually holds. At startup the stage warns if the
+ * selection differs from the telescope's connected (not Missing) dishes, the set that the N2
+ * DishInputs layout records.
  *
  * The dish subset is specified as a list of 8-dish block indices into the input's dish axis.
  * Each block index `b` selects dishes `[b*8, b*8+8)` for both polarizations, i.e. input bytes
@@ -189,6 +192,9 @@ private:
 
     /// Build `src_off_for_out_block_`, `copy_runs_` and (when usable) `chunk_plans_`.
     void plan_copy();
+
+    /// WARN if the selected dishes differ from the telescope's connected dishes.
+    void warn_if_not_connected() const;
 
     /// Portable copy of one frame's worth of (time, frequency) rows.
     void copy_frame_scalar(const uint8_t* in_frame, uint8_t* out_frame, uint32_t num_freq_out,

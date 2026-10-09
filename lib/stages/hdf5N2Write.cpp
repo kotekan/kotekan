@@ -9,7 +9,6 @@
 #include "geoUtil.hpp"        // for mat3x3d_t
 #include "hdf5Files.hpp"      // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
-#include "restClient.hpp"     // for restClient
 #include "timeUtil.hpp"       // for EOP
 #include "util.h"             // for mkdir_p
 #include "visUtil.hpp"        // for cfloat
@@ -18,7 +17,6 @@
 #include "json.hpp"         // for basic_json, json, iter_impl
 #include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
-#include <H5Opublic.h>       // for H5Ocopy
 #include <N2FrameView.hpp>   // for N2FrameView
 #include <Stage.hpp>         // for Stage
 #include <StageFactory.hpp>  // for REGISTER_KOTEKAN_STAGE
@@ -76,62 +74,6 @@
 #include <waitingForMaxFrames.hpp>               // for waiting_for_max_frames
 
 using namespace HighFive;
-
-/// Compute a hash of a file's contents for change detection.
-static std::optional<size_t> hash_file_contents(const std::string& path) {
-    std::ifstream ifs(path, std::ios::binary);
-    if (!ifs)
-        return std::nullopt;
-    std::string contents((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-    if (ifs.bad()) // I/O error during read
-        return std::nullopt;
-    return std::hash<std::string>{}(contents);
-}
-
-/// Fetch `path` from `host:port` over plain HTTP via kotekan's built-in
-/// restClient and write the response body verbatim to `dest_path`. FATAL on any
-/// fetch/write error. Intended for small files (bytes land in a std::string
-/// before hitting disk).
-///
-/// NOTE: `kotekan::BasebandGains` (lib/stages/basebandGains.hpp) is the shared
-/// implementation of this fetch and of the /digital_gains copy below, and is what
-/// hdf5FileWrite uses. This stage still has its own copy because N2FileData takes the
-/// resolved gains path by value rather than the gains object; migrating it onto the
-/// shared class would mean reworking that constructor and its flush-time hash check.
-/// Keep the two in step until then.
-static void download_to_file(const std::string& host, std::uint16_t port, const std::string& path,
-                             const std::string& dest_path) {
-    INFO_NON_OO("hdf5N2Write: downloading digital gains file from http://{}:{}{}", host, port,
-                path);
-    restClient::restReply reply =
-        restClient::instance().make_request_blocking(path, nlohmann::json::object(), host, port);
-    if (!reply.first) {
-        FATAL_ERROR_NON_OO("hdf5N2Write: failed to fetch gains file from http://{}:{}{}", host,
-                           port, path);
-        return;
-    }
-
-    std::ofstream ofs(dest_path, std::ios::binary | std::ios::trunc);
-    if (!ofs) {
-        FATAL_ERROR_NON_OO("hdf5N2Write: could not open '{}' for writing downloaded gains file",
-                           dest_path);
-        return;
-    }
-    ofs.write(reply.second.data(), static_cast<std::streamsize>(reply.second.size()));
-    if (!ofs) {
-        FATAL_ERROR_NON_OO("hdf5N2Write: failed to write {} bytes to '{}'", reply.second.size(),
-                           dest_path);
-        return;
-    }
-    ofs.close();
-    if (!ofs) {
-        FATAL_ERROR_NON_OO("hdf5N2Write: failed to finalize writing downloaded gains file to '{}'",
-                           dest_path);
-        return;
-    }
-
-    INFO_NON_OO("hdf5N2Write: wrote {} bytes to '{}'", reply.second.size(), dest_path);
-}
 
 namespace {
 /// Walk the config tree and collect (unique_name, base_dir) for every
@@ -222,48 +164,9 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
                                        const std::vector<std::string>& dim_names,
                                        const HighFive::DataType& dtype,
                                        HighFive::DataSetCreateProps props) const {
-
-    if (file.exist(name)) {
-        WARN_NON_OO("Dataset {} already exists in HDF5 file, not creating again.", name);
-        return;
-    }
-    // size of dims should = size of dim_names, and > 0
-    assert(dims.size() == dim_names.size());
-    assert(dims.size() > 0);
-
-    if (dims.size() == 1) {
-        // if only one dimension, assume a simple array, chunking is just that dimension.
-        std::vector<hsize_t> chunk = {dims[0]};
-        props.add(HighFive::Chunking(chunk));
-    } else {
-        // chunking is assumed to be ( blocksize_f, ...array dimensions..., blocksize_t )
-        std::vector<hsize_t> chunk = dims;
-
-        // If dimension is "time" (usually last dimension), apply blocksize_t
-        // If dimension is "frequency" (usually first dimension), apply blocksize_f
-        // If dimension is product or element, use blocksize_p
-        for (size_t i = 0; i < dim_names.size(); i++) {
-            if (dim_names[i] == "time" && blocksize_t > 0) {
-                chunk[i] = std::min<hsize_t>(chunk[i], (hsize_t)blocksize_t);
-            } else if (dim_names[i].substr(0, 4) == "freq" && blocksize_f > 0) {
-                chunk[i] = std::min<hsize_t>(chunk[i], (hsize_t)blocksize_f);
-            } else if ((dim_names[i].substr(0, 4) == "prod" || dim_names[i].substr(0, 2) == "el")
-                       && blocksize_p > 0) {
-                chunk[i] = std::min<hsize_t>(chunk[i], (hsize_t)blocksize_p);
-            }
-        }
-
-        for (auto& c : chunk)
-            c = std::max<hsize_t>(1, c);
-
-        props.add(HighFive::Chunking(chunk));
-    }
-
-    // Create dataset
-    HighFive::DataSpace space(dims.begin(), dims.end());
-    auto dataset = file.createDataSet(name, space, dtype, props);
-    dataset.createAttribute("axis", dim_names);
-};
+    hdf5::create_dataset_with_axis(file, name, dims, dim_names, dtype, std::move(props),
+                                   blocksize_f, blocksize_p, blocksize_t);
+}
 
 // NOTE: The datasets and attributes created below define the on-disk file format,
 // which is documented in docs/sphinx/user/file_formats/n2_vis_hdf5.rst. If you add,
@@ -416,92 +319,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
         // Per-element input info: one row per element of the frame, indexed like the
         // element axis of /evec, /gain and /flags and the entries of /index_map/prod.
-        // Each row names the dish and polarization the element decodes to and copies
-        // that dish's entry; the label is the dish label with the polarization name
-        // appended (A01X, A01Y).
-        {
-            // Polarization index 0 is X, 1 is Y.
-            static constexpr std::array<char, 2> pol_name = {'X', 'Y'};
-
-            dishInputFields dishes;
-            telescope.fill_input_maps(dishes);
-
-            std::vector<int64_t> dish_idx;
-            std::vector<int32_t> pol;
-            std::vector<dish_index_t> grid_x_idx;
-            std::vector<dish_index_t> grid_y_idx;
-            std::vector<vec3d_t> feed_pos_disp_m;
-            std::vector<double> coelev_disp_deg;
-            std::vector<int32_t> type; // DishType enum stored as int32_t
-            std::vector<std::string> label;
-            for (const uint64_t el : rows) {
-                uint64_t dish;
-                uint64_t p;
-                telescope.decode_station_id(telescope.element_index_to_station_id(el, input_order),
-                                            dish, p);
-                if (p >= pol_name.size())
-                    FATAL_ERROR_NON_OO("hdf5N2Write: element {:d} has polarization {:d}, but only "
-                                       "{:d} polarizations can be named",
-                                       el, p, pol_name.size());
-                dish_idx.push_back(dish);
-                pol.push_back(p);
-                grid_x_idx.push_back(dishes.grid_x_idx.at(dish));
-                grid_y_idx.push_back(dishes.grid_y_idx.at(dish));
-                feed_pos_disp_m.push_back(dishes.feed_pos_disp_m.at(dish));
-                coelev_disp_deg.push_back(dishes.coelev_disp_deg.at(dish));
-                type.push_back(static_cast<int32_t>(dishes.type.at(dish)));
-                label.push_back(fmt::format(fmt("{:s}{:c}"), dishes.label.at(dish), pol_name[p]));
-            }
-            const hsize_t num_el = rows.size();
-
-            _check_create_dataset(*file, "/index_map/dish_idx", {num_el}, {"element"},
-                                  HighFive::create_datatype<int64_t>(), props_empty);
-            file->getDataSet("/index_map/dish_idx").write(dish_idx);
-
-            _check_create_dataset(*file, "/index_map/pol", {num_el}, {"element"},
-                                  HighFive::create_datatype<int32_t>(), props_empty);
-            file->getDataSet("/index_map/pol").write(pol);
-
-            _check_create_dataset(*file, "/index_map/grid_x_idx", {num_el}, {"element"},
-                                  HighFive::create_datatype<int64_t>(), props_empty);
-            file->getDataSet("/index_map/grid_x_idx").write(grid_x_idx);
-
-            _check_create_dataset(*file, "/index_map/grid_y_idx", {num_el}, {"element"},
-                                  HighFive::create_datatype<int64_t>(), props_empty);
-            file->getDataSet("/index_map/grid_y_idx").write(grid_y_idx);
-
-            _check_create_dataset(*file, "/index_map/feed_pos_disp_m", {num_el, 3},
-                                  {"element", "xyz"}, HighFive::create_datatype<double>(),
-                                  props_empty);
-            file->getDataSet("/index_map/feed_pos_disp_m").write(feed_pos_disp_m);
-
-            _check_create_dataset(*file, "/index_map/coelev_disp_deg", {num_el}, {"element"},
-                                  HighFive::create_datatype<double>(), props_empty);
-            file->getDataSet("/index_map/coelev_disp_deg").write(coelev_disp_deg);
-
-            _check_create_dataset(*file, "/index_map/type", {num_el}, {"element"},
-                                  HighFive::create_datatype<int32_t>(), props_empty);
-            file->getDataSet("/index_map/type").write(type);
-
-            _check_create_dataset(*file, "/index_map/label", {num_el}, {"element"},
-                                  HighFive::create_datatype<std::string>(), props_empty);
-            file->getDataSet("/index_map/label").write(label);
-        }
-
-        // Store full dish positions
-        {
-            const int num_dishes = telescope.get_num_dishes();
-            std::vector<std::array<double, 3>> dish_positions(num_dishes);
-            for (int i = 0; i < num_dishes; i++) {
-                auto pos = telescope.get_dish_position_in_grid_coords(i);
-                dish_positions[i] = {pos[0], pos[1], pos[2]};
-            }
-            _check_create_dataset(*file, "/index_map/dish_positions_in_grid_coords",
-                                  {static_cast<hsize_t>(num_dishes), 3}, {"dish", "xyz"},
-                                  HighFive::create_datatype<double>(), props_empty);
-            auto dataset = file->getDataSet("/index_map/dish_positions_in_grid_coords");
-            dataset.write(dish_positions);
-        }
+        hdf5::write_index_map(*file, telescope, rows, input_order, blocksize_p);
 
         // Store physical frequencies (file frequencies) as a dataset
         {
@@ -634,45 +452,14 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
                               HighFive::create_datatype<float>(), props_empty);
 
-        // Digital gains: copy entire gains file verbatim into /digital_gains/ group
-        if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
-            if (!std::filesystem::exists(baseband_gain_file)) {
-                FATAL_ERROR_NON_OO("Digital gains file {} does not exist.", baseband_gain_file);
-            } else {
-                try {
-                    HighFive::File src(baseband_gain_file, HighFive::File::ReadOnly);
-
-                    // Copy entire gains file root group as /digital_gains
-                    herr_t err = H5Ocopy(src.getId(), ".", file->getId(), "digital_gains",
-                                         H5P_DEFAULT, H5P_DEFAULT);
-                    if (err < 0) {
-                        FATAL_ERROR_NON_OO("H5Ocopy failed copying gains file {} into output.",
-                                           baseband_gain_file);
-                    } else {
-                        // Add source file path and selected update index as attributes
-                        _check_create_attribute(*file, "digital_gains_source_file",
-                                                baseband_gain_file);
-
-                        auto dg_group = file->getGroup("/digital_gains");
-                        int selected_idx = baseband_gain_update_idx;
-                        if (selected_idx < 0 && dg_group.exist("gain_coeff")) {
-                            auto dims = dg_group.getDataSet("gain_coeff").getDimensions();
-                            if (!dims.empty() && dims[0] > 0)
-                                selected_idx = static_cast<int>(dims[0] - 1);
-                        }
-                        dg_group.createAttribute("selected_update_idx", selected_idx);
-
-                        INFO_NON_OO(
-                            "Copied digital gains from {} into output (selected_update_idx={}).",
-                            baseband_gain_file, selected_idx);
-                    }
-                } catch (const HighFive::Exception& e) {
-                    FATAL_ERROR_NON_OO("Failed to copy gains file {} into output: {}",
-                                       baseband_gain_file, e.what());
-                }
-            }
-        } else if (baseband_gain_file.empty()) {
-            DEBUG_NON_OO("No baseband_gain_file specified, skipping digital gains.");
+        // Digital gains: the archive verbatim, and the gains of the file's elements in [P][D]
+        // order, located by the elements' fiducial index (their station id).
+        if (gains) {
+            gains->copy_into(*file);
+            std::vector<uint64_t> elements;
+            for (const uint64_t el : rows)
+                elements.push_back(telescope.element_index_to_station_id(el, input_order));
+            gains->write_by_dish(*file, elements, telescope.get_num_dishes());
         }
 
         return file;
@@ -692,7 +479,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
                        const size_t blocksize_p_, const size_t blocksize_t_,
                        const std::string compression_, const size_t compression_level_,
                        const bool use_bitshuffle_, const std::string base_dir_,
-                       const std::string baseband_gain_file_, const int baseband_gain_update_idx_) :
+                       std::shared_ptr<const kotekan::BasebandGains> gains_) :
     num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
     input_order(input_order_),
     num_file_f(Telescope::instance().cast<CHORDTelescope>().num_science_freqs()),
@@ -700,8 +487,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
     compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
     open_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
-    baseband_gain_file(std::move(baseband_gain_file_)),
-    baseband_gain_update_idx(baseband_gain_update_idx_),
+    gains(std::move(gains_)),
     partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
     n2_layout(fv.n2_layout), last_update_wall_s(open_wall_s_),
     h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
@@ -711,9 +497,8 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     }
 
     // Record gains file hash for change detection at flush time
-    if (!baseband_gain_file.empty() && std::filesystem::exists(baseband_gain_file)) {
-        gains_file_hash = hash_file_contents(baseband_gain_file);
-    }
+    if (gains)
+        gains_hash_at_open = gains->current_content_hash();
 
     // resize arrays to hold data across (freq, time) blocks
     vis.assign(num_prod * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
@@ -1205,14 +990,15 @@ bool N2FileData::flush_to_disk() {
     }
 
     // Verify digital gains file hasn't been modified since it was copied at file creation
-    if (!baseband_gain_file.empty() && gains_file_hash) {
-        std::optional<size_t> current_hash = hash_file_contents(baseband_gain_file);
-        if (current_hash && current_hash != gains_file_hash) {
-            FATAL_ERROR_NON_OO("Digital gains file {} has been modified since file creation!",
-                               baseband_gain_file);
-            has_error = true;
+    if (gains && gains_hash_at_open) {
+        const std::optional<std::uint64_t> current_hash = gains->current_content_hash();
+        if (current_hash && current_hash != gains_hash_at_open) {
+            // Mark the file before the FATAL, which throws.
             _check_create_attribute(*h5_file, "digital_gains_source_file_modified",
                                     std::string("true"));
+            has_error = true;
+            FATAL_ERROR_NON_OO("Digital gains file {} has been modified since file creation!",
+                               gains->file_path());
         }
     }
 
@@ -1234,8 +1020,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
     _base_dir(get_acq_base_dir_path(config.get<std::string>(unique_name, "base_dir"))),
-    _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
-    _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
+    _gains(std::make_shared<kotekan::BasebandGains>(config, unique_name, "hdf5N2Write")),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
     _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
@@ -1306,44 +1091,19 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         _bad_feed_mask_streams.resize(_bad_feed_mask_num_stream);
     }
 
-    // Resolve baseband_gain_host_info once: it names a config path (e.g.
-    // /fpga_controller) to a block exposing host, port, and an optional
-    // gains_endpoint. The actual fetch happens later in main_thread().
-    const std::string gain_host_ref =
-        config.get_default<std::string>(unique_name, "baseband_gain_host_info", "");
-    if (!gain_host_ref.empty()) {
-        _baseband_gain_host = config.get<std::string>(gain_host_ref, "host");
-        const int port_int = config.get<int>(gain_host_ref, "port");
-        if (port_int <= 0 || port_int > 65535) {
-            FATAL_ERROR("hdf5N2Write: invalid {}.port: {}", gain_host_ref, port_int);
-        }
-        _baseband_gain_port = static_cast<std::uint16_t>(port_int);
-        _baseband_gain_endpoint = config.get_default<std::string>(gain_host_ref, "gains_endpoint",
-                                                                  "/get-current-gain-file");
-    }
-
-    // baseband_gain_file and baseband_gain_host_info are mutually exclusive.
-    // If the host_info form is set, _baseband_gain_file gets filled in by
-    // main_thread() once .partial exists and the fetch completes.
-    if (!_baseband_gain_file.empty() && !gain_host_ref.empty()) {
-        FATAL_ERROR("baseband_gain_file and baseband_gain_host_info are mutually exclusive; set "
-                    "only one of them (file='{}', host_info='{}')",
-                    _baseband_gain_file, gain_host_ref);
-    }
-    if (_baseband_gain_file.empty() && gain_host_ref.empty()) {
+    // baseband_gain_host_info is fetched later, in main_thread(), once .partial exists.
+    if (!_gains->configured()) {
         WARN("hdf5N2Write: no digital gains configured (set 'baseband_gain_file: <path>' or "
              "'baseband_gain_host_info: /<fpga_controller_block>'). Output files will be written "
              "without a /digital_gains dataset, which downstream analysis usually needs to apply "
              "per-input gains to the visibilities. Set this unless you truly intend to skip "
              "gains.");
-    } else if (!_baseband_gain_file.empty() && !std::filesystem::exists(_baseband_gain_file)) {
-        // The host_info path resolves _baseband_gain_file later in main_thread;
-        // only warn here if a literal file path was given and isn't on disk yet.
+    } else if (!_gains->file_path().empty() && !_gains->available()) {
         // Per-file open will still FATAL if the file is missing when needed.
         WARN("hdf5N2Write: baseband_gain_file '{}' does not exist at startup. "
              "If it's still missing when the first output file is opened, kotekan will FATAL. "
              "Check the path, or use baseband_gain_host_info to fetch it.",
-             _baseband_gain_file);
+             _gains->file_path());
     }
 
     // Validate file window configuration
@@ -1817,16 +1577,9 @@ void hdf5N2Write::main_thread() {
             FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", partial_dir.c_str(), msg);
         }
 
-        // If baseband_gain_host_info was provided instead of a local path,
-        // fetch the gains file once into the partial dir and point
-        // _baseband_gain_file at the cached copy. From here on the existing
-        // local-file code path is used.
-        if (!_baseband_gain_host.empty()) {
-            const std::string cached = partial_dir + "/baseband_gains.h5";
-            download_to_file(_baseband_gain_host, _baseband_gain_port, _baseband_gain_endpoint,
-                             cached);
-            _baseband_gain_file = cached;
-        }
+        // If baseband_gain_host_info was provided instead of a local path, fetch the gains
+        // file once into the partial dir; every output file copies from that cached copy.
+        _gains->resolve_local_copy(partial_dir, "baseband_gains");
     }
 
     // Mask frames arrive at line rate from every X-engine half; take them in on their own
@@ -1878,7 +1631,7 @@ void hdf5N2Write::main_thread() {
             auto N2FileData_obj = std::make_unique<N2FileData>(
                 N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _input_order,
                 _blocksize_f, _blocksize_p, _blocksize_t, _compression, _compression_level,
-                _use_bitshuffle, _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
+                _use_bitshuffle, _base_dir, _gains);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();

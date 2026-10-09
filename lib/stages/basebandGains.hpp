@@ -22,9 +22,9 @@ namespace kotekan {
  *
  * The gains archive is a `pychfpga` `DigitalGainArchive` HDF5 file covering the full band
  * and every input. Writers copy it into their output *verbatim* (an `H5Ocopy` of its root
- * group into `/digital_gains`) rather than slicing it, so a file that holds a subset of the
- * frequencies or dishes still carries the whole archive, and the archive's own
- * `index_map/freq` says which channel each gain belongs to.
+ * group into `/digital_gains`), so a file that holds a subset of the frequencies or dishes
+ * still carries the whole archive, and the archive's own `index_map/freq` says which channel
+ * each gain belongs to. @c write_by_dish adds the gains of just the inputs the file holds.
  *
  * The archive comes either from a path on disk (`baseband_gain_file`) or over HTTP from an
  * FPGA controller (`baseband_gain_host_info`), never both. In the HTTP case the writer calls
@@ -39,6 +39,9 @@ namespace kotekan {
  *                                `/get-current-gain-file`) to fetch the archive from.
  * @conf baseband_gain_update_idx Int. Default -1. Index along the archive's `update_time`
  *                                axis to record as current; -1 selects the latest.
+ * @conf crs_board_remap          List of int. Default empty (identity). Raw CRS board
+ *                                (source_id) held by each 8-input slot of the element axis,
+ *                                as given to the DPDK capture workers.
  */
 class BasebandGains {
 public:
@@ -84,14 +87,15 @@ public:
     void copy_into(HighFive::File& file) const;
 
     /**
-     * @brief Write the archive's gains reordered onto the file's own [P][D] dish axes.
+     * @brief Write the archive's gains for the inputs a file holds, in [P][D] order.
      *
      * The archive indexes its inputs by CRS hardware position (`board * 8 + channel`),
      * which is neither the frame's element order nor the telescope's dish order, and it
-     * spans the whole array rather than the dishes a subset file holds. @p gain_input
-     * supplies, for each (polarization, dish) slot of the output in row-major order, the
-     * archive input that slot's gains live at; the datasets written are therefore in the
-     * file's own dish order and reduced to the dishes the file actually holds:
+     * spans the whole array rather than the inputs a subset file holds. Element `e` of the
+     * array (in fiducial [P][D] order, `e = p * num_dishes + dish`) sits in output slot
+     * `e / 8`, channel `e % 8`, and `crs_board_remap` names the raw board in that slot, so its
+     * gains live at archive input `crs_board_remap[e / 8] * 8 + e % 8`. The datasets written
+     * are in the file's own order and reduced to the inputs it holds:
      *
      * - `/digital_gains/gain_coeff_by_dish`  [update][channel][P][D]  complex64
      * - `/digital_gains/gain_exp_by_dish`    [update][P][D]           int32
@@ -99,16 +103,17 @@ public:
      *
      * The channel axis is left as the archive's full FPGA band, indexed by coarse channel
      * number. The verbatim archive from @c copy_into stays in place as the provenance
-     * record. A no-op if gains are not configured or the datasets already exist; FATAL on a
-     * malformed archive or an out-of-range index.
+     * record. The file's element axis must be polarization-major, the same dishes under each
+     * polarization in turn (true for [P][D] baseband frames and the N2 DishInputs layout);
+     * otherwise this WARNs and writes nothing. A no-op if gains are not configured or the
+     * datasets already exist; FATAL on a malformed archive or an input outside it.
      *
      * @param file        The output file, whose `/digital_gains` group is added to.
-     * @param gain_input  Archive input index per (pol, dish) slot, size `n_pol * n_dish`.
-     * @param n_pol       Size of the output polarization axis.
-     * @param n_dish      Size of the output dish axis.
+     * @param elements    The fiducial array element held by each element of the file.
+     * @param num_dishes  Number of dishes in the array.
      */
-    void write_by_dish(HighFive::File& file, const std::vector<int>& gain_input, std::size_t n_pol,
-                       std::size_t n_dish) const;
+    void write_by_dish(HighFive::File& file, const std::vector<std::uint64_t>& elements,
+                       std::uint64_t num_dishes) const;
 
     /// Path of the archive currently in use, empty when not configured.
     const std::string& file_path() const {
@@ -118,6 +123,9 @@ public:
     /// Stable digest of the archive's bytes, or nullopt if it could not be read.
     std::optional<std::uint64_t> content_hash() const;
 
+    /// Digest of the archive as it is on disk now, not cached, to detect a changed archive.
+    std::optional<std::uint64_t> current_content_hash() const;
+
 private:
     std::string _stage_label;
     std::string _gain_file;
@@ -125,6 +133,11 @@ private:
     std::uint16_t _port = 0;
     std::string _endpoint;
     int _update_idx;
+    std::vector<std::uint32_t> _crs_board_remap;
+
+    /// Gather the archive's gains at @p gain_input, one archive input per (pol, dish) slot.
+    void write_gain_datasets(HighFive::File& file, const std::vector<int>& gain_input,
+                             std::size_t n_pol, std::size_t n_dish) const;
 
     /// Lazily computed, then reused: the digest is wanted both for the file-level attribute
     /// and by writers attaching it to their dataset.

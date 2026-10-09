@@ -1,5 +1,6 @@
 #include "SubsetBaseband.hpp"
 
+#include "CHORDTelescope.hpp"
 #include "Config.hpp"
 #include "StageFactory.hpp"
 #include "buffer.hpp"
@@ -10,6 +11,7 @@
 #include "fmt.hpp"
 
 #include <cstring>
+#include <fmt/ranges.h> // IWYU pragma: keep, to format the dish label lists
 #include <stdexcept>
 #include <visUtil.hpp>
 
@@ -78,10 +80,8 @@ STAGE_CONSTRUCTOR(SubsetBaseband) {
     const uint32_t num_blocks_in = num_dishes_in / DISH_BLOCK;
 
     // Resolved by value, not by presence: `Config::exists` checks only this stage's own
-    // block, while `get_default` walks up the config tree. `dish_blocks_subset` is shared
-    // with the DPDK capture workers and hdf5FileWrite (which needs it to put the FPGA gains
-    // into dish order), so it normally sits at global scope rather than on this stage. An
-    // empty list therefore means "all blocks", exactly as omitting the key does.
+    // block, while `get_default` walks up the config tree, so the list may sit at global
+    // scope. An empty list therefore means "all blocks", exactly as omitting the key does.
     dish_blocks_subset =
         config.get_default<std::vector<int>>(unique_name, "dish_blocks_subset", {});
     if (!dish_blocks_subset.empty()) {
@@ -115,6 +115,7 @@ STAGE_CONSTRUCTOR(SubsetBaseband) {
     num_elements_out = NUM_POL * num_dishes_out;
 
     plan_copy();
+    warn_if_not_connected();
 
     initialized_ = false;
 
@@ -141,6 +142,35 @@ STAGE_CONSTRUCTOR(SubsetBaseband) {
 }
 
 SubsetBaseband::~SubsetBaseband() {}
+
+void SubsetBaseband::warn_if_not_connected() const {
+    const auto* chord = dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+    if (!chord || chord->get_num_dishes() != num_dishes_in)
+        return;
+
+    const uint64_t n_dish = chord->get_num_dishes();
+    std::vector<bool> connected(n_dish, false);
+    for (const uint64_t el : chord->get_connected_elements(chord->fiducial_element_order()))
+        connected[el % n_dish] = true;
+    std::vector<bool> selected(n_dish, false);
+    for (const int d : dish_index_out_)
+        selected[d] = true;
+
+    dishInputFields dishes;
+    chord->fill_input_maps(dishes);
+    std::vector<std::string> dropped, not_connected;
+    for (uint64_t d = 0; d < n_dish; d++) {
+        if (connected[d] && !selected[d])
+            dropped.push_back(dishes.label.at(d));
+        else if (!connected[d] && selected[d])
+            not_connected.push_back(dishes.label.at(d));
+    }
+    if (!dropped.empty() || !not_connected.empty())
+        WARN("SubsetBaseband: dish_blocks_subset differs from the telescope's connected dishes, "
+             "which the N2 DishInputs layout records. Connected but not selected: {}; selected "
+             "but not connected: {}",
+             dropped, not_connected);
+}
 
 void SubsetBaseband::plan_copy() {
     const size_t n_blocks_out = dish_blocks_subset.size();
