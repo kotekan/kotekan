@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Decide which CI test jobs a change needs.
 
-Reads changed file paths on stdin and prints ``cpu=true|false``,
+Reads changed file paths from the arguments or stdin and prints ``cpu=true|false``,
 ``gpu=true|false`` and ``ptx=true|false`` lines for $GITHUB_OUTPUT.
 ``--self-test`` checks the cases in CASES instead; the Lint job runs it.
 
@@ -160,7 +160,8 @@ def main():
     )
     if sys.argv[1:] == ["--self-test"]:
         sys.exit(0 if self_test() else 1)
-    files = [os.path.relpath(line.strip()) for line in sys.stdin if line.strip()]
+    lines = sys.argv[1:] or sys.stdin
+    files = [os.path.relpath(line.strip()) for line in lines if line.strip()]
     cpu, gpu, ptx = select(files)
     print(f"cpu={str(cpu).lower()}")
     print(f"gpu={str(gpu).lower()}")
