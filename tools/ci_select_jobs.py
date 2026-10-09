@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Decide which CI test jobs a change needs.
 
-Reads changed file paths on stdin and prints ``cpu=true|false`` and
-``gpu=true|false`` lines for $GITHUB_OUTPUT. Run from the repository root.
+Reads changed file paths on stdin and prints ``cpu=true|false``,
+``gpu=true|false`` and ``ptx=true|false`` lines for $GITHUB_OUTPUT. Run from
+the repository root.
 
 - cpu: the gcc/clang/Intel jobs. Run when any file matches CPU_NEED.
 - gpu: the self-hosted GPU job. Run when any file matches GPU_NEED, or is a
@@ -10,6 +11,8 @@ Reads changed file paths on stdin and prints ``cpu=true|false`` and
   the GPU libraries, the kotekan executable, or the stages
   config/ci-tests/gpu_batch uses. A .cpp counts when its header is reached.
   Boost tests do not count: the CPU jobs build and run them.
+- ptx: the ptxas check of the generated kernels. Run when a generated
+  kernel or its wrapper changes.
 """
 
 import os
@@ -49,6 +52,11 @@ GPU_NEED = re.compile(
     )
     """,
     re.VERBOSE,
+)
+
+# Files the ptxas check reads.
+PTX_NEED = re.compile(
+    r"^(lib/cuda/generated/|tools/check_ptx\.sh|tools/ci_select_jobs\.py|\.github/)"
 )
 
 # Where the #include scan starts, besides the stages the GPU test configs use.
@@ -102,8 +110,10 @@ def main():
     if not gpu:
         reached = gpu_reached()
         gpu = any(os.path.splitext(f)[0] in reached for f in files)
+    ptx = any(PTX_NEED.search(f) for f in files)
     print(f"cpu={str(cpu).lower()}")
     print(f"gpu={str(gpu).lower()}")
+    print(f"ptx={str(ptx).lower()}")
 
 
 if __name__ == "__main__":

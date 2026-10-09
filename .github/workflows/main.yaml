@@ -36,6 +36,7 @@ jobs:
     outputs:
       cpu: ${{ steps.filter.outputs.cpu }}
       gpu: ${{ steps.filter.outputs.gpu }}
+      ptx: ${{ steps.filter.outputs.ptx }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -48,6 +49,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
             echo "cpu=true" >> "$GITHUB_OUTPUT"
             echo "gpu=true" >> "$GITHUB_OUTPUT"
+            echo "ptx=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git fetch -q origin "$GITHUB_BASE_REF"
@@ -254,7 +256,8 @@ jobs:
       matrix:
         include:
 
-          # Test gcc build + CUDA/OpenCL, run yamls in config/ci-tests/gpu_batch
+          # Test gcc build + CUDA/OpenCL, run yamls in config/ci-tests/gpu_batch.
+          # Boost tests are built and run by the CPU jobs; none needs a GPU.
           - id: test-gcc-gpu-yaml
             ccache_key: kotekan-test-gcc-gpu
             cmake_defs: >-
@@ -264,7 +267,7 @@ jobs:
               -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=ON
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
             runs_on: self-hosted
@@ -284,6 +287,20 @@ jobs:
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
             runs_on: self-hosted
 
+
+  # Assemble the generated PTX kernels with ptxas from the nvcc wheel. The
+  # kotekan build never compiles them, and the GPU tests run only a few.
+  kotekan-ptx:
+    name: "PTX"
+    needs: changes
+    if: needs.changes.outputs.ptx == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - run: |
+          python3 -m venv ptxenv
+          ptxenv/bin/pip install -q nvidia-cuda-nvcc-cu12==12.9.86
+          bash tools/check_ptx.sh ptxenv/lib/python3.*/site-packages/nvidia/cuda_nvcc/bin/ptxas
 
   # Run the linter as its own top-level job (rather than as a matrix entry
   # inside kotekan-cpu-tests) so the auto-lint-fix job below can run conditioned

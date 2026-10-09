@@ -55,7 +55,7 @@ There are three kinds of tests. Pick the lowest level that exercises the change:
 
 There are also pytest tests in the tests directory. New pytests are discouraged unless specifically requested: pytest adds a layer of abstraction that hides errors by default and can skip tests silently.
 
-Many of these tests are run as part of github actions CI. We have a limited amount of hardware to run GPU tests locally, so a more minimal set of tests covers those runs. On PRs, tools/ci_select_jobs.py picks the CPU and GPU jobs from the changed files; update its patterns when a CPU build or test starts using files under lib/cuda, lib/hip, lib/opencl, lib/gpu, julia/ or docs/, or when GPU code moves to a new directory.
+Many of these tests are run as part of github actions CI. We have a limited amount of hardware to run GPU tests locally, so a more minimal set of tests covers those runs. On PRs, tools/ci_select_jobs.py picks the CPU, GPU and PTX jobs from the changed files; update its patterns when a CPU build or test starts using files under lib/cuda, lib/hip, lib/opencl, lib/gpu, julia/ or docs/, or when GPU code moves to a new directory.
 
 If tests generate output files, this should be cleaned up, or directed to /tmp.
 

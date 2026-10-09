@@ -27,6 +27,7 @@ On pull requests, ``tools/ci_select_jobs.py`` reads the list of changed files an
 
 - The CPU and Intel jobs are skipped when every changed file is one those builds do not compile or read: ``lib/cuda``, ``lib/hip``, ``lib/opencl``, ``lib/gpu``, ``julia/``, ``config/ci-tests/gpu_batch/``, ``docs/``, and markdown files. These are listed in ``CPU_NEED``.
 - The GPU job runs when a changed file matches ``GPU_NEED`` (GPU libraries, build and CI files), or when the GPU build reaches it through ``#include`` from ``lib/core``, ``lib/metadata``, the GPU libraries, the kotekan executable, or the stages used by ``config/ci-tests/gpu_batch``. The stage list is read from those configs.
+- The PTX job runs when a file under ``lib/cuda/generated`` changes. It assembles every generated kernel with ``ptxas`` from the ``nvidia-cuda-nvcc-cu12`` wheel through ``tools/check_ptx.sh``, on a GitHub runner without a GPU. The kotekan build never compiles these kernels, and the GPU job runs only the ones ``config/ci-tests/gpu_batch`` uses.
 
 Update the patterns in ``tools/ci_select_jobs.py`` when:
 
