@@ -116,7 +116,30 @@ Dataset attributes:
      - Per-dish (x, y) grid indices, int64 with shape
        (``num_dishes``, 2); (-1, -1) off the main array.
    * - ``feed_positions_m``
-     - Per-element 3D feed positions in the grid frame, metres.
+     - Per-dish 3D feed positions in the grid frame, metres, float64 with
+       shape (``num_dishes``, 3).
+   * - ``digital_gains_hash``
+     - Digest of the digital gains archive in ``/digital_gains`` (only when
+       gains are configured; also written as a root attribute).
+
+These attributes describe the whole telescope. A frame whose metadata names
+the dishes it holds with ``dish_index`` (the output of ``SubsetBaseband``) is
+also described the way the N\ :sup:`2` visibility files are (see
+:ref:`n2_vis_file_format`): the root attributes ``input_list`` and
+``input_order`` and the per-element ``/index_map`` datasets (``dish_idx``,
+``pol``, ``label``, ``type``, the grid indices and displacements, and
+``dish_positions_in_grid_coords``). The file's elements are its ``P`` and
+``D`` axes taken P-major, so ``input_list`` gives, for each (polarization,
+dish) position, the array element ``p * num_dishes + dish`` in the
+telescope's fiducial (``CHORDBeamformer``) order, and the labels name the
+dish and polarization (``A01X``, ``A01Y``).
+
+When ``baseband_gain_file`` or ``baseband_gain_host_info`` is set, the FPGA
+digital gains archive is copied into every file as ``/digital_gains``, laid
+out as in the N\ :sup:`2` files. For a frame described by ``input_list``, the
+group also holds the gains of just the inputs the file holds, in its own
+[P][D] order: ``gain_coeff_by_dish``, ``gain_exp_by_dish`` and
+``gain_input_index``, located in the archive through ``crs_board_remap``.
 
 Because each node only writes the frequencies it processed, a full-band
 dataset is spread over one set of files per node. ``python/scripts/
@@ -314,6 +337,17 @@ Configuration
    * - ``num_polarizations``, ``num_dishes``
      - required
      - Telescope input counts recorded in the attributes.
+   * - ``baseband_gain_file``, ``baseband_gain_host_info``,
+       ``baseband_gain_update_idx``
+     - unset, unset, -1
+     - Where to find the FPGA digital gains archive copied into
+       ``/digital_gains``: a local file, or a config block naming the FPGA
+       controller to fetch it from (mutually exclusive).
+   * - ``crs_board_remap``
+     - identity
+     - Raw CRS board held by each 8-input slot of the element axis, as given
+       to the DPDK capture workers; locates each input's gains in the
+       archive.
 
 Reading the files requires the bitshuffle HDF5 plugin with zstd support
 (``import hdf5plugin`` in Python).

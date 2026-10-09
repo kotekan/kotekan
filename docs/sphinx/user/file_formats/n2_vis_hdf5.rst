@@ -270,6 +270,10 @@ File identity and structure
      - string
      - Path of the gains file copied into ``/digital_gains`` (only present
        when gains are configured).
+   * - ``digital_gains_hash``
+     - uint64
+     - FNV-1a digest of the gains file's bytes, so that files can be checked
+       for holding the same gains (only present when gains are configured).
    * - ``digital_gains_source_file_modified``
      - string
      - Only present (value ``"true"``) if the gains file changed on disk
@@ -758,7 +762,40 @@ current for this acquisition (configuration ``baseband_gain_update_idx`` =
      - float64
      - UNIX time of each gain update.
 
-The root attribute ``digital_gains_source_file`` records the source path.
+The archive indexes its inputs by CRS hardware position (``board * 8 +
+channel``) and covers the whole array. The writer adds the gains of the
+file's own elements, gathered from the archive: array element ``e`` (in
+fiducial order, ``e = pol * num_dishes + dish``) sits in slot ``e / 8`` of
+the element axis, which holds raw board ``crs_board_remap[e / 8]``, so its
+gains are archive input ``crs_board_remap[e / 8] * 8 + e % 8``. These are
+written when the file's elements are polarization-major, the same dishes
+under each polarization (true for ``DishInputs`` and for the full array in
+``CHORDBeamformer`` order):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 22 22 30
+
+   * - Dataset
+     - Shape
+     - Type
+     - Description
+   * - ``gain_coeff_by_dish``
+     - (updates, channels, P, D)
+     - complex64
+     - ``gain_coeff`` of the file's elements; element ``p * D + d`` of the
+       file is ``[..., p, d]``. The channel axis is the archive's full band.
+   * - ``gain_exp_by_dish``
+     - (updates, P, D)
+     - int32
+     - ``gain_exp`` of the file's elements.
+   * - ``gain_input_index``
+     - (P, D)
+     - int32
+     - Archive input of each of the file's elements.
+
+The root attributes ``digital_gains_source_file`` and ``digital_gains_hash``
+record the source path and a digest of the archive.
 
 Chunking, compression, and reading the files
 ============================================
