@@ -43,6 +43,11 @@ add_library(
     testPLMaskUpchannelizer.cpp
     testUpchanAlignment.cpp
     cudaPL1bitCorrelator.cpp
+    # PilotProxy DTV pilot-tone detector (vendored kernel core in
+    # external/pilotproxy, linked via libexternal)
+    cudaPilotProxyDetector.cpp
+    cudaPilotProxyPacker.cu
+    testPilotProxyDetector.cpp
     cudaQuantize4.cpp
     cudaQuantize8.cpp
     cudaQuantize8Chime.cpp

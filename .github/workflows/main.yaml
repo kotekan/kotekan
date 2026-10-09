@@ -331,6 +331,7 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
+              bash $GITHUB_WORKSPACE/tests/ci-scripts/pilotproxy/run_pilotproxy_tests.sh $GITHUB_WORKSPACE/build-2404
             runs_on: self-hosted
 
           # run yamls in config/ci-tests/gpu_batch
