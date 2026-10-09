@@ -209,7 +209,7 @@ cudaPLMaskUpchannelizer::~cudaPLMaskUpchannelizer() {}
 int cudaPLMaskUpchannelizer::wait_on_precondition() {
     // The kernel starts `bit_offset` bits into the first row and reads (M-1)*U input bits past the
     // data it consumes (the PFB forward stencil). In time_64 row units that is `overlap` extra rows
-    // that must be readable but are not advanced.
+    // that must be readable but are not advanced; the next invocation reads them again.
     const std::ptrdiff_t overlap = div_ceil(
         bit_offset + (cuda_number_of_taps - 1) * std::ptrdiff_t(upchannelization_factor), 64);
     const std::ptrdiff_t in_ringbuf = pl_expanded_mask.get_ndarray().extent(0);

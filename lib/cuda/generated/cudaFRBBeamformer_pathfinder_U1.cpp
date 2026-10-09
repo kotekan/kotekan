@@ -108,6 +108,12 @@ private:
         std::lcm(std::ptrdiff_t(cuda_granularity_number_of_timesamples),
                  std::ptrdiff_t(cuda_downsampling_factor));
 
+    // The input ring buffer holds this many frames, and one read covers at most one frame. The
+    // configs size every ring buffer as `buffer_depth` frames, and `TW` in `frb.jl` is the depth
+    // of the slowly varying inputs' ring. A mismatch fails at startup: `get_gpu_memory` rejects
+    // a ring whose byte length differs from what `cudaCopyToRingbuffer` allocated.
+    static constexpr std::ptrdiff_t ring_buffer_frames = 4;
+
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
     std::int64_t num_produced_elements(std::int64_t num_available_elements) const;
@@ -491,7 +497,8 @@ cudaFRBBeamformer_pathfinder_U1::cudaFRBBeamformer_pathfinder_U1(Config& config,
     // Every invocation processes a multiple of `Tbar_quantum` samples, so at least that many
     // have to fit into one read, or the kernel would never make progress.
     {
-        const std::ptrdiff_t Tbar_read_max = Ebar_buffer.get_ndarray().extent(0) / 4;
+        const std::ptrdiff_t Tbar_read_max =
+            Ebar_buffer.get_ndarray().extent(0) / ring_buffer_frames;
         if (Tbar_quantum > Tbar_read_max)
             FATAL_ERROR(
                 "Kernel FRBBeamformer_pathfinder_U1 processes multiples of {:d} time samples "
@@ -558,7 +565,7 @@ int cudaFRBBeamformer_pathfinder_U1::wait_on_precondition() {
     }
 
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
-    const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
+    const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / ring_buffer_frames;
 
     // Skip `Tbar_skip` input samples once, at startup (see `Tbar_skip`)
     {
@@ -569,7 +576,9 @@ int cudaFRBBeamformer_pathfinder_U1::wait_on_precondition() {
 
     // Where will our read begin? Ask the ringbuffer. We must not use our own `read_valid` for
     // this: every instance of this command shares one ringbuffer read head, so our own position
-    // lags it by whatever the other instances have claimed since our previous frame.
+    // lags it by whatever the other instances have claimed since our previous frame. Peeking
+    // and then claiming is safe because gpuProcess runs `wait_on_precondition` for all its
+    // instances on its one main thread, so no other instance claims in between.
     const std::ptrdiff_t Tbar_begin = Ebar_buffer.peek_read_head();
     if (Tbar_begin < 0)
         return -1; // shutting down

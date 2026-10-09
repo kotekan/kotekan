@@ -138,8 +138,9 @@ std::optional<std::vector<int>> wait_for_coarse_freq(const std::vector<Buffer*>&
 // `(M-1) * max_upchannelization_factor / 2` FPGA samples after their voltage input, and the U=1
 // FRB beamformer skips the same (see `upchan_template.cxx` and `frb_template.cxx`). The slowly
 // varying inputs of the FRB beamformers (phases, beam positions) are stamped relative to that
-// start: a producer adds this offset to the `fpga_seq_num` of the voltage stream. Reads
-// `max_upchannelization_factor` from the config.
+// start: a producer adds this offset to the `fpga_seq_num` of the voltage stream. The offset
+// counts FPGA samples, so it applies to voltages with `time_downsampling_fpga` 1 only; the
+// producers check that. Reads `max_upchannelization_factor` from the config.
 std::int64_t upchan_output_offset(kotekan::Config& config, const std::string& unique_name);
 
 #endif // #ifndef UPCHANNELIZATION_SCHEDULE_H
