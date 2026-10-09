@@ -320,6 +320,7 @@ jobs:
       post_build: |
         cd $GITHUB_WORKSPACE
         git config --global --add safe.directory $GITHUB_WORKSPACE
+        python3 tools/ci_select_jobs.py --self-test
         bash ./tools/lint.sh
 
   # If kotekan-lint failed, open a PR with lint fixes back to the branch
