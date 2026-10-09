@@ -996,9 +996,10 @@ rfi_second_stage_thresholds:
     valid_at_time_ns: 0
 
 # Updatable config for fringestopping in N2Accumulate; changes apply at the next bin start.
+# A restart returns to this value, not to the last posted one.
 fringestop_enabled:
     kotekan_update_endpoint: json
-    enabled: true
+    enabled: false
     valid_at_time_ns: 0
 
 n2_accumulate:
