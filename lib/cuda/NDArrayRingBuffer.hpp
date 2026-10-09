@@ -293,7 +293,7 @@ public:
                                                    .does_read = true,
                                                    .does_write = false,
                                                    .frame_desc = frame_desc(),
-                                                   .signal_buffer = signal_buffer_name});
+                                                   .signal_buffer = ringbuffer->buffer_name});
         }
     }
 
@@ -305,7 +305,7 @@ public:
                                                    .does_read = false,
                                                    .does_write = true,
                                                    .frame_desc = frame_desc(),
-                                                   .signal_buffer = signal_buffer_name});
+                                                   .signal_buffer = ringbuffer->buffer_name});
         }
     }
 

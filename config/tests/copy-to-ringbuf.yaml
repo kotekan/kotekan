@@ -33,25 +33,25 @@ main_pool:
 
 # Buffers
 host_in_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: input_size
+    value_type: int8
+    extents: [input_size]
+    dimnames: ["T"]
     metadata_pool: main_pool
 
 # Buffer used for signalling only, between the two GPU pipelines.
 host_signal_buffer:
     kotekan_buffer: ring
     #ring_buffer_size:
-    # Nothing else describes the ring's layout: one byte per time sample
-    value_type: int8
-    extents: [ring_buffer_size]
-    dimnames: ["T"]
     metadata_pool: main_pool
 
 host_out_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: output_size
+    value_type: int8
+    extents: [output_size]
+    dimnames: ["T"]
     metadata_pool: main_pool
 
 gen_data:

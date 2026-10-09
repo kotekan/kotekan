@@ -358,55 +358,6 @@ public:
     }
 
     /**
-     * @brief Internal: attach @p new_desc, or reconcile it with the existing
-     *        descriptor, assuming the buffer @c mutex is already held.
-     *
-     * Shared, lock-free implementation of @c ensure_frame_desc() and
-     * @c require_frame_desc(). If no descriptor is attached, @p new_desc is
-     * recorded. Otherwise the two are reconciled: for NDArray descriptors the
-     * structural fields must match, unset labels are filled in and set labels
-     * validated (see @c kotekan::GenericNDArray::reconcile()), and the stored
-     * descriptor is replaced only when labels are completed; any other descriptor
-     * is compared for strict equality. A label/structural conflict, or a byte size
-     * that disagrees with @c frame_desc_byte_size(), is fatal.
-     *
-     * The leading underscore marks this as an internal helper: it does not take
-     * the lock and is not part of the public API. Do not call it directly -- use
-     * @c ensure_frame_desc() or @c require_frame_desc().
-     *
-     * @param[in] new_desc The descriptor to attach or reconcile against.
-     */
-    void _ensure_frame_desc_locked(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
-        if (new_desc->get_byte_size() != frame_desc_byte_size()) {
-            FATAL_ERROR("Buffer {:s} frame description size ({:d}) does not match the buffer "
-                        "size ({:d})",
-                        buffer_name, new_desc->get_byte_size(), frame_desc_byte_size());
-        }
-        if (!frames_desc) {
-            frames_desc = std::move(new_desc);
-            return;
-        }
-        auto cur = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
-        auto inc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(new_desc);
-        if (cur && inc) {
-            try {
-                // reconcile() returns a completed descriptor when @p new_desc
-                // fills in labels, or nullptr when nothing changes (keep ours).
-                if (auto merged = kotekan::GenericNDArray::reconcile(*cur, *inc))
-                    frames_desc = std::move(merged);
-            } catch (const std::exception& e) {
-                FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
-                            buffer_name, e.what());
-            }
-            return;
-        }
-        if (*frames_desc != *new_desc) {
-            FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
-                        buffer_name, frames_desc->describe_mismatch(*new_desc));
-        }
-    }
-
-    /**
      * @brief provides read access to the frame description
      * @return The data structure describing the frame, cast to T. Returns
      *         nullptr if no descriptor is attached or it is not a T.
@@ -500,6 +451,54 @@ protected:
     void private_copy_metadata(int dest_frame_id, GenericBuffer* src, int src_frame_id);
 
 private:
+    /**
+     * @brief Internal: attach @p new_desc, or reconcile it with the existing
+     *        descriptor, assuming the buffer @c mutex is already held.
+     *
+     * Shared, lock-free implementation of @c ensure_frame_desc() and
+     * @c require_frame_desc(). If no descriptor is attached, @p new_desc is
+     * recorded. Otherwise the two are reconciled: for NDArray descriptors the
+     * structural fields must match, unset labels are filled in and set labels
+     * validated (see @c kotekan::GenericNDArray::reconcile()), and the stored
+     * descriptor is replaced only when labels are completed; any other descriptor
+     * is compared for strict equality. A label/structural conflict, or a byte size
+     * that disagrees with @c frame_desc_byte_size(), is fatal.
+     *
+     * It does not take the lock; call @c ensure_frame_desc() or
+     * @c require_frame_desc() instead.
+     *
+     * @param[in] new_desc The descriptor to attach or reconcile against.
+     */
+    void _ensure_frame_desc_locked(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
+        if (new_desc->get_byte_size() != frame_desc_byte_size()) {
+            FATAL_ERROR("Buffer {:s} frame description size ({:d}) does not match the buffer "
+                        "size ({:d})",
+                        buffer_name, new_desc->get_byte_size(), frame_desc_byte_size());
+        }
+        if (!frames_desc) {
+            frames_desc = std::move(new_desc);
+            return;
+        }
+        auto cur = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
+        auto inc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(new_desc);
+        if (cur && inc) {
+            try {
+                // reconcile() returns a completed descriptor when @p new_desc
+                // fills in labels, or nullptr when nothing changes (keep ours).
+                if (auto merged = kotekan::GenericNDArray::reconcile(*cur, *inc))
+                    frames_desc = std::move(merged);
+            } catch (const std::exception& e) {
+                FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
+                            buffer_name, e.what());
+            }
+            return;
+        }
+        if (*frames_desc != *new_desc) {
+            FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
+                        buffer_name, frames_desc->describe_mismatch(*new_desc));
+        }
+    }
+
     /// The byte size a frame descriptor must have: one frame, or the whole ring.
     virtual std::size_t frame_desc_byte_size() const = 0;
 };

@@ -39,10 +39,6 @@ map<string, GenericBuffer*>& bufferContainer::get_buffer_map() {
     return buffers;
 }
 
-const map<string, GenericBuffer*>& bufferContainer::get_buffer_map() const {
-    return buffers;
-}
-
 void bufferContainer::set_buffer_map(map<string, GenericBuffer*>& buffer_map) {
     buffers = buffer_map;
 }

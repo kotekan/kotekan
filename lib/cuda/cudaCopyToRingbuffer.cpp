@@ -29,7 +29,7 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
                                            cudaDeviceInterface& device, int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "cudaCopyToRingbuffer", ""),
-    output_cursor(0), initial_fpga_seq_num(-1), did_set_frame_desc(false) {
+    output_cursor(0), initial_fpga_seq_num(-1) {
     _input_size = config.get<size_t>(unique_name, "input_size");
     _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
@@ -59,6 +59,13 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     assert(signal_buffer);
     if (instance_num == 0)
         signal_buffer->register_producer(unique_name);
+
+    // Give the ring the layout of the input frames, with the ring's capacity in the slowest
+    // dimension. This attaches the ring's descriptor, or checks the input layout against the
+    // one from the config or the GPU commands.
+    const auto in_desc = in_buffer ? in_buffer->get_frame_desc<kotekan::GenericNDArray>() : nullptr;
+    if (in_desc)
+        set_ring_frame_desc(*in_desc);
 
     set_command_type(gpuCommandType::COPY_IN);
 
@@ -147,15 +154,6 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         // Copy (reference to) metadata also
         in_meta = std::dynamic_pointer_cast<chordMetadata>(in_buffer->metadata[buf_index]);
         DEBUG("Metadata from input buffer frame: {:p}", static_cast<void*>(in_meta.get()));
-
-        // Give the ring the layout of the input frames, with the ring's capacity in the slowest
-        // dimension. This attaches the ring's descriptor, or checks the input layout against the
-        // one from the config or the GPU commands.
-        if (!did_set_frame_desc) {
-            did_set_frame_desc = true;
-            if (const auto in_desc = in_buffer->get_frame_desc<kotekan::GenericNDArray>())
-                set_ring_frame_desc(*in_desc);
-        }
     }
     if (in_meta) {
         if (initial_fpga_seq_num == -1) { // first time

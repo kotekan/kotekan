@@ -60,7 +60,6 @@ private:
 
     size_t output_cursor;
     int64_t initial_fpga_seq_num; // fpga_seq_num of first frame, used for consistency checking
-    bool did_set_frame_desc;      // whether the ring descriptor has been set from in_buffer
 
     // One of these will be set:
     /// GPU side memory name for the frame-based input

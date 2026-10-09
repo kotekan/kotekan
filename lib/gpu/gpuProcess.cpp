@@ -486,7 +486,8 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
             if ((desc = command[0]->get_gpu_buffer_desc(buffer_name)))
                 break;
         if (!desc && !signal.empty()) {
-            const auto& host_buffers = local_buffer_container.get_buffer_map();
+            // Commands register the signal ring by its global name
+            auto& host_buffers = buffer_container.get_buffer_map();
             auto ring = host_buffers.find(signal);
             if (ring != host_buffers.end())
                 desc = ring->second->get_frame_desc();
