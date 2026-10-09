@@ -340,10 +340,10 @@ dpdk:
   main_lcore_cpu: 3
   status_cadence: 60
   max_rx_pkt_len: 5000
-  rx_ring_size: 256
+  rx_ring_size: 2048
   tx_ring_size: 128
-  num_mbufs: 1024
-  mbuf_cache_size: 128
+  num_mbufs: 4096
+  mbuf_cache_size: 256
   # Hugepage memory preallocated by the EAL (--socket-mem), one entry per NUMA node
   init_mem_alloc: "{% for n in numa_domains %}256{{ "," if not loop.last }}{% endfor %}"
   # Set to true when using a switch to replicate packets
