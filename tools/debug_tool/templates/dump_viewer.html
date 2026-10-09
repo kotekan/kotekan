@@ -50,7 +50,7 @@
 
         // Only show files without folder name
         file_names.each(function(d) {
-            this.innerHTML = d.replace("/dump_dir/", "");
+            this.textContent = decodeURIComponent(d.replace("/dump_dir/", ""));
             this.setAttribute("id", d);
 
             // Click on a new file will retrigger pipeline drawing
