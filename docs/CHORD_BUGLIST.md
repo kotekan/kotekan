@@ -582,6 +582,13 @@ changes the replica and needs validating. A and D should bring the first frame u
 removes most of #1750's catch-ups.
 Check: `[live]` perf or offcputime through one start, for the build-versus-barrier split; after a fix, a traced start
 shows `gnssN_n2dual`'s first frame within ~0.7 s of its port and no "frame(s) past" warnings.
+**2026-10-09: A and D live fleet-wide (bc2d18420).** Of `ensure_phi`'s calls only the legacy-stream `cudaMemcpy` waits
+on other streams (cf06: 301 ms behind a 300 ms kernel; `cudaMalloc` 0.05 ms). Uploads now go through a pinned
+two-slot ring on the inject stream (a pageable async copy over 256 KB still waits for its own stream). Offline at
+the live settings, a 12-PRN first frame takes 131 ms instead of 696-1526 ms, whatever the load on other streams, and
+outputs are bit-equal. Live: first `n2dual` output 2.1-2.4 s after its port (3.5 s mean over 10-08's traced starts);
+startup catch-ups on the 17:23Z cycle were 0 on four nodes and at most 3 frames on two (were up to 44). Still past
+the ~2.2 s of slack: the table builds are ~0.9 s per GPU, and the other ~1.3 s is not yet identified.
 
 ### #156 — `get_chord_metadata()` reads an object's `parent_pool` while `deepCopy` can be assigning it (object-content race; found 2026-09-30)
 - **What:** `chordMetadata::deepCopy` does `*this = *chord_other` under both objects' locks, and that assigns the weak_ptr
