@@ -157,8 +157,8 @@ protected:
     uint64_t _seq_check_packet_count = 0;
 
     /// A packet at least this many frames past the start of the next active frame is treated as
-    /// a fault rather than caught up to (see handle_packet). About 5 s of 8192-sample frames.
-    static constexpr uint64_t _max_frames_ahead = 128;
+    /// a fault rather than caught up to (see handle_packet). About 1.3 s of 8192-sample frames.
+    static constexpr uint64_t _max_frames_ahead = 32;
 
     /**
      * @brief Copies one packet's payload into the output frame using non-temporal stores.
