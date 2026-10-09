@@ -72,6 +72,7 @@ private:
     double yp_target_as;
     ElementOrder input_order;
     std::vector<vec3d_t> feed_positions_m;
+    std::vector<bool> fringestop_mask;
 
     // Buffers
     Buffer* in_buf;

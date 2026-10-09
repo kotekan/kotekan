@@ -41,7 +41,9 @@
  * @conf  num_samples  Int. The number of time frames to average.
  * @conf  max_age      Float. How old can a frame be in seconds before it is dropped.
  *                     Default is 120 (i.e. two minutes).
- * @conf  do_fringestop  Bool. Whether to apply fringestopping phases before averaging.
+ * @conf  do_fringestop  Bool. Whether to apply fringestopping phases before averaging. Only
+ *                       stations the telescope fringestops (ArrayDish for CHORD) get phases,
+ *                       and the telescope phase center must be set. Default: true.
  *
  * @metric  kotekan_timedownsample_skipped_frame_total
  *      The number of frames skipped entirely because they were too old.
@@ -77,6 +79,7 @@ private:
 
     // Feed positions in grid frame
     std::vector<vec3d_t> feed_positions_m;
+    std::vector<bool> fringestop_mask;
 
     // Buffers
     Buffer* in_buf;

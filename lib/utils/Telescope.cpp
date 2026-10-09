@@ -516,13 +516,27 @@ std::vector<vec3d_t> Telescope::get_feed_positions_m(uint64_t num_elements,
     return feed_positions_m;
 }
 
+std::vector<bool> Telescope::get_fringestop_mask(uint64_t num_elements, ElementOrder ord) const {
+    std::vector<bool> fringestop_mask(num_elements);
+
+    for (uint64_t el_idx = 0; el_idx < num_elements; el_idx++)
+        fringestop_mask.at(el_idx) =
+            station_id_is_fringestopped(element_index_to_station_id(el_idx, ord));
+
+    return fringestop_mask;
+}
+
 void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
                                           const std::vector<vec3d_t> feed_positions_m,
+                                          const std::vector<bool>& fringestop_mask,
                                           std::vector<std::complex<float>>& phases) const {
 
     if (feed_positions_m.size() != phases.size())
         FATAL_ERROR("fill_fringestop: feed_positions_m size {:d} != phases size {:d}",
                     feed_positions_m.size(), phases.size());
+    if (fringestop_mask.size() != phases.size())
+        FATAL_ERROR("fill_fringestop: fringestop_mask size {:d} != phases size {:d}",
+                    fringestop_mask.size(), phases.size());
 
     // Get the phase center (pointing vector) of the telescope.  Depends on the dish coelevation
     // angle, which is fixed during a run.
@@ -543,6 +557,10 @@ void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const
     double k = 2 * M_PI * 1e6 * freq_MHz / C;
 
     for (uint64_t i = 0; i < feed_positions_m.size(); i++) {
+        if (!fringestop_mask[i]) {
+            phases[i] = {1.0f, 0.0f};
+            continue;
+        }
         double phase = -k
                        * (feed_positions_m[i][0] * (n_grid[0] - n_grid0[0])
                           + feed_positions_m[i][1] * (n_grid[1] - n_grid0[1])
