@@ -19,6 +19,7 @@
 #include <cstdint>  // for int64_t, int32_t, uint64_t, uint32_t
 #include <iosfwd>   // for ostream
 #include <json.hpp> // for json
+#include <mutex>    // for mutex
 #include <string>   // for string
 #include <time.h>   // for timespec
 #include <vector>   // for vector
@@ -173,6 +174,11 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          the buffers.
  * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
  *                                          Default: False
+ * @conf    fringestop_updatable_config     String  Optional path to an updatable config block
+ *                                          with fields `enabled` (bool) and `valid_at_time_ns`
+ *                                          (int64, instrument time). Overrides do_fringestop;
+ *                                          a change takes effect at the first accumulation bin
+ *                                          starting at or after valid_at_time_ns.
  * @conf    input_order                     String. Ordering of data in input correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
@@ -277,7 +283,16 @@ private:
 
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
-    const bool _do_fringestop; ///< Whether to fringestop
+    bool _do_fringestop; ///< Whether to fringestop the current accumulation bin
+    const std::string _fringestop_config_path;
+    /// Pending fringestop setting from updatable config; applied at a bin start
+    std::mutex _fringestop_mutex;
+    bool _next_do_fringestop;
+    int64_t _next_fringestop_valid_at_seq;
+    /// configUpdater callback: store the next fringestop setting and its valid-at seq
+    bool receive_fringestop_enabled(nlohmann::json& json);
+    /// Apply a pending fringestop setting to the bin starting at @c bin_start_seq
+    void update_fringestop(int64_t bin_start_seq);
     const N2VarianceMode _variance_mode;
     const bool _debug_accum_mode;
     const bool _profile_info;
