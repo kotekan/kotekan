@@ -48,6 +48,7 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     bin_end_ERAL_deg = fmt->bin_end_ERAL_deg;
 
     rfi_frame_excision_enabled = fmt->rfi_frame_excision_enabled;
+    fringestop_enabled = fmt->fringestop_enabled;
     rfi_frame_excision_num = fmt->rfi_frame_excision_num;
     rfi_frame_excision_threshold = fmt->rfi_frame_excision_threshold;
     rfi_frame_excision_fraction = fmt->rfi_frame_excision_fraction;
@@ -82,6 +83,7 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->bin_end_ERAL_deg = bin_end_ERAL_deg;
 
     fmt->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
+    fmt->fringestop_enabled = fringestop_enabled;
     fmt->rfi_frame_excision_num = rfi_frame_excision_num;
     fmt->rfi_frame_excision_threshold = rfi_frame_excision_threshold;
     fmt->rfi_frame_excision_fraction = rfi_frame_excision_fraction;
@@ -142,6 +144,7 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("bin_end_ERAL_deg", m.bin_end_ERAL_deg);
 
     j.emplace("rfi_frame_excision_enabled", m.rfi_frame_excision_enabled);
+    j.emplace("fringestop_enabled", m.fringestop_enabled);
     j.emplace("rfi_frame_excision_num", m.rfi_frame_excision_num);
     j.emplace("rfi_frame_excision_threshold", m.rfi_frame_excision_threshold);
     j.emplace("rfi_frame_excision_fraction", m.rfi_frame_excision_fraction);
@@ -174,6 +177,7 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.bin_end_ERAL_deg = j.at("bin_end_ERAL_deg");
 
     m.rfi_frame_excision_enabled = j.at("rfi_frame_excision_enabled");
+    m.fringestop_enabled = j.at("fringestop_enabled");
     m.rfi_frame_excision_num = j.at("rfi_frame_excision_num");
     m.rfi_frame_excision_threshold = j.at("rfi_frame_excision_threshold");
     m.rfi_frame_excision_fraction = j.at("rfi_frame_excision_fraction");
