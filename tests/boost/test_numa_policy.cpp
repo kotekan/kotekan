@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_numa_policy"
 
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+
 #include <boost/test/included/unit_test.hpp>
 #include <stdexcept> // for runtime_error
 #include <string>    // for string
@@ -45,6 +47,8 @@ ThreadPolicy thread_policy() {
 
 } // namespace
 #endif
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(node_of_cpus) {
     BOOST_CHECK_EQUAL(numa_node_of_cpus({}, "test"), -1);

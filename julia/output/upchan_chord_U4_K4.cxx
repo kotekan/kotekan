@@ -421,28 +421,11 @@ int cudaUpchannelizer_chord_U4_K4::wait_on_precondition() {
     // Timestamps point to the beginning of a sample, so the output sample centred on this
     // window begins at input sample `U * tbar + (M-1) * U / 2`. To align the outputs of all
     // upchannelizers of a run we skip `T_skip` input samples once, at startup, so that every
-    // upchannelizer's output begins at input sample `T_offset`, independent of `U`. (Only the
-    // main thread moves the shared read head, so it is 0 exactly until the first claim.)
-    if (T_skip > 0) {
-        const std::ptrdiff_t T_head = E_buffer.peek_read_head();
-        if (T_head < 0)
-            return -1; // shutting down
-        if (T_head == 0) {
-            if (!(T_skip <= T_read_max))
-                FATAL_ERROR(
-                    "Kernel Upchannelizer_chord_U4_K4 needs to skip {:d} input samples, but its "
-                    "input ring buffer E holds only {:d}",
-                    T_skip, T_ringbuf);
-            const int errcode =
-                E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
-                    return T_available >= T_skip
-                               ? read_descriptor_t{.claimed = T_skip, .read = T_skip}
-                               : read_descriptor_t{.claimed = 0, .read = 0};
-                });
-            if (errcode < 0)
-                return errcode;
-            E_buffer.finish_read();
-        }
+    // upchannelizer's output begins at input sample `T_offset`, independent of `U`.
+    {
+        const int errcode = E_buffer.skip_at_start(T_skip);
+        if (errcode < 0)
+            return errcode;
     }
 
     // Wait for data to be available in input ringbuffer

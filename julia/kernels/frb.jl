@@ -8,6 +8,8 @@ using Mustache
 using Random
 using StaticArrays
 
+include("upchan_taps.jl")
+
 const Memory = IndexSpaces.Memory
 
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
@@ -82,6 +84,21 @@ elseif setup ≡ :hirax
     const W = 16                # number of warps
     const B = 1                 # number of blocks per SM
 
+elseif setup ≡ :hirax128
+
+    # HIRAX 128 Setup
+    # The second FFT expands the M direction for each of the 2N beams of the
+    # first FFT, so the smaller dish grid dimension comes first.
+
+    const M = 8
+    const N = 16
+
+    const Touter = 64
+    const Tinner = 8
+
+    const W = 8                 # number of warps
+    const B = 2                 # number of blocks per SM
+
 elseif setup ≡ :pathfinder || setup ≡ :smallfinder
 
     # CHORD pathfinder (case 2)
@@ -141,7 +158,7 @@ const Tw = idiv(W, Mw)
 const Tr = idiv(Touter, 2 * Tw)
 
 # Fsh1 layout
-const ΣF1 = D == 64 ? 260 : 257
+const ΣF1 = D == 64 ? 260 : D == 128 ? 258 : 257
 
 # Fsh2 layout
 const ΣF2 = 32 * (M + 1) + Mt
@@ -493,6 +510,53 @@ function copy_global_memory_to_Fsh1!(emitter)
             # Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
             Time(:time, 1, W) => Warp(:warp, 1, W),
             Time(:time, W, idiv(Touter, W)) => Register(:time, W, idiv(Touter, W)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
+        ])
+        load!(
+            emitter,
+            :E => layout_E_registers,
+            :E_memory => layout_E_memory;
+            align=16,
+            postprocess=addr -> :(
+                let
+                    offset =
+                        $(shrinkmul(idiv(D, 4) * P * Fbar_in, :Tbarmin, Tbar)) +
+                        $(shrinkmul(idiv(D, 4) * P, :Fbar_in_min, Fbar_in))
+                    length = $(shrink(idiv(D, 4) * P * Fbar_in * Tbar))
+                    mod($addr + offset, length)
+                end
+            ),
+        )
+        # Swap polr0, dish3
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
+        # E -> Fbar_in shuffle
+        # 1. swap polr0, cplx0
+        # 2. swap timehi, dish0
+        # 3. swap cplx0, dish1
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Cplx(:cplx, 1, C))
+        permute!(emitter, :E, :E, Time(:time, idiv(Touter, 2), 2), Dish(:dish, 1, 2))
+        permute!(emitter, :E, :E, Cplx(:cplx, 1, C), Dish(:dish, 2, 2))
+        store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
+
+    elseif setup === :hirax128
+
+        # As eqns. (88)-(92), but a tile has 128 dishes and 2 time samples;
+        # the time sample takes the thread bit of dish 7
+        @assert D == 128
+        @assert Touter % 4 == 0
+        @assert idiv(Touter, 4) % W == 0
+        layout_E_registers = Layout([
+            IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+            Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+            Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+            Dish(:dish, 4, 4) => Register(:dish, 4, 4),
+            Dish(:dish, 16, 8) => Thread(:thread, 1, 8),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
+            Polr(:polr, 1, P) => Thread(:thread, 8, 2),
+            Time(:time, 1, 2) => Thread(:thread, 16, 2),
+            Time(:time, 2, W) => Warp(:warp, 1, W),
+            Time(:time, 2 * W, idiv(Touter, 4 * W)) => Register(:time, 2 * W, idiv(Touter, 4 * W)),
+            Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
             Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
         load!(
@@ -1066,7 +1130,7 @@ function do_first_fft!(emitter)
     split!(emitter, [:aΓ²re, :aΓ²im], :aΓ², Register(:cplx, 1, 2))
     split!(emitter, [:Zre, :Zim], :Z, Register(:cplx, 1, 2))
     # TODO: Find a better set of conditions
-    if trailing_zeros(Npad) == 5 || setup === :hirax
+    if trailing_zeros(Npad) == 5 || setup === :hirax || setup === :hirax128
         # CHORD? and Hirax
         apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
         apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
@@ -2495,9 +2559,9 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
                 Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$Tbar"),
                 Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Touter"),
-                # Number of PFB taps of the upchannelizers; must match `M` in `upchan.jl`. This
-                # defines the time offset of the upchannelized voltages (see `frb_template.cxx`).
-                Dict("type" => "int", "name" => "cuda_upchan_number_of_taps", "value" => "4"),
+                # Number of PFB taps of the upchannelizers. This defines the time offset of the
+                # upchannelized voltages (see `frb_template.cxx`).
+                Dict("type" => "int", "name" => "cuda_upchan_number_of_taps", "value" => "$upchan_number_of_taps"),
             ],
             "minthreads" => num_threads * num_warps,
             "num_blocks_per_sm" => num_blocks_per_sm,

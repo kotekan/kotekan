@@ -560,28 +560,11 @@ int cudaFRBBeamformer_pathfinder_U8::wait_on_precondition() {
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
 
-    // Skip `Tbar_skip` input samples once, at startup (see `Tbar_skip`). (Only the main thread
-    // moves the shared read head, so it is 0 exactly until the first claim.)
-    if (Tbar_skip > 0) {
-        const std::ptrdiff_t Tbar_head = Ebar_buffer.peek_read_head();
-        if (Tbar_head < 0)
-            return -1; // shutting down
-        if (Tbar_head == 0) {
-            if (!(Tbar_skip <= Tbar_read_max))
-                FATAL_ERROR(
-                    "Kernel FRBBeamformer_pathfinder_U8 needs to skip {:d} input samples, but its "
-                    "input ring buffer Ebar holds only {:d}",
-                    Tbar_skip, Tbar_ringbuf);
-            const int errcode =
-                Ebar_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tbar_available) {
-                    return Tbar_available >= Tbar_skip
-                               ? read_descriptor_t{.claimed = Tbar_skip, .read = Tbar_skip}
-                               : read_descriptor_t{.claimed = 0, .read = 0};
-                });
-            if (errcode < 0)
-                return errcode;
-            Ebar_buffer.finish_read();
-        }
+    // Skip `Tbar_skip` input samples once, at startup (see `Tbar_skip`)
+    {
+        const int errcode = Ebar_buffer.skip_at_start(Tbar_skip);
+        if (errcode < 0)
+            return errcode;
     }
 
     // Where will our read begin? Ask the ringbuffer. We must not use our own `read_valid` for

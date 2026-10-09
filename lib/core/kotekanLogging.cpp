@@ -1,8 +1,8 @@
 #include "kotekanLogging.hpp"
 
-#include "errors.h" // for __enable_syslog, get_log_level_string, __err_msg, MAX_LOG_MSG_LEN
+#include "errors.h" // for MAX_LOG_MSG_LEN, set_error_message_f, get_log_level_string, __enable...
 
-#include "fmt.hpp" // for compile_string_to_view, vformat, fmt
+#include "fmt.hpp" // for compile_string_to_view, vformat, vformat_to_n, fmt
 
 #include <stdexcept>   // for runtime_error
 #include <stdio.h>     // for stderr
@@ -76,11 +76,10 @@ logLevel kotekanLogging::get_log_level() const {
 
 void kotekanLogging::vset_error_message(const fmt::basic_string_view<char> format,
                                         fmt::format_args args) {
-    // Note: We should protect `__err_msg` with a lock
-    auto result = fmt::format_to_n(__err_msg, MAX_LOG_MSG_LEN - 1, fmt::vformat(format, args));
-    char* next = result.out;
-    // Ensure NUL termination
-    *next = '\0';
+    char msg[MAX_LOG_MSG_LEN];
+    auto result = fmt::vformat_to_n(msg, MAX_LOG_MSG_LEN - 1, format, args);
+    *result.out = '\0';
+    set_error_message_f("%s", msg);
 }
 
 } // namespace kotekan

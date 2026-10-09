@@ -128,6 +128,8 @@ host_hfb2_beams_buffer:
 
 run_set_hfb1_U128_phase:
     kotekan_stage: setFRB1Phase
+    # Must match the HFB voltage chain (run_upchan_hfb_U128)
+    max_upchannelization_factor: 128
     num_dishes_x: 256           # tranposed dish layout
     num_dishes_y: 4
     upchan_factor: 128
@@ -194,6 +196,8 @@ run_hfb1_accumulate_U128:
 
 run_set_hfb2_beams:
     kotekan_stage: setFRBBeams
+    # Must match the HFB voltage chain (run_upchan_hfb_U128)
+    max_upchannelization_factor: 128
     metadata_source: host_voltage_buffer_0
     out_pos_buf: host_hfb2_beam_positions_buffer
     out_id_buf: host_hfb2_beam_ids_buffer

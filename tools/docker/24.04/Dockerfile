@@ -74,6 +74,7 @@ RUN apt-get update && \
         pkg-config \
         python3 \
         python3-dev \
+        python3-pip \
         software-properties-common \
         valgrind \
         wget \
@@ -86,8 +87,6 @@ RUN apt-get update && \
 ENV PIP_NO_CACHE_DIR=1
 # Overwrite system install of python/pip if needed
 RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
-    wget https://bootstrap.pypa.io/get-pip.py && \
-    python3 get-pip.py && \
     python3 -m pip install --upgrade \
         astropy \
         bitshuffle \
@@ -95,18 +94,14 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         breathe==4.35.* \
         click==8.0.2 \
         cmake_format \
-        cython \
-        distro-info \
         flask \
         future \
-        gmpy2 \
         h5py \
         hdf5plugin \
         jinja2 \
         mpmath \
         msgpack \
         numpy \
-        pip \
         pkgconfig \
         posix_ipc \
         pytest \
@@ -116,11 +111,9 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         pytest-xdist \
         requests \
         ruamel.yaml \
-        setuptools \
         sphinx==6.2.* \
         sphinx_rtd_theme==2.0.* \
-        tabulate \
-        wheel
+        tabulate
 
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
@@ -129,14 +122,14 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
 # We want the `python` command to point to python3
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
-# Install Blaze for the eigenvalue processes. Pin the cache size: Blaze bakes the build
+# Install Blaze v3.8.2 for the eigenvalue processes. Pin the cache size: Blaze bakes the build
 # host's L3 size into a header and rejects values above 100 MB at compile time.
 # 30 MiB matches the per-socket L3 of the CHORD compute nodes.
 RUN mkdir src && \
     ( \
-        git clone -b v3.8.2 https://bitbucket.org/blaze-lib/blaze.git blaze && \
+        git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
         cd blaze && \
-        git checkout && \
+        git checkout 3156507a4b7a6a9cd413ef87df0a0aa2b1c697d9 && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -163,12 +156,14 @@ RUN mkdir src && \
 # Depends on lz4.pc (called liblz4.pc in apt install)
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
-# Clone HighFive
+# Install HighFive v3.3.0
 RUN mkdir src && \
     ( \
         cd src && \
-        git clone --recurse-submodules --single-branch --branch v3.2.0 https://github.com/highfive-devs/highfive && \
+        git clone https://github.com/highfive-devs/highfive && \
         cd highfive && \
+        git checkout be0ddb3d43ce0f53db2d8b1438e819c5a5cb278a && \
+        git submodule update --init --recursive && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -264,6 +259,7 @@ RUN mkdir src && \
     ( \
         cd src && \
         wget https://developer.nvidia.com/downloads/compute/cuFFTDx/redist/cuFFTDx/cuda13/nvidia-mathdx-26.03.0-cuda13.tar.gz && \
+        echo "95c274405102f6a263f79eb04447bd7539f66ce649779bd8e225fcb8cc71594d  nvidia-mathdx-26.03.0-cuda13.tar.gz" | sha256sum -c && \
         tar -xzf nvidia-mathdx-26.03.0-cuda13.tar.gz && \
         cd nvidia-mathdx-26.03.0-cuda13 && \
         mv nvidia/mathdx/26.03/include /usr/local/include/mathdx && \

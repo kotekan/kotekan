@@ -80,6 +80,8 @@ run_set_upchan_hfb_U128_gain:
 {% endfor %}
 
 run_upchan_hfb_U128:
+    # The HFB chain aligns its outputs with its own largest upchannelization factor
+    max_upchannelization_factor: 128
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -111,6 +113,8 @@ host_upchan_hfb_U128_expanded_pl_mask_ringbuffer:
     metadata_pool: main_pool
 
 run_upchan_pl_hfb_U128:
+    # Must match the HFB voltage chain (run_upchan_hfb_U128)
+    max_upchannelization_factor: 128
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0

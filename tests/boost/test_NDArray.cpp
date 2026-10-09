@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_NDArray"
 
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+
 #include <NDArray.hpp>
 #include <boost/test/included/unit_test.hpp>
 #include <iostream>
@@ -10,6 +12,9 @@ using namespace kotekan;
 void examineNDArray(const GenericNDArray& arr) {
     arr.output_framedesc(std::cout);
 }
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test1) {
     NDArray<int, 0> a0("a0", {}, {}, {});
