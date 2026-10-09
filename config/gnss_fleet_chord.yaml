@@ -671,6 +671,6 @@ nodes:
     cx42: {search-port-base: 11044}
     cx43: {search-port-base: 11046}
     cx44: {search-port-base: 11048}
-  # cx51 was the phase-3a canary (live 2026-10-03 12:37Z) and the n2-dual-merged canary
-  # (2026-10-06 21:10Z); its settings are common's now.
-    cx51: {search-port-base: 11050}
+  # cx51 is returned (KV, 2026-10-09) until further notice; restore this line to bring it back.
+  # Its search ports (11050-11051) stay reserved in the aggregator's addressing.
+  #  cx51: {search-port-base: 11050}
