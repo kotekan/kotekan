@@ -49,6 +49,16 @@ struct GnssCudaDespread::Impl {
     };
     std::vector<PhiCache> phi;
 
+    /// Pinned upload buffers for ensure_phi on a caller's stream, used in turn. A slot is
+    /// rewritten only after the copy out of it has completed (`done`).
+    struct Staging {
+        unsigned char* host = nullptr;
+        size_t bytes = 0;
+        cudaEvent_t done = nullptr;
+    };
+    Staging staging[2];
+    int staging_next = 0;
+
     /// fp16 Phi (31896a862:docs/CHORD_GPU_TODO.md item 3): ensure_phi stores __half2 tables and
     /// every launch_waveform goes through the __half2 gather. HALVES THE RESIDENT TABLE -- §10.6c
     /// measured this kernel DRAM-FOOTPRINT-bound and fp16 is the one lever that paid
@@ -178,6 +188,28 @@ struct GnssCudaDespread::Impl {
             cudaFree(pc.d_A);
             cudaFree(pc.d_B);
         }
+        for (auto& sg : staging) {
+            if (sg.done)
+                cudaEventDestroy(sg.done);
+            cudaFreeHost(sg.host);
+        }
+    }
+
+    /// The next pinned upload slot, at least `bytes` long, once the copy last made from it
+    /// has completed.
+    Staging& next_staging(size_t bytes) {
+        Staging& sg = staging[staging_next];
+        staging_next = (staging_next + 1) % 2;
+        if (sg.done)
+            ck(cudaEventSynchronize(sg.done), "Phi staging reuse");
+        else
+            ck(cudaEventCreateWithFlags(&sg.done, cudaEventDisableTiming), "Phi staging event");
+        if (sg.bytes < bytes) {
+            ck(cudaFreeHost(sg.host), "free Phi staging");
+            ck(cudaMallocHost((void**)&sg.host, bytes), "alloc Phi staging");
+            sg.bytes = bytes;
+        }
+        return sg;
     }
 
     /// THE code-period boundary hop for a window: where the PROMPT's absolute code phase
@@ -310,8 +342,11 @@ struct GnssCudaDespread::Impl {
     }
 
     // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz
-    // (or if the storage precision no longer matches use_fp16).
-    PhiCache& ensure_phi(int p, double doppler) {
+    // (or if the storage precision no longer matches use_fp16). The upload is ordered on `st`,
+    // after any earlier kernel there that reads this bucket. `pinned` copies through a staging
+    // slot and never waits for `st`; without it the copy is from pageable memory, which first
+    // waits for `st` to drain, so only a caller whose stream is otherwise idle passes false.
+    PhiCache& ensure_phi(int p, double doppler, cudaStream_t st, bool pinned) {
         PhiCache& pc = phi[(size_t)p];
         if (pc.valid && pc.half == use_fp16 && std::fabs(doppler - pc.doppler) <= refresh_hz)
             return pc;
@@ -338,17 +373,35 @@ struct GnssCudaDespread::Impl {
             ck(cudaMalloc(&pc.d_A, n * esz), "alloc PhiA");
             ck(cudaMalloc(&pc.d_B, n * esz), "alloc PhiB");
         }
-        if (use_fp16) {
-            // Convert on the host and upload half-size: the H2D shrinks along with the table.
-            std::vector<unsigned> sA(n), sB(n); // 4 B per __half2
+        // fp16 converts on the host and uploads half-size: the H2D shrinks along with the table.
+        const size_t bytes = n * esz;
+        const void* srcA = hA.data();
+        const void* srcB = hB.data();
+        std::vector<unsigned> sA, sB; // 4 B per __half2
+        Staging* sg = nullptr;
+        if (pinned) {
+            sg = &next_staging(2 * bytes);
+            if (use_fp16) {
+                gnss_cuda::phi_to_half(hA.data(), (unsigned*)sg->host, n);
+                gnss_cuda::phi_to_half(hB.data(), (unsigned*)(sg->host + bytes), n);
+            } else {
+                std::memcpy(sg->host, hA.data(), bytes);
+                std::memcpy(sg->host + bytes, hB.data(), bytes);
+            }
+            srcA = sg->host;
+            srcB = sg->host + bytes;
+        } else if (use_fp16) {
+            sA.resize(n);
+            sB.resize(n);
             gnss_cuda::phi_to_half(hA.data(), sA.data(), n);
             gnss_cuda::phi_to_half(hB.data(), sB.data(), n);
-            ck(cudaMemcpy(pc.d_A, sA.data(), n * esz, cudaMemcpyHostToDevice), "PhiA up h");
-            ck(cudaMemcpy(pc.d_B, sB.data(), n * esz, cudaMemcpyHostToDevice), "PhiB up h");
-        } else {
-            ck(cudaMemcpy(pc.d_A, hA.data(), n * esz, cudaMemcpyHostToDevice), "PhiA up");
-            ck(cudaMemcpy(pc.d_B, hB.data(), n * esz, cudaMemcpyHostToDevice), "PhiB up");
+            srcA = sA.data();
+            srcB = sB.data();
         }
+        ck(cudaMemcpyAsync(pc.d_A, srcA, bytes, cudaMemcpyHostToDevice, st), "PhiA up");
+        ck(cudaMemcpyAsync(pc.d_B, srcB, bytes, cudaMemcpyHostToDevice, st), "PhiB up");
+        if (sg)
+            ck(cudaEventRecord(sg->done, st), "Phi staging record");
         pc.half = use_fp16;
         pc.valid = true;
         pc.doppler = doppler;
@@ -574,7 +627,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     // dropped below (the segmented despread lives on the device path, enqueue_batch_device).
     for (size_t i = 0; i < specs.size(); ++i) {
         const Spec& sp = specs[i];
-        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz);
+        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz, im.stream, false);
         const double cps =
             im.bank.eff_chip_rate() / im.fs
             * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
@@ -666,7 +719,7 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
     // buffer is safely reusable per call.
     for (size_t i = 0; i < specs.size(); ++i) {
         const Spec& sp = specs[i];
-        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz);
+        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz, st, true);
         const double cps =
             im.bank.eff_chip_rate() / im.fs
             * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
@@ -858,7 +911,7 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
     im.h_gains.assign((size_t)2 * n_job * im.n_chan, make_float2(0.f, 0.f));
     for (int i = 0; i < n_job; ++i) {
         const PeelSpec& sp = specs[(size_t)i];
-        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz);
+        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz, st, true);
         const double cps = im.cps_for(sp.doppler_hz);
         const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
         uint64_t mask = 0;

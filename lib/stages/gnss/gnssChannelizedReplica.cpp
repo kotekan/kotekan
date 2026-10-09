@@ -583,10 +583,21 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
             f.PsiA[ci].assign(Lf + 1, 0.0);
             f.PsiB[ci].assign(Lf + 1, 0.0);
         }
+        // The carrier phasors by recurrence, one complex multiply per tap instead of an exp,
+        // re-anchored exactly every 1024 taps so the rounding cannot accumulate.
+        const std::complex<double> za = std::exp(-I * (off + wc));
+        const std::complex<double> zb = std::exp(-I * (off - wc));
+        std::complex<double> pa, pb;
         for (int k = 0; k < Lf; ++k) {
+            if ((k & 1023) == 0) {
+                pa = std::exp(-I * (off + wc) * (double)k);
+                pb = std::exp(-I * (off - wc) * (double)k);
+            }
             const double pk = _proto[k];
-            const std::complex<double> ea = pk * std::exp(-I * (off + wc) * (double)k);
-            const std::complex<double> eb = pk * std::exp(-I * (off - wc) * (double)k);
+            const std::complex<double> ea = pk * pa;
+            const std::complex<double> eb = pk * pb;
+            pa *= za;
+            pb *= zb;
             f.PhiA[ci][k + 1] = f.PhiA[ci][k] + ea;
             f.PhiB[ci][k + 1] = f.PhiB[ci][k] + eb;
             if (want_psi) {
