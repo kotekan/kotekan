@@ -51,8 +51,9 @@ jobs:
         shell: bash
     env:
       # Self-hosted runners keep ccache on the persistent /data mount; GitHub-hosted
-      # runners restore and save it through the Actions cache. Only pushes to develop
-      # write the shared /data cache, so a PR branch cannot leave objects in it.
+      # runners restore it from the Actions cache. Only pushes to develop write either
+      # cache: a PR cannot leave objects in it, and PR pushes do not crowd out the
+      # develop entries that every PR restores from.
       CCACHE_DIR: ${{ contains(inputs.runs_on || '', 'self-hosted') && format('/data/ccache/{0}', inputs.ccache_key) || format('{0}/.ccache', github.workspace) }}
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_COMPRESS: true
@@ -64,9 +65,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Cache ccache
+      - name: Restore ccache
         if: ${{ inputs.cmake_defs && !contains(inputs.runs_on || '', 'self-hosted') }}
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: .ccache
           key: ccache-${{ inputs.ccache_key }}-${{ github.sha }}
@@ -121,3 +122,10 @@ jobs:
           set -euo pipefail
           # Run any commands specified ...
           ${{ inputs.post_build }}
+
+      - name: Save ccache
+        if: ${{ github.event_name == 'push' && inputs.cmake_defs && !contains(inputs.runs_on || '', 'self-hosted') }}
+        uses: actions/cache/save@v6
+        with:
+          path: .ccache
+          key: ccache-${{ inputs.ccache_key }}-${{ github.sha }}
