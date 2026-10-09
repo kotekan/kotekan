@@ -26,9 +26,6 @@
 # of sub-integrations produced per frame. Choose any positive divisor of samples_per_data_set (does not need to be 1024).
 {% set sub_integration_ntime = 8192 %}
 
-# n2k sub-integrations to combine into each output N2 frame by N2Accumulate. 238 ~= 10 seconds.
-{% set num_subintegrations_per_bin = 238 %}
-
 # RFI Detection Parameters
 {% set rfi_downsampling_factor = 256 %}
 {% set rfi_second_downsampling_factor = 32 %}
@@ -38,11 +35,16 @@
 # The two NUMA halves. Each owns a NIC port, a GPU and a set of cores, and every per-half
 # buffer and stage below loops over this table; a block that exists once per half is
 # named <block>_<id> (sfx), so half 0's buffers and stages end in _0 and half 1's in _1.
+# other_cpus are the half's cores no other entry or dpdk RX lcore uses, for its light stages
+# (mask bookkeeping, metrics, copies and sends). The dpdk main lcore only polls stats once a
+# second, so it shares core 0 with them rather than a frame_service_cpu.
 {% set numa_halves = [
     {"id": 0, "sfx": "_0", "mask_cpu": 1,  "transpose_cpus": [2, 3],   "frame_service_cpu": 4,
-     "gpu_cpus": [12, 13, 14], "accum_cpu": 9,  "subset_cpu": 11, "eigen_cpu": 10},
+     "gpu_cpus": [12, 13, 14], "accum_cpu": 9,  "subset_cpu": 11, "eigen_cpu": 10,
+     "other_cpus": [0, 8, 15]},
     {"id": 1, "sfx": "_1", "mask_cpu": 16, "transpose_cpus": [17, 18], "frame_service_cpu": 20,
-     "gpu_cpus": [25, 26, 27], "accum_cpu": 28, "subset_cpu": 29, "eigen_cpu": 30},
+     "gpu_cpus": [25, 26, 27], "accum_cpu": 28, "subset_cpu": 29, "eigen_cpu": 30,
+     "other_cpus": [19, 24, 31]},
 ] %}
 
 ---
@@ -428,6 +430,9 @@ n2_subset_buffer{{ n.sfx }}:
     n2_layout: "DishInputs"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
 
 n2_eigen_buffer{{ n.sfx }}:
     kotekan_buffer: N2
@@ -436,6 +441,9 @@ n2_eigen_buffer{{ n.sfx }}:
     n2_layout: "DishInputs"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
 {% endfor %}
 
 # Ringbuffer signalling buffers, one set per half.
@@ -532,7 +540,7 @@ dpdk:
     # Format is index = lcore, value = cpu core
     # lcore 1 -> cpu 21 (NUMA 1) so port-1's RX lcore is local to its NIC a0:00.0 (NUMA 1)
     lcore_cpu_map: [5, 21, 7, 6, 22, 23] # [5,6,7]
-    main_lcore_cpu: 4
+    main_lcore_cpu: 0
     num_mbufs: 16384
     rx_ring_size: 4096
     mbuf_cache_size: 512
@@ -578,19 +586,17 @@ dpdk:
         - dpdk_handler: crs16BoardDistributor
           worker_rings: [{{ 2 * n.id }},{{ 2 * n.id + 1 }}]
 {% endfor %}
-    # Exactly One worker must be given per worker ring
+    # Exactly one worker per worker ring, in ring order: worker i reads worker_ring_i.
     workers:
 {% for n in numa_halves %}
         - dpdk_handler: crs16BoardCaptureWorker
           frame_service_cpu_affinity: [{{ n.frame_service_cpu }}]
-          worker_ring: {{ 2 * n.id }}
           port: {{ n.id }}
           allocate_metadata: true
           out_buf: network_input_buffer_{{ n.id }}
           receipt_bitmap_buf: packet_receipt_bitmap_buffer_{{ 2 * n.id }}
         - dpdk_handler: crs16BoardCaptureWorker
           frame_service_cpu_affinity: [{{ n.frame_service_cpu }}]
-          worker_ring: {{ 2 * n.id + 1 }}
           port: {{ n.id }}
           out_buf: network_input_buffer_{{ n.id }}
           receipt_bitmap_buf: packet_receipt_bitmap_buffer_{{ 2 * n.id + 1 }}
@@ -600,8 +606,8 @@ dpdk:
 # Output slots (after crs_board_remap, not raw source_ids) with no CRS board behind them:
 # ProcessPacketMask marks them fully received so an absent board is not 100% packet loss.
 # Listing a slot that has a board disables its packet-loss accounting, so update this as
-# boards come and go. Populated (Sep 2 2026): slots 0, 1, 8, 9 (dishes) and 7, 15 (RFI).
-missing_source_ids: [2, 3, 4, 5, 6, 10, 11, 12, 13, 14]
+# boards come and go. Populated (Oct 8 2026): slots 0-3, 8-11 (dishes) and 7, 15 (RFI).
+missing_source_ids: [4, 5, 6, 12, 13, 14]
 
 # Combine packet receipt bitmaps and generate packet-loss masks
 {% for n in numa_halves %}
@@ -655,6 +661,7 @@ set_bf_mask:
 {% for n in numa_halves %}
     bf_mask_{{ n.id }}:
         kotekan_stage: bufferBadInputs
+        cpu_affinity: {{ n.other_cpus }}
         updatable_config:
             bad_inputs: /updatable_config/bad_inputs
         metadata_source: host_voltage_buffer_{{ n.id }}
@@ -727,6 +734,7 @@ run_rfi_s012:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer{{ n.sfx }}
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer{{ n.sfx }}
@@ -750,6 +758,7 @@ run_rfi_sktilde:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer{{ n.sfx }}
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer{{ n.sfx }}
@@ -772,6 +781,7 @@ run_recv_rfi_sktilde:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_rfi_sktilde_ringbuffer_in: host_rfi_sktilde_ringbuffer{{ n.sfx }}
         out_buffers:
@@ -793,6 +803,7 @@ run_rfi_s012bar:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer{{ n.sfx }}
         out_buffers:
@@ -810,6 +821,7 @@ run_rfi_skbar:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer{{ n.sfx }}
             host_rfi_s012bar_ringbuffer: host_rfi_s012bar_ringbuffer{{ n.sfx }}
@@ -830,6 +842,7 @@ run_recv_rfi_skbar:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_rfi_skbar_ringbuffer_in: host_rfi_skbar_ringbuffer{{ n.sfx }}
         out_buffers:
@@ -850,6 +863,7 @@ rfi_sk_metrics:
 {% for n in numa_halves %}
     sk_metrics_{{ n.id }}:
         kotekan_stage: RfiSKMetrics
+        cpu_affinity: {{ n.other_cpus }}
         in_buf: host_rfi_skbar_buffer{{ n.sfx }}
 {% endfor %}
 
@@ -861,6 +875,7 @@ run_recv_rfi_RFImask:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer{{ n.sfx }}
         out_buffers:
@@ -881,6 +896,7 @@ run_pl_expand:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer{{ n.sfx }}
         out_buffers:
@@ -899,6 +915,7 @@ run_pl_corr:
     gpu_{{ n.id }}:
         kotekan_stage: cudaProcess
         gpu_id: {{ n.id }}
+        cpu_affinity: {{ n.gpu_cpus }}
         in_buffers:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer{{ n.sfx }}
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer{{ n.sfx }}
@@ -943,20 +960,16 @@ run_n2k:
 
 # Accumulate N2K visibilities on CPU
 
-hex_dump:
-    #kotekan_stage: hexDump
-    cpu_affinity: [29]
-    in_buf: n2_buffer_1
-    len: 4096
-
 {% for n in numa_halves %}
 count_rfi_mask{{ n.sfx }}:
     kotekan_stage: RfiMaskSum
+    cpu_affinity: {{ n.other_cpus }}
     in_buf: host_rfi_RFImask_buffer{{ n.sfx }}
     out_buf: host_rfi_RFImask_counts_buffer{{ n.sfx }}
 
 count_PL{{ n.sfx }}:
     kotekan_stage: CountLostPLSamplesScalar
+    cpu_affinity: {{ n.other_cpus }}
     in_buf: host_pl_mask_buffer{{ n.sfx }}
     out_buf: host_pl_counts_buffer{{ n.sfx }}
     packet_loss_is_scalar: true
@@ -964,6 +977,7 @@ count_PL{{ n.sfx }}:
 # This computes the second stage RFI excision mask.
 compute_RFI_frame_mask{{ n.sfx }}:
     kotekan_stage: RfiFrameMask
+    cpu_affinity: {{ n.other_cpus }}
     in_buf: host_rfi_sktilde_buffer{{ n.sfx }}
     out_buf: host_rfi_RFIframemask_buffer{{ n.sfx }}
     enabled_updatable_config: /rfi_second_stage_enabled
@@ -984,14 +998,13 @@ rfi_second_stage_thresholds:
 n2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
-    num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     # Correlation frames and the bad feed mask both arrive in [P][D] (CHORDBeamformer)
     # order and the output stays in it, so the mask maps onto the flags without reordering.
     input_order: CHORDBeamformer
     variance_mode: EvenOddPosDef
     bin_in_ERA: true
     num_bins_per_rotation: 8640
-    do_fringestop: false
+    do_fringestop: true
     num_workers: 1
 {% for n in numa_halves %}
     accum_{{ n.id }}:
@@ -1044,6 +1057,7 @@ copy_bad_feed_mask:
 {% for n in numa_halves %}
     copy_{{ n.id }}:
         kotekan_stage: bufferCopy
+        cpu_affinity: {{ n.other_cpus }}
         in_buf: host_bf_mask_buffer{{ n.sfx }}
         out_bufs:
             - host_bad_feed_mask_send_buffer{{ n.sfx }}
@@ -1054,6 +1068,7 @@ copy_bad_feed_mask:
 {% for n in numa_halves %}
 buffer_send_bad_feed_mask{{ n.sfx }}:
     kotekan_stage: bufferSend
+    cpu_affinity: {{ n.other_cpus }}
     use_frame_desc: true
     buf: host_bad_feed_mask_send_buffer{{ n.sfx }}
     server_ip: 10.222.0.51
@@ -1067,6 +1082,7 @@ buffer_send_bad_feed_mask{{ n.sfx }}:
 {% for n in numa_halves %}
 buffer_send_n2_subset{{ n.sfx }}:
     kotekan_stage: bufferSend
+    cpu_affinity: {{ n.other_cpus }}
     use_frame_desc: true
     buf: n2_eigen_buffer{{ n.sfx }}
     server_ip: 10.222.0.51
@@ -1076,6 +1092,7 @@ buffer_send_n2_subset{{ n.sfx }}:
 
 buffer_send_n2_full{{ n.sfx }}:
     kotekan_stage: bufferSend
+    cpu_affinity: {{ n.other_cpus }}
     use_frame_desc: true
     buf: n2_buffer{{ n.sfx }}
     server_ip: 10.222.0.51

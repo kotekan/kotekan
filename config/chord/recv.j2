@@ -162,10 +162,12 @@ hdf5_N2_write_subset:
     use_bitshuffle: true
     compression: "lz4"
     compression_level: 3
-    # Chunking: ensure positive chunk sizes
+    # Chunk /vis as [16 freq, all prods, all 40 times]: readers take whole
+    # product rows, and this keeps a file to a few hundred chunks.
     blocksize_f: 16
+    blocksize_p: 0
+    num_file_t: 40
     late_frame_grace_seconds: 30
-    num_file_t: 20
 
 
 # Full visibilities (all elements)
