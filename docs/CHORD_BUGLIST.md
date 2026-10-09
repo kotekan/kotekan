@@ -655,6 +655,16 @@ and nothing in the broker log. The other five went live at 16:01:43Z. By 16:02:2
 manifest is now mode live (regenerated 16:02:50Z), so a relaunch comes back live. **Still to confirm:** the
 next F-engine re-base reaches R ≥ 0.95 within ~10 min with no node restart.
 
+**2026-10-09: the 10-06 reference went stale and the fleet fell back to its own pins.** The F-engine came
+back on 10-08 (~01Z) with new gains. The reference holds each element's absolute complex response, so every
+model's shape moved: median similarity to it fell to 0.17, and the nodes applied it on 5 of 178 halves
+(min_sim 0.5). So the 10-08 20:12Z re-base did not heal, and cx42/1 B2A pol0 (177° off) and three B3I pol1
+halves (~70° off) stayed put. The cron listed all of it ("take a new snapshot") but only reports. A new
+snapshot, `config/elem_shared_ref_20261009.json` (R 0.976–0.999), went live by REST at 01:24Z (cx42) and
+01:30Z (the rest): 178 of 178 halves applied and R 1.00 in every band and pol by 01:33Z, B2A broker xcoh
+0.62 → 0.98, no restarts. The reference must be re-taken whenever the F-engine's gains change. The re-base
+check above is still open: it has not yet run against a current reference.
+
 ### #131 — the gather dies when a telemetry client flaps
 **[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no
 core (no `coredumpctl` on cf06) and a log that ends mid-burst: six `dropped client fd N -- it

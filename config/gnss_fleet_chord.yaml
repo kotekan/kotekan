@@ -389,7 +389,7 @@ common:
   # elem-positions-file. live = pin to it (a first model in full, a warm one slewed at 1 deg/s);
   # log = each assembler reports its offset only. Live switch: elem_shared_ref.py post FILE
   # --mode live. Safety net: scripts/gnss/site/elem_ref_cron.sh.
-    elem-shared-ref: config/elem_shared_ref_20261006.json
+    elem-shared-ref: config/elem_shared_ref_20261009.json
     elem-shared-ref-mode: live
   # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
   #
