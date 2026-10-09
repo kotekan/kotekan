@@ -257,6 +257,8 @@ jobs:
           sudo docker builder prune -a
           df -h
 
+      # The inline cache keeps only the layers of the pushed image's stage chain.
+      # A stage that is only COPY --from'd needs cache-to type=registry,mode=max.
       - name: Build CPU (target=cpu) image
         if: steps.docker_img.outputs.docker_build == '1'
         uses: docker/build-push-action@v7
