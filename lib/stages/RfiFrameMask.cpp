@@ -153,6 +153,7 @@ private:
     bool _next_enabled;
     std::vector<float> _next_threshold;
     std::vector<float> _next_fraction;
+    int64_t _start_time_ns;
 };
 
 REGISTER_KOTEKAN_STAGE(RfiFrameMask);
@@ -228,6 +229,8 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
     _thresholds_valid_at_seq = 0;
 
     // Set up REST endpoints
+    _start_time_ns = Telescope::instance().to_time_ns(0);
+
     INFO("Subscribing {:s} to updatable config.", _enabled_config_path);
     kotekan::configUpdater::instance().subscribe(
         _enabled_config_path, std::bind(&RfiFrameMask::receive_rfi_excision_enabled, this, _1));
@@ -405,7 +408,16 @@ bool RfiFrameMask::receive_rfi_excision_enabled(nlohmann::json& json) {
     }
 
     // We have values! Compute the sequence number and print a status message.
-    int64_t seq_num = Telescope::instance().to_seq(new_time_ns);
+    int64_t seq_num;
+    if (new_time_ns == 0) {
+        // special case - assume this means we _always_ want to enable
+        seq_num = 0;
+    } else if (new_time_ns >= _start_time_ns) {
+        seq_num = Telescope::instance().to_seq(new_time_ns);
+    } else {
+        WARN("Got invalid start time: {:d}", new_time_ns);
+        return false;
+    }
 
     std::string time_str =
         fmt::format("t_inst = {:d} s + {:d} ns (seq {:d})", new_time_ns / 1'000'000'000,
@@ -497,7 +509,19 @@ bool RfiFrameMask::receive_rfi_excision_thresholds(nlohmann::json& update) {
     }
 
     // We have values! Compute the sequence number and print a status message.
-    int64_t seq_num = Telescope::instance().to_seq(new_time_ns);
+    int64_t seq_num;
+    if (new_time_ns == 0) {
+        // special case - assume this means we _always_ want to enable
+        seq_num = 0;
+    } else if (new_time_ns >= _start_time_ns) {
+        seq_num = Telescope::instance().to_seq(new_time_ns);
+    } else {
+        WARN("Got invalid start time: {:d} - maintaining current state (excision enabled={})",
+             new_time_ns, _enabled);
+        // need to return `true` or else kotekan will abort
+        return true;
+    }
+
     std::string time_str =
         fmt::format("t_inst = {:d} s + {:d} ns (seq {:d})", new_time_ns / 1'000'000'000,
                     new_time_ns % 1'000'000'000, seq_num);

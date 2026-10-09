@@ -1,11 +1,10 @@
 ---
 ##########################################
 #
-# verify_cuda_rfi_sktilde_disabled.yaml
+# verify_cuda_rfi_sktilde_endpoint.yaml
 #
-# Config to test the cuda RFI SKtilde kernel & wrapper with first-stage RFI
-# excision disabled: the SKtilde statistics must still match the CPU
-# simulation, while the produced RFI mask must be all-good (all bits 1).
+# Config to test the cuda RFI SKtilde kernel & wrapper,
+# using the updatable config interface to set masking
 #
 ##########################################
 type: config
@@ -29,11 +28,11 @@ num_local_freq: 4
 
 rfi_downsampling_factor: 256
 
-# The bad feed mask is valid for this many input samples, i.e. for exactly one S012 frame here, the degenerate case where every frame claims. The
-# RFI stage reads the same mask element on each of those frames and consumes it only on
-# the last, so this exercises both the read-without-claiming path and the hand-over to
-# the next element.
-bf_mask_lifetime_in_samples: samples_per_data_set
+# The bad feed mask is valid for this many input samples, i.e. for four S012 frames here. The
+# RFI stage reads the same mask element on each of those frames and consumes it only on the
+# last, so this exercises both the read-without-claiming path and the hand-over to the next
+# element. `gen_rfi_s012` produces 2 * buffer_depth frames, so two hand-overs happen.
+bf_mask_lifetime_in_samples: 4 * samples_per_data_set
 
 # For random data (as used here) the sk-sigma is ~1.0e-3 but sk~[10, 50].
 # To get a non-trivial (not all true or false) RFI mask, need the 
@@ -56,6 +55,11 @@ updatable_config:
         # yamlfix:on
         start_time: 1535048997.
         update_id: "initial_flags"
+    # Updatable Config for RFI excision.
+    rfi_first_stage_enabled:
+        kotekan_update_endpoint: json
+        enabled: true
+        valid_at_time_ns: 0
 
 # Pool
 main_pool:
@@ -74,7 +78,7 @@ host_bf_mask_buffer:
     dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
 
-# The CPU reference consumes one mask per input frame, so it gets its own buffer and producer
+# The CPU reference consumes one mask per S012 frame, so it gets its own buffer and producer
 # rather than sharing the GPU path's. Both producers are driven from the same `bad_inputs`, so
 # the two masks are identical.
 simulated_bf_mask_buffer:
@@ -131,14 +135,6 @@ simulated_rfi_mask_buffer:
     extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
-# All-good mask (all bits 1) the GPU-produced RFI mask is compared against.
-allgood_rfi_mask_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    value_type: uint1x8
-    extents: [samples_per_data_set / 1024, num_local_freq, 128]
-    metadata_pool: main_pool
-
 
 # Ringbuffer signalling buffer
 host_bf_mask_ringbuffer:
@@ -165,20 +161,12 @@ gen_rfi_s012:
     log_level: DEBUG
     kotekan_stage: testRFIS012Gen
     out_buf: host_rfi_s012_buffer
+    # Start at a nonzero sequence number so that stages deriving sequence numbers from ring
+    # buffer positions are exercised with a nonzero origin
+    first_frame_index: 3
     type: random
     bar_mode: false
     downsampling_factor: rfi_downsampling_factor
-    num_frames: 2 * buffer_depth
-
-gen_allgood_mask:
-    type: const1x8
-    value: 255
-    kotekan_stage: testDataGen
-    out_buf: allgood_rfi_mask_buffer
-    name: "RFImask"
-    array_shape: [8, 4, 128]
-    dim_name: ["T8hi128", "F", "T8lo128"]
-    dim_scaling: [1024, 1, 8]
     num_frames: 2 * buffer_depth
 
 set_bf_mask:
@@ -186,6 +174,8 @@ set_bf_mask:
     updatable_config:
         bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
+    # Start the mask stream at the S012 stream's first sequence number
+    metadata_source: host_rfi_s012_buffer
 
 set_simulated_bf_mask:
     kotekan_stage: bufferBadInputs
@@ -194,6 +184,7 @@ set_simulated_bf_mask:
     # One mask per frame, matching `simulated_bf_mask_buffer` and the CPU reference below
     bf_mask_lifetime_in_samples: samples_per_data_set
     out_buf: simulated_bf_mask_buffer
+    metadata_source: host_rfi_s012_buffer
 
 run_send_bf_mask:
     gpu_0:
@@ -247,7 +238,8 @@ run_rfi_sktilde:
               num_times: samples_per_data_set
               num_frequencies: num_local_freq
               rfi_num_times: samples_per_data_set / rfi_downsampling_factor
-              excision_enabled: false
+              enabled_updatable_config: /updatable_config/rfi_first_stage_enabled
+              excision_enabled: false # disabled here, but will be enabled via updatable config
 
 run_recv_rfi_sktilde:
     gpu_0:
@@ -306,8 +298,8 @@ check_rfi_sktilde_data:
 check_rfi_rfimask_data:
     kotekan_stage: testDataCheckUchar
     first_buf: host_rfi_mask_buffer
-    second_buf: allgood_rfi_mask_buffer
+    second_buf: simulated_rfi_mask_buffer
     max_num_errors_logged: 64
     num_frames_to_test: 2 * buffer_depth
-    check_metadata: false
+    check_metadata: true
 log_config_usage: fatal_error
