@@ -12,10 +12,18 @@
   status [FILE]       Per instance and pol: offset and shape similarity against FILE (works on any
                       binary), plus the node's own fleet_ref block where the binary has one.
   watch FILE DIR      The safety net (scripts/gnss/site/elem_ref_cron.sh, every 5 min): per band, R and
-                      each instance's offset against FILE into DIR/current.json; DIR/ALERT exists
-                      while any instance is > --alert-deg off for > --min-run s outside a freeze.
-                      --act re-posts FILE in live mode to such an instance (at most every
-                      --act-every s); without it nothing is changed.
+                      each instance's offset against FILE into DIR/current.json; DIR/ALERT lists
+                      what needs a person. With --act it also
+                      - POSTs the reference (--mode) to an instance that holds none, holds one in
+                        another mode, holds one that does not describe its model while FILE's
+                        does, or is > --alert-deg off for > --min-run s outside a freeze (at most
+                        every --act-every s);
+                      - re-takes a band whose reference describes fewer than half of its models
+                        for > --min-run s (new F-engine gains), when two thirds of the instances
+                        agree on a consensus, writes it to DIR/auto_ref.json and POSTs it (at most
+                        every --retake-every s). That file is the reference in use until FILE is
+                        newer, and ALERT says so until it is committed.
+                      Without --act nothing is changed.
 
 Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names
 are snap_xinst.py's: l5 for gnss<g>_n2assemble, else the chain tag (e5a, b2a, ...).
@@ -24,6 +32,7 @@ import argparse
 import concurrent.futures
 import glob
 import json
+import math
 import os
 import re
 import sys
@@ -128,6 +137,74 @@ def offsets(ref, vs):
     }
 
 
+def band_consensus(res, band, exclude_deg, min_sim):
+    """One band's reference entry from a poll: per pol, the consensus of the warm, unfrozen
+    models, leaving out those more than exclude_deg off it or whose shape it does not describe.
+    Raises ValueError when fewer than four agree."""
+    per_pol, entry = [], {"R": [], "n": [], "excluded": [], "sim_median": []}
+    for pol in (0, 1):
+        vs = {}
+        for (node, stage), d in res.items():
+            if band_of(stage) != band or "error" in d or d.get("shared_frozen"):
+                continue
+            hv = halves(d)
+            u = unit(hv[pol]) if hv else None
+            if u is not None:
+                vs[inst_name(node, stage)] = u
+        if len(vs) < 4:
+            raise ValueError(
+                "band %s pol %d: only %d warm, unfrozen instances -- not a consensus"
+                % (band, pol, len(vs))
+            )
+        keep = dict(vs)
+        for _ in range(3):
+            ref = consensus(keep)
+            off = offsets(ref, vs)
+            z = np.mean([np.exp(1j * np.radians(off[k][0])) for k in keep])
+            rel = {
+                k: (float(np.degrees(np.angle(np.exp(1j * np.radians(o)) / z))), s)
+                for k, (o, s) in off.items()
+            }
+            keep = {
+                k: vs[k]
+                for k, (o, s) in rel.items()
+                if abs(o) <= exclude_deg and s >= min_sim
+            }
+            if len(keep) < 4:
+                raise ValueError(
+                    "band %s pol %d: %d instances within %.0f deg of the consensus"
+                    % (band, pol, len(keep), exclude_deg)
+                )
+        ref = consensus(keep)
+        off = offsets(ref, keep)
+        z = np.mean([np.exp(1j * np.radians(o)) for o, _ in off.values()])
+        ref = ref * z / abs(z)  # included instances' offsets now average zero
+        fin = offsets(ref, vs)
+        entry["R"].append(
+            round(
+                float(abs(np.mean([np.exp(1j * np.radians(fin[k][0])) for k in keep]))),
+                4,
+            )
+        )
+        entry["n"].append(len(keep))
+        entry["sim_median"].append(
+            round(float(np.median([fin[k][1] for k in keep])), 3)
+        )
+        entry["excluded"].append(
+            {
+                k: [round(o, 1), round(s, 3)]
+                for k, (o, s) in fin.items()
+                if k not in keep
+            }
+        )
+        per_pol.append(ref)
+    entry["ref"] = [
+        [round(float(x.real), 6), round(float(x.imag), 6)]
+        for x in np.concatenate(per_pol)
+    ]
+    return entry
+
+
 def snapshot(a):
     res = poll()
     epoch = epoch_of_configs()
@@ -139,82 +216,24 @@ def snapshot(a):
                 % (inst_name(node, stage) + " " + band_of(stage), d["error"])
             )
     for band in sorted({band_of(st) for _, st in res}):
-        per_pol, entry = [], {"R": [], "n": [], "excluded": [], "sim_median": []}
+        try:
+            entry = band_consensus(res, band, a.exclude_deg, a.min_sim)
+        except ValueError as e:
+            sys.exit(str(e))
         for pol in (0, 1):
-            vs = {}
-            for (node, stage), d in res.items():
-                if band_of(stage) != band or "error" in d or d.get("shared_frozen"):
-                    continue
-                hv = halves(d)
-                u = unit(hv[pol]) if hv else None
-                if u is not None:
-                    vs[inst_name(node, stage)] = u
-                    n_elem = 2 * len(u)
-            if len(vs) < 4:
-                sys.exit(
-                    "band %s pol %d: only %d warm, unfrozen instances -- not a consensus"
-                    % (band, pol, len(vs))
-                )
-            keep = dict(vs)
-            for _ in range(3):
-                ref = consensus(keep)
-                off = offsets(ref, vs)
-                z = np.mean([np.exp(1j * np.radians(off[k][0])) for k in keep])
-                rel = {
-                    k: (float(np.degrees(np.angle(np.exp(1j * np.radians(o)) / z))), s)
-                    for k, (o, s) in off.items()
-                }
-                keep = {
-                    k: vs[k]
-                    for k, (o, s) in rel.items()
-                    if abs(o) <= a.exclude_deg and s >= a.min_sim
-                }
-                if len(keep) < 4:
-                    sys.exit(
-                        "band %s pol %d: %d instances within %.0f deg of the consensus"
-                        % (band, pol, len(keep), a.exclude_deg)
-                    )
-            ref = consensus(keep)
-            off = offsets(ref, keep)
-            z = np.mean([np.exp(1j * np.radians(o)) for o, _ in off.values()])
-            ref = ref * z / abs(z)  # included instances' offsets now average zero
-            fin = offsets(ref, vs)
-            entry["R"].append(
-                round(
-                    float(
-                        abs(np.mean([np.exp(1j * np.radians(fin[k][0])) for k in keep]))
-                    ),
-                    4,
-                )
-            )
-            entry["n"].append(len(keep))
-            entry["sim_median"].append(
-                round(float(np.median([fin[k][1] for k in keep])), 3)
-            )
-            entry["excluded"].append(
-                {
-                    k: [round(o, 1), round(s, 3)]
-                    for k, (o, s) in fin.items()
-                    if k not in keep
-                }
-            )
-            per_pol.append(ref)
             print(
                 "%-4s pol%d  R %.3f  n %2d  sim med %.3f  excluded %s"
                 % (
                     band,
                     pol,
-                    entry["R"][-1],
-                    len(keep),
-                    entry["sim_median"][-1],
-                    entry["excluded"][-1] or "-",
+                    entry["R"][pol],
+                    entry["n"][pol],
+                    entry["sim_median"][pol],
+                    entry["excluded"][pol] or "-",
                 )
             )
-        entry["ref"] = [
-            [round(float(x.real), 6), round(float(x.imag), 6)]
-            for x in np.concatenate(per_pol)
-        ]
         bands[band] = entry
+        n_elem = len(entry["ref"])
     out = {
         "what": "fleet reference of the shared element model's phase pin (#154): per band, "
         "pol-0 half then pol-1 half, each half unit-norm",
@@ -248,6 +267,18 @@ def selected(node, stage, only):
     return any(o in (node, name, band_of(stage)) for o in only)
 
 
+def post_one(node, stage, body):
+    """POST one assembler's reference; returns its reply."""
+    req = urllib.request.Request(
+        "http://%s:%d/%s/set_elem_sum_shared_ref" % (node, PORT, stage),
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.loads(r.read())
+
+
 def post(a):
     snap = load_ref(a.file)
     only = [o for o in (a.only or "").split(",") if o]
@@ -260,25 +291,19 @@ def post(a):
         band = band_of(stage)
         if band not in snap["bands"] or not selected(node, stage, only):
             continue
-        body = dict(body_extra, ref=snap["bands"][band]["ref"])
-        req = urllib.request.Request(
-            "http://%s:%d/%s/set_elem_sum_shared_ref" % (node, PORT, stage),
-            data=json.dumps(body).encode(),
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
         try:
-            with urllib.request.urlopen(req, timeout=5) as r:
-                rep = json.loads(r.read())
-                print(
-                    "  %-8s %-4s was %-4s staged %s"
-                    % (
-                        inst_name(node, stage),
-                        band,
-                        rep.get("mode"),
-                        ",".join(k for k, v in rep.get("staged", {}).items() if v),
-                    )
+            rep = post_one(
+                node, stage, dict(body_extra, ref=snap["bands"][band]["ref"])
+            )
+            print(
+                "  %-8s %-4s was %-4s staged %s"
+                % (
+                    inst_name(node, stage),
+                    band,
+                    rep.get("mode"),
+                    ",".join(k for k, v in rep.get("staged", {}).items() if v),
                 )
+            )
         except Exception as e:  # noqa: BLE001
             print(
                 "  %-8s %-4s FAILED %s" % (inst_name(node, stage), band, repr(e)[:100])
@@ -348,25 +373,131 @@ def instance_offsets(d, F):
     return out
 
 
+def post_note(node, stage, ref, mode, why):
+    """POST ref to one assembler for --act; (ok, log line)."""
+    name = "%s %s" % (inst_name(node, stage), band_of(stage))
+    try:
+        post_one(node, stage, {"ref": ref, "mode": mode})
+        return True, "%s: reference posted, mode %s (%s)" % (name, mode, why)
+    except Exception as e:  # noqa: BLE001
+        return False, "%s: post FAILED %s (%s)" % (name, repr(e)[:80], why)
+
+
 def watch(a):
+    if a.mode == "off":  # the fleet runs without a reference: nothing to hold it to
+        a.act = False
     snap = load_ref(a.file)
     os.makedirs(a.dir, exist_ok=True)
     state_path = os.path.join(a.dir, "state.json")
+    auto_path = os.path.join(a.dir, "auto_ref.json")
     try:
         state = json.load(open(state_path))
     except (OSError, ValueError):
-        state = {"bad": {}, "acted": {}}
+        state = {}
+    for k in ("bad", "acted", "stale", "retaken"):
+        state.setdefault(k, {})
+    # A reference re-taken by --act stays the active one until the manifest's file is newer.
+    active = a.file
+    try:
+        auto = json.load(open(auto_path))
+        if auto["epoch"] == snap["epoch"] and auto["taken_utc"] > snap["taken_utc"]:
+            snap, active = auto, auto_path
+    except (OSError, ValueError, KeyError):
+        pass
     now = time.time()
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
     res = poll()
+    lines, notes = [], []  # lines need a person (ALERT); notes are what --act did
+
+    # A band whose reference describes fewer than half of its models (the F-engine's gains
+    # changed) is re-taken from the fleet consensus, if most of the fleet agrees on one.
+    stale, retook = set(), False
+    for band, entry in sorted(snap["bands"].items()):
+        F = np.array([complex(x, y) for x, y in entry["ref"]])
+        sims = {0: [], 1: []}
+        for (node, stage), d in res.items():
+            if band_of(stage) != band or "error" in d or d.get("shared_frozen"):
+                continue
+            for pol, o in enumerate(instance_offsets(d, F) or []):
+                if o is not None:
+                    sims[pol].append(o[1])
+        if not any(
+            len(v) >= 4 and 2 * sum(x < a.min_sim for x in v) >= len(v)
+            for v in sims.values()
+        ):
+            state["stale"].pop(band, None)
+            continue
+        stale.add(band)
+        dur = now - state["stale"].setdefault(band, now)
+        what = "%s: the reference describes %s halves for %.0f min" % (
+            band,
+            "/".join(
+                "%d of %d" % (sum(x >= a.min_sim for x in v), len(v))
+                for v in sims.values()
+            ),
+            dur / 60.0,
+        )
+        if dur < a.min_run:
+            continue
+        try:
+            new = band_consensus(res, band, 30.0, a.min_sim)
+            need = max(4, math.ceil(2 * max(len(v) for v in sims.values()) / 3))
+            if min(new["n"]) < need or min(new["sim_median"]) < 0.8:
+                raise ValueError(
+                    "n %s of the %d needed, sim median %s"
+                    % (new["n"], need, new["sim_median"])
+                )
+        except ValueError as e:
+            lines.append("%s, and the fleet has no consensus: %s" % (what, e))
+            continue
+        if not a.act:
+            lines.append(
+                "%s; the fleet agrees on a new one (R %s, n %s): take a snapshot"
+                % (what, new["R"], new["n"])
+            )
+            continue
+        if now - state["retaken"].get(band, 0) < a.retake_every:
+            lines.append(
+                "%s, and it was re-taken less than %.0f h ago"
+                % (what, a.retake_every / 3600)
+            )
+            continue
+        snap = dict(
+            snap,
+            bands=dict(snap["bands"], **{band: new}),
+            taken_utc=stamp,
+            auto=dict(snap.get("auto", {}), **{band: stamp}),
+        )
+        active, retook = auto_path, True
+        state["retaken"][band] = now
+        notes.append(
+            "%s; re-taken from the fleet consensus (R %s, n %s)"
+            % (what, new["R"], new["n"])
+        )
+        for (node, stage), d in sorted(res.items()):
+            if band_of(stage) == band and "error" not in d:
+                ok, note = post_note(node, stage, new["ref"], a.mode, "re-taken")
+                (notes if ok else lines).append(note)
+                state["acted"]["%s %s" % (inst_name(node, stage), band)] = now
+    if active == auto_path:
+        if retook:
+            with open(auto_path + ".tmp", "w") as f:
+                json.dump(snap, f, indent=1)
+            os.replace(auto_path + ".tmp", auto_path)
+        lines.append(
+            "the reference in use is %s (re-taken: %s); the configs still carry %s: copy the "
+            "file into config/, point the manifest's elem-shared-ref at it and regenerate"
+            % (auto_path, ", ".join(sorted(snap.get("auto", {}))), a.file)
+        )
+
     cur = {
         "t": stamp,
-        "file": a.file,
+        "file": active,
         "taken_utc": snap["taken_utc"],
         "bands": {},
         "errors": {},
     }
-    alerts, seen = [], set()
+    seen = set()
     for band, entry in sorted(snap["bands"].items()):
         F = np.array([complex(x, y) for x, y in entry["ref"]])
         rows, ph = {}, {0: [], 1: []}
@@ -388,6 +519,15 @@ def watch(a):
                     for o in (off or [None, None])
                 ],
             }
+            why = []
+            if fr and (not fr.get("present") or fr.get("mode") != a.mode):
+                why.append(
+                    "node mode %s, %s"
+                    % (
+                        fr.get("mode"),
+                        "holds one" if fr.get("present") else "holds none",
+                    )
+                )
             for pol in (0, 1):
                 o = off[pol] if off else None
                 key = "%s %s pol%d" % (name, band, pol)
@@ -398,11 +538,37 @@ def watch(a):
                     if key in state["bad"]:
                         seen.add(key)
                     continue
+                if fr and o[1] >= a.min_sim and fr["sim"][pol] < a.min_sim:
+                    why.append("pol%d: the node's reference does not describe it" % pol)
                 if abs(o[0]) > a.alert_deg:
                     seen.add(key)
                     t0 = state["bad"].setdefault(key, now)
-                    if now - t0 >= a.min_run:
-                        alerts.append((key, name, node, stage, o, now - t0, fr))
+                    if now - t0 < a.min_run or band in stale:
+                        continue
+                    lines.append(
+                        "%s %+.0f deg (sim %.2f) for %.0f min, node mode %s%s"
+                        % (
+                            key,
+                            o[0],
+                            o[1],
+                            (now - t0) / 60.0,
+                            fr.get("mode", "n/a (binary without #154)"),
+                            "; its shape is not the fleet's"
+                            if o[1] < a.min_sim
+                            else "",
+                        )
+                    )
+                    if o[1] >= a.min_sim:
+                        why.append("pol%d %+.0f deg off" % (pol, o[0]))
+            act_key = "%s %s" % (name, band)
+            if not why or not fr or frozen or a.mode == "off":
+                continue
+            if not a.act:
+                lines.append("%s: %s; post the reference" % (act_key, "; ".join(why)))
+            elif now - state["acted"].get(act_key, 0) >= a.act_every:
+                ok, note = post_note(node, stage, entry["ref"], a.mode, "; ".join(why))
+                (notes if ok else lines).append(note)
+                state["acted"][act_key] = now
         cur["bands"][band] = {
             "R": [
                 round(float(abs(np.mean(ph[p]))), 3) if ph[p] else None for p in (0, 1)
@@ -412,45 +578,8 @@ def watch(a):
     for key in list(state["bad"]):
         if key not in seen:
             del state["bad"][key]
-    lines = []
-    for key, name, node, stage, o, dur, fr in alerts:
-        why = (
-            "shape no longer described by the reference (sim %.2f): take a new snapshot"
-            % o[1]
-            if o[1] < a.min_sim
-            else ""
-        )
-        line = "%s %+.0f deg (sim %.2f) for %.0f min, node mode %s%s" % (
-            key,
-            o[0],
-            o[1],
-            dur / 60.0,
-            fr.get("mode", "n/a (binary without #154)"),
-            ("; " + why) if why else "",
-        )
-        act_key = "%s %s" % (name, band_of(stage))
-        if (
-            a.act
-            and not why
-            and fr
-            and now - state["acted"].get(act_key, 0) >= a.act_every
-        ):
-            body = {"ref": snap["bands"][band_of(stage)]["ref"], "mode": "live"}
-            req = urllib.request.Request(
-                "http://%s:%d/%s/set_elem_sum_shared_ref" % (node, PORT, stage),
-                data=json.dumps(body).encode(),
-                method="POST",
-                headers={"Content-Type": "application/json"},
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=5) as r:
-                    r.read()
-                state["acted"][act_key] = now
-                line += "; ACTED: reference re-posted, mode live"
-            except Exception as e:  # noqa: BLE001
-                line += "; act FAILED: %s" % repr(e)[:80]
-        lines.append(line)
     cur["alerts"] = lines
+    cur["acted"] = notes
     alert_path = os.path.join(a.dir, "ALERT")
     if lines:
         with open(alert_path, "w") as f:
@@ -462,7 +591,7 @@ def watch(a):
             json.dump(obj, f, indent=1)
         os.replace(path + ".tmp", path)
     print(
-        "%s R %s; %d instance-pols off > %.0f deg, %d alerting%s"
+        "%s R %s; %d instance-pols off > %.0f deg, %d alert lines, %d acted%s%s"
         % (
             stamp,
             " ".join(
@@ -473,7 +602,9 @@ def watch(a):
             len(state["bad"]),
             a.alert_deg,
             len(lines),
+            len(notes),
             "".join("\n  " + ln for ln in lines),
+            "".join("\n  acted: " + ln for ln in notes),
         )
     )
 
@@ -502,8 +633,10 @@ def main():
     w.add_argument("--alert-deg", type=float, default=45.0)
     w.add_argument("--min-run", type=float, default=900.0)
     w.add_argument("--min-sim", type=float, default=0.5)
+    w.add_argument("--mode", choices=("off", "log", "live"), default="live")
     w.add_argument("--act", action="store_true")
     w.add_argument("--act-every", type=float, default=1800.0)
+    w.add_argument("--retake-every", type=float, default=7200.0)
     a = ap.parse_args()
     {"snapshot": snapshot, "post": post, "status": status, "watch": watch}[a.cmd](a)
 

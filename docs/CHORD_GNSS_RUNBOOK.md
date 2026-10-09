@@ -47,7 +47,7 @@ whole table.
 |---|---|---|---|---|
 | gnss | hourly :17 | `scripts/gnss/site/eop_cron.sh` | pushes choco's EOP table to every running node whose live table ends earlier | `/var/tmp/gnss-logs/eop_cron.log` |
 | gnss | every 5 min | `scripts/gnss/site/bad_inputs_cron.py` | pushes bffs's bad-input list to the running nodes when it changes (choco skips ours: maintenance mode) | `/var/tmp/gnss-logs/bad_inputs_cron.log` |
-| gnss | every 5 min | `scripts/gnss/site/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference; report-only unless `ELEM_REF_ACT=1` | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log}` |
+| gnss | every 5 min | `scripts/gnss/site/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference. With `ELEM_REF_ACT=1` (set in the crontab) it re-posts the reference to an instance that lost it or is pinned off it, and re-takes a band's reference from the fleet consensus when it no longer describes the models | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log,auto_ref.json}` |
 | cf06 | every 15 min | `scripts/gnss/site/chain_health_cron.sh` | flags a chain under 30 % fleet_present for 15+ min | `fixtures/obs/health/{ALERT,current.json,health.log}` |
 
 Nothing pages. An ALERT file exists only while its condition holds:
@@ -164,6 +164,10 @@ live), so a noise pin should heal by itself within ~10 min of the anchor, with n
 re-base has confirmed that, check `fixtures/fix0928/canary/snap_xinst.py` (R ≥ 0.95 in every band)
 before reaching for the `restart` loop. Per-instance offsets from the reference:
 `python/scripts/gnss/elem_shared_ref.py status <the manifest's elem-shared-ref file>`.
+The reference carries the F-engine's gains. When they change, it stops describing the models
+(similarity < 0.5), every node falls back to its own pin, and nothing heals (10-08). The cron re-takes
+such a band into `fixtures/obs/elem_ref/auto_ref.json` and posts it; ALERT then says to copy that file
+into `config/`, point `elem-shared-ref` at it and regenerate.
 
 **After any long node outage, restart the broker once the nodes are back, re-base or not.** An
 F-engine outage usually forces this on its own: the new frame0 trips the broker's 3-strike relaunch.
