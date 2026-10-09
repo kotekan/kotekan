@@ -142,9 +142,9 @@ fpga_controller:
 telescope:
   name: CHIMETelescope
   require_gps: true
-  query_gps: true # GPS time is provided via coco
+  query_gps: true # Set to false when coco is used
   gps_host_info: /fpga_controller
-  query_frequency_map: true # Frequency map is provided via coco
+  query_frequency_map: true # Set to false when coco is used
   require_frequency_map: true # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map
   eop_updatable_config: /earth_rotation_data
@@ -304,8 +304,6 @@ shared_pool:
 set_scatter_indices:
     kotekan_stage: parseReorderDefault
     out_buf: host_scatter_indices_buffer
-    # TODO: need to undo transpose to beamformer (from cylinder order) in
-    # conversion to visFrame
     input_order: CHIMECorrelator
     output_order: CHIMEBeamformer
     name: scatter_indices
