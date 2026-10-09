@@ -12,17 +12,6 @@
 {% set num_local_freq = 384 %}
 
 
-# CHORD telescope sampling setup (matches CHORDTelescope defaults)
-{% set sampling_rate_MHz = 3.2e3 %}
-{% set fft_length = 16384 %}
-{% set nyquist_zone = 1 %}
-{% set df_MHz = (sampling_rate_MHz / fft_length) %}
-{% set freq0_MHz = 0 %}
-
-# Science band narrowed to just the simulated freq_ids above
-{% set science_min_freq_MHz = 300 %}
-{% set science_max_freq_MHz = 1500 %}
-
 # num_dishes: dishes/antennas to simulate.
 # With 2 polarizations, num_elements = 2 * num_dishes, which the n2k correlator requires to be a multiple of 128
 # (CorrelatorParams::ns_divisor). That means num_dishes must be a multiple of 64. This also satisfies the counts
@@ -122,14 +111,9 @@ num_elements: num_polarizations * {{ num_dishes }}
 num_local_freq: {{ num_local_freq }}
 num_ev_to_calculate: 2
 
-# Which 8-dish blocks the capture keeps, and the raw CRS board order along the element
-# axis.  Both are global because more than one stage needs them and they must agree:
-# SubsetBaseband selects the dishes with dish_blocks_subset, the DPDK capture workers
-# place the boards with crs_board_remap, and hdf5FileWrite needs both to permute the FPGA
-# digital gains -- which the FPGA indexes by raw board -- into the dish order it writes.
+# Which 8-dish blocks SubsetBaseband keeps.  The telescope, its dish table and the raw CRS
+# board order (crs_board_remap) come from chord/telescope.j2, shared with the N2 pipeline.
 dish_blocks_subset: {{ dish_blocks_subset }}
-# So [2, ...], maps CRS board with source_id 2 to output location 0, and so on.
-crs_board_remap: [0, 2, 4, 6, 8, 10, 12, 15, 1, 3, 5, 7, 9, 11, 13, 14]
 
 # DPDK related parameters
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
@@ -147,113 +131,7 @@ fpga_controller:
     timing_endpoint: /get-frame0-time
     gains_endpoint: /get-current-gain-file
 
-telescope:
-    name: CHORDTelescope
-    sampling_rate_MHz: {{ sampling_rate_MHz }}
-    fft_length: {{ fft_length }}
-    nyquist_zone: {{ nyquist_zone }}
-    min_science_freq_MHz: {{ science_min_freq_MHz }}
-    max_science_freq_MHz: {{ science_max_freq_MHz }}
-
-    origin_itrs_lat_deg: 49.32075144444
-    origin_itrs_lon_deg: -119.62081125
-
-    grid_x_axis: [ 0.999974342398359362,
-                -0.000037539331442772,
-                -0.007163318767675494]
-    grid_y_axis: [0.000065403387739210,
-                0.999992433220348809,
-                0.003889630373557614]
-
-    dish_elev_axis: [0.99999999838132391,
-                   -0.000056897733584327
-                   0.0]
-    dish_vert_axis: [0.0, 0.0, 1.0]
-
-    dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
-    check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
-
-    dish_grid_size_x: 8
-    dish_grid_size_y: 12
-    dish_separation_x_m: 6.300156854906823
-    dish_separation_y_m: 8.500057809796308
-    dish_inputs: [
-        {dish_idx:  0, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4},
-        {dish_idx:  1, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3},
-        {dish_idx:  2, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B2},
-        {dish_idx:  3, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B1},
-        {dish_idx:  4, grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A4},
-        {dish_idx:  5, grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A3},
-        {dish_idx:  6, grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A2},
-        {dish_idx:  7, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1},
-        {dish_idx:  8, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B8},
-        {dish_idx:  9, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B7},
-        {dish_idx: 10, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B6},
-        {dish_idx: 11, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B5},
-        {dish_idx: 12, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A8},
-        {dish_idx: 13, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7},
-        {dish_idx: 14, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6},
-        {dish_idx: 15, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A5},
-        {dish_idx: 16, grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D4},
-        {dish_idx: 17, grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D3},
-        {dish_idx: 18, grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D2},
-        {dish_idx: 19, grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D1},
-        {dish_idx: 20, grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C4},
-        {dish_idx: 21, grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C3},
-        {dish_idx: 22, grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C2},
-        {dish_idx: 23, grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C1},
-        {dish_idx: 24, grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D8},
-        {dish_idx: 25, grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D7},
-        {dish_idx: 26, grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D6},
-        {dish_idx: 27, grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D5},
-        {dish_idx: 28, grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C8},
-        {dish_idx: 29, grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C7},
-        {dish_idx: 30, grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C6},
-        {dish_idx: 31, grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C5},
-        {dish_idx: 32, grid_x_idx: 3,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F4},
-        {dish_idx: 33, grid_x_idx: 2,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F3},
-        {dish_idx: 34, grid_x_idx: 1,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F2},
-        {dish_idx: 35, grid_x_idx: 0,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F1},
-        {dish_idx: 36, grid_x_idx: 3,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E4},
-        {dish_idx: 37, grid_x_idx: 2,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E3},
-        {dish_idx: 38, grid_x_idx: 1,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E2},
-        {dish_idx: 39, grid_x_idx: 0,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E1},
-        {dish_idx: 40, grid_x_idx: 7,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F8},
-        {dish_idx: 41, grid_x_idx: 6,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F7},
-        {dish_idx: 42, grid_x_idx: 5,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F6},
-        {dish_idx: 43, grid_x_idx: 4,  grid_y_idx: 5,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: F5},
-        {dish_idx: 44, grid_x_idx: 7,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E8},
-        {dish_idx: 45, grid_x_idx: 6,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E7},
-        {dish_idx: 46, grid_x_idx: 5,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E6},
-        {dish_idx: 47, grid_x_idx: 4,  grid_y_idx: 4,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: E5},
-        {dish_idx: 48, grid_x_idx: 3,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H4},
-        {dish_idx: 49, grid_x_idx: 2,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H3},
-        {dish_idx: 50, grid_x_idx: 1,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H2},
-        {dish_idx: 51, grid_x_idx: 0,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H1},
-        {dish_idx: 52, grid_x_idx: 3,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G4},
-        {dish_idx: 53, grid_x_idx: 2,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G3},
-        {dish_idx: 54, grid_x_idx: 1,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G2},
-        {dish_idx: 55, grid_x_idx: 0,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: G1},
-        {dish_idx: 56, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_A1},
-        {dish_idx: 57, grid_x_idx: 6,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_A2},
-        {dish_idx: 58, grid_x_idx: 5,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_A3},
-        {dish_idx: 59, grid_x_idx: 4,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_A4},
-        {dish_idx: 60, grid_x_idx: 7,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_B1},
-        {dish_idx: 61, grid_x_idx: 6,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_B2},
-        {dish_idx: 62, grid_x_idx: 5,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_B3},
-        {dish_idx: 63, grid_x_idx: 4,  grid_y_idx: 6,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: RFI_B4}
-    ]
-
-    require_gps: True
-    query_gps: True
-    gps_host_info: /fpga_controller
-    auto_correct_gps_week_rollover: True
-
-    eop_updatable_config: /earth_rotation_data
-
-earth_rotation_data:
-    kotekan_update_endpoint: json
-    earth_orientation_parameter_table: []
+{% include "chord/telescope.j2" %}
 
 
 # Pools
