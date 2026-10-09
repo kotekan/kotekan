@@ -16,7 +16,8 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
 #include "configUpdater.hpp"
-#include "hdf5N2Write.hpp" // for hdf5N2Write
+#include "hdf5N2Write.hpp"           // for hdf5N2Write
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
 #include "test_logging.hpp"
 #include "test_utils.hpp"
@@ -44,10 +45,6 @@
 #include <unistd.h> // for gethostname
 #include <utility>
 #include <vector>
-
-// Lets the tests below catch FATAL_ERROR_NON_OO exceptions, which call
-// exit_kotekan and raise SIGTERM before throwing FatalError.
-static kotekan_test_logging::SigtermGuard g_sigterm_guard;
 
 using std::string;
 
@@ -297,6 +294,8 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
         BOOST_CHECK(!tcen.empty() && tcen.size() == bin.size());
     }
 }
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 /***********************************/
 /* Tests for the visFileData class */

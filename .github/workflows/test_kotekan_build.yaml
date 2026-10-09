@@ -30,6 +30,10 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   test:
     runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
@@ -57,11 +61,11 @@ jobs:
     steps:
       
       - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v7
 
       - name: Cache ccache
         if: ${{ !contains(inputs.runs_on || '', 'self-hosted') }}
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@v6
         with:
           path: .ccache
           key: ccache-${{ inputs.ccache_key }}-${{ github.sha }}

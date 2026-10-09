@@ -87,7 +87,8 @@ K::Integer                      # output bit depth; see sect. 5.1
 
 const F̄ = F_per_U[U] * U
 
-const M = 4
+include("upchan_taps.jl")
+const M = upchan_number_of_taps
 # We support 4-bit and 8-bit output. 4-bit output is offset-encoded (see
 # `swap_offset`) with nibbles swapped; 8-bit output is plain two's complement.
 @assert K == 4 || K == 8

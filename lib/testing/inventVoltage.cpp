@@ -12,7 +12,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visUtil.hpp"           // for current_time
 
-#include <algorithm>  // for copy
+#include <algorithm>  // for copy, fill_n
 #include <array>      // for array
 #include <cassert>    // for assert
 #include <cmath>      // for fmax, fmin, sqrt
@@ -45,6 +45,12 @@ class inventVoltage : public kotekan::Stage {
     const int num_times = config.get<int>(unique_name, "num_times");
 
     const std::string input_kind = config.get<std::string>(unique_name, "input_kind");
+    // For `input_kind: box`: the FPGA samples [box_begin, box_end) hold a constant voltage, all
+    // other samples are zero
+    const std::int64_t box_begin =
+        input_kind == "box" ? config.get<std::int64_t>(unique_name, "box_begin") : 0;
+    const std::int64_t box_end =
+        input_kind == "box" ? config.get<std::int64_t>(unique_name, "box_end") : 0;
     const bool reuse_frames = config.get_default<bool>(unique_name, "reuse_frames", false);
 
     const std::vector<int> frequency_channels =
@@ -186,6 +192,17 @@ public:
                         ptr[n] = signal;
                 } else if (input_kind == "memset") {
                     std::memset(frame, 0xcc, buffer->frame_size);
+                } else if (input_kind == "box") {
+                    const std::ptrdiff_t time_stride =
+                        std::ptrdiff_t(num_frequencies) * num_polarizations * num_dishes;
+                    const std::int64_t frame_begin = std::int64_t(frame_index) * num_times;
+                    for (int time = 0; time < num_times; ++time) {
+                        const std::int64_t seq = frame_begin + time;
+                        const std::int8_t real = seq >= box_begin && seq < box_end ? 4 : 0;
+                        // The arguments are (imaginary, real)
+                        std::fill_n(frame + time * time_stride, time_stride,
+                                    kotekan::int4x2_swapped_withoffset_t(0, real));
+                    }
                 } else {
                     FATAL_ERROR("Unknown value for `input_kind`: \"{:s}\"", input_kind);
                 }
