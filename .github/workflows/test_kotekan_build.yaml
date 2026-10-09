@@ -51,8 +51,10 @@ jobs:
         shell: bash
     env:
       # Self-hosted runners keep ccache on the persistent /data mount; GitHub-hosted
-      # runners restore and save it through the Actions cache.
+      # runners restore and save it through the Actions cache. Only pushes to develop
+      # write the shared /data cache, so a PR branch cannot leave objects in it.
       CCACHE_DIR: ${{ contains(inputs.runs_on || '', 'self-hosted') && format('/data/ccache/{0}', inputs.ccache_key) || format('{0}/.ccache', github.workspace) }}
+      CCACHE_READONLY: ${{ github.event_name == 'pull_request' && contains(inputs.runs_on || '', 'self-hosted') }}
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_COMPRESS: true
       CCACHE_TEMPDIR: /tmp/.ccache
