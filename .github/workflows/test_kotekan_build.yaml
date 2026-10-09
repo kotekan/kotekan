@@ -53,8 +53,8 @@ jobs:
       # GitHub-hosted runners restore ccache from the Actions cache and save it back,
       # trimmed to what this build used. Pushes to develop and PR runs save under
       # different prefixes: a PR restores its own latest entry and merges in the
-      # develop entry for its base, so neither a header change on the PR nor one
-      # merged to develop costs more than one cold build. Self-hosted runners share
+      # latest develop entry, so neither a header change on the PR nor one merged
+      # to develop costs more than one cold build. Self-hosted runners share
       # one persistent ccache per configuration on /data, bounded by CCACHE_MAXSIZE.
       CCACHE_DIR: ${{ contains(inputs.runs_on || '', 'self-hosted') && format('/data/ccache/{0}', inputs.ccache_key) || format('{0}/.ccache', github.workspace) }}
       CCACHE_BASEDIR: ${{ github.workspace }}
