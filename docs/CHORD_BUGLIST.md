@@ -679,6 +679,7 @@ snapshot, `config/elem_shared_ref_20261009.json` (R 0.976–0.999), went live by
 01:30Z (the rest): 178 of 178 halves applied and R 1.00 in every band and pol by 01:33Z, B2A broker xcoh
 0.62 → 0.98, no restarts. The reference must be re-taken whenever the F-engine's gains change. The re-base
 check above is still open: it has not yet run against a current reference.
+**TODO:** the ALERT files (this one and chain_health's) reach no one; tie them into CHORD's monitoring.
 
 ### #131 — the gather dies when a telemetry client flaps
 **[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no
