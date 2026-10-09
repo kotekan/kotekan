@@ -56,6 +56,10 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 
+# Set to True to run without any network output: no FRB, baseband, visibility
+# or RFI senders, and no dataset broker.
+{% set disable_output = False %}
+
 ########################
 #### NUMA layout    ####
 ########################
@@ -176,7 +180,11 @@ updatable_config:
       valid_at_time_ns: 0
 
 dataset_manager:
-  use_dataset_broker: False
+  use_dataset_broker: {{ not disable_output }}
+  # Runs on the receiver; needs to be updated when production receiver nodes
+  # are available
+  ds_broker_host: "10.5.60.1"
+  ds_broker_port: 12050
 
 ################################################################################
 # RFI constants (shared by both domains)
@@ -992,6 +1000,7 @@ numa_{{ numa }}:
         enabled_updatable_config: /updatable_config/rfi_second_stage_enabled
         thresholds_updatable_config: /updatable_config/rfi_second_stage_thresholds
 
+{%- if not disable_output %}
     rfi_broadcast:
         kotekan_stage: rfiBroadcast
         rfi_sktilde_buf: host_rfi_SKtilde_buffer{{ numa_sfx }}
@@ -1004,6 +1013,7 @@ numa_{{ numa }}:
         # This is the IP of `vm-steelpan-recv1`. Needs to be updated when
         # production aux nodes are available
         destination_ip: "10.5.60.1"
+{%- endif %}
 
     ############################################################################
     # n2k setup
@@ -1429,8 +1439,10 @@ numa_{{ numa }}:
           out_buf: host_frb3_beams_offsetscale_buffer
 
     ############################################################################
-    # Output to receivers
+    # Output to receivers (none with disable_output; the output buffers then
+    # drop their frames)
 
+{%- if not disable_output %}
     # Transmit the FRB beams to the L1 nodes
     frb_send:
         kotekan_stage: frbNetworkSend
@@ -1740,6 +1752,7 @@ numa_{{ numa }}:
         reconnect_time: 20
         log_level: warn
         buf: vis_buffer{{ numa_sfx }}
+{%- endif %}
 {% endfor %}
 
 ################################################################################
