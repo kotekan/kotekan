@@ -23,6 +23,9 @@ on:
       cmake_defs: # Compiler flags to build kotekan with, if building
         required: false
         type: string
+      build_target: # make target to build, all of kotekan if not specified
+        required: false
+        type: string
       post_build: # Commands to run (from the main kotekan directory) after building
         required: false
         type: string
@@ -47,24 +50,52 @@ jobs:
       run:
         shell: bash
     env:
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # GitHub-hosted runners restore ccache from the Actions cache and save it back,
+      # trimmed to what this build used. Pushes to develop and PR runs save under
+      # different prefixes: a PR restores its own latest entry and merges in the
+      # latest develop entry, so neither a header change on the PR nor one merged
+      # to develop costs more than one cold build. Self-hosted runners share
+      # one persistent ccache per configuration on /data, bounded by CCACHE_MAXSIZE.
+      CCACHE_DIR: ${{ contains(inputs.runs_on || '', 'self-hosted') && format('/data/ccache/{0}', inputs.ccache_key) || format('{0}/.ccache', github.workspace) }}
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_COMPRESS: true
       CCACHE_TEMPDIR: /tmp/.ccache
-      CCACHE_MAXSIZE: 1G
+      CCACHE_MAXSIZE: ${{ contains(inputs.runs_on || '', 'self-hosted') && '5G' || '1G' }}
+      USE_ACTIONS_CACHE: ${{ inputs.cmake_defs && !inputs.build_target && !contains(inputs.runs_on || '', 'self-hosted') }}
+      CACHE_SCOPE: ${{ github.event_name == 'pull_request' && 'pr' || github.ref_name }}
 
     steps:
       
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Cache ccache
-        uses: actions/cache@v6
+      - name: Restore ccache
+        if: env.USE_ACTIONS_CACHE == 'true'
+        uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ccache-${{ inputs.ccache_key }}-${{ github.sha }}
+          key: ccache-${{ env.CACHE_SCOPE }}-${{ inputs.ccache_key }}-${{ github.sha }}
           restore-keys: |
-            ccache-${{ inputs.ccache_key }}-
+            ccache-${{ env.CACHE_SCOPE }}-${{ inputs.ccache_key }}-
+
+      - name: Restore develop ccache
+        if: env.USE_ACTIONS_CACHE == 'true' && github.event_name == 'pull_request'
+        uses: actions/cache/restore@v6
+        with:
+          path: .ccache-develop
+          key: ccache-${{ github.base_ref }}-${{ inputs.ccache_key }}-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            ccache-${{ github.base_ref }}-${{ inputs.ccache_key }}-
+
+      # Entries are content-addressed, so the union of two caches is a valid cache.
+      - name: Merge develop ccache
+        if: env.USE_ACTIONS_CACHE == 'true' && github.event_name == 'pull_request'
+        run: |
+          if [ -d .ccache-develop ]; then
+            mkdir -p .ccache
+            cp -a --update=none .ccache-develop/. .ccache/
+            rm -r .ccache-develop
+          fi
 
       - name: Print local compute environment details
         run: |
@@ -95,13 +126,14 @@ jobs:
           fi
 
       - name: Configure & Build kotekan
+        id: build
         if: inputs.cmake_defs
         run: |
           set -euo pipefail
           mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
-          ccache -s
+          ccache -z
           cmake -DARCH=haswell -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ inputs.cmake_defs }} ..
-          make -j $(nproc)
+          make -j $(nproc) ${{ inputs.build_target }}
           ccache -s
 
       - name: Run commands
@@ -111,3 +143,17 @@ jobs:
           set -euo pipefail
           # Run any commands specified ...
           ${{ inputs.post_build }}
+
+      # Save after a successful build even if the tests failed. Entries unused for
+      # three hours are dropped first, so the entry stays the size of one build
+      # rather than growing to CCACHE_MAXSIZE.
+      - name: Trim ccache
+        if: always() && steps.build.outcome == 'success' && env.USE_ACTIONS_CACHE == 'true'
+        run: ccache --evict-older-than 10800s
+
+      - name: Save ccache
+        if: always() && steps.build.outcome == 'success' && env.USE_ACTIONS_CACHE == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .ccache
+          key: ccache-${{ env.CACHE_SCOPE }}-${{ inputs.ccache_key }}-${{ github.sha }}
