@@ -81,6 +81,21 @@ seven are dead-reckon.
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
 
+### #162 — the live checkout carries three uncommitted leftovers, each waiting on a decision (2026-10-09)
+All three are ours; the ownership was lost across session summaries, not unknown.
+- `python/scripts/gnss/gnss_beam_cube.py` (+178): opt-in `build --prn-norm`, a per-satellite level offset solved
+  jointly with a coarse beam (median polish, 5° × 90° cells about boresight). Written 09-19, parked as "bought 3%,
+  probably revert"; b23b06ded (09-22) committed only the health-mask hunks. The 3% came from a blind metric:
+  most pixels are crossed by one track, so a per-pixel model absorbs that satellite's offset. The joint
+  BEAM + G + H solve (`streak_joint.py`, 09-21) found the per-satellite gains real (3.7 dB rms; between-satellite
+  disagreement 3.20 → 1.54 dB). Proposed: save the diff as a patch, revert, re-judge against the joint solve.
+- `scripts/gnss/telemfmt`: the plain symlink `build_tool.sh` made on cx43 (09-09) next to `telemfmt.cx43`.
+  `scripts/gnss/.gitignore` lists each tool's symlink by name and misses this one; nothing reads it
+  (`test_telem.py` compiles its own copy). Proposed: delete it and the `.cx43` products, add `telemfmt` to
+  the `.gitignore`.
+- `scripts/gnss/site/node_up.sh`: `GNSS_ENV="VAR=value ..."` becomes `systemd-run --setenv` for that start only
+  (used for the #160 `CUDA_MODULE_LOADING=EAGER` test; dry-run tested, byte-identical without it). Commit or drop.
+
 ### #159 — the nightly beam-cube build rewrites the live broker's ephemeris store with yesterday's sky (2026-10-08)
 **What happened [live 10-08]:** at 01:34:59Z `beamcube_daily.sh` (cf06) built the 10-07 cube. `Geometry.__init__`
 (`gnss_beam_cube.py:182`) calls `fetch_brdc(<day> 12:00Z)` on the default cache, `~/.cache/kotekan_gps`, which is the
@@ -959,6 +974,17 @@ mutate), which has not been done for these two.
 
 ## Open — measured, real, and nobody's lever
 
+
+### #163 — E6 peak sharpness fell 3.65 → 2.4 at the 10-07 F-engine restart while every other chain's rose (2026-10-08)
+Broker DLL q (2P/(E+L)) on strong satellites: gal_e6 3.5–4.5 for three weeks, 2.3–2.5 from the first post-restart data
+(10-08 00:27Z); over the same step gal_e5a 4.1 → 5.5, e5b 3.4 → 4.5, b3i 4.3 → 5.8, l5 4.0 → 5.3. E6 stays locked
+(disc ~0, prompt power 100–800× the floor on all 12 instances, hours-long ADR arcs), but sits near the viewer's
+2.2 lock line. Every node and GPU shows it in its own combiner. Not our code or config: cx19 on the pre-#1750
+binary (15:28Z) read the same. The F-engine came back with new gains (rail fraction 2.5× lower in every band),
+and dish work was under way that week, so the suspects are per-channel gain phases across 1278–1284 MHz or the
+dishes. A separate E6 cross-instance coherence loss from ~12Z 10-08 was #154's stale reference (fixed 10-09).
+Parked while the F-engine is being worked on. Next, when it settles: per-channel prompt phase across the E6 lobe
+from the gather stream (ragged = gains, smooth = delay), or the new gain table.
 
 ### #147 — 2026-09-26 22:01Z: a fleet-wide ~3 ppb reference-frequency step
 All 8 chains and every instance: a carrier offset that scales with carrier frequency (E6/E5a 1.09 vs 1.087
