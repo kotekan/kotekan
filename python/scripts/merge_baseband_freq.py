@@ -7,16 +7,17 @@ contain the frequencies that node processed (see
 ``[T, F, P, D]`` with the time axis growing as frames are appended, and the
 ``coarse_freq`` attribute naming the channels held in the file.
 
-Dish subsets are preserved: when the dumps carry a ``dish_index`` attribute (written
-by ``hdf5FileWrite`` when a stage such as ``SubsetBaseband`` subset the dish axis),
-every source must name the same dishes, and the attribute is copied to the merged
-file alongside the ``num_dishes``, ``dish_grid_indices`` and ``feed_positions_m``
-attributes describing them.
+Dish subsets are preserved: ``hdf5FileWrite`` describes the inputs a subset dump holds
+(written by ``SubsetBaseband``) the way ``hdf5N2Write`` describes its files, with the root
+attributes ``input_list`` and ``input_order`` and the ``/index_map`` datasets.  Every source
+must hold the same inputs, and these are copied to the merged file.  Older dumps that carry
+``dish_index``/``dish_label`` dataset attributes instead are checked and copied the same way.
 
-The FPGA digital gains archive is preserved the same way: ``hdf5FileWrite`` copies it
-into each dump verbatim as ``/digital_gains``, every source must carry the same one
-(checked via ``digital_gains_hash``), and the group is copied once into the merged
-file.
+The FPGA digital gains are preserved too: ``hdf5FileWrite`` copies the archive into each
+dump verbatim as ``/digital_gains``, along with the gains of just the inputs the dump holds
+(``gain_coeff_by_dish``, ``gain_exp_by_dish`` and ``gain_input_index``).  Every source must
+carry the same archive (checked via ``digital_gains_hash``) and the same mapping, and the
+group is copied once into the merged file.
 
 This tool takes the dumps from several nodes, checks that they describe the same
 observation and the same time samples, and writes one file whose frequency axis
@@ -74,15 +75,12 @@ CRITICAL_ATTRS = (
     "dim_scalings",
     "num_polarizations",
     "num_dishes",
-    # Which of the telescope's dishes sit on the dish axis, written by hdf5FileWrite when a
-    # stage upstream subset or reordered that axis (SubsetBaseband).  Nodes differ only in
-    # frequency, so a mismatch -- or the attribute appearing in only some files -- means the
-    # dumps do not hold the same dishes and must not be merged.  Copied through to the
-    # merged file, since it is not in DERIVED_ATTRS.
+    # Which of the telescope's dishes sit on the dish axis, and their names, in dumps
+    # written before input_list and /index_map replaced them.  Nodes differ only in
+    # frequency, so a mismatch -- or the attribute appearing in only some files -- means
+    # the dumps do not hold the same dishes and must not be merged.  Copied through to the
+    # merged file, since they are not in DERIVED_ATTRS.
     "dish_index",
-    # The dishes' names ("A1", "RFI_B3"), written alongside dish_index.  Same reasoning:
-    # nodes differ only in frequency, so disagreeing names mean the dumps do not describe
-    # the same dishes.
     "dish_label",
     # Digest of the FPGA digital gains archive that hdf5FileWrite copied into each file as
     # /digital_gains.  All nodes fetch the same archive, so a mismatch means they recorded
@@ -225,6 +223,9 @@ class SourceFile:
     seq_length_nsec: int
     time_ns: int
     attrs: dict = field(repr=False, default_factory=dict)
+    # The inputs the file holds, keyed by HDF5 path: the root attributes input_list and
+    # input_order, every /index_map dataset, and /digital_gains/gain_input_index.
+    inputs: dict = field(repr=False, default_factory=dict)
 
     @property
     def n_time(self):
@@ -306,14 +307,42 @@ def scan_file(path, dataset=None):
                 )
             )
 
+        inputs = {
+            key: h5file.attrs[key]
+            for key in ("input_list", "input_order")
+            if key in h5file.attrs
+        }
+        if "index_map" in h5file:
+            for key, obj in h5file["index_map"].items():
+                inputs["index_map/" + key] = obj[()]
+        if "digital_gains/gain_input_index" in h5file:
+            inputs["digital_gains/gain_input_index"] = h5file[
+                "digital_gains/gain_input_index"
+            ][()]
+
+        # Find the polarization and dish axes by name: [T, F, P, D] is the convention, not a
+        # guarantee.
+        dim_names = [
+            n.decode() if isinstance(n, bytes) else str(n)
+            for n in np.asarray(attrs.get("dim_names", [])).ravel()
+        ]
+        dish_axis = dim_names.index("D") if "D" in dim_names else dset.ndim - 1
+
+        # `input_list` and the /index_map element tables have one entry per (pol, dish)
+        # position the file holds.
+        n_pol = dset.shape[dim_names.index("P")] if "P" in dim_names else 1
+        n_el = n_pol * dset.shape[dish_axis]
+        for key in ("input_list", "index_map/label"):
+            if key in inputs and len(inputs[key]) != n_el:
+                raise MergeError(
+                    "{}: {} has {} entries but the file holds {} inputs".format(
+                        path, key, len(inputs[key]), n_el
+                    )
+                )
+
         # `dish_index` names the dishes held on the dish axis, so its length must match that
-        # axis.  Find the axis by name: [T, F, P, D] is the convention, not a guarantee.
+        # axis.
         if "dish_index" in attrs:
-            dim_names = [
-                n.decode() if isinstance(n, bytes) else str(n)
-                for n in np.asarray(attrs.get("dim_names", [])).ravel()
-            ]
-            dish_axis = dim_names.index("D") if "D" in dim_names else dset.ndim - 1
             n_dish_attr = np.asarray(attrs["dish_index"], dtype=np.int64).size
             if n_dish_attr != dset.shape[dish_axis]:
                 raise MergeError(
@@ -359,6 +388,7 @@ def scan_file(path, dataset=None):
             if "fpga_seq_time_nsec" in attrs
             else None,
             attrs=attrs,
+            inputs=inputs,
         )
 
 
@@ -507,6 +537,18 @@ def check_consistency(sources, strict, log):
                     "{}: attribute '{}' present in only one of the files".format(
                         src.path, key
                     )
+                )
+        # Nodes differ only in frequency, so they must hold the same inputs with the same
+        # gains mapping.
+        for key in sorted(set(ref.inputs) | set(src.inputs)):
+            if key in ref.inputs and key in src.inputs:
+                if not attrs_equal(ref.inputs[key], src.inputs[key]):
+                    problems.append(
+                        "{}: '{}' differs from {}".format(src.path, key, ref.path)
+                    )
+            else:
+                problems.append(
+                    "{}: '{}' present in only one of the files".format(src.path, key)
                 )
 
     if problems:
@@ -893,6 +935,23 @@ def copy_digital_gains(fout, ref, log):
     log("copied /digital_gains from {}".format(os.path.basename(ref.path)))
 
 
+def copy_input_maps(fout, ref, log):
+    """Copy the description of the inputs from the reference source into the merged file.
+
+    Every source holds the same inputs, as check_consistency has confirmed, so the
+    reference file's root ``input_list``/``input_order`` attributes and ``/index_map``
+    group describe the merged file too.
+    """
+
+    with h5py.File(ref.path, "r") as fin:
+        for key in ("input_list", "input_order"):
+            if key in fin.attrs:
+                fout.attrs[key] = fin.attrs[key]
+        if "index_map" in fin:
+            fout.copy(fin["index_map"], "index_map")
+            log("copied /index_map from {}".format(os.path.basename(ref.path)))
+
+
 # ---------------------------------------------------------------------------
 # merge implementations
 # ---------------------------------------------------------------------------
@@ -1016,6 +1075,7 @@ def merge_copy(
                 dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, args
             )
             copy_digital_gains(fout, ref, log)
+            copy_input_maps(fout, ref, log)
 
             if args.read_jobs:
                 executor = get_context("spawn").Pool(
@@ -1163,6 +1223,7 @@ def merge_vds(
         dset = fout.create_virtual_dataset(args.dataset_name, layout, fillvalue=fill)
         write_attributes(dset, ref, coarse, upchan_idx, upchan_fac, seq0, groups, args)
         copy_digital_gains(fout, ref, log)
+        copy_input_maps(fout, ref, log)
         dset.attrs["merge_mode"] = "virtual"
 
     log(
@@ -1496,15 +1557,23 @@ def main(argv=None):
     for group in groups:
         check_group_time_continuity(group, log)
 
-    # hdf5FileWrite records the dishes on the dish axis as `dish_index` whenever a
-    # stage upstream subset that axis, and CRITICAL_ATTRS already requires every node
-    # to agree on it -- so when it is present there is nothing left to assume.  Files
-    # written before that attribute existed fall back to matching trailing dimensions,
-    # which is the only cross-node check available for them.
+    # hdf5FileWrite records the inputs a subset dump holds (`input_list` and /index_map, or
+    # `dish_index` in older dumps), and check_consistency already requires every node to
+    # agree on them -- so when they are present there is nothing left to assume.  Files
+    # without them fall back to matching trailing dimensions, which is the only cross-node
+    # check available for them.
     if len(groups) > 1 and sources[0].trailing:
         layout = "x".join(str(d) for d in sources[0].trailing)
+        labels = sources[0].inputs.get("index_map/label")
         dish_index = sources[0].attrs.get("dish_index")
-        if dish_index is None:
+        if labels is not None:
+            names = [l.decode() if isinstance(l, bytes) else str(l) for l in labels]
+            log(
+                "element layout {}: inputs {} (identical across nodes)".format(
+                    layout, " ".join(names)
+                )
+            )
+        elif dish_index is None:
             log(
                 "note: the dish/polarisation subset is not recorded in these files; the "
                 "merge assumes every node wrote the same {} element layout".format(
