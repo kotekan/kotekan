@@ -91,6 +91,11 @@ bad_inputs:
     start_time: 1760000000.
     update_id: "initial_flags"
 
+fringestop_enabled:
+    kotekan_update_endpoint: json
+    enabled: false
+    valid_at_time_ns: 0
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
@@ -226,6 +231,7 @@ N2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
     variance_mode: EvenOddPosDef
+    fringestop_updatable_config: /fringestop_enabled
 
 writers:
     base_dir: fake_data
