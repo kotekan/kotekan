@@ -35,8 +35,9 @@
 # The two NUMA halves. Each owns a NIC port, a GPU and a set of cores, and every per-half
 # buffer and stage below loops over this table; a block that exists once per half is
 # named <block>_<id> (sfx), so half 0's buffers and stages end in _0 and half 1's in _1.
-# other_cpus are the half's cores no other entry or dpdk lcore uses, for its light stages
-# (mask bookkeeping, metrics, copies and sends).
+# other_cpus are the half's cores no other entry or dpdk RX lcore uses, for its light stages
+# (mask bookkeeping, metrics, copies and sends). The dpdk main lcore only polls stats once a
+# second, so it shares core 0 with them rather than a frame_service_cpu.
 {% set numa_halves = [
     {"id": 0, "sfx": "_0", "mask_cpu": 1,  "transpose_cpus": [2, 3],   "frame_service_cpu": 4,
      "gpu_cpus": [12, 13, 14], "accum_cpu": 9,  "subset_cpu": 11, "eigen_cpu": 10,
@@ -539,7 +540,7 @@ dpdk:
     # Format is index = lcore, value = cpu core
     # lcore 1 -> cpu 21 (NUMA 1) so port-1's RX lcore is local to its NIC a0:00.0 (NUMA 1)
     lcore_cpu_map: [5, 21, 7, 6, 22, 23] # [5,6,7]
-    main_lcore_cpu: 4
+    main_lcore_cpu: 0
     num_mbufs: 16384
     rx_ring_size: 4096
     mbuf_cache_size: 512
