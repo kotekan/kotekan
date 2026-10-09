@@ -814,13 +814,6 @@ numa_{{ numa }}:
         shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
         metadata_pool: main_pool{{ numa_sfx }}
 
-    host_rfi_SKbartilde_buffer{{ numa_sfx }}:
-        kotekan_buffer: ndarray
-        num_frames: gpu_buffer_depth
-        value_type: float32
-        # GPU producer cudaRFISKbar rfi_SKbartilde (leading = per-frame rfi_num_times_bar).
-        extents: [rfi_num_times_bar, num_freq_gpu_buf, 3]
-        metadata_pool: main_pool{{ numa_sfx }}
     host_rfi_SKbartilde_ringbuffer{{ numa_sfx }}:
         kotekan_buffer: ring
         num_frames: gpu_buffer_depth
