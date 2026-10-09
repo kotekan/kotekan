@@ -52,10 +52,15 @@
  *
  *
  * @conf   udp_frb_packet_size  Int (default 4264). packet size including header
- * @conf   udp_frb_port_number  Int (default 1313). udp Port number for frb streams
+ * @conf   udp_frb_port_number  Int (default 1313). UDP destination port of the FRB streams. The
+ *                              source port is assigned by the OS.
  * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
  * @conf   number_of_subnets    Int (default 4). Number of subnets or VLANS used for transmission of
  * FRB data. Use magic value of 0 for local testing.
+ * @conf   local_ips            Array of Strings. Optional. The local address to send from on each
+ *                              VLAN, number_of_subnets of them in VLAN order (10.6.0.0/16 first).
+ *                              Without it the addresses are derived from the CHIME GPU node name
+ *                              (cnXgY), which also sets the node id used to stagger the sends.
  * @conf   packets_per_stream   Int (default 8). Number of packets for each stream within each frame
  * @conf   L1_node_ips          Array of Strings. List of IPs to send to. (?)
  * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
@@ -167,6 +172,9 @@ private:
 
     /// number of VLANS, use magic value of 0 to use 127.0.0.1 only
     int number_of_subnets;
+
+    /// local address per VLAN; empty to derive them from the CHIME node name
+    std::vector<std::string> local_ips;
 
     /// number of packets to each L1 nodes
     int packets_per_stream;
