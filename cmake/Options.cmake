@@ -109,3 +109,5 @@ ktk_tristate_option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 ktk_tristate_option(
     WITH_TESTS "Build and link lib/testing helper library (does not build Boost unit tests)" OFF)
 ktk_tristate_option(WITH_BOOST_TESTS "Compile boost C++ unit tests" OFF)
+ktk_tristate_option(WITH_NVTX "Compile NVTX ranges for Nsight Systems profiling (CUDA builds only)"
+                    OFF)

@@ -11,6 +11,7 @@
 #include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
 #include "kotekanLogging.hpp"     // for DEBUG2, ERROR, INFO
+#include "kotekanNvtx.hpp"        // for KOTEKAN_NVTX_RANGE
 #include "restServer.hpp"         // for restServer, connectionInstance
 #include "util.h"                 // for e_time
 #include "visUtil.hpp"            // for StatTracker
@@ -193,12 +194,19 @@ void gpuProcess::main_thread() {
 
     while (!stop_thread) {
         const int ic = gpu_frame_counter % final_signals.size();
+        // Startup is what NVTX is mostly read for, so the first frames carry their number.
+        KOTEKAN_NVTX_RANGE(gpu_frame_counter < 16
+                               ? fmt::format("{:s} frame {:d}", unique_name, gpu_frame_counter)
+                               : unique_name + " frame");
 
         DEBUG2("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
                unique_name);
 
         // We make sure we aren't using a gpu frame that's currently in-flight.
-        final_signals[ic]->wait_for_free_slot();
+        {
+            KOTEKAN_NVTX_RANGE("wait free slot");
+            final_signals[ic]->wait_for_free_slot();
+        }
 
         // The slot came free because the results thread finished that slot's previous frame. Once
         // a stop is set it finishes frames WITHOUT finalize_frame(), so that frame's ring-buffer
@@ -226,6 +234,7 @@ void gpuProcess::main_thread() {
         DEBUG2("Waiting on preconditions for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
                unique_name);
         for (auto& command : commands) {
+            KOTEKAN_NVTX_RANGE("precondition " + command[ic]->get_unique_name());
             if (command[ic]->wait_on_precondition() != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
                      command[ic]->get_name());
@@ -236,7 +245,10 @@ void gpuProcess::main_thread() {
         DEBUG2("Preconditions met for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id,
                gpu_frame_counter, unique_name);
         // Queue the commands for this frame.  This calls execute on each commandObject.
-        queue_commands(gpu_frame_counter);
+        {
+            KOTEKAN_NVTX_RANGE("queue commands");
+            queue_commands(gpu_frame_counter);
+        }
 
         // Launch the results thread if it hasn't been launched yet.
         if (first_run) {
@@ -280,7 +292,15 @@ void gpuProcess::results_thread() {
         DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id,
                gpu_frame_counter, e_time());
         const int ic = gpu_frame_counter % final_signals.size();
-        if (final_signals[ic]->wait_for_signal() == -1) {
+        KOTEKAN_NVTX_RANGE(gpu_frame_counter < 16
+                               ? fmt::format("{:s} results {:d}", unique_name, gpu_frame_counter)
+                               : unique_name + " results");
+        int signal_status;
+        {
+            KOTEKAN_NVTX_RANGE("wait gpu done");
+            signal_status = final_signals[ic]->wait_for_signal();
+        }
+        if (signal_status == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
@@ -298,6 +318,7 @@ void gpuProcess::results_thread() {
             // run even when there is a shutdown in progress.
             if (!stop_thread) {
                 assert(command.size() == final_signals.size());
+                KOTEKAN_NVTX_RANGE("finalize " + command[ic]->get_unique_name());
                 command[ic]->finalize_frame();
             }
         }

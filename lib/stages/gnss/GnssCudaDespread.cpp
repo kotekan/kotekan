@@ -2,6 +2,7 @@
 
 #include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
+#include "kotekanNvtx.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -350,6 +351,8 @@ struct GnssCudaDespread::Impl {
         PhiCache& pc = phi[(size_t)p];
         if (pc.valid && pc.half == use_fp16 && std::fabs(doppler - pc.doppler) <= refresh_hz)
             return pc;
+        KOTEKAN_NVTX_RANGE("phi build");
+        KOTEKAN_NVTX_PUSH("phi taps");
         // phi[] is already indexed per PRN; build this PRN's carrier into it too.
         const auto f = bank.hoprate_filter(all_chans, doppler, p);
         const size_t n = (size_t)n_chan * (Lf + 1);
@@ -361,6 +364,7 @@ struct GnssCudaDespread::Impl {
                 hB[(size_t)c * (Lf + 1) + k] =
                     make_float2((float)f.PhiB[c][k].real(), (float)f.PhiB[c][k].imag());
             }
+        KOTEKAN_NVTX_POP();
         // __half2 is 4 bytes; spelled as sizeof(float2)/2 because the half types must not
         // leak into this g++-compiled file (the conversion lives in the .cu, phi_to_half).
         const size_t esz = use_fp16 ? sizeof(float2) / 2 : sizeof(float2);
@@ -370,6 +374,7 @@ struct GnssCudaDespread::Impl {
             pc.d_A = pc.d_B = nullptr;
         }
         if (!pc.d_A) {
+            KOTEKAN_NVTX_RANGE("phi alloc");
             ck(cudaMalloc(&pc.d_A, n * esz), "alloc PhiA");
             ck(cudaMalloc(&pc.d_B, n * esz), "alloc PhiB");
         }
@@ -380,7 +385,12 @@ struct GnssCudaDespread::Impl {
         std::vector<unsigned> sA, sB; // 4 B per __half2
         Staging* sg = nullptr;
         if (pinned) {
-            sg = &next_staging(2 * bytes);
+            {
+                // Waits for this slot's previous upload, which is queued behind whatever the
+                // stream held when it was issued.
+                KOTEKAN_NVTX_RANGE("phi staging wait");
+                sg = &next_staging(2 * bytes);
+            }
             if (use_fp16) {
                 gnss_cuda::phi_to_half(hA.data(), (unsigned*)sg->host, n);
                 gnss_cuda::phi_to_half(hB.data(), (unsigned*)(sg->host + bytes), n);

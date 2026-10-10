@@ -10,6 +10,7 @@
 #include "driver_types.h"         // for CUevent_st, cudaEvent_t, cudaHostRegisterDefault
 #include "factory.hpp"            // for FACTORY, FACTORY_VARIANT
 #include "kotekanLogging.hpp"     // for DEBUG, DEBUG2
+#include "kotekanNvtx.hpp"     // for KOTEKAN_NVTX_RANGE
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -125,13 +126,17 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
         // happen. _my_stream_ids is ascending, which is what makes taking several safe.
         std::vector<std::unique_lock<std::recursive_mutex>> locks;
         locks.reserve(_my_stream_ids.size());
-        for (const std::int32_t sid : _my_stream_ids)
-            locks.emplace_back(device->stream_mutex(sid));
+        {
+            KOTEKAN_NVTX_RANGE("stream locks");
+            for (const std::int32_t sid : _my_stream_ids)
+                locks.emplace_back(device->stream_mutex(sid));
+        }
 
         // Create the state object that will get passed through this pipeline
         cudaPipelineState pipestate(gpu_frame_counter);
 
         for (auto& command : commands) {
+            KOTEKAN_NVTX_RANGE("execute " + command[icommand]->get_unique_name());
             // Feed the last signal into the next operation
             cudaEvent_t event = ((cudaCommand*)command[icommand])->execute_base(pipestate, events);
             if (event != nullptr) {

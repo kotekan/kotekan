@@ -27,6 +27,13 @@ if("${USE_CUDA}" STREQUAL "AUTO" OR "${USE_CUDA}" STREQUAL "ON")
             if(CUDAToolkit_INCLUDE_DIRS)
                 kmsg_status("Compiling with CUDA tools in ${CUDAToolkit_INCLUDE_DIRS}.")
             endif()
+            # NVTX ranges (lib/utils/kotekanNvtx.hpp) for Nsight Systems: the header-only NVTX3 in
+            # the toolkit. Off by default, and then the ranges compile to nothing.
+            if("${WITH_NVTX}" STREQUAL "ON")
+                add_definitions(-DKOTEKAN_NVTX)
+                include_directories(SYSTEM ${CUDAToolkit_INCLUDE_DIRS})
+                kmsg_status("NVTX ranges enabled (WITH_NVTX=ON).")
+            endif()
         else()
             if("${USE_CUDA}" STREQUAL "AUTO")
                 set(CUDA_REASON "disabled, toolkit not found")
