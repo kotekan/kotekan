@@ -607,7 +607,9 @@ dpdk:
 # ProcessPacketMask marks them fully received so an absent board is not 100% packet loss.
 # Listing a slot that has a board disables its packet-loss accounting, so update this as
 # boards come and go. Populated (Oct 8 2026): slots 0-3, 8-11 (dishes) and 7, 15 (RFI).
-missing_source_ids: [4, 5, 6, 12, 13, 14]
+# Slots 10 and 11 (rows C and D, pol 1) are listed anyway: those boards drop too many
+# packets. Their dishes stay ArrayDish; mask the pol 1 inputs via /updatable_config/bad_inputs.
+missing_source_ids: [4, 5, 6, 10, 11, 12, 13, 14]
 
 # Combine packet receipt bitmaps and generate packet-loss masks
 {% for n in numa_halves %}
