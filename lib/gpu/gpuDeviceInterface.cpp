@@ -1,18 +1,72 @@
 #include "gpuDeviceInterface.hpp"
 
-#include "fmt.hpp" // for compile_string_to_view, format, format_string
+#include "fmt.hpp"  // for compile_string_to_view, format, format_string
+#include "json.hpp" // for json
 
-#include <assert.h>  // for assert
-#include <stdexcept> // for runtime_error
-#include <utility>   // for pair
+#include <assert.h>   // for assert
+#include <functional> // for bind, _1
+#include <stdexcept>  // for runtime_error
+#include <utility>    // for pair
 
 using kotekan::Config;
+using kotekan::connectionInstance;
+using kotekan::restServer;
 
 gpuDeviceInterface::gpuDeviceInterface(Config& config, const std::string& unique_name,
                                        int32_t gpu_id) :
-    config(config), unique_name(unique_name), gpu_id(gpu_id) {}
+    config(config), unique_name(unique_name), gpu_id(gpu_id),
+    memory_endpoint(fmt::format(fmt("/gpu_memory/gpu_{:d}"), gpu_id)) {
+    restServer::instance().register_get_callback(
+        memory_endpoint,
+        std::bind(&gpuDeviceInterface::memory_callback, this, std::placeholders::_1));
+}
 
-gpuDeviceInterface::~gpuDeviceInterface() {}
+gpuDeviceInterface::~gpuDeviceInterface() {
+    restServer::instance().remove_get_callback(memory_endpoint);
+}
+
+void gpuDeviceInterface::memory_callback(connectionInstance& conn) {
+    // Copy the blocks so that serializing the metadata does not hold gpu_memory_mutex.
+    std::map<std::string, gpuMemoryBlock> blocks;
+    {
+        std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+        blocks = gpu_memory;
+    }
+
+    nlohmann::json reply = nlohmann::json::object();
+    for (auto& [name, block] : blocks) {
+        nlohmann::json metadata = nlohmann::json::array();
+        for (auto& mc : block.metadata_pointers)
+            metadata.push_back(mc ? mc->to_json() : nlohmann::json());
+        reply[name] = {{"len", block.len},
+                       {"depth", block.gpu_pointers.size()},
+                       {"view_source", block.view_source},
+                       {"metadata", metadata}};
+    }
+    conn.send_json_reply(reply);
+}
+
+std::optional<gpuMemoryInfo> gpuDeviceInterface::get_gpu_memory_info(const std::string& name) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    auto it = gpu_memory.find(name);
+    if (it == gpu_memory.end())
+        return std::nullopt;
+    gpuMemoryInfo info{it->second.len, it->second.gpu_pointers.size(), nullptr};
+    // Metadata lives on the region that owns the memory, so a same-size view
+    // reads its source's, as get_gpu_memory_array_metadata does.
+    std::string source = name;
+    while (gpu_memory.count(source)) {
+        for (const auto& mc : gpu_memory[source].metadata_pointers)
+            if (mc) {
+                info.metadata = mc;
+                break;
+            }
+        if (info.metadata || !is_view_of_same_size(source))
+            break;
+        source = gpu_memory[source].view_source;
+    }
+    return info;
+}
 
 void gpuDeviceInterface::cleanup_memory() {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);

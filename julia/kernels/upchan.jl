@@ -87,7 +87,8 @@ K::Integer                      # output bit depth; see sect. 5.1
 
 const F̄ = F_per_U[U] * U
 
-const M = 4
+include("upchan_taps.jl")
+const M = upchan_number_of_taps
 # We support 4-bit and 8-bit output. 4-bit output is offset-encoded (see
 # `swap_offset`) with nibbles swapped; 8-bit output is plain two's complement.
 @assert K == 4 || K == 8
@@ -413,8 +414,11 @@ const layout_E_registers = let
         Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
         Dish(:dish, 4, 4) => Register(:dish, 4, 4),
         [dish_polr[4 + bit + 1] => Thread(:thread, 1 << bit, 2) for bit in 0:2]...,
-        Time(:time, 1, Tlo_w) => Warp(:warp, 1, Tlo_w),
-        Time(:time, 1 * Tlo_w, Tlo_r) => Register(:time, 1 * Tlo_w, Tlo_r),
+        # Step 10 assigns output tiles to warps in natural `u` order. Assign the
+        # corresponding input tiles (bit-reversed `τ′`, eqn. (100)), so that each
+        # warp only overwrites shared memory it has read itself (sect. 5.5).
+        [Time(:time, 1 << (Ubits - 3 - bit), 2) => Warp(:warp, 1 << bit, 2) for bit in 0:(trailing_zeros(Tlo_w) - 1)]...,
+        Time(:time, 1, Tlo_r) => Register(:time, 1, Tlo_r),
         Time(:time, idiv(U, 2), 2) => Thread(:thread, 8, 2),
         Time(:time, (U == 2 ? U : idiv(U, 4)), 2) => Thread(:thread, 16, 2),
         Time(:time, (U == 2 ? 4 : U), Thi_w) => Warp(:warp, Tlo_w, Thi_w),
@@ -1148,6 +1152,8 @@ function upchan!(emitter)
         #Unpack     swapped_withoffset=true,
         #Unpack )
         # Store F
+        # For K=8 the step-10 lanes (eqn. (146)) differ from the step-1 lanes (eqn. (137))
+        K == 8 && sync_warp!(emitter)
         store!(emitter, :F_shared => layout_F_shared, :F)
 
         sync_threads!(emitter)
@@ -1789,6 +1795,10 @@ function main(;
     # `Ē` only holds `F̄ = F_per_U[U] * U` fine frequencies, i.e. `F_per_U[U]`
     # coarse frequencies. Writing more would run past the end of `Ē`.
     @show Fmax = Int32(min(F, F_per_U[U]))
+    # Launch one set of blocks per coarse frequency in `Fmin:Fmax`, as kotekan
+    # does. Blocks for the remaining coarse frequencies would write past the
+    # end of `Ē`, and the ring buffer would wrap them over the actual output.
+    blocks = num_blocks_per_frequency * (Fmax - Fmin)
 
     # The kernel computes (compare the `X` and `Γ` factors above, and eqn.
     # (83), (84) of <CHORD_GPU_upchannelization.pdf>)
@@ -1963,7 +1973,7 @@ function main(;
         Ē_cuda,
         info_cuda;
         threads=(num_threads, num_warps),
-        blocks=num_blocks,
+        blocks=blocks,
         shmem=shmem_bytes,
     )
     synchronize()
@@ -1984,7 +1994,7 @@ function main(;
                     Ē_cuda,
                     info_cuda;
                     threads=(num_threads, num_warps),
-                    blocks=num_blocks,
+                    blocks=blocks,
                     shmem=shmem_bytes,
                 )
             end
@@ -1993,7 +2003,7 @@ function main(;
         # All times in μsec
         runtime = stats.time / nruns * 1.0e+6
         num_frequencies_scaled = F₀
-        runtime_scaled = runtime / F * num_frequencies_scaled
+        runtime_scaled = runtime / (Fmax - Fmin) * num_frequencies_scaled
         dataframe_length = T * sampling_time_μsec
         fraction = runtime_scaled / dataframe_length
         round1(x) = round(x; digits=1)
@@ -2004,7 +2014,7 @@ function main(;
           design-parameters:
             number-of-complex-components: $C
             number-of-dishes: $D
-            number-of-frequencies: $F
+            number-of-frequencies: $(Fmax - Fmin)
             number-of-polarizations: $P
             number-of-taps: $M
             number-of-timesamples: $T
@@ -2016,7 +2026,7 @@ function main(;
             blocks_per_frequency: $num_blocks_per_frequency
           call-parameters:
             threads: [$num_threads, $num_warps]
-            blocks: [$num_blocks]
+            blocks: [$blocks]
             shmem_bytes: $shmem_bytes
           result-μsec:
             runtime: $(round1(runtime))
@@ -2031,7 +2041,7 @@ function main(;
     Ē_memory = Array(Ē_cuda)
     K == 4 && (Ē_memory = swap_offset.(Ē_memory))
     info_memory = Array(info_cuda)
-    @assert all(info_memory .== 0)
+    @assert all(info_memory[1:(num_threads * num_warps * blocks)] .== 0)
 
     # One element per complex sample: `Int4x2` (1 byte) or `Complex{Int8}` (2 bytes)
     Ē_memory = K == 4 ? reinterpret(Int4x2, Ē_memory) : reinterpret(Complex{Int8}, Ē_memory)

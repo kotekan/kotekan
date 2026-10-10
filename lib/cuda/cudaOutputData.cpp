@@ -106,10 +106,9 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
                 device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
             if (meta) {
                 // Attach the metadata to the host buffer frame
-                bool passed = output_buffer->set_metadata(out_id, meta);
-                if (passed)
-                    DEBUG("Passing metadata from GPU array {:s}[{:d}] to output buffer {:s}[{:d}]",
-                          _gpu_mem, gpu_frame_id, output_buffer->buffer_name, out_id);
+                output_buffer->set_metadata(out_id, meta);
+                DEBUG("Passing metadata from GPU array {:s}[{:d}] to output buffer {:s}[{:d}]",
+                      _gpu_mem, gpu_frame_id, output_buffer->buffer_name, out_id);
 
                 // TODO: actuall get the NDArray information that was set up by
                 // the CPU commands

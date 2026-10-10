@@ -45,6 +45,7 @@ add_library(
     cudaPLMaskUpchannelizer.cpp
     cudaPLMaskUpchannelizer.cu
     testPLMaskUpchannelizer.cpp
+    testUpchanAlignment.cpp
     cudaPL1bitCorrelator.cpp
     cudaQuantize4.cpp
     cudaQuantize8.cpp
@@ -71,6 +72,7 @@ if(NOT ${IWYU})
                 generated/cudaBasebandBeamformer_chime.cpp
                 generated/cudaBasebandBeamformer_chord.cpp
                 generated/cudaBasebandBeamformer_hirax.cpp
+                generated/cudaBasebandBeamformer_hirax128.cpp
                 generated/cudaBasebandBeamformer_pathfinder.cpp
                 generated/cudaCHIMEFRBBeamformer_chime_U16_K4.cpp
                 generated/cudaCHIMEFRBBeamformer_chime_U128_K4.cpp
@@ -93,6 +95,14 @@ if(NOT ${IWYU})
                 generated/cudaFRBBeamformer_hirax_U32.cpp
                 generated/cudaFRBBeamformer_hirax_U64.cpp
                 generated/cudaFRBBeamformer_hirax_U128.cpp
+                generated/cudaFRBBeamformer_hirax128_U1.cpp
+                generated/cudaFRBBeamformer_hirax128_U2.cpp
+                generated/cudaFRBBeamformer_hirax128_U4.cpp
+                generated/cudaFRBBeamformer_hirax128_U8.cpp
+                generated/cudaFRBBeamformer_hirax128_U16.cpp
+                generated/cudaFRBBeamformer_hirax128_U32.cpp
+                generated/cudaFRBBeamformer_hirax128_U64.cpp
+                generated/cudaFRBBeamformer_hirax128_U128.cpp
                 generated/cudaFRBBeamformer_pathfinder_U1.cpp
                 generated/cudaFRBBeamformer_pathfinder_U2.cpp
                 generated/cudaFRBBeamformer_pathfinder_U4.cpp
@@ -127,6 +137,11 @@ if(NOT ${IWYU})
                 generated/cudaUpchannelizer_hirax_U32_K4.cpp
                 generated/cudaUpchannelizer_hirax_U64_K4.cpp
                 generated/cudaUpchannelizer_hirax_U128_K4.cpp
+                generated/cudaUpchannelizer_hirax128_U8_K4.cpp
+                generated/cudaUpchannelizer_hirax128_U16_K4.cpp
+                generated/cudaUpchannelizer_hirax128_U32_K4.cpp
+                generated/cudaUpchannelizer_hirax128_U64_K4.cpp
+                generated/cudaUpchannelizer_hirax128_U128_K4.cpp
                 generated/cudaUpchannelizer_pathfinder_U2_K4.cpp
                 generated/cudaUpchannelizer_pathfinder_U4_K4.cpp
                 generated/cudaUpchannelizer_pathfinder_U8_K4.cpp

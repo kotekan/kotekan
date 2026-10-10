@@ -4,6 +4,8 @@
 
 #include "cudaPLMaskUpchannelizer.hpp"
 
+#include "upchannelizeReference.hpp" // for upchan_default_num_taps
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -59,12 +61,13 @@ __device__ inline std::uint64_t and_downsample_word(std::uint64_t w) {
 // and the high bits (time / 64) index the (ring-buffered) first dimension.
 //
 // The algorithm ANDs M*U input bits into one output bit; it downsamples U input
-// bits to one output bit, with an implicit forward stencil of (M-1)*U bits:
+// bits to one output bit, with an implicit forward stencil of (M-1)*U bits. The
+// input starts `b = bit_offset_in` bits into logical input row 0:
 //
-//     output bit `tbar`  =  AND of input bits [tbar*U, tbar*U + M*U)
+//     output bit `tbar`  =  AND of input bits [b + tbar*U, b + tbar*U + M*U)
 //
 // It is computed as a clean two-step reduction:
-//     A[k]        = AND of input bits [k*U, (k+1)*U)          (downsample-by-U)
+//     A[k]        = AND of input bits [b + k*U, b + (k+1)*U)  (downsample-by-U)
 //     out[tbar]   = A[tbar] & A[tbar+1] & ... & A[tbar+M-1]   (sliding M-tap AND)
 //
 // The input and output are independent power-of-two ring buffers along time:
@@ -73,7 +76,7 @@ __device__ inline std::uint64_t and_downsample_word(std::uint64_t w) {
 //   - output ring is measured in output `time_64` (uint64 elements; each output element
 //     covers 64*U input time samples); logical output row `o` is at physical row
 //     `(ringbuf_pos_out_64 + o) & (ringbuf_size_out_64 - 1)`.
-// Reading the (M-1)*U future bits past the consumed range is safe -- those
+// Reading the b + (M-1)*U future bits past the consumed range is safe -- those
 // elements are guaranteed readable (they wrap within the input ring).
 //
 // Parallelization: each thread handles one inner position `s` (the fast index, so consecutive
@@ -90,6 +93,7 @@ __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_e
                                      const std::ptrdiff_t num_times_64,
                                      const std::ptrdiff_t ringbuf_size_in_64,
                                      const std::ptrdiff_t ringbuf_pos_in_64,
+                                     const int bit_offset_in,
                                      const std::ptrdiff_t ringbuf_size_out_64,
                                      const std::ptrdiff_t ringbuf_pos_out_64) {
     static_assert(M >= 1, "M (PFB taps) must be positive");
@@ -116,6 +120,25 @@ __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_e
     // (M-1) A-bits feed the forward stencil of the last output bit.
     const std::ptrdiff_t r_lo = T0 * std::ptrdiff_t(U);
     const int n_abits = n_words * 64 + (M - 1);
+    // Last input row holding a bit we need. Rows past it may not be readable.
+    const std::ptrdiff_t r_max = (bit_offset_in + r_lo * 64 + std::ptrdiff_t(U) * n_abits - 1) / 64;
+
+    // Read the input as a stream of 64-bit words starting at bit `b` of row `r_lo`: word `i`
+    // holds input bits [b + (r_lo+i)*64, b + (r_lo+i+1)*64).
+    const auto load_row = [&](const std::ptrdiff_t r) {
+        const std::ptrdiff_t phys = (ringbuf_pos_in_64 + r) & in_mask;
+        return pl_mask_exp[phys * in_stride + in_base + s];
+    };
+    std::ptrdiff_t r = r_lo;
+    std::uint64_t lo = load_row(r);
+    const auto next_word = [&]() {
+        ++r;
+        const std::uint64_t hi = r <= r_max ? load_row(r) : std::uint64_t(0);
+        const std::uint64_t w =
+            bit_offset_in == 0 ? lo : (lo >> bit_offset_in) | (hi << (64 - bit_offset_in));
+        lo = hi;
+        return w;
+    };
 
     // Sliding M-tap AND window (circular over the last M A-bits) + output packer.
     std::uint64_t awin[M];
@@ -145,31 +168,24 @@ __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_e
     };
 
     if constexpr (U < 64) {
-        // Each input word yields `groups_per_word` A-bits. Row r_lo's first group
-        // aligns to k0 = T0*64, so iterating rows yields A-bits in increasing k.
+        // Each input word yields `groups_per_word` A-bits. The first word's first group
+        // aligns to k0 = T0*64, so iterating words yields A-bits in increasing k.
         constexpr int groups_per_word = 64 / U;
-        std::ptrdiff_t r = r_lo;
         while (n < n_abits) {
-            const std::ptrdiff_t phys = (ringbuf_pos_in_64 + r) & in_mask;
-            const std::uint64_t w = and_downsample_word<U>(pl_mask_exp[phys * in_stride + in_base + s]);
+            const std::uint64_t w = and_downsample_word<U>(next_word());
             const int take = groups_per_word < n_abits - n ? groups_per_word : n_abits - n;
             for (int g = 0; g < take; ++g)
                 push_abit((w >> (g * U)) & std::uint64_t(1));
-            ++r;
         }
     } else {
         // U >= 64: each group spans U/64 whole input words; A[k] = 1 iff all of
         // them are all-ones.
         constexpr int words_per_group = U / 64;
-        std::ptrdiff_t r = r_lo;
         while (n < n_abits) {
             std::uint64_t acc = ~std::uint64_t(0);
 #pragma unroll
-            for (int j = 0; j < words_per_group; ++j) {
-                const std::ptrdiff_t phys = (ringbuf_pos_in_64 + r) & in_mask;
-                acc &= pl_mask_exp[phys * in_stride + in_base + s];
-                ++r;
-            }
+            for (int j = 0; j < words_per_group; ++j)
+                acc &= next_word();
             push_abit(acc == ~std::uint64_t(0) ? std::uint64_t(1) : std::uint64_t(0));
         }
     }
@@ -185,7 +201,7 @@ void launch_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
                                  const std::ptrdiff_t num_frequencies_out, const int Fmin,
                                  const int Fmax, const std::ptrdiff_t num_times_64,
                                  const std::ptrdiff_t ringbuf_size_in_64,
-                                 const std::ptrdiff_t ringbuf_pos_in_64,
+                                 const std::ptrdiff_t ringbuf_pos_in_64, const int bit_offset_in,
                                  const std::ptrdiff_t ringbuf_size_out_64,
                                  const std::ptrdiff_t ringbuf_pos_out_64, const int U,
                                  const cudaStream_t stream) {
@@ -199,10 +215,11 @@ void launch_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
     assert(ringbuf_size_in_64 > 0 && (ringbuf_size_in_64 & (ringbuf_size_in_64 - 1)) == 0);
     assert(ringbuf_size_out_64 > 0 && (ringbuf_size_out_64 & (ringbuf_size_out_64 - 1)) == 0);
     assert(ringbuf_pos_in_64 >= 0);
+    assert(0 <= bit_offset_in && bit_offset_in < 64);
     assert(ringbuf_pos_out_64 >= 0);
 
     // M = number of PFB taps; N = output words produced per thread.
-    constexpr int M = 4;
+    constexpr int M = kotekan::upchan_default_num_taps;
     constexpr int N = 256;
     constexpr int threads_x = 256;
 
@@ -224,7 +241,8 @@ void launch_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
 #define LAUNCH_UPCHAN_PL_MASK(UU)                                                                  \
     upchannelize_pl_mask<M, (UU), N><<<nblocks, nthreads, 0, stream>>>(                            \
         pl_mask_exp_U, pl_mask_exp, n_inner, in_stride, in_base, out_stride, num_times_64,         \
-        ringbuf_size_in_64, ringbuf_pos_in_64, ringbuf_size_out_64, ringbuf_pos_out_64)
+        ringbuf_size_in_64, ringbuf_pos_in_64, bit_offset_in, ringbuf_size_out_64,                 \
+        ringbuf_pos_out_64)
 
     switch (U) {
         case 2:
@@ -265,7 +283,7 @@ void cpu_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
                               const std::ptrdiff_t num_frequencies_out, const int Fmin,
                               const int Fmax, const std::ptrdiff_t num_times_64,
                               const std::ptrdiff_t ringbuf_size_in_64,
-                              const std::ptrdiff_t ringbuf_pos_in_64,
+                              const std::ptrdiff_t ringbuf_pos_in_64, const int bit_offset_in,
                               const std::ptrdiff_t ringbuf_size_out_64,
                               const std::ptrdiff_t ringbuf_pos_out_64, const int U) {
     assert(pl_mask_exp_U);
@@ -278,10 +296,11 @@ void cpu_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
     assert(ringbuf_size_in_64 > 0 && (ringbuf_size_in_64 & (ringbuf_size_in_64 - 1)) == 0);
     assert(ringbuf_size_out_64 > 0 && (ringbuf_size_out_64 & (ringbuf_size_out_64 - 1)) == 0);
     assert(ringbuf_pos_in_64 >= 0);
+    assert(0 <= bit_offset_in && bit_offset_in < 64);
     assert(ringbuf_pos_out_64 >= 0);
     assert(num_times_64 % U == 0);
 
-    constexpr int M = 4; // PFB taps
+    constexpr int M = kotekan::upchan_default_num_taps; // PFB taps
 
     // Read input channels [Fmin, Fmax) (contiguous inner sub-range); write output channels
     // [0, Fmax-Fmin). The output buffer may over-allocate frequencies, so its row stride uses
@@ -309,9 +328,9 @@ void cpu_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
             std::uint64_t out_word = 0;
             for (int j = 0; j < 64; ++j) {
                 const std::ptrdiff_t tbar = o * 64 + j;
-                // Output bit = AND of the M*U input bits [tbar*U, tbar*U + M*U).
+                // Output bit = AND of the M*U input bits [b + tbar*U, b + tbar*U + M*U).
                 std::uint64_t bit = 1;
-                const std::ptrdiff_t t0 = tbar * std::ptrdiff_t(U);
+                const std::ptrdiff_t t0 = bit_offset_in + tbar * std::ptrdiff_t(U);
                 for (std::ptrdiff_t t = t0; t < t0 + std::ptrdiff_t(M) * U; ++t)
                     bit &= in_bit(t, s);
                 out_word |= bit << j;

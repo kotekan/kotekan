@@ -5,6 +5,14 @@ find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
+# kotekanLoggingFixture.hpp includes kotekanLogging.hpp, which needs lib/core (for errors.h) and
+# external/fmt (for fmt.hpp), and not every test links a target that provides them -- test_Metadata
+# links only kotekan_metadata. Give every test in this directory kotekan_core_headers, which carries
+# kotekan_core's full set of header usage requirements: adding the include paths on their own would
+# hand the tests lib/core's headers without the compile definitions those headers branch on, e.g.
+# WITH_SSL in Config.hpp.
+link_libraries(kotekan_core_headers)
+
 add_executable(test_truncate test_truncate.cpp)
 target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 
@@ -170,6 +178,11 @@ add_executable(test_pipeline_graph test_pipeline_graph.cpp)
 target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
                                                   kotekan_core)
 
+# test_numa_policy - NUMA placement of stages and buffers: which node a config block resolves to,
+# and the scoped memory policy that puts an object there
+add_executable(test_numa_policy test_numa_policy.cpp)
+target_link_libraries(test_numa_policy PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 # test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
 add_executable(test_buffer_peek test_buffer_peek.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -275,7 +288,13 @@ endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
     add_executable(test_linearAlgebra test_linearAlgebra.cpp)
-    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core)
+    # CMAKE_DL_LIBS for the dlsym behind its allocation counting
+    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core
+                                                     ${CMAKE_DL_LIBS} ${LAPACKE_LIBRARIES})
+    # The OpenBLAS API behind openblas_set_num_threads, as for the eigen stages
+    if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)
+        target_link_libraries(test_linearAlgebra PRIVATE ${OPENBLAS_EXTRA_LIB})
+    endif()
     target_include_directories(test_linearAlgebra PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 
     add_executable(test_eigenStages test_eigenStages.cpp)
