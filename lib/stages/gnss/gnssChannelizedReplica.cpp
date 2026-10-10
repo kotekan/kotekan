@@ -529,13 +529,10 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
 }
 
 ChannelizedReplicaBank::HopRateFilter
-ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double doppler_hz,
-                                       int prn_index, bool want_psi) const {
+ChannelizedReplicaBank::hoprate_header(double doppler_hz, int prn_index) const {
     const double cps =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
-    const double wc = 2.0 * M_PI * (carrier_offset(prn_index) + doppler_hz) / _sample_rate;
     const int Lf = _fft_len * _num_taps;
-    const std::complex<double> I(0.0, 1.0);
 
     HopRateFilter f;
     f.doppler_hz = doppler_hz;
@@ -563,51 +560,105 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
             f.n_chips = _max_chips;
         }
     }
+    f.wc_built = 2.0 * M_PI * (carrier_offset(prn_index) + doppler_hz) / _sample_rate;
+    return f;
+}
+
+namespace {
+// One channel's filter taps for both carrier images (A: +carrier, B: -carrier), the prototype
+// modulated to the channel-carrier offset: emit(k, ea, eb) for k = 0 .. Lf-1. The carrier
+// phasors come by recurrence, one complex multiply per tap instead of an exp, re-anchored
+// exactly every 1024 taps so the rounding cannot accumulate. Both table builders run this one
+// loop, so their prefix sums agree.
+template<class Emit>
+void hoprate_channel_taps(const float* proto, int Lf, double off, double wc, Emit&& emit) {
+    const std::complex<double> I(0.0, 1.0);
+    const std::complex<double> za = std::exp(-I * (off + wc));
+    const std::complex<double> zb = std::exp(-I * (off - wc));
+    std::complex<double> pa, pb;
+    for (int k = 0; k < Lf; ++k) {
+        if ((k & 1023) == 0) {
+            pa = std::exp(-I * (off + wc) * (double)k);
+            pb = std::exp(-I * (off - wc) * (double)k);
+        }
+        const double pk = proto[k];
+        const std::complex<double> ea = pk * pa;
+        const std::complex<double> eb = pk * pb;
+        pa *= za;
+        pb *= zb;
+        emit(k, ea, eb);
+    }
+}
+} // namespace
+
+ChannelizedReplicaBank::HopRateFilter
+ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double doppler_hz,
+                                       int prn_index, bool want_psi) const {
+    HopRateFilter f = hoprate_header(doppler_hz, prn_index);
+    const double wc = f.wc_built;
+    const int Lf = _fft_len * _num_taps;
     f.chans = want;
     const int nw = (int)want.size();
     f.PhiA.resize(nw);
     f.PhiB.resize(nw);
-    // Per channel, the cumulative filter Phi[k] = Σ_{<k} filt[k] for both carrier images
-    // (A: +carrier, B: -carrier); filt = prototype modulated to the channel-carrier offset.
+    // Per channel, the cumulative filter Phi[k] = Σ_{<k} filt[k] for both carrier images.
     // A chip's hop contribution is Phi[k_hi+1]-Phi[k_lo] over its integer tap range -- exact.
-    f.wc_built = wc;
     if (want_psi) {
         f.PsiA.resize(nw);
         f.PsiB.resize(nw);
     }
     for (int ci = 0; ci < nw; ++ci) {
         const double off = 2.0 * M_PI * (double)want[ci] / (double)_fft_len;
-        f.PhiA[ci].assign(Lf + 1, 0.0);
-        f.PhiB[ci].assign(Lf + 1, 0.0);
+        auto& A = f.PhiA[ci];
+        auto& B = f.PhiB[ci];
+        A.assign(Lf + 1, 0.0);
+        B.assign(Lf + 1, 0.0);
         if (want_psi) {
             f.PsiA[ci].assign(Lf + 1, 0.0);
             f.PsiB[ci].assign(Lf + 1, 0.0);
         }
-        // The carrier phasors by recurrence, one complex multiply per tap instead of an exp,
-        // re-anchored exactly every 1024 taps so the rounding cannot accumulate.
-        const std::complex<double> za = std::exp(-I * (off + wc));
-        const std::complex<double> zb = std::exp(-I * (off - wc));
-        std::complex<double> pa, pb;
-        for (int k = 0; k < Lf; ++k) {
-            if ((k & 1023) == 0) {
-                pa = std::exp(-I * (off + wc) * (double)k);
-                pb = std::exp(-I * (off - wc) * (double)k);
-            }
-            const double pk = _proto[k];
-            const std::complex<double> ea = pk * pa;
-            const std::complex<double> eb = pk * pb;
-            pa *= za;
-            pb *= zb;
-            f.PhiA[ci][k + 1] = f.PhiA[ci][k] + ea;
-            f.PhiB[ci][k + 1] = f.PhiB[ci][k] + eb;
-            if (want_psi) {
-                // FIRST MOMENT, same prefix-sum shape as Phi so the gather can telescope it
-                // with the identical index arithmetic (that is the whole reason it is stored
-                // as a prefix sum rather than as a per-window quantity).
-                f.PsiA[ci][k + 1] = f.PsiA[ci][k] + (double)k * ea;
-                f.PsiB[ci][k + 1] = f.PsiB[ci][k] + (double)k * eb;
-            }
-        }
+        hoprate_channel_taps(_proto.data(), Lf, off, wc,
+                             [&](int k, const std::complex<double>& ea,
+                                 const std::complex<double>& eb) {
+                                 A[k + 1] = A[k] + ea;
+                                 B[k + 1] = B[k] + eb;
+                                 if (want_psi) {
+                                     // FIRST MOMENT, same prefix-sum shape as Phi so the gather
+                                     // can telescope it with the identical index arithmetic
+                                     // (that is the whole reason it is stored as a prefix sum
+                                     // rather than as a per-window quantity).
+                                     f.PsiA[ci][k + 1] = f.PsiA[ci][k] + (double)k * ea;
+                                     f.PsiB[ci][k + 1] = f.PsiB[ci][k] + (double)k * eb;
+                                 }
+                             });
+    }
+    return f;
+}
+
+ChannelizedReplicaBank::HopRateFilter
+ChannelizedReplicaBank::hoprate_filter_f32(const std::vector<int>& want, double doppler_hz,
+                                           int prn_index, float* phiA, float* phiB) const {
+    HopRateFilter f = hoprate_header(doppler_hz, prn_index);
+    const double wc = f.wc_built;
+    const int Lf = _fft_len * _num_taps;
+    for (size_t ci = 0; ci < want.size(); ++ci) {
+        const double off = 2.0 * M_PI * (double)want[ci] / (double)_fft_len;
+        float* A = phiA + 2 * ci * (size_t)(Lf + 1);
+        float* B = phiB + 2 * ci * (size_t)(Lf + 1);
+        A[0] = A[1] = B[0] = B[1] = 0.0f;
+        // The running sums are the double prefix sums hoprate_filter stores, so each float
+        // here is that table's entry rounded once.
+        std::complex<double> sa = 0.0, sb = 0.0;
+        hoprate_channel_taps(_proto.data(), Lf, off, wc,
+                             [&](int k, const std::complex<double>& ea,
+                                 const std::complex<double>& eb) {
+                                 sa = sa + ea;
+                                 sb = sb + eb;
+                                 A[2 * (k + 1)] = (float)sa.real();
+                                 A[2 * (k + 1) + 1] = (float)sa.imag();
+                                 B[2 * (k + 1)] = (float)sb.real();
+                                 B[2 * (k + 1) + 1] = (float)sb.imag();
+                             });
     }
     return f;
 }

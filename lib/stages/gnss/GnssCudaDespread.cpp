@@ -6,9 +6,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <cuda_runtime.h>
+#include <immintrin.h>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -18,6 +20,28 @@ void ck(cudaError_t e, const char* what) {
     if (e != cudaSuccess)
         throw std::runtime_error(std::string("GnssCudaDespread: ") + what + ": "
                                  + cudaGetErrorString(e));
+}
+
+// n float pairs -> n __half2 (x in the low half), round to nearest even: what
+// gnss_cuda::phi_to_half gives, bit for bit. That one calls __floats2half2_rn per pair, which
+// on the HOST is CUDA's software emulation at ~16 ns a value -- two thirds of every Phi
+// table build, ~1.4 s of a node's first frame per GPU (#160, nsys 2026-10-10). F16C converts
+// eight floats an instruction; the halves are written as raw bits, so no CUDA half type
+// enters this g++-compiled file.
+void pairs_to_half(const float2* src, void* dst, size_t n) {
+#if defined(__F16C__) && defined(__AVX__)
+    const float* s = &src[0].x;
+    auto* d = static_cast<uint16_t*>(dst);
+    const size_t m = 2 * n;
+    size_t i = 0;
+    for (; i + 8 <= m; i += 8)
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(d + i),
+                         _mm256_cvtps_ph(_mm256_loadu_ps(s + i), _MM_FROUND_TO_NEAREST_INT));
+    for (; i < m; ++i)
+        d[i] = _cvtss_sh(s[i], _MM_FROUND_TO_NEAREST_INT);
+#else
+    gnss_cuda::phi_to_half(src, dst, n);
+#endif
 }
 } // namespace
 
@@ -59,6 +83,9 @@ struct GnssCudaDespread::Impl {
     };
     Staging staging[2];
     int staging_next = 0;
+    /// One table's taps as float pairs, [n_chan][Lf+1], kept across builds: the bank writes
+    /// into them and the upload converts out of them, so a build allocates nothing.
+    std::vector<float> taps_a, taps_b;
 
     /// fp16 Phi (31896a862:docs/CHORD_GPU_TODO.md item 3): ensure_phi stores __half2 tables and
     /// every launch_waveform goes through the __half2 gather. HALVES THE RESIDENT TABLE -- §10.6c
@@ -353,17 +380,14 @@ struct GnssCudaDespread::Impl {
             return pc;
         KOTEKAN_NVTX_RANGE("phi build");
         KOTEKAN_NVTX_PUSH("phi taps");
-        // phi[] is already indexed per PRN; build this PRN's carrier into it too.
-        const auto f = bank.hoprate_filter(all_chans, doppler, p);
+        // phi[] is already indexed per PRN; build this PRN's carrier into it too, as float
+        // pairs [channel][Lf+1] -- the bank rounds its double prefix sums once, straight in.
         const size_t n = (size_t)n_chan * (Lf + 1);
-        std::vector<float2> hA(n), hB(n);
-        for (int c = 0; c < n_chan; ++c)
-            for (int k = 0; k <= Lf; ++k) {
-                hA[(size_t)c * (Lf + 1) + k] =
-                    make_float2((float)f.PhiA[c][k].real(), (float)f.PhiA[c][k].imag());
-                hB[(size_t)c * (Lf + 1) + k] =
-                    make_float2((float)f.PhiB[c][k].real(), (float)f.PhiB[c][k].imag());
-            }
+        taps_a.resize(2 * n);
+        taps_b.resize(2 * n);
+        const auto f = bank.hoprate_filter_f32(all_chans, doppler, p, taps_a.data(), taps_b.data());
+        const float2* hA = reinterpret_cast<const float2*>(taps_a.data());
+        const float2* hB = reinterpret_cast<const float2*>(taps_b.data());
         KOTEKAN_NVTX_POP();
         // __half2 is 4 bytes; spelled as sizeof(float2)/2 because the half types must not
         // leak into this g++-compiled file (the conversion lives in the .cu, phi_to_half).
@@ -380,8 +404,8 @@ struct GnssCudaDespread::Impl {
         }
         // fp16 converts on the host and uploads half-size: the H2D shrinks along with the table.
         const size_t bytes = n * esz;
-        const void* srcA = hA.data();
-        const void* srcB = hB.data();
+        const void* srcA = hA;
+        const void* srcB = hB;
         std::vector<unsigned> sA, sB; // 4 B per __half2
         Staging* sg = nullptr;
         if (pinned) {
@@ -392,19 +416,20 @@ struct GnssCudaDespread::Impl {
                 sg = &next_staging(2 * bytes);
             }
             if (use_fp16) {
-                gnss_cuda::phi_to_half(hA.data(), (unsigned*)sg->host, n);
-                gnss_cuda::phi_to_half(hB.data(), (unsigned*)(sg->host + bytes), n);
+                KOTEKAN_NVTX_RANGE("phi to half");
+                pairs_to_half(hA, sg->host, n);
+                pairs_to_half(hB, sg->host + bytes, n);
             } else {
-                std::memcpy(sg->host, hA.data(), bytes);
-                std::memcpy(sg->host + bytes, hB.data(), bytes);
+                std::memcpy(sg->host, hA, bytes);
+                std::memcpy(sg->host + bytes, hB, bytes);
             }
             srcA = sg->host;
             srcB = sg->host + bytes;
         } else if (use_fp16) {
             sA.resize(n);
             sB.resize(n);
-            gnss_cuda::phi_to_half(hA.data(), sA.data(), n);
-            gnss_cuda::phi_to_half(hB.data(), sB.data(), n);
+            pairs_to_half(hA, sA.data(), n);
+            pairs_to_half(hB, sB.data(), n);
             srcA = sA.data();
             srcB = sB.data();
         }

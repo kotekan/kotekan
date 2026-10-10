@@ -130,6 +130,16 @@ public:
     HopRateFilter hoprate_filter(const std::vector<int>& want, double doppler_hz,
                                  int prn_index = -1, bool want_psi = false) const;
 
+    /// @ref hoprate_filter's Phi tables written straight into caller storage as float pairs
+    /// (re, im), laid out [channel][Lf+1] like the GPU tables. The prefix sums are the same
+    /// double-precision recurrence, each rounded to float on the way out -- without the
+    /// ~15 MB of complex<double> vectors a 7-channel @ref hoprate_filter allocates and zeroes
+    /// per call, which the GPU's per-PRN table build only ever converted to float again (#160).
+    /// @c phiA / @c phiB hold want.size() * (Lf+1) pairs. Returns the filter's chip span and
+    /// carrier with @c chans / @c PhiA / @c PhiB left empty.
+    HopRateFilter hoprate_filter_f32(const std::vector<int>& want, double doppler_hz, int prn_index,
+                                     float* phiA, float* phiB) const;
+
     /// Stream @c n_hops from a prebuilt @ref HopRateFilter. The per-hop carrier phasor +
     /// code phase use the CURRENT @c code_phase_chips / @c doppler_hz (exact); the filter
     /// shape comes from @c f (built for a nearby Doppler). @c nav_bit per chip = exact wipe.
@@ -334,6 +344,9 @@ public:
     }
 
 private:
+    /// The chip span, truncation and carrier shared by @ref hoprate_filter and
+    /// @ref hoprate_filter_f32.
+    HopRateFilter hoprate_header(double doppler_hz, int prn_index) const;
     /// Expand one PRN's component code into the combined stream this bank works in (TDM
     /// zero-stuffing / BOC half-cycles / plain). The constructor and @ref set_prn share it so
     /// a slot swapped at runtime cannot get a differently-built table from a slot built at
