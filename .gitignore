@@ -29,3 +29,6 @@ scratch/*
 
 # Logs from ./julia/bin/selftests.sh
 /julia/output/selftests/
+
+# Per-checkout agent notes, never committed
+CLAUDE.local.md
