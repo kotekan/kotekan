@@ -157,8 +157,21 @@ protected:
     uint64_t _seq_check_packet_count = 0;
 
     /// A packet at least this many frames past the start of the next active frame is treated as
-    /// a fault rather than caught up to (see handle_packet). About 1.3 s of 8192-sample frames.
-    static constexpr uint64_t _max_frames_ahead = 32;
+    /// a fault rather than caught up to (see handle_packet). About 0.34 s of 8192-sample frames.
+    ///
+    /// Why there is a window at all: a packet lands ahead of the active frames when this worker
+    /// went without frames to fill. Downstream stalled until the output buffer was full, the
+    /// packets that arrived meanwhile were dropped, and the first one after the stall belongs to
+    /// a later frame. Skipping forward to it loses only those packets, and the receipt bitmap
+    /// already marks them missing. A packet far ahead is not a stall: it comes from a board that
+    /// is out of step with the others, or carries a corrupt sequence number. Following it would
+    /// advance the frames this worker shares with the port's other worker past packets that
+    /// worker is still writing, and then send empty frames downstream. So past the window the
+    /// worker stops kotekan, which the service restarts.
+    ///
+    /// Why 8: the stalls seen once the output buffer was full have been at most 4 frames, and a
+    /// stall that outlasts the buffer by a third of a second is a downstream fault in itself.
+    static constexpr uint64_t _max_frames_ahead = 8;
 
     /**
      * @brief Copies one packet's payload into the output frame using non-temporal stores.
