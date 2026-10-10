@@ -245,6 +245,8 @@ public:
     //
     {
         set_log_level(cuda_command.get_log_level());
+        // Every command on the ring must agree on its layout
+        ringbuffer->ensure_frame_desc(frame_desc());
     }
 
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
@@ -291,7 +293,7 @@ public:
                                                    .does_read = true,
                                                    .does_write = false,
                                                    .frame_desc = frame_desc(),
-                                                   .signal_buffer = signal_buffer_name});
+                                                   .signal_buffer = ringbuffer->buffer_name});
         }
     }
 
@@ -303,7 +305,7 @@ public:
                                                    .does_read = false,
                                                    .does_write = true,
                                                    .frame_desc = frame_desc(),
-                                                   .signal_buffer = signal_buffer_name});
+                                                   .signal_buffer = ringbuffer->buffer_name});
         }
     }
 

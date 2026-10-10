@@ -296,6 +296,118 @@ public:
      */
     virtual kotekan::BufferState dot_buffer_state();
 
+    /**
+     * @brief Requires that a frame descriptor is attached to this buffer
+     *        (fatal if not), then ensures it conforms to @p desc.
+     *
+     * Stages should use this method to rigidly enforce that a frame
+     * descriptor is (already) attached to the buffer and conforms to their
+     * requirements. This fatals if no descriptor has been attached -- i.e. the
+     * buffer was not declared with a described type.
+     *
+     * Called with no argument it performs only the existence check: the idiom
+     * for a stage that then reads the descriptor with @c get_frame_desc<T>() or
+     * @c require_frame_desc<T>() and hand-validates the specific fields it
+     * depends on. Pass @p desc to additionally cross-check a full expected
+     * descriptor, in which case this method reconciles frame descriptors as in
+     * @c ensure_frame_desc; any unset (empty) fields are filled in from the
+     * other side, and values on both sides must agree; any conflict is fatal.
+     *
+     * See also @c ensure_frame_desc(). The difference is that `require` fatals on a
+     * missing or incompatible descriptor, whereas `ensure` attaches @p desc when
+     * none is present. Use `require` when a missing config declaration is an error;
+     * use `ensure` when the stage may legitimately originate the descriptor (e.g. a
+     * runtime-discovered GPU copy-out writing an undeclared buffer).
+     *
+     * Thread-safe.
+     */
+    void require_frame_desc(std::shared_ptr<const kotekan::FrameDesc> desc = nullptr) {
+        buffer_lock lock(mutex);
+        if (!frames_desc)
+            FATAL_ERROR(
+                "Buffer {:s} has no frame descriptor to validate against; declare the buffer "
+                "with a described buffer type (e.g. `kotekan_buffer: ndarray`) in the config",
+                buffer_name);
+        if (desc)
+            _ensure_frame_desc_locked(std::move(desc));
+    }
+
+    /**
+     * @brief Ensures the buffer's frame descriptor conforms to @p new_desc:
+     *        attaches it if none is present, otherwise reconciles the two.
+     *
+     * If no descriptor is attached yet, @p new_desc is recorded. Otherwise the
+     * existing and given descriptors are reconciled: their structural fields
+     * (value_type, extents, and hence byte size) must match, any unset (empty)
+     * labels (quantity_name, dimnames) are filled in from the other side, and
+     * labels set on both sides must agree -- any conflict is fatal. For
+     * non-NDArray descriptors reconciliation is a strict equality check. The
+     * reconciled descriptor replaces the stored one.
+     *
+     * See also @c require_frame_desc(). The difference is that `require` fatals on a
+     * missing or incompatible descriptor, whereas `ensure` attaches @p desc when
+     * none is present. Use `require` when a missing config declaration is an error;
+     * use `ensure` when the stage may legitimately originate the descriptor (e.g. a
+     * runtime-discovered GPU copy-out writing an undeclared buffer).
+     *
+     * Thread-safe.
+     */
+    void ensure_frame_desc(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
+        buffer_lock lock(mutex);
+        _ensure_frame_desc_locked(std::move(new_desc));
+    }
+
+    /**
+     * @brief provides read access to the frame description
+     * @return The data structure describing the frame, cast to T. Returns
+     *         nullptr if no descriptor is attached or it is not a T.
+     */
+    template<typename T = kotekan::FrameDesc>
+    std::shared_ptr<const T> get_frame_desc() {
+        buffer_lock lock(mutex);
+        return std::dynamic_pointer_cast<const T>(frames_desc);
+    }
+
+    /**
+     * @brief Like @c get_frame_desc<T>(), but fatal if the buffer has no
+     *        descriptor attached or the attached descriptor is not a @c T.
+     *
+     * Use this when a stage depends on the buffer having been declared (in the
+     * config) with a described type it can read: it guarantees a non-null,
+     * correctly typed descriptor, so the caller can then hand-validate whatever
+     * specific fields it requires. Prefer it over @c get_frame_desc<T>() at
+     * sites that immediately dereference the result, to avoid a null-pointer
+     * crash when the buffer was left undeclared or declared with another type.
+     *
+     * This is the mirror of @c get_frame_desc<T>() (which returns nullptr
+     * instead of fataling) and of the non-typed @c require_frame_desc() (which
+     * only checks that a descriptor exists). It does not reconcile against an
+     * expected descriptor -- the buffer factory already validated byte size and
+     * structure against the config when it attached the descriptor.
+     *
+     * Thread-safe.
+     *
+     * @return The frame descriptor cast to @c T (never nullptr).
+     */
+    template<typename T>
+    std::shared_ptr<const T> require_frame_desc() {
+        buffer_lock lock(mutex);
+        if (!frames_desc)
+            FATAL_ERROR("Buffer {:s} has no frame descriptor; declare the buffer with a "
+                        "described buffer type (e.g. `kotekan_buffer: ndarray`) in the config",
+                        buffer_name);
+        auto typed = std::dynamic_pointer_cast<const T>(frames_desc);
+        if (!typed)
+            FATAL_ERROR("Buffer {:s} frame descriptor is not of the type required by a consumer",
+                        buffer_name);
+        return typed;
+    }
+
+    /// The layout of the data, see @c ensure_frame_desc(). For a @c Buffer it
+    /// describes one frame; for a @c RingBuffer it describes the whole ring, with
+    /// the ring's capacity as the extent of the slowest dimension.
+    std::shared_ptr<const kotekan::FrameDesc> frames_desc;
+
     /// The number of frames kept by this object
     int num_frames;
 
@@ -337,6 +449,58 @@ protected:
     std::condition_variable_any empty_cond;
 
     void private_copy_metadata(int dest_frame_id, GenericBuffer* src, int src_frame_id);
+
+private:
+    /**
+     * @brief Internal: attach @p new_desc, or reconcile it with the existing
+     *        descriptor, assuming the buffer @c mutex is already held.
+     *
+     * Shared, lock-free implementation of @c ensure_frame_desc() and
+     * @c require_frame_desc(). If no descriptor is attached, @p new_desc is
+     * recorded. Otherwise the two are reconciled: for NDArray descriptors the
+     * structural fields must match, unset labels are filled in and set labels
+     * validated (see @c kotekan::GenericNDArray::reconcile()), and the stored
+     * descriptor is replaced only when labels are completed; any other descriptor
+     * is compared for strict equality. A label/structural conflict, or a byte size
+     * that disagrees with @c frame_desc_byte_size(), is fatal.
+     *
+     * It does not take the lock; call @c ensure_frame_desc() or
+     * @c require_frame_desc() instead.
+     *
+     * @param[in] new_desc The descriptor to attach or reconcile against.
+     */
+    void _ensure_frame_desc_locked(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
+        if (new_desc->get_byte_size() != frame_desc_byte_size()) {
+            FATAL_ERROR("Buffer {:s} frame description size ({:d}) does not match the buffer "
+                        "size ({:d})",
+                        buffer_name, new_desc->get_byte_size(), frame_desc_byte_size());
+        }
+        if (!frames_desc) {
+            frames_desc = std::move(new_desc);
+            return;
+        }
+        auto cur = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
+        auto inc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(new_desc);
+        if (cur && inc) {
+            try {
+                // reconcile() returns a completed descriptor when @p new_desc
+                // fills in labels, or nullptr when nothing changes (keep ours).
+                if (auto merged = kotekan::GenericNDArray::reconcile(*cur, *inc))
+                    frames_desc = std::move(merged);
+            } catch (const std::exception& e) {
+                FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
+                            buffer_name, e.what());
+            }
+            return;
+        }
+        if (*frames_desc != *new_desc) {
+            FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
+                        buffer_name, frames_desc->describe_mismatch(*new_desc));
+        }
+    }
+
+    /// The byte size a frame descriptor must have: one frame, or the whole ring.
+    virtual std::size_t frame_desc_byte_size() const = 0;
 };
 
 /**
@@ -658,162 +822,6 @@ public:
     void safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
     /**
-     * @brief Requires that a frame descriptor is attached to this buffer
-     *        (fatal if not), then ensures it conforms to @p desc.
-     *
-     * Stages should use this method to rigidly enforce that a frame
-     * descriptor is (already) attached to the buffer and conforms to their
-     * requirements. This fatals if no descriptor has been attached -- i.e. the
-     * buffer was not declared with a described type.
-     *
-     * Called with no argument it performs only the existence check: the idiom
-     * for a stage that then reads the descriptor with @c get_frame_desc<T>() or
-     * @c require_frame_desc<T>() and hand-validates the specific fields it
-     * depends on. Pass @p desc to additionally cross-check a full expected
-     * descriptor, in which case this method reconciles frame descriptors as in
-     * @c ensure_frame_desc; any unset (empty) fields are filled in from the
-     * other side, and values on both sides must agree; any conflict is fatal.
-     *
-     * See also @c ensure_frame_desc(). The difference is that `require` fatals on a
-     * missing or incompatible descriptor, whereas `ensure` attaches @p desc when
-     * none is present. Use `require` when a missing config declaration is an error;
-     * use `ensure` when the stage may legitimately originate the descriptor (e.g. a
-     * runtime-discovered GPU copy-out writing an undeclared buffer).
-     *
-     * Thread-safe.
-     */
-    void require_frame_desc(std::shared_ptr<const kotekan::FrameDesc> desc = nullptr) {
-        buffer_lock lock(mutex);
-        if (!frames_desc)
-            FATAL_ERROR(
-                "Buffer {:s} has no frame descriptor to validate against; declare the buffer "
-                "with a described buffer type (e.g. `kotekan_buffer: ndarray`) in the config",
-                buffer_name);
-        if (desc)
-            _ensure_frame_desc_locked(std::move(desc));
-    }
-
-    /**
-     * @brief Ensures the buffer's frame descriptor conforms to @p new_desc:
-     *        attaches it if none is present, otherwise reconciles the two.
-     *
-     * If no descriptor is attached yet, @p new_desc is recorded. Otherwise the
-     * existing and given descriptors are reconciled: their structural fields
-     * (value_type, extents, and hence byte size) must match, any unset (empty)
-     * labels (quantity_name, dimnames) are filled in from the other side, and
-     * labels set on both sides must agree -- any conflict is fatal. For
-     * non-NDArray descriptors reconciliation is a strict equality check. The
-     * reconciled descriptor replaces the stored one.
-     *
-     * See also @c require_frame_desc(). The difference is that `require` fatals on a
-     * missing or incompatible descriptor, whereas `ensure` attaches @p desc when
-     * none is present. Use `require` when a missing config declaration is an error;
-     * use `ensure` when the stage may legitimately originate the descriptor (e.g. a
-     * runtime-discovered GPU copy-out writing an undeclared buffer).
-     *
-     * Thread-safe.
-     */
-    void ensure_frame_desc(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
-        buffer_lock lock(mutex);
-        _ensure_frame_desc_locked(std::move(new_desc));
-    }
-
-    /**
-     * @brief Internal: attach @p new_desc, or reconcile it with the existing
-     *        descriptor, assuming the buffer @c mutex is already held.
-     *
-     * Shared, lock-free implementation of @c ensure_frame_desc() and
-     * @c require_frame_desc(). If no descriptor is attached, @p new_desc is
-     * recorded. Otherwise the two are reconciled: for NDArray descriptors the
-     * structural fields must match, unset labels are filled in and set labels
-     * validated (see @c kotekan::GenericNDArray::reconcile()), and the stored
-     * descriptor is replaced only when labels are completed; any other descriptor
-     * is compared for strict equality. A label/structural conflict, or a byte size
-     * that disagrees with @c frame_size, is fatal.
-     *
-     * The leading underscore marks this as an internal helper: it does not take
-     * the lock and is not part of the public API. Do not call it directly -- use
-     * @c ensure_frame_desc() or @c require_frame_desc().
-     *
-     * @param[in] new_desc The descriptor to attach or reconcile against.
-     */
-    void _ensure_frame_desc_locked(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
-        if (new_desc->get_byte_size() != frame_size) {
-            FATAL_ERROR(
-                "Buffer {:s} frame description size ({:d}) does not match frame_size ({:d})",
-                buffer_name, new_desc->get_byte_size(), frame_size);
-        }
-        if (!frames_desc) {
-            frames_desc = std::move(new_desc);
-            return;
-        }
-        auto cur = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
-        auto inc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(new_desc);
-        if (cur && inc) {
-            try {
-                // reconcile() returns a completed descriptor when @p new_desc
-                // fills in labels, or nullptr when nothing changes (keep ours).
-                if (auto merged = kotekan::GenericNDArray::reconcile(*cur, *inc))
-                    frames_desc = std::move(merged);
-            } catch (const std::exception& e) {
-                FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
-                            buffer_name, e.what());
-            }
-            return;
-        }
-        if (*frames_desc != *new_desc) {
-            FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
-                        buffer_name, frames_desc->describe_mismatch(*new_desc));
-        }
-    }
-
-    /**
-     * @brief provides read access to the frame description
-     * @return The data structure describing the frame, cast to T. Returns
-     *         nullptr if no descriptor is attached or it is not a T.
-     */
-    template<typename T = kotekan::FrameDesc>
-    std::shared_ptr<const T> get_frame_desc() {
-        buffer_lock lock(mutex);
-        return std::dynamic_pointer_cast<const T>(frames_desc);
-    }
-
-    /**
-     * @brief Like @c get_frame_desc<T>(), but fatal if the buffer has no
-     *        descriptor attached or the attached descriptor is not a @c T.
-     *
-     * Use this when a stage depends on the buffer having been declared (in the
-     * config) with a described type it can read: it guarantees a non-null,
-     * correctly typed descriptor, so the caller can then hand-validate whatever
-     * specific fields it requires. Prefer it over @c get_frame_desc<T>() at
-     * sites that immediately dereference the result, to avoid a null-pointer
-     * crash when the buffer was left undeclared or declared with another type.
-     *
-     * This is the mirror of @c get_frame_desc<T>() (which returns nullptr
-     * instead of fataling) and of the non-typed @c require_frame_desc() (which
-     * only checks that a descriptor exists). It does not reconcile against an
-     * expected descriptor -- the buffer factory already validated byte size and
-     * structure against the config when it attached the descriptor.
-     *
-     * Thread-safe.
-     *
-     * @return The frame descriptor cast to @c T (never nullptr).
-     */
-    template<typename T>
-    std::shared_ptr<const T> require_frame_desc() {
-        buffer_lock lock(mutex);
-        if (!frames_desc)
-            FATAL_ERROR("Buffer {:s} has no frame descriptor; declare the buffer with a "
-                        "described buffer type (e.g. `kotekan_buffer: ndarray`) in the config",
-                        buffer_name);
-        auto typed = std::dynamic_pointer_cast<const T>(frames_desc);
-        if (!typed)
-            FATAL_ERROR("Buffer {:s} frame descriptor is not of the type required by a consumer",
-                        buffer_name);
-        return typed;
-    }
-
-    /**
      * @brief Returns the last time a frame was marked as full
      * @param buf The buffer to get the last arrival time for.
      * @return A double (with units: seconds) containing the unix time of the last frame arrival
@@ -870,9 +878,6 @@ public:
 
     /// The array of frames (the actual data we are carrying)
     std::vector<uint8_t*> frames;
-
-    /// Metdata describing the shape of the data stored in frames
-    std::shared_ptr<const kotekan::FrameDesc> frames_desc;
 
     /**
      * @brief Flag variables to say which frames are full
@@ -935,6 +940,10 @@ public:
     int numa_node;
 
 private:
+    std::size_t frame_desc_byte_size() const override {
+        return frame_size;
+    }
+
     void private_mark_producer_done(const std::string& name, const int ID);
     // Returns true if all producers are done for the given ID.
     bool private_producers_done(const int ID);

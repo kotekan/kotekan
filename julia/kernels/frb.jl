@@ -2417,6 +2417,18 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     return nothing
 end
 
+# A kernel argument's buffer is described by its quantity name and axis labels, which default to
+# the argument's name and axis labels.
+function with_buffer_labels(kernel_arguments)
+    for arg in kernel_arguments
+        get!(arg, "quantity", arg["name"])
+        for axis in get(arg, "axes", [])
+            get!(axis, "buffer_label", axis["label"])
+        end
+    end
+    return kernel_arguments
+end
+
 function fix_ptx_kernel()
     ptx = read("output/frb_$(setup)_U$(U).ptx", String)
     ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
@@ -2570,7 +2582,7 @@ function fix_ptx_kernel()
             "num_blocks" => num_blocks,
             "shmem_bytes" => shmem_bytes,
             "kernel_symbol" => kernel_symbol,
-            "kernel_arguments" => [
+            "kernel_arguments" => with_buffer_labels([
                 Dict(
                     "name" => "Tbar_min",
                     "kotekan_name" => "Tbar_min",
@@ -2676,12 +2688,14 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "voltage_name",
+                    # For U=1 there is no upchannelizer, and the kernel reads the voltages E directly
+                    "quantity" => U == 1 ? "E" : "Ebar",
                     "type" => "int4x2_swapped_withoffset",
                     "axes" => [
                         Dict("label" => "D", "length" => D, "dimscaling" => 1),
                         Dict("label" => "P", "length" => P, "dimscaling" => 1),
-                        Dict("label" => "Fbar", "length" => Fbar_in, "dimscaling" => 1),
-                        Dict("label" => "Tbar", "length" => Tbar, "dimscaling" => U),
+                        Dict("label" => "Fbar", "buffer_label" => U == 1 ? "F" : "Fbar", "length" => Fbar_in, "dimscaling" => 1),
+                        Dict("label" => "Tbar", "buffer_label" => U == 1 ? "T" : "Tbar", "length" => Tbar, "dimscaling" => U),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -2716,7 +2730,7 @@ function fix_ptx_kernel()
                     "hasbuffer" => false,
                     "isscalar" => false,
                 ),
-            ],
+            ]),
         ),
     )
     write("output/frb_$(setup)_U$(U).cxx", cxx)
