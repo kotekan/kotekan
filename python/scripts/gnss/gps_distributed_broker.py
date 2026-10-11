@@ -1252,13 +1252,6 @@ def main(argv=None, rx=None, publisher=None):
     # is given, so the common case needs one flag rather than two.
     _xb_read_dir = args.state_read_dir or _xb_dir
 
-    bp_pushed = {}  # prn -> utc0 of the bit_pred table last ATTACHED to a seed row. The
-    # combiner regenerates bit_pred once per EMIT (~1 Hz) but seeds push every
-    # --interval (0.25 s), so re-attaching each cycle is 75% redundant payload
-    # -- and the seed POST has a known too-big failure mode (~14.5k numbers,
-    # see --nav-bits-brdc). The tracker KEEPS its stored table on rows without
-    # nav_bits (u.has_bits guard), so skipping unchanged tables is free. This
-    # matters most at L5: 1 ms records make each table 4x an L1 pilot's.
     cp_held = (
         set()
     )  # PRNs whose cp anchor is FROZEN this cycle (locked -> DLL owns the residual)
@@ -1811,7 +1804,7 @@ def main(argv=None, rx=None, publisher=None):
 
     # SEED CURRENCY AUDIT state (#39 follow-up): last SHIPPED tuple per PRN, so each POST
     # can be compared against the previous one in physical units. Keys are the 5 fields
-    # dr_seed_phys consumes -- nav_bits etc. are deliberately not retained.
+    # dr_seed_phys consumes.
     seed_audit_prev = {}
     # Broker start, for the joint feed warmup (--joint-feed-warmup-s). Wall clock on
     # purpose: the warmup guards against ESTABLISHMENT-PHASE garbage, and establishment
@@ -1854,7 +1847,6 @@ def main(argv=None, rx=None, publisher=None):
         decfb=_decfb,
         decfb_log_t=_decfb_log_t,
         dr_bad=dr_bad,
-        bp_pushed=bp_pushed,
         fe_axis=fe_axis,
         fe_off=fe_off,
         spec_writer=_spec_writer,
@@ -3037,7 +3029,6 @@ def main(argv=None, rx=None, publisher=None):
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         _ctx.payload = []
-        _ctx.bit_src, _ctx.bit_known = {}, {}
         seeding.stage_push_seeds(_ctx)
         # The commands actually shipped this poll become the rrate feed's reference next
         # poll. REBUILT, not updated: a sat that stopped being commanded (row widened, seed
@@ -3059,23 +3050,10 @@ def main(argv=None, rx=None, publisher=None):
                 ),
                 every_s=60.0,
             )
-        # WHERE THE PEEL'S SIGNS ACTUALLY CAME FROM this cycle. Without this the only symptom
-        # of a source that silently supplies nothing is `nobits` in a health line 10 s later on
-        # a different process, which is what made the 30 s-horizon bug hard to see.
-        _log_rl(
-            "bitsrc",
-            "nav_bits by source: %s; known bits: %s"
-            % (
-                dict(sorted(_ctx.bit_src.items())),
-                dict(sorted(_ctx.bit_known.items())),
-            ),
-        )
         if _nav.health is not None:
             _rep = _nav.health.report()
             if _rep:
                 _log_rl("navhealth", _rep)
-        if _nav.navbits is not None:
-            _log_rl("fleet", _nav.navbits.fleet.stats())
         if os.environ.get("GNSS_SEED_DEBUG"):
             for d in _ctx.payload:
                 if str(d["prn"]) in os.environ["GNSS_SEED_DEBUG"].split(","):

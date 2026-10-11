@@ -3359,25 +3359,13 @@ def build_parser(description):
         "unfalsifiable -- same reasoning as --bias-min-sats)",
     )
     ap.add_argument(
-        "--nav-bits-brdc",
-        type=int,
-        default=0,
-        help="CONSTRUCT nav bits from BRDC for satellites that never sync "
-        "(navbit_brdc.BrdcLnavSource). DEFAULT OFF: first live trial "
-        "2026-07-25 collapsed the GPS chain to 0/14 peeling with every PRN on "
-        "`nobits` and every gain reset -- the 30 s tables make the seed POST "
-        "~14.5k numbers and the whole seed push appears to stop landing. The "
-        "bit CONTENT is validated (113820/113820 offline, hold-one-out 100%%); "
-        "it is the transport that needs sizing before this goes back on.",
-    )
-    ap.add_argument(
         "--nav-bits",
         type=int,
         default=1,
-        help="LNAV decode-and-predict from the combiner's nav_obs export "
-        "(bit_export: true), pushed as nav_bits with each seed row -- the "
-        "fused peel's sign source (P7a: ~11 -> >=26-35 dB). Self-gating: "
-        "chains whose combiner exports no nav_obs are untouched. 0 = off.",
+        help="decode the broadcast navigation message from the combiner's "
+        "nav_obs export (bit_export: true) and cross-check the decoded "
+        "ephemeris against BRDC. Self-gating: chains whose combiner exports "
+        "no nav_obs are untouched. 0 = off.",
     )
     ap.add_argument(
         "--nav-decoder",

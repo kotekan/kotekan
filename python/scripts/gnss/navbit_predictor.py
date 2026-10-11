@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LNAV nav-bit decode-and-predict for the fused voltage peel (P7a).
+"""LNAV nav-bit decode-and-predict (P7a).
 
 The peel's depth on GPS L1CA is sign-lag-limited (~11 dB): the subtraction uses a nav-bit
 sign measured one GPU frame earlier. This module closes that gap by PREDICTING the bits:
@@ -7,9 +7,9 @@ sign measured one GPU frame earlier. This module closes that gap by PREDICTING t
     combiner get_status "nav_obs"  ->  stitch  ->  frame_sync/decode  ->  predict +H s
                                                         (gps_nav_decode.py does the LNAV work)
 
-Consumed by gps_distributed_broker.py, which pushes {"nav_bits": {"P": {utc0, bit_s, bits}}}
-(component-keyed; see docs/navbit_supply_architecture.md) with
-each PRN's seeds; cudaGnssTrack uses them for BOTH the subtraction sign and the gain de-bit.
+Consumed by gnss_broker/navbits.py for the decode, the ephemeris cross-check against BRDC
+and the decoded-eph fallback. predict() has no consumer: the node-side peel that took the bit
+tables with each seed row was removed.
 
 Three design facts this leans on:
   * POLARITY. Each combiner emit resolves its +-1 ambiguity independently (theta0 = the

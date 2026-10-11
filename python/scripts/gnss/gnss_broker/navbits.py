@@ -1,7 +1,7 @@
 """Decoding the broadcast navigation message, and cross-checking it against BRDC.
 
-Eight decoders (LNAV, CNAV, CNAV-2, F/NAV, I/NAV, B-CNAV1/2/3), a BRDC source to compare
-against, and a continuous agreement monitor. The decoders are created lazily and PERSIST
+Eight decoders (LNAV, CNAV, CNAV-2, F/NAV, I/NAV, B-CNAV1/2/3), cross-checked against the
+BRDC almanac, and a continuous agreement monitor. The decoders are created lazily and PERSIST
 across cycles on `ctx.nav` -- one that is rebuilt has forgotten the subframes it had
 collected and can never complete an ephemeris.
 
@@ -34,8 +34,8 @@ from gnss_broker.sky import (
 def stage_nav_bits(ctx):
     """NAV BITS: decode the broadcast navigation message and cross-check it against BRDC.
         
-    Holds ELEVEN lazily-created decoder objects (LNAV, CNAV, CNAV2, FNAV, INAV, BCNAV1/2/3, the
-    BRDC source and the agreement monitor). They are created on the first row that needs them and
+    Holds the lazily-created decoder objects (LNAV, CNAV, CNAV2, FNAV, INAV, BCNAV1/2/3) and the
+    agreement monitor. They are created on the first row that needs them and
     must persist across cycles -- hence the nonlocal list, which is the whole reason this block
     resisted extraction until its state was named.
         
@@ -366,26 +366,6 @@ def stage_nav_bits(ctx):
                         )
                     )
                     ctx.dh_obs("GPS_L1CD_CNAV2", _p, h, eph, xc)
-        # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
-        # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
-        # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
-        # source when their encoders exist.
-        if (
-            ctx.args.nav_bits_brdc
-            and ctx.nav.navbits is not None
-            and ctx.alm_sys == "G"
-            and ctx.brdc_alm is not None
-            and ctx.pred
-        ):
-            if ctx.nav.brdc is None:
-                from navbit_brdc import BrdcLnavSource
-
-                ctx.nav.brdc = BrdcLnavSource(log=_log)
-                _log("constructed-bit source armed (BRDC LNAV, un-synced PRNs)")
-            try:
-                ctx.nav.brdc.update(ctx.brdc_alm["eph"], ctx.pred, ctx.nav.navbits)
-            except Exception as e:
-                _log("navbrdc update failed: %s" % e)
         if ctx.nav.navbits is not None and _now() - ctx.nav.log_t > 60.0:
             ctx.nav.log_t = _now()
             for _p in sorted(ctx.nav.navbits._p):
@@ -419,45 +399,12 @@ def stage_nav_bits(ctx):
                         )
                     )
                 else:
-                    # NOT synced == this PRN is NOT peeled (peel_require_bits). Say so, with
-                    # the reason: contiguous run vs total history vs what sync needs.
+                    # Not synced: say why -- contiguous run vs total history vs what sync needs.
                     _log(
-                        "navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)%s"
-                        % (
-                            _p,
-                            h["run"],
-                            h["need"],
-                            h["hist"],
-                            " -> CONSTRUCTED from BRDC"
-                            if (ctx.nav.brdc is not None and ctx.nav.brdc.ready())
-                            else " -> not peeled",
-                        )
+                        "navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)"
+                        % (_p, h["run"], h["need"], h["hist"])
                     )
                 ctx.dh_obs("GPS_L1_LNAV", _p, h, e, eph_s)
-            if ctx.nav.brdc is not None:
-                # The calibration IS the trust boundary: a bad offset makes every
-                # constructed bit confidently wrong, so state it every cycle. `verify`
-                # scores constructed bits against a SYNCED satellite's own received bits
-                # -- the live form of the offline 113820/113820 test.
-                if ctx.nav.brdc.ready():
-                    chk = []
-                    for _p in sorted(ctx.nav.navbits._p):
-                        r = ctx.nav.brdc.verify(_p, ctx.nav.navbits)
-                        if r and r[0] >= 200:
-                            chk.append("%d:%.1f%%" % (_p, 100.0 * r[1] / r[0]))
-                    _log(
-                        "navbrdc: offset %.6f s, spread %.2f ms, %d cal sats "
-                        "(%d outliers dropped); verify %s"
-                        % (
-                            ctx.nav.brdc.offset,
-                            (ctx.nav.brdc.spread or 0.0) * 1e3,
-                            ctx.nav.brdc.n_cal,
-                            ctx.nav.brdc.n_rej,
-                            " ".join(chk) or "n/a",
-                        )
-                    )
-                else:
-                    _log("navbrdc: NOT ready (%s)" % ctx.nav.brdc.why_not())
         # CNAV decode health + the live ephemeris (types 10+11). eph toe/e prove a decoded
         # ephemeris set. S4 EPHEMERIS CROSS-CHECK: propagate the live-decoded CNAV ephemeris
         # and the independently-downloaded BRDC (LNAV) ephemeris to the SAME absolute instant
