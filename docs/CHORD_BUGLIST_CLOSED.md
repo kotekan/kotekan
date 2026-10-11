@@ -10,7 +10,7 @@ file's git history (`git log -p docs/CHORD_BUGLIST.md`).
 Reconciled 2026-09-12 against HEAD `b45949144`, 57 commits after the 2026-09-10 pass (which was
 itself 496 commits after 2026-08-22, by seven parallel section audits that each read the tree AND
 the live fleet). Added since: #54, #65, #93/GAP 3, #111, #116, #117, #118, #128. **2026-10-11 pass** (HEAD `0011cf3b1`):
-#102, #107 residual, #112, #130/#153, #133, #149, #160, #162; moot #31, #88, #123.
+#102, #107 residual, #112, #121, #130/#153, #133, #149, #159, #160, #162; moot #31, #88, #123.
 
 ⚠️ **Three of those closed on a MEASUREMENT rather than a fix**, and their write-ups below carry
 the sensitivity as well as the result — #93 in particular is a *null*, and a null is only worth
@@ -77,6 +77,8 @@ that goes with it.
 | #149 | N² to recv1: our nodes could not satisfy upstream `chord`'s receiver | the stage-1 merged correlator (10-06) and the dish-rows re-base (`2949fecd2`, 10-09): bffs stream, DishInputs subset and frame descriptors from the chord templates | recv1 takes six nodes × three legs; `acq_20261010_115026` |
 | #160 | `gnssN_n2dual` spent 3–4 s on its first frame and both ports fell 5–39 frames behind at every start | `bc2d18420` (phasor recurrence, pinned async upload on the inject stream) + `04122d179` (no software fp16 conversion or double copy) | first `n2dual` output 0.4–0.6 s after its port; 0 start-up catch-ups over two fleet cycles (10-10/11); #1750's window is 8 frames |
 | #162 | three uncommitted leftovers in the live checkout | `8a9661d55` (node_up GNSS_ENV), `5e97adaec` (beam-cube `--prn-norm`, opt-in), `b4d744517` (telemfmt ignored) | `git status` clean |
+| #121 | bds_b2a commanded carrier trim on the 40 Hz default cap and railed there (+39.99 Hz on C24, 10-11 02:35Z) | `carrier-max-hz: 10.0` on bds_b2a, matched to gal_e5a/e5b (yaml, 10-11), live at the 12:58Z broker restart | `JRR-CMD[C]` on bds_b2a stays within ±10 Hz; the commanded-step sign calibration is an experiment, not a defect |
+| #159 | the nightly beam-cube build rewrote the live broker's ephemeris store with yesterday's sky | `5174a6d69`: `fetch_brdc` sends any `when` more than an hour from the wall clock to `cache_dir/offline/<day>`, so no offline caller can prune the live store | a 2026-10-09 fetch built its own 892-record store under `offline/20261009` and the live store's mtime did not move |
 
 ## Closed because the premise died (moot)
 

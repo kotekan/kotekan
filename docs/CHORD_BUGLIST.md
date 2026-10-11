@@ -58,7 +58,7 @@ that check as not run, and doing it is what found the two errors below. **Eight 
 | gal_e5a | no | yes | `clk,rate` | `33` | **on**, cap 10 Hz | feeds the joint state (shadow) |
 | gal_e5b | no | yes | `clk,rate` | `33` | **on**, cap 10 Hz | `rrate-phase-feed` |
 | gal_e6 | no | yes | `clk,rate` | — | — | |
-| bds_b2a | no | yes | `clk,rate` | — | **on**, cap **40 Hz** (default) | see #121 |
+| bds_b2a | no | yes | `clk,rate` | — | **on**, cap 10 Hz (matched 10-11) | |
 | bds_b2b | no | yes | `clk,rate` | — | — | twin of b3i |
 | bds_b3i | no | yes | `clk,rate` | — | — | twin of b2b |
 | gps_l2c | no | yes | `clk,rate` | — | — | `dll-spacing 0.4` (lobe fix) |
@@ -96,25 +96,6 @@ a size cap. Note which memory notes grep `broker.log` by offset (the 2.5 GB tail
 nothing reads or forwards; both faults they are built for (#159's lost sky, #154's mis-pins) were found by a person
 reading logs. **Fix:** tie them into CHORD's monitoring and alerting (KV: "ultimately"); until then a one-line summary
 in the viewer would do.
-
-### #159 — the nightly beam-cube build rewrites the live broker's ephemeris store with yesterday's sky (2026-10-08)
-**What happened [live 10-08]:** at 01:34:59Z `beamcube_daily.sh` (cf06) built the 10-07 cube. `Geometry.__init__`
-(`gnss_beam_cube.py:182`) calls `fetch_brdc(<day> 12:00Z)` on the default cache, `~/.cache/kotekan_gps`, which is the
-NFS home the broker reads too. The broker's copy was 42 min old (last merge 00:52Z, past `_HOURLY_TTL_S` = 1800 s), so the
-cube's background refresh merged against `when` = 10-07 12:00, pruned the rolling store to that window and rewrote
-`hourly_MN.rnx.gz` with records at toc 10-07 08:00–14:00. The broker's dead-reckon reload at 01:36:50Z loaded it ("BRDC
-loaded (101 sats)"), logged `PREDICTION COLLAPSE (0 of peak … in the eph window)` for G, E and C, and dropped every
-satellite "below BRDC horizon": no real-satellite observable on any chain from 01:36:50Z, and gps_l5 (the only search
-chain) re-acquired on noise 01:46–01:54Z (lock 0.23, kcoh ~0 dB-Hz). The file's new mtime then pins it for 30 min, so the
-forced reload at 01:51:51Z got the same stale sky.
-**Why not every night:** the cube's merge writes only when the broker's file is over 30 min old. The build normally runs
-~00:25Z, and on 10-02..10-07 the obs files show no empty 5-min bin after it; tonight it ran at 01:34.
-**Fix (scripts, no node cycle):** offline callers must not write the live store. Give `gnss_beam_cube.py` its own
-`cache_dir` (or pin `GNSS_BRDC_DIR`), and make the supply merge read-only for a `when` more than ~1 h from the wall clock;
-a past `when` must never prune the store's newest records. Other past-`when` callers: `gnss_beam_elem2obs.py:170`,
-`b1c_predict_lags.py`, `diag/navbit_brdc_test.py`.
-Check: `[archive]` broker.log 01:36:38–01:36:50Z; newest toc in `zcat ~/.cache/kotekan_gps/hourly_MN.rnx.gz`;
-`grep -rn "fetch_brdc(" python scripts` for the callers.
 
 ### #161 — gps_l2c's clock can latch whole milliseconds off from a cross-band bootstrap, and the mod-1-ms JOINT-CLK check then holds it there (2026-10-08)
 **Measured [live 10-08], knock-on of #159:** with no sky, gps_l5 locked noise and its `clock-mod-20-ms` epoch went bad.
@@ -328,12 +309,8 @@ PRNs were seen <60 s earlier, and the gaps that do appear are 115–710 s, insid
 range. Next: dump the fit history itself for PRN 24 at a flush and find the sample that drags the
 slope.
 
-⚠️ **Separately, found while chasing this: `--fit-gap-s 3600` exceeds the unwrap's unambiguous
-range.** `fit_cp_rate` unwraps nearest-wrap, so it is only unambiguous while consecutive samples
-move less than half a code period: 5115 chips at the ~3.45 chips/s receiver clock (4.05 with code
-Doppler) = **21–25 minutes**. The configured tolerance accepts gaps up to 60. Any re-entry in the
-25–60 minute band is unwrapped onto the wrong branch, silently. Latent today; cap `fit-gap-s` at
-~1200 s, or make the unwrap gap-aware and reset instead of guessing.
+✅ 10-11: the `--fit-gap-s 3600` half is fixed — 1200 s in `common` (inside the unwrap's 21–25 min unambiguous
+range), live at the 12:58Z broker restart. What is left is the garbage's origin, above.
 
 ### #120 — the stack's boot path: the VM's units are untested across a reboot, and cf06's cube leg has no unit
 **[live 10-11]** The broker, gather, aggregator, eight obs writers, viewer and rail run on the gnss VM as user units
@@ -349,6 +326,14 @@ gnss-stack.target` = enabled; (3) the boot-ordering question (the user manager s
 `systemd-user-sessions.service`, itself after `remote-fs.target`, so the NFS home should be up first) is only proven
 by a real reboot: ask the VM's admin for one at a quiet hour. (4) Write a unit for the cube leg (cf06, or the VM if
 it moves) and the compactor loop.
+**10-11 12:52Z, the test (KV's go):** `systemctl --user stop gnss-stack.target` stopped the aggregator, viewer, rail and
+the eight obs writers but NOT the broker or the gather — same PIDs, no state change — although both load
+`PartOf=gnss-stack.target` and the target's `ConsistsOf` lists them; the cause is invisible without the user journal
+(kvand is not in `systemd-journal`). `start default.target` then pulled the stopped units back in order. The broker and
+gather were restarted explicitly at 12:58:24Z (`systemctl --user restart gnss-gather gnss-broker`): broker after gather,
+"starting 8 chain(s)" at +1 s, telemetry frames and trim posts flowing at +40 s, no CHAIN DIED, and the viewer (PartOf the
+broker) followed. **Still open:** why the target's stop does not propagate to those two (journal access), the real reboot,
+and the cube leg's unit. `stack_down.sh` relies on that stop — until this is understood, stop the broker and gather by name.
 
 ### #55 — collapse the `carrier_phase_from_ref` A/B
 It is **armed in production on both node legs** and #52 (the frame-boundary jump) is fixed fleet-wide, so the A/B
@@ -823,15 +808,6 @@ expected), a −37 m (−127 ns) code step, carrier residual ±2.5 Hz for >14 mi
 0.90 → 0.03 for ~2 h, with no lock loss and no broker event; gps_l5's code-rate clock estimate moved
 −0.001 → +0.002..+0.003 ppm (also ~3 ppb). Maser/GPSDO or F-engine reference? Not ours to fix, but it
 must be vetoed from any coherence statistic. Evidence `fixtures/projtest/forensics/l5/ev2201*.py`.
-
-### #121 — bds_b2a commands 1.8–4.0 Hz of carrier trim on the default 40 Hz cap
-**[live]** `JRR-CMD[C] 19:+1.76 20:-0.30 22:-0.27 29:+0.04 31:+4.04 35:-2.41 Hz` against
-0.01–0.13 Hz on both Galileo chains in the same minute. b2a takes the **default 40 Hz** cap
-where e5a/e5b set 10 — and the yaml itself calls 10 "the physics bound on a true residual" — and
-it has no fine phase rate feed, so its command rides the coarse fold-fed rate that is recorded as
-100–1000× above physical orbit error. Not visibly harmful (b2a PVT σ 1.7/1.5/3.1 m, standing
-trims −0.08…+0.29), so: **armed on an unvetted feed.** Next: the commanded-step pair that
-calibrated the sign on e5b (±2 Hz both directions, gal_e6 as the untrimmed control).
 
 ### #122 — the readback carries a chain-common offset on the non-primary bands
 **[live]** per-PRN means: bds_b2b −0.42, bds_b3i −0.40, gal_e6 +0.29, gal_e5a +0.20, gal_e5b
