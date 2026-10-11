@@ -46,7 +46,7 @@ bump; one on a bench needs no deployment at all.
 
 ---
 
-## The instrument as configured, 2026-09-10
+## The instrument as configured, 2026-09-10 (pair columns updated 2026-10-11)
 
 Resolved through the broker's own loader (`scripts/gnss/broker_multi.load` on
 `config/gnss_chains_chord.yaml`) rather than by reading the yaml by eye — the 08-22 pass recorded
@@ -55,8 +55,8 @@ that check as not run, and doing it is what found the two errors below. **Eight 
 | chain | search | C++ code loop | joint | deep gate | carrier command | notable |
 |---|---|---|---|---|---|---|
 | gps_l5 | **yes** (only chain) | yes | `rate,slew` | hand list `4 9 27` | — | `model-primacy-max: 32` |
-| gal_e5a | no | yes | `clk,rate` | `33` | **on**, cap 10 Hz | feeds the joint state (shadow) |
-| gal_e5b | no | yes | `clk,rate` | `33` | **on**, cap 10 Hz | `rrate-phase-feed` |
+| gal_e5a | no | yes | `clk,rate` | `33` | **on**, cap 10 Hz | the formal pair with e5b (10-11): `rrate-phase-feed` on both, neither feeds the joint state |
+| gal_e5b | no | yes | `clk,rate` | `33` | **on**, cap 10 Hz | twin of e5a |
 | gal_e6 | no | yes | `clk,rate` | — | — | |
 | bds_b2a | no | yes | `clk,rate` | — | **on**, cap 10 Hz (matched 10-11) | |
 | bds_b2b | no | yes | `clk,rate` | — | — | twin of b3i |
@@ -68,8 +68,9 @@ three-tier split ("three chains have a loop, two have nothing") is dead. Only gp
 search, which is still the frame: every `search admits` mechanism is gps_l5-only, and the other
 seven are dead-reckon.
 
-⚠️ **The gal_e5a/gal_e5b A/B pair is confounded** — see #125. The genuinely twinned pair is now
-**bds_b2b / bds_b3i**: same constellation, same six live PRNs, `joint-consume` and nothing else.
+**The gal_e5a/gal_e5b pair is the formal comparison pair since 2026-10-11 (#125):** matched on every non-endpoint
+key, so any A/B on it changes exactly one. bds_b2b / bds_b3i remain a second twinned pair (same constellation, same
+PRNs, `joint-consume` and nothing else). The joint state is GPS-fed only again.
 
 ---
 
@@ -310,34 +311,6 @@ gather were restarted explicitly at 12:58:24Z (`systemctl --user restart gnss-ga
 "starting 8 chain(s)" at +1 s, telemetry frames and trim posts flowing at +40 s, no CHAIN DIED, and the viewer (PartOf the
 broker) followed. **Still open:** why the target's stop does not propagate to those two (journal access), the real reboot,
 and the cube leg's unit. `stack_down.sh` relies on that stop — until this is understood, stop the broker and gather by name.
-
-### #125 — e5a/e5b is the formal comparison pair (KV 10-11): re-twin it on four flags, two of which need a decision
-**[tree 10-11, resolved from `common` + each chain block as `broker_multi.load` does]** The pair differs on six
-non-endpoint keys now (the old entry's `post-sat-geometry` moved to `common`; `rrate-command` is on for both):
-- **Inert:** `joint-shadow` (e5a only; the broker sets it on any `joint-consume` chain, so e5b has it anyway) and
-  `joint-feed-spec` (read only inside the model-primary feed). Delete e5a's `joint-shadow`; nothing changes.
-- **`fleet-trim-rebase-adjust: 1` and `eph-rebase: 1`, e5a only** (the #92 handover and the #101 eph-rebase, "e5b =
-  control"). #92's base rate is ~0 in this regime, #101 never fires (#151), and the eph-rebase flag is read off a store
-  all chains share, so neither gives a clean single-chain A/B. Recommended: off on both (they move together — #101
-  needs the handover).
-- **`rrate-phase-feed`**: false on e5a (arm 14: the fine feed steps aside on a commanded chain), true on e5b — but e5b
-  has been commanded too since 08-30, so e5b runs today the combination arm 14 withdrew, and it is the only chain with
-  the fine feed on; rows are shared per (tag, prn), so it is also what keeps e5a's Galileo rows quiet. **Decide:** off
-  on both (loses that precision under both commands) or on for both (re-flies arm 13's failure mode).
-- **`joint-model-primary` + `joint-feed-spec`**: e5a feeds the joint state (the only Galileo measurements in it) and
-  e5b is the loop-detection control. **Decide:** remove e5a's feed (the joint state goes back to GPS-only and the
-  clock every `clk,rate` consumer adopts shifts), or give e5b the same feed (the one-controller rule allows it, since
-  neither consumes `slew`, but E5b at 1207 MHz adds a new per-band delay to the joint state, which is how the 08-18
-  attempt deadlocked). Either way the feed loop's control goes away.
-- **Stale claims to correct with the change:** the `gnss_chains_chord.yaml` e5b block (its 08-15/08-22 notes say the
-  carrier command is "ON for gal_e5a only" and "OFF on BOTH"; both chains command now), the bds_b2a block ("consumes
-  NOTHING from the joint state" eight lines below `joint-consume: clk,rate`; its feed flags are commented out), the
-  parked #92 line below (armed on e5a) and the instrument table above (09-10). `CHORD_VECTOR_TRACKER_PLAN.md` no
-  longer exists; `gnss_fleet_chord.yaml`'s "all five chains" is a dated 08-15 measurement, not a claim.
-**Deploy:** one yaml commit, one broker restart (~10 min of L5 settling, no node cycle). Check: `broker_multi.load`
-shows the two chains equal on every non-endpoint key, and the pair's first verdict is taken after that restart.
-
----
 
 ### #129 — we cannot place a GLONASS satellite at all (BeiDou turned out to be fine)
 **[tree, 2026-09-11]** Found chasing #56's residual.
@@ -807,8 +780,8 @@ that one of the SLEW-TRANSFER class the handover cannot catch, on gps_l5). The l
 were written against are now 6–60× smaller. An arm has nothing to remove, so these cannot be
 judged in this regime. The flags are `--fleet-trim-brownout-hold-s`, `--code-bias-brownout-hold`,
 `fleet-trim-rebase-adjust`, `reseed-spec-tau` and `LatchDetector.min_absence_s`.
-⚠️ 10-11: `fleet-trim-rebase-adjust` is ARMED on gal_e5a (`gnss_chains_chord.yaml`, the #92 handover), not
-disarmed as this paragraph said; #125's re-twin decides whether it stays.
+10-11: `fleet-trim-rebase-adjust` had stayed armed on gal_e5a since 08-25 (contrary to this paragraph); #125's re-twin
+switched it off, so all three are disarmed again.
 **Re-judge only after a plant disturbance** — and note that #106's establishment excursion is the
 one disturbance that reliably reproduces on demand.
 
