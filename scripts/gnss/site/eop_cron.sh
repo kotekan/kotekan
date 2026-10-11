@@ -15,6 +15,9 @@
 #      non-GNSS node is skipped and logged, never an error.
 #   3. push (eop_push.sh, which reads the table back) only to qualifying nodes whose live table
 #      ends EARLIER than the staged one. Re-running is a no-op.
+#   4. regenerate the on-disk node configs when their table ends earlier than the staged one and
+#      they still match the manifest apart from live data (#173), so a relaunch never starts on a
+#      table that has ended.
 #
 #   crontab:  17 * * * *  /home/kvand/gnss/kotekan/scripts/gnss/site/eop_cron.sh
 #   env:      GNSS_NODES (default the six), EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log)
@@ -72,4 +75,35 @@ if [ -n "$PUSH" ]; then
     GNSS_NODES="${PUSH# }" "$K/scripts/gnss/site/eop_push.sh" "$F"
 else
     echo "  nothing to push"
+fi
+
+# The on-disk configs too (#173): a relaunch starts from the file, and a table that has ended kills
+# the node until the next push reaches it. Regenerate them only when they still match the manifest
+# apart from live data (gen_fleet --check normalises the EOP table and the bad inputs out of the
+# comparison), so a hand-edited or half-edited manifest is never written under a node.
+PY=/home/kvand/gnss/venv/bin/python
+MAN="$K/config/gnss_fleet_chord.yaml"
+DISK_END=$("$PY" - "$K"/config/generated/chord_gnss_cx*_multi.yaml <<'PYE'
+import sys, yaml
+ends = []
+for p in sys.argv[1:]:
+    try:
+        ends.append(yaml.safe_load(open(p))["earth_rotation_data"]["earth_orientation_parameter_table"][-1]["t_inst_ns"])
+    except Exception:
+        pass
+print(min(ends) if ends else "")
+PYE
+)
+if [ -n "$DISK_END" ] && [ "$DISK_END" -lt "$FILE_END" ]; then
+    if "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --check >/dev/null 2>&1; then
+        if "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" >/dev/null 2>&1; then
+            echo "  on-disk configs regenerated: table end $DISK_END -> $FILE_END"
+        else
+            echo "  on-disk regen FAILED (gen_fleet write); table end still $DISK_END"
+        fi
+    else
+        echo "  on-disk configs differ from the manifest beyond live data; NOT regenerated (table end $DISK_END)"
+    fi
+else
+    echo "  on-disk configs current (table end ${DISK_END:-unknown})"
 fi

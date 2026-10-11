@@ -45,9 +45,10 @@ whole table.
 
 | host | when | job | does | output |
 |---|---|---|---|---|
-| gnss | hourly :17 | `scripts/gnss/site/eop_cron.sh` | pushes choco's EOP table to every running node whose live table ends earlier | `/var/tmp/gnss-logs/eop_cron.log` |
+| gnss | hourly :17 | `scripts/gnss/site/eop_cron.sh` | pushes choco's EOP table to every running node whose live table ends earlier; since 10-11 it also regenerates the on-disk node configs when their table ends earlier than the staged one and `gen_fleet --check` still passes (#173), so a relaunch never starts on a table that has ended | `/var/tmp/gnss-logs/eop_cron.log` |
 | gnss | every 5 min | `scripts/gnss/site/bad_inputs_cron.py` | pushes bffs's bad-input list to the running nodes when it changes (choco skips ours: maintenance mode) | `/var/tmp/gnss-logs/bad_inputs_cron.log` |
 | gnss | every 5 min | `scripts/gnss/site/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference. With `ELEM_REF_ACT=1` (set in the crontab) it re-posts the reference to an instance that lost it or is pinned off it, and re-takes a band's reference from the fleet consensus when it no longer describes the models | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log,auto_ref.json}` |
+| gnss | hourly :23 | `logrotate -s /var/tmp/gnss-logs/.logrotate.state scripts/gnss/site/logrotate.conf` | rotates the service logs daily or past 4 GB (copytruncate, 10 gzipped generations; #172) | `/var/tmp/gnss-logs/logrotate.log` |
 | cf06 | every 15 min | `scripts/gnss/site/chain_health_cron.sh` | flags a chain under 30 % fleet_present for 15+ min | `fixtures/obs/health/{ALERT,current.json,health.log}` |
 
 Nothing pages. An ALERT file exists only while its condition holds:
@@ -263,6 +264,10 @@ Archive before any deliberate teardown you might want to explain later:
 `gzip -1 -c /var/tmp/gnss-logs/broker.log > /home/kvand/gnss/logs/broker_$(date -u +%Y%m%d_%H%M%S).log.gz`
 
 ⚠️ There is no logrotate yet (it needs root). Watch the directory until there is.
+
+The service logs under `/var/tmp/gnss-logs/` rotate hourly by `scripts/gnss/site/logrotate.conf` (daily or past 4 GB,
+`copytruncate` because the units hold the files open, 10 gzipped generations). `broker.log.1.gz` and older hold what a
+long `tail` of `broker.log` used to.
 
 ## 9. Profiling, when it is slow
 
