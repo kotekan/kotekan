@@ -940,6 +940,27 @@ def _refresh_in_background(when, cache_dir):
         return True
 
 
+_OFFLINE_WHEN_S = 3600.0
+
+
+def _offline_cache_dir(when, cache_dir):
+    """A `when` more than an hour from the wall clock gets its own cache, cache_dir/offline/<day>.
+
+    The rolling store in cache_dir belongs to the process that follows the clock (the broker).
+    An offline caller asking for another day's sky (the beam cube, #159) used to merge the
+    live store against that day, prune it to that window and rewrite it: the broker's next
+    reload then loaded yesterday's records, reported PREDICTION COLLAPSE and dropped every
+    satellite below the BRDC horizon (2026-10-08 01:36Z, 45 min of no sky). The guard lives
+    here, not in the callers, so no caller can do that again."""
+    if when is None or os.path.basename(os.path.dirname(cache_dir)) == "offline":
+        return cache_dir
+    if abs((datetime.now(timezone.utc) - when).total_seconds()) < _OFFLINE_WHEN_S:
+        return cache_dir
+    d = os.path.join(cache_dir, "offline", when.strftime("%Y%m%d"))
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def fetch_brdc(when=None, cache_dir=CACHE, block=False):
     """Ordered list of BRDC nav-source files for `when`, WITHOUT blocking the caller on the
     network: the files already on disk are returned and a refresh is started on a daemon
@@ -952,6 +973,7 @@ def fetch_brdc(when=None, cache_dir=CACHE, block=False):
     if os.environ.get("GNSS_BRDC_DIR") or block:
         return _fetch_brdc_now(when, cache_dir)
     when = when or datetime.now(timezone.utc)
+    cache_dir = _offline_cache_dir(when, cache_dir)
     have = _cached_sources(when, cache_dir)
     if not have:
         return _fetch_brdc_now(when, cache_dir)
@@ -997,6 +1019,7 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
             )
         return pinned
     when = when or datetime.now(timezone.utc)
+    cache_dir = _offline_cache_dir(when, cache_dir)
     # ⚠️⚠️ THE DAILY IS PREFERRED, NOT REQUIRED -- AND LETTING IT RAISE TOOK THE FLEET DOWN
     # (2026-08-28 00:11). _fetch_brdc_merged raises when no daily is reachable and none is
     # cached, and that propagated out of fetch_brdc, so the almanac reported "unavailable",
