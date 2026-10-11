@@ -76,7 +76,24 @@ PRNs, `joint-consume` and nothing else). The joint state is GPS-fed only again.
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
-
+### #175 — after a transit's null crossing every E6 tracker is re-seeded ~0.45 chips off its peak and rails there for an hour (2026-10-11)
+**What [live 22:34–23:35Z]:** E06 passed 0.24° from boresight at 22:27Z (E6 prompt 3.5 million × the floor). As it
+crossed the dish's first null (2.8–3.5°, 22:34–22:36Z) the chain browned out (PROMPT-CN0 of every PRN down 15–30 dB,
+`BROWNOUT open: 5 present vs 10`), and at 22:34:52Z PRESENCE admitted a "displaced" detection for every PRN at once,
+all at +0.41..+0.47 chips (E31, E4, E23, E5, E16, …) through `presence-admit-displaced`. From 22:37Z the DLL disc of
+E4/E5/E9/E16/E28 sat at the +0.5 clamp with q 2.0–2.3 and prompt power 10 dB down (E4: 310× → 34–126×), on all 12
+instances alike; their SPEC-FIT tau read −0.1..−0.2 chips while the bright ones (E6, E31, E23, back on-peak within
+minutes) read +0.01. E4 returned only at 23:24:35Z through another displaced admission (+0.589 chips); E16 was still
+railed at 23:40Z. The rotated log shows the same railed state for hours before #163 (by the log's day count: 10-06
+04–14Z at 21–89% of DLL readings, 09-28 05–08Z and 14–15Z, 10-01 21Z–10-02 00Z, 10-09 21Z), so it is not new; with
+#163's lower baseline q it now reads "weak" on the viewer.
+**Why it sticks:** a railed disc is leak-bounded (`gnssFleetDll::dll_tau` clamps at ±1, at most ±0.25 chips of trim)
+and the model holds the displaced position (`dead-reckon SLEW … model-held −0.013 chips`), so nothing pulls the
+tracker the half chip back; only a fresh displaced-presence admission does.
+**Fix (broker):** a simultaneous displacement of every PRN by the same offset is a chain event (clock or brownout),
+not N detections: refuse `presence-admit-displaced` while a BROWNOUT is open or when ≥3 PRNs report the same offset
+within 0.1 chips in one cycle; and a PRN whose disc has sat at the clamp for >60 s with SPEC-FIT tau disagreeing
+should re-run presence (the escape path the bright ones took).
 
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that
@@ -693,6 +710,21 @@ dishes. A separate E6 cross-instance coherence loss from ~12Z 10-08 was #154's s
 **10-10: candidate cause = the 10-07 gain table, #167** (pol 1 at 0.12–0.27 LSB rms in the GNSS bands). Check the
 table before anything else. Next, when it settles: per-channel prompt phase across the E6 lobe
 from the gather stream (ragged = gains, smooth = delay), or the new gain table.
+**10-11: CAUSE FOUND — the channel weights ARE the gain table.** The combiner weights each channel by the
+F-engine digital gain: per-channel prompt amplitude against |g| has log-log slope 0.9–1.1 (r 0.91–0.98) on e6,
+e5a and e5b over all 12 instances, and nothing in the node normalises a channel by its noise. The sharpness of a
+3-channel (E6) or 5–7-channel (10.23 Mcps) comb correlation is set by the outer channels' weight, so q is a
+property of the gain profile across the lobe. `digitalgain_20261007T213936Z` (still live at 23:12Z) turned the
+E6 lobe from centre-notched to centre-peaked (centre/edge gain 0.60 → 1.59; the low edge at 1273.8 MHz now
+0.46 LSB rms on X and 0.18 on Y, i.e. mostly zeros) and deepened the centre notch everywhere else (e5a 0.57 →
+0.46, e5b 0.68 → 0.50, b3i 0.59 → 0.38). Less outer weight on E6: q 3.6–3.7 for the ten days before, 2.47–2.49
+since (hourly history from the rotated log); more outer weight elsewhere: their q rose. GPU1's E6 instances read
+0.1–0.5 above GPU0's because their comb phases land on higher-gain channels. Not phases: within an instance the
+channels agree to ~10°. It bites: the broker's 2.2 gates (`dll_quality_min`, `q_stall_bar`) now sit inside E6's
+working range. **Levers:** site — a flat or 09-25-style E6 profile and ≥3× on Y; ours — normalise each channel by
+its noise rms ahead of the despread so q no longer depends on the table (node change, every chain at once,
+judged in minutes); display — a per-band line, or one relative to the chain's noise-q floor (E6: floor 1.36,
+bright 2.5). Recipe in memory `chord-e6-q-drop-20261008`.
 
 ### #147 — 2026-09-26 22:01Z: a fleet-wide ~3 ppb reference-frequency step
 All 8 chains and every instance: a carrier offset that scales with carrier frequency (E6/E5a 1.09 vs 1.087
