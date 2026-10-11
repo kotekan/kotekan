@@ -71,7 +71,7 @@ class _Rx:
         code_length,
         chip_rate_hz=None,
         epoch=None,
-        held=False,
+        held=False, healthy=None,
     ):
         self.contrib.append((t, chips, drift))
 

@@ -33,6 +33,7 @@ import time
 from datetime import datetime, timezone
 
 from gnss_broker.transport import _now, _post, _log, _log_rl
+from gnss_broker.clockhealth import dr_solve_healthy
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
     dr_seed_phys,
@@ -383,6 +384,7 @@ def dr_clock_quality(ctx):
             ctx.drp.now_w,
             ctx.code_len,
             chip_rate_hz=ctx.args.chip_rate_hz,
+            healthy=dr_solve_healthy(ctx.dr_state, ctx.drp.now_w),
             epoch=ctx.dr_state.get("clk_epoch"),
         )
     elif _dr_clock_guarded(ctx):
@@ -470,6 +472,8 @@ def dr_clock_hold(ctx):
         chip_rate_hz=ctx.args.chip_rate_hz,
         epoch=ctx.dr_state.get("clk_epoch"),
         held=True,
+        # a hold suspends the solve on purpose; the held value makes no health claim (#161)
+        healthy=None,
     )
 
 
@@ -584,6 +588,7 @@ def _dr_clock_step_gate(ctx):
             L,
             chip_rate_hz=ctx.args.chip_rate_hz,
             epoch=ctx.dr_state.get("clk_epoch"),
+            healthy=dr_solve_healthy(ctx.dr_state, ctx.drp.now_w),
         )
         return "repinned"
     _log_rl(
@@ -869,6 +874,15 @@ def dr_clock_adopt_rx(ctx):
     _rx_xext = None
     if ctx.drp.rx_sib is None and ctx.args.dr_clock_adopt and not ctx.drp.offs:
         _cand = ctx.rx.dr_clock_any_band(exclude=ctx.chain_id, t_now=ctx.t0)
+        if _cand is not None and _cand.extra.get("healthy") is False:
+            # #161: gps_l5 on noise bootstrapped gps_l2c 10 ms off (2026-10-08).
+            _log_rl(
+                "clkxboot-unhealthy",
+                "dead-reckon: cross-band donor '%s' WITHHELD -- its search solve is not "
+                "established; the clock stays as it is" % _cand.src,
+                every_s=60.0,
+            )
+            _cand = None
         if _cand is not None:
             _don_rate = _cand.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
             _don_window_s = (_cand.extra.get("code_length") or 0) / _don_rate
@@ -963,6 +977,21 @@ def dr_clock_adopt_rx(ctx):
                 (_v - ctx.dr_state["clk"] + ctx.code_len / 2) % ctx.code_len
             ) - ctx.code_len / 2
         _xb_decl = _dr_clock_declared(ctx)
+        # #161: a step of more than half the donor's window moves this clock a whole
+        # period of the donor's code -- a different millisecond, which only the epoch
+        # extension can justify. The record behind it must be recent and from an
+        # established solve: the 2026-10-08 +5 ms and +10 ms steps rode a record that
+        # gps_l5's noise detections had walked, and nothing afterwards could see them.
+        _xb_whole_refuse = False
+        if (
+            _xb_step is not None
+            and _rx_xext is not None
+            and not ctx.dr_state.get("clk_primed")
+            and abs(_xb_step) > 0.5 * _don_window_s * ctx.args.chip_rate_hz
+        ):
+            _xb_whole_refuse = (ctx.t0 - _rx_xext.t > 120.0) or (
+                _rx_xext.extra.get("healthy") is False
+            )
         if (
             _xb_bound > 0.0
             and _xb_step is not None
@@ -986,6 +1015,24 @@ def dr_clock_adopt_rx(ctx):
                     _xb_bound / _xb_rate * 1e9,
                     _xb_bound,
                     _xb_rate / 1e6,
+                    ctx.dr_state["clk"],
+                ),
+                every_s=30.0,
+            )
+            ctx.dr_state["clk_t"] = ctx.t0
+        elif _xb_whole_refuse:
+            _log_rl(
+                "clkxboot-whole",
+                "dead-reckon: cross-band clock from '%s' would step %+.3f chips = %+.2f ms, "
+                "a whole period of the donor's code, on a clock-mod record from '%s' that is "
+                "%.0f s old%s -- bootstrap REFUSED, holding %.3f chips"
+                % (
+                    ctx.drp.rx_sib.src,
+                    _xb_step,
+                    _xb_step / ctx.args.chip_rate_hz * 1e3,
+                    _rx_xext.src,
+                    ctx.t0 - _rx_xext.t,
+                    "" if _rx_xext.extra.get("healthy") is not False else " and from an unestablished solve",
                     ctx.dr_state["clk"],
                 ),
                 every_s=30.0,
@@ -1710,6 +1757,40 @@ def dr_joint_clk(ctx):
         _jsigC <= ctx.args.joint_clk_max_sigma
         and abs(_jdJ) <= ctx.args.joint_clk_max_chips
     )
+    # #161: the delta is wrapped in the joint's window (1 ms), so a clock that is whole
+    # periods of it off -- gps_l2c carried +10 ms for 8 h on 2026-10-08 -- reads as a
+    # 0.001-chip delta and is ADOPTED every cycle, which keeps this clock "fresh" and the
+    # bootstrap that could fix it disarmed. When our code outlasts the joint's window,
+    # resolve the joint across our period with the clock-mod-epoch record (the NH joint
+    # fit, contributed only from an established search solve) and refuse while the two
+    # disagree by more than half a joint window; the refusal lets the local clock go
+    # stale and the bootstrap re-arm.
+    _jwin_s = _jlen / _jrate
+    _our_s = ctx.code_len / ctx.args.chip_rate_hz
+    _jperiod_ms = None
+    if _jokC and _our_s > 1.5 * _jwin_s:
+        _jext = ctx.rx.clock_mod_epoch(
+            min_epoch_s=_our_s,
+            exclude=getattr(ctx, "chain_id", None),
+            max_age_s=600.0,
+            t_now=getattr(ctx, "t0", None),
+        )
+        if _jext is not None:
+            _jt_sec, _jresid_s = ctx.rx.clock_extend_mod(
+                (_jrC.clk / _jrate) % _jwin_s,
+                _jwin_s,
+                float(_jext.value),
+                _jext.extra["epoch_s"],
+                _our_s,
+            )
+            if abs(_jresid_s) <= 0.25 * _jwin_s:
+                _jerr_s = (
+                    (_jt_sec - ctx.drp.clk_now / ctx.args.chip_rate_hz + _our_s / 2.0)
+                    % _our_s
+                ) - _our_s / 2.0
+                if abs(_jerr_s) > 0.5 * _jwin_s:
+                    _jperiod_ms = (_jerr_s * 1e3, _jext.src, _jext.extra["epoch_s"] * 1e3)
+                    _jokC = False
     # Fields before the bracket are in OUR chips; the bracket (other chip rates only) gives
     # the joint-chip numbers the bounds are tested in.
     _log_rl(
@@ -1728,6 +1809,10 @@ def dr_joint_clk(ctx):
             " bounds' unit]" % (_r, _jrC.clk, _jdJ, _jsigC, _jrate / 1e6),
             "ADOPTED"
             if _jokC
+            else "REFUSED (the clock-mod-%.0f-ms record from '%s' puts the joint %+.3f ms "
+            "from the legacy clock: a whole-period error the %.0f-ms delta cannot see)"
+            % (_jperiod_ms[2], _jperiod_ms[1], _jperiod_ms[0], _jwin_s * 1e3)
+            if _jperiod_ms is not None
             else "REFUSED (bounds %.1f chips / %.2f sigma)"
             % (ctx.args.joint_clk_max_chips, ctx.args.joint_clk_max_sigma),
         ),

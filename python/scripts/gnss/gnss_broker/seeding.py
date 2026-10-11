@@ -30,6 +30,7 @@ import statistics
 
 from gnss_broker.sky import C_LIGHT
 from gnss_broker.transport import _log, _log_rl
+from gnss_broker.clockhealth import dr_solve_healthy
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
     retag_seed_doppler,
@@ -203,10 +204,24 @@ def _nh_joint_consensus(ctx, now):
         # period is LONGER than the donor's (gps_l2c's 20 ms vs gps_l5's 1 ms window --
         # exactly the case the cross-band bootstrap's modulus guard rightly refuses
         # without it). Chips are a unit; the clock is a time.
+        # #161: only from an established search solve. On 2026-10-08 the votes came from
+        # noise detections on a collapsed sky, the record walked 0.02 -> 10.02 ms, and
+        # gps_l2c bootstrapped onto it; a consumer cannot tell a walked record from a
+        # measured one, so it is not published at all. The last published record stays
+        # (its age is what consumers bound).
         if getattr(ctx, "rx", None) is not None:
-            ctx.rx.contribute_clock_mod_epoch(
-                ctx.chain_id, dstar / a.chip_rate_hz, ctx.lc_epoch, len(inl), now
-            )
+            if dr_solve_healthy(getattr(ctx, "dr_state", None), now) is not False:
+                ctx.rx.contribute_clock_mod_epoch(
+                    ctx.chain_id, dstar / a.chip_rate_hz, ctx.lc_epoch, len(inl), now, healthy=True
+                )
+            else:
+                _log_rl(
+                    "nhjoint-unhealthy",
+                    "NH-JOINT: clock-mod-epoch record NOT published -- this chain's search "
+                    "solve is not established (fewer than 2 fresh integrity residuals inside "
+                    "a chip, or one outside); consumers keep the last published one",
+                    every_s=300.0,
+                )
     return ctx.cpt.nh_common
 
 

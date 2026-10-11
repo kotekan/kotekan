@@ -12,6 +12,7 @@ the error sustains itself. See `clockbias.py`.
 """
 
 from gnss_broker.transport import _post, _log, _log_rl
+from gnss_broker.clockhealth import dr_solve_healthy
 
 
 def stage_narrow_search(ctx):
@@ -115,7 +116,19 @@ def stage_narrow_search(ctx):
                 # 6996 -> 5095 -> 1797 -> 1555 -> 9210 -> 134 chips and only then snapped
                 # to 150.8 and locked, ~15 min of a self-reinforcing outage that read as a
                 # frontend sensitivity loss (docs 11.33).
-                for _p, (_nh, _rh) in ctx.nho.seen.items():
+                # #161: detections the clock solve does not vouch for (on noise, or on a
+                # collapsed sky) teach the hint a wrong epoch, and the +-2 narrowing then
+                # confirms it from the next detections. Learn nothing while the solve is
+                # not established; the expiry below widens the search on its own.
+                _learn = dr_solve_healthy(getattr(ctx, "dr_state", None), ctx.t0) is not False
+                if not _learn:
+                    _log_rl(
+                        "nhhint-unhealthy",
+                        "nh hint: search solve not established -- not learning an offset "
+                        "from these detections",
+                        every_s=120.0,
+                    )
+                for _p, (_nh, _rh) in (ctx.nho.seen.items() if _learn else ()):
                     if _p not in ctx.pred or ctx.nho.last_rh.get(_p) == _rh:
                         continue
                     ctx.nho.last_rh[_p] = _rh

@@ -306,6 +306,7 @@ class Receiver(object):
         chip_rate_hz=None,
         epoch=None,
         held=False,
+        healthy=None,
     ):
         """Publish the dead-reckon receiver clock (chips, mod the code period) + drift.
 
@@ -352,6 +353,10 @@ class Receiver(object):
                     "chip_rate_hz": chip_rate_hz,
                     "epoch": epoch,
                     "held": bool(held),
+                    # #161: False = the solving chain's search solve is not established
+                    # (clockhealth.dr_solve_healthy); a consumer must not bootstrap from it.
+                    # None = the contributor made no claim.
+                    "healthy": healthy,
                 },
             )
 
@@ -384,7 +389,7 @@ class Receiver(object):
         """
         return self._best(self._dr, exclude, max_age_s, t_now, key2=None)
 
-    def contribute_clock_mod_epoch(self, chain, seconds, epoch_s, n_sats, t):
+    def contribute_clock_mod_epoch(self, chain, seconds, epoch_s, n_sats, t, healthy=None):
         """The receiver clock as a TIME, known mod epoch_s. Contributed by an estimator
         that resolves a LONGER modulus than any code period -- today the NH joint fit
         (clock mod 20 ms from every strong GPS sat voting). Consumers use it to extend a
@@ -395,7 +400,7 @@ class Receiver(object):
                 chain,
                 int(n_sats or 0),
                 t,
-                extra={"epoch_s": float(epoch_s)},
+                extra={"epoch_s": float(epoch_s), "healthy": healthy},
             )
 
     def clock_mod_epoch(self, min_epoch_s, exclude=None, max_age_s=3600.0, t_now=None):
