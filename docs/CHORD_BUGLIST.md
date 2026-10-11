@@ -121,7 +121,7 @@ Check: `[archive]` broker.log gps_l2c 02:16–02:34Z (`BOOTSTRAP`, `JOINT-CLK`, 
   projected subspace per record row. Per-record `k` and the source kind (own row / sibling board / probe stack) exist only
   in `/get_elem_cal` (the 10-s poller). Adding them is one header slot each = a WIRE bump (v8): queue for the next flag day.
 - **`b` is consumed by the fleet DLL lobe fold only** (`gnssFleetDll.hpp` fold + `combdll._lobe_fold`, weight 1−b). Not by
-  JFEED's `joint_sigma` (0.3 for every satellite, `gnss_broker/cli.py:897`; the #152 item "freeze it inside the transit
+  JFEED's `joint_sigma` (moot since 10-11: no chain feeds the joint state, #125) (0.3 for every satellite, `gnss_broker/cli.py:897`; the #152 item "freeze it inside the transit
   veto" → scale σ by 1/(1−b), or drop b > 0.3), and not in `/get_dll`'s `FleetDllRow`, so no obs row records a transit's cost.
 - **The plan's dB judge never ran:** other-satellite C/N0 loss at closest approach against the freeze-era twins
   (`freeze0928/work/pairs.md` method) and lock-loss victim-minutes. We judged by arcs, locks and closure
@@ -157,8 +157,9 @@ railing veto. This is also #151's geometry-only sky: `predict_all`'s docstring a
 `max_age` for geometry callers, never for seeds.
 Evidence `fixtures/projtest/live/passes/`, `fixtures/projtest/unk/`.
 
-### #151 residual — the seeds and the sky still keep two ephemerides, and EPH-REBASE (#101) never fires
-The reload cadence is fixed (`b2223cc7a`, closed). What is left is the entry's own "check #101 first":
+### #151 residual — the seeds and the sky still keep two ephemerides (EPH-REBASE is now off everywhere)
+The reload cadence is fixed (`b2223cc7a`, closed). 10-11: `eph-rebase` is off on every chain (#125), so the "no step is
+computed" half below is parked with #101; what remains is the two-copies design note. The entry's own "check #101 first":
 - **Two copies, two phases.** The seeds' copy (`dr_state["eph"]`) reloads on the broker's start phase and
   the sky's (the shared `receiver.brdc()` store, where EPH-REBASE computes its step) on its own, so a seed
   model step can land up to 15 min from the step computed for it.
@@ -202,7 +203,11 @@ convention (median b over the current membership): re-derive it when the members
 **Independent product-side check,** no broker internals: the gal_e5a − gal_e5b difference of median
 `code_resid_m` (same Galileo satellites) went −0.3 → −87 m, which as geometry-free code is ~600 TECU;
 bds_b2a − bds_b3i moved −90 m. It can run from the obs files in the cf06 health cron.
-**Kick — none exists today** (`publish.py` POSTs only `/set_carrier_trim` and `/set_nh_prn_offset`). In order
+**10-11: the latch pathway is gone.** e5a's model-primary feed into the joint state was removed (#125), so JFEED now
+carries only gps_l5's search solve and no runaway Galileo seed can reach the joint clock. The detector stays as the
+backstop; the kick below is PARKED unless d leaves ±1 chip again. Check: run `joint_latch_detect.py` over the next
+week's log — zero alarms closes this.
+**Kick (parked) — none exists today** (`publish.py` POSTs only `/set_carrier_trim` and `/set_nh_prn_offset`). In order
 of preference: (1) in-broker RE-ANCHOR on the alarm: move the joint's gauge until its clock agrees with the
 healthy search clock + ref (clk by +δ and every b by −δ, so no prediction inside the joint moves — only
 the clock level the consumers adopt),
@@ -483,12 +488,6 @@ broker must fail LOUDLY when its gather link is refused -- it logged `TELEM DOWN
 **How to see it:** `ss -ltn | grep -E "11060|11061|12051"` empty; broker log `frames 0` with
 `nothing yet` on every chain; the 2-line `stack_up.sh` health table.
 
-### #113 — `eigencalc: Only 0 of 32 elements are unmasked`, 148× in 12.5 h
-**[live]** on cx43 today, with `valve_bf_mask_*` reporting 8.16e9 dropped frames. The bf mask is
-masking everything and the valve is discarding the result. Unchanged since 09-02 and previously
-buried as #107 collateral. Related to #112 (same emitter) but a separate question: **is the mask
-correct and the consumer wrong, or is the mask wrong?**
-
 ### #114 — `cudaRFISKtilde` is 6× slower on gpu0 than gpu1 on the same node
 **[live]** 12.89 ms vs 2.12 ms per frame on cx43 with identical per-GPU configuration, and it is
 the largest non-inject kernel on the busier GPU. Per the standing rule that **nothing is
@@ -698,10 +697,6 @@ in `chain_health_cron` that reads the newest subset file's size.
 
 
 
-### #174 — cx27 received a corrupt-sequence packet from raw source ID 6 (2026-10-10)
-**What [live 10-10 20:18:45Z]:** one corrupt-seq packet whose raw source ID (6) is not an A, B or RFI board. One
-event, noted because #1750 now stops kotekan on a capture fault. Lever: the F-engine.
-
 ### #169 — node control-plane errors since the 10-11 00:55Z restart (2026-10-11)
 **What [live cx43, 00:56–02:46Z]:** 20 `Could not read FPGA controller … GET …/config failed`, 20 `Request failed with
 socket error`, 42 `trim EXPIRED with no /set_trim`, 134 `NIC dropped N packets … rx ring was full` (29671/16850 at
@@ -709,6 +704,8 @@ start-up, ~1 packet/s since; `/metrics` `nic_rx_missed` +421/+171 in 6.5 min). T
 04122d179 had 0/0/3/17. The DPDK lcores (5, 6, 7, 21, 22, 23) share no core with any stage. Confounds: the window-8
 binary (0011cf3b1), the #164 lockout and recv1 restart at 00:57–01:15Z, the F-engine's state.
 **Next:** re-count at the next quiet hour; if the expiries and the trickle persist, A/B one node on 04122d179.
+Also one corrupt-sequence packet on cx27 at 10-10 20:18:45Z from raw source ID 6, which is not an A, B or RFI board
+(formerly #174; one event, noted because #1750 stops kotekan on a capture fault).
 
 ### #167 — the 10-07 digital-gain table quantizes pol 1 to ~0.1–0.3 LSB in the GNSS bands (2026-10-10)
 **What [archive, recv1 subset autos 10-10 01:59Z vs 10-07]:** table `digitalgain_20261007T213936Z` (live since the
@@ -757,7 +754,6 @@ close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains ha
 `slew`): the right experiment is on the bds_b2b/b3i twin, which shares no state with a feeder.
 
 ### Smaller, still true
-- **#11** boresight seeding mask: half-built for a different consumer; nothing masks seeding.
 - **#14** acquire declines a blind Doppler grid: only a boost test; unverified.
 - **#37** GPS block map vs sky: the registry exists; the join to the beam maps does not.
 - **#40** the deep fold's rate search wrong-bins onto overlay sidebands — **demoted**: the coarse
@@ -774,16 +770,12 @@ close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains ha
 
 ## Parked — built, disarmed, and currently unjudgeable
 
-**#91, #92, #90 — three trim-pathology fixes, all built and disarmed, all measuring a base rate
-of ~0 on the healthy fleet.** **[live]** in one hour: 0 brownouts, 0 latches, 1 sawtooth (and
-that one of the SLEW-TRANSFER class the handover cannot catch, on gps_l5). The loop errors these
-were written against are now 6–60× smaller. An arm has nothing to remove, so these cannot be
-judged in this regime. The flags are `--fleet-trim-brownout-hold-s`, `--code-bias-brownout-hold`,
-`fleet-trim-rebase-adjust`, `reseed-spec-tau` and `LatchDetector.min_absence_s`.
-10-11: `fleet-trim-rebase-adjust` had stayed armed on gal_e5a since 08-25 (contrary to this paragraph); #125's re-twin
-switched it off, so all three are disarmed again.
-**Re-judge only after a plant disturbance** — and note that #106's establishment excursion is the
-one disturbance that reliably reproduces on demand.
+**#90, #91, #92 — three trim-pathology fixes, built and all disarmed again since 10-11** (#92's handover had stayed
+armed on gal_e5a from 08-25 until #125's re-twin). Base rate ~0 on the healthy fleet (0 brownouts, 0 latches, 1 sawtooth
+of the class the handover cannot catch, in an hour), so an arm has nothing to remove and they cannot be judged in
+this regime. Flags: `--fleet-trim-brownout-hold-s`, `--code-bias-brownout-hold`, `fleet-trim-rebase-adjust`,
+`reseed-spec-tau`, `LatchDetector.min_absence_s`. **Re-judge only after a plant disturbance** — #106's establishment
+excursion is the one that reproduces on demand.
 
 ---
 
