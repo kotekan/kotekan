@@ -341,6 +341,10 @@ both pols off at once means the reference is stale and the cron's re-take must w
 `form_deg`, `fleet_ref.reseeds`. Boost test 12 cases. Judge after the cycle: restart one node during a 5–8° pass
 (`form_frozen: true` until it clears, then sim ≥ 0.8 within minutes); after the next F-engine gain change the re-seed
 counters must not move while the cron re-takes.
+**10-11 23:00Z: DEPLOYED on all six; the freeze half JUDGED, passed.** cx44 restarted 23:15Z inside E31's pass
+(8° at 23:11Z, closest 3.3° at 23:29Z): `form_frozen` true on all 16 assemblers and no model for 32 min; at 23:47:48Z
+(bore 8.1°) every assembler formed from 10–17 shadows, pinned to the fleet reference, sim 0.85–0.98, reseeds 0, fleet
+R 1.00/1.00 on every band. Open: the re-seed half, judged at the next F-engine gain change (`fleet_ref.reseeds` stays 0).
 
 ### #168 — our 32-element code assumes the n/2 pol split (2026-10-10)
 **What [tree, from the rows-C/D survey]:** the shared model splits pols at h = n/2 (`GnssGpuRecordAssemble.cpp`, the
