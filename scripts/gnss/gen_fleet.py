@@ -210,6 +210,12 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
         rises = {p for p in active if peak[(sysid, p)] > rise_deg}
         dead = sorted(cfg - active)
         excluded = sorted((active & rises) - cfg)
+        if not active:
+            # An empty sky cannot exclude anything, so without this the gate reads GREEN on a
+            # stale or missing ephemeris (a GNSS_BRDC_DIR pin two days old did exactly that).
+            bad += 1
+            print("%-16s FAIL  no active satellite in the sky: stale or empty ephemeris" % name)
+            continue
         print(
             "%-16s slots %2d | capable+active %2d | rises >%.0f deg %2d%s"
             % (
