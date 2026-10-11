@@ -74,9 +74,14 @@ def test_health_rule():
     now = T0
     good = {"integ": {p: (r, now - 5.0) for p, r in ((1, 0.2), (2, -0.4), (3, 0.7))}}
     check(dr_solve_healthy(good, now), "3 fresh residuals inside a chip: established")
+    past = {"integ": dict(good["integ"])}
+    past["integ"][4] = (1.8, now - 5.0)
+    check(dr_solve_healthy(past, now), "one tracker past the escape bar, three inside: still established")
     bad = {"integ": dict(good["integ"])}
-    bad["integ"][4] = (1.8, now - 5.0)
-    check(not dr_solve_healthy(bad, now), "one residual past a chip: not established")
+    bad["integ"][4] = (50.0, now - 5.0)
+    check(not dr_solve_healthy(bad, now), "one residual far off the code (noise): not established")
+    scatter = {"integ": {p: (r, now - 5.0) for p, r in ((1, 2.0), (2, 3.5), (3, 0.9))}}
+    check(not dr_solve_healthy(scatter, now), "fewer than two inside a chip: not established")
     thin = {"integ": {1: (0.2, now - 5.0), 2: (0.1, now - 5.0)}}
     check(dr_solve_healthy(thin, now), "two residuals inside a chip: established")
     one = {"integ": {1: (0.2, now - 5.0)}}
