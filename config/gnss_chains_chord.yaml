@@ -854,6 +854,12 @@ chains:
     # common-signed again within ~15 min: re-set to false + broker restart, and the
     # mechanism hunt reopens.
         seed-phase-transport: true
+    # ══ CURRENT STATE 2026-10-11 (#125, KV): gal_e5a / gal_e5b ARE THE FORMAL COMPARISON PAIR, matched on every
+    # non-endpoint key: rrate-command ON both (since 08-30), rrate-phase-feed ON both (e5a matched up 10-11),
+    # NEITHER feeds the joint state (e5a's #85 feed removed 10-11), fleet-trim-rebase-adjust / eph-rebase off on
+    # both. Dated notes below that say otherwise ("ON for gal_e5a only", "OFF on BOTH", "DELIBERATELY NOT
+    # MATCHED", "REMAINING ASYMMETRY", "THIS CHAIN ONLY") are the history of how the pair got here. Any future
+    # A/B on this pair changes exactly ONE key.
         signal: gal_e5a
         dr-clock-adopt: true
     # ── #49 ARMED 2026-08-15 20:30: the code loop, on the chains that could not hold ──────
@@ -1117,7 +1123,10 @@ chains:
     # calibration continues). Judge: converge-and-hold on ALL commanded sats; then the
     # benefit gates (q/eta duty vs controls, same polls).
     # Pre-registered: fixtures/expectations_20260820_arm14.txt.
-        rrate-phase-feed: false
+    # 2026-10-11 (#125, KV): ON, matched to e5b. Six weeks of e5b commanding under its own fine feed showed no
+    # arm-13 ramp (e5a/e5b |cmd| median 0.04 Hz, max 0.8, 0% of cycles over 2 Hz, 10-10..11), so the arm-14
+    # withdrawal above is history. Falsifier: e5a's |cmd| or q duty diverging from e5b's within a day -> false.
+        rrate-phase-feed: true
     # ── ARM 14b (12:0x): 14's auto-disarm was a FALSE POSITIVE -- cx43-e5a's payoff
     # excess persists at 38-48 mHz with ZERO commands (measured disarmed, 3 polls; cx27
     # normal; first "trip" fired 16 s after broker start, before any command). The flight
@@ -1196,7 +1205,9 @@ chains:
     # shared-clock births are skipped loudly). Needs the 08-25 gather binary.
     # Pre-reg: fixtures/expectations_20260825_92_handover.txt (P2 = paired no-crater
     # vs e5b; F2 = refusals dominate -> the same-cycle premise is wrong).
-        fleet-trim-rebase-adjust: 1
+    # 2026-10-11 (#125): OFF, matched to e5b -- base rate ~0 in this regime (#92 parked) and the eph-rebase below
+    # needed it. Revert = uncomment + restart.
+    # fleet-trim-rebase-adjust: 1
     # ── #101 ARMED 2026-08-29 (KV: "proceed with brdc refresh fixes"): at each eph
     # refresh, hand the KNOWN per-sat model step to the gather through the handover
     # above, same cycle -- instead of the leak-limited ~15-30 min rebuild the GAP 3
@@ -1204,7 +1215,9 @@ chains:
     # the band-sibling control. Sign calibrated by the merge-epoch instrument, not by
     # derivation: if e5a's post-merge kicks GROW vs e5b, flip and re-judge.
     # Pre-reg: fixtures/expectations_20260829_eph_rebase.txt. Revert: delete + restart.
-        eph-rebase: 1
+    # 2026-10-11 (#125): OFF, matched to e5b -- #101 never fired in 16 h (#151) and its flag is read off a store
+    # every chain shares, so it was never a single-chain A/B.
+    # eph-rebase: 1
     # ── #102 ARMED 2026-08-29 (KV: first-order positions, generate overnight data): post
     # each sat's az/el to the record assemblers every 30 s -- the geometry feed for the
     # per-element steering (elem_positions_enu lives in the NODE configs, e5a only; e5b
@@ -1721,9 +1734,14 @@ chains:
     # one sign for >10 min (the 08-22 loop walked +0.065 chips/s) or e5a q duty falling
     # vs e5b in-poll. JUDGE: JFEED n>=3 spread>0 acc>50%; joint sigma; P2C coast on a
     # masked GPS sat improving through the next thin-GPS patch.
-        joint-shadow: true
-        joint-model-primary: true
-        joint-feed-spec: true
+    # 2026-10-11 (#125, KV): FEED REMOVED, matched to e5b -- both chains are pure consumers and the joint state
+    # is GPS-fed again. The feed was the pair's only behaviour-changing asymmetry, both measured joint-clock
+    # latches (#152, 09-23 and 09-28) entered through it (E8/E15 runaway seeds -27..-33 chips into JFEED), and
+    # the thin-GPS benefit above was never judged. joint-shadow is implied by joint-consume anyway. Revert =
+    # uncomment the three lines + restart; watch JOINT-CLK delta and e5a/b2a code_resid_m either way.
+    # joint-shadow: true
+    # joint-model-primary: true
+    # joint-feed-spec: true
     # ── #49 SINGLE-SATELLITE TRIAL, 2026-08-12 ────────────────────────────────────────
     # E33 ONLY. The trim's presence gate is summed PROMPT power, which is suppressed exactly
     # when the tap is off-peak -- so an off-peak satellite fails the gate and is never trimmed
@@ -1950,6 +1968,9 @@ chains:
     # discriminating pair: 25 min of transport under the fix, chain-common climb GONE,
     # only per-sat #85-class error remains. Revert: false + broker restart.
         seed-phase-transport: true
+    # ══ CURRENT STATE 2026-10-11: this chain CONSUMES the joint clock (joint-consume: clk,rate, since 08-30) and
+    # does NOT feed it (the #85-era feed flags are commented out below). The "consumes NOTHING from the joint state"
+    # and "FIRST NON-GPS CLOCK FEEDER" notes below are history.
         signal: bds_b2a
         dr-clock-adopt: true
     # ── clk ROLLOUT 2026-08-23 ~12:4x: the median-gauge A/B paid out on e5a ──────────
@@ -2192,6 +2213,12 @@ chains:
     # (e5b q rose slightly while armed, 2.57→2.67: a slower slew fights less. Palliative
     # only; reverted for single-variable hygiene. fixtures/expectations_20260824_slewcap_
     # discriminator.txt holds the pre-registration; /tmp/slewcap_samples.jsonl the data.)
+    # ══ CURRENT STATE 2026-10-11 (#125, KV): gal_e5a / gal_e5b ARE THE FORMAL COMPARISON PAIR, matched on every
+    # non-endpoint key: rrate-command ON both (since 08-30), rrate-phase-feed ON both (e5a matched up 10-11),
+    # NEITHER feeds the joint state (e5a's #85 feed removed 10-11), fleet-trim-rebase-adjust / eph-rebase off on
+    # both. Dated notes below that say otherwise ("ON for gal_e5a only", "OFF on BOTH", "DELIBERATELY NOT
+    # MATCHED", "REMAINING ASYMMETRY", "THIS CHAIN ONLY") are the history of how the pair got here. Any future
+    # A/B on this pair changes exactly ONE key.
         signal: gal_e5b
         dr-clock-adopt: true
     # ── #33 PLL FINE STAGE armed 2026-08-18 (second chain) ──────────────────────────────
