@@ -156,35 +156,6 @@ railing veto. This is also #151's geometry-only sky: `predict_all`'s docstring a
 `max_age` for geometry callers, never for seeds.
 Evidence `fixtures/projtest/live/passes/`, `fixtures/projtest/unk/`.
 
-### #150 — C11–C14 are BDS-3 MEOs now, and no chain can track them (found 2026-09-28)
-**Three places still encode "PRN < 19 = BDS-2", and IGS retired that on 2026-04-19..21.** The SINEX
-`SATELLITE/PRN` block (`~/.cache/kotekan_gps/igs_satellite_metadata.snx`) moved BDS-3 satellites onto
-the decommissioned BDS-2 PRNs: **C11 = C234, C12 = C233, C13 = C235 (ex-C49), C14 = C232**, all BDS-3 MEO
-(a = 27 906 km); C01–C04 and C06–C08 went to BDS-3 GEO/IGSO (not visible here). Each of the four MEOs is
-above 10° for 6–8 h a day at DRAO, C13 peaking at 82° — as much sky as C19 or C33 [archive: BRDC 09-28].
-The rule lives in `signals.py` `_CHAINS` (`min_prn 19` on bds_b2a/bds_b2b, and its "C1-C18 are BDS-2
-birds" comment), in the manifest lists (`BDS_B2A_P_CS`, `BDS_B2B_I`, `BDS_B3I_NH` = 19–42,
-`config/gnss_fleet_chord.yaml` l.547/603/615), and in `gen_fleet.py --check-prns`, whose `MIN_PRN` table
-declares the B2a/B2b exclusion "CORRECT and must never be reported as a fault" — so the gate built to
-catch exactly this is silenced by the same rule. B3I has no floor in that table, so `--check-prns`
-should already be reporting C11–C14 EXCLUDED on `BDS_B3I_NH` [tree; not run — it re-fetches the BRDC
-cache the live broker reads].
-**They are also the brightest satellites we do not track.** A near-boresight pass raises L5, E5b, B3 and
-E6 but not L2 (BeiDou has nothing at 1227.6 MHz): **C12 at 0.6° on 09-25 13:58–14:20Z** (power ~7×,
-plotted rail 3.5–6.5% — first misread as gain work), **C13 at 3.0° on 09-28 12:46–13:08Z** (+4.4 / +4.8 /
-+7.0 / +3.5 dB in L5 / E5b / B3 / E6; plotted rail peak 0.6% in B3, ×5.3 true; the L5 search clock broke
-at 12:58 and #142 carried it into e5a/b2a) [live, `rf_chan_*.jsonl` + broker log]. The broker's transit
-veto and freeze do see them — `dr_pd` pools the whole BRDC — subject to #151's expiry.
-**Fix:** take BDS-3 capability from the SINEX block type (`BDS-3*`), the standing rule for capability,
-in all three places; add C11–C14 to all three lists (B3I stays matched to B2a/B2b for tau_band);
-regenerate the node configs; node cycle (KV). **Check:** `--check-prns` lists C11–C14 EXCLUDED before the
-change and is clean after; each gets a `fleet_present` row within a pass of rising.
-**10-11: the change is committed (`6a19f658b`), not yet deployed.** The registry's block types now decide BeiDou capability
-(prnmap, the broker's implied `--signal-capability`, the almanac sky; the PRN floor is the fallback), the three lists carry
-11–14, and `--check-prns` judges by the registry (pinned sky: C11–C14 EXCLUDED before, clean after). Deploy: regen +
-node cycle for the lists, the next broker restart for the gate. **Open question:** the check now reports C6–C8 EXCLUDED —
-BDS-3 IGSO per the registry that peak at 18–22° here (the old note called them invisible). Adding them makes 31 slots.
-
 ### #151 residual — the seeds and the sky still keep two ephemerides, and EPH-REBASE (#101) never fires
 The reload cadence is fixed (`b2223cc7a`, closed). What is left is the entry's own "check #101 first":
 - **Two copies, two phases.** The seeds' copy (`dr_state["eph"]`) reloads on the broker's start phase and

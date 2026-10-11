@@ -10,7 +10,7 @@ file's git history (`git log -p docs/CHORD_BUGLIST.md`).
 Reconciled 2026-09-12 against HEAD `b45949144`, 57 commits after the 2026-09-10 pass (which was
 itself 496 commits after 2026-08-22, by seven parallel section audits that each read the tree AND
 the live fleet). Added since: #54, #65, #93/GAP 3, #111, #116, #117, #118, #128. **2026-10-11 pass** (HEAD `0011cf3b1`):
-#34, #55, #102, #107 residual, #112, #121, #130/#153, #133, #149, #159, #160, #162; moot #31, #88, #123.
+#34, #55, #102, #107 residual, #112, #121, #130/#153, #133, #149, #150, #159, #160, #162; moot #31, #88, #123.
 
 ⚠️ **Three of those closed on a MEASUREMENT rather than a fix**, and their write-ups below carry
 the sensitivity as well as the result — #93 in particular is a *null*, and a null is only worth
@@ -81,6 +81,7 @@ that goes with it.
 | #159 | the nightly beam-cube build rewrote the live broker's ephemeris store with yesterday's sky | `5174a6d69`: `fetch_brdc` sends any `when` more than an hour from the wall clock to `cache_dir/offline/<day>`, so no offline caller can prune the live store | a 2026-10-09 fetch built its own 892-record store under `offline/20261009` and the live store's mtime did not move |
 | #34 | the producer published a forecast `ref_hop` as `pow_hop` (FUTURE lines) | closed as bounded (10-11): both consumers clamp it (`7a4bc0089`, `babd111c7`) and the rate fell from 24/h to ~1/h; the producer half was never worth a node cycle | `grep -c FUTURE` on the broker log: ~1/h, harmless |
 | #55 | the `carrier_phase_from_ref` A/B stayed in the kernels long after #52 gave it a winner | `d64a04bfe`: phase from the window reference only; the untaken arm, the switch and its `n_m` removed (−44 lines) | fleet-wide since the 2026-10-11 14:07Z cycle (`gd64a04bfe8` on all six, 0 FATAL, 0 catch-ups); `grep -rn carrier_phase_from_ref lib` empty |
+| #150 | C11–C14 are BDS-3 MEOs on re-used BDS-2 PRNs, and the "PRN < 19 = BDS-2" rule in the broker, the lists and `--check-prns` hid them | `6a19f658b`: BeiDou capability from the IGS registry's block types (prnmap, the broker's implied gate, the almanac sky; the floor is the fallback), lists 11–14 + 19–42, the check judges by the registry | lists live at the 10-11 14:07Z cycle, gate at the 14:16Z broker restart: `signal-capability bds_b2a: 2 PRN(s) excluded by the IGS registry (9, 10)`; C11 (el 41°) seeded within 40 s, FLEET-INST align 0.998, 52.8 dB-Hz duty 1.00 on bds_b2a by 14:18Z; C12–C14 follow on their passes. The registry also admits C6–C8 (BDS-3 IGSO, peak 18–22° here): C08 was tracked at 37 dB-Hz through a runtime lane swap, so the start-up lists are the only place they are still absent |
 
 ## Closed because the premise died (moot)
 
