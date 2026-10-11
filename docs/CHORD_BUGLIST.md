@@ -84,21 +84,6 @@ nothing reads or forwards; both faults they are built for (#159's lost sky, #154
 reading logs. **Fix:** tie them into CHORD's monitoring and alerting (KV: "ultimately"); until then a one-line summary
 in the viewer would do.
 
-### #161 — gps_l2c's clock can latch whole milliseconds off from a cross-band bootstrap, and the mod-1-ms JOINT-CLK check then holds it there (2026-10-08)
-**Measured [live 10-08], knock-on of #159:** with no sky, gps_l5 locked noise and its `clock-mod-20-ms` epoch went bad.
-gps_l2c's JOINT-CLK was REFUSED from 01:44:48Z (sigma over 0.5), so its local clock went 300 s stale and the dead-reckon
-re-bootstrapped from gps_l5: 02:16:30Z `clock BOOTSTRAP 2564.97 chips` (+5 ms), 02:21:50Z `5122.47 chips` (+10 ms; it was
-7.47 before). The seeds now carry `off +5122.512`, half the 20-ms CM period, so gps_l2c has had fleet presence 0 since
-the sky came back at 02:22Z while the other seven chains recovered. JOINT-CLK reads `legacy 5122.5 joint 7.51 ... delta
-+0.001 -> ADOPTED` every 30 s: the comparison is modulo 1 ms (`diff ... mod 511.5`), so the 10-ms error is invisible,
-the local clock never goes stale again, and the bootstrap that could correct it never re-arms. Only a broker restart
-clears it today.
-**10-08 10:09Z: a broker restart did NOT clear it.** gps_l2c came up at clk +0.23 and re-bootstrapped to 5122.45 at 10:10:07Z. The wrong epoch is gps_l5's NH alignment: during the frozen sky the nh hint offset walked 16 -> 17 -> ... -> 19 -> 0 -> ... -> 10 -> 6 (01:46-02:19Z) and NH-JOINT followed it (0.02 -> 4.8 -> 7.0 -> 10.02 ms); the fresh broker relearned offset 7 from its first 6 detections (10:09:51Z) and NH-JOINT resolved 10.020 ms again. The hint narrows the search to +-2 of the learned offset (`searchhint.py`), so a wrong offset confirms itself while detections keep coming. **Cleared 10:17Z** by stopping the broker, restarting the aggregator and starting the broker: NH-JOINT resolved 0.019 ms, the hint came back at offset 16, gps_l2c bootstrapped to 7.50 chips and was at fleet presence 1.00 from 10:20Z. So the stale phase lives in the aggregator's detection table plus the hint narrowing; the broker alone cannot escape it.
-**Fix direction:** do not bootstrap a clock from a donor whose own lock is not established (gps_l5 was on noise); compare
-JOINT-CLK and the cross-band donor modulo the chain's own code period (20 ms for CM), not 1 ms; and refuse a bootstrap
-that moves the clock by whole milliseconds without a detection that confirms it.
-Check: `[archive]` broker.log gps_l2c 02:16–02:34Z (`BOOTSTRAP`, `JOINT-CLK`, `BIRTH-STEP ... off +5122`).
-
 ### #158 — projection phase 2 leftovers: `b` reaches only the lobe fold, `k`/source are not exported, the dB judge never ran (2026-10-02)
 **Phase 2 is closed on its judge** (KV, 10-02): E5a × E6 arcs through transits 39% (freeze) → 74% (09-30) → 82% (10-01)
 → 97% (28/29, night of 10-01/02, freeze 2°); lock held 149/149; closure median 0.57 TECU = quiet sky. Three items the plan
@@ -125,24 +110,11 @@ have no explanation, and with the losses gone they can be studied only in the ar
 ~10,014 chips (≡ −216 mod 10230) off the joint clock at 09-27 21:03Z. Evidence
 `fixtures/projtest/forensics/l2c/timeline.json`.
 
-### #144 — the transit sky (`_bore` freeze, railing veto) cannot see unhealthy or non-BRDC satellites
-`nearest_boresight` runs over `brdc_predict` → `gnss_ephemeris.predict_all`, which drops G/E records with
-health ≠ 0 (~l.477) and stale ephemerides, so neither the shared-model transit freeze nor the railing veto
-fires for E18 (1.6 deg 09-26 09:42Z), E14 (0.66 deg 09-28 04:51:54Z), or objects in no BRDC at all:
-NORAD 40748 "BEIDOU-3S M2S" (Celestrak C58; 09-27 12:40Z at 0.66 deg, +10 dB in 1176/1207/B3I for up to
-24 min) and GLONASS (L3OC at 1202 MHz sits in e5b/b2b). **E14 is E202** (SINEX: GALILEO 6, GAL-2 = FOC,
-launched 2014-08-22 into the eccentric orbit with E18 = E201): flagged unhealthy, and a strong E5a emitter.
-On its 09-28 pass it was the N² top vector inside 2° (cos² 0.56–0.61 onto its model subspace, control
-0.077), `shared_frozen` stayed 0, and the live shared model turned toward it fleet-wide: similarity to the
-pre-pass model fell to 0.14–0.73 on L5 and 0.45–0.83 on the other E/B bands (fleet minima), against
-0.88–0.99 in an unfrozen gap with no unhealthy satellite, while L2C, which E14 does not reach, held
-0.87–0.90 [archive: viscap replay, `fixtures/projtest/viscap0928/`]. That is this item's measured cost.
-Next exposures (predicted): NORAD 40748 09-30 17:13Z at 1.34°, E18 10-01 04:11Z at 4.75°. Fix: build the
-transit sky with the health gate off and a long age limit, supplemented from TLEs; reuse it for the
-railing veto. This is also #151's geometry-only sky: `predict_all`'s docstring allows a widened
-`max_age` for geometry callers, never for seeds.
-Evidence `fixtures/projtest/live/passes/`, `fixtures/projtest/unk/`.
-
+### #144 residual — objects in no BRDC are still invisible to the transit sky
+The health and age gates are fixed (`aef331c10`, closed): the freezes and the railing veto read `sky.transit_sky`.
+What is left: NORAD 40748 "BEIDOU-3S M2S" (Celestrak C58; 0.66° on 09-27, +10 dB) and GLONASS (L3OC at 1202 MHz,
+no propagator, #129) are in no BRDC at all. A TLE supplement needs a path that is not Celestrak-from-cf06 and keeps
+capability on the IGS SINEX. Evidence `fixtures/projtest/unk/`.
 ### #151 residual — the seeds and the sky still keep two ephemerides (EPH-REBASE is now off everywhere)
 The reload cadence is fixed (`b2223cc7a`, closed). 10-11: `eph-rebase` is off on every chain (#125), so the "no step is
 computed" half below is parked with #101; what remains is the two-copies design note. The entry's own "check #101 first":
