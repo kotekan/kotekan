@@ -340,12 +340,6 @@ gather were restarted explicitly at 12:58:24Z (`systemctl --user restart gnss-ga
 broker) followed. **Still open:** why the target's stop does not propagate to those two (journal access), the real reboot,
 and the cube leg's unit. `stack_down.sh` relies on that stop — until this is understood, stop the broker and gather by name.
 
-### #55 — collapse the `carrier_phase_from_ref` A/B
-It is **armed in production on both node legs** and #52 (the frame-boundary jump) is fixed fleet-wide, so the A/B
-has a winner. **[tree 10-11]** 6 sites in 3 files remain (`cudaGnssChordDespread.cu` ×2, `cudaGnssDespreadKernel.cu`
-×3, the `DespreadParams` default) and no config sets it. Hardcode the winning mode (the default, 1) and delete the
-param; bit-identical output expected, so it can ride any node cycle.
-
 ### #125 — e5a/e5b is the formal comparison pair (KV 10-11): re-twin it on four flags, two of which need a decision
 **[tree 10-11, resolved from `common` + each chain block as `broker_multi.load` does]** The pair differs on six
 non-endpoint keys now (the old entry's `post-sat-geometry` moved to `common`; `rrate-command` is on for both):
