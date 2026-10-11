@@ -489,7 +489,157 @@ def _h5_freq_ids(path):
     return [int(x) for x in lo]
 
 
-def build_day_h5(args, chain, paths, day_unix, geom):
+def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters=12):
+    """Per-PRN level offset in dB, solved JOINTLY with a coarse beam by median polish.
+
+    WHY THIS EXISTS. Received power goes as G_ant(direction) * EIRP_sat(off-nadir) / r^2. The
+    build already divides out each element's noise pedestal and corrects range, but NOTHING
+    removes the satellite's own transmit power and antenna pattern -- so every satellite paints
+    its track at its own level and the map grows arcs along the bright ones.
+
+    MEASURED 2026-09-19 on 20260915/16 rung12, 20-70 deg off boresight, after pedestal and
+    range: the per-PRN level spans 13.0 dB (gps_l5, 21 PRNs; 16.2 dB over 28 Galileo PRNs),
+    rms 3.9 dB -- against a map that spans ~20 dB end to end. It is a SATELLITE PROPERTY, not
+    noise: the two days correlate at r = 0.971 with 1.0 dB day-to-day scatter against a 4.05 dB
+    between-PRN spread.
+
+    ⚠️ SOLVED JOINTLY, NOT AS EACH SATELLITE'S OWN MEAN. A satellite that only ever transits a
+    bright part of the beam would have that beam signal absorbed into its "gain" and flattened
+    out of the map. Median polish alternates gain(prn) and beam(cell) on a COARSE grid, so a
+    satellite is referenced to the other satellites crossing the same cells, not to itself.
+    Robust (medians, not means) because a railing pass would otherwise drag its own gain up.
+
+    ⚠️⚠️ THE GRID MUST BE COARSE ENOUGH THAT SATELLITES SHARE CELLS, and this is the whole
+    difficulty. The first cut used healpix nside 16 and solved gains of 0.08 dB p-p against a
+    measured 13 dB -- because over one day the MEDIAN nside-16 cell is crossed by exactly ONE
+    satellite (only 16% see three or more). With one PRN in a cell, beam = value - gain
+    absorbs everything and gain solves to zero: the fit is degenerate and reports "nothing to
+    correct", which looks exactly like success. Measured PRNs per cell, gps_l5 over 20260915:
+
+        healpix nside 16    median  1   16% of cells have >=3      DEGENERATE
+        healpix nside  8    median  2   48%
+        healpix nside  4    median  4   92%
+        theta 5 x phi 90    median  8   94%                        <- used here
+        theta 5 x phi 360   median 17  100%   (no azimuth left in the beam)
+
+    theta x phi about boresight rather than healpix: the beam is dominantly radial, so this
+    buys occupancy where it is cheap. phi 90 keeps quadrant-scale azimuthal structure -- the
+    ~2 dB cos(2*PA) elongation -- in the BEAM instead of letting it leak into the gains.
+
+    The gains are centred on their own median, so the map's absolute level is unchanged -- this
+    redistributes between satellites, it does not rescale the result.
+    """
+    sys_ = CHAIN_SYS[chain]
+    lvl = defaultdict(list)          # (prn, coarse cell) -> [log10 power]
+    raw = defaultdict(list)          # prn -> [log10 power], for the degeneracy guard
+    for path in paths:
+        try:
+            a, t, prn, P, nre, fids = _h5_rows(path)
+        except SystemExit:
+            raise
+        except Exception:
+            continue
+        if P.size == 0:
+            continue
+        inday = (t >= day_unix) & (t < day_unix + 86400.0)
+        if not inday.any():
+            continue
+        tb = ((t - day_unix) // FLOOR_BIN_S).astype(int)
+        floor = np.full_like(P, np.nan)
+        for b in np.unique(tb[inday]):
+            m = (tb == b) & inday
+            with np.errstate(all="ignore"):
+                floor[m] = np.nanmedian(P[m], axis=0)[None]
+        minute = (t // GEOM_BIN_S).astype(int)
+        uk, inv = np.unique(np.stack([prn, minute], 1), axis=0, return_inverse=True)
+        inv = inv.ravel()
+        el = np.full(len(uk), np.nan); az = np.full(len(uk), np.nan)
+        rng = np.full(len(uk), np.nan); vet = np.zeros(len(uk), bool)
+        for j, (pn, mn) in enumerate(uk):
+            tt = mn * GEOM_BIN_S + GEOM_BIN_S / 2
+            vet[j] = geom.vetoed(tt)
+            g = geom.at(sys_, int(pn), tt)
+            if g and g[0] is not None:
+                el[j], az[j], rng[j] = g
+        vet_r, el_r, az_r, rng_r = vet[inv], el[inv], az[inv], rng[inv]
+        ok = inday & ~vet_r & ~np.isnan(el_r) & (el_r > args.mask_deg)
+        if not ok.any():
+            continue
+        rscale = np.ones(int(ok.sum())) if args.no_range_norm else (rng_r[ok] / R_REF) ** 2
+        Pk, Fk = P[ok], floor[ok]
+        with np.errstate(all="ignore"):
+            live = (Pk > 0.0) & (Fk > 0.0) & (Pk > Fk)
+            pw = np.where(live, (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None],
+                          np.nan)
+            row = np.nanmean(pw, axis=(1, 2))        # pool subbands+elements: one level per row
+        # theta (off boresight) and phi (position angle about it), the beam's own coordinates.
+        aa, ee = az_r[ok], el_r[ok]
+        th = angsep_deg(aa, ee, BORE_AZ, BORE_EL)
+        ca, ce = math.radians(BORE_AZ), math.radians(BORE_EL)
+        u = np.stack([np.cos(np.radians(ee)) * np.sin(np.radians(aa)),
+                      np.cos(np.radians(ee)) * np.cos(np.radians(aa)),
+                      np.sin(np.radians(ee))], -1)
+        nh = np.array([-math.sin(ce) * math.sin(ca), -math.sin(ce) * math.cos(ca), math.cos(ce)])
+        ea = np.array([math.cos(ca), -math.sin(ca), 0.0])
+        ph = np.degrees(np.arctan2(u @ ea, u @ nh)) % 360.0
+        cellkey = (np.floor(th / dth).astype(np.int64) * 1000
+                   + np.floor(ph / dphi).astype(np.int64))
+        good = np.isfinite(row) & (row > 0.0)
+        with np.errstate(all="ignore"):
+            lg = np.log10(np.where(good, row, 1.0))
+        for p_, x_, v_ in zip(prn[ok][good], cellkey[good], lg[good]):
+            lvl[(int(p_), int(x_))].append(float(v_))
+            raw[int(p_)].append(float(v_))
+    if not lvl:
+        return {}
+    cell = {k: float(np.median(v)) for k, v in lvl.items() if len(v) >= 3}
+    prns = sorted({k[0] for k in cell})
+    pixs = sorted({k[1] for k in cell})
+    by_prn = defaultdict(list); by_pix = defaultdict(list)
+    for (p_, x_), v_ in cell.items():
+        by_prn[p_].append((x_, v_)); by_pix[x_].append((p_, v_))
+    gain = {p_: 0.0 for p_ in prns}
+    beam = {x_: 0.0 for x_ in pixs}
+    for _ in range(iters):
+        for x_ in pixs:
+            r = [v - gain[p_] for p_, v in by_pix[x_]]
+            if r:
+                beam[x_] = float(np.median(r))
+        for p_ in prns:
+            r = [v - beam[x_] for x_, v in by_prn[p_]]
+            if r:
+                gain[p_] = float(np.median(r))
+    mid = float(np.median(list(gain.values())))
+    out = {p_: 10.0 * (gain[p_] - mid) for p_ in prns}     # dB, centred
+    sp = np.array(list(out.values()))
+    occ = np.array([len({k[0] for k in cell if k[1] == x_}) for x_ in pixs])
+    # ⚠️ GUARD THE DEGENERACY, because it fails SILENTLY. Compare what was solved against the
+    # raw per-PRN scatter: a well-posed fit recovers most of it, an under-determined one
+    # returns ~0 and looks like "nothing to correct". This caught the nside-16 version.
+    rawmed = {p_: float(np.median(v)) for p_, v in raw.items() if len(v) >= 200}
+    rawsp = 10.0 * float(np.std(list(rawmed.values()))) if len(rawmed) > 3 else float("nan")
+    print("  %s: per-PRN gains over %d satellite(s), %d coarse cell(s) "
+          "(median %d PRN/cell): spread %.2f dB p-p, %.2f dB rms; raw per-PRN rms %.2f dB"
+          % (chain, len(prns), len(pixs), int(np.median(occ)) if len(occ) else 0,
+             sp.max() - sp.min(), sp.std(), rawsp))
+    # ⚠️ THE GUARD IS OCCUPANCY, NOT "solved vs raw". Those two are NOT meant to match: a
+    # satellite that lives at high theta looks faint because the BEAM is faint there, and the
+    # fit is supposed to leave that in the beam. Measured on 20260915 gps_l5 -- raw per-PRN
+    # spread 4.98 dB rms, of which the fit attributes only ~1.2 dB to the satellite. An
+    # earlier version alarmed on that ratio and called a CORRECT fit under-determined.
+    # What actually fails is occupancy: with ~1 PRN per cell the fit is degenerate and returns
+    # zeros. Verified by injection on the real occupancy (gnss_beam_cube inject test): a known
+    # 7.85 dB rms gain comes back at r = 1.0000 exactly, and r = 0.996 with 3 dB of per-cell
+    # noise. So trust a small answer when the cells are populated, and only here.
+    med_occ = int(np.median(occ)) if len(occ) else 0
+    if med_occ < 3:
+        print("  ⚠️ %s: median %d PRN per cell -- the (gain, beam) fit is UNDER-DETERMINED and "
+              "will return ~0 whatever the truth is. Coarsen dth/dphi before believing this."
+              % (chain, med_occ), file=sys.stderr)
+    return out
+
+
+def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
     """Master cube for one chain from cube-archive files (L0 or rung), one sender per file."""
     tmin, tmax = day_unix, day_unix + 86400.0
     sys_ = CHAIN_SYS[chain]
@@ -585,6 +735,16 @@ def build_day_h5(args, chain, paths, day_unix, geom):
         with np.errstate(all="ignore"):
             valid = (Pk > 0.0) & (Fk > 0.0)
             live = valid if args.unbiased else (valid & (Pk > Fk))
+            # Per-satellite level, if solved. Applied HERE -- in power, alongside the range
+            # scale -- so it divides out the satellite's EIRP before the sample ever reaches a
+            # pixel. A PRN with no solved gain (too few cells) passes through at 1.0 rather
+            # than being dropped: an unnormalised sample is worse than nothing only if it is
+            # also unlabelled, and stats["prn_ungained"] counts them.
+            if prn_gain:
+                gdb = np.array([prn_gain.get(int(p_), np.nan) for p_ in prn[ok]])
+                stats["prn_ungained"] += int(np.isnan(gdb).sum())
+                gsc = np.where(np.isfinite(gdb), 10.0 ** (-np.nan_to_num(gdb) / 10.0), 1.0)
+                rscale = rscale * gsc
             pw = np.where(live, (Pk - Fk) / np.where(live, Fk, 1.0) * rscale[:, None, None], 0.0)
         for sub in range(S):
             lv = live[:, sub, :]
@@ -663,8 +823,19 @@ def cmd_build(args):
         blobs = {}
         for chain, paths in present:
             if args.source == "l0":
-                r = build_day_h5(args, chain, paths, day_unix, geom)
+                # The gain solve is its own pass over the same files: it needs every
+                # satellite's whole day before the first sample can be corrected, so it
+                # cannot ride along with the accumulation it corrects.
+                pg = (prn_gain_table(args, chain, paths, day_unix, geom)
+                      if args.prn_norm else None)
+                r = build_day_h5(args, chain, paths, day_unix, geom, prn_gain=pg)
+                if pg:
+                    out["prn_norm"] = True
+                    out.setdefault("prn_gains_db", {})[chain] = \
+                        {str(k): round(v, 3) for k, v in sorted(pg.items())}
             else:
+                if args.prn_norm:
+                    sys.exit("--prn-norm needs --source l0 (it solves from the cube rows)")
                 r = build_day(args, chain, paths, day_unix, geom)
             if r is None:
                 continue
@@ -966,6 +1137,11 @@ def main():
                    help="chain-health mask from gnss_chain_health.py; 'auto' = %s/mask_<day>.json, "
                         "'' = none" % HEALTH_DIR)
     b.add_argument("--no-range-norm", action="store_true")
+    b.add_argument("--prn-norm", action="store_true",
+                   help="divide out each satellite's own level (EIRP + its antenna "
+                        "pattern), solved jointly with a coarse beam by median polish. "
+                        "Measured spread without it: 13-16 dB peak-to-peak between "
+                        "satellites, which is what paints arcs along the bright ones.")
     b.add_argument("--unbiased", action="store_true",
                    help="l0: keep below-pedestal samples (signed debias) instead of dropping them")
     b.set_defaults(func=cmd_build)
