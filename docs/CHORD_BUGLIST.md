@@ -352,11 +352,6 @@ generator. Check: a generator refusal on a 48-element live_element_ranges.
 The reference-weight defect is fixed (`978561481`, closed). Left from the same review: an element whose
 rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with zero weights. Unmeasured.
 
-### #146 residual — upstream develop still re-parses the FatalError message
-Fixed on `kv/chord-gnss` (`35d7120d0`, closed). develop carries the same code. The patch and a Boost case
-that fails on the old code are in `fixtures/upstream0928/`. Open the PR with #1699 as its stated
-dependency: without #1699, a controlled shutdown can hang in `~gpuProcess` where the abort used to exit.
-
 ### #154 — the shared element model latches its phase pin from its FIRST model, which is one shadow (2026-09-28)
 `shared_consensus` (`GnssGpuRecordAssemble.cpp`) forms the first shared model from a single warm shadow
 (the one with the most live elements), latches `_g_pin_ref` from it, and phase-aligns every later model

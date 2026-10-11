@@ -10,7 +10,7 @@ file's git history (`git log -p docs/CHORD_BUGLIST.md`).
 Reconciled 2026-09-12 against HEAD `b45949144`, 57 commits after the 2026-09-10 pass (which was
 itself 496 commits after 2026-08-22, by seven parallel section audits that each read the tree AND
 the live fleet). Added since: #54, #65, #93/GAP 3, #111, #116, #117, #118, #128. **2026-10-11 pass** (HEAD `0011cf3b1`):
-#34, #55, #102, #107 residual, #112, #113, #121, #125, #130/#153, #133, #144, #149, #150, #159, #160, #161, #162, #172, #173; moot #11, #31, #88, #123, #174.
+#34, #55, #102, #107 residual, #112, #113, #121, #125, #130/#153, #133, #144, #146 residual, #149, #150, #159, #160, #161, #162, #172, #173; moot #11, #31, #88, #123, #174.
 
 ⚠️ **Three of those closed on a MEASUREMENT rather than a fix**, and their write-ups below carry
 the sensitivity as well as the result — #93 in particular is a *null*, and a null is only worth
@@ -88,6 +88,7 @@ that goes with it.
 | #173 | a node config on disk went stale ~6 days after regeneration and a relaunch then died on its EOP table | `eop_cron.sh` step 4 (10-11): regenerate the on-disk configs when the staged table is newer and `gen_fleet --check` passes | `eop_cron.log` prints `on-disk configs regenerated: table end A -> B` the hour after choco's daily table refresh |
 | #144 | the transit sky (shared-model freeze, clock freeze, railing veto) dropped unhealthy and stale-ephemeris satellites, so E14/E18 passes never froze anything | `aef331c10`: `sky.transit_sky` (health gate off, a day of toe validity) read only by the three transit consumers; seeds keep the strict sky byte-identical; the veto line carries the health flag | on a copy of the 10-11 sky the transit sky holds E14 and E18 (unhealthy) that the strict sky drops; watch `BORESIGHT TRANSIT -- E14 ... (health 130)` and `shared_frozen 1` on their next pass inside 2° |
 | #161 | gps_l2c's clock latched +10 ms off a cross-band bootstrap from gps_l5 on noise, and the mod-1-ms JOINT-CLK check held it for 8 h | `f29211e30` + `34acbcf90` (established = two residuals inside a chip and none beyond 5; the first rule withheld every donor on a healthy sky): `clockhealth.dr_solve_healthy`; no bootstrap from an unestablished donor; whole-period steps refused without a fresh healthy record; the NH hint learns nothing while unestablished; JOINT-CLK resolved across the chain's own period | `test_clockperiod.py` (16 checks: +10 ms and +1 ms REFUSED, the right millisecond ADOPTED, other chains unchanged); on a healthy sky no `clkxboot-*`/`nhjoint-unhealthy`/`nhhint-unhealthy` lines and gps_l2c's JOINT-CLK unchanged; on a collapse they appear in that order and a whole-period error reads `REFUSED (the clock-mod-20-ms record ...)` |
+| #146 residual | upstream develop still re-parsed the FatalError message | landed upstream as #1753 (merged 2026-10-09, `lib/core/kotekanLogging.*` now identical to ours); our regression test went up as PR #1762 (10-11) | `git diff origin/develop -- lib/core/kotekanLogging.cpp` empty; #1762 adds `test_error_message_keeps_braces` |
 
 ## Closed because the premise died (moot)
 
