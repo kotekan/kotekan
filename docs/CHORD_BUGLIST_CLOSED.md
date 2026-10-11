@@ -10,7 +10,7 @@ file's git history (`git log -p docs/CHORD_BUGLIST.md`).
 Reconciled 2026-09-12 against HEAD `b45949144`, 57 commits after the 2026-09-10 pass (which was
 itself 496 commits after 2026-08-22, by seven parallel section audits that each read the tree AND
 the live fleet). Added since: #54, #65, #93/GAP 3, #111, #116, #117, #118, #128. **2026-10-11 pass** (HEAD `0011cf3b1`):
-#102, #107 residual, #112, #121, #130/#153, #133, #149, #159, #160, #162; moot #31, #88, #123.
+#34, #102, #107 residual, #112, #121, #130/#153, #133, #149, #159, #160, #162; moot #31, #88, #123.
 
 ⚠️ **Three of those closed on a MEASUREMENT rather than a fix**, and their write-ups below carry
 the sensitivity as well as the result — #93 in particular is a *null*, and a null is only worth
@@ -79,6 +79,7 @@ that goes with it.
 | #162 | three uncommitted leftovers in the live checkout | `8a9661d55` (node_up GNSS_ENV), `5e97adaec` (beam-cube `--prn-norm`, opt-in), `b4d744517` (telemfmt ignored) | `git status` clean |
 | #121 | bds_b2a commanded carrier trim on the 40 Hz default cap and railed there (+39.99 Hz on C24, 10-11 02:35Z) | `carrier-max-hz: 10.0` on bds_b2a, matched to gal_e5a/e5b (yaml, 10-11), live at the 12:58Z broker restart | `JRR-CMD[C]` on bds_b2a stays within ±10 Hz; the commanded-step sign calibration is an experiment, not a defect |
 | #159 | the nightly beam-cube build rewrote the live broker's ephemeris store with yesterday's sky | `5174a6d69`: `fetch_brdc` sends any `when` more than an hour from the wall clock to `cache_dir/offline/<day>`, so no offline caller can prune the live store | a 2026-10-09 fetch built its own 892-record store under `offline/20261009` and the live store's mtime did not move |
+| #34 | the producer published a forecast `ref_hop` as `pow_hop` (FUTURE lines) | closed as bounded (10-11): both consumers clamp it (`7a4bc0089`, `babd111c7`) and the rate fell from 24/h to ~1/h; the producer half was never worth a node cycle | `grep -c FUTURE` on the broker log: ~1/h, harmless |
 
 ## Closed because the premise died (moot)
 

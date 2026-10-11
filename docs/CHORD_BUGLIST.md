@@ -579,14 +579,6 @@ why substituting it into the ephemeris measured 65× worse and was reverted.
 quantisation sawtooth and the pipeline term together, and unblocks both `--innov-dr-seeds` and
 the ephemeris epoch.
 
-### #34 — the producer still publishes a forecast `ref_hop` as `pow_hop`
-**[live]** 16 `fe-axis: newest pow_hop … FUTURE` + 8 `FUTURE instance(s)` per hour, the same rate
-as when it was parked. The *consequence* is now bounded at both ingestion and filter
-(`7a4bc0089`, `babd111c7`), so it is harmless — but the producer half is untouched. ⚠️ The old
-"⚡ THE LEAD: exactly 100 records = 25 frames — find what holds 100 records" line is **falsified**
-and has been deleted: the measured band was 1.01–1.13 s and `dr-forecast-lead-s: 1.0` sits inside
-it. Do not go hunting a ring lap.
-
 ---
 
 ## Open — the fix changes the WIRE (needs a telemetry version bump)
