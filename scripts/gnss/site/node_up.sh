@@ -24,6 +24,7 @@
 #   env:  GNSS_BIN  binary            (default build/kotekan/kotekan)
 #         GNSS_CFG  config            (default config/generated/chord_gnss_<node>.yaml)
 #         GNSS_LOG  log file          (default /tmp/gnss_node.log)
+#         GNSS_ENV  extra environment for kotekan, "VAR=value [VAR=value ...]" (this start only)
 #
 # Needs an interactive sudo on the target, so it uses `ssh -t` and will prompt per node.
 set -u
@@ -70,6 +71,21 @@ fi
 # manifest has never heard of. preflight() is where this is fatal.
 CFG=${GNSS_CFG:-}
 LOG=${GNSS_LOG:-/tmp/gnss_node.log}
+# GNSS_ENV becomes systemd-run --setenv flags on the transient unit, so it lasts for this start
+# (and the unit's own on-failure restarts) and a plain node_up drops it. Entries are restricted to
+# a quoting-safe character set because they travel through ssh and sudo inside REMOTE_UP.
+SETENV=""
+for kv in ${GNSS_ENV:-}; do
+    case "$kv" in
+        [A-Za-z_]*=*) case "$kv" in *[!A-Za-z0-9_.,:/=+-]*) kv="" ;; esac ;;
+        *) kv="" ;;
+    esac
+    if [ -z "$kv" ]; then
+        echo "FAILED: GNSS_ENV entries must be VAR=value using only letters, digits and _.,:/=+-" >&2
+        exit 1
+    fi
+    SETENV="$SETENV --setenv=$kv"
+done
 
 # --- shared by `up` and `restart` -------------------------------------------------------------
 # One copy of the preflight and one copy of the systemd-run line, so the two actions can never
@@ -213,6 +229,8 @@ PYEOP
             fi
         fi
     fi
+    [ -n "$SETENV" ] && echo "note: starting with$SETENV" >&2
+    true
 }
 
 # The record dir is node-local (NOT the NFS home) and rawFileWrite fails on a missing one.
@@ -253,7 +271,7 @@ REMOTE_UP="mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/nu
         --working-directory=$K \
         --property=Restart=on-failure --property=RestartSec=20 \
         --property=StartLimitIntervalSec=0 \
-        --property=LimitCORE=infinity \
+        --property=LimitCORE=infinity$SETENV \
         --property=StandardOutput=append:$LOG \
         --property=StandardError=inherit \
         '$BIN' --config '$CFG' --bind-address 0.0.0.0:12048"
