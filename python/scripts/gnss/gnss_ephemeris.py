@@ -510,7 +510,16 @@ def best_eph(records, t_gpst, max_age=14400.0):
 
 
 def predict_all(
-    eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0, signal=None, dcb=None
+    eph,
+    lat,
+    lon,
+    alt,
+    t_utc,
+    mask_deg=0.0,
+    max_age=14400.0,
+    signal=None,
+    dcb=None,
+    health_gate=True,
 ):
     """Per visible sat: az/el, geometric range (m) with Earth-rotation (Sagnac)
     correction, range-rate (m/s), sat clock (s). Receiver clock NOT included --
@@ -521,7 +530,10 @@ def predict_all(
     stale-in-memory or offline-cached ephemeris still yields az/el through a network
     gap -- Keplerian propagation is sub-degree/few-km for many hours past toe. The
     precise-clock callers (dead-reckon) keep the tight default; toe_age_s is per-sat
-    so a consumer can still gate on freshness."""
+    so a consumer can still gate on freshness.
+
+    health_gate=False keeps unhealthy G/E records: GEOMETRY ONLY (sky.transit_sky, #144) --
+    an unhealthy satellite still transmits and still captures the array. Seeds never set it."""
     t = gpst_of_utc(t_utc)
     rx = _ecef_of_llh(lat, lon, alt)
     out = {}
@@ -529,7 +541,7 @@ def predict_all(
         e = best_eph(recs, t, max_age)
         if e is None:
             continue
-        if e.get("health", 0) not in (0, 0.0) and key[0] != "C":
+        if health_gate and e.get("health", 0) not in (0, 0.0) and key[0] != "C":
             # BDS exemption -- KEPT, but its original rationale was an artifact and is void:
             # it was written when health was misparsed from orb[25], which for BDS is AODC
             # (~1 on everything). The 2026-07-13 "healthy C21 reads health=1" evidence was

@@ -41,7 +41,17 @@ from gnss_broker.fits import (
     seed_phase_at_ref,
     split_erratic_offsets,
 )
-from gnss_broker.sky import nearest_boresight
+from gnss_broker.sky import nearest_boresight, transit_sky
+
+
+def _transit_pd(ctx):
+    """The geometry-only sky the transit freezes read (#144): this cycle's if the predict ran,
+    else the one the cycle was handed."""
+    return (
+        getattr(ctx.drp, "transit_pd", None)
+        or getattr(ctx, "transit_pd", None)
+        or getattr(ctx.drp, "pd", None)
+    )
 
 
 def dr_clock_solve(ctx):
@@ -63,7 +73,7 @@ def dr_clock_solve(ctx):
             % (
                 ctx.dr_state["clk_transit"][1][0],
                 ctx.dr_state["clk_transit"][1][1],
-                (nearest_boresight(ctx.drp.pd) or (float("nan"),))[0],
+                (nearest_boresight(_transit_pd(ctx)) or (float("nan"),))[0],
                 ctx.drp.now_w - ctx.dr_state.get("clk_transit_since", ctx.drp.now_w),
                 ctx.dr_state["clk"]
                 if ctx.dr_state.get("clk") is not None
@@ -423,7 +433,7 @@ def dr_clock_transit(ctx):
         or not ctx.dr_state.get("clk_confirmed")
     ):
         return None
-    _near = nearest_boresight(getattr(ctx.drp, "pd", None))
+    _near = nearest_boresight(_transit_pd(ctx))
     return _near if (_near is not None and _near[0] < _deg) else None
 
 
@@ -3113,6 +3123,22 @@ def stage_dead_reckon(ctx):
             except Exception as e:
                 ctx.drp.pd, ctx.drp.pd2, pd0 = {}, {}, {}
                 _log("dead-reckon: predict failed: %s" % e)
+            # The GEOMETRY-ONLY sky for the transit freezes and the railing veto (#144): health
+            # gate off, a day of toe validity, every constellation. Built from the same
+            # ephemeris as the seeds' sky and kept separate from it on purpose.
+            try:
+                if ctx.dr_state.get("eph"):
+                    ctx.drp.transit_pd = transit_sky(
+                        ctx.dr_eph_mod,
+                        ctx.dr_state["eph"],
+                        ctx.args.lat,
+                        ctx.args.lon,
+                        ctx.args.alt,
+                        datetime.fromtimestamp(ctx.drp.now_w, tz=timezone.utc),
+                    )
+                    ctx.dr_state["transit_pd"] = ctx.drp.transit_pd
+            except Exception as e:
+                _log("dead-reckon: transit sky failed (%s); the freezes keep the last one" % e)
             if ctx.drp.pd:
                 # cache for the SEED loop (next cycle): BRDC doppler/rate for
                 # search-anchored sats, so both masters share one currency

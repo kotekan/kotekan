@@ -182,6 +182,7 @@ class ChainContext(object):
         "dr_pd",
         "dr_pd0",
         "dr_pd2",
+        "transit_pd",
     )
 
     # Slots whose "not yet known" value is not None, as FACTORIES.

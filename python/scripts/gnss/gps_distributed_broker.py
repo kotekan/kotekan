@@ -1110,6 +1110,7 @@ def main(argv=None, rx=None, publisher=None):
             "raw_clk",
             "pd",
             "pd2",
+            "transit_pd",  # the geometry-only sky the transit freezes read (#144)
             "offs",
             "la",
             "tag",
@@ -1128,6 +1129,7 @@ def main(argv=None, rx=None, publisher=None):
 
         def __init__(self):
             self.clk_now = None
+            self.transit_pd = None
             # The RAW clock solve, before the quality gate accepts or rejects it. It used to
             # be a bare local called `raw` -- a name the ALMANAC stage also uses, for an
             # entirely unrelated quantity, in the same flat namespace. The two never collided
@@ -2174,6 +2176,8 @@ def main(argv=None, rx=None, publisher=None):
         _ctx.dr_pd = (dr_state or {}).get("pd") or {}
         _ctx.dr_pd2 = (dr_state or {}).get("pd2") or {}
         _ctx.dr_pd0 = (dr_state or {}).get("pd0") or {}
+        # The transit freezes' sky (#144); the strict sky stands in until the first predict.
+        _ctx.transit_pd = (dr_state or {}).get("transit_pd") or _ctx.dr_pd
         seeding.stage_detections_to_seeds(_ctx)
 
         # 3. COAST / drop (the trajectory-predictor promotion). A visible sat is coasted through a

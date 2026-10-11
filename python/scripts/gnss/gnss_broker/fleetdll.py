@@ -532,12 +532,13 @@ def stage_fleet_dll(ctx):
             _log("%s: %s" % (_tag, _bmsg))
 
         # ── THE BORESIGHT-TRANSIT VETO (shared by D2 and D3) ──────────────────────────
-        # Pooled over EVERY constellation -- ctx.dr_pd carries all three, and the quantiser is
+        # Pooled over EVERY constellation -- ctx.transit_pd carries all three (the geometry-only
+        # sky, health gate off, #144: an unhealthy satellite still rails), and the quantiser is
         # shared, so a per-chain answer would be worse than none (it would clean the chain
         # carrying the bright satellite and leave the rest looking like clean controls).
         # Transits recur on the SIDEREAL day, so this is predictable rather than bad luck.
         _near = (
-            nearest_boresight(ctx.dr_pd)
+            nearest_boresight(ctx.transit_pd)
             if ctx.args.detector_transit_veto_deg > 0.0
             else None
         )
@@ -545,9 +546,15 @@ def stage_fleet_dll(ctx):
         if _in_transit:
             _log_rl(
                 "transit-veto",
-                "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight; D2/D3 suppressed "
-                "(the quantiser rails and satellites drop across every chain at once)"
-                % (_tag, _near[1][0], _near[1][1], _near[0]),
+                "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight (health %s); D2/D3 "
+                "suppressed (the quantiser rails and satellites drop across every chain at once)"
+                % (
+                    _tag,
+                    _near[1][0],
+                    _near[1][1],
+                    _near[0],
+                    (ctx.transit_pd or {}).get(_near[1], {}).get("health", "?"),
+                ),
                 every_s=120.0,
             )
 

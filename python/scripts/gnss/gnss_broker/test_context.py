@@ -40,6 +40,7 @@ PER_CYCLE = {
     "dr_pd",
     "dr_pd0",
     "dr_pd2",
+    "transit_pd",
     "payload",
     "jrc",
     "rr_cmd_new",

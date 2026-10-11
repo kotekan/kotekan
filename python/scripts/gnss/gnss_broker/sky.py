@@ -589,3 +589,34 @@ def nearest_boresight(pd, el0=BORESIGHT_EL_DEG, az0=BORESIGHT_AZ_DEG):
         if best is None or d < best[0]:
             best = (d, key)
     return best
+
+
+# The transit sky's toe validity: geometry only, so a day past toe is still sub-degree.
+TRANSIT_MAX_AGE_S = 86400.0
+
+
+def transit_sky(ge, eph, lat, lon, alt_m, t_utc):
+    """GEOMETRY ONLY. {(sys, prn): {az, el, health, toe_age_s}} over every constellation in `eph`,
+    with predict_all's health gate OFF and a day of toe validity (#144).
+
+    This is the sky the shared-model transit freeze (almanac `_bore`), the dead-reckon clock
+    freeze and the railing veto read. The strict sky drops an unhealthy or stale-ephemeris
+    satellite, and that satellite still transmits: E14 = E202, flagged unhealthy, passed 0.66 deg
+    off boresight on 2026-09-28, was the N^2 top vector inside 2 deg, and turned the shared model
+    toward itself fleet-wide while `shared_frozen` stayed 0. Never for seeds, probes or hints --
+    those keep predict_all's defaults, and nothing here carries a clock. Objects in no BRDC at all
+    (NORAD 40748, GLONASS) are still invisible; a TLE supplement is the follow-up."""
+    pa = ge.predict_all(
+        eph, lat, lon, alt_m, t_utc, mask_deg=-90.0, max_age=TRANSIT_MAX_AGE_S, health_gate=False
+    )
+    t = ge.gpst_of_utc(t_utc)
+    out = {}
+    for key, v in pa.items():
+        e = ge.best_eph(eph.get(key, ()), t, TRANSIT_MAX_AGE_S)
+        out[key] = {
+            "az": v["az"],
+            "el": v["el"],
+            "toe_age_s": v["toe_age_s"],
+            "health": (e or {}).get("health", 0),
+        }
+    return out
