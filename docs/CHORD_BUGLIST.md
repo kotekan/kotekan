@@ -3,20 +3,15 @@
 What is open on the CHORD side (branch `kv/chord-gnss`). Closed items are in
 [`CHORD_BUGLIST_CLOSED.md`](CHORD_BUGLIST_CLOSED.md); their narratives are in git history.
 
-**Last reconciled: 2026-09-12 at HEAD `b45949144`** — 57 commits after the 2026-09-10 pass,
-which was itself 496 commits after 2026-08-22. Closed since that pass: **#54** (the CPU reference
-quantised the code phase, then retired on an anchor-scaled tolerance), **#65**, **#93 / GAP 3**
-(no aid available, bounded by measurement), **#111**, **#116**, **#117**, **#118**, **#128**.
-Opened: **#129** (no GLONASS positions anywhere), **#130** (cx42 heap corruption).
+**Last reconciled: 2026-10-11 at HEAD `0011cf3b1`** (previous pass 2026-09-12 at `b45949144`). Closed in
+this pass, each verified against the tree or the fleet: **#102, #107 residual, #112, #130/#153, #133, #149, #160,
+#162**; moot: **#31** (roadmap, not a bug), **#88** (folded into the upstream PR plan), **#123** (the stack left
+cf06). Opened: **#164–#174**. The 10-11 memory note `chord-buglist-triage-20261011` records every check.
 
-**Fleet state: UP since 2026-09-14** (down 09-11 21:04 → 09-14 for the handover; see
-[`CHORD_STACK_SHUTDOWN.md`](CHORD_STACK_SHUTDOWN.md), which now covers both directions and the
-four faults that stopped that bring-up). `[live]` claims are re-checkable again.
-
-⚠️ **But every `[live]` mark dated 09-10 or earlier now sits across a full teardown, a develop
-merge, a fleet rebuild and an F-engine re-base.** Treat those as `[carried]` until re-measured —
-the instrument they were measured on is not bit-for-bit the one running now. Archive work is
-unaffected: `fixtures/obs/*_20260910.jsonl` is a genuine 24 h at 6.8 rows/s, and is what closed #93.
+**Fleet state: six nodes on `0011cf3b1`** since 10-11 00:55Z (cx51 back 10-10), broker on the gnss VM, recv1 taking
+all three N² legs. The 10-10 re-base changed the per-board phases and the #154 cron re-took the reference. The F-engine
+runs the 10-07 gain table (#167) and does not send rows C/D (#166). `[live]` marks dated before 10-10 sit across a
+re-base and a binary change; treat them as `[carried]` until re-measured.
 
 **How to read the marks.** `[tree]` = checked against the working tree, with the check named.
 `[live]` = measured on the running fleet, with the date and the number. `[bench]` / `[archive]` =
@@ -81,20 +76,26 @@ seven are dead-reckon.
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
 
-### #162 — the live checkout carries three uncommitted leftovers, each waiting on a decision (2026-10-09)
-All three are ours; the ownership was lost across session summaries, not unknown.
-- `python/scripts/gnss/gnss_beam_cube.py` (+178): opt-in `build --prn-norm`, a per-satellite level offset solved
-  jointly with a coarse beam (median polish, 5° × 90° cells about boresight). Written 09-19, parked as "bought 3%,
-  probably revert"; b23b06ded (09-22) committed only the health-mask hunks. The 3% came from a blind metric:
-  most pixels are crossed by one track, so a per-pixel model absorbs that satellite's offset. The joint
-  BEAM + G + H solve (`streak_joint.py`, 09-21) found the per-satellite gains real (3.7 dB rms; between-satellite
-  disagreement 3.20 → 1.54 dB). Proposed: save the diff as a patch, revert, re-judge against the joint solve.
-- `scripts/gnss/telemfmt`: the plain symlink `build_tool.sh` made on cx43 (09-09) next to `telemfmt.cx43`.
-  `scripts/gnss/.gitignore` lists each tool's symlink by name and misses this one; nothing reads it
-  (`test_telem.py` compiles its own copy). Proposed: delete it and the `.cx43` products, add `telemfmt` to
-  the `.gitignore`.
-- `scripts/gnss/site/node_up.sh`: `GNSS_ENV="VAR=value ..."` becomes `systemd-run --setenv` for that start only
-  (used for the #160 `CUDA_MODULE_LOADING=EAGER` test; dry-run tested, byte-identical without it). Commit or drop.
+
+### #173 — a node config on disk goes stale ~6 days after regeneration, and a relaunch then dies on its EOP table (2026-10-06)
+**What [live 10-06 03:36–05:17Z]:** every relaunch after the F-engine re-base died on the configs' EOP table (ended
+10-06 00:00Z) until the hourly push reached it. `eop_cron.sh` patches RUNNING nodes only; `gen_fleet` pulls a current
+table at regeneration; `config/generated/*.yaml` is untracked and nothing refreshes it between regenerations. The
+window is ~6 days from the last regen, and any relaunch (#153's were the usual trigger) inside it stays dead until :17.
+**Fix:** have `eop_cron.sh` rewrite the on-disk configs' table when it pushes, or have `node_up.sh` refuse or refresh a
+table whose last entry is in the past. Check: `python3 -c` over `config/generated/*.yaml` printing the table's last date.
+
+### #172 — the VM's service logs grow without rotation (2026-10-11)
+**What [live]:** `/var/tmp/gnss-logs/broker.log` 27.1 GB and `aggregator.log` 27.4 GB since 09-17 (~2.3 GB/day
+together); the VM's disk is at 36%, so ~70 days to full. The units write `StandardOutput=append:`.
+**Fix:** logrotate with `copytruncate` (the writers hold the fd) and a few compressed generations, or journald with
+a size cap. Note which memory notes grep `broker.log` by offset (the 2.5 GB tail census in the 10-11 triage).
+
+### #171 — the ALERT files reach no one (2026-10-09)
+**What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that
+nothing reads or forwards; both faults they are built for (#159's lost sky, #154's mis-pins) were found by a person
+reading logs. **Fix:** tie them into CHORD's monitoring and alerting (KV: "ultimately"); until then a one-line summary
+in the viewer would do.
 
 ### #159 — the nightly beam-cube build rewrites the live broker's ephemeris store with yesterday's sky (2026-10-08)
 **What happened [live 10-08]:** at 01:34:59Z `beamcube_daily.sh` (cf06) built the 10-07 cube. `Geometry.__init__`
@@ -255,159 +256,6 @@ detector stays as the backstop.
 **Check:** replaying the 09-23 and 09-28 windows alarms within 10 min of onset and the re-anchor brings d back
 inside ±1 chip of ref; zero alarms on a quiet day; e5a/b2a `code_resid_m` returns to its pre-transit level.
 
-### #153 — node processes abort with `malloc(): unaligned tcache chunk detected` (heap corruption; 4 restarts in 17 h on the d53b6a254 bundle) (2026-09-29)
-**⚡ ROOT-CAUSED 09-30 from the first two cores, and a fix is staged, not yet deployed.** cx51 crashed twice right
-after KV's 12:45Z node_up restarts; cores are in cx51:/var/crash.
-
-- **The abort is a double destruction of a chordMetadata.**
-  - The writer: fork-only `cudaRFISKtilde.cpp:390` replaces `bf_mask_applied`'s ring slot 0 **every frame**. That breaks
-    `NDArrayRingBuffer::set_metadata`'s set-once contract. It came in with bad4892eb and has been in every fleet build since
-    abb8f4f20 (08-31); upstream chord has since dropped the echo (78822148a).
-  - The reader: `cudaCopyFromRingbuffer.cpp:112`, on another GPU 0 main thread, copies that slot every frame through
-    `GenericBuffer::get_metadata()`, which took no lock.
-  - A shared_ptr copy racing an assignment of the same shared_ptr means the object dies twice, so its json nodes and key
-    strings are freed twice.
-  - The core shows it: the aborting thread's bin-4 link has its low 32 bits zeroed (a live rb-node's red colour store),
-    and a `FREQ_UPCHAN_FACTOR` key-string chunk sits on both an arena fastbin and a tcache.
-- **The segfault at capture start is a FramePrefetchService race.** The prefetcher holds an unlocked reference into the
-  static stream-ID vector while another port's worker `resize()`s it (reallocates and frees it). The core has port 1's
-  first `push_back` landing in the freed array.
-- **cx19's "silent" restarts are not crashes.** 09-29 06:52Z and 09-30 06:45Z were unattended-upgrades plus `needrestart`
-  restarting gnss-node. Fix (KV's sudo): `/etc/needrestart/conf.d/gnss.conf` with
-  `$nrconf{override_rc}{qr(^gnss-node)} = 0;` on every node.
-- **Fixes:**
-  - Upstream #1713 (prefetcher; approved).
-  - Upstream #1714: first taking the buffer mutex in `get_metadata`. jbmertens asked for something finer, so it now uses
-    shared_ptr atomics on the slots, commit 1cfecda36; adversarially reviewed, TSan clean, and its new frame-cycle test
-    catches a reverted store.
-  - Fork: set-once on `kv/rfi-bfmask-set-once`.
-- **Deploy:** `build/kotekan/kotekan.next_fix153_20260930` (md5 16959baf0a18).
-  - Built from branch kv/proj-phase1-fix153 = kv/proj-phase1 + #1713 + set-once + the mutex version of #1714.
-  - See `fixtures/prefetch_fix/STAGED_BINARY.txt` for the swap command.
-  - When the F-engine returns: wait for the broker's re-anchor, swap, then run the node_up restart loop.
-  - Close #153 after a few node-days on it with no `malloc()` line, no unexplained relaunch and no new core.
-- **Follow-ups (upstream code):**
-  - `#ifdef DEBUG` in FramePrefetchService is always true (DEBUG is the logging macro), so its per-frame freq-ID string
-    loop runs in production.
-  - The readiness wait sleeps 1 ms while holding `global_stream_id_mutex`.
-  - #1714's list of direct slot readers.
-  - #156 and #157 below.
-  - cx51 has 4 of the 7 aborts, so rule out its RAM too.
-
-**Since the node bundle d53b6a254 (#145 + #1699 + #146) went fleet-wide on 09-28 18:33-20:39Z, kotekan
-has died with glibc's heap check on three nodes and restarted silently on two:** cx51 01:43:20Z
-(`Main process exited, code=dumped, status=6/ABRT`, systemd relaunched it 20 s later; the node ran
-the phase-1 projection build, a dirty d53b6a254), cx43 ~05:26Z and cx42 ~11:24Z on the STOCK bundle
-binary (no projection code), all three with `malloc(): unaligned tcache chunk detected` as the last
-line of `/tmp/gnss_node.log` before the new `Kotekan version ... starting`; cx42 also restarted once
-earlier and cx19 at 06:52:05Z with NO message and no operator (cx19's unit shows NRestarts=0, so it
-was not a systemd relaunch -- unexplained; a segfault prints nothing, so those may be the same bug
-with a different symptom). cx27 and cx44 ran 16 h clean. ⚠️ **No 422ea1bf8 node log survives**
-(corrected 09-29): node_up.sh keeps one rotation, so every node's oldest `/tmp/gnss_node.log.1` starts
-on the bundle (`gd53b6a254b`) and holds only its first ~2 h, which are clean. The only pre-bundle
-baseline is the journal: one ABRT on 422ea1bf8 (cx42 09-28 05:13Z) in ~160 node-hours, against 4-5
-events in ~90 on the bundle. At equal rates, 4 or more of 5 events landing in the bundle window has
-p ≈ 0.06 (5 of 6: 0.025), so the rise is suggestive, not established. The message means a freed chunk's tcache metadata was overwritten: a heap overflow/underflow
-or a write through a stale pointer somewhere in the process; the abort comes at a LATER malloc, in
-whichever thread happens to allocate, so the last log lines (routine n2-send refusals, valve drops)
-say nothing about the writer. Nothing broker-side lines up with the times (the BIRTH-STEP lines
-before each one recur every few seconds all day).
-- **Which binary died (from each lifetime's `Kotekan version` line in the node log; the fleet
-  file on disk has been a projection build since 09-28 21:20Z, so a relaunch after that runs
-  projection code with the mode off):** cx43's aborting lifetime = the STOCK bundle (`gd53b6a254b`,
-  no projection code) -> the corruption predates the projection; cx42's stock lifetime (20:39Z
-  start) died silently, its next lifetime (projection build, mode off) took the malloc abort;
-  cx51 = projection build in shadow. An adversarial memory-safety review of the projection diff
-  (09-29 12:00Z) found no out-of-bounds write, no use-after-free and no cross-thread write into
-  a reallocating container; it found only torn reads of fixed-size POD vectors by the REST thread,
-  and its size guards are in the 1c build.
-- **From the journals (KV, 09-29 12:15Z):** cx43 05:26:01Z `status=6/ABRT`; cx42 11:23:32Z
-  `status=11/SEGV` then, 45 s into the relaunched process, 11:24:37Z `status=6/ABRT` (the malloc
-  line 78 log lines after its start: the corruption can strike during start-up); cx42 ALSO aborted
-  09-28 05:13:00Z on 422ea1bf8, before the bundle (its message is in a log rotation that no longer
-  exists), so the bundle is not clearly the origin, and only the rate may be new; cx19's 06:52Z restart has
-  no failure line at all -- a deliberate `systemctl restart`, not a crash (not KV; the other
-  session is the candidate). Every 09-24/25 entry is the shutdown-hang / F-engine-outage history.
-- **#1699 and #146 are cleared; #145 is the only bundle change left** (09-29). Two adversarial
-  reviews of #1699 found no memory-safety defect: on the normal path it adds only a stack guard
-  object and one atomic load per frame, and everything else it adds runs after a stop, an exception,
-  or in the destructor. #146 is reached only from FATAL_ERROR, /kill and the teardown config report.
-  So the stock bundle's only C++ change that runs mid-run is #145, and its review (09-29) cleared it
-  too:
-  - its changes write only locals and skip one `hold()` call; nothing is resized or shared across
-    threads;
-  - a sanitizer harness of the deployed ElemCal and assembler code ran clean (ASan/UBSan,
-    `_GLIBCXX_ASSERTIONS`, TSan; ~426M records including starts inside a freeze, reference swaps and
-    slot resets; `cf06:/var/tmp/kvand-review145/`).
-
-  **None of the bundle's three changes can write the heap.** The writer predates the bundle, or it
-  lies in code not yet reviewed: DPDK, the GPU stages, bufferSend/Recv, the N²/eigen stages, the
-  combiner. The projection build's code had its own review (above). The node config is mostly not a
-  confound: the 422ea1bf8 lifetimes ran the same a16ba9bdd configs from KV's 09-27 ~18:2xZ cycle
-  (per the 09-28 handoff; no log survives to check).
-- **Latent, pre-existing, not live (found by the #145 review; cheap to harden, none explains #153 as
-  deployed).** Each needs a producer or config that breaks the contract, and none does today: every
-  producer's channel count matches, `n_rows_spec` is 4, and there are 96 position values.
-  - GnssGpuRecordAssemble's chan_export zero-fill spans `frame_floats(n_prn, _n_elements, hdr.n_chan)`,
-    with the frame's `n_chan` unchecked against the configured channels.
-  - GnssN2RecordAssemble takes offsets from the input header's `n_chan` and loops to its `n_rec`, with
-    no MAX_REC check.
-  - The stack arrays `g3[6]`/`e3[6]` are indexed by the frame's `n_rows_spec`, never checked against 6.
-  - Two constructor FATAL_ERRORs lack a `return`, so a short `elem_positions_enu` would then be
-    indexed out of range.
-- **Where it is detected is not where it was written.** Each assembler thread frees and allocates
-  two 0x210 chunks and one 0x110 chunk per record per PRN (rebuild_split, mag), so those threads are
-  the likeliest to trip over a damaged tcache entry. A backtrace in an assembler thread does not
-  implicate the assembler. (Inference: with `USE_NUMA=ON` kotekan frames come from
-  `numa_alloc_onnode`, which is mmap-based, so the damaged chunk is a heap object such as a vector,
-  string or json, and a frame-buffer overrun would not hit a chunk header directly.)
-- **Why it hides:** the unit's `Restart=` policy relaunches within 20 s, the models re-form in
-  minutes, and the node's stdout goes to `/tmp/gnss_node.log` (node_up.sh rotates it to `.1` on a
-  manual restart) rather than the journal, so nobody sees the message unless they grep for it. Any
-  live switch set over REST is lost on the relaunch (that is how the projection canary lost its
-  shadow mode overnight; now a config key).
-- **Cost:** a node's chains drop for ~2 min and its shared element model re-forms cold (a restart
-  inside a transit re-forms it frozen and single-element until the freeze lifts).
-- **Diagnostics, cheapest first:**
-  - (1) Give the nodes a core. Two things stop one today. First, the unit's SOFT core limit is 0:
-    `LimitCORE=infinity` is only the hard limit, `LimitCORESoft=0`, and apport writes nothing under
-    a 0 limit. Second, even with the limit raised, apport's `consistency_checks()` drops the whole
-    crash, core included, when `/proc/<pid>/exe` no longer exists or is newer than the process,
-    which a binary swapped under a running node is. So use a plain file pattern. cx27 runs
-    systemd-coredump instead (ProcessSizeMax=64G since 09-14; it holds a 09-24 kotekan core), and
-    the same sysctl overrides either. Per node, without a restart (one `ssh -t`, one sudo prompt):
-    `p=$(systemctl show gnss-node -p MainPID --value); sudo sysctl -w
-    kernel.core_pattern=/var/crash/core.%e.%p.%t.%s && sudo prlimit --pid $p --core=unlimited &&
-    sudo cp /proc/$p/exe /var/crash/kotekan.$p && grep "core file" /proc/$p/limits`.
-    - The `cp` keeps the exact binary, because the fleet file is often replaced under a running
-      process.
-    - `%e` is the faulting THREAD's name (Stage names its threads, with `/` written as `!`), so
-      the file name alone says which thread died.
-    - A relaunch starts at soft 0 again, so each arming yields one core per node until the node's
-      next node_up start, which now passes `--property=LimitCORE=infinity` (d543d3abc). All six
-      nodes were armed this way on 09-29 at about 19:40Z.
-    - Expect ~44 GB per core: 5 GB of heap plus 38 GB of `MAP_PRIVATE` hugepage buffers, which the
-      default coredump_filter 0x33 includes. Every node has ≥ 2.5 TB free on /.
-    - apport restores its own pattern if its service restarts (e.g. a package upgrade), so
-      re-check `/proc/sys/kernel/core_pattern` before trusting a quiet night. To disarm:
-      `sudo systemctl restart apport` (cx27: `sudo sysctl --system`).
-    - Afterwards, `gdb /var/crash/kotekan.<pid> /var/crash/core.*.<pid>.* -batch -ex 'thread
-      apply all bt 12'` names the aborting thread's stage. That is the victim, often near the
-      culprit.
-  - (2) `MALLOC_CHECK_=3` in the unit environment makes glibc check on
-  every free and abort at the first corrupted chunk, closer to the writer (glibc >= 2.34 also needs
-  `LD_PRELOAD=libc_malloc_debug.so.0`); the tcache is per thread, so the aborting thread's
-  backtrace names the stage that FREED the damaged chunk and the bin size names the object
-  (0x210 = a 32-element vector<complex<double>>); (3) an ASan build of
-  the CPU stages (build_nodpdk on cf06 is USE_DPDK OFF) replaying a captured tiles+ctl stream
-  through GnssN2RecordAssemble -> GnssGpuRecordAssemble -> GnssTelemPack catches anything on the
-  host side deterministically; (4) A/B: one node on 422ea1bf8 against the bundle fleet -- it now
-  tests only the three reviews, and at the bundle's ~1 event per 20 node-hours a clean node-day still
-  has p ≈ 0.3, so it takes several; the core (1) is the better next step.
-- **Check:** `for n in cx19 cx27 cx42 cx43 cx44 cx51; do ssh $n 'grep -a -c "malloc()" /tmp/gnss_node.log*; systemctl show gnss-node -p NRestarts -p ExecMainStartTimestamp'; done`
-  and `sudo journalctl -u gnss-node | grep -E "Main process exited|Scheduled restart"` for the
-  exit code of every relaunch (status=6/ABRT = this; status=11/SEGV = the silent kind).
-
 ### #155 — dTEC arcs die in transits of 1176-MHz emitters: the fleet ADR holds the arc while the victim band's residual is dark (2026-09-29)
 **⚡ 09-30, with projection live fleet-wide (from 09-29 17:00Z): candidate 1 largely holds.** Seven transits had data,
 09-30 03:17Z to 15:10Z, between two F-engine outages.
@@ -487,39 +335,52 @@ Doppler) = **21–25 minutes**. The configured tolerance accepts gaps up to 60. 
 25–60 minute band is unwrapped onto the wrong branch, silently. Latent today; cap `fit-gap-s` at
 ~1200 s, or make the unwrap gap-aware and reset instead of guessing.
 
-### #120 — cf06 has zero systemd units; nothing survives the weekly reboot
-⚠️ **The DOWN half is now solved and the UP half is not** — `scripts/gnss/stack_down.sh` stops all
-eight components in dependency order and archives the logs first
-([`CHORD_STACK_SHUTDOWN.md`](CHORD_STACK_SHUTDOWN.md)). What is still missing is anything that
-brings them *back* unattended.
-⚠️ **Do not enable a boot-time unit while the array is handed over.** cf06 reboots ~03:03 on
-`unattended-upgrades`' own schedule, so an autostart would bring the GNSS stack up inside someone
-else's run — contending for cf06 (GPU 0 carries the aggregator and cube) and writing cube data
-through their window. Write the units by all means; arm them when the array comes back.
-**[live]** `systemctl list-units --all | grep -iE 'gnss|broker|gather|agg|viewer|kotekan'` returns
-nothing. cf06 reboots weekly and re-fired on 2026-09-05 with 10 headless hours. The exposure has
-grown from "the gather" to six manual `nohup` processes plus a cube archiver that
-`gnss_fleet_chord.yaml` says must come up *before* the nodes. One boot-time unit closes it; the
-constraint that deferred this ("the node restart is scarce") is gone.
+### #120 — the stack's boot path: the VM's units are untested across a reboot, and cf06's cube leg has no unit
+**[live 10-11]** The broker, gather, aggregator, eight obs writers, viewer and rail run on the gnss VM as user units
+(`~/.config/systemd/user`; `gnss-stack.target` in `default.target.wants`; `Linger=yes`; every unit
+`ConditionHost=gnss`, `After=remote-fs.target network-online.target`, `RequiresMountsFor=/home/kvand`; broker after
+gather, viewer and obs after broker). A VM reboot has never been tried and needs root. cf06's leftover copies of the
+units are inert (`ConditionHost`), but its cube leg — the archiver (`build_nodpdk` kotekan, pid 5407, parent init,
+up 8.6 d) and `cubecompact_loop.sh` — is two bare processes with no unit, on the host that reboots weekly.
+**Validation short of a reboot:** (1) `systemctl --user stop gnss-stack.target && systemctl --user start
+default.target` proves the wiring and the ordering on the VM (~20 s; the nodes keep tracking; the L5 fast loop rails
+~10 min after the broker returns); (2) `loginctl show-user kvand -p Linger` = yes, `systemctl --user is-enabled
+gnss-stack.target` = enabled; (3) the boot-ordering question (the user manager starts after
+`systemd-user-sessions.service`, itself after `remote-fs.target`, so the NFS home should be up first) is only proven
+by a real reboot: ask the VM's admin for one at a quiet hour. (4) Write a unit for the cube leg (cf06, or the VM if
+it moves) and the compactor loop.
 
 ### #55 — collapse the `carrier_phase_from_ref` A/B
-It is **armed in production on both node legs** and #52 (the frame-boundary jump) is now fixed
-fleet-wide, so the A/B has a winner. The reference count has gone 22 → 28 → **38** code sites in
-9 files plus 115 doc/yaml mentions while it waited. **[tree]** Hardcode the winning mode, delete
-the other branch and the mentions, in one commit.
+It is **armed in production on both node legs** and #52 (the frame-boundary jump) is fixed fleet-wide, so the A/B
+has a winner. **[tree 10-11]** 6 sites in 3 files remain (`cudaGnssChordDespread.cu` ×2, `cudaGnssDespreadKernel.cu`
+×3, the `DespreadParams` default) and no config sets it. Hardcode the winning mode (the default, 1) and delete the
+param; bit-identical output expected, so it can ride any node cycle.
 
-### #125 — the A/B pair is confounded again, and three documents claim otherwise
-**[tree, resolved via `broker_multi.load`]** gal_e5a and gal_e5b differ on at least seven
-non-endpoint flags (`rrate-phase-feed`, `eph-rebase`, `fleet-trim-rebase-adjust`,
-`joint-feed-spec`, `joint-model-primary`, `joint-shadow`, `post-sat-geometry`). Three places
-assert the opposite or are stale: this buglist's old "differ on no non-endpoint flag";
-`CHORD_VECTOR_TRACKER_PLAN.md` ("`rrate-command` armed on 1 of 5 chains" — it is 3 of 8); and
-`gnss_fleet_chord.yaml`'s "all five chains". Also **[tree]** the bds_b2a chain block states it
-"consumes NOTHING from the joint state" eleven lines below `joint-consume: clk,rate`, and calls
-itself the first non-GPS clock feeder when the flag that arms that feed is gal_e5a-only.
-**Fix: re-twin the pair or re-designate bds_b2b/b3i as the control pair, and correct the three
-documents.** A confounded pair silently voids every future verdict taken on it — it has already
-voided one.
+### #125 — e5a/e5b is the formal comparison pair (KV 10-11): re-twin it on four flags, two of which need a decision
+**[tree 10-11, resolved from `common` + each chain block as `broker_multi.load` does]** The pair differs on six
+non-endpoint keys now (the old entry's `post-sat-geometry` moved to `common`; `rrate-command` is on for both):
+- **Inert:** `joint-shadow` (e5a only; the broker sets it on any `joint-consume` chain, so e5b has it anyway) and
+  `joint-feed-spec` (read only inside the model-primary feed). Delete e5a's `joint-shadow`; nothing changes.
+- **`fleet-trim-rebase-adjust: 1` and `eph-rebase: 1`, e5a only** (the #92 handover and the #101 eph-rebase, "e5b =
+  control"). #92's base rate is ~0 in this regime, #101 never fires (#151), and the eph-rebase flag is read off a store
+  all chains share, so neither gives a clean single-chain A/B. Recommended: off on both (they move together — #101
+  needs the handover).
+- **`rrate-phase-feed`**: false on e5a (arm 14: the fine feed steps aside on a commanded chain), true on e5b — but e5b
+  has been commanded too since 08-30, so e5b runs today the combination arm 14 withdrew, and it is the only chain with
+  the fine feed on; rows are shared per (tag, prn), so it is also what keeps e5a's Galileo rows quiet. **Decide:** off
+  on both (loses that precision under both commands) or on for both (re-flies arm 13's failure mode).
+- **`joint-model-primary` + `joint-feed-spec`**: e5a feeds the joint state (the only Galileo measurements in it) and
+  e5b is the loop-detection control. **Decide:** remove e5a's feed (the joint state goes back to GPS-only and the
+  clock every `clk,rate` consumer adopts shifts), or give e5b the same feed (the one-controller rule allows it, since
+  neither consumes `slew`, but E5b at 1207 MHz adds a new per-band delay to the joint state, which is how the 08-18
+  attempt deadlocked). Either way the feed loop's control goes away.
+- **Stale claims to correct with the change:** the `gnss_chains_chord.yaml` e5b block (its 08-15/08-22 notes say the
+  carrier command is "ON for gal_e5a only" and "OFF on BOTH"; both chains command now), the bds_b2a block ("consumes
+  NOTHING from the joint state" eight lines below `joint-consume: clk,rate`; its feed flags are commented out), the
+  parked #92 line below (armed on e5a) and the instrument table above (09-10). `CHORD_VECTOR_TRACKER_PLAN.md` no
+  longer exists; `gnss_fleet_chord.yaml`'s "all five chains" is a dated 08-15 measurement, not a claim.
+**Deploy:** one yaml commit, one broker restart (~10 min of L5 settling, no node cycle). Check: `broker_multi.load`
+shows the two chains equal on every non-endpoint key, and the pair's first verdict is taken after that restart.
 
 ---
 
@@ -556,39 +417,22 @@ carries C56/C58. Small, and separate from the above.
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
 
-### #160 — `gnssN_n2dual` spends 3–4 s on its first frame building per-PRN Phi tables, so both ports' DPDK workers fall 5–39 frames behind at every node start (2026-10-08)
-**Measured [live 10-08, all six nodes, timed from packet sequence numbers]:** every start, both ports, catches up 5–27
-frames (0.2–1.1 s) about 1 s into capture (cx19 18:13Z: 32 and 39). A second trigger mid-run: 02:22:00–01Z on the five
-nodes whose logs cover it, port 1 only, 2–3 s after the broker's BRDC reload re-seeded every chain from ~3 to ~12 sats;
-the 10:09Z and 10:17Z broker restarts, which re-seeded the same set, did not trigger it.
-**Measured [live 10-08, cx19, three traced starts: `/buffers` at 10 Hz, `/gpu_profile` at 1 Hz]:** every stock pipeline
-finishes its first frame within 0.7 s of its port starting; `gnss0_n2dual` at +2.7, +3.6 and +4.0 s, `gnss1_n2dual` at
-+6.0, +5.7 and +7.2 s (port 1 starts 1.8–2.8 s after port 0), i.e. 2.7–4.4 s after its own port. `gnssN_n2dual` reads
-`host_voltage_ringbuffer`, so `run_send_voltage` blocks, `host_voltage_buffer_N` is full at +1.2 s, then
-`host_pl_mask_buffer`, the transpose and the 24-frame `network_input_buffer_N`, and the workers run dry. The first
-version of this entry blamed GPU 0 and cited `host_bf_mask_buffer` 48/48; that buffer sits at 48/48 in steady state.
-`CUDA_MODULE_LOADING=EAGER` (cx19 18:13Z) changed nothing, so it is not lazy module loading.
-**Cause [code read, not yet profiled]:** `GnssCudaDespread::build_jobs` calls `Impl::ensure_phi` for every spec. A PRN
-with no table, or whose Doppler moved more than `refresh_hz` (100 Hz), gets `ChannelizedReplicaBank::hoprate_filter`
-(per channel, 65536 taps × two complex-double `std::exp`), an fp16 conversion, a `cudaMalloc` and two synchronous
-`cudaMemcpy`, all on the `gnssN_n2dual` thread and serially across its seven `cudaGnssInject`. The streams are blocking
-(`cudaStreamCreate`) and the uploads use the legacy default stream, so each upload is also a device-wide barrier. On cf06
-the `exp` loop alone is 14–29 ms per 7-channel PRN.
-**Fix options:** (A) generate the taps in `hoprate_filter` with a phasor recurrence re-anchored every 1024 taps: 1.3–2.5 ms
-per 7-channel PRN, within 1.2e-9 of the `exp` loop (cf06 bench); (D) upload with `cudaMemcpyAsync` on the command's
-stream from pinned staging; (B) build tables off the frame thread (at seed arrival, or on a worker) and leave a PRN's lane
-dark for a frame rather than block; (C) arm the shared Doppler-free Phi (`set_shared_phi`), built once per chain, which
-changes the replica and needs validating. A and D should bring the first frame under the ~2 s of slack; fixing this
-removes most of #1750's catch-ups.
-Check: `[live]` perf or offcputime through one start, for the build-versus-barrier split; after a fix, a traced start
-shows `gnssN_n2dual`'s first frame within ~0.7 s of its port and no "frame(s) past" warnings.
-**2026-10-09: A and D live fleet-wide (bc2d18420).** Of `ensure_phi`'s calls only the legacy-stream `cudaMemcpy` waits
-on other streams (cf06: 301 ms behind a 300 ms kernel; `cudaMalloc` 0.05 ms). Uploads now go through a pinned
-two-slot ring on the inject stream (a pageable async copy over 256 KB still waits for its own stream). Offline at
-the live settings, a 12-PRN first frame takes 131 ms instead of 696-1526 ms, whatever the load on other streams, and
-outputs are bit-equal. Live: first `n2dual` output 2.1-2.4 s after its port (3.5 s mean over 10-08's traced starts);
-startup catch-ups on the 17:23Z cycle were 0 on four nodes and at most 3 frames on two (were up to 44). Still past
-the ~2.2 s of slack: the table builds are ~0.9 s per GPU, and the other ~1.3 s is not yet identified.
+
+### #170 — a model formed inside a near transit (5–8°) stays mis-shaped for over an hour (2026-10-09)
+**What [live 10-09 19:12–20:30Z]:** L5/E5a/E5b pol-1 models that formed on the 19:12Z restart during the C21 pass
+(19:40–19:48Z at 4.9°, outside the 2° freeze) stayed at shape similarity 0.07–0.33 to the fleet for over an hour while
+the pol-0 models and the other bands were fine. #154 corrects only the global phase; nothing corrects a shape, and the
+adaptation EMA is the only recovery. (The cable work that evening is a confound; the pass is the candidate.)
+**Fix:** freeze model FORMATION (not steering) inside a wider cone, ~8°, or re-seed a model whose similarity to the
+fleet reference's shape stays below 0.5 for N minutes from that reference. Check: restart one node during the next
+5–8° pass and watch `elem_shared_ref status` similarity recover within minutes.
+
+### #168 — our 32-element code assumes the n/2 pol split (2026-10-10)
+**What [tree, from the rows-C/D survey]:** the shared model splits pols at h = n/2 (`GnssGpuRecordAssemble.cpp`, the
+pol-1 anchor and both learners), so 64 elements = [0,31]+[64,95] is right and 48 = [0,31]+[64,79] silently mixes
+pols; nothing refuses it. Growing the GNSS array to rows C/D must go to 64 inputs, never 48.
+**Fix:** derive the split from the dish table, or refuse `n_elements` not in {32, 64} in the assembler and the
+generator. Check: a generator refusal on a 48-element live_element_ranges.
 
 ### #156 — `get_chord_metadata()` reads an object's `parent_pool` while `deepCopy` can be assigning it (object-content race; found 2026-09-30)
 - **What:** `chordMetadata::deepCopy` does `*this = *chord_other` under both objects' locks, and that assigns the weak_ptr
@@ -686,7 +530,11 @@ snapshot, `config/elem_shared_ref_20261009.json` (R 0.976–0.999), went live by
 01:30Z (the rest): 178 of 178 halves applied and R 1.00 in every band and pol by 01:33Z, B2A broker xcoh
 0.62 → 0.98, no restarts. The reference must be re-taken whenever the F-engine's gains change. The re-base
 check above is still open: it has not yet run against a current reference.
-**TODO:** the ALERT files (this one and chain_health's) reach no one; tie them into CHORD's monitoring.
+**2026-10-10:** the F-engine came back re-based at 01:31Z with new per-board phases; the acting cron re-took all
+eight bands by 02:10Z (committed as `config/elem_shared_ref_20261010.json`, 2bad4afda) and every instance applied
+it. A node restarted after a re-take and before the commit runs up to 30 min on the stale file (`--act-every`).
+**Still open:** the no-restart re-base check above, and the file is re-taken by the cron, not by the re-base itself.
+The alerting TODO is #171.
 
 ### #131 — the gather dies when a telemetry client flaps
 **[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no
@@ -706,44 +554,6 @@ broker must fail LOUDLY when its gather link is refused -- it logged `TELEM DOWN
 `segvtrace.so` (separate log `/tmp/gnss_gather_segv.log`) so the next death leaves a backtrace.
 **How to see it:** `ss -ltn | grep -E "11060|11061|12051"` empty; broker log `frames 0` with
 `nothing yet` on every chain; the 2-line `stack_up.sh` health table.
-
-### #130 — cx42 died of heap corruption 12.5 min into the merged binary
-**[live]** `malloc(): unaligned tcache chunk detected` and the process is gone. cx42 started
-20:10:59 on `build/kotekan/kotekan` (the develop-merge build) and aborted **20:23:33**; the other
-five were still up 20 minutes in. Glibc heap corruption, so the abort site is not the bug site —
-the log's last lines are only the benign `buffer_send` retries and post-restart trim expiries.
-No core (`/var/crash` empty), and **no precedent for this signature in the archived node logs**.
-
-⚠️ **`ARCH=native` was the obvious suspect and is FALSIFIED.** `build/` sets it and the binary was
-compiled on cx43, so a CPU mismatch would have been the tidy explanation — but cx42, cx43, cx19
-and cx51 are all Xeon Gold 5416S with **byte-identical `/proc/cpuinfo` flag sets**. The binary is
-valid on cx42.
-
-**[live, 2026-09-11 20:34] IT DID NOT RECUR.** Restarted on the same binary, cx42 ran 24 min —
-nearly twice the 12.5 it managed before — with zero aborts, and was still clean when the fleet was
-stopped at 21:04. So this stands as a **single unexplained event**, not a reproducible fault, and
-the discriminators below are for whoever sees the second one.
-
-**What is and is not known.** The same merged source ran ~72 min on all six as `build-merge`
-(built without `ARCH=native`, `WITH_TESTS=OFF`) with no abort, and `build/` lost one node in
-12.5 min. That is one crash, not a rate: it does not distinguish "the merge carries a latent
-corruption that fires occasionally" from "the build/ flags expose it" from "it was always there".
-**Do not conclude from a single event.** The cheap discriminators, in order: re-run cx42 on the
-same binary and see whether it recurs; if it does, run one node under the `build-merge` binary in
-parallel; only then suspect the flags.
-
-**[carried]** The `buffer_send_n2_subset`/`n2_full` connection refusals to `10.222.0.51:11025/11027`
-are ⚠️ **NOT** related — those lines are byte-identical in the config before and after the
-regeneration, nothing has listened on those ports for some time, and all six nodes log them.
-
-
-### #112 — `set_bf_mask` free-runs, and it is what makes #108's fuse 12 h instead of years
-**[live]** 170–188k frames/s on all six nodes, with no pacing anywhere in
-`lib/stages/bufferBadInputs.cpp` **[tree]**. That is ~3 cores and ~2.3 GB/h of copies per node
-producing nothing, and it is the reason the 2^33 `frameID` counter is reached in ~12 h rather
-than in years. #108's wrap is fixed and verified, so this is now cost and fuse-length, not a
-crash — but it is a large amount of heat for a mask that changes rarely.
-**Fix: pace the emitter (it needs to publish on change plus a slow heartbeat, not per frame).**
 
 ### #113 — `eigencalc: Only 0 of 32 elements are unmasked`, 148× in 12.5 h
 **[live]** on cx43 today, with `valve_bf_mask_*` reporting 8.16e9 dropped frames. The bf mask is
@@ -783,15 +593,6 @@ why substituting it into the ephemeris measured 65× worse and was reverted.
 **Fix: serve the CURRENT F-engine hop beside `pow_hop` in the combiner status.** That removes the
 quantisation sawtooth and the pipeline term together, and unblocks both `--innov-dr-seeds` and
 the ephemeris epoch.
-
-### #102 — per-element steering is disarmed behind a loader that cannot read the measured table
-It shipped 2026-08-29 and was disarmed 08-31 pending a measured dish table. That table now exists
-(`fixtures/chord_dish_layout_measured_20260907.json`, 32 entries with `measured_ENU_m`, from the
-visibility capture). The blocker is one function: the generator derives ENU by regex on the
-element *name* against a nominal grid, and the measured file carries the truth in a field.
-**Fix: teach the loader to read `measured_ENU_m`, then re-arm with e5b as the sign control.**
-⚠️ Re-scale the entry: the measured array is 43.6 m × ~10 m ≈ **1.5 chips** of differential
-delay, not the 6 chips the 200 m projection assumed.
 
 ### #34 — the producer still publishes a forecast `ref_hop` as `pow_hop`
 **[live]** 16 `fe-axis: newest pow_hop … FUTURE` + 8 `FUTURE instance(s)` per hour, the same rate
@@ -957,31 +758,52 @@ satellite moves its own seed) and the node-side consensus cut the ±1 class, but
 ## Open — blocked upstream
 
 
-### #149 — N² to recv1: our nodes cannot satisfy upstream `chord`'s receiver (SHELVED by KV 2026-09-27)
-recv1 (template + binary updated 09-19, `origin/chord` 2c588db08) requires (a) the frame-descriptor
-handshake on every port — fixed on our side in a16ba9bdd (`use_frame_desc`, `reconnect_time`, full leg
-only) — (b) a bad-feed-mask stream covering every frequency with data (`hdf5N2Write::_bad_feed_mask_finish`
-FATALs at the first file close, ~3.5 min: "File N has data at frequency 1536, which no bad feed mask stream
-covers"), and (c) a DishInputs subset layout. (b) and (c) need machinery only upstream `chord` has: 340
-commits since our 09-10 merge-base, 10 conflicting files incl. N2Accumulate/bufferRecv. KV: no N² until he
-talks with Jim & Andre (no tug-of-war between develop and chord). recv1's unit crash-loops every ~3.5 min
-until stopped (`sudo systemctl stop kotekan` on recv1). Also: its subset writer failed on a STOCK frequency
-(1539) with only 2 of 4 stock mask streams in the file — possibly recv1's own problem.
 
-### #107 residual — the last publish-then-mutate sites
-The root of the nine node deaths is fixed and running. **[tree]** Eight more `lib/cuda` stages
-were fixed upstream on `kv/chord-rfimask-ds-race` (`6651a2440`, through review) and that commit is
-**not an ancestor of `kv/chord-gnss`**. One of the unfixed sites, `cudaPLMaskExpander`, sets
-metadata and then mutates through the returned pointer, and is instantiated ×2 in the live node
-config. **Held deliberately: this is part of a set of upstream fixes under discussion — take the
-conclusion when it lands rather than cherry-picking one commit.** Whether the remaining sites can
-actually fire needs #107's own arithmetic (does anything observe the frame between publish and
-mutate), which has not been done for these two.
+### #165 — recv1's ConfigTracker exits when a sender reconnects with a different binary (2026-10-10)
+**What [live 10-10/11]:** `ConfigInfo` carries the sender's version, commit and cmake settings; when a node
+reconnects on a new binary the receiver FATALs on the mismatch, so every binary rollout costs recv1 a restart and
+about a minute of N² gap — and every recv1 restart is a #164 exposure.
+**Fix (chord):** compare the fields that describe the stream, not the build. Ours: none.
 
----
+### #164 — recv1 locks itself out through the bad-feed mask after a restart (2026-10-10)
+**What [live 10-10 15:46Z, ~4.5 h lost; 10-11 00:57Z, cleared 01:15Z]:** right after a recv1 restart the newest subset
+file holds no valid rows; bffs's power-outlier test sees `n_measured 0`, flags all 32 inputs, the bad list grows to
+113, the RFI mask goes to 100% and no valid row is written again: self-sustaining. Clearing it is a manual procedure
+(hold the cron, reset the list, restart; the 10-10 chord-merge memory note has it).
+**Standing check after any recv1 restart:** subset files ~3.1 GB = valid, ~350 MB = empty; `/var/lib/choco/bffs/run.json`
+power-outlier `n_measured` 32. **Fix (Jim):** bffs must keep the previous list when `n_measured == 0`. Ours: a line
+in `chain_health_cron` that reads the newest subset file's size.
 
 ## Open — measured, real, and nobody's lever
 
+
+
+### #174 — cx27 received a corrupt-sequence packet from raw source ID 6 (2026-10-10)
+**What [live 10-10 20:18:45Z]:** one corrupt-seq packet whose raw source ID (6) is not an A, B or RFI board. One
+event, noted because #1750 now stops kotekan on a capture fault. Lever: the F-engine.
+
+### #169 — node control-plane errors since the 10-11 00:55Z restart (2026-10-11)
+**What [live cx43, 00:56–02:46Z]:** 20 `Could not read FPGA controller … GET …/config failed`, 20 `Request failed with
+socket error`, 42 `trim EXPIRED with no /set_trim`, 134 `NIC dropped N packets … rx ring was full` (29671/16850 at
+start-up, ~1 packet/s since; `/metrics` `nic_rx_missed` +421/+171 in 6.5 min). The previous 13-h lifetime on
+04122d179 had 0/0/3/17. The DPDK lcores (5, 6, 7, 21, 22, 23) share no core with any stage. Confounds: the window-8
+binary (0011cf3b1), the #164 lockout and recv1 restart at 00:57–01:15Z, the F-engine's state.
+**Next:** re-count at the next quiet hour; if the expiries and the trickle persist, A/B one node on 04122d179.
+
+### #167 — the 10-07 digital-gain table quantizes pol 1 to ~0.1–0.3 LSB in the GNSS bands (2026-10-10)
+**What [archive, recv1 subset autos 10-10 01:59Z vs 10-07]:** table `digitalgain_20261007T213936Z` (live since the
+10-08 F-engine restart) replaced the 09-25 GNSS-band cuts: at 1170–1182 / 1200–1214 / 1260–1285 MHz the 4-bit data
+sit at X ~0.5, Y 0.12–0.27 LSB rms per component (10-07: 0.7–0.9 both); L2 (1227) and 700 MHz are normal (~1.6–1.9).
+Y mostly quantizes to zero: a heavy pol-1 quantization loss in exactly the bands we track. Candidate cause of #163.
+Not a recv1 fault: the GNSS nodes see the same voltages. **Lever:** site — restore the 09-25 GNSS-band settings or
+raise Y ~3–4×. Ours: none. Memory note `chord-fengine-gains-20261007-gnss-bands` has the per-band numbers.
+
+### #166 — the F-engine is not sending rows C and D (2026-10-10)
+**What [live 10-10 11:48–12:0xZ]:** with C/D enabled in the X-engine config (chord 13e442ac6) every frame reported
+100% packet loss: packet rate 1.73 M/s against 1.82 with C/D marked missing (ten boards would be ~1.7×); recv1 wrote
+fill, GNSS rail power 0 on every channel. Rolled back (e635d6619). Blocks the 32-dish / 64-input GNSS plan.
+**Lesson:** before enabling dishes in the X-engine config, check the F-engine sends their boards (packet rate vs board
+count). **Lever:** site (fpga_master).
 
 ### #163 — E6 peak sharpness fell 3.65 → 2.4 at the 10-07 F-engine restart while every other chain's rose (2026-10-08)
 Broker DLL q (2P/(E+L)) on strong satellites: gal_e6 3.5–4.5 for three weeks, 2.3–2.5 from the first post-restart data
@@ -991,7 +813,8 @@ Broker DLL q (2P/(E+L)) on strong satellites: gal_e6 3.5–4.5 for three weeks, 
 binary (15:28Z) read the same. The F-engine came back with new gains (rail fraction 2.5× lower in every band),
 and dish work was under way that week, so the suspects are per-channel gain phases across 1278–1284 MHz or the
 dishes. A separate E6 cross-instance coherence loss from ~12Z 10-08 was #154's stale reference (fixed 10-09).
-Parked while the F-engine is being worked on. Next, when it settles: per-channel prompt phase across the E6 lobe
+**10-10: candidate cause = the 10-07 gain table, #167** (pol 1 at 0.12–0.27 LSB rms in the GNSS bands). Check the
+table before anything else. Next, when it settles: per-channel prompt phase across the E6 lobe
 from the gather stream (ragged = gains, smooth = delay), or the new gain table.
 
 ### #147 — 2026-09-26 22:01Z: a fleet-wide ~3 ppb reference-frequency step
@@ -1000,47 +823,6 @@ expected), a −37 m (−127 ns) code step, carrier residual ±2.5 Hz for >14 mi
 0.90 → 0.03 for ~2 h, with no lock loss and no broker event; gps_l5's code-rate clock estimate moved
 −0.001 → +0.002..+0.003 ppm (also ~3 ppb). Maser/GPSDO or F-engine reference? Not ours to fix, but it
 must be vetoed from any coherence statistic. Evidence `fixtures/projtest/forensics/l5/ev2201*.py`.
-
-### #133 — the RF-band selector leaked the internal group key and mislabelled its frequency ✅ FIXED 09-17
-**Corrected filing.** I first wrote this up as "the viewer collapses the broker's five `rf_band`
-values into two", which was wrong and is retracted. The two-way split is **deliberate and
-correct**: the viewer has exactly three multi-constellation COLUMN GROUPS — High (≥1.40 GHz,
-nothing deployed), Mid (L2C 1227.60, B3I 1268.52, E6 1278.75) and Low (the E5/B2 complex,
-1176.45–1207.14) — and `_band_of()` validates the broker's finer per-signal taxonomy against
-them rather than trusting it, because taking `"E5b"` raw once dropped two tracking signals out
-of the table entirely (2026-08-09). The Stream-health panel shows the broker's five-band view
-and is also correct; they are two different taxonomies, both wanted.
-
-The real defect was narrower. `BAND_LABEL = {L1: "High", L2: "Mid", L5: "Low"}` already existed
-in `app/panels/gps_table.js` and `app/panels/decode_health.js`, so every table header already
-read High/Mid/Low — but the **RF-band selector** was built server-side from the raw group key
-plus *the first chain's carrier*, so it rendered `L2 · 1268.52 MHz`: the GPS-centric key, against
-B3I's frequency, for a group whose namesake L2C is at 1227.60.
-
-Fixed by labelling the selector from the shared `BAND_LABEL` and quoting the span the group
-actually occupies — `Mid · 1227.60–1278.75 MHz`, `Low · 1176.45–1207.14 MHz`. High is absent
-because nothing occupies it yet, which is the honest rendering.
-
-⚠️ `BAND_LABEL`/`BAND_ORDER` now exist in three files (the server plus those two panels). Rename
-in all three or not at all — noted in each.
-
-✅ **The keys are renamed too** (09-17): `L1`/`L2`/`L5` → `high`/`mid`/`low` across
-`livebeam_server.py` and four client panels. The sweep turned up one site that would have failed
-**silently**: `gps_amp_history.js` mapped the group key to the C/N0 baseline key
-(`{L1:"l1", L2:"l2c", L5:"l5"}`) behind a `|| "l1"` fallback, so every signal would quietly have
-taken the L1 baseline rather than its own. Three other taxonomies were deliberately left alone —
-the front-end names (`l1`/`l2c`/`l5`), the broker's per-signal `rf_band`, and the PVT
-`CARRIER_NAME` — and each now says so where it is defined.
-
-⚠️ `check_js.sh` could not be run: no `node` on cx43, cf06 or the VM. The change is confined to
-comments and three const declarations, and the four panels were confirmed to serve with the new
-keys present, but a browser reload is the only real proof the panels still render.
-
-### #123 — cf06's single 1 GbE is the fleet's binding constraint
-**[live]** 713 Mbit/s ingress, of which telemetry is 363 after the v6 shrink. It has already
-produced two named faults — 22% late frames (since paced down to 0.2–0.5%) and SYN-ACK loss that
-stalls every fresh connect from a node by 1/2/5 s. It has never had an item, and it outranks most
-of what is above it. This is what #73's retirement left behind.
 
 ### #121 — bds_b2a commands 1.8–4.0 Hz of carrier trim on the default 40 Hz cap
 **[live]** `JRR-CMD[C] 19:+1.76 20:-0.30 22:-0.27 29:+0.04 31:+4.04 35:-2.41 Hz` against
@@ -1062,18 +844,6 @@ b3i and e6 are, for the first time, two fresh bands to test the standing BeiDou 
 on a feeding chain" is enforced per chain, so adding a feed to gps_l5 or bds_b2a would silently
 close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains have never consumed
 `slew`): the right experiment is on the bds_b2b/b3i twin, which shares no state with a feeder.
-
-### #31 — the data channels are built, armed, and producing nothing
-**[live]** `nav_bits by source: {'none': N}; known bits: {}`, 2505 times an hour. The decoder,
-the flag and the plumbing all exist. Either wire a source or say plainly that CHORD does not
-decode nav bits and delete the surface.
-
-### #88 — finish the j2 restructure (half of it moved)
-**[tree]** The anti-drift half advanced — the captured base was re-taken, is date-stamped, and the
-yaml documents the re-capture procedure (though that capture is itself 10 days old with no
-refresh event, which is the mechanism reproducing itself). The other half is untouched: the
-generator still assembles in Python the blocks the template also renders, so there are two
-definitions, and the equivalence gate already proves deleting the Python side is safe.
 
 ### Smaller, still true
 - **#11** boresight seeding mask: half-built for a different consumer; nothing masks seeding.
@@ -1099,6 +869,8 @@ that one of the SLEW-TRANSFER class the handover cannot catch, on gps_l5). The l
 were written against are now 6–60× smaller. An arm has nothing to remove, so these cannot be
 judged in this regime. The flags are `--fleet-trim-brownout-hold-s`, `--code-bias-brownout-hold`,
 `fleet-trim-rebase-adjust`, `reseed-spec-tau` and `LatchDetector.min_absence_s`.
+⚠️ 10-11: `fleet-trim-rebase-adjust` is ARMED on gal_e5a (`gnss_chains_chord.yaml`, the #92 handover), not
+disarmed as this paragraph said; #125's re-twin decides whether it stays.
 **Re-judge only after a plant disturbance** — and note that #106's establishment excursion is the
 one disturbance that reliably reproduces on demand.
 

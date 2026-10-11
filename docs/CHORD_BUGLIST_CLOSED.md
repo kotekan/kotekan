@@ -9,7 +9,8 @@ file's git history (`git log -p docs/CHORD_BUGLIST.md`).
 
 Reconciled 2026-09-12 against HEAD `b45949144`, 57 commits after the 2026-09-10 pass (which was
 itself 496 commits after 2026-08-22, by seven parallel section audits that each read the tree AND
-the live fleet). Added since: #54, #65, #93/GAP 3, #111, #116, #117, #118, #128.
+the live fleet). Added since: #54, #65, #93/GAP 3, #111, #116, #117, #118, #128. **2026-10-11 pass** (HEAD `0011cf3b1`):
+#102, #107 residual, #112, #130/#153, #133, #149, #160, #162; moot #31, #88, #123.
 
 ⚠️ **Three of those closed on a MEASUREMENT rather than a fix**, and their write-ups below carry
 the sensitivity as well as the result — #93 in particular is a *null*, and a null is only worth
@@ -68,6 +69,14 @@ that goes with it.
 | #145 | ElemCal calibrated the reference element against the others' weighted SUM, so \|w_ref\| ≈ (n−1)·SNR × the others' median and the per-PRN combine was the reference element alone | `978561481` (a leave-it-out MEAN: divide by W_rest; shared_hold's no-model fallback no longer installs the shadow while frozen), fleet-wide in the node bundle d53b6a254 09-28 18:33–20:39Z | synthetic array-gain efficiency 0.17 → 0.97 at SNR 1; viscap replay: projection prevents capture only with it (G09 at 1–2°: −8.7 → +1.1 dB against the held model); **live**: served `sim` 0.46–0.86 (was 0.02–0.23), shared-model R 0.94–1.00 and fleet xcoh 0.86–0.99 after the 20:39Z cycle. Residual (rho² > 0.99 drop): open list |
 | #146 | a FatalError message containing a brace went back to fmt as a format string, so fmt threw inside FATAL_ERROR and the process died on SIGABRT instead of shutting down (recv1 09-27; 46 of 917 sites can carry braces) | `35d7120d0` (format once with `vformat_to_n`), shipped with the #1699 gpuProcess commits `1a739bdd0` `a05fd0a5d` `eafb60f9b` | **bench**: the Boost case fails on the old code and passes on the new (`fixtures/upstream0928/`); in the node bundle since 09-28. ⚠️ That bundle's abort rate is #153 (#1699's lifetime changes are its first suspect). Upstream: open list |
 | #151 | the dead-reckon (seeding) ephemeris reloaded every 7200 s while the sky took 900 s, so BeiDou records expired ~10 min before each reload (09-28 11:00Z 9 → 3 PRNs, 13:00Z 12 → 6) | `b2223cc7a` (`_DR_EPH_REFRESH_S` 900; DCB stays on 7200) | **live** 09-28 20:18Z → 09-29 12:40Z: 66 reloads per chain at 15 min, DCB every 2 h; the bds_b2a `active=` minimum over each hour's first 12 min stayed 8–13, and no hour dropped. Residual (two ephemerides; EPH-REBASE inert): open list |
+| #102 | per-element steering disarmed behind a loader that could not read the measured table | `d7f6c94b5`, `f77cb41f3`: positions from the arraymap with an epoch key; live on every band since 09-27 | `elem-steer-bands: all`, `elem-steer-sign: 1.0` in `gnss_fleet_chord.yaml`; `--elem-positions-from arraymap` refuses a stale epoch |
+| #107 residual | the last publish-then-mutate sites in lib/cuda | upstream, in our tree through the 10-01 develop and 10-09 chord merges | `grep -rl did_set_metadata lib/cuda \| wc -l` = 86; `git diff origin/develop -- lib/cuda/cudaPLMaskExpander.cpp` empty |
+| #112 | `set_bf_mask` free-ran at 170–188k frames/s and set #108's fuse | the chord templates: `bufferBadInputs` blocks on `wait_for_empty_frame` | `/buffers` on a node: `set_bf_mask/bf_mask_0` at frame 6 after 1.75 h (cx43, 10-11) |
+| #130 / #153 | node processes aborted at random with `malloc(): unaligned tcache chunk detected` | `2aac0bc53` (the applied-mask echo publishes its metadata once) + upstream #1713 (prefetcher) + #1714 (a second `set_metadata` is fatal); see the write-up below | `grep -a -c "malloc()" /tmp/gnss_node.log*` = 0 on all six nodes, one `Kotekan version` line per lifetime; set-once live from the 10-01 build, ~10 days without an abort |
+| #133 | the RF-band selector leaked the group key and mislabelled its frequency | 09-17, `BAND_LABEL` shared by the server and the panels; keys `high/mid/low` | the selector reads `Mid · 1227.60–1278.75 MHz` |
+| #149 | N² to recv1: our nodes could not satisfy upstream `chord`'s receiver | the stage-1 merged correlator (10-06) and the dish-rows re-base (`2949fecd2`, 10-09): bffs stream, DishInputs subset and frame descriptors from the chord templates | recv1 takes six nodes × three legs; `acq_20261010_115026` |
+| #160 | `gnssN_n2dual` spent 3–4 s on its first frame and both ports fell 5–39 frames behind at every start | `bc2d18420` (phasor recurrence, pinned async upload on the inject stream) + `04122d179` (no software fp16 conversion or double copy) | first `n2dual` output 0.4–0.6 s after its port; 0 start-up catch-ups over two fleet cycles (10-10/11); #1750's window is 8 frames |
+| #162 | three uncommitted leftovers in the live checkout | `8a9661d55` (node_up GNSS_ENV), `5e97adaec` (beam-cube `--prn-norm`, opt-in), `b4d744517` (telemfmt ignored) | `git status` clean |
 
 ## Closed because the premise died (moot)
 
@@ -88,6 +97,9 @@ that goes with it.
 | A3 | GAP 2's measurement is 42× more precise than it is | live: 11/11 accepted, spread 0.245–0.259 chips against a declared 0.3 — σ is now ~10× conservative |
 | A6 | reference element 0 may be the weakest feed | **false**: element 0 is rank 10 of 32 at 0.94× the median. The weak feeds are 14/9/24/10/12 — and 9/10/14 are the pol-swapped dishes |
 | A9 | `spec_tau` against model-held offsets | model-held is ~0; live taus are ±0.02 chips at p/f ~1.0 |
+| #31 | "the data channels are built, armed, and producing nothing" | not a bug, a roadmap item (an independent receiver feeding nav bits from a live local stream, lagging ~0.5–1 s). What it needs, from the 10-11 read: the only consumer (the track-state `nav_bits` parse and peel) was removed in `a2a2770a8`, so (1) restore a consumer in `cudaGnssChordTrack`; (2) a broker POST route such as `/set_nav_bits` keyed per PRN with GPS-time stamps; (3) a source in `seeding.py` that predicts forward over the lag and maps GPS time to the capture clock (`navbit_brdc` calibrates that from a synced PRN), registered under a new source name; (4) `bit_export: true` on the chain so `navbit_health` can veto. The contract: per PRN `{utc0, bit_s, bits (+1/-1/0 int8), grid}` on the capture-clock UTC, forward over a horizon. The `{'none': N}` line only means `bit_export` is off |
+| #88 | "finish the j2 restructure" | folded into the upstream PR plan, stage 5 (`CHORD_UPSTREAM_PR_PLAN.md`): the GNSS hook into `config/chord/pathfinder.j2` |
+| #123 | "cf06's single 1 GbE is the fleet's binding constraint" | the stack moved to the gnss VM (10G) on 09-17; only the cube leg still crosses cf06, and it has shown no fault |
 
 ## Withdrawn — tried, measured, backed out (verify these stay dead)
 
@@ -173,6 +185,20 @@ corr, not corr/E, and never saw it. L5's 0.02 on every instance was #141. ⚠️
 cube cells across channels must weight them by E².**
 
 ## Closed with a full write-up — the three worth reading before touching these areas
+
+### #153 — node processes aborted at random with `malloc(): unaligned tcache chunk detected` ✅ FIXED (set-once 10-01, #1714 10-09; verified 10-11)
+Found 09-29 on the d53b6a254 bundle (4 aborts in 17 h, auto-relaunched in 20 s, every REST switch lost). Root-caused
+09-30 from the first two cores: a double destruction of a `chordMetadata`. The writer was `cudaRFISKtilde` replacing
+`bf_mask_applied`'s ring slot 0 **every frame**, which breaks `NDArrayRingBuffer::set_metadata`'s set-once contract;
+the reader was `cudaCopyFromRingbuffer` on another thread copying that slot every frame through an unlocked
+`get_metadata()`. A `shared_ptr` copy racing an assignment of the same `shared_ptr` frees the object twice, and the
+core showed it (a `FREQ_UPCHAN_FACTOR` key-string chunk on both a fastbin and a tcache). A second, start-up segfault
+was a `FramePrefetchService` use-after-free of the stream-ID vector. Fixes: `2aac0bc53` (publish the echo's metadata
+once), upstream #1713 (prefetcher, merged 09-30) and #1714 (a second `set_metadata` is fatal, merged 10-06; in our
+tree 10-09). The "silent" cx19 restarts were `needrestart` after unattended-upgrades (16f82b73a). Verified 10-11: no
+`malloc()` line and no relaunch on any node since the set-once build; the core recipe (core_pattern + prlimit) is in
+`docs/CHORD_GNSS_RUNBOOK.md`. Lesson: a backtrace in an assembler thread does not implicate the assembler — the
+tcache is per thread, so the aborting thread is only the one that tripped over the damaged chunk.
 
 ### #140 — the gather dropped the broker's telemetry socket, and the reconnect cost 5 s on every chain ✅ FIXED 09-18 (in the tree; live at the next broker restart)
 With #139 fixed the 2-hourly breaks were gone, but four fleet-wide breaks remained in the first
