@@ -317,6 +317,13 @@ adaptation EMA is the only recovery. (The cable work that evening is a confound;
 **Fix:** freeze model FORMATION (not steering) inside a wider cone, ~8°, or re-seed a model whose similarity to the
 fleet reference's shape stays below 0.5 for N minutes from that reference. Check: restart one node during the next
 5–8° pass and watch `elem_shared_ref status` similarity recover within minutes.
+**10-11: both built (`11ab0ee25`), awaiting the next node cycle.** `elem_sum_shared_form_deg` 8.0 (no first model inside the
+cone; a warm one keeps adapting), `elem_sum_shared_ref_reseed_s` 600 (a warm half below the floor that long takes the
+reference's shape, once per interval) gated on the sibling pol still matching at `elem_sum_shared_ref_reseed_sib_sim` 0.8 —
+both pols off at once means the reference is stale and the cron's re-take must win. `/get_elem_cal` reports `form_frozen`,
+`form_deg`, `fleet_ref.reseeds`. Boost test 12 cases. Judge after the cycle: restart one node during a 5–8° pass
+(`form_frozen: true` until it clears, then sim ≥ 0.8 within minutes); after the next F-engine gain change the re-seed
+counters must not move while the cron re-takes.
 
 ### #168 — our 32-element code assumes the n/2 pol split (2026-10-10)
 **What [tree, from the rows-C/D survey]:** the shared model splits pols at h = n/2 (`GnssGpuRecordAssemble.cpp`, the
