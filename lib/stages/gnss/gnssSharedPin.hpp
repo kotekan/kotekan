@@ -62,6 +62,48 @@ inline std::complex<double> pin_rotation(const RefOffset& o, bool limit, double 
     return std::polar(1.0, a);
 }
 
+/// #170: no FIRST model inside `form_deg` of a boresight pass. The freeze (a few degrees) stops a
+/// model in force from learning a bright satellite's leakage; a model FORMED just outside it,
+/// at 5-8 deg, learns that leakage as its shape and keeps it for over an hour (the consensus EMA
+/// is the only recovery). A warm model keeps adapting; only forming waits. A post older than
+/// `max_age_s` is not evidence of anything, as for the freeze.
+inline bool formation_frozen(double now_s, double post_t, double sep_deg, double form_deg,
+                             double max_age_s = 120.0) {
+    return now_s - post_t <= max_age_s && sep_deg < form_deg;
+}
+
+/// #170: when a warm half has sat below the reference's shape similarity floor for `reseed_s`,
+/// its shape is replaced by the reference's. The pin (above) refuses exactly such a half --
+/// F does not describe it -- so a mis-shaped model has no other way back. Per half.
+struct ReseedState {
+    double low_since = -1.0; ///< steady time the similarity first fell below the floor, or -1
+    double last = -1.0e18;   ///< steady time of the last re-seed (rate limit)
+    int n = 0;               ///< re-seeds so far (diagnostics)
+};
+
+/// True once per episode: the half has been warm and below `min_sim` for `reseed_s`, its SIBLING
+/// pol (same assembler, other half) still describes F (`sib_ok`), and no re-seed happened within
+/// the last `reseed_s`. A similarity at or above the floor, one that cannot be measured (`ok`
+/// false), or a sibling that is off F too, ends the episode: when both pols stop matching at
+/// once it is F that changed (an F-engine gain change), and re-seeding would reset every
+/// healthy model to the stale F faster than the cron can re-take it. One pol broken with the
+/// other fine is the #170 case, and the only one this acts on.
+inline bool reseed_due(ReseedState& s, bool ok, double sim, double min_sim, bool sib_ok,
+                       double now_s, double reseed_s) {
+    if (!(reseed_s > 0.0) || !ok || sim >= min_sim || !sib_ok) {
+        s.low_since = -1.0;
+        return false;
+    }
+    if (s.low_since < 0.0)
+        s.low_since = now_s;
+    if (now_s - s.low_since < reseed_s || now_s - s.last < reseed_s)
+        return false;
+    s.last = now_s;
+    s.low_since = -1.0;
+    ++s.n;
+    return true;
+}
+
 } // namespace gnss
 
 #endif // GNSS_SHARED_PIN_HPP

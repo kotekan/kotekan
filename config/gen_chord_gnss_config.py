@@ -3433,7 +3433,11 @@ def main():
         default=None,
         help="shared-model transit freeze: no learning while the broker's nearest-to-"
         "boresight separation is inside this many degrees (assembler default 6). "
-        "Emitted only when given, with --elem-sum-shared.",
+        "Emitted only when given, with --elem-sum-shared. The assembler also refuses to "
+        "FORM a first model inside a wider cone (elem_sum_shared_form_deg, default 8) and "
+        "re-seeds a half the fleet reference stops describing while its sibling pol still "
+        "does (elem_sum_shared_ref_reseed_s 600 s, elem_sum_shared_ref_reseed_sib_sim 0.8); "
+        "none of these is emitted here (#170).",
     )
     ap.add_argument(
         "--elem-sum-shared-tau-s",

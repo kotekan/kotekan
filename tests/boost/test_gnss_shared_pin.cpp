@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE "test_gnss_shared_pin"
 
-#include "gnssSharedPin.hpp" // for ref_offset, pin_rotation, RefOffset
+#include "gnssSharedPin.hpp" // for ref_offset, pin_rotation, RefOffset, formation_frozen, reseed_due
 
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>   // for abs, sqrt, cos, sin
@@ -130,4 +130,91 @@ BOOST_AUTO_TEST_CASE(instances_that_started_apart_end_together) {
         }
     const auto ab = ref_offset(A.data(), B.data(), 0, 16);
     BOOST_CHECK_LT(std::abs(ab.err_rad), 3.0 * DEG);
+}
+
+BOOST_AUTO_TEST_CASE(no_first_model_inside_the_formation_cone) {
+    // #170: a fresh geometry post at 4.9 deg (the C21 pass of 2026-10-09, outside the 2 deg
+    // freeze) forbids forming; outside 8 deg, or on a post older than 120 s, it does not.
+    using gnss::formation_frozen;
+    BOOST_CHECK(formation_frozen(1000.0, 990.0, 4.9, 8.0));
+    BOOST_CHECK(!formation_frozen(1000.0, 990.0, 8.5, 8.0));
+    BOOST_CHECK(!formation_frozen(1000.0, 800.0, 4.9, 8.0)); // stale post: no evidence
+    BOOST_CHECK(!formation_frozen(1000.0, 990.0, 4.9, 0.0)); // disabled
+}
+
+BOOST_AUTO_TEST_CASE(a_half_below_the_floor_is_reseeded_once_after_reseed_s) {
+    // Warm, sim 0.2 against F (the 10-09 L5/E5a/E5b pol-1 models read 0.07-0.33): nothing for
+    // 599 s, a re-seed at 600 s, then nothing again until the next full interval.
+    using gnss::reseed_due;
+    gnss::ReseedState s;
+    bool fired = false;
+    for (int t = 0; t < 600; ++t)
+        fired = fired || reseed_due(s, true, 0.2, 0.5, true, 1000.0 + t, 600.0);
+    BOOST_CHECK(!fired);
+    BOOST_CHECK(reseed_due(s, true, 0.2, 0.5, true, 1600.0, 600.0));
+    BOOST_CHECK_EQUAL(s.n, 1);
+    // Still below the floor afterwards (adaptation has not caught up): a new episode starts
+    // on the next call and the next re-seed comes one full interval later, not sooner.
+    fired = false;
+    for (int t = 1; t <= 600; ++t)
+        fired = fired || reseed_due(s, true, 0.2, 0.5, true, 1600.0 + t, 600.0);
+    BOOST_CHECK(!fired);
+    BOOST_CHECK(reseed_due(s, true, 0.2, 0.5, true, 2201.0, 600.0));
+    BOOST_CHECK_EQUAL(s.n, 2);
+}
+
+BOOST_AUTO_TEST_CASE(a_recovering_or_unmeasurable_half_is_not_reseeded) {
+    using gnss::reseed_due;
+    gnss::ReseedState s;
+    for (int t = 0; t < 500; ++t)
+        reseed_due(s, true, 0.2, 0.5, true, 1000.0 + t, 600.0);
+    // Back above the floor at 500 s: the episode ends and the clock restarts.
+    BOOST_CHECK(!reseed_due(s, true, 0.6, 0.5, true, 1500.0, 600.0));
+    BOOST_CHECK_LT(s.low_since, 0.0);
+    for (int t = 0; t < 599; ++t)
+        BOOST_REQUIRE(!reseed_due(s, true, 0.2, 0.5, true, 1501.0 + t, 600.0));
+    // An unmeasurable similarity (F has no projection on this half) is not "below".
+    gnss::ReseedState u;
+    for (int t = 0; t < 2000; ++t)
+        BOOST_REQUIRE(!reseed_due(u, false, 0.0, 0.5, true, 1000.0 + t, 600.0));
+    BOOST_CHECK_EQUAL(u.n, 0);
+    // reseed_s 0 disables it.
+    gnss::ReseedState d;
+    for (int t = 0; t < 2000; ++t)
+        BOOST_REQUIRE(!reseed_due(d, true, 0.1, 0.5, true, 1000.0 + t, 0.0));
+}
+
+BOOST_AUTO_TEST_CASE(a_reseeded_half_is_the_reference_in_phase_and_shape) {
+    // What the stage does on a re-seed: the half takes F verbatim, so the offset and the
+    // similarity against F are exact and the normal pin has nothing left to do.
+    const auto F = instrument(16, 9);
+    auto G = instrument(16, 10); // unrelated shape: sim ~0.2
+    BOOST_REQUIRE_LT(ref_offset(F.data(), G.data(), 0, 16).sim, 0.5);
+    G = F;
+    const auto o = ref_offset(F.data(), G.data(), 0, 16);
+    BOOST_CHECK_CLOSE(o.sim, 1.0, 1e-9);
+    BOOST_CHECK_SMALL(o.err_rad, 1e-12);
+    BOOST_CHECK_EQUAL(pin_rotation(o, true, 1.0 * DEG), cd(1.0, 0.0));
+}
+
+BOOST_AUTO_TEST_CASE(the_sibling_pol_decides_whether_f_or_the_model_is_wrong) {
+    // The stage's condition: sib_ok = the other pol of the same half describes F at
+    // reseed_sib_sim (0.8) or better. One pol broken with the other fine (the 10-09 case: pol 1 at
+    // 0.07-0.33, pol 0 at 0.9+) re-seeds; both off F at once (an F-engine gain change: every half
+    // read sim ~0.17 on 10-09) must leave the re-seed inert so the cron's re-take wins.
+    using gnss::reseed_due;
+    const double sib_floor = 0.8;
+    gnss::ReseedState one_pol_broken;
+    bool fired = false;
+    for (int t = 0; t <= 600; ++t)
+        fired = fired
+                || reseed_due(one_pol_broken, true, 0.2, 0.5, 0.9 >= sib_floor, 1000.0 + t, 600.0);
+    BOOST_CHECK(fired);
+    BOOST_CHECK_EQUAL(one_pol_broken.n, 1);
+
+    gnss::ReseedState f_is_stale;
+    for (int t = 0; t < 7200; ++t)
+        BOOST_REQUIRE(!reseed_due(f_is_stale, true, 0.2, 0.5, 0.3 >= sib_floor, 1000.0 + t, 600.0));
+    BOOST_CHECK_EQUAL(f_is_stale.n, 0);
+    BOOST_CHECK_LT(f_is_stale.low_since, 0.0); // no episode is even open
 }

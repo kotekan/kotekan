@@ -71,6 +71,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         config.get_default<double>(unique_name, "elem_sum_shared_freeze_deg", 6.0);
     _elem_shared_freeze_hold_s =
         config.get_default<double>(unique_name, "elem_sum_shared_freeze_hold_s", 60.0);
+    _elem_shared_form_deg =
+        config.get_default<double>(unique_name, "elem_sum_shared_form_deg", 8.0);
     if (_elem_shared) {
         _elem_adapt = false;
         INFO("GnssGpuRecordAssemble[{:s}]: SHARED element model ON (consensus tau {:.0f} s, "
@@ -115,6 +117,10 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             / 180.0;
         _fleet_min_sim =
             config.get_default<double>(unique_name, "elem_sum_shared_ref_min_sim", 0.5);
+        _fleet_reseed_s =
+            config.get_default<double>(unique_name, "elem_sum_shared_ref_reseed_s", 600.0);
+        _fleet_reseed_sib_sim =
+            config.get_default<double>(unique_name, "elem_sum_shared_ref_reseed_sib_sim", 0.8);
         if (_fleet_mode != 0)
             INFO("GnssGpuRecordAssemble[{:s}]: fleet reference {:s} ({:s}), slew {:.2f} deg/s, "
                  "min sim {:.2f}",
@@ -2132,6 +2138,11 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
     // learners either (before a model exists the PRNs ride their own, as always).
     if (shared_frozen(now_s))
         return;
+    // #170: and no FIRST model inside the wider cone either. A warm model keeps adapting.
+    if (!_g_shared_warm
+        && gnss::formation_frozen(now_s, _bore_post_t.load(), _bore_sep_deg.load(),
+                                  _elem_shared_form_deg))
+        return;
     const int h = (n % 2 == 0) ? n / 2 : n; // an odd count is one pol
     const int n_pol = (h < n) ? 2 : 1;
     std::vector<cd> acc((size_t)n, cd(0.0, 0.0));
@@ -2208,17 +2219,42 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
     // -- in full for a first model, slewed for a warm one -- else to the instance's own pin.
     const bool fleet_live = _fleet_mode.load() == 2 && !_g_fleet_ref.empty();
     bool fleet_used[2] = {false, false};
+    gnss::RefOffset offs[2];
+    if (fleet_live)
+        for (int pol = 0; pol < n_pol && pol < 2; ++pol)
+            offs[pol] = gnss::ref_offset(_g_fleet_ref.data(), _g_shared.data(), pol * h,
+                                         std::min(n, pol * h + h));
     for (int pol = 0; pol < n_pol; ++pol) {
         const int e0 = pol * h, e1 = std::min(n, e0 + h);
         const int anchor = std::min(e1 - 1, e0 + _reference_element);
         cd pin(1.0, 0.0);
         if (fleet_live) {
-            const auto o = gnss::ref_offset(_g_fleet_ref.data(), _g_shared.data(), e0, e1);
+            const auto o = offs[pol];
             if (o.ok && o.sim >= _fleet_min_sim) {
                 pin = gnss::pin_rotation(o, _g_shared_warm,
                                          _fleet_slew_rad_s * std::min(std::max(dt, 0.0), 2.0));
                 fleet_used[pol] = true;
             }
+            // #170: a warm half F has not described for _fleet_reseed_s takes F's shape (F is in
+            // the fleet's phase already, so no pin). Its records were on a mis-shaped model, so
+            // the step is no loss; adaptation continues from here.
+            const double low_s =
+                _fleet_reseed[pol].low_since < 0.0 ? 0.0 : now_s - _fleet_reseed[pol].low_since;
+            const gnss::RefOffset& sib = offs[1 - pol];
+            const bool sib_ok = n_pol == 2 && sib.ok && sib.sim >= _fleet_reseed_sib_sim;
+            if (_g_shared_warm
+                && gnss::reseed_due(_fleet_reseed[pol], o.ok, o.sim, _fleet_min_sim, sib_ok, now_s,
+                                    _fleet_reseed_s)) {
+                for (int e = e0; e < e1; ++e)
+                    _g_shared[(size_t)e] = _g_fleet_ref[(size_t)e];
+                fleet_used[pol] = true;
+                INFO("elem_sum_shared: pol-{:d} model re-seeded from the fleet reference (shape "
+                     "similarity {:.2f} below {:.2f} for {:.0f} s, sibling pol {:.2f}; re-seed "
+                     "{:d})",
+                     pol, o.sim, _fleet_min_sim, low_s, sib.sim, _fleet_reseed[pol].n);
+            }
+        } else {
+            _fleet_reseed[pol].low_since = -1.0;
         }
         if (!fleet_used[pol]) {
             cd y(0.0, 0.0);
@@ -2487,6 +2523,9 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
     {
         const double now_s = steady_now_s();
         out["shared_frozen"] = now_s < _freeze_until;
+        out["form_frozen"] = gnss::formation_frozen(now_s, _bore_post_t.load(),
+                                                    _bore_sep_deg.load(), _elem_shared_form_deg);
+        out["form_deg"] = _elem_shared_form_deg;
         out["bore_sep_deg"] = _bore_sep_deg.load();
         out["bore_post_age_s"] = now_s - _bore_post_t.load();
         out["pin_ref_ok"] = _g_pin_ref_ok;
@@ -2497,7 +2536,10 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
                         {"min_sim", _fleet_min_sim},
                         {"err_deg", {_fleet_err_deg[0], _fleet_err_deg[1]}},
                         {"sim", {_fleet_sim[0], _fleet_sim[1]}},
-                        {"applied", {_fleet_applied[0], _fleet_applied[1]}}};
+                        {"applied", {_fleet_applied[0], _fleet_applied[1]}},
+                        {"reseed_s", _fleet_reseed_s},
+                        {"reseed_sib_sim", _fleet_reseed_sib_sim},
+                        {"reseeds", {_fleet_reseed[0].n, _fleet_reseed[1].n}}};
     nlohmann::json gs = nlohmann::json::array();
     for (const auto& g : _g_shared)
         gs.push_back({g.real(), g.imag()});

@@ -8,6 +8,7 @@
 #include "gnssElemCal.hpp"
 #include "gnssElemSteer.hpp"
 #include "gnssProjSubspace.hpp"
+#include "gnssSharedPin.hpp" // for ReseedState (#170)
 #include "restServer.hpp"
 
 #include "json.hpp" // nlohmann::json for the set_elem_gain POST
@@ -34,6 +35,14 @@
  * @conf out_buf  tracker record frames (n_prn * record_floats * float)
  * @conf prns     PRN list (must match the tracking command's)
  * @conf sample_rate  (for the NCO dt; default 5e6)
+ * @conf elem_sum_shared_form_deg      no FIRST shared model while the nearest satellite is inside
+ *                                     this cone (deg; default 8, wider than the freeze; #170)
+ * @conf elem_sum_shared_ref_reseed_s  a warm half below elem_sum_shared_ref_min_sim against the
+ *                                     fleet reference for this long takes the reference's shape
+ *                                     (s; default 600; 0 disables; live mode only; #170)
+ * @conf elem_sum_shared_ref_reseed_sib_sim  ... and only while the sibling pol describes the
+ *                                     reference at this similarity or better (default 0.8), so a
+ *                                     reference that went stale for both pols is never re-seeded
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
@@ -119,6 +128,9 @@ private:
     /// nor any inter-pol coefficient learns. Written by the REST thread, read by main.
     double _elem_shared_freeze_deg = 6.0;
     double _elem_shared_freeze_hold_s = 60.0;
+    /// #170: no FIRST model while the nearest satellite is inside this wider cone (config
+    /// elem_sum_shared_form_deg); a model formed at 5-8 deg learns the leakage as its shape.
+    double _elem_shared_form_deg = 8.0;
     std::atomic<double> _bore_sep_deg{1.0e9};  ///< last posted pooled boresight separation
     std::atomic<double> _bore_post_t{-1.0e18}; ///< steady time of that post
     double _freeze_until = -1.0e18;            ///< main thread: frozen while now < this
@@ -149,6 +161,13 @@ private:
     double _fleet_sim[2] = {0.0, 0.0};     ///< |<F, G>| / (|F| |G|)
     bool _fleet_applied[2] = {false, false};
     bool _fleet_slewing[2] = {false, false}; ///< one WARN per slew episode, one when done
+    /// #170: a warm half below _fleet_min_sim for this long (config elem_sum_shared_ref_reseed_s)
+    /// takes the reference's shape; 0 disables. Once per episode, at most once per interval.
+    double _fleet_reseed_s = 600.0;
+    /// ... and only while the sibling pol describes F at this similarity or better (config
+    /// elem_sum_shared_ref_reseed_sib_sim): both pols off F at once means F is the stale thing.
+    double _fleet_reseed_sib_sim = 0.8;
+    gnss::ReseedState _fleet_reseed[2];
     /// REST staging (under _gain_mtx), consumed by shared_consensus on the main thread.
     std::vector<std::complex<double>> _pending_fleet_ref;
     bool _pending_fleet_ref_set = false;
