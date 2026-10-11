@@ -10,7 +10,7 @@ file's git history (`git log -p docs/CHORD_BUGLIST.md`).
 Reconciled 2026-09-12 against HEAD `b45949144`, 57 commits after the 2026-09-10 pass (which was
 itself 496 commits after 2026-08-22, by seven parallel section audits that each read the tree AND
 the live fleet). Added since: #54, #65, #93/GAP 3, #111, #116, #117, #118, #128. **2026-10-11 pass** (HEAD `0011cf3b1`):
-#34, #55, #102, #107 residual, #112, #113, #121, #125, #130/#153, #133, #149, #150, #159, #160, #162; moot #11, #31, #88, #123, #174.
+#34, #55, #102, #107 residual, #112, #113, #121, #125, #130/#153, #133, #149, #150, #159, #160, #162, #172, #173; moot #11, #31, #88, #123, #174.
 
 ⚠️ **Three of those closed on a MEASUREMENT rather than a fix**, and their write-ups below carry
 the sensitivity as well as the result — #93 in particular is a *null*, and a null is only worth
@@ -84,6 +84,8 @@ that goes with it.
 | #150 | C11–C14 are BDS-3 MEOs on re-used BDS-2 PRNs, and the "PRN < 19 = BDS-2" rule in the broker, the lists and `--check-prns` hid them | `6a19f658b`: BeiDou capability from the IGS registry's block types (prnmap, the broker's implied gate, the almanac sky; the floor is the fallback), lists 11–14 + 19–42, the check judges by the registry | lists live at the 10-11 14:07Z cycle, gate at the 14:16Z broker restart: `signal-capability bds_b2a: 2 PRN(s) excluded by the IGS registry (9, 10)`; C11 (el 41°) seeded within 40 s, FLEET-INST align 0.998, 52.8 dB-Hz duty 1.00 on bds_b2a by 14:18Z; C12–C14 follow on their passes. The registry also admits C6–C8 (BDS-3 IGSO, peak 18–22° here): C08 was tracked at 37 dB-Hz through a runtime lane swap, so the start-up lists were the only place they were absent; added 10-11 (KV), 31 slots, gate GREEN on the day's sky |
 | #125 | the e5a/e5b A/B pair differed on six non-endpoint flags and three documents claimed otherwise | yaml 10-11 (KV's decision): e5a takes `rrate-phase-feed: true`, loses its joint feed (`joint-model-primary`, `joint-feed-spec`, `joint-shadow`), the #92 handover and the #101 eph-rebase; current-state notes head the e5a, e5b and bds_b2a blocks; live at the 14:41Z broker restart | resolved from `common` + chain blocks the two differ only on `signal`, `trackers`, `combiner`, `spectrum-endpoints`, `dll-combiners`; e5a's commands stay within e5b's envelope (median 0.04 Hz, none over 2 Hz) and JOINT-CLK stays inside ±1 chip of the search clock |
 | #113 | `eigencalc: Only 0 of 32 elements are unmasked`, 148× in 12.5 h | closed as benign (10-11): 4 in 1.75 h on the chord templates' mask path, the valve discards the frame and nothing downstream reads it | `grep -c "Only 0 of" /tmp/gnss_node.log` on a node: a handful per day |
+| #172 | the VM's service logs grew without rotation (broker.log and aggregator.log 28 GB each) | `scripts/gnss/site/logrotate.conf` + the hourly `:23` crontab line (daily or past 4 GB, copytruncate, 10 gzipped generations), 10-11 | `/var/tmp/gnss-logs/logrotate.log`; `ls -la /var/tmp/gnss-logs` shows `.1.gz` generations and small live files |
+| #173 | a node config on disk went stale ~6 days after regeneration and a relaunch then died on its EOP table | `eop_cron.sh` step 4 (10-11): regenerate the on-disk configs when the staged table is newer and `gen_fleet --check` passes | `eop_cron.log` prints `on-disk configs regenerated: table end A -> B` the hour after choco's daily table refresh |
 
 ## Closed because the premise died (moot)
 

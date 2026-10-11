@@ -78,20 +78,6 @@ PRNs, `joint-consume` and nothing else). The joint state is GPS-fed only again.
 
 
 
-### #173 — a node config on disk goes stale ~6 days after regeneration, and a relaunch then dies on its EOP table (2026-10-06)
-**What [live 10-06 03:36–05:17Z]:** every relaunch after the F-engine re-base died on the configs' EOP table (ended
-10-06 00:00Z) until the hourly push reached it. `eop_cron.sh` patches RUNNING nodes only; `gen_fleet` pulls a current
-table at regeneration; `config/generated/*.yaml` is untracked and nothing refreshes it between regenerations. The
-window is ~6 days from the last regen, and any relaunch (#153's were the usual trigger) inside it stays dead until :17.
-**Fix:** have `eop_cron.sh` rewrite the on-disk configs' table when it pushes, or have `node_up.sh` refuse or refresh a
-table whose last entry is in the past. Check: `python3 -c` over `config/generated/*.yaml` printing the table's last date.
-
-### #172 — the VM's service logs grow without rotation (2026-10-11)
-**What [live]:** `/var/tmp/gnss-logs/broker.log` 27.1 GB and `aggregator.log` 27.4 GB since 09-17 (~2.3 GB/day
-together); the VM's disk is at 36%, so ~70 days to full. The units write `StandardOutput=append:`.
-**Fix:** logrotate with `copytruncate` (the writers hold the fd) and a few compressed generations, or journald with
-a size cap. Note which memory notes grep `broker.log` by offset (the 2.5 GB tail census in the 10-11 triage).
-
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that
 nothing reads or forwards; both faults they are built for (#159's lost sky, #154's mis-pins) were found by a person
