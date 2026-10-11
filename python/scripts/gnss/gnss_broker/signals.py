@@ -87,10 +87,12 @@ def _load_descriptors(path=None):
 
 # chain key -> (primary descriptor, long/tracker descriptor or None, min_prn or None)
 #
-# min_prn 19 marks the BDS-3-only signals: C1-C18 are BDS-2 birds that broadcast B1I at
-# 1561 MHz, 14 MHz outside the science band, so there is nothing to despread -- yet they
-# are real, healthy, overhead satellites that every other gate waves through. Only
-# capability excludes them (see broker_up_extra.sh).
+# min_prn 19 marks the BDS-3-only signals: the BDS-2 birds broadcast B1I at 1561 MHz,
+# 14 MHz outside the science band, so there is nothing to despread -- yet they are real,
+# healthy, overhead satellites that every other gate waves through. Only capability excludes
+# them, and the IGS registry's block types decide it (prnmap.signal_incapable_prns, implied
+# as --signal-capability for these chains); the floor is the fallback when the registry is
+# unreadable. PRNs are not a proxy any more: IGS re-used C11-C14 for BDS-3 MEOs (#150).
 _CHAINS = {
     "gps_l1ca": ("GPS_L1CA", None, None),
     "gps_l1c": ("GPS_L1C_P", None, None),

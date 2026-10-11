@@ -271,6 +271,13 @@ def _block_carries(signal, block):
         )
     if "L1C" in s:
         return b.startswith("GPS-III")
+    if s.startswith("BDS"):
+        # B1C, B2a and B2b are BDS-3 signals; B1I/B2I/B3I are on BDS-2 and BDS-3 alike. The
+        # block type says which a satellite is, not its PRN: IGS moved BDS-3 MEOs onto the
+        # retired BDS-2 PRNs C11-C14 in 2026 (#150).
+        if "B1C" in s or "B2A" in s or "B2B" in s:
+            return b.startswith("BDS-3")
+        return True
     return True  # a signal we do not model: exclude nothing
 
 
@@ -298,11 +305,15 @@ def signal_incapable_prns(signal):
     nothing says why, which is far worse than keeping a dead slot. Same polarity as
     _rec_is_fresh: reject the provable, never refuse on doubt.
 
-    ⚠️ GPS ONLY in effect, and deliberately: every Galileo satellite carries E5a/E5b and the
-    BeiDou chains already exclude BDS-2 via alm_min_prn, so there is nothing to model there.
+    GPS and BeiDou are modelled (the BDS-3-only signals B1C/B2a/B2b against the BDS-2 blocks;
+    the PRN >= 19 floor the BeiDou chains used to rely on broke when IGS re-used C11-C14 for
+    BDS-3 MEOs, #150). Every Galileo satellite carries E5a/E5b, so nothing is modelled there.
     """
-    reg = gps_prn_blocks()
-    return {p for p, b in reg.items() if not _block_carries(signal, b)}
+    s = (signal or "").upper()
+    sysc = "G" if s.startswith("GPS") else "C" if s.startswith("BDS") else None
+    if sysc is None:
+        return set()
+    return {p for p, b in prn_blocks(sysc).items() if not _block_carries(signal, b)}
 
 
 def block_carries(signal, block):
@@ -312,7 +323,13 @@ def block_carries(signal, block):
 
 
 def gps_prn_blocks():
-    """{prn -> block} for every CURRENTLY-assigned GPS PRN, from the IGS metadata SINEX.
+    """{prn -> block} for every currently-assigned GPS PRN (the viewer's and viscap's view)."""
+    return prn_blocks("G")
+
+
+def prn_blocks(sysc):
+    """{prn -> block} for every CURRENTLY-assigned PRN of constellation `sysc` ("G", "C"), from
+    the IGS metadata SINEX.
 
     The registry half of signal_incapable_prns, exposed so the viewer can mark
     not-transmitted cells from the SAME source the broker filters on -- its first version
@@ -347,7 +364,7 @@ def gps_prn_blocks():
         return {}
     out = {}
     for svn, prn in svn_prn.items():
-        if prn[0] != "G":  # only GPS blocks gate a signal here
+        if prn[0] != sysc:
             continue
         b = svn_block.get(svn)
         if b:

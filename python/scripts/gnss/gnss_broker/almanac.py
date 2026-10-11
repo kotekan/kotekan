@@ -52,6 +52,9 @@ def stage_almanac_predict(ctx):
                     t_pred,
                     ctx.args.carrier_hz,
                 )
+                if ctx.capable is not None:
+                    # Capability by block type (#150); the PRN floor above is the fallback.
+                    raw = {p: v for p, v in raw.items() if p in ctx.capable}
                 # ── EPH-REBASE (#101): an ephemeris refresh just STEPPED the model by a
                 # KNOWN per-sat delta; hand the equal-and-opposite trim adjustment to the
                 # gather through the #92 handover (same-cycle ledger transfer) instead of

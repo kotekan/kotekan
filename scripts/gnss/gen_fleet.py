@@ -149,11 +149,14 @@ def flags_from(mapping):
 SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C"}
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 # ⚠️ CAPABILITY, NOT JUST ACTIVITY -- and without this the gate cries wolf, which is worse
-# than no gate. BeiDou B2a/B2b are BDS-3 signals: C1-C14 are BDS-2 (B1I/B2I era) and do not
-# broadcast them, so their exclusion from the list is CORRECT and must never be reported as a
-# fault. The manifest states the rule beside the list it governs; this encodes it so the check
-# can apply it. A signal absent from this table is assumed to have no PRN restriction.
-MIN_PRN = {"BDS_B2A_P_CS": 19, "BDS_B2B_I": 19}
+# than no gate. BeiDou B2a/B2b are BDS-3 signals the BDS-2 satellites do not broadcast, and
+# L2C/L5 are carried only by the newer GPS blocks, so their exclusion from a list is CORRECT
+# and must never be reported as a fault. The rule comes from the IGS registry's block types
+# (prnmap.signal_incapable_prns), the same source the broker filters on: a PRN floor stopped
+# being a proxy when IGS re-used C11-C14 for BDS-3 MEOs (#150). A list that deliberately
+# MIRRORS a sibling's (B3I follows B2a/B2b so tau_band sees the same rays) is judged by the
+# sibling's capability.
+MIRRORS = {"BDS_B3I_NH": "BDS_B2A_P_CS"}
 # A satellite that only grazes the horizon has no claim on a slot: use the tracking mask, not
 # el > 0. C56 peaks at 6.1 deg over a whole day -- visible to geometry, useless to the loop.
 RISE_DEG = 10.0
@@ -166,6 +169,7 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
 
     sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
     from gnss_ephemeris import fetch_brdc, parse_rinex_nav, predict_all
+    from gnss_broker.prnmap import signal_incapable_prns
 
     lists = {}
     for ent in man.get("common", {}).get("extra-signal") or []:
@@ -201,11 +205,9 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
             print("%-16s UNKNOWN constellation prefix -- skipped" % name)
             continue
         cfg = set(lists[name])
-        lo = MIN_PRN.get(name, 0)
-        active = {p for (s, p) in peak if s == sysid and p >= lo}
-        rises = {
-            p for (s, p) in peak if s == sysid and p >= lo and peak[(s, p)] > rise_deg
-        }
+        incap = signal_incapable_prns(MIRRORS.get(name, name))
+        active = {p for (s, p) in peak if s == sysid and p not in incap}
+        rises = {p for p in active if peak[(sysid, p)] > rise_deg}
         dead = sorted(cfg - active)
         excluded = sorted((active & rises) - cfg)
         print(
@@ -216,7 +218,9 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
                 len(active),
                 rise_deg,
                 len(rises),
-                ("  [capability: PRN >= %d]" % lo) if lo else "",
+                ("  [capability: %d excluded by the IGS registry]" % len(incap))
+                if incap
+                else "",
             )
         )
         if dead:
@@ -509,4 +513,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

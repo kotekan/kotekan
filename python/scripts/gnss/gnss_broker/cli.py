@@ -930,6 +930,7 @@ SIGNAL_IMPLIED = frozenset(
         "constellation",
         "dr_constellation",
         "dr_min_prn",
+        "signal_capability",
     )
 )
 assert not SIGNAL_IMPLIED & _FROZEN.keys(), SIGNAL_IMPLIED & _FROZEN.keys()
@@ -1069,9 +1070,9 @@ def build_parser(description):
         choices=("G", "E", "C", "R"),
         help="constellation letter for the BRDC almanac (which file covers ALL "
         "systems, unlike the per-group TLE URLs). Default: --dr-constellation. "
-        "C keeps only PRN >= 19 (BDS-3): the BDS-2 birds transmit B1I at "
-        "1561 MHz, outside our band -- same capability cut the BEIDOU-3 "
-        "TLE name filter encodes.",
+        "C keeps the BDS-3 satellites per the IGS registry's block types "
+        "(--signal-capability; PRN >= 19 is only the fallback): the BDS-2 "
+        "birds transmit B1I at 1561 MHz, outside our band.",
     )
     ap.add_argument(
         "--carrier-hz", type=float, default=1575.42e6, help="carrier for Doppler pred"
@@ -3265,8 +3266,11 @@ def build_parser(description):
         default=None,
         help="dead-reckon only PRNs >= this: a SIGNAL-CAPABILITY gate, not a "
         "visibility one. Default 19 for BeiDou (B1C/B2a are BDS-3 ONLY; the "
-        "BDS-2 birds C1-C18 broadcast B1I at 1561 MHz, which is not even "
-        "inside our band), 1 otherwise. The search cannot make this mistake "
+        "BDS-2 birds broadcast B1I at 1561 MHz, which is not even inside our "
+        "band), 1 otherwise -- and only the FALLBACK: when the IGS registry "
+        "is readable, --signal-capability decides by block type and the floor "
+        "is lowered to 1, because IGS re-used C11-C14 for BDS-3 MEOs (#150). "
+        "The search cannot make this mistake "
         "-- it never detects a satellite that isn't transmitting -- but "
         "DEAD RECKONING CAN: it seeds from the model, and the model is happy "
         "to predict a code phase for a signal that does not exist. The "

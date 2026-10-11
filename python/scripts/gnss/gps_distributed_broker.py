@@ -321,7 +321,10 @@ def main(argv=None, rx=None, publisher=None):
             "dr_constellation": _sig.constellation,
         }
         if _sig.min_prn is not None:
+            # The floor is only the fallback: the IGS registry's block types decide which
+            # satellites carry the signal (prnmap.signal_incapable_prns, #150).
             _implied["dr_min_prn"] = _sig.min_prn
+            _implied["signal_capability"] = _sig.key
         assert _implied.keys() <= SIGNAL_IMPLIED, _implied.keys() - SIGNAL_IMPLIED
         for _dest, _want in _implied.items():
             _flag = "--" + _dest.replace("_", "-")
@@ -682,7 +685,7 @@ def main(argv=None, rx=None, publisher=None):
     # chain -- the same resolution every other consumer in this file already uses (chain_id,
     # _pub_desc, alm_sys).
     _cap_sys = args.constellation or args.dr_constellation
-    if args.signal_capability and _cap_sys in ("G", "R"):
+    if args.signal_capability and _cap_sys in ("G", "R", "C"):
         try:
             from gnss_broker import prnmap as _pm
 
@@ -728,6 +731,12 @@ def main(argv=None, rx=None, publisher=None):
                 "signal-capability %s: block lookup FAILED (%s) -> filter DISABLED"
                 % (args.signal_capability, _e)
             )
+
+    if _cap_sys == "C" and _capable is not None:
+        # The registry decides for BeiDou (#150: C11-C14 are BDS-3 MEOs on re-used PRNs below
+        # 19). The PRN floor stays as the fallback for an unreadable registry, because a
+        # BDS-2 satellite seeded or probed from the model is noise (see --dr-min-prn).
+        alm_min_prn = dr_min_prn = 1
 
     dr_state = None
     # PER-SAT SLOW BIAS b_sat (task #33, P2 step 1): the first receiver-state loop closed on

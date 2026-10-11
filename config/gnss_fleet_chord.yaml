@@ -530,12 +530,14 @@ common:
     # the broker had been swapping it in live after every restart (gen_fleet --check-prns).
     # Same swap in the E5b and E6 lists below. Dead slots 14, 18, 22, 24 remain.
         - GAL_E5A_Q_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
-    # BeiDou B2a. BDS-3 ONLY (PRN >= 19 -- B1I/B2I-era BDS-2 birds do not broadcast B2a), and
-    # further cut to the 24 that ACTUALLY RISE HERE. The BRDC carries 38 BDS-3 PRNs, but
-    # 43-52/56-60 are IGSO/GEO parked over Asia and never clear the horizon at 49.3N/119.6W --
-    # computed over 24 h, max elevation < 0 for every one of them, while 19-42 all reach
-    # 34-88 deg. Seeding a satellite that cannot be there costs 4 lanes and produces noise.
-        - BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+    # BeiDou B2a. BDS-3 ONLY (B1I/B2I-era BDS-2 birds do not broadcast B2a) per the IGS
+    # registry's block types -- since 2026-04 that includes C11-C14, BDS-3 MEOs on re-used
+    # BDS-2 PRNs (#150) -- and further cut to the 28 that ACTUALLY RISE HERE. The BRDC carries
+    # 38 BDS-3 PRNs, but 43-52/56-60 are IGSO/GEO parked over Asia and never clear the horizon
+    # at 49.3N/119.6W -- computed over 24 h, max elevation < 0 for every one of them, while
+    # 11-14 and 19-42 all reach 34-88 deg. Seeding a satellite that cannot be there costs 4
+    # lanes and produces noise.
+        - BDS_B2A_P_CS:11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 
     # -- 1207.14 MHz: THE SECOND BAND (2026-08-09) -------------------------------------
     # Everything above sits at 1176.45 MHz, so until now the instrument has been
@@ -590,8 +592,9 @@ common:
     # and the natural first candidate if we want a searcher that is not GPS. But it is
     # data-only, so coherent integration past 1 ms needs nav-bit wipe, which
     # cudaGnssChordTrack does not have yet (task #31). Expect it to TRACK with modest deep
-    # until that lands; it is here for the band, not yet for the sensitivity.
-        - BDS_B2B_I:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+    # until that lands; it is here for the band, not yet for the sensitivity. Same list as
+    # B2a (C11-C14 included since 2026-10, #150).
+        - BDS_B2B_I:11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 
     # -- 1268.52 + 1278.75 MHz: THE THIRD BAND (2026-08-31) -----------------------------
     # The L2 groundwork's verdict: GPS L2C is 0-1 covering channels/node (narrowband --
@@ -600,10 +603,11 @@ common:
     # THIRD carrier: tau_band gets a third equation. No bandwidth, no retune -- both
     # carriers are inside the science selection every node already receives. GPU cost:
     # ~+2.5 ms/node-frame at the post-fp16+centered rates (measured 12.2-13.8 total),
-    # which is exactly what the 08-31 arm freed. Lists MIRROR the siblings (#34).
+    # which is exactly what the 08-31 arm freed. Lists MIRROR the siblings (#34; C11-C14
+    # added with them, #150 -- BDS-2 also broadcasts B3I, but the list follows B2a/B2b).
     # The _NH/_CS suffixes are load-bearing (gal_e5b's lesson above): trackers run the
     # BAKED variants; blind search does not exist for either (searcher stays GPS-only).
-        - BDS_B3I_NH:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+        - BDS_B3I_NH:11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
         - GAL_E6_C_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
 
     # -- 1227.6 MHz: GPS L2C (2026-08-31) ------------------------------------------------
