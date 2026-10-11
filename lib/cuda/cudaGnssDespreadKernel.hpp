@@ -167,10 +167,6 @@ struct PeelJob {
 
 /// Batch-shared geometry.
 struct DespreadParams {
-    /// 1 = carrier phase from DespreadJob::ang0 plus an intra-record offset, the only mode the
-    /// host sets. 0 = the old wc * n_abs expression; its kernel branch goes with the GPU bench
-    /// pass, which needs a GPU A/B to remove it.
-    int carrier_phase_from_ref = 1;
     long long n0; ///< absolute sample index of the window's first hop reference (+fft_len-1)
     int fft_len;  ///< samples per hop
     int n_hops;   ///< hops per record (<=256)

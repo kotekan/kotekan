@@ -123,7 +123,6 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         // products (n_m ~1e10, so that multiply is the expensive fp64 one). The E/L rounding
         // differs from the unfused form by ~1 ulp of C (~1e-7 chips = 0.03 mm), far below the
         // gather's own float error.
-        const long long n_m = p.n0 + (long long)mh * p.fft_len;
         const double dn = (double)((long long)mh * (long long)p.fft_len);
         // CODE PHASE FROM A REFERENCE (task #54). This was cp0 + n_m*cps on the ABSOLUTE sample:
         // n_m*cps reaches 6.1e12 chips at CHORD uptime, where a double's ulp is ~1e-3 chips, and it
@@ -141,14 +140,7 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         // wc's own rounding times the absolute sample: a per-record constant that re-rolls with
         // every Doppler re-propagation, 0.217 rad at 6.8 days of uptime, and per-record
         // constants are precisely what the cross-record estimators integrate.
-        double ang;   // A/B arm, task #52/#55 -- see DespreadParams::carrier_phase_from_ref
-        if (p.carrier_phase_from_ref) {
-            ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
-        } else {
-            const double pr_ = job.wc * (double)n_m;
-            const double er_ = fma(job.wc, (double)n_m, -pr_);
-            ang = fmod(pr_, 2.0 * M_PI) + er_;
-        }
+        const double ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
         float sn, cn;
         sincosf((float)ang, &sn, &cn);
         const float2 pa = make_float2(cn, sn);
@@ -441,7 +433,6 @@ __global__ void gnss_peel_kernel(const T* __restrict__ data,           // [nchan
             if (!act[t])
                 continue;
             const int mh = base + t * (int)blockDim.x;
-            const long long n_m = p.n0 + (long long)mh * p.fft_len;
             const double dn = (double)((long long)mh * (long long)p.fft_len);
             // CODE PHASE FROM A REFERENCE (task #54). This was cp0 + n_m*cps on the ABSOLUTE sample:
             // n_m*cps reaches 6.1e12 chips at CHORD uptime, where a double's ulp is ~1e-3 chips, and it
@@ -452,14 +443,7 @@ __global__ void gnss_peel_kernel(const T* __restrict__ data,           // [nchan
             // code_len on the host in long double; cps now multiplies only the intra-record offset.
             const double C_P = job.cp_ref + dn * job.cps;
             // Phase from job.ang0 -- see cudaGnssChordDespread.cu (task #52).
-            double ang;   // A/B arm, task #52/#55 (peel: MUST match the despread's arm)
-            if (p.carrier_phase_from_ref) {
-                ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
-            } else {
-                const double pr_ = job.wc * (double)n_m;
-                const double er_ = fma(job.wc, (double)n_m, -pr_);
-                ang = fmod(pr_, 2.0 * M_PI) + er_;
-            }
+            const double ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
             float sn, cn;
             sincosf((float)ang, &sn, &cn);
             const float2 pa = make_float2(cn, sn);
