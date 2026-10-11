@@ -352,7 +352,9 @@ common:
   # A before/after across restarts cannot resolve it -- the sky churns faster.
     code-bias-alpha: 0.05
     code-bias-min-sats: 2
-    fit-gap-s: 3600
+    # 2026-10-11 (#119): 1200 s, inside the unwrap's unambiguous range (5115 chips at ~3.45-4.05 chips/s
+    # = 21-25 min); 3600 let a 25-60 min re-entry unwrap onto the wrong branch.
+    fit-gap-s: 1200
   # ARMED 2026-08-28 (#96), 0 -> 30. The cp-rate fit is the ONLY estimator here with no SNR
   # gate: acquire-snr 30 already decides whether to believe this same fit's l-a contribution,
   # and bias-min-snr 60 gates the doppler clock pool, but every near-threshold detection was
@@ -1960,6 +1962,9 @@ chains:
     # rrate-command extension (2026-08-30) -- see gal_e5b note / pre-reg file.
         rrate-command: true
         rrate-cmd-min-sig: 100
+    # 2026-10-11 (#121): the same 10 Hz cap as gal_e5a/e5b (the physics bound on a true residual);
+    # on the 40 Hz default this chain railed at +39.99 Hz on C24 (10-11 02:35Z).
+        carrier-max-hz: 10.0
     # ── THE FIRST NON-GPS CLOCK FEEDER (armed 2026-08-23 ~00:xx) ─────────────────────
     # y = dr_seed_phys(seed) + APPLIED trim - cp_predicted, the P3 model-primary feed.
     # WHY THIS CHAIN, AND WHY ONLY NOW. The feed's two historical failure modes are both
