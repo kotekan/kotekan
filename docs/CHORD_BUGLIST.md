@@ -179,6 +179,11 @@ veto and freeze do see them — `dr_pd` pools the whole BRDC — subject to #151
 in all three places; add C11–C14 to all three lists (B3I stays matched to B2a/B2b for tau_band);
 regenerate the node configs; node cycle (KV). **Check:** `--check-prns` lists C11–C14 EXCLUDED before the
 change and is clean after; each gets a `fleet_present` row within a pass of rising.
+**10-11: the change is committed (`6a19f658b`), not yet deployed.** The registry's block types now decide BeiDou capability
+(prnmap, the broker's implied `--signal-capability`, the almanac sky; the PRN floor is the fallback), the three lists carry
+11–14, and `--check-prns` judges by the registry (pinned sky: C11–C14 EXCLUDED before, clean after). Deploy: regen +
+node cycle for the lists, the next broker restart for the gate. **Open question:** the check now reports C6–C8 EXCLUDED —
+BDS-3 IGSO per the registry that peak at 18–22° here (the old note called them invisible). Adding them makes 31 slots.
 
 ### #151 residual — the seeds and the sky still keep two ephemerides, and EPH-REBASE (#101) never fires
 The reload cadence is fixed (`b2223cc7a`, closed). What is left is the entry's own "check #101 first":
