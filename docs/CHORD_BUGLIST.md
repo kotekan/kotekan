@@ -778,6 +778,11 @@ excursion is the one that reproduces on demand.
 - **A fix deployed onto a restart transient will look like it worked** — and one reverted on a
   restart transient will look like it was wrong. Judge a broker restart at t+10 min, and separate
   the sky (setting satellites) first.
+- **A running process hides a deleted library until its next restart.** Every deployed binary
+  here has a RUNPATH into an NFS build dir (`readelf -d <binary> | grep RUNPATH`); the gather's
+  pointed at `~/gnss/builds/gather-2d852b79e`, deleted as cruft on 10-12 after checking only process
+  argv, and the gather died at its next restart with the fleet blind at the broker for 6 min.
+  Before deleting a build dir, list what every live kotekan has mapped (`/proc/<pid>/maps`).
 - **Stagger node rolls: one at a time costs nothing, all six costs ~30 minutes.** The standing
   C++ trim lives on each node, so a single roll discards a twelfth of the fleet's trim state and
   ten combiners carry the measurement — nothing moves. Roll them together and every satellite's
