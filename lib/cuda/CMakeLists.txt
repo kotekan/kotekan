@@ -156,7 +156,7 @@ set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)
 
 # gputils and n2k are vendorized; located in kotekan/external for now.
 target_sources(kotekan_cuda PRIVATE cudaCorrelator.cpp)
-# n2k_dual clone (GNSS path B) -- cudaCorrelator/n2k deliberately untouched.
+# The GNSS two-input correlator, on the n2k_dual clone; cudaCorrelator and n2k are unchanged.
 target_sources(kotekan_cuda PRIVATE cudaCorrelatorDual.cpp)
 
 target_link_libraries(

@@ -63,13 +63,12 @@ add_library(
     gnss/gnssOverlay.cpp
     gnss/gnssChannelizedDespread.cpp
     gnss/GnssCoherentCombiner.cpp
-    # Task #59, the tracker->broker telemetry transport. Deliberately OUTSIDE the FFTW block:
-    # the gather half runs on the broker host, which has no F-engine, no GPU and no reason to
-    # carry an FFTW dependency, and the pack half must build in the same tree as the trackers.
+    # The tracker -> broker telemetry transport, outside the FFTW block: the gather half runs on
+    # the broker host, which has no F-engine, GPU or FFTW.
     gnss/GnssTelemPack.cpp
     gnss/GnssTelemGather.cpp
-    # Task #51, the fast code loop. Rides in the gather instance beside GnssTelemGather (the
-    # only place with the whole fleet at frame rate), so it belongs in the same no-FFTW block.
+    # The fleet code loop runs in the gather instance beside GnssTelemGather (the only place
+    # with the whole fleet at frame rate), so it is in the same no-FFTW block.
     gnss/GnssFleetTrim.cpp
     SpawnProcess.cpp
     freqSplit.cpp
@@ -280,8 +279,7 @@ if(USE_CUDA)
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaDespread.cpp)
     # Host record assembler for the GPU tracking commands.
     target_sources(kotekan_stages PRIVATE gnss/GnssGpuRecordAssemble.cpp)
-    # A2 of docs/gnss_gpu_search.md: the device-resident acquisition search. Needs cuFFT (the
-    # despread driver did not -- it generates replicas in closed form and never transforms).
+    # The device-resident acquisition search; it needs cuFFT.
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaAcquire.cpp)
     target_link_libraries(kotekan_stages PRIVATE kotekan_cuda CUDA::cufft)
     target_compile_definitions(kotekan_stages PRIVATE GNSS_CUDA=1)

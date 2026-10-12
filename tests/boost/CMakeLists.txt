@@ -37,11 +37,11 @@ target_include_directories(test_gps_l1c_code PRIVATE ../../lib/stages ../../lib/
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
-# The shared element model's fleet-common phase pin (#154): header-only, no Telescope/FFTW.
+# The shared element model's fleet-common phase pin: header-only, no Telescope/FFTW.
 add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
 target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
-# Per-channel noise weights for the assembler's cross-channel sums (#163): header-only.
+# Per-channel noise weights for the assembler's cross-channel sums: header-only.
 add_executable(test_gnss_chan_power test_gnss_chan_power.cpp)
 target_include_directories(test_gnss_chan_power PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
@@ -76,8 +76,8 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/gnssChannelizedAcquire.cpp
         ../../lib/stages/pfbPrototype.cpp
         ../../lib/stages/gnss/gpsCACode.cpp
-        # The L2C cases drive the real ChannelizedReplicaBank (time-mux combined code) so
-        # the bug hunt exercises the production replica + acquire path, not a test stand-in.
+        # The L2C cases drive the real ChannelizedReplicaBank (time-multiplexed combined code),
+        # so they exercise the production replica and acquire path.
         ../../lib/stages/gnss/gnssChannelizedReplica.cpp
         ../../lib/stages/gnss/gnssBandPlan.cpp
         ../../lib/stages/gnss/gnssChannelizedDespread.cpp
@@ -101,11 +101,9 @@ if(FFTW_FOUND)
     target_include_directories(test_gnss_channelized_acquire SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_acquire PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
 
-    # ⚠️ BOTH targets compile gnssChannelizedReplica.cpp, whose signal_code() dispatch references
-    # EVERY code module -- so both source lists must list every one of them, whether or not the test
-    # exercises that signal. The lists had drifted six modules behind the dispatch (E5b, E6, B1I,
-    # B2b, B3I, L3OC) and would not have linked; nobody noticed because WITH_BOOST_TESTS defaults
-    # OFF in the CUDA build dir. Add the code module here when you add it to the dispatch.
+    # Both targets compile gnssChannelizedReplica.cpp, whose signal_code() dispatch references
+    # every code module, so both source lists must name all of them whether or not the test uses
+    # that signal. Add a code module here when you add it to the dispatch.
     # Channelized replica bank: per-signal code dispatch (L1 C/A, L5 I/Q, L2C), checked by self /
     # cross-PRN / cross-signal despread. Needs FFTW (r2c replica).
     add_executable(
@@ -403,10 +401,10 @@ endif()
 
 # test_FrameDescSerialize - FrameDesc JSON serialization round-trip + adversarial input
 add_executable(test_FrameDescSerialize test_FrameDescSerialize.cpp)
-# ⚠️ WHOLE-ARCHIVE, like every other test here that pulls in buffer.cpp. kotekan_core's buffer.cpp
-# references e_time, which lives in kotekan_utils, and CMake's dependency ordering puts core LAST on
-# the link line -- so the archive member is already past by the time the undefined symbol appears.
-# Repeating kotekan_utils does not help: CMake reorders it back.
+# Whole-archive, like every other test here that pulls in buffer.cpp: kotekan_core's buffer.cpp
+# references e_time from kotekan_utils, and CMake puts core last on the link line, so the archive
+# member is already past when the symbol is needed. Repeating kotekan_utils does not help; CMake
+# reorders it.
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(
         test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core
