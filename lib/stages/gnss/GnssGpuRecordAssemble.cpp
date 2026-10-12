@@ -899,6 +899,10 @@ void GnssGpuRecordAssemble::main_thread() {
                                         .count());
             else
                 _proj_k_rec = 0;
+            int proj_src = 0; // the OR of the basis sources over this instance's channels
+            if (_proj_k_rec > 0)
+                for (int src : _proj_src_ch)
+                    proj_src |= src;
 
             for (int p = 0; p < n_prn; ++p) {
                 const int rec_stride = gnss::record_stride(_n_elements);
@@ -908,6 +912,8 @@ void GnssGpuRecordAssemble::main_thread() {
                 for (int f = 0; f < rec_stride; ++f)
                     rec[f] = 0.0f;
                 rec[gnss::REC_PROJ_COST] = -1.0f; // measured below when a basis is in force
+                rec[gnss::REC_PROJ_K] = (float)_proj_k_rec;
+                rec[gnss::REC_PROJ_SRC] = (float)proj_src;
                 const PrnCtl& c = pctl[(size_t)r * n_prn + p];
                 // THE FRAME'S PRN WINS. _prns was reconciled to it at the top of this frame,
                 // so the two agree -- but reading it from the record's own control word means

@@ -123,7 +123,9 @@ namespace gnss {
 /// recoverable by the consumer instead of left implicit.
 /// 29 -> 30 on 2026-10-01: @ref REC_PROJ_COST, the bright-satellite projection's cost on the
 /// satellite's live weights, so the broker can weight rows by it instead of vetoing by angle.
-constexpr int RECORD_FLOATS = 30;
+/// 30 -> 32 on 2026-10-12: @ref REC_PROJ_K and @ref REC_PROJ_SRC, the rank and the source of the
+/// basis in force on the record, so a pass can be judged from the archive (#158).
+constexpr int RECORD_FLOATS = 32;
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
 // THE HOP-ORDER CONTRACT (decided 2026-08-06, docs/gnss_gpu_search.md 11.3): every hop-indexed
@@ -254,6 +256,16 @@ constexpr int REC_PHI0 = 28;
 /// satellite is itself a projection source, it is unsteered, or its cal is cold. The broker's
 /// fleet solve weights the row by it instead of vetoing every satellite within 5 deg.
 constexpr int REC_PROJ_COST = 29;
+
+/// BRIGHT-SATELLITE PROJECTION RANK on this record: the largest k over this instance's channels
+/// (GnssGpuRecordAssemble::proj_prepare_record), 0 when no basis is in force. The same value on
+/// every PRN row of the record.
+constexpr int REC_PROJ_K = 30;
+
+/// BRIGHT-SATELLITE PROJECTION SOURCES on this record: the OR over this instance's channels of
+/// where its basis directions came from -- 1 its own row of the source satellite, 2 a sibling
+/// chain's row, 4 the gated probe stack. 0 when no basis is in force. Same value on every row.
+constexpr int REC_PROJ_SRC = 31;
 
 /// PHI-CACHE STALENESS, Hz: doppler_now - the Doppler this PRN's channelizer filter was BUILT
 /// at. GnssCudaDespread::ensure_phi rebuilds only when the Doppler moves further than

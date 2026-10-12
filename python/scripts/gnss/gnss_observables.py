@@ -732,6 +732,9 @@ def main():
                     # a measurement, and offline gets to decide how much of it to believe.
                     "cp_chips": r.get("code_phase_chips"),
                     "dll_disc": r.get("dll_disc"),
+                    "proj_b": r.get("proj_b"),
+                    "proj_k": r.get("proj_k"),
+                    "proj_src": r.get("proj_src"),
                     "code_len": args.code_length,
                     "chip_rate_hz": args.chip_rate_hz,
                     # --- PHASE: cycles on THIS arc (0 at an arc start). Ambiguous by an

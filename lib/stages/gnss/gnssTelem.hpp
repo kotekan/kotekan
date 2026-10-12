@@ -94,6 +94,9 @@ namespace gnss {
 
 /// "GTL1" -- bumped only for an INCOMPATIBLE layout change; `version` covers the rest.
 constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
+/// v8 (2026-10-12): RECORD_FLOATS 30 -> 32 for REC_PROJ_K and REC_PROJ_SRC, the rank and the
+/// sources of the projection basis in force on the record (#158). The row grew: nodes, gather
+/// and broker move together.
 /// v7 (2026-10-01): RECORD_FLOATS 29 -> 30 for REC_PROJ_COST, the bright-satellite projection's
 /// per-row cost, which the broker's fleet solve weights by. The row grew, so nodes, gather and
 /// broker move together as for v4/v5.
@@ -118,7 +121,7 @@ constexpr uint32_t TELEM_MAGIC = 0x314c5447u;
 /// each instance, that's *never* what we want to do" -- the cross-channel sum destroys the
 /// frequency axis a delay lives on, so the broker was left FITTING a per-instance constant
 /// where it should DERIVE one from the ramp across ~106 channels.
-constexpr uint16_t TELEM_VERSION = 7;
+constexpr uint16_t TELEM_VERSION = 8;
 
 /// Comb columns a row MAY carry. This is the format's ceiling and the size of the header's
 /// freq_id label array -- NOT the row stride: each sender ships exactly the columns it despreads

@@ -52,7 +52,8 @@ _MAGIC = 0x314C5447
 # columns' freq_ids. The cross-channel sum in the tracker destroyed the frequency axis a delay
 # lives on, which forced fleet_coherent to FIT a per-instance constant instead of DERIVING one.
 # v7 (2026-10-01): RECORD_FLOATS 29 -> 30 for REC_PROJ_COST.
-_VERSION = 7
+# v8 (2026-10-12): RECORD_FLOATS 30 -> 32 for REC_PROJ_K and REC_PROJ_SRC.
+_VERSION = 8
 _HDR = struct.Struct("<IHHHHHHIIQQqdIHH16s16s8H")
 _HDR_BYTES = 112
 _MAX_CHAN = 8
@@ -63,7 +64,7 @@ CHAN_L_RE, CHAN_L_IM, CHAN_L_ENERGY = 6, 7, 8  # LATE
 # gnssRecord.hpp RECORD_FLOATS. Verified against every frame's own n_row field, because a
 # tracker rebuilt with a wider record and a broker that was not is precisely the silent
 # mis-stride this transport exists to stop tolerating.
-_ROW_FLOATS = 30
+_ROW_FLOATS = 32
 
 # Row slots we name here (gnssRecord.hpp). The rest of the row travels intact and is available
 # through `row()` -- this is a transport, not a schema.
@@ -100,6 +101,10 @@ REC_SKY_IM = 25
 # weights inside the projected subspace (the row kept (1 - cost)^2 of its prompt power); -1 =
 # no basis in force, a source, unsteered or cold. See gnssRecord.hpp REC_PROJ_COST.
 REC_PROJ_COST = 29
+# The rank of the projection basis in force on the record (0 = none) and the OR of its
+# sources over the sender's channels: 1 own row, 2 sibling chain, 4 probe stack (gnssRecord.hpp).
+REC_PROJ_K = 30
+REC_PROJ_SRC = 31
 
 # Widest row the format admits -- gnss::TELEM_MAX_ROW_FLOATS, and the size of the header's
 # freq_id array. ⚠️ NOT THE STRIDE: from v6 every sender ships only the comb columns it

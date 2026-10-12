@@ -553,6 +553,12 @@ class FleetPublisher:
                     "amplitude": math.sqrt(max(0.0, v["p_pow"])),
                     "unbiased_amplitude": math.sqrt(max(0.0, v["p_pow"] - p_med)),
                     "dll_disc": v["disc"],
+                    # the projection basis the senders folded under: b = its cost on this
+                    # satellite (mean over senders with one in force, -1 none), k = the rank,
+                    # src = the OR of the sources (1 own row, 2 sibling, 4 probe stack)
+                    "proj_b": v.get("proj_b"),
+                    "proj_k": v.get("proj_k"),
+                    "proj_src": v.get("proj_src"),
                     # ⚠️ `doppler_hz` IS THE COMMANDED SEED, NOT WHAT THE CORRELATOR RAN AT.
                     # These two differ by the tracker's feed-forward, dop_rate x (seed age), and
                     # the seed changes only when the broker reseeds -- so this field is a STAIRCASE
