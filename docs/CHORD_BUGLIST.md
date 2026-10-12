@@ -242,13 +242,15 @@ product's remaining losses are the close passes, and one of them on 10-11 was th
   band-power rise (median +40%, p99 2.5×); a quiet 10-11 19:00Z window railed 40× more with no transit. E06 at 0.24°
   did rail E6 at 5% (the self case). So the C19 brownout was not rail-driven, and dynamic F-engine gains would not
   remove it: it sits in the array's response to the bright satellite (freeze/projection path), ours to explain.
-- **Candidate 2 BUILT 10-12 (eebea6a1a, not yet live):** `fleetadr.fold_record` keeps each instance's prompt power
-  level (a ~1 s mean, peak-held, decaying 20 dB/h) and treats a record 10 dB below it as silence: the instance cannot
-  vouch, and when none can the arc ends; `FADR BREAK` lines print `silent<n>`, rows carry `fadr_n_silent`. Replayed
-  150 s of live gal_e5a/gal_e6 telemetry (fixtures/tec_wander/replay_silence.py): tracked satellites silence no
-  record and are bit-identical to the old fold; E10 at 7° elevation (28 dB-Hz) silences 7%. Bring-up = a broker
-  restart (and the obs writers for the new column); judge on G09 ~21:21Z: the victims' arcs must END (new fadr_arc,
-  `FADR BREAK ... silent>0`) instead of SLIPPING, and quiet-sky arcs must not break more than before.
+- **Candidate 2 LIVE 10-12 12:37:14Z (eebea6a1a + 8a4afd29b):** `fleetadr.fold_record` keeps each instance's
+  prompt power level (a dB mean over ~100 s of accepted records, decaying 20 dB/h under a rejected dip) and treats an
+  instance as silent after 5 consecutive records 10 dB below it: it cannot vouch, and when none can the arc ends;
+  `FADR BREAK` lines print `silent<n>`, rows carry `fadr_n_silent`. The first cut (live 12:20–12:37, a ~1 s level and
+  one record enough) ended 625 arcs in 7 min: a seed re-pin dips every instance for one record at once. With the fix,
+  replays of two live captures (fixtures/tec_wander/replay_silence.py) leave every tracked satellite bit-identical to
+  the old fold; live, 0 breaks on the Galileo and BeiDou chains from 12:38Z, while gps_l5 broke on real 2–7 s dips in
+  its post-restart loop transient. Old-fold baseline: 0–1 `FADR BREAK` lines per hour. Judge: C33 (BDS-3, 0.61°, CA
+  12:54Z 10-12) and G09 ~21:21Z: the victims' arcs must END (new fadr_arc, `silent>0`) instead of SLIPPING.
 **⚡ 09-30, with projection live fleet-wide (from 09-29 17:00Z): candidate 1 largely holds.** Seven transits had data,
 09-30 03:17Z to 15:10Z, between two F-engine outages.
 - **E5a × E6 arcs surviving a transit:** 74% (39/53), against 39% (26/67) with the freeze alone.
