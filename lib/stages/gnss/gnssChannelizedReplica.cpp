@@ -471,8 +471,8 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
                 // alignment is set (nh_phase >= 0).
                 if (_secondary_length > 0 && nh_phase >= 0)
                     c = (int8_t)(c * overlay_sign(period, nh_phase));
-                // Real passband replica code*cos(carrier); the r2c bank keeps the
-                // positive-frequency half (the +carrier image), matching the data.
+                // Real passband replica code*cos(carrier). It goes through the same r2c bank
+                // as the data, so it lands in the same carrier image.
                 block[i] = c * (float)cph.real();
             } else {
                 block[i] = 0.0f; // pre-stream: matches F-engine zero init

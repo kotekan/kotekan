@@ -7,7 +7,7 @@
 #include <cstdlib>   // for abs
 #include <mutex>     // for lock_guard
 #include <numeric>   // for gcd
-#include <thread>    // for thread (aggregate d-parallelism)
+#include <thread>    // for thread
 
 namespace gnss {
 
@@ -68,7 +68,7 @@ void channel_correlate_into(const std::vector<cf>& data, const std::vector<cf>& 
     cf* IN = reinterpret_cast<cf*>(ws.in);
     cf* OUT = reinterpret_cast<cf*>(ws.out);
 
-    // conj(FFT(repl0)) -- Doppler-independent, computed once.
+    // conj(FFT(repl0)): Doppler-independent, computed once per call.
     std::vector<cf> conjB(Mp);
     for (int k = 0; k < Mp; ++k)
         IN[k] = repl0[k];
@@ -77,24 +77,18 @@ void channel_correlate_into(const std::vector<cf>& data, const std::vector<cf>& 
         conjB[k] = std::conj(OUT[k]);
 
     const float inv_mp = 1.0f / (float)Mp; // FFTW backward is unnormalized
-    // Resize only on a real shape change: a caller looping over sub-windows hands back the
-    // same P every time, and reusing it is the whole point of this overload.
+    // Resized only on a shape change, so a caller reusing P across windows does not reallocate.
     if ((int)P.size() != nd)
         P.assign((size_t)nd, std::vector<cf>((size_t)Mp));
     for (auto& row : P)
         if ((int)row.size() != Mp)
             row.assign((size_t)Mp, cf(0.0f, 0.0f));
 
-    // BIN-ALIGNED DOPPLER GRID: wiping the data by f_d multiplies it by e^{-i 2pi f_d m sph/Fs},
-    // which is a pure cyclic SHIFT of its spectrum -- exactly, with no approximation -- whenever
-    // f_d is a whole number of this transform's own bins, Fs/(Mp*sph) = 62.5 Hz at CHORD. Then
-    // ONE forward transform serves every Doppler trial instead of one per trial, halving the
-    // per-channel correlation, which is the dominant cost once the surface is decimated.
-    //
-    // Detected rather than configured: a caller whose doppler_step lands on the bin spacing gets
-    // it for free, and one whose does not (the historical 31.25 Hz = HALF a bin) keeps the
-    // original path bit-for-bit. Halving the grid costs Doppler resolution the parabolic refine
-    // in channelized_peak already recovers to ~step/20.
+    // Bin-aligned Doppler grid: wiping the data by f_d multiplies it by e^{-i 2pi f_d m sph/Fs},
+    // which is exactly a cyclic shift of its spectrum when f_d is a whole number of this
+    // transform's bins, Fs/(Mp*sph) (62.5 Hz at CHORD). One forward transform then serves every
+    // Doppler trial. Detected rather than configured: a grid not on the bins takes the per-trial
+    // path below.
     const double bin_hz = (Mp > 0 && sph > 0) ? sample_rate / ((double)Mp * (double)sph) : 0.0;
     std::vector<int> bshift((size_t)nd);
     bool on_bins = (nd > 0 && bin_hz > 0.0);
@@ -161,8 +155,7 @@ AcquisitionSurface surface_dims(const std::vector<int>& chan_freq, int samples_p
     // g == 0 means a single covering channel: |D|^2 is then flat in s (one unit-modulus ramp),
     // so one column suffices. std::gcd(0, sph) == sph gives exactly that.
     const int s_stored = (nc > 0 && sph > 0) ? sph / std::gcd(g, sph) : sph;
-    // Decimate the fine axis: it is sampled every sample but its lobe is sph/(comb span)
-    // samples wide (157 here), so the stored width is ~157x finer than the peak it resolves.
+    // Decimate the fine axis (see AcquisitionSurface::s_step).
     const int s_step = std::max(1, fine_step);
     return AcquisitionSurface{n_dop, Mp, sph, s_stored, s_step};
 }
@@ -175,27 +168,18 @@ AcquisitionSurface aggregate_accumulate(const std::vector<std::vector<std::vecto
     const int Mp = (nc && nd) ? (int)P[0][0].size() : 0;
     const int sph = samples_per_hop;
 
-    // The fine-lag axis is exactly periodic, so only store one period of it.
+    // The fine-lag axis is exactly periodic, so store one period of it.
     //
-    // D[s] = sum_ci P_ci e^{+i 2pi f_ci s / sph}. Factor out the first channel's ramp: it has
-    // unit modulus, so |D[s]|^2 -- all this function keeps -- depends only on the channel
-    // DIFFERENCES f_ci - f_c0. If those share a common factor g with sph, then |D[s]|^2 repeats
-    // with period sph/g and the remaining g-1 copies are bit-for-bit identical.
+    // D[s] = sum_ci P_ci e^{+i 2pi f_ci s / sph}. Factoring out the first channel's unit-modulus
+    // ramp shows that |D[s]|^2, all this function keeps, depends only on the differences
+    // f_ci - f_c0. If those share a factor g with sph, |D[s]|^2 repeats with period sph/g and
+    // the other g-1 copies are identical. For a combed band g is large (16 for a stride-16
+    // comb). The period sph/g samples is 1/(g * channel spacing) in time, the comb's own delay
+    // ambiguity, so no independent information is dropped.
     //
-    // This is not a corner case, it is the normal situation for a combed band, and g is large:
-    // CHORD's node comb is stride 8, split across two GPUs, so each search instance sees
-    // stride 16 and g = 16 -- 15/16 of both the compute and the 2 GB surface was recomputing
-    // numbers it already had. (Airspy's covering set is stride 2, so g = 2.)
-    //
-    // It is also the SAME redundancy as the known code-phase ambiguity: period sph/g samples is
-    // 1/(g * channel_width) in time, = 320 ns for g=16 here, the comb ambiguity resolved by the
-    // BRDC model with ~16x margin. So nothing is lost that was ever independent information.
-    //
-    // Behaviour is preserved EXACTLY, not approximately:
-    //   - channelized_peak takes the first STRICT maximum, so among g identical copies it
-    //     already returned the s in [0, sph/g); the peak cell is unchanged.
-    //   - its noise floor is a mean over the surface, and dropping g uniform copies of every
-    //     value leaves the mean identical -- so the reported SNR is unchanged too.
+    // Storing one period gives the same peak cell and SNR as the full axis: channelized_peak
+    // takes the first strict maximum, which lies in [0, sph/g), and dropping g uniform copies
+    // leaves the surface mean the same.
     const AcquisitionSurface dims = surface_dims(chan_freq, sph, nd, Mp, fine_step);
     const int s_step = dims.s_step;
     const int s_cols = dims.fine();
@@ -204,10 +188,9 @@ AcquisitionSurface aggregate_accumulate(const std::vector<std::vector<std::vecto
     if (nc == 0)
         return dims;
 
-    // Cross-channel fine-lag phase ramp e^{+i 2pi f_c s / sph}; SoA float so the
-    // inner s-loop vectorizes (std::complex<float> does not auto-vectorize).
-    // NOTE the ramp argument still divides by the FULL sph -- s_stored bounds the range of s,
-    // it does not rescale the frequency.
+    // Cross-channel fine-lag ramp e^{+i 2pi f_c s / sph}, as split float arrays so the inner
+    // s loop vectorizes (std::complex<float> does not). The ramp divides by the full sph:
+    // s_stored bounds the range of s, it does not rescale the frequency.
     std::vector<std::vector<float>> rampRe(nc, std::vector<float>(s_cols));
     std::vector<std::vector<float>> rampIm(nc, std::vector<float>(s_cols));
     for (int ci = 0; ci < nc; ++ci) {
@@ -219,16 +202,9 @@ AcquisitionSurface aggregate_accumulate(const std::vector<std::vector<std::vecto
         }
     }
 
-    // Doppler bins write DISJOINT surface slices, so the d-loop is trivially parallel. This
-    // matters at aggregator scale, where the aggregate is the whole cost of a pass: 27 union
-    // channels x 4096 stored lags x 11 Doppler bins is ~3e10 flops per window, ~10 s on one
-    // core -- which multiplied by windows x NH alignments x PRNs is HOURS per pass. n_threads=1
-    // (the default everywhere it is not explicitly configured) runs the identical serial loop.
-    // Split the (Doppler x coarse-lag) PRODUCT, not the Doppler axis alone. Each (d,q) owns one
-    // surface row, so the write is disjoint either way -- but the d axis is short exactly when
-    // the search is working well (the broker's hints narrow it to a handful of bins), which
-    // capped the old split at min(n_threads, n_dop) and left most cores idle in the case that
-    // matters. n_rows = n_dop*Mp is tens of thousands, so every core gets work regardless.
+    // Each (d, q) surface row is written by exactly one thread. Splitting the Doppler x lag
+    // product rather than the Doppler axis alone keeps every core busy when the Doppler grid is
+    // only a few bins wide. n_threads = 1 runs the same loop serially.
     const long n_rows = (long)nd * Mp;
     const auto run_rows = [&](long r0, long r1) {
         std::vector<float> Dre(s_cols), Dim(s_cols);
@@ -275,22 +251,13 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
                        double sample_rate, int num_chan, std::vector<double>& surf,
                        AcquireWorkspace& ws, const std::vector<int>& chan_freq, int samples_per_hop,
                        int n_threads, int fine_step) {
-    // The decimation (samples per hop): N for a critically-sampled complex bank,
-    // 2N for an r2c real-FFT bank. This is now just per-channel correlate (the
-    // distributable part) + cross-channel aggregate (see channel_correlate /
-    // aggregate_accumulate); the distributed search runs the two halves as
-    // separate stages.
+    // Samples per hop: N for a critically sampled complex bank, 2N for an r2c bank.
     const int sph = (samples_per_hop > 0) ? samples_per_hop : num_chan;
     const int nc = (int)covering.size();
     std::vector<std::vector<std::vector<cf>>> P(nc);
-    // Per-channel correlation, in parallel over CHANNELS. Once the fine axis is decimated this
-    // is the dominant cost (measured on the archived P32 frame at fine_step 32: 6.9 s here vs
-    // 1.9 s of replica generation), and it was entirely serial -- not for any ordering reason,
-    // but because every channel shared the one caller-owned FFTW workspace. Each worker gets
-    // its OWN workspace; the caller's is reused by worker 0 so the single-threaded path keeps
-    // its persistent plans exactly as before. The extra workspaces are function-local, so they
-    // re-plan per call: FFTW_ESTIMATE at this length is cheap next to the transforms it saves,
-    // and the alternative (a caller-owned pool) would change the signature for every caller.
+    // Correlate channels in parallel, each worker with its own FFTW workspace; worker 0 uses
+    // the caller's, so the single-threaded path keeps its persistent plans. The extra
+    // workspaces are local and re-plan on each call, which FFTW_ESTIMATE keeps cheap.
     const int nt_c = std::max(1, std::min(n_threads, nc));
     if (nt_c == 1) {
         for (int ci = 0; ci < nc; ++ci)
@@ -318,7 +285,7 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
 }
 
 // ---------------------------------------------------------------------------------------------
-// Sub-window ("ms-split") accumulation. Header carries the argument; this is the mechanics.
+// Sub-window ("ms-split") accumulation; the header explains the method.
 // ---------------------------------------------------------------------------------------------
 AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
                                        const std::vector<std::vector<std::complex<float>>>& data_ch,
@@ -336,18 +303,10 @@ AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int p
         return dims;
 
 
-    // EVERYTHING THE SUB-WINDOW LOOP TOUCHES IS ALLOCATED ONCE, HERE.
-    //
-    // This is not micro-optimisation. With the replica and P allocated inside the loop, K=16
-    // did 16 x 106 channel-vector allocate/free cycles, and the REFINE THAT RAN AFTERWARDS --
-    // a different stage, with identical inputs and the same 426 evaluations -- slowed from
-    // 89 s to 874 s. Per-eval cost was flat to 129 evals then jumped 9.5x. The acquire's churn
-    // was being paid by somebody else's OpenMP workers.
-    //
-    // HopRateReplicaStream also caches the hop-rate FILTER, which is the slow half of the
-    // generator and depends on Doppler (fixed at 0 here), not on the sub-window. That is what
-    // §7 of the design plan asked about: it hoists, and it was the entire remaining acquire
-    // cost (replica 11.77 s of a 12.34 s acquire; correlate 0.13 s, aggregate 0.44 s).
+    // The replica stream, P, the worker workspaces and the data buffers are allocated once,
+    // here, not per sub-window: that churn slows other threads that share the allocator.
+    // HopRateReplicaStream also caches the hop-rate filter, the slow half of the replica
+    // generator, which depends on the Doppler (always 0 here) but not on the sub-window.
     HopRateReplicaStream repl_stream(bank, prn_index, chan_ids);
     std::vector<std::vector<std::vector<std::complex<float>>>> P((size_t)nc);
     const int nt_c = std::max(1, std::min(n_threads, nc));
@@ -357,33 +316,26 @@ AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int p
 
     for (int k = 0; k < n_sub; ++k) {
         const long long W = window_start_sample + (long long)k * N * fft_len;
-        // TWO code periods of replica, starting ONE period EARLY, against one period of data.
-        // Early start is what makes lag 0 reachable: channel_correlate forms
-        // P[q] = sum_m data[m] conj(repl[m - q]), so a replica beginning at W would need
-        // negative indices for any positive delay. Beginning at W - N*fft_len puts zero delay
-        // at q = N and the whole [0, one period) lag range inside [N, 2N) -- with every one of
-        // the N data hops overlapped, which is the point.
+        // Two code periods of replica, starting one period early, against one period of data.
+        // channel_correlate forms P[q] = sum_m data[m] conj(repl[m - q]), so a replica starting
+        // at W would need negative indices for any positive delay. Starting at W - N*fft_len
+        // puts zero delay at q = N and the whole one-period lag range in [N, 2N), with all N
+        // data hops overlapped.
         const long long W_repl = W - (long long)N * fft_len;
-        // Doppler 0 every call, so the cached filter is never rebuilt after the first.
+        // Doppler 0 on every call, so the cached filter is built only once.
         const std::vector<std::vector<std::complex<float>>>& repl =
             repl_stream.generate(W_repl, 0.0, 0.0, 2 * N, {});
 
-        // PARALLEL OVER CHANNELS, exactly as channelized_accumulate does it. This loop was
-        // serial on the caller's single workspace, which is why the ms-split measured SLOWER
-        // than the path it was meant to replace: ~10x fewer ops, run on 1/12 of the machine.
-        // Each worker gets its own AcquireWorkspace (worker 0 reuses the caller's, so the
-        // single-threaded path keeps its persistent FFTW plans bit-for-bit).
+        // Parallel over channels as in channelized_accumulate. Worker 0 uses the caller's
+        // workspace; the other workspaces and the data buffers are hoisted out of the k loop,
+        // so no sub-window re-plans or reallocates them.
         const auto run_ch = [&](int t) {
-            // Worker 0 reuses the caller's workspace so the single-threaded path keeps its
-            // persistent FFTW plans bit-for-bit; the rest are hoisted out of the k-loop too,
-            // or every sub-window would re-plan.
             AcquireWorkspace& mine = (t == 0) ? ws : wsx[(size_t)t - 1];
             std::vector<std::complex<float>>& d = dbuf[(size_t)t];
             for (int c = t; c < nc; c += nt_c) {
                 for (int m = 0; m < N; ++m)
                     d[(size_t)m] = data_ch[(size_t)c][(size_t)(k * N + m)];
-                // data (N) shorter than replica (2N) -> channel_correlate zero-pads it to the
-                // transform length, which is exactly the linear correlation we want.
+                // The N data hops are zero-padded to the 2N-hop transform: a linear correlation.
                 channel_correlate_into(d, repl[(size_t)c], doppler_grid, sample_rate, sph, mine,
                                        P[(size_t)c]);
             }
@@ -414,23 +366,13 @@ AcquisitionResult ms_split_peak(const std::vector<double>& surf, const Acquisiti
     const double cps = chip_rate / sample_rate;
     const double L = (double)code_length;
 
-    // THE PHYSICAL LAG WINDOW: q in [N, 2N), and nothing outside it is even looked at.
-    //
-    // The replica spans 2N hops starting N hops before the data's N, so lag q reads replica
-    // indices (m-q) mod 2N for m in [0,N). Those are contiguous -- one unbroken stretch of code
-    // -- exactly when q >= N. For q in [1, N) the sum straddles the replica's own wrap, joining
-    // its tail to its head across a 2.007-period jump: a partial correlation over only the
-    // (N-q) hops that still line up.
-    //
-    // Those partial lags are not a small effect to be thresholded away. At the bench point the
-    // strongest of them stood at 26% of the true peak's power -- second place on the whole
-    // surface, above every real sidelobe -- and it TRACKS the satellite (q moves 19.09 hops per
-    // 1000 chips of code phase, exactly 1/cph), so it looks like a detection in every way a
-    // statistic can see. It is also nearly a code period away from the truth, so accepting one
-    // seeds the tracker a full period off.
-    //
-    // [N, 2N) still covers the entire ambiguity: one code period is 195.3125 hops <= N = 196,
-    // so every physical delay has exactly one representative in the window.
+    // Search only the full-overlap lags q in [N, 2N). The replica spans 2N hops starting N
+    // before the data, so lag q reads replica indices (m-q) mod 2N for m in [0, N), which are
+    // contiguous for q >= N. For q in [1, N) the sum joins the replica's tail to its head across
+    // the wrap, a partial correlation over the N-q hops that still line up. Those partial peaks
+    // track the satellite and can outrank every real sidelobe, but sit nearly a code period from
+    // the truth, so they are excluded rather than thresholded. [N, 2N) still holds one
+    // representative of every delay, since one code period (195.3125 hops at CHORD) <= N.
     const int q_lo = std::max(0, std::min(sub_hops, dims.Mp));
     const int q_hi = dims.Mp;
 
@@ -444,9 +386,8 @@ AcquisitionResult ms_split_peak(const std::vector<double>& surf, const Acquisiti
             const double* row = base + (long)q * sfine;
             for (int s = 0; s < sfine; ++s) {
                 const double pw = row[s];
-                // Mean over the SEARCHED cells only. Including the partial-overlap half would
-                // put correlation energy into the noise estimate and quietly deflate the SNR
-                // this surface reports -- the acceptance threshold is compared against it.
+                // Mean over the searched cells only: the partial-overlap lags hold correlation
+                // energy that would deflate the reported SNR.
                 surf_sum += pw;
                 surf_n++;
                 if (pw > dop_peak[d])
@@ -475,24 +416,17 @@ AcquisitionResult ms_split_peak(const std::vector<double>& surf, const Acquisiti
     const double mean = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
     best.snr = (mean > 0.0) ? best.peak / mean : 0.0;
 
-    // THE FINE HALF OF THE LAG CARRIES THE OPPOSITE SIGN TO THE COARSE HALF, so AcquisitionSurface
-    // ::tau()'s q*sph + i*s_step is not the delay here and cannot be used. Measured directly:
-    // injecting +5 chips of code phase moves the peak's fine index +49 columns at s_step 32,
-    // = 9.8 columns/chip = 312.8 samples/chip = exactly 1/cps, while q moves the other way.
-    // The shipped path never had to face this because refine_peak re-scans a full hop either
-    // way; here it is the difference between 0.05 chips and 52.4.
-    //
-    // Fold to the signed half-open hop first: the cross-channel DFT reports the fine lag modulo
-    // sph, so a small NEGATIVE offset comes back as i near the top of the axis. Read literally
-    // that is a whole extra hop of error -- every +52.35 chip outlier in the bench sweeps was
-    // this and only this.
+    // The fine half of the lag runs opposite to the coarse half (FINE_LAG_SIGN_PFB), so
+    // AcquisitionSurface::tau() is not the delay here. Fold the fine index to a signed half hop
+    // first: a small negative offset comes back near the top of the axis and would read as a
+    // whole extra hop. This folds by sph, i.e. assumes s_stored == sph.
     long fine = (long)best_i * (long)(dims.s_step > 0 ? dims.s_step : 1);
     if (fine > sph / 2)
         fine -= sph;
     const long tau_eff = (long)best_q * (long)sph - fine;
 
-    // The peak condition, all three terms: phi_r0 (the replica's own start phase) + Ns*cps (the
-    // cyclic wrap, since the peak reads indices a whole Mp hops on) - tau_eff*cps.
+    // The peak condition: phi_r0 (the replica's own start phase) + Ns*cps (the cyclic wrap,
+    // since the peak reads indices a whole Mp hops on) - tau_eff*cps.
     const long Ns = (long)dims.Mp * (long)sph;
     best.peak_tau_samples = ((tau_eff % Ns) + Ns) % Ns;
     double cp = std::fmod(phi_r0 + (double)(Ns - tau_eff) * cps, L);
@@ -510,15 +444,12 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     double surf_sum = 0.0;
     long surf_n = 0;
     int best_d = 0, best_q = 0, best_i = 0;
-    std::vector<double> dop_peak(dims.n_dop,
-                                 0.0); // per-Doppler max-over-tau (for the sub-grid fit)
+    // per-Doppler max over tau: the pair-sum selection, the sub-grid refine and peak_interp
+    std::vector<double> dop_peak(dims.n_dop, 0.0);
 
-    // Index by the STORED fine-lag COLUMNS, and form the absolute delay through dims.tau(),
-    // which reapplies both the coarse stride sph and the fine decimation s_step. The surface
-    // may hold one period of a periodic fine-lag axis, decimated (see channelized_accumulate);
-    // dropping identical copies changes neither the peak cell (first strict max, which already
-    // fell in the first period) nor the mean (uniform copies), and the decimation costs only
-    // the sub-lobe interpolation the following refine redoes exactly anyway.
+    // Index by the stored fine-lag columns, fine(): the surface may hold one decimated period of
+    // a periodic fine-lag axis (see aggregate_accumulate). peak_from_reduction turns the cell
+    // into a delay.
     const int sfine = dims.fine();
     std::vector<int> pd_q(dims.n_dop, 0), pd_i(dims.n_dop, 0); // per-plane argmax cell
     for (int d = 0; d < dims.n_dop; ++d) {
@@ -543,29 +474,20 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
             }
         }
     }
-    // ── #97: CHOOSE THE CELL ON THE SCALLOPING-ROBUST STATISTIC, not the raw sample ──
-    // #41 fixed the cross-ALIGNMENT comparison with the mainlobe pair-sum but left this
-    // within-surface argmax raw -- so an NH Doppler sideband that lands ON a grid bin
-    // still beats a true peak that scallops (single-bin retains as little as 41%% of the
-    // continuum power at mid-bin; the sideband family reaches ~50%%). Measured on sky
-    // 2026-08-28: whole groups of alignments argmaxed onto sideband cells with the
-    // Doppler pinned exactly on-grid, tau shifted by whole code periods -- the +-1 and
-    // +-2-period label flips on snr-300+ satellites. Same statistic, same discipline as
-    // #41: the CHOICE uses dop_peak[d] + max(neighbours); the SERVED peak/snr stay the
-    // chosen cell's raw values, which every downstream gate is calibrated on.
-    // ⚠️ LOCAL MAXIMA ONLY (the first form of this, without the restriction, was armed
-    // and reverted within the hour on 2026-08-28: ps(d)=own+max(neighbour) lets the
-    // plane BESIDE a strong peak tie the peak plane -- small+big vs big+small -- and
-    // the chosen Doppler dithered +-1 bin, 3.4%% -> 39%% flips. A local max keeps its
-    // own mainlobe: the off-grid peak's larger half competes with both halves summed,
-    // the on-grid sideband competes with only itself, and the dither plane is excluded
-    // because its neighbour exceeds it.)
+    // pairsum_select: choose the Doppler plane by the mainlobe pair-sum
+    // dop_peak[d] + max(neighbours), the statistic peak_interp uses, rather than by the raw
+    // argmax. Otherwise an overlay-mismatch sideband that lands on a grid bin can beat a true
+    // peak that scallops between bins (a single bin keeps as little as 41% of the continuum
+    // power at mid-bin; the sideband family reaches ~50%), shifting tau by whole code periods.
+    // Only interior local maxima compete; without that the plane beside a strong peak ties it
+    // (small + big against big + small) and the chosen Doppler dithers by one bin. The returned
+    // peak and snr stay the chosen cell's raw values, which downstream thresholds expect.
     if (pairsum_select && dims.n_dop >= 3) {
         double bestps = -1.0;
         int sel = -1;
         for (int d = 1; d < dims.n_dop - 1; ++d) {
             if (dop_peak[d] < dop_peak[d - 1] || dop_peak[d] < dop_peak[d + 1])
-                continue; // not a local max: this plane is somebody's shoulder
+                continue; // not a local max: a neighbouring peak's shoulder
             const double ps = dop_peak[d] + std::max(dop_peak[d - 1], dop_peak[d + 1]);
             if (ps > bestps) {
                 bestps = ps;
@@ -580,9 +502,9 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
         }
     }
 
-    // #105: the neighbour Doppler planes AT the winning tau (a 3x3 cell window -- the peak's
-    // tau moves < a stored column across +-1 bin of code Doppler), for the ratio refine in
-    // peak_from_reduction. The plane-wide dop_peak stays what it was: the SELECTION statistic.
+    // The neighbour Doppler planes at the winning tau (max over a 3x3 cell window; the peak
+    // moves less than a stored column across +-1 bin of code Doppler), for the ratio refine in
+    // peak_from_reduction. The plane-wide dop_peak remains the selection statistic.
     double dop_loc_m = -1.0, dop_loc_p = -1.0;
     if (dims.n_dop >= 3 && best_d > 0 && best_d < dims.n_dop - 1) {
         auto local_max = [&](int d) {
@@ -603,10 +525,8 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
         dop_loc_p = local_max(best_d + 1);
     }
 
-    // Everything past this point is ARITHMETIC on the reduction, not a scan -- and it is where
-    // the two sign traps live (the fine half carries the opposite sign to the coarse half; the
-    // reported delay is the negative of the surface lag). It is split out so the GPU path, which
-    // produces the same reduction on the device, calls THIS rather than growing a second copy.
+    // The rest is arithmetic on the reduction, shared with the GPU path, which reduces on the
+    // device.
     const double mean0 = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
     const double dop_u =
         (data_hops > 0 && data_hops < dims.Mp) ? (double)data_hops / (double)dims.Mp : 1.0;
@@ -623,57 +543,26 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                                       double dop_loc_m, double dop_loc_p, double dop_u) {
     AcquisitionResult best{0.0, 0.0, 0, peak, 0.0, peak};
     best.doppler_hz = doppler_grid.empty() ? 0.0 : doppler_grid[best_d];
-    // Sub-grid Doppler refine: the correlation-vs-Doppler peak is smooth but sampled on a
-    // coarse grid (doppler_step), so the cell max is only +-step/2 accurate. Fit a parabola to
-    // the peak and its two Doppler neighbours -- using each cell's OWN max-over-tau, not the
-    // power at the centre cell's tau (the code-Doppler shifts the peak tau slightly cell to
-    // cell, so a fixed-tau slice is asymmetric and biases the vertex) -- and take the vertex.
-    // Lifts the seed to ~+-step/20: a tighter Doppler for the tracker FLL to pull in from and a
-    // sharper input to the broker's clock-bias solve. Skipped at the grid edges / non-concave.
+    // Sub-grid Doppler refine: the grid cell max is only +-step/2 accurate, so place the peak
+    // between bins from the peak plane and its two neighbours. Skipped at the grid edges.
     const int nd = (int)doppler_grid.size();
     if (nd >= 3 && best_d > 0 && best_d < nd - 1 && (int)dop_peak.size() == nd) {
         const double sm = dop_peak[best_d - 1], s0 = dop_peak[best_d], sp = dop_peak[best_d + 1];
-        // #105 (2026-08-30): the parabola below was structurally INERT. Two defects compound:
-        //  1. sm/sp were the neighbour planes' WHOLE-PLANE maxima. For a strong peak the far
-        //     shoulder (|sinc|^2(1+delta) ~ 0.04 of peak) loses to the plane's noise order
-        //     statistic (~13x mean over ~3e5 cells), so one input is noise, not signal.
-        //  2. A parabola on critically-sampled |sinc|^2 under-recovers the POSITION badly at
-        //     small offsets: at a true 0.25-bin offset the three samples are 0.032/0.81/0.090
-        //     -> vertex 0.02 bins. (#41 documented the VALUE half of this; the position half
-        //     is worse.)
-        // Measured consequence on sky: served detections clustered within +-5 Hz of the 62.5 Hz
-        // grid (mod-62.5 clustering R = 0.83), each satellite's Doppler residual sawtoothed
-        // +-31 Hz as its true Doppler crossed bins, and the broker's ~5-sat clock-bias median
-        // wandered +-10 Hz at ~5 min periods -- the #105 q-crash driver.
+        // With dop_loc_* (the neighbour planes at the winning tau) and both below the peak,
+        // invert the amplitude ratio r of the larger neighbour to the peak. The data window is
+        // data_hops of signal in an Mp-hop transform, so the response to an offset of x bins is
+        // g(x) = sin(pi x u)/x with u = data_hops/Mp, and r = |g(1-delta)|/|g(delta)| is
+        // monotone on [0, 0.5]; solve it by bisection. On-grid r is g(1)/g(0) = sin(pi u)/(pi u),
+        // not 0 for u < 1, so the single-tone form delta = r/(1+r) would misplace on-grid peaks.
         //
-        // The two-bin AMPLITUDE-RATIO estimator is exact for a tone on this sampling:
-        // |sinc(1-d)|/|sinc(d)| = d/(1-d), so d = r/(1+r) with r the amplitude ratio of the
-        // larger neighbour to the peak -- fed by the neighbour planes sampled AT the winning
-        // tau (dop_loc_*), which removes defect 1. Guarded to the interpolating regime
-        // (neighbour strictly below peak). #41's caution about the ratio family applies to
-        // recovering the peak VALUE under overlay-mismatch sidebands -- the HYPOTHESIS
-        // statistic, which stays the pair-sum below, untouched; here it only places the
-        // winning hypothesis's Doppler between bins.
+        // Otherwise fit a parabola to dop_peak, each plane's own max over tau (the code Doppler
+        // shifts the peak tau between planes, so a fixed-tau slice would be asymmetric). It is
+        // the weaker estimator: on this response a parabola under-recovers the offset, and for a
+        // strong peak the far neighbour's plane-wide max is a noise order statistic rather than
+        // the peak's shoulder. Either way only the Doppler is placed here; peak_interp below
+        // stays the pair-sum.
         if (dop_loc_m >= 0.0 && dop_loc_p >= 0.0 && s0 > 0.0
             && std::max(dop_loc_m, dop_loc_p) < s0) {
-            // #105 (2026-08-30/31): the refine was structurally inert for two reasons, each
-            // found on a different instrument. (1) sm/sp were the neighbour planes' WHOLE-
-            // PLANE maxima -- for a strong peak the far shoulder loses to the plane's noise
-            // order statistic (~13x mean over ~3e5 cells), so the parabola compared signal
-            // to noise. Fixed by dop_loc_*: the neighbour planes AT the winning tau. (2) A
-            // parabola on this response under-recovers the position severely: the data
-            // window is data_hops of signal against an Mp-hop transform (zero-padded), so
-            // the response to an offset of x bins is g(x) = sin(pi x u)/x with u = M/Mp --
-            // VERIFIED on the production correlate (acqbench, M 2048 / Mp 3125: measured
-            // amplitude ratios match this g to 3 decimals across delta 0.05-0.45).
-            // Invert the measured amplitude ratio r = |g(1-delta)|/|g(delta)| of the larger
-            // neighbour to the peak (monotone on [0, 0.5]; bisection). On-grid, r equals
-            // g(1)/g(0) = sin(pi u)/(pi u), NOT zero -- treating this shoulder as a tone
-            // (the plain r/(1+r) form) misplaces on-grid sats by +-0.3 bins, and treating
-            // the shape as a parabola recovers only ~15-60%% of the true offset.
-            // NOTE the e2e harness is NOT a gate for this estimator: its acquire sums
-            // multiple full-Mp windows (a different response; measured r(0) ~ 0.7-0.99
-            // there) -- acqbench drives the production shape.
             const bool up = dop_loc_p >= dop_loc_m;
             const double r_meas = std::sqrt(std::max(dop_loc_m, dop_loc_p) / s0);
             auto g_abs = [&](double x) {
@@ -692,7 +581,7 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                     (r_model(mid) < r_meas ? lo : hi) = mid;
                 }
                 delta = 0.5 * (lo + hi);
-            } // r_meas <= the on-grid shoulder: indistinguishable from 0 -> keep the bin
+            } // r_meas at or below the on-grid ratio: indistinguishable from 0, keep the bin
             best.doppler_hz +=
                 (up ? delta : -delta) * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
         } else if (const double denom = sm - 2.0 * s0 + sp; denom < 0.0) {
@@ -700,67 +589,29 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
             delta = std::max(-0.5, std::min(0.5, delta));
             best.doppler_hz += delta * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
         }
-        // SCALLOPING-ROBUST PEAK (#41) -- the statistic for comparing HYPOTHESES.
-        //
-        // THIRD FORM, each predecessor DISPROVED ON SKY the same evening (2026-08-16):
-        //  1. Parabola vertex on |sinc|^2 samples: under-recovers 2.2x at mid-bin (the three
-        //     points are 0.045/0.405/0.405 -> vertex 0.45) -- PRN 32 flipped at snr 104
-        //     within minutes.
-        //  2. Two-bin sinc ratio (delta = r/(1+r), A = y0/sinc(delta)): EXACT for one tone,
-        //     but the overlay-mismatch spectrum has ADJACENT strong tones (d=2 -> k=1 and
-        //     k=2 together), and two neighbouring tones fake a mid-bin single tone: the
-        //     division then inflates the sideband by up to 1.57x, corrected ~0.9 of true --
-        //     PRN 1 flipped +-1/+-5 at snr 117-132.
-        //
-        // The MAINLOBE PAIR-SUM has the property both lacked: it can NEVER over-recover,
-        // because there is no division -- it is monotone in the underlying spectrum. For a
-        // single tone at any grid phase the pair carries |sinc(d)|^2 + |sinc(1-d)|^2 in
-        // [0.81, 1.05] of the continuum power (19% ripple, vs 59% single-bin). For a
-        // multi-tone mismatch it is bounded by that spectrum's best adjacent PAIR, <= ~0.5
-        // by Parseval on a +-1 sequence. Worst-case margin ~2 dB, typical 3-5 dB, at every
-        // grid phase, with no model of the interference required.
+        // peak_interp: the mainlobe pair-sum, the statistic for comparing hypotheses. It has
+        // no division and is monotone in the underlying spectrum, so it cannot over-recover.
+        // For one tone at any grid phase the pair holds |sinc(d)|^2 + |sinc(1-d)|^2, 0.81-1 of
+        // the continuum power (a single bin: 0.405-1), while an overlay-mismatch spectrum is
+        // bounded by its best adjacent pair, <= ~0.5 by Parseval on a +-1 sequence. A parabola's
+        // vertex value under-recovers the peak 2.2x at mid-bin, and a two-bin sinc ratio
+        // over-recovers when two adjacent mismatch tones mimic one mid-bin tone.
         best.peak_interp = s0 + std::max(sm, sp);
     }
     best.snr = (mean > 0.0) ? best.peak / mean : 0.0;
 
-    // The correlation peaks at the negative of the replica's code-phase advance
-    // (data = repl0 advanced by the delay). Report the delay so it can seed the
-    // measurement replica generator directly (same "code[floor(cp + n*r)]"
-    // convention).
+    // The correlation peaks at the negative of the replica's code-phase advance (data = repl0
+    // advanced by the delay). Report the delay, so it seeds the replica generators directly
+    // (same code[floor(cp + n*r)] convention).
     //
-    // THE FINE HALF CARRIES THE OPPOSITE SIGN TO THE COARSE HALF, so AcquisitionSurface::tau()'s
-    // q*sph + i*s_step is not the delay. Measured 2026-08-02: injecting +5 chips moves the peak's
-    // fine index +49 columns at s_step 32 = 9.8/chip = exactly 1/cps, while q moves the other way.
-    // Fold signed first -- the cross-channel DFT reports the fine lag modulo the axis's own
-    // period, so a small NEGATIVE offset returns near the top and reads as a whole extra hop.
-    //
-    // This was invisible for as long as refine_peak re-scanned a full hop, AND IT IS WHY IT HAD
-    // TO: with the sign wrong the coarse phase is off by up to sph (52.4 chips at CHORD), so the
-    // refine's span had to cover that. Corrected, the refine's chosen offset falls from +50.27
-    // chips to -0.44, `refine_span` drops 16384 -> 512, and the refine costs 426 evaluations
-    // instead of... 14. Measured 64.09 s -> 3.57 s with the answer unchanged (0.107 chips,
-    // period exact, and 0/8 wrong lobe or period at noise 20).
-    //
-    // Fold by the axis's STORED period, not sph: when the covering comb shares a factor g with
-    // sph the surface holds only sph/g columns (the grating-lobe redundancy), and folding by sph
-    // would step outside the data. At g = 1 (the 8-node comb) the two are the same.
-    // WHICH WAY THE FINE AXIS RUNS IS A PROPERTY OF THE ANALYSIS BANK, not of this code, so it
-    // is a parameter (@c fine_lag_sign) rather than a constant. Both DEPLOYED front ends fold
-    // newest-first (dsp::pfb_push): CHORD's F-engine as modelled by ChannelizedReplicaBank, and
-    // the airspy chain's fftwEngine -- and, decisively, the replica that BOTH correlate against
-    // is built by that same bank. For them the fine half runs opposite to the coarse half, hence
-    // the -1 default. A bank that folds oldest-first needs +1.
-    //
-    // Measured on both geometries 2026-08-07, after the airspy side reported two failing
-    // ground-truth tests and proposed reverting to +1 globally:
-    //   * CHORD, e2e at the SHIPPED refine_span 512: -1 gives +0.04 chips, +1 gives +8..+19.
-    //     (At a full-hop span both are sub-chip -- the refine hides it, which is exactly why
-    //     this was invisible for so long. Do not re-measure with a wide span and conclude the
-    //     sign is free.)
-    //   * test_gnss_channelized_acquire splits cleanly: `recovers_with_fftwengine_convention`,
-    //     which models the DEPLOYED fold, passes only at -1; the two tests built on the file's
-    //     hand-rolled oldest-first `stft` helper pass only at +1. Nothing deploys that helper's
-    //     convention, so the tests now state which one they mean.
+    // The fine half of the lag carries fine_lag_sign relative to the coarse half (-1 for a
+    // newest-first bank; see FINE_LAG_SIGN_PFB), so AcquisitionSurface::tau() is not the delay.
+    // With the wrong sign the coarse phase is off by up to sph (52.4 chips of a 10.23 Mchip/s
+    // code at CHORD), which only a refine spanning a full hop absorbs. Fold the fine index to a
+    // signed half period first: the cross-channel DFT reports it modulo the stored period, so a
+    // small negative offset comes back near the top of the axis and would read as a whole period
+    // too far. Fold by s_stored, not sph: the surface holds only sph/g samples of fine lag when
+    // the comb shares a factor g with sph, and folding by sph would step outside them.
     const int fine_period = (dims.s_stored > 0) ? dims.s_stored : dims.sph;
     long fine = (long)best_i * (long)(dims.s_step > 0 ? dims.s_step : 1);
     if (fine > fine_period / 2)

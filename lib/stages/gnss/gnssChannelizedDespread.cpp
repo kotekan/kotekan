@@ -39,30 +39,18 @@ DespreadResult channelized_despread(const std::vector<std::vector<std::complex<f
     return r;
 }
 
-/// Coherent SNR from a rotated sum and its orthogonal residual, with the DEGENERATE case
-/// rejected instead of divided by.
+/// Coherent SNR mag / noise_sum, where noise_sum is the residual orthogonal to the rotated sum;
+/// 0 when that residual is degenerate.
 ///
-/// Every statistic in this file forms `mag / noise_sum`, where noise_sum is the residual
-/// orthogonal to the rotated sum, and every one of them used to guard with `noise_sum > 0.0`.
-/// That catches only the EXACTLY-zero case -- records bit-identical -- and that is not the case
-/// that occurs. Records phase-aligned to within DOUBLE PRECISION, which is what a derotation
-/// leaves behind and what these statistics are handed after phase_track_loo, give a residual of
-/// ~1e-17 rather than 0. It passes the test, and the result is mag/1e-17 ~ 1e17 sigma.
+/// Records phase-aligned to double precision, as a derotation (e.g. phase_track_loo) leaves
+/// them, have a residual of ~1e-17 rather than exactly 0, which would read as ~1e17 sigma. Even
+/// a 60 dB record has an orthogonal residual ~1e-3 of its amplitude, so a residual below
+/// 1e-12 * mag * sqrt(nrec) was removed by construction, not measured. Return 0, the same
+/// "cannot compute" value as nrec < 2, so a candidate selection cannot pick it.
 ///
-/// Seen live 2026-08-07: the viewer showed a PRN at 6.93e16 sigma with coh_frac 0.13, wandering
-/// between PRNs. Reproduced exactly -- 8 records with imaginary parts at the 1e-17 level give
-/// 1.2e17, while the bit-identical case correctly returns 0.
-///
-/// The floor sits far above machine epsilon and far below anything physical: even a 60 dB record
-/// has an orthogonal residual ~1e-3 of mag, so a residual under 1e-12*mag means the imaginary
-/// parts were ANNIHILATED BY CONSTRUCTION, not measured. Fail closed (0.0, the same "cannot
-/// compute" convention as nrec < 2) rather than emit a number that the candidate selection
-/// upstream will maximise over and then believe.
-///
-/// NOTE this bounds the SYMPTOM, not the cause. Scoring a derotated candidate by the very
-/// residual its derotation removed is self-reference, and taking the best of several such
-/// candidates rectifies noise. That is a separate and still-open design question; do not read
-/// this guard as settling it.
+/// This guards the division only: scoring a derotated candidate by the residual its
+/// derotation removed is still self-referential, and the best of several such candidates
+/// rectifies noise.
 static double residual_snr(double mag, double noise_sum, int nrec) {
     const double degen = mag * std::sqrt((double)std::max(nrec, 1)) * 1e-12;
     return (noise_sum > degen) ? mag / noise_sum : 0.0;
@@ -78,10 +66,10 @@ OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
     if (L <= 0 || nrec < 2 || (int)utc.size() != nrec)
         return out;
     if (head && (int)head->size() != nrec)
-        head = nullptr; // size mismatch (mixed-schema window): fall back to unsegmented
+        head = nullptr; // size mismatch: fall back to the unsegmented wipe
 
-    // Absolute primary-period index per record from capture-UTC: a dropped record just skips an
-    // index, so the overlay stays aligned (vs binning by buffer position, which a gap shifts).
+    // Record index from capture UTC, so a dropped record skips an index and the overlay stays
+    // aligned. Must match overlay_apply's expression.
     std::vector<double> dt;
     dt.reserve(nrec - 1);
     for (int r = 1; r < nrec; ++r)
@@ -100,8 +88,8 @@ OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
             k += L;
         return (double)overlay[(size_t)k];
     };
-    // Overlay-corrected record: segmented (head gets its own chip, tail the NEXT chip --
-    // the period boundary inside the record is where the overlay flips) or whole-record.
+    // Overlay-corrected record: segmented (head takes chip k, tail chip k+1, since the overlay
+    // advances a chip at the period boundary inside the record) or whole-record.
     auto corrected = [&](int r, int phase) -> cd {
         if (!head)
             return a[r] * chip(r, phase);
@@ -109,10 +97,8 @@ OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
         return h * chip(r, phase) + (a[r] - h) * chip(r, phase + 1);
     };
 
-    // Search the L overlay alignments for the one maximising the coherent sum of the
-    // overlay-corrected records (the overlay is KNOWN, so this is a phase search, not a
-    // per-bit +-1 estimate). The pilot has no nav bit, so the correct alignment integrates
-    // coherently across primary periods.
+    // Search the L alignments for the largest coherent sum of the overlay-corrected records.
+    // The pilot has no nav bit, so the right alignment integrates coherently across periods.
     int best_phase = 0;
     double best_mag = -1.0;
     cd best_sum(0.0, 0.0);
@@ -127,15 +113,15 @@ OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
         }
     }
 
-    // Significance: align the coherent sum onto the real axis; the component of each
-    // overlay-corrected record ORTHOGONAL to it carries no signal -> the deep's uncertainty.
+    // Significance: rotate the coherent sum onto the real axis; each corrected record's
+    // component orthogonal to it carries no signal and gives the noise estimate.
     const cd rot = best_mag > 0.0 ? std::polar(1.0, -std::arg(best_sum)) : cd(1.0, 0.0);
     double noise2 = 0.0;
     for (int r = 0; r < nrec; ++r) {
         const cd vr = corrected(r, best_phase) * rot;
         noise2 += std::imag(vr) * std::imag(vr);
     }
-    const double noise_sum = std::sqrt(noise2); // noise std of the coherent sum
+    const double noise_sum = std::sqrt(noise2); // per-axis noise std of the coherent sum
     out.amplitude = best_mag / (double)nrec;    // coherent mean of the overlay-corrected A
     out.snr = residual_snr(best_mag, noise_sum, nrec);
     out.phase = best_phase;
@@ -147,18 +133,15 @@ bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector
                    const std::vector<std::complex<double>>* head,
                    std::vector<std::complex<double>>& out_a,
                    std::vector<std::complex<double>>* out_head) {
-    // THE ONE PLACE the overlay's record index is computed. overlay_wipe_at() calls this
-    // rather than repeating the expression, deliberately: a second, silently-divergent copy
-    // of an index convention is exactly what produced the L5 "pure sign" peel fault
-    // (a half-record probe into a record-indexed table, 2026-07-27). One copy, one
-    // convention: chip k = round((utc[r]-utc[0])/rec_dt) + phase, mod L, on the RECORD grid.
+    // chip k = round((utc[r]-utc[0])/rec_dt) + phase, mod L, on the record grid. overlay_wipe
+    // repeats this expression; keep the two identical.
     using cd = std::complex<double>;
     const int nrec = (int)a.size();
     const int L = (int)overlay.size();
     if (L <= 0 || nrec < 2 || (int)utc.size() != nrec)
         return false;
     if (head && (int)head->size() != nrec)
-        head = nullptr; // size mismatch (mixed-schema window): fall back to unsegmented
+        head = nullptr; // size mismatch: fall back to the unsegmented wipe
     std::vector<double> dt;
     dt.reserve(nrec - 1);
     for (int r = 1; r < nrec; ++r)
@@ -178,8 +161,8 @@ bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector
         if (head) {
             const double c1 = (double)overlay[(size_t)((k + 1) % L)];
             const cd h = (*head)[r];
-            // head takes chip k, tail (a-h) takes chip k+1 -- a record straddling a chip
-            // TRANSITION must not be summed blind (it would cancel to |2f-1|).
+            // Head takes chip k, tail (a-h) chip k+1: a record straddling a chip transition
+            // summed whole would cancel to |2f-1|.
             const cd hw = h * c0;
             out_a[(size_t)r] = hw + (a[(size_t)r] - h) * c1;
             if (out_head)
@@ -195,10 +178,8 @@ bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector
 }
 
 OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a) {
-    // The straight sum. Deliberately shares overlay_wipe_at's statistic line for line -- rotate
-    // the sum real, take the orthogonal component as the noise estimate -- because the combiner
-    // compares this against the SAME FLOOR_MARGIN as the wipe rungs, and two SNR conventions
-    // that differ by a factor nobody wrote down is how a floor stops meaning anything.
+    // Same statistic as overlay_wipe_at (rotate the sum real, orthogonal component as noise):
+    // the combiner holds both to the same FLOOR_MARGIN, so their SNRs must share a convention.
     using cd = std::complex<double>;
     OverlayWipeResult out;
     const int nrec = (int)a.size();
@@ -223,9 +204,8 @@ OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a) {
 
 bool phase_track_loo(const std::vector<std::complex<double>>& a, int half_width,
                      std::vector<std::complex<double>>& out_a) {
-    // Sliding leave-one-out boxcar: window sum minus self, O(n) via a running sum. Zero-
-    // amplitude records (gaps: the caller buffers no inactive records, but rate-derotated
-    // zeros can appear) contribute nothing to any estimate and pass through unrotated.
+    // Sliding leave-one-out boxcar: window sum minus self, O(n) via a running sum.
+    // Zero-amplitude records contribute nothing to any estimate.
     using cd = std::complex<double>;
     const int n = (int)a.size();
     if (n < 4 || half_width < 1)
@@ -251,9 +231,9 @@ bool phase_track_loo(const std::vector<std::complex<double>>& a, int half_width,
             ++lo;
         }
         const bool self_nz = std::norm(a[(size_t)k]) > 0.0;
-        const cd s = win - (self_nz ? a[(size_t)k] : cd(0.0, 0.0)); // LEAVE-ONE-OUT
+        const cd s = win - (self_nz ? a[(size_t)k] : cd(0.0, 0.0)); // leave-one-out
         const int nb = n_used - (self_nz ? 1 : 0);
-        // < 2 neighbours: the estimate would be a single record's noise -- pass through.
+        // < 2 neighbours: the estimate would be a single record's noise; pass through.
         out_a[(size_t)k] = (nb >= 2 && std::norm(s) > 0.0)
                                ? a[(size_t)k] * std::polar(1.0, -std::arg(s))
                                : a[(size_t)k];
@@ -265,12 +245,6 @@ OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
                                   const std::vector<double>& utc,
                                   const std::vector<int8_t>& overlay, int phase,
                                   const std::vector<std::complex<double>>* head) {
-    // SELECTION-FREE variant of overlay_wipe: the alignment is GIVEN (dead-reckoned by the
-    // caller from a previously-locked emit -- the overlay advances one chip per primary
-    // period, deterministically in capture-UTC), so this is one straight coherent sum: no
-    // max-over-alignments, hence none of the extreme-value bias/variance that inflates the
-    // searched estimator's noise floor. E[snr^2] under pure noise = 2 exactly (complex
-    // 2-dof), which is what makes the debiased coherent power unbiased per emit.
     using cd = std::complex<double>;
     OverlayWipeResult out;
     const int L = (int)overlay.size();

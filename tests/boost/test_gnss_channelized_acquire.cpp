@@ -31,9 +31,8 @@ std::vector<int8_t> ca(int prn) {
     return std::vector<int8_t>(a.begin(), a.end());
 }
 
-// Reproducible standard-normal sample via Box-Muller on the engine's raw output.
-// (std::normal_distribution is NOT portable across stdlib implementations, so a
-// seeded test would diverge between macOS/libc++ and cobalt/libstdc++.)
+// Reproducible standard-normal sample by Box-Muller on the engine's raw output;
+// std::normal_distribution gives different sequences under libc++ and libstdc++.
 double gauss(std::mt19937& rng) {
     const double u1 = (rng() + 1.0) / 4294967297.0; // (0,1), excludes 0 for log
     const double u2 = (rng() + 1.0) / 4294967297.0;
@@ -54,9 +53,9 @@ std::vector<cf> gen(int prn, double cp, double fd, cf amp) {
     return s;
 }
 
-// Clean windowed-DFT filterbank: X_c[m] = sum_l proto[l] x[(mN+l) mod NS]
-// e^{-i 2pi c l / N}, chronological, channel c <-> +frequency c. Matches the
-// convention the acquisition reconstruction assumes.
+// Windowed-DFT filterbank folded oldest first: X_c[m] = sum_l proto[l] x[(mN+l) mod NS]
+// e^{-i 2pi c l / N}, channel c <-> +frequency c. Its surfaces need
+// gnss::FINE_LAG_SIGN_NATURAL wherever the fine lag matters.
 std::vector<std::vector<cf>> stft(const std::vector<cf>& x, const std::vector<float>& proto) {
     std::vector<std::vector<cf>> ch(N, std::vector<cf>(M));
     std::vector<cf> v(N);
@@ -96,18 +95,11 @@ std::vector<int> energy_covering(const std::vector<std::vector<cf>>& repl) {
     return cov;
 }
 
-// THE TWO HELPERS BELOW ARE DIFFERENT ANALYSIS BANKS, and the acquire's fine-lag axis runs
-// the opposite way in each -- so every call below states which one it means via
-// gnss::FINE_LAG_SIGN_*. This is not bookkeeping: `stft` folds OLDEST-first, which matches no
-// deployed channelizer, while `analyze_fftwe` reproduces fftwEngine (newest-first pfb_push),
-// which is what the airspy chain runs AND what ChannelizedReplicaBank builds CHORD's replica
-// with. Passing the default (PFB) to an stft-built surface reads the fine lag backwards and
-// lands ~2*fine samples off; before 2026-08-07 these calls were unqualified and the mismatch
-// looked like an acquire regression.
-//
-// Analyze with fftwEngine's exact PFB convention: newest-first pfb_push,
-// pfb_fold, forward DFT, then fftshift. Warmed from the (periodic) tail so the
-// first hop is circular-correct, matching the core's circular correlation.
+// analyze_fftwe folds newest first (dsp::pfb_push / pfb_fold, as ChannelizedReplicaBank does),
+// takes a forward DFT and moves DC to the centre. Its fine-lag axis runs opposite to stft's, so
+// its surfaces take the default gnss::FINE_LAG_SIGN_PFB; that sign on an stft surface reads the
+// fine lag backwards, ~2*fine samples off. The delay line is warmed from the periodic tail so the
+// first hop is circular, matching the acquire's circular correlation.
 std::vector<std::vector<cf>> analyze_fftwe(const std::vector<cf>& x, int Nc,
                                            const std::vector<float>& proto) {
     const int Ns = (int)x.size();
@@ -168,7 +160,7 @@ BOOST_AUTO_TEST_CASE(recovers_with_fftwengine_convention) {
     auto repl0 = analyze_fftwe(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), Nc, proto);
     const auto cov = energy_covering_n(repl0, Nc);
 
-    // fftshifted bank: channel j <-> frequency (j - Nc/2).
+    // fftshifted bank: DC at channel Nc/2, so chan_freq = j - Nc/2.
     std::vector<int> chan_freq;
     for (int c : cov)
         chan_freq.push_back(c - Nc / 2);
@@ -226,9 +218,9 @@ BOOST_AUTO_TEST_CASE(wrong_prn_has_low_snr) {
     BOOST_CHECK_LT(r.snr, 12.0); // no coherent peak for the wrong code
 }
 
-// channelized_acquire is just channelized_accumulate(one window) + channelized_peak;
-// exercising the split directly (with an explicit AcquireWorkspace) must reproduce
-// the wrapper exactly, and report the expected surface dimensions.
+// channelized_acquire is channelized_accumulate over one window plus channelized_peak; calling
+// the two directly with an explicit AcquireWorkspace must reproduce it exactly and report the
+// expected surface dimensions.
 BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
     const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
     const long true_tau = 50;
@@ -255,12 +247,10 @@ BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
     BOOST_CHECK_CLOSE(rs.snr, rw.snr, 1e-2);
 }
 
-// The accumulator must read ONLY the covering rows of repl0. GnssChannelizedSearch depends on
-// this: it generates the replica for the covering channels alone (banded) and leaves every other
-// row an EMPTY vector, which on a wide bank is the difference between 7 rows and 8192. If the
-// accumulator ever touched a non-covering row this would read a zero-length vector -- so gate it
-// with poison (a strong wrong-code replica) in the non-covering rows as well as with the empty
-// form: poison changing the answer means the row was read; empty crashing means the same.
+// channelized_accumulate must read only the covering rows of repl0: GnssChannelizedSearch builds
+// those rows alone and leaves the rest empty (7 rows of 8192 on a CHORD bank). Checked with a
+// strong wrong-code replica in the non-covering rows and with empty ones; both must give the
+// full replica's surface bit for bit.
 BOOST_AUTO_TEST_CASE(accumulate_reads_only_covering_rows) {
     const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
     auto data = stft(gen(5, 50 * CHIP_RATE / FS, 200.0, cf(1.0f, 0.0f)), proto);
@@ -286,7 +276,7 @@ BOOST_AUTO_TEST_CASE(accumulate_reads_only_covering_rows) {
     std::vector<double> p_surf;
     gnss::channelized_accumulate(data, poisoned, cov, grid, FS, N, p_surf, ws);
 
-    // (b) banded: non-covering rows empty, exactly as the search now builds them.
+    // (b) banded: non-covering rows empty, as the search builds them.
     auto banded = std::vector<std::vector<cf>>((size_t)N);
     for (int c : cov)
         banded[(size_t)c] = repl0[(size_t)c];
@@ -302,20 +292,18 @@ BOOST_AUTO_TEST_CASE(accumulate_reads_only_covering_rows) {
     }
 }
 
-// The fine-lag axis is stored to one period when the covering channels are combed, and that must
-// be EXACT, not a cheaper approximation: same peak cell, same Doppler, same SNR. Verified by
-// expanding the reduced surface back out by hand (tiling it g times) and confirming the expansion
-// is bit-identical to what a full-width surface would hold, then that channelized_peak agrees on
-// both. This is the 16x that makes the CHORD search affordable, so it is worth pinning hard.
+// With combed covering channels the fine-lag axis is stored for one period only, and that must
+// be exact: the stored period must equal the full-width surface computed from the definition,
+// and channelized_peak must give the same peak cell, Doppler and SNR on both. On CHORD's
+// stride-16 comb this saves 16x.
 BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
     const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
     auto data = stft(gen(5, 50 * CHIP_RATE / FS, 200.0, cf(1.0f, 0.0f)), proto);
     auto repl0 = stft(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), proto);
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
 
-    // A deliberately COMBED covering set: stride 3 out of N=31, so the differences share g=3
-    // with... nothing (gcd(3,31)=1, N prime) -- so build the comb in a bank whose sph shares a
-    // factor. Use samples_per_hop = 30 with stride-3 channels: gcd(3,30) = 3, period 10.
+    // A combed covering set: stride 3 with sph = 30, so gcd(3, 30) = 3 and the stored period is
+    // 10. The stft bank's own sph, N = 31, is prime and would store the full width.
     const std::vector<int> cov = {0, 3, 6, 9};
     const int sph = 30;
     std::vector<std::vector<std::vector<cf>>> Pall(cov.size());
@@ -331,9 +319,8 @@ BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
     BOOST_REQUIRE_EQUAL(dims.s_stored, 10); // gcd(3, 30) = 3 -> period 10
     BOOST_REQUIRE_EQUAL((long)surf.size(), (long)dims.n_dop * dims.Mp * 10);
 
-    // Recompute the FULL-width surface directly from the definition and check the reduced one is
-    // one exact period of it -- this is the claim, tested against the formula rather than against
-    // another run of the same code.
+    // Compute the full-width surface from the definition and check the stored one is exactly one
+    // period of it.
     const int nd = dims.n_dop, Mp = dims.Mp;
     for (int d = 0; d < nd; ++d)
         for (int q = 0; q < Mp; ++q)
@@ -346,17 +333,13 @@ BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
                 }
                 const double want = std::norm(D);
                 const double got = surf[((long)d * Mp + q) * 10 + (s % 10)];
-                // 1e-5 relative: the production path builds the ramp and accumulates D in
-                // FLOAT32 (deliberately -- it is what lets the inner s-loop vectorize) and then
-                // squares it, so ~2e-6 against a double reference is the floor. The failure this
-                // guards against -- a wrong period, so the wrong column -- is O(1) relative.
+                // 1e-5 relative: production builds the ramp and D in float32 so the s-loop
+                // vectorizes, ~2e-6 from this double reference. A wrong period is O(1).
                 BOOST_REQUIRE_SMALL(got - want, 1e-5 * std::max(1.0, want));
             }
 
-    // The behavioural claim: channelized_peak must report the same thing off the reduced surface
-    // as off the full-width one. Tile the reduced surface back out (exactly what the extra
-    // columns held) and check peak cell, Doppler and SNR all agree -- SNR included, because it is
-    // a mean over the surface and would shift if the copies were not uniform.
+    // channelized_peak must give the same result on the stored surface as on the full-width one
+    // tiled from it. SNR is a surface mean, so it would shift if the copies were not uniform.
     std::vector<double> wide((size_t)nd * Mp * sph);
     for (int d = 0; d < nd; ++d)
         for (int q = 0; q < Mp; ++q)
@@ -366,8 +349,7 @@ BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
     const gnss::AcquisitionSurface wide_dims{nd, Mp, sph, sph};
     const auto r_red = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
                                               gnss::FINE_LAG_SIGN_NATURAL);
-    // BOTH sides take the same sign: this case compares a reduced surface against the tiled-out
-    // wide one, so it is convention-agnostic -- but only if the two agree.
+    // Both calls take the same sign, so the comparison does not depend on the convention.
     const auto r_wide = gnss::channelized_peak(wide, wide_dims, grid, FS, CHIP_RATE, CODE_LEN,
                                                gnss::FINE_LAG_SIGN_NATURAL);
     BOOST_CHECK_EQUAL(r_red.peak_tau_samples, r_wide.peak_tau_samples);
@@ -449,23 +431,17 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
 }
 
 // --------------------------------------------------------------------------------------------
-// L2C bug hunt: the channelized airspy L2C config detects nothing while the monolithic correlator
-// gets snr ~133 on the same sky -> an algorithmic bug in the CHANNELIZED path. These two cases
-// drive the REAL gnss::ChannelizedReplicaBank (the time-multiplexed CM/CL combined code) through
-// the REAL gnss::channelized_acquire, at the production geometry (Fs=5 MHz, N=12, f_off=1.25 MHz),
-// to localize: does acquire+replica work for L2C (-> bug is in the search STAGE wrapper), and is
-// the live hops_per_record window a legal incoherent window?
+// L2C through the real ChannelizedReplicaBank (time-multiplexed CM/CL) and channelized_acquire,
+// at a 5 MSPS real front end with N = 12 and f_off = Fs/4.
 namespace {
-constexpr double FS_L2C = 5.0e6;    // airspy 5 MSPS real
-constexpr double FOFF_L2C = 1.25e6; // L1/L2 IF = Fs/4
-constexpr int N_L2C = 12;           // the airspy L2C config's spectrum_length
+constexpr double FS_L2C = 5.0e6;    // 5 MSPS real
+constexpr double FOFF_L2C = 1.25e6; // IF = Fs/4
+constexpr int N_L2C = 12;
 constexpr int TAPS_L2C = 4;
 } // namespace
 
-// Localizer: a known L2C code phase + Doppler, generated and matched through the production
-// replica bank over ONE replica period (an integer number of code periods), is recovered with a
-// sharp peak. If this passes, channelized_acquire + the time-mux replica are sound for L2C, so a
-// live no-detect lives in the STAGE wrapper (snapshot windowing / covering-channel slice / etc).
+// A known L2C code phase and Doppler, generated and matched through the replica bank over one
+// replica period (an integer number of code periods), is recovered with a sharp peak.
 BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L2C_CM");
     BOOST_REQUIRE(sig != nullptr);
@@ -486,8 +462,8 @@ BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
 
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
-    // Mirror the stage: samples_per_hop = fft_len (r2c), chan_freq = covering (natural order),
-    // peak reported in COMPONENT CM chips (sig->chip_rate_hz / code_length).
+    // As the stage does: samples_per_hop = fft_len (r2c), chan_freq = covering (natural order),
+    // code phase in component CM chips (sig->chip_rate_hz, code_length).
     auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS_L2C, sig->chip_rate_hz, N_L2C,
                                        sig->code_length, cov, fft_len);
 
@@ -502,14 +478,11 @@ BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     BOOST_CHECK_LT(cp_err, 2.0); // within ~1 CM chip
 }
 
-// The live-config failure mode. The airspy L2C config set hops_per_record: 4166 (~1 code period).
-// But at N=12 / Fs=5 MHz one L2C code period is 100000 samples = 4166.67 hops -- NOT an integer
-// number of hops. The incoherent search slices CONTIGUOUS windows of hops_per_record, so a 4166-hop
-// stride advances the code phase by 99984 mod 100000 = -16 samples each window: the |D|^2 peak
-// walks and the incoherent sum smears it away (-> no detection). An integer number of code periods
-// (here the 12500-hop replica period = 3 periods) keeps the peak stationary so the sum builds. This
-// is the invariant the stage must honour: the incoherent window must span an integer number of code
-// periods. (For L1 it does -- 5000 samples, repl_period_hops=625=3 periods, all integer.)
+// The incoherent search sums contiguous windows of hops_per_record hops, so a window must span
+// an integer number of code periods. At N = 12, Fs = 5 MHz one L2C CM period is 100000 samples
+// = 4166.67 hops: a 4166-hop window advances the code phase by 99984 mod 100000 = -16 samples
+// per window, so the |D|^2 peak walks and the sum smears it away. The 12500-hop replica period
+// (3 code periods) keeps the peak stationary.
 BOOST_AUTO_TEST_CASE(l2c_incoherent_window_must_span_integer_code_periods) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L2C_CM");
     BOOST_REQUIRE(sig != nullptr);
@@ -529,8 +502,8 @@ BOOST_AUTO_TEST_CASE(l2c_incoherent_window_must_span_integer_code_periods) {
     auto snap = bank.channels(0, anchor, true_cp, true_dop, snap_hops);
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
 
-    // Slice CONTIGUOUS windows of `hpr` hops out of the snapshot and integrate the |D|^2 surface,
-    // exactly as GnssChannelizedSearch::search_snapshot does. Returns the surface peak/mean SNR.
+    // Slice contiguous windows of `hpr` hops out of the snapshot and integrate |D|^2, as
+    // GnssChannelizedSearch::search_snapshot does. Returns the surface peak/mean SNR.
     auto run = [&](int hpr) {
         gnss::AcquireWorkspace ws;
         std::vector<double> surf;
@@ -548,9 +521,8 @@ BOOST_AUTO_TEST_CASE(l2c_incoherent_window_must_span_integer_code_periods) {
             .snr;
     };
 
-    const double snr_int = run(Mp); // 12500 hops = 3 code periods (integer) -> stationary peak
-    const double snr_live =
-        run(4166); // the airspy L2C config's value (~1 period, NON-integer) -> smears
+    const double snr_int = run(Mp);    // 12500 hops = 3 code periods (integer) -> stationary peak
+    const double snr_live = run(4166); // ~1 period, not an integer number of periods -> smears
 
     BOOST_TEST_MESSAGE("L2C incoherent snr: integer-period(12500)=" << snr_int
                                                                     << "  live(4166)=" << snr_live);
@@ -558,18 +530,16 @@ BOOST_AUTO_TEST_CASE(l2c_incoherent_window_must_span_integer_code_periods) {
     BOOST_CHECK_LT(snr_live, snr_int * 0.5); // non-integer window smears the peak away
 }
 
-// L5 (the airspy L5 config): the wide signal -- 10.23 Mcps at the 20 MSPS front end. At Fs=20 MHz
-// we capture the central ~10 MHz (carrier +-5 MHz) of L5's ~20 MHz main lobe -- about half, but the
-// ChannelizedReplicaBank band-limits the replica identically (same r2c PFB / Fs), so the despread
-// stays matched and recovers the code phase + Doppler. N=10 -> fft_len 20 | 20000 = 1 code period
-// (1 ms), so the search window is exactly 1 period (stationary + within one NH-overlay chip). We
-// target the Q5 PILOT (dataless). Confirms the channelized acquire path works for the L5 geometry.
+// L5 Q5 at a 20 MSPS real front end (N = 10, f_off = Fs/4). It passes the central ~10 MHz of
+// L5's ~20 MHz main lobe; the bank band-limits the replica the same way, so the despread stays
+// matched. fft_len = 20 divides the 20000-sample code period, so the search window is exactly
+// one 1 ms period, within one NH20 chip.
 BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
     BOOST_REQUIRE(sig != nullptr);
-    constexpr double FS_L5 = 20.0e6;  // 20 MSPS wide front end (airspy sample_bw 10)
+    constexpr double FS_L5 = 20.0e6;  // 20 MSPS real
     constexpr double FOFF_L5 = 5.0e6; // = Fs/4
-    constexpr int N_L5 = 10;          // the airspy L5 config's spectrum_length
+    constexpr int N_L5 = 10;
     gnss::ChannelizedReplicaBank bank(*sig, FS_L5, FOFF_L5, N_L5, 4, dsp::Window::Hamming, {1});
     const int fft_len = 2 * N_L5;           // 20
     const int Mp = bank.repl_period_hops(); // 20000 / gcd(20,20000) = 1000 hops = 1 ms (1 period)
@@ -594,14 +564,13 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - true_dop),
                    100.0);       // detects with the right Doppler
     BOOST_CHECK_GT(r.snr, 15.0); // strong peak
-    // Acquire localizes the coarse lag to ~1 hop: at 20 MSPS we hold only ~half L5's main lobe, so
-    // the autocorrelation peak is ~2x broader and the raw cp is hop-coarse (here ~0.8 hop off).
+    // The acquire places the coarse lag to ~1 hop; with only ~half of L5's main lobe the
+    // correlation peak is ~2x broader.
     const long true_tau = (long)std::llround(true_cp * FS_L5 / sig->chip_rate_hz);
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)(2 * fft_len));
 
-    // The stage sharpens cp after acquire with an exact-despread +-1-hop scan (search_snapshot).
-    // Replicate it: the despread |A| peaks at the true code phase -> sub-chip cp. This validates
-    // the full L5 acquire->refine path the pipeline actually runs.
+    // The stage refines cp after the acquire with an exact-despread scan of +-1 hop
+    // (refine_peak); the same scan here must land within a chip.
     const double cps = sig->chip_rate_hz / FS_L5; // chips per sample
     const double dop = -r.doppler_hz;             // r2c sign flip, as the stage applies
     double best_cp = r.code_phase_chips, best_pw = -1.0;
@@ -623,17 +592,14 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     cp_err = std::min(cp_err, (double)sig->code_length - cp_err);
     BOOST_TEST_MESSAGE("L5 refined cp=" << best_cp << " (true " << true_cp << "), err " << cp_err
                                         << " chips");
-    BOOST_CHECK_LT(cp_err, 1.0); // refine nails it to sub-chip
+    BOOST_CHECK_LT(cp_err, 1.0); // sub-chip after the refine
 }
 
-// Almanac-narrowed search: the broker pushes the PHYSICAL predicted Doppler; GnssChannelizedSearch
-// scans a tight grid centred at -hint (the REAL bank's r2c flip: reported = -grid value, as the
-// L5/L2C cases above show). This checks, through the real ChannelizedReplicaBank, that a narrow
-// grid around -true_dop still recovers the sat (narrowing doesn't break detection) AND pins the
-// sign -- a sign error would search the wrong half and find nothing, the failure the
-// broker<->search handoff must avoid. Uses a large Doppler so the wrong-sign window (2*dop away) is
-// a clean miss, not just coarsely off (at small Doppler the 1 ms coherent resolution forgives a
-// sign slip).
+// Doppler-hinted search: the broker sends the physical predicted Doppler, and
+// GnssChannelizedSearch scans a narrow grid around -hint (hint_doppler_sign, default -1) because
+// the r2c bank reports the conjugate sign. A narrow grid around -true_dop must still detect and
+// one around +true_dop must miss. The Doppler is large so the wrong-sign grid, 2*dop away, misses
+// cleanly; at small Doppler the 1 ms coherent resolution would hide a sign error.
 BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
     BOOST_REQUIRE(sig != nullptr);
@@ -646,7 +612,7 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     auto repl0 = bank.channels(0, anchor, 0.0, 0.0, Mp);
     const auto cov = energy_covering_n(repl0, N_L5);
 
-    const double true_cp = 137.0, true_dop = 3000.0; // PHYSICAL Doppler (the broker's prediction)
+    const double true_cp = 137.0, true_dop = 3000.0; // physical Doppler, as the broker predicts
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
 
     const double hint = true_dop, margin = 100.0, step = 50.0;
@@ -656,7 +622,7 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
             g.push_back(f);
         return g;
     };
-    // Right: centre at -hint (the convention the search uses) -> recovers, reports the grid value.
+    // Centred at -hint, as the search does: detects.
     const auto narrow = grid_around(-hint);
     auto r = gnss::channelized_acquire(data, repl0, cov, narrow, FS_L5, sig->chip_rate_hz, N_L5,
                                        sig->code_length, cov, fft_len);
@@ -673,23 +639,14 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     BOOST_CHECK_LT(rw.snr, r.snr * 0.3); // wrong-sign window decorrelates -> no peak
 }
 
-// The sub-grid Doppler refine must BEAT the grid cell on an OFF-grid signal.
+// The sub-grid Doppler refine must beat the grid cell on an off-grid signal.
 //
-// ⚠️ THE GRID STEP MUST BE THE TRANSFORM BIN. This is the estimator's domain, not a detail:
-// peak_from_reduction inverts r = |g(1-d)|/|g(d)| with g(x) = sin(pi*x*u)/x and x in BINS, so
-// the +-1 grid neighbour has to BE the +-1 bin. GnssChannelizedSearch enforces the same
-// precondition at run time -- the CUDA acquire refuses a grid whose step is not a whole multiple
-// of the bin and logs "Set doppler_step to the bin spacing" -- and production sets 62.5 Hz
-// against a 62.5 Hz bin. Here bin = fs / (Mp * fft_len) = 20e6 / (1000 * 20) = 1000 Hz.
-//
-// This test used a step-100 coarse grid against that 1000 Hz bin (0.1 bin) and a step-5 "fine
-// reference" (0.005 bin), both far inside one bin. In that regime the neighbour ratio is ~1
-// whatever the true offset, so the inversion saturates at d -> 0.5 and reports half a step
-// toward the neighbour: it made the answer WORSE than the raw cell (5.5 Hz -> 44 Hz) and the
-// case had been red since #105 replaced the parabola with the amplitude-ratio estimator, whose
-// domain is narrower. Both grids are now bin-spaced, and truth is the analytic Doppler rather
-// than another out-of-domain acquire -- the channelization bias it used to cancel is ~10 Hz,
-// 0.01 bin, which the tolerance below swallows whole.
+// The grid step must be the transform bin. peak_from_reduction inverts r = |g(1-d)|/|g(d)| with
+// g(x) = sin(pi*x*u)/x and x in bins, so the +-1 grid neighbour must be the +-1 bin; on a sub-bin
+// grid the ratio is ~1 whatever the offset and the estimate saturates at half a step.
+// GnssChannelizedSearch warns on such a grid and the CUDA acquire refuses it; production uses a
+// 62.5 Hz step on a 62.5 Hz bin. Here bin = fs / (Mp * fft_len) = 20e6 / (1000 * 20) = 1000 Hz.
+// Truth is the analytic Doppler; the channelization bias, ~0.01 bin, is inside the tolerance.
 BOOST_AUTO_TEST_CASE(doppler_refine_beats_grid) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
     constexpr double FS_L5 = 20.0e6, FOFF_L5 = 5.0e6;
@@ -701,8 +658,8 @@ BOOST_AUTO_TEST_CASE(doppler_refine_beats_grid) {
     auto repl0 = bank.channels(0, anchor, 0.0, 0.0, Mp);
     const auto cov = energy_covering_n(repl0, N_L5);
 
-    // Truth placed 0.3 of a BIN off a grid point: far enough that a saturating or inert refine
-    // both fail, close enough to stay in the interpolating regime the estimator claims.
+    // Truth 0.3 bin off a grid point: far enough that a saturating or inert refine fails, close
+    // enough to stay in the estimator's interpolating regime.
     const double bin_hz = FS_L5 / ((double)Mp * (double)fft_len); // 1000 Hz here
     const double true_cp = 137.0, true_dop = 3000.0 + 0.3 * bin_hz;
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
@@ -721,7 +678,7 @@ BOOST_AUTO_TEST_CASE(doppler_refine_beats_grid) {
     // skipped at the edges).
     const auto coarse = grid_around(-3000.0, 3.0 * bin_hz, bin_hz);
     const double refined = acq(coarse).doppler_hz;
-    // the nearest grid cell to truth (what we'd have reported WITHOUT the refine): 0.3 bin
+    // the grid cell nearest truth, 0.3 bin away: the answer without the refine
     double cell = coarse[0];
     for (double f : coarse)
         if (std::abs(f - ref) < std::abs(cell - ref))
@@ -734,17 +691,16 @@ BOOST_AUTO_TEST_CASE(doppler_refine_beats_grid) {
     BOOST_CHECK_LT(err_ref, 0.1 * bin_hz); // and inside a tenth of a bin
 }
 
-// Galileo E1-C at the L1 front-end geometry (5 MSPS / N=20, the live_l1 configs): the BOC(1,1)
-// pilot as an EXPANDED code (2 half-cycle slots per chip at 2.046 Mcps -- the same comb
-// machinery as L2C TDM, which is what gives the hoprate path AND the GPU despread kernel BOC
-// support). Drives the real ChannelizedReplicaBank(GAL_E1C) + channelized_acquire, then the
-// stage's exact-despread refine, at production geometry -- the whole Galileo acquire path.
+// Galileo E1-C at 5 MSPS, N = 20: the BOC(1,1) pilot as an expanded code (2 half-cycle slots per
+// chip at 2.046 Mcps, the same comb_mult expansion as L2C TDM, which gives the hop-rate path and
+// the GPU despread BOC support). Runs the real bank through channelized_acquire and the
+// stage's exact-despread refine.
 BOOST_AUTO_TEST_CASE(gal_e1c_single_window_acquire_recovers) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GAL_E1C");
     BOOST_REQUIRE(sig != nullptr);
-    constexpr double FS = 5.0e6; // live L1 front end
+    constexpr double FS = 5.0e6; // 5 MSPS real
     constexpr double FOFF = 1.25e6;
-    constexpr int N = 20; // live_l1 spectrum_length
+    constexpr int N = 20;
     gnss::ChannelizedReplicaBank bank(*sig, FS, FOFF, N, 4, dsp::Window::Hamming, {11});
     BOOST_REQUIRE_EQUAL(bank.comb_mult(), 2);          // BOC(1,1) -> expanded x2
     BOOST_REQUIRE_EQUAL(bank.eff_code_length(), 8184); // 4092 * 2
@@ -791,7 +747,7 @@ BOOST_AUTO_TEST_CASE(gal_e1c_single_window_acquire_recovers) {
     double cp_err = std::fabs(best_cp - true_cp);
     cp_err = std::min(cp_err, (double)sig->code_length - cp_err);
     BOOST_TEST_MESSAGE("E1C refined cp=" << best_cp << " err " << cp_err << " chips");
-    BOOST_CHECK_LT(cp_err, 0.5); // BOC correlation peak is SHARPER than BPSK -- sub-half-chip
+    BOOST_CHECK_LT(cp_err, 0.5); // the BOC correlation peak is sharper than BPSK's
 
     // Cross-PRN rejection: despreading PRN 11's signal with PRN 12's replica finds no peak.
     gnss::ChannelizedReplicaBank bank12(*sig, FS, FOFF, N, 4, dsp::Window::Hamming, {12});
@@ -802,9 +758,8 @@ BOOST_AUTO_TEST_CASE(gal_e1c_single_window_acquire_recovers) {
     BOOST_CHECK_LT(r12.snr, r.snr * 0.25);
 }
 
-// BeiDou-3 B1C pilot at the 20 MSPS wide-front-end geometry (live_l1_dual20): Weil-code
-// primary (validated chip-for-chip against PocketSDR), BOC(1,1) expanded, 10 ms period =
-// 10000 hops at N=10 (integer). Same acquire->refine path as the E1C case.
+// BeiDou-3 B1C pilot at 20 MSPS, N = 10: Weil-code primary, BOC(1,1) expanded, 10 ms period =
+// 10000 hops. Same acquire and refine as the E1C case.
 BOOST_AUTO_TEST_CASE(bds_b1c_single_window_acquire_recovers) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("BDS_B1C_P");
     BOOST_REQUIRE(sig != nullptr);

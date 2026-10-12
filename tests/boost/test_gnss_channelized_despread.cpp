@@ -30,8 +30,8 @@ std::vector<int8_t> ca_code(int prn) {
     return std::vector<int8_t>(a.begin(), a.end());
 }
 
-// PFB-analyze a complex signal into N channels via the PFB core + a reference
-// DFT (no FFTW). Returns chan[c][m]. Mirrors fftwEngine's PFB path.
+// PFB-analyze a complex signal into N channels with the pfbPrototype.hpp fold and a
+// reference DFT (no FFTW). Returns chan[c][m].
 std::vector<std::vector<cf>> analyze(const std::vector<cf>& sig, const std::vector<float>& proto) {
     const int L = N * P;
     const int M = static_cast<int>(sig.size()) / N;
@@ -65,8 +65,8 @@ cd full_band_amplitude(const std::vector<cf>& x, const std::vector<cf>& r) {
     return num / den;
 }
 
-// Channels carrying replica energy above a fraction of the peak (the occupied,
-// band-plan-selected subset); returns parallel data/replica channel lists.
+// Channels carrying replica energy above a fraction of the peak (a stand-in for the band
+// plan's covering channels); returns parallel data/replica channel lists.
 void occupied_subset(const std::vector<std::vector<cf>>& data_ch,
                      const std::vector<std::vector<cf>>& repl_ch, double frac,
                      std::vector<std::vector<cf>>& data_sub,
@@ -145,11 +145,10 @@ BOOST_AUTO_TEST_CASE(channelized_matches_full_band_under_noise) {
     BOOST_CHECK_LT(std::abs(chan - full), 0.1 * std::abs(A));  // and tracks full-band
 }
 
-// Centerpiece of the distributed combine: split the covering channels across two
-// disjoint subbands, despread each independently, and recombine. The raw
-// correlation G and replica energy are sums over channels, so they are additive
-// across the partition, and (sum G)/(sum energy) reproduces the full despread
-// amplitude exactly -- this is the invariant the coherent combiner stage relies on.
+// Split the channels across two disjoint subbands, despread each, and recombine. G and the
+// replica energy are sums over channels, so they add across the partition and
+// (sum G)/(sum energy) reproduces the full despread amplitude: the invariant
+// GnssCoherentCombiner relies on.
 BOOST_AUTO_TEST_CASE(channel_partition_recombines_coherently) {
     const cf A(0.8f, 0.6f);
     auto code = ca_code(1);
@@ -171,22 +170,20 @@ BOOST_AUTO_TEST_CASE(channel_partition_recombines_coherently) {
     auto resA = channelized_despread(dA, rA);
     auto resB = channelized_despread(dB, rB);
 
-    // Raw correlation + replica energy are additive across the channel partition...
     const cd corr = resA.correlation + resB.correlation;
     const double energy = resA.replica_energy + resB.replica_energy;
     BOOST_CHECK_CLOSE(corr.real(), full.correlation.real(), 1e-3);
     BOOST_CHECK_CLOSE(corr.imag(), full.correlation.imag(), 1e-3);
     BOOST_CHECK_CLOSE(energy, full.replica_energy, 1e-3);
 
-    // ...so the recombined amplitude (sum G)/(sum energy) equals the full despread.
     const cd recombined = corr / energy;
     BOOST_CHECK_CLOSE(recombined.real(), full.amplitude.real(), 1e-3);
     BOOST_CHECK_CLOSE(recombined.imag(), full.amplitude.imag(), 1e-3);
 }
 
-// overlay_wipe finds the L5 NH20 alignment and integrates the dataless pilot coherently
-// across primary periods: it recovers the pilot amplitude + a high significance, where an
-// overlay-blind coherent sum is suppressed (the NH20 is not in-phase across periods).
+// overlay_wipe finds the L5 NH20 alignment and integrates the dataless pilot coherently across
+// primary periods, recovering the pilot amplitude with high significance; an overlay-blind
+// coherent sum is suppressed.
 BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_pilot) {
     const std::vector<int8_t> overlay(gps::L5_NH20.begin(), gps::L5_NH20.end());
     const int L = (int)overlay.size(), nrec = 400, true_phase = 7;
@@ -211,9 +208,8 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_pilot) {
     BOOST_CHECK_GT(res.amplitude, 3.0 * std::abs(raw) / nrec); // wipe >> overlay-blind coherent sum
 }
 
-// On noise (no pilot) the deep amplitude stays small and the significance near its floor --
-// the 20-way phase max biases the H0 SNR up only mildly (~sqrt(2 ln 20) ~ 2.4), well under a
-// real lock.
+// On noise the deep amplitude stays small and the significance near its floor: the 20-way
+// alignment max biases the noise SNR up only to ~sqrt(2 ln 20) ~ 2.4.
 BOOST_AUTO_TEST_CASE(overlay_wipe_noise_floor) {
     const std::vector<int8_t> overlay(gps::L5_NH20.begin(), gps::L5_NH20.end());
     std::mt19937 rng(7);
@@ -230,12 +226,10 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_noise_floor) {
     BOOST_CHECK_LT(res.amplitude, 3.0 / std::sqrt((double)nrec)); // ~ noise/sqrt(N), not a signal
 }
 
-// The SAME overlay_wipe, driven by the REAL per-PRN L1C-P overlay (the combiner's L1CO path).
-// L1CO is 1800 symbols (vs NH20's 20), so its phase search is only well-posed once the window
-// holds a comparable number of records -- a LONG integration recovers the injected pilot phase
-// and amplitude even at per-record SNR ~ 1. (With far fewer records the 1800-way max overfits
-// noise, which is exactly why the L1C deep wipe wants a long rolling window + a higher deep_snr
-// floor, ~sqrt(2 ln 1800) ~ 3.9 sigma.) PRN18 is a GPS III bird that actually broadcasts L1C.
+// overlay_wipe with the per-PRN L1C-P overlay (1800 chips). The alignment search is well-posed
+// only once the window holds a comparable number of records; with far fewer, the 1800-way max
+// overfits noise (it rectifies to ~sqrt(2 ln 1800) ~ 3.9 sigma). A long window recovers the
+// injected alignment and amplitude at per-record SNR ~ 1.
 BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_l1cp_pilot_long_window) {
     auto ov_arr = gps::generate_l1co_code(18);
     const std::vector<int8_t> overlay(ov_arr.begin(), ov_arr.end());
@@ -256,12 +250,9 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_l1cp_pilot_long_window) {
     BOOST_CHECK_GT(res.snr, 10.0);             // strongly significant after the long coherent sum
 }
 
-// A residual that has been ANNIHILATED BY CONSTRUCTION must not read as infinite SNR.
-// Live 2026-08-07 the viewer showed a PRN at 6.93e16 sigma with coh_frac 0.13, wandering
-// between PRNs. Cause: every statistic here guarded its divide with `noise_sum > 0.0`, which
-// catches only bit-identical records -- while records phase-aligned to DOUBLE PRECISION (what a
-// derotation leaves) give ~1e-17 and sail through. Both ends are pinned here: exactly-identical
-// records were always handled, near-degenerate ones were not.
+// A residual removed by construction must not read as an enormous SNR. Records phase-aligned
+// to double precision, as a derotation leaves them, give a residual of ~1e-17 rather than 0;
+// both that and the bit-identical case must score 0, while a real signal still scores.
 BOOST_AUTO_TEST_CASE(degenerate_residual_does_not_explode) {
     using cd = std::complex<double>;
     std::vector<cd> ident(8, cd(1.0, 0.0)); // bit-identical: residual exactly 0

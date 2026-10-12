@@ -1,25 +1,20 @@
 /**
  * @file
- * @brief Channelized despread: the measurement-tier operation of the
- *        distributed-band pipeline.
+ * @brief Channelized despread, and the deep coherent integrations over its per-record
+ *        amplitudes (overlay wipes, plain coherent sum, leave-one-out phase tracker).
  *
- * In the distributed pipeline a node holds only the PFB channels covering a
- * carrier (see @ref gnssBandPlan.hpp), never the wideband voltage. Once
- * acquisition has supplied a PRN's code phase + Doppler, the calibration
- * product is the complex despread amplitude toward that satellite. This computes
- * it directly in the channelized domain: correlate each covering channel of the
- * data against the *same channel of the replica* (the replica is PFB-analyzed
- * through the identical bank) and sum.
+ * A node holds only the PFB channels covering a carrier (see @ref gnssBandPlan.hpp), never
+ * the wideband voltage. Given a PRN's code phase and Doppler, the despread correlates each
+ * covering channel of the data against the same channel of the replica, which went through
+ * the same analysis bank, and sums.
  *
- * Why summing works: the analysis bank is linear and identical for data and
- * replica, so the per-channel cross-correlations carry matching inter-channel
- * phases and add coherently --
- * @f$ G = \sum_c \sum_m X_c[m]\,\overline{R_c[m]} @f$ -- with no need to
- * resynthesize the wideband signal. Normalizing by the replica energy
- * @f$ \sum_c \sum_m |R_c[m]|^2 @f$ yields the matched-filter estimate of the
- * complex amplitude, independent of the bank's passband gain. If the input is
- * exactly @c A times the replica, the estimate is exactly @c A regardless of
- * channelization -- that is the equivalence the unit test pins down.
+ * The bank is linear and identical for data and replica, so the per-channel correlations
+ * carry matching inter-channel phases and add coherently,
+ * @f$ G = \sum_c \sum_m X_c[m]\,\overline{R_c[m]} @f$, without resynthesizing the wideband
+ * signal. Normalizing by the replica energy @f$ \sum_c \sum_m |R_c[m]|^2 @f$ gives the
+ * matched-filter estimate of the complex amplitude, independent of the bank's passband gain:
+ * an input of exactly @c A times the replica gives exactly @c A (pinned by
+ * test_gnss_channelized_despread.cpp).
  */
 
 #ifndef GNSS_CHANNELIZED_DESPREAD_HPP
@@ -40,117 +35,102 @@ struct DespreadResult {
 };
 
 /**
- * Coherent channelized despread. @c data_ch and @c repl_ch are parallel lists of
- * the *same* channels (e.g. those from @ref covering_channels), each a per-hop
- * stream of channelizer outputs; corresponding streams must be equal length.
- * Returns the per-channel correlations, their coherent sum, the replica energy,
- * and the normalized amplitude estimate (0 if the replica has no energy).
+ * Coherent channelized despread. @c data_ch and @c repl_ch are parallel lists of the same
+ * channels (e.g. those from @ref covering_channels), each a per-hop stream of channelizer
+ * outputs. Returns the per-channel correlations, their coherent sum, the replica energy, and
+ * the normalized amplitude estimate (0 if the replica has no energy). Throws
+ * std::invalid_argument if the channel counts or a pair of stream lengths differ.
  */
 DespreadResult channelized_despread(const std::vector<std::vector<std::complex<float>>>& data_ch,
                                     const std::vector<std::vector<std::complex<float>>>& repl_ch);
 
-/// Result of a known-secondary-overlay deep wipe (@ref overlay_wipe).
+/// Result of @ref overlay_wipe, @ref overlay_wipe_at and @ref coherent_sum.
 struct OverlayWipeResult {
     double amplitude = 0.0; ///< deep coherent |A| = |sum of overlay-corrected per-record A| / nrec
-    double snr =
-        0.0;       ///< significance = coherent sum / its orthogonal-noise std (~1 noise, >>1 real)
-    int phase = 0; ///< overlay alignment (0..len-1) that maximised the coherent sum
+    double snr = 0.0;       ///< coherent sum / its orthogonal-noise std (order 1 on noise)
+    /// Overlay alignment (0..len-1), relative to the first record: the maximising one from
+    /// overlay_wipe, the given one from overlay_wipe_at, 0 from coherent_sum.
+    int phase = 0;
 };
 
-/**
- * Deep coherent integration of a dataless pilot past its primary period by wiping a KNOWN
- * secondary overlay (the L5 Neuman-Hofman NH10/NH20 -- one +-1 chip per primary period).
- *
- * @c a is the per-record complex despread amplitude (one record = one primary period, so one
- * overlay chip), @c utc the matching capture time per record (to index the ABSOLUTE primary-
- * period -- a dropped record just skips an index, keeping the overlay aligned), @c overlay the
- * bipolar (+-1) sequence. Unlike the nav-bit wipe (estimates the +-1 by squaring), the overlay
- * is KNOWN, so this just searches its @c overlay.size() alignments for the one that maximises
- * the coherent sum, then sums the overlay-corrected records -- recovering the pilot's full
- * coherent gain (capped only by the carrier coherence time, not the 1 ms primary period).
- */
-/// Plain coherent sum of per-record amplitudes -- NO wipe of any kind.
+/// Plain coherent sum of per-record amplitudes, with no wipe.
 ///
-/// For a pilot whose replica ALREADY carries the secondary overlay there is nothing left to
-/// wipe: the despread removed it chip by chip, correctly, whether or not a record straddles an
-/// overlay transition. CHORD is exactly that case -- its tracker despreads `GPS_L5_Q_NH`, the
-/// 204600-chip code with NH20 baked in -- and it CANNOT use the wipe rungs, because
-/// @ref overlay_apply advances the overlay ONE CHIP PER RECORD. That identity holds on airspy
-/// (record = one primary period) and fails on CHORD, where a record is 2048 hops = **10.4857**
-/// code periods, so the overlay would advance ~10.49 chips per record and flip ~10 times WITHIN
-/// one -- which the head/tail split cannot represent.
+/// For a pilot whose replica already carries the secondary overlay (CHORD despreads
+/// GPS_L5_Q_NH, the 204600-chip code with NH20 tiled in) there is nothing left to wipe. The
+/// wipes below cannot serve it anyway: @ref overlay_apply advances the overlay one chip per
+/// record and its head/tail split allows one chip change within a record, while a CHORD
+/// record (2048 hops, 10.49 ms) spans ~10.49 primary periods.
 ///
-/// Without this, such a signal has no deep-integration path at all: every route to
-/// `coherence_s` in GnssCoherentCombiner runs through a wipe, so the stage reports 0 forever
-/// and the pilot is integrated one record at a time (10.5 ms here) when it supports far longer.
-///
-/// Same SNR convention as @ref overlay_wipe_at -- coherent sum over its own orthogonal-noise
-/// std, E[snr^2] = 2 exactly under pure noise -- so the result is directly comparable with the
-/// other rungs and their floors. @c phase is always 0: there is no alignment to report, and
-/// (the point) no max-over-alignments, so the noise floor carries no extreme-value inflation.
+/// Same SNR convention as @ref overlay_wipe_at, so the result is comparable with the wipes'
+/// floors. @c phase is always 0.
 OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a);
 
-/// LEAVE-ONE-OUT COMMON-PHASE TRACKER -- the closed carrier loop the airspy had, in batch form.
+/// Leave-one-out common-phase tracker: a closed carrier loop in batch form, for a per-record
+/// phase wander that is correlated across the +-half_width window but is not a low-order
+/// polynomial.
 ///
-/// The on-sky per-record prompts carry a slow (~>42 ms correlated) per-satellite phase wander
-/// that is NOT a polynomial of low order (measured ~0.9 rad rms over 1 s, red spectrum, common
-/// across every antenna and subband -- propagation/sky, not processing). The airspy never saw
-/// it because its per-record phase estimate was signal-dominated and its carrier loop TRACKED
-/// it out before any long integration; CHORD's open-loop polynomial derotation cannot. This is
-/// the batch equivalent of closing that loop: estimate each record's common phase from its
-/// NEIGHBOURS within the wander's correlation time and derotate.
-///
-/// Each record k is derotated by arg(sum of a[j], j in [k-half_width, k+half_width], j != k,
-/// zero-amplitude records skipped). SELF-EXCLUDED, deliberately: the estimate is then
-/// statistically independent of record k's own noise, so under pure noise the derotation is a
-/// random rotation that cannot align anything -- the tracker is FAIL-CLOSED (it cannot
-/// manufacture a detection) and coherent_sum's E[snr^2] = 2 noise convention survives it.
-/// The price is estimator noise ~1/(SNR_rec * sqrt(2*half_width)) rad of added jitter, so
-/// tracking a clean strong signal costs ~exp(-sigma_est^2/2) -- a few percent -- while removing
-/// a 0.9 rad wander recovers ~exp(0.9^2/2) ~ 1.5x amplitude. Callers should score tracked and
-/// untracked with the SAME estimator and keep the better (a 2-way selection the floor must pay).
+/// Each record k is derotated by arg(sum of a[j] for j in [k-half_width, k+half_width],
+/// j != k, zero-amplitude records skipped). Excluding record k makes the estimate independent
+/// of its own noise, so on pure noise each derotation is a random rotation of that record.
+/// Records still enter their neighbours' estimates, though, so the tracked sum's noise SNR has
+/// a heavier tail than the untracked one's, more so as half_width grows. On a signal the cost
+/// is ~1/(SNR_rec * sqrt(2*half_width)) rad of added jitter, a loss of ~exp(-sigma_est^2/2)
+/// when there is no wander. Callers should score tracked and untracked candidates with the
+/// same estimator and keep the better, paying for that selection in the floor.
 ///
 /// Records with fewer than 2 usable neighbours pass through unrotated. Returns false (out_a
 /// untouched) on a degenerate window (< 4 records or half_width < 1).
 bool phase_track_loo(const std::vector<std::complex<double>>& a, int half_width,
                      std::vector<std::complex<double>>& out_a);
 
-/// Selection-free overlay wipe at a GIVEN alignment (dead-reckoned by the caller):
-/// one coherent sum, no phase search -- E[snr^2] = 2 exactly under noise.
+/// Apply a known overlay at a given alignment and return the wiped per-record amplitudes, for
+/// a data component under an overlay (GPS L5-I: CNAV under NH10) that needs the nav-bit wipe
+/// applied after the overlay wipe.
 ///
-/// SEGMENTED wipe (@c head non-null): records are hop-aligned, not code-period-aligned, so
-/// each one straddles a period boundary where the overlay flips -- summed blind, a record
-/// straddling a chip TRANSITION cancels to |2f-1| (the 2026-07-15 "bistable": f~0.5 nulled
-/// 12/25 E1C records / ~49% of B1C). @c head[r] is the record's correlation over the hops
-/// BEFORE its boundary (tail = a[r] - head[r]); the wipe applies chip k to the head and
-/// chip k+1 to the tail, so nothing ever cancels. head == a (tail 0) reduces exactly to
-/// the unsegmented behaviour.
-/// Apply a KNOWN overlay at a GIVEN alignment and hand back the wiped per-record amplitudes,
-/// without reducing them to a coherent sum. This exists for the signal no other chain is:
-/// a DATA component that ALSO carries a secondary overlay (GPS L5-I = CNAV under NH10). Such a
-/// chain needs BOTH wipes in order -- overlay first, then the nav-bit wipe on the result -- and
-/// the two were mutually exclusive branches until S4 phase 2.
+/// Record r takes overlay chip k = round((utc[r]-utc[0])/rec_dt) + @p phase (mod the overlay
+/// length), with rec_dt the median record spacing, so @p phase is relative to the first record
+/// and a dropped record skips an index rather than shifting the rest. overlay_wipe_at() wipes
+/// through this function; overlay_wipe() computes the same index itself, and the two must
+/// agree.
 ///
-/// @p out_head (optional) receives the wiped HEAD segment of each record, so a downstream
-/// SEGMENTED wipe keeps a consistent head/tail split (its tail is out_a - out_head).
+/// @p head (optional) segments the wipe as in @ref overlay_wipe_at, and is ignored if its size
+/// differs from @p a. @p out_head (optional) receives each record's wiped head, so a
+/// downstream segmented wipe keeps a consistent head/tail split.
 ///
-/// ★ This is THE ONE PLACE the overlay's per-record chip index is computed; overlay_wipe_at()
-/// calls it rather than repeating the expression. A second, silently-divergent copy of an index
-/// convention is exactly what produced the L5 "pure sign" peel fault (2026-07-27).
-///
-/// @returns false if the window is degenerate (too short, size mismatch, no positive record
-/// period), in which case @p out_a is not usable.
+/// @returns false if the window is degenerate (fewer than 2 records, utc size mismatch, empty
+/// overlay, or no positive record period), in which case @p out_a is not usable.
 bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector<double>& utc,
                    const std::vector<int8_t>& overlay, int phase,
                    const std::vector<std::complex<double>>* head,
                    std::vector<std::complex<double>>& out_a,
                    std::vector<std::complex<double>>* out_head);
 
+/// Overlay wipe at a given alignment @p phase (see @ref overlay_apply): one coherent sum with no
+/// search over alignments, so E[snr^2] = 2n/(n-3) ~ 2 for n records of pure noise, with no
+/// extreme-value inflation.
+///
+/// With @p head non-null the wipe is segmented. Records are hop-aligned, not period-aligned,
+/// so a record straddles a period boundary where the overlay may flip; summed whole, a record
+/// straddling a chip transition at fraction f cancels to |2f-1|. @c head[r] is the record's
+/// correlation over the hops before its boundary; the wipe applies chip k to the head and chip
+/// k+1 to the tail a[r] - head[r]. head == a reduces to the unsegmented wipe.
 OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
                                   const std::vector<double>& utc,
                                   const std::vector<int8_t>& overlay, int phase,
                                   const std::vector<std::complex<double>>* head = nullptr);
 
+/**
+ * Deep coherent integration of a dataless pilot past its primary period by wiping a known
+ * secondary overlay, shared (L5 Q's NH20) or per-PRN (L1C-P's). Each record must span one
+ * primary period, so the overlay advances one +-1 chip per record.
+ *
+ * @c a is the per-record complex despread amplitude, @c utc the capture time of each record
+ * (the record index comes from it, so a dropped record skips an index and the overlay stays
+ * aligned), @c overlay the bipolar sequence, @c head as for @ref overlay_wipe_at. Unlike
+ * the nav-bit wipe, which estimates each +-1 symbol, the overlay is known, so this searches its
+ * @c overlay.size() alignments for the one that maximises the coherent sum. The returned SNR
+ * carries that selection: on noise it rectifies to ~sqrt(2 ln len).
+ */
 OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
                                const std::vector<double>& utc, const std::vector<int8_t>& overlay,
                                const std::vector<std::complex<double>>* head = nullptr);

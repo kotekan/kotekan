@@ -18,15 +18,15 @@ using gnss::ChannelizedReplicaBank;
 
 namespace {
 
-// L5/L1 both have a 1 ms primary period, so at this Fs both give a clean replica
-// period; 2 samples/chip on L5, 20 on L1.
+// L5 and L1 C/A both have a 1 ms primary period, a whole number of hops at this Fs; 2 samples
+// per chip on L5, 20 on L1.
 constexpr double FS = 20.46e6;
-constexpr double FOFF = 5.115e6; // carrier a few channels up from DC
+constexpr double FOFF = 5.115e6; // carrier 5 channels above DC
 constexpr int N = 10;            // 1.023 MHz channels
 constexpr int P = 4;
 
-// Matched-filter amplitude of replica `data` against replica `repl`, over all
-// channels (the bank's replica energy normalizes it, so self -> 1).
+// Matched-filter amplitude of `data` against `repl` over all channels. channelized_despread
+// normalizes by the replica energy, so a self-despread gives 1.
 double despread_mag(const std::vector<std::vector<cf>>& data,
                     const std::vector<std::vector<cf>>& repl) {
     return std::abs(gnss::channelized_despread(data, repl).amplitude);
@@ -50,9 +50,8 @@ double rel_err(const std::vector<cf>& a, const std::vector<cf>& ref) {
 
 } // namespace
 
-// The bank dispatches the L5 Q5 code: self-despread is a perfect matched filter (1),
-// and a different PRN's replica decorrelates -- so it really uses PRN-distinct L5
-// codes (a broken dispatch would give all-PRN-identical or empty codes -> no rejection).
+// L5 Q5 dispatch: a self-despread is a matched filter (1) and a different PRN's replica
+// decorrelates, so the bank holds distinct per-PRN codes.
 BOOST_AUTO_TEST_CASE(l5q_self_and_cross_prn) {
     std::vector<int> prns = {1, 2};
     auto bank = make_bank("GPS_L5_Q", prns);
@@ -64,22 +63,21 @@ BOOST_AUTO_TEST_CASE(l5q_self_and_cross_prn) {
     BOOST_CHECK_LT(despread_mag(rA, rB), 0.3);          // different PRN decorrelates
 }
 
-// The L5 Q5 NH20 secondary overlay is applied per primary period: it matches IS-GPS-705,
-// and a multi-period coherent despread stays matched only when the overlay alignment
-// (nh_phase) agrees -- which is what unlocks coherent integration of the dataless pilot
-// past the 1 ms primary period (vs the overlay-blind sum, which the balanced NH20 averages
-// to ~0). Single-period despread is unaffected (the overlay is a constant sign there).
+// The L5 Q5 NH20 overlay (IS-GPS-705) is applied per primary period. A coherent despread over
+// several periods stays matched only when the overlay alignment (nh_phase) agrees; an
+// overlay-blind sum averages the near-balanced NH20 to ~0. Within one period the overlay is a
+// constant sign and has no effect.
 BOOST_AUTO_TEST_CASE(l5q_nh20_overlay) {
     std::vector<int> prns = {1};
     auto bank = make_bank("GPS_L5_Q", prns);
     BOOST_REQUIRE_EQUAL(bank.secondary_length(), 20);
-    // the overlay sequence the bank applies is exactly the IS-GPS-705 NH20
+    // the bank's overlay is the IS-GPS-705 NH20
     int s = 0;
     for (int k = 0; k < 20; ++k) {
         BOOST_CHECK_EQUAL(bank.overlay_sign(k, 0), (int)gps::L5_NH20[k]);
         s += gps::L5_NH20[k];
     }
-    BOOST_CHECK_LE(std::abs(s), 4); // NH20 is (near-)balanced -> overlay-blind sum decorrelates
+    BOOST_CHECK_LE(std::abs(s), 4); // near-balanced: an overlay-blind sum decorrelates
 
     const int K = 20, H = K * bank.repl_period_hops();  // span a full NH period (20 ms)
     auto data = bank.channels(0, 0, 0.0, 0.0, H, 0);    // overlaid signal, alignment 0
@@ -92,20 +90,18 @@ BOOST_AUTO_TEST_CASE(l5q_nh20_overlay) {
                       1e-2);                          // aligned -> coherent over 20 periods
     BOOST_CHECK_LT(despread_mag(data, shifted), 0.2); // one-chip NH misalignment decorrelates
 
-    // sanity: a single primary period is overlay-phase-INSENSITIVE (one constant chip)
+    // A single primary period does not depend on the overlay alignment (one constant chip).
     const int H1 = bank.repl_period_hops();
     auto p0 = bank.channels(0, 0, 0.0, 0.0, H1, 0);
     auto p1 = bank.channels(0, 0, 0.0, 0.0, H1, 1);
     BOOST_CHECK_CLOSE(despread_mag(p0, p1), 1.0, 1e-2); // single period: still a matched filter
 }
 
-// Per-PRN baked secondaries (GAL_E5A_Q_CS / BDS_B2A_P_CS): the CHORD-tracker form of the
-// E5a/B2a pilots -- primary tiled by THAT PRN's 100-chip secondary into one 1023000-chip code,
-// the GPS_L5_Q_NH construction (docs/CHORD_MULTIBAND.md section 4). The thing under test is the
-// SEEDING CONTRACT, which no single stage can check: a cp in the baked space equals
-// (primary cp + 10230 * period-index mod 100), sign convention chip * secondary[period]
-// (== overlay_sign()'s). Every seeding bug of the 2026-08-02 week was a convention between
-// stages; this pins the new signals' convention to the plain-primary bank chip by chip.
+// Per-PRN baked secondaries (GAL_E5A_Q_CS, BDS_B2A_P_CS): the primary tiled by that PRN's
+// 100-chip secondary into one 1023000-chip code. Seeding depends on this convention, which no
+// single stage can check, so pin it to the plain-primary bank chip by chip: a baked code phase
+// is primary cp + 10230 * (period index mod 100), with sign chip * secondary[period] as in
+// overlay_sign().
 BOOST_AUTO_TEST_CASE(e5aq_cs_baked_convention) {
     const gnss::SignalDescriptor* cs = gnss::signal_by_name("GAL_E5A_Q_CS");
     BOOST_REQUIRE(cs != nullptr);
@@ -114,10 +110,9 @@ BOOST_AUTO_TEST_CASE(e5aq_cs_baked_convention) {
     for (int prn : {1, 30}) {
         auto bank_cs = make_bank("GAL_E5A_Q_CS", {prn});
         auto bank_q = make_bank("GAL_E5A_Q", {prn});
-        // The plain bank's single-sequence overlay slot deliberately skips per-PRN
-        // secondaries, so nh_search on GAL_E5A_Q is a no-op -- the documented reason the
-        // baked signal is dead-reckon seeded (CHORD_MULTIBAND.md section 5). If this ever
-        // becomes nonzero, the bank grew a per-PRN slot and that section is stale.
+        // The plain bank's overlay slot holds only overlays shared by every PRN, so GAL_E5A_Q
+        // has none and nh_search ignores it; GAL_E5A_Q_CS trackers are seeded by dead
+        // reckoning for that reason. A nonzero value means the bank gained per-PRN overlays.
         BOOST_CHECK_EQUAL(bank_q.secondary_length(), 0);
         const auto sec = galileo::e5aq_secondary(prn);
         for (int k = 0; k < 100; ++k)
@@ -144,12 +139,10 @@ BOOST_AUTO_TEST_CASE(b2ap_cs_baked_convention) {
     }
 }
 
-// Behavioral half of the same contract: over a FULL 100 ms baked period the CS replica is a
-// matched filter against itself, while the overlay-BLIND plain-primary tiling decorrelates to
-// |sum(CS100)|/100 -- the airspy-measured reason multi-period coherent integration needs the
-// overlay (a 10.49 ms CHORD record spans ~10 secondary chips whose signs mostly cancel).
-// Hop = 20 samples divides the 20460-sample primary period exactly (1023 hops), so the
-// per-period sums are clean and the blind bound is tight.
+// Over a full 100 ms baked period the CS replica is a matched filter against itself, while the
+// overlay-blind primary tiling decorrelates to ~|sum(CS100)|/100, which is why multi-period
+// coherent integration needs the overlay (a CHORD record spans ~10 secondary chips). A 20-sample
+// hop divides the 20460-sample primary period exactly (1023 hops), so the blind bound is tight.
 BOOST_AUTO_TEST_CASE(e5aq_cs_multiperiod_coherence) {
     std::vector<int> prns = {1};
     auto cs = make_bank("GAL_E5A_Q_CS", prns);
@@ -169,13 +162,12 @@ BOOST_AUTO_TEST_CASE(e5aq_cs_multiperiod_coherence) {
     BOOST_TEST_MESSAGE("baked-vs-blind despread = " << blind_mag);
     BOOST_CHECK_CLOSE(despread_mag(data, data), 1.0, 1e-2); // self == matched filter
     BOOST_CHECK_LT(blind_mag, std::abs(s) / 100.0 + 0.1);   // ~|sum|/100, the design bound
-    BOOST_CHECK_LT(blind_mag, 0.3);                         // and it genuinely decorrelates
+    BOOST_CHECK_LT(blind_mag, 0.3);                         // and it decorrelates
 }
 
-// BOC(1,1) sub-carrier (the first non-BPSK modulation, for L1C / Galileo): applied here to the
-// C/A code as a synthetic BOC signal. The BOC replica self-despreads (matched filter), but
-// DECORRELATES against the plain BPSK replica of the SAME code -- because the sub-carrier
-// averages to zero over a chip, so it has genuinely split the spectrum off the carrier.
+// BOC(1,1) applied to the C/A code as a synthetic signal. The sub-carrier averages to zero over
+// a chip, so the BOC replica is a matched filter against itself but decorrelates against the
+// BPSK replica of the same code.
 BOOST_AUTO_TEST_CASE(boc_subcarrier_applied) {
     gnss::SignalDescriptor boc = *gnss::signal_by_name("GPS_L1CA"); // C/A chips...
     boc.mod = gnss::Modulation::BOC;                                // ...+ a BOC(1,1) sub-carrier
@@ -191,8 +183,8 @@ BOOST_AUTO_TEST_CASE(boc_subcarrier_applied) {
     BOOST_CHECK_LT(despread_mag(rboc, rbpsk), 0.3);         // BOC vs BPSK (same code) decorrelate
 }
 
-// End-to-end L1C-P through the bank: the descriptor dispatches the Weil code AND applies BOC(1,1),
-// so a self-despread is a matched filter and a different PRN decorrelates -- the real L1C signal.
+// L1C-P through the bank: the descriptor selects the Weil code and BOC(1,1), so a self-despread
+// is a matched filter and a different PRN decorrelates.
 BOOST_AUTO_TEST_CASE(l1cp_self_and_cross_prn) {
     std::vector<int> prns = {1, 2};
     auto bank = make_bank("GPS_L1C_P", prns);
@@ -203,7 +195,7 @@ BOOST_AUTO_TEST_CASE(l1cp_self_and_cross_prn) {
     BOOST_CHECK_LT(despread_mag(rA, rB), 0.3);          // different PRN decorrelates
 }
 
-// I5 and Q5 are distinct codes on the same carrier -> they decorrelate.
+// I5 and Q5 are distinct codes on the same carrier, so they decorrelate.
 BOOST_AUTO_TEST_CASE(l5i_distinct_from_l5q) {
     std::vector<int> prns = {1};
     auto bq = make_bank("GPS_L5_Q", prns);
@@ -216,8 +208,8 @@ BOOST_AUTO_TEST_CASE(l5i_distinct_from_l5q) {
     BOOST_CHECK_LT(despread_mag(rQ, rI), 0.3); // I vs Q decorrelate
 }
 
-// The dispatch picks a genuinely different code per signal: an L1 C/A replica does
-// not correlate with an L5 Q5 replica (same Fs/channelization, different code).
+// The dispatch picks a different code per signal: an L1 C/A replica does not correlate with
+// an L5 Q5 replica (same Fs and channelization, different code).
 BOOST_AUTO_TEST_CASE(l1ca_distinct_from_l5q) {
     std::vector<int> prns = {1};
     auto bl1 = make_bank("GPS_L1CA", prns);
@@ -230,19 +222,16 @@ BOOST_AUTO_TEST_CASE(l1ca_distinct_from_l5q) {
     BOOST_CHECK_LT(despread_mag(r1, r5), 0.3); // L1 code vs L5 code decorrelate
 }
 
-// L2C is TIME-MULTIPLEXED: CM and CL interleave chip-by-chip into the combined 1.023 Mcps
-// stream (CM on the even combined chips, CL on the odd). ChannelizedReplicaBank must model
-// that -- the bare 511.5 kcps component code loses ~9-12 dB vs the real interleaved signal
-// (python/scripts/gnss/gps_l2c_subband_validate.py). The tell-tale of a correct model: CM and CL
-// have DISJOINT combined-chip slots, so the true interleaved signal (CM+CL) despreads with the
-// CM replica to ~the same amplitude as CM alone -- the CL half lands in the CM replica's zeros
-// and doesn't bleed in. A bank that held the bare CM code (no zeros) would let CL cross-talk in.
+// L2C is time-multiplexed: CM and CL interleave chip by chip into the combined 1.023 Mcps
+// stream (CM on the even combined chips, CL on the odd), and the bank models that. CM and CL
+// then occupy disjoint combined-chip slots, so the interleaved signal (CM + CL) despreads
+// against the CM replica to about the same amplitude as CM alone: CL falls in the CM replica's
+// zeros. A bank holding the bare 511.5 kcps CM code (no zeros) would let CL leak in.
 BOOST_AUTO_TEST_CASE(l2c_cm_time_multiplexed) {
     std::vector<int> prns = {1, 2};
     auto bcm = make_bank("GPS_L2C_CM", prns);
     auto bcl = make_bank("GPS_L2C_CL", prns);
-    // Partial window: the full 20 ms CM period is ~20k hops; a few hundred hops already give a
-    // clean matched filter (self is energy-normalised to 1) without the slow full-period run.
+    // 400 hops, not the full 20 ms (~20k-hop) CM period, already give a clean matched filter.
     const int H = 400;
     auto cmA = bcm.channels(0, 0, 0.0, 0.0, H); // PRN 1 CM  (even combined chips)
     auto cmB = bcm.channels(1, 0, 0.0, 0.0, H); // PRN 2 CM
@@ -251,21 +240,19 @@ BOOST_AUTO_TEST_CASE(l2c_cm_time_multiplexed) {
     BOOST_CHECK_CLOSE(despread_mag(cmA, cmA), 1.0, 1e-2); // self == matched filter
     BOOST_CHECK_LT(despread_mag(cmA, cmB), 0.3);          // different PRN decorrelates
 
-    // The true L2C signal = CM (even) + CL (odd), summed channel-by-channel.
+    // The interleaved L2C signal: CM (even) + CL (odd), summed per channel.
     auto inter = cmA;
     for (size_t ch = 0; ch < inter.size(); ++ch)
         for (size_t m = 0; m < inter[ch].size(); ++m)
             inter[ch][m] += clA[ch][m];
-    // CM recovered from the interleaved stream ~ CM recovered alone: the CL half is in the CM
-    // replica's zero slots, so it barely bleeds in. (No fix -> CL cross-talk drags this down.)
+    // CL sits in the CM replica's zero slots, so CM from the interleaved stream matches CM alone.
     BOOST_CHECK_CLOSE(despread_mag(inter, cmA), 1.0, 5.0);
 }
 
-// The hop-rate prefix-sum generator must reproduce the exact full-PFB channels() to
-// ~machine precision on the covering channels (the chip-collapse is an identity; the
-// chip-edge-in-the-filter is exact via Phi[k_hi]-Phi[k_lo-1] over integer taps). The
-// C++ analog of python/scripts/gnss/gps_hoprate_validate.py. Airspy-scale (5 MSPS, N=20,
-// ~4.9 samples/chip).
+// The hop-rate generator reproduces the full-PFB channels() to ~machine precision on the
+// covering channels: the per-chip collapse is an identity, and a chip contributes
+// Phi[k_hi+1] - Phi[k_lo] over its integer tap range. C++ counterpart of
+// python/scripts/gnss/gps_hoprate_validate.py, at 5 MSPS, N = 20 (~4.9 samples/chip).
 BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L1CA");
     BOOST_REQUIRE(sig != nullptr);
@@ -276,8 +263,8 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
     for (double dop : {0.0, 2000.0, -3500.0}) {
         auto exact = bank.channels(0, ws, 300.0, dop, n_hops);
         auto hop = bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want);
-        // Constant nav bit -1 must just negate the result (per-chip wipe plumbing). The
-        // edge-exactness (bit edge on a code-period boundary) is covered in the python.
+        // A constant nav bit of -1 must negate the result. Bit edges on code-period boundaries
+        // are checked in gps_hoprate_validate.py.
         auto wiped =
             bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want, [](long long) { return -1.0f; });
         for (size_t ci = 0; ci < want.size(); ++ci) {
@@ -292,10 +279,9 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
     }
 }
 
-// The streaming wrapper builds the prefix-sum filter once and reuses it across
-// contiguous generate() calls, rebuilding only on a large Doppler step -- so steady
-// generation is O(n_chips)/hop. Checks: exact match to channels(), the amortization
-// (one rebuild over many chunks), and the refresh policy.
+// HopRateReplicaStream builds the filter once and reuses it across contiguous generate() calls,
+// rebuilding only past refresh_hz of Doppler drift, so steady generation is O(n_chips) per hop.
+// Checks the match to channels(), one rebuild over many chunks, and the refresh policy.
 BOOST_AUTO_TEST_CASE(hoprate_stream_amortizes_and_matches) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L1CA");
     BOOST_REQUIRE(sig != nullptr);
@@ -315,8 +301,8 @@ BOOST_AUTO_TEST_CASE(hoprate_stream_amortizes_and_matches) {
     }
     BOOST_CHECK_EQUAL(stream.rebuilds(), 1); // filter built once, reused across 5 chunks
 
-    // Small wobble (< refresh): no rebuild; the 20 Hz-stale filter error is bounded (~-54 dB
-    // here -- it scales ~linearly with the drift, so refresh_hz sets the peel depth).
+    // A wobble below refresh_hz reuses the filter; the staleness error is ~-54 dB at 20 Hz and
+    // grows roughly linearly with the drift.
     const auto& wob = stream.generate(ws, cp, dop + 20.0, n_hops);
     BOOST_CHECK_EQUAL(stream.rebuilds(), 1);
     BOOST_CHECK_LT(rel_err(wob[1], bank.channels(0, ws, cp, dop + 20.0, n_hops)[10]), 3e-3);
@@ -326,42 +312,36 @@ BOOST_AUTO_TEST_CASE(hoprate_stream_amortizes_and_matches) {
     BOOST_CHECK_EQUAL(stream.rebuilds(), 2);
 }
 
-// Same identity at CHORD scale, which is a genuinely different regime from the airspy case
-// above and is the one the banded search now depends on: Fs = 3200 MSPS (real), N = 8192,
-// fft_len = 16384 so the prefix-sum filter is 65536 taps long, ~313 samples/chip, and the
-// carrier sits at bin ~6023 instead of ~5. Two things could plausibly break here and not
-// there -- the unit-modulus phasor recurrence over a 16384-sample hop, and the chip-to-tap
-// integer range mapping when a chip spans hundreds of samples -- so gate it directly.
-// GnssChannelizedSearch builds repl0 for ONLY the covering channels via this path; if it
-// ever stops matching channels(), the search silently correlates against the wrong replica.
+// The same identity at CHORD scale: Fs = 3200 MSPS real, N = 8192, fft_len = 16384, so the
+// prefix-sum filter is 65536 taps, a chip spans ~313 samples, and the carrier sits at bin ~6023
+// rather than 10. The phasor recurrence over a 16384-sample hop and the chip-to-tap mapping at
+// hundreds of samples per chip can fail here and not at the small geometry.
+// GnssChannelizedSearch builds repl0 for the covering channels only through this path, so a
+// mismatch here means the search correlates against the wrong replica.
 BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb_chord_scale) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
     BOOST_REQUIRE(sig != nullptr);
-    // CHORD CRS F-engine: 4-tap Hamming, 16384 real samples/hop -> 8192 channels.
+    // CHORD F-engine: 4-tap Hamming, 16384 real samples per hop, 8192 channels.
     gnss::ChannelizedReplicaBank bank(*sig, 3200.0e6, 1176.45e6, 8192, 4, dsp::Window::Hamming,
                                       {1});
-    const long long ws = 3125LL * bank.fft_len(); // the search's anchor
+    const long long ws = 3125LL * bank.fft_len(); // the search's anchor, Mp * fft_len
     // Channels covering the L5 carrier: bin 6023.4 = 1176.45 MHz / (3200 MHz / 16384).
     const std::vector<int> want = {5990, 6023, 6024, 6060};
-    // MUST BE A LONG RUN. The failure this guards against is a floating-point tie at an exact
-    // chip/tap boundary, which at zero Doppler recurs on a fixed period (~every 391 hops, = 2
-    // code periods) and FIRST STRIKES AT HOP 255. A dozen hops -- the natural thing to write,
-    // since channels() costs O(n_hops * 16384) here -- passes at 6e-8 while a full period is
-    // wrong by 1.8e-3 rms and 1.99 absolute. Do not shorten this.
+    // Run a full replica period at zero Doppler; do not shorten it. Ties at an exact chip/tap
+    // boundary, where floating point can hand a tap to the neighbouring chip, occur only ~8
+    // times per replica period at this geometry (see hoprate_stream_into), so a short run can
+    // miss them all.
     for (double dop : {0.0, 2500.0, -2500.0}) {
         const int n_hops = (dop == 0.0) ? bank.repl_period_hops() : 400;
         auto exact = bank.channels(0, ws, 137.0, dop, n_hops);
         auto hop = bank.channels_hoprate(0, ws, 137.0, dop, n_hops, want);
         for (size_t ci = 0; ci < want.size(); ++ci) {
-            // 1e-6, not the 1e-5 used at airspy scale: the two paths agree to ~8e-8 here (both
-            // sit ~3.5e-8 from a double-precision reference), so a decade of headroom is ample
-            // and anything looser readmits the one-tap error at -53 dB.
+            // 1e-6, tighter than the 1e-5 above: the paths agree to ~1e-7 at this scale.
             BOOST_CHECK_MESSAGE(rel_err(hop[ci], exact[want[ci]]) < 1e-6,
                                 "dop " << dop << " ch " << want[ci] << " over " << n_hops
                                        << " hops: CHORD hop-rate err "
                                        << rel_err(hop[ci], exact[want[ci]]));
-            // Per-hop, so a single bad hop cannot hide under an rms over thousands of good ones
-            // (1.99 absolute out of 3125 hops is only 1.8e-3 in rms).
+            // Also bound each hop, so one bad hop cannot hide in an rms over thousands.
             double worst = 0.0, ref = 0.0;
             for (int m = 0; m < n_hops; ++m) {
                 worst = std::max(worst, (double)std::abs(hop[ci][m] - exact[want[ci]][m]));
@@ -375,27 +355,19 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb_chord_scale) {
     }
 }
 
-// ---------------------------------------------------------------------------------------
-// GLONASS FDMA: the per-PRN carrier offset.
-//
-// Every other signal here is CDMA -- one carrier per band, satellites separated by code. GLONASS
-// L2OF inverts that: EVERY satellite transmits the same 511-chip m-sequence and they are
-// separated by CARRIER, satellite k sitting at 1246.0 + k*0.4375 MHz. So the per-satellite
-// identity lives entirely in ChannelizedReplicaBank::set_prn_freq_offset(), and these cases pin
-// that it enters the carrier EXACTLY, and nowhere else.
-// ---------------------------------------------------------------------------------------
+// ---- GLONASS FDMA: the per-PRN carrier offset ----
+// GLONASS L2OF satellites share one 511-chip code and are separated by carrier, satellite k at
+// 1246.0 + k*0.4375 MHz, so a satellite's identity is only its set_prn_freq_offset(). These
+// cases check that the offset enters the carrier exactly and nowhere else.
 
 BOOST_AUTO_TEST_CASE(fdma_offset_is_exactly_a_carrier_shift) {
-    // ★ THE IDENTITY: an FDMA offset of X Hz on a PRN must produce precisely the replica that
-    // PRN would have at Doppler+X with no offset -- because both enter as carrier_offset(p) +
-    // doppler in the same phasor. Every GLONASS PRN shares one code, so the two replicas are
-    // comparable chip-for-chip and any discrepancy is the offset leaking somewhere it should not.
-    //
-    // ⚠️ code_doppler_sign = 0 is what makes it an EXACT identity rather than an approximate
-    // one, and it is also the physics: an FDMA offset is a STATIC carrier difference, not a
-    // line-of-sight velocity, so it must NOT scale the code rate the way Doppler does (every
-    // GLONASS satellite clocks its code at 511 kcps regardless of k). Leaving code-Doppler on
-    // would make the two sides differ by exactly that term -- which is the bug this guards.
+    // An FDMA offset of X Hz must give exactly the replica at Doppler + X with no offset: both
+    // enter the same carrier phasor as carrier_offset(p) + doppler, and every PRN shares the
+    // code, so the replicas compare chip for chip.
+    // code_doppler_sign = 0 makes the identity exact: code Doppler scales the code rate by
+    // doppler_hz alone, so with it on the Doppler + X side would also get a faster code. An FDMA
+    // offset is a static carrier difference, not a velocity, and leaves the 511 kcps code rate
+    // alone.
     auto bank = make_bank("GLO_L2OF", {1, 2});
     bank.code_doppler_sign = 0.0;
 
@@ -416,8 +388,7 @@ BOOST_AUTO_TEST_CASE(fdma_offset_is_exactly_a_carrier_shift) {
 }
 
 BOOST_AUTO_TEST_CASE(fdma_offset_moves_the_occupied_channels) {
-    // The offset must actually relocate the signal on the channel grid -- a no-op that silently
-    // did nothing would still pass an identity test comparing two no-ops.
+    // The offset must also move the PRN's covering channels, not only its replica.
     auto bank = make_bank("GLO_L2OF", {1, 2});
     const double bin_w = FS / (2 * N);
     const double X = 3 * bin_w; // three whole channels, so the shift is unambiguous
@@ -431,15 +402,13 @@ BOOST_AUTO_TEST_CASE(fdma_offset_moves_the_occupied_channels) {
     const double c1 = 0.5 * (moved.front() + moved.back());
     BOOST_CHECK_MESSAGE(std::abs((c1 - c0) - 3.0) < 0.51,
                         "covering set moved by " << (c1 - c0) << " channels, expected ~3");
-    // And an unset PRN index must behave exactly as before (band offset only) -- this is what
-    // keeps every CDMA caller untouched.
+    // An unset PRN index (-1) gives the band offset alone, as CDMA callers expect.
     BOOST_CHECK(bank.covering_bins(0.0, 0.0, -1) == base);
 }
 
 BOOST_AUTO_TEST_CASE(fdma_hoprate_matches_exact_with_offset) {
-    // The hop-rate generator carries its own copy of the carrier, so the offset has to reach
-    // BOTH paths. If it reached only channels(), the fast path used in production would quietly
-    // despread every GLONASS satellite at the wrong frequency.
+    // The hop-rate generator computes its own carrier, so the offset must reach it as well as
+    // channels(); GnssChannelizedSearch builds its replica on the hop-rate path.
     auto bank = make_bank("GLO_L2OF", {1, 2});
     bank.set_prn_freq_offset(1, -2 * 437.5e3); // k = -2
 
@@ -457,9 +426,8 @@ BOOST_AUTO_TEST_CASE(fdma_hoprate_matches_exact_with_offset) {
 }
 
 BOOST_AUTO_TEST_CASE(fdma_same_code_every_satellite) {
-    // Sanity on the other half of FDMA: unlike every CDMA signal here, cross-PRN despread must
-    // be PERFECT, because the satellites really do share one code. A cross-PRN null would mean
-    // someone had wired a per-PRN code table in, defeating the whole design.
+    // Unlike the CDMA signals, a cross-PRN despread must match perfectly: GLONASS satellites
+    // share one code.
     auto bank = make_bank("GLO_L2OF", {1, 2});
     const long long ws = 0;
     auto a = bank.channels(0, ws, 0.0, 0.0, 40);
