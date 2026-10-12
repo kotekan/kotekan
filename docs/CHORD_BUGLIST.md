@@ -102,6 +102,22 @@ reading logs. **Fix:** tie them into CHORD's monitoring and alerting (KV: "ultim
 in the viewer would do.
 
 ### #158 — projection phase 2 leftovers: `b` reaches only the lobe fold, `k`/source are not exported, the dB judge never ran (2026-10-02)
+**⚡ 10-12: two of the three leftovers done, rolling out (KV: "let's roll that out while things are quiet").**
+- **Export:** telemetry v8 (3f381df37): `REC_PROJ_K` (the record's rank, 0 none) and `REC_PROJ_SRC` (OR of the
+  sources over the instance's channels: 1 own row, 2 sibling, 4 probe stack) beside `REC_PROJ_COST`. The broker's lobe
+  fold carries all three to the published row and the archive as `proj_b` (mean over senders with a basis in force,
+  −1 none), `proj_k`, `proj_src`. Flag day: nodes, gather and broker together (fleet-3f381df37 / gather-3f381df37).
+- **The dB judge ran** (`fixtures/tec_wander/db_judge.py`, out/db_judge_1012.txt): other-satellite coherent C/N0 at
+  closest approach (±90 s) minus the 10 min before, Galileo bands, against each census's quiet controls. Freeze alone
+  (09-28/29): mean loss −2.6/−1.9/−1.5 dB (E5a/E5b/E6) with controls at 0, 45/33/46% of victims beyond 3 dB (controls
+  21/26/34%). Projection live, every census 09-30 → 10-12: mean loss at the control level (0 ± 1 dB), 13–19% beyond 3 dB
+  (controls 12–29%). Presence losses: 21/15/11 victims in 12 pre-freeze windows, 0 in every freeze+projection window
+  except the 10-11 evening (C19: 5 on E5a and 5 on E5b; E06: 4 on E6). The plan's criterion is met on the mean; the
+  row-level C/N0 median is blind to the C19-type brownout (+0.6 dB at CA while presence fell), so judge close passes by
+  presence and the grid-table C/N0, not rows. Metric noise: the controls' worst victim sits at −3 to −7 dB.
+- **Still open:** b into the broker's solves (down-weight by b instead of the 5° veto); phase 1c. Config note since
+  #170: the formation freeze (8°) is now wider than the projection window (6°), so the shared model no longer learns
+  through passes on projected data; safe, but not the plan's design.
 **Phase 2 is closed on its judge** (KV, 10-02): E5a × E6 arcs through transits 39% (freeze) → 74% (09-30) → 82% (10-01)
 → 97% (28/29, night of 10-01/02, freeze 2°); lock held 149/149; closure median 0.57 TECU = quiet sky. Three items the plan
 (`fixtures/projtest/PROJECTION_PLAN.md` phase 2) listed were not built; none blocks phase 3.
