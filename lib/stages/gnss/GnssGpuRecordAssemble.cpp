@@ -75,10 +75,19 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _elem_shared_form_deg =
         config.get_default<double>(unique_name, "elem_sum_shared_form_deg", 8.0);
     _chan_norm = config.get_default<bool>(unique_name, "chan_noise_norm", false);
+    // The frame inputs this stage's elements are (the correlator's live tiles); absent = the
+    // first n_elements inputs.
+    _chan_norm_elems =
+        config.get_default<std::vector<int>>(unique_name, "chan_noise_norm_elems", {});
+    if (_chan_norm_elems.empty())
+        for (int e = 0; e < std::max(_n_elements, 1); ++e)
+            _chan_norm_elems.push_back(e);
     if (_chan_norm)
         INFO("GnssGpuRecordAssemble[{:s}]: chan_noise_norm ON -- channels weighted by 1/rms of "
-             "their measured power (GnssChordVoltageTap band-power pass)",
-             unique_name);
+             "their measured power over {:d} frame inputs ({:d}..{:d}; GnssChordVoltageTap "
+             "band-power pass)",
+             unique_name, (int)_chan_norm_elems.size(), _chan_norm_elems.front(),
+             _chan_norm_elems.back());
     if (_elem_shared) {
         _elem_adapt = false;
         INFO("GnssGpuRecordAssemble[{:s}]: SHARED element model ON (consensus tau {:.0f} s, "
@@ -818,7 +827,9 @@ void GnssGpuRecordAssemble::main_thread() {
         bool chan_applied = false;
         if (_chan_norm && (int)_spec_freq_ids.size() == n_chan) {
             _chan_pw.resize((size_t)n_chan);
-            gnss::ChanPower::instance().lookup(_spec_freq_ids.data(), n_chan, _chan_pw.data());
+            gnss::ChanPower::instance().lookup(_spec_freq_ids.data(), n_chan,
+                                               _chan_norm_elems.data(),
+                                               (int)_chan_norm_elems.size(), _chan_pw.data());
             chan_applied = gnss::chan_norm_weights(_chan_pw.data(), n_chan, _chan_w.data());
             if (!chan_applied)
                 ++_chan_norm_miss;

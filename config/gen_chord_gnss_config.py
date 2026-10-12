@@ -1490,8 +1490,19 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
             # #163: channels weighted by 1/rms of their own measured power, not by the
-            # F-engine digital gain. Emitted only when on, so a fleet without it is unchanged.
-            **({"chan_noise_norm": True} if args.chan_noise_norm else {}),
+            # F-engine digital gain; the power is averaged over the frame inputs this stage
+            # actually sums (the correlator's live tiles, same set as live_element_tiles).
+            # Emitted only when on, so a fleet without it is unchanged.
+            **(
+                {
+                    "chan_noise_norm": True,
+                    "chan_noise_norm_elems": [
+                        e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)
+                    ],
+                }
+                if args.chan_noise_norm
+                else {}
+            ),
             **elem_shared_keys(args),
             **elem_shared_ref_keys(
                 args, (tag or signal_tag(sig["primary"])).strip("_"), steer, n_live

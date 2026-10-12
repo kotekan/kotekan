@@ -212,6 +212,7 @@ void GnssChordVoltageTap::main_thread() {
                 std::vector<double> pw((size_t)nbc, 0.0), clo((size_t)nbc, 0.0),
                     chi((size_t)nbc, 0.0);
                 std::vector<double> epw((size_t)nel, 0.0), ecl((size_t)nel, 0.0);
+                std::vector<double> pwe((size_t)nbc * nel, 0.0); // [chan][elem], for #163
                 long nhop = 0;
                 for (int m = 0; m < _n_hops; m += _bp_hop_stride) {
                     const size_t hop = (size_t)m * _frame_chan_stride * _frame_elem_stride;
@@ -226,6 +227,7 @@ void GnssChordVoltageTap::main_thread() {
                             const double p = (double)(re * re + im * im);
                             pw[(size_t)ci] += p;
                             epw[(size_t)e] += p;
+                            pwe[(size_t)ci * nel + e] += p;
                             // THE RAILS ARE COUNTED APART, and -8 is not pedantry: it is the
                             // value n2k's negate_4bit silently corrupts (CorrelatorKernel.hpp),
                             // so a run of -8 is a CORRECTNESS hazard where a run of +7 is only
@@ -282,9 +284,13 @@ void GnssChordVoltageTap::main_thread() {
                     if (!fids.empty())
                         _bp_freq_ids.swap(fids); // keep the last known map if this frame had none
                     _bp_power.swap(pw);
-                    // #163: the assemblers weight their cross-channel sums by this power.
-                    if (_bp_freq_ids.size() == _bp_power.size())
-                        gnss::ChanPower::instance().publish(_bp_freq_ids, _bp_power);
+                    // #163: the assemblers weight their cross-channel sums by this power, per
+                    // element so each can average over the inputs it actually sums.
+                    if ((int)_bp_freq_ids.size() == nbc) {
+                        for (double& v : pwe)
+                            v /= (double)nhop;
+                        gnss::ChanPower::instance().publish(_bp_freq_ids, pwe, nel);
+                    }
                     _bp_clip_lo.swap(clo);
                     _bp_clip_hi.swap(chi);
                     _bp_elem_pow.swap(epw);
