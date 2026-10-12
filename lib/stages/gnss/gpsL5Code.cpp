@@ -32,11 +32,13 @@ const std::array<int8_t, L5_CODE_LENGTH>& xa_code() {
     return xa;
 }
 
-// XB: 13-stage LFSR run for the full 10230 chips.
-const std::array<int8_t, L5_CODE_LENGTH>& xb_code() {
-    static const std::array<int8_t, L5_CODE_LENGTH> xb = [] {
-        std::array<int8_t, L5_CODE_LENGTH> a{};
-        lfsr(a.data(), L5_CODE_LENGTH, 0x1FFFu, 0b1011011100011u, 13);
+// XB: one full 8191-chip period of the 13-stage LFSR from all-ones. XB is not short-cycled, so
+// within a code period it wraps at 8191, not 10230.
+constexpr int L5_XB_PERIOD = 8191;
+const std::array<int8_t, L5_XB_PERIOD>& xb_code() {
+    static const std::array<int8_t, L5_XB_PERIOD> xb = [] {
+        std::array<int8_t, L5_XB_PERIOD> a{};
+        lfsr(a.data(), L5_XB_PERIOD, 0x1FFFu, 0b1011011100011u, 13);
         return a;
     }();
     return xb;
@@ -58,7 +60,7 @@ std::array<int8_t, L5_CODE_LENGTH> l5_code(int prn, const int* adv) {
     const int shift = adv[prn - 1];
     std::array<int8_t, L5_CODE_LENGTH> code{};
     for (int i = 0; i < L5_CODE_LENGTH; ++i) {
-        const int j = (i + shift) % L5_CODE_LENGTH;   // XB advanced (left-rolled) by `shift`
+        const int j = (i + shift) % L5_XB_PERIOD;     // XB, `shift` chips past all-ones
         code[i] = static_cast<int8_t>(xa[i] * xb[j]); // +-1 product == XOR
     }
     return code;

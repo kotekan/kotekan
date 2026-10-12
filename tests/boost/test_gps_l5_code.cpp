@@ -29,23 +29,37 @@ int balance(const std::array<int8_t, L5_CODE_LENGTH>& code) {
 
 } // namespace
 
-// Expected values cross-validated against PocketSDR sdr_code.py (IS-GPS-705).
+// First chips from PocketSDR sdr_code.py (IS-GPS-705); balances from this generator.
 BOOST_AUTO_TEST_CASE(l5i_first24_and_balance) {
     BOOST_CHECK_EQUAL(first_bits(generate_l5i_code(1), 24), 066124275u);
-    BOOST_CHECK_EQUAL(balance(generate_l5i_code(1)), 0);
+    BOOST_CHECK_EQUAL(balance(generate_l5i_code(1)), -2);
     BOOST_CHECK_EQUAL(first_bits(generate_l5i_code(5), 24), 005041072u);
-    BOOST_CHECK_EQUAL(balance(generate_l5i_code(5)), 40);
+    BOOST_CHECK_EQUAL(balance(generate_l5i_code(5)), -2);
     BOOST_CHECK_EQUAL(first_bits(generate_l5i_code(10), 24), 041006103u);
-    BOOST_CHECK_EQUAL(balance(generate_l5i_code(10)), 12);
+    BOOST_CHECK_EQUAL(balance(generate_l5i_code(10)), 0);
 }
 
 BOOST_AUTO_TEST_CASE(l5q_first24_and_balance) {
     BOOST_CHECK_EQUAL(first_bits(generate_l5q_code(1), 24), 063131310u);
-    BOOST_CHECK_EQUAL(balance(generate_l5q_code(1)), -8);
+    BOOST_CHECK_EQUAL(balance(generate_l5q_code(1)), 2);
     BOOST_CHECK_EQUAL(first_bits(generate_l5q_code(5), 24), 054417330u);
-    BOOST_CHECK_EQUAL(balance(generate_l5q_code(5)), 44);
+    BOOST_CHECK_EQUAL(balance(generate_l5q_code(5)), 0);
     BOOST_CHECK_EQUAL(first_bits(generate_l5q_code(10), 24), 047557674u);
-    BOOST_CHECK_EQUAL(balance(generate_l5q_code(10)), -8);
+    BOOST_CHECK_EQUAL(balance(generate_l5q_code(10)), 2);
+}
+
+// XA cancels in a PRN's I5 * Q5, leaving the product of two phases of the same XB sequence.
+// XB is not short-cycled, so that product repeats every 8191 chips within the code period. The
+// first-chip pins above cannot see the wrap, which only affects the code's last chips.
+BOOST_AUTO_TEST_CASE(xb_wraps_at_8191) {
+    for (int prn = 1; prn <= 32; ++prn) {
+        const auto i5 = generate_l5i_code(prn);
+        const auto q5 = generate_l5q_code(prn);
+        int mismatches = 0;
+        for (int i = 0; i + 8191 < L5_CODE_LENGTH; ++i)
+            mismatches += (i5[i] * q5[i] != i5[i + 8191] * q5[i + 8191]);
+        BOOST_CHECK_MESSAGE(mismatches == 0, "PRN " << prn << ": " << mismatches << " mismatches");
+    }
 }
 
 BOOST_AUTO_TEST_CASE(codes_are_bipolar_full_length) {

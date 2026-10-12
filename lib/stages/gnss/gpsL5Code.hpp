@@ -5,9 +5,10 @@
  * L5 (1176.45 MHz) has two components in phase quadrature: I5 (data, carries
  * CNAV) and Q5 (dataless pilot). Each is a 10230-chip primary code at 10.23
  * Mcps (1 ms period), formed as the XOR of a common XA sequence with a
- * per-PRN-shifted XB sequence -- XA is a 13-stage LFSR truncated/wrapped at 8190
- * chips, XB a 13-stage LFSR run to 10230, and the per-PRN code phase is the XB
- * advance (IS-GPS-705 Table 3-I). On top of the primary code each component
+ * per-PRN-shifted XB sequence -- XA is a 13-stage LFSR short-cycled at 8190
+ * chips; XB is a 13-stage maximal-length LFSR (period 8191) started at the
+ * PRN's XB advance (IS-GPS-705 Table 3-I) and not short-cycled, so it wraps at
+ * 8191 within the 10230-chip code. On top of the primary code each component
  * carries a Neuman-Hofman overlay: 10 chips (NH10, 10 ms) on I5, 20 chips
  * (NH20, 20 ms) on Q5.
  *

@@ -34,7 +34,7 @@ def _xa():
 
 
 def _xb():
-    return lfsr(L, 0x1FFF, 0b1011011100011, 13)  # XB: free-runs the full 10230
+    return lfsr(8191, 0x1FFF, 0b1011011100011, 13)  # XB: one 8191-chip period
 
 
 L5Q_XB_ADV = [
@@ -76,7 +76,8 @@ L5Q_XB_ADV = [
 def l5q_code(prn):
     xa, xb = _xa(), _xb()
     s = L5Q_XB_ADV[prn - 1]
-    return xa * np.roll(xb, -s)  # XB advanced (left-rolled) by s, like the C++
+    # XB starts at its initial state and wraps at its 8191-chip period, not at 10230.
+    return xa * xb[(np.arange(L) + s) % 8191]
 
 
 def measure(raw, name, code, chip_rate, T_p, dops, n_blocks, flip):
