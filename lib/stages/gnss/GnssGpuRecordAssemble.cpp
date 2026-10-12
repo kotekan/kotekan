@@ -2,6 +2,7 @@
 
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
+#include "gnssChanPower.hpp" // for ChanPower, chan_norm_weights (#163)
 #include "gnssGpuChain.hpp"
 #include "gnssRecord.hpp"
 #include "gnssSharedPin.hpp" // for ref_offset, pin_rotation (#154)
@@ -73,6 +74,11 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         config.get_default<double>(unique_name, "elem_sum_shared_freeze_hold_s", 60.0);
     _elem_shared_form_deg =
         config.get_default<double>(unique_name, "elem_sum_shared_form_deg", 8.0);
+    _chan_norm = config.get_default<bool>(unique_name, "chan_noise_norm", false);
+    if (_chan_norm)
+        INFO("GnssGpuRecordAssemble[{:s}]: chan_noise_norm ON -- channels weighted by 1/rms of "
+             "their measured power (GnssChordVoltageTap band-power pass)",
+             unique_name);
     if (_elem_shared) {
         _elem_adapt = false;
         INFO("GnssGpuRecordAssemble[{:s}]: SHARED element model ON (consensus tau {:.0f} s, "
@@ -804,6 +810,24 @@ void GnssGpuRecordAssemble::main_thread() {
         const double* energy = (const double*)(in
                                                + off_energy(n_prn, n_chan, n_rows_spec,
                                                             (_n_elements > 0) ? _n_elements : 1));
+        // #163: this frame's per-channel weights for the cross-channel sums (gnssChanPower.hpp):
+        // 1/rms of each channel's own measured power, mean 1, so a channel enters by its
+        // signal-to-noise and not by the F-engine digital gain. Unit weights until the tap has
+        // measured every channel (its first pass, ~1 s) or when the table is incomplete.
+        _chan_w.assign((size_t)n_chan, 1.0);
+        bool chan_applied = false;
+        if (_chan_norm && (int)_spec_freq_ids.size() == n_chan) {
+            _chan_pw.resize((size_t)n_chan);
+            gnss::ChanPower::instance().lookup(_spec_freq_ids.data(), n_chan, _chan_pw.data());
+            chan_applied = gnss::chan_norm_weights(_chan_pw.data(), n_chan, _chan_w.data());
+            if (!chan_applied)
+                ++_chan_norm_miss;
+        }
+        _chan_norm_applied.store(chan_applied);
+        if (chan_applied) {
+            std::lock_guard<std::mutex> lk(_chan_w_mtx);
+            _chan_w_pub = _chan_w;
+        }
 
         // NO ABSOLUTE ANCHOR? SAY SO, AND STILL EMIT A UNIFORM GRID. The old fallback stamped
         // system_clock::now() PER RECORD, and that silently broke every cross-record estimator
@@ -955,7 +979,8 @@ void GnssGpuRecordAssemble::main_thread() {
                     double e = 0.0;
                     for (int ch = 0; ch < n_chan; ++ch)
                         if ((c.chan_mask >> ch) & 1ULL) {
-                            e += energy[row + ch];
+                            const double w = _chan_w[ch]; // #163: 1 unless chan_noise_norm
+                            e += w * energy[row + ch];
                             const size_t base = (row + ch) * n_e;
                             const gnss::ElemSteer::cf* st =
                                 steered ? &_steer_buf[(size_t)ch * n_e] : nullptr;
@@ -964,7 +989,7 @@ void GnssGpuRecordAssemble::main_thread() {
                                                        corr[2 * (base + el) + 1]);
                                 if (st)
                                     v *= std::complex<double>(st[el].real(), st[el].imag());
-                                _g_elem[(size_t)t * n_e + el] += v;
+                                _g_elem[(size_t)t * n_e + el] += w * v;
                             }
                         }
                     g3[t] = _g_elem[(size_t)t * n_e + ref_e];
@@ -1384,11 +1409,14 @@ void GnssGpuRecordAssemble::main_thread() {
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL))
                             continue;
-                        std::complex<double> g = tap(prow, ch);
+                        // #163: the same per-channel weight as the record's sums, so the comb
+                        // the broker reads and the record it reads agree channel by channel.
+                        const double w = _chan_w[ch];
+                        std::complex<double> g = tap(prow, ch) * w;
                         const size_t k = (size_t)p * n_chan + ch;
                         W.re[k] += g.real();
                         W.im[k] += g.imag();
-                        W.energy[k] += energy[prow + ch];
+                        W.energy[k] += w * energy[prow + ch];
                         // THE SAME VALUE, PER RECORD (gnssRecord.hpp comb block). The window
                         // ring above is what /get_spectrum serves; this is the identical
                         // quantity written out un-accumulated, because a cross-RECORD rate fit
@@ -1396,17 +1424,17 @@ void GnssGpuRecordAssemble::main_thread() {
                         // rate destroys.
                         if (_chan_export) {
                             float* cb = out + gnss::chan_offset(p, ch, n_prn, n_chan, _n_elements);
-                            const std::complex<double> ge = tap(erow, ch);
-                            const std::complex<double> gl = tap(lrow, ch);
+                            const std::complex<double> ge = tap(erow, ch) * w;
+                            const std::complex<double> gl = tap(lrow, ch) * w;
                             cb[gnss::CHAN_RE] = (float)g.real();
                             cb[gnss::CHAN_IM] = (float)g.imag();
-                            cb[gnss::CHAN_ENERGY] = (float)energy[prow + ch];
+                            cb[gnss::CHAN_ENERGY] = (float)(w * energy[prow + ch]);
                             cb[gnss::CHAN_E_RE] = (float)ge.real();
                             cb[gnss::CHAN_E_IM] = (float)ge.imag();
-                            cb[gnss::CHAN_E_ENERGY] = (float)energy[erow + ch];
+                            cb[gnss::CHAN_E_ENERGY] = (float)(w * energy[erow + ch]);
                             cb[gnss::CHAN_L_RE] = (float)gl.real();
                             cb[gnss::CHAN_L_IM] = (float)gl.imag();
-                            cb[gnss::CHAN_L_ENERGY] = (float)energy[lrow + ch];
+                            cb[gnss::CHAN_L_ENERGY] = (float)(w * energy[lrow + ch]);
                         }
                     }
                     W.nrec[p] += 1;
@@ -2529,6 +2557,13 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
         out["bore_sep_deg"] = _bore_sep_deg.load();
         out["bore_post_age_s"] = now_s - _bore_post_t.load();
         out["pin_ref_ok"] = _g_pin_ref_ok;
+    }
+    {
+        std::lock_guard<std::mutex> lk(_chan_w_mtx);
+        out["chan_norm"] = {{"on", _chan_norm},
+                            {"applied", _chan_norm_applied.load()},
+                            {"miss", _chan_norm_miss.load()},
+                            {"w", _chan_w_pub}};
     }
     out["fleet_ref"] = {{"mode", fleet_mode_name(_fleet_mode.load())},
                         {"present", _fleet_ref_present.load()},

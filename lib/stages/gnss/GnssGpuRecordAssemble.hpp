@@ -131,6 +131,14 @@ private:
     /// #170: no FIRST model while the nearest satellite is inside this wider cone (config
     /// elem_sum_shared_form_deg); a model formed at 5-8 deg learns the leakage as its shape.
     double _elem_shared_form_deg = 8.0;
+    // #163: per-channel noise weights for the cross-channel sums (gnssChanPower.hpp).
+    bool _chan_norm = false;         ///< @conf chan_noise_norm
+    std::vector<double> _chan_w;     ///< [n_chan] this frame's weights (1 when off or unknown)
+    std::vector<double> _chan_pw;    ///< [n_chan] scratch: the looked-up power
+    std::vector<double> _chan_w_pub; ///< the last applied weights, for /get_elem_cal
+    std::mutex _chan_w_mtx;
+    std::atomic<bool> _chan_norm_applied{false};
+    std::atomic<long> _chan_norm_miss{0};      ///< frames without a complete power table
     std::atomic<double> _bore_sep_deg{1.0e9};  ///< last posted pooled boresight separation
     std::atomic<double> _bore_post_t{-1.0e18}; ///< steady time of that post
     double _freeze_until = -1.0e18;            ///< main thread: frozen while now < this

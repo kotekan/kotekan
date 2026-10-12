@@ -1489,6 +1489,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             **steer,
             "elem_sum": args.elem_sum,
             "elem_sum_tau_s": args.elem_sum_tau_s,
+            # #163: channels weighted by 1/rms of their own measured power, not by the
+            # F-engine digital gain. Emitted only when on, so a fleet without it is unchanged.
+            **({"chan_noise_norm": True} if args.chan_noise_norm else {}),
             **elem_shared_keys(args),
             **elem_shared_ref_keys(
                 args, (tag or signal_tag(sig["primary"])).strip("_"), steer, n_live
@@ -3337,6 +3340,15 @@ def main():
         "competes under the same measured floor as every other candidate, "
         "so a cold or bad cal loses on merit rather than corrupting the "
         "fold (docs 11.32).",
+    )
+    ap.add_argument(
+        "--chan-noise-norm",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="assembler chan_noise_norm: weight each channel of the cross-channel sums by "
+        "1/rms of its own measured power (GnssChordVoltageTap's band-power pass), so a "
+        "channel enters by signal-to-noise and not by the F-engine digital gain (#163). "
+        "Emitted only when on.",
     )
     ap.add_argument(
         "--elem-sum-shared",

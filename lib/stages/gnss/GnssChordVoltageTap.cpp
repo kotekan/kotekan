@@ -3,6 +3,7 @@
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
 #include "chordMetadata.hpp"
+#include "gnssChanPower.hpp" // for ChanPower (#163)
 #include "kotekanLogging.hpp"
 #include "prometheusMetrics.hpp"
 #include "visUtil.hpp" // for frameID
@@ -281,6 +282,9 @@ void GnssChordVoltageTap::main_thread() {
                     if (!fids.empty())
                         _bp_freq_ids.swap(fids); // keep the last known map if this frame had none
                     _bp_power.swap(pw);
+                    // #163: the assemblers weight their cross-channel sums by this power.
+                    if (_bp_freq_ids.size() == _bp_power.size())
+                        gnss::ChanPower::instance().publish(_bp_freq_ids, _bp_power);
                     _bp_clip_lo.swap(clo);
                     _bp_clip_hi.swap(chi);
                     _bp_elem_pow.swap(epw);

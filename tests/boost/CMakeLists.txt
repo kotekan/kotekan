@@ -41,6 +41,10 @@ target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../li
 add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
 target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# Per-channel noise weights for the assembler's cross-channel sums (#163): header-only.
+add_executable(test_gnss_chan_power test_gnss_chan_power.cpp)
+target_include_directories(test_gnss_chan_power PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Pure PFB core (prototype design + polyphase fold): no FFTW; the test uses a reference DFT to check
 # channel isolation against a straight-FFT channelizer.
 add_executable(test_pfb_prototype test_pfb_prototype.cpp ../../lib/stages/pfbPrototype.cpp)

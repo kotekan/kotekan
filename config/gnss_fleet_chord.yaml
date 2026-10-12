@@ -377,6 +377,10 @@ common:
   # healthy model). The freeze needs a broker that posts that separation ("_bore", same
   # commit), so restart the broker with the nodes.
     elem-sum-shared: true
+  # #163 (2026-10-12): the assembler weights each channel of its cross-channel sums by 1/rms of
+  # the channel's own measured power (the voltage tap's 1-s band-power pass), so a channel enters
+  # by signal-to-noise and not by the F-engine digital gain. Judge: E6 q on bright satellites.
+    chan-noise-norm: true
   # 2026-10-01: freeze 6 -> 2 deg now that the projection (elem-proj-deg 6 above) keeps the
   # victims' rows clean in transit; inside 2 deg the victim in the bright satellite's own beam is
   # lost anyway. Hold stays 60 s (assembler default).
