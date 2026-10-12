@@ -419,6 +419,59 @@ carries C56/C58. Small, and separate from the above.
 
 
 
+**Top priority: #177.** The others below it came from the same 10-12 comment review and are
+unconfirmed or dormant.
+
+### #177 — the GPS L5 code generator wraps XB at 10230, not 8191: every L5 PRN loses up to 10.5 dB (2026-10-12)
+**What [tree + archive]:** `gpsL5Code.cpp` ran the 13-stage XB register (period 8191) for 10230 chips and indexed it
+at `(i + advance) mod 10230`. IS-GPS-705 clocks XB on from the PRN's initial state, i.e. `(i + advance) mod 8191`, so
+the last `advance` chips of every code (up to ~7200) come from the wrong XB phase. Predicted loss: Q5 (the live
+`GPS_L5_Q_NH`) mean ~4.4 dB, worst PRN 6 −10.5, 25 −10.4, 18 −10.1, 17 −7.9; least PRN 10, 28, 2 (≤0.3 dB). It is the
+per-satellite L5 gain of 09-22 (`fixtures/beamcube/work/jt_l5_3d.npz`): predicted vs solved G r = 0.93, slope 1.01 dB/dB,
+21 PRNs, 1.3 dB rms residual against DRAO's 0.64 dB spread; 09-08 solve r 0.90. The 09-22 hunt checked the XB tables,
+not the wrap; `l5_band_decode.py` copied the construction, and the test pinned this generator's own balances.
+**Fix: `e36372bee` on `kv/l5-xb-wrap`** (generator, header, test, `l5_band_decode.py`). New boost case `xb_wraps_at_8191`
+(I5·Q5 cancels XA and must repeat every 8191 chips) fails on all 32 PRNs before the fix; the first-24-chip PocketSDR pins
+are unchanged. The code phase is unchanged, so seeds and locks carry across. **Check after the cycle:** one canary node
+paired in time against the others: PRNs 6/18/25 up ~10 dB in `cn0_inc`, PRNs 10/28/2 flat; then the fleet, and re-solve
+the per-satellite G (it should collapse to DRAO's spread). Element models, thresholds and the #154 reference see only a
+higher SNR. recv1's ConfigTracker restarts once on the binary change (#165).
+
+### #178 — B3I's G1 register repeats every 8189 chips, not 8190 (2026-10-12, unconfirmed)
+**What [tree]:** `beidouB3ICode.cpp` resets G1 to all-ones when it reaches `0011111111111`, checked after the shift, so
+that state is never output; simulated, it is reached after 8189 shifts (natural period 8191). If the ICD's truncated G1 is
+8190 chips, every chip from 8189 on uses a G1 one step off: ~1000 of 10230 chips wrong on every PRN, a uniform ~−1.9 dB,
+invisible to a per-satellite comparison. gnss-sdr does the same, which is where the table and convention came from.
+**Check:** the BDS-SIS-ICD-B3I G1 truncation text; if still ambiguous, a same-time A/B on one node (8189 vs 8190) on the
+live `bds_b3i` chain.
+
+### #179 — the search covers only half the L2C main lobe (2026-10-12)
+**What [tree]:** `gnssBandPlan::half_bandwidth_hz` returns `chip_rate_hz` for BPSK, which for time-multiplexed L2C CM is
+the 511.5 kHz component rate. The bank models the 1.023 Mcps combined stream, whose first null is at 1.023 MHz.
+`covering_bins_union` → `GnssChannelizedSearch` therefore picks channels for ±511.5 kHz + Doppler, about half the lobe
+(~0.7 dB of the search's SNR). Node chains take their channels from the generator, not from this function.
+**Fix:** use the combined rate (`chip_rate_hz * 2` when `time_multiplexed`). Check: the search's L2C channel count
+before/after, and the aggregator's L2C `search_snr` on the same satellites.
+
+### #180 — Galileo E1/E6 memory codes index the table before range-checking the PRN (2026-10-12)
+**What [tree]:** `generate_e1b/e1c/e6b/e6c_code` evaluate `*_HEX[prn - 1]` before `decode()` throws for PRN outside
+1..50, so an out-of-range PRN reads past the array first. `ChannelizedReplicaBank::set_prn` relies on the throw to refuse
+a PRN with no code, so a swap to PRN > 50 on a live E6 or E1 chain is undefined behaviour. E5a/E5b check first.
+**Fix:** range-check in the four generators before indexing. Check: a boost case calling each with 0 and 51.
+
+### #181 — the replica bank applies no shared overlay for B2I, L3OC and L2OC (2026-10-12, dormant)
+**What [tree]:** the shared-overlay ladder in the `ChannelizedReplicaBank` constructor omits `BDS_B2I`, `GLO_L3OC_P/D`
+and `GLO_L2OC_P`, although each has `secondary_length > 0` and a shared `gnssOverlay` registry row; `channels()` /
+`hoprate_stream` apply no overlay for them and the NH search reports "no secondary code". No live chain uses them.
+**Fix:** add them to the ladder (or take the shared overlay from the registry). Check: a replica test with `nh_phase >= 0`.
+
+### #182 — the combiner's overlay + navwipe path wipes suffix rungs at the full window's overlay phase (2026-10-12, dormant)
+**What [tree]:** `GnssCoherentCombiner.cpp` (the `!_secondary.empty() && _navwipe_bit_records > 0` branch) passes the
+full window's `best_ph` to `overlay_apply` for every rung, but `overlay_apply` counts the chip index from the first record
+of the window it is given; a suffix rung starting d records later needs `best_ph + d` (the navwipe pin beside it is
+shifted). No live config sets `secondary_overlay` or `navwipe_bit_records`, so the path does not run.
+**Fix:** shift the phase by the rung's record offset, as `pin_here` does.
+
 ### #170 — a model formed inside a near transit (5–8°) stays mis-shaped for over an hour (2026-10-09)
 **What [live 10-09 19:12–20:30Z]:** L5/E5a/E5b pol-1 models that formed on the 19:12Z restart during the C21 pass
 (19:40–19:48Z at 4.9°, outside the 2° freeze) stayed at shape similarity 0.07–0.33 to the fleet for over an hour while
