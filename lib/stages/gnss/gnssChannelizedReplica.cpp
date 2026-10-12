@@ -528,8 +528,8 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     return chan;
 }
 
-ChannelizedReplicaBank::HopRateFilter
-ChannelizedReplicaBank::hoprate_header(double doppler_hz, int prn_index) const {
+ChannelizedReplicaBank::HopRateFilter ChannelizedReplicaBank::hoprate_header(double doppler_hz,
+                                                                             int prn_index) const {
     const double cps =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const int Lf = _fft_len * _num_taps;
@@ -617,20 +617,20 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
             f.PsiA[ci].assign(Lf + 1, 0.0);
             f.PsiB[ci].assign(Lf + 1, 0.0);
         }
-        hoprate_channel_taps(_proto.data(), Lf, off, wc,
-                             [&](int k, const std::complex<double>& ea,
-                                 const std::complex<double>& eb) {
-                                 A[k + 1] = A[k] + ea;
-                                 B[k + 1] = B[k] + eb;
-                                 if (want_psi) {
-                                     // FIRST MOMENT, same prefix-sum shape as Phi so the gather
-                                     // can telescope it with the identical index arithmetic
-                                     // (that is the whole reason it is stored as a prefix sum
-                                     // rather than as a per-window quantity).
-                                     f.PsiA[ci][k + 1] = f.PsiA[ci][k] + (double)k * ea;
-                                     f.PsiB[ci][k + 1] = f.PsiB[ci][k] + (double)k * eb;
-                                 }
-                             });
+        hoprate_channel_taps(
+            _proto.data(), Lf, off, wc,
+            [&](int k, const std::complex<double>& ea, const std::complex<double>& eb) {
+                A[k + 1] = A[k] + ea;
+                B[k + 1] = B[k] + eb;
+                if (want_psi) {
+                    // FIRST MOMENT, same prefix-sum shape as Phi so the gather
+                    // can telescope it with the identical index arithmetic
+                    // (that is the whole reason it is stored as a prefix sum
+                    // rather than as a per-window quantity).
+                    f.PsiA[ci][k + 1] = f.PsiA[ci][k] + (double)k * ea;
+                    f.PsiB[ci][k + 1] = f.PsiB[ci][k] + (double)k * eb;
+                }
+            });
     }
     return f;
 }
@@ -649,16 +649,16 @@ ChannelizedReplicaBank::hoprate_filter_f32(const std::vector<int>& want, double 
         // The running sums are the double prefix sums hoprate_filter stores, so each float
         // here is that table's entry rounded once.
         std::complex<double> sa = 0.0, sb = 0.0;
-        hoprate_channel_taps(_proto.data(), Lf, off, wc,
-                             [&](int k, const std::complex<double>& ea,
-                                 const std::complex<double>& eb) {
-                                 sa = sa + ea;
-                                 sb = sb + eb;
-                                 A[2 * (k + 1)] = (float)sa.real();
-                                 A[2 * (k + 1) + 1] = (float)sa.imag();
-                                 B[2 * (k + 1)] = (float)sb.real();
-                                 B[2 * (k + 1) + 1] = (float)sb.imag();
-                             });
+        hoprate_channel_taps(
+            _proto.data(), Lf, off, wc,
+            [&](int k, const std::complex<double>& ea, const std::complex<double>& eb) {
+                sa = sa + ea;
+                sb = sb + eb;
+                A[2 * (k + 1)] = (float)sa.real();
+                A[2 * (k + 1) + 1] = (float)sa.imag();
+                B[2 * (k + 1)] = (float)sb.real();
+                B[2 * (k + 1) + 1] = (float)sb.imag();
+            });
     }
     return f;
 }
