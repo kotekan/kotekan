@@ -195,6 +195,32 @@ detector stays as the backstop.
 inside ±1 chip of ref; zero alarms on a quiet day; e5a/b2a `code_resid_m` returns to its pre-transit level.
 
 ### #155 — dTEC arcs die in transits of 1176-MHz emitters: the fleet ADR holds the arc while the victim band's residual is dark (2026-09-29)
+**⚡ 10-12 status (four nights 10-08 19:00Z to 10-12 00:40Z, `out/transit_arcs_1012`, events_1012.txt; closure per day
+by `triple_closure.py`, out/gal_<day>_closure.log).** The instrument floor is unchanged since 09-30 and the locks hold; the
+product's remaining losses are the close passes, and one of them on 10-11 was the #155 mechanism on every Galileo satellite.
+- **Floor (Galileo triple closure, clean segments, TECU rms; divide by 1.31 for E5a × E6):** quiet days 09-30 / 10-03 /
+  10-07 / 10-11 give 0.10 at 1 s, 0.34–0.41 at 60 s, 1.26–1.37 at 600 s, 2.0–2.4 at 1800 s, 2.8–3.3 at 3600 s. Disturbed
+  days are 1.5–3× worse at 600 s: 10-01 2.6, 10-09 4.2 (F-engine work, cx51 out, 54868 steps > 5 cm against ~200–1200 on
+  other days), 10-10 1.9 (re-base, rows C/D outage). Arcs on a quiet day: ~65 per band, median 167 min, p90 405 min;
+  coherent C/N0 at el ≥ 30 median 32 (E5a) / 35 (E6) dB-Hz, 100% above the product's 25 dB-Hz gate.
+- **E5a × E6 arcs surviving a transit, by night (quiet controls in brackets):** 10-08 91% (32/35) [92%], 10-09 76% (45/59)
+  [52%: disturbed], 10-10 92% (22/24) [96%], 10-11 evening 38% (9/24) [95%]. Locks 99% through every window. Trajectory
+  39% (09-29) → 74% (09-30) → 86–89% (10-03/04) → 91–92% on quiet nights now.
+- **The 10-11 evening (first close passes after the 17:50Z broker restart with #144/#161; before #170):** C19 (BDS-3,
+  B2a/B2b exactly on E5a/E5b) at 0.94°: every Galileo satellite's E5a and E5b browned out (C/N0 p10 24–27 dB-Hz, 6–7% of
+  samples below 20; E6 untouched at 37+), the fleet-ADR arcs HELD and integrated through, 9/9 SLIPPED by 10–170 cycles
+  (−150 to −1400 TECU) plus one GONE. E06 at 0.24° (all three bands dark, the F-engine clipping product): 2 slipped, 1 gone,
+  3 no arc. The equally close passes the night before showed no brownout at all (C38 0.72°, G19 0.64°, C22 1.68°: C/N0 p10
+  36–39, 22/24 survived). C19 was tracked on bds_b2a throughout (fleet_present, 36 dB-Hz), so the nodes had its direction;
+  whether the projection ran on it cannot be checked (that node-log lifetime is gone). One case, not a verdict.
+- **Candidate 2 is still not in place:** `fleetadr.fold_record` only treats energy-less records (S = 0) as dark; a vouching
+  set at 3–19 dB-Hz folds noise and the arc keeps its key. C19's slips are what it would have caught. **Candidate 3 would
+  have saved all nine:** E6 stayed ≥ 31 dB-Hz on every satellite while E5a/E5b were dark.
+- **Census caveat:** the BRDC store had no daily file for 10-11 at run time, so 10-11 daytime transits are absent (and
+  10-09 afternoon is thin); re-run once BRDC 2026-284 lands. B2a × B3I (0–33%) and L5 × L2C (5–29%) still slip in quiet
+  windows: thin bands, unchanged, not usable for dTEC.
+- **Next:** the first nights under #170 (8° freeze) and #163: G09 ~21:21Z daily (1.27°, an L5 emitter: 5/5 on 10-10,
+  4+1 slipped on 10-11); BeiDou MEO close passes repeat weekly (C38 10-17 ~05:00Z, C19 10-18 ~20:00Z).
 **⚡ 09-30, with projection live fleet-wide (from 09-29 17:00Z): candidate 1 largely holds.** Seven transits had data,
 09-30 03:17Z to 15:10Z, between two F-engine outages.
 - **E5a × E6 arcs surviving a transit:** 74% (39/53), against 39% (26/67) with the freeze alone.
