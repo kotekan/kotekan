@@ -143,13 +143,11 @@ class TestFold(unittest.TestCase):
         per-record noise the fleet error must stay at the single-record level after thousands
         of records, not grow as sqrt(N)."""
 
-        # a straddle moves |S| by at most 3 dB; 0.3-1.0 in amplitude is 10 dB of weight swing,
-        # inside the silence margin a 20 dB brownout trips (test_a_brownout_ends_the_arc)
         class Flicker(Sky):
             def record(self, hop, prev_hop, **kw):
                 out = Sky.record(self, hop, prev_hop, **kw)
                 return {
-                    i: (v[0], v[1], v[2] * random.uniform(0.3, 1.0) ** 2, v[3], v[4])
+                    i: (v[0], v[1], v[2] * random.uniform(0.05, 1.0) ** 2, v[3], v[4])
                     for i, v in out.items()
                 }
 
@@ -324,8 +322,7 @@ class TestFold(unittest.TestCase):
             prev = hop
         self.assertEqual(st.arc, 2)
         self.assertEqual(st.hop0, hops[500])
-        # the first SILENT_MIN_REC - 1 records of the brownout still fold: a dip that short
-        # is a re-pin, not silence
+        # the first SILENT_MIN_REC - 1 records of the brownout still fold
         self.assertEqual(st.last_break["dark_rec"], 300 - fa.SILENT_MIN_REC + 1)
         self.assertEqual(st.last_break["silent_rec"], 300 - fa.SILENT_MIN_REC + 1)
         self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[500])), 1e-3)
@@ -364,9 +361,26 @@ class TestFold(unittest.TestCase):
         self.assertEqual(st.n_silent, 0)
         self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
 
-    def test_a_silent_instance_cannot_vouch(self):
-        """One instance loses the signal for 200 records while eleven keep it: its noise
-        never enters the median, it cannot vouch, and it rejoins at the fleet's phase."""
+    def test_a_coherent_dip_is_not_silence(self):
+        """A strong satellite's prompts drop 14 dB for 300 records with the phase still measured
+        (every instance steps together): nothing is silent and the arc goes on."""
+        sky = Sky(n_inst=12)
+        hops = [HOP0 + k * HPR for k in range(700)]
+        st = fa.SatAdr()
+        prev = None
+        for k, hop in enumerate(hops):
+            rec = sky.record(hop, prev)
+            if 200 <= k < 500:
+                rec = self._fade(rec, range(12), 0.2, False)
+            fa.fold_record(st, hop, rec, HPR)
+            prev = hop
+            self.assertEqual(st.n_silent, 0)
+        self.assertEqual(st.arc, 1)
+        self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
+
+    def test_one_instance_losing_the_signal_keeps_the_arc(self):
+        """One instance loses the signal for 200 records while eleven keep it: the record is
+        not silent, and the median of the instances' phases keeps the arc right."""
         sky = Sky(n_inst=12)
         hops = [HOP0 + k * HPR for k in range(500)]
         st = fa.SatAdr()
@@ -377,11 +391,8 @@ class TestFold(unittest.TestCase):
                 rec = self._fade(rec, [0], 0.01, True)
             fa.fold_record(st, hop, rec, HPR)
             prev = hop
-            if 100 + fa.SILENT_MIN_REC - 1 <= k < 300:
-                self.assertEqual(st.n_silent, 1)
-                self.assertEqual(st.n_inst, 11)
+            self.assertEqual(st.n_silent, 0)
         self.assertEqual(st.arc, 1)
-        self.assertEqual(st.n_inst, 12)
         self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
 
 

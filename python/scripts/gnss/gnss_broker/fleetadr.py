@@ -122,6 +122,8 @@ class SatAdr(object):
         "dark_silent",
         "lvl",
         "n_silent",
+        "silent",
+        "run",
         "last_break",
     )
 
@@ -164,22 +166,22 @@ class SatAdr(object):
         self.grid = []
         self.dark = 0  # consecutive energy-less records since the last good fold
         self.dark_silent = 0  # of those, records that silence (not absence) made dark
-        self.lvl = (
-            {}
-        )  # inst -> [mean, hold, dip run] of its prompt power |S_i| (see fold_record)
-        self.n_silent = 0  # instances silent at the last record
+        self.lvl = {}  # inst -> [level dB, records learned] of its prompt power |S_i|
+        self.n_silent = 0  # instances in the last record when it was silent
+        self.silent = (
+            False  # the satellite's prompts have lost the signal (see fold_record)
+        )
+        self.run = 0  # records in a row towards entering or leaving silence
         self.last_break = None  # why the last arc ended (see fold_record)
 
 
-DARK_DB = 10.0  # an instance this far below its own level is silent, not measuring
-SILENT_MIN_REC = (
-    5  # consecutive records below it before the instance is silent (~50 ms)
-)
+DARK_DB = 10.0  # the instances' prompt power this far below their level is down
+R_MIN = 0.5  # agreement of the instances' phase steps below this is noise (signal ~1, noise ~0.25)
+R_MIN_INST = 6  # instances needed for an agreement or level verdict
+SILENT_MIN_REC = 5  # records in a row to enter (or, still down, leave) silence (~50 ms)
 LVL_DECAY_DB_H = 20.0  # the level follows a fade slower than this (dB per hour)
 LVL_EMA_REC = 10000  # records (~100 s) the level averages over, once warm
-LVL_WARM_REC = (
-    100  # records (~1 s) an instance must have been seen before it can be silent
-)
+LVL_WARM_REC = 100  # records (~1 s) an instance must have been seen before it counts
 BREAK_LOG_MIN_REC = 100  # an arc shorter than this (~1 s) ends without a log line
 
 
@@ -202,52 +204,72 @@ def fold_record(
     extended the arc, False if it started a new one (or was dropped for having too few
     instances).
     """
-    # THE PROMPT MUST STILL CARRY THE SIGNAL. An instance whose prompt power has fallen
-    # dark_db below its own recent level is silent, not measuring: its phase is noise, and an
-    # increment folded from it walks the arc by up to a quarter cycle per record while the arc
-    # key holds (a bright satellite crossing the beam took every Galileo arc on E5a and E5b
-    # 10-170 cycles off on 2026-10-11 this way, #155). A silent instance is treated exactly
-    # like an energy-less one: it cannot vouch, and when none can the arc ends. The level is
-    # a mean of the instance's prompt power in dB over ~LVL_EMA_REC accepted records (fast
-    # while the instance is new, so one spiked record cannot set it for hours), and it does
-    # not learn from the records it rejects: a transit's 15-30 dB brownout within a minute
-    # leaves it standing, while it follows anything slower than lvl_decay_db_h (a setting
-    # satellite) by decaying under the dip. A record's own swing (a straddle moves |S| by up
-    # to 3 dB) stays inside the margin, and the dip must last SILENT_MIN_REC records: a seed
-    # re-pin costs every instance one record of correlation at once while the phase stays
-    # measured, and treating that record as silence ended every arc on every chain each
-    # broker cycle (2026-10-12). |S_i| is energy-normalised, so a gain change does not move it.
+    # THE PROMPT MUST STILL CARRY THE SIGNAL. A record whose prompts have lost the signal is
+    # silent, not measuring: their phases are noise, and an increment folded from them walks
+    # the arc by up to a quarter cycle per record while the arc key holds (a bright satellite
+    # crossing the beam took every Galileo arc on E5a and E5b 10-170 cycles off on 2026-10-11
+    # this way, #155). A silent record is treated like an energy-less one, so the arc ends and
+    # a new one starts when the signal returns. Silence needs BOTH of: the instances' prompt
+    # power down dark_db against their own level (median over instances), and their phase
+    # steps disagreeing (R, the mean resultant of the unit steps S_i(k) conj S_i(k-1), below
+    # R_MIN; ~1 while the phase is measured, ~0.25 for twelve noise prompts), for
+    # SILENT_MIN_REC records in a row. Power alone is not enough: a strong satellite swings
+    # 10-14 dB with its phase still measured (L5 G23, R 0.8-0.94, 2026-10-12), and a seed
+    # re-pin dips every instance for one record. Silence ends when the power is back, or when
+    # the steps agree again for SILENT_MIN_REC records. The level is a dB mean over
+    # ~LVL_EMA_REC records, learning from every record whose phase is measured or whose power
+    # is within the margin, and decaying lvl_decay_db_h under a dip it does not learn from.
+    # |S_i| is energy-normalised, so a gain change does not move it.
     decay_db = lvl_decay_db_h * (hpr / float(hps)) / 3600.0
-    silent = set()
-    usable = {}
+    z = 0j
+    n_r = 0
+    drops = []
+    for i, v in per_inst.items():
+        if v[2] == 0:
+            continue
+        pv = st.inst_prev.get(i)
+        if pv is not None and pv[0] == hop - hpr and pv[2] != 0:
+            d = v[2] * pv[2].conjugate()
+            if d != 0:
+                z += d / abs(d)
+                n_r += 1
+        h = st.lvl.get(i)
+        if h is not None and h[1] >= LVL_WARM_REC:
+            drops.append(10.0 * math.log10(abs(v[2])) - h[0])
+    coherent = n_r >= R_MIN_INST and abs(z) >= R_MIN * n_r
+    incoherent = n_r >= R_MIN_INST and not coherent
+    down = len(drops) >= R_MIN_INST and sorted(drops)[len(drops) // 2] < -dark_db
+    if not st.silent:
+        st.run = st.run + 1 if (down and incoherent) else 0
+        if st.run >= SILENT_MIN_REC:
+            st.silent, st.run = True, 0
+    elif not down:
+        st.silent, st.run = False, 0
+    else:
+        st.run = st.run + 1 if coherent else 0
+        if st.run >= SILENT_MIN_REC:
+            st.silent, st.run = False, 0
     for i, v in per_inst.items():
         if v[2] == 0:
             continue
         p_db = 10.0 * math.log10(abs(v[2]))
-        h = st.lvl.get(
-            i
-        )  # [level dB, records accepted, records below the margin in a row]
+        h = st.lvl.get(i)  # [level dB, records learned]
         if h is None:
-            st.lvl[i] = [p_db, 1, 0]
-        elif h[1] >= LVL_WARM_REC and p_db < h[0] - dark_db:
-            h[0] -= decay_db
-            h[2] += 1
-            if h[2] >= SILENT_MIN_REC:
-                silent.add(i)
-                continue
-        else:
+            st.lvl[i] = [p_db, 1]
+        elif coherent or h[1] < LVL_WARM_REC or p_db >= h[0] - dark_db:
             h[0] += (p_db - h[0]) / min(h[1] + 1, LVL_EMA_REC)
             h[1] += 1
-            h[2] = 0
-        usable[i] = v
-    st.n_silent = len(silent)
+        else:
+            h[0] -= decay_db
+    usable = {} if st.silent else {i: v for i, v in per_inst.items() if v[2] != 0}
+    st.n_silent = sum(1 for v in per_inst.values() if v[2] != 0) if st.silent else 0
     if len(usable) < min_inst:
         # energy-less (or silent) records: remember them, the gap is judged when energy returns
         st.dark = getattr(st, "dark", 0) + 1
-        if len(usable) + len(silent) >= min_inst:
+        if st.silent:
             st.dark_silent = getattr(st, "dark_silent", 0) + 1
         for i, v in per_inst.items():
-            st.inst_prev[i] = (hop, v[0], 0 if i in silent else v[2], v[3])
+            st.inst_prev[i] = (hop, v[0], v[2], v[3])
         return False
     prev = st.hop
     contiguous = prev is not None and 0 < hop - prev <= max_gap_rec * hpr
@@ -340,7 +362,7 @@ def fold_record(
     st.hop = hop
     st.n_inst = len(usable)
     for i, v in per_inst.items():
-        st.inst_prev[i] = (hop, v[0], 0 if i in silent else v[2], v[3])
+        st.inst_prev[i] = (hop, v[0], v[2], v[3])
     for i in [i for i in st.inst_x if i not in usable]:
         del st.inst_x[i]  # gone: it rejoins at the fleet's phase
     if hop % GRID_HOPS == 0:
