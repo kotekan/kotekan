@@ -91,6 +91,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         return reorder;
     }()),
     _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _input_order)),
+    _fringestop_mask(_tel.get_fringestop_mask(_num_elements, _input_order)),
     n_valid_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_valid_fpga_ticks",
                                                 unique_name, {"freq_id"})),
     n_pl_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_flagged_fpga_ticks_pl",
@@ -132,6 +133,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Sanity checks on initialization
     {
+        if (_do_fringestop && !_tel.phase_center_is_set())
+            FATAL_ERROR("do_fringestop is set but the telescope phase center (dish_coelev_deg) is "
+                        "not.");
+
         // number of frequencies in incoming frames from n2k
         if (_num_freq_per_n2k_frame <= 0)
             FATAL_ERROR("num_freq_per_n2k_frame is not positive: {:d}", _num_freq_per_n2k_frame);
@@ -929,9 +934,9 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
         // Physical frequency for this f
         // Compute the fringestopping phases for this frequency
         _tel.fill_fringestop_phases_1d(freq_MHz, eop_t1, target_eop, _feed_positions_m,
-                                       fringe_phase_t1);
+                                       _fringestop_mask, fringe_phase_t1);
         _tel.fill_fringestop_phases_1d(freq_MHz, eop_t0, target_eop, _feed_positions_m,
-                                       fringe_phase_t0);
+                                       _fringestop_mask, fringe_phase_t0);
         for (int64_t e = 0; e < _num_elements; e++) {
             if (fringe_phase_t1[e] == _sentinel_phase)
                 FATAL_ERROR("fringe_phase_t1[%d] was never_set", e);

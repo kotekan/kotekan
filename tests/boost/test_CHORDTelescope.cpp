@@ -15,6 +15,7 @@
 
 #include <boost/test/included/unit_test.hpp>
 #include <complex>
+#include <csignal>
 #include <filesystem>
 #include <inttypes.h>
 #include <sys/wait.h>
@@ -36,7 +37,7 @@ const std::string default_config_str = R"config_str({
     "name": "CHORDTelescope",
     "origin_itrs_lon_deg":  -119.621,
     "origin_itrs_lat_deg":   49.321,
-    "dish_coelev_deg":   100.0,
+    "dish_coelev_deg":   10.0,
     "grid_x_axis":   [1.0, 0.0, 0.0],
     "grid_y_axis":   [0.0, 1.0, 0.0],
     "dish_elev_axis": [1.0, 0.0, 0.0],
@@ -87,6 +88,35 @@ const CHORDTelescope& get_telescope(json& json_config) {
  * HELPERS
  *
  ******************/
+
+// FATAL_ERROR raises SIGTERM before throwing FatalError. Ignore the signal for the duration of a
+// test so it observes the throw instead of being terminated.
+struct IgnoreSigtermFixture {
+    IgnoreSigtermFixture() {
+        prev_handler = std::signal(SIGTERM, SIG_IGN);
+    }
+    ~IgnoreSigtermFixture() {
+        std::signal(SIGTERM, prev_handler);
+    }
+    void (*prev_handler)(int);
+};
+
+// Serve a fixed JSON reply on a GET endpoint of the local REST server and point the telescope's
+// pointing query at it.
+void serve_pointing(json& json_config, const std::string& endpoint, const json& reply) {
+    restServer& rest_server = restServer::instance();
+    if (rest_server.port() == 0)
+        rest_server.start("127.0.0.1", 0);
+    rest_server.remove_get_callback(endpoint);
+    rest_server.register_get_callback(
+        endpoint, [reply](kotekan::connectionInstance& conn) { conn.send_json_reply(reply); });
+
+    json_config["pointing_service"] = {{"host", "127.0.0.1"}, {"port", rest_server.port()}};
+    json_config["telescope"].erase("dish_coelev_deg");
+    json_config["telescope"]["pointing_host_info"] = "/pointing_service";
+    json_config["telescope"]["pointing_endpoint"] = endpoint;
+    json_config["telescope"]["pointing_query_timeout_s"] = 0;
+}
 
 
 /*
@@ -251,6 +281,51 @@ BOOST_AUTO_TEST_CASE(_dish_coelev) {
     const CHORDTelescope& tel = get_telescope(json_config);
 
     BOOST_CHECK_EQUAL(tel.get_dish_coelev_deg(), coelev);
+    BOOST_CHECK(tel.phase_center_is_set());
+
+    json_config["telescope"].erase("dish_coelev_deg");
+    const CHORDTelescope& tel_default = get_telescope(json_config);
+    BOOST_CHECK_EQUAL(tel_default.get_dish_coelev_deg(), 0.0);
+    BOOST_CHECK(!tel_default.phase_center_is_set());
+}
+
+/*
+ * @brief   Test rejection of bad coelev config.
+ */
+BOOST_FIXTURE_TEST_CASE(_dish_coelev_bad, IgnoreSigtermFixture) {
+    json json_config = json::parse(default_config_str);
+
+    json_config["telescope"]["dish_coelev_deg"] = 90.5;
+    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
+
+    json_config["telescope"]["dish_coelev_deg"] = -10.0;
+    json_config["telescope"]["pointing_host_info"] = "/pointing_service";
+    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
+}
+
+/*
+ * @brief   Test coelev from a pointing service.
+ */
+BOOST_FIXTURE_TEST_CASE(_dish_coelev_query, IgnoreSigtermFixture) {
+    json json_config = json::parse(default_config_str);
+
+    serve_pointing(json_config, "/test_pointing", {{"dish_coelev_deg", -27.3}});
+    const CHORDTelescope& tel = get_telescope(json_config);
+    BOOST_CHECK_EQUAL(tel.get_dish_coelev_deg(), -27.3);
+    BOOST_CHECK(tel.phase_center_is_set());
+
+    serve_pointing(json_config, "/test_pointing", {{"dish_coelev_deg", 120.0}});
+    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
+
+    serve_pointing(json_config, "/test_pointing", {{"dish_coelev_deg", "-27.3"}});
+    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
+
+    serve_pointing(json_config, "/test_pointing", {{"error", "no pointing"}});
+    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
+
+    // No reply within pointing_query_timeout_s
+    json_config["telescope"]["pointing_endpoint"] = "/no_such_endpoint";
+    BOOST_CHECK_THROW(get_telescope(json_config), FatalError);
 }
 
 
@@ -1200,8 +1275,9 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     const CHORDTelescope& tel = get_telescope(json_config);
 
     std::vector<vec3d_t> feed_pos_m = tel.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
+    std::vector<bool> fs_mask = tel.get_fringestop_mask(8, ElementOrder::CHORDBeamformer);
 
-    tel.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, tel_phases);
+    tel.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, fs_mask, tel_phases);
 
     for (int i = 0; i < 8; i++) {
         check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
@@ -1222,7 +1298,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     const CHORDTelescope& tel2 = get_telescope(json_config);
     feed_pos_m = tel2.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
-    tel2.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, tel_phases);
+    tel2.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, fs_mask, tel_phases);
 
     for (int i = 0; i < 8; i++) {
         check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
@@ -1243,7 +1319,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     const CHORDTelescope& tel3 = get_telescope(json_config);
     feed_pos_m = tel3.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
-    tel3.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, tel_phases);
+    tel3.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, fs_mask, tel_phases);
 
     for (int i = 0; i < 8; i++) {
         check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
@@ -1265,12 +1341,49 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     const CHORDTelescope& tel4 = get_telescope(json_config);
     feed_pos_m = tel4.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
-    tel4.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, tel_phases);
+    tel4.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, fs_mask, tel_phases);
 
     for (int i = 0; i < 8; i++) {
         check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
         check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()),
                           test_phases4.at(i), 1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
+    }
+}
+
+/*
+ * @brief   Test that only ArrayDish elements get fringestopping phases.
+ */
+BOOST_AUTO_TEST_CASE(_fringestop_mask) {
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 3;
+    json_config["telescope"]["dish_inputs"] = {
+        dishInfo(0, 1, 1, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D00"),
+        dishInfo(1, 2, 2, {0.0, 0.0, 0.0}, 0.0, DishType::RFIDish, "R00")};
+
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // CHORDBeamformer element = dish + pol * num_dishes; dish 2 is Missing.
+    const uint64_t num_elements = 6;
+    const std::vector<bool> expected_mask = {true, false, false, true, false, false};
+    std::vector<bool> fs_mask =
+        tel.get_fringestop_mask(num_elements, ElementOrder::CHORDBeamformer);
+    BOOST_CHECK(fs_mask == expected_mask);
+
+    EOP eop0 = eop_null;
+    EOP eop = eop_null;
+    eop.ERA_deg = 1.0;
+    std::vector<std::complex<float>> phases(num_elements, 0);
+    tel.fill_fringestop_phases_1d(
+        1000.0, eop, eop0, tel.get_feed_positions_m(num_elements, ElementOrder::CHORDBeamformer),
+        fs_mask, phases);
+
+    for (uint64_t i = 0; i < num_elements; i++) {
+        if (expected_mask[i])
+            BOOST_CHECK_MESSAGE(phases[i] != std::complex<float>(1.0f, 0.0f),
+                                fmt::format("element {:d} should be fringestopped", i));
+        else
+            BOOST_CHECK_MESSAGE(phases[i] == std::complex<float>(1.0f, 0.0f),
+                                fmt::format("element {:d} should have phase 1", i));
     }
 }
 
