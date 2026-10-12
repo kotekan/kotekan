@@ -143,11 +143,13 @@ class TestFold(unittest.TestCase):
         per-record noise the fleet error must stay at the single-record level after thousands
         of records, not grow as sqrt(N)."""
 
+        # a straddle moves |S| by at most 3 dB; 0.3-1.0 in amplitude is 10 dB of weight swing,
+        # inside the silence margin a 20 dB brownout trips (test_a_brownout_ends_the_arc)
         class Flicker(Sky):
             def record(self, hop, prev_hop, **kw):
                 out = Sky.record(self, hop, prev_hop, **kw)
                 return {
-                    i: (v[0], v[1], v[2] * random.uniform(0.05, 1.0) ** 2, v[3], v[4])
+                    i: (v[0], v[1], v[2] * random.uniform(0.3, 1.0) ** 2, v[3], v[4])
                     for i, v in out.items()
                 }
 
@@ -291,6 +293,76 @@ class TestFold(unittest.TestCase):
         st = run(sky, [HOP0 + k * HPR for k in range(10)])
         self.assertIsNone(st.hop)
         self.assertEqual(st.n, 0)
+
+    @staticmethod
+    def _fade(rec, insts, power, phase_noise):
+        """The instances' prompts scaled to `power` of their level; phase_noise True makes
+        the phase a random angle (a prompt with no signal in it)."""
+        out = {}
+        for i, v in rec.items():
+            if i in insts:
+                s = v[2] * power
+                if phase_noise:
+                    s = abs(s) * cmath.exp(1j * random.uniform(-math.pi, math.pi))
+                v = (v[0], v[1], s, v[3], v[4])
+            out[i] = v
+        return out
+
+    def test_a_brownout_ends_the_arc(self):
+        """A bright satellite crossing the beam takes every prompt 20 dB down for 300 records
+        while the trackers hold their keys: the phases are noise and must not be folded. The
+        arc ends there and the arc that starts when the signal returns is right."""
+        sky = Sky(n_inst=12)
+        hops = [HOP0 + k * HPR for k in range(700)]
+        st = fa.SatAdr()
+        prev = None
+        for k, hop in enumerate(hops):
+            rec = sky.record(hop, prev)
+            if 200 <= k < 500:
+                rec = self._fade(rec, range(12), 0.01, True)
+            fa.fold_record(st, hop, rec, HPR)
+            prev = hop
+        self.assertEqual(st.arc, 2)
+        self.assertEqual(st.hop0, hops[500])
+        self.assertEqual(st.last_break["dark_rec"], 300)
+        self.assertEqual(st.last_break["silent_rec"], 300)
+        self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[500])), 1e-3)
+
+    def test_a_fade_inside_the_margin_keeps_the_arc(self):
+        """A 5 dB fade still carries the signal: the arc continues and the phase is right."""
+        sky = Sky(n_inst=12)
+        hops = [HOP0 + k * HPR for k in range(700)]
+        st = fa.SatAdr()
+        prev = None
+        for k, hop in enumerate(hops):
+            rec = sky.record(hop, prev)
+            if 200 <= k < 500:
+                rec = self._fade(rec, range(12), 0.3, False)
+            fa.fold_record(st, hop, rec, HPR)
+            prev = hop
+        self.assertEqual(st.arc, 1)
+        self.assertEqual(st.n_silent, 0)
+        self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
+
+    def test_a_silent_instance_cannot_vouch(self):
+        """One instance loses the signal for 200 records while eleven keep it: its noise
+        never enters the median, it cannot vouch, and it rejoins at the fleet's phase."""
+        sky = Sky(n_inst=12)
+        hops = [HOP0 + k * HPR for k in range(500)]
+        st = fa.SatAdr()
+        prev = None
+        for k, hop in enumerate(hops):
+            rec = sky.record(hop, prev)
+            if 100 <= k < 300:
+                rec = self._fade(rec, [0], 0.01, True)
+            fa.fold_record(st, hop, rec, HPR)
+            prev = hop
+            if 100 <= k < 300:
+                self.assertEqual(st.n_silent, 1)
+                self.assertEqual(st.n_inst, 11)
+        self.assertEqual(st.arc, 1)
+        self.assertEqual(st.n_inst, 12)
+        self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
 
 
 class FakeClient(object):

@@ -119,6 +119,9 @@ class SatAdr(object):
         "t",
         "grid",
         "dark",
+        "dark_silent",
+        "lvl",
+        "n_silent",
         "last_break",
     )
 
@@ -160,10 +163,31 @@ class SatAdr(object):
         # unless a poll is more than GRID_KEEP grid hops late.
         self.grid = []
         self.dark = 0  # consecutive energy-less records since the last good fold
+        self.dark_silent = 0  # of those, records that silence (not absence) made dark
+        self.lvl = (
+            {}
+        )  # inst -> [mean, hold] of its prompt power |S_i| (see fold_record)
+        self.n_silent = 0  # instances silent at the last record
         self.last_break = None  # why the last arc ended (see fold_record)
 
 
-def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
+DARK_DB = 10.0  # an instance this far below its own level is silent, not measuring
+LVL_DECAY_DB_H = 20.0  # the level follows a fade slower than this (dB per hour)
+LVL_EMA_REC = 100  # records (~1 s) the level averages over
+BREAK_LOG_MIN_REC = 100  # an arc shorter than this (~1 s) ends without a log line
+
+
+def fold_record(
+    st,
+    hop,
+    per_inst,
+    hpr,
+    hps=HPS,
+    max_gap_rec=3,
+    min_inst=2,
+    dark_db=DARK_DB,
+    lvl_decay_db_h=LVL_DECAY_DB_H,
+):
     """Fold one record hop into `st`.
 
     per_inst: {inst: (dop_hz, trim_inc, S_i, phi0, r)} for the instances that despread this
@@ -172,12 +196,44 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     extended the arc, False if it started a new one (or was dropped for having too few
     instances).
     """
-    usable = {i: v for i, v in per_inst.items() if v[2] != 0}
+    # THE PROMPT MUST STILL CARRY THE SIGNAL. An instance whose prompt power has fallen
+    # dark_db below its own recent level is silent, not measuring: its phase is noise, and an
+    # increment folded from it walks the arc by up to a quarter cycle per record while the arc
+    # key holds (a bright satellite crossing the beam took every Galileo arc on E5a and E5b
+    # 10-170 cycles off on 2026-10-11 this way, #155). A silent instance is treated exactly
+    # like an energy-less one: it cannot vouch, and when none can the arc ends. The level is
+    # the instance's mean prompt power over ~LVL_EMA_REC records, peak-held with a decay of
+    # lvl_decay_db_h per hour: a setting satellite's fade is followed, a transit's 15-30 dB
+    # brownout within a minute is not, and a record's own swing (a straddle moves |S| by up to
+    # 3 dB) stays well inside the margin. |S_i| is energy-normalised, so a gain change does
+    # not move it.
+    ratio = 10.0 ** (dark_db / 10.0)
+    decay = 10.0 ** (-lvl_decay_db_h * (hpr / float(hps)) / 3600.0 / 10.0)
+    silent = set()
+    usable = {}
+    for i, v in per_inst.items():
+        if v[2] == 0:
+            continue
+        p = abs(v[2])
+        h = st.lvl.get(i)  # [mean, hold]
+        if h is not None and p * ratio < h[1]:
+            silent.add(i)
+            h[1] *= decay
+            continue
+        if h is None:
+            st.lvl[i] = [p, p]
+        else:
+            h[0] += (p - h[0]) / LVL_EMA_REC
+            h[1] = max(h[0], h[1] * decay)
+        usable[i] = v
+    st.n_silent = len(silent)
     if len(usable) < min_inst:
-        # energy-less records: remember them (the gap will be judged when energy returns)
+        # energy-less (or silent) records: remember them, the gap is judged when energy returns
         st.dark = getattr(st, "dark", 0) + 1
+        if len(usable) + len(silent) >= min_inst:
+            st.dark_silent = getattr(st, "dark_silent", 0) + 1
         for i, v in per_inst.items():
-            st.inst_prev[i] = (hop, v[0], v[2], v[3])
+            st.inst_prev[i] = (hop, v[0], 0 if i in silent else v[2], v[3])
         return False
     prev = st.hop
     contiguous = prev is not None and 0 < hop - prev <= max_gap_rec * hpr
@@ -231,6 +287,7 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
             if i not in st.inst_x:  # (re)joining: adopt the fleet's phase
                 st.inst_x[i] = res
         st.dark = 0
+        st.dark_silent = 0
         dres = res - st.res
         st.adr += dcmd - dres
         st.res += dres
@@ -249,13 +306,16 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
             _seen = sorted(st.inst_prev.get(i, (None,))[0] or 0 for i in per_inst)
             st.last_break = {
                 "hop": hop,
+                "n_rec": st.n,
                 "gap_rec": _gap,
                 "dark_rec": getattr(st, "dark", 0),
+                "silent_rec": getattr(st, "dark_silent", 0),
                 "n_usable": len(usable),
                 "n_vouch": len(vouch),
                 "inst_lag_rec": [(hop - h) / float(hpr) for h in _seen[-3:]],
             }
         st.dark = 0
+        st.dark_silent = 0
         st.arc += 1
         st.hop0 = hop
         st.adr = st.trim = st.res = 0.0
@@ -266,7 +326,7 @@ def fold_record(st, hop, per_inst, hpr, hps=HPS, max_gap_rec=3, min_inst=2):
     st.hop = hop
     st.n_inst = len(usable)
     for i, v in per_inst.items():
-        st.inst_prev[i] = (hop, v[0], v[2], v[3])
+        st.inst_prev[i] = (hop, v[0], 0 if i in silent else v[2], v[3])
     for i in [i for i in st.inst_x if i not in usable]:
         del st.inst_x[i]  # gone: it rejoins at the fleet's phase
     if hop % GRID_HOPS == 0:
@@ -363,22 +423,27 @@ class FleetAdr(object):
         for prn in [p for p, s in self.sats.items() if now - s.t > 30.0]:
             del self.sats[prn]
         # one line per cycle naming every arc that broke and why -- a fleet-wide break reads as
-        # one line with every PRN and the same gap, which is the signature to look for
+        # one line with every PRN and the same gap, which is the signature to look for. A
+        # seeded satellite nobody tracks folds noise: the silence gate ends such an arc every
+        # few records, so only an arc that lived BREAK_LOG_MIN_REC records is worth a line.
         broke = [
             (p, s.last_break)
             for p, s in self.sats.items()
-            if s.last_break is not None and s.last_break.get("logged") is None
+            if s.last_break is not None
+            and s.last_break.get("logged") is None
+            and s.last_break.get("n_rec", BREAK_LOG_MIN_REC) >= BREAK_LOG_MIN_REC
         ]
         if broke and self.log is not None:
             parts = []
             for p, b in sorted(broke):
                 b["logged"] = True
                 parts.append(
-                    "%d:gap%.0f/dark%d/usable%d/vouch%d/lag%s"
+                    "%d:gap%.0f/dark%d/silent%d/usable%d/vouch%d/lag%s"
                     % (
                         p,
                         b["gap_rec"],
                         b["dark_rec"],
+                        b.get("silent_rec", 0),
                         b["n_usable"],
                         b["n_vouch"],
                         ",".join("%.0f" % x for x in b["inst_lag_rec"]),
@@ -386,8 +451,8 @@ class FleetAdr(object):
                 )
             self.log(
                 "FADR BREAK %s: %d arc(s) ended -- prn:gap(records)/dark(records without "
-                "energy)/usable/vouchers/instance-lag(records) %s"
-                % (chain, len(broke), " ".join(parts))
+                "energy)/silent(of those, the prompts had lost the signal)/usable/vouchers/"
+                "instance-lag(records) %s" % (chain, len(broke), " ".join(parts))
             )
         return len(wins)
 
@@ -407,6 +472,7 @@ class FleetAdr(object):
                 "arc": s.arc,
                 "n_rec": s.n,
                 "n_inst": s.n_inst,
+                "n_silent": s.n_silent,
                 "trim_cycles": s.trim,
                 "res_cycles": s.res,
                 "breaks": s.breaks,
