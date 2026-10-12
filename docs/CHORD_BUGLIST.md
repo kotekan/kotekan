@@ -90,9 +90,15 @@ PRNs, `joint-consume` and nothing else). The joint state is GPS-fed only again.
 - **Not the C19 cause:** through C19 on 10-11 every adopted delta stayed within ±0.35 chips.
 - **Maybe the same as #175:** an E6 re-seed ~0.45 chips off the peak after a null crossing is what a ~0.9-chip joint
   step scaled ×0.5 would leave.
-- **Fix candidates (not built):** refuse a delta that jumps more than ~0.3 chips from the previous adopted one inside
-  the transit sky (#144) unless it persists for two solves; or hold the joint clock inside the transit window as the
-  dead-reckon clock already is (#142).
+- **Mechanism:** the joint state is fed by the gps_l5 search's detections (`SEED-OFFSET 1176.45MHz: joint-vs-legacy`),
+  and C33 transmits B2a at 1176.45 MHz, inside that band: L5 presence fell 6 → 3 at closest approach, and the joint
+  clock walked from −0.2 to −1.4 chips off the legacy clock between 12:57:46 and 12:58:08 (`JOINT[shadow]`, `SEED-OFFSET
+  PRN 10 ... diff -1.390`) while its satellite count fell 6 → 4 and its sigma read smaller, not larger. The adoption
+  then carried the walk to every chain. The C13 run at 12:00Z is the same walk, slower. The dead-reckon clock is held
+  inside a transit (#142); the joint clock is not.
+- **Fix candidates (not built):** hold the joint clock (refuse adoption) while the transit sky (#144) has a satellite
+  within the transit bound that transmits in the joint's feeder band, as #142 holds the dead-reckon clock; or refuse a
+  delta that moves more than ~0.3 chips from the previous adopted one unless it persists for two solves.
 - **Check:** `grep 'JOINT-CLK' broker.log | grep ADOPTED` and the |delta| census in [[chord-telem-v8-rollout-20261012]].
 
 ### #175 — after a transit's null crossing every E6 tracker is re-seeded ~0.45 chips off its peak and rails there for an hour (2026-10-11)
