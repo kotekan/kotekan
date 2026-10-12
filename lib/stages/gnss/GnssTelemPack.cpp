@@ -31,16 +31,12 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
     _hops_per_record = config.get<int>(unique_name, "hops_per_record");
     _fft_len = config.get<int>(unique_name, "fft_len");
     _n_chan = config.get_default<int>(unique_name, "n_chan", 0);
-    // THE COMB'S COLUMN LABELS, carried on every frame. Same list the assembler was given, and
-    // the packer refuses to run without it when the comb is on: a delay fit over unlabelled
-    // frequencies is confidently wrong rather than absent.
+    // The comb's column labels, sent in every frame header; required with chan_export.
     _chan_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
     _chan_export = config.get_default<bool>(unique_name, "chan_export", false);
 
-    // Every one of these fails SILENTLY if it is wrong -- a truncated tag attributes a chain's
-    // data to another chain, an over-long PRN list writes past the row block, a records_per_frame
-    // past the ceiling overflows `present`. So they are all fatal at construction, where the
-    // config that caused them is still on screen.
+    // Fatal here, where the config is to blame: a truncated tag would merge two senders'
+    // streams, and the gather drops every frame with more than TELEM_MAX_REC records.
     if (_chain.size() >= gnss::TELEM_NAME || _inst.size() >= gnss::TELEM_NAME) {
         FATAL_ERROR("GnssTelemPack[{:s}]: chain '{:s}' / inst '{:s}' must be < {:d} chars -- these "
                     "tags are how the broker tells senders apart, and a truncated one silently "
@@ -48,12 +44,9 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
                     unique_name, _chain, _inst, gnss::TELEM_NAME);
         return;
     }
-    // max_prn IS A WIRE CAPACITY, NOT A MIRROR OF n_prn (task #64). It used to be fatal for it
-    // to be smaller, because rows were shipped at their input slot index; they are now COMPACTED
-    // to the PRNs that actually have signal, so a 32-slot tracker carrying 14 live satellites
-    // fits in 16 rows. What must still hold is that the wire can carry everything live at once:
-    // that is checked per window at runtime, where the live count is actually known, and it
-    // WARNs rather than dying -- a telemetry frame is not worth taking the instrument down for.
+    // max_prn is a wire capacity, not n_prn: rows are compacted to the PRNs despread in each
+    // window. Overflow is checked per window in main_thread and only WARNs; telemetry is not
+    // worth stopping the tracker for.
     if (_max_prn < 1) {
         FATAL_ERROR("GnssTelemPack[{:s}]: max_prn {:d} must be >= 1", unique_name, _max_prn);
         return;
@@ -95,17 +88,16 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
     _rec_samples = _hops_per_record * _fft_len;
     _win_samples = (int64_t)_rec_per_frame * _rec_samples;
 
-    // THE SENDER'S OWN ROW WIDTH. An instance ships the comb columns it despreads and nothing
-    // else: the eight-column ceiling is the format's, not this stage's. With the comb off the
-    // row is the record header alone.
+    // Each sender ships only its own comb columns; TELEM_MAX_CHAN is the format's ceiling. With
+    // the comb off a row is the record header alone.
     _cols = _chan_export ? _n_chan : 0;
 
     const size_t need = gnss::telem_frame_bytes(_rec_per_frame, _max_prn, _cols);
     if ((size_t)out_buf->frame_size != need) {
-        // EXACT, not ">=": bufferRecv compares frame_size on the wire against its own buffer and
-        // closes the connection on a mismatch, so a receiver sized from a different max_prn
-        // would simply never receive. Catch it here, on the sender, where the message can name
-        // the two numbers.
+        // Exact, not ">=": bufferSend ships the whole buffer frame, so padding would cross the
+        // link for nothing, and bufferRecv drops the connection when a frame exceeds the
+        // gather's receive buffer. The config generator sizes out_buf from the same three
+        // numbers.
         FATAL_ERROR("GnssTelemPack[{:s}]: out_buf frame is {:d} B but the wire format needs "
                     "exactly {:d} B ({:d} records x {:d} PRN x {:d} floats + {:d} B header). The "
                     "gather's receive buffer must be sized from the SAME two numbers.",
@@ -165,10 +157,8 @@ bool GnssTelemPack::flush(frameID& out_id) {
     std::memcpy(frame, &h, sizeof(h));
     std::memcpy(frame + sizeof(h), _rows.data(), _rows.size() * sizeof(float));
 
-    // The metadata carries the window's first sample, so a kotekan consumer downstream of
-    // bufferRecv can address the frame without parsing the payload. It is NOT the key the
-    // broker uses -- that is the header's `win` -- but keeping the two consistent means a
-    // frame is self-describing from either side.
+    // sample_seq mirrors the header's wstart0, so the frame can be addressed from its metadata
+    // without parsing the payload. Readers of the wire key on the header's `win`.
     if (out_buf->metadata_pool) {
         out_buf->allocate_new_metadata_object(out_id);
         get_gnss_chan_metadata(out_buf, out_id)->sample_seq = h.wstart0;
@@ -179,10 +169,7 @@ bool GnssTelemPack::flush(frameID& out_id) {
     _cur_present = 0;
     _cur_utc0 = 0.0;
     std::fill(_rows.begin(), _rows.end(), 0.0f);
-    // The row map belongs to the window that just went out. Clearing it here is what makes it
-    // impossible for one window's PRN->row assignment to leak into the next, which would put a
-    // PRN's samples under a neighbour's label -- the exact class of silent mislabelling this
-    // whole transport exists to remove.
+    // The row map belongs to the window that just went out; the next window builds its own.
     std::fill(_row_of.begin(), _row_of.end(), -1);
     _map_built = false;
     return true;
@@ -206,9 +193,8 @@ void GnssTelemPack::main_thread() {
         }
 
         if (wstart < 0 || (wstart % _rec_samples) != 0) {
-            // No absolute address, or one that is not on the record grid. There is nothing
-            // honest to do with such a record: placing it anywhere would invent an alignment.
-            // Rate-limited, because if it ever fires it fires on every record.
+            // No absolute address, or one off the record grid: the record has no slot. Logged
+            // every 1000th, because if it fires it fires on every record.
             if ((_dropped++ % 1000) == 0)
                 WARN("GnssTelemPack[{:s}]: dropping record with wstart {:d} (metadata missing, or "
                      "not a multiple of the {:d}-sample record) -- {:d} so far",
@@ -217,13 +203,12 @@ void GnssTelemPack::main_thread() {
             continue;
         }
 
-        // wstart >= 0 and on the record grid by the check above, so this division is a floor.
+        // wstart >= 0, so this division is a floor.
         const int64_t win = wstart / _win_samples;
 
         if (_cur_win >= 0 && win != _cur_win) {
-            // ANY change closes the open frame, including a jump backwards. Backwards means the
-            // F-engine epoch moved or this stage was fed a replay; either way the old window is
-            // finished and holding it open would merge two different skies.
+            // Any change of window closes the open frame, including a backwards jump (an
+            // F-engine re-base or a replay).
             if (!flush(out_id))
                 break;
         }
@@ -232,37 +217,27 @@ void GnssTelemPack::main_thread() {
 
         const int slot = (int)((wstart - win * _win_samples) / _rec_samples);
         if (slot < 0 || slot >= _rec_per_frame) {
-            // Unreachable given the divisibility check above; kept because the alternative to a
-            // guard here is a write past the row block.
+            // Unreachable for wstart >= 0; guards the writes into the row block.
             ERROR("GnssTelemPack[{:s}]: record at wstart {:d} maps to slot {:d} of {:d}",
                   unique_name, wstart, slot, _rec_per_frame);
             in_buf->mark_frame_empty(unique_name, in_id++);
             continue;
         }
 
-        // ROW COMPACTION (task #64), built ONCE per window from the first record of it. A PRN
-        // earns a wire row by having replica energy -- i.e. by having actually been despread.
-        // The tracker's record buffer holds a slot for every CONFIGURED PRN and writes a row
-        // for each whether or not it ran, so without this ~65% of every frame was zeros: 40
-        // rows shipped for 11-14 live satellites, 480 Mbps of a single 1 GbE into cf06, and a
-        // measured ~5 s added to every broker cycle (the REST polls queue behind the synced
-        // bursts).
-        //
-        // WHY THE FIRST RECORD AND NOT A PER-RECORD MAP: the broker builds its PRN->row index
-        // from record slot 0 and applies it to all four records of the frame, so the map must
-        // be constant across the window. The cost is that a PRN which starts being despread
-        // mid-window waits for the next one -- 42 ms, against a despread state that does not
-        // flicker on that timescale.
+        // Row compaction, built once per window from its first record. A PRN gets a wire row
+        // if it has replica energy, i.e. was despread; the record buffer has a slot for every
+        // configured PRN whether or not it ran. The map is fixed for the window because readers
+        // take each row's PRN from record slot 0 and apply it to every slot, so a PRN that
+        // starts being despread mid-window gets a row from the next window.
         if (!_map_built) {
             int next = 0;
             for (int p = 0; p < _n_prn; ++p) {
                 if (in[(size_t)p * in_stride + gnss::REC_P_ENERGY] <= 0.0f)
                     continue; // not despread this window: silence, not a row of zeros
                 if (next >= _max_prn) {
-                    // MORE LIVE THAN THE WIRE CAN CARRY. Ship what fits and say so loudly and
-                    // by name: a silent truncation here reads downstream as "that satellite
-                    // stopped being tracked", which is a physics conclusion drawn from a
-                    // transport limit. Rate-limited because it would fire every window.
+                    // More live PRNs than wire rows: ship the lowest slots and name the first
+                    // one dropped, since downstream a missing row looks like a lost satellite.
+                    // Logged every 200th window.
                     if ((_prn_overflow++ % 200) == 0)
                         WARN("GnssTelemPack[{:s}]: more live PRNs than the {:d} wire rows -- "
                              "shipping the lowest-numbered and DROPPING the rest (PRN {:.0f} "
@@ -284,10 +259,8 @@ void GnssTelemPack::main_thread() {
             float* row =
                 &_rows[gnss::telem_row_offset(slot, wrow, _max_prn, gnss::telem_row_floats(_cols))];
             std::memcpy(row, in + (size_t)p * in_stride, gnss::RECORD_FLOATS * sizeof(float));
-            // THE COMB, copied column by column: the input's column stride is the tracker's
-            // and the row's is the wire's, and they are only equal by accident. A memcpy of
-            // n_chan*CHAN_FLOATS would be equivalent today and would silently break the moment
-            // either stride changes.
+            // Copied per column: the input and wire column offsets come from different layouts
+            // (chan_offset, telem_chan_offset) that only happen to share a stride.
             if (_chan_export)
                 for (int ch = 0; ch < _n_chan; ++ch)
                     std::memcpy(row + gnss::telem_chan_offset(ch),
@@ -301,9 +274,9 @@ void GnssTelemPack::main_thread() {
 
         in_buf->mark_frame_empty(unique_name, in_id++);
 
-        // A full window is emitted immediately rather than waiting for the next record to
-        // notice the boundary: at 4 records/frame that is 42 ms of latency saved, and it means a
-        // chain whose records stop arriving leaves no complete window sitting unsent.
+        // Emit a full window at once rather than when the next record crosses the boundary:
+        // that record may be a whole correlator frame away, and a chain whose records stop
+        // leaves no complete window unsent.
         if (_cur_present == ((1u << _rec_per_frame) - 1u))
             if (!flush(out_id))
                 break;

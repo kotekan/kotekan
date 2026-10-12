@@ -20,38 +20,35 @@
  * @class GnssChanAlignMerge
  * @brief N x [hop][chan_i] cfloat32 -> [hop][sum chan_i] cfloat32, aligned on sample_seq.
  *
- * THE AGGREGATION SEAM of the distributed search. Each CHORD node holds a mod-8 comb of the
- * science band, so one node's covering channels for a GNSS carrier are 7 of the ~106 that
- * exist: -11.8 dB, unrecoverable by any amount of local integration. The design therefore
- * ships raw voltage from every node to ONE search over the gathered union (the search
- * products are ~38x larger than the voltage, so voltage is the cheap thing to move). This
- * stage is the gather: one input per node feed, one output holding the union comb.
+ * The gather for the distributed search. Each CHORD node holds a mod-8 comb of the science
+ * band, split across its two GPUs as mod-16 combs, so one GPU's feed carries about 1/16 of a
+ * GNSS signal's covering channels (7 of ~106, -11.8 dB), a loss no local integration recovers.
+ * Each feed therefore ships one element's voltage, which is cheaper to move than search
+ * products, and one search runs over the union. This stage takes one input per feed and emits
+ * the union.
  *
- * WHY ALIGNMENT IS THE WHOLE JOB. The per-node send legs run with drop_frames: true --
- * acquisition must never back-pressure a node's science chain -- so each input can be
- * missing arbitrary frames, independently. Concatenating columns frame-by-frame would
- * silently combine different epochs after the first drop anywhere, and a cross-node phase
- * error is precisely the thing the union search cannot tolerate. Alignment is on
- * GnssChanMetadata::sample_seq, which all feeds inherit from the F-engine's GLOBAL
- * fpga_seq_num (GPS-disciplined, shared by every node), so equality of sample_seq IS
- * simultaneity. The stage advances whichever inputs are behind and emits only hops that
- * exist on ALL inputs; a frame missing on any input drops that epoch for everyone
- * (gnss_merge_dropped_frames_total counts per input). With 24-deep node-side buffers the
- * steady state is lockstep; the machinery exists for the transients.
+ * Alignment is the core of the job. The send and receive legs run with drop_frames, so each
+ * input can miss frames independently, and merging the i-th frame of every input would combine
+ * different epochs after the first drop, with no error. Inputs are aligned on
+ * GnssChanMetadata::sample_seq, which every feed derives from the F-engine's global
+ * fpga_seq_num, so equal sample_seq means the same instant. The stage advances whichever inputs
+ * are behind and emits a frame only once every present input holds the same epoch; an epoch
+ * missing on one present input is skipped on all of them. An input that delivers nothing for
+ * input_timeout_s is treated as absent and its channels are zeroed until it returns.
  *
- * Output column order is the concatenation of the inputs' channel lists in input order --
- * the search takes an explicit channel_ids list, so no sortedness is assumed anywhere.
- *
- * WHY ALIGN ON sample_seq. A merge that takes the i-th frame of every input is sound on an
- * in-process pipeline with no drops; behind bufferRecv + drop_frames senders it silently
- * combines DIFFERENT EPOCHS from the first drop anywhere, forever after -- no error, just a
- * noise-only search. The network seam makes alignment the hard requirement, not the
- * transpose.
+ * Output columns are the inputs' channels concatenated in input order; the search takes an
+ * explicit channel_ids list, so no sort order is assumed.
  *
  * @conf in_bufs     list of cfloat32 [hop][chan_i] buffers (GnssChordDequantize outputs)
  * @conf out_buf     cfloat32 [hop][sum chan_i]
  * @conf in_channels channels per input, in in_bufs order
  * @conf samples_per_data_set  hops per frame (all inputs and the output)
+ * @conf input_timeout_s  seconds an input may deliver nothing before it is treated as absent
+ *                        (default 5; 0 = wait forever)
+ * @conf absent_probe_s   seconds to wait on an input already absent (default 0.002)
+ *
+ * @metric kotekan_gnss_merge_skipped_frames_total  input frames released unmerged to align the
+ *                                                  inputs, labelled by input
  *
  * @author Keith Vanderlinde
  */
@@ -68,15 +65,13 @@ private:
     std::vector<int> _in_chans; ///< channels per input
     int _out_chan = 0;          ///< sum of _in_chans
     int _n_hops = 0;
-    /// Seconds to wait on one input before declaring it ABSENT and zeroing its channels.
-    /// 0 = block forever (historical). A config declaring more inputs than there are running
-    /// nodes otherwise stalls the whole aggregator silently -- see main_thread.
+    /// Seconds to wait on one input before declaring it absent and zeroing its channels;
+    /// 0 = block forever. Without it, a config declaring more inputs than there are running
+    /// nodes stalls the merge with no error (see main_thread).
     double _input_timeout_s = 5.0;
-    /// Seconds to wait on an input ALREADY declared absent. Must be a POLL, not a wait: the
-    /// reacquire sweep is sequential over inputs, so at the full timeout n dead feeds set the
-    /// merge period to n x _input_timeout_s. Measured 2026-08-16: 3 dead feeds gave a 15.0 s
-    /// period against a 41.94 ms frame, starving the search 356x and putting its detections
-    /// 48.9 s behind the sky -- which the clock solve reads as ~44 Hz of bias. Task #81.
+    /// Seconds to wait on an input already declared absent. A short poll, because the reacquire
+    /// sweep visits the inputs in turn: at the full timeout, n absent inputs would make the
+    /// output period n x _input_timeout_s.
     double _absent_probe_s = 0.002;
 };
 

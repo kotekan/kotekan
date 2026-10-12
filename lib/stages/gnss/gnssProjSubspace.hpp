@@ -4,42 +4,41 @@
  * @file gnssProjSubspace.hpp
  * @brief Bright-satellite spatial projection for the GNSS despread combine: the interferer
  *        subspace tracker, the per-channel projector, and the process-wide board that hands a
- *        chain's subspace to its siblings (fixtures/projtest/PROJECTION_PLAN.md, phase 1).
+ *        chain's subspace to its siblings.
+ *  - gnss::ProjBasis
+ *  - gnss::ProjSubspace
+ *  - gnss::ProjBoard
  *
- * THE PROBLEM. A satellite within a few degrees of boresight leaks into every other satellite's
- * per-element despread row through the code cross-correlation, and inside ~2 deg the leak
- * dominates: every weak satellite's element vector becomes 80-90 % identical to the bright
- * one's, and any per-satellite learner then calibrates the array onto the interferer
- * (measured 2026-09-23/24, buglist #14x, memory chord-transit-loss-is-elemcal-capture).
+ * A satellite near boresight leaks into every other satellite's per-element despread row
+ * through the code cross-correlation. Within a couple of degrees the leak dominates the weak
+ * satellites' element vectors, and a per-satellite learner then calibrates the array onto the
+ * interferer.
  *
- * THE FIX. The leak is spatially RANK ONE per channel (57-92 % of transit windows; a second
- * satellite at 10-15 deg makes it rank two): the interferer's own per-element response a. So
- * v' = v - Q (Q^H v), with Q an orthonormal basis of the interferer subspace, removes it from
- * every other row EXACTLY, at 2kN complex MACs per (row, channel), and costs each victim only
- * |a^H a_X|^2 of its own response (1/26 far from the interferer). Projection acts on the element
- * axis and the despread on time, so projecting the record rows IS projecting the voltages, with
- * no requantisation. Verified offline on 13 transits and per record on the 09-27/28 visibility
- * captures: with the #145 reference fix the projected learner sits +1.1 dB against the held
- * model where the unprojected one lost 7.6 dB, and the capture measure fell 0.11 -> 0.01.
+ * Per channel the leak is spatially low rank: rank one (the interferer's own per-element
+ * response a) for one bright satellite, rank two with a second one nearby. With Q an
+ * orthonormal basis of that subspace, v' = v - Q (Q^H v) removes it from every other row
+ * exactly, at 2kn complex multiply-adds per (row, channel), and costs each victim only the
+ * fraction of its own response inside the span (~1/n_live for an unrelated direction).
+ * Projection acts on the element axis and the despread on time, so projecting the record rows
+ * is projecting the voltages, with no requantisation.
  *
- * WHERE a COMES FROM, in order of preference (all measured equal to cos^2 0.998-1.000 on the
- * captures):
+ * Sources of a, in the order the basis takes them:
  *   1. the bright satellite's own prompt row, when this chain tracks it (zero latency);
- *   2. a sibling chain's row on the same GPU (same channels, same element axis), via the board;
- *   3. the top eigenvector of the probe rows' covariance -- the probes (below-horizon PRNs) carry
- *      nothing but noise and leak, so their stacked covariance is the interferer's a a^H for ANY
- *      emitter: unhealthy satellites the sky model drops, P(Y)-only ones, objects in no BRDC file.
- * A geometric model of a fails near boresight (the dish E/H sidelobe pattern), so no source here
- * is modelled: every vector is measured from the current records.
+ *   2. a sibling chain on the same GPU (same channels and element axis), via the board;
+ *   3. the top eigenvectors of the probe rows' covariance. The probes (below-horizon PRNs) carry
+ *      only noise and leak, so their stacked covariance is the interferer's a a^H for any
+ *      emitter, including satellites the sky model drops and objects in no BRDC file.
+ * A geometric model of a fails near boresight (the dish's E/H-plane sidelobe pattern), so every
+ * vector here is measured from the current records.
  *
- * ⚠️ THE COVARIANCE IS STORED WITHOUT ITS AUTOS. The per-record rows carry a common random
- * phase (the NCO/replica anchor), so a is estimated from EMA<v v^H>, which is phase-invariant --
- * but with the autos left in, the top eigenvector of a noisy EMA is the NOISIEST element (often
- * the reference), and projecting that out destroys every cal (found and fixed in the offline
- * replay). Simply zeroing the diagonal biases the direction instead (see solve()), so the solver
- * completes the diagonal from its own rank-k model: the unbiased fit to the off-diagonals.
+ * The covariance is stored without its autos. The per-record rows carry a common random phase
+ * (the NCO/replica anchor), so a is estimated from EMA<v v^H>, which is phase-invariant; with
+ * the autos left in, the top eigenvector of a noisy EMA is the noisiest element (often the
+ * reference), and projecting that out destroys every cal. Zeroing the diagonal instead biases
+ * the direction (see solve()), so the solver completes the diagonal from its own rank-k model:
+ * the unbiased fit to the off-diagonals.
  *
- * Header-only and stage-independent so a standalone self-test drives exactly this arithmetic.
+ * Header-only; used by GnssGpuRecordAssemble (record rows) and GnssN2Project (push_cov()).
  */
 
 #include <algorithm>
@@ -54,8 +53,8 @@
 
 namespace gnss {
 
-/// An orthonormal basis Q [k][n] (row-major, k <= kmax) in the RAW element frame of one channel,
-/// and the projector v -> v - Q (Q^H v).
+/// An orthonormal basis Q [k][n] (row-major, k <= kmax) in the unsteered element frame of one
+/// channel, and the projector v -> v - Q (Q^H v).
 struct ProjBasis {
     using cd = std::complex<double>;
     int n = 0;
@@ -76,13 +75,13 @@ struct ProjBasis {
         return &q[(size_t)j * n];
     }
 
-    /// Gram-Schmidt one candidate direction into the basis. A candidate whose component
-    /// OUTSIDE the current span carries less than @p min_new_frac of its energy is the same
-    /// emitter seen twice (own row + sibling row + probe stack) and is dropped. Returns true if
-    /// a column was added.
+    /// Gram-Schmidt one candidate direction into the basis. A candidate whose component outside
+    /// the current span carries less than @p min_new_frac of its energy is the same emitter seen
+    /// twice (own row, sibling row, probe stack) and is dropped. Returns true if a basis vector
+    /// was added.
     bool add(const cd* v, double min_new_frac = 0.5) {
         if (k >= kmax || n <= 0 || (size_t)(k + 1) * (size_t)n > q.size())
-            return false; // the last clause: kmax raised above the allocation can never overflow
+            return false; // last clause: a kmax raised above the allocation cannot overflow q
         cd* r = &q[(size_t)k * n];
         double e_in = 0.0;
         for (int i = 0; i < n; ++i) {
@@ -111,7 +110,7 @@ struct ProjBasis {
         return true;
     }
 
-    /// v <- v - Q (Q^H v). 2 k n complex MACs.
+    /// v <- v - Q (Q^H v). 2 k n complex multiply-adds.
     void project(cd* v) const {
         for (int j = 0; j < k; ++j) {
             const cd* qj = &q[(size_t)j * n];
@@ -123,8 +122,8 @@ struct ProjBasis {
         }
     }
 
-    /// Fraction of |w|^2 inside the span: sum_j |q_j^H w|^2 / |w|^2. The capture / cost measure
-    /// (control 1/n_live for a random direction). -1 if w is empty.
+    /// Fraction of |w|^2 inside the span: sum_j |q_j^H w|^2 / |w|^2, the capture and cost
+    /// measure (~1/n_live for a random direction). -1 if w is zero.
     double cos2(const cd* w) const {
         double e = 0.0;
         for (int i = 0; i < n; ++i)
@@ -143,10 +142,10 @@ struct ProjBasis {
     }
 };
 
-/// Per-channel interferer-subspace tracker: a diagonal-zeroed EMA covariance of the vectors
-/// pushed into it, solved by warm-started power iteration with deflation. One instance serves
-/// all channels of a chain; the caller pushes one vector per (channel, record) -- the bright
-/// satellite's own row, or every probe row.
+/// Per-channel interferer-subspace tracker: an EMA covariance with a zero diagonal, solved by
+/// warm-started power iteration with deflation. One instance covers every channel; the caller
+/// pushes vectors (a bright satellite's own row, or each probe row) with push(), or whole
+/// covariance matrices with push_cov().
 class ProjSubspace {
 public:
     using cd = std::complex<double>;
@@ -178,10 +177,11 @@ public:
         return _nc;
     }
 
-    /// Accumulate one vector for channel @p ch. @p dt_s is the time since the previous push on
-    /// this channel (the record spacing); a burst of several vectors per record (the probe rows)
-    /// passes the same dt for each, so the EMA horizon stays tau in TIME, not in pushes.
-    /// Elements that are exactly zero (dark feeds) are skipped, so the cost is n_live^2.
+    /// Accumulate one vector for channel @p ch: C <- (1 - alpha) C + alpha v v^H off the
+    /// diagonal, alpha = 1 - exp(-dt_s/tau) clamped at 0.25. The horizon is tau in time only
+    /// when @p dt_s is the time each push represents: m pushes per record, each passing the
+    /// record's dt, shorten it to ~tau/m. Entries of elements that are exactly zero (dark feeds)
+    /// are skipped, so the cost is n_live^2.
     void push(int ch, const cd* v, double dt_s) {
         if (ch < 0 || ch >= _nc || !(dt_s > 0.0))
             return;
@@ -206,9 +206,9 @@ public:
     }
 
     /// Accumulate one Hermitian covariance @p V (n x n, row-major, any diagonal) for channel
-    /// @p ch: the EMA of its OFF-diagonal entries, the diagonal staying zero as for push().
-    /// The N^2 path (GnssN2Project) feeds the correlator's own per-frame matrix here, so the
-    /// per-input autos -- noise levels that differ per feed -- never enter the eigenproblem.
+    /// @p ch: the EMA of its off-diagonal entries, the diagonal staying zero as for push().
+    /// GnssN2Project feeds the correlator's matrix here once per integration, so the per-input
+    /// autos, whose noise levels differ by feed, never enter the eigenproblem.
     void push_cov(int ch, const cd* V, double dt_s) {
         if (ch < 0 || ch >= _nc || !(dt_s > 0.0))
             return;
@@ -228,15 +228,16 @@ public:
     /// previous solution and deflated by the components before it. Sets k(ch) by the rank gates
     /// below. Cost ~ iters * kmax * n^2. Returns k.
     ///
-    /// ⚠️ THE DIAGONAL IS COMPLETED FROM THE MODEL, NOT LEFT AT ZERO. The stored matrix has no
-    /// autos (file note), and the top eigenvector of a rank-one matrix WITH ITS DIAGONAL REMOVED
-    /// is biased toward uniform element gains by ~sum |a_i|^6 -- measured in the self-test as a
-    /// cos^2 ceiling of 0.9978 (a -26 dB null) and a spurious second component of eigenvalue
-    /// -|a_i|^2. Each iteration therefore adds back the diagonal the current rank-k model
-    /// predicts, diag(sum_i lam_i |q_i|^2), with the eigenvalue taken as the least-squares fit
-    /// of lam x x^H to the OFF-diagonal entries: lam = x^H C x / (1 - sum |x_r|^4). The fixed
-    /// point is the unbiased rank-one fit of the off-diagonals, and the energy fractions below
-    /// are likewise taken over the off-diagonal part only.
+    /// The diagonal is completed from the model, not left at zero. The stored matrix has no
+    /// autos (file note). The top eigenvector of a rank-one matrix with its diagonal removed is
+    /// biased toward uniform element gains, the more so the more the gains differ (a 14 dB
+    /// spread over 16 elements limits the null to ~-26 dB), and the matrix has a spurious
+    /// negative second component. Each iteration therefore adds back the diagonal the current
+    /// rank-k model predicts, diag(sum_i lam_i |q_i|^2), with the eigenvalue taken as the
+    /// least-squares fit of lam x x^H to the off-diagonal entries (for the first component,
+    /// lam = x^H C x / (1 - sum |x_r|^4)). The fixed point is the unbiased rank-one fit of the
+    /// off-diagonals, and the energy fractions below are likewise taken over the off-diagonal
+    /// part only.
     int solve(int ch, int iters = 2) {
         if (ch < 0 || ch >= _nc)
             return 0;
@@ -358,10 +359,10 @@ public:
             const double l2 = lam * lam * std::max(0.0, 1.0 - s4);
             _frac[(size_t)ch * _kmax + j] = (remaining > 0.0) ? std::min(1.0, l2 / remaining) : 0.0;
             remaining = std::max(0.0, remaining - l2);
-            // RANK GATES. The first component is accepted whenever it exists (the CALLER gates
-            // it on frac_first_min: the trigger). Each further one must carry rel_min of the
-            // first eigenvalue and frac_next_min of the energy that was left after the ones
-            // before it -- a noise-only remainder gives ~4/n_live (about 0.15 at 26).
+            // Rank gates. The first component is accepted whenever it exists (any trigger on it
+            // is the caller's). Each further one must carry rel_min of the first eigenvalue and
+            // frac_next_min of the energy left after the ones before it; a noise-only remainder
+            // gives ~4/n_live (about 0.15 at 26).
             const double lam0 = std::fabs(_lam[(size_t)ch * _kmax]);
             if (j > 0
                 && (std::fabs(lam) < rel_min * lam0
@@ -383,11 +384,11 @@ public:
         return _lam[(size_t)ch * _kmax + j];
     }
     /// Fraction of the (deflated) matrix energy carried by component j: ~1 for a clean rank-1
-    /// leak, ~0.15 for noise alone at 26 live elements. Component 0's value is the TRIGGER.
+    /// leak, ~0.15 for noise alone at 26 live elements; the callers trigger on it.
     double frac(int ch, int j) const {
         return _frac[(size_t)ch * _kmax + j];
     }
-    /// -> 1 with tau: one time constant of pushes is 0.63.
+    /// Approaches 1 with tau: 0.63 after one time constant of pushes.
     double warmth(int ch) const {
         return (ch >= 0 && ch < _nc) ? _warm[(size_t)ch] : 0.0;
     }
@@ -416,7 +417,7 @@ private:
 /// One chain's published subspace for one channel.
 struct ProjEntry {
     std::string owner;      ///< the publishing stage's unique_name (+ "/probe" for a probe stack)
-    char sys = '?';         ///< constellation letter of the satellite (row sources)
+    char sys = '?';         ///< constellation letter of the publishing chain
     int prn = 0;            ///< 0 = not a named satellite (probe stack)
     int src = 0;            ///< 0 = the satellite's own row, 1 = probe-stack eigenvector
     double sep_deg = 1.0e9; ///< boresight separation (row sources; 1e9 unknown)
@@ -427,12 +428,12 @@ struct ProjEntry {
     std::vector<std::complex<float>> q; ///< [k][n]
 };
 
-/// PROCESS-WIDE BOARD. The sibling assemblers of one GPU are threads of one kotekan process and
+/// Process-wide board. The sibling assemblers of one GPU are threads of one kotekan process and
 /// despread the same channels from the same ring with the same element axis, so a subspace one
-/// chain measures applies to the others directly -- matched by freq_id, never by position. No
-/// same-record rendezvous is needed: a vector a second old still nulls to -30 dB (offline,
-/// 09-27), so readers just take the freshest entry within max_age_s. One mutex; writers copy
-/// k x n complex<float> per channel per record.
+/// chain measures applies to the others directly, matched by freq_id, never by position. No
+/// same-record rendezvous is needed: a direction a second old still nulls to ~-30 dB, so
+/// readers use every entry younger than max_age_s. One mutex; writers copy k x n
+/// complex<float> per channel per record.
 class ProjBoard {
 public:
     static ProjBoard& instance() {
@@ -453,8 +454,8 @@ public:
                 ++it;
         }
     }
-    /// Visit every fresh entry for (group, freq_id) not published by @p not_owner (nor its
-    /// probe stack) under the lock, without copying: the per-record path.
+    /// Visit every fresh entry for (group, freq_id) not published by @p not_owner (nor any
+    /// "<not_owner>/..." owner, i.e. its probe stack) under the lock, without copying.
     template<typename F>
     void for_each(const std::string& group, int freq_id, const std::string& not_owner, double now_s,
                   double max_age_s, F&& f) const {
@@ -473,7 +474,7 @@ public:
         }
     }
     /// Every fresh entry for (group, freq_id) not published by @p not_owner (nor its probe
-    /// stack), newest first (copies; the self-test's view).
+    /// stack), newest first, as copies.
     void fetch(const std::string& group, int freq_id, const std::string& not_owner, double now_s,
                double max_age_s, std::vector<ProjEntry>& out) const {
         out.clear();

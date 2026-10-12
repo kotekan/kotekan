@@ -1,7 +1,7 @@
 /**
  * @file
- * @brief Coherently recombine per-subband GNSS despread products into the
- *        full-band complex amplitude.
+ * @brief Coherently recombine per-subband GNSS despread products into the full-band complex
+ *        amplitude.
  *  - GnssCoherentCombiner : public kotekan::Stage
  */
 
@@ -27,63 +27,73 @@
  * @class GnssCoherentCombiner
  * @brief The reassembly seam of the distributed-band pipeline.
  *
- * Each tracker emits, per PRN per window, the un-normalized
- * coherent correlation @f$ G_m @f$ and replica energy @f$ E_m @f$ over its channel
- * slice. Because the despread is a sum over channels, both are additive across the
- * channel partition, so this stage forms the full-band matched-filter amplitude
+ * Each tracker emits, per PRN per window, the un-normalized coherent correlation @f$ G_m @f$
+ * and replica energy @f$ E_m @f$ over its channel slice. The despread is a sum over channels,
+ * so both are additive across the channel partition, and this stage forms the full-band
+ * matched-filter amplitude
  *   @f$ \hat A = (\sum_m G_m) / (\sum_m E_m) @f$
- * -- identical to despreading all covering channels in one place. That recovers
- * the full despread sensitivity from the per-subband (per-node, on CHORD) split.
+ * which is identical to despreading all covering channels in one place.
  *
- * The trackers run lockstep on the same channelized windows, so the i-th frame of
- * every input is the same window and its records are in the same PRN order. The
- * output uses the standard GNSS record layout (matches @ref GnssChannelizedCorrelator)
- * so existing readers consume it unchanged.
+ * Inputs are aligned by each record's capture UTC (an input lagging the newest by more than
+ * half a record is advanced). Records are summed by index, so every input must carry the same
+ * PRN order. The output uses the combiner record layout of gnssRecord.hpp.
  *
- * Optional temporal integration (@c integration_length records): the per-record
- * full-band amplitude is accumulated K ways before emission, giving both the
- * robust **incoherent** amplitude @f$ \sqrt{\langle|A|^2\rangle} @f$ (slot 3,
- * ~sqrt(K) SNR, no phase needed) and the **coherent** mean @f$ \langle A\rangle @f$
- * (slots 4/5/6, up to K SNR and unbiased, but only valid once the Doppler seed is
- * fine enough that the carrier phase is stable across the K records -- with a
- * coarse Doppler grid the coherent mean decorrelates and only slot 3 is usable).
+ * Temporal integration over @c integration_length records gives both the incoherent amplitude
+ * @f$ \sqrt{\langle|A|^2\rangle} @f$ (slot 3, ~sqrt(K) SNR, no phase needed) and the coherent
+ * mean @f$ \langle A\rangle @f$ (slots 4-6, up to K SNR, but only while the carrier phase is
+ * stable across the K records). Two cadences (@c integration_mode):
+ *  - @c block (default): accumulate K records, emit once, reset.
+ *  - @c rolling: an exponential moving average with time constant K records (alpha = 1/K),
+ *    updated every record and emitted every @c output_every records without reset. Divided by
+ *    1-(1-alpha)^n at emit, so it reads a true running mean from the first record.
  *
- * Two integration cadences (@c integration_mode):
- *  - @c block (default): accumulate K records, emit once, reset. One output per K
- *    records; the historical behaviour, byte-identical when the key is absent.
- *  - @c rolling: an exponential moving average with time constant K records
- *    (alpha = 1/K), updated every record and emitted every @c output_every records
- *    WITHOUT reset. Bias-corrected (divide by 1-(1-alpha)^n) so it reads a true
- *    running mean from the first record. Incoherent integration has no nav-bit cap
- *    and only needs the tracker to hold the code/Doppler bin, so a long rolling K
- *    (e.g. minutes of records) lets a weak sat climb out continuously -- you watch
- *    slot 3 (and the nav-wiped slot 8) grow instead of waiting K records per sample.
- *    The coherent slots 4-6 carry the same nav-bit limitation as in block mode.
+ * Slot 8 is a deep coherent |A| over the buffered per-record A, by one of four paths:
+ *  - nav-bit wipe (@c navwipe_bit_records): records are grouped into data-bit epochs, each
+ *    bit's +-1 is estimated and wiped, and the bits are summed coherently, so |A| keeps
+ *    growing past the data bit where slot 6 decorrelates.
+ *  - overlay wipe (@c secondary_overlay): a known secondary overlay is wiped at its
+ *    best-fitting alignment.
+ *  - both: the overlay wipe, then the nav-bit wipe on the result (a data component under a
+ *    shared overlay, e.g. GPS L5-I).
+ *  - plain coherent sum (@c deep_coherent), for a replica that already carries the overlay.
+ * Each path is evaluated over a ladder of trailing windows (@c auto_coherence); a rung counts
+ * as a coherent detection only if its SNR clears twice its noise-rectification floor (or, where
+ * a rate search was applied, the search's peak/median gate).
  *
- * Optional **nav-bit wipe** (@c navwipe_bit_records > 0): coherent integration past
- * the 20 ms GPS data bit. Each record (one code period) lies wholly within one data
- * bit, so @f$ A_{rec} = d \cdot (\text{clean despread}) @f$ -- a constant +-1 sign. Over
- * the @c integration_length window the per-record A is buffered, grouped into
- * @c navwipe_bit_records-record bit epochs (alignment found by maximising per-bit
- * coherent power), the +-1 bit estimated per epoch by squaring (the global sign cancels
- * in |.|), wiped, and coherently summed -- giving a deep |A| that keeps growing past
- * 20 ms (slot 8), where the plain coherent mean (slot 6) decorrelates at the nav bit.
+ * @conf n_prn               Int. Records (PRNs) per frame; default from the input frame size.
+ * @conf n_elements          Int (default 0). Per-antenna blocks per PRN record; 0 = none.
+ * @conf integration_length  Int (default 1). block: records per output. rolling: EMA time
+ *                           constant in records, and the length of the deep window.
+ * @conf integration_mode    String (default "block"). "block" or "rolling".
+ * @conf output_every        Int (rolling only; default max(1, integration_length/10)). Records
+ *                           between emits.
+ * @conf navwipe_bit_records Int (default 0 = off). Records per data bit, e.g. 20 for 1 ms GPS
+ *                           L1 C/A records. Needs integration_length >> this.
+ * @conf secondary_overlay   String (default ""). Overlay name from the gnssOverlay registry.
+ * @conf deep_coherent       Bool (default false). Deep plain coherent sum, used when no wipe is
+ *                           configured; correct only when the despread replica already carries
+ *                           the overlay.
+ * @conf auto_coherence      Bool (default true). Also score octave-shorter trailing windows.
+ * @conf carrier_pilot       Bool (default false). Dataless pilot: use the unsquared carrier
+ *                           phase. Ignored when an overlay is configured (carrier_raw()).
+ * @conf fft_len             Int (default 0). F-engine FFT length, to turn sample_seq into hops.
+ * @conf deep_rate_search    Bool (default false). Phase-rate search before the plain sum.
+ * @conf deep_rate_max_hz    Float (default 25). Cap on the applied rate; <= 0 = no cap.
+ * @conf deep_rate_min_q     Float (default 10). Peak/median the rate search must reach.
+ * @conf phase_track         Bool (default false). Leave-one-out phase-tracker candidates for
+ *                           the plain sum.
+ * @conf phase_track_widths  Int list (default [1, 2, 4, 8]). Tracker half-widths, records.
+ * @conf sky_deep            Bool (default false). Sky-corrected prompt as a plain-sum candidate.
+ * @conf record_export       Int (default 0 = off). Per-PRN record ring length for get_records.
+ * @conf peel_depth          Bool (default false). Deep and incoherent |A| of the peel residual.
+ * @conf bit_export          Bool (default false). Publish nav_obs and bit_pred in get_status.
+ * @conf bit_pred_horizon_s  Float (default 4). Seconds of predicted overlay chips.
+ * @conf adr_smooth_records  Int (default 1). Records per ADR block for anchored overlay pilots.
  *
- * @conf n_prn  Int. Records (PRNs) per frame; default from in-frame size.
- * @conf integration_length Int (default 1). block: tracker records accumulated per output.
- *       rolling: EMA time constant in records (the effective integration depth).
- * @conf integration_mode String (default "block"). "block" or "rolling" (see above).
- * @conf output_every Int (rolling only; default max(1, integration_length/10)). Records
- *       between rolling emits -- decouples the EMA update rate (every record) from the
- *       output/record cadence.
- * @conf navwipe_bit_records Int (default 0=off). Records per nav bit (~20 ms / record);
- *       e.g. 20 at 5 MSPS / 1 ms records. Needs integration_length >> this. In rolling mode
- *       the wipe runs over a sliding window of the last integration_length records.
- *
- * @buffer in_bufs Per-subband tracker record streams (RECORD_FLOATS floats/PRN:
- *                 0=PRN 1=dop 2=cp 3=corr.re 4=corr.im 5=energy 6=n_chan 9,10=UTC).
- * @buffer out_buf Combined records (0=PRN 1=dop 2=cp 3=|A|_incoh 4=<A>.re 5=<A>.im
- *                 6=|<A>|_coh 7=n_chan 8=|A|_navwipe 9,10=UTC).
+ * @buffer in_bufs Per-subband tracker records (gnssRecord.hpp tracker layout: a RECORD_FLOATS
+ *                 header plus n_elements element blocks per PRN).
+ * @buffer out_buf Combined records (gnssRecord.hpp combiner layout: 3 = |A|_incoh,
+ *                 4,5 = <A>, 6 = |<A>|_coh, 7 = n_chan, 8 = deep |A|, 9-10 = UTC).
  *
  * @author Keith Vanderlinde
  */
@@ -97,89 +107,75 @@ public:
     static constexpr int RECORD_UTC_SLOT = gnss::RECORD_UTC_SLOT;
 
 private:
-    /// broker poll: latest full-band |A| (and seed) per PRN, for drop decisions.
+    /// REST get_status: the last emit's per-PRN snapshot (amplitudes, deep detection, DLL
+    /// powers, carrier and ADR observables).
     void get_status_callback(kotekan::connectionInstance& conn);
-    /// Per-record complex prompts for the fleet's coherent combine (see _rec_export).
+    /// REST get_records: per-record complex prompts for the fleet's coherent combine (see
+    /// _rec_export); registered when record_export > 0.
     void get_records_callback(kotekan::connectionInstance& conn);
-    /// Per-element complex-gain snapshot (task #57 step 2); registered when n_elements > 0.
+    /// REST get_elements: per-element complex-gain snapshot; registered when n_elements > 0.
     void get_elements_callback(kotekan::connectionInstance& conn);
 
-    /// Nav-bit-wiped deep coherent amplitude from a window of per-record (A, capture-UTC):
-    /// bin records into nav-bit epochs by their ABSOLUTE code-period index (from UTC, so
-    /// valve drops just leave gaps, not misalignment), bit-sync, per-epoch +-1 by squaring,
-    /// wipe, coherent-sum / N. 0 if too short. Needs capture-time UTC (capture_utc0 > 0).
-    /// @c snr_out (optional): the deep detection's significance = coherent sum / its noise std
-    /// (estimated from the component orthogonal to the aligned signal). deep == this SNR times its
-    /// own uncertainty, so SNR >> 1 is a real lock, ~1 is noise.
-    ///
-    /// SEGMENTED (@c head non-null): the nav/CNAV symbol boundary is code-period-aligned at the
-    /// transmitter but the record windows are hop-aligned, so it lands MID-record; a record
-    /// straddling a symbol TRANSITION cancels to |2f-1| -- for L2C CM (ONE 20 ms symbol per
-    /// record, bit_records 1) that is the same "bistable" null the overlay bands had. head[r]
-    /// (the prompt over the hops before the boundary) belongs to period cpi[r], the tail to
-    /// period cpi[r]+1, so the bit epochs are assembled from symbol-ALIGNED pieces (tail of one
-    /// record + head of the next) and nothing cancels. head == a reduces bit-exactly to the
-    /// unsegmented behaviour.
-    /// Per-bit observations from one navwipe evaluation, for the broker's LNAV
-    /// decode-and-predict (docs/gnss_voltage_peel_live.md P7a). The bit at index @c bi covers
-    /// code periods [bi*br - phase, (bi+1)*br - phase) relative to @c utc_ref, i.e. its start
-    /// UTC is utc_ref + (bi*br - phase)*rec_dt. Gaps in the record stream simply skip indices
-    /// -- the pairs are honest about which bits were actually observed. The sign is the SAME
-    /// +-1 the deep wipe applies; its global polarity is arbitrary (the LNAV parity/framing
-    /// decode is polarity-independent, and the peel locks its gain to whatever frame the
-    /// prediction uses), so no polarity convention is promised here.
+    /// Per-bit observations from one navwipe evaluation, for the broker's navigation-message
+    /// decoders. The bit at index @c bi covers record indices [bi*br - phase, (bi+1)*br - phase)
+    /// counted from @c utc_ref, so its start UTC is utc_ref + (bi*br - phase)*rec_dt. Gaps in
+    /// the record stream skip indices. The signs are the +-1 the deep wipe applies; their
+    /// global polarity is arbitrary per emit.
     struct NavObs {
         double utc_ref = 0.0; ///< capture UTC of the window's first record
-        double rec_dt = 0.0;  ///< median record period (s) -- the code-period duration
-        int phase = 0;        ///< winning bit-phase (0..br-1)
+        double rec_dt = 0.0;  ///< median record spacing (s)
+        int phase = 0;        ///< bit-epoch phase used (0..br-1)
         int br = 0;           ///< records per bit
-        double rot_re = 1.0;  ///< the emit's polarity-resolving phasor (rot = e^{-i*theta0}):
-        double rot_im = 0.0;  ///< each emit's global +-1 is arbitrary INDEPENDENTLY (the
-                              ///< squaring estimate), but theta0 tracks the carrier, which IS
-                              ///< continuous across emits at a certified lock -- the broker
-                              ///< chains chunk polarity by phasor continuity, then VERIFIES by
-                              ///< LNAV parity (and repairs by boundary-flip search).
+        /// rot = e^{-i*theta0}, the phasor that aligned the bit sums with the real axis. The
+        /// per-emit sign is arbitrary, but theta0 follows the carrier, so a consumer can chain
+        /// polarity across emits by its continuity (navbit_predictor.py does).
+        double rot_re = 1.0;
+        double rot_im = 0.0;
         std::vector<std::pair<long long, int8_t>> bits; ///< (bit index, +-1 sign)
     };
 
-    /// @p pin_phase >= 0 SKIPS the internal bit-sync search and uses that epoch phase directly;
-    /// @p out_phase (optional) reports the phase actually used. Both exist because the search is
-    /// @c navwipe_bit_records full passes over the window, and re-running it per ladder rung is
-    /// the dominant cost on a chain with many records per symbol (L5-I: 20 alignments x 1000
-    /// records vs L2C's 1 x 200 -- 100x per rung). The epoch is a property of the SIGNAL, so
-    /// searching it once on the longest window and pinning the rest is exact, not an approximation.
-    ///
-    /// ⚠️ THE PHASE IS WINDOW-RELATIVE: bit index = (round((utc[r]-utc[0])/rec_dt) + phase)/br,
-    /// so a phase found on one window is valid on another only after shifting by the two windows'
-    /// record-index offset. Callers MUST derive that offset from UTC
-    /// (@c llround((sub_utc0 - full_utc0)/rec_dt)), never from buffer positions -- a valve drop
-    /// skips an index, and binning by position would slide every bit epoch.
+    /// Nav-bit-wiped deep coherent amplitude from a window of per-record A and capture UTC.
+    /// Records are binned into bit epochs by a record index taken from UTC relative to utc[0],
+    /// so a dropped record leaves a gap rather than shifting later records. The epoch phase
+    /// maximises the mean per-bit coherent magnitude; each bit's +-1 is taken against the
+    /// squared-sum carrier phase, and the wiped bits are summed coherently. Returns the
+    /// coherent mean per record, or 0 for a window of fewer than two bits.
+    /// @param snr_out (optional) coherent sum / its noise std, the noise taken from the
+    ///        component orthogonal to the aligned signal. Choosing each bit's sign rectifies
+    ///        noise, so pure noise reads ~sqrt(2*n_bits/pi), not ~1.
+    /// @param head (optional) per-record prompt over the hops before the record's code-period
+    ///        boundary. A symbol edge can fall mid-record, and a record straddling a sign
+    ///        change sums to |2f-1| of its amplitude; with @p head, record r's head goes to
+    ///        record index cpi[r] and its tail a[r] - head[r] to cpi[r]+1, so bit sums are
+    ///        built from symbol-aligned pieces.
+    /// @param obs (optional) receives the per-bit decisions.
+    /// @param pin_phase >= 0 skips the epoch search (navwipe_bit_records passes over the
+    ///        window) and uses this phase; @p out_phase (optional) reports the phase used. The
+    ///        epoch is a property of the signal, so a caller can search its longest window and
+    ///        pin the shorter ones. The phase is window-relative (bit index =
+    ///        (round((utc[r]-utc[0])/rec_dt) + phase)/br), so moving it to another window needs
+    ///        the record-index offset llround((sub_utc0 - full_utc0)/rec_dt), taken from UTC and
+    ///        never from buffer positions.
     double navwipe_amplitude(const std::vector<std::complex<double>>& a,
                              const std::vector<double>& utc, double* snr_out = nullptr,
                              const std::vector<std::complex<double>>* head = nullptr,
                              NavObs* obs = nullptr, int pin_phase = -1,
                              int* out_phase = nullptr) const;
 
-    /// Residual carrier frequency (Hz) from a window of per-record A, as a bit-robust phase-SLOPE
-    /// fit over the whole window (long baseline -> low variance -- the clean measurement the shared
-    /// carrier loop needs; the old consecutive-record product was short-baseline + doubly-noisy and
-    /// made the loop noise-inject). Squares A to cancel the +-1 nav-bit pi flips (data signals);
-    /// a dataless pilot (carrier_pilot) fits the raw phase. Uses capture-UTC as the time axis so
-    /// valve-drop gaps don't bias the slope. Returns 0 (the broker's carrier-loop "skip"
-    /// sentinel -- `if resid == 0.0`) if too short / degenerate.
-    /// @param sigma_phi_out (optional) weighted RMS of THIS fit's residuals, radians on the
-    /// true carrier -- the phase-jitter half of the multipath/scintillation pair. ALWAYS
-    /// written when non-null: a real value when the fit succeeds, else NaN ("not measured").
-    /// NEVER 0.0 on a failed fit -- a 0 jitter is indistinguishable from a pristine lock, so
-    /// an unmeasurable window would masquerade as a perfect one (fail-open); NaN reads honestly.
-    /// @param prewiped the records are ALREADY overlay-free (the caller passes _navwipe = the
-    /// de-rotated v_cur stream), so fit the RAW phase (mult 1, no squaring) exactly as for a
-    /// dataless pilot -- half the phase noise AND no |2f-1| straddle null at boundary_f=0.5.
-    /// @param snr_q_out (optional) MODULATION-IMMUNE per-record SNR s^2/N -- noise taken from the
-    /// QUADRATURE component in the carrier-removed frame, so BOC amplitude modulation (which the
-    /// 4th-moment cn0_inc debias mistakes for noise) does not bias it. Divide by t_rec downstream
-    /// for C/N0. COHERENCE-REFERENCED (needs the carrier fit to hold over the window) and produced
-    /// only on the LINEAR path (pilots / prewiped); NaN for squared (data) fits and short windows.
+    /// Residual carrier frequency (Hz) from a window of per-record A: a two-stage phase-slope
+    /// fit over the whole window against capture UTC, so gaps keep their true span. A is
+    /// squared to cancel +-1 nav-bit and overlay flips unless the stream has none (carrier_raw()
+    /// or @p prewiped). Returns 0, which the broker's carrier loop reads as "skip", for a window
+    /// under 16 records or a degenerate fit.
+    /// @param sigma_phi_out (optional) weighted RMS of the fit residuals, radians on the true
+    ///        carrier. Always written when non-null; NaN when no fit was made, never 0, which
+    ///        would read as a perfect lock.
+    /// @param prewiped the records are already overlay-free (the _navwipe stream), so the raw
+    ///        phase is fitted: half the phase noise and no |2f-1| straddle null.
+    /// @param snr_q_out (optional) per-record SNR s^2/N with the noise taken from the quadrature
+    ///        component in the carrier-removed frame, so amplitude modulation (BOC pilots) does
+    ///        not count as noise. Valid only while the fit holds over the window. Produced by
+    ///        linear (unsquared) fits only; NaN otherwise. Divide by the record period for C/N0.
     double carrier_resid_hz(const std::vector<std::complex<double>>& a,
                             const std::vector<double>& utc, double* sigma_phi_out = nullptr,
                             bool prewiped = false, double* snr_q_out = nullptr) const;
@@ -188,23 +184,19 @@ private:
     Buffer* out_buf;
     int _n_prn;
 
-    /// Element axis (CHORD). 0 = single-antenna airspy layout; the per-antenna path is then
-    /// skipped entirely and every accumulator and emit below is unchanged.
+    /// Per-antenna blocks per PRN record (config n_elements); 0 = none, and the per-antenna
+    /// path is skipped.
     int _n_elements = 0;
     int _rec_stride = gnss::RECORD_FLOATS;  ///< floats per PRN record, = record_stride(_n_elements)
     std::vector<double> _ge_r, _ge_i;       ///< scratch: per-antenna prompt summed over subbands
     std::vector<double> _acc_epow_el;       ///< [n_prn][n_elem] <|A_e|^2>, the beam-map estimator
-    std::vector<double> _acc_ear, _acc_eai; ///< [n_prn][n_elem] <A_e>, the per-antenna phase
-    /// [n_prn][n_elem] THE PER-ELEMENT COMPLEX GAIN (task #57 step 2): EMA of
-    /// A_e * conj(sum of the OTHER elements' A), accumulated PER RECORD so the sky phase --
-    /// common across elements, near-white in time (gnssElemCal.hpp) -- cancels in the product
-    /// before any averaging. _acc_ear/_acc_eai above average the raw A_e and therefore
-    /// collapse under that same phase (their own comment calls the coherent/incoherent ratio
-    /// a "coherence diagnostic"); this is the accumulator whose mean IS the gain.
-    /// The reference is LEAVE-ONE-OUT (unweighted sum minus this element) so no element's
-    /// noise enters its own gain -- the gnssElemCal rule -- and it is built from the RAW
-    /// per-antenna prompts, upstream of the element cal's weights, so #62's non-causal
-    /// weighting cannot touch it. _acc_euq is the matching EMA of |LOO ref|^2 (normalizer).
+    std::vector<double> _acc_ear, _acc_eai; ///< [n_prn][n_elem] <A_e>
+    /// [n_prn][n_elem] per-element complex gain: A_e * conj(ref_e) accumulated per record, with
+    /// ref_e the unweighted sum of the other elements' raw prompts (leave-one-out). The sky
+    /// phase, common to all elements and near-white in time (gnssElemCal.hpp), cancels in each
+    /// product before averaging; <A_e> averages that phase and collapses, so it cannot serve as
+    /// the gain. Leaving the element out keeps its own noise out of its gain, and the raw
+    /// prompts keep the element cal's weights out. _acc_euq accumulates the normalizer |ref_e|^2.
     std::vector<double> _acc_eu_r, _acc_eu_i, _acc_euq;
     /// REST snapshot of the element-gain state (under _st_mtx): [n_prn][n_elem][4] =
     /// u_re, u_im, <|A_e|^2>, <|ref|^2>, normalized at emit like the element blocks.
@@ -215,221 +207,172 @@ private:
     bool _rolling;              ///< rolling EMA integration vs block-and-reset
     int _emit_every;            ///< rolling: records between emits (output cadence)
     int _navwipe_bit_records;   ///< records per nav bit (0 = no wipe)
-    std::vector<int8_t>
-        _secondary; ///< known PRN-independent overlay (L5 NH10/NH20); empty if unused
-    std::vector<std::vector<int8_t>>
-        _l1co;                 ///< per-PRN L1C-P overlays (index prn-1, 1..32); empty if unused
-    bool _wipe_buffer = false; ///< buffer per-record A for a deep wipe (navwipe or overlay)
-    /// Deep-integrate by a PLAIN coherent sum, no wipe. For a pilot whose replica already
-    /// carries the secondary overlay (CHORD despreads GPS_L5_Q_NH, NH20 baked into 204600
-    /// chips) there is nothing to wipe, and the wipe rungs are unusable anyway: overlay_apply
-    /// advances the overlay one chip per RECORD, true only when a record is one primary period
-    /// (airspy). A CHORD record is 10.4857 periods. Without this such a signal has no route to
-    /// coherence_s at all and integrates one 10.5 ms record at a time.
+    /// Shared secondary overlay (a registry row that is not per-PRN); empty if unused.
+    std::vector<int8_t> _secondary;
+    /// Per-PRN overlays (a per-PRN registry row such as B1C or L1CO), index prn-1; empty if
+    /// unused.
+    std::vector<std::vector<int8_t>> _l1co;
+    bool _wipe_buffer = false; ///< buffer per-record A for a deep path (nav-bit, overlay or plain)
+    /// Deep-integrate by a plain coherent sum with no wipe (config deep_coherent). For a pilot
+    /// whose replica already carries the secondary overlay (CHORD despreads GPS_L5_Q_NH, NH20
+    /// tiled into 204600 chips) there is nothing to wipe, and the wipe paths cannot serve it:
+    /// overlay_apply advances the overlay one chip per record, while a CHORD record spans
+    /// ~10.49 primary periods.
     bool _deep_plain = false;
-    /// Subband UTC alignment (see the gather loop): the observed record period, the previous
-    /// frame's UTC on input 0, and a count of realignments -- nonzero means an input dropped a
-    /// frame relative to the others, which index-lockstep gathering would have absorbed
-    /// silently as a permanent epoch offset.
+    /// Subband UTC alignment in the gather loop: the observed record period, input 0's previous
+    /// UTC, and the number of realignments (non-zero means an input dropped a frame relative to
+    /// the others).
     double _rec_dt_est = 0.0;
     double _prev_utc0 = 0.0;
     unsigned long _realigns = 0;
-    /// Hops per record frame -- the F-engine FFT length, and the ONLY reason this stage needs
-    /// to know it: GnssChanMetadata::sample_seq is an absolute SAMPLE index, and the currency
-    /// every other part of the chain speaks (the seed's ref_hop, the replica generators, the
-    /// search's reported phase) is the absolute HOP index = sample_seq / fft_len. Publishing the
-    /// hop rather than the sample keeps the fleet DLL's grouping key an exact integer match
-    /// against everything else (docs/CHORD_GNSS_SHARED_DLL.md). 0 = unset: pow_hop then carries
-    /// the raw sample index, and pow_fft_len (also published) says which currency it is, so a
-    /// consumer can never silently mix the two.
+    /// F-engine FFT length (samples per hop), used only to turn GnssChanMetadata::sample_seq, an
+    /// absolute sample index, into the absolute hop index the rest of the chain uses (the fleet
+    /// DLL groups on it; docs/CHORD_GNSS_SHARED_DLL.md). 0 = unset: pow_hop then carries the raw
+    /// sample index, and pow_fft_len (also published) says which it is.
     int _fft_len = 0;
-    bool _carrier_pilot; ///< pilot: unsquared phase product (no bits; 2x range)
-    /// Raw (unsquared) phase treatment is only valid for a TRULY dataless pilot. An overlay
-    /// pilot (B1C L1CO, E1C CS25, E5a/B2a CS100, L5 NH) still carries +-1 secondary chips in
-    /// the PRE-WIPE navbuf records, which scramble a raw-phase fit exactly like nav bits:
-    /// stage-1 pair products pick up random signs (coarse f biased to ~0) and stage-2 phases
-    /// jump by pi. Measured 2026-07-17: the combiner reported C22's residual as 0.00-0.02 Hz
-    /// while the true record-stream residual was +0.93 Hz -- the carrier loop was OPEN below
-    /// a few Hz for every overlay pilot, leaving each sat's residual parked at seed error and
-    /// certification waiting on LO-drift luck (the "45-min B1C bootstrap" + cert flicker).
-    /// Squaring cancels +-1 overlay chips exactly as it cancels nav bits; 2x phase noise is
-    /// the same price every data signal already pays.
+    bool _carrier_pilot; ///< config carrier_pilot; applies only through carrier_raw()
+    /// Raw (unsquared) carrier phase is valid only for a dataless pilot with no secondary
+    /// overlay: overlay chips left in the pre-wipe records flip the phase by pi like nav bits,
+    /// so overlay pilots are squared like data signals.
     bool carrier_raw() const {
         return _carrier_pilot && _secondary.empty() && _l1co.empty();
     }
-    /// Overlay chip sequence for a PRN: the per-PRN table (B1C/E5a/B2a/L1CO) if populated,
-    /// else the shared secondary (L5 NH); nullptr when this combiner wipes no known overlay
-    /// (data signals / navwipe). The ADR path uses it to de-rotate the overlay LINEARLY (a
-    /// plain cross-record product) instead of squaring it away -- squaring doubles the
-    /// carrier-phase noise and, at the low per-record SNR of the 1 ms L5-band records, is the
-    /// L5-leg TEC scatter (see docs/tec_error_budget). Same dispatch as the emit-time wipe.
+    /// Overlay chip sequence for a PRN: the per-PRN table if populated, else the shared
+    /// secondary; nullptr when this combiner wipes no known overlay. The ADR path uses it to
+    /// de-rotate the overlay linearly instead of squaring it away, which would double the
+    /// carrier-phase noise. Same dispatch as the emit-time wipe.
     const std::vector<int8_t>* overlay_for(int prn) const {
         if (!_l1co.empty())
             return (prn >= 1 && prn <= (int)_l1co.size()) ? &_l1co[(size_t)(prn - 1)] : nullptr;
         return _secondary.empty() ? nullptr : &_secondary;
     }
-    bool _auto_coherence; ///< deep wipe over an octave ladder of trailing sub-windows,
-                          ///< keep the best -> integrate as deep as the clock coheres
-    std::vector<std::vector<std::complex<double>>>
-        _navbuf; ///< per-PRN per-record A over the window
-    /// Per-PRN per-record SKY-PHASE-CORRECTED A (record slots 24/25, gnssElemCal.hpp's
-    /// leave-one-element-out derotation). Parallel to _navbuf record-for-record; all-zero when
-    /// the producer does not supply it (cold cal / elem_sum off / CPU tracker), which is how the
-    /// deep branch decides whether the corrected rung is available at all.
+    bool _auto_coherence; ///< also score octave-shorter trailing windows; the best one wins
+    std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A, deep window
+    /// Per-PRN per-record sky-phase-corrected A (record slots 24/25, gnssElemCal.hpp's
+    /// leave-one-element-out derotation), parallel to _navbuf. All zero when the producer does
+    /// not supply it, which is how the deep_coherent path decides whether the sky-corrected
+    /// candidate is available.
     std::vector<std::vector<std::complex<double>>> _navsky;
     std::vector<std::vector<double>> _navutc; ///< per-PRN per-record capture UTC
-    /// Per-PRN per-record HEAD-segment amplitude (prompt over the hops before the record's
-    /// code-period boundary, normalized by the TOTAL prompt energy so head + tail = A).
-    /// Feeds the SEGMENTED overlay wipe: the overlay flips sign at that boundary, so head
-    /// and tail must be wiped with adjacent chips or straddling records cancel (the
-    /// 2026-07-15 "bistable"). Parallel to _navbuf record-for-record.
+    /// Per-PRN per-record head-segment amplitude (prompt over the hops before the record's
+    /// code-period boundary), normalized by the total prompt energy so head + tail = A. The
+    /// overlay can flip sign at that boundary, so the segmented wipes apply adjacent chips to
+    /// head and tail. Equal to A when the tracker does not segment. Parallel to _navbuf.
     std::vector<std::vector<std::complex<double>>> _navhead;
-    /// Per-PRN per-record OVERLAY-WIPED amplitude v_cur (segmented de-rotation; overlay-free at
-    /// full amplitude for any boundary_f), or 0 for records with no live anchor. Parallel to
-    /// _navbuf. Feeds the carrier-residual fit LINEARLY (prewiped) so the shared carrier loop no
-    /// longer squares the raw A -- which cancels at boundary_f=0.5 and drove the loop open there,
-    /// scrambling the whole window's phase (2026-07-22 B1C bf=0.5 deep-null root cause).
+    /// Per-PRN per-record overlay-wiped amplitude v_cur (segmented de-rotation, overlay-free at
+    /// full amplitude for any boundary fraction), or 0 for records with no live anchor.
+    /// Parallel to _navbuf. Feeds the carrier-residual fit linearly (prewiped), avoiding the
+    /// squared raw A, which overlay transitions null at boundary fraction 0.5.
     std::vector<std::vector<std::complex<double>>> _navwipe;
-    /// PEEL DEPTH (docs/gnss_voltage_peel_live.md). When the tracker peels, records carry a
-    /// residual prompt (slots 20-23) beside the full correlation. Buffer it exactly like _navbuf/
-    /// _navhead and run the SAME deep estimator on it at emit -> CMB_PEEL_DEEP; the ratio
-    /// 20*log10(CMB_DEEP/CMB_PEEL_DEEP) is the achieved depth, and it is honest because the peel's
-    /// gain was feed-forward. Gated on _peel_depth (config): only the peeling chain pays the
-    /// second deep integration. Parallel to _navbuf record-for-record.
+    /// Peel depth (config peel_depth). A peeling tracker writes a residual prompt (slots 20-23)
+    /// beside the full correlation; _navbuf_res and _navhead_res buffer it like _navbuf and
+    /// _navhead, and the emit runs the same deep estimator on it (overlay and nav-bit wipe
+    /// paths) into CMB_PEEL_DEEP. 20*log10(CMB_DEEP/CMB_PEEL_DEEP) is the achieved depth.
     bool _peel_depth = false;
-    /// P7a: export the navwipe's per-bit sign decisions via get_status ("nav_obs"), so the
-    /// broker can LNAV-decode and predict future bits for the peel. Config `bit_export: true`.
+    /// Publish the nav-bit wipe's per-bit decisions ("nav_obs") and a pilot's predicted overlay
+    /// chips ("bit_pred") in get_status (config bit_export).
     bool _bit_export = false;
     std::vector<NavObs> _st_nav_obs; ///< last emit's observations per PRN (under _st_mtx)
 
-    /// ---- REAL-TIME COST INSTRUMENTATION (2026-07-29) ----
-    /// Added because four S4-phase-2 configurations were tuned against valve DROP RATE, which
-    /// cannot support that comparison: past the real-time cliff a stage's drop rate reflects
-    /// the pipeline's collapse dynamics, not its own cost, so every over-budget config reports
-    /// a number that says "already broken" rather than "this expensive". Worse, the rates were
-    /// not even ordered by cost -- shrinking the window 4x made them WORSE.
-    ///
-    /// THE NUMBER THESE EXIST TO PRODUCE is a DUTY CYCLE: CPU-seconds spent per second of DATA
-    /// consumed, = (d ingest_us + d emit_us) / (d records x record_period). Below 1 the stage
-    /// keeps up with real time; at 1 it is saturated and drops are inevitable no matter how deep
-    /// the buffer. That distinction is exactly what a bigger valve_slack cannot change: buffering
-    /// absorbs a TRANSIENT overrun (duty < 1 with spikes) and merely postpones a STEADY one
-    /// (duty >= 1). Read the duty BEFORE reaching for more buffer.
-    ///
-    /// Times are microseconds (Counter is integral). Per-emit gauges give the spike shape that
-    /// a cumulative counter averages away.
+    /// Real-time cost. The derived quantity is the duty cycle, CPU-seconds per second of data:
+    /// (d ingest_us + d emit_us) / (d records x record period). Below 1 the stage keeps up; at 1
+    /// it is saturated, more buffering only postpones the drops, and the drop rate stops
+    /// measuring cost. Times are microseconds; the per-emit gauges show spikes the counters
+    /// average away.
     kotekan::prometheus::Counter* _m_ingest_us = nullptr;    ///< cumulative record-ingest time
-    kotekan::prometheus::Counter* _m_emit_us = nullptr;      ///< cumulative emit/deep-block time
+    kotekan::prometheus::Counter* _m_emit_us = nullptr;      ///< cumulative emit time
     kotekan::prometheus::Counter* _m_records = nullptr;      ///< records consumed (the data clock)
     kotekan::prometheus::Counter* _m_emits = nullptr;        ///< emits completed
-    kotekan::prometheus::Gauge* _m_last_emit_us = nullptr;   ///< last emit's deep-block time
-    kotekan::prometheus::Gauge* _m_last_emit_prns = nullptr; ///< PRNs carrying data that emit
+    kotekan::prometheus::Gauge* _m_last_emit_us = nullptr;   ///< last emit's time
+    kotekan::prometheus::Gauge* _m_last_emit_prns = nullptr; ///< PRNs with buffered deep records
 
-    /// P7b PILOT OVERLAY PREDICTION. A pilot's secondary overlay (E1C CS25 / B1C / L1C-O /
-    /// L5 NH) is DETERMINISTIC -- no decode needed, unlike LNAV. Once the dead-reckon anchor
-    /// is pinned (_dr_phase/_dr_utc/_dr_rec_dt: the same anchor the ADR wipe projects from),
-    /// every future chip is knowable, so the combiner can emit PREDICTIONS directly in the
-    /// tracker's nav_bits format and the broker just forwards them -- the peel's sign source
-    /// with ZERO new tracker code and no LNAV round trip. One chip per primary period, so
-    /// bit_s == the record period and the chip boundary IS the code-period boundary the peel
-    /// splits head/tail at.
+    /// Predicted overlay chips for a pilot, projected forward from the dead-reckon anchor
+    /// (_dr_phase, _dr_utc, _dr_rec_dt, the same anchor the ADR wipe uses). The overlay is
+    /// deterministic, so once the anchor is pinned every later chip is known. Published as
+    /// get_status "bit_pred" when bit_export is set, and only while the anchor is under 60 s
+    /// old and _bp_agree holds. Assumes one primary period per record.
     struct BitPred {
-        double utc0 = 0.0;        ///< RECORD-START UTC of bits[0]'s primary period
+        double utc0 = 0.0;        ///< projected start UTC of the first record at or after _st_utc
         double bit_s = 0.0;       ///< chip duration = record period
         std::vector<int8_t> bits; ///< +-1 overlay chips
-        /// TABLE SEMANTICS, DECLARED (2026-07-27). This table is RECORD-INDEXED: cell j is the
-        /// head chip of record i0+j, and utc0 is that record's START. It is NOT a time-domain
-        /// table ("the chip covering time t"), which is what the GPS LNAV tables are (their
-        /// utc0 is a true bit edge). The consumer must not guess: it reads record_grid
-        /// tables by record index and time-domain tables by time.
-        ///
-        /// WHY THIS FIELD EXISTS. The 2026-07-26 fix made the record-grid table LOOK
-        /// time-domain by publishing utc0 shifted by -(1-bf)*dt, so the consumer's
-        /// half-record probe would land on the right cell. Measured 2026-07-27: that put the
-        /// consumer's index expression at floor(N + psi + bf - 0.5) with psi + bf = 1.000 +-
-        /// 0.02 on every satellite -- i.e. floor(N + 0.5), sitting EXACTLY on the truncation
-        /// boundary, on every record, forever. Two errors tuned to cancel, on a discontinuity
-        /// where the cancellation must be exact; satellites slipped a whole record and their
-        /// peel died at any SNR (C33/C24 at 3000 sigma, 0.0 dB). Declaring the convention
-        /// removes both the shift and the probe instead of balancing them.
+        /// The table is record-indexed: bits[j] is the head chip of the j-th record from utc0,
+        /// and utc0 is a record start, not a chip edge as in a time-domain table. Published as
+        /// "grid": "record" so a consumer indexes it by record rather than by time.
         bool record_grid = true;
     };
     std::vector<BitPred> _st_bit_pred;
-    double _bit_pred_horizon_s = 4.0;
+    double _bit_pred_horizon_s = 4.0;                            ///< seconds of chips to publish
     std::vector<std::vector<std::complex<double>>> _navbuf_res;  ///< residual prompt A per record
     std::vector<std::vector<std::complex<double>>> _navhead_res; ///< residual head segment
 
-    // Latest combined record snapshot for REST status (full-band |A| per PRN).
+    // Snapshot of the last emit for REST (under _st_mtx).
     std::vector<int> _st_prn;
     std::vector<float> _st_amp, _st_coh, _st_deep, _st_deep_snr, _st_amp_snr, _st_amp_dbi, _st_dop,
         _st_cp;
     std::vector<int> _st_nh_phase; ///< secondary-overlay alignment found per PRN (-1 = n/a)
-    /// bit_pred publications suppressed because the anchor's projected phase disagreed with
-    /// this emit's SEARCHED phase (the pilot-side agreement gate; see the bit_pred block).
-    /// Cumulative per PRN; exported as "bp_veto" so the broker/viewer can see a source that
-    /// is being continuously refused rather than mistaking silence for health.
+    /// Count of emits whose anchor projection disagreed with the searched overlay phase, each
+    /// of which suppressed that emit's bit_pred. Cumulative per PRN; published as "bp_veto"
+    /// beside a published bit_pred.
     std::vector<int> _bp_veto;
-    std::vector<uint8_t> _bp_agree;  ///< per-PRN: this emit's anchor projection == searched phase
+    /// This emit's anchor projection agrees with the searched phase (1 when not judged).
+    std::vector<uint8_t> _bp_agree;
     std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
-    /// FLEET DLL (docs/CHORD_GNSS_SHARED_DLL.md). The window-averaged Early/Prompt/Late POWERS
-    /// that _st_dll_disc is the ratio of, published RAW because ratios do not sum: one instance
-    /// correlates 6.7% of the L5 lobe, and (SUM E - SUM L)/(SUM E + SUM L) across the fleet is
-    /// not any function of the per-instance discriminators. All three are built identically --
-    /// |sum of subband correlations|^2 / energy^2 -- so they are directly comparable, which is
-    /// what makes q = 2P/(E+L) meaningful across instances.
+    /// Fleet DLL (docs/CHORD_GNSS_SHARED_DLL.md): the window-averaged Early/Prompt/Late powers
+    /// behind _st_dll_disc, published raw because ratios do not sum: the fleet discriminator
+    /// (sum E - sum L)/(sum E + sum L) is not a function of the per-instance ones. All three
+    /// are |sum of subband correlations|^2 / energy^2, so q = 2P/(E+L) is comparable across
+    /// instances.
     std::vector<float> _st_e_pow;
     std::vector<float> _st_p_pow;
     std::vector<float> _st_l_pow;
     std::vector<float> _st_nchan; ///< covering channels that contributed (weight; 0 = dead)
-    /// Absolute HOP index the E/P/L window ends on (rolling: the newest record; block: the
-    /// window's first). The fleet combine groups instances by this -- see _fft_len.
+    /// Absolute hop index labelling the E/P/L window (rolling: its newest record; block: its
+    /// first); -1 = no frame metadata. The fleet combine groups instances by it; see _fft_len.
     long long _st_pow_hop = -1;
-    // #46 ingestion clock (guarded by _st_mtx): newest capture UTC gathered + the wall
-    // clock at that gather -- BEFORE processing, vs pow_hop/_st_utc which are AFTER.
+    // Ingestion clock (under _st_mtx): the newest capture UTC gathered and the wall clock at
+    // that gather, taken before processing (pow_hop and _st_utc describe the last emit).
     double _ingest_utc = 0.0;
     double _ingest_unix = 0.0;
-    /// EVERY ladder rung's significance, not only the winner's (2026-08-04). The winner is a MAX
-    /// over rungs, so a low deep_snr cannot distinguish "the signal never cohered" from "it cohered
-    /// but no window was long enough to clear the bar" -- and those two want opposite fixes. Each
-    /// entry is (records, snr, span_s) for one rung, longest-first, exactly as walked.
+    /// Every ladder rung's (records, snr, span_s), longest first. deep_snr reports one rung (the
+    /// best that cleared its floor, else the full window), so it cannot tell a signal that never
+    /// cohered from one that cohered over windows too short to clear the floor.
     std::vector<std::vector<std::array<float, 3>>> _st_rungs;
-    /// PER-RECORD EXPORT for cross-node coherent combining (0 = off). Each entry is
-    /// [hop, re, im, energy] for one record: the absolute hop is the exact cross-node alignment
-    /// key, re/im the energy-normalized complex prompt, and energy the ML combining weight.
-    /// `_recex` is the live ring (main thread); `_st_recex` its snapshot for REST.
-    /// PHASE-RATE SEARCH before the deep coherent sum (see the _deep_plain branch). Off by
-    /// default; _deep_rate_min_q is the peak/median the search must reach to be believed.
+    /// Phase-rate search before the deep plain sum (config deep_rate_search). A rate is applied
+    /// only when the spectrum's peak/median reaches _deep_rate_min_q, and only from bins within
+    /// +-_deep_rate_max_hz.
     bool _deep_rate = false;
     double _deep_rate_max_hz;
     double _deep_rate_min_q = 10.0;
     std::vector<float> _st_deep_rate, _st_deep_rate_q;
-    /// #40: the rate search's UNCAPPED argmax + q -- the carrier loop's measurement.
-    /// deep_rate_hz is the FOLD's pick and is clamped to deep_rate_max_hz; past the cap it
-    /// degrades to the best in-cap noise bin, which must never feed a loop.
+    /// The rate search's uncapped argmax (parabolically interpolated) and its q: the carrier
+    /// loop's measurement. deep_rate_hz is restricted to bins within deep_rate_max_hz, so a
+    /// residual beyond the cap reads as the best in-cap noise bin and must not feed a loop.
     std::vector<float> _st_deep_rate_full, _st_deep_rate_full_q;
 
-    /// COMMON-PHASE TRACKER before the deep coherent sum (the _deep_plain branch): the batch
-    /// form of the closed carrier loop the airspy chain had -- each record derotated by the
-    /// leave-one-out phase of its neighbours (gnss::phase_track_loo), which removes the
-    /// per-satellite ~0.9 rad propagation wander that capped every deep at ~11-14 sigma
-    /// (31896a862:docs/CHORD_GNSS_STATE.md 8.21). Self-excluded => fail-closed: pure noise cannot
-    /// be aligned. Candidates at several half-widths compete with the straight sum under the SAME
-    /// estimator (the optimal width is SNR-dependent: measured on synthetic AR(1) wander,
-    /// narrow wins bright, wide wins faint) and the floor pays the selection. Off by default.
+    /// Common-phase tracker before the deep plain sum (config phase_track): each record is
+    /// derotated by the leave-one-out phase of its neighbours (gnss::phase_track_loo), which
+    /// removes slow per-satellite phase wander. Candidates at each half-width in _pt_widths
+    /// compete with the straight sum under the same estimator (the best width depends on SNR),
+    /// and the floor pays for the selection.
     bool _phase_track = false;
-    bool _sky_deep = false; ///< use the record's split-aperture sky-corrected prompt as a deep
-                            ///< candidate (slots 24/25). OFF until the bound violation is closed.
-    std::vector<int> _pt_widths;     ///< half-widths tried (records); config
-    std::vector<float> _st_coh_frac; ///< |sum|/sum|.| of the WINNING deep stream --
-                                     ///< the chopping-independent coherence measure
-                                     ///< (quote THIS, not deep_snr: 8.20.24)
-    std::vector<float> _st_pt_hw;    ///< winning tracker half-width (0 = straight sum)
+    /// Score the record's sky-corrected prompt (slots 24/25) as one more deep candidate on the
+    /// deep_coherent path (config sky_deep).
+    bool _sky_deep = false;
+    std::vector<int> _pt_widths; ///< half-widths tried (records); config
+    /// |sum|/sum|.| of the winning deep stream (deep_coherent path only): a coherence measure
+    /// that, unlike deep_snr, does not scale with the record count.
+    std::vector<float> _st_coh_frac;
+    std::vector<float> _st_pt_hw; ///< winning tracker half-width (0 = straight sum, -1 = sky)
+    /// Per-record export for cross-node coherent combining (config record_export: ring length
+    /// per PRN; 0 = off). Each entry is [hop, re, im, energy] for one record: the absolute hop
+    /// is the exact cross-node alignment key, re/im the energy-normalized complex prompt, and
+    /// energy the ML combining weight. _recex is the live ring (main thread); _st_recex its
+    /// snapshot for REST.
     int _rec_export = 0;
     std::vector<std::vector<std::array<double, 4>>> _recex, _st_recex;
-    /// Append one record to the export ring, trimming to _rec_export. Kept independent of the
-    /// deep-wipe buffers deliberately: those are trimmed by _integration_length and skipped in
-    /// configs that do not wipe, and a ring that silently desyncs from its own hop labels would
-    /// be worse than no export at all.
+    /// Append one record to the export ring, trimming to _rec_export. Independent of the
+    /// deep-window buffers, which are trimmed by _integration_length and absent in configs that
+    /// do not wipe.
     void push_recex(int p, long long hop, double re, double im, double energy);
     std::vector<float> _st_head_frac; ///< boundary fraction f = <head energy>/<prompt energy>
     std::vector<float> _st_s4;        ///< amplitude scintillation index, thermal floor removed
@@ -437,99 +380,82 @@ private:
     std::vector<float> _st_sigma_phi; ///< carrier-phase jitter about the slope fit (rad)
     std::vector<float> _st_snr_q; ///< modulation-immune per-record SNR (quadrature noise); NaN n/a
     std::vector<float> _st_car_resid; ///< full-band carrier residual, Hz (shared carrier loop)
-    std::vector<float> _st_coh_s; ///< measured coherence: time span of the chosen deep window (s)
-                                  ///< -- 0 when NO ladder rung beat its rectification floor
-    std::vector<float> _st_deep_floor; ///< the reported rung's noise-rectification floor (sigma):
-                                       ///< deep_snr ~ this value means NO coherent detection
-    std::vector<float> _st_deep_pow;   ///< fixed-full-window noise-debiased coherent power (Hz):
-                                       ///< the map's unbiased coherent observable (mean 0 on noise)
-    std::vector<float> _st_peel_deep;  ///< deep |A| of the PEEL RESIDUAL (0 when not peeling):
-                                       ///< peel_depth_db = 20*log10(deep_amplitude/peel_deep)
+    /// Coherence time: span (s) of the chosen deep window; 0 when no ladder rung cleared its
+    /// floor.
+    std::vector<float> _st_coh_s;
+    /// Noise-rectification floor (a significance) of the reported rung; deep_snr near it means
+    /// no coherent detection.
+    std::vector<float> _st_deep_floor;
+    /// Noise-debiased coherent power (Hz) over the full window, with no ladder and no detection
+    /// gate, so an average over emits stays unbiased at weak signal (~0 mean on noise). Not
+    /// computed on the combined overlay and nav-bit path.
+    std::vector<float> _st_deep_pow;
+    std::vector<float> _st_peel_deep;  ///< deep |A| of the peel residual (0 when not peeling)
     std::vector<float> _st_peel_incoh; ///< incoherent |A| of the peel residual
-    std::vector<float> _st_peel_deep_snr; ///< the residual deep's SIGNIFICANCE -- compare against
-                                          ///< deep_floor (same units) for the at-floor test;
-                                          ///< peel_deep vs deep_floor is a UNITS ERROR
-    // ---- Accumulated carrier phase (ADR): the precise ranging / TEC observable.
-    // Reconstructed per RECORD as Phi_cmd (tracker, record slot 15) + arg(A)/2pi, accumulated
-    // in increments so both ambiguities cancel (see the block in main_thread). Continuous
-    // across f_ref re-pins by construction; an arc BREAKS on any gap or inactive record,
-    // because unobserved whole cycles are unknowable. Each arc carries its own integer
-    // ambiguity, so each begins at zero and downstream levels it against the code phase.
-    std::vector<double> _trim_cyc; ///< commanded-trim integral this arc (cycles; slot 19 --
-                                   ///< same arc lifecycle as _adr_cyc so downstream can
-                                   ///< subtract exactly; docs/adr_trim_subtraction.md)
-    std::vector<double> _adr_cyc;  ///< accumulated carrier phase this arc (cycles; DOUBLE --
-                                   ///< float32 would quantize ~1e6 cycles to 0.06)
-    /// #33 PLL fine observable: the RESIDUAL half of the ADR alone -- sum of the measured
-    /// per-record residual increments (dres), same arc lifecycle as _adr_cyc. Its
-    /// per-poll difference over the record count is a mHz-class carrier-rate measurement
-    /// (dres is memoryless and fold-proof at converged residuals: ~3e-3 cyc/record against
-    /// a +-0.25 window), with none of adr_cycles' (huge commanded integral) transport risk.
+    /// Significance of the residual deep: compare this, not the amplitude peel_deep, against
+    /// deep_floor.
+    std::vector<float> _st_peel_deep_snr;
+
+    // Accumulated carrier phase (ADR), built per record from increments of
+    // Phi_rx = Phi_cmd - arg(A)/2pi (gnssRecord.hpp): Phi_cmd's increment arrives in slot 15
+    // and arg(A)'s comes from a cross-record phase product, so neither needs unwrapping. An arc
+    // breaks on an inactive record or a record spacing of 50 ms or more, because unobserved
+    // whole cycles are unknowable (a shorter gap is spanned by the product); each arc starts at
+    // zero with its own integer ambiguity.
+    std::vector<double> _trim_cyc; ///< commanded-trim integral this arc (cycles, slot 19), on
+                                   ///< _adr_cyc's arc so downstream can subtract it
+    std::vector<double> _adr_cyc;  ///< accumulated carrier phase this arc (cycles; double, as
+                                   ///< float32 would quantize ~1e6 cycles to ~0.06)
+    /// Residual half of the ADR alone: the sum of the measured per-record increments (dres) on
+    /// _adr_cyc's arc. Its change over a poll divided by the record count is a fine
+    /// carrier-rate measurement free of the large commanded integral.
     std::vector<double> _res_cyc;
-    std::vector<double> _st_res;       ///< REST snapshot of _res_cyc, at emit
-    std::vector<double> _adr_cph_prev; ///< previous record's commanded phase (cycles mod 1)
-    std::vector<double> _adr_rate;     ///< commanded-phase rate (Hz) -- the unwrap predictor. The
-                                       ///< reported Doppler errs by 2*trim, which at a 10 ms B1C
-                                       ///< record is 2 whole cycles: it would unwrap to the wrong
-                                       ///< integer and never come back.
-    std::vector<double> _adr_t0;       ///< arc start capture-UTC (lock time = utc - t0)
-    std::vector<int> _adr_arc;         ///< arc id: ++ on every continuity break (slip counter)
-    std::vector<int> _adr_n;           ///< records accumulated in this arc
-    std::vector<uint8_t> _adr_ok;      ///< phase continuity currently held
-    std::vector<double> _st_utc;       ///< CAPTURE UTC of the emit these snapshots belong to --
-                                       ///< the epoch every observable is tagged with. Wall-clock
-                                       ///< at poll time is NOT it (pipeline latency + emit
-                                       ///< cadence jitter): differencing phase against wall time
-                                       ///< injects f*dt_jitter, ~6 Hz on a 2 kHz Doppler at 0.1 s
-                                       ///< of jitter -- which is exactly what the first ADR
-                                       ///< acceptance run measured before this field existed.
-    std::vector<double> _st_adr;       ///< REST snapshots of the above, at emit
-    std::vector<double> _st_trim;      ///< REST snapshot of _trim_cyc, at emit
+    std::vector<double> _st_res; ///< REST snapshot of _res_cyc, at emit
+    std::vector<double> _adr_cph_prev;
+    std::vector<double> _adr_rate;
+    std::vector<double> _adr_t0;  ///< arc start capture-UTC (lock time = utc - t0)
+    std::vector<int> _adr_arc;    ///< arc id: ++ on every continuity break (slip counter)
+    std::vector<int> _adr_n;      ///< records accumulated in this arc
+    std::vector<uint8_t> _adr_ok; ///< phase continuity currently held
+    /// Capture UTC of the emit these snapshots belong to, the epoch every observable is tagged
+    /// with. The wall clock at poll time is not it: pipeline latency and emit jitter would enter
+    /// any phase difference as f*dt_jitter (~6 Hz on a 2 kHz Doppler at 0.1 s of jitter).
+    std::vector<double> _st_utc;
+    std::vector<double> _st_adr;  ///< REST snapshot of _adr_cyc, at emit
+    std::vector<double> _st_trim; ///< REST snapshot of _trim_cyc, at emit
     std::vector<double> _st_adr_lock;
     std::vector<int> _st_adr_arc, _st_adr_n;
 
     std::vector<int> _dr_phase;  ///< dead-reckon anchor: overlay phase at _dr_utc (-1 = none)
     std::vector<double> _dr_utc; ///< dead-reckon anchor capture-UTC (the winning rung's start)
     std::vector<int> _dr_prn;    ///< PRN the anchor belongs to (slot reassignment invalidates)
-    std::vector<double>
-        _dr_rec_dt; ///< record period (s) measured at the anchor emit -- projects
-                    ///< the overlay chip index of any LATER record so the ADR path
-                    ///< can de-rotate the overlay per-record (accumulation time,
-                    ///< before the next emit's alignment search). 0 = no anchor yet.
-    // ADR overlay-wipe path: the previous record's overlay-corrected (de-rotated) amplitude,
-    // so consecutive records form a PLAIN product (no squaring). Reduces to the squared path
-    // whenever no anchor is available (arc start before the first locked emit, or a re-seed).
+    /// Mean record spacing (s) over the anchor emit's winning rung, used to project the overlay
+    /// chip index of any later record (ADR wipe, bit_pred). 0 = no anchor.
+    std::vector<double> _dr_rec_dt;
+    // ADR overlay wipe: the previous record's de-rotated amplitude, so consecutive records form
+    // a plain product. Without an anchor (arc start, re-seed) the squared product is used.
     std::vector<std::complex<double>> _adr_vprev;
-    std::vector<uint8_t> _adr_vprev_ok; ///< _adr_vprev is valid + continuous with this record
+    std::vector<uint8_t> _adr_vprev_ok; ///< _adr_vprev is valid and continuous with this record
 
-    /// K-RECORD SMOOTHED-VECTOR ADR (adr_smooth_records, 2026-07-22: the fold-walk fix).
-    /// The per-1ms-record cross-record product folds (+-0.5-cycle ambiguity) during low-|A|
-    /// records and random-walks the ADR: measured 26.5 m live vs 1.17 m in the same records'
-    /// smoothed phase (G26, then C33 8h cross-constellation confirm; ratio 37-84x). With
-    /// _adr_smooth = K > 1 (overlay pilots with a live anchor only), de-rotated records
-    /// accumulate into K-record block vectors and the ADR increment comes from the
-    /// cross-BLOCK product: noise folds need ~sqrt(K) more phase noise, while the residual-
-    /// frequency fold margin (+-0.5 cyc per K records) stays >= 25 Hz at K=20 -- above the
-    /// 17 Hz worst-case transient. Anchor loss / gaps break the arc honestly (no mode mixing).
-    int _adr_smooth = 1; ///< records per ADR block (1 = legacy per-record product)
+    /// K-record block ADR (config adr_smooth_records = K > 1; overlay pilots with a live anchor
+    /// only). A per-record product folds by +-0.5 cycle on low-|A| records and random-walks the
+    /// ADR; here de-rotated records accumulate into K-record block vectors and the increment is
+    /// the cross-block product, which needs ~sqrt(K) more phase noise to fold. The product is
+    /// memoryless, with a residual-frequency margin of +-0.5 cycle per block. Anchor loss or a
+    /// 50 ms gap breaks the arc.
+    int _adr_smooth = 1; ///< records per ADR block (1 = per-record product)
     std::vector<std::complex<double>> _adr_blk_v;    ///< current block's de-rotated vector sum
     std::vector<double> _adr_blk_dcmd;               ///< commanded-phase sum since last block close
     std::vector<int> _adr_blk_n;                     ///< records in the current block
     std::vector<std::complex<double>> _adr_blk_prev; ///< previous closed block vector
     std::vector<uint8_t> _adr_blk_prev_ok;
     std::vector<double> _adr_blk_prev_utc;
-    /// Rate-predicted block unwrap (v2, 2026-07-22 morning): the first soak showed the raw
-    /// block product's +-0.5-cycle-per-block margin (+-25 Hz at K=20) is EXCEEDED by the
-    /// standing 13-25 Hz carrier residuals some L5-band sats carry (strong sats included --
-    /// a loop-health question, not SNR). Unwrapping each block product around an EMA of the
-    /// recent block rate tolerates any STEADY residual; only a rate CHANGE > half a cycle
-    /// per block between consecutive blocks (~>2500 Hz/s at K=10) could still fold.
-    std::vector<double> _adr_blk_rate; ///< EMA of the block-to-block residual step (cycles)
+    std::vector<double> _adr_blk_rate;
     std::vector<uint8_t> _adr_blk_rate_ok;
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
 
-
+    /// Guards the _st_* snapshots and the ingestion clock; REST reads them from its own thread.
     std::mutex _st_mtx;
 };
 

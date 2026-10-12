@@ -3,7 +3,7 @@
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
 #include "chordMetadata.hpp"
-#include "gnssChanPower.hpp" // for ChanPower (#163)
+#include "gnssChanPower.hpp" // for ChanPower
 #include "kotekanLogging.hpp"
 #include "prometheusMetrics.hpp"
 #include "visUtil.hpp" // for frameID
@@ -35,8 +35,7 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
     _n_hops = config.get<int>(unique_name, "samples_per_data_set");
     _fft_length = config.get_default<int>(unique_name, "fft_length", 16384);
 
-    // ── #8: RF-PATH HEALTH. Absent `band_power_chans` = OFF, and OFF means the pass below
-    // never executes -- not "runs and reports nothing". The generator arms this.
+    // RF-path health: with `band_power_chans` absent, the pass in main_thread never runs.
     _bp_chans = config.get_default<std::vector<int>>(unique_name, "band_power_chans", {});
     _bp_period_s = config.get_default<double>(unique_name, "band_power_period_s", 10.0);
     _bp_hop_stride = config.get_default<int>(unique_name, "band_power_hop_stride", 32);
@@ -61,18 +60,10 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
         FATAL_ERROR("GnssChordVoltageTap: elements [{:d}, {:d}) outside the frame's {:d}",
                     elem0_cfg, elem0_cfg + _n_elements, _frame_elem_stride);
 
-    // ---- LIVE ELEMENT SELECTION + LIVENESS -------------------------------------------------
-    // Antennas come and go. On 2026-08-07 element 0 -- the search's reference -- was dark, and
-    // because the search correlates a SINGLE element it despread literal zeros for a whole
-    // session: no detections, and a best peak BELOW the pure-noise ceiling. Diagnosing that
-    // meant dumping a buffer and decoding base64 by hand; re-pointing it meant regenerating
-    // seven configs and restarting six nodes. Both should be one request.
-    //
-    // set_element re-points the tap. element_power reports MEAN POWER PER ELEMENT over the last
-    // frame this tap copied, which is what "which antennas are alive?" actually asks. Note the
-    // deliberate limit: power distinguishes DARK from NOT-DARK, and nothing more. A
-    // self-oscillating amplifier is loud, not silent, so a healthy-looking power is necessary
-    // and not sufficient -- judge a candidate by the SEARCH SNR it yields, not by this number.
+    // set_element re-points the tap at runtime, so a dark element can be replaced without a
+    // config change. element_power reports mean power per element over the last frame this
+    // tap copied. Power separates dark from live and nothing more: a self-oscillating amplifier
+    // is loud, so judge a candidate element by the search SNR it gives.
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_element",
         [this, unique_name](kotekan::connectionInstance& conn, nlohmann::json& json) {
@@ -104,54 +95,43 @@ GnssChordVoltageTap::GnssChordVoltageTap(Config& config, const std::string& uniq
         unique_name + "/element_power", [this](kotekan::connectionInstance& conn) {
             nlohmann::json r;
             std::lock_guard<std::mutex> lk(_pow_lock);
-            r["element_power"] = _elem_power; // index = ABSOLUTE element, not tap-relative
+            r["element_power"] = _elem_power; // indexed by absolute element, not tap-relative
             r["element_offset"] = _element_offset.load();
             r["frames"] = _pow_frames;
             conn.send_json_reply(r);
         });
 
-    // ── #8: GET <unique_name>/rf_stats -- "is the RF path healthy, and in WHICH band?" ─────
-    // Deliberately a NEW endpoint rather than extra keys on element_power: that one has a
-    // consumer (scripts/gnss/site/elemsweep.py) and a documented contract, and widening a served
-    // shape under a live reader is how the C/N0 pairing bugs happened.
-    //
-    // `cost_ms` is served on purpose. The whole safety argument for this feature is that a
-    // decimated in-place pass is cheap; a number that says so is worth more than my estimate
-    // of it, and if it ever grows this is where it shows.
+    // GET <unique_name>/rf_stats: band power and clipping of the monitored channels. A separate
+    // endpoint so that element_power, which scripts/gnss/site/elemsweep.py reads, keeps its
+    // shape. cost_ms is the measured wall time of the last pass, which must stay small because
+    // it holds the input frame.
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/rf_stats", [this](kotekan::connectionInstance& conn) {
             nlohmann::json r;
             std::lock_guard<std::mutex> lk(_rf_lock);
             r["enabled"] = !_bp_chans.empty();
-            r["chans"] = _bp_chans; // LOCAL channel indices, as configured
-            // ⚠️ THE ONE FIELD THAT MAKES A LOBE NAMEABLE, and it comes from the FRAME, not
-            // the config. Local comb position has no meaning off the node: nodes hold
-            // different channel subsets, so local 296 is 1227.34 MHz here and something else
-            // next door. The consumer used to key rows by lobe INDEX and assume order was
-            // stable across instances -- true while the fleet ran two well-separated bands,
-            // false the moment gps_l2c (one channel) and the abutting bds_b3i/gal_e6 runs
-            // arrived: index 2 was L2C on five instances and B3I+E6 on the other seven, and
-            // the panel medianed power across two different bands in one row. Parallel to
-            // `chans`; empty if no chord-metadata frame has been measured yet, which the
-            // consumer must treat as "unknown", never as freq_id 0.
+            r["chans"] = _bp_chans; // local channel indices, as configured
+            // From the frame's chord metadata, not the config: nodes hold different channel
+            // subsets, so only the absolute freq_id names a band off the node. Parallel to
+            // `chans`; empty until a chord-metadata frame has been measured, which a consumer
+            // must read as unknown, never as freq_id 0.
             r["freq_ids"] = _bp_freq_ids;
             r["power"] = _bp_power;         // mean |x|^2 per monitored channel
             r["clip_lo"] = _bp_clip_lo;     // fraction of nibbles at -8, per channel
             r["clip_hi"] = _bp_clip_hi;     // fraction at +7, per channel
-            r["elem_power"] = _bp_elem_pow; // per ABSOLUTE element, over the monitored set
-            r["elem_clip"] = _bp_elem_clip; // per ABSOLUTE element, (lo+hi)
+            r["elem_power"] = _bp_elem_pow; // per absolute element, over the monitored set
+            r["elem_clip"] = _bp_elem_clip; // per absolute element, fraction at -8 or +7
             r["passes"] = _bp_passes;
             r["period_s"] = _bp_period_s;
             r["hop_stride"] = _bp_hop_stride;
             r["cost_ms"] = _bp_cost_ms;
-            r["fpga_seq"] = _bp_seq; // WHICH frame this describes -- one frame, not
-                                     // an average over the period
+            r["fpga_seq"] = _bp_seq; // the one frame these figures describe
             r["age_s"] = _bp_last_s > 0.0 ? current_time() - _bp_last_s : -1.0;
             conn.send_json_reply(r);
         });
 
-    // Both frames are sized by config with nothing linking them to these strides; a stale value
-    // means reading or writing past the end. Die at construction instead.
+    // Frame sizes come from the buffer config, independently of these strides; check them here
+    // rather than read or write past the end of a frame.
     const size_t in_need =
         (size_t)_n_hops * _frame_chan_stride * _frame_elem_stride; // 1 byte per complex sample
     const size_t out_need = (size_t)_n_hops * _chan_ids.size() * _n_elements;
@@ -182,27 +162,17 @@ void GnssChordVoltageTap::main_thread() {
         if (in == nullptr)
             break;
 
-        // ── #8: RF-PATH HEALTH, LOW CADENCE ─────────────────────────────────────────────
-        // At most one pass per _bp_period_s, reading a decimated slice of the frame we are
-        // ALREADY holding.
+        // RF-path health: at most one pass per _bp_period_s, over a decimated slice of the
+        // frame already held.
         //
-        // ⚠️ DELIBERATELY ABOVE THE DROP CHECK. This measures the RF PATH, which is upstream
-        // of and independent of whether the GNSS branch can keep up -- and a branch that is
-        // backing up is exactly when you most want to know whether the input still looks sane.
-        // Placed below the drop, the monitor would go blind in precisely the situation it
-        // exists to describe, and would do so silently.
+        // The pass sits above the drop check because it measures the RF path, which does not
+        // depend on whether the GNSS branch keeps up; below the drop it would go blind exactly
+        // when the branch is backing up.
         //
-        // ⚠️ WE DELIBERATELY DO NOT COPY THE FRAME OUT FIRST, and that is the CHEAP choice
-        // rather than a corner cut. The instinct is "copy, release, compute at leisure" -- but
-        // a frame here is 8192 x 384 x 128 = 402 MB, so the copy alone is ~40 ms of DRAM
-        // traffic against a 41.94 ms frame period: one frame's worth of memory bandwidth, per
-        // pass, to avoid holding the frame. The decimated read below touches
-        // n_chans x n_elem x (n_hops / stride) bytes -- ~0.5 MB at the defaults, ~1000x less --
-        // so computing in place holds the frame for far LESS time than copying it would.
-        // The frame is marked empty immediately after this block either way.
-        //
-        // The cost is served as cost_ms rather than asserted here. Measure the statistic before
-        // trusting the loop it lives in.
+        // It reads the frame in place rather than copying it out: copying a 402 MB frame takes
+        // about one frame period of memory bandwidth, while the decimated read touches
+        // n_chans x n_elem x (n_hops / stride) bytes, 32 KB per channel for 128 elements and
+        // 8192 hops at the default stride. Its wall time is served as rf_stats cost_ms.
         if (!_bp_chans.empty()) {
             const double t_now = current_time();
             if (_bp_last_s == 0.0 || t_now - _bp_last_s >= _bp_period_s) {
@@ -212,14 +182,14 @@ void GnssChordVoltageTap::main_thread() {
                 std::vector<double> pw((size_t)nbc, 0.0), clo((size_t)nbc, 0.0),
                     chi((size_t)nbc, 0.0);
                 std::vector<double> epw((size_t)nel, 0.0), ecl((size_t)nel, 0.0);
-                std::vector<double> pwe((size_t)nbc * nel, 0.0); // [chan][elem], for #163
+                std::vector<double> pwe((size_t)nbc * nel, 0.0); // [chan][elem], for ChanPower
                 long nhop = 0;
                 for (int m = 0; m < _n_hops; m += _bp_hop_stride) {
                     const size_t hop = (size_t)m * _frame_chan_stride * _frame_elem_stride;
                     for (int ci = 0; ci < nbc; ++ci) {
                         const uint8_t* row = in + hop + (size_t)_bp_chans[ci] * _frame_elem_stride;
                         for (int e = 0; e < nel; ++e) {
-                            // 4+4b offset encoding, same decode as element_power above:
+                            // 4+4b offset encoding:
                             // real = high nibble - 8, imag = low nibble - 8, both in [-8, +7].
                             const uint8_t byte = row[e];
                             const int re = (int)(byte >> 4) - 8;
@@ -228,10 +198,9 @@ void GnssChordVoltageTap::main_thread() {
                             pw[(size_t)ci] += p;
                             epw[(size_t)e] += p;
                             pwe[(size_t)ci * nel + e] += p;
-                            // THE RAILS ARE COUNTED APART, and -8 is not pedantry: it is the
-                            // value n2k's negate_4bit silently corrupts (CorrelatorKernel.hpp),
-                            // so a run of -8 is a CORRECTNESS hazard where a run of +7 is only
-                            // a headroom one. A single "clip fraction" would hide that.
+                            // The rails are counted apart: -8 is outside the range n2k's
+                            // negate_4bit handles (CorrelatorKernel.hpp), so -8 is a correctness
+                            // hazard for the N^2 correlator, where +7 only marks lost headroom.
                             const int lo = (re == -8) + (im == -8);
                             const int hi = (re == 7) + (im == 7);
                             clo[(size_t)ci] += lo;
@@ -242,7 +211,7 @@ void GnssChordVoltageTap::main_thread() {
                     ++nhop;
                 }
                 if (nhop > 0) {
-                    // Two nibbles per sample, so a clip FRACTION divides by 2x the sample count.
+                    // Two nibbles per sample, so a clip fraction divides by 2x the sample count.
                     const double n_per_chan = (double)nhop * (double)nel;
                     const double n_per_elem = (double)nhop * (double)nbc;
                     for (int ci = 0; ci < nbc; ++ci) {
@@ -260,14 +229,11 @@ void GnssChordVoltageTap::main_thread() {
                         auto md = get_chord_metadata(in_buf, in_id);
                         if (md != nullptr && md->has_fpga_seq_num())
                             seq = md->get_fpga_seq_num();
-                        // ABSOLUTE freq_id per monitored channel, from the frame we just
-                        // measured. coarse_freq is indexed by LOCAL comb position, which is
-                        // exactly what _bp_chans holds, so this is a lookup and not a
-                        // conversion -- no gpu_offsets_mod16 arithmetic to get wrong (the
-                        // generator's rf_monitor_channels docstring is the record of how easy
-                        // the two axes are to conflate). Bounds-checked against the frame's
-                        // own nfreq rather than assumed: publish nothing rather than a wrong
-                        // identity, since a wrong band name is worse than no band name.
+                        // Absolute freq_id per monitored channel, from the frame just
+                        // measured. coarse_freq is indexed by local channel position, as
+                        // _bp_chans is, so this is a lookup with no comb arithmetic. Unless
+                        // every entry is in range, publish nothing: a wrong band name is worse
+                        // than none.
                         if (md != nullptr && md->has_coarse_freq()) {
                             const std::vector<int> cf = md->get_coarse_freq();
                             bool ok = true;
@@ -284,8 +250,8 @@ void GnssChordVoltageTap::main_thread() {
                     if (!fids.empty())
                         _bp_freq_ids.swap(fids); // keep the last known map if this frame had none
                     _bp_power.swap(pw);
-                    // #163: the assemblers weight their cross-channel sums by this power, per
-                    // element so each can average over the inputs it actually sums.
+                    // GnssGpuRecordAssemble weights its cross-channel sums by this power, kept
+                    // per element so it can average over the inputs it actually sums.
                     if ((int)_bp_freq_ids.size() == nbc) {
                         for (double& v : pwe)
                             v /= (double)nhop;
@@ -304,9 +270,8 @@ void GnssChordVoltageTap::main_thread() {
         }
 
 
-        // DROP RATHER THAN BLOCK. This is the whole reason the tap owns the valve behaviour:
-        // in_buf is produced by the production pipeline, so waiting here for a downstream GNSS
-        // stage would hold the frame and back-pressure the F-engine ingest.
+        // Drop rather than block: in_buf belongs to the science pipeline, so waiting here for a
+        // downstream GNSS stage would hold the frame and back-pressure the F-engine ingest.
         if (!out_buf->is_frame_empty(out_id)) {
             ++n_dropped;
             if (n_dropped == 1 || n_dropped % 100 == 0)
@@ -324,8 +289,8 @@ void GnssChordVoltageTap::main_thread() {
 
         // [hop][frame_chan][elem] -> [hop][chan][elem]. The element run is contiguous in both,
         // so each (hop, channel) is a single memcpy of n_elements bytes.
-        const int elem_off = _element_offset.load(); // one read: a mid-frame change is fine,
-                                                     // but must not split THIS frame's copy
+        const int elem_off = _element_offset.load(); // read once, so set_element cannot split
+                                                     // this frame's copy
         for (int m = 0; m < _n_hops; ++m) {
             const size_t in_hop = (size_t)m * _frame_chan_stride * _frame_elem_stride;
             const size_t out_hop = (size_t)m * n_chan * _n_elements;
@@ -335,11 +300,11 @@ void GnssChordVoltageTap::main_thread() {
                             (size_t)_n_elements);
         }
 
-        // PER-ELEMENT POWER over the WHOLE input frame -- every element, not just the tapped
-        // ones, because the question this answers is "where should I point the tap?". Sampled
-        // every _pow_stride'th hop on the first channel: ~250 hops of 8192 is a 0.2% cost and
-        // still 1750 samples per element, far more than needed to separate dark from live.
-        // 4+4b offset encoding: real = high nibble - 8, imag = low nibble - 8.
+        // Per-element power over every element of the input frame, not only the tapped ones,
+        // so element_power shows where the tap could point. Sampled every _pow_stride'th hop
+        // on the first tapped channel (256 samples per element at 8192 hops), enough to
+        // separate dark from live. 4+4b offset encoding: real = high nibble - 8,
+        // imag = low nibble - 8.
         {
             std::vector<double> pw((size_t)_frame_elem_stride, 0.0);
             long nsamp = 0;
@@ -363,8 +328,8 @@ void GnssChordVoltageTap::main_thread() {
         }
 
         // CHORD counts 5.12 us PFB frames; the GNSS chain anchors replicas to an absolute
-        // pre-channelization SAMPLE index. One multiply, done here so nothing downstream has to
-        // know CHORD's convention.
+        // pre-channelization sample index. Converted here so nothing downstream needs CHORD's
+        // convention; -1 when the frame carries no fpga_seq_num.
         out_buf->allocate_new_metadata_object(out_id);
         GnssChanMetadata* out_md = get_gnss_chan_metadata(out_buf, out_id);
         out_md->sample_seq = -1;

@@ -72,8 +72,7 @@ void GnssTelemGather::accept_loop() {
         if (fd < 0)
             continue;
         int one = 1;
-        // Frames are 16 kB and the reader wants them promptly; Nagle would coalesce them into
-        // the next write's latency for no benefit on a local link.
+        // Each frame should go out as soon as it is written; Nagle would only add latency.
         ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
         {
             std::lock_guard<std::mutex> lk(_client_mtx);
@@ -134,8 +133,6 @@ void GnssTelemGather::broadcast(const uint8_t* frame, size_t n) {
 }
 
 void GnssTelemGather::main_thread() {
-    // Listener first, so a broker that starts before us just retries rather than seeing a
-    // half-open port.
     _listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (_listen_fd < 0) {
         FATAL_ERROR("GnssTelemGather[{:s}]: socket(): {:s}", unique_name, strerror(errno));
@@ -161,10 +158,8 @@ void GnssTelemGather::main_thread() {
 
     frameID in_id(in_buf);
     while (!stop_thread) {
-        // TIMED WAIT, not a blocking one. Nothing here waits ON a sender -- the gather has no
-        // barrier -- but a plain wait_for_full_frame only wakes when a frame ARRIVES, so a
-        // fleet that goes completely silent would leave this stage parked with nothing in the
-        // log. The timeout is the heartbeat that lets sweep_stale() run and say so.
+        // Timed wait: a fleet that goes silent delivers no frames, and the timeout is the
+        // heartbeat that lets sweep_stale() report it and reap_clients() run.
         struct timespec deadline;
         clock_gettime(CLOCK_REALTIME, &deadline);
         deadline.tv_sec += 1;
@@ -181,12 +176,10 @@ void GnssTelemGather::main_thread() {
             break;
 
         const auto* h = (const gnss::TelemHeader*)frame;
-        // A sender built against a different record layout, or something that is not one of our
-        // frames at all, must be REJECTED rather than forwarded: the broker would parse the
-        // rows at the wrong stride and every number it produced would be plausible and wrong.
-        // Senders have DIFFERENT frame sizes (each ships its own PRN rows and comb columns),
-        // so the buffer is sized to the widest and the header says how much of it is this
-        // frame. Both halves are checked: self-consistent shape, and it fits the buffer.
+        // Reject anything that is not a frame of this record layout: the broker would read its
+        // rows at the wrong stride. Senders' frame sizes differ (their own PRN rows and comb
+        // columns), so the buffer is sized to the widest and the header gives this frame's
+        // size; check that the shape is self-consistent and fits the buffer.
         const size_t wire_bytes = gnss::telem_frame_bytes(*h);
         const bool ok = h->magic == gnss::TELEM_MAGIC && h->version == gnss::TELEM_VERSION
                         && gnss::telem_shape_ok(*h, wire_bytes)
@@ -209,9 +202,8 @@ void GnssTelemGather::main_thread() {
             const std::string inst(h->inst, strnlen(h->inst, gnss::TELEM_NAME));
             std::lock_guard<std::mutex> lk(_stat_mtx);
             Sender& s = _senders[chain + "/" + inst];
-            // SEQUENCE GAPS, not a rate. A sender missing every fourth frame still shows a
-            // healthy-looking rate; the sender's own counter is the only thing that can say a
-            // frame was lost, and it is on the wire for exactly this reason.
+            // Loss is counted from the sender's own sequence counter; a rate can look healthy
+            // while frames are missing.
             if (s.frames > 0 && h->seq > s.last_seq + 1)
                 s.gaps += h->seq - s.last_seq - 1;
             s.frames++;
@@ -227,9 +219,8 @@ void GnssTelemGather::main_thread() {
             }
         }
 
-        // The frame's own bytes, not the buffer's: forwarding the buffer's ceiling would push
-        // a narrow sender's padding down the local stream and make every reader's length
-        // prefix disagree with the shape its header declares.
+        // Forward the frame's own size, not the buffer's: a narrower sender's frame is followed
+        // by padding here, and the length prefix must match the header's shape.
         broadcast(frame, gnss::telem_frame_bytes(*h));
         in_buf->mark_frame_empty(unique_name, in_id++);
         sweep_stale();
@@ -238,13 +229,6 @@ void GnssTelemGather::main_thread() {
 }
 
 void GnssTelemGather::reap_clients() {
-    // ⚠️ A CLIENT THAT GOES AWAY MUST BE NOTICED WITHOUT A WRITE. Dropping clients on a failed
-    // send is enough only while frames flow: with the fleet down there is nothing to broadcast,
-    // so a peer's FIN was never observed and its socket sat in CLOSE_WAIT forever. The broker
-    // reconnects on a timer when it is receiving nothing, which turned that into a steady leak
-    // -- ~100 dead fds an hour -- until accept() failed with EMFILE and the gather stopped
-    // serving anything at all, REST included, with the fleet coming back up. The soft limit is
-    // the second half of that story and belongs in the launcher; this is the leak itself.
     const double now = current_time();
     if (now - _last_reap < 1.0)
         return; // polls every client fd, and the frame path calls this at frame rate
@@ -262,7 +246,7 @@ void GnssTelemGather::reap_clients() {
         for (int fd : _clients)
             pfds.push_back({fd, (short)(POLLIN | POLLRDHUP), (short)0});
         if (::poll(pfds.data(), pfds.size(), 0) <= 0)
-            return; // nobody is readable or hung up: every client is alive and quiet
+            return; // every client is alive and quiet
         for (const auto& pfd : pfds) {
             if (pfd.revents == 0)
                 continue;
@@ -270,9 +254,8 @@ void GnssTelemGather::reap_clients() {
                 gone.push_back(pfd.fd);
                 continue;
             }
-            // Readable. This stream is one-way -- a client never sends -- so PEEK to tell an
-            // orderly close (0) from a client that is talking out of turn, which is a
-            // desynchronised reader and no safer to keep than a dead one.
+            // Readable. The stream is one-way, so peek to tell an orderly close (0) or an error
+            // from stray bytes a client sent; a client that has sent data is kept.
             char b;
             const ssize_t r = ::recv(pfd.fd, &b, 1, MSG_PEEK | MSG_DONTWAIT);
             if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK))
@@ -286,8 +269,7 @@ void GnssTelemGather::reap_clients() {
         left = (int)_clients.size();
         reaped = _client_hangups;
     }
-    // Logged outside the lock, with the counts READ INSIDE it: the accept thread can add a
-    // client between the two, and a log line is not worth a race on the vector.
+    // Logged outside the lock, with the counts read under it.
     for (int fd : gone)
         INFO("GnssTelemGather[{:s}]: reaped client fd {:d} -- its peer closed. {:d} reaped so "
              "far; {:d} client(s) remain.",
@@ -310,9 +292,7 @@ void GnssTelemGather::sweep_stale() {
             }
         }
     }
-    // Logged OUTSIDE the lock, and once per transition rather than per sweep -- the same
-    // join/leave idiom GnssChanAlignMerge uses for an absent input. A line per second per dead
-    // sender would bury the event that matters.
+    // Logged outside the lock, once per transition rather than once per sweep.
     for (const auto& k : went)
         WARN("GnssTelemGather[{:s}]: {:s} has sent nothing for {:.1f} s -- excluding it from the "
              "alignment verdict. NOTHING BLOCKS ON IT: this stage has no barrier, so the rest of "
@@ -327,16 +307,10 @@ void GnssTelemGather::stats_callback(kotekan::connectionInstance& conn) {
     {
         std::lock_guard<std::mutex> lk(_stat_mtx);
         nlohmann::json senders = nlohmann::json::array();
-        // THE ALIGNMENT CHECK, served rather than inferred: every sender's most recent window
-        // index, side by side. Equal (or within one) across a chain is the transport working;
-        // a spread is the thing this stage exists to make visible.
-        //
-        // ⚠️ THE VERDICT IS OVER LIVE SENDERS ONLY, and that is not a cosmetic choice. A sender
-        // that stopped keeps its last window forever, so a single dead instance drives the raw
-        // spread to the number of windows since it died -- 984 within a minute, on 2026-08-14,
-        // while the nine live instances sat at spread 1. Reported raw, this metric would cry
-        // wolf on every instance death and be ignored by the second week. Stale senders are
-        // listed separately, by name, because "who left" is the actionable half.
+        // Per-chain alignment: the spread of the latest window index across the chain's live
+        // senders, 0 or 1 when the transport is healthy. Stale senders are left out, since a
+        // stopped sender keeps its last window and would inflate the spread by the time since
+        // it stopped; they are listed by name instead.
         std::map<std::string, std::vector<const Sender*>> live, dead;
         for (const auto& kv : _senders) {
             const std::string chain = kv.first.substr(0, kv.first.find('/'));
@@ -375,9 +349,7 @@ void GnssTelemGather::stats_callback(kotekan::connectionInstance& conn) {
                                 {"all_slots_present", all_present == 0xfu || all_present == 0xffu},
                                 {"stale", stale_keys}};
         }
-        // A chain whose senders are ALL stale has no live entry above, so name it here or it
-        // vanishes from the report entirely -- silence reading as health is the failure mode
-        // this endpoint exists to prevent.
+        // A chain whose senders are all stale has no entry above; report it with live 0.
         for (const auto& kv : dead)
             if (!live.count(kv.first)) {
                 nlohmann::json stale_keys = nlohmann::json::array();

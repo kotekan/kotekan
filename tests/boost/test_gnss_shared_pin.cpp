@@ -16,7 +16,7 @@ namespace {
 
 constexpr double DEG = M_PI / 180.0;
 
-// One pol half of an instrument: 16 elements with distinct amplitudes and phases.
+// A random instrument: n elements with distinct amplitudes and phases (16 is one pol half).
 std::vector<cd> instrument(int n, unsigned seed) {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<double> ph(-M_PI, M_PI), amp(0.5, 1.5);
@@ -59,8 +59,8 @@ BOOST_AUTO_TEST_CASE(a_first_model_is_pinned_in_full) {
 }
 
 BOOST_AUTO_TEST_CASE(a_warm_model_slews_and_never_steps) {
-    // cx27 GPU0 L5 on 2026-10-06: 139 deg off the fleet. At 1 deg per 1-s consensus update it
-    // must arrive in 139 updates, each step at most 1 deg, the offset falling monotonically.
+    // 139 deg off F at 1 deg per consensus update: it must arrive in 139 updates, each step at
+    // most 1 deg, the offset falling monotonically.
     const auto F = instrument(16, 3);
     auto G = rotated(F, 139.0 * DEG);
     double prev = 139.0 * DEG;
@@ -133,8 +133,8 @@ BOOST_AUTO_TEST_CASE(instances_that_started_apart_end_together) {
 }
 
 BOOST_AUTO_TEST_CASE(no_first_model_inside_the_formation_cone) {
-    // #170: a fresh geometry post at 4.9 deg (the C21 pass of 2026-10-09, outside the 2 deg
-    // freeze) forbids forming; outside 8 deg, or on a post older than 120 s, it does not.
+    // A fresh post at 4.9 deg forbids forming in an 8 deg cone; outside the cone, on a post
+    // older than 120 s, or with the cone at 0, it does not.
     using gnss::formation_frozen;
     BOOST_CHECK(formation_frozen(1000.0, 990.0, 4.9, 8.0));
     BOOST_CHECK(!formation_frozen(1000.0, 990.0, 8.5, 8.0));
@@ -143,8 +143,8 @@ BOOST_AUTO_TEST_CASE(no_first_model_inside_the_formation_cone) {
 }
 
 BOOST_AUTO_TEST_CASE(a_half_below_the_floor_is_reseeded_once_after_reseed_s) {
-    // Warm, sim 0.2 against F (the 10-09 L5/E5a/E5b pol-1 models read 0.07-0.33): nothing for
-    // 599 s, a re-seed at 600 s, then nothing again until the next full interval.
+    // Warm, sim 0.2 against a 0.5 floor: nothing for 599 s, a re-seed at 600 s, then nothing
+    // again until the next full interval.
     using gnss::reseed_due;
     gnss::ReseedState s;
     bool fired = false;
@@ -198,10 +198,9 @@ BOOST_AUTO_TEST_CASE(a_reseeded_half_is_the_reference_in_phase_and_shape) {
 }
 
 BOOST_AUTO_TEST_CASE(the_sibling_pol_decides_whether_f_or_the_model_is_wrong) {
-    // The stage's condition: sib_ok = the other pol of the same half describes F at
-    // reseed_sib_sim (0.8) or better. One pol broken with the other fine (the 10-09 case: pol 1 at
-    // 0.07-0.33, pol 0 at 0.9+) re-seeds; both off F at once (an F-engine gain change: every half
-    // read sim ~0.17 on 10-09) must leave the re-seed inert so the cron's re-take wins.
+    // The stage's condition: sib_ok = the same assembler's other pol matches F at
+    // reseed_sib_sim (0.8) or better. One pol off F with the other on it re-seeds; both off F
+    // at once (new F-engine gains) must leave the re-seed inert, so F is re-taken instead.
     using gnss::reseed_due;
     const double sib_floor = 0.8;
     gnss::ReseedState one_pol_broken;

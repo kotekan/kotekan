@@ -19,43 +19,36 @@
  * @class GnssChordDequantize
  * @brief [hop][chan][elem] 4+4b bytes -> [hop][chan] cfloat32, one element.
  *
- * The format seam between the CHORD ingest and @ref GnssChannelizedSearch. The search was
- * written against @ref fftwEngine's complex-float output; CHORD delivers 4+4-bit from the
- * RFSoC. Rather than teach the search a second input type, unpack once here -- acquisition is
- * SINGLE-ANTENNA and runs on one element, so this is a small stream (one element of one
- * subband) and the conversion is not on any hot path.
+ * Converts CHORD's 4+4-bit channelized stream to the complex float @ref GnssChannelizedSearch
+ * takes (the format of @ref fftwEngine's output). Acquisition runs on one element, so this is a
+ * small stream and the conversion is not on a hot path.
  *
- * DECODE, and why it is spelled out rather than shared: HIGH nibble = REAL, LOW nibble = IMAG,
- * each stored as value+8 (lib/testing/gpuSimulate.cpp is the authoritative reference model).
- * The type is named int4x2_SWAPPED_withoffset precisely because component [0] is imag. Getting
- * this backwards conjugates the data, which leaves magnitudes -- and therefore the acquisition
- * SNR -- completely unchanged while inverting the Doppler sign. An acquisition search would
- * still "find" the satellite, at the wrong Doppler, and the tracker would never pull in.
+ * Decode: high nibble = real, low nibble = imag, each stored as value + 8, as in
+ * lib/testing/gpuSimulate.cpp. This is the layout of int4x2_swapped_withoffset_t (DataType.hpp),
+ * whose component [0], the low nibble, is imag. Swapping the nibbles gives i*conj(x): the
+ * magnitudes are unchanged, so power-only checks cannot see it, but the despread does not
+ * match the replica. @c conjugate negates the imaginary part, which the CHORD F-engine's
+ * output needs.
  *
- * SCALE is arbitrary for acquisition (the search normalizes), so this emits raw lsb units by
- * default. It matters only if the output is ever used for absolute amplitude.
+ * @c scale matters only for absolute amplitude; the search normalizes.
  *
- * ZERO-FILL TO A CONTIGUOUS SPAN. Optionally widens the output from the node's SPARSE comb to a
- * contiguous channel range, placing each measured channel at its true position and leaving the
- * rest zero. @ref GnssChannelizedSearch runs a parallel-code-phase FFT search, which transforms
- * over the channel axis and therefore assumes the channels are CONTIGUOUS. Handing it a
- * stride-16 comb aliases the code-phase axis with period 1/(8 * 195.3 kHz) = 640 ns ~ 6.5 chips,
- * so the peak repeats and the reported code phase is ambiguous -- addressing the right bins
- * (channel_ids) is necessary but NOT sufficient. Zero-filling restores contiguity: the
- * transform is valid again and the missing channels cost only sensitivity (the fill fraction),
- * which we already accept.
- *
- * @conf out_channels  width of the contiguous output span (default = n_channels, i.e. no fill)
- * @conf out_offset    global index of output channel 0 (required when out_channels is set)
- * @conf channel_ids   global index of each INPUT channel, in input order
+ * Optionally zero-fills to a contiguous span: with @c channel_ids set, input channel c goes to
+ * output slot channel_ids[c] - out_offset of an out_channels-wide row. The frame is zeroed
+ * first only when out_channels differs from n_channels. GnssChannelizedSearch does not need
+ * this; it takes a sparse comb through its own channel_ids.
  *
  * @conf in_buf        [hop][chan][elem] 4+4b bytes (a GnssChordVoltageTap output)
- * @conf out_buf       [hop][chan] cfloat32
- * @conf n_channels    channels in the stream
- * @conf n_elements    element stride of the input (>= 1)
+ * @conf out_buf       [hop][out_channels] cfloat32
+ * @conf n_channels    channels in the input stream
+ * @conf n_elements    element stride of the input (default 1)
  * @conf element       which element to extract (default 0)
  * @conf samples_per_data_set  hops per frame
- * @conf scale         lsb -> volts (default 1.0)
+ * @conf scale         lsb -> output units (default 1.0)
+ * @conf conjugate     negate the imaginary part (default false)
+ * @conf out_channels  width of the output span (default n_channels, i.e. no fill)
+ * @conf out_offset    global index of output slot 0 (default 0)
+ * @conf channel_ids   global index of each input channel, in input order; required when
+ *                     out_channels differs from n_channels
  */
 class GnssChordDequantize : public kotekan::Stage {
 public:
@@ -72,7 +65,7 @@ private:
     int _element;
     int _n_hops;
     float _scale;
-    bool _conjugate = false;   ///< negate imag: the F-engine convention, measured on sky
+    bool _conjugate = false;   ///< negate imag (CHORD F-engine convention)
     int _out_chan;             ///< output span width (== _n_chan when not zero-filling)
     std::vector<int> _out_idx; ///< output slot for each input channel
 };

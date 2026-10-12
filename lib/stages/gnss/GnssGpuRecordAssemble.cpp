@@ -2,13 +2,13 @@
 
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
-#include "gnssChanPower.hpp" // for ChanPower, chan_norm_weights (#163)
+#include "gnssChanPower.hpp" // for ChanPower, chan_norm_weights
 #include "gnssGpuChain.hpp"
 #include "gnssRecord.hpp"
-#include "gnssSharedPin.hpp" // for ref_offset, pin_rotation (#154)
+#include "gnssSharedPin.hpp" // for ref_offset, pin_rotation
 #include "visUtil.hpp"       // for frameID
 
-#include "json.hpp" // for the /get_spectrum reply
+#include "json.hpp" // for the REST requests and replies
 
 #include <algorithm>
 #include <chrono>
@@ -34,37 +34,32 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     out_buf->register_producer(unique_name);
     _prns = config.get<std::vector<int>>(unique_name, "prns");
     _sample_rate = config.get_default<double>(unique_name, "sample_rate", 5e6);
-    // ELEMENT AXIS (CHORD). 0 = the single-antenna airspy layout, byte-for-byte -- the default,
-    // so nothing existing changes. >0 appends n_elements per-antenna blocks to every PRN record
-    // (gnssRecord.hpp). The GPU correlation array grows the same axis: [rows][n_chan][n_elem].
+    // Element axis. 0 = the single-antenna layout. >0 appends n_elements per-antenna blocks to
+    // every PRN record (gnssRecord.hpp), and the correlation array is [rows][n_chan][n_elem].
     _n_elements = config.get_default<int>(unique_name, "n_elements", 0);
-    // Which element the record HEADER's correlation slots carry. The broker closes the DLL and
-    // carrier loops off those slots, so this must be a phase-coherent single-antenna view (see
-    // gnssRecord.hpp) -- pick a healthy, high-gain feed. Ignored when n_elements == 0.
+    // The element the record header's correlation slots carry. The broker closes its DLL and
+    // carrier loops on those slots, so this must be a healthy, high-gain feed. Ignored when
+    // n_elements == 0.
     _reference_element = config.get_default<int>(unique_name, "reference_element", 0);
     if (_n_elements > 0 && (_reference_element < 0 || _reference_element >= _n_elements)) {
         FATAL_ERROR("GnssGpuRecordAssemble: reference_element {:d} outside [0, n_elements={:d})",
                     _reference_element, _n_elements);
         return;
     }
-    // SELF-CALIBRATED ELEMENT SUM (hpp note / gnssElemCal.hpp). Off by default; no-op unless
-    // the element axis exists.
+    // Self-calibrated element sum (see the header and gnssElemCal.hpp). Needs the element axis.
     _elem_sum = config.get_default<bool>(unique_name, "elem_sum", false) && _n_elements > 0;
     _elem_sum_tau_s = config.get_default<double>(unique_name, "elem_sum_tau_s", 5.0);
     _elem_hold_on_reanchor =
         config.get_default<bool>(unique_name, "elem_sum_hold_on_reanchor", true);
     _elem_sum_min_w = config.get_default<double>(unique_name, "elem_sum_min_w", 0.02);
-    // HOLD vs ADAPT. The per-PRN cal learns its element phases FROM THAT PRN'S OWN DATA, so a
-    // satellite near boresight, whose cross-correlation dominates every weak satellite's
-    // per-element despread, teaches every cal ITS phases and the array gain is gone (measured
-    // on a BeiDou transit: element vectors 80-90% identical to the bright satellite's inside
-    // 2 deg, p down 100x, spared only the bright one). With geometry steered and one shared
-    // instrumental prior seeded, adapt=false freezes the weights at the prior: nothing a
-    // single satellite can move. A SHADOW cal keeps learning per PRN so the capture stays
-    // visible (/get_elem_cal) without being acted on.
+    // Hold vs adapt. Each per-PRN cal learns its element phases from that PRN's own data, so a
+    // satellite near boresight, whose leakage dominates every weak satellite's per-element
+    // despread, teaches every cal its phases and the array gain is lost. With geometry steered
+    // and a shared instrumental prior seeded, adapt = false freezes the weights at the prior; a
+    // shadow cal keeps learning per PRN so the capture stays visible (/get_elem_cal).
     _elem_adapt = config.get_default<bool>(unique_name, "elem_sum_adapt", true);
-    // SHARED MODEL (hpp note): one instrument per pol + one inter-pol coefficient per PRN.
-    // Shared implies held -- a learner that also combined would defeat the point.
+    // Shared model (see the header): one instrument per pol plus one inter-pol coefficient per
+    // PRN. Shared implies held: a learner that also combined would defeat the point.
     _elem_shared = config.get_default<bool>(unique_name, "elem_sum_shared", false);
     _elem_shared_tau_s = config.get_default<double>(unique_name, "elem_sum_shared_tau_s", 300.0);
     _elem_pol_tau_s = config.get_default<double>(unique_name, "elem_sum_pol_tau_s", 3.0);
@@ -75,8 +70,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _elem_shared_form_deg =
         config.get_default<double>(unique_name, "elem_sum_shared_form_deg", 8.0);
     _chan_norm = config.get_default<bool>(unique_name, "chan_noise_norm", false);
-    // The frame inputs this stage's elements are (the correlator's live tiles); absent = the
-    // first n_elements inputs.
+    // The frame inputs that are this stage's elements; empty = the first n_elements inputs.
     _chan_norm_elems =
         config.get_default<std::vector<int>>(unique_name, "chan_noise_norm_elems", {});
     if (_chan_norm_elems.empty())
@@ -94,8 +88,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
              "inter-pol tau {:.1f} s); per-PRN weights held to it",
              unique_name, _elem_shared_tau_s, _elem_pol_tau_s);
     }
-    // #154 THE FLEET REFERENCE (hpp note): flat [re0, im0, re1, im1, ...] over n_elements, the
-    // generator's copy of one band's entry in the committed snapshot (--elem-shared-ref).
+    // Fleet reference (see the header): flat [re0, im0, re1, im1, ...] over n_elements, the
+    // generator's copy of one band's entry in the --elem-shared-ref snapshot.
     {
         const auto flat =
             config.get_default<std::vector<double>>(unique_name, "elem_sum_shared_ref", {});
@@ -142,11 +136,12 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                  unique_name, mode, _g_fleet_ref.empty() ? "NONE configured: own pin" : "loaded",
                  _fleet_slew_rad_s * 180.0 / M_PI, _fleet_min_sim);
     }
-    // ── #102 ELEMENT STEERING: geometric per-(sat, channel, element) phasors ─────────
-    // OFF unless elem_positions_enu is provided (flat [n_elements][3], metres ENU of any
-    // fixed array point -- re-referenced to the reference element below so the header's
-    // slots and the ADR observable are UNTOUCHED by steering: the ref phasor is unity by
-    // construction). The SIGN is a measured config parameter (gnssElemSteer.hpp note).
+    // Element steering: geometric per-(satellite, channel, element) phasors. Off unless
+    // elem_positions_enu is given (flat [n_elements][3], metres ENU of any fixed array point).
+    // The positions are re-referenced to the configured reference element, so its phasor is
+    // unity and steering leaves the header slots and the ADR observable unchanged. A live
+    // /set_reference_element does not re-reference them. The sign is a measured config parameter
+    // (gnssElemSteer.hpp).
     {
         auto pos = config.get_default<std::vector<double>>(unique_name, "elem_positions_enu", {});
         const double st_sign = config.get_default<double>(unique_name, "elem_steer_sign", 1.0);
@@ -156,9 +151,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 FATAL_ERROR("GnssGpuRecordAssemble: elem_positions_enu has {:d} values, "
                             "want 3*n_elements = {:d}",
                             (int)pos.size(), 3 * _n_elements);
-            // channel_ids is read into _spec_freq_ids LATER in this constructor (the
-            // chan-export block) -- read it locally here; init order bit the fleet once
-            // (crash-loop, 2026-08-29 22:5x).
+            // Read channel_ids locally: _spec_freq_ids is not set until further down.
             auto _st_fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
             if (_st_fids.empty())
                 FATAL_ERROR("GnssGpuRecordAssemble: elem steering needs channel_ids (the "
@@ -179,9 +172,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         }
     }
     const int n = (int)_prns.size();
-    // Record width is a C++ constant; the frame is sized in yaml (n_prn * record_floats *
-    // sizeof_float) with nothing linking the two. A stale config under-sizes the frame and this
-    // stage writes past its end -- die at construction rather than corrupt memory.
+    // The record width is a C++ constant but the frame is sized in yaml (n_prn * record_floats *
+    // sizeof(float)), with nothing linking the two: refuse an under-sized frame here rather than
+    // write past its end.
     const int rec_stride = gnss::record_stride(_n_elements);
     const size_t rec_bytes_need = (size_t)n * rec_stride * sizeof(float);
     if ((size_t)out_buf->frame_size < rec_bytes_need) {
@@ -203,10 +196,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _pol_c.assign((size_t)n, std::complex<double>(0.0, 0.0));
         _w_scratch.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
     }
-    // ── BRIGHT-SATELLITE PROJECTION (hpp note; gnssProjSubspace.hpp) ──────────────────────
-    // Needs the element axis, the channel labels (the board is keyed on freq_id) and the
-    // element cal (the shadow learners). Ships OFF; the mode is a live switch (/set_elem_proj)
-    // so a canary can be armed without a config regeneration.
+    // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs the element
+    // axis, channel_ids (the board is keyed on freq_id) and elem_sum (the shadow learners). Off
+    // by default; /set_elem_proj changes the mode live.
     {
         auto fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
         const std::string mode_s =
@@ -229,7 +221,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                                                       unique_name.substr(0, unique_name.find('_')));
         std::string sys = config.get_default<std::string>(unique_name, "gnss_system", "");
         if (sys.empty()) {
-            // Fallback from the stage name (the generator's chain tokens); the key wins when set.
+            // Inferred from the generator's band tokens in the stage name unless set.
             auto has = [&](const char* t) { return unique_name.find(t) != std::string::npos; };
             sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))    ? "E"
                   : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1")) ? "C"
@@ -294,23 +286,16 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _a_prev_ok.assign(n, 0);
     _elem_prev_ok.assign(n, 0);
     _wstart_prev.assign(n, 0);
-    // PER-CHANNEL PROMPT SPECTRUM (hpp note; task #32). Keyed on `channel_ids` being present:
-    // the generator wires the same per-GPU freq_id list the despread runs, so the export knows
-    // which sky frequency each channel index is. No channel_ids (airspy, legacy configs) ->
-    // fully inert: no accumulation, and the endpoint answers with an explanatory error rather
-    // than not existing, so a mis-wired poller sees WHY instead of a bare 404.
+    // Per-channel prompt spectrum (see the header), enabled by channel_ids: the per-GPU freq_id
+    // list the despread runs, which labels each channel with its sky frequency. Without it
+    // nothing accumulates, and /get_spectrum answers with an error rather than a 404 so a
+    // mis-wired poller sees why.
     _spec_freq_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
 
-    // PER-CHANNEL COMB EXPORT (gnssRecord.hpp, 2026-08-14). ⚠️ THE CROSS-CHANNEL SUM BELOW IS A
-    // LOSS WE SHOULD NEVER HAVE TAKEN -- it destroys the frequency axis a delay lives on, so
-    // the broker can only FIT a per-instance constant where it should DERIVE one from the ramp.
-    // KV: "purge the idea of summing across channels in each instance, that's *never* what we
-    // want to do." This appends the UNSUMMED comb after the PRN records; the summed slots stay
-    // for now so nothing downstream has to change on the same day.
-    //
-    // channel_ids is REQUIRED: the broker must know which SKY FREQUENCY each column is. A comb
-    // whose columns are unlabelled is worse than no comb -- a delay fit across mislabelled
-    // frequencies returns a confident wrong tau.
+    // Per-channel comb export (gnssRecord.hpp): the unsummed per-channel taps appended after the
+    // PRN records. The cross-channel sum destroys the frequency axis a delay lives on; the comb
+    // keeps it. channel_ids is required: a delay fit across mislabelled frequencies returns a
+    // confident wrong tau.
     _chan_export = config.get_default<bool>(unique_name, "chan_export", false);
     if (_chan_export && _spec_freq_ids.empty()) {
         FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: chan_export needs channel_ids -- an unlabelled "
@@ -336,18 +321,11 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
 
     if (!_spec_freq_ids.empty()) {
         const size_t nc = _spec_freq_ids.size();
-        // WINDOW QUANTISATION (task #53). The window index is floor(wstart / win_samples) on
-        // the F-engine sample clock, so every instance assigns a record to the same window
-        // WITHOUT talking to any other instance. Configure in SAMPLES, not seconds: the
-        // division must be exact integer arithmetic or two instances can straddle a boundary
-        // differently, which is the whole failure this replaces. Every instance must be given
-        // the SAME value -- the generator writes it, and a mismatch shows up immediately as
-        // disjoint window indices in the broker's first poll.
-        //
-        // Whole records land in exactly one window regardless of whether win_samples is a
-        // record multiple (a record is assigned by its wstart, never split), so alignment does
-        // not depend on that -- but making it a multiple keeps the per-window record count
-        // constant, which is one less thing to explain in a residual.
+        // Window index = floor(wstart / spectrum_window_samples) on the F-engine sample clock, so
+        // every instance assigns a record to the same window without coordination. The length
+        // is in samples so the division is exact integer arithmetic, and every instance must be
+        // given the same value (the generator derives it). A record is assigned whole by its
+        // wstart; a length that is a whole number of records keeps the per-window count constant.
         _spec_win_samples =
             (int64_t)config.get_default<double>(unique_name, "spectrum_window_samples", 0.0);
         const int depth = config.get_default<int>(unique_name, "spectrum_ring_depth", 8);
@@ -367,9 +345,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                  (long long)_spec_win_samples, (double)_spec_win_samples / _sample_rate,
                  (int)_spec_ring.size());
         } else {
-            // LEGACY: one open accumulator, reset on read. Kept so a node whose config predates
-            // spectrum_window_samples keeps working until it is regenerated -- but it CANNOT be
-            // aligned across instances, so the broker treats a legacy reply as unaddressable.
+            // Without spectrum_window_samples: one open accumulator, reset on read. It cannot be
+            // aligned across instances, so the reply says addressable: false.
             _spec_ring.resize(1);
             _spec_ring[0].re.assign((size_t)n * nc, 0.0);
             _spec_ring[0].im.assign((size_t)n * nc, 0.0);
@@ -385,42 +362,24 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _spec_scratch.assign((size_t)std::max(1, _n_elements), {0.0, 0.0});
     }
 
-    // ── THE BEAM CUBE (hpp): the (channel x element) axis, un-collapsed ──────────────────
-    // Requires BOTH axes to exist: channel_ids (so a bin has a frequency) and an element axis
-    // (so it has an antenna). Silent no-op otherwise -- this is opt-in and costs exactly
-    // nothing when off, which is what makes it safe to ship dark and arm per chain.
+    // Beam cube (see the header): the (channel x element) axis, un-collapsed. Needs both
+    // channel_ids (a frequency per bin) and an element axis (an antenna per cell).
     _cube_on = config.get_default<bool>(unique_name, "beam_cube", false) && !_spec_freq_ids.empty()
                && _n_elements > 0;
     if (_cube_on) {
         const int nc = (int)_spec_freq_ids.size();
         _cube_bin_width =
             std::max(0, config.get_default<int>(unique_name, "beam_cube_bin_width", 0));
-        // 0 = one bin per channel. Otherwise ceil, so the last bin may be narrow rather than
-        // silently dropping the top channels -- a truncated band edge is exactly the kind of
-        // quiet loss that looks like a real beam feature later.
+        // 0 = one bin per channel. Otherwise round up, so the last bin may be narrow rather than
+        // the top channels dropped.
         _cube_bins = (_cube_bin_width > 0) ? (nc + _cube_bin_width - 1) / _cube_bin_width : nc;
 
-        // WINDOW LENGTH IN SAMPLES, NOT SECONDS, for the reason #53 gave the spectrum ring:
-        // the index is floor(wstart / win_samples) in integer arithmetic, and if that division
-        // is not exact two instances can straddle a boundary differently -- which is the whole
-        // failure being avoided. Every instance must be given the SAME value.
-        //
-        // ⚠️ AN EXACT 1.000 s WINDOW DOES NOT EXIST ON THIS CLOCK. The hop rate is 195312.5 Hz,
-        // so one second is 195312.5 hops -- not an integer. 96 records = 24 frames = 1.00663 s
-        // is an exact multiple of BOTH the record (2048 hops) and the frame (8192), so no
-        // record is ever split and the per-window record count is constant, which is one less
-        // thing to explain in a residual. Anyone wanting a round number in seconds is asking
-        // for a boundary that lands mid-record on half the fleet.
-        //
-        // ⚠️⚠️ THE UNIT IS F-ENGINE SAMPLES, NOT HOPS -- wstart is in samples, and one hop is
-        // fft_length (16384) of them. The default here READ 196608, which is 96 x 2048 HOPS:
-        // the record arithmetic above, with the conversion left off. As a sample count that is
-        // 12 hops, 61 us, and it would lap this 8-deep ring sixteen times per record while
-        // every log line still looked plausible -- the window length is only ever printed as
-        // win_samples/_sample_rate, which is small and self-consistently wrong. The generator
-        // now always sets this explicitly (records x hops_per_record x fft_length, the same
-        // expression spectrum_window_samples is derived from), because a value that must MATCH
-        // across instances should never come from a default that agrees by luck.
+        // Window length in F-engine samples (wstart's unit; one hop is fft_length samples), for
+        // the same reason as spectrum_window_samples: the index is an exact integer division,
+        // and every instance must be given the same value (the generator derives it). The
+        // default, 96 records x 2048 hops x 16384 samples = 1.00663 s, is a whole number of
+        // records and of 8192-hop frames, so no record is split; at a 195312.5 Hz hop rate no
+        // exact 1 s window exists.
         _cube_win_samples = (int64_t)config.get_default<double>(
             unique_name, "beam_cube_window_samples", 96.0 * 2048.0 * 16384.0);
         const int depth =
@@ -438,16 +397,15 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             W.phi0.assign((size_t)n, 0.0);
             W.nreanchor.assign((size_t)n, 0);
         }
-        // THE PUSH LEG (hpp). Optional: with no cube_buf the cube is REST-only, which is what
-        // an interactive bench wants and is NOT an archive.
-        // THE FULL ADDRESS: <hostname>/<stage>. The stage name is unique only within a node
-        // and the far side has ONE bufferRecv for the whole fleet.
+        // Push leg (see the header), only with cube_buf; without it the cube is REST-only.
+        // Frames are addressed <short hostname>/<stage> by default: a stage name is unique only
+        // within a node, and one bufferRecv receives the whole fleet.
         {
             char hn[64] = {0};
             gethostname(hn, sizeof(hn) - 1);
             char* dot = std::strchr(hn, '.');
             if (dot)
-                *dot = '\0'; // short name: "cx19", not "cx19.site.chord-observatory.ca"
+                *dot = '\0'; // short host name, without the domain
             _cube_chain = config.get_default<std::string>(unique_name, "beam_cube_chain",
                                                           std::string(hn) + "/" + unique_name);
         }
@@ -506,9 +464,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_elem_gain",
             std::bind(&GnssGpuRecordAssemble::set_elem_gain_callback, this, _1, _2));
-    // Registered whether or not steering is armed: the broker posts its sky to every
-    // assembler it knows, and an unsteered one answering 404 every 30 s is indistinguishable
-    // in its log from a dead one. Unsteered, the post is acknowledged and dropped.
+    // Registered whether or not steering is configured: the broker posts its sky to every
+    // assembler, and a 404 every 30 s would look like a dead stage in its log. Unsteered, the
+    // post is acknowledged and dropped, "_bore" included.
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_sat_geometry",
         std::bind(&GnssGpuRecordAssemble::set_sat_geometry_callback, this, _1, _2));
@@ -530,9 +488,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 unique_name + "/set_elem_proj",
                 std::bind(&GnssGpuRecordAssemble::set_elem_proj_callback, this, _1, _2));
     }
-    // LIVE REFERENCE SWAP (KV, 2026-08-20). Registered whenever the element axis exists --
-    // the header's correlation slots carry the reference even with elem_sum off, so the
-    // swap is meaningful either way. See set_reference_element_callback.
+    // Registered whenever the element axis exists: the header slots carry the reference
+    // element even with elem_sum off.
     if (_n_elements > 0)
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_reference_element",
@@ -541,11 +498,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
 
 void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstance& conn,
                                                       nlohmann::json& request) {
-    // #102: {"<prn>": [az_deg, el_deg, az_rate_dps, el_rate_dps, t_utc], ...}. The rates and
-    // the epoch let the steering follow the satellite between the ~30 s posts (gnssElemSteer.hpp:
-    // held, a snapshot is ~0.2 m off by the next post on the 44 m baseline). A bare [az, el]
-    // (older broker) is still accepted and held. Unknown PRNs are skipped (the broker posts its
-    // whole sky; this stage steers the slots it owns).
+    // {"<prn>": [az_deg, el_deg, az_rate_dps, el_rate_dps, t_utc], ...}. The rates and epoch
+    // let the steering follow the satellite between the ~30 s posts (gnssElemSteer.hpp); a bare
+    // [az, el] is held as a snapshot. PRNs this stage does not hold are skipped.
     int n_up = 0;
     if (!_steer.enabled()) {
         conn.send_json_reply(nlohmann::json{{"updated", 0}, {"steering", "off"}});
@@ -555,19 +510,19 @@ void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstanc
         const double now_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
                 .count();
-        // "_bore": [sep_deg, t_utc] -- the broker's POOLED nearest-to-boresight separation over
-        // every constellation (a satellite of another system rails and leaks into this band
-        // just the same). It gates the shared model's learning (see _elem_shared_freeze_deg).
+        // "_bore": [sep_deg, t_utc], the broker's nearest-to-boresight separation pooled over
+        // every constellation (a satellite of another system leaks into this band just the
+        // same). It gates the shared model's learning (see _elem_shared_freeze_deg).
         auto bi = request.find("_bore");
         if (bi != request.end() && bi->is_array() && !bi->empty()) {
             _bore_sep_deg.store((*bi)[0].get<double>());
             _bore_post_t.store(now_s);
         }
         std::lock_guard<std::mutex> lk(_steer_mtx);
-        // "_probes": [prn, ...] -- this chain's noise probes (below-horizon PRNs) when the
-        // broker names them; the projection's probe stack then uses exactly those slots.
-        // Absent (older broker), a probe is inferred as a running slot with no geometry for
-        // elem_proj_probe_since_s (geometry is only ever posted above the horizon).
+        // "_probes": [prn, ...], this chain's noise probes (below-horizon PRNs). Once a post
+        // names them, the projection's probe stack uses exactly those slots; until then a probe
+        // is a slot running for at least elem_proj_probe_since_s with no fresh geometry
+        // (geometry is posted only above the horizon).
         {
             auto pi = request.find("_probes");
             if (pi != request.end() && pi->is_array() && !_slot_probe_broker.empty()) {
@@ -611,10 +566,9 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
     const PrnCtl* pctl = (const PrnCtl*)pctl_v;
     int n_changed = 0;
     for (int p = 0; p < n_prn && p < (int)_prns.size(); ++p) {
-        // Record 0 speaks for the frame: the producer applies swaps at a FRAME boundary, so
-        // every record in this frame carries the same slot->PRN map. A producer that predates
-        // the field leaves prn = 0, and 0 is not a PRN -- read it as "no claim" and keep the
-        // config's value, which is exactly the old behaviour.
+        // Record 0 speaks for the frame: the producer applies swaps at a frame boundary, so
+        // every record in it carries the same slot -> PRN map. prn = 0 means not stamped; keep
+        // the current value.
         const int claimed = (int)pctl[(size_t)p].prn;
         if (claimed <= 0 || claimed == _prns[(size_t)p])
             continue;
@@ -622,11 +576,10 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
         _prns[(size_t)p] = claimed;
         ++n_changed;
 
-        // COLD RESET, everything keyed to this slot, in ONE place. Each of these describes the
-        // satellite that just left; carried across, each becomes the old satellite's state
-        // attributed to the new one -- the accumulator-identity trap, and every one of them
-        // would be silent (a warm cal is a plausible cal, a phase history is a plausible
-        // history). The reference-element swap above resets the same set for the same reason.
+        // Cold-reset everything keyed to this slot. Each describes the satellite that left, and
+        // carried across it would be attributed to the new one, silently: a warm cal or a phase
+        // history looks plausible. main_thread's reference-element swap also rebuilds the cals
+        // cold.
         if (_elem_sum && (size_t)p < _cal.size()) {
             _cal[(size_t)p] =
                 gnss::ElemCal(_n_elements, _reference_element, _elem_sum_tau_s, _elem_sum_min_w);
@@ -639,8 +592,8 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
             if ((size_t)p < _anchor_warned.size())
                 _anchor_warned[(size_t)p] = 0;
         }
-        // The steer table is keyed by SLOT: the departed satellite's phasors must not steer
-        // the newcomer for up to hold_s. Geometry for the new PRN arrives with the next post.
+        // The steer table is keyed by slot: the departed satellite's phasors must not steer the
+        // newcomer for up to hold_s. Geometry for the new PRN arrives with the next post.
         if (_steer.enabled()) {
             std::lock_guard<std::mutex> lk(_steer_mtx);
             _steer.invalidate(p);
@@ -656,10 +609,10 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
         _a_prev_ok[(size_t)p] = 0;
         _elem_prev_ok[(size_t)p] = 0;
         _wstart_prev[(size_t)p] = 0;
-        // The spectrum ring accumulates PER SLOT across a window. A window straddling the swap
-        // would otherwise sum two satellites into one row and report the total as one PRN's
-        // spectrum -- so drop this slot's partial accumulation in every open window. nrec = 0
-        // makes the row read as absent rather than as a quiet satellite.
+        // The spectrum ring accumulates per slot: clear this slot in every window, or one
+        // straddling the swap sums two satellites into one row. nrec = 0 makes the row read as
+        // absent rather than as a quiet satellite. The reset-on-read accumulator (idx -1) is
+        // skipped.
         {
             std::lock_guard<std::mutex> lk(_spec_mtx);
             for (auto& W : _spec_ring) {
@@ -678,18 +631,10 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
                     W.nreanchor[(size_t)p] = 0;
             }
         }
-        // THE BEAM CUBE accumulates per slot too, and for the same reason: carried across a
-        // swap, the departing satellite's integrated power would be attributed to the arriving
-        // one -- and a beam map is precisely a claim about where power came from, so this one
-        // would not merely be wrong, it would be wrong in the shape of a feature. The COHERENT
-        // sum is worse still: its phi0 refers to the OLD satellite's NCO history, so a
-        // consumer would rotate the new satellite onto a reference that never described it.
-        //
-        // Clear the slot in EVERY OPEN WINDOW, not just the newest -- the ring holds several,
-        // and a window straddling the swap would otherwise sum two satellites into one row and
-        // report the total as one PRN. Zero the sums AND the weights together: a nonzero
-        // weight over a zeroed sum reads as a real measurement of no power, which is worse
-        // than absence.
+        // The beam cube likewise, in every window: carried across, the departed satellite's
+        // power would be attributed to the newcomer, and its phi0 refers to the old satellite's
+        // NCO history. Zero the sums and the weights together: a nonzero weight over a zeroed
+        // sum reads as a measurement of no power.
         if (_cube_on) {
             std::lock_guard<std::mutex> ck(_cube_mtx);
             const size_t ne = (size_t)_n_elements;
@@ -731,13 +676,11 @@ void GnssGpuRecordAssemble::main_thread() {
             FATAL_ERROR("GnssGpuRecordAssemble: frame n_prn {:d} != config {:d}", hdr.n_prn, n_prn);
             return;
         }
-        // LIVE REFERENCE SWAP, applied at the frame boundary so every record in a frame
-        // sees ONE reference. Rebuilds the cal set COLD: every learned per-element gain
-        // (and any stored path-B prior) is phase-anchored to the OLD reference element and
-        // does not transfer -- carrying them across would hand the combine a wrong phase
-        // convention with full confidence. The header rides the new bare reference while
-        // the cal re-warms (~3 tau); downstream sees one phase step, exactly as it does on
-        // any fresh acquisition, and the WARN below is the operator's receipt.
+        // Reference-element swap, applied at the frame boundary so every record in a frame
+        // sees one reference. The cals are rebuilt cold: every learned gain and any injected
+        // prior is phase-anchored to the old reference and does not transfer. The header rides
+        // the new reference element while the cals re-warm (~3 tau); downstream sees one phase
+        // step, as on a fresh acquisition.
         {
             int newref = -1;
             {
@@ -772,9 +715,9 @@ void GnssGpuRecordAssemble::main_thread() {
                      oldref, newref, _cal.size(), 3.0 * _elem_sum_tau_s);
             }
         }
-        // PATH B: a newly-injected per-element gain prior seeds every PRN's cal here, once,
-        // before this frame's records are combined. seed() also stores it, so each subsequent
-        // reset() (re-anchor) re-applies it rather than going cold -- the whole point.
+        // A newly injected gain prior (/set_elem_gain) seeds every PRN's cal once, before this
+        // frame's records are combined. seed() also stores it, so each later reset() re-applies
+        // it rather than going cold.
         if (_elem_sum) {
             std::vector<std::complex<double>> pend;
             {
@@ -799,30 +742,24 @@ void GnssGpuRecordAssemble::main_thread() {
             }
         }
         const int n_chan = hdr.n_chan;
-        // Output rows per spec: 4 normally, 6 when the writer peels (rows 4/5 = the peel
-        // residual). 0 means a writer that predates the field -- read it as 4.
+        // Output rows per spec: 4, or 6 when the frame carries the peel residual in rows 4/5.
+        // 0 reads as 4 (gnssGpuChain.hpp).
         const int n_rows_spec = (hdr.n_rows_spec > 0) ? hdr.n_rows_spec : ROWS_PLAIN;
         const int64_t* winstart = (const int64_t*)(in + off_winstart());
         const PrnCtl* pctl = (const PrnCtl*)(in + off_prnctl());
-        // LIVE SLOT MEMBERSHIP: adopt the producer's map before anything in this frame is
-        // labelled or accumulated. Costs one integer compare per slot per frame in steady
-        // state.
+        // Adopt the producer's slot -> PRN map before anything in this frame is labelled or
+        // accumulated.
         follow_frame_prns(pctl, n_prn);
         const double* corr = (const double*)(in + off_corr(n_prn)); // double2 rows
-        // The energy block sits AFTER the corr block, whose size scales with the ELEMENT axis
-        // -- the writer passes its n_elem (32 on CHORD), so the reader must too, or
-        // every "energy" lands inside the corr block: garbage when enough PRNs run to fill
-        // that far (which is why sparse days flickered and broker-full days "worked"), zeros
-        // when few do -- and a zero P_ENERGY makes the combiner treat the record as inactive,
-        // so 2-PRN seeding produced structurally-perfect numerically-zero records
-        // (found 2026-07-31, first trim-port test).
+        // The energy block follows the corr block, whose size scales with the element count:
+        // pass the writer's n_elem, or every energy read lands inside the corr block (and a zero
+        // P energy makes the combiner treat the record as inactive).
         const double* energy = (const double*)(in
                                                + off_energy(n_prn, n_chan, n_rows_spec,
                                                             (_n_elements > 0) ? _n_elements : 1));
-        // #163: this frame's per-channel weights for the cross-channel sums (gnssChanPower.hpp):
-        // 1/rms of each channel's own measured power, mean 1, so a channel enters by its
-        // signal-to-noise and not by the F-engine digital gain. Unit weights until the tap has
-        // measured every channel (its first pass, ~1 s) or when the table is incomplete.
+        // Per-channel weights for the cross-channel sums (gnssChanPower.hpp): 1/rms of each
+        // channel's measured power, scaled to mean 1, so a channel enters by its signal-to-noise
+        // and not by the F-engine digital gain. Unit weights until every channel is measured.
         _chan_w.assign((size_t)n_chan, 1.0);
         bool chan_applied = false;
         if (_chan_norm && (int)_spec_freq_ids.size() == n_chan) {
@@ -840,22 +777,11 @@ void GnssGpuRecordAssemble::main_thread() {
             _chan_w_pub = _chan_w;
         }
 
-        // NO ABSOLUTE ANCHOR? SAY SO, AND STILL EMIT A UNIFORM GRID. The old fallback stamped
-        // system_clock::now() PER RECORD, and that silently broke every cross-record estimator
-        // downstream: this stage emits hdr.n_rec records back to back, so on CHORD the four
-        // sub-records of a frame were stamped microseconds apart instead of 10.49 ms apart.
-        // GnssCoherentCombiner's rate search takes dt = the MINIMUM consecutive spacing and
-        // builds an integer grid from it, so those microseconds became the grid and the records
-        // were scattered across the transform. Cost, measured on cx19 2026-08-07: path B's
-        // deep_rate_q read 4.5-11.4 against path A's 27-38 on IDENTICAL per-record data, failing
-        // the q >= 10 gate, and coh_frac sat at 0.02-0.10 against 0.93-0.97 -- diagnosed for a
-        // day and a half as a sensitivity problem because amp_snr, which uses no time base at
-        // all, was a healthy 71-83% of path A throughout.
-        //
-        // Latching the anchor once and extrapolating by wstart keeps the same host-clock origin
-        // (no worse than before for anything reading absolute time) and makes the grid exactly
-        // uniform (no jitter at all for anything reading differences). The warning still fires,
-        // because a host clock is not a GPS clock and the config should carry frame0_utc.
+        // No frame0_utc: anchor the host clock once and extrapolate by wstart, so the record
+        // grid stays exactly uniform. This stage emits a frame's records back to back, so a
+        // per-record now() would stamp them microseconds apart, and GnssCoherentCombiner builds
+        // its time grid from the minimum record spacing. The warning still fires: a host clock
+        // is not GPS time.
         if (hdr.utc0 <= 0.0 && hdr.n_rec > 0) {
             if (_wall_anchor == 0.0) {
                 const double now = std::chrono::duration<double>(
@@ -874,11 +800,9 @@ void GnssGpuRecordAssemble::main_thread() {
 
         for (int r = 0; r < hdr.n_rec && !stop_thread; ++r) {
             float* out = (float*)out_buf->wait_for_empty_frame(unique_name, frame_out);
-            // ZERO THE WHOLE COMB BLOCK FIRST. The per-PRN record zeroing below covers only
-            // record_stride floats; a PRN that does not run this window, or a channel outside
-            // its covering mask, would otherwise hand the broker the PREVIOUS record's value as
-            // if it were current -- the same "stale is not neutral" trap GnssChanAlignMerge
-            // zeroes absent feeds for.
+            // Zero the whole comb block first: the per-PRN zeroing below covers only
+            // record_stride floats, and a PRN that does not run, or a channel outside its
+            // covering mask, must not carry the previous record's value.
             if (_chan_export && out != nullptr)
                 std::fill(out + gnss::chan_block_offset(n_prn, _n_elements),
                           out + gnss::frame_floats(n_prn, _n_elements, n_chan), 0.0f);
@@ -888,9 +812,9 @@ void GnssGpuRecordAssemble::main_thread() {
             const double utc =
                 ((hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor) + (double)wstart / _sample_rate;
 
-            // BRIGHT-SATELLITE PROJECTION, per record (hpp note): feed the source trackers
-            // from this record's RAW rows, build the per-channel basis, publish it to the
-            // siblings. Inert (k = 0) unless armed and a source is in force.
+            // Bright-satellite projection, per record (see the header): feed the source trackers
+            // from this record's raw rows, build the per-channel basis and publish it to the
+            // siblings. k = 0 unless armed and a source is in force.
             if (_proj_ready && _proj_mode.load() != 0)
                 proj_prepare_record(corr, &pctl[(size_t)r * n_prn], n_chan, _n_elements, wstart,
                                     utc,
@@ -907,18 +831,16 @@ void GnssGpuRecordAssemble::main_thread() {
             for (int p = 0; p < n_prn; ++p) {
                 const int rec_stride = gnss::record_stride(_n_elements);
                 float* rec = out + (size_t)p * rec_stride;
-                // Zero the WHOLE record, element blocks included: a PRN that does not run this
-                // window must not leave a previous window's per-antenna correlations behind.
+                // Zero the whole record, element blocks included: a PRN that does not run this
+                // window must not leave a previous window's values behind.
                 for (int f = 0; f < rec_stride; ++f)
                     rec[f] = 0.0f;
-                rec[gnss::REC_PROJ_COST] = -1.0f; // measured below when a basis is in force
+                rec[gnss::REC_PROJ_COST] = -1.0f; // set below when the projection runs
                 rec[gnss::REC_PROJ_K] = (float)_proj_k_rec;
                 rec[gnss::REC_PROJ_SRC] = (float)proj_src;
                 const PrnCtl& c = pctl[(size_t)r * n_prn + p];
-                // THE FRAME'S PRN WINS. _prns was reconciled to it at the top of this frame,
-                // so the two agree -- but reading it from the record's own control word means
-                // record slot 0 cannot be wrong even if a future producer moves a slot
-                // mid-frame. 0 = a producer that does not stamp it; fall back to the list.
+                // The record's own PRN stamp wins, so slot 0 stays right even if a producer
+                // moves a slot mid-frame; 0 = not stamped, use the list.
                 rec[0] = (float)((c.prn > 0) ? (int)c.prn : _prns[p]);
                 *reinterpret_cast<double*>(rec + gnss::RECORD_UTC_SLOT) = utc;
                 if (!c.run) {
@@ -929,46 +851,34 @@ void GnssGpuRecordAssemble::main_thread() {
                     _phi_cmd_ok[p] = 0;
                     continue;
                 }
-                // Cross-channel sum over the covering mask, per correlator trial
-                // (E, P, L, P_HEAD -- the prompt's head segment, gnssRecord.hpp slots 16-18),
-                // plus, when the chain peels, the residual prompt and its head (rows 4/5 ->
-                // gnssRecord.hpp slots 20-23). PrnCtl::job0 already carries the per-spec row
-                // stride, so indexing is job0 + t either way.
+                // Cross-channel sum over the covering mask, per correlator row: E, P, L and
+                // P_HEAD (the prompt's head segment, gnssRecord.hpp slots 16-18), plus rows 4/5
+                // (the peel residual, slots 20-23) when present. PrnCtl::job0 already carries
+                // the per-spec row stride, so the row is job0 + t.
                 //
-                // NB rows 0-3 hold the FULL, un-peeled correlation even when peeling: the
-                // analytic add-back was applied on the device (docs/gnss_voltage_peel_live.md).
-                // That is what leaves everything below this stage -- combiner, broker, viewer,
-                // TEC -- unable to tell whether a peel happened.
                 // With an element axis the correlation array is [rows][n_chan][n_elem] and the
-                // covering-mask sum runs PER ANTENNA. The ENERGIES do not: one replica is
-                // correlated against every antenna, so energy stays [rows][n_chan] and is summed
-                // once (gnssRecord.hpp -- this is why energies live in the record header and only
-                // the correlations go in the element blocks).
-                //
-                // n_e == 1 with n_elements == 0 makes the index expression below collapse to
-                // exactly the single-antenna one, so that path is unchanged.
+                // sum runs per antenna. The energies are [rows][n_chan]: one replica is
+                // correlated against every antenna, so they are summed once and live in the
+                // record header only. n_elements == 0 gives n_e = 1, the single-antenna layout.
                 const int n_e = (_n_elements > 0) ? _n_elements : 1;
                 const int ref_e = (_n_elements > 0) ? _reference_element : 0;
                 std::complex<double> g3[6]; // reference element, for the header + NCO/gain state
                 double e3[6];               // element-independent
                 _g_elem.assign((size_t)n_rows_spec * n_e, std::complex<double>(0.0, 0.0));
-                // LIVE PROJECTION (hpp note): a non-source slot's rows are projected IN PLACE
-                // in the input frame before anything reads them, so the sum below, the taps,
-                // the cube and the element blocks all see one and the same projected data.
+                // Live projection (see the header): a non-source slot's rows are projected in
+                // place in the input frame before anything reads them, so the sum below, the
+                // taps, the cube and the element blocks all see the same projected data.
                 if (_proj_k_rec > 0 && _proj_mode.load() == 2 && !_proj_isB[p])
                     proj_slot_inplace(const_cast<double*>(corr), &c, n_chan, n_e, n_rows_spec);
-                // #102: steer this satellite's elements if geometry is fresh. The lock is
-                // cheap here (one take per record row-set); the REST writer holds it only
-                // while rebuilding one slot's table.
-                // The slot's table is COPIED under the lock and read from the copy: a row
-                // pointer read after the lock is released can be rewritten by a concurrent
-                // /set_sat_geometry mid-combine (benign in value, undefined in principle).
+                // Steer this satellite's elements if its geometry is fresh. The slot's table is
+                // copied under the lock and read from the copy, so a concurrent
+                // /set_sat_geometry cannot rewrite it mid-combine.
                 bool steered = false;
                 if (_steer.enabled()) {
                     if (_steer.n_chan() != n_chan) {
-                        // The table was built from the config's channel_ids; the frame says
-                        // otherwise. Steering with a mismatched channel axis would apply one
-                        // channel's phasor to another's data -- refuse, once and loudly.
+                        // The table was built from the config's channel_ids and the frame
+                        // disagrees: steering would apply one channel's phasor to another's
+                        // data. Refuse, and warn once.
                         if (!_steer_nchan_warned) {
                             WARN("elem steering DISABLED: steer table has {:d} channels, the "
                                  "frame {:d} -- channel_ids and the producer disagree",
@@ -982,8 +892,8 @@ void GnssGpuRecordAssemble::main_thread() {
                                 std::chrono::steady_clock::now().time_since_epoch())
                                 .count();
                         if (_steer.warm((int)p, now_s)) {
-                            // Follow the satellite to THIS record's time (the data's clock,
-                            // not the host's: records lag the wall by the pipeline depth).
+                            // Evaluate the track at this record's time (the data clock:
+                            // records lag the wall clock by the pipeline depth).
                             _steer.refresh((int)p, utc);
                             _steer_buf.resize((size_t)n_chan * n_e);
                             _steer.copy_slot((int)p, _steer_buf.data());
@@ -996,7 +906,7 @@ void GnssGpuRecordAssemble::main_thread() {
                     double e = 0.0;
                     for (int ch = 0; ch < n_chan; ++ch)
                         if ((c.chan_mask >> ch) & 1ULL) {
-                            const double w = _chan_w[ch]; // #163: 1 unless chan_noise_norm
+                            const double w = _chan_w[ch]; // 1 unless chan_noise_norm
                             e += w * energy[row + ch];
                             const size_t base = (row + ch) * n_e;
                             const gnss::ElemSteer::cf* st =
@@ -1012,45 +922,38 @@ void GnssGpuRecordAssemble::main_thread() {
                     g3[t] = _g_elem[(size_t)t * n_e + ref_e];
                     e3[t] = e;
                 }
-                // SHADOW PROJECTION (hpp note): the same prompt, projected per channel before
-                // steering and summing, into _g_proj -- for the projected learner and the
-                // capture diagnostics only. The frame, _g_elem and everything live are untouched.
+                // Shadow projection (see the header): the same prompt, projected per channel
+                // before steering and summing, into _g_proj for the projected learner and the
+                // capture diagnostics only. Nothing live changes.
                 const bool proj_this = _proj_k_rec > 0 && _proj_mode.load() == 1 && !_proj_isB[p];
                 if (proj_this)
                     proj_slot_shadow(corr, &c, n_chan, n_e, steered);
-                // SELF-CALIBRATED ELEMENT SUM (hpp note). Once this PRN's cal is warm, every
-                // header row (E/P/L/PH/RES -- same weights: same antennas) becomes the
-                // calibrated weighted mean instead of the bare reference element: reference-
-                // anchored phase, "one element" scale, noise down ~sqrt(N_healthy). The cal
-                // updates AFTER the combine (causal: this record's weights come from previous
-                // records only), from the PROMPT row against the header actually emitted --
-                // the bootstrap that starts on the reference element and converges to MRC.
-                // The element BLOCKS are untouched: they are the per-antenna measurement.
-                std::complex<double> g_sky(0.0, 0.0); // LOO sky-phase-corrected prompt (slot 24/25)
+                // Self-calibrated element sum (see the header). Once this PRN's cal is warm,
+                // every header row (same weights: same antennas) is the calibrated weighted mean
+                // instead of the bare reference element: reference-anchored phase, one-element
+                // scale, noise down ~sqrt(N_healthy). The cal updates after the combine, from the
+                // prompt row, so this record's header weights come from earlier records only.
+                // The element blocks are untouched: they are the per-antenna measurement.
+                std::complex<double> g_sky(0.0, 0.0); // split-aperture prompt (slots 24/25)
                 if (_elem_sum) {
                     gnss::ElemCal& ec = _cal[p];
                     if (c.reanchored == 1 && !_elem_hold_on_reanchor)
-                        ec.reset(); // fresh acquisition: full reset (legacy behavior)
-                    // HOLD across a carrier re-anchor by default: the per-element cal is
-                    // E_e*conj(E_ref), which the COMMON carrier cancels out of -- so a carrier
-                    // re-pin (reanchored==1) does not change the element gains, and resetting
-                    // them there is exactly what kept ElemCal from ever warming under the
-                    // near-every-record re-anchoring (measured 0%% warm). The L5 array is phase-
-                    // coherent, so the held gains stay valid; update() refreshes any drift.
-                    // NB: do NOT reset _anchor_warned on re-anchor -- the trackers can re-anchor
-                    // every record, and re-arming the WARN there ballooned the node log to tens
-                    // of GB. The "reference too weak" message is worth exactly once per PRN.
-                    // SHARED MODEL: this record's weights come from the model as it stood
-                    // (previous records' consensus and coefficient -- causal), installed as
-                    // held weights so combine/combine_split run unchanged.
+                        ec.reset(); // fresh acquisition: full reset
+                    // By default the cal holds across a re-anchor (reanchored 1): the per-element
+                    // cal is E_e*conj(E_ref), from which the common carrier cancels.
+                    // _anchor_warned is not re-armed on a re-anchor either, so the warning cannot
+                    // repeat at the re-anchor rate.
+                    // Shared model: this record's weights come from the model as it stood
+                    // (causal), installed as held weights so combine/combine_split run unchanged.
                     if (_elem_shared.load())
                         shared_hold(p);
                     if (ec.warm()) {
                         for (int t = 0; t < n_rows_spec; ++t)
                             g3[t] = ec.combine(&_g_elem[(size_t)t * n_e]);
-                        // The deep fold's input: same prompt, each element derotated by the phase
-                        // of the OTHERS. Separate slot -- the header keeps the raw phase because
-                        // that IS the ADR observable (gnssRecord.hpp REC_SKY_RE).
+                        // The deep fold's input: the same prompt by split aperture, one half of
+                        // the elements derotated by the other half's phase (combine_split). A
+                        // separate slot: the header keeps the raw phase, which is the ADR
+                        // observable (gnssRecord.hpp REC_SKY_RE).
                         g_sky = ec.combine_split(&_g_elem[(size_t)1 * n_e]);
                     }
                     if (_elem_prev_ok[p] && wstart > _wstart_prev[p]) {
@@ -1058,11 +961,11 @@ void GnssGpuRecordAssemble::main_thread() {
                         if (_elem_adapt) {
                             ec.update(&_g_elem[(size_t)1 * n_e], dt_s);
                         } else {
-                            // HELD: the live weights stay what the prior (or the last adapting
-                            // record) left them. The shadow keeps learning from this PRN alone,
-                            // and its agreement with the held weights is the capture detector:
-                            // sim ~1 = this satellite's data still say the same phases; sim -> 0
-                            // = something else is teaching it (a transit).
+                            // Held: the live weights stay as the prior, the shared model or the
+                            // last adapting record left them. The shadow keeps learning from this
+                            // PRN alone, and its agreement with the held weights is the capture
+                            // detector: sim ~1 = this satellite's data still give the same
+                            // phases; sim -> 0 = something else is teaching it (a transit).
                             gnss::ElemCal& sh = _cal_shadow[p];
                             if (c.reanchored == 1 && !_elem_hold_on_reanchor)
                                 sh.reset();
@@ -1083,13 +986,13 @@ void GnssGpuRecordAssemble::main_thread() {
                             if (_elem_shared.load())
                                 shared_pol_update(p, &_g_elem[(size_t)1 * n_e], dt_s);
                         }
-                        // THE PROJECTED LEARNER (hpp note): fed the projected prompt while a
-                        // source is in force and the plain prompt otherwise, so out of transit
-                        // it is the plain shadow's twin and in transit their difference is the
-                        // capture. Diagnostics per slot: cap_plain / cap_proj = how much of
-                        // each learner's weight vector lies in the interferer subspace,
-                        // b_cos2 = the same for the held (live) weights = the projection's
-                        // predicted cost on this satellite, sim_pp = the two learners' agreement.
+                        // The projected learner (see the header): fed the projected prompt
+                        // while a basis is in force (in live mode the prompt itself is) and the
+                        // plain prompt otherwise, so out of transit it is the shadow's twin and
+                        // in transit their difference is the capture. Per slot: cap_plain and
+                        // cap_proj = how much of each learner's weight vector lies in the
+                        // interferer subspace, b_cos2 = the same for the live weights (the
+                        // projection's cost on this satellite), sim_pp = the learners' agreement.
                         if (_proj_ready && _proj_mode.load() != 0) {
                             gnss::ElemCal& pj = _cal_proj[p];
                             if (c.reanchored == 1 && !_elem_hold_on_reanchor)
@@ -1119,226 +1022,119 @@ void GnssGpuRecordAssemble::main_thread() {
                 rec[gnss::REC_L_IM] = (float)g3[2].imag();
                 rec[gnss::REC_L_ENERGY] = (float)e3[2];
 
-                // Carrier NCO (pass-2 half): the command's fence re-anchor resets the phase
-                // history exactly like the tracker's in-place reset; f_nco (ctrim + ff ramp)
-                // changes the slope of phi, never jumps it.
-                // reanchored 2 and 3 are the SAME event; they differ only in who subtracted.
-                // 3 carries the step in c.dcyc because the assembler cannot compute it
-                // accurately from fcar (see gnssGpuChain.hpp: differencing two 1.176 GHz
-                // doubles leaves 0.4 rad on the table, the same order as the term itself).
+                // Carrier NCO. reanchored 1 is a fresh acquisition and resets the phase history;
+                // f_nco changes the slope of phi, never steps it. reanchored 2 and 3 are the same
+                // continuous re-pin and differ only in who computes the step: 3 carries it in
+                // c.dcyc, because differencing two GHz-scale fcar values here would lose ~0.4 rad
+                // (gnssGpuChain.hpp PrnCtl::dcyc).
                 const bool repin = (c.reanchored == 2 || c.reanchored == 3);
                 if (c.reanchored == 1 || (repin && !_fcar_prev_ok[p])) {
-                    // FRESH acquisition: no phase history to preserve. Break the arc.
+                    // Fresh acquisition, or a re-pin with no previous fcar: no phase history to
+                    // keep. Break the arc.
                     _phi[p] = 0.0;
                     _phi_cyc[p] = 0.0;
                     _a_prev_ok[p] = 0;
                     if (!_elem_hold_on_reanchor)
-                        _elem_prev_ok[p] = 0; // legacy: also break element continuity
+                        _elem_prev_ok[p] = 0; // also break element continuity
                     _phi_cmd_ok[p] = 0;
                 } else if (repin) {
-                    // PHASE-CONTINUOUS RE-PIN. Re-pinning f_ref steps the ABSOLUTELY-ANCHORED
-                    // replica phase by df*t_abs -- thousands of cycles at soak age. The old code
-                    // folded that step into an EXPORT-ONLY offset and then ZEROED the NCO, so the
-                    // exported ADR survived but the DATA did not: the rotation applied to A moved
-                    // by the step, i.e. every re-pin punched an effectively random phase jump into
-                    // the very correlation the combiner deep-integrates. That is the residual C/N0
-                    // sawtooth -- and it showed exactly where this explanation says it must, in the
-                    // COHERENT estimator at precisely max_anchor_age_s (30.0 s on every strong sat,
-                    // 0.2 dB on GPS to 1.6 dB on B1C) and NOT in the phase-blind incoherent one
-                    // (2026-07-14, on-sky).
-                    //
-                    // The step is FOLDABLE: an NCO absorbs an arbitrary constant phase. Put it in
-                    // the NCO instead of the export and the despread output is continuous THROUGH
-                    // the re-pin -- the commanded phase stays exactly as continuous as before (the
-                    // export algebra is unchanged: fcar*t - phi_cyc is invariant under this fold),
-                    // so the validated ADR arcs are untouched.
-                    //
-                    // This is what makes a re-pin CHEAP, which is the real prize: with the phase
-                    // step folded and the code-currency step already translated above, the replica
-                    // can be re-pinned as often as we like. max_anchor_age_s: 0 re-pins EVERY
-                    // record, so f_ref never goes stale and the within-record decoherence that
-                    // grows with anchor age (the OTHER half of the sawtooth,
-                    // ~(dop_rate*age*t_rec)^2
-                    // -- negligible on GPS's 1 ms record, ~1 dB on B1C's 10 ms) never accumulates.
-                    //
-                    // ⚠️ THIS BRANCH WAS DEAD CODE ON CHORD UNTIL 2026-08-13. Both CHORD producers
-                    // hardcoded `reanchored` = 0 (cudaGnssChordTrack.cpp, cudaGnssInject.cpp), so
-                    // the step below -- 109 to 1127 CYCLES per record at 3.37 days of uptime,
-                    // measured on gal_e5a -- went straight into every correlation. With
-                    // carrier-gain 0.0 making f_nco zero as well, _phi was identically zero and
-                    // this stage applied NO derotation at all. That is the whole of the "per-record
-                    // common phase is white in time" folklore: it is not the sky, it is this
-                    // subtraction never being performed. See task #52.
+                    // Phase-continuous re-pin. Re-pinning f_ref steps the absolutely anchored
+                    // replica phase by df*t_abs, many cycles at days of uptime. An NCO absorbs
+                    // any constant phase, so fold the step into both _phi (the rotation) and
+                    // _phi_cyc (the export): the derotated correlation stays continuous through
+                    // the re-pin, and the commanded phase fcar*t - phi_cyc is unchanged. A re-pin
+                    // is then free, so a producer can re-pin every record and the within-record
+                    // decoherence that grows with anchor age, ~(dop_rate*age*t_rec)^2, never
+                    // builds up.
                     const double t_pin = (double)wstart / _sample_rate;
                     const double dcyc =
                         (c.reanchored == 3) ? c.dcyc : (c.fcar - _fcar_prev[p]) * t_pin;
                     _phi_cyc[p] += dcyc;
                     _phi[p] = std::remainder(_phi[p] + 2.0 * M_PI * dcyc, 2.0 * M_PI);
                 }
-                // #72 DIAGNOSTIC PASS-THROUGH. Both are recorded by the despread as the values
-                // it actually handed the kernel; this stage only copies them. Unconditional --
-                // NOT inside the dt/_a_prev_ok guard below -- because the question they answer
-                // is asked per record, including the first of an arc.
+                // Diagnostic pass-through: the values the despread actually handed the kernel
+                // (gnssRecord.hpp REC_ANG0, REC_PHI_DDOP). Written for every record, including
+                // the first of an arc, so outside the dt guard below.
                 rec[gnss::REC_ANG0] = (float)c.ang0;
                 rec[gnss::REC_PHI_DDOP] = (float)c.phi_ddop;
                 const double dt = (double)(wstart - _wstart_prev[p]) / _sample_rate;
                 if (_a_prev_ok[p] && dt > 0.0) {
-                    // Commanded-trim increment (slot 19, see gnssRecord.hpp): the trim the
-                    // producer ACTUALLY applied, exported honestly in PrnCtl::ctrim_hz and
-                    // integrated over this record so downstream can subtract the loop's
-                    // transients from the ADR exactly. This used to be reconstructed from the
-                    // identity ctrim = (f_nco + fcar_report - fcar)/2 -- valid only for the
-                    // airspy tracker's f_nco = ctrim + ff convention; on the CHORD producers
-                    // it evaluated to (ctrim - f_offset)/2, MHz-scale garbage (see the
-                    // PrnCtl::ctrim_hz doc, gnssGpuChain.hpp).
+                    // Commanded-trim increment (slot 19): the trim the producer applied
+                    // (PrnCtl::ctrim_hz), integrated over this record so downstream can subtract
+                    // the loop's transients from the ADR exactly. It cannot be reconstructed
+                    // from f_nco, fcar_report and fcar (see PrnCtl::ctrim_hz).
                     rec[gnss::REC_TRIM_INC] = (float)(c.ctrim_hz * dt);
-                    // ⚠️ THE MIDPOINT of the previous and current f_nco (e2e [4e],
-                    // 2026-08-21, MEASURED): neither endpoint is right. dt spans
-                    // [t_prev, t_now]; charging the NEW slope over that gap left a
-                    // persistent |dctrim|*dt offset per command step (the "[4e] drip"),
-                    // but charging the OLD slope leaves the same-size residue with the
-                    // opposite lineage, because a step also moves the record's PHASE
-                    // CENTROID (the prompt integrates over the window; its phase sits at
-                    // window CENTER, the argument anchor at window START). The average is
-                    // exact: bench commanded rms 7.8 vs control 7.5 mcyc under a
-                    // 4x-live staircase, from ~20-26 for either endpoint. REC_TRIM_INC
-                    // above deliberately keeps THIS record's ctrim: it documents what the
-                    // producer applied to this record's despread -- a different (and
-                    // correct) statement.
+                    // Charge the midpoint of the previous and current f_nco over dt. Either
+                    // endpoint alone leaves a |dctrim|*dt residue per command step, because a
+                    // step also moves the record's phase centroid (the prompt's phase sits at the
+                    // window centre, the argument anchor at its start).
+                    // REC_TRIM_INC above keeps this record's own ctrim on purpose: it states
+                    // what the producer applied to this record.
                     _phi[p] += 2.0 * M_PI * 0.5 * (_fnco_prev[p] + c.f_nco) * dt;
-                    // Keep the ROTATION phase bounded, but track the NCO phase UNWRAPPED (in
-                    // cycles) for the carrier-phase export. remainder() slides phi by whole
-                    // multiples of 2*pi, which a rotation cannot see and a mod-1 phase export
-                    // cannot see either -- but a per-record INCREMENT sees every one of them as
-                    // a spurious +-1 cycle. The NCO wraps ~f_nco times a second, so the ADR bled
-                    // about one cycle per wrap: measured as a per-satellite ADR-rate error of a
-                    // few Hz, scaling with each satellite's carrier trim (2026-07-13).
+                    // Keep the rotation phase bounded but track the NCO phase unwrapped, in
+                    // cycles, for the carrier-phase export: remainder() slides phi by whole
+                    // turns, which a rotation cannot see but a per-record increment would read
+                    // as a +-1 cycle slip.
                     _phi[p] = std::remainder(_phi[p], 2.0 * M_PI);
                     _phi_cyc[p] += 0.5 * (_fnco_prev[p] + c.f_nco) * dt;
                 }
-                _fnco_prev[p] = c.f_nco; // AFTER the charge: next record's gap rides this value
+                _fnco_prev[p] = c.f_nco; // after the charge: the next midpoint uses it
                 const std::complex<double> rot = std::polar(1.0, -_phi[p]);
-                // #72: PUBLISH THE CURRENCY. `rot` is about to be applied to slots 3/4 and to
-                // every comb column, and its exponent has a per-instance ARBITRARY origin. Ship
-                // it so a consumer can rotate every instance onto one common reference; see
-                // gnss::REC_PHI0, and the SpecWindow's W.phi0[p] which does the same for
-                // /get_spectrum. Written BEFORE the rotation is used, so it can never describe
-                // a different record's phase than the one it rode out with.
+                // Publish the rotation's phase (gnss::REC_PHI0): `rot` is applied to slots 3/4
+                // and every comb column, and _phi[p] has an arbitrary per-instance origin, so a
+                // consumer needs it to put instances on one common reference. The spectrum and
+                // cube windows publish the same as phi0.
                 rec[gnss::REC_PHI0] = (float)_phi[p];
                 const std::complex<double> g_corr = g3[1] * rot;
                 rec[3] = (float)g_corr.real();
                 rec[4] = (float)g_corr.imag();
                 rec[5] = (float)e3[1];
-                // PER-CHANNEL PROMPT SPECTRUM accumulation (hpp note; task #32). Same source
-                // as the per-channel prompt (trial 1 = PROMPT, per channel, pre-sum), same
-                // element combination as the header (cal when warm, else the reference
-                // element), and the SAME `rot` the record's prompt just got -- one common
-                // phase per record, so the accumulation doesn't wind with the residual
-                // carrier while the cross-channel RELATIVE phases (the delay observable)
-                // pass through untouched. Only the covering-mask channels accumulate;
-                // masked-off ones stay identically zero and the consumer skips zero-energy.
+                // Per-channel prompt spectrum (see the header): the prompt row per channel,
+                // before the cross-channel sum, combined over elements by the cal when warm, else
+                // the reference element, and rotated by the same `rot` as the record's prompt.
+                // In adapt mode the cal here already includes this record's update, which the
+                // header combine did not. One common phase per record stops the sum winding with
+                // the residual carrier while the cross-channel relative phases (the delay
+                // observable) pass through. Only covering-mask channels accumulate; the rest stay
+                // zero and the consumer skips zero energy.
                 if (!_spec_freq_ids.empty() && (int)_spec_freq_ids.size() == n_chan) {
                     const size_t prow = (size_t)(c.job0 + 1) * n_chan;
                     std::lock_guard<std::mutex> lk(_spec_mtx);
                     SpecWindow& W = spec_window_for(wstart);
-                    // PUBLISH THE PHASE CURRENCY (task #52). The rotation applied below is
-                    // exp(-i*_phi[p]), and _phi[p] is an accumulator that is ZEROED on a fresh
-                    // acquisition and STEPPED on a continuous re-pin -- and the broker re-pins
-                    // seeds every ~2 minutes. So the export's phase reference MOVES UNDERNEATH
-                    // the consumer, on exactly the minutes timescale where the measured
-                    // window-to-window coherence collapses to its random floor.
-                    //
-                    // Neither of my two earlier attempts was right: leaving it implicit (the
-                    // original) hands the consumer a reference it cannot know, and subtracting
-                    // a per-window origin (45fe3a438) throws away the within-window continuity
-                    // that is the whole point. KV: "the original was also wrong."
-                    //
-                    // So publish it. A window's sum is exp(-i*phi0) * SUM_r G_r*exp(-i*dphi_r),
-                    // so a consumer that knows phi0 can rotate any two windows onto a common
-                    // reference exactly; and n_reanchor > 0 says the accumulator was reset or
-                    // stepped MID-window, which no single constant can undo -- drop those.
-                    // This is #45's (value, currency, epoch) discipline applied to a phase:
-                    // the spectrum was a value whose currency was never transported.
+                    // Publish the phase reference rather than subtract it. The rotation is
+                    // exp(-i*_phi[p]); _phi[p] has an arbitrary per-instance origin, is zeroed
+                    // only when the arc breaks, and takes each re-pin step so that the derotated
+                    // prompt stays continuous. A window's sum is exp(-i*phi0) * sum_r
+                    // G_r*exp(-i*dphi_r), with phi0 = _phi[p] at the window's first record, so a
+                    // consumer can rotate any two windows onto a common reference. Referencing
+                    // each window to its own first record instead would give every window its own
+                    // arbitrary constant. The accumulator itself is needed: without it the prompt
+                    // winds with the residual carrier across the window (1 Hz is 6.6 rad over
+                    // 1.05 s).
                     if (W.nrec[p] == 0)
                         W.phi0[p] = _phi[p];
-                    // ⚠️ ONLY AN **UNFOLDED** RESET BREAKS THE WINDOW (2026-08-14, #53).
-                    // This counted `reanchored != 0`, but reanchored 2 and 3 are the
-                    // CONTINUOUS re-pins whose phase step the block immediately above has
-                    // just folded INTO _phi -- exactly so the accumulator stays continuous
-                    // across them. Only 1 is a fresh acquisition, where there is no phase
-                    // history, the NCO is reset and the arc genuinely breaks.
-                    //
-                    // Counting the folded ones made n_reanchor a constant: cudaGnssInject
-                    // sets `reanchored = have_hist ? 3 : 1` on EVERY record (the Doppler is
-                    // propagated per record, so the reference legitimately moves every
-                    // record), so path B reported n_reanchor > 0 for every PRN in every
-                    // window, forever. Measured on sky: 100% of (PRN, window) on all four
-                    // chains, before AND after the seed-cadence work -- which is what
-                    // finally showed the counter, not the receiver, was the problem.
-                    // fleet_spectrum_aligned drops any PRN with n_reanchor > 0, so #53's
-                    // aligned gather discarded 100% of its points on a benign condition.
+                    // n_reanchor counts only fresh acquisitions (reanchored 1), which reset _phi
+                    // mid-window where no constant can undo it; consumers drop those windows.
+                    // Re-pins (2 and 3) were folded into _phi above and keep the window
+                    // continuous, and a producer may re-pin every record.
                     if (c.reanchored == 1)
                         W.nreanchor[p] += 1;
-                    // ⚠️ DO **NOT** REFERENCE THIS TO THE WINDOW'S OWN FIRST RECORD.
-                    // I tried exactly that (45fe3a438) to remove the arbitrary per-instance
-                    // origin of _phi[p], and it was a mistake: _phi[p] is CONTINUOUS IN TIME
-                    // (it only resets on re-acquisition), so subtracting a per-window origin
-                    // gives every window its own arbitrary constant and the exported phase
-                    // becomes random FROM WINDOW TO WINDOW. Measured after that change:
-                    // coherence of a fixed (PRN,instance,channel) across 7 consecutive windows
-                    // was 0.38 against a 1/sqrt(7) = 0.378 random baseline -- i.e. destroyed.
-                    // KV: "we'd be adding flat but random phases time-to-time."
-                    // The cross-INSTANCE concern that motivated it was real but is not fixed
-                    // here; a continuous common reference is worth more than a tidy origin.
-                    // KEEP the raw _phi[p]: continuous in time, and its INCREMENTS are common
-                    // across instances (same commanded carrier, and since #53 the same
-                    // records), which is what a cross-window combine needs.
-                    // (task #52).
-                    // `_phi[p]` is an ACCUMULATOR whose zero is set at a per-instance
-                    // re-acquisition ("FRESH acquisition: break the arc"), so its absolute
-                    // value is arbitrary and DIFFERENT on every instance. Exporting
-                    // g * exp(-i*_phi) therefore stamped each instance's spectrum with its own
-                    // arbitrary constant -- which left INTRA-instance coherence untouched
-                    // (a constant does not tilt a ramp) while destroying INTER-instance
-                    // coherence. Measured on sky 2026-08-12 before this fix: intra 0.48-0.98
-                    // (0.86-0.98 on strong satellites) against inter 0.05-0.46. I first read
-                    // that as a physical per-instance instrumental phase; it is not -- the
-                    // instances are compute assignments over ONE PFB, interleaved stride-16
-                    // combs over the SAME 5972-6076 span, with no separate signal path to
-                    // carry a calibration term. KV caught it.
-                    //
-                    // The accumulator itself is NECESSARY: without it the prompt winds with the
-                    // residual carrier across the ~100 records in a window (1 Hz of residual is
-                    // 6.6 rad over 1.05 s) and the window sum decoheres. Only its ORIGIN is
-                    // wrong. Computing an absolute phase instead is not an option either --
-                    // f_car * t_abs at days of uptime is ~1e8 cycles, the same precision trap
-                    // as the code-phase transport disease.
-                    //
-                    // So subtract the phase at the window's OWN first record. The INCREMENT
-                    // from there is identical on every instance (same commanded carrier, and
-                    // since #53 the same records), so the arbitrary origin cancels exactly and
-                    // every instance lands on one common reference. The record path keeps the
-                    // raw _phi[p] and is untouched.
-                    // ROWS: trial 0 = EARLY, 1 = PROMPT, 2 = LATE (see prow above). One lambda
-                    // so all three taps get IDENTICALLY the same element combine and the same
-                    // NCO rotation -- a discriminator built from taps combined even slightly
-                    // differently is measuring the difference between the combines, not the
-                    // code offset.
+                    // Rows: 0 = early, 1 = prompt, 2 = late. One lambda gives all three taps the
+                    // identical element combine and rotation; a discriminator built from taps
+                    // combined differently measures the difference between the combines, not
+                    // the code offset.
                     const size_t erow = (size_t)(c.job0 + 0) * n_chan;
                     const size_t lrow = (size_t)(c.job0 + 2) * n_chan;
                     const bool warm = _elem_sum && _cal[p].warm();
-                    // STEERED, EXACTLY AS THE HEADER IS (#102). The cal's weights are learned
-                    // from the STEERED prompt above, so they carry the instrument phase only.
-                    // Applied to the raw per-channel correlations they leave every element's
-                    // geometric phase in the sum, and a combine spread over a dozen dishes then
-                    // reads 5-20 dB below the header -- the per-channel mean of
-                    // |sum_e w_e exp(i 2 pi f_ch tau_e)|^2, satellite by satellite -- while the
-                    // unsteered noise probes do not, so the served C/N0 and the comb DLL's own
-                    // taps both lose exactly that. The per-PRN learners hid it by putting nearly
-                    // all their weight on the reference element; a shared model does not. The
-                    // reference element is the phase centre, so the steered combine keeps the
-                    // comb's code and phase currency. The beam cube below stays raw: per element
-                    // is its axis.
+                    // Steered, as the header is. The cal's weights are learned from the steered
+                    // prompt, so they carry only the instrument phase; applied to unsteered
+                    // per-channel correlations they would leave each element's geometric phase in
+                    // the sum and the combine would lose coherence.
+                    // Steering is referenced to the reference element configured at
+                    // construction, so the steered combine keeps the comb's code and phase
+                    // currency. The cold path takes the reference element unsteered, which
+                    // matches the header only while that is the configured element. The beam
+                    // cube below stays unsteered: per element is its axis.
                     const gnss::ElemSteer::cf* st_tab = steered ? _steer_buf.data() : nullptr;
                     auto tap = [&](size_t row, int ch) -> std::complex<double> {
                         const size_t b = (row + ch) * n_e;
@@ -1358,39 +1154,23 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                         return v * rot;
                     };
-                    // ── BEAM CUBE (hpp): the (subband bin x element) axis, un-collapsed ───
-                    // The joint quantity, taken from `corr` BEFORE either collapse: the
-                    // element blocks below sum this over channels, the comb block sums it over
-                    // elements, and neither keeps the product.
-                    //
-                    // BOTH SUMS ARE KEPT. The incoherent one is the beam (no phase model, no
-                    // nav-bit cap, grows like sqrt(K)); the coherent one is the arc, and it is
-                    // the one that cannot be reconstructed afterwards. `rot` is the SAME
-                    // rotation the record's prompt and the spectrum ring just got -- one
-                    // common phase per record -- so the accumulation does not wind with the
-                    // residual carrier while the cross-element and cross-channel RELATIVE
-                    // phases pass through untouched. Its origin, _phi[p], is published as
-                    // phi0 below; without that the coherent sum is a number with an unknowable
-                    // reference (see the hpp).
-                    //
-                    // Normalised by the channel's OWN replica energy, once, for every element:
-                    // one replica is correlated against all of them, so A_e = G_e/E_c keeps the
-                    // antenna ratios comparable -- the property the whole beam map rests on. A
-                    // zero-energy channel contributes nothing rather than an infinity.
+                    // Beam cube (see the header): the (subband bin x element) prompt, taken from
+                    // `corr` before either collapse (the element blocks sum over channels, the
+                    // comb over elements). Both sums are kept: the incoherent one is the beam (no
+                    // phase model); the coherent one cannot be reconstructed afterwards. `rot` is
+                    // the same per-record rotation as the prompt and the spectrum, and its origin
+                    // _phi[p] is published as phi0. Each channel is normalised by its own replica
+                    // energy, A_e = G_e/E_c for every element (one replica is correlated against
+                    // all of them), so antenna ratios stay comparable; a zero-energy channel is
+                    // skipped.
                     if (_cube_on) {
                         std::lock_guard<std::mutex> ck(_cube_mtx);
                         CubeWindow& C = cube_window_for(wstart);
-                        // The SAME epoch the record's own `utc` was stamped from (above), so
-                        // the cube and the record stream agree on what time a wstart is.
-                        // 0.0 when the producer sent no frame0_utc AND the fallback is unset.
+                        // The epoch the record's `utc` was stamped from, so the cube and the
+                        // record stream agree on the time of a wstart.
                         C.utc0 = (hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor;
-                        // PUBLISH THE PHASE CURRENCY at the window's first record, and count
-                        // only UNFOLDED resets: reanchored 2 and 3 are the CONTINUOUS re-pins
-                        // whose phase step has already been folded into _phi, so counting them
-                        // would mark every window broken forever (measured: 100% of (PRN,
-                        // window) on all four chains, which is how that counter was found to be
-                        // the problem rather than the receiver). Only 1 is a fresh acquisition,
-                        // where the NCO is reset and the arc genuinely breaks.
+                        // phi0 at the window's first record, and only fresh acquisitions
+                        // counted, as for the spectrum ring.
                         if (C.nrec[p] == 0)
                             C.phi0[p] = _phi[p];
                         if (c.reanchored == 1)
@@ -1413,9 +1193,8 @@ void GnssGpuRecordAssemble::main_thread() {
                                     * rot;
                                 C.coh_re[k0 + el] += v.real();
                                 C.coh_im[k0 + el] += v.imag();
-                                // |v|^2 == |A|^2: rot is unit modulus, so the incoherent sum is
-                                // blind to the rotation, which is exactly why it survives a
-                                // broken arc when the coherent sum does not.
+                                // |v|^2 == |A|^2: rot is unit modulus, so the incoherent sum
+                                // ignores the rotation and survives a broken arc.
                                 C.incoh[k0 + el] += std::norm(v);
                             }
                             const size_t kb = (size_t)p * _cube_bins + bin;
@@ -1426,19 +1205,17 @@ void GnssGpuRecordAssemble::main_thread() {
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL))
                             continue;
-                        // #163: the same per-channel weight as the record's sums, so the comb
-                        // the broker reads and the record it reads agree channel by channel.
+                        // The same per-channel weight as the record's sums, so the comb and
+                        // the record agree channel by channel.
                         const double w = _chan_w[ch];
                         std::complex<double> g = tap(prow, ch) * w;
                         const size_t k = (size_t)p * n_chan + ch;
                         W.re[k] += g.real();
                         W.im[k] += g.imag();
                         W.energy[k] += w * energy[prow + ch];
-                        // THE SAME VALUE, PER RECORD (gnssRecord.hpp comb block). The window
-                        // ring above is what /get_spectrum serves; this is the identical
-                        // quantity written out un-accumulated, because a cross-RECORD rate fit
-                        // cannot be done on a window sum -- the sum is exactly what a residual
-                        // rate destroys.
+                        // The same values per record (gnssRecord.hpp comb block): /get_spectrum
+                        // serves window sums, and a cross-record rate fit needs the unsummed
+                        // records.
                         if (_chan_export) {
                             float* cb = out + gnss::chan_offset(p, ch, n_prn, n_chan, _n_elements);
                             const std::complex<double> ge = tap(erow, ch) * w;
@@ -1459,27 +1236,26 @@ void GnssGpuRecordAssemble::main_thread() {
                         W.w0 = wstart;
                     W.w1 = wstart;
                 }
-                // Head segment: SAME NCO rotation as the prompt (it is the same correlation,
-                // restricted to the hops before the code-period boundary), so head + tail
-                // reconstructs P exactly and the combiner can wipe each side with its own
-                // overlay chip.
-                // SKY-PHASE-CORRECTED PROMPT: same NCO rotation as the prompt it is a version of,
-                // so the combiner can deep-integrate it in exactly the prompt's currency. Zero
-                // when the cal is cold / elem_sum is off, which consumers read as "absent".
+                // Sky-phase-corrected prompt: the same rotation as the prompt, so the combiner
+                // can deep-integrate it in the prompt's currency. Zero when the cal is cold or
+                // elem_sum is off, which consumers read as absent.
                 if (std::norm(g_sky) > 0.0) {
                     const std::complex<double> gs = g_sky * rot;
                     rec[gnss::REC_SKY_RE] = (float)gs.real();
                     rec[gnss::REC_SKY_IM] = (float)gs.imag();
                 }
+                // Head segment: the same rotation as the prompt (it is the same correlation,
+                // restricted to the hops before the code-period boundary), so head + tail
+                // reconstructs P exactly and the combiner can wipe each side with its own
+                // overlay chip.
                 const std::complex<double> gh_corr = g3[3] * rot;
                 rec[gnss::REC_PH_RE] = (float)gh_corr.real();
                 rec[gnss::REC_PH_IM] = (float)gh_corr.imag();
                 rec[gnss::REC_PH_ENERGY] = (float)e3[3];
-                // PEEL RESIDUAL (slots 20-23): the same prompt correlation taken on the voltage
-                // after this PRN's own waveform was subtracted, and its head segment. SAME NCO
-                // rotation as the prompt -- it is the same correlation, so the combiner can
-                // deep-integrate it with the same per-segment overlay wipe. Left at zero when the
-                // chain does not peel, which every existing consumer already reads as "absent".
+                // Peel residual (slots 20-23), only when the frame carries rows 4/5: the prompt
+                // and its head on the voltage after this PRN's own waveform was subtracted, with
+                // the prompt's rotation so the combiner can apply the same per-segment overlay
+                // wipe. Left at zero otherwise, which consumers read as absent.
                 if (n_rows_spec > ROW_RES_PH) {
                     const std::complex<double> gr = g3[ROW_RES_P] * rot;
                     const std::complex<double> grh = g3[ROW_RES_PH] * rot;
@@ -1488,10 +1264,9 @@ void GnssGpuRecordAssemble::main_thread() {
                     rec[gnss::REC_RES_PH_RE] = (float)grh.real();
                     rec[gnss::REC_RES_PH_IM] = (float)grh.imag();
                 }
-                // ELEMENT BLOCKS. Every antenna gets the SAME NCO rotation: the NCO is a per-PRN
-                // model of the code/carrier, not a per-antenna quantity, so rotating each element
-                // by `rot` preserves exactly the inter-element phase differences -- which are the
-                // measurement. Rotating per element would divide out the very thing being mapped.
+                // Element blocks. Every antenna gets the same rotation: the NCO is a per-PRN
+                // model, not a per-antenna one, so the inter-element phase differences, which are
+                // the measurement, are preserved.
                 if (_n_elements > 0) {
                     for (int el = 0; el < _n_elements; ++el) {
                         float* eb = out + gnss::elem_offset(p, el, _n_elements);
@@ -1525,18 +1300,15 @@ void GnssGpuRecordAssemble::main_thread() {
                 _elem_prev_ok[p] = 1;
                 _wstart_prev[p] = wstart;
 
-                // COMMANDED CARRIER PHASE (cycles mod 1), the GPU twin of the CPU tracker's
-                // export -- see gnssRecord.hpp: replica f_ref*t_abs + the NCO's phi. Adding
-                // the combiner's measured arg(A) reconstructs the received carrier phase,
-                // with the re-pin's replica-phase step cancelling instead of slipping.
-                // phi enters NEGATED: f_ref is physical-signed, the NCO is in the r2c-flipped
-                // internal convention (settled on sky by a satellite with its trim pinned at
-                // the clamp).
-                // (no _phi_fix term any more: the re-pin step is folded into _phi_cyc itself,
-                // which leaves fcar*t_abs - phi_cyc continuous on its own.)
+                // Commanded carrier phase, cycles (gnssRecord.hpp REC_CPHASE): replica f_ref*t_abs
+                // minus the NCO phase. Adding the combiner's measured arg(A) reconstructs the
+                // received carrier phase; a re-pin step cancels because it is folded into
+                // _phi_cyc. phi enters negated: f_ref is physical-signed, the NCO is in the
+                // r2c-flipped internal convention.
                 const double t_abs_w = (double)wstart / _sample_rate;
                 const double phi_cmd_cyc = c.fcar * t_abs_w - _phi_cyc[p];
-                // the INCREMENT (gnssRecord.hpp): bounded, float-exact, unwrap-free
+                // Exported as the increment since the previous record. fcar includes the RF
+                // offset, so the increment is ~1e7 cycles and float32 keeps only whole cycles.
                 rec[gnss::REC_CPHASE] =
                     _phi_cmd_ok[p] ? (float)(phi_cmd_cyc - _phi_cmd_prev[p]) : 0.0f;
                 _phi_cmd_prev[p] = phi_cmd_cyc;
@@ -1561,9 +1333,8 @@ GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_
     // Caller holds _spec_mtx.
     if (_spec_win_samples <= 0)
         return _spec_ring[0]; // legacy single accumulator: one open window, reset on read
-    // FLOOR division, not C's truncation-toward-zero. wstart should never be negative, but a
-    // silent sign convention change upstream must not quietly put two instances on different
-    // sides of zero -- that is precisely the class of bug this endpoint exists to remove.
+    // Floor division, not C's truncation toward zero, so even a negative wstart lands every
+    // instance in the same window.
     int64_t idx = wstart / _spec_win_samples;
     if (wstart < 0 && idx * _spec_win_samples != wstart)
         --idx;
@@ -1587,12 +1358,11 @@ GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_
 }
 
 GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_t wstart) {
-    // Caller holds _cube_mtx. Same window arithmetic as spec_window_for, deliberately: the two
-    // rings must agree on where a boundary is, or a consumer joining the cube to the spectrum
-    // would be pairing different slices of time and nothing would say so.
+    // Caller holds _cube_mtx. The same floor arithmetic as spec_window_for, on
+    // beam_cube_window_samples (a separate length, so the two rings' boundaries need not match).
     int64_t idx = wstart / _cube_win_samples;
     if (wstart < 0 && idx * _cube_win_samples != wstart)
-        --idx; // FLOOR, not C's truncation toward zero (see spec_window_for)
+        --idx; // floor, not truncation toward zero (see spec_window_for)
     const int64_t n = (int64_t)_cube_ring.size();
     CubeWindow& C = _cube_ring[(size_t)(((idx % n) + n) % n)];
     if (C.idx != idx) {
@@ -1613,13 +1383,10 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
     if (C.w0 < 0)
         C.w0 = wstart;
     C.w1 = wstart;
-    // ⚠️ A WINDOW SHORTER THAN A RECORD IS A UNIT ERROR, AND IT IS INVISIBLE OTHERWISE. It
-    // produces one window per record, each holding exactly one, so every array is well formed,
-    // every index is consistent, and the archive is simply the record stream at 1/96 of the
-    // integration it claims. The tell is structural rather than numeric -- a window that never
-    // accumulates a second record -- so check it here, once, where consecutive wstarts are the
-    // thing in hand. (beam_cube_window_samples is in F-ENGINE SAMPLES; a value in HOPS is off
-    // by fft_length and lands exactly here.)
+    // Unit check. A length in hops rather than F-engine samples (off by fft_length) gives
+    // windows shorter than a record, and every array stays well formed. The count rises when a
+    // window opens at the index after the newest, resets on any second call into an open window
+    // (nrec_seen counts calls, one per running PRN per record), and warns once at 8.
     if (!_cube_win_warned && C.nrec_seen == 0 && idx == _cube_max_idx + 1 && _cube_max_idx >= 0) {
         if (++_cube_singleton_windows >= 8) {
             _cube_win_warned = true;
@@ -1636,10 +1403,8 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
     }
     ++C.nrec_seen;
     if (idx > _cube_max_idx) {
-        // The PREVIOUS window is now provably complete -- a later one has opened, which is the
-        // only local evidence that no more records are coming for it. Push it. Done here, on
-        // the boundary crossing, so completeness is a property of the clock and not of any
-        // consumer's timing.
+        // A later window has opened, the only local evidence that no more records are coming
+        // for the previous one: push it now, on the boundary crossing.
         if (_cube_out_buf != nullptr && _cube_max_idx >= 0) {
             const int64_t n2 = (int64_t)_cube_ring.size();
             const CubeWindow& prev = _cube_ring[(size_t)(((_cube_max_idx % n2) + n2) % n2)];
@@ -1652,17 +1417,12 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
 }
 
 void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
-    // Caller holds _cube_mtx.
-    //
-    // NON-BLOCKING ACQUIRE (hpp): this stage is in the real-time path, so a full buffer must
-    // cost the ARCHIVE a window, never cost the tracker a record. is_frame_empty() is a safe
-    // pre-check here because this stage is the buffer's only producer -- nothing else can take
-    // the slot between the test and the call.
+    // Caller holds _cube_mtx. Never blocks (see the header): this stage is in the real-time
+    // path, so a full buffer costs the archive a window, never the tracker a record.
+    // is_frame_empty() is a safe pre-check because this stage is the buffer's only producer.
     if (!_cube_out_buf->is_frame_empty(_cube_out_id)) {
         ++_cube_dropped;
-        // First drop, then every hundredth: a wedged far side would otherwise print at ~1 Hz
-        // per instance forever and drown the log -- and the count rides in the data anyway,
-        // so the log is a courtesy here, not the record.
+        // Log the first drop and every hundredth; the count rides in the next frame anyway.
         if (_cube_dropped == 1 || _cube_dropped % 100 == 0)
             WARN("beam-cube window {:d} DROPPED, output buffer full ({:d} lost since start). "
                  "The next emitted frame's dropped_windows carries this, so the gap is SIZED "
@@ -1674,7 +1434,7 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
     if (f == nullptr)
         return; // shutting down
     const int mp = _cube_max_prn, mb = _cube_max_bins, ne = _n_elements;
-    std::memset(f, 0, gnss::cube_frame_bytes(mp, mb, ne)); // pad is ZERO, not stale bytes
+    std::memset(f, 0, gnss::cube_frame_bytes(mp, mb, ne)); // padding is zero, not stale bytes
 
     auto i64 = [&](size_t off, int64_t v) { std::memcpy(f + off, &v, sizeof(v)); };
     auto f64 = [&](size_t off, double v) { std::memcpy(f + off, &v, sizeof(v)); };
@@ -1691,18 +1451,18 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
     f64(72, _sample_rate);
     i32(80, _cube_gpu);
     i32(84, _cube_bin_width ? _cube_bin_width : 1);
-    // THE MAXIMA THIS FRAME WAS SIZED FOR. n_prn/n_bin above are the actual extents; the arrays
-    // below are laid out by these, so they are what makes the frame self-delimiting on disk.
+    // The maxima the frame is sized for: n_prn/n_bin above are the actual extents, and the
+    // arrays below are laid out by these, which makes the frame self-delimiting.
     i32(88, mp);
     i32(92, mb);
-    // v3: the epoch of sample 0, so the archive owns its own time axis (gnssRecord.hpp). The
-    // window's UTC is utc0 + w0 / sample_rate; a reader that has only this frame can date it.
+    // The epoch of sample 0, so a frame carries its own time axis: the window's UTC is
+    // utc0 + w0 / sample_rate.
     f64(gnss::CUBE_UTC0_OFFSET, C.utc0);
     std::strncpy((char*)f + gnss::CUBE_CHAIN_OFFSET, _cube_chain.c_str(),
                  gnss::CUBE_CHAIN_CHARS - 1);
 
     size_t off = gnss::CUBE_HEADER_BYTES;
-    // Doubles FIRST -- see gnssRecord.hpp: their alignment must not depend on max_bins/max_prn.
+    // Doubles first (gnssRecord.hpp): their alignment must not depend on max_bins/max_prn.
     double* phi0 = (double*)(f + off);
     off += (size_t)mp * sizeof(double);
     int32_t* fid_lo = (int32_t*)(f + off);
@@ -1733,9 +1493,8 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
         fid_hi[b] = _spec_freq_ids[c1];
     }
     for (size_t p = 0; p < _prns.size() && (int)p < mp; ++p) {
-        // A slot with no records this window is left at prn = 0 -- SILENCE, not a row of zeros.
-        // Zeros would read downstream as a real measurement of no power, which is the one
-        // reading that must never be manufactured by a transport.
+        // A slot with no records this window is left at prn = 0: absent, not a row of zeros
+        // that would read as a measurement of no power.
         if (C.nrec[p] <= 0)
             continue;
         prn[p] = _prns[p];
@@ -1755,15 +1514,9 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
             }
         }
     }
-    // ⚠️⚠️ THE METADATA OBJECT IS NOT OPTIONAL ON A FRAME THAT FEEDS bufferSend (#110,
-    // 2026-09-05). This leg shipped without these four lines and every node in the fleet
-    // SEGFAULTED 45-75 s after start: bufferSend does buf->get_metadata(id)->get_serialized_size()
-    // on every frame it sends, get_metadata() returns an EMPTY shared_ptr for a frame whose
-    // producer never allocated one, and that is a null dereference in the sender thread -- taken
-    // on the FIRST window emitted, which is why the archiver saw every connection and zero frames,
-    // and why the delay was the broker's seeding time (no window opens before a PRN is despread).
-    // Same stamp as the record leg above and GnssTelemPack: the window's first sample, so a
-    // kotekan consumer downstream of bufferRecv can address the frame without parsing it.
+    // A frame that feeds bufferSend needs a metadata object: bufferSend drops a frame without
+    // one. Stamped like the record leg: the window's first sample, so a consumer after
+    // bufferRecv can address the frame without parsing it.
     if (_cube_out_buf->metadata_pool) {
         _cube_out_buf->allocate_new_metadata_object(_cube_out_id);
         if (auto* m = get_gnss_chan_metadata(_cube_out_buf, _cube_out_id))
@@ -1774,18 +1527,12 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
 }
 
 
-// THE BEAM CUBE endpoint (hpp): the (subband x element) axis, coherent AND incoherent.
-//
-// ADDRESSABLE AND IDEMPOTENT, like /get_spectrum and for the same reason: `?window=N` returns
-// exactly window N, no argument returns the newest COMPLETE one, nothing is reset. An earlier
-// draft of this endpoint was reset-on-read, which is defensible only while the payload carries
-// no phase -- the moment the coherent sum was added it stopped being defensible, because two
-// consumers would then split a coherent integration between them and each would see a sum over
-// a random subset of the records with no way to know it.
-//
-// EMITTED RAW: no debias, no range normalisation, no combine, no dB. All of them are the
-// reader's job. Debias in the POWER domain from the probe PRNs, per (instance, element,
-// subband, time bin), never medianed across elements.
+// Beam cube endpoint (see the header): the (subband x element) sums, coherent and incoherent.
+// Addressable and idempotent like /get_spectrum: `?window=N` returns window N, no argument the
+// newest complete one, and nothing is reset, so two consumers cannot split a coherent
+// integration between them. Emitted raw: debias, normalisation, combining and dB are the
+// reader's job (debias in the power domain from the probe PRNs, per instance, element, subband
+// and time bin).
 void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn) {
     if (!_cube_on) {
         conn.send_error("beam cube is OFF for this stage (needs 'beam_cube: true' plus both "
@@ -1816,8 +1563,7 @@ void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn
     const char* status = "ok";
     {
         std::lock_guard<std::mutex> ck(_cube_mtx);
-        // A window is COMPLETE once a LATER one has been opened -- the only local evidence
-        // that no more records are coming for it; there is no end-of-window event to wait on.
+        // A window is complete once a later one has opened: there is no end-of-window event.
         hi = _cube_max_idx - 1;
         lo = _cube_max_idx - (int64_t)_cube_ring.size() + 1;
         if (lo < 0)
@@ -1826,9 +1572,9 @@ void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn
         if (_cube_max_idx < 0)
             status = "not_yet";
         else if (idx > hi)
-            status = "not_yet"; // NORMAL: instances lag each other; simply re-ask this one
+            status = "not_yet"; // normal: instances lag each other; re-ask
         else if (idx < lo)
-            status = "too_old"; // those records are gone -- the caller must JUMP, and say so
+            status = "too_old"; // those records are gone; the caller must skip ahead
         else {
             const int64_t n = (int64_t)_cube_ring.size();
             const CubeWindow& C = _cube_ring[(size_t)(((idx % n) + n) % n)];
@@ -1863,8 +1609,7 @@ void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn
     reply["wstart0"] = w0; // the cross-instance alignment key, same clock as fleet hops
     reply["wstart1"] = w1;
     reply["reference_element"] = _reference_element;
-    // Per-bin freq_id span, so a reader never has to reproduce the binning arithmetic -- the
-    // one place a resolution change could silently re-point every archived row.
+    // Per-bin freq_id span, so a reader never reproduces the binning arithmetic.
     nlohmann::json bins = nlohmann::json::array();
     for (int b = 0; b < _cube_bins; ++b) {
         const int c0 = _cube_bin_width ? b * _cube_bin_width : b;
@@ -1881,7 +1626,7 @@ void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn
     nlohmann::json prns = nlohmann::json::array();
     for (size_t p = 0; p < _prns.size(); ++p) {
         if (nrec[p] <= 0)
-            continue; // silence, not zeros -- the get_records/get_spectrum convention
+            continue; // absent, not zeros (as in /get_spectrum)
         nlohmann::json wb = nlohmann::json::array(), eb = nlohmann::json::array();
         nlohmann::json cb = nlohmann::json::array(), ib = nlohmann::json::array();
         for (int b = 0; b < _cube_bins; ++b) {
@@ -1897,11 +1642,10 @@ void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn
             cb.push_back(cr);
             ib.push_back(ir);
         }
-        // coh[bin][elem] = [re, im] and incoh[bin][elem], with w[bin] the term count: the SUMS
-        // and their weight, so windows, instances and days all combine by addition and nothing
-        // has to be reprocessed to add a night. phi0 is the coherent sum's phase reference and
-        // n_reanchor > 0 means the arc broke INSIDE this window -- no constant can undo that,
-        // so drop those rather than rotating them onto anything.
+        // coh[bin][elem] = [re, im] and incoh[bin][elem], with w[bin] the term count: sums and
+        // their weight, so windows, instances and nights combine by addition. phi0 is the
+        // coherent sum's phase reference; n_reanchor > 0 means the arc broke inside this window,
+        // which no constant undoes, so consumers drop those.
         prns.push_back({{"prn", _prns[p]},
                         {"n_rec", nrec[p]},
                         {"phi0", phi0[p]},
@@ -1917,16 +1661,11 @@ void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn
 
 
 void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn) {
-    // ADDRESSABLE, IDEMPOTENT READ (task #53). `?window=N` returns exactly window N; no
-    // argument returns the newest COMPLETE one. Nothing is reset, so polling is free of side
-    // effects and a second consumer no longer steals anyone's data.
-    //
-    // EVERY reply -- success or refusal -- carries available:[lo,hi], because that is what
-    // lets the broker resynchronise without guessing. `too_old` means those records are gone
-    // and the broker must JUMP (and log how many windows it skipped, so falling behind is
-    // visible rather than a silent permanent resync); `not_yet` is NORMAL, not an error --
-    // instances lag each other by a few records and the caller should simply re-ask that
-    // instance, which now works because the ring still holds the window when it completes.
+    // Addressable, idempotent read: `?window=N` returns window N, no argument the newest
+    // complete one. Nothing is reset, so a second poller is harmless. Every reply carries
+    // available: [lo, hi] so the broker can resynchronise: `too_old` means the records are gone
+    // and the caller must skip ahead; `not_yet` is normal (instances lag each other by a few
+    // records) and the caller re-asks.
     if (_spec_freq_ids.empty()) {
         conn.send_error("per-channel spectrum export is OFF: this stage's config has no "
                         "'channel_ids' (regenerate the node config with a "
@@ -1937,9 +1676,7 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     const size_t nc = _spec_freq_ids.size();
     const bool legacy = (_spec_win_samples <= 0);
 
-    // Requested index: absent -> newest COMPLETE window. "Complete" means a LATER window has
-    // been opened, which is the only evidence available locally that no more records are
-    // coming for this one -- there is no end-of-window event to wait on.
+    // A window is complete once a later one has opened: there is no end-of-window event.
     bool want_specific = false;
     int64_t want = -1;
     for (const auto& kv : conn.get_query()) {
@@ -1962,8 +1699,8 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     {
         std::lock_guard<std::mutex> lk(_spec_mtx);
         if (legacy) {
-            // Legacy path keeps the old reset-on-read semantics exactly, so a not-yet-
-            // regenerated node behaves as it always did rather than half-changing.
+            // Without spectrum_window_samples: reset on read. n_reanchor is not reset, so it
+            // counts from start-up; phi0 is re-taken at the next record because nrec is reset.
             SpecWindow& W = _spec_ring[0];
             re.swap(W.re);
             im.swap(W.im);
@@ -1979,7 +1716,7 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
             W.nrec.assign(_prns.size(), 0);
             W.w0 = W.w1 = -1;
         } else {
-            hi = _spec_max_idx - 1; // newest COMPLETE
+            hi = _spec_max_idx - 1; // newest complete
             for (const auto& W : _spec_ring)
                 if (W.idx >= 0 && W.idx <= hi && (lo < 0 || W.idx < lo))
                     lo = W.idx;
@@ -1995,9 +1732,8 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
                     size_t)(((idx % (int64_t)_spec_ring.size()) + (int64_t)_spec_ring.size())
                             % (int64_t)_spec_ring.size())];
                 if (W.idx != idx) {
-                    // In range but the slot holds someone else: a gap (no records landed in
-                    // that window at all). Report it as too_old rather than inventing zeros --
-                    // "I never had it" and "here is an empty window" are different facts.
+                    // In range but the slot holds another index: no records landed in that
+                    // window. Report too_old rather than an empty window.
                     status = "too_old";
                 } else {
                     re = W.re;
@@ -2017,11 +1753,11 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     reply["freq_ids"] = _spec_freq_ids;
     reply["sample_rate"] = _sample_rate;
     reply["status"] = status;
-    reply["addressable"] = !legacy; // false -> this node predates #53; do NOT trust alignment
+    reply["addressable"] = !legacy; // false: reset-on-read windows, not aligned across instances
     reply["window_samples"] = (double)_spec_win_samples;
     reply["window"] = idx;
     reply["available"] = nlohmann::json::array({lo, hi});
-    reply["wstart0"] = w0; // absolute sample of the first / last record in this window --
+    reply["wstart0"] = w0; // absolute sample of the first / last record in this window:
     reply["wstart1"] = w1; // the cross-instance alignment key, same clock as fleet hops
     if (std::string(status) != "ok") {
         reply["prns"] = nlohmann::json::array();
@@ -2031,12 +1767,12 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     nlohmann::json prns = nlohmann::json::array();
     for (size_t p = 0; p < _prns.size(); ++p) {
         if (nrec[p] <= 0)
-            continue; // silence, not zeros (get_records convention)
+            continue; // absent, not zeros (as in /get_records)
         nlohmann::json chans = nlohmann::json::array();
         for (size_t ch = 0; ch < nc; ++ch) {
             const size_t k = p * nc + ch;
-            // Energy-normalized like get_records' re/im: A = G/E is directly comparable
-            // across instances, and E rides along as the ML combining weight.
+            // Energy-normalised like /get_records: A = G/E is comparable across instances,
+            // and E is the ML combining weight.
             if (en[k] > 0.0)
                 chans.push_back({re[k] / en[k], im[k] / en[k], en[k]});
             else
@@ -2053,9 +1789,8 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
 }
 
 
-// PATH B endpoint: inject a per-element complex gain prior into every PRN's ElemCal so the
-// coherent combine starts warm on (re)acquisition. Parse FIRST, lock LAST: main_thread takes
-// _gain_mtx only for the swap, never across a parse.
+// Inject a per-element complex gain prior into every PRN's ElemCal so the combine starts warm
+// on (re)acquisition. Parse first, lock last: main_thread takes _gain_mtx only for the swap.
 void GnssGpuRecordAssemble::set_elem_gain_callback(kotekan::connectionInstance& conn,
                                                    nlohmann::json& request) {
     if (!_elem_sum) {
@@ -2096,8 +1831,8 @@ void GnssGpuRecordAssemble::set_elem_gain_callback(kotekan::connectionInstance& 
 
 void GnssGpuRecordAssemble::set_elem_sum_adapt_callback(kotekan::connectionInstance& conn,
                                                         nlohmann::json& request) {
-    // {"adapt": true|false}. A plain flag read by the per-record loop: no lock, no frame
-    // boundary needed -- a record combined with the old value is as valid as the next.
+    // {"adapt": true|false}. An atomic read per record: no frame boundary needed, since a
+    // record combined with the old value is as valid as the next.
     bool adapt;
     try {
         adapt = request.at("adapt").get<bool>();
@@ -2116,9 +1851,9 @@ void GnssGpuRecordAssemble::set_elem_sum_adapt_callback(kotekan::connectionInsta
 
 void GnssGpuRecordAssemble::set_elem_sum_shared_callback(kotekan::connectionInstance& conn,
                                                          nlohmann::json& request) {
-    // {"shared": true|false}. On -> the per-PRN weights are rebuilt from the shared model
-    // every record and the learners are held (adapt forced false). Off -> back to held
-    // per-PRN weights (whatever the model last installed); re-enable adapt separately.
+    // {"shared": true|false}. On: the per-PRN weights are rebuilt from the shared model every
+    // record and the learners are held (adapt forced false). Off: the weights stay as the model
+    // last installed them; re-enable adapt separately.
     bool shared;
     try {
         shared = request.at("shared").get<bool>();
@@ -2140,7 +1875,7 @@ void GnssGpuRecordAssemble::set_elem_sum_shared_callback(kotekan::connectionInst
 }
 
 namespace {
-/// The steady clock in seconds -- the same clock every freshness decision here uses.
+/// The steady clock in seconds, the clock every freshness decision here uses.
 double steady_now_s() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
@@ -2157,21 +1892,20 @@ void GnssGpuRecordAssemble::shared_reset_prn(size_t p) {
 }
 
 void GnssGpuRecordAssemble::shared_consensus(double now_s) {
-    // One instrument per pol from the warm shadow cals: each PRN's per-pol weight vector is
-    // normalised to sum|w| = 1 (its overall MRC scale is the satellite's strength, not the
-    // instrument), rotated onto the current model (its overall phase is the satellite's), and
-    // averaged with EQUAL weight per satellite. A slow EMA then follows the instrument; the
-    // first model is one satellite alone (a blind average of unaligned vectors could cancel).
-    // Re-anchored so the reference element's pol-0 weight is real positive (the header's
-    // phase convention) and the pol-1 anchor element likewise (a convention only: the per-PRN
-    // coefficient carries pol-1's phase).
-    // ⚠️ THE REFERENCE ELEMENT'S MAGNITUDE IS CAPPED at the median of the other live elements'
-    // BEFORE normalising, and satellites are NOT weighted by their MRC weight sum. A cal
-    // whose reference weight has degenerated (its variance collapses when the leave-one-out
-    // sum correlates strongly; measured thousands against ~10) is that satellite's own
-    // problem in the per-PRN sum, but weighted by its (huge) weight sum and normalised it is
-    // a unit vector on the reference element that outvotes every other satellite: the model
-    // became the bare reference element and every satellite lost the array gain.
+    // One instrument per pol from the warm shadow cals. Each PRN's per-pol weight vector is
+    // normalised to sum|w| = 1 (its overall scale is the satellite's strength, not the
+    // instrument), rotated onto the current model (its overall phase is the satellite's) and
+    // averaged with equal weight per satellite; a slow EMA then follows the instrument. The
+    // first model is one satellite alone, since a blind average of unaligned vectors could
+    // cancel. Each pol's global phase is then pinned: to the fleet reference in live mode,
+    // else to the instance's own pin, else to its anchor element (the per-PRN coefficient
+    // carries pol 1's phase relative to pol 0).
+    //
+    // The anchor element's magnitude is capped at the median of the other live elements before
+    // normalising, and satellites are not weighted by their MRC weight sum: a cal whose
+    // reference weight has degenerated (its variance collapses when the leave-one-out sum
+    // correlates strongly) would otherwise outvote every other satellite with a unit vector on
+    // the reference element, and the model would become the bare reference element.
     using cd = std::complex<double>;
     const int n = _n_elements;
     if (n <= 0 || _g_shared.size() != (size_t)n)
@@ -2179,11 +1913,10 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
     const double dt = now_s - _g_shared_t;
     _g_shared_t = now_s;
     fleet_ref_apply_pending();
-    // Transit: the model in force stays exactly as it was, and none is FORMED from captured
-    // learners either (before a model exists the PRNs ride their own, as always).
+    // Transit: the model in force stays as it is, and none is formed from captured learners.
     if (shared_frozen(now_s))
         return;
-    // #170: and no FIRST model inside the wider cone either. A warm model keeps adapting.
+    // No first model inside the wider formation cone either; a warm model keeps adapting.
     if (!_g_shared_warm
         && gnss::formation_frozen(now_s, _bore_post_t.load(), _bore_sep_deg.load(),
                                   _elem_shared_form_deg))
@@ -2220,8 +1953,8 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
         for (int pol = 0; pol < n_pol; ++pol) {
             const int e0 = pol * h, e1 = std::min(n, e0 + h);
             const int anchor = std::min(e1 - 1, e0 + _reference_element);
-            // Cap the anchor element at the median live magnitude of the others (the same
-            // convention rebuild_weights uses when it detects the degeneracy).
+            // Cap the anchor element at the median live magnitude of the others (the convention
+            // ElemCal::rebuild_weights uses for a self-referenced element).
             mags.clear();
             for (int e = e0; e < e1; ++e)
                 if (e != anchor && std::abs(w[(size_t)e]) > 0.0)
@@ -2260,8 +1993,8 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
                        : 1.0;
     for (int e = 0; e < n; ++e)
         _g_shared[(size_t)e] += beta * (acc[(size_t)e] / A - _g_shared[(size_t)e]);
-    // #154: pinned to the FLEET reference where it applies (live mode, F describes this half)
-    // -- in full for a first model, slewed for a warm one -- else to the instance's own pin.
+    // Pin to the fleet reference where it applies (live mode, and F describes this half): in
+    // full for a first model, slewed for a warm one. Otherwise pin to the instance's own pin.
     const bool fleet_live = _fleet_mode.load() == 2 && !_g_fleet_ref.empty();
     bool fleet_used[2] = {false, false};
     gnss::RefOffset offs[2];
@@ -2280,9 +2013,9 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
                                          _fleet_slew_rad_s * std::min(std::max(dt, 0.0), 2.0));
                 fleet_used[pol] = true;
             }
-            // #170: a warm half F has not described for _fleet_reseed_s takes F's shape (F is in
-            // the fleet's phase already, so no pin). Its records were on a mis-shaped model, so
-            // the step is no loss; adaptation continues from here.
+            // A warm half F has not described for _fleet_reseed_s takes F's shape (already in
+            // the fleet's phase, so no pin). Its records were on a mis-shaped model, so the step
+            // costs nothing; adaptation continues from here.
             const double low_s =
                 _fleet_reseed[pol].low_since < 0.0 ? 0.0 : now_s - _fleet_reseed[pol].low_since;
             const gnss::RefOffset& sib = offs[1 - pol];
@@ -2322,8 +2055,8 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
             gmax = std::max(gmax, std::abs(_g_shared[(size_t)e]));
         }
         // A model with half its weight on one element is not an instrument (a healthy array
-        // spreads it over a dozen); refuse it and let every PRN ride its own learner until
-        // the consensus is sane again. Logged once per collapse.
+        // spreads it over a dozen): refuse it and let every PRN ride its own learner until the
+        // consensus recovers. Logged once per collapse.
         if (gmax > 0.5) {
             if (_g_shared_warm || !_g_shared_collapsed)
                 WARN("elem_sum_shared: pol-{:d} model collapsed onto one element ({:.0f}% of "
@@ -2343,8 +2076,8 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
         _g_pin_ref = _g_shared;
         _g_pin_ref_ok = true;
     }
-    // The own pin follows every half the fleet reference moved, so that a fall back to it (F
-    // cleared, mode changed, a shape F no longer describes) holds the phase the model HAS.
+    // The own pin follows every half the fleet reference moved, so falling back to it (F
+    // cleared, mode changed, a shape F no longer describes) holds the model's current phase.
     for (int pol = 0; pol < n_pol; ++pol)
         if (fleet_used[pol])
             for (int e = pol * h, e1 = std::min(n, pol * h + h); e < e1; ++e)
@@ -2409,7 +2142,7 @@ void GnssGpuRecordAssemble::fleet_ref_apply_pending() {
         _fleet_mode = mode;
     if (slew >= 0.0)
         _fleet_slew_rad_s = slew * M_PI / 180.0;
-    // Leaving live, or losing F: the own pin takes over from the model's CURRENT phase, so the
+    // Leaving live, or losing F: the own pin takes over from the model's current phase, so the
     // switch itself never steps it.
     if (((was == 2 && _fleet_mode.load() != 2) || (ref_set && _g_fleet_ref.empty()))
         && _g_shared_warm) {
@@ -2427,8 +2160,8 @@ void GnssGpuRecordAssemble::fleet_ref_apply_pending() {
 void GnssGpuRecordAssemble::set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
                                                              nlohmann::json& request) {
     // {"ref": [[re, im], ...] (n_elements pairs; [] clears), "mode": "off|log|live",
-    //  "slew_deg_s": x} -- every field optional. Staged; the next consensus update (~1 s, not
-    // during a transit freeze) applies it. python/scripts/gnss/elem_shared_ref.py post.
+    //  "slew_deg_s": x}, every field optional. Staged; applied at the next consensus update
+    // (~1 s, while elem_sum_shared is on). Posted by python/scripts/gnss/elem_shared_ref.py.
     std::vector<std::complex<double>> ref;
     bool ref_set = false;
     int mode = -1;
@@ -2483,18 +2216,17 @@ void GnssGpuRecordAssemble::set_elem_sum_shared_ref_callback(kotekan::connection
 }
 
 bool GnssGpuRecordAssemble::shared_frozen(double now_s) {
-    // A post older than 120 s is not evidence of anything (broker down or an older broker
-    // that sends no "_bore"): no freeze from it, and an armed hold still runs out.
+    // A post older than 120 s is no evidence (broker down, or posts without "_bore"): no new
+    // freeze from it, and an armed hold still runs out.
     if (now_s - _bore_post_t.load() <= 120.0 && _bore_sep_deg.load() < _elem_shared_freeze_deg)
         _freeze_until = now_s + _elem_shared_freeze_hold_s;
     return now_s < _freeze_until;
 }
 
 void GnssGpuRecordAssemble::shared_hold(size_t p) {
-    // Install this PRN's weights from the model. Until a model exists, the PRN rides its own
-    // learner's weights (the held-mode behaviour; outside a transit freeze, see below), so
-    // nothing is lost while the consensus forms; until its inter-pol coefficient is warm it
-    // combines pol-0 alone (coherent from the first record, 3 dB short of both pols).
+    // Install this PRN's weights from the model. Until a model exists the PRN rides its shadow
+    // learner's weights (outside a transit freeze, see below); until its inter-pol coefficient
+    // is warm it combines pol 0 alone (coherent from the first record, 3 dB short of both pols).
     using cd = std::complex<double>;
     const int n = _n_elements;
     if (p >= _cal.size() || n <= 0)
@@ -2505,12 +2237,11 @@ void GnssGpuRecordAssemble::shared_hold(size_t p) {
         shared_consensus(now_s);
     gnss::ElemCal& ec = _cal[p];
     if (!_g_shared_warm) {
-        // ⚠️ NOT INSIDE A TRANSIT FREEZE. The shadow is exactly the per-PRN learner the freeze
-        // exists to keep out of the combine: near boresight a bright satellite's leakage
-        // teaches it that satellite's phases, and a full-array combine on those weights puts
-        // the array gain on the leak (worse than the bare reference element). So while frozen
-        // the live cal keeps what it holds -- the shadow's weights from before the freeze, or
-        // nothing, which leaves the header on the reference element.
+        // Not inside a transit freeze: near boresight a bright satellite's leakage teaches the
+        // shadow that satellite's phases, and a full-array combine on those weights puts the
+        // array gain on the leak. While frozen the live cal keeps what it holds: the shadow's
+        // weights from before the freeze, or nothing, which leaves the header on the reference
+        // element.
         const auto& sh = _cal_shadow[p];
         if (sh.warm() && !shared_frozen(now_s))
             ec.hold(sh.weights().data(), n);
@@ -2530,16 +2261,17 @@ void GnssGpuRecordAssemble::shared_hold(size_t p) {
 
 void GnssGpuRecordAssemble::shared_pol_update(size_t p, const std::complex<double>* g_prompt,
                                               double dt_s) {
-    // The inter-pol coefficient from the two SUB-BEAMS of this record: B0 = pol-0 model dotted
-    // with the prompt, B1 = pol-1 likewise; c = <B1 conj(B0)> / <|B0|^2>. Each sub-beam has
-    // the half-array's gain, so a bright satellite's leakage is rejected here as in the beam
-    // itself -- that is what makes this one number safe to learn per PRN when 32 were not.
+    // The inter-pol coefficient from this record's two sub-beams: B0 = pol-0 model dotted with
+    // the prompt, B1 = pol-1 likewise; c = <B1 conj(B0)> / <|B0|^2>. Each sub-beam has the
+    // half-array's gain, so a bright satellite's leakage is rejected here as in the beam
+    // itself, which makes one number per PRN safe to learn where a per-element vector is not.
     using cd = std::complex<double>;
     const int n = _n_elements;
     if (!_g_shared_warm || p >= _pol_num.size() || n < 2 || (n % 2) != 0 || !(dt_s > 0.0))
         return;
     // Transit: hold every coefficient too. The sub-beams reject leakage by the half-array's
-    // gain, but a boresight transit is 20-30 dB above a weak satellite and 3 s forgets fast.
+    // gain, but a boresight transit is 20-30 dB above a weak satellite and the coefficient's
+    // EMA (elem_sum_pol_tau_s) is short.
     if (shared_frozen(steady_now_s()))
         return;
     const int h = n / 2;
@@ -2618,9 +2350,9 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
     }
     out["prns"] = rows;
     if (_proj_ready) {
-        // The projection's state (hpp note): mode and tunables, what is in force this record
-        // (k per channel, which source kinds), the probe-stack trigger level per channel, the
-        // CPU it costs, and a human summary of the sources.
+        // The projection's state: mode and tunables, what is in force this record (k and
+        // source kinds per channel), the probe-stack trigger level per channel, the CPU it
+        // costs, and a summary of the sources.
         const int mode = _proj_mode.load();
         nlohmann::json pj;
         pj["mode"] = (mode == 2) ? "live" : (mode == 1) ? "shadow" : "off";
@@ -2653,9 +2385,8 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
 
 void GnssGpuRecordAssemble::set_reference_element_callback(kotekan::connectionInstance& conn,
                                                            nlohmann::json& request) {
-    // Body: {"element": N}. Staged only; main_thread applies at the next frame boundary
-    // (see the swap block there for the exact semantics). Validation mirrors the
-    // construction-time FATAL: the same bounds, answered as a 400 instead of a crash.
+    // Body: {"element": N}. Staged only; main_thread applies it at the next frame boundary.
+    // The bounds are the constructor's, answered with a 400 instead of FATAL_ERROR.
     int el = -1;
     try {
         el = request.at("element").get<int>();
@@ -2685,7 +2416,7 @@ void GnssGpuRecordAssemble::set_reference_element_callback(kotekan::connectionIn
     conn.send_json_reply(reply);
 }
 
-// ── BRIGHT-SATELLITE PROJECTION (hpp note; gnssProjSubspace.hpp; PROJECTION_PLAN.md) ────────
+// ---- Bright-satellite projection (see the header and gnssProjSubspace.hpp) ----
 
 void GnssGpuRecordAssemble::proj_reset_slot(size_t p, double now_s) {
     if (!_proj_ready || p >= _proj_own.size())
@@ -2722,7 +2453,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
     std::fill(_proj_src_ch.begin(), _proj_src_ch.end(), 0);
     if (n_chan != (int)_proj_fids.size()) {
         // The basis is keyed by channel_ids; a frame with another channel count would apply
-        // one channel's subspace to another's data. Refuse, once and loudly.
+        // one channel's subspace to another's data. Refuse, and warn once.
         if (!_proj_nchan_warned) {
             WARN("elem projection DISABLED: channel_ids has {:d} channels, the frame {:d}",
                  (int)_proj_fids.size(), n_chan);
@@ -2743,9 +2474,10 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         _slot_was_run[(size_t)p] = run ? 1 : 0;
     }
 
-    // 1. SOURCES AMONG THE OWN SLOTS: running, geometry fresh, inside elem_proj_deg of
-    //    boresight -- nearest first, at most rank_max. Everything else that runs and has had
-    //    no geometry since it started (a below-horizon probe) feeds the probe stack.
+    // 1. Sources among the own slots: running, geometry fresh, inside elem_proj_deg of
+    //    boresight; nearest first, at most rank_max. A probe (the broker's "_probes", or else a
+    //    slot running for at least elem_proj_probe_since_s with no fresh geometry) feeds the
+    //    probe stack.
     const double az = _bore_az_deg * M_PI / 180.0, el = _bore_el_deg * M_PI / 180.0;
     const double eb[3] = {std::cos(el) * std::sin(az), std::cos(el) * std::cos(az), std::sin(el)};
     std::vector<std::pair<double, int>> cand;
@@ -2784,8 +2516,8 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         if (!is && _proj_own[(size_t)p])
             _proj_own[(size_t)p].reset(); // no longer a source: forget its tracker
     }
-    // The sources' steering tables at THIS record's time (hpp note: the own-row covariance is
-    // accumulated in the source's steered frame and un-steered at use with the same table).
+    // The sources' steering tables at this record's time: the own-row covariance is
+    // accumulated in the source's steered frame and un-steered at use with the same table.
     {
         std::lock_guard<std::mutex> lk(_steer_mtx);
         // A steer table wider than this record's channel axis would write past _proj_steer:
@@ -2815,7 +2547,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
             out[i] = std::conj(cd(st[i].real(), st[i].imag())) * qs[i];
     };
 
-    // 2. OWN-ROW TRACKERS: this record's PROMPT row, STEERED by the source's own table, per
+    // 2. Own-row trackers: this record's prompt row, steered by the source's own table, per
     //    covering channel; rank 1 (a satellite's own row is rank one by construction),
     //    warm-started power iteration.
     for (size_t ci = 0; ci < cand.size(); ++ci) {
@@ -2837,9 +2569,8 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
             T->solve(ch, T->warm(ch) ? 1 : 2);
         }
     }
-    // Every steered slot's table at this record's time, for the identity check below (a
-    // direction the probe stack or a sibling reports may be one of OUR tracked satellites,
-    // which must then be treated as a source, not a victim). ~45 kB of copies per record.
+    // Which running slots have fresh geometry this record, for the identity check below: a
+    // direction the probe stack or a sibling reports may be one of our own satellites.
     std::fill(_proj_steered.begin(), _proj_steered.end(), 0);
     {
         std::lock_guard<std::mutex> lk(_steer_mtx);
@@ -2848,7 +2579,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
                 _proj_steered[(size_t)p] = 1;
     }
 
-    // 3. THE PROBE STACK: every probe row's prompt into one covariance per channel; solved
+    // 3. The probe stack: every probe row's prompt into one covariance per channel, solved
     //    every 4th record (the direction moves on the second scale, the solve is n^2 per
     //    component). Its component-0 energy fraction is the trigger level, served per channel.
     for (int p = 0; p < n_prn; ++p) {
@@ -2873,32 +2604,20 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         _proj_probe_frac[(size_t)ch] = _proj_probe.warm(ch) ? _proj_probe.frac(ch, 0) : 0.0;
     }
 
-    // 4. THE BASIS PER CHANNEL: own rows, then the siblings' entries from the board, then the
+    // 4. The basis per channel: own rows, then the siblings' entries from the board, then the
     //    probe stack. Gram-Schmidt drops a direction already spanned (the same emitter seen
-    //    through two sources), rank capped at rank_max.
+    //    through two sources); rank is capped at rank_max.
     //
-    //    ⚠️ A PROBE-STACK DIRECTION IS USED ONLY WHEN IT IS ACCOUNTED FOR. Overnight 09-28/29 the
-    //    stack triggered 40 % of the time far from any transit, on a direction carrying up to
-    //    99 % of the probe rows' cross energy that matched no tracked satellite, and when it did
-    //    latch onto a real satellite at 5-10 deg that satellite's own held weights sat at cos^2
-    //    0.7-0.9 with the direction: projected live, it would have been nulled out of its own
-    //    row. So a probe direction (ours or a sibling's) is taken only while the broker reports a
-    //    satellite inside elem_proj_deg of boresight, and then: a direction a row source on this
-    //    channel already spans is the same emitter seen twice (skipped, and never put through
-    //    the identity, see below); a direction that IS one tracked satellite's own signature
-    //    (proj_identify) is a column for nothing when that satellite is steered -- inside the
-    //    window its row is the source, outside it it is a sidelobe leaker worth 1/26 of every
-    //    victim -- so it is dropped; the same for a tracked satellite WITHOUT geometry makes
-    //    that slot a source (its own rows spared) and serves the direction to the others; and a
-    //    direction that names no single row is the row-less emitter the stack exists for.
-    //    ⚠️ C42 09-29 (third lesson): the identity used to run on every probe-class direction
-    //    and MARK its answer a source. On the six chains that do not track the emitter every row
-    //    along the direction is a victim's, so it named the most captured victim on 40 % of the
-    //    records, whose projected learner was then fed the plain prompt (cap_proj = cap_plain,
-    //    sim_pp 0.99 on e5a/e5b/e6/l5 -- and live, its rows would have gone unprojected); and on
-    //    L2C, where C42 has no signal, the stack's direction was the brightest GPS satellite's
-    //    own signature, accepted as "unnamed" and charged to every other GPS row (b_cos2 > 0.3 on
-    //    16 % of the polls).
+    //    A probe-class direction (ours or a sibling's) is used only when it can be accounted
+    //    for: the stack also triggers far from any transit, and a direction that is a real
+    //    satellite's own signature would be nulled out of that satellite's row. So it is taken
+    //    only while the broker reports a satellite inside elem_proj_deg of boresight, and then
+    //    (accept_probe_dir): a direction already in the basis is skipped; one that is a steered
+    //    satellite's own signature (proj_identify) is dropped, since inside the window its row
+    //    is already the source and outside it is a sidelobe leaker; one that is an unsteered
+    //    tracked satellite's signature makes that slot a source (its rows spared) and serves
+    //    the others; one that names no single row is used only when at least two of our rows
+    //    lie along it (a common interferer no slot here tracks).
     const double frac_min = _proj_probe_frac_min.load();
     const double max_age = _proj_max_age_s.load();
     const bool bore_near = (now_s - _bore_post_t.load() <= 120.0) && _bore_sep_deg.load() < deg;
@@ -2922,25 +2641,23 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
         auto accept_probe_dir = [&](const cd* q) -> bool {
             if (!bore_near)
                 return false;
-            // Already spanned by a row source on this channel (Gram-Schmidt would drop it at
-            // the same 0.5): the same emitter seen twice, nothing to name.
+            // Already in the basis (Gram-Schmidt would drop it at the same 0.5): the same
+            // emitter seen twice, nothing to name.
             if (Q.k > 0 && Q.cos2(q) >= 0.5)
                 return false;
             int n_along = 0;
             const int who = proj_identify(q, ch, n_e, pctl_rec_v, &n_along);
             if (who < 0) {
-                // Unnamed: used only when it captures someone, i.e. at least two of our rows lie
-                // along it (a common interferer nobody here tracks). A direction along NO row of
-                // ours is a satellite this chain does not track, seen through the sidelobes:
-                // during G32's pass (09-29 15:2x) the 1207/1268/1278 chains, where G32 has no
-                // signal, accepted such directions on 1-6 channels and charged the victims
-                // b_cos2 > 0.1 on 15-19 % of the polls (7 % on the chains with a row source),
-                // for nothing. A direction along ONE row is that row's own signature, named above.
+                // Unnamed: used only when at least two of our rows lie along it (a common
+                // interferer nobody here tracks). A direction along no row of ours is a satellite
+                // this chain does not track, seen through the sidelobes, and projecting it would
+                // cost the other rows for nothing. A direction along one row is that row's own
+                // signature and is named.
                 return n_along >= 2;
             }
             if (_proj_steered[(size_t)who]) {
-                // One steered satellite's own signature: never a column (its row is the source
-                // when it is inside the window; a sidelobe leaker when it is not).
+                // A steered satellite's own signature: never a column (its row is the source
+                // inside the window, a sidelobe leaker outside it).
                 if (!_proj_dropped[(size_t)who]) {
                     _proj_dropped[(size_t)who] = 1;
                     ++n_drop;
@@ -3003,8 +2720,8 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
     if (k_rec > 0)
         ++_proj_active_records;
 
-    // 5. PUBLISH to the siblings: our own rows (the nearest source, or both when two are
-    //    inside the window) and our probe stack, per channel; retire them when they go away.
+    // 5. Publish to the siblings, per channel: our own rows (up to rank_max sources, nearest
+    //    first) and our probe stack; retire them when they go away.
     gnss::ProjBoard& board = gnss::ProjBoard::instance();
     bool pub_own = false, pub_probe = false;
     for (int ch = 0; ch < n_chan; ++ch) {
@@ -3062,8 +2779,8 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
     _proj_pub_own = pub_own;
     _proj_pub_probe = pub_probe;
 
-    // 6. A one-line description of the sources, rebuilt (and logged) only when the SET changes:
-    //    the signature is compared every record, the string is formatted only on a change.
+    // 6. A one-line description of the sources, rebuilt (and logged) only when the set
+    //    changes: the signature is compared every record, the string formatted only on a change.
     {
         std::vector<int> sig;
         sig.reserve(cand.size() + 4);
@@ -3111,8 +2828,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
                 std::lock_guard<std::mutex> lk(_proj_mtx);
                 _proj_desc = d;
             }
-            // Logged on change, at most every 5 s (a source set that flips faster than that is
-            // itself the message, and one line says so).
+            // Logged on change, at most every 5 s.
             if (now_s - _proj_log_t >= 5.0) {
                 _proj_log_t = now_s;
                 INFO("elem projection [{:s}]: {:s} (k {:d}, mode {:s})", unique_name,
@@ -3195,13 +2911,12 @@ void GnssGpuRecordAssemble::proj_slot_diag(size_t p, const void* pctl_slot, int 
         }
     }
     // Capture and cost: the fraction of a weight vector lying in the interferer subspace, as
-    // this satellite's steered channel sum sees it -- per channel cos^2(w, D_ch q_ch), i.e.
+    // this satellite's steered channel sum sees it: per channel cos^2(w, D_ch q_ch), i.e.
     // cos^2(conj(D_ch) w, q_ch), averaged over the covering channels with a basis in force.
-    // Control for a random direction: 1/n_live (~0.04). Only while a basis is in force and the
-    // slot is steered (a probe is never steered and never learns anything meaningful).
-    // A SOURCE is excluded: its own learner is degenerate anyway (every element correlates
-    // with the reference at rho^2 > 0.99, so ElemCal's self-reference guard collapses it) and
-    // its capture would read as a bright satellite captured by itself.
+    // A random direction gives 1/n_live. Only while a basis is in force and the slot is steered
+    // (a probe is never steered). A source is excluded: its own learner is degenerate (every
+    // element correlates with the reference at rho^2 > 0.99, which ElemCal's self-reference
+    // guard collapses) and its capture would read as a satellite captured by itself.
     if (_proj_k_rec == 0 || !steered || _proj_isB[p]) {
         _cap_plain[p] = _cap_proj[p] = _b_cos2[p] = -1.0;
         return;
@@ -3236,9 +2951,9 @@ void GnssGpuRecordAssemble::proj_slot_diag(size_t p, const void* pctl_slot, int 
 void GnssGpuRecordAssemble::set_elem_proj_callback(kotekan::connectionInstance& conn,
                                                    nlohmann::json& request) {
     // Body: any of {"mode": "off"|"shadow"|"live" (or 0|1|2), "deg": D, "rank_max": K,
-    // "max_age_s": S, "probe_frac_min": F}. Applied at once (atomics read per record); the
-    // reply is the state in force. rank_max cannot exceed the columns allocated at
-    // construction (config elem_proj_rank_max).
+    // "max_age_s": S, "probe_frac_min": F}. Applied at once (atomics read per record); the reply
+    // is the state in force. rank_max cannot exceed the columns allocated at construction
+    // (config elem_proj_rank_max).
     try {
         if (request.contains("mode")) {
             const auto& m = request["mode"];
@@ -3291,21 +3006,14 @@ void GnssGpuRecordAssemble::set_elem_proj_callback(kotekan::connectionInstance& 
 
 int GnssGpuRecordAssemble::proj_identify(const std::complex<double>* q, int ch, int n_e,
                                          const void* pctl_rec, int* n_along) {
-    // THE EMITTER IS THE BRIGHTEST ROW ALONG q, NOT THE LEARNER THAT AGREES WITH q. The first
-    // version matched q against the slots' learned weights and, during C34's pass (09-29
-    // 11:5x), "identified" C37, C21 and C23 -- captured victims whose learners point along the
-    // interferer -- while the real source's own learner is degenerate (rho^2 > 0.99 collapses
-    // it). A victim so identified was then excluded from the projection: the most captured
-    // satellite escaped the fix. So: among the running slots, take this record's RAW prompt
-    // row per channel; the interferer's row lies along q with cos^2 ~ 1 and is the strongest
-    // by 10-20 dB; a captured victim's row lies along q only in proportion to the leak, and
-    // its power is that of a victim. Score = cos^2 x |row|^2, threshold cos^2 > 0.5.
-    // AND THE BRIGHTEST VICTIM IS STILL A VICTIM (C42 09-29 13:5x, the sibling chains): where
-    // the emitter has no row, every row along q is a victim's and "the brightest" is just the
-    // most captured. So the COUNT of rows along q decides: exactly one -> that slot's own
-    // signature; several -> the emitter only if it is 10x brighter than the next (its power
-    // against its victims' leak), else nobody -- a common interferer in every row, tracked by
-    // no slot here.
+    // The emitter of direction q is the brightest row along q, not the learner that agrees with
+    // q: a captured victim's learner points along the interferer, while the source's own
+    // learner is degenerate. Among the running non-probe slots, take this record's raw prompt
+    // row on channel ch. The interferer's row lies along q with cos^2 ~ 1 and is the strongest
+    // by 10-20 dB; a victim's row lies along q only in proportion to the leak. Rows with
+    // cos^2 >= 0.5 count as along q, scored cos^2 x |row|^2, and their count decides: one is
+    // that slot's own signature; of several, the brightest only if it is 10x the next, else
+    // -1 (where the emitter has no row here, every row along q is a victim's).
     using namespace gnss_gpu;
     using cd = std::complex<double>;
     const PrnCtl* pc = (const PrnCtl*)pctl_rec;

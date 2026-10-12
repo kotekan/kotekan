@@ -2,38 +2,27 @@
 #define GNSS_ELEM_CAL_HPP
 /**
  * @file gnssElemCal.hpp
- * @brief Self-calibrated element combining for the record header (CHORD): noise-weighted MRC,
- *        plus the SPLIT-APERTURE per-record sky-phase estimator.
+ * @brief Self-calibrated element combining for the record header: noise-weighted MRC, plus a
+ *        split-aperture estimate of the per-record sky phase.
+ *  - gnss::ElemCal
  *
- * TWO JOBS, one set of weights.
+ * One set of per-element weights serves two outputs. @ref ElemCal::combine gives the header's
+ * correlation rows as the calibrated weighted mean of the elements, with the per-element complex
+ * gains estimated from the satellite itself (bootstrap MRC) or installed by seed() or hold().
+ * @ref ElemCal::combine_split gives the prompt with the per-record sky phase removed. That phase
+ * is common to all elements but close to white in time, so a record's neighbours do not predict
+ * it, while the other elements, with independent thermal noise, do: one disjoint half of the
+ * array is derotated by the other half's phase.
  *
- * (1) COMBINE. The header's correlation slots historically carried ONE reference element of
- *     n_elements (gnssRecord.hpp). Here they become the calibrated weighted mean, with the
- *     per-element complex gains estimated FROM THE SATELLITE ITSELF (bootstrap MRC).
+ * Noise-weighted MRC: w_e = u_e / sigma_e^2, with u_e the element's gain against its reference
+ * and sigma_e^2 the part of its power not correlated with that reference. Weighting by signal
+ * alone is optimal only when every element has the same noise; an element with an oscillating
+ * amplifier carries real signal but excess noise, and this weighting discounts it with no
+ * per-feed threshold or list of bad feeds. Each element's reference excludes it, so no
+ * element's noise enters its own gain or noise estimate.
  *
- * (2) THE SKY PHASE. Measured 2026-08-05: the per-record prompt phase carries a common error of
- *     ~0.75 rad that is 0.98-coherent across instances (and across elements) but only ~0.57
- *     autocorrelated record-to-record -- i.e. it is COMMON IN SPACE and nearly WHITE IN TIME.
- *     That is why the temporal tracker (gnss::phase_track_loo) buys nothing on sky data: a
- *     record's neighbours do not predict it. But the OTHER ELEMENTS do, instantly, because they
- *     see the same sky with independent thermal noise. @ref combine_split does that, by SPLIT
- *     APERTURE -- two disjoint halves, each derotated by the other's phase. See its note for why
- *     it must be disjoint halves and NOT leave-one-element-out (LOO is unbiased in the mean but
- *     silently destroys the noise estimate, and was caught doing so on synthetic data).
- *
- * NOISE-WEIGHTED MRC. Weighting by measured signal alone (w_e = u_e) is optimal only if every
- * element has the SAME noise. CHORD's do not -- some feeds have oscillating amplifiers, and an
- * oscillating element carries real signal (so it earns a weight) while injecting excess noise.
- * So each element's noise power is estimated as the part of its power NOT correlated with the
- * (leave-one-out) reference, and the weight is w_e = u_e / sigma_e^2. A noisy element then
- * down-weights ITSELF, with no threshold to tune and no list of bad feeds to maintain.
- *
- * Every reference used to build the WEIGHTS is leave-one-out, so no element's noise enters its
- * own gain or its own noise estimate. The per-record PHASE correction is a stricter construction
- * still (disjoint halves) -- see @ref combine_split.
- *
- * Header-only and stage-independent so the offline tools can drive it with synthetic
- * per-element data; GnssGpuRecordAssemble is the production consumer.
+ * Header-only and stage-independent so offline tools can drive it with synthetic per-element
+ * data; GnssGpuRecordAssemble is the production consumer.
  */
 
 #include <algorithm>
@@ -55,11 +44,10 @@ public:
         reset();
     }
 
-    /// Drop all state (fresh acquisition: the fringes may have moved arbitrarily). If a
-    /// per-element gain PRIOR was injected (path B: seed()), re-apply it as a warm start
-    /// instead of going cold -- the instrumental phase does not move between a drop and its
-    /// re-acquisition, so the combine can be coherent from the first record rather than
-    /// spending ~3 tau bootstrapping (which, under rapid re-anchoring, it never completes).
+    /// Drop all state (fresh acquisition: the fringes may have moved arbitrarily). A prior set
+    /// by seed() is re-applied as a warm start: the instrumental phase does not change between a
+    /// drop and its re-acquisition, so the combine is coherent from the first record instead of
+    /// bootstrapping for ~3 tau.
     void reset() {
         _u.assign((size_t)_n, cd(0.0, 0.0));
         _p.assign((size_t)_n, 0.0);
@@ -74,12 +62,12 @@ public:
             apply_prior();
     }
 
-    /// PATH B: inject an external per-element complex gain prior (e.g. from the N^2
-    /// eigendecomposition, sky removed). @p g_prior[e] is the element's complex gain -- its
-    /// PHASE is what matters (the instrumental cable/component phase the raw-voltage pipeline
-    /// never corrects); relative magnitude is used for the initial MRC weighting and refined
-    /// by update(). Stored so every subsequent reset() re-applies it. Passing n_elem != _n or
-    /// an all-zero prior clears it (back to cold self-bootstrap).
+    /// Inject a per-element complex gain prior (e.g. from the N^2 eigendecomposition, sky
+    /// removed). Its phase is what matters: the instrumental cable and component phase, which
+    /// the raw-voltage pipeline does not correct. Its relative magnitude sets the initial MRC
+    /// weighting, and update() refines both. Every later reset() re-applies it. A null
+    /// @p g_prior, an @p n_elem other than the cal's, or an all-zero prior clears it (cold
+    /// self-bootstrap).
     void seed(const cd* g_prior, int n_elem) {
         if (g_prior == nullptr || n_elem != _n) {
             _prior.clear();
@@ -96,11 +84,11 @@ public:
         apply_prior();
     }
 
-    /// HELD WEIGHTS FROM OUTSIDE: install @p w (n entries, anchored and scaled by the caller)
-    /// as this cal's weights, warm at once. The combine/combine_split machinery then runs on
-    /// them exactly as on learned weights; update() is the caller's to skip. This is how a
-    /// SHARED instrument model (one per-element gain for every satellite) reaches the per-PRN
-    /// combine without the per-PRN learner ever touching it.
+    /// Install @p w (n entries, anchored and scaled by the caller) as this cal's weights, warm at
+    /// once; combine() and combine_split() then use them as they would learned weights. The
+    /// caller skips update() while holding, since it would rebuild the weights from the learned
+    /// statistics. This is how a shared instrument model (one per-element gain for every
+    /// satellite) reaches the per-PRN combine.
     void hold(const cd* w, int n_elem) {
         if (w == nullptr || n_elem != _n)
             return;
@@ -113,19 +101,21 @@ public:
         rebuild_split();
     }
 
-    /// True once the weights have integrated ~3 time constants and the sum should be used.
+    /// True once the weights have integrated ~3 time constants (at once after seed() or hold()),
+    /// so the combine should be used.
     bool warm() const {
         return _warmth > 0.95 && _wsum > 0.0;
     }
 
-    /// True if the phase anchor is currently NOT the configured reference element
-    /// (reference too weak): the sum's phase convention moved. Log-worthy, once.
+    /// True if the phase anchor is not the configured reference element, so the combine's phase
+    /// convention has moved: the reference is below min_w_frac of the strongest, which includes
+    /// a cold bootstrap before the reference has a weight of its own. Worth logging once.
     bool anchor_moved() const {
         return _anchor != _ref;
     }
 
-    /// The anchored MRC weights as they stand (n entries). Read-only: for comparing two cals
-    /// (a held prior against a shadow that keeps learning), never for combining by hand.
+    /// The anchored MRC weights as they stand (n entries): for comparing cals, building a shared
+    /// model, or another cal's hold().
     const std::vector<cd>& weights() const {
         return _w;
     }
@@ -133,10 +123,10 @@ public:
         return _wsum;
     }
 
-    /// Calibrated weighted mean of one correlator row (E/P/L/PH/RES -- same weights, same
-    /// antennas), in "one element" units and the reference element's phase convention.
-    /// This is what the record HEADER carries: it must stay a plain linear combination, because
-    /// its phase IS the carrier-phase/ADR observable (gnssRecord.hpp).
+    /// Calibrated weighted mean of one correlator row over the elements (every row uses the same
+    /// weights), in one-element units and the anchor's phase convention. The record header
+    /// carries this, so it must stay a plain linear combination: its phase is the carrier-phase
+    /// (ADR) observable (gnssRecord.hpp).
     cd combine(const cd* g) const {
         if (_wsum <= 0.0)
             return cd(0.0, 0.0);
@@ -146,25 +136,20 @@ public:
         return s / _wsum;
     }
 
-    /// SKY-PHASE-CORRECTED combine, by SPLIT APERTURE: the array is partitioned into two
-    /// disjoint halves A and B (balanced in weight), and each half is derotated by the OTHER
-    /// half's phase:
+    /// Sky-phase-corrected combine by split aperture. The live elements are split into two
+    /// disjoint halves A and B, balanced in weight, and A is derotated by B's phase:
     ///
-    ///     corrected = A * e^{-i arg(B)}  +  B * e^{-i arg(A)}
+    ///     corrected = A * e^{-i arg(B)} / sum|w|
     ///
-    /// ⚠️ IT MUST BE DISJOINT HALVES, NOT LEAVE-ONE-ELEMENT-OUT. Per-element LOO looks stronger
-    /// (each estimate uses N-1 elements instead of N/2) and IS unbiased in the mean -- but it
-    /// destroys the NOISE ESTIMATE, which is what every downstream significance number is built
-    /// on. With N elements, every element's leave-one-out reference is nearly the same vector
-    /// (rest_e ~ tot), so every term gets rotated by ~arg(tot) and the record collapses to
-    /// ~|tot|: real, positive, every record. coherent_sum then takes its noise from the
-    /// component orthogonal to the sum, finds it artificially tiny, and reports a wildly
-    /// inflated SNR. Measured on synthetic: 47.3 against a GENIE (true phase removed) of 17.7 --
-    /// i.e. it "beat" perfect knowledge, the signature of a self-referential estimator.
-    /// Two disjoint halves have no such collapse: arg(A) - arg(B) stays random under noise, so
-    /// the orthogonal component survives and the statistic keeps its meaning.
+    /// The halves must be disjoint. Leave-one-element-out is unbiased in the mean but destroys
+    /// the noise estimate every downstream significance is built on: each element's reference is
+    /// then nearly the whole sum, so every record comes out near |sum|, real and positive, and
+    /// coherent_sum, which takes its noise from the component orthogonal to the sum, reports a
+    /// grossly inflated SNR. With disjoint halves arg(A) - arg(B) stays random under noise, so
+    /// the orthogonal component survives.
     ///
-    /// This is the deep fold's input -- NOT the header's, which must keep the raw phase for ADR.
+    /// This feeds the deep folds (record slots 24/25), not the header, which keeps the raw phase
+    /// for ADR.
     cd combine_split(const cd* g) const {
         if (_wsum <= 0.0 || _split_ok == 0)
             return cd(0.0, 0.0);
@@ -175,23 +160,17 @@ public:
         }
         if (std::norm(A) <= 0.0 || std::norm(B) <= 0.0)
             return cd(0.0, 0.0);
-        // ONE-WAY: A is integrated, B is ONLY a phase reference. NOT the symmetric
-        // A*e^{-i arg B} + B*e^{-i arg A}, which expands to
-        // (|A|+|B|) cos d + i (|A|-|B|) sin d and so annihilates the imaginary part whenever the
-        // halves are balanced -- the same trap as the fleet combine's, and it was still here:
-        // measured 18.0 against a GENIE of 16.5, i.e. beating perfect knowledge by 9%.
-        // The price of one-way is that half the aperture measures while half integrates (~sqrt2);
-        // that is the honest cost of not knowing the phase.
+        // One-way: A integrates and B is only a phase reference. The symmetric
+        // A*e^{-i arg B} + B*e^{-i arg A} expands to (|A|+|B|) cos d + i (|A|-|B|) sin d, which
+        // cancels the imaginary part when the halves are balanced and so understates the noise.
+        // The cost is that only half the aperture integrates (~sqrt(2) in SNR).
         return A * std::polar(1.0, -std::arg(B)) / _wsum;
     }
 
-    /// The integrating half's genie: A derotated by the TRUE phase instead of by arg(B).
-    ///
-    /// ⚠️ THIS, not the full-aperture genie, is the bound @ref combine_split must not beat. The
-    /// split integrates ONE HALF and only references the other, so its ceiling is that half's
-    /// SNR -- and genie_full/sqrt(2) equals it only if the two halves are balanced in SNR^2,
-    /// which an array with a 14 dB gain spread is not. Comparing against the full genie is what
-    /// made the split look like it beat perfect knowledge.
+    /// The integrating half's genie, for offline tests: A derotated by the true phase instead of
+    /// by arg(B). This, not the full-aperture genie, is the bound @ref combine_split must not
+    /// beat: the split integrates one half, so its ceiling is that half's SNR, which equals the
+    /// full genie's / sqrt(2) only when the halves are balanced in SNR^2.
     cd combine_half_genie(const cd* g, double true_phase) const {
         if (_wsum <= 0.0 || _split_ok == 0)
             return cd(0.0, 0.0);
@@ -202,8 +181,8 @@ public:
         return A * std::polar(1.0, -true_phase) / _wsum;
     }
 
-    /// Fraction of the array's total MRC weight held by the INTEGRATING half (A). 0.5 = balanced.
-    /// @p square selects |w|^2 (which is what sets each half's SNR^2) rather than |w|.
+    /// Fraction of the array's total MRC weight held by the integrating half (A); 0.5 is
+    /// balanced. @p square selects |w|^2 (which sets each half's SNR^2) rather than |w|.
     double half_weight_frac(bool square = true) const {
         double a = 0.0, t = 0.0;
         for (int e = 0; e < _n; ++e) {
@@ -215,9 +194,9 @@ public:
         return t > 0.0 ? a / t : 0.0;
     }
 
-    /// Per-element gate diagnostics (offline tools; see the gate in rebuild_weights). @p rho2 is
-    /// the squared correlation of this element with its leave-one-out reference, @p thresh the
-    /// significance bar it must clear, @p mag the resulting MRC weight magnitude (0 = gated out).
+    /// Per-element gate diagnostics for offline tools (see the gate in rebuild_weights). @p rho2
+    /// is the squared correlation of the element with its reference, @p thresh the significance
+    /// bar it must clear, @p mag its MRC weight magnitude (0 = gated out).
     void diag(int e, double& rho2, double& thresh, double& mag) const {
         const double p = _p[(size_t)e], q = _q[(size_t)e];
         const double n_eff = (_alpha > 0.0) ? (2.0 - _alpha) / _alpha : 1.0;
@@ -226,40 +205,28 @@ public:
         mag = std::abs(_w[(size_t)e]);
     }
 
-    /// One record's cal update from the PROMPT row. @p dt_s is seconds since this PRN's previous
-    /// record. Every per-element statistic is formed against that element's LEAVE-ONE-OUT
-    /// reference, so no element's noise contaminates its own gain or its own noise estimate.
+    /// One record's cal update from the prompt row. @p dt_s is seconds since this PRN's previous
+    /// record. Each element's statistics are formed against a reference that excludes it, so no
+    /// element's noise enters its own gain or noise estimate.
     void update(const cd* g, double dt_s) {
         if (_n <= 0 || !(dt_s > 0.0))
             return;
-        // Clamped: after a coast/drop gap dt can span seconds, and an unclamped EMA would let
-        // ONE noisy record replace the whole cal.
+        // Clamped: after a coast or drop gap dt can span seconds, and an unclamped EMA would let
+        // one noisy record replace the whole cal.
         const double alpha = std::min(0.25, 1.0 - std::exp(-dt_s / _tau));
         _alpha = alpha;
-        // Current best combination, for the leave-one-out references. Before any weight exists
-        // the reference element bootstraps it (and cannot reference itself -- its own weight
-        // appears once the others have one, a few records later).
-        // ⚠️ THE CAL REFERENCE IS FIXED (the reference ELEMENT), NOT the evolving weighted sum.
-        // The self-consistent version -- reference each element against the current combination
-        // of the others -- looks strictly better (more SNR in the reference) and DOES NOT WORK:
-        // the weights are rebuilt from noisy statistics every record, so the combination's phase
-        // jitters record to record, and the EMA of G_e*conj(reference) averages that jitter to
-        // ZERO. Measured on synthetic data: the per-element correlation collapsed to
-        // rho^2 = 0.0007 against 1/n_eff = 0.00105 -- i.e. exactly the value uncorrelated data
-        // gives, so the gate then threw out every live element and left one. The bootstrap ate
-        // itself. A FIXED reference cannot jitter, and it is still leave-one-out for every
-        // element except the reference (G_ref does not contain G_e), which is what keeps each
-        // element's noise out of its own gain and its own noise estimate.
+        // Every element but the reference is calibrated against the reference element, which is
+        // fixed. Referencing each element against the current weighted sum of the others would
+        // give more SNR but does not work: the weights are rebuilt from noisy statistics every
+        // record, so the sum's phase jitters from record to record and the EMA of
+        // G_e*conj(reference) averages towards zero, below the gate. G_ref does not contain G_e,
+        // so the fixed reference is still leave-one-out.
         //
-        // The reference element itself is the one special case: it has no fixed external
-        // reference, so it is calibrated against the leave-it-out weighted MEAN of the others,
-        // which exists once they are warm. Until then it keeps its bootstrap weight of 1 (the
-        // header is then exactly the reference element -- the historical behaviour).
-        // ⚠️ A MEAN, NOT A SUM: the reference's reference must be in the same "one element"
-        // units that g_ref is for every other element. rho^2 and sig are scale-free, but the
-        // MRC magnitude |u|/sigma^2 is not: against the bare sum the reference's weight
-        // inherits the sum's scale, ~(n-1)*SNR times the others', and the combine is then the
-        // reference element alone.
+        // The reference element is calibrated against the leave-it-out weighted mean of the
+        // others, which exists once they have weights; until then it has no weight of its own.
+        // A mean, not a sum, so its reference is in the same one-element units as g_ref is for
+        // every other element: rho^2 and sig are scale-free, but the MRC magnitude |u|/sigma^2
+        // is not, and against the sum the reference's weight would swamp the others'.
         cd tot(0.0, 0.0);
         double w_rest = 0.0; // sum of |w_e| over e != ref: the leave-it-out mean's normalization
         if (_wsum > 0.0)
@@ -284,9 +251,9 @@ public:
     }
 
 private:
-    /// Load the stored prior into the cal state so warm() is true and combine() coheres at
-    /// once. u_e carries the prior's phase+magnitude; a nominal seed SNR sets the noise floor
-    /// so the MRC weights are finite (update() then refines both from the data).
+    /// Load the stored prior so warm() is true and combine() is coherent at once. u_e carries
+    /// the prior's phase and magnitude; a nominal seed SNR sets the noise floor so the MRC
+    /// weights are finite. update() then refines both from the data.
     void apply_prior() {
         if ((int)_prior.size() != _n)
             return;
@@ -297,36 +264,31 @@ private:
             _q[(size_t)e] = 1.0;                                   // reference power normalization
             _p[(size_t)e] = std::norm(g) * (1.0 + 1.0 / SEED_SNR); // total = signal + floor
         }
-        // rebuild_weights gates each element at GATE sigma, and the bar is GATE^2 / n_eff with
-        // n_eff set by _alpha. A trusted prior stands in for many integrated records, so give it
-        // a small alpha (large n_eff): otherwise the default n_eff=1 makes the 3-sigma bar 9,
-        // which the correlation coefficient (<=1) can never clear and every seeded element is
-        // rejected. update() overwrites _alpha from dt_s on the first real record.
-        _alpha = 0.1;   // n_eff ~ 19 -> gate ~ 0.47, comfortably below the seed's rho^2 ~ 0.8
-        _warmth = 0.96; // just past warm() so the seeded combine is used immediately
+        // rebuild_weights gates each element at rho^2 >= GATE^2 / n_eff, with n_eff set by
+        // _alpha. A trusted prior stands in for many integrated records, so give it a small
+        // alpha: with the default n_eff = 1 the bar is 9, which rho^2 (<= 1) can never clear.
+        // update() overwrites _alpha on the first record.
+        _alpha = 0.1;   // n_eff = 19: bar ~0.47, below the seed's rho^2 = 0.8
+        _warmth = 0.96; // just past warm(), so the seeded combine is used at once
         rebuild_weights();
     }
 
     void rebuild_weights() {
         std::fill(_w.begin(), _w.end(), cd(0.0, 0.0));
         _wsum = 0.0;
-        // Per-element gain (u_e) and NOISE power: the part of |G_e|^2 that is NOT correlated
-        // with the leave-one-out reference. |u_e|^2/_q is the reference-correlated (signal)
-        // power; whatever is left is this element's own noise, oscillating amplifiers included.
+        // Per-element gain u_e and noise power: |u_e|^2/_q is the power correlated with the
+        // reference (signal), and the rest of |G_e|^2 is the element's own noise, oscillating
+        // amplifiers included.
         std::vector<double> mag((size_t)_n, 0.0);
         double mmax = 0.0;
         int strongest = _ref;
-        int self_ref = -1; // element whose only reference is the sum it belongs to (see below)
-        // STATISTICAL GATE, not a fraction-of-the-strongest. u_e is an EMA of G_e*conj(ref) over
-        // ~n_eff records; a DEAD element's u_e is not zero, it is a random walk of magnitude
-        // ~sqrt(p_e*q_e/n_eff). Gating on a fraction of the max let dead elements in at ~2/3 the
-        // weight of live ones (measured), which is exactly the "mixing crap in" failure: their
-        // noise enters the sum and their random phases cost coherence. So each element must beat
-        // its OWN noise-only expectation by GATE sigma -- self-calibrating, no per-feed list.
+        int self_ref = -1; // element with rho2 > 0.99 (see below)
+        // Statistical gate, not a fraction of the strongest. u_e is an EMA of G_e*conj(ref) over
+        // ~n_eff records, so an element with no signal has |u_e| ~ sqrt(p_e*q_e/n_eff), not 0; a
+        // fraction-of-max gate admits such elements, and their noise and random phases cost
+        // coherence. Each element must beat its own noise-only expectation by GATE sigma.
         const double n_eff = (_alpha > 0.0) ? (2.0 - _alpha) / _alpha : 1.0;
-        constexpr double GATE = 3.0; // 3 sigma: measured live rho^2 >= 0.0114, dead <= 0.0024,
-                                     // so the bar at 0.0095 keeps every live feed with 4x
-                                     // margin over the worst dead one. 4 sigma lost 2 of 8.
+        constexpr double GATE = 3.0; // sigma; a higher bar starts rejecting weak live feeds
         for (int e = 0; e < _n; ++e) {
             if (_q[(size_t)e] <= 0.0 || _p[(size_t)e] <= 0.0)
                 continue;
@@ -334,19 +296,18 @@ private:
             const double rho2 = u2 / (_p[(size_t)e] * _q[(size_t)e]);
             if (rho2 < GATE * GATE / n_eff)
                 continue; // indistinguishable from an element with no signal
-            // rho2 -> 1 means the element is correlated with ITSELF: the reference element,
-            // whose only available reference is the sum it is itself part of. Its variance then
-            // collapses to the floor and its weight blows up (measured: 4133 against ~10 for a
-            // healthy element, which then dragged every other element under a
-            // fraction-of-the-strongest gate). Handled after the loop by convention instead.
+            // rho2 near 1 leaves almost no measured noise (statistics from a single record, or a
+            // very bright source), so the variance would sit at the floor below and the weight
+            // at the largest that floor allows. Such an element is held back and given the
+            // median weight after the loop. Only the last one found is kept (any others get no
+            // weight), and if every gated element is held back the cal has no weights.
             if (rho2 > 0.99) {
                 self_ref = e;
                 continue;
             }
             const double sig = u2 / _q[(size_t)e];
-            // Floor at a small fraction of the total power: an element whose fitted signal
-            // exceeds its power (noise fluctuation early in the EMA) must not get an unbounded
-            // weight from a near-zero denominator.
+            // Floor the noise at 5% of the total power: early in the EMA the fitted signal can
+            // exceed the power, and a near-zero denominator would give an unbounded weight.
             const double var = std::max(_p[(size_t)e] - sig, 0.05 * _p[(size_t)e]);
             mag[(size_t)e] = std::abs(_u[(size_t)e]) / var; // |MRC weight| = |u_e|/sigma_e^2
             if (mag[(size_t)e] > mmax) {
@@ -354,13 +315,9 @@ private:
                 strongest = e;
             }
         }
-        // THE REFERENCE ELEMENT'S OWN WEIGHT, by convention. Every u_e is measured against it,
-        // so its gain is the scale the whole solution is expressed in and cannot be recovered
-        // from statistics that all contain it. For a homogeneous array the defensible convention
-        // is the MEDIAN of the elements that did solve: it keeps the reference in the sum (it is
-        // usually one of the strongest feeds) without letting a degenerate variance hand it an
-        // unbounded weight. A wrong-by-a-factor reference weight costs a little combining
-        // efficiency; an unbounded one costs every other element.
+        // The held-back element's weight, by convention: the median of the elements that did
+        // solve, which keeps it in the sum without letting its degenerate variance set the
+        // weight. A weight wrong by a factor costs only a little combining efficiency.
         if (self_ref >= 0) {
             std::vector<double> live;
             for (int e = 0; e < _n; ++e)
@@ -377,21 +334,17 @@ private:
         }
         if (mmax <= 0.0)
             return;
-        // The anchor sets the sum's phase convention: the reference element unless it has
-        // collapsed relative to the strongest (then the strongest takes over -- a one-time
-        // phase step downstream, reported by anchor_moved()).
+        // The anchor sets the combine's phase convention: the reference element, unless it is
+        // below _min_w of the strongest, when the strongest takes over (a one-time phase step
+        // downstream, reported by anchor_moved()).
         _anchor = (mag[(size_t)_ref] >= _min_w * mmax) ? _ref : strongest;
-        // THE REFERENCE ELEMENT'S DIRECTION IS THE CONVENTION, NOT A MEASUREMENT. Every other
-        // u_e is G_e*conj(G_ref): a phase RELATIVE TO the reference, so the reference's own
-        // relative phase is 0 by definition. Its u_ref is measured against the leave-it-out sum
-        // instead, whose phase is whatever the CURRENT weights make it, and taking u_ref's
-        // direction as the reference's weight phase closes a loop with TWO stable fixed points:
-        // aligned, and anti-aligned whenever the bootstrap anchor (the strongest element) sat
-        // more than 90 deg of instrument phase from the reference. Measured live: on about half
-        // the instances the reference's weight settled 180 deg from the other elements. In the
-        // per-PRN combine that only mis-adds one element; a SHARED model built from these cals
-        // and pinned to the reference inherits an arbitrary global phase per instance, and the
-        // senders' prompts then cancel in the fleet's lobe sum (xcoh 0.98 -> -0.08).
+        // The reference element's direction is the convention, not a measurement. Every other
+        // u_e is G_e*conj(G_ref), a phase relative to the reference, so the reference's own is 0
+        // by definition. Its u_ref is measured against the leave-it-out mean, whose phase
+        // depends on the current weights; taking the reference's weight phase from it closes a
+        // loop with two stable fixed points, aligned and anti-aligned with the other elements.
+        // A shared model built from these cals and pinned to the reference would then carry an
+        // arbitrary sign per instance, and the instances would cancel in the fleet's lobe sum.
         auto dir_of = [&](int e) -> cd {
             if (e == _ref)
                 return cd(1.0, 0.0);
@@ -415,9 +368,9 @@ private:
         rebuild_split();
     }
 
-    /// Partition the surviving elements into two disjoint halves of near-equal WEIGHT (greedy
-    /// largest-first onto the lighter side), so combine_split()'s two references have comparable
-    /// SNR -- an unbalanced split is limited by its weaker half.
+    /// Partition the live elements into two disjoint halves of near-equal weight (greedy,
+    /// largest first, onto the lighter side), so combine_split()'s halves have comparable SNR;
+    /// an unbalanced split is limited by its weaker half.
     void rebuild_split() {
         _half.assign((size_t)_n, 0);
         _split_ok = 0;
@@ -447,16 +400,16 @@ private:
     int _anchor = 0;
     double _tau = 0.5;
     double _min_w = 0.02;
-    double _warmth = 0.0;   ///< approaches 1 with ~tau; warm at > 0.95 (~3 tau)
-    double _wsum = 0.0;     ///< sum |w_e| -- the "one element" normalization
-    std::vector<cd> _u;     ///< EMA of G_e * conj(LOO reference) -- the per-element complex gain
-    std::vector<double> _p; ///< EMA of |G_e|^2 -- total per-element power
-    std::vector<double> _q; ///< EMA of |LOO reference|^2 -- normalizes the signal-power estimate
-    std::vector<cd> _w;     ///< anchored MRC weights u_e/sigma_e^2 (magnitude), gated
-    std::vector<uint8_t> _half; ///< split-aperture side per element (0=A, 1=B)
-    int _split_ok = 0;          ///< both halves non-empty -> combine_split() is available
+    double _warmth = 0.0;       ///< approaches 1 with ~tau; warm at > 0.95 (~3 tau)
+    double _wsum = 0.0;         ///< sum |w_e|: the one-element normalization
+    std::vector<cd> _u;         ///< EMA of G_e * conj(reference): the per-element complex gain
+    std::vector<double> _p;     ///< EMA of |G_e|^2: total per-element power
+    std::vector<double> _q;     ///< EMA of |reference|^2: normalizes the signal-power estimate
+    std::vector<cd> _w;         ///< anchored MRC weights, magnitude |u_e|/sigma_e^2; 0 = gated out
+    std::vector<uint8_t> _half; ///< split-aperture side per element (0 = A, 1 = B)
+    int _split_ok = 0;          ///< both halves non-empty: combine_split() is available
     double _alpha = 0.0;        ///< last EMA coefficient (sets n_eff for the significance gate)
-    std::vector<cd> _prior; ///< injected per-element gain prior (path B); empty = cold bootstrap
+    std::vector<cd> _prior;     ///< seed() prior; empty = cold bootstrap
 };
 
 } // namespace gnss

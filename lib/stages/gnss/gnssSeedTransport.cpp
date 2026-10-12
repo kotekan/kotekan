@@ -4,7 +4,7 @@
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssSeedTransport.hpp"
 #ifdef GNSS_CUDA
-#include "GnssCudaDespread.hpp" // A5: the GPU refine reuses the tracker's despread driver
+#include "GnssCudaDespread.hpp" // for refine_peak_cuda
 #endif
 
 #include <algorithm>
@@ -22,48 +22,25 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
                    int n_hops, double sample_rate, int refine_span, int refine_step,
                    int n_threads) {
     const double cps = bank.chip_rate_hz() / sample_rate;
-    // Build the cumulative channel filter ONCE: the Doppler is fixed across the scan, so the
-    // slow half of the hop-rate generator (O(num_taps * fft_len) per channel) is Doppler-only
-    // and hoists out. channels_hoprate() would rebuild it every step.
+    // The Doppler is fixed across the scan, so the cumulative channel filter (the
+    // O(num_taps * fft_len) half of the hop-rate generator) is built once, not per trial.
     const ChannelizedReplicaBank::HopRateFilter rf = bank.hoprate_filter(cov_global, dop);
     const int step = std::max(1, refine_step);
 
-    // The scan must simply REACH the true peak; the objective then picks it out unaided. Its
-    // shape was dumped over a full hop (e2e --dump-refine) rather than argued about:
-    //
-    //   off  +5376 samp  +17.186 chips   pw 1.5124e-02   <- truth
-    //   off  +1280 samp   +4.092 chips   pw 1.2818e-02   <- grating lobe, 4096 samples away
-    //
-    // The comb DOES put grating lobes every s_stored samples (the covering channels share a
-    // factor with sph, so the fine-lag response is periodic -- see AcquisitionSurface), but
-    // they are NOT equal: the true lobe wins by ~15%, so any scan that covers it is correct.
-    // The aggregator ran `refine_span: 4096`, could not reach +17.19 chips, and settled on the
-    // +4.09 lobe -- an error of exactly 13.09 chips, which is what 4 of 15 noiseless injections
-    // showed. It was never an ambiguity to be resolved by cleverness, just a scan that stopped
-    // too soon. (Two failed fixes are buried here: evaluating candidates at multiples of
-    // s_stored gets 13.198 chips wrong, because the true lobe sits at 4096+1280, not at a
-    // multiple of 4096. Reach the peak; do not model it.)
-    //
-    // So: scan the FULL +-refine_span (default fft_len = one whole hop, which is the entire
-    // ambiguity), and pay for it with threads instead of with cleverness. The lobes are only
-    // ~sph/(comb span in bins) = 157 samples wide, so the step cannot be opened up to make a
-    // coarse-to-fine pass work -- it would step over the lobe it is looking for.
+    // Scan the full +-refine_span: the true lobe is the highest of the grating lobes, so the
+    // scan only has to reach it (see the header).
     const int span = std::max(step, refine_span);
     const int n_eval = 2 * span / step + 1;
-    (void)dims; // (shape is informational now; the scan no longer depends on s_stored)
+    (void)dims;
 
     std::vector<double> pw((size_t)n_eval, -1.0);
-    // PER-THREAD SCRATCH, allocated once. hoprate_stream returns ~2.6 MB by value, so the
-    // by-value form had every one of these threads calling the allocator inside the loop, on
-    // every detection. The same churn took the ms-split refine from 89 s to 874 s when it was
-    // found in that path (31896a862:docs/CHORD_GNSS_MS_SPLIT_SEARCH.md section 8); the ordinary
-    // refine still had it. Sized by thread id, so no two threads share a buffer.
+    // Per-thread replica scratch, indexed by thread id, so the loop does not allocate a
+    // multi-MB replica per trial.
     const int nthr = n_threads > 0 ? n_threads : 1;
     std::vector<std::vector<std::vector<std::complex<float>>>> scratch((size_t)nthr);
-    // n_hops may be SHORTER than the data (a caller trading integration for speed -- the refine
-    // only has to localise a peak that already cleared detection). channelized_despread
-    // requires matching lengths, so take the leading n_hops of each channel once, here, rather
-    // than per trial phase.
+    // n_hops may be shorter than the data (the refine only localizes a peak that already passed
+    // detection). channelized_despread needs matching lengths, so take the leading n_hops of
+    // each channel once rather than per trial.
     std::vector<std::vector<std::complex<float>>> dview;
     const std::vector<std::vector<std::complex<float>>>* dp = &data;
     if (!data.empty() && (int)data[0].size() > n_hops) {
@@ -75,8 +52,6 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
 #pragma omp parallel for schedule(static) num_threads(nthr)
     for (int e = 0; e < n_eval; ++e) {
         const double cp = coarse_cp + (double)(-span + e * step) * cps;
-        // Same secondary-code alignment the peak was found at, or the refine despreads an
-        // overlay-blind replica against an overlay-aligned peak and walks off it.
 #ifdef _OPENMP
         const int tid = omp_get_thread_num();
 #else
@@ -86,9 +61,7 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
         bank.hoprate_stream_into(rf, prn_index, anchor, cp, dop, n_hops, {}, nh_phase, r);
         pw[(size_t)e] = std::norm(channelized_despread(*dp, r).amplitude);
     }
-    // Reduce serially so the result does not depend on thread scheduling -- a tie broken by
-    // whichever thread finished first is exactly the kind of irreproducibility that makes a
-    // bug look intermittent.
+    // Serial reduction, first strict maximum, so a tie does not depend on thread scheduling.
     int best_e = 0;
     for (int e = 1; e < n_eval; ++e)
         if (pw[(size_t)e] > pw[(size_t)best_e])
@@ -101,9 +74,8 @@ double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedR
                         int prn_index, const std::complex<float>* window, int window_stride,
                         long long anchor, double coarse_cp, double dop, double sample_rate,
                         int refine_span, int refine_step) {
-    // Mirrors refine_peak's scan geometry EXACTLY -- same cps, same step/span clamping, same
-    // n_eval, same ascending first-strict-max tie-break -- so a disagreement between the two is
-    // a real one and not a difference of arithmetic.
+    // Same scan as refine_peak (cps, step/span clamping, n_eval, ascending first-strict-max
+    // tie-break), so the two paths differ only in the despread.
     const double cps = bank.chip_rate_hz() / sample_rate;
     const int step = std::max(1, refine_step);
     const int span = std::max(step, refine_span);
@@ -111,13 +83,9 @@ double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedR
     if (groups.empty())
         return coarse_cp;
 
-    // CHANNEL GROUPS. DespreadJob::chan_mask is a uint64_t, so one engine covers at most 64
-    // channels -- fine for the tracker's 7, not for the aggregator's 79-channel union comb.
-    // Splitting is EXACT rather than an approximation: DespreadResult.correlation is the raw
-    // coherent sum over channels and .replica_energy is sum_c sum_m |R|^2, so both are additive,
-    // and amplitude = correlation / replica_energy recombines from the group totals. That is
-    // why this is done here instead of widening chan_mask in the kernel the six live tracker
-    // nodes depend on.
+    // One engine per group of <= 64 channels (DespreadJob::chan_mask is a uint64_t).
+    // correlation and replica_energy (sum_c sum_m |R|^2) both add over channels, so the group
+    // totals recombine exactly. Each group's channels are de-interleaved into its own window.
     for (CudaRefineGroup& g : groups) {
         const int ng = (int)g.local.size();
         g.stage.resize((size_t)g.n_hops * (size_t)ng);
@@ -128,9 +96,9 @@ double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedR
         g.gpu->upload_window(g.stage.data(), anchor);
     }
 
-    // Three trials per spec: a Spec's {early, prompt, late} ARE {e0, e0+1, e0+2} when the prompt
-    // sits on the middle trial and the spacing is one scan step. Chunked against the engine's
-    // job arena (n_prn, NOT max_specs -- see GnssCudaDespread::max_batch_specs).
+    // Three trials per Spec: with the prompt on the middle trial and the spacing one scan step,
+    // Spec gg's {early, prompt, late} are trials {3gg, 3gg+1, 3gg+2}. Chunked to the engine's
+    // job arena (GnssCudaDespread::max_batch_specs).
     int cap = 1 << 30;
     for (const CudaRefineGroup& g : groups)
         cap = std::min(cap, std::max(1, g.gpu->max_batch_specs()));
@@ -191,14 +159,13 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     const double cps = bank.chip_rate_hz() / sample_rate;
     const double L = (double)bank.code_length();
 
-    // best_cp is the satellite code phase at the snapshot's absolute start
-    // (S_snap = snap_start_hop * fft_len). Reference it to absolute sample 0 so a consumer on
-    // the same hop*2N grid can seed directly: cp0 = best_cp - S_snap*chip_per_sample (mod L).
-    // Reduce the hop offset modulo the replica period first to keep float precision.
+    // best_cp is the code phase at the snapshot's start (S_snap = snap_start_hop * fft_len).
+    // Refer it to absolute sample 0: cp0 = best_cp - S_snap*chip_per_sample (mod L). The hop
+    // offset is reduced modulo the replica period first (one period advances 0 mod L) to keep
+    // precision.
     const double off = std::fmod((double)(snap_start_hop % Mp) * (double)fft_len * cps, L);
-    // Code-Doppler drift of the reference over the FULL absolute snapshot start (NOT
-    // Mp-periodic, so use the full snap_start_hop): makes cp0 the true sample-0 phase, matching
-    // the feed-forward in ChannelizedReplicaBank, so a stale seed no longer drifts the cp.
+    // Code-Doppler advance over the full snapshot start (not Mp-periodic, so not reduced),
+    // matching the code-Doppler feed-forward in ChannelizedReplicaBank.
     const double drift = std::fmod((double)snap_start_hop * (double)fft_len * cps
                                        * (bank.code_doppler_sign * dop / bank.carrier_hz()),
                                    L);
@@ -209,36 +176,22 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     if (n_nh <= 1 || best_nh < 0)
         return out;
 
-    // LONG-CODE PHASE, mod n_nh*L -- the phase a tracker despreading the overlaid code actually
-    // needs. Everything above is reduced mod L, which is right for the primary and DESTROYS the
-    // overlay period: a phase known only mod L leaves the tracker a 1-in-n_nh guess, and no
-    // constant correction can supply the missing period because it is not constant. Two
-    // separate reductions have to change, not one:
-    //   * best_cp lifts into the long space by the alignment the acquire MEASURED;
-    //   * the `% Mp` shortcut is valid ONLY mod L. One replica period is Mp*fft_len*cps = 16 L
-    //     exactly at CHORD -- 0 mod L, but NOT 0 mod 20 L -- so the long form needs the FULL
-    //     absolute advance. That product reaches ~7e12 chips and must stay good to a chip,
-    //     hence long double (double's ulp there is ~1e-3 chips, fine, but the margin is free).
-    // THE CORRELATION LAG'S WHOLE-PERIOD COUNT (2026-08-02). Measured by injection, 22/22.
+    // Long-code phase, mod n_nh*L: the phase a tracker despreading the overlaid code needs. A
+    // phase known only mod L leaves the overlay period unknown. Two reductions differ from the
+    // primary-code ones above:
+    //   * best_cp is lifted into the long code by the alignment the acquire measured, plus the
+    //     whole primary periods inside the correlation lag;
+    //   * the `% Mp` shortcut is valid only mod L. One replica period is Mp*fft_len*cps = 16 L
+    //     at CHORD, 0 mod L but not 0 mod 20 L, so the long form needs the full absolute
+    //     advance. That product reaches ~7e12 chips and must stay good to a chip; long double
+    //     keeps a margin over double's ~1e-3-chip ulp there.
     //
-    // The coarse lag runs over ONE REPLICA PERIOD, Mp*fft_len*cps = 16 primary code periods at
-    // CHORD -- but `best_cp` is that lag already reduced mod ONE period, so the count of whole
-    // periods inside the lag is discarded before anything downstream can see it. The overlay is
-    // 20 periods and 16 is not 0 mod 20, so no `best_nh` alone can carry it: the reported period
-    // came out (best_nh - 4) mod 20 in every injection, i.e. a pure function of the alignment,
-    // and was wrong by -2..+3 in 8 of the first 15 runs. That is the "period randomised every
-    // pass (+1/+3/-4/+3/+3/-1/-2)" seen on sky for a week; it was never random, it is this count,
-    // which changes every pass because the peak lands in a different hop.
-    //
-    // The lag is only determined modulo the 16-period replica span, so its period count must be
-    // read as a SIGNED residual: fold [0,16) into (-8,+8]. That is not a free choice -- it is
-    // measured. Across 22 injections spanning the full 204600-chip range, |folded| never
-    // exceeded 3, because the acquire searches overlay alignment and coarse lag JOINTLY and the
-    // winning pair always leaves a small residual lag. The raw (unfolded) count is wrong for
-    // every negative-lag case and would put the seed up to 15 periods out.
-    //
-    // `peak_tau_samples` has been sitting in AcquisitionResult all along; the information was
-    // never lost, only never carried across the stage boundary.
+    // The lag spans one replica period (16 primary periods at CHORD), but best_cp is reduced
+    // mod one period, so its whole-period count is taken from peak_tau_samples. The overlay is
+    // 20 periods and 16 is not 0 mod 20, so best_nh alone cannot carry it. The lag is known
+    // only modulo the replica span, so the count is read as a signed residual, [0,16) folded to
+    // (-8,+8]: the acquire searches alignment and lag jointly, and the winning pair leaves a
+    // small residual lag. The unfolded count would be wrong for every negative lag.
     const double tau_chips = (double)peak_tau_samples * bank.chip_rate_hz() / sample_rate;
     const int lag_span_periods =
         (int)std::llround((double)Mp * (double)fft_len * cps / L); // 16 at CHORD
@@ -249,8 +202,8 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
         if (lag_periods > lag_span_periods / 2)
             lag_periods -= lag_span_periods; // fold to the signed residual
     }
-    // The lift into the long code: the alignment the acquire measured, PLUS the lag's period
-    // count. Both are in units of one primary period.
+    // Lift into the long code: measured alignment plus the lag's period count, in primary
+    // periods.
     const double lift = ((double)best_nh + (double)lag_periods) * L;
 
     const long double LL = (long double)L * (long double)n_nh;
@@ -264,29 +217,18 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
         cpl += (double)LL;
     out.cp_long = cpl;
 
-    // ...and the same phase referenced to the SNAPSHOT, which is what should actually be
-    // transported. best_cp is the argument of a replica at `anchor` that matches the data at
-    // the snapshot, so the data's phase there is just best_cp lifted plus the ANCHOR's own
-    // advance -- a fixed ~163732 chips whose Doppler sensitivity is 1e-4 chips/Hz, against
-    // 5903 chips/Hz for the sample-0 route above. Same information, seven orders better
-    // conditioned. (Done by hand rather than through bank.phase_from_arg() because THIS bank
-    // reduces mod L and would throw the overlay period away.)
+    // The same phase referred to the snapshot, which is what should be transported. best_cp is
+    // the argument of a replica at `anchor` that matches the data at the snapshot, so the
+    // data's phase there is best_cp lifted plus the anchor's own advance: a fixed ~1.6e5 chips
+    // (L5 at CHORD) with a Doppler sensitivity of ~1e-4 chips/Hz, against thousands of
+    // chips/Hz for cp0. Done here rather than with bank.phase_from_arg(), which reduces mod L.
     //
-    // ⚠️ THE EPOCH IS THE HOP'S LAST SAMPLE (anchor + fft_len - 1), AND THAT IS A CONTRACT,
-    // not an accident of this function (#45 step 5, 2026-08-12). Every phase in the C++ side
-    // is referenced this way: ChannelizedReplicaBank::window_advance_chips uses
-    // `window_start_sample + _fft_len - 1` ("hoprate_stream's per-hop reference"), so
-    // phase_from_arg, arg_from_phase, propagate_seed, the replica generators and the e2e
-    // harness's truth all share it. cp_at_ref must too, or it stops being comparable with
-    // the tracker's own propagation -- which is the whole reason it exists.
-    //
-    // Measured on 26,815 banked sky detections, cp_at_ref sits +52.3711 chips from the
-    // cp0 reconstruction = exactly (fft_len-1)*cps at fft_len 8192. That skew is REAL and
-    // it is cp0's: the sample-0 back-reference above is built at the FIRST sample. The two
-    // published fields are one hop apart by construction. A first cut at this "fixed"
-    // cp_at_ref to first-sample and broke the C++ family's shared reference -- e2e caught
-    // it immediately (search leg 0.373 -> -52.002 chips). The consumers that mix the two
-    // fields are the ones that must convert, and they do (gnss_broker/fits.py).
+    // The epoch is the hop's last sample (anchor + fft_len - 1), the reference every phase on
+    // the C++ side shares (ChannelizedReplicaBank::window_advance_chips, phase_from_arg,
+    // arg_from_phase, propagate_seed and the e2e harness), so cp_at_ref is comparable with the
+    // tracker's own propagation. cp0 above is referred back from the hop's first sample, so a
+    // phase rebuilt from cp0 at ref_hop sits (fft_len-1)*cps below cp_at_ref by construction;
+    // consumers that mix the two fields convert (gnss_broker/fits.py seed_phase_at_ref).
     const long double n_anc = (long double)anchor + (long double)fft_len - 1.0L;
     const long double cps_d =
         (long double)cps * (1.0L + (long double)(bank.code_doppler_sign * dop / bank.carrier_hz()));
@@ -308,41 +250,22 @@ SeedPropagation propagate_seed(const ChannelizedReplicaBank& bank, const SeedSta
     const double dt = dh * (double)fft_len / sample_rate;
     out.doppler_hz = sd.doppler_hz + sd.dop_rate * dt;
 
-    // The phase advances at the TRUE code rate: nominal scaled by the code Doppler. Dropping
-    // the scaling loses chip_rate*dop/(carrier*hops_per_sec) chips per hop -- 1.05e-4 at dop
-    // 2350, so 41 chips on a seed only 2 s old and thousands on a minute-old one. It is
-    // invisible if the seed's `code_phase_rate` happens to carry that same term (which is what
-    // hand seeding did, and why hand seeds locked), but the broker's convention -- airspy's,
-    // and the right one -- is that code_phase_rate is a RESIDUAL and the geometry is fed
-    // forward here, exactly as the replica generator feeds it forward through cps(dop).
+    // The phase advances at the true code rate: nominal scaled by the code Doppler. The seed's
+    // cp_rate is a residual; the geometric code Doppler is fed forward here, as the replica
+    // generator feeds it forward through cps(dop).
     const double chips_per_hop =
-        // ⚠️ eff_chip_rate, NOT chip_rate_hz -- THE COMBINED STREAM'S RATE (2026-08-31).
-        // `phase_now` is handed to arg_from_phase two lines down, and that function works in
-        // COMBINED chips: it subtracts window_advance_chips (built from _eff_chip_rate) and
-        // divides by comb_mult at the end. Advancing the phase at the COMPONENT rate while
-        // reducing it as a combined phase is a unit mismatch -- invisible for every signal
-        // with comb_mult == 1, which is every signal we have ever flown, and exactly wrong
-        // for a time-multiplexed one.
-        // MEASURED: GPS_L2C_CM (time_multiplexed, comb_mult 2) drifted -4.167 chips/record at
-        // 1000 Hz -- precisely the component-rate code Doppler k_CM*dop -- while GAL_E6_C_CS
-        // (5.115 Mcps, comb_mult 1) and GAL_E5A_Q_CS (10.23 Mcps) both read 0.000 on the same
-        // invocation. So it was never the chip rate; it was the multiplex. With this line the
-        // L2C closure is 0.000 at every record and the others do not move by a bit
-        // (eff_chip_rate == chip_rate_hz whenever comb_mult == 1).
+        // eff_chip_rate, not chip_rate_hz: phase_now goes to arg_from_phase, which works in
+        // combined chips (it subtracts window_advance_chips, built from the combined rate, and
+        // divides by comb_mult). The two rates differ only when comb_mult > 1 (TDM and BOC).
         bank.eff_chip_rate() * (double)fft_len / sample_rate
         * (1.0 + bank.code_doppler_sign * sd.doppler_hz / bank.carrier_hz());
     const double quad = 0.5 * (bank.chip_rate_hz() / f_offset_hz) * sd.dop_rate * dt * dt;
 
-    // The transported phase is in the PRODUCER'S units -- component chips (CM chips for
-    // GPS_L2C_CM), the same currency as code_phase_chips, cp_at_ref and the broker's
-    // chip_hz arithmetic (gnss_broker/fits.py seed_phase_at_ref). phase_from_arg returns
-    // COMBINED chips (comb_mult * arg + advance), and everything below -- the combined-rate
-    // advance, arg_from_phase's reduction mod eff_code_length -- is in combined chips. So the
-    // phase branch has to convert on entry, exactly as the argument branch does inside
-    // phase_from_arg. Taking the wire value raw put the L2C replica (phase/2 mod 10230) chips
-    // from the sky: ~4700 CM chips = 9 ms in the e2e reproduction with a broker-unit seed,
-    // P/P_true 1e-3, q 1.05 -- the exact on-sky signature of the chain that never locked
-    // (2026-09-02). Identity for comb_mult == 1, i.e. every other deployed signal.
+    // The seed's phase_ref_chips is in component chips (CM chips for GPS_L2C_CM), the unit of
+    // code_phase_chips, cp_at_ref and the broker (gnss_broker/fits.py seed_phase_at_ref).
+    // phase_from_arg returns combined chips (comb_mult * arg + advance), as are chips_per_hop
+    // and arg_from_phase's input, so the phase branch scales by comb_mult on entry. cp_rate,
+    // quad and trim_chips are added unscaled.
     out.phase_ref =
         (sd.phase_ref_chips >= 0.0)
             ? (double)bank.comb_mult() * sd.phase_ref_chips

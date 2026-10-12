@@ -2,139 +2,109 @@
 #define GNSS_RECORD_HPP
 /**
  * @file gnssRecord.hpp
- * @brief The GNSS record layout -- the single source of truth for the distributed pipeline's
- *        per-PRN record slots (tracker output, combiner input/output, BeamCube input).
+ * @brief GNSS record layout (the per-PRN record slots shared by the tracker output, the
+ *        combiner input and output and the telemetry rows) and the beam-cube frame layout.
  *
- * A record is RECORD_FLOATS float32 slots per PRN per window. Two flavours share the size and
- * the header slots (0-2) + UTC (9-10, an aliased double):
+ * A record is RECORD_FLOATS float32 slots per PRN per window. Two flavours share the size, the
+ * header slots 0-2 and the capture UTC (slots 9-10, an aliased double):
  *
- *  TRACKER record (GnssGpuRecordAssemble -> combiner):
+ *  TRACKER record (GnssGpuRecordAssemble -> combiner, GnssTelemPack):
  *    0 PRN   1 Doppler_Hz   2 code_phase_chips
- *      -- SLOT-2 CURRENCY CONTRACT (2026-07-31): slot 2 is the sample-0-anchored code phase
- *         expressed in THE SAME RECORD'S slot-1 carrier: cp_phys(t_rec) = slot2 +
- *         t_abs*f_chip*(1 + sign*slot1/f_carrier) mod L, EXACTLY. The tracker re-expresses
- *         its internal f_ref-currency despread command into slot 1's reported carrier at
- *         emit (the export-currency translation in both trackers); consumers MUST pair
- *         slot 2 with slot 1 from the same record (the combiner forwards both from its
- *         reference record, so status doppler_hz/code_phase_chips are a valid pair).
- *         Before this, slot 2 carried the raw f_ref-currency command and every downstream
- *         reconstruction inherited a t_abs*f_chip*(ctrim)/f_c error (~25 chips/Hz at soak
- *         age) -- the absolute-VTEC blocker.
- *    3 P.re  4 P.im         -- PROMPT correlation, un-normalized coherent sum G (the combiner
+ *      -- slot 2 is the generator's sample-0-anchored code-phase argument at the Doppler in
+ *         slot 1 of the same record: cp_phys = ChannelizedReplicaBank::phase_from_arg(slot2,
+ *         wstart, slot1), i.e. slot2 + t_abs*f_chip*(1 + sign*slot1/f_carrier) mod L for
+ *         comb_mult 1. The argument means nothing with any other Doppler, so consumers must pair
+ *         slots 1 and 2 from one record; the combiner forwards both from its reference record.
+ *    3 P.re  4 P.im         -- prompt correlation, un-normalized coherent sum G (the combiner
  *                              sums G and energy across subbands, then normalizes: A = G/E)
  *    5 P_energy             -- prompt replica energy E
  *    6 n_chan               -- covering channels this subband contributed
  *    7 E_energy  8 L_energy -- early/late replica energies (see 11-14)
  *    9,10 UTC               -- capture UTC (double aliased over two floats)
  *    11 E.re 12 E.im 13 L.re 14 L.im
- *      -- EARLY/LATE correlations: the same record despread at code phase -+ dll_spacing
- *         (default 0.5 chip). Dumb outputs for the low-rate DLL: the broker forms the
- *         discriminator (|E|^2-|L|^2)/(|E|^2+|L|^2) from combiner-aggregated values and closes
- *         the code loop at ~Hz. The tracker itself makes NO alignment decisions.
- *    15 dphi_cmd           -- COMMANDED carrier-phase INCREMENT, cycles (see below)
- *    16 PH.re 17 PH.im 18 PH_energy  19 trim_inc (REC_TRIM_INC, commanded-trim increment)
- *      -- HEAD SEGMENT of the prompt: the same P correlation restricted to the hops BEFORE
- *         the code-period boundary inside this window. Windows are hop-grid-aligned, not
- *         code-period-aligned, so every record straddles one period boundary at offset
- *         fraction f -- and the secondary overlay / nav symbol FLIPS SIGN exactly there,
- *         mid-record. Summed blind, a record straddling a chip TRANSITION cancels to
- *         |2f-1| (f~0.5 nulls it: the 2026-07-15 "bistable" -- E1C lost 12/25 records to
- *         CS25's 12 transitions, B1C ~49%). With the head exported (tail = P - PH), the
- *         combiner wipes each segment with ITS OWN overlay chip (head gets chip n, tail
- *         chip n+1) and the cancellation never happens. PH == P means "no boundary in
- *         this window / not segmented" (the CPU tracker's compatibility default): tail = 0
- *         and every wipe reduces exactly to the unsegmented behaviour.
- *         PH_energy/P_energy = f, the measured boundary fraction (free diagnostic).
+ *      -- early/late correlations: the same record despread at code phase -+ dll_spacing
+ *         (default 0.5 chip). The tracker makes no alignment decision from them; the combiner
+ *         (CMB_DLL_DISC) and the broker's fleet DLL form the discriminator downstream.
+ *    15 dphi_cmd            -- commanded carrier-phase increment, cycles (see below)
+ *    16 PH.re 17 PH.im 18 PH_energy  19 trim_inc (REC_TRIM_INC)
+ *      -- head segment of the prompt: the same correlation restricted to the hops before the
+ *         code-period boundary inside this window. Windows are hop-aligned, not
+ *         code-period-aligned, so a record straddles a period boundary at fraction f, and the
+ *         secondary overlay or nav symbol can flip sign exactly there. Summed blind, such a
+ *         record cancels to |2f-1| of its amplitude; with the head exported (tail = P - PH) the
+ *         combiner wipes each segment with its own overlay chip. PH == P means no boundary in
+ *         this window (tail = 0). PH_energy/P_energy = f.
  *    20 RES.re 21 RES.im  22 RES_PH.re 23 RES_PH.im
- *      -- PEEL RESIDUAL prompt (and its head segment): the SAME prompt correlation, taken on
- *         the voltage AFTER this PRN's own reconstructed waveform was subtracted
- *         (docs/gnss_voltage_peel_live.md). Slots 3/4/16/17 continue to carry the FULL
- *         (un-peeled) correlation -- the fused peel adds its own known contribution back in
- *         closed form, exactly, so every existing consumer is untouched. These slots are the
- *         NEW product: 20*log10(|P| / |RES|) is the achieved peel depth, and it is honest
- *         per-record because the subtracted gain is FEED-FORWARD, i.e. statistically
- *         independent of this record's noise. (A gain fitted IN-window subtracts its own
- *         noise back along R and the residual reads ~0 = infinite depth.)
- *         Energies are shared with the prompt (same replica), so none are duplicated.
- *         The HEAD slots are REQUIRED, not decorative: the residual carries the same overlay
- *         sign flip at the code-period boundary, so a blind deep integration of RES cancels
- *         to |2f-1| exactly like the prompt did before the 2026-07-15 segmentation fix.
- *         All four are ZERO when no peel ran -- the compatibility default.
+ *      -- peel residual prompt and its head segment: the same correlation on the voltage after
+ *         this PRN's own reconstructed waveform was subtracted. Slots 3/4/16/17 carry the
+ *         un-peeled correlation (the peel's own contribution is added back analytically).
+ *         20*log10(|P| / |RES|) is the achieved peel depth, and it is unbiased per record
+ *         because the subtracted gain is feed-forward: a gain fitted to this record would
+ *         subtract its own noise and read as infinite depth. The head slots are needed for the
+ *         same overlay sign flip as the prompt's. All four are zero when no peel ran.
+ *    24-31: see REC_SKY_*, REC_ANG0, REC_PHI_DDOP, REC_PHI0 and REC_PROJ_* below.
  *
- *  COMBINER record (GnssCoherentCombiner -> record/viewer; full-band, one per emit):
+ *  COMBINER record (GnssCoherentCombiner output; full band, one per emit):
  *    0 PRN   1 Doppler_Hz   2 code_phase_chips
  *    3 |A|_incoh  4 <A>.re  5 <A>.im  6 |<A>|_coh  7 n_chan  8 deep |A|
  *    9,10 UTC
  *    11 <|E|^2>  12 <|L|^2>  13 DLL discriminator  14 carrier residual (Hz, full-band
- *       cross-record phase walk -- the shared carrier loop's observable; broker closes it)
- *    17 deep |A| of the PEEL RESIDUAL  18 incoherent |A| of the peel residual
- *       -- the same two estimators as slots 8 and 3, run on the residual prompt (slots 20-23).
+ *       cross-record phase walk: the shared carrier loop's observable; the broker closes it)
+ *    15 phase arc id        -- incremented on every cycle slip or phase-continuity break. The
+ *       accumulated carrier phase itself is a double served by REST get_status (adr_cycles):
+ *       float32 would quantize ~1e6 cycles of ADR to ~0.06 cycles.
+ *    16 head fraction (CMB_HEAD_FRAC)
+ *    17 deep |A| of the peel residual  18 incoherent |A| of the peel residual
+ *       -- the slot-8 and slot-3 estimators run on the residual prompt (tracker slots 20-23).
  *          peel depth (dB) = 20*log10(CMB_DEEP / CMB_PEEL_DEEP). Zero when no peel ran.
- *    15 phase arc id        -- increments on every cycle slip / phase-continuity break; the
- *       accumulated carrier phase itself is a DOUBLE and ships via REST get_status (adr_cycles),
- *       not here: a float32 mantissa quantizes ~1e6 cycles of ADR to ~0.06 cycles, useless.
+ *    19,20 absolute hop (CMB_HOP_SLOT, int64)  21 coherence fraction (CMB_COH_FRAC)
  *
- *  CARRIER PHASE (slot 15, tracker -> combiner). The tracker removes a known carrier phase
- *  from the data: the replica's own 2*pi*f_ref*t (ABSOLUTELY anchored at sample 0) plus the
- *  NCO's phi. The combiner measures what's left, arg(A), so the received carrier phase is
+ *  CARRIER PHASE (slot 15, tracker -> combiner). The tracker removes a known carrier phase from
+ *  the data: the replica's own 2*pi*f_ref*t, anchored at absolute sample 0, plus the
+ *  assembler's NCO phase phi. The combiner measures what is left, arg(A), so the received
+ *  carrier phase is
  *      Phi_rx(t) = Phi_cmd(t) - arg(A)/2pi,   Phi_cmd = f_ref*t_abs - phi/(2*pi)  [cycles]
- *  (both minus signs because the NCO and the despread residual live in the r2c-flipped
- *  internal convention while f_ref is physical-signed -- see GnssCoherentCombiner for the
- *  on-sky measurement that pinned each of them down).
+ *  (both minus signs because the NCO and the despread residual are in the r2c-flipped internal
+ *  convention while f_ref is physical-signed).
  *
- *  Slot 15 carries the per-record INCREMENT of Phi_cmd (cycles since this PRN's previous
- *  record), NOT Phi_cmd itself. Two reasons, both learned the hard way:
- *    * Phi_cmd is ~1e7 cycles at soak age -- a float32 quantizes that to ~1 cycle, useless.
- *      The obvious dodge (ship it mod 1 cycle) forces the combiner to UNWRAP, i.e. to guess
- *      the integer part from a predicted rate. The only rate it has is the reported Doppler,
- *      which is wrong by 2*carrier_trim -- 2 whole cycles per 10 ms B1C record at the trim
- *      clamp. It then unwraps to the wrong integer, adopts that as its rate, and stays
- *      self-consistently wrong forever (measured: BeiDou C24 reading exactly +99.5 Hz off,
- *      = one cycle per 10 ms record).
- *    * The increment is bounded and small (Doppler * record period: ~5 cycles at L1, ~50 at
- *      B1C), so a float32 holds it to ~1e-6 cycles and NOTHING needs unwrapping. The tracker
- *      keeps Phi_cmd continuous through f_ref re-pins (the phase-continuity fold), so the
- *      increment stays small across those too -- which is what makes this possible at all.
- *  0 means "no previous record for this PRN": the arc starts here.
+ *  Slot 15 carries the per-record increment of Phi_cmd (cycles since this PRN's previous
+ *  record), not Phi_cmd itself, which is far beyond float32 resolution; shipping it mod 1 cycle
+ *  instead would force the combiner to unwrap it from the reported Doppler, which is not the
+ *  applied carrier. The assembler folds each f_ref re-pin into phi, so the increment is
+ *  continuous across re-pins. Its float32 precision follows its size, f_ref x record length:
+ *  where f_ref is the RF carrier (CHORD, ~1.2 GHz) it is 1e7 cycles or more and float32 rounds
+ *  it to whole cycles. GnssCoherentCombiner's adr_cycles sums slot 15 as shipped and carries
+ *  that rounding; python/scripts/gnss/gnss_broker/fleetadr.py rebuilds the commanded advance
+ *  from slot 1 and the record's hop instead. 0 means no previous record for this PRN: the arc
+ *  starts here.
  *
- * Python tools parse these constants from this file (the gnssSignal.hpp pattern); keep the
- * literals machine-readable.
+ * config/gnss_record_layout.py parses RECORD_FLOATS, ELEM_FLOATS, CHAN_FLOATS,
+ * CUBE_CHAIN_CHARS and CUBE_HEADER_BYTES out of this file by regex: keep them single-line
+ * definitions with literal values (CUBE_HEADER_BYTES as `N + CUBE_CHAIN_CHARS`).
  */
 
-#include <cstddef> // for size_t -- this header is standalone (parsed by the config generator
-                   // and included by tools that pull in nothing else), so it must not rely on
-                   // an earlier include having happened to provide it.
-#include <cstdint> // likewise, for the fixed-width types of the cube frame layout.
+#include <cstddef> // for size_t: this header must not rely on an earlier include
+#include <cstdint> // for the fixed-width types of the cube frame layout
 
 namespace gnss {
 
-/// float32 slots per PRN per record.
+/// float32 slots per PRN per record header.
 ///
-/// ⚠️ This is ALSO a yaml constant: every record buffer is sized `n_prn * record_floats *
-/// sizeof_float`, and NOTHING reads this header to check that. Bumping it means bumping
-/// the configs: the generator reads it through `config/gnss_record_layout.py`, so re-run it, and
-/// fix any hand-written config. A config left behind under-sizes the
-/// frame and the producers write past the end of it -- so the record producers now assert the
-/// frame is big enough at construction (see GnssGpuRecordAssemble / GnssCoherentCombiner) and
-/// die loudly instead of corrupting memory.
-/// 26 -> 28 on 2026-08-16: @ref REC_ANG0 and @ref REC_PHI_DDOP, the two per-(instance, PRN)
-/// carrier-phase quantities #72 needs and that no external measurement can reach.
-/// 28 -> 29 same day: @ref REC_PHI0, the comb's phase currency -- #72's root cause, made
-/// recoverable by the consumer instead of left implicit.
-/// 29 -> 30 on 2026-10-01: @ref REC_PROJ_COST, the bright-satellite projection's cost on the
-/// satellite's live weights, so the broker can weight rows by it instead of vetoing by angle.
-/// 30 -> 32 on 2026-10-12: @ref REC_PROJ_K and @ref REC_PROJ_SRC, the rank and the source of the
-/// basis in force on the record, so a pass can be judged from the archive (#158).
+/// Also a yaml constant: every record buffer is sized `n_prn * record_floats * sizeof_float`.
+/// The config generator reads it through config/gnss_record_layout.py, and
+/// python/scripts/gnss/gnss_broker/telem.py mirrors it, so changing it means regenerating the
+/// configs, updating that mirror and bumping TELEM_VERSION (the telemetry row grows). The record
+/// producers (GnssGpuRecordAssemble, GnssCoherentCombiner) check the frame size at construction
+/// and stop rather than write past a frame sized for an older value.
 constexpr int RECORD_FLOATS = 32;
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
-// THE HOP-ORDER CONTRACT (decided 2026-08-06, docs/gnss_gpu_search.md 11.3): every hop-indexed
-// GNSS array -- the tap output, the synthesis `wave` [3*n_job][n_chan][n_hops], and the record
-// windows these rows summarize -- stores hop `mh` at index `mh`, i.e. TIME ORDER. This was
-// implicit; it is now an invariant. It may NOT be permuted for optimization (10.6b's sorted-hop
-// store is disallowed): under path B the N^2 correlator consumes hops as its time axis, and the
-// pack kernel (wave -> synthetic 4+4 lanes) assumes wave index == correlator time sample.
-// Coalescing fixes must happen INSIDE a kernel (shared-memory exchange), not in the layout.
+// Hop order: every hop-indexed GNSS array (the tap output, the synthesis `wave`
+// [3*n_job][n_chan][n_hops], and the record windows these rows summarize) stores hop `mh` at
+// index `mh`, in time order. It must not be permuted to coalesce stores: path B's N^2
+// correlator consumes hops as its time axis, and the pack kernel (wave -> synthetic 4+4 lanes)
+// assumes wave index == correlator time sample. Coalescing fixes belong inside a kernel
+// (shared-memory exchange), not in the layout. See docs/gnss_gpu_search.md section 11.3.
 
 // Shared header slots
 constexpr int REC_PRN = 0;
@@ -152,127 +122,70 @@ constexpr int REC_E_RE = 11;
 constexpr int REC_E_IM = 12;
 constexpr int REC_L_RE = 13;
 constexpr int REC_L_IM = 14;
-constexpr int REC_CPHASE = 15;    ///< commanded carrier-phase INCREMENT, cycles since this
-                                  ///< PRN's previous record (0 = arc start). See the header note.
-constexpr int REC_PH_RE = 16;     ///< prompt HEAD segment (hops before the code-period boundary)
-constexpr int REC_PH_IM = 17;     ///< -- see the header note; tail = P - PH
-constexpr int REC_PH_ENERGY = 18; ///< head replica energy; /P_energy = boundary fraction f
-constexpr int REC_TRIM_INC = 19;  ///< commanded carrier-TRIM phase increment, cycles since this
-                                  ///< PRN's previous record (0 = arc start / not written).
-                                  ///< The broker-commanded ctrim component of f_nco only --
-                                  ///< reconstructed in the assembler as
-                                  ///< (f_nco + fcar_report - fcar)/2 -- integrated so the
-                                  ///< combiner can carry trim_cycles beside adr_cycles and
-                                  ///< downstream TEC can subtract the KNOWN loop transients
-                                  ///< from the ADR exactly (docs/adr_trim_subtraction.md; the
-                                  ///< broker-log journal's +-1 s timing error becomes exact).
-                                  ///< Bounded (trim <= clamp 100 Hz x t_rec) = float32-exact,
-                                  ///< the same increment design as slot 15.
-constexpr int REC_RES_RE = 20;    ///< PEEL RESIDUAL prompt correlation -- the prompt despread on
+constexpr int REC_CPHASE = 15;    ///< commanded carrier-phase increment, cycles since this
+                                  ///< PRN's previous record (0 = arc start). See the file note.
+constexpr int REC_PH_RE = 16;     ///< prompt head segment (hops before the code-period boundary);
+constexpr int REC_PH_IM = 17;     ///< tail = P - PH. See the file note.
+constexpr int REC_PH_ENERGY = 18; ///< head replica energy; / P_energy = boundary fraction f
+constexpr int REC_TRIM_INC = 19;  ///< applied carrier-trim phase increment, cycles since this
+                                  ///< PRN's previous record (0 = arc start / not written):
+                                  ///< PrnCtl::ctrim_hz x the record spacing. The combiner sums
+                                  ///< it into get_status trim_cycles, on the arc of adr_cycles.
+constexpr int REC_RES_RE = 20;    ///< peel residual prompt correlation: the prompt despread on
 constexpr int REC_RES_IM = 21;    ///< the voltage after this PRN's waveform was subtracted.
-constexpr int REC_RES_PH_RE = 22; ///< residual prompt HEAD segment (same boundary as REC_PH_*);
-constexpr int REC_RES_PH_IM = 23; ///< required, or the residual's deep integration self-cancels.
+constexpr int REC_RES_PH_RE = 22; ///< residual prompt head segment (same boundary as REC_PH_*);
+constexpr int REC_RES_PH_IM = 23; ///< needed, or the residual's deep integration self-cancels.
                                   ///< All four zero = no peel ran. Energies are the prompt's
-                                  ///< (same replica). See the header note + the peel design doc.
-constexpr int REC_SKY_RE = 24;    ///< SKY-PHASE-CORRECTED PROMPT (gnssElemCal.hpp): the same
-constexpr int REC_SKY_IM = 25;    ///< prompt correlation, but with each ELEMENT derotated by the
-                                  ///< phase of the sum of the OTHER elements before summing.
-                                  ///< Removes the ~0.75 rad per-record common sky phase that is
-                                  ///< 0.98-coherent across instances/elements and ~white in time
-                                  ///< (measured 2026-08-05) -- the thing that held every deep
-                                  ///< fold at ~14 sigma against a ~100 sigma thermal ceiling.
-                                  ///< ⚠️ A SEPARATE SLOT, NOT a replacement for slots 3/4. The
-                                  ///< header prompt's phase IS the carrier-phase/ADR observable,
-                                  ///< and the sky phase is part of what ADR measures -- removing
-                                  ///< it there would delete the quantity a downstream product
-                                  ///< exists to produce. Deep folds read THIS; ADR reads 3/4.
-                                  ///< Leave-one-out per element, so the rotation applied to an
-                                  ///< element is independent of that element's own noise and the
-                                  ///< coherent sum stays unbiased (a full-sum derotation would
-                                  ///< rectify noise). ZERO when the cal is cold or elem_sum is
-                                  ///< off -- consumers read zero as "absent" and fall back.
+                                  ///< (same replica). See the file note.
+constexpr int REC_SKY_RE = 24;    ///< Sky-phase-corrected prompt (ElemCal::combine_split): one
+constexpr int REC_SKY_IM = 25;    ///< half of the elements derotated by the phase of the other,
+                                  ///< disjoint half, then rotated like slots 3/4. Input to the deep
+                                  ///< folds. A separate slot because the header prompt's phase
+                                  ///< is the ADR observable, and the sky phase is part of what
+                                  ///< ADR measures. Zero (absent) when the cal is cold or
+                                  ///< elem_sum is off.
 
-/// REPLICA CARRIER PHASE ANCHOR, radians in [0, 2*pi) -- ang0 EXACTLY AS THE KERNEL GOT IT.
-///
-/// ⚠️ EXPORTED BECAUSE THE QUESTION CANNOT BE ANSWERED FROM OUTSIDE (#72, 2026-08-16). The
-/// across-band phase carries an INTERCEPT that differs per (instance, PRN): all twelve
-/// instances agree on the delay SLOPE to ~3 ns (|R| 0.997-1.000 against probes at 0.09-0.19),
-/// but their constants do not agree across satellites (mean |R| 0.220 over 10 sats, null E
-/// 0.280, 95% 0.536). That is a carrier-phase constant built PER SATELLITE, i.e. in the
-/// replica -- and by the lockstep rule it is a BUG, since instances are only `freq_id mod 8`
-/// routing (gnssTelem.hpp, [[chord-nothing-is-per-node]]).
-///
-/// Every input to ang0 checks out fleet-common -- f_offset identical in every generated
-/// config, doppler/ctrim from the shared broker seed, record UTC spread EXACTLY 0 at double
-/// precision -- but that does NOT clear ang0, because @ref REC_DOPPLER is a float32 whose ulp
-/// at 10 kHz is ~1e-3 Hz while ang0's absolute-sample lever (n0 ~ 1.9e15, 6.8 days) turns
-/// 5e-7 Hz into a FULL RADIAN. The telemetry is four orders too coarse to see the effect size,
-/// so no external measurement can settle it: an experiment that cannot succeed.
-///
-/// ⚠️ RECORDED BY THE DESPREAD, NOT RECOMPUTED BY THE PRODUCER. The value shipped is the one
-/// GnssCudaDespread actually put in DespreadJob::ang0 for this record, so a producer-side
-/// re-derivation cannot agree by construction while the kernel disagrees -- the failure that
-/// let a producer-side gate pass at 9e-16 rad while the sky got worse (#71).
-///
-/// READING IT: equal ang0 across instances for the same (PRN, record) EXONERATES ang0 and
-/// points at the synthesis (Phi) instead; unequal ang0 IS the bug, located.
-/// float32 holds ~1e-7 rad here, four orders finer than the ~1 rad effect under test.
+/// Replica carrier phase anchor, radians in [0, 2*pi): DespreadJob::ang0 as GnssCudaDespread
+/// built it for this record (last_ang0), copied rather than recomputed, so it reports what the
+/// kernel used; NaN if no job was built. ang0 depends on the absolute sample index
+/// (n0 ~ 1e15), where ~5e-7 Hz of carrier moves it by a radian, far below what the float32
+/// @ref REC_DOPPLER resolves, so this slot is how instances compare it. float32 holds it to
+/// ~1e-7 rad.
 constexpr int REC_ANG0 = 26;
 
-/// THE COMB'S PHASE CURRENCY, radians in [-pi, pi]: the value of the assembler's carrier NCO
-/// accumulator `_phi[p]` at this record -- i.e. the rotation `exp(-i*phi0)` that was APPLIED to
-/// record slots 3/4 and to EVERY comb column before export.
-///
-/// ⚠️ THIS IS #72's ROOT CAUSE MADE RECOVERABLE. `_phi[p]` is continuous in time but its ZERO
-/// is set at a per-instance fresh acquisition, so its absolute value is ARBITRARY AND DIFFERENT
-/// ON EVERY INSTANCE. Exporting g*exp(-i*_phi) therefore stamps each instance's comb with its
-/// own arbitrary constant, which leaves INTRA-instance coherence untouched (a constant does not
-/// tilt a ramp) and destroys INTER-instance coherence. Measured on sky 2026-08-16: same-instance
-/// channel pairs cohere at 0.65-0.81 while pairs 16x CLOSER in frequency but in different
-/// instances manage only 0.33-0.37 -- coherence tracking the `freq_id mod 8` transport grouping
-/// instead of frequency, which is the signature of a bug rather than of physics.
-///
-/// ⚠️ PUBLISH THE CURRENCY -- DO NOT RE-REFERENCE IT LOCALLY, AND DO NOT DROP THE ROTATION.
-/// Both alternatives have been tried and both were wrong. Subtracting a per-window origin
-/// (45fe3a438) destroyed window-to-window continuity (coherence 0.38 against a 0.378 random
-/// baseline). Dropping the rotation would put the full commanded carrier ramp back into every
-/// cross-RECORD use of the comb, which is the one thing the un-accumulated comb exists for.
-/// The SpecWindow path already solved this the right way -- it publishes `W.phi0[p]` so a
-/// consumer can rotate onto a common reference exactly -- and this slot extends that same
-/// (value, currency, epoch) discipline to the telemetry row, which is what the fleet combine
-/// actually reads. See the long note at GnssGpuRecordAssemble.cpp:493.
-///
-/// CONSUMER CONTRACT: multiply the comb (and slots 3/4) by `exp(+i*phi0)` to recover the raw,
-/// despread-referenced value. That reference is `ang0`, which was MEASURED bit-identical across
-/// all twelve instances (spread exactly 0, every PRN, 160 records, 2026-08-16), so once phi0 is
-/// removed every instance is on one common phase reference and the band can be summed
-/// coherently across its full 20.31 MHz.
+/// The comb's phase reference, radians in [-pi, pi]: the assembler's carrier NCO phase
+/// `_phi[p]` at this record, i.e. the rotation `exp(-i*phi0)` applied to slots 3/4 and to every
+/// comb column. The NCO's zero is set at each instance's fresh acquisition, so phi0 differs
+/// arbitrarily between instances: multiply by `exp(+i*phi0)` to return to the replica's own
+/// reference (anchored at absolute sample 0, common to all instances) before combining
+/// instances within a record. The rotation stays in the export because it removes the carrier
+/// trim and the re-pin phase steps, keeping values continuous from record to record, so do not
+/// undo it across records. The /get_spectrum windows and the beam cube publish the same phi0.
 constexpr int REC_PHI0 = 28;
 
-/// BRIGHT-SATELLITE PROJECTION COST on this record (GnssGpuRecordAssemble::proj_slot_diag): the
-/// fraction of this satellite's LIVE element weights lying in the projected subspace, cos^2 in
-/// [0, 1] averaged over its covering channels with a basis in force; the projection costs it
+/// Bright-satellite projection cost on this record (GnssGpuRecordAssemble::proj_slot_diag): the
+/// fraction of this satellite's live element weights lying in the projected subspace, cos^2 in
+/// [0, 1] averaged over its covering channels with a basis in force; the projection leaves it
 /// (1 - cost)^2 of its prompt power. -1 = not applicable: no basis in force on this record, the
 /// satellite is itself a projection source, it is unsteered, or its cal is cold. The broker's
-/// fleet solve weights the row by it instead of vetoing every satellite within 5 deg.
+/// fleet DLL and gnss::FleetDll weight the row by 1 - cost.
 constexpr int REC_PROJ_COST = 29;
 
-/// BRIGHT-SATELLITE PROJECTION RANK on this record: the largest k over this instance's channels
+/// Bright-satellite projection rank on this record: the largest k over this instance's channels
 /// (GnssGpuRecordAssemble::proj_prepare_record), 0 when no basis is in force. The same value on
 /// every PRN row of the record.
 constexpr int REC_PROJ_K = 30;
 
-/// BRIGHT-SATELLITE PROJECTION SOURCES on this record: the OR over this instance's channels of
-/// where its basis directions came from -- 1 its own row of the source satellite, 2 a sibling
+/// Bright-satellite projection sources on this record: the OR over this instance's channels of
+/// where its basis directions came from: 1 its own row of the source satellite, 2 a sibling
 /// chain's row, 4 the gated probe stack. 0 when no basis is in force. Same value on every row.
 constexpr int REC_PROJ_SRC = 31;
 
-/// PHI-CACHE STALENESS, Hz: doppler_now - the Doppler this PRN's channelizer filter was BUILT
-/// at. GnssCudaDespread::ensure_phi rebuilds only when the Doppler moves further than
-/// `refresh_hz` (default 100), so each instance holds a Phi pinned at whatever Doppler it last
-/// crossed that threshold on -- genuine per-(instance, PRN) state, and therefore the other
-/// candidate for an intercept that differs per instance. Small and slow-moving by design;
-/// a spread across instances comparable to refresh_hz is the tell.
+/// Phi-cache staleness, Hz: doppler_now - the Doppler this PRN's channelizer filter (Phi) was
+/// built at; NaN if no Phi was built. GnssCudaDespread rebuilds a PRN's Phi only when its
+/// Doppler moves further than `refresh_hz` (default 100), so this is per-(instance, PRN) state
+/// and a candidate for a phase intercept that differs per instance. A spread across instances
+/// comparable to refresh_hz is the sign of it.
 constexpr int REC_PHI_DDOP = 27;
 
 // Combiner-record slots
@@ -288,67 +201,58 @@ constexpr int CMB_DLL_DISC = 13;
 constexpr int CMB_CARRIER_RESID = 14;
 constexpr int CMB_ARC = 15;        ///< phase arc id: ++ on every cycle slip / continuity break
 constexpr int CMB_HEAD_FRAC = 16;  ///< window-mean boundary fraction f = <PH_energy>/<P_energy>
-                                   ///< (0/1 = period boundary at the window edge -- benign;
-                                   ///< ~0.5 = the old bistable's null zone; now fixed, diagnostic)
-constexpr int CMB_PEEL_DEEP = 17;  ///< deep |A| of the PEEL RESIDUAL (the CMB_DEEP estimator run on
+                                   ///< (0 or 1: the period boundary sits at a window edge).
+                                   ///< Diagnostic only.
+constexpr int CMB_PEEL_DEEP = 17;  ///< deep |A| of the peel residual (the CMB_DEEP estimator run on
                                    ///< slots 20-23) -> depth_dB = 20*log10(CMB_DEEP/CMB_PEEL_DEEP)
 constexpr int CMB_PEEL_INCOH = 18; ///< incoherent |A| of the peel residual (the CMB_AMP_INCOH
                                    ///< twin). Both zero when no peel ran.
-constexpr int CMB_HOP_SLOT = 19;   ///< absolute HOP index (int64 aliased at slots 19-20) the E/P/L
-                                   ///< window ends on = GnssChanMetadata::sample_seq / fft_len.
-                                   ///< -1 (or 0 from an older writer) = unset. int64 and not a
-                                   ///< float because the whole point is an EXACT integer key: the
-                                   ///< fleet DLL groups instances by equal hop, and the hop reaches
-                                   ///< ~1.7e10/day -- past float32's 2^24 by three orders of
-                                   ///< magnitude, so a float slot would quantize the key into
-                                   ///< collisions. UTC at slot 9 stays: overlay_apply and coh_span
-                                   ///< use it, and this is additive.
-                                   ///< COMBINER RECORDS ONLY -- tracker records use 19-23 for
+constexpr int CMB_HOP_SLOT = 19;   ///< absolute hop index (int64 aliased at slots 19-20) labelling
+                                   ///< the E/P/L window: GnssChanMetadata::sample_seq / fft_len of
+                                   ///< its first record (block mode) or newest record (rolling).
+                                   ///< -1 = unset. int64 because it is an exact integer key: the
+                                   ///< fleet DLL groups instances by equal hop, and the hop
+                                   ///< reaches ~1.7e10/day, far past float32's 2^24.
+                                   ///< Combiner records only: tracker records use 19-23 for
                                    ///< REC_TRIM_INC / REC_RES_*, and the two flavours never share
                                    ///< a buffer. See docs/CHORD_GNSS_SHARED_DLL.md.
-constexpr int CMB_COH_FRAC = 21;   ///< coherence fraction |sum A|/sum|A| of the WINNING deep
-                                   ///< stream (after rate/phase-track derotation). THE chopping-
-                                   ///< independent coherence measure: deep_snr scales with the
-                                   ///< record count when phase-limited (8.20.24), this does not.
-                                   ///< exp(-sigma_phi^2/2) for Gaussian wander; 0 = not computed
-                                   ///< (non-plain deep paths, for now). COMBINER RECORDS ONLY.
+constexpr int CMB_COH_FRAC = 21;   ///< coherence fraction |sum A|/sum|A| of the winning deep
+                                   ///< stream (after rate/phase-track derotation). Unlike
+                                   ///< deep_snr, which grows with the record count when
+                                   ///< phase-limited, it does not depend on how the span is
+                                   ///< chopped. exp(-sigma_phi^2/2) for Gaussian phase wander;
+                                   ///< 0 = not computed (the non-plain deep paths).
+                                   ///< Combiner records only.
 
 // ---------------------------------------------------------------------------------------
 // ELEMENT AXIS (CHORD)
 // ---------------------------------------------------------------------------------------
-/// The airspy node is single-antenna: one record per PRN, and the correlations above ARE the
-/// measurement. CHORD despreads N antennas against the same M references, so a record carries
-/// an antenna axis the layout above has no room for.
+/// A single-antenna record carries one set of correlations per PRN. CHORD despreads N antennas
+/// against the same M replicas, so its record carries an antenna axis as well.
 ///
-/// LAYOUT. Per PRN: the existing @ref RECORD_FLOATS header, followed by @c n_elem blocks of
+/// Layout. Per PRN: the @ref RECORD_FLOATS header, followed by @c n_elem blocks of
 /// @ref ELEM_FLOATS:
 ///
-///     [PRN 0: 24 header floats][elem 0: 12][elem 1: 12]...[elem n-1: 12][PRN 1: ...]
+///     [PRN 0: RECORD_FLOATS header][elem 0: 12][elem 1: 12]...[elem n-1: 12][PRN 1: ...]
 ///
-/// so the frame is `n_prn * (RECORD_FLOATS + n_elem * ELEM_FLOATS)` floats, and element e of
-/// PRN p starts at `p * (RECORD_FLOATS + n_elem*ELEM_FLOATS) + RECORD_FLOATS + e*ELEM_FLOATS`
-/// (see @ref elem_offset). @c n_elem == 0 reproduces the airspy layout byte-for-byte, so every
-/// existing consumer and every existing config keeps working untouched.
+/// @ref record_stride and @ref elem_offset compute the offsets; @c n_elem == 0 is the
+/// single-antenna layout.
 ///
-/// WHAT IS *NOT* HERE, DELIBERATELY. Only the per-antenna quantities live in an element block.
-/// The code/carrier model (PRN, Doppler, code phase), the commanded NCO increments, the
-/// covering-channel count and -- importantly -- the replica ENERGIES are element-INDEPENDENT:
-/// one replica is correlated against every antenna, so E, P, L and P_HEAD energies are shared
-/// and stay in the header. That is also the M x M block path B gets free from the N^2 kernel
-/// (docs/gnss_chord_framework.md), which is why the split is drawn here: when the standalone
-/// N x M correlator is replaced by synthetic lanes, the N x M block fills the element blocks
-/// and the M x M block fills the header energies, with no schema change.
+/// Only per-antenna quantities live in an element block. The code/carrier model (PRN, Doppler,
+/// code phase), the commanded NCO increments, the covering-channel count and the replica
+/// energies are element-independent: one replica is correlated against every antenna, so the
+/// E, P, L and P_HEAD energies are shared and stay in the header. On path B
+/// (GnssN2RecordAssemble) the N^2 correlator's antenna x replica tiles fill the element blocks,
+/// and the header energies are cudaGnssInject's replica energies, not the quantised
+/// replica x replica tiles.
 ///
-/// THE HEADER'S CORRELATION SLOTS carry the REFERENCE ELEMENT (config @c reference_element),
-/// not element 0 blindly and not a blind sum. The broker closes the DLL and carrier loops off
-/// those slots, so they must be a phase-coherent view; an incoherent element sum would destroy
-/// the carrier loop, and a coherent sum needs the per-element phases that are the very thing
-/// being measured. Pick the reference as a healthy high-gain feed.
-/// The promised upgrade landed 2026-08-05 (config @c elem_sum, gnssElemCal.hpp): the assembler
-/// SELF-CALIBRATES those phases from the satellite (bootstrap MRC, reference-anchored phase
-/// convention, "one element" scale) and writes the calibrated weighted mean instead --
-/// per-record SNR up ~sqrt(N_healthy), same observable, and byte-identical to the historical
-/// output until each PRN's cal warms (~3 tau) or when elem_sum is off (the default).
+/// The header's correlation slots carry the reference element (config @c reference_element, a
+/// healthy high-gain feed), not a blind element sum: the carrier loop and ADR are taken from
+/// them, so they must be one phase-coherent view, and a coherent sum needs the per-element
+/// phases being measured. With config @c elem_sum (default off) the assembler self-calibrates
+/// those phases from the satellite (gnssElemCal.hpp: bootstrap MRC, reference-anchored phase,
+/// one-element scale) and, once a PRN's cal is warm, writes the calibrated weighted mean
+/// instead: the same observable with per-record SNR up ~sqrt(N_healthy).
 constexpr int ELEM_FLOATS = 12;
 
 constexpr int ELEM_P_RE = 0; ///< prompt correlation for this antenna
@@ -357,154 +261,114 @@ constexpr int ELEM_E_RE = 2; ///< early / late, same taps as REC_E_*/REC_L_*
 constexpr int ELEM_E_IM = 3;
 constexpr int ELEM_L_RE = 4;
 constexpr int ELEM_L_IM = 5;
-constexpr int ELEM_PH_RE = 6;      ///< prompt HEAD segment (hops before the code-period boundary);
-constexpr int ELEM_PH_IM = 7;      ///< tail = P - PH, exactly as in the header. Required for deep
-                                   ///< integration across an overlay/nav sign flip.
-constexpr int ELEM_RES_RE = 8;     ///< PEEL RESIDUAL prompt, per antenna. RESERVED -- the peel
-constexpr int ELEM_RES_IM = 9;     ///< is deferred until acq/track and beam mapping are up
-constexpr int ELEM_RES_PH_RE = 10; ///< (a single-PRN replica is likely sub-quantization at
-constexpr int ELEM_RES_PH_IM = 11; ///< 4+4b). Written zero until then; slots held so the
-                                   ///< record size does not change when the peel lands.
+constexpr int ELEM_PH_RE = 6;  ///< prompt head segment (hops before the code-period boundary);
+constexpr int ELEM_PH_IM = 7;  ///< tail = P - PH, exactly as in the header. Required for deep
+                               ///< integration across an overlay/nav sign flip.
+constexpr int ELEM_RES_RE = 8; ///< peel residual prompt and its head segment, per antenna
+constexpr int ELEM_RES_IM = 9; ///< (as REC_RES_*). Zero when no peel ran.
+constexpr int ELEM_RES_PH_RE = 10;
+constexpr int ELEM_RES_PH_IM = 11;
 
-// COMBINER element blocks reuse the same ELEM_FLOATS stride -- one geometry for both record
-// types, so a buffer sized for one fits the other and record_stride() is the only size rule in
-// the system. The SLOT MEANINGS differ, exactly as they do for the shared 24-float header
-// (REC_* vs CMB_*): the tracker's blocks hold per-record correlations, the combiner's hold
-// integrated per-antenna amplitudes.
-constexpr int CMB_ELEM_AMP_INCOH = 0; ///< sqrt<|A_e|^2> -- THE BEAM MAP VALUE for this antenna.
-                                      ///< Incoherent, so it needs no per-antenna phase model and
-                                      ///< grows like sqrt(K); this is what a transit traces out.
-constexpr int CMB_ELEM_MEAN_RE = 1;   ///< <A_e> coherent mean: carries the per-antenna PHASE,
+// Combiner element blocks use the same ELEM_FLOATS stride, so one geometry serves both record
+// types and record_stride() is the only size rule. The slot meanings differ, as they do for the
+// header (REC_* vs CMB_*): the tracker's blocks hold per-record correlations, the combiner's
+// hold integrated per-antenna amplitudes A_e = G_e/E.
+constexpr int CMB_ELEM_AMP_INCOH = 0; ///< sqrt<|A_e|^2>: the beam-map value for this antenna.
+                                      ///< Incoherent, so it needs no per-antenna phase model;
+                                      ///< this is what a transit traces out.
+constexpr int CMB_ELEM_MEAN_RE = 1;   ///< <A_e> coherent mean: carries the per-antenna phase,
 constexpr int CMB_ELEM_MEAN_IM = 2;   ///< i.e. the complex gain the array calibration wants.
-constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>| -- coherent amplitude. Below the incoherent one
+constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>|: coherent amplitude. Below the incoherent one
                                       ///< by the amount the phase wandered over the window, so
-                                      ///< the RATIO is a per-antenna coherence diagnostic.
-// 4..11 reserved (per-antenna deep integration, peel residual).
+                                      ///< the ratio is a per-antenna coherence diagnostic.
+// 4..11 unused in combiner element blocks.
 
 // ---------------------------------------------------------------------------------------
-// PER-CHANNEL BLOCK (2026-08-14) -- THE COMB, UNSUMMED
+// PER-CHANNEL BLOCK: THE COMB, UNSUMMED
 // ---------------------------------------------------------------------------------------
-/// ⚠️ THE CROSS-CHANNEL SUM IS A LOSS WE SHOULD NEVER HAVE TAKEN. GnssGpuRecordAssemble sums
-/// each PRN's covering channels into ONE complex prompt (slots 3/4), and that sum is, in the
-/// generator's own words, "the one combine the broker can never undo". It destroys exactly the
-/// axis the fleet needs: a delay is a phase ramp ACROSS FREQUENCY, so with the comb collapsed
-/// the broker can only FIT a free constant per instance where it should DERIVE one from the
-/// ramp -- which is #52 in its original form, and why fleet_coherent aligns instances by a
-/// phase estimated from the very data it then sums.
-///
-/// KV, 2026-08-14: "purge the idea of summing across channels in each instance, that's *never*
-/// what we want to do. We want the frequencies separate, do not combine them in the trackers."
-///
-/// So the assembler now ALSO emits the un-summed comb, appended AFTER the PRN records in the
-/// same frame:
+/// GnssGpuRecordAssemble sums each PRN's covering channels into one complex prompt (slots 3/4),
+/// which loses the frequency axis: a delay is a phase ramp across frequency, and with the comb
+/// collapsed the broker can only fit a free constant per instance instead of deriving it from
+/// the ramp. With config @c chan_export the assembler also emits each channel's E, P and L,
+/// appended after the PRN records in the same frame:
 ///
 ///     [PRN 0 record][PRN 1 record]...[PRN n-1 record][chan block]
 ///     chan block = [PRN 0: ch 0..n_chan-1][PRN 1: ...],  CHAN_FLOATS each
 ///
-/// APPENDED rather than interleaved into the record, deliberately: a consumer that indexes by
-/// record_stride() and a CONFIGURED n_prn sees a longer frame and nothing else. That is what
-/// makes this deployable without a flag day -- the summed prompt keeps working while the
-/// un-summed path is proven, and only then does the sum go. GnssCoherentCombiner and
-/// rawFileWrite are in that class and are untouched.
+/// Appended rather than interleaved, so a consumer that indexes by record_stride() and a
+/// configured n_prn reads the records unchanged. A consumer that infers n_prn from frame_size
+/// (GnssCoherentCombiner does when n_prn is not configured) would count the comb as records;
+/// give it an explicit `n_prn`.
 ///
-/// ⚠️ BUT A CONSUMER THAT **INFERS** n_prn FROM frame_size IS WRONG THE MOMENT THIS IS ON:
-/// with a comb appended it would infer too many PRNs and read the comb as records. Give such
-/// a consumer an explicit `n_prn`.
-///
-/// The values are the SAME per-channel quantities the /get_spectrum ring accumulates -- NCO-
-/// derotated and element-combined, i.e. one "element-equivalent" per channel -- but PER RECORD
-/// rather than per window, which is what a cross-record rate fit needs.
-/// EARLY, PROMPT AND LATE PER CHANNEL (widened 3 -> 9, 2026-08-14). The prompt alone was enough
-/// to give the broker the frequency axis, but NOT enough to retire the tracker's sum: the code
-/// loop runs on E/L powers, so with only P un-summed the DLL still had to read the summed
-/// slots. Carrying all three taps is what makes `rec[3..14]` deletable.
-///
-/// ⚠️ SLOTS 0-2 KEEP THEIR ORIGINAL MEANING (prompt re, im, energy) so every consumer written
-/// against the 3-float comb still reads correctly; E and L are appended. That is deliberate --
-/// a widening that renumbered the existing columns would silently re-point every reader.
+/// The values are per record: rotated by the same NCO phase as slots 3/4 (@ref REC_PHI0),
+/// combined over elements like the header, and weighted per channel like the record sums.
+/// Channels outside the PRN's covering mask are zero. /get_spectrum serves the same prompt
+/// values summed over a window; the per-record values are what a cross-record rate fit needs.
 constexpr int CHAN_FLOATS = 9;
-constexpr int CHAN_RE = 0; ///< per-channel PROMPT, NCO-derotated + element-combined
+constexpr int CHAN_RE = 0; ///< per-channel prompt, NCO-derotated + element-combined
 constexpr int CHAN_IM = 1;
 constexpr int CHAN_ENERGY = 2; ///< that channel's prompt replica energy (the ML weight)
-constexpr int CHAN_E_RE = 3;   ///< EARLY, same channel, same rotation, same element combine
+constexpr int CHAN_E_RE = 3;   ///< early, same channel, same rotation, same element combine
 constexpr int CHAN_E_IM = 4;
 constexpr int CHAN_E_ENERGY = 5;
-constexpr int CHAN_L_RE = 6; ///< LATE
+constexpr int CHAN_L_RE = 6; ///< late
 constexpr int CHAN_L_IM = 7;
 constexpr int CHAN_L_ENERGY = 8;
 
 // ---------------------------------------------------------------------------------------
-// BEAM-CUBE FRAME (2026-09-04) -- one completed ~1 s window, PUSHED not polled
+// BEAM-CUBE FRAME: one completed window, pushed when the next window opens
 // ---------------------------------------------------------------------------------------
 /// One frame carries exactly one window of the (subband x element) cube from one instance.
 ///
-/// ⚠️ THE ADDRESS TRAVELS WITH THE DATA. chain, gpu, window index and wstart are IN the frame,
-/// so the far side never infers which instance or which window it is holding -- the inference
-/// this replaces is what #52, #53, #46 and the #33 6x carrier-rate error all were.
+/// The address travels with the data: chain, gpu, window index and wstart are in the frame,
+/// so the receiver never infers which instance or which window it holds.
 ///
-/// ⚠️ UNIFORM SIZE ACROSS EVERY SENDER, deliberately, exactly as the #59 telemetry leg is: one
-/// bufferRecv, one port, one buffer on the far side, and no per-chain plumbing that can be
-/// wired up crooked. Chains carry between 1 and 7 covering channels, so the frame is sized for
-/// @c max_bins and the unused bins are zero -- the cost is a few zero rows, and the alternative
-/// is a per-chain frame size that must be kept in step in two places forever.
+/// Every sender uses the same frame size: one bufferRecv on one port receives the whole fleet,
+/// and bufferRecv closes a connection whose frame size differs from its buffer. The frame is
+/// sized for @c max_prn PRN slots and @c max_bins bins; unused bins and slots are zero, and a
+/// PRN slot with no records this window has prn = 0.
 ///
-/// LAYOUT (little-endian, offsets in BYTES):
+/// Layout (little-endian, offsets in bytes):
 ///   0   int64   version (== CUBE_VERSION)
 ///   8   int64   window index (absolute, = floor(wstart / win_samples))
 ///   16  int64   wstart0, 24 int64 wstart1   -- first/last record's wstart in this window
-///   32  int64   dropped_windows CUMULATIVE  -- see GnssGpuRecordAssemble.hpp; difference
-///                                              consecutive frames to size a gap
+///   32  int64   dropped_windows, cumulative -- windows lost to a full output buffer since
+///                                              start; difference consecutive frames to size a gap
 ///   40  int64   n_prn, 48 int64 n_bin, 56 int64 n_elem   (actual, <= the max the frame holds)
 ///   64  double  win_samples, 72 double sample_rate
 ///   80  int32   gpu, 84 int32 bin_width
-///   88  int32   max_prn, 92 int32 max_bins   -- THE FRAME'S OWN SIZE (see below)
-///   96  double  utc0 -- UTC (Unix seconds) OF ABSOLUTE F-ENGINE SAMPLE 0, so that
-///                utc(wstart) = utc0 + wstart / sample_rate. v3 (2026-09-05). Without it the
-///                archive's time axis was F-engine samples only, and the sample-0 epoch lived in
-///                the node config (frame0_utc) -- i.e. the ONE number that turns a window index
-///                into a date was outside the record, and rolled with every F-engine restart.
-///                0.0 means the producer had no frame0_utc and the value is the assembler's
-///                host-clock fallback (see GnssGpuRecordAssemble::_wall_anchor) -- never GPS.
-///   104 char[CUBE_CHAIN_CHARS]  "<hostname>/<stage>", NUL-padded -- THE FULL ADDRESS.
-///                                 The stage name alone is unique only within a node, and the
-///                                 far side has one bufferRecv for the whole fleet, so the
-///                                 node has to be IN the frame; a sender identified only by
-///                                 the socket it arrived on is exactly the inference this
-///                                 layout exists to remove.
-///   then, all arrays sized by the MAX (zero-padded), in order:
-///     double  phi0[max_prn]                  -- the coherent sum's phase reference (#52)
+///   88  int32   max_prn, 92 int32 max_bins   -- the frame's own size (see below)
+///   96  double  utc0: UTC (Unix seconds) of absolute F-engine sample 0, so that
+///                utc(wstart) = utc0 + wstart / sample_rate. From the producer's frame0_utc;
+///                without one it is the assembler's host-clock anchor
+///                (GnssGpuRecordAssemble::_wall_anchor), not GPS time.
+///   104 char[CUBE_CHAIN_CHARS]  "<short hostname>/<stage>" (config beam_cube_chain),
+///                                 NUL-padded. A stage name is unique only within a node, and
+///                                 the receiver has one bufferRecv for the whole fleet, so the
+///                                 node has to be in the frame.
+///   then, all arrays sized by the max (zero-padded), in order:
+///     double  phi0[max_prn]                  -- @ref REC_PHI0 at the window's first record
 ///     int32   freq_id_lo[max_bins], freq_id_hi[max_bins]
 ///     int32   prn[max_prn], n_rec[max_prn], n_reanchor[max_prn]
 ///     float   w[max_prn][max_bins]           -- (record, channel) term count
 ///     float   energy[max_prn][max_bins]
-///     float   coh_re[max_prn][max_bins][n_elem], coh_im[...]   -- THE ARC
-///     float   incoh[max_prn][max_bins][n_elem]                 -- THE BEAM
+///     float   coh_re[max_prn][max_bins][n_elem], coh_im[...]   -- sum of rotated A_e
+///     float   incoh[max_prn][max_bins][n_elem]                 -- sum of |A_e|^2
 ///
-/// ⚠️ THE FRAME CARRIES THE MAXIMA IT WAS SIZED FOR, AND NOT AS A CONVENIENCE. n_prn/n_bin/
-/// n_elem are the ACTUAL extents; the arrays are laid out by the MAXIMA, so without max_prn and
-/// max_bins a reader cannot compute the frame's own length -- and an archive of fixed-size
-/// frames that cannot be split into frames is unreadable without the config that produced it,
-/// which is exactly the "artifact without its inputs" that stops being a record the day the
-/// config moves on. With these two fields the bytes on disk are self-delimiting and
-/// self-describing: version, address, clock, geometry and extent all travel together.
-/// (CUBE_VERSION 2. Version 1 lacked them and was never written outside a bench. Version 3
-/// added utc0 at 96 and moved the chain string to 104; a v3 frame is 8 bytes longer, so a v2
-/// archiver and a v3 node do NOT agree on frame_size and bufferRecv closes the connection --
-/// deploy archiver first, then nodes, exactly as the #110 notes say.)
+/// The arrays are laid out by the maxima, not the actual extents, so max_prn and max_bins make
+/// an archive of frames self-delimiting without the config that produced it.
 ///
-/// ⚠️ float32 ON THE WIRE, not float16. The sums are accumulated in double and float32 keeps 7
-/// digits, which is ample for a power sum; half-float would need a library here for no gain,
-/// because the wire is not the constraint (0.9 -> 1.8 MB/s fleet-wide either way). If the
-/// ARCHIVE wants 77 GB/day rather than 155, the writer downconverts -- that is a storage
-/// decision and belongs where storage is decided, not baked into the transport.
-/// ⚠️ THE DOUBLES COME FIRST, AND THAT IS NOT COSMETIC. phi0 is a double, and if it follows
-/// the int32 arrays its offset is 136 + max_bins*8 + max_prn*12 -- 8-aligned only by accident
-/// of the chosen maxima. It happens to be aligned at (8, 32) and (7, 32), the values we run,
-/// and is MISALIGNED at (1, 1) and (5, 17). Reading a misaligned double through a cast pointer
-/// is undefined behaviour; on x86 it merely works, which is precisely why it would have
-/// survived every test here and failed somewhere else. The header is 8-aligned by
-/// construction, so putting the doubles immediately after it makes alignment a property of the
-/// layout rather than of the configuration.
+/// Bump CUBE_VERSION on any layout change; python/scripts/gnss/gnss_cube_read.py keeps the
+/// header size of each version it reads. When a layout change alters frame_size, deploy the
+/// archiver before the nodes.
+///
+/// float32 on the wire: the sums are accumulated in double, and 7 digits is ample for a power
+/// sum.
+///
+/// The doubles come first: CUBE_HEADER_BYTES must stay a multiple of 8 (so must
+/// CUBE_CHAIN_CHARS), which keeps phi0 8-aligned for every max_prn/max_bins. After the int32
+/// arrays its alignment would depend on the maxima, and a misaligned double read through a cast
+/// pointer is undefined behaviour that happens to work on x86.
 constexpr int64_t CUBE_VERSION = 3;
 constexpr int CUBE_CHAIN_CHARS = 48;
 constexpr size_t CUBE_UTC0_OFFSET = 96;
@@ -512,7 +376,7 @@ constexpr size_t CUBE_CHAIN_OFFSET = 104;
 constexpr size_t CUBE_HEADER_BYTES = 104 + CUBE_CHAIN_CHARS;
 
 /// Bytes in a beam-cube frame sized for @c max_prn PRN slots, @c max_bins subband bins and
-/// @c n_elem antennas. The ONE size rule -- the stage, the buffer and any reader all call this.
+/// @c n_elem antennas. The one size rule: the stage, the buffer and any reader all call this.
 constexpr size_t cube_frame_bytes(int max_prn, int max_bins, int n_elem) {
     return CUBE_HEADER_BYTES + (size_t)max_bins * 2 * sizeof(int32_t) // freq_id lo/hi
            + (size_t)max_prn * 3 * sizeof(int32_t)                    // prn, n_rec, n_reanchor
@@ -521,7 +385,7 @@ constexpr size_t cube_frame_bytes(int max_prn, int max_bins, int n_elem) {
            + (size_t)max_prn * max_bins * n_elem * 3 * sizeof(float); // coh_re/im, incoh
 }
 
-/// Floats per PRN for a record carrying @c n_elem antennas (@c n_elem 0 => the airspy layout).
+/// Floats per PRN for a record carrying @c n_elem antennas (@c n_elem 0 => single antenna).
 constexpr int record_stride(int n_elem) {
     return RECORD_FLOATS + n_elem * ELEM_FLOATS;
 }
@@ -558,8 +422,8 @@ constexpr int record_offset(int p, int n_elem) {
     return p * record_stride(n_elem);
 }
 
-// Layout invariants, checked at compile time so a careless edit above cannot silently
-// change the frame geometry that the config's `record_floats` has to match.
+// Layout invariants, checked at compile time so an edit above cannot silently change the frame
+// geometry that the config's `record_floats` has to match.
 static_assert(record_stride(0) == RECORD_FLOATS,
               "n_elem == 0 must reproduce the single-antenna layout exactly");
 static_assert(elem_offset(0, 0, 4) == RECORD_FLOATS,
@@ -569,7 +433,7 @@ static_assert(elem_offset(0, 1, 4) - elem_offset(0, 0, 4) == ELEM_FLOATS,
 static_assert(record_offset(1, 4) == record_stride(4), "consecutive PRNs must be one stride apart");
 static_assert(elem_offset(1, 0, 4) == record_stride(4) + RECORD_FLOATS,
               "PRN 1's first element must follow PRN 1's header");
-// The last element of PRN p must end exactly where PRN p+1 begins -- no gap, no overlap.
+// The last element of PRN p must end exactly where PRN p+1 begins: no gap, no overlap.
 static_assert(elem_offset(0, 3, 4) + ELEM_FLOATS == record_offset(1, 4),
               "element blocks must tile the record exactly");
 

@@ -2,37 +2,34 @@
 #define GNSS_ELEM_STEER_HPP
 /**
  * @file gnssElemSteer.hpp
- * @brief Per-element geometric steering for the GNSS despread combine (#102).
+ * @brief Per-element geometric steering for the GNSS despread combine.
+ *  - gnss::ElemSteer
  *
- * THE PROBLEM. The despread's channel->element combine sums per-channel correlations with a
- * single fleet-common code phase. An element displaced by r along the satellite line of sight
- * sees the code EARLIER by tau = (r . e_sat)/c: 200 m of array is ~0.6 us ~ 6 chips of
- * differential delay, and the sharp L5 peak drops elements past +-0.5 chip (+-15 m). Today's
- * clustered dishes sit at that margin; the build-out makes it fatal.
+ * The despread's channel-to-element combine uses one code phase for every element. An element
+ * displaced by r along the satellite line of sight e_sat receives the signal earlier by
+ * tau = (r . e_sat)/c: 200 m of array is ~0.67 us, ~7 chips at L5, and the L5 correlation peak
+ * loses an element offset by more than +-0.5 chip (+-15 m).
  *
- * THE FIX LIVES IN THE CHANNELIZATION. A true time delay tau is EXACTLY a per-channel phase
- * e^{-i 2 pi f_ch tau} (channel bandwidth << 1/tau), so steering is one complex multiply per
- * (channel, element) inside the combine the assembler already runs -- code and carrier both,
- * no kernel changes. The sparse comb's delay aliasing does not matter here: we APPLY a known
- * tau, we never estimate one.
+ * Across a channel narrow compared with 1/tau, a delay tau is a per-channel phase
+ * 2*pi*f_ch*tau, so steering is one complex multiply per (channel, element) inside the combine,
+ * correcting code and carrier together. The sparse comb's delay aliasing does not matter: tau
+ * is applied, never estimated.
  *
- * ⚠️ THE SIGN IS A MEASURED QUANTITY, NOT A DERIVATION. This codebase has paid for derived
- * signs three times (fine-lag, rrate-phase, the 08-29 position step). `sign` is a config
- * parameter, and the arming procedure calibrates it from the elem archive (per-element
- * cross-channel phase slope vs geometry) or by an A/B on p/noise -- never from this comment.
+ * The sign of that phase depends on conventions earlier in the signal chain (the F-engine's FFT
+ * and output conjugation), so it is not derived here: it is a config parameter
+ * (elem_steer_sign) calibrated from data, e.g. each element's cross-channel phase slope against
+ * geometry.
  *
- * Geometry arrives per satellite over REST (az/el, degrees) every ~30 s and HOLDS for hold_s:
- * stale geometry degrades gracefully to no steering rather than steering with yesterday's sky.
+ * Geometry arrives per satellite over REST (/set_sat_geometry, az/el in degrees, every ~30 s)
+ * and is held for hold_s; a slot with no post within hold_s is not steered. A snapshot drifts
+ * within a post interval: a GPS satellite turns ~1.5e-4 rad/s, so the path difference across a
+ * 44 m baseline moves ~7 mm/s, ~0.2 m (most of an L-band wavelength) in 30 s. So a post may
+ * carry the az/el rates and the epoch they describe, and refresh() re-evaluates the table at
+ * the record's own time, every rebuild_s, from the line-of-sight unit vector extrapolated
+ * linearly (az/el themselves are not linear near zenith, where the az rate diverges; the
+ * vector is).
  *
- * ⚠️ A 30-s SNAPSHOT IS NOT STEADY ENOUGH TO HOLD. A GPS satellite turns ~1.5e-4 rad/s, so
- * the line-of-sight path difference across a 44 m baseline moves ~7 mm/s: ~0.2 m, most of an
- * L-band wavelength, by the end of a 30-s hold. Under a slowly-adapting shared element model
- * that is a 30-s sawtooth of 0.3-1.6 dB on every satellite. So each post also carries the
- * az/el RATES and the epoch they describe, and the table is re-evaluated at the record's own
- * time, every rebuild_s, from the line-of-sight UNIT VECTOR extrapolated linearly (az/el
- * themselves are not linear near zenith, where the az rate diverges; the vector is).
- *
- * Header-only and stage-independent so the offline gate drives exactly this arithmetic.
+ * Header-only and independent of the stage; GnssGpuRecordAssemble is the consumer.
  */
 
 #include <algorithm>
@@ -49,14 +46,14 @@ public:
 
     ElemSteer() = default;
 
-    /// @param positions_enu flat [n_elem][3] element positions, metres East/North/Up of the
-    ///        array reference point (the same point the broker's station coordinates should
-    ///        eventually revert to -- see buglist #102).
+    /// @param positions_enu flat [n_elem][3] element positions, metres East/North/Up from the
+    ///        point the delays are referred to (an element there gets a unity phasor).
     /// @param freq_mhz per-channel RF centre frequencies, MHz (freq_id x 0.1953125 at CHORD).
-    /// @param sign +1 or -1: the measured phase-convention sign (see file note).
-    /// @param hold_s geometry validity horizon, seconds.
-    /// @param rebuild_s how often a slot with rates is re-evaluated along its track, seconds
-    ///        (the steering error between rebuilds is at most rate x rebuild_s: ~3 mm at 0.5 s).
+    /// @param n_prn number of PRN slots.
+    /// @param sign +1 or -1, the calibrated phase sign (see file note).
+    /// @param hold_s how long a post's geometry stays valid, seconds.
+    /// @param rebuild_s how often a slot with rates is re-evaluated along its track, seconds;
+    ///        between rebuilds the path error grows at the path rate (~3.5 mm in 0.5 s at 7 mm/s).
     ElemSteer(std::vector<double> positions_enu, std::vector<double> freq_mhz, int n_prn,
               double sign, double hold_s, double rebuild_s = 0.5) :
         _pos(std::move(positions_enu)), _f_mhz(std::move(freq_mhz)),
@@ -75,10 +72,10 @@ public:
         return _n_chan;
     }
 
-    /// Forget one slot's geometry. A slot is a PRN SLOT, not a satellite: when the tracker
-    /// swaps the PRN in a slot, the table still holds the departed satellite's phasors and
-    /// warm() would keep steering the newcomer with them for up to hold_s -- a wrong steer,
-    /// not a weaker one (it derotates every element by another direction's delay).
+    /// Forget one slot's geometry. The table is keyed by PRN slot, not satellite: after a PRN
+    /// swap it still holds the departed satellite's phasors, and warm() would steer the
+    /// newcomer with them for up to hold_s, derotating every element by another direction's
+    /// delays.
     void invalidate(int slot) {
         if (slot >= 0 && (size_t)slot < _fresh_t.size()) {
             _fresh_t[(size_t)slot] = -1.0e18;
@@ -86,20 +83,19 @@ public:
         }
     }
 
-    /// Copy one slot's whole [n_chan][n_elem] table into `out` (n_chan*n_elem entries).
-    /// The caller holds whatever lock guards update(); the copy is what lets it drop that
-    /// lock before the combine instead of reading rows a concurrent update() may rewrite.
+    /// Copy one slot's [n_chan][n_elem] table into @p out (n_chan*n_elem entries). The caller
+    /// holds the lock that guards update() and combines from the copy after releasing it, so a
+    /// concurrent update() cannot rewrite rows mid-combine.
     void copy_slot(int slot, cf* out) const {
         const cf* src = &_tab[(size_t)slot * _n_chan * _n_elem];
         std::copy(src, src + (size_t)_n_chan * _n_elem, out);
     }
 
-    /// New geometry for one satellite slot: rebuild its [n_chan][n_elem] phasor table.
-    /// az/el in degrees (az from North, clockwise/east-positive -- the broker's predict_all
-    /// convention); t_now in the caller's steady seconds (only differenced against itself).
-    /// @p az_rate_dps / @p el_rate_dps (deg/s) and @p t_utc (unix s, the instant az/el
-    /// describe) enable extrapolation along the track by refresh(); t_utc <= 0 means a bare
-    /// snapshot (held, as before).
+    /// New geometry for one slot: rebuild its [n_chan][n_elem] phasor table. az/el in degrees
+    /// (az from North, east-positive, as the broker's predict_all); t_now in the caller's steady
+    /// seconds (only differenced against itself). @p az_rate_dps and @p el_rate_dps (deg/s) with
+    /// @p t_utc (unix s, the instant az/el describe) let refresh() extrapolate along the track;
+    /// t_utc <= 0, or both rates zero, gives a snapshot, held as posted.
     void update(int slot, double az_deg, double el_deg, double t_now, double az_rate_dps = 0.0,
                 double el_rate_dps = 0.0, double t_utc = 0.0) {
         if (!enabled() || slot < 0 || (size_t)slot >= _fresh_t.size())
@@ -122,8 +118,8 @@ public:
     }
 
     /// Re-evaluate one slot's table at record time @p t_utc if it carries rates and the table
-    /// is more than rebuild_s old. Extrapolation is capped at hold_s past the post: beyond
-    /// that warm() refuses the slot anyway. Cheap when nothing is due (a compare).
+    /// is at least rebuild_s old. Extrapolation is capped at hold_s from the post's epoch:
+    /// beyond that warm() refuses the slot anyway. Cheap when nothing is due (a compare).
     void refresh(int slot, double t_utc) {
         if (!enabled() || slot < 0 || (size_t)slot >= _trk.size() || !(t_utc > 0.0))
             return;
@@ -147,9 +143,9 @@ public:
                && t_now - _fresh_t[(size_t)slot] <= _hold_s;
     }
 
-    /// The slot's line-of-sight UNIT VECTOR (ENU) at @p t_utc, extrapolated along its track
-    /// exactly as refresh() does but without rebuilding the table. False if the slot never
-    /// received geometry (or was invalidated); freshness is the caller's check (warm()).
+    /// The slot's line-of-sight unit vector (ENU) at @p t_utc, extrapolated along its track as
+    /// refresh() does but without rebuilding the table. False if the slot has no geometry
+    /// (never posted, or invalidated); freshness is the caller's check (warm()).
     bool direction(int slot, double t_utc, double* e_out) const {
         if (!enabled() || slot < 0 || (size_t)slot >= _trk.size()
             || _fresh_t[(size_t)slot] <= -1.0e17)
@@ -186,8 +182,8 @@ private:
     void build(int slot, const double* e) {
         cf* tab = &_tab[(size_t)slot * _n_chan * _n_elem];
         for (int el_i = 0; el_i < _n_elem; ++el_i) {
-            // Delay of this element relative to the reference point: an element displaced
-            // TOWARD the satellite receives the code EARLIER by (r.e)/c.
+            // An element displaced toward the satellite receives the signal earlier, by
+            // tau = (r.e)/c; its phasor is exp(i * sign * 2*pi*f*tau).
             const double* r = &_pos[(size_t)el_i * 3];
             const double tau_s = (r[0] * e[0] + r[1] * e[1] + r[2] * e[2]) / 299792458.0;
             for (int ch = 0; ch < _n_chan; ++ch) {

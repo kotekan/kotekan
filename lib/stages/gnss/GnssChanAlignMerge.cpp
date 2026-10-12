@@ -36,11 +36,11 @@ GnssChanAlignMerge::GnssChanAlignMerge(Config& config, const std::string& unique
 
     _in_chans = config.get<std::vector<int>>(unique_name, "in_channels");
     _n_hops = config.get<int>(unique_name, "samples_per_data_set");
-    // ABSENT-SENDER TIMEOUT. 0 disables (block forever, the historical behaviour).
+    // Absent-sender timeout; 0 disables it (block forever).
     _input_timeout_s = config.get_default<double>(unique_name, "input_timeout_s", 5.0);
-    // RE-PROBE COST for an input ALREADY known absent -- see the wait-budget note in
-    // main_thread(). Must be long enough to pick up a frame that is already queued (which is
-    // all a rejoining sender needs) and short enough that dead feeds are free.
+    // Wait on an input already known absent (see main_thread): long enough to pick up a frame
+    // already queued, which is all a rejoining sender needs, and short enough that absent
+    // inputs cost almost nothing.
     _absent_probe_s = config.get_default<double>(unique_name, "absent_probe_s", 0.002);
 
     if (in_bufs.empty() || _in_chans.size() != in_bufs.size()) {
@@ -72,69 +72,40 @@ void GnssChanAlignMerge::main_thread() {
     auto& skipped = Metrics::instance().add_counter("kotekan_gnss_merge_skipped_frames_total",
                                                     unique_name, {"input"});
 
-    // Current frame + its epoch, per input. seq is the ABSOLUTE sample index of hop 0,
-    // taken from GnssChanMetadata::sample_seq (all feeds inherit it from the F-engine's
-    // global fpga_seq_num, so equality across inputs means the same sky).
+    // Current frame and its epoch, per input. seq is the absolute sample index of hop 0, from
+    // GnssChanMetadata::sample_seq; every feed derives it from the F-engine's global
+    // fpga_seq_num, so equal values across inputs are the same instant.
     std::vector<uint8_t*> frames(n_in, nullptr);
     std::vector<int64_t> seqs(n_in, 0);
 
-    // ABSENT SENDERS MUST NOT BLOCK THE MERGE. The aggregator config declares one input per
-    // node-GPU; run fewer nodes than it was generated for and the missing feeds never deliver,
-    // so acquire() blocks in wait_for_full_frame FOREVER. The stage stays "alive", the log
-    // stops, no frame is ever emitted, and the search reports nothing -- observed 2026-08-08
-    // with a 12-input config and 8 nodes running, and it took forty minutes to find because
-    // the symptom (no detections) points at the sky, not at a config arity mismatch.
+    // Absent senders must not block the merge. The aggregator config declares one input per
+    // node GPU; a feed whose node is not running never delivers, and an untimed wait would
+    // block forever with no error. With _input_timeout_s > 0, an input that delivers nothing
+    // for that long is absent: its channel slice is zeroed and the merge continues on the rest.
+    // Zeros rather than the last frame, because stale samples belong to another epoch and
+    // would correlate into false detections, where zeros only cost sensitivity.
     //
-    // A timed wait turns that into an absent input: its channel slice is ZEROED and the merge
-    // continues on the rest. Zeroing rather than reusing the last frame is deliberate -- stale
-    // samples are not neutral, they correlate against the wrong epoch and would manufacture
-    // detections rather than merely lose sensitivity.
+    // Absent inputs are retried every cycle, so a restarted node rejoins on its own; `present`
+    // describes only the current frame. The retry sweep calls acquire() for each input in
+    // turn, so an input already absent is polled for _absent_probe_s rather than waited on:
+    // a full timeout each would make the output period n_absent x _input_timeout_s and leave
+    // the search's detections behind the sky. A rejoining sender has frames queued, so the
+    // poll picks one up at once.
     //
-    // Absence is not permanent: a timed-out input is retried every cycle, so a node that
-    // restarts rejoins on its own. `present` is only about THIS frame.
-    //
-    // ⚠️ THE COST OF THAT RETRY IS THE WHOLE STAGE'S THROUGHPUT. The reacquire sweep at the end
-    // of the loop calls acquire() for EVERY input, SEQUENTIALLY, and an input that is still
-    // absent blocks the FULL _input_timeout_s before timing out again. So the merge's output
-    // period is n_absent x _input_timeout_s -- it degrades with the number of DEAD feeds, which
-    // is precisely the case it was written to survive.
-    //
-    // MEASURED 2026-08-16 (task #81): 3 absent inputs (cx43's two GPUs + cx51.1) x 5.0 s = a
-    // 15.0 s merge period against a 41.94 ms frame. Predicted 15.0, measured 15.0. Downstream,
-    // GnssChannelizedSearch reported "20 frames (0.1/s), blocked 100%, 0 frames discarded while
-    // the worker was busy" -- 356x starved and NOT compute-bound -- and its detections ran 48.9 s
-    // behind the sky. A stale detection is not merely late: the clock-bias solve is
-    // median(det_dop - pred_dop) with pred at NOW, so lag x dop_rate is a pure fabricated bias
-    // (~44 Hz here). gps_distributed_broker.py:3457 documents the same failure at 90 s costing
-    // +68 Hz and dragging a tracker off a 55-sigma satellite.
-    //
-    // THE FIX: an input ALREADY KNOWN ABSENT is POLLED (_absent_probe_s), not waited on. A
-    // rejoining sender has frames queued, so the poll takes one immediately and rejoin stays as
-    // prompt as before -- absence costs microseconds instead of seconds.
-    //
-    // ⚠️ DO NOT extend this to a total per-frame wait budget that also short-polls PRESENT
-    // inputs. Frames arrive every 41.94 ms; a healthy input polled 2 ms after its last frame was
-    // consumed will usually NOT be ready, and the timeout path ZEROES it. That would silently
-    // zero healthy feeds every frame -- turning a throughput bug into a sensitivity bug that
-    // looks like the sky. A present feed must be genuinely waited for. If a SLOW-but-alive feed
-    // ever needs bounding, measure that it exists first: it is not what #81 was.
+    // Present inputs get the full wait. Frames arrive every 41.94 ms, so a short poll of a
+    // healthy input would often find nothing ready, and the timeout path would zero it.
     std::vector<uint8_t> present(n_in, 0);
-    std::vector<uint8_t> ever(n_in, 0); // acquired at least once -- gates the spread check
+    std::vector<uint8_t> ever(n_in, 0); // acquired at least once; gates the spread check
     std::vector<uint8_t> announced(n_in,
-                                   0); // so join/leave logs once per transition, not per frame
+                                   0); // declared absent; join/leave logs once per transition
     struct timespec ts_timeout;
 
-    // CONTROLLER-RESET GUARD. The alignment below advances every input to the MAXIMUM sequence
-    // currently held, which is right for a lagging sender and catastrophic for an F-engine that
-    // has restarted: fpga_seq_num goes back to ~0, so a feed still delivering pre-reset frames
-    // pins `target` at a value the post-reset feeds can never reach, and the merge waits
-    // forever. Nothing in the loop can tell that apart from "one sender is slow".
-    //
-    // The node ingest already refuses this case loudly ("CRS FPGA seq went backwards ...
-    // controller likely reset, kotekan stopping") -- the aggregator had no equivalent, which is
-    // how it sat through an F-engine restart on 2026-08-07 looking healthy while producing
-    // nothing. Detect BOTH shapes: a single feed jumping backwards, and a spread across feeds
-    // too large to be sender lag.
+    // Controller-reset guard. The alignment below advances every input to the maximum sequence
+    // held, which is right for a lagging sender but stalls after an F-engine restart:
+    // fpga_seq_num restarts near 0, so a feed still delivering pre-reset frames pins `target`
+    // where the post-reset feeds never reach it. The loop cannot tell that from a slow sender,
+    // so acquire() warns on both signs of it: one feed going backwards, and a spread across
+    // feeds too large to be sender lag.
     std::vector<int64_t> last_seq(n_in, -1);
     const auto now_s = [] {
         return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
@@ -151,9 +122,7 @@ void GnssChanAlignMerge::main_thread() {
 
     auto acquire = [&](int i) -> bool {
         if (_input_timeout_s > 0.0) {
-            // An input already declared ABSENT is polled, not waited on -- otherwise every dead
-            // feed costs a full timeout on every output frame and the merge period becomes
-            // n_absent x _input_timeout_s. See the wait-budget note above (#81).
+            // An input already declared absent is polled, not waited on (see above).
             const double wait_s = announced[i] ? _absent_probe_s : _input_timeout_s;
             clock_gettime(CLOCK_REALTIME, &ts_timeout);
             const double whole = std::floor(wait_s);
@@ -179,7 +148,7 @@ void GnssChanAlignMerge::main_thread() {
                          "automatically.",
                          unique_name, i, _input_timeout_s, _in_chans[i]);
                 }
-                return true; // NOT a failure: carry on without it
+                return true; // not a failure: carry on without it
             }
             frames[i] = in_bufs[i]->frames[in_ids[i]];
         } else {
@@ -195,8 +164,8 @@ void GnssChanAlignMerge::main_thread() {
                  unique_name, i, _in_chans[i]);
         }
         if (!metadata_is_gnss_chan(in_bufs[i])) {
-            // Without sample_seq there is nothing to align on, and guessing (index lockstep)
-            // is the silent-corruption mode this stage exists to prevent. Hard error.
+            // Without sample_seq there is nothing to align on; index lockstep would silently
+            // mix epochs.
             FATAL_ERROR("GnssChanAlignMerge: in_bufs[{:d}] has no GnssChanMetadata; alignment "
                         "is impossible",
                         i);
@@ -204,9 +173,8 @@ void GnssChanAlignMerge::main_thread() {
         }
         seqs[i] = (int64_t)get_gnss_chan_metadata(in_bufs[i], in_ids[i])->sample_seq;
 
-        // (a) THIS feed went backwards. Sender restarts are normal and land near where they
-        // left off; a controller reset drops the counter by orders of magnitude. Threshold at
-        // one frame's worth of samples so ordinary reordering is not reported.
+        // (a) This feed went backwards. A restarted sender resumes ahead of where it left off;
+        // a controller reset drops the counter by orders of magnitude. Any backward step warns.
         if (last_seq[i] >= 0 && seqs[i] < last_seq[i])
             warn_rate_limited(fmt::format(
                 "input {:d} sample_seq went BACKWARDS {:d} -> {:d} ({:+.3g} samples). The "
@@ -217,14 +185,10 @@ void GnssChanAlignMerge::main_thread() {
                 i, last_seq[i], seqs[i], (double)(seqs[i] - last_seq[i])));
         last_seq[i] = seqs[i];
 
-        // (b) The feeds DISAGREE by more than lag can explain. A slow sender is behind by
-        // frames; a straddled reset puts feeds ~an F-engine uptime apart. 2^40 samples is
-        // ~1.6 h at 3.2 GS/s -- far beyond any buffering, far below the ~3.7e15 seen when a
-        // 13-day uptime resets.
-        // ONLY over inputs that have delivered at least once. Evaluating this during the
-        // initial sequential acquire compared real sequences against the zeros of inputs not
-        // yet read, and reported a 7.1e13 straddle that did not exist (2026-08-08) -- a false
-        // alarm that sent a diagnosis looking for a stale sender for half an hour.
+        // (b) The feeds disagree by more than lag can explain. A slow sender is behind by
+        // frames; a straddled reset puts feeds about an F-engine uptime apart. 2^40 samples is
+        // ~5.7 min at 3.2 GS/s: far beyond any buffering, far below the 2.8e14 of one day's
+        // uptime. Only present inputs count: an absent input's seq is stale, or still 0.
         int64_t lo = INT64_MAX, hi = INT64_MIN;
         int n_ever = 0;
         for (int k = 0; k < n_in; ++k)
@@ -247,17 +211,14 @@ void GnssChanAlignMerge::main_thread() {
             return;
 
     bool logged_first = false;
-    // THROUGHPUT VISIBILITY. #81 stayed hidden because nothing here ever said what rate this
-    // stage was achieving. The search's own log DID show it starving ("0.1/s, blocked 100%"),
-    // but with no counterpart at the producer there was nothing to connect it to, and the
-    // symptom -- no detections, stale detections, a walking clock bias -- points at the sky.
-    // The absent set is printed alongside the rate because it is the CAUSE of the rate.
+    // Every 60 s, log the output rate with the absent inputs, the usual cause of a low rate.
     long n_out = 0;
     double t_rate0 = now_s();
     while (!stop_thread) {
         // Advance every input to the maximum epoch currently held. Each release/reacquire can
-        // RAISE the target (the lagging input may leapfrog if the sender dropped frames), so
-        // loop until a full sweep finds all inputs equal.
+        // raise the target (a lagging input leapfrogs if its sender dropped frames), so loop
+        // until a full sweep finds all present inputs equal. Equality needs every feed's frames
+        // to start on the same sample_seq grid.
         bool aligned = false;
         while (!aligned && !stop_thread) {
             int64_t target = INT64_MIN;
@@ -265,7 +226,7 @@ void GnssChanAlignMerge::main_thread() {
                 if (present[i])
                     target = std::max(target, seqs[i]);
             if (target == INT64_MIN)
-                break; // nothing present at all: nothing to align to, retry the outer loop
+                break; // nothing present: the frame below goes out all zeros, sample_seq 0
             aligned = true;
             for (int i = 0; i < n_in; ++i) {
                 while (present[i] && seqs[i] < target) {
@@ -292,9 +253,8 @@ void GnssChanAlignMerge::main_thread() {
                     const cf* src = (const cf*)frames[i] + (size_t)m * _in_chans[i];
                     std::memcpy(dst, src, (size_t)_in_chans[i] * sizeof(cf));
                 } else {
-                    // ZERO, never stale. An absent feed's old samples belong to another epoch
-                    // and would correlate into a false detection; zeros only cost sensitivity.
-                    // std::fill, not memset: cf is std::complex<float>, a non-trivial type.
+                    // Zero, never stale (see the absent-sender note above). std::fill rather
+                    // than memset: std::complex<float> is not a trivial type.
                     std::fill(dst, dst + _in_chans[i], cf(0.0f, 0.0f));
                 }
                 dst += _in_chans[i];
@@ -329,8 +289,8 @@ void GnssChanAlignMerge::main_thread() {
                     ++n_absent;
                 }
             const double hz = (double)n_out / el;
-            // The nominal rate is one output per input frame; anything far below it means the
-            // sky reaching the search is OLD, not merely sparse.
+            // The nominal rate is one output per input frame (~24/s); far below it, the data
+            // reaching the search is old as well as sparse.
             INFO("GnssChanAlignMerge[{:s}]: {:.2f} frames/s ({:d} in {:.0f}s), {:d}/{:d} inputs "
                  "absent [{:s}]{:s}",
                  unique_name, hz, n_out, el, n_absent, n_in, absent,

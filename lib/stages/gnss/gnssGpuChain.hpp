@@ -5,54 +5,51 @@
 #include <stdint.h>
 
 /**
- * Shared frame layout for the GPU tracking chain, written by GnssN2RecordAssemble (with
- * cudaGnssInject's control block) and read by GnssGpuRecordAssemble.
+ * Frame layout of the GNSS GPU chain: cudaGnssInject writes the control block (this layout
+ * without corr), GnssN2RecordAssemble the full frame, and GnssGpuRecordAssemble reads it.
  *
- * Everything the downstream host assembler needs to build tracker records -- the per-record
- * control decisions AND the raw per-channel correlations -- travels in ONE output frame with
- * this layout, so the assembler is stateless w.r.t. seeds (only NCO phase continuity lives
- * there) and the combiner/broker/viewer are untouched.
+ * One frame carries everything the host assembler needs to build tracker records, the
+ * per-record control decisions and the per-channel correlations, so the assembler keeps no
+ * seed state of its own.
  *
- * Frame layout (all sections 16-byte aligned; offsets are functions of n_prn/n_chan below):
+ * Frame layout (all sections 16-byte aligned; offsets are functions of n_prn, n_chan, n_elem):
  *   [FrameHdr]
  *   [int64_t window_start   x MAX_REC]                 absolute sample of each record window
- *   [PrnCtl  x MAX_REC x n_prn]                        pass-1 control per (record, PRN slot)
- *   [double2 corr   x MAX_JOBS(n_prn) x n_chan]        kernel output, job-major
- *   [double  energy x MAX_JOBS(n_prn) x n_chan]
- * A "job" is one correlator trial; an active PRN contributes 4 consecutive job ROWS
+ *   [PrnCtl  x MAX_REC x n_prn]                        control per (record, PRN slot)
+ *   [double2 corr   x max_jobs x n_chan x n_elem]      row-major
+ *   [double  energy x max_jobs x n_chan]
+ * A job row is one output row; an active PRN contributes n_rows_spec consecutive rows
  * (E, P, L, P_HEAD) starting at PrnCtl::job0. P_HEAD is the prompt restricted to the hops
- * BEFORE the code-period boundary inside the window (gnssRecord.hpp slots 16-18): the
- * secondary overlay flips sign at that boundary, so the combiner needs the two sides
- * separately or straddling records cancel (the 2026-07-15 "bistable").
+ * before the code-period boundary inside the window (gnssRecord.hpp slots 16-18): the
+ * secondary overlay or nav symbol can flip sign at that boundary, so the combiner needs the
+ * two sides separately or a straddling record cancels.
  *
- * NB a "job row" is an OUTPUT row, no longer a kernel job: since 2026-07-16 the despread kernel
- * takes ONE job per active PRN and emits the whole quad from it (E/P/L share a carrier and a
- * data sample; P_HEAD is the prompt's own MAC gated on the hop). Rows are what everything
- * downstream indexes -- PrnCtl::job0, FrameHdr::n_jobs, max_jobs -- so this layout is unchanged;
- * only the kernel's INPUT array is per-PRN, and it is sized by max_specs.
+ * Rows are not kernel jobs: the GPU takes one job per active PRN per record (max_specs sizes
+ * that array) and produces all of its rows. Everything downstream indexes rows (PrnCtl::job0,
+ * FrameHdr::n_jobs, max_jobs).
+ *
+ * config/gen_chord_gnss_config.py (buffer sizes), scripts/gnss/viscap_read.py and
+ * scripts/gnss/cube_e2e.py restate this layout; the generator reads sizeof(PrnCtl) through
+ * config/gnss_record_layout.py, which parses the static_assert below.
  */
 namespace gnss_gpu {
 
-/// Records per GPU frame, sized for the worst backlog: the ring consumer drains to <1 record
-/// each frame, so backlog <= (frame hops + record-1)/record = 11 at 1248-hop frames / 125-hop
-/// records, with headroom for other geometries.
+/// Maximum records per frame. A frame holds samples_per_data_set / hops_per_record records
+/// (4 for CHORD's 8192-hop frames and 2048-hop records); cudaGnssChordTrackState rejects a
+/// geometry that exceeds this.
 constexpr int MAX_REC = 16;
 
 struct FrameHdr {
-    int32_t n_rec;  ///< complete record windows despread in this frame (<= MAX_REC)
-    int32_t n_prn;  ///< PRN slots (layout stride)
-    int32_t n_chan; ///< channels per job row (layout stride)
-    int32_t n_jobs; ///< total job ROWS written this frame (<= max_jobs(n_prn, n_rows_spec);
-                    ///< n_rows_spec per active PRN per record -- see max_specs for the kernel's
-                    ///< job count)
-    int64_t seq0;   ///< absolute sample of the input frame that triggered this output
-    double utc0;    ///< capture UTC of sample 0 (the tracker's capture_utc0 convention)
-    int32_t n_rows_spec; ///< OUTPUT rows per active PRN per record: 4 (E, P, L, P_HEAD) normally,
-                         ///< 6 when the chain peels -- rows 4/5 are then the PEEL RESIDUAL prompt
-                         ///< and its head segment (gnssRecord.hpp slots 20-23). RUNTIME, not a
-                         ///< constant, so a chain that does not peel keeps the smaller frame
-                         ///< instead of every chain paying for one that does. 0 from an old
-                         ///< writer reads as 4.
+    int32_t n_rec;       ///< record windows in this frame (<= MAX_REC)
+    int32_t n_prn;       ///< PRN slots (layout stride)
+    int32_t n_chan;      ///< channels per job row (layout stride)
+    int32_t n_jobs;      ///< job rows written this frame: n_rows_spec per active PRN per record
+                         ///< (<= max_jobs(n_prn, n_rows_spec))
+    int64_t seq0;        ///< absolute sample index of the frame's first hop
+    double utc0;         ///< capture UTC of sample 0 (the tracker's capture_utc0 convention)
+    int32_t n_rows_spec; ///< output rows per active PRN per record: ROWS_PLAIN or ROWS_PEEL
+                         ///< (rows 4/5 the peel residual prompt and its head segment,
+                         ///< gnssRecord.hpp slots 20-23). The reader takes 0 as ROWS_PLAIN.
     int32_t _pad0;
     int64_t _pad1;
 };
@@ -69,93 +66,66 @@ constexpr int ROW_PH = 3;
 constexpr int ROW_RES_P = 4;  ///< peel only
 constexpr int ROW_RES_PH = 5; ///< peel only
 
-/// Pass-1 control for one (record window, PRN slot): exactly what the tracker's pass-2 needs.
+/// Control for one (record window, PRN slot), as the producer ran it.
 struct PrnCtl {
-    uint8_t run;        ///< active this window (seeded + covering channels in this subband)
-    uint8_t reanchored; ///< f_ref moved at this window. 0 = no. 1 = FRESH acquisition (no phase
-                        ///< history to keep: the assembler resets the NCO and breaks the arc).
-                        ///< 2 = CONTINUOUS re-pin (fence or age): the replica phase stepped by
-                        ///< df*t_abs, and the assembler folds that step INTO the NCO so the
-                        ///< despread output never sees it. See GnssGpuRecordAssemble.
-                        ///< 3 = CONTINUOUS re-pin, STEP SUPPLIED in @ref dcyc -- identical
-                        ///< meaning to 2, but the producer did the subtraction (see dcyc for
-                        ///< why the assembler cannot do it accurately). Prefer 3 in new
-                        ///< producers; 2 stays for the airspy chain, byte-identical.
-    /// THE SATELLITE IN THIS SLOT FOR THIS RECORD. 0 = the producer did not stamp it (every
-    /// writer before 2026-08-26), and a consumer must then fall back to its own config list.
-    ///
-    /// ⚠️ THIS IS WHAT MAKES A LIVE SLOT SWAP SAFE. Slot->PRN used to exist twice -- once in
-    /// the producer's config and once in the assembler's -- and nothing checked them against
-    /// each other, which is fine only while neither can change. The moment membership becomes
-    /// live (docs/CHORD_LIVE_PRN_RECONFIG.md), a second copy is a mislabelling waiting to
-    /// happen: the assembler would stamp record slot 0 with the OLD satellite's number and
-    /// every downstream consumer would believe it. Carrying the identity in the frame removes
-    /// the second copy instead of adding a second endpoint to keep it in step, and it makes a
-    /// frame that STRADDLES a swap unambiguous rather than merely unlikely.
-    ///
-    /// uint16 because it fits the padding exactly: PRNs run 1..63 across every constellation
-    /// we carry, and keeping sizeof(PrnCtl) == 80 means no buffer in any generated config
-    /// changes size for this.
+    uint8_t run;        ///< 1 = despread this window (the slot has a live seed)
+    uint8_t reanchored; ///< f_ref moved at this window. 0 = no. 1 = fresh acquisition: no phase
+                        ///< history to keep, so the assembler resets the NCO and breaks the arc.
+                        ///< 2 = continuous re-pin: the replica phase stepped by df*t_abs and the
+                        ///< assembler folds that step into the NCO, deriving it from fcar.
+                        ///< 3 = the same, with the step supplied in @ref dcyc (see there for why
+                        ///< the producer computes it). cudaGnssInject writes 1 and 3.
+    /// The PRN in this slot for this record; 0 = not stamped, and the assembler keeps its
+    /// current PRN for the slot. Carrying it in the frame leaves one slot -> PRN map, the
+    /// producer's, so a live slot swap (docs/CHORD_LIVE_PRN_RECONFIG.md) cannot mislabel
+    /// records. uint16 fills the padding, keeping sizeof(PrnCtl) at 80.
     uint16_t prn;
-    int32_t job0;       ///< first of this PRN's 4 job rows (E,P,L,P_HEAD); -1 if !run
+    int32_t job0;       ///< first of this PRN's rows (E, P, L, P_HEAD); meaningless if !run
     float fcar_report;  ///< record slot 1 (physical-signed reported Doppler)
     float n_owned;      ///< record slot 6 (covering channels owned by this subband)
-    double cp_seed;     ///< record slot 2: EXPORT-currency code phase, chips (gnssRecord.hpp
-                        ///< slot-2 contract: paired with fcar_report). NOT the GPU despread
-                        ///< command -- that keeps the f_ref currency and rides the Spec.
-    double f_nco;       ///< NCO slope for this record (ctrim + ff, internal convention, Hz)
+    double cp_seed;     ///< record slot 2: the code-phase argument handed to the despread this
+                        ///< record, chips; meaningful only with the Doppler in fcar_report
+                        ///< (gnssRecord.hpp slot-2 contract)
+    double f_nco;       ///< NCO slope for this record, Hz, internal convention (cudaGnssInject
+                        ///< sets the applied carrier trim)
     uint64_t chan_mask; ///< local covering-channel bits (for the assembler's cross-channel sum)
-    /// APPLIED carrier trim over this record, Hz (the broker's carrier_trim_hz as the producer
-    /// actually ran it). Written honestly by ALL producers; the assembler integrates it into
-    /// record slot 19 (REC_TRIM_INC) directly. It must NOT be reconstructed from the identity
-    /// ctrim = (f_nco + fcar_report - fcar)/2 -- that identity encodes the airspy tracker's
-    /// f_nco = ctrim + ff convention, and on the CHORD producers (f_nco = ctrim,
-    /// fcar_report = doppler) it evaluates to (ctrim - f_offset)/2: MHz-scale garbage that a
-    /// closed carrier loop then integrates as its "applied" reference (the 2026-08-14 arm-9
-    /// rail, -40 Hz in ten minutes). Occupies the slot formerly reserved as energy_scale (1.0,
-    /// never read).
+    /// Applied carrier trim over this record, Hz (the broker's carrier_trim_hz as the producer
+    /// ran it); the assembler integrates it into record slot 19 (REC_TRIM_INC). Read it from
+    /// here, not from (f_nco + fcar_report - fcar)/2: with cudaGnssInject's f_nco = ctrim and
+    /// fcar = f_offset + fcar_report, that gives (ctrim - f_offset)/2.
     double ctrim_hz;
-    /// REPLICA CARRIER PHASE ANCHOR the kernel actually used this record, radians (#72).
-    /// Copied verbatim into record slot gnss::REC_ANG0 -- see that constant for why it is
-    /// exported and how to read it. NaN = this PRN built no job. Producers that do not run a
-    /// despread leave it NaN; the assembler passes NaN through as 0 is NOT acceptable here,
-    /// because 0 is a legal ang0.
+    /// Replica carrier phase anchor the kernel used this record, radians; copied into record
+    /// slot gnss::REC_ANG0 (see there). NaN = no job was built; 0 is a legal value.
     double ang0;
     /// Phi-cache staleness, Hz (record slot gnss::REC_PHI_DDOP). NaN if no Phi was built.
     double phi_ddop;
     double fcar; ///< replica carrier f_ref (Hz): the assembler needs it to reconstruct the
-                 ///< COMMANDED carrier phase f_ref*t_abs + phi/2pi (record slot 15). NOT
-                 ///< derivable from fcar_report, which folds out the re-pin step on purpose.
-    /// RE-PIN PHASE STEP FOR THIS RECORD, CYCLES (reanchored == 3 only; 0.0 otherwise).
+                 ///< commanded carrier phase, f_ref*t_abs minus the NCO phase (record slot
+                 ///< 15). Not derivable from fcar_report, which leaves out the carrier offset.
+    /// Re-pin phase step for this record, cycles (reanchored == 3 only; 0 otherwise).
     ///
-    /// The replica's carrier phase is ABSOLUTELY anchored -- 2*pi*fcar*t_abs -- so when
-    /// propagate_seed hands back a different Doppler than the previous record, the replica
-    /// phase steps by (fcar - fcar_prev)*t_abs. That is NOT small: on sky at 3.37 days of
-    /// uptime the per-record Doppler change of a few micro-Hz becomes 109-1127 CYCLES
-    /// (measured 2026-08-13, gal_e5a). Unfolded, its fractional part is uniform, which is
-    /// exactly why the per-record common phase has always read as "white in time".
+    /// The replica's carrier phase is anchored absolutely, 2*pi*(fcar + ctrim_hz)*t_abs, so a
+    /// change in the applied carrier (Doppler plus trim) since the previous record steps it by
+    /// d(carrier)*t_abs: many cycles at days of uptime, with a uniformly random fractional part
+    /// if left unfolded.
     ///
-    /// ⚠️ WHY THE PRODUCER MUST SUBTRACT, NOT THE ASSEMBLER. fcar is f_offset + doppler, and
-    /// f_offset is the SKY CARRIER (1.176 GHz on E5a). Differencing two doubles that large
-    /// costs an ulp of 2.4e-7 Hz against a delta of ~4e-3 Hz -- 6e-5 relative, i.e. ~0.07
-    /// cycles = 0.4 rad of residual per-record phase, which is the same order as the whole
-    /// term this is meant to remove. f_offset is CONSTANT, so delta fcar == delta doppler
-    /// EXACTLY; taking the difference in the doppler domain (~1e3 Hz, ulp 2e-13) makes the
-    /// step exact. The producer is the only place that domain still exists.
+    /// The producer computes it because only it can do so exactly. fcar includes f_offset, the
+    /// sky carrier (1.176 GHz on E5a), and differencing two doubles that large loses an ulp of
+    /// 2.4e-7 Hz, ~0.07 cycles (0.4 rad) after a few days. f_offset is constant, so the
+    /// producer differences the applied Doppler and trim (~1e3 Hz, ulp 2e-13) instead.
     double dcyc;
 };
-/// 64 -> 80 on 2026-08-16 (#72's @ref PrnCtl::ang0 + @ref PrnCtl::phi_ddop). 80 is still a
-/// multiple of 16, which is what the check is actually for; the literal is restated rather
-/// than computed so that adding a field stays a deliberate act. It caught this one.
+/// The literal is deliberate: adding a field must change it, and config/gnss_record_layout.py
+/// parses it to size the generated buffers. The layout needs a multiple of 16.
 static_assert(sizeof(PrnCtl) == 80, "PrnCtl must stay 16-byte aligned");
 static_assert(sizeof(PrnCtl) % 16 == 0, "PrnCtl must stay 16-byte aligned");
 
-/// Output rows (corr/energy) per frame: @c rows_spec per active PRN per record.
+/// Maximum output rows (corr/energy) per frame: @c rows_spec per PRN per record.
 constexpr int max_jobs(int n_prn, int rows_spec = ROWS_PLAIN) {
     return rows_spec * n_prn * MAX_REC;
 }
-/// Kernel jobs: ONE per active PRN per record -- each emits the rows above. Sizes the
-/// DespreadJob arena only.
+/// Maximum kernel jobs per frame: one per PRN per record, each producing @c rows_spec rows.
+/// Sizes the DespreadJob arena.
 constexpr int max_specs(int n_prn) {
     return n_prn * MAX_REC;
 }
@@ -168,20 +138,16 @@ constexpr size_t off_prnctl() {
 constexpr size_t off_corr(int n_prn) {
     return off_prnctl() + sizeof(PrnCtl) * MAX_REC * n_prn;
 }
-/// @param n_elem antennas per correlation (CHORD). 1 = the single-antenna airspy layout, which
-///        is what every existing caller gets by default -- the expressions below collapse to
-///        the originals term for term.
+/// @param n_elem antennas per correlation row.
 ///
-/// The CORRELATION array carries the element axis, [jobs][n_chan][n_elem]; the ENERGY array does
-/// NOT, [jobs][n_chan]. One replica is correlated against every antenna, so its energy is
-/// element-independent. That asymmetry is the same one the record schema encodes (energies in the
-/// per-PRN header, correlations in the element blocks) and the same one path B will hand us for
-/// free from the N^2 kernel as N x M versus M x M -- so it is worth keeping visible here rather
-/// than padding the energy array to match.
+/// The correlation array carries the element axis, [jobs][n_chan][n_elem]; the energy array
+/// does not, [jobs][n_chan]. One replica is correlated against every antenna, so its energy is
+/// element-independent, as in the record schema (energies in the per-PRN header, correlations
+/// in the element blocks).
 constexpr size_t off_energy(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN, int n_elem = 1) {
     return off_corr(n_prn) + sizeof(double) * 2 * max_jobs(n_prn, rows_spec) * n_chan * n_elem;
 }
-/// Total frame size -- the yaml epl buffer's frame_size must equal this (asserted at runtime).
+/// Total frame size; GnssN2RecordAssemble requires its out_buf frame_size to be at least this.
 constexpr size_t frame_bytes(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN, int n_elem = 1) {
     return off_energy(n_prn, n_chan, rows_spec, n_elem)
            + sizeof(double) * max_jobs(n_prn, rows_spec) * n_chan;

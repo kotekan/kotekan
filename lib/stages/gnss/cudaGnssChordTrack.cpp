@@ -1,7 +1,7 @@
 #include "cudaGnssChordTrack.hpp"
 
 #include "GnssChanMetadata.hpp"
-#include "Telescope.hpp" // for Telescope (the LIVE record epoch, not a config copy)
+#include "Telescope.hpp" // for Telescope (the record epoch)
 #include "cudaGnssChordDespread.hpp"
 #include "cudaUtils.hpp"
 #include "gnssBandPlan.hpp"
@@ -38,33 +38,18 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     fft_len = config.get_default<int>(unique_name, "fft_length", 16384);
     sample_rate = config.get_default<double>(unique_name, "sample_rate", 3.2e9);
     f_offset_hz = config.get_default<double>(unique_name, "f_offset_hz", 0.0);
-    // F-engine conjugation, measured on sky 2026-07-30 -- see DespreadParams::conj_data.
-    // Without it the tracker despreads the conjugate of the sky and never locks.
+    // F-engine conjugation (see DespreadParams::conj_data). CHORD needs true: otherwise the
+    // replica correlates with the conjugate of the sky and reads noise.
     _conjugate = config.get_default<bool>(unique_name, "conjugate", false);
     dll_spacing = config.get_default<double>(unique_name, "dll_spacing", 0.5);
     trim_ttl_s = config.get_default<double>(unique_name, "trim_ttl_s", 0.0);
     trim_clamp = config.get_default<double>(unique_name, "trim_clamp", 3.0);
-    // ── THE RECORD EPOCH COMES FROM THE TELESCOPE, NOT FROM THE CONFIG ──────────────────
-    // utc0 is the UTC of ABSOLUTE SAMPLE 0, and this process already knows it exactly:
-    // CHORDTelescope::to_time_ns(seq) = time0_ns + seq*dt_ns, where time0_ns is fetched
-    // live from the FPGA controller at startup (query_gps/require_gps) WITH the GPS
-    // week-rollover correction applied. to_time_ns(0) is therefore the same quantity the
-    // config's frame0_utc has been hand-carrying -- from a better source.
-    //
-    // ⚠️ WHY THIS CHANGED (2026-08-18). The config copy went stale twice: 13.78 days from
-    // 2026-07-24, and 9.165 days tonight when the F-engine restarted at 18:30 UTC during
-    // site work. Both times /telescope served the truth while every GNSS record would have
-    // been stamped days in the past, and nothing downstream could tell -- every
-    // cross-record estimator works in differences, so a uniformly-wrong epoch stays
-    // uniform. The generator grew a check against the running fleet to catch it; that
-    // check was a workaround for a duplicated source of truth, and this removes the
-    // duplication instead. A value the process can look up should never be pasted into a
-    // config.
-    //
-    // The config key SURVIVES as an explicit override, because --frame0-nano exists to
-    // start without chive's timing service and that path must keep working. Precedence:
-    // an explicitly-configured value wins (it is a deliberate operator act), otherwise the
-    // telescope, otherwise 0 -> the assembler's host-clock fallback and its loud warning.
+    // Record epoch: frame0_utc is the UTC of absolute sample 0, which is the telescope's
+    // to_time_ns(0), from the GPS time0 it reads at startup. A config copy cannot follow an
+    // F-engine restart, and an epoch wrong by a constant is invisible to every estimator that
+    // works in differences. The config key stays as an explicit override (the generator's
+    // --frame0-nano sets it). Precedence: config if set, else the telescope, else 0, for which
+    // the record assembler falls back to the host clock.
     const double cfg_frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
     double tel_frame0_utc = 0.0;
     {
@@ -78,10 +63,9 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     frame0_utc = cfg_frame0_utc > 0.0 ? cfg_frame0_utc : tel_frame0_utc;
     if (tel_frame0_utc > 0.0 && cfg_frame0_utc > 0.0
         && std::abs(cfg_frame0_utc - tel_frame0_utc) > 1e-3) {
-        // The generator refuses to EMIT a disagreeing config, but it can only check at
-        // generation time -- an F-engine restart after that is invisible to it and not to
-        // us. Do not silently prefer one: an operator who set frame0_utc meant it, and an
-        // operator who did not needs to know their file is stale.
+        // The generator checks the config against the running fleet, but only when it runs;
+        // an F-engine restart after that shows up only here. The config still wins, since
+        // setting it is deliberate, but the conflict is logged.
         WARN("cudaGnssChordTrack: frame0_utc CONFLICT -- config {:.9f}, telescope {:.9f} "
              "({:.3f} days apart). USING THE CONFIG because an explicit value is an "
              "operator decision, but this almost always means the F-engine restarted and "
@@ -101,8 +85,8 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
              "absolute record time.",
              frame0_utc);
     }
-    // 0 = never expire (the old latching behaviour). The broker re-seeds every --interval (2 s
-    // live), so 60 s is ~30 refreshes of margin while still retiring a set satellite promptly.
+    // 0 = never expire. The broker re-seeds every cycle, so 60 s is many refreshes of margin
+    // while still retiring a satellite that has set within a minute.
     seed_ttl_s = config.get_default<double>(unique_name, "seed_ttl_s", 60.0);
 
     if (hops_per_record <= 0 || n_hops_frame % hops_per_record != 0)
@@ -120,11 +104,9 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     if (!sig)
         FATAL_ERROR("cudaGnssChordTrack: unknown signal '{:s}'", signame);
 
-    // The tap already selected the covering channels, so in the DATA they are dense
-    // 0..n_chan-1 and every one is covered. Their SKY identity is a different matter: the
-    // replica for local channel c must be synthesized at the centre frequency of the global
-    // bin it came from, and CHORD's comb is stride-16 (5972, 5988, ...), not contiguous.
-    // `channel_ids` carries those global bins, in local order.
+    // The despread's channels are dense, 0..n_chan-1, and all covered. The replica for local
+    // channel c is synthesized at the centre frequency of global bin channel_ids[c]; CHORD's
+    // comb is not contiguous (stride 16).
     covering.resize((size_t)n_chan);
     for (int c = 0; c < n_chan; ++c)
         covering[(size_t)c] = c;
@@ -134,31 +116,23 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                     "these are the GLOBAL bins of this GPU's covering comb, in local order.",
                     (int)channel_ids.size(), n_chan);
 
-    // The replica bank must be built with the F-ENGINE's exact PFB, or the channelized replica
-    // does not match the data: CHORD is a 4-tap Hamming critically-sampled bank over 8192
-    // positive-frequency bins (arXiv:2607.01625 s2.2.2, recorded in chord_gnss_node.yaml).
+    // The replica bank must use the F-engine's PFB, or the channelized replica does not match
+    // the data: CHORD's is a 4-tap Hamming critically-sampled bank over 8192 positive-frequency
+    // bins (arXiv:2607.01625 s2.2.2, recorded in chord_gnss_node.yaml).
     const int N = fft_len / 2;
     replica = std::make_unique<gnss::ChannelizedReplicaBank>(
         *sig, sample_rate, f_offset_hz, N, /*num_taps=*/4, dsp::window_from_string("hamming"),
         prns);
-    // SPARSE comb -> the chan_ids overload. Passing chan_offset 0 here built every replica at
-    // global bins 0..6 (DC) while the data sat at 5972..6076: noise at every code phase, which
-    // is why nothing ever locked (found 2026-07-31). See GnssCudaDespread.hpp.
+    // The despread takes each channel's global bin, since the comb is sparse.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
                                                   sample_rate, f_offset_hz);
-    // Truncate the per-hop PFB chip gather. Synthesis is 89% of this kernel and LINEAR in the
-    // depth, so this is the biggest single lever on tracker GPU load.
-    //
-    // VALIDATED FLOOR IS 120 (scripts/gnss/e2e --max-chips, CHORD geometry, 2026-08-05): every
-    // value from 120 to the full 210 reproduces the full-depth answer EXACTLY (+0.123 chips),
-    // and 105 is 13 chips out with the wrong NH alignment -- a discontinuity, not a gradual
-    // degradation. 140 is the recommended operating point: 1.50x, with 17% margin over 120.
-    // Below 120 the truncated replica stops making the true lobe win and the search settles on a
-    // grating lobe, which is the old refine_span: 4096 failure wearing a different hat.
+    // Cap the per-hop PFB chip gather (0 = the full span, ~210 chips at CHORD geometry).
+    // Synthesis cost is linear in the depth, but a capped gather is a different replica. At
+    // CHORD geometry (scripts/gnss/e2e --max-chips) a one-sided cap of 120 or more reproduces
+    // the full-depth code phase exactly, while 105 lands 13 chips out on a grating lobe; a
+    // window centred on the PFB span holds down to 60. Below those floors the warnings mark the
+    // run as timing-only.
     const int max_chips = config.get_default<int>(unique_name, "despread_max_chips", 0);
-    // Item 6: CENTERED window placement. Changes where the max_chips window sits, so the
-    // validated floors differ: one-sided 120 (9.5), centered 60 (80 recommended -- the harsh
-    // 2-node comb flips at 52 and margin is cheap). Default OFF = the shipped one-sided cap.
     const bool centered = config.get_default<bool>(unique_name, "despread_chips_centered", false);
     if (centered)
         despread->set_chips_centered(true);
@@ -185,11 +159,8 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                         max_chips, 210.0 / (double)max_chips);
     }
 
-    // fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): halve the RESIDENT table -- the
-    // one lever the DRAM-footprint verdict (§10.6c) says pays; 1.27-1.37x measured on synthesis,
-    // storage error 3.3e-4 (~0.14 dB class against the 4-bit voltage floor). Default OFF.
-    // READ THE RETURN: "armed" and "in effect" are different states (#96/#97) -- the engine
-    // refuses fp16 while shared tables are armed.
+    // fp16 Phi tables halve their device footprint, at a storage error of ~3.3e-4. The return
+    // says whether it took effect: the engine refuses fp16 while shared tables are in use.
     if (config.get_default<bool>(unique_name, "phi_fp16", false)) {
         if (despread->set_phi_fp16(true))
             INFO_NON_OO("cudaGnssChordTrack: fp16 Phi tables ARMED (item 3) -- resident Phi "
@@ -205,8 +176,8 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     trim_t_recv.assign((size_t)n_prn, 0.0);
 
     slot_gen.assign((size_t)n_prn, 0);
-    // The fold histories are per PRN slot too; an unsized history is an out-of-bounds write on
-    // the first frame (the slot count never changes, so this is the one sizing point).
+    // Sized once here: the slot count never changes, and the producer indexes it from the
+    // first frame.
     fold.init(n_prn);
 
     const std::string ep =
@@ -217,16 +188,13 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
         config.get_default<std::string>(unique_name, "trim_endpoint", "/chord_track/get_trim");
     kotekan::restServer::instance().register_get_callback(
         tep, std::bind(&cudaGnssChordTrackState::get_trim_callback, this, _1));
-    // TASK #51 F2: the fleet controller's actuator.
+    // GnssFleetTrim's actuator.
     const std::string sep =
         config.get_default<std::string>(unique_name, "set_trim_endpoint", "/chord_track/set_trim");
     kotekan::restServer::instance().register_post_callback(
         sep, std::bind(&cudaGnssChordTrackState::set_trim_callback, this, _1, _2));
-    // LIVE PRN MEMBERSHIP. Registered ALWAYS and carrying its own authority, exactly as
-    // /set_trim does: there is no "enable live reconfiguration" flag on the node, because a
-    // node that will not answer "which satellite is slot 7?" is strictly worse than one that
-    // will, and the arming decision belongs to the BROKER (which is the only side that knows
-    // whether it is in report-only or apply mode). GET is a diagnostic; POST is the actuator.
+    // Slot membership. Always registered, with no enable flag on the node: whether to apply
+    // swaps is the broker's decision (it also has a report-only mode).
     const std::string gpe =
         config.get_default<std::string>(unique_name, "get_prns_endpoint", "/chord_track/get_prns");
     kotekan::restServer::instance().register_get_callback(
@@ -277,12 +245,10 @@ void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& con
                             {"swaps", swaps},
                             {"pending", pend},
                             {"last_error", err},
-                            // So the broker can see WHEN a staged swap is due and whether
-                            // this node's clock has reached it -- a swap that is merely
-                            // waiting must not read like a swap that was refused. And
-                            // last_hop < 0 on a LIVE node is the alarm: it means no producer
-                            // is feeding the deadline clock, so every swap silently degrades
-                            // to apply-immediately (which is exactly how this shipped inert).
+                            // When a staged swap is due and whether this node has reached it,
+                            // so a waiting swap does not read as a refused one. last_hop < 0
+                            // on a running node means nothing calls note_frame_hop, so every
+                            // scheduled swap applies immediately.
                             {"pending_at_hop", at_h},
                             {"last_hop", last_h}};
     conn.send_json_reply(reply);
@@ -290,24 +256,18 @@ void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& con
 
 void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& conn,
                                                 nlohmann::json& request) {
-    // Parse and validate OUTSIDE every lock. The GPU thread takes prn_mtx once per frame, so
-    // a parse under it would stall the tracker for the duration of an HTTP body -- the same
-    // lesson set_seeds_callback records above.
+    // Parse and validate before taking prn_mtx, which the GPU thread takes every frame.
     std::vector<int> want;
     std::string err;
     int64_t at_hop = -1;
     bool obsolete_at_seq = false;
     try {
-        // OPTIONAL, and absent means "as soon as possible" -- the pre-scheduling behaviour,
-        // kept so a hand-driven curl still works and so an older broker is not broken by a
-        // newer node.
+        // Optional; absent or null means the next frame boundary.
         if (request.is_object() && request.contains("at_hop") && !request.at("at_hop").is_null())
             at_hop = request.at("at_hop").get<int64_t>();
-        // ⚠️ THE OBSOLETE FIELD IS REFUSED, NOT REINTERPRETED. `at_seq` carried the same
-        // deadline in a different currency (see the header). Reading it as hops would be a
-        // guess about which side of the 2026-08-27 fix the sender is on, and guessing wrong
-        // is a swap 16384 frames early or late; ignoring it costs only the fleet-wide
-        // simultaneity, which is what an unscheduled post already costs. Loud, never silent.
+        // An obsolete `at_seq` deadline is ignored with a warning, not read as hops: its unit
+        // (samples or hops) depends on the sender, and a wrong guess moves the swap by a factor
+        // of fft_len. Ignoring it costs only the fleet-wide simultaneity.
         else if (request.is_object() && request.contains("at_seq")
                  && !request.at("at_seq").is_null())
             obsolete_at_seq = true;
@@ -333,9 +293,8 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
                       + " is outside 1..63";
             for (size_t j = 0; j < i && err.empty(); ++j)
                 if (want[j] == want[i])
-                    // A duplicate would put one satellite in two slots: both would be seeded,
-                    // both would report, and the broker would fold two copies of one ray into
-                    // its per-satellite state as though they were independent measurements.
+                    // A duplicate would put one satellite in two slots, and the broker would
+                    // fold both copies into its per-satellite state as independent measurements.
                     err = "PRN " + std::to_string(want[i]) + " appears in slots "
                           + std::to_string(j) + " and " + std::to_string(i);
         }
@@ -385,14 +344,11 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
         std::lock_guard<std::mutex> lk(prn_mtx);
         if (!prn_pending)
             return changed;
-        // NOT YET DUE -- leave it staged and come back next frame.
+        // Not yet due: leave it staged.
         if (prn_at_hop >= 0 && last_hop >= 0 && last_hop < prn_at_hop) {
-            // ⚠️ UNLESS THE COUNTER WENT BACKWARDS, in which case the deadline is unreachable
-            // and waiting for it would wedge the swap FOREVER. An F-engine restart moves seq
-            // back to ~0 ([[chord-gather-wedges-on-frame0-reset]]), so a schedule written
-            // against the old epoch can never mature. Apply immediately and say so: a swap
-            // that arrives early is a re-acquisition, a swap that never arrives is a slot
-            // stuck on a satellite that has set.
+            // Unless the hop counter went backwards since staging: an F-engine restart moves it
+            // back to ~0, so the deadline may never arrive. Applying early costs a
+            // re-acquisition; never applying leaves the slot on a satellite that has set.
             if (prn_stage_hop >= 0 && last_hop < prn_stage_hop) {
                 WARN_NON_OO("set_prns: frame hop went BACKWARDS ({:d} -> {:d}) -- the F-engine "
                             "re-based, so the scheduled swap at {:d} can never arrive. "
@@ -409,10 +365,9 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
             const int newp = pending_prns[(size_t)p];
             if (newp == prns[(size_t)p])
                 continue;
-            // THE BANK AND THE DEVICE FIRST. If the code table cannot be built (a PRN with no
-            // code for this signal) nothing else must move: a slot whose seed was cleared but
-            // whose code is unchanged would despread the OLD satellite against the NEW one's
-            // model, which is a lock loss dressed as a swap.
+            // Code table first. If it cannot be built (no code for this PRN on this signal, or
+            // an FDMA bank), nothing else about the slot changes, so its seed and trim stay
+            // consistent with the code it still despreads.
             if (!despread || !despread->set_prn(p, newp, stream)) {
                 prn_last_err = "slot " + std::to_string(p) + ": no code for PRN "
                                + std::to_string(newp) + " on this signal (or an FDMA bank)";
@@ -428,9 +383,8 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
     }
     if (changed.empty())
         return changed;
-    // ⚠️ SEQUENTIAL, NEVER NESTED. prn_mtx is released above before either of these is taken:
-    // expire_trims_locked reads `prns` with trim_mtx already held, so a prn_mtx -> trim_mtx
-    // nesting here would close a deadlock cycle against every /set_trim POST.
+    // prn_mtx is already released, so a seed or trim posted for the new PRN in between is
+    // cleared here as well; the next post restores it.
     {
         std::lock_guard<std::mutex> lk(seed_mtx);
         for (int p : changed)
@@ -439,9 +393,7 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
     {
         std::lock_guard<std::mutex> lk(trim_mtx);
         for (int p : changed) {
-            // A standing trim is a correction to the OLD satellite's code phase, in chips of
-            // its geometry. Carried across it is a fixed offset applied to a satellite that
-            // never asked for it -- the disease of chord-gather-restart-wipes-trims, inverted.
+            // A trim corrects the old satellite's code phase; kept, it would offset the new one.
             trim[(size_t)p] = 0.0;
             trim_n[(size_t)p] = 0;
             trim_t_recv[(size_t)p] = 0.0;
@@ -457,12 +409,10 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
 
 void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                                                  nlohmann::json& request) {
-    // Parse first, lock last -- the execute path takes seed_mtx every GPU frame, so holding it
-    // across a parse would stall the tracker directly.
+    // Parse before taking seed_mtx, which the GPU thread takes every frame.
     std::vector<std::pair<int, Seed>> upd;
-    // prn_mtx is the OUTERMOST lock (see the header): the GPU thread can be rewriting `prns`
-    // in apply_prn_swaps while this runs, and resolving a PRN against a half-written map would
-    // seed the wrong slot.
+    // prn_mtx first (see the header): apply_prn_swaps on the GPU thread rewrites `prns`, and
+    // resolving a PRN against a half-written map would seed the wrong slot.
     std::lock_guard<std::mutex> pk(prn_mtx);
     try {
         upd.reserve(request.size());
@@ -478,10 +428,10 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
                     sd.dop_rate = s.value("doppler_rate_hz_s", 0.0);
                     sd.ctrim_hz = s.value("carrier_trim_hz", 0.0);
                     sd.ref_hop = s.value("ref_hop", (long long)0);
-                    // PHYSICAL phase at ref_hop, when the producer can supply it. Preferred
-                    // over cp_chips: an argument back-references to sample 0 through a
-                    // Doppler-scaled rate, so the producer's Doppler error arrives multiplied
-                    // by ~5900 chips/Hz. A phase carries no such lever.
+                    // Physical phase at ref_hop, when the sender supplies it. Preferred over
+                    // cp_chips: an argument is referred to sample 0 through a Doppler-scaled
+                    // rate, so the sender's Doppler error arrives multiplied by thousands of
+                    // chips per Hz (~5095 at 6.8 days of uptime). A phase has no such lever.
                     sd.phase_ref_chips = s.value("code_phase_at_ref_chips", -1.0);
                     upd.emplace_back(i, sd);
                     break;
@@ -506,10 +456,8 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
 }
 
 void cudaGnssChordTrackState::expire_trims_locked(std::vector<int>& expired) {
-    // EXPIRE A TRIM WHOSE CONTROLLER STOPPED TALKING. A frozen trim is a permanent silent code
-    // offset that the broker's own slow DLL would then fight, and "latched forever" is the #13
-    // failure. Only STAMPED trims expire: the in-tracker loop leaves trim_t_recv at 0, and its
-    // silence means the SIGNAL went away, not the controller.
+    // Zero a trim whose controller stopped posting (see trim_ttl_s). Slots with no post since
+    // start or since their last reset have trim_t_recv 0 and are skipped.
     if (trim_ttl_s <= 0.0)
         return;
     const double now =
@@ -532,8 +480,7 @@ std::vector<double> cudaGnssChordTrackState::snapshot_trims(std::vector<int>& ex
 
 std::vector<cudaGnssChordTrackState::Seed>
 cudaGnssChordTrackState::snapshot_seeds(std::vector<int>& expired) {
-    // EXPIRE STALE SEEDS, under the same lock that copies them (see the long note at the call
-    // site in cudaGnssChordTrack::execute -- the latch-forever failure this replaced).
+    // Expire stale seeds under the same lock that copies them.
     const double now =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     std::lock_guard<std::mutex> lk(seed_mtx);
@@ -550,19 +497,17 @@ cudaGnssChordTrackState::snapshot_seeds(std::vector<int>& expired) {
 
 void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& conn,
                                                 nlohmann::json& request) {
-    // Parse first, lock last -- the same discipline as set_seeds: the execute path takes
-    // trim_mtx every GPU frame, so holding it across a parse would stall the tracker directly.
+    // Parse before taking trim_mtx, which the GPU thread takes every frame.
     std::vector<std::pair<int, double>> upd;
-    std::lock_guard<std::mutex> pk(prn_mtx); // OUTERMOST -- see set_seeds_callback
+    std::lock_guard<std::mutex> pk(prn_mtx); // first; see set_seeds_callback
     try {
         upd.reserve(request.size());
         for (const auto& s : request) {
             const int prn = s.at("prn").get<int>();
             const double t = s.at("trim_chips").get<double>();
-            // A NaN here would propagate into the commanded code phase and despread garbage
-            // for as long as it stood. Reject the whole request rather than a field: a partial
-            // application would leave the controller and the tracker disagreeing about what is
-            // commanded, silently.
+            // A NaN would propagate into the commanded code phase. Reject the whole request,
+            // not just the entry, so the controller and the node never disagree about what is
+            // commanded.
             if (!std::isfinite(t))
                 throw std::runtime_error("trim_chips is not finite");
             for (int i = 0; i < n_prn; ++i)
@@ -580,9 +525,8 @@ void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& con
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     {
         std::lock_guard<std::mutex> lk(trim_mtx);
-        // Sweep here too: this callback still runs when execute() has stopped (a wedged GPU
-        // chain answers REST perfectly well), and that is precisely when a stale trim would
-        // otherwise stand indefinitely. See expire_trims_locked.
+        // Sweep here too: this callback still runs when execute() has stopped. See
+        // expire_trims_locked.
         std::vector<int> gone;
         expire_trims_locked(gone);
         for (const auto& u : upd) {
@@ -592,16 +536,14 @@ void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& con
         }
         ++trim_posts;
     }
-    // ⚠️ NOTHING ELSE IS TOUCHED. Not seeds, not t_recv. See the header note: an
-    // actuator that quietly resets another loop's state is the failure this endpoint exists
-    // to avoid, and it is why this is not a field on /set_seeds.
+    // Nothing else is touched, not the seeds nor their t_recv (see trim_ttl_s in the header).
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
 void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& conn) {
     nlohmann::json out = nlohmann::json::array();
     {
-        std::lock_guard<std::mutex> pk(prn_mtx); // OUTERMOST -- see set_seeds_callback
+        std::lock_guard<std::mutex> pk(prn_mtx); // first; see set_seeds_callback
         std::lock_guard<std::mutex> lk(trim_mtx);
         for (int p = 0; p < n_prn; ++p)
             out.push_back({{"prn", prns[(size_t)p]},

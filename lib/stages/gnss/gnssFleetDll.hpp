@@ -2,44 +2,34 @@
 #define GNSS_FLEET_DLL_HPP
 /**
  * @file gnssFleetDll.hpp
- * @brief THE FLEET CODE DISCRIMINATOR, from the comb -- the arithmetic, with no kotekan in it.
+ * @brief The fleet code discriminator from the per-channel comb: the arithmetic, with no kotekan
+ *        dependencies.
  *
- * Task #51, milestone F1. This is the C++ twin of
- * python/scripts/gnss/gnss_broker/combdll.py: fold every channel of the lobe's per-channel
- * E/P/L into one fleet discriminator per PRN per window.
+ * C++ twin of python/scripts/gnss/gnss_broker/combdll.py: folds every channel of the lobe's
+ * per-channel E/P/L into one discriminator per PRN per window. It is a header rather than part
+ * of the GnssFleetTrim stage so that scripts/gnss/fleetdll.cpp can run the shipped arithmetic
+ * on a fixture, and scripts/gnss/fleetdll_gate.py can compare it with the Python arm on the
+ * same bytes.
  *
- * WHY IT IS A HEADER AND NOT A STAGE. Same reason gnssSeedTransport.hpp exists. The arithmetic
- * that matters here sits behind a kotekan buffer graph and a REST hop, so the only way to
- * exercise it in a stage would be to fly it -- and this codebase has repeatedly paid for
- * conventions that could only be tested in deployment order. Pulled out, `scripts/gnss/fleetdll`
- * drives the SHIPPED code against a byte-identical fixture in under a second, and the gate
- * compares it with the Python arm's answer on the same bytes. A harness that re-derives the
- * arithmetic instead of calling it tests the harness author's understanding, which is exactly
- * the thing already known to be unreliable.
- *
- * WHAT IT REPRODUCES, and where the Python arm is the reference:
- *
- *     per record, per PRN, over EVERY channel c of the lobe (all senders, each sender's
- *     columns first multiplied by exp(+i*phi0), REC_PHI0):
+ *     per record, per PRN, over every channel c of the lobe (all senders, each sender's
+ *     columns rotated by exp(+i*phi0), REC_PHI0, and weighted by 1 - REC_PROJ_COST):
  *                                        e = |SUM_c G^E_c|^2 / (SUM_c E^E_c)^2   (and p, l)
- *     per PRN:                           E = mean over the records in the window ring, P, L
+ *     per PRN:                           E = mean over the complete records of the newest
+ *                                            n_win windows (and P, L)
  *                                        disc = (E-L)/(E+L) ,  q = 2P/(E+L)
  *
- * ⚠️ THE COHERENCE UNIT IS THE LOBE. Nothing in this arithmetic knows what a sender is: a
- * sender is a `freq_id mod 8` grouping of channels, a transport artefact, and any reduction
- * that treats it as a unit -- coherent within, powers added across -- puts that grouping into
- * the discriminator as a 3.27-chip grating comb and an n_sender-fold noise floor. The only
- * place a sender count survives is as COMPLETENESS: a record fewer than `min_instances`
- * senders reached is not averaged in. It is never an operand.
+ * The coherence unit is the lobe. A sender is a `freq_id mod 16` grouping of channels (one
+ * GPU's comb at 3.125 MHz stride), a transport artefact. A reduction that sums coherently
+ * within a sender and adds powers across senders puts that grouping into the discriminator as
+ * a 320 ns grating comb (3.27 chips at 10.23 Mcps) and an n_sender-fold noise floor. The sender
+ * count enters only as completeness: a record fewer than `min_instances` senders reached is
+ * not averaged in.
  *
- * ⚠️ RECORDS ARE THE UNIT OF AVERAGING, and a record with no live comb is absent, not zero. A
- * sender that drops a frame leaves that record less complete (fewer channels in the sum, the
- * same normalised signal power, more noise); it does not zero anything and it does not weight
- * anything.
+ * Records are the unit of averaging. A record with no live comb is absent, not zero, and a
+ * dropped frame leaves its record with fewer channels (same normalised signal, more noise).
  *
- * ⚠️ PRESENCE IS NOT HERE, ON PURPOSE. apply_presence -- the k-sigma floor, the quality
- * fallback, the probe and deep gates -- is POLICY and stays in the Python broker
- * (docs/CHORD_FAST_TRIM.md 3). This produces numbers; it passes no verdicts.
+ * Presence (the noise floor, the probe and deep gates) is policy and stays in the Python
+ * broker. This produces numbers, not verdicts.
  *
  * @author Keith Vanderlinde
  */
@@ -61,75 +51,53 @@
 
 namespace gnss {
 
-/// What one PRN's fleet discriminator looks like. combdll.fleet_dll_comb's row, minus presence.
+/// One PRN's fleet discriminator: combdll.fleet_dll_comb's row, without presence.
 struct FleetDllRow {
-    double disc = 0.0; ///< (E-L)/(E+L). 0 = on peak; sign is "the tap is early/late".
-    double q = 0.0;    ///< 2P/(E+L). EXACTLY 1.0 = no peak; ~4 = clean lock at 0.5 spacing.
+    double disc = 0.0; ///< (E-L)/(E+L); 0 on peak, positive when E > L
+    double q = 0.0;    ///< 2P/(E+L); 1 when E = P = L (no peak), ~4 on a clean peak at 0.5 spacing
     double e_pow = 0.0, p_pow = 0.0, l_pow = 0.0;
-    double n_chan = 0.0; ///< channels in the lobe sum, meaned over records
-    int n_src = 0;    ///< senders behind the most complete record -- completeness, not an operand
-    int n_rec = 0;    ///< records averaged
-    int64_t hop = -1; ///< newest F-engine hop in the average
-    uint64_t win = 0; ///< newest window in the average
-    uint64_t n_updates = 0; ///< discriminators formed for this PRN since start -- THE RATE
+    double n_chan = 0.0;    ///< channels in the lobe sum, meaned over records
+    int n_src = 0;          ///< senders behind the most complete record (completeness only)
+    int n_rec = 0;          ///< records averaged
+    int64_t hop = -1;       ///< newest F-engine hop in the average
+    uint64_t win = 0;       ///< newest window in the average
+    uint64_t n_updates = 0; ///< discriminators formed since start; its rate is the update rate
 };
 
-/// Why a frame was not folded. Anything but OK means the wire and this build disagree, and the
-/// numbers that would have fallen out are plausible and wrong.
+/// Result of FleetDll::fold(). BAD_HEADER: the frame's magic, version or shape does not match
+/// this build, or it overruns `bytes`, so it was not parsed. LATE: its window is older than the
+/// chain's newest and no longer open, so it was dropped.
 enum class FoldStatus { OK, BAD_HEADER, LATE };
 
-/// The integrator's constants. ONE convention, and the Python arm calls the same expression
-/// (gnss_broker.combdll.dll_tau / dll_integrate) so the two cannot drift.
+/// The integrator's constants. The Python arm uses the same expressions (combdll.dll_tau and
+/// dll_integrate), and scripts/gnss/fleetdll_gate.py checks that the two trim series agree.
 struct TrimPolicy {
     double gain = 0.25;   ///< step = gain * tau
-    double leak = 0.05;   ///< PER UPDATE -- see the warning on dll_integrate
+    double leak = 0.05;   ///< per update, not per second; see dll_integrate
     double clamp = 3.0;   ///< |trim| bound, chips
     double spacing = 0.5; ///< tracker Early/Late spacing, chips
-    /// ABSOLUTE prompt-power floor for the per-window information gate (same currency as the
-    /// rows' p_pow). 0 = the original behaviour: 3x the window's own population median.
-    ///
-    /// ⚠️ WHY THIS EXISTS (2026-08-26, the E3 chase). The peer-median gate's premise -- "most
-    /// PRNs are signal-free at any moment, so the median IS the no-signal level" -- was true
-    /// on the airspy prototype, where --noise-probes seeded genuine noise rows into the
-    /// population. On CHORD the armed rows are mostly REAL satellites, so the median is a
-    /// SIGNAL level and 3x it is a PEER COMPETITION: the bottom of the pack goes leak-only
-    /// no matter how far above the actual noise floor it sits. Measured: gal_e5b PRN 33 spent
-    /// 75.1% of its windows skipped; E3 was at ~20x the PROBE floor when the gate stood the
-    /// loop down, its trim erased through the leak, and a 60 s fade became a 12 min outage.
-    /// This is the same trap the broker's presence gate found and fixed with probe anchoring
-    /// on 2026-08-14 -- the fix just never reached this loop.
-    ///
-    /// The value arrives from the BROKER's probe-anchored floor via /set_policy, margin
-    /// already applied. Policy stays in Python; this is a number, not a decision.
+    /// Absolute prompt-power floor for the per-window information gate, in the rows' p_pow
+    /// units. The broker sends its probe-anchored floor via /set_policy. 0 = no floor: every
+    /// armed PRN gets leak-only steps (see FleetDll::integrate).
     double p_floor_abs = 0.0;
 };
 
-/// The code discriminator -> delay estimate, in chips.
-///
-/// ⚠️ |tau| <= 0.25 chips BY CONSTRUCTION, whatever `disc` is: the clamp is on the
-/// discriminator, and it is divided by four. THIS IS THE WHOLE OF #51 -- the loop's authority
-/// is a step per update, so no gain and no clamp can make one update slew further, and the
-/// UPDATE RATE is the only lever. (Cutting the gain to "compensate" for a faster rate hands the
-/// entire win straight back: same gain, faster rate.)
+/// The code discriminator -> delay estimate, in chips. |tau| <= spacing/2 (0.25 chips at the
+/// default 0.5 spacing) whatever `disc` is, because the clamp is on the discriminator. The
+/// discriminator therefore moves the trim at most gain*spacing/2 chips per update however large
+/// the error, and the maximum slew rate is that times the update rate.
 inline double dll_tau(double disc, double spacing) {
     return -std::max(-1.0, std::min(1.0, disc)) / 4.0 * (spacing / 0.5);
 }
 
-/// One leaky-integrator update.
+/// One leaky-integrator update. `leak` is per update, so the loop bandwidth scales with the
+/// update rate: in continuous form dT/dt = -leak*f*T + gain*f*tau, whose steady state
+/// gain*tau/leak does not depend on f but whose closed-loop and noise bandwidths do. Constants
+/// stated per second must be converted with the achieved rate before they reach here.
 ///
-/// ⚠️ `leak` IS PER UPDATE, SO LOOP BANDWIDTH SCALES WITH RATE. In continuous form this is
-/// dT/dt = -leak*f*T + gain*f*tau: the steady state (gain*tau/leak) does NOT move with f, but
-/// the closed-loop AND noise bandwidths both scale with it. Going 3.1 -> 23.8 Hz is therefore
-/// ~8x the bandwidth at unchanged constants. Whoever sets these must convert from a
-/// per-SECOND leak using the ACHIEVED rate; this function is deliberately the dumb primitive
-/// so that conversion happens in exactly one, clearly-labelled place.
-///
-/// ⚠️ AND THE STEADY STATE IS A CEILING THE RATE CANNOT LIFT: under a railed discriminator the
-/// trim converges to gain*0.25/leak, which at the shipped defaults (0.25, 0.05) is 1.25 chips
-/// -- BELOW the residuals seen on sky, and far below the +-3.0 clamp, which is therefore
-/// unreachable by construction. Measured on sky 2026-08-15: max |trim| 1.140 chips over 5174
-/// updates in 8 hours, never once past 1.25. If the loop is pushing at a railed discriminator
-/// without arriving, THIS is the reason and a faster loop will not fix it.
+/// Under a railed discriminator the trim converges to gain*(spacing/2)/leak, 1.25 chips at the
+/// defaults, and no update rate raises that; integration alone never reaches the default
+/// 3-chip clamp.
 inline double dll_integrate(double trim, double disc, const TrimPolicy& p) {
     const double t = (1.0 - p.leak) * trim + p.gain * dll_tau(disc, p.spacing);
     return std::max(-p.clamp, std::min(p.clamp, t));
@@ -138,86 +106,58 @@ inline double dll_integrate(double trim, double disc, const TrimPolicy& p) {
 /**
  * The fleet discriminator, accumulated per chain over a ring of absolute windows.
  *
- * COLLATION is #59's exact-integer match on `win` -- no tolerance, no arrival-order inference.
- * COMPLETION mirrors the Python arm rather than inventing a rule: a window CLOSES when any
- * sender on that chain reports a newer one (TelemClient.windows(..., lag=1)). No timer, no
- * barrier, nothing waits on a sender. A frame for an already-closed window is counted as LATE
- * and DROPPED -- re-opening a window would make the aggregate depend on arrival order, which is
- * the whole bug class #59 removed.
+ * Frames are collated by exact integer match on `win`, with no tolerance and no arrival-order
+ * inference. A window closes when any sender on that chain reports a newer one, the counterpart
+ * of the Python arm's TelemClient.windows(..., lag=1); nothing waits on a sender. A frame for
+ * an already-closed window is counted as LATE and dropped: reopening a window would make the
+ * aggregate depend on arrival order.
  */
 class FleetDll {
 public:
-    /// `taps_win` is the window depth SERVED BY taps(), independent of the loop's `n_win`.
-    /// They are different questions and were being answered with one number: the code loop
-    /// integrates the freshest 2 windows (authority is a step per update, so depth buys it
-    /// nothing), while the broker's policy cycle averages 32 for the SNR its gates need
-    /// (`telem-windows: 32`, matched to the REST feed's `record_export: 128`). 0 = follow
-    /// n_win, which is what the offline harness wants so both arms window identically.
-    /// ⚠️ `sig_k` IS GONE, NOT DEFAULTED OFF (2026-08-27). It multiplied a PEER MEDIAN; see
-    /// integrate(). Removing the parameter is deliberate -- a knob that only ever selects
-    /// between two wrong answers is one a future reader will try to tune.
+    /// `taps_win` is the window depth served by taps() and rec_series(), independent of the
+    /// loop's `n_win`. The loop integrates only the freshest few windows (one update's authority
+    /// is fixed, so depth buys it nothing), while the broker's policy cycle averages its
+    /// `telem-windows` for the SNR its gates need. 0 = follow n_win.
     FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8, int taps_win = 0,
              int epoch_margin = 64, int epoch_strikes = 8) :
         _n_win(std::max(1, n_win)), _min_instances(min_instances),
         _max_open_win(std::max(2, max_open_win)),
         _taps_win(taps_win > 0 ? taps_win : std::max(1, n_win)),
-        // 64 windows is ~2.7 s at the 23.84 Hz close rate -- far beyond any laggard
-        // (max_open_win is 8) and far below a frame0 move, which lands thousands back.
-        // 8 strikes is under half a second of stream: fast enough that the fold recovers
-        // inside one policy cycle, long enough that no single frame can re-anchor it.
+        // 64 windows is ~2.7 s at 23.84 windows/s: more than a laggard falls behind, far less
+        // than a frame0 move. 8 strikes is under half a second of stream even from one sender,
+        // and no single far-behind frame can re-anchor.
         _epoch_margin(std::max(2, epoch_margin)), _epoch_strikes(std::max(1, epoch_strikes)) {}
 
-    /// ONE CHANNEL's three powers for one PRN, over the records of one window -- keyed by the
-    /// F-engine freq_id off the frame header, never by the sender's column index or by which
-    /// sender carried it (gnssTelem.hpp: a fit over unlabelled columns returns a confident
-    /// wrong tau). Formed from that channel alone, no rotation needed: a power is reference-free.
+    /// One channel's three powers for one PRN over the records of one window, keyed by the
+    /// F-engine freq_id from the frame header, never by the sender's column index. Formed from
+    /// that channel alone; a power needs no phase reference, so no rotation is applied.
     struct ChanTap {
         double e = 0.0, p = 0.0, l = 0.0;
         int n_rec = 0;
     };
 
-    /// ONE RECORD's complex partial sums for one PRN over EVERY channel of the lobe that has
-    /// reached this window so far, each sender's columns rotated onto the common reference
-    /// before they are added. Live only while the window is open; closes into a RecTap.
-    ///
-    /// ⚠️ THE COHERENCE UNIT IS THE LOBE, NOT THE SENDER. A sender is a `freq_id mod 8`
-    /// grouping of channels -- a transport artefact -- and a discriminator that sums its
-    /// channels coherently and then adds POWERS across senders inherits that grouping: seven
-    /// channels at 3.125 MHz stride give a 3.27-chip grating comb in the correlation response
-    /// and a noise floor ~n_sender times what the band can give. One complex sum over all
-    /// channels, then one power, has neither. No sender appears in this arithmetic.
-    ///
-    /// ⚠️ THE ROTATION IS LOAD-BEARING. Each sender's assembler applied exp(-i*phi0) to its
-    /// comb with a phi0 whose zero is arbitrary per sender (gnssRecord.hpp REC_PHI0); the
-    /// per-record row carries that phi0, and multiplying the sender's columns by exp(+i*phi0)
-    /// is what puts twelve senders on one reference. Without it the cross-sender sum is a sum
-    /// of unrelated phasors and the lobe-coherent prompt is BELOW the per-sender one.
+    /// One record's complex partial sums for one PRN over every channel of the lobe that has
+    /// reached this window so far; settle() turns it into a RecTap at close. Each sender's
+    /// assembler applied exp(-i*phi0) to its comb with a phi0 whose zero is arbitrary per sender
+    /// (REC_PHI0), so its columns are multiplied by exp(+i*phi0) before they are added; without
+    /// that the cross-sender sum adds unrelated phasors.
     struct RecAcc {
         double gE_re = 0, gE_im = 0, gP_re = 0, gP_im = 0, gL_re = 0, gL_im = 0;
         double wE = 0, wP = 0, wL = 0;
-        /// THE ROTATION'S OWN CHECK. Each sender's energy-normalised, derotated prompt
-        /// a_i = (G_P/W_P)*exp(+i*phi0): SUM_i a_i (complex) and SUM_i |a_i|^2. From these the
-        /// record's cross-sender coherence (|SUM a|^2 - SUM |a|^2) / (SUM |a|^2 * (n-1)) says
-        /// whether phi0 put the senders on ONE reference (~1) or the lobe sum is adding
-        /// unrelated phasors (~0, and the prompt above is then BELOW the per-sender one). It
-        /// is a diagnostic beside the sum, never an operand in it.
+        /// Check on the rotation, a diagnostic only: SUM_i a_i and SUM_i |a_i|^2 over senders
+        /// of the derotated, energy-normalised prompt a_i = (G_P/W_P)*exp(+i*phi0). The
+        /// cross-sender coherence (|SUM a|^2 - SUM |a|^2) / (SUM |a|^2 * (n-1)) is ~1 when the
+        /// senders share one reference and ~0 when they do not.
         double aP_re = 0, aP_im = 0, aP_sq = 0;
         int n_chan = 0; ///< channels behind the sums
-        int n_inst = 0; ///< senders behind the sums -- completeness, never an operand
+        int n_inst = 0; ///< senders behind the sums (completeness only)
         int64_t hop = -1;
     };
 
-    /// One RECORD's three lobe-coherent powers for one PRN: |SUM_c G_c|^2 / (SUM_c E_c)^2,
-    /// each tap on its own replica energy. The unit every downstream reduction averages.
-    ///
-    /// ⚠️ Records with no live comb contribute NOTHING rather than zeros. A zeroed record is not
-    /// a measurement of no signal, it is the absence of one, and averaging it in dilutes the
-    /// power exactly the way the deep fold's zero-padding did.
-    ///
-    /// A different consumer wants this un-averaged: the SERVED C/N0 (#57) is a radiometric
-    /// estimator whose whole point is that it fits nothing, so it needs the samples, not their
-    /// mean. `n_chan`/`n_inst` say how complete the record was; a partial record carries the
-    /// same normalised signal power and more noise, and the consumer decides whether to use it.
+    /// One record's three lobe-coherent powers for one PRN, |SUM_c G_c|^2 / (SUM_c E_c)^2 with
+    /// each tap on its own replica energy: the unit every downstream reduction averages. A
+    /// record with no live comb has no RecTap rather than a zero one. rec_series() serves these
+    /// un-averaged for the C/N0 estimator; `n_chan`/`n_inst` say how complete each record was.
     struct RecTap {
         double e = 0.0, p = 0.0, l = 0.0;
         /// cross-sender coherence of the derotated prompts (RecAcc); NaN below two senders
@@ -231,62 +171,59 @@ public:
         std::map<int, std::map<int, RecAcc>> acc;   ///< [record slot][prn], while open
         std::map<int, std::map<int, RecTap>> rec;   ///< [record slot][prn], once closed
         std::map<int, std::map<int, ChanTap>> chan; ///< [prn][freq_id]
-        /// freq_id -> the sender that carried it this window. A channel reaches exactly ONE
-        /// sender (freq_id mod 8 routing); a second claimant is a misconfiguration upstream,
-        /// and that channel is named, counted and DROPPED from the per-channel table rather
-        /// than summed twice into a number that is neither sender's measurement.
+        /// freq_id -> the sender that carried it this window. Each channel is routed to exactly
+        /// one sender, so a second claimant is an upstream routing fault: the channel goes in
+        /// `dup`, is counted (Chain::n_dup_chan) and is left out of the per-channel taps that
+        /// taps() serves. It stays in the lobe sum.
         std::map<int, std::string> owner;
         std::set<int> dup;
     };
 
-    /// One PRN's integrator state. `trim` is a correction to the BROKER'S MODEL, not to a
-    /// particular seed, so it survives the model being republished every policy cycle.
+    /// One PRN's integrator state. `trim` corrects the broker's model, not a particular seed,
+    /// so it survives the model being republished every policy cycle.
     struct TrimState {
         double trim = 0.0;
-        uint64_t n_steps = 0;   ///< integrator updates -- THE RATE, measured not assumed
+        uint64_t n_steps = 0;   ///< integrator updates; their rate is the achieved loop rate
         uint64_t n_railed = 0;  ///< updates that hit the clamp
-        uint64_t n_skipped = 0; ///< windows with no signal under the taps: leak only
+        uint64_t n_skipped = 0; ///< leak-only windows: below the prompt-power floor, or no floor
         double last_disc = 0.0, last_q = 0.0;
         uint64_t last_win = 0;
     };
 
     struct Chain {
         uint64_t newest = 0;
-        /// Record length in hops, off the wire header. Carried because the SERVED C/N0 needs
-        /// the integration time per record and must not assume it (gnssTelem.hpp: mixing a
-        /// sample index with a hop index is a 16384x error that looks like a clock).
+        /// Record length in hops, from the wire header; /get_rec_taps serves it so the C/N0
+        /// estimator gets each record's integration time rather than assuming it.
         uint32_t hops_per_record = 0;
         bool have_newest = false;
         std::map<uint64_t, WindowAcc> open; ///< ordered, so "close everything older" is a walk
-        std::deque<WindowAcc> closed;       ///< the last n_win closed windows
+        std::deque<WindowAcc> closed;       ///< the newest max(n_win, taps_win) closed windows
         std::map<int, FleetDllRow> row;
-        /// WHO MAY BE TRIMMED, decided by the Python broker and never here. This class forms
-        /// numbers and steps an integrator; presence, floors, the deep gate and the arming
-        /// verdict are POLICY and stay on the 12 s cycle (docs/CHORD_FAST_TRIM.md 3).
+        /// PRNs the broker armed via /set_policy; integrate() applies the discriminator only to
+        /// these. Presence, floors and the arming verdict are policy and stay in the broker.
         std::set<int> armed;
         TrimPolicy policy;
         std::map<int, TrimState> trim;
         uint64_t n_closed = 0; ///< windows closed == integrator steps available
         uint64_t n_late = 0;   ///< frames for a window already closed: dropped, never folded
-        uint64_t n_forced = 0; ///< force-closed by max_open_win, i.e. a sender went away
+        uint64_t n_forced = 0; ///< windows force-closed by flush() or past max_open_win
         uint64_t n_frames = 0;
-        /// freq_ids two senders both carried in one window -- a routing fault upstream,
-        /// named and dropped from the per-channel table (see WindowAcc::dup).
+        /// freq_ids two senders both carried in one window (see WindowAcc::owner)
         uint64_t n_dup_chan = 0;
-        /// A1/THE EPOCH RESET. Consecutive frames landing FAR behind `newest` -- the
-        /// signature of an F-engine frame0 move, never of a late sender.
+        /// Consecutive frames more than epoch_margin windows behind `newest`; epoch_strikes of
+        /// them re-anchor the chain (see fold()).
         uint64_t n_backwards = 0;
-        uint64_t n_epoch_reset = 0; ///< re-anchors performed; >0 means the axis moved
+        uint64_t n_epoch_reset = 0; ///< re-anchors performed (the F-engine frame0 moved)
     };
 
     /// Fold one wire frame. `chain_out`/`inst_out` are filled whenever the header parsed.
     FoldStatus fold(const void* frame, size_t bytes, std::string* chain_out = nullptr,
                     std::string* inst_out = nullptr) {
         const auto* h = (const TelemHeader*)frame;
-        // The same validation the gather applies, for the same reason: a sender on a different
-        // record layout parses at the wrong stride, and this stage would close a loop on it.
-        // `bytes` is the CAPACITY the caller can read (the buffer's frame), not this frame's
-        // size: senders ship their own shapes into a buffer sized to the widest one.
+        // The same check GnssTelemGather applies: a sender on a different record layout would
+        // parse at the wrong stride. `bytes` is the capacity the caller can read (the buffer's
+        // frame size), not this frame's size: senders ship their own shapes into a buffer
+        // sized for the widest.
         const bool ok = h->magic == TELEM_MAGIC && h->version == TELEM_VERSION && h->fft_len > 0
                         && telem_shape_ok(*h, telem_frame_bytes(*h))
                         && telem_frame_bytes(*h) <= bytes;
@@ -303,32 +240,20 @@ public:
         Chain& c = _chain[chain];
         c.n_frames++;
         c.hops_per_record = h->hops_per_record;
-        // ── A1: THE EPOCH RESET (2026-08-26) ────────────────────────────────────────
-        // `win` is ABSOLUTE from the F-engine's frame0, so an F-engine restart moves
-        // frame0 and every sender's window index restarts SMALL. Before this, the LATE
-        // rule below dropped every subsequent frame FOREVER: the fold froze, `row` kept
-        // serving its last aggregate with an IDENTICAL `hop` on every row at 200 OK, the
-        // 60 TCP connections stayed ESTABLISHED, and nothing looked down. It voided at
-        // least three experiments.
-        //
-        // A LAGGARD IS NOT AN EPOCH CHANGE, and the discriminator is SIZE plus
-        // PERSISTENCE. A late sender is a few windows behind and its peers are not; a
-        // frame0 move lands the WHOLE stream hundreds of windows back and keeps doing it.
-        // So a large backwards jump is COUNTED, not acted on, and only a run of
-        // `_epoch_strikes` consecutive such frames re-anchors -- one corrupt header
-        // cannot, and any in-order frame clears the run.
-        //
-        // THE TRIMS SURVIVE. Only `open`/`newest` are epoch-scoped. The integrator,
-        // arming and policy belong to the broker's 12 s cycle, not to the stream, and
-        // wiping them here would turn an F-engine restart into a fleet-wide pull-in --
-        // the very cost d01c0c1be's trim store exists to avoid.
+        // Epoch reset. `win` counts from the F-engine's frame0, so an F-engine restart makes
+        // every sender's window index restart small, and the LATE rule alone would then drop
+        // every later frame. A laggard is a few windows behind; a frame0 move puts the whole
+        // stream far back and keeps it there. So a jump of more than `_epoch_margin` windows is
+        // counted, and `_epoch_strikes` consecutive such frames re-anchor; any in-order frame
+        // clears the run. Only `open` and `newest` are reset: the trims, arming and policy
+        // belong to the broker's cycle, and wiping them would force a fleet-wide pull-in.
         if (c.have_newest && h->win < c.newest && !c.open.count(h->win)) {
             if (c.newest - h->win <= (uint64_t)_epoch_margin
                 || ++c.n_backwards < (uint64_t)_epoch_strikes) {
                 c.n_late++;
                 return FoldStatus::LATE;
             }
-            // Re-anchor ON this frame and fold it: the new epoch starts here.
+            // Re-anchor on this frame and fold it.
             c.open.clear();
             c.newest = h->win;
             c.have_newest = true;
@@ -341,17 +266,16 @@ public:
         const float* rows = telem_rows(frame);
         const int n_prn = h->n_prn;
         const int n_chan = h->n_chan;
-        // THE SENDER'S STRIDE, off the wire. Senders carry different comb widths, so a
-        // compile-time row width reads a narrow sender's rows at the wide sender's offsets --
-        // every field lands in the previous row's comb and looks like data.
+        // The sender's row stride, from the wire: senders carry different comb widths, and a
+        // compile-time width would read a narrow sender's rows at the wrong offsets.
         const int row_floats = h->n_row_total;
 
-        // THE PRN MAP IS READ FROM THE DATA, from record slot 0's rows, exactly as the Python
-        // client does. The assembler writes REC_PRN even for a PRN that did not run this window,
-        // so it is there whether or not slot 0 was filled. A configured copy is one more thing
-        // that can drift out of step with the node it describes -- and after #64's row
-        // compaction the row order is not the configured PRN order at all.
-        constexpr int MAX_ROWS = 256; // telem_max_prn is per chain now (12-24), was 40 pre-#64
+        // The PRN map is read from the data, from record slot 0's rows, as the Python client
+        // does. GnssTelemPack compacts the rows to the PRNs despread in the window, so the row
+        // order is not the configured PRN order, and fixes the map for the whole window, so
+        // slot 0's map holds for every slot. Unused rows read PRN 0. A frame whose slot 0 was
+        // not filled reads all zeros here and folds nothing.
+        constexpr int MAX_ROWS = 256; // PRN-map ceiling; telem_max_prn is per chain and smaller
         int prn_of_row[MAX_ROWS];
         const int n_row_map = std::min(n_prn, MAX_ROWS);
         for (int p = 0; p < n_row_map; ++p) {
@@ -373,12 +297,10 @@ public:
                     continue;
                 const float* row = rows + telem_row_offset(r, p, n_prn, row_floats);
 
-                // THIS SENDER'S CHANNELS, SUMMED RAW (#63). Each tap is normalised by ITS OWN
-                // replica energy, and the three were element-combined and NCO-rotated
-                // identically upstream -- a discriminator built from taps combined even
-                // slightly differently measures the difference between the combines rather
-                // than the code offset. The Python arm (combdll.lobe_taps) accumulates
-                // (raw/E)*E per channel, which is the raw complex; written that way directly.
+                // This sender's channels, summed raw. Each tap is normalised by its own replica
+                // energy, and the three were element-combined and NCO-rotated identically
+                // upstream. The Python arm accumulates (raw/E)*E per channel, which is the raw
+                // complex.
                 double gE_re = 0, gE_im = 0, gP_re = 0, gP_im = 0, gL_re = 0, gL_im = 0;
                 double wE = 0, wP = 0, wL = 0;
                 int used = 0;
@@ -387,10 +309,9 @@ public:
                     const double eP = cc[CHAN_ENERGY];
                     if (eP <= 0.0)
                         continue; // no live comb for this channel this record
-                    // ⚠️ EXACTLY 0.0 falls back to the prompt energy, matching the Python arm's
-                    // `a[CHAN_E_ENERGY] or eP`. It moves only the denominator -- the numerator
-                    // is the raw complex either way -- and only for senders predating the E/L
-                    // energies. Mirrored rather than tidied: the two arms have to agree.
+                    // An E or L energy of exactly 0 falls back to the prompt energy, matching
+                    // the Python arm's `a[CHAN_E_ENERGY] or eP`. It moves only the denominator,
+                    // and only for senders that do not fill the E/L energies.
                     const double eE = cc[CHAN_E_ENERGY] != 0.0f ? cc[CHAN_E_ENERGY] : eP;
                     const double eL = cc[CHAN_L_ENERGY] != 0.0f ? cc[CHAN_L_ENERGY] : eP;
                     gE_re += cc[CHAN_E_RE];
@@ -407,18 +328,17 @@ public:
                 if (used == 0 || wP <= 0.0)
                     continue;
 
-                // PROJECTION-COST WEIGHT (REC_PROJ_COST): a sender whose live weights lie in
-                // the projected subspace by cos^2 = b kept (1 - b) of this satellite's
-                // amplitude, so its partial enters the lobe sum weighted (1 - b), numerator and
-                // energies alike: maximal-ratio across senders, and today's expression exactly
-                // when every sender has the same b. -1 (no basis in force) weighs 1; b = 1 is
-                // an absent measurement, like a record with no live comb.
+                // Projection-cost weight (REC_PROJ_COST): a sender whose live weights lie in the
+                // projected subspace by cos^2 = b kept (1 - b) of this satellite's amplitude, so
+                // its partial enters the lobe sum weighted (1 - b), numerator and energies
+                // alike: maximal-ratio across senders, and the unweighted sum when every sender
+                // has the same b. -1 (not applicable) weighs 1; b = 1 is an absent measurement.
                 const float pc = row[REC_PROJ_COST];
                 const double pw = (pc >= 0.0f) ? 1.0 - std::min(1.0, (double)pc) : 1.0;
                 if (pw <= 0.0)
                     continue;
 
-                // ONTO THE COMMON REFERENCE, then into the lobe's sum for this record.
+                // Onto the common reference, then into the lobe sum for this record.
                 const double phi0 = row[REC_PHI0];
                 const double cr = std::cos(phi0), ci = std::sin(phi0);
                 RecAcc& a = w.acc[r][prn];
@@ -431,8 +351,8 @@ public:
                 a.wE += wE * pw;
                 a.wP += wP * pw;
                 a.wL += wL * pw;
-                // ⚠️ NORMALISE FIRST, THEN ROTATE, mirroring the Python `gP / eP * rot`: the
-                // same number in exact arithmetic and not the same float otherwise.
+                // Normalise, then rotate, as the Python arm's `gP / eP * rot` does: equal in
+                // exact arithmetic, not in floating point.
                 {
                     const double nr = gP_re / wP, ni = gP_im / wP;
                     const double ar = nr * cr - ni * ci, ai = nr * ci + ni * cr;
@@ -444,14 +364,9 @@ public:
                 a.n_inst++;
                 a.hop = std::max(a.hop, hop);
 
-                // PER-CHANNEL, by freq_id, formed by the IDENTICAL expression one column at a
-                // time. A second pass over the same columns rather than folded into the loop
-                // above: the record is only admitted once `used > 0` is known, and the Python
-                // arm likewise skips a record with no live comb before touching its channels.
-                //
-                // ⚠️ NORMALISE FIRST, THEN TAKE THE MAGNITUDE. Python computes
-                // `abs(complex(re/e, im/e))**2`; (re*re + im*im)/(e*e) is the same number in
-                // exact arithmetic and NOT the same float. The two arms are compared at 1e-9.
+                // Per channel, by freq_id, once the record has been admitted above. Normalise,
+                // then take the magnitude, as Python's `abs(complex(re/e, im/e))**2` does;
+                // (re*re + im*im)/(e*e) is a different float, and the arms are compared at 1e-9.
                 auto& per_fid = w.chan[prn];
                 for (int ch = 0; ch < n_chan; ++ch) {
                     const float* cc = row + telem_chan_offset(ch);
@@ -483,47 +398,36 @@ public:
         }
         while (!c.open.empty() && c.open.begin()->first < c.newest)
             close_oldest(c, false);
-        // A sender that dies mid-window leaves that window open forever if nothing else ever
-        // passes it. Bounded, and COUNTED: an unexplained n_forced is a sender that stopped.
+        // Backstop on open windows; the loop above already leaves only `newest` open.
         while ((int)c.open.size() > _max_open_win)
             close_oldest(c, true);
         return FoldStatus::OK;
     }
 
-    /// Force every open window closed. For the offline harness at end-of-file, so the last
-    /// window of a fixture is not silently missing from the answer. NEVER on the live path:
-    /// there, the next frame is the completion signal and a flush would race it.
+    /// Force every open window closed. For the offline harness at end of file, so a fixture's
+    /// last window is not missing from the answer. Not for the live path, where the next frame
+    /// closes the window and a flush would race it.
     void flush() {
         for (auto& cv : _chain)
             while (!cv.second.open.empty())
                 close_oldest(cv.second, true);
     }
 
-    /// Publish the policy cycle's decisions: who may be trimmed, and with what constants.
+    /// Apply the policy cycle's decisions: which PRNs may be trimmed, and with what constants.
     ///
-    /// ⚠️ A PRN THAT LEAVES THE ARMED SET KEEPS ITS TRIM. Zeroing it would step the commanded
-    /// code phase by up to `clamp` chips at the moment policy stopped being sure -- a
-    /// disturbance injected exactly when confidence is lowest. The trim decays through the
-    /// leak instead, and the tracker's own TTL is what removes it if this controller dies.
+    /// A PRN that leaves the armed set keeps its trim: zeroing it would step the commanded code
+    /// phase by up to `clamp` chips just when policy stopped being sure. integrate() decays it
+    /// through the leak instead, and the tracker's trim TTL removes it if this controller stops.
     void set_armed(const std::string& chain, const std::set<int>& prns, const TrimPolicy& p) {
         Chain& c = _chain[chain];
         c.armed = prns;
         c.policy = p;
     }
 
-    /// {chain: {prn: trim_chips}} -- THE ONLY STATE IN THIS PROCESS THAT CANNOT BE REBUILT
-    /// FROM THE STREAM, and therefore the only thing a restart genuinely loses.
-    ///
-    /// Measured across one gather restart, 2026-08-23: q on armed PRNs fell 2.0-3.7 -> ~1.0
-    /// fleet-wide with 0-1 "present" per chain, because every tracker was left off-peak by
-    /// however much trim had been standing (one PRN was at the 3-chip clamp). It re-acquires
-    /// on its own -- median q 0.90 -> 1.93 over a few minutes -- but everything derived from
-    /// the prompt tap reads as a dead fleet meanwhile, which looks exactly like whatever was
-    /// deployed having broken tracking.
-    ///
-    /// Counters are deliberately NOT here. n_steps/n_railed/n_skipped are rates since start;
-    /// carrying them across a restart would make "updates per second" a lie in the direction
-    /// that hides a stalled loop.
+    /// {chain: {prn: trim_chips}} for every |trim| >= 1e-3: the only state here that cannot be
+    /// rebuilt from the stream; without it a restart leaves every tracker off-peak by its
+    /// standing trim. Counters are not included: they are rates since start, and carrying them
+    /// across a restart would hide a stalled loop.
     std::map<std::string, std::map<int, double>> trim_snapshot() const {
         std::map<std::string, std::map<int, double>> out;
         for (const auto& cv : _chain)
@@ -533,19 +437,15 @@ public:
         return out;
     }
 
-    /// Adopt a restored trim for a PRN THE BROKER HAS JUST ARMED. Returns true if adopted.
+    /// Adopt a restored trim for a PRN the broker has just armed; returns true if adopted.
     ///
-    /// ⚠️ WHY ADOPTION IS GATED ON ARMING RATHER THAN DONE AT LOAD. A trim on an unarmed PRN
-    /// decays through the graceful-release leak on every window close and is erased below
-    /// 1e-3 chips: at leak 0.05 and 23.84 closes/s that is a 0.84 s time constant and ~5.6 s
-    /// to erasure, while the broker's policy cycle is ~11 s. Restoring at load would put the
-    /// trims back and let them evaporate before the first /set_policy ever named them --
-    /// persistence that measures as working and buys nothing.
+    /// Adoption waits for arming because an unarmed trim leaks away (0.84 s time constant at
+    /// leak 0.05 and 23.84 closes/s), so a trim restored at load could be erased before the
+    /// broker's first /set_policy names its PRN. It also keeps the rule that nothing is trimmed
+    /// unless the broker armed it.
     ///
-    /// It also keeps the rule intact: this stage still acts on no PRN the broker has not
-    /// armed. A restored trim is a PROPOSAL, and arming is the acceptance.
-    ///
-    /// Refuses if the PRN already has a trim of its own -- the live loop outranks a saved one.
+    /// Refuses if the PRN already has a trim of its own (the live loop outranks a saved one), or
+    /// if the value is not finite or exceeds the policy clamp.
     bool adopt_trim(const std::string& chain, int prn, double trim_chips) {
         auto ci = _chain.find(chain);
         if (ci == _chain.end() || !ci->second.armed.count(prn))
@@ -559,18 +459,14 @@ public:
         return true;
     }
 
-    /// #92 THE HANDOVER: the broker re-based a seed by some step and the standing trim
-    /// carrying the SAME chips must move with it in the same cycle, or the tap
-    /// (seed + trim) transiently lands a chip off the sky, q craters, and the trim is
-    /// wiped and rebuilt from scratch (E3's ~25-min sawtooth, docs/CHORD_BUGLIST.md #92).
-    /// `delta_chips` is ADDED to the standing trim; the broker owns the sign (it posts
-    /// -birth_step). Result is clamped to the chain's policy clamp.
+    /// Handover: the broker re-based a seed by some step, and the standing trim carrying the
+    /// same chips must move with it in the same cycle, or the tap (seed + trim) lands a step off
+    /// the sky and the trim is rebuilt from scratch. `delta_chips` is added to the standing trim
+    /// (the broker posts the negated step); the result is clamped to the policy clamp.
     ///
-    /// Refuses for a PRN that is not armed -- an unarmed trim is leak-decaying to
-    /// erasure and adjusting it manufactures a correction no loop will maintain -- and
-    /// for a non-finite or over-clamp delta: a step the trim could never have been
-    /// carrying is not a handover, it is a wrong number (the multi-hundred-chip shared
-    /// clock births land here and must be refused, not folded in).
+    /// Refuses for a PRN that is not armed (its trim is decaying to erasure, and no loop would
+    /// maintain the correction), and for a non-finite or over-clamp delta, which no standing
+    /// trim could have been carrying.
     bool adjust_trim(const std::string& chain, int prn, double delta_chips) {
         auto ci = _chain.find(chain);
         if (ci == _chain.end() || !ci->second.armed.count(prn))
@@ -583,19 +479,13 @@ public:
         return true;
     }
 
-    /// One (window, record slot, PRN)'s lobe-coherent powers, over the served window depth --
-    /// combdll.prompt_cn0's `recs`, in time order.
+    /// One (window, record slot, PRN)'s lobe-coherent powers over the served window depth:
+    /// combdll.prompt_cn0's `recs`, oldest window first.
     ///
-    /// WHY A SECOND SHAPE OF THE SAME NUMBERS. The code loop and the comb DLL want records
-    /// AVERAGED; the served C/N0 wants the SERIES. It is a radiometric estimator that fits
-    /// nothing -- the rate is the tracker's, the tap is the loop's, the only arithmetic is a
-    /// debiased power ratio -- so its inputs are the individual records, q-gated one at a time
-    /// against a probe anchor. Meaning it away upstream would be exactly the #47 category error
-    /// this estimator exists to have removed.
-    ///
-    /// ⚠️ The gates that USE this stay in Python: the q gate, the probe anchor, the Gamma-mean
-    /// debias and the clip. This returns samples -- EVERY record with a live comb, however
-    /// partial; `n_chan`/`n_inst` are there so the consumer can decline one.
+    /// The code loop wants records averaged; the served C/N0 wants the series, because it gates
+    /// individual records. Its gates stay in Python. This returns every record with a live
+    /// comb, however partial and without the min_instances test; `n_chan`/`n_inst` let the
+    /// consumer decline one.
     struct RecRow {
         uint64_t win;
         int slot, prn, n_inst, n_chan;
@@ -620,39 +510,26 @@ public:
         return _chain;
     }
 
-    /// ONE PRN's lobe taps over the closed window set, MEANED over records -- exactly what
+    /// One PRN's lobe taps over the served window depth, meaned over records: what
     /// `combdll.lobe_taps` returns for one PRN.
     struct LobeTap {
         double e = 0.0, p = 0.0, l = 0.0, n_chan = 0.0;
         /// mean cross-sender coherence over the `n_xcoh` records two or more senders reached;
-        /// NaN when none did. The per-PRN answer to "are the senders on one reference".
+        /// NaN when none did
         double xcoh = std::numeric_limits<double>::quiet_NaN();
         int n_xcoh = 0;
         int n_rec = 0;  ///< records behind the mean
-        int n_inst = 0; ///< senders behind the most complete record -- completeness, not an operand
+        int n_inst = 0; ///< senders behind the most complete record (completeness only)
         int64_t hop = -1;
         std::map<int, std::array<double, 4>> chan; ///< freq_id -> {e, p, l, n_rec}
     };
 
-    /// [chain][prn] -- the lobe-coherent, per-channel taps over the served window depth.
-    ///
-    /// THIS IS WHY IT EXISTS: the Python arm builds the identical object by walking every
-    /// (window, sender, record, PRN, channel) of the gathered stream -- ~140k channel-tuples
-    /// per chain per cycle, ~700k across the fleet, on a process pinned at 100% of ONE core by
-    /// the GIL, where cycle time IS the sum of the chains' Python CPU. The frames are already
-    /// here, in C++, so the reduction belongs here and the broker is handed the ~1k numbers
-    /// that survive it rather than the 46 MB/s that do not.
-    ///
-    /// ⚠️ THE MEANS ARE TAKEN OVER DIFFERENT DENOMINATORS ON PURPOSE, mirroring the Python:
-    /// the aggregate divides by the PRN's record count, and EACH CHANNEL divides by ITS OWN --
-    /// a channel that was live for half the records is a mean over that half, not a half-sized
-    /// mean. Getting this wrong is invisible in the full-band numbers and shows up only per
-    /// channel, which is precisely where nobody looks.
-    ///
-    /// ⚠️ POLICY IS NOT HERE AND MUST NOT COME HERE. Presence, the noise floor, the deep gate,
-    /// who is armed -- all of that stays on the broker's cycle (GnssFleetTrim.hpp). This
-    /// returns measurements. The one filter applied is COMPLETENESS: a record carried by fewer
-    /// than `min_instances` senders is not averaged in, in both arms identically.
+    /// [chain][prn]: the lobe-coherent and per-channel taps over the served window depth
+    /// (`taps_win`), reduced here so the broker need not walk every (window, sender, record,
+    /// PRN, channel) in Python. As in the Python arm, the aggregate divides by the PRN's record
+    /// count and each channel by its own, so a channel live for half the records is a mean over
+    /// that half. No policy is applied: records are filtered only on completeness
+    /// (`min_instances`), and channels two senders claimed (WindowAcc::dup) are left out.
     std::map<std::string, std::map<int, LobeTap>> taps() const {
         std::map<std::string, std::map<int, LobeTap>> out;
         for (const auto& cv : _chain) {
@@ -682,9 +559,8 @@ public:
                         }
                     }
                 for (const auto& pv : w.chan) {
-                    // A PRN whose every record THIS window was incomplete contributes no
-                    // lobe tap from it, and its channels must not appear without one: the
-                    // two tables describe the same records, window by window.
+                    // A PRN with no complete record this window gets no lobe tap from it, so
+                    // its channels are skipped too: both tables cover the same windows.
                     if (!complete.count(pv.first))
                         continue;
                     LobeTap& t = per_prn[pv.first];
@@ -729,8 +605,8 @@ public:
     }
 
 private:
-    /// The window's open accumulators become its record powers. Done ONCE, at close, so a
-    /// late-arriving sender cannot move a record that has already been averaged.
+    /// The window's open accumulators become its record powers, once, at close, so a late
+    /// sender cannot move a record that has already been averaged.
     static void settle(WindowAcc& w) {
         for (auto& sv : w.acc)
             for (auto& pv : sv.second) {
@@ -761,10 +637,8 @@ private:
         c.n_dup_chan += c.open.begin()->second.dup.size();
         c.closed.push_back(std::move(c.open.begin()->second));
         c.open.erase(c.open.begin());
-        // ⚠️ THE RING IS THE DEEPER OF THE TWO CONSUMERS, and each takes the newest slice it
-        // asked for. Trimming to _n_win here (as this did while taps() did not exist) would
-        // silently cap the served depth at the loop's, and the broker would get a 2-window
-        // average where it configured 32 -- a 4x SNR loss that looks like the sky got worse.
+        // The ring keeps the deeper of the two depths; aggregate(), taps() and rec_series()
+        // each read the newest slice they need.
         while ((int)c.closed.size() > std::max(_n_win, _taps_win))
             c.closed.pop_front();
         c.n_closed++;
@@ -774,7 +648,7 @@ private:
     }
 
     /// The loop's discriminator: the lobe-coherent record powers of the newest _n_win windows,
-    /// MEANED over records, per PRN. Nothing here knows what a sender is.
+    /// meaned over complete records, per PRN.
     void aggregate(Chain& c) {
         struct Acc {
             double e = 0, p = 0, l = 0, n_chan = 0;
@@ -783,7 +657,7 @@ private:
         };
         std::map<int, Acc> by_prn;
         uint64_t win_hi = 0;
-        // THE LOOP'S OWN DEPTH: the newest _n_win of the ring, never all of it.
+        // The loop's own depth: the newest _n_win windows of the ring.
         for (size_t k = c.closed.size() > (size_t)_n_win ? c.closed.size() - _n_win : 0;
              k < c.closed.size(); ++k) {
             const WindowAcc& w = c.closed[k];
@@ -791,8 +665,8 @@ private:
             for (const auto& sv : w.rec)
                 for (const auto& pv : sv.second) {
                     const RecTap& r = pv.second;
-                    // COMPLETENESS, not content: a record too few senders reached is not
-                    // averaged in. The same test, in the same place, in the Python arm.
+                    // Completeness, not content: skip a record too few senders reached, as the
+                    // Python arm does.
                     if (r.n_inst < _min_instances)
                         continue;
                     Acc& a = by_prn[pv.first];
@@ -830,79 +704,38 @@ private:
         integrate(c, win_hi);
     }
 
-    /// ONE INTEGRATOR STEP PER WINDOW CLOSE, for every armed PRN that got a discriminator --
-    /// and a LEAK-ONLY step for a disarmed PRN whose trim is still standing, so leaving the
-    /// armed set is a graceful release rather than a commanded step. Without this the
-    /// controller stopped posting a disarmed PRN, the tracker's TTL zeroed it 4 s later, and
-    /// re-arming re-applied it: measured on sky 2026-08-15 as trims snapping N -> 0 -> N
-    /// whenever presence flickered, ON TOP of the gain oscillation it was entangled with.
+    /// One integrator step per window close for every armed PRN that got a discriminator this
+    /// window, and a leak-only step for every disarmed PRN whose trim still stands, so leaving
+    /// the armed set releases the trim gradually rather than as a step.
     ///
-    /// THE RATE THIS ACHIEVES, and why it is not the 95.4/s the wire could support. A window is
-    /// one frame, so this steps at 23.84 Hz = 12x the 1.94 Hz break-even against CHORD's
-    /// measured 0.121 chips/s drift. Stepping per RECORD instead would give 95.4 Hz and 49x --
-    /// but it would also stop being the same arithmetic the Python arm computes, and the
-    /// byte-for-byte equivalence gate (scripts/gnss/fleetdll_gate.py) would go with it. 12x is
-    /// margin enough; the gate is not worth spending for the other 4x until something measured
-    /// says 12x is short.
+    /// Stepping per window (23.84 Hz) rather than per record (95.4 Hz) keeps the arithmetic the
+    /// Python arm computes. At the defaults the discriminator moves the trim at most 0.0625
+    /// chips per step, ~1.5 chips/s at 23.84 Hz, about 12x a ~0.12 chips/s code drift.
     ///
-    /// A PRN with no row this window is NOT stepped -- not even by the leak. An absent
-    /// discriminator is the absence of a measurement, not a measurement of zero, and leaking a
-    /// trim toward zero on windows where the satellite simply was not seen would walk the
-    /// correction out during exactly the dropouts it exists to ride through.
+    /// An armed PRN with no row this window is not stepped, not even by the leak: an absent
+    /// discriminator is not a measurement of zero, and leaking on it would walk the correction
+    /// out during the dropouts it exists to ride through.
     void integrate(Chain& c, uint64_t win) {
-        // ⚠️ THE DISCRIMINATOR IS ONLY INFORMATION WHEN THERE IS A PEAK UNDER THE TAPS.
+        // The discriminator carries information only when there is a peak under the taps.
         // Off-peak, disc is noise that flips sign every window, and integrating it at full
-        // authority RANDOM-WALKS THE TRIM TO THE CLAMP. Measured on sky 2026-08-15, PRN 23:
-        // trim railed at -3.0000 chips, then ran 3.4 chips back to +0.38 in 32 s, sign-flipping
-        // disc (+0.87, -0.96, +0.35, ...) all the way. And an ARMING HOLD makes it worse, not
-        // better: holding a PRN armed across the off-peak half of the clock breathing is
-        // exactly a licence to integrate tens of seconds of noise.
+        // authority random-walks the trim to the clamp.
         //
-        // The gate is PROMPT POWER, not q. That is the distinction the broker learned on
-        // 2026-08-03 and wrote down: q is peak SHARPNESS, high only once the tap is already
-        // on the peak, so gating on it says "only correct the code once it is already
-        // correct" and the loop can never pull in from the shoulder. Prompt power answers
-        // "is there signal here at all", which is independent of WHERE on the correlation
-        // function we sit -- on the shoulder P is still well above noise.
-        //
-        // This is a LOCAL INFORMATION TEST, not the presence verdict. Presence is policy and
-        // stays in Python (it decides whether a satellite is worth tracking, over cycles);
-        // this decides whether THIS WINDOW's number means anything.
-        //
-        // ⚠️⚠️ THE REFERENCE IS THE PROBES, AND THERE IS NO LONGER ANY OTHER OPTION.
-        // This used to fall back to `3 x the MEDIAN of this window's own p_pow` whenever the
-        // policy carried no absolute floor, on the premise that "most PRNs are signal-free at
-        // any moment, so the median IS the no-signal level". That premise was true on the
-        // airspy prototype, where --noise-probes seeded genuine signal-free rows, and is
-        // FALSE on CHORD, where the armed rows are mostly real satellites. So the bar was a
-        // signal level and the gate was a PEER COMPETITION -- a race a satellite loses the
-        // moment it starts drifting, which is exactly when it needs the loop.
-        // Measured 2026-08-27 on chains still running it, satellites unambiguously ON the
-        // peak: gps_l5 PRN 18 (q 2.85) losing 45.7% of its windows, PRN 20 (q 3.25) 34.5%,
-        // PRN 27 (q 3.28) 24.4%. And E3's 12-minute outage, where the trim was erased while
-        // the satellite sat ~20x above the real probe floor.
-        //
-        // KV, 2026-08-27, and it is the reason this branch is DELETED rather than defaulted
-        // off: "peer comparisons can never tell us about a given signal, they only ever tell
-        // us fleet-relative properties, which aren't relevant." A fleet-relative ratio cannot
-        // answer "does this window's discriminator mean anything". See
-        // docs/CHORD_PEER_COMPARISON_PURGE.md.
-        //
-        // NO FLOOR => REFUSE. Not "no gate": ungated, an off-peak discriminator random-walks
-        // the trim to the clamp (measured, PRN 23, 3.4 chips in 32 s with disc sign-flipping
-        // all the way). Leak-only is the conservative direction -- a trim not applied is
-        // recoverable, a trim applied to noise is not -- and it mirrors what presence does
-        // without a probe anchor, which is to say UNANCHORED and admit nobody.
+        // The gate is prompt power, not q: q is high only once the tap is already on the
+        // peak, so a q gate would never let the loop pull in from the shoulder, where P is
+        // still well above noise. This is a per-window information test, not the presence
+        // verdict. The floor is absolute (the broker's probe-anchored floor), not relative to
+        // other PRNs' powers, which would compare satellites with each other rather than with
+        // noise. With no floor every window is leak-only: a trim not applied is recoverable, a
+        // trim driven by noise is not.
         const double p_floor = c.policy.p_floor_abs;
         for (int prn : c.armed) {
             auto it = c.row.find(prn);
             if (it == c.row.end() || it->second.win != win)
-                continue; // no discriminator formed for this PRN THIS window
+                continue; // no discriminator formed for this PRN this window
             TrimState& t = c.trim[prn];
             if (p_floor <= 0.0 || it->second.p_pow < p_floor) {
-                // No signal under the taps this window: LEAK ONLY. The trim mean-reverts
-                // instead of chasing noise, and the PRN stays armed so a returning peak is
-                // caught on the very next window.
+                // Leak only: the trim mean-reverts instead of chasing noise, and the PRN stays
+                // armed so a returning peak is caught on the next window.
                 t.trim = dll_integrate(t.trim, 0.0, c.policy);
                 t.last_win = win;
                 t.n_skipped++;
@@ -916,14 +749,15 @@ private:
             t.last_win = win;
             t.n_steps++;
         }
-        // GRACEFUL RELEASE: a disarmed PRN's trim decays through the leak (disc treated as 0)
-        // and keeps being posted until it is negligible, then drops out. Erasing it -- or
-        // letting the tracker TTL zero it -- turns every presence flicker into a code step.
+        // Graceful release: a disarmed PRN's trim decays through the leak (disc treated as 0)
+        // and is still posted until it falls below 1e-3 chips, then is erased. Erasing it at
+        // once, or letting the tracker's TTL zero it, would turn every presence flicker into a
+        // code step.
         for (auto it = c.trim.begin(); it != c.trim.end();) {
             if (!c.armed.count(it->first)) {
                 TrimState& t = it->second;
                 t.trim = dll_integrate(t.trim, 0.0, c.policy);
-                t.last_win = win; // still commanded: the poster keys on this moving
+                t.last_win = win; // still posted, stamped with this window
                 if (std::abs(t.trim) < 1e-3) {
                     it = c.trim.erase(it);
                     continue;
@@ -934,11 +768,9 @@ private:
     }
 
     int _n_win, _min_instances, _max_open_win;
-    /// ⚠️ DECLARATION ORDER IS THE INITIALISER ORDER -- members initialise in declaration
-    /// order, so this disagreeing with the constructor's list is a -Wreorder warning today
-    /// and a real read-before-init the moment one initialiser references another member.
-    int _taps_win = 1; ///< window depth served by taps() -- the POLICY cycle's, not the loop's
-    /// A1's epoch-reset knobs -- LAST, for the declaration-order reason directly above.
+    // Members initialise in declaration order; keep it matching the constructor's list.
+    int _taps_win = 1; ///< window depth served by taps() and rec_series()
+    /// Epoch-reset thresholds (see fold()).
     int _epoch_margin = 64, _epoch_strikes = 8;
     std::map<std::string, Chain> _chain;
 };

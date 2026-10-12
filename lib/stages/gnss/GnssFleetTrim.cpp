@@ -23,16 +23,12 @@
 
 namespace {
 
-/// Begin a connect and return at once. The handshake completes (or not) on its own; the
-/// poster asks after it with connect_poll() on later rounds.
-///
-/// ⚠️ NEVER WAIT ON A HANDSHAKE IN THIS LOOP. The broker host's uplink loses a few percent
-/// of the nodes' segments, and a lost SYN-ACK is recovered only by the kernel's 1 s -> 2 s
-/// retransmit ladder -- there is no fast path for a handshake. A connect that must
-/// complete inside the post timeout therefore fails on exactly the rounds the link is
-/// lossy, every retry fails the same way, and the backoff walks the target past the trim
-/// TTL. Left in flight, the same handshake completes by itself a second or three later
-/// while the thread keeps serving its other targets.
+/// Start a non-blocking connect and return at once; the poster checks it with connect_poll()
+/// on later rounds. A lost SYN or SYN-ACK is recovered only by the kernel's SYN retransmit
+/// (after 1 s, then 2 s more), far longer than a post timeout, so a connect that had to finish
+/// within one would fail whenever a handshake segment is lost, and on a lossy link the backoff
+/// would hold the target past the trackers' trim TTL. Left in flight, the handshake completes
+/// on its own while the thread serves its other targets.
 int connect_start(const struct sockaddr_in& addr) {
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0)
@@ -46,7 +42,7 @@ int connect_start(const struct sockaddr_in& addr) {
 }
 
 /// 1: established (socket now blocking, with the post timeout on send and recv);
-/// 0: still in flight; -1: failed and closed (errno tells why).
+/// 0: still in flight; -1: failed and closed (errno says why).
 int connect_poll(int fd, int timeout_ms) {
     struct pollfd pfd = {fd, POLLOUT, 0};
     if (::poll(&pfd, 1, 0) != 1)
@@ -67,10 +63,9 @@ int connect_poll(int fd, int timeout_ms) {
     return 1;
 }
 
-/// One HTTP/1.1 POST on an ESTABLISHED kept-alive connection. Any transport error closes the
-/// socket and leaves *fd == -1: the caller starts a fresh connect next round and the payload
-/// simply goes out one round late -- there is no state to repair and nothing that can throw
-/// or exit.
+/// One HTTP/1.1 POST on an established kept-alive connection; true on a 200 reply. Any
+/// transport error closes the socket and sets *fd = -1, so the caller reconnects on a later
+/// round. Nothing here throws or exits.
 bool http_post(int* fd, const std::string& host, const std::string& path, const std::string& body,
                std::string* err) {
     {
@@ -94,13 +89,9 @@ bool http_post(int* fd, const std::string& host, const std::string& path, const 
             *err = "send: " + std::string(std::strerror(errno));
             return false;
         }
-        // ⚠️ DRAIN THE WHOLE RESPONSE, OR KEEP-ALIVE POISONS THE NEXT REQUEST.
-        // The first version read 512 bytes once and moved on. kotekan's restServer sends CORS
-        // headers (enable_cors), which push the reply past that, so the remainder sat in the
-        // socket and the NEXT request parsed it as ITS status line -- surfacing as
-        // "status: -Max-Age: 2520", the tail of Access-Control-Max-Age. 13% of posts failed
-        // against the real fleet, and it looked exactly like flaky trackers. A reused
-        // connection must be left byte-clean.
+        // Read the whole response, headers and body, so the kept-alive connection is left
+        // byte-clean: an unread tail (with enable_cors, restServer's headers alone are long)
+        // would be parsed as the next request's status line.
         std::string resp;
         char buf[1024];
         size_t hdr_end = std::string::npos;
@@ -119,9 +110,8 @@ bool http_post(int* fd, const std::string& host, const std::string& path, const 
             }
         }
         if (!dead) {
-            // Content-Length is what makes the body's end knowable. restServer always sets it
-            // (send_empty_reply included, as 0), so a missing one means this is not the peer
-            // we think it is -- drop the connection rather than guess where the body ends.
+            // Only Content-Length marks the body's end. restServer always sends it (0 for
+            // send_empty_reply), so without it drop the connection rather than guess.
             size_t want = std::string::npos;
             const size_t cl = resp.find("Content-Length:");
             if (cl != std::string::npos && cl < hdr_end)
@@ -148,7 +138,7 @@ bool http_post(int* fd, const std::string& host, const std::string& path, const 
         }
         if (resp.compare(0, 12, "HTTP/1.1 200") != 0 && resp.compare(0, 12, "HTTP/1.0 200") != 0) {
             *err = "status: " + resp.substr(0, std::min<size_t>(resp.size(), 40));
-            return false; // a 4xx is the payload's fault; the connection is still clean
+            return false; // response fully read, so the connection is still usable
         }
         return true;
     }
@@ -168,9 +158,6 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     _dll(config.get_default<int>(unique_name, "n_win", 4),
          config.get_default<int>(unique_name, "min_instances", 2),
          config.get_default<int>(unique_name, "max_open_win", 8),
-         // THE BROKER'S DEPTH, NOT THE LOOP'S. 0 follows n_win; production wants this at the
-         // broker's `telem-windows` (32) so /get_taps serves the same integration length the
-         // Python arm computed for itself.
          config.get_default<int>(unique_name, "taps_win", 0)) {
     _trim_state_file = config.get_default<std::string>(unique_name, "trim_state_file", "");
     _trim_state_max_age_s = config.get_default<double>(unique_name, "trim_state_max_age_s", 300.0);
@@ -197,22 +184,16 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
         unique_name + "/adjust_trim", std::bind(&GnssFleetTrim::adjust_callback, this,
                                                 std::placeholders::_1, std::placeholders::_2));
 
-    // THE ACTUATOR'S TARGETS ARRIVE WITH THE POLICY, not from config. The broker already
-    // owns the tracker endpoint list (--trackers, brace-expanded), it is the thing that knows
-    // which instances are serving which chain right now, and a second copy in the gather's
-    // yaml is one more thing to drift -- adding a node would silently leave it out. So
-    // /set_policy carries them and this stage holds no deployment knowledge at all.
-    // Generous against the broker's ~12 s policy cycle: this is a DEAD-THREAD detector, not a
-    // freshness gate, and expiring a chain that merely posted late would disarm a healthy loop.
+    // Post targets arrive with /set_policy, not from config: the broker owns the tracker
+    // endpoint list, and a copy here would drift from it.
+    // policy_ttl_s detects a dead broker chain thread, not a late post, so it is generous
+    // against the ~12 s policy cycle.
     _policy_ttl_s = std::max(5.0, config.get_default<double>(unique_name, "policy_ttl_s", 60.0));
     _post_every = std::max(1, config.get_default<int>(unique_name, "post_every_n_windows", 1));
-    // ⚠️ WIDER THAN ONE RETRANSMIT. A segment lost on a healthy connection comes back at the
-    // kernel's minimum RTO (200 ms) plus a round trip; a timeout at 200 ms throws away the
-    // socket exactly when it is about to recover, and the replacement has to handshake.
     _post_timeout_ms = std::max(20, config.get_default<int>(unique_name, "post_timeout_ms", 450));
     const int nthr = std::max(1, config.get_default<int>(unique_name, "post_threads", 4));
     _sent_gen.assign((size_t)nthr, 0);
-    _n_post_threads = nthr; // BEFORE the threads exist -- see the header note
+    _n_post_threads = nthr; // set before the first poster reads it
     for (int i = 0; i < nthr; ++i)
         _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
     INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends, posting every {:d} "
@@ -221,9 +202,7 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
 }
 
 GnssFleetTrim::~GnssFleetTrim() {
-    // Wake the posters and JOIN them before anything they touch is destroyed. The async
-    // restClient path could not offer this: a reply landing after the stage is gone is a
-    // use-after-free with no join to prevent it.
+    // Wake the posters and join them before the members they use are destroyed.
     {
         std::lock_guard<std::mutex> lk(_pend_mtx);
         _pend_gen++;
@@ -246,8 +225,7 @@ void GnssFleetTrim::main_thread() {
 
     frameID in_id(in_buf);
     while (!stop_thread) {
-        // TIMED WAIT, like the gather beside us: a fleet that goes silent must still let the
-        // stats endpoint say so rather than leaving this thread parked with nothing in the log.
+        // Timed wait, so the loop still checks stop_thread when no frames arrive.
         struct timespec deadline;
         clock_gettime(CLOCK_REALTIME, &deadline);
         deadline.tv_sec += 1;
@@ -273,14 +251,12 @@ void GnssFleetTrim::main_thread() {
                 _late_frames++;
             _fold_s += current_time() - t0;
         }
-        // ACTUATE OUTSIDE THE FOLD LOCK, and only when a window actually closed. Driving this
-        // off frames instead would post 10-12 times per window (once per instance) for the
-        // same trim.
-        // Re-derive the per-update leak from the MEASURED close rate before acting on it.
+        // Outside the fold lock. rearm() reconverts the per-second gain and leak with the
+        // measured close rate; post_trims() posts a chain only when its own window closed, not
+        // once per frame.
         rearm();
         post_trims();
-        // OUTSIDE THE FOLD LOCK and off the frame path's critical section. Saving on every
-        // window close would be ~24 writes/s for a file nothing reads until the next restart.
+        // On a timer rather than per window close: the store is read only at the next start.
         if (_trim_state_save_s > 0.0 && current_time() - _trim_saved_at >= _trim_state_save_s) {
             _trim_saved_at = current_time();
             save_trims();
@@ -298,10 +274,10 @@ void GnssFleetTrim::main_thread() {
 
 GnssFleetTrim::Target GnssFleetTrim::parse_target(const std::string& url,
                                                   const std::string& chain) {
-    // http://host:port/path -- deliberately hand-parsed and strict. A URL that ALMOST parses
-    // is worse than one that does not: it posts somewhere plausible. Throws, so the caller
-    // answers 400 rather than taking the process down -- this runs in a REST callback, and a
-    // FATAL_ERROR here would let a bad broker payload kill the whole fleet's telemetry.
+    // http://host:port/path, with scheme, explicit port and path all required: a URL that
+    // almost parses would post somewhere plausible. Throws rather than FATAL_ERROR: this runs
+    // in the /set_policy callback, which answers 400, and a bad payload must not stop the
+    // gather process.
     const std::string pfx = "http://";
     if (url.rfind(pfx, 0) != 0)
         throw std::runtime_error("target '" + url + "' must start with http://");
@@ -321,9 +297,8 @@ GnssFleetTrim::Target GnssFleetTrim::parse_target(const std::string& url,
     t.path = url.substr(sl);
     t.url = url;
     t.chain = chain;
-    // RESOLVE NOW, ONCE. See the Target note: per-request DNS at ~1430/s took the resolver
-    // down and the process with it. A name that will not resolve is a policy error, answered
-    // with 400, not something to rediscover on every post.
+    // Resolve once, here (see Target::addr); a name that does not resolve fails the policy
+    // post with 400.
     std::memset(&t.addr, 0, sizeof(t.addr));
     t.addr.sin_family = AF_INET;
     t.addr.sin_port = htons(t.port);
@@ -355,13 +330,12 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
             p.gain = v.value("gain", p.gain);
             p.clamp = v.value("clamp", p.clamp);
             p.spacing = v.value("spacing", p.spacing);
-            // Absent or 0 = the original peer-median window gate, byte-identical.
+            // Absent or 0: FleetDll steps no PRN of this chain, it only leaks.
             p.p_floor_abs = v.value("p_floor_abs", 0.0);
             if (p.p_floor_abs < 0.0)
                 throw std::runtime_error("p_floor_abs must be >= 0");
-            // EXACTLY ONE of the two leak forms, and it must be stated. Defaulting the
-            // conversion silently is how a loop ends up running at 8x the intended bandwidth
-            // and being blamed on the combine.
+            // Exactly one leak form is required: a silent default would run the loop at a
+            // bandwidth nobody chose.
             const bool has_s = v.contains("leak_per_s"), has_u = v.contains("leak");
             if (has_s == has_u)
                 throw std::runtime_error("give exactly one of leak_per_s or leak");
@@ -371,15 +345,11 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
                 p.leak_per_s = -1.0;
                 p.leak = v.at("leak").get<double>();
             }
-            // ⚠️ THE GAIN SCALES WITH RATE TOO -- the lesson the leak taught did not go far
-            // enough. Loop BANDWIDTH is gain x rate, and against this loop's ~0.3-0.5 s
-            // measurement round trip (4-window disc average + actuation + record + fold), the
-            // per-update gain that was stable at 3.1 Hz (0.25 -> 0.78/s) is a limit cycle at
-            // 23.84 Hz (6/s): measured on sky 2026-08-15, trim swinging +-1 chip at 5-10 s
-            // period, disc anti-correlated and lagging, q hitting 3.3 and being thrown off.
-            // "Same gain, faster rate" holds for SLEW AUTHORITY and fails for STABILITY. So
-            // policy states gain_per_s (the bandwidth) and the conversion uses the measured
-            // rate, exactly as for the leak.
+            // The gain scales with rate too: loop bandwidth is gain x update rate, and against
+            // the loop's ~0.3-0.5 s measurement round trip (disc average, actuation, record,
+            // fold) a per-update gain of 0.25 at 23.84 Hz (6/s) limit-cycles. gain_per_s is
+            // converted with the measured rate, like leak_per_s; with neither form given, the
+            // per-update default applies.
             const bool hgs = v.contains("gain_per_s"), hgu = v.contains("gain");
             if (hgs && hgu)
                 throw std::runtime_error("give at most one of gain_per_s or gain");
@@ -391,8 +361,8 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
             }
             if (p.gain <= 0.0 || p.clamp <= 0.0 || p.spacing <= 0.0)
                 throw std::runtime_error("gain, clamp and spacing must be positive");
-            // The tracker endpoints for this chain. Absent = observe this chain, command
-            // nothing -- which is how a chain is armed for measurement without actuation.
+            // This chain's tracker endpoints. Absent: the chain is armed and integrated but
+            // nothing is posted for it.
             if (v.contains("targets"))
                 for (const auto& u : v.at("targets"))
                     tg.push_back(parse_target(u.get<std::string>(), it.key()));
@@ -406,11 +376,9 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
     const double now = current_time();
     {
         std::lock_guard<std::mutex> lk(_mtx);
-        // REPLACE PER CHAIN, never merge WITHIN one: the broker publishes a chain's whole armed
-        // set every cycle, so replacing that chain's entry expires a PRN it stopped naming --
-        // the latched-forever failure, in the arming rather than the seed. But each chain thread
-        // POSTs only its OWN chain, so replacing the whole map disarms every chain that did not
-        // happen to post last. See the header note: with one armed chain that is invisible.
+        // Replace per chain: a posted chain's entry is replaced wholesale, so a PRN it stopped
+        // naming is disarmed, and chains absent from this post keep theirs (each broker chain
+        // thread posts only its own chain).
         for (auto& kv : got) {
             _policy[kv.first] = kv.second;
             _policy_seen[kv.first] = now;
@@ -418,10 +386,8 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
         _policy_posts++;
     }
     {
-        // Guarded by _pend_mtx because the poster threads read it. Targets are chain-tagged
-        // (parse_target carries the key) and matched per chain in post_trims, so they replace
-        // with the SAME per-chain scope as the policy above: drop this post's chains, keep the
-        // rest. A flat wholesale replace here is the identical clobber one layer down.
+        // Targets replace with the same per-chain scope as the policy: drop this post's
+        // chains' targets, keep the rest. _pend_mtx because the posters read the list.
         std::lock_guard<std::mutex> lk(_pend_mtx);
         std::vector<Target> keep;
         for (auto& t : _targets)
@@ -429,10 +395,9 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
                 keep.push_back(std::move(t));
         for (auto& t : tg)
             keep.push_back(std::move(t));
-        // CANONICAL ORDER, INDEPENDENT OF POST ORDER. The posters stride this list by index,
-        // so a target's position must depend only on the SET of targets, never on which
-        // chain's policy arrived last -- otherwise every per-chain post rotates the list under
-        // the threads and their per-target state (sockets, backoff) follows the wrong host.
+        // Sort by url: the posters stride this list by index, so a target's position, and
+        // hence its thread, must depend only on the set of targets, not on which chain posted
+        // last. Otherwise sockets would be torn down and reopened on other threads every post.
         std::stable_sort(keep.begin(), keep.end(),
                          [](const Target& a, const Target& b) { return a.url < b.url; });
         _targets = std::move(keep);
@@ -442,10 +407,8 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
 }
 
 void GnssFleetTrim::adjust_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {
-    // #92: same payload shape as /set_policy ({"chains": {chain: {prn: delta_chips}}}),
-    // parse first, lock last. Every refusal is counted and echoed back per PRN so the
-    // broker's log can say WHICH handover was dropped -- a silently refused adjustment
-    // re-creates exactly the sawtooth this endpoint exists to end.
+    // Payload {"chains": {chain: {prn: delta_chips}}}; parse first, lock last. Each PRN's
+    // result is counted, echoed in the reply and logged, so a refused handover is visible.
     std::map<std::string, std::map<int, double>> got;
     try {
         const auto& chains = request.at("chains");
@@ -470,7 +433,7 @@ void GnssFleetTrim::adjust_callback(kotekan::connectionInstance& conn, nlohmann:
         _adjust_ok += n_ok;
         _adjust_refused += n_ref;
     }
-    // Rare by construction (one per seed re-base, not per window) -- a line each is signal.
+    // One call per seed re-base, so a log line per PRN is affordable.
     for (const auto& cv : got)
         for (const auto& pv : cv.second)
             INFO("GnssFleetTrim[{:s}]: /adjust_trim {:s} PRN {:d} by {:+.3f} chips -> {:s}",
@@ -481,10 +444,9 @@ void GnssFleetTrim::adjust_callback(kotekan::connectionInstance& conn, nlohmann:
 
 void GnssFleetTrim::rearm() {
     std::lock_guard<std::mutex> lk(_mtx);
-    // THE MEASURED CLOSE RATE, not the nominal 23.84. They differ: ~3% of frames arrive after
-    // their window closed and are dropped, senders come and go, and a chain with no senders
-    // closes nothing at all. Converting a per-second leak with a rate the loop is not actually
-    // running at silently rescales the loop's bandwidth.
+    // Measured window close rate: closes per second since the first close, averaged over the
+    // chains FleetDll holds. A chain that closes nothing (no senders, or a policy-only entry)
+    // lowers it below the nominal 23.84 Hz.
     uint64_t closed = 0;
     for (const auto& cv : _dll.chains())
         closed += cv.second.n_closed;
@@ -498,18 +460,9 @@ void GnssFleetTrim::rearm() {
         _close_hz =
             (double)(closed - _first_close_n) / dt / std::max<size_t>(1, _dll.chains().size());
 
-    // A CHAIN THAT HAS GONE SILENT STOPS BEING COMMANDED. Now that the policy is replaced per
-    // chain rather than wholesale, this is what keeps the old anti-latch guarantee: a dead
-    // broker chain thread must not leave its last armed set standing forever. It lives HERE
-    // rather than in policy_callback because the sweep has to run when NOTHING is posting --
-    // the whole-broker-death case, which is exactly when a POST-driven sweep never fires.
-    // Erasing the policy is sufficient to disarm: post_trims skips any target whose chain has
-    // no entry, so the (chain-tagged) targets left behind send nothing.
-    // A1 THE ALARM. The fix above re-anchors on a frame0 move, but the CONDITION must still
-    // be visible: a chain whose late_frames climb at frame rate is either wedged (an old
-    // binary, or a mode this reset does not cover) or being fed by a sender on a different
-    // axis. Counted and never acted on is how this defect stayed invisible for a week --
-    // the diagnostic existed at :252 and nothing consumed it.
+    // Late-frame warning: a chain whose frames keep arriving late is either not followed by
+    // the fold (a frame0 move FleetDll did not re-anchor on) or fed by a sender on a different
+    // time axis.
     for (const auto& cv : _dll.chains()) {
         const uint64_t late = cv.second.n_late;
         uint64_t& prev = _late_seen[cv.first];
@@ -527,6 +480,10 @@ void GnssFleetTrim::rearm() {
     if (_late_seen_t == 0.0 || now - _late_seen_t > 1.0)
         _late_seen_t = now;
 
+    // Drop the policy of a chain that has not posted for policy_ttl_s (a dead broker chain
+    // thread). The sweep runs here, per frame, rather than in policy_callback so it also fires
+    // when nothing posts. It removes the chain from _policy only: FleetDll keeps the chain's
+    // last armed set and policy, and its targets stay in _targets.
     for (auto it = _policy_seen.begin(); it != _policy_seen.end();) {
         if (now - it->second > _policy_ttl_s) {
             WARN("GnssFleetTrim[{:s}]: chain '{:s}' has POSTed no policy for {:.0f}s -- "
@@ -546,20 +503,18 @@ void GnssFleetTrim::rearm() {
         tp.clamp = pv.second.clamp;
         tp.spacing = pv.second.spacing;
         tp.p_floor_abs = pv.second.p_floor_abs;
+        // Until a close rate has been measured, convert with the nominal 23.84 Hz.
         const double hz = _close_hz > 0.1 ? _close_hz : 23.84;
         if (pv.second.gain_per_s >= 0.0)
             tp.gain = pv.second.gain_per_s / hz;
         if (pv.second.leak_per_s >= 0.0)
-            // Until a rate has been measured, fall back to the wire's nominal 23.84 Hz rather
-            // than to a per-update number nobody chose. Stated, not silent.
             tp.leak = pv.second.leak_per_s / hz;
         else
             tp.leak = pv.second.leak;
         tp.leak = std::max(0.0, std::min(1.0, tp.leak));
         _dll.set_armed(pv.first, pv.second.armed, tp);
-        // ADOPT ANY RESTORED TRIM THE BROKER HAS JUST ARMED. This is the acceptance step: the
-        // saved value is a proposal until policy names the PRN, so this stage still acts on
-        // nothing the broker did not arm, and the trim cannot leak away unarmed while it waits.
+        // Offer each restored trim once, when the policy arms its PRN, so a saved trim is
+        // applied only to a PRN the broker armed; FleetDll::adopt_trim decides.
         auto ri = _restored.find(pv.first);
         if (ri != _restored.end()) {
             for (int prn : pv.second.armed) {
@@ -594,9 +549,7 @@ void GnssFleetTrim::save_trims() {
     }
     j["saved_unix"] = current_time();
     j["note"] = "GnssFleetTrim standing code trims, chips. Adopted on ARMING, not on load.";
-    // ⚠️ WRITE-THEN-RENAME. A restart that lands mid-write would otherwise read a truncated
-    // file, and the failure mode of a HALF-PARSED trim map is adopting some satellites'
-    // corrections and not others -- worse than adopting none, and silent.
+    // Write then rename, so a restart never reads a partly written store.
     const std::string tmp = _trim_state_file + ".tmp";
     {
         std::ofstream fh(tmp, std::ios::trunc);
@@ -632,9 +585,8 @@ void GnssFleetTrim::load_trims() {
     }
     const double age = current_time() - j.value("saved_unix", 0.0);
     _restored_age_s = age;
-    // ⚠️ AGE IS A REFUSAL, NOT A WARNING. A trim corrects the BROKER'S MODEL, and after a long
-    // outage the model this file describes is not the model that will be republished. Adopting
-    // a stale correction commands a code step at exactly the moment nothing is verified.
+    // A trim corrects the broker's model, which changes over a long outage, so an old store is
+    // refused rather than adopted.
     if (age < 0.0 || age > _trim_state_max_age_s) {
         WARN_NON_OO("GnssFleetTrim[{:s}]: trim store is {:.0f} s old (bound {:.0f}) -- REFUSED. "
                     "The fleet will pull in from zero.",
@@ -642,9 +594,8 @@ void GnssFleetTrim::load_trims() {
         return;
     }
     int n = 0;
-    // ⚠️ NAMED, not `j.value(...).items()`: value() returns a TEMPORARY and iterating it
-    // dangles the moment the full expression ends. -Werror caught it; it would have been a
-    // read of freed memory producing plausible trims.
+    // A named copy: a range-for over j.value(...).items() would iterate a destroyed
+    // temporary.
     const nlohmann::json chains = j.value("chains", nlohmann::json::object());
     for (const auto& cv : chains.items()) {
         for (const auto& pv : cv.value().items()) {
@@ -659,16 +610,14 @@ void GnssFleetTrim::load_trims() {
 }
 
 void GnssFleetTrim::post_trims() {
-    // PUBLISH ONLY. The fold thread builds the payload and hands it over; the poster threads do
-    // every byte of I/O. See the header: this stage is a second consumer of telem_buf, so a
-    // network wait here would back-pressure the BROKER's telemetry too.
+    // Builds the payloads and hands them to the posters; no network I/O on the fold thread,
+    // which would back-pressure telem_buf (see the class note).
     std::map<std::string, nlohmann::json> pend;
     {
         std::lock_guard<std::mutex> lk(_mtx);
         for (const auto& cv : _dll.chains()) {
-            // ⚠️ PER CHAIN. This was a fleet-wide sum, so one chain closing a window commanded
-            // all five (measured 5x the intended request rate). A chain only gets a new
-            // command when ITS OWN window closed.
+            // Post a chain only when its own window count moved, and then only on every
+            // post_every_n_windows-th close.
             uint64_t& seen = _closed_seen[cv.first];
             const uint64_t closed = cv.second.n_closed;
             const bool due = (closed / (uint64_t)_post_every) != (seen / (uint64_t)_post_every);
@@ -680,9 +629,8 @@ void GnssFleetTrim::post_trims() {
                 continue;
             nlohmann::json rows = nlohmann::json::array();
             for (const auto& tv : cv.second.trim) {
-                // Disarmed PRNs with a standing trim are still here: integrate() decays them
-                // through the leak and removes them when negligible, so the release is a
-                // ramp, not the 4 s TTL step it was.
+                // Disarmed PRNs stay in `trim` while FleetDll decays them through the leak,
+                // so the tracker sees their release as a ramp.
                 rows.push_back({{"prn", tv.first},
                                 {"trim_chips", tv.second.trim},
                                 {"win", tv.second.last_win}});
@@ -697,9 +645,8 @@ void GnssFleetTrim::post_trims() {
         return;
     {
         std::lock_guard<std::mutex> lk(_pend_mtx);
-        // REPLACE, NEVER APPEND. The trim is absolute, so the newest payload supersedes any the
-        // posters have not sent yet. Queueing would deliver stale corrections late, which is
-        // strictly worse than skipping them.
+        // Replace, never queue: the trim is absolute, so the newest payload supersedes any not
+        // yet sent. _pending then holds only the chains posted by this call.
         _pending = std::move(pend);
         _pend_gen++;
     }
@@ -708,20 +655,16 @@ void GnssFleetTrim::post_trims() {
 
 void GnssFleetTrim::post_loop(int slot) {
     uint64_t last = 0;
-    // ⚠️ KEYED BY THE TARGET, NOT ITS INDEX. A kept-alive socket is a connection to one
-    // host; the index only says where that host sits in a list /set_policy may rebuild
-    // mid-round. Index-keyed state sent a chain's payload down another host's socket -- a
-    // 200 from a valid but unintended instance for the seven chains whose stage names are
-    // fleet-uniform, a 404 for L2C, and instances starved past the trim TTL while their
-    // rounds went elsewhere.
+    // Per-target state is keyed by url, not list index: a kept-alive socket belongs to one
+    // host, and /set_policy can rebuild the list between rounds.
     struct Conn {
         int fd = -1;
         bool connecting = false; // fd is a handshake in flight, not yet a connection
         std::chrono::steady_clock::time_point since;
     };
-    // A handshake gets this long to complete on its own before it counts as a failure:
-    // enough for the kernel's SYN retransmits at 1 s and 3 s, and still inside the
-    // trackers' trim TTL so a target that comes back is served before its trims expire.
+    // A handshake gets this long before it counts as a failure: enough for the kernel's SYN
+    // retransmits at 1 s and 3 s, and inside the trackers' trim TTL, so a target that comes
+    // back is served before its trims expire.
     constexpr auto kConnectBudget = std::chrono::milliseconds(3500);
     std::map<std::string, Conn> conns; // target url -> socket, this thread's alone
     std::map<std::string, int> skips;  // rounds still to skip (backoff)
@@ -748,14 +691,10 @@ void GnssFleetTrim::post_loop(int slot) {
             auto it = work.find(t.chain);
             if (it == work.end())
                 continue;
-            // One socket per target, owned by THIS thread and kept alive across rounds. Each
-            // thread takes a disjoint stride of the target list, so no socket is shared.
-            // ⚠️ BACK OFF A FAILING TARGET. A wedged tracker costs its timeout on EVERY
-            // round, and threads serve a stride GROUP -- so without this one dead node drags
-            // its stride-mates from 23.8 Hz down to the timeout rate. Measured here: the hung
-            // target held its thread ~400 ms per round (send, timeout, retry, timeout).
-            // Exponential, capped, reset by a single success, so a node that comes back
-            // rejoins within a couple of seconds.
+            // One kept-alive socket per target, owned by this thread; the threads' strides
+            // are disjoint, so no socket is shared.
+            // Back off a failing target exponentially, reset by one success: a wedged tracker
+            // costs its timeout every round, which would slow every target in this stride.
             int& skip = skips[t.url];
             if (skip > 0) {
                 --skip;
@@ -794,7 +733,7 @@ void GnssFleetTrim::post_loop(int slot) {
             if (ok)
                 nfail = 0;
             else
-                skip = std::min(48, 1 << std::min(5, ++nfail)); // <= ~2 s at 23.8 Hz
+                skip = std::min(48, 1 << std::min(5, ++nfail)); // <= 32 rounds, ~1.3 s
             std::lock_guard<std::mutex> lk(_mtx);
             _post_reqs++;
             if (ok)
@@ -851,15 +790,11 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
                                               {"n_updates", s.n_updates},
                                               {"src", "comb_cpp"}};
         }
-        // ⚠️ THE TRIM RIDES THE SAME REPLY (#76). This endpoint served the discriminator but
-        // not the integrator: the broker could see the error signal and NOT the standing
-        // correction it had commanded, so every consumer of the seed (the escape referee,
-        // the innovation) judged the model as if untrimmed -- while up to clamp chips of
-        // command stood at the trackers. The trim map is walked separately from `row`
-        // because they genuinely differ: a disarmed PRN decaying through the leak has a trim
-        // and no fresh row, and a PRN with signal but not yet armed has a row and no trim.
-        // A MISSING trim_chips key therefore means "no standing trim", which is not the same
-        // statement as trim_chips == 0.0 (an armed integrator passing through zero).
+        // The integrator state rides the same reply, so the broker sees the standing
+        // correction beside the discriminator. `trim` is walked separately from `row`: a
+        // disarmed PRN decaying through the leak can have a trim and no row, and an unarmed
+        // PRN with signal has a row and no trim. A missing trim_chips means no standing trim,
+        // which differs from trim_chips == 0 (an armed integrator passing through zero).
         for (const auto& tv : cv.second.trim) {
             nlohmann::json& row = prns[std::to_string(tv.first)];
             row["trim_chips"] = tv.second.trim;
@@ -869,30 +804,25 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
             row["trim_win"] = tv.second.last_win;
             row["armed"] = cv.second.armed.count(tv.first) != 0;
         }
-        // Which window gate is in force -- the answer to "why is trim_skipped climbing" must
-        // be readable here, not inferred from broker flags (a chain-level fact, stated once).
+        // The chain's window-gate floor, so a climbing trim_skipped can be read from here.
         prns["_p_floor_abs"] = cv.second.policy.p_floor_abs;
         reply[cv.first] = prns;
     }
     conn.send_json_reply(reply);
 }
 
-/// `<unique_name>/get_taps` -- the lobe-coherent, per-channel taps over the served window depth.
+/// `<unique_name>/get_taps`: the lobe-coherent and per-channel taps over the newest taps_win
+/// windows, the C++ counterpart of combdll.lobe_taps, read by combdll.taps_from_rest so the
+/// broker does not walk every (window, sender, record, PRN, channel) in Python.
 ///
-/// WHAT THIS REPLACES. combdll.lobe_taps builds the identical object in Python by walking
-/// every (window, sender, record, PRN, channel) of the gathered stream: ~140k channel-tuples
-/// per chain per cycle, ~700k across the fleet, each allocating Python complex objects, on a
-/// process pinned at 100% of ONE core by the GIL, where cycle time IS the sum of the chains'
-/// Python CPU. The frames are already here. The reduction is ~1k numbers per chain against
-/// the 46 MB/s it reduces.
+/// Shape: {chain: {prn: {e, p, l, n_chan, n_rec, n_inst, xcoh, n_xcoh, hop,
+/// chan: {freq_id: [e, p, l, n_rec]}}}, taps_win}. No sender appears: the coherence unit is the
+/// lobe (gnssFleetDll.hpp), and `n_inst` is the completeness of the best record behind the
+/// mean, never an operand.
 ///
-/// Shape: {chain: {prn: {e, p, l, n_chan, n_rec, n_inst, hop, chan: {freq_id: [e,p,l,n_rec]}}}}.
-/// No sender appears: the coherence unit is the lobe (gnssFleetDll.hpp), and `n_inst` is the
-/// completeness of the best record behind the mean, never an operand.
-///
-/// ⚠️ MEASUREMENTS ONLY. Presence, the noise floor, the deep gate and the arming verdict are
-/// POLICY and stay on the broker's cycle (see the class header). The one filter here is the
-/// record-completeness gate (`min_instances`), applied identically in both arms.
+/// Measurements only: presence, the noise floor, the deep gate and arming stay in the broker.
+/// Records are filtered only by the `min_instances` completeness gate, as in the Python arm;
+/// channels two senders both carried in a window are left out.
 void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
     nlohmann::json reply = nlohmann::json::object();
     std::lock_guard<std::mutex> lk(_mtx);
@@ -901,7 +831,7 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
         for (const auto& pv : cv.second) {
             const gnss::FleetDll::LobeTap& t = pv.second;
             nlohmann::json cj = nlohmann::json::object();
-            // JSON has no NaN: a PRN no two senders reached says so with null, not a number
+            // JSON has no NaN: xcoh is null when no record reached two senders
             const nlohmann::json xc =
                 std::isfinite(t.xcoh) ? nlohmann::json(t.xcoh) : nlohmann::json();
             for (const auto& ch : t.chan)
@@ -918,18 +848,13 @@ void GnssFleetTrim::taps_callback(kotekan::connectionInstance& conn) {
     conn.send_json_reply(reply);
 }
 
-/// `<unique_name>/get_rec_taps` -- the PER-RECORD three lobe-coherent powers.
+/// `<unique_name>/get_rec_taps`: every record's lobe-coherent E/P/L over the newest taps_win
+/// windows, the input of the served C/N0 (combdll.recs_from_rest, for combdll.prompt_cn0),
+/// plus each chain's hops_per_record.
 ///
-/// The served C/N0's input (#57). combdll.prompt_cn0 builds this by walking the gathered
-/// frames a SECOND time, after the comb DLL has already walked them for its own reduction --
-/// the same ~140k channel-tuples per chain per cycle, twice.
-///
-/// Rows are [win, slot, prn, n_inst, n_chan, e, p, l], flat and time-ordered. Flat rather than
-/// nested because it is a SERIES: nesting it by window invites a consumer to reduce it, and the
-/// whole point of this estimator is that it fits and averages nothing upstream of its own q gate.
-///
-/// ⚠️ MEASUREMENTS ONLY, again. The probe anchor, the Gamma-mean debias, the q gate and the
-/// clip are statistics with judgement in them and stay on the broker's cycle.
+/// Rows are [win, slot, prn, n_inst, n_chan, e, p, l], flat and time-ordered: the estimator
+/// gates and averages records itself, so nothing is reduced here. The probe anchor, the
+/// Gamma-mean debias, the q gate and the clip stay in the broker.
 void GnssFleetTrim::rec_taps_callback(kotekan::connectionInstance& conn) {
     nlohmann::json reply = nlohmann::json::object();
     nlohmann::json hpr = nlohmann::json::object();
@@ -958,9 +883,8 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
                             {"late_frames", c.n_late},
                             {"forced_closes", c.n_forced},
                             {"dup_chan", c.n_dup_chan},
-                            // A1: >0 means the F-engine's frame0 moved and the fold
-                            // re-anchored. Rising steadily = something is wrong with the
-                            // axis, not with the fold.
+                            // >0: the F-engine's frame0 moved and the fold re-anchored;
+                            // a steady rise points at the time axis, not the fold.
                             {"epoch_resets", c.n_epoch_reset},
                             {"open_windows", c.open.size()},
                             {"ring", c.closed.size()},
@@ -971,17 +895,13 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     reply["frames"] = _frames;
     reply["bad_frames"] = _bad_frames;
     reply["late_frames"] = _late_frames;
-    reply["adjust_ok"] = _adjust_ok; // #92 handover adjustments applied
+    reply["adjust_ok"] = _adjust_ok; // PRNs adjusted by /adjust_trim
     reply["adjust_refused"] = _adjust_refused;
-    // THE BUDGET. This is a second consumer of the gather's buffer, so time spent here is time
-    // the broker's own copy is not being handed out. Served as microseconds per frame so "is it
-    // affordable?" is answerable from this endpoint alone: 60 senders x 23.84 frames/s means
-    // the whole fleet costs fold_us_per_frame x 1430 us per second of wall clock.
+    // Fold cost: fold_us_per_frame x the fleet's frame rate (senders x 23.84 Hz) is the fold's
+    // microseconds per second, which must stay well under 1e6 or telem_buf backs up.
     reply["fold_s"] = _fold_s;
-    // THE TRIM STORE, VISIBLE. Persistence that cannot be checked is persistence nobody will
-    // trust after the first surprise -- and the failure that matters here is silent: a store
-    // that loads and is never adopted looks exactly like one that works. `offered` counts
-    // what arming actually asked about, so offered > 0 with adopted == 0 is the real alarm.
+    // Trim store: `offered` counts restored trims whose PRN was armed, so offered > 0 with
+    // adopted == 0 means the store loads but every trim in it was refused.
     reply["trim_store"] = {{"file", _trim_state_file},
                            {"age_s_at_load", _restored_age_s},
                            {"offered", _restored_offered},
@@ -990,9 +910,8 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     reply["fold_us_per_frame"] = _frames ? 1e6 * _fold_s / (double)_frames : 0.0;
     reply["close_hz_measured"] = _close_hz;
     reply["policy_posts"] = _policy_posts;
-    // A RISING policy_expired MEANS A BROKER CHAIN THREAD DIED. Served next to the per-chain
-    // last-seen age so "which chain stopped talking, and how long ago" is one poll, not a log
-    // grep -- the arming is now per chain and so is its failure mode.
+    // A rising policy_expired means a broker chain thread stopped posting. An expired chain is
+    // removed from policy_age_s and policy_armed_requested but stays in `policy`.
     reply["policy_expired"] = _policy_expired;
     reply["policy_ttl_s"] = _policy_ttl_s;
     {
@@ -1002,10 +921,8 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
             a[sv.first] = now - sv.second;
         reply["policy_age_s"] = a;
     }
-    // WHAT THE BROKER ASKED FOR, straight off _policy -- deliberately NOT off _dll.chains()
-    // like `policy` below, which only lists chains that have delivered frames. The per-chain
-    // clobber this guards against is a property of the POST path alone, so the gate for it has
-    // to be readable with no data flowing at all.
+    // What the broker currently asks for, read from _policy: chains whose policy expired are
+    // gone here but stay in `policy` below, which reports FleetDll's state.
     {
         nlohmann::json a = nlohmann::json::object();
         for (const auto& pv : _policy)

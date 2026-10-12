@@ -18,65 +18,67 @@
 
 /**
  * @class GnssFleetTrim
- * @brief THE FAST CODE LOOP, fleet-wide, in C++ (task #51). MILESTONE F1: IT OBSERVES ONLY --
- *        it forms the fleet discriminator every window and actuates nothing.
+ * @brief The fleet-wide fast code loop: forms the fleet code discriminator from the gathered
+ *        telemetry, integrates it, and posts the trims to the tracker instances.
  *
- * WHY THIS EXISTS, in one line of arithmetic. The code discriminator's authority is a step
- * PER UPDATE, not a rate:
+ * The discriminator's authority is a step per update, not a rate:
  *
- *     tau  = -clamp(disc, +-1)/4 * (spacing/0.5)   =>  |tau| <= 0.25 chips, ALWAYS
- *     step = dll_gain * tau                        =>  <= 0.0625 chips at gain 0.25
+ *     tau  = -clamp(disc, +-1)/4 * (spacing/0.5)   =>  |tau| <= 0.25 chips at 0.5 spacing
+ *     step = gain * tau                            =>  <= 0.0625 chips at gain 0.25
  *
- * against a measured 0.121 chips/s of code drift on CHORD. Break-even is therefore 1.94
- * UPDATES PER SECOND, and the broker's policy cycle delivers one every ~12 s -- 23x too slow.
- * The loop pulls in and cannot hold, the prompt tap sits off-peak, and every statistic derived
- * from it (prompt power, C/N0 coherent AND incoherent, the deep fold, every coherence number)
- * is computed on noise. One fault, a dozen symptoms. No gain and no clamp fixes it: tau is
- * clamped BY CONSTRUCTION, so the update RATE is the only lever.
+ * Holding against CHORD's ~0.12 chips/s of code drift therefore needs ~2 updates per second,
+ * which the broker's ~12 s policy cycle cannot supply. tau is bounded by construction, so no
+ * gain or clamp helps; the update rate is the only lever. A tracker instance sees only its own
+ * channels, so the loop runs in the gather process, the one place that sees every instance at
+ * frame rate.
  *
- * WHY HERE AND NOT IN THE TRACKER. A tracker instance sees ~7 of the fleet's ~105 channels and
- * one reference element: it has the authority and not the observability. The rule worth preserving
- * is not "the loop lives in the broker" but ONE PLACE WITH THE FLEET-WIDE VIEW OWNS THE LOOP -- and
- * the gather host is the only other place that has every instance at frame rate.
+ * Policy stays in the Python broker: ephemeris, clock, PRN assignment, presence and quality
+ * gates, and which PRNs are armed. This stage forms the fleet E/P/L, runs the integrator and
+ * posts the trim; it arms no PRN of its own. See docs/CHORD_FAST_TRIM.md.
  *
- * WHY THE POLICY DOES NOT COME WITH IT. Everything that is a judgement stays in the Python
- * broker on its 12 s cycle: ephemeris, sky and visibility, the clock solve and the joint state,
- * PRN assignment, presence and quality gates, who is armed, publishing and the archive. This
- * stage gets three jobs and no others -- form the fleet E/P/L, run the integrator, post the
- * trim -- and it invents no gate and chooses no PRN. See docs/CHORD_FAST_TRIM.md 3.
+ * Each sender sends one telemetry frame per window, 4 records x 2048 hops x 5.12 us = 41.94 ms,
+ * so each chain closes windows, and steps its integrator, at 23.84 Hz: 12x the break-even rate.
  *
- * RATES (docs/CHORD_FAST_TRIM.md 2). A frame is 4 records x 2048 hops x 5.12 us = 41.94 ms, so
- * frames arrive at 23.84 Hz and RECORDS at 95.4 Hz. There is no 50 Hz measurement to be had;
- * there does not need to be. Each frame carries four records, which are four legitimate
- * sequential integrator steps, and because the limit is a step per update those four fold into
- * ONE post with no loss of authority: 95.4 steps/s, 23.84 posts/s, a 49x margin on the drift.
+ * This stage is a second consumer of the gather's telem_buf, so a slow pass back-pressures the
+ * buffer and bufferRecv drops frames for the broker too. Work per frame is bounded, the fold
+ * cost is served as `fold_us_per_frame`, and the fold thread does no network I/O.
  *
- * ⚠️ THIS STAGE MUST NEVER STALL. It is a SECOND CONSUMER of the gather's telem_buf, so a slow
- * pass here back-pressures the buffer and bufferRecv starts dropping frames FOR THE BROKER TOO.
- * Bounded work per frame, and `fold_us_per_frame` is served so "is it affordable?" is
- * answerable without a second measurement -- a silently-slow controller looks exactly like a
- * working one.
- *
- * THE ARITHMETIC IS NOT HERE. It is gnss::FleetDll (gnssFleetDll.hpp), so `scripts/gnss/fleetdll`
- * can drive the SHIPPED code against a byte-identical fixture offline in under a second and the
- * gate can compare it with combdll.fleet_dll_comb on the same bytes. This class is buffer, REST
- * and log, and nothing else.
+ * The arithmetic is in gnss::FleetDll (gnssFleetDll.hpp), so scripts/gnss/fleetdll.cpp can run
+ * it offline and scripts/gnss/fleetdll_gate.py can compare it with combdll.fleet_dll_comb on
+ * the same frames. This class is buffer handling, REST and the poster.
  *
  * @par buffers
  * @buffer in_buf  telemetry frames as received (producer: bufferRecv; shared with the gather)
  *
- * @conf n_win          Int, default 4. Windows averaged into one discriminator. 4 windows =
- *                        16 records = 168 ms, matching --fast-trim-windows on the Python arm.
- * @conf min_instances  Int, default 2. Senders a RECORD must have reached before it is
- *                        averaged in -- a completeness gate, never an operand.
- * @conf max_open_win   Int, default 8. Windows held open per chain before the oldest is
- *                        force-closed, so a sender that dies mid-window cannot pin memory.
+ * @conf n_win                 Int, default 4. Windows averaged into one discriminator
+ *                             (4 windows = 16 records = 168 ms).
+ * @conf min_instances         Int, default 2. Senders a record must have reached to be
+ *                             averaged in; a completeness gate, never an operand.
+ * @conf max_open_win          Int, default 8. Windows held open per chain before the oldest is
+ *                             force-closed, so a sender that dies mid-window cannot pin memory.
+ * @conf taps_win              Int, default 0. Window depth served by get_taps and get_rec_taps;
+ *                             0 follows n_win. Set it to the broker's `--telem-windows`.
+ * @conf trim_state_file       String, default "". Trim store path; empty disables it.
+ * @conf trim_state_max_age_s  Double, default 300. A trim store older than this is refused.
+ * @conf trim_state_save_s     Double, default 2. Seconds between trim store saves; 0 = never.
+ * @conf policy_ttl_s          Double, default 60, at least 5. A chain's policy is dropped after
+ *                             this long without a /set_policy for it.
+ * @conf post_every_n_windows  Int, default 1. Post a chain's trims every n-th window close.
+ * @conf post_threads          Int, default 4. Poster threads.
+ * @conf post_timeout_ms       Int, default 450, at least 20. Send and receive timeout per post.
  *
  * @par REST
- * `<unique_name>/get_dll`   -- per chain, per PRN: disc, q, e/p/l_pow, n_src, n_chan, n_rec,
- *                              hop, win. The SAME SHAPE combdll.fleet_dll_comb produces, minus
- *                              presence (that is policy, and it stays in Python).
- * `<unique_name>/get_stats` -- frames, windows closed, late frames, forced closes, fold budget.
+ * `<unique_name>/get_dll`      -- per chain, per PRN: disc, q, e/p/l_pow, n_src, n_chan, n_rec,
+ *                                 hop, win, n_updates, and for a PRN with a standing trim the
+ *                                 integrator state (trim_chips, trim_steps, trim_railed,
+ *                                 trim_skipped, trim_win, armed); per chain, `_p_floor_abs`.
+ *                                 No presence: that is policy.
+ * `<unique_name>/get_taps`     -- per chain, per PRN: lobe-coherent and per-channel taps.
+ * `<unique_name>/get_rec_taps` -- per chain: the per-record lobe-coherent E/P/L series.
+ * `<unique_name>/get_stats`    -- counters, fold cost, trim store, policy and poster state.
+ * `<unique_name>/set_policy`   -- POST {"chains": {chain: {armed, gain_per_s or gain,
+ *                                 leak_per_s or leak, clamp, spacing, p_floor_abs, targets}}}.
+ * `<unique_name>/adjust_trim`  -- POST {"chains": {chain: {prn: delta_chips}}}.
  *
  * @author Keith Vanderlinde
  */
@@ -89,46 +91,43 @@ public:
     void main_thread() override;
 
 private:
-    /// One tracker instance's /set_trim. Parsed from a URL at construction, so a malformed
-    /// endpoint fails loudly at startup rather than as a silent stream of failed posts.
+    /// One tracker instance's /set_trim endpoint, parsed by parse_target when a /set_policy
+    /// names it; a malformed URL fails that request with 400.
     struct Target {
         std::string host;
         unsigned short port = 0;
         std::string path;
-        std::string url;   ///< as configured, for the log and get_stats
+        std::string url;   ///< as posted; the sort key and the key for per-target poster state
         std::string chain; ///< which chain's payload it takes
-        /// ⚠️ RESOLVED ONCE, AT POLICY TIME. restClient's own header warns "Prefer numerical,
-        /// because the DNS lookup is blocking" -- and at ~1430 posts/s it is not a slowdown,
-        /// it is an outage: on 2026-08-15 the gather's log went "Nameserver 127.0.0.53:53 has
-        /// failed: request timed out. All nameservers have failed" and the process died. Six
-        /// hostnames do not change while a policy stands; resolving them per request is pure
-        /// self-harm.
+        /// Resolved by parse_target on each /set_policy, never per post: lookups block, and at
+        /// one post per instance per window they would stall the posters and overload the
+        /// resolver.
         struct sockaddr_in addr;
     };
 
-    /// What the policy cycle asked for, before the rate conversion. Kept separate from
-    /// gnss::TrimPolicy because `leak_per_s` is what the broker states and `leak` is what the
-    /// integrator uses, and conflating them is exactly the 30x-bandwidth trap.
+    /// One chain's /set_policy request, before rearm() converts the per-second gain and leak to
+    /// per-update values (gnss::TrimPolicy) with the measured window close rate.
     struct PolicyReq {
         std::set<int> armed;
         double gain = 0.25, clamp = 3.0, spacing = 0.5;
-        double leak_per_s = -1.0; ///< <0 means "leak was given per-update instead"
+        double leak_per_s = -1.0; ///< <0: `leak` was given per update instead
         double leak = 0.05;
-        double gain_per_s = -1.0; ///< the BANDWIDTH; <0 means per-update `gain` was given
-        double p_floor_abs = 0.0; ///< absolute window gate; 0 = peer median (TrimPolicy note)
+        double gain_per_s = -1.0; ///< the bandwidth; <0: use the per-update `gain`
+        double p_floor_abs = 0.0; ///< absolute prompt-power floor; 0 = leak only, no steps
     };
 
     void dll_callback(kotekan::connectionInstance& conn);
     void taps_callback(kotekan::connectionInstance& conn);
     void rec_taps_callback(kotekan::connectionInstance& conn);
 
-    /// THE TRIM STORE. The integrator is the only state here that cannot be rebuilt from the
-    /// stream, and a gather restart is the only thing that loses it -- measured 2026-08-23 as
-    /// q 2.0-3.7 -> ~1.0 fleet-wide for minutes. See gnssFleetDll.hpp trim_snapshot().
+    /// Trim store. The integrator is the only state here that cannot be rebuilt from the
+    /// stream, so it is saved to trim_state_file and restored after a restart; without it every
+    /// tracker is left off-peak by its standing trim. See FleetDll::trim_snapshot().
     void save_trims();
     void load_trims();
-    /// Restored trims awaiting the broker's first /set_policy for that PRN. NOT applied at
-    /// load: an unarmed trim leaks to erasure in ~5.6 s and the policy cycle is ~11 s.
+    /// Restored trims, chain -> PRN -> chips, held until a /set_policy arms the PRN. Not
+    /// applied at load: until its first policy a chain runs the default per-update leak, which
+    /// erases an unarmed 1-chip trim in ~5.6 s, inside the ~12 s policy cycle.
     std::map<std::string, std::map<int, double>> _restored;
     std::string _trim_state_file;
     double _trim_state_max_age_s = 300.0;
@@ -138,9 +137,8 @@ private:
     int _restored_adopted = 0, _restored_offered = 0;
     void stats_callback(kotekan::connectionInstance& conn);
     void policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
-    /// #92 handover: `/adjust_trim` -- the broker just re-based a seed and posts the
-    /// compensating trim delta so the tap (seed + trim) stays on the sky. See
-    /// FleetDll::adjust_trim for the refusal rules; this is parse + lock + counters.
+    /// `/adjust_trim`: the broker re-based a seed and posts the compensating trim delta, so
+    /// seed + trim stays on the sky. FleetDll::adjust_trim holds the refusal rules.
     void adjust_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     uint64_t _adjust_ok = 0, _adjust_refused = 0;
     static Target parse_target(const std::string& url, const std::string& chain);
@@ -150,110 +148,70 @@ private:
 
     Buffer* in_buf;
 
-    std::mutex _mtx; ///< guards _dll and the counters (the REST threads read them)
+    std::mutex _mtx; ///< guards _dll, the policy and trim-store state, and the counters
     gnss::FleetDll _dll;
     uint64_t _frames = 0, _bad_frames = 0, _late_frames = 0;
-    double _fold_s = 0.0; ///< total seconds folding -- the budget this must not blow
+    double _fold_s = 0.0; ///< total seconds in the fold step, including waits for _mtx
 
-    // ---- THE ACTUATOR (F2) ---------------------------------------------------------------
+    // ---- Actuator ----
+    // Every instance tracking a chain needs the same trims, but each has its own /set_trim
+    // endpoint, so a post is one request per instance. post_every_n_windows decimates the
+    // posts without touching the integrator.
     //
-    // ⚠️ THE POST COUNT IS NOT WHAT I FIRST CLAIMED. Every instance tracking a chain despreads
-    // the same PRNs and so needs the same trims, and each instance has its OWN endpoint path --
-    // 10-12 per chain, ~60 across five. They share only 6 host processes, but a shared HOST is
-    // not a shared ENDPOINT, so they cannot be batched into 6 requests as I first wrote. At one
-    // post per window that is ~1430 requests/s, and restClient sends `Connection: close`, so
-    // each is its own TCP connection. `post_every_n_windows` decimates the ACTUATION without
-    // touching the integrator: the trim moves at most gain*0.25 = 0.0625 chips per step, so
-    // posting every 4th window costs ~0.02 chips of lag against a 0.121 chips/s drift --
-    // nothing -- and cuts the request rate by four.
+    // restClient is not usable here: make_request keeps only a pointer to the caller's
+    // callback, make_request_blocking exits the process on timeout, and both send
+    // `Connection: close`. The poster uses plain sockets with explicit timeouts, addresses
+    // resolved at policy time, kept-alive connections, and no path that ends the process,
+    // which also runs the gather.
     //
-    // ⚠️ NEITHER restClient ENTRY POINT IS USABLE HERE, and both were tried on sky.
-    //
-    //   make_request (async): stores a POINTER to the caller's std::function and never owns
-    //     it -- cleanup() frees only the internal pair. A stack-local callback is dangling by
-    //     the time the reply lands on libevent's thread. Killed the gather within seconds,
-    //     silently: last log line "restClient: libevent version", then nothing.
-    //
-    //   make_request_blocking: FATAL_ERROR_NON_OO on timeout -- "This might leave the
-    //     restClient in an abnormal state. Exiting..." It does not return an error, it exits
-    //     the process. So ONE slow tracker takes the fleet's telemetry down with it. That is
-    //     exactly what happened at 12:41 on 2026-08-15, compounded by per-request DNS.
-    //
-    // Both failures are the same shape: this stage back-pressures every chain's telemetry, so
-    // it cannot host a dependency that reserves the right to call exit(). The poster below is
-    // ~100 lines of plain socket with explicit timeouts, addresses resolved once, persistent
-    // connections, and NO path that can terminate the process. Slower to write, and the only
-    // version that has not taken the instrument down.
-    //
-    // THE FOLD THREAD NEVER SENDS. It publishes the newest payload and moves on; these threads
-    // do the I/O. And because the trim is ABSOLUTE, a thread that falls behind simply picks up
-    // the newest payload -- SKIP, NEVER QUEUE. A queue would deliver stale corrections late,
-    // which is worse than delivering none.
-    std::vector<Target> _targets; ///< flat, one per tracker instance; guarded by _pend_mtx
+    // The fold thread never sends: post_trims publishes the newest payloads and the poster
+    // threads do the I/O. The trim is absolute, so a poster that falls behind sends whatever
+    // _pending holds when it next looks and skips the rest; nothing is queued.
+    std::vector<Target> _targets; ///< one per tracker instance, sorted by url; guarded by _pend_mtx
     std::vector<std::thread> _post_threads;
-    /// ⚠️ THE STRIDE, FIXED BEFORE ANY THREAD STARTS. post_loop used to read
-    /// _post_threads.size() -- a vector still being emplace_back'd by the constructor while
-    /// the earlier threads were already running -- so every thread read a DIFFERENT stride and
-    /// the target list was covered raggedly. Measured on sky 2026-08-15: 4 targets, 4 threads,
-    /// and exactly 2 requests per round. It fails SILENTLY: the targets that are served look
-    /// perfect, and the ones that are not simply never appear.
+    /// Poster stride: thread i serves targets i, i + n, ... Set before any poster starts;
+    /// post_loop must not use _post_threads.size(), which grows while the first posters run.
     int _n_post_threads = 1;
     std::mutex _pend_mtx;
     std::condition_variable _pend_cv;
-    std::map<std::string, nlohmann::json> _pending; ///< chain -> newest payload
+    std::map<std::string, nlohmann::json> _pending; ///< chain -> payload, from the last post_trims
     uint64_t _pend_gen = 0;                         ///< bumped when _pending is replaced
     std::vector<uint64_t> _sent_gen;                ///< per thread slot, last generation sent
     int _post_every = 1;
-    /// Per-request budget on an established connection: wider than one kernel minimum RTO
-    /// (200 ms) so a single lost segment recovers instead of costing the socket, short
-    /// enough that a wedged tracker cannot hold a poster thread past the point where its
-    /// trim would be stale anyway. Handshakes are not charged against it (see post_loop).
+    /// Per-request budget on an established connection: wider than the kernel's minimum RTO
+    /// (200 ms) so a single lost segment recovers instead of costing the socket, short enough
+    /// that a wedged tracker cannot hold a poster thread past the point where its trim would
+    /// be stale anyway. Handshakes are not charged against it (see post_loop).
     int _post_timeout_ms = 450;
-    /// PER CHAIN, not fleet-wide. Summing across chains made any chain's window close trigger
-    /// a post round for EVERY chain: measured 116 posts/s/path against the 23.8 intended, a
-    /// clean 5x for the five chains (2026-08-15). Harmless in correctness -- the trim is
-    /// absolute and idempotent -- and 5x the request rate, which is exactly the sort of thing
-    /// that is invisible unless the measurement is made against a stated expectation.
+    /// chain -> n_closed at the last post_trims, so a chain is posted only when its own window
+    /// closed.
     std::map<std::string, uint64_t> _closed_seen;
     uint64_t _post_reqs = 0, _post_ok = 0, _post_fail = 0, _post_rounds = 0;
     std::string _post_last_err;
 
-    // ---- THE POLICY SEAM (F3) -------------------------------------------------------------
+    // ---- Policy ----
+    // The broker's policy cycle posts, per chain, the armed PRNs, the loop constants and the
+    // targets; every judgement (presence, floors, the deep gate, the clock, the ephemeris)
+    // stays there.
     //
-    // The broker's 12 s cycle POSTs who is armed and with what constants; this stage converts
-    // and applies. Everything that is a JUDGEMENT -- presence, floors, the deep gate, the
-    // clock, the ephemeris -- stays there. See docs/CHORD_FAST_TRIM.md 4.
+    // gain and leak are per update, so at fixed constants the loop's closed-loop and noise
+    // bandwidths scale with the update rate. The broker states gain_per_s and leak_per_s, and
+    // rearm() divides them by the measured window close rate, served as close_hz_measured.
     //
-    // ⚠️ THE LEAK CONVERSION LIVES HERE AND NOWHERE ELSE. `leak` is PER UPDATE, so the loop's
-    // closed-loop and noise bandwidths both scale with the update rate: at unchanged constants,
-    // moving 3.1 -> 23.8 Hz is ~8x the bandwidth. The broker therefore states `leak_per_s` and
-    // this converts with the MEASURED close rate (not the nominal 23.84, which is what the wire
-    // would deliver if nothing were ever late -- 3% are). The measured rate is served in
-    // get_stats so the conversion is checkable rather than trusted.
-    //
-    // ⚠️ PER CHAIN, AND THAT IS NOT COSMETIC. Each broker chain thread POSTs a payload naming
-    // ONLY its own chain (`{"chains": {telem_chain: {...}}}`), so a wholesale `_policy = got`
-    // means the last chain to POST disarms every other one. With a single armed chain that is
-    // invisible; the moment a second is armed the two clobber each other at the policy cadence
-    // and BOTH fall to a duty cycle set by who posted last. Found before arming gal_e5a/bds_b2a
-    // (#49), by reading the POST payload rather than the endpoint -- it would have presented as
-    // "arming the new chains broke gps_l5".
-    //
-    // The anti-latch property that motivated "replace, never merge" is preserved, just at chain
-    // granularity: a chain's OWN entry is still replaced wholesale every post, so a PRN it stops
-    // naming stops being armed. What replace-everything additionally bought -- a chain that goes
-    // silent stops being commanded -- is now bought explicitly by _policy_seen + policy_ttl_s,
-    // because a silent chain is a broker thread that died and its trims must expire.
+    // Each broker chain thread posts only its own chain, so policies and targets are replaced
+    // per chain: a chain's entry is replaced wholesale on every post, so a PRN it stops naming
+    // is disarmed, and chains absent from the post are untouched. _policy_seen and
+    // policy_ttl_s drop the policy of a chain that stops posting.
     std::map<std::string, PolicyReq> _policy;
     std::map<std::string, double> _policy_seen; ///< chain -> wall time of its last /set_policy
     double _policy_ttl_s = 60.0;                ///< drop a chain's policy after this silence
     double _first_close_t = 0.0; ///< wall time of the first window close, for the rate
     uint64_t _first_close_n = 0;
-    double _close_hz = 0.0;                     ///< MEASURED window closes/s, fleet-wide
-    std::map<std::string, uint64_t> _late_seen; ///< A1 alarm: chain -> last n_late sample
+    double _close_hz = 0.0; ///< window closes/s per chain, averaged since the first close
+    std::map<std::string, uint64_t> _late_seen; ///< chain -> n_late at the previous rearm()
     double _late_seen_t = 0.0;
     uint64_t _policy_posts = 0;
-    uint64_t _policy_expired = 0; ///< chains dropped for silence; a rising count is a dead thread
+    uint64_t _policy_expired = 0; ///< chains dropped for silence: a broker chain thread stopped
 };
 
 #endif // GNSS_FLEET_TRIM_HPP

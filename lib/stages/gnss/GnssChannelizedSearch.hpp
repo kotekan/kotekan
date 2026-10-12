@@ -1,7 +1,7 @@
 /**
  * @file
- * @brief Async per-subband channelized GNSS search (the search half of the
- *        distributed split), reporting detections over REST.
+ * @brief Asynchronous channelized GNSS acquisition over one subband, reporting detections
+ *        over REST.
  *  - GnssChannelizedSearch : public kotekan::Stage
  */
 
@@ -29,46 +29,57 @@
  * @class GnssChannelizedSearch
  * @brief Non-backpressuring channelized acquisition over one subband's channels.
  *
- * Mirrors @ref GnssAcquire's design in the channelized domain: the consumer loop
- * copies a snapshot of channelized hops and immediately releases every frame, so
- * the producer never waits; a worker thread runs the heavy parallel-code-phase
- * search (the incoherent-accumulation @ref gnssChannelizedAcquire, FFT coarse
- * correlation) over the snapshot on this subband's owned channels. Because each
- * subband holds only a slice of the carrier's code power it is less sensitive than
- * the full band -- but it only has to find a sat in *some* subband; the broker then
- * seeds every tracker at one consensus (code phase, Doppler) so the per-subband
- * despreads recombine coherently to full sensitivity.
+ * The consumer loop copies a snapshot of channelized hops and releases every frame at once, so
+ * the producer never waits. A worker thread searches the snapshot's covering channels
+ * (@ref gnss::channelized_accumulate, or GnssCudaAcquire on the GPU), refines each detection's
+ * code phase with exact despreads, and converts it with @ref gnss::detection_phase.
  *
- * Detections (PRN -> Doppler, code phase, SNR) are published over REST
- * (@c GET unique_name/get_detections) for the broker to poll. Code phase + Doppler
- * follow the tracker's seeding convention (r2c Doppler-sign flip + sub-hop refine),
- * and code phase is grid-consistent with the tracker (both on the hop*2N window
- * grid), so a reported seed is directly usable -- modulo slow code-Doppler drift,
- * which periodic re-seeding by the broker absorbs.
+ * Detections (PRN -> Doppler, code phases, SNR) are served at @c GET unique_name/get_detections
+ * for the broker, with the Doppler sign-corrected for the r2c fold and the code phases as
+ * defined by @ref gnss::DetectionPhase.
  *
- * @conf signal/sample_rate/f_offset/spectrum_length/num_taps/pfb_window  As the F-engine.
- * @conf channel_offset   Int (default 0). Global index of this subband's channel 0. Describes
- *                        a CONTIGUOUS subband only.
- * @conf channel_ids      Array<Int> (optional). Explicit global index per local channel, for a
- *                        SPARSE subband -- CHORD's corner-turn hands a node every 16th bin, so
- *                        its covering set for one carrier is a stride-16 comb, not a run.
- *                        Overrides channel_offset. Empty = contiguous, unchanged.
+ * REST: @c set_doppler_hints and @c set_nh_hint narrow the search per PRN; @c set_prns and
+ * @c get_prns change and read the slot -> PRN map.
+ *
+ * @conf signal/sample_rate/spectrum_length/num_taps/pfb_window  As the F-engine.
+ * @conf f_offset         Double (default 0). Carrier frequency in the channelized spectrum, Hz
+ *                        (bin f_offset / (sample_rate / fft_len)).
+ * @conf channel_offset   Int (default 0). Global index of this subband's channel 0, for a
+ *                        contiguous subband.
+ * @conf channel_ids      Array<Int> (optional). Global index of each local channel, for a
+ *                        sparse subband (a strided comb). Overrides channel_offset.
  * @conf n_channels       Int. Channels owned by this subband.
- * @conf prns             Array<Int>. PRN universe to search.
- * @conf doppler_min/max/step  Double. Acquisition Doppler grid, Hz.
+ * @conf prns             Array<Int>. PRN in each slot.
+ * @conf doppler_min/max/step  Double (default -6000/6000/500). Blind Doppler grid, Hz. A
+ *                        top-level /clock_profile block overrides min/max.
  * @conf acquire_snr      Double (default 12). Surface SNR to declare a detection.
  * @conf acquire_windows  Int (default 64). |D|^2 windows to integrate per snapshot.
+ * @conf hops_per_record  Int (default: the replica period). Coherent window, hops.
+ * @conf hold_snapshots   Int (default 5). Missed snapshots a detection survives.
  * @conf doppler_margin_hz Double (default 5000). Covering-channel selection band.
+ * @conf hint_doppler_sign Double (default -1). Physical (hinted) to internal Doppler sign.
+ * @conf hint_ttl_s       Double (default 8). Age at which a hint counts as absent.
+ * @conf require_hint     Bool (default false). Skip PRNs without a fresh Doppler hint.
+ * @conf prns_per_pass    Int (default 0 = all). Eligible PRNs searched per pass, round-robin.
+ * @conf blind_prns_per_pass Int (default 0 = no limit). Unhinted PRNs blind-scanned per pass.
+ * @conf nh_search        Bool (default false). Search every secondary-code alignment.
+ * @conf nh_hint_span     Int (default 1). Alignments scanned either side of a hinted one.
+ * @conf nh_label_consensus Bool (default false). See @c _nh_label_consensus.
+ * @conf acq_pairsum_select Bool (default false). See @c _acq_pairsum_select.
+ * @conf acquire_threads  Int (default 1). Threads for the CPU acquire and the CPU refine.
+ * @conf acquire_fine_step Int (default 1). Fine-lag decimation of the surface, samples.
+ * @conf refine_span      Int (default fft_len). Refine half-width, samples.
+ * @conf refine_step      Int (default 1). Refine step, samples.
+ * @conf refine_hops      Int (default 0 = the full record). Refine integration, hops.
+ * @conf code_doppler_sign Double (default 1). See ChannelizedReplicaBank::code_doppler_sign.
+ * @conf prn_freq_offset_hz Array<Double> (optional). Per-slot FDMA carrier offsets, Hz.
+ * @conf use_cuda_acquire Bool (default false). Acquire on the GPU (CUDA builds only).
+ * @conf use_cuda_refine  Bool (default use_cuda_acquire). Refine on the GPU.
  *
- * @par Almanac-narrowed Doppler (POST @c unique_name/set_doppler_hints)
- * The orbit fixes each sat's Doppler to ~tens of Hz (geometry + a common clock-frequency
- * bias); only that prediction is unknown a priori. The broker POSTs per-PRN hints
- * @c [{prn, doppler_hz, margin_hz}] and the search then scans only @c doppler_hz +- margin_hz
- * (at @c doppler_step) for that PRN instead of the blind @c doppler_min..max grid -- far cheaper
- * and lower false-alarm, and it integrates at the right cell so weak sats clear. A PRN with no
- * hint (broker absent / unpredicted) falls back to the full blind grid, so behaviour is
- * unchanged without the broker. (On a disciplined-clock receiver the prediction is exact and
- * the search collapses to a code-phase pin.)
+ * @par Doppler hints (POST @c unique_name/set_doppler_hints)
+ * The broker posts per-PRN predictions @c [{prn, doppler_hz, margin_hz}]. A hinted PRN is
+ * scanned only over @c doppler_hz +- margin_hz, on the @c doppler_step grid; an unhinted PRN
+ * gets the blind grid, or is skipped under @c require_hint.
  *
  * @buffer in_buf This subband's channels, [hop][n_channels] cfloat32.
  *
@@ -85,20 +96,18 @@ private:
     void search_worker();
     void search_snapshot();
     void get_detections_callback(kotekan::connectionInstance& conn);
-    // ---- LIVE PRN MEMBERSHIP (docs/CHORD_LIVE_PRN_RECONFIG.md) ------------------------
-    // The search hunts the satellites its list names, and that list came from a hand-written
-    // config. A satellite with no slot is one the search can never find, which is how E36 --
-    // 83 deg at transit -- stayed invisible for as long as the manifest said so.
+    // ---- Slot membership (docs/CHORD_LIVE_PRN_RECONFIG.md) ----
 
-    /// POST: the whole slot->PRN map, in slot order. Same declarative contract, same length
-    /// rule and same staging as cudaGnssChordTrackState::set_prns_callback, so the broker
-    /// drives the producer and the search with ONE payload.
+    /// POST: the whole slot -> PRN map in slot order, as a bare array or @c {"prns": [...]},
+    /// the payload cudaGnssChordTrackState::set_prns_callback takes. The slot count is fixed
+    /// and PRNs must be distinct. Any @c at_hop is ignored: the map is staged and applied before
+    /// the next pass.
     void set_prns_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     /// GET: the live map, plus the swap count.
     void get_prns_callback(kotekan::connectionInstance& conn);
-    /// Apply any staged map. ⚠️ WORKER THREAD ONLY, between passes: the refine engines, the
-    /// replica cache and the hint tables all belong to the pass, and a swap landing inside one
-    /// would change the code under a surface that is half built.
+    /// Apply any staged map. Worker thread only, between passes: the bank, the refine engines
+    /// and the hint tables belong to the pass, and a swap inside one would change the code
+    /// under a half-built surface.
     void apply_prn_swaps();
 
     std::mutex _prn_mtx; ///< guards @c _prns and the staging below
@@ -114,34 +123,23 @@ private:
     struct Detection {
         double doppler_hz = 0.0;
         double code_phase_chips = 0.0;
-        long long ref_hop = 0; ///< snapshot reference hop (sample_seq/fft_len) cp0 is anchored to
+        long long ref_hop = 0; ///< snapshot start hop (sample_seq / fft_len): the detection epoch
         float snr = 0.0f;
         bool valid = false;
         int misses = 0; ///< consecutive non-detecting snapshots since last valid hit
-        /// Secondary-code (NH) alignment this detection was found at -- the @c nh_phase the
-        /// replica generator was given, i.e. overlay chip for absolute primary-period k is
-        /// secondary[(k + nh) mod len]. -1 when the signal has no secondary code.
-        ///
-        /// The search SCANS all alignments and therefore MEASURES this, per satellite, every
-        /// pass. Reporting it lets a consumer skip reconstructing it from absolute time (the
-        /// broker's --cl-assist), which needs the wall clock and the modelled range good to well
-        /// under half a primary period -- 0.5 ms for L5 NH20 -- and silently picks the wrong
-        /// period when they are not. Measured beats computed, and per-satellite beats a fitted
-        /// common constant.
+        /// Secondary-code alignment: the @c nh_phase of the winning replica (or the label vote's
+        /// correction of it, under nh_label_consensus), so the overlay chip for primary period k
+        /// is secondary[(k + nh) mod len]. Measured per satellite every pass; -1 unless
+        /// alignments were searched.
         int nh = -1;
-        /// Code phase in the OVERLAID code's own length (n_nh * code_length), or -1 when the
-        /// signal has no secondary code. This is what a tracker despreading the long code needs;
-        /// @c code_phase_chips is reduced mod the PRIMARY length and cannot carry the period.
+        /// Code phase mod the overlaid length (n_nh * code_length), or -1 unless alignments
+        /// were searched. @c code_phase_chips is mod the primary length and cannot carry the
+        /// overlay period.
         double code_phase_long_chips = -1.0;
-        /// PHYSICAL code phase at @c ref_hop, in the overlaid code's length; -1 if none.
-        ///
-        /// This, not @c code_phase_chips, is what a consumer should transport. cp0 back-
-        /// references the phase to sample 0 through a Doppler-scaled rate, ~2e15 samples away,
-        /// which multiplies the reported Doppler's error by 5903 chips/Hz = 0.58 PERIODS per Hz
-        /// -- and the acquire's Doppler is only good to ~1.5 Hz, so the overlay period that
-        /// comes out is a coin flip. Referenced to the search's own fixed replica anchor
-        /// instead, the same lever is 1e-4 chips/Hz: 4e7 times smaller, because the anchor is a
-        /// small fixed index rather than the absolute stream position.
+        /// Physical code phase at @c ref_hop, mod the overlaid length; -1 unless alignments were
+        /// searched. This is the one to transport: @c code_phase_chips is referred to sample 0
+        /// and carries a Doppler lever of thousands of chips per Hz at CHORD uptime, while this
+        /// one is referred to the search's fixed replica anchor (~1e-4 chips/Hz).
         double code_phase_at_ref_chips = -1.0;
     };
 
@@ -163,16 +161,14 @@ private:
     double _sample_rate;
     double _doppler_margin_hz;
     double _acquire_snr;
-    double _doppler_step; ///< grid step, Hz (used to build a PRN's narrow almanac grid)
-    /// Slot -> PRN. Seeded from config; LIVE thereafter (see set_prns_callback). Guarded by
-    /// @c _prn_mtx for readers off the worker thread.
+    double _doppler_step; ///< grid step, Hz, of both the blind and the hinted grids
+    /// Slot -> PRN, from config and then set_prns_callback. Written only by the worker
+    /// (apply_prn_swaps) under @c _prn_mtx; other threads read it under the same lock.
     std::vector<int> _prns;
     std::vector<double> _doppler_grid; ///< blind fallback grid (doppler_min..max)
 
-    /// Per-PRN almanac Doppler hint from the broker (POST set_doppler_hints): when valid, the
-    /// search scans only doppler +- margin for that PRN instead of the blind grid. `t_recv` is a
-    /// steady-clock stamp (s) at receipt -> a hint the broker stops refreshing (the sat set)
-    /// EXPIRES after _hint_ttl_s, so with _require_hint the PRN drops out of the active scan set.
+    /// Per-PRN Doppler hint (POST set_doppler_hints): physical Doppler and margin, Hz.
+    /// @c t_recv is steady_s() at receipt; a hint older than @c _hint_ttl_s counts as absent.
     struct DopHint {
         bool valid = false;
         double doppler = 0.0;
@@ -180,185 +176,121 @@ private:
         double t_recv = 0.0;
     };
     std::vector<DopHint> _dop_hints; ///< parallel to _prns (live, updated by REST)
-    /// The hint table AS OF the snapshot, copied under _hint_mtx when the snapshot finalizes.
-    /// The worker searches THESE, not the live table: a pass can run for minutes, during which
-    /// the broker keeps refreshing hints to predict the CURRENT sky -- but the data is frozen
-    /// at snapshot time. High-elevation sats (the best targets) have the highest Doppler rate
-    /// (~0.65 Hz/s), so a hint read 4-5 minutes into a pass is off by ~150-200 Hz for data
-    /// captured at pass start: outside the narrowed window entirely, a silent per-PRN miss
-    /// that gets WORSE the later in the pass the PRN is processed. Epoch-matching the hints to
-    /// the data removes it; residual = broker interval (10 s) x rate ~ 7 Hz.
+    /// The hint table as of the snapshot, copied under _hint_mtx when the snapshot finalizes.
+    /// The worker searches these, not the live table: the broker keeps predicting the current
+    /// sky while a pass works on frozen data, and a satellite's Doppler drifts up to ~1 Hz/s.
     std::vector<DopHint> _snap_hints;
     double _snap_taken_s = 0.0; ///< steady_s() when the snapshot finalized (for hint TTL)
-    /// Per-PRN SECONDARY-CODE ALIGNMENT hint (POST set_nh_hint), the Doppler hint's twin and by
-    /// far the bigger saving: the acquire builds a FULL surface per alignment, so a 20-chip
-    /// overlay costs 20 surfaces per PRN and is ~92% of a pass (measured 2026-08-04: acquire
-    /// 40.00 s vs refine 3.62 s at live parameters).
-    ///
-    /// The alignment advances exactly one index per primary code period, so
-    ///     nh(H) = (nh0 + (H - H0) / period_hops) mod n_nh
-    /// needs NO absolute clock, no range model, no utc0_sample0 -- deliberately unlike the
-    /// combiner's --cl-hint, whose GPS-time route carries a bootstrap dependency and an
-    /// anchor-latency failure mode. The hint only ever refines something THIS stage already
-    /// measured and reported: no hint scans all n_nh (the old behaviour), the first detection
-    /// establishes it, and a stale hint expires back to the full scan.
-    ///
-    /// ⚠️ IT IS NOT EXACT COUNTER ARITHMETIC, AND THE ±1 IS STRUCTURAL. An earlier version of
-    /// this comment asserted "a period is an exact hop count". **That is false at every geometry
-    /// this tree has ever run.** At CHORD period_hops = (10230/10.23e6)*3.2e9/16384 = 195.3125
-    /// hops, and snapshot hops are multiples of the 8192-hop FRAME, giving 8192/195.3125 =
-    /// 41.9430 periods per frame -- neither is an integer. (The airspy geometry it was presumably
-    /// written for is no better: 19.5312 hops/period at fs 20 MHz, fft 1024.)
-    ///
-    /// The true advance is a difference of floors, floor(H1/T) - floor(H0/T), while the code
-    /// computes llround((H1-H0)/T). Those differ by exactly 1 whenever the sub-period phases of
-    /// H0 and H1 straddle the rounding boundary, so **pred is off by one period at a rate set by
-    /// the fractional geometry, not by signal quality.** Nothing detects this: the ±nh_hint_span
-    /// scan silently absorbs it.
-    ///
-    /// MEASURED ON SKY 2026-08-16 (112 transitions, 241 s, gps_l5, all dhop = 8192):
-    ///     d = best_nh - pred:   0: 37.5%   -1: 23.2%   |d| == span: 20.5%   |d| > span: 16.1%
-    /// |d| > span is IMPOSSIBLE with a fresh hint, so ~16% of passes ran the blind scan. The
-    /// scatter tracks SNR, not the counter -- see task #41 and
-    /// 31896a862:docs/CHORD_CONTROL_AUDIT.md §3.
-    ///
-    /// Accuracy also degrades with revisit. An entirely unmodelled 4 kHz Doppler slips the period
-    /// count by 0.041 periods over 12 s -- but 4.3 periods over the 1276 s revisit this fleet had
-    /// before 2026-08-04, where the hint would have been worse than useless.
+    /// Per-PRN secondary-code alignment hint (POST set_nh_hint): alignment @c nh at absolute
+    /// hop @c ref_hop. Each alignment costs a full acquisition surface, so this is the larger
+    /// saving. A fresh hint limits the scan to pred +- _nh_hint_span, with
+    ///     pred = (nh + llround((H - ref_hop) / period_hops)) mod n_nh
+    /// at snapshot start hop H. period_hops is not an integer (195.3125 at CHORD), so the
+    /// rounded period count, and pred, can be off by one; the span absorbs that. The count also
+    /// ignores code Doppler (0.04 periods per 12 s at 4 kHz on L5), so a hint degrades with age.
     struct NhHint {
         bool valid = false;
-        int nh = 0;            ///< alignment index measured at ref_hop
-        long long ref_hop = 0; ///< absolute hop it was measured at
+        int nh = 0;            ///< alignment index at ref_hop
+        long long ref_hop = 0; ///< absolute hop the alignment refers to
         double t_recv = 0.0;
     };
     std::vector<NhHint> _nh_hints;      ///< live, updated by REST
     std::vector<NhHint> _nh_snap_hints; ///< frozen with the snapshot, like _snap_hints
-    /// #41 instrument: per-alignment (nh, snr, peak_tau_samples) for the pass in flight,
-    /// logged as NHPROF for strong detections. Worker-thread only.
+    /// Per-alignment results for the PRN being searched, for the NHPROF log line and the
+    /// label vote. Worker thread only.
     struct NhProfEntry {
         int nh;
         double snr;
         long tau;
-        double dop; ///< that alignment's peak Doppler (internal sign) -- the sideband tell
+        double dop; ///< peak Doppler, internal (r2c) sign
     };
     std::vector<NhProfEntry> _nh_prof;
-    /// Alignments scanned either side of the predicted one. 1 (three of twenty) keeps ~6.7x of
-    /// the saving while tolerating an off-by-one hint; 0 takes the full 20x and trusts it.
+    /// Alignments scanned either side of the predicted one; 0 trusts the prediction exactly.
     int _nh_hint_span = 1;
-    /// #97: serve the scanned alignments' MAJORITY overlay label instead of the winner's
-    /// own when they disagree. The per-alignment argmax can land on an ADJACENT
-    /// alignment's peak cell (same tau, wrong nh -- seen directly in NHPROF: two entries
-    /// sharing one tau), and (nh + lag) then mislabels the period by +-1 while the fine
-    /// phase stays right. The pass's other alignments are partner hypotheses of the same
-    /// signal and vote on the label at zero extra cost. Per-pass consensus, no history --
-    /// none of the 2026-08-02 temporal-override hazards.
+    /// Serve the scanned alignments' majority period label instead of the winner's own when
+    /// they disagree. A per-alignment argmax can land on an adjacent alignment's peak cell
+    /// (same tau, wrong nh), and (nh + lag) then mislabels the period by +-1 while the fine
+    /// phase stays right. The other alignments of the pass vote at no extra cost; no history.
     bool _nh_label_consensus = false;
-    /// #97 root fix: choose each surface's peak CELL on the #41 mainlobe pair-sum instead
-    /// of the raw sample, so an on-grid NH Doppler sideband cannot outvote a scalloped
-    /// true peak. The served snr stays the chosen cell's raw peak/mean.
+    /// Choose each surface's peak cell on the mainlobe pair-sum instead of the raw sample, so
+    /// an on-grid overlay Doppler sideband cannot beat a scalloped true peak. The served snr
+    /// stays the chosen cell's raw peak/mean.
     bool _acq_pairsum_select = false;
     std::mutex _hint_mtx;
-    /// require_hint: scan ONLY PRNs with a fresh broker hint (visible sats), SKIP the rest (no
-    /// blind grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap)
-    /// when `prns` lists the whole constellation. hint_ttl_s: a hint older than this counts as
-    /// absent.
+    /// Scan only PRNs with a fresh Doppler hint and skip the rest, so the cost follows the
+    /// visible set even when @c prns lists a whole constellation.
     bool _require_hint = false;
-    int _acquire_threads = 1;     ///< parallelism of the aggregate (see channelized_accumulate)
+    int _acquire_threads = 1;     ///< threads for channelized_accumulate and refine_peak
     int _acquire_fine_step = 1;   ///< fine-lag decimation of the surface (see AcquisitionSurface)
-    int _prns_per_pass = 0;       ///< eligible PRNs searched per snapshot (0 = all, as before)
-    int _prn_cursor = 0;          ///< round-robin start into the ELIGIBLE list, advanced per pass
-    double _hint_dop_sign = -1.0; ///< physical->internal Doppler map (see the hint window note)
+    int _prns_per_pass = 0;       ///< eligible PRNs searched per snapshot (0 = all)
+    int _prn_cursor = 0;          ///< round-robin start into the eligible list, advanced per pass
+    double _hint_dop_sign = -1.0; ///< physical -> internal Doppler sign (see the hinted grid)
     long _last_surface_cells = 0; ///< cells in the last surface (for the noise-ceiling log)
     long _empty_hint_passes = 0;  ///< require_hint passes that scanned nothing (rate-limited WARN)
     int _last_cov_n = -1;         ///< last logged covering set (log once per set, not snapshot)
     int _last_cov_first = -1, _last_cov_last = -1;
-    double _hint_ttl_s = 8.0;
+    double _hint_ttl_s = 8.0; ///< hint age, s, beyond which it counts as absent (<= 0: never)
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
     gnss::AcquireWorkspace _acq_ws;
 
-    /// Search only this many UNHINTED PRNs per pass (0 = the old behaviour: none if
-    /// `require_hint`, all of them otherwise). An unhinted PRN costs a FULL blind grid -- ~30x a
-    /// hinted one -- so with `require_hint: false` and a sky full of below-horizon satellites the
-    /// pass cost is dominated by PRNs that will never be found. One rotating blind slot per pass
-    /// gives cold-start reacquisition at a bounded, predictable duty cycle, which is the whole
-    /// point of moving to the GPU: leave headroom for other constellations rather than spend it.
+    /// Unhinted PRNs blind-scanned per pass, in rotation (0 = no limit). An unhinted PRN costs
+    /// a full blind grid, so this bounds the cost of reacquisition when most listed satellites
+    /// are below the horizon. No effect with require_hint, which skips every unhinted PRN.
     int _blind_prns_per_pass = 0;
     int _blind_cursor = 0;    ///< rotates through the unhinted set, advanced once per pass
-    long _grid_bin_warns = 0; ///< times a non-bin-aligned Doppler grid was seen (#128)
+    long _grid_bin_warns = 0; ///< times a non-bin-aligned Doppler grid was seen
 
 #ifdef GNSS_CUDA
-    /// Device-resident acquire (docs/gnss_gpu_search.md A2). Null unless `use_cuda_acquire` and
-    /// the geometry is one the engine can represent exactly; the CPU path stays the fallback and
-    /// stays authoritative -- see the A/B note at the call site.
+    /// Device-resident acquire (docs/gnss_gpu_search.md). Null unless @c use_cuda_acquire and
+    /// the engine can represent the geometry exactly; the CPU acquire is the fallback.
     std::unique_ptr<class GnssCudaAcquire> _cuda_acq;
     bool _cuda_acq_wanted = false;
     long _cuda_acq_fallbacks = 0; ///< times a pass fell back to the CPU (rate-limited WARN)
 
-    /// A5: the refine on the GPU. Separate from _cuda_acq because they are different engines
-    /// over different geometries (the acquire works on the correlation surface, the refine on
-    /// exact despreads) and either can be unavailable without the other.
-    /// ONE engine per <=64-channel group (chan_mask is a uint64_t), plus the group descriptors
-    /// refine_peak_cuda consumes. Empty = the CPU refine runs.
+    /// GPU refine: one GnssCudaDespread per group of <= 64 covering channels (DespreadJob's
+    /// chan_mask is a uint64_t), and the group descriptors refine_peak_cuda takes. Empty means
+    /// the CPU refine runs. Independent of _cuda_acq: either can be unavailable alone.
     std::vector<std::unique_ptr<class GnssCudaDespread>> _cuda_ref;
     std::vector<gnss::CudaRefineGroup> _cuda_ref_groups;
     bool _cuda_ref_wanted = false;
 #endif
 
-    /// Fine code-phase refine (post-detection), in SAMPLES: scan +-_refine_span at _refine_step
-    /// with an exact despread. See the note at the refine loop for why the step is DERIVED
-    /// rather than 1 -- on a wide bank a 1-sample step is thousands of times finer than the
-    /// covering set can resolve, and costs one replica build each.
+    /// Post-detection code-phase refine: one exact despread per trial offset, over
+    /// +-_refine_span samples in steps of _refine_step samples. The step must stay below the
+    /// fine-lag lobe width, ~fft_len / (comb span in bins) samples, or the scan can skip the
+    /// true lobe (see refine_peak); a much finer step only adds despreads.
     int _refine_span = 0;
-    /// Refine integration length in hops; 0 = the full record. The refine only LOCALISES a peak
-    /// that already cleared detection, and costs one full n_chan x n_hops replica build per
-    /// trial phase -- 82% of all search compute at CHORD dimensions. The airspy prototype does
-    /// 1/33 of that work because its record IS one code period, where CHORD's spans 16.
+    /// Refine integration length in hops (0 = the full record). The refine only localises a
+    /// peak that already cleared detection, and its cost is linear in this.
     int _refine_hops = 0;
     int _refine_step = 0;
 
-    /// Precomputed repl0 (code phase 0, Doppler 0), BANDED to the covering channels: [prn]
-    /// [local channel][hop], with only the covering rows populated (the rest stay empty --
-    /// channelized_accumulate reads none of them). repl0 depends only on (PRN, covering set,
-    /// Mp), none of which change between snapshots, so it is built once and reused. Worker
-    /// thread only, like _acq_ws.
-    /// Indexed [nh alignment][prn][local channel][hop]; one alignment (index 0) unless
-    /// @c nh_search, in which case one per secondary-code alignment. See the note at the
-    /// build site for why a dataless pilot needs this.
+    /// Sized [alignment][prn] and cleared on a PRN swap, but never filled or read: the search
+    /// materialises its replica from _repl_head and _repl_tail.
     std::vector<std::vector<std::vector<std::vector<std::complex<float>>>>> _repl0;
-    /// EXACT nh FACTORISATION. The twenty alignments of a PRN are the same primary code with a
-    /// different +-1 overlay chip on each code period, so building twenty is ~20x redundant
-    /// (1223 s and 1696 MB at CHORD dimensions -- twenty minutes before the first pass, on
-    /// every restart).
-    ///
-    /// The generator applies the overlay PER CHIP (gnssChannelizedReplica.cpp:
-    /// cv *= overlay_sign(floor(chip/L), nh_phase)), so a hop straddling a period boundary
-    /// already gets the correct mix of two signs -- 195.3125 hops per period means 16 of every
-    /// 3125 hops straddle, and a per-HOP sign would quietly corrupt them. That per-chip
-    /// resolution is what makes an exact decomposition possible. Writing each hop as the part
-    /// belonging to the earlier period plus the part belonging to the later one,
+    /// Replica at code phase 0 and Doppler 0 on the covering channels, split by code period so
+    /// that every overlay alignment is a per-hop sign pair. Hop m is the part from period k0[m]
+    /// (head) plus the part from period k0[m] + 1 (tail):
     ///     R_nh[m] = s(k0[m] + nh) * head[m]  +  s(k0[m] + 1 + nh) * tail[m]
-    /// and head/tail follow from TWO generator calls via the nav_bit hook (which takes the
-    /// absolute CHIP index, so it can impose any per-period pattern):
+    /// The generator applies the overlay per chip, and the nav_bit hook takes the absolute chip
+    /// index, so two generator calls give head and tail:
     ///     A: nav_bit = +1            -> A[m] = head[m] + tail[m]
     ///     B: nav_bit = (-1)^period   -> B[m] = (-1)^k0[m] * (head[m] - tail[m])
-    /// Two calls per PRN instead of twenty, exact to the same precision as before. Measured
-    /// 2026-08-04: 1223 s -> 124 s, 1696 MB -> 170 MB, pass 4.4 s -> 1.67 s (the smaller bank
-    /// also stops thrashing L3), and PRN 4 still detected at snr 11652 -- a sign error anywhere
-    /// in the decomposition would have collapsed that to noise.
+    /// The split assumes every chip of hop m lies in period k0[m] or k0[m] + 1. Only covering
+    /// rows are filled. Built once per covering set (and cached on disk); worker thread only.
     std::vector<std::vector<std::vector<std::complex<float>>>> _repl_head; ///< [prn][chan][hop]
     std::vector<std::vector<std::vector<std::complex<float>>>> _repl_tail;
-    std::vector<long long> _repl_k0; ///< [hop] period index of that hop's first chip
+    std::vector<long long> _repl_k0; ///< [hop] period index at sample anchor + m*fft_len
     std::vector<std::vector<std::complex<float>>> _repl_scratch; ///< materialised R_nh, reused
     std::vector<float> _sgn0, _sgn1; ///< per-hop overlay sign pair for the current alignment
-    std::vector<int> _repl0_cover;   ///< the covering set _repl0 was built for (rebuild key)
-    /// Search every secondary-code (Neuman-Hofman) alignment and keep the best peak. Costs
-    /// secondary_length() acquires per PRN and buys back the coherent loss that an
-    /// overlay-blind replica suffers over a multi-period window -- 12.7 dB rms on L5 Q5,
-    /// with exact nulls. Off by default: a signal without a secondary code, or a window
-    /// inside one code period, gains nothing.
+    std::vector<int> _repl0_cover;   ///< covering set of the head/tail bank (rebuild key)
+    /// Search every secondary-code alignment and keep the best peak, at one surface per
+    /// alignment scanned. Without the right alignment a multi-period window loses coherent
+    /// gain (12.7 dB rms on L5 Q5 for an overlay-blind replica, with exact nulls). When off,
+    /// the acquire materialises alignment 0 and the refine runs with the overlay off.
     bool _nh_search = false;
-    int _n_nh = 1; ///< alignments actually built (1 when not searching)
+    int _n_nh = 1; ///< alignments in a full scan (1 when not searching)
 
     std::vector<Detection> _detections; ///< per-PRN latest detection
     std::mutex _det_mtx;
@@ -367,7 +299,6 @@ private:
     std::vector<std::complex<float>> _snapshot; ///< acquire_windows*hpr hops, n_chan each
     size_t _snap_hops;                          ///< hops the snapshot holds
     long long _snap_start_hop;                  ///< absolute hop index of snapshot hop 0
-                                                ///< (so reported code phase is absolute-referenced)
     std::thread _worker;
     std::mutex _m;
     std::condition_variable _cv;

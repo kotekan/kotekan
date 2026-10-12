@@ -30,11 +30,11 @@ void ckf(cufftResult e, const char* what) {
 struct GnssCudaAcquire::Impl {
     // device buffers
     float2* dSnap = nullptr; // [M][n_chan_total]
-    float2* dA = nullptr;    // [nc][Mp]   FFT(data), computed once per snapshot
+    float2* dA = nullptr;    // [nc][Mp]   FFT(data) of the current window
     float2* dHead = nullptr; // [nc][Mp]
     float2* dTail = nullptr; // [nc][Mp]
     float2* dR = nullptr;    // [nc][Mp]   materialised replica, then its FFT in place
-    float2* dX = nullptr;    // [nc][n_dop][Mp]  wiped product (channel-major: see the header)
+    float2* dX = nullptr;    // [nc][n_dop][Mp]  wiped product, then the correlation in place
 
     float* dSurf = nullptr; // [n_dop][Mp][s_cols]
     float* dSgn0 = nullptr; // [Mp]
@@ -48,7 +48,7 @@ struct GnssCudaAcquire::Impl {
     void* dScratch = nullptr;
 
     cufftHandle planFwdData = 0; // batch nc, len Mp, contiguous
-    cufftHandle planInv = 0;     // batch n_dop for ONE channel, strided out (see header)
+    cufftHandle planInv = 0;     // batch n_dop for one channel, contiguous, in place
     int plan_nd = 0;             // n_dop planInv was built for
 
     cudaStream_t stream = nullptr;
@@ -61,8 +61,7 @@ GnssCudaAcquire::GnssCudaAcquire(int nc, int Mp, int M, int n_chan_total, int ma
     _s_cols(s_cols) {
     if (nc <= 0 || Mp <= 0 || M <= 0 || max_dop <= 0 || s_cols <= 0)
         throw std::runtime_error("GnssCudaAcquire: bad dimensions");
-    // The folded aggregate needs a power-of-two fine axis (it is sph/fine_step, both powers of
-    // two in every CHORD and airspy geometry). Refuse rather than approximate.
+    // The folded aggregate needs a power-of-two fine axis.
     if ((s_cols & (s_cols - 1)) != 0)
         throw std::runtime_error("GnssCudaAcquire: s_cols must be a power of two");
 
@@ -76,8 +75,7 @@ GnssCudaAcquire::GnssCudaAcquire(int nc, int Mp, int M, int n_chan_total, int ma
     alloc((void**)&_p->dHead, cm, "head");
     alloc((void**)&_p->dTail, cm, "tail");
     alloc((void**)&_p->dR, cm, "R");
-    // X holds the wiped product and then, in place, the correlation P[nc][n_dop][Mp]. There is
-    // deliberately no second P buffer: the inverse transform runs in place.
+    // X holds the wiped product and then, in place, the correlation P[nc][n_dop][Mp].
     alloc((void**)&_p->dX, (size_t)nc * max_dop * Mp * sizeof(float2), "X");
     alloc((void**)&_p->dSurf, (size_t)max_dop * Mp * s_cols * sizeof(float), "surf");
     alloc((void**)&_p->dSgn0, (size_t)Mp * sizeof(float), "sgn0");
@@ -88,8 +86,8 @@ GnssCudaAcquire::GnssCudaAcquire(int nc, int Mp, int M, int n_chan_total, int ma
     alloc((void**)&_p->dTw, (size_t)(s_cols / 2) * sizeof(float2), "twiddle");
     alloc((void**)&_p->dVal, sizeof(float2), "val");
     alloc((void**)&_p->dIdx, sizeof(long long), "idx");
-    // One scratch buffer serves both reductions -- the global one (peak()) and the per-Doppler
-    // one (peak_result()) -- so size it for the larger.
+    // One scratch buffer serves both reductions, peak() and peak_result(), so size it for the
+    // larger.
     alloc(&_p->dScratch,
           std::max(gnss_cuda::peak_scratch_bytes((long)max_dop * Mp * s_cols),
                    gnss_cuda::peak_dop_scratch_bytes((long)Mp * s_cols, max_dop)),
@@ -141,11 +139,11 @@ void GnssCudaAcquire::set_channels(const std::vector<int>& local, const std::vec
     ck(cudaMemcpy(_p->dCov, local.data(), (size_t)_nc * sizeof(int), cudaMemcpyHostToDevice),
        "cov");
 
-    // Fold bins. Mirrors gnss::aggregate_accumulate's periodicity argument: with g the gcd of
-    // the channel differences, |D|^2 repeats with period sph/g, so s_stored = sph/gcd(g,sph);
-    // and when s_cols*s_step == s_stored the ramp collapses to a length-s_cols DFT indexed by
-    // (f_c - f_0)/(sph/s_stored) mod s_cols. gg divides every channel difference by
-    // construction, so this stays exact integer arithmetic.
+    // Fold bins, as in gnss::aggregate_accumulate: with g the gcd of the channel differences,
+    // |D|^2 repeats with period sph/g, so s_stored = sph/gcd(g,sph). When
+    // s_cols*fine_step == s_stored the ramp collapses to a length-s_cols DFT indexed by
+    // (f_c - f_0)/(sph/s_stored) mod s_cols. gg divides every channel difference, so the
+    // arithmetic is exact.
     int g = 0;
     for (int c = 1; c < _nc; ++c)
         g = std::gcd(g, std::abs(global[c] - global[0]));
@@ -163,7 +161,7 @@ void GnssCudaAcquire::set_channels(const std::vector<int>& local, const std::vec
 
     std::vector<float2> tw((size_t)_s_cols / 2);
     for (int j = 0; j < _s_cols / 2; ++j) {
-        const double a = 2.0 * M_PI * j / _s_cols; // e^{+...}: INVERSE, matching the ramp sign
+        const double a = 2.0 * M_PI * j / _s_cols; // e^{+...}: inverse, matching the ramp sign
         tw[j] = make_float2((float)std::cos(a), (float)std::sin(a));
     }
     ck(cudaMemcpy(_p->dTw, tw.data(), tw.size() * sizeof(float2), cudaMemcpyHostToDevice), "tw");
@@ -181,8 +179,8 @@ bool GnssCudaAcquire::set_doppler_grid(const std::vector<double>& grid, double s
     for (int d = 0; d < nd; ++d) {
         const double b = grid[d] / bin_hz;
         const double rb = std::round(b);
-        // Same tolerance as channel_correlate_into: a grid that is not bin-aligned is a
-        // DIFFERENT computation, not a slightly worse one, so this is a hard reject.
+        // Same tolerance as channel_correlate_into: an off-bin grid needs a different
+        // computation, so it is rejected.
         if (std::fabs(b - rb) > 1e-6 * std::max(1.0, std::fabs(rb)))
             return false;
         shift[(size_t)d] = (int)((((long long)rb % _Mp) + _Mp) % _Mp);
@@ -191,26 +189,16 @@ bool GnssCudaAcquire::set_doppler_grid(const std::vector<double>& grid, double s
        "shift");
     _nd = nd;
 
-    // (Re)plan the inverse: batch over DOPPLER for a fixed channel, writing straight into the
-    // [d][q][c] layout. onembed must describe the full output extent or cuFFT clamps the stride.
+    // (Re)plan the inverse for this grid's length: a batch over Doppler for one channel.
     if (_p->planInv && _p->plan_nd != nd) {
         cufftDestroy(_p->planInv);
         _p->planInv = 0;
     }
     if (!_p->planInv) {
         int n[] = {_Mp};
-        // NATURAL contiguous layout, and the transform runs IN PLACE on X.
-        //
-        // The first version asked cuFFT for the aggregate's preferred [d][q][c] layout via
-        // ostride = nc. That is expressible, and it cost 41 ms against a 2.5 ms aggregate: 8-byte
-        // writes at nc*8 = 632-byte stride give every element its own sector. Writing
-        // contiguously and letting launch_aggregate_cdq do the transpose through a shared-memory
-        // tile moves it to the read side, where it is a pattern rather than 16x write
-        // amplification. In-place also drops the separate 0.63 GB P buffer.
-        //
-        // (Also: a NULL inembed with a non-NULL onembed is not a valid mixture -- cuFFT follows
-        // FFTW's rule that NULL inembed means "basic layout, ignore every other stride argument"
-        // and returns CUFFT_INVALID_VALUE. That was the first failure here.)
+        // Contiguous layout, in place on X. launch_aggregate_cdq does the transpose on its read
+        // side; a strided [d][q][c] output (ostride = nc) would put each 8-byte write in its
+        // own memory sector.
         ckf(cufftPlanMany(&_p->planInv, 1, n, nullptr, 1, _Mp, nullptr, 1, _Mp, CUFFT_C2C, nd),
             "plan inv");
         ckf(cufftSetStream(_p->planInv, _p->stream), "stream inv");
@@ -224,7 +212,8 @@ void GnssCudaAcquire::set_snapshot(const std::complex<float>* snap) {
                        cudaMemcpyHostToDevice, _p->stream),
        "snap upload");
     gnss_cuda::launch_gather_pad(_p->dSnap, _p->dCov, _p->dA, _nchan, _M, _Mp, _nc, _p->stream);
-    // FFT(data): depends on neither PRN nor alignment, so it happens exactly once per snapshot.
+    // FFT(data) depends on neither PRN nor alignment; accumulate() reuses it until the next
+    // window is set.
     ckf(cufftExecC2C(_p->planFwdData, _p->dA, _p->dA, CUFFT_FORWARD), "fwd data");
 }
 
@@ -266,8 +255,8 @@ void GnssCudaAcquire::accumulate(const float* sgn0, const float* sgn1) {
     // X = A(shifted by the Doppler bin) * conj(B), scaled by 1/Mp.
     gnss_cuda::launch_dopmul(_p->dA, _p->dR, _p->dShift, _p->dX, _nc, _nd, _Mp, _p->stream);
 
-    // One inverse call per CHANNEL, each a batch over Doppler, in place and contiguous. X is
-    // then P in the [nc][n_dop][Mp] layout the tiled aggregate reads.
+    // One inverse call per channel, each a batch over Doppler. X is then P[nc][n_dop][Mp], the
+    // layout launch_aggregate_cdq reads.
     for (int c = 0; c < _nc; ++c) {
         float2* Xc = _p->dX + (size_t)c * _nd * _Mp;
         ckf(cufftExecC2C(_p->planInv, Xc, Xc, CUFFT_INVERSE), "inv correlate");
@@ -320,11 +309,9 @@ gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurf
             best_off = didx[(size_t)d];
         }
     }
-    // #97: choose the plane on the #41 mainlobe pair-sum, not the raw sample -- see
-    // channelized_peak (the CPU twin of this reduction) for the measured defect. The
-    // served peak/snr stay the chosen plane's raw values.
-    // ⚠️ LOCAL MAXIMA ONLY -- see channelized_peak for the measured failure of the
-    // unrestricted form (armed and reverted 2026-08-28: +-1-bin Doppler dither, 39%% flips).
+    // pairsum_select: choose the Doppler plane by the mainlobe pair-sum among interior local
+    // maxima, as channelized_peak does (see there for why). The returned peak stays the
+    // chosen plane's raw value.
     if (pairsum_select && _nd >= 3) {
         double bestps = -1.0;
         int sel = -1;
@@ -348,9 +335,8 @@ gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurf
     const double mean = sum / (double)((long)_nd * cells_per_dop);
     const int best_q = (int)(best_off / _s_cols);
     const int best_i = (int)(best_off % _s_cols);
-    // #105: the neighbour Doppler planes AT the winning tau (3x3 cell window, matching
-    // channelized_peak), for the two-bin ratio refine in peak_from_reduction. Nine floats per
-    // plane over PCIe -- the surface itself stays on the device.
+    // The neighbour Doppler planes at the winning tau (3x3 cell window, as in channelized_peak)
+    // for the ratio refine in peak_from_reduction. Only nine floats per plane are copied back.
     double dop_loc_m = -1.0, dop_loc_p = -1.0;
     if (_nd >= 3 && best_d > 0 && best_d < _nd - 1) {
         auto local_max = [&](int d) {

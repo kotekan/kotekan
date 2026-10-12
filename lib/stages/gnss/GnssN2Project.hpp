@@ -25,33 +25,32 @@
  * @brief Per frame, per channel: EMA the live block's off-diagonal covariance, solve its top-k
  *        subspace, and (live mode) replace the frame's live block by (I - QQ^H) V (I - QQ^H).
  *
- * Phase 3a of the bright-satellite projection (fixtures/projtest/PROJECTION_PLAN.md): the N^2
- * is linear in the visibilities, so the projection the tracker applies to its rows is applied
- * here to the correlator's own per-frame matrix, EXACTLY and without a second quantisation --
- * one frame (42 ms) of latency, which the offline prototype showed costs nothing (a 1-s-old
- * direction equals the non-causal truth to 0.1 dB; 10 s costs 8-9 dB). The direction comes
- * from the data: the covariance's off-diagonal part (ProjSubspace, the solver the assembler's
- * projection already runs live, diagonal completed from the rank-k model) so the per-input
- * noise levels never enter the eigenproblem, and no satellite identity, ephemeris or health
- * is needed -- unhealthy and non-BRDC emitters are projected like any other.
+ * The N^2 is linear in the visibilities, so projecting the correlator's own per-frame matrix
+ * is exact and needs no second quantisation. The direction comes from the data: the EMA of the
+ * live block's off-diagonal part, solved by ProjSubspace (which completes the diagonal from its
+ * rank-k model), so per-input noise levels never enter the eigenproblem and no satellite
+ * identity, ephemeris or health is needed. The applied direction lags by the EMA and up to
+ * solve_every frames; a direction ~1 s old nulls within 0.1 dB of the current one, while 10 s
+ * old loses 8-9 dB.
  *
- * RANK. k is gated per channel: component 0 must carry `frac_first_min` of the off-diagonal
- * energy (a dominant emitter; the quiet-sky GNSS ensemble is FULL RANK at 26-48 inputs and
- * its brightest member carries ~13 %, so nothing is projected until something dominates) and
- * `lambda_min_rel` mean autos; further components need `rel_min` of the first eigenvalue and
- * `frac_next_min` of the remaining energy (ProjSubspace's gates); `k_max` caps it. Every
- * projected direction removes 1/n_live of the sky with it, so the cap is deliberate at the
- * pathfinder and lifts with the dish count.
+ * Rank. k is gated per channel. Components with participation ratio below pr_min are skipped.
+ * The first remaining one must carry frac_first_min of the off-diagonal energy left after the
+ * skipped ones (0.8x that while already on) and lambda_min_rel mean autos: the quiet-sky GNSS
+ * ensemble is full rank and its brightest member carries ~13% of the energy, so nothing is
+ * projected until one emitter dominates. Further components must pass ProjSubspace's rel_min
+ * and frac_next_min gates; k_max caps k. Each projected direction removes ~1/n_live of the sky
+ * with it, so the cap stays small on a small array.
  *
- * MODES. `shadow`: solve and report, write nothing (and pass frames through unchanged if an
- * out_buf is given). `live`: write the projected live block into the output copy that
- * N2Accumulate reads; the input frame stays raw, which is what the subspace estimator must
- * see (a projected input would null its own source and oscillate).
+ * Modes. shadow: solve and report, write nothing (frames pass through unchanged if an out_buf
+ * is given). live: write the projected live block into the output copy that N2Accumulate
+ * reads. The input frame stays raw, as the subspace estimator must see it: a projected input
+ * would null its own source and oscillate.
  *
- * REPORTING. Per channel gauges (labelled by freq_id): k, lambda0 in units of the mean auto,
- * frac0 (the trigger), null_db = the strongest coherent component left after projection
- * against the one before (a second ProjSubspace tracks the projected matrix). Optional JSONL
- * archive every `archive_period_s`.
+ * Reporting. Per-channel gauges labelled by freq_id: k; lambda0_rel and frac0, the first
+ * spread component's eigenvalue in mean autos and its energy fraction (the trigger); pr0,
+ * component 0's participation ratio; null_db, the strongest spread component left after
+ * projection relative to the first projected one (a second ProjSubspace tracks the projected
+ * matrix). The same values go to an optional JSONL archive every archive_period_s.
  *
  * @buffer in_buf   int32 n2k_correlation [Tc][F][blocks][16][16][2] (host_correlation_buffer)
  * @buffer out_buf  optional, same shape: the (projected) copy for N2Accumulate
@@ -61,18 +60,19 @@
  * @conf mode             String. shadow | live (default shadow).
  * @conf tau_s            Double. Covariance EMA time constant, s (0.5).
  * @conf k_max            Int. Rank cap (3).
- * @conf frac_first_min   Double. Trigger: component 0's off-diagonal energy fraction (0.4).
- * @conf lambda_min_rel   Double. Trigger: lambda0 / mean auto (3.0).
- * @conf live_freq_ids    Int list. Live mode writes the projected block ONLY for these absolute
- *                        freq_ids (resolved against the input metadata's coarse frequencies on
- *                        the first frame); empty = every channel. Shadow metrics cover every
- *                        channel regardless. The GNSS lobes exempted from first-stage excision
- *                        are the contract with the cosmology pipeline: those and nothing else.
- * @conf pr_min           Double. A component must be SPREAD over the array: participation
+ * @conf frac_first_min   Double. Trigger: the first spread component's energy fraction (0.4).
+ * @conf lambda_min_rel   Double. Trigger: its eigenvalue / mean auto (3.0).
+ * @conf live_freq_ids    Int list. Live mode writes the projected block only for these absolute
+ *                        freq_ids, resolved against the first frame's coarse frequencies (fatal
+ *                        if its metadata has none); empty = every channel. Shadow metrics cover
+ *                        every channel. The contract with the cosmology pipeline: live writes
+ *                        touch exactly the GNSS lobes exempted from first-stage RFI excision
+ *                        (the config generator's "exempt").
+ * @conf pr_min           Double. A component must be spread over the array: participation
  *                        ratio 1 / sum |q_i|^4 >= pr_min (6.0). A lone correlated input pair
- *                        (cross-talk, a saturated dish's two pols: B04X/B04Y on 10-03) is a
- *                        rank-1 term with PR = 2 that the least-squares fit scores as a full
- *                        component; a satellite spans 20-40 of 48 inputs.
+ *                        (cross-talk, or one saturated dish's two pols) is a rank-1 term with
+ *                        PR = 2 that the least-squares fit scores as a full component; a
+ *                        satellite spans 20-40 of 48 inputs.
  * @conf rel_min, frac_next_min  Double. ProjSubspace's rank gates (0.2, 0.3).
  * @conf solve_every      Int. Frames between solves per channel (4).
  * @conf metric_period_s  Double. Gauge update period (1.0).
@@ -99,7 +99,7 @@ private:
     const int n_integrations;
     std::vector<int> stations;
     const std::vector<int> live_freq_ids;
-    std::vector<char> live_ch; ///< per local channel: live writes allowed (resolved on frame 1)
+    std::vector<char> live_ch; ///< per local channel: live writes allowed (set on frame 1)
     bool live_ch_resolved = false;
     const std::string mode;
     const bool live;

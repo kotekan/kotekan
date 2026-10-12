@@ -87,12 +87,9 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
 
     const int n_rec = S.n_hops_frame / S.hops_per_record;
     _h_slot2spec.assign((size_t)n_rec * S.n_prn, -1);
-    // Re-pin phase-step history (task #52). Not "ok" until a PRN has produced one record, so a
-    // cold start and a returning seed both break the arc rather than folding a step against
-    // whatever the slot happened to hold.
 
-    // M5 control block: the epl layout minus corr (see the header). Sized for the worst case
-    // (every PRN active in every record), which is what gnss_gpu::max_jobs already encodes.
+    // Control block: the epl layout without corr (see the header), sized for every PRN active
+    // in every record (gnss_gpu::max_jobs).
     _mem_ctl = config.get_default<std::string>(unique_name, "gnss_ctl_name", "gnss_n2ctl");
     _ctl_off_energy =
         gnss_gpu::off_prnctl() + sizeof(gnss_gpu::PrnCtl) * gnss_gpu::MAX_REC * S.n_prn;
@@ -101,9 +98,8 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
     _ctl_stage.resize(_ctl_bytes);
 
     set_command_type(gpuCommandType::KERNEL);
-    // The F-engine conjugation is absorbed by conjugating the REPLICA (launch_pack44) -- the
-    // N^2 kernel has no conj_data flag and its antenna input is production's. This MUST match
-    // the tracker's `conjugate`, or path B despreads the conjugate of the sky.
+    // The F-engine conjugation is absorbed by conjugating the replica (launch_pack44): the N^2
+    // kernel has no conj_data flag and its antenna input is production's.
     if (!S._conjugate)
         WARN("cudaGnssInject: conjugate=false. On CHORD the F-engine output IS conjugated "
              "relative to the decode (measured on sky 2026-07-30); with this false the "
@@ -121,7 +117,7 @@ cudaGnssChordTrackState* cudaGnssInject::st() {
 }
 
 int cudaGnssInject::wait_on_precondition() {
-    // The claim is the TIME REFERENCE: this command produces the synth window for exactly the
+    // The claim is the time reference: this command produces the synth window for exactly the
     // voltage window the correlator (a sibling consumer of the same ring) will process.
     const int errcode = voltage.wait_and_claim_readable([&](const std::ptrdiff_t available) {
         if (available < _num_times)
@@ -142,10 +138,9 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     voltage.check_metadata();
     const std::shared_ptr<const chordMetadata> meta = voltage.get_metadata();
 
-    // The frame's absolute HOP. The tap's convention (GnssChordVoltageTap): the F-engine
-    // frame counter counts hops, i.e. time_downsampling_fpga == 1 on this ring. Anything else
-    // means the seq->sample conversion below is wrong -- fail loudly rather than despread at
-    // the wrong code phase (1 hop of error is 52.4 chips).
+    // The frame's absolute hop. The F-engine frame counter counts hops (as in
+    // GnssChordVoltageTap), i.e. time_downsampling_fpga == 1 on this ring. Anything else breaks
+    // the seq -> sample conversion below, and one hop is 52.4 chips at 10.23 Mcps.
     if (meta->get_time_downsampling_fpga() != 1)
         FATAL_ERROR("cudaGnssInject: voltage ring time_downsampling_fpga = {:d}, expected 1 "
                     "(hop-counted seq). The wstart arithmetic must be revisited for this "
@@ -153,9 +148,9 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                     (int)meta->get_time_downsampling_fpga());
     const long long hop0_frame = meta->get_fpga_seq_num() + voltage.get_read_valid().begin();
 
-    // Device buffers. jobs/slot2spec are per frame slot (frames pipeline); wave/energy are
-    // shared scratch -- safe because every frame's work enqueues on the SAME stream, so uses
-    // are serialized device-side (the tracker's d_wave relies on the same property).
+    // Device buffers. jobs and slot2spec are per frame slot (frames pipeline); wave, energy and
+    // energy0 are shared scratch, which is safe because every frame's work is enqueued on the
+    // same stream.
     const size_t max_jobs = (size_t)gnss_gpu::max_specs(S.n_prn);
     auto* d_jobs = (gnss_cuda::DespreadJob*)device.get_gpu_memory_array(
         unique_name + "_jobs", pipestate.gpu_frame_id, _gpu_buffer_depth,
@@ -167,11 +162,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         unique_name + "_wave", (size_t)3 * S.n_prn * S.n_chan * S.hops_per_record * sizeof(float2));
     auto* d_energy = (double*)device.get_gpu_memory(
         unique_name + "_energy", (size_t)4 * S.n_prn * S.n_chan * sizeof(double));
-    // FRAME-CONSTANT QUANTIZER SCALE. The N^2 integrates the whole frame, so the tile is
-    // sum_r s_r * corr_r -- only a SINGLE s factors out. Freeze record 0's energy and hand it
-    // to every record's pack, making V = s * corr_frame exactly, which is what lets the
-    // consumer undo the scale with one number (11.11). Without this the scale varies record to
-    // record and the recovered amplitude is only approximately right.
+    // The quantizer scale is fixed for the frame: record 0's energy, handed to every record's
+    // pack. GnssN2RecordAssemble recomputes the scale from record 0's energy rows to undo it.
     auto* d_energy0 = (double*)device.get_gpu_memory(
         unique_name + "_energy0", (size_t)4 * S.n_prn * S.n_chan * sizeof(double));
     auto* d_chan_map =
@@ -190,24 +182,11 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     auto* d_synth = (unsigned char*)device.get_gpu_memory_array(
         _gnss_synth_name, pipestate.gpu_frame_id, _gpu_buffer_depth, synth_len);
 
-    // LIVE PRN MEMBERSHIP, applied HERE -- at the frame boundary, before a single job is
-    // built (docs/CHORD_LIVE_PRN_RECONFIG.md). Everything the SHARED STATE keys by slot is
-    // reset inside; the per-slot Doppler history below belongs to THIS COMMAND INSTANCE and
-    // the state cannot reach it, so it is cleared here.
-    //
-    // ⚠️ VIA slot_gen, NOT VIA THE RETURN VALUE. cudaCommand runs several instances against
-    // one shared state and only the instance that happens to win the apply gets the changed
-    // list back; the others would carry a departed satellite's Doppler history into the new
-    // one and emit a continuous arc across a discontinuity that is total. The per-slot
-    // generation counter is what every instance can check for itself.
-    //
-    // ⚠️⚠️ THE DEADLINE CLOCK IS PUBLISHED HERE, AND MISSING IT IS WHY THE SCHEDULING SHIPPED
-    // INERT. cudaGnssChordTrack (path A) and this stage share cudaGnssChordTrackState but own
-    // SEPARATE frame loops, and the deployed fleet runs ONLY path B -- so a note_frame_hop()
-    // call wired into path A alone left last_hop at -1 on all twelve nodes. apply_prn_swaps
-    // then fails its `last_hop >= 0` guard, takes the apply-immediately path, and every swap
-    // looks like a healthy scheduled swap in the broker's log. Whatever owns the frame loop
-    // must feed the clock.
+    // Slot swaps (docs/CHORD_LIVE_PRN_RECONFIG.md) are applied here, at the frame boundary,
+    // before any job is built. note_frame_hop must come first: it is the clock the scheduled
+    // deadline is tested on. apply_prn_swaps resets the state's per-slot seeds and trims; the
+    // fold history of a swapped slot is reset below, through slot_gen, so the new satellite's
+    // arc does not continue the old one's.
     S.note_frame_hop(hop0_frame);
     auto& FH = S.fold; // the re-pin fold history, shared by this command's instances
     S.apply_prn_swaps((void*)stream);
@@ -221,8 +200,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                 FH.ok[(size_t)p] = 0;
             }
     }
-    // Control block for this frame (M5). Zeroed each frame: a PRN that just set must read as
-    // run=0, never as last frame's contents.
+    // Control block for this frame, zeroed each frame: a PRN that just set must read as run=0,
+    // never as last frame's contents.
     std::memset(_ctl_stage.data(), 0, _ctl_stage.size());
     auto* hdr = (gnss_gpu::FrameHdr*)_ctl_stage.data();
     auto* winstart = (int64_t*)(_ctl_stage.data() + gnss_gpu::off_winstart());
@@ -239,12 +218,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     for (int prn : expired)
         INFO("cudaGnssInject: PRN {:d} seed expired -- lane group goes dark", prn);
 
-    // ⚠️ THE DLL TRIM, WHICH THIS STAGE USED TO THROW AWAY (task #51 F3, 2026-08-15). It
-    // passed a hardcoded 0.0 to propagate_seed, so on PATH B -- the path the fleet actually
-    // runs, the broker's trackers being `gnss{0..1}_inject` -- the fleet controller's trim
-    // landed in the shared state and was then ignored. The two stages duplicate the seed ->
-    // Spec construction by explicit decision, and this is exactly the "must be mirrored by
-    // hand" hazard that decision carries. Shared implementation, both callers.
+    // The fleet code trim (/set_trim), applied in propagate_seed below.
     std::vector<int> trim_gone;
     const std::vector<double> trim_now = S.snapshot_trims(trim_gone);
     for (int prn : trim_gone)
@@ -262,10 +236,9 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         int* slot2spec = _h_slot2spec.data() + (size_t)r * S.n_prn;
         for (int p = 0; p < S.n_prn; ++p) {
             slot2spec[p] = -1;
-            // IDENTITY FIRST, before any `continue`. A slot with no seed still has a
-            // satellite in it, and the assembler needs to know that a slot's PRN CHANGED even
-            // -- especially -- while it was dark, because that is when it must drop the old
-            // satellite's element cal instead of warming it into the new one.
+            // Identity first, before any `continue`: a slot with no seed still holds a
+            // satellite, and the assembler must see a PRN change even while the slot is dark,
+            // so it drops the old satellite's element cal rather than carry it to the new one.
             pctl[(size_t)r * S.n_prn + p].prn = (uint16_t)S.prns[(size_t)p];
             const auto& sd = seeds[(size_t)p];
             if (!sd.have) {
@@ -276,10 +249,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                 continue;
             }
 
-            // Same propagation as the tracker (gnssSeedTransport) -- replicas cannot fork.
-            // THE DLL TRIM IS APPLIED (trim_now below). This comment used to say the
-            // opposite, and was left stale by the #51 F3 fix above -- which is the one
-            // fact a reader checking path-A/path-B equivalence most needs to be right.
+            // Propagate the seed to this record's window, with the fleet trim.
             gnss::SeedState ss;
             ss.cp_chips = sd.cp_chips;
             ss.phase_ref_chips = sd.phase_ref_chips;
@@ -299,27 +269,19 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             sp.covering = S.covering;
 
             // PrnCtl, the gnssGpuChain.hpp contract the assembler reads. job0 indexes the 4 rows
-            // (E/P/L/PH) this spec will occupy in the consumer's corr/energy arrays. THE RE-PIN
-            // PHASE STEP (task #52). propagate_seed just handed back this record's Doppler; the
-            // replica's carrier phase is 2*pi*(f_offset + dop)*t_abs, absolutely anchored, so a
-            // change in dop since the previous record steps that phase by (dop - dop_prev)*t_abs
-            // cycles -- 109-1127 of them at 3.37 days of uptime. Subtract HERE, in the Doppler
-            // domain, while the difference still has full precision (see PrnCtl::dcyc), and hand
-            // the assembler the finished step.
+            // (E/P/L/P_HEAD) this spec occupies in the consumer's corr/energy arrays.
             //
-            // t_abs uses THIS record's wstart for both terms: the step being described is the
-            // phase difference AT THIS INSTANT between a replica built from the old Doppler and
-            // one built from the new, which is what the despread actually swapped.
+            // Re-pin phase step: the replica's carrier phase is anchored absolutely,
+            // 2*pi*(f_offset + applied)*t_abs, so a change in the applied carrier since the
+            // previous record steps it by (applied - dop_prev)*t_abs cycles, many cycles at days
+            // of uptime. It is taken here, in the Doppler domain, where the difference keeps full
+            // precision (see PrnCtl::dcyc). Both terms use this record's t_abs: the step is the
+            // phase difference at this instant between the old and the new replica.
             const double t_abs = (double)wstart / S.sample_rate;
             const bool have_hist = FH.ok[(size_t)p] != 0;
-            // THE APPLIED CARRIER, not the Doppler alone (2026-08-13, the churn root).
-            // ctrim sits inside the despread's reference frequency (ang0/wc both take it),
-            // so a broker carrier-command CHANGE steps the reference by dctrim*t_abs
-            // exactly as a Doppler change does -- and it was NOT in dcyc. Every command
-            // slew therefore punched an unfolded mod-1 phase step into the records: the
-            // closed carrier loop was scrambling its own measurement stream (validated
-            // offline: e2e --truth-dop-rate matched-ramp bench shows this dcyc algebra
-            // recovers the baseline to mHz when the difference tracks the APPLIED total).
+            // The applied carrier includes the broker's carrier trim: ctrim is part of the
+            // despread's reference frequency (ang0 and wc both take it), so a ctrim change steps
+            // the replica phase by dctrim*t_abs just as a Doppler change does.
             const double applied = pr.doppler_hz + sd.ctrim_hz;
             const double dcyc = have_hist ? (applied - FH.dop_prev[(size_t)p]) * t_abs : 0.0;
             FH.dop_prev[(size_t)p] = applied;
@@ -345,8 +307,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         if (r == 0)
             n_active = (int)specs.size();
 
-        // slot2spec upload even when empty: the pack must still refresh this record's rows
-        // (previous frame-slot contents are four frames stale, and a PRN that just set must
+        // Upload slot2spec even when empty: the pack must still refresh this record's rows (the
+        // frame slot's contents are a buffer depth of frames old, and a PRN that just set must
         // go dark, not replay).
         CHECK_CUDA_ERROR(cudaMemcpyAsync(d_slot2spec + (size_t)r * S.n_prn, slot2spec,
                                          (size_t)S.n_prn * sizeof(int), cudaMemcpyHostToDevice,
@@ -357,19 +319,18 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         gnss_cuda::DespreadJob* d_jobs_r = d_jobs + (size_t)r * S.n_prn;
         if (!specs.empty()) {
             S.despread->enqueue_waveform(wstart, specs, d_jobs_r, d_wave, d_energy, (void*)stream);
-            // #72: ang0 only exists once the despread has built the jobs, so this is a SECOND
-            // pass -- pctl above is written before the enqueue. Taken from the despread's own
-            // record of what it handed the kernel, never re-derived here.
+            // ang0 exists only once the despread has built the jobs, so this is a second pass
+            // over pctl. It is read from the despread's record of what it handed the kernel,
+            // not re-derived here.
             for (const auto& sp2 : specs) {
                 gnss_gpu::PrnCtl& cc = pctl[(size_t)r * S.n_prn + sp2.p];
                 cc.ang0 = S.despread->last_ang0(sp2.p);
                 cc.phi_ddop = S.despread->last_phi_ddop(sp2.p);
             }
-            // The consumer needs the TRUE replica energy to undo the pack's per-lane scale
-            // (11.11): the quantizer normalizes every lane to a constant M^2, so V/M^2 alone
-            // carries a spurious sqrt(E_R) that would weight the channel combine by the PFB
-            // response instead of by SNR. D2D on the stream -- no sync, no host round trip.
-            // Freeze record 0's energy as the frame's quantizer reference (see d_energy0).
+            // The consumer needs the true replica energy to undo the pack's per-lane scale: the
+            // quantizer holds every lane near a constant M^2, so V/M^2 alone would weight the
+            // channel combine by the PFB response instead of by SNR. Copied D2D on the stream.
+            // Record 0's energy is also kept as the frame's quantizer reference (d_energy0).
             if (r == 0)
                 CHECK_CUDA_ERROR(cudaMemcpyAsync(d_energy0, d_energy,
                                                  (size_t)gnss_gpu::ROWS_PLAIN * specs.size()
@@ -392,8 +353,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     }
 
     hdr->n_jobs = n_jobs_frame * gnss_gpu::ROWS_PLAIN;
-    // Header + winstart + PrnCtl only: the energy rows were already written D2D above, so this
-    // must NOT overwrite them.
+    // Header, winstart and PrnCtl only: the energy rows were already written D2D above.
     CHECK_CUDA_ERROR(
         cudaMemcpyAsync(d_ctl, _ctl_stage.data(), _ctl_off_energy, cudaMemcpyHostToDevice, stream));
 

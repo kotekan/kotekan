@@ -1,6 +1,9 @@
 /**
  * @file
- * @brief GNSS path B: synthesize + quantize replica waveforms into the N^2's synthetic input.
+ * @brief GNSS replica injection: synthesize and quantize replica waveforms into the N^2
+ *        correlator's synthetic input.
+ *  - cudaGnssInjectState : public cudaGnssChordTrackState
+ *  - cudaGnssInject : public cudaCommand
  */
 
 #ifndef CUDA_GNSS_INJECT_HPP
@@ -9,7 +12,7 @@
 #include "DataType.hpp"          // for int4x2_swapped_withoffset_t
 #include "NDArrayRingBuffer.hpp" // for NDArrayRingBuffer
 #include "cudaCommand.hpp"
-#include "cudaGnssChordTrack.hpp" // for cudaGnssChordTrackState (the shared seed machinery)
+#include "cudaGnssChordTrack.hpp" // for cudaGnssChordTrackState
 
 #include <string>
 #include <vector>
@@ -18,55 +21,58 @@
  * @class cudaGnssInject
  * @brief Fill cudaCorrelatorDual's synthetic-station array with quantized GNSS replicas.
  *
- * Runs in the SAME cudaProcess as @ref cudaCorrelatorDual, ORDERED BEFORE IT on the same
- * stream -- that ordering is the whole synchronization story: the pack is complete before the
- * N^2 kernel reads the synth array, and the array needs no ring semantics (it is a per-frame-
- * slot named GPU array, zero-filled 0x88 once by cudaCorrelatorDual's constructor).
+ * Runs in the same cudaProcess as @ref cudaCorrelatorDual, before it on the same stream, which
+ * is all the synchronization there is: the pack completes before the N^2 kernel reads the synth
+ * array. The array needs no ring semantics: it is a per-frame-slot named GPU array, filled with
+ * 0x88 (0+0j) once by cudaCorrelatorDual's constructor, and each injector overwrites only its
+ * own lanes and channels.
  *
- * SEEDS: this command's state is a @ref cudaGnssChordTrackState -- the same class the tracker
- * uses, so the broker seed contract, TTL expiry (snapshot_seeds) and the seed->Spec
- * propagation (gnss::propagate_seed) are single implementations that cannot fork. The config
- * MUST override `seed_endpoint`/`trim_endpoint` (e.g. "/gnss_inject/set_seeds") so the REST
- * paths do not collide with the tracker's state on the same node. The broker POSTs the same
- * JSON to both endpoints.
+ * Seeds, fleet trims and slot membership live in the command's @ref cudaGnssChordTrackState.
+ * Several injectors (one per chain) can run in one kotekan instance, each with its own state
+ * but one REST server between them, so each needs its own seed_endpoint, trim_endpoint,
+ * set_trim_endpoint, get_prns_endpoint and set_prns_endpoint; the defaults would collide.
  *
- * SYNTHESIS is per record (hops_per_record, 4 records per 8192-hop frame), with
- * propagate_seed at each record's window start -- REPLICAS ARE BIT-IDENTICAL to the ones the
- * tracker builds for the same seeds, which is what the live path-A/path-B comparison needs.
- * THE DLL TRIM IS APPLIED, via cudaGnssChordTrackState::snapshot_trims -> propagate_seed
- * (task #51 F3, 2026-08-15: this stage used to pass a hardcoded 0.0 and silently drop the
- * fleet controller's trim on PATH B, the path the fleet runs). For a replica-identity A/B
- * against the tracker, match the trim state on both sides.
+ * Replicas are synthesized per record (hops_per_record; 4 records per 8192-hop frame at CHORD),
+ * from gnss::propagate_seed at each record's window start with the fleet code trim from
+ * cudaGnssChordTrackState::snapshot_trims, through GnssCudaDespread::build_jobs like every
+ * other Spec-taking despread.
  *
- * LANES: lane = 4*prn_slot + trial (E/P/L/P_HEAD), STABLE across satellites rising and
- * setting; inactive slots carry 0x88 (their tiles read exactly 0). Requires
- * 4*n_prn <= num_synth. The consumer recovers amplitude as conj(V_mixed)/M^2_diag -- the
- * quantizer scale cancels (see launch_pack44).
+ * Lanes: lane = synth_lane_base + 4*prn_slot + row (E/P/L/P_HEAD), fixed per slot as
+ * satellites rise and set; slots without a seed are written as 0x88, so their tiles read
+ * exactly 0. Requires 4*n_prn <= num_synth. The pack quantizes each lane and channel with its
+ * own scale (see launch_pack44), which the consumer, GnssN2RecordAssemble, undoes using the
+ * replica energies in the control block.
  *
- * The voltage ring is consumed for its TIME REFERENCE only (the frame's absolute hop); no
- * voltage bytes are read. This makes the injector a flow-control participant of the ring,
- * which is intended: it must produce a synth window for every window the correlator consumes.
+ * The voltage ring is consumed for its time reference only (the frame's absolute hop); no
+ * voltage bytes are read. That makes the injector a flow-control participant of the ring, which
+ * is intended: it must produce a synth window for every window the correlator consumes.
  *
  * @conf As the ring consumers (buffer_depth, num_times, num_elements, num_local_freq,
- *       voltage_name) plus the cudaGnssChordTrackState set (prns, n_channels, channel_ids,
- *       signal, hops_per_record, samples_per_data_set, sample_rate, f_offset_hz,
- *       seed_endpoint, trim_endpoint, seed_ttl_s, ...; set `n_elements: 1` -- unused here),
- *       and:
- * @conf  num_synth            Int. Width of the synth array's station axis. Default 128.
+ *       voltage_name), plus the @ref cudaGnssChordTrackState keys (set `n_elements: 1`; it is
+ *       unused here), and:
+ * @conf  num_synth            Int. Lanes this chain writes (4 per PRN slot). Default 128.
+ * @conf  synth_lane_base      Int. First lane of this chain in the synth array, a multiple of
+ *                             16 (tile rows). Default 0.
+ * @conf  synth_lane_pitch     Int. Width of the synth array's lane axis (the correlator's
+ *                             num_synth), a multiple of 16. Default num_synth.
  * @conf  gnss_synth_name      String. Named GPU array shared with cudaCorrelatorDual.
  *                             Default "gnss_synth".
- * @conf  gnss_local_channels  List of Int. LOCAL frame channel index of each covering
- *                             channel, in local (bank) order -- the pack's chan_map. Must
- *                             have n_channels entries. GLOBAL freq_ids do NOT go here.
+ * @conf  gnss_local_channels  List of Int. Local frame channel index of each covering
+ *                             channel, in local (bank) order. Must have n_channels entries.
+ *                             Global freq_ids do not go here.
+ * @conf  gnss_synth_channels  List of Int. The synth array's channel axis as local frame
+ *                             channels (the correlator's comb, for gnss_synth_compact); must
+ *                             contain every gnss_local_channels entry. Default empty: every
+ *                             local channel.
+ * @conf  gnss_ctl_name        String. Named GPU array for the control block. Default
+ *                             "gnss_n2ctl".
  */
 /**
  * @class cudaGnssInjectState
- * @brief The injector's own instance of the tracker's state machinery.
+ * @brief The injector's instance of cudaGnssChordTrackState.
  *
- * A thin subclass rather than cudaGnssChordTrackState itself only because the factory's
- * registrar variable is named from the state CLASS, so two commands cannot register the same
- * class. Semantics are identical; the config must still give this instance its own
- * `seed_endpoint`/`trim_endpoint`.
+ * A separate class only for the factory: REGISTER_CUDA_COMMAND_WITH_STATE names its registrar
+ * variable after the state class, so one state class can be registered for only one command.
  */
 class cudaGnssInjectState : public cudaGnssChordTrackState {
 public:
@@ -92,15 +98,12 @@ private:
     const std::int32_t _num_times;
     const std::int32_t _num_elements; // voltage ring station axis (for the ring declaration)
     const std::int32_t _num_local_freq;
-    const std::int32_t _num_synth; ///< lanes THIS chain writes (4 per PRN slot)
+    const std::int32_t _num_synth; ///< lanes this chain writes (4 per PRN slot)
     const std::string _voltage_name;
     const std::string _gnss_synth_name;
     std::vector<std::int32_t> _gnss_local_channels;
-    /// A SHARED synth array (several chains, one correlator pass): this chain's lanes start at
-    /// synth_lane_base in a lane axis of synth_lane_pitch, and the array's channel axis is
-    /// gnss_synth_channels (local indices, the correlator's comb) rather than every local
-    /// channel -- the compact layout cudaCorrelatorDual reads with gnss_synth_compact. Defaults
-    /// (0, num_synth, empty) are the one-chain-per-array layout.
+    /// Synth array layout (see the @conf list). The defaults (0, num_synth, empty) give one
+    /// chain per array over every local channel.
     const std::int32_t _synth_lane_base;
     const std::int32_t _synth_lane_pitch;
     std::vector<std::int32_t> _gnss_synth_channels;
@@ -113,27 +116,10 @@ private:
     bool _uploaded_static = false;
     uint64_t _frames = 0;
 
-    /// RE-PIN PHASE STEP (task #52), per PRN slot, carried ACROSS frames and records.
-    ///
-    /// propagate_seed runs per record, so the replica's Doppler -- and therefore its
-    /// ABSOLUTELY-anchored carrier phase, 2*pi*fcar*t_abs -- moves every record. The step is
-    /// (dop - dop_prev)*t_abs, which at 3.37 days of uptime is 109-1127 CYCLES per record on
-    /// sky. The assembler has always known how to fold that out (PrnCtl::reanchored == 2) and
-    /// this producer never told it, so the step went into every correlation and read downstream
-    /// as a per-record common phase that is "white in time". It is not white; it is this.
-    ///
-    /// Kept in the DOPPLER domain on purpose: the difference must be taken before f_offset
-    /// (1.176 GHz) is added, or cancellation costs 0.4 rad. See PrnCtl::dcyc.
-    /// The history is cudaGnssChordTrackState::fold: shared by this command's instances (a
-    /// per-instance copy differenced against the record this instance saw a buffer depth of
-    /// frames ago -- see FoldHist).
-
-    /// M5: the epl-format CONTROL BLOCK this command publishes for the path-B consumer --
-    /// [FrameHdr][window_start x MAX_REC][PrnCtl x MAX_REC x n_prn][energy x jobs x n_chan],
-    /// i.e. the shipped gnssGpuChain.hpp layout MINUS the corr array, which the consumer fills
-    /// from the N^2 tiles. Everything here is already known to the injector (it builds the
-    /// specs and gets `energy` back from launch_waveform), and the energy rows are what let the
-    /// consumer undo the pack's per-lane scale -- see docs/gnss_gpu_search.md 11.11.
+    /// The control block this command publishes for GnssN2RecordAssemble: the gnssGpuChain.hpp
+    /// layout without corr, [FrameHdr][window_start x MAX_REC][PrnCtl x MAX_REC x n_prn]
+    /// [energy x max_jobs x n_chan]. The consumer fills corr from the N^2 tiles and needs the
+    /// replica energies to undo the pack's per-lane scale.
     std::string _mem_ctl;
     std::vector<char> _ctl_stage;
     size_t _ctl_bytes = 0;

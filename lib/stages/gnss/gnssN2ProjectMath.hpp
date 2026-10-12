@@ -1,8 +1,8 @@
 /**
  * @file
- * @brief The arithmetic of GnssN2Project, header-only so a standalone test can run it:
- *        the n2k blocked lower-triangular layout, the live-block extraction/write-back and
- *        the rank-k projection V' = (I - Q Q^H) V (I - Q Q^H).
+ * @brief The arithmetic of GnssN2Project, header-only and independent of the stage: the n2k
+ *        blocked lower-triangular layout, the live-block extraction and write-back, and the
+ *        rank-k projection V' = (I - Q Q^H) V (I - Q Q^H).
  */
 #ifndef GNSS_N2_PROJECT_MATH_HPP
 #define GNSS_N2_PROJECT_MATH_HPP
@@ -76,9 +76,9 @@ inline void writeback(const Layout& L, int32_t* f, const std::vector<int>& st, c
         }
 }
 
-/// V <- (I - Q Q^H) V (I - Q Q^H) in place, Q = k orthonormal columns given row-wise as
-/// q[j * n + i] (ProjSubspace's layout). With W = V Q and M = Q^H W:
-/// V' = V - Q W^H - W Q^H + Q M Q^H. Cost ~4 k n^2.
+/// V <- (I - Q Q^H) V (I - Q Q^H) in place for Hermitian V, Q = k orthonormal columns given
+/// row-wise as q[j * n + i] (ProjSubspace's layout). With W = V Q, M = Q^H W and Q^H V = W^H
+/// (V Hermitian): V' = V - Q W^H - W Q^H + Q M Q^H. Cost ~(3k + k^2) n^2 complex multiply-adds.
 inline void project(int n, int k, const cd* q, cd* V, std::vector<cd>& W, std::vector<cd>& M) {
     if (k <= 0)
         return;

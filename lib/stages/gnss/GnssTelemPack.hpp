@@ -13,46 +13,57 @@
 
 /**
  * @class GnssTelemPack
- * @brief NODE SIDE of the frame-synced tracker->broker gather (task #59): tracker record frames
- *        -> fixed-size telemetry frames addressed on the F-engine sample clock.
+ * @brief Node side of the tracker-to-broker telemetry transport: packs tracker records into
+ *        fixed-size telemetry frames addressed on the F-engine sample clock.
  *
- * Reads the SAME record buffer the combiner reads -- as a second, independent consumer, so
- * nothing about the existing chain changes -- strips each record down to its gnssRecord.hpp
- * HEADER (the element blocks are 94% of a CHORD record and the broker closes no loop on them),
- * and batches @c records_per_frame records into one wire frame for bufferSend.
+ * A second consumer of the tracker's record buffer, beside the combiner. Each record is cut to
+ * its gnssRecord.hpp header (plus, with @c chan_export, its per-channel comb block), dropping
+ * the element blocks, and @c records_per_frame records go into one wire frame (gnssTelem.hpp)
+ * for bufferSend.
  *
- * ⚠️ THE BATCH BOUNDARY IS ABSOLUTE, NOT LOCAL. A frame closes when the record's
+ * The batch boundary is absolute. A frame holds window
  *     win = wstart / (records_per_frame * hops_per_record * fft_len)
- * changes, i.e. on the F-engine's own global sample counter, NOT after N records have been
- * seen locally. Those are different: a local counter starts wherever the stage started and
- * drifts on every dropped record, so two instances would batch different record sets and the
- * receiver would have to work out the offset -- which is exactly the inference this whole
- * change exists to delete (it is #53's defect, in a new place). Derived from three integers
- * every sender is given identically, the boundary needs no negotiation and cannot drift.
+ * on the F-engine's sample counter, not N consecutive local records: a local count starts
+ * wherever the stage started and slips on every dropped record, so instances would batch
+ * different records. Computed from three integers every sender shares, the boundary needs no
+ * negotiation and cannot drift.
  *
- * Record slot r within the frame is ADDRESSED, never appended:
+ * Record slot r within the frame is addressed, never appended:
  *     slot r <=> wstart == win*window_samples + r*hops_per_record*fft_len
- * so a dropped record leaves a hole at a known index (reported in @c present) instead of
- * shifting everything after it by one.
+ * so a dropped record leaves a hole at a known index (its @c present bit unset) instead of
+ * shifting the records after it.
+ *
+ * Wire rows are compacted: only PRNs despread in the first record of the window to arrive get a
+ * row, so @c max_prn is the number of live PRNs a window can carry, not the slot count. Readers
+ * take each row's PRN from record slot 0 and apply it to every slot, so they find no PRNs in a
+ * window whose slot 0 is missing.
  *
  * @par buffers
  * @buffer in_buf  tracker record frames (one per record; GnssChanMetadata::sample_seq = wstart)
- * @buffer out_buf telemetry frames, exactly
- *                  gnss::telem_frame_bytes(records_per_frame, max_prn, n_chan)
+ * @buffer out_buf telemetry frames of exactly
+ *                  gnss::telem_frame_bytes(records_per_frame, max_prn, chan_export ? n_chan : 0)
  *
  * @conf chain             String. Chain tag carried on every frame ("gps_l5", "gal_e5a", ...).
- * @conf inst              String. Instance tag ("cx19.0" = node cx19, GPU 0). Must be unique
- *                           across the fleet -- it is how the broker tells senders apart.
- * @conf n_prn             Int. PRN slots in the SOURCE record frame.
+ *                           Shorter than gnss::TELEM_NAME.
+ * @conf inst              String. Instance tag ("<node>.<gpu>"), shorter than gnss::TELEM_NAME.
+ *                           With @c chain it identifies the sender, so it must be unique within
+ *                           a chain.
+ * @conf n_prn             Int. PRN slots in the source record frame.
  * @conf n_elements        Int, default 0. Element blocks in the source record (for the stride).
- * @conf max_prn           Int. PRN rows on the wire; >= n_prn, identical on every sender.
- * @conf records_per_frame Int, default 4. Records batched per wire frame; must divide the
- *                           upstream frame's record count so a wire frame never straddles two.
+ * @conf max_prn           Int. PRN rows on the wire, >= 1. May be less than n_prn; a window
+ *                           with more despread PRNs ships the lowest slots and WARNs.
+ * @conf records_per_frame Int, default 4. Records per wire frame, in [1, gnss::TELEM_MAX_REC].
+ *                           Set it to divide the records per correlator frame so a wire frame
+ *                           does not straddle two.
  * @conf hops_per_record   Int. Record length in hops.
  * @conf fft_len           Int. Samples per hop.
- * @conf n_chan            Int, default 0. Covering channels this instance despreads (metadata
- *                           only -- it is the instance's share of the band, which the broker
- *                           uses as a combining weight sanity check).
+ * @conf n_chan            Int, default 0. Covering channels this instance despreads: the
+ *                           columns per PRN of the source frame's comb block. Used only with
+ *                           @c chan_export.
+ * @conf chan_export       Bool, default false. Ship each PRN's per-channel comb block after its
+ *                           record header. Needs n_chan in [1, gnss::TELEM_MAX_CHAN].
+ * @conf channel_ids       Int list, default empty. freq_id of each comb column, sent in every
+ *                           frame header. Must have n_chan entries when @c chan_export is set.
  */
 class GnssTelemPack : public kotekan::Stage {
 public:
@@ -69,21 +80,19 @@ private:
     int _n_prn = 0;
     int _n_elem = 0;
     int _max_prn = 0;
-    int _cols = 0; ///< comb columns THIS sender ships == the header's max_chan (0 = comb off)
+    int _cols = 0; ///< comb columns this sender ships, the header's max_chan (0 = comb off)
     int _rec_per_frame = 4;
     int64_t _hops_per_record = 0;
     int64_t _fft_len = 0;
     int _n_chan = 0;
-    /// THE UNSUMMED COMB (gnssRecord.hpp's chan block, gnssTelem v2). When on, each row carries
-    /// this instance's per-channel prompts as well as the record header's summed one, and the
-    /// frame header carries their freq_ids so the broker can fit a delay across the fleet's
-    /// full comb instead of a free constant per instance.
+    /// Ship the unsummed comb (gnssRecord.hpp chan block) after each row's record header, with
+    /// the column freq_ids in the frame header, so the broker can fit a delay across channels.
     bool _chan_export = false;
     std::vector<int> _chan_ids; ///< [n_chan] freq_id per comb column; rides on every frame
 
-    /// records_per_frame * hops_per_record * fft_len -- the absolute window length in SAMPLES.
+    /// records_per_frame * hops_per_record * fft_len: the window length in samples.
     int64_t _win_samples = 0;
-    /// hops_per_record * fft_len -- one record in samples; the slot quantum.
+    /// hops_per_record * fft_len: one record in samples, the slot quantum.
     int64_t _rec_samples = 0;
 
     // The frame being accumulated. -1 = none open.
@@ -92,13 +101,8 @@ private:
     double _cur_utc0 = 0.0;
     std::vector<float> _rows; ///< [rec_per_frame][max_prn][telem_row_floats(_cols)]
 
-    /// ROW COMPACTION (task #64). `_row_of[p]` is the WIRE row that input PRN slot p occupies
-    /// in the window currently open, or -1 if it is not carried. The tracker's record buffer
-    /// has one slot per CONFIGURED PRN (32 on GPS/Galileo, 24 on BeiDou) but only the seeded
-    /// ones are despread, so shipping the slot array verbatim put ~65% zero rows on the wire.
-    /// The map is built once per window, from the first record of that window, and reused for
-    /// every record in it -- the broker reads its PRN->row index from record slot 0 and applies
-    /// it to all four, so a map that changed between records would silently mislabel rows.
+    /// Wire row of input PRN slot p in the open window, or -1 if it is not carried. Fixed for
+    /// the window; see the class note on row compaction.
     std::vector<int> _row_of;
     bool _map_built = false;
 
@@ -106,7 +110,7 @@ private:
     uint64_t _dropped = 0; ///< records that could not be placed (no metadata / bad wstart)
     uint64_t _n_records = 0;
     uint64_t _prn_overflow = 0; ///< windows where more PRNs were live than the wire can carry
-    int _last_live = 0;         ///< live PRNs in the most recent window (for get_stats)
+    int _last_live = 0;         ///< live PRNs in the most recent window
 
     /// Write the accumulated window out and reset. No-op if nothing is open.
     /// Returns false if the output buffer shut down (the caller must exit).

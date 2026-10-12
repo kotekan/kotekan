@@ -83,9 +83,9 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     sub = gnss::ProjSubspace(n, num_local_freq, tau_s, k_max);
     sub.rel_min = rel_min;
     sub.frac_next_min = frac_next_min;
-    // The projected block's tracker solves k_max components too: its first SPREAD one is the
-    // null depth; a component the gate skipped (a lone pair) is still there after projection
-    // and would otherwise floor the metric.
+    // The projected block's tracker keeps all k_max components (no rank gates) and null_db
+    // takes its first spread one: a lone pair the PR gate skipped survives the projection and
+    // would otherwise floor the metric.
     nul = gnss::ProjSubspace(n, num_local_freq, tau_s, k_max);
     nul.rel_min = 0.0;
     nul.frac_next_min = 0.0;
@@ -154,7 +154,8 @@ void GnssN2Project::main_thread() {
                 break;
             std::memcpy(out, in, in_buf->frame_size);
         }
-        // Frame spacing from the sequence numbers (robust to dropped frames); the labels once.
+        // Frame spacing from the sequence numbers, so a dropped frame lengthens dt; freq_id
+        // labels from the first frame that carries them.
         double dt = samples_per_data_set * tick_s;
         const auto meta = std::dynamic_pointer_cast<chordMetadata>(in_buf->get_metadata(in_id));
         if (meta) {
@@ -170,7 +171,7 @@ void GnssN2Project::main_thread() {
             }
         }
         if (!live_ch_resolved) {
-            // Absolute ids need the labels; until they arrive nothing is written (live_ch 0).
+            // Absolute ids need the labels, so the first frame must carry them.
             if (!labelled)
                 FATAL_ERROR("live_freq_ids needs the coarse frequencies in {:s}'s metadata",
                             in_buf->buffer_name);
@@ -200,8 +201,8 @@ void GnssN2Project::main_thread() {
                 sub.push_cov(f, V.data(), dt_int);
                 if (solve_now) {
                     const int ks = sub.solve(f, 2);
-                    // Components that are SPREAD over the array, in energy order; a lone
-                    // correlated pair (PR 2) is skipped and the next component judged.
+                    // Components spread over the array, in energy order; a lone correlated
+                    // pair (PR 2) is skipped and the next component judged.
                     int* use = &q_use[(size_t)f * k_max];
                     int nuse = 0;
                     int first = -1;

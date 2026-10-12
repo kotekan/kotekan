@@ -35,17 +35,17 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
     _hops_per_record = config.get<int>(unique_name, "hops_per_record");
     _n_hops_frame = config.get<int>(unique_name, "samples_per_data_set");
 
-    // MUST mirror cudaCorrelatorDual::build_tile_selection exactly -- the two are one contract
-    // stated twice, and a mismatch reads as garbage correlations rather than an error.
+    // Must mirror cudaCorrelatorDual::build_tile_selection and gen_chord_gnss_config.py's
+    // n2_tiles_per_chan. The frame-size check below catches a count mismatch; an order
+    // mismatch reads as garbage correlations.
     _na16 = _num_elements / 16;
     _nt16 = (_num_elements + _num_synth) / 16;
     _nlive16 = (_n_live + 15) / 16;
     _n_mixed = (_nt16 - _na16) * _nlive16;
-    // AA (live antenna x live antenna) rides after the mixed block when the correlator has
-    // gnss_gather_aa, and BB (synth x synth) after that with gnss_gather_bb -- the visibility
-    // capture's two other blocks. This stage never reads either, only steps over them; the
-    // normalization uses the TRUE pre-quantization energy from the ctl block, never the
-    // quantized M^2 in BB.
+    // AA (live antenna x live antenna) follows the mixed block when the correlator has
+    // gnss_gather_aa, and BB (synth x synth) follows that with gnss_gather_bb, for the
+    // visibility capture. This stage only steps over them: the normalisation uses the
+    // pre-quantisation energy from the ctl block, not the quantised M^2 in BB.
     _n_aa = config.get_default<bool>(unique_name, "gnss_gather_aa", false)
                 ? _nlive16 * (_nlive16 + 1) / 2
                 : 0;
@@ -64,9 +64,8 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
                     "{:d} chan x {:d} elem",
                     (size_t)_out_buf->frame_size, need, _n_prn, _n_gnss_chan, _n_live);
 
-    // The tiles frame is n_rec x n_chan x n_tile x (16x16 complex int32). A mismatch here
-    // means the three statements of the tile contract (this stage, build_tile_selection, the
-    // config generator's tiles_frame_bytes) have drifted apart -- fail now, not as garbage.
+    // The tiles frame is n_rec x n_chan x n_tile x (16x16 complex int32), sized by the config
+    // generator. A mismatch means its geometry (n2_tiles_per_chan) and this stage's disagree.
     const size_t tiles_need =
         (size_t)(_n_hops_frame / _hops_per_record) * _n_gnss_chan * _n_tile * 512 * sizeof(int32_t);
     if ((size_t)_tiles_buf->frame_size != tiles_need)
@@ -113,13 +112,9 @@ void GnssN2RecordAssemble::main_thread() {
         auto* oenergy =
             (double*)(out + gnss_gpu::off_energy(_n_prn, n_chan, gnss_gpu::ROWS_PLAIN, _n_live));
 
-        // ONE OUTPUT RECORD PER SUB-INTEGRATION. With sub_integration_ntime = hops_per_record
-        // the N^2 emits nt_outer = n_rec visibilities per frame, which map 1:1 onto the
-        // sub-records the injector synthesized -- so path B's records land on the SAME hop grid
-        // as the tracker's. That matters twice: the combiner can rate-search and derotate the
-        // per-record phase ramp (path B's amplitude was 0.55 of path A's without it, because
-        // the ramp was baked inside a 4x longer coherent sum), and the broker's fleet DLL groups
-        // powers by an EXACT pow_hop match, which a frame-length record can never satisfy.
+        // One output record per sub-integration: with sub_integration_ntime = hops_per_record
+        // the N^2 emits n_rec visibilities per frame, one per record the injector synthesised
+        // (see the class note).
         ohdr->n_rec = n_rec;
         ohdr->n_prn = _n_prn;
         ohdr->n_chan = n_chan;
@@ -134,11 +129,9 @@ void GnssN2RecordAssemble::main_thread() {
             for (int p = 0; p < _n_prn; ++p) {
                 const gnss_gpu::PrnCtl& in0 = ictl[(size_t)r * _n_prn + p];
                 gnss_gpu::PrnCtl& oc = octl[(size_t)r * _n_prn + p];
-                // IDENTITY BEFORE THE RUN CHECK (live PRN membership). `oc = in0` below carries
-                // the PRN for a running slot, but a DARK slot returns early and would ship 0 --
-                // "no claim" -- so the downstream assembler could not learn that a slot changed
-                // satellite while it was dark. That is exactly when it must learn: it is when the
-                // old satellite's element cal has to be dropped instead of warmed into the new one.
+                // Copy the PRN before the run check: a dark slot would otherwise ship 0 ("not
+                // stamped"), and the assembler must learn that a slot changed satellite while
+                // dark, since that is when it drops the old satellite's element cal.
                 oc.prn = in0.prn;
                 if (!in0.run)
                     continue;
@@ -151,29 +144,24 @@ void GnssN2RecordAssemble::main_thread() {
                     const size_t orow = (size_t)(oc.job0 + t);
 
                     for (int c = 0; c < n_chan && c < _n_gnss_chan; ++c) {
-                        // The gathered tiles are a COMPACTED triangle: tile k of channel c lives at
-                        // c*_n_tile + k, not at the full-triangle offset.
+                        // The gathered tiles are compacted: tile k of channel c lives at
+                        // c*_n_tile + k, not at its full-triangle offset.
                         const int32_t* slice =
                             tiles + (size_t)r * tile_slice + (size_t)c * _n_tile * 512;
 
-                        // The pack's scale is FROZEN frame-wide at record 0's energy
-                        // (cudaGnssInject), so every sub-integration shares one s -- read it from
-                        // record 0's rows, not this record's.
+                        // The pack's scale is frozen frame-wide at record 0's energy
+                        // (cudaGnssInject), so read s from record 0's rows for this PRN; the
+                        // active PRN set is fixed per frame, so those rows exist. This matches the
+                        // pack for the E, P and L lanes; the pack takes the P_HEAD lane's rms over
+                        // its m_head hops instead of hops_per_record.
                         const double e0 = ienergy[(size_t)(ictl[p].job0 + t) * n_chan + c];
                         const double rms =
                             (e0 > 0.0) ? std::sqrt(e0 / (double)_hops_per_record) : 0.0;
                         const double s = (rms > 0.0) ? 7.0 / (3.0 * rms) : 0.0;
 
-                        // ABSOLUTE UNITS, not just the right ratio. Emitting corr = V and
-                        // energy = M^2/s gives the correct AMPLITUDE (corr/energy) but leaves both
-                        // scaled by s -- measured 2026-08-06: path B's record energy came out
-                        // 0.0015 of path A's, a constant ~640x, which is exactly s. The combiner
-                        // uses energy as an ML combining weight, so it must be the PHYSICAL replica
-                        // energy. Divide the CORRELATION by s instead and emit E_R as-is; then both
-                        // fields match the tracker's units, not just their quotient.
-                        //
-                        // NB s comes from record 0 (the frozen frame-wide quantizer scale) while
-                        // the energy is THIS record's -- they are different rows on purpose.
+                        // Absolute units, not just the right ratio: the combiner uses energy as
+                        // an ML combining weight, so it must be the physical replica energy. Emit
+                        // this record's E_R as-is and divide the correlation by s (record 0's).
                         const double e_rec = ienergy[(size_t)(in0.job0 + t) * n_chan + c];
                         oenergy[orow * n_chan + c] = e_rec;
 
@@ -181,8 +169,8 @@ void GnssN2RecordAssemble::main_thread() {
                             const int jhi = e >> 4, jlo = e & 15;
                             const int mix_k = (ihi - _na16) * _nlive16 + jhi;
                             const int32_t* tv = slice + (size_t)mix_k * 512 + 32 * ilo + 2 * jlo;
-                            // Orientation: conj_replica ON => path A == V directly. /s puts the
-                            // correlation in the tracker's absolute units (see the energy note).
+                            // The replica is conjugated in the pack, so V needs no conjugate
+                            // here (see the class note).
                             const size_t oi = ((orow * n_chan + c) * (size_t)_n_live + e) * 2;
                             const double inv_s = (s > 0.0) ? 1.0 / s : 0.0;
                             ocorr[oi + 0] = (double)tv[0] * inv_s;
@@ -195,7 +183,7 @@ void GnssN2RecordAssemble::main_thread() {
         }
         ohdr->n_jobs = n_out_jobs * gnss_gpu::ROWS_PLAIN;
 
-        // Carry the tap's time reference through, as the tracker's output does.
+        // Carry the control block's metadata (the time reference) through.
         auto in_meta = std::dynamic_pointer_cast<GnssChanMetadata>(_ctl_buf->metadata[ctl_id]);
         if (in_meta) {
             auto om = std::dynamic_pointer_cast<GnssChanMetadata>(_out_buf->metadata[out_id]);
