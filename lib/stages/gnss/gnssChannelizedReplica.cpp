@@ -32,22 +32,9 @@ namespace gnss {
 using cf = std::complex<float>;
 
 namespace {
-// Dispatch the primary spreading code by signal name. Returns the BARE component code
-// at its component chip rate (e.g. L2C CM = 10230 chips @ 511.5 kcps). For a
-// time-multiplexed signal the constructor then zero-stuffs this onto the COMBINED stream
-// (CM/CL interleaved to 1.023 Mcps) at the tdm_phase parity -- the real signal's
-// structure; despreading the bare 511.5 kcps code loses ~9-12 dB (gps_l2c_subband_validate.py).
-// L2C CL is time-assisted (1.5 s period -- track-only, not blind-acquirable). L5
-// (I5/Q5) is the clean, fully-supported L2/L5 target. This returns the BARE primary
-// code; the NH secondary overlay (L5 NH10/NH20, one +-1 chip per 1 ms primary period)
-// is applied on top in channels()/hoprate_stream via overlay_sign() -- a constant sign
-// within one period (invisible to acquisition), but it unlocks multi-period coherent
-// integration of the dataless Q5 pilot once the period alignment (nh_phase) is set.
-// Primary code tiled by a per-PRN secondary: the GPS_L5_Q_NH construction generalized to
-// overlays that differ per satellite (E5a-Q CS100, B2a-P Weil-1021). The sign convention is
-// EXACTLY overlay_sign()'s (chip * secondary[period]), so a cp in the baked space equals
-// (primary cp + primary_length * period-index mod overlay_length) -- pinned by
-// tests/boost/test_gnss_channelized_replica.cpp (e5aq_cs_baked / b2ap_cs_baked).
+// Primary code tiled by a per-PRN secondary code (E5a-Q CS100, B2a-P Weil-1021), with
+// overlay_sign()'s sign convention (chip * secondary[period]). A code phase in the tiled space
+// is primary cp + primary_length * (period index mod overlay_length).
 template<typename Prim, typename Sec>
 std::vector<int8_t> bake_secondary(const Prim& a, const Sec& s) {
     std::vector<int8_t> tiled;
@@ -58,6 +45,10 @@ std::vector<int8_t> bake_secondary(const Prim& a, const Sec& s) {
     return tiled;
 }
 
+// The primary spreading code for a signal name, at its component chip rate (L2C CM is 10230
+// chips at 511.5 kcps). The constructor expands it onto the combined stream for TDM and BOC
+// signals. Shared secondary overlays are applied per period by overlay_sign(); the *_NH and
+// *_CS signals return the code with the overlay already tiled in.
 std::vector<int8_t> signal_code(const std::string& name, int prn) {
     if (name == "GPS_L1C_P") {
         auto a = gps::generate_l1cp_code(prn);
@@ -76,9 +67,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         return std::vector<int8_t>(a.begin(), a.end());
     }
     if (name == "GPS_L5_Q_NH") {
-        // Q5 primary tiled by the NH20 overlay -- see the descriptor in gnssSignal.hpp. The
-        // sign convention is EXACTLY overlay_sign()'s (chip * L5_NH20[period]), so a cp in
-        // this 204600-chip space equals (primary cp + 10230 * period-index mod 20).
+        // Q5 primary tiled by the NH20 overlay, with overlay_sign()'s sign convention: a code
+        // phase in this 204600-chip space is primary cp + 10230 * (period index mod 20).
         auto a = gps::generate_l5q_code(prn);
         std::vector<int8_t> tiled;
         tiled.reserve((size_t)gps::L5_CODE_LENGTH * gps::L5_NH20_LENGTH);
@@ -108,8 +98,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         return std::vector<int8_t>(a.begin(), a.end());
     }
     if (name == "BDS_B2I") {
-        // ★ NOT a typo: B2I's ranging code IS B1I's -- the ICD specifies ONE generator for
-        // C_B1I and C_B2I. Only the carrier and the broadcasting satellites differ.
+        // B2I uses B1I's ranging code: the ICD defines one generator for C_B1I and C_B2I.
+        // Only the carrier and the broadcasting satellites differ.
         auto a = beidou::generate_b1i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
@@ -118,8 +108,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         return std::vector<int8_t>(a.begin(), a.end());
     }
     if (name == "BDS_B3I_NH") {
-        // B3I primary tiled by the shared D1 NH20 -- the GPS_L5_Q_NH construction verbatim
-        // (see it above); cp in this 204600-chip space = primary cp + 10230 * period mod 20.
+        // B3I primary tiled by the D1 NH20, as GPS_L5_Q_NH above: a code phase in this
+        // 204600-chip space is primary cp + 10230 * (period index mod 20).
         auto a = beidou::generate_b3i_code(prn);
         std::vector<int8_t> tiled;
         tiled.reserve((size_t)beidou::B3I_CODE_LENGTH * beidou::B3I_NH_LENGTH);
@@ -129,8 +119,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         return tiled;
     }
     if (name == "GLO_L2OF") {
-        // ★ No PRN: FDMA gives every satellite the SAME code and separates them by carrier.
-        // The per-satellite part is set_prn_freq_offset(), not this table.
+        // No PRN: FDMA satellites share one code and are separated by carrier, which is
+        // set_prn_freq_offset()'s job.
         (void)prn;
         const auto& a = glonass::ca_code();
         return std::vector<int8_t>(a.begin(), a.end());
@@ -212,18 +202,15 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     _repl_period_hops =
         (int)(code_samples / std::max<long>(1, std::gcd((long)_fft_len, code_samples)));
 
-    // Time-multiplexing (L2C CM/CL): the transmitted component sits at 2x its chip rate,
-    // interleaved with a sibling. Model the COMBINED stream -- the component at its
-    // tdm_phase parity, zeros where the sibling is -- so the channelized replica matches
-    // the real signal's spectrum (NOT the bare 511.5 kcps component, which loses ~9-12 dB;
-    // see python/scripts/gnss/gps_l2c_subband_validate.py). comb_mult=1 -> ordinary signal.
-    // BOC(m,m) is modeled as an EXPANDED code, exactly like TDM: each chip becomes 2m
-    // half-cycle slots of alternating sign (sine-BOC: + first) at 2m x the chip rate. This
-    // replaces the old analytic per-sample sub-carrier branch so the sub-carrier lives IN
-    // the code table -- which is what the per-chip hoprate path (and the GPU despread kernel
-    // ported from it) require: they assume constant chips. Numerically identical to the
-    // analytic branch (unit-tested); the cp API stays in COMPONENT chips throughout
-    // (cp0 = comb_mult * cp internally). TDM and BOC are mutually exclusive.
+    // Time multiplexing (L2C CM/CL): the transmitted component runs at twice its chip rate,
+    // interleaved with a sibling. Model the combined stream, with the component at its
+    // tdm_phase parity and zeros at the sibling's, so the replica has the real signal's
+    // spectrum; the bare 511.5 kcps component would lose ~9-12 dB.
+    // BOC(m,m) is expanded the same way: each chip becomes 2m half-cycles of alternating sign
+    // (sine phasing, + first) at 2m times the chip rate. The subcarrier then lives in the code
+    // table, which the per-chip hop-rate path and the GPU kernel need, since they assume
+    // constant chips. Code phases stay in component chips (cp0 = comb_mult * cp internally).
+    // TDM and BOC are mutually exclusive.
     if (_sig.time_multiplexed && _sig.mod == Modulation::BOC)
         throw std::invalid_argument("ChannelizedReplicaBank: TDM+BOC not supported");
     if (_sig.mod == Modulation::BOC && _sig.boc_m != _sig.boc_n)
@@ -237,13 +224,11 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     for (size_t p = 0; p < prns.size(); ++p)
         _full_code[p] = build_full_code(prns[p]);
 
-    // Secondary (Neuman-Hofman) overlay: one +-1 chip per primary period (NH10 on L5 I5,
-    // NH20 on L5 Q5). Applied per period in channels()/hoprate_stream so a multi-period
-    // coherent integration of the dataless Q5 pilot doesn't decorrelate at the 1 ms primary
-    // rollover. Empty (no-op) for signals without a secondary code (L1 C/A, L2C). The name
-    // list is SHARED-sequence signals only: per-PRN overlays (B1C, L1CO -- their descriptor
-    // secondary_length documents them too) fall through empty and stay a combiner-side wipe
-    // (gnssOverlay.hpp), since this single-sequence slot can't carry per-PRN codes.
+    // Secondary (Neuman-Hofman) overlay: one +-1 chip per primary period (NH10 on L5 I5, NH20
+    // on L5 Q5), applied per period in channels()/hoprate_stream so a coherent integration over
+    // several periods stays aligned across the primary rollover. Empty for signals without a
+    // secondary code. Only overlays shared by every PRN are listed here; per-PRN overlays are
+    // either tiled into the code (the *_CS signals) or wiped in the combiner (gnssOverlay.hpp).
     if (_sig.secondary_length > 0) {
         const std::string name(_sig.name);
         if (name == "GPS_L5_Q")
@@ -298,12 +283,9 @@ bool ChannelizedReplicaBank::set_prn(int p, int prn) {
         return false;
     if (_prns[(size_t)p] == prn)
         return true; // already there; a no-op swap must not cost the caller a state reset
-    // ⚠️ FDMA (GLONASS L1OF/L2OF) IS REFUSED, NOT GUESSED. There the satellite identity lives
-    // in the CARRIER, not the code: _prn_df[p] is satellite k's offset from band centre and
-    // this function has no way to know the new satellite's. Carrying the old offset despreads
-    // the new satellite at the wrong frequency; zeroing it parks the replica on band centre,
-    // which the config already warns "looks exactly like a broken code". Both are silent, so
-    // refuse and let the caller (who does know the frequency plan) grow an FDMA-aware path.
+    // FDMA is refused: the satellite identity is in the carrier offset _prn_df[p], and this
+    // function does not know the new satellite's. Keeping the old offset or zeroing it would
+    // both despread at the wrong frequency without any error.
     if (!_prn_df.empty()
         && std::any_of(_prn_df.begin(), _prn_df.end(), [](double d) { return d != 0.0; }))
         return false;
@@ -313,10 +295,8 @@ bool ChannelizedReplicaBank::set_prn(int p, int prn) {
     } catch (const std::exception&) {
         return false; // no code for this PRN on this signal -- refuse rather than despread zeros
     }
-    // A code table of the wrong LENGTH would run the gather off the end of the slot. The
-    // expansion above is deterministic in _eff_code_length, so this can only fire if
-    // signal_code returned a short component -- but the failure would be a silent read past
-    // the slot, so check rather than trust.
+    // A table of the wrong length (a short component from signal_code) would let the gather
+    // read past the end of the slot.
     if ((long)code.size() != _eff_code_length)
         return false;
     _full_code[(size_t)p] = std::move(code);
@@ -355,11 +335,9 @@ int ChannelizedReplicaBank::overlay_sign(long long period, int nh_phase) const {
 
 double ChannelizedReplicaBank::window_advance_chips(long long window_start_sample,
                                                     double doppler_hz) const {
-    // cps must be the SAME double the generators compute, or the two disagree by
-    // n0 * 1ulp ~ 1e-3 chips at CHORD's uptime -- small, but it would be a silent floor under
-    // every phase comparison. long double for the product: n0 (~1.9e15) is exact in a 64-bit
-    // mantissa and the reduced result is then good to ~3e-7 chips, vs ~0.5 chips if the whole
-    // thing is done in double (ulp(6e12) = 1e-3 chips, amplified by nothing but visible).
+    // cps must be the same double the generators compute; one ulp of difference is n0 * 1 ulp
+    // ~ 1e-3 chips at n0 ~ 1.9e15. The product is in long double: n0 is exact in a 64-bit
+    // mantissa and the reduced result is good to ~3e-7 chips, against ~0.5 chips in double.
     const double cps =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const long double n0 = (long double)(window_start_sample + _fft_len - 1); // hoprate_stream's
@@ -454,28 +432,23 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     std::vector<float> block(_fft_len);
     std::vector<std::vector<cf>> chan(_N, std::vector<cf>(n_hops));
 
-    // Code-Doppler feed-forward: the spreading code clock scales with the carrier
-    // Doppler, chip_rate*(1 + f_d/f_RF) (~1.8 chip/s at L1). The code phase is read
-    // at the ABSOLUTE sample index n, so without this term a seed referenced to
-    // sample 0 drifts by code_Doppler * (seed age) -- a few chips for a fast sat,
-    // which is what keeps high-Doppler sats from locking. Same sign as the carrier
-    // (both track the same line-of-sight velocity); GnssChannelizedSearch applies
-    // the matching term when referencing its measured cp back to sample 0.
+    // Code-Doppler feed-forward: the code clock scales with the carrier Doppler,
+    // chip_rate*(1 + f_d/f_RF), with the same sign as the carrier. The code phase is read at
+    // the absolute sample index, so without this term a phase referred to sample 0 drifts by
+    // the code Doppler times its age. GnssChannelizedSearch applies the matching term when it
+    // refers a measured cp back to sample 0.
     const double chip_per_sample =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double cp0 = (double)_comb_mult * code_phase_chips; // CM chips -> combined chips
     const double wcarrier = 2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
 
-    // Carrier as a phasor recurrence: cos(wcarrier*n) = Re(e^{i wcarrier n}), advanced
-    // by one complex multiply per sample instead of a transcendental cos() each --
-    // the per-sample cos dominated replica generation (esp. CHORD's large fft_len).
-    // Renormalised per hop so the unit-modulus phasor doesn't drift; matches the direct
-    // cos to ~1e-12, and is in fact steadier at large n (no huge-argument range loss).
+    // Carrier by phasor recurrence, cos(wcarrier*n) = Re(e^{i wcarrier n}): one complex
+    // multiply per sample instead of a cos(), renormalised every hop so the modulus does not
+    // drift. Agrees with the direct cos to ~1e-12.
     const std::complex<double> cstep(std::cos(wcarrier), std::sin(wcarrier));
-    // Same one-radian-ULP trap as hoprate_stream_into (see the note there): wcarrier * start
-    // reaches ~7e15 at CHORD's absolute sample index, where a double quantises to 1 rad. This
-    // path is the REFERENCE the fast path is validated against, so it has to be at least as
-    // exact or the comparison certifies the wrong thing.
+    // The start phase is reduced in long double: wcarrier * start reaches ~7e15, where a
+    // double's ULP is 1 rad (see hoprate_stream_into). This is the reference the hop-rate path
+    // is checked against, so it must be at least as exact.
     const long double wcL = 2.0L * (long double)M_PI * (long double)(carrier_offset(p) + doppler_hz)
                             / (long double)_sample_rate;
     std::complex<double> cph = // phasor at n=start
@@ -485,24 +458,17 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
         for (int i = 0; i < _fft_len; ++i) {
             const long long n = start + (long long)h * _fft_len + i;
             if (n >= 0) {
-                // Long double for the same reason as wcL just above -- see the note in
-                // hoprate_stream_into. code_chip needs the phase only mod the code length and
-                // the overlay needs the absolute period, so both come off ONE long-double
-                // evaluation; narrowing the reduced phase to double is lossless (< 10230).
+                // Long double, as for wcL. code_chip needs the phase mod the code length and
+                // the overlay needs the period index, so both come from one evaluation.
                 const long double phaseL =
                     (long double)cp0 + (long double)n * (long double)chip_per_sample;
                 const long double LcL = (long double)_eff_code_length;
                 const long long period = (long long)std::floor(phaseL / LcL);
                 const double phase = (double)(phaseL - (long double)period * LcL);
                 int8_t c = code_chip(p, phase);
-                // BOC sub-carrier: baked into the EXPANDED code table at construction (each
-                // chip = 2m alternating-sign half-cycles at 2m x the rate) -- shared by this
-                // per-sample path, the per-chip hoprate path, AND the GPU despread kernel.
-                // The old analytic per-sample branch here would now double-apply it.
-                // Apply the secondary (NH) overlay per primary period when an alignment is set
-                // (nh_phase >= 0): the primary code repeats every _eff_code_length chips, the
-                // overlay flips at those rollovers, so a multi-period coherent despread stays
-                // aligned. nh_phase < 0 -> overlay off (raw despread, the default).
+                // A BOC subcarrier is already in the expanded code table. The secondary
+                // overlay flips at primary-code rollovers and is applied only when an
+                // alignment is set (nh_phase >= 0).
                 if (_secondary_length > 0 && nh_phase >= 0)
                     c = (int8_t)(c * overlay_sign(period, nh_phase));
                 // Real passband replica code*cos(carrier); the r2c bank keeps the
@@ -538,22 +504,13 @@ ChannelizedReplicaBank::HopRateFilter ChannelizedReplicaBank::hoprate_header(dou
     f.doppler_hz = doppler_hz;
     f.prn_index = prn_index;
     f.n_chips = (int)std::ceil((double)(Lf - 1) * cps) + 2; // chips the filter spans
-    // TRUNCATION (`max_chips`, 0 = the full span = unchanged). The gather runs n_chips deep per
-    // hop and synthesis is LINEAR in it -- measured on cx19 at CHORD geometry 2026-08-05:
-    // 210 chips -> 0.376 ms/spec, 105 chips -> 0.179 ms/spec, ratio 0.476 against 0.500 for a
-    // perfectly linear loop, with the correlation kernel unchanged in both runs as the control.
-    // Synthesis is 89% of the tracker kernel, so this is the single biggest lever on GPU load.
-    //
-    // ⚠️ IT IS NOT FREE. n_chips is set by the PFB span (Lf = num_taps * fft_len = 65536 samples
-    // = 210 chips at CHORD's 312.8 samples/chip), and that span IS the channel response --
-    // truncating it changes the replica, not just its cost. Applied HERE rather than on the GPU
-    // so the CPU despread, the search refine and scripts/gnss/e2e all see the same replica and
-    // the error can be measured at CHORD geometry with the shipped code.
+    // Truncation to max_chips (0 = the full span). Synthesis cost is linear in the gather
+    // depth, but the span (Lf = num_taps * fft_len = 65536 samples, 210 chips at CHORD's
+    // 312.8 samples/chip) is the channel response, so truncating changes the replica too.
     if (_max_chips > 0 && f.n_chips > _max_chips) {
         if (_chips_centered) {
-            // keep the CENTRAL max_chips of the span: the prototype peak sits mid-span, and
-            // the one-sided cap's measured cliff (9.5: exact at 120, 13 chips out at 105) is
-            // the cap crossing that peak, not a property of short filters.
+            // Keep the central max_chips: the prototype peak sits mid-span, and a one-sided
+            // cap shorter than about half the span cuts through it.
             f.d_first = (f.n_chips - _max_chips) / 2;
             f.n_chips = f.d_first + _max_chips;
         } else {
@@ -601,8 +558,8 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
     const int nw = (int)want.size();
     f.PhiA.resize(nw);
     f.PhiB.resize(nw);
-    // Per channel, the cumulative filter Phi[k] = Σ_{<k} filt[k] for both carrier images.
-    // A chip's hop contribution is Phi[k_hi+1]-Phi[k_lo] over its integer tap range -- exact.
+    // Per channel, the cumulative filter Phi[k] = sum_{j<k} filt[j] for both carrier images;
+    // a chip's contribution to a hop is Phi[k_hi+1] - Phi[k_lo] over its integer tap range.
     if (want_psi) {
         f.PsiA.resize(nw);
         f.PsiB.resize(nw);
@@ -623,10 +580,8 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
                 A[k + 1] = A[k] + ea;
                 B[k + 1] = B[k] + eb;
                 if (want_psi) {
-                    // FIRST MOMENT, same prefix-sum shape as Phi so the gather
-                    // can telescope it with the identical index arithmetic
-                    // (that is the whole reason it is stored as a prefix sum
-                    // rather than as a per-window quantity).
+                    // First moment, stored as a prefix sum like Phi so the gather can
+                    // difference it with the same indices.
                     f.PsiA[ci][k + 1] = f.PsiA[ci][k] + (double)k * ea;
                     f.PsiB[ci][k + 1] = f.PsiB[ci][k] + (double)k * eb;
                 }
@@ -684,10 +639,8 @@ void ChannelizedReplicaBank::hoprate_stream_into(
     const double cps =
         _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double cp0 = (double)_comb_mult * code_phase_chips; // CM chips -> combined chips
-    // ⚠️ FDMA: the filter f carries the carrier of the PRN it was built for. Streaming it for a
-    // DIFFERENT PRN would silently pair one satellite's filter shape with another's phasor --
-    // a wrong-carrier replica that still looks well-formed, so nothing downstream would flag it.
-    // -1 means band-wide (every CDMA signal), which matches any p.
+    // FDMA: f carries the carrier of the PRN it was built for; streamed for another PRN it
+    // would give a well-formed replica at the wrong carrier. -1 (CDMA) matches any p.
     assert(f.prn_index < 0 || f.prn_index == p);
     const double wc = 2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
     const int Lf = _fft_len * _num_taps;
@@ -700,69 +653,47 @@ void ChannelizedReplicaBank::hoprate_stream_into(
         if ((int)row.size() != n_hops)
             row.assign((size_t)n_hops, cf(0.0f, 0.0f));
     const long long n0 = window_start_sample + _fft_len - 1;
-    // LONG DOUBLE for the carrier's absolute-sample product, for exactly the reason
-    // window_advance_chips already does it for the CODE (see the note at its top) -- and this
-    // path had been left out. wc ~ 2.31 rad/sample and n0 ~ 2.95e15 after ten days of F-engine
-    // uptime, so wc*n0 ~ 6.8e15 lands in the binade [2^52, 2^53) where a double's ULP is
-    // EXACTLY ONE RADIAN. Every record's replica therefore started with up to +-0.5 rad of pure
-    // quantisation noise: measured 0.604 rad rms over 200 consecutive records, which costs
-    // exp(-sigma^2/2) = 0.83 of the coherent amplitude before anything else goes wrong.
-    //
-    // It is invisible on the prototype by twelve orders of magnitude (airspy n0 ~ 1e9 -> ULP
-    // 4.8e-7 rad), and it is SLOW-ONSET here: the error grows with the sample counter, so a
-    // freshly-started F-engine looks fine and a long-running one does not. long double's 64-bit
-    // mantissa puts the ULP at 7.4e-4 rad (0.04 deg) at the same n0.
+    // The carrier's absolute-sample product is in long double. wc ~ 2.31 rad/sample and n0
+    // reaches ~3e15 after ten days of F-engine uptime, so wc*n0 ~ 7e15 lies in [2^52, 2^53),
+    // where a double's ULP is one radian; long double's is 7.4e-4 rad. The error grows with the
+    // sample counter, so it does not show soon after an F-engine restart.
     const long double wcL = 2.0L * (long double)M_PI * (long double)(carrier_offset(p) + doppler_hz)
                             / (long double)_sample_rate;
     std::complex<double> pa =
         std::polar(1.0, (double)std::fmod(wcL * (long double)n0, 2.0L * (long double)M_PI));
     const std::complex<double> pstep =
         std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
-    // Per-chip tap range + code value for one hop. Identical for every channel (the channel
-    // only enters through Phi), so it is computed once per hop rather than once per hop per
-    // channel as it used to be -- nw times less of this work, and it leaves room to make the
-    // chip/tap boundary exact (below) without paying for it nw times.
+    // Per-chip tap ranges and code values for one hop. The channel enters only through Phi, so
+    // these are computed once per hop for all channels.
     std::vector<int> k_lo((size_t)f.n_chips), k_hi((size_t)f.n_chips);
     std::vector<double> cvs((size_t)f.n_chips);
 
     for (int m = 0; m < n_hops; ++m) {
         const long long n_m = n0 + (long long)m * _fft_len;
-        // LONG DOUBLE for the CODE's absolute-sample product, exactly as wcL above does it for
-        // the carrier -- this is the half that was left in double. cps ~ 0.2 chips/sample and
-        // n_m ~ 1.9e15, so n_m*cps ~ 3.8e14 chips lands in the binade [2^48, 2^49) where a
-        // double's ULP is 0.0625 CHIPS. The tap spacing is cps itself, so at that anchor the
-        // quantisation is ~30% of a tap: it does not merely shift the phase, it hands taps to
-        // the neighbouring chip -- the same 2*proto[k] error the boundary snap below exists to
-        // prevent, at a rate set by the sample counter instead of by a rational coincidence.
-        // This function is the REFERENCE the GPU replica is validated against, so its own
-        // quantisation was being charged to the GPU.
+        // The code's absolute-sample product is in long double too: n_m*cps ~ 3.8e14 chips lies
+        // in [2^48, 2^49), where a double's ULP is 0.0625 chips, ~30% of the tap spacing (cps).
+        // That would hand taps to the neighbouring chip. This function is the reference the GPU
+        // replica is checked against.
         const long double CL = (long double)cp0 + (long double)n_m * (long double)cps;
         const long long chip0 = (long long)std::floor(CL);
         const double phi = (double)(CL - (long double)chip0);
         const std::complex<double> pb = std::conj(pa);
 
-        // The chip index the DIRECT per-sample generator (channels()) assigns to tap k, which
-        // sits at absolute sample n_m - k. The fast formula below inverts this; the inversion
-        // must agree with it EXACTLY, because it is channels() that matches the F-engine.
-        // Same precision as CL above, deliberately: this lambda is what the boundary snap
-        // compares against, so if it quantises the snap corrects toward the wrong chip.
+        // The chip channels() assigns to tap k, at absolute sample n_m - k. The tap ranges below
+        // must agree with it exactly, since channels() is what matches the F-engine, so it uses
+        // the same precision as CL.
         auto chip_at = [&](int k) {
             return (long long)std::floor((long double)cp0
                                          + (long double)(n_m - (long long)k) * (long double)cps);
         };
 
         // Chip d owns the taps k with floor(C - k*cps) == chip0 - d, i.e.
-        // k in ((phi+d-1)/cps, (phi+d)/cps]. Computing that bound in floating point puts the
-        // boundary tap on the WRONG SIDE whenever (phi+d)/cps lands on an exact integer -- and
-        // it does so SYSTEMATICALLY, not just by luck: cps = chip_rate/sample_rate is rational
-        // (1023/320000 on CHORD L5), so phi is a multiple of 1/320000 and the tie condition is
-        // a congruence in d that hits ~8 times per replica period. The partition itself stays
-        // exact (chip d+1's klo is chip d's khi+1 by construction, so no tap is lost or
-        // double-counted) -- the tap just gets its NEIGHBOUR's code sign, costing 2*proto[k].
-        // Measured at CHORD scale before this snap: |error| up to 1.99 on isolated hops against
-        // a typical |R| of 912 (-53 dB), 1.8e-3 rms over a full 3125-hop period, vs 3.7e-8 for
-        // channels(). It hid at airspy scale (1e-5 rms, under the existing tolerance) and hid
-        // again in any short test, because the first affected hop here is 255.
+        // k in ((phi+d-1)/cps, (phi+d)/cps]. In floating point the boundary tap lands on the
+        // wrong side whenever (phi+d)/cps is an exact integer, and since cps is rational
+        // (1023/320000 on CHORD L5) that happens systematically, ~8 times per replica period.
+        // The partition stays exact (chip d+1's klo is chip d's khi+1), but the tap would take
+        // its neighbour's code sign, an error of 2*proto[k]; so each bound is snapped against
+        // chip_at().
         int klo = 0;
         for (int d = 0; d < f.n_chips; ++d) {
             int khi = (int)std::floor((phi + (double)d) / cps);
@@ -789,17 +720,14 @@ void ChannelizedReplicaBank::hoprate_stream_into(
             klo = khi + 1;
         }
 
-        // SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2). When the filter was built at
-        // a DIFFERENT carrier than this stream's -- i.e. Doppler-free, shared by every PRN --
-        // reconstruct each chip window's difference instead of reading it directly:
+        // Shared-table mode: when the filter was built at a different carrier (Doppler-free,
+        // shared by every PRN), reconstruct each chip window's difference from Phi and Psi:
         //
         //   dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
         //
-        // The A and B images carry the Doppler with OPPOSITE SIGN (they are e^{-i(off+wc)k}
-        // and e^{-i(off-wc)k}), so B takes -ddw. ddw == 0 means the filter already has this
-        // stream's Doppler baked in and every branch below is skipped -- the shared path is
-        // then bit-identical to the per-PRN one by construction, which is what makes the
-        // fallback safe.
+        // The A and B images carry the Doppler with opposite sign (e^{-i(off+wc)k} and
+        // e^{-i(off-wc)k}), so B takes -ddw. With ddw == 0 (a per-PRN filter, or no Psi) the
+        // branch is skipped and the result is identical to the per-PRN path.
         const double wc_stream = 2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
         const double ddw = (f.PsiA.empty()) ? 0.0 : (wc_stream - f.wc_built);
         for (int ci = 0; ci < nw; ++ci) {
@@ -845,8 +773,8 @@ const std::vector<std::vector<cf>>&
 HopRateReplicaStream::generate(long long window_start, double cp, double doppler_hz, int n_hops,
                                const std::function<float(long long)>& nav_bit) {
     if (!_built || std::fabs(doppler_hz - _filter.doppler_hz) > _refresh_hz) {
-        // per-PRN carrier under FDMA; this object already owns one filter per PRN.
-        _filter = _bank.hoprate_filter(_chans, doppler_hz, _prn); // slow -- only on a real drift
+        // Per-PRN carrier under FDMA.
+        _filter = _bank.hoprate_filter(_chans, doppler_hz, _prn); // slow; only on a real drift
         _built = true;
         ++_rebuilds;
     }
