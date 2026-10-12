@@ -76,6 +76,25 @@ PRNs, `joint-consume` and nothing else). The joint state is GPS-fed only again.
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #176 — the joint clock adopts a one-off 0.8-chip outlier inside a transit and every 10.23-Mcps chain loses its prompts (2026-10-12)
+- **What:** C33 (0.61°, CA 12:54:15Z 10-12). Through the pass the joint solve's sigma grew 0.42 → 0.68 and was REFUSED
+  (bound 0.50); at 12:58:17Z, C33 at ~1.9°, a 4-satellite solve 0.806 chips from legacy with sigma 0.228 passed the
+  bounds (5.0 chips / 0.50 sigma) and was ADOPTED on every chain (×0.5 on E6, ×0.05 on L2C); 30 s later the delta
+  was −0.07 again. ~29 s after the adoption every satellite on E5a, E5b, B2a, B2b, B3I and L5 lost its prompt power
+  for 1.3–1.9 s on all 12 instances at once (`FADR BREAK ... dark130-190/silent`, telemetry gaps 0); E6 (0.4 of its
+  chips) and L2C (0.04) did not. Under the old fold those records would have been folded as phase: a C19-scale slip
+  on every satellite of six chains.
+- **How often:** 51 adoptions with |delta| > 0.5 chips on gal_e5a from 10-11 16:22Z to 10-12 13:00Z (172 > 0.3).
+  A slow run (+0.56 → +0.98 → +0.58 over 8 min through C13 at 3.1°, 12:00Z 10-12) broke no arc: the DLLs follow a
+  drift. The damage is the one-off jump.
+- **Not the C19 cause:** through C19 on 10-11 every adopted delta stayed within ±0.35 chips.
+- **Maybe the same as #175:** an E6 re-seed ~0.45 chips off the peak after a null crossing is what a ~0.9-chip joint
+  step scaled ×0.5 would leave.
+- **Fix candidates (not built):** refuse a delta that jumps more than ~0.3 chips from the previous adopted one inside
+  the transit sky (#144) unless it persists for two solves; or hold the joint clock inside the transit window as the
+  dead-reckon clock already is (#142).
+- **Check:** `grep 'JOINT-CLK' broker.log | grep ADOPTED` and the |delta| census in [[chord-telem-v8-rollout-20261012]].
+
 ### #175 — after a transit's null crossing every E6 tracker is re-seeded ~0.45 chips off its peak and rails there for an hour (2026-10-11)
 **What [live 22:34–23:35Z]:** E06 passed 0.24° from boresight at 22:27Z (E6 prompt 3.5 million × the floor). As it
 crossed the dish's first null (2.8–3.5°, 22:34–22:36Z) the chain browned out (PROMPT-CN0 of every PRN down 15–30 dB,
@@ -103,10 +122,11 @@ in the viewer would do.
 
 ### #158 — projection phase 2 leftovers: `b` reaches only the lobe fold, `k`/source are not exported, the dB judge never ran (2026-10-02)
 **⚡ 10-12: two of the three leftovers done, rolling out (KV: "let's roll that out while things are quiet").**
-- **Export:** telemetry v8 (3f381df37): `REC_PROJ_K` (the record's rank, 0 none) and `REC_PROJ_SRC` (OR of the
-  sources over the instance's channels: 1 own row, 2 sibling, 4 probe stack) beside `REC_PROJ_COST`. The broker's lobe
-  fold carries all three to the published row and the archive as `proj_b` (mean over senders with a basis in force,
-  −1 none), `proj_k`, `proj_src`. Flag day: nodes, gather and broker together (fleet-3f381df37 / gather-3f381df37).
+- **Export, LIVE 10-12:** telemetry v8 (3f381df37, nodes cycled 12:28–12:29Z, gather + broker 12:20Z): `REC_PROJ_K`
+  (the record's rank, 0 none) and `REC_PROJ_SRC` (OR of the sources over the instance's channels: 1 own row, 2 sibling,
+  4 probe stack) beside `REC_PROJ_COST`. The fleet ADR walk sums them per satellite per cycle and rows carry `proj_b`
+  (mean cost where a basis was in force, −1 none), `proj_k`, `proj_src` (9dba98d35, broker 13:26Z; the first cut put
+  them in the Python lobe fold, which the C++ taps arm bypasses, so through C33 every row read −1/0/0).
 - **The dB judge ran** (`fixtures/tec_wander/db_judge.py`, out/db_judge_1012.txt): other-satellite coherent C/N0 at
   closest approach (±90 s) minus the 10 min before, Galileo bands, against each census's quiet controls. Freeze alone
   (09-28/29): mean loss −2.6/−1.9/−1.5 dB (E5a/E5b/E6) with controls at 0, 45/33/46% of victims beyond 3 dB (controls
@@ -242,15 +262,21 @@ product's remaining losses are the close passes, and one of them on 10-11 was th
   band-power rise (median +40%, p99 2.5×); a quiet 10-11 19:00Z window railed 40× more with no transit. E06 at 0.24°
   did rail E6 at 5% (the self case). So the C19 brownout was not rail-driven, and dynamic F-engine gains would not
   remove it: it sits in the array's response to the bright satellite (freeze/projection path), ours to explain.
-- **Candidate 2 LIVE 10-12 12:37:14Z (eebea6a1a + 8a4afd29b):** `fleetadr.fold_record` keeps each instance's
-  prompt power level (a dB mean over ~100 s of accepted records, decaying 20 dB/h under a rejected dip) and treats an
-  instance as silent after 5 consecutive records 10 dB below it: it cannot vouch, and when none can the arc ends;
-  `FADR BREAK` lines print `silent<n>`, rows carry `fadr_n_silent`. The first cut (live 12:20–12:37, a ~1 s level and
-  one record enough) ended 625 arcs in 7 min: a seed re-pin dips every instance for one record at once. With the fix,
-  replays of two live captures (fixtures/tec_wander/replay_silence.py) leave every tracked satellite bit-identical to
-  the old fold; live, 0 breaks on the Galileo and BeiDou chains from 12:38Z, while gps_l5 broke on real 2–7 s dips in
-  its post-restart loop transient. Old-fold baseline: 0–1 `FADR BREAK` lines per hour. Judge: C33 (BDS-3, 0.61°, CA
-  12:54Z 10-12) and G09 ~21:21Z: the victims' arcs must END (new fadr_arc, `silent>0`) instead of SLIPPING.
+- **Candidate 2 LIVE 10-12 13:26:29Z (eebea6a1a, 8a4afd29b, c69b07655):** `fleetadr.fold_record` treats a record as
+  silent after 5 records in a row whose prompt power (median over instances) is 10 dB below the instances' own level
+  AND whose phase steps disagree across instances (R, the mean resultant of the unit steps, below 0.5 over at least
+  six instances; ~1 while the phase is measured, ~0.25 for noise); silent records cannot vouch, so the arc ends and a
+  new one starts when the signal returns. `FADR BREAK` lines print `silent<n>`, rows carry `fadr_n_silent`. Two
+  earlier cuts were live briefly and failed on live data: power alone with one record enough (12:20–12:37: 625 arcs
+  in 7 min, a seed re-pin dips every instance for one record), then power alone over 5 records (12:37–13:26: L5
+  broke ~7 arcs/min, G23 at 42 dB-Hz swinging 11–14 dB with R 0.78–0.94). Replays of live gps_l5, gal_e5a and gal_e6
+  captures (fixtures/tec_wander/replay_silence.py, silence_anatomy.py) leave every satellite bit-identical to the
+  fold before the gate. Old-fold baseline: 0–1 `FADR BREAK` lines per hour.
+- **C33 (BDS-3, 0.61°, CA 12:54:15Z 10-12, under the power-only gate):** no Galileo brownout through closest approach
+  (one arc ended on each of E6 and E5b); projection rank 1 from the sibling BeiDou row on E5a/E5b, cost 0–0.5. Then at
+  12:58:46Z every arc on the six 10.23-Mcps chains ended together: a joint-clock jump, filed as #176. The census
+  (`out/transit_arcs_c33`, split 12:20:55) reads that as LOCK LOST 7 of 8 E5a × E6 arcs, honest where the old fold
+  would have slipped them. Next judge: G32 3.0° 14:31Z, G09 ~21:21Z.
 **⚡ 09-30, with projection live fleet-wide (from 09-29 17:00Z): candidate 1 largely holds.** Seven transits had data,
 09-30 03:17Z to 15:10Z, between two F-engine outages.
 - **E5a × E6 arcs surviving a transit:** 74% (39/53), against 39% (26/67) with the freeze alone.
