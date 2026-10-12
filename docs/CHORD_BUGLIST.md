@@ -476,14 +476,6 @@ per-node or per-instance**, an asymmetry like this is a bug until proven otherwi
 before optimising anything else on the GPU: it is a bigger lever than anything left in the GPU
 queue.
 
-### #62 — element cal is causal in the record path and not in the comb path
-**[tree]** `GnssGpuRecordAssemble` combines then updates (causal, and the comment says so), but
-the `tap()` lambda used by the comb, the spectrum ring and `_chan_export` runs *after* the
-update, so each record is weighted by a cal that already absorbed it. Self-weight α ≈ 0.005 at
-the configured 2 s EMA, so the honest expectation is small. **Fix: hoist the update below the
-last tap use, or snapshot the weights for the tap.** Judge with a before/after on the comb DLL
-discriminator rather than assuming it matters.
-
 ### #126 — the F-engine axis is drift-free and ~217 ms stale, and only labels can use it
 Filed for years as "the 215 µs has never been decomposed"; **it was decomposed on 2026-08-17**,
 a day before the question was written down, and this list never absorbed it: total serve lag

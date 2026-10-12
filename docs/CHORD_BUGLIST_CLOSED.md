@@ -116,6 +116,7 @@ that goes with it.
 | #11 | "boresight seeding mask: nothing masks seeding" | the railing veto and the shared-model transit freeze (#102, #154) now veto trims and freeze the model inside a transit; what the mask was for is covered, and #144/#170 own what is not |
 | #174 | one corrupt-sequence packet from raw source ID 6 on cx27 | folded into #169 (one event) |
 | #63 | "the tracker's summed prompt rides every wire frame on the link that is the fleet's constraint" | #123 died with the move to the 10G VM; the header prompt now feeds the fleet ADR (whose head/tail split is header-only), the comb DLL's instance alignment and the telemetry series, so the purge would be a v8 bump plus an ADR refactor for 9 of ~93 floats a row; the broker's real lever is the comb reduction in the C++ gather (KV, 2026-10-12) |
+| #62 | "the comb's taps are weighted by a cal that already absorbed the record (non-causal by one record, α ≈ 0.005)" | every assembler runs `elem_sum_shared: true` / `elem_sum_adapt: false` since #154 (09-28): the weights are installed from the 300-s consensus before the combine, the per-record update feeds the shadow learner only, and the header and the comb use the identical held weights; the hoist is still right if adapt mode ever returns (KV, 2026-10-12) |
 
 ## Withdrawn — tried, measured, backed out (verify these stay dead)
 
