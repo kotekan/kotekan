@@ -93,6 +93,9 @@ from gnss_broker.telem import (
     REC_PH_IM,
     REC_TRIM_INC,
     REC_PHI0,
+    REC_PROJ_COST,
+    REC_PROJ_K,
+    REC_PROJ_SRC,
 )
 
 HPS = Fraction(390625, 2)  # F-engine hops per second (3.2e9 / 16384), exact
@@ -124,6 +127,7 @@ class SatAdr(object):
         "n_silent",
         "silent",
         "run",
+        "proj",
         "last_break",
     )
 
@@ -172,6 +176,9 @@ class SatAdr(object):
             False  # the satellite's prompts have lost the signal (see fold_record)
         )
         self.run = 0  # records in a row towards entering or leaving silence
+        # this cycle's projection basis over the instances' records: [sum of b over records
+        # with a basis in force, their count, the largest rank, the OR of the sources]
+        self.proj = [0.0, 0, 0, 0]
         self.last_break = None  # why the last arc ended (see fold_record)
 
 
@@ -372,7 +379,9 @@ def fold_record(
 
 
 def records_of_frame(f, want):
-    """{prn: {r: (dop_hz, trim_inc, S_i, phi0, r)}} for one sender's frame, decoded in one pass.
+    """{prn: {r: (dop_hz, trim_inc, S_i, phi0, r, proj_cost, proj_k, proj_src)}} for one sender's
+    frame, decoded in one pass. The last three are the projection slots (gnssRecord.hpp), carried
+    for the published row only; the fold reads the first four.
 
     S_i = H^2 + T^2 with H the head amplitude and T = A - H, AS EXPORTED (no phi0 rotation --
     see the module note); 0 when the record carries no prompt energy (silence, not a measurement).
@@ -406,6 +415,9 @@ def records_of_frame(f, want):
                 S,
                 float(a[b + REC_PHI0]),
                 r,
+                float(a[b + REC_PROJ_COST]),
+                int(a[b + REC_PROJ_K]),
+                int(a[b + REC_PROJ_SRC]),
             )
     return out
 
@@ -430,6 +442,8 @@ class FleetAdr(object):
             for w in client.windows(chain, lag=lag)
             if self.last_win is None or w > self.last_win
         ]
+        for st in self.sats.values():
+            st.proj = [0.0, 0, 0, 0]
         if self.last_win is not None and wins and wins[0] > self.last_win + 1:
             # windows the ring already dropped: the arcs will break honestly on the gap
             self.windows_lost += wins[0] - self.last_win - 1
@@ -445,6 +459,13 @@ class FleetAdr(object):
                     st = self.sats.get(prn)
                     if st is None:
                         st = self.sats[prn] = SatAdr()
+                    for v in per_inst.values():
+                        if len(v) > 5:
+                            if v[5] >= 0.0:
+                                st.proj[0] += v[5]
+                                st.proj[1] += 1
+                            st.proj[2] = max(st.proj[2], v[6])
+                            st.proj[3] |= v[7]
                     fold_record(
                         st,
                         hop,
@@ -509,6 +530,12 @@ class FleetAdr(object):
                 "n_rec": s.n,
                 "n_inst": s.n_inst,
                 "n_silent": s.n_silent,
+                # the bright-satellite projection over this cycle's records: b the mean cost
+                # on this satellite where a basis was in force (-1 none), k the largest rank,
+                # src the OR of the sources (1 own row, 2 sibling chain, 4 probe stack)
+                "proj_b": s.proj[0] / s.proj[1] if s.proj[1] else -1.0,
+                "proj_k": s.proj[2],
+                "proj_src": s.proj[3],
                 "trim_cycles": s.trim,
                 "res_cycles": s.res,
                 "breaks": s.breaks,

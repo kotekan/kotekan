@@ -553,12 +553,6 @@ class FleetPublisher:
                     "amplitude": math.sqrt(max(0.0, v["p_pow"])),
                     "unbiased_amplitude": math.sqrt(max(0.0, v["p_pow"] - p_med)),
                     "dll_disc": v["disc"],
-                    # the projection basis the senders folded under: b = its cost on this
-                    # satellite (mean over senders with one in force, -1 none), k = the rank,
-                    # src = the OR of the sources (1 own row, 2 sibling, 4 probe stack)
-                    "proj_b": v.get("proj_b"),
-                    "proj_k": v.get("proj_k"),
-                    "proj_src": v.get("proj_src"),
                     # ⚠️ `doppler_hz` IS THE COMMANDED SEED, NOT WHAT THE CORRELATOR RAN AT.
                     # These two differ by the tracker's feed-forward, dop_rate x (seed age), and
                     # the seed changes only when the broker reseeds -- so this field is a STAIRCASE
@@ -664,6 +658,10 @@ class FleetPublisher:
                     "fadr_n_rec": (_fadr.get(prn) or {}).get("n_rec"),
                     "fadr_n_inst": (_fadr.get(prn) or {}).get("n_inst"),
                     "fadr_n_silent": (_fadr.get(prn) or {}).get("n_silent"),
+                    # the bright-satellite projection on this satellite (fleetadr.publish)
+                    "proj_b": (_fadr.get(prn) or {}).get("proj_b"),
+                    "proj_k": (_fadr.get(prn) or {}).get("proj_k"),
+                    "proj_src": (_fadr.get(prn) or {}).get("proj_src"),
                     "fadr_trim_cycles": (_fadr.get(prn) or {}).get("trim_cycles"),
                     "fadr_res_cycles": (_fadr.get(prn) or {}).get("res_cycles"),
                     "fadr_age_s": (_fadr.get(prn) or {}).get("age_s"),

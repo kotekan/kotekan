@@ -53,7 +53,7 @@ import math
 # imports fleet for apply_presence, so the definition lives there to keep imports acyclic.
 from .fleet import apply_presence
 from .fleet import epl_decompose
-from .telem import REC_PHI0, REC_PROJ_COST, REC_PROJ_K, REC_PROJ_SRC
+from .telem import REC_PHI0, REC_PROJ_COST
 
 __all__ = ["epl_decompose"]  # the re-export, stated
 
@@ -150,8 +150,7 @@ def _lobe_fold(client, chain, wins, want, per_channel):
                     if pw <= 0.0:
                         continue
                     d = acc.setdefault((w, r), {}).setdefault(
-                        prn,
-                        [0j, 0j, 0j, 0.0, 0.0, 0.0, 0, 0, -1, 0j, 0.0, 0.0, 0, 0, 0],
+                        prn, [0j, 0j, 0j, 0.0, 0.0, 0.0, 0, 0, -1, 0j, 0.0]
                     )
                     d[0] += gE * rot * pw
                     d[1] += gP * rot * pw
@@ -167,14 +166,6 @@ def _lobe_fold(client, chain, wins, want, per_channel):
                     )  # normalise FIRST, then rotate -- the C++ arm's order
                     d[9] += a
                     d[10] += a.real * a.real + a.imag * a.imag
-                    # the basis the senders folded under: b summed over senders with one in
-                    # force, its rank and the OR of its sources (REC_PROJ_K / REC_PROJ_SRC)
-                    if pc >= 0.0:
-                        d[11] += pc
-                        d[12] += 1
-                    if row is not None:
-                        d[13] = max(d[13], int(row[REC_PROJ_K]))
-                        d[14] |= int(row[REC_PROJ_SRC])
                     if per_channel:
                         per_fid = cw[0].setdefault(prn, {})
                         for fid, E, P, L, _w in cmb:
@@ -261,10 +252,6 @@ def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1)
                     "n_xcoh": 0,
                     "chan": {},
                     "chan_dup": set(),
-                    "proj_b": 0.0,
-                    "proj_n": 0,
-                    "proj_k": 0,
-                    "proj_src": 0,
                 },
             )
             t["e"] += (abs(d[0]) / d[3]) ** 2 if d[3] > 0.0 else 0.0
@@ -274,10 +261,6 @@ def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1)
             t["n_rec"] += 1
             t["n_inst"] = max(t["n_inst"], d[7])
             t["hop"] = max(t["hop"], d[8])
-            t["proj_b"] += d[11]
-            t["proj_n"] += d[12]
-            t["proj_k"] = max(t["proj_k"], d[13])
-            t["proj_src"] |= d[14]
             xc = _rec_xcoh(d)
             if xc is not None:
                 t["xcoh"] = (t["xcoh"] or 0.0) + xc
@@ -306,7 +289,6 @@ def lobe_taps(client, chain, wins, prns=None, per_channel=True, min_instances=1)
         t["p"] /= n
         t["l"] /= n
         t["n_chan"] /= n
-        t["proj_b"] = t["proj_b"] / t["proj_n"] if t["proj_n"] else -1.0
         if t["n_xcoh"]:
             t["xcoh"] /= float(t["n_xcoh"])
         t["chan_dup"] = sorted(t["chan_dup"])
@@ -484,9 +466,6 @@ def fleet_dll_comb(
             "n_src": t["n_inst"],
             "n_chan": t["n_chan"],
             "n_rec": t["n_rec"],
-            "proj_b": t.get("proj_b", -1.0),
-            "proj_k": t.get("proj_k", 0),
-            "proj_src": t.get("proj_src", 0),
             "xcoh": t.get("xcoh"),
             "n_xcoh": int(t.get("n_xcoh") or 0),
             "src": "comb",

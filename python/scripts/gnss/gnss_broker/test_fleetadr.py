@@ -435,6 +435,13 @@ class TestFrames(unittest.TestCase):
                     rows[(r, 0, telem.REC_PHI0)] = sky.fold_step * ((hop - HOP0) // HPR)
                     rows[(r, 0, telem.REC_DOPPLER)] = sky.dop_cmd
                     rows[(r, 0, telem.REC_TRIM_INC)] = 0.0
+                    # a basis in force on the second sender only, from the last two windows
+                    if i == 1 and win >= 110:
+                        rows[(r, 0, telem.REC_PROJ_COST)] = 0.25
+                        rows[(r, 0, telem.REC_PROJ_K)] = 2.0
+                        rows[(r, 0, telem.REC_PROJ_SRC)] = 6.0
+                    else:
+                        rows[(r, 0, telem.REC_PROJ_COST)] = -1.0
                 raw = test_telem._make_frame(
                     inst=inst,
                     win=win,
@@ -462,6 +469,11 @@ class TestFrames(unittest.TestCase):
         self.assertLess(abs(pub[1]["dop_cycles"] - want), 1e-3)
         full = float(Fraction(want) + Fraction(st.hop - st.hop0) / fa.HPS * int(FC))
         self.assertLess(abs(pub[1]["cycles"] - full), 1e-2)
+        # the projection slots ride through: windows 110 and 111 carry it, 111 is the ring's
+        # unfinished newest window (lag 1), so this cycle folded window 110 only
+        self.assertAlmostEqual(pub[1]["proj_b"], 0.25, places=6)
+        self.assertEqual(pub[1]["proj_k"], 2)
+        self.assertEqual(pub[1]["proj_src"], 6)
 
 
 if __name__ == "__main__":
