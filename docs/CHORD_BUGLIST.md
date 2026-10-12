@@ -476,12 +476,6 @@ per-node or per-instance**, an asymmetry like this is a bug until proven otherwi
 before optimising anything else on the GPU: it is a bigger lever than anything left in the GPU
 queue.
 
-### #115 — gps_l2c silently drops live PRNs past the 14th wire row
-**[live]** `GnssTelemPack: more live PRNs than the 14 wire rows -- DROPPING the rest (PRN 30
-onwards)`, 401+ windows on cx43 today. Live satellites are tracked and then not shipped, which is
-invisible to every downstream consumer. **Fix: `telem_max_prn`** — a wire-shape decision, so it
-pairs with #63.
-
 ### #62 — element cal is causal in the record path and not in the comb path
 **[tree]** `GnssGpuRecordAssemble` combines then updates (causal, and the comment says so), but
 the `tap()` lambda used by the comb, the spectrum ring and `_chan_export` runs *after* the
@@ -501,18 +495,6 @@ why substituting it into the ephemeris measured 65× worse and was reverted.
 **Fix: serve the CURRENT F-engine hop beside `pow_hop` in the combiner status.** That removes the
 quantisation sawtooth and the pipeline term together, and unblocks both `--innov-dr-seeds` and
 the ephemeris epoch.
-
----
-
-## Open — the fix changes the WIRE (needs a telemetry version bump)
-
-### #63 — the purge: the tracker's summed prompt still rides every frame
-**[tree]** The record header keeps its summed prompt so nothing downstream has to change, and its
-last consumer is the deep fold's re-searching estimator — now an admission gate on 3 of 8 chains.
-The slots ride every wire frame on the link that is the fleet's measured constraint (#123).
-**Fix, in order: move those 3 chains' admission onto the fleet-DLL taps (5 chains already are),
-then drop the slots from the record and the wire.** v6 → v7, with the same mutual-rejection rule.
-Pairs naturally with #115.
 
 ---
 
