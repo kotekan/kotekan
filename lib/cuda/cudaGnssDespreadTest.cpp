@@ -1,11 +1,15 @@
-// Standalone CPU-vs-GPU validation for the fused GNSS despread kernel (G1a gate).
+// Standalone GPU checks for the GNSS despread kernels, on a synthetic window (the replica at a
+// known code phase and Doppler plus deterministic noise):
+//  - the fused despread (launch_despread) against a CPU reference built with
+//    ChannelizedReplicaBank::hoprate_filter/hoprate_stream: correlation and energy per output
+//    row, summed over channels, within 1e-5 relative plus an anchor-scaled term
+//  - the voltage peel and its analytic add-back
+//  - the CHORD 4+4b codec; the quantized despread and the waveform + N x M correlator split,
+//    each against the fused kernel, with the split's kernel timings
+//  - the despread as an int8 GEMM
+// followed by a throughput bench. Exits 0 when every check passes.
 //
-// Builds the CPU reference with the real pipeline code (ChannelizedReplicaBank::hoprate_filter/
-// hoprate_stream + gnss::channelized_despread), synthesizes a data window (replica-as-signal at a
-// known cp/doppler + deterministic pseudo-noise), then runs gnss_cuda::launch_despread on the same
-// inputs and compares per-channel correlation + energy. Pass: <=1e-5 relative on every output.
-//
-//   ./cuda_gnss_despread_test            (prints PASS/FAIL per trial + max relative error)
+//   ./cuda_gnss_despread_test [signal_name] [N] [n_hops] [cp_true]
 
 #include "GnssCudaDespread.hpp"
 #include "cudaGnssChordDespread.hpp"
@@ -39,46 +43,30 @@ using cf = std::complex<float>;
     } while (0)
 
 int main(int argc, char** argv) {
-    // Default: L1 C/A at the GX10 front-end geometry (5 MSPS real, N=20 channels, 4-tap hamming
-    // PFB). Optional argv: [signal_name] [N] [n_hops] [cp_true] -- e.g.
-    //   `cuda_gnss_despread_test GPS_L2C_CM 10` runs the TDM (zero-stuffed comb) signal at the
-    //   live L2C geometry (5000-hop records), the case that validated the GPU despread during
-    //   the 2026-07-18 L2C zero-cert hunt.
-    //   `cuda_gnss_despread_test GPS_L2C_CL 10 5000` is the L2C CL PILOT at the live record
-    //   shape: 5000-hop (20 ms) records despread against a rolling SEGMENT of the 1.5 s code
-    //   (record != code period -- the default n_hops = repl_period_hops would be 375,000 here,
-    //   a whole 1.5 s window, which is not what production runs). The n_hops override exists
-    //   for exactly this partial-period case.
-    //   `cuda_gnss_despread_test GPS_L2C_CL 10 5000 765749.75` starts the prompt 1500.25
-    //   component chips before the CL code END, so the record CROSSES the 767250->0 wrap
-    //   mid-window -- the code-index wrap path a 20 ms sub-period record hits once per 1.5 s.
-    // EXPECTED DURATION: seconds for L1CA/CM, but ~13-16 min per CL invocation (measured
-    // twice, 2026-07-28) -- the CPU reference regenerates a hoprate replica per row plus the
-    // 32-PRN bench tail, and every code-table walk touches CL's 1,534,500-comb-chip code
-    // (75x CM's). Not a hang; it exits 0. Budget accordingly, and NEVER run any of these
-    // against a live node -- the bench tail saturates the GPU and the soak drops frames
-    // (measured 2026-07-28: 135k L5 frames in ~10 min; see data_quality_windows.md).
-    // The GPU side below is fully signal-generic (bank-driven), mirroring GnssCudaDespread's
-    // job construction -- it was L1CA-hardcoded before, which made non-L1 runs vacuous.
+    // Default: GPS L1 C/A at 5 MSPS real, N=20 channels, 4-tap Hamming PFB. Examples:
+    //   `cuda_gnss_despread_test GPS_L2C_CM 10`: the TDM signal (comb_mult 2), 5000-hop (20 ms)
+    //   records.
+    //   `cuda_gnss_despread_test GPS_L2C_CL 10 5000`: 20 ms records despread against a segment
+    //   of the 1.5 s CL code. Without the n_hops override a record is one code period, 375,000
+    //   hops here.
+    // cp_true is the code-phase argument, referred to absolute sample 0 (see
+    // ChannelizedReplicaBank::phase_from_arg), so where a record falls in the code also depends
+    // on the anchor below; a record across the CL code wrap needs the two chosen together.
+    // L1 C/A and CM runs take seconds; CL runs take minutes, because the CPU reference and the
+    // bench walk CL's 1,534,500-chip combined code (75x CM's). The bench saturates the GPU, so
+    // never run this beside a live node.
     const double fs = 5.0e6, f_off = 1.25e6;
     const int N = (argc > 2) ? atoi(argv[2]) : 20;
     const int taps = 4;
     const int prn = 19;
     const double dop = -2900.0;
-    // ⚠️ CHORD-SCALE ABSOLUTE ANCHOR, AND THAT IS THE POINT (task #52, 2026-08-13).
-    //
-    // This was 40*125*3600 = 1.8e7 samples, "~1 hr of hops" at AIRSPY scale -- nine orders of
-    // magnitude below the 1.9e15 the live F-engine reaches in a week. Every phase bug in the
-    // (small number) x (huge absolute argument) family is INVISIBLE there: at n0 ~ 1e7 the old
-    // wc*n_m and the new ang0 + wc*(n-n0) agree to the last bit, so this test -- the one gate
-    // that compares the GPU replica against an independent long-double CPU reference -- could
-    // not see the defect it exists to catch, nor an error in the fix.
-    //
-    // 6.8 days of CHORD uptime, matching scripts/gnss/e2e's --hop0 default.
+    // Absolute anchor at CHORD scale: hop 114436200145 of 16384 samples (n ~ 1.9e15, 6.8 days
+    // of uptime, scripts/gnss/e2e's --hop0 default). Errors from a small quantity times a huge
+    // absolute index (wc*n, n*cps) are invisible at small anchors, and this test is the
+    // independent CPU check on the GPU replica, so it runs where they show.
     long long window_start = 114436200145LL * 16384LL;
-    // #54: scan the absolute anchor. If the GPU-vs-CPU disagreement grows with n0 it is the
-    // (small number) x (huge argument) family again -- and the only such lever left inside the
-    // kernel is C_P = cp0 + n_m*cps, the CODE phase. If it is flat, it is not.
+    // GNSS_TEST_HOP0 overrides the anchor hop, to scan it: a GPU-vs-CPU error that grows with
+    // the anchor is precision lost in an absolute-index product.
     if (const char* e = getenv("GNSS_TEST_HOP0"))
         window_start = atoll(e) * 16384LL;
 
@@ -95,11 +83,10 @@ int main(int argc, char** argv) {
     const int n_hops = (argc > 3) ? atoi(argv[3]) : bank.repl_period_hops(); // 125 @ L1/5MSPS
     const int fft_len = 2 * N;
 
-    // Covering channels for this Doppler.
     const auto cover = bank.covering_bins(dop, 250000.0);
     const int n_chan = (int)cover.size();
 
-    // "Sky": the replica itself at (cp_true, dop) + deterministic noise, on the covering channels.
+    // "Sky": the replica at (cp_true, dop), scaled by 3, plus deterministic noise.
     const auto sky = bank.channels_hoprate(0, window_start, cp_true, dop, n_hops, cover);
     std::vector<std::vector<cf>> data_ch(n_chan, std::vector<cf>(n_hops));
     unsigned seed = 1234567u;
@@ -111,9 +98,9 @@ int main(int argc, char** argv) {
         for (int m = 0; m < n_hops; ++m)
             data_ch[c][m] = sky[c][m] * 3.0f + cf((float)frand(), (float)frand());
 
-    // Two fused jobs, each emitting the full quad (E, P, L, P_HEAD): one at the true code phase,
-    // one an off-peak control. m_head cuts P_HEAD mid-record (40 of 125 hops) on the first job and
-    // disables it (0 -> an all-zero row) on the second, so both branches are covered.
+    // Two fused jobs, each emitting E, P, L and P_HEAD: one at the true code phase, one an
+    // off-peak control. The first cuts P_HEAD at hop 40; the second sets m_head = 0, which
+    // gives an all-zero P_HEAD row, so both branches are covered.
     const double spacing = 0.5;
     struct FusedTrial {
         double cp_prompt;
@@ -121,13 +108,13 @@ int main(int argc, char** argv) {
     };
     const std::vector<FusedTrial> ftrials = {{cp_true, 40}, {cp_true + 137.0, 0}};
     const char* row_name[4] = {"E", "P", "L", "HEAD"};
-    // Row -> (code phase, hop range) the CPU must reproduce; must mirror the kernel's contract.
+    // Row -> (code phase, hop count) as the kernel defines them; the CPU must reproduce both.
     auto row_cp = [&](const FusedTrial& ft, int t) {
         return ft.cp_prompt + (t == 3 ? 0.0 : (t - 1) * spacing);
     };
     auto row_hops = [&](const FusedTrial& ft, int t) { return (t == 3) ? ft.m_head : n_hops; };
 
-    // --- CPU reference: hoprate replica per row + channelized_despread ---
+    // --- CPU reference: a hoprate replica per row, correlated in double ---
     const auto filt = bank.hoprate_filter(cover, dop);
     std::vector<std::complex<double>> cpu_corr; // [row][chan]
     std::vector<double> cpu_energy;
@@ -153,27 +140,20 @@ int main(int argc, char** argv) {
     const int Lf = fft_len * taps;
     const int n_spec = (int)ftrials.size(); // kernel jobs
     const int n_out = 4 * n_spec;           // output rows (E, P, L, P_HEAD per job)
-    // Signal-generic, mirroring GnssCudaDespread's job construction: COMBINED-stream chip rate
-    // and code table (zero-stuffed for TDM), cp/spacing scaled by comb_mult below.
+    // As GnssCudaDespread builds its jobs: combined-stream chip rate and code table (TDM/BOC
+    // expanded), code phase and spacing scaled by comb_mult below.
     const int comb = bank.comb_mult();
     const double cps =
         bank.eff_chip_rate() / fs * (1.0 + bank.code_doppler_sign * dop / sig->carrier_hz);
     const double wc = 2.0 * M_PI * (f_off + dop) / fs;
-    // ANCHOR-SCALED TOLERANCE (task #54). The GPU-vs-CPU floor is NOT a constant, because the
-    // two sides evaluate the same long-double expression at different points: the kernel reduces
-    // the code phase mod code_len ONCE at n0 and then advances by an intra-record offset, while
-    // the reference re-evaluates cp0 + n_m*cps every hop. They therefore differ by O(1) long
-    // double ULPs of the ANCHOR product n0*cps -- a quantity that grows with the anchor, from
-    // 2^-25 chips at an hour of uptime to 2^-15 at a week.
-    //
-    // Pinning a constant here forces a choice between a bound that is red at a deep anchor and
-    // one that is meaningless at a shallow one. Scale it with the arithmetic instead, and the
-    // gate stays sharp at every anchor. ⚠️ The two sides are deliberately left INDEPENDENT:
-    // giving the reference the kernel's anchor convention would drive this to the float floor
-    // and make the term unable to fail, which is not a gate. The measured worst realisation is
-    // 5.6 ULP at the deepest anchor, so 32 is margin, not a fit -- and it still fails loudly on
-    // the defect it was built for (a double-precision reference reads 6.5e-04 against a 1.3e-04
-    // bound at 0.678 d, and 1.4e+00 against 9.9e-04 at 6.8 d).
+    // Anchor-scaled tolerance. The kernel reduces the code phase mod code_len once at n0 (on
+    // the host, in long double) and advances by an intra-record offset; the reference evaluates
+    // cp0 + n_m*cps in long double every hop. They differ by O(1) long-double ULPs of the anchor
+    // product n0*cps, which grows with the anchor (2^-15 chips at a week here). A constant bound
+    // would be either red at a deep anchor or meaningless at a shallow one, so the bound scales
+    // with that ULP. The two sides are deliberately independent: giving the reference the
+    // kernel's anchor convention would leave this term unable to fail. 32 ULP is margin over the
+    // few ULP seen, and a double-precision reference still fails it at a deep anchor.
     const long double anchor_chips =
         std::fabs((long double)(window_start + fft_len - 1) * (long double)cps);
     const double ulp_anchor = // long double ULP at the anchor product, in chips (64-bit mantissa)
@@ -181,11 +161,10 @@ int main(int argc, char** argv) {
     const double TOL = 1e-5 + 32.0 * ulp_anchor;
     printf("anchor n0*cps = %.4Le chips -> long double ULP %.3e chips -> tolerance %.3e\n",
            anchor_chips, ulp_anchor, TOL);
-    // Carrier phase at the hop reference sample, in LONG DOUBLE -- the same reduction
-    // GnssCudaDespread::Impl::ang0_for does, and for the same reason (task #52): wc must never
-    // multiply the absolute sample index. Duplicated rather than shared because this test is
-    // the INDEPENDENT check on the kernel; calling production's helper would make it agree with
-    // itself. Keep the two expressions equivalent by hand.
+    // Carrier phase at the hop reference sample, reduced in long double as
+    // GnssCudaDespread::Impl::ang0_for does, so the kernel's wc multiplies only the intra-record
+    // offset. Duplicated rather than shared because this test is the independent check on the
+    // kernel; keep the two expressions equivalent by hand.
     const auto ang0_of = [&](long long n0) {
         constexpr long double TWO_PI_L = 6.283185307179586476925286766559005768L;
         long double fr = fmodl(
@@ -198,8 +177,7 @@ int main(int argc, char** argv) {
     const auto& fcode = bank.full_code(0); // slot 0 == our PRN
     std::vector<int8_t> code8(fcode.begin(), fcode.end());
 
-    // Mirrors GnssCudaDespread::Impl::cp_ref_for. Duplicated on purpose: this test is the
-    // independent check, and calling production's helper would make it agree with itself.
+    // Mirrors GnssCudaDespread::Impl::cp_ref_for, duplicated for the same reason as ang0_of.
     const auto cp_ref_of = [&](double cp0, long long n0) {
         long double c = (long double)cp0 + (long double)n0 * (long double)cps;
         const long double L = (long double)code8.size();
@@ -223,7 +201,7 @@ int main(int argc, char** argv) {
             dataf[(size_t)c * n_hops + m] = make_float2(data_ch[c][m].real(), data_ch[c][m].imag());
     std::vector<gnss_cuda::DespreadJob> jobs(n_spec);
     const uint64_t all_mask = (n_chan >= 64) ? ~0ULL : ((1ULL << n_chan) - 1);
-    // (d_phiA/d_phiB are set below once allocated; per-job pointers = the batch API shape)
+    // Each job carries its own Phi pointers (d_phiA/d_phiB), filled in below once allocated.
 
     gnss_cuda::DespreadParams p;
     p.n0 = window_start + fft_len - 1; // hoprate_stream's per-hop reference sample
@@ -304,27 +282,24 @@ int main(int argc, char** argv) {
     printf("%s (max relative error %.3e; %d jobs x 4 rows x %d channels x %d hops)\n",
            pass ? "PASS" : "FAIL", max_rel, n_spec, n_chan, n_hops);
 
-    // ===================== VOLTAGE PEEL + ANALYTIC ADD-BACK (path B) =====================
-    // docs/gnss_voltage_peel_live.md. Three claims, checked in order, all against the SAME
-    // replica the despread above correlates with -- which is the point of testing them here
-    // rather than in a separate program: the add-back is only exact if the waveform the peel
-    // subtracts and the reference the despread correlates are the same object.
-    //
-    //   (1) turning the cross-terms ON does not perturb corr/energy. The kernel had to reorder
-    //       its trials to {P, E, L} so the prompt replica is live when E/L are formed; that
-    //       reorder must be a numerical no-op.
-    //   (2) the cross-terms <R_P, R_E> / <R_P, R_L> (whole and head-restricted) match a CPU
-    //       reference. These are the PFB's true code-triangle values -- the reason the add-back
-    //       must not use the textbook 0.5.
-    //   (3) THE IDENTITY: despread the peeled voltage, add back a*<R_P,R_k>, and recover the
-    //       un-peeled correlation -- for a gain that is deliberately WRONG (and sign-flipped
-    //       across the code-period boundary), because the identity holds for any gain.
+    // --- Voltage peel and analytic add-back ---
+    // Checked against the same replica the despread above correlates with: the add-back is exact
+    // only if the waveform the peel subtracts and the replica the despread correlates are the same.
+    //  (1) Enabling the cross-terms does not change corr/energy. The kernel forms the trials in the
+    //      order {P, E, L} so the prompt replica is live when E and L are formed; that order must
+    //      not change the result.
+    //  (2) The cross-terms <R_P, R_E> and <R_P, R_L> (whole window and head only) match a CPU
+    //      reference. They are the PFB's true code-triangle values, which is why the add-back must
+    //      not use the textbook 0.5.
+    //  (3) The identity: despread the peeled voltage, add back a*<R_P,R_k>, and recover the
+    //      unpeeled correlation, for a gain that is deliberately wrong and sign-flipped at
+    //      m_head, since the identity holds for any gain.
     {
         printf("\n-- voltage peel (path B) --\n");
         const int m_head_peel = ftrials[0].m_head; // 40 of 125: a real boundary mid-record
         const int n_x = 4 * n_spec;                // xcorr rows per job: E, L, E|head, L|head
 
-        // ---- (1)+(2): re-run the despread with cross-terms enabled ----
+        // ---- (1) and (2): rerun the despread with cross-terms enabled ----
         double2* d_xcorr;
         CK(cudaMalloc(&d_xcorr, (size_t)n_x * n_chan * sizeof(double2)));
         CK(gnss_cuda::launch_despread(d_data, d_code, d_jobs, n_spec, n_chan, p, d_corr, d_energy,
@@ -338,18 +313,11 @@ int main(int argc, char** argv) {
                       cudaMemcpyDeviceToHost));
         CK(cudaMemcpy(g_x.data(), d_xcorr, g_x.size() * sizeof(double2), cudaMemcpyDeviceToHost));
 
-        // Does enabling the cross-terms (XC=off vs on, the two launch_despread calls above)
-        // leave corr/energy unchanged? It is a MATH no-op -- acc[t]/e[t] sum the same terms
-        // in the same order either way -- but NOT bitwise: with XC on the kernel keeps r_P
-        // live and the xc MACs raise register pressure, so nvcc contracts/schedules the
-        // identical corr/energy float MACs differently, shifting them ~1 ULP (~1e-7 rel,
-        // and DATA-DEPENDENT: seen 1.9e-7..2.7e-7 across runs/machines). Gate at the suite's
-        // own float floor (the plain despread-vs-CPU check above lands ~6e-7), NOT at
-        // bit-identity -- 1e-12 was wrong for a float quantity. A real leak from the xc path
-        // into acc/e would be orders larger. STATIC PROOF it is codegen, not a leak: in the
-        // kernel's accumulation region xc[] is never written into acc[]/e[] on any path, so
-        // no cross-term value can reach corr/energy -- only the compiler's float choices,
-        // which differ because XC changes register liveness, can move them.
+        // Enabling the cross-terms (the two launch_despread calls above) is a no-op in exact
+        // arithmetic, since xc[] never feeds acc[] or e[] in the kernel, but not bitwise: keeping
+        // r_P live raises register pressure, so nvcc may contract or schedule the same float MACs
+        // differently and corr/energy can move by ~1 ULP (~1e-7 relative, data-dependent). Gate at
+        // the float floor; a real leak from the xc path would be orders larger.
         const double XC_INVARIANCE_TOL = 1e-6;
         double max_reorder = 0.0;
         for (size_t i = 0; i < g_corr_xc.size(); ++i) {
@@ -394,10 +362,9 @@ int main(int argc, char** argv) {
         pass = pass && (max_xc < TOL);
 
         // ---- the peel itself ----
-        // A deliberately WRONG gain, sign-FLIPPED across the boundary: |a| is not the true
-        // amplitude and its phase is arbitrary. Both are on purpose -- a feed-forward gain is
-        // never exactly right, and the add-back must not care. The flip exercises the two-segment
-        // path (one gain across a sign flip is the 2026-07-12 "peels 0.9 dB" failure).
+        // A deliberately wrong gain, sign-flipped at the boundary: |a| is not the true amplitude
+        // and its phase is arbitrary, because a feed-forward gain is never exactly right and the
+        // add-back must not depend on it. The flip exercises the two-segment (head/tail) path.
         std::vector<float2> gains((size_t)2 * n_chan);
         for (int c = 0; c < n_chan; ++c) {
             const double ph = 0.37 * c + 0.11;
@@ -458,10 +425,10 @@ int main(int argc, char** argv) {
                n_chan, n_hops, res_rel, (res_rel < TOL) ? "OK" : "FAIL");
         pass = pass && (res_rel < TOL);
 
-        // ---- THE ADD-BACK IDENTITY ----
-        // Despread the residual with the SAME job, then restore the peel's known contribution:
+        // ---- The add-back identity ----
+        // Despread the residual with the same job, then restore the peel's known contribution:
         //     V[k] = V'[k] + a_head*<R_P 1_head, R_k> + a_tail*(<R_P,R_k> - <R_P 1_head,R_k>)
-        // and compare against the un-peeled correlation. This is the whole design in one number.
+        // and compare against the unpeeled correlation.
         gnss_cuda::DespreadParams pr = p;
         pr.data_stride = n_hops; // the residual is packed
         double2* d_corr_r;
@@ -517,26 +484,22 @@ int main(int argc, char** argv) {
         CK(cudaFree(d_pjobs));
         CK(cudaFree(d_corr_r));
         CK(cudaFree(d_energy_r));
-        // restore the XC-off correlations for anything downstream that reuses d_corr/d_energy
+        // Restore the cross-terms-off outputs in d_corr/d_energy.
         CK(cudaMemcpy(d_corr, g_corr.data(), g_corr.size() * sizeof(double2),
                       cudaMemcpyHostToDevice));
         CK(cudaMemcpy(d_energy, g_energy.data(), g_energy.size() * sizeof(double),
                       cudaMemcpyHostToDevice));
     }
 
-    // --- CHORD 4+4b codec + quantized despread path ---
-    // TWO separate claims, tested separately:
-    //  (1) our ENCODER matches kotekan's reference DECODE. In CHORD the PFB + 4b quantizer live in
-    //      the RFSoC F-engine, not here, so the only in-tree spec is the consumer:
-    //      lib/testing/gpuSimulate.cpp does `(b & 0x0f) - 8` for imag, `((b & 0xf0) >> 4) - 8` for
-    //      real. Re-implement that decode INDEPENDENTLY (not by calling unpack_44) and require it
-    //      to invert pack_44 exactly over all 256 codes + a voltage sweep. If this drifts, our
-    //      bytes stop being CHORD bytes and nothing else here would notice.
-    //  (2) the quantized DESPREAD equals the float despread on the SAME dequantized voltages, to
-    //      float precision -- i.e. launch_despread_q's only difference is the load. (The C/N0 cost
-    //      of quantizing is a separate, already-answered question: < 0.2 dB at 2 lsb on real sky,
-    //      scratchpad/quant_test.py. It is NOT testable on this synthetic window, whose signal sits
-    //      3x ABOVE the noise and would simply rail.)
+    // --- CHORD 4+4b codec and quantized despread ---
+    //  (1) The encoder matches kotekan's reference decode. In CHORD the PFB and 4-bit quantizer run
+    //      in the RFSoC F-engine, so the reference is a consumer's decode,
+    //      lib/testing/gpuSimulate.cpp: imag = (b & 0x0f) - 8, real = ((b & 0xf0) >> 4) - 8. That
+    //      decode is reimplemented here (not unpack_44); pack_44 must round-trip all 256 codes
+    //      through it exactly and clamp out-of-range values to the rail codes.
+    //  (2) The quantized despread equals the float despread on the same dequantized voltages to
+    //      float precision: launch_despread_q differs only in the load. The C/N0 cost of quantizing
+    //      is not measured here; this window's signal is far above its noise.
     {
         bool qpass = true;
         // (1) encoder vs the reference decode, over every representable code.
@@ -561,14 +524,14 @@ int main(int argc, char** argv) {
             if (((lo & 0xf0) >> 4) - 8 != -8 || (lo & 0x0f) - 8 != -8)
                 codec_bad++;
             if (!railed)
-                codec_bad++; // the rail flag must fire -- it is the RFI watchdog
+                codec_bad++; // the rail flag must be set on a clamp
         }
         printf("4+4b codec vs gpuSimulate reference decode (256 codes + rails): %s\n",
                codec_bad ? "FAIL" : "OK");
         qpass = qpass && (codec_bad == 0);
 
-        // (2) quantized despread == float despread on the same dequantized voltages.
-        // Scale each channel so its rms lands at ~3 lsb, exactly as the ingest will.
+        // (2) Quantized despread vs float despread on the same dequantized voltages. Each channel
+        // is scaled to ~3 lsb rms per component.
         std::vector<float> h_scale(n_chan), h_inv(n_chan);
         for (int c = 0; c < n_chan; ++c) {
             double ss = 0.0;
@@ -602,7 +565,7 @@ int main(int argc, char** argv) {
         CK(cudaMemcpy(d_deq, deq.data(), deq.size() * sizeof(float2), cudaMemcpyHostToDevice));
         CK(cudaMemcpy(d_scale, h_scale.data(), h_scale.size() * sizeof(float),
                       cudaMemcpyHostToDevice));
-        // float kernel on the DEQUANTIZED data = the reference for the q kernel on the bytes.
+        // The float kernel on the dequantized data is the reference for the q kernel on the bytes.
         CK(gnss_cuda::launch_despread(d_deq, d_code, d_jobs, n_spec, n_chan, p, d_corr, d_energy,
                                       0));
         CK(gnss_cuda::launch_despread_q(d_q, d_scale, d_code, d_jobs, n_spec, n_chan, p, d_qc, d_qe,
@@ -622,17 +585,14 @@ int main(int argc, char** argv) {
         qpass = qpass && (qmax < 1e-6);
         pass = pass && qpass;
 
-        // --- CHORD split (waveform generation + N x M correlation) vs the FUSED kernel ---
-        // The CHORD path generates the replica once and correlates it against N antennas, instead
-        // of regenerating it inside the MAC. At N=1 it must reproduce the fused kernel EXACTLY:
-        // same gather, same carrier, same combination, same accumulation order. Not "close" --
-        // the two paths do identical arithmetic on identical inputs, so anything but 0.0 here
-        // means the split has drifted from the fused path, which is the failure mode that shows
-        // up downstream only as an unexplained correlation-amplitude discrepancy.
+        // --- CHORD split (waveform generation + N x M correlation) vs the fused kernel ---
+        // The split generates each replica once and correlates it against N antennas instead of
+        // regenerating it inside the MAC. At N=1 both paths do the same arithmetic in the same
+        // order (gather, carrier, combination, accumulation), so they must agree exactly.
         {
             const int n_elem = 1;
             // The fused kernel reads [chan][hop]; the CHORD correlator reads the voltage in its
-            // NATIVE frame order [hop][chan][elem]. Same bytes, transposed.
+            // native frame order [hop][chan][elem]. Same bytes, transposed.
             std::vector<unsigned char> qt((size_t)n_hops * n_chan * n_elem);
             for (int c = 0; c < n_chan; ++c)
                 for (int m = 0; m < n_hops; ++m)
@@ -685,14 +645,11 @@ int main(int argc, char** argv) {
                    "%s\n",
                    cmax, emax, split_ok ? "OK (exact)" : "FAIL");
 
-            // ---- KERNEL SPLIT AT CHORD GEOMETRY (2026-08-05) ----------------------------
-            // The tracker runs THIS path, not the fused kernel: enqueue_batch_device launches
-            // waveform (replica SYNTHESIS) then correlate_nm (the CORRELATION over elements).
-            // Time them separately, because the two answer different questions:
-            //   * correlation is what eventually folds into CHORD's N^2
-            //   * synthesis NEVER can -- N^2 knows nothing about GNSS codes
-            // If synthesis dominates, folding the correlation into N^2 buys ~nothing on the GPU,
-            // and that is a planning input worth having measured rather than assumed.
+            // ---- Kernel split timing ----
+            // enqueue_batch_nm launches launch_waveform (replica synthesis) then
+            // launch_correlate_nm (the correlation over elements). Time them separately: the
+            // correlation is the part CHORD's N^2 correlator can absorb (as it does for
+            // cudaGnssInject's waveforms); the synthesis it cannot.
             {
                 const int NIT = 200;
                 cudaEvent_t e0, e1, e2;
@@ -728,10 +685,9 @@ int main(int argc, char** argv) {
                     "candidate\n",
                     n_spec, n_chan, n_elem, p.n_hops, ms_syn, 100.0 * ms_syn / (ms_syn + ms_cor),
                     n_elem, ms_cor, 100.0 * ms_cor / (ms_syn + ms_cor));
-                // ELEMENT SWEEP. Synthesis is n_elem-INDEPENDENT (one replica per PRN/chan/hop,
-                // broadcast across element lanes); the correlation scales with it. So a
-                // 1-element measurement flatters synthesis, and any claim that "the MAC is 0% of
-                // the kernel" measured at 1 element does NOT transfer to CHORD's 32. Sweep it.
+                // Element sweep: synthesis does not depend on n_elem (one replica per PRN/chan/hop
+                // serves every element) while the correlation scales with it, so a 1-element timing
+                // understates the correlation's share.
                 for (int ne : {1, 8, 32}) {
                     unsigned char* d_q2 = nullptr;
                     double2* d_c2 = nullptr;
@@ -772,18 +728,14 @@ int main(int argc, char** argv) {
             cudaFree(d_qt);
             cudaFree(d_ncorr);
 
-            // --- element axis: N>1 indexing, stride and tail handling ---
-            // N=1 above proves the ARITHMETIC matches; it says nothing about whether the element
-            // axis is indexed correctly. So: replicate the same voltage into every element, pad
-            // the frame's element axis with a POISON byte (0x00 -> (-8,-8), the loudest value the
-            // codec can produce -- deliberately not 0x88, which decodes to zero and would hide a
-            // stride error), and require every element to reproduce the fused answer exactly.
-            //
-            // n_elem = 5 with elem_stride = 7 is chosen to be awkward: not a power of two, not a
-            // multiple of the 32-wide element block, and strictly less than the stride. That is
-            // the shape that catches both a stride bug and the divergent-__syncthreads() tail bug
-            // (the block must run a whole number of element passes, predicating the ragged tail
-            // rather than letting threads drop out at different barriers).
+            // --- Element axis: N>1 indexing and stride ---
+            // N=1 above checks the arithmetic, not the element indexing. Replicate the voltage into
+            // every element, pad the element axis with a poison byte (0x00 = (-8,-8), the loudest
+            // code; 0x88 decodes to zero and would hide a stride error), and require every element
+            // to match the fused answer exactly. n_elem = 5 with elem_stride = 7 is not a power of
+            // two and is less than the stride. It is below the 32-wide element block, so
+            // launch_correlate_nm makes the block 5 wide and the ragged-tail predication (n_elem
+            // above 32, not a multiple of it) is not exercised.
             const int nE = 5, strideE = 7;
             std::vector<unsigned char> qm((size_t)n_hops * n_chan * strideE, 0x00); // poison
             for (int c = 0; c < n_chan; ++c)
@@ -832,16 +784,14 @@ int main(int argc, char** argv) {
         cudaFree(d_qe);
     }
 
-    // --- GEMM-despread cross-validation (the CHORD-shape path) ---
-    // The despread as A = D x R^H: per covering channel, a [1 x T] data row against [T x M]
-    // replica columns, int8 tensor GEMM (4 real gemms), batched over channels. THE CLAIM GATED
-    // HERE: the GEMM computes the IDENTICAL mathematical object to the despread. So the
-    // reference is built from the SAME dequantized integers the GEMM multiplies (data nibbles x
-    // int8 replicas): int8 x int8 sums are int32-EXACT, so GEMM-vs-reference must agree to
-    // float rounding (~1e-7), gate 1e-6.
-    // The separate physics question (int8 REPLICA quantization -- deterministic, no noise to
-    // dither it) is reported against the true float reference, not gated: expect ~1e-2 relative
-    // on strong rows (~-50 dB power), well under every peel depth we use.
+    // --- The despread as an int8 GEMM (no stage uses this form) ---
+    // A = D x R^H per covering channel: a [1 x T] data row against [T x M] replica columns, as four
+    // real int8 tensor GEMMs batched over channels. The gated claim is that the GEMM computes the
+    // same object as the despread, so the reference uses the same dequantized integers the GEMM
+    // multiplies (data nibbles x int8 replicas); int8 products sum exactly in int32, so the two
+    // agree to rounding (gate 1e-6). The difference from the float CPU reference (cpu_corr, on
+    // unquantized data) adds the 4+4b data and int8 replica quantization; it is reported, not
+    // gated.
     {
         cublasHandle_t bh;
         if (cublasCreate(&bh) != CUBLAS_STATUS_SUCCESS) {
@@ -858,7 +808,7 @@ int main(int argc, char** argv) {
                 double ss = 0.0;
                 for (int m = 0; m < n_hops; ++m)
                     ss += std::norm(std::complex<double>(data_ch[c][m]));
-                const float inv = (float)(2.1 / std::sqrt(ss / n_hops)); // CHORD loading
+                const float inv = (float)(2.1 / std::sqrt(ss / n_hops)); // ~2 lsb rms (complex)
                 dsc[c] = 1.0f / inv;
                 for (int m = 0; m < n_hops; ++m) {
                     int railed = 0;
@@ -871,7 +821,7 @@ int main(int argc, char** argv) {
                 }
             }
             // Replica columns: same hoprate generator as the CPU reference, quantized to int8,
-            // HEAD columns zeroed past their m_head (the segmented despread as a COLUMN SHAPE).
+            // HEAD columns zeroed past their m_head (the segmented despread as a column shape).
             std::vector<int8_t> hRr((size_t)n_chan * M * TP, 0), hRi((size_t)n_chan * M * TP, 0);
             std::vector<float> rsc(M);
             for (int col = 0; col < M; ++col) {
@@ -936,7 +886,7 @@ int main(int argc, char** argv) {
                         gg += std::complex<double>(
                             (cint(0, c, col) + cint(1, c, col)) * s,  // dr*rr + di*ri
                             (cint(2, c, col) - cint(3, c, col)) * s); // di*rr - dr*ri
-                        // EXACT reference from the same dequantized integers
+                        // Reference from the same dequantized integers
                         std::complex<double> e(0, 0);
                         const int hi = row_hops(ftrials[col / 4], col % 4);
                         for (int m = 0; m < hi; ++m) {
@@ -952,7 +902,7 @@ int main(int argc, char** argv) {
                     }
                     const double rel = std::abs(gg - ee) / std::max(1e-30, std::abs(ee));
                     max_exact = std::max(max_exact, rel);
-                    if (col == 1) // strong prompt: physics delta vs the true float reference
+                    if (col == 1) // strong prompt row: difference from the float CPU reference
                         phys_p = std::abs(gg
                                           - std::accumulate(cpu_corr.begin() + (size_t)col * n_chan,
                                                             cpu_corr.begin()
@@ -977,23 +927,16 @@ int main(int argc, char** argv) {
         }
     }
 
-    // --- Throughput bench: the REAL per-record path (GnssCudaDespread::despread_batch --
-    // upload_window + one batched launch + one sync per record), full-constellation batch.
-    // Reports records/s and the realtime margin vs the tracker's 1 kHz record cadence.
+    // --- Throughput bench: GnssCudaDespread::despread_batch (upload_window, one batched launch and
+    // one sync per record), every PRN slot in one batch. Reports records/s, and records/s over
+    // 1 kHz as the realtime factor, which assumes L1 C/A's 1 ms records.
     //
-    // ⚠️ BENCH AT THE DEPLOYED GEOMETRY, NOT THE CORRECTNESS ONE ABOVE. This kernel's speed is a
-    // strong function of HOPS PER THREAD (= n_hops / min(pow2>=n_hops, 256)), because that sets
-    // whether it is latency-bound (occupancy rules) or throughput-bound (replica work rules).
-    // The 5 MSPS / 125-hop geometry used for the correctness check sits at ~1 hop/thread and
-    // ranks kernels the OPPOSITE way from every band we actually fly -- it cost real debugging
-    // time on 2026-07-16. Every deployed band is far from it:
-    //     GPS L1CA / L5 / E5a / B2a  20 MSPS, N=10  -> 1000 hops  =  3.9 hops/thread
-    //     GAL E1C  (4 ms)            20 MSPS, N=10  -> 4000 hops  = 15.6
-    //     BDS B1C  (10 ms)           20 MSPS, N=10  -> 10000 hops = 39.1
-    //     GPS L2C  (20 ms)            5 MSPS, N=10  -> 5000 hops  = 19.5
-    // So bench the wide front end: the airspy dual-L1 config = 20 MSPS, N=10,
-    // 1000-hop GPS records -- the LEAST favourable of the deployed set, i.e. a lower bound.
-    const double bfs = 20.0e6, bf_off = 5.0e6; // 20 MSPS-mode L1 IF = Fs/4
+    // The bench uses a 20 MSPS, N=10 front end (1000-hop records for L1 C/A, ~3.9 hops per thread),
+    // not the correctness geometry above. The kernel's speed depends on hops per thread
+    // (n_hops / min(pow2 >= n_hops, 256)): near 1 it is latency-bound and occupancy dominates; at
+    // several it is throughput-bound and replica work dominates, and the two regimes rank kernel
+    // changes differently. The 125-hop correctness geometry sits at ~1 hop per thread.
+    const double bfs = 20.0e6, bf_off = 5.0e6; // IF = Fs/4
     const int bN = 10;
     for (int bench_prn : {12, 32}) {
         std::vector<int> prns;
@@ -1030,12 +973,10 @@ int main(int argc, char** argv) {
                bench_prn, bN, bn_hops, (double)bn_hops / (bn_hops < 256 ? bn_hops : 256), NREC / dt,
                NREC / dt / 1000.0, 3.0 * bench_prn * NREC / dt);
 
-        // ⚠️ AND the PRODUCTION path. despread_batch above is the CPU-tracker fallback, whose
-        // 3-trial contract carries NO head job -- so it benches a job mix no band flies, and it
-        // ranks kernel changes DIFFERENTLY from the GPU chain (it called the 2026-07-16 fusion a
-        // 5% regression while the chain got 14-22% faster). The GPU chain runs
-        // enqueue_batch_device: 4 rows/spec including P_HEAD, m_head > 0 on every record. Bench
-        // what ships.
+        // The same bench through enqueue_batch_device. despread_batch's jobs have m_head = 0, which
+        // skips the P_HEAD accumulation and reduction; here every spec computes all four rows
+        // (E, P, L, P_HEAD) with m_head > 0, on the caller's stream. The two can rank a kernel
+        // change differently.
         {
             float2* d_win = nullptr;
             gnss_cuda::DespreadJob* d_j = nullptr;
@@ -1063,9 +1004,8 @@ int main(int argc, char** argv) {
                    "%6.0f rec/s (%.1fx realtime @1kHz)\n",
                    NREC / pdt, NREC / pdt / 1000.0);
 
-            // ...and the SAME path with the voltage peel in front of it: peel -> despread the
-            // residual (+ the add-back cross-terms). This is what the peeled chain actually
-            // costs per record, and it is the number that gates enabling it live.
+            // The same path with the voltage peel in front: peel, then despread the residual with
+            // the add-back cross-terms. The cost relative to the unpeeled path is printed.
             {
                 std::vector<GnssCudaDespread::PeelSpec> pspecs(bench_prn);
                 for (int q = 0; q < bench_prn; ++q) {

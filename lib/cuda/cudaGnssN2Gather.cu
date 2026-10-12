@@ -1,13 +1,13 @@
 /**
  * @file
- * @brief Gather the GNSS (mixed + synthetic) tiles out of the extended N^2 triangle.
+ * @brief Gather the GNSS tiles out of the extended N^2 visibility triangle.
  *
- * The extended visibility triangle is 107 MB/frame and stays on the GPU; the GNSS consumer
- * needs ~0.7 MB of it -- the mixed (synthetic x live-antenna) and synthetic x synthetic tiles
- * of the 7 comb channels. The selection list is host-built at construction
- * (cudaCorrelatorDual) and constant for the run, so the kernel is a flat gather over
- * (tile, int32) pairs: consecutive threads copy consecutive int32s of one tile, fully
- * coalesced on both sides.
+ * The extended triangle stays on the GPU; the GNSS consumers need only the mixed
+ * (synthetic x live-antenna) tiles of the comb channels, plus the antenna x antenna and
+ * synthetic x synthetic tiles when a gather asks for them. cudaCorrelatorDual builds each
+ * selection list once at construction, so the kernel is a flat gather over (tile, int32)
+ * pairs: consecutive threads copy consecutive int32s of one 512-int32 tile, coalesced on both
+ * sides.
  */
 
 #include <cuda_runtime.h>

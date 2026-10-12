@@ -2,16 +2,11 @@
  * @file
  * @brief Device-side replica primitives shared by every GNSS kernel that synthesises a replica.
  *
- * Extracted verbatim from cudaGnssDespreadKernel.cu so the FUSED despread, the peel, and the
- * standalone CHORD waveform generator all call the SAME chip gather.
- *
- * WHY THIS IS A HEADER AND NOT THREE COPIES. The peel's analytic add-back is exact only if the
- * peel and the despread generate BIT-IDENTICAL replicas (docs/gnss_voltage_peel_live.md), and
- * the CHORD split has the same requirement for a different reason: the waveform generator now
- * produces the replica that the N x M correlator consumes, so any divergence from the fused
- * path shows up as a correlation-amplitude discrepancy with no other symptom. The gather is
- * also delicately tuned -- see the exactness argument in chip_gather -- and is exactly the kind
- * of code that rots when duplicated.
+ * Used by the fused despread and the peel (cudaGnssDespreadKernel.cu) and by the CHORD waveform
+ * generator (cudaGnssChordDespread.cu), whose replicas must be bit-identical: the peel's
+ * analytic add-back is exact only if its replica equals the despread's, and the waveform
+ * generator feeds the N x M correlator, where a divergence from the fused path would show only
+ * as a correlation-amplitude error. One copy of the gather keeps them identical.
  */
 
 #ifndef CUDA_GNSS_REPLICA_DEVICE_CUH
@@ -24,26 +19,15 @@
 #include <math.h>
 
 namespace gnss_cuda {
-/// Complex multiply, with the multiply-adds PINNED to fmaf.
-///
-/// Written as the plain expression `a.x*b.x - a.y*b.y` it is ptxas's choice whether to contract,
-/// and it takes that choice differently depending on the surrounding code -- which is invisible
-/// until two call sites that must agree bit-for-bit stop agreeing. That happened: fusing the
-/// E/P/L gathers moved this function's contraction and the split-vs-fused test went from 0 to
-/// 3.1e-07 with the gather itself proven identical (an isolated A/B of chip_gather vs
-/// chip_gather3 over 4096 phases x 4 geometries found zero mismatches -- it was never the
-/// gather). Naming the operation removes the freedom.
-///
-/// NOT quite a no-op: it moves the replica by ~1 ulp, and the GPU-vs-CPU agreement in
-/// cudaGnssDespreadTest improves slightly with it (5.400e-07 -> 5.276e-07, peel residual
-/// 2.461e-07 -> 2.454e-07). Both call sites move together, so every exactness gate stays at 0.
+/// Complex multiply with the multiply-adds pinned to fmaf. Written as `a.x*b.x - a.y*b.y`,
+/// whether ptxas contracts it depends on the surrounding code, so two call sites that must
+/// agree bit-for-bit (the split and fused despreads) could round differently.
 __device__ inline float2 cmulf(float2 a, float2 b) {
     return make_float2(fmaf(a.x, b.x, -(a.y * b.y)), fmaf(a.x, b.y, a.y * b.x));
 }
 
-/// Phi element load, typed. `float2` is the production format; `__half2` exists to answer
-/// whether this kernel is limited by BYTES (then halving the table helps) or by scattered
-/// REQUESTS (then it does not). See scripts/gnss/wavebench.cpp --phi16.
+/// Phi element load: a float2 table, or a __half2 table (DespreadParams::phi_half) widened to
+/// float2.
 __device__ inline float2 phi_ld(const float2* p, int i) {
     return p[i];
 }
@@ -52,18 +36,16 @@ __device__ inline float2 phi_ld(const __half2* p, int i) {
 }
 
 /// Chip gather over the filter span at absolute code phase @c C:
-///   sA/sB = sum_d code[chip0-d] * (Phi{A,B}[khi+1] - Phi{A,B}[klo]),  chip0 = floor(C).
+///   sA/sB = sum_d code[(chip0-d) mod code_len] * (Phi{A,B}[khi(d)+1] - Phi{A,B}[klo(d)])
+/// with chip0 = floor(C), phi = C - chip0, khi(d) = floor((phi+d)*inv_cps),
+/// klo(d) = khi(d-1)+1, d in [job_d_first, job_n_chips), and indices clamped to [0, Lf].
 /// @c ks / @c kf are the integer/fraction split of job.inv_cps, hoisted by the caller (they are
-/// invariant across hops AND across the E/P/L trials, which share a Doppler).
-/// Takes the four code-table scalars directly rather than a job struct, so the despread
-/// (DespreadJob) and the peel (PeelJob) can share it without one pretending to be the other.
-/// @c job_d_first (item 6, CENTERED truncation): first chip of the walk. The four state
-/// variables all have closed forms in the start chip, and every seed below reduces
-/// BIT-FOR-BIT to the historical prologue at d_first == 0 (fmaf(0, kf, base) == base; the
-/// (d0-1)*ks term == -ks; (chip0 - 0) mod L == chip0 mod L) -- so the default path is the old
-/// path by construction, not by test. NOT defaulted: a defaulted argument is how a missed
-/// call site looks like working code (the phisharegpu psi lesson), and every caller carries a
-/// job struct with the field anyway.
+/// invariant across hops and across the E/P/L trials, which share a Doppler).
+/// Takes the job's scalars rather than a job struct, so the despread (DespreadJob) and the peel
+/// (PeelJob) can share it.
+/// @c job_d_first is the first chip of the walk (DespreadJob::d_first, centered truncation);
+/// the walk state is seeded at that chip in closed form. It has no default, so a call site
+/// that omits it fails to compile rather than silently walking from chip 0.
 __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int job_code_len,
                                    int job_n_chips, int job_d_first, int Lf,
                                    const int8_t* __restrict__ code,
@@ -74,48 +56,22 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
     const double phi = C - (double)chip0;
     sA = make_float2(0.f, 0.f);
     sB = make_float2(0.f, 0.f);
-    // THIS LOOP IS THE KERNEL: an ablation (2026-07-16) put it at 74% of the runtime, scaling
-    // linearly with n_chips, while the despread MAC measured at 0% (deleting it changed
-    // nothing). It used to spend 2 double multiplies + 2 double floors + an int64 modulo PER
-    // CHIP -- and fp64 is heavily rate-limited on the GB10. Three exact-or-near-exact
-    // reformulations remove essentially all of that; measured 0.332 -> 0.134 ms/record (2.5x,
-    // 3.4x at n_chips=8). None of them touches the mandatory-double part: C = cp0 + n_m*cps
-    // (n_m ~1e10 blows float's 2^24) and its floor/frac reduction still happen above, and
-    // everything below rides on `phi`, which is ALREADY reduced to [0,1).
-    //
-    //  (a) klo(d) == khi(d-1) + 1, identically: klo(d) = floor((phi+d-1)*inv_cps)+1 and
-    //      khi(d-1) = floor((phi+d-1)*inv_cps) are the same expression. So carry the previous
-    //      khi instead of recomputing a second boundary. EXACT, halves the boundary math.
-    //  (b) the code index walks: cidx = chip0-d decrements by one per chip, so the int64
-    //      modulo becomes a decrement + wrap. EXACT.
-    //  (c) integer/fraction split of the step. With inv_cps = ks + kf (ks integer, kf in
-    //      [0,1)):  khi(d) = floor(base + d*inv_cps) = d*ks + floor(base + d*kf),
-    //      base = phi*inv_cps. The d*ks part is exact integer; the remainder (base + d*kf)
-    //      stays in ~[0,31) -- small enough that float carries it, accumulated with one add
-    //      per chip. Verified over 16e6 (phi,d) pairs across 5 geometries: 9 boundary
-    //      disagreements vs the double form (5.6e-7), and only where the argument lands
-    //      EXACTLY on an integer, i.e. where the tap sits on the chip edge and "correct" is
-    //      arbitrary anyway. A disagreement moves ONE prototype tap between adjacent chips.
-    //  (d) CARRY THE BOUNDARY VALUE (2026-07-27). (a) already says klo(d) == khi(d-1)+1
-    //      identically -- so `phiA[kl]` on chip d is the SAME ARRAY ELEMENT as `phiA[kh+1]`
-    //      on chip d-1, and the loop was loading each boundary TWICE. Fold both clamps into
-    //      one index t(d) = clamp(khi(d)+1, 0, Lf) and the sum is a plain telescope over the
-    //      prefix table:  s = sum_d code_d * (Phi[t(d)] - Phi[t(d-1)]).
-    //
-    //      This is EXACT, not an approximation -- the same two floats are subtracted, so the
-    //      results are bit-identical. Each of the original's four cases maps over: khi+1 < 0
-    //      gave kh < kl (skipped) and now gives t(d) == t(d-1) == 0; klo > Lf-1 likewise
-    //      skipped and now gives t == t == Lf; the two half-clamped cases reduce to the same
-    //      pair of indices the clamps produced. The `kh >= kl` guard therefore disappears --
-    //      an empty span is a zero difference, so the branch is replaced by four flops that
-    //      only ever occur when khi fails to advance (inv_cps > 1 on every deployed band, so
-    //      essentially never).
-    //
-    //      Cost: 4 float2 loads per chip -> 2, plus one fewer branch. The gather was measured
-    //      at 74% of kernel runtime and scales with n_chips, which is worst exactly where the
-    //      slack is thinnest: L5 gathers 13 chips per hop (inv_cps 1.955) against L1's 4.
-    //      Registers move by ~0 (two float2 of carry in, four ints out) -- this kernel's
-    //      fusion win is register-sensitive, so that matters.
+    // The chip loop does no fp64 and no 64-bit modulo: that work (C's floor/frac split, base,
+    // the code-index seed) is done once before it, and the loop works from phi in [0,1).
+    //  (a) klo(d) = floor((phi+d-1)*inv_cps)+1 and khi(d-1) = floor((phi+d-1)*inv_cps) are the
+    //      same expression, so klo(d) == khi(d-1) + 1 and one boundary per chip suffices.
+    //  (b) the code index chip0-d decrements by one per chip, so the modulo becomes a decrement
+    //      and wrap.
+    //  (c) with inv_cps = ks + kf (ks integer, kf in [0,1)) and base = phi*inv_cps,
+    //      khi(d) = d*ks + floor(base + d*kf). The d*ks part is exact integer arithmetic; the
+    //      remainder f = base + d*kf stays below inv_cps + n_chips and is carried in float, one
+    //      add per chip. Where f lands within rounding of an integer the boundary can differ by
+    //      one from the double form, moving one prototype tap between adjacent chips.
+    //  (d) with t(d) = clamp(khi(d)+1, 0, Lf), the sum telescopes over the prefix table,
+    //      s = sum_d code_d * (Phi[t(d)] - Phi[t(d-1)]), so each boundary entry is loaded once
+    //      and carried to the next chip. This is an exact rewrite of the clamped [klo, khi]
+    //      difference, not an approximation: an empty or fully clamped span gives
+    //      t(d) == t(d-1), a zero difference, so empty spans need no branch.
     const double base = phi * job_inv_cps;
     const int d0 = job_d_first;
     long long i0 = (chip0 - (long long)d0) % (long long)job_code_len;
@@ -139,12 +95,9 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
         const float2 cA = phiA[t];
         const float2 cB = phiB[t];
         const float cv = (float)code[job_code_offset + idx];
-        // fmaf EXPLICITLY, not `s += cv * (c - p)`. With the plain expression whether ptxas
-        // contracts the multiply-add is a SCHEDULING decision, and it takes it differently in
-        // this function than in chip_gather3 -- which showed up as the split-vs-fused test
-        // reporting 3.1e-07 the moment the fused gather was switched on, with no other symptom.
-        // Naming the operation makes the two agree by construction rather than by luck. This is
-        // a no-op against the old codegen here (verified: the test still reports exactly 0).
+        // fmaf explicitly, not `s += cv * (c - p)`: whether ptxas contracts the plain expression
+        // depends on the surrounding code, and this function and chip_gather3 must produce the
+        // same bits.
         sA.x = fmaf(cv, cA.x - pA.x, sA.x);
         sA.y = fmaf(cv, cA.y - pA.y, sA.y);
         sB.x = fmaf(cv, cB.x - pB.x, sB.x);
@@ -156,60 +109,40 @@ __device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int 
     }
 }
 
-/// THREE code phases in ONE walk of the chip loop -- the E/P/L trials fused.
+/// Three code phases (the E/P/L trials) in one walk of the chip loop, bit-identical to three
+/// @ref chip_gather calls: each trial's accumulation over @c d is unchanged and the trials never
+/// interact; only the interleaving differs. At chip @c d the trials read
+/// `t(u,d) = d*ks + floor(base_u + d*kf) + 1` with every `base_u` in [0, inv_cps), so the three
+/// indices lie within about inv_cps entries of one another and loads issued together share L1
+/// lines, which three separate walks of the Phi slice cannot. The cost is registers: three walk
+/// states instead of one, and registers cap the waveform kernel's block width (WAVE_THREADS in
+/// cudaGnssChordDespread.hpp); scripts/gnss/wavebench.cpp compares the settings.
+/// @c job_d_first is as in chip_gather.
 ///
-/// WHY. A block owns one (PRN, channel) Phi slice and re-walks it once per hop pass and once per
-/// trial (see WAVE_THREADS). The block width killed the hop-pass factor; this is the trial one.
-/// It is worth trying because the three trials' taps at chip @c d are NEIGHBOURS, not scattered:
-/// each `t(u,d) = d*ks + floor(base_u + d*kf) + 1` with `base_u` in [0, inv_cps), so the three
-/// land inside a window of about `inv_cps + ds*inv_cps` entries -- ~625 of them at CHORD against
-/// the 313 one trial spans. Issued together they share L1 lines; issued a whole 689 KB slice
-/// apart, as three separate @ref chip_gather calls are, they cannot.
+/// Template options:
+///  - @c PHI: float2 or __half2 tables (see phi_ld).
+///  - @c ABL_NOLOAD: bench-only ablation of the Phi traffic. It keeps every load and instruction
+///    and forces the address to 0, so traffic collapses to one line while the instruction count
+///    is unchanged; `t` stays live through one XOR into a sink. Replacing the load with
+///    arithmetic instead would measure the replacement's cost.
+///  - @c ILV: PhiA and PhiB interleaved into one float4 table (A.re, A.im, B.re, B.im), so each
+///    lane issues one 16-byte load instead of two 8-byte loads from two arrays.
+///  - @c SHARED: reconstruct each chip window from a Doppler-free (Phi, Psi) pair instead of
+///    reading a table built at this PRN's Doppler. The gather reads only the difference over one
+///    chip window, and a carrier offset ddw factors out of it as
 ///
-/// It is BIT-IDENTICAL to three @ref chip_gather calls: each trial's own accumulation over @c d
-/// is untouched and the three never interact. Only the interleaving changes.
+///        dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
 ///
-/// ⚠️ IT COSTS REGISTERS -- three live (sA, sB, pA, pB, idx, f, khi_base) states instead of one,
-/// and registers are exactly what caps the block width. Fusing and widening pull against each
-/// other, so which wins is a MEASUREMENT (scripts/gnss/wavebench.cpp), not a deduction.
-/// ABL_NOLOAD is a BENCH-ONLY ablation answering "is this kernel actually I/O bound?".
-///
-/// It KEEPS the loads and every instruction and only forces the ADDRESS to 0, so traffic
-/// collapses to one line while the instruction count is untouched. `t` stays live via one int
-/// XOR into a sink.
-///
-/// ⚠️ THE FIRST VERSION OF THIS ABLATION WAS WRONG and concluded "loads are free". It DELETED
-/// the load and substituted `make_float2((float)(t & 3), 1.f)` to keep `t` live -- an AND plus
-/// an I2F, which in an ALU-bound kernel costs about what the load did, so it measured its own
-/// replacement. Substituting arithmetic for the thing being ablated is the trap.
-/// ILV: PhiA and PhiB INTERLEAVED into one float4 table (A.re, A.im, B.re, B.im). Each lane
-/// then issues ONE 16-byte load instead of two 8-byte loads into two arrays ~1 MB apart, halving
-/// the transaction count -- which is what this kernel actually pays (docs/gnss_gpu_search 10.6).
-/// SHARED: reconstruct each chip window from a DOPPLER-FREE (Phi, Psi) pair instead of reading
-/// a table built for this PRN's own Doppler (31896a862:docs/CHORD_GPU_TODO.md item 2). Phi is per-PRN
-/// today only because the Doppler sits inside wc, and at 1.05 MB per channel per PRN that is
-/// 176-235 MB resident per chain-instance, on a kernel §10.6c measured to be DRAM-FOOTPRINT
-/// bound. The gather never reads Phi though -- it reads the DIFFERENCE over one chip window --
-/// and an offset ddw factors out of that difference:
-///
-///     dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
-///
-/// so ONE pair per channel serves every PRN and every Doppler: 14.7 MB, which fits the L40S's
-/// 96 MB L2 where the per-PRN tables did not. The B image carries the Doppler with the OPPOSITE
-/// sign (it is e^{-i(off-wc)k}), hence the flipped correction and conjugated rotor below.
-///
-/// ANCHOR t0 = the window's LOW index, not its midpoint. The midpoint is the natural anchor for
-/// the algebra but steps by ks, ks+1/2 or ks+1; t0 is an index this loop already carries.
-/// Measured cost of that choice (scripts/gnss/phibits [2c]): 7.5e-6 vs 1.2e-6 at +-5 kHz --
-/// still 44x below fp16's own 3.3e-4 storage error.
-///
-/// The rotor is computed per chip with __sincosf from the EXACT integer t0 rather than advanced
-/// multiplicatively. Advancing would be cheaper, but t0 steps by ks or ks+1 only AWAY FROM THE
-/// INDEX CLAMPS, and at a clamp an advanced rotor would silently desynchronise from the index it
-/// represents. This kernel is DRAM-bound (457 GB/s, ~66%% of the device), so ALU is the cheap
-/// axis to spend on correctness -- wavebench is what says whether that holds.
+///    so one pair per channel serves every PRN and Doppler, and the table footprint does not
+///    grow with the PRN count. The B image is e^{-i(off-wc)k} and carries the offset with the
+///    opposite sign, hence its flipped correction and conjugated rotor. t0 is the window's low
+///    index, which the loop already carries; the midpoint would be more accurate but steps by
+///    ks, ks+1/2 or ks+1. At CHORD geometry the error is 7.5e-6 at +-5 kHz (1.2e-6 with the
+///    midpoint), below fp16's 3.3e-4 storage error (scripts/gnss/phibits.cpp).
+///    The rotor is evaluated per chip with __sincosf from the integer t0 rather than advanced
+///    by multiplication: t0 steps by ks or ks+1 only away from the index clamps, and an
+///    advanced rotor would fall out of step with t0 at a clamp.
 template<class PHI, bool ABL_NOLOAD = false, bool ILV = false, bool SHARED = false>
-/// @c job_d_first as in chip_gather: the walk's first chip, bit-exact old prologue at 0.
 __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int job_d_first, int Lf,
                                     const int8_t* __restrict__ code,
@@ -221,14 +154,12 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
     int idx[3], khi_base[3];
     float f[3];
     float2 pA[3], pB[3];
-    // SHARED-only state; the compiler drops it when SHARED is false, so the two paths do not
-    // fork structurally -- only the arithmetic inside the loop differs.
+    // SHARED-only state; dead, and dropped by the compiler, when SHARED is false.
     int tp[3] = {0, 0, 0};
     float2 pQA[3], pQB[3];
 #pragma unroll
     for (int u = 0; u < 3; ++u) {
-        // Line-for-line chip_gather's prologue. Kept that way on purpose: the two must agree
-        // bit-for-bit, and the cheapest way to keep that true is for the code to look the same.
+        // Same prologue as chip_gather, line for line, so the two agree bit-for-bit.
         const long long chip0 = (long long)floor(C[u]);
         const double phi = C[u] - (double)chip0;
         sA[u] = make_float2(0.f, 0.f);
@@ -278,8 +209,6 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
                 cB = phi_ld(phiB, ABL_NOLOAD ? 0 : t);
             }
             const float cv = (float)code[job_code_offset + idx[u]];
-            // fmaf explicitly -- see the note in chip_gather. This is the half of the pair that
-            // made it matter.
             float2 dA = make_float2(cA.x - pA[u].x, cA.y - pA[u].y);
             float2 dB = make_float2(cB.x - pB[u].x, cB.y - pB[u].y);
             if (SHARED) {
@@ -301,6 +230,7 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
                 pQB[u] = qB;
                 tp[u] = t;
             }
+            // fmaf explicitly, as in chip_gather.
             sA[u].x = fmaf(cv, dA.x, sA[u].x);
             sA[u].y = fmaf(cv, dA.y, sA[u].y);
             sB[u].x = fmaf(cv, dB.x, sB[u].x);
@@ -315,9 +245,8 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
     }
 }
 
-// Voltage load, overloaded on the ring's sample type: fp32 complex, or the CHORD 4+4b byte with
-// its per-channel scale. Everything downstream of this line is identical, which is the point --
-// the demotion must not fork the despread.
+// Voltage load, overloaded on the ring's sample type: fp32 complex, or a CHORD 4+4b byte
+// dequantized with its channel's scale. Everything after the load is the same for both.
 __device__ inline float2 load_v(const float2* __restrict__ d, size_t i,
                                 const float* __restrict__ /*chan_scale*/, int /*ci*/) {
     return d[i];

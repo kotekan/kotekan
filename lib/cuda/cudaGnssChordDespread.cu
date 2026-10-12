@@ -6,29 +6,29 @@
 #include <limits.h>
 #include <math.h>
 
-// The generation half is line-for-line the fused kernel's replica path with the data load and
-// the MAC removed, and the correlation half is that MAC with an element axis added. Keeping the
-// two halves recognisably the same code as cudaGnssDespreadKernel.cu is the point: the split is
-// gated by a test that requires the two paths to agree exactly, and the cheapest way to keep
-// that true is for the arithmetic to be visibly identical rather than merely equivalent.
+// The synthesis kernel is the fused kernel's replica path (cudaGnssDespreadKernel.cu) without the
+// data load and MAC, and the correlation kernel is that MAC with an element axis added.
+// cudaGnssDespreadTest requires the split and fused paths to agree exactly, so keep the
+// arithmetic textually the same.
 
 namespace {
 
 using gnss_cuda::chip_gather;
 using gnss_cuda::cmulf;
 
-/// grid.x = job (PRN), grid.y = covering channel, block.x = hop lane (grid-stride).
-/// Mirrors gnss_despread_kernel's geometry so the per-hop arithmetic is identical.
+/// grid.x = job (PRN), grid.y = covering channel, block.x = hop lane (grid-stride), as in
+/// gnss_despread_kernel, so the per-hop arithmetic is identical.
 ///
-/// MAXT is the block width this instantiation is COMPILED for, via __launch_bounds__. It is a
-/// template parameter and not just a launch-time choice because the width is capped by registers
-/// -- unbounded, the gather compiles to ~72 registers on sm_86 and the driver refuses anything
-/// past 512 threads. Naming the bound lets ptxas trade registers for the width, and the width is
-/// what sets the DRAM traffic (see WAVE_THREADS). Whether that trade wins is a measurement, so
-/// both instantiations exist and scripts/gnss/wavebench.cpp compares them.
-/// FUSE3 walks the chip loop ONCE for all three E/P/L trials (@ref gnss_cuda::chip_gather3)
-/// instead of three times. Bit-identical either way; it trades registers for DRAM traffic, and
-/// registers are what cap MAXT, so the two knobs pull against each other.
+/// MAXT is the block width this instantiation is compiled for, via __launch_bounds__. Registers
+/// cap the width (without the bound the gather's register use rules out a 1024-thread block),
+/// and the width sets the DRAM traffic (see WAVE_THREADS), so the bound lets ptxas trade
+/// registers for width. The 512 and 1024 instantiations both exist; scripts/gnss/wavebench.cpp
+/// compares them.
+/// FUSE3 walks the chip loop once for all three E/P/L trials (@ref gnss_cuda::chip_gather3)
+/// instead of three times; bit-identical either way, at a cost in registers.
+/// PHI = __half2 reads fp16 tables. ABL_NOLOAD (load-address ablation), ILV (float4 interleaved
+/// PhiA/PhiB) and HOPPERM (lanes permuted by p.hop_perm) are bench variants. SHARED reconstructs
+/// from the Doppler-free Phi/Psi tables.
 template<int MAXT, bool FUSE3, class PHI = float2, bool ABL_NOLOAD = false, bool ILV = false,
          bool HOPPERM = false, bool SHARED = false>
 __global__ __launch_bounds__(MAXT) void
@@ -45,21 +45,20 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
     double e[4] = {0.0, 0.0, 0.0, 0.0}; // E, P, L, P_HEAD
     const bool covered = (job.chan_mask >> ci) & 1ULL;
 
-    // Hoisted exactly as in the fused kernel: invariant across hops and across trials.
+    // Hoisted as in the fused kernel: invariant across hops and trials.
     const int ks = (int)job.inv_cps;
     const float kf = (float)(job.inv_cps - ks);
-    // ⚠️ The channel stride is in ELEMENTS of the table's own type. Under ILV the table is
-    // float4, so advancing a float2* by ci*(Lf+1) lands at half the right offset and every
-    // channel above 0 reads out of bounds -- which is exactly how the first --ilv run died.
+    // The channel stride is in elements of the table's own type: under ILV the table is float4,
+    // so the offset must be taken on a float4 pointer.
     const PHI* phiA = ILV ? (const PHI*)((const float4*)job.phiA + (size_t)ci * (p.Lf + 1))
                           : (const PHI*)job.phiA + (size_t)ci * (p.Lf + 1);
     const PHI* phiB = (const PHI*)job.phiB + (size_t)ci * (p.Lf + 1);
 
-    // PRELOAD the permutation. Read inside the loop, hop_perm[] is a dependent global load at
-    // the head of every hop: it must land before n_m -> C_P -> base -> the whole 212-step chain
-    // can start, and with ~2 hops per thread there is nothing to hide it behind. Measured 0.81x
-    // that way. Issuing all of a thread's lookups up front lets them overlap each other and the
-    // prologue instead.
+    // Preload the permutation: read inside the loop, hop_perm[] is a dependent global load that
+    // every hop's chip walk waits on, with nothing to hide it behind at ~2 hops per thread.
+    // Issued up front, a thread's lookups overlap each other and the prologue. Only the first
+    // MAX_HOPS_PER_THREAD hops per thread are preloaded, so HOPPERM needs
+    // n_hops <= MAX_HOPS_PER_THREAD * blockDim.x.
     constexpr int MAX_HOPS_PER_THREAD = 8;
     int hop_id[MAX_HOPS_PER_THREAD];
     if (HOPPERM) {
@@ -72,10 +71,8 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
     int kk = 0;
     for (int mh_i = m; mh_i < p.n_hops; mh_i += blockDim.x, ++kk) {
         const int mh = HOPPERM ? hop_id[kk < MAX_HOPS_PER_THREAD ? kk : 0] : mh_i;
-        // An uncovered channel still has to WRITE its replica rows -- the correlator reads the
-        // wave array unconditionally, and a stale/uninitialised sample would contribute garbage
-        // rather than nothing. Zero is the correct replica for a channel this PRN does not
-        // occupy, and its energy contribution is zero too.
+        // An uncovered channel still writes zero replica rows: launch_correlate_nm reads every
+        // channel's rows, and zero is the correct replica for a channel this PRN does not occupy.
         if (!covered) {
 #pragma unroll
             for (int t = 0; t < 3; ++t)
@@ -84,47 +81,19 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
             continue;
         }
 
-        // Intra-record sample offset: exact as a double, and the ONLY thing the per-sample
-        // rates are allowed to multiply now (tasks #52, #54).
+        // Code and carrier phase both come from host references at p.n0 (job.cp_ref and
+        // job.ang0, reduced in long double), so the per-sample rates multiply only the
+        // intra-record offset dn, which is exact in double and at most ~3.4e7 samples at CHORD
+        // geometry. Taken from the absolute sample instead (n ~ 2e15 after days of uptime),
+        // n*cps reaches ~6e12 chips, where a double's ULP is ~1e-3 chips, and wc*n lands where
+        // the ULP is ~1 rad. The carrier error is constant within a record but changes whenever
+        // the Doppler is re-propagated, and per-record constants are what the cross-record
+        // estimators (deep fold, ADR, spectrum window sum) integrate.
         const double dn = (double)((long long)mh * (long long)p.fft_len);
-        // CODE PHASE FROM A REFERENCE (task #54). This was cp0 + n_m*cps on the ABSOLUTE
-        // sample: n_m*cps reaches 6.1e12 chips at CHORD uptime, where a double's ulp is
-        // ~1e-3 chips, and it re-rolls every hop. Measured GPU-vs-CPU replica error on the
-        // PROMPT row, with the carrier already referenced via ang0: 7.9e-08 at 0.007 days,
-        // 8.2e-07 at 0.068, 9.6e-04 at 0.678, 3.6e-02 at 6.8. Zero at prototype scale, 3.6%
-        // at the real thing -- and WITHIN a record, so no per-record correction can reach it.
-        //
-        // job.cp_ref is the prompt code phase at p.n0, reduced mod code_len on the host in
-        // long double. cps then multiplies only the intra-record offset (<= 3.4e7 samples),
-        // so its rounding contributes ~1e-11 chips instead of ~1e-3.
         const double C_P = job.cp_ref + dn * job.cps;
 
-        // PHASE FROM A REFERENCE, NOT FROM THE ABSOLUTE SAMPLE (task #52, 2026-08-13).
-        //
-        // This used to evaluate wc*n_m with a two-product, to survive n_m ~ 2.95e15 landing in
-        // the binade where a double's ULP is EXACTLY ONE RADIAN. That trick is exact for the
-        // PRODUCT, and the note it carried said the leftover -- "wc's own representation error
-        // times n_m" -- was harmless because it varies by only ~8e-9 rad across a record, i.e.
-        // is a constant phase offset "which a correlation does not care about".
-        //
-        // ⚠️ THAT LAST STEP IS THE BUG. It is constant WITHIN a record and re-rolls BETWEEN
-        // them, because the Doppler is re-propagated every record and wc changes with it. A
-        // per-record constant is exactly what every CROSS-RECORD estimator lives on: the deep
-        // fold, the ADR arc, and the per-channel spectrum window sum. Measured with e2e (24
-        // realizations per point, records at the live 10.486 ms cadence): flat at 0.012 rad
-        // below ~0.2 days of uptime, then dead linear in absolute time -- 0.023 / 0.066 / 0.217
-        // rad at 0.6 / 2 / 6.8 days. On sky the per-record phase floor reads 0.745 rad, and it
-        // reproduces here with NO NOISE.
-        //
-        // The fix is not more precision, it is a shorter lever: take the phase at the window's
-        // reference sample from the host (job.ang0, long double) and let wc multiply only the
-        // intra-record offset, which never exceeds 3.4e7 samples. Every rounding of the ~1.18
-        // GHz carrier then contributes 1.5e-8 rad instead of tenths. Same medicine as #45 step
-        // 6 gave the code phase.
-        //
-        // dn is exact as a double (< 2^25 hops * 2^14 samples), and wc*dn <= 7.8e7 rad has a
-        // 1.5e-8 rad ULP, so the reduction below loses nothing that matters. Reduce BEFORE the
-        // float cast: sincosf on 7.8e7 rad would be meaningless (float ULP there is ~8 rad).
+        // wc*dn <= ~7.8e7 rad has a 1.5e-8 rad ULP in double. Reduce before the float cast:
+        // a float's ULP at 7.8e7 is 8 rad.
         const double ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
         float sn, cn;
         sincosf((float)ang, &sn, &cn);
@@ -132,23 +101,18 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
         const float2 pb = make_float2(cn, -sn);
         const bool in_head = (mh < job.m_head);
 
-        // Trial order {P, E, L} as in the fused kernel -- kept so the arithmetic matches even
-        // though nothing here needs the prompt in hand first.
+        // Trial order {P, E, L}, as in the fused kernel, so the arithmetic matches.
         //
-        // ⚠️ THE TWO BRANCHES DUPLICATE THE CARRIER/WRITE/ENERGY BLOCK ON PURPOSE. Hoisting it
-        // into one loop fed by a float2 gA[3] array -- the obvious tidy-up, and the first thing
-        // written here -- moved the FUSE3=false path's codegen and broke bit-identity with
-        // gnss_despread_kernel by 3.1e-07, on the UNFUSED path, where nothing should have
-        // changed at all. The split-vs-fused test caught it; the bench could not, because it
-        // compares this kernel against itself. Keep the else branch textually what it was.
+        // The two branches repeat the carrier, write and energy block deliberately: sharing it
+        // through a float2 array of gather results changes the unfused branch's codegen enough
+        // to break bit-identity with the fused kernel, which only the split-vs-fused test
+        // detects.
         if (FUSE3) {
             // Same three code phases in the same order, one walk of the chip loop.
             const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
             float2 sA[3], sB[3];
-            // SHARED is a TEMPLATE parameter, not a runtime branch: the shared path costs a
-            // per-chip sincos and two extra loads, and the per-PRN path must not pay for them
-            // in either instructions or registers. The dispatch is per LAUNCH (a chain either
-            // holds shared tables or it does not), so there is no divergence to pay for.
+            // SHARED is a template parameter so the per-PRN path does not carry the shared
+            // path's per-chip sincos and extra loads in its instructions or registers.
             if (SHARED)
                 gnss_cuda::chip_gather3<PHI, ABL_NOLOAD, ILV, true>(
                     job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf,
@@ -193,9 +157,9 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
         }
     }
 
-    // Block reduction over hop lanes, one row at a time (as the fused kernel does, for the same
-    // shared-memory reason). Sized for THIS instantiation's width -- 8 KB at the widest, against
-    // the SM's 100 KB, so shared memory is never the occupancy limiter here (registers are).
+    // Block reduction over hop lanes, one row at a time, as in the fused kernel. The tree halves
+    // blockDim.x, so the width must be a power of two. sh_e is 8 KB at MAXT = 1024; registers,
+    // not shared memory, limit occupancy.
     __shared__ double sh_e[MAXT];
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
@@ -218,29 +182,24 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
 }
 
 
-/// TILED-STREAMING synthesis (BENCH -- the direct attack on §10.6c's verdict).
+/// Tiled-streaming synthesis (bench only; see launch_waveform_tiled). The gather kernel's chip
+/// walks issue scattered loads over the block's whole (PRN, channel) slice, which streams
+/// through L1 once per hop pass. Here the slice crosses DRAM once, in coalesced tiles staged
+/// through shared memory, and the scattered per-chip loads hit shared memory.
 ///
-/// The shipped kernel GATHERS: each thread's chip walk issues scattered 8 B loads over the
-/// block's whole ~1.06 MB (PRN, channel) slice, so the slice streams through L1 once per hop
-/// pass and DRAM moves re-walks x footprint x a scatter residue (measured 245 MB against 81 MB
-/// of distinct bytes at 11 jobs). This kernel STREAMS: the slice crosses DRAM exactly once, in
-/// coalesced tiles staged through shared memory, and the scattered per-chip loads hit shared
-/// instead of L1/L2/DRAM. Unlike every cache-residency scheme this does not hypothesise about
-/// a part number (the lesson 1b and item 2 taught twice): the traffic bound holds on any GPU.
-///
-/// BIT-IDENTICAL to the fused gather by construction: per (hop, trial) the walk keeps
-/// chip_gather3's exact float accumulation (f += kf), floorf, clamps and fmaf order -- a tile
-/// boundary only PAUSES a walk, it never reorders it. Two deliberate differences, both safe:
-///  * the previous boundary value (pA/pB) is RELOADED from shared rather than carried -- the
-///    same table entry, hence the same bits, and it saves 4 registers per live trial, which is
-///    what lets a 1024-thread block keep 2 hops x 3 trials of walk state resident. The previous
-///    tap sits at most ks+1 entries behind the current one, so each tile is staged with a HALO
-///    of halo >= ks+2 entries on its LOW side (the caller supplies it: max (int)inv_cps + 2
-///    over the launch's jobs).
+/// Per (hop, trial) the walk keeps chip_gather3's float accumulation (f += kf), floorf, clamps
+/// and fmaf order, so the result is bit-identical; a tile boundary pauses a walk but never
+/// reorders it. The prologue is chip_gather3's at d_first == 0: job.d_first is not honoured,
+/// and neither are the shared Psi tables. Two differences, both exact:
+///  * the previous boundary value (pA/pB) is reloaded from shared memory at tile entry and in
+///    the checked tail instead of being carried. It is the same table entry, so the same bits,
+///    and it saves registers, which lets a 1024-thread block hold 2 hops x 3 trials of walk
+///    state. The previous tap sits at most ks+1 entries behind the current one, so each tile is
+///    staged with a low-side halo of at least ks+2 entries (supplied by the caller).
 ///  * khi (= d*ks) doubles as the chip counter: d < n_chips  <=>  khi < n_chips*ks (ks > 0).
 ///
 /// The energy epilogue accumulates hops in the same (m, m+W) order and reduces over the same
-/// lane tree as the fused kernel, so at equal width energy is bit-identical too.
+/// lane tree as the gather kernel, so at equal width the energy is bit-identical too.
 template<int MAXT, class PHI>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_tiled_kernel(const int8_t* __restrict__ code,
@@ -256,7 +215,7 @@ gnss_waveform_tiled_kernel(const int8_t* __restrict__ code,
     const int W = blockDim.x;
     const gnss_cuda::DespreadJob job = jobs[b];
 
-    // Uncovered channel: zero rows + zero energy, as the gather kernel does. chan_mask is
+    // Uncovered channel: zero rows and zero energy, as in the gather kernel. chan_mask is
     // block-uniform, so returning before the tile loop cannot desynchronise the __syncthreads.
     if (!((job.chan_mask >> ci) & 1ULL)) {
         for (int mh = m; mh < p.n_hops; mh += W)
@@ -276,20 +235,17 @@ gnss_waveform_tiled_kernel(const int8_t* __restrict__ code,
     const PHI* gB = (const PHI*)job.phiB + (size_t)ci * (p.Lf + 1);
     const int khi_end = job.n_chips * ks;
 
-    // Per-(hop, trial) walk state. The prologue is line-for-line chip_gather3's -- kept that
-    // way on purpose; see its note on why sameness of code is the cheap exactness proof.
+    // Per-(hop, trial) walk state. The prologue follows chip_gather3's line for line (at
+    // d_first == 0) so the two stay bit-identical.
     int khi[MAX_HPT][3], idx[MAX_HPT][3], tprev[MAX_HPT][3];
     float f[MAX_HPT][3];
     float2 sA[MAX_HPT][3], sB[MAX_HPT][3];
-    // HOP-SORTED LANE MAPPING, runtime-optional (p.hop_perm; §10.6b's idea, viable HERE).
-    // Sorting lanes by fractional code phase puts a warp's 32 taps inside ~5 table entries, so
-    // the per-chip shared loads go from random-address (bank-conflicted, ~4 wavefronts/request)
-    // to near-broadcast, and the code[] indices go from scattered to adjacent. The two measured
-    // reasons it LOST in the gather kernel do not transfer: the dependent perm load amortizes
-    // into this prologue (once per hop, not once per hop PASS), and the loads it reorders hit
-    // shared memory, not DRAM. The wave STORES still scatter -- that cost stays and is small.
-    // `wave` is unaffected (each sample depends only on its own hop); the ENERGY lane grouping
-    // moves, so energy agrees to rounding, not bit-for-bit, when a perm is armed.
+    // Optional hop-sorted lane mapping (p.hop_perm, null = identity). Sorting lanes by
+    // fractional code phase puts a warp's 32 taps inside ~5 table entries, so the per-chip
+    // shared loads are near-broadcast instead of bank-conflicted, and the code indices are
+    // adjacent. The permuted load happens once per hop, here in the prologue. `wave` is
+    // unaffected (each sample depends only on its own hop); the energy lane grouping moves, so
+    // with a permutation the energy agrees to rounding, not bit-for-bit.
     int mh_p[MAX_HPT];
 #pragma unroll
     for (int h = 0; h < MAX_HPT; ++h) {
@@ -329,15 +285,11 @@ gnss_waveform_tiled_kernel(const int8_t* __restrict__ code,
     PHI* shB = shA + (size_t)(halo + tile_n);
     unsigned* sh_code = (unsigned*)(shB + (size_t)(halo + tile_n)); // [code_words] +-1 as bits
 
-    // THE CODE TABLE MOVES TO SHARED, AS BITS -- the walk's one remaining global load was the
-    // per-chip code byte, and the profile said it was the floor under BOTH walk orders: 66M
-    // scattered sectors through an L1 the shared carveout had starved to ~28 KB, with the tile
-    // staging stream thrashing L2 under it. GNSS chips are exactly +-1, so the whole 204,600-chip
-    // combined stream is a 25.6 KB bit table: one coalesced pass + __ballot_sync builds it, and
-    // cv = bit ? +1.0f : -1.0f is bit-identical to (float)(int8 +-1). ⚠️ CONTRACT: every code
-    // value is +-1 (zero-padded tables would break silently) -- the bench's bit-compare against
-    // the byte-reading gather is the enforcement here; a production arming must assert it at
-    // table upload.
+    // The code table is staged in shared memory as bits, so the walk makes no global loads: a
+    // 204,600-chip code is a 25.6 KB bit table, built in one coalesced pass with
+    // __ballot_sync, and cv = bit ? +1.0f : -1.0f equals (float)(int8 +-1) exactly. Every code
+    // value must be +-1. A zero (the zero-stuffed TDM tables, L2C) reads as -1, and nothing
+    // here checks for it.
     {
         const int n_words = (job.code_len + 31) / 32;
         const int lane = m & 31;
@@ -349,30 +301,26 @@ gnss_waveform_tiled_kernel(const int8_t* __restrict__ code,
             if (lane == 0)
                 sh_code[w] = word;
         }
-        (void)code_words; // buffer sized by the launcher for the launch's largest code_len
+        (void)code_words; // the launcher sizes the buffer for the batch's largest code_len
     }
 
     for (int T0 = 0; T0 <= p.Lf; T0 += tile_n) {
         const int lo = (T0 - halo) < 0 ? 0 : T0 - halo;
         const int hi = (T0 + tile_n) < (p.Lf + 1) ? (T0 + tile_n) : (p.Lf + 1); // exclusive
-        __syncthreads(); // the previous tile's readers before this tile's writers
+        __syncthreads(); // the previous tile's readers finish before this tile is staged
         for (int i = m; i < hi - lo; i += W) {
             shA[i] = gA[lo + i];
             shB[i] = gB[lo + i];
         }
         __syncthreads();
-        // TWO-PHASE WALK, and the phases exist for the PIPELINE, not the arithmetic. A per-chip
-        // tile-boundary test makes every load's issue depend on a compare, so nothing overlaps
-        // and the kernel is latency-bound (measured: issue_active 21%, long-scoreboard 24/issue,
-        // 3x slower than the gather it replaces). Phase 1 therefore runs a FIXED-count loop the
-        // compiler can unroll and pipeline exactly like chip_gather3's: n_safe chips per trial,
-        // where n_safe is a conservative integer bound (every tap step is <= ks+1 entries, plus
-        // a 2-entry margin for float rounding of f) -- inside it the [0,Lf] clamp is provably
-        // inactive and the boundary compare is GONE, so the values are bit-identical with none
-        // of the control flow. Phase 2 mops up the 1-3 boundary-straddling chips per trial with
-        // the fully-checked predicated form. Trials telescope pA/pB in registers within a tile
-        // (the reload at tile entry is the same table entry the previous tile carried, hence
-        // the same bits).
+        // Two-phase walk, for pipelining rather than arithmetic. A per-chip tile-boundary test
+        // makes every load wait on a compare, which leaves the kernel latency-bound. Phase 1
+        // runs a fixed count of n_safe chips per trial, a conservative bound (each tap step is
+        // at most ks+1 entries, plus a 2-entry margin for the float rounding of f) within which
+        // the [0, Lf] clamp is inactive and no boundary test is needed; the compiler can
+        // pipeline it like chip_gather3. Phase 2 finishes the few chips per trial that reach
+        // the tile edge or the Lf clamp, fully checked. pA/pB are carried in registers within
+        // phase 1.
 #pragma unroll
         for (int h = 0; h < MAX_HPT; ++h) {
             // phase 1: joint fixed-count run for this hop's three trials
@@ -416,7 +364,7 @@ gnss_waveform_tiled_kernel(const int8_t* __restrict__ code,
                     }
                 }
             }
-            // phase 2: the checked tail -- boundary-straddling and Lf-clamped chips only
+            // phase 2: the checked tail, up to the tile edge
             bool live = true;
             while (live) {
                 live = false;
@@ -451,7 +399,7 @@ gnss_waveform_tiled_kernel(const int8_t* __restrict__ code,
         }
     }
 
-    // Epilogue: carrier + write + energy, line-for-line the fused kernel's, hop m then m+W.
+    // Epilogue: carrier, write and energy as in the gather kernel, hop m then m+W.
     double e[4] = {0.0, 0.0, 0.0, 0.0};
 #pragma unroll
     for (int h = 0; h < MAX_HPT; ++h) {
@@ -516,18 +464,14 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
     const int n_chan = gridDim.y;
     const int fc = chan_ids[ci];
     const float scale = chan_scale[ci];
-    // The ONLY job field this kernel needs: everything else is already baked into `wave`.
-    // Uniform across the block, so it is one broadcast load per block.
+    // The only job field needed; everything else is already in `wave`.
     const int m_head = jobs[b].m_head;
 
     extern __shared__ double2 sh[]; // [blockDim.x * blockDim.y]
 
-    // Round the element loop UP to a whole number of blockDim.x passes and predicate the memory
-    // accesses instead of trimming the loop. The reduction below calls __syncthreads(), so every
-    // thread in the block must execute the same number of iterations -- letting the tail elements
-    // drop out early would leave the block's threads at different barriers, which is undefined
-    // behaviour (in practice, a hang). n_elem is not a multiple of the block width in general:
-    // the pathfinder has 32 live elements of 128 allocated, and both numbers move.
+    // Round the element loop up to whole blockDim.x passes and predicate the memory accesses:
+    // the reduction below calls __syncthreads(), so every thread must run the same number of
+    // iterations, and n_elem is not a multiple of the block width in general.
     const int e_end = ((n_elem + blockDim.x - 1) / blockDim.x) * blockDim.x;
 
     for (int e0 = threadIdx.x; e0 < e_end; e0 += blockDim.x) {
@@ -546,7 +490,7 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
 
 #pragma unroll
             for (int t = 0; t < 3; ++t) {
-                // Uniform across threadIdx.x -> broadcast, not a per-element load.
+                // Uniform across threadIdx.x, so a broadcast rather than a per-element load.
                 const float2 r = wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh];
                 const double re = (double)(dd.x * r.x + dd.y * r.y); // Re(d * conj(r))
                 const double im = (double)(dd.y * r.x - dd.x * r.y); // Im(d * conj(r))
@@ -597,34 +541,34 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
     while (pow2 * 2 <= threads)
         pow2 *= 2;
     threads = pow2;
-    // ASK THE DRIVER, do not assume. Each instantiation's ceiling is whatever ptxas gave it, it
-    // moves with the architecture and with any edit to the gather, and exceeding it does not
-    // degrade -- the launch fails outright with "too many resources requested". Clamping here is
-    // what makes WAVE_THREADS a portable REQUEST rather than a promise the hardware may not keep.
+    // Clamp to each instantiation's maxThreadsPerBlock as the driver reports it: the ceiling
+    // depends on the architecture and on ptxas's register allocation, and exceeding it fails
+    // the launch ("too many resources requested") rather than degrading.
     auto ceiling = [](const void* fn) {
         cudaFuncAttributes at{};
         return cudaFuncGetAttributes(&at, fn) == cudaSuccess ? at.maxThreadsPerBlock : 256;
     };
     const dim3 grid(n_job, n_chan);
-    // fp16 Phi (item 3): job.phiA/phiB point at __half2 tables (the struct field type is a lie
-    // the caller opts into). PRODUCTION-REACHABLE since 2026-08-31 via DespreadParams::phi_half
-    // (launch_waveform forwards it); phi16 values >= 2 remain bench-only diagnostics.
-    if (phi16 == 5) { // BENCH: hop-sorted lane->hop mapping (coalesces the Phi gather)
+    // The table type follows phi16: __half2 for 1, 6 and any unlisted non-zero value (despite
+    // job.phiA/phiB's float2 type), interleaved float4 for 4, float2 otherwise. launch_waveform
+    // passes 0 or 1 (DespreadParams::phi_half); 2, 4, 5 and 6 are bench variants, launched
+    // without the ceiling check.
+    if (phi16 == 5) { // bench: hop-sorted lane->hop mapping (float2 tables)
         gnss_waveform_kernel<1024, true, float2, false, false, true>
             <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
         return cudaGetLastError();
     }
-    if (phi16 == 6) { // BENCH: hop-sorted AND fp16
+    if (phi16 == 6) { // bench: hop-sorted and fp16
         gnss_waveform_kernel<1024, true, __half2, false, false, true>
             <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
         return cudaGetLastError();
     }
-    if (phi16 == 4) { // BENCH: interleaved float4 Phi -- one 16 B load instead of two 8 B
+    if (phi16 == 4) { // bench: interleaved float4 Phi, one 16 B load instead of two 8 B
         gnss_waveform_kernel<1024, true, float2, false, true>
             <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
         return cudaGetLastError();
     }
-    if (phi16 == 2) { // BENCH: no-load ablation -- all the index math and flops, no Phi traffic
+    if (phi16 == 2) { // bench: load-address ablation, all the index math and flops, no Phi traffic
         gnss_waveform_kernel<1024, true, float2, true>
             <<<grid, threads > 1024 ? 1024 : threads, 0, stream>>>(code, jobs, p, wave, energy);
         return cudaGetLastError();
@@ -647,11 +591,9 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
             <<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
         return cudaGetLastError();
     }
-    // SHARED (Doppler-free) TABLES, item 2. A separate instantiation rather than a runtime
-    // branch: the shared gather costs a per-chip sincos and two extra loads, and the per-PRN
-    // path must not carry them in its register budget -- registers are what cap MAXT, which is
-    // what sets the DRAM traffic (see WAVE_THREADS). Fused only; the unfused path is a bench
-    // control and is not worth a fourth instantiation.
+    // Shared (Doppler-free) tables: a separate instantiation, so the per-PRN path does not carry
+    // the shared gather's sincos and extra loads in its register budget (registers cap MAXT,
+    // which sets the DRAM traffic; see WAVE_THREADS). Fused only, one MAXT = 1024 instantiation.
     if (p.shared) {
         static const int kmaxS = ceiling(
             (const void*)gnss_waveform_kernel<1024, true, float2, false, false, false, true>);
@@ -689,16 +631,14 @@ cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, i
 cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
                             const DespreadParams& p, float2* wave, double* energy,
                             cudaStream_t stream) {
-    // p.phi_half selects the __half2 gather instantiation (item 3); the tables the jobs point
-    // at must already be half storage -- GnssCudaDespread::ensure_phi owns that pairing.
+    // p.phi_half selects the __half2 gather; the tables the jobs point at must already be half
+    // storage, which GnssCudaDespread::ensure_phi guarantees.
     return launch_waveform_tuned(code, jobs, n_job, n_chan, p, wave, energy, 0, -1,
                                  p.phi_half ? 1 : 0, stream);
 }
 
 void phi_to_half(const float2* src, void* dst, size_t n) {
-    // Host-side float2 -> __half2 conversion for ensure_phi's upload staging. Lives here
-    // because __half2 must not cross into the g++-compiled engine (GnssCudaDespread.cpp);
-    // the pointer goes back and forth as void*/float2* and only the kernels reinterpret it.
+    // Here rather than in GnssCudaDespread.cpp so __half2 stays out of g++-compiled code.
     __half2* d = (__half2*)dst;
     for (size_t i = 0; i < n; ++i)
         d[i] = __floats2half2_rn(src[i].x, src[i].y);
@@ -715,7 +655,7 @@ cudaError_t launch_waveform_tiled(const int8_t* code, const DespreadJob* jobs, i
         pow2 *= 2;
     threads = pow2;
     if (p.n_hops > 2 * threads)
-        return cudaErrorInvalidValue; // MAX_HPT = 2: 2048 hops x 1024 threads is the contract
+        return cudaErrorInvalidValue; // MAX_HPT = 2 hops per thread, at most 1024 threads
     if (tile_entries < 256)
         tile_entries = 4096;
     if (halo_entries < 16)
@@ -724,9 +664,9 @@ cudaError_t launch_waveform_tiled(const int8_t* code, const DespreadJob* jobs, i
     const size_t shbytes =
         2 * (size_t)(tile_entries + halo_entries) * elem + (size_t)code_words * 4;
     const dim3 grid(n_job, n_chan);
-    // Tiles past 48 KB need the opt-in; ask once per instantiation. The A40/L40S per-block
-    // opt-in ceiling minus the 8 KB static sh_e is what actually binds -- a too-big tile fails
-    // the LAUNCH with an error the caller sees, it does not degrade.
+    // Dynamic shared memory past 48 KB needs the opt-in, set once per instantiation to 90 KB:
+    // about the per-block limit on sm_86/sm_89 less the 8 KB static sh_e. A tile that does not
+    // fit fails the launch with an error the caller sees.
     if (phi16) {
         static bool armed16 = [] {
             cudaFuncSetAttribute((const void*)gnss_waveform_tiled_kernel<1024, __half2>,
@@ -754,9 +694,9 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
                                 int n_job, int n_chan, int n_elem, int elem_stride,
                                 int frame_chan_stride, const DespreadParams& p, double2* corr,
                                 cudaStream_t stream) {
-    // Elements across x (coalescing), hops across y (parallelism). n_elem is small on the
-    // pathfinder (32 live of 128), so without the hop lanes the kernel would run at a few
-    // thousand threads and leave the device idle.
+    // Elements across x (coalescing), hops across y (parallelism): n_elem is small, so without
+    // the hop lanes the launch would have too few threads to fill the device. blockDim.y is a
+    // power of two for the reduction.
     int ex = n_elem < 32 ? n_elem : 32;
     int hy = 256 / ex;
     if (hy > p.n_hops)
@@ -775,24 +715,23 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
 }
 
 // ---------------------------------------------------------------------------------------------
-// Path B: quantize the materialised replicas into synthetic 4+4b N^2 stations.
+// Path B: quantize the replicas into synthetic 4+4b N^2 stations.
 // ---------------------------------------------------------------------------------------------
 
 namespace {
 
-/// One thread per (hop, covering channel, lane); consecutive threads take consecutive lanes so
-/// the 128-byte station row of each (hop, chan) is one coalesced store. Lane identity is
-/// STABLE: lane = 4*prn_slot + trial (E/P/L/P_HEAD), so the tile consumer's lane -> PRN map
-/// survives satellites rising and setting; slots without a live spec this record write the
-/// 0x88 background (0+0j). The P_HEAD lane is the PROMPT gated to hops [0, m_head) -- a
-/// time-gated replica IS just another lane, which is how P_HEAD survives nt_outer=1.
+/// One thread per (hop, covering channel, lane); consecutive threads take consecutive lanes, so
+/// each (hop, channel) row of lanes is one coalesced store. lane = 4*prn_slot + trial
+/// (E/P/L/P_HEAD) is fixed per slot, so the consumer's lane -> PRN map does not change as
+/// satellites rise and set; slots without a live spec this record write 0x88 (0+0j). The
+/// P_HEAD lane is the prompt gated to hops [0, m_head): the N^2 integrates over its whole time
+/// axis, so a time-gated replica needs its own lane.
 ///
-/// SCALE: s = 7 / (3 * rms) per (lane, channel), rms from the energy row launch_waveform
-/// already computed (row 3 = the head-gated prompt energy over m_head hops). The consumer
-/// never needs s: the M^2 diagonal carries the quantized replica's own energy, so
-/// conj(V_mixed)/M^2_diag is the amplitude with the scale cancelled -- the same
-/// correlation/replica_energy normalization the despread uses. Values CLAMP to [-7,7]:
-/// -8 silently corrupts the whole N^2 launch (n2k's negate_4bit).
+/// Scale: s = 7 / (3 * rms) per (lane, channel), rms = sqrt(energy row / n_hops), with row 3
+/// (the head energy) over the job's m_head hops instead. The path-B consumer recomputes s from
+/// the energy rows and divides it out; it matches this s for E/P/L but not for P_HEAD (see
+/// launch_pack44). Values clamp to [-7,7]: -8 corrupts the whole N^2 launch (n2k's
+/// negate_4bit).
 __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
                                    const double* __restrict__ energy,
                                    const gnss_cuda::DespreadJob* __restrict__ jobs,
@@ -823,13 +762,8 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
             if (rms > 0.0f) {
                 const float s = 7.0f / (3.0f * rms);
                 int qr = __float2int_rn(s * w.x);
-                // CONJUGATE THE REPLICA, not the data (DespreadParams::conj_data's job on the
-                // fused path). The N^2 kernel is production's and has no conj flag, and the
-                // antenna input is shared -- so the F-engine's conjugation must be absorbed
-                // here. It CANNOT be undone downstream: the correlator forms
-                // sum_t R conj(D), while the tracker forms sum_t conj(D) conj(R), and those
-                // are not conjugates of each other once summed. Injecting conj(R) makes the
-                // mixed tile equal the tracker's answer directly.
+                // Conjugate the replica, not the data (see launch_pack44's conj_replica):
+                // the mixed tile then equals the tracker's sum_t conj(D) conj(R) directly.
                 int qi = __float2int_rn(conj_replica ? -s * w.y : s * w.y);
                 qr = qr < -7 ? -7 : (qr > 7 ? 7 : qr);
                 qi = qi < -7 ? -7 : (qi > 7 ? 7 : qi);

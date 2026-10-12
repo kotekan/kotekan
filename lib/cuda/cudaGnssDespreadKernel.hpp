@@ -1,142 +1,123 @@
 #ifndef CUDA_GNSS_DESPREAD_KERNEL_HPP
 #define CUDA_GNSS_DESPREAD_KERNEL_HPP
 
-#include "../stages/gnss/gnss44.hpp" // the ONE 4+4b codec (CUDA-free; shared with the CPU stage)
+#include "../stages/gnss/gnss44.hpp" // the 4+4b codec (CUDA-free, shared with host code)
 
 #include <cuda_runtime.h>
 #include <stdint.h>
 
 /**
- * GPU GNSS batched despread: fused hop-rate replica generation + complex dot product.
+ * @file
+ * @brief GPU GNSS batched despread: fused hop-rate replica generation and complex dot product.
  *
- * Port of gnss::ChannelizedReplicaBank::hoprate_stream (the closed-form per-hop channelized
- * replica from precomputed cumulative PFB filter tables) fused with gnss::channelized_despread
- * (data x conj(replica) MAC + replica energy). One launch despreads one record window for a
- * whole batch of (PRN x {Early,Prompt,Late}) correlator trials over the covering channels --
- * the CHORD-scale bulk compute (dish x PRN x subband), subband-local by construction.
+ * A port of gnss::ChannelizedReplicaBank::hoprate_stream (the per-hop channelized replica from
+ * precomputed cumulative PFB filter tables) fused with gnss::channelized_despread (data x
+ * conj(replica) MAC and replica energy). One launch despreads one record window for a batch of
+ * PRN correlator quads over the covering channels.
  *
- * The Phi tables are Doppler-bucketed: built on the CPU (ChannelizedReplicaBank::hoprate_filter)
- * only when a sat's Doppler moves > refresh_hz, then uploaded; the kernel applies the EXACT
- * current code phase / carrier per job. Validated against the CPU path by
- * tests/cuda_gnss_despread_test (<=1e-5 relative).
+ * The Phi tables are built on the host per Doppler bucket (GnssCudaDespread, from
+ * ChannelizedReplicaBank::hoprate_filter_f32) and rebuilt only when a PRN's Doppler moves by
+ * more than refresh_hz; the kernel applies each job's exact code phase and carrier.
+ * cuda_gnss_despread_test (cudaGnssDespreadTest.cpp) checks it against the CPU path to ~1e-5
+ * relative.
  */
 namespace gnss_cuda {
 
-/// One PRN's whole correlator quad: everything that varies within a batch. Carries its own
-/// (device) Phi table pointers + filter span so ONE launch can mix PRNs from different
-/// Doppler buckets -- the G1c cross-PRN batch (one launch per record, all sats).
+/// One PRN's correlator quad: everything that varies within a batch. Carries its own device Phi
+/// table pointers and filter span, so one launch can mix PRNs from different Doppler buckets.
 ///
-/// ONE JOB EMITS FOUR OUTPUT ROWS (E, P, L, P_HEAD) -- see launch_despread. The Early and Late
-/// trials are the prompt displaced by +-ds, and every correlator in the quad shares one carrier
-/// (same wc) and one data sample per hop, so the kernel generates the carrier and loads the data
-/// ONCE per (PRN, channel, hop) instead of four times. P_HEAD costs nothing beyond an extra
-/// accumulator: it is the prompt's own MAC, gated on the hop (the despread MAC measured at 0% of
-/// the kernel -- 2026-07-16 ablation).
+/// One job emits four output rows (E, P, L, P_HEAD); see launch_despread. Early and Late are the
+/// prompt displaced by +-ds, and all four share one carrier (same wc) and one data sample per
+/// hop, so the kernel generates the carrier and loads the data once per (PRN, channel, hop).
+/// P_HEAD is the prompt's own MAC, gated on the hop.
 struct DespreadJob {
-    double cp0; ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
+    double cp0; ///< prompt code phase, combined-stream chips, referred to absolute sample 0
+                ///< (host-side; the kernels use cp_ref)
     double ds;  ///< Early/Late displacement from the prompt (combined-stream chips):
-                ///< row 0 = cp0-ds, row 1 = cp0, row 2 = cp0+ds
-    /// PROMPT CODE PHASE AT THE WINDOW'S REFERENCE SAMPLE (p.n0), combined-stream chips,
-    /// reduced mod code_len on the host in LONG DOUBLE. Task #54.
+                ///< row 0 = prompt-ds, row 1 = prompt, row 2 = prompt+ds
+    /// Prompt code phase at the window's reference sample p.n0, combined-stream chips, reduced
+    /// mod code_len on the host in long double.
     ///
-    /// The code twin of @ref ang0, and found the same way. cp0 + n_m*cps evaluated on the
-    /// ABSOLUTE sample reaches 6.1e12 chips at CHORD uptime, a binade where a double's ulp is
-    /// ~1e-3 chips, and n_m advances every hop so the rounding re-rolls 2048 times per record.
-    /// Measured GPU vs the long-double CPU reference, PROMPT row, with the carrier ALREADY
-    /// referenced via ang0: 7.9e-08 at 0.007 days of uptime, 8.2e-07 at 0.068, 9.6e-04 at
-    /// 0.678, 3.6e-02 at 6.8. Zero at prototype scale, 3.6% at the real instrument.
+    /// Evaluated in double on the absolute sample, cp0 + n*cps reaches ~6e12 chips at
+    /// n ~ 1.9e15 (about a week of F-engine uptime), where a double's ulp is ~1e-3 chips, and
+    /// the rounding changes from hop to hop within a record, so no per-record correction can
+    /// remove it. From cp_ref the kernel multiplies cps only by the intra-record offset.
     ///
-    /// ⚠️ THIS ERROR IS WITHIN A RECORD, which is why none of #52's per-record phase fixes
-    /// touched it -- they remove constants that cancel inside a record. It hits every
-    /// correlation before any per-record correction is even reached.
-    ///
-    /// Same n0 as ang0 and as m_head_for: window_start + fft_len - 1, the hop's LAST sample.
+    /// n0 is the hop's last sample, window_start + fft_len - 1, as for ang0 and
+    /// GnssCudaDespread's m_head_for.
     double cp_ref;
     double cps;     ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
     double inv_cps; ///< 1/cps (tap-boundary indices via multiply, not the costly FP64 divide)
-    double wc;      ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
-    /// CARRIER PHASE AT THE WINDOW'S REFERENCE SAMPLE (p.n0), radians in [0, 2*pi), computed on
-    /// the host in LONG DOUBLE. Task #52.
+    double wc;      ///< carrier angular rate, rad/sample: 2*pi*(carrier offset + Doppler +
+                    ///< carrier trim)/fs
+    /// Carrier phase at the window's reference sample p.n0, radians in [0, 2*pi), computed on
+    /// the host in long double.
     ///
-    /// ⚠️ THIS EXISTS TO KEEP wc AWAY FROM THE ABSOLUTE SAMPLE INDEX. The replica phase is
-    /// 2*pi*f*t and t is F-engine uptime: n_abs reaches 1.9e15 samples in a week, so ANY
-    /// rounding of the ~1.18 GHz carrier -- the ulp of the (f_offset + doppler) sum is 2.4e-7 Hz
-    /// -- becomes tenths of a radian of phase, and it RE-ROLLS every record because the Doppler
-    /// is re-propagated per record. Measured offline (scripts/gnss/e2e, 24 realizations per
-    /// point): the per-record phase residual is flat at 0.012 rad below ~0.2 days of uptime and
-    /// then grows EXACTLY LINEARLY with absolute time -- 0.023 / 0.066 / 0.217 rad at 0.6 / 2 /
-    /// 6.8 days. On sky it reads 0.745.
+    /// The kernel evaluates ang0 + wc*(n - n0), where n - n0 stays within one record
+    /// (<= 3.4e7 samples), so the rounding of wc (the ulp of a ~1.18 GHz carrier sum is
+    /// 2.4e-7 Hz) contributes ~1.5e-8 rad. Evaluated as wc*n on the absolute sample
+    /// (n ~ 1.9e15 after a week), the same rounding gives tenths of a radian. That error is
+    /// constant within a record and changes every record as the Doppler is re-propagated, and
+    /// per-record constants are what the cross-record estimators integrate.
     ///
-    /// With this field the kernel evaluates ang0 + wc*(n - n0), where (n - n0) never exceeds one
-    /// record (3.4e7 samples). The lever drops by eight orders of magnitude and the same
-    /// rounding contributes 1.5e-8 rad. It is the carrier-domain twin of #45 step 6, which gave
-    /// the CODE phase a reference so it too stopped being reconstructed from f*t_abs
-    /// ([[chord-cp-currency]]: "a phase is not an argument").
-    ///
-    /// ⚠️ n0 IS THE HOP'S LAST SAMPLE (window_start + fft_len - 1), matching par.n0 and
-    /// m_head_for. The first/last-sample convention has produced a 52-chip error before; if this
-    /// disagrees with par.n0 the whole record rotates by a constant.
+    /// n0 must be the hop's last sample (window_start + fft_len - 1), matching p.n0 and
+    /// m_head_for; any other n0 rotates the whole record by a constant.
     double ang0;
     int code_offset;    ///< this PRN's offset into the shared code table
     int code_len;       ///< combined-stream code length (chips)
     uint64_t chan_mask; ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
-    const float2* phiA; ///< [n_chan][Lf+1] cumulative filter table, this PRN's Doppler bucket
-    const float2* phiB; ///< (float32: see the kernel's mixed-precision note)
-    int n_chips;        ///< chips spanned by this bucket's filter (gather depth per hop)
-    int m_head;         ///< row 3 (P_HEAD) = the PROMPT accumulated over hops [0, m_head) only:
-                        ///< the record's slice BEFORE the code-period boundary, where the
-                        ///< secondary overlay flips sign (gnssRecord.hpp slots 16-18). 0 = emit
-                        ///< an all-zero head row (the plain 3-trial contract).
-    /// SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi
-    /// and this PRN's Doppler offset from the table's OWN carrier, radians/sample. With psiA ==
-    /// nullptr or ddw == 0 the gather takes its original path and the result is bit-identical --
-    /// that is what makes the fallback safe rather than merely tested. ⚠️ THE PEEL JOB CARRIES THE
-    /// SAME THREE FIELDS AND MUST BE SET THE SAME WAY: the peel and the despread must generate
-    /// bit-identical replicas or the analytic add-back (docs/gnss_voltage_peel_live.md) stops being
-    /// exact. ⚠️ LAST IN THE STRUCT ON PURPOSE. Both structs are built with POSITIONAL aggregate
-    /// initializers at three call sites, so a field inserted anywhere else silently retypes
-    /// every field after it (caught as "no match for operator=" -- the good outcome).
+    /// [n_chan][Lf+1] cumulative filter tables for this PRN's Doppler bucket, or the shared
+    /// Doppler-free tables when DespreadParams::shared is set: float2, or __half2 storage when
+    /// DespreadParams::phi_half is set.
+    const float2* phiA;
+    const float2* phiB;
+    int n_chips; ///< chips spanned by this bucket's filter; the gather walks [d_first, n_chips)
+    int m_head;  ///< row 3 (P_HEAD) is the prompt over hops [0, m_head) only: the part of the
+                 ///< window before the code-period boundary, where the secondary overlay or nav
+                 ///< symbol can flip sign (gnssRecord.hpp REC_PH_*). 0 gives an all-zero row 3
+                 ///< (despread_batch's plain E/P/L contract).
+    /// Shared-table mode: the first-moment companion tables Psi and this PRN's carrier offset
+    /// from the tables' own carrier, rad/sample (see
+    /// ChannelizedReplicaBank::HopRateFilter::PsiA). Read only when DespreadParams::shared is
+    /// set; otherwise null and 0. These and d_first come last because the jobs are built with
+    /// positional aggregate initializers (GnssCudaDespread.cpp, cudaGnssDespreadTest.cpp), and a
+    /// field inserted earlier would shift every later initializer.
     const float2* psiA = nullptr;
     const float2* psiB = nullptr;
     float ddw = 0.0f;
-    /// CENTERED chip-window truncation (31896a862:docs/CHORD_GPU_TODO.md item 6): first chip of the
-    /// gather walk. 0 = the full historical walk, bit-for-bit. With n_chips capped, the pair
-    /// (d_first, n_chips) selects the CENTRAL window of the PFB span -- the prototype peaks
-    /// mid-span, and the one-sided cap's cliff at 105-120 chips was the cap crossing that
-    /// peak, not a property of short filters (item 9.5). Set from PhiCache alongside n_chips;
-    /// appended LAST like psiA/psiB, for the same positional-initializer reason.
+    /// First chip of the gather walk, for centered truncation; 0 walks the span from chip 0.
+    /// With n_chips capped, (d_first, n_chips) selects the central window of the PFB span,
+    /// where the prototype peaks. Set from the same tables as n_chips.
     int d_first = 0;
 };
 
-/// One PRN's PEEL: reconstruct the PROMPT waveform and subtract it from the voltage.
+/// One PRN's peel: its prompt replica, times a per-channel gain, is subtracted from the voltage.
 ///
-/// A cut-down @ref DespreadJob -- no @c ds (E/L are correlation taps, there is no signal at
-/// +-1/2 chip to remove) -- plus the complex gain to subtract. Everything else is identical, and
-/// deliberately so: the peel and the despread MUST generate bit-identical replicas, or the
-/// analytic add-back (docs/gnss_voltage_peel_live.md) stops being exact.
+/// A @ref DespreadJob without @c ds (Early and Late are correlation taps, with no signal of
+/// their own to remove) plus the gains. The peel and the despread must generate bit-identical
+/// replicas, or the analytic add-back is not exact.
 ///
-/// THE GAIN IS FEED-FORWARD. It comes from a slow EMA of previous records' tracked gain, carried
-/// forward one GPU frame, NOT from a despread of this window. That is what buys the single pass,
-/// makes the add-back exact for any gain, and leaves the residual a HONEST depth metric (a gain
-/// fitted in-window subtracts its own noise back along R, and the residual reads ~0 = infinite
-/// depth).
+/// The gains are feed-forward: from previous records' tracked gain, not a fit to this window.
+/// That keeps the peel to one pass, makes the add-back exact for any gain, and keeps the
+/// residual an honest depth metric (a gain fitted in-window subtracts its own noise along R, and
+/// the residual reads ~0).
 ///
-/// TWO GAINS, NOT ONE. The window straddles a code-period boundary at hop @c m_head, and every
-/// overlay/nav sign flip our signals have lives exactly there. One gain per window models a
-/// sign-flipping signal with a constant and removes almost nothing (2026-07-12: B1C peeled 0.9 dB
-/// that way). @c a_head applies to hops [0, m_head), @c a_tail to [m_head, n_hops) -- the same
-/// boundary the despread's P_HEAD row uses, computed ONCE on the host and shared.
+/// There are two gains because the window can straddle a code-period boundary at hop
+/// @c m_head, where the overlay or nav symbol can flip sign; one gain would model a sign flip
+/// with a constant and remove almost nothing. @c a_head applies to hops [0, m_head), @c a_tail to
+/// [m_head, n_hops): the same boundary as the despread's P_HEAD row.
 struct PeelJob {
-    double cp0; ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
-    /// Prompt code phase at p.n0 -- see DespreadJob::cp_ref. MUST be built by the SAME
-    /// expression as the despread's or the replicas stop being bit-identical.
+    double cp0; ///< prompt code phase, combined-stream chips, referred to absolute sample 0
+                ///< (host-side; the kernel uses cp_ref)
+    /// Prompt code phase at p.n0 (see DespreadJob::cp_ref). Must be built by the same
+    /// expression as the despread's, or the replicas differ.
     double cp_ref;
     double cps;     ///< chips per sample incl. code Doppler (== DespreadJob::cps)
     double inv_cps; ///< 1/cps
-    double wc;      ///< carrier angular rate 2*pi*(f_offset + doppler)/fs
-    /// Carrier phase at p.n0 -- see DespreadJob::ang0. MUST be built by the SAME expression:
-    /// the peel and the despread have to generate bit-identical replicas or the analytic
-    /// add-back stops being exact.
+    double wc;      ///< carrier angular rate, as DespreadJob::wc but without the carrier trim
+    /// Carrier phase at p.n0 (see DespreadJob::ang0), without the carrier trim, as for wc.
+    /// Otherwise it must be built by the same expression as the despread's, or the replicas
+    /// differ.
     double ang0;
     int code_offset;    ///< offset into the shared code table
     int code_len;       ///< combined-stream code length (chips)
@@ -144,96 +125,64 @@ struct PeelJob {
     const float2* phiA; ///< cumulative filter tables, this PRN's Doppler bucket (as DespreadJob)
     const float2* phiB;
     int n_chips;          ///< chips spanned by this bucket's filter
-    int m_head;           ///< code-period boundary hop: a_head below it, a_tail at and above it.
-                          ///< 0 = no boundary in this window -> a_tail applies throughout.
+    int m_head;           ///< code-period boundary hop: a_head below it, a_tail at and above it
+                          ///< (n_hops: a_head throughout; 0: a_tail throughout)
     const float2* a_head; ///< [n_chan] gain to subtract, hops [0, m_head)
     const float2* a_tail; ///< [n_chan] gain to subtract, hops [m_head, n_hops)
-    /// SHARED-TABLE MODE (31896a862:docs/CHORD_GPU_TODO.md item 2): the first-moment companions Psi
-    /// and this PRN's Doppler offset from the table's OWN carrier, radians/sample. With psiA ==
-    /// nullptr or ddw == 0 the gather takes its original path and the result is bit-identical --
-    /// that is what makes the fallback safe rather than merely tested. ⚠️ THE PEEL JOB CARRIES THE
-    /// SAME THREE FIELDS AND MUST BE SET THE SAME WAY: the peel and the despread must generate
-    /// bit-identical replicas or the analytic add-back (docs/gnss_voltage_peel_live.md) stops being
-    /// exact. ⚠️ LAST IN THE STRUCT ON PURPOSE. Both structs are built with POSITIONAL aggregate
-    /// initializers at three call sites, so a field inserted anywhere else silently retypes
-    /// every field after it (caught as "no match for operator=" -- the good outcome).
+    /// Set as in DespreadJob, but gnss_peel_kernel does not read them: it gathers from phiA/phiB
+    /// with no Psi correction, so with shared tables the peel's replica is not the despread's.
+    /// Last in the struct, as in DespreadJob.
     const float2* psiA = nullptr;
     const float2* psiB = nullptr;
     float ddw = 0.0f;
-    /// As DespreadJob::d_first (item 6). The peel and the despread MUST truncate identically
-    /// or the analytic add-back stops being exact -- both are set from the same PhiCache.
+    /// As DespreadJob::d_first. Must match the despread's truncation, or the replicas differ.
     int d_first = 0;
 };
 
 /// Batch-shared geometry.
 struct DespreadParams {
-    long long n0; ///< absolute sample index of the window's first hop reference (+fft_len-1)
+    long long n0; ///< reference sample of hop 0, window_start + fft_len - 1 (the hop's last
+                  ///< sample); the host evaluates cp_ref and ang0 here
     int fft_len;  ///< samples per hop
-    int n_hops;   ///< hops per record (<=256)
+    int n_hops;   ///< hops per record
     int Lf;       ///< filter length fft_len*num_taps (Phi tables have Lf+1 entries)
-    int out_rows_spec = 4; ///< OUTPUT rows per spec in corr/energy. 4 normally; 6 when the frame
-                           ///< also carries the peel residual rows, so the despread writes its
-                           ///< E/P/L/P_HEAD into the same stride the add-back and the assembler
-                           ///< use. (xcorr keeps its own stride of 4 -- it is scratch, not frame.)
-    int conj_data = 0;     ///< negate the imag of every unpacked data sample. The CHORD F-engine's
-                           ///< output is CONJUGATED relative to the gnss44 decode (measured on sky
-                           ///< 2026-07-30 -- see GnssChordDequantize.cpp for the evidence). A flag
-    ///< here rather than in gnss44: the airspy chain uses gnss44 as a matched
-    ///< encoder/decoder PAIR, which must stay self-consistent.
-    /// BENCH: [n_job][n_hops] permutation of the hop index. Thread lane m processes
-    /// hop_perm[b*n_hops + m] instead of m. Sorting hops by their FRACTIONAL code phase puts a
-    /// warp's 32 lanes inside ~5 Phi entries instead of ~313, because the per-lane offset
-    /// base = frac(C_P)*inv_cps is FIXED for the whole chip loop while the d*kf term is common
-    /// to every lane -- so the lanes' relative order in the window never changes, it only slides.
-    /// null = identity. `wave` is unaffected (each hop's sample depends only on that hop); only
-    /// the ENERGY reduction's lane grouping moves.
+    /// Output rows per spec in corr/energy: 4 (gnss_gpu::ROWS_PLAIN), or 6 (ROWS_PEEL) when the
+    /// frame also carries the peel residual rows, so the despread writes E/P/L/P_HEAD at the
+    /// frame's stride. xcorr keeps a stride of 4; it is scratch, not frame.
+    int out_rows_spec = 4;
+    /// Negate the imaginary part of every unpacked data sample: the CHORD F-engine's output is
+    /// conjugated relative to the gnss44 decode (see GnssChordDequantize.cpp). A flag rather
+    /// than a change to gnss44, whose pack and unpack must stay inverses. Read only by
+    /// launch_correlate_nm (cudaGnssChordDespread.cu); the despread and peel kernels here
+    /// ignore it.
+    int conj_data = 0;
+    /// Bench option, read only by the waveform kernels in cudaGnssChordDespread.cu (set by
+    /// scripts/gnss/wavebench.cpp): an [n_job][n_hops] permutation of the hop index, lane slot
+    /// s processing hop hop_perm[b*n_hops + s]. Sorting hops by fractional code phase keeps a
+    /// warp's taps within a few Phi entries rather than spread over inv_cps of them, because
+    /// each lane's offset base = frac(C_P)*inv_cps is fixed for the whole chip walk and the
+    /// d*kf term is common to every lane. null = identity. `wave` is unchanged; only the
+    /// energy reduction's lane grouping moves.
     const int* hop_perm = nullptr;
-    int data_stride; ///< row stride (hops) of the [n_chan][*] data array: n_hops for a packed
-                     ///< per-record staging buffer, or the ring length when a window is read in
-                     ///< place from the device ring (phase F: ring_hops is a multiple of n_hops,
-                     ///< so a record window is always CONTIGUOUS within a channel row)
-    /// SHARED, DOPPLER-FREE Phi/Psi tables (31896a862:docs/CHORD_GPU_TODO.md item 2). Selects a
-    /// separate kernel instantiation rather than a runtime branch, so the per-PRN path keeps its
-    /// register budget -- registers cap MAXT, and MAXT is what sets the DRAM traffic.
+    /// Row stride, in hops, of the [n_chan][data_stride] data array: n_hops for a packed
+    /// per-record buffer, or more when the window is read in place from a longer buffer, in
+    /// which case the window must be contiguous within each channel row.
+    int data_stride;
+    /// Use the shared, Doppler-free Phi/Psi tables (DespreadJob::psiA). launch_waveform takes a
+    /// separate kernel instantiation, so the per-PRN path keeps its register budget (registers
+    /// cap the block width, which sets the DRAM traffic); the despread kernel here branches on
+    /// it at runtime; the peel kernel ignores it.
     bool shared = false;
-    /// fp16 Phi tables (31896a862:docs/CHORD_GPU_TODO.md item 3): job.phiA/phiB point at __half2
-    /// storage and @ref launch_waveform takes the __half2 gather instantiation. HALVES THE RESIDENT
-    /// TABLE, which is the one lever §10.6c's DRAM-footprint verdict says pays (measured
-    /// 1.27-1.37x); storage error 3.3e-4 relative (scripts/gnss/phibits), gated through the
-    /// shipped engine by scripts/gnss/phi16gpu. ⚠️ ONLY the templated waveform kernels honour
-    /// it -- launch_despread/launch_peel read Phi as raw float2, so GnssCudaDespread REFUSES
-    /// those paths outright while fp16 tables are armed rather than despread garbage.
-    /// Mutually exclusive with `shared` (the shared gather is fp32-only, and unarmed anyway).
+    /// fp16 Phi tables: job.phiA/phiB point at __half2 storage and @ref launch_waveform takes
+    /// the __half2 gather, halving the resident tables (storage error ~3.3e-4 relative,
+    /// scripts/gnss/phibits). Only the waveform kernels honour it: launch_despread and
+    /// launch_peel read Phi as float2, so GnssCudaDespread refuses those paths while fp16
+    /// tables are armed. Mutually exclusive with `shared`, whose gather is fp32-only.
     int phi_half = 0;
 };
 
-/**
- * CHORD 4+4b post-PFB voltage format: ONE BYTE per complex sample, REAL in the high nibble, IMAG
- * in the low, each a 4-bit OFFSET-ENCODED integer (stored value - 8 -> -8..+7). Zero = 0x88.
- *
- * WHERE THIS CONTRACT COMES FROM. In CHORD the PFB and the 4-bit quantizer are NOT in kotekan at
- * all -- they live upstream in the RFSoC F-engine, and kotekan only ever CONSUMES 4+4b voltages
- * off the wire. So there is no encoder in this tree to copy; the authoritative spec for what we
- * must PRODUCE is the consumer, kotekan's own correlator reference model
- * (lib/testing/gpuSimulate.cpp: `(b & 0x0f) - 8` imag, `((b & 0xf0) >> 4) - 8` real) -- the decode
- * the CHIME/CHORD X-engine is validated against. Match it byte-for-byte and our fftwEngine stands
- * in for an RFSoC: the subband ring below becomes something a real F-engine could feed directly,
- * and our despread becomes an X-engine that could eat one. (Do NOT take
- * lib/cuda/cudaQuantizeKernel4.cu as the model: that is the FRB *beam* quantizer -- 8
- * TWO'S-COMPLEMENT reals per uint32 with a per-chunk scale+offset, a different format for a
- * different product.)
- *
- * The ENCODER is therefore ours to write, and it has to do what the RFSoC does: the bandpass is
- * not flat, so each channel gets its own scale, chosen to put that bin's NOISE rms at ~2-3 lsb
- * (measured at startup). That per-bin scaling is what
- * makes 4 bits enough. GNSS lives far below the noise, so the noise dithers the buried signal, and
- * the quantization error -- uncorrelated with a pseudorandom replica -- averages down like thermal
- * noise instead of biasing the correlation. Measured on real sky: < 0.2 dB C/N0 loss at 2 lsb,
- * < 0.14 at 3 lsb (scratchpad/quant_test.py, GPS L5 / Gal E5a / BeiDou B2a). Prefer 3 lsb for RFI
- * headroom; watch per-channel railfrac.
- */
-/// float2 wrappers over the ONE codec (../stages/gnss/gnss44.hpp -- CUDA-free so the CPU quantize
-/// stage, which must build in the non-CUDA tree, shares it). Do not re-implement either side here.
+/// float2 wrappers over gnss44::unpack and gnss44::pack, which define the CHORD 4+4b format
+/// (documented in gnss44.hpp). Use these rather than re-implementing the codec.
 __host__ __device__ inline float2 unpack_44(unsigned char b, float scale) {
     float re, im;
     gnss44::unpack(b, scale, &re, &im);
@@ -244,66 +193,61 @@ __host__ __device__ inline unsigned char pack_44(float2 v, float inv_scale, int*
 }
 
 /**
- * Launch the fused despread. ONE JOB IN, FOUR OUTPUT ROWS OUT: job b writes rows 4b+0..4b+3 =
- * Early, Prompt, Late, P_HEAD. (Jobs and output rows are counted separately upstream -- see
- * gnss_gpu::max_specs vs max_jobs -- because they no longer march together.)
- * @param data   [n_chan][n_hops] channelized voltage (device)
+ * Launch the fused despread. One job in, four output rows out: job b writes rows
+ * out_rows_spec*b + 0..3 = Early, Prompt, Late, P_HEAD. Jobs and output rows are counted
+ * separately (gnss_gpu::max_specs vs max_jobs).
+ * @param data   [n_chan][data_stride] channelized voltage at the window start (device)
  * @param code   shared int8 code table (all PRNs concatenated; jobs carry offsets; device)
  * @param jobs   [n_spec] per-PRN quad parameters incl. per-job Phi table pointers (device)
- * @param corr   out [4*n_spec][n_chan] complex correlations (device)
- * @param energy out [4*n_spec][n_chan] replica energies (device)
- * Cross-channel summation is left to the caller (tiny; host or follow-up kernel).
+ * @param corr   out [out_rows_spec*n_spec][n_chan] complex correlations (device)
+ * @param energy out [out_rows_spec*n_spec][n_chan] replica energies (device)
+ * The caller sums across channels.
  */
-/// @param xcorr optional out [4*n_spec][n_chan] reference CROSS-correlations for the analytic
+/// @param xcorr optional out [4*n_spec][n_chan] reference cross-correlations for the analytic
 ///        peel add-back: rows 4b+0/1 = <R_P, R_E> / <R_P, R_L> over the whole window, rows
-///        4b+2/3 = the same restricted to hops [0, m_head). nullptr = do not compute -- the extra
-///        accumulators then compile away entirely, so the un-peeled chains pay nothing.
-///        The head-restricted pair is what keeps the add-back exact in a window where the
-///        overlay/nav symbol flips at the code-period boundary and the peel therefore subtracted
-///        two DIFFERENT gains:  V[k] = V'[k] + a_head*<R_P 1_head,R_k> + a_tail*(whole-head).
-///        WHY THESE AND NOT THE ANALYTIC TRIANGLE: the add-back V_full[k] = V'[k] + a*<R_P, R_k>
-///        needs the code-triangle value AS THE PFB RENDERS IT, not the textbook 0.5 at 1/2 chip.
-///        Substituting 0.5 leaves an E/L asymmetry in the residual that the DLL reads as a code
-///        error whose SIGN tracks the true error -- i.e. the loop pushes the wrong way. The
-///        prompt and the E/L replicas are both in registers at the same hop, so this is one MAC.
-///        (<R_P,R_P> and <R_PH,R_P> are just energy rows 1 and 3; they are not duplicated here.)
+///        4b+2/3 = the same restricted to hops [0, m_head). nullptr skips them; that
+///        instantiation has no cross-term accumulators.
+///        The head-restricted pair keeps the add-back exact in a window where the overlay or nav
+///        symbol flips at the code-period boundary and the peel subtracted two different gains:
+///        V[k] = V'[k] + a_head*<R_P 1_head, R_k> + a_tail*(whole - head).
+///        The add-back needs the code-triangle value as the PFB renders it, not the textbook 0.5
+///        at half a chip: substituting 0.5 leaves an E/L asymmetry in the residual that the DLL
+///        reads as a code error. The prompt and E/L replicas are in registers at the same hop,
+///        so each term is one MAC. <R_P, R_P> and <R_PH, R_P> are energy rows 1 and 3 and are
+///        not repeated here.
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
                             int n_spec, int n_chan, const DespreadParams& p, double2* corr,
                             double* energy, cudaStream_t stream, double2* xcorr = nullptr);
 
-/// As launch_despread, but reading a CHORD 4+4b ring: one byte per (channel, hop), unpacked with
-/// @c chan_scale [n_chan] (lsb -> volts, the inverse of the ingest's scale). Same kernel, same
-/// numerics, only the voltage load differs -- the demotion must not fork the despread.
+/// As launch_despread, reading 4+4b bytes, one per (channel, hop), unpacked with @c chan_scale
+/// [n_chan] (lsb to volts). Same kernel and numerics; only the voltage load differs.
 cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale,
                               const int8_t* code, const DespreadJob* jobs, int n_spec, int n_chan,
                               const DespreadParams& p, double2* corr, double* energy,
                               cudaStream_t stream, double2* xcorr = nullptr);
 
 /**
- * VOLTAGE PEEL: resid[ci][m] = voltage(ci, m) - sum_jobs a_{job,seg,ci} * R_job(ci, m).
+ * Voltage peel: resid[ci][m] = voltage(ci, m) - sum_jobs a_{job,seg,ci} * R_job(ci, m).
  *
- * The fused peel of docs/gnss_voltage_peel_live.md, and CHORD path B's "subtract a e^{jphi} R as
- * each X_i streams to registers" made literal: one load of the voltage, every seeded PRN's prompt
- * replica removed, one store of the residual. Reuses the despread kernel's chip gather verbatim,
- * so the subtracted waveform is bit-identical to the one the despread correlates against.
+ * One load of the voltage, every job's prompt replica removed, one store of the residual. It
+ * uses the despread's chip gather, so with per-PRN tables and no carrier trim the subtracted
+ * waveform is bit-identical to the despread's replica (see PeelJob::wc and PeelJob::psiA).
  *
- * SIMULTANEOUS, NOT SUCCESSIVE. A feed-forward gain does not depend on the data at all, so the
- * subtractions are
- * independent and commute -- which is what lets every PRN be handled inside one thread's loop
- * with no atomics and no ordering.
+ * The subtractions are simultaneous, not successive: feed-forward gains do not depend on the
+ * data, so they commute, and one thread handles every job with no atomics and no ordering.
  *
  * @param data   the voltage: [n_chan][data_stride] float2, or 4+4b bytes with @c chan_scale.
- *               Pointer is at the WINDOW start (as launch_despread expects).
+ *               Pointer is at the window start (as launch_despread expects).
  * @param jobs   [n_job] per-PRN peel parameters (device)
- * @param resid  out [n_chan][n_hops] float2, PACKED (stride n_hops) -- the despread then reads it
- *               with data_stride = n_hops. FLOAT2, NEVER 4+4b: a 30 dB correction is far below
+ * @param resid  out [n_chan][n_hops] float2, packed (stride n_hops), so the despread then reads
+ *               it with data_stride = n_hops. Float2, not 4+4b: a 30 dB correction is far below
  *               one lsb of the CHORD ring, so re-quantizing the residual would erase the peel.
  * Channels with no job covering them are copied through unchanged.
  */
 cudaError_t launch_peel(const float2* data, const int8_t* code, const PeelJob* jobs, int n_job,
                         int n_chan, const DespreadParams& p, float2* resid, cudaStream_t stream);
 
-/// As launch_peel, reading the CHORD 4+4b ring (dequantized with @c chan_scale on load).
+/// As launch_peel, reading 4+4b bytes (dequantized with @c chan_scale on load).
 cudaError_t launch_peel_q(const unsigned char* data, const float* chan_scale, const int8_t* code,
                           const PeelJob* jobs, int n_job, int n_chan, const DespreadParams& p,
                           float2* resid, cudaStream_t stream);
