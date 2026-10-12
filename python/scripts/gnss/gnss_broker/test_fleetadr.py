@@ -324,9 +324,29 @@ class TestFold(unittest.TestCase):
             prev = hop
         self.assertEqual(st.arc, 2)
         self.assertEqual(st.hop0, hops[500])
-        self.assertEqual(st.last_break["dark_rec"], 300)
-        self.assertEqual(st.last_break["silent_rec"], 300)
+        # the first SILENT_MIN_REC - 1 records of the brownout still fold: a dip that short
+        # is a re-pin, not silence
+        self.assertEqual(st.last_break["dark_rec"], 300 - fa.SILENT_MIN_REC + 1)
+        self.assertEqual(st.last_break["silent_rec"], 300 - fa.SILENT_MIN_REC + 1)
         self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[500])), 1e-3)
+
+    def test_a_one_record_dip_is_not_silence(self):
+        """A seed re-pin costs every instance one record of correlation at once (20 dB down,
+        phase still measured): the record is folded, nothing is silent, the arc goes on."""
+        sky = Sky(n_inst=12)
+        hops = [HOP0 + k * HPR for k in range(600)]
+        st = fa.SatAdr()
+        prev = None
+        for k, hop in enumerate(hops):
+            rec = sky.record(hop, prev)
+            if k % 50 == 25:
+                rec = self._fade(rec, range(12), 0.01, False)
+            fa.fold_record(st, hop, rec, HPR)
+            prev = hop
+            self.assertEqual(st.n_silent, 0)
+        self.assertEqual(st.arc, 1)
+        self.assertEqual(st.breaks, 0)
+        self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
 
     def test_a_fade_inside_the_margin_keeps_the_arc(self):
         """A 5 dB fade still carries the signal: the arc continues and the phase is right."""
@@ -357,7 +377,7 @@ class TestFold(unittest.TestCase):
                 rec = self._fade(rec, [0], 0.01, True)
             fa.fold_record(st, hop, rec, HPR)
             prev = hop
-            if 100 <= k < 300:
+            if 100 + fa.SILENT_MIN_REC - 1 <= k < 300:
                 self.assertEqual(st.n_silent, 1)
                 self.assertEqual(st.n_inst, 11)
         self.assertEqual(st.arc, 1)

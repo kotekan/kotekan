@@ -166,14 +166,20 @@ class SatAdr(object):
         self.dark_silent = 0  # of those, records that silence (not absence) made dark
         self.lvl = (
             {}
-        )  # inst -> [mean, hold] of its prompt power |S_i| (see fold_record)
+        )  # inst -> [mean, hold, dip run] of its prompt power |S_i| (see fold_record)
         self.n_silent = 0  # instances silent at the last record
         self.last_break = None  # why the last arc ended (see fold_record)
 
 
 DARK_DB = 10.0  # an instance this far below its own level is silent, not measuring
+SILENT_MIN_REC = (
+    5  # consecutive records below it before the instance is silent (~50 ms)
+)
 LVL_DECAY_DB_H = 20.0  # the level follows a fade slower than this (dB per hour)
-LVL_EMA_REC = 100  # records (~1 s) the level averages over
+LVL_EMA_REC = 10000  # records (~100 s) the level averages over, once warm
+LVL_WARM_REC = (
+    100  # records (~1 s) an instance must have been seen before it can be silent
+)
 BREAK_LOG_MIN_REC = 100  # an arc shorter than this (~1 s) ends without a log line
 
 
@@ -202,29 +208,37 @@ def fold_record(
     # key holds (a bright satellite crossing the beam took every Galileo arc on E5a and E5b
     # 10-170 cycles off on 2026-10-11 this way, #155). A silent instance is treated exactly
     # like an energy-less one: it cannot vouch, and when none can the arc ends. The level is
-    # the instance's mean prompt power over ~LVL_EMA_REC records, peak-held with a decay of
-    # lvl_decay_db_h per hour: a setting satellite's fade is followed, a transit's 15-30 dB
-    # brownout within a minute is not, and a record's own swing (a straddle moves |S| by up to
-    # 3 dB) stays well inside the margin. |S_i| is energy-normalised, so a gain change does
-    # not move it.
-    ratio = 10.0 ** (dark_db / 10.0)
-    decay = 10.0 ** (-lvl_decay_db_h * (hpr / float(hps)) / 3600.0 / 10.0)
+    # a mean of the instance's prompt power in dB over ~LVL_EMA_REC accepted records (fast
+    # while the instance is new, so one spiked record cannot set it for hours), and it does
+    # not learn from the records it rejects: a transit's 15-30 dB brownout within a minute
+    # leaves it standing, while it follows anything slower than lvl_decay_db_h (a setting
+    # satellite) by decaying under the dip. A record's own swing (a straddle moves |S| by up
+    # to 3 dB) stays inside the margin, and the dip must last SILENT_MIN_REC records: a seed
+    # re-pin costs every instance one record of correlation at once while the phase stays
+    # measured, and treating that record as silence ended every arc on every chain each
+    # broker cycle (2026-10-12). |S_i| is energy-normalised, so a gain change does not move it.
+    decay_db = lvl_decay_db_h * (hpr / float(hps)) / 3600.0
     silent = set()
     usable = {}
     for i, v in per_inst.items():
         if v[2] == 0:
             continue
-        p = abs(v[2])
-        h = st.lvl.get(i)  # [mean, hold]
-        if h is not None and p * ratio < h[1]:
-            silent.add(i)
-            h[1] *= decay
-            continue
+        p_db = 10.0 * math.log10(abs(v[2]))
+        h = st.lvl.get(
+            i
+        )  # [level dB, records accepted, records below the margin in a row]
         if h is None:
-            st.lvl[i] = [p, p]
+            st.lvl[i] = [p_db, 1, 0]
+        elif h[1] >= LVL_WARM_REC and p_db < h[0] - dark_db:
+            h[0] -= decay_db
+            h[2] += 1
+            if h[2] >= SILENT_MIN_REC:
+                silent.add(i)
+                continue
         else:
-            h[0] += (p - h[0]) / LVL_EMA_REC
-            h[1] = max(h[0], h[1] * decay)
+            h[0] += (p_db - h[0]) / min(h[1] + 1, LVL_EMA_REC)
+            h[1] += 1
+            h[2] = 0
         usable[i] = v
     st.n_silent = len(silent)
     if len(usable) < min_inst:
