@@ -423,6 +423,15 @@ carries C56/C58. Small, and separate from the above.
 unconfirmed or dormant.
 
 ### #177 — the GPS L5 code generator wraps XB at 10230, not 8191: every L5 PRN loses up to 10.5 dB (2026-10-12)
+
+**⚡ LIVE AND VERIFIED 10-12 (a25e36345, fleet binary d30be5f66):** canary cx44 16:47:50Z, the other five 16:56–16:57Z.
+Paired in time (fixtures/tec_wander/l5_canary_judge.py, the broker's per-instance deep SNR, cx44 against the median of
+the other nodes, 20 log10; noise ±0.6 dB): G25 +8.2 dB (predicted +10.4), G03 +4.6 (+6.4), G04 +2.7 (+1.9), G32 +2.5
+(+1.4), G01 +1.8 (+1.5), control G28 +1.5 (+0.2), about +1 dB common to all. After the fleet cycle cx44's lead fell back
+to within ±0.8 dB on every satellite (G25 +7.7 → +0.4): the five gained the same. Fleet: G25 prompt C/N0 +12 dB; G26,
+the weakest, went from never present to present 93% (+6.9 dB coherent). 0 chain deaths. **Still to do:** restart the
+aggregator onto its staged fixed binary (its L5 search uses the code; build_nodpdk = gather-d30be5f66), and re-solve
+the per-satellite L5 gain when the F-engine is back. The F-engine went off for about a week right after.
 **What [tree + archive]:** `gpsL5Code.cpp` ran the 13-stage XB register (period 8191) for 10230 chips and indexed it
 at `(i + advance) mod 10230`. IS-GPS-705 clocks XB on from the PRN's initial state, i.e. `(i + advance) mod 8191`, so
 the last `advance` chips of every code (up to ~7200) come from the wrong XB phase. Predicted loss: Q5 (the live
