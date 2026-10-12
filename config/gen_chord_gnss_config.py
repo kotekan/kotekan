@@ -197,7 +197,18 @@ def dll_spacing_chips(name):
 
 
 # PRN rows per chain, and the number every other chain gets. See telem_rows().
-_TELEM_ROWS = {"gal_e5a": 20, "gal_e5b": 20, "gal_e6": 20}
+# #115 (2026-10-12): BeiDou lists grew to 31 slots (#150, C6-C8/C11-C14) and b2a/b2b ran 18 live
+# against 14 rows -- C36/C39/C42 tracked on every instance and never shipped; b3i and l2c sat at
+# their limits. The gather buffer follows the widest chain (telem_rows_max): regenerate it too.
+_TELEM_ROWS = {
+    "gal_e5a": 20,
+    "gal_e5b": 20,
+    "gal_e6": 20,
+    "bds_b2a": 24,
+    "bds_b2b": 24,
+    "bds_b3i": 24,
+    "gps_l2c": 18,
+}
 _TELEM_ROWS_DEFAULT = 14
 
 
