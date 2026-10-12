@@ -72,6 +72,13 @@ seven are dead-reckon.
 key, so any A/B on it changes exactly one. bds_b2b / bds_b3i remain a second twinned pair (same constellation, same
 PRNs, `joint-consume` and nothing else). The joint state is GPS-fed only again.
 
+**State at 2026-10-12 17:05Z, when the F-engine went off for about a week.** Nodes, gather and aggregator run d30be5f66
+(telemetry v8, #158; the L5 code fix, #177, verified on the sky); the broker runs the fleet-ADR silence gate (#155
+candidate 2) and the projection fields since 13:26Z. Our bad-inputs cron is held for the outage (#164). At the return:
+the broker re-anchors to the new F-engine epoch before the nodes are cycled, the cron is restored once bffs posts a
+list from valid data, the aggregator's L5 search is judged (#177), and the 17 local commits on kv/chord-gnss are pushed
+on KV's word. The memory note `chord-handoff-20261012-fengine-off` has the rollback binaries and the build dirs to keep.
+
 ---
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
@@ -287,7 +294,11 @@ product's remaining losses are the close passes, and one of them on 10-11 was th
   and B2a, 2 arcs ended on B2b, no joint-clock step above 0.3 chips. Rows carried the projection on ~90% of present
   rows 14:20–14:34 (sources 2/4/6 on Galileo, 1 on L5; b median 0.02–0.03, max 0.69 on E6). Three survivors jumped in
   the closure (E15 +8.5, E08 +5.1, E32 −3.3 TECU); E15's projection cost on E6 was 0.50–0.57 at the time, so a
-  projection-induced band phase step is the lead to test. Next judge: G09 ~21:21Z.
+  projection-induced band phase step is the lead to test. G09 (21:21Z) fell inside the F-engine outage.
+- **Watch at the return:** after the post-restart transient (56 L5 arcs ended in 13:28–13:34Z) the gate ended about one
+  arc per 3 min, all on gps_l5 and BeiDou single satellites in real fades (C38: cross-instance coherence 0.74 → 0.08),
+  against 0–1 per hour under the old fold. Galileo: none outside transits. Recount over a quiet day once the sky is
+  back; the L5 fix (#177) raised every L5 satellite's prompt, which should lower L5's rate.
 **⚡ 09-30, with projection live fleet-wide (from 09-29 17:00Z): candidate 1 largely holds.** Seven transits had data,
 09-30 03:17Z to 15:10Z, between two F-engine outages.
 - **E5a × E6 arcs surviving a transit:** 74% (39/53), against 39% (26/67) with the freeze alone.
@@ -432,6 +443,9 @@ to within ±0.8 dB on every satellite (G25 +7.7 → +0.4): the five gained the s
 the weakest, went from never present to present 93% (+6.9 dB coherent). 0 chain deaths. The aggregator (its L5 search uses the code)
 was restarted onto the fixed binary at 17:04:44Z, minutes before the F-engine went off for about a week. **Still to do
 at the return:** judge the aggregator's L5 search SNR per satellite, and re-solve the per-satellite L5 gain.
+Branches: kv/l5-xb-wrap is in (cherry-picked), so `~/gnss/l5fix-wt` can go once its branch is deleted; kv/comment-pass
+(the review agent's, with uncommitted work in `~/gnss/comments-wt`) conflicts with the fix in `gpsL5Code.{cpp,hpp}` and
+must rebase onto kv/chord-gnss before it merges.
 **What [tree + archive]:** `gpsL5Code.cpp` ran the 13-stage XB register (period 8191) for 10230 chips and indexed it
 at `(i + advance) mod 10230`. IS-GPS-705 clocks XB on from the PRN's initial state, i.e. `(i + advance) mod 8191`, so
 the last `advance` chips of every code (up to ~7200) come from the wrong XB phase. Predicted loss: Q5 (the live
@@ -647,6 +661,14 @@ the ephemeris epoch.
 
 ## Open — bench or offline, no deployment at all
 
+### #183 — the transit census drops a window without saying so (2026-10-12)
+**What [tree]:** `gnss_transit_arcs.py` keeps a window only if 10 min of context fit inside the span on both sides
+(`t0 - pad - 720 >= t_lo`, `t1 + pad + 720 <= t_hi`) and it starts more than 15 min after `--split`; anything else is
+skipped silently. On 10-12 the C33 pass (0.61°) vanished from the census twice, first for a span one minute short, then
+for starting 6 min after the split, and the regroup printed only the passes that were left.
+**Fix:** print each dropped window with its reason, beside the kept ones. Check: rerun the C33 census with
+`--t-hi 13:18 --split 12:37:14` and see C33 listed as dropped (span) and dropped (split).
+
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
   (tests/boost/test_buffer_peek.cpp:430, and the similar check near :490) fails. It failed 6/11 runs on #1714's commit and
@@ -802,6 +824,10 @@ file holds no valid rows; bffs's power-outlier test sees `n_measured 0`, flags a
 **Standing check after any recv1 restart:** subset files ~3.1 GB = valid, ~350 MB = empty; `/var/lib/choco/bffs/run.json`
 power-outlier `n_measured` 32. **Fix (Jim):** bffs must keep the previous list when `n_measured == 0`. Ours: a line
 in `chain_health_cron` that reads the newest subset file's size.
+**10-12, the F-engine outage:** a dark F-engine is the same trigger. Our cron is held from 16:41Z (`#HOLD-fengine-off-
+20261012` in the crontab, backup `~/gnss/builds/crontab_20261012_before_fengine_off_hold.bak`), so our six stay on the
+85-input list; restore it at the return once bffs posts a list from valid data. cx47/cx52 still take bffs's list
+through choco and may lock out until Jim's fix is in.
 
 ## Open — measured, real, and nobody's lever
 
@@ -925,6 +951,9 @@ excursion is the one that reproduces on demand.
 - **A fix deployed onto a restart transient will look like it worked** — and one reverted on a
   restart transient will look like it was wrong. Judge a broker restart at t+10 min, and separate
   the sky (setting satellites) first.
+- **Stopping the broker stops the viewer, and starting the broker does not bring it back.** The viewer unit is
+  `PartOf=gnss-broker.service`; on 10-12 a flag-day stop left it down for two hours until KV hit dead ports. After any
+  broker stop, start `gnss-viewer` by name (runbook).
 - **A running process hides a deleted library until its next restart.** Every deployed binary
   here has a RUNPATH into an NFS build dir (`readelf -d <binary> | grep RUNPATH`); the gather's
   pointed at `~/gnss/builds/gather-2d852b79e`, deleted as cruft on 10-12 after checking only process
