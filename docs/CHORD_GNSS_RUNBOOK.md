@@ -332,6 +332,11 @@ ssh gnss 'systemctl --user restart gnss-<unit>.service'
 ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/site/stack_contract_gate.sh'
 ```
 
+⚠️ The viewer is `PartOf=gnss-broker.service`: a `stop` of the broker stops the viewer, and the later `start`
+of the broker does not bring it back (a `restart` of the broker does restart it). After stopping the broker by
+name, start `gnss-viewer` by name too. On 2026-10-12 a telemetry flag day stopped broker and gather at 12:20Z and
+left the viewer down for two hours.
+
 ⚠️ One difference is deliberate and visible in the definition rather than hidden: `agg_up.sh`
 runs the aggregator with `GNSS_SEARCH_PROFILE=1` and the systemd unit does not. cf06 ran with
 that profiling on for its whole life (113,997 `[consumer]` lines in its last log); the live VM
