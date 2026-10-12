@@ -282,7 +282,12 @@ product's remaining losses are the close passes, and one of them on 10-11 was th
   (one arc ended on each of E6 and E5b); projection rank 1 from the sibling BeiDou row on E5a/E5b, cost 0–0.5. Then at
   12:58:46Z every arc on the six 10.23-Mcps chains ended together: a joint-clock jump, filed as #176. The census
   (`out/transit_arcs_c33`, split 12:20:55) reads that as LOCK LOST 7 of 8 E5a × E6 arcs, honest where the old fold
-  would have slipped them. Next judge: G32 3.0° 14:31Z, G09 ~21:21Z.
+  would have slipped them.
+- **G32 (GPS IIF, 3.0°, CA 14:31:45Z 10-12, combined rule + rows):** E5a × E6 7/7 SURVIVED, locks held on Galileo
+  and B2a, 2 arcs ended on B2b, no joint-clock step above 0.3 chips. Rows carried the projection on ~90% of present
+  rows 14:20–14:34 (sources 2/4/6 on Galileo, 1 on L5; b median 0.02–0.03, max 0.69 on E6). Three survivors jumped in
+  the closure (E15 +8.5, E08 +5.1, E32 −3.3 TECU); E15's projection cost on E6 was 0.50–0.57 at the time, so a
+  projection-induced band phase step is the lead to test. Next judge: G09 ~21:21Z.
 **⚡ 09-30, with projection live fleet-wide (from 09-29 17:00Z): candidate 1 largely holds.** Seven transits had data,
 09-30 03:17Z to 15:10Z, between two F-engine outages.
 - **E5a × E6 arcs surviving a transit:** 74% (39/53), against 39% (26/67) with the freeze alone.
