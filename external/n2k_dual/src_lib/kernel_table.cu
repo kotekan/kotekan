@@ -1,6 +1,6 @@
 // Cloned from n2k/src_lib/kernel_table.cu (see include/n2k_dual/DualCorrelator.hpp for
 // provenance). The registration key is (nstations_total, nfreq): the kernel template
-// depends only on the TOTAL station count, so one instantiation serves every 128-multiple
+// depends only on the total station count, so one instantiation serves every 128-multiple
 // A/B split of the same total.
 
 #include <mutex>
@@ -22,7 +22,7 @@ namespace n2k_dual {
 
 struct KernelTableEntry
 {
-    int nstations = 0; // TOTAL station count (nstations_a + nstations_b)
+    int nstations = 0; // total station count (nstations_a + nstations_b)
     int nfreq = 0;
 
     DualCorrelator::kernel_t kernel = nullptr;

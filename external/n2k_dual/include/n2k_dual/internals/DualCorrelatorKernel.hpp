@@ -5,21 +5,24 @@
 #include <n2k/internals/device_inlines.hpp> // n2k::lop3(), n2k::blend(), n2k::FULL_MASK
 #include <ksgpu/constexpr_functions.hpp>    // constexpr_is_divisible()
 
-// Cloned from n2k/internals/CorrelatorKernel.hpp (see ../DualCorrelator.hpp for provenance).
+// Cloned from n2k/internals/CorrelatorKernel.hpp (see ../DualCorrelator.hpp).
 //
-// DIVERGENCES from the n2k original, kept deliberately minimal so the two files diff cleanly:
+// Divergences from the n2k original:
 //
-//  1. kernel_body()/n2k_dual_kernel() take TWO input pointers (srcA, srcB).
+//  1. kernel_body()/n2k_dual_kernel() take two input pointers (srcA, srcB).
 //  2. The ptable has 8 rows per thread instead of 6: row 6 = the warp's input time stride
 //     (int32 units), row 7 = input select (0=A, 1=B). Both are warp-uniform.
-//  3. prefetch_chunk() (the ONLY place the input is dereferenced) takes the time stride as
+//  3. prefetch_chunk() (the only place the input is dereferenced) takes the time stride as
 //     a runtime argument 'ts' instead of the compile-time emat_tstride; 'ts' is threaded
 //     through do_initial_prefetch() / correlate_t64() / correlate_t128().
 //  4. The per-frequency input offset is f * (ts / NF) instead of f * emat_fstride
 //     (NF is a compile-time template parameter, so the division strength-reduces).
+//  5. An optional freq_map selects the channel each blockIdx.y computes, the output holds
+//     n_freq_out slices per time, and b_fstride > 0 addresses a compact B input by output
+//     slice.
 //
-// Everything else -- transposes, MMA, shared-memory layout, RFI masking, write path -- is a
-// verbatim copy. The template depends only on the TOTAL station count NS = NSA + NSB.
+// Transposes, MMA, shared-memory layout, RFI masking and the write path are n2k's. The template
+// depends only on the total station count NS = NSA + NSB.
 
 namespace n2k_dual {
 #if 0
@@ -35,9 +38,9 @@ struct DualCorrelatorKernel
 {
     static_assert(ksgpu::constexpr_is_divisible(NS, 128));
 
-    // NOTE: unlike n2k, there are no emat_* constants here -- input strides are runtime
-    // per-warp ptable data (the two inputs are separately shaped). Output strides depend
-    // only on the total NS and stay compile-time.
+    // Unlike n2k, there are no emat_* constants here: input strides are runtime
+    // per-warp ptable data (the two inputs are separately shaped). The output's per-slice
+    // stride depends only on the total NS and stays compile-time.
     static constexpr int vmat_fstride = NS * (NS + 16); // int32 stride, not int32+32
 
 
@@ -46,8 +49,7 @@ struct DualCorrelatorKernel
 
     // Given a 32-bit register 'x' containing eight signed 4-bit integers x[0:8], negate x[i] -> -x[i].
     // WARNING: assumes x[i] is in the range [-7,7], i.e. fails if any x[i] is (-8)!
-    // For n2k_dual this is a hard requirement on the SYNTHETIC input's quantizer, not just
-    // a data-quality assumption -- see DualCorrelator.hpp.
+    // For n2k_dual this is a requirement on the synthetic input's quantizer.
 
     static __device__ int negate_4bit(int x)
     {
@@ -219,7 +221,7 @@ struct DualCorrelatorKernel
     //  - the 8-warp threadblock reads (A and B tiles) x (32 times).
     //
     // n2k_dual: 'ts' is the warp's input time stride in int32 units (runtime, warp-uniform,
-    // from ptable row 6). In n2k it was the compile-time emat_tstride.
+    // from ptable row 6). In n2k it is the compile-time emat_tstride.
 
     static __device__ const int* prefetch_chunk(const int* __restrict__ gp, int pf_out[8], int ts)
     {
@@ -551,14 +553,13 @@ struct DualCorrelatorKernel
         //
         // n2k_dual: the ptable has 8 rows (not 6). Row 6 = this warp's input time stride 'ts'
         // (int32 units); row 7 selects the input base pointer. Both are warp-uniform, so the
-        // select costs nothing in the load loop. The per-frequency stride is ts/NF (exact:
-        // ts = NF * (ns_input/4)), strength-reduced since NF is a template constant.
+        // select costs nothing in the load loop. For a full-band input the per-frequency stride
+        // is ts/NF (exact: ts = NF * (ns_input/4)), strength-reduced since NF is a template
+        // constant.
 
-        // FREQUENCY MAP. Without it blockIdx.y IS the channel and this is the old behaviour.
-        // With it, a launch covers only the channels the caller names -- the GNSS comb is 7 of
-        // 384, and the mixed/BB blocks on the other 377 correlate synthetic lanes that are all
-        // zero. f_in addresses the VOLTAGE and the RFI MASK (real channel); blockIdx.y indexes
-        // the COMPACTED output, so vis_out carries n_freq_out slices, not NF.
+        // Frequency map: without it blockIdx.y is the channel. With it, f (the real channel)
+        // addresses the voltage and the RFI mask, and blockIdx.y indexes the output, which
+        // carries n_freq_out slices.
         const int f = freq_map ? freq_map[blockIdx.y] : blockIdx.y; // real channel
         const int n = blockDim.x; // ptable stride (for length-8 axis)
         const int i = blockIdx.x * (DualCorrelatorParams::ptable_nrows * blockDim.x) + threadIdx.x;
@@ -570,10 +571,10 @@ struct DualCorrelatorKernel
         const int ts = ptable[i + 6 * n];
         const bool is_b = ptable[i + 7 * n] != 0;
         const int8_t* src = is_b ? srcB : srcA;
-        // COMPACT B (b_fstride > 0): the replica input holds only the computed channels,
-        // [T][n_freq_out][NSB] in freq_map order, so it is addressed by the OUTPUT slice;
-        // the antenna input and the mask keep the real channel f. ts is already that
-        // input's own time stride (precompute_offsets row 6).
+        // Compact B (b_fstride > 0): the B input holds only the computed channels,
+        // [T][n_freq_out][NSB] in freq_map order, so it is addressed by the output slice;
+        // the A input and the mask keep the real channel f. ts is already that input's own
+        // time stride (ptable row 6).
         const int fofs = (is_b && b_fstride > 0) ? (int)blockIdx.y * b_fstride : f * (ts / NF);
         const int* gp = ((const int*)src) + fofs + ptable[i + 2 * n];
 

@@ -151,7 +151,7 @@ void DualCorrelator::launch(Array<int>& vis_out, const Array<int8_t>& e_in_a,
         throw runtime_error(ss.str());
     }
 
-    const int nfreq_b = params.compact_b ? params.n_freq_out : nfreq; // compact B: comb only
+    const int nfreq_b = params.compact_b ? params.n_freq_out : nfreq; // compact B: mapped channels
     if ((nstat_b > 0) && !e_in_b.shape_equals({nt_expected, nfreq_b, nstat_b})) {
         stringstream ss;
         ss << "DualCorrelator::launch(nfreq=" << nfreq << ", nt_outer=" << nt_outer

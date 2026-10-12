@@ -19,86 +19,87 @@
 
 /**
  * @class cudaCorrelatorDual
- * @brief GNSS path-B N^2: cudaCorrelator's job PLUS synthetic replica stations, one launch.
+ * @brief cudaCorrelator's N^2 plus synthetic GNSS replica stations, in one launch.
  *
- * A deliberately separate command -- cudaCorrelator and external/n2k are NOT modified (others
- * develop them). This clone drives external/n2k_dual: the visibility triangle over the
- * CONCATENATED station axis [antennas | synthetic], where the synthetic input is a separate
- * per-frame-slot GPU array (named @c gnss_synth_name) filled by cudaGnssInject with quantized
- * GNSS replica waveforms. See docs/gnss_gpu_search.md section 11.
+ * Drives external/n2k_dual (see its README.md): the visibility triangle over the concatenated
+ * station axis [antennas | synthetic]. The synthetic input is a separate per-frame-slot GPU
+ * array (@c gnss_synth_name) that cudaGnssInject fills with quantized replica waveforms.
  *
  * The output is split on the GPU:
- *  - The pure-antenna block is a VERBATIM PREFIX of each (t,f) slice of the extended
- *    triangle (tile packing orders by row), so the standard `n2k_correlation` output is one
- *    strided cudaMemcpy2DAsync -- downstream (cudaOutputData -> N2Accumulate) is unchanged
- *    and shape-identical to cudaCorrelator's. With the synthetic input all-zero (0x88) the
- *    prefix is BIT-IDENTICAL to what cudaCorrelator produces (verified: n2dualtest gate [3]).
- *  - The GNSS tiles -- mixed (synthetic x live-antenna) and synthetic x synthetic -- are
- *    gathered for ONLY the configured GNSS comb channels into a small `gnss_tiles` output
- *    (see the tile-list note below), ~0.7 MB/frame against the 107 MB extended triangle,
- *    which never leaves the GPU.
+ *  - Without @c gnss_freq_map, the pure-antenna block is a verbatim prefix of each (t,f) slice
+ *    of the extended triangle, so the standard @c n2k_correlation output is one strided
+ *    cudaMemcpy2DAsync, shaped as cudaCorrelator's and bit-identical to it whatever the
+ *    synthetic input holds (scripts/gnss/n2dualtest.cpp checks this). With @c gnss_freq_map
+ *    the extended triangle covers only the comb channels and @c n2k_correlation is not
+ *    written.
+ *  - The GNSS tiles of the comb channels are gathered into small tile buffers; the extended
+ *    triangle never leaves the GPU.
  *
- * Tile list (fixed at construction, consumer recomputes it from the same config): for each
- * local channel in @c gnss_local_channels, mixed tiles (ihi in [NA/16, NT/16), jhi over
- * @c live_element_tiles in listed order) in row-major (ihi, jhi) order, THEN the synthetic
- * triangle (ihi in [NA/16, NT/16), jhi in [NA/16, ihi]) in the same order. Each tile is
- * [16][16][2] int32, memory offset within a (t,f) slice = 512*(ihi*(ihi+1)/2 + jhi), i.e.
- * exactly n2k's documented layout. V_ij = E_i * conj(E_j) with i the row: mixed tiles carry
- * conj-of-what-the-despread-wants (path A == conj(V)/s -- measured, n2dualxval).
+ * Tile list (fixed at construction; GnssN2RecordAssemble recomputes it from its own config).
+ * Per channel of a gather, up to three blocks in this order, each row-major. The gather's
+ * synthetic tile rows are ihi in [na16 + lane_base/16, na16 + (lane_base + lanes)/16), with
+ * na16 = num_elements/16.
+ *  - mixed: each synthetic row against the @c live_element_tiles columns, in listed order;
+ *  - if aa: the live antennas' lower triangle by list position, (k1, k2) at k1*(k1+1)/2 + k2;
+ *  - if bb: the synthetic lower triangle over the gather's rows.
+ * Each tile is [16][16][2] int32 at offset 512*(ihi*(ihi+1)/2 + jhi) within a (t,f) slice,
+ * n2k's layout. V_ij = E_i * conj(E_j) with i the row, so a mixed tile is
+ * replica * conj(antenna); cudaGnssInject's @c conjugate packs conj(replica), which makes the
+ * mixed tile the despread sum itself.
  *
- * The synthetic array is [num_times][num_local_freq][num_synth] int8 4+4b offset-encoded per
- * frame slot. This command zero-fills (0x88) every slot ONCE at construction; the injector
- * overwrites only its lanes/channels each frame. Samples must be in [-7,7]: the value -8
- * silently corrupts the whole launch (n2k's negate_4bit) -- the injector's quantizer clamps.
+ * The synthetic array is [num_times][num_local_freq][num_synth] int8 (4+4 bit, offset-encoded)
+ * per frame slot, or [num_times][comb][num_synth] with @c gnss_synth_compact. This command
+ * zero-fills (0x88) every slot once at construction; the injectors overwrite only their lanes
+ * and channels each frame. Samples must be in [-7,7]: the value -8 silently corrupts the
+ * results (n2k's negate_4bit), so the injectors' quantizer clamps.
  *
  * @conf As cudaCorrelator (buffer_depth, num_times, num_elements, num_local_freq,
  *       sub_integration_ntime, voltage_name, rfi_RFImask_name, n2k_correlation_name), plus:
  * @conf  num_synth            Int. Synthetic stations (multiple of 128). Default 128.
- * @conf  num_live_elements    Int. Live antennas (sizes the mixed-tile gather). Default
- *                             num_elements.
- * @conf  live_element_tiles   List of Int. The live-antenna TILE COLUMNS (16 elements each)
- *                             to gather, in the order they should occupy the record's
- *                             element axis. Default: 0..ceil(num_live_elements/16)-1, the
- *                             contiguous-prefix behaviour. ⚠️ Set this whenever the live
- *                             elements are not a prefix -- since crs_board_remap they are
- *                             {0..15, 64..79}, i.e. [0, 4]. Its length must equal
- *                             ceil(num_live_elements/16) or the consumer's mix_k indexing
- *                             and this gather disagree.
- * @conf  gnss_local_channels  List of Int. LOCAL frame channel indices (0..num_local_freq)
- *                             of the GNSS comb. GLOBAL freq_ids do NOT go here -- the config
- *                             generator derives local from global (the DC-replica lesson).
+ * @conf  num_live_elements    Int. Live antennas; sets the default live_element_tiles.
+ *                             Default num_elements.
+ * @conf  live_element_tiles   List of Int. The live-antenna tile columns (16 elements each)
+ *                             to gather, in the order they occupy the record's element axis.
+ *                             Default 0..ceil(num_live_elements/16)-1. Set it whenever the
+ *                             live elements are not a prefix: live elements {0..15, 64..79}
+ *                             are columns [0, 4]. Its length must equal
+ *                             ceil(num_live_elements/16) or the consumer's mix_k indexing and
+ *                             this gather disagree. It must be ascending when AA tiles are
+ *                             gathered.
+ * @conf  gnss_local_channels  List of Int. Local frame channel indices, in
+ *                             [0, num_local_freq), of the GNSS comb; not global freq_ids.
+ * @conf  gnss_freq_map        Bool, default false. Compute only the comb channels, and only
+ *                             the mixed and BB blocks (plus AA if a gather asks for it).
  * @conf  gnss_gather_aa       Bool, default false. Also gather the live antennas' own N^2
- *                             tiles (lower triangle over live_element_tiles, appended after
- *                             the mixed block) and, with gnss_freq_map, compute the AA block
- *                             on the comb channels. This is the visibility-capture feed; the
- *                             tracker never reads these tiles.
+ *                             tiles (lower triangle over live_element_tiles, after the mixed
+ *                             block) and, with gnss_freq_map, compute the AA block on the comb
+ *                             channels. For the visibility capture; the tracker never reads
+ *                             these tiles.
  * @conf  gnss_gather_bb       Bool, default false. Also gather the BB (synth x synth) lower
- *                             triangle, appended after the AA block: the replica side of the
- *                             capture's (N+M)^2. The block is computed either way; the
- *                             tracker never reads it.
- * @conf  gnss_tiles_name      String. Base name for the gathered-tiles output buffer.
- * @conf  gnss_gathers         List of String, default empty. SEVERAL CHAINS, ONE PASS: the
+ *                             triangle, after the AA block: the replica side of the
+ *                             capture's (N+M)^2. The block is computed either way.
+ * @conf  gnss_tiles_name      String. Name of the gathered-tiles output buffer when
+ *                             gnss_gathers is empty; required, but unused, otherwise.
+ * @conf  gnss_gathers         List of String, default empty. Several chains in one pass: the
  *                             synth axis holds every chain's lanes at its own offset and each
  *                             named gather copies out one buffer. Per name G:
  *                             gather_G_tiles_name (String), gather_G_channels (local, a
  *                             subset of gnss_local_channels; default all), gather_G_lane_base
- *                             and gather_G_lanes (default 0 and num_synth: whole tile rows),
+ *                             and gather_G_lanes (default 0 and num_synth; whole tile rows),
  *                             gather_G_aa, gather_G_bb (Bool). Tile order inside a buffer is
- *                             the one above restricted to those rows. When the list is empty
- *                             gnss_gather_aa, gnss_gather_bb and gnss_tiles_name describe the
- *                             one gather (the one-chain-per-correlator layout).
- * @conf  gnss_synth_compact   Bool, default false. The synth array is [T][comb][num_synth]
- *                             -- one slice per gnss_local_channels entry, in that order --
- *                             instead of [T][num_local_freq][num_synth]. Needs gnss_freq_map;
- *                             the injectors must write the same axis (gnss_synth_channels).
+ *                             the tile list above restricted to those rows. When the list is
+ *                             empty, gnss_gather_aa, gnss_gather_bb and gnss_tiles_name
+ *                             describe a single gather over every lane.
+ * @conf  gnss_synth_compact   Bool, default false. The synth array is [T][comb][num_synth],
+ *                             one slice per gnss_local_channels entry in that order, instead
+ *                             of [T][num_local_freq][num_synth]. Needs gnss_freq_map; the
+ *                             injectors must write the same axis (gnss_synth_channels).
  * @conf  gnss_synth_name      String. Name of the synthetic-input GPU array. Default
  *                             "gnss_synth".
- * @conf  rfi_all_pass         Bool, default false. True = do not consume an RFI-mask ring;
- *                             use a constant all-ones mask instead. For the GNSS dev
- *                             deployment, where the RFI chain is dropped: production runs
- *                             with rfi_first_stage_excision_enabled: false, i.e. its
- *                             correlator also sees an all-good mask, so this is
- *                             behavior-identical -- not an approximation.
+ * @conf  rfi_all_pass         Bool, default false. True: consume no RFI-mask ring and use a
+ *                             constant all-ones mask. This matches the real mask on channels
+ *                             where first-stage excision is off or exempt (cudaRFISKtilde's
+ *                             rfi_first_stage_excision_exempt_* keys).
  */
 class cudaCorrelatorDual : public cudaCommand {
 public:
@@ -129,9 +130,8 @@ private:
 
     std::vector<std::int32_t> _gnss_local_channels;
 
-    /// The live-antenna tile columns gathered, in output order. NOT necessarily a prefix:
-    /// since the 2026-08-31 crs_board_remap the live elements are {0..15, 64..79} = columns
-    /// {0, 4}. Its POSITIONS define the record's element axis (see build_tile_selection).
+    /// The live-antenna tile columns gathered, in output order; not necessarily a prefix.
+    /// Positions in this list define the record's element axis (see build_tile_selection).
     const std::vector<int> _live_tile_cols;
 
     /// gnss_synth_compact: the synth array has one slice per comb channel.
@@ -156,19 +156,17 @@ private:
     std::optional<NDArrayRingBuffer<kotekan::uint1x8_t, 3>> rfi_RFImask;
     NDArrayBuffer<std::int32_t, 6> n2k_correlation; // standard N^2 out, shape as cudaCorrelator
 
-    /// Cuda kernel wrapper object (the two-input clone; n2k itself is untouched).
+    /// Cuda kernel wrapper object
     n2k_dual::DualCorrelator dual_correlator;
 
-    /// gnss_freq_map: compute MIXED|BB over ONLY the comb channels. vis_out is then compacted
-    /// to those channels and the AA (antenna) block is NOT computed -- so the standard N^2
-    /// pass-through is unavailable in this mode. 2.90x -> 1.21x stock N^2 (n2timing).
-    /// Declared AFTER dual_correlator: it is initialized after it (-Werror=reorder).
+    /// gnss_freq_map: the extended triangle covers only the comb channels, so there is no
+    /// standard N^2 to pass through.
     const bool _freq_map_mode;
 };
 
 namespace gnss_cuda {
 /// Copy the selected (freq, tile) list out of the extended visibility triangle.
-/// sel[k].x = freq index, sel[k].y = int32 offset of the tile within a (t,f) slice.
+/// sel[k].x = output slice index, sel[k].y = int32 offset of the tile within that slice.
 /// out layout: [nt_outer][n_sel][512] int32.
 cudaError_t launch_gather_gnss_tiles(const std::int32_t* vis, const int2* sel, int n_sel,
                                      int nt_outer, int vmat_fstride, int vmat_tstride,

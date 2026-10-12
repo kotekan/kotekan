@@ -8,11 +8,10 @@
 #include <vector>
 
 // A cudaProcess spreads one frame's commands across several CUDA streams, which are
-// INDEPENDENT in-order queues. "The last command finished" therefore does not mean "the frame
-// finished", and frame completion is what releases host frames (cudaInputData ->
-// mark_frame_empty, cudaOutputData -> mark_frame_full). Getting this wrong once produced
-// gal/bds epl frames carrying n_prn 0 (2026-07-19); getting the JOIN STREAM wrong produced a
-// throughput regression that review caught on 2026-09-11. Both live here.
+// independent in-order queues, so the final command completing does not mean the frame is done.
+// Frame completion releases host frames (cudaInputData -> mark_frame_empty, cudaOutputData ->
+// mark_frame_full), so the end-of-frame join must wait on every other stream with work, and must
+// sit on the stream the chain ends on.
 //
 // The streams a command lands on by type, at cuda_stream_base B: COPY_IN B+0, COPY_OUT B+1,
 // KERNEL B+2.
@@ -32,17 +31,15 @@ bool waits_on(const cudaFrameJoin& j, std::int32_t s) {
 
 } // namespace
 
-// ⚠️ THE REGRESSION TEST FOR THE JOIN STREAM. The first implementation recorded the join on
-// min(streams the pipeline owns). For the default triple that is stream 0 -- the COPY-IN
-// stream -- so the next frame's host-to-device copy was queued behind this frame's compute and
-// output, and since every pipeline left at base 0 shares stream 0, every pipeline on the GPU
-// was coupled through it. The join must go on the stream the chain ENDS on.
+// The join goes on the stream the chain ends on, never min(streams). For the default triple the
+// lowest stream is the copy-in, and a join there would queue the next frame's host-to-device
+// copy behind this frame's compute and output.
 BOOST_AUTO_TEST_CASE(join_stream_is_the_final_stream_never_the_lowest) {
     // The canonical pipeline: cudaInputData(0), cudaSyncInput(2), kernel(2),
     // cudaSyncOutput(1), cudaOutputData(1). The last command to return an event is on 1.
     const auto j = plan_cuda_frame_join(streams(3, {0, 1, 2}), /*final_stream=*/1);
     BOOST_CHECK_EQUAL(j.join_stream, 1);
-    BOOST_CHECK_NE(j.join_stream, 0); // the bug: min({0,1,2}) == 0, the copy-in stream
+    BOOST_CHECK_NE(j.join_stream, 0); // min({0,1,2}) == 0 is the copy-in stream
     BOOST_CHECK(j.needed);
 }
 
@@ -56,10 +53,8 @@ BOOST_AUTO_TEST_CASE(join_stream_follows_the_stream_base) {
     BOOST_CHECK(waits_on(j, 8));
 }
 
-// ⚠️ THE REGRESSION TEST FOR THE OFF-BY-ONE. The detection loop started at i = 1 while the
-// wait loop started at i = 0, so a frame whose only outstanding work was on stream 0 got no
-// join at all -- and stream 0 is the copy-in, whose DMA must not outlive the frame signal or
-// mark_frame_empty() hands the buffer back to the producer mid-transfer.
+// A lone non-final event on stream 0 still forces a join: at base 0 that is the copy-in, whose
+// DMA must finish before mark_frame_empty() hands the buffer back to the producer.
 BOOST_AUTO_TEST_CASE(a_lone_event_on_stream_zero_still_forces_a_join) {
     const auto j = plan_cuda_frame_join(streams(3, {0, 2}), /*final_stream=*/2);
     BOOST_REQUIRE(j.needed);
@@ -67,9 +62,8 @@ BOOST_AUTO_TEST_CASE(a_lone_event_on_stream_zero_still_forces_a_join) {
     BOOST_CHECK_EQUAL(j.wait_streams.size(), 1u);
 }
 
-// Every pipeline in the tree terminates in a cudaSyncOutput, which folds the compute streams
-// into the output stream itself. The final command's stream then carries the only event and
-// the join must cost nothing -- no barrier, no event create/destroy, per frame.
+// When the final command's stream carries the only event there is nothing to join, and the
+// join must cost nothing: no wait, no per-frame event create/destroy.
 BOOST_AUTO_TEST_CASE(no_join_when_the_final_stream_carries_everything) {
     const auto j = plan_cuda_frame_join(streams(3, {1}), /*final_stream=*/1);
     BOOST_CHECK(!j.needed);
@@ -86,8 +80,8 @@ BOOST_AUTO_TEST_CASE(the_join_never_waits_on_itself) {
 }
 
 // The parallel-chain shape the join exists for: three kernel+output pairs on their own
-// streams, the last command on stream 3. Streams 1 and 2 are still running when it finishes,
-// and both must be waited on -- this is the 2026-07-19 n_prn 0 failure.
+// streams, the last command on stream 3. Streams 1 and 2 may still be running when it
+// finishes, so both must be waited on.
 BOOST_AUTO_TEST_CASE(parallel_per_stream_chains_wait_on_every_sibling) {
     const auto j = plan_cuda_frame_join(streams(4, {1, 2, 3}), /*final_stream=*/3);
     BOOST_REQUIRE(j.needed);

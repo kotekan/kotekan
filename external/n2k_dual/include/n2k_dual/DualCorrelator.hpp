@@ -7,62 +7,58 @@
 #include <utility>
 #include <vector>
 
-// n2k_dual: a two-input clone of the n2k correlator (see README.md in this directory).
+// n2k_dual: a two-input clone of the n2k correlator (see README.md in this directory), cloned
+// from kotekan's vendored n2k (upstream commit in external/n2k/COMMIT). It is a separate module
+// so that n2k itself stays unmodified.
 //
-// PROVENANCE: cloned 2026-08-06 from kotekan's vendored n2k (upstream commit in
-// external/n2k/COMMIT). n2k itself is under active development by others, so this is a
-// deliberately separate, mostly-duplicated module -- n2k is NOT modified. If the two-input
-// extension is ever accepted upstream, this module retires.
+// What it adds over n2k::Correlator:
 //
-// WHAT IT ADDS over n2k::Correlator:
-//
-//  - TWO electric-field inputs sharing one launch:
-//        A: int8[T][F][nstations_a]   the real antenna voltages, as today
+//  - Two electric-field inputs sharing one launch:
+//        A: int8[T][F][nstations_a]   the antenna voltages
 //        B: int8[T][F][nstations_b]   synthetic stations (e.g. GNSS replica waveforms)
-//    The kernel computes the visibility triangle over the CONCATENATED station axis
-//    (stations [0, nstations_a) come from A, [nstations_a, nstations_a+nstations_b) from B),
-//    without requiring the two inputs to be interleaved into one buffer.
+//    The kernel computes the visibility triangle over the concatenated station axis (stations
+//    [0, nstations_a) from A, [nstations_a, nstations_a+nstations_b) from B), without the two
+//    inputs being interleaved into one buffer.
 //
-//  - Optional block-class restriction (block_class_mask): each 128x128-station threadblock
-//    is either pure-A (AxA), mixed (AxB), or pure-B (BxB); the host-side ptable can skip
-//    whole classes, e.g. compute only the mixed + BxB blocks. Tiles belonging to skipped
-//    classes are simply never written -- the caller must not read them.
+//  - Optional block-class restriction (block_class_mask): each 128x128-station threadblock is
+//    pure-A (AxA), mixed (AxB) or pure-B (BxB), and the host-side ptable can skip whole classes.
+//    Tiles of skipped classes are never written; the caller must not read them.
 //
-// HOW (the only real kernel change): the per-warp global-load base offset was always
-// precomputed on the host (the "ptable"), so the input select is warp-uniform. The ptable
-// grows from 6 to 8 rows per thread: row 6 carries the warp's input TIME STRIDE (in int32
-// units; the two inputs have different strides), row 7 selects the A or B base pointer.
-// The load path takes the stride as a runtime (warp-uniform) argument instead of a
-// compile-time constant. Everything else -- shared-memory layout, in-register transposes,
-// tensor-core MMAs, RFI masking, the output tiling -- is byte-identical to n2k.
+//  - Optional frequency map (freq_map): only the listed channels are computed, and with
+//    compact_b the B input holds only those channels.
 //
-// KEY PROPERTIES (used by the CHORD GNSS path-B integration):
+// The per-warp global-load offsets are precomputed on the host (the "ptable"), so the input
+// select is warp-uniform. The ptable grows from 6 to 8 rows per thread: row 6 is the warp's
+// input time stride (int32 units; the two inputs have different strides), row 7 selects the A
+// or B base pointer. The shared-memory layout, in-register transposes, tensor-core MMAs, RFI
+// masking and output tiling are n2k's.
 //
-//  - Since triangular tile packing orders tiles by (ihi, jhi) with ihi >= jhi, and A comes
-//    first on the station axis, the pure-A block of the output is a VERBATIM PREFIX of each
-//    (t, f) slice: the first  na16*(na16+1)/2  tiles (na16 = nstations_a/16) are internally
-//    identical to what n2k::Correlator(nstations_a, nfreq) would produce. Splitting the AxA
-//    result back out for the standard pipeline is a strided copy, nothing more.
+// Properties cudaCorrelatorDual relies on:
 //
-//  - Mixed tiles always have the B station on the ROW (i) side: V_ij = E_i * conj(E_j)
-//    with i synthetic, j antenna. Consumers wanting data*conj(replica) must conjugate.
+//  - Triangular tile packing orders tiles by (ihi, jhi) with ihi >= jhi, and A comes first on
+//    the station axis, so the pure-A block of the output is a verbatim prefix of each (t, f)
+//    slice: the first na16*(na16+1)/2 tiles (na16 = nstations_a/16) equal what
+//    n2k::Correlator(nstations_a, nfreq) produces. Splitting it out is a strided copy.
+//
+//  - Mixed tiles have the B station on the row (i) side: V_ij = E_i * conj(E_j) with i
+//    synthetic, j antenna. A consumer wanting data*conj(replica) must conjugate.
 //
 //  - The per-(freq, time) RFI mask gates A and B samples identically, so the mixed block's
 //    effective integration time matches the pure-A block's.
 //
-// CONSTRAINTS (inherited from n2k, plus one new):
+// Constraints (n2k's, with the multiple of 128 applying to each input):
 //
-//  - nstations_a and nstations_b must EACH be a multiple of 128 (a threadblock's 128-station
-//    load panel must fall wholly inside one input). nstations_b == 0 is allowed and must
-//    reproduce n2k::Correlator bit-exactly (this is the regression gate).
+//  - nstations_a and nstations_b must each be a multiple of 128 (a threadblock's 128-station
+//    load panel must fall wholly inside one input). nstations_b == 0 is allowed and reproduces
+//    n2k::Correlator bit-exactly (scripts/gnss/n2dualtest.cpp checks this).
 //  - nt_inner must be a multiple of 256.
-//  - 4-bit samples must be in [-7, +7]; the value -8 SILENTLY corrupts results
-//    (see negate_4bit in the kernel header). For synthetic inputs this is a hard
-//    quantizer requirement, not a data-quality accident.
-//  - The (nstations_a + nstations_b, nfreq) pair must have a compiled instantiation:
-//    template_instantiations/dual_kernel_{NS}_{NF}.cu. Note the kernel template depends
-//    only on the TOTAL station count -- the A/B split is entirely host-side ptable data,
-//    so one instantiation serves every 128-multiple split of the same total.
+//  - 4-bit samples must be in [-7, +7]; the value -8 silently corrupts the results (see
+//    negate_4bit in the kernel header). For a synthetic input this is a requirement on its
+//    quantizer.
+//  - The (nstations_a + nstations_b, nfreq) pair must have a compiled instantiation,
+//    template_instantiations/dual_kernel_{NS}_{NF}.cu. The kernel template depends only on the
+//    total station count (the A/B split is host-side ptable data), so one instantiation serves
+//    every 128-multiple split of the same total.
 
 namespace n2k_dual {
 #if 0
@@ -89,17 +85,14 @@ struct DualCorrelatorParams
     //   nfreq = number of frequency channels (per GPU)
     //   block_class_mask = which block classes to compute (default: all)
 
-    /// @param freq_map optional list of INPUT channel indices to compute. Empty = all nfreq,
-    ///        i.e. today's behaviour. Non-empty: the launch covers only those channels and
-    ///        vis_out carries freq_map.size() slices in THAT order, not nfreq. The GNSS comb is
-    ///        7 channels of 384, and the mixed/BB blocks on the other 377 correlate synthetic
-    ///        lanes that are identically zero -- this is the lever that takes path B from
-    ///        2.97x stock N^2 to ~1.2x (see docs/gnss_gpu_search.md 11.2).
-    /// @param compact_b the B input holds only the computed channels: int8[T][n_freq_out]
+    /// @param freq_map optional list of input channel indices to compute; empty means all
+    ///        nfreq. When set, the launch covers only those channels and vis_out carries
+    ///        freq_map.size() slices in that order. A GNSS comb covers a few channels of the
+    ///        GPU's band, and outside it the synthetic lanes are zero.
+    /// @param compact_b the B input holds only the computed channels, int8[T][n_freq_out]
     ///        [nstations_b], one slice per freq_map entry in that order, addressed by the
-    ///        OUTPUT slice. The A input and the RFI mask keep the full nfreq axis. This is
-    ///        what lets one replica buffer per GPU be sized by the GNSS comb (tens of
-    ///        channels) instead of every channel the GPU holds.
+    ///        output slice. The A input and the RFI mask keep the full nfreq axis. This sizes
+    ///        the synthetic buffer by the comb rather than by every channel on the GPU.
     DualCorrelatorParams(int nstations_a, int nstations_b, int nfreq,
                          int block_class_mask = BLOCK_MASK_ALL,
                          const std::vector<int>& freq_map = {}, bool compact_b = false);
@@ -107,7 +100,7 @@ struct DualCorrelatorParams
     const int nstations_a;
     const int nstations_b;
     const int nstations; // total = nstations_a + nstations_b
-    const int nfreq;          ///< INPUT channels (addressing + rfimask); compile-time NF
+    const int nfreq;          ///< input channels (addressing + rfimask); compile-time NF
     const int block_class_mask;
     const std::vector<int> freq_map; ///< input channels computed; empty = all
     const int n_freq_out;     ///< vis_out slices = freq_map.size(), or nfreq if empty
@@ -117,18 +110,18 @@ struct DualCorrelatorParams
 
     static constexpr int bit_depth = 4;    // correlator operates on signed (4+4) bit data
     static constexpr int nt_divisor = 256; // nt_inner must be divisible by this
-    static constexpr int ns_divisor = 128; // nstations_a AND nstations_b divisible by this
+    static constexpr int ns_divisor = 128; // nstations_a and nstations_b divisible by this
 
-    // E-array strides (int32, not bytes!!), PER INPUT -- the inputs are separately shaped.
+    // E-array strides (int32, not bytes!!), per input: the inputs are separately shaped.
     const int emat_fstride_a;
     const int emat_tstride_a;
     const int emat_fstride_b;
     const int emat_tstride_b;
 
-    // Visibility matrix strides are in int32 (not int32+32); over the TOTAL station count.
+    // Visibility matrix strides are in int32 (not int32+32), over the total station count.
     const int vmat_ntiles;  // M*(M+1)/2   where M = nstations/16
     const int vmat_fstride; // vmat_ntiles * 16 * 16 * 2
-    const int vmat_tstride; // nfreq * vmat_fstride
+    const int vmat_tstride; // nfreq * vmat_fstride; the output's is n_freq_out * vmat_fstride
 
     // Tiling of visibility matrix by threadblocks (units of 128 stations).
     const int ntiles_a; // nstations_a / 128
@@ -136,13 +129,13 @@ struct DualCorrelatorParams
     const int ntiles_2d_offdiag;
     const int ntiles_2d_tot;
 
-    // Block/thread counts. threadblocks_per_freq counts only ENABLED blocks
+    // Block/thread counts. threadblocks_per_freq counts only enabled blocks
     // (== ntiles_2d_tot when block_class_mask == BLOCK_MASK_ALL).
     static constexpr int warps_per_block = 8;
     static constexpr int threads_per_block = 32 * warps_per_block;
     const int threadblocks_per_freq;
 
-    // Shared memory layout -- identical to n2k (all strides are int32).
+    // Shared memory layout, as in n2k (all strides are int32).
     static constexpr int shmem_t8_stride = 1;   // Delta(t)=8,16
     static constexpr int shmem_s1_stride = 4;   // Delta(s)=1,2,4
     static constexpr int shmem_s8_stride = 33;  // Delta(s)=8,16,32,64
@@ -173,7 +166,7 @@ struct DualCorrelatorParams
 extern int dual_block_class(int atile, int btile, int ntiles_a);
 
 // The (atile, btile) pairs of the enabled blocks, in ptable/blockIdx.x order. The order of
-// the FULL enumeration (mask = BLOCK_MASK_ALL) matches n2k's _init_block_data(): the strict
+// the full enumeration (mask = BLOCK_MASK_ALL) matches n2k's _init_block_data(): the strict
 // lower triangle (1,0),(2,0),(2,1),(3,0),... first, then the diagonal (0,0),(1,1),...
 // A restricted mask keeps that order and drops the disabled blocks.
 extern std::vector<std::pair<int, int>> dual_enumerate_blocks(int ntiles_1d, int ntiles_a,
@@ -196,9 +189,9 @@ public:
     //    int8[nt_outer*nt_inner][n_freq_out][nstations_b] with params.compact_b.
     //    Must be nullptr iff nstations_b == 0.
     //  - 'vis_out' covers the (nstations_a + nstations_b) triangle; tile (t,f,i,j) layout
-    //    and offsets exactly as documented in n2k/Correlator.hpp, with
-    //    fstride = nstations*(nstations+16). Tiles in DISABLED block classes are not
-    //    written (caller must not read them).
+    //    and offsets as documented in n2k/Correlator.hpp, with
+    //    fstride = nstations*(nstations+16) and n_freq_out slices per time. Tiles in disabled
+    //    block classes are not written (caller must not read them).
     //  - 'rfimask' is uint32[nfreq][(nt_outer*nt_inner)/32] (same ring-buffer re-indexing
     //    as kotekan's n2k), gating A and B samples identically.
 
@@ -207,10 +200,12 @@ public:
                 bool sync = false) const;
 
     // ksgpu::Array version; all arrays on the GPU.
-    //   vis_out: shape (nt_outer, nfreq, nvtiles, 16, 16, 2), or (nfreq, nvtiles, 16, 16, 2)
-    //            if nt_outer == 1, where nvtiles = (nstations/16)*(nstations/16+1)/2.
+    //   vis_out: shape (nt_outer, n_freq_out, nvtiles, 16, 16, 2), or
+    //            (n_freq_out, nvtiles, 16, 16, 2) if nt_outer == 1,
+    //            where nvtiles = (nstations/16)*(nstations/16+1)/2.
     //   e_in_a:  shape (nt_outer * nt_inner, nfreq, nstations_a)
-    //   e_in_b:  shape (nt_outer * nt_inner, nfreq, nstations_b); ignored if nstations_b==0.
+    //   e_in_b:  shape (nt_outer * nt_inner, nfreq or n_freq_out (compact_b), nstations_b);
+    //            ignored if nstations_b==0.
     //   rfimask: shape (nfreq, nt_outer * nt_inner / 32)
     void launch(ksgpu::Array<int>& vis_out, const ksgpu::Array<int8_t>& e_in_a,
                 const ksgpu::Array<int8_t>& e_in_b, const ksgpu::Array<uint>& rfimask,

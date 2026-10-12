@@ -3,13 +3,13 @@
 //
 //  - The blockId -> (atile, btile) decode is hoisted out of PointerOffsets into
 //    dual_enumerate_blocks(), which also applies the block_class_mask: disabled block
-//    classes are simply absent from the ptable, and blockIdx.x indexes the KEPT blocks.
-//    The full enumeration order matches n2k's _init_block_data() exactly.
+//    classes are absent from the ptable, and blockIdx.x indexes the kept blocks.
+//    The full enumeration order matches n2k's _init_block_data().
 //
 //  - The ptable has 8 rows per thread (n2k: 6). Row 6 = the warp's input time stride in
 //    int32 units (the A and B inputs are separately shaped); row 7 = input select (0=A,
-//    1=B). The 'gp' offset is computed against the warp's OWN input: its 128-station tile
-//    index is local to that input, and its time stride is that input's emat_tstride.
+//    1=B). The 'gp' offset is computed against the warp's own input: its 128-station tile
+//    index is local to that input, and its time stride is that input's emat_tstride_{a,b}.
 
 #include <ksgpu.hpp>
 
@@ -97,7 +97,7 @@ struct PointerOffsets {
     __host__ void _init_prefetch_offsets()
     {
         // Ultra-weird: the first one is consistently fast, whereas the second one
-        // sometimes runs slow!  [comment inherited from n2k]
+        // sometimes runs slow!
 #if 1
         bool bflag = warpId & 0x1;
         int tpf = (warpId >> 1) * 8;
@@ -116,7 +116,7 @@ struct PointerOffsets {
         assert(t8 < 4);
 
         // n2k_dual: this warp reads the 128-station panel of either the A tile or the
-        // B tile of the block. Which INPUT that panel lives in, its input-local tile
+        // B tile of the block. Which input that panel lives in, its input-local tile
         // index, and that input's time stride all follow from the global tile index.
         int tile = bflag ? block_btile : block_atile;
         bool is_b = (tile >= params.ntiles_a);
@@ -174,7 +174,7 @@ struct PointerOffsets {
         bp = (wy * 8 * DualCorrelatorParams::shmem_s8_stride) + laneId
              + DualCorrelatorParams::shmem_ab_stride; // one y-tile corresponds to 64 stations
 
-        // Output visibility matrix (station indices are GLOBAL, i.e. over A followed by B).
+        // Output visibility matrix (station indices are global, over A followed by B).
         vi_warp = 128 * block_atile + 32 * wx;
         vk_warp = 128 * block_btile + 64 * wy;
     }

@@ -31,19 +31,10 @@ using kotekan::num_triangle_blocks;
 
 REGISTER_CUDA_COMMAND(cudaCorrelatorDual);
 
-// The gathered-tile count per channel: mixed (every synthetic row x live-antenna cols) then
-// the synthetic triangle. Must match the consumer's recomputation -- documented in the hpp.
-// The live-antenna TILE COLUMNS to gather, from config. `live_element_tiles` names them
-// directly; absent, the legacy contiguous-prefix behaviour (columns 0..ceil(n_live/16)-1).
-//
-// ⚠️ THE LIVE ELEMENTS ARE NOT A PREFIX ANY MORE (2026-08-31, the origin/chord merge). The
-// production dpdk config gained `crs_board_remap` (pol grouping) and its missing_source_ids
-// moved, which put the four live CRS boards at OUTPUT LOCATIONS 0,1,8,9: live elements are
-// {0..15, 64..79}, i.e. tile columns {0, 4}. A count cannot express that, and the old
-// `jhi < nlive16` loop silently gathered columns {0,1} -- half live feeds, half dead
-// panels, at full frame size, which is a -3 dB array and 16 slots of noise with NOTHING
-// anywhere reporting a problem. The column LIST is the fix, and it is the one that fails
-// loudly when it is wrong (the gather asks for a tile the triangle does not contain).
+// The live-antenna tile columns to gather. `live_element_tiles` lists them; absent, the
+// columns 0..ceil(n_live/16)-1. A count alone cannot describe live elements that are not a
+// prefix (e.g. {0..15, 64..79}, columns {0, 4}). Entries must be below num_elements/16, and
+// ascending when AA tiles are gathered; neither is checked.
 static std::vector<int> live_tile_columns(Config& config, const std::string& unique_name,
                                           int num_live_elements) {
     std::vector<int> cols =
@@ -54,16 +45,18 @@ static std::vector<int> live_tile_columns(Config& config, const std::string& uni
     return cols;
 }
 
-// One gather = the tiles of `chans` (a subset of the comb) for the synth rows holding lanes
-// [lane_base, lane_base + n_lanes): several chains can share one correlator pass and each
-// still receives exactly the frame it always did, because its rows are the only rows in it.
+// One gather: the tiles of `chans` (a subset of the comb) for the synth rows holding lanes
+// [lane_base, lane_base + n_lanes). Several chains can share one correlator pass: each gather
+// holds only its own chain's rows, so its buffer has the layout a one-chain correlator with
+// num_synth = n_lanes would produce. The order is the tile list in the hpp, and
+// GnssN2RecordAssemble recomputes it.
 static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& comb,
                                               const std::vector<std::int32_t>& chans,
                                               int num_elements, const std::vector<int>& live_cols,
                                               bool compacted, int lane_base, int n_lanes,
                                               bool gather_aa, bool gather_bb) {
     // compacted: with a freq map the kernel writes slice k for comb[k], so the gather must
-    // index by k, not by the real channel number.
+    // index by k, not by the channel number.
     std::vector<int2> sel;
     const int na16 = num_elements / 16;
     const int row_lo = na16 + lane_base / 16;
@@ -78,34 +71,34 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
                                          + ", which is not in gnss_local_channels");
             f = (std::int32_t)(it - comb.begin());
         }
-        // MIXED (synth row x LIVE antenna column) FIRST, and that order is load-bearing:
-        // GnssN2RecordAssemble indexes mix_k = (ihi-na16)*n_live_cols + SLOT, where SLOT is
-        // the POSITION in this list, not the real column -- so gather order defines the
-        // record's element axis and the consumer needs no knowledge of which columns are
-        // live. Anything appended after this block can be removed without moving a single
-        // mixed tile.
+        // Mixed (synth row x live antenna column) first. GnssN2RecordAssemble reads the tile
+        // of row ihi and list position slot at mix_k = (ihi - row_lo)*n_live_cols + slot. The
+        // slot is the position in live_cols, not the column, so the gather order defines the
+        // record's element axis and the consumer needs no knowledge of which columns are live.
+        // Blocks appended after this one do not move the mixed tiles.
         for (int ihi = row_lo; ihi < row_hi; ihi++)
             for (size_t k = 0; k < live_cols.size(); k++)
                 sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + live_cols[k])});
-        // ⚠️ THE TILE COUNT IS ONE CONTRACT STATED IN THREE PLACES: here, GnssN2RecordAssemble's
-        // _n_mixed/_n_aa/_n_bb, and gen_chord_gnss_config.py's n2_tiles_per_chan. They must
-        // move together or the stage's frame-size guard fires at startup (loudly -- that
-        // guard is the monument to the PrnCtl 64-vs-80 incident).
+        // The tile count is one contract stated in three places: here, GnssN2RecordAssemble's
+        // _n_mixed/_n_aa/_n_bb, and config/gen_chord_gnss_config.py's n2_tiles_per_chan, which
+        // sizes the tiles buffer. A mismatch is fatal: GnssN2RecordAssemble checks the frame
+        // size at startup, and gpuDeviceInterface's size check catches this side when
+        // cudaOutputData first copies the buffer out.
         //
-        // AA (antenna x antenna, the live N^2) next, and only on request: the lower triangle
-        // of live tile columns, row-major with column <= row, so the (k1, k2) tile sits at
-        // k1*(k1+1)/2 + k2 in this block. With gnss_freq_map the kernel only writes the AA
-        // block when BLOCK_MASK_AA is in its mask -- the constructor adds it iff gather_aa.
+        // AA (antenna x antenna, the live N^2) next, only on request: the lower triangle over
+        // positions in live_cols, row-major with k2 <= k1, so the (k1, k2) tile sits at
+        // k1*(k1+1)/2 + k2 in this block. These are the triangle's tiles only if live_cols is
+        // ascending. With gnss_freq_map the kernel writes the AA block only when BLOCK_MASK_AA
+        // is in its mask; the constructor adds it iff a gather wants AA.
         if (gather_aa)
             for (size_t k1 = 0; k1 < live_cols.size(); k1++)
                 for (size_t k2 = 0; k2 <= k1; k2++)
                     sel.push_back(
                         {f, 512 * (live_cols[k1] * (live_cols[k1] + 1) / 2 + live_cols[k2])});
-        // BB (synth x synth) LAST, and only on request: the lower triangle over the synth
-        // tile rows, (ihi - na16, jhi - na16) at k1*(k1+1)/2 + k2 in this block. The kernel
-        // computes it regardless (dropping it measured no win); the tracker never reads it,
-        // only the visibility capture does -- 36 tiles per channel at num_synth 128, which is
-        // why it is off by default.
+        // BB (synth x synth) last, only on request: the lower triangle over this gather's synth
+        // tile rows, (ihi - row_lo, jhi - row_lo) at k1*(k1+1)/2 + k2 in this block. The kernel
+        // computes it regardless; only the visibility capture reads it (36 tiles per channel
+        // at 128 lanes).
         if (gather_bb)
             for (int ihi = row_lo; ihi < row_hi; ihi++)
                 for (int jhi = row_lo; jhi <= ihi; jhi++)
@@ -114,8 +107,8 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
     return sel;
 }
 
-// Does any gather want the AA block? Decided before the kernel wrapper is built, since it
-// sets the block-class mask.
+// Does any gather want the AA block? Needed before the kernel wrapper is built, since it sets
+// the block-class mask.
 static bool any_gather_aa(Config& config, const std::string& unique_name) {
     const std::vector<std::string> names =
         config.get_default<std::vector<std::string>>(unique_name, "gnss_gathers", {});
@@ -127,10 +120,8 @@ static bool any_gather_aa(Config& config, const std::string& unique_name) {
     return false;
 }
 
-// The comb as a freq map, or empty when the map is off.
-// NB build this from ONE config.get -- taking begin() and end() from two separate calls gives
-// iterators into two different temporaries, which is a garbage range (kotekan died at startup
-// with "cannot create std::vector larger than max_size").
+// The comb as a freq map, or empty when the map is off. Built from one config.get: begin()
+// and end() from two separate calls would point into two different temporaries.
 static std::vector<int> freq_map_for(Config& config, const std::string& unique_name) {
     if (!config.get_default<bool>(unique_name, "gnss_freq_map", false))
         return {};
@@ -165,8 +156,8 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
             std::array<std::string, 4>{"T", "F", "P", "D"},
             std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this),
     n2k_correlation([&]() {
-        // Standard N^2 output -- IDENTICAL declaration to cudaCorrelator's, so downstream
-        // (cudaOutputData -> host_correlation_buffer -> N2Accumulate) is unchanged.
+        // Standard N^2 output, declared exactly as cudaCorrelator's so the same downstream
+        // stages consume it.
         const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
         const int blocksize = 16;
         const int triangle_num_blocks = num_triangle_blocks(_num_elements, blocksize);
@@ -179,13 +170,10 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
     }()),
     dual_correlator(n2k_dual::DualCorrelatorParams(
         _num_elements, _num_synth, _num_local_freq,
-        // FREQ-MAP MODE: compute the mixed + synthetic blocks over ONLY the GNSS comb. The
-        // antenna (AA) block is production's N^2, which this dev config does not consume, so
-        // restricting to MIXED|BB is what makes the map worth 2.90x -> 1.21x stock N^2
-        // (n2timing). With gnss_freq_map false the launch is the full triangle over every
-        // channel and the N^2 prefix stays available for the standard pipeline.
-        // A gather wanting the live antennas' own N^2 (the visibility capture) needs the AA
-        // block computed on the comb channels too.
+        // Freq-map mode: compute the mixed and synthetic blocks over only the GNSS comb, plus
+        // the AA block when a gather wants the live antennas' own N^2 (the visibility
+        // capture). Without gnss_freq_map the launch is the full triangle over every channel
+        // and the N^2 prefix is available for the standard pipeline.
         config.get_default<bool>(unique_name, "gnss_freq_map", false)
             ? (n2k_dual::BLOCK_MASK_MIXED | n2k_dual::BLOCK_MASK_BB
                | (any_gather_aa(config, unique_name) ? n2k_dual::BLOCK_MASK_AA : 0))
@@ -212,9 +200,8 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
             std::array<std::ptrdiff_t, 3>{1024, 1, 8}, *this);
         rfi_RFImask->register_consumer();
     } else {
-        // Constant all-ones mask: identical to production behavior with first-stage excision
-        // off (cudaRFISKtilde writes an all-good mask there). Layout does not matter for a
-        // constant -- every bit is set.
+        // Constant all-ones mask, as cudaRFISKtilde writes with first-stage excision off. The
+        // layout does not matter when every bit is set.
         const size_t mask_bytes = (size_t)_num_times / 8 * _num_local_freq;
         void* d_mask = device.get_gpu_memory(unique_name + "_allpass_mask", mask_bytes);
         CHECK_CUDA_ERROR(cudaMemset(d_mask, 0xFF, mask_bytes));
@@ -226,10 +213,9 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
         throw std::runtime_error("cudaCorrelatorDual: gnss_synth_compact needs gnss_freq_map -- "
                                  "the compact synth array has one slice per COMB channel");
 
-    // THE GATHERS. One per output buffer: the comb with every synth row and the legacy keys
-    // (the one-chain-per-correlator layout), or the named list -- one per chain sharing this
-    // pass (its own lane rows, its own channels, so its assembler sees the frame it always
-    // did) plus the visibility capture's, which may take every row, AA and BB.
+    // The gathers, one per output buffer: a single gather over the comb and every synth row
+    // (gnss_tiles_name, gnss_gather_aa/bb), or one per name in gnss_gathers, each with its own
+    // lane rows and channels.
     const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
     const std::vector<std::string> gnames =
         config.get_default<std::vector<std::string>>(unique_name, "gnss_gathers", {});
@@ -278,20 +264,15 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
         }
     }
 
-    // Zero-fill (0x88 == 0+0j offset-encoded) every synth frame slot ONCE. The injectors
-    // overwrite only their lanes/channels each frame; without one the synthetic input stays
-    // all-zero and the N^2 prefix must be bit-identical to cudaCorrelator's. Compact: one
-    // slice per comb channel (the injectors' gnss_synth_channels), not per local channel.
+    // Zero-fill (0x88 == 0+0j offset-encoded) every synth frame slot once. The injectors
+    // overwrite only their lanes and channels each frame, so unused lanes stay zero. Compact:
+    // one slice per comb channel (the injectors' gnss_synth_channels), not per local channel.
     _synth_len = (size_t)_num_times
                  * (_synth_compact ? _gnss_local_channels.size() : _num_local_freq) * _num_synth;
     for (int s = 0; s < _buffer_depth; s++) {
         void* d_synth = device.get_gpu_memory_array(_gnss_synth_name, s, _buffer_depth, _synth_len);
         CHECK_CUDA_ERROR(cudaMemset(d_synth, 0x88, _synth_len));
     }
-
-    // The voltage ring is pinned by a consumer that stops RELEASING its claim, not by
-    // its size: the claim is what holds the tail, so a stalled consumer starves every
-    // other one however large the ring is. Ring capacity here is not the lever.
 
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaCorrelatorDual");
@@ -382,7 +363,7 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
                                                * voltage_meta->get_time_downsampling_fpga());
     }
 
-    // The ringbuffering here is fishy. We should fix the kernel instead. [inherited note]
+    // The ringbuffering here is fishy. We should fix the kernel instead.
 
     const std::ptrdiff_t time_offset =
         voltage.get_read_valid().begin() % voltage.get_ndarray().extent(0);
@@ -408,15 +389,16 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
     // aka "nt_outer" in n2k.hpp
     const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
 
-    // The synthetic input: this frame slot's array (no ring -- the injectors run earlier in
-    // THIS command list, same stream, so their packs are complete before the kernel reads).
+    // The synthetic input: this frame slot's array, not a ring. The injectors must run earlier
+    // in this command list on the same stream, so that their packs are complete before the
+    // kernel reads them.
     const int8_t* const synth_memory = (const int8_t*)device.get_gpu_memory_array(
         _gnss_synth_name, pipestate.gpu_frame_id, _gpu_buffer_depth, _synth_len);
 
     // The extended triangle, per frame slot; never leaves the GPU.
     const auto& dp = dual_correlator.params;
-    // With a freq map the triangle is compacted to the comb, so vmat_tstride (nfreq-based)
-    // is not the per-subintegration stride any more.
+    // Per-subintegration stride of the output: n_freq_out slices (dp.vmat_tstride counts
+    // nfreq).
     const size_t vis_tstride = (size_t)dp.n_freq_out * dp.vmat_fstride;
     const size_t vis_len = (size_t)num_subintegrations * vis_tstride * sizeof(std::int32_t);
     std::int32_t* const d_vis = (std::int32_t*)device.get_gpu_memory_array(
@@ -429,10 +411,9 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
                            (const uint32_t*)rfi_RFImask_memory, num_subintegrations,
                            _sub_integration_ntime, stream, false);
 
-    // SPLIT 1: the pure-antenna block is a verbatim prefix of each (t,f) slice -- one strided
-    // copy into the standard-layout output. SKIPPED in freq-map mode: the AA block is not
-    // computed there (MIXED|BB only) and the surviving channels are the comb, not all of them,
-    // so there is no standard N^2 to pass through.
+    // Split 1: the pure-antenna block is a verbatim prefix of each (t,f) slice, so one strided
+    // copy fills the standard-layout output. Skipped in freq-map mode, where the triangle
+    // covers only the comb channels (and holds AA only for a gather that asked).
     if (!_freq_map_mode) {
         const size_t width_bytes =
             (size_t)num_triangle_blocks(_num_elements, 16) * 512 * sizeof(std::int32_t);
@@ -442,7 +423,7 @@ cudaEvent_t cudaCorrelatorDual::execute(cudaPipelineState& pipestate,
             (size_t)num_subintegrations * _num_local_freq, cudaMemcpyDeviceToDevice, stream));
     }
 
-    // SPLIT 2: the GNSS tiles of the comb channels only, one gather per output buffer.
+    // Split 2: the GNSS tiles of the comb channels, one gather per output buffer.
     for (Gather& g : _gathers)
         CHECK_CUDA_ERROR(gnss_cuda::launch_gather_gnss_tiles(
             d_vis, g.d_sel, (int)g.sel.size(), num_subintegrations, dp.vmat_fstride,

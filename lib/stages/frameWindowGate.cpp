@@ -151,8 +151,8 @@ int64_t FrameWindowGate::read_seq(const uint8_t* frame, int frame_id) const {
 }
 
 void FrameWindowGate::copy_frame(Buffer* src, int src_id, Buffer* dst, int dst_id) {
-    // The frame goes by copy, never by swap: a sibling consumer (the live pipeline) still
-    // owns the source frame.
+    // Copy, never swap: the input buffer's other consumers (the live pipeline) still read
+    // the source frame.
     std::memcpy(dst->frames[dst_id], src->frames[src_id], src->frame_size);
     auto sm = src->get_metadata(src_id);
     if (sm && dst->metadata_pool) {
