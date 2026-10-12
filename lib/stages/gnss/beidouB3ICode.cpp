@@ -6,10 +6,9 @@
 namespace beidou {
 namespace {
 
-// Per-PRN G2 INITIAL STATE (BDS-SIS-ICD-B3I v1.0), transcribed via gnss-sdr's
-// beidou_b3i_signal_replica.cc. B3I puts its per-satellite diversity here, in G2's starting
-// state -- unlike B1I, which uses a per-PRN output TAP on a fixed initial state.
-// Leftmost character is register index 12, rightmost is index 0 (the output end).
+// Per-PRN G2 initial state (BDS-SIS-ICD-B3I v1.0, as transcribed in gnss-sdr's
+// beidou_b3i_signal_replica.cc). The leftmost character is register index 12, the rightmost
+// index 0 (the output end).
 constexpr const char* B3I_G2_INIT[63] = {
     "1010111111111", "1111000101011", "1011110001010", "1111111111011", "1100100011111",
     "1001001100100", "1111111010010", "1110111111101", "1010000000010", "0010000011011",
@@ -34,7 +33,7 @@ std::array<int8_t, B3I_CODE_LENGTH> generate_b3i_code(int prn) {
     int g1[13], g2[13];
     const char* s = B3I_G2_INIT[prn - 1];
     for (int i = 0; i < 13; ++i) {
-        g1[i] = 1; // G1 starts all-ones
+        g1[i] = 1;
         g2[12 - i] = (s[i] == '1') ? 1 : 0;
     }
     std::array<int8_t, B3I_CODE_LENGTH> out{};
@@ -51,9 +50,8 @@ std::array<int8_t, B3I_CODE_LENGTH> generate_b3i_code(int prn) {
         g1[12] = fb1;
         g2[12] = fb2;
 
-        // ★ THE RESET (see the header): G1's natural period exceeds the 10230-chip code, so the
-        // ICD forces it back to all-ones on reaching 0011111111111 (indices 0 and 1 low, the
-        // rest high). Without this the tail of every code silently diverges.
+        // The G1 reset (see the header): back to all-ones on reaching the state with indices 0
+        // and 1 low and the rest high. Without it the tail of every code diverges.
         bool at_reset = (g1[0] == 0 && g1[1] == 0);
         for (int i = 2; i < 13 && at_reset; ++i)
             at_reset = (g1[i] == 1);

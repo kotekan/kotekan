@@ -15,9 +15,8 @@ void GnssChanMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
     }
 }
 
-// Wire format: [int64 sample_seq][uint32 n_scale][float x n_scale]. An 8-byte blob (the format
-// before chan_scale existed) still parses -- n_scale reads as absent, chan_scale comes back
-// empty, which already means "fp32 / no scales".
+// Wire format: [int64 sample_seq][uint32 n_scale][float x n_scale]. set_from_bytes also accepts
+// an 8-byte blob holding sample_seq alone, leaving chan_scale empty.
 size_t GnssChanMetadata::get_serialized_size() {
     return sizeof(int64_t) + sizeof(uint32_t) + chan_scale.size() * sizeof(float);
 }
@@ -36,7 +35,7 @@ size_t GnssChanMetadata::set_from_bytes(const char* bytes, size_t length) {
     std::memcpy(&sample_seq, bytes, sizeof(int64_t));
     chan_scale.clear();
     if (length < sizeof(int64_t) + sizeof(uint32_t))
-        return sizeof(int64_t); // pre-chan_scale blob
+        return sizeof(int64_t); // sample_seq only
     uint32_t n = 0;
     std::memcpy(&n, bytes + sizeof(int64_t), sizeof(uint32_t));
     const size_t need = sizeof(int64_t) + sizeof(uint32_t) + (size_t)n * sizeof(float);

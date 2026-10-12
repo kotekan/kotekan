@@ -5,6 +5,9 @@
 
 namespace beidou {
 
+// Per-PRN Weil parameters, PRN 1..63, from the ICD tables as transcribed in PocketSDR: phase
+// difference w (_PH_DIFF) and truncation point p (_TRUNC) for the pilot primary (B1CP), the
+// data primary (B1CD) and the pilot secondary (B1CS).
 static const int B1CP_PH_DIFF[63] = {
     796,  156,  4198, 3941, 1374, 1338, 1833, 2521, 3175, 168,  2715, 4408, 3160, 2796, 459,  3594,
     4813, 586,  1428, 2371, 2285, 3377, 4965, 3779, 4547, 1646, 1430, 607,  2118, 4709, 1149, 3283,
@@ -20,10 +23,6 @@ static const int B1CP_TRUNC[63] = {
     1115, 8047, 6795, 2575,  53,   1729, 6388, 682,  5565, 7160, 2277,
 };
 
-// B1C-DATA Weil-code parameters (BDS-SIS-ICD-B1C Table via PocketSDR B1CD_ph_diff/trunc_pnt,
-// used directly). Same Legendre-10243 Weil construction as the pilot, different phase-diff /
-// truncation tables -- verified generate_b1cd_code bit-exact vs PocketSDR gen_code_B1CD
-// (de-BOC) for PRN 19/20/30/45/63 (2026-07-30).
 static const int B1CD_PH_DIFF[63] = {
     2678, 4802, 958,  859,  3843, 2232, 124,  4352, 1816, 1126, 1860, 4800, 2267, 424,  4192, 4333,
     2656, 4148, 243,  1330, 1593, 1470, 882,  3202, 5095, 2546, 1733, 4795, 4577, 1627, 3638, 2553,

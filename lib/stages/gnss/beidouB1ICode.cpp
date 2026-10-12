@@ -6,10 +6,9 @@
 namespace beidou {
 namespace {
 
-// G2 output-tap selection per PRN (BDS-SIS-ICD-B1I v3.0), transcribed via gnss-sdr's
-// beidou_b1i_signal_replica.cc. ⚠️ phase3 is ZERO for PRN 1..37 (two taps) and NON-ZERO for
-// PRN 38..63 (three taps) -- see the header note; dropping the third tap yields valid-looking
-// but WRONG codes for precisely the BDS-3 satellites.
+// G2 output taps per PRN (BDS-SIS-ICD-B1I v3.0, as transcribed in gnss-sdr's
+// beidou_b1i_signal_replica.cc). B1I_PHASE3 is 0 for PRN 1..37 (two taps) and non-zero for
+// PRN 38..63 (three taps); see the header.
 constexpr int B1I_PHASE1[63] = {1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 3, 3,  4, 4, 4, 4, 4,
                                 4, 5, 5, 5, 5, 5, 6, 6, 6, 6, 8, 8, 8, 9, 9, 10, 2, 3, 3, 3, 3,
                                 3, 4, 4, 5, 5, 5, 5, 6, 8, 9, 9, 3, 5, 7, 4, 4,  5, 5, 5, 5, 6};
@@ -27,9 +26,9 @@ std::array<int8_t, B1I_CODE_LENGTH> generate_b1i_code(int prn) {
     if (prn < 1 || prn > 63)
         throw std::out_of_range("generate_b1i_code: PRN must be 1..63, got " + std::to_string(prn));
     const int idx = prn - 1;
-    // Both registers start at 01010101010 (ICD). Index 0 is the OUTPUT end; the string's
-    // leftmost character is the HIGHEST index (bitset convention), so 01010101010 loads as
-    // reg[10]=0, reg[9]=1, ... reg[0]=0.
+    // Both registers start at 01010101010 (ICD). Index 0 is the output end and the string's
+    // leftmost character is the highest index (bitset convention), so reg[10]=0, reg[9]=1,
+    // ... reg[0]=0.
     int g1[11], g2[11];
     for (int i = 0; i < 11; ++i) {
         const int bit = ((10 - i) % 2 == 1) ? 1 : 0; // "01010101010" -> reg[10-i] = s[i]
@@ -39,8 +38,8 @@ std::array<int8_t, B1I_CODE_LENGTH> generate_b1i_code(int prn) {
     std::array<int8_t, B1I_CODE_LENGTH> out{};
     for (int k = 0; k < B1I_CODE_LENGTH; ++k) {
         const int g1_out = g1[0];
-        // G2's output is a per-PRN XOR of two (PRN<=37) or three (PRN>=38) register taps.
-        // Tap index = 11 - phase (the ICD numbers stages 1..11 from the far end).
+        // G2's output is the XOR of two (PRN <= 37) or three (PRN >= 38) register taps. The ICD
+        // numbers stages 1..11 from the input end, so stage s is index 11 - s.
         int g2_out = g2[11 - B1I_PHASE1[idx]] ^ g2[11 - B1I_PHASE2[idx]];
         if (B1I_PHASE3[idx] != 0)
             g2_out ^= g2[11 - B1I_PHASE3[idx]];

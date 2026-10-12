@@ -14,8 +14,8 @@ using gps::L5_CODE_LENGTH;
 
 namespace {
 
-// First n chips packed MSB-first: chip -1 -> bit 1, +1 -> bit 0 (matches the
-// PocketSDR reference packing used to derive the expected octal values).
+// First n chips packed MSB-first: chip -1 -> bit 1, +1 -> bit 0, as in the PocketSDR
+// reference values below.
 uint32_t first_bits(const std::array<int8_t, L5_CODE_LENGTH>& code, int n) {
     uint32_t v = 0;
     for (int i = 0; i < n; ++i)

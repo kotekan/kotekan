@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE "test_gps_ca_code"
 
-#include "gpsCACode.hpp" // for generate_ca_code, g2_phase_taps, CA_CODE_LENGTH
+#include "gpsCACode.hpp" // for generate_ca_code, CA_CODE_LENGTH
 
 #include <array> // for array
 #include <boost/test/included/unit_test.hpp>
@@ -13,8 +13,7 @@ using gps::generate_ca_code;
 
 namespace {
 
-// Periodic correlation of a bipolar code with a cyclically-shifted copy of
-// another, summed over the full 1023-chip period.
+// Periodic correlation: sum over i of a[i] * b[(i + shift) mod 1023].
 int periodic_correlation(const std::array<int8_t, CA_CODE_LENGTH>& a,
                          const std::array<int8_t, CA_CODE_LENGTH>& b, int shift) {
     int sum = 0;
@@ -23,8 +22,7 @@ int periodic_correlation(const std::array<int8_t, CA_CODE_LENGTH>& a,
     return sum;
 }
 
-// Reconstruct the first n logical chips (1/0) from the bipolar code, using the
-// IS-GPS-200 mapping logical 1 -> -1, logical 0 -> +1.
+// The first n chips as logical bits (-1 -> 1, +1 -> 0), packed MSB-first.
 int first_chips_octal_bits_to_int(const std::array<int8_t, CA_CODE_LENGTH>& code, int n) {
     int value = 0;
     for (int i = 0; i < n; ++i) {
@@ -36,8 +34,8 @@ int first_chips_octal_bits_to_int(const std::array<int8_t, CA_CODE_LENGTH>& code
 
 } // namespace
 
-// The strongest convention-independent check: a length-1023 Gold code is
-// balanced (number of +1 and -1 chips differ by exactly one).
+// Every C/A code is balanced: its +1 and -1 counts differ by exactly one, whatever the sign
+// convention.
 BOOST_AUTO_TEST_CASE(ca_codes_are_balanced) {
     for (int prn = 1; prn <= 32; ++prn) {
         const auto code = generate_ca_code(prn);
@@ -50,9 +48,8 @@ BOOST_AUTO_TEST_CASE(ca_codes_are_balanced) {
     }
 }
 
-// Auto-correlation: peak at zero lag is 1023; every off-peak periodic
-// auto-correlation value lies in the Gold-code three-valued set {-1,-65,63}
-// (for n=10, t(n)=65).
+// Autocorrelation is 1023 at zero lag, and every off-peak value lies in the Gold three-valued
+// set {-1,-65,63} (n = 10, t(n) = 65).
 BOOST_AUTO_TEST_CASE(ca_autocorrelation_is_three_valued) {
     for (int prn = 1; prn <= 32; ++prn) {
         const auto code = generate_ca_code(prn);
@@ -80,16 +77,13 @@ BOOST_AUTO_TEST_CASE(ca_crosscorrelation_is_three_valued) {
     }
 }
 
-// Pin the exact code phase against published IS-GPS-200 "first 10 chips"
-// octal values (Table 3-Ia), confirming both the tap table and the bipolar
-// mapping. The leading-chip-first logical bits packed MSB-first equal the
-// listed octal.
+// The first 10 chips, as logical bits packed MSB-first, equal the octal values listed in
+// IS-GPS-200 Table 3-Ia; this pins both the tap table and the bipolar mapping.
 BOOST_AUTO_TEST_CASE(ca_first_chips_match_is_gps_200) {
     struct Expected {
         int prn;
-        int octal; // value of the published octal literal, read as base-8
+        int octal; // published octal value
     };
-    // Octal literals from IS-GPS-200 Table 3-Ia.
     const std::vector<Expected> expected = {
         {1, 01440}, {2, 01620}, {3, 01710}, {4, 01744},
         {5, 01133}, {6, 01455}, {7, 01131}, {19, 01633},

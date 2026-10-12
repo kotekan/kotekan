@@ -2,21 +2,15 @@
  * @file
  * @brief GPS L2C (L2 CM / L2 CL) spreading-code generation (IS-GPS-200).
  *
- * The L2C civil signal carries two codes, time-division-multiplexed chip-by-chip
- * into a 1.023 Mcps stream (CM on even chips, CL on odd):
- *  - CM ("civil moderate"): 10230 chips @ 511.5 kcps, 20 ms period, carries the
- *    CNAV data.
- *  - CL ("civil long"): 767250 chips @ 511.5 kcps, 1.5 s period, dataless pilot.
+ * L2C carries two codes, time-multiplexed chip by chip into a 1.023 Mcps stream (CM on even
+ * chips, CL on odd):
+ *  - CM (civil moderate): 10230 chips at 511.5 kcps, 20 ms period, carries CNAV data.
+ *  - CL (civil long): 767250 chips at 511.5 kcps, 1.5 s period, dataless pilot.
  *
- * Both are produced by the same 27-stage modular (Galois) shift register
- * (IS-GPS-200 polynomial 1112225171 octal), differing only in the per-PRN
- * initial state and the reset length. This implementation is a direct port of
- * the generator used by GNSS-SDR and PocketSDR (Galois feedback mask 0445112474
- * octal, output = register LSB); the feedback mask and the CM initial states
- * agree between those two independent implementations, and the generated codes
- * are cross-checked against PocketSDR reference chips in the unit test.
- *
- * Pure / dependency-free, like gpsCACode -- see tests/boost/test_gps_l2c_code.cpp.
+ * Both come from the same 27-stage modular (Galois) shift register (IS-GPS-200 polynomial
+ * 1112225171 octal) and differ only in the per-PRN initial state and the reset length. The
+ * generator follows GNSS-SDR and PocketSDR (feedback mask 0445112474 octal, output = register
+ * LSB). No kotekan dependencies.
  */
 
 #ifndef GPS_L2C_CODE_HPP
@@ -30,7 +24,7 @@ namespace gps {
 constexpr int L2CM_CODE_LENGTH = 10230;  ///< CM chips (20 ms @ 511.5 kcps)
 constexpr int L2CL_CODE_LENGTH = 767250; ///< CL chips (1.5 s @ 511.5 kcps)
 constexpr int L2C_PRN_MIN = 1;
-constexpr int L2C_PRN_MAX = 32; ///< table covers the GPS constellation
+constexpr int L2C_PRN_MAX = 32; ///< initial-state tables cover PRN 1..32
 
 /**
  * @brief Generate the L2 CM code for a PRN as bipolar +1 / -1.

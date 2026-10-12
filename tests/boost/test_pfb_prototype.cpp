@@ -17,14 +17,15 @@ namespace {
 constexpr int N = 16; // channels
 constexpr int P = 4;  // taps per channel
 
-// Channel magnitudes for a unit complex tone at `f` bins, through the given
-// prototype (length N*num_taps). Builds the delay line, folds, and takes a
-// reference N-point DFT -- no FFTW.
+// Channel magnitudes for a unit complex tone centered on channel `f`, through the given
+// prototype (length N*num_taps): fills the delay line, folds, and takes a reference N-point
+// DFT (no FFTW).
 std::vector<double> channel_response(const std::vector<float>& proto, int num_taps, double f) {
     const int L = N * num_taps;
     std::vector<cf> hist(L);
     for (int j = 0; j < L; ++j) {
-        const double ph = 2.0 * M_PI * f * j / N; // +freq tone -> lands in channel f
+        // hist is newest first, so this is a tone at -f bins in time; it lands in DFT bin f.
+        const double ph = 2.0 * M_PI * f * j / N;
         hist[j] = cf(std::cos(ph), std::sin(ph));
     }
     std::vector<cf> v(N);
@@ -37,14 +38,13 @@ std::vector<double> channel_response(const std::vector<float>& proto, int num_ta
             const double ph = -2.0 * M_PI * k * p / N;
             x += v[p] * cf(std::cos(ph), std::sin(ph));
         }
-        mag[k] = std::abs(x) / N; // per-branch normalize -> physical channel gain
+        mag[k] = std::abs(x) / N; // the taps sum to N, so a channel-center tone reads 1
     }
     return mag;
 }
 
-// The straight-FFT channelizer = a length-N rectangular window (P=1), each
-// sample weighted 1 (sum == N, the same per-branch-unit-gain convention as the
-// PFB prototype).
+// The straight-FFT channelizer: a length-N all-ones window (P=1), whose taps sum to N like
+// the PFB prototype's.
 std::vector<float> straight_fft_prototype() {
     return std::vector<float>(N, 1.0f);
 }
@@ -79,8 +79,7 @@ BOOST_AUTO_TEST_CASE(pfb_push_orders_delay_line_newest_first) {
 }
 
 BOOST_AUTO_TEST_CASE(prototype_taps_sum_to_num_chan) {
-    // Per-branch unit gain -> total sum == num_chan, so the channelizer matches
-    // a straight FFT's passband gain (and output power level).
+    // The taps sum to num_chan, matching a straight FFT's passband gain.
     auto h = pfb_prototype(N, P, Window::Hamming);
     double sum = 0.0;
     for (float v : h)
@@ -121,7 +120,7 @@ BOOST_AUTO_TEST_CASE(pfb_far_leakage_beats_straight_fft) {
 
     BOOST_CHECK_SMALL(pfb_leak, 0.05);        // deep stopband
     BOOST_CHECK_GT(fft_leak, 0.1);            // sinc sidelobes leak badly
-    BOOST_CHECK_LT(pfb_leak * 3.0, fft_leak); // PFB >> straight FFT
+    BOOST_CHECK_LT(pfb_leak * 3.0, fft_leak); // at least 3x below the straight FFT
 }
 
 BOOST_AUTO_TEST_CASE(stronger_window_gives_deeper_stopband) {

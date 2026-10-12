@@ -7,13 +7,13 @@ namespace gps {
 
 namespace {
 
-// 27-stage Galois (modular) shift register feedback mask, octal -- the form
-// used by GNSS-SDR and PocketSDR for IS-GPS-200 L2C (equivalent to polynomial
-// 1112225171 octal). One step: R = (R >> 1) XOR (MASK if LSB set).
+// Feedback mask (octal) of the 27-stage Galois register, as in GNSS-SDR and PocketSDR;
+// equivalent to the IS-GPS-200 polynomial 1112225171 octal. One step:
+// R = (R >> 1) XOR (MASK if LSB set).
 constexpr uint32_t L2C_FEEDBACK = 0445112474U;
 
-// Per-PRN initial register states (octal), PRN 1..32, from IS-GPS-200 Table
-// 3-II; transcribed from PocketSDR / GNSS-SDR (the two agree on CM).
+// Per-PRN CM and CL initial register states (octal), PRN 1..32, IS-GPS-200 Table 3-II,
+// transcribed from PocketSDR; the CM states also match GNSS-SDR.
 constexpr uint32_t L2CM_INIT[L2C_PRN_MAX] = {
     0742417664, 0756014035, 0002747144, 0066265724, 0601403471, 0703232733, 0124510070, 0617316361,
     0047541621, 0733031046, 0713512145, 0024437606, 0021264003, 0230655351, 0001314400, 0222021506,

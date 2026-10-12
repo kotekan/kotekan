@@ -32,12 +32,10 @@ int balance(const std::array<int8_t, N>& code) {
 
 } // namespace
 
-// balance == 0 is a hard cross-check of the construction, independent of the (w,p) tables:
-// for the Legendre length 10223 (== 3 mod 4) the quadratic-residue autocorrelation is -1, so the
-// 10223-chip Weil code sums to -1, and the +1-sum 7-chip insertion brings it to exactly 0. A
-// wrong Legendre/Weil would miss this. The first-24-chip octals are regression pins computed from
-// the IS-GPS-800/PocketSDR algorithm + index tables (run PocketSDR sdr_code for a byte-level
-// check).
+// balance == 0 checks the construction independently of the (w, p) tables: the Legendre length
+// 10223 is 3 mod 4, so the Legendre autocorrelation at any non-zero shift is -1, the 10223-chip
+// Weil code sums to -1, and the 7-chip insertion (sum +1) brings the total to 0. The first-24-chip
+// octals are regression pins from the IS-GPS-800 / PocketSDR algorithm and index tables.
 BOOST_AUTO_TEST_CASE(l1cp_first24_and_balance) {
     BOOST_CHECK_EQUAL(first_bits(generate_l1cp_code(1), 24), 05752067u);
     BOOST_CHECK_EQUAL(first_bits(generate_l1cp_code(5), 24), 042323273u);
@@ -60,10 +58,9 @@ BOOST_AUTO_TEST_CASE(invalid_prn_throws) {
     BOOST_CHECK_THROW(generate_l1cp_code(33), std::out_of_range);
 }
 
-// L1CO overlay. first-24-symbol octals are regression pins from the PocketSDR sec_code_L1CP
-// 11-stage LFSR (S1 only -- exact for GPS PRNs). balance == 0 for EVERY PRN (each 1800-symbol
-// overlay is exactly 900/900) is a hard, table-independent cross-check of the LFSR. PRN18/23 are
-// the GPS III birds actually broadcasting L1C, so their pins are the operationally relevant ones.
+// L1CO overlay. The first-24-symbol octals are regression pins from PocketSDR's sec_code_L1CP
+// S1 LFSR. balance == 0 for every PRN (900 symbols of each sign) checks the LFSR independently
+// of the pins.
 BOOST_AUTO_TEST_CASE(l1co_first24_and_balance) {
     BOOST_CHECK_EQUAL(first_bits(generate_l1co_code(1), 24), 065550354u);
     BOOST_CHECK_EQUAL(first_bits(generate_l1co_code(5), 24), 077357174u);
@@ -73,21 +70,21 @@ BOOST_AUTO_TEST_CASE(l1co_first24_and_balance) {
     for (int prn = 1; prn <= 32; ++prn) {
         auto c = generate_l1co_code(prn);
         BOOST_REQUIRE_EQUAL(c.size(), (size_t)L1CO_LENGTH);
-        BOOST_CHECK_EQUAL(balance(c), 0); // every overlay is exactly balanced
+        BOOST_CHECK_EQUAL(balance(c), 0);
         for (int8_t x : c)
             BOOST_CHECK(x == 1 || x == -1);
     }
 }
 
-// Distinct PRNs decorrelate (full-length cross-correlation small vs the 1800 autocorrelation);
-// and the overlay is independent of the primary -- a near-orthogonal pair pins both generators.
+// Two PRNs' overlays differ, and their zero-lag cross-correlation is under a tenth of the 1800
+// autocorrelation.
 BOOST_AUTO_TEST_CASE(l1co_distinct_and_low_cross_correlation) {
     auto a = generate_l1co_code(18), b = generate_l1co_code(23);
     BOOST_CHECK(a != b);
     int cross = 0;
     for (int i = 0; i < L1CO_LENGTH; ++i)
         cross += a[(size_t)i] * b[(size_t)i];
-    BOOST_CHECK_LT(std::abs(cross), L1CO_LENGTH / 10); // |PRN18.PRN23| << 1800 (auto)
+    BOOST_CHECK_LT(std::abs(cross), L1CO_LENGTH / 10);
 }
 
 BOOST_AUTO_TEST_CASE(l1co_invalid_prn_throws) {

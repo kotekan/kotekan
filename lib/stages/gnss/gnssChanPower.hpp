@@ -12,11 +12,11 @@ namespace gnss {
  * @brief Process-wide per-channel, per-element mean power |x|^2 (4+4b lsb^2), keyed by F-engine
  *        freq_id.
  *
- * GnssChordVoltageTap publishes it on every band-power pass; GnssGpuRecordAssemble reads the
- * mean over ITS OWN elements to weight its cross-channel sums (@c chan_noise_norm, #163). Per
- * element, because the frame carries inputs the beam never sums -- the RFI antennas with their
- * own gain table, dead slots -- and a frame-wide mean lets them set the weights. One table per
- * process: every stage of an instance sees the same frames.
+ * GnssChordVoltageTap publishes it on each band-power pass; GnssGpuRecordAssemble reads the
+ * mean over its own elements to weight its cross-channel sums (@c chan_noise_norm). It is kept
+ * per element because the frame carries inputs the beam never sums (RFI antennas with their own
+ * gain table, dead slots), which would otherwise set the weights. One table per process, since
+ * every stage of an instance sees the same frames. Thread-safe.
  */
 class ChanPower {
 public:
@@ -44,9 +44,9 @@ public:
         }
     }
 
-    /// @c power[i] = the mean over the listed frame elements WITH POWER of channel
-    /// @c freq_ids[i]; 0 where the channel is unknown or none of the elements has any.
-    /// Returns how many channels were known.
+    /// @c power[i] = the mean power of channel @c freq_ids[i] over those of the listed frame
+    /// elements that are in the table with non-zero power; 0 where the channel is unknown or no
+    /// listed element qualifies. Returns how many channels were known.
     int lookup(const int* freq_ids, int n, const int* elems, int n_elems, double* power) const {
         std::lock_guard<std::mutex> lk(_m);
         int found = 0;

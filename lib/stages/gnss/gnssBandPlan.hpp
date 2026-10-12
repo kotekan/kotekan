@@ -2,19 +2,16 @@
  * @file
  * @brief Band plan: map a GNSS signal onto the channelized (PFB) frequency grid.
  *
- * In the distributed-band pipeline a carrier does not live in a single PFB
- * channel -- L1 C/A's main lobe is ~2 MHz, which at ~195 kHz/channel spans ~10
- * channels and can straddle a node boundary. This header is the pure-logic seam
- * that answers "which channels carry PRN k's signal?": given a @ref
- * SignalDescriptor and a maximum |Doppler|, it returns the set of channel IDs
- * whose passband overlaps the signal's occupied band.
+ * A signal's main lobe spans many PFB channels (L1 C/A's ~2 MHz covers ~10 channels of
+ * ~195 kHz) and can straddle a node boundary. Given a @ref SignalDescriptor and a maximum
+ * |Doppler|, @ref covering_channels returns the channels whose passband overlaps the signal's
+ * occupied band.
  *
- * The core works on a plain list of @ref ChannelBand (id, center, width) so it
- * is unit-testable without the kotekan @c Telescope singleton and can reason
- * about *other* nodes' channels too. @ref gnssBandPlanTelescope.hpp builds that
- * list from a live Telescope. Correlate-at-data, ship-records is the transport
- * model: a node runs the correlators for the carriers whose covering channels
- * it holds, so this map drives per-node work assignment in the broker.
+ * @ref covering_channels takes a plain list of @ref ChannelBand rather than the kotekan
+ * @c Telescope, so it can describe any node's channels and is testable without one.
+ * ChannelizedReplicaBank::covering_bins builds the list from its own r2c grid.
+ * config/chord_band_plan.py mirrors these functions for the config generator's per-node channel
+ * choice; keep the two in step.
  */
 
 #ifndef GNSS_BAND_PLAN_HPP
@@ -43,16 +40,16 @@ struct BandSpan {
     double hi_hz;
 };
 
-/// One-sided half-occupied bandwidth of the signal's main spectral lobe(s), in
-/// Hz. BPSK: the first spectral null at the chip rate. BOC(m,n): the outer null
-/// of the upper subcarrier lobe, ~(m+n)*1.023 MHz from the carrier.
+/// One-sided half-width of the signal's main spectral lobe(s), in Hz. BPSK: the first null,
+/// one chip rate from the carrier. BOC(m,n): the outer null of the upper subcarrier lobe,
+/// (m+n)*1.023 MHz from the carrier.
 double half_bandwidth_hz(const SignalDescriptor& sig);
 
 /// Sky band the signal occupies, widened by the worst-case |Doppler| (Hz).
 BandSpan occupied_band(const SignalDescriptor& sig, double max_doppler_hz);
 
-/// Channel IDs whose passband overlaps the signal's occupied band, ordered by
-/// center frequency. `chans` need not be sorted.
+/// Channel IDs whose passband overlaps the signal's occupied band (a shared edge does not
+/// count), ordered by center frequency. `chans` need not be sorted.
 std::vector<freq_id_t> covering_channels(const std::vector<ChannelBand>& chans,
                                          const SignalDescriptor& sig, double max_doppler_hz);
 

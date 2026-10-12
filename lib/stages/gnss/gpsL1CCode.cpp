@@ -7,8 +7,8 @@ namespace {
 
 constexpr int N_L = 10223; // Legendre sequence length (prime)
 
-// IS-GPS-800 L1C-P Weil index (w) and insertion index (p, 1-indexed), PRN 1..32.
-// Transcribed from PocketSDR sdr_code (L1CP_weil_idx / L1CP_ins_idx).
+// IS-GPS-800 L1C-P Weil index (w) and insertion index (p, 1-indexed), PRN 1..32,
+// transcribed from PocketSDR sdr_code (L1CP_weil_idx / L1CP_ins_idx).
 constexpr int L1CP_WEIL[32] = {5111, 5109, 5108, 5106, 5103, 5101, 5100, 5098, 5095, 5094, 5093,
                                5091, 5090, 5081, 5080, 5069, 5068, 5054, 5044, 5027, 5026, 5014,
                                5004, 4980, 4915, 4909, 4893, 4885, 4832, 4824, 4591, 3706};
@@ -16,9 +16,7 @@ constexpr int L1CP_INS[32] = {412,  161, 1,   303,  207, 4971, 4496, 5,    4557,
                               4676, 1,   66,  4485, 282, 193,  5211, 729,  4848, 982, 5955,
                               9805, 670, 464, 29,   429, 394,  616,  9457, 4429, 4771};
 
-// IS-GPS-800 L1C-D (DATA) Weil index (w) and insertion index (p, 1-indexed), PRN 1..32.
-// Transcribed from PocketSDR sdr_code (L1CD_weil_idx / L1CD_ins_idx); raw code verified 32/32
-// against PocketSDR gen_code_L1CPD. Same Legendre + 7-chip insertion as L1C-P, different indices.
+// L1C-D indices, same layout and source (PocketSDR L1CD_weil_idx / L1CD_ins_idx).
 constexpr int L1CD_WEIL[32] = {5097, 5110, 5079, 4403, 4121, 5043, 5042, 5104, 4940, 5035, 4372,
                                5064, 5084, 5048, 4950, 5019, 5076, 3736, 4993, 5060, 5061, 5096,
                                4983, 4783, 4991, 4815, 4443, 4769, 4879, 4894, 4985, 5056};
@@ -29,11 +27,11 @@ constexpr int L1CD_INS[32] = {181,  359, 72,  1110, 1480, 5034, 4622, 1,    4547
 // 7-chip insertion pattern "0110100" in bipolar (+1 for 0, -1 for 1).
 constexpr int8_t INS[7] = {1, -1, -1, 1, -1, 1, 1};
 
-// L1CO overlay: per-PRN 11-stage Galois LFSR feedback polynomial (S1_poly) and initial state
-// (S1_init), octal, PRN 1..32 (IS-GPS-800 / PocketSDR sec_code_L1CP). PocketSDR clocks the LFSR
-// MSB-first after bit-reversing the low 11 bits of both the tap (poly>>1) and the init; we
-// reproduce that exactly. GPS PRNs 1..63 use this S1 LFSR alone (the second S2 product code
-// applies only to PRN>=64), so this single-LFSR form is exact for every GPS satellite.
+// L1CO overlay: per-PRN feedback polynomial (S1_poly) and initial state (S1_init), octal, of
+// the 11-stage S1 LFSR, PRN 1..32 (IS-GPS-800, from PocketSDR sec_code_L1CP). As in PocketSDR,
+// the tap mask (poly >> 1) and the initial state are bit-reversed over 11 bits, and the register
+// shifts right, outputs bit 0 and feeds parity(R & tap) into bit 10. GPS PRNs 1..63 use S1
+// alone (the S2 product applies from PRN 64), so this is exact for every GPS satellite.
 constexpr int L1CO_S1_POLY[32] = {05111, 05421, 05501, 05403, 06417, 06141, 06351, 06501,
                                   06205, 06235, 07751, 06623, 06733, 07627, 05667, 05051,
                                   07665, 06325, 04365, 04745, 07633, 06747, 04475, 04225,
@@ -51,7 +49,7 @@ inline unsigned rev11(unsigned r) {
     return rr;
 }
 
-// Parity (XOR of all set bits) -- the LFSR feedback. Portable (no __builtin_parity dependency).
+// XOR of all bits of x: the LFSR feedback (portable, unlike __builtin_parity).
 inline unsigned parity(unsigned x) {
     unsigned p = 0;
     while (x) {
@@ -61,8 +59,8 @@ inline unsigned parity(unsigned x) {
     return p;
 }
 
-// Legendre sequence L (length N_L), built once: +1 everywhere, -1 at quadratic residues
-// mod N_L (PocketSDR convention; L(0)=+1). Static so it's computed on first use only.
+// Legendre sequence L of length N_L, built on first use: -1 at the non-zero quadratic residues
+// mod N_L and +1 elsewhere, including L(0) (PocketSDR convention).
 const std::array<int8_t, N_L>& legendre() {
     static const std::array<int8_t, N_L> L = [] {
         std::array<int8_t, N_L> a;
@@ -74,8 +72,8 @@ const std::array<int8_t, N_L>& legendre() {
     return L;
 }
 
-// Shared L1C Weil-code construction (IS-GPS-800): Weil sequence L(t)*L(t+w) with a 7-chip
-// insertion "0110100" at position p. L1C-P and L1C-D differ ONLY in the (w, p) indices.
+// L1C Weil code (IS-GPS-800): L(t)*L((t+w) mod N_L) with "0110100" inserted at 1-indexed
+// position p. L1C-P and L1C-D differ only in (w, p).
 std::array<int8_t, L1C_CODE_LENGTH> weil_code(int w, int p) {
     const auto& L = legendre();
     std::array<int8_t, L1C_CODE_LENGTH> code;
@@ -112,8 +110,8 @@ std::array<int8_t, L1CO_LENGTH> generate_l1co_code(int prn) {
     unsigned R = rev11((unsigned)L1CO_S1_INIT[prn - 1]);
     std::array<int8_t, L1CO_LENGTH> code;
     for (int i = 0; i < L1CO_LENGTH; ++i) {
-        code[(size_t)i] = (R & 1u) ? (int8_t)-1 : (int8_t)1; // CHIP: bit 0 -> +1, bit 1 -> -1
-        R = (parity(R & tap) << 10) | (R >> 1);              // Galois clock, feedback into MSB
+        code[(size_t)i] = (R & 1u) ? (int8_t)-1 : (int8_t)1; // LSB 0 -> +1, 1 -> -1
+        R = (parity(R & tap) << 10) | (R >> 1);              // shift right, feedback into bit 10
     }
     return code;
 }

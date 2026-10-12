@@ -2,19 +2,15 @@
  * @file
  * @brief GPS L5 ranging-code generation (IS-GPS-705).
  *
- * L5 (1176.45 MHz) has two components in phase quadrature: I5 (data, carries
- * CNAV) and Q5 (dataless pilot). Each is a 10230-chip primary code at 10.23
- * Mcps (1 ms period), formed as the XOR of a common XA sequence with a
- * per-PRN-shifted XB sequence -- XA is a 13-stage LFSR short-cycled at 8190
- * chips; XB is a 13-stage maximal-length LFSR (period 8191) started at the
- * PRN's XB advance (IS-GPS-705 Table 3-I) and not short-cycled, so it wraps at
- * 8191 within the 10230-chip code. On top of the primary code each component
- * carries a Neuman-Hofman overlay: 10 chips (NH10, 10 ms) on I5, 20 chips
- * (NH20, 20 ms) on Q5.
+ * L5 (1176.45 MHz) has two components in phase quadrature: I5 (data, CNAV) and Q5 (dataless
+ * pilot). Each primary code is 10230 chips at 10.23 Mcps (1 ms), the XOR of a common XA
+ * sequence (13-stage LFSR short-cycled at 8190 chips) and an XB sequence (13-stage
+ * maximal-length LFSR, period 8191) started a per-PRN number of chips in (IS-GPS-705 Table 3-I).
+ * XB is not short-cycled, so it wraps at 8191 within the code. Each component also carries a
+ * Neuman-Hofman overlay: NH10 (10 ms) on I5, NH20 (20 ms) on Q5.
  *
- * Tables transcribed from IS-GPS-705 and cross-validated against PocketSDR
- * (sdr_code.py). Pure, no kotekan deps; tested in
- * tests/boost/test_gps_l5_code.cpp.
+ * Tables transcribed from IS-GPS-705 and checked against PocketSDR (sdr_code.py). No kotekan
+ * dependencies.
  */
 
 #ifndef GPS_L5_CODE_HPP

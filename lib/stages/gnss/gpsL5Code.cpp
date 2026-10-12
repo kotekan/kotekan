@@ -6,8 +6,8 @@ namespace gps {
 
 namespace {
 
-// Fibonacci LFSR (PocketSDR convention): output chip = (R & 1) ? -1 : +1, then
-// shift right and feed parity(R & tap) into bit n-1. R holds the n-bit state.
+// n-stage Fibonacci LFSR (PocketSDR convention): output chip = (reg & 1) ? -1 : +1, then
+// shift right and feed parity(reg & tap) into bit n-1. An ICD polynomial term x^k is tap bit n-k.
 void lfsr(int8_t* out, int count, uint32_t reg, uint32_t tap, int n) {
     for (int i = 0; i < count; ++i) {
         out[i] = (reg & 1u) ? -1 : 1;
@@ -16,8 +16,8 @@ void lfsr(int8_t* out, int count, uint32_t reg, uint32_t tap, int n) {
     }
 }
 
-// XA: 13-stage LFSR (taps for x^9+x^10+x^12+x^13) run for 8190 chips, then its
-// first 2040 chips repeated -> 10230 (XA "short cycle" wrap).
+// XA (1 + x^9 + x^10 + x^12 + x^13), short-cycled: reset to all-ones after 8190 chips, so
+// chips 8190..10229 repeat its first 2040.
 const std::array<int8_t, L5_CODE_LENGTH>& xa_code() {
     static const std::array<int8_t, L5_CODE_LENGTH> xa = [] {
         std::array<int8_t, L5_CODE_LENGTH> a{};
@@ -32,8 +32,8 @@ const std::array<int8_t, L5_CODE_LENGTH>& xa_code() {
     return xa;
 }
 
-// XB: one full 8191-chip period of the 13-stage LFSR from all-ones. XB is not short-cycled, so
-// within a code period it wraps at 8191, not 10230.
+// XB (1 + x + x^3 + x^4 + x^6 + x^7 + x^8 + x^12 + x^13): one full 8191-chip period from
+// all-ones. XB is not short-cycled, so within a code period it wraps at 8191, not 10230.
 constexpr int L5_XB_PERIOD = 8191;
 const std::array<int8_t, L5_XB_PERIOD>& xb_code() {
     static const std::array<int8_t, L5_XB_PERIOD> xb = [] {

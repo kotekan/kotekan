@@ -2,17 +2,13 @@
 #define BEIDOU_B2A_CODE_HPP
 /**
  * @file beidouB2aCode.hpp
- * @brief BeiDou-3 B2a primary + secondary code generation (BDS-SIS-ICD-B2a).
+ * @brief BeiDou-3 B2a primary and secondary codes (BDS-SIS-ICD-B2a).
  *
  * B2a-pilot (dataless, 1176.45 MHz): 10230-chip primary at 10.23 Mcps (1 ms) from two
- * 13-stage LFSRs (G1 all-ones truncated at 8190 + restart, G2 with per-PRN start
- * values), plus the per-PRN 100-chip secondary (Weil-1021, truncated) -- one chip per
- * primary period, 100 ms cycle. BDS-3 only (like B1C); B2a is transmitted by MEO/IGSO
- * BDS-3 satellites.
- *
- * Tables sourced from PocketSDR and SKY-VALIDATED 2026-07-15: unseeded acquisition of
- * C21/C22/C26/C36 at 40-45 dB-Hz from a raw 1176.45 MHz capture
- * (python/scripts/gnss/l5_band_decode.py, the bit-exactness reference).
+ * 13-stage LFSRs (G1 from all-ones, truncated at 8190 chips and restarted; G2 from per-PRN
+ * start values), plus a per-PRN 100-chip secondary (truncated Weil-1021), one chip per primary
+ * period, 100 ms cycle. B2a-data has the same structure with its own polynomials and a shared
+ * 5-chip secondary. Transmitted by BDS-3 MEO/IGSO satellites only. Tables from PocketSDR.
  */
 #include <array>
 #include <cstdint>
@@ -24,14 +20,15 @@ constexpr int B2A_CODE_LENGTH = 10230;
 /// B2a-pilot primary code, PRN 1..63, as +-1 chips.
 std::array<int8_t, B2A_CODE_LENGTH> generate_b2ap_code(int prn);
 
-/// B2a-pilot 100-chip secondary overlay (one per primary period), PRN 1..63.
+/// B2a-pilot 100-chip secondary overlay (one chip per primary period), PRN 1..63.
 std::array<int8_t, 100> b2ap_secondary(int prn);
 
-/// B2a-DATA primary code, PRN 1..63, as +-1 chips. Same G1/G2 structure as the pilot, its own
-/// generator polynomials (shares the G2 start table). Carries B-CNAV2 (S5 D-component #3).
+/// B2a-data primary code, PRN 1..63, as +-1 chips. Same G1/G2 structure as the pilot with its
+/// own generator polynomials; its G2 start values match the pilot's for PRN 1..60 only.
+/// Carries B-CNAV2.
 std::array<int8_t, B2A_CODE_LENGTH> generate_b2ad_code(int prn);
 
-/// B2a-DATA 5-chip secondary overlay (5 ms = one B-CNAV2 symbol), SAME for every satellite.
+/// B2a-data 5-chip secondary overlay (5 ms = one B-CNAV2 symbol), the same for every satellite.
 std::array<int8_t, 5> b2ad_secondary();
 
 } // namespace beidou

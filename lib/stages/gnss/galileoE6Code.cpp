@@ -5,13 +5,10 @@
 
 namespace galileo {
 
-// Hex tables: 1279 hex chars per PRN. The code is 5115 chips = chars 0..1277 in FULL
-// (5112 bits) + the TOP 3 BITS of char 1278; that last char's low bit is PADDING, not a
-// chip (gnss-sdr's galileo_e6_signal_replica.cc: "last bit is filled up with a zero").
-// decode() below indexes hex[i/4] for i < 5115, which consumes exactly those bits.
-// Source: EU "Galileo E6-B/C Codes Technical Note", Issue 1, January 2019 (published to
-// enable HAS), as transcribed by gnss-sdr's Galileo_E6.h -- the same provenance route as
-// our E1B/E1C tables. Bit 0 -> chip +1, bit 1 -> chip -1.
+// E6B_HEX and E6C_HEX: 1279 chars per PRN, MSB-first. The 5115 chips are all four bits of
+// chars 0..1277 plus the top three of char 1278, whose low bit is padding; decode() reads
+// hex[i/4] for i < 5115, which consumes exactly those bits. Every code then has 2558 chips of
+// +1 and 2557 of -1 (python/scripts/gnss/e6_code_check.py). Logic 0 -> chip +1, 1 -> chip -1.
 
 static const char* const E6B_HEX[50] = {
     "E6648AA5EFF0907A170377FB20CEDEE1E8D253DAC2496831010336B444276BAAB17E599548B1A79C"

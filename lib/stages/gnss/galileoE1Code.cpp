@@ -5,9 +5,8 @@
 
 namespace galileo {
 
-// Hex tables: 1023 hex chars = 4092 bits per PRN, MSB-first (ICD Annex C convention, as
-// transcribed by gnss-sdr's Galileo_E1.h). Bit 0 -> chip +1, bit 1 -> chip -1 after the
-// 0->+1 / 1->-1 BPSK mapping below.
+// Hex tables, 1023 chars = 4092 bits per PRN, MSB-first, as transcribed in gnss-sdr's
+// Galileo_E1.h. Logic 0 -> chip +1, logic 1 -> chip -1.
 static const char* const E1B_HEX[50] = {
     "F5D710130573541B9DBD4FD9E9B20A0D59D144C54BC7935539D2E75810FB51E494093A0A19DD79C7"
     "0C5A98E5657AA578097777E86BCC4651CC72F2F974DC766E07AEA3D0B557EF42FF57E6A58E805358"

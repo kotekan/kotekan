@@ -6,9 +6,9 @@ namespace galileo {
 
 namespace {
 
-// Shared 14-stage Fibonacci LFSR -- identical convention to galileoE5aCode.cpp's lfsr14 (output
-// = reg LSB as +1/-1 for bit 0/1; feedback = parity of reg & tap into the top bit), verified
-// bit-identical against PocketSDR (python/scripts/gnss/e5b_code_check.py).
+// 14-stage Fibonacci LFSR, the same convention as lfsr14 in galileoE5aCode.cpp: output the
+// register LSB as a chip (0 -> +1, 1 -> -1), then shift right and feed parity(reg & tap) into
+// bit 13. An ICD polynomial term x^k is tap bit 14-k; ICD start values are bit-reversed.
 void lfsr14(int8_t* out, int count, uint32_t reg, uint32_t tap) {
     for (int i = 0; i < count; ++i) {
         out[i] = (reg & 1u) ? -1 : 1;
@@ -17,9 +17,8 @@ void lfsr14(int8_t* out, int count, uint32_t reg, uint32_t tap) {
     }
 }
 
-// E5b base register 1 (X1): all-ones start, free-runs the full 10230 chips. Tap = Galileo OS
-// SIS ICD E5b polynomial 0o64021, bit-reversed into this LFSR convention (pre-resolved; see
-// e5b_code_check.py). NOTE: distinct from E5a's X1 tap -- E5b is a different code family.
+// X1, shared by E5b-I and E5b-Q: all-ones start, ICD polynomial 0o64021 (tap 0x040B), run for
+// the full 10230 chips.
 const std::array<int8_t, E5B_CODE_LENGTH>& x1_code() {
     static const std::array<int8_t, E5B_CODE_LENGTH> x1 = [] {
         std::array<int8_t, E5B_CODE_LENGTH> a{};
@@ -29,8 +28,8 @@ const std::array<int8_t, E5B_CODE_LENGTH>& x1_code() {
     return x1;
 }
 
-// Per-PRN base-register-2 START VALUES for E5b-I (DATA channel), ICD Annex C via PocketSDR
-// E5BI_X2_init, bit-reversed into this LFSR convention. X2 tap 0o51445 -> 0x1265 (pre-resolved).
+// E5b-I X2 start values (ICD Annex C), bit-reversed, PRN 1..50. X2 polynomial 0o51445 ->
+// E5BI_X2_TAP.
 constexpr uint32_t E5BI_X2_START[50] = {
     0x025C, 0x390D, 0x1540, 0x1B9E, 0x2386, 0x01A8, 0x3EB0, 0x320D, 0x2AF0, 0x3E61,
     0x0BC8, 0x26FD, 0x0163, 0x0F87, 0x0B2C, 0x1F7C, 0x264B, 0x35C2, 0x2DE0, 0x3F0D,
@@ -39,8 +38,8 @@ constexpr uint32_t E5BI_X2_START[50] = {
     0x25D4, 0x2283, 0x0406, 0x1FAB, 0x1AC3, 0x363F, 0x120D, 0x07F7, 0x076C, 0x3C0A,
 };
 
-// Per-PRN base-register-2 START VALUES for E5b-Q (PILOT channel), ICD Annex C via PocketSDR
-// E5BQ_X2_init, bit-reversed. X2 tap 0o43143 -> 0x2331 (pre-resolved).
+// E5b-Q X2 start values (ICD Annex C), bit-reversed, PRN 1..50. X2 polynomial 0o43143 ->
+// E5BQ_X2_TAP.
 constexpr uint32_t E5BQ_X2_START[50] = {
     0x26D8, 0x318C, 0x12D5, 0x27D9, 0x3420, 0x2E4F, 0x05FE, 0x29E4, 0x281A, 0x019F,
     0x2D83, 0x3E41, 0x2338, 0x1373, 0x199D, 0x39B4, 0x1D28, 0x3403, 0x12C0, 0x23E2,
@@ -73,8 +72,8 @@ std::array<int8_t, N> hex_secondary(const char* hex) {
     return s;
 }
 
-// E5b-Q CS100 secondary (ICD Annex C, hex MSB-first, 100 chips / PRN), PRN 1..50 -- PocketSDR
-// CS100[50:100] (the E5bQ half; the E5aQ half is in galileoE5aCode.cpp).
+// E5b-Q CS100 secondary codes (ICD Annex C), hex MSB-first, 100 chips per PRN, PRN 1..50.
+// These are CS100 codes 51..100; E5a-Q's 1..50 are in galileoE5aCode.cpp.
 const char* const CS100_E5BQ_HEX[50] = {
     "CFF914EE3C6126A49FD5E5C94", "FC317C9A9BF8C6038B5CADAB3", "A2EAD74B6F9866E414393F239",
     "72F2B1180FA6B802CB84DF997", "13E3AE93BC52391D09E84A982", "77C04202B91B22C6D3469768E",
@@ -115,8 +114,7 @@ std::array<int8_t, 100> e5bq_secondary(int prn) {
     return hex_secondary<100>(CS100_E5BQ_HEX[prn - 1]);
 }
 
-// E5b-I CS4 secondary (ICD Annex C, 'E' = 1110b, 4 chips, SAME for every satellite). One CS4
-// period = 4 ms = one Galileo I/NAV symbol.
+// E5b-I CS4 secondary (ICD Annex C): 'E' = 1110b, the same for every satellite.
 std::array<int8_t, 4> e5bi_secondary() {
     return hex_secondary<4>("E");
 }

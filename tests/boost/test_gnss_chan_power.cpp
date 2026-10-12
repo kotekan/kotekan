@@ -9,7 +9,7 @@
 using gnss::chan_norm_weights;
 using gnss::ChanPower;
 
-// Weights go as 1/sqrt(power) and average to one, so only the RELATIVE channel weights change.
+// Weights go as 1/sqrt(power) and average to one, so only the relative channel weights change.
 BOOST_AUTO_TEST_CASE(weights_are_inverse_rms_with_mean_one) {
     const double pw[4] = {1.0, 4.0, 9.0, 16.0};
     double w[4] = {0, 0, 0, 0};
@@ -47,7 +47,7 @@ BOOST_AUTO_TEST_CASE(missing_power_refuses_and_leaves_weights) {
     BOOST_CHECK(!chan_norm_weights(pw, 0, w));
 }
 
-// The table is per element: a reader averages over ITS element range, skipping elements with
+// The table is per element: a reader averages over its own elements, skipping elements with
 // no power (dead slots), so inputs outside the beam cannot set the weights. First value taken
 // as is, later ones folded in by the EMA; unknown ids read 0.
 BOOST_AUTO_TEST_CASE(table_publish_lookup_and_ema) {

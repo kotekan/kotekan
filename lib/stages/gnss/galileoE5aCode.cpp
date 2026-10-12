@@ -6,9 +6,10 @@ namespace galileo {
 
 namespace {
 
-// Shared 14-stage Fibonacci LFSR (output = reg LSB as +1/-1 for bit 0/1; feedback = parity of
-// reg & tap into the top bit) -- identical convention to gps::lfsr in gpsL5Code.cpp, verified
-// bit-identical against the sky-validated python bench (l5_band_decode.py / PocketSDR).
+// 14-stage Fibonacci LFSR in gps::lfsr's convention (gpsL5Code.cpp): each step outputs the
+// register LSB as a chip (0 -> +1, 1 -> -1), then shifts right and feeds parity(reg & tap)
+// into bit 13. An ICD polynomial term x^k is tap bit 14-k, and ICD start values are
+// bit-reversed over 14 bits.
 void lfsr14(int8_t* out, int count, uint32_t reg, uint32_t tap) {
     for (int i = 0; i < count; ++i) {
         out[i] = (reg & 1u) ? -1 : 1;
@@ -17,9 +18,8 @@ void lfsr14(int8_t* out, int count, uint32_t reg, uint32_t tap) {
     }
 }
 
-// E5a-Q base register 1: all-ones start, free-runs the full 10230 chips.
-// Tap = Galileo OS SIS ICD polynomial 0o40503, bit-reversed into this LFSR convention
-// (the octal constants below are PRE-RESOLVED; see python/scripts/gnss/l5_band_decode.py).
+// Base register 1, shared by E5a-I and E5a-Q: all-ones start, ICD polynomial 0o40503 (tap
+// 0x2141), run for the full 10230 chips.
 const std::array<int8_t, E5A_CODE_LENGTH>& x1_code() {
     static const std::array<int8_t, E5A_CODE_LENGTH> x1 = [] {
         std::array<int8_t, E5A_CODE_LENGTH> a{};
@@ -29,8 +29,8 @@ const std::array<int8_t, E5A_CODE_LENGTH>& x1_code() {
     return x1;
 }
 
-// Per-PRN base-register-2 START VALUES (ICD Annex C via PocketSDR sdr_code.py, already
-// bit-reversed into this LFSR convention), PRN 1..50. Tap polynomial 0o50661, pre-resolved.
+// E5a-Q base-register-2 start values (ICD Annex C), bit-reversed, PRN 1..50. Register 2's
+// polynomial is 0o50661 (tap 0x6C5) for both components.
 constexpr uint32_t E5AQ_X2_START[50] = {
     0x1575, 0x1194, 0x32E5, 0x25F3, 0x1BDD, 0x0365, 0x2D7B, 0x053D, 0x1A7C, 0x28F0,
     0x3CEA, 0x128B, 0x2F0E, 0x096E, 0x1DBF, 0x3F28, 0x2B48, 0x062C, 0x1915, 0x2EEA,
@@ -52,10 +52,7 @@ std::array<int8_t, E5A_CODE_LENGTH> generate_e5aq_code(int prn) {
     return a;
 }
 
-// Per-PRN base-register-2 START VALUES for E5a-I (the DATA channel), same source and
-// convention as E5AQ_X2_START (ICD Annex C via PocketSDR sdr_code.py, bit-reversed into this
-// LFSR convention). Derived by rev_reg(E5AI_X2_init, 14) -- VALIDATED by reproducing all 50
-// E5a-Q values from PocketSDR's E5AQ_X2_init through the identical transform (2026-07-30).
+// E5a-I base-register-2 start values, same source and convention as E5AQ_X2_START.
 namespace {
 constexpr uint32_t E5AI_X2_START[50] = {
     0x28C3, 0x0E46, 0x345D, 0x3FA1, 0x14D9, 0x333B, 0x0C76, 0x3EAA, 0x3AB0, 0x1E43,
@@ -71,13 +68,13 @@ std::array<int8_t, E5A_CODE_LENGTH> generate_e5ai_code(int prn) {
         throw std::out_of_range("Galileo E5a PRN must be 1..50");
     std::array<int8_t, E5A_CODE_LENGTH> a{}, x2{};
     lfsr14(x2.data(), E5A_CODE_LENGTH, E5AI_X2_START[prn - 1], 0x6C5u);
-    const auto& x1 = x1_code(); // shared base register 1 (all-ones), identical to E5a-Q
+    const auto& x1 = x1_code(); // same base register 1 as E5a-Q
     for (int i = 0; i < E5A_CODE_LENGTH; ++i)
         a[i] = (int8_t)(x1[i] * x2[i]);
     return a;
 }
 
-// E5a-Q CS100 secondary (ICD Annex C, hex MSB-first, 100 chips / PRN), PRN 1..50.
+// E5a-Q CS100 secondary codes (ICD Annex C), hex MSB-first, 100 chips per PRN, PRN 1..50.
 namespace {
 const char* const CS100_HEX[50] = {
     "83F6F69D8F6E15411FB8C9B1C", "66558BD3CE0C7792E83350525", "59A025A9C1AF0651B779A8381",
@@ -113,8 +110,7 @@ std::array<int8_t, 100> e5aq_secondary(int prn) {
     return s;
 }
 
-// E5a-I CS20 secondary (ICD Annex C, hex MSB-first, 20 chips, SAME for every satellite --
-// verified identical source/convention to CS100 above, which matches live E5a-Q). '842E9'.
+// E5a-I CS20 secondary (ICD Annex C), hex MSB-first, the same for every satellite.
 std::array<int8_t, 20> e5ai_secondary() {
     static const char* const hex = "842E9";
     std::array<int8_t, 20> s{};

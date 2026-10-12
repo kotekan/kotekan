@@ -14,8 +14,8 @@ using gnss::occupied_band;
 
 namespace {
 
-// A uniform PFB grid of `n` channels of width `w` centered on `f0` (channel 0's
-// center is f0; ids run 0..n-1 with center f0 + (i - n/2)*w).
+// A uniform PFB grid of `n` channels of width `w` centered on `f0`: ids run 0..n-1, channel i
+// centered at f0 + (i - n/2)*w, so channel n/2 sits on f0.
 std::vector<ChannelBand> uniform_grid(double f0, double w, int n) {
     std::vector<ChannelBand> g;
     for (int i = 0; i < n; ++i)
@@ -60,7 +60,7 @@ BOOST_AUTO_TEST_CASE(covering_channels_selects_overlapping_block) {
 BOOST_AUTO_TEST_CASE(covering_channels_is_order_independent) {
     const double w = 0.2e6;
     auto grid = uniform_grid(gnss::GPS_L1CA.carrier_hz, w, 21);
-    std::reverse(grid.begin(), grid.end()); // shuffle input order
+    std::reverse(grid.begin(), grid.end()); // descending input order
 
     auto ids = covering_channels(grid, gnss::GPS_L1CA, 0.0);
     BOOST_REQUIRE_EQUAL(ids.size(), 11u);

@@ -8,10 +8,8 @@ namespace gps {
 namespace {
 
 /**
- * G2 phase-select tap pairs, 1-indexed register cells, PRN 1..32, from
- * IS-GPS-200 Table 3-Ia (Code Phase Assignments). Index 0 is unused so the
- * table is addressed directly by PRN. The XOR of cells (a, b) forms the G2
- * output; this selection is what makes each PRN's code unique.
+ * G2 phase-select taps (1-indexed register cells) for PRN 1..32, from IS-GPS-200 Table 3-Ia.
+ * Row 0 is unused so the table is indexed by PRN.
  */
 constexpr int G2_TAPS[CA_PRN_MAX + 1][2] = {
     {0, 0},  // PRN 0 - unused
@@ -65,8 +63,7 @@ std::array<int8_t, CA_CODE_LENGTH> generate_ca_code(int prn) {
     check_prn(prn);
     const auto [a, b] = g2_phase_taps(prn);
 
-    // Both 10-bit LFSRs start all-ones. Cells are stored 0-indexed: G[k] is
-    // register stage (k+1) in the IS-GPS-200 numbering, so stage 10 is G[9].
+    // Both LFSRs start all-ones. G[k] is IS-GPS-200 stage k+1, so stage 10 is G[9].
     std::array<uint8_t, 10> G1;
     std::array<uint8_t, 10> G2;
     G1.fill(1);
@@ -76,10 +73,10 @@ std::array<int8_t, CA_CODE_LENGTH> generate_ca_code(int prn) {
 
     for (int i = 0; i < CA_CODE_LENGTH; ++i) {
         const uint8_t g2_phase = G2[a - 1] ^ G2[b - 1];
-        const uint8_t chip = G1[9] ^ g2_phase; // output = stage-10 of G1 XOR G2 phase
-        code[i] = chip ? -1 : +1;              // IS-GPS-200: logical 1 -> -1, 0 -> +1
+        const uint8_t chip = G1[9] ^ g2_phase;
+        code[i] = chip ? -1 : +1;
 
-        // Feedback: G1 taps 3,10; G2 taps 2,3,6,8,9,10 (1-indexed) -> shift in.
+        // Feedback from stages 3,10 (G1) and 2,3,6,8,9,10 (G2), shifted in at stage 1.
         const uint8_t fb1 = G1[2] ^ G1[9];
         const uint8_t fb2 = G2[1] ^ G2[2] ^ G2[5] ^ G2[7] ^ G2[8] ^ G2[9];
         for (int k = 9; k > 0; --k) {

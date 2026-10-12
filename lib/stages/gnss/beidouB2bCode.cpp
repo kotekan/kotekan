@@ -6,8 +6,9 @@ namespace beidou {
 
 namespace {
 
-// 13-stage Fibonacci LFSR, same convention as beidouB2aCode::lfsr13 (== PocketSDR LFSR n=13:
-// out = CHIP[reg&1] with CHIP=(+1,-1); feedback = parity(reg&tap) into bit 12).
+// 13-stage Fibonacci LFSR, the same as lfsr13 in beidouB2aCode.cpp: the chip is the register
+// LSB (0 -> +1, 1 -> -1), then shift right with parity(reg & tap) into bit 12. An ICD
+// polynomial term x^k is tap bit 13 - k.
 void lfsr13(int8_t* out, int count, uint32_t reg, uint32_t tap) {
     for (int i = 0; i < count; ++i) {
         out[i] = (reg & 1u) ? -1 : 1;
@@ -16,8 +17,7 @@ void lfsr13(int8_t* out, int count, uint32_t reg, uint32_t tap) {
     }
 }
 
-// B2b-I G1: all-ones start, truncated at 8190 then restarted (BDS B2b ICD; PocketSDR
-// gen_code_B2BI_G1 = LFSR(8190, ...) then hstack code[:N-8190]).
+// B2b-I G1: all-ones start, truncated at 8190 chips then restarted (B2b ICD).
 const std::array<int8_t, B2B_CODE_LENGTH>& g1_code_b2b() {
     static const std::array<int8_t, B2B_CODE_LENGTH> g1 = [] {
         std::array<int8_t, B2B_CODE_LENGTH> a{};
@@ -32,8 +32,7 @@ const std::array<int8_t, B2B_CODE_LENGTH>& g1_code_b2b() {
     return g1;
 }
 
-// Per-PRN G2 register START VALUES (BDS B2b ICD via PocketSDR B2BI_G2_init), PRN 1..63.
-// Bit-exact vs PocketSDR gen_code('B2BI', prn) for PRN 1/19/20/30/45/63 (b2b_code_check.py).
+// Per-PRN G2 start values, PRN 1..63 (B2b ICD, via PocketSDR's B2BI_G2_init).
 constexpr uint32_t B2BI_G2_START[63] = {
     0b1000000100101, 0b1000000110100, 0b1000010101101, 0b1000101001111, 0b1000101010101,
     0b1000110101110, 0b1000111101110, 0b1000111111011, 0b1001100101001, 0b1001111011010,

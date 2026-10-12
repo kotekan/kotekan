@@ -18,24 +18,17 @@
 
 /**
  * @class GnssChanMetadata
- * @brief Carries the channelized GNSS stream's frame context: the absolute sample index of the
- *        frame's first hop (@c sample_seq), and -- for 4+4b-quantized frames -- the per-channel
- *        dequantization scales (@c chan_scale).
+ * @brief Frame context for the channelized GNSS streams: the absolute sample index of the
+ *        frame's first hop (@c sample_seq) and optional per-channel 4+4b dequantization scales
+ *        (@c chan_scale).
  *
- * The distributed search/track stages reference code phase to an absolute "sample
- * 0"; when subbands are shipped to other kotekan instances (bufferSend/Recv), that
- * reference has to ride the wire so every node agrees. chordMetadata is the
- * heavyweight CHORD array metadata (full dimension/frequency structure) and is
- * fragile to serialize when only one field is set -- so this purpose-built
- * metadata is used instead. Trivially (and robustly) serializable.
+ * The search and track stages reference code phase to an absolute sample 0, so that reference
+ * travels with each frame, including between kotekan instances (bufferSend/bufferRecv), and
+ * every node agrees on it. chordMetadata carries the whole CHORD array structure; this type
+ * carries only these fields and serializes trivially.
  *
- * chan_scale rides WITH the frame deliberately: the quantizer freezes its
- * per-channel gains once at startup, and a consumer that despreads the bytes must use exactly the
- * gains those bytes were encoded with -- carrying them on every frame makes a stale-gain despread
- * impossible by construction (a quantizer restart re-freezes and the new scales simply arrive
- * with the first re-scaled frame). Empty = the frame is not quantized (fp32), or the quantizer is
- * still in its bandpass-measurement window (during which it emits offset-zero bytes, which decode
- * to zero volts under ANY scale).
+ * Scales travel with the frame because a consumer must decode the bytes with exactly the
+ * scales they were encoded with.
  */
 class GnssChanMetadata : public metadataObject {
 public:
@@ -46,8 +39,8 @@ public:
     nlohmann::json to_json() override;
 
     int64_t sample_seq = -1; ///< absolute sample index of the frame's first hop (-1 = unset)
-    /// 4+4b dequantization scales, lsb -> volts, one per frame channel (empty = fp32 frame or
-    /// quantizer warmup). See gnss44.hpp for the format contract.
+    /// 4+4b dequantization scales, lsb -> volts, one per frame channel; empty if none were set.
+    /// See gnss44.hpp for the format.
     std::vector<float> chan_scale;
 };
 

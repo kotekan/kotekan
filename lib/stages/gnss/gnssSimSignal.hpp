@@ -1,16 +1,12 @@
 /**
  * @file
- * @brief Simulated wideband GNSS baseband signal -- the source side of the
- *        channelized-despread development path.
+ * @brief Simulated wideband GNSS baseband signal, a test source for the channelized despread.
  *
- * Generates the complex baseband voltage a GNSS signal would present at the F
- * engine input: a +-1 spreading code, oversampled to the sample rate, carried
- * at a Doppler offset, scaled by a complex amplitude, plus optional complex
- * Gaussian noise. Feeding this through the PFB channelizer (@ref fftwEngine with
- * num_taps>1, or the reference analysis in the unit test) yields a simulated
- * channelized source for exercising @ref gnssChannelizedDespread without the
- * real X-engine F-engine. Pure and FFTW-free so it is reusable by tests and a
- * future sim-source stage alike.
+ * Generates the complex baseband voltage a GNSS signal presents at the F-engine input: a +-1
+ * spreading code oversampled to the sample rate, at a Doppler offset, scaled by a complex
+ * amplitude, plus optional complex Gaussian noise. Passed through a PFB (as the reference
+ * analysis in test_gnss_channelized_despread.cpp does) it gives a channelized source for
+ * testing @ref gnssChannelizedDespread.hpp without an F-engine. Has no FFTW dependency.
  */
 
 #ifndef GNSS_SIM_SIGNAL_HPP
