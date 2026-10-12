@@ -729,6 +729,18 @@ working range. **Levers:** site — a flat or 09-25-style E6 profile and ≥3× 
 its noise rms ahead of the despread so q no longer depends on the table (node change, every chain at once,
 judged in minutes); display — a per-band line, or one relative to the chain's noise-q floor (E6: floor 1.36,
 bright 2.5). Recipe in memory `chord-e6-q-drop-20261008`.
+**10-12: NOISE NORMALISATION LIVE (a79daf533 + af94d62db, cycles 00:10Z and 00:23Z).** `chan_noise_norm`: the
+assembler weights each covering channel by 1/rms of its own measured power before every cross-channel sum (record
+E/P/L, element blocks, the comb block), mean 1 over the frame's channels; the power is GnssChordVoltageTap's 1-s
+band-power pass, per (channel, input), averaged over the beam's own 32 inputs (`chan_noise_norm_elems`, the
+correlator's live tiles; the first cut averaged all 128 and the RFI antennas diluted it to ±10%). E6 weights now
+1.1–1.35 / 0.76–0.90 / ~1.0 across each instance's three channels. Per-instance q medians before → after: e6 2.40 →
+3.03 (fleet DLL 2.8–3.1 on every on-peak PRN), e5a 5.26 → 4.17, e5b 4.29 → 3.75, b3i 6.19 → 4.84, l5 4.0–5.0; R
+1.00/1.00 every band, 12 live, 0 CHAIN DIED, C/N0 unchanged. The amplitude-vs-gain slope does NOT move (the spectrum
+and taps endpoints are energy-normalised per channel, blind to a per-channel scalar): judge by q, not by it. The rest
+of the gap to 3.65 is the table's LEVEL, not its shape: Y at 0.18 lsb rms on the low edge is quantised away and no
+weight brings it back — that part waits on the F-engine gains KV has asked for. `/get_elem_cal` `chan_norm`
+reports on/applied/miss/w.
 
 ### #147 — 2026-09-26 22:01Z: a fleet-wide ~3 ppb reference-frequency step
 All 8 chains and every instance: a carrier offset that scales with carrier frequency (E6/E5a 1.09 vs 1.087
