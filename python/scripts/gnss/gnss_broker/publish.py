@@ -657,6 +657,7 @@ class FleetPublisher:
                     "fadr_arc": (_fadr.get(prn) or {}).get("arc"),
                     "fadr_n_rec": (_fadr.get(prn) or {}).get("n_rec"),
                     "fadr_n_inst": (_fadr.get(prn) or {}).get("n_inst"),
+                    "fadr_n_silent": (_fadr.get(prn) or {}).get("n_silent"),
                     "fadr_trim_cycles": (_fadr.get(prn) or {}).get("trim_cycles"),
                     "fadr_res_cycles": (_fadr.get(prn) or {}).get("res_cycles"),
                     "fadr_age_s": (_fadr.get(prn) or {}).get("age_s"),

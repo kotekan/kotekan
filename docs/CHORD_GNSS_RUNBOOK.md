@@ -113,6 +113,12 @@ consumers are pinned to single cores, so a saturated VM starves them and whole w
 from every sender at once (2026-09-27: VM ~97% busy from obs writers doing a whole-sky ephemeris
 prediction per row; fixed, and the buffer raised to 8192 frames, ~3.9 s). Check the load first.
 
+A `FADR BREAK` line's `silent<n>` says how many of the arc's dark records were records that
+arrived with a prompt 10 dB below the instance's own level: the trackers held their keys but the
+prompts carried no signal (a bright satellite crossing the beam, #155), so the fold ended the arc
+instead of integrating noise. Rows carry the live count as `fadr_n_silent`. A `silent0` break with
+a gap is a transport or node event as before.
+
 **Does NOT fix itself:**
 
 * **A node restart is needed** whenever `telem-host` or `search-host` changes in

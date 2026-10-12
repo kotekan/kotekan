@@ -221,6 +221,18 @@ product's remaining losses are the close passes, and one of them on 10-11 was th
   windows: thin bands, unchanged, not usable for dTEC.
 - **Next:** the first nights under #170 (8° freeze) and #163: G09 ~21:21Z daily (1.27°, an L5 emitter: 5/5 on 10-10,
   4+1 slipped on 10-11); BeiDou MEO close passes repeat weekly (C38 10-17 ~05:00Z, C19 10-18 ~20:00Z).
+- **Not the quantiser (10-12):** the rail recorder (rf_chan rows, hi+lo fractions in the lobe channels) shows the E5a
+  lobe railing ≤ 0.2% of samples at the worst instance/channel during both C19 (10-11) and C38 (10-10), with the same
+  band-power rise (median +40%, p99 2.5×); a quiet 10-11 19:00Z window railed 40× more with no transit. E06 at 0.24°
+  did rail E6 at 5% (the self case). So the C19 brownout was not rail-driven, and dynamic F-engine gains would not
+  remove it: it sits in the array's response to the bright satellite (freeze/projection path), ours to explain.
+- **Candidate 2 BUILT 10-12 (eebea6a1a, not yet live):** `fleetadr.fold_record` keeps each instance's prompt power
+  level (a ~1 s mean, peak-held, decaying 20 dB/h) and treats a record 10 dB below it as silence: the instance cannot
+  vouch, and when none can the arc ends; `FADR BREAK` lines print `silent<n>`, rows carry `fadr_n_silent`. Replayed
+  150 s of live gal_e5a/gal_e6 telemetry (fixtures/tec_wander/replay_silence.py): tracked satellites silence no
+  record and are bit-identical to the old fold; E10 at 7° elevation (28 dB-Hz) silences 7%. Bring-up = a broker
+  restart (and the obs writers for the new column); judge on G09 ~21:21Z: the victims' arcs must END (new fadr_arc,
+  `FADR BREAK ... silent>0`) instead of SLIPPING, and quiet-sky arcs must not break more than before.
 **⚡ 09-30, with projection live fleet-wide (from 09-29 17:00Z): candidate 1 largely holds.** Seven transits had data,
 09-30 03:17Z to 15:10Z, between two F-engine outages.
 - **E5a × E6 arcs surviving a transit:** 74% (39/53), against 39% (26/67) with the freeze alone.
