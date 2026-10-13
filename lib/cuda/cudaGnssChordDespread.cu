@@ -3,7 +3,6 @@
 #include "cudaGnssReplicaDevice.cuh"
 
 #include <cuda_runtime.h>
-#include <limits.h>
 #include <math.h>
 
 // The synthesis kernel is the fused kernel's replica path (cudaGnssDespreadKernel.cu) without the
