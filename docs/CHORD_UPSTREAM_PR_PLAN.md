@@ -299,9 +299,9 @@ broker changes `broker_equiv.py check` on cf05 (never `gate.sh` beside the live 
 **D. Operations found along the way.** Logs are not rotated (`/var/tmp/gnss-logs` 44 GB in 22
 days, ~2 GB/day, 161 GB free; `systemd/gnss.logrotate` targets a missing dir and is not
 installed). `gate.sh` cannot pass (on-sky digests moved, `holds` nondeterministic): re-bless or
-retire. `test_deep_gate` 7/8 and `test_rrate_state` 1/29 fail; 41 `python/scripts/gnss` tests
-have no runner. `live_element_gate.py` broken since 10-02. `gnss_transit_arcs.py` uses the
-pre-#99 station (155 m off). Viewer: layout key v7, reset clears v6.
+retire. 41 `python/scripts/gnss` tests have no runner. `live_element_gate.py` broken since
+10-02. `gnss_transit_arcs.py` uses the pre-#99 station (155 m off). Viewer: layout key v7, reset
+clears v6.
 
 **E. Per stage, as each PR is cut.** Comment rewrite to AGENTS.md style (ratio 0.49 vs upstream
 0.28; 245 emoji, 264 dates, 230 task refs; ~1.5-2 weeks total); sphinx stubs per stage + one

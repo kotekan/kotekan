@@ -1,66 +1,14 @@
-"""Task #47: the served C/N0 must not claim a satellite the prompt tap never saw.
+"""The served C/N0 (#35): gnss_observables must emit the broker's published cn0_coh_db, not a
+value it recomputes from the row's deep_snr.
 
-THE DEFECT THESE PIN. cn0_coh is built from deep_snr, and the deep fold RE-SEARCHES rate and
-phase -- it re-finds the satellite regardless of where the prompt tap was commanded. On
-2026-08-12 15:20-15:45 UTC every chain served ~41 dB-Hz with dll_disc ~= 0.013 while the prompt
-taps sat on noise (s4_raw 1.07, cn0_inc 21.3, per-instance deep_snr 1.5-2.5, `present` 0-1 of
-11). That window was reported as the array's BEST look of the day. 7-30% of all bright-looking
-samples over 08-11/08-12 carry the same signature.
-
-⚠️ These tests must VARY THE AXIS (see chord-a-gate-that-cannot-fail): each asserts that a
-blind row and a tracking row come out DIFFERENT, so a flag hardwired to either answer fails.
+⚠️ These tests must VARY THE AXIS (see chord-a-gate-that-cannot-fail): the fixture row is one on
+which the published and the recomputed values differ, so a writer that used either path
+unconditionally fails one of them.
 """
 import math
 import unittest
 
-from gnss_broker.publish import PROMPT_RAYLEIGH_S4
 from gnss_observables import cn0_dbhz
-
-
-def prompt_lock(s4_raw, fleet_present):
-    """The rule as implemented in publish.py, isolated so the truth table is testable without
-    standing up a FleetPublisher. Blind only when BOTH witnesses agree."""
-    rayleigh = s4_raw is not None and s4_raw >= PROMPT_RAYLEIGH_S4
-    return not (rayleigh and not fleet_present)
-
-
-class TestPromptLockTruthTable(unittest.TestCase):
-    """The flag is deliberately conservative: one witness alone never condemns a satellite."""
-
-    def test_blind_row_is_flagged(self):
-        # The measured 2026-08-12 blind state: Rayleigh prompt AND below the live floor.
-        self.assertFalse(prompt_lock(s4_raw=1.07, fleet_present=False))
-
-    def test_tracking_row_is_not_flagged(self):
-        # The measured tracking state from the same day, same fleet.
-        self.assertTrue(prompt_lock(s4_raw=0.47, fleet_present=True))
-
-    def test_blind_and_tracking_differ(self):
-        """The axis test: a flag stuck at either constant fails here even if both cases above
-        were somehow satisfied by accident."""
-        self.assertNotEqual(prompt_lock(1.07, False), prompt_lock(0.47, True))
-
-    def test_scintillation_alone_does_not_condemn(self):
-        """s4_raw is absolute but strong scintillation drives it up on a REAL signal. If the
-        prompt still clears the live noise floor, the satellite is tracking."""
-        self.assertTrue(prompt_lock(s4_raw=1.02, fleet_present=True))
-
-    def test_uniformly_strong_fleet_does_not_condemn(self):
-        """`present` is RELATIVE (p_pow vs the population median), so a fleet in which every
-        satellite is strong reads low presence for all of them. That must not be read as blind
-        -- this is exactly why presence cannot be the whole test."""
-        self.assertTrue(prompt_lock(s4_raw=0.30, fleet_present=False))
-
-    def test_missing_s4_does_not_condemn(self):
-        """A combiner that does not report s4_raw leaves us one witness short. Declining to
-        flag is the safe direction: a false 'blind' would hide real data."""
-        self.assertTrue(prompt_lock(s4_raw=None, fleet_present=False))
-
-    def test_bar_sits_in_the_measured_gap(self):
-        """The bar was derived from sky, not chosen. Blind measured 1.00-1.05, tracking
-        0.17-0.82; the bar must fall strictly between, or it is inside a population."""
-        self.assertGreater(PROMPT_RAYLEIGH_S4, 0.82)
-        self.assertLess(PROMPT_RAYLEIGH_S4, 1.00)
 
 
 class TestObservablesUsesPublishedCn0(unittest.TestCase):

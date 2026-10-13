@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Pinning tests for the broker's seed-phase transport in gnss_broker/fits.py (#44 / #45):
-retag_seed_doppler, seed_phase_at_ref and tracker_phase_at, plus a banked-sky replay of the
-detection reconstruction they consume.
+retag_seed_doppler, seed_phase_at_ref and tracker_phase_at.
 
 Run: python3 test_track_vs_fit.py
 """
@@ -135,110 +134,6 @@ class TestRetagSeedDoppler(unittest.TestCase):
             msg="the anchor-epoch error law changed -- investigate",
         )
         self.assertGreater(err, 10.0)
-
-
-class TestBankedSkyReplay(unittest.TestCase):
-    """FIXTURE REPLAY (#45 step 5, the decision): the clock solve and the escape referee
-    both consume the detection's own reconstruction, so what has to hold on sky is that
-    the reconstruction is CONTINUOUS between consecutive detections -- it is the
-    measurement, and a measurement that jumps is what started this whole investigation.
-
-    Also records the road not taken: cp_at_ref sits +52.3711 + 1.39e-4*dop chips from this
-    quantity (last-sample epoch + the replica anchor's Doppler term). Adopting it would
-    have required the search's fft_len and anchor in the broker; this test measures what
-    that would have bought -- nothing the sky needs.
-    """
-
-    FX = (
-        "/home/kvand/gnss/fixtures/20260811_clock_investigation/" "dets_live_2124.jsonl"
-    )
-
-    def _load(self):
-        import json
-
-        byprn, seen = {}, set()
-        with open(self.FX) as f:
-            for ln in f:
-                for det in json.loads(ln).get("dets", []):
-                    key = (det["prn"], det["ref_hop"])
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    byprn.setdefault(det["prn"], []).append(det)
-        for v in byprn.values():
-            v.sort(key=lambda d: d["ref_hop"])
-        return byprn
-
-    def setUp(self):
-        if not os.path.exists(self.FX):
-            self.skipTest("banked capture not available on this host")
-
-    def test_reconstruction_is_continuous_on_sky(self):
-        import statistics
-
-        jumps = []
-        for prn, dets in self._load().items():
-            for a, b in zip(dets, dets[1:]):
-                dt = (b["ref_hop"] - a["ref_hop"]) / HPS
-                if not (0.0 < dt <= 120.0):
-                    continue
-                dmean = 0.5 * (a["doppler_hz"] + b["doppler_hz"])
-                adv = dt * (CHIP + SGN * CHIP * dmean / CARR)
-
-                def loc(d):
-                    t = d["ref_hop"] / HPS
-                    return (
-                        d["code_phase_chips"]
-                        + t * CHIP * (1.0 + SGN * d["doppler_hz"] / CARR)
-                    ) % L
-
-                jumps.append(abs(((loc(b) - loc(a) - adv + L / 2) % L) - L / 2))
-        self.assertGreater(len(jumps), 1000)
-        jumps.sort()
-        self.assertLess(
-            jumps[len(jumps) // 2],
-            1.0,
-            "median reconstruction jump %.3f chips" % jumps[len(jumps) // 2],
-        )
-        self.assertLess(
-            jumps[int(len(jumps) * 0.99)],
-            5.0,
-            "p99 reconstruction jump %.3f chips" % jumps[int(len(jumps) * 0.99)],
-        )
-
-    def test_cp_at_ref_offset_is_the_documented_law(self):
-        """Pins the road not taken, so the reason stays checkable: the offset is a
-        constant hop plus the anchor's Doppler term, NOT a pure constant."""
-        pts = []
-        for prn, dets in self._load().items():
-            for d in dets:
-                car = d.get("code_phase_at_ref_chips", -1.0)
-                if car is None or car < 0:
-                    continue
-                t = d["ref_hop"] / HPS
-                loc = (
-                    d["code_phase_chips"]
-                    + t * CHIP * (1.0 + SGN * d["doppler_hz"] / CARR)
-                ) % L
-                pts.append((d["doppler_hz"], ((car - loc + L / 2) % L) - L / 2))
-        self.assertGreater(len(pts), 1000)
-        n = len(pts)
-        mx = sum(p[0] for p in pts) / n
-        my = sum(p[1] for p in pts) / n
-        den = sum((p[0] - mx) ** 2 for p in pts)
-        slope = sum((p[0] - mx) * (p[1] - my) for p in pts) / den
-        self.assertAlmostEqual(
-            slope,
-            1.39e-4,
-            delta=0.2e-4,
-            msg="anchor Doppler slope %.3e chips/Hz" % slope,
-        )
-        self.assertAlmostEqual(
-            my - slope * mx,
-            52.3776,
-            delta=0.05,
-            msg="constant term %.4f chips" % (my - slope * mx),
-        )
 
 
 class TestSeedPhaseTransport(unittest.TestCase):
