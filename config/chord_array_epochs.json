@@ -19,7 +19,7 @@
   "Provenance: identity and positions from fixtures/chord_dish_layout_measured_20260907.json",
   "(viscap_20260907 survey, 7 satellites x 24 chunks, placement gate 10 ns / 1 m); feed-plane",
   "split from the beam-contrast clustering over 2026-09-05..08 (docs/CHORD_BEAM_MAPS.md).",
-  "Names follow config/chord_dish_layout.json: rows A southernmost 8.5 m, columns 01",
+  "Names are [row letter][column number]: rows A southernmost 8.5 m, columns 01",
   "westernmost 6.3 m. ENU metres relative to correlator element 0 (dish A01 slot 0)."
  ],
  "site": {

@@ -308,42 +308,24 @@ common:
   # corrupting the fold. This is the lever on the fleet-engagement collapse (#10): per-
   # instance deep up ~7 dB lifts mid sats over the alignment's SNR threshold.
     sky-deep: true
-  # ── #102 ELEMENT STEERING, first-order positions (KV, 2026-08-29): the e5a assemblers
-  # get elem_positions_enu from config/chord_dish_layout.json (nominal grid, mapping as
-  # stated -- 'better than nothing'; the phase-stage solve refines). e5b stays UNSTEERED
-  # as the band-sibling control AND the live sign calibration: if e5a's per-element
-  # coherence/p2 degrade vs e5b, the sign is wrong -- flip elem-steer-sign, regenerate.
-  # ⚠️ DISARMED 2026-08-31 FOR THE POST-MERGE RESTART, deliberately and temporarily.
-  # chord_dish_layout.json is indexed by the OLD element numbering (its element 0 is
-  # "A01X"), and the re-captured base renumbers the element axis to [P][D] with the live
-  # feeds at {0..15, 64..79} -- so every position in that file now names a different feed
-  # than it did when the #102 amplitude pattern measured it. A steering vector built from a
-  # stale index map is not a weaker steer, it is a WRONG one: it derotates each element by
-  # another element's geometric delay, which degrades the very coherence the arm is judged
-  # on. Re-derive the map post-restart from the measured pattern (fixtures/
-  # elem_mapping_check.py against the banked pre-restart fingerprint,
-  # fixtures/elem_fingerprint_20260831_premerge_restart.txt), then re-arm with the sign
-  # calibration against the unsteered e5b sibling exactly as before.
-  # ── RE-ARMED 2026-09-24 (KV): steer from the MEASURED positions. The 08-31 blocker was the
-  # element numbering of the nominal layout file; the array-epoch table carries the viscap-
-  # solved positions in the current numbering, resolved by date, so the generator now takes
-  # them from there (--elem-positions-from arraymap) and stamps the epoch key into the config.
-  # Why now: a boresight transit's cross-correlation dominates every weak satellite's
-  # per-element despread and the per-PRN self-cal element sum learns the bright satellite's
-  # phases -- the array gain is gone for everyone in its bands. Geometry-steered elements are
-  # what a single satellite cannot capture. e5a steered, e5b the unsteered band-sibling
-  # control, exactly the 08-29 protocol; judge = per-PRN coherence efficiency of the element
-  # vectors (fixtures/elemsteer/judge.py) within minutes of the restart. The sign is a
-  # measured convention. -1 was the first guess (the viscap solve's phase model with the
-  # despread's data*conj(replica) convention) and it was WRONG on sky: steered e5a read the
-  # most displaced dish (element 3, 18.8 m) at -11..-13 dB against -3..-4 on unsteered e5b --
-  # the comb smearing DOUBLED, which is what the wrong sign does. +1 is the measured sign.
-  # PHASE 2: every band, once e5a had confirmed the sign against e5b (displaced dishes up
-  # 2-5 dB in per-element amplitude with +1, down 8 dB with -1). The broker posts geometry
-  # from every chain (gnss_chains_chord.yaml common: post-sat-geometry).
+  # ── #102 ELEMENT STEERING (live since 2026-09-24; every band since e5a confirmed the sign
+  # against the unsteered e5b): each assembler derotates its elements by the satellite
+  # geometry the broker posts (gnss_chains_chord.yaml common: post-sat-geometry), using the
+  # measured positions of the array epoch valid at generation time (config/
+  # chord_array_epochs.json: viscap-solved, current element numbering, resolved by date),
+  # refined below, and stamps the epoch key into the config.
+  # Why: a boresight transit's cross-correlation dominates every weak satellite's per-element
+  # despread and the per-PRN self-cal element sum learns the bright satellite's phases -- the
+  # array gain is gone for everyone in its bands. Geometry-steered elements are what a single
+  # satellite cannot capture. Judge = per-PRN coherence efficiency of the element vectors
+  # (fixtures/elemsteer/judge.py).
+  # The sign is a measured convention. -1 was the first guess (the viscap solve's phase model
+  # with the despread's data*conj(replica) convention) and it was WRONG on sky: steered e5a read
+  # the most displaced dish (element 3, 18.8 m) at -11..-13 dB against -3..-4 on unsteered e5b
+  # -- the comb smearing DOUBLED, which is what the wrong sign does. +1 is the measured sign
+  # (displaced dishes up 2-5 dB in per-element amplitude with +1, down 8 dB with -1).
     elem-steer-bands: all
     elem-steer-sign: 1.0
-    elem-positions-from: arraymap
   # REFINED POSITIONS on top of the epoch: solved from steered per-element phases
   # (fixtures/elemsteer/possolve.py). First pass recovered the 6.3 x 8.5 m survey lattice to
   # a few cm where the epoch table was off by up to 1.2 m; the second pass adds the residual

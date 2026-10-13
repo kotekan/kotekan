@@ -296,5 +296,6 @@ rather than assuming row *p* = slot *p*.
 linear bandwidth cost — 620 Mbps average on a 1 GbE with synchronized bursts is already past
 the knee. Do not assume the next small increase is affordable because it is small.
 
-⚠️ **Headroom is two rows** — 14 live against 16. Raise `--telem-max-prn` before the sky gets
-busier; a frame-size change needs *both* ends restarted.
+⚠️ **Headroom is two rows** — 14 live against 16. Raise the chain's row count (`_TELEM_ROWS` in
+config/gen_chord_gnss_config.py) before the sky gets busier; a frame-size change needs *both*
+ends restarted.

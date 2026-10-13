@@ -142,7 +142,6 @@ array:
   # The element axis is now properly [P][D] (it was pol-interleaved-per-board before).
   # Element 0 is the SAME PHYSICAL FEED either way (remap[0] == 0), which is the only
   # reason the GPS search reference did not move.
-  # `live_elements` (single inclusive range) is still read when this key is absent.
     live_element_ranges: [[0, 15], [64, 79]]
   # Rows A and B only (16 dual-pol dishes); rows C/D are configured but not instrumented.
   # Authoritative liveness is per-feed despread SNR, computed live.
