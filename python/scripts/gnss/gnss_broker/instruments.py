@@ -22,7 +22,6 @@ holds and, more importantly, for the stable/per-cycle split that makes holding i
 
 import json
 import os
-import re
 import time
 
 from gnss_broker.transport import _TR, _now, _get, _log, _log_rl, parse_endpoints
@@ -84,21 +83,15 @@ def instr_coherent_rows(ctx):
             pi = v.get("per_inst") or {}
             if len(pi) < 2:
                 continue
-
-            def _tag(u):
-                # http://cx19:12048/gnss1_n2combine -> cx19/1. Values are TAGGED
-                # rather than positional so a missing instance cannot shift the
-                # columns of every instance after it.
-                m = re.search(r"//(\w+):\d+/\w*?(\d)[^/]*$", u)
-                return "%s/%s" % (m.group(1), m.group(2)) if m else u[-12:]
-
+            # Values are TAGGED (cx19/1) rather than positional so a missing instance
+            # cannot shift the columns of every instance after it.
             _log(
                 "FLEET-INST: PRN %d align %.3f n_rec %d %s"
                 % (
                     prn,
                     v.get("align", 0.0),
                     v.get("n_rec", 0),
-                    " ".join("%s=%.1f" % (_tag(u), pi[u]) for u in sorted(pi)),
+                    " ".join("%s=%.1f" % (elemgain._tag(u), pi[u]) for u in sorted(pi)),
                 )
             )
         # WHO WAS LEFT OUT, AND WHY (2026-08-12). fleet_coherent now anchors on the
@@ -120,7 +113,8 @@ def instr_coherent_rows(ctx):
                 % (
                     len(_dropped),
                     ", ".join(
-                        "%s (%d hops shared, %d PRN)" % (_tag(u), max(v), len(v))
+                        "%s (%d hops shared, %d PRN)"
+                        % (elemgain._tag(u), max(v), len(v))
                         for u, v in sorted(_dropped.items())
                     ),
                 ),
@@ -662,15 +656,3 @@ def instr_spectrum_fit(ctx):
                 if ctx.sig_of(ctx.status.get(prn, {})) >= ctx.args.lock_snr:
                     ctx.bsat.update(prn, v["tau_chips"], v["n_inst"], ctx.t0)
             _log_rl("bsat", "BSAT: " + ctx.bsat.summary(ctx.t0), every_s=60.0)
-            # Ride the fleet dict into the publisher: the viewer/status row grows
-            # spec_tau_chips + spec_peak_ratio next to the disc it will one day
-            # replace. EXISTING rows only -- publisher.update() indexes fleet rows'
-            # p_pow/disc/q directly, so a bare fit-only row would crash it; a PRN
-            # the DLL poll missed this cycle is still in the SPEC-FIT log line.
-            for prn, v in ctx.dllp.spec_fit.items():
-                if prn in ctx.dllp.fleet:
-                    ctx.dllp.fleet[prn]["spec_tau"] = v["tau_chips"]
-                    ctx.dllp.fleet[prn]["spec_ratio"] = v["peak"] / max(
-                        v["floor"], 1e-12
-                    )
-                    ctx.dllp.fleet[prn]["bsat"] = ctx.bsat.get(prn, ctx.t0)

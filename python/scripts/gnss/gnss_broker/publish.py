@@ -26,11 +26,11 @@ from . import timebase
 # ever stops being bimodal; scripts/gnss/site/blind_witness_check.py prints both populations.
 PROMPT_RAYLEIGH_S4 = 0.90
 
-# Trailing window for det_duty_s / inst_snr_med_win (seconds). Chosen as ~12 seed-POST
-# intervals (posts land every ~10 s), so the duty averages over many flicker cycles
-# rather than aliasing against one. Not a smoothing constant to be tuned for looks: it
-# is the averaging time of a MEASUREMENT of how often the array is actually holding a
-# satellite, and it should be reported alongside the number (det_duty_n).
+# Trailing window for det_duty_s and the windowed median behind `sig` (seconds). Chosen
+# as ~12 seed-POST intervals (posts land every ~10 s), so the duty averages over many
+# flicker cycles rather than aliasing against one. Not a smoothing constant to be tuned
+# for looks: it is the averaging time of a MEASUREMENT of how often the array is actually
+# holding a satellite.
 DUTY_WIN_S = 120.0
 
 
@@ -80,7 +80,7 @@ class FleetPublisher:
         # instance per constellation (12060 GPS, 12061 E5a).
         self._chains = {}  # chain id -> {"rows", "dets", "meta", "sig", "band"}
         self._order = []  # registration order, so output is deterministic
-        self._rows, self._meta, self._dets, self._lock = [], {}, [], threading.Lock()
+        self._lock = threading.Lock()
         # TRAILING DETECTION HISTORY, (chain, prn) -> deque[(t, inst_snr_med, certified)].
         # Exists because EVERY instantaneous statistic in this row churns: measured
         # 2026-08-14, all 12 instances collapse to noise together and recover on a ~10 s
@@ -336,7 +336,6 @@ class FleetPublisher:
         fleet,
         seeds,
         dll_trim,
-        n_endpoints,
         dets=None,
         fcoh=None,
         chain=None,
@@ -395,39 +394,16 @@ class FleetPublisher:
                     # value the despread actually used.
                     "doppler_hz": sd.get("doppler_hz", c.get("doppler_hz", 0.0)),
                     "doppler_applied_hz": c.get("doppler_hz"),
-                    # Fleet phase-slope delay fit (task #32): tau of the correlation peak
-                    # RELATIVE to the replica placement, from the cross-channel phase ramp.
-                    # Measurement-only today -- published next to the disc it is intended to
-                    # replace, so the two can be judged against each other on sky.
-                    "spec_tau_chips": v.get("spec_tau"),
-                    "spec_peak_ratio": v.get("spec_ratio"),
-                    # The b_sat actually being APPLIED to this sat's seeds (0 = none/stale) --
-                    # published so the closed loop's health is checkable from outside: b_sat
-                    # should hold near the P1 open-loop means while spec_tau collapses to 0.
-                    "bsat_chips": v.get("bsat"),
                     "code_phase_chips": sd.get(
                         "code_phase_chips", c.get("code_phase_chips", 0.0)
                     ),
                     # fleet-only extras: not in the combiner schema, ignored by older consumers
                     "fleet_q": v["q"],
                     "fleet_q_floor": v["q_floor"],
-                    "fleet_p_over_noise": ratio,
                     "fleet_present": bool(v["present"]),
                     # telescope-wide: the epoch the nodes serve is suspect (gnss_broker/timebase).
                     # Consumers withhold geometry while this is set; the row's own numbers stand.
                     "time_base_suspect": timebase.VERDICT.suspect,
-                    # ⚠️ WHICH GATE SAID SO. present alone is a boolean with five different
-                    # provenances -- "q+p:probes", the "prompt" peer fallback, "UNANCHORED",
-                    # "deep", and the displaced re-admissions -- and an A/B on any of them is
-                    # UNJUDGEABLE from outside without this. Found 2026-08-27 while arming
-                    # --presence-admit-displaced: the arm's whole observable is that rows start
-                    # carrying 'q+deep:probes+disp', and nothing published it, so the experiment
-                    # could not have been read even if it worked perfectly.
-                    "fleet_present_gate": v.get("present_gate"),
-                    # the displaced admission's own numbers, when it ran: which evidence admitted
-                    # the row, and the fit it was admitted on.
-                    "fleet_off_chips": v.get("off_chips"),
-                    "fleet_pedestal": v.get("pedestal"),
                     # THE DEAD-RECKON INTEGRITY RESIDUAL, in this chain's chips: search-vs-model
                     # with the solved receiver clock removed (deadreckon: r_i = wrap(d_i - clk),
                     # d_i = measured - predicted). It has existed for the escape referee's veto
@@ -449,14 +425,12 @@ class FleetPublisher:
                     # chains that have no detectors at all. `_s` is the currency-free form
                     # (seconds): a consumer converting chips to metres must know which chips
                     # (L2C's are CM chips), and seconds do not ask it to.
-                    "trk_resid_chips": (_trk.get(prn) or {}).get("chips"),
                     "trk_resid_s": (_trk.get(prn) or {}).get("s"),
                     # the same residual with the receiver clock left IN: the code RANGE residual,
                     # the quantity a carrier residual also carries (Hatch differences the two)
                     "trk_range_s": (_trk.get(prn) or {}).get("raw_s"),
                     "trk_resid_sd_chips": (_trk.get(prn) or {}).get("sd"),
                     "trk_resid_n": (_trk.get(prn) or {}).get("n"),
-                    "trk_resid_hop": (_trk.get(prn) or {}).get("hop"),
                     "trk_resid_age_s": (
                         None
                         if _trk.get(prn) is None
@@ -489,24 +463,17 @@ class FleetPublisher:
                     "proj_src": (_fadr.get(prn) or {}).get("proj_src"),
                     "fadr_trim_cycles": (_fadr.get(prn) or {}).get("trim_cycles"),
                     "fadr_res_cycles": (_fadr.get(prn) or {}).get("res_cycles"),
-                    "fadr_age_s": (_fadr.get(prn) or {}).get("age_s"),
                     # the ADR at the newest fleet-wide GRID hop (fleetadr.GRID_HOPS): the sample
                     # at which every chain's rows carry the SAME hop, so bands pair exactly
                     "fadr_g_hop": (_fadr.get(prn) or {}).get("g_hop"),
                     "fadr_g_dop_cycles": (_fadr.get(prn) or {}).get("g_dop_cycles"),
                     "fadr_g_cycles": (_fadr.get(prn) or {}).get("g_cycles"),
-                    "fadr_g_n_rec": (_fadr.get(prn) or {}).get("g_n_rec"),
                     # The last few grid hops as [hop, dop_cycles, cycles, n_rec], newest
                     # last (fleetadr.GRID_KEEP). A poller slower than the 1.0066 s grid sees
                     # only alternate hops otherwise, and two chains polling out of phase then
                     # pair on ~40% of them; with the history the pairing is poll-independent.
                     "fadr_g_hist": (_fadr.get(prn) or {}).get("g_hist"),
                     "fleet_instances": v["n_src"],
-                    "fleet_channels": v["n_chan"],
-                    # cross-sender coherence of the derotated prompts (combdll.lobe_taps): the
-                    # lobe sum is only a lobe sum while this is ~1; ~0 means the senders were not
-                    # on one phase reference and the fleet prompt sat BELOW the per-sender one.
-                    "fleet_xcoh": v.get("xcoh"),
                     "fleet_hop": v["hop"],
                     "coh_src": v.get("coh_src"),
                     "code_phase_rate": sd.get("code_phase_rate", 0.0),
@@ -544,30 +511,17 @@ class FleetPublisher:
                         "deep_amplitude": fc["deep_amplitude"],
                         "coh_frac": fc["coh_frac"],
                         "coh_src": "fleet:%d" % fc["n_src"],
-                        "fleet_coh_floor": fc["floor"],
-                        "fleet_coh_align": fc["align"],
-                        "fleet_coh_records": fc["n_rec"],
-                        # The best single instance kept alongside, so the GAIN this buys is
-                        # visible in the same row rather than inferred across restarts.
-                        "fleet_coh_best_inst": fc["best_inst_snr"],
-                        # THE RECORD-STREAM CARRIER RATE and its split-half sigma (Hz), the
-                        # rrate state's coarse feed since 2974aaa81. Published beside
-                        # deep_rate_full_hz -- the fold's argmax it replaced -- so the two
-                        # estimators of the same quantity can be judged against each other on
-                        # sky rather than by argument. The fold's measured structure function
-                        # was FLAT with lag (1.44 m/s rms at 3 s, 2.07 at 24 s), i.e. pure
-                        # per-sample noise; this one is what that comparison needs.
+                        # THE RECORD-STREAM CARRIER RATE (Hz), the rrate state's coarse feed
+                        # since 2974aaa81. Published beside deep_rate_full_hz -- the fold's
+                        # argmax it replaced -- so the two estimators of the same quantity can
+                        # be judged against each other on sky rather than by argument. The
+                        # fold's measured structure function was FLAT with lag (1.44 m/s rms
+                        # at 3 s, 2.07 at 24 s), i.e. pure per-sample noise; this one is what
+                        # that comparison needs.
                         "rec_rate_hz": fc.get("rate_hz"),
-                        "rec_rate_sigma_hz": fc.get("rate_sigma_hz"),
                     }
                 )
             else:
-                if fc:
-                    # Measured and rejected: publish the floor it failed against, so "no
-                    # fleet number" is distinguishable from "fleet never looked at this PRN".
-                    row.update(
-                        {"fleet_coh_floor": fc["floor"], "fleet_coh_align": fc["align"]}
-                    )
                 # QUADRATURE FALLBACK (2026-08-10, docs 11.31). The argmax this replaces sat
                 # a measured 4.9 dB below the fleet value, so every fleet-gate flicker
                 # stepped the published series 5-8 dB -- and at the observed 20-70% duty
@@ -575,11 +529,9 @@ class FleetPublisher:
                 # lands at the fleet level (-0.7..+2.0 dB over 5 strong PRNs), making the
                 # series CONTINUOUS across the gate. It is not quieter within-state than
                 # the argmax (no scalar is; the engagement rate is the real fix, #10) --
-                # continuity is what it buys. The argmax stays published alongside so the
-                # A/B lives in the row, and coh_src says which population produced the
+                # continuity is what it buys. coh_src says which population produced the
                 # number ('quad:N' vs a URL).
                 _q = v.get("coh_quad")
-                row["coh_best_inst_snr"] = c.get("deep_snr")
                 if _q is not None:
                     row.update({"deep_snr": _q[0], "coh_src": "quad:%d" % _q[1]})
             # ---- THE HONEST HEALTH METRIC (2026-08-14, task #57) ------------------------
@@ -639,11 +591,11 @@ class FleetPublisher:
                 )
             while _h and _t_now - _h[0][0] > DUTY_WIN_S:
                 _h.popleft()
+            _med_win = None
             if _h:
                 row["det_duty_s"] = sum(1 for _, _, ok in _h if ok) / float(len(_h))
-                row["det_duty_n"] = len(_h)
                 _m = sorted(v for _, v, _ok in _h)
-                row["inst_snr_med_win"] = _m[len(_m) // 2]
+                _med_win = _m[len(_m) // 2]
             # SIGNIFICANCE WITH A MATCHED GATE. The viewer computed
             #     sig = coherence_s > 0 ? max(deep_snr, amp_snr) : amp_snr
             # where deep_snr may be the FLEET value while coherence_s is the best single
@@ -704,7 +656,7 @@ class FleetPublisher:
                 row["sig"] = _ks
                 row["sig_src"] = "kcoh_weak:%d" % (_kn or 0)
             elif _pi and row.get("det_duty_s") is not None:
-                row["sig"] = row.get("inst_snr_med_win") or row["inst_snr_med"]
+                row["sig"] = _med_win or row["inst_snr_med"]
                 row["sig_src"] = "inst_med:%d" % row["inst_snr_n"]
             elif (c.get("coherence_s") or 0.0) > 0.0 and c.get("deep_snr"):
                 row["sig"] = c["deep_snr"]  # one instance, its own certified span
@@ -790,12 +742,7 @@ class FleetPublisher:
             if _pc:
                 row["cn0_prompt_db"] = _pc.get("cn0_db")
                 row["cn0_prompt_duty"] = _pc.get("duty")
-                row["cn0_prompt_n"] = _pc.get("n_used")
                 row["cn0_prompt_split_db"] = _pc.get("split_db")
-                row["cn0_prompt_src"] = "probes:%d,t>=%.0f,P>E,L" % (
-                    _pc.get("n_probe_rec", 0),
-                    _pc.get("min_sig", 0.0),
-                )
                 # The probes themselves ride the same rows (they are seeded PRNs); flag
                 # them so no consumer plots a below-horizon noise reference as a satellite.
                 row["noise_probe"] = bool(_pc.get("probe"))
@@ -813,11 +760,9 @@ class FleetPublisher:
                 row["cn0_kcoh_db"] = _kc.get("cn0_db")
                 row["cn0_kcoh_sky_db"] = _kc.get("cn0_sky_db")
                 row["kcoh_sig"] = _kc.get("sig")
-                row["kcoh_sig_sky"] = _kc.get("sig_sky")
                 row["kcoh_eta"] = _kc.get("eta")
                 row["kcoh_n"] = _kc.get("n_rec")
                 row["kcoh_rate_hz"] = _kc.get("rate_hz")
-                row["kcoh_rate_src"] = _kc.get("rate_src")
                 row["kcoh_t_coh_s"] = _kc.get("t_coh_s")
             #
             # ---- PROMPT LOCK (task #47, 2026-08-12). ------------------------------------
@@ -862,7 +807,6 @@ class FleetPublisher:
             rows.append(row)
         meta = {
             "n_prn": len(rows),
-            "n_endpoints": n_endpoints,
             "present": sum(1 for r in rows if r["fleet_present"]),
             "time_base_suspect": timebase.VERDICT.suspect,
             "time_base_dt_s": timebase.VERDICT.dt_s,
@@ -875,10 +819,6 @@ class FleetPublisher:
                 if dets is not None:
                     st["dets"] = dets
                 st["meta"] = meta
-            self._rows = rows  # legacy single-chain mirror
-            if dets is not None:
-                self._dets = dets
-            self._meta = meta
 
 
 class _ChainView(object):

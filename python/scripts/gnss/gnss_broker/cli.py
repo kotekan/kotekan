@@ -1298,8 +1298,7 @@ def build_parser(description):
         "delay is a phase ramp across frequency; the fleet's UNION of combs "
         "is what suppresses the 3.27-chip grating lobes a single instance's "
         "stride-16 comb cannot resolve. MEASUREMENT ONLY today: logged as "
-        "SPEC-FIT and published as spec_tau_chips/spec_peak_ratio, feeding "
-        "no loop. Empty = off, and every recorded transcript replays "
+        "SPEC-FIT, feeding no loop. Empty = off, and every recorded transcript replays "
         "byte-identically (replay is strict-ordered; this flag not being in "
         "an old transcript's argv is what keeps the new GETs out of replay).",
     )

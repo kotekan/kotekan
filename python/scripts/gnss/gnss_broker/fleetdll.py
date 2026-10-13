@@ -487,7 +487,6 @@ def stage_fleet_dll(ctx):
                 ctx.dllp.fleet,
                 ctx.seeds,
                 ctx.dls.trim,
-                len(ctx.dll_combiners),
                 ctx.last_dets,
                 ctx.dllp.fcoh,
                 pcn0=ctx.dllp.pcn0,
