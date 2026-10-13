@@ -1507,9 +1507,8 @@ def stage_push_seeds(ctx):
     makes the tracker chase the estimator's noise.
 
     ⚠️ THE RAILED/RELEASED COUNTERS ARE `+=` ON A COUNTER INITIALISED BY THE CYCLE, so they
-    must be nonlocal. An augmented assignment READS before it writes -- which is exactly what
-    broker_iface missed when it cleared this stage for promotion, because it recorded only
-    the Store. It cost gal_e5a a chain death at 12:49 on 2026-08-26."""
+    must be nonlocal. An augmented assignment READS before it writes, so a name analysis that
+    records only the Store misses it. It cost gal_e5a a chain death at 12:49 on 2026-08-26."""
     for prn, v in sorted(ctx.seeds.items()):
         d = dict(prn=prn, **v)
         if ctx.dls.trim.get(prn):
