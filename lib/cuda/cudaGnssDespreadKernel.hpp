@@ -26,10 +26,10 @@ namespace gnss_cuda {
 /// One PRN's correlator quad: everything that varies within a batch. Carries its own device Phi
 /// table pointers and filter span, so one launch can mix PRNs from different Doppler buckets.
 ///
-/// One job emits four output rows (E, P, L, P_HEAD); see launch_despread. Early and Late are the
-/// prompt displaced by +-ds, and all four share one carrier (same wc) and one data sample per
-/// hop, so the kernel generates the carrier and loads the data once per (PRN, channel, hop).
-/// P_HEAD is the prompt's own MAC, gated on the hop.
+/// One job emits four output rows (E, P, L, P_HEAD); see launch_waveform and launch_despread.
+/// Early and Late are the prompt displaced by +-ds, and all three share one carrier (same wc)
+/// and one data sample per hop, so the kernels generate the carrier and load the data once per
+/// (PRN, channel, hop). P_HEAD is the prompt gated on the hop (see m_head).
 struct DespreadJob {
     double cp0; ///< prompt code phase, combined-stream chips, referred to absolute sample 0
                 ///< (host-side; the kernels use cp_ref)
@@ -74,8 +74,9 @@ struct DespreadJob {
     int n_chips; ///< chips spanned by this bucket's filter; the gather walks [d_first, n_chips)
     int m_head;  ///< row 3 (P_HEAD) is the prompt over hops [0, m_head) only: the part of the
                  ///< window before the code-period boundary, where the secondary overlay or nav
-                 ///< symbol can flip sign (gnssRecord.hpp REC_PH_*). 0 gives an all-zero row 3
-                 ///< (despread_batch's plain E/P/L contract).
+                 ///< symbol can flip sign (gnssRecord.hpp REC_PH_*). 0 gives an all-zero row 3.
+                 ///< Read by the waveform path (launch_waveform, launch_correlate_nm,
+                 ///< launch_pack44); launch_despread ignores it and writes row 3 as zeros.
     /// Shared-table mode: the first-moment companion tables Psi and this PRN's carrier offset
     /// from the tables' own carrier, rad/sample (see
     /// ChannelizedReplicaBank::HopRateFilter::PsiA). Read only when DespreadParams::shared is
@@ -138,8 +139,9 @@ __host__ __device__ inline float2 unpack_44(unsigned char b, float scale) {
 
 /**
  * Launch the fused despread. One job in, four output rows out: job b writes rows
- * 4*b + 0..3 = Early, Prompt, Late, P_HEAD. Jobs and output rows are counted separately
- * (gnss_gpu::max_specs vs max_jobs).
+ * 4*b + 0..2 = Early, Prompt, Late, and row 4*b + 3 as zeros (the P_HEAD slot, which only the
+ * waveform path fills). Jobs and output rows are counted separately (gnss_gpu::max_specs vs
+ * max_jobs).
  * @param data   [n_chan][data_stride] channelized voltage at the window start (device)
  * @param code   shared int8 code table (all PRNs concatenated; jobs carry offsets; device)
  * @param jobs   [n_spec] per-PRN quad parameters incl. per-job Phi table pointers (device)

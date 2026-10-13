@@ -116,7 +116,8 @@ cudaError_t launch_waveform_tiled(const int8_t* code, const DespreadJob* jobs, i
  * Reads the CHORD voltage in its native layout, [hop][frame_chan][element] with element
  * fastest, so there is no transpose: consecutive threads take consecutive elements (coalesced),
  * and the replica sample for a (row, channel, hop) is the same for all of them (a broadcast).
- * As in the fused kernel, one block produces a PRN's E/P/L/P_HEAD rows from one data load.
+ * As in the fused kernel, one block produces a PRN's rows (here E/P/L/P_HEAD) from one data
+ * load.
  *
  * @param data        [n_hops][frame_chan_stride][elem_stride] 4+4b bytes (device), real in the
  *                    high nibble, imag in the low (gnss44.hpp)

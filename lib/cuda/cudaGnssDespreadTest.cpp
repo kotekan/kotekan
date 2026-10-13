@@ -94,35 +94,32 @@ int main(int argc, char** argv) {
         for (int m = 0; m < n_hops; ++m)
             data_ch[c][m] = sky[c][m] * 3.0f + cf((float)frand(), (float)frand());
 
-    // Two fused jobs, each emitting E, P, L and P_HEAD: one at the true code phase, one an
-    // off-peak control. The first cuts P_HEAD at hop 40; the second sets m_head = 0, which
-    // gives an all-zero P_HEAD row, so both branches are covered.
+    // Two jobs: one at the true code phase, one an off-peak control. The fused kernel returns
+    // E, P and L for each and an all-zero P_HEAD row. m_head matters to the waveform split
+    // below: the first job cuts P_HEAD at hop 40, the second sets m_head = 0, which gives an
+    // all-zero P_HEAD row, so both branches are covered.
     const double spacing = 0.5;
     struct FusedTrial {
         double cp_prompt;
         int m_head;
     };
     const std::vector<FusedTrial> ftrials = {{cp_true, 40}, {cp_true + 137.0, 0}};
-    const char* row_name[4] = {"E", "P", "L", "HEAD"};
-    // Row -> (code phase, hop count) as the kernel defines them; the CPU must reproduce both.
-    auto row_cp = [&](const FusedTrial& ft, int t) {
-        return ft.cp_prompt + (t == 3 ? 0.0 : (t - 1) * spacing);
-    };
-    auto row_hops = [&](const FusedTrial& ft, int t) { return (t == 3) ? ft.m_head : n_hops; };
+    const char* row_name[3] = {"E", "P", "L"};
+    // Row -> code phase as the kernel defines it; the CPU must reproduce it.
+    auto row_cp = [&](const FusedTrial& ft, int t) { return ft.cp_prompt + (t - 1) * spacing; };
 
     // --- CPU reference: a hoprate replica per row, correlated in double ---
     const auto filt = bank.hoprate_filter(cover, dop);
-    std::vector<std::complex<double>> cpu_corr; // [row][chan]
+    std::vector<std::complex<double>> cpu_corr; // [job][E/P/L][chan]
     std::vector<double> cpu_energy;
     for (const auto& ft : ftrials)
-        for (int t = 0; t < 4; ++t) {
+        for (int t = 0; t < 3; ++t) {
             const auto repl =
                 bank.hoprate_stream(filt, 0, window_start, row_cp(ft, t), dop, n_hops);
-            const int hi = row_hops(ft, t);
             for (int c = 0; c < n_chan; ++c) {
                 std::complex<double> g(0.0, 0.0);
                 double e = 0.0;
-                for (int m = 0; m < hi; ++m) {
+                for (int m = 0; m < n_hops; ++m) {
                     g += std::complex<double>(data_ch[c][m])
                          * std::conj(std::complex<double>(repl[c][m]));
                     e += std::norm(std::complex<double>(repl[c][m]));
@@ -259,11 +256,21 @@ int main(int argc, char** argv) {
         std::complex<double> cc(0, 0), gc(0, 0);
         double ce = 0, ge = 0;
         for (int c = 0; c < n_chan; ++c) {
-            cc += cpu_corr[(size_t)b * n_chan + c];
             gc += std::complex<double>(g_corr[(size_t)b * n_chan + c].x,
                                        g_corr[(size_t)b * n_chan + c].y);
-            ce += cpu_energy[(size_t)b * n_chan + c];
             ge += g_energy[(size_t)b * n_chan + c];
+        }
+        if (t == 3) { // the P_HEAD slot: the fused kernel writes zeros
+            const bool ok = gc == std::complex<double>(0.0, 0.0) && ge == 0.0;
+            pass = pass && ok;
+            printf("HEAD (zero in the fused kernel): GPU |G|=%12.4f E=%12.1f %s\n", std::abs(gc),
+                   ge, ok ? "OK" : "FAIL");
+            continue;
+        }
+        const size_t crow = (size_t)(3 * (b / 4) + t) * n_chan; // CPU rows are [job][E/P/L]
+        for (int c = 0; c < n_chan; ++c) {
+            cc += cpu_corr[crow + c];
+            ce += cpu_energy[crow + c];
         }
         const double rc = std::abs(gc - cc) / std::max(1e-30, std::abs(cc));
         const double re = std::fabs(ge - ce) / std::max(1e-30, ce);
@@ -272,8 +279,8 @@ int main(int argc, char** argv) {
         pass = pass && ok;
         printf("%-4s cp=%9.2f hops=%4d: CPU |G|=%12.4f E=%12.1f | GPU |G|=%12.4f E=%12.1f | "
                "rel %.2e/%.2e %s\n",
-               row_name[t], row_cp(ft, t), row_hops(ft, t), std::abs(cc), ce, std::abs(gc), ge, rc,
-               re, ok ? "OK" : "FAIL");
+               row_name[t], row_cp(ft, t), n_hops, std::abs(cc), ce, std::abs(gc), ge, rc, re,
+               ok ? "OK" : "FAIL");
     }
     printf("%s (max relative error %.3e; %d jobs x 4 rows x %d channels x %d hops)\n",
            pass ? "PASS" : "FAIL", max_rel, n_spec, n_chan, n_hops);
@@ -281,7 +288,8 @@ int main(int argc, char** argv) {
     // --- CHORD 4+4b data ---
     // The voltage quantized to 4+4b bytes (gnss44.hpp), each channel scaled to ~3 lsb rms per
     // component. The fused kernel despreads the same voltages dequantized to float, and that is
-    // the reference for the split below.
+    // the reference for the split below: rows E/P/L from the record, and the P_HEAD row from the
+    // fused prompt over the head hops alone.
     {
         std::vector<float> h_scale(n_chan), h_inv(n_chan);
         for (int c = 0; c < n_chan; ++c) {
@@ -315,6 +323,24 @@ int main(int argc, char** argv) {
         std::vector<double> fe((size_t)n_out * n_chan);
         CK(cudaMemcpy(fc.data(), d_corr, fc.size() * sizeof(double2), cudaMemcpyDeviceToHost));
         CK(cudaMemcpy(fe.data(), d_energy, fe.size() * sizeof(double), cudaMemcpyDeviceToHost));
+        // P_HEAD reference: the fused prompt row of a launch over hops [0, m_head) only. Here
+        // every lane of either path holds at most one head hop and the reductions are the same
+        // power-of-two trees (the split's extra lanes add exact zeros), so it is exact. A job
+        // with m_head = 0 keeps the fused kernel's zero row.
+        for (int b = 0; b < n_spec; ++b) {
+            if (ftrials[b].m_head == 0)
+                continue;
+            gnss_cuda::DespreadParams ph = p;
+            ph.n_hops = ftrials[b].m_head;
+            CK(gnss_cuda::launch_despread(d_deq, d_code, d_jobs, n_spec, n_chan, ph, d_corr,
+                                          d_energy, 0));
+            CK(cudaDeviceSynchronize());
+            const size_t src = (size_t)(4 * b + 1) * n_chan, dst = (size_t)(4 * b + 3) * n_chan;
+            CK(cudaMemcpy(fc.data() + dst, d_corr + src, n_chan * sizeof(double2),
+                          cudaMemcpyDeviceToHost));
+            CK(cudaMemcpy(fe.data() + dst, d_energy + src, n_chan * sizeof(double),
+                          cudaMemcpyDeviceToHost));
+        }
 
         // --- CHORD split (waveform generation + N x M correlation) vs the fused kernel ---
         // The split generates each replica once and correlates it against N antennas instead of

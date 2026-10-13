@@ -11,16 +11,18 @@
 // them against the data.
 //
 // Geometry (one launch = one record window of one signal band):
-//   grid.x  = spec index b, one PRN's correlator quad (E, P, L, P_HEAD)
+//   grid.x  = spec index b, one PRN's correlator triple (E, P, L)
 //   grid.y  = covering-channel index ci
 //   block.x = hop lanes, min(pow2 >= n_hops, 256); lane m handles hops m, m + blockDim.x, ...
-// Each block reduces its lanes in shared memory into rows 4*b + 0..3 of corr/energy; the caller
-// sums across channels.
+// Each block reduces its lanes in shared memory into rows 4*b + 0..2 of corr/energy; the caller
+// sums across channels. Row 4*b + 3 (P_HEAD in the four-row layout) is written as zeros: this
+// kernel does not form the head-gated prompt (the waveform path in cudaGnssChordDespread.cu
+// does), and its only production caller, GnssCudaDespread::despread_batch, wants E/P/L alone.
 //
-// The quad is one block rather than four jobs because E, P and L differ only in code phase: they
+// E, P and L are one block rather than three jobs because they differ only in code phase: they
 // share a Doppler, so one carrier phasor, and they read the same data sample. Fused, the carrier
 // (a double fmod and a sincosf) and the load happen once per (PRN, channel, hop), and only the
-// chip gather runs three times. P_HEAD is the prompt's own MAC, gated on `mh < m_head`.
+// chip gather runs three times.
 //
 // Fusion costs registers, and so occupancy. It pays when each thread walks several hops: the
 // kernel is then throughput-bound and the shared carrier and load dominate. With ~1 hop per
@@ -46,29 +48,21 @@ namespace {
 // waveform kernels use the same gather.
 using gnss_cuda::cmulf;
 
-/// Kernel-split ablation, a benchmarking template parameter that separates the cost of replica
-/// synthesis (which CHORD's N^2 correlator cannot absorb) from the correlation MAC (which it
-/// could). NO_MAC keeps one add so the gather is not eliminated; its difference from ABL_NONE
-/// is the MAC's cost. NO_SYN replaces the gather with a constant, keeping the carrier and the
-/// MAC; its difference is synthesis. launch_despread instantiates ABL_NONE only.
-enum AblMode { ABL_NONE = 0, ABL_NO_MAC = 1, ABL_NO_SYN = 2 };
-
-template <int ABL = ABL_NONE>
 __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan][data_stride]
                                      const int8_t* __restrict__ code, // [batch-shared code table]
                                      const gnss_cuda::DespreadJob* __restrict__ jobs, // [n_spec]
                                      gnss_cuda::DespreadParams p,
                                      double2* __restrict__ corr,    // [4*n_spec][nchan]
                                      double* __restrict__ energy) { // [4*n_spec][nchan]
-    const int b = blockIdx.x;  // spec: one PRN's E/P/L/P_HEAD quad
+    const int b = blockIdx.x;  // spec: one PRN's E/P/L triple
     const int ci = blockIdx.y; // covering channel
     const int m = threadIdx.x; // hop lane: hops m, m + blockDim.x, ... (records may be longer
                                // than the block)
     const gnss_cuda::DespreadJob job = jobs[b];
 
-    // acc/e rows: 0 = Early, 1 = Prompt, 2 = Late, 3 = P_HEAD (the prompt over [0, m_head)).
-    double2 acc[4] = {{0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
-    double e[4] = {0.0, 0.0, 0.0, 0.0};
+    // acc/e rows: 0 = Early, 1 = Prompt, 2 = Late.
+    double2 acc[3] = {{0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
+    double e[3] = {0.0, 0.0, 0.0};
     const bool covered = (job.chan_mask >> ci) & 1ULL; // channel in this PRN's covering set?
 
     // Invariant across hops and trials.
@@ -84,7 +78,7 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         // only dn. Early is C_P - ds, Late C_P + ds.
         const double C_P = job.cp_ref + dn * job.cps;
 
-        // Carrier phasor pa = e^{i wc n}, one per hop for the whole quad. The phase comes from
+        // Carrier phasor pa = e^{i wc n}, one per hop for all three trials. The phase comes from
         // the window's reference (DespreadJob::ang0), so wc multiplies only dn; reduce in double
         // before the float sincosf.
         const double ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
@@ -93,9 +87,8 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         const float2 pa = make_float2(cn, sn);
         const float2 pb = make_float2(cn, -sn);
 
-        // One load for the quad.
+        // One load for the three trials.
         const float2 dd = data[(size_t)ci * p.data_stride + mh];
-        const bool in_head = (mh < job.m_head);
 
         // Trials run in the order {P, E, L}, the waveform kernel's order
         // (cudaGnssChordDespread.cu), so the two paths do the same arithmetic. The accumulator
@@ -104,75 +97,41 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         // One walk of the chip loop serves all three trials (chip_gather3): their taps at a
         // given chip are neighbours in the Phi slice, so they share L1 lines.
         float2 g3A[3], g3B[3];
-        if (ABL != ABL_NO_SYN) {
-            const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
-            // Shared tables need the SHARED instantiation with Psi and ddw passed explicitly:
-            // chip_gather3's defaults (SHARED = false, null Psi) read the Doppler-free tables
-            // with no correction.
-            if (p.shared)
-                gnss_cuda::chip_gather3<float2, false, false, true>(
-                    job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf,
-                    code, phiA, phiB, ks, kf, Cs, g3A, g3B,
-                    (const float2*)job.psiA + (size_t)ci * (p.Lf + 1),
-                    (const float2*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);
-            else
-                gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
-                                        job.d_first, p.Lf, code, phiA, phiB, ks, kf, Cs, g3A,
-                                        g3B);
-        }
+        const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
+        // Shared tables need the SHARED instantiation with Psi and ddw passed explicitly:
+        // chip_gather3's defaults (SHARED = false, null Psi) read the Doppler-free tables with no
+        // correction.
+        if (p.shared)
+            gnss_cuda::chip_gather3<float2, false, false, true>(
+                job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf, code,
+                phiA, phiB, ks, kf, Cs, g3A, g3B, (const float2*)job.psiA + (size_t)ci * (p.Lf + 1),
+                (const float2*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);
+        else
+            gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
+                                    job.d_first, p.Lf, code, phiA, phiB, ks, kf, Cs, g3A, g3B);
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
             const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> P / E (C_P-ds) / L (C_P+ds)
-            float2 sA, sB;
-            if (ABL == ABL_NO_SYN) {
-                // Constant replica: the gather disappears, the carrier apply and MAC remain.
-                sA = make_float2(1.0f, 0.0f);
-                sB = make_float2(1.0f, 0.0f);
-            } else {
-                sA = g3A[tt];
-                sB = g3B[tt];
-            }
             // Replica channel sample r = 0.5 (pa sA + conj(pa) sB); then the despread MAC:
             // acc += data * conj(r), e += |r|^2 -- float compute, widened once for the reduction.
-            const float2 t1 = cmulf(pa, sA);
-            const float2 t2 = cmulf(pb, sB);
+            const float2 t1 = cmulf(pa, g3A[tt]);
+            const float2 t2 = cmulf(pb, g3B[tt]);
             const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
-            if (ABL == ABL_NO_MAC) {
-                // One add keeps the gather live; without it nvcc eliminates the synthesis.
-                acc[t].x += (double)r.x;
-                continue;
-            }
             const double re = (double)(dd.x * r.x + dd.y * r.y); // Re(d * conj(r))
             const double im = (double)(dd.y * r.x - dd.x * r.y); // Im(d * conj(r))
             const double ee = (double)(r.x * r.x + r.y * r.y);
             acc[t].x += re;
             acc[t].y += im;
             e[t] += ee;
-            // P_HEAD: the prompt's own MAC, gated on the hop; one predicated add.
-            if (t == 1 && in_head) {
-                acc[3].x += re;
-                acc[3].y += im;
-                e[3] += ee;
-            }
         }
     }
 
-    // Block reduction over hop lanes (each lane already summed its strided hops), run as four
-    // sequential passes over one set of shared arrays: four at once would be 24 KB per block.
+    // Block reduction over hop lanes (each lane already summed its strided hops), run as three
+    // sequential passes over one set of shared arrays: three at once would be 18 KB per block.
     // They hold 256 lanes, the most despread_block launches; the tree needs a power-of-2 block.
     __shared__ double sh_re[256], sh_im[256], sh_e[256];
 #pragma unroll
-    for (int j = 0; j < 4; ++j) {
-        // m_head == 0 (despread_batch's plain E/P/L contract) leaves row 3 identically zero:
-        // write zeros and skip the tree. The test is uniform across the block, and the row is
-        // still written so no reader sees stale data.
-        if (j == 3 && job.m_head == 0) {
-            if (m == 0) {
-                corr[(size_t)(4 * b + 3) * gridDim.y + ci] = make_double2(0.0, 0.0);
-                energy[(size_t)(4 * b + 3) * gridDim.y + ci] = 0.0;
-            }
-            break;
-        }
+    for (int j = 0; j < 3; ++j) {
         __syncthreads(); // the previous pass's reads must finish before we overwrite
         sh_re[m] = acc[j].x;
         sh_im[m] = acc[j].y;
@@ -190,6 +149,11 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
             corr[(size_t)(4 * b + j) * gridDim.y + ci] = make_double2(sh_re[0], sh_im[0]);
             energy[(size_t)(4 * b + j) * gridDim.y + ci] = sh_e[0];
         }
+    }
+    // Row 3: zeros, so that no reader of the four-row layout sees stale data.
+    if (m == 0) {
+        corr[(size_t)(4 * b + 3) * gridDim.y + ci] = make_double2(0.0, 0.0);
+        energy[(size_t)(4 * b + 3) * gridDim.y + ci] = 0.0;
     }
 }
 
@@ -210,9 +174,9 @@ inline int despread_block(int n_hops) {
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
                             int n_spec, int n_chan, const DespreadParams& p, double2* corr,
                             double* energy, cudaStream_t stream) {
-    dim3 grid(n_spec, n_chan); // one block per (PRN quad, channel), 4 output rows each
-    gnss_despread_kernel<ABL_NONE><<<grid, despread_block(p.n_hops), 0, stream>>>(
-        data, code, jobs, p, corr, energy);
+    dim3 grid(n_spec, n_chan); // one block per (PRN, channel), 4 output rows each
+    gnss_despread_kernel<<<grid, despread_block(p.n_hops), 0, stream>>>(data, code, jobs, p, corr,
+                                                                        energy);
     return cudaGetLastError();
 }
 
