@@ -101,17 +101,6 @@ def accessible_sky(GX, GY, lat_deg, incl_deg, alt_km, el_mask_deg):
     return (np.abs(sin_psi) <= np.sin(np.radians(incl_deg))) & (el >= el_mask_deg)
 
 
-def _in_hull(grid, pts):
-    """Boolean: which grid points fall inside the convex hull of pts (for --voronoi masking).
-    Delaunay.find_simplex >= 0 iff the point is inside the triangulated hull."""
-    from scipy.spatial import Delaunay
-
-    try:
-        return Delaunay(pts).find_simplex(grid) >= 0
-    except Exception:  # degenerate (collinear) point set
-        return np.zeros(len(grid), dtype=bool)
-
-
 # ---------------- IONEX (absolute leveling) ----------------
 
 
