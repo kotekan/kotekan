@@ -388,6 +388,10 @@ write_data:
         file_name: frb2_beams
         max_frames: 3
         create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
+    write_frb_pl_mask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_frb_pl_mask_buffer
+        file_name: frb_pl_mask
 #TODO     write_frb3_beams:
 #TODO         kotekan_stage: hdf5FileWrite
 #TODO         in_buf: host_frb3_beams_buffer
