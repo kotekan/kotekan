@@ -27,7 +27,7 @@
  *
  * The header needs no CUDA headers (plain floats, no float2), so it builds in any translation
  * unit. GPU code uses it through the float2 wrappers in cudaGnssDespreadKernel.hpp and host code
- * (scripts/gnss/e2e.cpp) calls it directly; keep it the only codec.
+ * (GnssChordDequantize.cpp) calls it directly; keep it the only codec.
  * lib/cuda/cudaGnssDespreadTest.cpp checks the encoder against an independent copy of the
  * reference decode.
  */
