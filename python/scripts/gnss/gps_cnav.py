@@ -1,30 +1,21 @@
-#!/usr/bin/env python3
 """GPS CNAV (L2C / L5) navigation-message decoder.
 
 CNAV rides the L2C CM (or L5 I5) channel at 25 bps, rate-1/2 convolutionally
-encoded to 50 sps. This decodes the soft symbols (the correlator's per-CM-period
-prompt = peak_re of the GPS_L2C_CM records) through:
+encoded to 50 sps. cnav_predictor.py decodes the combiner's nav_obs soft symbols
+through:
 
     soft symbols -> Viterbi (rate 1/2, K=7, G=171/133 oct, G2 inverted)
                  -> 25 bps bits -> frame sync (8-bit preamble) -> CRC-24Q
                  -> field parse (message type, PRN, TOW).
 
-Distinct from LNAV (gps_navdecode.py): FEC + CRC instead of Hamming parity, and
+Distinct from LNAV (gps_nav_decode.py): FEC + CRC instead of Hamming parity, and
 message-type framing instead of fixed subframes. The encoder (conv_encode,
 crc24q, build_cnav_message) is exposed so a synthetic message round-trips in
 tests without live sky data. Ephemeris/clock field tables (message types
 10/11/30..37) are a mechanical follow-on.
 """
 
-import argparse
-import glob
-import os
-import sys
-
 import numpy as np
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gps_beamtrack import read_records  # noqa: E402  (shared record reader)
 
 PREAMBLE = [1, 0, 0, 0, 1, 0, 1, 1]
 MSG_BITS = 300
@@ -156,36 +147,6 @@ def parse_cnav_message(bits):
     }
 
 
-def find_cnav_messages(bits):
-    msgs, i, n = [], 0, len(bits)
-    while i + MSG_BITS <= n:
-        if list(int(b) for b in bits[i : i + 8]) == PREAMBLE:
-            window = [int(b) for b in bits[i : i + MSG_BITS]]
-            m = parse_cnav_message(window)
-            if m is not None:
-                m["index"] = i
-                m["bits"] = window
-                msgs.append(m)
-                i += MSG_BITS
-                continue
-        i += 1
-    return msgs
-
-
-def decode_cnav(symbols, known_start=False):
-    """Full chain: soft symbols -> CNAV messages. Searches the two symbol-pair
-    phases and the carrier polarity (the Viterbi + G2 inversion make polarity a
-    sign on the input symbols); the CRC confirms the right combination."""
-    sym = np.asarray(symbols, dtype=float)
-    for phase in (0, 1):
-        for sign in (1.0, -1.0):
-            bits = viterbi_decode(sign * sym[phase:], known_start=known_start)
-            msgs = find_cnav_messages(bits)
-            if msgs:
-                return msgs
-    return []
-
-
 # --------------------------------------------------------------------------
 # CNAV ephemeris (message types 10 + 11) -> SV position
 # --------------------------------------------------------------------------
@@ -238,18 +199,6 @@ def parse_cnav_ephemeris(msg10_bits, msg11_bits):
     return eph
 
 
-def assemble_cnav_ephemeris(msgs):
-    """Pair adjacent (type 10, type 11) messages of the same PRN and parse."""
-    out = []
-    for i in range(len(msgs) - 1):
-        a, b = msgs[i], msgs[i + 1]
-        if a["type"] == 10 and b["type"] == 11 and a["prn"] == b["prn"]:
-            eph = parse_cnav_ephemeris(a["bits"], b["bits"])
-            if abs(eph["toe"] - eph["toe2"]) < 1e-6:  # consistent ephemeris set
-                out.append(eph)
-    return out
-
-
 def sv_position_cnav(eph, t):
     """ECEF (x,y,z) m from CNAV ephemeris (IS-GPS-200 Table 30-II). Like LNAV
     but with a reference semi-major axis + rate (A = AREF + dA + A_dot*tk) and a
@@ -281,87 +230,3 @@ def sv_position_cnav(eph, t):
     y = xp * math.sin(om) + yp * math.cos(i) * math.cos(om)
     z = yp * math.sin(i)
     return x, y, z
-
-
-def read_symbols(paths, prn, n_prn):
-    """Soft CNAV symbols (one per 20 ms CM record) + their UTC stamps for a PRN.
-
-    Auto-detects the record layout by frame stride: the CPU-chain era wrote
-    11-float records (peak_re at slot 4, gps_beamtrack.read_records); the GPU
-    chain (GnssGpuRecordAssemble -> combiner out_buf) writes 24-float REC_*
-    records -- prompt P.re/P.im at slots 3/4, float64 UTC at slots 9-10
-    (lib/stages/gnss/gnssRecord.hpp). The soft symbol is the carrier-locked
-    prompt's real part, same quantity either way."""
-    import struct
-
-    buf = open(paths[0], "rb").read()
-    strides = {11: 4 + n_prn * 44, 24: 4 + n_prn * 96}
-    fits = [k for k, s in strides.items() if len(buf) % s == 0 and len(buf) >= s]
-    if fits == [11] or (not fits and len(buf) % strides[11] < len(buf) % strides[24]):
-        recs = read_records(paths, n_prn=n_prn)
-        sel = recs[recs["prn"].astype(int) == int(prn)]
-        return sel["utc"].astype(float), sel["peak_re"].astype(float)
-    rb, stride = 96, strides[24]
-    utc, sym = [], []
-    for path in paths:
-        buf = open(path, "rb").read()
-        for off in range(0, len(buf) - stride + 1, stride):
-            meta = struct.unpack_from("<I", buf, off)[0]
-            ro = off + 4 + meta + prn_index(buf, off + 4 + meta, prn, n_prn, rb)
-            if ro < off + 4:
-                continue
-            v = np.frombuffer(buf, dtype="<f4", count=6, offset=ro)
-            t = struct.unpack_from("<d", buf, ro + 9 * 4)[0]
-            if v[5] > 0.0 and t > 0.0:  # P_energy > 0: a real record
-                utc.append(t)
-                sym.append(float(v[3]))  # REC_P_RE
-    return np.asarray(utc), np.asarray(sym)
-
-
-def prn_index(buf, base, prn, n_prn, rb):
-    """Byte offset (relative to base) of this PRN's record in a frame, or -1-base.
-    Records carry their PRN in slot 0; the row order is fixed per chain, so scan
-    once per call (cheap at 24 floats x n_prn)."""
-    import struct
-
-    for p in range(n_prn):
-        if int(struct.unpack_from("<f", buf, base + p * rb)[0]) == int(prn):
-            return p * rb
-    return -1 - base
-
-
-def main(argv=None):
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    ap.add_argument("path", help="GPS_L2C_CM record file, directory, or glob")
-    ap.add_argument("--n-prn", type=int, required=True, help="PRNs per record frame")
-    ap.add_argument(
-        "--prn", type=int, action="append", required=True, help="PRN(s) to decode"
-    )
-    args = ap.parse_args(argv)
-
-    paths = (
-        sorted(glob.glob(os.path.join(args.path, "*.raw")))
-        if os.path.isdir(args.path)
-        else sorted(glob.glob(args.path))
-    )
-    if not paths:
-        ap.error("no record files matched: %s" % args.path)
-
-    for prn in args.prn:
-        utc, syms = read_symbols(paths, prn, args.n_prn)
-        msgs = decode_cnav(syms)
-        print("PRN %2d: %d symbols, %d CNAV messages" % (prn, len(syms), len(msgs)))
-        for m in msgs:
-            print("   type=%-2d  PRN=%-2d  TOW=%d" % (m["type"], m["prn"], m["tow"]))
-        for eph in assemble_cnav_ephemeris(msgs):
-            x, y, z = sv_position_cnav(eph, eph["toe"])
-            print(
-                "   ephemeris WN=%d toe=%ds  ECEF=(%.1f, %.1f, %.1f) km"
-                % (eph["WN"], eph["toe"], x / 1e3, y / 1e3, z / 1e3)
-            )
-
-
-if __name__ == "__main__":
-    main()

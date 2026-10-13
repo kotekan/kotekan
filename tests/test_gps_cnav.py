@@ -9,6 +9,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "python", "scripts", "gnss")
 )
 import gps_cnav as nc  # noqa: E402
+from cnav_predictor import _crc_msgs  # noqa: E402  (the live CRC-guided message scan)
 
 
 def _soft(bits, noise=0.0, seed=0):
@@ -56,7 +57,7 @@ def test_cnav_message_roundtrip():
         for k, t in enumerate((10, 11, 30))
     ]
     bits = sum(msgs_in, [])  # concat -> 900 bits
-    got = nc.decode_cnav(_soft(bits, noise=0.4, seed=3), known_start=True)
+    got = _crc_msgs(nc.viterbi_decode(_soft(bits, noise=0.4, seed=3), known_start=True))
     assert len(got) == 3
     for g, t, k in zip(got, (10, 11, 30), range(3)):
         assert g["prn"] == 5 and g["type"] == t and g["tow"] == 100000 + k
@@ -108,10 +109,12 @@ _EPH = {
 
 def test_cnav_ephemeris_roundtrip_and_position():
     bits = _build_eph_msg(5, 10, 100000, _EPH) + _build_eph_msg(5, 11, 100001, _EPH)
-    msgs = nc.decode_cnav(_soft(bits, noise=0.3, seed=5), known_start=True)
-    ephs = nc.assemble_cnav_ephemeris(msgs)
-    assert len(ephs) >= 1
-    eph = ephs[0]
+    msgs = _crc_msgs(
+        nc.viterbi_decode(_soft(bits, noise=0.3, seed=5), known_start=True)
+    )
+    assert [m["type"] for m in msgs] == [10, 11]
+    eph = nc.parse_cnav_ephemeris(msgs[0]["bits"], msgs[1]["bits"])
+    assert abs(eph["toe"] - eph["toe2"]) < 1e-6  # the CnavPredictor.ephemeris() gate
     for name, (_mt, _s, _l, _sg, scale) in nc.CNAV_EPH_FIELDS.items():
         assert abs(eph[name] - _EPH[name]) <= abs(scale) + 1e-12, name
     x, y, z = nc.sv_position_cnav(eph, eph["toe"])
@@ -130,14 +133,15 @@ def test_cnav_sv_position_circular_matches_closed_form():
     assert z == pytest.approx(A * math.sin(0.96), abs=1.0)
 
 
-def test_cnav_recovers_under_phase_and_polarity():
+def test_cnav_recovers_without_known_start():
+    """The live decoder (cnav_predictor) runs the Viterbi from an unknown state: a window
+    starting mid-message must still converge and recover the later messages."""
     msgs_in = [
         nc.build_cnav_message(prn=7, msg_type=t, tow=200000 + k)
         for k, t in enumerate((30, 31, 32))
     ]
     bits = sum(msgs_in, [])
-    soft = -_soft(bits, noise=0.3, seed=4)  # inverted carrier polarity
-    soft = np.concatenate([[0.05], soft])  # offset the symbol-pair phase by 1
-    got = nc.decode_cnav(soft, known_start=False)
+    soft = _soft(bits, noise=0.3, seed=4)[40:]  # start 20 bits into the first message
+    got = _crc_msgs(nc.viterbi_decode(soft, known_start=False))
     assert len(got) >= 2  # later messages recovered after convergence
     assert all(g["prn"] == 7 and g["type"] in (30, 31, 32) for g in got)
