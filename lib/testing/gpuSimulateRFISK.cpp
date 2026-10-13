@@ -148,8 +148,8 @@ private:
     const double _rfi_feed_averaged_min_good_frac;
     const double _rfi_mu_min;
     const double _rfi_mu_max;
-    // Channels whose RFI mask is forced to all-good, whatever SK said; mirrors
-    // cudaRFISKtilde's `rfi_first_stage_excision_exempt_local_freqs`.
+    // Channels whose RFI mask is forced to all-good, whatever SK said; mirrors cudaRFISKtilde's
+    // exempt channels (`rfi_first_stage_excision_exempt_freq_ids`), here as local indices.
     const std::vector<int> _excision_exempt_local_freqs;
     /// Lower x limit in bias & sigma tables
     const float _xmin;

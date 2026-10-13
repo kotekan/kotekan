@@ -83,12 +83,11 @@ private:
     // Optional, with excision enabled: channels EXEMPT from first-stage excision. After the SK
     // kernel has written the mask, these channels' rows are overwritten with 1s (every sample
     // good), so the correlator keeps all of their samples while their SK statistics are still
-    // computed and served. Absolute freq_ids are resolved on the first frame against the
-    // input metadata's coarse frequencies (the labels the N2 frames carry); local channel
-    // indices apply as given; both lists may be set. The GNSS lobes are the use case: their
-    // N2 feeds the satellite projection, and the SK flagger would excise them most of the time.
+    // computed and served. The absolute freq_ids are resolved on the first frame against the
+    // input metadata's coarse frequencies (the labels the N2 frames carry). The GNSS lobes are
+    // the use case: their N2 feeds the satellite projection, and the SK flagger would excise
+    // them most of the time.
     const std::vector<int> excision_exempt_freq_ids;
-    const std::vector<int> excision_exempt_local_freqs;
     // Resolved on the first frame: maximal runs [first, last] of exempt local channels.
     std::vector<std::pair<int, int>> excision_exempt_runs;
     bool excision_exempt_resolved;
@@ -141,8 +140,6 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
         config.get_default<bool>(unique_name, "rfi_first_stage_excision_enabled", true)),
     excision_exempt_freq_ids(config.get_default<std::vector<int>>(
         unique_name, "rfi_first_stage_excision_exempt_freq_ids", std::vector<int>{})),
-    excision_exempt_local_freqs(config.get_default<std::vector<int>>(
-        unique_name, "rfi_first_stage_excision_exempt_local_freqs", std::vector<int>{})),
     excision_exempt_resolved(false), rfi_samples_per_bf_sample(div_noremainder(
                                          bf_mask_lifetime_in_samples, rfi_downsampling_factor)),
     rfi_S012_read_granularity(8 * 128 / std::gcd(8 * 128, rfi_downsampling_factor)),
@@ -210,13 +207,8 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     if (!first_stage_excision_enabled && get_instance_num() == 0)
         INFO("First-stage RFI excision disabled: producing an all-good RFI mask. "
              "SK statistics are still computed.");
-    for (const int f : excision_exempt_local_freqs)
-        if (f < 0 || f >= num_frequencies)
-            FATAL_ERROR("rfi_first_stage_excision_exempt_local_freqs: channel {:d} is outside "
-                        "[0, {:d})",
-                        f, num_frequencies);
     if (!first_stage_excision_enabled && get_instance_num() == 0
-        && !(excision_exempt_freq_ids.empty() && excision_exempt_local_freqs.empty()))
+        && !excision_exempt_freq_ids.empty())
         INFO("First-stage RFI excision is disabled, so its exempt channel list has no effect.");
 
     set_command_type(gpuCommandType::KERNEL);
@@ -228,7 +220,7 @@ cudaRFISKtilde::~cudaRFISKtilde() {}
 // need the input's metadata, so this runs on the first frame rather than in the constructor.
 void cudaRFISKtilde::resolve_excision_exempt() {
     excision_exempt_resolved = true;
-    std::vector<int> local(excision_exempt_local_freqs);
+    std::vector<int> local;
     if (!excision_exempt_freq_ids.empty()) {
         const std::shared_ptr<chordMetadata> meta = rfi_S012.get_metadata();
         if (!meta || !meta->has_coarse_freq())
