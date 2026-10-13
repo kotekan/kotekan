@@ -464,7 +464,7 @@ void GnssCudaDespread::set_phi_fp16() {
     const size_t n = (size_t)im.n_chan * (size_t)(im.Lf + 1);
     std::fprintf(stderr,
                  "INFO: GnssCudaDespread: fp16 Phi ARMED -- %.1f MB over %d channels per PRN "
-                 "bucket (fp32 was %.1f), storage error ~3.3e-4 (phibits); despread_batch will "
+                 "bucket (fp32 was %.1f), storage error ~3.3e-4; despread_batch will "
                  "REFUSE while this is set.\n",
                  2.0 * (double)n * (sizeof(float2) / 2) / 1e6, im.n_chan,
                  2.0 * (double)n * sizeof(float2) / 1e6);

@@ -101,9 +101,9 @@ struct DespreadParams {
     /// which case the window must be contiguous within each channel row.
     int data_stride;
     /// fp16 Phi tables: job.phiA/phiB point at __half2 storage and @ref launch_waveform takes
-    /// the __half2 gather, halving the resident tables (storage error ~3.3e-4 relative,
-    /// scripts/gnss/phibits). Only the waveform kernels honour it: launch_despread reads Phi
-    /// as float2, so GnssCudaDespread refuses that path while fp16 tables are armed.
+    /// the __half2 gather, halving the resident tables (storage error ~3.3e-4 relative). Only
+    /// the waveform kernels honour it: launch_despread reads Phi as float2, so GnssCudaDespread
+    /// refuses that path while fp16 tables are armed.
     int phi_half = 0;
 };
 
