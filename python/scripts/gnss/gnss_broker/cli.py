@@ -151,21 +151,6 @@ _FROZEN = dict(
     #   real fit noise and rejects a fit that is simply wrong.\n0 disables the cross-check (the
     #   pre-2026-08-05 behaviour).
     dop_rate_model_tol=0.12,
-    # --dr-clock-adopt-max-age-s
-    #   with --dr-clock-adopt: refuse a sibling record older than this. Staleness is a REFUSAL,
-    #   not a fallback (receiver_state.read_state) -- an old clock is a different epoch's
-    #   number, and after an F-engine restart it is exactly the wrong one. On refusal the chain
-    #   keeps what it has and says so.
-    dr_clock_adopt_max_age_s=60.0,
-    # --dr-clock-adopt-max-slew
-    #   with --dr-clock-adopt: refuse a sibling whose clock is MOVING faster than this
-    #   (chips/s), measured across two consecutive reads one cycle apart. Deliberately NOT the
-    #   sibling's own quality fields: integ_mad_chips is a MAD over a mixed satellite
-    #   population and read 3.3-3.9 chips while the clock itself was stable to 0.2
-    #   (2026-08-08), and `untrusted` counts a persistent demoted set not comparable to `n`.
-    #   Watching the number is the honest test. Default 2.0 chips/s: real drift is ~0.02, a
-    #   non-converged estimate moves by thousands.
-    dr_clock_adopt_max_slew=2.0,
     # --dr-clock-alpha
     #   EMA weight for the solved receiver clock (wrap-aware chips; the held value propagates
     #   at f_chip*(l-a) between solves)
@@ -317,40 +302,6 @@ _FROZEN = dict(
     #   faster poll re-reads the same pass; the point of the bound is that the broker's cycle
     #   is on cf06's single 1 GbE, which telemetry has already inflated once (#64).
     rf_stats_poll_s=30.0,
-    # --state-flush-s
-    #   --state-file publish cadence (s). Current state only; history is the scorer's job (8
-    #   brokers appending at 1 Hz is ~200 MB/day in a cache directory that has to survive
-    #   reboots).
-    state_flush_s=1.0,
-    # --state-fuse
-    #   with --state-file: also compute and PUBLISH this dongle's fused fractional LO estimate
-    #   (S2c). STILL WRITE-ONLY -- no seed, gate or estimator consumes it; the broker logs what
-    #   the fused prior WOULD have said beside what the chain actually uses, so the flip is
-    #   decided on a soak of evidence rather than on argument. Fuses in ppm because carrier (Hz
-    #   at this band) and code (l-a in ppm) measure the same FRACTIONAL error, and only from
-    #   siblings' RAW values -- fusing their smoothed ones would feed the estimate back on
-    #   itself and its covariance would be fiction.
-    state_fuse=1,
-    # --state-fuse-floor-ppm
-    #   covariance FLOOR: no source may claim a standard error below this. ON by default, and
-    #   the default was chosen from a live capture, not from theory. The 15-min cross-chain
-    #   scan said a floor was unnecessary (pairwise |z| = 0.2 -- pure noise), but that scan
-    #   compared MEDIANS over 150 samples and the fuser runs PER CYCLE: on the very first live
-    #   fusion the L5 GPS chain claimed se = 0.00018 ppm (0.21 Hz, 100x tighter than any
-    #   sibling) while sitting 22.7 sigma off, because its handful of satellites happened to
-    #   agree that cycle. Its inverse-variance weight alone would have dragged the dongle's
-    #   answer from +32.3 Hz to +14.7 Hz with all three chains actually at +31.5..+33.8. MAD
-    #   over 2-6 satellites is a poor scatter estimate and can come out near zero by chance;
-    #   the floor is the statement that no chain can beat ~1.5 Hz from a few sats no matter
-    #   what its MAD says.
-    state_fuse_floor_ppm=0.001,
-    # --state-fuse-reject-sigma
-    #   drop a source this far from the ROBUST (median) centre, then refit. Judged against the
-    #   median, never the inverse-variance mean: with one bad source among three the mean is
-    #   dragged far enough that the GOOD sources also exceed the bar, the survivor list comes
-    #   back empty and a naive implementation then rejects nothing while publishing the
-    #   contaminated estimate. 0 disables.
-    state_fuse_reject_sigma=5.0,
     # --bsat-gain
     #   Per-cycle gain of the b_sat loop (task #33): the per-satellite path-bias filter
     #   fed by the fleet phase-slope tau. 0 disables the UPDATES (b freezes at 0 / its
@@ -371,12 +322,6 @@ _FROZEN = dict(
     #   seconds added to the CL time-assist clock -- escape hatch for a future
     #   non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias
     cl_time_adjust=0.0,
-    # --code-bias-force
-    #   DIAGNOSTIC: pin the (l-a) code-rate clock offset to this PPM -- the live fit/EMA
-    #   still runs and logs (so the fit stays observable) but the SEEDED rate uses this
-    #   value only. 2026-07-18: built to test the L2C phantom-l-a hypothesis (fit says
-    #   +0.022 ppm, air truth says 0.000).
-    code_bias_force=None,
     # --decoded-eph-fallback-force
     #   ALWAYS predict from decoded eph, even when BRDC is available -- the live A/B
     #   validation harness (compare against the BRDC predict in the log). Exercises the
@@ -1157,21 +1102,12 @@ def build_parser(description):
         "TCXO offset; shrinks to --search-margin-hz once a few sats pin the clock)",
     )
     ap.add_argument(
-        "--state-read-dir",
-        default=None,
-        help="directory of sibling receiver-state JSON to READ (--dr-clock-adopt). "
-        "Defaults to --state-file's directory. Separate because an adopting "
-        "chain publishes nothing: it contributes no estimate, so requiring it "
-        "to name a write path just to read one would be backwards.",
-    )
-    ap.add_argument(
         "--dr-clock-adopt",
         action="store_true",
-        help="ADOPT the receiver clock from a BAND SIBLING instead of holding the "
-        "primed --dr-clock-chips constant forever. Reads the sibling state "
-        "files receiver_state.StateWriter already publishes (--state-read-dir, "
-        "--state-dongle) and refreshes "
-        "dr_state['clk'] and its drift from the freshest one, every cycle.\n"
+        help="ADOPT the receiver clock from a co-hosted sibling chain (through "
+        "the shared Receiver: the same band first, else across bands as a "
+        "bootstrap) instead of holding the primed --dr-clock-chips constant "
+        "forever.\n"
         "\n"
         "WHY: a chain with --detectors EMPTY cannot solve its own clock. The "
         "bootstrap takes a median of measured code-phase residuals from "
@@ -1180,38 +1116,8 @@ def build_parser(description):
         "the --dr-clock-chips help already says in as many words. That is "
         "every multi-constellation chain (E5a/B2a have no blind acquisition at "
         "all), so today the number is read out of the GPS broker's log by a "
-        "human and pasted in, and it is wrong after any F-engine restart.\n"
-        "\n"
-        "THIS IS AN ADOPTION, NOT A FUSION, and that is why it is safe to turn "
-        "on now while receiver_state's covariance-weighted fuser is still "
-        "deferred ('score, don't steer'). The adopting chain has NO estimate of "
-        "its own, so there is nothing to weight and no manufactured agreement "
-        "-- the failure mode that module's docstring warns about (siblings "
-        "reading each other, so their spread measures the fusion rather than "
-        "the estimator) cannot arise. A chain WITH detections ignores this "
-        "flag; it solves its own.\n"
-        "\n"
-        "SCOPE IS THE LO, exactly as receiver_state defines it: E5a and GPS L5 "
-        "share one carrier, one cable and one F-engine, so the clock transfers "
-        "EXACTLY. It does NOT transfer across a retune -- E5b at 1207 MHz has a "
-        "different PFB group delay -- which is why the dongle key gates it and "
-        "why this must never be pointed across bands.",
-    )
-    ap.add_argument(
-        "--state-file",
-        default=None,
-        help="S2 / Mechanism B OBSERVER: publish this chain's receiver-state "
-        "estimates as JSON (atomically replaced, ~1 Hz) for cross-chain "
-        "comparison. WRITE-ONLY -- exporting changes no estimate and no "
-        "seed. It exists because eight brokers estimate the same four "
-        "physical quantities independently, four of them measure the SAME "
-        "per-dongle clock error by different routes (search-Doppler median, "
-        "carrier-loop trim, l-a slope, DR drift), nothing has ever compared "
-        "carrier-side against code-side, and NOTHING anywhere carries a "
-        "variance -- so the covariance-weighted fuser this is a prerequisite "
-        "for cannot yet be written. Exports each chain's PRE-fusion value "
-        "and its scatter, because the persisted .hz files already read each "
-        "other and their agreement is therefore partly manufactured.",
+        "human and pasted in, and it is wrong after any F-engine restart. "
+        "A chain WITH detections ignores this flag; it solves its own.",
     )
     ap.add_argument(
         "--decode-health-file",
@@ -1220,17 +1126,8 @@ def build_parser(description):
         "replaced) for the viewer + the eventual decoded-eph BRDC fallback: "
         "per (signal, PRN) whether SYNCED, whether a full ephemeris was "
         "EXTRACTED, the BRDC-agreement residual dpos_m, and decode freshness. "
-        "WRITE-ONLY, sibling of --state-file; the viewer reads the directory "
+        "WRITE-ONLY; the viewer reads the directory "
         "and merges. Off when unset.",
-    )
-    ap.add_argument(
-        "--state-dongle",
-        default=None,
-        help="fusion scope key for --state-file: what physically shares an LO "
-        "(one airspy per band, so this is the band tag, identical for every "
-        "chain on it). Do NOT fuse across dongles -- the per-band offsets "
-        "(-151/-15/+31 Hz) are frac-N synthesis constants, not a common "
-        "reference error, and averaging them is meaningless.",
     )
     ap.add_argument(
         "--seed-bias-source",

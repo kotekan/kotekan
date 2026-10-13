@@ -1,15 +1,15 @@
 """On-node nav-decode health export (viewer surface + the fallback's status hook).
 
-WRITE-ONLY, and the exact sibling of receiver_state.py: every broker that decodes a nav
+WRITE-ONLY: every broker that decodes a nav
 message publishes, per (signal, PRN), what it already computes on the 60 s health cadence --
 whether the satellite is SYNCED, whether a full ephemeris was EXTRACTED, the BRDC-agreement
 residual (`dpos_m`), and how FRESH the decode is. One JSON object per broker chain, atomically
 replaced; the viewer (and, later, the decoded-eph BRDC fallback) reads the directory and merges.
 
 Why a file, not an endpoint: the broker has no HTTP server (it only POSTs seeds to kotekan),
-and the viewer already runs Python on the same host. A tmp+rename file is the same transport
-receiver_state.py proved, so a reader never sees a half-written object and the broker can never
-be taken down by a diagnostic riding in its control loop.
+and the viewer already runs Python on the same host. A tmp+rename file means a reader never sees
+a half-written object and the broker can never be taken down by a diagnostic riding in its
+control loop.
 
 Current state only -- history is the logger's job. Absent is `null`, never 0.
 """

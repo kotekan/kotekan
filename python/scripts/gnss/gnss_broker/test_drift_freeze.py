@@ -206,13 +206,6 @@ def test_drift_expires():
 def test_adopt_carries_unknown():
     import inspect
 
-    src = "".join(
-        inspect.getsource(dr.dr_clock_adopt).split()
-    )  # code, not its formatting
-    check(
-        "".join('if dr.get("drift_chips_s") is not None else None'.split()) in src,
-        "file-transport adopt: drift := donor's, None included",
-    )
     src2 = inspect.getsource(dr)
     check(
         'ctx.dr_state["drift"] = float(_sd) if _sd is not None else None' in src2,

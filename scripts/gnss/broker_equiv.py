@@ -80,6 +80,9 @@ RETIRED_FLAGS = {
     "--nh-period-offset": 1,
     "--spectrum-aligned": 0,
     "--spectrum-archive": 1,
+    "--state-dongle": 1,
+    "--state-file": 1,
+    "--state-read-dir": 1,
 }
 
 

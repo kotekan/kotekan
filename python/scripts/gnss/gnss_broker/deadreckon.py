@@ -624,205 +624,22 @@ def _dr_clock_declared(ctx):
     return _e is not None and _e != ctx.dr_state.get("clk_src_epoch")
 
 
-def dr_clock_adopt(ctx):
-    """3e-adopt: ADOPT the sibling band's receiver clock when this chain cannot solve its own.
-        
-    The two bands of one satellite share a receiver clock, so a chain with no detections can take
-    its sibling's -- which is how the searchless chains bootstrap at all.
-        
-    ⚠️ AN ADOPTED CLOCK IS A MEASUREMENT, because the sibling measured it -- but gate on whether
-    the quantity has STOPPED MOVING, not on its age alone. Age alone once adopted a clock bouncing
-    8690 -> 2787 -> 9382 chips between reads.
-        
-    ⚠️ THE FAILURE MODE IS SILENT AND PER-BAND. gal_e5b and bds_b2b adopted (l-a) ZERO times while
-    their 1176.45 MHz siblings adopted it 102 and 107 times -- 150 chips of error against a +-1
-    chip peak, with nothing in the logs saying so."""
-    if (
-        ctx.drp.rx_sib is None
-        and ctx.args.dr_clock_adopt
-        and not ctx.drp.offs
-        and ctx.xb_read_dir
-        and ctx.args.state_dongle
-    ):
-        try:
-            import receiver_state as _rs  # optional module, imported where used
-
-            sibs = _rs.read_dongle(
-                ctx.xb_read_dir,
-                ctx.args.state_dongle,
-                max_age_s=ctx.args.dr_clock_adopt_max_age_s,
-                t_now=ctx.t0,
-                exclude=(
-                    os.path.basename(ctx.args.state_file).rsplit(".", 1)[0]
-                    if ctx.args.state_file
-                    else None
-                ),
-            )
-        except Exception:
-            sibs = []
-        # Freshest wins. Not a weighted mean: this is an adoption of ONE physical
-        # number measured by a chain that can measure it, and averaging two siblings'
-        # copies of the same quantity would just average their noise back in.
-        best_sib = None
-        _refused = False
-        for rec in sibs:
-            # GROUP NAME IS "rxclock", read off a live state file rather than
-            # inferred from the observe() call site -- the first attempt guessed
-            # "dr" from the surrounding variable names and silently found nothing,
-            # logging "no fresh sibling" while a perfectly good record sat there.
-            dr = rec.get("rxclock") or {}
-            if dr.get("chips") is None:
-                continue
-            if best_sib is None or float(rec.get("t", 0)) > float(best_sib[0]):
-                best_sib = (rec.get("t", 0), rec, dr)
-        # QUALITY GATE: JUDGE THE CLOCK BY WATCHING IT, not by the sibling's
-        # aggregate quality fields. Two earlier versions of this gate were wrong in
-        # opposite directions and both cost time:
-        #
-        #   * age alone -> adopted a clock bouncing 8690 -> 2787 -> 9382 chips
-        #     minutes after the sibling restarted.
-        #   * `untrusted >= n` -> refuses forever. Those count DIFFERENT
-        #     populations: n = len(_ir), the satellites contributing an integrity
-        #     residual THIS cycle; untrusted = len(dr_untrusted), the persistent
-        #     demoted set. untrusted > n is normal after a restart, not impossible,
-        #     and comparing them is meaningless.
-        #   * integ_mad_chips > 1.0 -> also refuses a good clock. That MAD is taken
-        #     over a mixed population including badly-tracked satellites; measured
-        #     2026-08-08 it sat at 3.3-3.9 chips while the CLOCK ITSELF was stable
-        #     to 0.2 chips across consecutive reads.
-        #
-        # So gate on the quantity being adopted: has it stopped moving? Two reads a
-        # cycle apart answer that directly, in seconds, with no appeal to anyone's
-        # self-reported quality. A converged clock moves by its drift; a
-        # non-converged one moves by thousands of chips.
-        if best_sib is not None:
-            _, rec, dr = best_sib
-            _cand = float(dr["chips"]) % ctx.code_len
-            _prev = ctx.dr_state.get("adopt_prev")
-            if _prev is None:
-                ctx.dr_state["adopt_prev"] = (_cand, ctx.t0)
-                _log_rl(
-                    "clkadopt-watch",
-                    "dead-reckon: watching sibling '%s' clock %.2f chips -- "
-                    "adopting once a second read confirms it is not moving "
-                    "(one cycle, not a burn-in)" % (rec.get("chain", "?"), _cand),
-                )
-                best_sib = None
-                _refused = True
-            else:
-                _pc, _pt = _prev
-                _dt = max(ctx.t0 - _pt, 1e-6)
-                _move = (
-                    abs(
-                        ((_cand - _pc + ctx.code_len / 2) % ctx.code_len)
-                        - ctx.code_len / 2
-                    )
-                    / _dt
-                )
-                ctx.dr_state["adopt_prev"] = (_cand, ctx.t0)
-                if _move > ctx.args.dr_clock_adopt_max_slew:
-                    _log_rl(
-                        "clkadopt-q",
-                        "dead-reckon: REFUSED sibling '%s' clock -- moving "
-                        "%.1f chips/s (limit %.1f). It has not converged; "
-                        "holding %.2f chips."
-                        % (
-                            rec.get("chain", "?"),
-                            _move,
-                            ctx.args.dr_clock_adopt_max_slew,
-                            ctx.dr_state["clk"]
-                            if ctx.dr_state.get("clk") is not None
-                            else float("nan"),
-                        ),
-                    )
-                    best_sib = None
-                    _refused = True
-        if best_sib is not None:
-            _, rec, dr = best_sib
-            new_clk = float(dr["chips"]) % ctx.code_len
-            prev = ctx.dr_state.get("clk")
-            moved = (
-                abs(
-                    ((new_clk - prev + ctx.code_len / 2) % ctx.code_len)
-                    - ctx.code_len / 2
-                )
-                if prev is not None
-                else None
-            )
-            ctx.dr_state["clk"] = new_clk
-            ctx.dr_state["clk_t"] = ctx.t0
-            ctx.dr_state["clk_src_t"] = ctx.t0
-            # The donor's drift comes WITH its clock, "unknown" included: keeping our own
-            # stale value when the donor has none is how a poisoned drift outlived its
-            # donor's (2026-09-03).
-            ctx.dr_state["drift"] = (
-                float(dr["drift_chips_s"])
-                if dr.get("drift_chips_s") is not None
-                else None
-            )
-            ctx.dr_state["drift_t"] = ctx.t0
-            # Loud on a real MOVE, quiet on the steady state. A jump is the
-            # signature of an F-engine restart re-establishing frame 0, which is
-            # precisely the event the hand-primed constant used to survive wrongly.
-            if moved is None or moved > 0.5:
-                _log(
-                    "dead-reckon: clock ADOPTED %.2f chips from band sibling "
-                    "'%s' (%s%s, age %.1f s)"
-                    % (
-                        new_clk,
-                        rec.get("chain", "?"),
-                        "cold" if moved is None else "moved %.2f chips" % moved,
-                        ", drift %+.4f chips/s" % dr["drift_chips_s"]
-                        if dr.get("drift_chips_s") is not None
-                        else "",
-                        ctx.t0 - float(rec.get("t", ctx.t0)),
-                    )
-                )
-            else:
-                _log_rl(
-                    "clkadopt",
-                    "dead-reckon: clock adopted %.2f chips from "
-                    "'%s' (steady)" % (new_clk, rec.get("chain", "?")),
-                )
-        elif ctx.args.dr_clock_adopt and not _refused:
-            # NOT after a quality refusal -- that path logs its own reason. Saying
-            # "no fresh sibling" when a sibling was found and REJECTED describes the
-            # wrong failure, and the two want opposite responses: absent means check
-            # the publisher, rejected means wait for it to converge.
-            _log_rl(
-                "clkadopt-none",
-                "dead-reckon: --dr-clock-adopt found no fresh sibling for dongle "
-                "'%s' in %s (<%.0f s) -- HOLDING the primed clock %.2f chips, "
-                "which does not survive an F-engine restart"
-                % (
-                    ctx.args.state_dongle,
-                    ctx.xb_read_dir,
-                    ctx.args.dr_clock_adopt_max_age_s,
-                    ctx.dr_state.get("clk")
-                    if ctx.dr_state.get("clk") is not None
-                    else float("nan"),
-                ),
-            )
-
-
 def dr_clock_adopt_rx(ctx):
     """3e-adopt, IN-PROCESS: take a co-hosted sibling's receiver clock when this chain cannot
     solve its own -- the same band first (#104-bounded), else across bands (the #34 bootstrap,
     #142-bounded). Leaves ctx.drp.rx_sib as the donor it looked at (None if none). Moved out
     of stage_dead_reckon verbatim so the adoption can be driven by a test; the stage calls it
-    where the block stood, between the clock JUDGE and the file-route dr_clock_adopt."""
+    where the block stood, after the clock JUDGE."""
     # ---- ADOPT A BAND SIBLING'S CLOCK (--dr-clock-adopt) -------------------------
     # Runs AFTER the EMA above on purpose: a chain that solved its own clock this
     # cycle keeps it, and only a chain that cannot solve one (no detectors -> `offs`
     # empty -> the block above never ran) takes the sibling's. So enabling the flag
     # on a detector-bearing chain is a no-op rather than a silent override.
     #
-    # IN-PROCESS SIBLING FIRST (task #27 M3). A chain co-hosted in this process
-    # has already CONTRIBUTED its clock to the Receiver, so there is nothing to
+    # IN-PROCESS SIBLING (task #27 M3). A chain co-hosted in this process has
+    # already CONTRIBUTED its clock to the Receiver, so there is nothing to
     # serialise, flush, age or slew-test: the number is the same object the
-    # sibling is using this cycle. The file route below stays for genuinely
-    # cross-process siblings (the airspy benches, and a transitional split
-    # deployment) and is unchanged. With one chain the lookup returns None and
+    # sibling is using this cycle. With one chain the lookup returns None and
     # this branch does not exist.
     ctx.drp.rx_sib = (
         ctx.rx.dr_clock(ctx.band_id, exclude=ctx.chain_id, t_now=ctx.t0)
@@ -1173,7 +990,9 @@ def dr_clock_adopt_rx(ctx):
             # prime is spent. If this chain ever gains detectors it should refine by
             # EMA from here, not snap away from a good number.
             ctx.dr_state.pop("clk_primed", None)
-            # drift travels with the clock, "unknown" included (see dr_clock_adopt)
+            # drift travels with the clock, "unknown" included: keeping our own stale
+            # value when the donor has none is how a poisoned drift outlived its donor's
+            # (2026-09-03).
             _sd = ctx.drp.rx_sib.extra.get("drift")
             ctx.dr_state["drift"] = float(_sd) if _sd is not None else None
             ctx.dr_state["drift_t"] = ctx.drp.rx_sib.t
@@ -3301,7 +3120,6 @@ def stage_dead_reckon(ctx):
             dr_clock_solve(ctx)
             dr_clock_quality(ctx)
             dr_clock_adopt_rx(ctx)
-            dr_clock_adopt(ctx)
             # ---- MODEL-HEALTH GATES (design (b)): the resilience the fence never gave.
             # A fence on Doppler MOTION cannot detect a model that is simply WRONG -- a
             # stale ephemeris, a manoeuvre, a bad orbit. These can, and they use signals we

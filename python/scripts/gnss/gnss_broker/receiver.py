@@ -14,9 +14,8 @@ estimated ONCE:
                   other systems away.
     carrier clock RECEIVER scope. One reference, one frequency error.
     code clock    PER BAND. Cable and PFB group delay are per carrier, so a code bias
-                  measured at 1176.45 MHz is not the one at 1207 MHz. This is exactly what
-                  `--state-dongle l5` asserts by hand today, and it is load-bearing rather
-                  than decoration.
+                  measured at 1176.45 MHz is not the one at 1207 MHz. This is
+                  load-bearing rather than decoration.
 
 CONTRIBUTE / CONSUME, NEVER OVERWRITE. A chain that has solved a quantity itself keeps its
 own estimate and merely PUBLISHES it here; a chain that has not solved it (E5a runs
@@ -248,9 +247,8 @@ class Receiver(object):
 
     def carrier_bias(self, exclude=None, max_age_s=120.0, t_now=None):
         """The best OTHER chain's carrier bias, or None. Weighted by satellite count --
-        the only quality signal any of these estimators carries (receiver_state.py's
-        standing complaint) -- and aged out, because a chain that stopped solving must
-        stop being believed rather than fading silently."""
+        the only quality signal any of these estimators carries -- and aged out, because
+        a chain that stopped solving must stop being believed rather than fading silently."""
         return self._best(self._carrier, exclude, max_age_s, t_now, key2=None)
 
     def contribute_code_bias(self, chain, band, la, n_sats, t):

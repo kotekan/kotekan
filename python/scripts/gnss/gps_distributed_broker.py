@@ -107,7 +107,6 @@ from gnss_broker.loopstate import (  # noqa: E402
 )
 from gnss_broker import deadreckon  # noqa: E402  (the clock pipeline)
 from gnss_broker import almanac as almanac_stage  # noqa: E402  (orbit + visibility)
-from gnss_broker import statepub  # noqa: E402  (the state record)
 from gnss_broker import ratefeed  # noqa: E402  (#33 rate feeds)
 from gnss_broker import trimarm  # noqa: E402  (C++ trim arming)
 from gnss_broker import prnmap  # noqa: E402  (live PRN membership)
@@ -495,8 +494,8 @@ def main(argv=None, rx=None, publisher=None):
     # healthy. Only capability excludes them.
     # ⚠️ BOUND UNCONDITIONALLY: the import below is conditional on --dead-reckon, so
     # without this the name does not exist on a search-only chain and anything that
-    # merely MENTIONS it raises UnboundLocalError. Same class as `receiver_state`; the
-    # synthetic fixture is what caught it, because every on-sky fixture runs dead-reckon.
+    # merely MENTIONS it raises UnboundLocalError. The synthetic fixture is what caught
+    # it, because every on-sky fixture runs dead-reckon.
     dr_eph_mod = None
     dr_min_prn = (
         args.dr_min_prn
@@ -1051,13 +1050,6 @@ def main(argv=None, rx=None, publisher=None):
         0.0,
         0,
     ]  # [wall time of the last anchor re-read, consecutive mismatches]
-    _xb_dir = os.path.dirname(args.state_file) if args.state_file else None
-    # WHERE SIBLING STATE IS READ FROM. Deliberately independent of --state-file: a chain that
-    # ADOPTS a clock has no reason to publish one (it has no estimate of its own to contribute),
-    # so deriving the read directory from the write path would make --dr-clock-adopt a silent
-    # no-op on exactly the chains that need it. Defaults to the write directory when only that
-    # is given, so the common case needs one flag rather than two.
-    _xb_read_dir = args.state_read_dir or _xb_dir
 
     cp_held = (
         set()
@@ -1203,61 +1195,6 @@ def main(argv=None, rx=None, publisher=None):
     # birth-stamped so warm-start gets a full grace window)
     _cb.stale = False  # solved-but-unmeasured for > --bias-stale-s
     _cb.available = False  # is a solved bias in hand?
-    # Fuse at most once a second and cache: the state files themselves only republish at
-    # 1 Hz, so fusing at the broker's 5 Hz cycle would re-read the same bytes four times
-    # for the same answer.
-    _fus_cache = [0.0, None]
-
-    def _fuse_cached(t_now):
-        if state_w is None or not _state_dir or not args.state_fuse:
-            return None
-        if t_now - _fus_cache[0] < 1.0:
-            return _fus_cache[1]
-        _fus_cache[0] = t_now
-        try:
-            _fus_cache[1] = receiver_state.fuse_dongle(
-                receiver_state.read_dongle(
-                    _state_dir, args.state_dongle, max_age_s=30.0, t_now=t_now
-                ),
-                floor_ppm=args.state_fuse_floor_ppm,
-                reject_sigma=args.state_fuse_reject_sigma,
-            )
-        except Exception:
-            _fus_cache[1] = None
-        return _fus_cache[1]
-
-    # S2 observer (write-only). Import is local + tolerant so a missing/broken module can
-    # never stop a broker from starting: a diagnostic riding in a live receiver's control
-    # loop must fail to nothing, not fail loudly.
-    state_w = None
-    _state_dir = None
-    # ⚠️ BOUND UNCONDITIONALLY, because the import below is conditional. Without this the
-    # name simply does not exist when --state-file is unset, and anything that so much as
-    # MENTIONS it -- the context construction does -- raises UnboundLocalError on a perfectly
-    # ordinary configuration. The consumers are all guarded on `state_w`, so None is the
-    # correct "this receiver publishes no state" value.
-    receiver_state = None
-    if args.state_file:
-        try:
-            import receiver_state
-
-            _state_dir = os.path.dirname(args.state_file) or "."
-            state_w = receiver_state.StateWriter(
-                args.state_file,
-                chain=os.path.basename(args.state_file).rsplit(".", 1)[0],
-                dongle=args.state_dongle or "unknown",
-                carrier_hz=args.carrier_hz,
-                log=_log,
-                flush_s=args.state_flush_s,
-            )
-            _log(
-                "receiver-state export -> %s (dongle %s, %.1f s) [WRITE-ONLY: no estimate "
-                "or seed consumes this yet]"
-                % (args.state_file, args.state_dongle, args.state_flush_s)
-            )
-        except Exception as e:
-            _log("receiver-state export DISABLED: %s" % e)
-            state_w = None
     # NAV-DECODE health export (viewer surface + the decoded-eph fallback's status hook).
     dhw = None
     if args.decode_health_file:
@@ -1495,8 +1432,6 @@ def main(argv=None, rx=None, publisher=None):
         dr_bad=dr_bad,
         fe_axis=fe_axis,
         fe_off=fe_off,
-        state_dir=_state_dir,
-        xb_read_dir=_xb_read_dir,
         innov_hist=innov_hist,
         minnov_hist=minnov_hist,
         p2c=p2c,
@@ -1510,13 +1445,11 @@ def main(argv=None, rx=None, publisher=None):
         sig_of=sig_of,
         gating=gating,
         capable=_capable,
-        receiver_state=receiver_state,
         alm_now=_alm_now,
         cb=_cb,
         almanac_sats=almanac_sats,
         brdc_alm=brdc_alm,
         det_fresh=det_fresh,
-        state_w=state_w,
         car=_carrier,
         nho=_nho,
         dls=_dls,
@@ -1537,7 +1470,6 @@ def main(argv=None, rx=None, publisher=None):
         hist_len=HIST_LEN,
         max_gap_hops=MAX_GAP_HOPS,
         q_alias_hz=Q_ALIAS_HZ,
-        fuse_cached=_fuse_cached,
         cp_to_seed_currency=cp_to_seed_currency,
         dh_obs=_dh_obs,
         cp_predicted=cp_predicted,
@@ -2234,60 +2166,6 @@ def main(argv=None, rx=None, publisher=None):
         # under a constant command, and gating beats averaging a moving one.
         ratefeed.stage_rate_feed_fine(_ctx)
 
-        # S2 OBSERVER: the shadow surface for sky validation (present even when the feed
-        # produced nothing this poll, so a dead feed shows n=0 rather than vanishing).
-        if state_w is not None and args.rrate_state:
-            try:
-                _jro = rx.joint_receiver(
-                    band_id,
-                    CODE_LEN,
-                    rereference=args.joint_rereference,
-                    gauge_mode=args.joint_gauge,
-                )
-                _ks = [k for k in _jro._rr_idx if k[0] == args.dr_constellation]
-                _vs = sorted(_jro.rrate(k) for k in _ks)
-                state_w.observe(
-                    "rrate",
-                    n=len(_ks),
-                    median_mps=(statistics.median(_vs) if _vs else None),
-                    spread_mps=((_vs[-1] - _vs[0]) if _vs else None),
-                    f_carrier_hz=(
-                        _jro.f_carrier()
-                        if _jro.f_carrier_sigma() != float("inf")
-                        else None
-                    ),
-                    rejected=_jro.rrate_rejected,
-                )
-            except Exception:
-                pass
-
-        # S2 OBSERVER: the SECOND carrier-side estimator of the same LO. `car_trim`'s own
-        # arg help calls the converged fleet trim "the chain's deterministic frac-N LO
-        # offset ... stable across restarts (e.g. the L5 chain sits ~+30 Hz)" -- which is
-        # the same physical number `clock_bias_ema` solves for from search Doppler, on a
-        # different observable and a different timescale. The two have never been compared
-        # and this one is never persisted, so it is rebuilt from zero every launch despite
-        # being described as a restart-stable constant. Exported outside the carrier-loop
-        # gate so a chain with the loop disabled reports null rather than vanishing.
-        if state_w is not None:
-            try:
-                _ct = sorted(_carrier.trim.values())
-                _ctm = statistics.median(_ct) if _ct else None
-                state_w.observe(
-                    "carrier_trim",
-                    median_hz=_ctm,
-                    mad_hz=receiver_state.mad(_ct, _ctm),
-                    n=len(_ct),
-                    railed=sum(
-                        1
-                        for v in _ct
-                        if args.carrier_max_hz > 0.0
-                        and abs(v) >= 0.95 * args.carrier_max_hz
-                    ),
-                )
-            except Exception:
-                pass
-
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
         # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
@@ -2335,33 +2213,10 @@ def main(argv=None, rx=None, publisher=None):
                     ),
                 )
                 # CONTRIBUTE (task #27 M3). PER BAND, not receiver-wide: cable and PFB group
-                # delay are per carrier, so this number does not survive a retune. That is
-                # exactly what --state-dongle asserts by hand today.
+                # delay are per carrier, so this number does not survive a retune.
                 rx.contribute_code_bias(
                     chain_id, band_id, _cb.code_ema, len(_ctx.la_samples), t0
                 )
-        # S2 OBSERVER: the code-side twin. Outside the min-sats gate, same reason as the
-        # carrier export. This one is the honest cross-chain comparison of the two: l-a has
-        # NO sibling fusion at all, so its spread across a band's chains is a real measure
-        # of estimator scatter, where the carrier's is partly manufactured by the fusion.
-        if state_w is not None:
-            try:
-                _raw_la = (
-                    statistics.median(_ctx.la_samples) if _ctx.la_samples else None
-                )
-                state_w.observe(
-                    "code",
-                    ppm=(_cb.code_ema * 1e6) if _cb.code_ema is not None else None,
-                    raw_ppm=(_raw_la * 1e6) if _raw_la is not None else None,
-                    mad_ppm=(lambda m: m * 1e6 if m is not None else None)(
-                        receiver_state.mad(_ctx.la_samples, _raw_la)
-                    ),
-                    n=len(_ctx.la_samples),
-                    cal_ppm=(_cb.code_cal * 1e6) if _cb.code_cal is not None else None,
-                    forced=args.code_bias_force is not None,
-                )
-            except Exception:
-                pass
         cb_to_seed = _cb.code_ema
         # -- P2b CONSUMER 1: the code-rate clock comes from the joint state --------------
         # l-a and the joint clk_rate are THE SAME QUANTITY (cp_rate_from_code_bias is
@@ -2705,12 +2560,6 @@ def main(argv=None, rx=None, publisher=None):
         if _ctx.cl_report:
             _log_rl("clreport", "CL: " + "; ".join(_ctx.cl_report))
 
-        # S2 OBSERVER: receiver clock, then publish the whole record. dr_state persists
-        # across cycles so it is read here rather than at its solve site -- and it is the
-        # one shared quantity with ZERO persistence today, so every restart re-bootstraps
-        # it from nothing. `integ` is the only per-measurement residual the system keeps
-        # anywhere; it is used to VETO satellites and has never been used as a weight.
-        statepub.stage_publish_state(_ctx)
         if dhw is not None:
             dhw.flush(t0)
         # REAL elapsed time, not the frozen cycle clock: this is the one place in the loop

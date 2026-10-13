@@ -97,8 +97,7 @@ def _scoped_names(main):
 def _import_aliases(node):
     """Names bound by `import x as y` / `from m import x`. These are Stores that never appear
     as an ast.Name, so a first-use test sees only the later Loads and calls a locally-imported
-    module a read-before-write. `import receiver_state as _rs` inside the clock-adopt stage is
-    the standing example."""
+    module a read-before-write."""
     out = set()
     for n in ast.walk(node):
         if isinstance(n, (ast.Import, ast.ImportFrom)):

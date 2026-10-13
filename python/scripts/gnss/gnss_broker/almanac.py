@@ -385,27 +385,6 @@ def stage_almanac_predict(ctx):
                         # noise, and it would have hidden a real one.
                         every_s=ctx.args.clock_bias_alarm_every_s,
                     )
-        # S2 OBSERVER: publish the carrier-side estimate. OUTSIDE the solve gate on
-        # purpose -- an unsolved chain is exactly the case the fused state exists to
-        # rescue, so it has to be visible, and `null` is how that is said (never 0).
-        # `raw_hz` is this chain's OWN median, computed here rather than reusing
-        # `raw_bias` above, which is already sibling-FUSED. Scoring cross-chain
-        # agreement on a fused number measures the fusion, not the estimator.
-        if ctx.state_w is not None:
-            try:
-                _raw_local = statistics.median(resid) if resid else None
-                ctx.state_w.observe(
-                    "carrier",
-                    hz=ctx.cb.ema,
-                    raw_hz=_raw_local,
-                    mad_hz=ctx.receiver_state.mad(resid, _raw_local),
-                    n=len(resid),
-                    cal_hz=ctx.cb.cal,
-                    stale=bool(ctx.cb.stale),
-                    meas_age_s=round(ctx.t0 - ctx.cb.meas_t, 2),
-                )
-            except Exception:
-                pass
         for p in sorted(ctx.best):
             if p in ctx.pred:
                 _log_rl(

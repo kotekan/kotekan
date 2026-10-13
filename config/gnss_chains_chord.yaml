@@ -683,13 +683,10 @@ chains:
   # multi-period acquisition does not exist (CHORD_MULTIBAND.md section 5). Purely
   # model-primary, every visible satellite seeded from BRDC plus the receiver clock.
   #
-  # --dr-clock-adopt STAYS -- it is the switch that says "this chain may take a sibling's
-  # clock", and a chain that can solve its own is unaffected by it either way. What is gone
-  # is the PLUMBING it used to need: --state-read-dir /tmp/gnss_state --state-dongle l5
-  # here, and --state-file/--state-dongle on the GPS chain purely to feed this one. gps_l5
-  # is in this process and has already contributed the clock to the Receiver, so the
-  # transfer is an attribute read rather than a JSON file with a flush cadence, an age gate
-  # and a two-read slew test. (Those still exist, unchanged, for cross-PROCESS siblings.)
+  # --dr-clock-adopt is the switch that says "this chain may take a sibling's clock", and a
+  # chain that can solve its own is unaffected by it either way. gps_l5 is in this process
+  # and has already contributed the clock to the Receiver, so the transfer is an attribute
+  # read.
     gal_e5a:
     # #46/A1 THE FORECAST EPOCH, armed HERE ONLY 2026-08-18 (d4c679f2b). Seeds are built
     # for hop H = newest pow_hop + 1.0 s instead of for "now", so the measured ~217 ms
