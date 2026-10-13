@@ -320,11 +320,15 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _cube_on = config.get_default<bool>(unique_name, "beam_cube", false) && !_spec_freq_ids.empty();
     if (_cube_on) {
         const int nc = (int)_spec_freq_ids.size();
-        _cube_bin_width =
-            std::max(0, config.get_default<int>(unique_name, "beam_cube_bin_width", 0));
-        // 0 = one bin per channel. Otherwise round up, so the last bin may be narrow rather than
-        // the top channels dropped.
-        _cube_bins = (_cube_bin_width > 0) ? (nc + _cube_bin_width - 1) / _cube_bin_width : nc;
+        // One bin per channel.
+        const int bin_width = config.get_default<int>(unique_name, "beam_cube_bin_width", 0);
+        if (bin_width > 1) {
+            FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: beam_cube_bin_width {:d} is not supported: "
+                        "the cube has one bin per channel",
+                        unique_name, bin_width);
+            return;
+        }
+        _cube_bins = nc;
 
         // Window length in F-engine samples (wstart's unit; one hop is fft_length samples), for
         // the same reason as spectrum_window_samples: the index is an exact integer division,
@@ -386,12 +390,12 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
              "~{:.2f} MB/s at this window length); backpressure DROPS and the loss is "
              "counted into the next frame",
              unique_name, cbuf, need, need / ((double)_cube_win_samples / _sample_rate) / 1e6);
-        INFO("GnssGpuRecordAssemble[{:s}]: BEAM CUBE on -- {:d} PRN x {:d} subband bin(s) "
-             "({:d} channel(s), width {:d}) x {:d} element(s); COHERENT + incoherent, "
+        INFO("GnssGpuRecordAssemble[{:s}]: BEAM CUBE on -- {:d} PRN x {:d} channel(s) x {:d} "
+             "element(s); COHERENT + incoherent, "
              "windows of {:d} samples ({:.5f} s), ring depth {:d}; "
              "{:d} cell(s), {:.1f} MB",
-             unique_name, n, _cube_bins, nc, _cube_bin_width ? _cube_bin_width : 1, _n_elements,
-             (long long)_cube_win_samples, (double)_cube_win_samples / _sample_rate, depth, ncell,
+             unique_name, n, nc, _n_elements, (long long)_cube_win_samples,
+             (double)_cube_win_samples / _sample_rate, depth, ncell,
              depth * (3.0 * ncell + 2.0 * nbin) * sizeof(double) / 1e6);
     } else if (config.get_default<bool>(unique_name, "beam_cube", false)) {
         WARN("GnssGpuRecordAssemble[{:s}]: beam_cube requested but this config has no "
@@ -1072,9 +1076,8 @@ void GnssGpuRecordAssemble::main_thread() {
                             const double ec = energy[prow + ch];
                             if (!(ec > 0.0))
                                 continue;
-                            const int bin = (_cube_bin_width > 0) ? (ch / _cube_bin_width) : ch;
                             const size_t b = (prow + ch) * n_e;
-                            const size_t k0 = ((size_t)p * _cube_bins + bin) * n_e;
+                            const size_t k0 = ((size_t)p * _cube_bins + ch) * n_e;
                             const double inv = 1.0 / ec;
                             for (int el = 0; el < n_e; ++el) {
                                 const std::complex<double> v =
@@ -1087,7 +1090,7 @@ void GnssGpuRecordAssemble::main_thread() {
                                 // ignores the rotation and survives a broken arc.
                                 C.incoh[k0 + el] += std::norm(v);
                             }
-                            const size_t kb = (size_t)p * _cube_bins + bin;
+                            const size_t kb = (size_t)p * _cube_bins + ch;
                             C.w[kb] += 1.0;
                             C.energy[kb] += ec;
                         }
@@ -1312,7 +1315,7 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
     f64(64, (double)_cube_win_samples);
     f64(72, _sample_rate);
     i32(80, _cube_gpu);
-    i32(84, _cube_bin_width ? _cube_bin_width : 1);
+    i32(84, 1); // bin_width: one channel per bin
     // The maxima the frame is sized for: n_prn/n_bin above are the actual extents, and the
     // arrays below are laid out by these, which makes the frame self-delimiting.
     i32(88, mp);
@@ -1347,13 +1350,8 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
     off += (size_t)mp * mb * ne * sizeof(float);
     float* incoh = (float*)(f + off);
 
-    const int nc = (int)_spec_freq_ids.size();
-    for (int b = 0; b < _cube_bins && b < mb; ++b) {
-        const int c0 = _cube_bin_width ? b * _cube_bin_width : b;
-        const int c1 = _cube_bin_width ? std::min(nc, (b + 1) * _cube_bin_width) - 1 : b;
-        fid_lo[b] = _spec_freq_ids[c0];
-        fid_hi[b] = _spec_freq_ids[c1];
-    }
+    for (int b = 0; b < _cube_bins && b < mb; ++b)
+        fid_lo[b] = fid_hi[b] = _spec_freq_ids[b];
     for (size_t p = 0; p < _prns.size() && (int)p < mp; ++p) {
         // A slot with no records this window is left at prn = 0: absent, not a row of zeros
         // that would read as a measurement of no power.

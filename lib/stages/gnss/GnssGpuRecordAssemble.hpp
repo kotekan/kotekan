@@ -233,10 +233,7 @@ private:
     /// comparable. The incoherent sum still carries the noise pedestal; the reader debiases it
     /// from the probe PRNs, in the power domain.
     bool _cube_on = false;
-    /// Channels per subband bin; 0 (default) = one bin per channel. The last bin may be
-    /// narrower. Binning trades frequency resolution for archive volume.
-    int _cube_bin_width = 0;
-    int _cube_bins = 0; ///< derived: number of subband bins
+    int _cube_bins = 0; ///< subband bins: one per channel
 
     /// The incoherent sum is the beam; the coherent sum (terms rotated by `rot`) keeps the arc
     /// for calibration, phased-array maps and delay. Its phase reference _phi[p] resets on a
