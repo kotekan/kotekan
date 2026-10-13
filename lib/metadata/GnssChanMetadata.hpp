@@ -14,21 +14,16 @@
 
 #include <cstdint> // for int64_t
 #include <memory>  // for shared_ptr
-#include <vector>  // for chan_scale
 
 /**
  * @class GnssChanMetadata
  * @brief Frame context for the channelized GNSS streams: the absolute sample index of the
- *        frame's first hop (@c sample_seq) and optional per-channel 4+4b dequantization scales
- *        (@c chan_scale).
+ *        frame's first hop (@c sample_seq).
  *
  * The search and track stages reference code phase to an absolute sample 0, so that reference
  * travels with each frame, including between kotekan instances (bufferSend/bufferRecv), and
  * every node agrees on it. chordMetadata carries the whole CHORD array structure; this type
- * carries only these fields and serializes trivially.
- *
- * Scales travel with the frame because a consumer must decode the bytes with exactly the
- * scales they were encoded with.
+ * carries only this field and serializes trivially.
  */
 class GnssChanMetadata : public metadataObject {
 public:
@@ -39,9 +34,6 @@ public:
     nlohmann::json to_json() override;
 
     int64_t sample_seq = -1; ///< absolute sample index of the frame's first hop (-1 = unset)
-    /// 4+4b dequantization scales, lsb -> volts, one per frame channel; empty if none were set.
-    /// See gnss44.hpp for the format.
-    std::vector<float> chan_scale;
 };
 
 /// The GnssChanMetadata of a frame, or nullptr if it has none.
