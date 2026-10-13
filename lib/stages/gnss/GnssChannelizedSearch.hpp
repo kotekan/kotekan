@@ -54,7 +54,6 @@
  *                        top-level /clock_profile block overrides min/max.
  * @conf acquire_snr      Double (default 12). Surface SNR to declare a detection.
  * @conf acquire_windows  Int (default 64). |D|^2 windows to integrate per snapshot.
- * @conf hops_per_record  Int (default: the replica period). Coherent window, hops.
  * @conf hold_snapshots   Int (default 5). Missed snapshots a detection survives.
  * @conf doppler_margin_hz Double (default 5000). Covering-channel selection band.
  * @conf hint_ttl_s       Double (default 8). Age at which a hint counts as absent.

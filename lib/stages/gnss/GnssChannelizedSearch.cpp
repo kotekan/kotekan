@@ -159,8 +159,9 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
         INFO("GnssChannelizedSearch: FDMA carrier offsets applied to {:d} of {:d} PRNs",
              _replica->prn_freq_offsets_set(), (int)_prns.size());
 
-    _hops_per_record =
-        config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
+    // The coherent window is one replica period: hpr == Mp, so the data window is never
+    // zero-padded.
+    _hops_per_record = _replica->repl_period_hops();
 
     // Refine geometry. The span defaults to one hop each side, the acquire's coarse-lag quantum.
     // Each step costs one exact despread, so a wide bank needs a refine_step well above the
@@ -172,13 +173,12 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _refine_hops = std::max(0, config.get_default<int>(unique_name, "refine_hops", 0));
     _refine_step = std::max(1, config.get_default<int>(unique_name, "refine_step", 1));
 
-    // Secondary-code (Neuman-Hofman) alignment search. The coherent window, hops_per_record,
-    // defaults to the replica period: 3125 hops = 16 ms = 16 code periods on CHORD L5. The L5
-    // Q5 pilot carries the NH20 overlay, one +-1 chip per 1 ms period, so a replica without it
-    // sums 16 chips of a near-balanced sequence: 12.7 dB rms loss over the 20 alignments, and
-    // a null for some. With the right alignment the window integrates at full coherent gain
-    // (test l5q_nh20_overlay). The alignment is one unknown in [0, secondary_length), so each
-    // value is searched.
+    // Secondary-code (Neuman-Hofman) alignment search. The coherent window is the replica
+    // period: 3125 hops = 16 ms = 16 code periods on CHORD L5. The L5 Q5 pilot carries the NH20
+    // overlay, one +-1 chip per 1 ms period, so a replica without it sums 16 chips of a
+    // near-balanced sequence: 12.7 dB rms loss over the 20 alignments, and a null for some. With
+    // the right alignment the window integrates at full coherent gain (test l5q_nh20_overlay).
+    // The alignment is one unknown in [0, secondary_length), so each value is searched.
     _nh_search = config.get_default<bool>(unique_name, "nh_search", false);
     _n_nh = (_nh_search && _replica->secondary_length() > 0) ? _replica->secondary_length() : 1;
     if (_nh_search && _n_nh == 1)

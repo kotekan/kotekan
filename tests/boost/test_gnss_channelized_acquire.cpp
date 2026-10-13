@@ -465,8 +465,8 @@ BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     BOOST_CHECK_LT(cp_err, 2.0); // within ~1 CM chip
 }
 
-// The incoherent search sums contiguous windows of hops_per_record hops, so a window must span
-// an integer number of code periods. At N = 12, Fs = 5 MHz one L2C CM period is 100000 samples
+// The incoherent search sums contiguous coherent windows, so a window must span an integer
+// number of code periods. At N = 12, Fs = 5 MHz one L2C CM period is 100000 samples
 // = 4166.67 hops: a 4166-hop window advances the code phase by 99984 mod 100000 = -16 samples
 // per window, so the |D|^2 peak walks and the sum smears it away. The 12500-hop replica period
 // (3 code periods) keeps the peak stationary.
