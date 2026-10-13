@@ -5,52 +5,33 @@
  * @brief Receiver clock-quality profile: presets for the reference oscillator (airspy TCXO,
  *        OCXO, GPSDO, rubidium, maser) and the Doppler search range they imply.
  *
- * Clock quality has two independent axes:
- *   accuracy_ppm : fractional frequency-offset bound. The offset shifts every carrier by
- *                  accuracy_ppm*f_c on top of the sky Doppler, so it sets the Doppler search
- *                  extent (GnssChannelizedSearch, from the /clock_profile config block).
- *   coherence_s  : coherent-integration ceiling, limited by Allan deviation / phase noise.
- * The LO-vs-ADC code/carrier split (l-a) is a third quantity, but the broker estimates it from
- * the code-phase rate, so it is not a setting here.
- *
- * A named preset expands to numbers, an explicit number overrides its preset, and "auto" or an
- * unknown name gives a conservative cold bound.
+ * accuracy_ppm is the fractional frequency-offset bound. The offset shifts every carrier by
+ * accuracy_ppm*f_c on top of the sky Doppler, so it sets the Doppler search extent
+ * (GnssChannelizedSearch, from the /clock_profile config block). The LO-vs-ADC code/carrier
+ * split (l-a) is another quantity, but the broker estimates it from the code-phase rate, so it
+ * is not a setting here.
  */
-#include <cmath>
 #include <string>
 
 namespace gnss {
 
 struct ClockProfile {
     double accuracy_ppm; ///< fractional frequency-offset bound (ppm)
-    double coherence_s;  ///< coherent-integration ceiling (s)
 };
 
-/// Preset table; "auto" or an unknown name gives a conservative cold bound.
+/// Preset table; an unknown name gives a conservative cold bound.
 inline ClockProfile clock_profile_preset(const std::string& name) {
-    // name       accuracy_ppm  coherence_s
     if (name == "tcxo")
-        return {2.0, 0.08}; // airspy stock TCXO, free-running
+        return {2.0}; // airspy stock TCXO, free-running
     if (name == "ocxo")
-        return {0.3, 1.0}; // plain oven-controlled xtal
+        return {0.3}; // plain oven-controlled xtal
     if (name == "gpsdo")
-        return {0.06, 1.5}; // GPS-disciplined OCXO
+        return {0.06}; // GPS-disciplined OCXO
     if (name == "rubidium")
-        return {1e-3, 30.0}; // Rb standard
+        return {1e-3}; // Rb standard
     if (name == "maser")
-        return {1e-6, 300.0}; // H-maser
-    return {2.0, 0.2};        // auto / unknown
-}
-
-/// Resolve a profile name plus optional explicit overrides (NaN = unset) to concrete numbers.
-inline ClockProfile resolve_clock_profile(const std::string& name, double accuracy_ppm_override,
-                                          double coherence_s_override) {
-    ClockProfile p = clock_profile_preset(name);
-    if (!std::isnan(accuracy_ppm_override))
-        p.accuracy_ppm = accuracy_ppm_override;
-    if (!std::isnan(coherence_s_override))
-        p.coherence_s = coherence_s_override;
-    return p;
+        return {1e-6}; // H-maser
+    return {2.0};      // unknown
 }
 
 /// Carrier-Doppler search half-range (Hz) for a band: max sky Doppler (GPS radial velocity) plus
