@@ -191,7 +191,7 @@ broker changes `broker_equiv.py check` on cf05 (never beside the live stack).
 2. CPU-only build (FFTW on, CUDA off): move `cudaGnssChordTrack.cpp`, `cudaGnssInject.cpp` into
    the `USE_CUDA` block; fix `_grid_bin_warns` / `gpu_ok` under `!GNSS_CUDA` in the search.
 3. Pytests CI runs: delete `tests/test_gnss_channelized_correlator.py` and
-   `test_gnss_record_collector.py` (stages gone); fix `test_gps_navdecode.py`'s sys.path.
+   `test_gnss_record_collector.py` (stages gone).
 
 **B. Delete, high confidence**, in batches (notes have the lists):
 1. Stranded airspy C++: the six stages, `cudaGnssTrack`, `GnssTrackState`, `GpsReplicaCorrelator`
@@ -245,7 +245,7 @@ the next develop merge brings them back cleanly). Must: drop the dependency on
 Done as draft PR #1751 (branch kv/airspy-pfb, worktree ~/gnss/airspy-wt).
 
 **KV's decisions (2026-10-08) and what followed** (all of round 3 is on `kv/chord-gnss`):
-* C1 KEEP nav decode (simplify later; keep the function). So `navbit_reuse`, the combiner's
+* C1 KEEP nav decode (simplify later; keep the function). So the combiner's
   overlay/navwipe/bit_export and the broker's nav-bit plumbing stay.
 * C2 + C6 DONE: 14 broker commits (guard on SIGNAL_IMPLIED; xband, CM/CL sibling, nh-assist,
   state-consume, coast-to-horizon, watchdog, almanac-epoch, the /adcstat anchor, warm-start files,

@@ -437,7 +437,7 @@ def _selftest():
     rng = np.random.RandomState(7)
     # Build 4 frames (20 subframes) of a synthetic LNAV stream with proper structure:
     # sf 1-3 constant data; sf 4/5 pages varying by frame (so hold-prediction would fail
-    # without the page store); TOW advancing; trimmed words 2/10 via encode_subframe.
+    # without the page store); TOW advancing; trimmed words 2/10 via encode_subframe_trimmed.
     sf_data = {
         k: [rng.randint(0, 2, 24).astype(np.int8) for _ in range(10)]
         for k in range(1, 4)
