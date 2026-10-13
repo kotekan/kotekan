@@ -108,7 +108,6 @@ void CpuMonitor::track_cpu() {
                     int ret = fscanf(thread_fp,
                                      "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u",
                                      &utime, &stime);
-                    fclose(thread_fp);
 
                     auto stage_itr = ult_list.find(stage.first);
                     if (stage_itr != ult_list.end()) {
@@ -154,6 +153,7 @@ void CpuMonitor::track_cpu() {
                         (ult_list[stage.first])[tid].prev_utime = utime;
                         (ult_list[stage.first])[tid].prev_stime = stime;
                     }
+                    fclose(thread_fp);
                 } else {
                     // The thread exited between listing the tids and reading
                     // its stats. Add 0 to stats, but only if it was already
