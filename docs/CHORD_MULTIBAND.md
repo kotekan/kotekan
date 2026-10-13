@@ -1,11 +1,12 @@
 # CHORD multi-constellation / multi-band rollout
 
-Status: PLAN + Phase 0 in progress (2026-08-06). Decision approved by KV: **constellation
-first** -- GAL_E5A_Q and BDS_B2A_P on the same comb channels as GPS L5 -- then a second
-band, for which the recommendation is **GAL_E5B_Q, not GPS L2C**. Task #23.
-
-Written during the chive `get-frame0-time` outage: everything in Phase 0 is offline work,
-gated by `scripts/gnss/e2e` and the boost tests, deliberately requiring no node restart.
+**Status: done.** The 2026-08-06 plan (task #23: constellation first -- GAL_E5A_Q and
+BDS_B2A_P on the GPS L5 comb -- then second bands) has landed: `config/gnss_chains_chord.yaml`
+runs eight chains, gps_l5, gal_e5a, bds_b2a, gal_e5b, bds_b2b, bds_b3i, gal_e6 and gps_l2c,
+all on path B. What stays here is the design that still applies: the comb geometry (§2-3), the
+baked per-PRN secondaries the `_CS` chains run (§4), and why those chains cannot blind-acquire
+(§5). The phased plan, the defects found building Phase 0 and the cost notes are at
+`be7d46e8e:docs/CHORD_MULTIBAND.md` §6-8.
 
 ---
 
@@ -24,13 +25,13 @@ Nearly everything. The airspy-era prototype was built multi-constellation from t
   `gnssOverlay.hpp` registry (`E5A_CS100`, `B2A_CS100` rows).
 - **Tri-constellation ops machinery**: `gps_distributed_broker.py` takes
   `--constellation/--carrier-hz/--chip-rate-hz/--code-length`; the combiner ran the
-  G26 + C33 cross-constellation confirm; per-chain buffer naming discipline is documented
-  (`cudaGnssTrack.cpp:382` -- a bare `gnss_ring` collides across chains).
+  G26 + C33 cross-constellation confirm; per-chain buffer naming matters (a bare
+  `gnss_ring` collides across chains).
 - **Band plan**: `gnssBandPlan.{hpp,cpp}` + `config/chord_band_plan.py` map any
   descriptor onto the per-node comb.
 
-What does NOT exist is the CHORD-tracker form of the new signals (§4) and the config
-plumbing to run more than one signal per node (§6).
+What did NOT exist was the CHORD-tracker form of the new signals (§4) and the config
+plumbing to run more than one signal per node (the generator's `--extra-signal`).
 
 ## 2. Comb geometry decides the ordering
 
@@ -65,7 +66,7 @@ Three consequences:
    6 covering channels are spread across 6 of the 8 nodes. Add the unverified GPU TDM path
    and CM's
    20 ms nav symbols straddling our 10.49 ms records, and L2C is the most work for the
-   least measurement. **Deferred indefinitely.**
+   least measurement. Deferred in this plan; the gps_l2c chain came later.
 3. **The whole L1 window is permanently out of reach**: L1 C/A / L1C / E1 / B1C
    (1575.42 MHz) and B1I (1561.098) all sit above the science band's 1499.805 MHz edge
    (max freq_id 7679). The lower L-band is the menu; there is no upper L-band option.
@@ -191,117 +192,3 @@ sign within every record and the overlay was wiped downstream by the combiner
 (`secondary_overlay: E5A_CS100`). That is the record==period coincidence again: it silently
 made the acquisition, the record and the wipe all correct at once, and CHORD's 10.49-period
 record breaks all three together.
-
-## 6. Phased plan
-
-**Phase 0 -- offline, now (chive outage).**
-1. [DONE 2026-08-06] `GAL_E5A_Q_CS` / `BDS_B2A_P_CS` descriptors + ladder arms + boost
-   tests pinning the baked-cp convention against the plain-primary bank
-   (`e5aq_cs_baked_convention` / `b2ap_cs_baked_convention` /
-   `e5aq_cs_multiperiod_coherence`; 17/17 suite green). The coherence test confirms the
-   design bound exactly: CS100(PRN 1) sums to -8, predicted overlay-blind despread
-   |sum|/100 = 0.080, measured 0.080018.
-2. [done -- §5] Hardcode audit.
-3. [DONE 2026-08-06] Config generator `--extra-signal NAME:PRNS` (repeatable): one full
-   tracker chain per signal, tagged from the signal name (`gnss0_e5a_*`). Same-carrier
-   chains SHARE the primary's voltage tap (kotekan buffers are per-consumer); a new
-   carrier opens its own. No search feed for extra chains (§5). Per-chain core rotation --
-   without it all three chains landed their cudaProcess on one core. Verified: byte-
-   identical output on four nodes × four flag sets when no extra signal is given;
-   `--check-config` clean; `--dry-run` constructs every stage (an unknown signal FATALs
-   there, so the new banks really were built) and the residual no-producer list is
-   identical to the single-signal baseline.
-4. [DONE 2026-08-06] `scripts/gnss/e2e` closure per new signal: `--signal` flag added
-   (tracker name; search primary derived by stripping `_NH`/`_CS`; overlay count from the
-   code-length ratio, cross-checked against the bank). The `_CS` signals REFUSE the blind
-   search leg with a pointer to §5 and run `--skip-search` (the dead-reckon leg -- the only
-   leg that exists for them). Measured: E5a and B2a close at 0.000 chips through the
-   shipped GnssCudaDespread on the 1,023,000-chip banks, noiseless AND at --noise 30
-   --quantize (deep fold snr 24.3/8 rec, 12.5/4 rec). L5 regression unchanged: 2-node comb
-   12.8 chips (the documented grating lobe), 8-node comb +0.373 chips.
-5. [DONE 2026-08-06] Broker: `scripts/gnss/broker_up_extra.sh {e5a|b2a}`, one instance per
-   constellation beside the GPS one. NO broker code was needed -- every knob already
-   existed (`--constellation/--dr-constellation {G,E,C}`, `--long-code-segments/-epoch-s`,
-   `--nh-overlay-len`, empty `--detectors` = "purely model-primary ... the CHORD
-   configuration"), and `gnss_ephemeris.py` already applies BDT = GPST − 14 s. Verified
-   offline: both brokers start, fetch live BRDC (33 Galileo / 38 BeiDou-3 sats) and arm
-   BRDC cp seeding with 0 detectors. Two defects found and fixed on the way -- see §7.
-
-**Phase 1 -- F-engine back.** FIRST the two owed path-B measurements (freq map in situ,
-combiner coh_frac -- one `--n2-debug` run, §11.13 of gnss_gpu_search.md; do not let this
-queue-jump them). Then E5a-Q on cx19 against predicted Galileo transits; per-element A/B
-machinery transfers unchanged.
-
-**Phase 2.** BDS_B2A_P, same channels.
-
-⚠️ **PATH B IS NOT MULTI-SIGNAL.** Everything in Phase 0 extends **path A** -- the voltage
-tap → `cudaGnssChordTrack` chain. `build_n2dual_branch()` still reads `args.prns` and the
-primary `signals.tracker`, so `--n2-dual --extra-signal` today produces three tracker chains
-and ONE path-B injector, still on GPS L5. Extending it is a separate piece of work whose
-shape is already known: the injector is per-signal (its own seeds, its own replica bank), and
-the lane budget is the binding constraint -- 4 lanes/PRN against NSB=128 is 32 PRN slots
-TOTAL across all constellations, so tri-constellation at ~25-30 visible sats fits only with
-thin margin. NSB=256 (one new kernel instantiation) is the documented mechanical escape. This
-matters for ordering: path B is where multi-constellation eventually wants to live, because
-its marginal cost per PRN is the injector (~2.4 ms/frame indicative) rather than a whole
-tracker instance (~17.9 ms).
-
-**Phase 3.** Second band: E5b-Q comb (6128..6232), new taps + branch, machinery from
-Phase 0 verbatim; two-frequency beam chromaticity from every Galileo pass. Then optionally
-L3OC (overlapping comb) and B3I/E6 (overlapping pair).
-
-**Deferred.** L2C until the full-fleet coherent era, if ever. GLONASS L2OF/L2OC (FDMA
-per-satellite carriers -- per-sat combs on a stride-16 grid is its own study). All
-L1-band signals: out of the science band, permanently.
-
-## 7. Defects found while building Phase 0
-
-Three, all latent, all of the same shape: a constant or a promise that was correct for the
-signal it was written for and silently wrong for the next one.
-
-1. **The long-code segment step was still L2C's.** `LC_EPOCH`/`LC_SEG` were parameterised
-   in an earlier pass, but the segment-search correction still multiplied by a hardcoded
-   `0.020` s and the search spiral still spanned ±37 of 75 segments. On any other signal a
-   correction of ±1 moved the anchor by 20 segments and the spiral searched 3.7× more space
-   than exists (L5 NH20: 1 ms segments, 20 of them). Dormant because the correction is 0
-   unless `--cl-autoseg` engages -- "a working launch latches 0 and is untouched". Now
-   derived from the two parameters; reproduces L2C's 20 ms / ±37 exactly.
-2. **The clock-prime log line promised a self-correction that cannot happen.** It said
-   "EMA refines from the first lock" unconditionally, but the solve draws its residuals
-   from `best`, which is filled *only* from `/get_detections`. In the model-primary
-   configuration (no detectors -- which is exactly what E5a/B2a run) the EMA never executes
-   and the primed constant stands for the whole run. The message now states which case it
-   is in. This one mattered: believing it would mean shipping a wrong receiver clock
-   indefinitely and reading the result as a bad instrumental delay.
-3. **Every extra chain landed its stages on the primary's cores** -- see §6 item 3. Filed as
-   HYGIENE, not a fix: a cudaProcess thread mostly blocks on GPU completion, and the earlier
-   core collision (gnss1_n2dual/gnss0_gpu, 2026-08-06) was investigated OUT as the cause of
-   the degradation it was found near. The rotation buys determinism, nothing more.
-
-Consequence for operations: **the extra chains' receiver clock must be primed from the GPS
-broker** (`--dr-clock-chips`), and it does not survive an F-engine restart.
-
-How far it transfers: to E5a/B2a **exactly** (same 1176.45 MHz carrier -- same cable, same
-F-engine path, same PFB group delay). To **E5b, very probably too**, and an earlier draft of
-this doc was wrong to say otherwise: it claimed the clock "does not transfer across a retune",
-which is airspy thinking. CHORD does not downconvert or retune at all -- the RFSoC samples
-0--1600 MHz directly, so 1207.14 MHz comes off the same cable and the same ADC as 1176.45.
-What differs is cable dispersion over 30.7 MHz and any differential filter delay: expected
-well under a chip (97.75 ns), but MEASURED-UNKNOWN. Treat a GPS-primed E5b clock as a good
-starting guess to be confirmed by its own integrity residual, not as a transferred constant.
-
-## 8. Costs and risks
-
-- **Synthesis scales per PRN** and is the known limiter (docs/gnss_gpu_search.md §10) --
-  multi-constellation multiplies PRN count, which is an argument for riding **path B**
-  (injector ~2.4 ms/frame indicative) rather than extra path-A tracker instances
-  (~17.9 ms). Same trajectory as task #21.
-- **Search cost if blind acquisition is ever needed**: 100 alignments vs NH20's 20, on
-  top of the §5 bank finding. Dead-reckoning avoids both.
-- **Per-instance vs per-job constellation mixing**: cheapest correct first cut is one
-  branch per signal (airspy pattern). Merging constellations into one instance's job
-  table (per-job code bank) is a later optimization; measure the per-instance overhead
-  before building it.
-- **Sky validation without the F-engine is impossible** -- Phase 0 gates are synthetic
-  (e2e + boost). The airspy sky validation of the E5a/B2a code tables (2026-07-15) is
-  the confidence bridge until Phase 1.
