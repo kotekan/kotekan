@@ -299,11 +299,8 @@ public:
                     const double eP = cc[CHAN_ENERGY];
                     if (eP <= 0.0)
                         continue; // no live comb for this channel this record
-                    // An E or L energy of exactly 0 falls back to the prompt energy, matching
-                    // the Python arm's `a[CHAN_E_ENERGY] or eP`. It moves only the denominator,
-                    // and only for senders that do not fill the E/L energies.
-                    const double eE = cc[CHAN_E_ENERGY] != 0.0f ? cc[CHAN_E_ENERGY] : eP;
-                    const double eL = cc[CHAN_L_ENERGY] != 0.0f ? cc[CHAN_L_ENERGY] : eP;
+                    const double eE = cc[CHAN_E_ENERGY];
+                    const double eL = cc[CHAN_L_ENERGY];
                     gE_re += cc[CHAN_E_RE];
                     gE_im += cc[CHAN_E_IM];
                     gP_re += cc[CHAN_RE];
@@ -367,8 +364,8 @@ public:
                     auto own = w.owner.emplace(fid, inst);
                     if (!own.second && own.first->second != inst)
                         w.dup.insert(fid);
-                    const double eE = cc[CHAN_E_ENERGY] != 0.0f ? cc[CHAN_E_ENERGY] : eP;
-                    const double eL = cc[CHAN_L_ENERGY] != 0.0f ? cc[CHAN_L_ENERGY] : eP;
+                    const double eE = cc[CHAN_E_ENERGY];
+                    const double eL = cc[CHAN_L_ENERGY];
                     ChanTap& ct = per_fid[fid];
                     const double ae = std::hypot(cc[CHAN_E_RE] / eE, cc[CHAN_E_IM] / eE);
                     const double ap = std::hypot(cc[CHAN_RE] / eP, cc[CHAN_IM] / eP);
