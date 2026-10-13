@@ -6,10 +6,6 @@
 #include <complex>
 #include <vector>
 
-struct float2;
-struct cudaStream_t_dummy_;
-typedef struct CUstream_st* cudaStream_t;
-
 /**
  * @class GnssCudaAcquire
  * @brief Host driver for the device-resident GNSS acquisition search.
@@ -86,12 +82,6 @@ public:
     /// Copy the surface back: the large transfer the design avoids, for diagnostics only.
     void download_surface(std::vector<double>& out) const;
 
-    int n_dop() const {
-        return _nd;
-    }
-    int s_cols() const {
-        return _s_cols;
-    }
     long surface_cells() const {
         return (long)_nd * _Mp * _s_cols;
     }

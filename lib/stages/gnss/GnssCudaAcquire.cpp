@@ -50,7 +50,6 @@ struct GnssCudaAcquire::Impl {
     int plan_nd = 0;             // n_dop planInv was built for
 
     cudaStream_t stream = nullptr;
-    bool folded = true;
     size_t bytes = 0;
 };
 
