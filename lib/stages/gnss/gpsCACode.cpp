@@ -9,7 +9,9 @@ namespace {
 
 /**
  * G2 phase-select taps (1-indexed register cells) for PRN 1..32, from IS-GPS-200 Table 3-Ia.
- * Row 0 is unused so the table is indexed by PRN.
+ * The XOR of the two cells forms the PRN's G2 output; the pair is equivalent to a fixed delay of
+ * the G2 sequence, and is all that distinguishes one PRN's code from another's. Row 0 is unused
+ * so the table is indexed by PRN.
  */
 constexpr int G2_TAPS[CA_PRN_MAX + 1][2] = {
     {0, 0},  // PRN 0 - unused
@@ -54,14 +56,9 @@ void check_prn(int prn) {
 
 } // namespace
 
-std::pair<int, int> g2_phase_taps(int prn) {
-    check_prn(prn);
-    return {G2_TAPS[prn][0], G2_TAPS[prn][1]};
-}
-
 std::array<int8_t, CA_CODE_LENGTH> generate_ca_code(int prn) {
     check_prn(prn);
-    const auto [a, b] = g2_phase_taps(prn);
+    const int a = G2_TAPS[prn][0], b = G2_TAPS[prn][1];
 
     // Both LFSRs start all-ones. G[k] is IS-GPS-200 stage k+1, so stage 10 is G[9].
     std::array<uint8_t, 10> G1;

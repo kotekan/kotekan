@@ -11,7 +11,6 @@
 
 #include <array>   // for array
 #include <cstdint> // for int8_t
-#include <utility> // for pair
 
 namespace gps {
 
@@ -21,19 +20,6 @@ constexpr int CA_CODE_LENGTH = 1023;
 /// Valid PRN range of the C/A tap table.
 constexpr int CA_PRN_MIN = 1;
 constexpr int CA_PRN_MAX = 32;
-
-/**
- * @brief G2 phase-select tap pair for a PRN.
- *
- * The 1-indexed G2 register cells (tap_a, tap_b) whose XOR forms the G2 output for the PRN
- * (IS-GPS-200 Table 3-Ia). The pair is equivalent to a fixed delay of the G2 sequence, and is
- * all that distinguishes one PRN's code from another's.
- *
- * @param prn  PRN signal number, 1..32.
- * @returns    (tap_a, tap_b), each in 1..10.
- * @throws std::out_of_range if @p prn is outside 1..32.
- */
-std::pair<int, int> g2_phase_taps(int prn);
 
 /**
  * @brief Generate one 1023-chip C/A code as bipolar +1 / -1.

@@ -7,7 +7,7 @@
  *
  * One byte per complex sample: real in the high nibble, imaginary in the low, each a 4-bit
  * offset-encoded integer (stored value - 8, so -8..+7). Zero is 0x88; 0x00 decodes to (-8,-8),
- * a full-scale DC spike, so zero-fill with @ref ZERO, not memset.
+ * a full-scale DC spike, so zero-fill with 0x88, not memset(0).
  *
  * In CHORD the PFB and the 4-bit quantizer run in the RFSoC F-engine, outside kotekan, so the
  * format is fixed by its consumer: the decode in kotekan's correlator reference model
@@ -39,9 +39,6 @@
 #endif
 
 namespace gnss44 {
-
-/// The offset-encoded zero. Use for gap fill; memset(0) would write (-8,-8).
-constexpr unsigned char ZERO = 0x88;
 
 /// Encode one complex sample. @c inv_scale maps volts to lsb. Rounds to nearest (half away from
 /// zero) and clamps to [-8,7], never wraps; @c railed (may be null) is set to 1 on a clamp.
