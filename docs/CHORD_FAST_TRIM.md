@@ -49,7 +49,7 @@ any authority.
 **Target: 95.4 steps/s, 23.84 posts/s.** Loop latency is ~2-3 frames (85-125 ms) which at
 0.121 chips/s is ~0.015 chips of lag -- irrelevant, and the reason the loop does not need to
 close on the node. If actuation at 95 Hz is ever wanted it is
-`--telem-records-per-frame 1`, not a redesign.
+`TELEM_RECORDS_PER_FRAME = 1` in the generator (nodes and gather together), not a redesign.
 
 ## 3. The split
 
