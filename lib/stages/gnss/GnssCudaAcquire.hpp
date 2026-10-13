@@ -79,12 +79,6 @@ public:
                                         double chip_rate, long code_length,
                                         bool pairsum_select = false) const;
 
-    /// Copy the surface back: the large transfer the design avoids, for diagnostics only.
-    void download_surface(std::vector<double>& out) const;
-
-    long surface_cells() const {
-        return (long)_nd * _Mp * _s_cols;
-    }
     /// Bytes of device memory held, so a caller can budget several engines per GPU.
     size_t device_bytes() const;
 

@@ -334,12 +334,3 @@ gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurf
                                      mean, best_d, best_q, best_i, dop_peak, dop_loc_m, dop_loc_p,
                                      dop_u);
 }
-
-void GnssCudaAcquire::download_surface(std::vector<double>& out) const {
-    const long n = surface_cells();
-    std::vector<float> h((size_t)n);
-    ck(cudaStreamSynchronize(_p->stream), "sync dl");
-    ck(cudaMemcpy(h.data(), _p->dSurf, (size_t)n * sizeof(float), cudaMemcpyDeviceToHost),
-       "surf dl");
-    out.assign(h.begin(), h.end());
-}
