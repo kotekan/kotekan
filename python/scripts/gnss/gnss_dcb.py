@@ -50,9 +50,6 @@ GAMMA_E1E5B = (F_E1 / F_E5B) ** 2
 
 
 def _token():
-    t = os.environ.get("EARTHDATA_TOKEN")
-    if t and t.strip():
-        return t.strip()
     try:
         with open(os.path.join(CACHE, ".earthdata_token")) as f:
             return f.read().strip() or None

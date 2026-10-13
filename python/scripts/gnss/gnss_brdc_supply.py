@@ -28,8 +28,6 @@ question you are asking belongs upstairs.
 land on the facade and be silently ignored -- so writers must target this module by name.
 """
 import json
-import gzip
-import math
 import os
 import re
 import threading
@@ -75,11 +73,8 @@ def _atomic_write_bytes(path, data):
 
 
 def _earthdata_token():
-    """Earthdata bearer token for the CDDIS BRDC mirror, from $EARTHDATA_TOKEN or
-    <cache>/.earthdata_token (chmod 600, never committed). None -> CDDIS is skipped."""
-    t = os.environ.get("EARTHDATA_TOKEN")
-    if t and t.strip():
-        return t.strip()
+    """Earthdata bearer token for the CDDIS BRDC mirror, from <cache>/.earthdata_token
+    (chmod 600, never committed). None -> CDDIS is skipped."""
     try:
         with open(os.path.join(CACHE, ".earthdata_token")) as f:
             return f.read().strip() or None
@@ -273,7 +268,7 @@ def _hourly_cov_read(cache_dir):
 # tighter than predict_all's 4 h validity: a record at 3h59m satisfies the predictor for one
 # more minute and then stops, so counting it as coverage buys a merge that is starved before
 # the next refresh. Half the window leaves the sky usable across a full refresh interval.
-def _rec_is_fresh(line, when, window_s=None):
+def _rec_is_fresh(line, when):
     """Is this RINEX 3 nav record's epoch recent enough to COUNT toward coverage?
 
     ⚠️ THE WINDOW IS THE VALIDITY WINDOW, NOT A TIGHTER "FRESHNESS". It was 2 h for the few
@@ -309,7 +304,7 @@ def _rec_is_fresh(line, when, window_s=None):
             int(float(f[5])),
             tzinfo=timezone.utc,
         )
-        return abs((when - toc).total_seconds()) <= (window_s or _HOURLY_KEEP_S)
+        return abs((when - toc).total_seconds()) <= _HOURLY_KEEP_S
     except Exception:
         return True
 
@@ -338,39 +333,6 @@ def _log_hourly(msg):
         pass
     sys.stderr.write("%s\n" % msg)
     sys.stderr.flush()
-
-
-def _rinex_newest_epoch(path):
-    """Newest broadcast epoch (UTC datetime) in a gzipped RINEX-3 nav file, or None. RINEX-3
-    nav epoch lines are 'SYS PRN YYYY MM DD HH MM SS ...' (SYS in G/E/C)."""
-    import gzip
-
-    newest = None
-    try:
-        with gzip.open(path, "rt", errors="replace") as f:
-            for line in f:
-                if (
-                    len(line) > 23
-                    and line[0] in "GEC"
-                    and line[1:3].isdigit()
-                    and line[4:8].strip().isdigit()
-                ):
-                    try:
-                        e = datetime(
-                            int(line[4:8]),
-                            int(line[9:11]),
-                            int(line[12:14]),
-                            int(line[15:17]),
-                            int(line[18:20]),
-                            tzinfo=timezone.utc,
-                        )
-                    except Exception:
-                        continue
-                    if newest is None or e > newest:
-                        newest = e
-    except Exception:
-        return None
-    return newest
 
 
 def _hourly_sources(station, when, token):
@@ -837,13 +799,6 @@ def cached_brdc(cache_dir=CACHE):
 
     Returns [] when the cache is empty, so callers can fall back rather than raise.
     """
-    pin = os.environ.get("GNSS_BRDC_DIR")
-    if pin:
-        return sorted(
-            os.path.join(pin, f)
-            for f in os.listdir(pin)
-            if f.endswith((".rnx", ".rnx.gz"))
-        )
     # ⚠️ THE SAME SHORT LIST fetch_brdc BUILDS, NOT THE WHOLE DIRECTORY. The cache accumulates
     # every daily ever downloaded -- 59 files here on the first try -- and handing all of them
     # to parse_rinex_nav would parse tens of megabytes to produce records that best_eph then
@@ -877,7 +832,7 @@ def cached_brdc(cache_dir=CACHE):
 # thread at a time; the next call after it lands sees the new files. The synchronous path is
 # kept for the cases where there is nothing to hand out: a pinned replay (hermetic by
 # definition), an empty cache, and a caller that says so because it has no ephemeris at all.
-_REFRESH = {"thread": None, "lock": threading.Lock(), "started": 0, "err": None}
+_REFRESH = {"thread": None, "lock": threading.Lock()}
 
 
 def _cached_sources(when, cache_dir):
@@ -927,7 +882,6 @@ def _refresh_in_background(when, cache_dir):
                         % (len(_got), len(_new), time.time() - _t0, " ".join(_new))
                     )
             except Exception as e:
-                _REFRESH["err"] = e
                 _log_hourly(
                     "BRDC background refresh failed (%s); the cached sources stay "
                     "in service until the next refresh" % e
@@ -935,7 +889,6 @@ def _refresh_in_background(when, cache_dir):
 
         t = threading.Thread(target=run, name="brdc-refresh", daemon=True)
         _REFRESH["thread"] = t
-        _REFRESH["started"] += 1
         t.start()
         return True
 

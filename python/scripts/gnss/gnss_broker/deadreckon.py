@@ -1837,7 +1837,7 @@ def _dr_reload(ctx, first, with_dcb=True):
                 if not _t:
                     _why = {
                         "no-token": "no Earthdata token configured "
-                        "(EARTHDATA_TOKEN or the cached file)",
+                        "(~/.cache/kotekan_gps/.earthdata_token)",
                         "auth-rejected": "the Earthdata token was REJECTED "
                         "(HTTP %s) -- it has expired or been "
                         "revoked" % _st.get("http"),

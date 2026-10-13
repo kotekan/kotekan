@@ -1312,7 +1312,7 @@ def build_parser(description):
         "spread and can never explain a constellation-common offset; measured "
         "2026-08-23 the BeiDou spread is -0.006..+0.121 chips against a "
         "+0.74..+1.3 chip common trim. Needs an Earthdata token "
-        "($EARTHDATA_TOKEN or ~/.cache/kotekan_gps/.earthdata_token); without "
+        "(~/.cache/kotekan_gps/.earthdata_token); without "
         "one it logs and falls back to the broadcast term.",
     )
     ap.add_argument(
