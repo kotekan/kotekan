@@ -58,9 +58,7 @@ add_executable(
     ../../lib/stages/gnss/gnssChannelizedDespread.cpp
     ../../lib/stages/gnss/gnssSimSignal.cpp
     ../../lib/stages/pfbPrototype.cpp
-    ../../lib/stages/gnss/gpsCACode.cpp
-    ../../lib/stages/gnss/gpsL5Code.cpp
-    ../../lib/stages/gnss/gpsL1CCode.cpp)
+    ../../lib/stages/gnss/gpsCACode.cpp)
 target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages
                                                                   ../../lib/stages/gnss)
 

@@ -51,9 +51,8 @@ public:
     /// code phase and Doppler; returns [spectrum_length][n_hops].
     /// @c nh_phase aligns the secondary (Neuman-Hofman) overlay: the +-1 overlay chip for
     /// absolute primary-period index @c k is @c secondary[(k + nh_phase) mod len]. A negative
-    /// value (the default) leaves the overlay off, giving the raw despread in which
-    /// @ref overlay_wipe searches for the alignment. No effect for signals without a secondary
-    /// code (L1 C/A, L2C).
+    /// value (the default) leaves the overlay off, giving the raw despread. No effect for
+    /// signals without a secondary code (L1 C/A, L2C).
     std::vector<std::vector<std::complex<float>>> channels(int p, long long window_start_sample,
                                                            double code_phase_chips,
                                                            double doppler_hz, int n_hops,

@@ -90,7 +90,7 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     // GPS L5 I5 data: 10-chip Neuman-Hofman under the CNAV symbol.
     {"L5_NH10", /*per_prn=*/false, 1, 10, gen_l5_nh10, "GPS_L5_I"},
     // A dataless pilot with no overlay (L2C CL, whose records are consecutive, phase-continuous
-    // segments of the 1.5 s code): a length-1 all-ones overlay makes overlay_wipe a plain
+    // segments of the 1.5 s code): a length-1 all-ones overlay makes the overlay wipe a plain
     // coherent sum with the same SNR estimate and auto-coherence ladder, and no bit estimate or
     // alignment search. Synthetic, so no signal: GPS_L2C_CL has secondary_length 0.
     {"COHERENT", /*per_prn=*/false, 1, 1, gen_coherent, nullptr},

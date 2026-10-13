@@ -54,85 +54,12 @@ static double residual_snr(double mag, double noise_sum, int nrec) {
     return (noise_sum > degen) ? mag / noise_sum : 0.0;
 }
 
-OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
-                               const std::vector<double>& utc, const std::vector<int8_t>& overlay,
-                               const std::vector<std::complex<double>>* head) {
-    using cd = std::complex<double>;
-    OverlayWipeResult out;
-    const int nrec = (int)a.size();
-    const int L = (int)overlay.size();
-    if (L <= 0 || nrec < 2 || (int)utc.size() != nrec)
-        return out;
-    if (head && (int)head->size() != nrec)
-        head = nullptr; // size mismatch: fall back to the unsegmented wipe
-
-    // Record index from capture UTC, so a dropped record skips an index and the overlay stays
-    // aligned. Must match overlay_apply's expression.
-    std::vector<double> dt;
-    dt.reserve(nrec - 1);
-    for (int r = 1; r < nrec; ++r)
-        dt.push_back(utc[r] - utc[r - 1]);
-    std::nth_element(dt.begin(), dt.begin() + dt.size() / 2, dt.end());
-    const double rec_dt = dt[dt.size() / 2]; // median step = the no-drop record period
-    if (!(rec_dt > 0.0))
-        return out;
-    std::vector<long long> cpi(nrec);
-    for (int r = 0; r < nrec; ++r)
-        cpi[r] = (long long)std::llround((utc[r] - utc[0]) / rec_dt);
-
-    auto chip = [&](int r, int phase) -> double {
-        long long k = (cpi[r] + phase) % L;
-        if (k < 0)
-            k += L;
-        return (double)overlay[(size_t)k];
-    };
-    // Overlay-corrected record: segmented (head takes chip k, tail chip k+1, since the overlay
-    // advances a chip at the period boundary inside the record) or whole-record.
-    auto corrected = [&](int r, int phase) -> cd {
-        if (!head)
-            return a[r] * chip(r, phase);
-        const cd h = (*head)[r];
-        return h * chip(r, phase) + (a[r] - h) * chip(r, phase + 1);
-    };
-
-    // Search the L alignments for the largest coherent sum of the overlay-corrected records.
-    // The pilot has no nav bit, so the right alignment integrates coherently across periods.
-    int best_phase = 0;
-    double best_mag = -1.0;
-    cd best_sum(0.0, 0.0);
-    for (int phase = 0; phase < L; ++phase) {
-        cd s(0.0, 0.0);
-        for (int r = 0; r < nrec; ++r)
-            s += corrected(r, phase);
-        if (std::abs(s) > best_mag) {
-            best_mag = std::abs(s);
-            best_phase = phase;
-            best_sum = s;
-        }
-    }
-
-    // Significance: rotate the coherent sum onto the real axis; each corrected record's
-    // component orthogonal to it carries no signal and gives the noise estimate.
-    const cd rot = best_mag > 0.0 ? std::polar(1.0, -std::arg(best_sum)) : cd(1.0, 0.0);
-    double noise2 = 0.0;
-    for (int r = 0; r < nrec; ++r) {
-        const cd vr = corrected(r, best_phase) * rot;
-        noise2 += std::imag(vr) * std::imag(vr);
-    }
-    const double noise_sum = std::sqrt(noise2); // per-axis noise std of the coherent sum
-    out.amplitude = best_mag / (double)nrec;    // coherent mean of the overlay-corrected A
-    out.snr = residual_snr(best_mag, noise_sum, nrec);
-    out.phase = best_phase;
-    return out;
-}
-
 bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector<double>& utc,
                    const std::vector<int8_t>& overlay, int phase,
                    const std::vector<std::complex<double>>* head,
                    std::vector<std::complex<double>>& out_a,
                    std::vector<std::complex<double>>* out_head) {
-    // chip k = round((utc[r]-utc[0])/rec_dt) + phase, mod L, on the record grid. overlay_wipe
-    // repeats this expression; keep the two identical.
+    // chip k = round((utc[r]-utc[0])/rec_dt) + phase, mod L, on the record grid.
     using cd = std::complex<double>;
     const int nrec = (int)a.size();
     const int L = (int)overlay.size();
@@ -176,8 +103,7 @@ bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector
 }
 
 OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a) {
-    // Same statistic as overlay_wipe_at (rotate the sum real, orthogonal component as noise):
-    // the combiner holds both to the same FLOOR_MARGIN, so their SNRs must share a convention.
+    // Rotate the sum onto the real axis and take the orthogonal component as the noise.
     using cd = std::complex<double>;
     OverlayWipeResult out;
     const int nrec = (int)a.size();
@@ -196,7 +122,6 @@ OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a) {
     const double noise_sum = std::sqrt(noise2);
     out.amplitude = mag / (double)nrec;
     out.snr = residual_snr(mag, noise_sum, nrec);
-    out.phase = 0; // no alignment searched, hence no extreme-value bias in the floor
     return out;
 }
 
@@ -237,34 +162,6 @@ bool phase_track_loo(const std::vector<std::complex<double>>& a, int half_width,
                                : a[(size_t)k];
     }
     return true;
-}
-
-OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
-                                  const std::vector<double>& utc,
-                                  const std::vector<int8_t>& overlay, int phase,
-                                  const std::vector<std::complex<double>>* head) {
-    using cd = std::complex<double>;
-    OverlayWipeResult out;
-    const int L = (int)overlay.size();
-    std::vector<cd> v; // overlay-corrected records (segmented: head chip k, tail chip k+1)
-    if (!overlay_apply(a, utc, overlay, phase, head, v, nullptr))
-        return out;
-    const int nrec = (int)v.size();
-    cd s(0.0, 0.0);
-    for (int r = 0; r < nrec; ++r)
-        s += v[r];
-    const double mag = std::abs(s);
-    const cd rot = mag > 0.0 ? std::polar(1.0, -std::arg(s)) : cd(1.0, 0.0);
-    double noise2 = 0.0;
-    for (int r = 0; r < nrec; ++r) {
-        const cd vr = v[r] * rot;
-        noise2 += std::imag(vr) * std::imag(vr);
-    }
-    const double noise_sum = std::sqrt(noise2);
-    out.amplitude = mag / (double)nrec;
-    out.snr = residual_snr(mag, noise_sum, nrec);
-    out.phase = ((phase % L) + L) % L;
-    return out;
 }
 
 } // namespace gnss

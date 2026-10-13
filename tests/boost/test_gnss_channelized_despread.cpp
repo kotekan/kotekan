@@ -1,17 +1,14 @@
 #define BOOST_TEST_MODULE "test_gnss_channelized_despread"
 
-#include "gnssChannelizedDespread.hpp" // for channelized_despread, overlay_wipe
+#include "gnssChannelizedDespread.hpp" // for channelized_despread, coherent_sum
 #include "gnssSimSignal.hpp"           // for sim_bpsk_baseband
 #include "gpsCACode.hpp"               // for generate_ca_code
-#include "gpsL1CCode.hpp"              // for generate_l1co_code (L1C-P per-PRN overlay)
-#include "gpsL5Code.hpp"               // for L5_NH20 (overlay-wipe test)
 #include "pfbPrototype.hpp"            // for pfb_prototype, pfb_push, pfb_fold
 
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>
 #include <complex>
 #include <cstdint>
-#include <random>
 #include <vector>
 
 using cf = std::complex<float>;
@@ -179,75 +176,6 @@ BOOST_AUTO_TEST_CASE(channel_partition_recombines_coherently) {
     const cd recombined = corr / energy;
     BOOST_CHECK_CLOSE(recombined.real(), full.amplitude.real(), 1e-3);
     BOOST_CHECK_CLOSE(recombined.imag(), full.amplitude.imag(), 1e-3);
-}
-
-// overlay_wipe finds the L5 NH20 alignment and integrates the dataless pilot coherently across
-// primary periods, recovering the pilot amplitude with high significance; an overlay-blind
-// coherent sum is suppressed.
-BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_pilot) {
-    const std::vector<int8_t> overlay(gps::L5_NH20.begin(), gps::L5_NH20.end());
-    const int L = (int)overlay.size(), nrec = 400, true_phase = 7;
-    const double S = 0.5, theta = 0.7, sigma = 0.05; // amplitude, carrier phase, per-record noise
-    std::mt19937 rng(1);
-    std::normal_distribution<double> g(0.0, sigma / std::sqrt(2.0));
-    std::vector<cd> a(nrec);
-    std::vector<double> utc(nrec);
-    for (int r = 0; r < nrec; ++r) {
-        const cd sig = S * std::polar(1.0, theta) * (double)overlay[(r + true_phase) % L];
-        a[r] = sig + cd(g(rng), g(rng));
-        utc[r] = r * 1e-3; // 1 ms primary periods
-    }
-    auto res = gnss::overlay_wipe(a, utc, overlay);
-    BOOST_CHECK_EQUAL(res.phase, true_phase); // found the NH alignment
-    BOOST_CHECK_CLOSE(res.amplitude, S, 5.0); // deep |A| ~ the pilot amplitude
-    BOOST_CHECK_GT(res.snr, 20.0);            // strongly significant
-
-    cd raw(0.0, 0.0);
-    for (const cd& v : a)
-        raw += v;
-    BOOST_CHECK_GT(res.amplitude, 3.0 * std::abs(raw) / nrec); // wipe >> overlay-blind coherent sum
-}
-
-// On noise the deep amplitude stays small and the significance near its floor: the 20-way
-// alignment max biases the noise SNR up only to ~sqrt(2 ln 20) ~ 2.4.
-BOOST_AUTO_TEST_CASE(overlay_wipe_noise_floor) {
-    const std::vector<int8_t> overlay(gps::L5_NH20.begin(), gps::L5_NH20.end());
-    std::mt19937 rng(7);
-    std::normal_distribution<double> g(0.0, 1.0 / std::sqrt(2.0));
-    const int nrec = 400;
-    std::vector<cd> a(nrec);
-    std::vector<double> utc(nrec);
-    for (int r = 0; r < nrec; ++r) {
-        a[r] = cd(g(rng), g(rng));
-        utc[r] = r * 1e-3;
-    }
-    auto res = gnss::overlay_wipe(a, utc, overlay);
-    BOOST_CHECK_LT(res.snr, 4.0); // noise stays below a lock threshold
-    BOOST_CHECK_LT(res.amplitude, 3.0 / std::sqrt((double)nrec)); // ~ noise/sqrt(N), not a signal
-}
-
-// overlay_wipe with the per-PRN L1C-P overlay (1800 chips). The alignment search is well-posed
-// only once the window holds a comparable number of records; with far fewer, the 1800-way max
-// overfits noise (it rectifies to ~sqrt(2 ln 1800) ~ 3.9 sigma). A long window recovers the
-// injected alignment and amplitude at per-record SNR ~ 1.
-BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_l1cp_pilot_long_window) {
-    auto ov_arr = gps::generate_l1co_code(18);
-    const std::vector<int8_t> overlay(ov_arr.begin(), ov_arr.end());
-    const int L = (int)overlay.size(), nrec = 2 * L, true_phase = 123;
-    const double S = 0.5, theta = 0.7, sigma = 0.5; // per-record SNR ~ 1
-    std::mt19937 rng(3);
-    std::normal_distribution<double> g(0.0, sigma / std::sqrt(2.0));
-    std::vector<cd> a(nrec);
-    std::vector<double> utc(nrec);
-    for (int r = 0; r < nrec; ++r) {
-        const cd sig = S * std::polar(1.0, theta) * (double)overlay[(r + true_phase) % L];
-        a[r] = sig + cd(g(rng), g(rng));
-        utc[r] = r * 10e-3; // 10 ms L1C primary periods
-    }
-    auto res = gnss::overlay_wipe(a, utc, overlay);
-    BOOST_CHECK_EQUAL(res.phase, true_phase);  // recovered the 1800-long alignment
-    BOOST_CHECK_CLOSE(res.amplitude, S, 10.0); // deep |A| ~ pilot amplitude
-    BOOST_CHECK_GT(res.snr, 10.0);             // strongly significant after the long coherent sum
 }
 
 // A residual removed by construction must not read as an enormous SNR. Records phase-aligned
