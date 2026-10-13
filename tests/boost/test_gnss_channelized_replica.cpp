@@ -357,7 +357,7 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb_chord_scale) {
 
 // ---- GLONASS FDMA: the per-PRN carrier offset ----
 // GLONASS L2OF satellites share one 511-chip code and are separated by carrier, satellite k at
-// 1246.0 + k*0.4375 MHz, so a satellite's identity is only its set_prn_freq_offset(). These
+// 1246.0 + k*0.4375 MHz, so a satellite's identity is only its set_prn_freq_offsets() entry. These
 // cases check that the offset enters the carrier exactly and nowhere else.
 
 BOOST_AUTO_TEST_CASE(fdma_offset_is_exactly_a_carrier_shift) {
@@ -372,7 +372,7 @@ BOOST_AUTO_TEST_CASE(fdma_offset_is_exactly_a_carrier_shift) {
     bank.code_doppler_sign = 0.0;
 
     const double X = 437.5e3; // one GLONASS L2 channel
-    bank.set_prn_freq_offset(1, X);
+    bank.set_prn_freq_offsets({0.0, X});
 
     const long long ws = 3 * 2 * N * 7;
     const int n_hops = 200;
@@ -392,7 +392,7 @@ BOOST_AUTO_TEST_CASE(fdma_offset_moves_the_occupied_channels) {
     auto bank = make_bank("GLO_L2OF", {1, 2});
     const double bin_w = FS / (2 * N);
     const double X = 3 * bin_w; // three whole channels, so the shift is unambiguous
-    bank.set_prn_freq_offset(1, X);
+    bank.set_prn_freq_offsets({0.0, X});
 
     const auto base = bank.covering_bins(0.0, 0.0, 0);
     const auto moved = bank.covering_bins(0.0, 0.0, 1);
@@ -410,7 +410,7 @@ BOOST_AUTO_TEST_CASE(fdma_hoprate_matches_exact_with_offset) {
     // The hop-rate generator computes its own carrier, so the offset must reach it as well as
     // channels(); GnssChannelizedSearch builds its replica on the hop-rate path.
     auto bank = make_bank("GLO_L2OF", {1, 2});
-    bank.set_prn_freq_offset(1, -2 * 437.5e3); // k = -2
+    bank.set_prn_freq_offsets({0.0, -2 * 437.5e3}); // k = -2
 
     std::vector<int> want = bank.covering_bins(0.0, 0.0, 1);
     BOOST_REQUIRE(!want.empty());

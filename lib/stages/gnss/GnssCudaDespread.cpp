@@ -116,7 +116,7 @@ struct GnssCudaDespread::Impl {
             throw std::runtime_error("GnssCudaDespread: >64 channels needs a wider chan_mask");
         if (nc <= 0)
             throw std::runtime_error("GnssCudaDespread: empty channel list");
-        Lf = bank.fft_len() * 4; // overwritten below from the probe filter
+        Lf = bank.fft_len() * bank.num_taps(); // the Phi tables hold Lf+1 entries
         all_chans = ids;
         // Validate against the spectrum, and reject duplicates: a repeated bin would double
         // that channel's weight in the coherent sum and bias every correlation.
@@ -130,10 +130,6 @@ struct GnssCudaDespread::Impl {
                     throw std::runtime_error("GnssCudaDespread: duplicate channel id "
                                              + std::to_string(all_chans[i]));
         }
-        // The bank does not expose num_taps, so Lf comes from a probe filter's length.
-        const auto probe = bank.hoprate_filter(all_chans, 0.0);
-        Lf = (int)probe.PhiA[0].size() - 1;
-
         // Code table: concatenate every PRN slot's combined-stream code once.
         code_len = bank.eff_code_length();
         std::vector<int8_t> codes;

@@ -120,7 +120,7 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
     }
     if (name == "GLO_L2OF") {
         // No PRN: FDMA satellites share one code and are separated by carrier, which is
-        // set_prn_freq_offset()'s job.
+        // set_prn_freq_offsets()'s job.
         (void)prn;
         const auto& a = glonass::ca_code();
         return std::vector<int8_t>(a.begin(), a.end());
@@ -366,14 +366,6 @@ double ChannelizedReplicaBank::arg_from_phase(double phase, long long window_sta
     return ph / (double)_comb_mult;
 }
 
-void ChannelizedReplicaBank::set_prn_freq_offset(int prn_index, double df_hz) {
-    if (prn_index < 0)
-        return;
-    if ((size_t)prn_index >= _prn_df.size())
-        _prn_df.resize((size_t)prn_index + 1, 0.0);
-    _prn_df[(size_t)prn_index] = df_hz;
-}
-
 void ChannelizedReplicaBank::set_prn_freq_offsets(const std::vector<double>& df_hz) {
     _prn_df = df_hz;
 }
@@ -554,7 +546,6 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
     HopRateFilter f = hoprate_header(doppler_hz, prn_index);
     const double wc = f.wc_built;
     const int Lf = _fft_len * _num_taps;
-    f.chans = want;
     const int nw = (int)want.size();
     f.PhiA.resize(nw);
     f.PhiB.resize(nw);

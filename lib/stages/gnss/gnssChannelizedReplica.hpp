@@ -91,7 +91,6 @@ public:
         /// CHORD's 210-chip span a cap of 105 keeps 50.6% of the filter energy, while the
         /// centered window [d_first, n_chips) of the same length keeps 99.6%.
         int d_first = 0;
-        std::vector<int> chans;
         std::vector<std::vector<std::complex<double>>> PhiA, PhiB; ///< [channel][Lf+1]
         /// The carrier this filter was built at, radians/sample: the PRN's carrier offset plus
         /// the Doppler.
@@ -106,7 +105,7 @@ public:
     /// laid out [channel][Lf+1] like the GPU tables. Each entry is the double-precision prefix
     /// sum rounded once, so no complex<double> tables are allocated. @c phiA and @c phiB each
     /// hold want.size() * (Lf+1) pairs. Returns the filter's chip span and carrier, with
-    /// @c chans, @c PhiA and @c PhiB left empty.
+    /// @c PhiA and @c PhiB left empty.
     HopRateFilter hoprate_filter_f32(const std::vector<int>& want, double doppler_hz, int prn_index,
                                      float* phiA, float* phiB) const;
 
@@ -138,11 +137,9 @@ public:
     // 1246.0 + k*0.4375 MHz on L2, and the whole comb (k = -7..+6, 5.69 MHz) fits in one tuning.
     // These set a per-PRN carrier offset on top of @c f_offset; an unset PRN gets 0 Hz (CDMA).
 
-    /// Extra carrier offset for PRN index @c p, Hz, on top of @c f_offset (0 = CDMA default).
-    void set_prn_freq_offset(int prn_index, double df_hz);
-
-    /// Whole table at once, indexed by PRN index (construction order); an empty vector clears
-    /// it (CDMA). Stages pass the config's `prn_freq_offset_hz` here.
+    /// Extra carrier offset per PRN index (construction order), Hz, on top of @c f_offset
+    /// (0 = CDMA default); an empty vector clears it (CDMA). Stages pass the config's
+    /// `prn_freq_offset_hz` here.
     void set_prn_freq_offsets(const std::vector<double>& df_hz);
 
     /// Number of PRNs with a non-zero offset, for the stage's startup log: an all-zero table on
@@ -240,6 +237,9 @@ public:
     int fft_len() const {
         return _fft_len;
     }
+    int num_taps() const {
+        return _num_taps;
+    }
     double f_offset() const {
         return _f_offset;
     }
@@ -266,9 +266,6 @@ public:
     /// despread and the search refine build the same replica as the GPU path.
     void set_max_chips(int n) {
         _max_chips = n;
-    }
-    int max_chips() const {
-        return _max_chips;
     }
     /// Centre the max_chips window on the prototype peak instead of starting it at chip 0
     /// (see HopRateFilter::d_first).

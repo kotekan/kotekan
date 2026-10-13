@@ -11,7 +11,7 @@
  * Every satellite transmits this one code; satellites are separated by carrier. The satellite on
  * frequency channel k transmits at f0 + k*df (L2: 1246.0 MHz + k*0.4375 MHz, k = -7..+6). So there
  * is no PRN argument here: the per-satellite carrier is set with
- * ChannelizedReplicaBank::set_prn_freq_offset().
+ * ChannelizedReplicaBank::set_prn_freq_offsets().
  *
  * 511 chips (2^9 - 1) at 511 kcps, 1 ms period, from a single 9-stage LFSR: an m-sequence, not a
  * Gold code. Its periodic autocorrelation is exactly -1 at every non-zero shift (-54.2 dB below
