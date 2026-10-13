@@ -40,9 +40,9 @@ struct SignalDescriptor {
     double nav_symbol_s;  ///< data symbol period (post-FEC); 0 for pilot
     int secondary_length; ///< secondary (overlay) length in primary periods; 0 if none or tiled
                           ///< into the code. The bank applies a shared overlay only for signals
-                          ///< it lists by name; per-PRN overlays are tiled into the *_CS codes
-                          ///< or wiped by the combiner from the gnssOverlay.hpp registry, which
-                          ///< overlay_registry_check() compares against this field.
+                          ///< it lists by name; per-PRN overlays are tiled into the *_CS codes.
+                          ///< overlay_registry_check() compares the combiner's gnssOverlay.hpp
+                          ///< rows (shared overlays under a data component) against this field.
 
     bool time_multiplexed; ///< component chip-interleaved with a sibling (L2C CM/CL)
     int tdm_phase;         ///< which combined-chip parity carries this code (0=even, 1=odd);
@@ -86,8 +86,8 @@ inline constexpr SignalDescriptor GPS_L1CA = {
 };
 
 /// GPS L1C-P (1575.42 MHz), the dataless pilot: 10230-chip Weil code at 1.023 Mcps (10 ms),
-/// BOC(1,1). The per-PRN 1800-chip L1CO overlay (18 s) is wiped by the combiner
-/// (gnssOverlay.hpp row "L1CO"). Code: gpsL1CCode (Legendre + Weil + 7-chip insertion).
+/// BOC(1,1). The per-PRN 1800-chip L1CO overlay (18 s, generate_l1co_code) is not applied: no
+/// tiled descriptor carries it. Code: gpsL1CCode (Legendre + Weil + 7-chip insertion).
 inline constexpr SignalDescriptor GPS_L1C_P = {
     "GPS_L1C_P",
     1575.42e6,
@@ -285,8 +285,9 @@ inline constexpr SignalDescriptor GAL_E1B = {
 
 /// BeiDou-3 B1C pilot (1575.42 MHz, the GPS L1 carrier): 10230-chip Weil code at 1.023 Mcps
 /// (10 ms). Transmitted QMBOC(6,1,4/33) and modelled as BOC(1,1), which loses the 4/33 of pilot
-/// power in the quadrature BOC(6,1) term (~0.6 dB). The per-PRN 1800-chip overlay is wiped by the
-/// combiner (gnssOverlay.hpp row "B1C"). BDS-3 only. Code: beidouB1CCode (Legendre/Weil).
+/// power in the quadrature BOC(6,1) term (~0.6 dB). The per-PRN 1800-chip overlay
+/// (generate_b1cp_secondary) is not applied: no tiled descriptor carries it. BDS-3 only. Code:
+/// beidouB1CCode (Legendre/Weil).
 inline constexpr SignalDescriptor BDS_B1C_P = {
     "BDS_B1C_P",
     1575.42e6,

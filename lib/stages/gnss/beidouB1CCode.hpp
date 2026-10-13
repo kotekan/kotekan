@@ -13,8 +13,8 @@
  * length-10243 Legendre sequence L. The phase difference w and truncation point p per PRN come
  * from the ICD tables (as transcribed in PocketSDR); data and pilot have separate tables.
  * Transmitted as QMBOC(6,1,4/33); the replica models the dominant BOC(1,1) component.
- * The pilot's 1800-chip per-PRN secondary (Weil over Legendre-3607) is wiped by the combiner
- * (gnssOverlay registry row "B1C"). PRN 1..63 (BDS-3 MEO/IGSO).
+ * The pilot's 1800-chip per-PRN secondary (Weil over Legendre-3607) comes from
+ * generate_b1cp_secondary(). PRN 1..63 (BDS-3 MEO/IGSO).
  */
 namespace beidou {
 

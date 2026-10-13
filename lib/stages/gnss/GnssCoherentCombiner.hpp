@@ -58,9 +58,9 @@
  * @conf integration_mode    String. Must be "rolling". Default "rolling".
  * @conf navwipe_bit_records Int (default 0 = off). Records per data bit, e.g. 20 for 1 ms GPS
  *                           L1 C/A records. Needs integration_length >> this.
- * @conf secondary_overlay   String (default ""). Shared overlay name from the gnssOverlay
- *                           registry, wiped ahead of the nav-bit wipe; needs
- *                           navwipe_bit_records.
+ * @conf secondary_overlay   String (default ""). Overlay name from the gnssOverlay registry
+ *                           (shared overlays under a data component), wiped ahead of the
+ *                           nav-bit wipe; needs navwipe_bit_records. Any other name is refused.
  * @conf deep_coherent       Bool. Must be true: without a nav-bit wipe the deep |A| is the plain
  *                           coherent sum, correct only when the despread replica already carries
  *                           the overlay. Default true.

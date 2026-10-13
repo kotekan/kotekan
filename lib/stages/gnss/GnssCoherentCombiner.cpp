@@ -93,17 +93,17 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // overlay is wiped first and the nav-bit wipe runs on the result, so it needs
     // navwipe_bit_records.
     const std::string sec = config.get_default<std::string>(unique_name, "secondary_overlay", "");
-    // The overlay comes from the gnssOverlay.cpp registry; an unknown or empty name means no
-    // overlay.
-    if (const gnss::OverlayDescriptor* ov = gnss::overlay_by_name(sec)) {
-        if (ov->per_prn || _navwipe_bit_records <= 0) {
-            FATAL_ERROR("GnssCoherentCombiner: secondary_overlay {:s} needs a shared overlay and "
-                        "navwipe_bit_records > 0 (the overlay is wiped only ahead of the nav-bit "
-                        "wipe)",
+    // The overlay comes from the gnssOverlay.cpp registry; an empty name means no overlay.
+    if (!sec.empty()) {
+        const gnss::OverlayDescriptor* ov = gnss::overlay_by_name(sec);
+        if (!ov || _navwipe_bit_records <= 0) {
+            FATAL_ERROR("GnssCoherentCombiner: secondary_overlay {:s} must be a gnssOverlay.cpp "
+                        "row and needs navwipe_bit_records > 0 (the overlay is wiped only ahead "
+                        "of the nav-bit wipe)",
                         sec);
             return;
         }
-        _secondary = ov->generate(0);
+        _secondary = ov->generate();
         // SignalDescriptor::secondary_length must agree with the registry: ChannelizedReplicaBank
         // applies shared overlays based on it.
         for (const std::string& msg : gnss::overlay_registry_check())

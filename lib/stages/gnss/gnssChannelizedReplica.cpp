@@ -228,7 +228,7 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     // on L5 Q5), applied per period in channels()/hoprate_stream so a coherent integration over
     // several periods stays aligned across the primary rollover. Empty for signals without a
     // secondary code. Only overlays shared by every PRN are listed here; per-PRN overlays are
-    // either tiled into the code (the *_CS signals) or wiped in the combiner (gnssOverlay.hpp).
+    // tiled into the code (the *_CS signals).
     if (_sig.secondary_length > 0) {
         const std::string name(_sig.name);
         if (name == "GPS_L5_Q")
