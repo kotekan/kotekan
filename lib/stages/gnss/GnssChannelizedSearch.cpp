@@ -99,23 +99,26 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // Fine-lag decimation (1 = every sample). The fine-lag lobe is fft_len / (comb span in
     // bins) samples wide, so a per-sample axis oversamples it; see AcquisitionSurface.
     _acquire_fine_step = std::max(1, config.get_default<int>(unique_name, "acquire_fine_step", 1));
-    // Eligible PRNs searched per snapshot, round-robin (0 = all). A detection's epoch is its
-    // snapshot's start hop, and its seed error grows as Doppler error x epoch age (0.0087 chips
-    // per Hz per second on L5), so searching a few PRNs per fresh snapshot bounds the age at
-    // emit. The cursor keeps the visits fair.
-    _prns_per_pass = std::max(0, config.get_default<int>(unique_name, "prns_per_pass", 0));
-    _hint_dop_sign = config.get_default<double>(unique_name, "hint_doppler_sign", -1.0);
-    _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
     _nh_hint_span = std::max(0, config.get_default<int>(unique_name, "nh_hint_span", 1));
-    _nh_label_consensus = config.get_default<bool>(unique_name, "nh_label_consensus", false);
-    _acq_pairsum_select = config.get_default<bool>(unique_name, "acq_pairsum_select", false);
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
-    _blind_prns_per_pass =
-        std::max(0, config.get_default<int>(unique_name, "blind_prns_per_pass", 0));
+    // Retired knobs. The generated config still sets each one to the only behaviour left (every
+    // hinted PRN on every pass, unhinted PRNs skipped, the pair-sum plane and the period-label
+    // vote, the bank's +1 code-Doppler sign), so another value is refused rather than ignored.
+    if (config.get_default<int>(unique_name, "prns_per_pass", 0) != 0
+        || config.get_default<int>(unique_name, "blind_prns_per_pass", 0) != 0
+        || !config.get_default<bool>(unique_name, "require_hint", true)
+        || !config.get_default<bool>(unique_name, "acq_pairsum_select", true)
+        || !config.get_default<bool>(unique_name, "nh_label_consensus", true)
+        || config.get_default<double>(unique_name, "code_doppler_sign", 1.0) != 1.0) {
+        FATAL_ERROR("GnssChannelizedSearch[{:s}]: prns_per_pass, blind_prns_per_pass, "
+                    "require_hint, acq_pairsum_select, nh_label_consensus and code_doppler_sign "
+                    "are retired: leave them unset or at 0, 0, true, true, true and 1",
+                    unique_name);
+        return;
+    }
 #ifdef GNSS_CUDA
+    // The refine follows the acquire: with the acquire on the GPU, a CPU refine dominates the pass.
     _cuda_acq_wanted = config.get_default<bool>(unique_name, "use_cuda_acquire", false);
-    // Defaults to use_cuda_acquire: with the acquire on the GPU, a CPU refine dominates the pass.
-    _cuda_ref_wanted = config.get_default<bool>(unique_name, "use_cuda_refine", _cuda_acq_wanted);
 #else
     if (config.get_default<bool>(unique_name, "use_cuda_acquire", false))
         WARN("GnssChannelizedSearch[{:s}]: use_cuda_acquire set but this binary was built without "
@@ -164,7 +167,6 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
 
     _hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
-    _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
 
     // Refine geometry. The span defaults to one hop each side, the acquire's coarse-lag quantum.
     // Each step costs one exact despread, so a wide bank needs a refine_step well above the
@@ -435,7 +437,7 @@ void GnssChannelizedSearch::search_snapshot() {
         }
         // Refine engines, one per group of <= 64 covering channels (chan_mask is a uint64_t).
         // The split is exact: correlation and replica_energy add over channels.
-        if (_cuda_ref_wanted && !cov_local.empty()) {
+        if (_cuda_acq_wanted && !cov_local.empty()) {
             try {
                 const int rh = (_refine_hops > 0 && _refine_hops < hpr) ? _refine_hops : hpr;
                 _cuda_ref.clear();
@@ -472,58 +474,6 @@ void GnssChannelizedSearch::search_snapshot() {
     int best_any_prn = -1;
     int best_any_nh = -1;
     int n_unhinted = 0;
-    int n_deferred = 0;
-
-    // Choose this pass's PRNs before the loop, so each cursor advances once per pass. Both
-    // selections must use the loop's hint-validity test, or a cursor walks a different set than
-    // the loop searches. First the blind slot: which unhinted PRNs may be blind-scanned, on a
-    // cursor of its own.
-    std::vector<char> blind_selected((size_t)n_prn, 0);
-    if (_blind_prns_per_pass > 0 && !cov_local.empty()) {
-        std::vector<int> unhinted;
-        {
-            std::lock_guard<std::mutex> lk(_hint_mtx);
-            for (int p = 0; p < n_prn; ++p) {
-                const DopHint& hh = _snap_hints[(size_t)p];
-                const bool hinted =
-                    hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s);
-                if (!hinted)
-                    unhinted.push_back(p);
-            }
-        }
-        const int nu = (int)unhinted.size();
-        if (nu > 0) {
-            if (_blind_cursor >= nu)
-                _blind_cursor = 0;
-            for (int i = 0; i < _blind_prns_per_pass && i < nu; ++i)
-                blind_selected[(size_t)unhinted[(size_t)((_blind_cursor + i) % nu)]] = 1;
-            _blind_cursor = (_blind_cursor + _blind_prns_per_pass) % nu;
-        }
-    }
-
-    std::vector<char> selected((size_t)n_prn, 1);
-    if (_prns_per_pass > 0 && !cov_local.empty()) {
-        std::vector<int> elig;
-        {
-            std::lock_guard<std::mutex> lk(_hint_mtx);
-            for (int p = 0; p < n_prn; ++p) {
-                const DopHint& hh = _snap_hints[(size_t)p];
-                const bool hinted =
-                    hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s);
-                if (!_require_hint || hinted)
-                    elig.push_back(p);
-            }
-        }
-        const int ne = (int)elig.size();
-        if (ne > _prns_per_pass) {
-            std::fill(selected.begin(), selected.end(), (char)0);
-            if (_prn_cursor >= ne)
-                _prn_cursor = 0;
-            for (int i = 0; i < _prns_per_pass; ++i)
-                selected[(size_t)elig[(size_t)((_prn_cursor + i) % ne)]] = 1;
-            _prn_cursor = (_prn_cursor + _prns_per_pass) % ne;
-        }
-    }
 
     for (int p = 0; p < n_prn; ++p) {
         if (cov_local.empty()) { // carrier not in this subband: nothing to find
@@ -534,8 +484,7 @@ void GnssChannelizedSearch::search_snapshot() {
 
         // Hinted grid: with a fresh Doppler hint, scan only hint +- margin. The hint is the
         // physical Doppler, while the internal grid has the r2c-flipped sign (det.doppler_hz =
-        // -grid value below). Without a fresh hint the PRN gets the blind grid, or is skipped
-        // under require_hint.
+        // -grid value below). Without a fresh hint the PRN is skipped this pass.
         std::vector<double> pgrid;
         bool hinted = false;
         {
@@ -545,11 +494,7 @@ void GnssChannelizedSearch::search_snapshot() {
             const DopHint& hh = _snap_hints[(size_t)p];
             if (hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s)) {
                 hinted = true;
-                // _hint_dop_sign maps the physical Doppler onto the internal grid. It is
-                // configurable because a front end with the opposite FFT sign convention
-                // negates the internal Doppler: a symmetric blind grid does not notice, but a
-                // hinted window then misses every satellite.
-                const double c = _hint_dop_sign * hh.doppler, m = std::max(0.0, hh.margin);
+                const double c = -hh.doppler, m = std::max(0.0, hh.margin);
                 // The window sits on integer multiples of _doppler_step, not on the hint, so
                 // a static peak gets the same grid point from scan to scan. A grid that slid
                 // with the hint would let the reported Doppler hop a step between scans, and a
@@ -560,25 +505,10 @@ void GnssChannelizedSearch::search_snapshot() {
                     pgrid.push_back(f);
             }
         }
-        if (_require_hint && !hinted) { // not in the active set this pass
+        if (!hinted) { // not in the active set this pass
             ++n_unhinted;
             std::lock_guard<std::mutex> lk(_det_mtx);
             _detections[p] = Detection{};
-            continue;
-        }
-        // Bounded cold start: unhinted PRNs get the blind grid only in their rotating slot (see
-        // _blind_prns_per_pass). Hinted PRNs, which are cheap, are not limited by it.
-        if (!hinted && _blind_prns_per_pass > 0 && !blind_selected[(size_t)p]) {
-            ++n_deferred;
-            continue;
-        }
-
-        // Round-robin: search only this pass's slice of the eligible set. A PRN outside it keeps
-        // its held detection untouched: it was not searched, so neither the latch nor the miss
-        // counter may change. Selection is over eligible PRNs, so PRNs skipped under
-        // require_hint use no slots.
-        if (!selected[(size_t)p]) {
-            ++n_deferred;
             continue;
         }
 
@@ -697,7 +627,7 @@ void GnssChannelizedSearch::search_snapshot() {
                 }
                 _last_surface_cells = dims.size();
                 ai = _cuda_acq->peak_result(dims, grid, _sample_rate, _replica->chip_rate_hz(),
-                                            _replica->code_length(), _acq_pairsum_select);
+                                            _replica->code_length(), true);
             } else
 #endif
             {
@@ -713,8 +643,12 @@ void GnssChannelizedSearch::search_snapshot() {
                 _last_surface_cells = dims.size();
                 ai =
                     gnss::channelized_peak(surf, dims, grid, _sample_rate, _replica->chip_rate_hz(),
-                                           _replica->code_length(), _acq_pairsum_select, hpr);
+                                           _replica->code_length(), true, hpr);
             }
+            // Both paths pick each surface's Doppler plane on the mainlobe pair-sum (the `true`
+            // above), so an on-grid overlay Doppler sideband cannot beat a scalloped true peak;
+            // the served snr stays the chosen cell's raw peak/mean.
+            //
             // Alignments are compared on the scalloping-corrected peak_interp, not the raw grid
             // sample: on a critically sampled grid the true alignment's peak can fall between
             // Doppler bins (down to 0.405 of its power) while an overlay-mismatch sideband lands
@@ -741,13 +675,13 @@ void GnssChannelizedSearch::search_snapshot() {
                  "|{:s}",
                  unique_name, _prns[p], a.snr, best_nh, prof_s);
         }
-        // Label consensus (nh_label_consensus). The scanned alignments are hypotheses about one
-        // signal ((nh + 1, tau - one period) is the same physical phase), so the period label
-        // nh + lag should agree across them. An alignment's argmax can land on its neighbour's
+        // Label consensus. The scanned alignments are hypotheses about one signal ((nh + 1,
+        // tau - one period) is the same physical phase), so the period label nh + lag should
+        // agree across them. An alignment's argmax can land on its neighbour's
         // peak cell (same tau, wrong nh), and peak_interp can then make that cell the winner.
         // The vote moves only the label; tau and the refined fine phase stay the winner's. It
         // needs a strict majority and at least three voters, and a tie keeps the winner's label.
-        if (_nh_label_consensus && detected && _n_nh > 1 && best_nh >= 0 && _nh_prof.size() >= 3) {
+        if (detected && _n_nh > 1 && best_nh >= 0 && _nh_prof.size() >= 3) {
             const double per_samp =
                 (_replica->code_length() / _replica->chip_rate_hz()) * _sample_rate;
             const int span = (int)std::llround((double)Mp * (double)_fft_len / per_samp);
@@ -865,24 +799,20 @@ void GnssChannelizedSearch::search_snapshot() {
             ceiling = kx / (double)kwin;
         }
         INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}{:s}), threshold {:.2f}, "
-             "pure-noise ceiling ~{:.2f}{:s}{:s}",
+             "pure-noise ceiling ~{:.2f}{:s}",
              unique_name, best_any, best_any_prn,
              (_n_nh > 1) ? fmt::format(", nh {:d}/{:d}", best_any_nh, _n_nh) : std::string(),
              _acquire_snr, ceiling,
-             (n_deferred > 0)
-                 ? fmt::format(" | round-robin: {:d} searched, {:d} deferred to later passes",
-                               _prns_per_pass, n_deferred)
-                 : std::string(),
              (_acquire_snr < ceiling) ? "  [THRESHOLD BELOW NOISE CEILING -- every \"detection\" "
                                         "is meaningless]"
                                       : "");
-    } else if (_require_hint && n_unhinted == n_prn && n_prn > 0) {
+    } else if (n_unhinted == n_prn && n_prn > 0) {
         // Every PRN was skipped for lack of a fresh hint, so the pass searched nothing. Say so,
         // rate-limited; otherwise this looks like an empty sky.
         if ((_empty_hint_passes++ % 256) == 0)
-            WARN("GnssChannelizedSearch[{:s}]: 0/{:d} PRNs hinted -- require_hint is set and "
-                 "the broker's hints are absent or older than hint_ttl_s ({:.0f} s). The "
-                 "search is scanning NOTHING. (repeat {:d})",
+            WARN("GnssChannelizedSearch[{:s}]: 0/{:d} PRNs hinted -- the broker's hints are "
+                 "absent or older than hint_ttl_s ({:.0f} s). The search is scanning NOTHING. "
+                 "(repeat {:d})",
                  unique_name, n_prn, _hint_ttl_s, _empty_hint_passes - 1);
     }
 }
@@ -1175,7 +1105,7 @@ void GnssChannelizedSearch::set_doppler_hints_callback(kotekan::connectionInstan
                     continue;
                 const double margin = h.value("margin_hz", 0.0);
                 if (margin < 0.0)
-                    _dop_hints[i] = DopHint{}; // clear -> blind grid (or skip, if require_hint)
+                    _dop_hints[i] = DopHint{}; // clear -> the PRN is skipped
                 else
                     _dop_hints[i] =
                         DopHint{true, h.at("doppler_hz").get<double>(), margin, steady_s()};

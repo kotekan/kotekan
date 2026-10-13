@@ -57,29 +57,25 @@
  * @conf hops_per_record  Int (default: the replica period). Coherent window, hops.
  * @conf hold_snapshots   Int (default 5). Missed snapshots a detection survives.
  * @conf doppler_margin_hz Double (default 5000). Covering-channel selection band.
- * @conf hint_doppler_sign Double (default -1). Physical (hinted) to internal Doppler sign.
  * @conf hint_ttl_s       Double (default 8). Age at which a hint counts as absent.
- * @conf require_hint     Bool (default false). Skip PRNs without a fresh Doppler hint.
- * @conf prns_per_pass    Int (default 0 = all). Eligible PRNs searched per pass, round-robin.
- * @conf blind_prns_per_pass Int (default 0 = no limit). Unhinted PRNs blind-scanned per pass.
  * @conf nh_search        Bool (default false). Search every secondary-code alignment.
  * @conf nh_hint_span     Int (default 1). Alignments scanned either side of a hinted one.
- * @conf nh_label_consensus Bool (default false). See @c _nh_label_consensus.
- * @conf acq_pairsum_select Bool (default false). See @c _acq_pairsum_select.
  * @conf acquire_threads  Int (default 1). Threads for the CPU acquire and the CPU refine.
  * @conf acquire_fine_step Int (default 1). Fine-lag decimation of the surface, samples.
  * @conf refine_span      Int (default fft_len). Refine half-width, samples.
  * @conf refine_step      Int (default 1). Refine step, samples.
  * @conf refine_hops      Int (default 0 = the full record). Refine integration, hops.
- * @conf code_doppler_sign Double (default 1). See ChannelizedReplicaBank::code_doppler_sign.
  * @conf prn_freq_offset_hz Array<Double> (optional). Per-slot FDMA carrier offsets, Hz.
- * @conf use_cuda_acquire Bool (default false). Acquire on the GPU (CUDA builds only).
- * @conf use_cuda_refine  Bool (default use_cuda_acquire). Refine on the GPU.
+ * @conf use_cuda_acquire Bool (default false). Acquire and refine on the GPU (CUDA builds only).
+ * @conf prns_per_pass, blind_prns_per_pass, require_hint, acq_pairsum_select,
+ *       nh_label_consensus, code_doppler_sign  Retired: accepted only at 0, 0, true, true, true
+ *                        and 1, the behaviour the stage has.
  *
  * @par Doppler hints (POST @c unique_name/set_doppler_hints)
  * The broker posts per-PRN predictions @c [{prn, doppler_hz, margin_hz}]. A hinted PRN is
  * scanned only over @c doppler_hz +- margin_hz, on the @c doppler_step grid; an unhinted PRN
- * gets the blind grid, or is skipped under @c require_hint.
+ * is skipped for the pass, so the cost follows the visible set even when @c prns lists a whole
+ * constellation.
  *
  * @buffer in_buf This subband's channels, [hop][n_channels] cfloat32.
  *
@@ -124,7 +120,7 @@ private:
         bool valid = false;
         int misses = 0; ///< consecutive non-detecting snapshots since last valid hit
         /// Secondary-code alignment: the @c nh_phase of the winning replica (or the label vote's
-        /// correction of it, under nh_label_consensus), so the overlay chip for primary period k
+        /// correction of it), so the overlay chip for primary period k
         /// is secondary[(k + nh) mod len]. Measured per satellite every pass; -1 unless
         /// alignments were searched.
         int nh = -1;
@@ -160,7 +156,10 @@ private:
     /// Slot -> PRN, from config and then set_prns_callback. Written only by the worker
     /// (apply_prn_swaps) under @c _prn_mtx; other threads read it under the same lock.
     std::vector<int> _prns;
-    std::vector<double> _doppler_grid; ///< blind fallback grid (doppler_min..max)
+    /// The full Doppler extent (doppler_min..max, or the /clock_profile range) on the step grid:
+    /// it sets the covering set and the GPU engine's size, and is scanned only for a hint whose
+    /// window holds no grid point.
+    std::vector<double> _doppler_grid;
 
     /// Per-PRN Doppler hint (POST set_doppler_hints): physical Doppler and margin, Hz.
     /// @c t_recv is steady_s() at receipt; a hint older than @c _hint_ttl_s counts as absent.
@@ -202,26 +201,11 @@ private:
     std::vector<NhProfEntry> _nh_prof;
     /// Alignments scanned either side of the predicted one; 0 trusts the prediction exactly.
     int _nh_hint_span = 1;
-    /// Serve the scanned alignments' majority period label instead of the winner's own when
-    /// they disagree. A per-alignment argmax can land on an adjacent alignment's peak cell
-    /// (same tau, wrong nh), and (nh + lag) then mislabels the period by +-1 while the fine
-    /// phase stays right. The other alignments of the pass vote at no extra cost; no history.
-    bool _nh_label_consensus = false;
-    /// Choose each surface's peak cell on the mainlobe pair-sum instead of the raw sample, so
-    /// an on-grid overlay Doppler sideband cannot beat a scalloped true peak. The served snr
-    /// stays the chosen cell's raw peak/mean.
-    bool _acq_pairsum_select = false;
     std::mutex _hint_mtx;
-    /// Scan only PRNs with a fresh Doppler hint and skip the rest, so the cost follows the
-    /// visible set even when @c prns lists a whole constellation.
-    bool _require_hint = false;
     int _acquire_threads = 1;     ///< threads for channelized_accumulate and refine_peak
     int _acquire_fine_step = 1;   ///< fine-lag decimation of the surface (see AcquisitionSurface)
-    int _prns_per_pass = 0;       ///< eligible PRNs searched per snapshot (0 = all)
-    int _prn_cursor = 0;          ///< round-robin start into the eligible list, advanced per pass
-    double _hint_dop_sign = -1.0; ///< physical -> internal Doppler sign (see the hinted grid)
     long _last_surface_cells = 0; ///< cells in the last surface (for the noise-ceiling log)
-    long _empty_hint_passes = 0;  ///< require_hint passes that scanned nothing (rate-limited WARN)
+    long _empty_hint_passes = 0;  ///< passes with no fresh hint at all (rate-limited WARN)
     int _last_cov_n = -1;         ///< last logged covering set (log once per set, not snapshot)
     int _last_cov_first = -1, _last_cov_last = -1;
     double _hint_ttl_s = 8.0; ///< hint age, s, beyond which it counts as absent (<= 0: never)
@@ -229,11 +213,6 @@ private:
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
     gnss::AcquireWorkspace _acq_ws;
 
-    /// Unhinted PRNs blind-scanned per pass, in rotation (0 = no limit). An unhinted PRN costs
-    /// a full blind grid, so this bounds the cost of reacquisition when most listed satellites
-    /// are below the horizon. No effect with require_hint, which skips every unhinted PRN.
-    int _blind_prns_per_pass = 0;
-    int _blind_cursor = 0;    ///< rotates through the unhinted set, advanced once per pass
     long _grid_bin_warns = 0; ///< times a non-bin-aligned Doppler grid was seen
 
 #ifdef GNSS_CUDA
@@ -248,7 +227,6 @@ private:
     /// the CPU refine runs. Independent of _cuda_acq: either can be unavailable alone.
     std::vector<std::unique_ptr<class GnssCudaDespread>> _cuda_ref;
     std::vector<gnss::CudaRefineGroup> _cuda_ref_groups;
-    bool _cuda_ref_wanted = false;
 #endif
 
     /// Post-detection code-phase refine: one exact despread per trial offset, over

@@ -583,10 +583,10 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
 }
 
 // Doppler-hinted search: the broker sends the physical predicted Doppler, and
-// GnssChannelizedSearch scans a narrow grid around -hint (hint_doppler_sign, default -1) because
-// the r2c bank reports the conjugate sign. A narrow grid around -true_dop must still detect and
-// one around +true_dop must miss. The Doppler is large so the wrong-sign grid, 2*dop away, misses
-// cleanly; at small Doppler the 1 ms coherent resolution would hide a sign error.
+// GnssChannelizedSearch scans a narrow grid around -hint because the r2c bank reports the
+// conjugate sign. A narrow grid around -true_dop must still detect and one around +true_dop must
+// miss. The Doppler is large so the wrong-sign grid, 2*dop away, misses cleanly; at small Doppler
+// the 1 ms coherent resolution would hide a sign error.
 BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
     BOOST_REQUIRE(sig != nullptr);
