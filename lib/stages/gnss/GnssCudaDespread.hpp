@@ -90,7 +90,7 @@ public:
     /// Cap the per-hop chip gather at @c n chips (0 = the filter's full span, ~210 chips at
     /// CHORD: 65536 samples at 312.8 samples/chip). Synthesis cost is linear in the depth, but
     /// the span is the channel response, so a capped gather is a different replica. Applies on
-    /// top of any cap set on the bank, and not to the shared tables (@ref set_shared_phi).
+    /// top of any cap set on the bank.
     void set_max_chips(int n);
 
     /// Centre the @ref set_max_chips window on the PFB span instead of starting it at chip 0.
@@ -99,18 +99,10 @@ public:
     /// energy. Off by default. Every kernel this class launches honours the resulting d_first.
     void set_chips_centered(bool c);
 
-    /// Use one Doppler-free (Phi, Psi) table pair for every PRN instead of per-PRN tables; each
-    /// job carries its carrier offset ddw from the tables' carrier (see
-    /// ChannelizedReplicaBank::HopRateFilter::PsiA). Off by default. Returns whether it is in
-    /// effect: FDMA signals refuse it (each PRN has its own carrier), and so does an engine with
-    /// fp16 tables armed.
-    bool set_shared_phi(bool on);
-
     /// Store the per-PRN Phi tables as __half2, halving their device footprint (storage error
-    /// ~3.3e-4 relative). Off by default. Returns whether it is in effect: refused while shared
-    /// tables are in use (that gather is fp32-only). While set, @ref despread_batch throws,
-    /// because its kernel reads Phi as float2; @ref enqueue_waveform and @ref enqueue_batch_nm
-    /// support it.
+    /// ~3.3e-4 relative). Off by default. Returns whether it is in effect. While set,
+    /// @ref despread_batch throws, because its kernel reads Phi as float2; @ref enqueue_waveform
+    /// and @ref enqueue_batch_nm support it.
     bool set_phi_fp16(bool on);
 
     /// Record CUDA events around @ref enqueue_batch_nm's two kernels. Off by default; three

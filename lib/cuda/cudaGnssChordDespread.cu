@@ -23,8 +23,8 @@ using gnss_cuda::cmulf;
 /// and the width sets the DRAM traffic (see WAVE_THREADS), so the bound lets ptxas trade
 /// registers for width. The 512 and 1024 instantiations both exist; launch_waveform takes the
 /// wider one when the driver reports that it can launch.
-/// PHI = __half2 reads fp16 tables. SHARED reconstructs from the Doppler-free Phi/Psi tables.
-template<int MAXT, class PHI = float2, bool SHARED = false>
+/// PHI = __half2 reads fp16 tables.
+template<int MAXT, class PHI = float2>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_kernel(const int8_t* __restrict__ code,
                      const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
@@ -80,17 +80,8 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
         // three code phases in the same order, one walk of the chip loop.
         const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
         float2 sA[3], sB[3];
-        // SHARED is a template parameter so the per-PRN path does not carry the shared path's
-        // per-chip sincos and extra loads in its instructions or registers.
-        if (SHARED)
-            gnss_cuda::chip_gather3<PHI, true>(
-                job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf, code,
-                phiA, phiB, ks, kf, Cs, sA, sB, (const PHI*)job.psiA + (size_t)ci * (p.Lf + 1),
-                (const PHI*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);
-        else
-            gnss_cuda::chip_gather3<PHI, false>(job.inv_cps, job.code_offset, job.code_len,
-                                                job.n_chips, job.d_first, p.Lf, code, phiA, phiB,
-                                                ks, kf, Cs, sA, sB);
+        gnss_cuda::chip_gather3<PHI>(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
+                                     job.d_first, p.Lf, code, phiA, phiB, ks, kf, Cs, sA, sB);
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
             const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2;
@@ -241,16 +232,6 @@ cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_j
         }
         gnss_waveform_kernel<512, __half2>
             <<<grid, threads, 0, stream>>>(code, jobs, p, wave, energy);
-        return cudaGetLastError();
-    }
-    // Shared (Doppler-free) tables: a separate instantiation, so the per-PRN path does not carry
-    // the shared gather's sincos and extra loads in its register budget (registers cap MAXT,
-    // which sets the DRAM traffic; see WAVE_THREADS). One MAXT = 1024 instantiation.
-    if (p.shared) {
-        static const int kmaxS = ceiling((const void*)gnss_waveform_kernel<1024, float2, true>);
-        const int th = threads > kmaxS ? kmaxS : threads;
-        gnss_waveform_kernel<1024, float2, true>
-            <<<grid, th, 0, stream>>>(code, jobs, p, wave, energy);
         return cudaGetLastError();
     }
     if (threads > 512) {

@@ -93,29 +93,14 @@ public:
         int d_first = 0;
         std::vector<int> chans;
         std::vector<std::vector<std::complex<double>>> PhiA, PhiB; ///< [channel][Lf+1]
-        /// First-moment companions, Psi[k] = sum_{j<k} j * proto[j] * e^{-i(off +- wc)j}, built
-        /// only when @ref hoprate_filter is called with @c want_psi (they double the build cost).
-        ///
-        /// Phi depends on the Doppler through wc, so it is normally built per PRN. The gather,
-        /// though, reads only the difference over one chip window, and a carrier offset ddw
-        /// factors out of that difference as
-        ///
-        ///     dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
-        ///
-        /// with t0 the window's low index. So one Doppler-free (Phi, Psi) pair per channel
-        /// serves every PRN and Doppler, in ~15 MB instead of ~1 MB per channel per PRN. At
-        /// CHORD geometry the first-order error is 7.5e-6 at +-5 kHz, below fp16's 3.3e-4
-        /// storage error.
-        std::vector<std::vector<std::complex<double>>> PsiA, PsiB; ///< [channel][Lf+1], optional
-        /// The carrier this filter was built at, radians/sample. A shared filter is built at the
-        /// band carrier alone (Doppler 0) and each consumer supplies its own
-        /// ddw = 2*pi*doppler/fs; a per-PRN filter includes the Doppler and ddw is 0.
+        /// The carrier this filter was built at, radians/sample: the PRN's carrier offset plus
+        /// the Doppler.
         double wc_built = 0.0;
     };
     /// @c prn_index selects that PRN's carrier offset (FDMA); -1 = the band offset alone. Under
     /// FDMA a filter is valid only for the PRN it was built for; @ref hoprate_stream asserts it.
     HopRateFilter hoprate_filter(const std::vector<int>& want, double doppler_hz,
-                                 int prn_index = -1, bool want_psi = false) const;
+                                 int prn_index = -1) const;
 
     /// @ref hoprate_filter's Phi tables written into caller storage as float (re, im) pairs,
     /// laid out [channel][Lf+1] like the GPU tables. Each entry is the double-precision prefix

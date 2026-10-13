@@ -51,37 +51,17 @@ __device__ inline float2 phi_ld(const __half2* p, int i) {
 /// three walk states instead of one, and registers cap the waveform kernel's block width
 /// (WAVE_THREADS in cudaGnssChordDespread.hpp).
 ///
-/// Template options:
-///  - @c PHI: float2 or __half2 tables (see phi_ld).
-///  - @c SHARED: reconstruct each chip window from a Doppler-free (Phi, Psi) pair instead of
-///    reading a table built at this PRN's Doppler. The gather reads only the difference over one
-///    chip window, and a carrier offset ddw factors out of it as
-///
-///        dPhi(w0+ddw) ~ exp(-i*ddw*t0) * [ dPhi_0 - i*ddw*( dPsi - t0*dPhi_0 ) ]
-///
-///    so one pair per channel serves every PRN and Doppler, and the table footprint does not
-///    grow with the PRN count. The B image is e^{-i(off-wc)k} and carries the offset with the
-///    opposite sign, hence its flipped correction and conjugated rotor. t0 is the window's low
-///    index, which the loop already carries; the midpoint would be more accurate but steps by
-///    ks, ks+1/2 or ks+1. At CHORD geometry the error is 7.5e-6 at +-5 kHz (1.2e-6 with the
-///    midpoint), below fp16's 3.3e-4 storage error (scripts/gnss/phibits.cpp).
-///    The rotor is evaluated per chip with __sincosf from the integer t0 rather than advanced
-///    by multiplication: t0 steps by ks or ks+1 only away from the index clamps, and an
-///    advanced rotor would fall out of step with t0 at a clamp.
-template<class PHI, bool SHARED = false>
+/// @c PHI is the table type, float2 or __half2 (see phi_ld).
+template<class PHI>
 __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int job_d_first, int Lf,
                                     const int8_t* __restrict__ code,
                                     const PHI* __restrict__ phiA, const PHI* __restrict__ phiB,
                                     int ks, float kf, const double C[3], float2 sA[3],
-                                    float2 sB[3], const PHI* __restrict__ psiA = nullptr,
-                                    const PHI* __restrict__ psiB = nullptr, float ddw = 0.0f) {
+                                    float2 sB[3]) {
     int idx[3], khi_base[3];
     float f[3];
     float2 pA[3], pB[3];
-    // SHARED-only state; dead, and dropped by the compiler, when SHARED is false.
-    int tp[3] = {0, 0, 0};
-    float2 pQA[3], pQB[3];
     // The chip loop does no fp64 and no 64-bit modulo: that work (C's floor/frac split, base,
     // the code-index seed) is done once before it, and the loop works from phi in [0,1).
     //  (a) klo(d) = floor((phi+d-1)*inv_cps)+1 and khi(d-1) = floor((phi+d-1)*inv_cps) are the
@@ -117,11 +97,6 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
         // (d) seed the carry with t(d0-1); the table has Lf+1 entries, indices 0..Lf.
         int t_prev = prev_khi + 1;
         t_prev = t_prev < 0 ? 0 : (t_prev > Lf ? Lf : t_prev);
-        if (SHARED) {
-            tp[u] = t_prev;
-            pQA[u] = phi_ld(psiA, t_prev);
-            pQB[u] = phi_ld(psiB, t_prev);
-        }
         pA[u] = phi_ld(phiA, t_prev);
         pB[u] = phi_ld(phiB, t_prev);
     }
@@ -135,27 +110,8 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
             const float2 cA = phi_ld(phiA, t);
             const float2 cB = phi_ld(phiB, t);
             const float cv = (float)code[job_code_offset + idx[u]];
-            float2 dA = make_float2(cA.x - pA[u].x, cA.y - pA[u].y);
-            float2 dB = make_float2(cB.x - pB[u].x, cB.y - pB[u].y);
-            if (SHARED) {
-                const float2 qA = phi_ld(psiA, t);
-                const float2 qB = phi_ld(psiB, t);
-                const float t0 = (float)tp[u];
-                // g = dPsi - t0*dPhi ; corr_A = dPhi - i*ddw*g ; corr_B = dPhi + i*ddw*g
-                const float2 gA = make_float2(qA.x - pQA[u].x - t0 * dA.x,
-                                              qA.y - pQA[u].y - t0 * dA.y);
-                const float2 gB = make_float2(qB.x - pQB[u].x - t0 * dB.x,
-                                              qB.y - pQB[u].y - t0 * dB.y);
-                const float2 rA = make_float2(dA.x + ddw * gA.y, dA.y - ddw * gA.x);
-                const float2 rB = make_float2(dB.x - ddw * gB.y, dB.y + ddw * gB.x);
-                float sn, cs;
-                __sincosf(-ddw * t0, &sn, &cs); // exp(-i*ddw*t0); B takes its conjugate
-                dA = make_float2(rA.x * cs - rA.y * sn, rA.x * sn + rA.y * cs);
-                dB = make_float2(rB.x * cs + rB.y * sn, rB.y * cs - rB.x * sn);
-                pQA[u] = qA;
-                pQB[u] = qB;
-                tp[u] = t;
-            }
+            const float2 dA = make_float2(cA.x - pA[u].x, cA.y - pA[u].y);
+            const float2 dB = make_float2(cB.x - pB[u].x, cB.y - pB[u].y);
             // fmaf explicitly, not `s += cv * d`: whether ptxas contracts the plain expression
             // depends on the surrounding code, and the despread and waveform kernels, which both
             // call this, must produce the same bits.

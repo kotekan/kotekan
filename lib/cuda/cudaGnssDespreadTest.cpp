@@ -221,8 +221,7 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(d_phiA, phiA.data(), phiA.size() * sizeof(float2), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_phiB, phiB.data(), phiB.size() * sizeof(float2), cudaMemcpyHostToDevice));
     for (int b = 0; b < n_spec; ++b) // component -> combined chips, as production does
-        jobs[b] = {(double)comb * ftrials[b].cp_prompt,
-                   (double)comb * spacing,
+        jobs[b] = {(double)comb * spacing,
                    cp_ref_of((double)comb * ftrials[b].cp_prompt, window_start + fft_len - 1),
                    cps,
                    1.0 / cps,

@@ -160,11 +160,11 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     }
 
     // fp16 Phi tables halve their device footprint, at a storage error of ~3.3e-4. The return
-    // says whether it took effect: the engine refuses fp16 while shared tables are in use.
+    // says whether it took effect.
     if (config.get_default<bool>(unique_name, "phi_fp16", false)) {
         if (despread->set_phi_fp16(true))
             INFO_NON_OO("cudaGnssChordTrack: fp16 Phi tables ARMED (item 3) -- resident Phi "
-                        "halved; despread_batch/device/peel paths will refuse while set");
+                        "halved; despread_batch will refuse while set");
         else
             WARN_NON_OO("cudaGnssChordTrack: phi_fp16 requested but the despread REFUSED it -- "
                         "running fp32; check the engine's own warning for why");

@@ -31,15 +31,14 @@ namespace gnss_cuda {
 /// and one data sample per hop, so the kernels generate the carrier and load the data once per
 /// (PRN, channel, hop). P_HEAD is the prompt gated on the hop (see m_head).
 struct DespreadJob {
-    double cp0; ///< prompt code phase, combined-stream chips, referred to absolute sample 0
-                ///< (host-side; the kernels use cp_ref)
-    double ds;  ///< Early/Late displacement from the prompt (combined-stream chips):
-                ///< row 0 = prompt-ds, row 1 = prompt, row 2 = prompt+ds
+    double ds; ///< Early/Late displacement from the prompt (combined-stream chips):
+               ///< row 0 = prompt-ds, row 1 = prompt, row 2 = prompt+ds
     /// Prompt code phase at the window's reference sample p.n0, combined-stream chips, reduced
     /// mod code_len on the host in long double.
     ///
-    /// Evaluated in double on the absolute sample, cp0 + n*cps reaches ~6e12 chips at
-    /// n ~ 1.9e15 (about a week of F-engine uptime), where a double's ulp is ~1e-3 chips, and
+    /// Evaluated in double on the absolute sample, cp0 + n*cps (cp0 the prompt code phase
+    /// referred to absolute sample 0) reaches ~6e12 chips at n ~ 1.9e15 (about a week of
+    /// F-engine uptime), where a double's ulp is ~1e-3 chips, and
     /// the rounding changes from hop to hop within a record, so no per-record correction can
     /// remove it. From cp_ref the kernel multiplies cps only by the intra-record offset.
     ///
@@ -66,9 +65,8 @@ struct DespreadJob {
     int code_offset;    ///< this PRN's offset into the shared code table
     int code_len;       ///< combined-stream code length (chips)
     uint64_t chan_mask; ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
-    /// [n_chan][Lf+1] cumulative filter tables for this PRN's Doppler bucket, or the shared
-    /// Doppler-free tables when DespreadParams::shared is set: float2, or __half2 storage when
-    /// DespreadParams::phi_half is set.
+    /// [n_chan][Lf+1] cumulative filter tables for this PRN's Doppler bucket: float2, or
+    /// __half2 storage when DespreadParams::phi_half is set.
     const float2* phiA;
     const float2* phiB;
     int n_chips; ///< chips spanned by this bucket's filter; the gather walks [d_first, n_chips)
@@ -77,18 +75,12 @@ struct DespreadJob {
                  ///< symbol can flip sign (gnssRecord.hpp REC_PH_*). 0 gives an all-zero row 3.
                  ///< Read by the waveform path (launch_waveform, launch_correlate_nm,
                  ///< launch_pack44); launch_despread ignores it and writes row 3 as zeros.
-    /// Shared-table mode: the first-moment companion tables Psi and this PRN's carrier offset
-    /// from the tables' own carrier, rad/sample (see
-    /// ChannelizedReplicaBank::HopRateFilter::PsiA). Read only when DespreadParams::shared is
-    /// set; otherwise null and 0. These and d_first come last because the jobs are built with
-    /// positional aggregate initializers (GnssCudaDespread.cpp, cudaGnssDespreadTest.cpp), and a
-    /// field inserted earlier would shift every later initializer.
-    const float2* psiA = nullptr;
-    const float2* psiB = nullptr;
-    float ddw = 0.0f;
     /// First chip of the gather walk, for centered truncation; 0 walks the span from chip 0.
     /// With n_chips capped, (d_first, n_chips) selects the central window of the PFB span,
-    /// where the prototype peaks. Set from the same tables as n_chips.
+    /// where the prototype peaks. Set from the same tables as n_chips. Last because the jobs
+    /// are built with positional aggregate initializers (GnssCudaDespread.cpp,
+    /// cudaGnssDespreadTest.cpp), and a field inserted earlier would shift every later
+    /// initializer.
     int d_first = 0;
 };
 
@@ -108,16 +100,10 @@ struct DespreadParams {
     /// per-record buffer, or more when the window is read in place from a longer buffer, in
     /// which case the window must be contiguous within each channel row.
     int data_stride;
-    /// Use the shared, Doppler-free Phi/Psi tables (DespreadJob::psiA). launch_waveform takes a
-    /// separate kernel instantiation, so the per-PRN path keeps its register budget (registers
-    /// cap the block width, which sets the DRAM traffic); the despread kernel here branches on
-    /// it at runtime; the peel kernel ignores it.
-    bool shared = false;
     /// fp16 Phi tables: job.phiA/phiB point at __half2 storage and @ref launch_waveform takes
     /// the __half2 gather, halving the resident tables (storage error ~3.3e-4 relative,
     /// scripts/gnss/phibits). Only the waveform kernels honour it: launch_despread reads Phi
-    /// as float2, so GnssCudaDespread refuses that path while fp16 tables are armed. Mutually
-    /// exclusive with `shared`, whose gather is fp32-only.
+    /// as float2, so GnssCudaDespread refuses that path while fp16 tables are armed.
     int phi_half = 0;
 };
 

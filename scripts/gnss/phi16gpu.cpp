@@ -17,8 +17,7 @@
  * It also asserts the guardrails that make the change safe rather than merely accurate:
  *   - fp32 flag-off is DETERMINISTIC (two runs byte-equal) and round-trips through an
  *     arm/disarm cycle byte-for-byte;
- *   - despread_batch THROWS while fp16 is armed (launch_despread reads raw float2);
- *   - set_shared_phi is REFUSED while fp16 is armed (that gather is fp32-only).
+ *   - despread_batch THROWS while fp16 is armed (launch_despread reads raw float2).
  *
  * Usage: ./phi16gpu [n_prn]      (run on an IDLE A40 node for the timing to mean anything)
  */
@@ -47,7 +46,7 @@ static void ck(cudaError_t e, const char* what) {
 int main(int argc, char** argv) {
     const int n_prn = (argc > 1) ? atoi(argv[1]) : 11; // production-class job count
     const double FS = 3.2e9, F_OFF = 1176.45e6;
-    // SPECTRUM length (r2c), not fft_len -- see phisharegpu's warning. Production geometry:
+    // SPECTRUM length (r2c), not fft_len: fft_len = 2 * SPEC_LEN. Production geometry:
     // 2048-hop records so the timing below is the node's own shape, not a toy.
     const int SPEC_LEN = 8192, NTAPS = 4, N_HOPS = 2048;
 
@@ -120,8 +119,6 @@ int main(int argc, char** argv) {
         threw = true;
     }
     printf("  despread_batch under fp16: %s\n", threw ? "THREW (correct)" : "RAN <-- FAIL");
-    const bool sh = eng.set_shared_phi(true);
-    printf("  set_shared_phi under fp16: %s\n", sh ? "TOOK <-- FAIL" : "REFUSED (correct)");
 
     run(w16, e16);
 
@@ -205,7 +202,7 @@ int main(int argc, char** argv) {
                n_prn, t32, t16, t32 / t16);
     }
 
-    const bool ok = det && threw && !sh && rt && !bad;
+    const bool ok = det && threw && rt && !bad;
     printf("\n  %s\n", ok ? "ALL PASS" : "FAIL");
     return ok ? 0 : 1;
 }

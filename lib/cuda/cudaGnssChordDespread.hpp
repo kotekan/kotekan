@@ -49,8 +49,8 @@ static constexpr int WAVE_THREADS = 1024;
  * @param jobs    [n_job] per-PRN geometry, the same struct the fused path takes (device)
  * @param n_job   PRNs in this batch
  * @param n_chan  covering channels
- * @param p       batch-shared geometry (n0, fft_len, n_hops, Lf); @c shared and @c phi_half
- *                select the table format
+ * @param p       batch-shared geometry (n0, fft_len, n_hops, Lf); @c phi_half selects the
+ *                table format
  * @param wave    out [3*n_job][n_chan][n_hops] float2 replica samples (device). Hop @c mh is
  *                stored at index @c mh, in time order: path B's pack maps the wave index to the
  *                N^2 correlator's time sample, so the hop axis must not be permuted

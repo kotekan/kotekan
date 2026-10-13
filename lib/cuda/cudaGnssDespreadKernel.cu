@@ -98,17 +98,8 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         // given chip are neighbours in the Phi slice, so they share L1 lines.
         float2 g3A[3], g3B[3];
         const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
-        // Shared tables need the SHARED instantiation with Psi and ddw passed explicitly:
-        // chip_gather3's defaults (SHARED = false, null Psi) read the Doppler-free tables with no
-        // correction.
-        if (p.shared)
-            gnss_cuda::chip_gather3<float2, true>(
-                job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf, code,
-                phiA, phiB, ks, kf, Cs, g3A, g3B, (const float2*)job.psiA + (size_t)ci * (p.Lf + 1),
-                (const float2*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);
-        else
-            gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
-                                    job.d_first, p.Lf, code, phiA, phiB, ks, kf, Cs, g3A, g3B);
+        gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
+                                job.d_first, p.Lf, code, phiA, phiB, ks, kf, Cs, g3A, g3B);
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
             const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> P / E (C_P-ds) / L (C_P+ds)
