@@ -8,11 +8,11 @@ these flags, will average that noise into a map. This turns the flags into a per
 per-bin mask (JSON) and a list of episodes, so a map build can veto them and a monitor can
 page on them.
 
-    gnss_chain_health.py <obs jsonl...> [--bin 300] [--min-present 0.3] [--min-run 900]
-                         [--el 15] [--out mask.json] [--tail-bytes N] [--recent S]
-                         [--alert-file PATH]
+    gnss_chain_health.py <obs jsonl...> [--min-run 900] [--out mask.json] [--tail-bytes N]
+                         [--recent S] [--alert-file PATH]
 
-An EPISODE is >= --min-run seconds of consecutive bins with present-fraction < --min-present.
+Records are binned BIN_S (300 s) and counted above EL_MIN (15 deg). An EPISODE is >= --min-run
+seconds of consecutive bins with present-fraction < MIN_PRESENT (0.3).
 Exit status 1 if any episode is found (so a cron can alert on it).
 
 --tail-bytes N   read only the last N bytes of each file (the live check every 15 min must
@@ -27,6 +27,10 @@ scripts/gnss/site/chain_health_cron.sh runs the live check.
 """
 import argparse, json, sys, collections, os, time
 from datetime import datetime, timezone
+
+BIN_S = 300.0
+MIN_PRESENT = 0.3
+EL_MIN = 15.0
 
 
 def iso(t):
@@ -63,10 +67,7 @@ def unhealthy(mask, chain, t):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+")
-    ap.add_argument("--bin", type=float, default=300.0)
-    ap.add_argument("--min-present", type=float, default=0.3)
     ap.add_argument("--min-run", type=float, default=900.0)
-    ap.add_argument("--el", type=float, default=15.0)
     ap.add_argument("--out")
     ap.add_argument("--tail-bytes", type=int, default=0)
     ap.add_argument("--recent", type=float, default=0.0)
@@ -88,9 +89,9 @@ def main():
                 except Exception:
                     continue
                 chain = chain or d.get("band")
-                if d.get("el") is None or d["el"] < a.el:
+                if d.get("el") is None or d["el"] < EL_MIN:
                     continue
-                b = int(d["t"] // a.bin) * int(a.bin)
+                b = int(d["t"] // BIN_S) * int(BIN_S)
                 c = acc[b]
                 c[0] += 1
                 c[1] += bool(d.get("fleet_present"))
@@ -109,19 +110,19 @@ def main():
                     present=pr / n,
                     lock=lk / n,
                     rayleigh=ry / n,
-                    ok=(n < 20) or (pr / n >= a.min_present),
+                    ok=(n < 20) or (pr / n >= MIN_PRESENT),
                 )
             )
         mask[chain] = rows
         # episodes: runs of not-ok bins
         run = []
-        for r in rows + [dict(ok=True, t=rows[-1]["t"] + a.bin)]:
+        for r in rows + [dict(ok=True, t=rows[-1]["t"] + BIN_S)]:
             if not r["ok"]:
                 run.append(r)
             elif run:
-                span = run[-1]["t"] + a.bin - run[0]["t"]
+                span = run[-1]["t"] + BIN_S - run[0]["t"]
                 if span >= a.min_run and (
-                    not a.recent or time.time() - (run[-1]["t"] + a.bin) < a.recent
+                    not a.recent or time.time() - (run[-1]["t"] + BIN_S) < a.recent
                 ):
                     bad += 1
                     msg = (
@@ -129,7 +130,7 @@ def main():
                         % (
                             chain,
                             iso(run[0]["t"]),
-                            iso(run[-1]["t"] + a.bin),
+                            iso(run[-1]["t"] + BIN_S),
                             span / 3600,
                             100
                             * sum(x["present"] * x["n"] for x in run)
@@ -157,9 +158,9 @@ def main():
         with open(tmp, "w") as fh:
             json.dump(
                 dict(
-                    bin_s=a.bin,
-                    min_present=a.min_present,
-                    el_min=a.el,
+                    bin_s=BIN_S,
+                    min_present=MIN_PRESENT,
+                    el_min=EL_MIN,
                     chains=mask,
                     written=iso(time.time()),
                     files=[os.path.basename(f) for f in a.files],
