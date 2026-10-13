@@ -11,17 +11,12 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
-#include <fcntl.h>
 #include <functional>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
-#ifndef MSG_NOSIGNAL
-#define MSG_NOSIGNAL 0
-#endif
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -37,8 +32,12 @@ GnssTelemGather::GnssTelemGather(Config& config, const std::string& unique_name,
 
     _serve_host = config.get_default<std::string>(unique_name, "serve_host", "127.0.0.1");
     _serve_port = config.get_default<int>(unique_name, "serve_port", 11061);
-    _send_timeout_ms = config.get_default<int>(unique_name, "send_timeout_ms", 200);
     _stale_after_s = config.get_default<double>(unique_name, "stale_after_s", 5.0);
+    if (_stale_after_s <= 0.0) {
+        FATAL_ERROR("GnssTelemGather[{:s}]: stale_after_s {:g} must be > 0", unique_name,
+                    _stale_after_s);
+        return;
+    }
 
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_stats",
@@ -85,7 +84,7 @@ void GnssTelemGather::accept_loop() {
 
 bool GnssTelemGather::send_all(int fd, const uint8_t* p, size_t n) {
     size_t sent = 0;
-    const double deadline = current_time() + 1e-3 * _send_timeout_ms;
+    const double deadline = current_time() + 1e-3 * send_deadline_ms;
     while (sent < n) {
         const ssize_t w = ::send(fd, p + sent, n - sent, MSG_NOSIGNAL | MSG_DONTWAIT);
         if (w > 0) {
@@ -129,7 +128,7 @@ void GnssTelemGather::broadcast(const uint8_t* frame, size_t n) {
         WARN("GnssTelemGather[{:s}]: dropped client fd {:d} -- it could not take a frame within "
              "{:d} ms. A frame is delivered whole or not at all; a partial write would "
              "desynchronise the stream silently.",
-             unique_name, fd, _send_timeout_ms);
+             unique_name, fd, send_deadline_ms);
 }
 
 void GnssTelemGather::main_thread() {
@@ -277,8 +276,6 @@ void GnssTelemGather::reap_clients() {
 }
 
 void GnssTelemGather::sweep_stale() {
-    if (_stale_after_s <= 0.0)
-        return;
     const double now = current_time();
     std::vector<std::string> went;
     {

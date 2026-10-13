@@ -32,7 +32,7 @@
  * the bytes are the telemetry frame as it arrived (gnssTelem.hpp). Frame sizes differ between
  * senders; the prefix lets a reader split the stream without parsing headers.
  *
- * A client that cannot take a frame within send_timeout_ms is disconnected rather than left
+ * A client that cannot take a frame within 200 ms is disconnected rather than left
  * with a partial frame, which would offset every later read without any error.
  *
  * @par buffers
@@ -40,11 +40,8 @@
  *
  * @conf serve_host      String, default "127.0.0.1". Bind address for the broker stream.
  * @conf serve_port      Int, default 11061.
- * @conf send_timeout_ms Int, default 200. A client that cannot take a write (the length prefix
- *                       or the frame) within this long is dropped.
- * @conf stale_after_s   Double, default 5.0. A sender silent this long is stale: logged once,
- *                       left out of the alignment spread, and live again on its next frame.
- *                       0 disables the check.
+ * @conf stale_after_s   Double, default 5.0, > 0. A sender silent this long is stale: logged
+ *                       once, left out of the alignment spread, and live again on its next frame.
  *
  * @par REST
  * `<unique_name>/get_stats` -- per-sender frame counts, sequence gaps, last window and age;
@@ -64,7 +61,9 @@ private:
 
     std::string _serve_host;
     int _serve_port = 11061;
-    int _send_timeout_ms = 200;
+    /// A client that cannot take a write (the length prefix or the frame) within this long is
+    /// dropped.
+    static constexpr int send_deadline_ms = 200;
     double _stale_after_s = 5.0;
 
     /// Listener and accepted clients. @c _clients is guarded by @c _client_mtx; it is touched by
