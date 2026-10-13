@@ -155,9 +155,12 @@ bool GnssTelemPack::flush(frameID& out_id) {
     std::memcpy(frame, &h, sizeof(h));
     std::memcpy(frame + sizeof(h), _rows.data(), _rows.size() * sizeof(float));
 
-    // bufferSend ships only frames that carry a metadata object. Readers of the wire key on the
-    // header's `win`.
+    // bufferSend ships only frames that carry a metadata object. Its sample_seq mirrors the
+    // header's wstart0, so the frame can be addressed from its metadata without parsing the
+    // payload; readers of the wire key on the header's `win`.
     out_buf->allocate_new_metadata_object(out_id);
+    if (GnssChanMetadata* m = get_gnss_chan_metadata(out_buf, out_id))
+        m->sample_seq = h.wstart0;
     out_buf->mark_frame_full(unique_name, out_id++);
 
     _cur_win = -1;
