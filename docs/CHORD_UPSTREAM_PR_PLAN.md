@@ -12,7 +12,7 @@
 | [#1675](https://github.com/kotekan/kotekan/pull/1675) | 3, GPU scheduling | open; Jim approved, waiting on Andre and Erik |
 | [#1750](https://github.com/kotekan/kotekan/pull/1750) | 4, DPDK capture | open; running on all six CHORD GNSS nodes |
 | [#1751](https://github.com/kotekan/kotekan/pull/1751), [#1752](https://github.com/kotekan/kotekan/pull/1752) | off-plan: airspyInput, fftwEngine PFB | drafts; waiting on a dongle test |
-| — | 5–8, GNSS | not started; cleanup rounds 2 and 3 done (below) |
+| — | 5–8, GNSS | not started; cleanup rounds 2 and 3 done (§2, §6) |
 
 Against `develop`'s merge base (`3bfbba126`) the branch is **682 files, +201,512 / −308**:
 631 added, 51 modified. The draft [#1618](https://github.com/kotekan/kotekan/pull/1618)
@@ -45,60 +45,14 @@ discussion. That is the whole point of the split.
 
 ---
 
-## 2. Stage 0 — hygiene (DONE 2026-09-02)
+## 2. Stage 0 and cleanup round 2 — DONE (2026-09-02, 2026-10-08)
 
-Removed from the PR because it is not source:
-
-* `scripts/gnss/seedchk` — a committed **218 KB ELF binary** beside its own `.cpp`.
-* `scripts/gnss/{phibits,phishare,phisharegpu,wavebench}` — tracked **symlinks** to
-  `.cf06`/`.cx43`/`.cx19` builds. Upstream would have received dangling links to hosts that do
-  not exist. `git ls-files -s | awk '$1=="120000"'` now returns **zero** repo-wide, which is
-  the check that says this class is finished rather than reduced.
-* Six generated matplotlib PNGs (~1.5 MB), zero references, reproducible from
-  `gps_cn0_map.py`.
-
-Dead generator scratch:
-
-* **`config/generated/live_*_gpu.yaml` (9 files, 163 KB)** — output of `gen_band_config.py
-  --check`. A basename grep says they are referenced; they are not. Every hit is the
-  *deployed twin* at `config/live_*.yaml`, and `gen_3band_config.py:67` (`HERE = "config/"`)
-  is the line that settles it. The two genuine references were provenance comments, repointed
-  to the byte-identical deployed copy.
-
-And one real defect, which was ours and not upstream's to cause:
-
-* **`config/crs_full_packet_capture.yaml` reverted.** An early sweeping commit repointed this
-  *upstream* tool's metadata pool at `GnssChanMetadata` — a type that **does not exist on
-  `chord`** — so the config would fail at startup for its own users. Nothing in our tree even
-  references the file. Restored byte-for-byte.
-
-> ⚠️ **The general rule this exposed.** A MODIFIED upstream file is a different risk class from
-> an ADDED one. Each of the 44 needs a reason that survives being read by the file's owner.
-
-### Cleanup round 2 (2026-10-08)
-
-* **Generated configs untracked.** `config/generated/` (21 files, ~65k lines) and the six
-  `config/gnss/gnss_vars_<node>.j2` are generator output; they stay on disk for the services
-  and are gitignored. `config/gnss/example_chord_gnss_cx51_multi.yaml` is one node's output.
-  Every removed file is reproducible: node configs via `gen_fleet.py`, the gather and cube
-  archive from the recipe in their headers, the aggregator from the recipe in `stack_components.sh`
-  (two generator flags were added so the hand-patched live aggregator config is reproducible).
-* **The airspy prototype removed.** 49 files under `config/` (its configs, generators and
-  launchers) that nothing in the CHORD system reads; they were already stale. Tag
-  `airspy-prototype-final` keeps them, including the only GLONASS chain configs and the
-  closed-carrier-loop tuning in `run_live.sh`.
-* **Stale pointers.** Citations of the out-of-repo `gnss_gpu_migration.md` memo, the unbuilt
-  `lib/cuda/benches/chordShapeBench.cu`, and `docs/CHORD_HANDOFF.md` (a July orientation note).
-
-**Left for the review / cruft pass** — code the airspy removal stranded: the stages
-`GnssChannelizedTracker`, `GnssVoltagePeel`, `GnssQuantize44`, `GnssBeamCube`,
-`GnssSubbandSplit`, `GnssChannelGather` and the command `cudaGnssTrack` (no live config uses
-them, but live stages include their headers, so removal needs builds); our +294 lines in
-`airspyInput` and +99 in `fftwEngine`; ~15 Python/shell tools reached only from the removed
-launchers; and 44 broker flags whose only setter was an airspy launcher, with the features
-behind them. ⚠️ Removing those launchers makes the 44 flags eligible for the `_FROZEN` sweep;
-retire each flag with its feature instead, and never freeze `dr-constellation` or
-`nh-overlay-len` (the `--signal` implied-value table overwrites them after `_FROZEN`).
+Stage 0 took out what is not source (a committed ELF binary, tracked symlinks to host builds,
+generated PNGs, dead generator scratch) and restored the upstream
+`config/crs_full_packet_capture.yaml`. Round 2 untracked the generated configs (ship the
+generator, templates, manifest and one example), removed the airspy prototype (tag
+`airspy-prototype-final`) and dropped stale pointers. The record is
+`be7d46e8e:docs/CHORD_UPSTREAM_PR_PLAN.md` §2.
 
 ---
 
@@ -132,35 +86,9 @@ symbol. This stage exists so the first review is a pleasant one.
 
 ### Stage 2 — shared buffer / metadata data path *(CLOSED 2026-09-11, superseded upstream)*
 
-**Nothing here is left to upstream. Every piece landed upstream on someone else's PR, and the
-last survivor turned out to be defending a hazard that no longer exists.**
-
-| piece | what closed it |
-|---|---|
-| `NDArrayRingBuffer::set_metadata` build-then-publish | **#1643** (`b38555c11`, on `develop`) — eschnett sets ring metadata ONCE, on the first frame. Removing the per-frame republish beats synchronising it. |
-| `cudaCopyFromRingbuffer` descriptor gate | **#1647** (`1af1099d4`, jbmertens, 2026-09-10) — reads the locked snapshot `out_meta` instead of the live slot-0 object, and replaces the `instance_num == 0` branch with a `FATAL_ERROR`. Better than what we had. |
-| `check_read_progress()` restoration | dropped 2026-09-09; no callers, and at the one site tried it reduces to a tautology. |
-| `buffer.cpp` — `get_metadata()` under the lock | **WITHDRAWN 2026-09-11, and dropped from our tree.** See below. |
-
-⚠️ **WHY THE `get_metadata` LOCK WAS WITHDRAWN — the premise expired under it.** That lock
-(`7c025c5d0`, 08-31) was the companion to OUR `set_metadata` rewrite in the same commit: our
-ring metadata was rebuilt and republished EVERY FRAME, so an unlocked reader really was racing
-a live per-frame write. #1643 deleted the writer. After it, ring metadata is written once, on
-frame 0, by instance 0, before any reader is gated in — readers block in
-`wait_and_claim_readable`, and that ordering is established by the buffer's own mutex and
-condvar, so the single write happens-before every read. For non-ring buffers the frame
-handshake already orders it. Even our own off-handshake reader, `peek_newest_full_frame`, takes
-`buffer_lock` itself and never goes through `get_metadata()`.
-**So the race is not instantiable, and by our own rule we do not raise hazards we cannot
-instantiate.** What would have remained is a consistency argument — every other public accessor
-of `metadata[]` (`set_metadata`, `pass_metadata`, `copy_metadata`,
-`allocate_new_metadata_object`) takes the lock and this one does not — which is not worth
-upstream goodwill. The lock is now removed from our tree too, so `get_metadata` is
-byte-identical to `develop` and no future merge has to re-resolve it.
-
-**The lesson, since it cost a stage:** a fix carried across a merge keeps its code but not
-necessarily its justification. When upstream changes the mechanism you were defending against,
-re-derive whether the defence is still reachable before shipping it.
+Every piece landed upstream on someone else's PR (#1643, #1647) or was withdrawn; `get_metadata`
+is byte-identical to `develop` again. The record is `be7d46e8e:docs/CHORD_UPSTREAM_PR_PLAN.md`
+Stage 2.
 
 **N2Accumulate desync survival** was never really Stage 2; it is our own feature (268 lines
 from `develop`). It still carries the START-ordering bug and the incompatible default 4, and it
@@ -225,7 +153,7 @@ by line count, lowest by risk — none of it compiles into kotekan.
 ## 4. Decisions
 
 1. **Generated configs** — RESOLVED 2026-10-08: untracked; ship the generator, templates,
-   manifest and one example (see cleanup round 2).
+   manifest and one example (cleanup round 2, §2).
 2. **The acceptance gate cannot run upstream.** Five of the six `broker_equiv` fixtures are
    38–100 MB transcripts outside git (`/home/kvand/gnss/fixtures/`, NFS), with only their `.digest`
    committed; several tests also read fixtures from there. OPEN: say so plainly in the PR, or
@@ -235,8 +163,8 @@ by line count, lowest by risk — none of it compiles into kotekan.
    (`scripts/gnss/broker_multi.py` imports it); `gnss_broker/` holds parts split out of it.
 5. **`lib/cuda/benches/chordShapeBench.cu`** — RESOLVED 2026-10-08: removed.
 6. **The airspy prototype** — RESOLVED 2026-10-08: removed (tag `airspy-prototype-final`); no
-   sign the prototype has pulled this branch since 2026-08-07. Stranded code is listed under
-   cleanup round 2.
+   sign the prototype has pulled this branch since 2026-08-07. The code it stranded went in
+   cleanup round 3 (§6, B1).
 7. **`config/base/live_config_20260730.json`** — RESOLVED: keep. It is the base for the gather,
    aggregator and cube-archive recipes.
 8. **Hardcoded `/home/kvand` paths** — OPEN, and larger than first counted: 78 files. Most are
@@ -296,9 +224,8 @@ broker changes `broker_equiv.py check` on cf05 (never beside the live stack).
    premise of the cudaCopyFromRingbuffer gate and the correlators' build-then-publish (kept
    deliberately on 10-01).
 
-**D. Operations found along the way.** Logs are not rotated (`/var/tmp/gnss-logs` 44 GB in 22
-days, ~2 GB/day, 161 GB free). 41 `python/scripts/gnss` tests have no runner. `live_element_gate.py` broken since
-10-02. `gnss_transit_arcs.py` uses the pre-#99 station (155 m off). Viewer: layout key v7, reset
+**D. Operations found along the way.** 41 `python/scripts/gnss` tests have no runner.
+`gnss_transit_arcs.py` uses the pre-#99 station (155 m off). Viewer: layout key v7, reset
 clears v6.
 
 **E. Per stage, as each PR is cut.** Comment rewrite to AGENTS.md style (ratio 0.49 vs upstream
@@ -316,31 +243,7 @@ the next develop merge brings them back cleanly). Must: drop the dependency on
 (gx10, serials); split the `/adcstat` hang fix out as its own small commit; tests per AGENTS.md.
 Done as draft PR #1751 (branch kv/airspy-pfb, worktree ~/gnss/airspy-wt).
 
-**Progress, 2026-10-08 (second session).** Branch `kv/cleanup-r3` (worktree ~/gnss/cleanup3-wt),
-on `31896a862`, local. Each batch verified on cf05: CI's three `-Werror` builds (CUDA+OpenCL, CPU
-full, CPU bare), boost, CI's pytests, `--check-config` on the nine live configs (it rejects an
-unknown stage type), `gen_fleet` output byte-identical base vs branch, broker unit tests +
-selftest + `broker_multi --list` base vs branch (`test_skyscope` is a race: base fails it 1/5 too).
-* A done (`0fbe5071b`, `04f640012`). Also found: CI's **lint** job was red on our tree; fixed by one
-  formatter pass (`72662e4d8`, black 19.10b0 / clang-format-18 / cmake-format / yamlfix) and a
-  j2lint guard in `gnss_chain.j2` (`79912e69c`).
-* B1 done except the airspy-layer revert (waits on C2's adcstat anchor; #1751 is its upstream
-  form): `a2a2770a8`, `0cd8d3c03`. B2: only `gnssBroker` + `bufferDedup` (`bf5590704`); the rest
-  is not mechanical, see below. B3 `5862dfd5b` (70 files), B4 `48c30fe54` (46), B5 `0e1457783`
-  (14 docs; runbook took the bring-up failures and the epoch check; citations name 31896a862).
-* Held back, with the reason: path A (`cudaGnssChordTrack` + generator branch; the generator
-  records KV keeping it for single-signal debugging -> C9); combiner overlay/navwipe/bit_export
-  and nh-assist (C1/C2); bench-only kernel variants and the GPU gate tools phibits/phishare(gpu)
-  (stage 7, need GPU A/B); assembler chan/phi and dcyc dumps (C7); `navbit_reuse` (C1);
-  `l5_band_decode`, `mid_band_decode`, `gps_l2c_subband_validate`, `gps_hoprate_validate` (cited as
-  references by the generators and a boost test: stage 5/6);
-  `kcoh_phase_series`/`kcoh_rate_probe` (C7); beam-map pipeline (6 files) and broker benches
-  (medium/low); `bfmask_deadlock_upstream_note` (C11).
-* New decisions: **C9** remove path A? **C10** beam-map pipeline? **C11** file the bfmask note as
-  an upstream issue, then delete it? Facts for C6: `dop_continuous` is neither frozen nor in the
-  live argv, so production runs without it.
-
-**KV's decisions (2026-10-08) and what followed**, same branch:
+**KV's decisions (2026-10-08) and what followed** (all of round 3 is on `kv/chord-gnss`):
 * C1 KEEP nav decode (simplify later; keep the function). So `navbit_reuse`, the combiner's
   overlay/navwipe/bit_export and the broker's nav-bit plumbing stay.
 * C2 + C6 DONE: 14 broker commits (guard on SIGNAL_IMPLIED; xband, CM/CL sibling, nh-assist,
