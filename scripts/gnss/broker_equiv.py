@@ -16,6 +16,16 @@ in it is a scar from a real outage. Restructuring it on inspection is not a plan
          broker_equiv.py check out.jsonl              # vs out.jsonl.digest
          broker_equiv.py bless out.jsonl              # record the current digest as golden
 
+     A replay runs under the transcript's own flags, so a knob that lives in the config
+     and in no recording -- the cp-rate guard, --cp-rate-model-tol / --fit-flush-on-reject
+     -- is code the gate never executes. A second golden pins the same recording with
+     flags appended to the transcript's, under its own name:
+         broker_equiv.py digest out.jsonl -- --cp-rate-model-tol 0.5 --fit-flush-on-reject 3
+         broker_equiv.py bless --variant cprate out.jsonl -- --cp-rate-model-tol 0.5 ...
+     The golden is out.jsonl.cprate.digest and records the appended flags beside the
+     digest; `check out.jsonl` verifies every golden of the transcript, each under its
+     own flags.
+
 The POST stream is the right gate because it is the broker's entire output: seeds to the
 trackers, search commands, nav bits, carrier trim. Two brokers that POST the same bytes in
 the same order ARE the same broker as far as the instrument is concerned.
@@ -32,10 +42,12 @@ pure code move reproduces the numbers exactly. A moved digest is a real change.
      31896a862:docs/CHORD_BROKER_REFACTOR.md 3.2 about transcripts captured against a dead fleet.
 """
 import argparse
+import glob
 import gzip
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 
@@ -99,7 +111,7 @@ def _open(path):
     return gzip.open(path, "rt") if path.endswith(".gz") else open(path)
 
 
-def _gold_path(transcript):
+def _gold_path(transcript, variant=None):
     """THE GOLDEN DIGEST LIVES IN THE REPO, ALWAYS -- never beside the transcript.
 
     ⚠️ THIS WAS A REAL SILENT FAILURE (found 2026-08-08). The golden used to be
@@ -113,7 +125,13 @@ def _gold_path(transcript):
     A gate's expectation is source. Put it under version control and the failure cannot
     recur -- a stale golden becomes a diff in `git status` instead of a file nobody looks at.
     """
-    return os.path.join(FIXTURES, os.path.basename(transcript) + ".digest")
+    name = os.path.basename(transcript) + (".%s" % variant if variant else "")
+    return os.path.join(FIXTURES, name + ".digest")
+
+
+def _goldens(transcript):
+    """The plain golden first, then every variant (`<transcript>.<name>.digest`)."""
+    return [_gold_path(transcript)] + sorted(glob.glob(_gold_path(transcript, "*")))
 
 
 def _tree_state():
@@ -196,6 +214,11 @@ def _read_gold(path):
     return (head[0] if head else ""), " ".join(head[1:])
 
 
+def _gold_argv(prov):
+    """The flags a variant golden was blessed under, appended to the transcript's own."""
+    return shlex.split(prov.split(" argv ", 1)[1]) if " argv " in prov else []
+
+
 def _header_argv(path):
     """The recording run's own flags, carried in the transcript's first line."""
     with _open(path) as f:
@@ -221,7 +244,7 @@ def _census(path):
     return n
 
 
-def replay(path, env=None):
+def replay(path, env=None, extra=()):
     """Run the broker against a transcript; return (digest, stderr)."""
     pin = _pin_for(path)
     argv = _header_argv(path)
@@ -230,7 +253,10 @@ def replay(path, env=None):
     argv = _strip(argv, "--publish-port")
     for flag, nargs in RETIRED_FLAGS.items():
         argv = _strip(argv, flag, nargs)
-    cmd = [PY, "-u", BROKER] + argv + ["--transcript-read", path, "--publish-port", "0"]
+    # `extra` goes AFTER the transcript's flags: argparse keeps the last value, so a
+    # golden's flags override the recording's.
+    cmd = [PY, "-u", BROKER] + argv + list(extra)
+    cmd += ["--transcript-read", path, "--publish-port", "0"]
     e = dict(os.environ)
     # PIN THE SKY (task #29). The ephemeris is a replay input every bit as much as the
     # transcript: gnss_ephemeris.fetch_brdc pulls it through its own urllib into a cache that
@@ -263,6 +289,45 @@ def _strip(argv, flag, nargs=1):
     return keep
 
 
+def _check(transcript, gold):
+    """One golden against one replay; exits on a moved digest."""
+    if not os.path.exists(gold):
+        sys.exit("no golden digest at %s -- run `bless` first" % gold)
+    want, prov = _read_gold(gold)
+    got, err = replay(transcript, extra=_gold_argv(prov))
+    if got == want:
+        print(
+            "EQUIVALENT  %s  %s%s"
+            % (os.path.basename(gold), got, "  [%s]" % prov if prov else "")
+        )
+        return
+    sys.stderr.write(err[-4000:] + "\n")
+    now_brdc = _brdc_fingerprint(_pin_for(transcript))
+    brdc_note = ""
+    if prov and "brdc " in prov and ("brdc %s" % now_brdc) not in prov:
+        brdc_note = (
+            "\n\n⚠️  THE EPHEMERIS MOVED, NOT NECESSARILY THE CODE. This golden was "
+            "blessed against\n    BRDC %s; the cache now hashes %s. The broadcast "
+            "ephemeris is fetched\n    outside the transcript and refreshes several "
+            "times a day, and a MODEL-PRIMARY chain\n    (E5a/B2a) seeds every satellite "
+            "from it -- a changed toe moves a seed's cp0 with no\n    code change at "
+            "all. Check that before concluding anything about the diff."
+            % (prov.split("brdc ")[-1].split()[0], now_brdc)
+        )
+    sys.exit(
+        "DIGEST MOVED  %s\n  golden %s%s\n  now    %s\nThe POST stream changed: the "
+        "refactor is not behaviour-preserving.\nIf the change is intended, "
+        "`bless` FROM A CLEAN TREE and commit the .digest with the code.%s"
+        % (
+            os.path.basename(gold),
+            want,
+            "  [%s]" % prov if prov else "",
+            got,
+            brdc_note,
+        )
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -274,9 +339,16 @@ def main():
     ap.add_argument(
         "rest",
         nargs=argparse.REMAINDER,
-        help="for `record`: the broker flags to run under, after a bare --",
+        help="for `record`: the broker flags to run under, after a bare --; for "
+        "`digest`/`bless`: flags appended to the transcript's own",
+    )
+    ap.add_argument(
+        "--variant",
+        help="for `bless`: write `<transcript>.<variant>.digest`, recording the flags "
+        "after -- in it; for `check`: verify only that golden",
     )
     a = ap.parse_args()
+    extra = [x for x in a.rest if x != "--"]
     # ⚠️ ABSOLUTE, BEFORE ANYTHING USES IT. The replay runs the broker as a subprocess with
     # cwd=K (the repo root), so a transcript named relative to the CALLER's directory --
     # `broker_equiv.py check fixtures/broker_fake_l5.jsonl`, run from scripts/gnss, which is
@@ -284,31 +356,37 @@ def main():
     # dies with FileNotFoundError on a file that plainly exists. It reads as a missing fixture
     # rather than as a path bug, and it cost a detour on 2026-08-15.
     a.transcript = os.path.abspath(a.transcript)
-    gold = _gold_path(a.transcript)
+    gold = _gold_path(a.transcript, a.variant)
 
     if a.action == "record":
-        flags = [x for x in a.rest if x != "--"]
-        if not flags:
+        if not extra:
             sys.exit(
                 "record needs the broker flags: broker_equiv.py record f.jsonl -- --trackers ..."
             )
-        cmd = [PY, "-u", BROKER] + flags + ["--transcript-write", a.transcript]
+        cmd = [PY, "-u", BROKER] + extra + ["--transcript-write", a.transcript]
         sys.stderr.write("+ %s\n" % " ".join(cmd))
         raise SystemExit(subprocess.call(cmd, cwd=K))
 
     if a.action == "digest":
-        d, _ = replay(a.transcript)
+        d, _ = replay(a.transcript, extra=extra)
         print(d)
         return
 
     if a.action == "bless":
-        d, _ = replay(a.transcript)
+        if bool(a.variant) != bool(extra):
+            sys.exit(
+                "a variant golden is the transcript's flags PLUS the ones after --: "
+                "broker_equiv.py bless --variant <name> f.jsonl -- <flags>"
+            )
+        d, _ = replay(a.transcript, extra=extra)
         sha, dirty = _tree_state()
         prov = "blessed-at %s%s brdc %s" % (
             sha,
             " DIRTY" if dirty else "",
             _brdc_fingerprint(_pin_for(a.transcript)),
         )
+        if extra:
+            prov += " argv " + shlex.join(extra)
         with open(gold, "w") as f:
             f.write("%s  %s\n" % (d, prov))
         print("blessed %s = %s (%s)" % (os.path.basename(gold), d, prov))
@@ -323,32 +401,11 @@ def main():
         return
 
     if a.action == "check":
-        if not os.path.exists(gold):
-            sys.exit("no golden digest at %s -- run `bless` first" % gold)
-        want, prov = _read_gold(gold)
-        got, err = replay(a.transcript)
-        if got == want:
-            print("EQUIVALENT  %s%s" % (got, "  [%s]" % prov if prov else ""))
-            return
-        sys.stderr.write(err[-4000:] + "\n")
-        now_brdc = _brdc_fingerprint(_pin_for(a.transcript))
-        brdc_note = ""
-        if prov and "brdc " in prov and ("brdc %s" % now_brdc) not in prov:
-            brdc_note = (
-                "\n\n⚠️  THE EPHEMERIS MOVED, NOT NECESSARILY THE CODE. This golden was "
-                "blessed against\n    BRDC %s; the cache now hashes %s. The broadcast "
-                "ephemeris is fetched\n    outside the transcript and refreshes several "
-                "times a day, and a MODEL-PRIMARY chain\n    (E5a/B2a) seeds every satellite "
-                "from it -- a changed toe moves a seed's cp0 with no\n    code change at "
-                "all. Check that before concluding anything about the diff."
-                % (prov.split("brdc ")[-1].split()[0], now_brdc)
-            )
-        sys.exit(
-            "DIGEST MOVED\n  golden %s%s\n  now    %s\nThe POST stream changed: the "
-            "refactor is not behaviour-preserving.\nIf the change is intended, "
-            "`bless` FROM A CLEAN TREE and commit the .digest with the code.%s"
-            % (want, "  [%s]" % prov if prov else "", got, brdc_note)
-        )
+        if extra:
+            sys.exit("check takes a golden's flags from the golden itself")
+        for g in [gold] if a.variant else _goldens(a.transcript):
+            _check(a.transcript, g)
+        return
 
     if a.action == "selftest":
         n = _census(a.transcript)
