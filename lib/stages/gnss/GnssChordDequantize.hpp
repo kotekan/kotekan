@@ -13,42 +13,32 @@
 #include "bufferContainer.hpp"
 
 #include <string>
-#include <vector>
 
 /**
  * @class GnssChordDequantize
- * @brief [hop][chan][elem] 4+4b bytes -> [hop][chan] cfloat32, one element.
+ * @brief [hop][chan] 4+4b bytes -> [hop][chan] cfloat32.
  *
  * Converts CHORD's 4+4-bit channelized stream to the complex float @ref GnssChannelizedSearch
  * takes (the format of @ref fftwEngine's output). Acquisition runs on one element, so this is a
  * small stream and the conversion is not on a hot path.
  *
- * Decode: high nibble = real, low nibble = imag, each stored as value + 8, as in
- * lib/testing/gpuSimulate.cpp. This is the layout of int4x2_swapped_withoffset_t (DataType.hpp),
+ * Decode: gnss44::unpack (high nibble = real, low nibble = imag, each stored as value + 8, as in
+ * lib/testing/gpuSimulate.cpp). This is the layout of int4x2_swapped_withoffset_t (DataType.hpp),
  * whose component [0], the low nibble, is imag. Swapping the nibbles gives i*conj(x): the
  * magnitudes are unchanged, so power-only checks cannot see it, but the despread does not
- * match the replica. @c conjugate negates the imaginary part, which the CHORD F-engine's
- * output needs.
+ * match the replica. The imaginary part is negated, which the CHORD F-engine's output needs.
  *
- * @c scale matters only for absolute amplitude; the search normalizes.
+ * Output values are in lsb; the search normalizes.
  *
- * Optionally zero-fills to a contiguous span: with @c channel_ids set, input channel c goes to
- * output slot channel_ids[c] - out_offset of an out_channels-wide row. The frame is zeroed
- * first only when out_channels differs from n_channels. GnssChannelizedSearch does not need
- * this; it takes a sparse comb through its own channel_ids.
- *
- * @conf in_buf        [hop][chan][elem] 4+4b bytes (a GnssChordVoltageTap output)
- * @conf out_buf       [hop][out_channels] cfloat32
+ * @conf in_buf        [hop][chan] 4+4b bytes (a GnssChordVoltageTap output, one element)
+ * @conf out_buf       [hop][chan] cfloat32
  * @conf n_channels    channels in the input stream
- * @conf n_elements    element stride of the input (default 1)
- * @conf element       which element to extract (default 0)
+ * @conf n_elements    must be 1 (default 1)
+ * @conf element       must be 0 (default 0)
  * @conf samples_per_data_set  hops per frame
- * @conf scale         lsb -> output units (default 1.0)
- * @conf conjugate     negate the imaginary part (default false)
- * @conf out_channels  width of the output span (default n_channels, i.e. no fill)
- * @conf out_offset    global index of output slot 0 (default 0)
- * @conf channel_ids   global index of each input channel, in input order; required when
- *                     out_channels differs from n_channels
+ * @conf conjugate     must be true (default true)
+ *
+ * Both buffers carry GnssChanMetadata; each frame's sample_seq is copied to its output.
  */
 class GnssChordDequantize : public kotekan::Stage {
 public:
@@ -61,13 +51,7 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
     int _n_chan;
-    int _n_elem;
-    int _element;
     int _n_hops;
-    float _scale;
-    bool _conjugate = false;   ///< negate imag (CHORD F-engine convention)
-    int _out_chan;             ///< output span width (== _n_chan when not zero-filling)
-    std::vector<int> _out_idx; ///< output slot for each input channel
 };
 
 #endif // GNSS_CHORD_DEQUANTIZE_HPP
