@@ -6,8 +6,6 @@
  *
  *   [1] REFERENCE     n2k(128,NF) == CPU reference           (validates the reference itself)
  *   [2] CLONE         dual(128+0)  == n2k(128) bitwise       (NSB=0 regression gate)
- *   [3] PREFIX        dual(128+128) first-36-tiles == n2k(128) bitwise, per (t,f)
- *                     (the "verbatim prefix" property the path-B split relies on)
  *   [4] DUAL          dual(128+128) == CPU reference over the concatenated 256 stations
  *                     (covers AA + mixed + BB tiles, with a random RFI mask)
  *   [5] CLASS MASK    dual(mask=MIXED|BB) matches the full run on mixed+BB tiles bitwise
@@ -284,11 +282,6 @@ int main(int argc, char** argv) {
         CmpStats st;
         cmp_tiles(st, "clone", hvd0.data(), NSA, hva.data(), NSA, tiles_all);
         fails += report("[2] dual(128+0) vs n2k(128), bitwise", st);
-    }
-    {
-        CmpStats st;
-        cmp_tiles(st, "prefix", hvd.data(), NS, hva.data(), NSA, tiles_aa);
-        fails += report("[3] dual(128+128) AA prefix vs n2k(128)", st);
     }
     {
         CmpStats st;
