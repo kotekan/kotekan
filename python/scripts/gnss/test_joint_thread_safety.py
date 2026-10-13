@@ -103,9 +103,7 @@ class TestSharedFilterThreadSafety(unittest.TestCase):
 
     def _mk(self):
         # tiny max_age keeps _drop() firing, which is the raciest mutation
-        return JointReceiverState(
-            code_len=204600.0, ref_band="L5", clk0=150.0, max_age_s=0.05
-        )
+        return JointReceiverState(code_len=204600.0, clk0=150.0, max_age_s=0.05)
 
     def test_locked_filter_survives_concurrent_mutation(self):
         js = self._mk()

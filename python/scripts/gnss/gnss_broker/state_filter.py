@@ -199,22 +199,15 @@ class JointReceiverState:
         gauge_max_b=60.0,
         escape_max_step=100.0,
         rate_max=1.0,
-        ref_band=None,
-        sigma_tau0=20.0,
-        q_tau=1e-5,
         sigma_fcar0=50.0,
         q_fcar=0.01,
         sigma_rr0=2.0,
         q_rr=0.02,
         rr_gauge_sigma=0.5,
         f_ref_hz=None,
-        sigma_rrd0=0.0,
-        q_rrd=0.0,
-        rrd_max=8e-3,
         clk0=0.0,
         escape_min_sats=3,
         p_floor=0.04,
-        tau_min_dual=1,
         birth_gate_after=30,
     ):
         import numpy as np
@@ -319,11 +312,9 @@ class JointReceiverState:
         # independent samples -- they are nine satellites and a correlation time -- so the
         # evidence is counted in SATELLITES, never in samples.
         self.escape_min_sats = int(escape_min_sats)
-        self._rej_band = {}  # key -> band of its rejected run, for the corroboration
         self.rate_max = float(
             rate_max
         )  # chips/s; 1.0 = 0.1 ppm = 2500x the GPSDO truth
-        self.diverged = False  # latched: an escape was refused as non-physical
         # DEAFNESS DETECTOR (2026-08-21). A state that is badly wrong rejects every
         # measurement, so it never corrects, so it stays wrong -- and meanwhile predict()
         # keeps integrating clk_rate, which walks the clock away at whatever rate it last
@@ -339,7 +330,6 @@ class JointReceiverState:
         self.deaf_after = 40  # consecutive rejections with zero accepts -> DEAF
         self.rej_since_upd = 0  # rejections since the last ACCEPTED update
         self.deaf = False  # latched: this state has stopped accepting anything
-        self.escapes = 0
         # birth_max default 50 -> 12 (2026-08-12): the 00:08 zombie's garbage biases
         # (+-20-46 chips) all slid UNDER 50. Real biases measure <= ~6 (G28 -5.7 the
         # largest ever seen healthy); 12 is 2x margin. Note the gate is open during
@@ -354,45 +344,12 @@ class JointReceiverState:
         # better than the floor; healthy runs measure sigma 0.05-0.08, so 0.04 caps
         # confidence just below the best honest reading without touching normal operation.
         self.p_floor = float(p_floor)
-        # tau is estimated only where it is OBSERVABLE (see _add_band); 0 restores the old
-        # unconditional behaviour for anyone reproducing the failure.
-        self.tau_min_dual = int(tau_min_dual)
-        self._tau_denied = {}  # band -> True once its row has been refused (log once)
         # ...and bootstrap is bounded by accepted updates as well as by P00 (see update()).
         self.birth_gate_after = int(birth_gate_after)
         # Events worth an operator's attention (escapes, incoherent runs, gauge fallbacks).
         # The filter has no logger of its own, so it queues one-line notes and the broker
         # drains them. The single most damaging event of 2026-08-10 fired SILENTLY.
         self.notes = []
-        self.gauge_fallbacks = 0
-        # -- tau_band (P3): the per-BAND group delay, a DECLARED STATE ------------------
-        # y_i = clk + b_i + tau_band(beta) + noise. Without a tau state the per-band delay
-        # has nowhere to live, so it lands in b_sat -- and b_sat is per SATELLITE, so a sat
-        # seen in two bands gets two irreconcilable biases and the filter splits the
-        # difference. That is not a modelling nicety: it is why the second band needed a
-        # hand-wired cross-band clock BOOTSTRAP to track at all (task #34). Here the offset
-        # is estimated instead of borrowed.
-        #
-        # GAUGE: the reference band has NO ROW and is pinned at tau = 0 by construction, so
-        # `clk` means "the clock at the reference band" and every other tau is a DIFFERENTIAL
-        # delay -- which is the physically meaningful, measurable quantity. Without that pin
-        # clk and the taus are exactly degenerate (add c to clk, subtract c from every tau).
-        #
-        # OBSERVABILITY: tau_beta separates from b_sat ONLY through satellites seen in BOTH
-        # bands. One ray, two carriers -- which is precisely what an AltBOC sideband pair
-        # gives for free, and precisely what the disjoint E5a/E5b PRN lists destroyed before
-        # they were made an identity. With no dual-band satellite the two are degenerate and
-        # this filter will say so rather than invent a split (see `tau_observability`).
-        #
-        # q_tau is TINY: cable and filter delays drift on hours, not seconds (section 3a's
-        # timescale table). It is a state that costs almost no degrees of freedom, which is
-        # the whole DOF argument for putting it here rather than fitting it per epoch.
-        self.ref_band = ref_band  # None -> the first band seen becomes the reference
-        self.sigma_tau0 = float(sigma_tau0)
-        self.q_tau = float(q_tau)
-        self._band_idx = {}  # band -> row in x (the reference band has none)
-        self._band_seen = {}  # band -> last time a measurement carried it
-        self._dual = {}  # sat key -> set of bands it has been measured in
         # -- f_carrier (P2, 2026-08-10): the RECEIVER-WIDE carrier frequency offset -------
         # Declared as the 3rd element of x in CHORD_JOINT_TRACKING.md section 1 and never
         # built until now. It is created LAZILY, on the first carrier measurement, so a
@@ -417,8 +374,6 @@ class JointReceiverState:
         self.sigma_fcar0 = float(sigma_fcar0)
         self.q_fcar = float(q_fcar)  # Hz per sqrt(s); a GPSDO-disciplined LO, so SLOW
         self._fcar_idx = None  # row in x, or None until the first carrier update
-        self.n_fcar = 0  # accepted carrier measurements
-        self.fcar_rejected = 0
 
         # -- rrate_sat: the PER-SATELLITE ORBITAL DOPPLER ERROR (task #33 P3, 2026-08-14) --
         # ⚠️ THIS IS NOT A PER-SATELLITE f_carrier, AND THE DISTINCTION IS PHYSICAL. An LO or
@@ -456,9 +411,9 @@ class JointReceiverState:
         # RATE, 12.5 ppm), and that failure is worth re-earning deliberately rather than by
         # accident.
         # The carrier the receiver-wide f_carrier is EXPRESSED AT. Latched on the first
-        # carrier measurement if not given, exactly as ref_band is for tau -- so a
-        # single-band deployment never has to state it, and a second band arriving later
-        # cannot silently redefine what f_carrier means.
+        # carrier measurement if not given -- so a single-band deployment never has to
+        # state it, and a second band arriving later cannot silently redefine what
+        # f_carrier means.
         self.f_ref_hz = float(f_ref_hz) if f_ref_hz else None
         self.sigma_rr0 = float(sigma_rr0)
         self.q_rr = float(q_rr)  # m/s per sqrt(s); orbit error, so SLOW
@@ -469,29 +424,6 @@ class JointReceiverState:
         # to 2e-11. Recorded because I changed three things at once and credited the wrong one;
         # test_a_stiff_gauge_is_NOT_what_froze_it pins the correction so it stays corrected.
         self.rr_gauge_sigma = float(rr_gauge_sigma)
-        # rrate_dot (#33, 2026-08-14): d(rrate)/dt, m/s per s -- the carrier twin of
-        # clk_rate, and for the same reason: the per-sat residual DRIFTS (measured
-        # ~0.5 Hz/min = 2e-3 m/s/s on the churn population, with fine and coarse
-        # agreeing), and a random-walk row tracks a drifting truth only by lagging it.
-        # Constant-velocity per pair; NO gauge on the dots -- a fleet-common drift
-        # accumulates into f_carrier through the existing rrate gauge, which is where a
-        # receiver-common term belongs.
-        # ⚠️ INERT AT DEFAULTS (0, 0) -- deliberately, 2026-08-14 00:5x. The bench
-        # falsified BOTH first parameterizations before deploy: fast priors integrate the
-        # closed loop's own lag misreference (velocity runaway, 5-24 Hz in
-        # TestClosedLoopLag), and priors slow enough to be loop-stable learn NOTHING on
-        # session timescales (CV and RW arms bit-identical over 600 s). The viable
-        # window, if it exists, must be set from the MEASURED drift autocorrelation --
-        # the overnight JRRP fine series provides exactly that by morning. Enable by
-        # passing measured values; zero priors make the dot rows exact RW-equivalents.
-        self.sigma_rrd0 = float(
-            sigma_rrd0
-        )  # prior, m/s/s: ~2x the measured drift scale
-        self.q_rrd = float(q_rrd)  # dot random walk, m/s/s per sqrt(s)
-        # Plausibility clamp (the joint_max_rate_ppm lesson: never carry a physically
-        # impossible number). 8e-3 m/s/s = 4x the measured churn-population drift.
-        self.rrd_max = float(rrd_max)
-        self._rrd_idx = {}  # key -> the dot row (always rrate row + 1)
         self._rr_idx = {}  # key -> row in x
         self._rr_t_seen = {}  # key -> last carrier measurement time
         self._rr_reject_run = {}  # key -> consecutive rejections (escape)
@@ -539,69 +471,6 @@ class JointReceiverState:
         self._t_seen[key] = t_now
         self._n[key] = 0
         self._membership_changed()
-        return i
-
-    def _add_band(self, band, t_now):
-        """Give a band its own tau row. The FIRST band seen becomes the reference and gets
-        no row at all -- that is the gauge, not an optimisation.
-
-        ⚠️ AND A ROW IS ONLY CREATED WHEN tau IS OBSERVABLE (2026-08-22). tau_band separates
-        from clk ONLY through satellites measured in BOTH this band and the reference -- one
-        ray, two carriers. With zero of them the two are EXACTLY DEGENERATE, and creating the
-        row anyway does not estimate tau, it destroys the clock: measured 2026-08-21, a row
-        born with `dual 0` pinned sigma(clk) at 19.901 (== sigma_tau0) through 116 accepted
-        updates, i.e. the clock never converged at all. Every downstream gate keyed on clock
-        confidence then failed open -- birth_max is conditioned on P00 < 100 and P00 sat at
-        396 forever, so EVERY birth went unvetted, biases reached -1693 chips, and clk and
-        the biases traded the degenerate common mode (clk stepped -180 while every bias
-        jumped +160 at one birth). Runs where this row happened NOT to exist held sigma(clk)
-        at 0.11-0.30 on the same code and config.
-        THE EVIDENCE THAT IT WAS NEVER WORTH ESTIMATING: every tau this receiver has ever
-        logged is +1.44..+1.47 +- 19.901 chips -- 0.07 sigma from zero, and the class note
-        already says such a value "is an artefact of the priors". Physically it should be:
-        one ADC and one PFB, so 1176.45 and 1207.14 MHz are different BINS OF THE SAME FFT,
-        and +1.45 chips is 142 ns of differential group delay across 30.7 MHz where the
-        analogue chain gives nanoseconds (~0.01-0.03 chips). The real differential effect
-        between those frequencies is IONOSPHERIC, which is per-RAY and therefore per-sat --
-        already carried by b_sat, and not representable by a per-band scalar at all.
-        So: estimate tau only where it is observable, and pin it at 0 (no row) otherwise.
-        Do not estimate what you cannot observe."""
-        np = self._np
-        if self.ref_band is None:
-            self.ref_band = band
-        if band == self.ref_band or band in self._band_idx:
-            self._band_seen[band] = t_now
-            return self._band_idx.get(band)
-        # OBSERVABILITY PRECONDITION. Counted on history, so the row appears on the cycle
-        # AFTER the first dual-band satellite -- which is the correct order: the evidence
-        # must exist before the parameter does.
-        _dual_n = sum(
-            1 for _bs in self._dual.values() if band in _bs and self.ref_band in _bs
-        )
-        if _dual_n < self.tau_min_dual:
-            self._band_seen[band] = t_now
-            if not self._tau_denied.get(band):
-                self._tau_denied[band] = True
-                self._note(
-                    "TAU-PINNED %s: no satellite measured in both this band and the "
-                    "reference (%s) -- tau is degenerate with clk here, so it is "
-                    "pinned at 0 rather than estimated (needs %d dual-band sat(s))"
-                    % (band, self.ref_band, self.tau_min_dual)
-                )
-            return None
-        i = self.x.size
-        self.x = np.append(self.x, 0.0)
-        P = np.zeros((i + 1, i + 1))
-        P[:i, :i] = self.P
-        P[i, i] = self.sigma_tau0 ** 2
-        self.P = P
-        self._band_idx[band] = i
-        self._band_seen[band] = t_now
-        self._tau_denied[band] = False
-        self._note(
-            "TAU-ROW %s: %d dual-band satellite(s) now separate tau from clk -- "
-            "estimating it" % (band, _dual_n)
-        )
         return i
 
     @staticmethod
@@ -667,13 +536,12 @@ class JointReceiverState:
             del self._idx[k], self._t_seen[k], self._n[k]
             self._rej_run.pop(k, None)
             self._rej_hist.pop(k, None)
-            self._rej_band.pop(k, None)
         # Reindex from the SURVIVING ROW ORDER, not from a hardcoded base of 2. The old
-        # form assumed every row past clk_rate was a satellite; tau_band rows share that
-        # space now, and a base-2 renumber would silently alias a band onto a satellite.
+        # form assumed every row past clk_rate was a satellite; the f_carrier and rrate
+        # rows share that space, and a base-2 renumber would silently alias one of them
+        # onto a satellite.
         remap = {old_row: new_row for new_row, old_row in enumerate(keep)}
         self._idx = {k: remap[i] for k, i in self._idx.items() if i in remap}
-        self._band_idx = {b: remap[i] for b, i in self._band_idx.items() if i in remap}
         # f_carrier rides the same remap. Missing this is how a receiver-wide state silently
         # aliases onto a satellite's bias row the first time a sat ages out.
         if self._fcar_idx is not None:
@@ -683,16 +551,9 @@ class JointReceiverState:
         self._rr_idx = {
             k: remap[i] for k, i in self._rr_idx.items() if remap.get(i) is not None
         }
-        self._rrd_idx = {
-            k: remap[i]
-            for k, i in self._rrd_idx.items()
-            if remap.get(i) is not None and k in self._rr_idx
-        }
         self._rr_t_seen = {
             k: v for k, v in self._rr_t_seen.items() if k in self._rr_idx
         }
-        for k in keys:
-            self._dual.pop(k, None)
         self._membership_changed()
 
     def _membership_changed(self):
@@ -796,17 +657,7 @@ class JointReceiverState:
         n = self.x.size
         F = np.eye(n)
         F[0, 1] = dt
-        # each satellite's carrier pair is constant-velocity, like the clock's
-        for _k, _ir in self._rr_idx.items():
-            _id = self._rrd_idx.get(_k)
-            if _id is not None:
-                F[_ir, _id] = dt
         self.x = F @ self.x
-        for _i in self._rrd_idx.values():  # the dot clamp, every cycle
-            if self.x[_i] > self.rrd_max:
-                self.x[_i] = self.rrd_max
-            elif self.x[_i] < -self.rrd_max:
-                self.x[_i] = -self.rrd_max
         self.P = F @ self.P @ F.T
         # Q: clock gets the integrated-rate terms (nearly-constant-velocity), biases a
         # plain random walk. Off-diagonal clk/rate coupling matters -- without it the
@@ -818,53 +669,34 @@ class JointReceiverState:
         self.P[1, 0] += qr * dt ** 2 / 2.0
         self.P[1, 1] += qr * dt
         if n > 2:
-            brows = set(self._band_idx.values())
             # The f_carrier row is NOT a satellite bias and must not collect q_b -- it is
             # in Hz, not chips, and q_b would inflate it by ~1000x its own process noise.
-            other = set(brows)
+            other = set()
             if self._fcar_idx is not None:
                 other.add(self._fcar_idx)
             # rrate rows are m/s, not chips -- q_b would inflate them by ~1000x their own
             # process noise, the same trap the f_carrier line above avoids.
             other |= set(self._rr_idx.values())
-            other |= set(self._rrd_idx.values())
             srows = [i for i in range(2, n) if i not in other]
             if srows:
                 idx = np.array(srows)
                 self.P[idx, idx] += self.q_b ** 2 * dt
-            for i in brows:
-                # hours-timescale state: q_tau is ~100x below q_b on purpose
-                self.P[i, i] += self.q_tau ** 2 * dt
             if self._fcar_idx is not None:
                 self.P[self._fcar_idx, self._fcar_idx] += self.q_fcar ** 2 * dt
-            qd = self.q_rrd ** 2
-            for _k, i in self._rr_idx.items():
-                # orbit error: its own white walk PLUS the integrated-dot terms (the
-                # clock's nearly-constant-velocity Q, per pair). The off-diagonal coupling
-                # is what lets a fresh rrate measurement correct the DOT.
-                self.P[i, i] += self.q_rr ** 2 * dt + qd * dt ** 3 / 3.0
-                _id = self._rrd_idx.get(_k)
-                if _id is not None:
-                    self.P[i, _id] += qd * dt ** 2 / 2.0
-                    self.P[_id, i] += qd * dt ** 2 / 2.0
-                    self.P[_id, _id] += qd * dt
-        # P floor -- see __init__. Applied to clk and the satellite-bias rows (NOT tau,
-        # NOT f_carrier: different units and timescales own their own priors). The floor
-        # goes on the DIAGONAL only; correlations keep whatever structure they earned.
+            for i in self._rr_idx.values():
+                self.P[i, i] += self.q_rr ** 2 * dt  # orbit error: a white walk
+        # P floor -- see __init__. Applied to clk and the satellite-bias rows (NOT
+        # f_carrier or rrate: different units and timescales own their own priors). The
+        # floor goes on the DIAGONAL only; correlations keep whatever structure they earned.
         if self.p_floor > 0.0:
             f2 = self.p_floor ** 2
             if self.P[0, 0] < f2:
                 self.P[0, 0] = f2
             if n > 2:
-                other = set(self._band_idx.values())
+                other = set()
                 if self._fcar_idx is not None:
                     other.add(self._fcar_idx)
                 other |= set(self._rr_idx.values())
-                # dot rows are m/s/s: the chips-scale floor would hand an 'inert' dot a
-                # huge variance every predict -- found live 2026-08-14 as dots that
-                # learned with ZERO priors (and it invalidated the first CV parameter
-                # bracketing: both arms' dot dynamics were floor-driven).
-                other |= set(self._rrd_idx.values())
                 for i in range(2, n):
                     if i not in other and self.P[i, i] < f2:
                         self.P[i, i] = f2
@@ -929,7 +761,7 @@ class JointReceiverState:
 
         Reducing the modulus is well defined and loses no information (the class note's own
         rule: 'reducing to a shorter period is well defined, lengthening is not'):
-          * the biases, tau_band and clk_rate are small SIGNED offsets, not modular
+          * the biases and clk_rate are small SIGNED offsets, not modular
             residues -- they carry over untouched;
           * the covariance is unchanged: knowing a value mod a shorter period does not make
             any estimate less certain;
@@ -949,7 +781,7 @@ class JointReceiverState:
         return True
 
     @_locked
-    def update(self, key, y_chips, sigma_chips, t_now, band=None):
+    def update(self, key, y_chips, sigma_chips, t_now):
         """Feed one y_i = clk + b_i observation. Returns the normalized innovation, or
         None if rejected/deferred. A NEW satellite is BORN AT ITS MEASUREMENT (b0 = y - clk)
         rather than walked in from zero at loop gain: the model error it must absorb is
@@ -958,13 +790,6 @@ class JointReceiverState:
         if not (math.isfinite(y_chips) and sigma_chips > 0.0):
             return None
         self.predict(t_now)
-        # Resolve this measurement's band BEFORE the birth gate: a satellite first seen in a
-        # non-reference band is offset by tau, and judging its plausibility against the bare
-        # clock would reject exactly the newcomers a second band brings in.
-        _tau_row = self._add_band(band, t_now) if band is not None else None
-        _tau_val = float(self.x[_tau_row]) if _tau_row is not None else 0.0
-        if band is not None:
-            self._dual.setdefault(key, set()).add(band)
         born = key not in self._idx
         if born:
             # BIRTH THROUGH THE COVARIANCE, not by hand. The obvious version -- set
@@ -998,7 +823,7 @@ class JointReceiverState:
                 self.birth_max is not None
                 and len(self._idx) >= 2
                 and (self.P[0, 0] < 100.0 or self.n_updates >= self.birth_gate_after)
-                and abs(self.wrap(y_chips - self.x[0] - _tau_val)) > self.birth_max
+                and abs(self.wrap(y_chips - self.x[0])) > self.birth_max
             ):
                 self._reject("birth")
                 return None
@@ -1007,11 +832,6 @@ class JointReceiverState:
         H = np.zeros(self.x.size)
         H[0] = 1.0
         H[i] = 1.0
-        # y_i = clk + b_i + tau_band. The reference band has NO row (tau == 0 by the gauge),
-        # so this term simply does not appear for it -- which is what makes `clk` mean "the
-        # clock at the reference band" rather than an unpinned average of both.
-        if _tau_row is not None:
-            H[_tau_row] = 1.0
         innov = self.wrap(y_chips - float(H @ self.x))
         # NOT on the birth cycle: a newborn sits at b=0, so its innovation is the WHOLE
         # measurement (~the clock, 151 chips here) and any physical gate would reject it --
@@ -1073,7 +893,6 @@ class JointReceiverState:
                 # a static truth agree no matter what the filter did in between.
                 hist = self._rej_hist.setdefault(key, [])
                 hist.append(y_chips)
-                self._rej_band[key] = band  # so _corroborators can remove its tau
                 if len(hist) > self.reject_escape:
                     del hist[: -self.reject_escape]
                 self._rej_run[key] = self._rej_run.get(key, 0) + 1
@@ -1124,7 +943,6 @@ class JointReceiverState:
                     _corr = self._corroborators(key, innov)
                     if _corr + 1 < self.escape_min_sats:
                         self._reject("escape-refused")
-                        self.diverged = True
                         self._note(
                             "ESCAPE REFUSED %s: %d rejections agreeing to %.2f chips "
                             "but implying a %+.1f chip step (bound %.0f on a %.0f-chip "
@@ -1161,13 +979,11 @@ class JointReceiverState:
                     "-- believing a %+.1f chip step and inflating P"
                     % (self._key_str(key), self._rej_run[key], spread, innov)
                 )
-                self.escapes += 1
                 self.P[0, 0] += 25.0
                 self.P[i, i] += 25.0
                 self.P[0, 1] = self.P[1, 0] = 0.0
         self._rej_hist.pop(key, None)
         self._rej_run.pop(key, None)
-        self._rej_band.pop(key, None)
         z = self._scalar_update(H, innov, sigma_chips ** 2)
         self._t_seen[key] = t_now
         self._n[key] = self._n.get(key, 0) + 1
@@ -1290,7 +1106,6 @@ class JointReceiverState:
             # Cannot happen with the median centre (the median's own neighbours are always
             # within range), but if it ever does, that is an alarm and not a reason to skip:
             # pin on everything rather than leave the common mode floating.
-            self.gauge_fallbacks += 1
             self._note(
                 "GAUGE: only %d inlier(s) of %d about median %+.2f -- pinning on ALL"
                 % (len(use), len(idx), med)
@@ -1320,8 +1135,7 @@ class JointReceiverState:
         exactly the wrong way, which is what cost the state on 2026-08-10).
 
         Only fully-formed runs vote: a satellite must have reject_escape samples and pass
-        the same escape_spread coherence test as the caller. Its own band's tau is removed,
-        so a second band's group delay is not mistaken for disagreement.
+        the same escape_spread coherence test as the caller.
         """
         n = 0
         for k2, h2 in self._rej_hist.items():
@@ -1329,9 +1143,7 @@ class JointReceiverState:
                 continue
             if max(abs(self.wrap(v - h2[0])) for v in h2) > self.escape_spread:
                 continue  # that sat is feeding noise; it gets no vote
-            innov2 = self.wrap(
-                h2[-1] - self.predicted(k2) - self.tau(self._rej_band.get(k2))
-            )
+            innov2 = self.wrap(h2[-1] - self.predicted(k2))
             if abs(self.wrap(innov2 - innov)) <= self.escape_spread:
                 n += 1
         return n
@@ -1344,12 +1156,8 @@ class JointReceiverState:
         accepted."""
         self.predict(t_now)
         n_ok = 0
-        for m in measurements:
-            # (key, y, sigma) or (key, y, sigma, band) -- the 3-tuple form is the
-            # single-band caller and keeps working unchanged.
-            key, y, sig = m[0], m[1], m[2]
-            band = m[3] if len(m) > 3 else None
-            if self.update(key, y, sig, t_now, band=band) is not None:
+        for key, y, sig in measurements:
+            if self.update(key, y, sig, t_now) is not None:
                 n_ok += 1
         self.gauge()
         # PHYSICAL RATE CEILING (2026-08-10 divergence). The reference is GPS-disciplined:
@@ -1366,7 +1174,6 @@ class JointReceiverState:
             self.x[1] = self.rate_max if _was > 0 else -self.rate_max
             self.P[1, 1] += _was ** 2
             self.P[0, 1] = self.P[1, 0] = 0.0
-            self.diverged = True
             self._note(
                 "RATE CLAMPED %+.3f -> %+.1f chips/s (bound %.1f = 0.1 ppm, "
                 "2500x the GPSDO truth): a common-mode step is an OFFSET, never a "
@@ -1390,61 +1197,18 @@ class JointReceiverState:
         self._fcar_idx = i
         return i
 
-    @_locked
-    def update_carrier(self, y_hz, t_now, sigma_hz=1.0):
-        """One carrier-frequency measurement, in Hz, common to every satellite.
-
-        SEPARATE FROM update() ON PURPOSE. The code measurement is modular (chips on a
-        10230-chip code, wrapped) and carries a per-sat bias; this one is neither -- Hz do
-        not wrap and there is no per-sat carrier state to share the residual with. Folding
-        them into one path would mean wrapping a frequency, which is silently wrong rather
-        than loudly wrong.
-
-        Returns the accepted innovation (Hz), or None if the measurement was gated out.
-        """
-        self.predict(t_now)
-        if self._fcar_idx is None:
-            # BIRTH ON THE FIRST MEASUREMENT rather than walking in from 0 at loop gain --
-            # the same rule the sat biases use. sigma_fcar0 is wide enough that this lands
-            # inside its own uncertainty on cycle one.
-            self._add_fcar()
-            self.x[self._fcar_idx] = float(y_hz)
-            self.n_fcar = 1
-            return 0.0
-        np = self._np
-        H = np.zeros(self.x.size)
-        H[self._fcar_idx] = 1.0
-        innov = float(y_hz) - float(H @ self.x)
-        var = float(H @ self.P @ H) + float(sigma_hz) ** 2
-        # Same two-part gate as the code path: an uncertainty-scaled test that does the work,
-        # under an absolute ceiling so a wild value cannot ride a wide P through it.
-        if var > 0.0 and abs(innov) > self.innov_nsigma * var ** 0.5:
-            self.fcar_rejected += 1
-            self._note(
-                "f_carrier REJECT: innov %+.3f Hz vs %.1f-sigma bar %.3f"
-                % (innov, self.innov_nsigma, self.innov_nsigma * var ** 0.5)
-            )
-            return None
-        self._scalar_update(H, innov, float(sigma_hz) ** 2)
-        self.n_fcar += 1
-        return innov
-
     C_LIGHT = 299792458.0
 
     def _add_rrate(self, key, rr0, t_now):
-        """Give a satellite its (rrate, rrate_dot) PAIR, lazily. The dot is born at 0
-        with a wide prior: one measurement cannot see a rate, and the CV predict plus the
-        cross-covariance the updates earn is what teaches it."""
+        """Give a satellite its rrate row, lazily."""
         np = self._np
         i = self.x.size
-        self.x = np.append(self.x, [float(rr0), 0.0])
-        P = np.zeros((i + 2, i + 2))
+        self.x = np.append(self.x, float(rr0))
+        P = np.zeros((i + 1, i + 1))
         P[:i, :i] = self.P
         P[i, i] = self.sigma_rr0 ** 2
-        P[i + 1, i + 1] = self.sigma_rrd0 ** 2
         self.P = P
         self._rr_idx[key] = i
-        self._rrd_idx[key] = i + 1
         self._rr_t_seen[key] = t_now
         return i
 
@@ -1480,7 +1244,6 @@ class JointReceiverState:
             # satellite reports.
             self._add_fcar()
             self.x[self._fcar_idx] = y_hz * (f_ref / f_b)
-            self.n_fcar = 1
             # ...and give this satellite its row NOW, at zero. One measurement cannot split
             # the receiver-wide term from this orbit's deviation, so f_carrier takes it all
             # and the gauge hands back whatever is really per-satellite once a second
@@ -1533,12 +1296,6 @@ class JointReceiverState:
                 self.P[i_, :] = 0.0
                 self.P[:, i_] = 0.0
                 self.P[i_, i_] = self.sigma_rr0 ** 2
-                _id = self._rrd_idx.get(key)
-                if _id is not None:
-                    # the dot that tracked the row into rejection is as suspect as the row
-                    self.P[_id, :] = 0.0
-                    self.P[:, _id] = 0.0
-                    self.P[_id, _id] = self.sigma_rrd0 ** 2
                 self._rr_reject_run[key] = 0
                 self._note(
                     "rrate ESCAPE %s: %d consistent rejections -- re-opening the "
@@ -1613,27 +1370,6 @@ class JointReceiverState:
         return float("inf") if not (_v >= 0.0) else _v ** 0.5
 
     @_locked
-    def rrate_dot(self, key):
-        """d(rrate)/dt, m/s per s. 0.0 if never measured. THIS IS #48's OBSERVABLE: the
-        per-sat drift the churn investigation needs, estimated live."""
-        i = self._rrd_idx.get(key)
-        return 0.0 if i is None else float(self.x[i])
-
-    @_locked
-    def rrate_dot_sigma(self, key):
-        i = self._rrd_idx.get(key)
-        if i is None:
-            return float("inf")
-        # A NEGATIVE diagonal is a numerically broken covariance, and Python's
-        # **0.5 turns it into a COMPLEX number that detonates at whatever
-        # comparison touches it next (gal_e5a died 5.5 h on exactly this,
-        # 2026-08-25 05:42). Broken must read as UNMEASURED, never as confident:
-        # inf sends every sigma gate to its refuse branch. (not v >= 0 also
-        # catches NaN.)
-        _v = float(self.P[i, i])
-        return float("inf") if not (_v >= 0.0) else _v ** 0.5
-
-    @_locked
     def carrier_correction_hz(self, key, f_band_hz):
         """THE ONE COMMAND: total carrier correction for this satellite in this band, Hz.
 
@@ -1662,35 +1398,6 @@ class JointReceiverState:
         _v = float(self.P[self._fcar_idx, self._fcar_idx])
         # same negative-diagonal guard as rrate_sigma
         return float("inf") if not (_v >= 0.0) else _v ** 0.5
-
-    @_locked
-    def tau(self, band):
-        """Differential group delay of `band` against the reference band, chips. 0 for the
-        reference (it has no row -- that is the gauge, not a special case)."""
-        i = self._band_idx.get(band)
-        return 0.0 if i is None else float(self.x[i])
-
-    @_locked
-    def tau_sigma(self, band):
-        i = self._band_idx.get(band)
-        return 0.0 if i is None else float(self._np.sqrt(max(self.P[i, i], 0.0)))
-
-    @_locked
-    def tau_observability(self, band):
-        """How many satellites have been measured in BOTH this band and the reference.
-
-        tau_band separates from b_sat ONLY through dual-band satellites -- one ray, two
-        carriers. With zero of them the two are exactly degenerate and any tau this filter
-        reports is an artefact of the priors, so a consumer must check this before believing
-        the number. This is the quantity that the disjoint E5a/E5b PRN lists drove to zero
-        while every individual chain looked healthy."""
-        if band == self.ref_band or self.ref_band is None:
-            return len(self._dual)
-        return sum(
-            1
-            for bands in self._dual.values()
-            if band in bands and self.ref_band in bands
-        )
 
     @property
     def clk(self):

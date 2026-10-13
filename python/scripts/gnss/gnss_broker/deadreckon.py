@@ -1015,11 +1015,7 @@ def dr_joint_shadow(ctx):
     against the joint clock printed beside it without accounting for the lag."""
     if ctx.args.joint_shadow and ctx.drp.offs:
         try:
-            # P3: ONE state for the whole receiver, band carried as a
-            # measurement LABEL rather than as a separate filter. Two per-band
-            # states cannot estimate the offset between them, which is exactly
-            # why the second band needed a hand-wired cross-band clock bootstrap
-            # (#34) -- tau_band now has somewhere to live.
+            # P3: ONE state for the whole receiver.
             # WARM START (2026-08-11): hand the filter the legacy clock at
             # CREATION. Born at 0 against a true ~151 chips, every measurement
             # lands beyond escape_max_step and the escape hatch refuses the
@@ -1065,7 +1061,7 @@ def dr_joint_shadow(ctx):
             else:
                 # ── #83 P3-3a: THE MODEL INNOVATION (MINNOV) ──
                 # The same residual P2C measures one coasted satellite at a
-                # time -- wrap(d - predicted - tau), against the PRIOR state,
+                # time -- wrap(d - predicted), against the PRIOR state,
                 # before this cycle's measurements are consumed -- computed
                 # continuously for every ESTABLISHED satellite: "could the
                 # joint state have placed this satellite without this
@@ -1080,13 +1076,13 @@ def dr_joint_shadow(ctx):
                         and _k3 in _js._idx
                         and _js._n.get(_k3, 0) >= ctx.args.joint_mask_after
                     ):
-                        _mi = _js.wrap(_d3 - _js.predicted(_k3) - _js.tau(ctx.band_id))
+                        _mi = _js.wrap(_d3 - _js.predicted(_k3))
                         _mh = ctx.minnov_hist.setdefault(_p3, [])
                         _mh.append((ctx.t0, _mi))
                         del _mh[:-120]
                 _js.cycle(
                     [
-                        ((ctx.drp.tag, p), d, ctx.args.joint_sigma, ctx.band_id)
+                        ((ctx.drp.tag, p), d, ctx.args.joint_sigma)
                         for p, d in ctx.drp.offs
                         if _snr.get(p, 0.0) >= ctx.args.joint_min_snr
                         and ctx.track_ok(p)
@@ -1103,9 +1099,7 @@ def dr_joint_shadow(ctx):
             ctx.p2c_tick(_js, ctx.drp.t_now_abs)
             for _p, _d in ctx.drp.offs:
                 if ctx.p2c_hold(_js, (ctx.drp.tag, _p)):
-                    _r = _js.wrap(
-                        _d - _js.predicted((ctx.drp.tag, _p)) - _js.tau(ctx.band_id)
-                    )
+                    _r = _js.wrap(_d - _js.predicted((ctx.drp.tag, _p)))
                     if ctx.p2c["key"] == (ctx.drp.tag, _p):
                         ctx.p2c["samples"].append(
                             (ctx.drp.t_now_abs - ctx.p2c["t0"], _r)
@@ -1113,8 +1107,7 @@ def dr_joint_shadow(ctx):
                     _log_rl(
                         "p2c-%d" % _p,
                         "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f chips "
-                        "(b %+.3f, sigma %.3f, tau %+.4f) -- flat = the state "
-                        "carries it"
+                        "(b %+.3f, sigma %.3f) -- flat = the state carries it"
                         % (
                             ctx.band_id,
                             _p,
@@ -1122,24 +1115,13 @@ def dr_joint_shadow(ctx):
                             _r,
                             _js.bias((ctx.drp.tag, _p)),
                             _js.sigma((ctx.drp.tag, _p)),
-                            _js.tau(ctx.band_id),
                         ),
                         every_s=30.0,
                     )
             if ctx.drp.now_w >= ctx.dr_state.get("joint_log_next", 0.0):
                 ctx.dr_state["joint_log_next"] = ctx.drp.now_w + 30.0
-                # tau_band is reported WITH its observability count, never alone.
-                # It separates from b_sat only through satellites seen in BOTH
-                # bands, so a tau printed next to "dual 0" is an artefact of the
-                # priors -- which is precisely the state the disjoint E5a/E5b PRN
-                # lists put the instrument in while every chain looked healthy.
-                _tb = "".join(
-                    "  tau[%s] %+.3f+-%.3f (dual %d)"
-                    % (_b, _js.tau(_b), _js.tau_sigma(_b), _js.tau_observability(_b))
-                    for _b in sorted(_js._band_idx)
-                )
                 _amb = "  ⚠AMBIGUOUS(clk near wrap)" if ctx.rx.joint_ambiguous() else ""
-                _log("JOINT[shadow] " + _js.summary(ctx.drp.t_now_abs) + _tb + _amb)
+                _log("JOINT[shadow] " + _js.summary(ctx.drp.t_now_abs) + _amb)
         except Exception as e:  # shadow must never take the broker down
             _log_rl(
                 "jointerr", "JOINT[shadow] disabled this cycle: %s" % e, every_s=300.0

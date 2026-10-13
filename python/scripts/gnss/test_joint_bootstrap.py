@@ -28,7 +28,6 @@ from gnss_broker.state_filter import JointReceiverState  # noqa: E402
 
 L = 10230.0
 TRUE_CLK = 151.7  # the sky, as measured 2026-08-11
-BAND = "1176.45MHz"
 
 
 def feed(js, sats, clk, t0=0.0, n=12, dt=2.0, noise=None):
@@ -36,7 +35,7 @@ def feed(js, sats, clk, t0=0.0, n=12, dt=2.0, noise=None):
     for c in range(n):
         t = t0 + c * dt
         mm = [
-            ((s, p), (clk + (noise(s, p, c) if noise else 0.0)) % L, 0.3, BAND)
+            ((s, p), (clk + (noise(s, p, c) if noise else 0.0)) % L, 0.3)
             for s, p in sats
         ]
         js.cycle(mm, t)
@@ -57,7 +56,7 @@ class TestWarmStart(unittest.TestCase):
         not a bootstrap problem. Pinned here with escape_min_sats disabled so the old
         behaviour stays reproducible.
         """
-        js = JointReceiverState(code_len=L, ref_band=BAND, escape_min_sats=99)
+        js = JointReceiverState(code_len=L, escape_min_sats=99)
         sats = [("G", p) for p in (10, 20, 23, 27)]
         feed(js, sats, 0.0, n=25)  # converge at the WRONG value
         self.assertLess(
@@ -75,7 +74,7 @@ class TestWarmStart(unittest.TestCase):
     def test_corroboration_breaks_the_deadlock(self):
         """...and the evidence rule is what gets it out. Same setup, quorum enabled: four
         satellites agreeing on the same +151.7 step is a clock event, so it is followed."""
-        js = JointReceiverState(code_len=L, ref_band=BAND, escape_min_sats=3)
+        js = JointReceiverState(code_len=L, escape_min_sats=3)
         sats = [("G", p) for p in (10, 20, 23, 27)]
         feed(js, sats, 0.0, n=25)
         feed(js, sats, TRUE_CLK, t0=200.0, n=40)
@@ -85,14 +84,14 @@ class TestWarmStart(unittest.TestCase):
 
     def test_warm_start_converges(self):
         """The fix: handed the legacy clock, the same feed converges."""
-        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=148.0)
+        js = JointReceiverState(code_len=L, clk0=148.0)
         feed(js, [("G", p) for p in (10, 20, 23, 27)], TRUE_CLK)
         self.assertAlmostEqual(js.clk, TRUE_CLK, delta=1.0)
         self.assertEqual(js.rejected, 0)
 
     def test_warm_start_is_only_a_prior(self):
         """A warm start that is WRONG must be overridden by the sky, not believed."""
-        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=120.0)
+        js = JointReceiverState(code_len=L, clk0=120.0)
         feed(js, [("G", p) for p in (10, 20, 23, 27)], TRUE_CLK, n=40)
         self.assertAlmostEqual(js.clk, TRUE_CLK, delta=1.0)
 
@@ -104,7 +103,7 @@ class TestCorroboratedEscape(unittest.TestCase):
     """The evidence rule. A step past escape_max_step needs distinct satellites."""
 
     def _settled(self, **kw):
-        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=TRUE_CLK, **kw)
+        js = JointReceiverState(code_len=L, clk0=TRUE_CLK, **kw)
         feed(js, [("G", p) for p in (10, 20, 23, 27)], TRUE_CLK, n=10)
         return js
 
@@ -114,7 +113,7 @@ class TestCorroboratedEscape(unittest.TestCase):
         js = self._settled()
         clk_before = js.clk
         for c in range(20):
-            js.cycle([(("G", 25), (TRUE_CLK - 1396.0) % L, 0.3, BAND)], 100.0 + 2.0 * c)
+            js.cycle([(("G", 25), (TRUE_CLK - 1396.0) % L, 0.3)], 100.0 + 2.0 * c)
         self.assertAlmostEqual(
             js.clk,
             clk_before,
@@ -130,8 +129,7 @@ class TestCorroboratedEscape(unittest.TestCase):
         new = TRUE_CLK + 400.0
         for c in range(30):
             js.cycle(
-                [(("G", p), new % L, 0.3, BAND) for p in (10, 20, 23, 27)],
-                100.0 + 2.0 * c,
+                [(("G", p), new % L, 0.3) for p in (10, 20, 23, 27)], 100.0 + 2.0 * c,
             )
         self.assertAlmostEqual(
             js.clk,
@@ -148,9 +146,9 @@ class TestCorroboratedEscape(unittest.TestCase):
         for c in range(20):
             js.cycle(
                 [
-                    (("G", 10), (TRUE_CLK + 900.0) % L, 0.3, BAND),
-                    (("G", 20), (TRUE_CLK - 1200.0) % L, 0.3, BAND),
-                    (("G", 23), (TRUE_CLK + 3000.0) % L, 0.3, BAND),
+                    (("G", 10), (TRUE_CLK + 900.0) % L, 0.3),
+                    (("G", 20), (TRUE_CLK - 1200.0) % L, 0.3),
+                    (("G", 23), (TRUE_CLK + 3000.0) % L, 0.3),
                 ],
                 100.0 + 2.0 * c,
             )
@@ -167,7 +165,7 @@ class TestCorroboratedEscape(unittest.TestCase):
         filter MORE brittle for the ordinary case it already handled."""
         js = self._settled()
         for c in range(25):
-            js.cycle([(("G", 10), (TRUE_CLK + 60.0) % L, 0.3, BAND)], 100.0 + 2.0 * c)
+            js.cycle([(("G", 10), (TRUE_CLK + 60.0) % L, 0.3)], 100.0 + 2.0 * c)
         self.assertGreater(
             js.bias(("G", 10)) + js.clk,
             TRUE_CLK + 20.0,
@@ -183,7 +181,7 @@ class TestCorroboratedEscape(unittest.TestCase):
         for c in range(24):
             js.cycle(
                 [
-                    (("G", p), (TRUE_CLK + rng[(c + i) % len(rng)]) % L, 0.3, BAND)
+                    (("G", p), (TRUE_CLK + rng[(c + i) % len(rng)]) % L, 0.3)
                     for i, p in enumerate((10, 20, 23))
                 ],
                 100.0 + 2.0 * c,
@@ -201,42 +199,13 @@ class TestCorroboratedEscape(unittest.TestCase):
         js = self._settled()
         clk_before = js.clk
         for c in range(100):
-            js.cycle([(("G", 25), (TRUE_CLK + 800.0) % L, 0.3, BAND)], 100.0 + 2.0 * c)
+            js.cycle([(("G", 25), (TRUE_CLK + 800.0) % L, 0.3)], 100.0 + 2.0 * c)
         self.assertAlmostEqual(
             js.clk,
             clk_before,
             None,
             "sample count substituted for satellite count",
             30.0,
-        )
-
-
-class TestHousekeeping(unittest.TestCase):
-    def test_rej_band_does_not_leak(self):
-        """_rej_band is a new dict keyed like _rej_hist; it must be cleaned up at BOTH
-        pop sites or a long run accumulates dead keys forever."""
-        js = JointReceiverState(
-            code_len=L, ref_band=BAND, clk0=TRUE_CLK, max_age_s=600.0
-        )
-        feed(js, [("G", 10)], TRUE_CLK, n=4)  # born + converged first: birth is a
-        for c in range(6):  # separate path and never records a run
-            js.cycle([(("G", 10), (TRUE_CLK + 4000.0) % L, 0.3, BAND)], 10.0 + 2.0 * c)
-        self.assertTrue(js._rej_band, "expected a rejected run to record its band")
-        feed(js, [("G", 10)], TRUE_CLK, t0=200.0, n=8)  # accepted again -> cleared
-        self.assertNotIn(
-            ("G", 10), js._rej_band, "_rej_band leaked past an accepted update"
-        )
-
-    def test_expiry_clears_rej_band(self):
-        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=TRUE_CLK, max_age_s=5.0)
-        feed(js, [("G", 10), ("G", 20)], TRUE_CLK, n=4)
-        for c in range(6):
-            js.cycle([(("G", 10), (TRUE_CLK + 4000.0) % L, 0.3, BAND)], 100.0 + 2.0 * c)
-        js.cycle(
-            [(("G", 20), TRUE_CLK % L, 0.3, BAND)], 100000.0
-        )  # ages everything out
-        self.assertNotIn(
-            ("G", 10), js._rej_band, "_rej_band survived expiry of its key"
         )
 
 
@@ -262,7 +231,7 @@ class TestZombieGuards(unittest.TestCase):
 
     def test_p_floor_prevents_zero_gain(self):
         """A flood of self-agreeing measurements must not buy sigma below the floor."""
-        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=150.0)
+        js = JointReceiverState(code_len=L, clk0=150.0)
         feed(js, [("G", p) for p in self.ZB], 150.5, n=400, dt=1.0)
         self.assertGreaterEqual(
             js.sigma(), 0.02, "sigma %.4f: the P floor failed to hold" % js.sigma()
@@ -273,7 +242,7 @@ class TestZombieGuards(unittest.TestCase):
         clock + garbage biases, self-consistent), then let the y-feed return to truth --
         the guarded filter must reject, escape, and recover. The on-sky zombie, at
         P ~ 1e-7, could do none of those for 10+ minutes."""
-        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=150.0)
+        js = JointReceiverState(code_len=L, clk0=150.0)
         sats = [("G", p) for p in self.ZB]
         feed(js, sats, 163.9, n=100, dt=1.0, noise=lambda s, p, c: self.ZB[p])
         self.assertGreater(
@@ -297,14 +266,14 @@ class TestZombieGuards(unittest.TestCase):
     def test_birth_clamp_refuses_zombie_scale_biases(self):
         """Once the clock is determined, a +46-chip newborn is refused (birth_max 12)
         and a +5.7 one -- the largest healthy bias ever measured -- is admitted."""
-        js = JointReceiverState(code_len=L, ref_band=BAND, clk0=150.0)
+        js = JointReceiverState(code_len=L, clk0=150.0)
         feed(js, [("G", p) for p in (10, 20, 23)], 150.5, n=25)
         rej0 = js.rejected
-        r = js.update(("G", 99), (150.5 + 46.0) % L, 0.3, 600.0, band=BAND)
+        r = js.update(("G", 99), (150.5 + 46.0) % L, 0.3, 600.0)
         self.assertIsNone(r, "a zombie-scale birth was admitted")
         self.assertEqual(js.rejected, rej0 + 1)
         self.assertNotIn(("G", 99), js._idx)
-        r2 = js.update(("G", 28), (150.5 + 5.7) % L, 0.3, 602.0, band=BAND)
+        r2 = js.update(("G", 28), (150.5 + 5.7) % L, 0.3, 602.0)
         self.assertIn(
             ("G", 28), js._idx, "a legitimate large bias was refused at birth"
         )

@@ -220,6 +220,11 @@ BEFORE any consumer gates on sigma, or the gate will be 8x too tight.
 
 ### 3c. tau_band LANDED, AND IT IS PART OF P2 (2026-08-09/10)
 
+STATUS 2026-10-13: the tau_band rows are gone from `state_filter.py`. Only gps_l5 feeds code
+measurements into the joint state (one band, which becomes the reference), so no tau row could
+be created once the model-primary feed was retired. The measurement below is the record of what
+the second band's delay was.
+
 ⚠️ NAMING CORRECTION: two commits originally labelled the tau_band work "P3" (the subjects now
 read "task #33 P2:"; they were reworded in place on 2026-08-10, message-only, trees unchanged).
 `tau_band` has been in the state vector `x` since section 1, so implementing it completes a

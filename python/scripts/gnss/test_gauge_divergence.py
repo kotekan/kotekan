@@ -47,7 +47,7 @@ def run(n_cycles, dt=2.0, noise=0.0, **kw):
         ms = []
         for j, (k, b) in enumerate(sorted(BIASES.items())):
             e = noise * seq[(c + j) % len(seq)]
-            ms.append((k, TRUE_CLK + b + e, 0.3, "l5"))
+            ms.append((k, TRUE_CLK + b + e, 0.3))
         f.cycle(ms, c * dt)
     return f
 
@@ -130,18 +130,17 @@ class TestEscapeStepBound(unittest.TestCase):
         f = JointReceiverState(code_len=10230.0, **kw)
         for c in range(20):  # settle on truth
             f.cycle(
-                [(k, TRUE_CLK + b, 0.3, "l5") for k, b in sorted(BIASES.items())],
-                c * 2.0,
+                [(k, TRUE_CLK + b, 0.3) for k, b in sorted(BIASES.items())], c * 2.0,
             )
         settled = f.clk
         # now ONE satellite reports a consistent, far-displaced value many times over
         for c in range(20, 40):
             ms = [
-                (k, TRUE_CLK + b, 0.3, "l5")
+                (k, TRUE_CLK + b, 0.3)
                 for k, b in sorted(BIASES.items())
                 if k != ("G", 1)
             ]
-            ms.append((("G", 1), TRUE_CLK + step, 0.3, "l5"))
+            ms.append((("G", 1), TRUE_CLK + step, 0.3))
             f.cycle(ms, c * 2.0)
         return f, settled
 
@@ -152,7 +151,6 @@ class TestEscapeStepBound(unittest.TestCase):
             50.0,
             "clk moved %.1f chips on a wrap-alias escape" % (f.clk - settled),
         )
-        self.assertTrue(f.diverged, "a refused escape must latch the diverged flag")
         self.assertTrue(
             any("ESCAPE REFUSED" in n for n in f.notes),
             "the refusal must be announced, not silent",
@@ -162,7 +160,7 @@ class TestEscapeStepBound(unittest.TestCase):
         """The bound must not disable the escape -- that was its own incident."""
         f, settled = self._drive(20.0, escape_max_step=100.0)
         self.assertTrue(
-            f.escapes > 0 or abs(f.clk - settled) > 0.5,
+            any("-- believing a" in n for n in f.notes) or abs(f.clk - settled) > 0.5,
             "a plausible step must still be able to move the state",
         )
 
@@ -183,18 +181,18 @@ class TestMassBirth(unittest.TestCase):
 
     def _incident(self, **kw):
         f = JointReceiverState(code_len=10230.0, **kw)
+        self.notes = []  # drained every cycle: the filter keeps only its last 200
         for c in range(30):  # settle: 6 sats, clk 150
             f.cycle(
-                [(k, TRUE_CLK + b, 0.3, "l5") for k, b in sorted(BIASES.items())],
-                c * 2.0,
+                [(k, TRUE_CLK + b, 0.3) for k, b in sorted(BIASES.items())], c * 2.0,
             )
+            self.notes += f.drain_notes()
         newborns = {("G", 40 + i): 2.0 - i for i in range(6)}
         for c in range(30, 90):  # +9 common step AND 6 births
-            ms = [(k, TRUE_CLK + 9.0 + b, 0.3, "l5") for k, b in sorted(BIASES.items())]
-            ms += [
-                (k, TRUE_CLK + 9.0 + b, 0.3, "l5") for k, b in sorted(newborns.items())
-            ]
+            ms = [(k, TRUE_CLK + 9.0 + b, 0.3) for k, b in sorted(BIASES.items())]
+            ms += [(k, TRUE_CLK + 9.0 + b, 0.3) for k, b in sorted(newborns.items())]
             f.cycle(ms, c * 2.0)
+            self.notes += f.drain_notes()
         return f
 
     def test_offset_not_rate(self):
@@ -216,7 +214,10 @@ class TestMassBirth(unittest.TestCase):
 
     def test_no_divergence_flag_and_few_rejections(self):
         f = self._incident()
-        self.assertFalse(f.diverged, "the incident latched `diverged`")
+        self.assertFalse(
+            any("ESCAPE REFUSED" in n or "RATE CLAMPED" in n for n in self.notes),
+            "the incident refused an escape or clamped the rate",
+        )
         total = f.n_updates + f.rejected
         self.assertLess(
             f.rejected / float(total),
@@ -228,9 +229,9 @@ class TestMassBirth(unittest.TestCase):
         """Even if some path manufactures a wild rate, the state must refuse to carry it:
         the reference is GPS-disciplined and 1 chip/s is 0.1 ppm = 2500x the truth."""
         f = JointReceiverState(code_len=10230.0)
-        f.cycle([(k, TRUE_CLK + b, 0.3, "l5") for k, b in sorted(BIASES.items())], 0.0)
+        f.cycle([(k, TRUE_CLK + b, 0.3) for k, b in sorted(BIASES.items())], 0.0)
         f.x[1] = 13.45  # inject the sky's value
-        f.cycle([(k, TRUE_CLK + b, 0.3, "l5") for k, b in sorted(BIASES.items())], 2.0)
+        f.cycle([(k, TRUE_CLK + b, 0.3) for k, b in sorted(BIASES.items())], 2.0)
         self.assertLessEqual(
             abs(f.clk_rate),
             1.0,

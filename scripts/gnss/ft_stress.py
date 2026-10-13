@@ -144,7 +144,7 @@ def lane_joint(iters, nthread):
             for prn in prns:
                 key = ("gps", prn)
                 try:
-                    js.update(key, rng.gauss(0.0, 0.4), 0.3, t, band="1176.45")
+                    js.update(key, rng.gauss(0.0, 0.4), 0.3, t)
                 except Exception as e:
                     bad.append("update raised %r" % (e,))
             try:
@@ -185,8 +185,8 @@ def lane_notes(iters, nthread):
         local = []
         for k in range(iters):
             # UNDER THE LOCK, because that is the production contract: `_note` is private and
-            # all thirteen of its call sites sit inside @_locked methods (update, predict,
-            # gauge, cycle, update_carrier, update_rrate). Poking it bare -- which is how this
+            # all of its call sites sit inside @_locked methods (update, predict, gauge,
+            # cycle, update_rrate). Poking it bare -- which is how this
             # lane was first written -- races the drainer's rebind against an append no
             # production path can make, and reports lost notes that the broker cannot lose.
             # A harness that violates the contract it is testing manufactures its own bugs.
