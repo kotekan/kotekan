@@ -9,7 +9,6 @@
 
 #include <algorithm> // for find
 #include <array>
-#include <cassert>
 #include <chordMetadata.hpp>
 #include <cstring>
 
@@ -196,7 +195,6 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             if (FH.slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
                 FH.slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
                 FH.dop_prev[(size_t)p] = 0.0;
-                FH.t_prev[(size_t)p] = 0.0;
                 FH.ok[(size_t)p] = 0;
             }
     }
@@ -285,7 +283,6 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             const double applied = pr.doppler_hz + sd.ctrim_hz;
             const double dcyc = have_hist ? (applied - FH.dop_prev[(size_t)p]) * t_abs : 0.0;
             FH.dop_prev[(size_t)p] = applied;
-            FH.t_prev[(size_t)p] = t_abs;
             FH.ok[(size_t)p] = 1;
 
             gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];

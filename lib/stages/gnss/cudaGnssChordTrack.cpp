@@ -1,12 +1,7 @@
 #include "cudaGnssChordTrack.hpp"
 
-#include "GnssChanMetadata.hpp"
 #include "Telescope.hpp" // for Telescope (the record epoch)
-#include "cudaGnssChordDespread.hpp"
-#include "cudaUtils.hpp"
-#include "gnssBandPlan.hpp"
 #include "gnssGpuChain.hpp"
-#include "gnssSeedTransport.hpp"
 #include "gnssSignal.hpp"
 #include "kotekanLogging.hpp"
 #include "pfbPrototype.hpp"
@@ -14,7 +9,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstring>
 #include <functional>
 
 using kotekan::bufferContainer;
@@ -110,7 +104,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     covering.resize((size_t)n_chan);
     for (int c = 0; c < n_chan; ++c)
         covering[(size_t)c] = c;
-    channel_ids = config.get<std::vector<int>>(unique_name, "channel_ids");
+    const std::vector<int> channel_ids = config.get<std::vector<int>>(unique_name, "channel_ids");
     if ((int)channel_ids.size() != n_chan)
         FATAL_ERROR("cudaGnssChordTrack: channel_ids has {:d} entries but n_channels is {:d} -- "
                     "these are the GLOBAL bins of this GPU's covering comb, in local order.",
@@ -201,11 +195,6 @@ void cudaGnssChordTrackState::note_frame_hop(long long hop) {
     last_hop = (int64_t)hop;
 }
 
-std::vector<int> cudaGnssChordTrackState::prn_map() {
-    std::lock_guard<std::mutex> lk(prn_mtx);
-    return prns;
-}
-
 void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& conn) {
     nlohmann::json out = nlohmann::json::array();
     nlohmann::json gen = nlohmann::json::array();
@@ -219,7 +208,7 @@ void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& con
             out.push_back(prns[(size_t)p]);
             gen.push_back(slot_gen[(size_t)p]);
         }
-        pend = prn_pending;
+        pend = !pending_prns.empty();
         err = prn_last_err;
         swaps = prn_swaps;
         at_h = prn_at_hop;
@@ -301,7 +290,6 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
         prn_last_err.clear();
         if (n_diff > 0) {
             pending_prns = want;
-            prn_pending = true;
             prn_at_hop = at_hop;
             prn_stage_hop = last_hop; // for the re-base guard in apply_prn_swaps
         }
@@ -323,13 +311,13 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
-std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
+void cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
     std::vector<int> changed;
     std::vector<std::pair<int, int>> log; // (slot, old prn) for logging outside the lock
     {
         std::lock_guard<std::mutex> lk(prn_mtx);
-        if (!prn_pending)
-            return changed;
+        if (pending_prns.empty())
+            return;
         // Not yet due: leave it staged.
         if (prn_at_hop >= 0 && last_hop >= 0 && last_hop < prn_at_hop) {
             // Unless the hop counter went backwards since staging: an F-engine restart moves it
@@ -341,10 +329,9 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
                             "Applying NOW; the fleet-wide alignment for this swap is lost.",
                             (long long)prn_stage_hop, (long long)last_hop, (long long)prn_at_hop);
             } else {
-                return changed;
+                return;
             }
         }
-        prn_pending = false;
         prn_at_hop = -1;
         prn_stage_hop = -1;
         for (int p = 0; p < n_prn; ++p) {
@@ -354,7 +341,7 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
             // Code table first. If it cannot be built (no code for this PRN on this signal, or
             // an FDMA bank), nothing else about the slot changes, so its seed and trim stay
             // consistent with the code it still despreads.
-            if (!despread || !despread->set_prn(p, newp, stream)) {
+            if (!despread->set_prn(p, newp, stream)) {
                 prn_last_err = "slot " + std::to_string(p) + ": no code for PRN "
                                + std::to_string(newp) + " on this signal (or an FDMA bank)";
                 continue;
@@ -368,7 +355,7 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
         pending_prns.clear();
     }
     if (changed.empty())
-        return changed;
+        return;
     // prn_mtx is already released, so a seed or trim posted for the new PRN in between is
     // cleared here as well; the next post restores it.
     {
@@ -390,7 +377,6 @@ std::vector<int> cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
                     "seed, trim and power averages all reset COLD for this slot; it stays dark "
                     "until the broker seeds the new satellite.",
                     l.first, l.second, prns[(size_t)l.first]);
-    return changed;
 }
 
 void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& conn,

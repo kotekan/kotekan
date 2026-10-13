@@ -99,16 +99,12 @@ public:
     /// GnssCudaDespread::set_prn, its device code table, Phi cache and last_ang0/last_phi_ddop
     /// records. Anything left over would attribute the old satellite's state to the new one.
     /// The fold history is not reset here: the slot's @ref slot_gen is bumped, and
-    /// cudaGnssInject resets it from that. Returns the slots that changed.
-    std::vector<int> apply_prn_swaps(void* stream /*cudaStream_t*/);
-
-    /// A consistent copy of the slot->PRN map for a thread that does not hold @c prn_mtx.
-    std::vector<int> prn_map();
+    /// cudaGnssInject resets it from that.
+    void apply_prn_swaps(void* stream /*cudaStream_t*/);
 
     std::mutex prn_mtx; ///< taken before seed_mtx/trim_mtx; guards @c prns (see above), the
                         ///< staging below and last_hop
     std::vector<int> pending_prns; ///< staged map; empty = nothing staged
-    bool prn_pending = false;
     /// Per-slot swap counter, incremented on every swap of the slot. A holder of per-slot
     /// history compares it with the generation it last saw (FoldHist::slot_gen_seen) to know
     /// when to reset.
@@ -206,12 +202,10 @@ public:
     /// frame order, so a history kept here is always the true previous record.
     struct FoldHist {
         std::vector<double> dop_prev; ///< previous record's applied carrier (dop + ctrim), Hz
-        std::vector<double> t_prev;   ///< and the absolute time it was pinned at, s
         std::vector<uint8_t> ok;      ///< 0 = no previous record (arc start)
         std::vector<uint64_t> slot_gen_seen; ///< slot_gen already acknowledged (history reset once)
         void init(int n) {
             dop_prev.assign((size_t)n, 0.0);
-            t_prev.assign((size_t)n, 0.0);
             ok.assign((size_t)n, 0);
             slot_gen_seen.assign((size_t)n, 0);
         }
@@ -222,8 +216,7 @@ public:
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> replica;
     std::unique_ptr<GnssCudaDespread> despread;
-    std::vector<int> covering;    ///< local channel indices this signal occupies (0..n_chan-1)
-    std::vector<int> channel_ids; ///< global bin of each local channel (config `channel_ids`)
+    std::vector<int> covering; ///< local channel indices this signal occupies (0..n_chan-1)
 };
 
 #endif // CUDA_GNSS_CHORD_TRACK_HPP
