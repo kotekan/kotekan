@@ -1078,13 +1078,6 @@ of the gap to 3.65 is the table's LEVEL, not its shape: Y at 0.18 lsb rms on the
 weight brings it back — that part waits on the F-engine gains KV has asked for. `/get_elem_cal` `chan_norm`
 reports on/applied/miss/w.
 
-### #147 — 2026-09-26 22:01Z: a fleet-wide ~3 ppb reference-frequency step
-All 8 chains and every instance: a carrier offset that scales with carrier frequency (E6/E5a 1.09 vs 1.087
-expected), a −37 m (−127 ns) code step, carrier residual ±2.5 Hz for >14 min and beam-cube 1-s coherence
-0.90 → 0.03 for ~2 h, with no lock loss and no broker event; gps_l5's code-rate clock estimate moved
-−0.001 → +0.002..+0.003 ppm (also ~3 ppb). Maser/GPSDO or F-engine reference? Not ours to fix, but it
-must be vetoed from any coherence statistic. Evidence `fixtures/projtest/forensics/l5/ev2201*.py`.
-
 ### #122 — the readback carries a chain-common offset on the non-primary bands
 **[live]** per-PRN means: bds_b2b −0.42, bds_b3i −0.40, gal_e6 +0.29, gal_e5a +0.20, gal_e5b
 +0.16, against gps_l2c −0.01 and bds_b2a +0.08. A per-chain constant the loop is not closing.
