@@ -63,10 +63,10 @@ for f in "${FIXTURES[@]}"; do
 done
 
 # ---- THE UNIT TESTS ---------------------------------------------------------------------
-# The digest gate is blind by construction to anything the transcript cannot drive: the #90
-# admission gate strikes on the WALL clock, and #92's handover posts to a gather that never
-# answers in a replay. Those live in gnss_broker/test_*.py, and they belong to the same
-# verdict -- a refactor is safe only if BOTH halves are green.
+# The digest gate is blind by construction to anything the transcript cannot drive (wall-clock
+# windows, posts to a gather that never answers in a replay). Those live in
+# gnss_broker/test_*.py, and they belong to the same verdict -- a refactor is safe only if
+# BOTH halves are green.
 units=0
 for t in "$K"/python/scripts/gnss/gnss_broker/test_*.py; do
     [ -e "$t" ] || continue

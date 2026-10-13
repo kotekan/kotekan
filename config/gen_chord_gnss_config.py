@@ -3837,7 +3837,7 @@ def main():
         type=int,
         default=4,
         help="windows GnssFleetTrim averages into one discriminator. 4 windows = "
-        "16 records = 168 ms, matching --fast-trim-windows on the Python arm.",
+        "16 records = 168 ms.",
     )
     ap.add_argument(
         "--fleet-trim-min-instances",

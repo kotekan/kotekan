@@ -222,8 +222,6 @@ cmd = [
     "30",
     "--dll-gain",
     "0.0",
-    "--carrier-gain",
-    "0.0",
     "--interval",
     "1",
 ] + a.broker_arg

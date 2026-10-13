@@ -160,7 +160,7 @@ command, and #92's handover.
   and `fleet-trim-rebase-adjust 1` all live.
 * 113 cycles, 1474 posts, 4628 gets. `selftest`: **GATE GOOD** — determinism holds and the
   digest moves under a 1e-12 perturbation of `carrier_hz` and `dll_gain`.
-  ⚠️ It does NOT reach `carrier_gain`, `code_bias_alpha`, `bias_alpha`; a refactor touching
+  ⚠️ It does NOT reach `code_bias_alpha`, `bias_alpha`; a refactor touching
   those is not covered here. That is what the next captures (a search-fed gps_l5 and a
   BeiDou chain) are for.
 * **Carries its own ephemeris** in `broker_onsky_e5a_20260826.jsonl.gz.brdc/` (DOY 237+238
@@ -184,8 +184,7 @@ carry their own `.brdc/` sidecar (DOY 237+238 daily + hourly, snapshotted at cap
 * **`broker_onsky_b2a_20260826`** -- the first BeiDou capture ever: 172 cycles, 2210
   posts. `selftest` GATE GOOD; moved by `carrier_hz`, `dll_gain`.
 
-⚠️ COVERAGE LEDGER after all seven fixtures: `carrier_gain` is unreachable by design
-(production runs 0.0 -- see the 2026-08-08 note). **`code_bias_alpha` is reached ONLY by
+⚠️ COVERAGE LEDGER after all seven fixtures: **`code_bias_alpha` is reached ONLY by
 the old `broker_onsky_l5` (2026-08-08, pre-axis regime)** -- the new l5 capture moves
 `bias_alpha` but not `code_bias_alpha`, so keep the old fixture in the gate; it is the
 sole cover for that knob.

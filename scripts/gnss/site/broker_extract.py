@@ -62,7 +62,6 @@ NAME_MAP = {
     "sig_of": "sig_of",
     "_dllp": "dllp",
     "_drp": "drp",
-    "_handover": "handover",
     "_g3_ramp": "g3_ramp",
     "seeds": "seeds",
     "dr_state": "dr_state",
