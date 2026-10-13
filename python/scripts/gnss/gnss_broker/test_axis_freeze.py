@@ -61,25 +61,6 @@ def axis_stale_reference(hops_and_times, stale_s):
     return fired
 
 
-def axis_stale_broken(hops_and_times, stale_s):
-    """The PRE-FIX rule: restamp unconditionally. Kept so the test can show it never fires."""
-    fe_axis = None
-    fired = []
-    for hop, now in hops_and_times:
-        if hop <= 0.0:
-            continue
-        prev = fe_axis
-        if (
-            prev is not None
-            and hop <= prev[0]
-            and stale_s > 0.0
-            and now - prev[1] > stale_s
-        ):
-            fired.append(now)
-        fe_axis = (hop, now)
-    return fired
-
-
 HPS = 195312.5
 CYCLE = 2.0
 
@@ -108,16 +89,9 @@ def main():
         "the broker still keeps the stamp of the last ADVANCE (not of this poll)",
     )
 
-    # ---- 1. the pre-fix rule can NEVER fire ---------------------------------------------
+    # ---- 2. the fixed rule fires, and promptly -------------------------------------------
     # An hour of total freeze at a 2 s cycle against a 30 s bar.
     s = series(10, 1800)
-    check(
-        axis_stale_broken(s, 30.0) == [],
-        "PRE-FIX: an HOUR of a totally frozen time base produces ZERO warnings "
-        "(the gate could not fire -- this is what shipped)",
-    )
-
-    # ---- 2. the fixed rule fires, and promptly -------------------------------------------
     fired = axis_stale_reference(s, 30.0)
     check(len(fired) > 0, "FIXED: the freeze is reported")
     freeze_began = 1000.0 + 10 * CYCLE

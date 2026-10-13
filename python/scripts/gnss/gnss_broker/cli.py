@@ -613,7 +613,7 @@ _FROZEN = dict(
     dll_min_instances=2,
     # --dr-clock-freeze-s
     #   HOLD the dead-reckon receiver clock solve and its drift EMA while the newest telemetry
-    #   hop has not advanced for this many seconds (0 disables). This is the CONTROL that
+    #   hop has not advanced for this many seconds. This is the CONTROL that
     #   --fe-axis-stale-s's log line always implied and never had (2026-09-03 19:37): the
     #   F-engine stopped streaming, the detections froze, the orbit model kept moving with the
     #   wall clock, and the clock solve read the sky's motion as clock drift -- -0.3543 chips/s,
@@ -637,11 +637,11 @@ _FROZEN = dict(
     #   #142: the largest step (this chain's chips, solve vs the propagated clock) an update of
     #   an established receiver clock may take. A larger one is refused and the clock HELD at
     #   zero rate unless --dr-clock-repin-solves consecutive agreeing solves confirm it -- then
-    #   it is a RE-PIN, taken whole (how a bad bootstrap is corrected). With it on, a CONFIRMED
+    #   it is a RE-PIN, taken whole (how a bad bootstrap is corrected). A CONFIRMED
     #   clock is also held, never re-rolled, through MAD refusals. Normal solves step p99 1.5
     #   chips; the solves that stepped the clock in the replayed transit passes were
     #   2-5-satellite medians 6-5000 chips off it. 5.0 is the #104 / JOINT-CLK bound (489 ns at
-    #   10.23 Mcps). 0 = unbounded, and the re-roll as before (pre-#142).
+    #   10.23 Mcps).
     dr_clock_step_max_chips=5.0,
     # --dr-clock-transit-freeze-deg
     #   #142: FREEZE this chain's solved receiver clock while any satellite the model carries
@@ -651,7 +651,7 @@ _FROZEN = dict(
     #   the search reports noise code phases just over its bar and the median of them is not the
     #   clock; the clock itself is a GPS-disciplined constant. Only a clock confirmed by an
     #   in-bound update freezes (never a prime or an unconfirmed bootstrap), and chains without
-    #   detections never do. 0 = off.
+    #   detections never do.
     dr_clock_transit_freeze_deg=5.0,
     # --dr-clock-wait-s
     #   withhold dead-reckon seeding while the receiver clock is still the --dr-clock-chips
@@ -693,8 +693,7 @@ _FROZEN = dict(
     #   a cold chain is never left unseeded). Below it the clock is HELD at zero rate and still
     #   contributed. A 2-3 satellite median follows its members' biases (+-5 chips) and is where
     #   two corrupted detections that agree become a clock: outside transits n=2 / n=3 solves
-    #   step p90 4300 / 0.6 chips against p99 1.3 at n=4, and they are 4.5% of cycles. 0 = every
-    #   solve of --dr-min-sats moves it (pre-#142).
+    #   step p90 4300 / 0.6 chips against p99 1.3 at n=4, and they are 4.5% of cycles.
     dr_update_min_sats=4,
     # --estimator-every-s
     #   minimum seconds between the TELEMETRY-WALK estimators (cn0_prompt + kcoh) per chain; the
