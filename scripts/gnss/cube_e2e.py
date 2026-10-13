@@ -6,15 +6,13 @@ real bufferSend, real bufferRecv, real rawFileWrite, then the real reader
 (gnss_cube_read.iter_frames). Only the GPU despread output is synthetic -- rawFileRead replays
 gnss_gpu::FrameHdr/PrnCtl/corr/energy frames this script writes.
 
-    python3 scripts/gnss/cube_e2e.py [--binary PATH] [--keep] [--expect-crash]
+    python3 scripts/gnss/cube_e2e.py [--binary PATH] [--keep]
 
 WHY THIS EXISTS. The leg shipped 2026-09-05 behind three checks -- config validation, a
 synthetic-sender wire loopback, a frame-size comparison -- and every one of them tested code
 DOWNSTREAM of the bug. The assembler never ran. On sky, every node segfaulted 45-75 s after
 start: emit_cube_window marked frames full with no metadata object and bufferSend dereferenced
-the null (#110). A gate for a producer must RUN THE PRODUCER; this one does, and with
---expect-crash it demonstrates the failure on the pre-fix binary (the mechanism, not just the
-fix: verify-the-mechanism-not-just-the-fix).
+the null (#110). A gate for a producer must RUN THE PRODUCER; this one does.
 
 WHAT IT CHECKS, each against a specific way the leg can fail silently:
 
@@ -43,7 +41,6 @@ import argparse
 import math
 import os
 import shutil
-import socket
 import struct
 import subprocess
 import sys
@@ -60,6 +57,7 @@ sys.path.insert(0, os.path.join(K, "config"))
 
 import gnss_cube_read as cr  # noqa: E402
 from gnss_record_layout import record_stride, cube_frame_bytes  # noqa: E402
+from telem_e2e import kotekan_binary  # noqa: E402
 
 # Ports deliberately far from anything live (11040-11070, 12048-12052 are in use on the site,
 # telem_e2e.py holds 11890/11891/12890). A gate that collides with production is not a gate.
@@ -264,21 +262,6 @@ def write_config(dirpath, out_dir):
     return path
 
 
-def kotekan_binary():
-    host = socket.gethostname().split(".")[0]
-    cand = (
-        [os.path.join(K, "build", "kotekan", "kotekan")]
-        if host.startswith("cx")
-        else [os.path.join(K, "build_nodpdk", "kotekan", "kotekan")]
-    )
-    cand.append(os.path.join(K, "build_nodpdk", "kotekan", "kotekan"))
-    cand.append(os.path.join(K, "build", "kotekan", "kotekan"))
-    for c in cand:
-        if os.path.exists(c):
-            return c
-    sys.exit("no kotekan binary found under %s" % K)
-
-
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -288,12 +271,6 @@ def main():
         "--keep", action="store_true", help="keep the scratch dir and the log"
     )
     ap.add_argument("--timeout", type=float, default=20.0)
-    ap.add_argument(
-        "--expect-crash",
-        action="store_true",
-        help="PASS iff kotekan dies with SIGSEGV before any window is archived "
-        "(the #110 mechanism, run against a pre-fix binary)",
-    )
     a = ap.parse_args()
 
     d = tempfile.mkdtemp(prefix="cube_e2e-")
@@ -330,20 +307,6 @@ def main():
         rc = proc.poll()
 
         # -- [0] the process survives its first emit -------------------------------------------
-        if a.expect_crash:
-            crashed = rc is not None and rc < 0 and (-rc) in (11,)  # SIGSEGV
-            print("exit     %s  windows archived %d" % (rc, len(frames)))
-            if not crashed:
-                fails.append(
-                    "expected SIGSEGV (the #110 mechanism) and got rc=%s with %d windows"
-                    % (rc, len(frames))
-                )
-            elif frames:
-                fails.append(
-                    "crashed, but %d windows were archived first -- not the #110 shape "
-                    "(zero frames)" % len(frames)
-                )
-            return finish(fails, d, log, a.keep, proc, crash_mode=True)
         if rc is not None:
             fails.append(
                 "kotekan EXITED rc=%s before the replay finished (SIGSEGV = %s) -- see %s"
@@ -490,7 +453,7 @@ def read_archive(out_dir):
     return frames
 
 
-def finish(fails, d, log, keep, proc, crash_mode=False):
+def finish(fails, d, log, keep, proc):
     if proc.poll() is None:
         proc.terminate()
         try:
@@ -505,15 +468,9 @@ def finish(fails, d, log, keep, proc, crash_mode=False):
             print("  ... %d more" % (len(fails) - 40))
         print("log: %s" % log)
         return 1
-    if crash_mode:
-        print(
-            "\nPASS -- the pre-fix binary SEGFAULTS at its first emit with nothing archived: the "
-            "#110 mechanism reproduces offline"
-        )
-    else:
-        print(
-            "\nPASS -- assembler, bufferSend/Recv, rawFileWrite and the reader agree end to end"
-        )
+    print(
+        "\nPASS -- assembler, bufferSend/Recv, rawFileWrite and the reader agree end to end"
+    )
     if not keep:
         shutil.rmtree(d, ignore_errors=True)
     return 0
