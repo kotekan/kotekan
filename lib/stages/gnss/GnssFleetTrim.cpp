@@ -191,7 +191,6 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
                     "posted on every close of its window",
                     unique_name);
     const int nthr = std::max(1, config.get_default<int>(unique_name, "post_threads", 4));
-    _sent_gen.assign((size_t)nthr, 0);
     _n_post_threads = nthr; // set before the first poster reads it
     for (int i = 0; i < nthr; ++i)
         _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
@@ -213,11 +212,10 @@ GnssFleetTrim::~GnssFleetTrim() {
 }
 
 void GnssFleetTrim::main_thread() {
-    INFO("GnssFleetTrim[{:s}]: {:s}. {:d} windows averaged ({:.0f} ms at 4 records/window), "
+    INFO("GnssFleetTrim[{:s}]: {:d} windows averaged ({:.0f} ms at 4 records/window), "
          "min_instances {:d}. Nothing is trimmed until the broker POSTs /set_policy -- this "
          "stage arms no PRN of its own.",
-         unique_name, _targets.empty() ? "OBSERVING (no post targets configured)" : "ACTUATING",
-         _dll.n_win(), _dll.n_win() * 4 * 10.4857, _dll.min_instances());
+         unique_name, _dll.n_win(), _dll.n_win() * 4 * 10.4857, _dll.min_instances());
 
     load_trims();
     _trim_saved_at = current_time();
@@ -564,9 +562,7 @@ void GnssFleetTrim::post_trims() {
             for (const auto& tv : cv.second.trim) {
                 // Disarmed PRNs stay in `trim` while FleetDll decays them through the leak,
                 // so the tracker sees their release as a ramp.
-                rows.push_back({{"prn", tv.first},
-                                {"trim_chips", tv.second.trim},
-                                {"win", tv.second.last_win}});
+                rows.push_back({{"prn", tv.first}, {"trim_chips", tv.second.trim}});
             }
             if (!rows.empty())
                 pend[cv.first] = std::move(rows);
@@ -692,11 +688,6 @@ void GnssFleetTrim::post_loop(int slot) {
             nfails.erase(f->first);
             f = conns.erase(f);
         }
-        {
-            std::lock_guard<std::mutex> lk(_pend_mtx);
-            if ((size_t)slot < _sent_gen.size())
-                _sent_gen[(size_t)slot] = gen;
-        }
     }
     for (auto& f : conns)
         if (f.second.fd >= 0)
@@ -720,8 +711,7 @@ void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
                                               {"n_rec", s.n_rec},
                                               {"hop", s.hop},
                                               {"win", s.win},
-                                              {"n_updates", s.n_updates},
-                                              {"src", "comb_cpp"}};
+                                              {"n_updates", s.n_updates}};
         }
         // The integrator state rides the same reply, so the broker sees the standing
         // correction beside the discriminator. `trim` is walked separately from `row`: a

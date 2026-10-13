@@ -166,7 +166,6 @@ private:
     std::condition_variable _pend_cv;
     std::map<std::string, nlohmann::json> _pending; ///< chain -> payload, from the last post_trims
     uint64_t _pend_gen = 0;                         ///< bumped when _pending is replaced
-    std::vector<uint64_t> _sent_gen;                ///< per thread slot, last generation sent
     /// Per-request budget on an established connection: wider than the kernel's minimum RTO
     /// (200 ms) so a single lost segment recovers instead of costing the socket, short enough
     /// that a wedged tracker cannot hold a poster thread past the point where its trim would
