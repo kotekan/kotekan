@@ -35,7 +35,7 @@
 //   double: the code phase C = cp_ref + dn*cps and its floor/frac split, base = frac*inv_cps,
 //     and the carrier reduction fmod(wc*dn, 2*pi). The tap-boundary index
 //     floor(base + d*inv_cps) splits into an exact integer d*ks and a float remainder
-//     base + d*kf (see chip_gather).
+//     base + d*kf (see chip_gather3).
 //   float: everything per chip after the reduction: Phi tables and the telescoped gather (values
 //     O(1); ~2e-6 relative cancellation error per chip difference), the carrier phasor (sincosf
 //     on the reduced angle), the replica sample, the data MAC and the energy.
@@ -102,7 +102,7 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         // chip_gather3's defaults (SHARED = false, null Psi) read the Doppler-free tables with no
         // correction.
         if (p.shared)
-            gnss_cuda::chip_gather3<float2, false, false, true>(
+            gnss_cuda::chip_gather3<float2, true>(
                 job.inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf, code,
                 phiA, phiB, ks, kf, Cs, g3A, g3B, (const float2*)job.psiA + (size_t)ci * (p.Lf + 1),
                 (const float2*)job.psiB + (size_t)ci * (p.Lf + 1), job.ddw);

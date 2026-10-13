@@ -104,14 +104,6 @@ struct DespreadParams {
     /// than a change to gnss44, whose pack and unpack must stay inverses. Read only by
     /// launch_correlate_nm (cudaGnssChordDespread.cu); the despread kernel here ignores it.
     int conj_data = 0;
-    /// Bench option, read only by the waveform kernels in cudaGnssChordDespread.cu (set by
-    /// scripts/gnss/wavebench.cpp): an [n_job][n_hops] permutation of the hop index, lane slot
-    /// s processing hop hop_perm[b*n_hops + s]. Sorting hops by fractional code phase keeps a
-    /// warp's taps within a few Phi entries rather than spread over inv_cps of them, because
-    /// each lane's offset base = frac(C_P)*inv_cps is fixed for the whole chip walk and the
-    /// d*kf term is common to every lane. null = identity. `wave` is unchanged; only the
-    /// energy reduction's lane grouping moves.
-    const int* hop_perm = nullptr;
     /// Row stride, in hops, of the [n_chan][data_stride] data array: n_hops for a packed
     /// per-record buffer, or more when the window is read in place from a longer buffer, in
     /// which case the window must be contiguous within each channel row.

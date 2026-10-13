@@ -29,21 +29,21 @@ namespace gnss_cuda {
 
 /// Block width requested by @ref launch_waveform; it sets the synthesis kernel's DRAM traffic.
 /// Each block walks its (PRN, channel) Phi slice once per hop pass, n_hops/W passes for a block
-/// of W threads (three times that without @ref WAVE_FUSE3). At CHORD geometry the walked part of
-/// a slice is several times L1, so every walk streams it from DRAM again. With per-PRN tables
-/// (Doppler-bucketed in GnssCudaDespread's PhiCache) no two blocks share a slice. @c wave is
-/// bit-identical at every width. The width is capped at n_hops, rounded down to a power of two,
-/// and at what the driver reports the instantiation can launch (see @ref launch_waveform_tuned).
-/// cudaGnssDespreadTest's default 125 hops launch 64 threads, so scripts/gnss/wavebench.cpp,
-/// not the test, checks the wide launches.
+/// of W threads. At CHORD geometry the walked part of a slice is several times L1, so every walk
+/// streams it from DRAM again. With per-PRN tables (Doppler-bucketed in GnssCudaDespread's
+/// PhiCache) no two blocks share a slice. @c wave is bit-identical at every width; the energy
+/// rows agree to rounding (lane L sums hops L, L+W, L+2W, ..., then a W-lane tree). The width is
+/// capped at n_hops, rounded down to a power of two, and at what the driver reports the
+/// instantiation can launch. cudaGnssDespreadTest's default 125 hops launch 64 threads, so the
+/// test does not exercise the 512- and 1024-wide launches.
 static constexpr int WAVE_THREADS = 1024;
 
 /**
  * @brief Synthesise the E/P/L replicas for a batch of PRNs over the covering channels.
  *
  * Each job writes three replica rows, E, P, L (0, 1, 2), in the fused kernel's accumulator
- * order. P_HEAD is not a fourth row: it is the prompt over hops [0, m_head), so consumers gate
- * the prompt row instead, as the fused kernel does.
+ * order. P_HEAD is not a fourth row: it is the prompt over hops [0, m_head), so consumers
+ * (launch_correlate_nm, launch_pack44) gate the prompt row instead.
  *
  * @param code    batch-shared code table (device)
  * @param jobs    [n_job] per-PRN geometry, the same struct the fused path takes (device)
@@ -66,49 +66,6 @@ cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_j
 /// keeps __half2 out of g++-compiled callers. GnssCudaDespread falls back to it when built
 /// without F16C/AVX.
 void phi_to_half(const float2* src, void* dst, size_t n);
-
-/// Walk the chip loop once for all three E/P/L trials (gnss_cuda::chip_gather3) instead of three
-/// times. Bit-identical either way, but the fused walk needs more registers, and registers cap
-/// the block width, so this and @ref WAVE_THREADS pull against each other;
-/// scripts/gnss/wavebench.cpp compares the settings.
-static constexpr bool WAVE_FUSE3 = true;
-
-/// @ref launch_waveform with the block width, trial fusion and table format overridden.
-/// @ref launch_waveform calls it with (0, -1, p.phi_half ? 1 : 0); other values are for benches.
-///
-/// @param threads_hint block width, 0 = @ref WAVE_THREADS, at most 1024. The width changes the
-///        energy summation order (lane L sums hops L, L+W, L+2W, ..., then a W-lane tree), so
-///        two widths agree to rounding, not bit-for-bit. @c wave is unaffected.
-/// @param fuse3 -1 = @ref WAVE_FUSE3, 0 = three separate gathers, 1 = fused. Bit-identical either
-///        way, energy included: each trial's accumulation over chips is unchanged, only the
-///        interleaving of the three moves. The fp16, shared-table and bench variants are fused
-///        only and ignore it.
-/// @param phi16 table format. 0 = float2 Phi; 1 = __half2 Phi (job.phiA/phiB point at half
-///        tables), the fp16 path @c phi_half selects. Bench only: 2 = load-address ablation,
-///        4 = PhiA/PhiB interleaved as float4, 5 = hop-permuted lanes (p.hop_perm),
-///        6 = hop-permuted and fp16. Any other non-zero value takes the fp16 path.
-cudaError_t launch_waveform_tuned(const int8_t* code, const DespreadJob* jobs, int n_job,
-                                  int n_chan, const DespreadParams& p, float2* wave, double* energy,
-                                  int threads_hint, int fuse3, int phi16, cudaStream_t stream);
-
-/// Tiled-streaming variant of @ref launch_waveform, for scripts/gnss/wavebench.cpp --tiled: each
-/// block streams its Phi slice through shared-memory tiles, so every table byte crosses DRAM
-/// once. Per-PRN tables only, job.d_first is ignored (the walk starts at chip 0), and every code
-/// value must be +-1 (the code is staged as bits). Within those limits @c wave and @c energy are
-/// bit-identical to the fused 1024-wide gather (energy to rounding when p.hop_perm is set).
-///
-/// @param tile_entries Phi entries per tile (< 256 = default 4096). Dynamic shared memory per
-///        block is 2*(tile_entries+halo_entries)*sizeof(element) plus the code bits; a tile too
-///        big for the device fails the launch.
-/// @param halo_entries low-side halo, >= max over jobs of (int)inv_cps + 2 (the previous chip's
-///        tap sits up to ks+1 entries behind the current one).
-/// @param code_len_max largest code_len in the batch; sizes the shared code bit table.
-/// @param phi16 non-zero = the tables are __half2.
-/// Requires n_hops <= 2048 (two hops of walk state per thread).
-cudaError_t launch_waveform_tiled(const int8_t* code, const DespreadJob* jobs, int n_job,
-                                  int n_chan, const DespreadParams& p, float2* wave, double* energy,
-                                  int tile_entries, int halo_entries, int code_len_max, int phi16,
-                                  cudaStream_t stream);
 
 /**
  * @brief Correlate N antenna voltages against the replicas from @ref launch_waveform.
