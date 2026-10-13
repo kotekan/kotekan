@@ -2,14 +2,15 @@
 
 The FOURTH and LAST civil S5 D-component (2026-07-30). B-CNAV1 rides the B1C DATA channel on
 the L1 band (1575.42, beside E1B). It REUSES the GF(64) non-binary LDPC decoder (nb_ldpc.py)
-built for B-CNAV2 -- different H matrices (SF2 = NB-LDPC(200,100), SF3 = NB-LDPC(88,44)) -- and
-the B-CNAV2 CNAV-style ephemeris propagation (sv_position_bcnav2), since B-CNAV1 and B-CNAV2
-share the BDS-3 ephemeris parameter set. What is NEW here:
+built for B-CNAV2 -- a different H matrix (SF2 = NB-LDPC(200,100)) -- and the B-CNAV2
+CNAV-style ephemeris propagation (sv_position_bcnav2), since B-CNAV1 and B-CNAV2 share the
+BDS-3 ephemeris parameter set. What is NEW here:
 
   * an 1800-symbol / 18 s frame = SF1 (72 syms: PRN + SOH as short BCH/LFSR sequences, the
     frame-sync pattern) + a BLOCK-INTERLEAVED (36x48) SF2/SF3;
   * SF2 -> 600 bits (the FULL ephemeris + clock, one subframe -- simpler than B-CNAV2's two
-    frames), SF3 -> 264 bits (iono/other); each subframe has its own CRC-24Q;
+    frames) with its own CRC-24Q. SF3 (iono/other, NB-LDPC(88,44)) is de-interleaved off the
+    frame but not decoded: nothing parses it;
   * frame sync by generating the expected SF1 (PRN-specific 21 syms + SOH-specific 51 syms,
     searching SOH 0..199) rather than a fixed preamble.
 
@@ -25,7 +26,7 @@ and the ephemeris offsets (from andrewkamble88/gnss-sdr@bds_b1c Beidou_B1C.h). S
 import numpy as np
 
 import nb_ldpc as _NB
-from bcnv1_ldpc_matrices import H_SF2_IDX, H_SF2_ELE, H_SF3_IDX, H_SF3_ELE
+from bcnv1_ldpc_matrices import H_SF2_IDX, H_SF2_ELE
 from galileo_inav import crc24q, _uint, _field, _P
 
 # reuse the BDS-3 CNAV ephemeris propagation + constants from B-CNAV2
@@ -35,9 +36,7 @@ SYM_S = 0.010  # B1C-data symbol = 10 ms (100 sps)
 N_SF1 = 72  # SF1 symbols (21 PRN + 51 SOH)
 FRAME_SYMS = 1800  # full frame = 18 s
 SF2_BITS = 600
-SF3_BITS = 264
 SF2_CRC_AT = SF2_BITS - 24  # 576
-SF3_CRC_AT = SF3_BITS - 24  # 240
 N_SOH = 200  # SOH range (18 s frames, 3600 s hour / 18 = 200)
 
 
@@ -127,7 +126,7 @@ _INVERT = [None]
 
 def find_frames(prn, symbols):
     """Scan a soft symbol stream for SF1-aligned frames (both polarities). Yields
-    (start_index, polarity, soh, sf2_bits[600], sf3_bits_or_None) per CRC-valid SF2. Steps by 1."""
+    (start_index, polarity, soh, sf2_bits[600]) per CRC-valid SF2. Steps by 1."""
     s = np.asarray(symbols, dtype=float)
     nlen = len(s)
     a = _sf1a(prn)
@@ -145,17 +144,13 @@ def find_frames(prn, symbols):
             if soh is None:
                 continue
             frame = (pol * s[i : i + FRAME_SYMS] < 0).astype(np.uint8)
-            syms2, syms3 = _deinterleave(frame)
+            syms2, _syms3 = _deinterleave(frame)
             inverts = (_INVERT[0],) if _INVERT[0] is not None else (False, True)
             for inv in inverts:
                 sf2, nerr = _decode_sf(H_SF2_IDX, H_SF2_ELE, 100, 200, syms2, inv)
                 if nerr >= 0 and check_crc(sf2, SF2_CRC_AT, SF2_BITS):
                     _INVERT[0] = inv
-                    sf3b = None
-                    sf3, nerr3 = _decode_sf(H_SF3_IDX, H_SF3_ELE, 44, 88, syms3, inv)
-                    if nerr3 >= 0 and check_crc(sf3, SF3_CRC_AT, SF3_BITS):
-                        sf3b = [int(x) for x in sf3]
-                    yield i, int(pol), soh, [int(x) for x in sf2], sf3b
+                    yield i, int(pol), soh, [int(x) for x in sf2]
                     break
             break
         i += 1
@@ -238,29 +233,25 @@ if __name__ == "__main__":
     print("2. block-interleaver roundtrip (36x48): %s" % ("OK" if ok2 else "FAIL"))
     fails += 0 if ok2 else 1
 
-    # 3. SF2 NB-LDPC(200,100) + SF3 NB-LDPC(88,44): encode a codeword, decode clean + w/ errors
+    # 3. SF2 NB-LDPC(200,100): encode a codeword, decode clean + w/ errors
     p3 = 0
-    for (idx, ele, m, n, nsym) in (
-        (H_SF2_IDX, H_SF2_ELE, 100, 200, 1200),
-        (H_SF3_IDX, H_SF3_ELE, 44, 88, 528),
-    ):
-        info = rng.integers(0, 64, m).astype(np.uint8)
-        cw = _NB.encode_systematic(idx, ele, m, n, info)
-        bits, nerr = _NB.decode(idx, ele, m, n, cw)
-        clean_ok = nerr == 0 and np.array_equal(bits, cw[: m * 6])
-        bad = cw.copy()
-        bad[rng.choice(nsym, 6, replace=False)] ^= 1
-        b2, n2 = _NB.decode(idx, ele, m, n, bad)
-        corr_ok = n2 >= 0 and np.array_equal(b2, cw[: m * 6])
-        tag = "SF2(200,100)" if m == 100 else "SF3(88,44)"
-        print("   %s: clean %s, 6-err corrected %s" % (tag, clean_ok, corr_ok))
-        if not (clean_ok and corr_ok):
-            p3 += 1
-    print("3. SF2/SF3 NB-LDPC: %s" % ("OK" if p3 == 0 else "FAIL %d" % p3))
+    m, n, nsym = 100, 200, 1200
+    info = rng.integers(0, 64, m).astype(np.uint8)
+    cw = _NB.encode_systematic(H_SF2_IDX, H_SF2_ELE, m, n, info)
+    bits, nerr = _NB.decode(H_SF2_IDX, H_SF2_ELE, m, n, cw)
+    clean_ok = nerr == 0 and np.array_equal(bits, cw[: m * 6])
+    bad = cw.copy()
+    bad[rng.choice(nsym, 6, replace=False)] ^= 1
+    b2, n2 = _NB.decode(H_SF2_IDX, H_SF2_ELE, m, n, bad)
+    corr_ok = n2 >= 0 and np.array_equal(b2, cw[: m * 6])
+    print("   SF2(200,100): clean %s, 6-err corrected %s" % (clean_ok, corr_ok))
+    if not (clean_ok and corr_ok):
+        p3 += 1
+    print("3. SF2 NB-LDPC: %s" % ("OK" if p3 == 0 else "FAIL %d" % p3))
     fails += p3
 
-    # 4. END TO END: plant an ephemeris in SF2 (+CRC), LDPC-encode both subframes, interleave,
-    # prepend SF1(prn,soh), feed as symbols -> find_frames -> recover the ephemeris.
+    # 4. END TO END: plant an ephemeris in SF2 (+CRC), LDPC-encode it, interleave with an SF3
+    # filler, prepend SF1(prn,soh), feed as symbols -> find_frames -> recover the ephemeris.
     prn, soh = 19, 137
     sf2 = [0] * SF2_BITS
     truth = {}
@@ -271,16 +262,12 @@ if __name__ == "__main__":
         truth[name] = _field(sf2, start, length, signed, scale)
     crc = crc24q(sf2[0:SF2_CRC_AT])
     sf2[SF2_CRC_AT : SF2_CRC_AT + 24] = [(crc >> (23 - k)) & 1 for k in range(24)]
-    sf3 = [0] * SF3_BITS
-    crc3 = crc24q(sf3[0:SF3_CRC_AT])
-    sf3[SF3_CRC_AT : SF3_CRC_AT + 24] = [(crc3 >> (23 - k)) & 1 for k in range(24)]
-    # encode subframes (info = first m GF symbols of each subframe's bits)
+    # encode SF2 (info = its first 100 GF symbols); SF3 is not decoded, so its 528 coded symbols
+    # are filler (zeros: the codeword an all-zero SF3 with its zero CRC encodes to)
     syms2 = _NB.encode_systematic(
         H_SF2_IDX, H_SF2_ELE, 100, 200, _NB.bin2gf(np.array(sf2, dtype=np.uint8))
     )
-    syms3 = _NB.encode_systematic(
-        H_SF3_IDX, H_SF3_ELE, 44, 88, _NB.bin2gf(np.array(sf3, dtype=np.uint8))
-    )
+    syms3 = np.zeros(528, dtype=np.uint8)
     il = _interleave(syms2, syms3)
     sf1 = np.concatenate([_sf1a(prn), _sf1b_all()[soh]])
     frame_bits = np.concatenate([sf1, il]).astype(np.uint8)  # 1800 transmitted bits
@@ -294,7 +281,7 @@ if __name__ == "__main__":
         print("4. FAIL: no frame found")
         p4 = 1
     else:
-        _i, _pol, gsoh, gsf2, gsf3 = got[0]
+        _i, _pol, gsoh, gsf2 = got[0]
         eph = parse_bcnav1_ephemeris(gsf2)
         bad = [k for k in truth if abs(eph[k] - truth[k]) > 1e-9 * (abs(truth[k]) + 1)]
         if gsoh != soh or bad:

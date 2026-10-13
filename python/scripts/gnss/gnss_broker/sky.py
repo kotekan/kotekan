@@ -264,30 +264,6 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
-def _cnav2_brdc_xcheck(brdc_alm, sys, prn, cnav2_eph, log):
-    """GPS L1C-D CNAV-2 ephemeris cross-check -- the _cnav_brdc_xcheck analogue (CNAV-2 SF2 is the
-    same CNAV Keplerian set, so sv_position reuses gps_cnav). Ready for the live field map; until
-    CNV2_EPH_FIELDS is filled the ephemeris is None so this is never reached."""
-    try:
-        import gps_cnav2 as _C2
-
-        ge = brdc_alm["mod"]
-        recs = brdc_alm["eph"].get((sys, prn))
-        if not recs:
-            return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
-        if be is None:
-            return " | BRDC:stale"
-        toe = cnav2_eph["toe"]
-        t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
-        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
-        cx, cy, cz = _C2.sv_position_cnav2(cnav2_eph, toe)
-        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
-        return " | BRDC dpos=%.2f m (brdc toe %+.0f s)" % (dpos, be["toe_sow"] - toe)
-    except Exception as ex:
-        return " | BRDC xcheck err: %s" % ex
-
-
 def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
     """S5 ephemeris cross-check, the _cnav_brdc_xcheck analogue for Galileo I/NAV: ECEF
     position residual between the live-decoded I/NAV ephemeris and BRDC, both propagated to

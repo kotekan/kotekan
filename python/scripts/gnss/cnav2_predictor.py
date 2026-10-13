@@ -1,9 +1,9 @@
 """Streaming GPS L1C-D CNAV-2 decoder for the broker (the L1C-D data sibling's nav decoder).
 
 Mirrors bcnav3_predictor.py: ingest the combiner's per-PRN nav_obs symbol emits, stitch them into
-an absolute-time symbol timeline, decode, and serve the ephemeris for the BRDC cross-check.
-gps_cnav2.py is the codec (SF1-TOI framesync + block deinterleave + systematic LDPC extract +
-CRC-24Q + the CNAV Keplerian ephemeris).
+an absolute-time symbol timeline and decode CRC-valid frames. gps_cnav2.py is the codec (SF1-TOI
+framesync + block deinterleave + systematic LDPC extract + CRC-24Q); it has no SF2 ephemeris field
+table, so there is no ephemeris to serve.
 
 Like B-CNAV1 the frame is 18 s (1800 symbols) -- long, so it needs a phase-CONTINUOUS run to
 decode (find_frames needs 1852 contiguous symbols = frame + the next frame's SF1). The L1C-D
@@ -22,7 +22,6 @@ SYM_S = C2.SYM_S  # 0.010
 FRAME = C2.FRAME_SYMS  # 1800
 NEED = FRAME + C2.N_SF1  # 1852 (frame + next SF1) for a sync+decode
 EMIT_MAX = 48  # ~48 s of 1 s emits -> >2 frames of history, bounds the find scan
-EPH_TTL_S = 3600.0  # a cached ephemeris older than this is stale (~hourly)
 
 
 class _PrnState:
@@ -124,12 +123,6 @@ class Cnav2Predictor:
                 st.sf2 = (sf2, time.time())
 
     # ----------------------------------------------------------------- serve
-    def ephemeris(self, prn):
-        st = self._p.get(prn)
-        if st is None or st.sf2 is None or time.time() - st.sf2[1] > EPH_TTL_S:
-            return None
-        return C2.parse_cnav2_ephemeris(st.sf2[0])
-
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
@@ -139,7 +132,6 @@ class Cnav2Predictor:
             "words": st.n_frames,
             "toi": st.toi,
             "have": ([2, 3] if st.sf2 else []),
-            "eph": self.ephemeris(prn) is not None,
         }
 
 

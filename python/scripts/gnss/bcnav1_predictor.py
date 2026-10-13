@@ -2,7 +2,7 @@
 
 Mirrors bcnav2_predictor.py: ingest the combiner's per-PRN nav_obs symbol emits, stitch them
 into an absolute-time symbol timeline, decode, and serve the ephemeris for the BRDC cross-check.
-beidou_bcnav1.py is the codec (SF1 framesync + 36x48 de-interleave + GF(64) NB-LDPC SF2/SF3 +
+beidou_bcnav1.py is the codec (SF1 framesync + 36x48 de-interleave + GF(64) NB-LDPC SF2 +
 CRC-24Q + BDS-3 CNAV-style ephemeris).
 
 SIMPLER TO SERVE than B-CNAV2: the WHOLE orbit is in SF2 (one subframe), so any CRC-valid SF2
@@ -110,7 +110,7 @@ class Bcnav1Predictor:
         for _run0, signs in self._runs(st):
             if len(signs) < FRAME:
                 continue
-            for _i, _pol, _soh, sf2, _sf3 in B.find_frames(prn, signs.astype(float)):
+            for _i, _pol, _soh, sf2 in B.find_frames(prn, signs.astype(float)):
                 st.n_frames += 1
                 st.n_crc += 1
                 st.sf2 = (sf2, time.time())
@@ -152,15 +152,10 @@ def _selftest():
         truth[name] = B._field(sf2, start, length, signed, scale)
     crc = B.crc24q(sf2[0 : B.SF2_CRC_AT])
     sf2[B.SF2_CRC_AT : B.SF2_CRC_AT + 24] = [(crc >> (23 - k)) & 1 for k in range(24)]
-    sf3 = [0] * B.SF3_BITS
-    crc3 = B.crc24q(sf3[0 : B.SF3_CRC_AT])
-    sf3[B.SF3_CRC_AT : B.SF3_CRC_AT + 24] = [(crc3 >> (23 - k)) & 1 for k in range(24)]
     syms2 = B._NB.encode_systematic(
         B.H_SF2_IDX, B.H_SF2_ELE, 100, 200, B._NB.bin2gf(np.array(sf2, dtype=np.uint8))
     )
-    syms3 = B._NB.encode_systematic(
-        B.H_SF3_IDX, B.H_SF3_ELE, 44, 88, B._NB.bin2gf(np.array(sf3, dtype=np.uint8))
-    )
+    syms3 = np.zeros(528, dtype=np.uint8)  # SF3 (not decoded): filler coded symbols
     il = B._interleave(syms2, syms3)
     sf1 = np.concatenate([B._sf1a(prn), B._sf1b_all()[soh]])
     frame_bits = np.concatenate([sf1, il]).astype(np.uint8)

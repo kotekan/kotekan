@@ -22,7 +22,6 @@ from gnss_broker.transport import _now, _get, _log, _log_rl
 from gnss_broker.sky import (
     _lnav_brdc_xcheck,
     _cnav_brdc_xcheck,
-    _cnav2_brdc_xcheck,
     _inav_brdc_xcheck,
     _fnav_brdc_xcheck,
     _bcnav1_brdc_xcheck,
@@ -349,23 +348,12 @@ def stage_nav_bits(ctx):
                     h = ctx.nav.cnav2.health(_p)
                     if not h or not h["words"]:
                         continue
-                    eph = ctx.nav.cnav2.ephemeris(_p)
-                    xc = (
-                        _cnav2_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
-                        if (eph is not None and ctx.brdc_alm is not None)
-                        else ""
-                    )
+                    # no ephemeris: CNAV-2 SF2 has no field table (gps_cnav2)
                     _log(
-                        "cnav2 PRN %d: %d frames CRC-OK, toi=%s, eph %s%s"
-                        % (
-                            _p,
-                            h["words"],
-                            h["toi"],
-                            "YES" if eph is not None else "no",
-                            xc,
-                        )
+                        "cnav2 PRN %d: %d frames CRC-OK, toi=%s"
+                        % (_p, h["words"], h["toi"])
                     )
-                    ctx.dh_obs("GPS_L1CD_CNAV2", _p, h, eph, xc)
+                    ctx.dh_obs("GPS_L1CD_CNAV2", _p, h, None, "")
         if ctx.nav.navbits is not None and _now() - ctx.nav.log_t > 60.0:
             ctx.nav.log_t = _now()
             for _p in sorted(ctx.nav.navbits._p):

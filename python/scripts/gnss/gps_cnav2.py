@@ -1,4 +1,4 @@
-"""GPS L1C-D CNAV-2 codec: frame symbols <-> nav bits, and the ephemeris parse (IS-GPS-800).
+"""GPS L1C-D CNAV-2 codec: frame symbols <-> nav bits (IS-GPS-800).
 
 The 4th GPS-family nav message (after LNAV / CNAV) and our FIRST binary LDPC. A CNAV-2 frame is
 1800 symbols = 18 s at 100 sps (a 10 ms L1C-D record = one symbol):
@@ -15,9 +15,9 @@ the systematic prefix, CRC-check -- no iteration (the B-CNAV2 discipline; adding
 pass would only extend it to weaker sats). Frame geometry + the SF1 LFSR are transcribed from
 PocketSDR (sdr_nav.py decode_L1CD/decode_CNV2/sync_CNV2_frame, T.Takasu).
 
-★ The SF2 ephemeris (the CNAV Keplerian set) is LIVE-MAPPED against BRDC, exactly as B-CNAV3's
-type-10 was: the frame decode (LDPC systematic + CRC) is convention-COMPLETE and self-validating
-(CRC is the truth); the field table + sv_position light up against the live dpos.
+The frame decode (LDPC systematic + CRC) is convention-COMPLETE and self-validating (CRC is the
+truth). The SF2 ephemeris (the CNAV Keplerian set) has no field table: it was to be mapped
+against live frames + the BRDC dpos, as B-CNAV3's type 10 was, and never was.
 """
 
 import numpy as np
@@ -149,43 +149,6 @@ def find_frames(syms):
         i += 1
 
 
-# ------------------------------------------------------------------ ephemeris (SF2) -- live-mapped
-# The CNAV-2 SF2 carries the standard GPS CNAV Keplerian set; sv_position reuses gps_cnav's
-# propagation. The bit offsets in the 600-bit SF2 are ICD-owned and filled against LIVE frames +
-# the BRDC dpos (the B-CNAV3 method). Empty table -> parse returns None (frame decode still runs).
-CNV2_EPH_FIELDS = {}  # {name: (start, length, signed, scale)} -- live-mapped
-
-
-def parse_cnav2_ephemeris(sf2_bits):
-    """600-bit SF2 -> SI ephemeris (gps_cnav set), or None until CNV2_EPH_FIELDS is mapped."""
-    if not CNV2_EPH_FIELDS:
-        return None
-    import gps_cnav as C
-
-    eph = {}
-    for name, (start, length, signed, scale) in CNV2_EPH_FIELDS.items():
-        eph[name] = (
-            C._field(sf2_bits, start, length, signed, scale)
-            if hasattr(C, "_field")
-            else _field(sf2_bits, start, length, signed, scale)
-        )
-    return eph
-
-
-def _field(bits, start, length, signed, scale):
-    v = _uint([int(x) & 1 for x in bits[start : start + length]])
-    if signed and (v & (1 << (length - 1))):
-        v -= 1 << length
-    return v * scale
-
-
-def sv_position_cnav2(eph, t):
-    """ECEF (x,y,z) m -- reuses the GPS CNAV propagation (SF2 is the CNAV Keplerian set)."""
-    import gps_cnav as C
-
-    return C.sv_position_cnav(eph, t)
-
-
 # ------------------------------------------------------------------ self-test
 if __name__ == "__main__":
     import sys
@@ -249,7 +212,7 @@ if __name__ == "__main__":
     print(
         "\n%s"
         % (
-            "CNAV-2 frame codec SELF-CONSISTENT (SF2 ephemeris fields = live-mapped next)"
+            "CNAV-2 frame codec SELF-CONSISTENT"
             if not fails
             else "SELF-TEST FAILURES: %d" % fails
         )
