@@ -977,6 +977,14 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # E/L tap offset in the signal's chips, set by the channel geometry: see
                     # dll_spacing_chips. Must match the broker chain's dll-spacing.
                     "dll_spacing": dll_spacing_chips(track_signal),
+                    # The E/L lanes as rotations of the prompt, one chip walk per hop: every
+                    # comb chain; not L2C, whose one channel per instance carries no
+                    # cross-channel phase (its per-instance discriminator would read 0).
+                    **(
+                        {"epl_from_prompt": True}
+                        if args.epl_from_prompt and track_signal != "GPS_L2C_CM"
+                        else {}
+                    ),
                     "f_offset_hz": carrier_hz,
                     "hops_per_record": HOPS_PER_RECORD,
                     "fft_length": cfg["fengine"]["fft_length"],
@@ -2405,6 +2413,13 @@ def main():
         "rfi_first_stage_excision_exempt_freq_ids (our key; declared in "
         "stock_parity.py). The GNSS lobes: the stock SK flagger excises them "
         "most of the time and their N2 feeds the satellite projection.",
+    )
+    ap.add_argument(
+        "--epl-from-prompt",
+        action="store_true",
+        help="cudaGnssChordTrack epl_from_prompt: synthesise the prompt replica only and "
+        "take the E/L lanes as its per-channel rotations (one chip walk per hop instead of "
+        "three, ~2/3 of the synthesis cost). Comb chains only; L2C keeps its three trials.",
     )
     ap.add_argument(
         "--n2-project",

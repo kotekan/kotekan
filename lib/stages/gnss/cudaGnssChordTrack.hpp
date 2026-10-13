@@ -45,6 +45,9 @@
  *                               centred on the PFB span. Default 80.
  * @conf despread_chips_centered Bool. Must be true. Default true.
  * @conf phi_fp16        Bool. Must be true: the Phi tables are fp16. Default true.
+ * @conf epl_from_prompt Bool. Synthesise the prompt replica only and take the E and L lanes as
+ *                       its per-channel rotations (GnssCudaDespread::set_epl_from_prompt): one
+ *                       chip walk per hop instead of three. Default false.
  * @conf seed_endpoint   String. POST /set_seeds.
  * @conf trim_endpoint   String, ignored (read only so a usage report does not list it).
  * @conf set_trim_endpoint String. POST /set_trim.
@@ -128,6 +131,7 @@ public:
     int n_prn = 0, n_chan = 0, n_elem = 0;
     int hops_per_record = 0, n_hops_frame = 0, fft_len = 0;
     double sample_rate = 0.0, f_offset_hz = 0.0, dll_spacing = 0.0;
+    bool epl_from_prompt = false;
     double frame0_utc = 0.0; ///< UTC of absolute sample 0; 0 = unknown, which the record
                              ///< assembler refuses
 

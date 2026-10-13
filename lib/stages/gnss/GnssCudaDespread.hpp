@@ -97,6 +97,12 @@ public:
     /// @ref enqueue_waveform and @ref enqueue_batch_nm support it.
     void set_phi_fp16();
 
+    /// Synthesise the prompt alone and take E and L as its per-channel rotations (the @c rot
+    /// argument of gnss_cuda::launch_waveform), one chip walk per hop instead of three. Only
+    /// @ref enqueue_waveform honours it; @ref despread_batch and @ref enqueue_batch_nm keep
+    /// their three trials.
+    void set_epl_from_prompt();
+
     /// Largest @c specs.size() for @ref despread_batch, @ref build_jobs and the Spec-taking
     /// enqueue_* calls: the host job staging, and despread_batch's device job arena, hold n_prn
     /// jobs (one per PRN slot). Nothing checks the bound. It is not gnss_gpu::max_specs(n_prn),

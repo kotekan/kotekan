@@ -88,6 +88,9 @@ struct GnssCudaDespread::Impl {
     /// launch_waveform takes the __half2 gather. launch_despread reads Phi as float2, so
     /// despread_batch throws while this is set rather than despread garbage.
     bool use_fp16 = false;
+    bool epl_rot = false;     ///< set_epl_from_prompt: enqueue_waveform passes d_rot
+    std::vector<float> h_rot; ///< [n_prn][n_chan] staging for d_rot
+    float* d_rot = nullptr;
 
     /// What the kernel was given, per PRN slot, read back from each job as it is built. A
     /// recomputation from the same inputs would agree with itself by construction and could
@@ -153,6 +156,8 @@ struct GnssCudaDespread::Impl {
         ck(cudaMalloc(&d_jobs, maxs * sizeof(gnss_cuda::DespreadJob)), "alloc jobs");
         ck(cudaMalloc(&d_corr, maxb * nc * sizeof(double2)), "alloc corr");
         ck(cudaMalloc(&d_energy, maxb * nc * sizeof(double)), "alloc energy");
+        ck(cudaMalloc(&d_rot, maxs * nc * sizeof(float)), "alloc rot");
+        h_rot.assign(maxs * nc, 0.0f);
         ck(cudaStreamCreate(&stream), "stream");
         phi.resize(np);
         // NaN, not 0: "no job built for this PRN" must not read as ang0 == 0, a legal value of
@@ -173,6 +178,7 @@ struct GnssCudaDespread::Impl {
         cudaFree(d_jobs);
         cudaFree(d_corr);
         cudaFree(d_energy);
+        cudaFree(d_rot);
         for (auto& pc : phi) {
             cudaFree(pc.d_A);
             cudaFree(pc.d_B);
@@ -377,11 +383,27 @@ struct GnssCudaDespread::Impl {
             // Record what the kernel is given, read back from the job (see last_ang0).
             last_ang0[(size_t)sp.p] = h_jobs[i].ang0;
             last_phi_ddop[(size_t)sp.p] = sp.doppler_hz - pc.doppler;
+            if (epl_rot) {
+                // Row 0 (the prompt - ds trial) is the prompt rotated by
+                // +2 pi (f_c - f_car) ds/cps/fs on the channel centred at f_c, with f_car the
+                // carrier the kernel applies (wc); row 2 takes the opposite sign. The sign is
+                // pinned by cudaGnssDespreadTest against the fused kernel's own E row.
+                const double delay_s = h_jobs[i].ds / cps / fs;
+                const double f_car = wc * fs / (2.0 * M_PI);
+                for (int ci = 0; ci < n_chan; ++ci) {
+                    const double f_c = (double)all_chans[(size_t)ci] * fs / bank.fft_len();
+                    h_rot[i * (size_t)n_chan + ci] = (float)(2.0 * M_PI * (f_c - f_car) * delay_s);
+                }
+            }
         }
         ck(cudaMemcpyAsync(d_jobs_slot, h_jobs.data(),
                            specs.size() * sizeof(gnss_cuda::DespreadJob), cudaMemcpyHostToDevice,
                            st),
            "jobs upload");
+        if (epl_rot)
+            ck(cudaMemcpyAsync(d_rot, h_rot.data(), specs.size() * (size_t)n_chan * sizeof(float),
+                               cudaMemcpyHostToDevice, st),
+               "rot upload");
     }
 };
 
@@ -468,6 +490,10 @@ void GnssCudaDespread::set_phi_fp16() {
                  "REFUSE while this is set.\n",
                  2.0 * (double)n * (sizeof(float2) / 2) / 1e6, im.n_chan,
                  2.0 * (double)n * sizeof(float2) / 1e6);
+}
+
+void GnssCudaDespread::set_epl_from_prompt() {
+    _impl->epl_rot = true;
 }
 
 void GnssCudaDespread::set_max_chips(int n) {
@@ -567,7 +593,8 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     // path splits the fused kernel. Both launches are on one stream, so the correlator starts
     // after the waveform it reads is complete.
     ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
-                                  im.n_chan, par, (float2*)d_wave, (double*)d_energy_out, st),
+                                  im.n_chan, par, nullptr, (float2*)d_wave, (double*)d_energy_out,
+                                  st),
        "launch waveform (NxM)");
     ck(gnss_cuda::launch_correlate_nm(
            (const unsigned char*)d_frame, (const float*)d_chan_scale, d_chan_ids,
@@ -596,7 +623,8 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
     par.data_stride = im.n_hops;
 
     ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
-                                  im.n_chan, par, (float2*)d_wave, (double*)d_energy_out, st),
+                                  im.n_chan, par, im.epl_rot ? im.d_rot : nullptr, (float2*)d_wave,
+                                  (double*)d_energy_out, st),
        "launch waveform (inject)");
     return n_spec;
 }

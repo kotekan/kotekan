@@ -33,8 +33,8 @@ __device__ inline float2 phi_ld(const __half2* p, int i) {
     return __half22float2(p[i]);
 }
 
-/// Chip gather over the filter span for three code phases (the E/P/L trials) in one walk of
-/// the chip loop. For each trial u, at absolute code phase C = C[u]:
+/// Chip gather over the filter span for NT code phases (3 = the E/P/L trials, 1 = the prompt
+/// alone) in one walk of the chip loop. For each trial u, at absolute code phase C = C[u]:
 ///   sA/sB = sum_d code[(chip0-d) mod code_len] * (Phi{A,B}[khi(d)+1] - Phi{A,B}[klo(d)])
 /// with chip0 = floor(C), phi = C - chip0, khi(d) = floor((phi+d)*inv_cps),
 /// klo(d) = khi(d-1)+1, d in [job_d_first, job_n_chips), and indices clamped to [0, Lf].
@@ -51,17 +51,18 @@ __device__ inline float2 phi_ld(const __half2* p, int i) {
 /// three walk states instead of one, and registers cap the waveform kernel's block width
 /// (WAVE_THREADS in cudaGnssChordDespread.hpp).
 ///
-/// @c PHI is the table type, float2 or __half2 (see phi_ld).
-template<class PHI>
+/// @c PHI is the table type, float2 or __half2 (see phi_ld). @c C, @c sA and @c sB hold NT
+/// entries. Trial u's arithmetic does not depend on NT, so the prompt of a one-trial walk is
+/// bit-identical to the prompt of the three-trial walk.
+template<class PHI, int NT = 3>
 __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int job_d_first, int Lf,
                                     const int8_t* __restrict__ code,
                                     const PHI* __restrict__ phiA, const PHI* __restrict__ phiB,
-                                    int ks, float kf, const double C[3], float2 sA[3],
-                                    float2 sB[3]) {
-    int idx[3], khi_base[3];
-    float f[3];
-    float2 pA[3], pB[3];
+                                    int ks, float kf, const double* C, float2* sA, float2* sB) {
+    int idx[NT], khi_base[NT];
+    float f[NT];
+    float2 pA[NT], pB[NT];
     // The chip loop does no fp64 and no 64-bit modulo: that work (C's floor/frac split, base,
     // the code-index seed) is done once before it, and the loop works from phi in [0,1).
     //  (a) klo(d) = floor((phi+d-1)*inv_cps)+1 and khi(d-1) = floor((phi+d-1)*inv_cps) are the
@@ -79,7 +80,7 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
     //      difference, not an approximation: an empty or fully clamped span gives
     //      t(d) == t(d-1), a zero difference, so empty spans need no branch.
 #pragma unroll
-    for (int u = 0; u < 3; ++u) {
+    for (int u = 0; u < NT; ++u) {
         const long long chip0 = (long long)floor(C[u]);
         const double phi = C[u] - (double)chip0;
         sA[u] = make_float2(0.f, 0.f);
@@ -102,7 +103,7 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
     }
     for (int d = job_d_first; d < job_n_chips; ++d) {
 #pragma unroll
-        for (int u = 0; u < 3; ++u) {
+        for (int u = 0; u < NT; ++u) {
             int t = khi_base[u] + (int)floorf(f[u]) + 1;
             t = t < 0 ? 0 : (t > Lf ? Lf : t);
             f[u] += kf;

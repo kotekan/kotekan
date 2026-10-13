@@ -38,6 +38,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
         FATAL_ERROR("cudaGnssChordTrack: conjugate: false is not supported; the replica is "
                     "always conjugated to absorb the F-engine conjugation");
     dll_spacing = config.get<double>(unique_name, "dll_spacing");
+    epl_from_prompt = config.get_default<bool>(unique_name, "epl_from_prompt", false);
     trim_ttl_s = config.get_default<double>(unique_name, "trim_ttl_s", 4.0);
     if (!(trim_ttl_s > 0.0))
         FATAL_ERROR("cudaGnssChordTrack: trim_ttl_s {:g} must be > 0", trim_ttl_s);
@@ -136,6 +137,10 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                     max_chips, max_chips);
     despread->set_max_chips(max_chips);
     despread->set_phi_fp16();
+    if (epl_from_prompt) {
+        despread->set_epl_from_prompt();
+        INFO("cudaGnssChordTrack: epl_from_prompt: the E and L lanes are the rotated prompt");
+    }
 
     seeds.assign((size_t)n_prn, Seed{});
     trim.assign((size_t)n_prn, 0.0);

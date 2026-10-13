@@ -372,7 +372,8 @@ int main(int argc, char** argv) {
             CK(cudaMemcpy(d_chan_ids, h_chan_ids.data(), h_chan_ids.size() * sizeof(int),
                           cudaMemcpyHostToDevice));
 
-            CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_wave, d_nenergy, 0));
+            CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, nullptr, d_wave,
+                                          d_nenergy, 0));
             CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs, n_spec,
                                               n_chan, n_elem, n_elem, n_chan, p, d_ncorr, 0));
             CK(cudaDeviceSynchronize());
@@ -395,10 +396,80 @@ int main(int argc, char** argv) {
                         emax = std::max(emax, std::abs(ne[kf] - fe[kf])
                                                   / std::max(1e-9, std::abs(fe[kf])));
                     }
-            const bool split_ok = (cmax == 0.0) && (emax == 0.0);
+            bool split_ok = (cmax == 0.0) && (emax == 0.0);
             printf("CHORD split (waveform + NxM) vs fused despread, N=1: corr %.3e energy %.3e "
                    "%s\n",
                    cmax, emax, split_ok ? "OK (exact)" : "FAIL");
+
+            // --- E/L from the prompt (launch_waveform's rot) vs the fused kernel's own E/L ---
+            // Row 0 (the prompt - ds trial) is the prompt rotated by +2 pi (f_c - f_car)
+            // ds/cps/fs on the channel at f_c; row 2 the opposite (the sign is empirical). The
+            // rotation ignores the delay's phase ramp across one channel (0.06 rad at CHORD,
+            // 0.4 rad at this test's 125 kHz channels), so the checks are: P and P_HEAD exact
+            // as before, and the rotated prompt much closer to the fused E than the opposite
+            // rotation (which is what the L row carries) is.
+            {
+                std::vector<float> h_rot((size_t)n_spec * n_chan);
+                const double delay_s = (double)comb * spacing / cps / fs;
+                const double f_car = wc * fs / (2.0 * M_PI);
+                for (int b = 0; b < n_spec; ++b)
+                    for (int c = 0; c < n_chan; ++c) {
+                        const double f_c = (double)cover[c] * fs / (double)fft_len;
+                        h_rot[(size_t)b * n_chan + c] =
+                            (float)(2.0 * M_PI * (f_c - f_car) * delay_s);
+                    }
+                float* d_rot = nullptr;
+                CK(cudaMalloc(&d_rot, h_rot.size() * sizeof(float)));
+                CK(cudaMemcpy(d_rot, h_rot.data(), h_rot.size() * sizeof(float),
+                              cudaMemcpyHostToDevice));
+                CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_rot, d_wave,
+                                              d_nenergy, 0));
+                CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs, n_spec,
+                                                  n_chan, n_elem, n_elem, n_chan, p, d_ncorr, 0));
+                CK(cudaDeviceSynchronize());
+                std::vector<double2> rc((size_t)4 * n_spec * n_chan * n_elem);
+                std::vector<double> re((size_t)4 * n_spec * n_chan);
+                CK(cudaMemcpy(rc.data(), d_ncorr, rc.size() * sizeof(double2),
+                              cudaMemcpyDeviceToHost));
+                CK(cudaMemcpy(re.data(), d_nenergy, re.size() * sizeof(double),
+                              cudaMemcpyDeviceToHost));
+                double pmax = 0.0, same = 0.0, flip = 0.0, den = 0.0, emaxr = 0.0;
+                for (int b = 0; b < n_spec; ++b)
+                    for (int c = 0; c < n_chan; ++c) {
+                        auto at = [&](int j) {
+                            const size_t k = ((size_t)(4 * b + j) * n_chan + c) * n_elem;
+                            return std::complex<double>(rc[k].x, rc[k].y);
+                        };
+                        auto fused = [&](int j) {
+                            const size_t k = (size_t)(4 * b + j) * n_chan + c;
+                            return std::complex<double>(fc[k].x, fc[k].y);
+                        };
+                        for (int j = 1; j < 4; j += 2) { // P, P_HEAD: exact
+                            const size_t k = (size_t)(4 * b + j) * n_chan + c;
+                            pmax = std::max(pmax, std::abs(at(j) - fused(j))
+                                                      / std::max(1e-9, std::abs(fused(j))));
+                            pmax = std::max(pmax, std::fabs(re[k] - fe[k])
+                                                      / std::max(1e-9, std::fabs(fe[k])));
+                        }
+                        // E and L energy rows must equal the prompt's
+                        const size_t kp = (size_t)(4 * b + 1) * n_chan + c;
+                        for (int j = 0; j < 3; j += 2)
+                            emaxr = std::max(emaxr, std::fabs(re[kp + (j - 1) * n_chan] - re[kp])
+                                                        / std::max(1e-9, re[kp]));
+                        same += std::norm(at(0) - fused(0)) + std::norm(at(2) - fused(2));
+                        flip += std::norm(at(2) - fused(0)) + std::norm(at(0) - fused(2));
+                        den += std::norm(fused(0)) + std::norm(fused(2));
+                    }
+                const double r_same = std::sqrt(same / std::max(1e-30, den));
+                const double r_flip = std::sqrt(flip / std::max(1e-30, den));
+                const bool rot_ok =
+                    (pmax == 0.0) && (emaxr == 0.0) && (r_same < 0.25) && (r_same < 0.25 * r_flip);
+                printf("E/L from the rotated prompt vs fused E/L: P,P_HEAD %.3e (exact), E/L "
+                       "energy = P %.3e, E/L residual %.3e (opposite rotation %.3e) %s\n",
+                       pmax, emaxr, r_same, r_flip, rot_ok ? "OK" : "FAIL");
+                split_ok = split_ok && rot_ok;
+                CK(cudaFree(d_rot));
+            }
 
             // ---- Kernel split timing ----
             // enqueue_batch_nm launches launch_waveform (replica synthesis) then
@@ -412,15 +483,15 @@ int main(int argc, char** argv) {
                 CK(cudaEventCreate(&e1));
                 CK(cudaEventCreate(&e2));
                 // warm-up
-                CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_wave, d_nenergy,
-                                              0));
+                CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, nullptr, d_wave,
+                                              d_nenergy, 0));
                 CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs, n_spec,
                                                   n_chan, n_elem, n_elem, n_chan, p, d_ncorr, 0));
                 CK(cudaDeviceSynchronize());
                 CK(cudaEventRecord(e0, 0));
                 for (int it = 0; it < NIT; ++it)
-                    CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_wave,
-                                                  d_nenergy, 0));
+                    CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, nullptr,
+                                                  d_wave, d_nenergy, 0));
                 CK(cudaEventRecord(e1, 0));
                 for (int it = 0; it < NIT; ++it)
                     CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs,

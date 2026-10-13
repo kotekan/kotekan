@@ -55,11 +55,20 @@ static constexpr int WAVE_THREADS = 1024;
  *                stored at index @c mh, in time order: path B's pack maps the wave index to the
  *                N^2 correlator's time sample, so the hop axis must not be permuted
  *                (gnssRecord.hpp).
+ * @param rot     nullptr, or [n_job][n_chan] float radians: the E row is then the prompt
+ *                rotated by +rot and the L row by -rot per channel, from one chip walk instead
+ *                of three, and their energy rows equal the prompt's. A code offset of ds chips
+ *                is a phase rotation of the prompt on the channel centred at f_c,
+ *                exp(+i 2 pi (f_c - f_car) ds / chip_rate) for the prompt - ds trial, with
+ *                f_car the job's carrier (DespreadJob::wc), up to the offset's phase ramp
+ *                across one channel (0.06 rad at CHORD's 195 kHz channels and 0.5 chips of
+ *                10.23 Mcps). GnssCudaDespread::set_epl_from_prompt computes it;
+ *                cudaGnssDespreadTest pins the sign against the fused kernel's E/L.
  * @param energy  out [4*n_job][n_chan] double, rows E/P/L/P_HEAD; P_HEAD is the prompt's energy
  *                over the head hops only. Uncovered channels get zero replica and zero energy.
  */
 cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
-                            const DespreadParams& p, float2* wave, double* energy,
+                            const DespreadParams& p, const float* rot, float2* wave, double* energy,
                             cudaStream_t stream);
 
 /// Host-side float2 -> __half2 conversion of @c n Phi entries into @c dst (n * 4 bytes); void*
