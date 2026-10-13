@@ -214,7 +214,10 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
             # An empty sky cannot exclude anything, so without this the gate reads GREEN on a
             # stale or missing ephemeris (a GNSS_BRDC_DIR pin two days old did exactly that).
             bad += 1
-            print("%-16s FAIL  no active satellite in the sky: stale or empty ephemeris" % name)
+            print(
+                "%-16s FAIL  no active satellite in the sky: stale or empty ephemeris"
+                % name
+            )
             continue
         print(
             "%-16s slots %2d | capable+active %2d | rises >%.0f deg %2d%s"
@@ -330,9 +333,7 @@ def main():
     common = flags_from(man.get("common") or {})
     # THE STOCK HALF IS CHECKED, NOT TRUSTED: every config, written or checked, is diffed against
     # the stock render (stock_parity.py) and anything undeclared stops it. Rendered once here.
-    stock_ref = stock_parity.render_stock(
-        base if base.endswith(".j2") else stock_parity.TEMPLATE
-    )
+    stock_ref = stock_parity.render_stock(base)
 
     def parity(text):
         cfg = yaml.load(
