@@ -5,6 +5,12 @@ it is the frame the existing pieces slot into. Prior art it builds on: the fleet
 fleet-coherent combine (`gnss_broker/fleet.py`), the dead-reckon model, the Receiver's
 shared clock/bias store (task #27 M3), and the slewed seed refresh (#30).
 
+**Status 2026-10-13: live.** The joint solve is `python/scripts/gnss/gnss_broker/state_filter.py`
+and every chain consumes it through `joint-consume` (`config/gnss_chains_chord.yaml`). It
+carries clk, clk_rate, f_carrier and b_sat[i]; `tau_band` is not built (only gps_l5 feeds code
+measurements, so there is no second band to reference). P3 and P4 (§4) are not started. The
+on-sky shadow and arming record that was §3b-3d is at `be7d46e8e:docs/CHORD_JOINT_TRACKING.md`.
+
 ## 1. Why
 
 The current loop is per-satellite, per-axis heuristics — EMAs, quality gates, trims — around
@@ -61,7 +67,7 @@ before summing — the export is a host-side accumulation there, no kernel chang
 SUFFICIENT STATISTICS only: per (PRN, channel) complex sums post-element-combine,
 per emit window ≈ n_prn·n_chan·16 B ≈ 4 kB/instance — 12 orders under KV's ~30 Gbps
 ship-everything figure. Per-element data never crosses the network at any phase of this
-plan; element calibration stays node-local (§4) and ships solved gains.
+plan; element calibration stays node-local (P4) and ships solved gains.
 
 ## 3. The filter (replaces the EMA collection)
 
@@ -78,7 +84,7 @@ Weighted least squares / Kalman over x, cycle cadence, in the broker:
 
 ### 3a. REVISION 2026-08-09: b_sat is a first-class state, and the split is BANDWIDTH
 
-What forced the revision (docs/gnss_gpu_search.md §11.21–11.22, task #33): the BRDC model
+What forced the revision (be7d46e8e:docs/gnss_gpu_search.md §11.21–11.22, task #33): the BRDC model
 is per-satellite wrong by **±3–7 chips** on fresh detections — measured against the search
 on GPS, quasi-static, drifting monotonically through a pass, cause still open (candidate:
 per-direction instrumental delay; back-burnered until other bands make it attackable).
@@ -102,7 +108,8 @@ its existence but the degrees of freedom it eats, and that scales with how FAST 
 over an observation window T, a state with correlation time τ_c consumes ~T/τ_c degrees of
 freedom. So N per-satellite loops running at seconds are expensive, while N per-satellite
 biases drifting over minutes-to-hours are nearly free — the same data buys far more
-constraint per parameter. Measured here: b_sat moves at ≤0.05 chips/min (§3b), against the
+constraint per parameter. Measured on sky (2026-08-09, the P2a shadow): b_sat moves at
+≤0.05 chips/min, against the
 per-sat DLL trim it replaces, which swung ±1.1 chips on a ~600 s cycle. Slower state,
 fewer fits, more signal per degree of freedom.
 
@@ -136,206 +143,24 @@ strictly better than per-sat biases and folds into P4's calibration work.
 
 ## 4. Phases
 
-  P1  Per-channel spectrum export from the path-B assembler + fleet-level slope fit in the
-      broker. MEASUREMENT ONLY first (the #30 rule: measure the statistic before the loop):
-      log τ per sat alongside the disc; verify sign/scale offline against e2e's injected
-      truth and on sky against (E−L)/(E+L); characterise on-signal vs on-noise and
-      stability. No seed is touched → all transcript digests stay green.
-  P2  The filter: x above, seeds steered from state, slope-fit τ as the code measurement.
-      The per-sat b_sat absorbs what the #30 slew institutionalizes today (holding the seed
-      at a model that is biased by iono). Gate: transcripts + e2e closure + on-sky A/B
-      against the #30 baseline numbers (reseeds/30 min, deep stability).
-      REVISED 2026-08-09 (§3a): ONE joint solve — clk, clk_rate and b_sat[i] estimated
-      together from the fleet τ, separated by process noise, never staged. b_sat's range
-      is sized for the MEASURED model error (chips), not for iono (0.1–0.3), and is seeded
-      at birth from the first strong τ rather than walked in at loop gain. Success
-      criterion, and the reason this kills the limit cycle rather than damping it: the slew
-      and the trim acquire ONE target — `model + clk + clk_rate·Δt + b_sat` — so the trim's
-      residual collapses to noise. Steps:
-        P2a  Joint solve in SHADOW: logged beside the five estimators it replaces (l−a EMA,
-             clock EMA, per-sat cp-fits, plus the trim's and slew's implicit states),
-             consumed by nothing. Compare on sky.
-        P2b  Switch consumers ONE PER COMMIT: l−a EMA → clk_rate, clock EMA → clk, slew
-             target → state. Each with its own transcript + A/B.
-        P2c  The weak-sat test above, deliberately: mask a strong sat's measurements and
-             confirm it coasts on the state rather than drifting.
-  P3  Retire E/L lanes (keep P + P_HEAD): path B goes 4 → 2 lanes/PRN — DOUBLE the PRN
-      budget per chain (E5a is at 128/128) or half the synthesis cost, the scaling
-      limiter. Do this BEFORE #31's data channels and new bands.
-  P4  Element-domain calibration TRANSFER, node-local via path B's per-element
-      visibilities: instrumental per-feed gains (direction-independent) solved from any
-      strong sat — bootstraps in seconds — × geometric phase from ephemeris + array
-      geometry × per-dish beam amplitude. Every sat gets full array gain including ones
-      too weak to self-cal. Folds into #21 (GPUs → nodes → elements) and #26 (path B
-      primary), not new scope.
+  P1  Per-channel spectrum export from the path-B assembler + the fleet-level slope fit in
+      the broker (§2), measurement only first. Built (`--spectrum-endpoints`).
+  P2  The filter (§3, §3a): ONE joint solve of clk, clk_rate and b_sat[i], never staged;
+      consumers switched one per commit (`joint-consume`). Built and live.
+  P3  Retire the E/L lanes (keep P + P_HEAD): path B goes 4 -> 2 lanes per PRN, doubling the
+      PRN budget per chain or halving synthesis. Not started.
+  P4  Element-domain calibration TRANSFER, node-local via path B's per-element visibilities:
+      instrumental per-feed gains solved from any strong sat x geometric phase from
+      ephemeris and array geometry x per-dish beam amplitude. Not started.
 
 ## 5. Non-goals and guards
 
   * No new per-sat loops, and no further investment in the #30 slew beyond its P2
     replacement. b_sat is NOT an exception: it is a slow bounded nuisance state inside the
     joint solve, never a per-sat loop with its own bandwidth (§3a).
-  * The airspy prototype keeps its per-sat architecture untouched.
   * Every phase gates on the broker transcript machinery; P1 by construction changes no
     POST. The known gate caveat: the E5a digest also moves when the sky's ephemeris does
     (task #29) — pin before relying on it for P2.
   * fleet_coherent's self-reference lessons apply verbatim to the slope fit: the fold's
     floor must be MEASURED on a channel-shuffled null each cycle, never assumed, and any
     derotation must be leave-one-out. (See the docstrings in fleet.py; they are the spec.)
-
-### 3b. P2a SHADOW RESULT ON SKY (2026-08-09, 25 min, GPS L5, 7 sats)
-
-The go/no-go for the whole revision was: **do the biases hold steady while the clock stays
-smooth?** They do.
-
-    CLOCK  mean +149.51 chips, sd 0.31 over 25 min          (median clock, same data: 152.7)
-    RATE   mean +0.00038 chips/s, sd 0.00102 = 1e-4 ppm     (l-a EMA scatter: 0.007 ppm)
-    BIASES sd about a linear trend, per sat:
-           G11 0.049   G26 0.180   G21 0.182   G18 0.184   G20 0.184   G23 0.200   G25 0.202
-           drift rates -0.047 .. +0.025 chips/min; spans 0.3-1.9 chips
-    3943 updates, 0 innovation rejections.
-
-Reading it:
-
-  * **The +-3-7 chip model error decomposes cleanly** into one smooth clock plus per-sat
-    biases stable to ~0.2 chips around a drift of at most 0.05 chips/min. A bias needs 20
-    minutes to move one chip; the DLL pull-in is +-1 chip and the peak is ~0.5 wide. So it
-    IS a nuisance state, exactly as section 3a claims, and the fast dynamics stay shared.
-  * **clk_rate is 70x quieter than the l-a EMA it replaces**, on sky (the offline
-    prediction was 200x against synthetic noise; 70x against the real thing). This is the
-    single clearest argument for P2b's first consumer switch.
-  * **The joint clock sits ~3 chips below the median clock, and that is arithmetic, not
-    disagreement**: the biases are skewed (-5.4 .. +4.1), so their median (+2.5) is not
-    their mean (0 by gauge). Median-clock = joint-clock + median(b) = 149.5 + 2.5 = 152.0
-    vs the 152.7 logged. The old clock was never "the clock" -- it was the clock plus
-    whichever satellite happened to sit in the middle of the bias distribution, which is
-    why it moved whenever the constellation changed.
-  * **Zero rejections in 3943 updates**: the innovation gate is not doing hidden work, so
-    these numbers are the raw behaviour.
-
-KNOWN CAVEAT, carry into P2b: the filter is OVERCONFIDENT -- reported sigma_clk 0.038
-against an actual scatter of 0.31, a factor of 8. Either q_clk is too tight or the 0.3-chip
-measurement sigma is optimistic (per-sat errors are almost certainly correlated cycle to
-cycle rather than white). Harmless while nothing consumes the covariance; it must be fixed
-BEFORE any consumer gates on sigma, or the gate will be 8x too tight.
-
-### 3c. tau_band LANDED, AND IT IS PART OF P2 (2026-08-09/10)
-
-STATUS 2026-10-13: the tau_band rows are gone from `state_filter.py`. Only gps_l5 feeds code
-measurements into the joint state (one band, which becomes the reference), so no tau row could
-be created once the model-primary feed was retired. The measurement below is the record of what
-the second band's delay was.
-
-⚠️ NAMING CORRECTION: two commits originally labelled the tau_band work "P3" (the subjects now
-read "task #33 P2:"; they were reworded in place on 2026-08-10, message-only, trees unchanged).
-`tau_band` has been in the state vector `x` since section 1, so implementing it completes a
-piece of **P2's filter**. **P3 is retiring the E/L lanes** and is untouched. Recorded rather
-than quietly fixed because a phase label is how this plan is navigated, and a doc that says P3
-is done when P3 has not started is worse than no doc.
-
-WHAT IS DONE. tau_band is a declared state with the reference band pinned at 0 as the gauge
-(without that pin clk and the taus are exactly degenerate). One receiver-wide joint solve
-replaces the per-band states -- two independent states cannot estimate the offset between them,
-which is why the second band needed hand-wired cross-band bootstraps to track at all (#34). The
-model-primary measurement (`dr_seed_phys + dll_trim - cp_predicted`) now feeds it, so all five
-chains contribute where only GPS did.
-
-FIRST RESULT ON SKY, 3.3 h soak: **tau(1207.14 vs 1176.45) = -0.0106 chips = -1.03 ns**, sd
-0.0055 over the 2.1 h after convergence, no drift, from ~20 dual-band satellites. So the
-second-band group delay is ~1 ns and STATIC at this precision -- which retroactively explains
-why borrowing the phase across bands works: the bootstrap was accurate to a nanosecond.
-
-⚠️ tau_observability() counts the DUAL-BAND satellites and the shadow line prints "(dual N)"
-beside every tau. tau separates from b_sat ONLY through satellites seen in both bands, so a tau
-printed next to "dual 0" is an artefact of the priors. That is not hypothetical: disjoint
-E5a/E5b PRN lists put the instrument in exactly that state for a day (#34).
-
-TWO MEASURED CAVEATS, both to carry into P2b:
-  * The covariance is ~2x overconfident on tau (reported 0.0027 against a measured 0.0055).
-    Smaller than the sigma_clk caveat in 3b, same direction, same cause.
-  * Do NOT fit a trend across the filter's convergence. The first hour is a settling exponential
-    from the 20-chip prior; a least-squares line through it reported "-0.124 chips/hour,
-    DRIFTING" when the converged answer is static. The lag-1 autocorrelation is 0.999, so ~1000
-    readings are worth about ONE independent sample -- window the series, never fit it whole.
-
-STILL OPEN IN P2: everything is SHADOW, consumed by nothing. P2b (switch consumers one per
-commit: l-a EMA -> clk_rate, clock EMA -> clk, slew target -> state) and P2c (the weak-sat
-coast test) are the remaining work, and P2b is where the value and the risk both are -- the
-first attempt froze the trackers and was reverted (11.23). The two cross-band bootstraps wired
-on 2026-08-09 are SCAFFOLDING that P2b should retire: once the joint solve owns the clock and
-tau_band, a cold band needs no borrowed phase at all.
-
-### 3d. f_carrier IS THE MISSING STATE, AND IT IS WORTH ~5.5 dB ON EVERY GPS SATELLITE (2026-08-10)
-
-`f_carrier` has been the third element of `x` since section 1. It has never been implemented:
-`state_filter.py` carries `[clk, clk_rate] + tau_band[] + b_sat[]` and the string `f_carrier`
-appears in it zero times. P2 built the CODE-PHASE half of the architecture and left the
-CARRIER half on paper. This section is the measurement that says the carrier half is not a
-refinement.
-
-**MEASURED, 2026-08-10 21:35-22:05, by polling all 12 combiners on all five chains directly
-and comparing two statistics on the SAME instances at the SAME emits:**
-
-| chain | raw `p_pow` sigma1 | `deep_snr` sigma1 | deep-stage inflation | seed dop jitter | `coh_frac` |
-|---|---|---|---|---|---|
-| **gps_l5**  | **2.78 dB** | **8.33 dB** | **+5.55 dB** | **0.478 Hz** | **0.846** |
-| gal_e5a | 0.94 | 1.33 | +0.40 | 0.002 | 0.942 |
-| bds_b2a | 0.64 | 1.41 | +0.77 | 0.005 | 0.931 |
-| gal_e5b | 0.54 | 0.90 | +0.36 | 0.003 | 0.966 |
-| bds_b2b | 0.43 | 0.90 | +0.47 | 0.006 | 0.913 |
-
-Coherent integration over ~100 records should REDUCE fractional scatter. On GPS it makes it
-3x worse. The arithmetic closes: the deep fold is T = 1.0486 s, so a commanded-frequency error
-of 0.478 Hz is `dF*T = 0.50 cycles` of phase ramp across the fold, and the coherence loss
-`|sinc(dF*T)|` is 0.64 there -- swinging between ~1 and ~0 as dF varies emit to emit. That is a
-multiplicative, several-dB, per-emit fluctuation present on ONE chain. `coh_frac` says the same
-thing independently: 0.846 on GPS against 0.91-0.97 everywhere else.
-
-**THE CONTROL GROUP HAS BEEN RUNNING IN PRODUCTION ALL ALONG.** E5a/E5b/B2a/B2b are already
-exactly "BRDC + fitted bootstrap terms" -- pure model, adopted clock, no per-satellite measured
-Doppler anywhere -- because they have no detectors by design. They come in 100x smoother.
-gps_l5 is the single chain that departs from the architecture (it is the only one with
-`detectors:`), and it is the only one with the problem. The four-chain A/B for KV's proposal
-already exists; we had just never read it that way.
-
-**WHY THIS IS NOT ONLY "ADD A STATE".** `f_carrier` as declared is ONE receiver-wide frequency
-offset, which is the right shape for the LO. GPS's jitter is per-satellite, injected by the
-search -> clock-solve -> seed path. So the work is two-part: (a) cut GPS's carrier seed over to
-`model + clk_rate` the way the other four chains already work, and (b) let `f_carrier` absorb
-the genuinely common part. (a) is most of the win and does not need the filter.
-
-⚠️ **DO NOT REACH FOR `carrier_hz_resid` AS THE MEASUREMENT.** It is documented in the broker's
-own flag help as SIGNAL-FREE at CHORD SNR (0.519 Hz on signal, 0.492 on noise) -- it is noise,
-and a filter fed by it would estimate nothing while looking healthy.
-
-**CORRECTION 2026-08-10, and it changes the plan: `deep_rate_hz` IS ALREADY CHARACTERISED AND
-ALREADY PLUMBED.** `--carrier-source` has defaulted to `rate` since 2026-08-04, and its flag
-help records the #30 characterisation already done: peak/median **17.9-22.0 on signal vs
-2.8-6.1 on noise**, precision **pinned to ~0.2 Hz by split-half on strong sats**, with a hard
-quality gate `--carrier-rate-min-q 10.0`. So the measurement for `f_carrier` exists, is
-validated on-signal vs on-noise, is bounded, and is gated. It does NOT need a new
-characterisation pass.
-
-What is missing is not the measurement but the CONSUMER: `carrier-gain: 0.0` in
-`gnss_chains_chord.yaml` turns the shared carrier loop off entirely. So a validated ~0.2 Hz
-carrier-rate measurement is being computed every emit on every chain and thrown away, while
-the replica's carrier phase runs open-loop from the seed. THAT is the more likely first lever
-than anything in the filter, and it is a config change.
-
-⚠️ Before touching it: 0.478 Hz of GPS seed jitter is ~2.4x the 0.2 Hz the rate measurement
-can resolve, so the loop can see it. But a 10 s seed re-pin once cut deep_snr 221 -> 17
-(continuity beat freshness), so bring the gain up from zero deliberately and A/B it, rather
-than assuming a disabled loop was disabled by accident -- find out WHY it is 0.0 first.
-
-**STILL OPEN, and not to be papered over:**
-  * GPS's raw `p_pow` is ALREADY 2.78 dB against 0.43-0.94 elsewhere -- noisier BEFORE the
-    fold. The phase-ramp story explains the +5.55 dB inflation, not that input excess.
-  * The proximate source of the ~0.29 Hz GPS-wide jitter floor is NOT localised. Model-trust
-    demotion is not it: four of five tracked sats sit at 0.29-0.30 Hz on 1-5 flips (PRN 26 is
-    0.777 on 23, so demotion adds on top of the floor rather than causing it).
-  * `deep_rate_q` is systematically LOWER on GPS (7.1-18.0) than on B2a (19.4-34.1). A noisier
-    argmax over the rate search's up-to-4096 bins is a second candidate mechanism for a
-    per-emit varying residual, independent of the seed. Discriminate before building.
-  * `carrier-gain: 0.0` in `gnss_chains_chord.yaml` -- the carrier loop is open, so nothing
-    absorbs any of this downstream. Note the standing result that a 10 s seed re-pin cut
-    deep_snr 221 -> 17 and was reverted: seed CONTINUITY beat freshness. The fix is to make
-    GPS's seed as smooth as the model-primary chains', not to chase the sky faster.

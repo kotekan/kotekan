@@ -597,8 +597,8 @@ chains:
     # fires and their Doppler already comes straight from BRDC every cycle. That is exactly
     # why those four sit at 0.002-0.006 Hz of commanded-Doppler jitter while gps_l5 carries
     # 0.478 Hz -- and why gps_l5's deep fold inflates scatter +5.55 dB against their
-    # +0.36..+0.77 (docs/CHORD_JOINT_TRACKING.md 3d). This makes GPS's Doppler behave like
-    # theirs. Revert by deleting this line.
+    # +0.36..+0.77 (be7d46e8e:docs/CHORD_JOINT_TRACKING.md 3d). This makes GPS's Doppler
+    # behave like theirs. Revert by deleting this line.
         dr-doppler-ignores-integrity: true
     # P2b CONSUMER 1 of 3 (task #33), enabled 2026-08-11 00:1x after the shadow
     # re-qualified post-divergence-fix: 36 min, clk 150.8 sigma ~0.07 stable, rate

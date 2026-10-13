@@ -1942,8 +1942,8 @@ def build_parser(description):
         "chains, and over the 1.0486 s deep fold 0.478 Hz is 0.50 cycles of "
         "phase ramp: |sinc| = 0.64, swinging emit to emit. Its deep fold "
         "inflates sample-to-sample scatter by +5.55 dB where the others "
-        "manage +0.36..+0.77 (docs CHORD_JOINT_TRACKING.md 3d). NOTE this "
-        "addresses the DEMOTION-linked part; a ~0.29 Hz GPS-wide floor "
+        "manage +0.36..+0.77 (be7d46e8e:docs/CHORD_JOINT_TRACKING.md 3d). "
+        "NOTE this addresses the DEMOTION-linked part; a ~0.29 Hz GPS-wide floor "
         "remains and is NOT explained by trust flips.",
     )
     ap.add_argument(
