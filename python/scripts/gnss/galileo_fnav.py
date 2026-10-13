@@ -26,8 +26,6 @@ Refs: Galileo OS SIS ICD (F/NAV page layout, FEC, interleaver, sync). gps_cnav.p
 galileo_inav.py are the structural templates.
 """
 
-import math
-
 import numpy as np
 
 # reuse the SHARED FEC + CRC from the I/NAV codec (same convolutional code + CRC-24Q)
@@ -38,9 +36,8 @@ from galileo_inav import (
     _uint,
     _field,
     GAL_PI,
-    GAL_MU,
-    GAL_OMEGA_E,
     _P,
+    sv_position_inav,
 )
 
 SYM_S = 0.020  # E5a-I symbol = 20 ms (50 sps)
@@ -123,23 +120,6 @@ def build_page(page_type, payload=None):
     return c
 
 
-def find_pages(symbols):
-    """Scan a soft stream for sync-aligned pages (both polarities). Yields
-    (start_index, polarity, content_bits) for each with valid sync."""
-    s = np.asarray(symbols, dtype=float)
-    n = len(s)
-    i = 0
-    while i + PAGE_SYMS <= n:
-        for pol in (1.0, -1.0):
-            hard = (pol * s[i : i + N_SYNC] < 0).astype(np.int8)
-            if np.array_equal(hard, np.array(SYNC, dtype=np.int8)):
-                bits, ok = decode_page(pol * s[i : i + PAGE_SYMS], want_sync=True)
-                if ok and bits is not None:
-                    yield i, int(pol), bits
-                    break
-        i += 1
-
-
 # --------------------------------------------------------------------------
 # F/NAV ephemeris: page types 1-4 -> Keplerian set (SI), then ECEF
 # --------------------------------------------------------------------------
@@ -199,36 +179,9 @@ def parse_fnav_ephemeris(pages_by_type):
     return eph
 
 
-def sv_position_fnav(eph, t):
-    """ECEF (x,y,z) m -- identical Kepler math to I/NAV (sv_position_inav). Galileo transmits
-    sqrtA directly; F/NAV and I/NAV describe the same orbit, only the framing differs."""
-    A = eph["sqrtA"] ** 2
-    tk = t - eph["t0e"]
-    if tk > 302400:
-        tk -= 604800
-    elif tk < -302400:
-        tk += 604800
-    n0 = math.sqrt(GAL_MU / A ** 3)
-    n = n0 + eph["dn"]
-    M = eph["M0"] + n * tk
-    e = eph["e"]
-    E = M
-    for _ in range(20):
-        E = M + e * math.sin(E)
-    v = math.atan2(math.sqrt(1 - e * e) * math.sin(E), math.cos(E) - e)
-    phi = v + eph["omega"]
-    s2, c2 = math.sin(2 * phi), math.cos(2 * phi)
-    u = phi + eph["Cus"] * s2 + eph["Cuc"] * c2
-    r = A * (1 - e * math.cos(E)) + eph["Crs"] * s2 + eph["Crc"] * c2
-    i = eph["i0"] + eph["iDot"] * tk + eph["Cis"] * s2 + eph["Cic"] * c2
-    om = (
-        eph["OMEGA0"] + (eph["OMEGA_dot"] - GAL_OMEGA_E) * tk - GAL_OMEGA_E * eph["t0e"]
-    )
-    xp, yp = r * math.cos(u), r * math.sin(u)
-    x = xp * math.cos(om) - yp * math.cos(i) * math.sin(om)
-    y = xp * math.sin(om) + yp * math.cos(i) * math.cos(om)
-    z = yp * math.sin(i)
-    return x, y, z
+# ECEF (x,y,z) m -- the I/NAV Kepler propagation: Galileo transmits sqrtA directly, and F/NAV
+# and I/NAV describe the same orbit with the same eph keys; only the framing differs.
+sv_position_fnav = sv_position_inav
 
 
 # --------------------------------------------------------------------------
@@ -273,17 +226,6 @@ if __name__ == "__main__":
         % ("OK" if p2 == 0 else "FAIL %d" % p2)
     )
 
-    # 3. sync + polarity search finds an embedded page, either polarity
-    p3 = 0
-    for pol in (1.0, -1.0):
-        content = build_page(3, rng.integers(0, 2, 208))
-        soft = pol * np.where(encode_page(content) == 0, 1.0, -1.0)
-        stream = np.concatenate([rng.normal(0, 1, 41), soft, rng.normal(0, 1, 33)])
-        found = [(i, b) for i, _, b in find_pages(stream)]
-        if not any(np.array_equal(b, content) and i == 41 for i, b in found):
-            p3 += 1
-    print("3. sync+polarity search: %s" % ("OK" if p3 == 0 else "FAIL %d/2" % p3))
-
     # 4. geometry + ephemeris field-table self-consistency (no overlaps/overruns, pack/unpack)
     ok4 = (
         PAGE_SYMS == 500 and N_DATA_SYM == 488 and PAGE_BITS == 238 and CRC_SPAN == 214
@@ -325,7 +267,7 @@ if __name__ == "__main__":
         % ("OK" if p4 == 0 else "FAIL %d" % p4)
     )
 
-    bad = fails or p2 or p3 or p4
+    bad = fails or p2 or p4
     print(
         "\n%s"
         % (

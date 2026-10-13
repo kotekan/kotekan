@@ -9,13 +9,17 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "python", "scripts", "gnss")
 )
 import gps_cnav as nc  # noqa: E402
+from galileo_inav import (
+    conv_encode,
+    viterbi_decode,
+)  # noqa: E402  (the shared CNAV FEC)
 from cnav_predictor import _crc_msgs  # noqa: E402  (the live CRC-guided message scan)
 
 
 def _soft(bits, noise=0.0, seed=0):
     """Convolutionally encode bits and map to bipolar soft symbols (+ noise)."""
     rng = np.random.default_rng(seed)
-    s = (1.0 - 2.0 * nc.conv_encode(bits)).astype(float)
+    s = (1.0 - 2.0 * conv_encode(bits)).astype(float)
     if noise:
         s = s + rng.standard_normal(s.shape) * noise
     return s
@@ -25,17 +29,17 @@ def _soft(bits, noise=0.0, seed=0):
 def test_viterbi_roundtrip_exact():
     rng = np.random.default_rng(0)
     bits = list(rng.integers(0, 2, 200))
-    dec = nc.viterbi_decode(1.0 - 2.0 * nc.conv_encode(bits), known_start=True)
+    dec = viterbi_decode(1.0 - 2.0 * conv_encode(bits), known_start=True)
     assert list(dec[:200]) == bits
 
 
 def test_viterbi_corrects_symbol_errors():
     rng = np.random.default_rng(1)
     bits = list(rng.integers(0, 2, 300))
-    bip = (1.0 - 2.0 * nc.conv_encode(bits)).astype(float)
+    bip = (1.0 - 2.0 * conv_encode(bits)).astype(float)
     for idx in (10, 100, 250, 400, 550):  # isolated symbol flips, well separated
         bip[idx] = -bip[idx]
-    dec = nc.viterbi_decode(bip, known_start=True)
+    dec = viterbi_decode(bip, known_start=True)
     assert list(dec[:300]) == bits  # FEC corrects them all
 
 
@@ -57,7 +61,7 @@ def test_cnav_message_roundtrip():
         for k, t in enumerate((10, 11, 30))
     ]
     bits = sum(msgs_in, [])  # concat -> 900 bits
-    got = _crc_msgs(nc.viterbi_decode(_soft(bits, noise=0.4, seed=3), known_start=True))
+    got = _crc_msgs(viterbi_decode(_soft(bits, noise=0.4, seed=3), known_start=True))
     assert len(got) == 3
     for g, t, k in zip(got, (10, 11, 30), range(3)):
         assert g["prn"] == 5 and g["type"] == t and g["tow"] == 100000 + k
@@ -109,9 +113,7 @@ _EPH = {
 
 def test_cnav_ephemeris_roundtrip_and_position():
     bits = _build_eph_msg(5, 10, 100000, _EPH) + _build_eph_msg(5, 11, 100001, _EPH)
-    msgs = _crc_msgs(
-        nc.viterbi_decode(_soft(bits, noise=0.3, seed=5), known_start=True)
-    )
+    msgs = _crc_msgs(viterbi_decode(_soft(bits, noise=0.3, seed=5), known_start=True))
     assert [m["type"] for m in msgs] == [10, 11]
     eph = nc.parse_cnav_ephemeris(msgs[0]["bits"], msgs[1]["bits"])
     assert abs(eph["toe"] - eph["toe2"]) < 1e-6  # the CnavPredictor.ephemeris() gate
@@ -142,6 +144,6 @@ def test_cnav_recovers_without_known_start():
     ]
     bits = sum(msgs_in, [])
     soft = _soft(bits, noise=0.3, seed=4)[40:]  # start 20 bits into the first message
-    got = _crc_msgs(nc.viterbi_decode(soft, known_start=False))
+    got = _crc_msgs(viterbi_decode(soft, known_start=False))
     assert len(got) >= 2  # later messages recovered after convergence
     assert all(g["prn"] == 7 and g["type"] in (30, 31, 32) for g in got)

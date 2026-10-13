@@ -6,7 +6,7 @@ different problem -- and because the LIVE symbol stream taught us two things the
 gate could not (both diagnosed on-air 2026-07-28, see the header lessons below):
 
     combiner get_status "nav_obs"  ->  per-emit polarity islands  ->  CRC-guided decode  ->  msgs
-                                                            (gps_cnav.py does the FEC/CRC work)
+                              (gps_cnav.py frames the messages; galileo_inav.py holds the FEC/CRC)
 
 WHY IT IS NOT A COPY OF THE LNAV PREDICTOR:
 
@@ -21,7 +21,7 @@ WHY IT IS NOT A COPY OF THE LNAV PREDICTOR:
   * ★ TWO LIVE-ONLY FAULTS the offline gate (synthetic, module-consistent symbols) could never
     show, both fixed here:
      1. G2-INVERSION CONVENTION. The on-air symbols are G2-*not*-inverted relative to
-        gps_cnav's encoder (measured: a single strong emit round-trips through Viterbi at 0.86
+        the module encoder (measured: a single strong emit round-trips through Viterbi at 0.86
         agreement raw but 0.99 with every-other-symbol flipped). The fix is to flip the 2nd
         symbol of each phase-aligned pair (`x[1::2]`) before Viterbi -- searched as g2 in {0,1}
         and locked once a CRC passes (it is a constant of the link).
@@ -54,6 +54,10 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gps_cnav as C  # noqa: E402
+from galileo_inav import (
+    conv_encode,
+    viterbi_decode,
+)  # noqa: E402  (the shared CNAV FEC)
 
 SYM_S = 0.020  # L2C-CM record = 20 ms = one CNAV symbol (50 sps)
 MSG_SYMS = C.MSG_BITS * 2  # 600 symbols per 300-bit message (12 s)
@@ -116,7 +120,7 @@ def _crc_msgs(bits):
 
 def _g2(x, on):
     """Apply the G2-inversion convention toggle to a phase-aligned symbol array: flip the 2nd
-    symbol of every pair. `on` False decodes gps_cnav's native (G2-inverted) convention."""
+    symbol of every pair. `on` False decodes the module's native (G2-inverted) convention."""
     if not on:
         return x
     y = x.copy()
@@ -390,7 +394,7 @@ class CnavPredictor:
                     if budget <= 0:
                         return
                     budget -= 1
-                    msgs = _crc_msgs(C.viterbi_decode(_g2(r[ph:], g2)))
+                    msgs = _crc_msgs(viterbi_decode(_g2(r[ph:], g2), known_start=False))
                     if not msgs:
                         continue
                     st.phase = ph
@@ -444,7 +448,7 @@ class CnavPredictor:
         for start in sorted(st.decoded):
             if start + MSG_SYMS <= slot_now or start >= slot_now + n:
                 continue
-            sym = C.conv_encode(
+            sym = conv_encode(
                 st.decoded[start], flush=False
             )  # module (G2-inverted) frame
             pm = np.where(sym == 1, -1, 1).astype(np.int8)
@@ -510,7 +514,7 @@ def _selftest():
             else rng.randint(0, 2, C.DATA_BITS - 38).astype(np.int8)
         )
         msg_bits += C.build_cnav_message(prn, mt, tow0 + i, data=payload)
-    sym = C.conv_encode(msg_bits, flush=True)
+    sym = conv_encode(msg_bits, flush=True)
     pm = np.where(sym == 1, -1, 1).astype(
         np.int8
     )  # transmitted +-1 (module convention)
