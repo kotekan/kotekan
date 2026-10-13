@@ -113,15 +113,6 @@ gnss_component() {
         # The running copy was hand-patched before those flags existed (its header says how);
         # it differs from this only in which of the six cores each stage gets and in
         # gps_search's debug log level.
-        # ⚠️ GNSS_SEARCH_PROFILE: agg_up.sh set this unconditionally, so the cf06 instance ran
-        # with the pass/consumer profile ON for its whole life -- 113,997 [consumer] lines in its
-        # last log. The first systemd unit dropped it silently (the #134 shape again, found while
-        # consolidating). It is OFF here because it is a diagnostic that costs log volume, and
-        # that is now a DECISION rather than an accident. KV, 2026-09-17: it dates to a period
-        # when the search had lagged badly and was being sped up, and was simply never turned
-        # off -- so OFF is the correct steady state. Set GNSS_SEARCH_PROFILE=1 to bring it back
-        # for an investigation; agg_up.sh still does.
-        [ -n "${GNSS_SEARCH_PROFILE:-}" ] && export GNSS_SEARCH_PROFILE
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_AGG_CFG:-$GNSS_K/config/generated/chord_gnss_agg6_cuda.yaml}"
                    --bind-address "0.0.0.0:${GNSS_AGG_REST:-12050}")

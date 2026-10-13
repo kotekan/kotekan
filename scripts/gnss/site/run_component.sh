@@ -27,7 +27,7 @@ if [ "$PRINT" = 1 ]; then
     for a in "${GNSS_EXEC[@]}"; do printf 'argv\t%s\n' "$a"; done
     # Every variable the definition may export. A name missing from this list is a variable
     # stack_contract_gate.sh cannot check, which is how an environment drifts unnoticed.
-    for v in GNSS_PY GNSS_CHAIN GNSS_SEARCH_PROFILE \
+    for v in GNSS_PY GNSS_CHAIN \
              OPENBLAS_NUM_THREADS OMP_NUM_THREADS MKL_NUM_THREADS NUMEXPR_NUM_THREADS; do
         eval "val=\${$v:-}"; [ -n "$val" ] && printf 'env\t%s=%s\n' "$v" "$val"
     done
