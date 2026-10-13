@@ -20,17 +20,13 @@
 # simply stops with the fleet looking perfectly healthy. Until a boot unit exists, a gap that
 # starts at 03:0x is this, not the instrument.
 #
-# Three hard-won rules: pick the binary by host (NFS holds two build trees), poll for the
+# Three hard-won rules: run the DPDK-free binary (NFS holds two build trees), poll for the
 # port instead of sleeping, and check the log for a FatalError rather than trusting that a
 # process exists.
 set -u
 K=/home/kvand/gnss/kotekan
 H=$(hostname -s)
-case "$H" in
-cx*) DEF=$K/build/kotekan/kotekan ;;        # node host: the DPDK build
-*)   DEF=$K/build_nodpdk/kotekan/kotekan ;; # cf06 and anything else: DPDK-free
-esac
-BIN=${GNSS_BIN:-$DEF}
+BIN=${GNSS_BIN:-$K/build_nodpdk/kotekan/kotekan}   # cf06 has no DPDK
 if [ ! -x "$BIN" ]; then
     echo "FAILED: no kotekan binary at $BIN (host $H). Build it, or set GNSS_BIN." >&2
     exit 1

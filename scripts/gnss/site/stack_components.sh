@@ -38,12 +38,9 @@ GNSS_ROOT=${GNSS_ROOT:-/home/kvand/gnss}
 GNSS_VENV=${GNSS_VENV:-$GNSS_ROOT/venv}            # 3.12, everything except the broker
 GNSS_VENV_FT=${GNSS_VENV_FT:-$GNSS_ROOT/venv-ft}   # 3.14t free-threaded, THE BROKER ONLY
 
-# The kotekan binary. cx* nodes run the DPDK build; everywhere else the DPDK-free one.
-case "$(hostname -s)" in
-cx*) GNSS_BIN_DEFAULT=$GNSS_K/build/kotekan/kotekan ;;
-*)   GNSS_BIN_DEFAULT=$GNSS_K/build_nodpdk/kotekan/kotekan ;;
-esac
-GNSS_BIN=${GNSS_BIN:-$GNSS_BIN_DEFAULT}
+# The kotekan binary: the DPDK-free build. The stack runs on the gnss VM, never on a cx node
+# (the nodes run the DPDK build through node_up.sh).
+GNSS_BIN=${GNSS_BIN:-$GNSS_K/build_nodpdk/kotekan/kotekan}
 
 GNSS_BROKER_URL=${GNSS_BROKER_URL:-http://127.0.0.1:12060}
 GNSS_FRAME0_URL=${GNSS_FRAME0_URL:-http://cx43:12048}
@@ -115,7 +112,7 @@ gnss_component() {
         # gps_search's debug log level.
         GNSS_EXEC=("$GNSS_BIN" --config
                    "${GNSS_AGG_CFG:-$GNSS_K/config/generated/chord_gnss_agg6_cuda.yaml}"
-                   --bind-address "0.0.0.0:${GNSS_AGG_REST:-12050}")
+                   --bind-address "0.0.0.0:12050")
         ;;
 
     viewer)
