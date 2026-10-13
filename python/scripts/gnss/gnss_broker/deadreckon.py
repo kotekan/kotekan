@@ -42,6 +42,7 @@ from gnss_broker.fits import (
     split_erratic_offsets,
 )
 from gnss_broker.sky import nearest_boresight, transit_sky
+from gnss_broker.trkresid import wrap
 
 
 def _transit_pd(ctx):
@@ -1151,9 +1152,21 @@ def dr_joint_clk(ctx):
     a satellite is fed in both bands, and a band that feeds nothing has no row (tau 0).
 
     Stateless for the CLOCK: nothing it computes is written back to dr_state, so a refused
-    joint falls back to the legacy clock on the next cycle. The one thing it records is WHEN
-    it adopted (dr_state["jclk_t"]) -- freshness for #104's escape, never a value (#142,
-    _dr_clock_local_fresh)."""
+    joint falls back to the legacy clock on the next cycle. It records WHEN it adopted
+    (dr_state["jclk_t"]) -- freshness for #104's escape, never a value (#142,
+    _dr_clock_local_fresh) -- and, for the step guard, the joint clock it last adopted
+    (dr_state["jclk_last"], joint chips) and the pending new level with the time it was
+    first seen (dr_state["jclk_cand"]).
+
+    THE STEP GUARD (#176): a transit that blinds the feeder band thins the joint's
+    satellite set and walks its clock for under a minute, inside the bounds. A joint clock
+    more than --joint-clk-max-step-chips from the one last adopted here is refused until it
+    has held the new level, to the same tolerance, for --joint-clk-step-hold-s; a bounds
+    refusal in between restarts the hold. It tests the JOINT clock, not the delta: the
+    legacy median's membership churn steps the delta while the joint stands still, and a
+    hold on each of those would put the chain back on the churned clock the joint replaces.
+    The receiver clock moves under 0.003 chips/s, so a walk never meets the guard and a
+    real level change is a discontinuity, followed one hold late."""
     _jrC = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
     if _jrC is None or len(_jrC._idx) < ctx.args.joint_min_sats:
         return
@@ -1221,6 +1234,26 @@ def dr_joint_clk(ctx):
                         _jext.extra["epoch_s"] * 1e3,
                     )
                     _jokC = False
+    # The step guard, in joint chips within the joint's window (see the docstring).
+    _ds = ctx.dr_state
+    _jlvl = _jrC.clk % _jlen
+    _jstep = None
+    if _jokC and _ds.get("jclk_last") is not None:
+        _jd = wrap(_jlvl - _ds["jclk_last"], _jlen)
+        if abs(_jd) > ctx.args.joint_clk_max_step_chips:
+            _jcand = _ds.get("jclk_cand")
+            if (
+                _jcand is None
+                or abs(wrap(_jlvl - _jcand[0], _jlen))
+                > ctx.args.joint_clk_max_step_chips
+            ):
+                _jcand = (_jlvl, ctx.t0)
+            _ds["jclk_cand"] = _jcand
+            if ctx.t0 - _jcand[1] < ctx.args.joint_clk_step_hold_s:
+                _jstep = (_jd, ctx.t0 - _jcand[1])
+                _jokC = False
+    if _jstep is None:
+        _ds.pop("jclk_cand", None)
     # Fields before the bracket are in OUR chips; the bracket (other chip rates only) gives
     # the joint-chip numbers the bounds are tested in.
     _log_rl(
@@ -1243,6 +1276,10 @@ def dr_joint_clk(ctx):
             "from the legacy clock: a whole-period error the %.0f-ms delta cannot see)"
             % (_jperiod_ms[2], _jperiod_ms[1], _jperiod_ms[0], _jwin_s * 1e3)
             if _jperiod_ms is not None
+            else "REFUSED (step %+.3f chips from the last adopted joint clock; the new "
+            "level has held %.0f of %.0f s)"
+            % (_jstep[0], _jstep[1], ctx.args.joint_clk_step_hold_s)
+            if _jstep is not None
             else "REFUSED (bounds %.1f chips / %.2f sigma)"
             % (ctx.args.joint_clk_max_chips, ctx.args.joint_clk_max_sigma),
         ),
@@ -1250,9 +1287,8 @@ def dr_joint_clk(ctx):
     )
     if _jokC:
         ctx.drp.clk_now = (ctx.drp.clk_now + _jdC) % ctx.code_len
-        _ds = getattr(ctx, "dr_state", None)
-        if _ds is not None:
-            _ds["jclk_t"] = ctx.t0
+        _ds["jclk_t"] = ctx.t0
+        _ds["jclk_last"] = _jlvl
 
 
 def dr_seed(ctx):

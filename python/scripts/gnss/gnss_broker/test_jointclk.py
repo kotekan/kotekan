@@ -82,6 +82,8 @@ def _consume(
         joint_min_sats=4,
         joint_clk_max_chips=MAX_CHIPS,
         joint_clk_max_sigma=MAX_SIGMA,
+        joint_clk_max_step_chips=0.3,
+        joint_clk_step_hold_s=30.0,
         chip_rate_hz=rate,
     )
     ctx = types.SimpleNamespace(
@@ -89,6 +91,8 @@ def _consume(
         rx=rx,
         band_id="test",
         code_len=code_len,
+        t0=100.0,
+        dr_state={},
         drp=types.SimpleNamespace(clk_now=legacy),
         joint_state=lambda _rx, _b, _a: js,
     )
@@ -334,11 +338,15 @@ def test_unit_declaration():
             joint_min_sats=4,
             joint_clk_max_chips=MAX_CHIPS,
             joint_clk_max_sigma=MAX_SIGMA,
+            joint_clk_max_step_chips=0.3,
+            joint_clk_step_hold_s=30.0,
             chip_rate_hz=L2C_RATE,
         ),
         rx=Receiver(log=lambda m: None),
         band_id="t",
         code_len=L2C_LEN,
+        t0=100.0,
+        dr_state={},
         drp=types.SimpleNamespace(clk_now=7.0),
         joint_state=lambda *a: js_small,
     )

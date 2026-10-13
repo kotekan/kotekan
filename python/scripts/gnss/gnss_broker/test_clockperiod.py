@@ -50,12 +50,18 @@ def _consume(rate, code_len, legacy, record_s=None, record_age_s=10.0, chain="gp
         rx.contribute_clock_mod_epoch("gps_l5", record_s, 0.02, 6, T0 - record_age_s, healthy=True)
     ctx = types.SimpleNamespace(
         args=types.SimpleNamespace(
-            joint_min_sats=4, joint_clk_max_chips=5.0, joint_clk_max_sigma=0.5, chip_rate_hz=rate
+            joint_min_sats=4,
+            joint_clk_max_chips=5.0,
+            joint_clk_max_sigma=0.5,
+            joint_clk_max_step_chips=0.3,
+            joint_clk_step_hold_s=30.0,
+            chip_rate_hz=rate,
         ),
         rx=rx,
         band_id="test",
         chain_id=chain,
         t0=T0,
+        dr_state={},
         code_len=code_len,
         drp=types.SimpleNamespace(clk_now=legacy),
         joint_state=lambda _rx, _b, _a: _FakeJoint(JOINT),

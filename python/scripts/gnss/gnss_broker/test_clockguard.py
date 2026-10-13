@@ -510,6 +510,7 @@ def _jclk(c, t, joint):
         5.0,
         0.5,
     )
+    c.args.joint_clk_max_step_chips, c.args.joint_clk_step_hold_s = 0.3, 30.0
     c.joint_state = lambda _rx, _b, _a: joint
     dr.dr_joint_clk(c)
     return c.drp.clk_now

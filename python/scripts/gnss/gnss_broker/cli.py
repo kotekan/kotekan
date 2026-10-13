@@ -404,6 +404,18 @@ _FROZEN = dict(
     #   grows while the state is unfed, so this one gate covers estimator health AND
     #   staleness; healthy runs measure 0.05-0.08. Joint-state chips, as above.
     joint_clk_max_sigma=0.5,
+    # --joint-clk-max-step-chips / --joint-clk-step-hold-s
+    #   P2b consumer 'clk', #176: a joint clock more than this many chips (joint-state
+    #   chips) from the one this chain last ADOPTED is refused until it has held the new
+    #   level, to the same tolerance, for this many seconds. The chain cycle is 2 s; a
+    #   transit-blinded feeder set walked the joint clock 0.8 chips for ~40 s and the
+    #   bounds passed it onto every chain. The receiver clock moves under 0.003 chips/s
+    #   (99th percentile), so a slower walk never meets the guard and a real step is a
+    #   discontinuity, delayed by the hold. Compared on the joint clock, not the delta: the
+    #   legacy median's churn steps the delta ~90 times a day, the joint ~20
+    #   (deadreckon.dr_joint_clk).
+    joint_clk_max_step_chips=0.3,
+    joint_clk_step_hold_s=30.0,
     # --joint-min-sats
     #   a JOINT consumer refuses to act on a state carrying fewer than this many
     #   satellites: with the mean(b)=0 gauge a thin fleet lets one satellite's bias leak
