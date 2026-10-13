@@ -31,9 +31,13 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
     _hops_per_record = config.get<int>(unique_name, "hops_per_record");
     _fft_len = config.get<int>(unique_name, "fft_len");
     _n_chan = config.get_default<int>(unique_name, "n_chan", 0);
-    // The comb's column labels, sent in every frame header; required with chan_export.
+    // The comb's column labels, sent in every frame header.
     _chan_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
-    _chan_export = config.get_default<bool>(unique_name, "chan_export", false);
+    if (!config.get_default<bool>(unique_name, "chan_export", true)) {
+        FATAL_ERROR("GnssTelemPack[{:s}]: chan_export must be true -- every frame ships the comb",
+                    unique_name);
+        return;
+    }
 
     // Fatal here, where the config is to blame: a truncated tag would merge two senders'
     // streams, and the gather drops every frame with more than TELEM_MAX_REC records.
@@ -68,31 +72,26 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
         return;
     }
 
-    if (_chan_export) {
-        if ((int)_chan_ids.size() != _n_chan || _n_chan <= 0) {
-            FATAL_ERROR("GnssTelemPack[{:s}]: chan_export needs channel_ids matching n_chan "
-                        "(got {:d} ids for n_chan {:d}). The broker labels the comb from these; "
-                        "a mismatch mislabels the frequency axis of every delay fit.",
-                        unique_name, (int)_chan_ids.size(), _n_chan);
-            return;
-        }
-        if (_n_chan > gnss::TELEM_MAX_CHAN) {
-            FATAL_ERROR("GnssTelemPack[{:s}]: {:d} channels exceeds the wire's {:d} columns. "
-                        "TELEM_MAX_CHAN is a WIRE constant -- raising it means rebuilding and "
-                        "restarting BOTH ends and regenerating the gather config.",
-                        unique_name, _n_chan, gnss::TELEM_MAX_CHAN);
-            return;
-        }
+    if ((int)_chan_ids.size() != _n_chan || _n_chan <= 0) {
+        FATAL_ERROR("GnssTelemPack[{:s}]: the comb needs n_chan >= 1 and channel_ids matching it "
+                    "(got {:d} ids for n_chan {:d}). The broker labels the comb from these; a "
+                    "mismatch mislabels the frequency axis of every delay fit.",
+                    unique_name, (int)_chan_ids.size(), _n_chan);
+        return;
+    }
+    if (_n_chan > gnss::TELEM_MAX_CHAN) {
+        FATAL_ERROR("GnssTelemPack[{:s}]: {:d} channels exceeds the wire's {:d} columns. "
+                    "TELEM_MAX_CHAN is a WIRE constant -- raising it means rebuilding and "
+                    "restarting BOTH ends and regenerating the gather config.",
+                    unique_name, _n_chan, gnss::TELEM_MAX_CHAN);
+        return;
     }
 
     _rec_samples = _hops_per_record * _fft_len;
     _win_samples = (int64_t)_rec_per_frame * _rec_samples;
 
-    // Each sender ships only its own comb columns; TELEM_MAX_CHAN is the format's ceiling. With
-    // the comb off a row is the record header alone.
-    _cols = _chan_export ? _n_chan : 0;
-
-    const size_t need = gnss::telem_frame_bytes(_rec_per_frame, _max_prn, _cols);
+    // Each sender ships only its own comb columns; TELEM_MAX_CHAN is the format's ceiling.
+    const size_t need = gnss::telem_frame_bytes(_rec_per_frame, _max_prn, _n_chan);
     if ((size_t)out_buf->frame_size != need) {
         // Exact, not ">=": bufferSend ships the whole buffer frame, so padding would cross the
         // link for nothing, and bufferRecv drops the connection when a frame exceeds the
@@ -102,11 +101,10 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
                     "exactly {:d} B ({:d} records x {:d} PRN x {:d} floats + {:d} B header). The "
                     "gather's receive buffer must be sized from the SAME two numbers.",
                     unique_name, (size_t)out_buf->frame_size, need, _rec_per_frame, _max_prn,
-                    gnss::telem_row_floats(_cols), sizeof(gnss::TelemHeader));
+                    gnss::telem_row_floats(_n_chan), sizeof(gnss::TelemHeader));
         return;
     }
-    const size_t in_need =
-        gnss::frame_floats(_n_prn, _n_elem, _chan_export ? _n_chan : 0) * sizeof(float);
+    const size_t in_need = gnss::frame_floats(_n_prn, _n_elem, _n_chan) * sizeof(float);
     if ((size_t)in_buf->frame_size < in_need) {
         FATAL_ERROR("GnssTelemPack[{:s}]: in_buf frame {:d} B < {:d} B ({:d} PRN x stride {:d})",
                     unique_name, (size_t)in_buf->frame_size, in_need, _n_prn,
@@ -114,7 +112,7 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
         return;
     }
 
-    _rows.assign((size_t)_rec_per_frame * _max_prn * gnss::telem_row_floats(_cols), 0.0f);
+    _rows.assign((size_t)_rec_per_frame * _max_prn * gnss::telem_row_floats(_n_chan), 0.0f);
     _row_of.assign((size_t)_n_prn, -1);
 
     INFO("GnssTelemPack[{:s}]: {:s}/{:s} -- {:d} records/frame x {:d} PRN rows x {:d} floats = "
@@ -138,11 +136,11 @@ bool GnssTelemPack::flush(frameID& out_id) {
     h.n_rec = (uint16_t)_rec_per_frame;
     h.n_prn = (uint16_t)_max_prn;
     h.n_row = (uint16_t)gnss::RECORD_FLOATS;
-    h.n_chan = (uint16_t)(_chan_export ? _n_chan : 0);
-    h.max_chan = (uint16_t)_cols;
-    h.n_row_total = (uint16_t)gnss::telem_row_floats(_cols);
-    for (int ch = 0; ch < _n_chan && ch < gnss::TELEM_MAX_CHAN; ++ch)
-        h.chan_id[ch] = (uint16_t)(_chan_export ? _chan_ids[(size_t)ch] : 0);
+    h.n_chan = (uint16_t)_n_chan;
+    h.max_chan = (uint16_t)_n_chan;
+    h.n_row_total = (uint16_t)gnss::telem_row_floats(_n_chan);
+    for (int ch = 0; ch < _n_chan; ++ch)
+        h.chan_id[ch] = (uint16_t)_chan_ids[(size_t)ch];
     h.n_elem = (uint16_t)_n_elem;
     h.hops_per_record = (uint32_t)_hops_per_record;
     h.fft_len = (uint32_t)_fft_len;
@@ -157,12 +155,9 @@ bool GnssTelemPack::flush(frameID& out_id) {
     std::memcpy(frame, &h, sizeof(h));
     std::memcpy(frame + sizeof(h), _rows.data(), _rows.size() * sizeof(float));
 
-    // sample_seq mirrors the header's wstart0, so the frame can be addressed from its metadata
-    // without parsing the payload. Readers of the wire key on the header's `win`.
-    if (out_buf->metadata_pool) {
-        out_buf->allocate_new_metadata_object(out_id);
-        get_gnss_chan_metadata(out_buf, out_id)->sample_seq = h.wstart0;
-    }
+    // bufferSend ships only frames that carry a metadata object. Readers of the wire key on the
+    // header's `win`.
+    out_buf->allocate_new_metadata_object(out_id);
     out_buf->mark_frame_full(unique_name, out_id++);
 
     _cur_win = -1;
@@ -215,14 +210,8 @@ void GnssTelemPack::main_thread() {
         if (_cur_win < 0)
             _cur_win = win;
 
+        // In [0, _rec_per_frame): wstart >= 0 is on the record grid and win is its floor.
         const int slot = (int)((wstart - win * _win_samples) / _rec_samples);
-        if (slot < 0 || slot >= _rec_per_frame) {
-            // Unreachable for wstart >= 0; guards the writes into the row block.
-            ERROR("GnssTelemPack[{:s}]: record at wstart {:d} maps to slot {:d} of {:d}",
-                  unique_name, wstart, slot, _rec_per_frame);
-            in_buf->mark_frame_empty(unique_name, in_id++);
-            continue;
-        }
 
         // Row compaction, built once per window from its first record. A PRN gets a wire row
         // if it has replica energy, i.e. was despread; the record buffer has a slot for every
@@ -248,7 +237,6 @@ void GnssTelemPack::main_thread() {
                 }
                 _row_of[(size_t)p] = next++;
             }
-            _last_live = next;
             _map_built = true;
         }
 
@@ -256,21 +244,19 @@ void GnssTelemPack::main_thread() {
             const int wrow = _row_of[(size_t)p];
             if (wrow < 0)
                 continue;
-            float* row =
-                &_rows[gnss::telem_row_offset(slot, wrow, _max_prn, gnss::telem_row_floats(_cols))];
+            float* row = &_rows[gnss::telem_row_offset(slot, wrow, _max_prn,
+                                                       gnss::telem_row_floats(_n_chan))];
             std::memcpy(row, in + (size_t)p * in_stride, gnss::RECORD_FLOATS * sizeof(float));
             // Copied per column: the input and wire column offsets come from different layouts
             // (chan_offset, telem_chan_offset) that only happen to share a stride.
-            if (_chan_export)
-                for (int ch = 0; ch < _n_chan; ++ch)
-                    std::memcpy(row + gnss::telem_chan_offset(ch),
-                                in + gnss::chan_offset(p, ch, _n_prn, _n_chan, _n_elem),
-                                gnss::CHAN_FLOATS * sizeof(float));
+            for (int ch = 0; ch < _n_chan; ++ch)
+                std::memcpy(row + gnss::telem_chan_offset(ch),
+                            in + gnss::chan_offset(p, ch, _n_prn, _n_chan, _n_elem),
+                            gnss::CHAN_FLOATS * sizeof(float));
         }
         _cur_present |= (1u << slot);
         if (slot == 0 && _n_prn > 0)
             _cur_utc0 = *reinterpret_cast<const double*>(in + gnss::RECORD_UTC_SLOT);
-        _n_records++;
 
         in_buf->mark_frame_empty(unique_name, in_id++);
 

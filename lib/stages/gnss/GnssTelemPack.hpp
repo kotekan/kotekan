@@ -17,9 +17,8 @@
  *        fixed-size telemetry frames addressed on the F-engine sample clock.
  *
  * A second consumer of the tracker's record buffer, beside the combiner. Each record is cut to
- * its gnssRecord.hpp header (plus, with @c chan_export, its per-channel comb block), dropping
- * the element blocks, and @c records_per_frame records go into one wire frame (gnssTelem.hpp)
- * for bufferSend.
+ * its gnssRecord.hpp header and its per-channel comb block, dropping the element blocks, and
+ * @c records_per_frame records go into one wire frame (gnssTelem.hpp) for bufferSend.
  *
  * The batch boundary is absolute. A frame holds window
  *     win = wstart / (records_per_frame * hops_per_record * fft_len)
@@ -41,7 +40,7 @@
  * @par buffers
  * @buffer in_buf  tracker record frames (one per record; GnssChanMetadata::sample_seq = wstart)
  * @buffer out_buf telemetry frames of exactly
- *                  gnss::telem_frame_bytes(records_per_frame, max_prn, chan_export ? n_chan : 0)
+ *                  gnss::telem_frame_bytes(records_per_frame, max_prn, n_chan)
  *
  * @conf chain             String. Chain tag carried on every frame ("gps_l5", "gal_e5a", ...).
  *                           Shorter than gnss::TELEM_NAME.
@@ -57,13 +56,12 @@
  *                           does not straddle two.
  * @conf hops_per_record   Int. Record length in hops.
  * @conf fft_len           Int. Samples per hop.
- * @conf n_chan            Int, default 0. Covering channels this instance despreads: the
- *                           columns per PRN of the source frame's comb block. Used only with
- *                           @c chan_export.
- * @conf chan_export       Bool, default false. Ship each PRN's per-channel comb block after its
- *                           record header. Needs n_chan in [1, gnss::TELEM_MAX_CHAN].
- * @conf channel_ids       Int list, default empty. freq_id of each comb column, sent in every
- *                           frame header. Must have n_chan entries when @c chan_export is set.
+ * @conf n_chan            Int. Covering channels this instance despreads: the columns per PRN of
+ *                           the source frame's comb block, shipped after each PRN's record
+ *                           header. In [1, gnss::TELEM_MAX_CHAN].
+ * @conf chan_export       Bool, must be true (default true).
+ * @conf channel_ids       Int list. freq_id of each comb column, sent in every frame header;
+ *                           n_chan entries.
  */
 class GnssTelemPack : public kotekan::Stage {
 public:
@@ -80,14 +78,13 @@ private:
     int _n_prn = 0;
     int _n_elem = 0;
     int _max_prn = 0;
-    int _cols = 0; ///< comb columns this sender ships, the header's max_chan (0 = comb off)
     int _rec_per_frame = 4;
     int64_t _hops_per_record = 0;
     int64_t _fft_len = 0;
+    /// Comb columns this sender ships (the header's max_chan): the unsummed comb (gnssRecord.hpp
+    /// chan block) goes after each row's record header, with the column freq_ids in the frame
+    /// header, so the broker can fit a delay across channels.
     int _n_chan = 0;
-    /// Ship the unsummed comb (gnssRecord.hpp chan block) after each row's record header, with
-    /// the column freq_ids in the frame header, so the broker can fit a delay across channels.
-    bool _chan_export = false;
     std::vector<int> _chan_ids; ///< [n_chan] freq_id per comb column; rides on every frame
 
     /// records_per_frame * hops_per_record * fft_len: the window length in samples.
@@ -99,18 +96,16 @@ private:
     int64_t _cur_win = -1;
     uint32_t _cur_present = 0;
     double _cur_utc0 = 0.0;
-    std::vector<float> _rows; ///< [rec_per_frame][max_prn][telem_row_floats(_cols)]
+    std::vector<float> _rows; ///< [rec_per_frame][max_prn][telem_row_floats(_n_chan)]
 
     /// Wire row of input PRN slot p in the open window, or -1 if it is not carried. Fixed for
     /// the window; see the class note on row compaction.
     std::vector<int> _row_of;
     bool _map_built = false;
 
-    uint64_t _seq = 0;     ///< frames emitted; the receiver reads gaps as loss
-    uint64_t _dropped = 0; ///< records that could not be placed (no metadata / bad wstart)
-    uint64_t _n_records = 0;
+    uint64_t _seq = 0;          ///< frames emitted; the receiver reads gaps as loss
+    uint64_t _dropped = 0;      ///< records that could not be placed (no metadata / bad wstart)
     uint64_t _prn_overflow = 0; ///< windows where more PRNs were live than the wire can carry
-    int _last_live = 0;         ///< live PRNs in the most recent window
 
     /// Write the accumulated window out and reset. No-op if nothing is open.
     /// Returns false if the output buffer shut down (the caller must exit).
