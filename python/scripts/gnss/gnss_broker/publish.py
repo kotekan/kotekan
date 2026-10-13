@@ -469,6 +469,9 @@ class FleetPublisher:
                     # pair on ~40% of them; with the history the pairing is poll-independent.
                     "fadr_g_hist": (_fadr.get(prn) or {}).get("g_hist"),
                     "fleet_instances": v["n_src"],
+                    # Cross-sender coherence of the derotated prompts: ~1 when the senders share one
+                    # phase reference (the post-re-base check reads it), ~0 when they do not.
+                    "fleet_xcoh": v.get("xcoh"),
                     "fleet_hop": v["hop"],
                     "coh_src": v.get("coh_src"),
                     "code_phase_rate": sd.get("code_phase_rate", 0.0),
