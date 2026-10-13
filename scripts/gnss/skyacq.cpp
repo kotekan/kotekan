@@ -181,9 +181,8 @@ int main(int argc, char** argv) {
             for (int e = 0; e < n_el; ++e)
                 dims = gnss::channelized_accumulate(dche[(size_t)e], repl0, cov_local, grid, fs, nc,
                                                     surf, ws, gids, fft_len, 16, fine_step);
-            const auto pk =
-                gnss::channelized_peak(surf, dims, grid, fs, bank.chip_rate_hz(),
-                                       (long)sig->code_length, gnss::FINE_LAG_SIGN_PFB, false, M);
+            const auto pk = gnss::channelized_peak(surf, dims, grid, fs, bank.chip_rate_hz(),
+                                                   (long)sig->code_length, false, M);
             if (pk.snr > best_snr) {
                 best_snr = pk.snr;
                 best_dop = pk.doppler_hz;

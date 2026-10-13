@@ -53,33 +53,6 @@ std::vector<cf> gen(int prn, double cp, double fd, cf amp) {
     return s;
 }
 
-// Windowed-DFT filterbank folded oldest first: X_c[m] = sum_l proto[l] x[(mN+l) mod NS]
-// e^{-i 2pi c l / N}, channel c <-> +frequency c. Its surfaces need
-// gnss::FINE_LAG_SIGN_NATURAL wherever the fine lag matters.
-std::vector<std::vector<cf>> stft(const std::vector<cf>& x, const std::vector<float>& proto) {
-    std::vector<std::vector<cf>> ch(N, std::vector<cf>(M));
-    std::vector<cf> v(N);
-    for (int m = 0; m < M; ++m) {
-        for (int p = 0; p < N; ++p) {
-            cf acc(0.0f, 0.0f);
-            for (int r = 0; r < P; ++r) {
-                const int l = r * N + p;
-                acc += proto[l] * x[((long)m * N + l) % NS];
-            }
-            v[p] = acc;
-        }
-        for (int c = 0; c < N; ++c) {
-            cf X(0.0f, 0.0f);
-            for (int p = 0; p < N; ++p) {
-                const double a = -2.0 * M_PI * c * p / N;
-                X += v[p] * cf(std::cos(a), std::sin(a));
-            }
-            ch[c][m] = X;
-        }
-    }
-    return ch;
-}
-
 std::vector<int> energy_covering(const std::vector<std::vector<cf>>& repl) {
     std::vector<double> e(N, 0.0);
     double emax = 0.0;
@@ -95,13 +68,13 @@ std::vector<int> energy_covering(const std::vector<std::vector<cf>>& repl) {
     return cov;
 }
 
-// analyze_fftwe folds newest first (dsp::pfb_push / pfb_fold, as ChannelizedReplicaBank does),
-// takes a forward DFT and moves DC to the centre. Its fine-lag axis runs opposite to stft's, so
-// its surfaces take the default gnss::FINE_LAG_SIGN_PFB; that sign on an stft surface reads the
-// fine lag backwards, ~2*fine samples off. The delay line is warmed from the periodic tail so the
-// first hop is circular, matching the acquire's circular correlation.
-std::vector<std::vector<cf>> analyze_fftwe(const std::vector<cf>& x, int Nc,
-                                           const std::vector<float>& proto) {
+// Windowed-DFT filterbank folded newest first (dsp::pfb_push / pfb_fold), as
+// ChannelizedReplicaBank and the CHORD F-engine fold, so its fine-lag axis runs against the coarse
+// one as gnss::FINE_LAG_SIGN_PFB says. Channels come out in natural DFT order, or with DC moved
+// to the centre (fftshift, the fftwEngine convention). The delay line is warmed from the periodic
+// tail so the first hop is circular, matching the acquire's circular correlation.
+std::vector<std::vector<cf>> analyze(const std::vector<cf>& x, int Nc,
+                                     const std::vector<float>& proto, bool fftshift) {
     const int Ns = (int)x.size();
     const int Mh = Ns / Nc;
     std::vector<cf> hist((size_t)Nc * P, cf(0.0f, 0.0f)), block(Nc), v(Nc), spec(Nc);
@@ -122,13 +95,18 @@ std::vector<std::vector<cf>> analyze_fftwe(const std::vector<cf>& x, int Nc,
             spec[k] = X;
         }
         for (int j = 0; j < Nc; ++j)
-            ch[j][m] = spec[(j + Nc / 2) % Nc]; // fftshift: DC at j = Nc/2
+            ch[j][m] = fftshift ? spec[(j + Nc / 2) % Nc] : spec[j]; // fftshift: DC at j = Nc/2
     };
     for (int w = 0; w < P - 1; ++w)
         do_hop(Mh - (P - 1) + w, false); // warm history from the tail
     for (int m = 0; m < Mh; ++m)
         do_hop(m, true);
     return ch;
+}
+
+// The N-channel bank over one code period (M hops), in natural order.
+std::vector<std::vector<cf>> stft(const std::vector<cf>& x, const std::vector<float>& proto) {
+    return analyze(x, N, proto, false);
 }
 
 std::vector<int> energy_covering_n(const std::vector<std::vector<cf>>& repl, int Nc) {
@@ -152,14 +130,13 @@ channelized_acquire(const std::vector<std::vector<cf>>& data_ch,
                     const std::vector<std::vector<cf>>& repl0_ch, const std::vector<int>& covering,
                     const std::vector<double>& doppler_grid, double sample_rate, double chip_rate,
                     int num_chan, long code_length, const std::vector<int>& chan_freq = {},
-                    int samples_per_hop = 0, int fine_lag_sign = gnss::FINE_LAG_SIGN_PFB) {
+                    int samples_per_hop = 0) {
     std::vector<double> surf;
     gnss::AcquireWorkspace ws;
     const auto dims =
         gnss::channelized_accumulate(data_ch, repl0_ch, covering, doppler_grid, sample_rate,
                                      num_chan, surf, ws, chan_freq, samples_per_hop);
-    return gnss::channelized_peak(surf, dims, doppler_grid, sample_rate, chip_rate, code_length,
-                                  fine_lag_sign);
+    return gnss::channelized_peak(surf, dims, doppler_grid, sample_rate, chip_rate, code_length);
 }
 
 } // namespace
@@ -172,8 +149,8 @@ BOOST_AUTO_TEST_CASE(recovers_with_fftwengine_convention) {
     const double true_dop = 200.0;
 
     auto data =
-        analyze_fftwe(gen(5, true_tau * CHIP_RATE / FS, true_dop, cf(1.0f, 0.0f)), Nc, proto);
-    auto repl0 = analyze_fftwe(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), Nc, proto);
+        analyze(gen(5, true_tau * CHIP_RATE / FS, true_dop, cf(1.0f, 0.0f)), Nc, proto, true);
+    auto repl0 = analyze(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), Nc, proto, true);
     const auto cov = energy_covering_n(repl0, Nc);
 
     // fftshifted bank: DC at channel Nc/2, so chan_freq = j - Nc/2.
@@ -200,8 +177,7 @@ BOOST_AUTO_TEST_CASE(recovers_code_phase_and_doppler) {
     const auto cov = energy_covering(repl0);
 
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
-    auto r = channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
-                                 gnss::FINE_LAG_SIGN_NATURAL);
+    auto r = channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN);
 
     BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop),
                    100.0); // sub-grid refine: within half a 200 Hz cell
@@ -245,14 +221,12 @@ BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
     const auto cov = energy_covering(repl0);
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
 
-    auto rw = channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
-                                  gnss::FINE_LAG_SIGN_NATURAL);
+    auto rw = channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN);
 
     gnss::AcquireWorkspace ws;
     std::vector<double> surf;
     const auto dims = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surf, ws);
-    auto rs = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
-                                     gnss::FINE_LAG_SIGN_NATURAL);
+    auto rs = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
 
     BOOST_CHECK_EQUAL(dims.n_dop, (int)grid.size());
     BOOST_CHECK_EQUAL(dims.Mp, M);  // repl0 hop-period
@@ -353,7 +327,7 @@ BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
                 BOOST_REQUIRE_SMALL(got - want, 1e-5 * std::max(1.0, want));
             }
 
-    // channelized_peak must give the same result on the stored surface as on the full-width one
+    // channelized_peak must pick the same cell on the stored surface as on the full-width one
     // tiled from it. SNR is a surface mean, so it would shift if the copies were not uniform.
     std::vector<double> wide((size_t)nd * Mp * sph);
     for (int d = 0; d < nd; ++d)
@@ -362,15 +336,16 @@ BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
                 wide[((size_t)d * Mp + q) * sph + s] = surf[((long)d * Mp + q) * 10 + (s % 10)];
 
     const gnss::AcquisitionSurface wide_dims{nd, Mp, sph, sph};
-    const auto r_red = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
-                                              gnss::FINE_LAG_SIGN_NATURAL);
-    // Both calls take the same sign, so the comparison does not depend on the convention.
-    const auto r_wide = gnss::channelized_peak(wide, wide_dims, grid, FS, CHIP_RATE, CODE_LEN,
-                                               gnss::FINE_LAG_SIGN_NATURAL);
-    BOOST_CHECK_EQUAL(r_red.peak_tau_samples, r_wide.peak_tau_samples);
+    const auto r_red = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
+    const auto r_wide = gnss::channelized_peak(wide, wide_dims, grid, FS, CHIP_RATE, CODE_LEN);
+    // The same cell gives the same delay up to the fold: each surface folds the fine index to a
+    // signed half of its own period (10 stored, 30 wide), so a peak column in the upper half of
+    // the stored period reads exactly one stored period away. The comb cannot tell those apart.
+    const long dtau = r_red.peak_tau_samples - r_wide.peak_tau_samples;
+    BOOST_CHECK_EQUAL(dtau % 10, 0L);
+    BOOST_CHECK_LE(std::abs(dtau), 10L);
     BOOST_CHECK_EQUAL(r_red.doppler_hz, r_wide.doppler_hz);
     BOOST_CHECK_CLOSE(r_red.snr, r_wide.snr, 1e-9);
-    BOOST_CHECK_CLOSE(r_red.code_phase_chips, r_wide.code_phase_chips, 1e-9);
 }
 
 // Re-accumulating the same noiseless window K times scales the |D|^2 surface (and
@@ -393,10 +368,8 @@ BOOST_AUTO_TEST_CASE(accumulation_scales_surface_linearly) {
     for (int k = 0; k < K; ++k)
         dimsK = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surfK, ws);
 
-    auto r1 = gnss::channelized_peak(surf1, dims1, grid, FS, CHIP_RATE, CODE_LEN,
-                                     gnss::FINE_LAG_SIGN_NATURAL);
-    auto rK = gnss::channelized_peak(surfK, dimsK, grid, FS, CHIP_RATE, CODE_LEN,
-                                     gnss::FINE_LAG_SIGN_NATURAL);
+    auto r1 = gnss::channelized_peak(surf1, dims1, grid, FS, CHIP_RATE, CODE_LEN);
+    auto rK = gnss::channelized_peak(surfK, dimsK, grid, FS, CHIP_RATE, CODE_LEN);
 
     BOOST_CHECK_EQUAL(rK.peak_tau_samples, r1.peak_tau_samples);
     BOOST_CHECK_EQUAL(rK.doppler_hz, r1.doppler_hz);
@@ -436,8 +409,7 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
             tau1 = gnss::channelized_peak(s1, dims, grid, FS, CHIP_RATE, CODE_LEN).peak_tau_samples;
         }
     }
-    auto rK = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN,
-                                     gnss::FINE_LAG_SIGN_NATURAL);
+    auto rK = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
 
     BOOST_CHECK_GT(std::abs(tau1 - true_tau), (long)SP); // single window: misses
     BOOST_CHECK_LT(std::abs(rK.doppler_hz - true_dop),

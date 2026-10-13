@@ -715,9 +715,9 @@ void GnssChannelizedSearch::search_snapshot() {
                         cov_global, _fft_len, _acquire_threads, _acquire_fine_step);
                 }
                 _last_surface_cells = dims.size();
-                ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
-                                            _replica->chip_rate_hz(), _replica->code_length(),
-                                            gnss::FINE_LAG_SIGN_PFB, _acq_pairsum_select, hpr);
+                ai =
+                    gnss::channelized_peak(surf, dims, grid, _sample_rate, _replica->chip_rate_hz(),
+                                           _replica->code_length(), _acq_pairsum_select, hpr);
             }
             // Alignments are compared on the scalloping-corrected peak_interp, not the raw grid
             // sample: on a critically sampled grid the true alignment's peak can fall between

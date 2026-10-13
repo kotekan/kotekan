@@ -331,8 +331,8 @@ gnss::AcquisitionResult GnssCudaAcquire::peak_result(const gnss::AcquisitionSurf
     }
     const double dop_u = (_M > 0 && _M < _Mp) ? (double)_M / (double)_Mp : 1.0;
     return gnss::peak_from_reduction(dims, doppler_grid, sample_rate, chip_rate, code_length, peak,
-                                     mean, best_d, best_q, best_i, dop_peak,
-                                     gnss::FINE_LAG_SIGN_PFB, dop_loc_m, dop_loc_p, dop_u);
+                                     mean, best_d, best_q, best_i, dop_peak, dop_loc_m, dop_loc_p,
+                                     dop_u);
 }
 
 void GnssCudaAcquire::download_surface(std::vector<double>& out) const {

@@ -286,8 +286,8 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
 
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
-                                   double chip_rate, long code_length, int fine_lag_sign,
-                                   bool pairsum_select, int data_hops) {
+                                   double chip_rate, long code_length, bool pairsum_select,
+                                   int data_hops) {
     AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0, -1.0};
     double surf_sum = 0.0;
     long surf_n = 0;
@@ -379,16 +379,16 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     const double dop_u =
         (data_hops > 0 && data_hops < dims.Mp) ? (double)data_hops / (double)dims.Mp : 1.0;
     return peak_from_reduction(dims, doppler_grid, sample_rate, chip_rate, code_length, best.peak,
-                               mean0, best_d, best_q, best_i, dop_peak, fine_lag_sign, dop_loc_m,
-                               dop_loc_p, dop_u);
+                               mean0, best_d, best_q, best_i, dop_peak, dop_loc_m, dop_loc_p,
+                               dop_u);
 }
 
 AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
                                       const std::vector<double>& doppler_grid, double sample_rate,
                                       double chip_rate, long code_length, double peak, double mean,
                                       int best_d, int best_q, int best_i,
-                                      const std::vector<double>& dop_peak, int fine_lag_sign,
-                                      double dop_loc_m, double dop_loc_p, double dop_u) {
+                                      const std::vector<double>& dop_peak, double dop_loc_m,
+                                      double dop_loc_p, double dop_u) {
     AcquisitionResult best{0.0, 0.0, 0, peak, 0.0, peak};
     best.doppler_hz = doppler_grid.empty() ? 0.0 : doppler_grid[best_d];
     // Sub-grid Doppler refine: the grid cell max is only +-step/2 accurate, so place the peak
@@ -452,19 +452,19 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
     // advanced by the delay). Report the delay, so it seeds the replica generators directly
     // (same code[floor(cp + n*r)] convention).
     //
-    // The fine half of the lag carries fine_lag_sign relative to the coarse half (-1 for a
-    // newest-first bank; see FINE_LAG_SIGN_PFB), so q*sph + i*s_step is not the delay.
-    // With the wrong sign the coarse phase is off by up to sph (52.4 chips of a 10.23 Mchip/s
-    // code at CHORD), which only a refine spanning a full hop absorbs. Fold the fine index to a
-    // signed half period first: the cross-channel DFT reports it modulo the stored period, so a
-    // small negative offset comes back near the top of the axis and would read as a whole period
-    // too far. Fold by s_stored, not sph: the surface holds only sph/g samples of fine lag when
-    // the comb shares a factor g with sph, and folding by sph would step outside them.
+    // The fine half of the lag runs opposite to the coarse half (FINE_LAG_SIGN_PFB, a
+    // newest-first bank), so q*sph + i*s_step is not the delay. With the wrong sign the coarse
+    // phase is off by up to sph (52.4 chips of a 10.23 Mchip/s code at CHORD), which only a
+    // refine spanning a full hop absorbs. Fold the fine index to a signed half period first: the
+    // cross-channel DFT reports it modulo the stored period, so a small negative offset comes
+    // back near the top of the axis and would read as a whole period too far. Fold by s_stored,
+    // not sph: the surface holds only sph/g samples of fine lag when the comb shares a factor g
+    // with sph, and folding by sph would step outside them.
     const int fine_period = (dims.s_stored > 0) ? dims.s_stored : dims.sph;
     long fine = (long)best_i * (long)(dims.s_step > 0 ? dims.s_step : 1);
     if (fine > fine_period / 2)
         fine -= fine_period;
-    const long best_tau = (long)best_q * (long)dims.sph + (long)fine_lag_sign * fine;
+    const long best_tau = (long)best_q * (long)dims.sph + (long)FINE_LAG_SIGN_PFB * fine;
     const long Ns = (long)dims.Mp * dims.sph;
     best.peak_tau_samples = ((Ns - best_tau) % Ns + Ns) % Ns;
     const double chips = (double)best.peak_tau_samples * chip_rate / sample_rate;

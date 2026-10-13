@@ -23,9 +23,9 @@
  * The reconstruction is exact for a critically sampled rectangular bank and approximate for a
  * windowed PFB. That is sufficient because acquisition only has to localize the peak to ~1
  * chip; the exact despread measures after it. Channel c is taken to be at frequency index c
- * unless @c chan_freq says otherwise (natural order, as an r2c bank emits; fftwEngine's
- * complex-input output is fftshifted and would need remapping). The bank's fold order sets the
- * direction of the fine-lag axis (@c fine_lag_sign).
+ * unless @c chan_freq says otherwise (natural order, as an r2c bank emits; an fftshifted bank
+ * passes its own indices). The bank must fold newest-first, as the CHORD F-engine does: the fold
+ * order sets the direction of the fine-lag axis (FINE_LAG_SIGN_PFB).
  */
 
 #ifndef GNSS_CHANNELIZED_ACQUIRE_HPP
@@ -108,16 +108,15 @@ struct AcquisitionSurface {
     }
 };
 
-/// Direction of the fine-lag axis relative to the coarse (hop) axis: +1 same sense, -1
-/// opposite. It is a property of the analysis bank, not of the acquire. -1 is for a bank that
-/// folds newest-first (dsp::pfb_push) into its DFT, as ChannelizedReplicaBank does when it
-/// models the CHORD F-engine and builds the replica the acquire correlates against; +1 is for
-/// a bank that folds oldest-first.
+/// Direction of the fine-lag axis relative to the coarse (hop) axis: -1, opposite. It is a
+/// property of the analysis bank, not of the acquire: a bank that folds newest-first
+/// (dsp::pfb_push) into its DFT, as ChannelizedReplicaBank does when it models the CHORD
+/// F-engine and builds the replica the acquire correlates against, runs its fine lag against
+/// the coarse lag. A bank that folds oldest-first would need +1.
 ///
 /// A wrong sign offsets the coarse code phase by up to one hop (52.4 chips of a 10.23 Mchip/s
 /// code at CHORD), which only a refine spanning a full hop absorbs.
-constexpr int FINE_LAG_SIGN_PFB = -1;     ///< newest-first fold (ChannelizedReplicaBank)
-constexpr int FINE_LAG_SIGN_NATURAL = +1; ///< oldest-first fold
+constexpr int FINE_LAG_SIGN_PFB = -1;
 
 /**
  * Add one data window's |D|^2 surface into @c surf (incoherent integration) and return the
@@ -203,9 +202,8 @@ AcquisitionSurface surface_dims(const std::vector<int>& chan_freq, int samples_p
 ///                        zero-padded response that the sub-grid Doppler refine inverts.
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
-                                   double chip_rate, long code_length,
-                                   int fine_lag_sign = FINE_LAG_SIGN_PFB,
-                                   bool pairsum_select = false, int data_hops = 0);
+                                   double chip_rate, long code_length, bool pairsum_select = false,
+                                   int data_hops = 0);
 
 /// The second half of @ref channelized_peak: everything after the surface scan. A caller that
 /// reduces the surface some other way (the GPU search never materializes it on the host) reuses
@@ -220,7 +218,6 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
 /// @param dop_peak per-Doppler max over the lag, length n_dop: the input of the sub-grid
 ///                 Doppler refine and of peak_interp. Empty skips both (the Doppler stays on
 ///                 the grid and peak_interp = peak).
-/// @param fine_lag_sign  see FINE_LAG_SIGN_PFB.
 /// @param dop_loc_m,dop_loc_p  the neighbour Doppler planes (best_d -+ 1) sampled at the
 ///                 winning lag (max over a few cells around (best_q, best_i)), not their
 ///                 plane-wide max. When both are >= 0 and below the peak, the refine inverts
@@ -228,12 +225,12 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
 ///                 otherwise (-1 is the default) it fits a parabola to dop_peak if concave.
 /// @param dop_u    data window as a fraction of the Mp-hop transform (data_hops/Mp), the u of
 ///                 that response.
-AcquisitionResult
-peak_from_reduction(const AcquisitionSurface& dims, const std::vector<double>& doppler_grid,
-                    double sample_rate, double chip_rate, long code_length, double peak,
-                    double mean, int best_d, int best_q, int best_i,
-                    const std::vector<double>& dop_peak, int fine_lag_sign = FINE_LAG_SIGN_PFB,
-                    double dop_loc_m = -1.0, double dop_loc_p = -1.0, double dop_u = 1.0);
+AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
+                                      const std::vector<double>& doppler_grid, double sample_rate,
+                                      double chip_rate, long code_length, double peak, double mean,
+                                      int best_d, int best_q, int best_i,
+                                      const std::vector<double>& dop_peak, double dop_loc_m = -1.0,
+                                      double dop_loc_p = -1.0, double dop_u = 1.0);
 
 } // namespace gnss
 
