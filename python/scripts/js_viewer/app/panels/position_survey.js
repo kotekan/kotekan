@@ -1,11 +1,9 @@
 // Position self-survey panel: a from-the-code single-point position (gnss_pvt), reported as the
 // OFFSET from the surveyed config site with 1-sigma error bars.
 //
-// Split out of the nav-decode-health panel so the position solution stands on its own. Two
-// best-fits: the DUAL-FREQUENCY iono-free solution (combined_if -- few-metre, removes the
-// elevation-dependent ionospheric bias) headlined, and the single-frequency one (combined --
-// iono-limited ~10 m class) beneath it for comparison. The per-group table (incl. the "-IF"
-// iono-free rows) doubles as a per-signal code-quality readout.
+// Split out of the nav-decode-health panel so the position solution stands on its own. The
+// best-fit is the single-frequency solve across every chain (combined -- iono-limited, ~10 m
+// class); the per-group table doubles as a per-signal code-quality readout.
 //
 // Data is the viewer server's /decode_health endpoint (its `pvt` block, computed by gnss_pvt and
 // cached server-side). Same origin as the viewer -> no CORS; independent of the kotekan feed.
@@ -70,10 +68,9 @@ export class PositionSurveyPanel {
               + (pvt.n_meas != null ? ` · ${pvt.n_meas} obs` : "")
               + (pvt.smooth_s ? ` · carrier-smoothed ${pvt.smooth_s} s` : "")
               + (pvt.min_el_deg ? ` · el ≥ ${pvt.min_el_deg}°` : "") + `</span></div>`;
-        if (pvt.combined_if) h += this._fitLine(pvt.combined_if, "iono-free", "#7dd3a8");
         if (pvt.combined)
-            h += this._fitLine(pvt.combined, pvt.combined_if ? "single-freq" : "best-fit", "#cbd5e1");
-        if (!pvt.combined && !pvt.combined_if)
+            h += this._fitLine(pvt.combined, "best-fit", "#cbd5e1");
+        else
             h += `<div style="color:#8a8f98;padding:4px 8px;font-size:11px">`
                + `no combined fit (too few satellites / ill-conditioned geometry)</div>`;
 
@@ -83,14 +80,13 @@ export class PositionSurveyPanel {
             h += `<table style="border-collapse:collapse;width:100%;font-size:11px;`
                + `margin-top:4px"><thead><tr style="color:#8a8f98;text-align:left`
                + `;border-bottom:1px solid #333">`
-               + `<th style="padding:1px 6px" title="constellation-band group; -IF = dual-frequency `
-               + `iono-free">per signal</th><th>sats</th>`
+               + `<th style="padding:1px 6px" title="constellation-band group">per signal</th>`
+               + `<th>sats</th>`
                + `<th>horiz</th><th>vert</th><th>RMS</th></tr></thead><tbody>`;
             for (const k of keys) {
                 const g = groups[k];
                 const ho = hyp(g.d_e, g.d_n);
-                const isIf = k.endsWith("-IF");
-                h += `<tr><td style="padding:1px 6px${isIf ? ";color:#7dd3a8" : ""}">${k}</td>`
+                h += `<tr><td style="padding:1px 6px">${k}</td>`
                    + `<td>${g.n_sats}${g.n_rejected ? `(−${g.n_rejected})` : ""}</td>`
                    + `<td>${ho.toFixed(0)} ±${hyp(g.sigma_e, g.sigma_n).toFixed(0)} m</td>`
                    + `<td>${g.d_u >= 0 ? "+" : ""}${g.d_u.toFixed(0)} m</td>`
@@ -117,18 +113,11 @@ export class PositionSurveyPanel {
             }
             h += `</tbody></table>`;
         }
-        // Only explain the -IF rows when there are some. The note named L1+L5 outright, which
-        // this fleet never has: the pair is whichever two chains give the widest split.
-        if (keys.some(k => k.endsWith("-IF")))
-            h += `<div style="color:#8a8f98;padding:4px 6px;font-size:11px">`
-               + `-IF rows are the dual-frequency iono-free combination, formed per satellite `
-               + `from its two most widely separated bands</div>`;
-        else
-            h += `<div style="color:#8a8f98;padding:4px 6px;font-size:11px">`
-               + `single-frequency: the ionosphere is uncorrected and sets the error floor. `
-               + `The code is carrier-smoothed within each arc (Hatch); the iono-free `
-               + `combination is off, since this fleet's co-hosted band splits are only `
-               + `51-102 MHz and it would amplify code noise 8-17x.</div>`;
+        h += `<div style="color:#8a8f98;padding:4px 6px;font-size:11px">`
+           + `single-frequency: the ionosphere is uncorrected and sets the error floor. `
+           + `The code is carrier-smoothed within each arc (Hatch); there is no iono-free `
+           + `combination, since this fleet's co-hosted band splits are only `
+           + `51-102 MHz and it would amplify code noise 8-17x.</div>`;
         this.root.innerHTML = h;
     }
 }
