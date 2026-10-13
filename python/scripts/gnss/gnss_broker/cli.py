@@ -1621,26 +1621,6 @@ def build_parser(description):
         "this safe. OFF by default until it has flown.",
     )
     ap.add_argument(
-        "--joint-rereference",
-        action="store_true",
-        help="JOINT FILTER: treat a membership change as a change of "
-        "COORDINATES rather than as an observation. On a join/leave the "
-        "gauge (mean(b)=0) is re-referenced EXACTLY -- b_i -= mean(b), "
-        "clk += mean(b), P carried through the same linear map -- so "
-        "clk + b_i, the only quantity a consumer reads, is invariant and "
-        "mean(b)=0 holds without gauge() having to move anything. The "
-        "legacy path instead inflates P[0,0] by 4 chips^2 per event, which "
-        "makes the clock uncertain, lets the next measurement yank it, and "
-        "(via the clk<->rate correlation predict() rebuilds) feeds that "
-        "yank into clk_rate. Sound at 6+ sats; self-defeating at 4, where "
-        "it produced the 15-chip clock swing that made both Galileo chains "
-        "refuse the state. MEASURED (bench_gauge_churn.py): observable "
-        "error p95 2.77 -> 0.76 chips under churn, and a mass birth of 11 "
-        "satellites steps the clock +0.011 instead of +1.794 chips -- the "
-        "operation that diverged the state on 2026-08-10 and 08-18. The "
-        "legacy rate shield (P[0,1] = 0) is kept either way.",
-    )
-    ap.add_argument(
         "--dll-combiners",
         default="",
         help="FLEET-COMBINED DLL (docs/CHORD_GNSS_SHARED_DLL.md): comma-separated "

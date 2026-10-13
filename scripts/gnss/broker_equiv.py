@@ -81,6 +81,7 @@ RETIRED_FLAGS = {
     "--innov-dr-seeds": 1,
     "--joint-feed-spec": 0,
     "--joint-model-primary": 0,
+    "--joint-rereference": 0,
     "--joint-shadow": 0,
     "--nh-hint-span": 1,
     "--nh-period-offset": 1,

@@ -149,20 +149,6 @@ common:
   # probe-calibrated) into the joint rrate state, sig-gated, coarse-deweighting like the
   # fine hold. The DR chains' first credible carrier-rate measurement.
     rrate-kcoh-feed: 1
-  # ── JOINT GAUGE: a membership change is a change of COORDINATES (2026-08-21) ─────────
-  # b_i -= mean(b); clk += mean(b); P through the same map. clk + b_i -- the only thing a
-  # consumer reads -- is invariant, mean(b)=0 holds exactly, and NO uncertainty is injected
-  # because none was created. Replaces the legacy P[0,0] += 4 per join, which made the
-  # clock uncertain and let the next measurement yank it into clk_rate. Benched:
-  # bench_mass_birth.py 11-sat birth steps clk +0.011 vs +1.794 chips; bench_gauge_churn.py
-  # observable p95 2.77 -> 0.76. Receiver-wide state, so it belongs here, not per-chain.
-  # Armed WITH the model-primary feed below -- mass birth is what it protects.
-  # Reverted to the known-good baseline alongside the feed disarm (14:19). The gauge fix
-  # itself is sound and benched (bench_mass_birth.py / bench_gauge_churn.py) -- it is
-  # default-off code, not withdrawn -- but it is unobservable on a healthy state, so it
-  # rides with the feed when the rebuild problem above is fixed.
-  # ── ATTEMPT 6, ARMED 2026-08-21 22:1x (as attempt 4; rereference rides the birth)
-    joint-rereference: true
   # #83 THE AXIS FIX (2026-08-17): dead-reckon time base from the F-engine hop counter.
   # Measured: node hop->utc is PPS-true to 3 us; the wall axis carries ~1.45 ms absolute
   # NTP error drifting ~1 us/min -- the 2(b) transport walk and the flip's 14865-chip

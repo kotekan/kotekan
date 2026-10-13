@@ -89,12 +89,6 @@ class Receiver(object):
 
         with self._lock:
             cur = self._joint.get("__receiver__")
-            # Late-arriving options (the broker learns its flags after the first consumer
-            # may already have created the state -- thread startup order) are applied to
-            # the LIVE object as well as to any rebuild, so arming a flag never depends on
-            # which thread happened to construct the filter first.
-            if cur is not None and "rereference" in kw:
-                cur.rereference = bool(kw["rereference"])
             if cur is None:
                 kw = dict(kw)
                 kw["code_len"] = float(code_len)
