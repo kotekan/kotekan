@@ -1,34 +1,27 @@
 #!/bin/bash
 # THE SINGLE DEFINITION OF WHAT EACH GNSS COMPONENT IS. Sourced, never executed.
 #
-# WHY THIS EXISTS. The launch details lived in two places at once: the `*_up.sh` scripts and,
-# after the 2026-09-17 move to the gnss VM, the systemd units. That is not a style problem. The
-# units were written by reproducing each script's COMMAND LINE faithfully -- and the broker's
-# `export OPENBLAS_NUM_THREADS=1` is not on its command line, so it was silently dropped and the
-# broker spent two thirds of its cycles in OpenBLAS's busy-wait until `perf` found it (#134).
-# A definition that carries the argv and the environment TOGETHER makes that failure structural
-# rather than a thing to remember.
+# WHY THIS EXISTS. The systemd units were first written by reproducing each component's COMMAND
+# LINE faithfully -- and the broker's `export OPENBLAS_NUM_THREADS=1` is not on its command line,
+# so it was silently dropped and the broker spent two thirds of its cycles in OpenBLAS's
+# busy-wait until `perf` found it (#134). A definition that carries the argv and the environment
+# TOGETHER makes that failure structural rather than a thing to remember.
 #
-# ⚠️ WHY THE UNITS DO NOT SIMPLY CALL `*_up.sh`, WHICH IS THE OBVIOUS IDEA AND IS WRONG.
-# Those scripts are DAEMONISING launchers: every one of them does `nohup setsid ... &` plus
-# `disown`, and most also `pkill` a previous instance first. Under systemd that is three
-# separate faults --
+# ⚠️ WHY THE UNITS EXEC A FOREGROUND RUNNER, NOT A DAEMONISING LAUNCHER. A launcher that does
+# `nohup setsid ... &` plus `disown`, and `pkill`s a previous instance first, is three separate
+# faults under systemd --
 #   * `Type=simple` expects ExecStart to BE the process; a script that backgrounds and exits
 #     looks like a service that died on startup;
 #   * `setsid` deliberately detaches the child from the unit's cgroup, so systemd loses
 #     supervision entirely -- no Restart=, no MemoryMax, no clean stop;
 #   * the internal `pkill` races systemd's own restart logic.
-# So the direction is inverted: the shared definition is the truth, a FOREGROUND runner
-# (`run_component.sh`) execs it, and BOTH the units and the `*_up.sh` scripts go through that.
-# The scripts keep what they are genuinely good at and systemd does not do: host guards,
-# preflight conditions, log rotation, and post-start health checks.
+# So the shared definition is the truth and a FOREGROUND runner (`run_component.sh`) execs it.
 #
 #     stack_components.sh          <- what to run, and with what environment  (HERE)
 #            |
 #            +-- run_component.sh  <- execs it in the FOREGROUND
-#                    |      |
-#                    |      +-- systemd ExecStart=          (the live path)
-#                    +-- *_up.sh   <- daemonises it, adds guards/rotation/health checks
+#                           |
+#                           +-- systemd ExecStart=          (the live path)
 #
 #     stack_contract_gate.sh       <- proves a RUNNING process still matches this file
 #
@@ -58,8 +51,10 @@ GNSS_OBS_OUT=${GNSS_OBS_OUT:-$GNSS_ROOT/fixtures/obs}
 GNSS_SITE_LL=${GNSS_SITE_LL:-"--lat 49.32001414 --lon -119.62262691 --alt 545"}
 
 # ── the eight chains and their RF constants ────────────────────────────────────────────────
-# One copy. obs_up.sh had the only one, and obs_unit.sh used to PARSE it back out of that file
-# with sed, which was right on the day it was written and one edit from being wrong.
+# One copy. These are NOT free parameters: carrier, chip rate and code length must match the
+# SignalDef the broker runs, which it prints at startup ("signal gps_l5: SignalDef(...)"); if a
+# chain's signal changes, take the numbers from that line. L2C's chips are CM chips at
+# 0.5115 Mcps (the CM/CL multiplex), 586 m each, not 29 m.
 #   chain  sys carrier_hz   chip_rate_hz  code_len
 GNSS_CHAIN_RF="
 gps_l5  G 1176450000 10230000 10230
@@ -109,6 +104,15 @@ gnss_component() {
 
     aggregator)
         # Needs CUDA: the search runs on the GPU (use_cuda_acquire). Not a -DUSE_CUDA=OFF tree.
+        # The config is generated and untracked. Regenerate it with
+        #   config/gen_chord_gnss_config.py --base config/base/live_config_20260730.json \
+        #       --node cx19 --aggregator-instance cx19 cx27 cx42 cx43 cx44 cx51 \
+        #       --rest-port 12050 --cuda-acquire --aggregator-cores 0,1,2,3,4,5 \
+        #       --prns-per-pass 0 --acq-pairsum-select --nh-label-consensus \
+        #       --out config/generated/chord_gnss_agg6_cuda.yaml
+        # The running copy was hand-patched before those flags existed (its header says how);
+        # it differs from this only in which of the six cores each stage gets and in
+        # gps_search's debug log level.
         # ⚠️ GNSS_SEARCH_PROFILE: agg_up.sh set this unconditionally, so the cf06 instance ran
         # with the pass/consumer profile ON for its whole life -- 113,997 [consumer] lines in its
         # last log. The first systemd unit dropped it silently (the #134 shape again, found while

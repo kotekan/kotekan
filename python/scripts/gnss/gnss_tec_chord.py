@@ -44,7 +44,8 @@ K = 40.308e16  # m^3/s^2/TECU
 GRID_HOPS = 96 * 2048  # fleetadr.GRID_HOPS
 GRID_SECONDS = 1.006632  # wall seconds per GRID_HOPS: the grid cadence
 
-# Carrier centres, Hz -- these MUST match the SignalDef the broker runs (obs_up.sh's table).
+# Carrier centres, Hz -- these MUST match the SignalDef the broker runs (GNSS_CHAIN_RF in
+# scripts/gnss/site/stack_components.sh).
 FREQ = {
     "gps_l5": 1176.45e6,
     "gps_l2c": 1227.60e6,

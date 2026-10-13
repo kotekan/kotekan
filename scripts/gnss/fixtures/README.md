@@ -86,7 +86,7 @@ CHORD), or the nav-bit path. Those need real captures, and all
 three are cheap the moment their chain is running:
 
 * ~~**GPS L5 on sky**~~ — **DONE 2026-08-08.** Captured with
-  `broker_restart.sh --transcript-write /tmp/l5_onsky.jsonl` while PRN 10 was at deep 242
+  the live broker's `--transcript-write /tmp/l5_onsky.jsonl` while PRN 10 was at deep 242
   and ten PRNs were active. It closes two of the three coverage gaps:
 
       sensitivity OK   moved by: carrier_hz, hops_per_sec, dll_gain, code_bias_alpha, bias_alpha

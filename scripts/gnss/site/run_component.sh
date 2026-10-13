@@ -1,10 +1,10 @@
 #!/bin/bash
 # Run ONE GNSS component in the FOREGROUND, from the shared definition. This is what systemd
-# execs, and what the daemonising *_up.sh scripts background.
+# execs.
 #
 # Foreground and `exec` are the whole point: the process systemd supervises must BE the
 # component, in the unit's cgroup, so Restart=, MemoryMax= and a clean stop all work. See the
-# header of stack_components.sh for why the units cannot call *_up.sh instead.
+# header of stack_components.sh for why the units cannot call a daemonising launcher instead.
 #
 #     run_component.sh broker|gather|aggregator|viewer
 #     GNSS_CHAIN=gps_l5 run_component.sh obs

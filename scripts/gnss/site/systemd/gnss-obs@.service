@@ -20,9 +20,9 @@ User=kvand
 # Restarting gnss-stack.target rather than one unit is what keeps them in step.
 
 # ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come
-# from ONE definition (scripts/gnss/site/stack_components.sh), which the *_up.sh scripts also
-# use. Inlining the command here is how #134 happened: the command line was reproduced
-# faithfully and the broker's OPENBLAS_NUM_THREADS export, which is not on it, was not.
+# from ONE definition (scripts/gnss/site/stack_components.sh). Inlining the command here is
+# how #134 happened: the command line was reproduced faithfully and the broker's
+# OPENBLAS_NUM_THREADS export, which is not on it, was not.
 # stack_contract_gate.sh proves a running process still matches the definition.
 ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh obs
 Restart=on-failure

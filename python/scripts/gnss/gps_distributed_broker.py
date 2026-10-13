@@ -44,7 +44,6 @@ import time
 # several reads (the endpoint answering oddly once is not an F-engine restart) and then STOP,
 # so the supervisor restarts us and the anchor is re-latched by the startup path.
 _ANCHOR_STRIKES = 3  # consecutive 60 s re-reads that must disagree
-_ANCHOR_RESTART_S = 20  # what broker_restart.sh's supervisor waits before relaunching
 _EXIT_ANCHOR_CHANGED = 3  # distinct exit code, so the supervisor can log why
 from datetime import datetime, timezone
 
@@ -1650,10 +1649,10 @@ def main(argv=None, rx=None, publisher=None):
                         # leave the other seven running on the wrong epoch.
                         _log(
                             "*** STOPPING THE BROKER after %d confirmations, so frame0 is "
-                            "re-latched by the startup path. The supervisor in "
-                            "broker_restart.sh relaunches in %d s; the nodes are stopped by "
+                            "re-latched by the startup path. Its supervisor (systemd "
+                            "Restart=on-failure) relaunches it; the nodes are stopped by "
                             "their own fpga_monitor on this same event and come back on the "
-                            "new epoch." % (_anchor_chk[1], _ANCHOR_RESTART_S)
+                            "new epoch." % _anchor_chk[1]
                         )
                         try:
                             sys.stdout.flush()

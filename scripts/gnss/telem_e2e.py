@@ -236,9 +236,8 @@ def write_config(dirpath):
 
 
 def kotekan_binary():
-    """The DPDK build on a node, the DPDK-free one elsewhere -- agg_up.sh's rule, and for the
-    same reason: /home is NFS with two build trees and the wrong one fails in a way that reads
-    as a config problem."""
+    """The DPDK build on a node, the DPDK-free one elsewhere: /home is NFS with two build trees
+    and the wrong one fails in a way that reads as a config problem."""
     host = socket.gethostname().split(".")[0]
     cand = (
         [os.path.join(K, "build", "kotekan", "kotekan")]

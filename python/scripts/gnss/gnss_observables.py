@@ -161,7 +161,7 @@ def make_obs_writer(path_tmpl, label="", log=None):
     to be strftime-expanded ONCE, before the poll loop, so a logger begun on the 5th kept
     writing <chain>_20260905.jsonl for as long as it lived: measured on cf06, four days
     and 2.0 GB of rows in a file named for the first of them, while 09-06, 09-07 and
-    09-08 had no observables file at all. Both the --out help text and obs_up.sh already
+    09-08 had no observables file at all. Both the --out help text and its launcher already
     asserted that the file rolled at UTC midnight -- the promise was in two places and the
     behaviour in none, which is precisely why it survived a month of daily use.
 

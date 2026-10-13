@@ -316,8 +316,8 @@ def _hourly_target_met(seen, fetched):
 
 # This module is a LIBRARY -- imported by the broker, the gates and half a dozen one-shot
 # scripts -- so it owns no logger. LOG_HOOK lets a host install its own tagged one (the broker
-# sets it to the per-chain `_log` on the first predict); until then, stderr, which
-# broker_restart.sh already folds into the broker log (`> "$LOG" 2>&1`). Silent is not an
+# sets it to the per-chain `_log` on the first predict); until then, stderr, which the broker
+# unit already folds into the broker log (StandardError=inherit). Silent is not an
 # option here: a thin merge is invisible downstream and only shows up as a collapsed
 # prediction, minutes later, on a different chain.
 LOG_HOOK = None

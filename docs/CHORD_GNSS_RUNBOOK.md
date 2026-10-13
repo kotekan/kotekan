@@ -240,11 +240,10 @@ production use.
 would start a *second* broker, gather and aggregator alongside the VM's, and two brokers would
 command the same fleet.
 
-The per-component `*_up.sh` scripts (`broker_restart.sh`, `gather_up.sh`, `agg_up.sh`,
-`obs_up.sh`, `viewer_up.sh`) are **superseded for the live stack** by the units, but they are not
-stale: since 2026-09-17 they launch through the *same* definition the units do (§10), so running
-one by hand starts exactly what systemd would. They keep the host guards, the config preflight,
-the log rotation and the post-start health checks that systemd does not do.
+**The per-component launchers of the live stack are gone too** (`broker_restart.sh`,
+`gather_up.sh`, `agg_up.sh`, `obs_up.sh`, `viewer_up.sh`). Their `pkill` patterns matched the
+units' own processes, so systemd relaunched its copy beside the hand-started one. Start, stop
+and restart the live stack with `systemctl --user` (§10).
 
 ## 7. Two deliberate delays, so they are not mistaken for faults
 
@@ -286,7 +285,7 @@ long `tail` of `broker.log` used to.
   has killed the broker.
 * For a real profile, replay under `broker_equiv` — side-effect-free, no root, no ptrace.
 
-## 10. One definition, two ways to run it
+## 10. One definition
 
 **`scripts/gnss/site/stack_components.sh` is the single source of truth** for what each component is
 — its argv, its environment, and its working directory. Nothing else defines those.
@@ -295,19 +294,15 @@ long `tail` of `broker.log` used to.
 stack_components.sh            what to run, and with what environment
        |
        +-- run_component.sh    execs it in the FOREGROUND
-               |        |
-               |        +----- systemd  ExecStart=run_component.sh <name>     (the live path)
-               +-------------- *_up.sh  daemonises it, and adds the things systemd does not:
-                                        host guards, config preflight, log rotation,
-                                        post-start health checks
+                        |
+                        +----- systemd  ExecStart=run_component.sh <name>     (the live path)
 ```
 
-⚠️ **Why the units do not simply call `*_up.sh`**, which is the obvious idea: those scripts
-*daemonise* (`nohup setsid … &`, `disown`) and most `pkill` a previous instance first. Under
-systemd that is three faults at once — `Type=simple` expects `ExecStart` to *be* the process,
-`setsid` detaches the child from the unit's cgroup so supervision is lost entirely, and the
-internal `pkill` races systemd's own restart. So the direction is inverted: both paths go
-through a foreground runner.
+⚠️ **Why the units exec a foreground runner** and not a daemonising launcher: a script that
+*daemonises* (`nohup setsid … &`, `disown`) and `pkill`s a previous instance first is three
+faults at once under systemd — `Type=simple` expects `ExecStart` to *be* the process, `setsid`
+detaches the child from the unit's cgroup so supervision is lost entirely, and the internal
+`pkill` races systemd's own restart.
 
 ### The gate that makes #134 impossible to repeat
 

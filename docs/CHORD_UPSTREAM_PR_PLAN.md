@@ -81,7 +81,7 @@ And one real defect, which was ours and not upstream's to cause:
   `config/gnss/gnss_vars_<node>.j2` are generator output; they stay on disk for the services
   and are gitignored. `config/gnss/example_chord_gnss_cx51_multi.yaml` is one node's output.
   Every removed file is reproducible: node configs via `gen_fleet.py`, the gather and cube
-  archive from the recipe in their headers, the aggregator from the recipe in `agg_up.sh`
+  archive from the recipe in their headers, the aggregator from the recipe in `stack_components.sh`
   (two generator flags were added so the hand-patched live aggregator config is reproducible).
 * **The airspy prototype removed.** 49 files under `config/` (its configs, generators and
   launchers) that nothing in the CHORD system reads; they were already stale. Tag

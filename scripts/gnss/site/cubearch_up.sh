@@ -20,9 +20,9 @@
 # simply stops with the fleet looking perfectly healthy. Until a boot unit exists, a gap that
 # starts at 03:0x is this, not the instrument.
 #
-# Modelled on gather_up.sh, and for the same hard-won reasons: pick the binary by host (NFS
-# holds two build trees), poll for the port instead of sleeping, and check the log for a
-# FatalError rather than trusting that a process exists.
+# Three hard-won rules: pick the binary by host (NFS holds two build trees), poll for the
+# port instead of sleeping, and check the log for a FatalError rather than trusting that a
+# process exists.
 set -u
 K=/home/kvand/gnss/kotekan
 H=$(hostname -s)
