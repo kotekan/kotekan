@@ -128,8 +128,7 @@ struct TelemHeader {
     int64_t wstart0; ///< absolute sample index of slot 0 == win * window_samples
     double utc0;     ///< UTC the assembler stamped on slot 0's record, 0 if slot 0 is absent.
                      ///< Diagnostic only, never a key: each instance derives it from its own
-                     ///< epoch (frame0_utc, else its host clock), so equal wstart need not give
-                     ///< equal utc0.
+                     ///< epoch (frame0_utc), so equal wstart need not give equal utc0.
 
     uint32_t present; ///< bit r set => record slot r was filled this frame
 

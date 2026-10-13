@@ -132,8 +132,8 @@ public:
     int n_prn = 0, n_chan = 0, n_elem = 0;
     int hops_per_record = 0, n_hops_frame = 0, fft_len = 0;
     double sample_rate = 0.0, f_offset_hz = 0.0, dll_spacing = 0.0;
-    double frame0_utc = 0.0; ///< UTC of absolute sample 0; 0 = unknown, and the record
-                             ///< assembler then stamps records from the host clock
+    double frame0_utc = 0.0; ///< UTC of absolute sample 0; 0 = unknown, which the record
+                             ///< assembler refuses
 
     /// One PRN's live seed. The broker owns these and refreshes them every cycle; one not
     /// refreshed within @ref seed_ttl_s expires.

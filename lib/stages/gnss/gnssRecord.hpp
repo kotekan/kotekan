@@ -339,9 +339,7 @@ constexpr int CHAN_L_ENERGY = 8;
 ///   80  int32   gpu, 84 int32 bin_width
 ///   88  int32   max_prn, 92 int32 max_bins   -- the frame's own size (see below)
 ///   96  double  utc0: UTC (Unix seconds) of absolute F-engine sample 0, so that
-///                utc(wstart) = utc0 + wstart / sample_rate. From the producer's frame0_utc;
-///                without one it is the assembler's host-clock anchor
-///                (GnssGpuRecordAssemble::_wall_anchor), not GPS time.
+///                utc(wstart) = utc0 + wstart / sample_rate. From the producer's frame0_utc.
 ///   104 char[CUBE_CHAIN_CHARS]  "<short hostname>/<stage>" (config beam_cube_chain),
 ///                                 NUL-padded. A stage name is unique only within a node, and
 ///                                 the receiver has one bufferRecv for the whole fleet, so the

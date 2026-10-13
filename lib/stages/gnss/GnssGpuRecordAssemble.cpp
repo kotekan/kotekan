@@ -34,20 +34,23 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     out_buf->register_producer(unique_name);
     _prns = config.get<std::vector<int>>(unique_name, "prns");
     _sample_rate = config.get<double>(unique_name, "sample_rate");
-    // Element axis. 0 = the single-antenna layout. >0 appends n_elements per-antenna blocks to
-    // every PRN record (gnssRecord.hpp), and the correlation array is [rows][n_chan][n_elem].
-    _n_elements = config.get_default<int>(unique_name, "n_elements", 0);
+    // Element axis: n_elements per-antenna blocks follow every PRN record (gnssRecord.hpp), and
+    // the correlation array is [rows][n_chan][n_elem].
+    _n_elements = config.get<int>(unique_name, "n_elements");
+    if (_n_elements < 1) {
+        FATAL_ERROR("GnssGpuRecordAssemble: n_elements {:d} must be >= 1", _n_elements);
+        return;
+    }
     // The element the record header's correlation slots carry. The broker closes its DLL and
-    // carrier loops on those slots, so this must be a healthy, high-gain feed. Ignored when
-    // n_elements == 0.
+    // carrier loops on those slots, so this must be a healthy, high-gain feed.
     _reference_element = config.get_default<int>(unique_name, "reference_element", 0);
-    if (_n_elements > 0 && (_reference_element < 0 || _reference_element >= _n_elements)) {
+    if (_reference_element < 0 || _reference_element >= _n_elements) {
         FATAL_ERROR("GnssGpuRecordAssemble: reference_element {:d} outside [0, n_elements={:d})",
                     _reference_element, _n_elements);
         return;
     }
-    // Self-calibrated element sum (see the header and gnssElemCal.hpp). Needs the element axis.
-    _elem_sum = config.get_default<bool>(unique_name, "elem_sum", false) && _n_elements > 0;
+    // Self-calibrated element sum (see the header and gnssElemCal.hpp).
+    _elem_sum = config.get_default<bool>(unique_name, "elem_sum", false);
     _elem_sum_tau_s = config.get_default<double>(unique_name, "elem_sum_tau_s", 5.0);
     // Hold vs adapt. Each per-PRN cal learns its element phases from that PRN's own data, so a
     // satellite near boresight, whose leakage dominates every weak satellite's per-element
@@ -133,7 +136,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         auto pos = config.get_default<std::vector<double>>(unique_name, "elem_positions_enu", {});
         const double st_sign = config.get_default<double>(unique_name, "elem_steer_sign", 1.0);
         const double st_hold = 120.0; // how long a post's geometry stays valid, s
-        if (!pos.empty() && _n_elements > 0) {
+        if (!pos.empty()) {
             if ((int)pos.size() != 3 * _n_elements)
                 FATAL_ERROR("GnssGpuRecordAssemble: elem_positions_enu has {:d} values, "
                             "want 3*n_elements = {:d}",
@@ -183,9 +186,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _pol_c.assign((size_t)n, std::complex<double>(0.0, 0.0));
         _w_scratch.assign((size_t)_n_elements, std::complex<double>(0.0, 0.0));
     }
-    // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs the element
-    // axis, channel_ids (the board is keyed on freq_id) and elem_sum (the shadow learners). Off
-    // by default; /set_elem_proj changes the mode live.
+    // Bright-satellite projection (see the header and gnssProjSubspace.hpp). Needs channel_ids
+    // (the board is keyed on freq_id) and elem_sum (the shadow learners). Off by default;
+    // /set_elem_proj changes the mode live.
     {
         auto fids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
         const std::string mode_s =
@@ -199,7 +202,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                     : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1")) ? 'C'
                     : (has("_l1of") || has("_l2of") || has("_l3oc"))            ? 'R'
                                                                                 : 'G';
-        _proj_ready = _elem_sum && _n_elements > 0 && !fids.empty();
+        _proj_ready = _elem_sum && !fids.empty();
         if (_proj_ready) {
             _proj_fids = fids;
             _proj_own.resize((size_t)n);
@@ -237,7 +240,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                  _proj_kmax_alloc, _proj_tau_s, _proj_probe_tau_s, _proj_probe_frac_min.load());
         } else if (_proj_mode.load() != 0) {
             WARN("GnssGpuRecordAssemble[{:s}]: elem_proj_mode {:s} requested but the projection "
-                 "needs elem_sum, an element axis and channel_ids -- OFF",
+                 "needs elem_sum and channel_ids -- OFF",
                  unique_name, mode_s);
             _proj_mode = 0;
         }
@@ -311,13 +314,12 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
              "ADDRESSABLE windows of {:d} samples ({:.3f} s), ring depth {:d}",
              (int)nc, _spec_freq_ids.front(), _spec_freq_ids.back(), (long long)_spec_win_samples,
              (double)_spec_win_samples / _sample_rate, (int)_spec_ring.size());
-        _spec_scratch.assign((size_t)std::max(1, _n_elements), {0.0, 0.0});
+        _spec_scratch.assign((size_t)_n_elements, {0.0, 0.0});
     }
 
-    // Beam cube (see the header): the (channel x element) axis, un-collapsed. Needs both
-    // channel_ids (a frequency per bin) and an element axis (an antenna per cell).
-    _cube_on = config.get_default<bool>(unique_name, "beam_cube", false) && !_spec_freq_ids.empty()
-               && _n_elements > 0;
+    // Beam cube (see the header): the (channel x element) axis, un-collapsed. Needs
+    // channel_ids (a frequency per bin).
+    _cube_on = config.get_default<bool>(unique_name, "beam_cube", false) && !_spec_freq_ids.empty();
     if (_cube_on) {
         const int nc = (int)_spec_freq_ids.size();
         _cube_bin_width =
@@ -394,11 +396,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
              (long long)_cube_win_samples, (double)_cube_win_samples / _sample_rate, depth, ncell,
              depth * (3.0 * ncell + 2.0 * nbin) * sizeof(double) / 1e6);
     } else if (config.get_default<bool>(unique_name, "beam_cube", false)) {
-        WARN("GnssGpuRecordAssemble[{:s}]: beam_cube requested but {:s} -- the cube needs BOTH "
-             "axes and is OFF.",
-             unique_name,
-             _spec_freq_ids.empty() ? "this config has no channel_ids (no frequency axis)"
-                                    : "n_elements is 0 (no element axis)");
+        WARN("GnssGpuRecordAssemble[{:s}]: beam_cube requested but this config has no "
+             "channel_ids (no frequency axis) -- the cube is OFF.",
+             unique_name);
     }
 
     using namespace std::placeholders;
@@ -433,12 +433,10 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 unique_name + "/set_elem_proj",
                 std::bind(&GnssGpuRecordAssemble::set_elem_proj_callback, this, _1, _2));
     }
-    // Registered whenever the element axis exists: the header slots carry the reference
-    // element even with elem_sum off.
-    if (_n_elements > 0)
-        kotekan::restServer::instance().register_post_callback(
-            unique_name + "/set_reference_element",
-            std::bind(&GnssGpuRecordAssemble::set_reference_element_callback, this, _1, _2));
+    // Registered with elem_sum off too: the header slots carry the reference element.
+    kotekan::restServer::instance().register_post_callback(
+        unique_name + "/set_reference_element",
+        std::bind(&GnssGpuRecordAssemble::set_reference_element_callback, this, _1, _2));
 }
 
 void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstance& conn,
@@ -677,9 +675,8 @@ void GnssGpuRecordAssemble::main_thread() {
         // The energy block follows the corr block, whose size scales with the element count:
         // pass the writer's n_elem, or every energy read lands inside the corr block (and a zero
         // P energy makes the combiner treat the record as inactive).
-        const double* energy = (const double*)(in
-                                               + off_energy(n_prn, n_chan, ROWS_PLAIN,
-                                                            (_n_elements > 0) ? _n_elements : 1));
+        const double* energy =
+            (const double*)(in + off_energy(n_prn, n_chan, ROWS_PLAIN, _n_elements));
         // Per-channel weights for the cross-channel sums (gnssChanPower.hpp): 1/rms of each
         // channel's measured power, scaled to mean 1, so a channel enters by its signal-to-noise
         // and not by the F-engine digital gain. Unit weights until every channel is measured.
@@ -700,25 +697,13 @@ void GnssGpuRecordAssemble::main_thread() {
             _chan_w_pub = _chan_w;
         }
 
-        // No frame0_utc: anchor the host clock once and extrapolate by wstart, so the record
-        // grid stays exactly uniform. This stage emits a frame's records back to back, so a
-        // per-record now() would stamp them microseconds apart, and GnssCoherentCombiner builds
-        // its time grid from the minimum record spacing. The warning still fires: a host clock
-        // is not GPS time.
-        if (hdr.utc0 <= 0.0 && hdr.n_rec > 0) {
-            if (_wall_anchor == 0.0) {
-                const double now = std::chrono::duration<double>(
-                                       std::chrono::system_clock::now().time_since_epoch())
-                                       .count();
-                _wall_anchor = now - (double)winstart[0] / _sample_rate;
-            }
-            if ((_no_utc0_frames++ % 2000) == 0)
-                WARN("GnssGpuRecordAssemble: producer sent no frame0_utc -- record UTC is the "
-                     "HOST clock anchored once at startup, not GPS time ({:d} frames). Absolute "
-                     "time is only as good as this host's clock; add frame0_utc to the producer "
-                     "stage's config. ({:d} records/frame, so a per-record stamp would not even "
-                     "be uniform.)",
-                     _no_utc0_frames, hdr.n_rec);
+        // Record UTC is utc0 + wstart / sample_rate. utc0 comes from the producer's
+        // frame0_utc (the telescope's GPS time0, or the config override).
+        if (!(hdr.utc0 > 0.0)) {
+            FATAL_ERROR("GnssGpuRecordAssemble: the producer sent no frame0_utc (utc0 {:g}): "
+                        "give the telescope GPS time or set frame0_utc on the producer",
+                        hdr.utc0);
+            return;
         }
 
         for (int r = 0; r < hdr.n_rec && !stop_thread; ++r) {
@@ -732,8 +717,7 @@ void GnssGpuRecordAssemble::main_thread() {
             if (out == nullptr)
                 return;
             const int64_t wstart = winstart[r];
-            const double utc =
-                ((hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor) + (double)wstart / _sample_rate;
+            const double utc = hdr.utc0 + (double)wstart / _sample_rate;
 
             // Bright-satellite projection, per record (see the header): feed the source trackers
             // from this record's raw rows, build the per-channel basis and publish it to the
@@ -778,12 +762,11 @@ void GnssGpuRecordAssemble::main_thread() {
                 // P_HEAD (the prompt's head segment, gnssRecord.hpp slots 16-18). PrnCtl::job0
                 // already carries the per-spec row stride, so the row is job0 + t.
                 //
-                // With an element axis the correlation array is [rows][n_chan][n_elem] and the
-                // sum runs per antenna. The energies are [rows][n_chan]: one replica is
-                // correlated against every antenna, so they are summed once and live in the
-                // record header only. n_elements == 0 gives n_e = 1, the single-antenna layout.
-                const int n_e = (_n_elements > 0) ? _n_elements : 1;
-                const int ref_e = (_n_elements > 0) ? _reference_element : 0;
+                // The correlation array is [rows][n_chan][n_elem] and the sum runs per antenna.
+                // The energies are [rows][n_chan]: one replica is correlated against every
+                // antenna, so they are summed once and live in the record header only.
+                const int n_e = _n_elements;
+                const int ref_e = _reference_element;
                 std::complex<double> g3[ROWS_PLAIN]; // reference element: header, NCO/gain state
                 double e3[ROWS_PLAIN];               // element-independent
                 _g_elem.assign((size_t)ROWS_PLAIN * n_e, std::complex<double>(0.0, 0.0));
@@ -1077,7 +1060,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         CubeWindow& C = cube_window_for(wstart);
                         // The epoch the record's `utc` was stamped from, so the cube and the
                         // record stream agree on the time of a wstart.
-                        C.utc0 = (hdr.utc0 > 0.0) ? hdr.utc0 : _wall_anchor;
+                        C.utc0 = hdr.utc0;
                         // phi0 at the window's first record, and only fresh acquisitions
                         // counted, as for the spectrum ring.
                         if (C.nrec[p] == 0)
@@ -1164,22 +1147,20 @@ void GnssGpuRecordAssemble::main_thread() {
                 // Element blocks. Every antenna gets the same rotation: the NCO is a per-PRN
                 // model, not a per-antenna one, so the inter-element phase differences, which are
                 // the measurement, are preserved.
-                if (_n_elements > 0) {
-                    for (int el = 0; el < _n_elements; ++el) {
-                        float* eb = out + gnss::elem_offset(p, el, _n_elements);
-                        const std::complex<double> ge = _g_elem[(size_t)1 * n_e + el] * rot;
-                        const std::complex<double> gE = _g_elem[(size_t)0 * n_e + el] * rot;
-                        const std::complex<double> gL = _g_elem[(size_t)2 * n_e + el] * rot;
-                        const std::complex<double> gH = _g_elem[(size_t)3 * n_e + el] * rot;
-                        eb[gnss::ELEM_P_RE] = (float)ge.real();
-                        eb[gnss::ELEM_P_IM] = (float)ge.imag();
-                        eb[gnss::ELEM_E_RE] = (float)gE.real();
-                        eb[gnss::ELEM_E_IM] = (float)gE.imag();
-                        eb[gnss::ELEM_L_RE] = (float)gL.real();
-                        eb[gnss::ELEM_L_IM] = (float)gL.imag();
-                        eb[gnss::ELEM_PH_RE] = (float)gH.real();
-                        eb[gnss::ELEM_PH_IM] = (float)gH.imag();
-                    }
+                for (int el = 0; el < _n_elements; ++el) {
+                    float* eb = out + gnss::elem_offset(p, el, _n_elements);
+                    const std::complex<double> ge = _g_elem[(size_t)1 * n_e + el] * rot;
+                    const std::complex<double> gE = _g_elem[(size_t)0 * n_e + el] * rot;
+                    const std::complex<double> gL = _g_elem[(size_t)2 * n_e + el] * rot;
+                    const std::complex<double> gH = _g_elem[(size_t)3 * n_e + el] * rot;
+                    eb[gnss::ELEM_P_RE] = (float)ge.real();
+                    eb[gnss::ELEM_P_IM] = (float)ge.imag();
+                    eb[gnss::ELEM_E_RE] = (float)gE.real();
+                    eb[gnss::ELEM_E_IM] = (float)gE.imag();
+                    eb[gnss::ELEM_L_RE] = (float)gL.real();
+                    eb[gnss::ELEM_L_IM] = (float)gL.imag();
+                    eb[gnss::ELEM_PH_RE] = (float)gH.real();
+                    eb[gnss::ELEM_PH_IM] = (float)gH.imag();
                 }
 
                 _a_prev_ok[p] = 1;
@@ -1638,7 +1619,7 @@ void GnssGpuRecordAssemble::shared_consensus(double now_s) {
     // the reference element, and the model would become the bare reference element.
     using cd = std::complex<double>;
     const int n = _n_elements;
-    if (n <= 0 || _g_shared.size() != (size_t)n)
+    if (_g_shared.size() != (size_t)n)
         return;
     const double dt = now_s - _g_shared_t;
     _g_shared_t = now_s;
@@ -1959,7 +1940,7 @@ void GnssGpuRecordAssemble::shared_hold(size_t p) {
     // is warm it combines pol 0 alone (coherent from the first record, 3 dB short of both pols).
     using cd = std::complex<double>;
     const int n = _n_elements;
-    if (p >= _cal.size() || n <= 0)
+    if (p >= _cal.size())
         return;
     const double now_s =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();

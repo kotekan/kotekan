@@ -45,8 +45,8 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // to_time_ns(0), from the GPS time0 it reads at startup. A config copy cannot follow an
     // F-engine restart, and an epoch wrong by a constant is invisible to every estimator that
     // works in differences. The config key stays as an explicit override (the generator's
-    // --frame0-nano sets it). Precedence: config if set, else the telescope, else 0, for which
-    // the record assembler falls back to the host clock.
+    // --frame0-nano sets it). Precedence: config if set, else the telescope, else 0, which the
+    // record assembler refuses.
     const double cfg_frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
     double tel_frame0_utc = 0.0;
     {

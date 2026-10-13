@@ -51,13 +51,7 @@ private:
     std::vector<int> _prns;
     double _sample_rate;
 
-    /// Fallback time base when the producer sends no frame0_utc: the host clock latched once
-    /// and extrapolated by wstart, keeping the uniform record grid that GnssCoherentCombiner's
-    /// cross-record estimators derive from the minimum record spacing.
-    double _wall_anchor = 0.0;    ///< now() - wstart/rate at the first unanchored frame; 0 = unset
-    uint64_t _no_utc0_frames = 0; ///< frames stamped from the fallback (for the rate-limited warn)
-
-    /// Element axis; 0 = the single-antenna record layout.
+    /// Element axis (>= 1).
     int _n_elements = 0;
     /// The element the record header's correlation slots carry: the broker's loop reference.
     int _reference_element = 0;
