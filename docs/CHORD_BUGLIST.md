@@ -694,6 +694,38 @@ the ephemeris epoch.
 
 ## Open — bench or offline, no deployment at all
 
+### #188 — comment pass, stage 8: the Python, scripts and hand-maintained configs still narrate their history (2026-10-13, ON HOLD)
+**What [tree]:** stages 5–7 of the comment pass (`800e1e17c..be7d46e8e`, 10-12) covered the C++ only: `lib/stages`,
+`lib/cuda`, `tests/boost`, `external/n2k_dual`, `lib/metadata`, `lib/utils` — 128 files; stage 7 took 8772 → 6072 comment
+lines and corrected 374 stale ones. Stage 8 was planned and never started (the dead-code audit took its slot). Counted
+10-13 after the dead-code merge (`git grep -c '^\s*#'`; "dated" = lines carrying a 2026-MM-DD date, which undercounts:
+most history reads "used to", "armed", "reverted", "found by"):
+
+| family | files | comment lines | dated |
+|---|---|---|---|
+| `config/chord_gnss_node.yaml`, `gnss_fleet_chord.yaml`, `gnss_chains_chord.yaml` | 3 | 3002 | 220 (the chains yaml 166, the worst file in the tree) |
+| `config/gen_chord_gnss_config.py` | 1 | 873 | 48 |
+| `python/scripts/gnss/gnss_broker/` | 49 | 5730 | 394 |
+| `python/scripts/gnss/*.py` (the tools) | 67 | 2372 | 197 |
+| `python/scripts/js_viewer/` | 10 | 298 | 37 |
+| `scripts/gnss/*.{py,sh}`, `scripts/gnss/site/` | 53 | 1253 | 92 |
+| `docs/*.md` | 17 | — | 191 — out of scope unless KV says otherwise: the buglist, runbook and handoffs carry dated state by design |
+
+**How, when it resumes (KV 10-13: on hold — "these audits really chewed through usage limits"):** the stage 5–7 method,
+one or two agents at a time. The brief is `~/gnss/builds/commentpass/STYLE.md` with `exemplar.diff` (a comment states an
+invariant or a why; dates, "used to", armed/reverted, debugging steps and found-by notes go — git has them; a wrong
+comment is corrected, never deleted; a doubt is a finding, not an edit, in the `findings_s7.json` shape). Work on a
+branch off `kv/chord-gnss` in its own worktree, never the main checkout (the stack runs from it). Every agent edit is
+proved comment-only before it is committed, per language: yaml — `yaml.safe_load` of old and new identical, and
+`gen_fleet.py --preview-dir` plus the three instance recipes byte-identical against the pre-edit generator; Python — the
+`tokenize` stream minus COMMENT/NL tokens identical, docstrings diffed and reviewed separately (they are the functional
+text), then `venv-ft/bin/python -m pyflakes` and `/opt/kotekan_env/bin/black --check` (CI's black); shell —
+comment-stripped text identical plus `bash -n`. Order: the three configs and the generator (what an operator reads
+first), then `gnss_broker/`, then the tools, scripts and viewer. Exclude files owned by open PRs (#1675, #1750, #1751,
+#1752). Afterwards: the cf05 `vpy.sh`-style checks (broker tests, the seven `broker_equiv` replay digests identical,
+`gen_fleet --check`, obs/viewer argv parse), `stack_contract_gate.sh`, then KV restarts the Python services (the obs
+writers wait for the anchor since `a74c3c75e`, so a restart during an outage is safe).
+
 ### #183 — the transit census drops a window without saying so (2026-10-12)
 **What [tree]:** `gnss_transit_arcs.py` keeps a window only if 10 min of context fit inside the span on both sides
 (`t0 - pad - 720 >= t_lo`, `t1 + pad + 720 <= t_hi`) and it starts more than 15 min after `--split`; anything else is
