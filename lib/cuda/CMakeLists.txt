@@ -37,9 +37,12 @@ add_library(
     cudaMemsetInt.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
+    cudaPLMaskBasebandBeamformer.cpp
+    cudaPLMaskBasebandBeamformer.cu
     cudaPLMaskExpander.cpp
     cudaPLMaskUpchannelizer.cpp
     cudaPLMaskUpchannelizer.cu
+    testPLMaskBasebandBeamformer.cpp
     testPLMaskUpchannelizer.cpp
     testUpchanAlignment.cpp
     cudaPL1bitCorrelator.cpp

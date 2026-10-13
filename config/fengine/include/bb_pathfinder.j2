@@ -80,6 +80,11 @@ host_bb_beams_buffer:
     dimscalings: [num_times, 1, 1, 1, 1]
     metadata_pool: main_pool
 
+host_bb_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * num_polarizations * num_frequencies * (num_times / 64)
+    metadata_pool: main_pool
+
 ################################################################################
 
 # Stages
@@ -149,3 +154,17 @@ run_bb:
         - name: cudaOutputData
           gpu_mem: bb_beams_buffer
           out_buf: host_bb_beams_buffer
+
+# A beam sample is lost if any dish is lost at its time, frequency and polarization
+run_bb_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_bb_pl_mask_ringbuffer: host_bb_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskBasebandBeamformer
+          pl_expanded_mask_name: pl_expanded_mask
+          bb_pl_mask_name: bb_pl_mask
