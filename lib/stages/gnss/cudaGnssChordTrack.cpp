@@ -159,15 +159,11 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                         max_chips, 210.0 / (double)max_chips);
     }
 
-    // fp16 Phi tables halve their device footprint, at a storage error of ~3.3e-4. The return
-    // says whether it took effect.
+    // fp16 Phi tables halve their device footprint, at a storage error of ~3.3e-4.
     if (config.get_default<bool>(unique_name, "phi_fp16", false)) {
-        if (despread->set_phi_fp16(true))
-            INFO_NON_OO("cudaGnssChordTrack: fp16 Phi tables ARMED (item 3) -- resident Phi "
-                        "halved; despread_batch will refuse while set");
-        else
-            WARN_NON_OO("cudaGnssChordTrack: phi_fp16 requested but the despread REFUSED it -- "
-                        "running fp32; check the engine's own warning for why");
+        despread->set_phi_fp16();
+        INFO_NON_OO("cudaGnssChordTrack: fp16 Phi tables ARMED (item 3) -- resident Phi "
+                    "halved; despread_batch will refuse while set");
     }
 
     seeds.assign((size_t)n_prn, Seed{});

@@ -94,11 +94,11 @@ public:
     /// energy. Off by default. Every kernel this class launches honours the resulting d_first.
     void set_chips_centered(bool c);
 
-    /// Store the per-PRN Phi tables as __half2, halving their device footprint (storage error
-    /// ~3.3e-4 relative). Off by default. Returns whether it is in effect. While set,
-    /// @ref despread_batch throws, because its kernel reads Phi as float2; @ref enqueue_waveform
-    /// and @ref enqueue_batch_nm support it.
-    bool set_phi_fp16(bool on);
+    /// Store the per-PRN Phi tables as __half2 from now on, halving their device footprint
+    /// (storage error ~3.3e-4 relative). Off until called; there is no way back to float2.
+    /// Afterwards @ref despread_batch throws, because its kernel reads Phi as float2;
+    /// @ref enqueue_waveform and @ref enqueue_batch_nm support it.
+    void set_phi_fp16();
 
     /// Largest @c specs.size() for @ref despread_batch, @ref build_jobs and the Spec-taking
     /// enqueue_* calls: the host job staging, and despread_batch's device job arena, hold n_prn

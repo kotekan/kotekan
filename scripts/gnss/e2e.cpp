@@ -207,7 +207,7 @@ struct Opt {
     /// the commanded replica with the bank, quantises it exactly as the pack does, and
     /// correlates it with the window on the CPU (and the unquantised one beside it).
     int cpu_pack44 = 0;
-    int phi16 = 0;       ///< with --nm: set_phi_fp16(true), the nodes' live mode
+    int phi16 = 0;       ///< with --nm: set_phi_fp16(), the nodes' live mode
     int skip_search = 0; ///< 1 = seed straight from truth (isolates the tracker leg)
     /// Write the detection in /get_detections wire format. e2e_broker.py serves this to the
     /// REAL broker, so its seed arithmetic can be put in the loop too (--seed-file the result).
@@ -1212,8 +1212,8 @@ int main(int argc, char** argv) {
     double* d_nm_energy = nullptr;
     const int nm_max_jobs = 3;
     if (o.nm) {
-        if (o.phi16 && !ds.set_phi_fp16(true))
-            fprintf(stderr, "WARNING: --phi16 requested but set_phi_fp16 refused\n");
+        if (o.phi16)
+            ds.set_phi_fp16();
         auto ck = [](cudaError_t e, const char* what) {
             if (e != cudaSuccess) {
                 fprintf(stderr, "CUDA %s: %s\n", what, cudaGetErrorString(e));

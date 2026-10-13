@@ -65,9 +65,9 @@ struct GnssCudaDespread::Impl {
         double doppler = 0.0;
         int n_chips = 0;
         int d_first = 0; // first gather chip (centered truncation); 0 = full span or one-sided
-        float2 *d_A = nullptr, *d_B = nullptr; // float2 tables, or __half2 storage when `half`
-                                               // (the kernel template reinterprets the pointer)
-        bool half = false;                     // what the device buffers currently hold
+        float2 *d_A = nullptr, *d_B = nullptr; // float2 tables, or __half2 storage under
+                                               // use_fp16 (the kernel template reinterprets
+                                               // the pointer)
     };
     std::vector<PhiCache> phi;
 
@@ -268,14 +268,14 @@ struct GnssCudaDespread::Impl {
         return (double)(TWO_PI_L * fr);
     }
 
-    // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz
-    // (or if the storage precision no longer matches use_fp16). The upload is ordered on `st`,
-    // after any earlier kernel there that reads this bucket. `pinned` copies through a staging
-    // slot and never waits for `st`; without it the copy is from pageable memory, which first
-    // waits for `st` to drain, so only a caller whose stream is otherwise idle passes false.
+    // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz. The upload
+    // is ordered on `st`, after any earlier kernel there that reads this bucket. `pinned` copies
+    // through a staging slot and never waits for `st`; without it the copy is from pageable
+    // memory, which first waits for `st` to drain, so only a caller whose stream is otherwise
+    // idle passes false.
     PhiCache& ensure_phi(int p, double doppler, cudaStream_t st, bool pinned) {
         PhiCache& pc = phi[(size_t)p];
-        if (pc.valid && pc.half == use_fp16 && std::fabs(doppler - pc.doppler) <= refresh_hz)
+        if (pc.valid && std::fabs(doppler - pc.doppler) <= refresh_hz)
             return pc;
         KOTEKAN_NVTX_RANGE("phi build");
         KOTEKAN_NVTX_PUSH("phi taps");
@@ -289,13 +289,9 @@ struct GnssCudaDespread::Impl {
         const float2* hB = reinterpret_cast<const float2*>(taps_b.data());
         KOTEKAN_NVTX_POP();
         // __half2 is 4 bytes, written as sizeof(float2)/2 so that no CUDA half type enters this
-        // g++-compiled file.
+        // g++-compiled file. A bucket allocated before set_phi_fp16 keeps its float2-sized
+        // buffers, which hold the half tables too.
         const size_t esz = use_fp16 ? sizeof(float2) / 2 : sizeof(float2);
-        if (pc.d_A && pc.half != use_fp16) {
-            ck(cudaFree(pc.d_A), "free PhiA (precision flip)");
-            ck(cudaFree(pc.d_B), "free PhiB (precision flip)");
-            pc.d_A = pc.d_B = nullptr;
-        }
         if (!pc.d_A) {
             KOTEKAN_NVTX_RANGE("phi alloc");
             ck(cudaMalloc(&pc.d_A, n * esz), "alloc PhiA");
@@ -336,7 +332,6 @@ struct GnssCudaDespread::Impl {
         ck(cudaMemcpyAsync(pc.d_B, srcB, bytes, cudaMemcpyHostToDevice, st), "PhiB up");
         if (sg)
             ck(cudaEventRecord(sg->done, st), "Phi staging record");
-        pc.half = use_fp16;
         pc.valid = true;
         pc.doppler = doppler;
         pc.n_chips = f.n_chips;
@@ -429,13 +424,11 @@ void GnssCudaDespread::upload_window(const std::complex<float>* window,
     im.window_start = window_start_sample;
 }
 
-bool GnssCudaDespread::set_phi_fp16(bool on) {
+void GnssCudaDespread::set_phi_fp16() {
     Impl& im = *_impl;
-    if (!on) {
-        im.use_fp16 = false; // ensure_phi's precision check rebuilds any half buckets lazily
-        return false;
-    }
     im.use_fp16 = true;
+    for (auto& pc : im.phi) // rebuild any float2 bucket as half before a kernel reads it
+        pc.valid = false;
     const size_t n = (size_t)im.n_chan * (size_t)(im.Lf + 1);
     std::fprintf(stderr,
                  "INFO: GnssCudaDespread: fp16 Phi ARMED -- %.1f MB over %d channels per PRN "
@@ -443,7 +436,6 @@ bool GnssCudaDespread::set_phi_fp16(bool on) {
                  "REFUSE while this is set.\n",
                  2.0 * (double)n * (sizeof(float2) / 2) / 1e6, im.n_chan,
                  2.0 * (double)n * sizeof(float2) / 1e6);
-    return true;
 }
 
 void GnssCudaDespread::set_max_chips(int n) {
