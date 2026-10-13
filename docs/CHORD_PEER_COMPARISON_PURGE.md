@@ -6,7 +6,7 @@
 > code. They can never tell us about a given signal, they only ever tell us fleet-relative
 > properties, which aren't relevant.
 
-This is the same argument as *nothing is per-node* ([[chord-nothing-is-per-node]]): an instance
+This is the same argument as *nothing is per-node*: an instance
 cannot represent physics, and neither can a neighbour. A satellite's discriminator is
 informative or it is not, and no fact about the other satellites in the sky changes that.
 
@@ -29,31 +29,17 @@ satellites to measure a quantity that is *genuinely common to all of them* — t
 the NH overlay offset, the band group delay. That is not judging one satellite against another;
 it is averaging repeated measurements of one physical thing, and removing it would remove the
 measurement. But it carries its own pathology: **the estimate steps when the POPULATION changes**
-(chord-clock-median-churn — "a clock that moves because the population moved"). These need a
+("a clock that moves because the population moved"). These need a
 *churn-immune formulation*, not deletion.
 
 So: **Category 1 purge. Category 2 harden. Category 3 leave alone.**
 
-## Category 1 — PEER COMPARISONS (purge)
+## Category 1 — PEER COMPARISONS: purged 2026-08-27 (`c4512de93`)
 
-| # | site | the comparison | replacement | state |
-|---|---|---|---|---|
-| P1 | `lib/stages/gnss/gnssFleetDll.hpp:766-780` (`_sig_k` = 3.0) | fast-loop window gate: `p_pow < 3 × median(this window's p_pow over armed PRNs)` → leak-only | `TrimPolicy::p_floor_abs`, the presence gate's probe-anchored absolute floor | **fix exists**, `--fleet-trim-floor-from-probes`, armed on 2 of 5 chains |
-| P2 | `gnss_broker/fleet.py:413` | presence **q floor** fallback: `_floor([v["q"] for v in out.values()])` when probes < 2 | refuse (`present_gate = "UNANCHORED"`) | **fix exists**, `--presence-require-probes`, armed on 3 of 5 chains |
-| P3 | `gnss_broker/fleet.py:446` | presence **p floor** fallback: `_floor([v["p_pow"] for v in out.values()])` | as P2 | as P2 |
-
-All three are *fallbacks* — they run exactly when the probe anchor is missing, i.e. when
-conditions are already degraded ([[chord-peer-relative-blindness]], seven instances and counting).
-
-**Measured cost of P1, on sky 2026-08-27**, chains still on the peer median, satellites
-unambiguously **on the peak** (q ≥ 2.5) losing windows to a gate that is supposed to ask only
-"is this discriminator informative":
-
-```
-gps_l5 PRN 18  q 2.85   45.7% of windows discarded
-gps_l5 PRN 20  q 3.25   34.5%
-gps_l5 PRN 27  q 3.28   24.4%
-```
+The three sites, the fast-loop window gate's `3 × median(p_pow over armed PRNs)` (P1) and the
+presence gate's q and p floor fallbacks over the tracked population (P2, P3), are deleted, and
+`test_epl_admit` asserts the expressions are absent from the source. All three were fallbacks.
+The site table and the on-sky cost of P1 are at `be7d46e8e:docs/CHORD_PEER_COMPARISON_PURGE.md`.
 
 ## Category 2 — SHARED-PARAMETER ESTIMATES (keep the measurement, kill the churn)
 
@@ -77,42 +63,15 @@ principled replacement is an **absolute prior**: `b_i ~ N(0, σ_b)` with σ_b fr
 ephemeris + group-delay error is bounded and small). A prior pins the common mode without any
 reference to who is currently up, and a satellite joining or leaving moves nothing.
 
-## The aggregator: audited, and clean
-
-The aggregator (`chord_gnss_agg6_cuda.yaml`, pid 4139879) runs exactly four stages —
-`bufferRecv`, `GnssChanAlignMerge`, `GnssChannelizedSearch`, `GnssChordDequantize`. **None
-contains a live reduction over a population of satellites.** The single `median` in
-`GnssChanAlignMerge.cpp:108` is prose, describing S6 above.
-
-⚠️ It does carry the same disease on the **instance** axis: the merge "advances every input to
-the MAXIMUM sequence currently held", a max over a set that changes as feeds join and leave —
-which is why an F-engine restart pins `target` at a value post-reset feeds can never reach. That
-is guarded (the controller-reset guard), and it is the instance-axis analogue of S4. Worth
-knowing when hardening Category 2: *max/median over a churning set* is one bug with two axes.
-
-## Category 3 — verified NOT peer comparisons (no action)
-
-`gnssChannelizedDespread.cpp:89,166` and `GnssCoherentCombiner.cpp:1448,2602` — median of `dt`,
-the record period (**time**). `GnssCoherentCombiner.cpp:1177` — `median(mag)` over `nb` rate-search
-**bins**. `gnssElemCal.hpp:337,379` — median over live **elements** (imputation of one value).
-`cudaGnssTrack.cpp:1040`, `gnssBroker.cpp:29,67`, `gnssBandPlan.cpp:37`,
-`gnssChannelizedReplica.cpp:427` — **sorting for iteration order**. `combdll.prompt_cn0`,
-the kcoh floor, and `fleet.py:405,442` — **probe-anchored**.
+The same disease exists on the **instance** axis: `GnssChanAlignMerge` advances every input to
+the MAXIMUM sequence currently held, a max over a set that changes as feeds join and leave (it
+is guarded by the controller-reset guard). It is the instance-axis analogue of S4: *max/median
+over a churning set* is one bug with two axes.
 
 ## The plan, in order
 
-**DONE 2026-08-27 (`c4512de93`): P1, P2 and P3 are deleted, both flags burned from
-cli.py and the yaml, and `test_epl_admit` now asserts the expressions are absent from
-the source. The trackers were swept and carry zero cross-PRN coupling.**
-
-~~**1. P1 → default, then delete the branch.**~~ Make the probe-anchored absolute floor
-unconditional; when the broker has no probe anchor it must ship *refusal*, not 0 (0 currently
-means "fall back to the peer median"). Then `_sig_k` and the `nth_element` block are dead code
-and go. ⚠️ Needs a gather ≥ `97f6f258f`, and it fails **silently** on an older one.
-
-**2. P2/P3 → default.** `--presence-require-probes` becomes the behaviour, and the peer branch is
-deleted rather than left reachable. This is KV's own call from this morning restated: *"noisily
-failing is better than accepting a bad number."*
+Steps 1-2 (P1, then P2/P3, made the default and their peer branches deleted) are DONE
+(`c4512de93`). What is left is Category 2, parked as #94:
 
 **3. S2 → replace the gauge with a prior.** Biggest single win in Category 2, and the only one
 where the peer-relativity is in the *state definition* rather than in a threshold. Verify against
@@ -128,19 +87,6 @@ membership-invariance property and test it, not to rewrite.
 **6. Enforcement.** None is wired. The regex lead-finder (`peer_audit.py`) and the refactor
 gate it was meant to join as a static leg (`gate.sh`) were both retired unwired; git history has
 them if a new peer comparison ever needs hunting.
-
-## Method, and what it does NOT cover
-
-Two passes: an AST sweep for reductions (`median`/`mean`/`percentile`/`sorted`/`max`/`min`) whose
-iterable is a per-PRN collection, over `python/scripts/gnss/**`; and a hand read of all 22
-`nth_element`/`std::sort`/`median` sites in `lib/stages/gnss/*.{cpp,hpp}`. Every Category 1 and 2
-entry above was then read in context and classified by hand.
-
-⚠️ **LIMITS, stated so the next reader does not over-trust this.** The sweep finds reductions with
-a *recognisable* reduce call. It will miss: a threshold computed in one function and used in
-another; a peer statistic assembled by hand in a loop without a named reducer; anything reached by the aggregator
-outside `lib/stages/gnss` (its four stages were checked by hand and are clean); and any comparison expressed as a ratio between two
-satellites' quantities without a reduction at all. The C++ pass covered `lib/stages/gnss` only.
 
 ## Appendix: the threshold and fallback audit (2026-08-27)
 
@@ -226,7 +172,7 @@ treat "what does the fallback drop?" as a standing review question, not a per-bu
 
 ⚠️ **Two of these could not succeed at all, and that is its own class.** The CDDIS mirror
 returned 404 on every call it ever made; a search that cannot return a positive is a gate that
-cannot fail ([[chord-broker-refactor]]). When a fallback exists *for* an outage, the only proof
+cannot fail. When a fallback exists *for* an outage, the only proof
 it works is exercising it against the real remote — which is why `test_skyscope.py` asserts the
 URL shape rather than trusting the code to be reachable.
 
