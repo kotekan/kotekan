@@ -248,11 +248,9 @@ def _parse_rinex_nav_file(path):
             week=orb[18],
             health=orb[21],
             toc_gpst=toc_gpst,
-            # Fields the ORBIT model does not need but the LNAV BIT ENCODER does
-            # (gps_lnav_encode.py): subframe 1 carries URA/IODC/TGD/L2 flags and
-            # subframes 2/3 carry IODE, none of which were kept before 2026-07-25.
-            # RINEX has them all; dropping them silently is what made "encode the
-            # ephemeris back into subframe bits" look impossible from BRDC alone.
+            # Fields the ORBIT model does not need: subframe 1's URA/IODC/TGD/L2
+            # flags and subframes 2/3's IODE (read by the group-delay terms below
+            # and the LNAV decode's BRDC cross-check).
             # ORBIT 1 = [IODE, Crs, dn, M0] (0-3); ORBIT 5 = [IDOT, L2 codes, week,
             # L2P flag] (16-19); ORBIT 6 = [accuracy, health, TGD, IODC] (20-23);
             # ORBIT 7 = [transmission time, fit interval] (24-25). health=orb[21]
