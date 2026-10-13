@@ -7,7 +7,6 @@
     diff      T1 T2         what changed between two times -- the question that motivates this
     masters   CUBE.npz...   preflight: may these masters be co-added?
     check                   validate the table against the shipped config
-    stamp     [--at T]      the {array_epoch, array_epoch_key} an artifact should carry
 
 WHY THIS EXISTS. The element -> physical feed map is NOT a constant. On 2026-09-15 the site
 team rewired three dishes, so element 9 before that date and element 9 after it are different
@@ -15,7 +14,7 @@ polarisations of the same dish; re-pointing moves the boresight every few months
 element set has grown before and will grow again. Anything that co-adds across time -- a beam
 map summed over days, most of all -- has to know whether the thing it is summing stayed the
 same thing. Today that knowledge is a table in config/; the intent is a database. Everything
-here goes through `Backend`, so that swap is one class.
+here goes through `JsonBackend`, so that swap is one class.
 
 TWO NUMBERINGS, AND THEY ARE DIFFERENT AXES. The correlator element index runs 0..127 and is
 `pol*64 + dish`; the beam cube packs a 32-wide axis, `pol*16 + dish`, in `cube_order`. Crossing
@@ -161,7 +160,6 @@ class ArrayEpoch(object):
         self.provenance = d.get("provenance", "")
         self.notes = list(d.get("notes", []))
         self.elements = {int(k): Element(k, v) for k, v in d["elements"].items()}
-        self._raw = d
 
     # -- identity ---------------------------------------------------------------------------
     def key(self):
@@ -217,14 +215,6 @@ class ArrayEpoch(object):
             (e for e in self.elements.values() if e.dish == dish), key=lambda e: e.slot
         )
 
-    def stamp(self):
-        """What an artifact built from this epoch should carry."""
-        return {
-            "array_epoch": self.name,
-            "array_epoch_key": self.key(),
-            "pointing": self.pointing.name,
-        }
-
     def __repr__(self):
         return "<ArrayEpoch %s %s..%s %s>" % (
             self.name,
@@ -235,19 +225,12 @@ class ArrayEpoch(object):
 
 
 # ── backends ───────────────────────────────────────────────────────────────────────────────
-class Backend(object):
-    """Where the table comes from. One method, so the database swap is one class.
+class JsonBackend(object):
+    """The shipped table, config/chord_array_epochs.json.
 
-    Implementations return epochs sorted by valid_from, non-overlapping. Gaps are allowed and
+    epochs() returns the epochs sorted by valid_from, non-overlapping. Gaps are allowed and
     meaningful: a gap is "we do not know", and the resolver raises inside one.
     """
-
-    def epochs(self):
-        raise NotImplementedError
-
-
-class JsonBackend(Backend):
-    """The shipped table, config/chord_array_epochs.json."""
 
     def __init__(self, path=CONFIG):
         self.path = path
@@ -267,52 +250,9 @@ class JsonBackend(Backend):
         return self._cache
 
 
-class DbBackend(Backend):
-    """The intended source once the array database exists. NOT IMPLEMENTED.
-
-    It is here to fix the shape of the question before someone answers it in a hurry. What this
-    module needs from a database is one query, and the awkward parts are stated so they are
-    designed in rather than discovered:
-
-      * intervals, not snapshots -- 'what was element 9 on 2026-09-08' must be answerable long
-        after the fact, so rows carry [valid_from, valid_to) and are never updated in place;
-      * a gap must be representable, and must come back as a gap. 'No row' has to mean 'not
-        recorded', which the caller turns into NoEpoch. Silently returning the nearest row is
-        the one failure mode this whole module exists to prevent;
-      * the element set itself is versioned, not just its contents: live_element_ranges changes
-        when dishes are added, so the row set per epoch is part of the answer;
-      * a content digest travels with the answer, so an artifact stamped with `array_epoch_key`
-        can be told apart from one built before a correction landed.
-
-    Until then, keep the JSON authoritative and let the database mirror it -- not the reverse.
-    """
-
-    def __init__(self, dsn):
-        self.dsn = dsn
-
-    def epochs(self):
-        raise NotImplementedError(
-            "the array database backend is not written yet; unset GNSS_ARRAYMAP to use %s"
-            % CONFIG
-        )
-
-
-def backend():
-    """The backend named by $GNSS_ARRAYMAP ('json:PATH' | 'db:DSN'), else the shipped table."""
-    spec = os.environ.get("GNSS_ARRAYMAP")
-    if not spec:
-        return JsonBackend()
-    kind, _, rest = spec.partition(":")
-    if kind == "json":
-        return JsonBackend(rest or CONFIG)
-    if kind == "db":
-        return DbBackend(rest)
-    raise ValueError("GNSS_ARRAYMAP=%r: expected 'json:PATH' or 'db:DSN'" % spec)
-
-
 # ── resolution ─────────────────────────────────────────────────────────────────────────────
 def epochs(be=None):
-    return (be or backend()).epochs()
+    return (be or JsonBackend()).epochs()
 
 
 def at(t, be=None):
@@ -395,10 +335,6 @@ def for_day(daystr, be=None):
     """The single epoch covering a whole UTC day, the unit the cube builds in."""
     t0, t1 = day_span(daystr)
     return require_single(t0, t1, be)
-
-
-def stamp_for_day(daystr, be=None):
-    return for_day(daystr, be).stamp()
 
 
 # ── co-add compatibility ───────────────────────────────────────────────────────────────────
@@ -548,20 +484,6 @@ def _live_ranges(path):
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────────────────
-def _fmt_element(e):
-    pos = ("%7.3f %7.3f %5.3f" % e.enu_m) if e.enu_m else " " * 21
-    return "  elem %3d  cube %-4s  %-4s slot%d  plane %-5s %-10s  ENU %s  (%s)" % (
-        e.index,
-        "-",
-        e.dish_name,
-        e.slot,
-        e.plane or "?",
-        e.plane_confidence,
-        pos,
-        e.position_confidence,
-    )
-
-
 def cmd_epochs(args):
     for e in epochs():
         print(
@@ -732,12 +654,6 @@ def cmd_check(args):
     return 1 if bad else 0
 
 
-def cmd_stamp(args):
-    e = at(args.at) if args.at else epochs()[-1]
-    print(json.dumps(e.stamp(), indent=1))
-    return 0
-
-
 def main(argv=None):
     p = argparse.ArgumentParser(
         description=__doc__.split("\n\n")[0],
@@ -763,9 +679,6 @@ def main(argv=None):
     s.add_argument("masters", nargs="+", help="cube_<day>_nside<N>.npz")
     s.set_defaults(fn=cmd_masters)
     sub.add_parser("check").set_defaults(fn=cmd_check)
-    s = sub.add_parser("stamp")
-    s.add_argument("--at", default=None)
-    s.set_defaults(fn=cmd_stamp)
     a = p.parse_args(argv)
     if not getattr(a, "fn", None):
         p.print_help()
