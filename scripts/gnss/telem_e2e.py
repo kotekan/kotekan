@@ -387,7 +387,9 @@ def main():
                         # must be the freq_id the sender was configured with. A comb whose
                         # columns survive but whose labels do not is worse than no comb -- the
                         # delay fit downstream would be confidently wrong.
-                        cmb = f.comb(r, prn)
+                        cmb = [
+                            (fid, P, en[1]) for fid, _E, P, _L, en in f.comb_epl(r, prn)
+                        ]
                         if len(cmb) != N_CHAN:
                             fails.append(
                                 "%s w%d r%d PRN %d: %d comb columns, expected %d"

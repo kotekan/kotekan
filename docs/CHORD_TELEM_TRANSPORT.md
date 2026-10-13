@@ -186,10 +186,6 @@ same-poll control. A before/after across restarts cannot resolve it — the sky 
 - **`fleet_dll` and `fleet_spectrum` still poll.** Both become straightforward once the record
   stream is trusted: E/P/L energies are already in every row, and the per-channel spectrum is a
   second stream of the same shape.
-- **`record_stream()` exists but nothing consumes it.** It is the #33 fix in waiting: one
-  instance's records for one PRN, in hop order, **with the gaps marked**, so carrier phase can be
-  accumulated over a run that is provably contiguous and provably from one instance. What to do
-  at a break is a loop decision, so it is left to the caller.
 
 Related: `chord-frame-synced-gather`, `chord-rrate-physics`, `chord-instance-time-divergence`
 (#46), `docs/CHORD_GNSS_SHARED_DLL.md`, `docs/CHORD_JOINT_TRACKING.md`.

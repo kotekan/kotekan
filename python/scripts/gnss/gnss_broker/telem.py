@@ -216,19 +216,15 @@ class TelemFrame(object):
         a.frombytes(self._buf[off : off + _ROW_FLOATS * 4])  # the record header only
         return a
 
-    def comb(self, r, prn):
-        """The UNSUMMED per-channel prompts: [(freq_id, A, energy), ...], or [].
+    def comb_epl(self, r, prn):
+        """The comb with all three taps: [(freq_id, E, P, L, (eE, eP, eL)), ...], or [].
 
-        THE POINT OF v2. The record header's prompt (`row()[REC_P_RE/IM]`) is SUMMED over this
-        instance's covering channels by the tracker -- "the one combine the broker can never
-        undo" -- and that sum destroys the frequency axis a delay lives on. These are the same
-        NCO-derotated, element-combined prompts BEFORE that sum, labelled with the freq_id they
-        belong to, so the fleet can fit a delay across its full ~106-channel comb rather than a
-        free constant per instance.
+        THE DLL's INPUT once the tracker stops summing. Each tap is energy-normalised by ITS OWN
+        replica energy, and all three were element-combined and NCO-rotated identically in the
+        assembler -- a discriminator built from taps combined even slightly differently measures
+        the difference between the combines rather than the code offset.
 
-        A is energy-normalised per channel (G/E), matching the header slots' convention.
-
-        ⚠️ SUMMING A*E OVER THE COLUMNS DOES **NOT** EXACTLY REPRODUCE THE HEADER'S PROMPT --
+        ⚠️ SUMMING P*eP OVER THE COLUMNS DOES **NOT** EXACTLY REPRODUCE THE HEADER'S PROMPT --
         measured 1-11% on sky, 2026-08-14, and the reason is worth knowing. ElemCal::combine is
         linear, so summing over channels and combining over elements DO commute; the difference
         is that the assembler calls ec.update() BETWEEN writing the header (which uses the
@@ -240,36 +236,6 @@ class TelemFrame(object):
         For a delay fit across channels this is harmless: every column of one instance shares
         the same weights, so the RAMP is unaffected. Do not use the residual as a cross-check of
         the header until #62 is fixed; it is a known offset, not a transport error.
-        """
-        p = self._index().get(int(prn))
-        if p is None or not self.has_record(r) or not self.n_chan:
-            return []
-        base = (
-            _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + _ROW_FLOATS * 4
-        )
-        a = array.array("f")
-        a.frombytes(self._buf[base : base + self.n_chan * _CHAN_FLOATS * 4])
-        out = []
-        for ch in range(self.n_chan):
-            b = ch * _CHAN_FLOATS
-            e = a[b + CHAN_ENERGY]
-            if e > 0.0:
-                out.append(
-                    (
-                        self.chan_ids[ch],
-                        complex(a[b + CHAN_RE] / e, a[b + CHAN_IM] / e),
-                        e,
-                    )
-                )
-        return out
-
-    def comb_epl(self, r, prn):
-        """The comb with all three taps: [(freq_id, E, P, L, (eE, eP, eL)), ...], or [].
-
-        THE DLL's INPUT once the tracker stops summing. Each tap is energy-normalised by ITS OWN
-        replica energy, and all three were element-combined and NCO-rotated identically in the
-        assembler -- a discriminator built from taps combined even slightly differently measures
-        the difference between the combines rather than the code offset.
         """
         p = self._index().get(int(prn))
         if p is None or not self.has_record(r) or not self.n_chan:
@@ -297,18 +263,6 @@ class TelemFrame(object):
                 )
             )
         return out
-
-    def utc(self, r, prn):
-        """Capture UTC of this record, as the assembler stamped it (row slots 9-10, a double).
-
-        ⚠️ DIAGNOSTIC ONLY. Never a collation key: #46 measured 0.105 s of spread between
-        instances on records whose wstart -- the thing this module keys on -- was identical.
-        """
-        p = self._index().get(int(prn))
-        if p is None or not self.has_record(r):
-            return 0.0
-        off = _HDR_BYTES + ((r * self.n_prn) + p) * self.row_total * 4 + REC_UTC * 4
-        return struct.unpack_from("<d", self._buf, off)[0]
 
 
 class TelemClient(object):
@@ -368,9 +322,6 @@ class TelemClient(object):
         # rather than a constant so the quiet path is TESTABLE in a fraction of a second -- the
         # bug it guards against took twelve hours of silence to show up in production.
         self.read_timeout_s = float(read_timeout_s)
-        # Read timeouts tolerated because the gather had nothing to send. A rising count
-        # with `connects` flat is a quiet fleet; the reverse pair is a link that keeps dying.
-        self.quiet = 0
         self._lock = threading.Lock()
         # chain -> OrderedDict{win: {inst: TelemFrame}}, oldest first, capped at `depth`
         self._store = {}
@@ -397,7 +348,6 @@ class TelemClient(object):
         # gather that is down, i.e. a connection that failed or died young.
         self.fast_retry_after_s = float(fast_retry_after_s)
         self.fast_reconnects = 0
-        self.last_lived_s = None
         # Receive buffer asked for on each new socket; see _connect. 0 leaves the kernel's
         # autotuning alone. `rcvbuf_actual` is what the kernel granted, which is the number
         # worth reading: the request is doubled and then clamped to net.core.rmem_max.
@@ -493,7 +443,6 @@ class TelemClient(object):
                 self._read_loop(sock)
             except Exception as e:
                 lived = None if t_up is None else time.monotonic() - t_up
-                self.last_lived_s = lived
                 fast = lived is not None and lived >= self.fast_retry_after_s
                 if fast:
                     self.fast_reconnects += 1
@@ -560,7 +509,6 @@ class TelemClient(object):
             # above is what detects a link that is genuinely gone.
             raw = self._recv_exactly(sock, 4, quiet_ok=True)
             if raw is None:
-                self.quiet += 1
                 continue
             (length,) = struct.unpack("<I", raw)
             # A frame is delivered whole or the gather closes the connection (it never
@@ -587,11 +535,6 @@ class TelemClient(object):
                 self._pending_bytes -= len(old)
                 self.pending_dropped += 1
             self._pending_cv.notify()
-
-    def pending(self):
-        """Frames read off the socket and not yet in the ring."""
-        with self._pending_cv:
-            return len(self._pending)
 
     def _store_loop(self):
         while not self._stop.is_set():
@@ -768,63 +711,6 @@ class TelemClient(object):
                             e,
                         )
         return got, fleet_now
-
-    def record_stream(self, chain, inst, prn, n_win=16, lag=1):
-        """One instance's records for one PRN, in hop order, with the gaps marked.
-
-        THE POINT OF THIS FUNCTION. Carrier phase must be accumulated over a run of records
-        that is provably contiguous AND provably from ONE instance -- both were assumptions
-        before, and both were wrong (see the module note, #33). Here the instance is the key
-        and contiguity is checked against the hop grid rather than against a record count or a
-        wall-clock span.
-
-        Returns a list of dicts, oldest first:
-            {hop, dphi_cmd, trim_inc, A, energy, gap}
-        where `gap` is the number of MISSING records immediately before this one (0 = the arc
-        continues). An accumulation must reset wherever gap != 0; nothing here does that for
-        the caller, because what to do at a break is a loop decision and loops live upstream.
-        """
-        out = []
-        step = None
-        prev_hop = None
-        for w in self.windows(chain, lag=lag)[-int(n_win) :]:
-            f = self.frame_set(chain, w).get(inst)
-            if f is None:
-                continue
-            if step is None:
-                step = f.hops_per_record
-            for r in range(f.n_rec):
-                if not f.has_record(r):
-                    continue
-                row = f.row(r, prn)
-                if row is None:
-                    continue
-                e = row[REC_P_ENERGY]
-                if e <= 0.0:
-                    continue
-                hop = f.hop(r)
-                gap = 0
-                if prev_hop is not None and step:
-                    gap = int((hop - prev_hop) // step) - 1
-                    if gap < 0:
-                        gap = 0
-                prev_hop = hop
-                out.append(
-                    {
-                        "hop": hop,
-                        "utc": f.utc(r, prn),
-                        "dphi_cmd": row[REC_CPHASE],
-                        "trim_inc": row[REC_TRIM_INC],
-                        "A": complex(row[REC_P_RE] / e, row[REC_P_IM] / e),
-                        "energy": e,
-                        "doppler_hz": row[REC_DOPPLER],
-                        "code_phase_chips": row[REC_CP],
-                        "e_pow": row[REC_E_ENERGY],
-                        "l_pow": row[REC_L_ENERGY],
-                        "gap": gap,
-                    }
-                )
-        return out
 
     def stats(self, stale_after_s=5.0):
         """Transport health -- and the alignment check, served rather than inferred.

@@ -223,17 +223,17 @@ class TestWireFormat(unittest.TestCase):
         )
         self.assertEqual(f.row_total, self.meta["row_floats"])
         self.assertEqual(f.chan_ids, [5972 + 16 * ch for ch in range(5)])
-        comb = f.comb(3, 102)  # r=3, p=2
+        comb = f.comb_epl(3, 102)  # r=3, p=2
         self.assertEqual(len(comb), 5)
-        for ch, (fid, A, e) in enumerate(comb):
+        for ch, (fid, _E, P, _L, (_eE, e, _eL)) in enumerate(comb):
             self.assertEqual(fid, 5972 + 16 * ch)
             self.assertEqual(e, ch + 1)
-            # comb() normalises by energy, matching the header slots' G/E convention
+            # comb_epl() normalises by energy, matching the header slots' G/E convention
             self.assertAlmostEqual(
-                A.real, (100000 * 3 + 1000 * 2 + 10 * ch + 1) / (ch + 1), places=3
+                P.real, (100000 * 3 + 1000 * 2 + 10 * ch + 1) / (ch + 1), places=3
             )
             self.assertAlmostEqual(
-                A.imag, (100000 * 3 + 1000 * 2 + 10 * ch + 2) / (ch + 1), places=3
+                P.imag, (100000 * 3 + 1000 * 2 + 10 * ch + 2) / (ch + 1), places=3
             )
 
     def test_comb_epl_carries_all_three_taps(self):
@@ -251,17 +251,6 @@ class TestWireFormat(unittest.TestCase):
             self.assertAlmostEqual(L.real, (b + 5) / (ch + 1), places=3)
             self.assertEqual((eE, eP, eL), (ch + 1, ch + 1, ch + 1))
 
-    def test_comb_and_comb_epl_agree_on_the_prompt(self):
-        # The two accessors must not drift: comb() is the v2 view of the same bytes comb_epl()
-        # reads, and a reader using either must get the same prompt.
-        f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
-        for (fid, A, e), (fid2, _E, P, _L, (_eE, eP, _eL)) in zip(
-            f.comb(1, 101), f.comb_epl(1, 101)
-        ):
-            self.assertEqual(fid, fid2)
-            self.assertAlmostEqual(A.real, P.real, places=6)
-            self.assertEqual(e, eP)
-
     def test_unused_comb_columns_do_not_leak(self):
         # telemfmt ships 6 columns and fills 5 ON PURPOSE. The reserved-but-unused one must read
         # as absent, never as the neighbouring row's first channel -- which is what a row stride
@@ -272,20 +261,12 @@ class TestWireFormat(unittest.TestCase):
         for r in range(f.n_rec):
             if f.has_record(r):
                 for prn in f.prns():
-                    self.assertEqual(len(f.comb(r, prn)), 5)
+                    self.assertEqual(len(f.comb_epl(r, prn)), 5)
 
     def test_comb_absent_on_a_missing_record(self):
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
         self.assertFalse(f.has_record(2))
-        self.assertEqual(f.comb(2, 100), [])
-
-    def test_utc_double_alias(self):
-        # UTC is a double aliased over two float slots. A float-by-float parse gets a
-        # plausible-looking wrong number here rather than an error.
-        f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
-        self.assertAlmostEqual(
-            f.utc(1, 103), 1786285988.5 + 0.0104857 * 1 + 0.001 * 3, places=6
-        )
+        self.assertEqual(f.comb_epl(2, 100), [])
 
     def test_hop_is_the_absolute_fengine_index(self):
         f = telem.TelemFrame(telem._HDR.unpack_from(self.raw, 0), self.raw, 0.0)
@@ -466,7 +447,6 @@ class TestQuietGatherDoesNotReconnect(unittest.TestCase):
 
         # BOTH frames arrive, ACROSS a gap three times the read timeout...
         self.assertEqual(c.frames, 2, "the frame after the silence never arrived")
-        self.assertGreaterEqual(c.quiet, 1, "the read timeout was never exercised")
         # ...on ONE connection. This is the assertion that would have caught the leak: the
         # accept count is what the gather pays for, one leaked socket per reconnect.
         self.assertEqual(self.conns, 1, "the client reconnected across a quiet gather")
@@ -532,55 +512,6 @@ class TestCoherentSource(unittest.TestCase):
         a, b = set(got["cx19.0"][1]), set(got["cx42.0"][1])
         self.assertEqual(len(a), 3)
         self.assertTrue(a < b)  # a strict subset: the survivors kept their own hops
-
-
-class TestRecordStream(unittest.TestCase):
-    """B. The per-instance, contiguity-checked feed -- the #33 fix.
-
-    The carrier-rate feed used to difference `res_cycles`, a per-instance ACCUMULATOR, across a
-    served row that silently changed instance: 4.92 Hz where one instance read 0.82. So the
-    replacement must make the instance the key and must SAY where the run breaks.
-    """
-
-    def _client(self):
-        return telem.TelemClient(depth=16)
-
-    def _feed(self, c, raw):
-        c._store_frame(telem.TelemFrame(telem._HDR.unpack_from(raw, 0), raw, 0.0))
-
-    def test_contiguous_run_reports_no_gaps(self):
-        c = self._client()
-        for w in (10, 11, 12):
-            self._feed(c, _make_frame(inst="cx19.0", win=w))
-        s = c.record_stream("gps_l5", "cx19.0", 1)
-        self.assertEqual(len(s), 8)  # windows 10 and 11; 12 is held back by the lag
-        self.assertEqual([x["gap"] for x in s], [0] * 8)
-        self.assertEqual([x["hop"] for x in s], sorted(x["hop"] for x in s))
-        self.assertTrue(all(x["dphi_cmd"] == 0.25 for x in s))
-
-    def test_a_break_is_reported_not_smoothed(self):
-        c = self._client()
-        self._feed(c, _make_frame(inst="cx19.0", win=10))
-        self._feed(c, _make_frame(inst="cx19.0", win=12))  # window 11 never arrived
-        self._feed(c, _make_frame(inst="cx19.0", win=13))
-        s = c.record_stream("gps_l5", "cx19.0", 1)
-        gaps = [x["gap"] for x in s]
-        self.assertEqual(gaps[:4], [0, 0, 0, 0])
-        self.assertEqual(
-            gaps[4],
-            4,
-            "a missing window is 4 missing records, and the consumer "
-            "must be told so rather than left to difference across it",
-        )
-
-    def test_one_instance_only(self):
-        c = self._client()
-        self._feed(c, _make_frame(inst="cx19.0", win=10))
-        self._feed(c, _make_frame(inst="cx42.0", win=10))
-        self._feed(c, _make_frame(inst="cx19.0", win=11))
-        self.assertEqual(len(c.record_stream("gps_l5", "cx19.0", 1)), 4)
-        self.assertEqual(len(c.record_stream("gps_l5", "cx42.0", 1)), 4)
-        self.assertEqual(c.record_stream("gps_l5", "cx99.9", 1), [])
 
 
 class TestStaleness(unittest.TestCase):
@@ -722,7 +653,7 @@ class TestSocketDrainsIndependentOfTheRing(unittest.TestCase):
             time.sleep(hold_s)
             # While the lock is held the store thread cannot insert a single frame...
             frames_during = c.frames
-            pending_during = c.pending()
+            pending_during = len(c._pending)
             t_release = time.monotonic()
         try:
             deadline = time.time() + 5.0
@@ -846,7 +777,6 @@ class TestReconnectPolicy(unittest.TestCase):
             "waited %.2f s (the backoff) after a live connection was " "closed" % gap,
         )
         self.assertEqual(c.fast_reconnects, 1)
-        self.assertGreaterEqual(c.last_lived_s, 0.2)
 
     def test_a_connection_that_died_young_waits_the_backoff(self):
         c, gap = self._run(live_s=0.02, fast_after_s=5.0, retry_s=0.4)
