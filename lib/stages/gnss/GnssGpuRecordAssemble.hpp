@@ -319,7 +319,7 @@ private:
     /// the ProjBoard (same group, matched by freq_id); the top eigenvectors of the probe rows'
     /// covariance. A probe direction (own or a sibling's) is used only while the broker reports
     /// a satellite inside elem_proj_deg, and not when proj_identify names it as one steered
-    /// slot's own signature. A slot that has run for elem_proj_probe_since_s and has no fresh
+    /// slot's own signature. A slot that has run for _proj_probe_since_s and has no fresh
     /// geometry is a probe.
     std::atomic<int> _proj_mode{0};
     std::atomic<double> _proj_deg{4.0};

@@ -2177,7 +2177,7 @@ void GnssGpuRecordAssemble::proj_prepare_record(const double* corr, const void* 
 
     // 1. Sources among the own slots: running, geometry fresh, inside elem_proj_deg of
     //    boresight; nearest first, at most rank_max. A probe (a slot running for at least
-    //    elem_proj_probe_since_s with no fresh geometry; geometry is posted only above the
+    //    _proj_probe_since_s with no fresh geometry; geometry is posted only above the
     //    horizon) feeds the probe stack.
     const double az = _bore_az_deg * M_PI / 180.0, el = _bore_el_deg * M_PI / 180.0;
     const double eb[3] = {std::cos(el) * std::sin(az), std::cos(el) * std::cos(az), std::sin(el)};

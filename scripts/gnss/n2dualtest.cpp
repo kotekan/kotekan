@@ -167,7 +167,7 @@ static bool tiles_mixed_bb(int ihi, int jhi) {
     return !tiles_aa(ihi, jhi);
 }
 /// The block classes the GNSS chain actually SHIPS with (31896a862:docs/CHORD_GPU_TODO.md 1b): AA
-/// is production's N^2 prefix, MIXED is the despread. BB (synth x synth) has no consumer -- its
+/// is the antennas' own N^2, MIXED is the despread. BB (synth x synth) has no consumer -- its
 /// only reader threw the value away -- so it is masked off. Gate [5] masks off AA, which is
 /// the MIRROR of this; a mask path can be right in one direction and wrong in the other, so
 /// the shipped combination gets its own case.

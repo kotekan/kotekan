@@ -197,7 +197,8 @@ public:
     int overlay_sign(long long period, int nh_phase) const;
 
     /// Code-Doppler feed-forward sign: +1 means an approaching satellite's code runs fast, like
-    /// its carrier; 0 disables the feed-forward. Set from config `code_doppler_sign`.
+    /// its carrier; 0 disables the feed-forward. The stages run +1; e2e's --code-doppler-sign
+    /// and the boost tests change it.
     double code_doppler_sign = 1.0;
 
     /// Absolute code advance, in COMBINED chips mod @c eff_code_length, from sample 0 to the

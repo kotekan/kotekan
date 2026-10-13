@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     const unsigned seed = argc > 1 ? (unsigned)atoi(argv[1]) : 4242u;
     // --conj: simulate the CHORD F-ENGINE CONJUGATION (the frame carries conj(sky), measured
     // 2026-07-30) and exercise both sides' compensation -- path A's DespreadParams::conj_data
-    // and path B's conj_replica in the pack. Without this the harness only ever proved the
+    // and path B's conjugated replica in the pack. Without this the harness only ever proved the
     // unconjugated case, which is why the live tiles read noise on 2026-08-06.
     const bool CONJ = (argc > 2 && std::string(argv[2]) == "--conj");
     std::mt19937 rng(seed);

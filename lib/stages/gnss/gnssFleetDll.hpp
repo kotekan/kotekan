@@ -204,8 +204,8 @@ public:
         uint64_t n_frames = 0;
         /// freq_ids two senders both carried in one window (see WindowAcc::owner)
         uint64_t n_dup_chan = 0;
-        /// Consecutive frames more than epoch_margin windows behind `newest`; epoch_strikes of
-        /// them re-anchor the chain (see fold()).
+        /// Consecutive frames more than _epoch_margin windows behind `newest`; _epoch_strikes
+        /// of them re-anchor the chain (see fold()).
         uint64_t n_backwards = 0;
         uint64_t n_epoch_reset = 0; ///< re-anchors performed (the F-engine frame0 moved)
     };

@@ -15,8 +15,8 @@
 ///
 /// The pin never steps a warm model. Its records are being combined, and a step in the model's
 /// phase is a step in every record's carrier phase downstream, like a cycle slip; a slow ramp
-/// (elem_sum_shared_ref_slew_deg_s, default 1 deg/s) is not. A first model is pinned in full:
-/// installing a model is already a one-time step, with no earlier phase to keep continuous.
+/// (1 deg/s unless /set_elem_sum_shared_ref sets slew_deg_s) is not. A first model is pinned in
+/// full: installing a model is already a one-time step, with no earlier phase to keep continuous.
 
 #include <cmath>   // for sqrt
 #include <complex> // for complex, conj, norm, arg, polar

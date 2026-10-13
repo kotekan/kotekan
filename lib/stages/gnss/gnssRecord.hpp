@@ -197,7 +197,7 @@ constexpr int CMB_PEEL_DEEP = 17;  ///< Reserved (the peel residual's deep and i
 constexpr int CMB_PEEL_INCOH = 18; ///< never written, so zero.
 constexpr int CMB_HOP_SLOT = 19;   ///< absolute hop index (int64 aliased at slots 19-20) labelling
                                    ///< the E/P/L window: GnssChanMetadata::sample_seq / fft_len of
-                                   ///< its first record (block mode) or newest record (rolling).
+                                   ///< its newest record.
                                    ///< -1 = unset. int64 because it is an exact integer key: the
                                    ///< fleet DLL groups instances by equal hop, and the hop
                                    ///< reaches ~1.7e10/day, far past float32's 2^24.
