@@ -102,9 +102,7 @@ class ChainContext(object):
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp",
         "drp",
-        "g3_ramp",
         "cb",
-        "car",
         "nho",
         "dls",
         "hold",

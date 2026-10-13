@@ -87,7 +87,6 @@ from gnss_broker.fits import (  # noqa: E402
 )
 from gnss_broker.publish import FleetPublisher  # noqa: E402
 from gnss_broker.seed import Seed  # noqa: E402  (task #83)
-from gnss_broker.rampfit import RampTracker  # noqa: E402  (task #93 shadow)
 from gnss_broker.cli import (
     build_parser,
     _FROZEN,
@@ -96,7 +95,6 @@ from gnss_broker.cli import (
 from gnss_broker.context import ChainContext  # noqa: E402  (the stage interface)
 from gnss_broker.clockbias import ClockBias  # noqa: E402  (the receiver LO bias)
 from gnss_broker.loopstate import (  # noqa: E402
-    CarrierState,
     NhOverlay,
     DllLoopState,
     HoldState,
@@ -152,12 +150,9 @@ def main(argv=None, rx=None, publisher=None):
         setattr(args, _k, _v)
 
     # ── THE LOOPS' OWN MEMORY ─────────────────────────────────────────────────────────
-    # Six owner objects, constructed FIRST because everything else in this function may
+    # The owner objects, constructed FIRST because everything else in this function may
     # touch them. Each is one loop's per-satellite state; see gnss_broker/loopstate.py for
     # which table belongs to which loop and why that grouping is the one that matters.
-    _carrier = (
-        CarrierState()
-    )  # the shared carrier loop's memory; see gnss_broker/loopstate.py
     _nho = NhOverlay()  # NH overlay alignment (#41: judge on the VERTEX)
     _dls = DllLoopState()  # the code loop + the C++ arming handshake
     _hold = HoldState()  # why a sat is held rather than dropped
@@ -1060,11 +1055,6 @@ def main(argv=None, rx=None, publisher=None):
     # None, never 0.0: a missing axis time is UNKNOWN, and feeding 0.0 to the joint filter
     # would be a confident wrong timestamp instead of a skipped measurement.
     _drp.t_now_abs = None
-    _g3_ramp = RampTracker()
-    # #93 SHADOW v2: the direct per-sat ADR span rate (carrier frame, Hz), captured on
-    # the span-shadow path each poll: prn -> (y_phi_hz, t, n_rec). The rrate ROW stays
-    # logged beside it -- the 08-25 F1 said the row is ~97% carrier-only; v2 measures
-    # whether the RAW ADR observable does better against the trim ramp.
     # THE HANDOVER (#79/#49, the precondition eec1d2f12 set for re-arming the DR chains).
     # The set the C++ loop is ACTUATING RIGHT NOW, i.e. what we last POSTED -- not what this
     # cycle is about to compute. The Python integrator stands down per-PRN against this, so
@@ -1441,7 +1431,6 @@ def main(argv=None, rx=None, publisher=None):
         almanac_sats=almanac_sats,
         brdc_alm=brdc_alm,
         det_fresh=det_fresh,
-        car=_carrier,
         nho=_nho,
         dls=_dls,
         hold=_hold,
@@ -1471,7 +1460,6 @@ def main(argv=None, rx=None, publisher=None):
         sig_of_last=sig_of_last,
         dllp=_dllp,
         drp=_drp,
-        g3_ramp=_g3_ramp,
         seeds=seeds,
         dr_state=dr_state,
         bsat=bsat,
@@ -2106,9 +2094,7 @@ def main(argv=None, rx=None, publisher=None):
                     if abs(_rem) >= 20.0:
                         continue
                     _yk = _rem + (
-                        _rf.cmd_applied.get(_p, _carrier.trim.get(_p, 0.0))
-                        if args.rrate_feed_applied
-                        else 0.0
+                        _rf.cmd_applied.get(_p, 0.0) if args.rrate_feed_applied else 0.0
                     )
                     _sigk = min(0.3, max(0.03, 2.0 / math.sqrt(_kv["sig"])))
                     _k2 = (args.dr_constellation, int(_p))
@@ -2320,7 +2306,7 @@ def main(argv=None, rx=None, publisher=None):
         seeding.stage_push_seeds(_ctx)
         # The commands actually shipped this poll become the rrate feed's reference next
         # poll. REBUILT, not updated: a sat that stopped being commanded (row widened, seed
-        # dropped) must fall back to referencing car_trim/0, or a stale command would
+        # dropped) must fall back to referencing 0, or a stale command would
         # silently re-enter its measurements forever.
         _rf.cmd_applied.clear()
         _rf.cmd_applied.update(_ctx.rr_cmd_new)

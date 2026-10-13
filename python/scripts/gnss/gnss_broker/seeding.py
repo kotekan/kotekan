@@ -455,7 +455,7 @@ def stage_detections_to_seeds(ctx):
             # FIRST seed: full attribution (the rail onsets coincide with first seeding,
             # and a first seed has no previous value for the step tripwire to fire on).
             _log(
-                "PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f, trim %+.1f)"
+                "PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f)"
                 % (
                     prn,
                     seed_dop,
@@ -465,7 +465,6 @@ def stage_detections_to_seeds(ctx):
                     if (ctx.args.almanac and prn in ctx.pred)
                     else "n/a",
                     ctx.cb.seed,
-                    ctx.car.trim.get(prn, 0.0),
                 )
             )
         elif abs(seed_dop - _prev_sd) > 10.0 and prn in ctx.cp_held:
@@ -1313,16 +1312,6 @@ def stage_detections_to_seeds(ctx):
             ctx.dls.last.pop(prn, None)
             ctx.cp_held.discard(prn)
             ctx.hold.miss.pop(prn, None)
-            # The re-anchor refreshes the seed doppler next cycle = an NCO f_ref step
-            # the TRACK-mode trim was not built for (same latch as the hold release,
-            # and it bypasses that branch because cp_held is discarded HERE): demote
-            # to BOOTSTRAP so the carrier re-pulls instead of parking off-frequency.
-            if prn in ctx.car.locked:
-                ctx.car.locked.discard(prn)
-                ctx.car.fade.pop(prn, None)
-                _log(
-                    "CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn
-                )
         # HOLD ADMISSION REQUIRES FIT MATURITY (2026-07-19 eve, the Tier-3 burn-in fix):
         # a birth-window anchor (wide margins, unsolved bias, <6-point fit) can be chips
         # wrong, and granting it hold protection created the zombie cohorts that made
@@ -1514,20 +1503,6 @@ def stage_detections_to_seeds(ctx):
                     "RELEASE PRN %d: seed currency unfrozen (amp_snr %.1f, ddop %+.0f)"
                     % (prn, ctx.sig_of_last(ctx.status.get(prn)), ddop_rel)
                 )
-                # A release used to STEP the tracker's f_ref by ddop while the TRACK-mode
-                # trim carried the hold-era compensation -> instant residual ~ -ddop,
-                # latched by the coh/innovation gates (C20 parked at -6.2 Hz for 40 min,
-                # 2026-07-18). The arithmetic pre-shift (--trim-precomp-carrier) was
-                # bench-rejected in both signs and DELETED (07-19 audit A4); the safe
-                # rescuer below stands: the broker KNOWS the NCO stepped -- demote to
-                # BOOTSTRAP and re-pull the trim at full gain (seconds, no arithmetic).
-                if abs(ddop_rel) > 1.0 and prn in ctx.car.locked:
-                    ctx.car.locked.discard(prn)
-                    ctx.car.fade.pop(prn, None)
-                    _log(
-                        "CARRIER REACQ PRN %d: hold released with dop step %+.1f Hz "
-                        "-> BOOTSTRAP re-pull" % (prn, ddop_rel)
-                    )
             ctx.cp_held.discard(prn)
             ctx.hold.miss.pop(prn, None)
         ctx.seeds[prn] = seed
@@ -1569,13 +1544,10 @@ def stage_push_seeds(ctx):
                 d["code_phase_at_ref_chips"] = (
                     d["code_phase_at_ref_chips"] + ctx.dls.trim[prn]
                 ) % _tmod
-        if ctx.car.trim.get(prn):
-            d["carrier_trim_hz"] = ctx.car.trim[prn]
         if ctx.jrc is not None and prn not in ctx.probe_set:
-            # Probes excepted for the trim loop's own reason: no carrier, and a moving
-            # trim moves the REPORTED Doppler, which the beam map's churn gate reads
-            # as sky. A sat whose row has not converged keeps the trim-loop value
-            # (usually 0 on CHORD): commanding from a wide row would inject the
+            # Probes excepted: no carrier, and a moving trim moves the REPORTED Doppler,
+            # which the beam map's churn gate reads as sky. A sat whose row has not
+            # converged carries no trim: commanding from a wide row would inject the
             # filter's own transient into the NCO.
             _k = (ctx.args.dr_constellation, int(prn))
             # ARM-12 GUARD: the row's own satellite must be DETECTED this cycle
@@ -1612,7 +1584,7 @@ def stage_push_seeds(ctx):
                 d["carrier_trim_hz"] = _cmd
                 ctx.rr_cmd_new[prn] = _cmd
         # RELEASE-SLEW (arm 12). A sat that exits the command set -- sig bar lost,
-        # sigma widened, receiver row gone -- used to fall back to car_trim/0 in ONE
+        # sigma widened, receiver row gone -- used to fall back to 0 in ONE
         # poll: an instant step of its whole standing command, the exact reference
         # discontinuity the slew bound exists to prevent, taken at release instead
         # of at pull-in. Walk it back at the same bounded rate; drop out only once
@@ -1633,5 +1605,5 @@ def stage_push_seeds(ctx):
                 ctx.rr_cmd_new[prn] = _cmd
                 ctx.rf.released += 1
             # else: within one step of zero (or slew disabled) -- final sub-slew
-            # step back to car_trim/0, and the sat leaves rr_cmd_applied.
+            # step back to 0, and the sat leaves rr_cmd_applied.
         ctx.payload.append(d)

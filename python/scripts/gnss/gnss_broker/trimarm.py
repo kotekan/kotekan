@@ -1,4 +1,4 @@
-"""Arming the C++ trim loop, reading its standing trims back, and the #93 ramp shadow.
+"""Arming the C++ trim loop and reading its standing trims back.
 
 ⚠️ AUTHORITY IS HELD BY EXACTLY ONE ARM. What this posts is what the gather actuates; the
 Python integrator stands down per-PRN against the same set. The armed set is recorded BEFORE
@@ -20,7 +20,6 @@ half the number.
 import time
 
 from gnss_broker.transport import _get, _post, _log_rl, log_tag
-from gnss_broker.sky import C_LIGHT
 
 
 def stage_fleet_trim_arming(ctx):
@@ -108,7 +107,6 @@ def stage_fleet_trim_arming(ctx):
                 "%s/set_policy" % ctx.args.fleet_trim_url.rstrip("/"), _pol, timeout=2.0
             )
             ctx.dls.stat["posts"] += 1
-            ctx.dls.stat["armed"] = len(_armed)
         except Exception as _e:
             # NEVER take the cycle down for the fast loop. A controller that cannot be
             # reached simply stops being refreshed, and its trims EXPIRE at the trackers
@@ -147,7 +145,6 @@ def stage_fleet_trim_arming(ctx):
                 for _p, _r in _rows.items():
                     if isinstance(_r, dict) and "trim_chips" in _r:
                         ctx.dls.readback[int(_p)] = _r
-                ctx.dls.stat["rb"] += 1
                 _log_rl(
                     "fleet-trim-rb",
                     "FLEET-TRIM READBACK %s: %s"
@@ -171,85 +168,4 @@ def stage_fleet_trim_arming(ctx):
                 # loop. Counted and surfaced, and the dict stays empty until a poll
                 # succeeds again.
                 ctx.dls.readback.clear()
-                ctx.dls.stat["rb_fail"] += 1
                 ctx.dls.stat["last_err"] = str(_e)
-            # -- GAP 3 SHADOW (#33, READ-ONLY): does the row PREDICT the trim ramp? --
-            # Predicted per-sat code-rate aiding = rrate[m/s] * f_chip / c  (identically
-            # K*residual_doppler_hz, K = chip_rate/carrier ~ 0.0087). Measured = LS slope
-            # of the STANDING trim from consecutive readbacks. The window RESETS on any
-            # step > 0.3 chips (a #92 re-anchor/wipe is a discontinuity, not a rate) and
-            # on release (a released trim's slope is the LEAK, not the sky). Mean trim is
-            # logged beside the slope so the leak drag (leak_per_s * trim) stays
-            # computable offline -- in the tracking regime the equilibrium terms cancel
-            # in the derivative and the raw slope ~ gain/(gain+leak) of the sky rate.
-            # Nothing here feeds control; the consume step (GAP 3 step 3) is a separate
-            # default-off arm with its own pre-registration.
-            try:
-                _t_rb = time.time()
-                _jg = None
-                try:
-                    _jg = ctx.rx.joint_receiver(
-                        ctx.band_id,
-                        ctx.code_len,
-                        rereference=ctx.args.joint_rereference,
-                        gauge_mode="prior",
-                    )
-                except Exception:
-                    _jg = None
-                _g3_rows = []
-                for _p in sorted(ctx.dls.readback):
-                    _r = ctx.dls.readback[_p]
-                    if not _r.get("armed"):
-                        # A RELEASED trim's slope is the LEAK, not the sky: drop the
-                        # series rather than pausing it.
-                        ctx.g3_ramp.drop(_p)
-                        continue
-                    ctx.g3_ramp.update(_p, _t_rb, float(_r["trim_chips"]))
-                    _fit3 = ctx.g3_ramp.fit(_p)
-                    if _fit3 is None:
-                        continue
-                    _msl, _ym, _spn, _n = _fit3
-                    _prd = None
-                    if _jg is not None:
-                        _k3 = (ctx.args.dr_constellation, int(_p))
-                        if _jg.rrate_sigma(_k3) < 99.0:
-                            _prd = _jg.rrate(_k3) * ctx.args.chip_rate_hz / C_LIGHT
-                    # #93 v2: the DIRECT ADR span rate, converted carrier Hz ->
-                    # code chips/s (K = f_chip/f_carrier ~ 0.0087). Fresh within
-                    # 60 s or absent.
-                    _av = ctx.rf.adr_span_now.get(_p)
-                    _adr = (
-                        (_av[0] * ctx.args.chip_rate_hz / ctx.args.carrier_hz)
-                        if (_av is not None and _t_rb - _av[1] <= 60.0)
-                        else None
-                    )
-                    _g3_rows.append((_p, _prd, _adr, _msl, _ym, _spn))
-                ctx.g3_ramp.retain(ctx.dls.readback)
-                if _g3_rows:
-                    _log_rl(
-                        "gap3-shadow",
-                        "GAP3-SHADOW %s (chips/s; p=row a=ADR-span "
-                        "m=trim slope @mean trim): %s"
-                        % (
-                            log_tag() or ctx.args.signal,
-                            " ".join(
-                                "%d:p%s/a%s/m%+.5f@%+.2f(%ds)"
-                                % (
-                                    _p,
-                                    ("%+.5f" % _pr) if _pr is not None else "--",
-                                    ("%+.5f" % _ad) if _ad is not None else "--",
-                                    _ms,
-                                    _tmn,
-                                    int(_sp),
-                                )
-                                for _p, _pr, _ad, _ms, _tmn, _sp in _g3_rows
-                            ),
-                        ),
-                        every_s=60.0,
-                    )
-            except Exception as _e:
-                _log_rl(
-                    "gap3-shadow-err",
-                    "GAP3-SHADOW error (shadow only): %s" % _e,
-                    every_s=300.0,
-                )

@@ -1,20 +1,15 @@
 """Feeding the carrier-rate observables to the joint receiver (#33).
 
 Two feeds, coarse and fine, differing in what they measure rather than merely how often: the
-coarse one carries the deep-fold rate residual, the fine one the per-record rate and the #93
-ADR span. Both are SHADOW paths by default -- they estimate and publish a state; whether the
-seeds act on it is a separate armed decision.
+coarse one carries the deep-fold rate residual, the fine one the per-record ADR rate. Both are
+SHADOW paths by default -- they estimate and publish a state; whether the seeds act on it is a
+separate armed decision.
 
 ⚠️ ADD THE STANDING COMMAND BACK, ALWAYS. The tracker has already derotated its records by the
 commanded trim, so the reported rate is the RESIDUAL. Referencing the observable to the sky
 means adding the command back; feeding the residual raw makes the estimator measure its own
 actuator. That is #33 GAP 2's mirror, and it is invisible in the fit quality -- a mirror looks
 like an excellent model.
-
-⚠️ THE ROW IS NOT THE OBSERVABLE. GAP 3's F1 verdict (2026-08-25) measured the rrate ROW as
-~97% carrier-only, with per-satellite rates 30x the code-side ramps they were supposed to
-predict. #93's v2 feeds the DIRECT ADR span instead, and the two are logged side by side so
-the comparison stays honest.
 
 @author Keith Vanderlinde
 """
@@ -41,7 +36,6 @@ def stage_rate_feed_coarse(ctx):
             )
             _n_ok = 0
             _n_gov = 0  # sats in the PHASE-GOVERNED regime this poll
-            _n_rec_fed = 0
             for _p, _rv in sorted(ctx.rf.resid2.items()):
                 # THE REFERENCE. deep_rate is measured on records the tracker already
                 # derotated by the commanded trim, so what the search reports is what
@@ -54,7 +48,7 @@ def stage_rate_feed_coarse(ctx):
                 # folded assembler the observable never lost the command, and adding
                 # it back is the arm-12 integrator runaway. See the flag's help.
                 _y = _rv + (
-                    ctx.rf.cmd_applied.get(_p, ctx.car.trim.get(_p, 0.0))
+                    ctx.rf.cmd_applied.get(_p, 0.0)
                     if ctx.args.rrate_feed_applied
                     else 0.0
                 )
@@ -64,56 +58,6 @@ def stage_rate_feed_coarse(ctx):
                 # SKIPPED -- the coarse feed is what re-acquires this row after a
                 # cycle slip, and a fine lock that has gone quiet expires on its own.
                 _sig_c = 0.2
-                # ---- PREFER THE RECORD-STREAM RATE (2026-08-14) -----------------
-                # deep_rate_full_hz is the DEEP FOLD's argmax, and its measured
-                # structure function is FLAT with lag -- rms change 1.44 m/s at 3 s
-                # rising to 2.07 at 24 s and no further. Flat means independent NOISE
-                # on every sample (a genuinely moving state grows as sqrt(lag)), so
-                # that feed carries ~1.4 m/s = 5.6 Hz of noise around a state that
-                # barely moves. The filter was right to reject 98% of it, and
-                # loosening q_rr would only have admitted the noise.
-                #
-                # fcoh's rate_hz fits the phase slope of the fleet-summed per-record
-                # series instead, with a split-half sigma measured the same way --
-                # 15-500 mHz on these satellites, 4-100x better. Same records, no
-                # extra poll. Falls through to the fold's value when the arc is too
-                # short to fit, so a thin poll degrades rather than starving the row.
-                # ⚠️ OFF (2026-08-14, measured): the record-stream fit is NOT better.
-                # Structure functions on the SAME satellites at the SAME instants, once
-                # the 2048x units bug was fixed:
-                #     lag      3 s    6 s   12 s   24 s
-                #     record  1.21   1.83   2.37   2.40   m/s
-                #     fold    1.26   1.87   2.28   2.15
-                # Indistinguishable. Both pick a peak from a spectrum over the same ~1 s
-                # window of the same records with deterministic algorithms, so when the
-                # peak selection goes wrong they go wrong TOGETHER -- correlated errors,
-                # identical structure functions.
-                #
-                # Its split-half sigma (1.13 Hz) said otherwise and was WRONG to trust:
-                # two halves of one window fitted on one grid both land on the same wrong
-                # peak and agree. Split-half measures PRECISION, never accuracy. The
-                # structure function at 3 s reads 1.21 m/s where 0.29 m/s of independent
-                # noise would give 0.41 -- that gap is the shared bias split-half cannot
-                # see.
-                #
-                # Left in place, unused, because rec_rate_hz remains a useful published
-                # diagnostic and because the next estimator worth trying is of a
-                # DIFFERENT KIND (the fine feed's res_cycles phase accumulation), not a
-                # better spectral fit over the same window. Set _use_rec to re-enable.
-                _use_rec = False
-                _fcr = (ctx.dllp.fcoh or {}).get(_p) or {}
-                _rrec, _srec = _fcr.get("rate_hz"), _fcr.get("rate_sigma_hz")
-                if _use_rec and _rrec is not None and _srec is not None:
-                    _y = _rrec + (
-                        ctx.rf.cmd_applied.get(_p, ctx.car.trim.get(_p, 0.0))
-                        if ctx.args.rrate_feed_applied
-                        else 0.0
-                    )
-                    # never claim better than the fold's grid can resolve, and never
-                    # worse than the old blanket 0.2 -- a split-half of exactly 0 is
-                    # two halves landing in one bin, not infinite precision.
-                    _sig_c = min(max(_srec, 0.02), 0.2)
-                    _n_rec_fed += 1
                 if ctx.args.rrate_coarse_deweight > 1.0 and (
                     ctx.t0 - ctx.rf.fine_t.get(_p, -1e9) <= ctx.args.rrate_fine_hold_s
                     or ctx.t0 - ctx.rf.kcoh_t.get(_p, -1e9)
@@ -157,15 +101,7 @@ def stage_rate_feed_coarse(ctx):
                     _jrr.f_carrier_sigma(),
                     _n_ok,
                     len(ctx.rf.resid2),
-                    ((", %d PHASE-GOVERNED" % _n_gov) if _n_gov else "")
-                    + (
-                        (
-                            ", %d/%d from RECORD STREAM"
-                            % (_n_rec_fed, len(ctx.rf.resid2))
-                        )
-                        if _n_rec_fed
-                        else ", fold-fed"
-                    ),
+                    ((", %d PHASE-GOVERNED" % _n_gov) if _n_gov else "") + ", fold-fed",
                     _jrr.n_rrate,
                     _jrr.rrate_rejected,
                 ),
@@ -176,12 +112,10 @@ def stage_rate_feed_coarse(ctx):
 
 
 def stage_rate_feed_fine(ctx):
-    """#33 RATE FEED (fine): the per-record fine rate, and the #93 ADR-span capture.
+    """#33 RATE FEED (fine): the per-record fine rate.
         
     Same reference discipline as the coarse feed: the standing command is added back so the
-    observable describes the sky. This is also where the shadow's direct per-satellite ADR span
-    rate is captured (`_adr_span_now`), which #93's v2 compares against the rrate ROW -- the row
-    was measured on 2026-08-25 to be ~97% carrier-only (GAP 3's F1 verdict)."""
+    observable describes the sky."""
     if ctx.args.rrate_state and ctx.drp.t_now_abs is not None:
         try:
             _rec_dt = 2048.0 / ctx.args.hops_per_sec
@@ -229,43 +163,18 @@ def stage_rate_feed_fine(ctx):
                         "adr_records": _pv[0][1],
                         "res_cycles": _pv[0][2],
                     }
-                    _snap["trim_cycles"] = _pv[0][3] if len(_pv[0]) > 3 else None
+                    _snap["trim_cycles"] = _pv[0][3]
                     # wall_dt arms the serving-churn discriminator (see
                     # adr_fine_rate): the row is best-of-instance and the winner
                     # churns; a cross-instance span is wrong by up to 12x while
                     # passing the arc gate.
-                    _wdt = (ctx.t0 - _pv[2]) if len(_pv) > 2 else None
+                    _wdt = ctx.t0 - _pv[2]
                     _fr = adr_fine_rate(_rec, _snap, _rec_dt, wall_dt=_wdt)
                     if _fr is not None:
                         _fy, _nrec, _applied = _fr
                         _co = ctx.rf.resid2.get(_p) if ctx.rf.resid2 else None
                         if _co is not None:
                             _jpp.append((_p, _fy, _co))
-                        # ── #93 SHADOW v2 CAPTURE (read-only) ──────────────────
-                        # The sat's total carrier residual rate vs the seeded
-                        # model, reference-corrected EXACTLY as the feed would
-                        # (measured applied command when served and plausible,
-                        # else the posted-command span-mean) -- but on the shadow
-                        # path, so the unfed chain (e5a) measures it too. Sign
-                        # falls back to +1 where uncalibrated; the fold-safety
-                        # bound is the same 20 Hz as the feed.
-                        _sg93 = ctx.args.rrate_phase_sign or 1.0
-                        if abs(_sg93 * _fy) < 20.0:
-                            _ap93 = (
-                                _applied
-                                if (_applied is not None and abs(_applied) <= 50.0)
-                                else None
-                            )
-                            _cm93 = (
-                                (_sg93 * _ap93)
-                                if _ap93 is not None
-                                else 0.5 * (_cmd_now + _pv[1])
-                            )
-                            ctx.rf.adr_span_now[_p] = (
-                                _sg93 * _fy + _cm93,
-                                ctx.t0,
-                                _nrec,
-                            )
                         # COMMAND MOTION over the span enters the REFERENCE, not a
                         # stillness gate (a strict gate starved the feed to ~1/min --
                         # the coarse loop nudges the command every poll). Span-mean

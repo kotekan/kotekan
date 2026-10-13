@@ -28,27 +28,6 @@ happened.
 """
 
 
-class CarrierState(object):
-    """Per-PRN carrier trim state read by the seeding and rate-feed stages.
-
-    Nothing writes these tables since the shared carrier loop was removed: they stay empty
-    and their readers fall back to zero trim.
-    """
-
-    __slots__ = (
-        "trim",
-        "locked",
-        "fade",
-    )
-
-    def __init__(self):
-        self.trim = {}  # prn -> commanded carrier trim, Hz
-        self.locked = (
-            set()
-        )  # prns certified coherent since seed: BOOTSTRAP -> TRACK latch
-        self.fade = {}  # prn -> consecutive faded emits (coast bookkeeping)
-
-
 class NhOverlay(object):
     """Neumann-Hoffman overlay alignment: which overlay chip the sky is on.
 
@@ -108,17 +87,8 @@ class DllLoopState(object):
         self.readback = {}
         self.hold = {}  # prn -> last time PRESENT (the arming hold)
         self.armed_last = set()  # what the C++ loop is actuating right now
-        # ⚠️ THE KEY SET IS PART OF THE CONTRACT. `rb`/`rb_fail` count the READBACK poll
-        # separately from the arming POST, and a consumer that finds them missing gets a
-        # KeyError rather than a zero. Keep this dict exactly as its readers expect.
-        self.stat = {
-            "posts": 0,
-            "fail": 0,
-            "armed": 0,
-            "last_err": "",
-            "rb": 0,
-            "rb_fail": 0,
-        }
+        # arming POSTs made / failed, and the last POST or readback error (the FLEET-TRIM log)
+        self.stat = {"posts": 0, "fail": 0, "last_err": ""}
         self.deep_gate_seen = (
             {}
         )  # prn -> last time the SEARCH saw it above the deep bar (#79)
@@ -132,14 +102,13 @@ class HoldState(object):
     q, never on hold state -- and never on sig/deep/cn0_coh, which duty-cycle with the fold.
     """
 
-    __slots__ = ("miss", "prev", "q", "low_hits", "polls")
+    __slots__ = ("miss", "prev", "q", "low_hits")
 
     def __init__(self):
         self.miss = {}  # prn -> consecutive polls with no usable record
         self.prev = {}  # prn -> the tracker's own last propagation (the slew anchor)
         self.q = {}  # prn -> last fleet q seen while held
         self.low_hits = {}  # prn -> consecutive below-threshold polls
-        self.polls = {}  # prn -> coast poll count
 
 
 class CpTracking(object):
@@ -216,7 +185,6 @@ class RateFeedState(object):
         "cmd_applied",
         "fine_t",
         "kcoh_t",
-        "adr_span_now",
         "span_fed_t",
         "adr_prev",
         "adr_ring",
@@ -230,9 +198,6 @@ class RateFeedState(object):
         self.cmd_applied = {}  # prn -> the standing carrier command, Hz (the reference)
         self.fine_t = {}  # prn -> last fine-feed time
         self.kcoh_t = {}  # prn -> last known-rate-fold feed time
-        # #93 shadow v2: prn -> (ADR span rate, t, n_rec), the DIRECT carrier observable the
-        # rrate ROW is being judged against. The row measured ~97% carrier-only (GAP 3 F1).
-        self.adr_span_now = {}
         self.span_fed_t = {}  # prn -> last span feed time (the non-overlap throttle)
         self.adr_prev = {}  # prn -> previous ADR sample
         self.adr_ring = {}  # prn -> recent ADR ring buffer
