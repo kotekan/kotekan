@@ -79,7 +79,7 @@ public:
     /// Despread every spec's E/P/L in one kernel launch, against the uploaded window, and wait
     /// for the result. At most @ref max_batch_specs specs. Results are parallel to @c specs,
     /// each {early, prompt, late}, summed over channels: amplitude, correlation and
-    /// replica_energy as gnss::channelized_despread computes them (per_channel left empty).
+    /// replica_energy as gnss::channelized_despread computes them.
     std::vector<std::array<gnss::DespreadResult, 3>> despread_batch(const std::vector<Spec>& specs);
 
     /// Cap the per-hop chip gather at @c n chips, a window centred on the PFB span (0 = the

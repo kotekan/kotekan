@@ -637,7 +637,7 @@ void GnssChannelizedSearch::search_snapshot() {
         int best_nh = -1;
         std::vector<double> surf;
         std::vector<std::vector<cf>> dch(_n_chan, std::vector<cf>(hpr));
-        gnss::AcquisitionSurface dims{}; // outlives the loop: refine_peak takes it
+        gnss::AcquisitionSurface dims{};
         // Alignments to scan: pred +- _nh_hint_span with a fresh hint, else all of them. Each
         // costs a full surface. pred rounds a non-integer period count, so it can be off by one
         // (see NhHint).
@@ -812,10 +812,9 @@ void GnssChannelizedSearch::search_snapshot() {
             } else
 #endif
             {
-                best_cp =
-                    gnss::refine_peak(*_replica, p, d, cov_global, a.code_phase_chips, dims,
-                                      (_n_nh > 1) ? best_nh : -1, dop, anchor, rh, _sample_rate,
-                                      _refine_span, _refine_step, _acquire_threads);
+                best_cp = gnss::refine_peak(
+                    *_replica, p, d, cov_global, a.code_phase_chips, (_n_nh > 1) ? best_nh : -1,
+                    dop, anchor, rh, _sample_rate, _refine_span, _refine_step, _acquire_threads);
             }
             // Peak to reported phases (gnssSeedTransport.hpp, also driven by scripts/gnss/e2e.cpp).
             const gnss::DetectionPhase dp =

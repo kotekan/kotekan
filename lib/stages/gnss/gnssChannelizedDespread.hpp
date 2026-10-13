@@ -28,16 +28,15 @@ namespace gnss {
 
 /// Result of a channelized despread over a carrier's covering channels.
 struct DespreadResult {
-    std::complex<double> amplitude;                ///< matched-filter estimate (G / replica_energy)
-    std::complex<double> correlation;              ///< raw coherent sum G
-    double replica_energy;                         ///< sum_c sum_m |R_c[m]|^2
-    std::vector<std::complex<double>> per_channel; ///< g_c per provided channel
+    std::complex<double> amplitude;   ///< matched-filter estimate (G / replica_energy)
+    std::complex<double> correlation; ///< raw coherent sum G
+    double replica_energy;            ///< sum_c sum_m |R_c[m]|^2
 };
 
 /**
  * Coherent channelized despread. @c data_ch and @c repl_ch are parallel lists of the same
  * channels (e.g. those from @ref covering_channels), each a per-hop stream of channelizer
- * outputs. Returns the per-channel correlations, their coherent sum, the replica energy, and
+ * outputs. Returns the coherent sum of the per-channel correlations, the replica energy, and
  * the normalized amplitude estimate (0 if the replica has no energy). Throws
  * std::invalid_argument if the channel counts or a pair of stream lengths differ.
  */

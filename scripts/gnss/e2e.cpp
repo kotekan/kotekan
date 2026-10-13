@@ -956,7 +956,7 @@ int main(int argc, char** argv) {
             T_nh += tnow() - t_nh0;
             const double t_ref0 = tnow();
             const double best_cp = gnss::refine_peak(
-                sbank, 0, d, s_chans, a.code_phase_chips, adims, best_nh, det_dop, anchor,
+                sbank, 0, d, s_chans, a.code_phase_chips, best_nh, det_dop, anchor,
                 (o.refine_hops > 0 && o.refine_hops < rhops) ? o.refine_hops : rhops, o.sample_rate,
                 o.refine_span, o.refine_step, o.threads);
 

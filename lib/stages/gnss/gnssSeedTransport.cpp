@@ -17,10 +17,9 @@ namespace gnss {
 
 double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
                    const std::vector<std::vector<std::complex<float>>>& data,
-                   const std::vector<int>& cov_global, double coarse_cp,
-                   const AcquisitionSurface& dims, int nh_phase, double dop, long long anchor,
-                   int n_hops, double sample_rate, int refine_span, int refine_step,
-                   int n_threads) {
+                   const std::vector<int>& cov_global, double coarse_cp, int nh_phase, double dop,
+                   long long anchor, int n_hops, double sample_rate, int refine_span,
+                   int refine_step, int n_threads) {
     const double cps = bank.chip_rate_hz() / sample_rate;
     // The Doppler is fixed across the scan, so the cumulative channel filter (the
     // O(num_taps * fft_len) half of the hop-rate generator) is built once, not per trial.
@@ -31,7 +30,6 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
     // scan only has to reach it (see the header).
     const int span = std::max(step, refine_span);
     const int n_eval = 2 * span / step + 1;
-    (void)dims;
 
     std::vector<double> pw((size_t)n_eval, -1.0);
     // Per-thread replica scratch, indexed by thread id, so the loop does not allocate a

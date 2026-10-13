@@ -18,7 +18,6 @@
 #ifndef GNSS_SEED_TRANSPORT_HPP
 #define GNSS_SEED_TRANSPORT_HPP
 
-#include "gnssChannelizedAcquire.hpp" // for AcquisitionSurface
 #include "gnssChannelizedReplica.hpp"
 
 #include <complex>
@@ -49,16 +48,14 @@ namespace gnss {
 ///
 /// @param data  the covering channels' columns, [chan][hop], in the same order as
 ///        @c cov_global; only the leading @c n_hops of each are used.
-/// @param dims  the acquire surface's dimensions; not used by the scan.
 /// @param nh_phase  the overlay alignment the peak was found at, or < 0 for none. Without it
 ///        the refine despreads an overlay-blind replica against an overlay-aligned peak.
 /// @return the refined code phase (the argument of a replica at @c anchor), in chips.
 double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
                    const std::vector<std::vector<std::complex<float>>>& data,
-                   const std::vector<int>& cov_global, double coarse_cp,
-                   const AcquisitionSurface& dims, int nh_phase, double dop, long long anchor,
-                   int n_hops, double sample_rate, int refine_span, int refine_step,
-                   int n_threads = 1);
+                   const std::vector<int>& cov_global, double coarse_cp, int nh_phase, double dop,
+                   long long anchor, int n_hops, double sample_rate, int refine_span,
+                   int refine_step, int n_threads = 1);
 
 #ifdef GNSS_CUDA
 /// One channel group's GPU despread engine for @ref refine_peak_cuda. DespreadJob::chan_mask is

@@ -12,7 +12,6 @@ DespreadResult channelized_despread(const std::vector<std::vector<std::complex<f
         throw std::invalid_argument("channelized_despread: channel count mismatch");
 
     DespreadResult r;
-    r.per_channel.resize(data_ch.size());
     std::complex<double> G(0.0, 0.0);
     double energy = 0.0;
 
@@ -28,7 +27,6 @@ DespreadResult channelized_despread(const std::vector<std::vector<std::complex<f
             g += std::complex<double>(x[m]) * std::conj(std::complex<double>(rep[m]));
             e += std::norm(std::complex<double>(rep[m]));
         }
-        r.per_channel[c] = g;
         G += g;
         energy += e;
     }
