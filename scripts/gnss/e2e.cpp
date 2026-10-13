@@ -19,7 +19,7 @@
 //     v
 //   detection {cp0, cp_long, cp_at_ref, nh, dop}          == /get_detections
 //     |
-//     |  (direct, or --seed-file: the REAL broker's captured /set_seeds payload)
+//     |  (built directly from the detection)
 //     v
 //   seed {code_phase_at_ref_chips, ref_hop, doppler_hz, code_phase_rate, ...}
 //     |
@@ -61,14 +61,12 @@
 #include "pfbPrototype.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <limits>
 #include <memory>
 #include <random>
 #include <string>
@@ -129,15 +127,14 @@ struct Opt {
     /// them -- so they require --skip-search (docs/CHORD_MULTIBAND.md section 5).
     const char* signal = "GPS_L5_Q_NH";
 
-    // Seed source / perturbations. These are the levers the chain is actually sensitive to,
+    // Seed perturbations. These are the levers the chain is actually sensitive to,
     // exposed so a sweep can measure the sensitivity instead of arguing about it.
-    const char* seed_file = nullptr; ///< read a REAL broker seed (seeds.jsonl) instead of direct
-    double seed_dop_err = 0.0;       ///< Hz added to the seed's Doppler only (not the truth)
-    double seed_cp_err = 0.0;        ///< chips added to the seed's code phase only (not the
-                                     ///< truth). +k*primary_len = a SECONDARY-PHASE error on a
-                                     ///< baked _CS/_NH signal: calibrates what a wrong CS/NH
-                                     ///< period looks like downstream (the E6 bring-up tool).
-    double seed_cp_rate = 0.0;       ///< chips/hop residual handed to the tracker
+    double seed_dop_err = 0.0; ///< Hz added to the seed's Doppler only (not the truth)
+    double seed_cp_err = 0.0;  ///< chips added to the seed's code phase only (not the truth).
+                               ///< +k*primary_len = a SECONDARY-PHASE error on a baked _CS/_NH
+                               ///< signal: calibrates what a wrong CS/NH period looks like
+                               ///< downstream (the E6 bring-up tool).
+    double seed_cp_rate = 0.0; ///< chips/hop residual handed to the tracker
     /// Hz/s handed to the tracker. ⚠️ NOT ZERO, AND THAT IS THE POINT (task #52, 2026-08-13).
     ///
     /// This defaulted to 0.0, and a satellite whose Doppler never moves has no re-pin: the
@@ -154,11 +151,8 @@ struct Opt {
     /// (huge absolute argument): hop0 supplies the huge argument, this supplies the small one.
     /// Set --seed-dop-rate 0 to recover the old blind behaviour deliberately.
     double seed_dop_rate = -0.36893;
-    int quantize = 0;    ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
-    int skip_search = 0; ///< 1 = seed straight from truth (isolates the tracker leg)
-    /// Write the detection in /get_detections wire format. e2e_broker.py serves this to the
-    /// REAL broker, so its seed arithmetic can be put in the loop too (--seed-file the result).
-    const char* emit_det = nullptr;
+    int quantize = 0;            ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
+    int skip_search = 0;         ///< 1 = seed straight from truth (isolates the tracker leg)
     bool cuda_refine = false;    ///< also run the GPU refine and compare (A5)
     int max_chips = 0;           ///< truncate the PFB chip gather (0 = full span)
     bool chips_centered = false; ///< center the truncation window on the prototype peak
@@ -199,11 +193,9 @@ static void usage() {
         "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker (default -0.36893, a\n"
         "                     REAL fleet rate; 0 removes the re-pin lever and makes this\n"
         "                     harness blind to the (delta f)*t_abs family -- see #52)\n"
-        "  --seed-file P      use a REAL captured broker seed (seeds.jsonl) for this PRN\n"
         "  --dll-spacing D    Early/Late tap offset from prompt, COMPONENT chips (default 0.5,\n"
         "                     the node default). With --trim sweeps this measures q on the\n"
         "                     peak and the discriminator slope for a spacing choice.\n"
-        "  --emit-detection P write the detection in /get_detections wire format (for e2e_broker)\n"
         "  --s-stride N       search comb stride (default 4 = 2 nodes; 1 = the 8-node agg)\n"
         "  --t-stride N       TRACKER comb stride (default 16 = one GPU's comb; 1 = contiguous)\n"
         "  --t-nchan N        tracker channel count (default 7)\n"
@@ -211,7 +203,8 @@ static void usage() {
         "  --f-offset HZ      CARRIER, and the band under test. Recentres both combs on it\n"
         "                     unless --t-chan0/--s-chan0 pin them. Without this the harness\n"
         "                     is band-blind: it builds sky AND replica at 1176.45e6, so it is\n"
-        "                     self-consistent at any carrier (docs 11.24).\n"
+        "                     self-consistent at any carrier\n"
+        "                     (be7d46e8e:docs/gnss_gpu_search.md 11.24).\n"
         "  --s-nchan N        search channel count (default 27; 106 for the 8-node agg)\n"
         "  --s-chan0 N        search comb first channel (default 5972)\n"
         "  --noise R          add complex Gaussian noise, std = R x signal rms (0 = noiseless)\n"
@@ -255,40 +248,6 @@ static void quantize44(std::vector<std::vector<cf>>& ch) {
             int im = std::clamp((int)std::lround(v.imag() * s), -8, 7);
             v = cf((float)re, (float)im);
         }
-}
-
-// Minimal extraction of one numeric field from the last seed object mentioning "prn": N in a
-// seed_sink.py capture. Deliberately dumb -- this reads a file we write ourselves, and pulling
-// in a JSON dependency for six numbers is not worth it.
-// WHITESPACE-TOLERANT. The first version matched "prn":N literally, and json.dumps writes
-// "prn": N -- so EVERY seed file written by Python (e2e_broker's capture of the real
-// broker's POST included) failed every lookup and e2e silently fell back to its own seed.
-// The harness then reported the broker's contribution as "identical to e2e's own", which
-// is exactly what a working broker looks like: a gate that could not fail, for as long as
-// it has existed. Found 2026-08-12 when a deliberately WRONG seed (52 chips off) also
-// scored 0.000. Now: skip spaces after the colon, and REQUIRE the caller to check the
-// return value for fields it depends on (main() logs what it actually took).
-static bool seed_field(const std::string& blob, int prn, const char* key, double& out) {
-    const std::string pk = "\"prn\":";
-    size_t at = std::string::npos;
-    for (size_t i = blob.find(pk); i != std::string::npos; i = blob.find(pk, i + 1)) {
-        size_t v = i + pk.size();
-        while (v < blob.size() && std::isspace((unsigned char)blob[v]))
-            ++v;
-        if (atoi(blob.c_str() + v) == prn)
-            at = i;
-    }
-    if (at == std::string::npos)
-        return false;
-    const size_t end = blob.find('}', at);
-    const size_t k = blob.find(std::string("\"") + key + "\":", at);
-    if (k == std::string::npos || (end != std::string::npos && k > end))
-        return false;
-    size_t v = k + std::strlen(key) + 3;
-    while (v < blob.size() && std::isspace((unsigned char)blob[v]))
-        ++v;
-    out = atof(blob.c_str() + v);
-    return true;
 }
 
 int main(int argc, char** argv) {
@@ -350,10 +309,6 @@ int main(int argc, char** argv) {
             o.dll_spacing = next_d();
         else if (arg_eq(a, "--signal"))
             o.signal = argv[++i];
-        else if (arg_eq(a, "--seed-file"))
-            o.seed_file = argv[++i];
-        else if (arg_eq(a, "--emit-detection"))
-            o.emit_det = argv[++i];
         else if (arg_eq(a, "--cuda-refine"))
             o.cuda_refine = true;
         else if (arg_eq(a, "--max-chips"))
@@ -405,7 +360,8 @@ int main(int argc, char** argv) {
     // the replica at that one value -- so it was self-consistent at ANY carrier. Asked to
     // validate GAL_E5B_Q_CS (1207.14 MHz) it ran that signal's CODE at L5's CARRIER and
     // returned a triumphant 0.000 chips. It could not detect a band-dependent fault, which is
-    // the entire fault class a second band introduces (docs/gnss_gpu_search.md 11.24).
+    // the entire fault class a second band introduces
+    // (be7d46e8e:docs/gnss_gpu_search.md 11.24).
     //
     // Moving the carrier alone is NOT enough and would be a worse trap than the original: the
     // channel combs default to L5's (t_chan0 5972), so a bare --f-offset would put the replica
@@ -799,104 +755,16 @@ int main(int argc, char** argv) {
     }
 
     // -----------------------------------------------------------------------------------------
-    // LEG 2: the seed. Either built directly from the detection (what the broker does when it
-    // has nothing to add), or read from a REAL captured broker payload.
+    // LEG 2: the seed, built directly from the detection (what the broker does when it has
+    // nothing to add).
     // -----------------------------------------------------------------------------------------
-    // The detection in /get_detections wire format, so the REAL broker can be put in the loop:
-    // e2e_broker.py serves this file, runs gps_distributed_broker.py against it, and captures
-    // the /set_seeds payload for --seed-file. Written even with --skip-search (the fields are
-    // then the truth, which is the useful control case for the broker's own arithmetic).
-    if (o.emit_det) {
-        FILE* fp = fopen(o.emit_det, "wb");
-        if (!fp) {
-            printf("cannot write %s\n", o.emit_det);
-            return 3;
-        }
-        fprintf(fp,
-                "[{\"prn\":%d,\"doppler_hz\":%.10g,\"code_phase_chips\":%.10g,\"ref_hop\":%lld,"
-                "\"nh\":%d,\"code_phase_long_chips\":%.10g,\"code_phase_at_ref_chips\":%.10g,"
-                "\"snr\":%.6g}]\n",
-                o.prn, det_dop, dp.cp0, o.hop0, best_nh, dp.cp_long, dp.cp_at_ref,
-                o.skip_search ? 1e4 : snr);
-        fclose(fp);
-        printf("    wrote detection -> %s\n", o.emit_det);
-    }
-
     gnss::SeedState sd;
     sd.ref_hop = o.hop0;
     sd.phase_ref_chips = dp.cp_at_ref + o.seed_cp_err;
     sd.doppler_hz = det_dop + o.seed_dop_err;
     sd.cp_rate = o.seed_cp_rate;
     sd.dop_rate = o.seed_dop_rate;
-    if (o.seed_file) {
-        FILE* fp = fopen(o.seed_file, "rb");
-        if (!fp) {
-            printf("cannot open %s\n", o.seed_file);
-            return 3;
-        }
-        std::string blob;
-        char buf[65536];
-        size_t n;
-        while ((n = fread(buf, 1, sizeof buf, fp)) > 0)
-            blob.append(buf, n);
-        fclose(fp);
-        // POISON FIRST, PARSE SECOND (KV, 2026-08-12). The fields a --seed-file run is
-        // ABOUT must not survive a failed parse wearing e2e's own plausible values --
-        // that is what made a 52-chip-wrong seed score 0.000 and a whitespace bug look
-        // like a healthy broker. NaN cannot be mistaken for a measurement: it propagates
-        // to the verdict and is checked below. (cp_rate / dop_rate stay 0: absent means
-        // "the producer had none", which is a real and common answer.)
-        sd.phase_ref_chips = std::numeric_limits<double>::quiet_NaN();
-        sd.cp_chips = std::numeric_limits<double>::quiet_NaN();
-        sd.doppler_hz = std::numeric_limits<double>::quiet_NaN();
-        sd.cp_rate = 0.0;
-        sd.dop_rate = 0.0;
-        double v;
-        std::string took, missed;
-        auto take = [&](const char* key, auto&& apply) {
-            double x;
-            if (seed_field(blob, o.prn, key, x)) {
-                apply(x);
-                took += std::string(" ") + key;
-            } else
-                missed += std::string(" ") + key;
-        };
-        take("code_phase_at_ref_chips", [&](double x) { sd.phase_ref_chips = x; });
-        take("doppler_hz", [&](double x) { sd.doppler_hz = x; });
-        take("code_phase_chips", [&](double x) { sd.cp_chips = x; });
-        take("code_phase_rate", [&](double x) { sd.cp_rate = x; });
-        take("doppler_rate_hz_s", [&](double x) { sd.dop_rate = x; });
-        take("ref_hop", [&](double x) { sd.ref_hop = (long long)x; });
-        printf("[2] SEED (from %s)\n", o.seed_file);
-        // SAY WHAT WAS ACTUALLY TAKEN. A file whose fields all fail to parse leaves e2e
-        // running its OWN seed and reporting a perfect score -- which is how the
-        // "\"prn\":N" whitespace bug made this harness unfalsifiable. If nothing parsed,
-        // that is a broken test, not a passing one: refuse rather than flatter.
-        printf("    fields taken:%s\n", took.empty() ? " NONE" : took.c_str());
-        if (!missed.empty())
-            printf("    fields absent:%s (poisoned to NaN, or 0 for the rate terms --\n"
-                   "                   NOT inherited from e2e's own seed)\n",
-                   missed.c_str());
-        if (took.empty()) {
-            printf("\n*** --seed-file parsed NOTHING. The run below would measure e2e's own\n"
-                   "*** seed and call it the producer's. Refusing.\n");
-            return 4;
-        }
-        // A seed needs a Doppler and SOME code reference. Either form of the latter is
-        // fine -- the phase is preferred, the argument is the fallback -- but a file that
-        // supplied neither would run on NaN and print a nonsense verdict rather than
-        // failing, which is the same trap one level down.
-        if (!std::isfinite(sd.doppler_hz)
-            || (!std::isfinite(sd.phase_ref_chips) && !std::isfinite(sd.cp_chips))) {
-            printf("\n*** --seed-file supplied no doppler_hz, or neither code_phase_chips\n"
-                   "*** nor code_phase_at_ref_chips. Nothing to propagate. Refusing.\n");
-            return 4;
-        }
-        if (!std::isfinite(sd.phase_ref_chips))
-            sd.phase_ref_chips = -1.0; // the "no phase, use the argument" sentinel
-    } else {
-        printf("[2] SEED (direct from the detection)\n");
-    }
+    printf("[2] SEED (direct from the detection)\n");
     printf("    ref_hop %lld  ph@ref %.3f  dop %+.4f  cp_rate %.6e  dop_rate %+.4f\n\n", sd.ref_hop,
            sd.phase_ref_chips, sd.doppler_hz, sd.cp_rate, sd.dop_rate);
 
