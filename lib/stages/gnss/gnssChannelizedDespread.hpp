@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Channelized despread, and the deep coherent integrations over its per-record
- *        amplitudes (overlay wipe, plain coherent sum, leave-one-out phase tracker).
+ *        amplitudes (overlay wipe, plain coherent sum).
  *
  * A node holds only the PFB channels covering a carrier (see @ref gnssBandPlan.hpp), never
  * the wideband voltage. Given a PRN's code phase and Doppler, the despread correlates each
@@ -57,24 +57,6 @@ struct OverlayWipeResult {
 /// record and its head/tail split allows one chip change within a record, while a CHORD
 /// record (2048 hops, 10.49 ms) spans ~10.49 primary periods.
 OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a);
-
-/// Leave-one-out common-phase tracker: a closed carrier loop in batch form, for a per-record
-/// phase wander that is correlated across the +-half_width window but is not a low-order
-/// polynomial.
-///
-/// Each record k is derotated by arg(sum of a[j] for j in [k-half_width, k+half_width],
-/// j != k, zero-amplitude records skipped). Excluding record k makes the estimate independent
-/// of its own noise, so on pure noise each derotation is a random rotation of that record.
-/// Records still enter their neighbours' estimates, though, so the tracked sum's noise SNR has
-/// a heavier tail than the untracked one's, more so as half_width grows. On a signal the cost
-/// is ~1/(SNR_rec * sqrt(2*half_width)) rad of added jitter, a loss of ~exp(-sigma_est^2/2)
-/// when there is no wander. Callers should score tracked and untracked candidates with the
-/// same estimator and keep the better, paying for that selection in the floor.
-///
-/// Records with fewer than 2 usable neighbours pass through unrotated. Returns false (out_a
-/// untouched) on a degenerate window (< 4 records or half_width < 1).
-bool phase_track_loo(const std::vector<std::complex<double>>& a, int half_width,
-                     std::vector<std::complex<double>>& out_a);
 
 /// Apply a known overlay at a given alignment and return the wiped per-record amplitudes, for
 /// a data component under an overlay (GPS L5-I: CNAV under NH10) that needs the nav-bit wipe

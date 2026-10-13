@@ -44,7 +44,7 @@
  * stable across the K records). Two cadences (@c integration_mode):
  *  - @c block (default): accumulate K records, emit once, reset.
  *  - @c rolling: an exponential moving average with time constant K records (alpha = 1/K),
- *    updated every record and emitted every @c output_every records without reset. Divided by
+ *    updated every record and emitted every integration_length/10 records without reset. Divided by
  *    1-(1-alpha)^n at emit, so it reads a true running mean from the first record.
  *
  * Slot 8 is a deep coherent |A| over the buffered per-record A, by one of three paths:
@@ -55,7 +55,7 @@
  *    shared overlay is wiped at its best-ranked alignment, then the nav-bit wipe runs on the
  *    result (a data component under an overlay, e.g. GPS L5-I).
  *  - plain coherent sum (@c deep_coherent), for a replica that already carries the overlay.
- * Each path is evaluated over a ladder of trailing windows (@c auto_coherence); a rung counts
+ * Each path is evaluated over a ladder of octave-shorter trailing windows; a rung counts
  * as a coherent detection only if its SNR clears twice its noise-rectification floor (or, where
  * a rate search was applied, the search's peak/median gate).
  *
@@ -64,28 +64,23 @@
  * @conf integration_length  Int (default 1). block: records per output. rolling: EMA time
  *                           constant in records, and the length of the deep window.
  * @conf integration_mode    String (default "block"). "block" or "rolling".
- * @conf output_every        Int (rolling only; default max(1, integration_length/10)). Records
- *                           between emits.
  * @conf navwipe_bit_records Int (default 0 = off). Records per data bit, e.g. 20 for 1 ms GPS
  *                           L1 C/A records. Needs integration_length >> this.
  * @conf secondary_overlay   String (default ""). Shared overlay name from the gnssOverlay
  *                           registry, wiped ahead of the nav-bit wipe; needs
  *                           navwipe_bit_records.
- * @conf deep_coherent       Bool (default false). Deep plain coherent sum, used when no wipe is
- *                           configured; correct only when the despread replica already carries
- *                           the overlay.
- * @conf auto_coherence      Bool (default true). Also score octave-shorter trailing windows.
-
+ * @conf deep_coherent       Bool. Must be true: without a nav-bit wipe the deep |A| is the plain
+ *                           coherent sum, correct only when the despread replica already carries
+ *                           the overlay. Default true.
+ * @conf deep_rate_search    Bool. Must be true: the plain sum runs after a phase-rate search.
+ *                           Default true.
+ * @conf sky_deep            Bool. Must be true: the sky-corrected prompt is a plain-sum
+ *                           candidate. Default true.
+ * @conf deep_rate_min_q     Float. Must be 10, the peak/median the rate search must reach.
+ *                           Default 10.
+ * @conf phase_track         Bool. Must be false. Default false.
  * @conf fft_len             Int (default 0). F-engine FFT length, to turn sample_seq into hops.
- * @conf deep_rate_search    Bool (default false). Phase-rate search before the plain sum.
- * @conf deep_rate_max_hz    Float (default 25). Cap on the applied rate; <= 0 = no cap.
- * @conf deep_rate_min_q     Float (default 10). Peak/median the rate search must reach.
- * @conf phase_track         Bool (default false). Leave-one-out phase-tracker candidates for
- *                           the plain sum.
- * @conf phase_track_widths  Int list (default [1, 2, 4, 8]). Tracker half-widths, records.
- * @conf sky_deep            Bool (default false). Sky-corrected prompt as a plain-sum candidate.
  * @conf record_export       Int (default 0 = off). Per-PRN record ring length for get_records.
-
  * @conf bit_export          Bool (default false). Publish nav_obs in get_status.
  *
  * @buffer in_bufs Per-subband tracker records (gnssRecord.hpp tracker layout: a RECORD_FLOATS
@@ -197,13 +192,6 @@ private:
     int _navwipe_bit_records;   ///< records per nav bit (0 = no wipe)
     /// Shared secondary overlay wiped ahead of the nav-bit wipe; empty if unused.
     std::vector<int8_t> _secondary;
-    bool _wipe_buffer = false; ///< buffer per-record A for a deep path (nav-bit or plain)
-    /// Deep-integrate by a plain coherent sum with no wipe (config deep_coherent). For a pilot
-    /// whose replica already carries the secondary overlay (CHORD despreads GPS_L5_Q_NH, NH20
-    /// tiled into 204600 chips) there is nothing to wipe, and the wipe paths cannot serve it:
-    /// overlay_apply advances the overlay one chip per record, while a CHORD record spans
-    /// ~10.49 primary periods.
-    bool _deep_plain = false;
     /// Subband UTC alignment in the gather loop: the observed record period, input 0's previous
     /// UTC, and the number of realignments (non-zero means an input dropped a frame relative to
     /// the others).
@@ -215,11 +203,10 @@ private:
     /// DLL groups on it; docs/CHORD_GNSS_SHARED_DLL.md). 0 = unset: pow_hop then carries the raw
     /// sample index, and pow_fft_len (also published) says which it is.
     int _fft_len = 0;
-    bool _auto_coherence; ///< also score octave-shorter trailing windows; the best one wins
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A, deep window
     /// Per-PRN per-record sky-phase-corrected A (record slots 24/25, gnssElemCal.hpp's
     /// leave-one-element-out derotation), parallel to _navbuf. All zero when the producer does
-    /// not supply it, which is how the deep_coherent path decides whether the sky-corrected
+    /// not supply it, which is how the plain-sum path decides whether the sky-corrected
     /// candidate is available.
     std::vector<std::vector<std::complex<double>>> _navsky;
     std::vector<std::vector<double>> _navutc; ///< per-PRN per-record capture UTC
@@ -261,32 +248,17 @@ private:
     /// Absolute hop index labelling the E/P/L window (rolling: its newest record; block: its
     /// first); -1 = no frame metadata. The fleet combine groups instances by it; see _fft_len.
     long long _st_pow_hop = -1;
-    /// Phase-rate search before the deep plain sum (config deep_rate_search). A rate is applied
-    /// only when the spectrum's peak/median reaches _deep_rate_min_q, and only from bins within
-    /// +-_deep_rate_max_hz.
-    bool _deep_rate = false;
-    double _deep_rate_max_hz;
-    double _deep_rate_min_q = 10.0;
+    /// The phase rate removed before the deep plain sum and its peak/median. A rate is applied
+    /// only when the spectrum's peak/median reaches DEEP_RATE_MIN_Q, and only from bins within
+    /// +-DEEP_RATE_MAX_HZ.
     std::vector<float> _st_deep_rate, _st_deep_rate_q;
     /// The rate search's uncapped argmax (parabolically interpolated) and its q: the carrier
-    /// loop's measurement. deep_rate_hz is restricted to bins within deep_rate_max_hz, so a
+    /// loop's measurement. deep_rate_hz is restricted to bins within DEEP_RATE_MAX_HZ, so a
     /// residual beyond the cap reads as the best in-cap noise bin and must not feed a loop.
     std::vector<float> _st_deep_rate_full, _st_deep_rate_full_q;
-
-    /// Common-phase tracker before the deep plain sum (config phase_track): each record is
-    /// derotated by the leave-one-out phase of its neighbours (gnss::phase_track_loo), which
-    /// removes slow per-satellite phase wander. Candidates at each half-width in _pt_widths
-    /// compete with the straight sum under the same estimator (the best width depends on SNR),
-    /// and the floor pays for the selection.
-    bool _phase_track = false;
-    /// Score the record's sky-corrected prompt (slots 24/25) as one more deep candidate on the
-    /// deep_coherent path (config sky_deep).
-    bool _sky_deep = false;
-    std::vector<int> _pt_widths; ///< half-widths tried (records); config
-    /// |sum|/sum|.| of the winning deep stream (deep_coherent path only): a coherence measure
-    /// that, unlike deep_snr, does not scale with the record count.
+    /// |sum|/sum|.| of the winning deep stream (plain-sum path only): a coherence measure that,
+    /// unlike deep_snr, does not scale with the record count.
     std::vector<float> _st_coh_frac;
-    std::vector<float> _st_pt_hw; ///< winning tracker half-width (0 = straight sum, -1 = sky)
     /// Per-record export for cross-node coherent combining (config record_export: ring length
     /// per PRN; 0 = off). Each entry is [hop, re, im, energy] for one record: the absolute hop
     /// is the exact cross-node alignment key, re/im the energy-normalized complex prompt, and

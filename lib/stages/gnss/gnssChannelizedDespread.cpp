@@ -40,11 +40,11 @@ DespreadResult channelized_despread(const std::vector<std::vector<std::complex<f
 /// Coherent SNR mag / noise_sum, where noise_sum is the residual orthogonal to the rotated sum;
 /// 0 when that residual is degenerate.
 ///
-/// Records phase-aligned to double precision, as a derotation (e.g. phase_track_loo) leaves
-/// them, have a residual of ~1e-17 rather than exactly 0, which would read as ~1e17 sigma. Even
-/// a 60 dB record has an orthogonal residual ~1e-3 of its amplitude, so a residual below
-/// 1e-12 * mag * sqrt(nrec) was removed by construction, not measured. Return 0, the same
-/// "cannot compute" value as nrec < 2, so a candidate selection cannot pick it.
+/// Records phase-aligned to double precision, as a derotation leaves them, have a residual of
+/// ~1e-17 rather than exactly 0, which would read as ~1e17 sigma. Even a 60 dB record has an
+/// orthogonal residual ~1e-3 of its amplitude, so a residual below 1e-12 * mag * sqrt(nrec) was
+/// removed by construction, not measured. Return 0, the same "cannot compute" value as
+/// nrec < 2, so a candidate selection cannot pick it.
 ///
 /// This guards the division only: scoring a derotated candidate by the residual its
 /// derotation removed is still self-referential, and the best of several such candidates
@@ -123,45 +123,6 @@ OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a) {
     out.amplitude = mag / (double)nrec;
     out.snr = residual_snr(mag, noise_sum, nrec);
     return out;
-}
-
-bool phase_track_loo(const std::vector<std::complex<double>>& a, int half_width,
-                     std::vector<std::complex<double>>& out_a) {
-    // Sliding leave-one-out boxcar: window sum minus self, O(n) via a running sum.
-    // Zero-amplitude records contribute nothing to any estimate.
-    using cd = std::complex<double>;
-    const int n = (int)a.size();
-    if (n < 4 || half_width < 1)
-        return false;
-    out_a.assign((size_t)n, cd(0.0, 0.0));
-    cd win(0.0, 0.0); // sum of a[j] over the current window [lo, hi]
-    int lo = 0, hi = -1;
-    int n_used = 0; // nonzero records inside the window
-    for (int k = 0; k < n; ++k) {
-        // Advance the window to [k - half_width, k + half_width].
-        while (hi < std::min(n - 1, k + half_width)) {
-            ++hi;
-            if (std::norm(a[(size_t)hi]) > 0.0) {
-                win += a[(size_t)hi];
-                ++n_used;
-            }
-        }
-        while (lo < k - half_width) {
-            if (std::norm(a[(size_t)lo]) > 0.0) {
-                win -= a[(size_t)lo];
-                --n_used;
-            }
-            ++lo;
-        }
-        const bool self_nz = std::norm(a[(size_t)k]) > 0.0;
-        const cd s = win - (self_nz ? a[(size_t)k] : cd(0.0, 0.0)); // leave-one-out
-        const int nb = n_used - (self_nz ? 1 : 0);
-        // < 2 neighbours: the estimate would be a single record's noise; pass through.
-        out_a[(size_t)k] = (nb >= 2 && std::norm(s) > 0.0)
-                               ? a[(size_t)k] * std::polar(1.0, -std::arg(s))
-                               : a[(size_t)k];
-    }
-    return true;
 }
 
 } // namespace gnss

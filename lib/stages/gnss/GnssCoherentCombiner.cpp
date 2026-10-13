@@ -19,6 +19,15 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(GnssCoherentCombiner);
 
+// Cap on the phase rate the deep fold may apply (Hz). It must admit the real carrier residual,
+// up to ~25 Hz with the carrier open loop, or the fold derotates by a noise bin. It excludes a
+// residual NH20 overlay's 50 Hz sidebands, which alias to +-45.4 Hz on the 95.37 Hz record grid;
+// the harmonics alias inside it (100 Hz to 4.6 Hz, 200 Hz to 9.2 Hz), so if fold amplitudes
+// drop, check for picks near 4.6 Hz steps.
+static constexpr double DEEP_RATE_MAX_HZ = 25.0;
+// Peak/median the rate search must reach before its rate is applied.
+static constexpr double DEEP_RATE_MIN_Q = 10.0;
+
 GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
@@ -62,10 +71,9 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     const std::string mode =
         config.get_default<std::string>(unique_name, "integration_mode", "block");
     _rolling = (mode == "rolling");
-    // Rolling output cadence: every output_every records (default ~10 outputs per time
-    // constant). Block mode emits once per integration_length records and ignores it.
-    _emit_every = std::max(1, config.get_default<int>(unique_name, "output_every",
-                                                      std::max(1, _integration_length / 10)));
+    // Rolling output cadence: ~10 outputs per time constant. Block mode emits once per
+    // integration_length records.
+    _emit_every = std::max(1, _integration_length / 10);
     _navwipe_bit_records = config.get_default<int>(unique_name, "navwipe_bit_records", 0);
     // secondary_overlay: a shared overlay over a data component (GPS L5-I: CNAV under NH10). The
     // overlay is wiped first and the nav-bit wipe runs on the result, so it needs
@@ -87,14 +95,23 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         for (const std::string& msg : gnss::overlay_registry_check())
             WARN("overlay registry/descriptor mismatch: {:s}", msg);
     }
-    // deep_coherent: a plain coherent sum, correct only when the despread replica already
-    // carries the secondary overlay. Set in config because the combiner does not see the
-    // tracker's signal descriptor; records whose overlay signs still alternate would cancel.
-    _deep_plain = config.get_default<bool>(unique_name, "deep_coherent", false);
+    // Without a nav-bit wipe the deep |A| is the plain coherent sum, with a phase-rate search
+    // and the sky-corrected prompt as a second candidate. These keys remain only to refuse any
+    // other setting.
+    if (!config.get_default<bool>(unique_name, "deep_coherent", true)
+        || !config.get_default<bool>(unique_name, "deep_rate_search", true)
+        || !config.get_default<bool>(unique_name, "sky_deep", true)
+        || config.get_default<bool>(unique_name, "phase_track", false)
+        || config.get_default<double>(unique_name, "deep_rate_min_q", DEEP_RATE_MIN_Q)
+               != DEEP_RATE_MIN_Q) {
+        FATAL_ERROR("GnssCoherentCombiner: deep_coherent, deep_rate_search and sky_deep must be "
+                    "true, phase_track false and deep_rate_min_q {:g}",
+                    DEEP_RATE_MIN_Q);
+        return;
+    }
     // Converts sample_seq to the absolute hop index (see the hpp). 0 = unset: pow_hop is then
     // the sample index, and pow_fft_len says which.
     _fft_len = config.get_default<int>(unique_name, "fft_len", 0);
-    _wipe_buffer = (_navwipe_bit_records > 0 || _deep_plain);
 
     // Real-time cost (see the hpp). Duty cycle = (d ingest_us + d emit_us) / (d records x record
     // period): below 1 the stage keeps up; at or above 1 it is saturated and more buffering only
@@ -109,16 +126,10 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _m_last_emit_us = &m.add_gauge("kotekan_gnss_combiner_last_emit_time_us", unique_name);
         _m_last_emit_prns = &m.add_gauge("kotekan_gnss_combiner_last_emit_prns", unique_name);
     }
-    // auto_coherence (default on): integration_length is a maximum. At emit the deep estimator
-    // also runs on trailing octave sub-windows (1/2, 1/4, ...) and the best deep SNR wins, so
-    // coherence_s (get_status) reports the longest span that actually coheres.
-    _auto_coherence = config.get_default<bool>(unique_name, "auto_coherence", true);
-    if (_wipe_buffer) {
-        _navbuf.assign(_n_prn, {});
-        _navsky.assign(_n_prn, {});
-        _navutc.assign(_n_prn, {});
-        _navhead.assign(_n_prn, {});
-    }
+    _navbuf.assign(_n_prn, {});
+    _navsky.assign(_n_prn, {});
+    _navutc.assign(_n_prn, {});
+    _navhead.assign(_n_prn, {});
     _bit_export = config.get_default<bool>(unique_name, "bit_export", false);
     if (_bit_export)
         _st_nav_obs.assign(_n_prn, {});
@@ -159,34 +170,11 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_deep_floor.assign(_n_prn, 0.0f);
     _st_deep_rec.assign(_n_prn, 0);
 
-    // deep_rate_search: search a linear phase rate before the deep sum (the deep_coherent
-    // branch). Off by default because it changes what deep_snr means (a max over rates).
-    _deep_rate = config.get_default<bool>(unique_name, "deep_rate_search", false);
-    // deep_rate_max_hz caps the rate the fold may apply (<= 0: the full alias window). It must
-    // admit the real carrier residual, up to ~25 Hz with the carrier open loop, or the fold
-    // derotates by a noise bin. It excludes a residual NH20 overlay's 50 Hz sidebands, which
-    // alias to +-45.4 Hz on the 95.37 Hz record grid; the harmonics alias inside it (100 Hz to
-    // 4.6 Hz, 200 Hz to 9.2 Hz), so if fold amplitudes drop, check for picks near 4.6 Hz steps.
-    _deep_rate_max_hz = config.get_default<double>(unique_name, "deep_rate_max_hz", 25.0);
-    _deep_rate_min_q = config.get_default<double>(unique_name, "deep_rate_min_q", 10.0);
     _st_deep_rate.assign(_n_prn, 0.0f);
     _st_deep_rate_q.assign(_n_prn, 0.0f);
     _st_deep_rate_full.assign(_n_prn, 0.0f);
     _st_deep_rate_full_q.assign(_n_prn, 0.0f);
-    // phase_track: leave-one-out common-phase tracker before the deep sum (see the hpp). Each
-    // half-width in phase_track_widths (records) is one more candidate; the floor pays for the
-    // selection, so more widths raise the floor rather than risk a false detection.
-    _phase_track = config.get_default<bool>(unique_name, "phase_track", false);
-    // sky_deep: score the split-aperture sky-corrected prompt (record slots 24/25) as one more
-    // deep candidate. Off by default: ElemCal::rebuild_split balances the two halves by sum|w|,
-    // but each half's SNR^2 goes as sum|w|^2, so when one element dominates the phase-reference
-    // half is close to noise. GnssGpuRecordAssemble writes the slots when elem_sum is on
-    // regardless, so the correction can be measured without being used.
-    _sky_deep = config.get_default<bool>(unique_name, "sky_deep", false);
-    _pt_widths =
-        config.get_default<std::vector<int>>(unique_name, "phase_track_widths", {1, 2, 4, 8});
     _st_coh_frac.assign(_n_prn, 0.0f);
-    _st_pt_hw.assign(_n_prn, 0.0f);
 
     // record_export: keep the last N per-record prompts per PRN for /get_records, so the broker
     // can sum the complex prompts across instances (each sees only part of the band). Each entry
@@ -527,7 +515,7 @@ void GnssCoherentCombiner::main_thread() {
                 acc_ar[p] += alpha * (ar - acc_ar[p]);
                 acc_ai[p] += alpha * (ai - acc_ai[p]);
                 acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
-                if (_wipe_buffer && energy > 0.0) {
+                if (energy > 0.0) {
                     // Sliding window of the last _integration_length records for the deep
                     // estimators. Records with no despread (PRN inactive this window) are not
                     // buffered: the wipes index by UTC, so they become gaps like dropped
@@ -563,7 +551,7 @@ void GnssCoherentCombiner::main_thread() {
                 acc_ar[p] += ar;
                 acc_ai[p] += ai;
                 acc_nchan[p] += nchan;
-                if (_wipe_buffer && energy > 0.0) { // per-record (A, UTC) for the deep wipe;
+                if (energy > 0.0) { // per-record (A, UTC) for the deep wipe;
                     // zero-energy records are gaps, as in rolling mode.
                     _navbuf[p].emplace_back(ar, ai);
                     _navsky[p].push_back(A_sky);
@@ -621,7 +609,7 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> deep_rate_full(_n_prn, 0.0); // uncapped argmax: the carrier loop's
         std::vector<double> deep_rate_full_q(_n_prn, 0.0); // measurement, not the fold's
         std::vector<double> coh_frac(_n_prn, 0.0); // |sum|/sum|.| of the winning deep stream
-        std::vector<int> pt_hw(_n_prn, 0);         // winning tracker half-width (0 = straight)
+
 
         std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions
         // Each deep estimator's free parameters (alignment, bit signs, candidate choice) rectify
@@ -629,16 +617,17 @@ void GnssCoherentCombiner::main_thread() {
         // over the full window. A rung must reach FLOOR_MARGIN x its floor to count; when none
         // does, coherence_s = 0 and the full-window numbers are reported for diagnostics only.
         constexpr double FLOOR_MARGIN = 2.0;
-        // Auto-coherence ladder: the full buffer, plus (with auto_coherence) up to 4 octave-shorter
-        // trailing windows of at least min_len records. Walked longest-first; a shorter window
-        // must beat the incumbent deep SNR by 5%, so ties go to the longer window.
+        // Auto-coherence ladder: integration_length is a maximum. The deep estimator runs on the
+        // full buffer and up to 4 octave-shorter trailing windows of at least min_len records,
+        // and the best deep SNR wins, so coherence_s reports the longest span that actually
+        // coheres. Walked longest-first; a shorter window must beat the incumbent deep SNR by
+        // 5%, so ties go to the longer window.
         auto ladder = [&](size_t n, size_t min_len) {
             std::vector<size_t> lens;
             if (n > 0)
                 lens.push_back(n);
-            if (_auto_coherence)
-                for (size_t l = n / 2; l >= std::max<size_t>(min_len, 2) && lens.size() < 5; l /= 2)
-                    lens.push_back(l);
+            for (size_t l = n / 2; l >= std::max<size_t>(min_len, 2) && lens.size() < 5; l /= 2)
+                lens.push_back(l);
             return lens;
         };
         // Shortest ladder rung: 64 ms, converted to records from the observed spacing since the
@@ -654,15 +643,14 @@ void GnssCoherentCombiner::main_thread() {
             return std::max<size_t>(hard_min, n);
         };
         // Linear phase-rate search over one rung: best_f is the rate (Hz) whose removal maximises
-        // the coherent sum, limited to |f| <= deep_rate_max_hz, and q its peak/median. The median
+        // the coherent sum, limited to |f| <= DEEP_RATE_MAX_HZ, and q its peak/median. The median
         // and the optional uncapped argmax full_f / full_q use every bin. Records are uniform in
         // hop, so (utc - utc0)/dt is an integer even across gaps and a hole contributes exactly
         // zero; dt is the minimum consecutive spacing, since with gaps the mean is not the record
         // period.
-        const double rate_max_hz = _deep_rate_max_hz;
-        auto rate_search = [rate_max_hz](const std::vector<std::complex<double>>& x,
-                                         const std::vector<double>& u, double& best_f, double& q,
-                                         double* full_f = nullptr, double* full_q = nullptr) {
+        auto rate_search = [](const std::vector<std::complex<double>>& x,
+                              const std::vector<double>& u, double& best_f, double& q,
+                              double* full_f = nullptr, double* full_q = nullptr) {
             best_f = 0.0;
             q = 0.0;
             if (full_f)
@@ -711,7 +699,7 @@ void GnssCoherentCombiner::main_thread() {
                     best_m_full = mag[i];
                     ip_full = i;
                 }
-                if (rate_max_hz > 0.0 && std::abs(f_i) > rate_max_hz)
+                if (std::abs(f_i) > DEEP_RATE_MAX_HZ)
                     continue; // outside the physical window: may set the floor, cannot win
                 if (mag[i] > best_m) {
                     best_m = mag[i];
@@ -811,7 +799,7 @@ void GnssCoherentCombiner::main_thread() {
                 // consecutive-record product car_S is the fallback when there is no wipe buffer
                 // or it holds fewer than 16 records.
                 double resid_hz = 0.0;
-                if (_wipe_buffer && _navbuf[p].size() >= 16) {
+                if (_navbuf[p].size() >= 16) {
                     resid_hz = carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p]);
                 } else if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
                     const double dphi = std::arg(car_S[p]) / 2.0; // squared product
@@ -1038,7 +1026,7 @@ void GnssCoherentCombiner::main_thread() {
                     _navutc[p].clear();
                     _navhead[p].clear();
                 }
-            } else if (_deep_plain) {
+            } else {
                 // Plain coherent sum, no wipe. The replica already carries the secondary overlay
                 // (GPS_L5_Q_NH: NH20 tiled into 204600 chips), so each record arrives
                 // overlay-free and the deep integration is a straight sum. The wipe paths cannot
@@ -1051,24 +1039,20 @@ void GnssCoherentCombiner::main_thread() {
                 gnss::OverlayWipeResult full{};
                 size_t full_len = 0;
                 double full_cf = 0.0;
-                int full_hw = 0;
                 // A straight sum takes no max over alignments, so its floor is the plain Rayleigh
-                // tail. Each extra candidate (a phase-tracker half-width, or the sky-corrected
-                // stream) adds a max, paid through n_cand; the factor 2 allows a little for the
-                // ladder's own rungs. The tracker's noise SNR tail is heavier than the straight
-                // sum's, but the floor margin sits above it.
+                // tail. The sky-corrected stream is one more candidate, a max paid through n_cand;
+                // the factor 2 allows a little for the ladder's own rungs.
                 // The sky-corrected stream (slots 24/25, all zero = absent) is checked over the
                 // window, so a few cold records at the start of an arc do not disable it.
                 const auto& skb = _navsky[p];
-                bool have_sky = _sky_deep && skb.size() == ab.size();
+                bool have_sky = skb.size() == ab.size();
                 if (have_sky) {
                     double e_sky = 0.0;
                     for (const auto& v : skb)
                         e_sky += std::norm(v);
                     have_sky = e_sky > 0.0;
                 }
-                const size_t n_cand =
-                    1 + (_phase_track ? _pt_widths.size() : 0) + (have_sky ? 1 : 0);
+                const size_t n_cand = 1 + (have_sky ? 1 : 0);
                 const double flr = std::sqrt(2.0 * std::log(2.0 * (double)n_cand)) + 1.0;
                 for (size_t len : ladder(ab.size(), min_rung(ub, 4))) {
                     std::vector<std::complex<double>> w(ab.end() - (long)len, ab.end());
@@ -1088,30 +1072,28 @@ void GnssCoherentCombiner::main_thread() {
                     // and gaps (records the broker dropped) are exact zeros in the transform.
                     double rate_hz = 0.0, rate_q = 0.0;
                     double rate_fhz = 0.0, rate_fq = 0.0;
-                    if (_deep_rate) {
-                        const std::vector<double> us(ub.end() - (long)len, ub.end());
-                        rate_search(w, us, rate_hz, rate_q, &rate_fhz, &rate_fq);
-                        if (have_sky) {
-                            // The sky correction removes the per-record phase including any linear
-                            // part, so the corrected stream gets its own rate search.
-                            double f2 = 0.0, q2 = 0.0;
-                            rate_search(wsky, us, f2, q2);
-                            if (q2 >= _deep_rate_min_q && f2 != 0.0) {
-                                const double t0 = us.front();
-                                for (size_t k = 0; k < wsky.size(); ++k)
-                                    wsky[k] *= std::polar(1.0, -2.0 * M_PI * f2 * (us[k] - t0));
-                            }
-                        }
-                        if (rate_q >= _deep_rate_min_q && rate_hz != 0.0) {
-                            // Derotate and let coherent_sum score it, so deep_snr, deep_amplitude
-                            // and coherence_s keep their meaning: the search decides whether to
-                            // derotate, coherent_sum decides the value.
+                    const std::vector<double> us(ub.end() - (long)len, ub.end());
+                    rate_search(w, us, rate_hz, rate_q, &rate_fhz, &rate_fq);
+                    if (have_sky) {
+                        // The sky correction removes the per-record phase including any linear
+                        // part, so the corrected stream gets its own rate search.
+                        double f2 = 0.0, q2 = 0.0;
+                        rate_search(wsky, us, f2, q2);
+                        if (q2 >= DEEP_RATE_MIN_Q && f2 != 0.0) {
                             const double t0 = us.front();
-                            for (size_t k = 0; k < w.size(); ++k)
-                                w[k] *= std::polar(1.0, -2.0 * M_PI * rate_hz * (us[k] - t0));
-                        } else {
-                            rate_hz = 0.0; // nothing found: score the straight sum
+                            for (size_t k = 0; k < wsky.size(); ++k)
+                                wsky[k] *= std::polar(1.0, -2.0 * M_PI * f2 * (us[k] - t0));
                         }
+                    }
+                    if (rate_q >= DEEP_RATE_MIN_Q && rate_hz != 0.0) {
+                        // Derotate and let coherent_sum score it, so deep_snr, deep_amplitude and
+                        // coherence_s keep their meaning: the search decides whether to derotate,
+                        // coherent_sum decides the value.
+                        const double t0 = us.front();
+                        for (size_t k = 0; k < w.size(); ++k)
+                            w[k] *= std::polar(1.0, -2.0 * M_PI * rate_hz * (us[k] - t0));
+                    } else {
+                        rate_hz = 0.0; // nothing found: score the straight sum
                     }
                     // Per-record magnitudes are invariant under derotation, so one pass serves
                     // every candidate's coherence fraction |sum| / sum|.| below.
@@ -1122,40 +1104,22 @@ void GnssCoherentCombiner::main_thread() {
                         for (const auto& v : wsky)
                             sum_abs_sky += std::abs(v);
                     gnss::OverlayWipeResult cs = gnss::coherent_sum(w);
-                    int hw_used = 0;
-                    // Sky-corrected candidate; pt_hw = -1 marks it in the status, distinct from
-                    // any temporal half-width.
+                    bool sky_won = false;
                     if (have_sky) {
                         const gnss::OverlayWipeResult csk = gnss::coherent_sum(wsky);
                         if (csk.snr > cs.snr) {
                             cs = csk;
-                            hw_used = -1;
+                            sky_won = true;
                         }
-                    }
-                    // Common-phase tracker: derotate each record by its neighbours' leave-one-out
-                    // phase (a batch carrier loop) and score it with the same estimator. Runs on
-                    // the rate-derotated stream: the rate search removes the deterministic ramp,
-                    // the tracker the slow wander.
-                    if (_phase_track) {
-                        std::vector<std::complex<double>> wt;
-                        for (int hw : _pt_widths)
-                            if (gnss::phase_track_loo(w, hw, wt)) {
-                                const gnss::OverlayWipeResult ct = gnss::coherent_sum(wt);
-                                if (ct.snr > cs.snr) {
-                                    cs = ct;
-                                    hw_used = hw;
-                                }
-                            }
                     }
                     // Coherence fraction of the stream that won: the sky-corrected records have
                     // their own magnitudes.
-                    const double sum_abs = (hw_used == -1) ? sum_abs_sky : sum_abs_raw;
+                    const double sum_abs = sky_won ? sum_abs_sky : sum_abs_raw;
                     const double cf = sum_abs > 0.0 ? cs.amplitude * (double)len / sum_abs : 0.0;
                     if (full_len == 0) { // ladder walks longest-first
                         full = cs;
                         full_len = len;
                         full_cf = cf;
-                        full_hw = hw_used;
                         deep_rate[p] = rate_hz;
                         deep_rate_q[p] = rate_q;
                         deep_rate_full[p] = rate_fhz;
@@ -1165,8 +1129,8 @@ void GnssCoherentCombiner::main_thread() {
                     // a closed-form floor: oversampled bins are far from independent, so
                     // sqrt(2 ln n) + 1 overstates the noise maximum. q is measured on the same
                     // data, so it does not depend on rung length or bin count.
-                    if (_deep_rate && rate_hz != 0.0) {
-                        if (rate_q < _deep_rate_min_q)
+                    if (rate_hz != 0.0) {
+                        if (rate_q < DEEP_RATE_MIN_Q)
                             continue;
                     } else if (cs.snr < FLOOR_MARGIN * flr)
                         continue; // indistinguishable from noise
@@ -1181,7 +1145,6 @@ void GnssCoherentCombiner::main_thread() {
                         deep_floor[p] = flr;
                         coh_s[p] = coh_span(ub, len);
                         coh_frac[p] = cf;
-                        pt_hw[p] = hw_used;
                         cleared = true;
                     }
                 }
@@ -1192,7 +1155,6 @@ void GnssCoherentCombiner::main_thread() {
                     deep_floor[p] = flr;
                     coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                     coh_frac[p] = full_cf;
-                    pt_hw[p] = full_hw;
                 }
             }
             rec[gnss::CMB_COH_FRAC] = (float)coh_frac[p];
@@ -1234,7 +1196,6 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep_rate_full[p] = (float)deep_rate_full[p];
                 _st_deep_rate_full_q[p] = (float)deep_rate_full_q[p];
                 _st_coh_frac[p] = (float)coh_frac[p];
-                _st_pt_hw[p] = (float)pt_hw[p];
                 if (_rec_export > 0)
                     _st_recex[p] = _recex[p];
                 if (_bit_export)
@@ -1281,10 +1242,8 @@ void GnssCoherentCombiner::main_thread() {
             if (_m_last_emit_us)
                 _m_last_emit_us->set(us);
             if (_m_last_emit_prns) {
-                // Bounded by _navbuf.size(), not _n_prn: _navbuf is allocated only when
-                // _wipe_buffer is set and is empty otherwise.
                 int active = 0;
-                for (size_t p = 0; p < _navbuf.size(); ++p)
+                for (int p = 0; p < _n_prn; ++p)
                     if (!_navbuf[p].empty())
                         ++active;
                 _m_last_emit_prns->set((double)active); // emit cost scales with this, not n_prn
@@ -1368,16 +1327,13 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_rate_hz", _st_deep_rate[p]},
                          {"deep_rate_q", _st_deep_rate_q[p]},
                          // The uncapped argmax of the same spectrum and its q, which the carrier
-                         // loop reads. deep_rate_hz is the fold's pick, capped at deep_rate_max_hz;
+                         // loop reads. deep_rate_hz is the fold's pick, capped at DEEP_RATE_MAX_HZ;
                          // beyond the cap it is a noise bin.
                          {"deep_rate_full_hz", _st_deep_rate_full[p]},
                          {"deep_rate_full_q", _st_deep_rate_full_q[p]},
                          // coh_frac = |sum|/sum|.| of the winning deep stream, a coherence measure
-                         // that, unlike deep_snr, does not scale with record count. pt_hw = winning
-                         // tracker half-width in records; 0 = straight sum, -1 = sky-corrected.
+                         // that, unlike deep_snr, does not scale with record count.
                          {"coh_frac", _st_coh_frac[p]},
-                         {"pt_hw", _st_pt_hw[p]},
-
                          {"dll_disc", _st_dll_disc[p]},
                          // Fleet DLL (docs/CHORD_GNSS_SHARED_DLL.md): dll_disc is a ratio, and the
                          // full-band discriminator is (sum e_pow - sum l_pow)/(sum e_pow + sum
