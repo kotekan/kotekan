@@ -15,7 +15,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_CUDA_COMMAND_WITH_STATE(cudaGnssInject, cudaGnssInjectState);
+REGISTER_CUDA_COMMAND_WITH_STATE(cudaGnssInject, cudaGnssChordTrackState);
 
 cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device,

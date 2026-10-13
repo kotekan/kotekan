@@ -2,7 +2,6 @@
  * @file
  * @brief GNSS replica injection: synthesize and quantize replica waveforms into the N^2
  *        correlator's synthetic input.
- *  - cudaGnssInjectState : public cudaGnssChordTrackState
  *  - cudaGnssInject : public cudaCommand
  */
 
@@ -67,18 +66,6 @@
  * @conf  gnss_ctl_name        String. Named GPU array for the control block. Default
  *                             "gnss_n2ctl".
  */
-/**
- * @class cudaGnssInjectState
- * @brief The injector's instance of cudaGnssChordTrackState.
- *
- * A separate class only for the factory: REGISTER_CUDA_COMMAND_WITH_STATE names its registrar
- * variable after the state class, so one state class can be registered for only one command.
- */
-class cudaGnssInjectState : public cudaGnssChordTrackState {
-public:
-    using cudaGnssChordTrackState::cudaGnssChordTrackState;
-};
-
 class cudaGnssInject : public cudaCommand {
 public:
     cudaGnssInject(kotekan::Config& config, const std::string& unique_name,
