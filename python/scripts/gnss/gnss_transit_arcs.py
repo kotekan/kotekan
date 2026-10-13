@@ -1037,18 +1037,27 @@ def main():
             time.time() - t0,
         )
     )
-    # usable: 10 min of context each side inside the data, not straddling the split
-    keep = []
+    # usable: 10 min of context each side inside the data, not straddling the split; every
+    # window the ephemeris found is listed, a dropped one with the reason, so none leaves silently
+    keep, dropped = [], []
     for w in wins:
+        why = []
         if w["t0"] - args.pad_s - 720 < t_lo or w["t1"] + args.pad_s + 720 > t_hi:
-            continue
+            why.append(
+                "span: needs %s .. %s"
+                % (hm(w["t0"] - args.pad_s - 720), hm(w["t1"] + args.pad_s + 720)[6:])
+            )
         if w["t1"] < split:
             w["period"] = "before"
         elif w["t0"] > split + 900:
             w["period"] = "after"
         else:
-            continue
-        keep.append(w)
+            why.append("split: straddles %s +15 min" % hm(split))
+        if why:
+            w["drop"] = "; ".join(why)
+            dropped.append(w)
+        else:
+            keep.append(w)
 
     def period_of(a, b):
         if b < split:
@@ -1092,19 +1101,20 @@ def main():
         % {q: sum(1 for c in ctrl if c["period"] == q) for q in ("before", "after")}
     )
     keep = keep + ctrl
-    for w in keep:
+    for w in keep + dropped:
         if w.get("ctrl"):
             continue
         print(
-            "  %-6s %s  %s .. %s  CA %s  %.2f deg%s"
+            "  %-6s %s  %s .. %s  CA %s  %.2f deg%s%s"
             % (
-                w["period"],
+                w.get("period", "-"),
                 w["sat"],
                 hm(w["t0"]),
                 hm(w["t1"])[6:],
                 hm(w["t_ca"])[6:],
                 w["min_sep"],
                 "" if w["healthy"] else "  UNHEALTHY",
+                "  DROPPED (%s)" % w["drop"] if "drop" in w else "",
             )
         )
     if args.broker_lines:
