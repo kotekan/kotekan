@@ -17,6 +17,9 @@ is locked and happy. Written for the wider team's (N+M)² request.
 
 ## Data layout on disk
 
+(This section and "Mechanism" describe the original per-chain capture, the 09-07 set. Since
+2026-10-06 the generator builds one capture per GPU instead; see "One pass per GPU".)
+
 Per GPU instance, two `rawFileWrite` series in `<record_dir>/viscap/` (node nvme, `/tmp/gnss`):
 
     <node>_gnss<g>_vistiles_NNNNNNN.raw   int32 [n_rec][n_chan][n_tile][16][16][2]
@@ -102,13 +105,12 @@ The sinks are `rawFileWrite` with the new opt-in `create_base_dir` (the stage ot
 `exit(errno)`s on a missing directory at its FIRST write — which here would be minutes after
 arming, hours after startup).
 
-Generator: `--vis-capture <chains>` (armed in `config/gnss_fleet_chord.yaml` as
-`vis-capture: gps_l5,gal_e5a,bds_b2a`) adds, per captured chain, the gate, the two staging
-buffers (`--vis-capture-depth 8`), the two sinks (`--vis-capture-frames-per-file 24`), and sets
-`gnss_gather_aa: true` on the correlator AND the assembler; `--vis-capture-bb` (manifest
-`vis-capture-bb: true`) sets `gnss_gather_bb: true` on both as well. Those two plus the
-generator's `n2_tiles_per_chan()` form one contract: the assembler FATALs on a tiles frame-size
-mismatch rather than mis-decode.
+Generator: `--vis-capture <chains>` (manifest `vis-capture: gps_l5,gal_e5a,bds_b2a`, commented
+out between captures) adds, per GPU, the capture gather to the `gnss<g>_n2dual` correlator,
+the gate, the staging buffers (`--vis-capture-depth 8`) and the sinks
+(`--vis-capture-frames-per-file 24`); `--vis-capture-bb` (manifest `vis-capture-bb: true`) adds
+the BB triangle to the capture gather. The chains' own tiles frames, which the assemblers
+read, do not change.
 
 ## Procedure (after a node cycle)
 
@@ -138,10 +140,9 @@ The gate is inert until armed. Nothing is written by a restart alone.
    record `winstart` steps of 2048 hops inside a frame, 8192 across; the same `seq0` span
    on all six nodes.
 
-## One pass per GPU (`--n2-dual-merged`, 2026-10-06)
+## One pass per GPU (since 2026-10-06)
 
-With the manifest key `n2-dual-merged: true` the generator folds every path-B chain on a GPU
-into one `gnss<g>_n2dual` process: the injectors write one compact synth array
+The generator folds every path-B chain on a GPU into one `gnss<g>_n2dual` process: the injectors write one compact synth array
 (`gnss<g>_synth`, one slice per comb channel, 128 lanes per chain at its own offset: L5 0,
 E5a 128, B2a 256 on 1176 MHz; E5b 0, B2b 128; B3I 0, E6 128; L2C 0), one `cudaCorrelatorDual`
 (`num_synth` 384, `gnss_synth_compact`) correlates the (N+M)² over the union of the combs, and a
@@ -163,10 +164,6 @@ only in their own chain's rows).
 
 ## Not done / decisions left open
 
-- The replica × replica blocks between chains (L5 × E5a, L5 × B2a, E5a × B2a) are not computed:
-  each chain has its own synth buffer and correlator pass. They arrive when the chains share
-  one (N+M)² pass per GPU (the "stage 1" merge of 2026-10-06), which also gives one N² per GPU
-  instead of one per captured chain.
 - Cadence below 10.49 ms: chain-wide change, not offered.
 - `scripts/gnss/j2_chain_equiv.py` (manual j2 bridge gate) fails on the committed configs
   already (`n2sink` lost `cpu_affinity` when it became `dropAllFrames`); the viscap vars are

@@ -432,10 +432,12 @@ common:
     cube-host: 10.222.3.6
 
   # ── VISIBILITY CAPTURE (team request; OFF -- uncomment the keys, regenerate, restart) ───
-  # Not free while disarmed: the capture gather copies its tiles off the GPU every frame
-  # (20 MB, ~0.7 ms of D2H per GPU with BB) for the gate to drop.
-  # Builds, per GPU instance, a REST-armed FrameWindowGate between the n2dual chain's
-  # tiles/ctl buffers and two rawFileWrite sinks (<record_dir>/viscap/<node>_gnss<g>_vis{tiles,ctl}).
+  # Builds, per GPU, one capture gather in the gnss<g>_n2dual correlator pass (the live
+  # antennas' N^2 plus the captured chains' mixed rows) and a REST-armed FrameWindowGate that
+  # holds it in lockstep with each captured chain's ctl buffer, feeding rawFileWrite sinks under
+  # <record_dir>/viscap (<node>_gnss<g>_capvistiles, <node>_gnss<g><tag>_visctl). Not free
+  # while disarmed: the capture gather copies its tiles off the GPU every frame (20 MB, ~0.7 ms
+  # of D2H per GPU with BB) for the gate to drop.
   # Nothing is written until an operator arms an absolute F-engine sample window on every
   # gate (scripts/gnss/viscap.py arm --start-in 30 --duration 300); the gate auto-disarms
   # past end_seq. The window is ONE absolute clock fleet-wide (FrameHdr.seq0), so the six
@@ -443,34 +445,19 @@ common:
   #
   # ⚠️ NOT THE PRODUCTION N^2. recv1's data set is run_n2k -> n2_accumulate -> the n2-send legs
   # above (n2-send / n2-send-legs) -- the collaboration's main product; those keys
-  # stay ARMED regardless of this one. gnss_gather_aa below is a block inside the GNSS DUAL
-  # correlator (32 live elements, the 6-7 despread channels) so the capture carries N^2 next
+  # stay ARMED regardless of this one. The capture's N^2 is a block inside the GNSS DUAL
+  # correlator (32 live elements, the despread channels), so the capture carries N^2 next
   # to NxM; it does not touch cudaCorrelator or anything downstream of it.
-  # It ALSO turns on gnss_gather_aa: the correlator adds the 3 antenna-antenna (N^2) tiles over
-  # the live element columns per channel (+1 block class, ~0.03 ms/instance) so the capture
-  # carries N^2 + NxM, not NxM alone. That changes the tiles frame size (917504 -> 1089536 B
-  # for 7 channels); the assembler FATALs on mismatch rather than mis-decode.
-  # Value = the chain name whose n2dual is captured (a comma list is accepted).
-  # Volume when armed: ~30 MB/s per instance per chain -> ~18 GB/node per 5 min (one chain,
-  # no BB), on the node nvme. Disarm = delete this key, regenerate, restart.
-  # docs/CHORD_VIS_CAPTURE.md.
+  # Value = the chain names captured (a comma list). Disarm = delete the key, regenerate,
+  # restart. docs/CHORD_VIS_CAPTURE.md.
   # 2026-10-06: all three 1176 MHz chains, for the re-take of the 09-07 set with M spanning
-  # L5 + E5a + B2a. The three gates on a GPU share the clock, so one `viscap.py arm --tags
-  # ,_e5a,_b2a` captures the same records on all of them. Taken 19:15-19:20Z; the set is
-  # /mnt/cs00/data/kvand/viscap_20261006 (README inside). Keys off again 2026-10-06 ~23Z.
+  # L5 + E5a + B2a. Taken 19:15-19:20Z; the set is /mnt/cs00/data/kvand/viscap_20261006
+  # (README inside). Keys off again 2026-10-06 ~23Z.
   # vis-capture: gps_l5,gal_e5a,bds_b2a
-  # vis-capture-bb: the captured chains also gather the BB (replica x replica) block, so each
-  # chain's capture is its complete (N+M)(N+M+1)/2 triangle per record. Triples the tiles
-  # traffic of those chains: ~235 MB/s per 7-channel instance for the three chains, ~800 GB
-  # fleet-wide per 5 min (per-chain layout; 1.7 TB with n2-dual-merged, which spans all lanes).
+  # vis-capture-bb: the capture also gathers the BB (replica x replica) block across the
+  # captured chains, so it holds the complete (N+M)(N+M+1)/2 triangle per record: ~1.7 TB
+  # fleet-wide per 5 min for the three 1176 MHz chains.
   # vis-capture-bb: true
-  # n2-dual-merged: one (N+M)^2 correlator pass per GPU. A GPU's path-B chains share one
-  # gnss<g>_n2dual process and a compact 384-lane synth array (chains sharing channels get
-  # disjoint lane ranges), with a gather per chain; with vis-capture, one capture gather, so the
-  # capture is one gate per GPU (`viscap.py` defaults) and spans every captured chain's replicas. cx51
-  # canary 2026-10-06 21:10Z: host thread 34 % of a core per GPU (was 7-8 threads at 20-45 %
-  # each), GPU memory 3.8 GB per GPU (was 17-19 GB), synthesis 13 ms per frame per GPU.
-    n2-dual-merged: true
   # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
   # closes any connection whose frame_size disagrees with its buffer -- so changing either one
   # means regenerating the GATHER config in the same commit, and restarting both ends. Left at

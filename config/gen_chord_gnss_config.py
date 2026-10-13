@@ -186,30 +186,17 @@ def vis_capture_chain(args, chain, sig):
     return name in [c.strip() for c in args.vis_capture.split(",") if c.strip()]
 
 
-def vis_capture_own_gate(args, chain, sig):
-    """True when this chain's OWN tiles carry the capture (its gate, its AA/BB tiles). With
-    --n2-dual-merged the chains share one correlator pass and the capture is one gather per
-    GPU instead (merge_n2dual_gpu), so the chain's own frame stays the tracker's."""
-    return vis_capture_chain(args, chain, sig) and not getattr(
-        args, "n2_dual_merged", False
-    )
-
-
-def n2_tiles_per_chan(n_live, num_synth, gather_aa, gather_bb=False):
-    """Gathered tiles per comb channel: mixed (synth rows x live antenna columns), then the
-    live antennas' own N^2 lower triangle when the visibility capture is armed, then the BB
-    (synth x synth) lower triangle when the capture wants the replica side too (the tracker
-    reads neither: its normalization uses the true pre-quantization energy from the ctl block).
+def n2_tiles_per_chan(n_live, num_synth):
+    """Gathered tiles per comb channel in a chain's own tiles frame: the mixed block (synth rows
+    x live antenna columns). The tracker reads nothing else -- its normalization uses the true
+    pre-quantization energy from the ctl block -- and the visibility capture's AA/BB tiles ride
+    in a separate per-GPU gather (merge_n2dual_gpu).
     ⚠️ ONE CONTRACT, THREE SITES: this, cudaCorrelatorDual::build_tile_selection and
-    GnssN2RecordAssemble's _n_mixed/_n_aa/_n_bb. Disagree and the assembler's frame-size
-    guard fires at startup -- which is the good outcome, and is why that guard exists."""
+    GnssN2RecordAssemble's _n_mixed. Disagree and the assembler's frame-size guard fires at
+    startup -- which is the good outcome, and is why that guard exists."""
     na16, nt16 = 128 // 16, (128 + num_synth) // 16
     nlive16 = (n_live + 15) // 16
-    nsb16 = nt16 - na16
-    mixed = nsb16 * nlive16
-    aa = nlive16 * (nlive16 + 1) // 2 if gather_aa else 0
-    bb = nsb16 * (nsb16 + 1) // 2 if gather_bb else 0
-    return mixed + aa + bb
+    return (nt16 - na16) * nlive16
 
 
 def rf_monitor_channels(cfg, node, gpu, args, primary_freq_ids, primary_local):
@@ -487,14 +474,8 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
 
     # --- frame sizes (see build_n2dual_branch for the scars behind each) -----------------
     n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
-    viscap = vis_capture_own_gate(args, chain, sig)
-    viscap_bb = viscap and bool(args.vis_capture_bb)
     tiles_frame_bytes = (
-        n_rec_per_frame
-        * n_chan
-        * n2_tiles_per_chan(n_live, num_synth, viscap, viscap_bb)
-        * 512
-        * 4
+        n_rec_per_frame * n_chan * n2_tiles_per_chan(n_live, num_synth) * 512 * 4
     )
     prnctl = prnctl_bytes()  # READ, never restated -- it took the fleet down once
     epl_bytes = (
@@ -541,9 +522,9 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
             "send": cores[(gpu + 6) % nc],
             "sink": cores[(gpu + 7) % nc],
         },
-        # --vis-capture on this chain: the correlator gathers the AA block too (which sizes
-        # "tiles" above) and the viscap gate/sink blocks are emitted.
-        "viscap": viscap,
+        # The chain's own tiles never carry the visibility capture: that is one gather per
+        # GPU (merge_n2dual_gpu), so this stays false for gnss_chain.j2.
+        "viscap": False,
         "sizes": {
             "tiles": tiles_frame_bytes,
             "ctl": ctl_bytes,
@@ -976,20 +957,12 @@ def send_pacing(args, cfg, spds, frame_bytes, frames_per_fengine_frame=1.0):
 
 
 def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
-    """GNSS path B: one GPU's cudaGnssInject + cudaCorrelatorDual process.
+    """GNSS path B for one chain on one GPU: its cudaGnssInject + cudaCorrelatorDual commands
+    (folded with the GPU's other chains into one process by merge_n2dual_gpu) and its host
+    stages -- tiles assembler, record assembler, combiner, telemetry and beam-cube legs.
 
-    ONE COMPLETE CHAIN PER SIGNAL. `chain` is None for the primary and a parse_extra_signals()
+    ONE CHAIN PER SIGNAL. `chain` is None for the primary and a parse_extra_signals()
     entry otherwise; every buffer, GPU array and endpoint is tagged from it.
-
-    WHY A FULL PARALLEL CHAIN RATHER THAN SHARED LANES. E5a sits on GPS L5's carrier, so the
-    two signals cover the SAME channels, and one correlator could in principle serve both if
-    the injectors wrote disjoint lane ranges of one synth ring. That needs a lane offset in
-    cudaGnssInject and a merged control block -- two injectors cannot both author the FrameHdr
-    and PrnCtl the assembler reads. A full chain per signal needs no CUDA change at all,
-    because every GPU array name is already config-settable, and it costs one extra mapped
-    correlator launch: 0.077 ms/frame measured. Against path A's 17.712 ms per extra signal
-    that is not a tradeoff worth agonising over, and the shared-lane version stays available
-    later if the lane budget gets tight.
 
     THE GPU ARRAY NAMES MUST BE TAGGED. get_gpu_memory_array is scoped per DEVICE, so the two
     GPUs' chains never collided on the untagged defaults ("gnss_synth", "gnss_n2ctl",
@@ -1002,9 +975,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     tiles come to the host for the assemblers, and the combined records end in a dropAllFrames.
     """
     sig = cfg["signals"]
-    rt = cfg["runtime"]
     arr = cfg["array"]
-    cores = gnss_cores(rt, gpu)  # this GPU's own NUMA node (see gnss_cores)
     tag = chain["tag"] if chain else ""
     pre = f"gnss{gpu}{tag}_"
     n_chan = len(chan_idx)
@@ -1014,7 +985,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # every replica in the wrong part of the band and every mixed tile reads noise.
     carrier_hz = float(chain["carrier_hz"]) if chain else float(sig["carrier_hz"])
     track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
-    ordv = chain["ord"] if chain else 0
     n_live = live_element_count(arr)
 
     # Tile count per channel: see n2_tiles_per_chan (one contract, three sites).
@@ -1022,17 +992,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # frames are samples_per_data_set hops; the tracker splits them into records. Taken from
     # the BASE config (production owns it), passed in rather than guessed.
     n_rec_per_frame = max(1, int(spds) // args.hops_per_record)
-    # --vis-capture: this chain's correlator also gathers the live antennas' N^2 and the
-    # tiles/ctl frames get a gated leg to disk (see the viscap blocks below).
-    viscap = vis_capture_own_gate(args, chain, sig)
-    viscap_bb = viscap and bool(args.vis_capture_bb)
     # nt_outer = records per frame now that the dual correlator integrates one record
     tiles_frame_bytes = (
-        n_rec_per_frame
-        * n_chan
-        * n2_tiles_per_chan(n_live, num_synth, viscap, viscap_bb)
-        * 512
-        * 4
+        n_rec_per_frame * n_chan * n2_tiles_per_chan(n_live, num_synth) * 512 * 4
     )
 
     if 4 * n_prn > num_synth:
@@ -1082,21 +1044,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "num_frames": args.buffer_depth,
             "frame_size": tiles_frame_bytes,
         },
+        # THE CHAIN'S INJECTOR AND CORRELATOR, as a process block that merge_n2dual_gpu folds
+        # into the GPU's one gnss<g>_n2dual (it takes the primary chain's stage, gpu_id,
+        # cpu_affinity and in_buffers, and every chain's two commands).
         f"{pre}n2dual": {
             "kotekan_stage": "cudaProcess",
             "gpu_id": gpu,
-            # ⚠️ PRIVATE CUDA STREAMS PER CHAIN (2026-08-31, the half-node wedge).
-            # Every cudaProcess used to default onto streams 0/1/2, so all 7 GNSS chains and
-            # the production N2/RFI pipelines queued commands against the same per-stream
-            # locks. One thread blocking inside the CUDA driver there stopped the whole GPU
-            # half and back-pressured to the NIC (chord-gpu-command-mutex-wedge). Disjoint
-            # bases mean chains never contend with each other OR with production, which is
-            # what makes it impossible rather than unlikely.
-            # base 0 stays PRODUCTION's (streams 0,1,2); chain `ord` k takes 3+3k.
-            "cuda_stream_base": 3 + 3 * ordv,
-            # prepareStreams only ever GROWS the device pool, so asking for exactly what this
-            # pipeline needs is self-consistent whatever order the stages are constructed in.
-            "num_cuda_streams": 3 + 3 * ordv + 3,
             # NEVER share a core with a TRACKER cudaProcess. The tracker uses
             # cores[(gpu+6)%n] (= 60, 61 on the deployed pool), and the naive
             # cores[(gpu+5)%n] put gnss1_n2dual on 60 -- the same core as gnss0_gpu, i.e. two
@@ -1105,7 +1058,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # cudaProcess stages must not. Explicit, not arithmetic, so it stays checkable.
             "cpu_affinity": [V["cores"]["dual"]],
             "in_buffers": {"host_voltage_ringbuffer": ring},
-            "out_buffers": {"host_gnss_tiles": tiles_buf, "host_gnss_n2ctl": ctl_buf},
             "commands": [
                 # ORDER MATTERS: the injector's pack lands on the same stream before the
                 # correlator's kernel reads the synth array -- that ordering is the entire
@@ -1224,28 +1176,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     "num_live_elements": n_live,
                     # WHICH columns, not just how many -- the live set is {0..15, 64..79}.
                     "live_element_tiles": live_tile_columns(arr),
-                    "gnss_gather_aa": viscap,
-                    **({"gnss_gather_bb": True} if viscap_bb else {}),
                     "gnss_local_channels": chan_idx,
-                },
-                {"name": "cudaSyncOutput"},
-                {
-                    "name": "cudaOutputData",
-                    "gpu_mem": f"{pre}tiles_buffer",
-                    "out_buf": "host_gnss_tiles",
-                },
-                # M5: the injector's control block (FrameHdr + winstart + PrnCtl + the true
-                # replica energies) -- the epl layout minus corr, which the consumer fills
-                # from the tiles. See docs/gnss_gpu_search.md 11.11.
-                {
-                    "name": "cudaOutputData",
-                    # NO _buffer SUFFIX. cudaGnssInject allocates this with
-                    # get_gpu_memory_array(_mem_ctl) directly, so the gpu_mem name IS the array
-                    # name -- unlike the tiles and correlation arrays, which go through
-                    # NDArrayBuffer and are addressed as <name>_buffer. The two conventions sit
-                    # three lines apart in this block and do not match.
-                    "gpu_mem": f"{pre}n2ctl",
-                    "out_buf": "host_gnss_n2ctl",
                 },
             ],
         },
@@ -1293,8 +1224,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "n_gnss_channels": n_chan,
             "n_prn": n_prn,
             "hops_per_record": args.hops_per_record,
-            "gnss_gather_aa": viscap,
-            **({"gnss_gather_bb": True} if viscap_bb else {}),
             "cpu_affinity": [V["cores"]["tiles"]],
         },
         # ... and then the EXISTING record assembler, unchanged.
@@ -1407,79 +1336,6 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         },
         f"{pre}n2sink": {"kotekan_stage": "dropAllFrames", "in_buf": f"{pre}n2cmb_buf"},
     }
-
-    # -- THE (N+M)^2 VISIBILITY CAPTURE (--vis-capture) ------------------------------------------
-    #
-    # A SECOND CONSUMER of the tiles and ctl buffers: the assembler keeps reading them exactly
-    # as before, and a FrameWindowGate copies the (tiles, ctl) frame pair to two rawFileWrites
-    # ONLY inside a REST-armed [start_seq, end_seq) window -- scripts/gnss/viscap.py arms the
-    # whole fleet on one absolute sample number, so the files start on the same hop everywhere.
-    # Outside the window the gate drops at zero cost, and inside it it never blocks: if a disk
-    # falls behind the tuple is dropped and counted, the tracker is not slowed.
-    #
-    # The clock is the ctl block's FrameHdr.seq0 (int64 at byte 16 -- gnssGpuChain.hpp), which
-    # is the absolute sample of the frame's first hop and the same number the tiles frame
-    # describes; the buffers' GnssChanMetadata is not reliably populated on this path.
-    #
-    # Per frame this is n_rec x n_chan x n_tile x 2048 B of tiles (~1.1 MB for 7 channels with
-    # the AA block, ~3.2 MB with --vis-capture-bb) plus the ctl block that names the lanes
-    # (PRN, f_nco, cp_seed, the quantizer energies) -- ~30 (~80) MB/s per instance per chain,
-    # ~9 (~24) GB per 5 minutes on the node's nvme. The writer bundles ~1 s per file; a reader
-    # (scripts/gnss/viscap_read.py) supplies the fixed layout, hence allow_ndarray.
-    if viscap:
-        vc_tiles = f"{pre}viscap_tiles_buf"
-        vc_ctl = f"{pre}viscap_ctl_buf"
-        vc_dir = (args.record_dir or rt["record_dir"]) + "/viscap"
-        blocks.update(
-            {
-                vc_tiles: {
-                    "kotekan_buffer": "standard",
-                    "metadata_pool": "gnss_pool",
-                    "num_frames": args.vis_capture_depth,
-                    "frame_size": tiles_frame_bytes,
-                },
-                vc_ctl: {
-                    "kotekan_buffer": "standard",
-                    "metadata_pool": "gnss_pool",
-                    "num_frames": args.vis_capture_depth,
-                    "frame_size": ctl_bytes,
-                },
-                f"{pre}viscap_gate": {
-                    "kotekan_stage": "FrameWindowGate",
-                    "in_bufs": [tiles_buf, ctl_buf],
-                    "out_bufs": [vc_tiles, vc_ctl],
-                    "clock_buf": 1,
-                    "clock_source": "frame",
-                    "clock_offset": 16,
-                    "cpu_affinity": [V["cores"]["sink"]],
-                },
-                f"{pre}viscap_tiles_sink": {
-                    "kotekan_stage": "rawFileWrite",
-                    "in_buf": vc_tiles,
-                    "base_dir": vc_dir,
-                    "file_name": f"{node}_gnss{gpu}{tag}_vistiles",
-                    "file_ext": "raw",
-                    "prefix_hostname": False,
-                    "num_frames_per_file": args.vis_capture_frames_per_file,
-                    "allow_ndarray": True,
-                    "continue_numbering": True,
-                    "create_base_dir": True,
-                    "cpu_affinity": [V["cores"]["sink"]],
-                },
-                f"{pre}viscap_ctl_sink": {
-                    "kotekan_stage": "rawFileWrite",
-                    "in_buf": vc_ctl,
-                    "base_dir": vc_dir,
-                    "file_name": f"{node}_gnss{gpu}{tag}_visctl",
-                    "file_ext": "raw",
-                    "prefix_hostname": False,
-                    "num_frames_per_file": args.vis_capture_frames_per_file,
-                    "continue_numbering": True,
-                    "create_base_dir": True,
-                    "cpu_affinity": [V["cores"]["sink"]],
-                },
-            }
-        )
 
     # -- TASK #59: the frame-synced telemetry leg to the broker --------------------------------
     #
@@ -1644,10 +1500,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
 
 
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
-    """--n2-dual-merged: ONE cudaProcess per GPU for every path-B chain on it.
+    """ONE cudaProcess per GPU for every path-B chain on it.
 
-    build_n2dual_branch builds each chain as its own process (injector, correlator, outputs).
-    Here those processes are folded into one: every chain's injector writes its lanes into
+    build_n2dual_branch builds each chain's injector and correlator commands. Here they are
+    folded into one process: every chain's injector writes its lanes into
     one COMPACT synth array [T][comb][num_synth] at its own lane offset, one cudaCorrelatorDual
     correlates the (N+M)^2 over the union of the combs, and one gather per chain copies out
     exactly the tiles frame its assembler consumed before -- nothing on the host side moves.
@@ -1693,8 +1549,14 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
 
     procs = {p["pre"]: blocks.pop(f"{p['pre']}n2dual") for p in pres}
     primary = procs[f"gnss{gpu}_"]
-    merged = {k: v for k, v in primary.items() if k not in ("commands", "out_buffers")}
-    # one process on this GPU now: the primary's private streams serve it
+    merged = {k: v for k, v in primary.items() if k != "commands"}
+    # ⚠️ PRIVATE CUDA STREAMS (2026-08-31, the half-node wedge). Every cudaProcess used to
+    # default onto streams 0/1/2, so the GNSS chains and the production N2/RFI pipelines queued
+    # commands against the same per-stream locks; one thread blocking inside the CUDA driver
+    # there stopped the whole GPU half and back-pressured to the NIC
+    # (chord-gpu-command-mutex-wedge). Base 0 (streams 0,1,2) stays PRODUCTION's; this one
+    # process takes 3,4,5. prepareStreams only ever GROWS the device pool, so asking for
+    # exactly what this pipeline needs is self-consistent whatever the construction order.
     merged["cuda_stream_base"] = 3
     merged["num_cuda_streams"] = 6
     out_buffers = {}
@@ -1718,6 +1580,12 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
                 "gpu_mem": f"{p['pre']}tiles_buffer",
                 "out_buf": f"host_{p['pre']}tiles",
             },
+            # M5: the injector's control block (FrameHdr + winstart + PrnCtl + the true
+            # replica energies) -- the epl layout minus corr, which the consumer fills from
+            # the tiles. See docs/gnss_gpu_search.md 11.11. NO _buffer SUFFIX: cudaGnssInject
+            # allocates it with get_gpu_memory_array(_mem_ctl) directly, so the gpu_mem name
+            # IS the array name -- unlike the tiles, which go through NDArrayBuffer and are
+            # addressed as <name>_buffer.
             {
                 "name": "cudaOutputData",
                 "gpu_mem": f"{p['pre']}n2ctl",
@@ -1732,8 +1600,6 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     corr["num_synth"] = num_synth
     corr["gnss_local_channels"] = union
     corr["gnss_synth_compact"] = True
-    corr.pop("gnss_gather_aa", None)
-    corr.pop("gnss_gather_bb", None)
     names = []
     for p in pres:
         names.append(p["name"])
@@ -2782,31 +2648,20 @@ def main():
         const="gps_l5",
         default=None,
         metavar="CHAINS",
-        help="with --n2-dual: arm the (N+M)^2 visibility capture on these broker "
-        "chains (comma list; bare flag = gps_l5). The chain's correlator also "
-        "gathers the live antennas' N^2, and a REST-gated FrameWindowGate feeds "
-        "the tiles + ctl frames to rawFileWrites under <record_dir>/viscap. "
-        "Nothing is written until scripts/gnss/viscap.py arms a window.",
-    )
-    ap.add_argument(
-        "--n2-dual-merged",
-        action="store_true",
-        dest="n2_dual_merged",
-        help="with --n2-dual: one GPU process per GPU for every path-B chain on it "
-        "-- the injectors share one compact synth array (gnss<g>_synth, one "
-        "slice per comb channel, 128 lanes per chain), one cudaCorrelatorDual "
-        "correlates the (N+M)^2 over the union of the combs, and a gather per "
-        "chain hands its assembler the frame it always had. The capture is "
-        "then one gather per GPU (N^2 once, the replica block across the "
-        "captured chains). The j2 vars still describe the per-chain layout.",
+        help="arm the (N+M)^2 visibility capture on these broker chains (comma "
+        "list; bare flag = gps_l5). Each GPU's correlator adds one capture gather "
+        "(the live antennas' N^2 plus the captured chains' mixed rows), and a "
+        "REST-gated FrameWindowGate feeds it with those chains' ctl frames to "
+        "rawFileWrites under <record_dir>/viscap. Nothing is written until "
+        "scripts/gnss/viscap.py arms a window.",
     )
     ap.add_argument(
         "--vis-capture-bb",
         action="store_true",
         dest="vis_capture_bb",
-        help="with --vis-capture: the captured chains also gather the BB (synth x "
-        "synth) block, completing the (N+M)^2 triangle per chain. Triples the "
-        "tiles traffic of those chains (36 more tiles per channel).",
+        help="with --vis-capture: the capture gather also takes the BB (replica x "
+        "replica) block across the captured chains, completing the (N+M)^2 "
+        "triangle.",
     )
     ap.add_argument(
         "--vis-capture-frames-per-file",
@@ -4157,16 +4012,15 @@ def main():
                 )
             )
             n2dual_chains.append(dict(chain=ch, chan_idx=[i for _, i in ch_pairs]))
-        if args.n2_dual_merged:
-            merge_n2dual_gpu(
-                blocks,
-                cfg,
-                args,
-                args.node,
-                gpu,
-                n2dual_chains,
-                out.get("samples_per_data_set", 8192),
-            )
+        merge_n2dual_gpu(
+            blocks,
+            cfg,
+            args,
+            args.node,
+            gpu,
+            n2dual_chains,
+            out.get("samples_per_data_set", 8192),
+        )
         out.update(blocks)
 
     # ⚠️ THE HEADER IS THE PROVENANCE, AND IT MUST BE COMPLETE ENOUGH TO REGENERATE FROM.
