@@ -44,7 +44,6 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
-#include <cstdint>
 #include <map>
 #include <mutex>
 #include <string>
@@ -70,9 +69,6 @@ struct ProjBasis {
     }
     void clear() {
         k = 0;
-    }
-    const cd* row(int j) const {
-        return &q[(size_t)j * n];
     }
 
     /// Gram-Schmidt one candidate direction into the basis. A candidate whose component outside
@@ -163,18 +159,10 @@ public:
         _frac.assign((size_t)_nc * _kmax, 0.0);
         _k.assign((size_t)_nc, 0);
         _warm.assign((size_t)_nc, 0.0);
-        _fro2.assign((size_t)_nc, 0.0);
         _nz.assign((size_t)_n, 0);
         _x.assign((size_t)_n, cd(0.0, 0.0));
         _y.assign((size_t)_n, cd(0.0, 0.0));
         _d.assign((size_t)_n, 0.0);
-    }
-
-    int n_elem() const {
-        return _n;
-    }
-    int n_chan() const {
-        return _nc;
     }
 
     /// Accumulate one vector for channel @p ch: C <- (1 - alpha) C + alpha v v^H off the
@@ -245,7 +233,6 @@ public:
         double fro2 = 0.0;
         for (size_t i = 0; i < (size_t)_n * _n; ++i)
             fro2 += std::norm(C[i]);
-        _fro2[(size_t)ch] = fro2;
         std::vector<cd>& x = _x;
         std::vector<cd>& y = _y;
         std::vector<double>& d = _d; // model diagonal of the components before j
@@ -408,7 +395,6 @@ private:
     std::vector<double> _frac; ///< [nc][kmax]
     std::vector<int> _k;       ///< [nc]
     std::vector<double> _warm; ///< [nc]
-    std::vector<double> _fro2; ///< [nc]
     std::vector<int> _nz;      ///< scratch: indices of the non-zero elements of the last push
     std::vector<cd> _x, _y;    ///< solve() scratch (no per-call allocation on the record path)
     std::vector<double> _d;
@@ -416,14 +402,9 @@ private:
 
 /// One chain's published subspace for one channel.
 struct ProjEntry {
-    std::string owner;      ///< the publishing stage's unique_name (+ "/probe" for a probe stack)
-    char sys = '?';         ///< constellation letter of the publishing chain
-    int prn = 0;            ///< 0 = not a named satellite (probe stack)
-    int src = 0;            ///< 0 = the satellite's own row, 1 = probe-stack eigenvector
-    double sep_deg = 1.0e9; ///< boresight separation (row sources; 1e9 unknown)
-    double frac = 0.0;      ///< component-0 energy fraction (probe stacks: the trigger level)
-    int64_t wstart = 0;     ///< F-engine sample of the record it describes
-    double t_pub = 0.0;     ///< steady seconds of publication
+    std::string owner;  ///< the publishing stage's unique_name (+ "/probe" for a probe stack)
+    int src = 0;        ///< 0 = the satellite's own row, 1 = probe-stack eigenvector
+    double t_pub = 0.0; ///< steady seconds of publication
     int n = 0, k = 0;
     std::vector<std::complex<float>> q; ///< [k][n]
 };
@@ -472,28 +453,6 @@ public:
                 continue;
             f(e);
         }
-    }
-    /// Every fresh entry for (group, freq_id) not published by @p not_owner (nor its probe
-    /// stack), newest first, as copies.
-    void fetch(const std::string& group, int freq_id, const std::string& not_owner, double now_s,
-               double max_age_s, std::vector<ProjEntry>& out) const {
-        out.clear();
-        std::lock_guard<std::mutex> lk(_m);
-        for (const auto& [key, e] : _e) {
-            if (std::get<0>(key) != group || std::get<1>(key) != freq_id)
-                continue;
-            if (e.owner == not_owner || e.owner == not_owner + "/probe")
-                continue;
-            if (e.k <= 0 || now_s - e.t_pub > max_age_s)
-                continue;
-            out.push_back(e);
-        }
-        std::sort(out.begin(), out.end(),
-                  [](const ProjEntry& a, const ProjEntry& b) { return a.t_pub > b.t_pub; });
-    }
-    size_t size() const {
-        std::lock_guard<std::mutex> lk(_m);
-        return _e.size();
     }
 
 private:
