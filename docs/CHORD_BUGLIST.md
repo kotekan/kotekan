@@ -394,7 +394,7 @@ the eight obs writers but NOT the broker or the gather — same PIDs, no state c
 gather were restarted explicitly at 12:58:24Z (`systemctl --user restart gnss-gather gnss-broker`): broker after gather,
 "starting 8 chain(s)" at +1 s, telemetry frames and trim posts flowing at +40 s, no CHAIN DIED, and the viewer (PartOf the
 broker) followed. **Still open:** why the target's stop does not propagate to those two (journal access), the real reboot,
-and the cube leg's unit. `stack_down.sh` relies on that stop — until this is understood, stop the broker and gather by name.
+and the cube leg's unit. Until this is understood, stop the broker and gather by name.
 
 ### #129 — we cannot place a GLONASS satellite at all (BeiDou turned out to be fine)
 **[tree, 2026-09-11]** Found chasing #56's residual.
