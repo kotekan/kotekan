@@ -4,7 +4,7 @@
  *        code read.
  *
  * A @ref SignalDescriptor holds what differs between signals (carrier, chip rate, code length
- * and period, modulation, pilot or data, secondary code) so the DSP core stays generic. The
+ * and period, modulation, secondary code) so the DSP core stays generic. The
  * per-PRN code chips come from each signal's code generator (gpsCACode, galileoE5aCode, ...),
  * selected by descriptor name in signal_code() (gnssChannelizedReplica.cpp).
  */
@@ -36,8 +36,6 @@ struct SignalDescriptor {
     int boc_m;      ///< BOC subcarrier order (subcarrier = boc_m * 1.023 MHz); 0 if BPSK
     int boc_n;      ///< BOC code order (code = boc_n * 1.023 Mcps); 0 if BPSK
 
-    bool pilot;           ///< dataless component (modulation fully known)
-    double nav_symbol_s;  ///< data symbol period (post-FEC); 0 for pilot
     int secondary_length; ///< secondary (overlay) length in primary periods; 0 if none or tiled
                           ///< into the code. The bank applies a shared overlay only for signals
                           ///< it lists by name; per-PRN overlays are tiled into the *_CS codes.
@@ -47,9 +45,6 @@ struct SignalDescriptor {
     bool time_multiplexed; ///< component chip-interleaved with a sibling (L2C CM/CL)
     int tdm_phase;         ///< which combined-chip parity carries this code (0=even, 1=odd);
                            ///< only meaningful when time_multiplexed
-    bool time_assisted;    ///< period too long to search blind (L2C CL): correlate a short
-                           ///< coherent window at a time-predicted code phase instead
-    int prn_min, prn_max;  ///< valid PRN range
 };
 
 // ---- Known descriptors ----
@@ -75,14 +70,9 @@ inline constexpr SignalDescriptor GPS_L1CA = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/20e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    32,
 };
 
 /// GPS L1C-P (1575.42 MHz), the dataless pilot: 10230-chip Weil code at 1.023 Mcps (10 ms),
@@ -97,14 +87,9 @@ inline constexpr SignalDescriptor GPS_L1C_P = {
     Modulation::BOC,
     1,
     1, // BOC(1,1)
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/1800,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    32,
 };
 
 /// GPS L1C-D (1575.42 MHz), the L1C data channel carrying CNAV-2: same 10230-chip BOC(1,1)
@@ -120,14 +105,9 @@ inline constexpr SignalDescriptor GPS_L1C_D = {
     Modulation::BOC,
     1,
     1, // BOC(1,1)
-    /*pilot=*/false,
-    /*nav_symbol_s=*/10e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    32,
 };
 
 /// GPS L2C CM (1227.6 MHz), the data component: 10230 chips at 511.5 kcps (20 ms),
@@ -142,14 +122,9 @@ inline constexpr SignalDescriptor GPS_L2C_CM = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/20e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/true,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    32,
 };
 
 /// GPS L2C CL (1227.6 MHz), the dataless pilot: 767250 chips at 511.5 kcps (1.5 s) on the odd
@@ -164,14 +139,9 @@ inline constexpr SignalDescriptor GPS_L2C_CL = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/0,
     /*time_multiplexed=*/true,
     /*tdm_phase=*/1,
-    /*time_assisted=*/true,
-    1,
-    32,
 };
 
 /// GPS L5 I5 (1176.45 MHz), the data component (CNAV): 10230 chips at 10.23 Mcps (1 ms), with
@@ -187,14 +157,9 @@ inline constexpr SignalDescriptor GPS_L5_I = {
     0,
     // L5 CNAV is 50 bps through rate-1/2 FEC = 100 sps: a 10 ms symbol, exactly one NH10
     // period. A nav-bit wipe over 20 ms would straddle two symbols.
-    /*pilot=*/false,
-    /*nav_symbol_s=*/10e-3,
     /*secondary_length=*/10,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    32,
 };
 
 /// GPS L5 Q5 (1176.45 MHz), the dataless pilot: the same 1 ms primary construction as I5
@@ -208,14 +173,9 @@ inline constexpr SignalDescriptor GPS_L5_Q = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/20,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    32,
 };
 
 /// GPS L5 Q5 with NH20 tiled into the code: one 204600-chip, 20 ms code. Without the overlay in
@@ -230,14 +190,9 @@ inline constexpr SignalDescriptor GPS_L5_Q_NH = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    32,
 };
 
 /// Galileo E1-C (1575.42 MHz, the GPS L1 carrier), the OS dataless pilot: 4092-chip memory
@@ -252,14 +207,9 @@ inline constexpr SignalDescriptor GAL_E1C = {
     Modulation::BOC,
     1,
     1, // BOC(1,1)
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/25,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// Galileo E1-B (1575.42 MHz), the OS data component (I/NAV, 250 sps: one 4 ms symbol per code
@@ -273,14 +223,9 @@ inline constexpr SignalDescriptor GAL_E1B = {
     Modulation::BOC,
     1,
     1, // BOC(1,1)
-    /*pilot=*/false,
-    /*nav_symbol_s=*/4e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// BeiDou-3 B1C pilot (1575.42 MHz, the GPS L1 carrier): 10230-chip Weil code at 1.023 Mcps
@@ -297,14 +242,9 @@ inline constexpr SignalDescriptor BDS_B1C_P = {
     Modulation::BOC,
     1,
     1, // BOC(1,1)
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/1800,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// BeiDou-3 B1C data (1575.42 MHz), carrying B-CNAV1: same 10230-chip BOC(1,1) primary at
@@ -319,14 +259,9 @@ inline constexpr SignalDescriptor BDS_B1C_D = {
     Modulation::BOC,
     1,
     1, // BOC(1,1)
-    /*pilot=*/false,
-    /*nav_symbol_s=*/10e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// Galileo E5a-Q (1176.45 MHz, the GPS L5 carrier), the E5a dataless pilot: 10230-chip primary
@@ -341,14 +276,9 @@ inline constexpr SignalDescriptor GAL_E5A_Q = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/100,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// Galileo E5a-Q with each PRN's CS100 tiled into the code: one 1023000-chip, 100 ms code that
@@ -365,14 +295,9 @@ inline constexpr SignalDescriptor GAL_E5A_Q_CS = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// Galileo E5a-I (1176.45 MHz), the E5a data channel carrying F/NAV: same 10230-chip primary at
@@ -388,14 +313,9 @@ inline constexpr SignalDescriptor GAL_E5A_I = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/20e-3,
     /*secondary_length=*/20,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// BeiDou-3 B2a pilot (1176.45 MHz): 10230-chip primary at 10.23 Mcps (1 ms, two 13-stage
@@ -410,14 +330,9 @@ inline constexpr SignalDescriptor BDS_B2A_P = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/100,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// BeiDou-3 B2a pilot with each PRN's secondary tiled into the code: one 1023000-chip, 100 ms
@@ -431,14 +346,9 @@ inline constexpr SignalDescriptor BDS_B2A_P_CS = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// BeiDou-3 B2a data (1176.45 MHz), carrying B-CNAV2: same 10230-chip primary at 1 ms (its own
@@ -454,14 +364,9 @@ inline constexpr SignalDescriptor BDS_B2A_D = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/5e-3,
     /*secondary_length=*/5,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// BeiDou-3 B2b-I (1207.14 MHz), the open PPP-B2b data channel carrying B-CNAV3: 10230-chip
@@ -477,14 +382,9 @@ inline constexpr SignalDescriptor BDS_B2B_I = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/1e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// Galileo E5b-Q (1207.14 MHz, the BeiDou B2b carrier), the E5b dataless pilot: 10230-chip
@@ -499,14 +399,9 @@ inline constexpr SignalDescriptor GAL_E5B_Q = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/100,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// Galileo E5b-Q with each PRN's CS100 (galileo::e5bq_secondary) tiled into the code: one
@@ -520,14 +415,9 @@ inline constexpr SignalDescriptor GAL_E5B_Q_CS = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// Galileo E5b-I (1207.14 MHz), the E5b data channel carrying I/NAV (the E1-B message): same
@@ -543,14 +433,9 @@ inline constexpr SignalDescriptor GAL_E5B_I = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/4e-3,
     /*secondary_length=*/4,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// Galileo E6-C (1278.75 MHz), the E6 dataless pilot: 5115-chip memory code at 5.115 Mcps
@@ -565,14 +450,9 @@ inline constexpr SignalDescriptor GAL_E6_C = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/100,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// Galileo E6-C with each PRN's 100-chip secondary tiled into the code: one 511500-chip, 100 ms
@@ -586,14 +466,9 @@ inline constexpr SignalDescriptor GAL_E6_C_CS = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// Galileo E6-B (1278.75 MHz), the E6 data channel carrying the High Accuracy Service (HAS)
@@ -608,14 +483,9 @@ inline constexpr SignalDescriptor GAL_E6_B = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/1e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    50,
 };
 
 /// BeiDou B1I (1561.098 MHz), broadcast by BDS-2 and BDS-3: 2046-chip Gold code at 2.046 Mcps
@@ -631,14 +501,9 @@ inline constexpr SignalDescriptor BDS_B1I = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/20e-3,
     /*secondary_length=*/20,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// BeiDou B3I (1268.52 MHz), carrying the same D1 message as B1I: 10230-chip code at
@@ -653,14 +518,9 @@ inline constexpr SignalDescriptor BDS_B3I = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/20e-3,
     /*secondary_length=*/20,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// BeiDou B3I with the shared NH20 tiled into the code: one 204600-chip, 20 ms code, built as
@@ -674,14 +534,9 @@ inline constexpr SignalDescriptor BDS_B3I_NH = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/20e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// BeiDou B2I (1207.14 MHz, the B2b and Galileo E5b centre), BDS-2's legacy second signal. It
@@ -697,14 +552,9 @@ inline constexpr SignalDescriptor BDS_B2I = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/20e-3,
     /*secondary_length=*/20,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// GLONASS L3OC-p (1202.025 MHz), the dataless pilot of GLONASS's CDMA signal: 10230-chip code
@@ -720,14 +570,9 @@ inline constexpr SignalDescriptor GLO_L3OC_P = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/10,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// GLONASS L3OC-d (1202.025 MHz), the data component beside L3OC-p: the CDMA navigation message
@@ -742,14 +587,9 @@ inline constexpr SignalDescriptor GLO_L3OC_D = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/5e-3,
     /*secondary_length=*/5,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// GLONASS L2OF (~1246 MHz), the legacy FDMA open signal and the only signal here whose
@@ -772,14 +612,9 @@ inline constexpr SignalDescriptor GLO_L2OF = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/false,
-    /*nav_symbol_s=*/10e-3,
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    32,
 };
 
 /// GLONASS L2OC-p (1248.06 MHz), the modernised CDMA pilot, 2.06 MHz above the L2OF k = 0
@@ -798,14 +633,9 @@ inline constexpr SignalDescriptor GLO_L2OC_P = {
     Modulation::BPSK,
     0,
     0,
-    /*pilot=*/true,
-    /*nav_symbol_s=*/0.0,
     /*secondary_length=*/50,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
-    /*time_assisted=*/false,
-    1,
-    63,
 };
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
