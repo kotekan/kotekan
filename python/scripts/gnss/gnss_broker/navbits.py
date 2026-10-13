@@ -1,7 +1,7 @@
 """Decoding the broadcast navigation message, and cross-checking it against BRDC.
 
 Eight decoders (LNAV, CNAV, CNAV-2, F/NAV, I/NAV, B-CNAV1/2/3), cross-checked against the
-BRDC almanac, and a continuous agreement monitor. The decoders are created lazily and PERSIST
+BRDC almanac. The decoders are created lazily and PERSIST
 across cycles on `ctx.nav` -- one that is rebuilt has forgotten the subframes it had
 collected and can never complete an ephemeris.
 
@@ -33,9 +33,8 @@ from gnss_broker.sky import (
 def stage_nav_bits(ctx):
     """NAV BITS: decode the broadcast navigation message and cross-check it against BRDC.
         
-    Holds the lazily-created decoder objects (LNAV, CNAV, CNAV2, FNAV, INAV, BCNAV1/2/3) and the
-    agreement monitor. They are created on the first row that needs them and
-    must persist across cycles -- hence the nonlocal list, which is the whole reason this block
+    Holds the lazily-created decoder objects (LNAV, CNAV, CNAV2, FNAV, INAV, BCNAV1/2/3). They
+    are created on the first row that needs them and must persist across cycles -- hence the nonlocal list, which is the whole reason this block
     resisted extraction until its state was named.
         
     ⚠️ OFF IN PRODUCTION (`--nav-bits` is not set in the CHORD yaml), so the fixture gate is BLIND
@@ -44,14 +43,10 @@ def stage_nav_bits(ctx):
         for _p, _r in ctx.status.items():
             if "nav_obs" not in _r:
                 continue
-            if ctx.nav.health is None:
-                from navbit_health import BitAgreement
-
-                ctx.nav.health = BitAgreement(log=_log)
             # Route nav_obs to the decoder this band actually speaks. L1CA carries LNAV
-            # (periodic subframes -> future bits); L2C-CM / L5-I carry CNAV (FEC+CRC, no
-            # fixed schedule -> decode + shadow-serve decoded spans). Sending CNAV symbols
-            # to the LNAV frame-sync just spins forever finding no preamble.
+            # (periodic subframes); L2C-CM / L5-I carry CNAV (FEC+CRC, no fixed schedule).
+            # Sending CNAV symbols to the LNAV frame-sync just spins forever finding no
+            # preamble.
             if ctx.args.nav_decoder == "cnav":
                 if ctx.nav.cnav is None:
                     from cnav_predictor import CnavPredictor
@@ -75,11 +70,6 @@ def stage_nav_bits(ctx):
                     ctx.nav.navbits = LnavPredictor(log=_log)
                     _log("nav-bit predictor armed (combiner exports nav_obs)")
                 ctx.nav.navbits.ingest(_p, _r["nav_obs"])
-            # ...and ask the question no single gate was asking continuously (decoder-
-            # agnostic): did the bits we PUBLISHED last cycle actually match the ones coming
-            # out of the sky? Scored only where the satellite is strong enough that a
-            # disagreement means OUR bits are wrong rather than the air reading being wrong.
-            ctx.nav.health.score(_p, _r["nav_obs"], _r.get("deep_snr"))
         # AUXILIARY CNAV CHAIN (--cnav-combiner, S4): a second combiner polled only for its
         # CNAV symbols. At L5 this broker's own combiner is the Q PILOT -- its nav_obs are
         # deterministic overlay predictions handled above -- while CNAV arrives on the

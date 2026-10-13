@@ -2277,10 +2277,6 @@ def main(argv=None, rx=None, publisher=None):
                 ),
                 every_s=60.0,
             )
-        if _nav.health is not None:
-            _rep = _nav.health.report()
-            if _rep:
-                _log_rl("navhealth", _rep)
         # SEED CURRENCY AUDIT (#39 follow-up, 2026-08-11 -- the per-seed dop log). The
         # question this answers: does the (cp0, dop, rate, ref_hop) tuple we SHIP imply
         # the same physical code phase as the previous tuple we shipped for the same

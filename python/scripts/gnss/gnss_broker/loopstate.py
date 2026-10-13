@@ -215,7 +215,7 @@ class RateFeedState(object):
 class NavDecoders(object):
     """The broadcast navigation-message decoders, created lazily and kept across cycles.
 
-    Eight decoders, one per message format, plus the agreement monitor. Each is built on the first row that needs it and must then PERSIST --
+    Eight decoders, one per message format. Each is built on the first row that needs it and must then PERSIST --
     a decoder that is rebuilt has forgotten the subframes it had collected, so it can never
     complete an ephemeris. Holding them as attributes is what let the nav-bit stage leave
     `main()`: eleven `nonlocal` declarations cannot cross a module boundary.
@@ -234,7 +234,6 @@ class NavDecoders(object):
         "bcnav1",
         "bcnav2",
         "bcnav3",
-        "health",
         "log_t",
         "inav_log_t",
         "fnav_log_t",
@@ -260,7 +259,6 @@ class NavDecoders(object):
         self.bcnav1 = None  # BeiDou B-CNAV1
         self.bcnav2 = None  # BeiDou B-CNAV2
         self.bcnav3 = None  # BeiDou B-CNAV3
-        self.health = None  # continuous predicted-vs-air agreement monitor
         self.log_t = 0.0  # last summary-line time (rate limit)
         # ⚠️ ONE-CELL LISTS, not floats. Each is a rate-limit stamp mutated in place by the
         # decoder that owns it; the cell is what makes the reader and the writer the same

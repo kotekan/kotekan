@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""LNAV nav-bit decode-and-predict (P7a).
+"""LNAV nav-bit decode (P7a).
 
-The peel's depth on GPS L1CA is sign-lag-limited (~11 dB): the subtraction uses a nav-bit
-sign measured one GPU frame earlier. This module closes that gap by PREDICTING the bits:
-
-    combiner get_status "nav_obs"  ->  stitch  ->  frame_sync/decode  ->  predict +H s
+    combiner get_status "nav_obs"  ->  stitch  ->  frame_sync/decode  ->  ephemeris
                                                         (gps_nav_decode.py does the LNAV work)
 
 Consumed by gnss_broker/navbits.py for the decode, the ephemeris cross-check against BRDC
-and the decoded-eph fallback. predict() has no consumer: the node-side peel that took the bit
-tables with each seed row was removed.
+and the decoded-eph fallback. It also scores how well each newly decoded subframe could have
+been PREDICTED from the earlier ones (health()["mismatch"], logged as predict-mismatch) --
+the predictability measure behind the removed peel's nav-bit tables.
 
 Three design facts this leans on:
   * POLARITY. Each combiner emit resolves its +-1 ambiguity independently (theta0 = the
@@ -17,15 +15,15 @@ Three design facts this leans on:
     globally flipped relative to each other. The export carries rot = e^{-i*theta0}; the true
     carrier phase is continuous at a certified lock, so the relative flip between emits is
     round(dtheta/pi) odd -- chained here, then VERIFIED by LNAV parity (frame_sync), with a
-    boundary-flip repair search when parity disagrees. The ABSOLUTE polarity stays arbitrary
-    on purpose: the peel locks its gain to whatever frame the prediction uses.
+    boundary-flip repair search when parity disagrees. The ABSOLUTE polarity stays arbitrary:
+    the mismatch score compares each subframe at its better polarity.
   * CHAIN RESET. LNAV trims words 2 (HOW) and 10 so their parity ends D29*=D30*=00 -- the
     parity chain RESETS at every subframe boundary. Prediction is therefore per-subframe
     independent, and an unknown subframe-4/5 page blanks only its own words 3-10.
   * PREDICTABILITY. Subframes 1-3 repeat with only the HOW TOW advancing (+5/frame);
     subframes 4/5 cycle a 25-frame supercycle (page key = tow % 125). Coverage ramps from
-    ~60% at first sync to ~93+% after one 12.5 min supercycle. Bits we cannot predict are
-    sent as 0 = unknown -> the tracker falls back to its decision-directed sign.
+    ~60% at first sync to ~93+% after one 12.5 min supercycle. Bits that cannot be predicted
+    are 0 = unknown and are not scored.
 
 Self-test: python3 navbit_predictor.py   (synthetic multi-frame stream, chopped into
 polarity-scrambled emits, must sync and predict the next frame exactly for subframes 1-3).
@@ -116,15 +114,12 @@ class FleetPages:
     the chain re-seeds to D29=D30=0 at every subframe boundary by the ICD trim.)
 
     Prize, measured 2026-07-26: the sf4/5 hole costs 3.3 dB of peel depth 40% of the time.
-    Wrong-word risk is bounded by navbit_health (published-vs-air veto per PRN/source).
     """
 
     MIN_DONORS = 2
 
     def __init__(self):
         self.votes = {}  # (sfid, page) -> {prn: [10x24 int8 words]}
-        self.n_fill = 0  # subframes served (cumulative)
-        self.n_word = 0  # words served (cumulative)
 
     def offer(self, prn, sfid, page, data):
         """A freshly DECODED page from a synced satellite (10x24 parity-clean words)."""
@@ -165,23 +160,12 @@ class FleetPages:
             out[w] = True
         return out
 
-    def stats(self):
-        pages = len(self.votes)
-        sats = len({p for d in self.votes.values() for p in d})
-        return "fleet-pages: %d pages from %d sats; served %d subframes / %d words" % (
-            pages,
-            sats,
-            self.n_fill,
-            self.n_word,
-        )
-
 
 class _PrnState:
     def __init__(self):
         self.hist = {}  # slot -> +-1 (chained polarity applied)
         self.theta = None  # last emit's theta0 (rad, (-pi/2, pi/2])
         self.pol = 1  # chained polarity applied to incoming emits
-        self.utc_anchor = None  # (slot, utc) freshest slot->utc mapping
         self.bit_s = BIT_S  # measured bit duration (br * rec_dt)
         # sync state
         self.sync = None  # (slot0, tow0, sfid0): subframe START at slot0
@@ -208,10 +192,10 @@ class _PrnState:
 
 
 class LnavPredictor:
-    """Per-PRN LNAV stitch/sync/predict. Thread-compat: call from one poll loop."""
+    """Per-PRN LNAV stitch/sync/decode. Thread-compat: call from one poll loop."""
 
-    def __init__(self, log=None, fleet=None):
-        self.fleet = fleet if fleet is not None else FleetPages()
+    def __init__(self, log=None):
+        self.fleet = FleetPages()
         self._p = {}
         self._log = log or (lambda m: None)
 
@@ -253,7 +237,6 @@ class LnavPredictor:
             utc_bit = utc_ref + (bi * br - phase) * rec_dt
             slot = int(round(utc_bit / st.bit_s))
             st.hist[slot] = sg * st.pol
-            st.utc_anchor = (slot, utc_bit)
         # Bound the history. Slots only ever increase, so the cut point is a subtraction --
         # the old sorted(st.hist)[...] re-sorted up to 64k keys on EVERY ingest once the
         # history saturated, which is exactly when the node has been up long enough to care.
@@ -392,8 +375,6 @@ class LnavPredictor:
                     for w in range(2, 10):
                         if fk[w]:
                             data[w] = fw[w]
-                    self.fleet.n_fill += 1
-                    self.fleet.n_word += sum(fk[2:])
         if data is None:
             return None
         data = [np.array(d, dtype=np.int8).copy() for d in data]
@@ -415,37 +396,6 @@ class LnavPredictor:
                         out[30 * w :] = 0
                         break
         return out
-
-    def predict(self, prn, utc_now, horizon_s=4.0):
-        """Return {"utc0","bit_s","bits":[+-1|0,...]} covering [utc_now, +horizon), or None."""
-        st = self._p.get(prn)
-        if st is None or st.sync is None or st.utc_anchor is None:
-            return None
-        aslot, autc = st.utc_anchor
-        # Epsilon-guarded floor: (t/bit_s) lands within float ulps of an integer whenever t is
-        # near a bit edge, and floor(50.999999...) = 50 shifts the WHOLE prediction one bit
-        # (measured in the self-test: a 1-bit shift of parity-encoded data reads ~50% wrong).
-        slot_now = int(math.floor((utc_now - autc) / st.bit_s + 1e-3)) + aslot
-        n = int(math.ceil(horizon_s / st.bit_s)) + 2
-        sync_slot, sync_tow, _ = st.sync
-        out = np.zeros(n, dtype=np.int8)
-        cache = {}
-        for i in range(n):
-            b = (
-                slot_now + i - sync_slot
-            )  # LNAV bit offset from the synced subframe start
-            sf_off, pos = divmod(b, SF_BITS)
-            tow = sync_tow + sf_off
-            sfid = (st.sync[2] - 1 + sf_off) % 5 + 1
-            key = (tow, sfid)
-            if key not in cache:
-                cache[key] = self._subframe_bits(st, tow, sfid)
-            sf = cache[key]
-            out[i] = 0 if sf is None else sf[pos]
-        if not out.any():
-            return None
-        utc0 = autc + (slot_now - aslot) * st.bit_s
-        return {"utc0": utc0, "bit_s": st.bit_s, "bits": [int(x) for x in out]}
 
     def ephemeris(self, prn):
         """Decoded LNAV clock+ephemeris (SI) from the latest subframes 1/2/3, or None until all
@@ -555,11 +505,8 @@ def _selftest():
         pred.ingest(7, obs)
     st = pred._p[7]
     assert st.sync is not None, "no frame sync"
-    # Predict the frame AFTER the ingested stream; compare vs a freshly encoded truth frame.
-    t_end = len(pm) * BIT_S
-    out = pred.predict(7, t_end, horizon_s=6.0 * 5)
-    assert out is not None
-    got = np.array(out["bits"], dtype=int)
+    # Predict each subframe of the frame AFTER the ingested stream (what the mismatch score
+    # compares against each new decode); compare vs a freshly encoded truth frame.
     ok = wrong = unknown = 0
     for k in range(5):
         sfid = k + 1
@@ -580,7 +527,8 @@ def _selftest():
         data[1][19:22] = [int(x) for x in format(sfid, "03b")]
         bits = encode_subframe_trimmed(data)
         want = 1 - 2 * bits.astype(int)
-        seg = got[k * SF_BITS : (k + 1) * SF_BITS]
+        pred_sf = pred._subframe_bits(st, tow, sfid)
+        seg = np.zeros(SF_BITS, dtype=int) if pred_sf is None else pred_sf.astype(int)
         # polarity-free comparison: the predictor's absolute polarity is arbitrary
         for pol in (1, -1):
             w = (seg != 0) & (seg * pol != want)
