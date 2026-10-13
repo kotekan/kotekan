@@ -56,14 +56,13 @@
  *                             averaged in; a completeness gate, never an operand.
  * @conf taps_win              Int, default 0. Window depth served by get_taps and get_rec_taps;
  *                             0 follows n_win. Set it to the broker's `--telem-windows`.
- * @conf trim_state_file       String, default "". Trim store path; empty disables it.
+ * @conf trim_state_file       String, required. Trim store path, saved every 2 s.
  * @conf trim_state_max_age_s  Double, default 300. A trim store older than this is refused.
- * @conf trim_state_save_s     Double, default 2. Seconds between trim store saves; 0 = never.
  * @conf policy_ttl_s          Double, default 60, at least 5. A chain's policy is dropped after
  *                             this long without a /set_policy for it.
- * @conf post_every_n_windows  Int, default 1. Post a chain's trims every n-th window close.
+ * @conf post_every_n_windows  Int, default 1, and 1 is the only value accepted: a chain's
+ *                             trims are posted on every close of its window.
  * @conf post_threads          Int, default 4. Poster threads.
- * @conf post_timeout_ms       Int, default 450, at least 20. Send and receive timeout per post.
  *
  * @par REST
  * `<unique_name>/get_dll`      -- per chain, per PRN: disc, q, e/p/l_pow, n_src, n_chan, n_rec,
@@ -127,7 +126,7 @@ private:
     std::map<std::string, std::map<int, double>> _restored;
     std::string _trim_state_file;
     double _trim_state_max_age_s = 300.0;
-    double _trim_state_save_s = 2.0;
+    static constexpr double _trim_state_save_s = 2.0; ///< seconds between trim store saves
     double _trim_saved_at = 0.0;
     double _restored_age_s = -1.0;
     int _restored_adopted = 0, _restored_offered = 0;
@@ -147,8 +146,7 @@ private:
 
     // ---- Actuator ----
     // Every instance tracking a chain needs the same trims, but each has its own /set_trim
-    // endpoint, so a post is one request per instance. post_every_n_windows decimates the
-    // posts without touching the integrator.
+    // endpoint, so a post is one request per instance.
     //
     // restClient is not usable here: make_request keeps only a pointer to the caller's
     // callback, make_request_blocking exits the process on timeout, and both send
@@ -169,12 +167,11 @@ private:
     std::map<std::string, nlohmann::json> _pending; ///< chain -> payload, from the last post_trims
     uint64_t _pend_gen = 0;                         ///< bumped when _pending is replaced
     std::vector<uint64_t> _sent_gen;                ///< per thread slot, last generation sent
-    int _post_every = 1;
     /// Per-request budget on an established connection: wider than the kernel's minimum RTO
     /// (200 ms) so a single lost segment recovers instead of costing the socket, short enough
     /// that a wedged tracker cannot hold a poster thread past the point where its trim would
     /// be stale anyway. Handshakes are not charged against it (see post_loop).
-    int _post_timeout_ms = 450;
+    static constexpr int _post_timeout_ms = 450;
     /// chain -> n_closed at the last post_trims, so a chain is posted only when its own window
     /// closed.
     std::map<std::string, uint64_t> _closed_seen;

@@ -158,9 +158,10 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     _dll(config.get_default<int>(unique_name, "n_win", 4),
          config.get_default<int>(unique_name, "min_instances", 2),
          config.get_default<int>(unique_name, "taps_win", 0)) {
-    _trim_state_file = config.get_default<std::string>(unique_name, "trim_state_file", "");
+    _trim_state_file = config.get<std::string>(unique_name, "trim_state_file");
+    if (_trim_state_file.empty())
+        FATAL_ERROR("GnssFleetTrim[{:s}]: trim_state_file must name the trim store", unique_name);
     _trim_state_max_age_s = config.get_default<double>(unique_name, "trim_state_max_age_s", 300.0);
-    _trim_state_save_s = config.get_default<double>(unique_name, "trim_state_save_s", 2.0);
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
 
@@ -185,16 +186,18 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     // policy_ttl_s detects a dead broker chain thread, not a late post, so it is generous
     // against the ~12 s policy cycle.
     _policy_ttl_s = std::max(5.0, config.get_default<double>(unique_name, "policy_ttl_s", 60.0));
-    _post_every = std::max(1, config.get_default<int>(unique_name, "post_every_n_windows", 1));
-    _post_timeout_ms = std::max(20, config.get_default<int>(unique_name, "post_timeout_ms", 450));
+    if (config.get_default<int>(unique_name, "post_every_n_windows", 1) != 1)
+        FATAL_ERROR("GnssFleetTrim[{:s}]: post_every_n_windows must be 1; a chain's trims are "
+                    "posted on every close of its window",
+                    unique_name);
     const int nthr = std::max(1, config.get_default<int>(unique_name, "post_threads", 4));
     _sent_gen.assign((size_t)nthr, 0);
     _n_post_threads = nthr; // set before the first poster reads it
     for (int i = 0; i < nthr; ++i)
         _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
-    INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends, posting every {:d} "
-         "window(s). NOTHING IS TRIMMED until the broker POSTs /set_policy with targets.",
-         unique_name, nthr, _post_every);
+    INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends, posting on every window "
+         "close. NOTHING IS TRIMMED until the broker POSTs /set_policy with targets.",
+         unique_name, nthr);
 }
 
 GnssFleetTrim::~GnssFleetTrim() {
@@ -252,7 +255,7 @@ void GnssFleetTrim::main_thread() {
         rearm();
         post_trims();
         // On a timer rather than per window close: the store is read only at the next start.
-        if (_trim_state_save_s > 0.0 && current_time() - _trim_saved_at >= _trim_state_save_s) {
+        if (current_time() - _trim_saved_at >= _trim_state_save_s) {
             _trim_saved_at = current_time();
             save_trims();
         }
@@ -469,8 +472,6 @@ void GnssFleetTrim::rearm() {
 }
 
 void GnssFleetTrim::save_trims() {
-    if (_trim_state_file.empty())
-        return;
     nlohmann::json j;
     {
         std::lock_guard<std::mutex> lk(_mtx);
@@ -501,8 +502,6 @@ void GnssFleetTrim::save_trims() {
 }
 
 void GnssFleetTrim::load_trims() {
-    if (_trim_state_file.empty())
-        return;
     std::ifstream fh(_trim_state_file);
     if (!fh) {
         INFO("GnssFleetTrim[{:s}]: no trim store at {:s} -- starting from zero trims, which "
@@ -552,14 +551,12 @@ void GnssFleetTrim::post_trims() {
     {
         std::lock_guard<std::mutex> lk(_mtx);
         for (const auto& cv : _dll.chains()) {
-            // Post a chain only when its own window count moved, and then only on every
-            // post_every_n_windows-th close.
+            // Post a chain only when its own window count moved.
             uint64_t& seen = _closed_seen[cv.first];
             const uint64_t closed = cv.second.n_closed;
-            const bool due = (closed / (uint64_t)_post_every) != (seen / (uint64_t)_post_every);
             const bool moved = closed != seen;
             seen = closed;
-            if (!moved || !due)
+            if (!moved)
                 continue;
             if (cv.second.trim.empty())
                 continue;
@@ -873,7 +870,6 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     }
     reply["post_targets"] = _targets.size();
     reply["post_threads"] = _post_threads.size();
-    reply["post_every_n_windows"] = _post_every;
     reply["post_rounds"] = _post_rounds;
     reply["post_requests"] = _post_reqs;
     reply["post_ok"] = _post_ok;
