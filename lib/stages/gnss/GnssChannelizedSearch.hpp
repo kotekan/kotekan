@@ -38,8 +38,8 @@
  * for the broker, with the Doppler sign-corrected for the r2c fold and the code phases as
  * defined by @ref gnss::DetectionPhase.
  *
- * REST: @c set_doppler_hints and @c set_nh_hint narrow the search per PRN; @c set_prns and
- * @c get_prns change and read the slot -> PRN map.
+ * REST: @c set_doppler_hints and @c set_nh_hint narrow the search per PRN; @c set_prns
+ * changes the slot -> PRN map.
  *
  * @conf signal/sample_rate/spectrum_length/num_taps/pfb_window  As the F-engine.
  * @conf f_offset         Double (default 0). Carrier frequency in the channelized spectrum, Hz
@@ -103,8 +103,6 @@ private:
     /// and PRNs must be distinct. Any @c at_hop is ignored: the map is staged and applied before
     /// the next pass.
     void set_prns_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
-    /// GET: the live map, plus the swap count.
-    void get_prns_callback(kotekan::connectionInstance& conn);
     /// Apply any staged map. Worker thread only, between passes: the bank, the refine engines
     /// and the hint tables belong to the pass, and a swap inside one would change the code
     /// under a half-built surface.
@@ -113,8 +111,6 @@ private:
     std::mutex _prn_mtx; ///< guards @c _prns and the staging below
     std::vector<int> _pending_prns;
     bool _prn_pending = false;
-    uint64_t _prn_swaps = 0;
-    std::string _prn_last_err;
 
     void set_doppler_hints_callback(kotekan::connectionInstance& conn,
                                     nlohmann::json& json_request);
@@ -143,9 +139,8 @@ private:
         double code_phase_at_ref_chips = -1.0;
     };
 
-    /// Global spectrum index of local channel @c lc, and its inverse (-1 = not ours).
-    /// Identity+offset for a contiguous subband; a lookup when @c channel_ids is given.
-    int global_of_local(int lc) const;
+    /// Local channel of global spectrum index @c c (-1 = not ours). Identity+offset for a
+    /// contiguous subband; a lookup when @c channel_ids is given.
     int local_of_global(int c) const;
 
     Buffer* in_buf;
@@ -266,9 +261,6 @@ private:
     int _refine_hops = 0;
     int _refine_step = 0;
 
-    /// Sized [alignment][prn] and cleared on a PRN swap, but never filled or read: the search
-    /// materialises its replica from _repl_head and _repl_tail.
-    std::vector<std::vector<std::vector<std::vector<std::complex<float>>>>> _repl0;
     /// Replica at code phase 0 and Doppler 0 on the covering channels, split by code period so
     /// that every overlay alignment is a per-hop sign pair. Hop m is the part from period k0[m]
     /// (head) plus the part from period k0[m] + 1 (tail):

@@ -1,13 +1,12 @@
 #include "GnssChannelizedSearch.hpp"
 
-#include "GnssChanMetadata.hpp"        // for get_gnss_chan_metadata, metadata_is_gnss_chan
-#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
-#include "clockProfile.hpp"            // for resolve_clock_profile, clock_doppler_half_range_hz
-#include "gnssChannelizedDespread.hpp" // for channelized_despread
-#include "gnssSeedTransport.hpp"       // for detection_phase
-#include "gnssSignal.hpp"              // for SignalDescriptor, signal_by_name
-#include "kotekanLogging.hpp"          // for INFO, FATAL_ERROR
-#include "pfbPrototype.hpp"            // for window_from_string
+#include "GnssChanMetadata.hpp"  // for get_gnss_chan_metadata, metadata_is_gnss_chan
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "clockProfile.hpp"      // for resolve_clock_profile, clock_doppler_half_range_hz
+#include "gnssSeedTransport.hpp" // for detection_phase
+#include "gnssSignal.hpp"        // for SignalDescriptor, signal_by_name
+#include "kotekanLogging.hpp"    // for INFO, FATAL_ERROR
+#include "pfbPrototype.hpp"      // for window_from_string
 #ifdef GNSS_CUDA
 #include "GnssCudaAcquire.hpp"  // for GnssCudaAcquire
 #include "GnssCudaDespread.hpp" // for GnssCudaDespread
@@ -199,8 +198,8 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _detections.assign(_prns.size(), Detection{});
     _dop_hints.assign(_prns.size(), DopHint{});
     _nh_hints.assign(_prns.size(), NhHint{});
+    _snap_hints.assign(_prns.size(), DopHint{});
     _nh_snap_hints.assign(_prns.size(), NhHint{});
-    _repl0.assign((size_t)_n_nh, std::vector<std::vector<std::vector<cf>>>(_prns.size()));
     _snap_hops = (size_t)_acquire_windows * _hops_per_record;
     _snapshot.assign(_snap_hops * (size_t)_n_chan, cf(0.0f, 0.0f));
 }
@@ -485,8 +484,7 @@ void GnssChannelizedSearch::search_snapshot() {
         {
             std::lock_guard<std::mutex> lk(_hint_mtx);
             for (int p = 0; p < n_prn; ++p) {
-                const DopHint& hh = _snap_hints.size() == _prns.size() ? _snap_hints[(size_t)p]
-                                                                       : _dop_hints[(size_t)p];
+                const DopHint& hh = _snap_hints[(size_t)p];
                 const bool hinted =
                     hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s);
                 if (!hinted)
@@ -509,8 +507,7 @@ void GnssChannelizedSearch::search_snapshot() {
         {
             std::lock_guard<std::mutex> lk(_hint_mtx);
             for (int p = 0; p < n_prn; ++p) {
-                const DopHint& hh = _snap_hints.size() == _prns.size() ? _snap_hints[(size_t)p]
-                                                                       : _dop_hints[(size_t)p];
+                const DopHint& hh = _snap_hints[(size_t)p];
                 const bool hinted =
                     hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s);
                 if (!_require_hint || hinted)
@@ -545,7 +542,7 @@ void GnssChannelizedSearch::search_snapshot() {
             std::lock_guard<std::mutex> lk(_hint_mtx);
             // Snapshot-epoch hints, aged at the snapshot time: the data is frozen, so the hints
             // must be too.
-            const DopHint& hh = _snap_hints.size() == _prns.size() ? _snap_hints[p] : _dop_hints[p];
+            const DopHint& hh = _snap_hints[(size_t)p];
             if (hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s)) {
                 hinted = true;
                 // _hint_dop_sign maps the physical Doppler onto the internal grid. It is
@@ -644,8 +641,7 @@ void GnssChannelizedSearch::search_snapshot() {
         std::vector<int> nh_scan;
         {
             std::lock_guard<std::mutex> lk(_hint_mtx);
-            const NhHint& nhh =
-                (_nh_snap_hints.size() == _prns.size()) ? _nh_snap_hints[(size_t)p] : NhHint{};
+            const NhHint& nhh = _nh_snap_hints[(size_t)p];
             const bool fresh = nhh.valid && _n_nh > 1
                                && (_hint_ttl_s <= 0.0 || _snap_taken_s - nhh.t_recv < _hint_ttl_s);
             if (fresh) {
@@ -910,10 +906,6 @@ void GnssChannelizedSearch::search_worker() {
     }
 }
 
-int GnssChannelizedSearch::global_of_local(int lc) const {
-    return _chan_ids.empty() ? (_chan_offset + lc) : _chan_ids[(size_t)lc];
-}
-
 int GnssChannelizedSearch::local_of_global(int c) const {
     if (_chan_ids.empty())
         return (c >= _chan_offset && c < _chan_offset + _n_chan) ? (c - _chan_offset) : -1;
@@ -935,8 +927,6 @@ void GnssChannelizedSearch::main_thread() {
         unique_name + "/set_nh_hint",
         std::bind(&GnssChannelizedSearch::set_nh_hint_callback, this, _1, _2));
     // Slot membership, with the same payload as the tracker's set_prns.
-    kotekan::restServer::instance().register_get_callback(
-        unique_name + "/get_prns", std::bind(&GnssChannelizedSearch::get_prns_callback, this, _1));
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_prns",
         std::bind(&GnssChannelizedSearch::set_prns_callback, this, _1, _2));
@@ -1022,26 +1012,6 @@ void GnssChannelizedSearch::main_thread() {
         _worker.join();
 }
 
-void GnssChannelizedSearch::get_prns_callback(kotekan::connectionInstance& conn) {
-    nlohmann::json out = nlohmann::json::array();
-    bool pend = false;
-    std::string err;
-    uint64_t swaps = 0;
-    {
-        std::lock_guard<std::mutex> lk(_prn_mtx);
-        for (int p : _prns)
-            out.push_back(p);
-        pend = _prn_pending;
-        err = _prn_last_err;
-        swaps = _prn_swaps;
-    }
-    conn.send_json_reply(nlohmann::json{{"prns", out},
-                                        {"n_prn", (int)out.size()},
-                                        {"swaps", swaps},
-                                        {"pending", pend},
-                                        {"last_error", err}});
-}
-
 void GnssChannelizedSearch::set_prns_callback(kotekan::connectionInstance& conn,
                                               nlohmann::json& request) {
     std::vector<int> want;
@@ -1068,16 +1038,11 @@ void GnssChannelizedSearch::set_prns_callback(kotekan::connectionInstance& conn,
                     break;
                 }
     if (!err.empty()) {
-        {
-            std::lock_guard<std::mutex> lk(_prn_mtx);
-            _prn_last_err = err;
-        }
         conn.send_error(err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     {
         std::lock_guard<std::mutex> lk(_prn_mtx);
-        _prn_last_err.clear();
         if (want != _prns) {
             _pending_prns = want;
             _prn_pending = true;
@@ -1100,13 +1065,13 @@ void GnssChannelizedSearch::apply_prn_swaps() {
             // The bank first: a PRN with no code for this signal must leave the slot exactly
             // as it was rather than half-swapped.
             if (!_replica->set_prn((int)p, np)) {
-                _prn_last_err = "slot " + std::to_string(p) + ": no code for PRN "
-                                + std::to_string(np) + " on this signal";
+                WARN("GnssChannelizedSearch[{:s}]: slot {:d}: no code for PRN {:d} on this "
+                     "signal; the slot keeps PRN {:d}",
+                     unique_name, p, np, _prns[p]);
                 continue;
             }
             changed.emplace_back((int)p, _prns[p]);
             _prns[p] = np;
-            ++_prn_swaps;
         }
         _pending_prns.clear();
     }
@@ -1121,32 +1086,24 @@ void GnssChannelizedSearch::apply_prn_swaps() {
             if (e)
                 e->set_prn((int)p, _prns[p], nullptr);
 #endif
-        // Clears this slot of _repl0, which the search does not read. The head/tail bank the
-        // acquire uses (_repl_head, _repl_tail) is not rebuilt here: it is rebuilt only when
-        // the covering set changes, so the acquire keeps the old PRN's code for this slot.
-        for (auto& per_nh : _repl0)
-            if (p < per_nh.size())
-                per_nh[p].clear();
+        // The head/tail bank the acquire uses (_repl_head, _repl_tail) is not rebuilt here: it
+        // is rebuilt only when the covering set changes, so the acquire keeps the old PRN's
+        // code for this slot.
         {
             std::lock_guard<std::mutex> lk(_det_mtx);
-            if (p < _detections.size())
-                _detections[p] = Detection{};
+            _detections[p] = Detection{};
         }
         {
             // Hints are per satellite: carried across a swap they would narrow the new
             // satellite's scan to the old one's Doppler and alignment.
             std::lock_guard<std::mutex> lk(_hint_mtx);
-            if (p < _dop_hints.size())
-                _dop_hints[p] = DopHint{};
-            if (p < _nh_hints.size())
-                _nh_hints[p] = NhHint{};
-            if (p < _snap_hints.size())
-                _snap_hints[p] = DopHint{};
-            if (p < _nh_snap_hints.size())
-                _nh_snap_hints[p] = NhHint{};
+            _dop_hints[p] = DopHint{};
+            _nh_hints[p] = NhHint{};
+            _snap_hints[p] = DopHint{};
+            _nh_snap_hints[p] = NhHint{};
         }
-        WARN("GnssChannelizedSearch[{:s}]: slot {:d} PRN {:d} -> {:d}; replica cache, refine "
-             "code tables, detection and hints all cleared for that slot.",
+        WARN("GnssChannelizedSearch[{:s}]: slot {:d} PRN {:d} -> {:d}; refine code tables, "
+             "detection and hints all cleared for that slot.",
              unique_name, c.first, c.second, _prns[p]);
     }
 }
