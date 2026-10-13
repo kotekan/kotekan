@@ -167,7 +167,3 @@ only in their own chain's rows).
 ## Not done / decisions left open
 
 - Cadence below 10.49 ms: chain-wide change, not offered.
-- `scripts/gnss/j2_chain_equiv.py` (manual j2 bridge gate) fails on the committed configs
-  already (`n2sink` lost `cpu_affinity` when it became `dropAllFrames`); the viscap vars are
-  wired through it (`viscap` in the vars fragment and template) but the gate itself needs
-  repair before it can prove anything.

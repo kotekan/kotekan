@@ -116,11 +116,9 @@ because `cp_err` is rarely `None` on a tracked PRN.
 **What [tree]:** (a) the generator still emits keys the C++ now reads only to refuse other values (cudaGnssInject
 `conjugate`, `phi_fp16`, `despread_max_chips`, `despread_chips_centered`, `trim_endpoint`; cudaCorrelatorDual
 `gnss_freq_map`, `gnss_synth_compact`, `rfi_all_pass`), so a regenerated config still starts on d30be5f66; (b) the
-REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (GnssCoherentCombiner) for the old broker;
-(c) the j2 chain template (`config/gnss/gnss_chain.j2`, `--emit-j2-vars`, `scripts/gnss/j2_chain_equiv.py`) renders a
-chain the new C++ rejects — it was stale before the removal (KV: fix or delete).
+REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (GnssCoherentCombiner) for the old broker.
 **Fix:** once the fleet runs d505f3943 and the broker is restarted on it: stop emitting (a), then drop the reads; drop
-(b); decide (c). Check after each step: `gen_fleet --check` and `--check-config` on all nine configs.
+(b). Check after each step: `gen_fleet --check` and `--check-config` on all nine configs.
 
 ### #176 — the joint clock adopts a one-off 0.8-chip outlier inside a transit and every 10.23-Mcps chain loses its prompts (2026-10-12)
 - **What:** C33 (0.61°, CA 12:54:15Z 10-12). Through the pass the joint solve's sigma grew 0.42 → 0.68 and was REFUSED
