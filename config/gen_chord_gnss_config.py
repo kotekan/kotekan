@@ -2978,12 +2978,11 @@ def main():
     )
     ap.add_argument(
         "--n2-project",
-        choices=["off", "shadow", "live"],
+        choices=["off", "live"],
         default="off",
-        help="GnssN2Project on the science N2 (phase 3a): shadow = solve the live "
-        "block's dominant subspace per frame and report k/lambda/null per "
-        "channel, touch nothing; live = N2Accumulate reads the projected copy "
-        "(gnss_n2_proj_buffer{,_1}).",
+        help="GnssN2Project on the science N2 (phase 3a): live = solve each "
+        "channel's dominant subspace per frame and N2Accumulate reads the projected "
+        "copy (gnss_n2_proj_buffer{,_1}).",
     )
     ap.add_argument(
         "--n2-project-stations",
@@ -4080,22 +4079,21 @@ def main():
                 "solve_every": int(args.n2_project_solve_every),
                 "metric_period_s": 1.0,
             }
-            if args.n2_project == "live":
-                _lf = args.n2_project_live_freq_ids
-                if _lf == "exempt":
-                    _lf = args.rfi_excision_exempt_freq_ids
-                if _lf:
-                    _lids = set()
-                    for _part in str(_lf).split(","):
-                        _a, _, _b = _part.strip().partition("-")
-                        _lids.update(range(int(_a), int(_b or _a) + 1))
-                    _stage["live_freq_ids"] = sorted(_lids)
-                _buf = copy.deepcopy(out[_corr])  # no YAML aliases
-                out["gnss_n2_proj_buffer" + _suf] = _buf
-                _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
-                out["n2_accumulate"]["accum_%d" % _gpu]["in_buf"] = (
-                    "gnss_n2_proj_buffer" + _suf
-                )
+            _lf = args.n2_project_live_freq_ids
+            if _lf == "exempt":
+                _lf = args.rfi_excision_exempt_freq_ids
+            if _lf:
+                _lids = set()
+                for _part in str(_lf).split(","):
+                    _a, _, _b = _part.strip().partition("-")
+                    _lids.update(range(int(_a), int(_b or _a) + 1))
+                _stage["live_freq_ids"] = sorted(_lids)
+            _buf = copy.deepcopy(out[_corr])  # no YAML aliases
+            out["gnss_n2_proj_buffer" + _suf] = _buf
+            _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
+            out["n2_accumulate"]["accum_%d" % _gpu]["in_buf"] = (
+                "gnss_n2_proj_buffer" + _suf
+            )
             out["gnss_n2_project"]["proj_%d" % _gpu] = _stage
         sys.stderr.write(
             "  GnssN2Project %s on both GPUs (%d stations, k_max %d)\n"

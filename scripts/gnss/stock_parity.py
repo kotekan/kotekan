@@ -69,7 +69,7 @@ DECLARED = [
         "n2_accumulate.accum_*.in_buf",
         "~",
         "live GNSS N2 projection (phase 3a): N2Accumulate reads the projected copy "
-        "gnss_n2_proj_buffer{,_1} written by gnss_n2_project; shadow mode leaves this alone",
+        "gnss_n2_proj_buffer{,_1} written by gnss_n2_project",
     ),
 ]
 # Values stock gets by REST at runtime; the generator injects the current ones. Different from

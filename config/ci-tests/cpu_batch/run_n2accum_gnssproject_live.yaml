@@ -1,8 +1,8 @@
 ---
 # run_n2accum_gnssproject_live.yaml -- run_n2accum.yaml with GnssN2Project (phase 3a) between the
-# N2 generator and N2Accumulate in live mode: the frames pass through the stage's output copy
-# and N2Accumulate must consume them unchanged (shadow) / with the 32 configured stations'
-# products projected (live), and only in freq_ids 0-7 (live_freq_ids). Smoke test: it runs to the writer's exit; the arithmetic is
+# N2 generator and N2Accumulate: the frames pass through the stage's output copy and
+# N2Accumulate must consume them with the 32 configured stations' products projected, and only
+# in freq_ids 0-7 (live_freq_ids). Smoke test: it runs to the writer's exit; the arithmetic is
 # covered by fixtures/projtest/phase3/n2project_selftest.cpp.
 type: config
 log_level: INFO
