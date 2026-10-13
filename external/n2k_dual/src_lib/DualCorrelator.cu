@@ -34,18 +34,14 @@ DualCorrelatorParams::DualCorrelatorParams(int nstations_a_, int nstations_b_, i
     freq_map(freq_map_),
     n_freq_out(freq_map_.empty() ? nfreq_ : (int)freq_map_.size()),
     compact_b(compact_b_),
-    emat_fstride_a(nstations_a / 4),               // int32 stride, not bytes
-    emat_tstride_a(nfreq * emat_fstride_a),        // int32 stride, not bytes
+    emat_tstride_a(nfreq * (nstations_a / 4)),     // int32 stride, not bytes
     emat_fstride_b(nstations_b / 4),               // int32 stride, not bytes
     // compact B: the time stride spans only the computed channels
     emat_tstride_b((compact_b ? n_freq_out : nfreq) * emat_fstride_b), // int32 stride
     vmat_ntiles(((nstations / 16) * (nstations / 16 + 1)) / 2),
     vmat_fstride(vmat_ntiles * 16 * 16 * 2), // int32 stride, not int32+32
-    vmat_tstride(nfreq * vmat_fstride),      // int32 stride, not int32+32
     ntiles_a(nstations_a / DualCorrelatorParams::ns_divisor),
     ntiles_1d(nstations / DualCorrelatorParams::ns_divisor),
-    ntiles_2d_offdiag((ntiles_1d * (ntiles_1d - 1)) / 2),
-    ntiles_2d_tot(ntiles_2d_offdiag + ntiles_1d),
     threadblocks_per_freq(count_enabled_blocks(ntiles_1d, ntiles_a, block_class_mask))
 {
     assert(nstations_a > 0);
@@ -128,81 +124,6 @@ void DualCorrelator::launch(int* vis_out, const int8_t* e_in_a, const int8_t* e_
 
     if (sync)
         CUDA_CALL(cudaStreamSynchronize(stream));
-}
-
-
-void DualCorrelator::launch(Array<int>& vis_out, const Array<int8_t>& e_in_a,
-                            const Array<int8_t>& e_in_b, const Array<uint>& rfimask, int nt_outer,
-                            int nt_inner, cudaStream_t stream, bool sync) const
-{
-    int nt_expected = nt_outer * nt_inner;
-    int nrfi_expected = (nt_expected / 32);
-    int vmat_ntiles = params.vmat_ntiles;
-    int nstat_a = params.nstations_a;
-    int nstat_b = params.nstations_b;
-    int nfreq = params.nfreq;
-
-    if (!e_in_a.shape_equals({nt_expected, nfreq, nstat_a})) {
-        stringstream ss;
-        ss << "DualCorrelator::launch(nfreq=" << nfreq << ", nt_outer=" << nt_outer
-           << ", nt_inner=" << nt_inner << ")"
-           << ": expected emat_a shape=(" << nt_expected << "," << nfreq << "," << nstat_a << ")"
-           << ", got shape=" << e_in_a.shape_str();
-        throw runtime_error(ss.str());
-    }
-
-    const int nfreq_b = params.compact_b ? params.n_freq_out : nfreq; // compact B: mapped channels
-    if ((nstat_b > 0) && !e_in_b.shape_equals({nt_expected, nfreq_b, nstat_b})) {
-        stringstream ss;
-        ss << "DualCorrelator::launch(nfreq=" << nfreq << ", nt_outer=" << nt_outer
-           << ", nt_inner=" << nt_inner << ")"
-           << ": expected emat_b shape=(" << nt_expected << "," << nfreq_b << "," << nstat_b << ")"
-           << ", got shape=" << e_in_b.shape_str();
-        throw runtime_error(ss.str());
-    }
-
-    const int nfout = params.n_freq_out;
-    bool vflag1 = vis_out.shape_equals({nt_outer, nfout, vmat_ntiles, 16, 16, 2});
-    bool vflag2 = vis_out.shape_equals({nfout, vmat_ntiles, 16, 16, 2});
-    bool vshape_ok = vflag1 || (vflag2 && (nt_outer == 1));
-
-    if (!vshape_ok) {
-        stringstream ss;
-        ss << "DualCorrelator::launch(nfreq=" << nfreq << ", nt_outer=" << nt_outer
-           << ", nt_inner=" << nt_inner << ")"
-           << ": expected vmat shape=(" << nt_outer << "," << nfreq << "," << vmat_ntiles
-           << ",16,16,2" << ")";
-
-        if (nt_outer == 1)
-            ss << " or shape=(" << nfreq << "," << vmat_ntiles << ",16,16,2" << ")";
-
-        ss << ", got shape=" << vis_out.shape_str();
-        throw runtime_error(ss.str());
-    }
-
-    if (!rfimask.shape_equals({nfreq, nrfi_expected})) {
-        stringstream ss;
-        ss << "DualCorrelator::launch(nfreq=" << nfreq << ", nt_outer=" << nt_outer
-           << ", nt_inner=" << nt_inner << ")"
-           << ": expected rfimask shape=(" << nfreq << "," << nrfi_expected << ")"
-           << ", got shape=" << rfimask.shape_str();
-        throw runtime_error(ss.str());
-    }
-
-    assert(vis_out.is_fully_contiguous());
-    assert(vis_out.on_gpu());
-    assert(e_in_a.is_fully_contiguous());
-    assert(e_in_a.on_gpu());
-    if (nstat_b > 0) {
-        assert(e_in_b.is_fully_contiguous());
-        assert(e_in_b.on_gpu());
-    }
-    assert(rfimask.is_fully_contiguous());
-    assert(rfimask.on_gpu());
-
-    const int8_t* b_data = (nstat_b > 0) ? e_in_b.data : nullptr;
-    this->launch(vis_out.data, e_in_a.data, b_data, rfimask.data, nt_outer, nt_inner, stream,
-                 sync);
 }
 
 

@@ -108,29 +108,25 @@ struct DualCorrelatorParams
 
     // Derived parameters (computed in constructor, or compile-time constants).
 
-    static constexpr int bit_depth = 4;    // correlator operates on signed (4+4) bit data
     static constexpr int nt_divisor = 256; // nt_inner must be divisible by this
     static constexpr int ns_divisor = 128; // nstations_a and nstations_b divisible by this
 
     // E-array strides (int32, not bytes!!), per input: the inputs are separately shaped.
-    const int emat_fstride_a;
     const int emat_tstride_a;
     const int emat_fstride_b;
     const int emat_tstride_b;
 
     // Visibility matrix strides are in int32 (not int32+32), over the total station count.
     const int vmat_ntiles;  // M*(M+1)/2   where M = nstations/16
-    const int vmat_fstride; // vmat_ntiles * 16 * 16 * 2
-    const int vmat_tstride; // nfreq * vmat_fstride; the output's is n_freq_out * vmat_fstride
+    const int vmat_fstride; // vmat_ntiles * 16 * 16 * 2; the output's time stride is
+                            // n_freq_out * vmat_fstride
 
     // Tiling of visibility matrix by threadblocks (units of 128 stations).
     const int ntiles_a; // nstations_a / 128
     const int ntiles_1d;
-    const int ntiles_2d_offdiag;
-    const int ntiles_2d_tot;
 
     // Block/thread counts. threadblocks_per_freq counts only enabled blocks
-    // (== ntiles_2d_tot when block_class_mask == BLOCK_MASK_ALL).
+    // (== ntiles_1d*(ntiles_1d+1)/2 when block_class_mask == BLOCK_MASK_ALL).
     static constexpr int warps_per_block = 8;
     static constexpr int threads_per_block = 32 * warps_per_block;
     const int threadblocks_per_freq;
@@ -199,19 +195,6 @@ public:
                 int nt_outer, int nt_inner, cudaStream_t stream = nullptr,
                 bool sync = false) const;
 
-    // ksgpu::Array version; all arrays on the GPU.
-    //   vis_out: shape (nt_outer, n_freq_out, nvtiles, 16, 16, 2), or
-    //            (n_freq_out, nvtiles, 16, 16, 2) if nt_outer == 1,
-    //            where nvtiles = (nstations/16)*(nstations/16+1)/2.
-    //   e_in_a:  shape (nt_outer * nt_inner, nfreq, nstations_a)
-    //   e_in_b:  shape (nt_outer * nt_inner, nfreq or n_freq_out (compact_b), nstations_b);
-    //            ignored if nstations_b==0.
-    //   rfimask: shape (nfreq, nt_outer * nt_inner / 32)
-    void launch(ksgpu::Array<int>& vis_out, const ksgpu::Array<int8_t>& e_in_a,
-                const ksgpu::Array<int8_t>& e_in_b, const ksgpu::Array<uint>& rfimask,
-                int nt_outer, int nt_inner, cudaStream_t stream = nullptr,
-                bool sync = false) const;
-
     // Initialized by constructor.
     const DualCorrelatorParams params;
 
@@ -237,9 +220,6 @@ extern DualCorrelator::kernel_t get_kernel(int nstations, int nfreq);
 
 // Used internally to "promote" compile-time argument to runtime argument.
 extern void register_kernel(int nstations, int nfreq, DualCorrelator::kernel_t kernel);
-
-// For testing -- returns allowed (nstations_total, nfreq) pairs
-extern std::vector<std::pair<int, int>> get_all_kernel_params();
 
 
 } // namespace n2k_dual
