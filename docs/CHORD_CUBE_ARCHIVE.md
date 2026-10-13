@@ -55,14 +55,14 @@ L0 keeps 12.3 live slots per window on average (11.8–12.7 per chain), out of 2
   F-engine samples (`wstart`, `sample_rate`) and the epoch of sample 0 lived in the node config
   (`frame0_utc`, GPS-week-rollover corrected). **v3** (CUBE_VERSION 3, header +8 bytes: `double
   utc0` at 96, chain string at 104, frame 101 208 B) puts it in the frame. The reader
-  (`gnss_cube_read.py`) accepts both; the compactor needs `--utc0` for v2 and GATES it (§4).
+  (`gnss_cube_read.py`) accepts both; the compactor folds v3 only and refuses a v2 file (§4).
 
 ## 3. The tools
 
 All Python here runs with `/home/kvand/gnss/venv/bin/python` (h5py, numpy; venv-ft has no
 h5py) **on cf06** with absolute paths — the nodes are production trackers.
 
-- `python/scripts/gnss/gnss_cube_read.py ls|head|npz` — the raw files, frame by frame.
+- `python/scripts/gnss/gnss_cube_read.py ls|head` — the raw files, frame by frame.
 - `python/scripts/gnss/gnss_cube_compact.py`
   - `compact` — raw → L0, idempotent through `l0/manifest.json`; only CLOSED raw files (every
     file but the newest) unless `--include-open`. ~3400 frames/s on cf06 = ~38× real time.
@@ -74,11 +74,11 @@ h5py) **on cf06** with absolute paths — the nodes are production trackers.
   `cubecompact_loop.sh`: `compact` every 300 s; after 00:20 UTC, rungs for YESTERDAY once.
   Log `/tmp/gnss_cubecompact.log` on cf06. Refusals ("REFUSED") in that log are the epoch gate.
 
-## 4. The epoch gate (why a v2 file can be REFUSED)
+## 4. The epoch gate (why a raw file can be REFUSED)
 
 rawFileWrite closes a file within seconds of its last frame — measured `mtime − utc(last
 window)` = +1.2 … +2.6 s on 09-05. So `|utc(last window) − mtime| > 60 s` means the epoch does
-not describe this file: wrong `--utc0`, or the F-engine restarted since (new frame0). The
+not describe this file: a stale frame `utc0`, or the F-engine restarted since (new frame0). The
 compactor refuses the file rather than dating it wrong; an L0 day file also refuses a second
 `utc0` (two epochs in one day = an F-engine restart; keep them apart deliberately).
 
@@ -122,8 +122,8 @@ Rung (`format = gnss_cube_rung`, `rung_n`, `ref_elem`): per (block, slot, prn) r
 `cohpow = Σ_windows |coh|²`, and `cohref = Σ_windows coh[e]·conj(coh[ref_elem])`. The last
 exists because a coherent sum ACROSS windows is meaningless — `phi0` is a per-window reference
 — while the cross-element product is blind to that common phase and is exactly the per-element
-relative response (amplitude AND phase) the phased-array calibration wants. `ref_elem` defaults
-to the strongest mean-incoh element of the file and is recorded. `blk/n_win_present` says how
+relative response (amplitude AND phase) the phased-array calibration wants. `ref_elem` is the
+strongest mean-incoh element of the file and is recorded. `blk/n_win_present` says how
 many windows each block actually had.
 
 ## 7. Deploying v3 (archiver FIRST, then nodes — the two sizes cannot coexist)
@@ -138,7 +138,7 @@ v3-sized buffer losing every other window). The v3 binary refuses a v2 config lo
    the hpp → frame_size 101208 everywhere), `ssh cf06 cubearch_up.sh` (archiver on v3);
 2. KV: `node_up.sh` the six nodes;
 3. gate in minutes: `gnss_cube_read.py head <newest raw>` shows `version 3` and a `utc(wstart0)`
-   that matches the wall clock; `gnss_cube_compact.py` then needs no `--utc0` for those files.
+   that matches the wall clock.
 
 Offline gate for the code itself: `scripts/gnss/cube_e2e.py --binary <nodpdk binary>` on cf06
 (PASS on the v3 binary; on the v2 binary it fails on version, utc0 and the lost windows).

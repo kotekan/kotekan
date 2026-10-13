@@ -3,7 +3,6 @@
 
     gnss_cube_read.py ls   <path> [...]        completeness: senders, windows, holes, drops
     gnss_cube_read.py head <file> [--n 1]      one frame's header and a slice of its arrays
-    gnss_cube_read.py npz  <path> [...] --out X.npz   the stripped cube, ready to accumulate
 
 ⚠️ THE FILE IS SELF-DELIMITING AND SELF-DESCRIBING, AND NOTHING HERE IS CONFIGURED.
 Each frame arrives as `uint32 metadata_size | metadata | frame` (rawFileWrite), and the frame's
@@ -71,8 +70,8 @@ def parse_header(buf):
             f"cube frame version {ver}: this reader knows {sorted(CUBE_HEADER_BYTES)}"
             f" -- update CUBE_FIXED_BYTES from gnssRecord.hpp"
         )
-    # utc0: UTC of absolute sample 0 (v3). A v2 frame has none -- the reader reports None and a
-    # consumer must be TOLD the epoch (gnss_cube_compact.py --utc0); it is never guessed here.
+    # utc0: UTC of absolute sample 0 (v3). A v2 frame has none -- the reader reports None; it is
+    # never guessed here.
     utc0 = struct.unpack_from("<d", buf, 96)[0] if ver >= 3 else None
     co = CUBE_FIXED_BYTES[ver]
     chain = buf[co : co + CUBE_CHAIN_CHARS].split(b"\0")[0].decode("ascii", "replace")
@@ -298,38 +297,6 @@ def cmd_head(args):
         break
 
 
-def cmd_npz(args):
-    """Strip the pad and stack -- the shape an accumulator wants, not a per-frame stream."""
-    hdrs, blocks = [], []
-    for path in expand(args.path):
-        for h, a in iter_frames(path):
-            hdrs.append(h)
-            blocks.append(a)
-    if not hdrs:
-        raise SystemExit("no frames")
-    np.savez_compressed(
-        args.out,
-        chain=np.array([h["chain"] for h in hdrs]),
-        gpu=np.array([h["gpu"] for h in hdrs]),
-        idx=np.array([h["idx"] for h in hdrs], dtype=np.int64),
-        wstart0=np.array([h["wstart0"] for h in hdrs], dtype=np.int64),
-        win_samples=np.array([h["win_samples"] for h in hdrs]),
-        sample_rate=np.array([h["sample_rate"] for h in hdrs]),
-        prn=np.array([b["prn"] for b in blocks], dtype=object),
-        freq_id_lo=np.array([b["freq_id_lo"] for b in blocks], dtype=object),
-        n_rec=np.array([b["n_rec"] for b in blocks], dtype=object),
-        w=np.array([b["w"] for b in blocks], dtype=object),
-        energy=np.array([b["energy"] for b in blocks], dtype=object),
-        incoh=np.array([b["incoh"] for b in blocks], dtype=object),
-        coh_re=np.array([b["coh_re"] for b in blocks], dtype=object),
-        coh_im=np.array([b["coh_im"] for b in blocks], dtype=object),
-        phi0=np.array([b["phi0"] for b in blocks], dtype=object),
-        n_reanchor=np.array([b["n_reanchor"] for b in blocks], dtype=object),
-        allow_pickle=True,
-    )
-    print(f"wrote {args.out}: {len(hdrs)} frame(s)")
-
-
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -342,10 +309,6 @@ def main():
     p.add_argument("file")
     p.add_argument("--n", type=int, default=1)
     p.set_defaults(fn=cmd_head)
-    p = sub.add_parser("npz", help="stripped arrays for an accumulator")
-    p.add_argument("path", nargs="+")
-    p.add_argument("--out", required=True)
-    p.set_defaults(fn=cmd_npz)
     args = ap.parse_args()
     args.fn(args)
 

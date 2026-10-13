@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline compaction of the raw beam-cube archive -- the trim ladder (recording plan P3/P4).
 
-    gnss_cube_compact.py compact  --raw DIR --out ROOT [--utc0 S] [--include-open] [--batch N]
+    gnss_cube_compact.py compact  --raw DIR --out ROOT [--include-open] [--batch N]
         raw rawFileWrite bundles  ->  L0 HDF5, one file per (pointing, sender, UTC day):
         <ROOT>/l0/<pointing>/<sender>/<YYYYMMDD>.h5. Only LIVE slots are kept (a slot with
         n_rec == 0 is silence, not a zero -- see gnssRecord.hpp), the pad is dropped, and the
@@ -13,7 +13,7 @@
     gnss_cube_compact.py ls       FILE.h5 [...]
         completeness: windows present vs the day, holes attributed sender-drop / downstream,
         live rows, bytes.
-    gnss_cube_compact.py verify   --raw FILE.raw --l0 ROOT [--n 50] [--utc0 S]
+    gnss_cube_compact.py verify   --raw FILE.raw --l0 ROOT [--n 50]
         round trip: N random live (window, slot) cells of a raw file re-read from the L0 tree
         and compared BIT-FOR-BIT (float32 in, float32 out; nothing here is a summary).
 
@@ -21,14 +21,11 @@
    The raw tree is on /mnt/cs00; cx43 is a production node and a 9 MB/s read there is a tax on
    the tracker it does not need to pay.
 
-⚠️ THE TIME AXIS. A v3 frame carries utc0 (UTC of F-engine sample 0) and this tool believes
-   it. A v2 frame (everything archived 2026-09-05 before the v3 cycle) carries only F-engine
-   samples, and the ONE number that turns those into a date -- frame0_utc from the node config,
-   GPS-week-rollover corrected -- lived outside the record. For v2 you must pass --utc0, and
-   the value is GATED against the raw file's mtime: rawFileWrite closes a file within seconds
-   of its last frame, so |utc(last window) - mtime| > --mtime-tol seconds means the epoch is
-   wrong (or the F-engine restarted since) and the file is REFUSED, not dated wrong.
-   time0 for 2026-09-05 (frame0_nano 1169225859000002870 + rollover): 1788541059.000002870.
+⚠️ THE TIME AXIS. A frame carries utc0 (UTC of F-engine sample 0) and this tool believes it,
+   GATED against the raw file's mtime: rawFileWrite closes a file within seconds of its last
+   frame, so |utc(last window) - mtime| > --mtime-tol seconds means the epoch is wrong (or the
+   F-engine restarted since) and the file is REFUSED, not dated wrong. A v2 frame (archived
+   2026-09-05 before the v3 cycle) carries no utc0 and is refused.
 
 ⚠️ NOTHING HERE IS A dB, AND NOTHING IS A MEAN. L0 copies the frame's linear SUMS with their
    term counts (`w`), so cells still add; a rung is a sum of sums. The one derived quantity, the
@@ -398,8 +395,6 @@ def cmd_compact(args):
             )
             continue
         todo.append(p)
-    if args.limit:
-        todo = todo[: args.limit]
     if not todo:
         print("nothing to do")
         return
@@ -426,35 +421,27 @@ def cmd_compact(args):
                 size=st.st_size, mtime=st.st_mtime, frames=0, note="empty"
             )
             continue
-        # -- epoch: from the frame (v3) or the flag (v2), gated against the file's mtime --------
+        # -- epoch: from the frames, gated against the file's mtime -----------------------------
         per_frame_utc0 = [h["utc0"] for h, _ in frames if h.get("utc0")]
-        if per_frame_utc0:
-            utc0, src = float(per_frame_utc0[-1]), "frame"
-            if args.utc0 is not None and abs(args.utc0 - utc0) > 1e-3:
-                print(
-                    f"⚠️ {key}: frames carry utc0 {utc0!r}, --utc0 {args.utc0!r} ignored",
-                    file=sys.stderr,
-                )
-        elif args.utc0 is not None:
-            utc0, src = float(args.utc0), "flag"
-        else:
+        if not per_frame_utc0:
             print(
-                f"✗ {key}: v2 frames carry no utc0 and no --utc0 given -- REFUSED (an archive "
-                f"dated by guess is worse than one not dated)",
+                f"✗ {key}: v2 frames carry no utc0 -- REFUSED (an archive dated by guess is "
+                f"worse than one not dated)",
                 file=sys.stderr,
             )
             manifest[key] = dict(
                 size=st.st_size,
                 mtime=st.st_mtime,
                 frames=len(frames),
-                refused="no utc0 in frames and no --utc0",
+                refused="no utc0 in frames",
                 done=iso(time.time()),
             )
             stats["refused"] += 1
             continue
+        utc0, src = float(per_frame_utc0[-1]), "frame"
         last_utc = max(frame_utc(h, utc0) for h, _ in frames)
         gap = st.st_mtime - last_utc
-        if not args.no_mtime_gate and not (-args.mtime_tol <= gap <= args.mtime_tol):
+        if not (-args.mtime_tol <= gap <= args.mtime_tol):
             print(
                 f"✗ {key}: last window dated {iso(last_utc)} but the file was last written "
                 f"{iso(st.st_mtime)} ({gap:+.1f} s): the epoch ({src} utc0={utc0!r}) does not "
@@ -699,12 +686,8 @@ def cmd_rung(args):
             incoh = f["rows/incoh"][:]
             widx = f["win/idx"][:]
             wutc = f["win/utc"][:]
-            ne = int(a["n_elem"])
-            # -- reference element: the strongest MEAN incoh over the file, unless given ---------
-            if args.ref_elem is not None:
-                ref = args.ref_elem
-            else:
-                ref = int(np.argmax(incoh.sum(axis=(0, 1))))
+            # -- reference element: the strongest MEAN incoh over the file ----------------------
+            ref = int(np.argmax(incoh.sum(axis=(0, 1))))
             # -- group (block, slot, prn); a prn change inside a block makes a second row --------
             blk = idx // n
             key = np.stack([blk, slot, prn], axis=1)
@@ -809,9 +792,9 @@ def cmd_verify(args):
     if not frames:
         raise SystemExit("no frames")
     per_frame_utc0 = [h["utc0"] for h, _ in frames if h.get("utc0")]
-    utc0 = float(per_frame_utc0[-1]) if per_frame_utc0 else args.utc0
-    if utc0 is None:
-        raise SystemExit("v2 frames: pass --utc0")
+    if not per_frame_utc0:
+        raise SystemExit("v2 frames carry no utc0")
+    utc0 = float(per_frame_utc0[-1])
     cells = [
         (fi, p)
         for fi, (h, a) in enumerate(frames)
@@ -896,21 +879,16 @@ def main():
     p.add_argument("--raw", default="/mnt/cs00/data/kvand/gnss_cube/raw")
     p.add_argument("--out", default="/mnt/cs00/data/kvand/gnss_cube")
     p.add_argument(
-        "--utc0", type=float, help="UTC of F-engine sample 0 (REQUIRED for v2 frames)"
-    )
-    p.add_argument(
         "--mtime-tol",
         type=float,
         default=60.0,
         help="max |utc(last window) - file mtime| before the epoch is refused "
         "(measured 09-05: mtime - last window = +1.2 .. +2.6 s)",
     )
-    p.add_argument("--no-mtime-gate", action="store_true")
     p.add_argument(
         "--include-open", action="store_true", help="also fold the newest (open) file"
     )
     p.add_argument("--batch", type=int, default=12, help="raw files per HDF5 flush")
-    p.add_argument("--limit", type=int, default=0)
     p.add_argument(
         "--redo",
         action="store_true",
@@ -935,18 +913,12 @@ def main():
         default="/mnt/cs00/data/kvand/gnss_cube",
         help="root whose l0/ prefix is replaced by rung<n>/ in the output path",
     )
-    p.add_argument(
-        "--ref-elem",
-        type=int,
-        help="element for cohref (default: strongest mean incoh)",
-    )
     p.set_defaults(fn=cmd_rung)
     p = sub.add_parser("verify", help="raw <-> L0 bit-for-bit round trip")
     p.add_argument("--raw", required=True)
     p.add_argument("--l0", default="/mnt/cs00/data/kvand/gnss_cube")
     p.add_argument("--n", type=int, default=50)
     p.add_argument("--seed", type=int, default=1)
-    p.add_argument("--utc0", type=float)
     p.add_argument("--pointings", default=DEFAULT_POINTINGS)
     p.set_defaults(fn=cmd_verify)
     args = ap.parse_args()

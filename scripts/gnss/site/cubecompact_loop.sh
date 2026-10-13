@@ -1,13 +1,13 @@
 #!/bin/bash
 # The compactor loop body -- started by cubecompact_up.sh, never by hand (see that file).
-#   $1 python  $2 tool  $3 raw dir  $4 root  $5 utc0 (v2 epoch)  $6 period seconds
+#   $1 python  $2 tool  $3 raw dir  $4 root  $5 period seconds
 set -u
-PY=$1; TOOL=$2; RAW=$3; ROOT=$4; UTC0=$5; PERIOD=$6
+PY=$1; TOOL=$2; RAW=$3; ROOT=$4; PERIOD=$5
 SELFDIR=$(cd "$(dirname "$0")" && pwd)   # beamcube_daily.sh is this script's sibling
 last_rung_day=""
 while true; do
     echo "== $(date -u +%FT%TZ) compact"
-    "$PY" -u "$TOOL" compact --raw "$RAW" --out "$ROOT" --utc0 "$UTC0" 2>&1
+    "$PY" -u "$TOOL" compact --raw "$RAW" --out "$ROOT" 2>&1
     # Yesterday's rungs, once the day has been closed for 20 min (the last raw file of a day
     # closes ~10 s after midnight; 20 min is slack for a compactor pass to have folded it).
     today=$(date -u +%Y%m%d)
