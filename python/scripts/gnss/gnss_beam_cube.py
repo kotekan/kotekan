@@ -3,7 +3,6 @@
 
     build   archives -> one master cube per UTC day (sparse .npz accumulators)
     export  master cubes -> one browser cube per day (.bin + .json) for the viewer
-    ls      what a master cube contains, without loading the values
 
 WHY A CUBE AND NOT A MAP. gnss_beam_map.py already makes beautiful maps, and every one of them
 is a COLLAPSE: over elements, over frequency, or both. The parts are what the instrument
@@ -29,22 +28,13 @@ TWO SOURCES, ONE OUTPUT FORMAT
         The element archive. Per-element, but the covering channels were already summed
         upstream, so the subband axis comes out LENGTH 1 per chain. The 8 chains still give
         real coarse frequency (5 distinct bands), which is why this is worth building now.
-  --source cube  fixtures/cube/cube_<chain>_<YYYYMMDD>.jsonl
-        The /get_beam_cube archive: per (subband, element), the joint axis, on ~1 s
-        addressable windows. Needs the node side armed (GnssGpuRecordAssemble
-        `beam_cube: true`) -- until then there are no files and this source finds nothing. The
-        output format is IDENTICAL either way, so the viewer does not change when the axis
-        becomes real; only n_subband grows.
+  --source l0    <archive>/<sender>/<YYYYMMDD>.h5   (archive = .../gnss_cube/l0/<pointing>)
+        The recorded beam-cube archive (docs/CHORD_CUBE_ARCHIVE.md): per (subband, element)
+        rows on ~1 s windows, pushed by every instance and folded on cf06 -- 89 sender files
+        per day, ~11 per chain (6 nodes x 2 GPUs). A rung directory (.../rung12/<pointing>) is
+        accepted too: same row schema, 12 or 60 windows pre-summed, ~10x faster to build from.
         ⚠️ Rows carry BOTH sums. `incoh` is the beam and is what this builds maps from; `coh`
         (with `phi0` and `n_reanchor`) is the arc, for calibration and the phased-array map.
-        A row with n_reanchor > 0 had its phase reference reset MID-WINDOW -- no constant can
-        undo that, so such rows are unusable for anything coherent, though their `incoh` is
-        still a perfectly good beam sample.
-  --source l0    <archive>/<sender>/<YYYYMMDD>.h5   (archive = .../gnss_cube/l0/<pointing>)
-        The recorded beam-cube archive (docs/CHORD_CUBE_ARCHIVE.md): the same rows as the
-        `cube` jsonl, pushed by every instance and folded on cf06 -- 89 sender files per day,
-        ~11 per chain (6 nodes x 2 GPUs). A rung directory (.../rung12/<pointing>) is accepted
-        too: same row schema, 12 or 60 windows pre-summed, ~10x faster to build from.
         ⚠️ THE ARCHIVE ROOT IS A POINTING. One master cube is one pointing by construction:
         the path names it, the attrs confirm it, and two pointings in one build are refused.
         ⚠️ NO PROBE FLAG TRAVELS IN THE CUBE FRAME, so the pedestal comes from the rows
@@ -70,7 +60,6 @@ import argparse
 import json
 import math
 import os
-import struct
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -325,29 +314,8 @@ def probe_floors(paths, tmin, tmax):
 
 
 def _rows(d):
-    """Per-subband list of per-element power for one archive row, for BOTH sources.
-
-    elem archive: `p2` is [n_elem]                     -> one subband
-    cube archive: `incoh` is [n_sub][n_elem] with `w`  -> per-subband MEAN power
-
-    ⚠️ THE BEAM IS THE INCOHERENT SUM, NOT THE COHERENT ONE. /get_beam_cube publishes both
-    (`coh` carries the arc, and it is the half that cannot be reconstructed later), but only
-    `incoh` is a beam: it has no phase model and no nav-bit cap, so it survives a window in
-    which the arc broke. The coherent sum in the same window may be small for a reason that
-    has nothing to do with the sky -- a limping carrier loop -- and "small" is exactly what a
-    beam map is trying to measure. Mapping `coh` would put receiver health on the sky.
-
-    `coh` is carried through to the master cube untouched, for element calibration and the
-    phased-array map; the RATIO |coh|^2 / incoh is the coherence, and it is the self-check
-    that says whether the arc survived that second.
-    """
-    if "incoh" in d:
-        w = d.get("w") or []
-        out = []
-        for sub, els in enumerate(d["incoh"]):
-            ww = float(w[sub]) if sub < len(w) else 0.0
-            out.append([float(v) / ww for v in els] if ww > 0.0 else [0.0] * len(els))
-        return out
+    """Per-subband list of per-element power for one elem-archive row: `p2` is [n_elem],
+    so there is one subband."""
     return [[float(v) for v in (d.get("p2") or [])]]
 
 
@@ -429,8 +397,7 @@ def build_day(args, chain, paths, day_unix, geom):
 
 
 def _h5_rows(path):
-    """One L0 or rung file -> (attrs, t[R], prn[R], P[R,S,E] mean power (nan: bin unused),
-    reanchored[R], freq_ids[S]).
+    """One L0 or rung file -> (attrs, t[R], prn[R], P[R,S,E] mean power (nan: bin unused)).
 
     `incoh/w` is the mean |A_e|^2 per (record, channel) term in BOTH formats: a rung row is
     the window sums added, and a ratio of sums is still a mean. Time is the window's UTC
@@ -443,7 +410,6 @@ def _h5_rows(path):
         fmt = a.get("format")
         prn = f["rows/prn"][:].astype(int)
         w = f["rows/w"][:].astype(np.float64)
-        nre = f["rows/n_reanchor"][:]
         incoh = f["rows/incoh"][:].astype(np.float64)
         if fmt == "gnss_cube_l0":
             idx = f["rows/idx"][:]
@@ -455,9 +421,7 @@ def _h5_rows(path):
         else:
             raise SystemExit("%s: not a cube archive file (format=%r)" % (path, fmt))
     P = np.where((w > 0.0)[:, :, None], incoh / np.maximum(w, 1e-30)[:, :, None], np.nan)
-    fid = _h5_freq_ids(path)
-    freq_ids = [[f, f] for f in fid] if fid else [[None, None]] * P.shape[1]
-    return a, t, prn, P, nre, freq_ids
+    return a, t, prn, P
 
 
 def _h5_freq_ids(path):
@@ -534,7 +498,7 @@ def prn_gain_table(args, chain, paths, day_unix, geom, dth=5.0, dphi=90.0, iters
     raw = defaultdict(list)          # prn -> [log10 power], for the degeneracy guard
     for path in paths:
         try:
-            a, t, prn, P, nre, fids = _h5_rows(path)
+            a, t, prn, P = _h5_rows(path)
         except SystemExit:
             raise
         except Exception:
@@ -663,7 +627,7 @@ def build_day_h5(args, chain, paths, day_unix, geom, prn_gain=None):
     print("  %s: %d distinct channel(s) freq_id %d..%d across %d sender file(s)"
           % (chain, len(band), band[0], band[-1], len(paths)))
     for path in paths:
-        a, t, prn, P, nre, fids = _h5_rows(path)
+        a, t, prn, P = _h5_rows(path)
         pt = str(a.get("pointing"))
         if pointing is None:
             pointing = pt
@@ -779,8 +743,7 @@ def find_inputs(args, chain, daystr):
             if sender_chain(os.path.basename(os.path.dirname(p))) == chain:
                 out.append(p)
         return out
-    pat = ("cube_%s_%s.jsonl" if args.source == "cube" else "elem_%s_%s.jsonl") % (chain, daystr)
-    p = os.path.join(args.archive, pat)
+    p = os.path.join(args.archive, "elem_%s_%s.jsonl" % (chain, daystr))
     return [p] if os.path.exists(p) else []
 
 
@@ -946,9 +909,6 @@ def cmd_export(args):
             with open(os.path.join(args.outdir, c["bin"]), "wb") as fh:
                 fh.write(blob)
             total += len(blob)
-        stale = os.path.join(args.outdir, "cube_%s.bin" % day)   # the pre-09-06 single blob
-        if os.path.exists(stale):
-            os.remove(stale)
         man = {"day": day, "nside": nside, "source": meta["source"],
                "pointing": meta.get("pointing"), "units": meta.get("units", "power"),
                "array_epoch": meta.get("array_epoch"),
@@ -1040,14 +1000,6 @@ def bin_subbands(n, s1, freq_ids, nbin):
 _R2N_CACHE = {}
 
 
-def _spread(v):
-    v = np.asarray(v, np.int64) & 0xFFFFFFFF
-    for s, m in ((16, 0x0000FFFF0000FFFF), (8, 0x00FF00FF00FF00FF), (4, 0x0F0F0F0F0F0F0F0F),
-                 (2, 0x3333333333333333), (1, 0x5555555555555555)):
-        v = (v | (v << s)) & m
-    return v
-
-
 def _compress(v):
     v = np.asarray(v, np.int64) & 0x5555555555555555
     for s, m in ((1, 0x3333333333333333), (2, 0x0F0F0F0F0F0F0F0F), (4, 0x00FF00FF00FF00FF),
@@ -1101,20 +1053,6 @@ def ring2nest(pix, nside):
     return _R2N_CACHE[key][np.asarray(pix, np.int64)]
 
 
-def cmd_ls(args):
-    for src in args.masters:
-        z = np.load(src, allow_pickle=False)
-        m = json.loads(str(z["meta"]))
-        print("%s  nside %d  source %s  veto %.1f deg  range_norm %s"
-              % (m["day"], m["nside"], m["source"], m["veto_deg"], m["range_norm"]))
-        for i, c in enumerate(m["chains"]):
-            n = z["n_%d" % i]
-            occ = int((n > 0).sum())
-            print("   %-9s %s  sub %-3d elem %-3d pix %-6d  filled %d (%.1f%%)"
-                  % (c["chain"], c["sys"], c["n_sub"], c["n_elem"], c["n_pix"],
-                     occ, 100.0 * occ / max(1, n.size)))
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1123,9 +1061,9 @@ def main():
     b = sub.add_parser("build", help="archives -> master cube per day")
     b.add_argument("--days", nargs="+", required=True, help="YYYYMMDD")
     b.add_argument("--chains", nargs="*", help="default: every chain with an archive")
-    b.add_argument("--source", choices=["elem", "cube", "l0"], default="elem")
+    b.add_argument("--source", choices=["elem", "l0"], default="elem")
     b.add_argument("--archive", default=None,
-                   help="elem/cube: fixtures/obs; l0: a POINTING dir of the cube archive, e.g. "
+                   help="elem: fixtures/obs; l0: a POINTING dir of the cube archive, e.g. "
                         "/mnt/cs00/data/kvand/gnss_cube/l0/p0_dec40p73 (or rung12/...)")
     b.add_argument("--outdir", default="/home/kvand/gnss/fixtures/beamcube")
     b.add_argument("--nside", type=int, default=64)
@@ -1158,10 +1096,6 @@ def main():
     e.add_argument("--offset-annulus", type=float, nargs=2, default=(2.0, 12.0),
                    metavar=("LO", "HI"), help="off-boresight degrees where the offsets are measured")
     e.set_defaults(func=cmd_export)
-
-    l = sub.add_parser("ls", help="describe master cubes")
-    l.add_argument("masters", nargs="+")
-    l.set_defaults(func=cmd_ls)
 
     args = ap.parse_args()
     if getattr(args, "archive", 0) is None:
