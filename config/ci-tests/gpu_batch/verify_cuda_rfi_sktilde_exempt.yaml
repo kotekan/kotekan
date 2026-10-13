@@ -7,7 +7,9 @@
 # first-stage excision: the SK sigma threshold is so tight that every sample is flagged, so the
 # produced RFI mask must be all-bad except in the exempt channels, where it must be
 # all-good; the CPU reference applies the same exemption. The SKtilde statistics must
-# still match the CPU simulation in every channel.
+# still match the CPU simulation in every channel. The GPU wrapper names the exempt channels by
+# absolute freq_id, as production does, so the test also covers their resolution through the
+# coarse frequencies in the S012 metadata.
 #
 ##########################################
 type: config
@@ -49,8 +51,6 @@ rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are goo
 rfi_feed_averaged_min_good_frac: 0.25   # Wide open (0.25) so most averaged feeds are good
 rfi_mu_min: 2.0       # Should be small (2) to let in many samples.
 rfi_mu_max: 80.0      # Should be big (80) to let in many samples.
-# Local channel indices exempt from excision (both the GPU wrapper and the CPU reference).
-rfi_first_stage_excision_exempt_local_freqs: [1, 3]
 
 updatable_config:
     bad_inputs:
@@ -168,6 +168,8 @@ gen_rfi_s012:
     bar_mode: false
     downsampling_factor: rfi_downsampling_factor
     num_frames: 2 * buffer_depth
+    # The coarse frequency of each local channel, stamped into the metadata
+    freq_ids: [5970, 5971, 5972, 5973]
 
 set_bf_mask:
     kotekan_stage: bufferBadInputs
@@ -235,6 +237,8 @@ run_rfi_sktilde:
               bf_mask_name: bf_mask
               rfi_SKtilde_name: rfi_sktilde
               rfi_RFImask_name: rfi_mask
+              # Local channels 1 and 3, through the coarse frequencies `gen_rfi_s012` stamps
+              rfi_first_stage_excision_exempt_freq_ids: [5971, 5973]
               num_times: samples_per_data_set
               num_frequencies: num_local_freq
               rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -282,6 +286,8 @@ cpu_rfi_sktilde:
     out_rfi_mask_buf: simulated_rfi_mask_buffer
     bar_mode: false
     rfi_total_downsampling_factor: rfi_downsampling_factor
+    # The same exempt channels as the GPU wrapper's freq_ids, as local channel indices
+    rfi_first_stage_excision_exempt_local_freqs: [1, 3]
 
 
 check_rfi_sktilde_data:
