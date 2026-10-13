@@ -435,10 +435,10 @@ chains:
     # prints a PRN when at least one arm cleared, so that cell is structurally zero -- only
     # the discordant (McNemar) counts survive the selection.
     #
-    # Re-arm when there is a consumer this actually helps -- the #33 record_stream feed is
-    # the candidate, not this. `scripts/gnss/ab_fleetcoh.py` (at 31896a862) reproduces the
-    # analysis, and ⚠️ RUN THE CONTROL WITH IT: without the REST-vs-REST arm, r = 0.054 reads as an
-    # indictment of the transport instead of a property of the estimator.
+    # Re-arm when there is a consumer this actually helps. `scripts/gnss/ab_fleetcoh.py`
+    # (at 31896a862) reproduces the analysis, and ⚠️ RUN THE CONTROL WITH IT: without the
+    # REST-vs-REST arm, r = 0.054 reads as an indictment of the transport instead of a
+    # property of the estimator.
     # telem-coherent: true
     #
     # TASK #63: the code loop closes on the COMB -- see `telem-dll` in `common`, which now

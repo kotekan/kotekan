@@ -27,9 +27,8 @@ TWO RULES THE REST OF THE BROKER MUST KEEP:
 
   1. ⚠️ NEVER DIFFERENCE AN ACCUMULATOR ACROSS INSTANCES. What arrives here is per-record
      INCREMENTS (gnssRecord.hpp slots 15/19) and per-record correlations. Accumulate ONCE, per
-     instance, over a run this module has certified contiguous (`record_stream` returns the
-     gap flags for exactly that). `res_cycles` from /get_status is the thing that was wrong;
-     do not rebuild it here.
+     instance, over a run known to be contiguous. `res_cycles` from /get_status is the thing
+     that was wrong; do not rebuild it here.
 
   2. ⚠️ A WINDOW IS NOT COMPLETE THE MOMENT IT APPEARS. Senders are independent, so the newest
      window is always still filling. Every accessor takes `lag` (default 1 window, ~168 ms) and
