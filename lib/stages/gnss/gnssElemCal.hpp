@@ -119,9 +119,6 @@ public:
     const std::vector<cd>& weights() const {
         return _w;
     }
-    double weight_sum() const {
-        return _wsum;
-    }
 
     /// Calibrated weighted mean of one correlator row over the elements (every row uses the same
     /// weights), in one-element units and the anchor's phase convention. The record header
@@ -165,44 +162,6 @@ public:
         // cancels the imaginary part when the halves are balanced and so understates the noise.
         // The cost is that only half the aperture integrates (~sqrt(2) in SNR).
         return A * std::polar(1.0, -std::arg(B)) / _wsum;
-    }
-
-    /// The integrating half's genie, for offline tests: A derotated by the true phase instead of
-    /// by arg(B). This, not the full-aperture genie, is the bound @ref combine_split must not
-    /// beat: the split integrates one half, so its ceiling is that half's SNR, which equals the
-    /// full genie's / sqrt(2) only when the halves are balanced in SNR^2.
-    cd combine_half_genie(const cd* g, double true_phase) const {
-        if (_wsum <= 0.0 || _split_ok == 0)
-            return cd(0.0, 0.0);
-        cd A(0.0, 0.0);
-        for (int e = 0; e < _n; ++e)
-            if (!_half[(size_t)e])
-                A += std::conj(_w[(size_t)e]) * g[(size_t)e];
-        return A * std::polar(1.0, -true_phase) / _wsum;
-    }
-
-    /// Fraction of the array's total MRC weight held by the integrating half (A); 0.5 is
-    /// balanced. @p square selects |w|^2 (which sets each half's SNR^2) rather than |w|.
-    double half_weight_frac(bool square = true) const {
-        double a = 0.0, t = 0.0;
-        for (int e = 0; e < _n; ++e) {
-            const double m = square ? std::norm(_w[(size_t)e]) : std::abs(_w[(size_t)e]);
-            t += m;
-            if (!_half[(size_t)e])
-                a += m;
-        }
-        return t > 0.0 ? a / t : 0.0;
-    }
-
-    /// Per-element gate diagnostics for offline tools (see the gate in rebuild_weights). @p rho2
-    /// is the squared correlation of the element with its reference, @p thresh the significance
-    /// bar it must clear, @p mag its MRC weight magnitude (0 = gated out).
-    void diag(int e, double& rho2, double& thresh, double& mag) const {
-        const double p = _p[(size_t)e], q = _q[(size_t)e];
-        const double n_eff = (_alpha > 0.0) ? (2.0 - _alpha) / _alpha : 1.0;
-        rho2 = (p > 0.0 && q > 0.0) ? std::norm(_u[(size_t)e]) / (p * q) : 0.0;
-        thresh = 9.0 / n_eff;
-        mag = std::abs(_w[(size_t)e]);
     }
 
     /// One record's cal update from the prompt row. @p dt_s is seconds since this PRN's previous

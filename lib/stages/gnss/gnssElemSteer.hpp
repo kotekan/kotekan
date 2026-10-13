@@ -25,7 +25,7 @@
  * within a post interval: a GPS satellite turns ~1.5e-4 rad/s, so the path difference across a
  * 44 m baseline moves ~7 mm/s, ~0.2 m (most of an L-band wavelength) in 30 s. So a post may
  * carry the az/el rates and the epoch they describe, and refresh() re-evaluates the table at
- * the record's own time, every rebuild_s, from the line-of-sight unit vector extrapolated
+ * the record's own time, every REBUILD_S, from the line-of-sight unit vector extrapolated
  * linearly (az/el themselves are not linear near zenith, where the az rate diverges; the
  * vector is).
  *
@@ -52,13 +52,10 @@ public:
     /// @param n_prn number of PRN slots.
     /// @param sign +1 or -1, the calibrated phase sign (see file note).
     /// @param hold_s how long a post's geometry stays valid, seconds.
-    /// @param rebuild_s how often a slot with rates is re-evaluated along its track, seconds;
-    ///        between rebuilds the path error grows at the path rate (~3.5 mm in 0.5 s at 7 mm/s).
     ElemSteer(std::vector<double> positions_enu, std::vector<double> freq_mhz, int n_prn,
-              double sign, double hold_s, double rebuild_s = 0.5) :
+              double sign, double hold_s) :
         _pos(std::move(positions_enu)), _f_mhz(std::move(freq_mhz)),
         _n_elem((int)(_pos.size() / 3)), _n_chan((int)_f_mhz.size()), _sign(sign), _hold_s(hold_s),
-        _rebuild_s(rebuild_s > 0.0 ? rebuild_s : 0.5),
         _tab((size_t)n_prn * _n_chan * _n_elem, cf(1.0f, 0.0f)), _fresh_t((size_t)n_prn, -1.0e18),
         _trk((size_t)n_prn) {}
 
@@ -118,13 +115,13 @@ public:
     }
 
     /// Re-evaluate one slot's table at record time @p t_utc if it carries rates and the table
-    /// is at least rebuild_s old. Extrapolation is capped at hold_s from the post's epoch:
+    /// is at least REBUILD_S old. Extrapolation is capped at hold_s from the post's epoch:
     /// beyond that warm() refuses the slot anyway. Cheap when nothing is due (a compare).
     void refresh(int slot, double t_utc) {
         if (!enabled() || slot < 0 || (size_t)slot >= _trk.size() || !(t_utc > 0.0))
             return;
         Track& k = _trk[(size_t)slot];
-        if (!k.moving || std::fabs(t_utc - k.built_utc) < _rebuild_s)
+        if (!k.moving || std::fabs(t_utc - k.built_utc) < REBUILD_S)
             return;
         const double dt = std::max(-_hold_s, std::min(_hold_s, t_utc - k.t0_utc));
         double e[3] = {k.e[0] + k.edot[0] * dt, k.e[1] + k.edot[1] * dt, k.e[2] + k.edot[2] * dt};
@@ -163,12 +160,11 @@ public:
         return true;
     }
 
-    /// The [n_elem] phasor row for (slot, channel). Valid only when warm().
-    const cf* row(int slot, int ch) const {
-        return &_tab[((size_t)slot * _n_chan + ch) * _n_elem];
-    }
-
 private:
+    /// How often a slot with rates is re-evaluated along its track, seconds; between rebuilds
+    /// the path error grows at the path rate (~3.5 mm in 0.5 s at 7 mm/s).
+    static constexpr double REBUILD_S = 0.5;
+
     /// One slot's posted direction and its rate: e(t) = e + edot * (t - t0_utc), renormalised.
     struct Track {
         double e[3] = {0.0, 0.0, 1.0};
@@ -199,7 +195,6 @@ private:
     int _n_chan = 0;
     double _sign = 1.0;
     double _hold_s = 120.0;
-    double _rebuild_s = 0.5;
     std::vector<cf> _tab;         // [n_prn][n_chan][n_elem]
     std::vector<double> _fresh_t; // [n_prn] last update, steady seconds
     std::vector<Track> _trk;      // [n_prn] posted direction + rate
