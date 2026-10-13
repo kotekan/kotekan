@@ -1025,10 +1025,8 @@ def _display_for(sigid):
     return (tag, col, sigid)
 
 
-# The three column groups, key -> display name. The keys are historical and GPS-centric; the
-# NAMES are what the instrument means by them and what every panel shows. Mirrored in
-# app/panels/gps_table.js and app/panels/decode_health.js -- rename in all three or not at all.
-BAND_LABEL = {"high": "High", "mid": "Mid", "low": "Low"}
+# The three column groups. The page shows them as High/Mid/Low (BAND_LABEL in
+# app/panels/gps_table.js and app/panels/decode_health.js).
 BAND_ORDER = ["high", "mid", "low"]
 
 
@@ -1182,7 +1180,6 @@ def discover_broker_chains(host, port, timeout=3.0):
                 "combiner": chain,
                 "search": chain if c.get("has_search") else None,
                 "t_rec": float(c.get("t_rec") or 1e-3),
-                "carrier_mhz": float(c.get("carrier_hz") or 0.0) / 1e6,
                 "peel": False,
             }
         )
@@ -1371,97 +1368,6 @@ def _gps_signal_capability():
         return {}
 
 
-# The physical front ends, for the unified page's RF selector (spectrum + waterfall + airspy
-# controls switch between them). ws_port = the per-band livebeam_server the browser opens for that
-# band's power stream; airspy = the ADC stage on the merged kotekan.
-#
-# STATIC FALLBACK ONLY: main() replaces this with discover_rf_bands() from the running /config, so
-# each front end is LABELLED BY ITS ACTUAL airspy tuning (not a hardcoded GPS band name -- the l2c
-# dongle now tunes 1207.14 for BeiDou B2b / Galileo E5b, not GPS L2C's 1227.6), and a suspended
-# band (absent airspy stage) drops out of the selector. Used only when /config is unreachable.
-# The prototype's three front ends. See the taxonomy note above BAND_CHAINS: these keys
-# are NOT the column groups (high/mid/low), and "l2c" has carried BeiDou B2b since the
-# dongle was repurposed. Superseded at runtime on CHORD -- discover_rf_bands() and the
-# broker-chain branch rebuild this list from what is actually on the sky.
-UNIFIED_RF_BANDS = [
-    {
-        "band": "l1",
-        "ws_port": 8539,
-        "airspy": "l1_airspy_in",
-        "label": "L1 · 1575.42 MHz",
-    },
-    {
-        "band": "l2c",
-        "ws_port": 8639,
-        "airspy": "l2c_airspy_in",
-        "label": "L2 · 1207.14 MHz",
-    },
-    {
-        "band": "l5",
-        "ws_port": 8739,
-        "airspy": "l5_airspy_in",
-        "label": "L5 · 1176.45 MHz",
-    },
-]
-_RF_WS_PORT = {"l1": 8539, "l2c": 8639, "l5": 8739}
-
-
-def discover_rf_bands(host, rest_port, timeout=3.0):
-    """Build the RF-band selector from the airspyInput stages in kotekan's /config: label each
-    front end by its ACTUAL airspy freq, and include only the front ends present (a suspended band
-    has no airspy stage -> drops out). Returns None on failure so main() keeps the static list."""
-    import urllib.request
-
-    if host in ("0.0.0.0", "", "::"):
-        host = "127.0.0.1"
-    try:
-        with urllib.request.urlopen(
-            "http://%s:%d/config" % (host, rest_port), timeout=timeout
-        ) as r:
-            cfg = json.load(r)
-    except Exception as e:  # noqa: BLE001
-        log_.warning(
-            "rf-band discovery: /config fetch failed (%s); using static table", e
-        )
-        return None
-    found = {}
-
-    def walk(node):
-        if isinstance(node, dict):
-            for name, v in node.items():
-                if isinstance(v, dict) and v.get("kotekan_stage") == "airspyInput":
-                    m = re.match(r"([a-z0-9]+)_airspy", name)
-                    if m and v.get("freq") is not None:
-                        try:
-                            found[m.group(1)] = (name, float(v["freq"]))
-                        except (TypeError, ValueError):
-                            pass
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    walk(cfg)
-    if not found:
-        return None
-    order = {"l1": 0, "l2c": 1, "l5": 2}
-    rows = []
-    for band, (name, freq_mhz) in sorted(
-        found.items(), key=lambda kv: order.get(kv[0], 9)
-    ):
-        region = _band_of(freq_mhz * 1e6)  # airspy freq is in MHz
-        rows.append(
-            {
-                "band": band,
-                "ws_port": _RF_WS_PORT.get(band, 8539),
-                "airspy": name,
-                "label": "%s · %.2f MHz" % (region, freq_mhz),
-            }
-        )
-    log_.info("rf-band discovery: %s", ", ".join(r["label"] for r in rows))
-    return rows
-
-
 class WsPortResource(resource.Resource):
     """``GET /wsport`` -> ``{"ws_port": N, "band": .., "chains": [..]}`` for THIS server.
 
@@ -1490,7 +1396,7 @@ class WsPortResource(resource.Resource):
         self.ws_port = ws_port
         self.band = band
         self.unified = unified
-        # UNIFIED: advertise the whole signal inventory + the RF-band selector. The client
+        # UNIFIED: advertise the whole signal inventory. The client
         # keys satellites by tag+prn across every band and polls every combiner here. `chains`
         # is still emitted (the sky legend + per-constellation colours read it), one entry per
         # CONSTELLATION rather than per band.
@@ -1499,50 +1405,11 @@ class WsPortResource(resource.Resource):
             # `signals` (a sub-table per constellation, a column per RF band), not from
             # `chains` -- so pointing the chain discovery at `chains` alone left the panel
             # rendering the static AIRSPY inventory while claiming to be unified. Feed the
-            # live chains in here too, and derive the band selector from the bands they
-            # actually occupy rather than from a list of front ends CHORD does not have.
+            # live chains in here too.
             if broker_chains:
                 self.signals = [dict(c) for c in broker_chains]
-                # ⚠️ THE GROUP KEY IS NOT A DISPLAY NAME. The keys are high/mid/low; the
-                # names shown are High/Mid/Low via BAND_LABEL, mirrored in
-                # app/panels/gps_table.js and app/panels/decode_health.js -- keep the three in
-                # step. This selector was the one place the raw key reached the page.
-                #
-                # And a group spans SEVERAL carriers, so naming it after one is wrong whichever
-                # one is picked: taking the first chain's made the Mid entry read
-                # "L2 · 1268.52 MHz" -- the L2 name against B3I's frequency, when L2C is
-                # 1227.60. Quote the span the group actually occupies.
-                _by_band = {}
-                for c in broker_chains:
-                    _by_band.setdefault(c["band"], []).append(
-                        c.get("carrier_mhz") or 0.0
-                    )
-                _bands = []
-                for _b in [x for x in BAND_ORDER if x in _by_band]:
-                    _f = sorted({round(v, 2) for v in _by_band[_b] if v})
-                    _span = (
-                        "%.2f MHz" % _f[0]
-                        if len(_f) == 1
-                        else "%.2f\u2013%.2f MHz" % (_f[0], _f[-1])
-                        if _f
-                        else ""
-                    )
-                    _bands.append(
-                        {
-                            "band": _b,
-                            "ws_port": ws_port,
-                            "airspy": None,
-                            "label": (
-                                "%s \u00b7 %s" % (BAND_LABEL.get(_b, _b), _span)
-                                if _span
-                                else BAND_LABEL.get(_b, _b)
-                            ),
-                        }
-                    )
-                self.rf_bands = _bands
             else:
                 self.signals = [dict(s) for s in UNIFIED_SIGNALS]
-                self.rf_bands = [dict(b) for b in UNIFIED_RF_BANDS]
             # Attach the transmitting-PRN list per signal so the table can say
             # "not transmitted" instead of "not detected". Computed once here (cheap: one
             # cached-file parse), empty when unavailable -> client keeps today's behaviour.
@@ -1603,7 +1470,6 @@ class WsPortResource(resource.Resource):
         if self.unified:
             reply["unified"] = True
             reply["signals"] = self.signals
-            reply["rf_bands"] = self.rf_bands
             reply["capability"] = self.capability  # {sigid: [transmitting PRNs]}
         return json.dumps(reply).encode("utf-8")
 
@@ -2299,9 +2165,8 @@ def main():
         help="UNIFIED viewer: one page, one row per satellite, every signal it "
         "carries (L1 C/A, L1C, L2C-CM, L2C-CL, L5, E1C/E5a, B1C/B2a) shown "
         "side by side, polling ALL band-prefixed combiners on the merged "
-        "kotekan. /wsport carries the full signal inventory (UNIFIED_SIGNALS) "
-        "and the RF-band selector list (UNIFIED_RF_BANDS). Without it, the "
-        "viewer serves its single --band as before.",
+        "kotekan. /wsport carries the full signal inventory (UNIFIED_SIGNALS). "
+        "Without it, the viewer serves its single --band as before.",
     )
     gg.add_argument(
         "--gps-airspy-stage",
@@ -2398,10 +2263,6 @@ def main():
                 "sys",
                 _SYS_TAG.get((_s.get("sigid") or "").split("_", 1)[0], _s.get("tag")),
             )
-        rf = discover_rf_bands(args.kotekan_host, args.kotekan_rest_port)
-        if rf:
-            global UNIFIED_RF_BANDS
-            UNIFIED_RF_BANDS = rf
 
     static_dir = os.path.dirname(os.path.abspath(__file__))
 

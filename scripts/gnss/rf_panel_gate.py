@@ -43,7 +43,7 @@ def make(doc):
     # Replace only the constructor: we want the real methods, not a real DOM.
     body = re.sub(
         r"constructor\(\{target, feed\}\) \{.*?\n    \}\n",
-        "constructor() { this._rf = new Map(); this._gnss = null; }\n",
+        "constructor() { this._gnss = null; }\n",
         body,
         count=1,
         flags=re.S,
@@ -55,14 +55,14 @@ def make(doc):
     return ctx.eval("P._gnss_block()")
 
 
-def make_rf(rf_health, gnss=None):
-    """Drive _render_rf (the airspy 'front end' strip) with a stubbed DOM el, return innerHTML."""
+def make_update(payload):
+    """Drive _update (the feed callback) with a stubbed DOM el, return innerHTML."""
     src = open(SRC).read()
     body = src[src.index("export class AirspyStatsPanel") :]
     body = body.replace("export class", "class", 1)
     body = re.sub(
         r"constructor\(\{target, feed\}\) \{.*?\n    \}\n",
-        "constructor() { this.el = {innerHTML:''}; this._rf = new Map(); this._gnss = null; }\n",
+        "constructor() { this.el = {innerHTML:''}; this._gnss = null; }\n",
         body,
         count=1,
         flags=re.S,
@@ -70,9 +70,7 @@ def make_rf(rf_health, gnss=None):
     ctx = quickjs.Context()
     ctx.eval(body)
     ctx.eval("var P = new AirspyStatsPanel();")
-    if gnss is not None:
-        ctx.eval("P._gnss = %s;" % json.dumps(gnss))
-    ctx.eval("P._render_rf(%s);" % json.dumps(rf_health))
+    ctx.eval("P._update(%s);" % json.dumps(payload))
     return ctx.eval("P.el.innerHTML")
 
 
@@ -394,44 +392,22 @@ def main():
     else:
         print("ok  drops -> amber, 80537 (browser adds commas) search-send drops shown")
 
-    # 11. CHORD rf_health (band labels, no ADC/valve) -> NO airspy 'front end' strip, but the
-    #     F-engine (GNSS) section still renders.
-    cx_rf = [
-        {"band": "l5", "label": "GPS L5 · 1176.45 MHz", "adc": {}, "valve": None},
-        {"band": "e5b", "label": "· 1207.14 MHz", "adc": {}, "valve": None},
-    ]
+    # 11. The feed callback paints the F-engine (GNSS) section and nothing else.
     gnss = {"t": 1.0, "instances": {"http://cx43:12048/gnss0_srch_tap": inst(TWO)}}
-    h = make_rf(cx_rf, gnss)
-    if "front end" in h or "valve" in h:
-        fails.append(
-            "empty airspy bands still rendered the front-end strip: %s" % h[:200]
-        )
+    h = make_update({"gnss_rf": gnss})
+    if "front end" in h or "valve" in h or "ADC" in h:
+        fails.append("the feed callback rendered an airspy strip: %s" % h[:200])
     elif "F-engine (GNSS)" not in h:
-        fails.append("dropping airspy bands also dropped the GNSS section")
+        fails.append("the feed callback dropped the GNSS section")
     else:
-        print("ok  CHORD empty bands -> no airspy strip, GNSS section kept")
-
-    # 12. A band WITH real airspy data still renders (airspy pages unaffected).
-    ap_rf = [
-        {
-            "band": "l5",
-            "label": "airspy L5",
-            "adc": {"samples_total": 1000, "samples_dropped": 0, "rms": 25},
-            "valve": {"dropped": 0, "passed": 1000},
-        }
-    ]
-    h = make_rf(ap_rf, None)
-    if "front end" not in h:
-        fails.append("a band with real ADC data lost its front-end strip")
-    else:
-        print("ok  airspy band with data -> front-end strip preserved")
+        print("ok  feed callback -> GNSS section only")
 
     print("-" * 70)
     if fails:
         for f in fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: 14 arms, run in QuickJS against the real panel source")
+    print("GATE GOOD: 13 arms, run in QuickJS against the real panel source")
     return 0
 
 

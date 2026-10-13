@@ -103,12 +103,11 @@ export class App {
             // Adopt this band's constellation legend/colours/t_rec (L2C, L5) before the socket
             // opens; the GPS feed re-renders on the next tick. Missing (older server) -> L1 keeps.
             if (cfg && cfg.chains) configure_chains(cfg.chains);
-            // Unified viewer: the full signal inventory + RF-band selector list. Sets the feed
-            // to poll every band's combiner and the table to render one column per signal.
+            // Unified viewer: the full signal inventory. Sets the feed to poll every band's
+            // combiner and the table to render one column per signal.
             if (cfg && cfg.unified && cfg.signals) {
-                configure_signals(cfg.signals, cfg.rf_bands, cfg.capability);
+                configure_signals(cfg.signals, cfg.capability);
                 this.gps_unified = true;
-                this.rf_bands = cfg.rf_bands || null;
             }
             // Band tag ("l1"|"l2c"|"l5") -- the history panel keys its ICD C/N0
             // baseline off this + the selected sat's constellation letter.
@@ -199,10 +198,6 @@ export class App {
             airspy_stages: k.airspy_stages || ["airspy_input"],
             lag_align_stage: k.lag_align_stage || null,
         });
-        // Learn the pipeline's registered stage names so gps_* resolves against configs
-        // that still use the bare search/track/combiner spelling (and vice versa).
-        this.kotekan.loadStages();
-
         // GPS-only mode (lean live config, no power stream): there's no
         // waterfall/spectrum to build. ONE shared GpsFeed polls kotekan REST +
         // /gps_sky; the skyplot and the detections table are separate resizable
@@ -212,7 +207,6 @@ export class App {
             const feed = new GpsFeed({
                 app: this,
                 search_stage: g.search_stage, combiner_stage: g.combiner_stage,
-                airspy_stage: g.airspy_stage,
             });
             this.layout.addWidget({mount_id: "gps_sky_card", title: "GNSS Sky",
                                    x: 0, y: 0, w: 5, h: 8, min_w: 3, min_h: 4});
@@ -229,9 +223,8 @@ export class App {
             this.panels.push(new GpsAmpHistoryPanel({
                 app: this, target: "gps_amp_card", feed,
             }));
-            // Stream health, END TO END: ADC rms / rail% / USB drop rate from the adcstat
-            // the feed already polls, plus this band's Valve drop counters (the pipeline's
-            // own silent data loss). No extra kotekan load -- the feed fetches both.
+            // Stream health: the F-engine front end (rail, power, RFI, drops) from the
+            // broker's get_rf, which the feed already polls.
             this.layout.addWidget({mount_id: "airspy_stats_card", title: "Stream health",
                                    x: 0, y: 13, w: 12, h: 2, min_w: 4, min_h: 2});
             this.panels.push(new AirspyStatsPanel({target: "airspy_stats_card", feed}));
@@ -402,7 +395,6 @@ export class App {
             const feed = new GpsFeed({
                 app: this,
                 search_stage: g.search_stage, combiner_stage: g.combiner_stage,
-                airspy_stage: g.airspy_stage,
             });
             this.layout.addWidget({mount_id: "gps_sky_card", title: "GNSS Sky",
                                    x: 0, y: 18, w: 5, h: 9, min_w: 3, min_h: 4});

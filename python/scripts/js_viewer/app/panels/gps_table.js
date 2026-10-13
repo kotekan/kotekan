@@ -280,10 +280,10 @@ export class GpsTablePanel {
         return this._render_flat(d);
     }
 
-    // Which rows to show + the status line's sky/site/ADC summary + the constellation chips.
+    // Which rows to show + the status line's sky/site summary + the constellation chips.
     // Shared by both renderers (the flat per-band table and the unified matrix).
     _prep(d) {
-        const {sats, sky, adc, vis, chains} = d;
+        const {sats, sky, vis, chains} = d;
         const sky_ok = !!(sky && sky.ok);
         const below = r => sky_ok && r.active && (r.el == null || r.el < 0);
         const shown = sats.filter(r => vis[r.tag]
@@ -296,7 +296,6 @@ export class GpsTablePanel {
         else if (sky && sky.ok) sky_state = "ok";
         else if (sky && sky.computing) sky_state = "loading…";
         else sky_state = sky && sky.error ? "unavailable" : "—";
-        const rms = adc && adc.rms != null ? adc.rms.toFixed(0) : "—";
         const site = (sky && sky.lat != null)
             ? `${sky.lat.toFixed(3)}, ${sky.lon.toFixed(3)}` : "—";
         const chips = chains.map(c => {
@@ -310,7 +309,7 @@ export class GpsTablePanel {
                 + (on ? "" : "text-decoration:line-through;")
                 + `">${c.tag}</span>`;
         }).join("");
-        return {shown, locked, visible, sky_state, rms, site, chips};
+        return {shown, locked, visible, sky_state, site, chips};
     }
 
     _bind_chips() {
@@ -328,7 +327,7 @@ export class GpsTablePanel {
     // default). Sorting sorts WITHIN each section (section order stays GPS→Gal→BeiDou); a band-slot
     // column sorts every section by the signal it holds in that slot (its High pilot, etc.).
     _render_unified(d) {
-        const {shown, locked, visible, sky_state, rms, site, chips} = this._prep(d);
+        const {shown, locked, visible, sky_state, site, chips} = this._prep(d);
         const M = METRICS[this.metric] || METRICS.cn0;
         const CONSTS = consts_of(d);        // live inventory; shadows the static fallback
 
@@ -365,7 +364,7 @@ export class GpsTablePanel {
         this._status.html(
             chips + `&nbsp;<b>${locked.length}</b> locked / <b>${visible}</b> up`
             + `&nbsp; · &nbsp;cell: ${mbtn}<span style="color:#8a929b;">(${M.unit})</span>`
-            + `&nbsp; · &nbsp;sky ${sky_state} · site ${site} · ADC ${rms}`);
+            + `&nbsp; · &nbsp;sky ${sky_state} · site ${site}`);
         this._bind_chips();
         this._status.find(".gps-metric").on("click", (ev) => {
             this.metric = ev.currentTarget.dataset.m;

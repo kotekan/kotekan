@@ -2,7 +2,6 @@
 //   * /gps_sky                 (viewer server)  -> {prn, az, el, const} positions
 //   * <search>/get_detections  (kotekan REST)   -> acquired PRNs + search SNR
 //   * <combiner>/get_status    (kotekan REST)   -> per-PRN amplitudes / deep / dop / coh
-//   * <airspy>/adcstat         (kotekan REST)   -> ADC rms
 // per constellation chain, keyed "G12"/"E25"/"C19". Panels subscribe with
 // feed.on(cb) and re-render on every merged tick; per-constellation visibility
 // toggles live here too (persisted), so the sky and the table always agree.
@@ -47,11 +46,10 @@ export function configure_chains(defs) {
 // UNIFIED viewer (2026-07-28): one row per satellite, every signal it carries side by side.
 // SIGNALS is the full inventory from the server's /wsport (UNIFIED_SIGNALS): each entry is one
 // signal {tag, band ("high"/"mid"/"low"), col, name, combiner (absolute stage), search|null,
-// t_rec, peel}. null = per-band mode (the historical path). RF_BANDS drives the spectrum
-// selector. The feed keys satellites by tag+prn ACROSS bands and hangs each signal's metrics
-// off r.sig_by[combiner]; the table renders one column per signal.
+// t_rec, peel}. null = per-band mode (the historical path). The feed keys satellites by
+// tag+prn ACROSS bands and hangs each signal's metrics off r.sig_by[combiner]; the table
+// renders one column per signal.
 export let SIGNALS = null;
-export let RF_BANDS = null;
 // CAPABILITY: signal key -> Set of PRNs whose satellite BLOCK actually broadcasts it (server
 // side, from the cached Celestrak block names). Lets the table separate "this satellite does
 // not transmit that signal" from "it does and we are not seeing it" -- a Block IIR sat blank
@@ -63,10 +61,9 @@ export let CAPABILITY = null;
 /// not_transmitted(). The server sends it as caps._prns; without it we fall back to the
 /// union of the per-signal sets, which is the same thing whenever any signal is unfiltered.
 export let CAPABILITY_PRNS = null;
-export function configure_signals(sigs, rf, caps) {
+export function configure_signals(sigs, caps) {
     if (!Array.isArray(sigs) || !sigs.length) { SIGNALS = null; return; }
     SIGNALS = sigs.map(s => Object.assign({key: s.combiner}, s));
-    RF_BANDS = Array.isArray(rf) && rf.length ? rf : null;
     CAPABILITY = null;
     CAPABILITY_PRNS = null;
     if (caps && typeof caps === "object") {
@@ -294,9 +291,8 @@ export function beam_summary(row) {
 }
 
 export class GpsFeed {
-    constructor({app, search_stage, combiner_stage, airspy_stage}) {
+    constructor({app, search_stage, combiner_stage}) {
         this.app = app;
-        this.airspy_stage = airspy_stage || "airspy_in";
         this._search_stage = search_stage;
         this._combiner_stage = combiner_stage;
         this._listeners = [];
@@ -403,48 +399,16 @@ export class GpsFeed {
         // means the broker predates it, or the node-side monitor is not armed.
         const rfP = units.length
             ? jget(k.stageGet(units[0].combiner, "get_rf")) : Promise.resolve(null);
-        // Stream health, unified: watch all three front ends but poll ONE airspy's /adcstat
-        // per tick, ROUND-ROBIN -- NOT all three concurrently. /adcstat runs on restServer's
-        // single libevent thread with a bounded cv.wait (THE WEDGE, 5988f657); three
-        // concurrent adcstat waits every tick tripled this viewer's REST-thread load over any
-        // per-band viewer and is a plausible aggravator of the silent-kill (2026-07-28). The
-        // valve counters -- the important silent-loss signal -- ride the single /metrics call
-        // (all bands, no per-airspy blocking) and stay fresh every tick; only ADC rms/rail/USB
-        // refreshes round-robin (~4.5 s per band, plenty for a health strip).
-        let adcStage, adcBand = null;
-        if (this.unified && RF_BANDS) {
-            this._rr = ((this._rr || 0) + 1) % RF_BANDS.length;
-            adcStage = RF_BANDS[this._rr].airspy;
-            adcBand = RF_BANDS[this._rr].band;
-        } else {
-            adcStage = this.airspy_stage;
-        }
         Promise.all([
             fetch("/gps_sky").then(r => r.ok ? r.json() : null).catch(() => null),
-            // No airspy stage -> no ADC health to poll. CHORD's front end is the F-engine,
-            // which exposes none of this; skip rather than fabricate a request.
-            adcStage ? jget(k.stageGet(adcStage, "adcstat")) : Promise.resolve(null),
-            k.metrics(),
             rfP,
             ...per_unit,
-        ]).then(([sky, adc, metrics, gnss_rf, ...res]) => {
+        ]).then(([sky, gnss_rf, ...res]) => {
             this._inflight = false;
             // Hold the last good value per feed: one slow/failed poll must not
             // blank every |A| for a frame (that would look like a mass drop).
             const last = this._last;
             if (sky) last.sky = sky;
-            if (adc) last.adc = adc;                   // primary (single-band consumers)
-            if (this.unified && RF_BANDS) {
-                // Keep the freshest ADC per band; rebuild rf_health from those + fresh valves.
-                this._adc_by_band = this._adc_by_band || {};
-                if (adc && adcBand) this._adc_by_band[adcBand] = adc;
-                if (metrics)
-                    last.rf_health = RF_BANDS.map(b => ({
-                        band: b.band, label: b.label,
-                        adc: this._adc_by_band[b.band] || null,
-                        valve: this._valve_for(metrics, b.airspy)}));
-            }
-            if (metrics) last.valve = this._valve_for(metrics, this.airspy_stage);
             // Hold the last good RF document. An empty instances map is a broker that has
             // not polled yet and must NOT evict a good one -- the same rule as `elem` below.
             if (gnss_rf && gnss_rf.instances
@@ -463,33 +427,6 @@ export class GpsFeed {
             });
             this._emit();
         });
-    }
-
-    // THIS BAND'S Valve counters out of the pipeline-wide metrics dump.
-    //
-    // The Valve drops a frame whenever its output buffer is full -- i.e. whenever the GPU
-    // chain misses real time -- and that loss is otherwise INVISIBLE to every downstream
-    // observable: the frame simply never arrives, sample_seq jumps, and the tracker's ring
-    // zero-fills the gap. It reads as signal that decohered, not as data that was lost.
-    // (That mis-read cost 2026-07-27: the L5 peel looked like broken add-back arithmetic
-    // for a day, and was really this.) The counter is the only honest witness, so the
-    // viewer carries it beside the ADC's own drop counters.
-    //
-    // Band selection: a merged multi-band instance prefixes every stage, so our valve wears
-    // the same prefix as our airspy stage ("l5_airspy_in" -> "/l5_valve"). A single-band
-    // pipeline has no prefix and exactly one valve, so fall back to the only one present.
-    _valve_for(metrics, airspy_stage) {
-        const drop = metrics["kotekan_valve_dropped_frames_total"];
-        if (!drop) return null;
-        const pass = metrics["kotekan_valve_passed_frames_total"] || {};
-        const prefix = String(airspy_stage).replace(/airspy_in$/, "");
-        const names = Object.keys(drop);
-        let key = names.find(n => n === `/${prefix}valve` || n === `${prefix}valve`);
-        if (!key && names.length === 1) key = names[0];
-        if (!key) return null;
-        // passed is absent on kotekan builds before 2026-07-27 -> rate only, no fraction.
-        return {stage: key, dropped: drop[key],
-                passed: pass[key] != null ? pass[key] : null};
     }
 
     // Merge into one list keyed "G12"/"E25"/"C19". Sky positions + (per-band) one metric set
@@ -667,10 +604,9 @@ export class GpsFeed {
     _emit() {
         const payload = {
             sats: this._merge(),
-            sky: this._last.sky, adc: this._last.adc, valve: this._last.valve,
+            sky: this._last.sky,
             vis: this.vis, chains: this.chains,
             unified: this.unified, signals: this.signals,
-            rf_health: this._last.rf_health || null,
             gnss_rf: this._last.gnss_rf || null,      // #8: F-engine clip + per-band power
         };
         for (const cb of this._listeners) {
