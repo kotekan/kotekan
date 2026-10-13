@@ -326,39 +326,26 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         // is in samples so the division is exact integer arithmetic, and every instance must be
         // given the same value (the generator derives it). A record is assigned whole by its
         // wstart; a length that is a whole number of records keeps the per-window count constant.
-        _spec_win_samples =
-            (int64_t)config.get_default<double>(unique_name, "spectrum_window_samples", 0.0);
-        const int depth = config.get_default<int>(unique_name, "spectrum_ring_depth", 8);
-        if (_spec_win_samples > 0) {
-            _spec_ring.resize((size_t)std::max(2, depth));
-            for (auto& w : _spec_ring) {
-                w.re.assign((size_t)n * nc, 0.0);
-                w.im.assign((size_t)n * nc, 0.0);
-                w.energy.assign((size_t)n * nc, 0.0);
-                w.nrec.assign(n, 0);
-                w.phi0.assign(n, 0.0);
-                w.nreanchor.assign(n, 0);
-            }
-            INFO("per-channel spectrum export ON: {:d} channels, freq_id {:d}..{:d}; "
-                 "ADDRESSABLE windows of {:d} samples ({:.3f} s), ring depth {:d}",
-                 (int)nc, _spec_freq_ids.front(), _spec_freq_ids.back(),
-                 (long long)_spec_win_samples, (double)_spec_win_samples / _sample_rate,
-                 (int)_spec_ring.size());
-        } else {
-            // Without spectrum_window_samples: one open accumulator, reset on read. It cannot be
-            // aligned across instances, so the reply says addressable: false.
-            _spec_ring.resize(1);
-            _spec_ring[0].re.assign((size_t)n * nc, 0.0);
-            _spec_ring[0].im.assign((size_t)n * nc, 0.0);
-            _spec_ring[0].energy.assign((size_t)n * nc, 0.0);
-            _spec_ring[0].nrec.assign(n, 0);
-            _spec_ring[0].phi0.assign(n, 0.0);
-            _spec_ring[0].nreanchor.assign(n, 0);
-            WARN("per-channel spectrum export ON: {:d} channels -- but LEGACY reset-on-read "
-                 "windows (no 'spectrum_window_samples' in this config). Instances CANNOT be "
-                 "aligned; regenerate this node's config (task #53).",
-                 (int)nc);
+        _spec_win_samples = (int64_t)config.get<double>(unique_name, "spectrum_window_samples");
+        if (_spec_win_samples <= 0) {
+            FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: spectrum_window_samples {:d} must be > 0",
+                        unique_name, (long long)_spec_win_samples);
+            return;
         }
+        const int depth = config.get_default<int>(unique_name, "spectrum_ring_depth", 8);
+        _spec_ring.resize((size_t)std::max(2, depth));
+        for (auto& w : _spec_ring) {
+            w.re.assign((size_t)n * nc, 0.0);
+            w.im.assign((size_t)n * nc, 0.0);
+            w.energy.assign((size_t)n * nc, 0.0);
+            w.nrec.assign(n, 0);
+            w.phi0.assign(n, 0.0);
+            w.nreanchor.assign(n, 0);
+        }
+        INFO("per-channel spectrum export ON: {:d} channels, freq_id {:d}..{:d}; "
+             "ADDRESSABLE windows of {:d} samples ({:.3f} s), ring depth {:d}",
+             (int)nc, _spec_freq_ids.front(), _spec_freq_ids.back(), (long long)_spec_win_samples,
+             (double)_spec_win_samples / _sample_rate, (int)_spec_ring.size());
         _spec_scratch.assign((size_t)std::max(1, _n_elements), {0.0, 0.0});
     }
 
@@ -603,8 +590,7 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
         _wstart_prev[(size_t)p] = 0;
         // The spectrum ring accumulates per slot: clear this slot in every window, or one
         // straddling the swap sums two satellites into one row. nrec = 0 makes the row read as
-        // absent rather than as a quiet satellite. The reset-on-read accumulator (idx -1) is
-        // skipped.
+        // absent rather than as a quiet satellite.
         {
             std::lock_guard<std::mutex> lk(_spec_mtx);
             for (auto& W : _spec_ring) {
@@ -1321,8 +1307,6 @@ void GnssGpuRecordAssemble::main_thread() {
 
 GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_t wstart) {
     // Caller holds _spec_mtx.
-    if (_spec_win_samples <= 0)
-        return _spec_ring[0]; // legacy single accumulator: one open window, reset on read
     // Floor division, not C's truncation toward zero, so even a negative wstart lands every
     // instance in the same window.
     int64_t idx = wstart / _spec_win_samples;
@@ -1531,7 +1515,6 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
         return;
     }
     const size_t nc = _spec_freq_ids.size();
-    const bool legacy = (_spec_win_samples <= 0);
 
     // A window is complete once a later one has opened: there is no end-of-window event.
     bool want_specific = false;
@@ -1555,53 +1538,34 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     const char* status = "ok";
     {
         std::lock_guard<std::mutex> lk(_spec_mtx);
-        if (legacy) {
-            // Without spectrum_window_samples: reset on read. n_reanchor is not reset, so it
-            // counts from start-up; phi0 is re-taken at the next record because nrec is reset.
-            SpecWindow& W = _spec_ring[0];
-            re.swap(W.re);
-            im.swap(W.im);
-            en.swap(W.energy);
-            nrec.swap(W.nrec);
-            phi0 = W.phi0;
-            nre = W.nreanchor;
-            w0 = W.w0;
-            w1 = W.w1;
-            W.re.assign((size_t)_prns.size() * nc, 0.0);
-            W.im.assign((size_t)_prns.size() * nc, 0.0);
-            W.energy.assign((size_t)_prns.size() * nc, 0.0);
-            W.nrec.assign(_prns.size(), 0);
-            W.w0 = W.w1 = -1;
+        hi = _spec_max_idx - 1; // newest complete
+        for (const auto& W : _spec_ring)
+            if (W.idx >= 0 && W.idx <= hi && (lo < 0 || W.idx < lo))
+                lo = W.idx;
+        idx = want_specific ? want : hi;
+        if (_spec_max_idx < 0 || hi < 0 || lo < 0) {
+            status = "not_yet"; // nothing has completed since start-up
+        } else if (idx > hi) {
+            status = "not_yet";
+        } else if (idx < lo) {
+            status = "too_old";
         } else {
-            hi = _spec_max_idx - 1; // newest complete
-            for (const auto& W : _spec_ring)
-                if (W.idx >= 0 && W.idx <= hi && (lo < 0 || W.idx < lo))
-                    lo = W.idx;
-            idx = want_specific ? want : hi;
-            if (_spec_max_idx < 0 || hi < 0 || lo < 0) {
-                status = "not_yet"; // nothing has completed since start-up
-            } else if (idx > hi) {
-                status = "not_yet";
-            } else if (idx < lo) {
+            const SpecWindow& W = _spec_ring[(
+                size_t)(((idx % (int64_t)_spec_ring.size()) + (int64_t)_spec_ring.size())
+                        % (int64_t)_spec_ring.size())];
+            if (W.idx != idx) {
+                // In range but the slot holds another index: no records landed in that
+                // window. Report too_old rather than an empty window.
                 status = "too_old";
             } else {
-                const SpecWindow& W = _spec_ring[(
-                    size_t)(((idx % (int64_t)_spec_ring.size()) + (int64_t)_spec_ring.size())
-                            % (int64_t)_spec_ring.size())];
-                if (W.idx != idx) {
-                    // In range but the slot holds another index: no records landed in that
-                    // window. Report too_old rather than an empty window.
-                    status = "too_old";
-                } else {
-                    re = W.re;
-                    im = W.im;
-                    en = W.energy;
-                    nrec = W.nrec;
-                    phi0 = W.phi0;
-                    nre = W.nreanchor;
-                    w0 = W.w0;
-                    w1 = W.w1;
-                }
+                re = W.re;
+                im = W.im;
+                en = W.energy;
+                nrec = W.nrec;
+                phi0 = W.phi0;
+                nre = W.nreanchor;
+                w0 = W.w0;
+                w1 = W.w1;
             }
         }
     }
@@ -1610,7 +1574,7 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
     reply["freq_ids"] = _spec_freq_ids;
     reply["sample_rate"] = _sample_rate;
     reply["status"] = status;
-    reply["addressable"] = !legacy; // false: reset-on-read windows, not aligned across instances
+    reply["addressable"] = true; // the broker's aligned spectrum gather requires it
     reply["window_samples"] = (double)_spec_win_samples;
     reply["window"] = idx;
     reply["available"] = nlohmann::json::array({lo, hi});
@@ -1637,8 +1601,8 @@ void GnssGpuRecordAssemble::spectrum_callback(kotekan::connectionInstance& conn)
         }
         prns.push_back({{"prn", _prns[p]},
                         {"n_rec", nrec[p]},
-                        {"phi0", phi0.empty() ? 0.0 : phi0[p]},
-                        {"n_reanchor", nre.empty() ? 0 : nre[p]},
+                        {"phi0", phi0[p]},
+                        {"n_reanchor", nre[p]},
                         {"chan", chans}});
     }
     reply["prns"] = prns;

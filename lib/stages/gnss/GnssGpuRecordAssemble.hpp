@@ -207,14 +207,13 @@ private:
     /// one phase per record, so it stops the residual carrier winding the sum without touching
     /// the cross-channel phases. Needs `channel_ids`. The window index is floor(wstart /
     /// _spec_win_samples) on the F-engine sample clock, so every instance puts a record in the
-    /// same window; a ring keeps recent windows and reads reset nothing. With
-    /// spectrum_window_samples unset there is one accumulator, reset on read.
+    /// same window; a ring keeps recent windows and reads reset nothing.
     ///
     /// Comb export (gnssRecord.hpp's chan block): the same per-channel prompt, with early and
     /// late, written per record for fits across records. Off by default; needs channel_ids.
     bool _chan_export = false;
     std::vector<int> _spec_freq_ids; ///< [n_chan] F-engine freq_id per channel
-    int64_t _spec_win_samples = 0;   ///< window length, samples (0 = reset-on-read mode)
+    int64_t _spec_win_samples = 0;   ///< window length, samples
     /// One accumulated window. Window i lives in _spec_ring[i mod depth] until the ring wraps
     /// past it; the slot's own `idx` says which window it holds.
     struct SpecWindow {
@@ -305,8 +304,8 @@ private:
     /// The ring slot for the window owning `wstart`, cleared when a new window takes it.
     /// Opening a later window completes the previous newest one, which is pushed to cube_buf.
     CubeWindow& cube_window_for(int64_t wstart);
-    /// The ring slot for the window owning `wstart`, cleared when a new window takes it; with
-    /// spectrum_window_samples unset, the single accumulator. Caller holds _spec_mtx.
+    /// The ring slot for the window owning `wstart`, cleared when a new window takes it. Caller
+    /// holds _spec_mtx.
     SpecWindow& spec_window_for(int64_t wstart);
     void spectrum_callback(kotekan::connectionInstance& conn);
     void set_elem_gain_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
