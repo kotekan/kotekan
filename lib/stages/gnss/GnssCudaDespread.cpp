@@ -272,7 +272,8 @@ struct GnssCudaDespread::Impl {
     // is ordered on `st`, after any earlier kernel there that reads this bucket. `pinned` copies
     // through a staging slot and never waits for `st`; without it the copy is from pageable
     // memory, which first waits for `st` to drain, so only a caller whose stream is otherwise
-    // idle passes false.
+    // idle passes false. Unpinned tables go up as float2, so `pinned` is required under use_fp16
+    // (despread_batch, the only unpinned caller, refuses fp16 first).
     PhiCache& ensure_phi(int p, double doppler, cudaStream_t st, bool pinned) {
         PhiCache& pc = phi[(size_t)p];
         if (pc.valid && std::fabs(doppler - pc.doppler) <= refresh_hz)
@@ -301,7 +302,6 @@ struct GnssCudaDespread::Impl {
         const size_t bytes = n * esz;
         const void* srcA = hA;
         const void* srcB = hB;
-        std::vector<unsigned> sA, sB; // 4 B per __half2
         Staging* sg = nullptr;
         if (pinned) {
             {
@@ -320,13 +320,6 @@ struct GnssCudaDespread::Impl {
             }
             srcA = sg->host;
             srcB = sg->host + bytes;
-        } else if (use_fp16) {
-            sA.resize(n);
-            sB.resize(n);
-            pairs_to_half(hA, sA.data(), n);
-            pairs_to_half(hB, sB.data(), n);
-            srcA = sA.data();
-            srcB = sB.data();
         }
         ck(cudaMemcpyAsync(pc.d_A, srcA, bytes, cudaMemcpyHostToDevice, st), "PhiA up");
         ck(cudaMemcpyAsync(pc.d_B, srcB, bytes, cudaMemcpyHostToDevice, st), "PhiB up");
@@ -350,6 +343,54 @@ struct GnssCudaDespread::Impl {
             }
         }
         return pc;
+    }
+
+    // Build the per-PRN jobs for `specs` against the window starting at window_start, building
+    // any Phi bucket that needs it on `st` (`pinned` as for ensure_phi), and upload them to
+    // d_jobs_slot on `st`. Every Spec-taking call builds its jobs here, so their replicas cannot
+    // differ. h_jobs staging is pageable, so the async H2D below is host-synchronous on return
+    // and the buffer is safely reusable per call.
+    void upload_jobs(const std::vector<Spec>& specs, void* d_jobs_slot, long long window_start,
+                     cudaStream_t st, bool pinned) {
+        for (size_t i = 0; i < specs.size(); ++i) {
+            const Spec& sp = specs[i];
+            auto& pc = ensure_phi(sp.p, sp.doppler_hz, st, pinned);
+            const double cps = bank.eff_chip_rate() / fs
+                               * (1.0 + bank.code_doppler_sign * sp.doppler_hz / bank.carrier_hz());
+            // The carrier trim enters wc and ang0 only (see wc_for).
+            const double wc = wc_for(sp.p, sp.doppler_hz, sp.ctrim_hz);
+            uint64_t mask = 0;
+            for (int c : sp.covering)
+                if (c >= 0 && c < n_chan)
+                    mask |= (1ULL << c);
+            const double cp0 = (double)bank.comb_mult() * sp.cp_seed;
+
+            // Output row 3 = P_HEAD: the prompt up to the code-period boundary (m_head_for).
+            const int m_head = m_head_for(cp0, cps, window_start);
+
+            h_jobs[i] = {
+                (double)bank.comb_mult() * sp.spacing_chips,
+                cp_ref_for(cp0, cps, window_start + bank.fft_len() - 1),
+                cps,
+                1.0 / cps,
+                wc,
+                ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz, window_start + bank.fft_len() - 1),
+                code_offset[(size_t)sp.p],
+                (int)code_len,
+                mask,
+                pc.d_A,
+                pc.d_B,
+                pc.n_chips,
+                m_head,
+                pc.d_first};
+            // Record what the kernel is given, read back from the job (see last_ang0).
+            last_ang0[(size_t)sp.p] = h_jobs[i].ang0;
+            last_phi_ddop[(size_t)sp.p] = sp.doppler_hz - pc.doppler;
+        }
+        ck(cudaMemcpyAsync(d_jobs_slot, h_jobs.data(),
+                           specs.size() * sizeof(gnss_cuda::DespreadJob), cudaMemcpyHostToDevice,
+                           st),
+           "jobs upload");
     }
 };
 
@@ -471,39 +512,10 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     const int n_spec = (int)specs.size();
     const int n_out = 4 * n_spec; // the kernel always emits the full quad
 
-    // One quad job per spec, as build_jobs builds them but with m_head = 0: this path returns
-    // the plain E/P/L triple, so the head row comes back all-zero and is dropped below.
-    for (size_t i = 0; i < specs.size(); ++i) {
-        const Spec& sp = specs[i];
-        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz, im.stream, false);
-        const double cps =
-            im.bank.eff_chip_rate() / im.fs
-            * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
-        // The carrier trim enters wc and ang0 only (see wc_for).
-        const double wc = im.wc_for(sp.p, sp.doppler_hz, sp.ctrim_hz);
-        uint64_t mask = 0;
-        for (int c : sp.covering)
-            if (c >= 0 && c < im.n_chan)
-                mask |= (1ULL << c);
-        const double cp0_i = (double)im.bank.comb_mult() * sp.cp_seed;
-        im.h_jobs[i] = {
-            (double)im.bank.comb_mult() * sp.spacing_chips,
-            // cp_ref and ang0 at par.n0, the hop's last sample.
-            im.cp_ref_for(cp0_i, cps, im.window_start + im.bank.fft_len() - 1), cps, 1.0 / cps, wc,
-            im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz, im.window_start + im.bank.fft_len() - 1),
-            im.code_offset[(size_t)sp.p], (int)im.code_len, mask, pc.d_A, pc.d_B, pc.n_chips, 0,
-            pc.d_first};
-        // Record what the kernel is given, read back from the job (see Impl::last_ang0).
-        im.last_ang0[(size_t)sp.p] = im.h_jobs[i].ang0;
-        im.last_phi_ddop[(size_t)sp.p] =
-            pc.valid ? (sp.doppler_hz - pc.doppler) : std::numeric_limits<double>::quiet_NaN();
-    }
-    ck(cudaMemcpyAsync(im.d_jobs, im.h_jobs.data(), (size_t)n_spec * sizeof(gnss_cuda::DespreadJob),
-                       cudaMemcpyHostToDevice, im.stream),
-       "jobs upload");
+    // This engine's stream is idle between batches, so the Phi uploads need no staging.
+    im.upload_jobs(specs, im.d_jobs, im.window_start, im.stream, false);
 
     gnss_cuda::DespreadParams par;
-    par.phi_half = im.use_fp16 ? 1 : 0;               // __half2 gather (waveform kernels only)
     par.n0 = im.window_start + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
@@ -536,56 +548,9 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     return out;
 }
 
-// Every enqueue_* call that takes Specs builds its jobs here, so their replicas cannot differ;
-// despread_batch builds the same jobs inline with m_head = 0.
 void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_slot,
                                   long long window_start_sample, void* stream) {
-    Impl& im = *_impl;
-    const int n_spec = (int)specs.size();
-    const cudaStream_t st = (cudaStream_t)stream;
-
-    // h_jobs staging is pageable, so the async H2D below is host-synchronous on return and the
-    // buffer is safely reusable per call.
-    for (size_t i = 0; i < specs.size(); ++i) {
-        const Spec& sp = specs[i];
-        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz, st, true);
-        const double cps =
-            im.bank.eff_chip_rate() / im.fs
-            * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
-        // The carrier trim enters wc and ang0 only (see wc_for).
-        const double wc = im.wc_for(sp.p, sp.doppler_hz, sp.ctrim_hz);
-        uint64_t mask = 0;
-        for (int c : sp.covering)
-            if (c >= 0 && c < im.n_chan)
-                mask |= (1ULL << c);
-        const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
-
-        // Output row 3 = P_HEAD: the prompt up to the code-period boundary (Impl::m_head_for).
-        const int m_head = im.m_head_for(cp0, cps, window_start_sample);
-
-        im.h_jobs[i] = {(double)im.bank.comb_mult() * sp.spacing_chips,
-                        im.cp_ref_for(cp0, cps, window_start_sample + im.bank.fft_len() - 1),
-                        cps,
-                        1.0 / cps,
-                        wc,
-                        im.ang0_for(sp.p, sp.doppler_hz, sp.ctrim_hz,
-                                    window_start_sample + im.bank.fft_len() - 1),
-                        im.code_offset[(size_t)sp.p],
-                        (int)im.code_len,
-                        mask,
-                        pc.d_A,
-                        pc.d_B,
-                        pc.n_chips,
-                        m_head,
-                        pc.d_first};
-        // Record what the kernel is given, read back from the job (see Impl::last_ang0).
-        im.last_ang0[(size_t)sp.p] = im.h_jobs[i].ang0;
-        im.last_phi_ddop[(size_t)sp.p] =
-            pc.valid ? (sp.doppler_hz - pc.doppler) : std::numeric_limits<double>::quiet_NaN();
-    }
-    ck(cudaMemcpyAsync(d_jobs_slot, im.h_jobs.data(),
-                       (size_t)n_spec * sizeof(gnss_cuda::DespreadJob), cudaMemcpyHostToDevice, st),
-       "jobs upload (device batch)");
+    _impl->upload_jobs(specs, d_jobs_slot, window_start_sample, (cudaStream_t)stream, true);
 }
 
 int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_scale,
