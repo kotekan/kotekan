@@ -94,17 +94,14 @@ common:
   # ── SYNTHESIS ~4x (GPU TODO items 3+6, ARMED FLEET-WIDE 2026-08-31) ─────────────────────
   # fp16 Phi tables (item 3): halves the RESIDENT table -- the one lever the DRAM-footprint
   # verdict (gnss_gpu_search.md 10.6c) says pays. 1.55x through the SHIPPED enqueue_waveform
-  # (scripts/gnss/phi16gpu ALL PASS: wave rel 1.1e-3 vs the 3.3e-4 storage floor; the
-  # raw-float2 paths THROW while armed rather than despread garbage). Always on in the generator.
+  # (phi16gpu, removed after be7d46e8e, ALL PASS: wave rel 1.1e-3 vs the 3.3e-4 storage floor).
   # CENTERED 80-chip gather window (item 6): the prototype peaks mid-span, so 80 CENTERED
   # chips keep -0.05 dB where the one-sided cap cliffed at 105-120. e2e-EXACT (== the
   # untruncated baseline, GPU tracker leg included) across a 3-PRN x 3-Doppler sweep.
   # ⚠️ 2.6x, not 1.75x: the "shipped one-sided 140" never actually shipped -- before this,
-  # production walked the full ~210 chips. Centered floor is 60 (harsh-comb flip at 52);
-  # 80 carries margin in both comb regimes. The generator always centres the window and
-  # always stores fp16; disarm the truncation = delete despread-max-chips, regenerate, restart
-  # -- 0 is the full historical walk BIT-FOR-BIT.
-    despread-max-chips: 80
+  # production walked the full ~210 chips. Both are fixed now, not flags: the generator always
+  # emits fp16 and the centred 80-chip window (DESPREAD_MAX_CHIPS), and the injector refuses
+  # anything else, so there is no disarm short of an older binary.
 
   # No DPDK resync bound (dpdk-resync-max-advances, retired 2026-10-07): a capture worker
   # whose stream leaves its window now stops kotekan, and the unit's restart re-anchors it.

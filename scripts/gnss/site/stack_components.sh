@@ -105,7 +105,6 @@ gnss_component() {
         #   config/gen_chord_gnss_config.py --base config/base/live_config_20260730.json \
         #       --node cx19 --aggregator-instance cx19 cx27 cx42 cx43 cx44 cx51 \
         #       --rest-port 12050 --cuda-acquire --aggregator-cores 0,1,2,3,4,5 \
-        #       --prns-per-pass 0 --acq-pairsum-select --nh-label-consensus \
         #       --out config/generated/chord_gnss_agg6_cuda.yaml
         # The running copy was hand-patched before those flags existed (its header says how);
         # it differs from this only in which of the six cores each stage gets and in

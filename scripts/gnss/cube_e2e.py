@@ -254,8 +254,8 @@ def write_config(dirpath, out_dir):
         "cube_recv: {kotekan_stage: bufferRecv, buf: arch_buf, listen_port: %d, num_threads: 2,"
         " drop_frames: false, use_config_tracker: false}" % PORT_RECV,
         "cube_write: {kotekan_stage: rawFileWrite, in_buf: arch_buf, base_dir: %s,"
-        " file_name: gnss_cube, file_ext: raw, prefix_hostname: false, num_frames_per_file: 2,"
-        " allow_ndarray: true}" % out_dir,
+        " file_name: gnss_cube, file_ext: raw, prefix_hostname: false, num_frames_per_file: 2}"
+        % out_dir,
     ]
     path = os.path.join(dirpath, "cube_e2e.yaml")
     open(path, "w").write("\n".join(lines) + "\n")

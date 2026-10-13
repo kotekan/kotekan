@@ -101,6 +101,15 @@ ELEM_SUM_POL_TAU_S = 3.0
 # loop's own trim never expires -- it is unstamped, and its silence means the SIGNAL went.)
 TRIM_TTL_S = 4.0
 
+# The injector's per-hop PFB chip gather, truncated to this many chips CENTRED on the PFB span
+# (GPU TODO item 6, fleet-wide since 2026-08-31). The prototype peaks mid-span, so 80 centred
+# chips keep -0.05 dB where the one-sided cap cliffed at 105-120; e2e-EXACT against the
+# untruncated ~210-chip walk across PRNs and Dopplers. Synthesis is LINEAR in it: 2.6x. The
+# centred floor is 60 (harsh-comb flip at 52); 80 carries margin in both comb regimes. The
+# stage now accepts only this window, with fp16 Phi tables; older binaries default to the full
+# walk and fp32, so all three keys stay emitted.
+DESPREAD_MAX_CHIPS = 80
+
 # TASK #59 TELEMETRY, ⚠️ ON THE WIRE. ONE gather port for the whole fleet: every frame carries
 # its own chain and instance tags, so there is no per-chain port map to get wrong. 4 records
 # per wire frame = one 8192-hop correlator frame, 23.84 frames/s; the batch boundary is the
@@ -118,27 +127,24 @@ GATHER_SERVE_PORT = 11061
 # after a long outage the model it describes is not the one about to be republished. The depth
 # /get_taps serves must MATCH the broker's --telem-windows (32) -- the loop's own depth
 # (--fleet-trim-windows) is far too short for the policy cycle's statistics. Instances required
-# before a discriminator forms. Windows between actuator posts: 1 = every window, 23.84 Hz;
-# decimating costs only latency (the trim moves at most 0.0625 chips/step).
+# before a discriminator forms.
 FLEET_TRIM_STATE_FILE = "/tmp/gnss_fleet_trim.json"
 FLEET_TRIM_STATE_MAX_AGE_S = 300.0
 FLEET_TRIM_TAPS_WINDOWS = 32
 FLEET_TRIM_MIN_INSTANCES = 2
-FLEET_TRIM_POST_EVERY = 1
 
 # THE BEAM CUBE, ⚠️ ON THE WIRE. ONE archiver port for the whole fleet: every frame carries its
 # own <host>/<stage> address, gpu, absolute window index and wstart. 96 records per window = 24
 # correlator frames = 1.00663 s, an exact multiple of BOTH the record and the frame, so no record
 # is split (an exact 1.000 s window does not exist on this clock: the hop rate is 195312.5 Hz).
-# Bin width 0 = one bin per covering channel, the full 195 kHz resolution; grouping halves the
-# archive per doubling and is the first lever if disk binds. The ring holds 8 windows open
+# One bin per covering channel, the full 195 kHz resolution (the assembler has no channel
+# grouping). The ring holds 8 windows open
 # (~8 s of tolerance for out-of-order records). CUBE_MAX_PRN x CUBE_MAX_BINS size every sender's
 # frame AND the archiver's receive buffer, and bufferRecv closes any connection whose
 # frame_size disagrees: chains run 24-32 PRN slots and 1-7 covering channels today, the short
 # ones pad with zero rows (which the archiver strips).
 CUBE_PORT = 11070
 CUBE_WINDOW_RECORDS = 96
-CUBE_BIN_WIDTH = 0
 CUBE_RING_DEPTH = 8
 CUBE_MAX_PRN = 32
 CUBE_MAX_BINS = 8
@@ -834,7 +840,6 @@ def cube_assembler_keys(args, cfg, gpu, pre):
         "beam_cube_window_samples": (
             CUBE_WINDOW_RECORDS * HOPS_PER_RECORD * int(cfg["fengine"]["fft_length"])
         ),
-        "beam_cube_bin_width": CUBE_BIN_WIDTH,
         "beam_cube_ring_depth": CUBE_RING_DEPTH,
         # UNIFORM ACROSS THE FLEET, never per chain: one bufferRecv, one frame size, and
         # bufferRecv CLOSES any connection whose frame_size disagrees. Chains carry 1-7
@@ -1164,12 +1169,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     "name": "cudaGnssInject",
                     # fp16 Phi tables: half the resident table (GnssCudaDespread.hpp) -- the
                     # one lever the DRAM-footprint verdict (gnss_gpu_search.md 10.6c) says pays;
-                    # 1.55x through the shipped enqueue_waveform (scripts/gnss/phi16gpu).
+                    # 1.55x through the shipped enqueue_waveform (benched by phi16gpu, removed
+                    # after be7d46e8e).
                     "phi_fp16": True,
                     # Chip-window truncation (GnssCudaDespread.hpp), placed on the CENTRE of the
-                    # PFB span: the prototype peaks mid-span, and a one-sided cap crosses the
-                    # peak (9.5's cliff). e2e-EXACT at 80 chips across PRNs and Dopplers.
-                    "despread_max_chips": int(args.despread_max_chips),
+                    # PFB span: see DESPREAD_MAX_CHIPS.
+                    "despread_max_chips": DESPREAD_MAX_CHIPS,
                     "despread_chips_centered": True,
                     "voltage_name": "voltage",
                     # MUST match the tracker's `conjugate`. The N^2 kernel has no conj_data flag
@@ -1249,29 +1254,30 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # carrier, which the injector is already positioned to do.
                     "sub_integration_ntime": HOPS_PER_RECORD,
                     "voltage_name": "voltage",
-                    "rfi_RFImask_name": "rfi_RFImask",  # unused with rfi_all_pass, key required
+                    "rfi_RFImask_name": "rfi_RFImask",  # unread; older binaries require it
                     "gnss_synth_name": f"{pre}synth",
                     # Production runs rfi_first_stage_excision_enabled: false -- its correlator
                     # sees an all-good mask too, so this is behavior-identical, not approximate.
                     "rfi_all_pass": True,
                     # FREQ MAP: compute the mixed + synthetic blocks over ONLY the comb (7 of 384).
-                    # Measured 2.90x -> 1.21x stock N^2 (scripts/gnss/n2timing), bitwise-verified
-                    # against the full launch (n2dualtest gate [6]), and 0.076 ms/frame in situ.
+                    # Measured 2.90x -> 1.21x stock N^2 (the n2timing bench, removed after
+                    # be7d46e8e), bitwise-verified against the full launch (n2dualtest gate [6]),
+                    # and 0.076 ms/frame in situ.
                     #
-                    # THE AA BLOCK IS NOT COMPUTED IN THIS MODE, so the standard N^2 pass-through
-                    # is unavailable (cudaCorrelatorDual.cpp: "SPLIT 1 ... SKIPPED in freq-map
-                    # mode"). Production's run_n2k computes the science N^2; this launch adds only
-                    # the mixed and synthetic blocks over the comb.
+                    # THE AA BLOCK IS NOT COMPUTED for the chains (only a capture gather asks for
+                    # it), and the dual has no N^2 pass-through: production's run_n2k computes the
+                    # science N^2; this launch adds only the mixed and synthetic blocks over the
+                    # comb. The stage now accepts only this mode; older binaries default it off.
                     "gnss_freq_map": True,
-                    # GPU MEMORY NAME, and it must not collide with production's. cudaCorrelator
-                    # and cudaCorrelatorDual both allocate an array called <name>_buffer, sized
-                    # from THEIR OWN station count: 28,311,552 B at NS=128 against 113,246,208 B at
-                    # NS=256. Coexisting under one name is a hard startup failure --
-                    # "get_gpu_memory_array failed: requested name correlation_buffer size 28311552
-                    # ... but existing memory is size 113246208" -- and the node comes up with the
-                    # units active and NO data moving, which reads exactly like a stall. The dual's
-                    # copy is never even written (the N^2 pass-through is skipped in freq-map
-                    # mode), so a private name costs nothing.
+                    # GPU MEMORY NAME, and it must not collide with production's. Older
+                    # cudaCorrelatorDual binaries allocate an array called <name>_buffer beside
+                    # cudaCorrelator's, each sized from ITS OWN station count: 28,311,552 B at
+                    # NS=128 against 113,246,208 B at NS=256. Sharing one name was a hard startup
+                    # failure -- "get_gpu_memory_array failed: requested name correlation_buffer
+                    # size 28311552 ... but existing memory is size 113246208" -- and the node came
+                    # up with the units active and NO data moving, which reads exactly like a
+                    # stall. The dual now allocates no such array and ignores the key; older
+                    # binaries still require it, so the private name stays.
                     "n2k_correlation_name": f"{pre}n2corr",
                     "gnss_tiles_name": f"{pre}tiles",
                     "num_synth": num_synth,
@@ -1542,12 +1548,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # rise in that counter means the loss happened downstream -- in this bufferSend or on the
     # far side -- which is a distinction worth being able to make from the archive alone.
     cube_bytes = cube_frame_bytes(CUBE_MAX_PRN, CUBE_MAX_BINS, n_live)
-    if n_chan > CUBE_MAX_BINS and CUBE_BIN_WIDTH == 0:
+    if n_chan > CUBE_MAX_BINS:
         raise SystemExit(
             f"chain {pre.strip('_')}: {n_chan} covering channels but "
             f"CUBE_MAX_BINS {CUBE_MAX_BINS}; the frame cannot hold "
-            f"them. Raise it (every sender and the archiver change together) or "
-            f"set CUBE_BIN_WIDTH to group channels."
+            f"them. Raise it (every sender and the archiver change together)."
         )
     if n_prn > CUBE_MAX_PRN:
         raise SystemExit(
@@ -1825,7 +1830,7 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
     sig = cfg["signals"]
     fe = cfg["fengine"]
     n_chan = len(chan_ids)
-    st = {
+    return {
         "kotekan_stage": "GnssChannelizedSearch",
         "in_buf": in_buf,
         "signal": sig["primary"],
@@ -1843,10 +1848,7 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         "channel_offset": chan_ids[0],
         "n_channels": n_chan,
         "channel_ids": list(chan_ids),
-        # Explicit bounds are a FALLBACK: with /clock_profile present the stage derives
-        # the extent itself. Kept so the config is readable without knowing that.
-        "doppler_min": -float(sig["max_doppler_hz"]),
-        "doppler_max": float(sig["max_doppler_hz"]),
+        # No doppler_min/max: the instance's /clock_profile sets the Doppler extent.
         # 31.25 Hz = 1/(2*T_coh) for the 16 ms (3125-hop) coherent window. A coherent
         # window of length T cannot tolerate a Doppler error much past 1/(2T): at the
         # old 250 Hz step a half-bin miss is 125 Hz, which rotates the phase TWO FULL
@@ -1870,14 +1872,14 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         # output explains. Two timers that must agree, and the defaults do not.
         "hint_ttl_s": 30.0,
         "hold_snapshots": 5,
-        "code_doppler_sign": 1.0,
         "doppler_margin_hz": float(sig["max_doppler_hz"]),
         # Only search PRNs the broker has HINTED, and only near the hinted Doppler. The
         # broker knows every visible satellite's Doppler to ~Hz from BRDC, so a blind
         # grid over all 32 PRNs is work we can simply not do.
         # Hinted-only is a COST measure, not a correctness one: the broker knows every visible
         # satellite's Doppler to ~Hz from BRDC, so a blind grid over all 32 PRNs was work we
-        # simply could not afford. The stage defaults to false, so this must be emitted.
+        # simply could not afford. The stage now refuses false, but older binaries default to
+        # it, so this stays emitted.
         "require_hint": True,
         "use_cuda_acquire": bool(args.cuda_acquire),
         "acquire_windows": ACQUIRE_WINDOWS,
@@ -1889,7 +1891,6 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         # Harmless without a hint: no hint scans all 20, exactly as before.
         "nh_hint_span": 2,
         "acquire_fine_step": ACQUIRE_FINE_STEP,
-        "prns_per_pass": args.prns_per_pass,
         # L5 Q5 is a dataless PILOT, which does not mean unmodulated: it carries the
         # NH20 secondary overlay, one +-1 chip per 1 ms code period. The coherent window
         # is 16 ms = SIXTEEN code periods, so an overlay-blind replica sums 16 chips of a
@@ -1936,14 +1937,11 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         if _comb_g(chan_ids, fe["num_bins"] * 2) == 1
         else fe["num_bins"] * 2,
         "cpu_affinity": [core],
+        # #97: pick each surface's peak on the mainlobe pair-sum, and vote the NH label across
+        # the pass's alignments. The stage now refuses false; older binaries default to it.
+        "acq_pairsum_select": True,
+        "nh_label_consensus": True,
     }
-    # #97: pick each surface's peak on the mainlobe pair-sum, and vote the NH label across the
-    # pass's alignments. Stage defaults are off; the aggregator runs with both on.
-    if args.acq_pairsum_select:
-        st["acq_pairsum_select"] = True
-    if args.nh_label_consensus:
-        st["nh_label_consensus"] = True
-    return st
 
 
 def build_aggregator_instance(cfg, nodes, args, port):
@@ -2085,8 +2083,9 @@ def build_aggregator_instance(cfg, nodes, args, port):
                 # delivers nothing for this long is declared ABSENT: its channels are ZEROED (never
                 # reused -- stale samples correlate against the wrong epoch and would manufacture
                 # detections rather than merely lose sensitivity), the merge continues on the rest,
-                # and it rejoins by itself. 0 would restore the old block-forever behaviour, which
-                # is how a 12-input config with 8 nodes running once sat silent for forty minutes.
+                # and it rejoins by itself. The stage refuses <= 0, the old block-forever
+                # behaviour, which is how a 12-input config with 8 nodes running once sat silent
+                # for forty minutes.
                 "input_timeout_s": 5.0,
                 "cpu_affinity": [cores[3 % len(cores)]],
             },
@@ -2195,9 +2194,6 @@ def build_cube_archive_instance(cfg, args, port):
             # day-old raw tree and overwrote files 0..90 of the previous day in four minutes.
             # Resume past the highest existing number instead.
             "continue_numbering": True,
-            # The frames carry an NDArray-free fixed layout of our own; write the bytes and let
-            # the reader supply the layout, which gnssRecord.hpp fixes by construction.
-            "allow_ndarray": True,
             "cpu_affinity": [cores[6 % len(cores)]],
         },
     }
@@ -2335,7 +2331,7 @@ def build_gather_instance(cfg, args, port):
     # serves fold_us_per_frame so that claim stays checkable rather than remembered.
     #
     # It forms the fleet discriminator, integrates it and posts the trims (/set_trim, every
-    # post_every_n_windows); the broker keeps the policy. See docs/CHORD_FAST_TRIM.md.
+    # window); the broker keeps the policy. See docs/CHORD_FAST_TRIM.md.
     out["fleet_trim"] = {
         "kotekan_stage": "GnssFleetTrim",
         "in_buf": "telem_buf",
@@ -2358,10 +2354,9 @@ def build_gather_instance(cfg, args, port):
         "trim_state_file": FLEET_TRIM_STATE_FILE,
         "trim_state_max_age_s": FLEET_TRIM_STATE_MAX_AGE_S,
         "min_instances": FLEET_TRIM_MIN_INSTANCES,
-        # The ACTUATOR's cadence. Its TARGETS are not here: the broker publishes them with
-        # /set_policy, because it already owns the tracker endpoint list and a second copy
-        # in this file would silently miss a node added to the fleet.
-        "post_every_n_windows": FLEET_TRIM_POST_EVERY,
+        # The ACTUATOR. It posts every window; its TARGETS are not here: the broker publishes
+        # them with /set_policy, because it already owns the tracker endpoint list and a second
+        # copy in this file would silently miss a node added to the fleet.
         "post_threads": 4,
         "cpu_affinity": [cores[5 % len(cores)]],
     }
@@ -2839,8 +2834,9 @@ def main():
         "--n2-project-live-freq-ids",
         type=str,
         default=None,
-        help="live mode writes only these absolute freq_id ranges (lo-hi,...); "
-        "'exempt' = the --rfi-excision-exempt-freq-ids ranges; default = all",
+        help="the absolute freq_id ranges (lo-hi,...) live mode writes; "
+        "'exempt' = the --rfi-excision-exempt-freq-ids ranges. Required with "
+        "--n2-project live.",
     )
     ap.add_argument(
         "--elem-proj-deg",
@@ -2857,10 +2853,9 @@ def main():
         help="shared-model transit freeze: no learning while the broker's nearest-to-"
         "boresight separation is inside this many degrees (assembler default 6). "
         "Emitted only when given, with --elem-sum-shared. The assembler also refuses to "
-        "FORM a first model inside a wider cone (elem_sum_shared_form_deg, default 8) and "
-        "re-seeds a half the fleet reference stops describing while its sibling pol still "
-        "does (elem_sum_shared_ref_reseed_s 600 s, elem_sum_shared_ref_reseed_sib_sim 0.8); "
-        "none of these is emitted here (#170).",
+        "FORM a first model inside a wider cone (8 deg) and re-seeds a half the fleet "
+        "reference stops describing while its sibling pol still does (after 600 s, at "
+        "sibling similarity 0.8); those are fixed in the stage, not config keys (#170).",
     )
     ap.add_argument(
         "--elem-shared-ref",
@@ -2875,16 +2870,6 @@ def main():
         help="off: no reference keys (byte-identical); live: each assembler pins "
         "to the reference, slewed when warm. Also a live switch (POST "
         "<assemble>/set_elem_sum_shared_ref)",
-    )
-    ap.add_argument(
-        "--despread-max-chips",
-        type=int,
-        default=0,
-        help="GPU TODO item 6: truncate the tracker's per-hop PFB chip gather to "
-        "this many chips (0 = the full ~210-chip span, the historical "
-        "behaviour). Synthesis is 73-89%% of the tracker kernel and LINEAR in "
-        "this. The window is centred on the PFB span; the validated "
-        "floor is 60 (harsh-comb flip at 52), recommended 80 = 2.6x.",
     )
     ap.add_argument(
         "--search-host",
@@ -2981,29 +2966,6 @@ def main():
         type=int,
         default=11040,
         help="bufferRecv port for GPU 0; GPU 1 uses base+1",
-    )
-    ap.add_argument(
-        "--acq-pairsum-select",
-        action="store_true",
-        help="#97: choose each acquisition surface's peak cell on the mainlobe "
-        "pair-sum rather than the raw sample (GnssChannelizedSearch "
-        "acq_pairsum_select).",
-    )
-    ap.add_argument(
-        "--nh-label-consensus",
-        action="store_true",
-        help="#97: vote the NH20 alignment label across the pass's alignments "
-        "(GnssChannelizedSearch nh_label_consensus).",
-    )
-    ap.add_argument(
-        "--prns-per-pass",
-        type=int,
-        default=1,
-        help="how many ELIGIBLE PRNs to search per snapshot, round-robin. 0 = all "
-        "(airspy's behaviour). A detection's ref_hop is the SNAPSHOT's start "
-        "hop, so with one snapshot per pass the last PRN searched carries an "
-        "epoch as old as the pass; seed error is Doppler error x that age at "
-        "0.0087 chips/Hz/s. Bounds the epoch at emit by (pass time)/(this).",
     )
     ap.add_argument(
         "--cuda-acquire",
@@ -3623,12 +3585,16 @@ def main():
             _lf = args.n2_project_live_freq_ids
             if _lf == "exempt":
                 _lf = args.rfi_excision_exempt_freq_ids
-            if _lf:
-                _lids = set()
-                for _part in str(_lf).split(","):
-                    _a, _, _b = _part.strip().partition("-")
-                    _lids.update(range(int(_a), int(_b or _a) + 1))
-                _stage["live_freq_ids"] = sorted(_lids)
+            if not _lf:
+                raise SystemExit(
+                    "--n2-project live needs --n2-project-live-freq-ids (or 'exempt' with "
+                    "--rfi-excision-exempt-freq-ids): GnssN2Project requires live_freq_ids"
+                )
+            _lids = set()
+            for _part in str(_lf).split(","):
+                _a, _, _b = _part.strip().partition("-")
+                _lids.update(range(int(_a), int(_b or _a) + 1))
+            _stage["live_freq_ids"] = sorted(_lids)
             _buf = copy.deepcopy(out[_corr])  # no YAML aliases
             out["gnss_n2_proj_buffer" + _suf] = _buf
             _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
