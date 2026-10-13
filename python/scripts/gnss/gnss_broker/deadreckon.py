@@ -407,7 +407,7 @@ def dr_clock_transit(ctx):
     receiver clock is a GPS-disciplined constant, well under a chip per hour), so inside a
     transit the best estimate is the one held at its entry, and no solve is consulted.
 
-    POOLED over every constellation the model carries -- the geometry of the D2/D3 veto
+    POOLED over every constellation the model carries -- the geometry of the D3 veto
     (sky.nearest_boresight) -- because the bright satellite need not be one this chain tracks.
     Only a clock this chain SOLVED and CONFIRMED freezes (a bootstrap followed by an in-bound
     update, or a re-pin): a prime or a bootstrap nothing has agreed with yet could be the

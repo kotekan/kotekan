@@ -93,27 +93,6 @@ class QSeries(object):
         var = sum((x - mean) ** 2 for x in qs) / len(qs)
         return n, len(qs), mean, var ** 0.5, len(qs) / float(n)
 
-    def episodes(self, prn, min_absence_s=300.0):
-        """Contiguous runs of ABSENT longer than `min_absence_s`, as (t_start, t_end).
-
-        This is the shape a "sick interval" actually has, and the thing a judge script needs
-        to exclude or stratify by. It is also exactly D2's targeting signal.
-        """
-        h = self.hist.get(prn) or []
-        out, start, last = [], None, None
-        for t, _q, s in h:
-            if s == ABSENT:
-                if start is None:
-                    start = t
-                last = t
-            else:
-                if start is not None and last - start >= min_absence_s:
-                    out.append((start, last))
-                start, last = None, None
-        if start is not None and last - start >= min_absence_s:
-            out.append((start, last))
-        return out
-
     def line(self, chain, max_prns=12):
         """One compact log line: the satellites whose window is LEAST present come first.
 
@@ -173,31 +152,17 @@ class BrownoutDetector(object):
     judge's job.
     """
 
-    def __init__(self, window_s=600.0, frac=0.6, min_base=4, min_len_s=60.0, dark_at=1):
+    def __init__(self, window_s=600.0, frac=0.6, min_base=4, min_len_s=60.0):
         self.window_s = float(window_s)
         self.frac = float(frac)
         self.min_base = int(min_base)
         self.min_len_s = float(min_len_s)
-        # A chain holding <= dark_at satellites is not tracking at all -- band-wide loss,
-        # not the ordinary dip a brownout describes.
-        self.dark_at = int(dark_at)
-        self.last_dark_t = None
         self.pop = []  # [(t, n_present)] over the window
         self.open_ep = None  # [t_start, baseline, deepest] while in a brownout
         self.announced = False  # has the open episode been logged yet?
-        self.episodes = []  # closed: (t_start, t_end, baseline, deepest)
 
     def note_cycle(self, t, n_present):
         """Record the count. Returns a message when an episode opens or closes, else None."""
-        # ⚠️ DARKNESS IS NOT A BROWNOUT, AND THAT IS WHY IT NEEDS ITS OWN CLOCK. A brownout is
-        # measured against the chain's OWN 600 s peak, so a chain that has been dark long
-        # enough for that peak to decay CANNOT register one -- `base >= min_base` fails when
-        # every sample in the window is zero. The suppression that D2/D3 rely on therefore
-        # switches itself off exactly when the disturbance is largest, which is the shape of
-        # a gate that cannot fail. Recording the last dark cycle separately gives the
-        # recovery its own, decay-proof clock.
-        if n_present <= self.dark_at:
-            self.last_dark_t = t
         if not self.pop or self.pop[-1][0] != t:
             self.pop.append((t, n_present))
             while self.pop and t - self.pop[0][0] > self.window_s:
@@ -228,7 +193,6 @@ class BrownoutDetector(object):
             was = self.announced
             self.open_ep, self.announced = None, False
             if t - t0 >= self.min_len_s:
-                self.episodes.append((t0, t, b, deep))
                 return (
                     "BROWNOUT closed: %.0f s, %d present at worst vs %d baseline (%d%%)"
                     % (t - t0, deep, b, int(round(100.0 * deep / max(b, 1))))
@@ -237,164 +201,10 @@ class BrownoutDetector(object):
                 return "BROWNOUT closed: %.0f s (under the reporting length)" % (t - t0)
         return None
 
-    def recovering(self, t, hold_s):
-        """Has the chain seen signal again only recently, after going dark?
-
-        THE SAME CONVERGENCE, ON A DIFFERENT CLOCK. `LatchDetector`'s startup hold-off exists
-        because presence flaps while the clock and seeds converge -- and that is a property of
-        the PLANT restarting, not of the process restarting. When the analog front-ends came
-        back at 17:16 on 2026-08-26 the broker had been up 88 minutes, so every uptime-based
-        guard was long expired, and D2 immediately reported PRN 3 and PRN 15 as latched: both
-        had locked at q 3.5 for THIRTY SECONDS during the scramble and then dropped. That is
-        #90 flight 3's startup-convergence population arriving through a door the startup
-        hold-off does not cover.
-        """
-        return (
-            hold_s > 0.0
-            and self.last_dark_t is not None
-            and t - self.last_dark_t < hold_s
-        )
-
-    def established(self):
-        """Open AND past `min_len_s` -- the trigger for POLICY, as opposed to suppression.
-
-        ⚠️ NOT THE SAME AS `active()`, AND THE DIFFERENCE IS DELIBERATE. `active()` is eager:
-        D2/D3 should stop reporting the moment presence starts collapsing, because a report
-        made mid-collapse is wrong even if the collapse turns out to be one cycle long. A
-        policy that ACTS on the chain -- #91's trim freeze -- must NOT fire on a flicker:
-        presence flickers constantly (that is the entire reason `--fleet-trim-hold-s`
-        exists), and freezing on every flicker would gut the loop's duty cycle, which is
-        the opposite of what #91 is for. So this waits out the same `min_len_s` the
-        announcement waits out, and a policy consumer should ask for THIS one.
-        """
-        return self.open_ep is not None and self.announced
-
     def active(self):
-        """Is a brownout in progress? D2 asks, because a satellite missing during a chain-wide
+        """Is a brownout in progress? D3 asks, because a trim wiped during a chain-wide
         collapse is not a per-satellite fault."""
         return self.open_ep is not None
-
-
-# ── D2: THE DEEP-LATCH DETECTOR (#90 v3's targeting, running UNARMED) ─────────────────────
-
-
-class LatchDetector(object):
-    """A satellite that was healthy, went absent, and STAYED absent -- with no chain-wide cause.
-
-    ⚠️ THIS RUNS UNARMED ON PURPOSE, and that is the whole design. #90 flew four armed flights
-    in one evening and produced ZERO genuine latch targets: every fire was startup convergence,
-    a band brownout, or threshold flicker. So the missing number is the BASE RATE -- how often
-    does this actually happen? -- and a detector measures it at zero risk, where an armed gate
-    measures it by intervening.
-
-    The rule below is exactly #90 v3's proposed admission rule, which is the point: if this
-    reports nothing over a week, v3 should not be armed, and that is a far cheaper answer than
-    another flight.
-
-    ⚠️ RECENT-LOCK IS WHAT SEPARATES A LATCH FROM A SET. A satellite below the horizon is
-    absent for entirely good reasons. Requiring it to have been HEALTHY shortly before the
-    absence began is what makes this a fault report rather than an ephemeris report.
-
-    ⚠️ AND THE STARTUP SOLVE IS NOT A LATCH -- this is flight 3a's lesson, and the detector
-    needs it as much as the gate did. Presence FLAPS while the clock converges (PRN 9,
-    2026-08-25: present at q 2.32 at t+28 s, absent by t+2 min), so a satellite can be
-    genuinely healthy-then-absent within the first few minutes without anything being wrong.
-    Counting those would inflate the base rate this exists to measure, which is the one number
-    it must not get wrong. Reports are held until the process is `startup_hold_s` old.
-    """
-
-    # ⚠️ 1200 s, NOT the 300 s #90 v3 specified -- MEASURED, 2026-08-26. Of 26 live reports at
-    # the 300 s bar, 16 with >= 900 s of follow-up could be scored (the rest right-censored by
-    # the end of their log, which is itself a trap: "never returned" in a log that ends two
-    # minutes later means nothing). Of those 16, TWELVE SELF-HEALED -- a 75% false-positive
-    # rate -- at a median total absence of 620 s (range 312-1115). PRN 34 on bds_b2a came back
-    # 115 s after the report; an armed v3 would have stepped its seed just before it recovered
-    # on its own. The threshold sweep is unusually clean: 1200 s suppresses all twelve
-    # self-healers and keeps all four that never returned. 1800 s buys nothing more.
-    #
-    # #90's disease is defined by having NO RE-ADMISSION PATH -- a satellite that returns in
-    # seven minutes had one. An absence is evidence of a latch only once it outlasts the
-    # dropout population, and this is where that population ends.
-    def __init__(
-        self,
-        min_absence_s=1200.0,
-        lookback_s=900.0,
-        healthy_q=2.0,
-        cooldown_s=1800.0,
-        startup_hold_s=900.0,
-    ):
-        self.min_absence_s = float(min_absence_s)
-        self.lookback_s = float(lookback_s)
-        self.healthy_q = float(healthy_q)
-        self.cooldown_s = float(cooldown_s)
-        self.startup_hold_s = float(startup_hold_s)
-        self.reported = {}  # prn -> t of last report (one per episode, not per cycle)
-        self.suppressed_startup = 0
-        self.suppressed_transit = (
-            0  # how many reports the hold-off swallowed, for honesty
-        )
-
-    def scan(
-        self, t, qseries, browned_out, uptime_s=None, recovering=False, in_transit=False
-    ):
-        """[(prn, absent_s, q_before)] for satellites that look latched right now.
-
-        `browned_out` suppresses everything: during a chain-wide collapse a missing satellite
-        is a symptom of the chain, and reporting each one would bury the signal that matters
-        under a constellation of noise.
-
-        `recovering` is the same suppression on the PLANT's clock rather than the process's --
-        see BrownoutDetector.recovering(). Counted in `suppressed_startup` alongside the
-        process case: they are one population and separating the counters would only invite
-        reading either as a rate.
-        """
-        if browned_out:
-            return []
-        if in_transit:
-            # ⚠️ A DIFFERENT POPULATION FROM startup/recovering, SO IT GETS ITS OWN COUNTER.
-            # A satellite within a few degrees of boresight rails the 4+4b quantiser for every
-            # chain at once, and satellites drop out across ALL of them together. Measured live
-            # 2026-08-26 17:40: four LATCH reports in three seconds spanning gal_e5a AND
-            # gal_e5b, with PRN 26 firing on both -- the same satellite, two bands, one instant.
-            # That cross-chain simultaneity is the tell: #90's actual disease is per-satellite
-            # and per-band (E32's was band-ALTERNATING). Attributing an array-wide event to
-            # individual satellites is exactly what gave flight 3 eight fires and zero targets.
-            self.suppressed_transit += len(qseries.hist)
-            return []
-        startup = (uptime_s is not None and uptime_s < self.startup_hold_s) or bool(
-            recovering
-        )
-        out = []
-        for prn, h in qseries.hist.items():
-            if not h or h[-1][2] != ABSENT:
-                continue
-            start = None
-            for tt, _q, s in reversed(h):
-                if s != ABSENT:
-                    break
-                start = tt
-            if start is None or t - start < self.min_absence_s:
-                continue
-            qs = [
-                q
-                for tt, q, s in h
-                if s == PRESENT
-                and q is not None
-                and start - self.lookback_s <= tt < start
-            ]
-            if not qs or max(qs) < self.healthy_q:
-                continue
-            if t - self.reported.get(prn, -1e9) < self.cooldown_s:
-                continue
-            if startup:
-                # Do NOT stamp `reported` here: the satellite may still be genuinely latched
-                # once the solve settles, and swallowing the report must not also swallow the
-                # later, real one.
-                self.suppressed_startup += 1
-                continue
-            self.reported[prn] = t
-            out.append((prn, t - start, max(qs)))
-        return out
 
 
 # ── D3: THE HANDOVER SAWTOOTH (#92) ───────────────────────────────────────────────────────
@@ -419,9 +229,8 @@ class SawtoothDetector(object):
     whichever one somebody happened to notice.
 
     ⚠️ IT MUST DISTINGUISH ITSELF FROM D1. A brownout wipes trims too, by taking the whole
-    chain's presence away at once. `browned_out` suppresses reporting for the same reason it
-    does in D2 -- superposing the two is what made E3's per-satellite structure look
-    heterogeneous in the first place.
+    chain's presence away at once, so `browned_out` suppresses reporting -- superposing the
+    two is what made E3's per-satellite structure look heterogeneous in the first place.
     """
 
     def __init__(
@@ -438,8 +247,7 @@ class SawtoothDetector(object):
         self.wipe_frac = float(wipe_frac)
         self.cooldown_s = float(cooldown_s)
         # FIRST FLIGHT (2026-08-26 14:54): 6 of 12 reports landed inside the broker's first
-        # two minutes -- seed churn while the clock converges, the same population that gave
-        # D2 four false reports. Same cure: a hold-off, with the suppression COUNTED.
+        # two minutes -- seed churn while the clock converges. The cure is a hold-off.
         self.startup_hold_s = float(startup_hold_s)
         # A wipe within this many seconds of a BIRTH-STEP for the same PRN is the class the
         # #92 handover addresses; a wipe with no rebase in the window is the SLEW-TRANSFER
@@ -449,10 +257,6 @@ class SawtoothDetector(object):
         self.rebase_window_s = float(rebase_window_s)
         self.hist = {}  # prn -> [(t, trim)]
         self.reported = {}  # prn -> t of last report
-        self.episodes = []  # (prn, t, peak_trim, after_trim, kind)
-        self.suppressed_startup = 0
-        self.suppressed_weak = 0
-        self.suppressed_transit = 0
 
     def note(
         self,
@@ -472,8 +276,8 @@ class SawtoothDetector(object):
         BIRTH-STEP, None if never) classifies the wipe; `present_frac`/`q_mean` come from D0's
         window and disqualify a trim that was never doing sky work -- a ramp on a satellite
         that is absent or at the q floor is churn-chasing, and counting it (PRN 34 on e5a,
-        14:54:16) pollutes both sides of the P2 comparison. Suppressions are counted and never
-        stamp the cooldown, so a suppressed report cannot swallow a later real one.
+        14:54:16) pollutes both sides of the P2 comparison. Suppressions never stamp the
+        cooldown, so a suppressed report cannot swallow a later real one.
         """
         h = self.hist.setdefault(prn, [])
         h.append((t, trim))
@@ -486,7 +290,6 @@ class SawtoothDetector(object):
             # a satellite knocked off its peak by railing releases its trim, and that wipe is
             # the transit's, not the handover's. Three BARE-WIPEs fired inside one on
             # 2026-08-26 17:42-17:43 (gps_l5 PRN 28/27/10).
-            self.suppressed_transit += 1
             return None
 
         prev_t, prev = h[-2]
@@ -496,12 +299,10 @@ class SawtoothDetector(object):
         # A WIPE: the magnitude collapses in a single step, from a value that had ramped.
         if abs(prev) >= self.ramp_chips and abs(trim) <= self.wipe_frac * abs(prev):
             if uptime_s is not None and uptime_s < self.startup_hold_s:
-                self.suppressed_startup += 1
                 return None
             if (present_frac is not None and present_frac < 0.5) or (
                 q_mean is not None and q_mean < 2.0
             ):
-                self.suppressed_weak += 1
                 return None
             if t - self.reported.get(prn, -1e9) < self.cooldown_s:
                 return None
@@ -514,7 +315,6 @@ class SawtoothDetector(object):
                 )
                 else "BARE-WIPE"
             )
-            self.episodes.append((prn, t, prev, trim, kind))
             # ⚠️⚠️ THE SPAN IS CENSORED BY MY OWN WINDOW, AND IT MUST SAY SO.
             # `hist` is trimmed to window_s, so a ramp older than that reports a span pinned
             # just under it and the reports CLUSTER at ~1800 s -- which reads as a 30-minute

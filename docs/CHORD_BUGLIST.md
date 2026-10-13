@@ -934,10 +934,12 @@ close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains ha
 ## Parked — built, disarmed, and currently unjudgeable
 
 **#90, #91, #92 — three trim-pathology fixes, built and all disarmed again since 10-11** (#92's handover had stayed
-armed on gal_e5a from 08-25 until #125's re-twin). Base rate ~0 on the healthy fleet (0 brownouts, 0 latches, 1 sawtooth
-of the class the handover cannot catch, in an hour), so an arm has nothing to remove and they cannot be judged in
+armed on gal_e5a from 08-25 until #125's re-twin). Base rate ~0 on the healthy fleet (0 brownouts, 1 sawtooth of the
+class the handover cannot catch, in an hour; the "0 latches" once quoted here was not a measurement: D2 needed a
+1200 s absence inside a 900 s q window, could never fire, and was removed 2026-10-13), so an arm has nothing to
+remove and they cannot be judged in
 this regime. Flags: `--fleet-trim-brownout-hold-s`, `--code-bias-brownout-hold`, `fleet-trim-rebase-adjust`,
-`reseed-spec-tau`, `LatchDetector.min_absence_s`. **Re-judge only after a plant disturbance** — #106's establishment
+`reseed-spec-tau`. **Re-judge only after a plant disturbance** — #106's establishment
 excursion is the one that reproduces on demand.
 
 ---

@@ -527,7 +527,7 @@ def stage_fleet_dll(ctx):
         if _bmsg:
             _log("%s: %s" % (_tag, _bmsg))
 
-        # ── THE BORESIGHT-TRANSIT VETO (shared by D2 and D3) ──────────────────────────
+        # ── THE BORESIGHT-TRANSIT VETO (D3) ────────────────────────────────────────────
         # Pooled over EVERY constellation -- ctx.transit_pd carries all three (the geometry-only
         # sky, health gate off, #144: an unhealthy satellite still rails), and the quantiser is
         # shared, so a per-chain answer would be worse than none (it would clean the chain
@@ -542,7 +542,7 @@ def stage_fleet_dll(ctx):
         if _in_transit:
             _log_rl(
                 "transit-veto",
-                "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight (health %s); D2/D3 "
+                "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight (health %s); D3 "
                 "suppressed (the quantiser rails and satellites drop across every chain at once)"
                 % (
                     _tag,
@@ -552,24 +552,6 @@ def stage_fleet_dll(ctx):
                     (ctx.transit_pd or {}).get(_near[1], {}).get("health", "?"),
                 ),
                 every_s=120.0,
-            )
-
-        # ── D2: the deep latch, UNARMED ───────────────────────────────────────────────
-        # #90's four armed flights produced zero genuine targets, so the base rate is the
-        # missing number. This measures it at no risk; it actuates nothing.
-        for _lp, _labs, _lq in ctx.latch.scan(
-            ctx.t0,
-            ctx.qpop,
-            ctx.brown.active(),
-            uptime_s=ctx.t0 - ctx.broker_t0,
-            # The plant's own convergence window, not the process's -- a broker that has
-            # been up for hours is still looking at a sky that just came back.
-            recovering=ctx.brown.recovering(ctx.t0, ctx.latch.startup_hold_s),
-            in_transit=_in_transit,
-        ):
-            _log(
-                "%s: LATCH PRN %d absent %.0f s after q %.2f -- #90 v3 would have fired "
-                "here (detector only, nothing armed)" % (_tag, _lp, _labs, _lq)
             )
 
         # ── D3: the handover sawtooth ─────────────────────────────────────────────────

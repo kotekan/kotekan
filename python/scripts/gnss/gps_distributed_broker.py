@@ -111,10 +111,9 @@ from gnss_broker import searchhint  # noqa: E402  (narrow the search)
 from gnss_broker import seeding  # noqa: E402  (detections -> seeds)
 from gnss_broker import navbits  # noqa: E402  (off in production)
 from gnss_broker import fleetdll  # noqa: E402  (the fleet DLL shell)
-from gnss_broker.detectors import (  # noqa: E402  (D0-D3)
+from gnss_broker.detectors import (  # noqa: E402  (D0, D1, D3)
     QSeries,
     BrownoutDetector,
-    LatchDetector,
     SawtoothDetector,
 )
 from gnss_broker import signals  # noqa: E402
@@ -163,8 +162,6 @@ def main(argv=None, rx=None, publisher=None):
     # this, never on the DLL line -- see gnss_broker/detectors.py for what that cost.
     _qpop = QSeries()
     _brown = BrownoutDetector()  # D1: chain-wide presence collapse, as an episode
-    _latch = LatchDetector()  # D2: healthy -> absent -> stays absent. UNARMED,
-    #     measuring the base rate #90 never established
     _saw = SawtoothDetector()  # D3: a standing trim that ramps then gets WIPED
     # Live slot->PRN membership vs the sky. OFF unless --prn-reconfig; see prnmap.py.
     _prnmap = prnmap.PrnMapState()
@@ -1437,7 +1434,6 @@ def main(argv=None, rx=None, publisher=None):
         nav=_nav,
         qpop=_qpop,
         brown=_brown,
-        latch=_latch,
         saw=_saw,
         prnmap=_prnmap,
         trackers=trackers,

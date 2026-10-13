@@ -13,7 +13,6 @@ import sys
 from gnss_broker.detectors import (
     QSeries,
     BrownoutDetector,
-    LatchDetector,
     SawtoothDetector,
     PRESENT,
     ABSENT,
@@ -74,16 +73,6 @@ def test_the_e4_case():
     )
     check(
         frac < frac9, "presence fraction is what separates them -- 15%% against 100%%"
-    )
-
-    eps = q.episodes(4, min_absence_s=300.0)
-    check(len(eps) == 1, "the absence is reported as ONE episode")
-    check(
-        abs(eps[0][0] - 150.0) < 1e-9 and abs(eps[0][1] - 990.0) < 1e-9,
-        "spanning exactly the sick interval (t=150 s to t=990 s)",
-    )
-    check(
-        not q.episodes(9, min_absence_s=300.0), "the healthy satellite has no episode"
     )
 
 
@@ -175,9 +164,10 @@ def test_brownout():
 
     closed = d.note_cycle(600.0, 7)
     check(closed and "BROWNOUT closed" in closed, "recovery closes it")
-    check(len(d.episodes) == 1, "and it is retained as one labelled episode")
-    t0, t1, base, deep = d.episodes[0]
-    check(base == 7 and deep == 3, "with the baseline and the worst count")
+    check(
+        closed and "3 present at worst vs 7 baseline" in closed,
+        "with the baseline and the worst count",
+    )
 
     # A brief dip is not an episode -- a chain that flickers must not fill the log.
     d2 = BrownoutDetector(min_len_s=60.0)
@@ -185,7 +175,6 @@ def test_brownout():
         d2.note_cycle(i * 10.0, 8)
     check(d2.note_cycle(100.0, 2) is None, "a one-cycle dip announces nothing")
     check(d2.note_cycle(110.0, 8) is None, "and closes silently")
-    check(not d2.episodes, "leaving no episode behind")
 
     # The threshold is relative: a small constellation must not flap it.
     d3 = BrownoutDetector(min_base=4)
@@ -194,144 +183,6 @@ def test_brownout():
     check(
         d3.note_cycle(70.0, 1) is None and not d3.active(),
         "a baseline under min_base cannot brown out (1 of 3 is not an episode)",
-    )
-
-
-# ---- D2: THE LATCH, MEASURED RATHER THAN ACTED ON -----------------------------------------
-def test_latch():
-    print("D2: the deep latch, unarmed")
-
-    def build(healthy_cycles, absent_cycles, q=3.0):
-        s = QSeries(window_s=100000.0)
-        for i in range(healthy_cycles):
-            s.note_cycle(i * 10.0, {5}, fleet({5: q}))
-        for i in range(healthy_cycles, healthy_cycles + absent_cycles):
-            s.note_cycle(i * 10.0, {5}, fleet({5: None}))
-        return s, (healthy_cycles + absent_cycles - 1) * 10.0
-
-    s, t = build(30, 130)  # healthy 300 s, then absent 1300 s
-    d = LatchDetector()
-    hits = d.scan(t, s, browned_out=False)
-    check(
-        len(hits) == 1 and hits[0][0] == 5,
-        "a healthy-then-absent satellite is reported",
-    )
-    check(hits[0][1] >= 1200.0, "with how long it has been gone")
-    check(abs(hits[0][2] - 3.0) < 1e-9, "and the q it had BEFORE it went")
-
-    check(
-        not d.scan(t + 10.0, s, browned_out=False),
-        "reported ONCE per episode, not once per cycle (the cooldown)",
-    )
-
-    # The three populations #90's flights actually hit, none of which is a latch:
-    s2, t2 = build(30, 10)
-    check(
-        not LatchDetector().scan(t2, s2, browned_out=False),
-        "absent only 100 s: too short, this is flicker",
-    )
-
-    # ⚡ THE MEASURED SELF-HEAL POPULATION (2026-08-26). At the 300 s bar #90 v3 specified,
-    # 12 of 16 scoreable live reports SELF-HEALED, median total absence 620 s. An absence of
-    # that length is a dropout with a working re-admission path, which is the opposite of the
-    # disease -- #90 is defined by having NO path back.
-    s2b, t2b = build(30, 62)  # absent 620 s, the measured median self-healer
-    check(
-        not LatchDetector().scan(t2b, s2b, browned_out=False),
-        "a 620 s absence -- the median SELF-HEALING dropout -- is NOT reported",
-    )
-
-    s3, t3 = build(30, 130, q=1.2)
-    check(
-        not LatchDetector().scan(t3, s3, browned_out=False),
-        "never healthy before it went: a set, not a latch",
-    )
-
-    s4, t4 = build(30, 130)
-    check(
-        not LatchDetector().scan(t4, s4, browned_out=True),
-        "during a chain-wide BROWNOUT nothing is reported -- the chain is the patient",
-    )
-
-    # ⚡ THE PLANT COMING BACK IS NOT A LATCH EITHER, AND UPTIME CANNOT SEE IT.
-    # 2026-08-26 17:16: the analog front-ends were repowered after ~2 h dark. The broker had
-    # been up 88 minutes, so every uptime-based guard was long expired -- and D2 immediately
-    # reported PRN 3 and PRN 15 as latched. Both had locked at q 3.5 for THIRTY SECONDS in
-    # the recovery scramble and then dropped (QPOP: present in 3% of cycles). That is #90
-    # flight 3's startup-convergence population arriving through a door uptime does not lock.
-    s7, t7 = build(30, 130)
-    b7 = BrownoutDetector(min_base=4)
-    for i in range(10):
-        b7.note_cycle(i * 10.0, 0)  # the dark band
-    check(b7.last_dark_t == 90.0, "D1 records when the chain was last DARK")
-    check(
-        not b7.active(),
-        "and a chain dark that long is NOT 'browned out' -- its own 600 s peak decayed to "
-        "zero, so the brownout suppression D2/D3 lean on has switched itself off",
-    )
-    for i in range(10, 40):  # signal returns
-        b7.note_cycle(i * 10.0, 7)
-    d7 = LatchDetector(startup_hold_s=900.0)
-    check(
-        b7.recovering(400.0, 900.0),
-        "the chain reads as RECOVERING 310 s after going dark",
-    )
-    check(
-        not d7.scan(t7, s7, browned_out=False, uptime_s=1e6, recovering=True),
-        "so nothing is reported, even with the process up for a million seconds",
-    )
-    check(d7.suppressed_startup == 1, "and it is counted, not silently dropped")
-    check(
-        not b7.recovering(1100.0, 900.0), "the window closes once the plant has settled"
-    )
-    check(
-        len(d7.scan(t7, s7, browned_out=False, uptime_s=1e6, recovering=False)) == 1,
-        "and the same satellite IS reported once it has -- a suppressed report must never "
-        "swallow the later real one",
-    )
-
-    # ⚡ AN ARRAY-WIDE RAILING TRANSIT IS NOT N LATCHES.
-    # 2026-08-26 17:40: four LATCH reports in three seconds across gal_e5a AND gal_e5b, with
-    # PRN 26 firing on BOTH -- one satellite, two bands, one instant -- while E13 sat 3.0 deg
-    # and C58 4.1 deg off boresight. Cross-chain simultaneity is the discriminator: #90's real
-    # disease is per-satellite and per-band (E32's was band-ALTERNATING).
-    s8, t8 = build(30, 130)
-    d8 = LatchDetector()
-    check(
-        not d8.scan(t8, s8, browned_out=False, in_transit=True),
-        "nothing is reported while a satellite is railing the quantiser",
-    )
-    check(
-        d8.suppressed_transit > 0,
-        "and the suppression is counted separately from startup",
-    )
-    check(
-        len(d8.scan(t8, s8, browned_out=False, in_transit=False)) == 1,
-        "the same satellite IS reported once the transit clears -- suppression must never "
-        "swallow the later real one",
-    )
-
-    # THE STARTUP SOLVE IS NOT A LATCH (flight 3a). Presence flaps while the clock converges.
-    s6, t6 = build(30, 130)
-    d6 = LatchDetector(startup_hold_s=900.0)
-    check(
-        not d6.scan(t6, s6, browned_out=False, uptime_s=200.0),
-        "inside the startup hold-off nothing is reported",
-    )
-    check(d6.suppressed_startup == 1, "and the suppression is COUNTED, not silent")
-    check(
-        len(d6.scan(t6, s6, browned_out=False, uptime_s=1800.0)) == 1,
-        "the same satellite IS reported once the process is old enough -- suppressing a "
-        "startup report must not swallow the later real one",
-    )
-
-    # Startup: absent from the first cycle, never seen healthy.
-    s5 = QSeries(window_s=100000.0)
-    for i in range(130):
-        s5.note_cycle(i * 10.0, {5}, fleet({5: None}))
-    check(
-        not LatchDetector().scan(1290.0, s5, browned_out=False),
-        "a satellite that was never present cannot latch (the PRN 34 case)",
     )
 
 
@@ -351,7 +202,6 @@ def test_sawtooth():
     hit = d.note(300.0, 7, 0.02)  # ... then discarded in one cycle
     check(hit and "SAWTOOTH PRN 7" in hit, "the WIPE is what fires")
     check("ramp discarded" in hit, "and it names the mechanism, not just the numbers")
-    check(len(d.episodes) == 1, "retained as an episode for #92's P2 population")
 
     check(d.note(310.0, 7, 0.01) is None, "reported once, not once per cycle")
 
@@ -383,7 +233,6 @@ def test_sawtooth():
         d5.note(300.0, 5, 0.02, in_transit=True) is None,
         "a wipe inside a transit is silent",
     )
-    check(d5.suppressed_transit == 1, "and counted")
     # ⚠️ NOT "the same wipe fires later": once suppressed, the trim is already gone, so there
     # is nothing left to report -- which is precisely what makes it the transit's event and
     # not the handover's. What must survive is the DETECTOR: a new ramp that wipes on a clear
@@ -414,15 +263,13 @@ def test_sawtooth_v2():
         return d
 
     # THE FIRST FLIGHT'S POLLUTION (2026-08-26 14:54): 6 of 12 reports in the broker's
-    # first two minutes. Inside the hold-off nothing is reported, the suppression is
-    # counted, and -- D2's hard-won rule -- the cooldown is NOT stamped, so the same
-    # satellite still reports once the process is old enough.
+    # first two minutes. Inside the hold-off nothing is reported, and the cooldown is NOT
+    # stamped, so the same satellite still reports once the process is old enough.
     d = ramped()
     check(
         d.note(300.0, 7, 0.02, uptime_s=120.0) is None,
         "inside the startup hold-off: silent",
     )
-    check(d.suppressed_startup == 1, "and counted, not silently dropped")
     for i in range(30):
         d.note(400.0 + i * 10.0, 7, i * 0.05)
     check(
@@ -442,7 +289,6 @@ def test_sawtooth_v2():
         d3.note(300.0, 7, 0.02, present_frac=0.9, q_mean=1.3) is None,
         "present but at the q floor: suppressed",
     )
-    check(d2.suppressed_weak == 1 and d3.suppressed_weak == 1, "both counted as weak")
     d4 = ramped()
     check(
         d4.note(300.0, 7, 0.02, present_frac=0.9, q_mean=3.0) is not None,
@@ -455,7 +301,6 @@ def test_sawtooth_v2():
     d5 = ramped()
     m = d5.note(300.0, 7, 0.02, rebase_age_s=5.0)
     check(m is not None and "REBASE-WIPE" in m, "rebase 5 s before: REBASE-WIPE")
-    check(d5.episodes[-1][4] == "REBASE-WIPE", "and the episode carries the class")
     d6 = ramped()
     m = d6.note(300.0, 7, 0.02)
     check(m is not None and "BARE-WIPE" in m, "no rebase stamp: BARE-WIPE")
@@ -468,14 +313,13 @@ def test_sawtooth_v2():
 
 
 if __name__ == "__main__":
-    print("D0-D3 -- population, brownout, latch, sawtooth\n")
+    print("D0, D1, D3 -- population, brownout, sawtooth\n")
     for fn in (
         test_the_e4_case,
         test_states,
         test_window_and_line,
         test_no_side_effects,
         test_brownout,
-        test_latch,
         test_sawtooth,
         test_sawtooth_v2,
     ):

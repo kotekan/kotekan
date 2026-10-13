@@ -575,13 +575,13 @@ _FROZEN = dict(
     #   age.
     dcb_max_age_days=10.0,
     # --detector-transit-veto-deg
-    #   suppress D2/D3 while ANY visible satellite (all constellations) is within this many
+    #   suppress D3 while ANY visible satellite (all constellations) is within this many
     #   degrees of boresight. 0 = off. A near-boresight satellite rails the 4+4b quantiser for
     #   every chain at once -- measured 2026-08-26: inside 3 deg the tracked population drops
     #   from 7 per epoch to 4 and the survivors read 2-3 dB HIGH -- so satellites vanish across
     #   all five chains together and a per-satellite detector reads that as a constellation of
     #   individual faults. ON by default because it is a SUPPRESSION (the conservative
-    #   direction) and both detectors are read-only; it costs recall on real events during a
+    #   direction) and the detector is read-only; it costs recall on real events during a
     #   transit and buys a base rate that is not mostly geometry.
     detector_transit_veto_deg=5.0,
     # --dll-leak
@@ -645,7 +645,7 @@ _FROZEN = dict(
     dr_clock_step_max_chips=5.0,
     # --dr-clock-transit-freeze-deg
     #   #142: FREEZE this chain's solved receiver clock while any satellite the model carries
-    #   (every constellation, the D2/D3 veto's geometry) is within this many degrees of
+    #   (every constellation, the D3 veto's geometry) is within this many degrees of
     #   boresight: no solve is applied, no drift is differenced, the MAD re-bootstrap clock
     #   stops, and the clock is held at zero rate and contributed every cycle. Inside a transit
     #   the search reports noise code phases just over its bar and the median of them is not the

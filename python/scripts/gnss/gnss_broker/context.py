@@ -111,7 +111,6 @@ class ChainContext(object):
         "nav",
         "qpop",
         "brown",
-        "latch",
         "saw",
         "prnmap",
         # ---- long-lived tables, mutated in place --------------------------------------
