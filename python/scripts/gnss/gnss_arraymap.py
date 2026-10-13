@@ -135,9 +135,6 @@ class Pointing(object):
         self.bore_el_deg = d["bore_el_deg"]
         self.source = d.get("source", "")
 
-    def boresight(self):
-        return self.bore_az_deg, self.bore_el_deg
-
     def __repr__(self):
         return "<Pointing %s dec %+.2f, boresight az %.1f el %.2f>" % (
             self.name,

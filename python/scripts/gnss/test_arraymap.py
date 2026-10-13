@@ -354,7 +354,8 @@ class TestShippedTable(unittest.TestCase):
         self.assertEqual(e.name, "2026-08-29-baseline")
 
     def test_pointing_is_carried_and_matches_the_memo(self):
-        self.assertEqual(am.at("20260908").pointing.boresight(), (180.0, 81.41))
+        p = am.at("20260908").pointing
+        self.assertEqual((p.bore_az_deg, p.bore_el_deg), (180.0, 81.41))
 
 
 if __name__ == "__main__":
