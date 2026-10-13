@@ -166,10 +166,10 @@ def carriers_for_chains(chain_names):
     return sorted(out)
 
 
-def band_of_freq_id(freq_id, carriers=None):
+def band_of_freq_id(freq_id, carriers):
     """(band name, carrier MHz) for the RF band a CHORD channel sits in; (None, None) if none.
 
-    ⚠️⚠️ `carriers` IS THE DECLARED SET AND LEAVING IT OUT INVENTS BANDS. Measured while this
+    ⚠️⚠️ `carriers` IS THE DECLARED SET; THE FULL TABLE WOULD INVENT BANDS. Measured while this
     was being written: with the full RF_BAND_BY_CARRIER table as candidates, cx19/gnss1's
     channels 287-288 (1199.2 and 1202.3 MHz) came back as "L3" -- they sit nearer GLONASS
     L3OC's 1202.025 carrier than Galileo E5b's 1207.14, and CHORD does not fly L3OC at all.
@@ -194,13 +194,8 @@ def band_of_freq_id(freq_id, carriers=None):
         mhz = float(freq_id) * FREQ_ID_MHZ
     except (TypeError, ValueError):
         return (None, None)
-    cands = (
-        list(carriers)
-        if carriers
-        else sorted((c, n) for c, n in RF_BAND_BY_CARRIER.items())
-    )
     best, best_d = None, None
-    for carrier, name in cands:
+    for carrier, name in carriers:
         d = abs(mhz - float(carrier))
         if best_d is None or d < best_d:
             best, best_d = (name, float(carrier)), d
@@ -265,14 +260,6 @@ class SignalDef(object):
         mhz = round(self.carrier_hz / 1e6, 3)
         return self._RF_BAND.get(mhz, "%.2fMHz" % mhz)
 
-    @property
-    def band(self):
-        """The CODE-clock scope: cable + PFB group delay are per carrier, so a code bias
-        measured on one carrier is not another's. (The CARRIER-side clock is
-        receiver-scope -- see 31896a862:docs/CHORD_BROKER_REFACTOR.md 1.4.) Keyed by MHz so L5 and
-        E5a, which really are the same 1176.45 MHz hardware, share one key."""
-        return "%.2fMHz" % (self.carrier_hz / 1e6)
-
     # Human names, derived from the descriptor rather than typed a second time. A viewer
     # that draws "gps_l5 GPS_L5_Q" is showing its plumbing; these come from the same source
     # as every other constant, so a new signal is named correctly the day it is added.
@@ -299,22 +286,6 @@ class SignalDef(object):
             self._SYS_NAME.get(self.primary.split("_")[0], "?"),
             self.short,
         )
-
-    @property
-    def q_alias_hz(self):
-        """Search-Doppler record-alias quantum, 1/(2*t_rec)."""
-        return 0.5 * self.chip_rate_hz / self.code_length
-
-    @property
-    def long_code_chips(self):
-        return self.long_code_segments * self.code_length
-
-    @property
-    def cl_seg_s(self):
-        """ONE segment of the long code, in seconds -- the auto-search's step size. This
-        used to be hard-coded at L2C CL's 0.020 s even after the epoch was parameterised,
-        so on any other signal a correction of +-1 moved the anchor by 20 segments."""
-        return self.long_code_epoch_s / self.long_code_segments
 
     def __repr__(self):
         return "SignalDef(%s: %s%s, %.3f MHz, %d chips @ %.4f Mcps, %d x %.4g s)" % (
@@ -361,10 +332,6 @@ def _derive(descs, prim, lng):
 
 def get(key):
     return SignalDef(key)
-
-
-def names():
-    return sorted(_CHAINS)
 
 
 def describe():

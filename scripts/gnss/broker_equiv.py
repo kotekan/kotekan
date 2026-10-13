@@ -69,6 +69,19 @@ def _pin_for(transcript):
 
 FIXTURES = os.path.join(K, "scripts", "gnss", "fixtures")
 
+# Broker flags retired after some fixtures were recorded, with the number of values each takes.
+# A transcript carries its argv verbatim, so replay drops these first; an unchanged digest is
+# what shows the retired flag did nothing on that recording.
+RETIRED_FLAGS = {
+    "--carrier-gain": 1,
+    "--carrier-from-code": 0,
+    "--innov-dr-seeds": 1,
+    "--joint-shadow": 0,
+    "--nh-period-offset": 1,
+    "--spectrum-aligned": 0,
+    "--spectrum-archive": 1,
+}
+
 
 def _open(path):
     """Transcripts of a real fleet are ~1.3 MB per cycle, so they live gzipped and OUTSIDE
@@ -208,6 +221,8 @@ def replay(path, extra=(), env=None):
     # --publish-port 0 disables the REST publisher: replays must not fight over a port, and
     # two of them running concurrently is the normal case when bisecting.
     argv = _strip(argv, "--publish-port")
+    for flag, nargs in RETIRED_FLAGS.items():
+        argv = _strip(argv, flag, nargs)
     cmd = (
         [PY, "-u", BROKER]
         + argv
@@ -231,14 +246,14 @@ def replay(path, extra=(), env=None):
     return out[-1].strip(), p.stderr
 
 
-def _strip(argv, flag):
-    keep, skip = [], False
+def _strip(argv, flag, nargs=1):
+    keep, skip = [], 0
     for a in argv:
         if skip:
-            skip = False
+            skip -= 1
             continue
         if a == flag:
-            skip = True
+            skip = nargs
             continue
         if a.startswith(flag + "="):
             continue
@@ -376,7 +391,6 @@ def main():
             "carrier_hz",
             "hops_per_sec",
             "dll_gain",
-            "carrier_gain",
             "code_bias_alpha",
             "bias_alpha",
         ):
@@ -393,9 +407,7 @@ def main():
             )
         print("sensitivity OK   moved by: %s" % ", ".join(moved))
         skipped = [
-            k
-            for k in ("dll_gain", "carrier_gain", "code_bias_alpha", "bias_alpha")
-            if k not in moved
+            k for k in ("dll_gain", "code_bias_alpha", "bias_alpha") if k not in moved
         ]
         if skipped:
             print(

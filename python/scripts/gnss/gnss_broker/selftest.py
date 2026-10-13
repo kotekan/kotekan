@@ -142,15 +142,6 @@ for key, want in (
         "%s vs %s" % (got, want),
     )
 
-check(
-    "gps_l5 and gal_e5a share a band (same 1176.45 MHz hardware)",
-    signals.get("gps_l5").band == signals.get("gal_e5a").band,
-)
-check(
-    "gal_e5b is a DIFFERENT band (retune -> different group delay)",
-    signals.get("gal_e5b").band != signals.get("gal_e5a").band,
-)
-
 # -- dead-reckon seed currency (task #30) -------------------------------------------------
 # The slewed refresh depends on two properties of dr_cp0/dr_seed_phys and dies silently
 # without either: (1) they are exact inverses, so "where does the tracker think the code is"

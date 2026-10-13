@@ -43,46 +43,6 @@ _FROZEN = dict(
     #   EMA weight for the clock-freq bias (smaller = steadier seed Doppler; ~0.05 =>
     #   few-second time constant, dithers out the 500 Hz grid)
     bias_alpha=0.05,
-    # --carrier-bleed-hz
-    #   Shadow: minimum standing |trim| (Hz) to consider a bleed candidate. Below this the sinc
-    #   loss is negligible and not worth a re-pin.
-    carrier_bleed_hz=2.0,
-    # --carrier-bleed-lockout-s
-    #   Minimum seconds between bleeds of the same PRN (anti-churn).
-    carrier_bleed_lockout_s=120.0,
-    # --carrier-bleed-max-slope
-    #   Shadow: max |least-squares trim slope| (Hz/s) over the window. A still-settling trim
-    #   drifts (low spread but a monotonic climb); bleeding it folds a mid-convergence value
-    #   and leaves a residual (the 2026-08-03 REFUTED class). Requiring a FLAT slope, not just
-    #   low spread, rejects those.
-    carrier_bleed_max_slope=0.02,
-    # --carrier-bleed-ok-hz
-    #   Post-bleed |residual| (Hz) at the end of the verify window to count VERIFIED. Judged on
-    #   the SETTLED residual, not coh_ok -- a re-pin resets the deep coherent window for ~1
-    #   emit (coherence_s blips) even on a good bleed, so coh_ok would false-refute; and a mild
-    #   remainder still reduced the standing trim (net win).
-    carrier_bleed_ok_hz=1.5,
-    # --carrier-bleed-shadow
-    #   f_ref TRIM-BLEED SHADOW (1 = on, log-only): report where a converged, coherent,
-    #   STANDING carrier trim WOULD be re-pinned into f_ref (which would drop the
-    #   sinc(ctrim*T_rec) despread loss, ~0.13-0.26 dB on L2C). Takes NO action -- it validates
-    #   the TRIGGER on live data before any tracker change (the fleet-collapse lesson: a
-    #   carrier correction that fires on the wrong sat is catastrophic). Gated on coherent +
-    #   converged so it can never flag the BOOTSTRAP/incoherent noise-walk that killed
-    #   alias-escape v1/v2.
-    carrier_bleed_shadow=1,
-    # --carrier-bleed-stable-emits
-    #   Shadow: consecutive coherent emits the trim must hold steady over to count as CONVERGED
-    #   (a moving trim is still settling -- not a candidate). Longer window makes the drift
-    #   SLOPE (below) measurable above noise.
-    carrier_bleed_stable_emits=8,
-    # --carrier-bleed-stable-hz
-    #   Shadow: max peak-to-peak trim spread (Hz) over the stability window to call it
-    #   converged.
-    carrier_bleed_stable_hz=0.4,
-    # --carrier-bleed-verify-emits
-    #   Emits to watch after a bleed before judging the re-pin by its residual.
-    carrier_bleed_verify_emits=3,
     # --carrier-rate-clip-hz
     #   clip rate residuals this far from the fleet MEDIAN before the weighted consensus (<=0
     #   disables). Median first, because a wrong-bin outlier is arbitrarily far and would drag
@@ -101,20 +61,6 @@ _FROZEN = dict(
     #   FREQUENCY steps. Measured separation -- contiguous emits step 0.24-0.72 Hz, the
     #   smallest re-anchor jump was 7.6 Hz.
     carrier_rate_max_step=3.0,
-    # --carrier-refade
-    #   TRACK-mode DEMOTION: after this many consecutive gated residuals (fade-hold or
-    #   innovation-reject) while the sat is still PRESENT (amp_snr >= --hold-snr), drop it back
-    #   to BOOTSTRAP so the loop re-acquires at full gain (0 = never). Without this the two
-    #   TRACK gates form an ABSORBING state: a seed-doppler step (un-precomped hold release /
-    #   escape re-anchor) leaves a residual above the innovation gate, decoherence turns off
-    #   coh_ok, and the sat parks carrier-dead with a perfectly measurable residual forever --
-    #   measured 2026-07-18 on B1C: C20 latched at -6.2 Hz for 40 min at full amp while deep
-    #   sat on the floor; the strongest (fastest-slewing) sats latch first, the weak ones never
-    #   certify into TRACK and self-heal, inverting the fleet. The presence bar keeps a
-    #   genuinely faded sat coasting on the feed-forward (the pathology --carrier-min-sig
-    #   exists for); the innov gate's designed escape ('re-seed -> BOOTSTRAP') never fires for
-    #   a held strong sat.
-    carrier_refade=10,
     # --cn0-prompt-min-sig
     #   served C/N0 (combdll.prompt_cn0): a PRN is served only when the mean debiased prompt
     #   power over EVERY gathered record is this many standard errors above zero, the scatter
@@ -182,12 +128,6 @@ _FROZEN = dict(
     #   ~1.0 with a tail to 1.87 on sky 2026-08-03), so the fallback is the conservative
     #   one-node answer.
     dll_quality_min=2.2,
-    # --dop-max-rate-hz
-    #   SAFETY NET (not a fence): clamp how far the seed Doppler may move in ONE cycle. Bounds
-    #   the damage from a garbage prediction slamming the tracker, without imposing discrete
-    #   steps. A real MEO Doppler moves <1 Hz per 0.2 s cycle, so this only ever fires on a bad
-    #   model.
-    dop_max_rate_hz=None,
     # --dop-rate-max
     #   reject a fitted doppler rate beyond this (Hz/s) and fall back to the almanac's.
     #   PHYSICAL, not tuned: GPS Doppler acceleration peaks near 0.94 Hz/s at L1, so ~0.70 at
@@ -230,16 +170,6 @@ _FROZEN = dict(
     #   EMA weight for the solved receiver clock (wrap-aware chips; the held value propagates
     #   at f_chip*(l-a) between solves)
     dr_clock_alpha=0.2,
-    # --dr-long-code
-    #   dead-reckon the code phase at the FULL secondary-overlaid code length
-    #   (--long-code-segments * code length) rather than one primary period. Required for any
-    #   chain without a blind search: E5a/B2a carry per-PRN secondaries, so nothing measures
-    #   the segment and the model must supply it. With this off (the historical behaviour)
-    #   every dead-reckoned seed lands in segment 0 -- correct 1 time in LC_SEG, which for
-    #   E5a's CS100 is 1 in 100. GPS masked the bug because its blind search re-seeds with a
-    #   measured nh. Needs absolute time to half a primary period (0.5 ms); the GPS-disciplined
-    #   anchor is microsecond-class.
-    dr_long_code=True,
     # --dr-max-eph-age-s
     #   do not trust the BRDC Doppler for a satellite whose ephemeris toe is older than this (4
     #   h). Stale/absent model -> fall back to the search-measured Doppler. The fallback is
@@ -266,27 +196,6 @@ _FROZEN = dict(
     #   satellite is older than this: across a long gap the clock really can have moved, so a
     #   stale comparison would reject a satellite that is fine.
     dr_off_jump_max_age_s=120.0,
-    # --dr-slew-cap-acq
-    #   Per-event slew ceiling (chips) for a seed that is still FAR from its target --
-    #   acquisition authority. Falls back to --dr-slew-cap (0.05) once within
-    #   --dr-slew-near-chips, so an established, converged track keeps today's restraint. 0
-    #   disables. ⚠️ THE FLAT CAP IS WHY P2b's SLEW CONSUMER WAS UNOBSERVABLE: 47%% of steps
-    #   sat exactly on it while satellites 5-8 chips out closed at 0.05 a go every 10-30 s --
-    #   of order an HOUR, against a ~600 s oscillation. Moving the TARGET does nothing while
-    #   the step is railed. Keep this at or below the E/P/L span (~0.5): past that the seed
-    #   outruns the loop that must follow it (the reverted 10 s re-pin, deep_snr 221 -> 17).
-    dr_slew_cap_acq=0.0,
-    # --dr-slew-near-chips
-    #   Inside this distance the seed has arrived and the flat --dr-slew-cap applies. Distance
-    #   rather than track AGE is the maturity test on purpose: it re-arms when an established
-    #   track drifts off, which is exactly the ~600 s oscillation case an age-based schedule
-    #   would lock in.
-    dr_slew_near_chips=0.2,
-    # --dr-slew-trust-sigma
-    #   Only move at the acquisition ceiling toward a target known this well (chips, 1-sigma on
-    #   the joint clk+b_sat for that satellite). A trust GATE, not a multiplier -- scaling the
-    #   cap by n x sigma is inverted, it makes a better-measured offset move slower.
-    dr_slew_trust_sigma=0.5,
     # --dr-solve-refused-rebootstrap-s
     #   after the clock solve has been REFUSED continuously for this long, force a one-shot
     #   re-bootstrap (clear the held clock and let the next median snap). 0 disables. THE
@@ -323,18 +232,6 @@ _FROZEN = dict(
     #   short legs go bimodal on B1C deep (some sats never sync, deep ~15 vs 220). Benches pass
     #   ~10; the A/B verdict discipline requires it.
     fit_maturity_span_s=30.0,
-    # --fleet-coherent
-    #   CROSS-NODE COHERENT COMBINE (fleet_coherent). Polls /get_records from the
-    #   --dll-combiners endpoints and removes the per-record COMMON SKY PHASE -- ~0.75 rad,
-    #   0.984-coherent across instances but only ~0.57 autocorrelated in time, which is why no
-    #   within-node temporal estimator can touch it and why the deep folds sat at ~14 sigma
-    #   against a ~100 sigma thermal ceiling. Each instance is corrected against the OTHERS
-    #   (leave-one-out), and the fleet total uses a one-way split so the noise estimate
-    #   survives. Measured 2026-08-05: 14 -> 170-700 on the bright sats, against a
-    #   shuffled-null floor of ~4. Costs one extra REST poll per combiner and ~0.2 s per cycle;
-    #   publishes into the coherent fields the FleetPublisher previously had to take
-    #   best-of-one-instance.
-    fleet_coherent=True,
     # --fleet-trim-hold-s
     #   keep a PRN armed to the C++ fleet loop this long after it was last PRESENT. ⚠️ Without
     #   this the loop is disarmed BY THE ERROR IT EXISTS TO FIX: the +-1-chip clock breathing
@@ -345,14 +242,6 @@ _FROZEN = dict(
     #   within ~1.5 min, and the E/L discriminator it leaves behind is noise-mean-zero, so a
     #   held arm on a dead PRN random-walks nothing (the leak reverts it).
     fleet_trim_hold_s=90.0,
-    # --hold-max-dop-hz
-    #   release a held seed when the fresh Doppler departs the FROZEN one by more than this:
-    #   the stale replica carrier decoheres the SINGLE-RECORD despread. Default = 0.1 cycle per
-    #   record = 0.1*chip_rate/code_length -- it MUST scale with the record period (100 Hz for
-    #   GPS 1 ms records, 25 Hz for E1C 4 ms, 10 Hz for B1C 10 ms; the GPS-calibrated 100 Hz on
-    #   B1C let the despread walk into the sinc NULL: amp oscillated 778<->0 on ~1 min cycles,
-    #   the first tri-constellation night's BDS symptom).
-    hold_max_dop_hz=None,
     # --integ-veto-baseline-s
     #   #98/#99 (2026-08-28): judge the escape referee's INTEGRITY VETO on the EXCURSION from
     #   the sat's own recent integ median (window this many seconds), not the absolute value.
@@ -413,15 +302,6 @@ _FROZEN = dict(
     #   detections, not cycles: re-counting an unchanged detection every --interval made this
     #   measure UPTIME rather than evidence (fixed 2026-08-10).
     nh_hint_min_samples=6,
-    # --period-continuity
-    #   what to do when the search's reported overlay period disagrees with the one predicted
-    #   from the previous pass. 'check' (default) LOGS the disagreement and applies nothing --
-    #   correct since the search began measuring the period from the acquire's coarse lag
-    #   (4371ff4eb); a nonzero disagreement on a strong satellite then means the SOURCE
-    #   regressed, which wants an alarm, not a silent repair. 'correct' restores the old
-    #   override (it stored its own correction and predicted from that, so one bad call was
-    #   permanent). 'off' skips the comparison entirely.
-    period_continuity="check",
     # --q-stall-bar
     #   q at or above this counts as a locked satellite for the duty (the working lock bar,
     #   chord-trim-quality-gate)
@@ -519,39 +399,12 @@ _FROZEN = dict(
     #   frozen?' is what separates 'b causes it' from 'b follows a pre-existing
     #   trim/slew oscillation'.
     bsat_gain=0.02,
-    # --carrier-rate-inherit
-    #   a PRN failing the q gate takes the fleet's amp_snr-weighted consensus instead of
-    #   no correction. OFF since 2026-08-04: this was built on 'the dominant term is
-    #   common-mode', which the sky refutes. Measured across 131 emits with >=3 PRNs
-    #   each, the spread of deep_rate_hz BETWEEN PRNs within a single emit has median
-    #   60.8 Hz -- near the full +-47.7 Hz range of the search. That is expected in
-    #   hindsight: the residual is measured against each tracker's OWN f_ref, which
-    #   re-pins per PRN on its own schedule, so there is no shared zero to average
-    #   towards. (The claim that IS true, and a different one, is that different NODES
-    #   agree on a given PRN.) Inheriting hands a satellite a number belonging to
-    #   someone else's reference; free-running is better.
-    carrier_rate_inherit=False,
     # --carrier-rate-min-q
     #   hard gate on deep_rate_q before a rate residual is believed. The 8.18.5 gap:
     #   17.9-22.0 on signal, 2.8-6.1 on noise. A weak sat does not merely scatter, it
     #   lands on the WRONG spectral bin (measured: amp_snr 9.5 was 41.7 Hz out by
     #   split-half, where amp_snr 83.7 was 0.000).
     carrier_rate_min_q=10.0,
-    # --carrier-source
-    #   what the shared carrier loop integrates. 'rate' (default, 2026-08-04) = the
-    #   combiner's phase-rate search (deep_rate_hz), measured at peak/median 17.9-22.0
-    #   on signal vs 2.8-6.1 on noise and pinned to ~0.2 Hz by split-half on strong
-    #   sats. 'resid' = the legacy carrier_hz_resid, which is SIGNAL-FREE (0.519 Hz on
-    #   signal, 0.492 on noise) -- kept only to reproduce the old behaviour, never for
-    #   science.
-    carrier_source="rate",
-    # --carrier-trim-const
-    #   DIAGNOSTIC: command this fixed carrier_trim_hz to every seeded PRN, independent
-    #   of --carrier-gain. Use with --carrier-gain 0 to measure the open-loop step
-    #   response of deep_rate_hz: sweep 0 / +X / -X and the measured rate should move by
-    #   exactly -X. Same sign => the loop is inverted; no movement => the trim never
-    #   reaches the despread.
-    carrier_trim_const=None,
     # --cl-time-adjust
     #   seconds added to the CL time-assist clock -- escape hatch for a future
     #   non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias
@@ -589,19 +442,6 @@ _FROZEN = dict(
     #  correlation is NOT chip-narrow needs a per-chain value, which is the "alongside the
     #  A/B that needs it" clause above. It is a real flag again; see the argparse entry next
     #  to --dll-deep-gate. Every other chain still runs the 0.5 it always ran.)
-    # --dr-clock-drift
-    #   CHORD: prime the dead-reckon clock DRIFT (chips/s). The drift estimator needs
-    #   consecutive multi-sat solutions 0.5-30 s apart; a search whose passes take
-    #   minutes never provides them, so drift pins to zero on stale repeats and the
-    #   clock freezes while the true receiver clock walks (measured 0.044 chips/s = +5
-    #   Hz at L5 on the CHORD GPSDO). Priming it makes the age-correction terms treat
-    #   minutes-old detections consistently, which is what lets a slow-cadence search
-    #   bootstrap the fast tracker loop.
-    dr_clock_drift=None,
-    # --dr-dry-run
-    #   compute + log the clock solve, integrity residuals and planned dead-reckoned
-    #   seeds WITHOUT injecting any (validation mode)
-    dr_dry_run=False,
     # --dr-max-drift-chips-s
     #   reject a dead-reckon clock DRIFT estimate beyond this (chips/s). The estimate is
     #   a difference of two clock solves, so any discontinuity -- a node or F-engine
@@ -714,26 +554,10 @@ _FROZEN = dict(
     #   the fleet instead of re-testing the strongest sat.
     joint_p2c_skip=4,
     # --joint-sigma
-    #   measurement sigma (chips) for --joint-shadow. The search cp noise is 0.03-0.5
+    #   measurement sigma (chips) for the joint solve. The search cp noise is 0.03-0.5
     #   chips per-sat-conditions; 0.3 is the middle of that and NOT tuned against the
     #   answer -- the state's own covariance reports whether it was right.
     joint_sigma=0.3,
-    # --kcoh-rate-from-row
-    #   ARM-17 (the churn killer): inject the JOINT ROW's y-space prediction
-    #   (carrier_correction_hz) into the KCOH fold instead of the previous cycle's
-    #   record-stream fit, per seeded sat whose row is converged. The fold's headline
-    #   (sig/eta) duty-cycles on the fit's own +-10 Hz cycle-to-cycle noise -- the
-    #   fleet-wide 'sig oscillation' -- while the row (e5b fine feed + kcoh, arms 15/16)
-    #   is 5-10x smoother. The record stream is command-blind on this plant, so the
-    #   row's estimate IS the stream's residual rate on commanded and uncommanded chains
-    #   alike. Probes have no rows and keep their zero/fit entries: the floor stays
-    #   self-calibrated. 0 = off (default).
-    kcoh_rate_from_row=0,
-    # --kcoh-row-max-sigma
-    #   row y-space 1-sigma bar (Hz) for --kcoh-rate-from-row: (f_band/c)*rrate_sigma +
-    #   f_carrier_sigma must be at or under this before a row's prediction replaces the
-    #   fit. An unmeasured row reads inf and never injects.
-    kcoh_row_max_sigma=1.0,
     # --lock-snr
     #   detection significance (sigma above noise) above which a sat counts as locked --
     #   the primary, noise-relative lock metric (vs the noise-biased |A|; noise sits at
@@ -750,9 +574,6 @@ _FROZEN = dict(
     #   per-PRN revisit, so a healthy fleet always has fresh samples and only a
     #   genuinely starved one widens.
     nh_hint_max_age_s=600.0,
-    # --once
-    #   run a single control-loop iteration and exit (for tests)
-    once=False,
     # --period-check-snr
     #   detections below this SNR do not enter the period-continuity history and their
     #   disagreements are logged as 'weak det' rather than as source regressions.
@@ -802,78 +623,6 @@ _FROZEN = dict(
     #   motion over the span: sigma_eff = sqrt(sigma^2 + (0.5*dcmd)^2), the worst-case
     #   span-mean reference error for an unknown application time.
     rrate_phase_sigma=0.05,
-    # --search-fft-len
-    #   the search/tracker fft_len, used only to refine the one-hop epoch conversion in
-    #   --seed-phase-transport by its '-1 sample' term (0.0064 chips at CHORD). 0 =
-    #   omit; the residual is constant and two orders below the DLL's pull-in.
-    search_fft_len=0,
-    # --carrier-leak
-    #   shared carrier integrator leak (same role as --dll-leak)
-    carrier_leak=0.05,
-    # --carrier-min-sig
-    #   HOLD the trim (skip the update) when the combiner's lock significance is below this (0 =
-    #   old behavior). The probe exemption above, generalized: a FADED real satellite is the
-    #   same pathology -- its residual is noise, and integrating it at full gain random-walks
-    #   the trim, which drags the model phase off, which DEEPENS the fade. Measured 2026-07-17
-    #   on the 1176 MHz chains: a ~4 s noise-driven limit cycle (dip -> trim walk 1-9 Hz ->
-    #   decoherence -> dip), median certified stretch 4 s, every dip an ADR phase break of ~8
-    #   cycles -- the gf-TEC floor. A held trim coasts on the almanac Doppler-rate feed-forward,
-    #   which carries the true dynamics through the fade. Updates additionally require a
-    #   CERTIFIED coherent window (coherence_s > 0): a residual measured on a decohered window
-    #   is garbage at ANY amplitude (the sig gate alone let re-lock transition rows kick
-    #   converged trims to the +-100 Hz rails -- E36 at 48 dB-Hz).
-    carrier_min_sig=0.0,
-    # --carrier-max-step
-    #   slew clamp on the trim, Hz per update (0 = unclamped). A healthy converged loop corrects
-    #   0.02-0.2 Hz per update and the clock it tracks is GPSDO-smooth, so any large requested
-    #   step is a bad measurement by construction; clamping bounds the damage a single garbage
-    #   residual can do to less than a deep window can absorb. Convergence from a fleet-seeded
-    #   start needs only a few Hz total.
-    carrier_max_step=0.0,
-    # --carrier-step-accept
-    #   EXPLAIN-APPLY-VERIFY hypothesis stage (0 = off): M = this many consecutive fresh GATED
-    #   residuals that agree (spread < max(2 Hz, innov)). For a PRESENT-but-gated sat, when the
-    #   agreed median is also large enough to EXPLAIN the decoherence (>= ~1/(2*T_emit) = 0.5
-    #   Hz), the observables close on one story -- 'the NCO is off by med' -- and the FULL
-    #   correction is applied ONCE, entering a VERIFY window: coherence returns / residual
-    #   collapses within 3 emits, or the hypothesis is REVERTED, the sat escalated to a
-    #   BOOTSTRAP re-acquire, and hypotheses locked out 60 s. The coherent-state innovation gate
-    #   is untouched (it is a physics bound: a cohering sat cannot carry a multi-Hz residual).
-    #   The closed verify loop is what the two retracted open-loop escapes lacked: a wrong
-    #   correction costs one bounded, reverted step. Type specimen: C19 2026-07-22, parked at
-    #   +3.03 Hz / full amp / dark for minutes while every gate held.
-    carrier_step_accept=0,
-    # --carrier-innov-hz
-    #   TRACK-mode innovation gate (0 = off): REJECT any residual larger than this outright.
-    #   After feed-forward, a converged sat's true residual is sub-Hz (the trim tracks a
-    #   slowly-drifting almanac-Doppler error); the resid estimator nevertheless emits
-    #   tens-of-Hz values that pass certification (measured 07-17: 'certified' +40 Hz --
-    #   impossible for a genuinely coherent window). A slew clamp only slows the poisoning (E36
-    #   at 49 dB-Hz walked to 18 Hz off the fleet at 1 Hz/update and collapsed 20 dB); rejection
-    #   stops it. Real step changes re-enter via re-seed -> BOOTSTRAP.
-    carrier_innov_hz=0.0,
-    # --carrier-bleed
-    #   ARM the trim-bleed (0 = shadow-only). On a verified candidate: zero car_trim and flag
-    #   the tracker to re-adopt the seed (f_ref = dop, phase-continuous reanchored==2) --
-    #   folding the frozen sub-fence pin offset into f_ref so the despread runs on-true.
-    #   EXPLAIN-APPLY-VERIFY: heal (stay coherent) or it is logged REFUTED and the loop re-grows
-    #   the trim from 0. Default OFF -- validate on the replay bench (GNSS_TRIM_FORCE) first.
-    carrier_bleed=0,
-    # --carrier-det-gate-s
-    #   BOOTSTRAP walk gate (0 = off): in BOOTSTRAP mode, integrate a residual only if a fresh
-    #   detection exists within this many seconds. A never-detected (almanac-only) or
-    #   long-undetected seed has no signal for the estimator: its 'residual' is noise, and
-    #   integrating it random-walks the trim to the clamp (C40 walked to -42 Hz over the 07-18
-    #   evening; the E36 innovation gate protects only TRACK mode). Held trims coast on the
-    #   fleet prior + Doppler-rate feed-forward, which is the better model anyway.
-    carrier_det_gate_s=0.0,
-    # --carrier-fleet-seed
-    #   initialize a new (or re-seeded) sat's trim to the MEDIAN of the converged fleet trims
-    #   instead of 0. The converged trim is the chain's deterministic frac-N LO offset (same for
-    #   every sat, stable across restarts -- e.g. the L5 chain sits ~+30 Hz), so the fleet
-    #   median is the right prior; the carrier twin of the code-bias seeding above (strong sats
-    #   calibrate the clock so weak ones start on it).
-    carrier_fleet_seed=False,
     # --coast-budget
     #   seconds a VISIBLE sat is coasted (seed held + Doppler forecast forward) through a signal
     #   dropout before dropping it -- so a radar sweep / brief fade doesn't lose the lock. The
@@ -948,8 +697,6 @@ def build_parser(description):
     )
     ap.add_argument(
         "--detectors",
-        "--searches",
-        dest="detectors",
         default="",
         help="detection endpoints: aggregator/search stage names, absolute "
         "URLs, or {a..b} ranges (e.g. aggregate  or  search_{00..49}). "
@@ -1217,17 +964,6 @@ def build_parser(description):
         ">= --bias-min-sats detections: at --interval 2, 0.005 => tau ~400 s "
         "-- above the minute-scale quantization wander, below hour-scale "
         "GPSDO thermal drift).",
-    )
-    ap.add_argument(
-        "--dr-cs-scan",
-        action="store_true",
-        help="BRING-UP INSTRUMENT (2026-08-31, gal_e6): step every dead-reckon "
-        "birth cp by one primary period per pass (re-birthing, never "
-        "slewing) to scan the secondary-code phase hypothesis; the CS-SCAN "
-        "log line pairs each pass's k with the previous pass's best tracker "
-        "amp_snr. One wrap = lc_seg passes. A winner k = a measured "
-        "anchoring offset; no winner = the CS phase is exonerated. "
-        "NEVER leave armed: the chain cannot track while scanning.",
     )
     ap.add_argument(
         "--code-length",
@@ -1499,24 +1235,6 @@ def build_parser(description):
         help="a slot's incumbent counts as DOWN below this elevation.",
     )
     ap.add_argument(
-        "--prn-reconfig-down-hold-s",
-        type=float,
-        default=10800.0,
-        help="how long an incumbent must have been continuously down before its "
-        "slot may be reclaimed (default 3 h). Hysteresis, not caution for its "
-        "own sake: BRDC visibility flickers, and a slot that flickers is a "
-        "satellite that never locks.",
-    )
-    ap.add_argument(
-        "--prn-reconfig-gone-hold-s",
-        type=float,
-        default=7200.0,
-        help="how long an incumbent must have been ABSENT FROM BRDC ENTIRELY "
-        "before its slot may be reclaimed (default 2 h). Shorter than the "
-        "down hold because a dead slot costs capacity and gains nothing -- "
-        "but not zero, because an ephemeris gap is not a decommissioning.",
-    )
-    ap.add_argument(
         "--prn-reconfig-heartbeat-s",
         type=float,
         default=900.0,
@@ -1582,14 +1300,6 @@ def build_parser(description):
         "the clock. The relative collapse is what D1 measures.",
     )
     ap.add_argument(
-        "--code-bias-init",
-        type=float,
-        default=None,
-        help="warm-start the receiver code-rate clock offset (l-a) in PPM, e.g. from a prior "
-        "strong-signal (L1 C/A) run -- so a weak band (L1C) seeds on-peak from cycle 1 "
-        "instead of self-calibrating. Live samples still refine it if any sats fit.",
-    )
-    ap.add_argument(
         "--fit-gap-s",
         type=float,
         default=16.0,
@@ -1597,27 +1307,10 @@ def build_parser(description):
         "(seconds of capture time; converted via --hops-per-sec)",
     )
     ap.add_argument(
-        "--carrier-gain",
-        type=float,
-        default=0.0,
-        help="SHARED carrier loop gain (0 = off): integrate the combiner's full-band "
-        "carrier_hz_resid into a per-PRN carrier_trim_hz commanded to every "
-        "subband tracker's NCO -- one loop at full-band SNR instead of N "
-        "noise-driven per-channel FLLs. Trackers need carrier_shared: true.",
-    )
-    ap.add_argument(
         "--carrier-max-hz",
         type=float,
         default=40.0,
-        help="clamp on the shared carrier trim (Hz)",
-    )
-    ap.add_argument(
-        "--force-doppler-rate",
-        type=float,
-        default=None,
-        help="REPLAY BENCH ONLY: attach this doppler_rate_hz_s to every seed (a "
-        "recorded capture's sky is at another epoch, so no almanac rate) to "
-        "exercise the tracker's NCO Doppler-rate feed-forward offline.",
+        help="clamp on the commanded carrier trim (Hz)",
     )
     ap.add_argument(
         "--dll-gain",
@@ -1712,25 +1405,6 @@ def build_parser(description):
         "poisons the search hints that would have recovered it (docs 11.33).",
     )
     ap.add_argument(
-        "--spectrum-archive",
-        default="",
-        help="write the RAW per-channel spectrum points to this JSONL (task "
-        "#25). fleet_spectrum already returns (freq_id, amplitude, energy, "
-        "instance) per PRN and today every point is collapsed to one tau "
-        "and discarded; this persists them BEFORE the collapse. One line "
-        "per (prn, channel, instance) per poll -- a few kB/poll, no "
-        "recomputation, no node-side change. Empty = off. THE PER-SUBBAND "
-        "AXIS IS THE SCIENCE PRODUCT: a combined number can always be "
-        "rebuilt from the parts, the parts can never be recovered from a "
-        "combined number, so the archive stores parts and every combine "
-        "(beam map, band health, per-element gain) is an offline function "
-        "of them. %%Y/%%m/%%d are expanded, so a long run rolls by day. "
-        "(The %% are DOUBLED because argparse runs help through percent-format: "
-        "a bare %%Y here makes --help itself crash with 'unsupported format "
-        "character', which is how this file's --help was dead from the #25 "
-        "commit until 2026-08-11 -- and --help is how anyone finds a flag.)",
-    )
-    ap.add_argument(
         "--publish-port",
         type=int,
         default=0,
@@ -1743,31 +1417,6 @@ def build_parser(description):
         "bias, fused LO, cross-band assist) -- this is the same kind of "
         "object. Coherent statistics are best-of-instance, not merged, and "
         "say so via coh_src; see FleetPublisher.",
-    )
-    ap.add_argument(
-        "--carrier-from-code",
-        action="store_true",
-        help="SHADOW: log the carrier error DERIVED from the fitted code slope "
-        "(x f_carrier/f_chip) beside the measured carrier_hz_resid, without "
-        "applying it. carrier_hz_resid is signal-free at CHORD SNR, so the "
-        "carrier loop was integrating noise; the code side is strong. Compare "
-        "the two before letting the derived value drive anything.",
-    )
-    ap.add_argument(
-        "--spectrum-aligned",
-        action="store_true",
-        help="TASK #53: gather /get_spectrum by WINDOW INDEX instead of taking "
-        "whatever each instance has accumulated since its own last poll. "
-        "Every instance is asked for the same window, each reply is rotated "
-        "onto one phase reference (phi0), PRNs whose accumulator re-anchored "
-        "mid-window are dropped, and the 'same index == same samples' "
-        "invariant is asserted across instances rather than assumed. "
-        "Instances on a pre-#53 node config cannot address windows and are "
-        "EXCLUDED, not mixed in -- one unaligned member reintroduces exactly "
-        "the free per-instance phase this exists to remove (#52). Off by "
-        "default only because the aligned path issues two GETs per instance "
-        "where the legacy path issues one, and replay is strict-ordered: an "
-        "old transcript replayed with it on would diverge.",
     )
     ap.add_argument(
         "--spectrum-stale-margin",
@@ -1799,22 +1448,6 @@ def build_parser(description):
         "no loop. Empty = off, and every recorded transcript replays "
         "byte-identically (replay is strict-ordered; this flag not being in "
         "an old transcript's argv is what keeps the new GETs out of replay).",
-    )
-    ap.add_argument(
-        "--joint-shadow",
-        action="store_true",
-        help="P2a (task #33, docs/CHORD_JOINT_TRACKING.md section 3a): run the "
-        "JOINT receiver-state solve -- one [clk, clk_rate, b_sat[i]] "
-        "estimated together from the dead-reckon integrity residuals, "
-        "receiver-scope so all three constellations feed ONE clock -- and "
-        "LOG it beside the circular-median clock it is meant to replace. "
-        "Consumed by nothing: this flag cannot change a seed, a POST or a "
-        "transcript digest, by construction. The comparison it exists to "
-        "make: the median treats the +-3-7 chip per-sat spread (docs "
-        "11.22) as error to be gated on; the joint solve reads the same "
-        "numbers as clock PLUS per-sat bias. If the biases hold steady "
-        "while the clock stays smooth, the revised P2 is right and the "
-        "consumers can start switching one per commit (P2b).",
     )
     ap.add_argument(
         "--joint-feed-max-trim",
@@ -1881,17 +1514,6 @@ def build_parser(description):
         "warn about age.",
     )
     ap.add_argument(
-        "--dcb-require",
-        action="store_true",
-        help="Treat a missing or stale DCB product as FATAL instead of warning. "
-        "Default off, because the DCB is optional by design -- it supplies "
-        "the per-satellite bias spread and group_delay_s falls back to the "
-        "broadcast TGD/BGD, which is what every run before 2026-08-23 did. "
-        "Arm it on a chain whose measurement actually depends on the "
-        "measured biases, so the chain refuses to start rather than "
-        "silently changing observable.",
-    )
-    ap.add_argument(
         "--dcb-bias",
         action="store_true",
         help="use the MGEX (CAS) measured differential code biases in place of "
@@ -1924,16 +1546,19 @@ def build_parser(description):
         "--joint-consume",
         default="",
         help="P2b: comma-separated JOINT-state consumers to switch LIVE, one "
-        "name per commit so each is A/B-able on its own. Empty (default) "
-        "= pure shadow. Names: 'rate' (seeded code-rate clock from "
+        "name per commit so each is A/B-able on its own. Any name runs the "
+        "JOINT receiver-state solve (task #33, docs/CHORD_JOINT_TRACKING.md "
+        "section 3a) -- one [clk, clk_rate, b_sat[i]] estimated together from "
+        "the dead-reckon integrity residuals, receiver-scope so all three "
+        "constellations feed ONE clock; empty (default) runs none. Names: "
+        "'rate' (seeded code-rate clock from "
         "clk_rate instead of the l-a EMA -- which measured ~80x biased, "
         "see the call site); 'slew' (the dead-reckon SLEW TARGET's "
         "clock+bias offset from clk + b_sat instead of the clock EMA plus "
         "the SatBiasFilter -- the half of the state P2c validates, and the "
         "half that survived the 2026-08-10 gauge collapse); later 'clock'. "
         "The shadow comparison for each is logged whether or not it is "
-        "consumed, so the A/B exists before the switch. Implies "
-        "--joint-shadow.",
+        "consumed, so the A/B exists before the switch.",
     )
     ap.add_argument(
         "--joint-mask-prn",
@@ -2206,8 +1831,9 @@ def build_parser(description):
         'axis, so it never needed a notion of "now" -- asking for one is '
         "what dragged the wall clock, NTP and the telemetry lag into the "
         "seed path, and it is why an ephemeris-epoch substitution measured "
-        "65x WORSE (reverted 2db3eec1f) and --innov-dr-seeds was falsified "
-        "in 20 minutes (09a8dc52e). Forecasting to a CHOSEN hop removes the "
+        "65x WORSE (reverted 2db3eec1f) and re-admitting dr-owned seeds to "
+        "INNOV was falsified in 20 minutes (09a8dc52e). Forecasting to a "
+        "CHOSEN hop removes the "
         "question: the measured ~217 ms lag (105 ms window quantisation + "
         "~100 ms pipeline, 59 ms IQR, occasional 1 s excursions) no longer "
         "enters the arithmetic and only sets how large this lead must be. "
@@ -2282,31 +1908,6 @@ def build_parser(description):
         "makes) and is blind below it. That same lag is why the epoch was "
         "NOT moved onto this axis: it would trade 1.45 ms of NTP error for "
         "~100 ms of pipeline lag (measured 0.6-2.4 chips of seed motion).",
-    )
-    ap.add_argument(
-        "--innov-dr-seeds",
-        type=int,
-        default=0,
-        help="#83 2(d): compute INNOV for DR-OWNED seeds too. The exclusion "
-        "exists because dr writers historically stamped ref_hop from "
-        "WALL time while detections ride the F-engine hop counter -- a "
-        "cross-axis dh reads the sub-second wall-vs-F-engine offset x "
-        "chip rate (measured: flipped G26 INNOV p95 2598 while MINNOV "
-        "1.27 and q 3.12 said the tap was fine). Under --dr-fengine-axis "
-        "the dr stamps ride the F-engine axis and the exclusion's "
-        "premise is gone; this flag re-admits them. HARD-TIED to "
-        "--dr-fengine-axis: without it this flag is ignored, because a "
-        "cross-axis INNOV would feed the escape referee garbage "
-        "(cp_err = _inv in the hold branch -- one number, two "
-        "consumers). ⚠️ ARMED AND FALSIFIED ON SKY 2026-08-17 22:30, "
-        "DISARMED: first flip after arming (PRN 4) served INNOV "
-        "+2201.31 chips / p95 2198.42 while unflipped sats in the SAME "
-        "line read 2.39-2.64. The axis fix removed the NTP DRIFT but not "
-        "the STALENESS: 2201 chips = 215 us = the sub-millisecond part of "
-        "the telemetry lag (integer ms vanish, 1 ms = one L5 period), and "
-        "t_now_abs rides the newest pow_hop, which trails the sky by "
-        "-99.6 ms median / 59 ms IQR. Re-arming requires LAG COMPENSATION "
-        "on t_now_abs, not a flag flip. MINNOV referees dr-owned sats.",
     )
     ap.add_argument(
         "--model-primacy-max",
@@ -2787,9 +2388,7 @@ def build_parser(description):
         "integrator and the actuation at ~23.8 Hz instead of this process's "
         "~3.1. POLICY STAYS HERE -- presence, the floors, the deep gate and "
         "the arming verdict are all computed above and only their RESULT "
-        "crosses. ⚠️ Do not run this together with --fast-trim-hz on the same "
-        "chain: two loops writing one trim is a race, and neither would be "
-        "measurable.",
+        "crosses.",
     )
     ap.add_argument(
         "--fleet-trim-bandwidth",
@@ -2839,36 +2438,6 @@ def build_parser(description):
         "its get stream -- an unconditional GET would diverge every pre-#76 "
         "fixture at the first cycle. Arm it in the chain yaml next to "
         "fleet-trim-url; a new recording then carries it natively.",
-    )
-    ap.add_argument(
-        "--fast-trim-hz",
-        type=float,
-        default=0.0,
-        help="TASK #51: run the CODE LOOP at this rate, on its own thread, instead "
-        "of once per policy cycle. 0 = off (the loop stays on the cycle).\n"
-        "THE DEFECT THIS FIXES: the DLL's authority is a step PER UPDATE and "
-        "the update rate was the ~12 s cycle, so the loop was 23x slower than "
-        "the drift and could never hold lock. Measured offline, noiseless, "
-        "from a GOOD (+0.373 chip) seed: the tap walks off at 0.121 chips/s "
-        "while the loop corrects at most dll_gain*|tau|max/cycle = "
-        "0.25*0.25/12.1 = 0.0052 chips/s.\n"
-        "⚠️ NO GAIN SETTING FIXES IT: tau is clamped to |tau| <= 0.25 chips by "
-        "construction, so even dll_gain 1.0 tops out at 0.021 chips/s. The E/L "
-        "discriminator is a FINE loop; update RATE is the only lever.\n"
-        "Break-even is 0.121/0.0625 = 1.94 Hz; 5-10 Hz gives 3-5x margin and "
-        "the #59 telemetry arrives at 23.84 Hz, so the data is already there. "
-        "POLICY STAYS ON THE CYCLE -- the main loop still decides who is "
-        "present and trimmable; this only runs the integrator and the POST.\n"
-        "Requires --telem-gather (it reads the gather store, never REST).",
-    )
-    ap.add_argument(
-        "--fast-trim-windows",
-        type=int,
-        default=4,
-        help="telemetry windows averaged per fast-trim update (4 windows = 16 "
-        "records = 0.17 s). Shorter is noisier per update but the loop's "
-        "problem is SLEW, not noise -- see --fast-trim-hz. Must be short "
-        "enough that consecutive updates see fresh records.",
     )
     ap.add_argument(
         "--telem-dll-windows",
@@ -3029,20 +2598,6 @@ def build_parser(description):
         "own error predicts 0.8 Hz at N=2. 0 (default) keeps every point.",
     )
     ap.add_argument(
-        "--nh-period-offset",
-        type=int,
-        default=0,
-        help="EXPERIMENT (2026-08-02): shift every seed's overlay period by N "
-        "primary code periods. The oracle measures the seeded period as a "
-        "CONSTANT 4 too high -- 4/4 strong detections, 3 satellites, seed ages "
-        "151-680 s, oracle ratios 30.1/25.8/17.4/9.8 -- and -4 == +16 mod 20, "
-        "where 16 code periods = 3125 hops = Mp = the anchor the search builds "
-        "repl0 at. This exists to TEST that, not to fix it: a constant that "
-        "works without a mechanism is how refine_span:4096 got baked in. "
-        "Applied to BOTH code_phase_at_ref_chips (which propagate_seed prefers) "
-        "and code_phase_chips. 0 = off.",
-    )
-    ap.add_argument(
         "--fit-min-snr",
         type=float,
         default=0.0,
@@ -3102,7 +2657,7 @@ def build_parser(description):
         "1-2 polls, per-sat step rate ranking exactly with q churn. Not "
         "the 2026-08-02 override this check replaced: nothing is stored "
         "from our own correction, and a real change passes in ~2N s. "
-        "Ignored under --period-continuity correct. 0 (default) disables.",
+        "0 (default) disables.",
     )
     ap.add_argument(
         "--nh-joint",
@@ -3161,21 +2716,6 @@ def build_parser(description):
         "and does not count toward resolution. True agreement is a few "
         "chips; the default is deliberately loose (0.15 code periods) so "
         "the tell is the LOGGED spread, not a silent exclusion.",
-    )
-    ap.add_argument(
-        "--hold-rate-source",
-        type=str,
-        default="none",
-        choices=["none", "dr", "dr-entry"],
-        help="#103 v2: while a seed is HELD, slew-bound its residual code rate "
-        "toward this source every cycle, anchor re-expressed at the present "
-        "(command-continuous; gate TestHoldRetagContinuity). 'dr' = the DR "
-        "clock drift (sd 6.9, cycle-to-cycle 0.4 mchips/s -- the only "
-        "measured source under the ~2 mchips/s bar a 10-min hold needs). "
-        "v1 of this idea sourced the pooled l-a estimate (+-50 mchips/s "
-        "swings) and was revert-triggered in 30 min: held sats INTEGRATE "
-        "rate noise that measurement-anchored sats never see. 'none' = "
-        "holds freeze the rate (pre-#103). 'dr-entry' (v3) = the swap at HOLD ENTRY only -- zero marginal tuple rewrites; the per-cycle 'dr' form (v2) degraded held q within minutes (suspected re-pin cost per rewrite) and stays only as the A/B arm.",
     )
     ap.add_argument(
         "--cp-rate-model-primary",

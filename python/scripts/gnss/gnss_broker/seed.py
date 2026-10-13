@@ -48,7 +48,6 @@ OWNERS = {
     "cp_fit": "REPLACE  cp-rate fit: code_phase_rate + ref_hop + code_phase_chips",
     "nh_lift": "REPLACE  overlay period lift from the search's cp_long / at-ref phase",
     "cl_assist": "REPLACE  overlay period from wall-clock CL time assist",
-    "dop_force": "REPLACE  --force-doppler-rate replay-bench override",
     "dop_clamp": "CORRECT  single-cycle doppler step bound (dop_max_rate_hz)",
     "hold_freeze": "REPLACE  hold-on-lock: previous tuple rides over the fresh candidate",
     "translate": "CORRECT  currency translation: same physical phase, new doppler",
@@ -57,8 +56,6 @@ OWNERS = {
     "dr_birth": "REPLACE  dead-reckon birth / re-pin: whole tuple from BRDC + clk",
     "dr_slew": "CORRECT  dead-reckon slew: held phase + bounded step toward model",
     "la_rate": "REPLACE  pooled (l-a) / joint clock code rate, every non-held PRN",
-    "hold_retag": "CORRECT  #103 held-rate refresh: anchor re-expressed at the present, "
-    "residual rate re-slaved to the pooled clock (pure arithmetic)",
     "reseed": "CORRECT  far-regime spec_tau re-seed, bounded fractional step",
     "phase_xport": "REPLACE  #45 step 6: at-ref phase shipped beside the DR tuple",
 }

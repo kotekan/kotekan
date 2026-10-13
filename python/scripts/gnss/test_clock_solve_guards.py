@@ -14,7 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gps_distributed_broker import split_erratic_offsets  # noqa: E402
+from gnss_broker.fits import split_erratic_offsets  # noqa: E402
 
 CODE_LEN = 10230.0
 BOUND = 100.0

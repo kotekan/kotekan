@@ -66,7 +66,6 @@ def _ctx(
     c = NS()
     c.args = NS(
         dr_min_sats=4,
-        dr_clock_drift=None,
         dr_max_drift_chips_s=1.0,
         dr_clock_alpha=0.2,
         chip_rate_hz=10.23e6,

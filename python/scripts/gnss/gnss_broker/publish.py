@@ -78,7 +78,7 @@ class FleetPublisher:
         # store; a request selects one chain or gets them all, tagged. Before this, one
         # publisher served one chain on one port, which is why CHORD needed a viewer
         # instance per constellation (12060 GPS, 12061 E5a).
-        self._chains = {}  # chain id -> {"rows", "dets", "meta", "ctl", "sig", "band"}
+        self._chains = {}  # chain id -> {"rows", "dets", "meta", "sig", "band"}
         self._order = []  # registration order, so output is deterministic
         self._rows, self._meta, self._dets, self._lock = [], {}, [], threading.Lock()
         # TRAILING DETECTION HISTORY, (chain, prn) -> deque[(t, inst_snr_med, certified)].
@@ -88,16 +88,6 @@ class FleetPublisher:
         # quantity and the display reads as random. A trailing duty is the honest summary --
         # it does not hide the flicker, it MEASURES it. See det_duty_s below.
         self._hist = {}
-        # RUNTIME CONTROL, deliberately narrow. Everything else here is read-only; this one
-        # value is writable because the experiment that needs it CANNOT be run any other way.
-        # Measuring the carrier loop's open-loop transfer function means holding a fixed
-        # carrier_trim_hz and watching deep_rate_hz -- but deep_rate_hz is measured against the
-        # tracker's f_ref, and changing the trim via --carrier-trim-const requires a broker
-        # restart, whose first seed list drops PRNs (the tracker's `active` fill is
-        # authoritative, so a dropped PRN sets f_ref = NaN and re-acquires). The step and the
-        # reference change are then inseparable, which is exactly how the 2026-08-04 attempt
-        # came out uninterpretable. Setting it in a LIVE broker holds f_ref still.
-        self._ctl = {"carrier_trim_const": None, "nh_prn_offset": {}}
         pub = self
 
         class H(BaseHTTPRequestHandler):
@@ -112,17 +102,8 @@ class FleetPublisher:
                 # was asking this port for prototype stage names (gal_search, gal_combiner,
                 # airspy_in) and the reported symptom was CORS rather than 404.
                 self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Methods", "GET")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type")
-
-            def do_OPTIONS(self):
-                # WITHOUT THIS, BaseHTTPRequestHandler answers 501 with no CORS headers, and
-                # every preflighted request dies. A POST of application/json IS preflighted,
-                # so /set_carrier_trim was unreachable from a browser entirely.
-                self.send_response(204)
-                self._cors()
-                self.send_header("Content-Length", "0")
-                self.end_headers()
 
             def do_GET(self):
                 # The viewer builds every URL as <base>/<stage>/<endpoint> from ONE host:port,
@@ -254,149 +235,12 @@ class FleetPublisher:
                 self.end_headers()
                 self.wfile.write(body)
 
-            def _set_nh_prn_offset(self, sel):
-                # Diagnostic lever for a per-PRN despread deficit: shift ONE satellite's seeds
-                # by k whole overlay periods on the wire (seeding.apply_nh_prn_offset), so the
-                # tracker despreads at another NH20 alignment while everything else it is told
-                # stays the broker's own. Body {"prn": <int>, "k": <int>}; k = 0 clears. Per
-                # chain, like the carrier trim, and for the same reason: one signal at a time.
-                try:
-                    n = int(self.headers.get("Content-Length", 0))
-                    req = json.loads(self.rfile.read(n) or b"{}")
-                    prn = int(req["prn"])
-                    k = int(req.get("k", 0) or 0)
-                except Exception as e:
-                    body = json.dumps(
-                        {"error": 'body must be {"prn": int, "k": int}: %s' % e}
-                    ).encode()
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                with pub._lock:
-                    targets = [sel] if sel in pub._chains else list(pub._order)
-                    if len(targets) != 1:
-                        body = json.dumps(
-                            {
-                                "error": "name one chain with ?chain=<id> or "
-                                "/<id>/set_nh_prn_offset (registered: %s)"
-                                % ", ".join(targets)
-                            }
-                        ).encode()
-                        targets = []
-                    else:
-                        tbl = pub._chains[targets[0]]["ctl"]["nh_prn_offset"]
-                        if k:
-                            tbl[prn] = k
-                        else:
-                            tbl.pop(prn, None)
-                        body = json.dumps(
-                            {"chain": targets[0], "nh_prn_offset": dict(tbl)}
-                        ).encode()
-                if not targets:
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                pub._log(
-                    "nh_prn_offset PRN %d -> %s on %s by REST (diagnostic: whole overlay "
-                    "periods on the wire)"
-                    % (prn, "cleared" if not k else "%+d period(s)" % k, targets[0])
-                )
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self._cors()
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def do_POST(self):
-                # /set_carrier_trim: body {"hz": <float>} holds that trim on every seeded PRN;
-                # {"hz": null} releases it back to --carrier-trim-const. Diagnostic: pair it
-                # with --carrier-gain 0 so the loop does not immediately correct the step away.
-                # /set_nh_prn_offset: see _set_nh_prn_offset above.
-                raw = self.path.split("?", 1)
-                p = raw[0].rstrip("/")
-                q = urllib.parse.parse_qs(raw[1]) if len(raw) > 1 else {}
-                sel = (q.get("chain") or [None])[0]
-                if sel is None:
-                    for seg in p.strip("/").split("/"):
-                        if seg in pub._chains:
-                            sel = seg
-                            break
-                if p.endswith("set_nh_prn_offset"):
-                    self._set_nh_prn_offset(sel)
-                    return
-                if not p.endswith("set_carrier_trim"):
-                    self.send_response(404)
-                    self._cors()
-                    self.send_header("Content-Length", "0")
-                    self.end_headers()
-                    return
-                try:
-                    n = int(self.headers.get("Content-Length", 0))
-                    req = json.loads(self.rfile.read(n) or b"{}")
-                    hz = req.get("hz")
-                    hz = None if hz is None else float(hz)
-                except Exception as e:
-                    body = json.dumps({"error": str(e)}).encode()
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                # A trim is a PER-CHAIN experiment. With one chain registered, name it
-                # implicitly; with several, an unqualified POST would silently step every
-                # signal at once, so require ?chain= and say so.
-                with pub._lock:
-                    targets = [sel] if sel in pub._chains else list(pub._order)
-                    if len(targets) > 1:
-                        body = json.dumps(
-                            {
-                                "error": "several chains registered (%s); name "
-                                "one with ?chain=<id>" % ", ".join(targets)
-                            }
-                        ).encode()
-                        targets = []
-                    else:
-                        for c in targets:
-                            pub._chains[c]["ctl"]["carrier_trim_const"] = hz
-                        pub._ctl["carrier_trim_const"] = hz
-                        body = json.dumps(
-                            {
-                                "carrier_trim_const": hz,
-                                "chain": targets[0] if targets else None,
-                            }
-                        ).encode()
-                if not targets:
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                pub._log(
-                    "carrier trim const set to %s by REST on %s (diagnostic)"
-                    % ("released" if hz is None else "%+.3f Hz" % hz, targets[0])
-                )
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self._cors()
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
         self._log = log
         self._srv = ThreadingHTTPServer(("0.0.0.0", port), H)
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
         log(
-            "fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state; "
-            'POST /set_carrier_trim {"hz": x} -- diagnostic open-loop trim)' % port
+            "fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state)"
+            % port
         )
 
     # -- multi-chain plumbing (task #27 M6) ---------------------------------------------
@@ -404,7 +248,7 @@ class FleetPublisher:
         """Claim a slot on this port and get a handle that looks like the old publisher.
 
         Returns a per-chain VIEW rather than self, so every existing call site --
-        `publisher.update(...)`, `publisher.carrier_trim_const(...)` -- keeps working
+        `publisher.update(...)`, `publisher.set_sky(...)` -- keeps working
         unchanged whether it is the only chain or one of five."""
         with self._lock:
             if chain not in self._chains:
@@ -413,7 +257,6 @@ class FleetPublisher:
                     "dets": [],
                     "meta": {},
                     "elem": {},
-                    "ctl": {"carrier_trim_const": None, "nh_prn_offset": {}},
                     "sig": signal,
                     "band": band,
                     "desc": dict(meta or {}, chain=chain, signal=signal, band=band),
@@ -475,24 +318,6 @@ class FleetPublisher:
                     for p, v in (sats or {}).items()
                 },
             }
-
-    def carrier_trim_const(self, fallback, chain=None):
-        """The REST override if one has been posted, else the command-line value."""
-        with self._lock:
-            st = self._chains.get(chain) if chain else None
-            v = (
-                st["ctl"]["carrier_trim_const"]
-                if st
-                else self._ctl["carrier_trim_const"]
-            )
-        return fallback if v is None else v
-
-    def nh_prn_offset(self, chain=None):
-        """{prn: k} overlay-period shifts posted for this chain (a copy; empty when none)."""
-        with self._lock:
-            st = self._chains.get(chain) if chain else None
-            tbl = st["ctl"]["nh_prn_offset"] if st else self._ctl["nh_prn_offset"]
-            return dict(tbl)
 
     def set_elements(self, table, chain=None):
         """The per-element complex-gain table (task #57 step 2), served on /get_elements.
@@ -1041,9 +866,6 @@ class FleetPublisher:
             "present": sum(1 for r in rows if r["fleet_present"]),
             "time_base_suspect": timebase.VERDICT.suspect,
             "time_base_dt_s": timebase.VERDICT.dt_s,
-            # the diagnostic overlay-period shifts in force, so a reader of the records
-            # knows a satellite is being deliberately despread off its own alignment
-            "nh_prn_offset": self.nh_prn_offset(chain=chain),
             "utc": _now(),
         }
         with self._lock:
@@ -1063,7 +885,7 @@ class _ChainView(object):
     """One chain's handle on a shared publisher.
 
     Exists so every call site keeps the pre-M6 shape -- `publisher.update(...)`,
-    `publisher.carrier_trim_const(...)` -- whether the process runs one chain or five. The
+    `publisher.set_sky(...)` -- whether the process runs one chain or five. The
     alternative was threading a chain id through the cycle body, which is the 3252 lines
     this refactor has deliberately not touched."""
 
@@ -1075,12 +897,6 @@ class _ChainView(object):
     def update(self, *a, **kw):
         kw["chain"] = self._chain
         return self._pub.update(*a, **kw)
-
-    def carrier_trim_const(self, fallback):
-        return self._pub.carrier_trim_const(fallback, chain=self._chain)
-
-    def nh_prn_offset(self):
-        return self._pub.nh_prn_offset(chain=self._chain)
 
     def set_elements(self, table):
         return self._pub.set_elements(table, chain=self._chain)

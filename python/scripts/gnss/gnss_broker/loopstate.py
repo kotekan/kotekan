@@ -29,53 +29,25 @@ happened.
 
 
 class CarrierState(object):
-    """The shared carrier loop's memory: per-PRN trim, lock, fade, and the bleed shadow.
+    """Per-PRN carrier trim state read by the seeding and rate-feed stages.
 
-    ⚠️ THE LOOP IS OFF IN PRODUCTION. `--carrier-gain` is 0.0 on CHORD, so every table here
-    stays empty on the live instrument and no fixture reaches this code. That is a deliberate
-    state -- the loop was measured to make tracking worse (#71) -- but it means nothing here
-    is exercised by any gate. Treat changes as unverified until the loop is armed on sky.
-
-    ⚠️ AND THAT IS NOT HARMLESS. Dead code is where the `fleet` clobber lived undisturbed:
-    unreachable code cannot fail its way to your attention.
+    Nothing writes these tables since the shared carrier loop was removed: they stay empty
+    and their readers fall back to zero trim.
     """
 
     __slots__ = (
         "trim",
-        "last",
         "locked",
         "fade",
-        "step_hist",
-        "step_t",
-        "verify",
-        "bleed_hist",
-        "bleed_log_t",
-        "bleed_verify",
-        "bleed_lock_t",
-        "trim_force",
         "repin_pending",
     )
 
     def __init__(self):
         self.trim = {}  # prn -> commanded carrier trim, Hz
-        self.last = {}  # prn -> last emitted value, for step detection
         self.locked = (
             set()
         )  # prns certified coherent since seed: BOOTSTRAP -> TRACK latch
         self.fade = {}  # prn -> consecutive faded emits (coast bookkeeping)
-        self.step_hist = {}  # prn -> recent step sizes, for the gated/ungated agreement
-        self.step_t = {}  # prn -> time of the last step
-        self.verify = {}  # prn -> verification counters
-        # f_ref TRIM-BLEED SHADOW: log-only. If the trim holds a STANDING value across the
-        # stability window then f_ref is pinned somewhere it should not be, and the trim is
-        # quietly absorbing a reference error rather than a satellite one.
-        self.bleed_hist = {}
-        self.bleed_log_t = {}
-        self.bleed_verify = {}
-        self.bleed_lock_t = {}
-        # PRNs whose trim is forced by GNSS_TRIM_FORCE -- a diagnostic override, never a
-        # control path.
-        self.trim_force = {}
         # prn -> bleed amount (Hz) to carry as carrier_repin in the next seed
         self.repin_pending = {}
 
@@ -188,7 +160,6 @@ class CpTracking(object):
         "err_hist",
         "escape",
         "escape_sign",
-        "fit_slope",
         "hist",
         "translated",
         "dop_hist",
@@ -205,7 +176,6 @@ class CpTracking(object):
         self.err_hist = {}  # prn -> recent (predicted - observed) code phase
         self.escape = {}  # prn -> escape-detector state
         self.escape_sign = {}  # prn -> the sign it escaped in
-        self.fit_slope = {}  # prn -> fitted cp rate, chips/s
         self.hist = {}  # prn -> recent (t, cp) for the rate fit
         self.translated = set()  # prns whose cp has been translated this pass
         self.dop_hist = {}  # prn -> recent Doppler observations
@@ -244,11 +214,10 @@ class RateFeedState(object):
     reports the best in-cap bin -- which is NOISE, and is what walked arm 1. The full-band
     field distinguishes them; without it the loop must not close.
 
-    ⚠️ ONE RESIDUAL COMPUTATION, SHARED. `rate_residuals` consumes a window: asked twice in a
-    cycle it reads "the same window again" and returns {} the second time. Consumers share one
-    result; they must never each ask.
+    ⚠️ ONE RESIDUAL COMPUTATION PER POLL. `rate_residuals` consumes a window: asked twice in a
+    cycle it reads "the same window again" and returns {} the second time.
 
-    The per-cycle fields (`resid`, `cons`, `resid2`, `full_ok`) are unconditionally reassigned
+    The per-cycle fields (`resid2`, `full_ok`) are unconditionally reassigned
     at the top of every pass. They live here rather than as loop locals so that a stage which
     computes them can be a module-level function -- an attribute needs no `nonlocal`.
     """
@@ -261,8 +230,6 @@ class RateFeedState(object):
         "span_fed_t",
         "adr_prev",
         "adr_ring",
-        "resid",
-        "cons",
         "resid2",
         "full_ok",
         "railed",
@@ -280,9 +247,7 @@ class RateFeedState(object):
         self.adr_prev = {}  # prn -> previous ADR sample
         self.adr_ring = {}  # prn -> recent ADR ring buffer
         # ---- per-cycle, reassigned every pass ----
-        self.resid = {}  # prn -> carrier-rate residual (the shared computation)
-        self.cons = None  # the consensus that came with it
-        self.resid2 = {}  # the rrate-state variant of the same residual
+        self.resid2 = {}  # prn -> carrier-rate residual on the uncapped fields
         self.full_ok = False  # is the full-band rate field present this cycle?
         # How many commands hit the slew rail this pass, and how many were released. These
         # are `+=` counters, and an augmented assignment READS before it writes -- which is

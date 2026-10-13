@@ -31,7 +31,6 @@ from gnss_broker import elemgain
 from gnss_broker.fits import rf_lobes
 from gnss_broker import signals
 from gnss_broker.fleet import (
-    fleet_spectrum,
     fleet_spectrum_aligned,
     fit_spectrum_delay,
     poll_rf_stats,
@@ -591,44 +590,13 @@ def instr_kcoh(ctx):
     ⚠️ THE RATE IT DEROTATES WITH MUST BE CAUSAL. `_kcoh_rates` is updated AFTER each cycle's fold
     from that cycle's record-stream fit, so the fold only ever uses a rate estimated from EARLIER
     records. That is the entire difference between this estimator and the deep fold it replaces --
-    a fold derotated by a rate fitted to its own records measures the fit, not the sky.
-        
-    ⚠️ ARM 17 (row-injected rates) WAS RETIRED FOR CAUSE on 2026-08-25: it was a carrier mirror,
-    convicted by an attribution toggle (q SD 2x on both bands). The fallback path -- fit-fed rates,
-    and probes always -- is the one that stands."""
+    a fold derotated by a rate fitted to its own records measures the fit, not the sky."""
     if ctx.dllp.run_est:
-        # ARM 17: overlay converged rows' predictions onto the fit-fed rates.
-        # See --kcoh-rate-from-row. Fallback for any sat without a converged
-        # row (and every probe) is exactly the old path.
-        _rates_in = dict(ctx.kcoh_rates)
-        _row_inj = 0
-        if ctx.args.kcoh_rate_from_row and ctx.args.rrate_state:
-            try:
-                _jri = ctx.rx.joint_receiver(
-                    ctx.band_id,
-                    ctx.code_len,
-                    rereference=ctx.args.joint_rereference,
-                    gauge_mode=ctx.args.joint_gauge,
-                )
-                for _pi in set(ctx.seeds) - ctx.probe_set:
-                    _ki = (ctx.args.dr_constellation, int(_pi))
-                    _sy = (ctx.args.carrier_hz / _jri.C_LIGHT) * _jri.rrate_sigma(
-                        _ki
-                    ) + _jri.f_carrier_sigma()
-                    if _sy <= ctx.args.kcoh_row_max_sigma:
-                        _rates_in[_pi] = _jri.carrier_correction_hz(
-                            _ki, ctx.args.carrier_hz
-                        )
-                        _row_inj += 1
-            except Exception as e:
-                _log_rl(
-                    "kcoh-row-err", "KCOH row-injection skipped: %s" % e, every_s=300.0
-                )
         try:
             ctx.dllp.kcoh = combdll.coh_cn0(
                 ctx.telem_client,
                 ctx.telem_chain,
-                rates=_rates_in,
+                rates=dict(ctx.kcoh_rates),
                 n_win=(ctx.args.telem_dll_windows or ctx.args.telem_windows),
                 min_instances=ctx.args.dll_min_instances,
                 prns=set(ctx.seeds) or None,
@@ -656,13 +624,11 @@ def instr_kcoh(ctx):
             _log_rl(
                 "kcoh",
                 "KCOH %s: %s | %d PRNs folded, floor from %d probe folds"
-                "%s"
                 % (
                     ctx.telem_chain,
                     "; ".join(_kv) if _kv else "no fold above the probe floor",
                     len(ctx.dllp.kcoh),
                     next(iter(ctx.dllp.kcoh.values()))["n_probe"],
-                    (", %d row-injected" % _row_inj) if _row_inj else "",
                 ),
                 every_s=30.0,
             )
@@ -671,100 +637,43 @@ def instr_kcoh(ctx):
 def instr_spectrum_fit(ctx):
     """INSTRUMENT: the spectrum delay fit (#32/#53), which feeds the #50 re-seed.
         
-    ⚠️ ALIGNED GATHER, NOT THE LEGACY POLL. The legacy fleet_spectrum takes whatever each instance
-    accumulated since ITS OWN last poll, so the instances are not summing the same records and
-    each carries a free phase. That is the defect of #52 -- a transport artifact, not a modelling
-    one -- and it is why the aligned path exists.
-        
     ⚠️ THE PEAK RATIO IS A SHUFFLED-NULL SIGNIFICANCE, built from the same points with values
     reassigned within each instance. Passing the bar means the fold beat its own null; it is not a
     tuned constant. It is ALSO not significance at poll cadence in the latched regime -- ratios up
     to 3.2 attached to contradictory taus seconds apart is what tripped #90's flight 2."""
     if ctx.spectrum_endpoints:
         try:
-            # ALIGNED GATHER (task #53). The legacy fleet_spectrum takes
-            # whatever each instance accumulated since ITS OWN last poll, so the
-            # instances are not summing the same records and each one carries a
-            # free phase -- which is the defect of #52, not a modelling
-            # convenience. The addressable path names ONE window index, asks every
+            # ALIGNED GATHER (task #53). Every instance must sum the same records
+            # on one phase reference, or each carries a free phase (the defect of
+            # #52). The addressable path names ONE window index, asks every
             # instance for exactly that window, rotates each reply onto a single
             # phase reference (phi0), drops PRNs whose accumulator was re-anchored
             # mid-window, and ASSERTS that the same index meant the same samples
             # everywhere. Instances that cannot address windows (a node still on a
             # pre-#53 config) are EXCLUDED rather than mixed in -- one unaligned
             # member puts the free phase straight back.
-            #
-            # Behind a flag because replay is strict-ordered: the aligned path
-            # issues TWO GETs per instance (availability, then the window) where
-            # the legacy path issues one, so an old transcript replayed with it on
-            # would diverge. Same pattern as --spectrum-endpoints itself.
-            if ctx.args.spectrum_aligned:
-                _spec, _smeta = fleet_spectrum_aligned(
-                    ctx.spectrum_endpoints,
-                    prns=set(ctx.seeds) or None,
-                    log=_log,
-                    stale_margin=ctx.args.spectrum_stale_margin,
-                )
-                _log_rl(
-                    "specwin",
-                    "SPEC-WINDOW %s: %d/%d instance(s) served%s%s"
-                    % (
-                        _smeta.get("window"),
-                        len(_smeta.get("served") or {}),
-                        len(ctx.spectrum_endpoints),
-                        (", %d dropped" % len(_smeta["dropped"]))
-                        if _smeta.get("dropped")
-                        else "",
-                        (", %d re-anchored" % len(_smeta["reanchored"]))
-                        if _smeta.get("reanchored")
-                        else "",
-                    ),
-                    every_s=120.0,
-                )
-            else:
-                _spec = fleet_spectrum(
-                    ctx.spectrum_endpoints, prns=set(ctx.seeds) or None
-                )
-            # PER-SUBBAND ARCHIVE (task #25, 2026-08-11). fleet_spectrum ALREADY
-            # returns (freq_id, amplitude, energy, instance) per PRN -- the
-            # per-frequency x per-element product the science side wants -- and
-            # until now every one of those points was collapsed to a single tau by
-            # fit_spectrum_delay and then discarded. This writes the RAW points,
-            # before any collapse. Nothing is recomputed: the cost is one line per
-            # (prn, channel, instance) per poll, a few kB, and no node-side change.
-            #
-            # Deliberately RAW, matching the observables record's contract: no
-            # clock removed, no combine, no normalisation. A per-subband beam map,
-            # a per-element gain solve and the band-health summary are all
-            # functions of these rows, computed offline where they can be redone
-            # when the model improves -- and a COMBINED number can always be
-            # rebuilt from the parts, while parts can never be recovered from a
-            # combined number. That asymmetry is the whole argument for storing
-            # this axis rather than a central estimator over it.
-            if ctx.spec_writer is not None and ctx.drp.t_now_abs is not None:
-                try:
-                    # WALL CLOCK for the archive, not t_now_abs -- the latter is
-                    # seconds since the F-engine's sample-0 anchor (now_w -
-                    # utc0_sample0), so using it named the first file
-                    # gps_l5_19700102.jsonl and would have made every row
-                    # unjoinable with the observables record. The receiver-relative
-                    # time is kept alongside, since it is the one the code phases
-                    # are referenced to.
-                    _n = ctx.spec_writer(
-                        ctx.drp.now_w, ctx.band_id, _spec, t_rx=ctx.drp.t_now_abs
-                    )
-                    _log_rl(
-                        "specarch",
-                        "SPEC-ARCHIVE: %d point(s) this poll -> %s"
-                        % (_n, ctx.args.spectrum_archive),
-                        every_s=300.0,
-                    )
-                except Exception as e:
-                    _log_rl(
-                        "specarch-err",
-                        "spectrum archive write failed: %s" % e,
-                        every_s=120.0,
-                    )
+            _spec, _smeta = fleet_spectrum_aligned(
+                ctx.spectrum_endpoints,
+                prns=set(ctx.seeds) or None,
+                log=_log,
+                stale_margin=ctx.args.spectrum_stale_margin,
+            )
+            _log_rl(
+                "specwin",
+                "SPEC-WINDOW %s: %d/%d instance(s) served%s%s"
+                % (
+                    _smeta.get("window"),
+                    len(_smeta.get("served") or {}),
+                    len(ctx.spectrum_endpoints),
+                    (", %d dropped" % len(_smeta["dropped"]))
+                    if _smeta.get("dropped")
+                    else "",
+                    (", %d re-anchored" % len(_smeta["reanchored"]))
+                    if _smeta.get("reanchored")
+                    else "",
+                ),
+                every_s=120.0,
+            )
             for prn, pts in _spec.items():
                 r = fit_spectrum_delay(
                     pts, ctx.args.chip_rate_hz, ctx.args.hops_per_sec

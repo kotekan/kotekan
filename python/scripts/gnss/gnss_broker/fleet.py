@@ -1571,8 +1571,8 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
     per-channel points across the whole fleet.
 
     Returns (points_by_prn, meta) where meta = {window, w0, w1, served, dropped, degraded}.
-    `points_by_prn` has the same shape fleet_spectrum returns, so fit_spectrum_delay consumes
-    it unchanged -- but every point now comes from the SAME RECORDS, which is what lets the
+    `points_by_prn` is {prn: [(freq_id, A, energy, inst_key)]}, what fit_spectrum_delay
+    consumes -- and every point comes from the SAME RECORDS, which is what lets the
     caller derotate by a derived phase instead of fitting one free phase per instance.
 
     HOW THE COMMON INDEX IS CHOSEN. Ask each instance what it has (every reply carries
@@ -1722,40 +1722,6 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
             "reanchored": reanchored,
         },
     )
-
-
-def fleet_spectrum(endpoints, prns=None):
-    """Poll every instance's /get_spectrum; return {prn: [(freq_id, A, energy, inst_key)]}.
-
-    ⚠️ LEGACY (pre-#53): takes whatever each instance accumulated since ITS last poll, so the
-    instances are NOT summing the same records and the per-instance phi_i in the fit is what
-    absorbs the offset. Use fleet_spectrum_aligned instead -- that free phase per instance is
-    the defect of task #52, not a modelling convenience. Kept for a fleet that has not been
-    restarted onto the addressable endpoint yet.
-    """
-    out = {}
-    for url in endpoints:
-        try:
-            r = _get("%s/get_spectrum" % url)
-        except Exception as e:
-            _log_rl(
-                "fleet-spec-%s" % url, "fleet spectrum: %s unreachable (%s)" % (url, e)
-            )
-            continue
-        fids = r.get("freq_ids") or []
-        for row in r.get("prns") or []:
-            prn = int(row.get("prn", -1))
-            if prn <= 0 or (prns is not None and prn not in prns):
-                continue
-            ch = row.get("chan") or []
-            pts = out.setdefault(prn, [])
-            for i, fid in enumerate(fids):
-                if i >= len(ch):
-                    break
-                re_, im_, en = ch[i]
-                if en > 0.0:
-                    pts.append((int(fid), complex(re_, im_), float(en), url))
-    return out
 
 
 def delay_combine(points, chip_rate_hz, chan_width_hz, tau_chips, rng=None, n_null=8):

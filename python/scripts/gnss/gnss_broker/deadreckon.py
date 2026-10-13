@@ -26,7 +26,6 @@ quantity has STOPPED MOVING, never on its age alone: age alone once adopted a cl
 @author Keith Vanderlinde
 """
 
-import math
 import threading
 import os
 import time
@@ -283,15 +282,7 @@ def dr_clock_quality(ctx):
         ):
             return
         prev_raw = ctx.dr_state.get("raw_prev")
-        # A primed drift is authoritative (the GPSDO rate is a band constant):
-        # never EMA it toward pair-differences of solutions built from UNCHANGED
-        # detections, which difference to ~zero and drag a correct prime away
-        # (measured 2026-07-31: primed +0.0439 walked to -61 within a minute).
-        if (
-            prev_raw is not None
-            and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0
-            and ctx.args.dr_clock_drift is None
-        ):
+        if prev_raw is not None and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0:
             d_est = (
                 ((ctx.drp.raw_clk - prev_raw[0] + ctx.code_len / 2) % ctx.code_len)
                 - ctx.code_len / 2
@@ -1929,39 +1920,6 @@ def dr_seed(ctx):
                         " ".join("PRN%d %+.2f(s%.2f)" % c for c in _cmp[:6]),
                     )
                 )
-        if getattr(ctx.args, "dr_cs_scan", False):
-            # ── CS-PHASE SCAN (2026-08-31, the gal_e6 bring-up instrument) ────────────────
-            # The chain reads noise with every INPUT verified (codes 50/50 == gnss-sdr,
-            # Doppler ratio exact, clock adopted, RF per-channel clean). The one anchoring
-            # never tested on sky is WHICH of the lc_seg secondary periods the model's cp
-            # lands in, so: step the birth cp by ONE primary period per pass and re-birth
-            # every seed (no slew). A wrong-but-constant anchoring lights up at exactly one
-            # k; a scan with NO winner exonerates the CS phase entirely. Reading: this line
-            # logs the PREVIOUS pass's best tracker amp_snr against the k it was despreading
-            # -- align (k, amp) offline over one full wrap (lc_seg passes = ~3.5 min at the
-            # 2 s interval). Default OFF; delete the yaml line + restart to disarm.
-            _k_prev = ctx.dr_state.get(
-                "cs_scan_k", 0
-            )  # drp is __slots__; the dict carries it
-            _amps = sorted(
-                (
-                    (float((ctx.status.get(_p) or {}).get("amp_snr", 0) or 0), _p)
-                    for _p in (ctx.status or {})
-                ),
-                reverse=True,
-            )[:3]
-            _log(
-                "CS-SCAN %s: k_prev %d -> best amp_snr %s | next k %d of %d"
-                % (
-                    ctx.band_id,
-                    _k_prev,
-                    " ".join("PRN%s %.1f" % (_p, _a) for _a, _p in _amps) or "none",
-                    (_k_prev + 1) % max(1, ctx.lc_seg),
-                    ctx.lc_seg,
-                )
-            )
-            ctx.dr_state["cs_scan_k"] = (_k_prev + 1) % max(1, ctx.lc_seg)
-        planned = []
         for (ctag, prn), v in sorted(ctx.drp.pd.items()):
             # SIGNAL CAPABILITY first (see --dr-min-prn / --signal-capability): a
             # satellite that does not broadcast this signal must never be seeded,
@@ -2054,11 +2012,6 @@ def dr_seed(ctx):
                 and prn in ctx.dr_state["seeded"]
                 and (ctx.sig_of(ctx.status.get(prn, {})) >= ctx.args.lock_snr or _held)
             )
-            if getattr(ctx.args, "dr_cs_scan", False):
-                # CS-PHASE SCAN (E6 bring-up instrument): every pass re-BIRTHS the seed at
-                # the next secondary-period hypothesis -- never slews (the 0.05-chip cap
-                # could not move a 5115-chip step in a lifetime). See the pass-level log.
-                _slew = False
             if (
                 not _slew
                 and prn in ctx.seeds
@@ -2149,7 +2102,6 @@ def dr_seed(ctx):
                 continue  # clock is still a prime; see the withhold note
             _leg_off = ctx.drp.clk_now + ctx.bsat.get(prn, ctx.drp.now_w)
             _off = _leg_off
-            _off_sigma = None  # set only when a JOINT offset is adopted
             _jr3 = ctx.joint_state(ctx.rx, ctx.band_id, ctx.args)
             # The joint is in its FEEDERS' chips (Receiver.joint_unit); with no single unit
             # there is nothing to compare, as in dr_joint_clk.
@@ -2163,7 +2115,7 @@ def dr_seed(ctx):
                 # ⚠️ WRAP AT THE MODULUS THE TWO ACTUALLY SHARE, AND APPLY THE
                 # RESULT AS A DELTA. clk_now is reduced mod CODE_LEN (10230 for
                 # L5) and so is the joint clk, but the SEED lives mod _DR_MOD
-                # (204600 with --dr-long-code -- 20 primary periods). Three
+                # (204600 on L5 -- 20 primary periods). Three
                 # consequences, all learned the hard way today:
                 #   * wrapping the difference at _DR_MOD does not fold out a
                 #     CODE_LEN wrap, so when clk_now crosses zero the shadow
@@ -2215,25 +2167,12 @@ def dr_seed(ctx):
                 )
                 if "slew" in ctx.joint_consume and _ok3:
                     _off = _leg_off + _d3
-                    # ...and how well we know it, for the rate limit below
-                    # (joint chips: the unit --dr-slew-trust-sigma is written in).
-                    _off_sigma = _jr3.sigma((ctx.drp.tag, prn))
             cp0 = (
                 (ctx.cp_predicted(v, ctx.drp.t_fc_abs) + _off)
                 - ctx.drp.t_fc_abs
                 * ctx.args.chip_rate_hz
                 * (1.0 + ctx.args.code_doppler_sign * dop_seed / ctx.args.carrier_hz)
             ) % ctx.drp.mod
-            if getattr(ctx.args, "dr_cs_scan", False):
-                cp0 = (
-                    cp0 + ctx.dr_state.get("cs_scan_k", 0) * ctx.code_len
-                ) % ctx.drp.mod
-            if ctx.args.dr_dry_run:
-                planned.append(
-                    "PRN %d el %.0f cp0 %.1f dop %+.0f rate %+.2f"
-                    % (prn, v["el"], cp0, dop_seed, drate)
-                )
-                continue
             if _slew:
                 # Where the TRACKER's propagation puts this seed right now
                 # (dr_seed_phys inverts the currency + extrapolation exactly --
@@ -2293,40 +2232,7 @@ def dr_seed(ctx):
                 # visible in the FIRST log line read that morning (PRN 35:
                 # model-held -10.571 chips, step -0.050). Dividing the two
                 # numbers in any log line would have found it.
-                #
-                # ACQUISITION AUTHORITY, TRACKING RESTRAINT. A seed that is
-                # far from its target needs the authority to pull in; one that
-                # has arrived must not be yanked around by noise. So the
-                # ceiling slides with DISTANCE, and drops back to the flat cap
-                # once the seed is within dr_slew_near_chips.
-                #
-                # KEYED ON DISTANCE, NOT ON TRACK AGE, though "new satellites
-                # slew hard, established ones tighten" is the behaviour either
-                # would give -- because a new seed IS the far one. Distance
-                # re-arms and age does not, and that difference is the whole
-                # point here: the ~600 s oscillation happens on ESTABLISHED
-                # tracks that have drifted off. An age schedule would tighten
-                # exactly those satellites and then deny them the correction
-                # they need, locking in the limit cycle it was meant to break.
-                #
-                # SIGMA IS A TRUST GATE, NOT A MULTIPLIER. The first cut scaled
-                # the cap as n x sigma, borrowed from the escape guard -- but
-                # there sigma bounds the size of a CLAIM, while here it is the
-                # precision of a KNOWN target, so proportional scaling made a
-                # well-measured offset move SLOWER. Inverted. What sigma
-                # actually decides is whether to trust the target enough to
-                # move fast toward it at all; past dr_slew_trust_sigma we keep
-                # the crawl. An offset with no sigma (no joint state, or
-                # refused) is untrusted by construction.
                 _cap = ctx.drp.slew_cap
-                if (
-                    ctx.args.dr_slew_cap_acq > ctx.drp.slew_cap
-                    and _off_sigma is not None
-                    and math.isfinite(_off_sigma)
-                    and _off_sigma <= ctx.args.dr_slew_trust_sigma
-                    and abs(_dcp) > ctx.args.dr_slew_near_chips
-                ):
-                    _cap = ctx.args.dr_slew_cap_acq
                 _step = max(-_cap, min(_cap, ctx.drp.slew_k * _dcp))
                 # Re-anchor at h1 with the FRESH model doppler/rate (kills the
                 # dt^2 linearization error a held seed accumulates) but at the
@@ -2373,7 +2279,6 @@ def dr_seed(ctx):
                             ctx.args.carrier_hz,
                             ctx.args.code_doppler_sign,
                             ctx.drp.mod,
-                            ctx.args.search_fft_len or None,
                         ),
                     )
                 ctx.dr_state["pin"][prn] = ctx.drp.now_w
@@ -2545,13 +2450,10 @@ def dr_seed(ctx):
                         ctx.args.carrier_hz,
                         ctx.args.code_doppler_sign,
                         ctx.drp.mod,
-                        ctx.args.search_fft_len or None,
                     ),
                 )
             ctx.dr_state["seeded"].add(prn)
             ctx.dr_state["pin"][prn] = ctx.drp.now_w
-        if planned:
-            _log("dead-reckon DRY RUN, would seed: %s" % "; ".join(planned))
         # model-owned sats drop on the BRDC elevation (they're exempt from
         # the TLE horizon drop -- see the coast loop), or on capability
         for prn in list(ctx.dr_state["seeded"]):
@@ -2590,7 +2492,6 @@ def _dr_reload(ctx, first, with_dcb=True):
         "dcb": None,
         "has_dcb": False,
         "error": None,
-        "fatal": None,
         "t0": time.time(),
     }
     try:
@@ -2638,8 +2539,6 @@ def _dr_reload(ctx, first, with_dcb=True):
                         "fetch has stopped working and the cache is carrying "
                         "it" % (_age, ctx.args.dcb_max_age_days)
                     )
-                if _why and ctx.args.dcb_require:
-                    res["fatal"] = "--dcb-require: %s" % _why
                 if _why:
                     _log(
                         "⚠️ DCB: %s. Falling back to the BROADCAST group delay "
@@ -2689,8 +2588,6 @@ def _dr_apply_reload(ctx, res):
     every chain (FADR BREAK gap 193-253 records, dark 0, vouch 0 -- records never seen, not
     trackers gone dark). Nothing here re-seeds: the seeding loop below reads the new model the
     same way it read the old one."""
-    if res["fatal"]:
-        raise SystemExit(res["fatal"])
     if res["error"]:
         _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % res["error"])
         ctx.dr_state["eph_t"] = ctx.drp.now_w - _DR_EPH_REFRESH_S + 600.0
@@ -2806,16 +2703,10 @@ def stage_dead_reckon(ctx):
         # it needs absolute time to half a primary period, 0.5 ms; the F-engine anchor is
         # GPS-disciplined to microseconds and BRDC range/clock are nanosecond-class, so
         # there are three orders of margin.
-        ctx.drp.t_code = (
-            (ctx.lc_seg * ctx.code_len) / ctx.args.chip_rate_hz
-            if ctx.args.dr_long_code
-            else ctx.code_len / ctx.args.chip_rate_hz
-        )
+        ctx.drp.t_code = (ctx.lc_seg * ctx.code_len) / ctx.args.chip_rate_hz
         # The seed is reduced at the SAME length the prediction was: one constant, used
         # twice, so they cannot drift apart.
-        ctx.drp.mod = (
-            (ctx.lc_seg * ctx.code_len) if ctx.args.dr_long_code else ctx.code_len
-        )
+        ctx.drp.mod = ctx.lc_seg * ctx.code_len
         # Layer-2 slew constants (task #30). CAP: 0.05 chips per 2 s cycle = 0.025
         # chips/s of correction authority -- above the 0.003-0.02 chips/s drift band
         # measured on sky, an order below the 0.25-chip DLL trims a fold tolerates, and
@@ -2853,7 +2744,6 @@ def stage_dead_reckon(ctx):
                         "dcb": None,
                         "has_dcb": False,
                         "error": str(_e),
-                        "fatal": None,
                         "t0": time.time(),
                     }
 
@@ -2981,15 +2871,11 @@ def stage_dead_reckon(ctx):
                         )
                     )
                 ctx.dr_state["ax_off"] = _dax
-            ctx.drp.la = (
-                ctx.args.code_bias_force * 1e-6
-                if ctx.args.code_bias_force is not None
-                else (ctx.cb.code_ema if ctx.cb.code_ema is not None else None)
-            )
+            ctx.drp.la = ctx.cb.code_ema
             # TASK #30, LAYER 1: A DETECTOR-LESS CHAIN CANNOT MEASURE (l-a) -- BORROW THE
             # BAND SIBLING'S. code_bias_ema fills only from this chain's own cp-fit pool,
             # which needs detections, so on E5a/B2a it stayed None and every dead-reckon
-            # seed shipped code_phase_rate = 0.0 (visible in SEEDDBG). The receiver code
+            # seed shipped code_phase_rate = 0.0. The receiver code
             # clock is PER BAND, not per chain -- gps_l5 measures it continuously on the
             # same 1176.45 MHz and has contributed it to the Receiver since M3, but
             # rx.code_bias() had NO consumer until now. The unmodeled rate this leaves is

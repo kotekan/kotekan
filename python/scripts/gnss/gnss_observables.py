@@ -174,7 +174,7 @@ def make_obs_writer(path_tmpl, label="", log=None):
     """Append-only JSONL row writer whose file ROLLS on the row's own UTC.
 
     Returns f(t_utc, row) -> the path written, reopening whenever the strftime-expanded
-    path changes. Mirrors make_spectrum_writer() in gps_distributed_broker.py.
+    path changes.
 
     ⚠️⚠️ WHY THIS IS A FUNCTION AND NOT A `open()` AT STARTUP (2026-09-10). The path used
     to be strftime-expanded ONCE, before the poll loop, so a logger begun on the 5th kept

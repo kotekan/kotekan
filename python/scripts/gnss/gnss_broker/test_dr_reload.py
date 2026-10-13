@@ -20,7 +20,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 class _Args(object):
     dcb_bias = 1
-    dcb_require = 0
     dcb_max_age_days = 0.0
     dr_constellation = "C"
 
@@ -103,7 +102,6 @@ class TestReloadCadence(unittest.TestCase):
                 "dcb": None,
                 "has_dcb": False,
                 "error": "no network",
-                "fatal": None,
                 "t0": 0.0,
             },
         )

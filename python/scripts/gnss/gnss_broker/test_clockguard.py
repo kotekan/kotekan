@@ -88,7 +88,6 @@ def _l5(freeze_deg=5.0, min_sats=4, step_max=5.0, repin=3):
         dr_min_sats=2,
         dr_max_solve_mad_chips=100.0,
         dr_solve_refused_rebootstrap_s=300.0,
-        dr_clock_drift=None,
         dr_max_drift_chips_s=1.0,
         dr_clock_alpha=0.2,
         chip_rate_hz=L5_RATE,

@@ -411,8 +411,8 @@ class JointReceiverState:
         # documented SIGNAL-FREE at CHORD SNR (0.519 Hz on signal, 0.492 on noise), so a
         # filter fed by it produces a confident, meaningless estimate -- the failure mode of
         # a self-referential phase estimator, which shows up in the VARIANCE, not the mean.
-        # deep_rate_hz is already characterised (--carrier-source rate, default since
-        # 2026-08-04): peak/median 17.9-22.0 on signal vs 2.8-6.1 on noise, precision ~0.2 Hz
+        # deep_rate_hz is already characterised (since 2026-08-04): peak/median 17.9-22.0
+        # on signal vs 2.8-6.1 on noise, precision ~0.2 Hz
         # by split-half on strong sats, with the gate --carrier-rate-min-q 10.0. Pass that
         # gate's q as the quality cut and ~0.2 Hz as sigma_hz.
         self.sigma_fcar0 = float(sigma_fcar0)

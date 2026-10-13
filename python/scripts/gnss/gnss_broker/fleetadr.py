@@ -580,9 +580,7 @@ def stage_fleet_adr(ctx):
     if fa is None:
         from gnss_broker.transport import _log
 
-        fa = _STATE[ctx.chain_id] = FleetAdr(
-            hpr=int(getattr(ctx.args, "hops_per_record", 2048) or 2048), log=_log
-        )
+        fa = _STATE[ctx.chain_id] = FleetAdr(log=_log)
     now = ctx.drp.now_w or 0.0
     fa.fold_windows(
         ctx.telem_client,

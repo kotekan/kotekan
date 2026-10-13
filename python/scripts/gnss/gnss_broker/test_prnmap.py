@@ -10,9 +10,6 @@ number: it is a SLOT SWAP, which throws away a working satellite's acquisition. 
 hysteresis is asserted here directly.
 
 WHAT IS BEING PINNED:
-  * an incumbent that is merely DOWN is not evictable until down_hold has elapsed, and the
-    clock RESETS if it comes back up (a satellite that flickers must never churn a slot);
-  * an incumbent GONE from BRDC is evictable sooner, but not instantly;
   * a candidate below the admit mask claims nothing, however long a slot has been free;
   * `report` posts NOTHING, ever -- the property that makes it safe to arm first;
   * two unwanted satellites never trade a slot (the map is a fixed point, not a flip-flop);
@@ -44,8 +41,6 @@ class Args(object):
         self.prn_reconfig_interval_s = 900.0
         self.prn_reconfig_admit_deg = 10.0
         self.prn_reconfig_evict_deg = 0.0
-        self.prn_reconfig_down_hold_s = 10800.0
-        self.prn_reconfig_gone_hold_s = 7200.0
         self.prn_reconfig_timeout_s = 5.0
         self.prn_reconfig_lead_s = 2.0
         self.prn_reconfig_axis_max_age_s = 30.0
@@ -544,13 +539,7 @@ def main():
     # with a network delay for a cause.
     print("scheduled swaps: every node crosses on the SAME frame")
     POSTS[:] = []
-    _c = Ctx(
-        [1, 2, 3],
-        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-        prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
-    )
+    _c = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",)
     # The axis was polled 3 s ago -- at the TOP of the cycle that is now posting. The
     # deadline must be advanced across that gap, not written against the stale hop.
     _c.fe_hop_now = 1_000_000_000.0
@@ -588,11 +577,7 @@ def main():
     POSTS[:] = []
     LOGS[:] = []
     _c4 = Ctx(
-        [1, 2, 3],
-        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-        prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
+        [1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",
     )
     _c4.fe_hop_now = 1_000_000_000.0
     _c4.fe_hop_t = 2000.0 - 120.0  # two minutes stale, cap is 30 s
@@ -615,11 +600,7 @@ def main():
     # nothing at all. This is the fail-open direction, and it is deliberate.
     POSTS[:] = []
     _c2 = Ctx(
-        [1, 2, 3],
-        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-        prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
+        [1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",
     )
     _c2.fe_hop_now = None
     run_cycle(_c2, 2000.0)
@@ -642,8 +623,6 @@ def main():
         [1, 2, 3],
         {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
         prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
         prn_reconfig_admit_deg=0.0,
         prn_reconfig_evict_deg=0.0,
     )
@@ -661,8 +640,6 @@ def main():
         [1, 2, 3],
         {1: +40.0, 2: -50.0, 3: -60.0, 9: +3.0},
         prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
         prn_reconfig_admit_deg=0.0,
         prn_reconfig_evict_deg=-2.0,
     )

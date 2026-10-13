@@ -225,40 +225,39 @@ def stage_fleet_dll(ctx):
                 _log_rl(
                     "telem-src", "telem: source failed (%s); using /get_records" % e
                 )
-        if ctx.args.fleet_coherent:
-            try:
-                ctx.dllp.fcoh = fleet_coherent(
-                    ctx.dll_combiners,
-                    ctx.args.coh_min_instances,
-                    ctx.args.coh_min_records,
-                    prns=set(ctx.seeds) or None,
-                    log=None,
-                    floor_margin=ctx.args.coh_floor_margin,
-                    seed=int(_now()),
-                    # lets it fit the record-stream carrier rate off
-                    # the records it already fetched (#33 coarse feed).
-                    # ⚠️ HOPS, NOT RECORDS. get_records' first tuple
-                    # element is a HOP COUNT -- phaseslope.py divides
-                    # it by 195312.5, not by the record rate. Passing
-                    # hops_per_sec/2048 made the time axis 2048x too
-                    # long, so every fitted rate came out 2048x too
-                    # SMALL: +-0.005 Hz where the fold read +-10,
-                    # ratio 1907-2140 across satellites.
-                    hop_rate_hz=ctx.args.hops_per_sec,
-                    # #59: when set, the poll is skipped entirely and
-                    # this identical estimator runs on the gathered
-                    # records instead.
-                    source=_tsrc,
-                )
-            except Exception as e:
-                _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
+        try:
+            ctx.dllp.fcoh = fleet_coherent(
+                ctx.dll_combiners,
+                ctx.args.coh_min_instances,
+                ctx.args.coh_min_records,
+                prns=set(ctx.seeds) or None,
+                log=None,
+                floor_margin=ctx.args.coh_floor_margin,
+                seed=int(_now()),
+                # lets it fit the record-stream carrier rate off
+                # the records it already fetched (#33 coarse feed).
+                # ⚠️ HOPS, NOT RECORDS. get_records' first tuple
+                # element is a HOP COUNT -- phaseslope.py divides
+                # it by 195312.5, not by the record rate. Passing
+                # hops_per_sec/2048 made the time axis 2048x too
+                # long, so every fitted rate came out 2048x too
+                # SMALL: +-0.005 Hz where the fold read +-10,
+                # ratio 1907-2140 across satellites.
+                hop_rate_hz=ctx.args.hops_per_sec,
+                # #59: when set, the poll is skipped entirely and
+                # this identical estimator runs on the gathered
+                # records instead.
+                source=_tsrc,
+            )
+        except Exception as e:
+            _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
         # PATH B, same estimator, separate population. Reported side by side rather than
         # merged: blending the two streams would make the very comparison this exists to
         # support impossible, and their per-record noise is NOT independent (both despread
         # the same antenna voltages), so a merged sum would not buy the sqrt(2) it appears
         # to. Publishes nothing and touches no loop.
         ctx.dllp.fcoh_n2 = {}
-        if ctx.args.fleet_coherent and ctx.n2_combiners:
+        if ctx.n2_combiners:
             try:
                 ctx.dllp.fcoh_n2 = fleet_coherent(
                     ctx.n2_combiners,
@@ -600,40 +599,6 @@ def stage_fleet_dll(ctx):
             )
             if _smsg:
                 _log("%s: %s" % (_tag, _smsg))
-        # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.
-        #
-        # Carrier and code are locked in ratio: a Doppler error dF drifts the code at
-        # dF * f_chip/f_carrier (validated offline, STATE 7.2: measured 0.01476 chips/s
-        # against 0.01476 predicted). Inverting, the fitted cp slope gives the carrier error
-        # directly, at f_carrier/f_chip = 115.03 Hz per chip/s.
-        #
-        # This matters because carrier_hz_resid is signal-free (2026-08-04: |resid| median
-        # 0.519 Hz on satellites with signal, 0.492 Hz on satellites without), so the carrier
-        # loop was integrating noise and is now off. The code side, by contrast, is strong --
-        # sustained q ~ 3.2 and an 8-point cp fit.
-        #
-        # LOGGED, NOT APPLIED. Three loops today were found eating a statistic that did not
-        # measure what its name said; this one gets compared against the estimator it would
-        # replace before it is allowed to move anything.
-        if ctx.args.carrier_from_code:
-            _k = ctx.args.carrier_hz / ctx.args.chip_rate_hz
-            _rows = []
-            for _p in sorted(ctx.cpt.fit_slope):
-                _rec = ctx.status.get(_p, {})
-                _meas = float(_rec.get("carrier_hz_resid", 0.0))
-                _sig = ctx.sig_of(_rec)
-                if _sig < ctx.args.lock_snr:
-                    continue
-                _rows.append(
-                    "PRN %d code->%+.2f Hz meas %+.2f Hz (sig %.1f)"
-                    % (_p, ctx.cpt.fit_slope[_p] * _k, _meas, _sig)
-                )
-            if _rows:
-                _log_rl(
-                    "carfromcode",
-                    "CARRIER-FROM-CODE (shadow): " + "; ".join(_rows[:6]),
-                    every_s=30.0,
-                )
         if ctx.dop_rate_rejected:
             _log(
                 "dop-rate: %d fit(s) REJECTED against the model (kept the model): %s"

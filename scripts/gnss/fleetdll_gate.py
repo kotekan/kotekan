@@ -32,11 +32,11 @@ formed a power per sender before adding, gives a different lobe power here. Abso
 are disjoint per sender (the fleet's `mod 8` grouping) except one deliberate duplicate, so
 the per-channel table's dup handling is exercised too.
 
-⚠️ AND IT MUST BE PRODUCTION-SIZED. fast_trim_e2e.py runs a 3-PRN fixture and could not catch
-the regression where 5 Hz was requested and 1.5 Hz delivered -- it reached 4.39 Hz either way.
-This one carries PRN and instance counts in the production range for the same reason, even
-though F1 measures no rate: the shapes a bug hides in (row compaction, an instance with a
-different channel count, a PRN below min_instances) do not appear at three PRNs.
+⚠️ AND IT MUST BE PRODUCTION-SIZED. A 3-PRN fixture could not catch the regression where 5 Hz
+was requested and 1.5 Hz delivered. This one carries PRN and instance counts in the production
+range for the same reason, even though F1 measures no rate: the shapes a bug hides in (row
+compaction, an instance with a different channel count, a PRN below min_instances) do not
+appear at three PRNs.
 """
 import argparse
 import json
