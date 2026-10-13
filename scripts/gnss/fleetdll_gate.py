@@ -334,7 +334,6 @@ def python_arm(frames, n_win, min_instances):
             min_instances=min_instances,
             k_sigma=3.0,
             q_fallback=2.2,
-            per_channel=False,
         )
     return out
 

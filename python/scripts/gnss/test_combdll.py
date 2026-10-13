@@ -185,11 +185,14 @@ class TestInstancePowers(unittest.TestCase):
 class TestFleetCombine(unittest.TestCase):
     """B. Across senders: ONE coherent sum over the lobe, and the sender is not a unit."""
 
-    def _fleet(self, phi=(0.0, 0.0), **kw):
-        frames = [
+    def _frames(self, phi=(0.0, 0.0), **kw):
+        return [
             make_frame(inst="cx19.0", chan_ids=(5972, 5988, 6004), phi0=phi[0], **kw),
             make_frame(inst="cx42.0", chan_ids=(5976, 5992, 6008), phi0=phi[1], **kw),
         ]
+
+    def _fleet(self, phi=(0.0, 0.0), **kw):
+        frames = self._frames(phi, **kw)
         return combdll.fleet_dll_comb(client_with(frames), "gps_l5", n_win=4, lag=0)
 
     def test_the_lobe_sum_is_normalised_and_the_ratios_are_the_combiners(self):
@@ -214,8 +217,10 @@ class TestFleetCombine(unittest.TestCase):
         v = self._fleet(phi=(0.3, 0.3 + math.pi))[1]
         self.assertAlmostEqual(v["p_pow"], 1.0, places=6)
         self.assertAlmostEqual(v["e_pow"], 0.25, places=6)
+        frames = self._frames(phi=(0.3, 0.3 + math.pi))
+        t = combdll.lobe_taps(client_with(frames), "gps_l5", [100])[1]
         for fid in (5972, 5976, 5988, 5992, 6004, 6008):
-            self.assertAlmostEqual(v["chan"][fid]["p"], 1.0, places=6)
+            self.assertAlmostEqual(t["chan"][fid][1], 1.0, places=6)
 
     def test_a_sender_in_antiphase_cancels_the_lobe(self):
         """Same two senders, but the SECOND's comb genuinely sits at -A (no phi0 to explain
@@ -261,10 +266,9 @@ class TestFleetCombine(unittest.TestCase):
         )
 
     def test_channels_from_both_instances_appear_once_each(self):
-        v = self._fleet()[1]
-        self.assertEqual(sorted(v["chan"]), [5972, 5976, 5988, 5992, 6004, 6008])
-        self.assertEqual(v["chan_dup"], [])
-        self.assertEqual(len(combdll.chan_profile(v)), 6)
+        t = combdll.lobe_taps(client_with(self._frames()), "gps_l5", [100])[1]
+        self.assertEqual(sorted(t["chan"]), [5972, 5976, 5988, 5992, 6004, 6008])
+        self.assertEqual(t["chan_dup"], [])
 
     def test_a_freq_id_claimed_twice_is_dropped_and_named(self):
         """Two instances must never hold one channel. If they do, say so and drop it.
@@ -276,9 +280,10 @@ class TestFleetCombine(unittest.TestCase):
             make_frame(inst="cx19.0", chan_ids=(5972, 5988)),
             make_frame(inst="cx42.0", chan_ids=(5988, 6004)),
         ]
+        t = combdll.lobe_taps(client_with(frames), "gps_l5", [100])[1]
+        self.assertEqual(t["chan_dup"], [5988])
+        self.assertEqual(sorted(t["chan"]), [5972, 6004])
         v = combdll.fleet_dll_comb(client_with(frames), "gps_l5", n_win=4, lag=0)[1]
-        self.assertEqual(v["chan_dup"], [5988])
-        self.assertEqual(sorted(v["chan"]), [5972, 6004])
         self.assertAlmostEqual(v["p_pow"], 1.0, places=6)  # the lobe sum is untouched
 
     def test_presence_policy_is_the_shared_one(self):

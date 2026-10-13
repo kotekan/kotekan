@@ -34,7 +34,7 @@ WHY THE NUMBERS WILL NOT MATCH TO THE LAST DIGIT, and which differences are legi
     separately rather than calling it an error.
 
 WHAT THE COMB BUYS THAT THE SUMMED SLOTS COULD NOT:
-  * A PER-CHANNEL DISCRIMINATOR (`chan`). Each channel lives on exactly one instance
+  * PER-CHANNEL POWERS (lobe_taps' `chan`). Each channel lives on exactly one instance
     (freq_id mod 8 routing), so the per-channel powers here are already fleet-wide -- ~56
     numbers across the lobe where there was one. That is the frequency axis the sum destroyed.
   * EXACT COLLATION. fleet_dll admits instances within `hop_window` of the newest because REST
@@ -49,13 +49,8 @@ it the deep gate simply does not fire -- it never guesses.
 import cmath
 import math
 
-# epl_decompose is re-exported: it is DLL algebra and belongs beside dll_tau, but combdll
-# imports fleet for apply_presence, so the definition lives there to keep imports acyclic.
 from .fleet import apply_presence
-from .fleet import epl_decompose
 from .telem import REC_PHI0, REC_PROJ_COST
-
-__all__ = ["epl_decompose"]  # the re-export, stated
 
 
 def dll_tau(disc, spacing):
@@ -328,7 +323,8 @@ COH_KEYS = ("coh_row", "coh_src", "coh_quad")
 
 
 def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
-    """`lobe_taps`' object, fetched from the gather's C++ reduction instead of rebuilt.
+    """`lobe_taps`' per-PRN object (without the per-channel table), fetched from the gather's
+    C++ reduction instead of rebuilt.
 
     ⚠️ THIS IS THE SAME ARITHMETIC, NOT AN APPROXIMATION OF IT. gnss::FleetDll forms these taps
     from the same frames, and scripts/gnss/fleetdll_gate.py hands both arms IDENTICAL BYTES and
@@ -342,9 +338,6 @@ def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
     each allocating Python complex objects, ~18% of chain CPU. The broker is pinned at 100% of
     ONE core by the GIL, where cycle time IS the sum of the chains' Python CPU, so that 18% is
     ~2 s of every cycle. The reduction is ~1k numbers.
-
-    The C++ arm drops duplicated freq_ids at window close and counts them in its stats; it
-    does not list them per PRN, so `chan_dup` is [] here.
 
     `get` is the caller's HTTP getter (transport._get), passed in so this module keeps its
     no-transport-import property and so a replay records the fetch like any other.
@@ -368,11 +361,6 @@ def taps_from_rest(get, url, chain, prns=None, timeout=5.0):
             "hop": int(v["hop"]),
             "xcoh": None if v.get("xcoh") is None else float(v["xcoh"]),
             "n_xcoh": int(v.get("n_xcoh") or 0),
-            "chan": {
-                int(f): [float(c[0]), float(c[1]), float(c[2]), float(c[3])]
-                for f, c in (v.get("chan") or {}).items()
-            },
-            "chan_dup": [],
         }
     return out
 
@@ -390,7 +378,6 @@ def fleet_dll_comb(
     deep_gate_prns=None,
     deep_gate_margin=3.0,
     coh_from=None,
-    per_channel=True,
     taps_src=None,
     admit_displaced=None,
 ):
@@ -398,9 +385,9 @@ def fleet_dll_comb(
 
     Same keys, same meanings, same presence policy (apply_presence, shared with fleet_dll so
     the two paths cannot drift apart in their verdicts) -- the difference is confined to where
-    the three powers came from. Extra keys: `src` = "comb", `n_rec`, `chan` (per-channel
-    powers and discriminators), `chan_dup`, `xcoh` (cross-sender coherence of the derotated
-    prompts, lobe_taps -- the live check that the senders sit on one phase reference).
+    the three powers came from. Extra keys: `src` = "comb", `e_pow`/`l_pow`, `n_rec`, `xcoh`
+    (cross-sender coherence of the derotated prompts, lobe_taps -- the live check that the
+    senders sit on one phase reference).
 
     ⚠️ THE POWERS ARE LOBE-COHERENT AND NORMALISED (lobe_taps): p_pow is |SUM_c G_c|^2 over
     EVERY channel of the lobe divided by the summed energy squared, so for a signal it does
@@ -432,7 +419,7 @@ def fleet_dll_comb(
             chain,
             wins,
             prns=prns,
-            per_channel=per_channel,
+            per_channel=False,
             min_instances=min_instances,
         )
     coh_from = coh_from or {}
@@ -444,18 +431,6 @@ def fleet_dll_comb(
         if E + L <= 0.0:
             continue
         src = coh_from.get(prn) or {}
-        chan = {}
-        if per_channel:
-            for fid, c in t["chan"].items():
-                ce, cp, cl = c[0], c[1], c[2]
-                chan[fid] = {
-                    "e": ce,
-                    "p": cp,
-                    "l": cl,
-                    "n_rec": c[3],
-                    "disc": (ce - cl) / (ce + cl) if ce + cl > 0.0 else 0.0,
-                    "q": 2.0 * cp / (ce + cl) if ce + cl > 0.0 else 0.0,
-                }
         out[prn] = {
             "disc": (E - L) / (E + L),
             "q": 2.0 * P / (E + L),
@@ -467,10 +442,7 @@ def fleet_dll_comb(
             "n_chan": t["n_chan"],
             "n_rec": t["n_rec"],
             "xcoh": t.get("xcoh"),
-            "n_xcoh": int(t.get("n_xcoh") or 0),
             "src": "comb",
-            "chan": chan,
-            "chan_dup": list(t.get("chan_dup") or []),
         }
         # The deep statistics: carried across, never invented (module header).
         for k in COH_KEYS:
@@ -1139,22 +1111,3 @@ def coh_cn0(
             row["series"] = d["series"]
         out[prn] = row
     return out
-
-
-def chan_profile(row):
-    """[(freq_id, q, disc)] sorted by frequency -- the lobe shape one PRN's comb sees.
-
-    The thing the tracker's sum made unknowable. A channel sitting at q ~ 1 while its
-    neighbours sit at 3 is either interference or a dead subband, and either way it was being
-    summed straight into the discriminator before this.
-    """
-    return [
-        (fid, c["q"], c["disc"]) for fid, c in sorted((row.get("chan") or {}).items())
-    ]
-
-
-def db(x, ref):
-    """10*log10(x/ref), or None -- for reporting power offsets without inventing zeros."""
-    if x is None or ref is None or x <= 0.0 or ref <= 0.0:
-        return None
-    return 10.0 * math.log10(x / ref)
