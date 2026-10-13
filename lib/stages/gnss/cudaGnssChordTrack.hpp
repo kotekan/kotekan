@@ -42,8 +42,10 @@
  * @conf seed_ttl_s      Double. Seed lifetime without a refresh, s; 0 = never. Default 60.
  * @conf trim_ttl_s      Double. Trim lifetime without a refresh, s; 0 = never. Default 0.
  * @conf trim_clamp      Double. Bound on |trim|, chips. Default 3.
- * @conf despread_max_chips      Int. Cap on the per-hop chip gather; 0 = full span. Default 0.
- * @conf despread_chips_centered Bool. Centre the capped window on the PFB span. Default false.
+ * @conf despread_max_chips      Int. Cap on the per-hop chip gather, a window centred on the
+ *                               PFB span; 0 = full span. Default 0.
+ * @conf despread_chips_centered Bool. Must be true when despread_max_chips is set; the capped
+ *                               window is always centred. Default true.
  * @conf phi_fp16        Bool. Store the Phi tables as fp16. Default false.
  * @conf seed_endpoint   String. POST /set_seeds. Default "/chord_track/set_seeds".
  * @conf trim_endpoint   String. GET /get_trim. Default "/chord_track/get_trim".

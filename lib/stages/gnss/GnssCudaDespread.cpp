@@ -64,7 +64,7 @@ struct GnssCudaDespread::Impl {
         bool valid = false;
         double doppler = 0.0;
         int n_chips = 0;
-        int d_first = 0; // first gather chip (centered truncation); 0 = full span or one-sided
+        int d_first = 0; // first gather chip (centered truncation); 0 = from chip 0
         float2 *d_A = nullptr, *d_B = nullptr; // float2 tables, or __half2 storage under
                                                // use_fp16 (the kernel template reinterprets
                                                // the pointer)
@@ -99,9 +99,8 @@ struct GnssCudaDespread::Impl {
     std::vector<int> all_chans;
     int Lf = 0;
 
-    std::vector<float2> stage;   // host transpose staging [chan][hop]
-    int max_chips = 0;           ///< cap on the chip gather depth (0 = the filter's full span)
-    bool chips_centered = false; ///< centre the max_chips window on the span
+    std::vector<float2> stage; // host transpose staging [chan][hop]
+    int max_chips = 0; ///< centred cap on the chip gather depth (0 = the filter's full span)
     cudaStream_t stream = nullptr;
     std::vector<gnss_cuda::DespreadJob> h_jobs;
     std::vector<double2> h_corr;
@@ -333,14 +332,10 @@ struct GnssCudaDespread::Impl {
         // the PFB filter's span in chips (~210 at CHORD: 65536 samples at 312.8 samples/chip).
         // Capping it truncates the filter, so it changes the replica as well as the cost.
         if (max_chips > 0 && pc.n_chips - pc.d_first > max_chips) {
-            if (chips_centered) {
-                // Keep the central max_chips: the prototype peaks mid-span, and a one-sided
-                // cap shorter than about half the span cuts through the peak.
-                pc.d_first += (pc.n_chips - pc.d_first - max_chips) / 2;
-                pc.n_chips = pc.d_first + max_chips;
-            } else {
-                pc.n_chips = pc.d_first + max_chips;
-            }
+            // Keep the central max_chips: the prototype peaks mid-span, and a one-sided cap
+            // shorter than about half the span cuts through the peak.
+            pc.d_first += (pc.n_chips - pc.d_first - max_chips) / 2;
+            pc.n_chips = pc.d_first + max_chips;
         }
         return pc;
     }
@@ -482,12 +477,6 @@ void GnssCudaDespread::set_phi_fp16() {
 void GnssCudaDespread::set_max_chips(int n) {
     _impl->max_chips = n;
     for (auto& pc : _impl->phi) // force a rebuild so the cap takes effect on cached buckets
-        pc.valid = false;
-}
-
-void GnssCudaDespread::set_chips_centered(bool c) {
-    _impl->chips_centered = c;
-    for (auto& pc : _impl->phi) // force a rebuild so the window placement takes effect
         pc.valid = false;
 }
 

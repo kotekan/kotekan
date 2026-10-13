@@ -82,17 +82,14 @@ public:
     /// replica_energy as gnss::channelized_despread computes them (per_channel left empty).
     std::vector<std::array<gnss::DespreadResult, 3>> despread_batch(const std::vector<Spec>& specs);
 
-    /// Cap the per-hop chip gather at @c n chips (0 = the filter's full span, ~210 chips at
-    /// CHORD: 65536 samples at 312.8 samples/chip). Synthesis cost is linear in the depth, but
-    /// the span is the channel response, so a capped gather is a different replica. Applies on
-    /// top of any cap set on the bank.
+    /// Cap the per-hop chip gather at @c n chips, a window centred on the PFB span (0 = the
+    /// filter's full span, ~210 chips at CHORD: 65536 samples at 312.8 samples/chip). Synthesis
+    /// cost is linear in the depth, but the span is the channel response, so a capped gather is
+    /// a different replica. The prototype (a windowed sinc) peaks mid-span: a centred 105-chip
+    /// window keeps 99.6% of the filter energy, where a cap starting at chip 0 would cut through
+    /// the peak. Applies on top of any cap set on the bank. Every kernel this class launches
+    /// honours the resulting d_first.
     void set_max_chips(int n);
-
-    /// Centre the @ref set_max_chips window on the PFB span instead of starting it at chip 0.
-    /// The prototype (a windowed sinc) peaks mid-span, so a one-sided cap shorter than about
-    /// half the span cuts through the peak; a centered 105-chip window keeps 99.6% of the filter
-    /// energy. Off by default. Every kernel this class launches honours the resulting d_first.
-    void set_chips_centered(bool c);
 
     /// Store the per-PRN Phi tables as __half2 from now on, halving their device footprint
     /// (storage error ~3.3e-4 relative). Off until called; there is no way back to float2.

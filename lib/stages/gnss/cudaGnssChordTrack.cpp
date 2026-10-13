@@ -126,36 +126,26 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     // The despread takes each channel's global bin, since the comb is sparse.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
                                                   sample_rate);
-    // Cap the per-hop PFB chip gather (0 = the full span, ~210 chips at CHORD geometry).
-    // Synthesis cost is linear in the depth, but a capped gather is a different replica. At
-    // CHORD geometry (scripts/gnss/e2e --max-chips) a one-sided cap of 120 or more reproduces
-    // the full-depth code phase exactly, while 105 lands 13 chips out on a grating lobe; a
-    // window centred on the PFB span holds down to 60. Below those floors the warnings mark the
-    // run as timing-only.
+    // Cap the per-hop PFB chip gather to a window centred on the span (0 = the full span, ~210
+    // chips at CHORD geometry). Synthesis cost is linear in the depth, but a capped gather is a
+    // different replica. At CHORD geometry (scripts/gnss/e2e --max-chips) a centred window
+    // reproduces the full-depth code phase down to 60 chips; below that the warning marks the
+    // run as timing-only. The despread has no one-sided cap, so despread_chips_centered may
+    // only be true.
     const int max_chips = config.get_default<int>(unique_name, "despread_max_chips", 0);
-    const bool centered = config.get_default<bool>(unique_name, "despread_chips_centered", false);
-    if (centered)
-        despread->set_chips_centered(true);
     if (max_chips > 0) {
+        if (!config.get_default<bool>(unique_name, "despread_chips_centered", true))
+            FATAL_ERROR("cudaGnssChordTrack: despread_chips_centered: false is not supported; "
+                        "the despread_max_chips window is always centred on the PFB span");
         despread->set_max_chips(max_chips);
-        if (centered && max_chips < 60)
+        if (max_chips < 60)
             WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} CENTERED is BELOW THE "
                         "VALIDATED FLOOR of 60 (the 2-node comb flips to a grating lobe at "
                         "52). Timing experiments only; detections and locks are INVALID.",
                         max_chips);
-        else if (centered)
+        else
             INFO_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} CENTERED (item 6) -- "
                         "central window of the ~210-chip span; {:.2f}x less synthesis work",
-                        max_chips, 210.0 / (double)max_chips);
-        else if (max_chips < 120)
-            WARN_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} is BELOW THE VALIDATED "
-                        "FLOOR of 120 -- the replica is truncated past the point where the "
-                        "search resolves the true lobe. Timing experiments only; detections "
-                        "and locks from this run are INVALID.",
-                        max_chips);
-        else
-            INFO_NON_OO("cudaGnssChordTrack: despread_max_chips={:d} (full span ~210) -- gather "
-                        "truncated at a validated depth; {:.2f}x less synthesis work",
                         max_chips, 210.0 / (double)max_chips);
     }
 
