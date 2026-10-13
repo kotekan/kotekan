@@ -8,10 +8,15 @@ stage, and each has a failure mode that looks like success:
   JUDGE   is this cycle's solve trustworthy at all (spread, drift, staleness)?
   ADOPT   if this chain cannot solve its own, take the band sibling's.
 
-⚠️ THE MEMBERSHIP MATTERS AS MUCH AS THE MEDIAN. Which satellites are in the pool steps the
-median by 1-2 chips when membership churns, on a ~600 s timescale, and that churn was THE
-DECAY ROOT: a clock that moves because the population moved is indistinguishable, in the
-value alone, from a clock that moved because the receiver did.
+⚠️ THE MEDIAN IS A CROSS-CHECK, NOT THE LEVEL. Which satellites are in the pool steps the
+median by 1-2 chips when membership churns, on a ~600 s timescale, and a clock that moves
+because the population moved is indistinguishable, in the value alone, from a clock that
+moved because the receiver did. So the level the seeds fly is the joint state's clock
+(state_filter.JointReceiverState under its prior gauge, which no membership change steps),
+adopted by dr_joint_clk on every chain with `joint-consume: clk`; the median keeps the
+long-code period, is the fallback on a refused joint clock, and is the counterfactual the
+JOINT-CLK line prints as `legacy`. Only a chain that does not consume the joint clock still
+flies the median.
 
 ⚠️ A PRIME IS NOT A MEASUREMENT. Seeding the clock with a fixed value silences the alarm that
 the solve is failing rather than making it succeed. `--dr-clock-chips 0.0` did exactly that
@@ -59,9 +64,11 @@ def dr_clock_solve(ctx):
     """3e-solve: THE RECEIVER CLOCK SOLVE -- the robust median over per-satellite offsets.
         
     ⚠️ MEDIAN, AND THE MEMBERSHIP MATTERS AS MUCH AS THE VALUE. Which satellites are in the pool
-    steps the median by 1-2 chips when membership churns, on a ~600 s timescale, and that churn
-    was THE DECAY ROOT (chord-clock-median-churn): a clock that moves because the population moved
-    looks exactly like a clock that moved because the receiver did.
+    steps the median by 1-2 chips when membership churns, on a ~600 s timescale, and a clock
+    that moves because the population moved looks exactly like a clock that moved because the
+    receiver did. That is why this solve is the CROSS-CHECK and the fallback: on a chain with
+    `joint-consume: clk` the level the seeds fly is the joint state's prior-gauged clock
+    (dr_joint_clk), and this median owns only the long-code period.
 
     ⚠️ INSIDE A BORESIGHT TRANSIT THE SOLVE IS NOT CONSULTED (#142, dr_clock_transit): the
     median is not taken, and the MAD-refusal clock that forces a re-bootstrap is stopped --
@@ -2702,11 +2709,16 @@ def stage_dead_reckon(ctx):
                         - ctx.code_len / 2
                     ]
                 ]
+                # The median is the level only where the joint clock is not consumed; the
+                # parenthesis says which, so a reader does not take it for the seeds' clock.
                 _log(
-                    "dead-reckon clock %.2f chips (%.3f us mod %.0f ms, drift "
+                    "dead-reckon clock %.2f chips (median: %s; %.3f us mod %.0f ms, drift "
                     "%+.3f chips/s); integrity: %s"
                     % (
                         ctx.dr_state["clk"],
+                        "a cross-check, the adopted joint clock is the level"
+                        if "clk" in ctx.joint_consume
+                        else "the level on this chain",
                         ctx.dr_state["clk"] / ctx.args.chip_rate_hz * 1e6,
                         ctx.drp.t_code * 1e3,
                         ctx.dr_state.get("drift") or 0.0,
