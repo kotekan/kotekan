@@ -45,7 +45,6 @@ CONF = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CONF)
 
 from chord_band_plan import (
-    all_band_channels,
     covering_channels,  # noqa: E402
     node_channels,
     signal_table,
@@ -105,34 +104,6 @@ N2_STAGE_PREFIXES = (
     "set_bf_mask",
     "run_send_voltage",
 )
-
-# --n2-primary REPLACES run_n2k and nothing else. cudaCorrelatorDual computes the identical N^2
-# prefix and ships it on the identical leg, so run_n2k must go or two stages produce one buffer.
-#
-# WHICH CONSUMERS SURVIVE IS --keep-n2's JOB, not this flag's, and the two compose. That split is
-# forced by the captured base rather than chosen: N2Accumulate does not consume correlations
-# alone -- each accum_N also takes counts, PL counts, RFI counts and the RFI frame mask -- and
-# that chain is HEADLESS here. PL_mask_compactor -> host_pl_mask_buffer -> count_PL ->
-# host_pl_counts_buffer -> n2_accumulate, but PL_mask_compactor's own input
-# host_pl_mask_exp_buffer has NO PRODUCER ANYWHERE IN THE BASE (verified 2026-08-08); in the real
-# deployment it arrives over the network from a stage the capture does not include.
-#
-# So on a dev node the science consumers CANNOT be fed, whatever this flag does:
-#   --n2-primary            -> the prefix is produced and exported to host_correlation_buffer,
-#                              with no consumers. This is the configuration for VALIDATING it
-#                              against cudaCorrelator, which is what has to happen first anyway.
-#   --n2-primary --keep-n2  -> the full chain, for a deployment where the PL/RFI feeds exist.
-#
-# BUT PREFER --n2-dual --keep-n2 (no --n2-primary) FOR PRODUCTION. n2k_dual's freq_map and
-# block_class_mask are BOTH global to a launch, so "AA on every frequency + MIXED|BB on the comb"
-# is not expressible as one launch -- full mode computes the extended (N+M)^2 on ALL 384 local
-# frequencies, and on 377 of them the M half is entirely zeros. Measured cost of that waste:
-# 3.698 ms/frame against 0.076 ms for the mapped launch.
-#
-# TWO launches express it exactly, and the first one already exists: production's cudaCorrelator
-# (bare N^2, NS=128, every frequency) plus cudaCorrelatorDual in FREQ-MAP mode (MIXED|BB, 7
-# channels). They do not collide -- the mapped launch never writes the standard output, because
-# the AA block it would copy is not computed. Cost is bare N^2 + 0.076 ms instead of 3.698 ms.
 
 
 def gpu_of_channel(cfg, node, freq_id):
@@ -683,7 +654,7 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
     inj0 = next(c for c in dual0["commands"] if c.get("name") == "cudaGnssInject")
     corr0 = next(c for c in dual0["commands"] if c.get("name") == "cudaCorrelatorDual")
     asm0, cmb0 = out[pre0 + "n2assemble"], out[pre0 + "n2combine"]
-    pk0, snk0 = out[pre0 + "telem_pack"], out[pre0 + "n2sink"]
+    pk0 = out[pre0 + "telem_pack"]
     consts = [
         ("node", node),
         # Present ONLY when an operator pinned the epoch (see chord_gnss_node.yaml). The
@@ -713,14 +684,8 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
         ("records_per_frame", pk0["records_per_frame"]),
         ("telem_host", out[pre0 + "telem_send"]["server_ip"]),
         ("telem_port", out[pre0 + "telem_send"]["server_port"]),
-        # ⚠️ THE SINK IS NOT ALWAYS A FILE WRITER. With --n2-dump off the n2sink is a
-        # dropAllFrames, which has no base_dir -- and this line crashed the generator with
-        # KeyError the first time the flag was actually turned off (2026-09-04). It had never
-        # been exercised because --n2-dump had been armed continuously since multi-chain came
-        # in. Fall back to the configured record_dir so gnss_chain.j2 still renders and
-        # re-arming stays a one-flag change, rather than emitting an empty path that would
-        # only fail later, inside a template.
-        ("sink_dir", snk0.get("base_dir", cfg["runtime"]["record_dir"])),
+        # The n2sink is a dropAllFrames, which has no base_dir; gnss_chain.j2 still takes one.
+        ("sink_dir", cfg["runtime"]["record_dir"]),
         ("buffer_depth", out[pre0 + "n2ctl_buf"]["num_frames"]),
         ("telem_frames", out[pre0 + "telem_buf"]["num_frames"]),
         ("search_host", out["gnss%d_srch_send" % gpus[0]]["server_ip"]),
@@ -1118,10 +1083,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     cost a restart on 2026-08-08: allocation fails, the unit comes up active, and no data
     moves.
 
-    Consumes the GPU voltage ring that run_send_voltage feeds (which --n2-dual keeps).
-    The N^2 prefix of the extended triangle stays on-GPU in this mode (no science consumer
-    in dev); the gathered GNSS tiles come to the host and go to a sink (dropAllFrames, or
-    rawFileWrite with --n2-dump for short captures).
+    Consumes the GPU voltage ring that run_send_voltage feeds. The N^2 prefix of the extended
+    triangle stays on-GPU (production's run_n2k computes the science N^2); the gathered GNSS
+    tiles come to the host for the assemblers, and the combined records end in a dropAllFrames.
     """
     sig = cfg["signals"]
     rt = cfg["runtime"]
@@ -1227,20 +1191,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # cudaProcess stages must not. Explicit, not arithmetic, so it stays checkable.
             "cpu_affinity": [V["cores"]["dual"]],
             "in_buffers": {"host_voltage_ringbuffer": ring},
-            # --n2-primary: the N^2 PREFIX leaves the GPU on the standard leg, so
-            # host_correlation_buffer{,_1} -> N2Accumulate -> the science pipeline is fed by
-            # cudaCorrelatorDual instead of by the (dropped) run_n2k. The prefix is bit-identical
-            # to cudaCorrelator's by construction -- triangular tile packing orders by ihi, so
-            # tiles 0..35 of the extended triangle ARE the pure-128 output (n2dualtest gate [3]).
-            "out_buffers": (
-                {
-                    "host_gnss_tiles": tiles_buf,
-                    "host_gnss_n2ctl": ctl_buf,
-                    "host_correlation": f"host_correlation_buffer_{gpu}",
-                }
-                if args.n2_primary
-                else {"host_gnss_tiles": tiles_buf, "host_gnss_n2ctl": ctl_buf}
-            ),
+            "out_buffers": {"host_gnss_tiles": tiles_buf, "host_gnss_n2ctl": ctl_buf},
             "commands": [
                 # ORDER MATTERS: the injector's pack lands on the same stream before the
                 # correlator's kernel reads the synth array -- that ordering is the entire
@@ -1341,34 +1292,19 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     #
                     # THE AA BLOCK IS NOT COMPUTED IN THIS MODE, so the standard N^2 pass-through
                     # is unavailable (cudaCorrelatorDual.cpp: "SPLIT 1 ... SKIPPED in freq-map
-                    # mode"). That is fine for a dev config that drops run_n2k, and it is exactly
-                    # what blocks path B from BEING the science pipeline -- there is no N^2 to
-                    # hand downstream. --n2-full-freq turns it off: the full triangle over every
-                    # frequency, AA included, so the bit-identical prefix copy can feed
-                    # cudaOutputData -> host_correlation_buffer -> N2Accumulate.
-                    #
-                    # Cost is the whole question. n2timing measured the marginal OFFLINE at
-                    # +2.00 ms/frame full versus +0.22 ms with the map; in situ the mapped launch
-                    # came in at 0.076 ms, 3x better than its own projection, so the full number
-                    # needs measuring rather than extrapolating. vis_len scales with
-                    # dp.n_freq_out automatically (7 -> 384, ~428 MB per frame slot), so no buffer
-                    # config changes with the mode.
-                    "gnss_freq_map": not (args.n2_full_freq or args.n2_primary),
+                    # mode"). Production's run_n2k computes the science N^2; this launch adds only
+                    # the mixed and synthetic blocks over the comb.
+                    "gnss_freq_map": True,
                     # GPU MEMORY NAME, and it must not collide with production's. cudaCorrelator
                     # and cudaCorrelatorDual both allocate an array called <name>_buffer, sized
                     # from THEIR OWN station count: 28,311,552 B at NS=128 against 113,246,208 B at
                     # NS=256. Coexisting under one name is a hard startup failure --
                     # "get_gpu_memory_array failed: requested name correlation_buffer size 28311552
                     # ... but existing memory is size 113246208" -- and the node comes up with the
-                    # units active and NO data moving, which reads exactly like a stall.
-                    #
-                    # Only --n2-primary wants production's name, because there run_n2k is dropped
-                    # and the standard cudaOutputData leg has to find this array. Coexisting, the
-                    # dual's copy is never even written (the N^2 pass-through is skipped in
-                    # freq-map mode), so a private name costs nothing.
-                    "n2k_correlation_name": (
-                        "correlation" if args.n2_primary else f"{pre}n2corr"
-                    ),
+                    # units active and NO data moving, which reads exactly like a stall. The dual's
+                    # copy is never even written (the N^2 pass-through is skipped in freq-map
+                    # mode), so a private name costs nothing.
+                    "n2k_correlation_name": f"{pre}n2corr",
                     "gnss_tiles_name": f"{pre}tiles",
                     "num_synth": num_synth,
                     "num_live_elements": n_live,
@@ -1397,20 +1333,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     "gpu_mem": f"{pre}n2ctl",
                     "out_buf": "host_gnss_n2ctl",
                 },
-            ]
-            + (
-                [
-                    # Byte-for-byte the third command of production's run_n2k gpu_N block, so the
-                    # science consumer sees the identical buffer contract it does today.
-                    {
-                        "name": "cudaOutputData",
-                        "gpu_mem": "correlation_buffer",
-                        "out_buf": "host_correlation",
-                    },
-                ]
-                if args.n2_primary
-                else []
-            ),
+            ],
         },
         ctl_buf: {
             "kotekan_buffer": "standard",
@@ -1508,7 +1431,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 {
                     "chan_noise_norm": True,
                     "chan_noise_norm_elems": [
-                        e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)
+                        e
+                        for lo, hi in live_element_ranges(arr)
+                        for e in range(lo, hi + 1)
                     ],
                 }
                 if args.chan_noise_norm
@@ -1567,39 +1492,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "record_export": 128,
             "cpu_affinity": [V["cores"]["combine"]],
         },
-        f"{pre}n2sink": (
-            {
-                "kotekan_stage": "rawFileWrite",
-                "in_buf": f"{pre}n2cmb_buf",
-                "base_dir": args.record_dir or rt["record_dir"],
-                # ⚠️ THE TAG IS LOAD-BEARING. `pre` carries {tag} everywhere else in this
-                # function, but this name did not -- so all SEVEN gnss0 chains wrote
-                # "<node>_gnss0_n2rec_%07d.raw" into ONE directory, and all eight gnss1 chains
-                # shared another. rawFileWrite opens O_WRONLY|O_CREAT (no O_EXCL) with a
-                # per-stage counter that starts at 0, so they did not error -- they silently
-                # overwrote each other.
-                #
-                # MEASURED on cx19 2026-09-03: 455 distinct files touched in 20 s, against 456
-                # predicted if all 15 writers sit in lockstep on the same two index sequences.
-                # ~87% of written frames destroyed within milliseconds, and the survivors are
-                # UNATTRIBUTABLE -- nothing in the file or its name says which chain wrote it.
-                # An archive you cannot attribute is not an archive.
-                "file_name": f"{node}_gnss{gpu}{tag}_n2rec",
-                "file_ext": "raw",
-                # One frame per file gave 2,498,836 files and a 245 MB directory inode on cx19,
-                # which makes even `ls` expensive and any readdir-based consumer unusable.
-                # rawFileRead derives the count from the file size, so bundling is transparent
-                # to every reader.
-                "num_frames_per_file": args.n2_dump_frames_per_file,
-                # The tiles buffer carries an NDArray descriptor (set dynamically by the GPU
-                # path); we write raw bytes and the reader supplies the layout, which is fixed
-                # by construction (see cudaCorrelatorDual.hpp's tile-list note).
-                "allow_ndarray": True,
-                "cpu_affinity": [V["cores"]["sink"]],
-            }
-            if args.n2_dump
-            else {"kotekan_stage": "dropAllFrames", "in_buf": f"{pre}n2cmb_buf"}
-        ),
+        f"{pre}n2sink": {"kotekan_stage": "dropAllFrames", "in_buf": f"{pre}n2cmb_buf"},
     }
 
     # -- THE (N+M)^2 VISIBILITY CAPTURE (--vis-capture) ------------------------------------------
@@ -1893,9 +1786,7 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     # one process on this GPU now: the primary's private streams serve it
     merged["cuda_stream_base"] = 3
     merged["num_cuda_streams"] = 6
-    out_buffers = {
-        k: v for k, v in primary["out_buffers"].items() if k == "host_correlation"
-    }
+    out_buffers = {}
     injects, outputs = [], []
     for p in pres:
         inj = dict(
@@ -1922,11 +1813,6 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
                 "out_buf": f"host_{p['pre']}n2ctl",
             },
         ]
-    outputs += [
-        c
-        for c in primary["commands"]
-        if c["name"] == "cudaOutputData" and c.get("out_buf") == "host_correlation"
-    ]
 
     corr = dict(
         next(c for c in primary["commands"] if c["name"] == "cudaCorrelatorDual")
@@ -2069,9 +1955,7 @@ def _comb_g(chan_ids, fft_len):
 
 
 def search_stage(cfg, args, in_buf, chan_ids, core):
-    """The GnssChannelizedSearch block, shared by the per-node and aggregator instances so
-    their search configuration CANNOT drift apart -- every hard-won constant below applies
-    identically to both."""
+    """The aggregator's GnssChannelizedSearch block, with every hard-won search constant."""
     sig = cfg["signals"]
     fe = cfg["fengine"]
     n_chan = len(chan_ids)
@@ -2188,10 +2072,6 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         "refine_span": 512
         if _comb_g(chan_ids, fe["num_bins"] * 2) == 1
         else fe["num_bins"] * 2,
-        # The aggregate is parallel over Doppler bins and is the whole cost of an aggregator
-        # pass (27 channels x 4096 lags x nd bins ~ 10 s/window on one core). The per-node
-        # instances keep 1 thread; the aggregator overrides after construction.
-        "acquire_threads": 1,
         "cpu_affinity": [core],
     }
     # #97: pick each surface's peak on the mainlobe pair-sum, and vote the NH label across the
@@ -2208,7 +2088,7 @@ def build_aggregator_instance(cfg, nodes, args, port):
     searches cannot reach. A node sees 7 of the ~106 covering channels (-11.8 dB) and no
     amount of local integration recovers that; the union of N nodes is denser by
     construction (all eight mod-8 offsets -> the full contiguous cover). The feeds arrive
-    exactly as for per-node search instances (bufferSend/bufferRecv, one per node GPU);
+    over bufferSend/bufferRecv, one per node GPU;
     GnssChanAlignMerge aligns them on the F-engine's GLOBAL sample counter -- equality of
     sample_seq IS simultaneity, so the union search is coherent across nodes -- and one
     GnssChannelizedSearch runs on the merged comb.
@@ -2407,7 +2287,7 @@ def build_cube_archive_instance(cfg, args, port):
         "cpu_affinity": cores,
         "rest_server": {"port": port, "cpu_affinity": cores, "enable_cors": True},
         # kotekan constructs a Telescope whatever the stage graph contains; minimal valid block,
-        # same as the gather and search instances. query_gps false: no F-engine to ask here.
+        # same as the gather and aggregator instances. query_gps false: no F-engine to ask here.
         "telescope": {
             "name": "ICETelescope",
             "num_polarizations": 1,
@@ -2491,7 +2371,7 @@ def build_gather_instance(cfg, args, port):
     and bufferRecv is told to accept anything up to it; the frames are self-describing and
     every consumer validates the shape against the length it was given.
 
-    Standalone, like the search instance and for the same reasons: it must not share the
+    Standalone, like the search aggregator: it must not share the
     aggregator's fate (the aggregator is restarted often), and moving it is a change of
     --telem-host on the nodes and nothing else.
     """
@@ -2627,119 +2507,6 @@ def build_gather_instance(cfg, args, port):
         }
     return out
 
-
-def build_search_instance(cfg, node, per_gpu, args, port):
-    """The SEARCH instance: a standalone kotekan that only acquires.
-
-    Separate process, not a branch of the node config, for two reasons. It must not share the
-    node instance's fate -- acquisition is a bootstrap aid and the science chain must not stop
-    when it is restarted -- and keeping it standalone means moving it to its own machine is a
-    change of --search-host, nothing else. It takes no DPDK, no GPU and no hugepages, so it
-    also runs as an ordinary user.
-    """
-    sig = cfg["signals"]
-    rt = cfg["runtime"]
-    fe = cfg["fengine"]
-    cores = rt["cpu_affinity"]
-    out = {
-        "type": "config",
-        "log_level": "info",
-        "samples_per_data_set": 8192,
-        "sizeof_float32": 4,
-        "cpu_affinity": cores,
-        "rest_server": {"port": port, "cpu_affinity": cores, "enable_cors": True},
-        # CLOCK PROFILE, read by GnssChannelizedSearch from /clock_profile: when present the
-        # carrier search extent is DERIVED from the clock's frequency accuracy plus the band's
-        # max sky Doppler, instead of a guessed doppler_min/max. gpsdo = 0.06 ppm, which at
-        # 1176.45 MHz is ~71 Hz of clock uncertainty against +-5 kHz of geometry -- so the
-        # extent is set by the orbit, as it should be. CHORD's F-engine is GNSS-disciplined
-        # (arXiv:2607.01625 s2), so this is the honest preset, not an optimistic one.
-        "clock_profile": {"name": cfg["clock"]["profile"]},
-        "gnss_pool": {
-            "kotekan_metadata_pool": "GnssChanMetadata",
-            "num_metadata_objects": 30 * args.buffer_depth,
-        },
-        # The search stage builds a Telescope-free replica bank, but kotekan constructs a
-        # Telescope regardless, so it needs a minimal valid block.
-        "telescope": {
-            "name": "ICETelescope",
-            "num_polarizations": 1,
-            "num_dishes": 1,
-            "query_gps": False,
-            "require_gps": False,
-        },
-    }
-    # Contiguous span covering the signal's whole main lobe on the PFB grid. Derived from the
-    # SAME covering_channels() the band plan and the tap use -- deliberately not re-derived from
-    # frequencies, because that criterion (centre inside the band) differs from covering's
-    # (passband OVERLAP) and drops the edge channels the tap actually delivers. Both GPUs share
-    # one span so the two searches are directly comparable.
-    full_cover = covering_channels(
-        all_band_channels(cfg),
-        float(sig["carrier_hz"]),
-        float(sig["chip_rate_hz"]),
-        float(sig["max_doppler_hz"]),
-    )
-    span_lo, span_hi = full_cover[0], full_cover[-1]
-    span_n = span_hi - span_lo + 1
-
-    for gpu, pairs in sorted(per_gpu.items()):
-        n_chan = len(pairs)
-        pre = f"srch{gpu}_"
-        # Global channel index of this subband's first channel: the search reports code phase
-        # and Doppler against the ABSOLUTE frequency grid, so it has to know where it sits.
-        chan0 = pairs[0][0]
-        out.update(
-            {
-                f"{pre}in_buf": {
-                    "kotekan_buffer": "standard",
-                    "metadata_pool": "gnss_pool",
-                    "num_frames": args.buffer_depth * 2,
-                    "frame_size": f"samples_per_data_set * {n_chan} * 1",
-                },
-                f"{pre}f_buf": {
-                    "kotekan_buffer": "standard",
-                    "metadata_pool": "gnss_pool",
-                    "num_frames": args.buffer_depth * 2,
-                    "frame_size": f"samples_per_data_set * {n_chan} * 8",  # cfloat32
-                },
-                f"{pre}recv": {
-                    "kotekan_stage": "bufferRecv",
-                    "buf": f"{pre}in_buf",
-                    "listen_port": args.search_port_base + gpu,
-                    "num_threads": 1,
-                    "drop_frames": True,
-                    # Must match the sender exactly -- see the note on the node's srch_send leg.
-                    "use_config_tracker": False,
-                    "cpu_affinity": [cores[gpu % len(cores)]],
-                },
-                f"{pre}deq": {
-                    "kotekan_stage": "GnssChordDequantize",
-                    "in_buf": f"{pre}in_buf",
-                    "out_buf": f"{pre}f_buf",
-                    "n_channels": n_chan,
-                    "n_elements": 1,
-                    "element": 0,
-                    "conjugate": True,  # F-engine conjugation, measured on sky -- see the aggregator note
-                    # NO zero-fill. channelized_accumulate FFTs along the HOP axis WITHIN each
-                    # channel and sums the per-channel surfaces -- it is "the distributable half of
-                    # the search", built for channels scattered across nodes, so a sparse comb is
-                    # fine by construction. Widening 7 channels into the 106-channel span made the
-                    # search transform 93% zeros for no gain: 15x the work, and it never finished a
-                    # pass. (The 640 ns code-phase ambiguity the comb DOES cause is a property of
-                    # the measurement, not a defect in the algorithm, and the BRDC model resolves it
-                    # with >=16x margin.)
-                    "cpu_affinity": [V["cores"]["assemble"]],
-                },
-                f"{pre}search": search_stage(
-                    cfg,
-                    args,
-                    f"{pre}f_buf",
-                    [fid for fid, _ in pairs],
-                    cores[(gpu + 4) % len(cores)],
-                ),
-            }
-        )
     return out
 
 
@@ -3122,38 +2889,6 @@ def main():
         "(default 11029, stock)",
     )
     ap.add_argument(
-        "--no-ingest",
-        action="store_true",
-        help="drop dpdk + the transposes, leaving host_voltage_buffer unfed. The "
-        "GNSS branch still CONSTRUCTS, so --dry-run validates it without "
-        "needing the root privileges DPDK's hugepages require. Not runnable.",
-    )
-    ap.add_argument(
-        "--n2-debug",
-        action="store_true",
-        help="with --n2-dual: INFO logging + log_profiling on both cudaProcess "
-        "stages + log_kernel_split on the tracker, for per-command attribution. "
-        "Verbose (per-frame lines) -- give it its own GNSS_LOG. A GENERATOR "
-        "FLAG rather than a hand-built file: the hand-built one went stale and "
-        "was profiled hours after the config it described had moved on.",
-    )
-    ap.add_argument(
-        "--n2-dump",
-        action="store_true",
-        help="with --n2-dual: rawFileWrite the gathered tiles to /tmp/gnss "
-        "(~17 MB/s -- short captures only, 1 GB/min) instead of dropAllFrames",
-    )
-    ap.add_argument(
-        "--n2-dump-frames-per-file",
-        type=int,
-        default=100,
-        metavar="N",
-        dest="n2_dump_frames_per_file",
-        help="frames bundled into each --n2-dump file (default 100). One frame "
-        "per file produced 2.5M files on cx19; this does not reduce BYTES, "
-        "only inodes -- --n2-dump is still short-captures-only.",
-    )
-    ap.add_argument(
         "--vis-capture",
         nargs="?",
         const="gps_l5",
@@ -3200,33 +2935,6 @@ def main():
         metavar="N",
         dest="vis_capture_depth",
         help="frames of slack between the gate and each writer (default 8)",
-    )
-    ap.add_argument(
-        "--n2-full-freq",
-        action="store_true",
-        help="cudaCorrelatorDual computes the FULL triangle over every frequency "
-        "(AA included) instead of the mixed+synthetic blocks over the GNSS comb "
-        "only. Required for path B to be the SCIENCE pipeline: the N^2 "
-        "pass-through is skipped in freq-map mode because the AA block is never "
-        "computed there. Costs more -- how much is the open question this flag "
-        "exists to answer (offline: +2.00 ms full vs +0.22 ms mapped; in situ "
-        "the mapped launch runs 0.076 ms).",
-    )
-    ap.add_argument(
-        "--n2-primary",
-        action="store_true",
-        help="PATH B AS THE SCIENCE PIPELINE. Implies --n2-full-freq (the N^2 "
-        "pass-through needs the AA block, which freq-map mode never computes), "
-        "keeps host_correlation_buffer{,_1} and the N^2 consumers "
-        "(n2_accumulate, eigencalc, n2_subset, buffer_send_n2), and adds the "
-        "standard cudaOutputData leg so cudaCorrelatorDual feeds them in place "
-        "of the dropped run_n2k. The prefix is bit-identical to cudaCorrelator's "
-        "(n2dualtest gate [3]) -- but VERIFY IT LIVE with injection on vs off "
-        "before trusting the science output, not just via the unit gate.\n"
-        "\n"
-        "Measured on cx19 2026-08-08, 200 frames: cudaCorrelatorDual runs "
-        "3.698 ms/frame full versus 0.076 ms mapped, and cudaGnssInject 2.443 "
-        "ms.",
     )
     ap.add_argument(
         "--keep-n2",
@@ -3595,8 +3303,8 @@ def main():
         default=None,
         help="emit ONE standalone search instance over the UNION of these nodes'\
  combs (e.g. --aggregator-instance cx19 cx27). Feeds listen on search_port_base + i in\
- node-major, GPU-minor order -- the same ports the node configs already target. Implies\
- everything --search-instance implies (no DPDK/GPU/hugepages, ordinary user).",
+ node-major, GPU-minor order -- the same ports the node configs already target. No\
+ DPDK/GPU/hugepages; runs as an ordinary user.",
     )
     # -- TASK #59: the frame-synced tracker -> broker telemetry transport ---------------------
     ap.add_argument(
@@ -3885,7 +3593,7 @@ def main():
         type=int,
         default=16,
         help="threads for the aggregate half of the acquire (parallel over Doppler "
-        "bins x coarse lags). Aggregator only; per-node instances keep 1. The "
+        "bins x coarse lags; one window is ~10 s on one core). The "
         "affinity set is widened to match, so this also sizes the core list.",
     )
     ap.add_argument(
@@ -3983,11 +3691,6 @@ def main():
         "pure noise through as detections. The stage logs its own computed "
         "ceiling every pass and flags a threshold below it -- read that line "
         "after any change here. Keep in step with the broker's --acquire-snr.",
-    )
-    ap.add_argument(
-        "--search-instance",
-        action="store_true",
-        help="emit the SEARCH instance config instead of the node config",
     )
     args = ap.parse_args()
 
@@ -4329,33 +4032,6 @@ def main():
         print(f"  rest     {port}", file=sys.stderr)
         return
 
-    if args.search_instance:
-        port = (
-            args.rest_port
-            if args.rest_port is not None
-            else cfg["runtime"]["rest_port"] + 1
-        )
-        out = build_search_instance(cfg, args.node, per_gpu, args, port)
-        text = (
-            "# GENERATED by config/gen_chord_gnss_config.py --search-instance -- DO NOT "
-            "HAND-EDIT.\n"
-            f"# node {args.node}  signal {sig['primary']}  rest port {port}\n"
-            "# Standalone acquisition instance: no DPDK, no GPU, no hugepages -- runs as an\n"
-            "# ordinary user. Fed by bufferSend from the node instance.\n"
-            + yaml.safe_dump(out, default_flow_style=False, sort_keys=True)
-        )
-        if args.out:
-            os.makedirs(os.path.dirname(args.out), exist_ok=True)
-            open(args.out, "w").write(text)
-            print(f"wrote {args.out}")
-        else:
-            sys.stdout.write(text)
-        print(f"  SEARCH instance for {args.node}", file=sys.stderr)
-        print(
-            f"  listens  {args.search_port_base}..{args.search_port_base + len(per_gpu) - 1}",
-            file=sys.stderr,
-        )
-        print(f"  rest     {port}", file=sys.stderr)
         return
 
     # --- the REST port, and why the old refusal is gone ---------------------------------------
@@ -4556,12 +4232,6 @@ def main():
                 ):
                     if out.pop(_k, None) is not None:
                         dropped.append(_k)
-        elif args.n2_primary and key.startswith("run_n2k"):
-            # Replaced, in both --keep-n2 modes: cudaCorrelatorDual produces the same prefix on
-            # the same leg, and leaving run_n2k in place would give host_correlation_buffer two
-            # producers.
-            del out[key]
-            dropped.append(key)
         elif not args.keep_n2 and key.startswith(N2_STAGE_PREFIXES):
             # run_send_voltage survives (the dual correlator consumes the GPU voltage ring it
             # feeds); run_n2k itself is still dropped -- cudaCorrelatorDual replaces it and
@@ -4570,21 +4240,11 @@ def main():
                 continue
             del out[key]
             dropped.append(key)
-        elif (
-            not args.n2_primary
-            and not args.keep_n2
-            and key.startswith("host_correlation_buffer")
-        ):
+        elif not args.keep_n2 and key.startswith("host_correlation_buffer"):
             # Nothing produces or consumes it in this mode (no cudaOutputData for the N^2
             # prefix in dev); leaving it would just allocate dead host memory.
             del out[key]
             dropped.append(key)
-
-    if args.no_ingest:
-        for key in list(out.keys()):
-            if key == "dpdk" or key.startswith("transpose_voltage"):
-                del out[key]
-                dropped.append(key)
 
     # FLEET POLICY INTO THE CAPTURED BASE: the dpdk block comes from the live capture and is
     # never hand-edited (a hand-edit is exactly what node_up.sh's manifest check catches), so
@@ -4760,19 +4420,6 @@ def main():
                 out.get("samples_per_data_set", 8192),
             )
         out.update(blocks)
-
-    if getattr(args, "n2_debug", False):
-        out["log_level"] = "INFO"
-        # run_n2k too, when it survives: it is the ONLY way to get bare N^2's per-frame time,
-        # and without it the coexistence comparison has a hole exactly where the interesting
-        # number is. Costs one INFO block per GPU frame, same as the GNSS chains already emit.
-        if "run_n2k" in out:
-            for g in ("gpu_0", "gpu_1"):
-                if g in out["run_n2k"]:
-                    out["run_n2k"][g]["log_level"] = "INFO"
-        for g in (0, 1):
-            if f"gnss{g}_n2dual" in out:
-                out[f"gnss{g}_n2dual"]["log_profiling"] = True
 
     # ⚠️ THE HEADER IS THE PROVENANCE, AND IT MUST BE COMPLETE ENOUGH TO REGENERATE FROM.
     #
