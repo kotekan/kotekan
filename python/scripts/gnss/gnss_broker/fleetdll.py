@@ -576,8 +576,6 @@ def stage_fleet_dll(ctx):
             )
 
         # ── D3: the handover sawtooth ─────────────────────────────────────────────────
-        # Fed the HANDOVER-CORRECTED trim: without that subtraction a successful #92
-        # handover -- the cure -- reads as the disease it was applied to.
         for _sp, _sr in (ctx.dls.readback or {}).items():
             if not isinstance(_sr, dict) or _sr.get("trim_chips") is None:
                 continue
@@ -589,7 +587,7 @@ def stage_fleet_dll(ctx):
             _smsg = ctx.saw.note(
                 ctx.t0,
                 _sp,
-                ctx.handover.corrected(_sp, float(_sr["trim_chips"])),
+                float(_sr["trim_chips"]),
                 browned_out=ctx.brown.active(),
                 uptime_s=ctx.t0 - ctx.broker_t0,
                 rebase_age_s=(ctx.t0 - _sbt) if _sbt is not None else None,

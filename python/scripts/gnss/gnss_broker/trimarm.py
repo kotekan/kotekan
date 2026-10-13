@@ -204,13 +204,7 @@ def stage_fleet_trim_arming(ctx):
                         # series rather than pausing it.
                         ctx.g3_ramp.drop(_p)
                         continue
-                    # #93: subtract the cumulative #92 handover deltas -- the
-                    # gather applied them to the trim, so removing them makes the
-                    # series continuous across re-bases (longer windows) and keeps
-                    # sub-0.3-chip adjustments out of the slope.
-                    ctx.g3_ramp.update(
-                        _p, _t_rb, ctx.handover.corrected(_p, float(_r["trim_chips"]))
-                    )
+                    ctx.g3_ramp.update(_p, _t_rb, float(_r["trim_chips"]))
                     _fit3 = ctx.g3_ramp.fit(_p)
                     if _fit3 is None:
                         continue

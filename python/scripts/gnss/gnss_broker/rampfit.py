@@ -11,9 +11,7 @@ separately with tests instead of living inline in the readback loop.
 ⚠️ A DISCONTINUITY IS NOT A RATE. The trim gets re-anchored, wiped, and handed over (#92).
 Fitting a line across one of those events measures the JUMP divided by the window, which can
 exceed the real drift by orders of magnitude and carries the jump's sign. Any step over
-`step_reset_chips` therefore RESTARTS the window rather than joining it. (The #92 deltas are
-subtracted before they get here -- see `TrimHandover.corrected` -- so only unexplained steps
-reset the fit.)
+`step_reset_chips` therefore RESTARTS the window rather than joining it.
 
 ⚠️ A RELEASED TRIM'S SLOPE IS THE LEAK, NOT THE SKY. When a PRN is disarmed the C++ loop stops
 integrating and the standing trim decays by its leak term. That is a beautifully clean ramp
@@ -26,8 +24,7 @@ binds, because the readback cadence can burst.
 
 RELATED DISCIPLINE, learned the hard way elsewhere in this project: "the unwrap manufactured
 the ramp" (#72) -- when a series is preprocessed before fitting, verify the preprocessing
-cannot CREATE the trend you are about to measure. Here the preprocessing is the #92 handover
-subtraction, which is why `TrimHandover.corrected` is tested for exactly that.
+cannot CREATE the trend you are about to measure.
 
 @author Keith Vanderlinde
 """

@@ -424,27 +424,6 @@ _FROZEN = dict(
     #   grows while the state is unfed, so this one gate covers estimator health AND
     #   staleness; healthy runs measure 0.05-0.08. Joint-state chips, as above.
     joint_clk_max_sigma=0.5,
-    # --joint-feed-min-ratio
-    #   minimum spec_peak_ratio for a spectrum fit to anchor the joint feed
-    #   (--joint-feed-spec). Same shuffled-null significance the reseed gate uses, same
-    #   default as --reseed-min-ratio: locked satellites read ~1.0-1.3 on residuals near
-    #   zero (a small tau does not need a tall peak) but a DISPLACED satellite's peak
-    #   stands well clear -- and the displaced ones are the ones the trim gate would
-    #   otherwise exclude, which is the whole point.
-    joint_feed_min_ratio=1.5,
-    # --joint-feed-min-set
-    #   do not feed the joint state at all unless at least this many satellites qualify
-    #   THIS POLL. Eligibility is a property of the SET: a 1-2 satellite poll has
-    #   spread(y-clk) ~ 0 by construction, and the 2026-08-23 01:xx arm fed exactly one
-    #   rotating satellite per poll -- 19/19 polls DEGENERATE, single innovations to
-    #   -6.8 chips, and the clock got WORSE (sd 1.635 -> 2.587). A thinned set must
-    #   self-disarm, not feed degenerately.
-    joint_feed_min_set=3,
-    # --joint-feed-spec-max-age-s
-    #   maximum age of the spectrum fit used to anchor the feed. The fit refreshes on
-    #   the spectrum-poll cadence (~30 s); a stale tau re-anchors y on where the sky
-    #   WAS.
-    joint_feed_spec_max_age_s=90.0,
     # --joint-min-sats
     #   a JOINT consumer refuses to act on a state carrying fewer than this many
     #   satellites: with the mean(b)=0 gauge a thin fleet lets one satellite's bias leak
@@ -1020,17 +999,6 @@ def build_parser(description):
         "--dll-combiners), feeding the per-element steering. 0 = off.",
     )
     ap.add_argument(
-        "--eph-rebase",
-        type=int,
-        default=0,
-        help="#101: at each ephemeris refresh, hand the KNOWN per-sat model step "
-        "to the gather as a trim adjustment through the #92 handover "
-        "(--fleet-trim-rebase-adjust must be on), instead of letting the "
-        "leak-limited loop rebuild through the step for ~15-30 min (the "
-        "GAP 3 shadow's measured post-merge trim kicks). Steps below 0.02 "
-        "chips are skipped; the 2.5-chip handover bound applies. 0 = off.",
-    )
-    ap.add_argument(
         "--fit-flush-on-reject",
         type=int,
         default=0,
@@ -1380,22 +1348,6 @@ def build_parser(description):
         "an old transcript's argv is what keeps the new GETs out of replay).",
     )
     ap.add_argument(
-        "--joint-feed-max-trim",
-        type=float,
-        default=1.0,
-        help="only feed the joint state from satellites whose APPLIED DLL trim is "
-        "inside this many chips, and whose fleet q is at least --lock-q "
-        "(0 = no gate, the pre-2026-08-22 behaviour). The model-primary "
-        "measurement y = held + trim - cp_predicted is sky-anchored ONLY "
-        "while the DLL can hold the tap on the peak: move the seed and the "
-        "trim moves oppositely, leaving y invariant. Past ~1 chip the "
-        "correlation triangle has no gradient, the trim stops compensating, "
-        "and y degenerates into a readback of the consumer's own output. "
-        "Measured 2026-08-22: median |model - held| 1.8-2.5 chips, so most "
-        "satellites were ALREADY outside that range when the feed was armed "
-        "ungated -- which is why it diverged rather than converged.",
-    )
-    ap.add_argument(
         "--dcb-bias",
         action="store_true",
         help="use the MGEX (CAS) measured differential code biases in place of "
@@ -1409,20 +1361,6 @@ def build_parser(description):
         "+0.74..+1.3 chip common trim. Needs an Earthdata token "
         "($EARTHDATA_TOKEN or ~/.cache/kotekan_gps/.earthdata_token); without "
         "one it logs and falls back to the broadcast term.",
-    )
-    ap.add_argument(
-        "--joint-feed-spec",
-        action="store_true",
-        help="task #85: anchor the model-primary joint feed on the SPECTRUM FIT. "
-        "spec_tau is sky-minus-replica measured by the fleet slope fit, and "
-        "the replica IS held+applied_trim -- so y = held + trim + spec_tau "
-        "- cp_pred equals (sky - model) IDENTICALLY, at any displacement "
-        "the fit can see. That is what breaks the mirror: a consumed clock "
-        "moving the seed moves trim+spec_tau oppositely (the sky does not "
-        "move), leaving y invariant -- so a chain may feed AND consume. "
-        "With a fresh, significant spec fit the DLL-linear-range trim gate "
-        "is bypassed (spec_tau measures past it); without one the satellite "
-        "falls back to the trim-gated path unchanged.",
     )
     ap.add_argument(
         "--joint-consume",
@@ -1712,35 +1650,6 @@ def build_parser(description):
         "armed in the yaml globals.",
     )
     ap.add_argument(
-        "--joint-model-primary",
-        action="store_true",
-        help="Feed MODEL-PRIMARY chains (E5a/B2a/E5b/B2b) into the joint solve. "
-        "⚠️ DEFAULT OFF AFTER A MEASURED REGRESSION (2026-08-10). The "
-        "model-primary measurement carries NO QUALITY GATE -- a detection has "
-        "an SNR to threshold on, a dead-reckoned seed does not -- so a "
-        "satellite whose tracker has not converged contributes a y of hundreds "
-        "of chips. birth_max does not stop it: that gate is conditioned on "
-        "P[0,0] < 100, which is false for minutes after a restart, so early "
-        "births are unvetted. Measured with it on: clk walked to +445 chips "
-        "against a true ~150, biases reached -427/-330/+281 where they should "
-        "be a few, tau_band blew to +792 chips, and 67-82%% of updates were "
-        "rejected. It looked healthy for the first hour only because the "
-        "satellites then up happened to be good; the failure arrives with the "
-        "next rise. Re-enable once the measurement is gated on tracking "
-        "quality (deep_snr/coh_frac), which is what #33 P2b needs anyway. "
-        "── THAT PRECONDITION IS NOW MET (2026-08-11). The gate landed in "
-        "2d5bccacd, 9 h after this default was set: _track_ok requires "
-        "coherence_s > 0 AND deep_snr >= --joint-min-deep-snr AND coh_frac "
-        ">= --joint-min-coh-frac, and it is applied to THIS feed. The text "
-        "above is kept because it is the reason the flag exists, not because "
-        "the gate is still missing -- read as-is it says 'do not turn this "
-        "on', which is no longer the advice. Still default-off because the "
-        "remaining risk is different and unbounded: this admits ~11 sats at "
-        "once per chain, and mass birth is the filter's known divergence "
-        "trigger (#39). Enable ONE chain at a time and watch the first "
-        "minutes; the state is shared, so gps_l5's consumers see it too.",
-    )
-    ap.add_argument(
         "--seed-phase-transport",
         action="store_true",
         help="#45 step 6: dead-reckon/slew seeds carry code_phase_at_ref_chips "
@@ -2018,22 +1927,6 @@ def build_parser(description):
         "authority = bandwidth x 0.25 chips = 0.35 chips/s here, ~3x the "
         "0.121 chips/s drift and above the ~0.31 chips/s peak slew of the "
         "+-1-chip/20 s clock breathing.",
-    )
-    ap.add_argument(
-        "--fleet-trim-rebase-adjust",
-        type=int,
-        default=0,
-        help="#92 THE HANDOVER (default OFF). When a model-primary seed is "
-        "RE-BORN (the (slew)->(cp0) flip) its physical position steps by "
-        "the birth step while the C++ standing trim keeps carrying the "
-        "same chips -- the tap lands a chip off the sky, q craters, and "
-        "the trim is wiped and rebuilt (~25-min sawtooth, E3). With this "
-        "on, the broker POSTs the compensating -birth_step to the "
-        "gather's /adjust_trim in the SAME cycle, bounded at 2.5 chips "
-        "(a larger step -- e.g. the shared-clock births at ~140 chips -- "
-        "is not something a <=3-clamp trim was carrying; skipped loudly). "
-        "Needs the gather binary serving /adjust_trim; a 404 logs as "
-        "FAILED and the loop degrades to today's wipe-and-rebuild.",
     )
     ap.add_argument(
         "--fleet-trim-readback",

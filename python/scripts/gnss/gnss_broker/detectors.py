@@ -468,10 +468,6 @@ class SawtoothDetector(object):
     ):
         """Feed one satellite's standing trim. Returns a message on a wipe, else None.
 
-        `trim` should already have #92's own handover deltas removed (see
-        `TrimHandover.corrected`) -- otherwise a successful handover, which is the CURE, reads
-        as the disease it was applied to.
-
         `uptime_s` gates the startup hold-off; `rebase_age_s` (seconds since this PRN's last
         BIRTH-STEP, None if never) classifies the wipe; `present_frac`/`q_mean` come from D0's
         window and disqualify a trim that was never doing sky work -- a ramp on a satellite
@@ -531,17 +527,9 @@ class SawtoothDetector(object):
             # mistaken for a measurement the way "1798 s" was.
             span = t - h[0][0]
             censored = span >= 0.95 * self.window_s
-            # ⚠️ EVERY TRIM HERE IS HANDOVER-CORRECTED (fleetdll passes
-            # handover.corrected(trim)), which is right for this detector -- a successful #92
-            # handover must not read as the disease it cured -- but it means `peak` is NOT
-            # the physical standing trim. The raw trim is hard-clamped at +-clamp by
-            # dll_integrate; a corrected value can and does exceed it (3.77 and 4.15 seen on
-            # 2026-08-27), and I misread exactly that as "the trim broke its clamp". Say
-            # which quantity this is, in the line itself, so the next reader cannot.
             return (
                 "SAWTOOTH PRN %d: standing trim %+.2f -> %+.2f chips in one cycle "
-                "(peak %+.2f HANDOVER-CORRECTED, not the raw clamped trim; over %s%.0f s%s)"
-                " -- ramp discarded, not handed over | %s%s"
+                "(peak %+.2f over %s%.0f s%s) -- ramp discarded | %s%s"
                 % (
                     prn,
                     prev,

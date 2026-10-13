@@ -87,7 +87,6 @@ from gnss_broker.fits import (  # noqa: E402
 )
 from gnss_broker.publish import FleetPublisher  # noqa: E402
 from gnss_broker.seed import Seed  # noqa: E402  (task #83)
-from gnss_broker.handover import TrimHandover  # noqa: E402  (task #92)
 from gnss_broker.rampfit import RampTracker  # noqa: E402  (task #93 shadow)
 from gnss_broker.cli import (
     build_parser,
@@ -1069,7 +1068,6 @@ def main(argv=None, rx=None, publisher=None):
     # the span-shadow path each poll: prn -> (y_phi_hz, t, n_rec). The rrate ROW stays
     # logged beside it -- the 08-25 F1 said the row is ~97% carrier-only; v2 measures
     # whether the RAW ADR observable does better against the trim ramp.
-    _handover = TrimHandover(enabled=bool(args.fleet_trim_rebase_adjust))
     # THE HANDOVER (#79/#49, the precondition eec1d2f12 set for re-arming the DR chains).
     # The set the C++ loop is ACTUATING RIGHT NOW, i.e. what we last POSTED -- not what this
     # cycle is about to compute. The Python integrator stands down per-PRN against this, so
@@ -1481,7 +1479,6 @@ def main(argv=None, rx=None, publisher=None):
         sig_of_last=sig_of_last,
         dllp=_dllp,
         drp=_drp,
-        handover=_handover,
         g3_ramp=_g3_ramp,
         seeds=seeds,
         dr_state=dr_state,

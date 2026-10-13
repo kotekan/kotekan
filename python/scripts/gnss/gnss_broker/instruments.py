@@ -674,14 +674,3 @@ def instr_spectrum_fit(ctx):
                         v["floor"], 1e-12
                     )
                     ctx.dllp.fleet[prn]["bsat"] = ctx.bsat.get(prn, ctx.t0)
-            # #85: stash (tau, ratio, t) for the model-primary joint feed, which
-            # runs EARLIER in cycle order and so reads last cycle's fit -- one poll
-            # stale, same causality as the trim readback it sits beside.
-            if ctx.dr_state is not None and ctx.drp.t_now_abs is not None:
-                _sy = ctx.dr_state.setdefault("spec_y", {})
-                for prn, v in ctx.dllp.spec_fit.items():
-                    _sy[prn] = (
-                        v["tau_chips"],
-                        v["peak"] / max(v["floor"], 1e-12),
-                        ctx.drp.t_now_abs,
-                    )

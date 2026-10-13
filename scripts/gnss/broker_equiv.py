@@ -75,7 +75,11 @@ FIXTURES = os.path.join(K, "scripts", "gnss", "fixtures")
 RETIRED_FLAGS = {
     "--carrier-gain": 1,
     "--carrier-from-code": 0,
+    "--eph-rebase": 1,
+    "--fleet-trim-rebase-adjust": 1,
     "--innov-dr-seeds": 1,
+    "--joint-feed-spec": 0,
+    "--joint-model-primary": 0,
     "--joint-shadow": 0,
     "--nh-period-offset": 1,
     "--spectrum-aligned": 0,

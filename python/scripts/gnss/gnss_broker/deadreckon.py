@@ -31,7 +31,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-from gnss_broker.transport import _now, _post, _log, _log_rl
+from gnss_broker.transport import _now, _log, _log_rl
 from gnss_broker.clockhealth import dr_solve_healthy
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
@@ -1019,10 +1019,6 @@ def dr_joint_shadow(ctx):
     Shadow by construction: it estimates, logs, and (where armed) publishes a state, but the
     seeding sub-stage below decides what actually reaches the trackers.
         
-    ⚠️ FEEDING AND CONSUMING THE SAME QUANTITY IS A MIRROR, NOT A MEASUREMENT. The model-primary
-    feed once measured its own seeded lock-and-arm rate (#33 GAP 2's nested self-reference); the
-    spec-anchored feed exists so what goes in is not what this loop just put there.
-        
     ⚠️ ITS `legacy clk` COLUMN IS ONE CYCLE STALE -- see the `_DrProducts` note. Do not compare it
     against the joint clock printed beside it without accounting for the lag."""
     if ctx.args.joint_shadow and ctx.drp.offs:
@@ -1153,353 +1149,6 @@ def dr_joint_shadow(ctx):
         except Exception as e:  # shadow must never take the broker down
             _log_rl(
                 "jointerr", "JOINT[shadow] disabled this cycle: %s" % e, every_s=300.0
-            )
-    # -- P3: THE MODEL-PRIMARY MEASUREMENT (task #33) ------------------------
-    # Everything above needs `offs`, which only a chain with DETECTIONS has. So
-    # until now only GPS fed the joint state -- 4 shadow lines against 0 for every
-    # model-primary chain -- and with one band contributing there was no second
-    # band for tau_band to be a delay AGAINST. This is the other half of the same
-    # measurement, and the plan has specified it since section 3a:
-    #
-    #     y_i = (where the replica actually is) - (pure model, no clock, no bias)
-    #         = dr_seed_phys(seed) + dll_trim - cp_predicted
-    #
-    # dr_seed_phys is the tracker's own phase model evaluated at h1 (the same
-    # function the slew block uses to ask "where does the tracker think the code
-    # is"), dll_trim is the fleet loop's standing correction to it, and
-    # cp_predicted is BRDC geometry alone. The difference satisfies the identical
-    # y_i = clk + b_i + tau_band as the search-anchored form, which is what makes
-    # two seeding disciplines poolable into one state at all.
-    #
-    # SEEDS ARE LAST CYCLE'S HERE, deliberately: this runs before the seed loop
-    # rebuilds them, and "where the replica actually is" IS the seed the trackers
-    # are flying right now. Reading a seed the broker has not yet shipped would
-    # measure an intention rather than the instrument.
-    #
-    # No SNR gate to mirror -- a model-primary chain has no detection SNR. The
-    # protection is the filter's own innovation gate plus birth_max, which is why
-    # those were built with an escape hatch.
-    elif (
-        ctx.args.joint_model_primary
-        and ctx.args.joint_shadow
-        and ctx.seeds
-        and not ctx.drp.offs
-    ):
-        try:
-            _js = ctx.rx.joint_receiver(
-                ctx.band_id,
-                ctx.code_len,  # warm start, see above
-                clk0=float(ctx.dr_state.get("clk") or 0.0),
-            )
-            ctx.rx.joint_declare_unit(
-                ctx.chain_id, ctx.args.chip_rate_hz, ctx.code_len
-            )  # see above
-            _h1 = int(round(ctx.drp.t_now_abs * ctx.args.hops_per_sec))
-            _th = _h1 / ctx.args.hops_per_sec
-            _mm = []
-            _fd_skip = 0
-            for _prn, _sd in ctx.seeds.items():
-                _v = ctx.drp.pd.get((ctx.drp.tag, _prn))
-                if _v is None or "ref_hop" not in _sd:
-                    continue
-                # THE GATE THIS FEED NEVER HAD. A dead-reckoned seed carries no
-                # detection SNR, which is why it was originally fed ungated --
-                # but "no detection SNR" is not "no quality signal": the tracker
-                # says plainly whether it is seeing anything. Without this the
-                # feed offers EVERY seeded satellite every cycle, including ones
-                # despreading pure noise, and on 2026-08-09 it walked clk to
-                # +445 against a true ~150 with 67-82% of updates rejected.
-                if not ctx.track_ok(_prn):
-                    continue
-                # ── THE DLL MUST BE IN ITS LINEAR RANGE (2026-08-22) ──────────
-                # y = held + trim - cp_predicted. The tracker despreads at S+T
-                # (seed + applied trim) and the DLL drives T so that S+T sits on
-                # the peak -- so S+T is SKY-ANCHORED and y is a real measurement:
-                # move S and the DLL moves T oppositely, leaving y invariant.
-                # THAT is why feeding and consuming on one chain is legitimate in
-                # principle, and it is the answer to "a Kalman filter is supposed
-                # to feed and consume".
-                # IT ONLY HOLDS WHILE THE DLL CAN DO ITS HALF. Past ~1 chip the
-                # correlation triangle has no gradient, so T stops compensating,
-                # S+T follows S, and y reports the consumer's own output -- the
-                # loop closes with no observation in it. Measured 2026-08-22:
-                # median |model - held| is 1.8-2.5 chips, i.e. ALREADY outside the
-                # measurable range for most satellites, which is why the feed
-                # diverged when it was armed with no gate at all.
-                # So feed only satellites the loop is demonstrably holding: q at
-                # the lock bar AND a trim well inside the clamp. A railed or
-                # near-railed trim means the seed error exceeds what the
-                # discriminator can see, and that satellite's y is not evidence.
-                # ── #85: SPEC ANCHORING ──────────────────────────────
-                # sky = held + applied_trim + spec_tau IDENTICALLY (the fit
-                # measures sky-minus-replica and the replica IS held+trim), so
-                # with a fresh, significant fit y is sky-anchored at ANY
-                # displacement -- including past the DLL's linear range, where
-                # the trim gate below would otherwise exclude the satellite.
-                # A consumed clock moving the seed moves trim+spec_tau
-                # oppositely; y is invariant. THAT is the mirror's removal.
-                _sp = (
-                    (ctx.dr_state.get("spec_y") or {}).get(_prn)
-                    if ctx.args.joint_feed_spec
-                    else None
-                )
-                _sp_ok = (
-                    _sp is not None
-                    and ctx.drp.t_now_abs - _sp[2] <= ctx.args.joint_feed_spec_max_age_s
-                    and _sp[1] >= ctx.args.joint_feed_min_ratio
-                )
-                if ctx.args.joint_feed_max_trim > 0.0 and not _sp_ok:
-                    _fl_i = (ctx.dllp.fleet or {}).get(_prn) or {}
-                    _q_i = _fl_i.get("q")
-                    _tr_i = abs(
-                        float(
-                            (ctx.dls.readback.get(_prn) or {}).get("trim_chips") or 0.0
-                        )
-                    )
-                    if (
-                        _q_i is None
-                        or _q_i < ctx.args.lock_q
-                        or _tr_i >= ctx.args.joint_feed_max_trim
-                    ):
-                        _fd_skip += 1
-                        continue
-                _held = dr_seed_phys(
-                    _sd,
-                    _h1,
-                    ctx.args.hops_per_sec,
-                    ctx.args.chip_rate_hz,
-                    ctx.args.carrier_hz,
-                    ctx.args.code_doppler_sign,
-                    ctx.drp.mod,
-                )
-                # ⚠️ THE TRIM THE TRACKER ACTUALLY APPLIED, not the one this
-                # process happens to hold (2026-08-21). Authority over the code
-                # trim is per-PRN: Python integrates only for PRNs the C++ fleet
-                # loop is NOT actuating (`if prn not in _ft_armed_last`), so on a
-                # chain the fast loop owns -- gal_e5a owns nearly all of it --
-                # dll_trim is ZERO for exactly the satellites carrying a real
-                # standing trim. Measured 15:01 on gal_e5a: C++ held 11:+1.601
-                # 19:+1.795 25:+2.920 29:+1.984 while dll_trim read +0.00/-0.03.
-                # So this measurement was systematically wrong by up to ~3 chips
-                # per satellite, and -- because the trims MOVE (PRN 11 3.000 ->
-                # 1.601, PRN 25 1.652 -> 2.920 inside a minute) -- their drifting
-                # mean was injected into the shared state as a spurious CLOCK
-                # RATE (~0.011 chips/s from the readback alone). A feed that does
-                # not know what the actuator did is measuring its own loop.
-                # #76's readback is exactly this number; it is one cycle old
-                # (populated later in the cycle), which is causal and correct.
-                _trim_applied = (
-                    float((ctx.dls.readback.get(_prn) or {}).get("trim_chips") or 0.0)
-                    if _prn in ctx.dls.armed_last
-                    else ctx.dls.trim.get(_prn, 0.0)
-                )
-                _y = (
-                    _held
-                    + _trim_applied
-                    + (_sp[0] if _sp_ok else 0.0)
-                    - ctx.cp_predicted(_v, _th)
-                ) % ctx.drp.mod
-                if ctx.p2c_hold(_js, (ctx.drp.tag, _prn)):
-                    if True:
-                        _r = _js.wrap(
-                            _y
-                            - _js.predicted((ctx.drp.tag, _prn))
-                            - _js.tau(ctx.band_id)
-                        )
-                        if ctx.p2c["key"] == (ctx.drp.tag, _prn):
-                            ctx.p2c["samples"].append(
-                                (ctx.drp.t_now_abs - ctx.p2c["t0"], _r)
-                            )
-                        _log_rl(
-                            "p2c-%d" % _prn,
-                            "P2C %s PRN %d MASKED %.0fs: coast residual %+.3f "
-                            "chips (b %+.3f, tau %+.4f)"
-                            % (
-                                ctx.band_id,
-                                _prn,
-                                _js.age((ctx.drp.tag, _prn), ctx.drp.t_now_abs) or 0.0,
-                                _r,
-                                _js.bias((ctx.drp.tag, _prn)),
-                                _js.tau(ctx.band_id),
-                            ),
-                            every_s=30.0,
-                        )
-                    continue
-                _mm.append(((ctx.drp.tag, _prn), _y, ctx.args.joint_sigma, ctx.band_id))
-            # ── #85: THE SET GATE. Eligibility is a property of the SET --
-            # 1-2 measurements have spread ~ 0 by construction and a single
-            # bad y IS the poll (the 01:xx degenerate feed). Withhold rather
-            # than feed thin; the state coasts on clk_rate, which is exactly
-            # what it is for.
-            if _mm and len(_mm) < ctx.args.joint_feed_min_set:
-                _log_rl(
-                    "jfeed-thin",
-                    "JFEED %s: only %d satellite(s) qualify (< %d) -- "
-                    "WITHHELD; a thin set feeds its own noise as clock"
-                    % (ctx.band_id, len(_mm), ctx.args.joint_feed_min_set),
-                    every_s=60.0,
-                )
-                _mm = []
-            if _mm:
-                # ── JFEED: THE FORK THIS EXISTS TO SETTLE (task #33, 2026-08-11)
-                # Turning this feed on gave 9 Galileo b_sat all equal to +0.44
-                # (0.01 chip spread) against 8.9 chips across 3 GPS ones. Two
-                # explanations need opposite fixes and the log could not tell
-                # them apart, because cycle() returns only a COUNT and update()
-                # returns None on reject -- every per-satellite fact was thrown
-                # away at the call site:
-                #
-                #   (a) DEGENERATE AT SOURCE. y = dr_seed_phys(seed) + dll_trim
-                #       - cp_predicted, and on a model-primary chain the seed is
-                #       itself BUILT from model + clock -- so y may just report
-                #       back the clock that built it, carrying no per-sat
-                #       information. Self-reference: right in the mean, wrong in
-                #       the variance. Signature: spread(y - clk) ~ 0.
-                #   (b) DISTINCT BUT REJECTED. The measurements differ per sat,
-                #       the innovation gate throws them out, and b_sat stays
-                #       frozen at its birth value while clk drags it along.
-                #       Signature: spread(y - clk) is chips-scale, |r| large,
-                #       acc low.
-                #
-                # So log the RAW y, the innovation r the gate actually tests,
-                # and the accepted count -- all three before/around the update,
-                # since predicted() moves once cycle() runs. Costs one line per
-                # 10 s and touches no control flow.
-                _diag = None
-                if ctx.drp.now_w >= ctx.dr_state.get("jfeed_log_next", 0.0):
-                    ctx.dr_state["jfeed_log_next"] = ctx.drp.now_w + 10.0
-                    _diag = [
-                        (
-                            _k[1],
-                            _yy,
-                            _js.wrap(_yy - _js.predicted(_k) - _js.tau(_bd)),
-                            _js.bias(_k),
-                        )
-                        for _k, _yy, _sg, _bd in _mm
-                    ]
-                    # TERM DECOMPOSITION. The innovation came back at a common
-                    # -135 chips on every satellite with y ramping 0.15 chips/s
-                    # (300x the clock rate), so the question is no longer "which
-                    # satellite" but "which TERM of y". Print the three summands
-                    # against the LEGACY offset the same chain is successfully
-                    # seeding from -- E5a tracks fine at deep_snr 80+, so the
-                    # legacy number is the working reference and y has to be
-                    # compared to it, not to zero.
-                    # ⚠️⚠️ THIS DIAGNOSTIC PRINTED THE WRONG VARIABLE UNTIL
-                    # 2026-08-21 23:3x, AND IT NEARLY BOUGHT A WRONG CONCLUSION.
-                    # It logged `dll_trim` -- the PYTHON dict -- while the actual
-                    # measurement `_y` a few lines above uses `_trim_applied`,
-                    # the C++ READBACK. For an armed PRN dll_trim is zero BY
-                    # DESIGN (Python stands down; see #51), so the line read
-                    # "dll_trim +0.000" on 22 of 27 samples and invited the
-                    # reading "there is no sky term in y" -- when the fleet DLL
-                    # was reporting disc +0.13..+0.51 chips at q>3 on those very
-                    # satellites. A diagnostic that prints a different quantity
-                    # than the code under test is worse than no diagnostic.
-                    #
-                    # WHAT THIS NOW ANSWERS, and it is the question KV put:
-                    # a Kalman loop is SUPPOSED to feed and consume -- that is
-                    # vector tracking -- and closing the loop is stabilising
-                    # PROVIDED the fed-back quantity is an OBSERVATION. A
-                    # discriminator is an observation (it correlates the replica
-                    # against the sky). `held - cp_pred` is a difference of two
-                    # PREDICTIONS and observes nothing. So the diagnosis turns
-                    # entirely on HOW MUCH SKY IS IN y, which is what `trim` and
-                    # `disc` measure. Print them, per satellite, next to the term
-                    # they are supposed to correct.
-                    # `fleet` carries the previous cycle's per-PRN disc (it is
-                    # rebuilt later in this cycle) -- one cycle old, the same
-                    # causality the readback already has, and guarded because it
-                    # does not exist on the first pass.
-                    try:
-                        _dfl = ctx.dllp.fleet
-                    except NameError:
-                        _dfl = {}
-                    for _dk, _dyy, _dsg, _dbd in _mm[:4]:
-                        _dsd = ctx.seeds.get(_dk[1]) or {}
-                        _dv = ctx.drp.pd.get(_dk)
-                        if _dv is None or "ref_hop" not in _dsd:
-                            continue
-                        _dheld = dr_seed_phys(
-                            _dsd,
-                            _h1,
-                            ctx.args.hops_per_sec,
-                            ctx.args.chip_rate_hz,
-                            ctx.args.carrier_hz,
-                            ctx.args.code_doppler_sign,
-                            ctx.drp.mod,
-                        )
-                        _dcp = ctx.cp_predicted(_dv, _th)
-                        _darm = _dk[1] in ctx.dls.armed_last
-                        _dtrim = (
-                            float(
-                                (ctx.dls.readback.get(_dk[1]) or {}).get("trim_chips")
-                                or 0.0
-                            )
-                            if _darm
-                            else ctx.dls.trim.get(_dk[1], 0.0)
-                        )
-                        _drow = _dfl.get(_dk[1]) or {}
-                        _ddisc = _drow.get("disc")
-                        _dq = _drow.get("q")
-                        _log(
-                            "JFEED-TERMS %s PRN %d [%s]: held %+.3f  "
-                            "trim_applied %+.4f (py %+.4f)  disc %s q %s  "
-                            "cp_pred %+.3f -> y %+.3f | legacy clk %+.3f + b "
-                            "%+.3f = %+.3f | joint clk %+.3f"
-                            % (
-                                ctx.band_id,
-                                _dk[1],
-                                "ARMED-cpp" if _darm else "python",
-                                _dheld,
-                                _dtrim,
-                                ctx.dls.trim.get(_dk[1], 0.0),
-                                ("%+.4f" % _ddisc) if _ddisc is not None else "-",
-                                ("%.2f" % _dq) if _dq is not None else "-",
-                                _dcp,
-                                ((_dheld + _dtrim - _dcp) % ctx.drp.mod),
-                                ctx.drp.clk_now,
-                                ctx.bsat.get(_dk[1], ctx.drp.now_w),
-                                ctx.drp.clk_now + ctx.bsat.get(_dk[1], ctx.drp.now_w),
-                                _js.clk,
-                            )
-                        )
-                _nok = _js.cycle(_mm, ctx.drp.t_now_abs)
-                if _diag:
-                    _ys = [_js.wrap(d[1] - _js.clk) for d in _diag]
-                    _sp = max(_ys) - min(_ys)
-                    _log(
-                        "JFEED %s: %d meas, %d accepted (%.0f%%)  "
-                        "spread(y-clk) %.4f chips  -> %s | %s"
-                        % (
-                            ctx.band_id,
-                            len(_mm),
-                            _nok,
-                            100.0 * _nok / max(1, len(_mm)),
-                            _sp,
-                            "DEGENERATE (no per-sat info)"
-                            if _sp < 0.05
-                            else "per-sat info PRESENT",
-                            " ".join(
-                                "%s%d y%+.3f r%+.3f b%+.3f" % (ctx.drp.tag, p, y, r, b)
-                                for p, y, r, b in sorted(_diag)
-                            ),
-                        )
-                    )
-            if ctx.drp.now_w >= ctx.dr_state.get("joint_log_next", 0.0):
-                ctx.dr_state["joint_log_next"] = ctx.drp.now_w + 30.0
-                _tb = "".join(
-                    "  tau[%s] %+.3f+-%.3f (dual %d)"
-                    % (_b, _js.tau(_b), _js.tau_sigma(_b), _js.tau_observability(_b))
-                    for _b in sorted(_js._band_idx)
-                )
-                _amb = "  ⚠AMBIGUOUS(clk near wrap)" if ctx.rx.joint_ambiguous() else ""
-                _log("JOINT[shadow] " + _js.summary(ctx.drp.t_now_abs) + _tb + _amb)
-        except Exception as e:
-            _log_rl(
-                "jointerr-mp",
-                "JOINT[shadow] model-primary feed skipped: %s" % e,
-                every_s=300.0,
             )
 
 
@@ -1637,9 +1286,8 @@ def dr_seed(ctx):
     `cp_predicted` extrapolating from AXIS age while `predict_all` ran at WALL -- error = K*dop*lag,
     a defect born WITH the fix that preceded it (chord-trim-clamp-limit-cycle).
         
-    ⚠️ A RE-BASE MOVES THE SEED WHILE THE C++ TRIM STILL CARRIES THE OLD CHIPS. That is #92's
-    handover, and without it the tap leaves the sky and the trim rebuilds over ~25 minutes -- E3's
-    sawtooth. The bound on it is a safety argument, not a tuning knob."""
+    ⚠️ A RE-BASE MOVES THE SEED WHILE THE C++ TRIM STILL CARRIES THE OLD CHIPS: the tap leaves
+    the sky and the trim rebuilds over ~25 minutes -- E3's sawtooth."""
     if ctx.dr_state["clk"] is not None:
         ctx.drp.clk_now = (
             ctx.dr_state["clk"]
@@ -1903,7 +1551,7 @@ def dr_seed(ctx):
             # slew; search-fed GPS takes cp0 at birth and re-pin and is then
             # skipped entirely once locked ("the DLL owns the residual now").
             # But the joint state is fed ONLY by search-anchored chains, so it
-            # contains ONLY GPS satellites unless --joint-model-primary is on.
+            # contains ONLY GPS satellites.
             # Scoped to the slew path alone this consumer could therefore NEVER
             # FIRE: the chains that slew have no satellites in the state, and
             # the chain with satellites in the state does not slew. Covering
@@ -2150,26 +1798,6 @@ def dr_seed(ctx):
                     _bstep = (
                         (_newphys - _oldphys + ctx.drp.mod / 2.0) % ctx.drp.mod
                     ) - ctx.drp.mod / 2.0
-                    # ── #92 THE HANDOVER (--fleet-trim-rebase-adjust) ──
-                    # The seed is about to move by _bstep while the C++
-                    # standing trim carries the SAME chips: post the
-                    # compensating -_bstep to the gather in the SAME cycle
-                    # so the tap (seed + trim) never leaves the sky (E3's
-                    # ~25-min sawtooth). The bound, the transport and the
-                    # cumulative-delta bookkeeping are in
-                    # gnss_broker/handover.py. Gated on _ft_armed_last: a
-                    # PRN the fleet loop is not actuating has no standing
-                    # trim to hand over, and posting for seeding churn
-                    # buries the one refusal that would MEAN something.
-                    ctx.handover.offer(
-                        prn,
-                        _bstep,
-                        prn in ctx.dls.armed_last,
-                        ctx.telem_chain,
-                        ctx.args.fleet_trim_url,
-                        _post,
-                        _log,
-                    )
                     # D3 reads this to tell a REBASE-coincident wipe from a bare
                     # one -- the #92 P2 metric is the rebase-coincident rate on an
                     # armed chain vs its unarmed band sibling, and without the

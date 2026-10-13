@@ -26,7 +26,7 @@ stage genuinely needs real elapsed time it must call `time.time()` explicitly an
 
 ⚠️ THIS IS A REFERENCE HOLDER, NOT A FACADE. It deliberately does no work: no properties, no
 derived values, no logic. Anything computed belongs in the stage that computes it or on one of
-the owner objects (`dllp`, `drp`, `handover`, ...). A context that starts computing becomes a
+the owner objects (`dllp`, `drp`, ...). A context that starts computing becomes a
 second place where behaviour lives, and then nobody can tell which one a bug is in.
 
 @author Keith Vanderlinde
@@ -103,7 +103,6 @@ class ChainContext(object):
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp",
         "drp",
-        "handover",
         "g3_ramp",
         "cb",
         "car",
