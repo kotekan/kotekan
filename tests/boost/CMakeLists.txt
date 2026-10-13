@@ -33,6 +33,11 @@ target_include_directories(test_gps_l5_code PRIVATE ../../lib/stages ../../lib/s
 add_executable(test_gps_l1c_code test_gps_l1c_code.cpp ../../lib/stages/gnss/gpsL1CCode.cpp)
 target_include_directories(test_gps_l1c_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# Galileo E1/E6 memory codes: pure table decoders, no FFTW.
+add_executable(test_galileo_codes test_galileo_codes.cpp ../../lib/stages/gnss/galileoE1Code.cpp
+                                  ../../lib/stages/gnss/galileoE6Code.cpp)
+target_include_directories(test_galileo_codes PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Pure band-plan logic: compile the source directly, no Telescope/FFTW needed.
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)

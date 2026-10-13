@@ -1314,9 +1314,11 @@ static const char* const E1C_HEX[50] = {
 };
 
 namespace {
-std::array<int8_t, E1_CODE_LENGTH> decode(const char* hex, int prn) {
+// The range check precedes the table index: ChannelizedReplicaBank::set_prn relies on the throw.
+std::array<int8_t, E1_CODE_LENGTH> decode(const char* const* table, int prn) {
     if (prn < 1 || prn > 50)
         throw std::out_of_range("galileo E1 PRN " + std::to_string(prn) + " (valid 1..50)");
+    const char* hex = table[prn - 1];
     std::array<int8_t, E1_CODE_LENGTH> out{};
     for (int i = 0; i < E1_CODE_LENGTH; ++i) {
         const char c = hex[i / 4];
@@ -1329,11 +1331,11 @@ std::array<int8_t, E1_CODE_LENGTH> decode(const char* hex, int prn) {
 } // namespace
 
 std::array<int8_t, E1_CODE_LENGTH> generate_e1b_code(int prn) {
-    return decode(E1B_HEX[prn - 1], prn);
+    return decode(E1B_HEX, prn);
 }
 
 std::array<int8_t, E1_CODE_LENGTH> generate_e1c_code(int prn) {
-    return decode(E1C_HEX[prn - 1], prn);
+    return decode(E1C_HEX, prn);
 }
 
 // CS25 (ICD 4.3.4): 0011100000001010110110010, logic 0 -> +1.
