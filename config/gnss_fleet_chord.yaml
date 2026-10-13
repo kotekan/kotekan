@@ -348,9 +348,9 @@ common:
   # two at any cold start -- left that instance's global phase arbitrary and the fleet sum lost
   # it until a restart. The reference is one vector per band, a snapshot of the fleet consensus
   # (python/scripts/gnss/elem_shared_ref.py snapshot), refused unless taken against the epoch of
-  # elem-positions-file. live = pin to it (a first model in full, a warm one slewed at 1 deg/s);
-  # log = each assembler reports its offset only. Live switch: elem_shared_ref.py post FILE
-  # --mode live. Safety net: scripts/gnss/site/elem_ref_cron.sh.
+  # elem-positions-file. live = pin to it (a first model in full, a warm one slewed at 1 deg/s).
+  # Live switch: elem_shared_ref.py post FILE --mode live. Safety net:
+  # scripts/gnss/site/elem_ref_cron.sh.
     elem-shared-ref: config/elem_shared_ref_20261010.json
     elem-shared-ref-mode: live
   # cf06. The search/broker host; 127.0.0.1 (the generator default) is the airspy prototype's

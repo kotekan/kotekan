@@ -315,7 +315,7 @@ def n2_tiles_per_chan(n_live, num_synth):
     pre-quantization energy from the ctl block -- and the visibility capture's AA/BB tiles ride
     in a separate per-GPU gather (merge_n2dual_gpu).
     ⚠️ ONE CONTRACT, THREE SITES: this, cudaCorrelatorDual::build_tile_selection and
-    GnssN2RecordAssemble's _n_mixed. Disagree and the assembler's frame-size guard fires at
+    GnssN2RecordAssemble's tile count. Disagree and the assembler's frame-size guard fires at
     startup -- which is the good outcome, and is why that guard exists."""
     na16, nt16 = 128 // 16, (128 + num_synth) // 16
     nlive16 = (n_live + 15) // 16
@@ -954,7 +954,7 @@ def elem_shared_keys(args):
 def elem_shared_ref_keys(args, band, steer, n_elem):
     """#154: one band's entry of the fleet reference snapshot (python/scripts/gnss/
     elem_shared_ref.py snapshot) for the shared model's phase pin; nothing unless
-    --elem-shared-ref-mode is log or live, so a fleet without it is byte-identical. The
+    --elem-shared-ref-mode is live, so a fleet without it is byte-identical. The
     snapshot is of the STEERED instrument, so it is refused unless it was taken against the
     epoch these positions came from."""
     mode = getattr(args, "elem_shared_ref_mode", "off") or "off"
@@ -2870,10 +2870,10 @@ def main():
     ap.add_argument(
         "--elem-shared-ref-mode",
         default="off",
-        choices=("off", "log", "live"),
-        help="off: no reference keys (byte-identical); log: each assembler reports "
-        "its offset from the reference; live: it pins to it, slewed when warm. "
-        "Also a live switch (POST <assemble>/set_elem_sum_shared_ref)",
+        choices=("off", "live"),
+        help="off: no reference keys (byte-identical); live: each assembler pins "
+        "to the reference, slewed when warm. Also a live switch (POST "
+        "<assemble>/set_elem_sum_shared_ref)",
     )
     ap.add_argument(
         "--despread-max-chips",
