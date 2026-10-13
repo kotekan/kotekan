@@ -76,7 +76,6 @@ def stage_dll_control(ctx):
             if disc == ctx.dls.last.get(prn):
                 continue
             ctx.dls.last[prn] = disc
-        tau = -max(-1.0, min(1.0, disc)) / 4.0 * (ctx.args.dll_spacing / 0.5)
         # LEAKY integrator: mean-reverts, so discriminator NOISE cannot random-walk the
         # trim to the clamp (a pure integrator did -- L1 trims reached +-1 to 3 chips
         # over 2 min, dragging the code off the +-0.5-chip peak and collapsing the deep
@@ -97,22 +96,17 @@ def stage_dll_control(ctx):
         # correction below the errors we actually have. The single-combiner fallback
         # keeps the original leak: it has no such gate, and that is where the runaway
         # happened.
-        # (FAR-REGIME RE-SEED moved above the presence/rate/hop gates
-        #  2026-08-25 -- see the #90 note at its new site.)
-
         leak = ctx.args.dll_leak_present if fl is not None else ctx.args.dll_leak
-        # ONE EXPRESSION, ONE PLACE (2026-08-15). `tau` above and this recurrence used
-        # to be inline here AND in the fast-trim thread AND, now, in C++. All three call
-        # combdll.dll_integrate / gnss::dll_integrate, which are the same expression,
-        # and scripts/gnss/fleetdll_gate.py compares the C++ and Python arms on
-        # identical bytes. `tau` is still computed above because the far-regime re-seed
-        # block reads it.
+        # ONE EXPRESSION, ONE PLACE (2026-08-15). The delay estimate and this recurrence
+        # live in combdll.dll_integrate / gnss::dll_integrate, which are the same
+        # expression, and scripts/gnss/fleetdll_gate.py compares the C++ and Python arms
+        # on identical bytes.
         #
         # ⚠️ NOT WHEN THE C++ FLEET LOOP OWNS THIS CHAIN. Two integrators correcting
         # one code error double-apply during pull-in and fight at the null -- and
         # this one bakes its trim into the SEED cp while the fleet loop's arrives at
         # the tracker, so they stack invisibly. The slow loop still MEASURES (the
-        # disc/q log lines and the far-regime re-seed stay); it just stops actuating.
+        # disc/q log lines stay); it just stops actuating.
         # THE HANDOVER, not a flag-day (#79; the condition eec1d2f12 attached to any
         # re-arm). The old test was `not args.fleet_trim_url` -- chain-wide, so setting
         # the flag silenced the Python integrator for EVERY PRN while the C++ loop

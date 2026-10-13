@@ -231,7 +231,6 @@ def stage_fleet_dll(ctx):
                 ctx.args.coh_min_instances,
                 ctx.args.coh_min_records,
                 prns=set(ctx.seeds) or None,
-                log=None,
                 floor_margin=ctx.args.coh_floor_margin,
                 seed=int(_now()),
                 # lets it fit the record-stream carrier rate off
@@ -758,11 +757,7 @@ def stage_fleet_dll(ctx):
         #
         # ⚠️ SAY SO RATHER THAN SKIPPING QUIETLY. A silent skip here would make a chain with
         # no dead reckoning indistinguishable from one whose instances are simply healthy.
-        if (
-            ctx.args.instance_stall_s > 0
-            and ctx.dllp.inst_hops
-            and ctx.dr_state is None
-        ):
+        if ctx.dllp.inst_hops and ctx.dr_state is None:
             _log_rl(
                 "inststall-nodr",
                 "instance-stall check SKIPPED: dr_state is None, so dead reckoning never "
@@ -771,7 +766,7 @@ def stage_fleet_dll(ctx):
                 "dead-reckoned -- which is a bigger problem than the skipped check.",
                 every_s=120.0,
             )
-        elif ctx.args.instance_stall_s > 0 and ctx.dllp.inst_hops:
+        elif ctx.dllp.inst_hops:
             _ih, _stalled = instance_stall_verdict(
                 ctx.dr_state.get("inst_hops", {}),
                 ctx.dllp.inst_hops,
@@ -819,7 +814,7 @@ def stage_fleet_dll(ctx):
         # guard that acts on a statistic this noisy would be a new failure mode, and
         # the honest recovery (a NODE restart, which clears the C++ trim state a
         # broker restart cannot) is not the broker's to perform.
-        if ctx.args.q_stall_window > 0 and ctx.dllp.fleet:
+        if ctx.dllp.fleet:
             _qs = [v["q"] for v in ctx.dllp.fleet.values() if v.get("q") is not None]
             if _qs:
                 _duty = sum(1 for q in _qs if q >= ctx.args.q_stall_bar) / float(

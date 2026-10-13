@@ -8,13 +8,11 @@ See docs/CHORD_GNSS_SHARED_DLL.md for fleet_dll and gnss_gpu_search.md 11.15 for
 fleet_coherent's one-way split and shuffled-null floor.
 """
 import cmath
-import collections
 import math
 
 import numpy as _np
 import random
 import re
-import statistics
 
 from .transport import _get, _log_rl, _now
 
@@ -244,7 +242,8 @@ def fleet_dll(
     probe_prns=None,
     src_hops=None,
     admit_displaced=None,
-    hop_hist=None,
+    *,
+    hop_hist,
     anchor_utc=None,
     hops_per_sec=None,
     now=None,
@@ -303,36 +302,32 @@ def fleet_dll(
             _log_rl("fleet-dll-%s" % url, "fleet DLL: %s unreachable (%s)" % (url, e))
     # Judge each INSTANCE before any of its rows count (live_instances). Excluded instances still
     # report their hop to src_hops, so the axis and stall instruments keep seeing them.
-    excluded = {}
-    if hop_hist is not None:
-        served = {
-            u: max(
-                [int(r.get("pow_hop", -1)) for r in g if isinstance(r, dict)] or [-1]
-            )
-            for u, g in polled.items()
-        }
-        # the CYCLE's frozen clock: live wall time, a replay's recorded instant
-        excluded = live_instances(
-            served,
-            hop_hist,
-            _now() if now is None else now,
-            anchor_utc=anchor_utc,
-            hops_per_sec=hops_per_sec,
+    served = {
+        u: max([int(r.get("pow_hop", -1)) for r in g if isinstance(r, dict)] or [-1])
+        for u, g in polled.items()
+    }
+    # the CYCLE's frozen clock: live wall time, a replay's recorded instant
+    excluded = live_instances(
+        served,
+        hop_hist,
+        _now() if now is None else now,
+        anchor_utc=anchor_utc,
+        hops_per_sec=hops_per_sec,
+    )
+    for u, why in sorted(excluded.items()):
+        _log_rl(
+            "fleet-dll-excl-%s-%s" % (why, u),
+            "fleet DLL: %s EXCLUDED (%s) at hop %d -- %s"
+            % (
+                u,
+                why,
+                served[u],
+                "past what the F-engine has counted: a previous session's row"
+                if why == "ahead"
+                else "not advancing while its peers do: pre-outage state or a wedged chain",
+            ),
+            every_s=60.0,
         )
-        for u, why in sorted(excluded.items()):
-            _log_rl(
-                "fleet-dll-excl-%s-%s" % (why, u),
-                "fleet DLL: %s EXCLUDED (%s) at hop %d -- %s"
-                % (
-                    u,
-                    why,
-                    served[u],
-                    "past what the F-engine has counted: a previous session's row"
-                    if why == "ahead"
-                    else "not advancing while its peers do: pre-outage state or a wedged chain",
-                ),
-                every_s=60.0,
-            )
     for url, got in polled.items():
         for r in got:
             hop = int(r.get("pow_hop", -1))
@@ -605,7 +600,7 @@ def apply_presence(
     ]
     if len(_probe_p) >= 2:
         _pm = sorted(_probe_p)[len(_probe_p) // 2]
-        p_med, p_sigma, p_floor = _pm, None, _pm * max(k_sigma, 1.0)
+        p_med, p_floor = _pm, _pm * max(k_sigma, 1.0)
         for v in out.values():
             v["p_floor_src"] = "probes:%d" % len(_probe_p)
     else:
@@ -616,7 +611,7 @@ def apply_presence(
         # and bds_b2a reporting a q floor of 4.72 against the q ~ 4 CEILING a real satellite
         # can reach -- a bar nothing could ever clear. Not a degraded answer: a WRONG one
         # wearing the shape of an answer.
-        p_med, p_sigma, p_floor = None, None, None
+        p_med, p_floor = None, None
         for v in out.values():
             v["p_floor_src"] = "UNANCHORED"
     # ── KV 2026-08-27: FALLING BACK TO THE ABOVE-HORIZON POPULATION MUST NEVER BE
@@ -663,9 +658,8 @@ def apply_presence(
     # admitted -- an observable that cannot name its subject.
     for _prn, v in out.items():
         v["q_med"], v["q_sigma"] = q_med, q_sigma
-        v["q_floor"] = q_fallback if q_med is None else q_floor
+        v["q_floor"] = q_floor
         v["p_med"], v["p_floor"] = p_med, p_floor
-        # No population to characterise -> fall back to the q bar rather than gating on nothing.
         # PREFER q WHEN ITS NOISE VALUE IS MEASURED. p_pow is an ABSOLUTE power, so the
         # prompt gate asks "are you bright" -- and brightness varies 25x between
         # satellites for reasons unrelated to whether the tap is on the peak (measured:
@@ -673,101 +667,84 @@ def apply_presence(
         # q = 2P/(E+L) is a RATIO: it asks "is there a peak under the tap", which is the
         # question presence exists to answer, and it is scale-free so a faint satellite
         # with a clean peak passes while a bright one whose tap has slid does not.
-        if len(_probe_q) >= 3:
-            # BOTH, and they answer different questions. q says "there is a PEAK under the
-            # tap" and is scale-free, which is what lets a faint satellite with a clean
-            # peak in. But q alone cannot tell a real faint peak from a noise realisation
-            # that happens to be centred -- measured within minutes of shipping q-only:
-            # bds_b2a PRN 32 and 35 admitted and TRIMMED at q 1.07-1.15 with prompt power
-            # 1.3-2.2x the noise floor, i.e. trimming on noise, the exact failure this
-            # gate exists to prevent. So p_pow returns as a floor on "is there anything
-            # there at all", at the probe-referenced 3x rather than the old peer bar that
-            # excluded everything unbright. The populations separate cleanly at that line:
-            # every satellite tracking today sits at >=3.1x (3.1, 6.6, 15, 22, 32, 57, 92,
-            # 123, 142) and the doubtful ones at 1.3-2.2x.
-            v["present"] = v["q"] >= v["q_floor"] and (
-                p_floor is None or v["p_pow"] >= p_floor
+        # BOTH, and they answer different questions. q says "there is a PEAK under the
+        # tap" and is scale-free, which is what lets a faint satellite with a clean
+        # peak in. But q alone cannot tell a real faint peak from a noise realisation
+        # that happens to be centred -- measured within minutes of shipping q-only:
+        # bds_b2a PRN 32 and 35 admitted and TRIMMED at q 1.07-1.15 with prompt power
+        # 1.3-2.2x the noise floor, i.e. trimming on noise, the exact failure this
+        # gate exists to prevent. So p_pow returns as a floor on "is there anything
+        # there at all", at the probe-referenced 3x rather than the old peer bar that
+        # excluded everything unbright. The populations separate cleanly at that line:
+        # every satellite tracking today sits at >=3.1x (3.1, 6.6, 15, 22, 32, 57, 92,
+        # 123, 142) and the doubtful ones at 1.3-2.2x.
+        v["present"] = v["q"] >= v["q_floor"] and v["p_pow"] >= p_floor
+        v["present_gate"] = "q+p:probes"
+        # ── THE E3 ADMISSION (--presence-admit-displaced): break q's degeneracy ──────
+        # q ~ 1 means "off-peak" OR "weak", and the q bar reads both as weak -- so the
+        # displaced-but-strong satellite, the one the DLL exists to rescue, is exactly
+        # the one this gate throws away. Worse, the throw is a LATCH: an offset
+        # suppresses q by construction (at the measured pedestal the bar shuts at ~0.17
+        # chips), so the fault disables its own cure -- E3's 12-minute outage, and #79's
+        # presence latch in a new coat. The (E/P, L/P) decomposition separates the two
+        # exactly: a displaced row has a LOW pedestal (the power went to a neighbouring
+        # tap, not to noise) where a weak row's pedestal is large. So a row that FAILED
+        # the q bar is re-admitted iff it is bright (the same probe-anchored p bar),
+        # its pedestal says signal, and the offset is inside the DLL's pull-in range.
+        # ⚠️ ONLY under the probe-anchored gate: without probes the p bar is a peer
+        # competition, and this admission on top of one would admit peers' noise.
+        # ⚠️⚠️ THE EVIDENCE MAY NOT BE AN ON-PEAK STATISTIC -- THAT IS THE WHOLE BUG
+        # (KV, 2026-08-27). This admission exists to rescue the satellite whose taps are
+        # off the peak, and it required p_pow >= p_floor to believe the satellite was
+        # really there. But PROMPT POWER IS SUPPRESSED BY EXACTLY THE OFFSET BEING
+        # RESCUED: it is the same on-peak quantity as q, one step along. Measured on sky
+        # the day it was found -- 7 satellites seen by an OFFSET-BLIND detector at
+        # deep_snr 18-56 and C/N0 up to 26.8 dB-Hz, with prompt power at 0.5-2.7x the
+        # noise -- this bar admitted TWO of them. The other five failed on p precisely
+        # because they were displaced. Third time the same statistic has been swapped
+        # for another of the same kind (q -> prompt -> prompt); the comment 30 lines
+        # below says "do not fix this a third time with another tap ratio", and requiring
+        # p here was doing that.
+        #
+        # So the "is it really there" question is answered by a detector that RE-SEARCHES
+        # code phase and therefore sees the satellite wherever the tap sits -- the same
+        # deep_snr vs deep_floor test #49/#79 use, deep_floor being the combiner's own
+        # rectification level and not a population of peers. Prompt power is KEPT as an
+        # alternative, not a requirement: a bright on-peak-ish row with no deep row (the
+        # combiner may not have folded it) is still good evidence.
+        #
+        # WHAT STILL GUARDS AGAINST TRIMMING ON NOISE: the pedestal and offset tests
+        # below. A centred noise realisation has a LARGE pedestal and is refused; a
+        # satellite beyond the DLL's pull-in range has a large |offset| and is refused
+        # (correctly -- that one needs the search, not the loop).
+        # ⚠️ AN ARM WITH NO OBSERVABLE CANNOT BE JUDGED, and this one had none: no log
+        # line, and present_gate is not published, so "did the displaced admission do
+        # anything?" was unanswerable from a running fleet (2026-08-27, arming it on
+        # BeiDou -- the counts rose and the probe floor and the sky had BOTH moved across
+        # the same restart, so nothing could be attributed). Say who was admitted and on
+        # what evidence.
+        if admit_displaced is not None and not v["present"]:
+            _c = v.get("coh_row") or {}
+            _ds = float(_c.get("deep_snr", 0.0) or 0.0)
+            _dfl = float(_c.get("deep_floor", 0.0) or 0.0)
+            _blind = (
+                _dfl > 0.0 and _ds >= admit_displaced.get("deep_margin", 3.0) * _dfl
             )
-            v["present_gate"] = "q+p:probes"
-            # ── THE E3 ADMISSION (--presence-admit-displaced): break q's degeneracy ──────
-            # q ~ 1 means "off-peak" OR "weak", and the q bar reads both as weak -- so the
-            # displaced-but-strong satellite, the one the DLL exists to rescue, is exactly
-            # the one this gate throws away. Worse, the throw is a LATCH: an offset
-            # suppresses q by construction (at the measured pedestal the bar shuts at ~0.17
-            # chips), so the fault disables its own cure -- E3's 12-minute outage, and #79's
-            # presence latch in a new coat. The (E/P, L/P) decomposition separates the two
-            # exactly: a displaced row has a LOW pedestal (the power went to a neighbouring
-            # tap, not to noise) where a weak row's pedestal is large. So a row that FAILED
-            # the q bar is re-admitted iff it is bright (the same probe-anchored p bar),
-            # its pedestal says signal, and the offset is inside the DLL's pull-in range.
-            # ⚠️ ONLY under the probe-anchored gate: without probes the p bar is a peer
-            # competition, and this admission on top of one would admit peers' noise.
-            # ⚠️⚠️ THE EVIDENCE MAY NOT BE AN ON-PEAK STATISTIC -- THAT IS THE WHOLE BUG
-            # (KV, 2026-08-27). This admission exists to rescue the satellite whose taps are
-            # off the peak, and it required p_pow >= p_floor to believe the satellite was
-            # really there. But PROMPT POWER IS SUPPRESSED BY EXACTLY THE OFFSET BEING
-            # RESCUED: it is the same on-peak quantity as q, one step along. Measured on sky
-            # the day it was found -- 7 satellites seen by an OFFSET-BLIND detector at
-            # deep_snr 18-56 and C/N0 up to 26.8 dB-Hz, with prompt power at 0.5-2.7x the
-            # noise -- this bar admitted TWO of them. The other five failed on p precisely
-            # because they were displaced. Third time the same statistic has been swapped
-            # for another of the same kind (q -> prompt -> prompt); the comment 30 lines
-            # below says "do not fix this a third time with another tap ratio", and requiring
-            # p here was doing that.
-            #
-            # So the "is it really there" question is answered by a detector that RE-SEARCHES
-            # code phase and therefore sees the satellite wherever the tap sits -- the same
-            # deep_snr vs deep_floor test #49/#79 use, deep_floor being the combiner's own
-            # rectification level and not a population of peers. Prompt power is KEPT as an
-            # alternative, not a requirement: a bright on-peak-ish row with no deep row (the
-            # combiner may not have folded it) is still good evidence.
-            #
-            # WHAT STILL GUARDS AGAINST TRIMMING ON NOISE: the pedestal and offset tests
-            # below. A centred noise realisation has a LARGE pedestal and is refused; a
-            # satellite beyond the DLL's pull-in range has a large |offset| and is refused
-            # (correctly -- that one needs the search, not the loop).
-            # ⚠️ AN ARM WITH NO OBSERVABLE CANNOT BE JUDGED, and this one had none: no log
-            # line, and present_gate is not published, so "did the displaced admission do
-            # anything?" was unanswerable from a running fleet (2026-08-27, arming it on
-            # BeiDou -- the counts rose and the probe floor and the sky had BOTH moved across
-            # the same restart, so nothing could be attributed). Say who was admitted and on
-            # what evidence.
-            if admit_displaced is not None and not v["present"] and p_floor is not None:
-                _c = v.get("coh_row") or {}
-                _ds = float(_c.get("deep_snr", 0.0) or 0.0)
-                _dfl = float(_c.get("deep_floor", 0.0) or 0.0)
-                _blind = (
-                    _dfl > 0.0 and _ds >= admit_displaced.get("deep_margin", 3.0) * _dfl
-                )
-                _bright = v["p_pow"] >= p_floor
-                if _blind or _bright:
-                    _off, _ped = epl_decompose(v["q"], v["disc"])
-                    v["off_chips"], v["pedestal"] = _off, _ped
-                    if (
-                        _ped <= admit_displaced["pedestal_max"]
-                        and abs(_off) <= admit_displaced["off_max_chips"]
-                    ):
-                        v["present"] = True
-                        # ATTRIBUTABLE: which evidence admitted it, so the A/B can separate
-                        # "the deep path did the work" from "it would have passed on p anyway".
-                        v["present_gate"] = (
-                            "q+p:probes+disp" if _bright else "q+deep:probes+disp"
-                        )
-                        v["disp_deep_snr"], v["disp_deep_floor"] = _ds, _dfl
-                        _admitted.append(
-                            (_prn, _off, _ped, v["p_pow"] / p_floor, _bright)
-                        )
-        else:
-            # ⚠️ UNREACHABLE, AND KEPT AS AN ASSERTION RATHER THAN DELETED SILENTLY. The
-            # refusal above returns whenever probes < 3 or p_floor is None, which is exactly
-            # when this branch used to run (present_gate "prompt" -- the peer-fallback
-            # verdict). If it ever executes again, a caller has reintroduced a path that
-            # judges a satellite without a measured noise floor, and that must be loud.
-            raise AssertionError(
-                "apply_presence: reached the deleted peer-fallback branch with "
-                "%d probe q rows and p_floor=%r -- a presence verdict was about to be "
-                "formed without a probe anchor" % (len(_probe_q), p_floor)
-            )
+            _bright = v["p_pow"] >= p_floor
+            if _blind or _bright:
+                _off, _ped = epl_decompose(v["q"], v["disc"])
+                v["off_chips"], v["pedestal"] = _off, _ped
+                if (
+                    _ped <= admit_displaced["pedestal_max"]
+                    and abs(_off) <= admit_displaced["off_max_chips"]
+                ):
+                    v["present"] = True
+                    # ATTRIBUTABLE: which evidence admitted it, so the A/B can separate
+                    # "the deep path did the work" from "it would have passed on p anyway".
+                    v["present_gate"] = (
+                        "q+p:probes+disp" if _bright else "q+deep:probes+disp"
+                    )
+                    _admitted.append((_prn, _off, _ped, v["p_pow"] / p_floor, _bright))
 
         # ---- DEEP GATE (task #49, opt-in per PRN) --------------------------------------
         # THE PROMPT GATE ABOVE IS ON-PEAK-BIASED, WHICH MAKES IT A LATCH. Prompt power is
@@ -923,8 +900,6 @@ def _fit_record_rate(hops, tot, hop_rate_hz):
 
     Returns (rate_hz, rate_sigma_hz), either possibly None.
     """
-    import numpy as _np
-
     n = len(hops)
     if n < 2 or not hop_rate_hz:
         return None, None
@@ -986,7 +961,6 @@ def fleet_coherent(
     min_instances,
     min_records,
     prns=None,
-    log=None,
     null_trials=1,
     floor_margin=3.0,
     seed=0,
@@ -1065,8 +1039,6 @@ def fleet_coherent(
     and keeps the single-instance value otherwise, so a partly-down fleet degrades rather than
     stalls, and a noise-only PRN can never manufacture a fleet detection.
     """
-    import numpy as _np  # the (instance x record) combine below is all matrices
-
     # url -> prn -> {hop: (A, energy)}. Unreachable instances are skipped, never fatal.
     got = {}
     # THE FLEET'S CLOCK, taken across EVERY satellite an instance serves -- including the
@@ -1134,7 +1106,6 @@ def fleet_coherent(
                 (max(d) for per in store.values() for d in per.values() if d), default=0
             ),
         )
-        stale_prns = {}
         for prn in sorted(all_prns):
             src = {u: per[prn] for u, per in store.items() if prn in per}
             if len(src) < min_instances:
@@ -1156,7 +1127,6 @@ def fleet_coherent(
             if max_age_hops and fleet_now:
                 prn_now = max(max(d) for d in src.values())
                 if fleet_now - prn_now > max_age_hops:
-                    stale_prns[prn] = fleet_now - prn_now
                     continue
             # ---- ANCHOR ON THE FRESHEST WINDOW, NOT ON UNANIMITY (2026-08-12) ------------
             # This used to intersect the hop sets of EVERY contributor. One instance outside the
@@ -1251,7 +1221,6 @@ def fleet_coherent(
             _rot = _np.conj(_cr[_order]) / _acr[_order]
             _w = _esum[_order] / float(_n)
             _AL = _A[_order] * (_rot * _w)[:, None]
-            aligned = {u: _AL[j] for j, u in enumerate(urls)}
             tot = _AL.sum(axis=0)
             # ---- RECORD-STREAM CARRIER RATE (#33) -- see _fit_record_rate's docstring -------
             # SKIPPED ON THE NULL PASS. _solve runs twice per call: once for real and once on
@@ -1297,8 +1266,8 @@ def fleet_coherent(
             # greedily assign each instance to whichever half currently holds less sum|w|^2. The
             # iteration order can no longer move, so membership changes only when the energies
             # genuinely change, and the greedy pass is the standard near-optimal answer to the
-            # number-partitioning this is. `aligned` already carries the MRC weight, so sum|x|^2 IS
-            # sum|w|^2 up to a common scale.
+            # number-partitioning this is. The aligned rows already carry the MRC weight, so
+            # sum|x|^2 IS sum|w|^2 up to a common scale.
             # THE SPLIT IS A PURE FUNCTION OF THE URL SET -- no measurement enters it at all.
             #
             # Measured over 400 synthetic polls with 18% per-poll amplitude jitter:
@@ -1317,20 +1286,8 @@ def fleet_coherent(
             # node -- equal channel count, equal hardware, balanced in expectation. The instances
             # are nominally identical (7 channels each off the same comb), so sorting them by
             # measured amplitude -- what the old code did -- was largely sorting them by noise.
-            #
-            # `split_imbalance` is published so a GENUINE asymmetry (a node with fewer channels, a
-            # merged --combine-gpus instance) shows up as a persistently large value instead of
-            # hiding. If that ever appears, the fix is a stable weight carried across polls, not a
-            # return to deciding on the current one.
             half = {u: (i % 2) for i, u in enumerate(sorted(urls))}
             _h = _np.array([half[u] for u in urls])
-            _pw = (_np.abs(_AL) ** 2).sum(axis=1)
-            _tot = [float(_pw[_h == j].sum()) for j in (0, 1)]
-            _imb = (
-                (abs(_tot[0] - _tot[1]) / (_tot[0] + _tot[1]))
-                if (_tot[0] + _tot[1]) > 0
-                else 0.0
-            )
             _s = _AL[_h == 0].sum(axis=0)  # SIGNAL half
             _r = _AL[_h == 1].sum(axis=0)  # REFERENCE half
             _mr = _np.abs(_r)
@@ -1346,35 +1303,16 @@ def fleet_coherent(
                 "n_rec": nrec,
                 "align": (sum(align_q) / len(align_q)) if align_q else 0.0,
                 "per_inst": per_inst,
-                "best_inst": max(per_inst, key=per_inst.get) if per_inst else None,
                 "best_inst_snr": max(per_inst.values()) if per_inst else 0.0,
-                # Published so the split can be judged rather than assumed: 0 = perfectly balanced
-                # sum|w|^2, 1 = everything in one half. A value that WANDERS between polls means
-                # membership is still moving and deep_snr will step with it.
                 # record-stream carrier rate + its split-half sigma (Hz). None when the caller
                 # did not supply hop_rate_hz or the arc is too short to fit.
                 "rate_hz": rate_hz,
                 "rate_sigma_hz": rate_sig,
-                "split_imbalance": _imb,
-                "split_s": sorted(u for u in urls if half[u] == 0),
                 # Instances excluded from THIS PRN's combine and why (url, hops it had inside
                 # the candidate window). Non-empty means the fleet degraded rather than failed;
                 # the caller logs it, because the old code's silent {} was the actual defect.
                 "dropped": drop_note,
             }
-        if stale_prns and log:
-            log(
-                "fleet coherent: %d PRN(s) excluded as STALE (their newest record trails "
-                "the fleet by more than %d hops): %s"
-                % (
-                    len(stale_prns),
-                    max_age_hops,
-                    ", ".join(
-                        "PRN %d (%.0f s)" % (p, a / 195312.5)
-                        for p, a in sorted(stale_prns.items())
-                    ),
-                )
-            )
         return out
 
     out = _solve(got)
@@ -1403,25 +1341,6 @@ def fleet_coherent(
     for v in out.values():
         v["floor"] = floor
         v["present"] = v["deep_snr"] >= floor_margin * floor
-    if log:
-        best = max(out, key=lambda p: out[p]["deep_snr"])
-        b = out[best]
-        log(
-            "fleet coherent: %d PRN (%d clear the floor), best PRN %d deep %.1f vs floor %.1f "
-            "(best single instance %.1f, %dx over %d records, align %.3f, coh_frac %.3f)"
-            % (
-                len(out),
-                sum(1 for v in out.values() if v["present"]),
-                best,
-                b["deep_snr"],
-                floor,
-                b["best_inst_snr"],
-                b["n_src"],
-                b["n_rec"],
-                b["align"],
-                b["coh_frac"],
-            )
-        )
     return out
 
 
@@ -1466,10 +1385,6 @@ def fit_spectrum_delay(
     models), the fold magnitude at the peak, the shuffled-null floor from the same points,
     and the sizes. Pure function: deterministic given `rng` (a random.Random), stdlib only.
     """
-    import cmath
-    import random as _random
-    import numpy as _np
-
     if len(points) < 3:
         return None
     insts = {}
@@ -1546,8 +1461,8 @@ def fit_spectrum_delay(
     tau_s, peak = run(insts)
     # Shuffled null: same instances, same freqs, same ENERGY WEIGHTS -- only arg(A) is
     # permuted. Moving (A, en) together moves the weights and the null then folds as well as
-    # the data whenever one channel dominates; see delay_combine for what that cost.
-    rng = rng or _random.Random(0xC0DE)
+    # the data whenever one channel dominates.
+    rng = rng or random.Random(0xC0DE)
     null_store = {}
     for k, v in insts.items():
         ph = [cmath.phase(a) for _, a, _ in v]
@@ -1566,11 +1481,11 @@ def fit_spectrum_delay(
     )
 
 
-def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_margin=0):
+def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
     """Poll every instance for the SAME hop-quantised window (task #53) and gather the
     per-channel points across the whole fleet.
 
-    Returns (points_by_prn, meta) where meta = {window, w0, w1, served, dropped, degraded}.
+    Returns (points_by_prn, meta) where meta = {window, w0, w1, served, dropped, reanchored}.
     `points_by_prn` is {prn: [(freq_id, A, energy, inst_key)]}, what fit_spectrum_delay
     consumes -- and every point comes from the SAME RECORDS, which is what lets the
     caller derotate by a derived phase instead of fitting one free phase per instance.
@@ -1586,12 +1501,11 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
     [[chord-fleet-combine-fragility]], where one frozen GPU silently emptied the common window
     for every satellite and the combine returned {} -- indistinguishable from an empty sky.
 
-    `degraded` lists instances whose reply is NOT addressable (a node still running a config
-    without spectrum_window_samples). Those cannot be aligned with anyone, so they are excluded
-    rather than mixed in: a single unaligned member would put the free-phase problem straight
-    back into the gathered set.
+    An instance whose reply is NOT addressable (a node config without spectrum_window_samples)
+    cannot be aligned with anyone, so it is dropped by name rather than mixed in: a single
+    unaligned member would put the free-phase problem straight back into the gathered set.
     """
-    avail, served, dropped, degraded, reanchored = {}, {}, [], [], []
+    avail, served, dropped, reanchored = {}, {}, [], []
     for url in endpoints:
         try:
             r = _get("%s/get_spectrum" % url)
@@ -1602,7 +1516,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
             dropped.append((url, "unreachable"))
             continue
         if not r.get("addressable"):
-            degraded.append(url)
+            dropped.append((url, "not addressable"))
             continue
         a = r.get("available") or [-1, -1]
         if a[1] is None or a[1] < 0:
@@ -1610,15 +1524,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
             continue
         avail[url] = (int(a[0]), int(a[1]))
     if not avail:
-        if degraded and log:
-            log(
-                "fleet spectrum: %d instance(s) NOT addressable (pre-#53 config): %s"
-                % (len(degraded), ", ".join(degraded))
-            )
-        return (
-            {},
-            {"window": None, "served": {}, "dropped": dropped, "degraded": degraded},
-        )
+        return {}, {"window": None, "served": {}, "dropped": dropped}
 
     # ⚠️ #84 (2026-08-17): min(hi) over ALL addressable instances hands the common index
     # to the SLOWEST member forever. A bench-state instance (cx19's n2assemble, frozen
@@ -1641,7 +1547,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
                 )
             )
             del avail[url]
-    idx = int(window) if window is not None else min(hi for _, hi in avail.values())
+    idx = min(hi for _, hi in avail.values())
     out, w0s, w1s = {}, set(), set()
     for url, (lo, hi) in avail.items():
         if idx < lo or idx > hi:
@@ -1696,19 +1602,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
             )
         return (
             {},
-            {
-                "window": idx,
-                "served": {},
-                "dropped": dropped,
-                "degraded": degraded,
-                "misaligned": True,
-            },
-        )
-    if degraded and log:
-        _log_rl(
-            "fleet-spec-degraded",
-            "fleet spectrum: excluding %d NOT-addressable instance(s) (pre-#53 config): %s"
-            % (len(degraded), ", ".join(degraded)),
+            {"window": idx, "served": {}, "dropped": dropped, "misaligned": True,},
         )
     return (
         out,
@@ -1718,210 +1612,6 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, window=None, stale_ma
             "w1": next(iter(w1s), None),
             "served": served,
             "dropped": dropped,
-            "degraded": degraded,
             "reanchored": reanchored,
         },
     )
-
-
-def delay_combine(points, chip_rate_hz, chan_width_hz, tau_chips, rng=None, n_null=8):
-    """Coherently sum per-channel points after derotating each by its OWN DERIVED phase.
-
-    THIS IS TASK #52. The old combine gave every INSTANCE a free phase, fitted by
-    cross-correlating it against the most energetic instance and then summing with that
-    rotation -- twelve free parameters estimated from the data they are summed into, which
-    aligns noise (a self-reference: [[gnss-phase-estimator-self-reference]]) and, when the fit
-    fails, drops the whole chain to the quadrature fallback (gps_l5 measured align 0.143 with
-    9/12 satellites on `quad`).
-
-    Physics gives ONE parameter, not twelve. A delay is a phase ramp across frequency,
-    phi(f) = -2*pi*f*tau, so once tau is known every channel's rotation FOLLOWS. And it must be
-    applied PER CHANNEL, not per instance: each instance's 7 channels are a comb spanning
-    ~18.75 MHz (stride 16), so at tau = 1 chip the ramp WITHIN one instance is ~11.5 rad --
-    1.8 wraps. No single constant per instance can represent that, which is why summing an
-    instance's channels without removing the ramp already destroys its coherence before any
-    cross-instance step happens.
-
-    Returns {snr, amplitude, coh_frac, n_pts, n_inst, floor, present} where `floor` is a
-    SHUFFLED NULL over the same points. That gate is only meaningful now: with a free phase per
-    instance the fit could always find some alignment, so a null could never fail. Here the
-    rotation is derived from tau alone and a shuffled set must sum to nothing.
-
-    Requires ALIGNED windows (fleet_spectrum_aligned). Feeding it unaligned points silently
-    reintroduces the per-instance offset this exists to remove -- the caller must not mix.
-    """
-    import cmath
-    import random as _random
-
-    pts = [
-        (fid, a, en, key)
-        for fid, a, en, key in points
-        if en > 0.0 and (a.real != 0.0 or a.imag != 0.0)
-    ]
-    if len(pts) < 3:
-        return None
-    f0 = min(fid for fid, _, _, _ in pts)
-    tau_s = tau_chips / chip_rate_hz
-
-    def combine(seq):
-        # MRC: energy is the ML weight (A = G/E has variance ~1/E), same convention as
-        # _coherent_sum and fleet_dll -- two weighting conventions in one broker is how a floor
-        # stops meaning anything.
-        tot = 0.0j
-        abs_sum = 0.0
-        for fid, a, en, _ in seq:
-            rot = cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz * tau_s)
-            tot += en * a * rot
-            abs_sum += en * abs(a)
-        return tot, abs_sum
-
-    tot, abs_sum = combine(pts)
-    mag = abs(tot)
-    # SHUFFLED NULL. Reassign the AMPLITUDES across the frequency slots, keeping the
-    # frequencies and the derotation identical -- that destroys the frequency<->phase pairing
-    # (the delay ramp) while preserving every marginal. Shuffle, never roll: a roll IS a delay
-    # and would leave the very structure being tested for.
-    rng = rng or _random.Random(1234567)
-    floor = 0.0
-    # ⚠️ PERMUTE THE PHASE ONLY, NOT THE (AMPLITUDE, ENERGY) PAIR. Moving the pair moves the
-    # ENERGY WEIGHTS with it, and this comb's weights are far from uniform (the edge channels
-    # roll off). When one channel dominates the weight, a shuffled set folds just as well as
-    # the real one -- |sum|/sum|.| approaches 1 for BOTH -- so the gate reads ~1.0 whatever the
-    # truth is. That is exactly how it read on 2026-08-13 while the real coherence was 0.68-0.97,
-    # and the wrong verdict survived a retraction, a night, and a morning of chasing it.
-    # Keeping (f, |A|, E) pinned and permuting only arg(A) destroys the frequency<->phase
-    # pairing the delay lives in and NOTHING else, which is the whole point of the null.
-    phases = [cmath.phase(a) for _, a, _, _ in pts]
-    for _ in range(max(1, n_null)):
-        sh = list(phases)
-        rng.shuffle(sh)
-        null_pts = [
-            (pts[i][0], abs(pts[i][1]) * cmath.exp(1j * sh[i]), pts[i][2], pts[i][3])
-            for i in range(len(pts))
-        ]
-        floor = max(floor, abs(combine(null_pts)[0]))
-    n_inst = len({k for _, _, _, k in pts})
-    # EFFECTIVE POINT COUNT of the fold's own weights, w = E*|A|. The coherence statistic is
-    # degenerate when the weight concentrates: at n_eff -> 1 a single point carries the sum and
-    # |sum|/sum|.| -> 1 for ANY phases, so neither the value nor the null means anything. Live
-    # sky runs n_eff ~48 of 79 (2026-08-13), which is healthy -- but publish it, because the
-    # failure is invisible in the coherence alone and it cost a retracted correct result.
-    _w = [en * abs(a) for _, a, en, _ in pts]
-    _sw = sum(_w)
-    n_eff = (_sw * _sw / sum(x * x for x in _w)) if _sw > 0.0 else 0.0
-    return {
-        "snr": (mag / floor) if floor > 0.0 else 0.0,
-        "n_eff": n_eff,
-        "amplitude": mag / len(pts),
-        "coh_frac": (mag / abs_sum) if abs_sum > 0.0 else 0.0,
-        "n_pts": len(pts),
-        "n_inst": n_inst,
-        "floor": floor,
-        "tau_chips": tau_chips,
-        # The null is a MAX over shuffles, so clearing it by a margin is a real detection
-        # in the same sense the search's Gamma ceiling is (chord-gamma-noise-ceiling).
-        "present": mag > 0.0 and floor > 0.0 and mag >= 1.5 * floor,
-    }
-
-
-def fit_tau_coherent(
-    points,
-    chip_rate_hz,
-    chan_width_hz,
-    span_chips=2.0,
-    coarse_step_chips=0.02,
-    refine=3,
-    rng=None,
-    n_null=16,
-):
-    """Fit ONE tau by maximising the coherence of the gathered points. No nuisance phases.
-
-    WHY THIS REPLACES fit_spectrum_delay's SOLVE. That fit solves a free phase PER INSTANCE at
-    every trial tau, and those parameters absorb the very ramp it is measuring: 12 free
-    parameters flatten a 1-parameter objective, so it never leaves its start. Measured on sky
-    2026-08-12, the four brightest gal_e5a satellites, shipped fit vs the coherence optimum:
-        PRN 29  fit -0.000 (coh 0.020)  vs BEST -1.020 (coh 0.103)
-        PRN 10  fit -0.100 (coh 0.050)  vs BEST +2.000 (coh 0.250)
-        PRN 21  fit +0.056 (coh 0.094)  vs BEST -0.320 (coh 0.153)
-        PRN 11  fit +0.068 (coh 0.067)  vs BEST +0.860 (coh 0.471)
-    It clusters at ZERO at 2-7x worse coherence. That is not SNR inflation, it is loss of tau
-    OBSERVABILITY -- and it explains spec_tau's whole record (11.3% clearing its null, a
-    far-regime correlation of -0.375, and #50's re-seed firing 74 times while tau never shrank).
-
-    ⚠️ REQUIRES ALIGNED POINTS (fleet_spectrum_aligned). The coherence being maximised is across
-    the fleet at ONE instant, which is legitimate only when every instance summed the same
-    records -- and that is exactly what task #53 established. Verified on sky first: 79 channels,
-    one window, ONE ramp, coherence 0.794 against a 0.109 random baseline.
-
-    Returns (tau_chips, coherence, floor, n_pts, n_inst) -- same shape as fit_spectrum_delay so
-    it drops in -- where `floor` is a SHUFFLED-NULL coherence over the same points. The null
-    permutes the PHASES across the frequency slots, destroying the frequency<->phase pairing
-    while preserving every marginal INCLUDING THE ENERGY WEIGHTS; shuffle, never roll (a roll
-    IS a delay). ⚠️ It shuffled g = E*A until 2026-08-13, which moved the weights too and made
-    the gate unfalsifiable whenever one channel dominated -- see the note at the shuffle.
-    """
-    import cmath
-    import random as _random
-
-    pts = [
-        (fid, en * a)
-        for fid, a, en, _ in points
-        if en > 0.0 and (a.real != 0.0 or a.imag != 0.0)
-    ]
-    if len(pts) < 8:
-        return None
-    f0 = min(fid for fid, _ in pts)
-    wsum = sum(abs(g) for _, g in pts)
-    if wsum <= 0.0:
-        return None
-
-    def coh_at(tau_chips, seq):
-        ts = tau_chips / chip_rate_hz
-        tot = sum(
-            g * cmath.exp(2j * cmath.pi * (fid - f0) * chan_width_hz * ts)
-            for fid, g in seq
-        )
-        return abs(tot) / wsum
-
-    def best_over(seq, lo, hi, step):
-        # Coarse scan then successive refinement. The peak half-width is 1.1-3.3 chips on sky,
-        # so a 0.02-chip grid is far finer than the feature -- the refinement is for the
-        # sub-grid vertex, not to find the peak.
-        b, bc = lo, -1.0
-        t = lo
-        while t <= hi:
-            c = coh_at(t, seq)
-            if c > bc:
-                b, bc = t, c
-            t += step
-        for _ in range(max(0, refine)):
-            step *= 0.25
-            for t in (b - 2 * step, b - step, b + step, b + 2 * step):
-                c = coh_at(t, seq)
-                if c > bc:
-                    b, bc = t, c
-        return b, bc
-
-    tau, coh = best_over(pts, -span_chips, span_chips, coarse_step_chips)
-    rng = rng or _random.Random(20260812)
-    # PHASE-ONLY PERMUTATION. `pts` holds g = E*A, so shuffling g moves the WEIGHT as well as
-    # the phase -- and with this comb's weights (edge channels roll off, one can dominate) the
-    # null then folds as well as the data and the gate is unfalsifiable. Measured 2026-08-13:
-    # this null read 0.94 against a true coherence of 0.97 on PRN 28, i.e. "no detection" on a
-    # deep_snr 233 satellite. Pin |g| to its own frequency, permute only arg(g).
-    phases = [cmath.phase(g) for _, g in pts]
-    floor = 0.0
-    for _ in range(max(1, n_null)):
-        sh = list(phases)
-        rng.shuffle(sh)
-        _, c = best_over(
-            [
-                (pts[i][0], abs(pts[i][1]) * cmath.exp(1j * sh[i]))
-                for i in range(len(pts))
-            ],
-            -span_chips,
-            span_chips,
-            coarse_step_chips,
-        )
-        floor = max(floor, c)
-    return (tau, coh, floor, len(pts), len({k for _, _, _, k in points}))

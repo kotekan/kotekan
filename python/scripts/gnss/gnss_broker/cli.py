@@ -285,7 +285,7 @@ _FROZEN = dict(
     q_stall_notice_s=300.0,
     # --q-stall-window
     #   #70/#87 THE q STALL GUARD: trailing window (s) over which this chain's q duty is judged
-    #   against its own best this session. 0 disables. 600 s is ~30-45 broker cycles -- long
+    #   against its own best this session. 600 s is ~30-45 broker cycles -- long
     #   enough that a transit or one bad poll cannot trip it, short enough to catch a
     #   degradation in minutes rather than the 3.5 h #87 ran for.
     q_stall_window=600.0,
@@ -380,7 +380,7 @@ _FROZEN = dict(
     fleet_trim_leak_per_s=0.12,
     # --instance-stall-s
     #   Say so when an INSTANCE serves rows whose newest pow_hop has not advanced for
-    #   this many seconds while the rest of the fleet does (#70; 0 disables). Costs no
+    #   this many seconds while the rest of the fleet does (#70). Costs no
     #   extra polling -- the hop comes from the fleet DLL poll already being made. ⚠️
     #   THIS IS NOT --fe-axis-stale-s. That one watches the MAXIMUM hop across instances
     #   and answers 'has the whole time base frozen?'. It cannot see one instance of
