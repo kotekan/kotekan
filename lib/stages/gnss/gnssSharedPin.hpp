@@ -68,10 +68,9 @@ inline std::complex<double> pin_rotation(const RefOffset& o, bool limit, double 
 /// @p form_deg of boresight. The transit freeze stops a model in force from learning a bright
 /// satellite's leakage; a model formed just outside the freeze cone learns that leakage as its
 /// shape and keeps it until the consensus EMA or a re-seed replaces it. A warm model keeps
-/// adapting; only forming waits. A post older than @p max_age_s is no evidence, as for the
-/// freeze.
-inline bool formation_frozen(double now_s, double post_t, double sep_deg, double form_deg,
-                             double max_age_s = 120.0) {
+/// adapting; only forming waits. A post older than 120 s is no evidence, as for the freeze.
+inline bool formation_frozen(double now_s, double post_t, double sep_deg, double form_deg) {
+    constexpr double max_age_s = 120.0;
     return now_s - post_t <= max_age_s && sep_deg < form_deg;
 }
 
