@@ -102,14 +102,6 @@ _FROZEN = dict(
     #   Galileo-complete, best-effort elsewhere. 1=on (default), 0=off (pre-fallback behaviour:
     #   predict goes dark).
     decoded_eph_fallback=1,
-    # --det-alias-fold
-    #   ALIAS-BIN CENSUS (diagnostic only): log detections whose Doppler sits a record-alias
-    #   quantum 1/(2*t_rec) off the model+bias reference (25 Hz L2C, 50 Hz B1C). The v1 of this
-    #   flag FOLDED the dop before the cp currency conversion -- WRONG: the search
-    #   back-projects cp0 with the same reported dop, so the round trip is exact for any bin,
-    #   and folding broke the cancellation by K*t_abs*k*q (12-57 chip candidates on held L2C
-    #   sats, caught by the track-vs-model monitor within the hour). 0 silences the log.
-    det_alias_fold=1,
     # --dll-hop-window-s
     #   fleet DLL: how far back from the newest window an instance's measurement may be and
     #   still join the sum, in seconds (converted once to an integer hop count -- the key
@@ -318,16 +310,6 @@ _FROZEN = dict(
     #   lands on the WRONG spectral bin (measured: amp_snr 9.5 was 41.7 Hz out by
     #   split-half, where amp_snr 83.7 was 0.000).
     carrier_rate_min_q=10.0,
-    # --cl-time-adjust
-    #   seconds added to the CL time-assist clock -- escape hatch for a future
-    #   non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias
-    cl_time_adjust=0.0,
-    # --decoded-eph-fallback-force
-    #   ALWAYS predict from decoded eph, even when BRDC is available -- the live A/B
-    #   validation harness (compare against the BRDC predict in the log). Exercises the
-    #   BeiDou BDT frame + CNAV clock the offline test can't. Do NOT leave on in
-    #   production.
-    decoded_eph_fallback_force=0,
     # --dll-deep-gate-margin
     #   fleet DLL: the deep gate's bar in units of deep_floor (default 3.0). The floor
     #   is the combiner's own rectification level, so this is a detection significance,
@@ -1099,34 +1081,21 @@ def build_parser(description):
     )
     ap.add_argument(
         "--seed-bias-source",
-        choices=("ema", "slow", "zero"),
+        choices=("ema", "zero"),
         default="ema",
         help="which clock-freq bias the SEED consumers ride (#105). 'ema' = the "
-        "hint EMA, the old shared-number behaviour. 'slow' = a long-memory "
-        "EMA (--seed-bias-alpha) of the same raw medians: search hints keep "
-        "the fast EMA (a wandering window centre is harmless against "
-        "hundreds-of-Hz margins), but seeds stop commanding the +-10 Hz "
-        "quantization wander into every replica's code rate (measured: the "
-        "wander integrates ~1 chip off-peak fleet-wide every ~5 min = the "
-        "#105 q-crash bursts; gal/bds were immune only because they never "
-        "solve a local bias). 'zero' = seeds ride exactly 0 Hz whatever the "
-        "solve says, and never snap; the search hints keep the solved bias. "
+        "hint EMA, the old shared-number behaviour; it commands the +-10 Hz "
+        "quantization wander of the solve into every replica's code rate "
+        "(measured: the wander integrates ~1 chip off-peak fleet-wide every "
+        "~5 min = the #105 q-crash bursts). 'zero' = seeds ride exactly 0 Hz "
+        "whatever the solve says, and never snap; the search hints keep the "
+        "solved bias. "
         "For an LO locked to the site reference, where the true offset is ~0 "
         "and the solve is estimator noise: with the carrier loop open, the "
         "seeded bias IS every satellite's residual carrier. The first-seed "
         "guard does not wait for a solve under 'zero' (no seed carries one). "
         "Noise probes, which have no signal to stay coherent with, keep the "
         "hint bias.",
-    )
-    ap.add_argument(
-        "--seed-bias-alpha",
-        type=float,
-        default=0.005,
-        help="EMA weight for the seed-side clock-freq bias under "
-        "--seed-bias-source=slow (per solve, i.e. every cycle that has "
-        ">= --bias-min-sats detections: at --interval 2, 0.005 => tau ~400 s "
-        "-- above the minute-scale quantization wander, below hour-scale "
-        "GPSDO thermal drift).",
     )
     ap.add_argument(
         "--code-length",
@@ -1276,16 +1245,6 @@ def build_parser(description):
         "any detection measures and every satellite shares. Works for sats "
         "NEVER detected, which is where a full 20-way scan hurts most. "
         "Requires --almanac and the capture time anchor.",
-    )
-    ap.add_argument(
-        "--nh-hint-span",
-        type=int,
-        default=2,
-        help="alignments scanned either side of the prediction. Measured 2026-08-04: "
-        "the offset is 16 with a +-2 spread, so span 2 (5 of 20 = 4x) covered "
-        "100%% of samples while span 1 (6.7x) covered 85%%. The stage keeps its "
-        "own nh_hint_span; this only sizes the LOG. The +-2 spread on a "
-        "deterministic quantity is an OPEN anomaly, not an accepted tolerance.",
     )
     ap.add_argument(
         "--joint-p2c-rotate",
@@ -1966,19 +1925,11 @@ def build_parser(description):
         "deep_snr over those same four partitions is flat to 2%%.",
     )
     ap.add_argument(
-        "--cl-assist",
-        action="store_true",
-        help="lift each seed's code_phase_chips IN PLACE by k*10230 with the CL "
-        "segment k COMPUTED from absolute capture time (the sample-0 anchor) + "
-        "almanac range. CL's 1.5 s epoch is GPS-time-locked, so k is arithmetic, "
-        "not a 75-way search. Needs --almanac.",
-    )
-    ap.add_argument(
         "--time0-endpoint",
         default=None,
         help="CHORD: REST path (relative to --rest-url, e.g. telescope/time0_ns) "
         "serving the F-engine's GPS-disciplined absolute time of frame 0: the "
-        "capture anchor the CL assist and dead reckoning need. Frame 0 is "
+        "capture anchor dead reckoning needs. Frame 0 is "
         "disciplined to GPS via IRIG-B/PPS, so the anchor is a fact rather than "
         "an estimate.",
     )
@@ -2133,7 +2084,7 @@ def build_parser(description):
         "--nh-joint",
         type=str,
         default="off",
-        choices=["off", "vote", "apply"],
+        choices=["off", "apply"],
         help="the JOINT overlay fit: the NH label is not N independent per-sat "
         "20-way guesses -- the overlay is synchronous at the transmitters, "
         "so at the receiver the labels differ only by the known geometric "
@@ -2141,13 +2092,12 @@ def build_parser(description):
         "epoch. Every detection with a phase at its own epoch VOTES for that "
         "common offset (continuous, chips mod the epoch -- an integer vote "
         "splits at segment boundaries); the consensus is a circular weighted "
-        "median. 'vote' measures and logs only (NH-JOINT lines), changing "
-        "nothing. 'apply' additionally DERIVES the overlay segment from the "
+        "median. 'apply' DERIVES the overlay segment from the "
         "consensus for detections below --period-check-snr (whose measured "
         "label is noise: G1's ran uniform over 0..19, stepping the seed a "
-        "whole code period every ~4 min, 2026-08-31) and gates the raw "
-        "det_nh fallback; strong detections keep their verified measured "
-        "label, with a disagreement alarm as the referee. Requires the "
+        "whole code period every ~4 min, 2026-08-31); strong detections keep "
+        "their verified measured label, with a disagreement alarm as the "
+        "referee. Requires the "
         "almanac (tau and the broadcast sat clock feed the prediction). "
         "Default off.",
     )

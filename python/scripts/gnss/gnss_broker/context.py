@@ -77,7 +77,6 @@ class ChainContext(object):
         "dr_min_prn",
         "hist_len",
         "max_gap_hops",
-        "q_alias_hz",
         "cp_to_seed_currency",
         "sig_of_last",
         # Helper callables the stages share. They are passed rather than imported because each

@@ -71,7 +71,8 @@ class _Rx:
         code_length,
         chip_rate_hz=None,
         epoch=None,
-        held=False, healthy=None,
+        held=False,
+        healthy=None,
     ):
         self.contrib.append((t, chips, drift))
 
@@ -364,14 +365,6 @@ def test_transit_freeze():
         "clear of the veto: CLEAR logged, the next in-bound solve (+2) moves it by the EMA "
         "(+0.4)",
     )
-    # off: the same transit with --dr-clock-transit-freeze-deg 0 is not frozen
-    c0 = _l5(freeze_deg=0.0)
-    t = _established(c0)
-    _cycle(c0, t + 2.0, _good(6), sky=_sky(0.1))
-    check(
-        c0.dr_state.get("clk_transit") is None and not c0.dr_state.get("clk_frozen"),
-        "--dr-clock-transit-freeze-deg 0: no freeze at 0.1 deg",
-    )
 
 
 def test_confirmed_clock_never_rerolled():
@@ -405,32 +398,6 @@ def test_confirmed_clock_never_rerolled():
         _logged("FORCING A RE-BOOTSTRAP", n),
         "unconfirmed clock: the 300-s re-roll still fires",
     )
-
-
-def test_knobs_off_is_pre_142():
-    print("every knob at 0: the pre-#142 arithmetic, cycle for cycle")
-    _capture()
-    c = _l5(freeze_deg=0.0, min_sats=0, step_max=0.0)
-    seq = [
-        _good(5),
-        _good(2, TRUE_CLK + 538.0),
-        _good(4, TRUE_CLK + 549.0),
-        _good(3),
-        _good(6),
-    ]
-    exp_clk = None
-    ok = True
-    for k, offs in enumerate(seq):
-        _cycle(c, 100.0 + 2 * k, offs, sky=_sky(0.5))
-        raw = c.drp.raw_clk
-        if exp_clk is None:
-            exp_clk = raw
-        else:
-            exp_clk = (
-                exp_clk + 0.2 * _wrap(raw - exp_clk)
-            ) % L5_LEN  # drift 0.0 until measured
-        ok = ok and abs(_wrap(c.dr_state["clk"] - exp_clk)) < 1e-6
-    check(ok, "bootstrap then EMA on every solve, thin and stepped ones included")
 
 
 # ---- the copy paths ---------------------------------------------------------------------------
@@ -754,7 +721,6 @@ if __name__ == "__main__":
     test_genuine_repin_after_confirmation()
     test_transit_freeze()
     test_confirmed_clock_never_rerolled()
-    test_knobs_off_is_pre_142()
     test_crossband_bound_is_a_time()
     test_escape_suppressed_by_joint_adoption()
     test_samesband_refusal_holds_zero_rate()

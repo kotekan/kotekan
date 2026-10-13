@@ -60,14 +60,10 @@ class ClockBias(object):
         # rate (k = f_chip/f_carrier), walking the whole chain ~1 chip off-peak every ~5
         # minutes. The search window shrugs at +-10 Hz; the seeds cannot.
         #
-        # `seed` is what the SEED consumers read. Under --seed-bias-source=slow it is a
-        # long-memory EMA (--seed-bias-alpha, tau ~400 s at the 2 s cycle) of the same raw
-        # medians: the quantization wander is suppressed ~sqrt(alpha ratio) while genuine
-        # GPSDO thermal drift (hour-scale) is still followed -- which a static calibration
-        # would not do.
-        # Under the default it mirrors `value`, byte-for-byte the old behaviour. Under 'zero'
-        # it is 0.0 for the life of the process: nothing but update_seed writes it, and the
-        # broker constructs this with value 0.0 (a warm start writes `ema`, never `seed`).
+        # `seed` is what the SEED consumers read. Under the default it mirrors `value`,
+        # byte-for-byte the old behaviour. Under 'zero' it is 0.0 for the life of the
+        # process: nothing but update_seed writes it, and the broker constructs this with
+        # value 0.0 (a warm start writes `ema`, never `seed`).
         self.seed = value
         # Smoothed estimate; None until enough satellites have been solved together.
         self.ema = ema
@@ -93,25 +89,17 @@ class ClockBias(object):
         self.code_ema = None
         self.code_cal = None
 
-    def update_seed(self, raw_bias, source, alpha, snapped):
-        """Advance the SEED-side bias from this cycle's raw multi-sat median (#105).
+    def update_seed(self, source):
+        """Advance the SEED-side bias after this cycle's raw multi-sat solve (#105).
 
-        `snapped` mirrors the hint EMA's snap condition (first solve or stale re-solve),
-        captured by the caller BEFORE that branch clears `stale`: a genuine measurement
-        gap outranks the slow memory, exactly as it outranks the fast one. Otherwise
-        'slow' crawls at its own alpha and 'ema' keeps the seed glued to the hint EMA --
-        the pre-#105 behaviour, byte-for-byte. 'zero' ignores the solve entirely: no
-        crawl, and above all no snap -- a snap is one few-satellite median commanded into
-        every seed at once.
+        'ema' keeps the seed glued to the hint EMA -- the pre-#105 behaviour,
+        byte-for-byte. 'zero' ignores the solve entirely: no crawl, and above all no
+        snap -- a snap is one few-satellite median commanded into every seed at once.
         """
         if source == "zero":
             self.seed = 0.0
-        elif source != "slow":
-            self.seed = self.ema if self.ema is not None else self.value
-        elif snapped:
-            self.seed = raw_bias
         else:
-            self.seed += alpha * (raw_bias - self.seed)
+            self.seed = self.ema if self.ema is not None else self.value
         return self.seed
 
     def check_stale(self, t0, max_age_s):

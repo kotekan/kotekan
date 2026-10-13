@@ -18,7 +18,7 @@ serves a deterministic, self-contained fleet so a transcript can always be captu
 It is NOT a simulator and makes no claim to be physical. It exists to drive code paths:
 detections that ADVANCE (so cp_hist fills, the rate fit runs, freshness stamps move), a
 status table that reports locks (so the hold/watchdog/DLL/carrier paths execute), and a
-time anchor (so the CL time-assist arithmetic runs). What it must never be is STATIC -- a
+time anchor (so the anchor-dependent arithmetic runs). What it must never be is STATIC -- a
 frozen fleet replays perfectly and tests nothing, which is the trap
 31896a862:docs/CHORD_BROKER_REFACTOR.md 3.2 warns about and which cost two scans on 2026-08-08.
 

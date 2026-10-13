@@ -76,7 +76,6 @@ common:
   # ONLY source there is (TGD_B2ap is B-CNAV2; RINEX 3 has nothing). ⚠️ Zero-mean per
   # constellation by construction -> per-sat only, never a common offset.
     dcb-bias: true
-    cl-assist: true
     seed-doppler: auto
     dll-gain: 0.25
   # -- task #33 P3: the per-sat carrier state (rrate rows + receiver f_carrier) ----------
@@ -610,7 +609,6 @@ chains:
         rf-bands: "gps_l5,gal_e5a,bds_b2a,gal_e5b,bds_b2b,gps_l2c,bds_b3i,gal_e6"
         spectrum-endpoints: "http://cx19:12048/gnss{0..1}_n2assemble,http://cx27:12048/gnss{0..1}_n2assemble,http://cx42:12048/gnss{0..1}_n2assemble,http://cx43:12048/gnss{0..1}_n2assemble,http://cx44:12048/gnss{0..1}_n2assemble,http://cx51:12048/gnss{0..1}_n2assemble"
         nh-hint: true
-        nh-hint-span: 2
         acquire-snr: 30
         search-margin-wide-hz: 200
         search-margin-hz: 100

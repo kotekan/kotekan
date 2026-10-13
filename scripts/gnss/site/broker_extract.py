@@ -126,7 +126,6 @@ NAME_MAP = {
     "fe_off": "fe_off",
     "HIST_LEN": "hist_len",
     "MAX_GAP_HOPS": "max_gap_hops",
-    "Q_ALIAS_HZ": "q_alias_hz",
     "trackers": "trackers",
     "joint_consume": "joint_consume",
     "broker_t0": "broker_t0",

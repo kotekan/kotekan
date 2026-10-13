@@ -1,5 +1,3 @@
-import os
-
 """Detections into seeds, and the coast/drop decision that retires them.
 
 `stage_detections_to_seeds` is the longest stage in the cycle and the one every other depends
@@ -39,7 +37,6 @@ from gnss_broker.fits import (
     fit_dop_rate,
     tracker_phase_at,
     cp_rate_from_code_bias,
-    seed_phase_at_ref,
 )
 
 
@@ -65,8 +62,8 @@ def _nh_joint_pred_chips(ctx, prn, t_utc):
     """Predicted overlay-epoch phase (chips) of PRN's code at receiver wall time t_utc,
     transmit-aligned: gpst(t) - tau + sat_clock, mod the overlay epoch. Deliberately NO
     receiver-clock term -- that missing term is the ONE common unknown the fleet votes on.
-    Same convention as the search's nh hint (searchhint.py) and the CL time-assist, both
-    proven on sky; the broadcast sat clock matters here because segments are 1 ms, not 1.5 s."""
+    Same convention as the search's nh hint (searchhint.py), proven on sky; the broadcast
+    sat clock matters here because segments are 1 ms, not 1.5 s."""
     import gnss_ephemeris as _eph
 
     v = ctx.pred[prn]
@@ -176,7 +173,12 @@ def _nh_joint_consensus(ctx, now):
         if getattr(ctx, "rx", None) is not None:
             if dr_solve_healthy(getattr(ctx, "dr_state", None), now) is not False:
                 ctx.rx.contribute_clock_mod_epoch(
-                    ctx.chain_id, dstar / a.chip_rate_hz, ctx.lc_epoch, len(inl), now, healthy=True
+                    ctx.chain_id,
+                    dstar / a.chip_rate_hz,
+                    ctx.lc_epoch,
+                    len(inl),
+                    now,
+                    healthy=True,
                 )
             else:
                 _log_rl(
@@ -326,10 +328,7 @@ def stage_coast_drop(ctx):
             metric, thresh = float(rec.get("amplitude", 0.0)), ctx.args.drop_amplitude
         # FOLD-INDEPENDENT HOLD (#58). OR-ed against its own bar, never max()-ed into
         # `metric`: prompt hold is a power ratio and `metric` is a debiased sigma.
-        if metric >= thresh or (
-            ctx.args.lock_prompt_hold > 0.0
-            and ctx.hold.prev.get(prn, 0.0) >= ctx.args.lock_prompt_hold
-        ):
+        if metric >= thresh or ctx.hold.prev.get(prn, 0.0) >= ctx.args.lock_prompt_hold:
             ctx.hold.low_hits[
                 prn
             ] = 0  # lock holding through the dropout -> reset coast
@@ -367,37 +366,6 @@ def stage_detections_to_seeds(ctx):
     currency conversion broke exactly that cancellation, by K*t_abs*k*q -- it was live for part of
     a day in 2026-07-20 and is the reason this comment is here."""
     for prn, (snr, dop, cp, ref_hop, det_nh, cp_long, cp_at_ref) in ctx.best.items():
-        # DETECTION ALIAS CENSUS (2026-07-20; was briefly a FOLD, corrected same day):
-        # the search's Doppler estimate is ambiguous mod 1/(2*t_rec) -- 25 Hz on L2C's
-        # 20 ms records, 50 Hz B1C. An alias-bin detection is HARMLESS to the cp
-        # bookkeeping: the search back-projects cp0 to sample 0 with the SAME reported
-        # dop (GnssChannelizedSearch: det.doppler_hz and the drift term share one
-        # variable), and cp_to_seed_currency adds that projection back with the same
-        # numbers -- the round trip is exact whatever bin the dop rode. The v1 fold
-        # REPLACED dop before the currency conversion, breaking exactly that
-        # cancellation by K*t_abs*k*q: the TRACK-vs-MODEL monitor caught held-sat
-        # candidates 12-57 chips off their healthy tracks within the hour (L2C
-        # 18/23/32, 15:20) -- and a candidate that wrong silently DISABLES the escape
-        # referee (sign-flipping cp_err never sustains 5 consecutive). So: measure,
-        # never modify. The census still maps which chains/sats ride alias bins (the
-        # B1C zombie-birth investigation continues on that data).
-        if (
-            ctx.args.det_alias_fold
-            and ctx.args.almanac
-            and prn in ctx.pred
-            and ctx.cb.ema is not None
-            and not ctx.cb.stale
-        ):
-            _aref = ctx.pred[prn][0] + ctx.cb.seed
-            _k = round((dop - _aref) / ctx.q_alias_hz)
-            if _k != 0 and abs(dop - _aref) < 3.5 * ctx.q_alias_hz:
-                _log_rl(
-                    "afold-%d" % prn,
-                    "ALIAS BIN PRN %d: det dop %+.1f = model %+.1f %+d bin(s) of "
-                    "%.0f Hz (census only; cp round-trip is exact)"
-                    % (prn, dop, _aref, _k, ctx.q_alias_hz),
-                    every_s=30.0,
-                )
         v_dr = ctx.dr_pd.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd else None
         if ctx.up is not None and prn not in ctx.up:
             # accept the detection anyway if BRDC says it's up: the TLE up-set
@@ -638,7 +606,6 @@ def stage_detections_to_seeds(ctx):
         if (
             _dr is not None
             and _model_dr is not None
-            and ctx.args.dop_rate_model_tol > 0.0
             and abs(_dr - _model_dr) > ctx.args.dop_rate_model_tol
         ):
             # The two disagree by more than the model's own accuracy: trust the MODEL, which
@@ -823,18 +790,7 @@ def stage_detections_to_seeds(ctx):
                 "(%d pts, l-a %+.3f ppm)"
                 % (prn, cp_ref, h0, rate * ctx.args.hops_per_sec, len(h), la * 1e6),
             )
-        # L2C CL TIME-ASSIST: the trackers despread the CL pilot, whose absolute code phase
-        # is cp_CL = cp_CM + k*10230 with k the CL segment index -- COMPUTED, not searched.
-        # CL's 1.5 s epoch is locked to GPS time in Z-count (1.5 s) units, and GPS-UTC (18 s)
-        # and the GPS epoch (unix 315964800) are both exact multiples of 1.5 s, so unix time
-        # mod 1.5 IS GPS time mod 1.5 (--cl-time-adjust is the escape hatch if that ever
-        # changes). cp is absolute-anchored at capture sample 0, so evaluate the TRANSMIT
-        # time of sample 0 (utc0_sample0 - range/c) and SNAP the predicted CL chip count to
-        # the measured cp_CM (mod 10230): the code phase supplies the fine time; the wall
-        # clock only picks the segment (needs ~10 ms absolute accuracy, and the logged
-        # residual MEASURES the anchor+host-clock error). Second-order cp0/range drift keeps
-        # this valid for ~hour-long runs.
-        # MEASURED overlay alignment (search reports `nh`) beats the time-assist below.
+        # MEASURED overlay alignment (the search reports the long-code phase).
         # Both cp0 and the seed are arguments in the same C = arg + n*cps convention, so
         # matching the primary phase AND the overlay index gives simply
         #     cp_long = cp_primary + nh * CODE_LEN   (mod LC_SEG*CODE_LEN)
@@ -843,8 +799,8 @@ def stage_detections_to_seeds(ctx):
         if cp_long >= 0.0 and ctx.lc_seg > 1:
             # The SEARCH already reduced this at the overlaid code's own length, so it
             # carries the period. Reconstructing it here -- from `nh`, or from absolute
-            # time via --cl-assist -- means re-deriving a convention the search already
-            # knows, which is where every previous attempt went wrong.
+            # time -- means re-deriving a convention the search already knows, which is
+            # where every previous attempt went wrong.
             seed.put(
                 "nh_lift",
                 epoch=ref_hop,
@@ -916,8 +872,8 @@ def stage_detections_to_seeds(ctx):
                         ph_pred = (
                             ph0 + dh * rate
                         ) % LLc  # NB not `pred` -- that is the
-                        # almanac prediction dict in this scope, and shadowing it breaks
-                        # the alias census a hundred lines down with a TypeError.
+                        # almanac prediction dict's name, and shadowing it once broke a
+                        # later reader with a TypeError.
                         m = (
                             int(round(((ph_pred - ph) % LLc) / ctx.code_len))
                             % ctx.lc_seg
@@ -1011,7 +967,7 @@ def stage_detections_to_seeds(ctx):
                 # derived is ever stored as the satellite's own word (the 2026-08-02 trap).
                 if _nhj_ok:
                     _nhc = _nh_joint_consensus(ctx, ctx.drp.now_w)
-                    if _nhc is not None and ctx.args.nh_joint == "apply":
+                    if _nhc is not None:
                         # The derived segment applies to EVERY satellite, strong included:
                         # the consensus IS the weighted median of the strong population's
                         # raw phases, so a healthy majority defines it and no single
@@ -1051,60 +1007,6 @@ def stage_detections_to_seeds(ctx):
                         ph = _ph_j
                 ph = ph % LLc
                 seed.put("nh_lift", epoch=ref_hop, code_phase_at_ref_chips=ph)
-        elif det_nh >= 0 and ctx.lc_seg > 1:
-            # A bare index with no phase at its own epoch: the weakest form of the
-            # measurement. Under --nh-joint apply with a resolved consensus, a weak
-            # detection's raw det_nh is NOISE and is not applied at all (the standing
-            # seed persists; the strong path above owns the common case). No derived
-            # substitute here: relating a cp0 argument to the prediction rides the
-            # 0.58-periods-per-Hz Doppler lever, which is exactly the route the
-            # comment above retired.
-            if (
-                ctx.args.nh_joint == "apply"
-                and ctx.cpt.nh_common is not None
-                and snr < ctx.args.period_check_snr
-            ):
-                _log_rl(
-                    "nhjskip-%d" % prn,
-                    "PRN %d weak raw det_nh=%d SKIPPED (snr %.0f, consensus stands)"
-                    % (prn, det_nh, snr),
-                    every_s=60.0,
-                )
-            else:
-                seed.put(
-                    "nh_lift",
-                    epoch=ref_hop,
-                    code_phase_chips=(
-                        (seed["code_phase_chips"] % ctx.code_len)
-                        + (det_nh % ctx.lc_seg) * ctx.code_len
-                    )
-                    % (ctx.lc_seg * ctx.code_len),
-                )
-                ctx.cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
-        elif (
-            ctx.args.cl_assist
-            and ctx.utc0_sample0
-            and ctx.args.almanac
-            and prn in ctx.pred
-        ):
-            tau = ctx.pred[prn][3] / C_LIGHT
-            cl_chips = (
-                (ctx.utc0_sample0 - tau + ctx.args.cl_time_adjust) % ctx.lc_epoch
-            ) * ctx.args.chip_rate_hz
-            cp_cm = seed["code_phase_chips"]
-            k = int(round((cl_chips - cp_cm) / ctx.code_len))
-            fine_ms = (
-                (cl_chips - cp_cm - k * ctx.code_len) / ctx.args.chip_rate_hz * 1e3
-            )
-            seed.put(
-                "cl_assist",
-                epoch=ref_hop,
-                code_phase_chips=(cp_cm + (k % ctx.lc_seg) * ctx.code_len)
-                % (ctx.lc_seg * ctx.code_len),
-            )
-            ctx.cl_report.append(
-                "PRN %d k=%d fine %+.1f ms" % (prn, k % ctx.lc_seg, fine_ms)
-            )
         # HOLD-ON-LOCK: once a PRN shows a real lock, FREEZE its cp anchor + rate and let the
         # DLL trim own the sub-chip residual. The search's per-fix cp is only good to ~1-2
         # chips (hop-resolution coarse + refine), so re-anchoring from the fit at every cycle
@@ -1324,7 +1226,7 @@ def stage_detections_to_seeds(ctx):
         # AMP VETO (see --escape-amp-veto): a full-amplitude hold is on the main peak
         # by construction -- refuse the fit's accusation rather than drag it off.
         amp_now = float((ctx.status.get(prn) or {}).get("amp_snr", 0) or 0)
-        amp_veto = ctx.args.escape_amp_veto > 0.0 and amp_now > ctx.args.escape_amp_veto
+        amp_veto = amp_now > ctx.args.escape_amp_veto
         # INTEGRITY VETO (2026-07-19 eve, audit follow-up): never re-anchor onto a fit
         # the BRDC model itself disputes. The dead-reckon machinery already computes a
         # per-sat integrity residual (search-vs-model, solved clock removed, normally
@@ -1733,10 +1635,4 @@ def stage_push_seeds(ctx):
                 ctx.rf.released += 1
             # else: within one step of zero (or slew disabled) -- final sub-slew
             # step back to car_trim/0, and the sat leaves rr_cmd_applied.
-        if prn in ctx.car.repin_pending:
-            # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
-            # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
-            # carrier_trim_hz accompanies it -- the trim moves wholly into f_ref, leaving the
-            # combined carrier invariant).
-            d["carrier_repin"] = ctx.car.repin_pending.pop(prn)
         ctx.payload.append(d)

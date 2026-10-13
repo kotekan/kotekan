@@ -39,7 +39,6 @@ class CarrierState(object):
         "trim",
         "locked",
         "fade",
-        "repin_pending",
     )
 
     def __init__(self):
@@ -48,8 +47,6 @@ class CarrierState(object):
             set()
         )  # prns certified coherent since seed: BOOTSTRAP -> TRACK latch
         self.fade = {}  # prn -> consecutive faded emits (coast bookkeeping)
-        # prn -> bleed amount (Hz) to carry as carrier_repin in the next seed
-        self.repin_pending = {}
 
 
 class NhOverlay(object):

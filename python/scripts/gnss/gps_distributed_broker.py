@@ -1250,7 +1250,7 @@ def main(argv=None, rx=None, publisher=None):
     # armed in THIS broker, (signal, sys, sv_position fn, toe-field, ephemeris getter). Built once;
     # the getters read the live decoder vars (inav/fnav/... reassigned in the loop) at call time.
     _decfb = None
-    if args.decoded_eph_fallback or args.decoded_eph_fallback_force:
+    if args.decoded_eph_fallback:
         try:
             import decoded_eph as _decfb
             from galileo_inav import sv_position_inav as _svp_inav
@@ -1332,10 +1332,6 @@ def main(argv=None, rx=None, publisher=None):
     # primary, get a seed that is right 1 time in 20.
     LC_SEG = int(args.long_code_segments)
     LC_EPOCH = float(args.long_code_epoch_s)
-    # Search-Doppler record-alias quantum, 1/(2*t_rec): see the DETECTION ALIAS FOLD
-    # in the seeding loop. 500 Hz on the 1 ms bands (never confused), 125 E1C, 50 B1C,
-    # 25 L2C -- the alias-severity ranking that matches where zombie births appear.
-    Q_ALIAS_HZ = 0.5 * args.chip_rate_hz / CODE_LEN
     # Release a held seed when the fresh Doppler departs the FROZEN one by more than this: the
     # stale replica carrier decoheres the SINGLE-RECORD despread. 0.1 cycle per record, so it
     # scales with the record period (100 Hz for GPS 1 ms records, 25 Hz for E1C 4 ms, 10 Hz
@@ -1464,7 +1460,6 @@ def main(argv=None, rx=None, publisher=None):
         dr_min_prn=dr_min_prn,
         hist_len=HIST_LEN,
         max_gap_hops=MAX_GAP_HOPS,
-        q_alias_hz=Q_ALIAS_HZ,
         cp_to_seed_currency=cp_to_seed_currency,
         dh_obs=_dh_obs,
         cp_predicted=cp_predicted,
@@ -1608,10 +1603,9 @@ def main(argv=None, rx=None, publisher=None):
         _ctx.fitted = set()  # PRNs that got their own >=3-snapshot slope fit this cycle
         _ctx.cl_report = (
             []
-        )  # CL time-assist per-PRN (k, fine-time residual) log lines this cycle
+        )  # per-PRN long-code (overlay period) lift log lines this cycle
         # Capture time anchor: UTC of sample 0, the F-engine's frame 0 (--time0-endpoint).
-        # 0.0 until it answers -- retry lazily. Used by the CL time-assist and the
-        # dead-reckoned cp seeding.
+        # 0.0 until it answers -- retry lazily. Used by the dead-reckoned cp seeding.
         # THE ANCHOR IS LATCHED (`not utc0_sample0` above): fetched once and kept for the whole
         # run. That is right for a stable F-engine and WRONG ACROSS AN F-ENGINE RESTART, which
         # re-establishes frame 0 -- and the failure is silent. On 2026-08-07 the F-engine came
@@ -1693,11 +1687,7 @@ def main(argv=None, rx=None, publisher=None):
             except Exception:
                 pass  # endpoint down is the normal outage case, already logged elsewhere
 
-        if (
-            (args.cl_assist or dr_state is not None)
-            and not _ctx.utc0_sample0
-            and args.time0_endpoint
-        ):
+        if dr_state is not None and not _ctx.utc0_sample0 and args.time0_endpoint:
             try:
                 # CHORD: frame 0 is GPS-disciplined, so this is exact rather than an
                 # estimate. time0_ns is the absolute time of fpga_seq_num 0.
@@ -2575,16 +2565,6 @@ if __name__ == "__main__":
         _log(
             "transcript replay complete (%s); %d posts, digest %s"
             % (e, len(_TR.posts), _TR.digest())
-        )
-        # #83 COVERAGE CENSUS: which seed writers this fixture actually drove. The
-        # gate vouches for exactly this set and nothing else -- an owner missing here
-        # is a migration path the transcript never exercised, and any '?file:line'
-        # entry is an unattributed writer that slipped past the migration.
-        from gnss_broker import seed as _seed_mod
-
-        _log(
-            "seed writers exercised: %s"
-            % (", ".join(sorted(_seed_mod.SEEN_OWNERS)) or "NONE")
         )
         print(_TR.digest())
     finally:

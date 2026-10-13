@@ -191,7 +191,7 @@ base = "http://127.0.0.1:%d" % a.port
 print("fake pipeline on %s (get_detections / set_seeds / get_status)" % base)
 
 # ------------------------------------------------------------------------------- run the broker
-# Same signal geometry as production. Deliberately NOT almanac/dead-reckon/cl-assist: those need
+# Same signal geometry as production. Deliberately NOT almanac/dead-reckon: those need
 # BRDC and a live clock, and the question here is the SEED ARITHMETIC, not the sky model. Add
 # them back with --broker-arg when testing those paths specifically.
 cmd = [

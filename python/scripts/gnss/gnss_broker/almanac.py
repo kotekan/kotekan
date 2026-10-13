@@ -67,7 +67,7 @@ def stage_almanac_predict(ctx):
                 )
             # doppler_sign flips to the receiver's observed convention -- apply it to BOTH the
             # Doppler and its rate so the 2nd-order feed-forward ramps the right way. (Range
-            # is geometry, no sign; it feeds the CL time-assist propagation delay. The 5th
+            # is geometry, no sign; it feeds the overlay-epoch propagation delay. The 5th
             # element -- broadcast sat clock -- is BRDC-only; the TLE path has none.)
             ctx.pred = {
                 p: (
@@ -282,9 +282,7 @@ def stage_almanac_predict(ctx):
             ctx.cb.meas_t = ctx.t0
             ctx.cb.value = ctx.cb.ema
             # #105: the seed consumers' bias -- ClockBias.update_seed has the invariant.
-            ctx.cb.update_seed(
-                raw_bias, ctx.args.seed_bias_source, ctx.args.seed_bias_alpha, _cb_snap
-            )
+            ctx.cb.update_seed(ctx.args.seed_bias_source)
             # CONTRIBUTE (task #27 M3). Receiver scope -- one reference, one frequency
             # error -- so every co-hosted chain can have this without solving it. A
             # chain that HAS its own estimate never reads back, which is why publishing
@@ -337,9 +335,7 @@ def stage_almanac_predict(ctx):
                     len(resid),
                     ctx.args.bias_alpha,
                     ctx.cb.seed,
-                    "slow a=%.3f" % ctx.args.seed_bias_alpha
-                    if ctx.args.seed_bias_source == "slow"
-                    else "zero: fixed, the solve is hints-only"
+                    "zero: fixed, the solve is hints-only"
                     if ctx.args.seed_bias_source == "zero"
                     else "= hint EMA",
                 ),

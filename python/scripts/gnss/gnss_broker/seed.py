@@ -10,8 +10,6 @@
 # migration. What it adds is ATTRIBUTION: every write carries a declared owner and the
 # epoch (ref_hop) the value is valid at, recorded beside the data (never in it -- the
 # provenance lives in __slots__, invisible to json.dumps and to `dict(prn=prn, **seed)`).
-# An unattributed write (`seed[k] = v` from unmigrated code) is still legal and records
-# its call site, so migration is field-by-field and the untouched paths lose nothing.
 #
 # What this buys before any behavior changes:
 #   * SEEDAUDIT steps can name the writer that moved each field (the ~20-boolean
@@ -19,57 +17,6 @@
 #   * epoch skew -- a field valid at one ref_hop shipped beside a tuple valid at
 #     another, which is #80's disease exactly -- becomes a measurable, loggable fact
 #     instead of a code-reading exercise.
-#
-# THE FIELD CONTRACT (audit section 6, as data; cudaGnssChordTrack.hpp:61-77 is the
-# consumer):
-
-FIELDS = {
-    "doppler_hz": "Hz, absolute; valid AT ref_hop, never at now (7cb011c50)",
-    "code_phase_chips": "chips, absolute ARGUMENT back-referenced to sample 0; means "
-    "nothing unpaired from doppler_hz (the cp-currency rule)",
-    "code_phase_rate": "chips/hop, RESIDUAL on the geometry propagate_seed feeds forward",
-    "ref_hop": "hops, absolute; IS the tuple's epoch",
-    "doppler_rate_hz_s": "Hz/s, absolute, at ref_hop",
-    "code_phase_at_ref_chips": "chips mod LL, PHYSICAL phase at ref_hop's LAST sample; "
-    "the tracker PREFERS this over code_phase_chips when >= 0 "
-    "(gnssSeedTransport.cpp:325-327)",
-}
-
-# THE WRITERS (audit section 2, the reverse-engineered arbitration -- now the declared
-# one). REPLACE = measurement overwrites forecast wholesale; CORRECT = forecast + bounded
-# step. Owners are the strings the migration stamps at each site; a new writer must add
-# itself here or its steps audit as "?file:line".
-OWNERS = {
-    "det": "REPLACE  detection birth / re-detection (whole tuple from the search)",
-    "dop_sel:*": "REPLACE  doppler source selection, suffixed with the winner "
-    "(pred | dr | dr(code-untrusted) | det | DET(grid) -- last word wins)",
-    "dop_model": "REPLACE  doppler_rate_hz_s from BRDC central/forward diff or almanac",
-    "dop_fit": "REPLACE  doppler_rate_hz_s from the measured-slope fit (model-vetoed)",
-    "cp_fit": "REPLACE  cp-rate fit: code_phase_rate + ref_hop + code_phase_chips",
-    "nh_lift": "REPLACE  overlay period lift from the search's cp_long / at-ref phase",
-    "cl_assist": "REPLACE  overlay period from wall-clock CL time assist",
-    "dop_clamp": "CORRECT  single-cycle doppler step bound (dop_max_rate_hz)",
-    "hold_freeze": "REPLACE  hold-on-lock: previous tuple rides over the fresh candidate",
-    "translate": "CORRECT  currency translation: same physical phase, new doppler",
-    "probe": "REPLACE  noise probe: whole tuple from the prediction, ref_hop 0",
-    "coast_retag": "CORRECT  coast: forecast doppler, cp re-expressed at the same instant",
-    "dr_birth": "REPLACE  dead-reckon birth / re-pin: whole tuple from BRDC + clk",
-    "dr_slew": "CORRECT  dead-reckon slew: held phase + bounded step toward model",
-    "la_rate": "REPLACE  pooled (l-a) / joint clock code rate, every non-held PRN",
-    "phase_xport": "REPLACE  #45 step 6: at-ref phase shipped beside the DR tuple",
-}
-
-import sys
-
-# Every owner tag that wrote any seed in this process's lifetime -- the COVERAGE
-# CENSUS. The equivalence gate can only vouch for the writers its transcript actually
-# drives, so the replay logs this set at completion and the gap is explicit instead of
-# assumed (an unexercised writer path is exactly where a "gated" refactor breaks).
-# Shared across chains/threads on purpose. ⚠️ The justification is that set.add is atomic
-# for a BUILT-IN set -- which PEP 703 preserves in the free-threaded build -- NOT that
-# the GIL serialises it. The conclusion survives free-threading; the old reasoning did
-# not, and a stale reason is what gets copied to the next global that is not a set.
-SEEN_OWNERS = set()
 
 
 class Seed(dict):
@@ -86,7 +33,7 @@ class Seed(dict):
     def __init__(self, *a, **kw):
         dict.__init__(self, *a, **kw)
         # field -> (owner, epoch_ref_hop_or_None). Construction through plain dict
-        # syntax (unmigrated sites, dict(seed) round-trips) starts unattributed.
+        # syntax (dict(seed) round-trips) starts unattributed.
         self.prov = {}
 
     @classmethod
@@ -98,28 +45,16 @@ class Seed(dict):
         dict literal had.
         """
         s = cls(fields)
-        SEEN_OWNERS.add(owner)
         for k in fields:
             s.prov[k] = (owner, epoch)
         return s
 
     def put(self, owner, epoch=None, **fields):
         """Attributed field writes: same values, same order, plus who and at-what-epoch."""
-        SEEN_OWNERS.add(owner)
         for k, v in fields.items():
             dict.__setitem__(self, k, v)
             self.prov[k] = (owner, epoch)
         return self
-
-    def __setitem__(self, k, v):
-        # Unmigrated writer: record the call site so it audits as "?file:line" -- the
-        # migration's own to-do list, and a tripwire for any NEW writer added without
-        # declaring itself in OWNERS.
-        f = sys._getframe(1)
-        tag = "?%s:%d" % (f.f_code.co_filename.rsplit("/", 1)[-1], f.f_lineno)
-        SEEN_OWNERS.add(tag)
-        self.prov[k] = (tag, None)
-        dict.__setitem__(self, k, v)
 
     def pop(self, k, *default):
         self.prov.pop(k, None)

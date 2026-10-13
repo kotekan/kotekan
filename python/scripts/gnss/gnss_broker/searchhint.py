@@ -83,11 +83,7 @@ def stage_narrow_search(ctx):
                     return (
                         int(
                             round(
-                                (
-                                    _nh2.gpst_of_utc(_t)
-                                    - _v[3] / _nh2.C_LIGHT
-                                    + (_v[4] if len(_v) > 4 else 0.0)
-                                )
+                                (_nh2.gpst_of_utc(_t) - _v[3] / _nh2.C_LIGHT + _v[4])
                                 / _per
                             )
                         )
@@ -120,7 +116,10 @@ def stage_narrow_search(ctx):
                 # collapsed sky) teach the hint a wrong epoch, and the +-2 narrowing then
                 # confirms it from the next detections. Learn nothing while the solve is
                 # not established; the expiry below widens the search on its own.
-                _learn = dr_solve_healthy(getattr(ctx, "dr_state", None), ctx.t0) is not False
+                _learn = (
+                    dr_solve_healthy(getattr(ctx, "dr_state", None), ctx.t0)
+                    is not False
+                )
                 if not _learn:
                     _log_rl(
                         "nhhint-unhealthy",
@@ -128,7 +127,7 @@ def stage_narrow_search(ctx):
                         "from these detections",
                         every_s=120.0,
                     )
-                for _p, (_nh, _rh) in (ctx.nho.seen.items() if _learn else ()):
+                for _p, (_nh, _rh) in ctx.nho.seen.items() if _learn else ():
                     if _p not in ctx.pred or ctx.nho.last_rh.get(_p) == _rh:
                         continue
                     ctx.nho.last_rh[_p] = _rh
@@ -191,13 +190,8 @@ def stage_narrow_search(ctx):
                     ]
                     _log_rl(
                         "nhhint",
-                        "nh hint: offset %d (%d samples) -> %d sat(s), span %d"
-                        % (
-                            ctx.nho.offset[0],
-                            len(_fresh),
-                            len(nh_hints),
-                            ctx.args.nh_hint_span,
-                        ),
+                        "nh hint: offset %d (%d samples) -> %d sat(s)"
+                        % (ctx.nho.offset[0], len(_fresh), len(nh_hints)),
                         every_s=60.0,
                     )
             except Exception as e:

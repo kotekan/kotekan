@@ -55,7 +55,8 @@ class _Rx:
         code_length,
         chip_rate_hz=None,
         epoch=None,
-        held=False, healthy=None,
+        held=False,
+        healthy=None,
     ):
         self.contrib.append((chips, drift, t))
 
@@ -71,6 +72,9 @@ def _ctx(
         chip_rate_hz=10.23e6,
         dr_clock_freeze_s=freeze_s,
         dr_drift_max_age_s=600.0,
+        dr_update_min_sats=4,
+        dr_clock_step_max_chips=5.0,
+        dr_clock_repin_solves=3,
     )
     c.code_len = 10230.0
     c.chain_id, c.band_id = "gps_l5", "1176.45MHz"
@@ -154,16 +158,6 @@ def test_frozen_axis_holds_the_solve():
     )
 
 
-def test_freeze_disabled_is_the_old_behaviour():
-    t = 1000.0
-    c = _ctx(now=t, hop_t=t - 100.0, freeze_s=0.0, raw=150.0)
-    dr.dr_clock_quality(c)
-    check(
-        c.dr_state.get("raw_prev") == (150.0, t),
-        "freeze_s=0: solve applied on a stale axis (opt-out)",
-    )
-
-
 def test_no_axis_at_all_does_not_freeze():
     t = 1000.0
     c = _ctx(now=t, hop_t=None, raw=150.0)
@@ -190,7 +184,7 @@ def test_drift_expires():
         'ctx.dr_state["drift"] = None' in src[i:j],
         "expiry sets drift to None (falls back to the (l-a) model)",
     )
-    k = src.rindex("_dmax = getattr(ctx.args", 0, i)
+    k = src.rindex("_dmax = ctx.args.dr_drift_max_age_s", 0, i)
     cond = src[k:i]
     check(
         "ctx.drp.now_w - _dt > _dmax" in cond,
@@ -219,7 +213,6 @@ def test_adopt_carries_unknown():
 
 if __name__ == "__main__":
     test_frozen_axis_holds_the_solve()
-    test_freeze_disabled_is_the_old_behaviour()
     test_no_axis_at_all_does_not_freeze()
     test_drift_expires()
     test_adopt_carries_unknown()
