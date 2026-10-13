@@ -134,7 +134,7 @@ def stage_fleet_trim_arming(ctx):
         # READ-ONLY: nothing here feeds control yet (that is #83 2(d)); it fills
         # _ft_readback and the log. On failure the dict is CLEARED, not held: a stale
         # trim served as current is the exact blindness this exists to remove, and
-        # "missing = unknown" is the truthful state ([[chord-stale-artifacts]]).
+        # "missing = unknown" is the truthful state.
         if ctx.args.fleet_trim_readback:
             try:
                 _rb = _get(

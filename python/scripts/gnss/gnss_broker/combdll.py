@@ -558,7 +558,7 @@ def prompt_cn0(
 
       * PROBE-DEBIASED. E[|P|^2] = |s|^2 + sigma^2, and sigma^2 is MEASURED as the median
         per-record prompt power of the below-horizon probes -- the only rows that are noise
-        by construction ([[chord-deep-snr-fires-on-noise]]). NO PEER FALLBACK: without
+        by construction. NO PEER FALLBACK: without
         probes this returns {} rather than quietly rebuilding the #49 peer competition
         (the tracked population's median is a SIGNAL level; see apply_presence).
 
@@ -755,7 +755,7 @@ def coh_cn0(
     RESIDUAL-RATE FIT below. The injected rate is one cycle old and the true residual
     wobbles +-8 Hz poll-to-poll against a ~1 s fold, so the headline duty-cycled 60 dB on
     whether the injection happened to match (eta 0<->68 on G9 while code q sat at 3.0-3.5
-    -- the fleet-wide "sig oscillation" of 08-17, [[chord-carrier-is-the-gate]]). The fix
+    -- the fleet-wide "sig oscillation" of 08-17). The fix
     is a ONE-PARAMETER within-integration correction: derotate at a center rate, bin each
     instance's series into `resid_s` segments, and take the single-lag phase step
     f_res = arg(sum_k,inst S_{k+1} conj(S_k)) / (2 pi resid_s) -- per-instance phase
@@ -763,7 +763,7 @@ def coh_cn0(
     the default -- then a lag-8 refine. TWO CENTERS are tried, injected and ZERO, picked
     on stage-1 |R|: 12 min on sky showed the injected rate itself swings +-10 Hz
     cycle-to-cycle (the fcoh fit's own noise) and a single fit centered there aliases,
-    while physics bounds the TRUE residual near zero ([[chord-deep-rate-alias]]).
+    while physics bounds the TRUE residual near zero.
     Everything then folds at the picked center + f_res.
     THE CALIBRATION BURDEN MOVES TO THE PROBES: a fitted rate always gains a little on
     noise, so the probes ride the IDENTICAL fit and the floor absorbs that gain -- `sig`
@@ -774,7 +774,7 @@ def coh_cn0(
 
     The deep fold's defect was never coherence -- it was the per-integration rate RE-SEARCH,
     which re-finds a satellite wherever the tap sits and carries ~20 dB of its own paired
-    scatter doing so ([[chord-deep-snr-fires-on-noise]]). This fold keeps the coherent gain
+    scatter doing so. This fold keeps the coherent gain
     (~10log10(n) over per-record -- the deep-sidelobe sensitivity) and removes the search:
     the residual carrier rate is INJECTED by the caller (`rates`, per PRN), taken from the
     PREVIOUS cycle's record-stream fit -- split-half sigma 37-46 mHz, i.e. ~0.25 rad over a
@@ -801,7 +801,7 @@ def coh_cn0(
     Per (PRN, instance): Abar = (1/n) sum_k A_k exp(-2 pi i f t_k), t_k = hop_k * hop_s
     (absolute hops -- exact, shared across the fleet). Fleet: mean over instances of
     |Abar|^2. Debias against the probes' clipped-mean folded power (the Gamma-median
-    lesson, [[chord-cn0-prompt-estimator]]).
+    lesson).
 
     ⚠️ THE POWER MEAN OVER INSTANCES IS A KNOWN LIMITATION, NOT A DESIGN. This used to
     carry a comment calling cross-instance coherence "the delay-alignment problem [that]
@@ -886,8 +886,8 @@ def coh_cn0(
     # Per-PRN fleet reduction: per-instance folds, then the POWER mean over instances.
     # ⚠️ See the docstring: instances are an arbitrary freq_id grouping, they must cohere,
     # and this power mean is a limitation to lift -- not a statement about the sky.
-    # ⚠️ RATE SANITY CLAMP. Physics bounds the residual at ~±10 Hz (decohered sats,
-    # [[chord-deep-rate-alias]]); a rate fit taken on a re-acquiring fleet hands back
+    # ⚠️ RATE SANITY CLAMP. Physics bounds the residual at ~±10 Hz (decohered sats);
+    # a rate fit taken on a re-acquiring fleet hands back
     # ±30-45 Hz of pure noise (measured 2026-08-15 16:52, minutes after a node restart),
     # and folding a REAL signal at a noise rate destroys it. Beyond the bound the honest
     # statement is "rate unknown": fold at 0 and say so in rate_src, so eta carries the
@@ -965,8 +965,8 @@ def coh_cn0(
             # TWO HYPOTHESES, because 12 min on sky said one is not enough: the INJECTED
             # rate itself swings +-10 Hz cycle-to-cycle (the fcoh fit's own noise), which
             # lands outside a single fit's capture and aliases -- gal_e5a PRN 6 read sig
-            # 8869 -> 316 -> 20424 in 70 s. Physics bounds the TRUE residual at ~+-10 Hz
-            # ([[chord-deep-rate-alias]]), so a second fit centered at ZERO reaches
+            # 8869 -> 316 -> 20424 in 70 s. Physics bounds the TRUE residual at ~+-10 Hz,
+            # so a second fit centered at ZERO reaches
             # everything a wild injection loses. Picked on stage-1 |R| (coherence of the
             # segment stream, magnitude only); probes ride the identical two-way pick, so
             # its noise gain prices itself into the floor. This is a 2-hypothesis choice,

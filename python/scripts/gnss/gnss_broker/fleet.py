@@ -1497,8 +1497,8 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
     answer `not_yet` forever.
 
     ⚠️ NEVER BLOCK ON UNANIMITY. An instance that cannot serve the common window is DROPPED BY
-    NAME and the rest combine without it. Requiring all of them is exactly the failure of
-    [[chord-fleet-combine-fragility]], where one frozen GPU silently emptied the common window
+    NAME and the rest combine without it. Requiring all of them is exactly the earlier
+    failure where one frozen GPU silently emptied the common window
     for every satellite and the combine returned {} -- indistinguishable from an empty sky.
 
     An instance whose reply is NOT addressable (a node config without spectrum_window_samples)

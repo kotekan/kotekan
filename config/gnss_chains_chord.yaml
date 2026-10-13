@@ -1576,7 +1576,7 @@ chains:
     # Pre-registered: fixtures/expectations_20260821_deepgate_e5a.txt. Revert: back to "33".
     # ⚠️ REVERTED to "33" 2026-08-21 12:1x: the widening was UNPROVEN and is now a
     # confound. The real fault was the wedged cf06 gather (the C++ code loop had been dead
-    # since the 08-20 20:09 F-engine restart -- [[chord-gather-wedges-on-frame0-reset]]).
+    # since the 08-20 20:09 F-engine restart).
     # With the loop alive, the in-chain CONTROLS recovered just as hard without being
     # admitted (PRN 31 q 0.98->2.99, PRN 16 0.89->2.64), so ordinary prompt-power presence
     # works fine on a healthy loop and the latch was not what was binding. Re-judge the
@@ -1675,7 +1675,7 @@ chains:
     #     C41  el +9.6         q 1.06  p/floor  1.0  pedestal 2.453             <- correctly refused
     # C39 is the SECOND STRONGEST signal on the chain and is refused because q 1.90 sits under
     # the arming gate -- and q is suppressed by exactly the offset the DLL exists to remove.
-    # The same latch as E3 ([[chord-arming-gate-is-the-taps]]), on a different constellation.
+    # The same latch as E3, on a different constellation.
     #
     # ⚠️ CHECKED THAT IT CAN FIRE BEFORE ARMING, which is the lesson from putting
     # --dll-deep-gate-from-search on a chain that has no search. Against the real thresholds
@@ -1749,7 +1749,7 @@ chains:
     # driving C26's bias to -5.2. Paired against the pre-feed GPS-only state the joint clock
     # got WORSE, not better: joint-vs-legacy sd 1.635 -> 2.587 chips, sigma 0.114 -> 0.140.
     # More satellites, worse clock -- because they arrive one degenerate measurement at a
-    # time. [[chord-joint-feed-is-a-mirror]]'s lesson again: eligibility is a property of
+    # time. The same lesson again: eligibility is a property of
     # the SET, not the satellite.
     # RE-ARM WHEN: BeiDou's common trim is MODELLED (it is +1.3 chips standing, the
     # per-constellation term A0b points at -- BDT/TGD_B2ap), which brings its satellites
@@ -2250,7 +2250,7 @@ chains:
     #     C41  el +9.6         q 1.06  p/floor  1.0  pedestal 2.453             <- correctly refused
     # C39 is the SECOND STRONGEST signal on the chain and is refused because q 1.90 sits under
     # the arming gate -- and q is suppressed by exactly the offset the DLL exists to remove.
-    # The same latch as E3 ([[chord-arming-gate-is-the-taps]]), on a different constellation.
+    # The same latch as E3, on a different constellation.
     #
     # ⚠️ CHECKED THAT IT CAN FIRE BEFORE ARMING, which is the lesson from putting
     # --dll-deep-gate-from-search on a chain that has no search. Against the real thresholds

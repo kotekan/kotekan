@@ -688,7 +688,7 @@ def stage_fleet_dll(ctx):
         # this is beside `_fh = max(pow_hop)` in the status block -- but that `status` is
         # `{prn: row}` from ONE combiner, and every PRN in a poll carries the SAME
         # pow_hop, so it reports spread 0.00 s across 32 rows and says nothing about the
-        # fleet ([[identical-numbers-are-not-agreement]]). The axis lag that link 1 is
+        # fleet. The axis lag that link 1 is
         # about is ACROSS INSTANCES: on 2026-08-23, gps_l5/gal_e5a read -18.0..-19.3 s
         # while bds_b2a read -7.8 s at the same instant. `_inst_hops_now` is the right
         # population -- the newest hop per combiner, from the poll fleet_dll already makes.

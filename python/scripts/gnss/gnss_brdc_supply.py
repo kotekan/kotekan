@@ -105,8 +105,7 @@ def _brdc_sources(kind, year, doy):
     survive a BKG outage returned 404 on its first, second and every subsequent call, in
     complete silence: `_fetch_brdc_merged` treats a failed source as "try the next one", and
     when the next one is the end of the list the whole day is skipped. That is a fallback that
-    CANNOT SUCCEED -- the same defect class as a search that cannot return a positive
-    ([[chord-broker-refactor]]).
+    CANNOT SUCCEED -- the same defect class as a search that cannot return a positive.
     CDDIS does carry merged dailies, under /gnss/data/daily/YYYY/DDD/YYp/, as BRDC00IGS_R
     (IGS) and BRDM00DLR_S (DLR). Measured on DOY 238: G32/E30/C39 and G32/E30/C36 -- as wide
     as BKG's, or wider.

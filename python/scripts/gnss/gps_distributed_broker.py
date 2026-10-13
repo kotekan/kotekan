@@ -1915,7 +1915,7 @@ def main(argv=None, rx=None, publisher=None):
             # floor 4.72 on bds_b2a, ABOVE the q ~ 4 ceiling any real satellite can reach, so
             # nothing could pass on q at all and roughly HALF the population passed on prompt
             # power by construction. That is the "exactly half of the up satellites lock"
-            # symptom, and it is the same root as E36 ([[chord-prn-lists-diverge]]).
+            # symptom, and it is the same root as E36 (docs/CHORD_LIVE_PRN_RECONFIG.md).
             #
             # ⚠️ THIS IS NOT THE DISCOVERY-BASED FILTER THAT WAS REJECTED. That one inferred
             # untrackability from "never reported", which cannot tell untrackable from

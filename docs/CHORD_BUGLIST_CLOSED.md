@@ -556,9 +556,9 @@ which IS the aiding gain GAP 3 would deliver** — not merely `r`:
 | all pairs | 7013 | −2.480 | [−6.15, −0.391] | **underpowered** |
 
 ⚠️ **THE SENSITIVITY CHECK IS THE RESULT, NOT A FOOTNOTE.** A null is worthless without its own
-lever ([[a-null-result-needs-its-lever-checked]]). Here the CI excludes ±1 by ~10× in the ramp
-band and ~5× at the motivating level: the test demonstrably *could* have seen a physical coupling
-and did not. The aid is bounded to **≤10% of the ramp** over the ramp band.
+lever. Here the CI excludes ±1 by ~10× in the ramp band and ~5× at the motivating level: the
+test demonstrably *could* have seen a physical coupling and did not. The aid is bounded to
+**≤10% of the ramp** over the ramp band.
 
 ⚠️ **P3's escape hatch does not apply.** The worry was that a null might just mean the day was
 calm. It was not: **57 pooled pairs sit at or above the 0.06 chips/min that motivated GAP 3**,

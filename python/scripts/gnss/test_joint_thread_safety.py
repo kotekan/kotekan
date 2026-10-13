@@ -6,7 +6,7 @@ rejection storm; every subsequent birth appended into inconsistent geometry (112
 growing to 771) and the joint state was silently dead for three hours behind per-consumer
 guards. The fix is the instance lock (_locked on every public entry point).
 
-Both arms run here, per [[chord-a-gate-that-cannot-fail]]:
+Both arms run here, so the gate is shown able to fail:
   - LOCKED (the fix): geometry must stay consistent under a hostile switch interval.
   - UNLOCKED (the control): the same workload with the lock stubbed out must reproduce
     the desync -- if it cannot, this test is not exercising the race and a green LOCKED
