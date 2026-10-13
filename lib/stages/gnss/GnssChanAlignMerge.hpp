@@ -44,8 +44,7 @@
  * @conf in_channels channels per input, in in_bufs order
  * @conf samples_per_data_set  hops per frame (all inputs and the output)
  * @conf input_timeout_s  seconds an input may deliver nothing before it is treated as absent
- *                        (default 5; 0 = wait forever)
- * @conf absent_probe_s   seconds to wait on an input already absent (default 0.002)
+ *                        (default 5; must be > 0)
  *
  * @metric kotekan_gnss_merge_skipped_frames_total  input frames released unmerged to align the
  *                                                  inputs, labelled by input
@@ -65,14 +64,15 @@ private:
     std::vector<int> _in_chans; ///< channels per input
     int _out_chan = 0;          ///< sum of _in_chans
     int _n_hops = 0;
-    /// Seconds to wait on one input before declaring it absent and zeroing its channels;
-    /// 0 = block forever. Without it, a config declaring more inputs than there are running
-    /// nodes stalls the merge with no error (see main_thread).
+    /// Seconds to wait on one input before declaring it absent and zeroing its channels.
+    /// Without it, a config declaring more inputs than there are running nodes stalls the merge
+    /// with no error (see main_thread).
     double _input_timeout_s = 5.0;
     /// Seconds to wait on an input already declared absent. A short poll, because the reacquire
     /// sweep visits the inputs in turn: at the full timeout, n absent inputs would make the
-    /// output period n x _input_timeout_s.
-    double _absent_probe_s = 0.002;
+    /// output period n x _input_timeout_s. Long enough to pick up a frame already queued, which
+    /// is all a rejoining sender needs, and short enough that absent inputs cost almost nothing.
+    static constexpr double absent_poll_s = 0.002;
 };
 
 #endif // GNSS_CHAN_ALIGN_MERGE_HPP

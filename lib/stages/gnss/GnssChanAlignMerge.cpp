@@ -10,7 +10,6 @@
 #include <chrono>    // for the warn rate limit
 #include <cmath>     // for floor
 #include <complex>   // for complex
-#include <cstring>   // for memcpy, memset
 #include <cstring>   // for memcpy
 #include <ctime>     // for clock_gettime, timespec
 #include <numeric>   // for accumulate
@@ -36,12 +35,12 @@ GnssChanAlignMerge::GnssChanAlignMerge(Config& config, const std::string& unique
 
     _in_chans = config.get<std::vector<int>>(unique_name, "in_channels");
     _n_hops = config.get<int>(unique_name, "samples_per_data_set");
-    // Absent-sender timeout; 0 disables it (block forever).
     _input_timeout_s = config.get_default<double>(unique_name, "input_timeout_s", 5.0);
-    // Wait on an input already known absent (see main_thread): long enough to pick up a frame
-    // already queued, which is all a rejoining sender needs, and short enough that absent
-    // inputs cost almost nothing.
-    _absent_probe_s = config.get_default<double>(unique_name, "absent_probe_s", 0.002);
+    if (_input_timeout_s <= 0.0) {
+        FATAL_ERROR("GnssChanAlignMerge[{:s}]: input_timeout_s {:g} must be > 0", unique_name,
+                    _input_timeout_s);
+        return;
+    }
 
     if (in_bufs.empty() || _in_chans.size() != in_bufs.size()) {
         FATAL_ERROR("GnssChanAlignMerge: {:d} in_bufs but {:d} in_channels entries", in_bufs.size(),
@@ -80,14 +79,14 @@ void GnssChanAlignMerge::main_thread() {
 
     // Absent senders must not block the merge. The aggregator config declares one input per
     // node GPU; a feed whose node is not running never delivers, and an untimed wait would
-    // block forever with no error. With _input_timeout_s > 0, an input that delivers nothing
-    // for that long is absent: its channel slice is zeroed and the merge continues on the rest.
+    // block forever with no error. An input that delivers nothing for _input_timeout_s is
+    // absent: its channel slice is zeroed and the merge continues on the rest.
     // Zeros rather than the last frame, because stale samples belong to another epoch and
     // would correlate into false detections, where zeros only cost sensitivity.
     //
     // Absent inputs are retried every cycle, so a restarted node rejoins on its own; `present`
     // describes only the current frame. The retry sweep calls acquire() for each input in
-    // turn, so an input already absent is polled for _absent_probe_s rather than waited on:
+    // turn, so an input already absent is polled for absent_poll_s rather than waited on:
     // a full timeout each would make the output period n_absent x _input_timeout_s and leave
     // the search's detections behind the sky. A rejoining sender has frames queued, so the
     // poll picks one up at once.
@@ -95,7 +94,6 @@ void GnssChanAlignMerge::main_thread() {
     // Present inputs get the full wait. Frames arrive every 41.94 ms, so a short poll of a
     // healthy input would often find nothing ready, and the timeout path would zero it.
     std::vector<uint8_t> present(n_in, 0);
-    std::vector<uint8_t> ever(n_in, 0); // acquired at least once; gates the spread check
     std::vector<uint8_t> announced(n_in,
                                    0); // declared absent; join/leave logs once per transition
     struct timespec ts_timeout;
@@ -121,43 +119,37 @@ void GnssChanAlignMerge::main_thread() {
     };
 
     auto acquire = [&](int i) -> bool {
-        if (_input_timeout_s > 0.0) {
-            // An input already declared absent is polled, not waited on (see above).
-            const double wait_s = announced[i] ? _absent_probe_s : _input_timeout_s;
-            clock_gettime(CLOCK_REALTIME, &ts_timeout);
-            const double whole = std::floor(wait_s);
-            ts_timeout.tv_sec += (time_t)whole;
-            ts_timeout.tv_nsec += (long)((wait_s - whole) * 1e9);
-            if (ts_timeout.tv_nsec >= 1000000000L) {
-                ts_timeout.tv_nsec -= 1000000000L;
-                ts_timeout.tv_sec += 1;
-            }
-            const int rc =
-                in_bufs[i]->wait_for_full_frame_timeout(unique_name, in_ids[i], ts_timeout);
-            if (rc < 0)
-                return false; // shutdown
-            if (rc > 0) {     // timed out: treat as absent for this frame
-                present[i] = 0;
-                frames[i] = nullptr;
-                if (!announced[i]) {
-                    announced[i] = 1;
-                    WARN("GnssChanAlignMerge[{:s}]: input {:d} delivered nothing in {:.1f} s -- "
-                         "treating it as ABSENT and zeroing its {:d} channels. Its sender is "
-                         "down, or this config declares more inputs than there are nodes "
-                         "running. The merge continues on the others; it will rejoin "
-                         "automatically.",
-                         unique_name, i, _input_timeout_s, _in_chans[i]);
-                }
-                return true; // not a failure: carry on without it
-            }
-            frames[i] = in_bufs[i]->frames[in_ids[i]];
-        } else {
-            frames[i] = in_bufs[i]->wait_for_full_frame(unique_name, in_ids[i]);
+        // An input already declared absent is polled, not waited on (see above).
+        const double wait_s = announced[i] ? absent_poll_s : _input_timeout_s;
+        clock_gettime(CLOCK_REALTIME, &ts_timeout);
+        const double whole = std::floor(wait_s);
+        ts_timeout.tv_sec += (time_t)whole;
+        ts_timeout.tv_nsec += (long)((wait_s - whole) * 1e9);
+        if (ts_timeout.tv_nsec >= 1000000000L) {
+            ts_timeout.tv_nsec -= 1000000000L;
+            ts_timeout.tv_sec += 1;
         }
+        const int rc = in_bufs[i]->wait_for_full_frame_timeout(unique_name, in_ids[i], ts_timeout);
+        if (rc < 0)
+            return false; // shutdown
+        if (rc > 0) {     // timed out: treat as absent for this frame
+            present[i] = 0;
+            frames[i] = nullptr;
+            if (!announced[i]) {
+                announced[i] = 1;
+                WARN("GnssChanAlignMerge[{:s}]: input {:d} delivered nothing in {:.1f} s -- "
+                     "treating it as ABSENT and zeroing its {:d} channels. Its sender is "
+                     "down, or this config declares more inputs than there are nodes "
+                     "running. The merge continues on the others; it will rejoin "
+                     "automatically.",
+                     unique_name, i, _input_timeout_s, _in_chans[i]);
+            }
+            return true; // not a failure: carry on without it
+        }
+        frames[i] = in_bufs[i]->frames[in_ids[i]];
         if (frames[i] == nullptr)
             return false;
         present[i] = 1;
-        ever[i] = 1;
         if (announced[i]) {
             announced[i] = 0;
             INFO("GnssChanAlignMerge[{:s}]: input {:d} is back, {:d} channels rejoined",
@@ -190,14 +182,14 @@ void GnssChanAlignMerge::main_thread() {
         // ~5.7 min at 3.2 GS/s: far beyond any buffering, far below the 2.8e14 of one day's
         // uptime. Only present inputs count: an absent input's seq is stale, or still 0.
         int64_t lo = INT64_MAX, hi = INT64_MIN;
-        int n_ever = 0;
+        int n_present = 0;
         for (int k = 0; k < n_in; ++k)
-            if (ever[k] && present[k]) {
+            if (present[k]) {
                 lo = std::min(lo, seqs[k]);
                 hi = std::max(hi, seqs[k]);
-                ++n_ever;
+                ++n_present;
             }
-        if (n_ever >= 2 && hi - lo > (int64_t)1 << 40)
+        if (n_present >= 2 && hi - lo > (int64_t)1 << 40)
             warn_rate_limited(fmt::format(
                 "inputs span {:.3g} samples (min {:d}, max {:d}) -- too far apart to be sender "
                 "lag. Some feeds are pre-reset and some post-reset; the merge cannot align them "
