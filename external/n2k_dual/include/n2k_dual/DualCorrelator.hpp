@@ -33,7 +33,7 @@
 // or B base pointer. The shared-memory layout, in-register transposes, tensor-core MMAs, RFI
 // masking and output tiling are n2k's.
 //
-// Properties cudaCorrelatorDual relies on:
+// Output properties:
 //
 //  - Triangular tile packing orders tiles by (ihi, jhi) with ihi >= jhi, and A comes first on
 //    the station axis, so the pure-A block of the output is a verbatim prefix of each (t, f)
