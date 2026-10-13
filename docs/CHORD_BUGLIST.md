@@ -106,7 +106,7 @@ on KV's word. The memory note `chord-handoff-20261012-fengine-off` has the rollb
 - **Fix candidates (not built):** hold the joint clock (refuse adoption) while the transit sky (#144) has a satellite
   within the transit bound that transmits in the joint's feeder band, as #142 holds the dead-reckon clock; or refuse a
   delta that moves more than ~0.3 chips from the previous adopted one unless it persists for two solves.
-- **Check:** `grep 'JOINT-CLK' broker.log | grep ADOPTED` and the |delta| census in [[chord-telem-v8-rollout-20261012]].
+- **Check:** `grep 'JOINT-CLK' broker.log | grep ADOPTED` and the |delta| census taken at the 10-12 telemetry v8 rollout.
 
 ### #175 — after a transit's null crossing every E6 tracker is re-seeded ~0.45 chips off its peak and rails there for an hour (2026-10-11)
 **What [live 22:34–23:35Z]:** E06 passed 0.24° from boresight at 22:27Z (E6 prompt 3.5 million × the floor). As it
@@ -588,11 +588,12 @@ halves 31–46° off.
   `elem_sum_shared_ref` / `_mode` (off|log|live) / `_slew_deg_s` (1.0) / `_min_sim` (0.5), REST
   `set_elem_sum_shared_ref`, and a `fleet_ref` block in `/get_elem_cal`.
 - Generator `--elem-shared-ref FILE --elem-shared-ref-mode`, refused on an epoch mismatch. Manifest:
-  `config/elem_shared_ref_20261006.json`, mode `log`.
+  `elem-shared-ref` (now `config/elem_shared_ref_20261010.json`), mode `live`.
 - Tool `python/scripts/gnss/elem_shared_ref.py` (snapshot | post | status | watch). The 10-06 snapshot is
   R 0.94–0.99 in every band, and healthy instances match its shape at a median similarity of 0.88–0.99
   (a noise model scores ~0.2).
-- Safety net `scripts/gnss/elem_ref_cron.sh` (log-only unless `ELEM_REF_ACT=1`); not yet in cron.
+- Safety net `scripts/gnss/site/elem_ref_cron.sh` (log-only unless `ELEM_REF_ACT=1`), in the gnss crontab
+  every 5 min with `ELEM_REF_ACT=1`.
 - Binary `~/gnss/builds/fleet-pin154-20261006` (md5 08949ff5). Rollback: `build/kotekan/kotekan.prev_27ea60023`.
 
 **2026-10-06 LIVE fleet-wide.** Restarted 15:46–15:47Z on the new binary in log mode. Every node's own

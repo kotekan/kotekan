@@ -83,7 +83,7 @@ curl -s http://cf06:8877/index.json | python3 -c 'import json,sys; print([d["day
 ```
 
 Yesterday should be in that list by ~00:35 UTC. If it is not, `grep beamcube
-/tmp/gnss_cubecompact.log` says why, and §5 is the hand-run.
+/tmp/gnss_cubecompact.log` says why, and §4 is the hand-run.
 
 ## 4. Doing it by hand
 

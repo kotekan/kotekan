@@ -100,10 +100,6 @@ time0 for the 2026-09-05 archive: **1788541059.000002870** s (frame0_nano 116922
   network, or the archiver. The recording chain's fault and the only one worth chasing; `ls`
   prints these even without `--gaps`.
 
-09-05/06 state (13:20 UTC 09-06): 89/89 senders, 2354 holes, all host-wide (two cx19 restarts:
-17:44 09-05 fleet cycle, 06:12 09-06), 0 sender drops, 0 downstream. First pass: 1156 holes, all host-wide (cx19's 15 senders × 76–77 windows
-at 17:44:14 — the fleet cycle), 0 sender drops, 0 downstream.
-
 ## 6. L0 / rung contents
 
 L0 (`format = gnss_cube_l0`), extensible datasets, one row per LIVE (window, slot):
@@ -126,32 +122,14 @@ relative response (amplitude AND phase) the phased-array calibration wants. `ref
 strongest mean-incoh element of the file and is recorded. `blk/n_win_present` says how
 many windows each block actually had.
 
-## 7. Deploying v3 (archiver FIRST, then nodes — the two sizes cannot coexist)
+## 7. Changing the cube frame (archiver FIRST, then nodes)
 
-`bufferRecv` has one `frame_size`; a v2 sender into a v3 archiver (or vice versa) is CLOSED
-with a frame_size message and delivers nothing (the offline gate shows a v2 producer in a
-v3-sized buffer losing every other window). The v3 binary refuses a v2 config loudly
-(`cube_buf needs a 101208 B frame`). Order, at the next fleet cycle:
-
-1. me: `mv build/kotekan/kotekan.v3cube_20260905 build/kotekan/kotekan` (same for
-   `build_nodpdk`), regenerate `config/generated/` (the generator reads CUBE_HEADER_BYTES from
-   the hpp → frame_size 101208 everywhere), `ssh cf06 cubearch_up.sh` (archiver on v3);
-2. KV: `node_up.sh` the six nodes;
-3. gate in minutes: `gnss_cube_read.py head <newest raw>` shows `version 3` and a `utc(wstart0)`
-   that matches the wall clock.
-
-Offline gate for the code itself: `scripts/gnss/cube_e2e.py --binary <nodpdk binary>` on cf06
-(PASS on the v3 binary; on the v2 binary it fails on version, utc0 and the lost windows).
-
-**Done 2026-09-06 15:40–15:50 UTC.** Archiver flipped 15:40, nodes cycled ~15:42, first v3 frame
-`utc(wstart0)` 15:42:28 with `utc0` = the v2 epoch to 3e-8 s (so L0 files carry one epoch).
-⚠️ **The restart clobbered raw files `gnss_cube_0000000..90`** (09-05 17:45–18:00, already in
-L0): `rawFileWrite` numbers from 0 at every start and opens without `O_TRUNC`. Fixed with
-`continue_numbering: true` (resume past the highest existing number; generator emits it for the
-archiver) — numbering resumed at 0007683. The interim run wrote `gnss_cube_r2_*` (15:44–15:50);
-the compactor now finds the still-open file by mtime, not by name, so mixed prefixes fold. The
-91 overwritten names hold v3 data from 15:40–15:44 under a size the manifest refuses; rename
-them (`gnss_cube_r1v3_*`) to fold them or leave them as a 4-minute hole.
+`bufferRecv` has one `frame_size`, so senders of two cube versions cannot share one archiver: a
+mismatched sender is CLOSED with a frame_size message and delivers nothing. Put the archiver on
+the new size first, then cycle the nodes. The archiver's `rawFileWrite` runs with
+`continue_numbering: true` (the generator emits it): it numbers from 0 at every start and opens
+without `O_TRUNC`, so without it a restart overwrites the oldest raw files. Offline gate for a
+cube-format change: `scripts/gnss/cube_e2e.py --binary <nodpdk binary>` on cf06.
 
 ## 8. The map builder (P5): `gnss_beam_cube.py build --source l0`
 
