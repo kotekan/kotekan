@@ -1821,7 +1821,6 @@ chains:
     #   q floor       4.72     -> ~1.0-1.3 (probe-anchored: probes are E=P=L, q ~ 1)
     #   probes        2 reporting -> 3 (39/21/36 predicted)
     # Revert: delete this line + broker restart.
-    # (This also enables the /get_prns sweep, which --prn-reconfig off otherwise skips.)
     # ── ARMED 2026-08-27 17:2x (KV: "no sense waiting even longer") ────────────────────
     # THE FIRST TIME THIS HAS EVER POSTED A SWAP. It has been built, gated and on `report`
     # since 08-26; the heartbeat has been saying "0 swap(s) so far" ever since. Two things

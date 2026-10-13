@@ -11,7 +11,6 @@ hysteresis is asserted here directly.
 
 WHAT IS BEING PINNED:
   * a candidate below the admit mask claims nothing, however long a slot has been free;
-  * `report` posts NOTHING, ever -- the property that makes it safe to arm first;
   * two unwanted satellites never trade a slot (the map is a fixed point, not a flip-flop);
   * a node that left the fleet's map (a restart, a missed post) is put back on it, alone and
     once per interval; a split with no reference -- no majority, nothing this broker posted
@@ -48,7 +47,6 @@ class Args(object):
         self.prn_reconfig_heartbeat_s = (
             1e18  # off by default in tests; check 11 arms it
         )
-        self.probe_require_slot = False
         self.noise_probes = 0
         self.signal = "GAL_E5A_Q_CS"
         self.__dict__.update(kw)
@@ -281,16 +279,6 @@ def main():
         "... while a slot whose PRN has no prediction is still handed to the unslotted one",
     )
 
-    # ---- 5. report mode posts nothing, ever -------------------------------------------
-    POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="report")
-    run_cycle(ctx, 1000.0)
-    run_cycle(ctx, 1000.0 + 100000.0)
-    check(
-        not POSTS,
-        "report mode NEVER posts -- the property that makes it safe to arm first",
-    )
-
     # ---- 6. off does nothing at all ---------------------------------------------------
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="off")
@@ -384,21 +372,6 @@ def main():
         "... and the crossing is not called a split",
     )
 
-    # ---- 7e. report logs it, off does nothing --------------------------------------------
-    for mode in ("report", "off"):
-        POSTS[:] = []
-        LOGS[:] = []
-        ctx = Ctx(fleet, sky, prn_reconfig=mode)
-        ctx.args.probe_require_slot = True  # so that off still polls
-        ctx.trackers = nodes
-        sweep(ctx, odd, 1000.0)
-        check(not POSTS, "%s mode posts no resync" % mode)
-        if mode == "report":
-            check(
-                any("REPORT ONLY" in m and "node4" in m for m in LOGS),
-                "... and report mode names the node it would put back",
-            )
-
     # ---- 7f. A NODE THAT STAYS OFF THE MAP IS RETRIED ONCE PER INTERVAL ------------------
     POSTS[:] = []
     ctx = Ctx(fleet, sky, prn_reconfig_interval_s=120.0)
@@ -474,42 +447,40 @@ def main():
     # heartbeat is asserted on the LOG rather than on POSTS.
     POSTS[:] = []
     LOGS[:] = []
-    ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0}, prn_reconfig="report")
+    ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0})
     ctx.args.prn_reconfig_heartbeat_s = 900.0
     run_cycle(ctx, 1000.0)
     check(
-        any("PRN MAP" in m and "REPORT" in m for m in LOGS),
+        any("PRN MAP" in m and "APPLY" in m for m in LOGS),
         "an armed chain with NOTHING to propose still says so (the heartbeat)",
     )
     check(not POSTS, "... and still posts nothing")
-    n_beats = len([m for m in LOGS if "REPORT" in m])
+    n_beats = len([m for m in LOGS if "APPLY" in m])
     run_cycle(ctx, 1000.0 + 100.0)
     check(
-        len([m for m in LOGS if "REPORT" in m]) == n_beats,
+        len([m for m in LOGS if "APPLY" in m]) == n_beats,
         "... rate-limited: not once per cycle",
     )
     run_cycle(ctx, 1000.0 + 901.0)
     check(
-        len([m for m in LOGS if "REPORT" in m]) == n_beats + 1,
+        len([m for m in LOGS if "APPLY" in m]) == n_beats + 1,
         "... and it does beat again after the interval",
     )
 
     # ---- 12. the map is PUBLISHED for read-only consumers, and fails OPEN ---------------
-    # --probe-require-slot needs the live map but proposes no swaps, so "off" must still
-    # poll -- and a consumer must never act on a partial or split map. This is what stops
-    # the probe filter from silently emptying the probe set on a half-swept fleet.
+    # The probe selector (--probe-require-slot) reads the live map but proposes no swaps --
+    # and a consumer must never act on a partial or split map. This is what stops the probe
+    # filter from silently emptying the probe set on a half-swept fleet.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="off")
-    ctx.args.probe_require_slot = True
+    ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0})
     run_cycle(ctx, 1000.0)
     check(
         ctx.prnmap.consensus == [1, 2, 3],
-        "prn_reconfig=off + probe_require_slot: the map is polled and PUBLISHED",
+        "a fully swept, unanimous fleet: the map is PUBLISHED",
     )
-    check(not POSTS, "... and still nothing is posted (off is off for SWAPS)")
+    check(not POSTS, "... and nothing is posted while the map already matches the sky")
 
-    ctx2 = Ctx([1, 2, 3], {2: 40.0, 3: 30.0}, prn_reconfig="off")
-    ctx2.args.probe_require_slot = True
+    ctx2 = Ctx([1, 2, 3], {2: 40.0, 3: 30.0})
     CTX[0] = ctx2
     ctx2.t0 = 1000.0
     ctx2.prnmap.poll_t = 1000.0
@@ -524,11 +495,11 @@ def main():
     prnmap.stage_prn_membership(ctx2)
     check(ctx2.prnmap.consensus is None, "... and so does a SPLIT fleet")
 
-    ctx3 = Ctx([1, 2, 3], {2: 40.0}, prn_reconfig="off")  # flag off entirely
+    ctx3 = Ctx([1, 2, 3], {2: 40.0}, prn_reconfig="off")
     run_cycle(ctx3, 1000.0)
     check(
         ctx3.prnmap.consensus is None,
-        "with BOTH off the stage does nothing at all (no new GET -- replay stays exact)",
+        "--prn-reconfig off: the stage does nothing at all (no GET -- replay stays exact)",
     )
 
     # ---- 12. SCHEDULED SWAPS: one frame, fleet-wide ------------------------------------

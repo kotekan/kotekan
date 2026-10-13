@@ -1169,19 +1169,18 @@ def build_parser(description):
         "(q floor 4.72, above the q ~ 4 ceiling a real satellite can reach). "
         "⚠️ Not the rejected discovery filter: this ASKS, so there is no "
         "sidereal-day bootstrap. ⚠️ Fails OPEN -- no unanimous map yet, or a "
-        "split fleet, leaves the selector exactly as it was. ⚠️ Enables the "
-        "/get_prns sweep even with --prn-reconfig off, which is a NEW GET: "
-        "recorded transcripts predate it, so it must stay off by default or "
-        "replay diverges.",
+        "split fleet, leaves the selector exactly as it was. ⚠️ The map comes "
+        "from --prn-reconfig apply's /get_prns sweep; with --prn-reconfig off "
+        "there is no map and the selector stays unfiltered.",
     )
     ap.add_argument(
         "--prn-reconfig",
-        choices=["off", "report", "apply"],
+        choices=["off", "apply"],
         default="off",
         help="keep the nodes' slot->PRN map in step with live BRDC. off (default) "
-        "= this stage does nothing. report = GET each node's map, log the "
-        "swap it WOULD make, post nothing -- a live version of `gen_fleet.py "
-        "--check-prns`, with no risk. apply = actually POST /set_prns. "
+        "= this stage does nothing (the replay fixtures' argv predates the "
+        "flag, so it must stay the default). apply = GET each node's map and "
+        "POST /set_prns. "
         "⚠️ A SWAP COSTS A FULL RE-ACQUISITION on that slot (the node resets "
         "code table, Phi cache, carrier NCO, seed, trim, power averages and "
         "element cal COLD -- correctly, since none of it describes the new "

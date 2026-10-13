@@ -22,9 +22,8 @@ membership straight from BRDC every cycle would churn slots on every ephemeris f
 is #92's disease one level up. Hence: an incumbent must be gone or DOWN for hours before its
 slot is reclaimed, a candidate must be genuinely up, and at most one slot moves per interval.
 
-⚠️ DEFAULT IS `off`, AND `report` IS THE INTERESTING MIDDLE. In `report` this posts nothing and
-logs the swap it would make -- a live version of `gen_fleet.py --check-prns`, with no risk and
-the same finding. Arm `apply` deliberately.
+DEFAULT IS `off` (the stage does nothing; the replay fixtures' argv predates the flag); every
+live chain runs `apply`.
 
 ⚠️ WHY THE NODE IS ASKED RATHER THAN ASSUMED. The broker does not read the node's config; it
 GETs the live map. So the map it diffs against is what the node actually holds, including
@@ -52,11 +51,8 @@ class PrnMapState(object):
         "poll_t",
         "cursor",
         "last_swap_t",
-        "down_since",
-        "gone_since",
         "err",
         "swaps",
-        "refused",
         "beat_t",
         "consensus",
         "pending",
@@ -72,13 +68,8 @@ class PrnMapState(object):
         self.poll_t = 0.0  # last GET of the endpoint at `cursor`
         self.cursor = 0  # round-robin: ONE endpoint per cycle (see _poll)
         self.last_swap_t = 0.0  # rate limit
-        self.down_since = (
-            {}
-        )  # prn -> t it was first seen below evict_deg (and never above)
-        self.gone_since = {}  # prn -> t it first went missing from BRDC entirely
         self.err = ""
         self.swaps = 0
-        self.refused = 0
         self.beat_t = 0.0  # last heartbeat (see the note in stage_prn_membership)
         # The unanimous live slot->PRN list, or None. READ by the probe selector;
         # None whenever the sweep is incomplete or the nodes disagree.
@@ -214,15 +205,6 @@ def _resync_split(ctx, st, eps, now):
         return False
     tag = log_tag() or a.signal
     odd = [ep for ep in eps if st.maps.get(ep) != ref]
-    if a.prn_reconfig != "apply":
-        _log_rl(
-            "prnmap-resync",
-            "PRN MAP %s (REPORT ONLY, nothing posted): %d endpoint(s) hold a map the rest "
-            "of the fleet does not (%s); apply would put them back on it."
-            % (tag, len(odd), ", ".join(odd[:4])),
-            every_s=300.0,
-        )
-        return True
     for ep in odd:
         # A node that keeps refusing is retried once per interval, not every cycle.
         if now - st.resync_t.get(ep, -1e18) < a.prn_reconfig_interval_s:
@@ -380,10 +362,7 @@ def stage_prn_membership(ctx):
     it is this reluctant.
     """
     a = ctx.args
-    # ⚠️ THE POLL AND THE SWAP ARE SEPARATE POWERS. --probe-require-slot needs the live map
-    # but proposes no swaps, so "off" must still mean "poll if someone downstream needs the
-    # map" -- while the MODE keeps governing whether anything is proposed or posted.
-    if a.prn_reconfig == "off" and not a.probe_require_slot:
+    if a.prn_reconfig == "off":
         return
     st = ctx.prnmap
     now = ctx.t0
@@ -404,7 +383,7 @@ def stage_prn_membership(ctx):
     st.consensus = cur
     if cur is None:
         if st.maps and len(st.maps) >= len(eps):
-            if a.prn_reconfig == "off" or not _resync_split(ctx, st, eps, now):
+            if not _resync_split(ctx, st, eps, now):
                 _log_rl(
                     "prnmap-split",
                     "PRN MAP: nodes DISAGREE about slot membership (%d reporting), and no "
@@ -414,8 +393,6 @@ def stage_prn_membership(ctx):
                     every_s=300.0,
                 )
         return
-    if a.prn_reconfig == "off":
-        return  # poll-only: --probe-require-slot wanted the map and nothing more
 
     # ---- 2. What the sky says -----------------------------------------------------------
     # ctx.pred is THIS chain's constellation already filtered by capability: brdc_predict is
@@ -447,18 +424,6 @@ def stage_prn_membership(ctx):
         return  # no prediction this cycle: say nothing rather than evict the whole map
 
     held = set(cur)
-    for p in list(st.down_since):
-        if p not in el or el[p] >= a.prn_reconfig_evict_deg:
-            st.down_since.pop(p, None)
-    for p in held:
-        if p in el and el[p] < a.prn_reconfig_evict_deg:
-            st.down_since.setdefault(p, now)
-    for p in list(st.gone_since):
-        if p in el:
-            st.gone_since.pop(p, None)
-    for p in held:
-        if p not in el:
-            st.gone_since.setdefault(p, now)
 
     # ---- 3. Who wants a slot, and who can give one up -----------------------------------
     # ⚠️ THE UP-NOW BAR IS ABOUT PAYING FOR AN EVICTION, NOT ABOUT DESERVING A SLOT.
@@ -485,8 +450,8 @@ def stage_prn_membership(ctx):
     tag = log_tag() or a.signal
     if now - st.beat_t >= a.prn_reconfig_heartbeat_s:
         st.beat_t = now
-        n_dead = sum(1 for p in held if p in st.gone_since)
-        n_down = sum(1 for p in held if p in st.down_since)
+        n_dead = sum(1 for p in held if p not in el)
+        n_down = sum(1 for p in held if p in el and el[p] < a.prn_reconfig_evict_deg)
         _log(
             "PRN MAP %s: %s, %d slots, %d nodes agree | %d dead, %d below %.0f deg, "
             "%d satellite(s) waiting for a slot | %d swap(s) so far%s"
@@ -562,14 +527,6 @@ def stage_prn_membership(ctx):
         len(moved),
         ", ".join("s%d %d->%d" % (i, cur[i], want_map[i]) for i in moved[:6]),
     )
-    if a.prn_reconfig == "report":
-        _log_rl(
-            "prnmap-report",
-            "PRN MAP %s (REPORT ONLY, nothing posted): would move %s. Arm with "
-            "--prn-reconfig apply." % (tag, _why),
-            every_s=300.0,
-        )
-        return
     # ONE POST, WHOLE MAP, ONE DEADLINE. Moving several slots in a single scheduled swap is
     # strictly better than dribbling them out one per interval: the nodes cross once instead
     # of N times, and the map is never in a half-applied state that no node agreed to.
@@ -754,7 +711,6 @@ def _apply_map(ctx, st, cur, want_map, moved, why, el, now):
                 "set from the one the tracker holds." % (ep, e)
             )
     if ok == 0:
-        st.refused += 1
         st.err = bad
         _log("PRN MAP %s: %s REFUSED by every node (%s)" % (tag, why, bad))
         return
