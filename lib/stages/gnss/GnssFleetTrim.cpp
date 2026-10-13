@@ -322,40 +322,23 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
             const auto& v = it.value();
             for (const auto& a : v.at("armed"))
                 p.armed.insert(a.get<int>());
-            p.gain = v.value("gain", p.gain);
             p.clamp = v.value("clamp", p.clamp);
             p.spacing = v.value("spacing", p.spacing);
             // Absent or 0: FleetDll steps no PRN of this chain, it only leaks.
             p.p_floor_abs = v.value("p_floor_abs", 0.0);
             if (p.p_floor_abs < 0.0)
                 throw std::runtime_error("p_floor_abs must be >= 0");
-            // Exactly one leak form is required: a silent default would run the loop at a
-            // bandwidth nobody chose.
-            const bool has_s = v.contains("leak_per_s"), has_u = v.contains("leak");
-            if (has_s == has_u)
-                throw std::runtime_error("give exactly one of leak_per_s or leak");
-            if (has_s)
-                p.leak_per_s = v.at("leak_per_s").get<double>();
-            else {
-                p.leak_per_s = -1.0;
-                p.leak = v.at("leak").get<double>();
-            }
-            // The gain scales with rate too: loop bandwidth is gain x update rate, and against
-            // the loop's ~0.3-0.5 s measurement round trip (disc average, actuation, record,
-            // fold) a per-update gain of 0.25 at 23.84 Hz (6/s) limit-cycles. gain_per_s is
-            // converted with the measured rate, like leak_per_s; with neither form given, the
-            // per-update default applies.
-            const bool hgs = v.contains("gain_per_s"), hgu = v.contains("gain");
-            if (hgs && hgu)
-                throw std::runtime_error("give at most one of gain_per_s or gain");
-            if (hgs)
-                p.gain_per_s = v.at("gain_per_s").get<double>();
-            else if (hgu) {
-                p.gain_per_s = -1.0;
-                p.gain = v.at("gain").get<double>();
-            }
-            if (p.gain <= 0.0 || p.clamp <= 0.0 || p.spacing <= 0.0)
-                throw std::runtime_error("gain, clamp and spacing must be positive");
+            // Both are required, per second: a silent default would run the loop at a
+            // bandwidth nobody chose. Loop bandwidth is gain x update rate, and against the
+            // loop's ~0.3-0.5 s measurement round trip (disc average, actuation, record, fold)
+            // a per-update gain of 0.25 at 23.84 Hz (6/s) limit-cycles, so rearm() converts
+            // both with the measured rate. 0 is allowed: the broker freezes the loop with it.
+            p.gain_per_s = v.at("gain_per_s").get<double>();
+            p.leak_per_s = v.at("leak_per_s").get<double>();
+            if (!(p.gain_per_s >= 0.0) || !(p.leak_per_s >= 0.0))
+                throw std::runtime_error("gain_per_s and leak_per_s must be >= 0");
+            if (p.clamp <= 0.0 || p.spacing <= 0.0)
+                throw std::runtime_error("clamp and spacing must be positive");
             // This chain's tracker endpoints. Absent: the chain is armed and integrated but
             // nothing is posted for it.
             if (v.contains("targets"))
@@ -458,19 +441,13 @@ void GnssFleetTrim::rearm() {
 
     for (const auto& pv : _policy) {
         gnss::TrimPolicy tp;
-        tp.gain = pv.second.gain;
         tp.clamp = pv.second.clamp;
         tp.spacing = pv.second.spacing;
         tp.p_floor_abs = pv.second.p_floor_abs;
         // Until a close rate has been measured, convert with the nominal 23.84 Hz.
         const double hz = _close_hz > 0.1 ? _close_hz : 23.84;
-        if (pv.second.gain_per_s >= 0.0)
-            tp.gain = pv.second.gain_per_s / hz;
-        if (pv.second.leak_per_s >= 0.0)
-            tp.leak = pv.second.leak_per_s / hz;
-        else
-            tp.leak = pv.second.leak;
-        tp.leak = std::max(0.0, std::min(1.0, tp.leak));
+        tp.gain = pv.second.gain_per_s / hz;
+        tp.leak = std::max(0.0, std::min(1.0, pv.second.leak_per_s / hz));
         _dll.set_armed(pv.first, pv.second.armed, tp);
         // Offer each restored trim once, when the policy arms its PRN, so a saved trim is
         // applied only to a PRN the broker armed; FleetDll::adopt_trim decides.

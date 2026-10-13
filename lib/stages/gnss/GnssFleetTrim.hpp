@@ -74,8 +74,8 @@
  * `<unique_name>/get_taps`     -- per chain, per PRN: lobe-coherent and per-channel taps.
  * `<unique_name>/get_rec_taps` -- per chain: the per-record lobe-coherent E/P/L series.
  * `<unique_name>/get_stats`    -- counters, fold cost, trim store, policy and poster state.
- * `<unique_name>/set_policy`   -- POST {"chains": {chain: {armed, gain_per_s or gain,
- *                                 leak_per_s or leak, clamp, spacing, p_floor_abs, targets}}}.
+ * `<unique_name>/set_policy`   -- POST {"chains": {chain: {armed, gain_per_s, leak_per_s,
+ *                                 clamp, spacing, p_floor_abs, targets}}}.
  *
  * @author Keith Vanderlinde
  */
@@ -106,10 +106,9 @@ private:
     /// per-update values (gnss::TrimPolicy) with the measured window close rate.
     struct PolicyReq {
         std::set<int> armed;
-        double gain = 0.25, clamp = 3.0, spacing = 0.5;
-        double leak_per_s = -1.0; ///< <0: `leak` was given per update instead
-        double leak = 0.05;
-        double gain_per_s = -1.0; ///< the bandwidth; <0: use the per-update `gain`
+        double clamp = 3.0, spacing = 0.5;
+        double gain_per_s = 0.0;  ///< the bandwidth, 1/s
+        double leak_per_s = 0.0;  ///< 1/s
         double p_floor_abs = 0.0; ///< absolute prompt-power floor; 0 = leak only, no steps
     };
 
