@@ -88,9 +88,46 @@ def test_monitor_is_not_a_chain_member():
         )
 
 
+def test_err_hist_takes_one_sample_per_detection_and_never_none():
+    """Every append to the median gate's history is guarded by `cp_err is not None`.
+
+    The gate medians the last 9 samples: a second, unguarded append halves its window
+    and lets a None in, on which statistics.median raises.
+    """
+    found = []
+
+    class V(ast.NodeVisitor):
+        def __init__(self):
+            self.guards = []
+
+        def visit_If(self, node):
+            self.guards.append(ast.unparse(node.test))
+            for n in node.body:
+                self.visit(n)
+            self.guards.pop()
+            for n in node.orelse:
+                self.visit(n)
+
+        def visit_Call(self, node):
+            if "err_hist" in ast.unparse(node) and ast.unparse(node).endswith(
+                ".append(cp_err)"
+            ):
+                found.append((node.lineno, list(self.guards)))
+            self.generic_visit(node)
+
+    V().visit(_seeding_tree())
+    check(len(found) == 1, "exactly one err_hist append (found %d)" % len(found))
+    for lineno, guards in found:
+        check(
+            any(g == "cp_err is not None" for g in guards),
+            "err_hist append at line %d is inside `if cp_err is not None`" % lineno,
+        )
+
+
 if __name__ == "__main__":
     test_hold_elif_chains_to_the_escape_if()
     test_monitor_is_not_a_chain_member()
+    test_err_hist_takes_one_sample_per_detection_and_never_none()
     if _fails:
         print("FAILED: %d" % len(_fails))
         sys.exit(1)

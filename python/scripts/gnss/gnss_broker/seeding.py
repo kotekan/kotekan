@@ -1170,9 +1170,6 @@ def stage_detections_to_seeds(ctx):
                     ),
                     every_s=60.0,
                 )
-            if cp_err is not None:
-                ctx.cpt.err_hist.setdefault(prn, []).append(cp_err)
-                del ctx.cpt.err_hist[prn][:-9]
             # MEDIAN GATE (2026-07-19): the per-detection cp noise is 0.03-0.5 chips
             # (per-sat conditions -- multipath/BOC refine; measured same-instrument at
             # t_abs 100 s AND 27000 s, i.e. FLAT in run age: the earlier 'growth law'
@@ -1181,8 +1178,9 @@ def stage_detections_to_seeds(ctx):
             # 5-consecutive-sign rule alone still lets a noisy-conditions sat sustain
             # a false accusation; a 9-sample median cannot be dragged over the bar by
             # single-point noise, only by a persistent physical walk.
-            ctx.cpt.err_hist.setdefault(prn, []).append(cp_err)
-            del ctx.cpt.err_hist[prn][:-9]
+            if cp_err is not None:
+                ctx.cpt.err_hist.setdefault(prn, []).append(cp_err)
+                del ctx.cpt.err_hist[prn][:-9]
         # Count only SIGN-CONSISTENT disagreements: a real wrong-lobe park is
         # one-signed; search-fit noise on a weak sat alternates (first deploy:
         # weak GPS sats escaped every minute on -0.5/+1.3/-0.5 flip-flops, and
