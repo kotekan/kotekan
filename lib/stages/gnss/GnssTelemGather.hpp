@@ -89,10 +89,14 @@ private:
     std::map<std::string, Sender> _senders;
     std::mutex _stat_mtx;
 
-    uint64_t _bad_frames = 0;     ///< failed the magic/version/shape check
-    uint64_t _client_drops = 0;   ///< clients dropped on a failed or timed-out write
-    uint64_t _client_hangups = 0; ///< clients reaped after their peer closed
-    double _last_reap = 0.0;      ///< rate limit for reap_clients: it polls every client fd
+    /// Failed the magic/version/shape check. Counted on the frame path, read by the REST
+    /// callback.
+    std::atomic<uint64_t> _bad_frames{0};
+    /// Clients dropped on a failed or timed-out write, and clients reaped after their peer
+    /// closed; both guarded by @c _client_mtx.
+    uint64_t _client_drops = 0;
+    uint64_t _client_hangups = 0;
+    double _last_reap = 0.0; ///< rate limit for reap_clients: it polls every client fd
 
     /// Mark senders silent for stale_after_s as stale, logging each transition once. Runs on
     /// the 1 s wait timeout as well as per frame, so a fleet that goes silent is still

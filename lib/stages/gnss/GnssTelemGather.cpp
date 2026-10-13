@@ -45,14 +45,17 @@ GnssTelemGather::GnssTelemGather(Config& config, const std::string& unique_name,
 }
 
 GnssTelemGather::~GnssTelemGather() {
+    // The accept thread polls _listen_fd: shutdown() wakes that poll, and the fd is closed
+    // only after the join, so the thread never sees a closed or reused descriptor.
     _accepting = false;
-    if (_listen_fd >= 0) {
+    if (_listen_fd >= 0)
         ::shutdown(_listen_fd, SHUT_RDWR);
+    if (_accept_thread.joinable())
+        _accept_thread.join();
+    if (_listen_fd >= 0) {
         ::close(_listen_fd);
         _listen_fd = -1;
     }
-    if (_accept_thread.joinable())
-        _accept_thread.join();
     std::lock_guard<std::mutex> lk(_client_mtx);
     for (int fd : _clients)
         ::close(fd);
@@ -184,14 +187,15 @@ void GnssTelemGather::main_thread() {
                         && gnss::telem_shape_ok(*h, wire_bytes)
                         && wire_bytes <= (size_t)in_buf->frame_size;
         if (!ok) {
-            if ((_bad_frames++ % 100) == 0)
+            const uint64_t n_bad = ++_bad_frames;
+            if ((n_bad - 1) % 100 == 0)
                 ERROR("GnssTelemGather[{:s}]: rejecting frame (magic {:#x} v{:d} n_rec {:d} "
                       "n_prn {:d} n_row {:d}/{:d} max_chan {:d} vs RECORD_FLOATS {:d}, wire {:d} B "
                       "> buffer {:d} B) -- {:d} so far. A sender is on a different build, or one "
                       "whose shape the gather's buffer was not sized for.",
                       unique_name, h->magic, h->version, h->n_rec, h->n_prn, h->n_row,
                       h->n_row_total, h->max_chan, gnss::RECORD_FLOATS, wire_bytes,
-                      (size_t)in_buf->frame_size, _bad_frames);
+                      (size_t)in_buf->frame_size, n_bad);
             in_buf->mark_frame_empty(unique_name, in_id++);
             continue;
         }
@@ -357,13 +361,13 @@ void GnssTelemGather::stats_callback(kotekan::connectionInstance& conn) {
             }
         reply["chains"] = chains;
         reply["senders"] = senders;
-        reply["bad_frames"] = _bad_frames;
-        reply["client_drops"] = _client_drops;
+        reply["bad_frames"] = _bad_frames.load();
         reply["stale_after_s"] = _stale_after_s;
     }
     {
         std::lock_guard<std::mutex> lk(_client_mtx);
         reply["clients"] = _clients.size();
+        reply["client_drops"] = _client_drops;
         reply["client_hangups"] = _client_hangups;
     }
     reply["frame_bytes"] = (size_t)in_buf->frame_size;
