@@ -31,7 +31,6 @@ rather than silently applying last month's numbers.
 import base64
 import gzip
 import json
-import math
 import os
 import re
 import time
@@ -43,7 +42,7 @@ CACHE = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
 
 F_L1 = F_E1 = 1575.42e6
 F_L2 = 1227.60e6
-F_L5 = F_E5A = 1176.45e6
+F_E5A = 1176.45e6
 F_E5B = 1207.14e6
 GAMMA_L1L2 = (F_L1 / F_L2) ** 2
 GAMMA_E1E5A = (F_E1 / F_E5A) ** 2
@@ -144,52 +143,48 @@ def fetch_dcb(when=None, cache_dir=CACHE, max_back_days=14, status=None):
     for back in range(1, max_back_days + 1):
         d = when - timedelta(days=back)
         doy = d.timetuple().tm_yday
-        # Two generations of the CAS naming; try the current one first.
-        for name in (
-            "CAS0OPSRAP_%04d%03d0000_01D_01D_DCB.BIA.gz" % (d.year, doy),
-            "CAS0MGXRAP_%04d%03d0000_01D_01D_DCB.BSX.gz" % (d.year, doy),
-        ):
-            local = os.path.join(cache_dir, name)
-            if os.path.exists(local) and os.path.getsize(local) > 1000:
-                st.update(
-                    reason="ok",
-                    path=local,
-                    served_from_cache=True,
-                    age_days=product_age_days(local, when),
-                )
-                return local
-            url = "https://cddis.nasa.gov/archive/gnss/products/bias/%04d/%s" % (
-                d.year,
-                name,
+        name = "CAS0OPSRAP_%04d%03d0000_01D_01D_DCB.BIA.gz" % (d.year, doy)
+        local = os.path.join(cache_dir, name)
+        if os.path.exists(local) and os.path.getsize(local) > 1000:
+            st.update(
+                reason="ok",
+                path=local,
+                served_from_cache=True,
+                age_days=product_age_days(local, when),
             )
-            try:
-                req = urllib.request.Request(
-                    url, headers={"Authorization": "Bearer " + tok}
-                )
-                with urllib.request.urlopen(req, timeout=45) as r:
-                    raw = r.read()
-                if len(raw) < 1000:
-                    continue
-                tmp = local + ".tmp"
-                with open(tmp, "wb") as f:
-                    f.write(raw)
-                os.replace(tmp, local)  # atomic: shared cache, see _atomic_write_bytes
-                st.update(
-                    reason="ok",
-                    path=local,
-                    served_from_cache=False,
-                    age_days=product_age_days(local, when),
-                )
-                return local
-            except urllib.error.HTTPError as e:
-                # 401/403 is the credential, not the calendar: every remaining day will
-                # fail the same way, so say so instead of walking silently to the end.
-                st["http"] = e.code
-                if e.code in (401, 403):
-                    st["reason"] = "auth-rejected"
+            return local
+        url = "https://cddis.nasa.gov/archive/gnss/products/bias/%04d/%s" % (
+            d.year,
+            name,
+        )
+        try:
+            req = urllib.request.Request(
+                url, headers={"Authorization": "Bearer " + tok}
+            )
+            with urllib.request.urlopen(req, timeout=45) as r:
+                raw = r.read()
+            if len(raw) < 1000:
                 continue
-            except Exception:
-                continue
+            tmp = local + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(raw)
+            os.replace(tmp, local)  # atomic: shared cache, see _atomic_write_bytes
+            st.update(
+                reason="ok",
+                path=local,
+                served_from_cache=False,
+                age_days=product_age_days(local, when),
+            )
+            return local
+        except urllib.error.HTTPError as e:
+            # 401/403 is the credential, not the calendar: every remaining day will
+            # fail the same way, so say so instead of walking silently to the end.
+            st["http"] = e.code
+            if e.code in (401, 403):
+                st["reason"] = "auth-rejected"
+            continue
+        except Exception:
+            continue
     return None
 
 
@@ -303,41 +298,3 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
             return None
         return None
     return None
-
-
-if __name__ == "__main__":
-    import statistics as st
-
-    p = fetch_dcb()
-    print("DCB:", p)
-    tab = parse_dcb(p)
-    print("satellites: %d (%s)" % (len(tab), "".join(sorted({k[0] for k in tab}))))
-    for sysc, sig in (
-        ("G", "gps_l5"),
-        ("E", "gal_e5a"),
-        ("E", "gal_e5b"),
-        ("C", "bds_b2a"),
-        ("C", "bds_b2b"),
-    ):
-        v = [
-            (k[1], signal_bias_s(tab, sysc, k[1], sig))
-            for k in sorted(tab)
-            if k[0] == sysc
-        ]
-        v = [(p_, x) for p_, x in v if x is not None]
-        if not v:
-            print("%-8s none" % sig)
-            continue
-        ns = [x * 1e9 for _, x in v]
-        print(
-            "%-8s n=%2d  median %+7.3f ns (%+.3f chips)  mean %+7.3f  range %+7.2f..%+7.2f"
-            % (
-                sig,
-                len(ns),
-                st.median(ns),
-                st.median(ns) * 1e-9 * 1.023e7,
-                st.mean(ns),
-                min(ns),
-                max(ns),
-            )
-        )
