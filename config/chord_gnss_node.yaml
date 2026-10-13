@@ -12,16 +12,13 @@
 #   up automatically.
 #
 # PROVENANCE. Every value below is either measured on cx19 (2026-07-28/29), read out of the
-# kotekan source, or quoted from the CRS F-engine paper (arXiv:2607.01625). Fields carrying
-# an `_unverified` suffix are assumptions that have NOT been confirmed -- treat them as bugs
-# waiting to happen, not as facts.
+# kotekan source, or quoted from the CRS F-engine paper (arXiv:2607.01625).
 # =============================================================================================
 
 fengine:
   # arXiv:2607.01625 s2.2.2 -- and cross-checked against the live config + kotekan source.
     sampling_rate_MHz: 3200.0   # pure real sampling, Nyquist zone 1 -> 0..1600 MHz
-    nyquist_zone: 1
-    fft_length: 16384           # M real samples per frame
+    fft_length: 16384           # M real samples per frame (one hop = 5120 ns)
     num_bins: 8192              # positive-frequency bins
     channel_width_hz: 195312.5  # 1600 MHz / 8192
   # ── THE RECORD EPOCH IS NO LONGER PINNED HERE (2026-08-18) ────────────────────────
@@ -43,15 +40,12 @@ fengine:
   # the telescope (an operator who sets it means it) and the stage logs a loud conflict if
   # the two disagree, so a forgotten pin cannot masquerade as agreement.
     pfb_taps: 4                 # "Ntaps=4-tap Hamming window ... 18-bit coefficient resolution"
-    pfb_window: hamming
-    pfb_critically_sampled: true # CASPER pfb_fir_real block
-    dt_ns: 5120                 # VERIFIED: fft_length/sampling_rate, exact in the uint64 cast
+    pfb_window: hamming         # critically sampled (CASPER pfb_fir_real block)
   # The FFT emits bins in decimation-in-frequency (bit-reversed) order and the reordering is
   # "compensated for in downstream software" UPSTREAM of our tap point. Confirmed two ways:
   # CHORDTelescope::to_freq_id reproduces the measured comb exactly, and the eigenvalue
   # spectrum is smooth in freq_id (neighbour/scatter 0.086 vs 0.221 shuffled). So:
   #     centre_hz(freq_id) = freq_id * channel_width_hz
-    freq_id_is_physical_bin: true
   # Sample encoding at host_voltage_buffer: int4x2_swapped_withoffset, 1 byte per complex
   # sample, HIGH nibble = REAL, LOW nibble = IMAG, each stored as value+8. The "swapped" in
   # the type name means exactly this: component [0] is imag, [1] is real.
@@ -64,27 +58,12 @@ fengine:
   # but copying its naming into a correlation conjugates the data. Magnitudes and the DLL
   # would still look correct while carrier phase ran backwards.
   # The F-engine clips to -7..+7, so a stored nibble of 0 must NEVER appear -- assert on it.
-    sample_min: -7
-    sample_max: 7
 
 clock:
   # arXiv:2607.01625 s2 -- GNSS-disciplined 10 MHz + IRIG-B (Spectrum Instruments TM-4),
   # dual-PLL/TCXO. The ADC clock is frequency-locked to GNSS, so the +2.6 ppm LO-vs-ADC
   # offset (l-a) that gated the airspy node should start at ~0 here. MEASURE, don't assume.
     profile: gpsdo
-    l_minus_a_ppm_prior: 0.0
-  # Short-term stability is TCXO-dominated inside the PLL loop bandwidth; this may cap
-  # coherent integration length. Unknown until measured.
-    max_coherent_s_unverified: 1.0
-
-station:
-  # From the live telescope config; altitude supplied by K. Vanderlinde 2026-07-29.
-    name: CHORD pathfinder (DRAO)
-    lat_deg: 49.32075144444
-    lon_deg: -119.62081125
-    alt_m: 545.0
-  # Full-hemisphere beam mapping: we want the low-elevation sky, so no elevation mask.
-    elevation_mask_deg: 0.0
 
 signals:
   # All three share the 1176.45 MHz carrier and therefore the SAME covering channels --
@@ -116,15 +95,12 @@ signals:
   # subband" and publishes nothing, and the tracker reports amp_snr 0 with a railed DLL --
   # which looks exactly like an unknown instrumental delay, and cost a full debugging cycle
   # chasing one.
-    f_offset_is_sky_carrier: true
 
 science_band:
   # freq_id = min_science_freq_id + index*128 + stream_id, index 0..47, stream_id 0..127
   # (CHORDTelescope::to_freq_id). So the science band is exactly 48*128 = 6144 channels.
     min_freq_id: 1536           # 300.000 MHz
     max_freq_id: 7679           # 1499.805 MHz
-    num_freq_per_stream: 48
-    num_stream_ids: 128
 
 nodes:
   # MEASURED from each node's /metrics on 2026-07-29 (eigencalc freq_id sets).
@@ -135,14 +111,14 @@ nodes:
   # These offsets are a SITE WIRING FACT, not something the config declares, so the
   # generator emits a runtime assertion that the observed freq_ids match what is claimed
   # here. If the wiring is ever changed, that assertion is what will catch it.
-    cx19: {host: cx19.site.chord-observatory.ca, comb_offset_mod8: 4, gpu_offsets_mod16: [4, 12]}
-    cx27: {host: cx27.site.chord-observatory.ca, comb_offset_mod8: 0, gpu_offsets_mod16: [0, 8]}
-    cx42: {host: cx42.site.chord-observatory.ca, comb_offset_mod8: 5, gpu_offsets_mod16: [5, 13]}
-    cx43: {host: cx43.site.chord-observatory.ca, comb_offset_mod8: 6, gpu_offsets_mod16: [6, 14]}
-    cx44: {host: cx44.site.chord-observatory.ca, comb_offset_mod8: 2, gpu_offsets_mod16: [2, 10]}
-    cx47: {host: cx47.site.chord-observatory.ca, comb_offset_mod8: 3, gpu_offsets_mod16: [3, 11]}
-    cx51: {host: cx51.site.chord-observatory.ca, comb_offset_mod8: 7, gpu_offsets_mod16: [7, 15]}
-    cx52: {host: cx52.site.chord-observatory.ca, comb_offset_mod8: 1, gpu_offsets_mod16: [1, 9]}
+    cx19: {comb_offset_mod8: 4, gpu_offsets_mod16: [4, 12]}
+    cx27: {comb_offset_mod8: 0, gpu_offsets_mod16: [0, 8]}
+    cx42: {comb_offset_mod8: 5, gpu_offsets_mod16: [5, 13]}
+    cx43: {comb_offset_mod8: 6, gpu_offsets_mod16: [6, 14]}
+    cx44: {comb_offset_mod8: 2, gpu_offsets_mod16: [2, 10]}
+    cx47: {comb_offset_mod8: 3, gpu_offsets_mod16: [3, 11]}
+    cx51: {comb_offset_mod8: 7, gpu_offsets_mod16: [7, 15]}
+    cx52: {comb_offset_mod8: 1, gpu_offsets_mod16: [1, 9]}
   # ALL EIGHT mod-8 offsets are present and pairwise disjoint, so the eight nodes TILE the
   # science band exactly: 8 x 768 = 6144 channels = freq_id 1536..7679, nothing missing and
   # nothing duplicated (verified against live /metrics from all eight, 2026-07-29). The comb is
@@ -156,11 +132,9 @@ nodes:
     bringup_order: [cx19, cx27, cx42, cx43, cx44, cx47, cx51, cx52]
 
 array:
-  # 32 of 128 elements carry data (SK ~1.0); elements 32..127 read flat.
-  # element index -> dish = e % num_dishes, pol = e / num_dishes  (CHORDBeamformer order,
+  # 32 of 128 elements carry data (SK ~1.0); the rest read flat.
+  # element index -> dish = e % 64, pol = e / 64  (64 dishes x 2 pols; CHORDBeamformer order,
   # which is the fiducial order -- NOT the dish*2+pol of CHORDEarly).
-    num_dishes: 64
-    num_polarizations: 2
   # ⚠️ NOT CONTIGUOUS SINCE 2026-08-31. The production config's dpdk gained
   # crs_board_remap [0,2,4,...,1,3,5,...] (pol grouping) and missing_source_ids moved to
   # [2,3,4,5,6,7,10,11,12,13,14,15], so the four live CRS boards land at OUTPUT LOCATIONS
@@ -171,88 +145,13 @@ array:
   # `live_elements` (single inclusive range) is still read when this key is absent.
     live_element_ranges: [[0, 15], [64, 79]]
   # Rows A and B only (16 dual-pol dishes); rows C/D are configured but not instrumented.
-  # DO NOT TRUST any of this as a liveness statement -- deployment is active and feeds come
-  # and go. It is a prior. Authoritative liveness is per-feed despread SNR, computed live.
-    known_bad_elements: [16]    # A5X, flagged in the live config's bad_inputs
-  # ~28 dB down relative to the pack in the digital gain table (2026-07-21 acquisition);
-  # either badly attenuated or effectively dead. Not flagged upstream. Verify per-feed.
-    suspect_weak_elements: [1, 4, 5, 7, 12] # A2X, B1X, B2X, B4X, B1Y
-
-gains:
-  # Per-bin, per-input digital gain applied in firmware before the 4+4 bit requantization.
-  # Stored complex64 but PURELY REAL (phase == 0 on every entry); gain_exp == -1 uniformly.
-  # These are part of the sky-to-bits chain and are absorbed into the end-to-end gain we
-  # solve for -- they are NOT divided out. We snapshot them to detect RE-TUNES mid-track,
-  # which would otherwise look like a genuine instrumental gain step.
-    source_url: http://10.222.0.54:54321/get-current-gain-file
-    format: hdf5                # gain_coeff[1, 8192, 128], index_map/{freq,input}
-    snapshot_on_start: true
-    alarm_on_change: true
-
-roadmap:
-  # ===========================================================================================
-  # RESOLVED 2026-07-30: replica generation cost (was the blocker) -- see 31896a862:docs/CHORD_GNSS_STATE.md
+  # Authoritative liveness is per-feed despread SNR, computed live.
   #
-  # GnssChannelizedSearch called ChannelizedReplicaBank::channels(p, ...), which returns the
-  # ENTIRE spectrum [N][Mp] and then slices out the channels it wants. On the airspy node N=10,
-  # so the full spectrum IS the useful set. On CHORD N=8192 (the PFB spans 0-1600 MHz):
-  #     per PRN 204.8 MB (8192 ch x 3125 hops); x32 PRNs = 6.55 GB; x2 instances = 13.1 GB
-  #     (observed RSS 19.4 GB).  We used 7 of 8192 rows = 0.09%.
-  # That was the sole reason the search could not keep up -- it explains the 8-minute passes and
-  # the eventual starvation (1 pass in 5 min, workers idle).
-  #
-  # FIXED three ways: BANDED (channels_hoprate, which already took a channel list -- no interface
-  # change), CACHED (repl0 is the code at Doppler 0 and code phase 0, so it depends only on
-  # (PRN, covering set, Mp), none of which change between passes), and the post-detection REFINE
-  # loop, which was worse than the acquire: full-spectrum channels() once per 1-sample step over
-  # +-1 hop = 32769 builds ~ 8 h per detected PRN, firing only on the FIRST DETECTION. Now
-  # banded with the Doppler-only filter hoisted, and refine_step set from the resolution the
-  # covering set can actually deliver (fft_len/n_chan ~ 7.5 chips; step = 292 samples).
-  #     per pass, 32 PRN x 2 instances:  was 55.7 s + 13.1 GB EVERY pass  ->  14.3 s + 22 MB ONCE
-  #
-  # It would have mattered MORE at full scale, not less: the eight-node aggregator wants 104 of
-  # 8192 bins, still 79x.
-  #
-  # AND a real bug, found because banding forced a CHORD-scale comparison: channels_hoprate was
-  # documented equal to channels() "to ~machine precision" and was off by up to 1.99 absolute
-  # (|R| ~ 912, so -53 dB) on ~8 hops per replica period. cps = chip_rate/sample_rate is RATIONAL
-  # (1023/320000 here), so the chip/tap boundary (phi+d)/cps lands on an exact integer
-  # systematically, and one filter tap took its neighbour chip's code sign (error = 2*proto[k],
-  # hence every bad hop being off by nearly the same amount). Snapped to the direct per-sample
-  # expression, which is what channels() and therefore the F-engine use: now 3.4e-8 vs a
-  # double-precision reference. The GPU chip_gather is the same unsnapped formula and was
-  # deliberately NOT changed -- optimized device code, -53 dB, invisible to acq/track. It floors
-  # the PEEL depth, so flag it to the core dev before peeling work starts.
-  # ===========================================================================================
-
-  # INSTRUMENTAL DELAY, still unmeasured. Cable is now well determined: 100 m LMR-400 (vf 0.85)
-  # + 6 m LMR-195 (vf 0.83) = 4.26 +- 0.18 chips, inside the +-0.5-chip DLL capture. UNKNOWN is
-  # the F-engine's internal pipeline/framing offset -- one frame is 52.4 chips, the PFB group
-  # delay is 104.8 chips, and whether that cancels (the replica goes through the same PFB) is an
-  # argument, not a measurement. The SEARCH is what measures it: reported code phase minus model
-  # prediction IS the constant. Write it here once measured; dead-reckon cold-start then works
-  # permanently and the search becomes the thing that catches firmware/cabling changes.
-
-  # EARLY PRIORITY, once there is on-sky proof of life: SPLIT THE FREQUENCY AXIS BACK OUT.
-  #
-  # The first cut collapses the covering channels in GnssGpuRecordAssemble (the covering-mask
-  # sum) and carries only the element axis downstream, so the beam product is per-dish/pol
-  # amplitude vs time. That is the right thing to get working first, but it discards a
-  # measurement we are already paying for.
-  #
-  # WHY IT MATTERS, and why it gets worse rather than better:
-  #   * The beam evolves ACROSS a wide signal. L5 spans ~20 MHz, which is already enough for
-  #     the response to change measurably from one edge of the main lobe to the other.
-  #   * BOC signals make it critical, not merely nice. BOC(m,n) puts its power in TWO lobes at
-  #     +/- m*1.023 MHz, so a frequency-collapsed measurement averages the beam over a split
-  #     spectrum tens of MHz wide and reports a number that describes neither lobe.
-  #
-  # WHAT IT TAKES. The element axis and the channel axis both have to survive to the beam
-  # stage, so the assembler needs an option to NOT sum the covering channels, and the record
-  # schema needs the element blocks indexed per channel. The GPU chain emits one stream with
-  # the channels already summed, so this is a real change to the assembler and
-  # the schema, not just plumbing, which is exactly why it is recorded here rather than left
-  # as an assumption that it will be easy later.
+  # F-ENGINE DIGITAL GAINS (not read by any tool; for reference). Per-bin, per-input gain
+  # applied in firmware before the 4+4 bit requantization, served as hdf5 by
+  # http://10.222.0.54:54321/get-current-gain-file (gain_coeff[1, 8192, 128]). Stored complex64
+  # but PURELY REAL; gain_exp == -1 uniformly. They are part of the sky-to-bits chain and are
+  # absorbed into the end-to-end gain we solve for -- they are NOT divided out.
 
 runtime:
   # Cores verified free on cx19: unclaimed by the production config AND measured idle.
@@ -309,4 +208,3 @@ runtime:
   # Deliberately NOT fixed by creating /data on the other nodes: a /data that exists only
   # because we made it is exactly the path people start dumping into by accident.
     record_dir: /tmp/gnss
-    venv: /home/kvand/gnss/venv # skyfield 1.54 + numpy/scipy/h5py/yaml/requests

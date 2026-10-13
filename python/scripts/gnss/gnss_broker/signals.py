@@ -133,8 +133,8 @@ RF_BAND_BY_CARRIER = {
 }
 
 # CHORD's F-engine channel pitch. freq_id is a PHYSICAL bin index, so the centre frequency is
-# exactly freq_id * this (config/chord_gnss_node.yaml: channel_width_hz 195312.5,
-# freq_id_is_physical_bin true). Same constant as GnssGpuRecordAssemble.cpp's 0.1953125.
+# exactly freq_id * this (config/chord_gnss_node.yaml: channel_width_hz 195312.5, and its
+# note on the bin order). Same constant as GnssGpuRecordAssemble.cpp's 0.1953125.
 FREQ_ID_MHZ = 0.1953125
 
 # How far from a carrier a channel may sit and still be called part of that band. The widest
