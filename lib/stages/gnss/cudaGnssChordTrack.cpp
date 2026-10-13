@@ -139,7 +139,6 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
 
     seeds.assign((size_t)n_prn, Seed{});
     trim.assign((size_t)n_prn, 0.0);
-    trim_n.assign((size_t)n_prn, 0);
     trim_t_recv.assign((size_t)n_prn, 0.0);
 
     slot_gen.assign((size_t)n_prn, 0);
@@ -150,9 +149,9 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     const std::string ep = config.get<std::string>(unique_name, "seed_endpoint");
     kotekan::restServer::instance().register_post_callback(
         ep, std::bind(&cudaGnssChordTrackState::set_seeds_callback, this, _1, _2));
-    const std::string tep = config.get<std::string>(unique_name, "trim_endpoint");
-    kotekan::restServer::instance().register_get_callback(
-        tep, std::bind(&cudaGnssChordTrackState::get_trim_callback, this, _1));
+    // trim_endpoint has no effect. The live configs still carry it, so it is read only so a
+    // usage report does not list it unused.
+    config.get_default<std::string>(unique_name, "trim_endpoint", "");
     // GnssFleetTrim's actuator.
     const std::string sep = config.get<std::string>(unique_name, "set_trim_endpoint");
     kotekan::restServer::instance().register_post_callback(
@@ -324,7 +323,6 @@ void cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
         for (int p : changed) {
             // A trim corrects the old satellite's code phase; kept, it would offset the new one.
             trim[(size_t)p] = 0.0;
-            trim_n[(size_t)p] = 0;
             trim_t_recv[(size_t)p] = 0.0;
         }
     }
@@ -394,7 +392,6 @@ void cudaGnssChordTrackState::expire_trims_locked(std::vector<int>& expired) {
                 expired.push_back(prns[(size_t)p]);
             trim[(size_t)p] = 0.0;
             trim_t_recv[(size_t)p] = 0.0;
-            ++trim_expired;
         }
 }
 
@@ -457,34 +454,8 @@ void cudaGnssChordTrackState::set_trim_callback(kotekan::connectionInstance& con
         for (const auto& u : upd) {
             trim[(size_t)u.first] = u.second;
             trim_t_recv[(size_t)u.first] = now;
-            ++trim_n[(size_t)u.first];
         }
-        ++trim_posts;
     }
     // Nothing else is touched, not the seeds nor their t_recv (see trim_ttl_s in the header).
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
-}
-
-void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& conn) {
-    nlohmann::json out = nlohmann::json::array();
-    {
-        std::lock_guard<std::mutex> pk(prn_mtx); // first; see set_seeds_callback
-        std::lock_guard<std::mutex> lk(trim_mtx);
-        for (int p = 0; p < n_prn; ++p)
-            out.push_back({{"prn", prns[(size_t)p]},
-                           {"trim_chips", trim[(size_t)p]},
-                           {"age_s", trim_t_recv[(size_t)p] > 0.0
-                                         ? (std::chrono::duration<double>(
-                                                std::chrono::steady_clock::now().time_since_epoch())
-                                                .count()
-                                            - trim_t_recv[(size_t)p])
-                                         : -1.0},
-                           {"updates", trim_n[(size_t)p]}});
-    }
-    nlohmann::json reply = {{"posts", trim_posts},
-                            {"expired", trim_expired},
-                            {"ttl_s", trim_ttl_s},
-                            {"clamp", trim_clamp},
-                            {"trims", out}};
-    conn.send_json_reply(reply);
 }

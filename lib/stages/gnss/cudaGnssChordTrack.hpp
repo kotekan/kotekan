@@ -46,7 +46,7 @@
  * @conf despread_chips_centered Bool. Must be true. Default true.
  * @conf phi_fp16        Bool. Must be true: the Phi tables are fp16. Default true.
  * @conf seed_endpoint   String. POST /set_seeds.
- * @conf trim_endpoint   String. GET /get_trim.
+ * @conf trim_endpoint   String, ignored (read only so a usage report does not list it).
  * @conf set_trim_endpoint String. POST /set_trim.
  * @conf get_prns_endpoint String. GET /get_prns.
  * @conf set_prns_endpoint String. POST /set_prns.
@@ -64,10 +64,6 @@ public:
     /// POST endpoint: the fleet controller's code trim, a JSON array of {prn, trim_chips}. See
     /// @ref trim_ttl_s for why this is not a /set_seeds field.
     void set_trim_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
-
-    /// GET endpoint: per-PRN code-trim state {prn, trim_chips, age_s, updates}, plus the post
-    /// and expiry counters and the TTL and clamp.
-    void get_trim_callback(kotekan::connectionInstance& conn);
 
     // ---- Slot membership (docs/CHORD_LIVE_PRN_RECONFIG.md) ----
     // The broker reassigns slots to satellites as the sky changes. The slot count n_prn never
@@ -160,7 +156,7 @@ public:
     ///
     /// snapshot_trims runs it before every copy, so the GPU thread never applies an expired
     /// trim. set_trim_callback runs it too, so each post also expires stale trims in the shared
-    /// state, and in /get_trim, while the GPU thread is stalled.
+    /// state while the GPU thread is stalled.
     void expire_trims_locked(std::vector<int>& expired);
 
     /// Snapshot the live seeds, expiring stale ones in the shared state so every reader sees the
@@ -183,11 +179,9 @@ public:
     // which the broker's own DLL would then fight.
     double trim_ttl_s = 0.0;
     std::vector<double> trim_t_recv; ///< steady-clock stamp of the last /set_trim, per PRN
-    uint64_t trim_posts = 0;         ///< /set_trim requests accepted
-    uint64_t trim_expired = 0;
 
     static constexpr double trim_clamp = 3.0; ///< |trim| bound, chips
-    std::mutex trim_mtx;                      ///< guards the trim vectors and counters
+    std::mutex trim_mtx;                      ///< guards the trim vectors
     std::vector<double> trim; ///< per-PRN cp trim, chips (applied cp = model + trim)
     /// Re-pin fold history per slot, shared by the command's instances; GPU thread only. The
     /// producer's dcyc = (applied - dop_prev) * t_abs is the carrier-phase step from the
@@ -206,7 +200,6 @@ public:
         }
     };
     FoldHist fold;
-    std::vector<long long> trim_n; ///< /set_trim updates per slot (diagnostics)
 
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> replica;

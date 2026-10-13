@@ -28,8 +28,8 @@
  *
  * Seeds, fleet trims and slot membership live in the command's @ref cudaGnssChordTrackState.
  * Several injectors (one per chain) can run in one kotekan instance, each with its own state
- * but one REST server between them, so each needs its own seed_endpoint, trim_endpoint,
- * set_trim_endpoint, get_prns_endpoint and set_prns_endpoint.
+ * but one REST server between them, so each needs its own seed_endpoint, set_trim_endpoint,
+ * get_prns_endpoint and set_prns_endpoint.
  *
  * Replicas are synthesized per record (hops_per_record; 4 records per 8192-hop frame at CHORD),
  * from gnss::propagate_seed at each record's window start with the fleet code trim from
