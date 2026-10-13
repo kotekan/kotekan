@@ -487,6 +487,37 @@ def epl_decompose(q, disc, spacing=0.5):
     return best[1], best[2]
 
 
+def displaced_chain_event(admitted, browned_out, same_chips=0.1, n_same=3):
+    """The displaced admissions of one cycle that are a CHAIN event, with the reason.
+
+    `admitted` is [(prn, off_chips, ...)], what the displaced gate would admit this cycle.
+    Returns (refused, reason). N satellites do not step by one offset in one cycle: a chain
+    whose satellites all report the same displacement moved its clock or lost its power
+    (#175: a transit's null crossing admitted every E6 PRN at +0.41..+0.47 chips and
+    re-seeded each one off its peak, where the leak-bounded DLL held it for an hour).
+    Likewise while the chain is browned out a displacement reports the chain's lost power,
+    not a satellite that moved. Either way the admission is refused and the q/prompt
+    verdict stands; `n_same` PRNs within `same_chips` of one another is the chain bar.
+
+    A row within `same_chips` of its peak is not displaced and has nothing to attribute to
+    the chain: the offset-blind fold admits dim ON-PEAK satellites by the dozen at off ~0
+    (bds_b2a, most cycles), and re-seeding those is harmless, so they are never refused.
+    """
+    displaced = [a for a in admitted if abs(a[1]) > same_chips]
+    if not displaced:
+        return [], None
+    if browned_out:
+        return displaced, "BROWNOUT open"
+    same = [
+        a
+        for a in displaced
+        if sum(1 for b in displaced if abs(b[1] - a[1]) <= same_chips) >= n_same
+    ]
+    if same:
+        return same, "same offset"
+    return [], None
+
+
 def apply_presence(
     out,
     k_sigma,
@@ -778,6 +809,33 @@ def apply_presence(
                 v["present"] = ds >= deep_gate_margin * fl
                 v["present_gate"] = "deep"
                 v["deep_gate_snr"], v["deep_gate_floor"] = ds, fl
+    _refused, _why = displaced_chain_event(
+        _admitted, admit_displaced is not None and admit_displaced.get("browned_out")
+    )
+    if _refused:
+        # Revert only rows the displaced gate still owns: the deep gate above may have
+        # re-judged a PRN in its set since, and its verdict stands.
+        for _prn, _off, _ped, _r, _bright in _refused:
+            if out[_prn]["present_gate"].endswith("+disp"):
+                out[_prn]["present"] = False
+                out[_prn]["present_gate"] = "q+p:probes"
+        _admitted = [a for a in _admitted if a not in _refused]
+        _offs = sorted(a[1] for a in _refused)
+        # One line per cycle, not per PRN: the refusal IS the statement that this was one
+        # event. Keyed by reason so a brownout's repeat does not hide a same-offset event.
+        _log_rl(
+            "presence-disp-refused-" + _why,
+            "PRESENCE -displaced: %s -- %d PRN(s) at off %+.3f..%+.3f REFUSED, a chain "
+            "event rather than N detections: %s"
+            % (
+                _why,
+                len(_refused),
+                _offs[0],
+                _offs[-1],
+                " ".join("PRN %s %+.3f" % (a[0], a[1]) for a in _refused),
+            ),
+            every_s=30.0,
+        )
     if _admitted:
         _log_rl(
             "presence-disp",

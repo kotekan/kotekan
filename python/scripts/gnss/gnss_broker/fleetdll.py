@@ -79,6 +79,9 @@ def stage_fleet_dll(ctx):
                 # detector that re-searches code phase, so it does not
                 # inherit the displacement it is being asked to judge
                 "deep_margin": ctx.args.presence_disp_deep_margin,
+                # #175: no displaced admission while the chain is browned out. D1 is
+                # fed after the poll below, so this is the previous cycle's verdict.
+                "browned_out": ctx.brown.active(),
             }
             if ctx.args.presence_admit_displaced
             else None
