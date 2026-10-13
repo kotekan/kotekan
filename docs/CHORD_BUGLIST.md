@@ -130,6 +130,30 @@ and `present` gates, per-channel E/P/L in the telemetry (E_c/P_c must read exp(-
 through one transit. Then the manifest's common flags. L2C stays on three trials by construction (one channel per
 instance, its rotated discriminator is identically zero).
 
+### #190 — project ALL KNOWN satellites out of the science N^2 from the lane directions, not the N^2's own eigenvectors (2026-10-13, KV: "swap over once we get back on sky")
+**What [tree]:** GnssN2Project takes its subspace from the science N^2 block's own top-k eigenvectors, gated at
+lambda0 >= 3x mean auto (per-element INR ~ -12 dB over 48 live elements), frac0 >= 0.4, PR >= 6, k <= 3, EMA 0.5 s.
+Below that gate the eigenvectors of many comparable faint satellites are mixtures (10-02: no quiet-sky eigenvector is a
+single satellite, cos^2 <= 0.26 vs the tracked rows), so the stage removes bright objects, whatever they are (the sun
+at ~+18 dB and Cas A/Cyg A at ~-7 dB per element in the beam trigger it in the lobe channels; FRBs at ~-38 dB do not),
+and nothing faint. The synthetic lanes are unused on the science path.
+**Design (docs to follow; memory chord-project-all-known-sats-design):** per channel, directions a_p from (1) every
+tracked PRN's P row (the N x M column, a matched filter per code: separable to ~-30 dB per element at SNR ~10 per
+element per 0.5 s), (2) BRDC-predicted steering vectors (positions + element cal) for ephemeris-known satellites with
+no lane (P(Y)-only, unhealthy, slotless), (3) TLE-predicted vectors (Space-Track/Celestrak GNSS + SBAS groups) for
+catalogued satellites without BRDC (BDS-3 C43+, GLONASS until #129, QZSS L6 on E6, the WAAS GEOs on L5). Q = orth([a_1
+.. a_K]); V' = (I - QQ^H) V (I - QQ^H) with the stage's existing V - QW^H - WQ^H + QMQ^H; the data-driven solve then
+runs on the RESIDUAL as the detector of unknowns and feeds the list. Each satellite costs one synthesised beam of sky
+at its position (K/N of the noise); at 128 elements two dozen satellites are ~20%, accepted (KV 10-13). Depth =
+min(1/SNR^2 of the direction, the clipping floor -20 dB rank 1).
+**Plan:** (a) the stage reads the chains' epl rows (a process-wide board: no buffer crosses chains today, see
+chord-projection-pathway) or the assembler publishes per-channel directions per PRN per frame; (b) predicted vectors
+from gnssElemSteer for tiers 2-3, a TLE fetch beside the BRDC supply; (c) offline first on the viscap captures
+(cf06:/var/tmp/viscap_20260927, 16 mixed + 3 AA tiles per channel per record: every block is reconstructible) measuring
+depth vs the current stage per satellite; (d) canary cx51, judge = recv1 subset-vis A/B against cx19 (n2proj_ab.py)
+through a quiet hour and a transit, then the fleet. Before any of it, at the F-engine's return: check the 10-03..10-12
+Cas A / Cyg A transits against the stage's k/lambda0 gauges (archive) for continuum triggers in the lobes.
+
 ### #176 — the joint clock adopts a one-off 0.8-chip outlier inside a transit and every 10.23-Mcps chain loses its prompts (2026-10-12)
 - **What:** C33 (0.61°, CA 12:54:15Z 10-12). Through the pass the joint solve's sigma grew 0.42 → 0.68 and was REFUSED
   (bound 0.50); at 12:58:17Z, C33 at ~1.9°, a 4-satellite solve 0.806 chips from legacy with sigma 0.228 passed the
