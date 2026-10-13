@@ -122,7 +122,6 @@ int main(int argc, char** argv) {
     p.fft_len = FFT_LEN;
     p.n_hops = N_HOPS;
     p.Lf = Lf;
-    p.out_rows_spec = 4;
     p.conj_data = 1;
     p.data_stride = N_HOPS;
 

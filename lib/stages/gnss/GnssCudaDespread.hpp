@@ -108,9 +108,9 @@ public:
 
     /// Store the per-PRN Phi tables as __half2, halving their device footprint (storage error
     /// ~3.3e-4 relative). Off by default. Returns whether it is in effect: refused while shared
-    /// tables are in use (that gather is fp32-only). While set, @ref despread_batch,
-    /// @ref enqueue_batch_device and @ref enqueue_peel_device throw, because their kernels read
-    /// Phi as float2; @ref enqueue_waveform and @ref enqueue_batch_nm support it.
+    /// tables are in use (that gather is fp32-only). While set, @ref despread_batch throws,
+    /// because its kernel reads Phi as float2; @ref enqueue_waveform and @ref enqueue_batch_nm
+    /// support it.
     bool set_phi_fp16(bool on);
 
     /// Record CUDA events around @ref enqueue_batch_nm's two kernels. Off by default; three
@@ -149,36 +149,10 @@ public:
     void build_jobs(const std::vector<Spec>& specs, void* d_jobs_slot,
                     long long window_start_sample, void* stream);
 
-    /// Despread one record window read in place from a device-resident channel-major array (row
-    /// stride @c data_stride hops), on the caller's stream into the caller's device buffers,
-    /// without synchronizing. @c d_jobs_slot must hold >= specs.size() jobs; giving each record
-    /// its own slice lets several records be in flight. Phi rebuilds (Doppler moved more than
-    /// refresh_hz) upload through pinned staging, ordered on the same stream.
-    ///
-    /// One job per spec emits four rows (E, P, L, P_HEAD), at a stride of @c rows_spec rows per
-    /// spec. The return value is the row count, rows_spec * specs.size(), which indexes
-    /// d_corr_out / d_energy_out and PrnCtl::job0; advance @c d_jobs_slot by specs.size().
-    ///
-    /// @c d_chan_scale selects the sample type: nullptr reads float2; non-null reads CHORD 4+4b
-    /// bytes, unpacked with this [n_chan] lsb-to-volts array (the scales they were packed
-    /// with). Only the voltage load differs.
-    /// @c d_xcorr_out, when non-null, also receives the cross-correlations the analytic peel
-    /// add-back needs, [4*specs][n_chan] double2: rows 4i+0/1 = <R_P,R_E> / <R_P,R_L> over the
-    /// window, 4i+2/3 the same over the head hops [0, m_head). Null costs nothing (the
-    /// accumulators compile away). Opaque pointer types keep this header CUDA-free.
-    int enqueue_batch_device(const void* d_window /*float2 or uint8*/, int data_stride,
-                             long long window_start_sample, const std::vector<Spec>& specs,
-                             void* d_jobs_slot /*gnss_cuda::DespreadJob, [specs]*/,
-                             void* d_corr_out /*double2, [rows_spec*specs][n_chan]*/,
-                             void* d_energy_out /*double, [rows_spec*specs][n_chan]*/,
-                             void* stream /*cudaStream_t*/,
-                             const void* d_chan_scale = nullptr /*float, [n_chan]*/,
-                             void* d_xcorr_out = nullptr /*double2, [4*specs][n_chan]*/,
-                             int rows_spec = 4 /*corr/energy row stride per spec*/);
-
     /// CHORD N x M: generate the replicas once, then correlate them against @c n_elem antennas.
-    /// Same jobs and replicas as @ref enqueue_batch_device with fp32 tables; only the consumer
-    /// differs (cuda_gnss_despread_test checks the two kernel paths agree exactly at N=1).
+    /// With fp32 tables the replicas equal the fused despread's (launch_despread); only the
+    /// consumer differs (cuda_gnss_despread_test checks the two kernel paths agree exactly at
+    /// N=1).
     ///
     /// @c d_frame is the 4+4b voltage in CHORD's native [hop][chan][elem] order, as
     /// GnssChordVoltageTap emits it, with strides @c frame_chan_stride and @c elem_stride;
@@ -207,39 +181,6 @@ public:
     int enqueue_waveform(long long window_start_sample, const std::vector<Spec>& specs,
                          void* d_jobs_slot, void* d_wave,
                          void* d_energy_out /*double [4*specs][n_chan]*/, void* stream);
-
-    /// One PRN's voltage peel request: its prompt replica, times a per-channel gain, is
-    /// subtracted from the voltage.
-    ///
-    /// The gains are feed-forward (from previous records, not fitted to this window) and per
-    /// local channel, which absorbs the receiver bandpass. A zero gain leaves that (PRN, channel)
-    /// unpeeled; channels outside @c covering get zero. There are two gains because the window
-    /// can straddle a code-period boundary, where the overlay or nav symbol flips sign; the
-    /// boundary hop comes from the same function as the despread's P_HEAD row. There is no
-    /// carrier trim, and the peel kernel applies no Psi correction, so the peel matches only a
-    /// despread with ctrim_hz = 0 on per-PRN tables (see gnss_cuda::PeelJob::psiA).
-    struct PeelSpec {
-        int p;                                   ///< PRN slot
-        double cp_seed;                          ///< prompt code-phase argument, component chips
-        double doppler_hz;                       ///< replica Doppler, Hz
-        std::vector<int> covering;               ///< local channel indices in the covering set
-        std::vector<std::complex<float>> a_head; ///< [n_chan] gain before the boundary
-        std::vector<std::complex<float>> a_tail; ///< [n_chan] gain at/after the boundary
-    };
-
-    /// Peel every spec's prompt waveform out of one record window, on the caller's stream into a
-    /// caller device buffer, without synchronizing. Enqueued just before
-    /// @ref enqueue_batch_device so the despread reads the residual. @c d_pjobs_slot holds
-    /// >= specs.size() PeelJobs, @c d_gain_slot >= 2*specs.size()*n_chan float2. @c d_resid_out
-    /// is [n_chan][n_hops] float2, packed: the following despread takes data_stride = n_hops
-    /// and no d_chan_scale. Returns the job count.
-    int enqueue_peel_device(const void* d_window /*float2 or uint8*/, int data_stride,
-                            long long window_start_sample, const std::vector<PeelSpec>& specs,
-                            void* d_pjobs_slot /*gnss_cuda::PeelJob, [specs]*/,
-                            void* d_gain_slot /*float2, [2*specs][n_chan]*/,
-                            void* d_resid_out /*float2, [n_chan][n_hops]*/,
-                            void* stream /*cudaStream_t*/,
-                            const void* d_chan_scale = nullptr /*float, [n_chan]*/);
 
 private:
     struct Impl;

@@ -2,21 +2,19 @@
  * @file
  * @brief Device-side replica primitives shared by every GNSS kernel that synthesises a replica.
  *
- * Used by the fused despread and the peel (cudaGnssDespreadKernel.cu) and by the CHORD waveform
- * generator (cudaGnssChordDespread.cu), whose replicas must be bit-identical: the peel's
- * analytic add-back is exact only if its replica equals the despread's, and the waveform
- * generator feeds the N x M correlator, where a divergence from the fused path would show only
- * as a correlation-amplitude error. One copy of the gather keeps them identical.
+ * Used by the fused despread (cudaGnssDespreadKernel.cu) and by the CHORD waveform generator
+ * (cudaGnssChordDespread.cu), whose replicas must be bit-identical: the waveform generator feeds
+ * the N x M correlator, where a divergence from the fused path would show only as a
+ * correlation-amplitude error. One copy of the gather keeps them identical.
  */
 
 #ifndef CUDA_GNSS_REPLICA_DEVICE_CUH
 #define CUDA_GNSS_REPLICA_DEVICE_CUH
 
-#include "cudaGnssDespreadKernel.hpp" // for gnss_cuda::unpack_44
-
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
+#include <stdint.h>
 
 namespace gnss_cuda {
 /// Complex multiply with the multiply-adds pinned to fmaf. Written as `a.x*b.x - a.y*b.y`,
@@ -243,17 +241,6 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
                 idx[u] += job_code_len;
         }
     }
-}
-
-// Voltage load, overloaded on the ring's sample type: fp32 complex, or a CHORD 4+4b byte
-// dequantized with its channel's scale. Everything after the load is the same for both.
-__device__ inline float2 load_v(const float2* __restrict__ d, size_t i,
-                                const float* __restrict__ /*chan_scale*/, int /*ci*/) {
-    return d[i];
-}
-__device__ inline float2 load_v(const unsigned char* __restrict__ d, size_t i,
-                                const float* __restrict__ chan_scale, int ci) {
-    return gnss_cuda::unpack_44(d[i], chan_scale[ci]);
 }
 } // namespace gnss_cuda
 

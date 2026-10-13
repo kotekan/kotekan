@@ -85,9 +85,8 @@ struct GnssCudaDespread::Impl {
     std::vector<float> taps_a, taps_b;
 
     /// fp16 Phi: ensure_phi stores __half2 tables, halving their device footprint, and
-    /// launch_waveform takes the __half2 gather. launch_despread and launch_peel read Phi as
-    /// float2, so despread_batch, enqueue_batch_device and enqueue_peel_device throw while this
-    /// is set rather than despread garbage.
+    /// launch_waveform takes the __half2 gather. launch_despread reads Phi as float2, so
+    /// despread_batch throws while this is set rather than despread garbage.
     bool use_fp16 = false;
 
     /// Shared, Doppler-free tables: one (Phi, Psi) pair for every PRN, built at the band carrier
@@ -124,8 +123,6 @@ struct GnssCudaDespread::Impl {
     std::vector<gnss_cuda::DespreadJob> h_jobs;
     std::vector<double2> h_corr;
     std::vector<double> h_energy;
-    std::vector<gnss_cuda::PeelJob> h_pjobs; // peel staging (pageable: H2D is host-sync on return)
-    std::vector<float2> h_gains;             // [job][head|tail][chan]
 
     Impl(gnss::ChannelizedReplicaBank& b, int np, int nc, int nh, double fs_, double fo, double rh,
          const std::vector<int>& ids) :
@@ -231,10 +228,8 @@ struct GnssCudaDespread::Impl {
     /// next multiple of code_len. Head is hops [0, m_head), tail the rest; the secondary overlay
     /// and nav symbol flip sign at the boundary. n_hops if the window holds no boundary.
     ///
-    /// The despread's P_HEAD row and the peel's gain switch both come from here; if they
-    /// differed by a hop, the analytic add-back would lose exactness in exactly the windows with
-    /// a sign flip. Hop granularity is enough: the filter span already mixes about one hop at
-    /// the seam.
+    /// The P_HEAD row comes from here. Hop granularity is enough: the filter span already mixes
+    /// about one hop at the seam.
     int m_head_for(double cp0, double cps, long long window_start_sample) const {
         const double n0 = (double)(window_start_sample + bank.fft_len() - 1);
         const double C0 = cp0 + n0 * cps;
@@ -249,16 +244,10 @@ struct GnssCudaDespread::Impl {
         return m;
     }
 
-    /// Combined-stream chips per sample, including the code Doppler.
-    double cps_for(double doppler_hz) const {
-        return bank.eff_chip_rate() / fs
-               * (1.0 + bank.code_doppler_sign * doppler_hz / bank.carrier_hz());
-    }
     /// Carrier angular rate, rad/sample, at the PRN's own carrier offset (per PRN under FDMA,
     /// the band offset for CDMA). The carrier trim enters here and in ang0_for but never the
-    /// code rate: carrier and code are separate control paths. The peel passes no trim. The Phi
-    /// cache stays keyed on the Doppler alone, since a trim of tens of Hz barely changes the
-    /// channel filter response.
+    /// code rate: carrier and code are separate control paths. The Phi cache stays keyed on the
+    /// Doppler alone, since a trim of tens of Hz barely changes the channel filter response.
     double wc_for(int p, double doppler_hz, double ctrim_hz = 0.0) const {
         return 2.0 * M_PI * (bank.carrier_offset(p) + doppler_hz + ctrim_hz) / fs;
     }
@@ -567,8 +556,8 @@ bool GnssCudaDespread::set_phi_fp16(bool on) {
     const size_t n = (size_t)im.n_chan * (size_t)(im.Lf + 1);
     std::fprintf(stderr,
                  "INFO: GnssCudaDespread: fp16 Phi ARMED -- %.1f MB over %d channels per PRN "
-                 "bucket (fp32 was %.1f), storage error ~3.3e-4 (phibits); despread_batch, the "
-                 "device-window despread and the peel will REFUSE while this is set.\n",
+                 "bucket (fp32 was %.1f), storage error ~3.3e-4 (phibits); despread_batch will "
+                 "REFUSE while this is set.\n",
                  2.0 * (double)n * (sizeof(float2) / 2) / 1e6, im.n_chan,
                  2.0 * (double)n * sizeof(float2) / 1e6);
     return true;
@@ -707,8 +696,7 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
                 mask |= (1ULL << c);
         const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
 
-        // Output row 3 = P_HEAD: the prompt up to the code-period boundary (Impl::m_head_for,
-        // shared with the peel, which switches gains at the same hop).
+        // Output row 3 = P_HEAD: the prompt up to the code-period boundary (Impl::m_head_for).
         const int m_head = im.m_head_for(cp0, cps, window_start_sample);
 
         im.h_jobs[i] = {
@@ -737,51 +725,6 @@ void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_s
        "jobs upload (device batch)");
 }
 
-int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride,
-                                           long long window_start_sample,
-                                           const std::vector<Spec>& specs, void* d_jobs_slot,
-                                           void* d_corr_out, void* d_energy_out, void* stream,
-                                           const void* d_chan_scale, void* d_xcorr_out,
-                                           int rows_spec) {
-    Impl& im = *_impl;
-    if (im.use_fp16)
-        throw std::runtime_error("GnssCudaDespread: enqueue_batch_device with fp16 Phi armed -- "
-                                 "launch_despread(_q) reads Phi as raw float2 and would despread "
-                                 "garbage; phi_fp16 is only for the waveform (inject) path");
-    if (specs.empty())
-        return 0;
-    const int n_spec = (int)specs.size();
-    const cudaStream_t st = (cudaStream_t)stream;
-    build_jobs(specs, d_jobs_slot, window_start_sample, stream);
-
-    gnss_cuda::DespreadParams par;
-    par.shared = im.use_shared;                           // selects the shared-table kernel
-    par.phi_half = im.use_fp16 ? 1 : 0;                   // __half2 gather (waveform kernels only)
-    par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
-    par.fft_len = im.bank.fft_len();
-    par.n_hops = im.n_hops;
-    par.Lf = im.Lf;
-    par.data_stride = data_stride;
-    par.out_rows_spec = rows_spec; // 6 when the frame also carries the peel residual rows
-    // d_chan_scale selects the sample type: 4+4b bytes scaled per channel, or float2. Same
-    // kernel; only the voltage load differs.
-    if (d_chan_scale)
-        ck(gnss_cuda::launch_despread_q((const unsigned char*)d_window, (const float*)d_chan_scale,
-                                        im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
-                                        im.n_chan, par, (double2*)d_corr_out, (double*)d_energy_out,
-                                        st, (double2*)d_xcorr_out),
-           "launch q (device batch)");
-    else
-        ck(gnss_cuda::launch_despread((const float2*)d_window, im.d_code,
-                                      (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan, par,
-                                      (double2*)d_corr_out, (double*)d_energy_out, st,
-                                      (double2*)d_xcorr_out),
-           "launch (device batch)");
-    // Output rows reserved, rows_spec per spec: not the job count, and not the rows written
-    // (the despread fills rows 0-3 of each).
-    return rows_spec * n_spec;
-}
-
 int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_scale,
                                        const int* d_chan_ids, void* d_wave, int n_elem,
                                        int elem_stride, int frame_chan_stride,
@@ -806,7 +749,6 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     // The correlator reads the frame in its native [hop][chan][elem] order through
     // frame_chan_stride and elem_stride; data_stride does not apply.
     par.data_stride = im.n_hops;
-    par.out_rows_spec = 4;
     par.conj_data = conjugate ? 1 : 0;
 
     // The replicas are generated once and reused for all n_elem antennas, which is why this
@@ -849,103 +791,11 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
     par.data_stride = im.n_hops;
-    par.out_rows_spec = 4;
 
     ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
                                   im.n_chan, par, (float2*)d_wave, (double*)d_energy_out, st),
        "launch waveform (inject)");
     return n_spec;
-}
-
-int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
-                                          long long window_start_sample,
-                                          const std::vector<PeelSpec>& specs, void* d_pjobs_slot,
-                                          void* d_gain_slot, void* d_resid_out, void* stream,
-                                          const void* d_chan_scale) {
-    Impl& im = *_impl;
-    if (im.use_fp16)
-        throw std::runtime_error("GnssCudaDespread: enqueue_peel_device with fp16 Phi armed -- "
-                                 "launch_peel reads Phi as raw float2 and the peel's analytic "
-                                 "add-back must be exact; phi_fp16 is only for the waveform path");
-    const cudaStream_t st = (cudaStream_t)stream;
-    const int n_job = (int)specs.size();
-
-    // Runs with zero jobs too: the residual buffer must then hold a copy of the voltage, not the
-    // previous record, because the despread downstream reads it either way.
-    im.h_pjobs.resize((size_t)n_job);
-    im.h_gains.assign((size_t)2 * n_job * im.n_chan, make_float2(0.f, 0.f));
-    for (int i = 0; i < n_job; ++i) {
-        const PeelSpec& sp = specs[(size_t)i];
-        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz, st, true);
-        const double cps = im.cps_for(sp.doppler_hz);
-        const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
-        uint64_t mask = 0;
-        for (int c : sp.covering)
-            if (c >= 0 && c < im.n_chan)
-                mask |= (1ULL << c);
-        // Gains land in the arena as [job][head|tail][chan]; the job points at its two rows.
-        float2* const g_head = (float2*)d_gain_slot + (size_t)(2 * i) * im.n_chan;
-        float2* const g_tail = (float2*)d_gain_slot + (size_t)(2 * i + 1) * im.n_chan;
-        for (int c = 0; c < im.n_chan; ++c) {
-            const bool own = (mask >> c) & 1ULL;
-            const auto ah = (own && c < (int)sp.a_head.size()) ? sp.a_head[(size_t)c]
-                                                               : std::complex<float>(0.f, 0.f);
-            const auto at = (own && c < (int)sp.a_tail.size()) ? sp.a_tail[(size_t)c]
-                                                               : std::complex<float>(0.f, 0.f);
-            im.h_gains[(size_t)(2 * i) * im.n_chan + c] = make_float2(ah.real(), ah.imag());
-            im.h_gains[(size_t)(2 * i + 1) * im.n_chan + c] = make_float2(at.real(), at.imag());
-        }
-        im.h_pjobs[(size_t)i] = {
-            cp0,
-            // Same expression as the despread's (PeelJob::cp_ref).
-            im.cp_ref_for(cp0, cps, window_start_sample + im.bank.fft_len() - 1), cps, 1.0 / cps,
-            im.wc_for(sp.p, sp.doppler_hz),
-            // Same expression as the despread's (PeelJob::ang0), with no carrier
-            // trim: the add-back is exact only against a despread with ctrim_hz = 0.
-            im.ang0_for(sp.p, sp.doppler_hz, 0.0, window_start_sample + im.bank.fft_len() - 1),
-            im.code_offset[(size_t)sp.p], (int)im.code_len, mask,
-            im.use_shared ? im.shared.d_A : pc.d_A, im.use_shared ? im.shared.d_B : pc.d_B,
-            im.use_shared ? im.shared.n_chips : pc.n_chips,
-            im.m_head_for(cp0, cps, window_start_sample), // the despread's P_HEAD hop
-            g_head, g_tail,
-            // Set as for the despread, but the peel kernel ignores Psi and ddw, so with shared
-            // tables its replica is not the despread's (see PeelJob::psiA).
-            im.use_shared ? im.shared.d_PA : nullptr, im.use_shared ? im.shared.d_PB : nullptr,
-            im.use_shared
-                ? (float)(2.0 * M_PI * (im.bank.carrier_offset(sp.p) + sp.doppler_hz) / im.fs
-                          - im.shared.wc)
-                : 0.0f,
-            // Truncated exactly as the despread is.
-            im.use_shared ? im.shared.d_first : pc.d_first};
-    }
-    if (n_job > 0) {
-        ck(cudaMemcpyAsync(d_gain_slot, im.h_gains.data(), im.h_gains.size() * sizeof(float2),
-                           cudaMemcpyHostToDevice, st),
-           "gains upload (peel)");
-        ck(cudaMemcpyAsync(d_pjobs_slot, im.h_pjobs.data(),
-                           (size_t)n_job * sizeof(gnss_cuda::PeelJob), cudaMemcpyHostToDevice, st),
-           "peel jobs upload");
-    }
-
-    gnss_cuda::DespreadParams par;
-    par.shared = im.use_shared;                           // selects the shared-table kernel
-    par.phi_half = im.use_fp16 ? 1 : 0;                   // __half2 gather (waveform kernels only)
-    par.n0 = window_start_sample + im.bank.fft_len() - 1; // same per-hop reference as the despread
-    par.fft_len = im.bank.fft_len();
-    par.n_hops = im.n_hops;
-    par.Lf = im.Lf;
-    par.data_stride = data_stride;
-    if (d_chan_scale)
-        ck(gnss_cuda::launch_peel_q((const unsigned char*)d_window, (const float*)d_chan_scale,
-                                    im.d_code, (gnss_cuda::PeelJob*)d_pjobs_slot, n_job, im.n_chan,
-                                    par, (float2*)d_resid_out, st),
-           "launch peel q");
-    else
-        ck(gnss_cuda::launch_peel((const float2*)d_window, im.d_code,
-                                  (gnss_cuda::PeelJob*)d_pjobs_slot, n_job, im.n_chan, par,
-                                  (float2*)d_resid_out, st),
-           "launch peel");
-    return n_job;
 }
 
 std::array<gnss::DespreadResult, 3> GnssCudaDespread::despread3(int p, double cp_seed,
