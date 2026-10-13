@@ -55,10 +55,9 @@ struct SignalDescriptor {
 // straddles at most one code-period boundary, as the P_HEAD row assumes. The search uses the
 // plain descriptor.
 //
-// gnss_broker/signals.py and js_viewer/livebeam_server.py read these initializers by regex:
-// keep the name and the next four fields as plain literals in this order, and keep comments
-// inside an initializer short (signals.py looks for secondary_length within 400 characters of
-// the code period).
+// gnss_broker/signals.py reads these initializers by regex: keep the name and the next four
+// fields as plain literals in this order, and keep comments inside an initializer short
+// (signals.py looks for secondary_length within 400 characters of the code period).
 
 /// GPS L1 C/A (1575.42 MHz). Code: gpsCACode (IS-GPS-200 G2 tap table).
 inline constexpr SignalDescriptor GPS_L1CA = {

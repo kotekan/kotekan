@@ -1387,8 +1387,7 @@ double GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<dou
                                               double* sigma_phi_out) const {
     const int n = (int)a.size();
     // *sigma_phi_out is always written: NaN when there is no fit, since 0.0 would read as a
-    // perfect lock. The returned residual is then 0.0, which the broker's carrier loop skips
-    // (gnss_broker/carrierloop.py).
+    // perfect lock. The returned residual is then 0.0.
     if (n < 16) {
         if (sigma_phi_out != nullptr)
             *sigma_phi_out = NAN;

@@ -2,7 +2,7 @@
  * @file
  * @brief A1 REGRESSION: does the fleet fold survive an F-engine frame0 move?
  *
- * The defect (docs/CHORD_BUGLIST.md A1, rank 1 for three days because it VOIDS
+ * The defect (211153b59^:docs/CHORD_BUGLIST.md A1, rank 1 for three days because it VOIDS
  * EXPERIMENTS): `win` is absolute from the F-engine's frame0, `FleetDll` kept a strictly
  * monotone per-chain high-water mark, and an F-engine restart therefore made every
  * subsequent frame LATE **forever** -- the fold froze while `/get_dll` kept serving its
