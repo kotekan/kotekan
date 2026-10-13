@@ -37,7 +37,7 @@ def stage_rate_feed_coarse(ctx):
                 ctx.band_id,
                 ctx.code_len,
                 rereference=ctx.args.joint_rereference,
-                gauge_mode=ctx.args.joint_gauge,
+                gauge_mode="prior",
             )
             _n_ok = 0
             _n_gov = 0  # sats in the PHASE-GOVERNED regime this poll
@@ -191,7 +191,7 @@ def stage_rate_feed_fine(ctx):
                 ctx.band_id,
                 ctx.code_len,
                 rereference=ctx.args.joint_rereference,
-                gauge_mode=ctx.args.joint_gauge,
+                gauge_mode="prior",
             )
             for _p, _rec in (ctx.status or {}).items():
                 if not isinstance(_rec, dict):

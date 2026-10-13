@@ -1036,7 +1036,10 @@ def dr_joint_shadow(ctx):
             # +151.7, all refused). Only read on creation, so this cannot fight
             # the filter once it is running. #28's lesson, applied one filter on.
             _js = ctx.rx.joint_receiver(
-                ctx.band_id, ctx.code_len, clk0=float(ctx.dr_state.get("clk") or 0.0)
+                ctx.band_id,
+                ctx.code_len,
+                clk0=float(ctx.dr_state.get("clk") or 0.0),
+                gauge_mode="prior",
             )
             # The code phases fed below are in THIS chain's chips, mod its code; every
             # consumer at another chip rate converts through this declaration.
@@ -2734,7 +2737,7 @@ def stage_dead_reckon(ctx):
                         ctx.band_id,
                         ctx.code_len,
                         rereference=ctx.args.joint_rereference,
-                        gauge_mode=ctx.args.joint_gauge,
+                        gauge_mode="prior",
                     )
                     for _n in _jsn.drain_notes():
                         _log_rl(

@@ -192,7 +192,7 @@ def stage_fleet_trim_arming(ctx):
                         ctx.band_id,
                         ctx.code_len,
                         rereference=ctx.args.joint_rereference,
-                        gauge_mode=ctx.args.joint_gauge,
+                        gauge_mode="prior",
                     )
                 except Exception:
                     _jg = None

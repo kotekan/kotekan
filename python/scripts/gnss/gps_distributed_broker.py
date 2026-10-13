@@ -716,10 +716,7 @@ def main(argv=None, rx=None, publisher=None):
         (docs 11.31)."""
         try:
             js = rx_.joint_receiver(
-                band,
-                CODE_LEN,
-                rereference=a.joint_rereference,
-                gauge_mode=a.joint_gauge,
+                band, CODE_LEN, rereference=a.joint_rereference, gauge_mode="prior",
             )
             if len(js._idx) < a.joint_min_sats:
                 return None
@@ -2100,7 +2097,7 @@ def main(argv=None, rx=None, publisher=None):
                     band_id,
                     CODE_LEN,
                     rereference=args.joint_rereference,
-                    gauge_mode=args.joint_gauge,
+                    gauge_mode="prior",
                 )
                 _nk = 0
                 _krows = []
@@ -2313,7 +2310,7 @@ def main(argv=None, rx=None, publisher=None):
                         band_id,
                         CODE_LEN,
                         rereference=args.joint_rereference,
-                        gauge_mode=args.joint_gauge,
+                        gauge_mode="prior",
                     )
                     # No receiver-wide term solved yet -> nothing to command. The sigma
                     # gate below then handles per-sat convergence one row at a time.
