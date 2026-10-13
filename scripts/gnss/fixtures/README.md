@@ -106,23 +106,6 @@ three are cheap the moment their chain is running:
   detections runs no DLL and no code-bias pool. It is the *only* fixture that covers the
   model-primary spine, which is exactly where #28's cold-start defect lived.
 
-### What the e2e harness gives, and what it does not
-
-`scripts/gnss/e2e_broker.py` DOES run here (cx19, real GPU) and puts the real broker in the
-loop against a known injected truth. It is a **correctness** harness, not an equivalence
-one, and the difference is not a nicety:
-
-    ./e2e_broker.py --prn 3 --passes 5 --settle-s 30 --port 12778 \
-        --broker-arg=--transcript-write=/tmp/e2e.jsonl
-
-Its transcript replays deterministically (33 cycles, 32 posts) and is **inert** — `selftest`
-says so, and a 1% perturbation of `carrier_hz`, `chip_rate_hz`, `code_length` and
-`hops_per_sec` leaves the digest bit-identical. The reason is visible in the seeds it
-captures: `e2e --emit-detection` emits `code_phase_chips: 0` (the real phase rides in
-`code_phase_at_ref_chips`), so the broker's POSTs are a passthrough of the served detection
-and depend on nothing it computes. Excellent for measuring chips of seed error against
-truth; useless as a refactor gate.
-
 ⚠️ Before blessing any capture, run `selftest`. A transcript recorded against a dark or
 frozen chain replays perfectly and proves nothing — that trap cost two full scans on
 2026-08-08.
