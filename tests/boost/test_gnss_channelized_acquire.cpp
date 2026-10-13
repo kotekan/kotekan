@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE "test_gnss_channelized_acquire"
 
-#include "gnssChannelizedAcquire.hpp"  // for channelized_acquire
+#include "gnssChannelizedAcquire.hpp"  // for channelized_accumulate, channelized_peak
 #include "gnssChannelizedDespread.hpp" // for channelized_despread (cp refine, as the stage does)
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank (real production replica)
 #include "gnssSignal.hpp"              // for signal_by_name, SignalDescriptor
@@ -146,6 +146,22 @@ std::vector<int> energy_covering_n(const std::vector<std::vector<cf>>& repl, int
     return cov;
 }
 
+// Single-window acquire: one channelized_accumulate into a fresh surface, then channelized_peak.
+gnss::AcquisitionResult
+channelized_acquire(const std::vector<std::vector<cf>>& data_ch,
+                    const std::vector<std::vector<cf>>& repl0_ch, const std::vector<int>& covering,
+                    const std::vector<double>& doppler_grid, double sample_rate, double chip_rate,
+                    int num_chan, long code_length, const std::vector<int>& chan_freq = {},
+                    int samples_per_hop = 0, int fine_lag_sign = gnss::FINE_LAG_SIGN_PFB) {
+    std::vector<double> surf;
+    gnss::AcquireWorkspace ws;
+    const auto dims =
+        gnss::channelized_accumulate(data_ch, repl0_ch, covering, doppler_grid, sample_rate,
+                                     num_chan, surf, ws, chan_freq, samples_per_hop);
+    return gnss::channelized_peak(surf, dims, doppler_grid, sample_rate, chip_rate, code_length,
+                                  fine_lag_sign);
+}
+
 } // namespace
 
 BOOST_AUTO_TEST_CASE(recovers_with_fftwengine_convention) {
@@ -166,8 +182,7 @@ BOOST_AUTO_TEST_CASE(recovers_with_fftwengine_convention) {
         chan_freq.push_back(c - Nc / 2);
 
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
-    auto r =
-        gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, Nc, CODE_LEN, chan_freq);
+    auto r = channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, Nc, CODE_LEN, chan_freq);
     BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop),
                    100.0); // sub-grid refine: within half a 200 Hz cell
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP);
@@ -185,8 +200,8 @@ BOOST_AUTO_TEST_CASE(recovers_code_phase_and_doppler) {
     const auto cov = energy_covering(repl0);
 
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
-    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
-                                       gnss::FINE_LAG_SIGN_NATURAL);
+    auto r = channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
+                                 gnss::FINE_LAG_SIGN_NATURAL);
 
     BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop),
                    100.0); // sub-grid refine: within half a 200 Hz cell
@@ -201,8 +216,8 @@ BOOST_AUTO_TEST_CASE(hop_aligned_phase_recovered) {
     auto repl0 = stft(gen(12, 0.0, 0.0, cf(1.0f, 0.0f)), proto);
 
     const std::vector<double> grid = {-200, 0, 200};
-    auto r = gnss::channelized_acquire(data, repl0, energy_covering(repl0), grid, FS, CHIP_RATE, N,
-                                       CODE_LEN);
+    auto r =
+        channelized_acquire(data, repl0, energy_covering(repl0), grid, FS, CHIP_RATE, N, CODE_LEN);
     BOOST_CHECK_LT(std::abs(r.doppler_hz), 100.0); // sub-grid refine: ~0 within half a cell
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP);
 }
@@ -213,14 +228,14 @@ BOOST_AUTO_TEST_CASE(wrong_prn_has_low_snr) {
     auto repl0 = stft(gen(7, 0.0, 0.0, cf(1.0f, 0.0f)), proto); // different PRN
 
     const std::vector<double> grid = {-200, 0, 200};
-    auto r = gnss::channelized_acquire(data, repl0, energy_covering(repl0), grid, FS, CHIP_RATE, N,
-                                       CODE_LEN);
+    auto r =
+        channelized_acquire(data, repl0, energy_covering(repl0), grid, FS, CHIP_RATE, N, CODE_LEN);
     BOOST_CHECK_LT(r.snr, 12.0); // no coherent peak for the wrong code
 }
 
-// channelized_acquire is channelized_accumulate over one window plus channelized_peak; calling
-// the two directly with an explicit AcquireWorkspace must reproduce it exactly and report the
-// expected surface dimensions.
+// channelized_acquire (above) is channelized_accumulate over one window plus channelized_peak;
+// calling the two directly with a caller-owned AcquireWorkspace must reproduce it exactly and
+// report the expected surface dimensions.
 BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
     const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
     const long true_tau = 50;
@@ -230,8 +245,8 @@ BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
     const auto cov = energy_covering(repl0);
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
 
-    auto rw = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
-                                        gnss::FINE_LAG_SIGN_NATURAL);
+    auto rw = channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN, {}, 0,
+                                  gnss::FINE_LAG_SIGN_NATURAL);
 
     gnss::AcquireWorkspace ws;
     std::vector<double> surf;
@@ -431,7 +446,7 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
 }
 
 // --------------------------------------------------------------------------------------------
-// L2C through the real ChannelizedReplicaBank (time-multiplexed CM/CL) and channelized_acquire,
+// L2C through the real ChannelizedReplicaBank (time-multiplexed CM/CL) and a single-window acquire,
 // at a 5 MSPS real front end with N = 12 and f_off = Fs/4.
 namespace {
 constexpr double FS_L2C = 5.0e6;    // 5 MSPS real
@@ -464,8 +479,8 @@ BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
     // As the stage does: samples_per_hop = fft_len (r2c), chan_freq = covering (natural order),
     // code phase in component CM chips (sig->chip_rate_hz, code_length).
-    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS_L2C, sig->chip_rate_hz, N_L2C,
-                                       sig->code_length, cov, fft_len);
+    auto r = channelized_acquire(data, repl0, cov, grid, FS_L2C, sig->chip_rate_hz, N_L2C,
+                                 sig->code_length, cov, fft_len);
 
     BOOST_TEST_MESSAGE("L2C single-window: snr=" << r.snr << " dop=" << r.doppler_hz
                                                  << " cp=" << r.code_phase_chips << " (true "
@@ -555,8 +570,8 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
 
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
-    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS_L5, sig->chip_rate_hz, N_L5,
-                                       sig->code_length, cov, fft_len);
+    auto r = channelized_acquire(data, repl0, cov, grid, FS_L5, sig->chip_rate_hz, N_L5,
+                                 sig->code_length, cov, fft_len);
 
     BOOST_TEST_MESSAGE("L5 acquire: snr=" << r.snr << " dop=" << r.doppler_hz
                                           << " cp=" << r.code_phase_chips << " (true " << true_cp
@@ -624,8 +639,8 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     };
     // Centred at -hint, as the search does: detects.
     const auto narrow = grid_around(-hint);
-    auto r = gnss::channelized_acquire(data, repl0, cov, narrow, FS_L5, sig->chip_rate_hz, N_L5,
-                                       sig->code_length, cov, fft_len);
+    auto r = channelized_acquire(data, repl0, cov, narrow, FS_L5, sig->chip_rate_hz, N_L5,
+                                 sig->code_length, cov, fft_len);
     BOOST_TEST_MESSAGE("narrow(-hint): snr=" << r.snr << " dop=" << r.doppler_hz);
     BOOST_CHECK_LT(std::abs(r.doppler_hz + true_dop),
                    25.0);        // ~-physical within half a 50 Hz cell (r2c + sub-grid refine)
@@ -633,8 +648,8 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
 
     // Wrong sign: centre at +hint (2*dop from the true peak) -> a clean miss.
     const auto wrong = grid_around(hint);
-    auto rw = gnss::channelized_acquire(data, repl0, cov, wrong, FS_L5, sig->chip_rate_hz, N_L5,
-                                        sig->code_length, cov, fft_len);
+    auto rw = channelized_acquire(data, repl0, cov, wrong, FS_L5, sig->chip_rate_hz, N_L5,
+                                  sig->code_length, cov, fft_len);
     BOOST_TEST_MESSAGE("narrow(+hint, wrong): snr=" << rw.snr);
     BOOST_CHECK_LT(rw.snr, r.snr * 0.3); // wrong-sign window decorrelates -> no peak
 }
@@ -664,8 +679,8 @@ BOOST_AUTO_TEST_CASE(doppler_refine_beats_grid) {
     const double true_cp = 137.0, true_dop = 3000.0 + 0.3 * bin_hz;
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
     auto acq = [&](const std::vector<double>& g) {
-        return gnss::channelized_acquire(data, repl0, cov, g, FS_L5, sig->chip_rate_hz, N_L5,
-                                         sig->code_length, cov, fft_len);
+        return channelized_acquire(data, repl0, cov, g, FS_L5, sig->chip_rate_hz, N_L5,
+                                   sig->code_length, cov, fft_len);
     };
     auto grid_around = [&](double c, double margin, double step) {
         std::vector<double> g;
@@ -718,8 +733,8 @@ BOOST_AUTO_TEST_CASE(gal_e1c_single_window_acquire_recovers) {
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
 
     const std::vector<double> grid = {-600, -300, 0, 300, 600};
-    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, sig->chip_rate_hz, N,
-                                       sig->code_length, cov, fft_len);
+    auto r = channelized_acquire(data, repl0, cov, grid, FS, sig->chip_rate_hz, N, sig->code_length,
+                                 cov, fft_len);
     BOOST_TEST_MESSAGE("E1C acquire: snr=" << r.snr << " dop=" << r.doppler_hz
                                            << " cp=" << r.code_phase_chips << " (true " << true_cp
                                            << ")  cov=" << cov.size() << " chans");
@@ -752,8 +767,8 @@ BOOST_AUTO_TEST_CASE(gal_e1c_single_window_acquire_recovers) {
     // Cross-PRN rejection: despreading PRN 11's signal with PRN 12's replica finds no peak.
     gnss::ChannelizedReplicaBank bank12(*sig, FS, FOFF, N, 4, dsp::Window::Hamming, {12});
     auto repl12 = bank12.channels(0, anchor, 0.0, 0.0, Mp);
-    auto r12 = gnss::channelized_acquire(data, repl12, cov, grid, FS, sig->chip_rate_hz, N,
-                                         sig->code_length, cov, fft_len);
+    auto r12 = channelized_acquire(data, repl12, cov, grid, FS, sig->chip_rate_hz, N,
+                                   sig->code_length, cov, fft_len);
     BOOST_TEST_MESSAGE("E1C cross-PRN snr=" << r12.snr);
     BOOST_CHECK_LT(r12.snr, r.snr * 0.25);
 }
@@ -781,8 +796,8 @@ BOOST_AUTO_TEST_CASE(bds_b1c_single_window_acquire_recovers) {
     const double true_dop = -150.0;
     auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
     const std::vector<double> grid = {-300, -150, 0, 150, 300};
-    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, sig->chip_rate_hz, N,
-                                       sig->code_length, cov, fft_len);
+    auto r = channelized_acquire(data, repl0, cov, grid, FS, sig->chip_rate_hz, N, sig->code_length,
+                                 cov, fft_len);
     BOOST_TEST_MESSAGE("B1C acquire: snr=" << r.snr << " dop=" << r.doppler_hz
                                            << " cp=" << r.code_phase_chips);
     BOOST_CHECK_GT(r.snr, 15.0);

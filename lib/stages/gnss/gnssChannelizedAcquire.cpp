@@ -474,20 +474,4 @@ AcquisitionResult peak_from_reduction(const AcquisitionSurface& dims,
     return best;
 }
 
-AcquisitionResult channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch,
-                                      const std::vector<std::vector<std::complex<float>>>& repl0_ch,
-                                      const std::vector<int>& covering,
-                                      const std::vector<double>& doppler_grid, double sample_rate,
-                                      double chip_rate, int num_chan, long code_length,
-                                      const std::vector<int>& chan_freq, int samples_per_hop,
-                                      int fine_lag_sign) {
-    // Single-window acquire = one accumulation + reduce (local FFT workspace).
-    std::vector<double> surf;
-    AcquireWorkspace ws;
-    const auto dims = channelized_accumulate(data_ch, repl0_ch, covering, doppler_grid, sample_rate,
-                                             num_chan, surf, ws, chan_freq, samples_per_hop);
-    return channelized_peak(surf, dims, doppler_grid, sample_rate, chip_rate, code_length,
-                            fine_lag_sign);
-}
-
 } // namespace gnss

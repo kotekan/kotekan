@@ -120,7 +120,13 @@ constexpr int FINE_LAG_SIGN_PFB = -1;     ///< newest-first fold (ChannelizedRep
 constexpr int FINE_LAG_SIGN_NATURAL = +1; ///< oldest-first fold
 
 /**
- * Search the (code phase, Doppler) surface from channelized voltages.
+ * Add one data window's |D|^2 surface into @c surf (incoherent integration) and return the
+ * surface dimensions (PRN-independent) for @ref channelized_peak. Pass the same @c surf across
+ * consecutive windows to integrate; the peak bin is stationary when each window spans a whole
+ * number of code periods (true for a window of @c Mp hops), so the weak-signal surface SNR grows
+ * as sqrt(windows). @c surf is resized and zeroed when its size does not match. The Doppler phase
+ * reference restarts on each call, so only |D|^2 is summed. Runs @ref channel_correlate on each
+ * covering channel, then @ref aggregate_accumulate.
  *
  * @param data_ch    Channelized data, [N][M] (N channels, M hops).
  * @param repl0_ch   Code-only replica (code phase 0, Doppler 0), analyzed through
@@ -131,9 +137,9 @@ constexpr int FINE_LAG_SIGN_NATURAL = +1; ///< oldest-first fold
  *                   and excluded from the coherent sum).
  * @param doppler_grid Trial Doppler frequencies, Hz.
  * @param sample_rate  Full (pre-channelization) sample rate, Hz.
- * @param chip_rate    Spreading code chip rate, Hz.
  * @param num_chan     N, the channel count.
- * @param code_length  Chips per code period (for wrapping the code phase).
+ * @param surf        The |D|^2 surface to add into, [n_dop][Mp][fine()].
+ * @param ws          Caller-owned FFTW workspace, reused across calls.
  * @param chan_freq   Optional integer frequency index of each covering channel,
  *                    used in the cross-channel fine-lag ramp. Empty means @c covering
  *                    (channel c at frequency index c, the r2c natural order). The
@@ -142,29 +148,8 @@ constexpr int FINE_LAG_SIGN_NATURAL = +1; ///< oldest-first fold
  *                    0 means num_chan, a critically sampled complex bank where the
  *                    hop equals the channel count. An r2c real-FFT bank consumes
  *                    2N real samples per hop, so pass 2*num_chan there.
- * @param fine_lag_sign  Fine-lag direction of the analysis bank (see FINE_LAG_SIGN_PFB).
- */
-AcquisitionResult channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch,
-                                      const std::vector<std::vector<std::complex<float>>>& repl0_ch,
-                                      const std::vector<int>& covering,
-                                      const std::vector<double>& doppler_grid, double sample_rate,
-                                      double chip_rate, int num_chan, long code_length,
-                                      const std::vector<int>& chan_freq = {},
-                                      int samples_per_hop = 0,
-                                      int fine_lag_sign = FINE_LAG_SIGN_PFB);
-
-/**
- * Add one data window's |D|^2 surface into @c surf (incoherent integration). Pass the same
- * @c surf across consecutive windows to integrate; the peak bin is stationary when each window
- * spans a whole number of code periods (true for a window of @c Mp hops), so the weak-signal
- * surface SNR grows as sqrt(windows). @c surf is resized and zeroed when its size does not
- * match. The Doppler phase reference restarts on each call, so only |D|^2 is summed.
- *
- * Same conventions and arguments as @ref channelized_acquire; returns the surface dimensions
- * (PRN-independent) for @ref channelized_peak. Runs @ref channel_correlate on each covering
- * channel, then @ref aggregate_accumulate. @c ws is a caller-owned FFTW workspace reused
- * across calls; @c n_threads parallelizes both halves; @c fine_step decimates the fine-lag
- * axis (see AcquisitionSurface::s_step).
+ * @param n_threads   Threads for both halves.
+ * @param fine_step   Fine-lag decimation (see AcquisitionSurface::s_step).
  */
 AcquisitionSurface
 channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data_ch,
