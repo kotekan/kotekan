@@ -47,7 +47,9 @@ def _consume(rate, code_len, legacy, record_s=None, record_age_s=10.0, chain="gp
     rx = Receiver(log=lambda m: None)
     rx.joint_declare_unit("gps_l5", REF_RATE, REF_LEN)
     if record_s is not None:
-        rx.contribute_clock_mod_epoch("gps_l5", record_s, 0.02, 6, T0 - record_age_s, healthy=True)
+        rx.contribute_clock_mod_epoch(
+            "gps_l5", record_s, 0.02, 6, T0 - record_age_s, healthy=True
+        )
     ctx = types.SimpleNamespace(
         args=types.SimpleNamespace(
             joint_min_sats=4,
@@ -82,21 +84,40 @@ def test_health_rule():
     check(dr_solve_healthy(good, now), "3 fresh residuals inside a chip: established")
     past = {"integ": dict(good["integ"])}
     past["integ"][4] = (1.8, now - 5.0)
-    check(dr_solve_healthy(past, now), "one tracker past the escape bar, three inside: still established")
+    check(
+        dr_solve_healthy(past, now),
+        "one tracker past the escape bar, three inside: still established",
+    )
     bad = {"integ": dict(good["integ"])}
     bad["integ"][4] = (50.0, now - 5.0)
-    check(not dr_solve_healthy(bad, now), "one residual far off the code (noise): not established")
+    check(
+        not dr_solve_healthy(bad, now),
+        "one residual far off the code (noise): not established",
+    )
     scatter = {"integ": {p: (r, now - 5.0) for p, r in ((1, 2.0), (2, 3.5), (3, 0.9))}}
-    check(not dr_solve_healthy(scatter, now), "fewer than two inside a chip: not established")
+    check(
+        not dr_solve_healthy(scatter, now),
+        "fewer than two inside a chip: not established",
+    )
     thin = {"integ": {1: (0.2, now - 5.0), 2: (0.1, now - 5.0)}}
     check(dr_solve_healthy(thin, now), "two residuals inside a chip: established")
     one = {"integ": {1: (0.2, now - 5.0)}}
-    check(not dr_solve_healthy(one, now), "one residual: not established (unfalsifiable)")
+    check(
+        not dr_solve_healthy(one, now), "one residual: not established (unfalsifiable)"
+    )
     stale = {"integ": {p: (r, now - 120.0) for p, (r, _) in good["integ"].items()}}
-    check(not dr_solve_healthy(stale, now), "fresh enough only 120 s ago: not established")
-    check(dr_solve_healthy(None, now) is None and dr_solve_healthy({}, now) is None, "never judged: no claim (None)")
+    check(
+        not dr_solve_healthy(stale, now), "fresh enough only 120 s ago: not established"
+    )
+    check(
+        dr_solve_healthy(None, now) is None and dr_solve_healthy({}, now) is None,
+        "never judged: no claim (None)",
+    )
     empty = {"integ": {}}
-    check(dr_solve_healthy(empty, now) is False, "judged, nothing fresh inside a chip: not established")
+    check(
+        dr_solve_healthy(empty, now) is False,
+        "judged, nothing fresh inside a chip: not established",
+    )
 
 
 def test_l2c_whole_period_is_visible():
@@ -104,12 +125,17 @@ def test_l2c_whole_period_is_visible():
     # 10 ms off (the 2026-10-08 state): the 1-ms delta is +0.001 CM, the record says 10 ms.
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.509 + 10.0 * 511.5, record_s=rec)
     check(
-        "REFUSED" in line and "whole-period" in line and abs(clk - (7.509 + 5115.0)) < 1e-9,
+        "REFUSED" in line
+        and "whole-period" in line
+        and abs(clk - (7.509 + 5115.0)) < 1e-9,
         "L2C +10 ms with the record: REFUSED, clock untouched (%s)" % line[-90:],
     )
     # 1 ms off: also a whole period of the joint's window.
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.509 + 511.5, record_s=rec)
-    check("REFUSED" in line and "whole-period" in line, "L2C +1 ms with the record: REFUSED")
+    check(
+        "REFUSED" in line and "whole-period" in line,
+        "L2C +1 ms with the record: REFUSED",
+    )
     # In the right millisecond: adopted and moved within the window as before.
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.60, record_s=rec)
     check(
@@ -118,9 +144,14 @@ def test_l2c_whole_period_is_visible():
     )
     # The record disagrees with the joint itself (half a joint window): no verdict from it.
     clk, line = _consume(L2C_RATE, L2C_LEN, 7.509 + 5115.0, record_s=rec + 0.4e-3)
-    check("ADOPTED" in line, "record 0.4 ms off the joint: the period check abstains (ADOPTED as before)")
+    check(
+        "ADOPTED" in line,
+        "record 0.4 ms off the joint: the period check abstains (ADOPTED as before)",
+    )
     # A stale record (older than 600 s) does not judge.
-    clk, line = _consume(L2C_RATE, L2C_LEN, 7.509 + 5115.0, record_s=rec, record_age_s=900.0)
+    clk, line = _consume(
+        L2C_RATE, L2C_LEN, 7.509 + 5115.0, record_s=rec, record_age_s=900.0
+    )
     check("ADOPTED" in line, "record 900 s old: not consulted (ADOPTED as before)")
 
 
@@ -130,12 +161,16 @@ def test_without_record_and_short_codes_unchanged():
         "ADOPTED" in line and abs(clk - (7.51 + 5115.0)) < 1e-9,
         "L2C +10 ms with NO record: the old behaviour (adopted within the ms)",
     )
-    clk, line = _consume(E6_RATE, E6_LEN, 75.3, record_s=JOINT / REF_RATE, chain="gal_e6")
+    clk, line = _consume(
+        E6_RATE, E6_LEN, 75.3, record_s=JOINT / REF_RATE, chain="gal_e6"
+    )
     check(
         "ADOPTED" in line and abs(clk - 75.1) < 1e-9,
         "E6 (1-ms code) with the record present: unchanged, ADOPTED -> 75.100",
     )
-    clk, line = _consume(REF_RATE, REF_LEN, 150.5, record_s=JOINT / REF_RATE, chain="gal_e5a")
+    clk, line = _consume(
+        REF_RATE, REF_LEN, 150.5, record_s=JOINT / REF_RATE, chain="gal_e5a"
+    )
     check(
         "ADOPTED" in line and abs(clk - 150.2) < 1e-9,
         "10.23-Mcps chain with the record present: unchanged, ADOPTED -> 150.200",
@@ -144,12 +179,28 @@ def test_without_record_and_short_codes_unchanged():
 
 def test_receiver_carries_health():
     rx = Receiver(log=lambda m: None)
-    rx.contribute_dr_clock("gps_l5", "1176.45MHz", 150.74, 0.01, T0, 10230, chip_rate_hz=REF_RATE, healthy=False)
+    rx.contribute_dr_clock(
+        "gps_l5",
+        "1176.45MHz",
+        150.74,
+        0.01,
+        T0,
+        10230,
+        chip_rate_hz=REF_RATE,
+        healthy=False,
+    )
     rec = rx.dr_clock_any_band(exclude="gps_l2c", t_now=T0)
-    check(rec is not None and rec.extra.get("healthy") is False, "an unestablished donor says so in its record")
-    rx.contribute_dr_clock("gps_l5", "1176.45MHz", 150.74, 0.01, T0, 10230, chip_rate_hz=REF_RATE)
+    check(
+        rec is not None and rec.extra.get("healthy") is False,
+        "an unestablished donor says so in its record",
+    )
+    rx.contribute_dr_clock(
+        "gps_l5", "1176.45MHz", 150.74, 0.01, T0, 10230, chip_rate_hz=REF_RATE
+    )
     rec = rx.dr_clock_any_band(exclude="gps_l2c", t_now=T0)
-    check(rec.extra.get("healthy") is None, "a contributor that makes no claim stays None")
+    check(
+        rec.extra.get("healthy") is None, "a contributor that makes no claim stays None"
+    )
 
 
 if __name__ == "__main__":
