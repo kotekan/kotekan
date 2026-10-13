@@ -7,8 +7,8 @@
 Emits <out>_series.npz with EXACTLY the columns gnss_tec_movie.py reads
 (t, sys, prn, arc, tecu, az, el), plus <out>_arcs.json and <out>_tec.png.
 
-WHY THIS IS NOT `gnss_tec.py --chord`. That tool is the airspy prototype and almost none of
-its machinery survives the move:
+WHY THE AIRSPY-ERA METHOD DOES NOT CARRY OVER. Almost none of the prototype's machinery
+survives the move:
   * IT INTERPOLATES band B onto band A's row epochs. On CHORD that is fatal, not approximate:
     `adr_cycles` is one instance's accumulator stamped by record COUNT, so the epoch it
     implies is wrong by ~101 ms rms, and a full-carrier ADR turns that into c*dt = 3e7 m.
@@ -19,8 +19,7 @@ its machinery survives the move:
     in rate here would subtract real ionosphere.
   * ITS ARC RULES bridge coherence_s dropouts. `fadr_arc` is already the certified-continuous
     arc: it ends only where an increment could not be accounted for.
-So the prototype is left alone and this is the CHORD producer. Everything downstream
-(gnss_tec_movie.py, the IONEX leveling) is shared.
+Everything downstream (gnss_tec_movie.py, the IONEX leveling) reads this tool's output.
 
 ⚠️ THE PAIRING KEY IS `fadr_g_hop`, NOT `fadr_hop`. Both are exact, but a chain's records land
 on multiples of ITS OWN record length, so two chains' `fadr_hop` values are generally different

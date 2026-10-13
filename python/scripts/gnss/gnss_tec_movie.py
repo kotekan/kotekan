@@ -2,7 +2,7 @@
 """TEC sky movie: differential slant TEC interpolated over the local sky dome, one frame
 per time bin, satellites marked at their true (az, el), stitched to mp4.
 
-    python3 gnss_tec.py --pair ... --dump-series --out /tmp/tec_run
+    python3 gnss_tec_chord.py --since-h 7 --out /tmp/tec_run
     python3 gnss_tec_movie.py /tmp/tec_run_series.npz --outdir /tmp/tec_movie \
             [--frame-s 120] [--window-s 300] [--highpass-s 1200] [--video out.mp4]
 

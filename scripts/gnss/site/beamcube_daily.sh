@@ -61,8 +61,8 @@ else
     # vetoes them (--health-mask auto finds this file). A failed mask run must not stop the
     # build: exit 1 there means "episodes found", which is the point.
     # An existing mask is kept (BEAMCUBE_REMASK=1 to regenerate): a day whose writers carried a
-    # wrong time base gets its mask built by hand from the retimed archive, and the nightly run
-    # must not replace that with one built from the raw files.
+    # wrong time base gets its mask built by hand from the re-timed archive (fixtures/obs_retimed),
+    # and the nightly run must not replace that with one built from the raw files.
     OBS=${GNSS_OBS_OUT:-/home/kvand/gnss/fixtures/obs}
     shopt -s nullglob; OBSFILES=("$OBS"/*_"$DAY".jsonl); shopt -u nullglob
     if [ -s "$OBS/health/mask_$DAY.json" ] && [ -z "${BEAMCUBE_REMASK:-}" ]; then

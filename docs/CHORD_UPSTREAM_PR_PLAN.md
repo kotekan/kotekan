@@ -335,7 +335,7 @@ selftest + `broker_multi --list` base vs branch (`test_skyscope` is a race: base
   and nh-assist (C1/C2); bench-only kernel variants and the GPU gate tools phibits/phishare(gpu)
   (stage 7, need GPU A/B); assembler chan/phi and dcyc dumps (C7); `navbit_reuse` (C1);
   `l5_band_decode`, `mid_band_decode`, `gps_l2c_subband_validate`, `gps_hoprate_validate` (cited as
-  references by the generators and a boost test: stage 5/6); `gnss_tec` (feeds gnss_tec_movie);
+  references by the generators and a boost test: stage 5/6);
   `kcoh_phase_series`/`kcoh_rate_probe` (C7); beam-map pipeline (6 files) and broker benches
   (medium/low); `bfmask_deadlock_upstream_note` (C11).
 * New decisions: **C9** remove path A? **C10** beam-map pipeline? **C11** file the bfmask note as
