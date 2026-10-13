@@ -381,7 +381,7 @@ def test_rate_consumer_unit():
     hps = 195312.5
     rates = []
     for rate in (REF_RATE, E6_RATE, L2C_RATE):
-        cph = cp_rate_from_code_bias(0.0, -0.0002 / REF_RATE, hps, rate, 1.0)
+        cph = cp_rate_from_code_bias(-0.0002 / REF_RATE, hps, rate)
         rates.append(cph * hps / rate)  # own chips/hop -> seconds per second
     check(
         max(rates) - min(rates) < 1e-24,

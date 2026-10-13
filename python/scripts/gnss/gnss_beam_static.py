@@ -673,7 +673,7 @@ def cmd_map(args):
         if freqs is not d["freqs"]:
             N, S, nside, info = gather(d["masters"], freqs, d["offsets"])
         else:
-            N, S, nside, info = d["N"], d["S"], d["nside"], d["info"]
+            N, S, nside = d["N"], d["S"], d["nside"]
         val, cnt = collapse(
             N, S, d["gains"], elems, args.smooth, nside, args.elem_weight, args.min_occ
         )

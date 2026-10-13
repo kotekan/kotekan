@@ -46,20 +46,12 @@ FRAME_SYMS = 1000  # 1 s at 1000 sps
 FRAME_BITS = 486  # info bits after LDPC
 CRC_AT = FRAME_BITS - 24  # 462: CRC-24 occupies bits [462:486]
 
-# BDS-3 constants (BDS-SIS-ICD)
-BDS_MU = 3.986004418e14
-BDS_OMEGA_E = 7.292115e-5
-BDS_PI = 3.1415926535898
-A_REF_MEO = 27906100.0
-A_REF_IGSO = 42162200.0
+# BDS-3 constants (BDS-SIS-ICD), shared with B-CNAV1/2
+from beidou_bcnav2 import BDS_PI, A_REF_MEO, A_REF_IGSO
 
 # ------------------------------------------------------------------ GF(64) NB-LDPC (shared)
 import nb_ldpc as _NB
-from nb_ldpc import GF_VEC, GF_POW, Q_GF, N_GF  # noqa: F401  (re-export for tests)
-
-_init_gf = _NB.init_gf
-_bin2gf = _NB.bin2gf
-_gf2bin = _NB.gf2bin
+from nb_ldpc import GF_VEC, GF_POW, Q_GF, N_GF  # noqa: F401  (self-test)
 
 # B-CNAV3 LDPC H-matrix ([BDS-ICD-B2b 6.2.2] via PocketSDR sdr_ldpc.H_BCNV3_idx/ele): 81 checks
 # x 162 vars, weight 4, GF(64).
@@ -284,7 +276,6 @@ def find_frames(symbols, prn):
 # B-CNAV1 SF2 offsets MINUS 9 (its t_oe 39 -> 30, ... C_UC 443 -> 434). VERIFIED against BRDC:
 # dpos 0.015-0.079 m across PRN 23/25/32/37/41 (SatType 3 MEO). Scales are the shared BDS-3 CNAV
 # set (identical to B-CNAV1/2). name -> (start bit in the 486-bit frame, length, signed, scale).
-_EPH10_SHIFT = -9
 BCNV3_EPH_FIELDS = {
     "t_oe": (30, 11, False, 300.0),
     "SatType": (41, 2, False, 1.0),
@@ -331,61 +322,22 @@ def sv_position_bcnav3(eph, t):
 
 
 # ------------------------------------------------------------------ self-test
-def _gf_mul(a, b):
-    if a == 0 or b == 0:
-        return 0
-    return GF_VEC[(GF_POW[a] + GF_POW[b]) % (Q_GF - 1)]
-
-
-def _nullspace_codeword(rng):
-    """A RANDOM valid GF(64) codeword (H c = 0) via Gaussian elimination -- rigorous decoder test."""
-    H = [[0] * N_VAR for _ in range(N_CHECK)]
-    for i in range(N_CHECK):
-        for k in range(len(H_BCNV3_IDX[i])):
-            H[i][H_BCNV3_IDX[i][k]] = H_BCNV3_ELE[i][k]
-    where = [-1] * N_VAR
-    pivots = []
-    row = 0
-    for col in range(N_VAR):
-        if row >= N_CHECK:
-            break
-        piv = next((r for r in range(row, N_CHECK) if H[r][col] != 0), None)
-        if piv is None:
-            continue
-        H[row], H[piv] = H[piv], H[row]
-        inv = GF_VEC[(Q_GF - 1 - GF_POW[H[row][col]]) % (Q_GF - 1)]
-        H[row] = [_gf_mul(inv, x) for x in H[row]]
-        for r in range(N_CHECK):
-            if r != row and H[r][col] != 0:
-                f = H[r][col]
-                H[r] = [H[r][c] ^ _gf_mul(f, H[row][c]) for c in range(N_VAR)]
-        where[col] = row
-        pivots.append(col)
-        row += 1
-    free = [c for c in range(N_VAR) if where[c] == -1]
-    c = [0] * N_VAR
-    for fcol in free:
-        c[fcol] = int(rng.integers(0, Q_GF))
-    for col in pivots:
-        r = where[col]
-        acc = 0
-        for fc in range(N_VAR):
-            if fc != col and H[r][fc] != 0:
-                acc ^= _gf_mul(H[r][fc], c[fc])
-        c[col] = acc
-    return c
-
-
 if __name__ == "__main__":
     import sys
 
-    _init_gf()
+    _NB.init_gf()
     rng = np.random.default_rng(3)
     fails = 0
 
+    def _random_codeword():
+        """A RANDOM valid codeword (H c = 0) as bits -- rigorous decoder test: random info
+        symbols, systematic parity."""
+        info = [int(rng.integers(0, Q_GF)) for _ in range(N_CHECK)]
+        return _NB.encode_systematic(H_BCNV3_IDX, H_BCNV3_ELE, N_CHECK, N_VAR, info)
+
     # 1. GF(64) field sanity
     okgf = all(
-        _gf_mul(a, GF_VEC[(Q_GF - 1 - GF_POW[a]) % (Q_GF - 1)]) == 1
+        _NB.gf_mul(a, GF_VEC[(Q_GF - 1 - GF_POW[a]) % (Q_GF - 1)]) == 1
         for a in range(1, Q_GF)
     )
     print("1. GF(64) field inverse: %s" % ("OK" if okgf else "FAIL"))
@@ -394,8 +346,7 @@ if __name__ == "__main__":
     # 2. a constructed codeword decodes clean (zero syndrome on iteration 0)
     p2 = 0
     for _ in range(5):
-        cw = _nullspace_codeword(rng)
-        syms = _gf2bin(np.array(cw, dtype=np.uint8))
+        syms = _random_codeword()
         _bits, nerr = decode_nb_ldpc(syms)
         if nerr != 0:
             p2 += 1
@@ -410,8 +361,7 @@ if __name__ == "__main__":
     for nbit in (2, 5, 10):
         okc = 0
         for _ in range(4):
-            cw = _nullspace_codeword(rng)
-            syms = _gf2bin(np.array(cw, dtype=np.uint8)).copy()
+            syms = _random_codeword().copy()
             info_true = syms[: N_CHECK * N_GF].copy()
             flip = rng.choice(N_LDPC_SYM, size=nbit, replace=False)
             syms[flip] ^= 1

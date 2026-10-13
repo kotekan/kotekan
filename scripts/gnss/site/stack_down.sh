@@ -1,16 +1,14 @@
 #!/bin/bash
-# Stop the cf06 GNSS stack, in dependency order, archiving its logs first.
+# Stop the cf06 beam-cube leg (static viewer :8877, compactor loop, archiver), in dependency
+# order, archiving its logs first.
 #
-# ⚠️ 2026-09-17: most of what this stops is NO LONGER ON cf06. The broker, gather, aggregator,
-# obs writers and live viewer moved to the gnss VM (docs/CHORD_GNSS_RUNBOOK.md); stop those with
-#     ssh gnss systemctl --user stop gnss-stack.target
-# Running this on cf06 is harmless -- it finds nothing for those five and stops the cube leg
-# that IS still there (archiver, compactor, static viewer :8877) -- but it is no longer "the
-# stack", and its log archiving only covers cf06's own /tmp.
+# ⚠️ THE LIVE STACK IS NOT THIS SCRIPT'S BUSINESS. The broker, gather, aggregator, obs writers
+# and live viewer run under systemd on the gnss VM; stop them there (docs/CHORD_GNSS_RUNBOOK.md).
+# This only covers what is still on cf06, and its log archiving only covers cf06's own /tmp.
 #
-# WHY THIS EXISTS: there were six `*_up.sh` scripts and NO way down, so every teardown was
-# hand-assembled from `ps` output at the moment it was needed -- which is how a component gets
-# missed. Two were missed the first time this was written by hand: the static viewer
+# WHY THIS EXISTS: the cube leg has three `*_up.sh` scripts and NO way down, so every teardown
+# was hand-assembled from `ps` output at the moment it was needed -- which is how a component
+# gets missed. Two were missed the first time this was written by hand: the static viewer
 # (`python3 -m http.server 8877`, which matches none of the obvious patterns) and the
 # cube-compactor loop. They are both in the table below now.
 #
@@ -19,9 +17,8 @@
 # the next restart -- which is why this archives BEFORE it stops, and why that is not optional
 # for the live logs.
 #
-# ORDER IS CONSUMERS BEFORE PRODUCERS. Stopping the gather first leaves the broker and the
-# aggregator logging connection failures into the logs we are trying to archive, and the obs
-# writers writing rows against a broker that is going away. Down is the reverse of up.
+# ORDER IS CONSUMERS BEFORE PRODUCERS: the viewer serves what the compactor publishes, and the
+# compactor folds what the archiver writes. Down is the reverse of up.
 #
 # usage:  stack_down.sh              # archive live logs, then stop everything
 #         stack_down.sh --no-archive # stop only
@@ -40,13 +37,8 @@ done
 
 # name | pattern (bracket trick: must not match this script's own command line)
 COMPONENTS="
-obs-writers|[g]nss_observables.py
-viewer-livebeam|[l]ivebeam_server.py
 viewer-static|[h]ttp.server 8877
 cube-compactor|[c]ubecompact_loop.sh
-broker|[b]roker_multi.py
-aggregator|[k]otekan .*chord_gnss_agg
-gather|[k]otekan .*chord_gnss_gather
 cube-archiver|[k]otekan .*chord_gnss_cubearch
 "
 
@@ -107,5 +99,5 @@ while IFS='|' read -r name pat; do
 done <<< "$COMPONENTS"
 
 echo
-echo "remaining stack processes: $(pgrep -fc '[g]nss_observables|[l]ivebeam_server|[b]roker_multi|[c]ubecompact_loop|[k]otekan .*chord_gnss' 2>/dev/null || echo 0)"
+echo "remaining cube-leg processes: $(pgrep -fc '[h]ttp.server 8877|[c]ubecompact_loop|[k]otekan .*chord_gnss_cubearch' 2>/dev/null || echo 0)"
 exit $rc

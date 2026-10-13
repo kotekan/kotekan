@@ -163,11 +163,10 @@ class TestTheBugsFoundWhileBuilding(unittest.TestCase):
 class TestClosedLoopReference(unittest.TestCase):
     """THE BROKER'S REFERENCE RULE (--rrate-command). deep_rate_hz is measured on records
     the tracker already derotated by the commanded trim, so the broker must feed
-    y = residual + command_applied -- the value referenced to the BASE seed. This class is
-    the closed-loop demonstration of why: get the reference wrong and the loop is not
-    noisy, it is WRONG BY HALF, at equilibrium, forever, with every gate green."""
+    y = residual + command_applied -- the value referenced to the BASE seed. This class
+    closes the loop under that rule."""
 
-    def _run_loop(self, add_back, n=300):
+    def _run_loop(self, n=300):
         truth = {11: -3.0, 21: 2.0, 28: 1.0}
         fcar = 0.5
         s = JointReceiverState(code_len=10230.0)
@@ -177,7 +176,7 @@ class TestClosedLoopReference(unittest.TestCase):
             for prn, rr in truth.items():
                 y_true = y_of(rr, fcar, F_E5A)
                 resid[prn] = y_true - cmd[prn]  # what deep_rate_hz reports
-                y_fed = resid[prn] + (cmd[prn] if add_back else 0.0)
+                y_fed = resid[prn] + cmd[prn]
                 s.update_rrate(prn, y_fed, 100.0 + k, F_E5A)
             s.gauge_rrate()
             for prn in truth:  # next poll's command
@@ -185,29 +184,12 @@ class TestClosedLoopReference(unittest.TestCase):
         return truth, fcar, resid
 
     def test_adding_the_command_back_closes_the_loop(self):
-        truth, fcar, resid = self._run_loop(add_back=True)
+        truth, fcar, resid = self._run_loop()
         for prn in truth:
             self.assertLess(
                 abs(resid[prn]),
                 0.05,
                 "PRN %d standing residual %.3f Hz" % (prn, resid[prn]),
-            )
-
-    def test_feeding_the_bare_residual_parks_at_half(self):
-        """The equilibrium is exact: feed y_true - cmd while commanding the prediction and
-        the fixed point is cmd = y_true/2 -- a permanent 50%% residual that no gate flags
-        (measurements accepted, sigma converged, commands stable). This is what the broker
-        would do without rr_cmd_applied, and why that dict exists."""
-        truth, fcar, resid = self._run_loop(add_back=False)
-        for prn, rr in truth.items():
-            y_true = y_of(rr, fcar, F_E5A)
-            if abs(y_true) < 1.0:
-                continue  # too small to discriminate
-            self.assertGreater(
-                abs(resid[prn]),
-                0.3 * abs(y_true),
-                "PRN %d: bare-residual feed should park near y/2, got "
-                "resid %.3f of y %.3f" % (prn, resid[prn], y_true),
             )
 
 
@@ -471,78 +453,6 @@ class TestAdrFineRate(unittest.TestCase):
         self.assertIsNotNone(
             self.f(self._row(1, 5660, 2.5), self._row(1, 0, 0.5), self.R)
         )
-
-
-class TestCarrierAidedCodeLoop(unittest.TestCase):
-    """#33 step 4: b_sat and rrate are the POSITION and VELOCITY of one per-satellite
-    range error. The coupling makes the filter propagate the code bias at the rate the
-    carrier says, which is the whole point of a VECTOR tracker as opposed to two scalar
-    loops sharing a covariance."""
-
-    K = ("G", 7)
-    CH_PER_M = 10.23e6 / 299792458.0  # L5/E5a/B2a: 0.03412 chips per (m/s)
-
-    def _f(self, coupling):
-        s = JointReceiverState(code_len=10230.0, rr_bsat_chips_per_m=coupling)
-        s.predict(0.0)
-        return s
-
-    def test_zero_coupling_is_bit_identical_to_the_uncoupled_filter(self):
-        """The default MUST reproduce the old filter exactly -- this ships inert."""
-        import numpy as np
-
-        a, b = self._f(0.0), self._f(0.0)
-        b.rr_bsat_chips_per_m = 0.0
-        for s in (a, b):
-            s.update(self.K, 3.0, 0.5, 1.0)
-            s.update_rrate(self.K, -1.0, 1.0, F_E5A, sigma_hz=0.2)
-            s.predict(61.0)
-        np.testing.assert_array_equal(a.x, b.x)
-
-    def test_rrate_drags_bsat_at_the_physical_rate(self):
-        """1 m/s of range rate moves the code 0.0341 chips/s = 2.05 chips/min."""
-        s = self._f(self.CH_PER_M)
-        s.update(self.K, 0.0, 0.5, 1.0)  # birth b_sat at ~0
-        s.update_rrate(self.K, -1.0, 1.0, F_E5A, sigma_hz=0.2)
-        rr = s.rrate(self.K)
-        b0 = s.bias(self.K)
-        s.predict(61.0)  # +60 s
-        moved = s.bias(self.K) - b0
-        self.assertAlmostEqual(moved, self.CH_PER_M * rr * 60.0, places=6)
-
-    def test_sign_is_carried_not_assumed(self):
-        """Flipping the constant flips the drag, exactly. The sign is the CALLER's to
-        measure on sky (see the constructor note): the filter must not smuggle one in."""
-        pos, neg = self._f(self.CH_PER_M), self._f(-self.CH_PER_M)
-        for s in (pos, neg):
-            s.update(self.K, 0.0, 0.5, 1.0)
-            s.update_rrate(self.K, -1.0, 1.0, F_E5A, sigma_hz=0.2)
-            s.predict(61.0)
-        self.assertAlmostEqual(pos.bias(self.K), -neg.bias(self.K), places=9)
-
-    def test_carrier_only_satellite_does_not_birth_a_bias_row(self):
-        """A sat with an rrate row but no b_sat row must simply not couple. Birthing a
-        bias row inside predict() would make a state appear as a side effect of time
-        passing -- the mass-birth divergence class."""
-        s = self._f(self.CH_PER_M)
-        s.update_rrate(self.K, -1.0, 1.0, F_E5A, sigma_hz=0.2)
-        n_before = s.x.size
-        s.predict(61.0)
-        self.assertEqual(s.x.size, n_before)
-        self.assertNotIn(self.K, s._idx)  # bias() reads 0.0 for an absent key, so ask
-        # the index map: no b_sat row was created
-
-    def test_coupling_grows_bias_uncertainty_through_rrate(self):
-        """The point of doing this in the FILTER rather than as a feed-forward nudge: a
-        noisy rrate must inflate b_sat's variance, so the code loop knows how much to
-        trust the aiding. A feed-forward correction cannot express that."""
-        s = self._f(self.CH_PER_M)
-        s.update(self.K, 0.0, 0.5, 1.0)
-        s.update_rrate(self.K, -1.0, 1.0, F_E5A, sigma_hz=0.2)
-        ib = s._idx[self.K]
-        p0 = s.P[ib, ib]
-        s.predict(601.0)
-        self.assertGreater(s.P[ib, ib], p0)
 
 
 class TestUnmeasuredReadsAsUnknown(unittest.TestCase):

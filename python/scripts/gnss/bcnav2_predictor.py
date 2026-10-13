@@ -30,17 +30,14 @@ class _PrnState:
     def __init__(self):
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.last_obs = None
-        self.pol = None
         self.frames = {}  # mestype -> (frame_bits[288], sow, t_decoded)
         self.n_frames = 0  # frames decoded (preamble+LDPC found)
         self.n_crc = 0  # frames with valid CRC
-        self.last_decode = 0.0
 
 
 class Bcnav2Predictor:
-    def __init__(self, log=None):
+    def __init__(self):
         self._p = {}
-        self._log = log or (lambda m: None)
         self._min_gap = 1.0
         self._last_decode = 0.0
 
@@ -115,10 +112,9 @@ class Bcnav2Predictor:
             if len(signs) < FRAME:
                 continue
             # find_frames does preamble sync (both polarities) + NB-LDPC + CRC internally
-            for _i, pol, bits, fprn, mt, sow in B.find_frames(signs.astype(float)):
+            for _i, _pol, bits, _fprn, mt, sow in B.find_frames(signs.astype(float)):
                 st.n_frames += 1
                 st.n_crc += 1
-                st.pol = pol
                 st.frames[mt] = (bits, sow, time.time())
 
     # ----------------------------------------------------------------- serve
@@ -134,18 +130,11 @@ class Bcnav2Predictor:
         eph = B.parse_bcnav2_ephemeris({mt: fresh[mt][0] for mt in fresh})
         return eph
 
-    def messages(self, prn):
-        st = self._p.get(prn)
-        if st is None:
-            return []
-        return [{"mestype": mt, "sow": v[1]} for mt, v in sorted(st.frames.items())]
-
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
             return None
         return {
-            "pol": st.pol,
             "pages": st.n_frames,
             "words": st.n_crc,
             "have": sorted(st.frames),
@@ -160,14 +149,8 @@ def _selftest():
 
     # build valid LDPC codewords whose info bits are a chosen 288-bit frame (types 10, 11)
     # with a CONSISTENT ephemeris + valid CRC, then feed as symbol emits and recover it.
-    B._init_gf()
-    frames = {}
-    truth_fields = {}
-    for mt in (10, 11):
-        f = [0] * B.FRAME_BITS
-        f[6:12] = [(mt >> (5 - k)) & 1 for k in range(6)]
+    B._NB.init_gf()
     # plant a known ephemeris across types 10/11
-    tf = {}
     frames = {10: [0] * B.FRAME_BITS, 11: [0] * B.FRAME_BITS}
     for mt in (10, 11):
         frames[mt][6:12] = [(mt >> (5 - k)) & 1 for k in range(6)]
@@ -182,51 +165,13 @@ def _selftest():
         ]
     truth = B.parse_bcnav2_ephemeris(frames)
 
-    # encode each 288-bit frame into a valid 576-bit LDPC codeword: pick a null-space word,
-    # then flip parity? No -- instead exploit that decode is systematic and we just need a
-    # symbol stream whose LDPC-decode yields these info bits. Build a codeword whose FIRST 288
-    # bits equal the frame by solving parity (info-systematic): the decoder returns first 288.
+    # encode each 288-bit frame into a valid 576-bit LDPC codeword whose FIRST 288 bits are the
+    # frame (info-systematic): the decoder returns the first 288.
     def encode_frame(frame288):
-        # solve H c = 0 with the first 48 GF symbols fixed to the frame's symbols
-        info = B._bin2gf(np.array(frame288, dtype=np.uint8))  # 48 GF symbols
-        # dense H, reduce parity columns (48..95) to solve for them given info (0..47)
-        H = [[0] * B.N_VAR for _ in range(B.N_CHECK)]
-        for i in range(B.N_CHECK):
-            for k in range(len(B.H_BCNV2_IDX[i])):
-                H[i][B.H_BCNV2_IDX[i][k]] = B.H_BCNV2_ELE[i][k]
-        # move info contribution to RHS: for each check, rhs = sum ele*info over cols<48
-        rhs = [0] * B.N_CHECK
-        for i in range(B.N_CHECK):
-            for col in range(48):
-                if H[i][col]:
-                    rhs[i] ^= B._gf_mul(H[i][col], int(info[col]))
-        # solve the 48x48 system over parity cols 48..95 : Hp * p = rhs
-        Hp = [[H[i][48 + j] for j in range(48)] for i in range(B.N_CHECK)]
-        # gaussian elim over GF(64)
-        p = [0] * 48
-        rows = list(range(B.N_CHECK))
-        piv_col = [-1] * B.N_CHECK
-        r = 0
-        for col in range(48):
-            pr = next((rr for rr in range(r, B.N_CHECK) if Hp[rr][col] != 0), None)
-            if pr is None:
-                continue
-            Hp[r], Hp[pr] = Hp[pr], Hp[r]
-            rhs[r], rhs[pr] = rhs[pr], rhs[r]
-            inv = B.GF_VEC[(B.Q_GF - 1 - B.GF_POW[Hp[r][col]]) % (B.Q_GF - 1)]
-            Hp[r] = [B._gf_mul(inv, x) for x in Hp[r]]
-            rhs[r] = B._gf_mul(inv, rhs[r])
-            for rr in range(B.N_CHECK):
-                if rr != r and Hp[rr][col]:
-                    f = Hp[rr][col]
-                    Hp[rr] = [Hp[rr][cc] ^ B._gf_mul(f, Hp[r][cc]) for cc in range(48)]
-                    rhs[rr] ^= B._gf_mul(f, rhs[r])
-            piv_col[r] = col
-            r += 1
-        for rr in range(r):
-            p[piv_col[rr]] = rhs[rr]
-        code = list(int(x) for x in info) + p  # 96 GF symbols
-        return B._gf2bin(np.array(code, dtype=np.uint8))
+        info = B._NB.bin2gf(np.array(frame288, dtype=np.uint8))  # 48 GF symbols
+        return B._NB.encode_systematic(
+            B.H_BCNV2_IDX, B.H_BCNV2_ELE, B.N_CHECK, B.N_VAR, info
+        )
 
     sym = []
     for _ in range(3):
@@ -236,7 +181,7 @@ def _selftest():
             sym.append(np.where(frame_syms == 0, 1.0, -1.0))
     pm = np.concatenate(sym)
 
-    pred = Bcnav2Predictor(log=print)
+    pred = Bcnav2Predictor()
     pred._min_gap = 0.0
     ELEN = FRAME
     e = 0

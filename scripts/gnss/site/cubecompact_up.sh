@@ -12,24 +12,15 @@
 # the process. A cron entry would be the one piece that is not visible that way. P6 turns all of
 # these into boot units together.
 #
-# ⚠️ THE EPOCH (--utc0) IS ONLY FOR v2 FRAMES. Frames recorded after the v3 cube cycle carry
-# their own utc0 and the flag is ignored for them. For the 2026-09-05 v2 archive the value is
-# time0 = 1788541059.000002870 (frame0_nano 1169225859000002870, GPS-week-rollover corrected),
-# and the compactor GATES it against each raw file's mtime (|last window - mtime| < 60 s;
-# measured +1.2..+2.6 s), so a wrong epoch REFUSES the file rather than dating it wrong. If the
-# F-engine restarts before the v3 cycle, the v2 files after the restart need a new CUBE_UTC0 --
-# the refusals in the log are how you find out.
-#
 # ⚠️ RUNS ON cf06 ONLY. The raw tree is on /mnt/cs00 and the nodes are production trackers.
 #
 # usage:  ssh cf06 '/home/kvand/gnss/kotekan/scripts/gnss/site/cubecompact_up.sh'
-#         CUBE_UTC0=<s> CUBE_ROOT=/mnt/cs00/data/kvand/gnss_cube_test ... (a test run)
+#         CUBE_ROOT=/mnt/cs00/data/kvand/gnss_cube_test ... (a test run)
 set -u
 K=/home/kvand/gnss/kotekan
 PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}     # needs h5py: venv, NOT venv-ft
 ROOT=${CUBE_ROOT:-/mnt/cs00/data/kvand/gnss_cube}
 RAW=${CUBE_RAW:-$ROOT/raw}
-UTC0=${CUBE_UTC0:-1788541059.000002870}
 PERIOD=${CUBE_COMPACT_PERIOD:-300}
 LOG=${CUBE_COMPACT_LOG:-/tmp/gnss_cubecompact.log}
 TOOL=$K/python/scripts/gnss/gnss_cube_compact.py
@@ -72,7 +63,7 @@ done
 mkdir -p "$ROOT/l0" "$(dirname "$LOG")"
 [ -f "$LOG" ] && mv "$LOG" "$LOG.$(date -u +%Y%m%d_%H%M%S)"
 
-nohup setsid "$K/scripts/gnss/site/cubecompact_loop.sh" "$PY" "$TOOL" "$RAW" "$ROOT" "$UTC0" "$PERIOD" \
+nohup setsid "$K/scripts/gnss/site/cubecompact_loop.sh" "$PY" "$TOOL" "$RAW" "$ROOT" "$PERIOD" \
     >> "$LOG" 2>&1 &
 sleep 3
 if pgrep -f "[c]ubecompact_loop.sh" >/dev/null; then

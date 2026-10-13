@@ -3,28 +3,25 @@
 # covering channels 13: freq_id 5975..6071
 # rest port 12048 (our nodes replace production's kotekan on these six)
 # outputs disabled: []
-# base sha256 bc837ca1721c7da5 (config/chord/*.j2)
+# base sha256 39549bfdfae57431 (config/chord/*.j2)
 # REGENERATE WITH (this is the whole recipe -- flags included):
 #   config/gen_chord_gnss_config.py --base config/chord/pathfinder.j2 --node cx51
 #       --rfi-excision-exempt-freq-ids 5971-6076,6128-6338,6442-6573 --elem-proj-mode live
-#       --elem-proj-deg 6 --keep-n2 --n2-project live --n2-project-live-freq-ids exempt
-#       --n2-project-stations 0-6,8-15,56-79,120-127 --phi-fp16 --despread-max-chips 80
-#       --despread-chips-centered --n2-send --n2-send-legs both --rf-stats --rf-stats-period-s
-#       1.0 --sky-deep --elem-steer-bands all --elem-steer-sign 1.0 --elem-positions-from
-#       arraymap --elem-positions-file config/elem_positions_refined_20260927.json
-#       --elem-sum-shared --elem-freeze-deg 2 --elem-shared-ref
-#       config/elem_shared_ref_20261010.json --elem-shared-ref-mode live --search-host
-#       10.222.0.56 --telem-host 10.222.0.56 --send-pacing-factor 2.0 --beam-cube --cube-host
-#       10.222.3.6 --n2-dual-merged --extra-signal
+#       --elem-proj-deg 6 --n2-project live --n2-project-live-freq-ids exempt
+#       --n2-project-stations 0-6,8-15,56-79,120-127 --n2-send --n2-send-legs both
+#       --rf-stats-period-s 1.0 --elem-steer-sign 1.0 --elem-positions-file
+#       config/elem_positions_refined_20260927.json --elem-sum-shared --elem-freeze-deg 2
+#       --elem-shared-ref config/elem_shared_ref_20261010.json --elem-shared-ref-mode live
+#       --search-host 10.222.0.56 --telem-host 10.222.0.56 --cube-host 10.222.3.6 --extra-signal
 #       GAL_E5A_Q_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
 #       --extra-signal
-#       BDS_B2A_P_CS:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+#       BDS_B2A_P_CS:6,7,8,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 #       --extra-signal
 #       GAL_E5B_Q_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
 #       --extra-signal
-#       BDS_B2B_I:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+#       BDS_B2B_I:6,7,8,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 #       --extra-signal
-#       BDS_B3I_NH:19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
+#       BDS_B3I_NH:6,7,8,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42
 #       --extra-signal
 #       GAL_E6_C_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
 #       --extra-signal
@@ -311,18 +308,6 @@ dpdk:
 dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
 earth_rotation_data:
   earth_orientation_parameter_table:
-  - delta_UT1_inst: -0.0267832
-    t_inst_ns: 1791331200000000000
-    xp_as: 0.16754
-    yp_as: 0.322799
-  - delta_UT1_inst: -0.0280189
-    t_inst_ns: 1791417600000000000
-    xp_as: 0.166491
-    yp_as: 0.322598
-  - delta_UT1_inst: -0.02934
-    t_inst_ns: 1791504000000000000
-    xp_as: 0.165393
-    yp_as: 0.322394
   - delta_UT1_inst: -0.0306474
     t_inst_ns: 1791590400000000000
     xp_as: 0.164266
@@ -335,6 +320,18 @@ earth_rotation_data:
     t_inst_ns: 1791763200000000000
     xp_as: 0.164612
     yp_as: 0.322695
+  - delta_UT1_inst: -0.0354604
+    t_inst_ns: 1791849600000000000
+    xp_as: 0.163558
+    yp_as: 0.322666
+  - delta_UT1_inst: -0.0362493
+    t_inst_ns: 1791936000000000000
+    xp_as: 0.162435
+    yp_as: 0.322529
+  - delta_UT1_inst: -0.0368418
+    t_inst_ns: 1792022400000000000
+    xp_as: 0.161365
+    yp_as: 0.322348
   kotekan_update_endpoint: json
 eigencalc_0:
   cpu_affinity:
@@ -398,13 +395,46 @@ gnss0_b2a_cube_send:
   use_config_tracker: false
 gnss0_b2a_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 0
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id006
   - 5975
   - 5991
@@ -595,6 +625,13 @@ gnss0_b2a_n2assemble:
   n_elements: 32
   out_buf: gnss0_b2a_n2rec_buf
   prns: &id007
+  - 6
+  - 7
+  - 8
+  - 11
+  - 12
+  - 13
+  - 14
   - 19
   - 20
   - 21
@@ -627,18 +664,17 @@ gnss0_b2a_n2assemble_tiles:
   cpu_affinity:
   - 36
   ctl_buf: gnss0_b2a_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 7
   n_live_elements: 32
-  n_prn: 24
+  n_prn: 31
   num_elements: 128
   num_synth: 128
   out_buf: gnss0_b2a_n2epl_buf
   tiles_buf: gnss0_b2a_n2tiles_buf
 gnss0_b2a_n2cmb_buf:
-  frame_size: 24 * 414 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -655,23 +691,22 @@ gnss0_b2a_n2combine:
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss0_b2a_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss0_b2a_n2ctl_buf:
-  frame_size: 116912
+  frame_size: 150960
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_n2epl_buf:
-  frame_size: 5621936
+  frame_size: 7261616
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_n2rec_buf:
-  frame_size: 24 * 414 * sizeof_float32 + 24 * 7 * 9 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32 + 31 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -685,7 +720,7 @@ gnss0_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2a_telem_buf:
-  frame_size: 20944
+  frame_size: 36592
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -707,10 +742,10 @@ gnss0_b2a_telem_pack:
   in_buf: gnss0_b2a_n2rec_buf
   inst: cx51.0
   kotekan_stage: GnssTelemPack
-  max_prn: 14
+  max_prn: 24
   n_chan: 7
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss0_b2a_telem_buf
   records_per_frame: 4
 gnss0_b2a_telem_send:
@@ -719,7 +754,7 @@ gnss0_b2a_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.99
+  max_pacing_rate_mbps: 13.959
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -744,13 +779,46 @@ gnss0_b2b_cube_send:
   use_config_tracker: false
 gnss0_b2b_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 0
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id010
   - 6135
   - 6151
@@ -941,6 +1009,13 @@ gnss0_b2b_n2assemble:
   n_elements: 32
   out_buf: gnss0_b2b_n2rec_buf
   prns: &id011
+  - 6
+  - 7
+  - 8
+  - 11
+  - 12
+  - 13
+  - 14
   - 19
   - 20
   - 21
@@ -973,18 +1048,17 @@ gnss0_b2b_n2assemble_tiles:
   cpu_affinity:
   - 32
   ctl_buf: gnss0_b2b_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 7
   n_live_elements: 32
-  n_prn: 24
+  n_prn: 31
   num_elements: 128
   num_synth: 128
   out_buf: gnss0_b2b_n2epl_buf
   tiles_buf: gnss0_b2b_n2tiles_buf
 gnss0_b2b_n2cmb_buf:
-  frame_size: 24 * 414 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1001,23 +1075,22 @@ gnss0_b2b_n2combine:
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss0_b2b_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss0_b2b_n2ctl_buf:
-  frame_size: 116912
+  frame_size: 150960
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_n2epl_buf:
-  frame_size: 5621936
+  frame_size: 7261616
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_n2rec_buf:
-  frame_size: 24 * 414 * sizeof_float32 + 24 * 7 * 9 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32 + 31 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1031,7 +1104,7 @@ gnss0_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b2b_telem_buf:
-  frame_size: 20944
+  frame_size: 36592
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1053,10 +1126,10 @@ gnss0_b2b_telem_pack:
   in_buf: gnss0_b2b_n2rec_buf
   inst: cx51.0
   kotekan_stage: GnssTelemPack
-  max_prn: 14
+  max_prn: 24
   n_chan: 7
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss0_b2b_telem_buf
   records_per_frame: 4
 gnss0_b2b_telem_send:
@@ -1065,7 +1138,7 @@ gnss0_b2b_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.99
+  max_pacing_rate_mbps: 13.959
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -1090,13 +1163,46 @@ gnss0_b3i_cube_send:
   use_config_tracker: false
 gnss0_b3i_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 0
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id012
   - 6455
   - 6471
@@ -1286,6 +1392,13 @@ gnss0_b3i_n2assemble:
   n_elements: 32
   out_buf: gnss0_b3i_n2rec_buf
   prns: &id013
+  - 6
+  - 7
+  - 8
+  - 11
+  - 12
+  - 13
+  - 14
   - 19
   - 20
   - 21
@@ -1318,18 +1431,17 @@ gnss0_b3i_n2assemble_tiles:
   cpu_affinity:
   - 35
   ctl_buf: gnss0_b3i_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 6
   n_live_elements: 32
-  n_prn: 24
+  n_prn: 31
   num_elements: 128
   num_synth: 128
   out_buf: gnss0_b3i_n2epl_buf
   tiles_buf: gnss0_b3i_n2tiles_buf
 gnss0_b3i_n2cmb_buf:
-  frame_size: 24 * 414 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1346,23 +1458,22 @@ gnss0_b3i_n2combine:
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss0_b3i_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss0_b3i_n2ctl_buf:
-  frame_size: 104624
+  frame_size: 135088
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b3i_n2epl_buf:
-  frame_size: 4823216
+  frame_size: 6229936
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b3i_n2rec_buf:
-  frame_size: 24 * 414 * sizeof_float32 + 24 * 6 * 9 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32 + 31 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1376,7 +1487,7 @@ gnss0_b3i_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_b3i_telem_buf:
-  frame_size: 18928
+  frame_size: 33136
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1397,10 +1508,10 @@ gnss0_b3i_telem_pack:
   in_buf: gnss0_b3i_n2rec_buf
   inst: cx51.0
   kotekan_stage: GnssTelemPack
-  max_prn: 14
+  max_prn: 24
   n_chan: 6
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss0_b3i_telem_buf
   records_per_frame: 4
 gnss0_b3i_telem_send:
@@ -1409,7 +1520,7 @@ gnss0_b3i_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.22
+  max_pacing_rate_mbps: 12.64
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -1451,13 +1562,46 @@ gnss0_e5a_cube_send:
   use_config_tracker: false
 gnss0_e5a_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 0
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id003
   - 5975
   - 5991
@@ -1688,7 +1832,6 @@ gnss0_e5a_n2assemble_tiles:
   cpu_affinity:
   - 33
   ctl_buf: gnss0_e5a_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 7
@@ -1699,7 +1842,7 @@ gnss0_e5a_n2assemble_tiles:
   out_buf: gnss0_e5a_n2epl_buf
   tiles_buf: gnss0_e5a_n2tiles_buf
 gnss0_e5a_n2cmb_buf:
-  frame_size: 32 * 414 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1718,7 +1861,6 @@ gnss0_e5a_n2combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss0_e5a_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss0_e5a_n2ctl_buf:
@@ -1732,7 +1874,7 @@ gnss0_e5a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_n2rec_buf:
-  frame_size: 32 * 414 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -1746,7 +1888,7 @@ gnss0_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5a_telem_buf:
-  frame_size: 29872
+  frame_size: 30512
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -1780,7 +1922,7 @@ gnss0_e5a_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 11.395
+  max_pacing_rate_mbps: 11.639
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -1805,13 +1947,46 @@ gnss0_e5b_cube_send:
   use_config_tracker: false
 gnss0_e5b_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 0
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id008
   - 6135
   - 6151
@@ -2042,7 +2217,6 @@ gnss0_e5b_n2assemble_tiles:
   cpu_affinity:
   - 42
   ctl_buf: gnss0_e5b_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 7
@@ -2053,7 +2227,7 @@ gnss0_e5b_n2assemble_tiles:
   out_buf: gnss0_e5b_n2epl_buf
   tiles_buf: gnss0_e5b_n2tiles_buf
 gnss0_e5b_n2cmb_buf:
-  frame_size: 32 * 414 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2072,7 +2246,6 @@ gnss0_e5b_n2combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss0_e5b_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss0_e5b_n2ctl_buf:
@@ -2086,7 +2259,7 @@ gnss0_e5b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5b_n2rec_buf:
-  frame_size: 32 * 414 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2100,7 +2273,7 @@ gnss0_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e5b_telem_buf:
-  frame_size: 29872
+  frame_size: 30512
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2134,7 +2307,7 @@ gnss0_e5b_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 11.395
+  max_pacing_rate_mbps: 11.639
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -2159,13 +2332,46 @@ gnss0_e6_cube_send:
   use_config_tracker: false
 gnss0_e6_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 0
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id014
   - 6535
   - 6551
@@ -2392,7 +2598,6 @@ gnss0_e6_n2assemble_tiles:
   cpu_affinity:
   - 41
   ctl_buf: gnss0_e6_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 3
@@ -2403,7 +2608,7 @@ gnss0_e6_n2assemble_tiles:
   out_buf: gnss0_e6_n2epl_buf
   tiles_buf: gnss0_e6_n2tiles_buf
 gnss0_e6_n2cmb_buf:
-  frame_size: 32 * 414 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2422,7 +2627,6 @@ gnss0_e6_n2combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss0_e6_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss0_e6_n2ctl_buf:
@@ -2436,7 +2640,7 @@ gnss0_e6_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e6_n2rec_buf:
-  frame_size: 32 * 414 * sizeof_float32 + 32 * 3 * 9 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32 + 32 * 3 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2450,7 +2654,7 @@ gnss0_e6_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_e6_telem_buf:
-  frame_size: 18352
+  frame_size: 18992
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -2480,7 +2684,7 @@ gnss0_e6_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.001
+  max_pacing_rate_mbps: 7.245
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -2488,13 +2692,46 @@ gnss0_e6_telem_send:
   use_config_tracker: false
 gnss0_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 0
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id001
   - 5975
   - 5991
@@ -2725,7 +2962,6 @@ gnss0_n2assemble_tiles:
   cpu_affinity:
   - 43
   ctl_buf: gnss0_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 7
@@ -2736,7 +2972,7 @@ gnss0_n2assemble_tiles:
   out_buf: gnss0_n2epl_buf
   tiles_buf: gnss0_n2tiles_buf
 gnss0_n2cmb_buf:
-  frame_size: 32 * 414 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -2755,7 +2991,6 @@ gnss0_n2combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss0_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss0_n2ctl_buf:
@@ -3202,7 +3437,7 @@ gnss0_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_n2rec_buf:
-  frame_size: 32 * 414 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32 + 32 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -3277,7 +3512,7 @@ gnss0_srch_tap:
   n_elements: 1
   out_buf: gnss0_srch_buf
 gnss0_telem_buf:
-  frame_size: 20944
+  frame_size: 21392
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -3311,7 +3546,7 @@ gnss0_telem_send:
   - 40
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.99
+  max_pacing_rate_mbps: 8.16
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -3336,13 +3571,46 @@ gnss1_b2a_cube_send:
   use_config_tracker: false
 gnss1_b2a_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 1
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id019
   - 5983
   - 5999
@@ -3540,18 +3808,17 @@ gnss1_b2a_n2assemble_tiles:
   cpu_affinity:
   - 60
   ctl_buf: gnss1_b2a_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 6
   n_live_elements: 32
-  n_prn: 24
+  n_prn: 31
   num_elements: 128
   num_synth: 128
   out_buf: gnss1_b2a_n2epl_buf
   tiles_buf: gnss1_b2a_n2tiles_buf
 gnss1_b2a_n2cmb_buf:
-  frame_size: 24 * 414 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -3568,23 +3835,22 @@ gnss1_b2a_n2combine:
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss1_b2a_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss1_b2a_n2ctl_buf:
-  frame_size: 104624
+  frame_size: 135088
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_n2epl_buf:
-  frame_size: 4823216
+  frame_size: 6229936
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_n2rec_buf:
-  frame_size: 24 * 414 * sizeof_float32 + 24 * 6 * 9 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32 + 31 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -3598,7 +3864,7 @@ gnss1_b2a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2a_telem_buf:
-  frame_size: 18928
+  frame_size: 33136
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -3619,10 +3885,10 @@ gnss1_b2a_telem_pack:
   in_buf: gnss1_b2a_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 14
+  max_prn: 24
   n_chan: 6
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss1_b2a_telem_buf
   records_per_frame: 4
 gnss1_b2a_telem_send:
@@ -3631,7 +3897,7 @@ gnss1_b2a_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.22
+  max_pacing_rate_mbps: 12.64
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -3656,13 +3922,46 @@ gnss1_b2b_cube_send:
   use_config_tracker: false
 gnss1_b2b_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 1
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id021
   - 6143
   - 6159
@@ -3860,18 +4159,17 @@ gnss1_b2b_n2assemble_tiles:
   cpu_affinity:
   - 31
   ctl_buf: gnss1_b2b_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 6
   n_live_elements: 32
-  n_prn: 24
+  n_prn: 31
   num_elements: 128
   num_synth: 128
   out_buf: gnss1_b2b_n2epl_buf
   tiles_buf: gnss1_b2b_n2tiles_buf
 gnss1_b2b_n2cmb_buf:
-  frame_size: 24 * 414 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -3888,23 +4186,22 @@ gnss1_b2b_n2combine:
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss1_b2b_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss1_b2b_n2ctl_buf:
-  frame_size: 104624
+  frame_size: 135088
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_n2epl_buf:
-  frame_size: 4823216
+  frame_size: 6229936
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_n2rec_buf:
-  frame_size: 24 * 414 * sizeof_float32 + 24 * 6 * 9 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32 + 31 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -3918,7 +4215,7 @@ gnss1_b2b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b2b_telem_buf:
-  frame_size: 18928
+  frame_size: 33136
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -3939,10 +4236,10 @@ gnss1_b2b_telem_pack:
   in_buf: gnss1_b2b_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 14
+  max_prn: 24
   n_chan: 6
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss1_b2b_telem_buf
   records_per_frame: 4
 gnss1_b2b_telem_send:
@@ -3951,7 +4248,7 @@ gnss1_b2b_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.22
+  max_pacing_rate_mbps: 12.64
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -3976,13 +4273,46 @@ gnss1_b3i_cube_send:
   use_config_tracker: false
 gnss1_b3i_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 1
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id022
   - 6447
   - 6463
@@ -4181,18 +4511,17 @@ gnss1_b3i_n2assemble_tiles:
   cpu_affinity:
   - 59
   ctl_buf: gnss1_b3i_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 7
   n_live_elements: 32
-  n_prn: 24
+  n_prn: 31
   num_elements: 128
   num_synth: 128
   out_buf: gnss1_b3i_n2epl_buf
   tiles_buf: gnss1_b3i_n2tiles_buf
 gnss1_b3i_n2cmb_buf:
-  frame_size: 24 * 414 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -4209,23 +4538,22 @@ gnss1_b3i_n2combine:
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss1_b3i_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss1_b3i_n2ctl_buf:
-  frame_size: 116912
+  frame_size: 150960
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b3i_n2epl_buf:
-  frame_size: 5621936
+  frame_size: 7261616
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b3i_n2rec_buf:
-  frame_size: 24 * 414 * sizeof_float32 + 24 * 7 * 9 * sizeof_float32
+  frame_size: 31 * 416 * sizeof_float32 + 31 * 7 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -4239,7 +4567,7 @@ gnss1_b3i_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_b3i_telem_buf:
-  frame_size: 20944
+  frame_size: 36592
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -4261,10 +4589,10 @@ gnss1_b3i_telem_pack:
   in_buf: gnss1_b3i_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 14
+  max_prn: 24
   n_chan: 7
   n_elements: 32
-  n_prn: 24
+  n_prn: 31
   out_buf: gnss1_b3i_telem_buf
   records_per_frame: 4
 gnss1_b3i_telem_send:
@@ -4273,7 +4601,7 @@ gnss1_b3i_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.99
+  max_pacing_rate_mbps: 13.959
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -4315,13 +4643,46 @@ gnss1_e5a_cube_send:
   use_config_tracker: false
 gnss1_e5a_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 1
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id017
   - 5983
   - 5999
@@ -4519,7 +4880,6 @@ gnss1_e5a_n2assemble_tiles:
   cpu_affinity:
   - 57
   ctl_buf: gnss1_e5a_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 6
@@ -4530,7 +4890,7 @@ gnss1_e5a_n2assemble_tiles:
   out_buf: gnss1_e5a_n2epl_buf
   tiles_buf: gnss1_e5a_n2tiles_buf
 gnss1_e5a_n2cmb_buf:
-  frame_size: 32 * 414 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -4549,7 +4909,6 @@ gnss1_e5a_n2combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss1_e5a_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss1_e5a_n2ctl_buf:
@@ -4563,7 +4922,7 @@ gnss1_e5a_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_n2rec_buf:
-  frame_size: 32 * 414 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -4577,7 +4936,7 @@ gnss1_e5a_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5a_telem_buf:
-  frame_size: 26992
+  frame_size: 27632
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -4610,7 +4969,7 @@ gnss1_e5a_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 10.297
+  max_pacing_rate_mbps: 10.541
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -4635,13 +4994,46 @@ gnss1_e5b_cube_send:
   use_config_tracker: false
 gnss1_e5b_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 1
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id020
   - 6143
   - 6159
@@ -4839,7 +5231,6 @@ gnss1_e5b_n2assemble_tiles:
   cpu_affinity:
   - 63
   ctl_buf: gnss1_e5b_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 6
@@ -4850,7 +5241,7 @@ gnss1_e5b_n2assemble_tiles:
   out_buf: gnss1_e5b_n2epl_buf
   tiles_buf: gnss1_e5b_n2tiles_buf
 gnss1_e5b_n2cmb_buf:
-  frame_size: 32 * 414 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -4869,7 +5260,6 @@ gnss1_e5b_n2combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss1_e5b_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss1_e5b_n2ctl_buf:
@@ -4883,7 +5273,7 @@ gnss1_e5b_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5b_n2rec_buf:
-  frame_size: 32 * 414 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -4897,7 +5287,7 @@ gnss1_e5b_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e5b_telem_buf:
-  frame_size: 26992
+  frame_size: 27632
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -4930,7 +5320,7 @@ gnss1_e5b_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 10.297
+  max_pacing_rate_mbps: 10.541
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -4955,13 +5345,46 @@ gnss1_e6_cube_send:
   use_config_tracker: false
 gnss1_e6_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 1
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id023
   - 6527
   - 6543
@@ -5156,7 +5579,6 @@ gnss1_e6_n2assemble_tiles:
   cpu_affinity:
   - 62
   ctl_buf: gnss1_e6_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 3
@@ -5167,7 +5589,7 @@ gnss1_e6_n2assemble_tiles:
   out_buf: gnss1_e6_n2epl_buf
   tiles_buf: gnss1_e6_n2tiles_buf
 gnss1_e6_n2cmb_buf:
-  frame_size: 32 * 414 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -5186,7 +5608,6 @@ gnss1_e6_n2combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss1_e6_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss1_e6_n2ctl_buf:
@@ -5200,7 +5621,7 @@ gnss1_e6_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e6_n2rec_buf:
-  frame_size: 32 * 414 * sizeof_float32 + 32 * 3 * 9 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32 + 32 * 3 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -5214,7 +5635,7 @@ gnss1_e6_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_e6_telem_buf:
-  frame_size: 18352
+  frame_size: 18992
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -5244,7 +5665,7 @@ gnss1_e6_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.001
+  max_pacing_rate_mbps: 7.245
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -5269,13 +5690,46 @@ gnss1_l2c_cube_send:
   use_config_tracker: false
 gnss1_l2c_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 1
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id024
   - 6287
   cpu_affinity:
@@ -5496,7 +5950,6 @@ gnss1_l2c_n2assemble_tiles:
   cpu_affinity:
   - 24
   ctl_buf: gnss1_l2c_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 1
@@ -5507,7 +5960,7 @@ gnss1_l2c_n2assemble_tiles:
   out_buf: gnss1_l2c_n2epl_buf
   tiles_buf: gnss1_l2c_n2tiles_buf
 gnss1_l2c_n2cmb_buf:
-  frame_size: 28 * 414 * sizeof_float32
+  frame_size: 28 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -5526,7 +5979,6 @@ gnss1_l2c_n2combine:
   n_elements: 32
   n_prn: 28
   out_buf: gnss1_l2c_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss1_l2c_n2ctl_buf:
@@ -5540,7 +5992,7 @@ gnss1_l2c_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_l2c_n2rec_buf:
-  frame_size: 28 * 414 * sizeof_float32 + 28 * 1 * 9 * sizeof_float32
+  frame_size: 28 * 416 * sizeof_float32 + 28 * 1 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -5554,7 +6006,7 @@ gnss1_l2c_n2tiles_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_l2c_telem_buf:
-  frame_size: 8848
+  frame_size: 11920
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -5570,7 +6022,7 @@ gnss1_l2c_telem_pack:
   in_buf: gnss1_l2c_n2rec_buf
   inst: cx51.1
   kotekan_stage: GnssTelemPack
-  max_prn: 14
+  max_prn: 18
   n_chan: 1
   n_elements: 32
   n_prn: 28
@@ -5582,7 +6034,7 @@ gnss1_l2c_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 3.375
+  max_pacing_rate_mbps: 4.547
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -5590,13 +6042,46 @@ gnss1_l2c_telem_send:
   use_config_tracker: false
 gnss1_n2assemble:
   beam_cube: true
-  beam_cube_bin_width: 0
   beam_cube_gpu: 1
   beam_cube_max_bins: 8
   beam_cube_max_prn: 32
   beam_cube_ring_depth: 8
   beam_cube_window_samples: 3221225472
   chan_export: true
+  chan_noise_norm: true
+  chan_noise_norm_elems:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
   channel_ids: &id016
   - 5983
   - 5999
@@ -5794,7 +6279,6 @@ gnss1_n2assemble_tiles:
   cpu_affinity:
   - 19
   ctl_buf: gnss1_n2ctl_buf
-  gnss_gather_aa: false
   hops_per_record: 2048
   kotekan_stage: GnssN2RecordAssemble
   n_gnss_channels: 6
@@ -5805,7 +6289,7 @@ gnss1_n2assemble_tiles:
   out_buf: gnss1_n2epl_buf
   tiles_buf: gnss1_n2tiles_buf
 gnss1_n2cmb_buf:
-  frame_size: 32 * 414 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -5824,7 +6308,6 @@ gnss1_n2combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss1_n2cmb_buf
-  phase_track: false
   record_export: 128
   sky_deep: true
 gnss1_n2ctl_buf:
@@ -6306,7 +6789,7 @@ gnss1_n2epl_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_n2rec_buf:
-  frame_size: 32 * 414 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
+  frame_size: 32 * 416 * sizeof_float32 + 32 * 6 * 9 * sizeof_float32
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
@@ -6379,7 +6862,7 @@ gnss1_srch_tap:
   n_elements: 1
   out_buf: gnss1_srch_buf
 gnss1_telem_buf:
-  frame_size: 18928
+  frame_size: 19376
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 32
@@ -6412,7 +6895,7 @@ gnss1_telem_send:
   - 61
   drop_frames: true
   kotekan_stage: bufferSend
-  max_pacing_rate_mbps: 7.22
+  max_pacing_rate_mbps: 7.391
   reconnect_time: 30
   send_timeout: 2
   server_ip: 10.222.0.56
@@ -6447,7 +6930,6 @@ gnss_n2_proj_buffer_1:
   value_type: int32
 gnss_n2_project:
   proj_0:
-    archive_period_s: 10.0
     cpu_affinity:
     - 36
     frac_first_min: 0.4
@@ -6960,7 +7442,6 @@ gnss_n2_project:
     - 127
     tau_s: 0.5
   proj_1:
-    archive_period_s: 10.0
     cpu_affinity:
     - 60
     frac_first_min: 0.4
@@ -7921,6 +8402,8 @@ main_pool:
   kotekan_metadata_pool: chordMetadata
   num_metadata_objects: 15 * buffer_depth
 missing_source_ids:
+- 2
+- 3
 - 4
 - 5
 - 6
@@ -9762,7 +10245,7 @@ telescope:
     grid_x_idx: 0
     grid_y_idx: 2
     label: C01
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 17
     feed_pos_disp_m:
@@ -9772,7 +10255,7 @@ telescope:
     grid_x_idx: 1
     grid_y_idx: 2
     label: C02
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 18
     feed_pos_disp_m:
@@ -9782,7 +10265,7 @@ telescope:
     grid_x_idx: 2
     grid_y_idx: 2
     label: C03
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 19
     feed_pos_disp_m:
@@ -9792,7 +10275,7 @@ telescope:
     grid_x_idx: 3
     grid_y_idx: 2
     label: C04
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 20
     feed_pos_disp_m:
@@ -9802,7 +10285,7 @@ telescope:
     grid_x_idx: 0
     grid_y_idx: 3
     label: D01
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 21
     feed_pos_disp_m:
@@ -9812,7 +10295,7 @@ telescope:
     grid_x_idx: 1
     grid_y_idx: 3
     label: D02
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 22
     feed_pos_disp_m:
@@ -9822,7 +10305,7 @@ telescope:
     grid_x_idx: 2
     grid_y_idx: 3
     label: D03
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 23
     feed_pos_disp_m:
@@ -9832,7 +10315,7 @@ telescope:
     grid_x_idx: 3
     grid_y_idx: 3
     label: D04
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 24
     feed_pos_disp_m:
@@ -9842,7 +10325,7 @@ telescope:
     grid_x_idx: 4
     grid_y_idx: 2
     label: C05
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 25
     feed_pos_disp_m:
@@ -9852,7 +10335,7 @@ telescope:
     grid_x_idx: 5
     grid_y_idx: 2
     label: C06
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 26
     feed_pos_disp_m:
@@ -9862,7 +10345,7 @@ telescope:
     grid_x_idx: 6
     grid_y_idx: 2
     label: C07
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 27
     feed_pos_disp_m:
@@ -9872,7 +10355,7 @@ telescope:
     grid_x_idx: 7
     grid_y_idx: 2
     label: C08
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 28
     feed_pos_disp_m:
@@ -9882,7 +10365,7 @@ telescope:
     grid_x_idx: 4
     grid_y_idx: 3
     label: D05
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 29
     feed_pos_disp_m:
@@ -9892,7 +10375,7 @@ telescope:
     grid_x_idx: 5
     grid_y_idx: 3
     label: D06
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 30
     feed_pos_disp_m:
@@ -9902,7 +10385,7 @@ telescope:
     grid_x_idx: 6
     grid_y_idx: 3
     label: D07
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 31
     feed_pos_disp_m:
@@ -9912,7 +10395,7 @@ telescope:
     grid_x_idx: 7
     grid_y_idx: 3
     label: D08
-    type: ArrayDish
+    type: Missing
   - coelev_disp_deg: 0.0
     dish_idx: 32
     feed_pos_disp_m:
@@ -10303,10 +10786,21 @@ type: config
 updatable_config:
   bad_inputs:
     bad_inputs:
+    - 0
+    - 1
     - 2
+    - 3
     - 4
     - 5
+    - 6
+    - 7
+    - 8
     - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
     - 15
     - 16
     - 17
@@ -10348,11 +10842,30 @@ updatable_config:
     - 53
     - 54
     - 55
+    - 56
+    - 57
+    - 58
+    - 59
     - 60
+    - 61
+    - 62
+    - 63
     - 64
+    - 65
+    - 66
     - 67
     - 68
     - 69
+    - 70
+    - 71
+    - 72
+    - 73
+    - 74
+    - 75
+    - 76
+    - 77
+    - 78
+    - 79
     - 80
     - 81
     - 82
@@ -10393,9 +10906,17 @@ updatable_config:
     - 117
     - 118
     - 119
+    - 120
+    - 121
+    - 122
+    - 123
+    - 124
+    - 125
+    - 126
+    - 127
     kotekan_update_endpoint: json
-    start_time: 1791630762.5050695
-    update_id: bffs-1791630757505
+    start_time: 1791827794.4894152
+    update_id: bffs-1791827789489
 vis_blocksize: 16
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 vis_num_blocks_lin: num_elements / vis_blocksize

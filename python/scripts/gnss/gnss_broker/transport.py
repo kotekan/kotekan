@@ -8,7 +8,6 @@ import gzip
 import hashlib
 import http.client
 import json
-import os
 import re
 import socket
 import sys
@@ -16,11 +15,7 @@ import threading
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import datetime
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from gnss_stages import resolve_stage  # noqa: E402
 
 
 # ---------------------------------------------------------------------------------------
@@ -64,16 +59,10 @@ _dns_lock = threading.Lock()
 _dns_real = None
 
 
-def install_dns_cache(ttl_s=None):
-    """Wrap socket.getaddrinfo with a TTL cache. Idempotent; safe to call per chain thread.
-
-    Set GNSS_NO_DNS_CACHE=1 to leave the stdlib alone (to reproduce the stalls, or if a name
-    ever needs to be re-resolved faster than the TTL).
-    """
-    global _dns_real, _DNS_TTL_S
-    if ttl_s is not None:
-        _DNS_TTL_S = float(ttl_s)
-    if _dns_real is not None or os.environ.get("GNSS_NO_DNS_CACHE"):
+def install_dns_cache():
+    """Wrap socket.getaddrinfo with a TTL cache. Idempotent; safe to call per chain thread."""
+    global _dns_real
+    if _dns_real is not None:
         return
     _dns_real = socket.getaddrinfo
 
@@ -121,7 +110,7 @@ def install_dns_cache(ttl_s=None):
 # status >= 400 raises urllib.error.HTTPError exactly as urlopen did, so callers' except
 # clauses see the same types. ONE free retry on a REUSED connection when the failure is
 # the connection itself (the server closed an idle keep-alive, which is not a fault) --
-# never on a timeout, never on a fresh connection. GNSS_NO_KEEPALIVE=1 restores urlopen.
+# never on a timeout, never on a fresh connection.
 _tl = threading.local()
 _fd_raised = False
 
@@ -189,12 +178,6 @@ _RETRY_ON = (
 def http_request(method, url, timeout, data=None, headers=None):
     """(status, body bytes) over a pooled keep-alive connection; HTTPError on status >= 400."""
     u = urllib.parse.urlsplit(url)
-    if os.environ.get("GNSS_NO_KEEPALIVE"):
-        req = urllib.request.Request(
-            url, data=data, method=method, headers=headers or {}
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as h:
-            return h.status, h.read()
     path = u.path or "/"
     if u.query:
         path += "?" + u.query
@@ -682,18 +665,12 @@ def expand_token(tok):
 def resolve_prefix(entry, default_base):
     """Endpoint prefix (everything before /<verb>) for a list entry.
 
-    Absolute http(s) entries are used as-is; bare names hang off --rest-url. Bare names
-    are ALIAS-RESOLVED against the live pipeline (gnss_stages): the tri-constellation
-    configs name the GPS chain gps_search/gps_track/gps_combiner, matching gal_*/bds_*,
-    while the older single-constellation benches still use search/track/combiner -- either
-    spelling works against either config.
+    Absolute http(s) entries are used as-is; bare names hang off --rest-url.
     """
     entry = entry.strip()
     if entry.startswith("http://") or entry.startswith("https://"):
         return entry.rstrip("/")
-    return (
-        default_base.rstrip("/") + "/" + resolve_stage(default_base, entry.strip("/"))
-    )
+    return default_base.rstrip("/") + "/" + entry.strip("/")
 
 
 def parse_endpoints(csv, default_base):

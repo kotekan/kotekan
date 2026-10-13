@@ -33,18 +33,12 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # Hand the ephemeris library this chain's tagged logger, once. `_log` reads a thread-local
     # tag, so one global install still labels every chain's line correctly -- and the chain that
     # pays for a fetch is the one that reports what it got.
-    #
-    # ⚠️ SET IT ON gnss_brdc_supply, NOT ON THE gnss_ephemeris FACADE. The facade forwards
-    # READS through a module __getattr__ but cannot forward WRITES (PEP 562 defines no module
-    # __setattr__), so `ge.LOG_HOOK = _log` would bind an attribute nothing ever reads and
-    # every merge line would go to stderr instead of this chain's log -- silently, which is
-    # the failure mode the split was designed not to introduce.
+    # LOG_HOOK lives on gnss_brdc_supply; gnss_ephemeris re-exports only fetch_brdc.
     import gnss_brdc_supply as _supply
 
     if getattr(_supply, "LOG_HOOK", "unset") is None:
         _supply.LOG_HOOK = _log
     now = _now()
-    state["_lat"], state["_lon"], state["_alt"] = lat, lon, alt_m
     # ⚠️⚠️ ASK AS OFTEN AS THE PRODUCT UPDATES, NOT AS OFTEN AS THE DAILY DOES. This gate was
     # 7200 s, inherited from the DAILY file's own 2 h re-fetch rule -- but the sky is served by
     # the STATION-HOURLY merge, which updates every hour, and a broadcast record is only valid
@@ -63,7 +57,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # THIS IS CHEAP. fetch_brdc holds its own caches -- 2 h for the daily, 30 min for the
     # station-hourly merge -- so a call inside those windows is a dict lookup and a parse, not
     # a fetch. The gate here only decides how soon we NOTICE that something newer exists.
-    if state["eph"] is None or now - state["eph_t"] > state.get("eph_refresh_s", 900.0):
+    if state["eph"] is None or now - state["eph_t"] > 900.0:
         # Current-day BRDC files GROW; fetch_brdc re-fetches a cache older than 2 h. Pass
         # t_utc so a replay gets the DAY-MATCHED file -- today's file
         # cannot predict another epoch (best_eph 4 h window).
@@ -75,66 +69,6 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
                 ge.fetch_brdc(t_utc, block=_old_eph is None)
             )
             state["eph_t"] = now
-            # ── EPH-REBASE (#101, --eph-rebase): a refresh STEPS the per-sat model, and
-            # on a model-primary chain the slewing seed drags the code loop through the
-            # step while the leak-limited trim spends ~15-30 min rebuilding (measured
-            # 08-29, the GAP 3 shadow's merge-epoch decay). The delta is KNOWN -- both
-            # models are in hand right here -- so compute it per sat and let the cycle
-            # hand it to the #92 trim handover (a ledger transfer, not a correction).
-            # Stored in SECONDS of model delay: chip-rate-agnostic; the consumer
-            # converts. Sats present in only one model get no step (birth/death paths
-            # own those). Never let this computation take the refresh down.
-            if _old_eph is not None and state.get("eph_rebase"):
-                try:
-                    _pa_o = ge.predict_all(
-                        _old_eph,
-                        state["_lat"],
-                        state["_lon"],
-                        state["_alt"],
-                        t_utc,
-                        mask_deg=-90.0,
-                    )
-                    _pa_n = ge.predict_all(
-                        state["eph"],
-                        state["_lat"],
-                        state["_lon"],
-                        state["_alt"],
-                        t_utc,
-                        mask_deg=-90.0,
-                    )
-                    _steps = {}
-                    for _k, _vn in _pa_n.items():
-                        _vo = _pa_o.get(_k)
-                        if _vo is None:
-                            continue
-                        _ds = (_vn["range_m"] - _vo["range_m"]) / C_LIGHT - (
-                            _vn["sat_clk_s"] - _vo["sat_clk_s"]
-                        )
-                        if abs(_ds) > 1e-12:
-                            _steps[_k] = _ds
-                    # Census at EVERY re-parse, zero included -- 08-29's lesson twice
-                    # over: silence must be self-describing (a re-parse between merges
-                    # sees identical records and steps nothing; only merge-adjacent
-                    # re-parses carry deltas).
-                    _log(
-                        "eph-rebase census: re-parse stepped %d sat model(s)%s"
-                        % (
-                            len(_steps),
-                            (
-                                ", largest %.4f us"
-                                % (max((abs(v) for v in _steps.values())) * 1e6)
-                            )
-                            if _steps
-                            else "",
-                        )
-                    )
-                    if _steps:
-                        state["eph_step"] = (_steps, now)
-                except Exception as _e2:
-                    _log(
-                        "eph-rebase: step computation failed (%s) -- refresh stands, "
-                        "no handover this time" % _e2
-                    )
             _n = len(state["eph"])
             # Say so only when the SET changed. At a 15 min cadence an unconditional line is
             # 96 lines a day of "still 101 sats", which is how a real thinning gets missed.
@@ -325,30 +259,6 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
-def _cnav2_brdc_xcheck(brdc_alm, sys, prn, cnav2_eph, log):
-    """GPS L1C-D CNAV-2 ephemeris cross-check -- the _cnav_brdc_xcheck analogue (CNAV-2 SF2 is the
-    same CNAV Keplerian set, so sv_position reuses gps_cnav). Ready for the live field map; until
-    CNV2_EPH_FIELDS is filled the ephemeris is None so this is never reached."""
-    try:
-        import gps_cnav2 as _C2
-
-        ge = brdc_alm["mod"]
-        recs = brdc_alm["eph"].get((sys, prn))
-        if not recs:
-            return " | BRDC:no-eph"
-        be = ge.best_eph(recs, ge.gpst_of_utc(_now()))
-        if be is None:
-            return " | BRDC:stale"
-        toe = cnav2_eph["toe"]
-        t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
-        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
-        cx, cy, cz = _C2.sv_position_cnav2(cnav2_eph, toe)
-        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
-        return " | BRDC dpos=%.2f m (brdc toe %+.0f s)" % (dpos, be["toe_sow"] - toe)
-    except Exception as ex:
-        return " | BRDC xcheck err: %s" % ex
-
-
 def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
     """S5 ephemeris cross-check, the _cnav_brdc_xcheck analogue for Galileo I/NAV: ECEF
     position residual between the live-decoded I/NAV ephemeris and BRDC, both propagated to
@@ -532,21 +442,6 @@ def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
-def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
-    """PRNs above the elevation mask now (and look_ahead_s ahead). Needs skyfield."""
-    try:
-        from gps_beamtrack import load_gps_sats, sat_elevation  # type: ignore
-    except Exception as e:  # pragma: no cover - optional dependency
-        _log("visibility gating unavailable (%s); not gating" % e)
-        return None
-    sats = load_gps_sats()
-    up = set()
-    for prn, sat in sats.items():
-        if sat_elevation(sat, lat, lon, alt_m, look_ahead_s) >= mask_deg:
-            up.add(prn)
-    return up
-
-
 # ---- BORESIGHT GEOMETRY (the quantiser-railing veto) ---------------------------------------
 # CHORD's dishes sit 8.59 deg SOUTH of zenith (dec +40.73): boresight is az 180.0, el 81.41.
 # ⚠️ `telescope.dish_coelev_deg` in the generated configs reads -27.3 and does NOT give this.
@@ -607,7 +502,14 @@ def transit_sky(ge, eph, lat, lon, alt_m, t_utc):
     those keep predict_all's defaults, and nothing here carries a clock. Objects in no BRDC at all
     (NORAD 40748, GLONASS) are still invisible; a TLE supplement is the follow-up."""
     pa = ge.predict_all(
-        eph, lat, lon, alt_m, t_utc, mask_deg=-90.0, max_age=TRANSIT_MAX_AGE_S, health_gate=False
+        eph,
+        lat,
+        lon,
+        alt_m,
+        t_utc,
+        mask_deg=-90.0,
+        max_age=TRANSIT_MAX_AGE_S,
+        health_gate=False,
     )
     t = ge.gpst_of_utc(t_utc)
     out = {}

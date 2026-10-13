@@ -17,7 +17,7 @@ cannot enter. This module turns those raw parts into the served table:
     sig_e   = |u_e| / n_floor_e    significance against the PER-ELEMENT noise anchor:
                                    n_floor_e = median over the NOISE PROBES' |u_e| at the
                                    same (instance, element). Same probe discipline as
-                                   cn0_prompt ([[chord-cn0-prompt-estimator]]): the probes
+                                   cn0_prompt: the probes
                                    ride the identical pipeline, so every normalisation
                                    cancels in the ratio. NO peer fallback -- without probe
                                    rows the sig column is simply absent, never guessed.

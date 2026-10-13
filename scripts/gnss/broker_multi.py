@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One broker process, many signals (task #27 M5).
 
-    broker_multi.py config/gnss_chains_chord.yaml [--only gps_l5] [extra broker args...]
+    broker_multi.py config/gnss_chains_chord.yaml [--list] [extra broker args...]
 
 WHAT THIS REPLACES. Today CHORD runs `broker_up.sh` for GPS L5 and `broker_up_extra.sh e5a`
 for Galileo E5a, side by side. Those two chains are on the SAME CARRIER -- both pass
@@ -108,16 +108,6 @@ def run_chain(name, argv, rx, alive, pub=None):
     try:
         broker.main(argv, rx=rx, publisher=pub)
         transport._log("chain finished (main returned)")
-    except transport._TranscriptDone as e:
-        # A REPLAY ENDING IS NOT A DEATH. Without this the driver reports "*** CHAIN DIED"
-        # on a perfectly successful gate run -- and, worse, prints no digest, so the driver
-        # itself cannot be gated against a recording. That is exactly backwards: the piece
-        # with the new concurrency is the piece most in need of the gate.
-        transport._log(
-            "transcript replay complete (%s); %d posts, digest %s"
-            % (e, len(transport._TR.posts), transport._TR.digest())
-        )
-        print(transport._TR.digest())
     except SystemExit as e:
         # argparse's ap.error() lands here. In a thread it would otherwise be invisible.
         transport._log(
@@ -138,22 +128,11 @@ def main():
     )
     ap.add_argument("config")
     ap.add_argument(
-        "--only",
-        action="append",
-        default=[],
-        help="run just these chains (repeatable) -- for bisecting a fleet "
-        "problem down to one signal without editing the config",
-    )
-    ap.add_argument(
         "--list", action="store_true", help="print the resolved flags and exit"
     )
     a, extra = ap.parse_known_args()
 
     chains = load(a.config)
-    if a.only:
-        chains = [c for c in chains if c[0] in a.only]
-        if not chains:
-            sys.exit("--only %s matched no chain in %s" % (a.only, a.config))
 
     if a.list:
         for name, argv in chains:
@@ -162,22 +141,16 @@ def main():
 
     rx = receiver.Receiver(log=transport._log)
     transport.set_log_tag("driver")
-    # ONE PUBLISHER FOR THE WHOLE PROCESS (task #27 M6), if any chain asks for a port. The
-    # first --publish-port found wins and the rest are ignored with a note: two ports would
-    # put us straight back to a viewer instance per constellation, which is the thing being
-    # retired. Chains are told apart by /<chain>/get_status or ?chain=<id>.
-    port, owner = None, None
+    # ONE PUBLISHER FOR THE WHOLE PROCESS (task #27 M6), on the first --publish-port found:
+    # two ports would put us straight back to a viewer instance per constellation. Chains
+    # are told apart by /<chain>/get_status or ?chain=<id>.
+    port = None
     for name, argv in chains:
         if "--publish-port" in argv:
             p = argv[argv.index("--publish-port") + 1]
-            if port is None and p not in ("0", ""):
-                port, owner = int(p), name
-            elif p not in ("0", "") and int(p) != port:
-                transport._log(
-                    "chain %s asks for publish-port %s; ignoring -- one process "
-                    "publishes on ONE port (%d, from %s). Select with "
-                    "?chain=%s or /%s/get_status." % (name, p, port, owner, name, name)
-                )
+            if p not in ("0", ""):
+                port = int(p)
+                break
     # Before any chain starts polling: name resolution was this process's cycle time.
     transport.install_dns_cache()
     pub = publish.FleetPublisher(port, transport._log) if port else None
@@ -211,7 +184,6 @@ def main():
     # Every 60 s, not every cycle: the report is ~10 lines and the thing it measures moves on
     # the scale of minutes. A per-cycle dump would be six times the volume of the thing being
     # diagnosed. Reset-on-read, so each block covers exactly the interval since the last.
-    every = float(os.environ.get("GNSS_HTTP_REPORT_S", "60"))
     # For the slack column. Chains can in principle differ; they do not today, and a wrong
     # denominator would be worse than none, so take it only when every chain agrees.
     ivs = set()
@@ -232,7 +204,7 @@ def main():
                 transport._log("chains alive: %s" % (", ".join(sorted(now)) or "NONE"))
                 transport._log(rx.summary())
                 last = now
-            if every > 0 and time.time() - t_http >= every:
+            if time.time() - t_http >= 60.0:
                 t_http = time.time()
                 transport.set_log_tag("driver")
                 for ln in transport.cycle_report(interval_s=interval):

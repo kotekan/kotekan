@@ -54,7 +54,7 @@ class TimeBaseTests(unittest.TestCase):
             "after `persist` consecutive cycles, not before",
         )
         v = timebase.VERDICT
-        self.assertTrue(v.suspect and v.explained)
+        self.assertTrue(v.suspect and v.dt_s is not None)
         self.assertAlmostEqual(
             v.dt_s / 84350.0, 1.0, delta=0.02, msg="dt recovered to 2%%: %s" % v.dt_s
         )
@@ -80,7 +80,6 @@ class TimeBaseTests(unittest.TestCase):
             if m:
                 msgs.append(m)
         self.assertTrue(timebase.VERDICT.suspect)
-        self.assertFalse(timebase.VERDICT.explained)
         self.assertIsNone(timebase.VERDICT.dt_s)
         self.assertEqual(len(msgs), 1)
         self.assertIn("does NOT explain", msgs[0])

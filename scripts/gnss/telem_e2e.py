@@ -113,29 +113,25 @@ def _mark(inst, wstart, prn, slot):
     )  # < 2^24, exact in float32
 
 
-def write_record_files(dirpath, inst, start_win, drop=(), comb_epl=None):
-    """`comb_epl=(E, P, L)` overrides the provenance MARKS in the comb with fixed amplitudes.
-
-    ⚠️ THE DEFAULT MARKS ARE NOT A SIGNAL. They encode their own (instance, hop, PRN, channel)
+def write_record_files(dirpath, inst, start_win, drop=()):
+    """⚠️ THE COMB MARKS ARE NOT A SIGNAL. They encode their own (instance, hop, PRN, channel)
     address so a stride error is caught by value, which is what THIS gate needs -- but the
-    resulting E/P/L are arbitrary, so any discriminator built from them is meaningless. A
-    caller that wants a PREDICTABLE q and disc (fast_trim_e2e.py does: it has to know the trim
-    step in advance) must pass comb_epl and give up the provenance check in exchange.
+    resulting E/P/L are arbitrary, so any discriminator built from them is meaningless.
 
-    One rawFileWrite-format file of record frames: [u32 meta_size][meta][frame]...
-    rawFileRead reads the metadata size once at the head of the file and then alternates
-    metadata/frame, so this is the same layout rawFileWrite produces -- which is what makes the
-    replay a genuine stand-in for the assembler's output rather than a special path.
+    One rawFileWrite-format file of record frames: [u32 meta_size][meta][frame] per frame, the
+    layout rawFileWrite produces (rawFileRead checks the size header on every frame) -- which is
+    what makes the replay a genuine stand-in for the assembler's output rather than a special
+    path.
     """
-    meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 n_chan_scale(0)
+    meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 reserved (0)
     path = os.path.join(dirpath, "%s_0000000.raw" % inst.replace(".", "_"))
     with open(path, "wb") as fh:
-        fh.write(struct.pack("<I", meta_size))
         for w in range(start_win, start_win + N_WINDOWS):
             for r in range(REC_PER_FRAME):
                 if (w, r) in drop:
                     continue
                 wstart = (w * REC_PER_FRAME + r) * HOPS_PER_RECORD * FFT_LEN
+                fh.write(struct.pack("<I", meta_size))
                 fh.write(struct.pack("<qI", wstart, 0))
                 body = [0.0] * (N_PRN * REC_STRIDE + N_PRN * N_CHAN * CHAN_FLOATS)
                 for p, prn in enumerate(PRNS):
@@ -160,12 +156,6 @@ def write_record_files(dirpath, inst, start_win, drop=(), comb_epl=None):
                     cb0 = N_PRN * REC_STRIDE + (p * N_CHAN) * CHAN_FLOATS
                     for ch in range(N_CHAN):
                         cb = cb0 + ch * CHAN_FLOATS
-                        if comb_epl is not None:
-                            _e, _p, _l = comb_epl
-                            body[cb + 0], body[cb + 2] = _p, 1.0  # P re, energy
-                            body[cb + 3], body[cb + 5] = _e, 1.0  # E re, energy
-                            body[cb + 6], body[cb + 8] = _l, 1.0  # L re, energy
-                            continue
                         body[cb + 0] = _mark(inst, wstart, prn, 100 + ch)  # P
                         body[cb + 1] = _mark(inst, wstart, prn, 200 + ch)
                         body[cb + 2] = float(ch + 1)
@@ -246,9 +236,8 @@ def write_config(dirpath):
 
 
 def kotekan_binary():
-    """The DPDK build on a node, the DPDK-free one elsewhere -- agg_up.sh's rule, and for the
-    same reason: /home is NFS with two build trees and the wrong one fails in a way that reads
-    as a config problem."""
+    """The DPDK build on a node, the DPDK-free one elsewhere: /home is NFS with two build trees
+    and the wrong one fails in a way that reads as a config problem."""
     host = socket.gethostname().split(".")[0]
     cand = (
         [os.path.join(K, "build", "kotekan", "kotekan")]
@@ -397,7 +386,9 @@ def main():
                         # must be the freq_id the sender was configured with. A comb whose
                         # columns survive but whose labels do not is worse than no comb -- the
                         # delay fit downstream would be confidently wrong.
-                        cmb = f.comb(r, prn)
+                        cmb = [
+                            (fid, P, en[1]) for fid, _E, P, _L, en in f.comb_epl(r, prn)
+                        ]
                         if len(cmb) != N_CHAN:
                             fails.append(
                                 "%s w%d r%d PRN %d: %d comb columns, expected %d"

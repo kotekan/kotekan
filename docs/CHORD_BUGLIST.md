@@ -106,7 +106,7 @@ on KV's word. The memory note `chord-handoff-20261012-fengine-off` has the rollb
 - **Fix candidates (not built):** hold the joint clock (refuse adoption) while the transit sky (#144) has a satellite
   within the transit bound that transmits in the joint's feeder band, as #142 holds the dead-reckon clock; or refuse a
   delta that moves more than ~0.3 chips from the previous adopted one unless it persists for two solves.
-- **Check:** `grep 'JOINT-CLK' broker.log | grep ADOPTED` and the |delta| census in [[chord-telem-v8-rollout-20261012]].
+- **Check:** `grep 'JOINT-CLK' broker.log | grep ADOPTED` and the |delta| census taken at the 10-12 telemetry v8 rollout.
 
 ### #175 — after a transit's null crossing every E6 tracker is re-seeded ~0.45 chips off its peak and rails there for an hour (2026-10-11)
 **What [live 22:34–23:35Z]:** E06 passed 0.24° from boresight at 22:27Z (E6 prompt 3.5 million × the floor). As it
@@ -181,24 +181,14 @@ The health and age gates are fixed (`aef331c10`, closed): the freezes and the ra
 What is left: NORAD 40748 "BEIDOU-3S M2S" (Celestrak C58; 0.66° on 09-27, +10 dB) and GLONASS (L3OC at 1202 MHz,
 no propagator, #129) are in no BRDC at all. A TLE supplement needs a path that is not Celestrak-from-cf06 and keeps
 capability on the IGS SINEX. Evidence `fixtures/projtest/unk/`.
-### #151 residual — the seeds and the sky still keep two ephemerides (EPH-REBASE is now off everywhere)
-The reload cadence is fixed (`b2223cc7a`, closed). 10-11: `eph-rebase` is off on every chain (#125), so the "no step is
-computed" half below is parked with #101; what remains is the two-copies design note. The entry's own "check #101 first":
+### #151 residual — the seeds and the sky still keep two ephemerides
+The reload cadence is fixed (`b2223cc7a`, closed). EPH-REBASE (#101), off on every chain since 10-11 (#125), was
+removed 2026-10-13 with its "no step is computed" half (the census, the shared-store flag and the popped step are at
+`be7d46e8e`); what remains is the two-copies design note:
 - **Two copies, two phases.** The seeds' copy (`dr_state["eph"]`) reloads on the broker's start phase and
-  the sky's (the shared `receiver.brdc()` store, where EPH-REBASE computes its step) on its own, so a seed
-  model step can land up to 15 min from the step computed for it.
-- **No step is computed at all.** Zero `eph-rebase census` lines in 16.4 h (09-28 20:18Z – 09-29 12:40Z)
-  with `eph-rebase: 1` armed on gal_e5a, although the census prints at every re-parse, zero included, so
-  its silence cannot mean "nothing moved". Both halves of a per-chain decision live on the SHARED store:
-  `almanac.py` writes the calling chain's `eph_rebase` flag onto it just before `brdc_predict`; whichever
-  chain finds the store stale does the re-parse and reads that flag (gal_e6 on all three `ephemeris
-  refreshed` lines of this run, unarmed); and a stored step is `pop`ped by whichever chain's almanac pass
-  comes next, armed or not. The same shape as the 08-27 prediction-collapse bookkeeping (the note in
-  `sky.py`). [tree + live; the interleaving is inferred from the code, not traced]
-- **Fix:** one ephemeris for the seeds and the sky, the step computed once per reload and handed to every
-  armed chain (keyed per consumer, never popped from the shared dict). **Check:** a census line at every
-  reload, and `EPH-REBASE:` posts on gal_e5a after the merge-adjacent ones. The geometry-only transit sky
-  moved to #144.
+  the sky's (the shared `receiver.brdc()` store) on its own, so a seed model step can land up to 15 min from
+  the sky's.
+- **Fix:** one ephemeris for the seeds and the sky. The geometry-only transit sky moved to #144.
 
 ### #152 — the joint clock latches chips off the search clock and nothing notices or re-latches it (2026-09-28)
 **Twice now a transit has left the shared joint clock confidently wrong, adopted fleet-wide.** 09-23
@@ -231,7 +221,8 @@ bds_b2a − bds_b3i moved −90 m. It can run from the obs files in the cf06 hea
 carries only gps_l5's search solve and no runaway Galileo seed can reach the joint clock. The detector stays as the
 backstop; the kick below is PARKED unless d leaves ±1 chip again. Check: run `joint_latch_detect.py` over the next
 week's log — zero alarms closes this.
-**Kick (parked) — none exists today** (`publish.py` POSTs only `/set_carrier_trim` and `/set_nh_prn_offset`). In order
+**Kick (parked) — none exists today** (the broker serves no joint-clock lever; its `/set_carrier_trim` and
+`/set_nh_prn_offset` levers were removed 2026-10-13). In order
 of preference: (1) in-broker RE-ANCHOR on the alarm: move the joint's gauge until its clock agrees with the
 healthy search clock + ref (clk by +δ and every b by −δ, so no prediction inside the joint moves — only
 the clock level the consumers adopt),
@@ -394,7 +385,7 @@ the eight obs writers but NOT the broker or the gather — same PIDs, no state c
 gather were restarted explicitly at 12:58:24Z (`systemctl --user restart gnss-gather gnss-broker`): broker after gather,
 "starting 8 chain(s)" at +1 s, telemetry frames and trim posts flowing at +40 s, no CHAIN DIED, and the viewer (PartOf the
 broker) followed. **Still open:** why the target's stop does not propagate to those two (journal access), the real reboot,
-and the cube leg's unit. `stack_down.sh` relies on that stop — until this is understood, stop the broker and gather by name.
+and the cube leg's unit. Until this is understood, stop the broker and gather by name.
 
 ### #129 — we cannot place a GLONASS satellite at all (BeiDou turned out to be fine)
 **[tree, 2026-09-11]** Found chasing #56's residual.
@@ -484,9 +475,12 @@ a PRN with no code, so a swap to PRN > 50 on a live E6 or E1 chain is undefined 
 
 ### #181 — the replica bank applies no shared overlay for B2I, L3OC and L2OC (2026-10-12, dormant)
 **What [tree]:** the shared-overlay ladder in the `ChannelizedReplicaBank` constructor omits `BDS_B2I`, `GLO_L3OC_P/D`
-and `GLO_L2OC_P`, although each has `secondary_length > 0` and a shared `gnssOverlay` registry row; `channels()` /
-`hoprate_stream` apply no overlay for them and the NH search reports "no secondary code". No live chain uses them.
-**Fix:** add them to the ladder (or take the shared overlay from the registry). Check: a replica test with `nh_phase >= 0`.
+and `GLO_L2OC_P`, although each has `secondary_length > 0`; `channels()` / `hoprate_stream` apply no overlay for them
+and the NH search reports "no secondary code". No live chain uses them. Only `BDS_B2I` (`B2I_NH20`) and `GLO_L3OC_D`
+(`L3OC_BC5`) keep a shared `gnssOverlay` registry row; the pilots' rows (`L3OC_NH10`, `L2OC_OC2`) were removed
+2026-10-13, though their arrays stay in the code generators.
+**Fix:** add them to the ladder (for B2I and L3OC_D the shared overlay can come from the registry). Check: a replica
+test with `nh_phase >= 0`.
 
 ### #182 — the combiner's overlay + navwipe path wipes suffix rungs at the full window's overlay phase (2026-10-12, dormant)
 **What [tree]:** `GnssCoherentCombiner.cpp` (the `!_secondary.empty() && _navwipe_bit_records > 0` branch) passes the
@@ -503,9 +497,10 @@ adaptation EMA is the only recovery. (The cable work that evening is a confound;
 **Fix:** freeze model FORMATION (not steering) inside a wider cone, ~8°, or re-seed a model whose similarity to the
 fleet reference's shape stays below 0.5 for N minutes from that reference. Check: restart one node during the next
 5–8° pass and watch `elem_shared_ref status` similarity recover within minutes.
-**10-11: both built (`11ab0ee25`), awaiting the next node cycle.** `elem_sum_shared_form_deg` 8.0 (no first model inside the
-cone; a warm one keeps adapting), `elem_sum_shared_ref_reseed_s` 600 (a warm half below the floor that long takes the
-reference's shape, once per interval) gated on the sibling pol still matching at `elem_sum_shared_ref_reseed_sib_sim` 0.8 —
+**10-11: both built (`11ab0ee25`), awaiting the next node cycle.** Formation cone 8.0° (no first model inside the
+cone; a warm one keeps adapting), re-seed after 600 s (a warm half below the floor that long takes the
+reference's shape, once per interval) gated on the sibling pol still matching at similarity 0.8 (all three fixed in
+the stage since 2026-10-13; they were the keys `elem_sum_shared_form_deg`, `_ref_reseed_s`, `_ref_reseed_sib_sim`) —
 both pols off at once means the reference is stale and the cron's re-take must win. `/get_elem_cal` reports `form_frozen`,
 `form_deg`, `fleet_ref.reseeds`. Boost test 12 cases. Judge after the cycle: restart one node during a 5–8° pass
 (`form_frozen: true` until it clears, then sim ≥ 0.8 within minutes); after the next F-engine gain change the re-seed
@@ -588,11 +583,12 @@ halves 31–46° off.
   `elem_sum_shared_ref` / `_mode` (off|log|live) / `_slew_deg_s` (1.0) / `_min_sim` (0.5), REST
   `set_elem_sum_shared_ref`, and a `fleet_ref` block in `/get_elem_cal`.
 - Generator `--elem-shared-ref FILE --elem-shared-ref-mode`, refused on an epoch mismatch. Manifest:
-  `config/elem_shared_ref_20261006.json`, mode `log`.
+  `elem-shared-ref` (now `config/elem_shared_ref_20261010.json`), mode `live`.
 - Tool `python/scripts/gnss/elem_shared_ref.py` (snapshot | post | status | watch). The 10-06 snapshot is
   R 0.94–0.99 in every band, and healthy instances match its shape at a median similarity of 0.88–0.99
   (a noise model scores ~0.2).
-- Safety net `scripts/gnss/elem_ref_cron.sh` (log-only unless `ELEM_REF_ACT=1`); not yet in cron.
+- Safety net `scripts/gnss/site/elem_ref_cron.sh` (log-only unless `ELEM_REF_ACT=1`), in the gnss crontab
+  every 5 min with `ELEM_REF_ACT=1`.
 - Binary `~/gnss/builds/fleet-pin154-20261006` (md5 08949ff5). Rollback: `build/kotekan/kotekan.prev_27ea60023`.
 
 **2026-10-06 LIVE fleet-wide.** Restarted 15:46–15:47Z on the new binary in log mode. Every node's own
@@ -615,7 +611,7 @@ snapshot, `config/elem_shared_ref_20261009.json` (R 0.976–0.999), went live by
 check above is still open: it has not yet run against a current reference.
 **2026-10-10:** the F-engine came back re-based at 01:31Z with new per-board phases; the acting cron re-took all
 eight bands by 02:10Z (committed as `config/elem_shared_ref_20261010.json`, 2bad4afda) and every instance applied
-it. A node restarted after a re-take and before the commit runs up to 30 min on the stale file (`--act-every`).
+it. A node restarted after a re-take and before the commit runs up to 30 min on the stale file (`ACT_EVERY_S` in elem_shared_ref.py).
 **Still open:** the no-restart re-base check above, and the file is re-taken by the cron, not by the re-base itself.
 The alerting TODO is #171.
 
@@ -928,17 +924,6 @@ close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains ha
 - **Record-format hygiene**: UTC is recomputed into every PRN row instead of the frame header;
   the combiner reads the prompt by raw index (`rec[3]`, `rec[4]`…) in C++ *and* Python. Do the
   index normalisation before anyone reorders a slot.
-
----
-
-## Parked — built, disarmed, and currently unjudgeable
-
-**#90, #91, #92 — three trim-pathology fixes, built and all disarmed again since 10-11** (#92's handover had stayed
-armed on gal_e5a from 08-25 until #125's re-twin). Base rate ~0 on the healthy fleet (0 brownouts, 0 latches, 1 sawtooth
-of the class the handover cannot catch, in an hour), so an arm has nothing to remove and they cannot be judged in
-this regime. Flags: `--fleet-trim-brownout-hold-s`, `--code-bias-brownout-hold`, `fleet-trim-rebase-adjust`,
-`reseed-spec-tau`, `LatchDetector.min_absence_s`. **Re-judge only after a plant disturbance** — #106's establishment
-excursion is the one that reproduces on demand.
 
 ---
 

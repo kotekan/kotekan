@@ -72,8 +72,6 @@ export class DecodeHealthPanel {
         this._timer = setInterval(() => this._tick(), this.poll_ms);
     }
 
-    destroy() { if (this._timer) clearInterval(this._timer); }
-
     async _tick() {
         let data;
         try {

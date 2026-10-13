@@ -85,7 +85,6 @@ def row(prn, hop, deep):
     return {
         "prn": prn,
         "pow_hop": hop,
-        "pow_fft_len": 16384,
         "e_pow": 1.0,
         "p_pow": 4.0,
         "l_pow": 1.0,
@@ -132,19 +131,6 @@ def test_fleet_dll_end_to_end():
             "the excluded instance still reports its hop to the instruments",
             src.get("u2") == H_OLD,
             str(src),
-        )
-        out = fleet_dll(
-            list(polls),
-            hop_window=int(2 * RATE),
-            min_instances=2,
-            k_sigma=3.0,
-            q_fallback=2.2,
-            now=NOW,
-        )
-        check(
-            "without hop_hist the old behaviour is unchanged (the stale max wins)",
-            out.get(3, {}).get("hop") == H_OLD or 3 not in out,
-            str(out.get(3, {}).get("hop")),
         )
     finally:
         fleet._get = real_get

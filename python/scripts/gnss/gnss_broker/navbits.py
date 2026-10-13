@@ -1,7 +1,7 @@
 """Decoding the broadcast navigation message, and cross-checking it against BRDC.
 
 Eight decoders (LNAV, CNAV, CNAV-2, F/NAV, I/NAV, B-CNAV1/2/3), cross-checked against the
-BRDC almanac, and a continuous agreement monitor. The decoders are created lazily and PERSIST
+BRDC almanac. The decoders are created lazily and PERSIST
 across cycles on `ctx.nav` -- one that is rebuilt has forgotten the subframes it had
 collected and can never complete an ephemeris.
 
@@ -22,7 +22,6 @@ from gnss_broker.transport import _now, _get, _log, _log_rl
 from gnss_broker.sky import (
     _lnav_brdc_xcheck,
     _cnav_brdc_xcheck,
-    _cnav2_brdc_xcheck,
     _inav_brdc_xcheck,
     _fnav_brdc_xcheck,
     _bcnav1_brdc_xcheck,
@@ -34,9 +33,8 @@ from gnss_broker.sky import (
 def stage_nav_bits(ctx):
     """NAV BITS: decode the broadcast navigation message and cross-check it against BRDC.
         
-    Holds the lazily-created decoder objects (LNAV, CNAV, CNAV2, FNAV, INAV, BCNAV1/2/3) and the
-    agreement monitor. They are created on the first row that needs them and
-    must persist across cycles -- hence the nonlocal list, which is the whole reason this block
+    Holds the lazily-created decoder objects (LNAV, CNAV, CNAV2, FNAV, INAV, BCNAV1/2/3). They
+    are created on the first row that needs them and must persist across cycles -- hence the nonlocal list, which is the whole reason this block
     resisted extraction until its state was named.
         
     ⚠️ OFF IN PRODUCTION (`--nav-bits` is not set in the CHORD yaml), so the fixture gate is BLIND
@@ -45,14 +43,10 @@ def stage_nav_bits(ctx):
         for _p, _r in ctx.status.items():
             if "nav_obs" not in _r:
                 continue
-            if ctx.nav.health is None:
-                from navbit_health import BitAgreement
-
-                ctx.nav.health = BitAgreement(log=_log)
             # Route nav_obs to the decoder this band actually speaks. L1CA carries LNAV
-            # (periodic subframes -> future bits); L2C-CM / L5-I carry CNAV (FEC+CRC, no
-            # fixed schedule -> decode + shadow-serve decoded spans). Sending CNAV symbols
-            # to the LNAV frame-sync just spins forever finding no preamble.
+            # (periodic subframes); L2C-CM / L5-I carry CNAV (FEC+CRC, no fixed schedule).
+            # Sending CNAV symbols to the LNAV frame-sync just spins forever finding no
+            # preamble.
             if ctx.args.nav_decoder == "cnav":
                 if ctx.nav.cnav is None:
                     from cnav_predictor import CnavPredictor
@@ -66,7 +60,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.bcnav3 is None:
                     from bcnav3_predictor import Bcnav3Predictor
 
-                    ctx.nav.bcnav3 = Bcnav3Predictor(log=_log)
+                    ctx.nav.bcnav3 = Bcnav3Predictor()
                     _log("B-CNAV3 decoder armed (combiner exports nav_obs)")
                 ctx.nav.bcnav3.ingest(_p, _r["nav_obs"])
             else:
@@ -76,11 +70,6 @@ def stage_nav_bits(ctx):
                     ctx.nav.navbits = LnavPredictor(log=_log)
                     _log("nav-bit predictor armed (combiner exports nav_obs)")
                 ctx.nav.navbits.ingest(_p, _r["nav_obs"])
-            # ...and ask the question no single gate was asking continuously (decoder-
-            # agnostic): did the bits we PUBLISHED last cycle actually match the ones coming
-            # out of the sky? Scored only where the satellite is strong enough that a
-            # disagreement means OUR bits are wrong rather than the air reading being wrong.
-            ctx.nav.health.score(_p, _r["nav_obs"], _r.get("deep_snr"))
         # AUXILIARY CNAV CHAIN (--cnav-combiner, S4): a second combiner polled only for its
         # CNAV symbols. At L5 this broker's own combiner is the Q PILOT -- its nav_obs are
         # deterministic overlay predictions handled above -- while CNAV arrives on the
@@ -130,7 +119,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.inav is None:
                     from inav_predictor import InavPredictor
 
-                    ctx.nav.inav = InavPredictor(log=_log)
+                    ctx.nav.inav = InavPredictor()
                     _log("I/NAV decoder armed on aux chain %s" % ctx.nav.inav_combiner)
                 ctx.nav.inav.ingest(_p, _r["nav_obs"])
             # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker).
@@ -185,7 +174,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.fnav is None:
                     from fnav_predictor import FnavPredictor
 
-                    ctx.nav.fnav = FnavPredictor(log=_log)
+                    ctx.nav.fnav = FnavPredictor()
                     _log("F/NAV decoder armed on aux chain %s" % ctx.nav.fnav_combiner)
                 ctx.nav.fnav.ingest(_p, _r["nav_obs"])
             # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
@@ -234,7 +223,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.bcnav2 is None:
                     from bcnav2_predictor import Bcnav2Predictor
 
-                    ctx.nav.bcnav2 = Bcnav2Predictor(log=_log)
+                    ctx.nav.bcnav2 = Bcnav2Predictor()
                     _log(
                         "B-CNAV2 decoder armed on aux chain %s"
                         % ctx.nav.bcnav2_combiner
@@ -286,7 +275,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.bcnav1 is None:
                     from bcnav1_predictor import Bcnav1Predictor
 
-                    ctx.nav.bcnav1 = Bcnav1Predictor(log=_log)
+                    ctx.nav.bcnav1 = Bcnav1Predictor()
                     _log(
                         "B-CNAV1 decoder armed on aux chain %s"
                         % ctx.nav.bcnav1_combiner
@@ -338,7 +327,7 @@ def stage_nav_bits(ctx):
                 if ctx.nav.cnav2 is None:
                     from cnav2_predictor import Cnav2Predictor
 
-                    ctx.nav.cnav2 = Cnav2Predictor(log=_log)
+                    ctx.nav.cnav2 = Cnav2Predictor()
                     _log(
                         "CNAV-2 decoder armed on aux chain %s" % ctx.nav.cnav2_combiner
                     )
@@ -349,23 +338,12 @@ def stage_nav_bits(ctx):
                     h = ctx.nav.cnav2.health(_p)
                     if not h or not h["words"]:
                         continue
-                    eph = ctx.nav.cnav2.ephemeris(_p)
-                    xc = (
-                        _cnav2_brdc_xcheck(ctx.brdc_alm, ctx.alm_sys, _p, eph, _log)
-                        if (eph is not None and ctx.brdc_alm is not None)
-                        else ""
-                    )
+                    # no ephemeris: CNAV-2 SF2 has no field table (gps_cnav2)
                     _log(
-                        "cnav2 PRN %d: %d frames CRC-OK, toi=%s, eph %s%s"
-                        % (
-                            _p,
-                            h["words"],
-                            h["toi"],
-                            "YES" if eph is not None else "no",
-                            xc,
-                        )
+                        "cnav2 PRN %d: %d frames CRC-OK, toi=%s"
+                        % (_p, h["words"], h["toi"])
                     )
-                    ctx.dh_obs("GPS_L1CD_CNAV2", _p, h, eph, xc)
+                    ctx.dh_obs("GPS_L1CD_CNAV2", _p, h, None, "")
         if ctx.nav.navbits is not None and _now() - ctx.nav.log_t > 60.0:
             ctx.nav.log_t = _now()
             for _p in sorted(ctx.nav.navbits._p):

@@ -9,8 +9,8 @@ wrong answer nobody can trace back.
 **The hook.** [`python/scripts/gnss/gnss_arraymap.py`](../python/scripts/gnss/gnss_arraymap.py)
 resolves *time → array configuration*, and refuses when the answer is not a single one. The
 table it reads today is [`config/chord_array_epochs.json`](../config/chord_array_epochs.json);
-the intended source is the array database, which is why everything goes through one `Backend`
-class with one method.
+the intended source is the array database, which is why everything goes through one
+`JsonBackend` class with one method.
 
 ```sh
 P=/home/kvand/gnss/venv/bin/python

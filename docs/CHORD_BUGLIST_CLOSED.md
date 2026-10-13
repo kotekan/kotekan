@@ -128,8 +128,9 @@ that goes with it.
 | freezing the fast loop through establishment | made L5 worse (57–95% → 14–38%) | `--establish-hold` default 0.0, absent from the chains yaml |
 | B1 split-aperture | comparator error | recorded in `gnss_fleet_chord.yaml` |
 | `despread_max_chips 105` | superseded by CENTERED-80 | 105 appears only in a one-off cx19 config |
-| two Doppler-free Φ tables per channel | 0.88–0.92× on the A40 — a loss | `shared_phi` appears in no config; only bench callsites |
-| tiled shared-memory streaming | 0.60–0.70× at every geometry | `launch_waveform_tiled` has zero production callsites |
+| two Doppler-free Φ tables per channel | 0.88–0.92× on the A40 — a loss | `shared_phi` and its tables were removed after `be7d46e8e` |
+| tiled shared-memory streaming | 0.60–0.70× at every geometry | `launch_waveform_tiled` was removed after `be7d46e8e` |
+| #90, #91, #92 — three trim-pathology fixes (admission gate, brownout holds, the trim handover with the gather's `/adjust_trim`) | built, disarmed again since 10-11, base rate ~0 on the healthy fleet so never judgeable; removed 2026-10-13 | `--fleet-trim-brownout-hold-s`, `--code-bias-brownout-hold`, `fleet-trim-rebase-adjust`, `reseed-spec-tau` are gone from `cli.py`; the code is at `be7d46e8e` |
 | the period-debounce adoption fix (`0d26b6ea9`, reverted `86cd96e61`) | **resolved 2026-09-10, see below** | — |
 
 ### The period-debounce revert, explained (2026-09-10)
@@ -556,9 +557,9 @@ which IS the aiding gain GAP 3 would deliver** — not merely `r`:
 | all pairs | 7013 | −2.480 | [−6.15, −0.391] | **underpowered** |
 
 ⚠️ **THE SENSITIVITY CHECK IS THE RESULT, NOT A FOOTNOTE.** A null is worthless without its own
-lever ([[a-null-result-needs-its-lever-checked]]). Here the CI excludes ±1 by ~10× in the ramp
-band and ~5× at the motivating level: the test demonstrably *could* have seen a physical coupling
-and did not. The aid is bounded to **≤10% of the ramp** over the ramp band.
+lever. Here the CI excludes ±1 by ~10× in the ramp band and ~5× at the motivating level: the
+test demonstrably *could* have seen a physical coupling and did not. The aid is bounded to
+**≤10% of the ramp** over the ramp band.
 
 ⚠️ **P3's escape hatch does not apply.** The worry was that a null might just mean the day was
 calm. It was not: **57 pooled pairs sit at or above the 0.06 chips/min that motivated GAP 3**,

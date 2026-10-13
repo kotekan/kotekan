@@ -156,7 +156,7 @@ fleet-wide re-arm.
 
 ```sh
 for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/site/node_up.sh $n restart; done
-scripts/gnss/site/eop_push.sh        # from a host that reaches the nodes
+scripts/gnss/site/eop_push.sh        # on gnss: pushes the table eop_cron.sh staged
 ```
 
 **Bring the gather and the aggregator up BEFORE restarting nodes into them.** Sixty senders
@@ -240,11 +240,10 @@ production use.
 would start a *second* broker, gather and aggregator alongside the VM's, and two brokers would
 command the same fleet.
 
-The per-component `*_up.sh` scripts (`broker_restart.sh`, `gather_up.sh`, `agg_up.sh`,
-`obs_up.sh`, `viewer_up.sh`) are **superseded for the live stack** by the units, but they are not
-stale: since 2026-09-17 they launch through the *same* definition the units do (§10), so running
-one by hand starts exactly what systemd would. They keep the host guards, the config preflight,
-the log rotation and the post-start health checks that systemd does not do.
+**The per-component launchers of the live stack are gone too** (`broker_restart.sh`,
+`gather_up.sh`, `agg_up.sh`, `obs_up.sh`, `viewer_up.sh`). Their `pkill` patterns matched the
+units' own processes, so systemd relaunched its copy beside the hand-started one. Start, stop
+and restart the live stack with `systemctl --user` (§10).
 
 ## 7. Two deliberate delays, so they are not mistaken for faults
 
@@ -269,8 +268,6 @@ ssh gnss 'systemctl --user status gnss-broker.service -n 40'
 Archive before any deliberate teardown you might want to explain later:
 `gzip -1 -c /var/tmp/gnss-logs/broker.log > /home/kvand/gnss/logs/broker_$(date -u +%Y%m%d_%H%M%S).log.gz`
 
-⚠️ There is no logrotate yet (it needs root). Watch the directory until there is.
-
 The service logs under `/var/tmp/gnss-logs/` rotate hourly by `scripts/gnss/site/logrotate.conf` (daily or past 4 GB,
 `copytruncate` because the units hold the files open, 10 gzipped generations). `broker.log.1.gz` and older hold what a
 long `tail` of `broker.log` used to.
@@ -286,7 +283,7 @@ long `tail` of `broker.log` used to.
   has killed the broker.
 * For a real profile, replay under `broker_equiv` — side-effect-free, no root, no ptrace.
 
-## 10. One definition, two ways to run it
+## 10. One definition
 
 **`scripts/gnss/site/stack_components.sh` is the single source of truth** for what each component is
 — its argv, its environment, and its working directory. Nothing else defines those.
@@ -295,19 +292,15 @@ long `tail` of `broker.log` used to.
 stack_components.sh            what to run, and with what environment
        |
        +-- run_component.sh    execs it in the FOREGROUND
-               |        |
-               |        +----- systemd  ExecStart=run_component.sh <name>     (the live path)
-               +-------------- *_up.sh  daemonises it, and adds the things systemd does not:
-                                        host guards, config preflight, log rotation,
-                                        post-start health checks
+                        |
+                        +----- systemd  ExecStart=run_component.sh <name>     (the live path)
 ```
 
-⚠️ **Why the units do not simply call `*_up.sh`**, which is the obvious idea: those scripts
-*daemonise* (`nohup setsid … &`, `disown`) and most `pkill` a previous instance first. Under
-systemd that is three faults at once — `Type=simple` expects `ExecStart` to *be* the process,
-`setsid` detaches the child from the unit's cgroup so supervision is lost entirely, and the
-internal `pkill` races systemd's own restart. So the direction is inverted: both paths go
-through a foreground runner.
+⚠️ **Why the units exec a foreground runner** and not a daemonising launcher: a script that
+*daemonises* (`nohup setsid … &`, `disown`) and `pkill`s a previous instance first is three
+faults at once under systemd — `Type=simple` expects `ExecStart` to *be* the process, `setsid`
+detaches the child from the unit's cgroup so supervision is lost entirely, and the internal
+`pkill` races systemd's own restart.
 
 ### The gate that makes #134 impossible to repeat
 
@@ -336,8 +329,3 @@ ssh gnss 'cd /home/kvand/gnss/kotekan && ./scripts/gnss/site/stack_contract_gate
 of the broker does not bring it back (a `restart` of the broker does restart it). After stopping the broker by
 name, start `gnss-viewer` by name too. On 2026-10-12 a telemetry flag day stopped broker and gather at 12:20Z and
 left the viewer down for two hours.
-
-⚠️ One difference is deliberate and visible in the definition rather than hidden: `agg_up.sh`
-runs the aggregator with `GNSS_SEARCH_PROFILE=1` and the systemd unit does not. cf06 ran with
-that profiling on for its whole life (113,997 `[consumer]` lines in its last log); the live VM
-instance runs without it. Set `GNSS_SEARCH_PROFILE=1` to restore it.

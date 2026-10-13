@@ -188,6 +188,8 @@ def config_lanes(config_path, gpu, tag, gather="cap"):
             lane_base=int(inj.get("synth_lane_base", 0)) - cap_base,
             merged=True,
         )
+    # One chain per correlator, gnss_gather_aa/bb on it: the per-chain captures up to 10-06.
+    # cudaCorrelatorDual now refuses that shape, so only those archives read this way.
     return dict(
         has_aa=bool(corr.get("gnss_gather_aa")),
         has_bb=bool(corr.get("gnss_gather_bb")),

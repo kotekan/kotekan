@@ -14,7 +14,6 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-User=kvand
 # ⚠️ NOT a -DUSE_CUDA=OFF tree. The search runs on the GPU (use_cuda_acquire: true) and holds
 # ~2.7 GB of device memory; the CPU acquire path exists but is the expensive stage.
 
@@ -22,9 +21,9 @@ User=kvand
 # is thinner headroom than the gather had when it hit EMFILE twice. Do not inherit that here.
 LimitNOFILE=65536
 # ⚠️ ExecStart goes through run_component.sh so that the argv AND the environment come
-# from ONE definition (scripts/gnss/site/stack_components.sh), which the *_up.sh scripts also
-# use. Inlining the command here is how #134 happened: the command line was reproduced
-# faithfully and the broker's OPENBLAS_NUM_THREADS export, which is not on it, was not.
+# from ONE definition (scripts/gnss/site/stack_components.sh). Inlining the command here is
+# how #134 happened: the command line was reproduced faithfully and the broker's
+# OPENBLAS_NUM_THREADS export, which is not on it, was not.
 # stack_contract_gate.sh proves a running process still matches the definition.
 ExecStart=/home/kvand/gnss/kotekan/scripts/gnss/site/run_component.sh aggregator
 Restart=on-failure
@@ -34,7 +33,7 @@ RestartSec=15
 # reservation and the process would not start at all.
 MemoryAccounting=yes
 MemoryMax=4G
-StandardOutput=append:/var/log/gnss/aggregator.log
+StandardOutput=append:/var/tmp/gnss-logs/aggregator.log
 StandardError=inherit
 
 [Install]

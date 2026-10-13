@@ -2,7 +2,7 @@
 """TEC sky movie: differential slant TEC interpolated over the local sky dome, one frame
 per time bin, satellites marked at their true (az, el), stitched to mp4.
 
-    python3 gnss_tec.py --pair ... --dump-series --out /tmp/tec_run
+    python3 gnss_tec_chord.py --since-h 7 --out /tmp/tec_run
     python3 gnss_tec_movie.py /tmp/tec_run_series.npz --outdir /tmp/tec_movie \
             [--frame-s 120] [--window-s 300] [--highpass-s 1200] [--video out.mp4]
 
@@ -99,17 +99,6 @@ def accessible_sky(GX, GY, lat_deg, incl_deg, alt_km, el_mask_deg):
             np.radians(lat_deg)
         ) * np.sin(np.radians(gamma)) * np.cos(np.radians(az))
     return (np.abs(sin_psi) <= np.sin(np.radians(incl_deg))) & (el >= el_mask_deg)
-
-
-def _in_hull(grid, pts):
-    """Boolean: which grid points fall inside the convex hull of pts (for --voronoi masking).
-    Delaunay.find_simplex >= 0 iff the point is inside the triangulated hull."""
-    from scipy.spatial import Delaunay
-
-    try:
-        return Delaunay(pts).find_simplex(grid) >= 0
-    except Exception:  # degenerate (collinear) point set
-        return np.zeros(len(grid), dtype=bool)
 
 
 # ---------------- IONEX (absolute leveling) ----------------

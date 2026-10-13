@@ -1,11 +1,8 @@
 # Live PRN reconfiguration
 
-**Status: BUILT, and OFF.** The node half is in place on every producer, the record assembler
-follows the frame, the search is driven in step, and the broker owner exists behind
-`--prn-reconfig`, which defaults to `off`. Nothing in production changes until that flag moves.
-
-⚠️ **Deploying the node half needs a node restart** (KV's domain) — the endpoints are
-registered at stage construction. The configs are regenerated and committed.
+**Status: LIVE.** Every chain runs `--prn-reconfig apply` (`config/gnss_chains_chord.yaml`,
+`common`). The node half is in place on every producer, the record assembler follows the frame,
+and the search is driven in step.
 
 ## Why
 
@@ -28,7 +25,7 @@ will run longer.** A startup-only list cannot track a constellation that changes
 picks the **deepest below-horizon PRN**, which is exactly the kind of PRN an excluded slot
 tends to be. It picked E36, which the node could not represent, so the probe was seeded, never
 reported, and both Galileo chains ran on 2 probes instead of 3 — silently dropping from the
-q+p presence gate to **brightness-only**. See [[chord-prn-lists-diverge]].
+q+p presence gate to **brightness-only**.
 
 ## Shape as built
 
@@ -85,8 +82,8 @@ Reset, in one place per owner:
 
 ### 4. Where a swap lands
 
-* **Producers** (`cudaGnssInject`, `cudaGnssChordTrack`): at the **frame boundary**, before a
-  single job is built, so no record is assembled from half a map.
+* **Producer** (`cudaGnssInject`): at the **frame boundary**, before a single job is built, so
+  no record is assembled from half a map.
 * **Search**: **between passes**, in the worker thread — the only instant at which the replica
   cache, the refine engines and the hint tables are not half built.
 
@@ -139,11 +136,8 @@ restart is a clean slate rather than a silently-inherited history.
 
 ### 6. Arming
 
-`--prn-reconfig off | report | apply`, default **off**.
-
-`report` is the interesting middle: it GETs each node's map, logs the swap it *would* make, and
-posts nothing — a live version of `gen_fleet.py --check-prns`, with the same finding and no
-risk. The unit test pins "report NEVER posts", which is what makes it safe to arm first.
+`--prn-reconfig off | apply`, default **off**: the stage does nothing (the replay fixtures'
+argv predates the flag). Every live chain runs `apply`.
 
 ## Verification
 
@@ -154,16 +148,12 @@ risk. The unit test pins "report NEVER posts", which is what makes it safe to ar
 * `gnss_broker/test_prnmap.py` (19 checks) — the hysteresis, the rate limit, the modes, the
   split-map refusal, that the search is driven with the same payload, and that the read-back
   loop **converges** (the fake nodes apply the map, and nothing further is posted).
-* `scripts/gnss/site/gate.sh` — 7/7 EQUIVALENT with the flag off, i.e. the broker change is inert
-  until armed.
 
 ## Order of work
 
 1. ✅ `gen_fleet.py --check-prns` (`31fa39e37`) — catches the class offline, stays useful as a
    cross-check, and would have flagged E36 the day it was commissioned.
-2. ✅ The live mechanism above, **disarmed**.
-3. **Next: a node restart** to register the endpoints, then `--prn-reconfig report` on one
-   Galileo chain and read what it says about E36 before arming `apply`.
+2. ✅ The live mechanism above, armed (`apply`) on every chain.
 
 ## Known gaps
 

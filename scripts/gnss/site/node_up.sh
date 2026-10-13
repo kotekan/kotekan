@@ -29,15 +29,6 @@
 # Needs an interactive sudo on the target, so it uses `ssh -t` and will prompt per node.
 set -u
 K=/home/kvand/gnss/kotekan
-# build/kotekan since 2026-08-03: the merge segfault is FIXED (c5e9e754a -- an emit-metrics loop
-# indexed _navbuf past the end whenever no wipe was configured, which is every CHORD config).
-# cx51 ran the fixed binary for hours without crashing. kotekan_premerge is kept as the fallback
-# and is what `up-premerge` runs; it has NO deep coherent rung, so a node on it reports
-# coherence_s = 0 structurally and a ~3x worse carrier residual (per-emit squared fit rather
-# than the buffered-stream fit).
-# GNSS_BIN overrides (that is how up-premerge works: exec re-reads this file, so the
-# choice has to travel in the ENVIRONMENT, not a shell variable).
-PREMERGE=/home/kvand/gnss/kotekan_premerge
 BIN=${GNSS_BIN:-/home/kvand/gnss/kotekan/build/kotekan/kotekan}
 N=${1:?usage: node_up.sh <node> [up|down|status]}
 ACT=${2:-up}
@@ -346,27 +337,5 @@ case "$ACT" in
     preflight
     ssh -t "$N" "$REMOTE_START_VERIFY"
     ;;
-  debug)
-    # Run the POST-MERGE binary under gdb so a crash leaves a full backtrace instead of just an
-    # exit status. The merge broke GnssCoherentCombiner (segfault) and the node has run
-    # kotekan_premerge ever since, which also blocks every combiner change from being deployed --
-    # including the plain coherent rung. One node at a time: leave cx19 on premerge as a control.
-    #
-    # gdb --batch runs to completion and only prints on a fault, so a healthy node logs nothing
-    # extra; `-ex run` starts it, and the two bt commands fire when it stops.
-    DBG=/home/kvand/gnss/kotekan/build/kotekan/kotekan
-    ssh -t "$N" "mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
-      test -x '$DBG' && sudo systemd-run --unit=gnss-node \
-        --working-directory=$K \
-        --property=StandardOutput=append:/tmp/gnss_node_dbg.log \
-        --property=StandardError=append:/tmp/gnss_node_dbg.log \
-        /usr/bin/gdb --batch -ex run -ex 'thread apply all bt' -ex 'info registers' \
-          --args '$DBG' --config '$CFG' --bind-address 0.0.0.0:12048" \
-      && sleep 5 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node \
-      && echo "backtrace (if it faults) lands in /tmp/gnss_node_dbg.log on $N"
-    ;;
-  up-premerge)
-    GNSS_BIN=$PREMERGE exec "$0" "$N" up
-    ;;
-  *) echo "unknown action '$ACT' (up|down|restart|status|debug|up-premerge)"; exit 2 ;;
+  *) echo "unknown action '$ACT' (up|down|restart|status)"; exit 2 ;;
 esac

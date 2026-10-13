@@ -22,13 +22,11 @@ THE SPLIT BELOW IS LOAD-BEARING, not organisational:
 
 ⚠️ `t0` IS THE FROZEN CYCLE CLOCK, NOT THE WALL CLOCK. Every gate, age and EMA in a pass
 evaluates at one instant rather than smearing over the pass's own processing time. Where a
-stage genuinely needs real elapsed time -- the #90 admission gate's decorrelation window is the
-standing example, because it is a statement about fold windows and not about cycles -- it must
-call `time.time()` explicitly and say why.
+stage genuinely needs real elapsed time it must call `time.time()` explicitly and say why.
 
 ⚠️ THIS IS A REFERENCE HOLDER, NOT A FACADE. It deliberately does no work: no properties, no
 derived values, no logic. Anything computed belongs in the stage that computes it or on one of
-the owner objects (`dllp`, `drp`, `handover`, ...). A context that starts computing becomes a
+the owner objects (`dllp`, `drp`, ...). A context that starts computing becomes a
 second place where behaviour lives, and then nobody can tell which one a bug is in.
 
 @author Keith Vanderlinde
@@ -61,9 +59,6 @@ class ChainContext(object):
         "dll_combiners",
         "geom_post_t",
         "spectrum_endpoints",
-        "spec_writer",
-        "state_dir",
-        "xb_read_dir",
         "sig_of",
         "n2_combiners",
         "last_dets",
@@ -72,10 +67,7 @@ class ChainContext(object):
         "dr_bad",
         "fe_axis",
         "fe_off",
-        "combiner",
-        "gating",
         "capable",
-        "receiver_state",
         "alm_now",
         "trackers",
         "joint_consume",
@@ -84,10 +76,6 @@ class ChainContext(object):
         "dr_min_prn",
         "hist_len",
         "max_gap_hops",
-        "q_alias_hz",
-        "carrier_explain_hz",
-        "carrier_verify_emits",
-        "fuse_cached",
         "cp_to_seed_currency",
         "sig_of_last",
         # Helper callables the stages share. They are passed rather than imported because each
@@ -113,11 +101,7 @@ class ChainContext(object):
         # ---- owner objects (each stage's own state lives on its owner) ----------------
         "dllp",
         "drp",
-        "handover",
-        "adm_gate",
-        "g3_ramp",
         "cb",
-        "car",
         "nho",
         "dls",
         "hold",
@@ -126,7 +110,6 @@ class ChainContext(object):
         "nav",
         "qpop",
         "brown",
-        "latch",
         "saw",
         "prnmap",
         # ---- long-lived tables, mutated in place --------------------------------------
@@ -146,7 +129,6 @@ class ChainContext(object):
         "almanac_sats",
         "brdc_alm",
         "det_fresh",
-        "state_w",
         "innov_hist",
         "minnov_hist",
         "p2c",

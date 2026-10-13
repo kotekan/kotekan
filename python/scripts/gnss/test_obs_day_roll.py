@@ -8,7 +8,7 @@ a file named for the first of them, while 09-06, 09-07 and 09-08 had no observab
 at all. Nothing failed: the rows were correct, the filename was a lie, and every consumer
 that opens a day by name saw an empty day.
 
-Both the --out help text and obs_up.sh already claimed the file rolled at UTC midnight, so
+Both the --out help text and its launcher already claimed the file rolled at UTC midnight, so
 the two places a reader would check to confirm the behaviour both asserted it. That is why
 these tests assert the ROLL, not the docstring.
 

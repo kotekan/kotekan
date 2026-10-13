@@ -93,26 +93,16 @@ export class App {
         // pipeline mode (autocorr vs. crosscorr).
         this.layout = new LayoutManager({root: "#layout-root"});
 
-        // The WebSocket lives on THIS server's ws_port, which is not a fixed offset from the
-        // http_port across bands (L1 8080/8539, L2C 8081/8639). Ask the server we loaded from
-        // (same-origin /wsport) instead of hardcoding 8539 -- otherwise a non-L1 viewer connects
-        // to L1's WebSocket and inherits L1's kotekan port (12048), failing CORS against the
-        // wrong kotekan. Fall back to 8539 if the endpoint is missing (older server).
+        // The WebSocket lives on THIS server's ws_port. Ask the server we loaded from
+        // (same-origin /wsport) instead of hardcoding 8539. Fall back to 8539 if the endpoint
+        // is missing (older server).
         this._wire_status_banner();
         fetch("wsport").then(r => r.ok ? r.json() : null).catch(() => null).then(cfg => {
-            // Adopt this band's constellation legend/colours/t_rec (L2C, L5) before the socket
-            // opens; the GPS feed re-renders on the next tick. Missing (older server) -> L1 keeps.
+            // Adopt the constellation legend/colours before the socket opens.
             if (cfg && cfg.chains) configure_chains(cfg.chains);
-            // Unified viewer: the full signal inventory + RF-band selector list. Sets the feed
-            // to poll every band's combiner and the table to render one column per signal.
-            if (cfg && cfg.unified && cfg.signals) {
-                configure_signals(cfg.signals, cfg.rf_bands, cfg.capability);
-                this.gps_unified = true;
-                this.rf_bands = cfg.rf_bands || null;
-            }
-            // Band tag ("l1"|"l2c"|"l5") -- the history panel keys its ICD C/N0
-            // baseline off this + the selected sat's constellation letter.
-            if (cfg && cfg.band) this.gps_band = cfg.band;
+            // Unified viewer: the full signal inventory. Sets the feed to poll every band's
+            // combiner and the table to render one column per signal.
+            if (cfg && cfg.unified && cfg.signals) configure_signals(cfg.signals, cfg.capability);
             const ws_port = (cfg && cfg.ws_port) || 8539;
             this.socket = new Socket({app: this,
                                       url: "ws://" + location.hostname + ":" + ws_port});
@@ -199,21 +189,13 @@ export class App {
             airspy_stages: k.airspy_stages || ["airspy_input"],
             lag_align_stage: k.lag_align_stage || null,
         });
-        // Learn the pipeline's registered stage names so gps_* resolves against configs
-        // that still use the bare search/track/combiner spelling (and vice versa).
-        this.kotekan.loadStages();
-
         // GPS-only mode (lean live config, no power stream): there's no
         // waterfall/spectrum to build. ONE shared GpsFeed polls kotekan REST +
         // /gps_sky; the skyplot and the detections table are separate resizable
         // cards consuming it (so they always agree, incl. the G/E/C toggles).
         if (cfg_mode === "gps") {
             const g = cfg.gps || {};
-            const feed = new GpsFeed({
-                app: this,
-                search_stage: g.search_stage, combiner_stage: g.combiner_stage,
-                airspy_stage: g.airspy_stage,
-            });
+            const feed = new GpsFeed({app: this});
             this.layout.addWidget({mount_id: "gps_sky_card", title: "GNSS Sky",
                                    x: 0, y: 0, w: 5, h: 8, min_w: 3, min_h: 4});
             this.panels.push(new GpsSkyPanel({target: "gps_sky_card", feed}));
@@ -226,12 +208,9 @@ export class App {
             // fed by the same GpsFeed as the sky + table.
             this.layout.addWidget({mount_id: "gps_amp_card", title: "GNSS history",
                                    x: 0, y: 8, w: 12, h: 5, min_w: 4, min_h: 3});
-            this.panels.push(new GpsAmpHistoryPanel({
-                app: this, target: "gps_amp_card", feed,
-            }));
-            // Stream health, END TO END: ADC rms / rail% / USB drop rate from the adcstat
-            // the feed already polls, plus this band's Valve drop counters (the pipeline's
-            // own silent data loss). No extra kotekan load -- the feed fetches both.
+            this.panels.push(new GpsAmpHistoryPanel({target: "gps_amp_card", feed}));
+            // Stream health: the F-engine front end (rail, power, RFI, drops) from the
+            // broker's get_rf, which the feed already polls.
             this.layout.addWidget({mount_id: "airspy_stats_card", title: "Stream health",
                                    x: 0, y: 13, w: 12, h: 2, min_w: 4, min_h: 2});
             this.panels.push(new AirspyStatsPanel({target: "airspy_stats_card", feed}));
@@ -240,8 +219,8 @@ export class App {
             this.layout.addWidget({mount_id: "decode_health_card", title: "Nav decode health",
                                    x: 0, y: 15, w: 12, h: 3, min_w: 4, min_h: 2});
             this.panels.push(new DecodeHealthPanel({target: "decode_health_card"}));
-            // Position self-survey (gnss_pvt): single-freq vs dual-frequency iono-free best-fit +
-            // per-signal offsets. Its own widget; reads the same /decode_health endpoint's `pvt`.
+            // Position self-survey (gnss_pvt): single-frequency best-fit + per-signal offsets.
+            // Its own widget; reads the same /decode_health endpoint's `pvt`.
             this.layout.addWidget({mount_id: "position_survey_card", title: "Position self-survey",
                                    x: 0, y: 18, w: 12, h: 4, min_w: 4, min_h: 2});
             this.panels.push(new PositionSurveyPanel({target: "position_survey_card"}));
@@ -391,26 +370,6 @@ export class App {
             this.panels.push(new GalaxyViewPanel({
                 app: this, target: "gal_viewer",
                 image_url: opt.galaxy_view_url,
-            }));
-        }
-
-        // GPS live-status: skyplot + detections table as separate resizable
-        // cards below the spectrum, sharing one GpsFeed (see the gps-mode
-        // branch above for the full story).
-        if (opt.gps_sky) {
-            const g = cfg.gps || {};
-            const feed = new GpsFeed({
-                app: this,
-                search_stage: g.search_stage, combiner_stage: g.combiner_stage,
-                airspy_stage: g.airspy_stage,
-            });
-            this.layout.addWidget({mount_id: "gps_sky_card", title: "GNSS Sky",
-                                   x: 0, y: 18, w: 5, h: 9, min_w: 3, min_h: 4});
-            this.panels.push(new GpsSkyPanel({target: "gps_sky_card", feed}));
-            this.layout.addWidget({mount_id: "gps_table_card", title: "GNSS Detections",
-                                   x: 5, y: 18, w: 7, h: 9, min_w: 4, min_h: 3});
-            this.panels.push(new GpsTablePanel({
-                target: "gps_table_card", feed, has_site: g.has_site,
             }));
         }
 

@@ -69,6 +69,29 @@ def _pin_for(transcript):
 
 FIXTURES = os.path.join(K, "scripts", "gnss", "fixtures")
 
+# Broker flags retired after some fixtures were recorded, with the number of values each takes.
+# A transcript carries its argv verbatim, so replay drops these first; an unchanged digest is
+# what shows the retired flag did nothing on that recording.
+RETIRED_FLAGS = {
+    "--carrier-gain": 1,
+    "--carrier-from-code": 0,
+    "--cl-assist": 0,
+    "--eph-rebase": 1,
+    "--fleet-trim-rebase-adjust": 1,
+    "--innov-dr-seeds": 1,
+    "--joint-feed-spec": 0,
+    "--joint-model-primary": 0,
+    "--joint-rereference": 0,
+    "--joint-shadow": 0,
+    "--nh-hint-span": 1,
+    "--nh-period-offset": 1,
+    "--spectrum-aligned": 0,
+    "--spectrum-archive": 1,
+    "--state-dongle": 1,
+    "--state-file": 1,
+    "--state-read-dir": 1,
+}
+
 
 def _open(path):
     """Transcripts of a real fleet are ~1.3 MB per cycle, so they live gzipped and OUTSIDE
@@ -188,7 +211,6 @@ def _header_argv(path):
 def _census(path):
     """What the transcript actually contains. A replay of nothing replays perfectly."""
     n = {"now": 0, "get": 0, "post": 0}
-    urls, prns = set(), set()
     with _open(path) as f:
         for line in f:
             if not line.strip():
@@ -196,24 +218,19 @@ def _census(path):
             r = json.loads(line)
             if r["k"] in n:
                 n[r["k"]] += 1
-            if r["k"] == "post":
-                urls.add(r["u"])
-    return n, urls, prns
+    return n
 
 
-def replay(path, extra=(), env=None):
+def replay(path, env=None):
     """Run the broker against a transcript; return (digest, stderr)."""
     pin = _pin_for(path)
     argv = _header_argv(path)
     # --publish-port 0 disables the REST publisher: replays must not fight over a port, and
     # two of them running concurrently is the normal case when bisecting.
     argv = _strip(argv, "--publish-port")
-    cmd = (
-        [PY, "-u", BROKER]
-        + argv
-        + ["--transcript-read", path, "--publish-port", "0"]
-        + list(extra)
-    )
+    for flag, nargs in RETIRED_FLAGS.items():
+        argv = _strip(argv, flag, nargs)
+    cmd = [PY, "-u", BROKER] + argv + ["--transcript-read", path, "--publish-port", "0"]
     e = dict(os.environ)
     # PIN THE SKY (task #29). The ephemeris is a replay input every bit as much as the
     # transcript: gnss_ephemeris.fetch_brdc pulls it through its own urllib into a cache that
@@ -231,14 +248,14 @@ def replay(path, extra=(), env=None):
     return out[-1].strip(), p.stderr
 
 
-def _strip(argv, flag):
-    keep, skip = [], False
+def _strip(argv, flag, nargs=1):
+    keep, skip = [], 0
     for a in argv:
         if skip:
-            skip = False
+            skip -= 1
             continue
         if a == flag:
-            skip = True
+            skip = nargs
             continue
         if a.startswith(flag + "="):
             continue
@@ -251,7 +268,7 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "action", choices=["record", "digest", "check", "bless", "selftest", "census"]
+        "action", choices=["record", "digest", "check", "bless", "selftest"]
     )
     ap.add_argument("transcript")
     ap.add_argument(
@@ -278,13 +295,6 @@ def main():
         cmd = [PY, "-u", BROKER] + flags + ["--transcript-write", a.transcript]
         sys.stderr.write("+ %s\n" % " ".join(cmd))
         raise SystemExit(subprocess.call(cmd, cwd=K))
-
-    if a.action == "census":
-        n, urls, _ = _census(a.transcript)
-        print("cycles(now)=%d  gets=%d  posts=%d" % (n["now"], n["get"], n["post"]))
-        for u in sorted(urls):
-            print("  post ->", u)
-        return
 
     if a.action == "digest":
         d, _ = replay(a.transcript)
@@ -341,7 +351,7 @@ def main():
         )
 
     if a.action == "selftest":
-        n, _, _ = _census(a.transcript)
+        n = _census(a.transcript)
         if n["post"] == 0:
             sys.exit(
                 "transcript contains ZERO posts -- it exercises nothing. Capture one "
@@ -376,7 +386,6 @@ def main():
             "carrier_hz",
             "hops_per_sec",
             "dll_gain",
-            "carrier_gain",
             "code_bias_alpha",
             "bias_alpha",
         ):
@@ -393,9 +402,7 @@ def main():
             )
         print("sensitivity OK   moved by: %s" % ", ".join(moved))
         skipped = [
-            k
-            for k in ("dll_gain", "carrier_gain", "code_bias_alpha", "bias_alpha")
-            if k not in moved
+            k for k in ("dll_gain", "code_bias_alpha", "bias_alpha") if k not in moved
         ]
         if skipped:
             print(

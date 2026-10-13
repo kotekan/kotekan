@@ -45,7 +45,7 @@ def _healthy(sigma=0.3, n_sat=6, cycles=60, seed=1):
         t += 30.0
         js.cycle(
             [
-                (k, TRUE_CLK + b + rng.gauss(0.0, sigma), sigma, None)
+                (k, TRUE_CLK + b + rng.gauss(0.0, sigma), sigma)
                 for k, b in biases.items()
             ],
             t,
@@ -69,13 +69,11 @@ class TestEscapeHatch(unittest.TestCase):
         for _ in range(40):  # 20 minutes of a beam-exited satellite
             t += 30.0
             meas = [
-                (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
+                (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3)
                 for k, b in biases.items()
                 if k != bad
             ]
-            meas.append(
-                (bad, rng.uniform(0.0, L), 0.3, None)
-            )  # uniform noise, as measured
+            meas.append((bad, rng.uniform(0.0, L), 0.3))  # uniform noise, as measured
             js.cycle(meas, t)
         self.assertAlmostEqual(
             js.x[0], TRUE_CLK, delta=1.0, msg="clk was dragged by a noise satellite"
@@ -107,7 +105,6 @@ class TestEscapeHatch(unittest.TestCase):
                         + (step if k == moved else 0.0)
                         + rng.gauss(0.0, 0.3),
                         0.3,
-                        None,
                     )
                     for k, b in biases.items()
                 ],
@@ -153,7 +150,6 @@ class TestEscapeHatch(unittest.TestCase):
                         + (40.0 if k == moved else 0.0)
                         + rng.gauss(0.0, 0.3),
                         0.3,
-                        None,
                     )
                     for k, b in biases.items()
                 ],
@@ -164,7 +160,7 @@ class TestEscapeHatch(unittest.TestCase):
             any("ESCAPE" in n for n in notes),
             "an escape happened with no operator note: %r" % (notes,),
         )
-        self.assertGreater(js.escapes, 0)
+        self.assertTrue(any("-- believing a" in n for n in notes), notes)
 
     def test_incoherent_run_is_reported(self):
         """A satellite feeding noise is a TRACKING failure; the filter should say so rather
@@ -174,11 +170,11 @@ class TestEscapeHatch(unittest.TestCase):
         for _ in range(20):
             t += 30.0
             meas = [
-                (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
+                (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3)
                 for k, b in biases.items()
                 if k != bad
             ]
-            meas.append((bad, rng.uniform(0.0, L), 0.3, None))
+            meas.append((bad, rng.uniform(0.0, L), 0.3))
             js.cycle(meas, t)
         self.assertTrue(
             any("REJECT-RUN" in n for n in js.drain_notes()),
@@ -212,6 +208,7 @@ class TestGauge(unittest.TestCase):
         )
 
         mean_before = sum(js.bias(k) for k in biases) / len(biases)
+        js.drain_notes()
         js.gauge()
         mean_after = sum(js.bias(k) for k in biases) / len(biases)
         self.assertLess(
@@ -219,9 +216,8 @@ class TestGauge(unittest.TestCase):
             abs(mean_before) - 1.0,
             "gauge() did not pin the common mode at all (it switched itself off)",
         )
-        self.assertEqual(
-            js.gauge_fallbacks,
-            0,
+        self.assertFalse(
+            any(n.startswith("GAUGE:") for n in js.drain_notes()),
             "the median-centred set should be full here, needing no fallback",
         )
 
@@ -235,7 +231,7 @@ class TestGauge(unittest.TestCase):
             t += 30.0
             js.cycle(
                 [
-                    (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3, None)
+                    (k, TRUE_CLK + b + rng.gauss(0.0, 0.3), 0.3)
                     for k, b in biases.items()
                     if k != wild
                 ],

@@ -16,8 +16,8 @@
 # makes that enforceable -- it regenerates into memory and compares, so a hand-edit or a
 # generator change shows up as a red gate instead of a silent divergence.
 #
-# Keys become flags exactly as in config/gnss_chains_chord.yaml: `keep-n2: true` -> a bare
-# `--keep-n2`, `search-port-base: 11040` -> `--search-port-base 11040`, false/null -> omitted.
+# Keys become flags exactly as in config/gnss_chains_chord.yaml: `n2-send: true` -> a bare
+# `--n2-send`, `search-port-base: 11040` -> `--search-port-base 11040`, false/null -> omitted.
 # Same convention, so a mistyped key surfaces as argparse's "unrecognized arguments".
 
 # ⚠️ THE BASE IS PRODUCTION'S TEMPLATE, RENDERED -- NEVER A CAPTURE (2026-10-02). The
@@ -77,14 +77,11 @@ common:
   # 2-6 deg and nothing is left uncovered between the two.
     elem-proj-deg: 6
 
-  # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
-  # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
-    keep-n2: true
   # PHASE 3a: THE SATELLITES OUT OF THE SCIENCE N2 (cx51 canary LIVE 2026-10-03 12:37Z; the rest
   # of the fleet the same evening). GnssN2Project solves the dominant SPREAD components of each
   # channel's live block per frame and writes (I-QQ^H)V(I-QQ^H) into the copy N2Accumulate reads
   # -- only in the excision-exempt lobes ('exempt' = rfi-excision-exempt-freq-ids above), which
-  # are lost to cosmology anyway. Needs keep-n2. B04X (correlator station 7) is LEFT OUT of the
+  # are lost to cosmology anyway. B04X (correlator station 7) is LEFT OUT of the
   # projected stations: saturated, and its cross-pol pair with B04Y was the dominant 'component'
   # of every quiet channel (10-03). Judged at G32 2.94 deg and E36 1.43 deg on cx51: the satellite
   # gone from cx51's channels in recv1's files, present on everyone else's; what remains at a
@@ -97,18 +94,14 @@ common:
   # ── SYNTHESIS ~4x (GPU TODO items 3+6, ARMED FLEET-WIDE 2026-08-31) ─────────────────────
   # fp16 Phi tables (item 3): halves the RESIDENT table -- the one lever the DRAM-footprint
   # verdict (gnss_gpu_search.md 10.6c) says pays. 1.55x through the SHIPPED enqueue_waveform
-  # (scripts/gnss/phi16gpu ALL PASS: wave rel 1.1e-3 vs the 3.3e-4 storage floor; the
-  # raw-float2 paths THROW while armed rather than despread garbage).
-    phi-fp16: true
+  # (phi16gpu, removed after be7d46e8e, ALL PASS: wave rel 1.1e-3 vs the 3.3e-4 storage floor).
   # CENTERED 80-chip gather window (item 6): the prototype peaks mid-span, so 80 CENTERED
   # chips keep -0.05 dB where the one-sided cap cliffed at 105-120. e2e-EXACT (== the
   # untruncated baseline, GPU tracker leg included) across a 3-PRN x 3-Doppler sweep.
   # ⚠️ 2.6x, not 1.75x: the "shipped one-sided 140" never actually shipped -- before this,
-  # production walked the full ~210 chips. Centered floor is 60 (harsh-comb flip at 52);
-  # 80 carries margin in both comb regimes. Disarm = delete these three keys, regenerate,
-  # restart -- d_first == 0 is the historical walk BIT-FOR-BIT.
-    despread-max-chips: 80
-    despread-chips-centered: true
+  # production walked the full ~210 chips. Both are fixed now, not flags: the generator always
+  # emits fp16 and the centred 80-chip window (DESPREAD_MAX_CHIPS), and the injector refuses
+  # anything else, so there is no disarm short of an older binary.
 
   # No DPDK resync bound (dpdk-resync-max-advances, retired 2026-10-07): a capture worker
   # whose stream leaves its window now stops kotekan, and the unit's restart re-anchors it.
@@ -206,7 +199,7 @@ common:
   # down with it.
   #
   # That is exactly what happened on 2026-08-19 02:46: recv1 had learned our full-leg-only
-  # config at 02:08, we regenerated with the subset leg plus rf-stats, restarted the nodes,
+  # config at 02:08, we regenerated with the subset leg plus the RF monitor, restarted the nodes,
   # and cx19 came back as the same identity with different content. The "Address already in
   # use" errors that followed were SECONDARY -- systemd restarting faster than the old
   # listening sockets closed. Restart recv1 as stop -> confirm the process is gone and
@@ -214,7 +207,7 @@ common:
   #
   # This bites us harder than production because we regenerate far more often than they do.
   # Any flag in this file that changes a node's emitted config -- n2-send, n2-send-legs,
-  # rf-stats, extra-signal -- means a recv1 restart after the node cycle.
+  # extra-signal -- means a recv1 restart after the node cycle.
     n2-send: true
   # ✅ BOTH LEGS, FLEET-WIDE 2026-08-19 (KV). The full leg is proven: 2 connections per node
   # to recv1:11027, dropped-frame count 0 and flat on all twelve legs, and recv1 alive
@@ -262,9 +255,10 @@ common:
   # First measurement: guard to_blaze_herm's diagonal and log imag -- frames 1-2 only means
   # a race, every frame means the data.
 
-  # ── #8: THE RF-PATH MONITOR (2026-08-18) ────────────────────────────────────────────────
-  # Flip to `true` to serve 4+4b clip fraction and per-channel band power from each GPU's
-  # search tap, at <node>:12049/gnss{0,1}_srch_tap/rf_stats.
+  # ── #8: THE RF-PATH MONITOR (2026-08-18; always on since 08-19) ──────────────────────────
+  # 4+4b clip fraction and per-channel band power from each GPU's search tap, served at
+  # <node>:12048/gnss{0,1}_srch_tap/rf_stats, polled by the broker (gps_l5 only) and rendered
+  # in the viewer's stream-health strip.
   #
   # WHY IT EXISTS. Amplitudes swing 5-10x per hour across the whole fleet, on flipped and
   # unflipped satellites together (#56). The root is upstream of tracking AND of the combine,
@@ -286,64 +280,29 @@ common:
   #
   # It also runs ABOVE the tap's drop check, so a backed-up GNSS branch does not blind the
   # monitor -- which is when you most want it.
-  # ⚠️ Needs a NODE RESTART (sudo -- KV's). Off means the pass never runs, not that it runs
-  # and reports nothing: config/gates/rf_stats_gate.py's control arm checks exactly that.
-  # ✅ ARMED 2026-08-19 (KV). Clip fraction + per-band power from each GPU's voltage tap,
-  # served at <node>:12048/gnss{0,1}_srch_tap/rf_stats, polled by the broker (gps_l5 only)
-  # and rendered in the viewer's stream-health strip. Cost measured at production shape:
-  # 1.0-1.2 ms per pass, ~0.01% duty at the 10 s period. Rollback: rf-stats: false.
-    rf-stats: true
+  #
   # 1 s, not the 10 s default: the recorder (scripts/gnss/site/rail_watch.py record) keeps every pass
   # per channel, and a boresight transit rails for minutes with structure on tens of seconds.
   # A pass is one frame read in place, ~1-2 ms at the full union channel set, so 1 s is ~0.1-0.2%
   # of the tap's time. Needs a node restart to take effect.
     rf-stats-period-s: 1.0
-  # SKY-CORRECTED DEEP RUNG (2026-08-10). The combiner scores the LOO element-derotated
-  # prompt (record slots 24/25) as a deep-fold candidate. Enablement case: the 2026-08-05
-  # "beats the genie" anomaly was a comparator error (the split's honest bound is the
-  # HALF-aperture genie; against it the split reads 0.84-0.95 in every harness seed with
-  # the null fail-closed), and ON SKY the slots hold phase-coherence 0.92-0.96 over 120 s
-  # where the raw prompt sits at the random-walk floor (docs 11.32). Merit-gated: the rung
-  # pays the same measured floor as every other candidate, so a cold cal loses instead of
-  # corrupting the fold. This is the lever on the fleet-engagement collapse (#10): per-
-  # instance deep up ~7 dB lifts mid sats over the alignment's SNR threshold.
-    sky-deep: true
-  # ── #102 ELEMENT STEERING, first-order positions (KV, 2026-08-29): the e5a assemblers
-  # get elem_positions_enu from config/chord_dish_layout.json (nominal grid, mapping as
-  # stated -- 'better than nothing'; the phase-stage solve refines). e5b stays UNSTEERED
-  # as the band-sibling control AND the live sign calibration: if e5a's per-element
-  # coherence/p2 degrade vs e5b, the sign is wrong -- flip elem-steer-sign, regenerate.
-  # ⚠️ DISARMED 2026-08-31 FOR THE POST-MERGE RESTART, deliberately and temporarily.
-  # chord_dish_layout.json is indexed by the OLD element numbering (its element 0 is
-  # "A01X"), and the re-captured base renumbers the element axis to [P][D] with the live
-  # feeds at {0..15, 64..79} -- so every position in that file now names a different feed
-  # than it did when the #102 amplitude pattern measured it. A steering vector built from a
-  # stale index map is not a weaker steer, it is a WRONG one: it derotates each element by
-  # another element's geometric delay, which degrades the very coherence the arm is judged
-  # on. Re-derive the map post-restart from the measured pattern (fixtures/
-  # elem_mapping_check.py against the banked pre-restart fingerprint,
-  # fixtures/elem_fingerprint_20260831_premerge_restart.txt), then re-arm with the sign
-  # calibration against the unsteered e5b sibling exactly as before.
-  # ── RE-ARMED 2026-09-24 (KV): steer from the MEASURED positions. The 08-31 blocker was the
-  # element numbering of the nominal layout file; the array-epoch table carries the viscap-
-  # solved positions in the current numbering, resolved by date, so the generator now takes
-  # them from there (--elem-positions-from arraymap) and stamps the epoch key into the config.
-  # Why now: a boresight transit's cross-correlation dominates every weak satellite's
-  # per-element despread and the per-PRN self-cal element sum learns the bright satellite's
-  # phases -- the array gain is gone for everyone in its bands. Geometry-steered elements are
-  # what a single satellite cannot capture. e5a steered, e5b the unsteered band-sibling
-  # control, exactly the 08-29 protocol; judge = per-PRN coherence efficiency of the element
-  # vectors (fixtures/elemsteer/judge.py) within minutes of the restart. The sign is a
-  # measured convention. -1 was the first guess (the viscap solve's phase model with the
-  # despread's data*conj(replica) convention) and it was WRONG on sky: steered e5a read the
-  # most displaced dish (element 3, 18.8 m) at -11..-13 dB against -3..-4 on unsteered e5b --
-  # the comb smearing DOUBLED, which is what the wrong sign does. +1 is the measured sign.
-  # PHASE 2: every band, once e5a had confirmed the sign against e5b (displaced dishes up
-  # 2-5 dB in per-element amplitude with +1, down 8 dB with -1). The broker posts geometry
-  # from every chain (gnss_chains_chord.yaml common: post-sat-geometry).
-    elem-steer-bands: all
+  # ── #102 ELEMENT STEERING (live since 2026-09-24; every band since e5a confirmed the sign
+  # against the unsteered e5b): each assembler derotates its elements by the satellite
+  # geometry the broker posts (gnss_chains_chord.yaml common: post-sat-geometry), using the
+  # measured positions of the array epoch valid at generation time (config/
+  # chord_array_epochs.json: viscap-solved, current element numbering, resolved by date),
+  # refined below, and stamps the epoch key into the config.
+  # Why: a boresight transit's cross-correlation dominates every weak satellite's per-element
+  # despread and the per-PRN self-cal element sum learns the bright satellite's phases -- the
+  # array gain is gone for everyone in its bands. Geometry-steered elements are what a single
+  # satellite cannot capture. Judge = per-PRN coherence efficiency of the element vectors
+  # (fixtures/elemsteer/judge.py).
+  # The sign is a measured convention. -1 was the first guess (the viscap solve's phase model
+  # with the despread's data*conj(replica) convention) and it was WRONG on sky: steered e5a read
+  # the most displaced dish (element 3, 18.8 m) at -11..-13 dB against -3..-4 on unsteered e5b
+  # -- the comb smearing DOUBLED, which is what the wrong sign does. +1 is the measured sign
+  # (displaced dishes up 2-5 dB in per-element amplitude with +1, down 8 dB with -1).
     elem-steer-sign: 1.0
-    elem-positions-from: arraymap
   # REFINED POSITIONS on top of the epoch: solved from steered per-element phases
   # (fixtures/elemsteer/possolve.py). First pass recovered the 6.3 x 8.5 m survey lattice to
   # a few cm where the epoch table was off by up to 1.2 m; the second pass adds the residual
@@ -377,10 +336,6 @@ common:
   # healthy model). The freeze needs a broker that posts that separation ("_bore", same
   # commit), so restart the broker with the nodes.
     elem-sum-shared: true
-  # #163 (2026-10-12): the assembler weights each channel of its cross-channel sums by 1/rms of
-  # the channel's own measured power (the voltage tap's 1-s band-power pass), so a channel enters
-  # by signal-to-noise and not by the F-engine digital gain. Judge: E6 q on bright satellites.
-    chan-noise-norm: true
   # 2026-10-01: freeze 6 -> 2 deg now that the projection (elem-proj-deg 6 above) keeps the
   # victims' rows clean in transit; inside 2 deg the victim in the bright satellite's own beam is
   # lost anyway. Hold stays 60 s (assembler default).
@@ -390,34 +345,17 @@ common:
   # two at any cold start -- left that instance's global phase arbitrary and the fleet sum lost
   # it until a restart. The reference is one vector per band, a snapshot of the fleet consensus
   # (python/scripts/gnss/elem_shared_ref.py snapshot), refused unless taken against the epoch of
-  # elem-positions-file. live = pin to it (a first model in full, a warm one slewed at 1 deg/s);
-  # log = each assembler reports its offset only. Live switch: elem_shared_ref.py post FILE
-  # --mode live. Safety net: scripts/gnss/site/elem_ref_cron.sh.
+  # elem-positions-file. live = pin to it (a first model in full, a warm one slewed at 1 deg/s).
+  # Live switch: elem_shared_ref.py post FILE --mode live. Safety net:
+  # scripts/gnss/site/elem_ref_cron.sh.
     elem-shared-ref: config/elem_shared_ref_20261010.json
     elem-shared-ref-mode: live
-  # DISARMED 2026-09-04 (KV: "that doesn't seem helpful here, and nobody uses it").
-  #
-  # It wrote the COMBINER records (~52 KB/window), not the 17 MB/s tiles, and the stated
-  # purpose was "so a transit can be analysed after the fact" -- its absence is why the 03:58
-  # E30 pass was lost on 2026-08-07. That rationale is worth keeping in view, but it had
-  # ALREADY STOPPED HOLDING: all 7 gnss0 chains shared one file_name and all 8 gnss1 chains
-  # another, so ~87% of frames were overwritten within milliseconds and no survivor could be
-  # attributed to a chain. A transit archive you cannot attribute to a signal is not a transit
-  # archive. (Names are unique as of df06d26bc, which is what made the volume visible: with the
-  # collision fixed every stream lands, taking /tmp/gnss from ~104 to ~780 GB/day/node -- and
-  # --n2-dump's own help says "short captures only, 1 GB/min".)
-  #
-  # THE REPLACEMENT IS THE BEAM CUBE, which records the axis this never did (subband x element,
-  # coherent + incoherent, ~1 s windows) at ~77 GB/day for the whole fleet. Re-arm this flag
-  # deliberately for a short targeted capture -- a near-boresight pass with the gain backed off
-  # -- and disarm it again afterwards. It is not a background service.
-    n2-dump: false
   # cf06. The search/broker host; 127.0.0.1 (the generator default) is the airspy prototype's
   # answer and would point every node at itself.
     search-host: 10.222.0.56
   # TASK #59: the frame-synced tracker->broker telemetry leg. Same host as the search
-  # aggregator and the broker -- cf06 already runs a kotekan instance, so this is a second
-  # small one beside it (scripts/gnss/site/gather_up.sh), not a new kind of thing.
+  # aggregator and the broker -- that host already runs a kotekan instance, so this is a second
+  # small one beside it (gnss-gather.service), not a new kind of thing.
   #
   # WHAT IT ADDS PER INSTANCE: a second CONSUMER of each chain's record buffer (the combiner
   # is untouched), which strips each record to its gnssRecord.hpp header plus the per-channel
@@ -428,14 +366,6 @@ common:
   # ⚠️ BRING THE GATHER UP BEFORE RESTARTING NODES INTO THIS. 60 senders retrying a dead
   # listener is ~2 log lines a second across the fleet even at reconnect_time 30.
     telem-host: 10.222.0.56
-  # PACE EVERY PUSH LEG (telem, cube, search tap) at 2x its mean rate. Every sender in the
-  # fleet emits on the F-engine frame clock, so unpaced they all land on the receiver's single
-  # 1 GbE in the same millisecond and the switch drops what its egress queue cannot hold; each
-  # loss is an RTO stall of ~200 ms, and a telemetry frame that stalls reaches the gather after
-  # its window has closed. At 2x, a frame spreads over half its period and the aggregate at the
-  # link is the mean, which the link carries. 0 = unpaced. The real fix is a faster link into
-  # the receiver; this is the one that needs no hardware.
-    send-pacing-factor: 2.0
   # -- THE BEAM CUBE: the continuous per-(subband x element) recording --------------------------
   # The (channel x element) axis, un-collapsed. Every other product this fleet emits has summed
   # one of the two away -- element blocks over channels, the comb over elements -- and a
@@ -447,15 +377,15 @@ common:
   # ⚠️ BRING THE ARCHIVER UP BEFORE RESTARTING NODES INTO THIS -- the same rule the gather has,
   # and 90 senders is more of them.
   #
-  # ⚠️ ON THE WIRE, so uniform across every sender AND the archiver's buffer: cube-max-prn and
-  # cube-max-bins set frame_size and bufferRecv closes any connection that disagrees. Left at
-  # the generator defaults (32 / 8), which cover the widest chain (32 PRN slots, 7 covering
-  # channels). Changing either means regenerating the archiver in the same commit.
+  # ⚠️ ON THE WIRE, so uniform across every sender AND the archiver's buffer: the generator's
+  # CUBE_MAX_PRN and CUBE_MAX_BINS (32 / 8, the widest chain: 32 PRN slots, 7 covering channels)
+  # set frame_size and bufferRecv closes any connection that disagrees. Changing either means
+  # regenerating the archiver in the same commit.
   #
   # COST: 101,192 B/frame x 90 assemblers x ~1/s = 9.0 MB/s, on top of the telemetry leg's 24.
   # ⚠️ AND IT ARRIVES AS A BURST: every sender closes the same window on the same F-engine
   # boundary, so it is ~9 MB landing at once on cf06's ONE 1 GbE, ~73 ms of wire per second.
-  # That is the same frame-synced burstiness that cost ~5 s of broker cycle at telem-max-prn 40
+  # That is the same frame-synced burstiness that cost ~5 s of broker cycle at 40 telemetry rows
   # (task #64), so if cycle time regresses, this leg is the first thing to park. The payload is
   # ~5x padding today -- the frame carries all 24-32 PRN SLOTS, live or not -- and compacting
   # onto despread PRNs the way GnssTelemPack does is the lever that removes it.
@@ -466,55 +396,41 @@ common:
   # first emit with nothing in the log. Offline gate: scripts/gnss/cube_e2e.py (RUNS the
   # producer -- the earlier gates all sat downstream of it). Re-armed on cx19 17:02 09-05 with
   # fixtures/cube_armed_20260905/chord_gnss_cx19_multi.yaml: 15 senders, 0 holes, 0 drops.
-    beam-cube: true
     cube-host: 10.222.3.6
 
   # ── VISIBILITY CAPTURE (team request; OFF -- uncomment the keys, regenerate, restart) ───
-  # Not free while disarmed: the capture gather copies its tiles off the GPU every frame
-  # (20 MB, ~0.7 ms of D2H per GPU with BB) for the gate to drop.
-  # Builds, per GPU instance, a REST-armed FrameWindowGate between the n2dual chain's
-  # tiles/ctl buffers and two rawFileWrite sinks (<record_dir>/viscap/<node>_gnss<g>_vis{tiles,ctl}).
+  # Builds, per GPU, one capture gather in the gnss<g>_n2dual correlator pass (the live
+  # antennas' N^2 plus the captured chains' mixed rows) and a REST-armed FrameWindowGate that
+  # holds it in lockstep with each captured chain's ctl buffer, feeding rawFileWrite sinks under
+  # <record_dir>/viscap (<node>_gnss<g>_capvistiles, <node>_gnss<g><tag>_visctl). Not free
+  # while disarmed: the capture gather copies its tiles off the GPU every frame (20 MB, ~0.7 ms
+  # of D2H per GPU with BB) for the gate to drop.
   # Nothing is written until an operator arms an absolute F-engine sample window on every
   # gate (scripts/gnss/viscap.py arm --start-in 30 --duration 300); the gate auto-disarms
   # past end_seq. The window is ONE absolute clock fleet-wide (FrameHdr.seq0), so the six
   # nodes capture the same sky interval to the frame.
   #
   # ⚠️ NOT THE PRODUCTION N^2. recv1's data set is run_n2k -> n2_accumulate -> the n2-send legs
-  # above (keep-n2 / n2-send / n2-send-legs) -- the collaboration's main product; those keys
-  # stay ARMED regardless of this one. gnss_gather_aa below is a block inside the GNSS DUAL
-  # correlator (32 live elements, the 6-7 despread channels) so the capture carries N^2 next
+  # above (n2-send / n2-send-legs) -- the collaboration's main product; those keys
+  # stay ARMED regardless of this one. The capture's N^2 is a block inside the GNSS DUAL
+  # correlator (32 live elements, the despread channels), so the capture carries N^2 next
   # to NxM; it does not touch cudaCorrelator or anything downstream of it.
-  # It ALSO turns on gnss_gather_aa: the correlator adds the 3 antenna-antenna (N^2) tiles over
-  # the live element columns per channel (+1 block class, ~0.03 ms/instance) so the capture
-  # carries N^2 + NxM, not NxM alone. That changes the tiles frame size (917504 -> 1089536 B
-  # for 7 channels); the assembler FATALs on mismatch rather than mis-decode.
-  # Value = the chain name whose n2dual is captured (a comma list is accepted).
-  # Volume when armed: ~30 MB/s per instance per chain -> ~18 GB/node per 5 min (one chain,
-  # no BB), on the node nvme. Disarm = delete this key, regenerate, restart.
-  # docs/CHORD_VIS_CAPTURE.md.
+  # Value = the chain names captured (a comma list). Disarm = delete the key, regenerate,
+  # restart. docs/CHORD_VIS_CAPTURE.md.
   # 2026-10-06: all three 1176 MHz chains, for the re-take of the 09-07 set with M spanning
-  # L5 + E5a + B2a. The three gates on a GPU share the clock, so one `viscap.py arm --tags
-  # ,_e5a,_b2a` captures the same records on all of them. Taken 19:15-19:20Z; the set is
-  # /mnt/cs00/data/kvand/viscap_20261006 (README inside). Keys off again 2026-10-06 ~23Z.
+  # L5 + E5a + B2a. Taken 19:15-19:20Z; the set is /mnt/cs00/data/kvand/viscap_20261006
+  # (README inside). Keys off again 2026-10-06 ~23Z.
   # vis-capture: gps_l5,gal_e5a,bds_b2a
-  # vis-capture-bb: the captured chains also gather the BB (replica x replica) block, so each
-  # chain's capture is its complete (N+M)(N+M+1)/2 triangle per record. Triples the tiles
-  # traffic of those chains: ~235 MB/s per 7-channel instance for the three chains, ~800 GB
-  # fleet-wide per 5 min (per-chain layout; 1.7 TB with n2-dual-merged, which spans all lanes).
+  # vis-capture-bb: the capture also gathers the BB (replica x replica) block across the
+  # captured chains, so it holds the complete (N+M)(N+M+1)/2 triangle per record: ~1.7 TB
+  # fleet-wide per 5 min for the three 1176 MHz chains.
   # vis-capture-bb: true
-  # n2-dual-merged: one (N+M)^2 correlator pass per GPU. A GPU's path-B chains share one
-  # gnss<g>_n2dual process and a compact 384-lane synth array (chains sharing channels get
-  # disjoint lane ranges), with a gather per chain; with vis-capture, one capture gather, so the
-  # capture is one gate per GPU (`viscap.py` defaults) and spans every captured chain's replicas. cx51
-  # canary 2026-10-06 21:10Z: host thread 34 % of a core per GPU (was 7-8 threads at 20-45 %
-  # each), GPU memory 3.8 GB per GPU (was 17-19 GB), synthesis 13 ms per frame per GPU.
-    n2-dual-merged: true
-  # ⚠️ ON THE WIRE. telem-max-prn and telem-records-per-frame set frame_size, and bufferRecv
-  # closes any connection whose frame_size disagrees with its buffer -- so changing either one
-  # means regenerating the GATHER config in the same commit, and restarting both ends. Left at
-  # the generator defaults (16 / 4): 4 records is exactly one 8192-hop correlator frame, and 16
-  # is how many SIMULTANEOUSLY LIVE satellites one frame carries -- not the record buffer's slot
-  # count, because GnssTelemPack compacts rows onto the PRNs that were actually despread.
+  # ⚠️ ON THE WIRE. The telemetry frame size is set in the generator -- TELEM_RECORDS_PER_FRAME
+  # (4 = one 8192-hop correlator frame) and each chain's PRN rows (_TELEM_ROWS) -- and bufferRecv
+  # closes any connection whose frame exceeds the gather's buffer, so changing either means
+  # regenerating the GATHER config in the same commit, and restarting both ends. Rows are how
+  # many SIMULTANEOUSLY LIVE satellites one frame carries -- not the record buffer's slot count,
+  # because GnssTelemPack compacts rows onto the PRNs that were actually despread.
   #
   # ⚠️ WAS 40 UNTIL 2026-08-15, WHICH COST ~5 s ON EVERY BROKER CYCLE. 40 rows for 11-14 live
   # satellites is ~65% zeros: 480 Mbps of cf06's ONE 1 GbE (eno8303), and because the senders

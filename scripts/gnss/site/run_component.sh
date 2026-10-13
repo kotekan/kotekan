@@ -1,10 +1,10 @@
 #!/bin/bash
 # Run ONE GNSS component in the FOREGROUND, from the shared definition. This is what systemd
-# execs, and what the daemonising *_up.sh scripts background.
+# execs.
 #
 # Foreground and `exec` are the whole point: the process systemd supervises must BE the
 # component, in the unit's cgroup, so Restart=, MemoryMax= and a clean stop all work. See the
-# header of stack_components.sh for why the units cannot call *_up.sh instead.
+# header of stack_components.sh for why the units cannot call a daemonising launcher instead.
 #
 #     run_component.sh broker|gather|aggregator|viewer
 #     GNSS_CHAIN=gps_l5 run_component.sh obs
@@ -27,7 +27,7 @@ if [ "$PRINT" = 1 ]; then
     for a in "${GNSS_EXEC[@]}"; do printf 'argv\t%s\n' "$a"; done
     # Every variable the definition may export. A name missing from this list is a variable
     # stack_contract_gate.sh cannot check, which is how an environment drifts unnoticed.
-    for v in GNSS_PY GNSS_CHAIN GNSS_SEARCH_PROFILE \
+    for v in GNSS_PY GNSS_CHAIN \
              OPENBLAS_NUM_THREADS OMP_NUM_THREADS MKL_NUM_THREADS NUMEXPR_NUM_THREADS; do
         eval "val=\${$v:-}"; [ -n "$val" ] && printf 'env\t%s=%s\n' "$v" "$val"
     done

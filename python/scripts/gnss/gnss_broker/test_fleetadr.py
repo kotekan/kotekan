@@ -65,13 +65,7 @@ class Sky(object):
             else:
                 H, T = a * self.chip, 0.0
             S = H * H + T * T  # as exported: the instance's constant stays in
-            # phi0: the assembler's NCO accumulator. A perfect fold steps it by the same
-            # amount every record; `bad_boundary` mimics the live defect (a wrong step at r0).
-            r = ((hop - HOP0) // HPR) % 4
-            phi0 = self.fold_step * ((hop - HOP0) // HPR) + self.bad_boundary * (
-                (hop - HOP0) // (4 * HPR)
-            )
-            out[i] = (self.dop_cmd, 0.0, S, phi0, r)
+            out[i] = (self.dop_cmd, 0.0, S)
         return out
 
 
@@ -147,7 +141,7 @@ class TestFold(unittest.TestCase):
             def record(self, hop, prev_hop, **kw):
                 out = Sky.record(self, hop, prev_hop, **kw)
                 return {
-                    i: (v[0], v[1], v[2] * random.uniform(0.05, 1.0) ** 2, v[3], v[4])
+                    i: (v[0], v[1], v[2] * random.uniform(0.05, 1.0) ** 2)
                     for i, v in out.items()
                 }
 
@@ -181,13 +175,7 @@ class TestFold(unittest.TestCase):
                             range(12), random.choice((2, 2, 3, 3, 4))
                         ):
                             v = out[i]
-                            out[i] = (
-                                v[0],
-                                v[1],
-                                -v[2],
-                                v[3],
-                                v[4],
-                            )  # S -> -S: a half-cycle slip
+                            out[i] = (v[0], v[1], -v[2])  # S -> -S: a half-cycle slip
                     return out
 
             sky = Clustered(noise_rad=0.15, seed=seed)
@@ -209,7 +197,7 @@ class TestFold(unittest.TestCase):
         class Trimmed(Sky):
             def record(self, hop, prev_hop, **kw):
                 out = Sky.record(self, hop, prev_hop, **kw)
-                return {i: (v[0], 0.004, v[2], v[3], v[4]) for i, v in out.items()}
+                return {i: (v[0], 0.004, v[2]) for i, v in out.items()}
 
         sky = Trimmed()
         hops = [HOP0 + k * HPR for k in range(400)]
@@ -224,7 +212,7 @@ class TestFold(unittest.TestCase):
         ]
         st = run(sky, hops)
         self.assertEqual(st.arc, 2)
-        self.assertEqual(st.breaks, 1)
+        self.assertEqual(st.last_break["hop"], HOP0 + 60 * HPR)
         self.assertEqual(st.hop0, HOP0 + 60 * HPR)
         want = dop_only(sky, hops[-1], st.hop0)
         self.assertLess(abs(st.adr - want), 1e-3)
@@ -302,7 +290,7 @@ class TestFold(unittest.TestCase):
                 s = v[2] * power
                 if phase_noise:
                     s = abs(s) * cmath.exp(1j * random.uniform(-math.pi, math.pi))
-                v = (v[0], v[1], s, v[3], v[4])
+                v = (v[0], v[1], s)
             out[i] = v
         return out
 
@@ -342,7 +330,7 @@ class TestFold(unittest.TestCase):
             prev = hop
             self.assertEqual(st.n_silent, 0)
         self.assertEqual(st.arc, 1)
-        self.assertEqual(st.breaks, 0)
+        self.assertIsNone(st.last_break)
         self.assertLess(abs(st.adr - dop_only(sky, hops[-1], hops[0])), 1e-3)
 
     def test_a_fade_inside_the_margin_keeps_the_arc(self):
@@ -411,7 +399,6 @@ class TestFrames(unittest.TestCase):
     """Through real TelemFrames (test_telem's builder) and the window ring."""
 
     def test_windows_fold_to_the_published_phase(self):
-        import struct
         import sys
         import os
 

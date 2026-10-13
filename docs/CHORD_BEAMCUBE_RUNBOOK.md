@@ -56,10 +56,8 @@ metadata segfaulted six nodes. Archiver first, then nodes.
 `venv-ft` — the script checks and refuses, but if you invoke the loop by hand, use `venv`.
 
 ⚠️ Those three ARE cf06's GNSS presence now. The live stack -- broker, gather, aggregator, obs
-writers, viewer -- moved to `gnss` on 2026-09-17 ([`CHORD_GNSS_RUNBOOK.md`](CHORD_GNSS_RUNBOOK.md));
-the scripts named below are superseded for it.
-The old text: the rest of cf06 is out of scope here and has its own owners: `gather_up.sh`, `agg_up.sh`,
-`obs_up.sh`, and the broker (`broker_restart.sh`, KV's — archive `/tmp/gnss_broker.log` first).
+writers, viewer -- moved to `gnss` on 2026-09-17 and runs there as systemd units
+([`CHORD_GNSS_RUNBOOK.md`](CHORD_GNSS_RUNBOOK.md)).
 
 **Checks that actually bind** (all three, in under a minute):
 
@@ -85,7 +83,7 @@ curl -s http://cf06:8877/index.json | python3 -c 'import json,sys; print([d["day
 ```
 
 Yesterday should be in that list by ~00:35 UTC. If it is not, `grep beamcube
-/tmp/gnss_cubecompact.log` says why, and §5 is the hand-run.
+/tmp/gnss_cubecompact.log` says why, and §4 is the hand-run.
 
 ## 4. Doing it by hand
 
@@ -151,7 +149,6 @@ day list.
   fastest read on whether a day is short.
 - **A smoothed count is not coverage.** See `gnss_beam_static.py --min-occ`; it painted the
   vetoed 5° hole full of data that was never measured there.
-- **Two consumers of `/get_beam_cube` split the data** — it is reset-on-read. One archiver only.
 - **Restarting the compactor needs the in-flight pass to finish first.** `pkill` takes down
   the bash loop and orphans any running `gnss_cube_compact.py`; a second one on the same 89 L0
   files is a corrupting write. `cubecompact_up.sh` now waits for the child (up to 15 min) and

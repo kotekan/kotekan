@@ -6,15 +6,13 @@ real bufferSend, real bufferRecv, real rawFileWrite, then the real reader
 (gnss_cube_read.iter_frames). Only the GPU despread output is synthetic -- rawFileRead replays
 gnss_gpu::FrameHdr/PrnCtl/corr/energy frames this script writes.
 
-    python3 scripts/gnss/cube_e2e.py [--binary PATH] [--keep] [--expect-crash]
+    python3 scripts/gnss/cube_e2e.py [--binary PATH] [--keep]
 
 WHY THIS EXISTS. The leg shipped 2026-09-05 behind three checks -- config validation, a
 synthetic-sender wire loopback, a frame-size comparison -- and every one of them tested code
 DOWNSTREAM of the bug. The assembler never ran. On sky, every node segfaulted 45-75 s after
 start: emit_cube_window marked frames full with no metadata object and bufferSend dereferenced
-the null (#110). A gate for a producer must RUN THE PRODUCER; this one does, and with
---expect-crash it demonstrates the failure on the pre-fix binary (the mechanism, not just the
-fix: verify-the-mechanism-not-just-the-fix).
+the null (#110). A gate for a producer must RUN THE PRODUCER; this one does.
 
 WHAT IT CHECKS, each against a specific way the leg can fail silently:
 
@@ -43,7 +41,6 @@ import argparse
 import math
 import os
 import shutil
-import socket
 import struct
 import subprocess
 import sys
@@ -60,6 +57,7 @@ sys.path.insert(0, os.path.join(K, "config"))
 
 import gnss_cube_read as cr  # noqa: E402
 from gnss_record_layout import record_stride, cube_frame_bytes  # noqa: E402
+from telem_e2e import kotekan_binary  # noqa: E402
 
 # Ports deliberately far from anything live (11040-11070, 12048-12052 are in use on the site,
 # telem_e2e.py holds 11890/11891/12890). A gate that collides with production is not a gate.
@@ -130,13 +128,12 @@ def prn_runs(p, w):
 
 
 def write_gpu_file(dirpath):
-    """One rawFileRead-format file: [u32 meta_size] then [meta][frame]... (rawFileRead reads the
-    metadata size once at the head). The assembler ignores in_buf metadata, but the file format
-    needs it present."""
-    meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 n_chan_scale(0)
+    """One rawFileRead-format file: [u32 meta_size][meta][frame] per frame, the layout
+    rawFileWrite produces (rawFileRead checks the size header on every frame). The assembler
+    ignores in_buf metadata, but the file format needs it present."""
+    meta_size = 12  # GnssChanMetadata: int64 sample_seq + uint32 reserved (0)
     path = os.path.join(dirpath, "gpu_0000000.raw")
     with open(path, "wb") as fh:
-        fh.write(struct.pack("<I", meta_size))
         rec_global = 0
         n_frames = N_WINDOWS * REC_PER_WIN // REC_PER_FRAME
         for fi in range(n_frames):
@@ -202,6 +199,7 @@ def write_gpu_file(dirpath):
             )
             frame[OFF_CORR : OFF_CORR + corr.nbytes] = corr.tobytes()
             frame[OFF_ENERGY : OFF_ENERGY + energy.nbytes] = energy.tobytes()
+            fh.write(struct.pack("<I", meta_size))
             fh.write(struct.pack("<qI", (rec_global - REC_PER_FRAME) * REC_SAMPLES, 0))
             fh.write(frame)
     return path
@@ -256,27 +254,12 @@ def write_config(dirpath, out_dir):
         "cube_recv: {kotekan_stage: bufferRecv, buf: arch_buf, listen_port: %d, num_threads: 2,"
         " drop_frames: false, use_config_tracker: false}" % PORT_RECV,
         "cube_write: {kotekan_stage: rawFileWrite, in_buf: arch_buf, base_dir: %s,"
-        " file_name: gnss_cube, file_ext: raw, prefix_hostname: false, num_frames_per_file: 2,"
-        " allow_ndarray: true}" % out_dir,
+        " file_name: gnss_cube, file_ext: raw, prefix_hostname: false, num_frames_per_file: 2}"
+        % out_dir,
     ]
     path = os.path.join(dirpath, "cube_e2e.yaml")
     open(path, "w").write("\n".join(lines) + "\n")
     return path
-
-
-def kotekan_binary():
-    host = socket.gethostname().split(".")[0]
-    cand = (
-        [os.path.join(K, "build", "kotekan", "kotekan")]
-        if host.startswith("cx")
-        else [os.path.join(K, "build_nodpdk", "kotekan", "kotekan")]
-    )
-    cand.append(os.path.join(K, "build_nodpdk", "kotekan", "kotekan"))
-    cand.append(os.path.join(K, "build", "kotekan", "kotekan"))
-    for c in cand:
-        if os.path.exists(c):
-            return c
-    sys.exit("no kotekan binary found under %s" % K)
 
 
 def main():
@@ -288,12 +271,6 @@ def main():
         "--keep", action="store_true", help="keep the scratch dir and the log"
     )
     ap.add_argument("--timeout", type=float, default=20.0)
-    ap.add_argument(
-        "--expect-crash",
-        action="store_true",
-        help="PASS iff kotekan dies with SIGSEGV before any window is archived "
-        "(the #110 mechanism, run against a pre-fix binary)",
-    )
     a = ap.parse_args()
 
     d = tempfile.mkdtemp(prefix="cube_e2e-")
@@ -330,20 +307,6 @@ def main():
         rc = proc.poll()
 
         # -- [0] the process survives its first emit -------------------------------------------
-        if a.expect_crash:
-            crashed = rc is not None and rc < 0 and (-rc) in (11,)  # SIGSEGV
-            print("exit     %s  windows archived %d" % (rc, len(frames)))
-            if not crashed:
-                fails.append(
-                    "expected SIGSEGV (the #110 mechanism) and got rc=%s with %d windows"
-                    % (rc, len(frames))
-                )
-            elif frames:
-                fails.append(
-                    "crashed, but %d windows were archived first -- not the #110 shape "
-                    "(zero frames)" % len(frames)
-                )
-            return finish(fails, d, log, a.keep, proc, crash_mode=True)
         if rc is not None:
             fails.append(
                 "kotekan EXITED rc=%s before the replay finished (SIGSEGV = %s) -- see %s"
@@ -490,7 +453,7 @@ def read_archive(out_dir):
     return frames
 
 
-def finish(fails, d, log, keep, proc, crash_mode=False):
+def finish(fails, d, log, keep, proc):
     if proc.poll() is None:
         proc.terminate()
         try:
@@ -505,15 +468,9 @@ def finish(fails, d, log, keep, proc, crash_mode=False):
             print("  ... %d more" % (len(fails) - 40))
         print("log: %s" % log)
         return 1
-    if crash_mode:
-        print(
-            "\nPASS -- the pre-fix binary SEGFAULTS at its first emit with nothing archived: the "
-            "#110 mechanism reproduces offline"
-        )
-    else:
-        print(
-            "\nPASS -- assembler, bufferSend/Recv, rawFileWrite and the reader agree end to end"
-        )
+    print(
+        "\nPASS -- assembler, bufferSend/Recv, rawFileWrite and the reader agree end to end"
+    )
     if not keep:
         shutil.rmtree(d, ignore_errors=True)
     return 0

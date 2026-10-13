@@ -21,7 +21,7 @@ search rather than narrow it.
 import statistics
 
 from gnss_broker.transport import _now, _post, _log, _log_rl
-from gnss_broker.sky import brdc_predict, nearest_boresight, visible_prns
+from gnss_broker.sky import brdc_predict, nearest_boresight
 from gnss_broker import timebase
 
 
@@ -41,7 +41,6 @@ def stage_almanac_predict(ctx):
         try:
             t_pred = ctx.alm_now()
             if ctx.brdc_alm is not None:
-                ctx.brdc_alm["eph_rebase"] = bool(getattr(ctx.args, "eph_rebase", 0))
                 raw = brdc_predict(
                     ctx.brdc_alm,
                     ctx.args.lat,
@@ -55,77 +54,6 @@ def stage_almanac_predict(ctx):
                 if ctx.capable is not None:
                     # Capability by block type (#150); the PRN floor above is the fallback.
                     raw = {p: v for p, v in raw.items() if p in ctx.capable}
-                # ── EPH-REBASE (#101): an ephemeris refresh just STEPPED the model by a
-                # KNOWN per-sat delta; hand the equal-and-opposite trim adjustment to the
-                # gather through the #92 handover (same-cycle ledger transfer) instead of
-                # letting the leak-limited loop rebuild through the step for ~15-30 min.
-                # ⚠️ SIGN IS CALIBRATED BY THE INSTRUMENT, NOT BY THIS COMMENT: the
-                # post-merge trim-kick superposed-epoch (fixtures/gap3_merge_epoch.py)
-                # must COLLAPSE on the armed chain vs its band-sibling control. If it
-                # GROWS, the sign is wrong -- disarm and flip. (08-29's position-fix
-                # lesson, pre-applied.) Requires --fleet-trim-rebase-adjust: offer()
-                # no-ops when the handover is disabled, so warn loudly once.
-                _es = ctx.brdc_alm.pop("eph_step", None)
-                if _es is not None and getattr(ctx.args, "eph_rebase", 0):
-                    if not ctx.handover.enabled:
-                        _log_rl(
-                            "ephreb-noho",
-                            "eph-rebase ARMED but --fleet-trim-rebase-adjust is OFF: "
-                            "the handover transport is disabled, steps NOT posted "
-                            "(armed-but-inert)",
-                            every_s=600.0,
-                        )
-                    else:
-                        _stepd, _ts = _es
-                        # CENSUS FIRST, unconditionally: without this line, zero posts
-                        # is uninterpretable -- steps-all-tiny, sats-unarmed, and
-                        # steps-never-computed all look identical (the armed-but-inert
-                        # trap). One line per refresh names which.
-                        _mx = max(_stepd.values(), key=abs) * ctx.args.chip_rate_hz
-                        _log(
-                            "EPH-REBASE census: refresh stepped %d sat model(s), "
-                            "largest %+.3f chips, %d over the 0.02 post floor"
-                            % (
-                                len(_stepd),
-                                _mx,
-                                sum(
-                                    1
-                                    for v in _stepd.values()
-                                    if abs(v * ctx.args.chip_rate_hz) >= 0.02
-                                ),
-                            )
-                        )
-                        _n_post = 0
-                        for _k, _ds in sorted(_stepd.items()):
-                            _prn = _k[1] if isinstance(_k, tuple) else _k
-                            _dchips = _ds * ctx.args.chip_rate_hz
-                            if abs(_dchips) < 0.02:
-                                continue  # sub-noise; not worth a post
-                            if ctx.handover.offer(
-                                _prn,
-                                _dchips,
-                                _prn in ctx.dls.armed_last,
-                                ctx.telem_chain,
-                                ctx.args.fleet_trim_url,
-                                _post,
-                                _log,
-                            ):
-                                _n_post += 1
-                        if _n_post:
-                            _log(
-                                "EPH-REBASE: %d per-sat model step(s) handed to the "
-                                "gather at the refresh (largest %+0.3f chips)"
-                                % (
-                                    _n_post,
-                                    max(
-                                        (
-                                            v * ctx.args.chip_rate_hz
-                                            for v in _stepd.values()
-                                        ),
-                                        key=abs,
-                                    ),
-                                )
-                            )
             else:
                 from gps_beamtrack import predict_dopplers
 
@@ -139,7 +67,7 @@ def stage_almanac_predict(ctx):
                 )
             # doppler_sign flips to the receiver's observed convention -- apply it to BOTH the
             # Doppler and its rate so the 2nd-order feed-forward ramps the right way. (Range
-            # is geometry, no sign; it feeds the CL time-assist propagation delay. The 5th
+            # is geometry, no sign; it feeds the overlay-epoch propagation delay. The 5th
             # element -- broadcast sat clock -- is BRDC-only; the TLE path has none.)
             ctx.pred = {
                 p: (
@@ -354,14 +282,7 @@ def stage_almanac_predict(ctx):
             ctx.cb.meas_t = ctx.t0
             ctx.cb.value = ctx.cb.ema
             # #105: the seed consumers' bias -- ClockBias.update_seed has the invariant.
-            ctx.cb.update_seed(
-                raw_bias, ctx.args.seed_bias_source, ctx.args.seed_bias_alpha, _cb_snap
-            )
-            # CONTRIBUTE (task #27 M3). Receiver scope -- one reference, one frequency
-            # error -- so every co-hosted chain can have this without solving it. A
-            # chain that HAS its own estimate never reads back, which is why publishing
-            # here cannot change single-chain behaviour.
-            ctx.rx.contribute_carrier_bias(ctx.chain_id, ctx.cb.ema, len(resid), ctx.t0)
+            ctx.cb.update_seed(ctx.args.seed_bias_source)
             # ALARM LOG on a SAT-SCALED bar: the median-of-residuals noise is ~1/sqrt(n),
             # so the fixed bar (tuned for strong chains) cried wolf on the weak-sat chains
             # (L5/E5a/B2a ~730 false alarms/night 2026-07-20 while the strong chains were
@@ -385,27 +306,6 @@ def stage_almanac_predict(ctx):
                         # noise, and it would have hidden a real one.
                         every_s=ctx.args.clock_bias_alarm_every_s,
                     )
-        # S2 OBSERVER: publish the carrier-side estimate. OUTSIDE the solve gate on
-        # purpose -- an unsolved chain is exactly the case the fused state exists to
-        # rescue, so it has to be visible, and `null` is how that is said (never 0).
-        # `raw_hz` is this chain's OWN median, computed here rather than reusing
-        # `raw_bias` above, which is already sibling-FUSED. Scoring cross-chain
-        # agreement on a fused number measures the fusion, not the estimator.
-        if ctx.state_w is not None:
-            try:
-                _raw_local = statistics.median(resid) if resid else None
-                ctx.state_w.observe(
-                    "carrier",
-                    hz=ctx.cb.ema,
-                    raw_hz=_raw_local,
-                    mad_hz=ctx.receiver_state.mad(resid, _raw_local),
-                    n=len(resid),
-                    cal_hz=ctx.cb.cal,
-                    stale=bool(ctx.cb.stale),
-                    meas_age_s=round(ctx.t0 - ctx.cb.meas_t, 2),
-                )
-            except Exception:
-                pass
         for p in sorted(ctx.best):
             if p in ctx.pred:
                 _log_rl(
@@ -430,9 +330,7 @@ def stage_almanac_predict(ctx):
                     len(resid),
                     ctx.args.bias_alpha,
                     ctx.cb.seed,
-                    "slow a=%.3f" % ctx.args.seed_bias_alpha
-                    if ctx.args.seed_bias_source == "slow"
-                    else "zero: fixed, the solve is hints-only"
+                    "zero: fixed, the solve is hints-only"
                     if ctx.args.seed_bias_source == "zero"
                     else "= hint EMA",
                 ),
@@ -453,7 +351,3 @@ def stage_almanac_predict(ctx):
                     ctx.args.bias_min_sats,
                 ),
             )
-    elif ctx.gating:
-        ctx.up = visible_prns(
-            ctx.args.lat, ctx.args.lon, ctx.args.alt, ctx.args.mask_deg, 0.0
-        )

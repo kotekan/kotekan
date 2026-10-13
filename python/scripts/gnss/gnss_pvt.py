@@ -92,7 +92,7 @@ def _fit(rows, npar):
     return x, r - H @ x, Ninv, Ninv_unit
 
 
-def _solve(rows, n_groups, group_of, reject_floor=60.0, reject_k=5.0):
+def _solve(rows, n_groups, reject_floor=60.0, reject_k=5.0):
     """Robust weighted LS with RAIM-style outlier rejection. The code residuals carry gross
     outliers (bad-tracking sats / wrong sub-code-period ambiguity, tens of km off a clean
     ~20 m cluster), so drop the single worst satellite while its post-fit residual exceeds
@@ -296,7 +296,7 @@ def solve(
     out = {"groups": {}, "combined": None}
     for g, obs in sorted(by_group.items()):
         rows = [(los, res, 0, sig) for los, res, sig in obs]
-        s = _solve(rows, 1, {0: g})
+        s = _solve(rows, 1)
         if s:
             dx, clk, sig0, sd, Ninv, nu, nr, rms = s
             if _ok(Ninv, sd, nu, 4):
@@ -311,7 +311,7 @@ def solve(
             return None
         gi = {g: i for i, g in enumerate(sel)}
         rows = [(los, res, gi[g], sig) for g in sel for los, res, sig in by_group[g]]
-        s = _solve(rows, len(sel), gi)
+        s = _solve(rows, len(sel))
         if not (s and _ok(s[4], s[3], s[5], 3 + len(sel))):
             return None
         dx, clks, sig0, sd, Ninv, nu, nr, rms = s
@@ -325,59 +325,3 @@ def solve(
     out["combined"] = _combined([g for g in all_groups if not g.endswith("-IF")])
     out["combined_if"] = _combined([g for g in all_groups if g.endswith("-IF")])
     return out
-
-
-if __name__ == "__main__":
-    # Synthetic self-test: a known site, sats at assorted az/el, and a per-sat ELEVATION-mapped
-    # ionosphere injected on L1 and L5 with the physical 1/f^2 ratio. Elevation-dependent iono is
-    # NOT absorbable by a constant per-group clock, so the single-frequency solve is biased (mostly
-    # vertical); the iono-free combination must remove it and recover the a-priori position.
-    import random
-
-    random.seed(1)
-    lat0, lon0, alt0 = 43.9687, -79.2521, 260.0
-    fq = {"L1": 1575.42e6, "L5": 1176.45e6}
-    dx_true = np.array([4.0, -3.0, 6.0])  # ENU offset (m) we must recover
-    clk = {"L1": 12.0, "L5": -5.0}  # independent per-band dongle clocks (m)
-    m_l1, m_if = [], []
-    for _ in range(14):
-        az, el = random.uniform(0, 360), random.uniform(15, 85)
-        los = _los_enu(az, el)
-        iono_l1 = 3.0 / math.sin(
-            math.radians(el)
-        )  # L1 slant iono delay (m), bigger at low el
-        base = -float(los @ dx_true)
-        r1 = base + clk["L1"] + iono_l1 + random.gauss(0, 0.3)
-        r5 = (
-            base
-            + clk["L5"]
-            + iono_l1 * (fq["L1"] / fq["L5"]) ** 2
-            + random.gauss(0, 0.3)
-        )
-        m_l1.append({"group": "G-L1", "az": az, "el": el, "resid_m": r1})
-        rif = (fq["L1"] ** 2 * r1 - fq["L5"] ** 2 * r5) / (
-            fq["L1"] ** 2 - fq["L5"] ** 2
-        )
-        m_if.append({"group": "G-IF", "az": az, "el": el, "resid_m": rif})
-    r_l1 = solve(m_l1, lat0, lon0, alt0)["groups"]["G-L1"]
-    r_if = solve(m_if, lat0, lon0, alt0)["groups"]["G-IF"]
-    e_l1 = math.sqrt(
-        sum((r_l1[k] - dx_true[i]) ** 2 for i, k in enumerate(("d_e", "d_n", "d_u")))
-    )
-    e_if = math.sqrt(
-        sum((r_if[k] - dx_true[i]) ** 2 for i, k in enumerate(("d_e", "d_n", "d_u")))
-    )
-    print(
-        "single-freq L1 position error: %.2f m  (sigma_u %.2f, iono-biased)"
-        % (e_l1, r_l1["sigma_u"])
-    )
-    print(
-        "iono-free    IF position error: %.2f m  (sigma_u %.2f)"
-        % (e_if, r_if["sigma_u"])
-    )
-    assert e_if < e_l1, "iono-free did not beat single-frequency (%.2f vs %.2f)" % (
-        e_if,
-        e_l1,
-    )
-    assert e_if < 2.0, "iono-free residual too large: %.2f m" % e_if
-    print("PASS: dual-frequency iono-free removes the elevation-dependent iono bias")

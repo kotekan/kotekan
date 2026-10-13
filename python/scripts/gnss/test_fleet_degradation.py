@@ -79,7 +79,6 @@ def run(fleet, min_instances=3, min_records=32, prns={23}):
             min_instances,
             min_records,
             prns=prns,
-            log=None,
             floor_margin=3.0,
             seed=1,
         )

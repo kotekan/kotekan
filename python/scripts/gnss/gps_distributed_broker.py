@@ -33,37 +33,23 @@ the ~0.5 s decorrelation time. REST via stdlib urllib; visibility via skyfield
 (optional, only if --lat/--lon given).
 """
 
-import argparse
-import hashlib
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import math
-import json
 import os
-import random
-import re
 import statistics
 import sys
 import time
-import urllib.request
-
-C_LIGHT = 299792458.0  # m/s (audit rec E: was inlined at four sites)
 
 # -- frame0 guard -----------------------------------------------------------------------
 # A changed F-engine frame 0 invalidates every seed this process computes. Confirm it over
 # several reads (the endpoint answering oddly once is not an F-engine restart) and then STOP,
 # so the supervisor restarts us and the anchor is re-latched by the startup path.
 _ANCHOR_STRIKES = 3  # consecutive 60 s re-reads that must disagree
-_ANCHOR_RESTART_S = 20  # what broker_restart.sh's supervisor waits before relaunching
 _EXIT_ANCHOR_CHANGED = 3  # distinct exit code, so the supervisor can log why
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 sys.path.insert(
     0, __import__("os").path.dirname(__import__("os").path.abspath(__file__))
 )
-from gnss_stages import (
-    resolve_stage,
-)  # noqa: E402  (gps_* <-> bare stage-name aliasing)
 
 
 # ---------------------------------------------------------------------------------------
@@ -80,14 +66,12 @@ from gnss_stages import (
 # ---------------------------------------------------------------------------------------
 from gnss_broker.transport import (  # noqa: E402
     _TranscriptDone,
-    _Transcript,
     _TR,
     _now,
     _get,
     _post,
     _log,
     _log_rl,
-    expand_token,
     resolve_prefix,
     parse_endpoints,
     log_tag,
@@ -95,40 +79,13 @@ from gnss_broker.transport import (  # noqa: E402
     record_cycle,
 )
 from gnss_broker import telem as _telem  # noqa: E402  (task #59 gather)
-from gnss_broker import combdll  # noqa: E402  (task #63 comb DLL)
-from gnss_broker import elemgain  # noqa: E402  (task #57 step 2)
 from gnss_broker.fits import (  # noqa: E402
-    retag_seed_doppler,
-    seed_phase_at_ref,
-    track_vs_fit_chips,
     tracker_phase_at,
-    fit_cp_rate,
-    fit_dop_rate,
-    code_clock_bias_sample,
     rate_residuals,
     cp_rate_from_code_bias,
-    dr_cp0,
-    dr_seed_phys,
-    adr_fine_rate,
-    q_stall_verdict,
-    split_erratic_offsets,
-    instance_stall_verdict,
-    rf_lobes,
-)
-from gnss_broker.fleet import (  # noqa: E402
-    fleet_dll,
-    _coherent_sum,
-    fleet_coherent,
-    fleet_spectrum,
-    fleet_spectrum_aligned,
-    fit_spectrum_delay,
-    poll_rf_stats,
 )
 from gnss_broker.publish import FleetPublisher  # noqa: E402
 from gnss_broker.seed import Seed  # noqa: E402  (task #83)
-from gnss_broker.admission import AdmissionGate, reseed_step  # noqa: E402  (#90/#50)
-from gnss_broker.handover import TrimHandover  # noqa: E402  (task #92)
-from gnss_broker.rampfit import RampTracker  # noqa: E402  (task #93 shadow)
 from gnss_broker.cli import (
     build_parser,
     _FROZEN,
@@ -137,7 +94,6 @@ from gnss_broker.cli import (
 from gnss_broker.context import ChainContext  # noqa: E402  (the stage interface)
 from gnss_broker.clockbias import ClockBias  # noqa: E402  (the receiver LO bias)
 from gnss_broker.loopstate import (  # noqa: E402
-    CarrierState,
     NhOverlay,
     DllLoopState,
     HoldState,
@@ -145,111 +101,24 @@ from gnss_broker.loopstate import (  # noqa: E402
     RateFeedState,
     NavDecoders,
 )
-from gnss_broker import instruments  # noqa: E402  (the DLL's measurements)
 from gnss_broker import deadreckon  # noqa: E402  (the clock pipeline)
 from gnss_broker import almanac as almanac_stage  # noqa: E402  (orbit + visibility)
-from gnss_broker import statepub  # noqa: E402  (the state record)
 from gnss_broker import ratefeed  # noqa: E402  (#33 rate feeds)
 from gnss_broker import trimarm  # noqa: E402  (C++ trim arming)
 from gnss_broker import prnmap  # noqa: E402  (live PRN membership)
-from gnss_broker import carrierloop  # noqa: E402  (off in production)
 from gnss_broker import searchhint  # noqa: E402  (narrow the search)
 from gnss_broker import seeding  # noqa: E402  (detections -> seeds)
 from gnss_broker import navbits  # noqa: E402  (off in production)
 from gnss_broker import fleetdll  # noqa: E402  (the fleet DLL shell)
-from gnss_broker.detectors import (  # noqa: E402  (D0-D3)
+from gnss_broker.detectors import (  # noqa: E402  (D0, D1, D3)
     QSeries,
     BrownoutDetector,
-    LatchDetector,
     SawtoothDetector,
 )
 from gnss_broker import signals  # noqa: E402
 from gnss_broker import receiver  # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter  # noqa: E402
-from gnss_broker.sky import (  # noqa: E402
-    brdc_predict,
-    visible_prns,
-    _dh_dpos,
-    _cnav_brdc_xcheck,
-    _cnav2_brdc_xcheck,
-    _inav_brdc_xcheck,
-    _lnav_brdc_xcheck,
-    _fnav_brdc_xcheck,
-    _bcnav2_brdc_xcheck,
-    _bcnav3_brdc_xcheck,
-    _bcnav1_brdc_xcheck,
-)
-
-
-def make_spectrum_writer(path_tmpl, log=None):
-    """Append-only JSONL writer for the raw per-channel spectrum (task #25).
-
-    Returns f(t_utc, band, spec) -> n_points_written, or None when archiving is off.
-    `spec` is fleet_spectrum's {prn: [(freq_id, A, energy, inst_key)]}.
-
-    The file handle is reopened when the expanded path changes, so %Y/%m/%d roll a long
-    run by day without a restart. Failures are the CALLER's to log and must never take
-    the broker down -- an archive is a by-product, not a dependency.
-    """
-    if not path_tmpl:
-        return None
-    import time as _time
-
-    state = {"path": None, "fh": None}
-
-    def _write(t_utc, band, spec, t_rx=None):
-        path = _time.strftime(path_tmpl, _time.gmtime(t_utc))
-        if path != state["path"]:
-            if state["fh"] is not None:
-                state["fh"].close()
-            d = os.path.dirname(path)
-            if d:
-                os.makedirs(d, exist_ok=True)
-            state["fh"] = open(path, "a")
-            state["path"] = path
-            if log:
-                log("SPEC-ARCHIVE: writing raw per-channel spectra -> %s" % path)
-        n = 0
-        for prn, pts in sorted(spec.items()):
-            for p in pts:
-                # (freq_id, amplitude, energy, instance) -- tolerate a longer tuple so a
-                # future field cannot silently truncate the archive.
-                fid, amp, energy, inst = p[0], p[1], p[2], p[3]
-                # AMPLITUDE IS COMPLEX. fit_spectrum_delay takes tau from the PHASE ramp
-                # across frequency, so the per-channel value is a visibility, not a
-                # magnitude -- storing abs() would throw away exactly the quantity the
-                # delay fit exists to measure, and would make the archive unable to
-                # reproduce its own tau. Store both parts; magnitude is a function of
-                # them, they are not a function of magnitude.
-                _re, _im = (
-                    (float(amp.real), float(amp.imag))
-                    if isinstance(amp, complex)
-                    else (float(amp), 0.0)
-                )
-                state["fh"].write(
-                    json.dumps(
-                        {
-                            "t": round(float(t_utc), 3),
-                            "band": band,
-                            "prn": int(prn),
-                            "freq_id": int(fid),
-                            "inst": str(inst),
-                            "re": _re,
-                            "im": _im,
-                            "amp": (_re * _re + _im * _im) ** 0.5,
-                            "energy": float(energy),
-                            "t_rx": (
-                                round(float(t_rx), 3) if t_rx is not None else None
-                            ),
-                        }
-                    )
-                    + "\n"
-                )
-                n += 1
-        state["fh"].flush()
-        return n
-
-    return _write
+from gnss_broker.sky import _dh_dpos  # noqa: E402
 
 
 def main(argv=None, rx=None, publisher=None):
@@ -279,12 +148,9 @@ def main(argv=None, rx=None, publisher=None):
         setattr(args, _k, _v)
 
     # ── THE LOOPS' OWN MEMORY ─────────────────────────────────────────────────────────
-    # Six owner objects, constructed FIRST because everything else in this function may
+    # The owner objects, constructed FIRST because everything else in this function may
     # touch them. Each is one loop's per-satellite state; see gnss_broker/loopstate.py for
     # which table belongs to which loop and why that grouping is the one that matters.
-    _carrier = (
-        CarrierState()
-    )  # the shared carrier loop's memory; see gnss_broker/loopstate.py
     _nho = NhOverlay()  # NH overlay alignment (#41: judge on the VERTEX)
     _dls = DllLoopState()  # the code loop + the C++ arming handshake
     _hold = HoldState()  # why a sat is held rather than dropped
@@ -295,8 +161,6 @@ def main(argv=None, rx=None, publisher=None):
     # this, never on the DLL line -- see gnss_broker/detectors.py for what that cost.
     _qpop = QSeries()
     _brown = BrownoutDetector()  # D1: chain-wide presence collapse, as an episode
-    _latch = LatchDetector()  # D2: healthy -> absent -> stays absent. UNARMED,
-    #     measuring the base rate #90 never established
     _saw = SawtoothDetector()  # D3: a standing trim that ramps then gets WIPED
     # Live slot->PRN membership vs the sky. OFF unless --prn-reconfig; see prnmap.py.
     _prnmap = prnmap.PrnMapState()
@@ -406,10 +270,8 @@ def main(argv=None, rx=None, publisher=None):
         % (args.constellation or args.dr_constellation, args.carrier_hz / 1e6)
     )
     band_id = "%.2fMHz" % (args.carrier_hz / 1e6)
-    if args.joint_consume and not args.joint_shadow:
-        args.joint_shadow = (
-            True  # a consumer without the solve running would read zeros
-        )
+    # The joint solve runs whenever a consumer reads it: one without would read zeros.
+    args.joint_shadow = bool(args.joint_consume)
     if args.rrate_command and not args.rrate_state:
         args.rrate_state = True  # same rule: the command gates on the row's sigma, and
         # only the feed can ever bring that below infinity
@@ -455,9 +317,6 @@ def main(argv=None, rx=None, publisher=None):
                 else " (store only)",
             )
         )
-    # Per-subband archive (task #25). Created once; None when --spectrum-archive is unset,
-    # which is the only condition the call site checks.
-    _spec_writer = make_spectrum_writer(args.spectrum_archive, log=_log)
     # Integer hop tolerance, derived once from the record geometry. Kept as an int so every
     # comparison downstream is integer arithmetic on the F-engine's own counter.
     dll_hop_window = max(0, int(round(args.dll_hop_window_s * args.hops_per_sec)))
@@ -474,41 +333,6 @@ def main(argv=None, rx=None, publisher=None):
     # #79: PRN -> last time the SEARCH saw it at/above --dll-deep-gate-from-search. The
     # auto-generated half of the deep-gate set; unioned with _deep_gate each cycle.
     _dg_auto_last = [set()]  # last logged auto set, so the line prints on CHANGE only
-    _rs = (args.reseed_spec_tau or "").strip()
-    if _rs.lower() == "all":
-        _dls.reseed_prns = True
-    elif _rs:
-        _dls.reseed_prns = {int(x) for x in _rs.replace(",", " ").split()}
-    else:
-        _dls.reseed_prns = None
-    # #90 ABSENT-PRN ADMISSION. The strike/cooldown/was-present/population state and all four
-    # flights' guards live in gnss_broker/admission.py, where they are unit-testable offline --
-    # every one of those guards used to need a broker restart against the live fleet to
-    # exercise, which is what made #90 cost four flights in one evening.
-    _adm_gate = AdmissionGate(armed=bool(args.reseed_admit_absent))
-    if _dls.reseed_prns:
-        _log(
-            "SPEC-TAU RE-SEED (#50) active on %s: q<%.2f, spec_peak_ratio>=%.2f, gain %.2f, "
-            "cap %.2f chips, span +-%.1f. Fires only where the discriminator has NO GRADIENT "
-            "(far off-peak, E~P~L~noise); applied as a SEED step so the slew cap cannot "
-            "swallow it"
-            % (
-                "ALL PRNs"
-                if _dls.reseed_prns is True
-                else "PRN " + ",".join(str(p) for p in sorted(_dls.reseed_prns)),
-                args.reseed_q_max,
-                args.reseed_min_ratio,
-                args.reseed_gain,
-                args.reseed_max_chips,
-                args.spec_span_chips,
-            )
-        )
-        if not _deep_gate:
-            _log(
-                "SPEC-TAU RE-SEED (#50) WARNING: no --dll-deep-gate is set, so the PRNs this "
-                "targets will mostly fail `present` and never reach the re-seed test at all "
-                "(that is the #49 latch). Arm both, or this does nothing."
-            )
     if _deep_gate:
         _log(
             "DLL DEEP GATE (#49) active on %s at %.1fx deep_floor -- these PRNs are trimmed "
@@ -634,7 +458,7 @@ def main(argv=None, rx=None, publisher=None):
             _log("BRDC almanac unavailable (%s); falling back to TLE" % e)
     if args.almanac and brdc_alm is None:
         try:
-            from gps_beamtrack import load_gps_satellites, predict_dopplers
+            from gps_beamtrack import load_gps_satellites
             from gps_beamtrack import DEFAULT_TLE_URL
 
             almanac_sats = load_gps_satellites(args.tle or DEFAULT_TLE_URL)
@@ -660,8 +484,8 @@ def main(argv=None, rx=None, publisher=None):
     # healthy. Only capability excludes them.
     # ⚠️ BOUND UNCONDITIONALLY: the import below is conditional on --dead-reckon, so
     # without this the name does not exist on a search-only chain and anything that
-    # merely MENTIONS it raises UnboundLocalError. Same class as `receiver_state`; the
-    # synthetic fixture is what caught it, because every on-sky fixture runs dead-reckon.
+    # merely MENTIONS it raises UnboundLocalError. The synthetic fixture is what caught
+    # it, because every on-sky fixture runs dead-reckon.
     dr_eph_mod = None
     dr_min_prn = (
         args.dr_min_prn
@@ -747,25 +571,6 @@ def main(argv=None, rx=None, publisher=None):
     # consumption sites add a float zero and the replay digests are untouched.
     bsat = SatBiasFilter(gain=args.bsat_gain)
     joint_consume = {c.strip() for c in args.joint_consume.split(",") if c.strip()}
-    # ⚠️ CONSTELLATION-QUALIFIED, and this cost a void first run (2026-08-10). The joint state
-    # is keyed (constellation, prn) because GPS 4, Galileo 4 and BeiDou 4 are three unrelated
-    # spacecraft. A bare "--joint-mask-prn 4" matched the PRN NUMBER on every chain, so masking
-    # one vetted GPS satellite silently also masked two Galileo/BeiDou ones nobody had looked
-    # at -- and the residual that came back was theirs, not the one under test. A bare number
-    # is now REFUSED rather than guessed at: the test is about a specific satellite.
-    joint_mask = set()
-    for _tok in args.joint_mask_prn.replace(" ", "").upper().split(","):
-        if not _tok:
-            continue
-        if _tok[0].isalpha():
-            joint_mask.add((_tok[0], int(_tok[1:])))
-        else:
-            raise SystemExit(
-                "--joint-mask-prn %r: qualify the PRN with its constellation (G4, E12, C33). "
-                "GPS 4, Galileo 4 and BeiDou 4 are different satellites and a bare number "
-                "masks all three -- which is how the first P2c run measured a satellite that "
-                "was never chosen." % _tok
-            )
 
     # -- P2C, THE ROTATING FORM (2026-08-10) ------------------------------------------------
     # A hand-picked PRN is a sample of ONE satellite at ONE geometry, and on a transit
@@ -878,14 +683,8 @@ def main(argv=None, rx=None, publisher=None):
             _p2c_summary(js, t_now, "hold complete")
 
     def _p2c_hold(js, key):
-        """True once this sat is BOTH masked and established -- see --joint-mask-after."""
-        if args.joint_p2c_rotate:
-            return key == p2c["key"] and key in js._idx
-        return (
-            key in joint_mask
-            and key in js._idx
-            and js._n.get(key, 0) >= args.joint_mask_after
-        )
+        """True while this sat is the one the P2C rotation is coasting."""
+        return key == p2c["key"] and key in js._idx
 
     def _joint_state(rx_, band, a):
         """The joint state IF it is fit to be consumed, else None (never raises: a consumer
@@ -907,12 +706,7 @@ def main(argv=None, rx=None, publisher=None):
         because consumer 3's shadow log printed nothing and the reason had to be chased
         (docs 11.31)."""
         try:
-            js = rx_.joint_receiver(
-                band,
-                CODE_LEN,
-                rereference=a.joint_rereference,
-                gauge_mode=a.joint_gauge,
-            )
+            js = rx_.joint_receiver(band, CODE_LEN, gauge_mode="prior")
             if len(js._idx) < a.joint_min_sats:
                 return None
             # A DEAF STATE IS NOT FIT TO CONSUME (2026-08-21). It rejects everything, so it
@@ -971,12 +765,6 @@ def main(argv=None, rx=None, publisher=None):
                     # keeps the prime for seeding and hands the clock back to the first real
                     # measurement.
                     dr_state["clk_primed"] = True
-                    if args.dr_clock_drift is not None:
-                        dr_state["drift"] = float(args.dr_clock_drift)
-                        _log(
-                            "dead-reckon: clock DRIFT primed %+.4f chips/s"
-                            % dr_state["drift"]
-                        )
                     _log(
                         "dead-reckon: receiver clock PRIMED %.2f chips = %.3f us (no search "
                         "stage; %s)"
@@ -991,12 +779,8 @@ def main(argv=None, rx=None, publisher=None):
                         )
                     )
                 _log(
-                    "dead-reckon: BRDC cp seeding armed (%s, repin %.0f s%s)"
-                    % (
-                        args.dr_constellation,
-                        args.dr_repin_s,
-                        ", DRY RUN" if args.dr_dry_run else "",
-                    )
+                    "dead-reckon: BRDC cp seeding armed (%s, repin %.0f s)"
+                    % (args.dr_constellation, args.dr_repin_s)
                 )
             except Exception as e:
                 _log("dead-reckon unavailable (%s); disabled" % e)
@@ -1247,21 +1031,10 @@ def main(argv=None, rx=None, publisher=None):
     # to REPEAT before believing it: a frame0 step persists, a dropout does not.
     _rf_last = [0.0]  # #8: wall of the last RF-health poll (rate-limits it)
     _est_next = [_now() + (hash(chain_id) % 5) * 8.0]
-    _anchor_seen = [0.0]  # frame0 as first latched (see the re-check in the cycle loop)
     _anchor_chk = [
         0.0,
         0,
     ]  # [wall time of the last anchor re-read, consecutive mismatches]
-    _nhoff_seen = [
-        {}
-    ]  # the overlay-period knob as last logged (publish.py /set_nh_prn_offset)
-    _xb_dir = os.path.dirname(args.state_file) if args.state_file else None
-    # WHERE SIBLING STATE IS READ FROM. Deliberately independent of --state-file: a chain that
-    # ADOPTS a clock has no reason to publish one (it has no estimate of its own to contribute),
-    # so deriving the read directory from the write path would make --dr-clock-adopt a silent
-    # no-op on exactly the chains that need it. Defaults to the write directory when only that
-    # is given, so the common case needs one flag rather than two.
-    _xb_read_dir = args.state_read_dir or _xb_dir
 
     cp_held = (
         set()
@@ -1276,139 +1049,11 @@ def main(argv=None, rx=None, publisher=None):
     # None, never 0.0: a missing axis time is UNKNOWN, and feeding 0.0 to the joint filter
     # would be a confident wrong timestamp instead of a skipped measurement.
     _drp.t_now_abs = None
-    fast_lock = threading.Lock()
-    fast_prns = set()  # published by the policy cycle: who may be trimmed right now
-    fast_tmpl = {}  # prn -> (the EXACT dict the cycle last posted, base cp before trim)
-    fast_stats = {"updates": 0, "posts": 0, "skipped": 0, "last_err": "", "rail": 0}
-    # #51 F3: the C++ fleet loop's seam. `_fleet_trim_nominal_hz` converts --dll-leak-present
-    # (per UPDATE, at this process's own cadence) into the per-SECOND leak the controller
-    # wants. 23.84 is the frame rate the trackers ship at, which is the rate the C++ loop
-    # steps at -- so at these defaults the C++ loop runs the SAME per-update leak the Python
-    # arm did, and the only thing that changed is how often it steps. That is deliberate: one
-    # variable at a time.
-    _fleet_trim_nominal_hz = 23.84
-    _g3_ramp = RampTracker()
-    # #93 SHADOW v2: the direct per-sat ADR span rate (carrier frame, Hz), captured on
-    # the span-shadow path each poll: prn -> (y_phi_hz, t, n_rec). The rrate ROW stays
-    # logged beside it -- the 08-25 F1 said the row is ~97% carrier-only; v2 measures
-    # whether the RAW ADR observable does better against the trim ramp.
-    _handover = TrimHandover(enabled=bool(args.fleet_trim_rebase_adjust))
     # THE HANDOVER (#79/#49, the precondition eec1d2f12 set for re-arming the DR chains).
     # The set the C++ loop is ACTUATING RIGHT NOW, i.e. what we last POSTED -- not what this
     # cycle is about to compute. The Python integrator stands down per-PRN against this, so
     # authority is never held by both arms and never by neither.
 
-    def _fast_trim_loop():
-        """Run the DLL integrator and the seed POST at --fast-trim-hz. See the notes above.
-
-        ⚠️ IT SUBSTITUTES ONE FIELD INTO THE CYCLE'S OWN PAYLOAD and builds nothing itself.
-        Rebuilding the seed here would silently drop whatever the policy cycle had put in it
-        (carrier_trim_hz, the joint-state terms, nav bits), and a POST that drops a field
-        ZEROES it at the tracker -- an actuator quietly undoing another loop is the worst
-        failure this could have. So the cycle publishes the exact dict it posted plus the
-        untrimmed code phase, and this only ever replaces code_phase_chips.
-        """
-        period = 1.0 / max(args.fast_trim_hz, 1e-3)
-        while True:
-            t0 = time.time()
-            try:
-                with fast_lock:
-                    prns = set(fast_prns)
-                    tmpl = dict(fast_tmpl)
-                # ⚠️ DECODE ONLY THE ARMED PRNs. Without this filter the loop decodes every
-                # PRN's comb on every iteration -- ~15 satellites x 10 instances x 4 windows
-                # x 4 records of Python -- and then throws all but the armed ones away. It
-                # cost a factor ~10 in achieved rate: 5 Hz requested, 1.5 Hz delivered, which
-                # is BELOW the 1.94 Hz break-even, i.e. the loop was still losing to the drift
-                # while looking like it was running. The rate is the whole point of this
-                # thread; anything that silently caps it defeats it.
-                fl = (
-                    combdll.fleet_dll_comb(
-                        telem_client,
-                        telem_chain,
-                        n_win=max(1, args.fast_trim_windows),
-                        min_instances=args.dll_min_instances,
-                        k_sigma=args.dll_quality_sigma,
-                        q_fallback=args.dll_quality_min,
-                        per_channel=False,
-                        prns=prns or None,
-                    )
-                    if prns
-                    else {}
-                )
-                if not fl or not prns or not tmpl:
-                    fast_stats["skipped"] += 1
-                else:
-                    posted = []
-                    for prn in sorted(prns & set(fl) & set(tmpl)):
-                        disc = fl[prn]["disc"]
-                        # THE SAME conversion the policy cycle uses -- and now literally the
-                        # same function, which it was not before (2026-08-15). This comment
-                        # claimed "one convention, one place it can be wrong" while the
-                        # expression sat inline in TWO places; combdll.dll_integrate is that
-                        # one place, and the C++ fleet loop's gnss::dll_integrate is its twin,
-                        # compared byte-for-byte by scripts/gnss/fleetdll_gate.py.
-                        with fast_lock:
-                            t_new = combdll.dll_integrate(
-                                _dls.trim.get(prn, 0.0),
-                                disc,
-                                args.dll_gain,
-                                args.dll_leak_present,
-                                3.0,
-                                args.dll_spacing,
-                            )
-                            if abs(t_new) >= 2.999:
-                                fast_stats["rail"] += 1
-                            _dls.trim[prn] = t_new
-                            d0, base_cp, base_aref = tmpl[prn]
-                            d = dict(d0)
-                        d["code_phase_chips"] = (base_cp + t_new) % args.code_length
-                        # §4.6: the phase moves with the trim or the tracker ignores it.
-                        if base_aref is not None:
-                            _tmod = (LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN
-                            d["code_phase_at_ref_chips"] = (base_aref + t_new) % _tmod
-                        posted.append(d)
-                        fast_stats["updates"] += 1
-                    if posted:
-                        # the same overlay-period knob the cycle applies; the fast thread
-                        # re-posts trimmed copies of the SAME seeds, so it must shift them too
-                        posted = seeding.apply_nh_prn_offset(
-                            posted,
-                            publisher.nh_prn_offset() if publisher is not None else {},
-                            CODE_LEN,
-                            LC_SEG,
-                        )
-                        for t_ep in trackers:
-                            try:
-                                _post("%s/set_seeds" % t_ep, posted)
-                            except Exception as e:
-                                fast_stats["last_err"] = "%s: %s" % (t_ep, e)
-                        fast_stats["posts"] += 1
-            except Exception as e:  # a control thread must never take the
-                fast_stats["last_err"] = str(
-                    e
-                )  # broker down; the cycle still runs the loop
-            dt = period - (time.time() - t0)
-            if dt > 0:
-                time.sleep(dt)
-
-    if args.fast_trim_hz > 0.0 and telem_client is not None:
-        threading.Thread(target=_fast_trim_loop, daemon=True).start()
-        _log(
-            "FAST-TRIM: code loop at %.1f Hz on %d windows (%.2f s), policy stays on the "
-            "%.1f s cycle. Break-even vs the measured 0.121 chips/s drift is 1.94 Hz."
-            % (
-                args.fast_trim_hz,
-                args.fast_trim_windows,
-                args.fast_trim_windows * 4 * 0.0104857,
-                args.interval,
-            )
-        )
-    elif args.fast_trim_hz > 0.0:
-        _log(
-            "FAST-TRIM requested at %.1f Hz but --telem-gather is not set -- staying on the "
-            "policy cycle (it reads the gather store, never REST)." % args.fast_trim_hz
-        )
     last_dets = []  # most recent raw /get_detections, re-served by the publisher so
     # the viewer has ONE origin for both search and combiner data
     dr_untrusted = {}  # prn -> reason: the model is WRONG for this sat; use the search
@@ -1431,15 +1076,8 @@ def main(argv=None, rx=None, publisher=None):
     mp_cooldown = {}  # prn -> t of the last EXIT: no re-entry for 300 s (G23 measured
     # enter->integrity-exit->enter twice in 5 min -- churn, not
     # information; the sky does not change in 20 s)
-    rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
-    rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
-    rrate_prev_hop = (
-        {}
-    )  # the rrate feed's OWN continuity state (#40): it may read different
-    rrate_prev_val = (
-        {}
-    )  # fields (deep_rate_full_*) than the trim loop, so sharing the trim
-    # loop's prev dicts would corrupt both gates
+    rrate_prev_hop = {}  # the rrate feed's continuity state (#40): last pow_hop per prn
+    rrate_prev_val = {}  # ... and last rate residual (slew gate: catches f_ref re-pins)
     rr_kcoh_fed = {}  # {"last": <the kcoh dict object last fed>} -- the estimator is
     # THROTTLED (_run_est), so _est_last serves the same dict for
     # several cycles; re-feeding it would count one measurement as
@@ -1447,40 +1085,9 @@ def main(argv=None, rx=None, publisher=None):
     rate_unit_hop = [
         0
     ]  # [emit spacing in hops], LEARNED -- see rate_residuals' continuity gate
-    # EXPLAIN-APPLY-VERIFY constants (2026-07-22, the robust replacement for gate tuning):
-    # a residual can only be blamed for a sat's decoherence if it is big enough to null the
-    # coherent window -- |resid| >= ~1/(2*T_emit) = 0.5 Hz at the 1 s emits every overlay
-    # chain runs (L2C's 4 s window makes 0.5 conservative there: only delays acceptance).
-    # Below this bar a stable residual does NOT explain a dark sat, and the carrier loop is
-    # the wrong tool (that is the refade/watchdog's territory: nh misalignment, zombie
-    # anchors). VERIFY_EMITS bounds the hypothesis: heal within 3 emits or be reverted.
-    CARRIER_EXPLAIN_HZ = 0.5
-    CARRIER_VERIFY_EMITS = 3
-    # f_ref TRIM-BLEED shadow (2026-08-02): a converged, coherent, STANDING carrier trim means
-    # f_ref was pinned off-true at acquisition and the sub-fence offset froze in (the AGE re-pin
-    # keeps the slope but never re-adopts the seed) -- so the despread replica runs at f_ref while
-    # the true carrier is f_ref+ctrim, costing sinc(ctrim*T_rec) (L2C's 20 ms records: 0.13-0.26
-    # dB). The fix is an occasional gated re-adopt; this SHADOW logs where it WOULD fire, to
-    # validate the trigger on live data BEFORE any tracker change (the fleet-collapse lesson: a
-    # carrier correction that fires on the wrong sat is catastrophic -- see [[carrier-loop-
-    # absorbing-state]] alias-escape v1/v2). Log-only; takes NO action.
-    # ARMED action (--carrier-bleed): when a candidate fires, zero car_trim and flag the tracker to
-    # re-adopt the seed (f_ref = dop, phase-continuous) -- folding the frozen offset into f_ref.
     det_fresh = (
         {}
     )  # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
-    for _spec in os.environ.get("GNSS_TRIM_FORCE", "").split(","):
-        # when the PRN is first SEEDED (a startup preload would be swept by the not-in-
-        # seeds trim cleanup before the sat ever seeds). Reproduces the alias-capture
-        # regime on the replay bench: BOOTSTRAP itself converges a -60 Hz NCO error to
-        # the -50 Hz alias (the estimator reads the error mod 1/(2*T_rec)).
-        if ":" in _spec:
-            _p, _v = _spec.split(":")
-            _carrier.trim_force[int(_p)] = float(_v)
-            _log(
-                "TRIM FORCE (bench): PRN %s armed, car_trim %+.1f Hz at first seed"
-                % (_p, float(_v))
-            )
     dop_rate_fitted = {}  # prn -> the fitted rate actually seeded (for the log)
     dop_rate_rejected = (
         {}
@@ -1562,72 +1169,11 @@ def main(argv=None, rx=None, publisher=None):
     # minutes must WIDEN the search rather than narrow it -- lives with it now; see
     # gnss_broker/clockbias.py for why that is counter-intuitive and what it cost.
     _cb = ClockBias()
-    if args.code_bias_init is not None:
-        _cb.code_ema = args.code_bias_init * 1e-6
-        _log(
-            "code-rate clock offset warm-started at %+.3f ppm (--code-bias-init)"
-            % (_cb.code_ema * 1e6)
-        )
     _cb.cal = None  # calibration value, Hz (drift-alarm reference)
     _cb.meas_t = _now()  # last multi-sat bias measurement (stale-rescue clock;
     # birth-stamped so warm-start gets a full grace window)
     _cb.stale = False  # solved-but-unmeasured for > --bias-stale-s
     _cb.available = False  # is a solved bias in hand?
-    # Fuse at most once a second and cache: the state files themselves only republish at
-    # 1 Hz, so fusing at the broker's 5 Hz cycle would re-read the same bytes four times
-    # for the same answer.
-    _fus_cache = [0.0, None]
-
-    def _fuse_cached(t_now):
-        if state_w is None or not _state_dir or not args.state_fuse:
-            return None
-        if t_now - _fus_cache[0] < 1.0:
-            return _fus_cache[1]
-        _fus_cache[0] = t_now
-        try:
-            _fus_cache[1] = receiver_state.fuse_dongle(
-                receiver_state.read_dongle(
-                    _state_dir, args.state_dongle, max_age_s=30.0, t_now=t_now
-                ),
-                floor_ppm=args.state_fuse_floor_ppm,
-                reject_sigma=args.state_fuse_reject_sigma,
-            )
-        except Exception:
-            _fus_cache[1] = None
-        return _fus_cache[1]
-
-    # S2 observer (write-only). Import is local + tolerant so a missing/broken module can
-    # never stop a broker from starting: a diagnostic riding in a live receiver's control
-    # loop must fail to nothing, not fail loudly.
-    state_w = None
-    _state_dir = None
-    # ⚠️ BOUND UNCONDITIONALLY, because the import below is conditional. Without this the
-    # name simply does not exist when --state-file is unset, and anything that so much as
-    # MENTIONS it -- the context construction does -- raises UnboundLocalError on a perfectly
-    # ordinary configuration. The consumers are all guarded on `state_w`, so None is the
-    # correct "this receiver publishes no state" value.
-    receiver_state = None
-    if args.state_file:
-        try:
-            import receiver_state
-
-            _state_dir = os.path.dirname(args.state_file) or "."
-            state_w = receiver_state.StateWriter(
-                args.state_file,
-                chain=os.path.basename(args.state_file).rsplit(".", 1)[0],
-                dongle=args.state_dongle or "unknown",
-                carrier_hz=args.carrier_hz,
-                log=_log,
-                flush_s=args.state_flush_s,
-            )
-            _log(
-                "receiver-state export -> %s (dongle %s, %.1f s) [WRITE-ONLY: no estimate "
-                "or seed consumes this yet]"
-                % (args.state_file, args.state_dongle, args.state_flush_s)
-            )
-        except Exception as e:
-            _log("receiver-state export DISABLED: %s" % e)
-            state_w = None
     # NAV-DECODE health export (viewer surface + the decoded-eph fallback's status hook).
     dhw = None
     if args.decode_health_file:
@@ -1688,7 +1234,7 @@ def main(argv=None, rx=None, publisher=None):
     # armed in THIS broker, (signal, sys, sv_position fn, toe-field, ephemeris getter). Built once;
     # the getters read the live decoder vars (inav/fnav/... reassigned in the loop) at call time.
     _decfb = None
-    if args.decoded_eph_fallback or args.decoded_eph_fallback_force:
+    if args.decoded_eph_fallback:
         try:
             import decoded_eph as _decfb
             from galileo_inav import sv_position_inav as _svp_inav
@@ -1770,24 +1316,25 @@ def main(argv=None, rx=None, publisher=None):
     # primary, get a seed that is right 1 time in 20.
     LC_SEG = int(args.long_code_segments)
     LC_EPOCH = float(args.long_code_epoch_s)
-    # Search-Doppler record-alias quantum, 1/(2*t_rec): see the DETECTION ALIAS FOLD
-    # in the seeding loop. 500 Hz on the 1 ms bands (never confused), 125 E1C, 50 B1C,
-    # 25 L2C -- the alias-severity ranking that matches where zombie births appear.
-    Q_ALIAS_HZ = 0.5 * args.chip_rate_hz / CODE_LEN
-    if args.hold_max_dop_hz is None:
-        args.hold_max_dop_hz = 0.1 * args.chip_rate_hz / CODE_LEN
-        _log(
-            "hold-max-dop-hz auto: %.1f Hz (0.1 cycle per %.0f ms record)"
-            % (args.hold_max_dop_hz, 1e3 * CODE_LEN / args.chip_rate_hz)
-        )
-    if args.dop_max_rate_hz is None:
-        # The one-cycle rate limit MUST sit well above the fence. A clamp TIGHTER than the
-        # fence is a silent disaster: every legitimate fence step gets clamped back inside the
-        # fence, the freeze branch then keeps the old Doppler, and the seed Doppler NEVER
-        # UPDATES -- it goes permanently stale and the C/N0 falls all the way back to baseline.
-        # (Measured 2026-07-14 with a fixed 5 Hz clamp against B1C's 10 Hz fence. A safety net
-        # that quietly disables the mechanism it is protecting is worse than none.)
-        args.dop_max_rate_hz = max(5.0, 3.0 * args.hold_max_dop_hz)
+    # Release a held seed when the fresh Doppler departs the FROZEN one by more than this: the
+    # stale replica carrier decoheres the SINGLE-RECORD despread. 0.1 cycle per record, so it
+    # scales with the record period (100 Hz for GPS 1 ms records, 25 Hz for E1C 4 ms, 10 Hz
+    # for B1C 10 ms; the GPS-calibrated 100 Hz on B1C let the despread walk into the sinc NULL:
+    # amp oscillated 778<->0 on ~1 min cycles, the first tri-constellation night's BDS symptom).
+    args.hold_max_dop_hz = 0.1 * args.chip_rate_hz / CODE_LEN
+    _log(
+        "hold-max-dop-hz auto: %.1f Hz (0.1 cycle per %.0f ms record)"
+        % (args.hold_max_dop_hz, 1e3 * CODE_LEN / args.chip_rate_hz)
+    )
+    # SAFETY NET (not a fence): clamp how far the seed Doppler may move in ONE cycle. A real
+    # MEO Doppler moves <1 Hz per 0.2 s cycle, so this only ever fires on a bad model.
+    # The one-cycle rate limit MUST sit well above the fence. A clamp TIGHTER than the
+    # fence is a silent disaster: every legitimate fence step gets clamped back inside the
+    # fence, the freeze branch then keeps the old Doppler, and the seed Doppler NEVER
+    # UPDATES -- it goes permanently stale and the C/N0 falls all the way back to baseline.
+    # (Measured 2026-07-14 with a fixed 5 Hz clamp against B1C's 10 Hz fence. A safety net
+    # that quietly disables the mechanism it is protecting is worse than none.)
+    args.dop_max_rate_hz = max(5.0, 3.0 * args.hold_max_dop_hz)
     _log(
         "dop-max-rate-hz (safety net, one cycle): %.1f Hz -- fires only on a bad model"
         % args.dop_max_rate_hz
@@ -1860,9 +1407,6 @@ def main(argv=None, rx=None, publisher=None):
         dr_bad=dr_bad,
         fe_axis=fe_axis,
         fe_off=fe_off,
-        spec_writer=_spec_writer,
-        state_dir=_state_dir,
-        xb_read_dir=_xb_read_dir,
         innov_hist=innov_hist,
         minnov_hist=minnov_hist,
         p2c=p2c,
@@ -1874,17 +1418,12 @@ def main(argv=None, rx=None, publisher=None):
         dg_auto_last=_dg_auto_last,
         est_next=_est_next,
         sig_of=sig_of,
-        combiner=combiner,
-        gating=gating,
         capable=_capable,
-        receiver_state=receiver_state,
         alm_now=_alm_now,
         cb=_cb,
         almanac_sats=almanac_sats,
         brdc_alm=brdc_alm,
         det_fresh=det_fresh,
-        state_w=state_w,
-        car=_carrier,
         nho=_nho,
         dls=_dls,
         hold=_hold,
@@ -1893,7 +1432,6 @@ def main(argv=None, rx=None, publisher=None):
         nav=_nav,
         qpop=_qpop,
         brown=_brown,
-        latch=_latch,
         saw=_saw,
         prnmap=_prnmap,
         trackers=trackers,
@@ -1903,10 +1441,6 @@ def main(argv=None, rx=None, publisher=None):
         dr_min_prn=dr_min_prn,
         hist_len=HIST_LEN,
         max_gap_hops=MAX_GAP_HOPS,
-        q_alias_hz=Q_ALIAS_HZ,
-        carrier_explain_hz=CARRIER_EXPLAIN_HZ,
-        carrier_verify_emits=CARRIER_VERIFY_EMITS,
-        fuse_cached=_fuse_cached,
         cp_to_seed_currency=cp_to_seed_currency,
         dh_obs=_dh_obs,
         cp_predicted=cp_predicted,
@@ -1918,9 +1452,6 @@ def main(argv=None, rx=None, publisher=None):
         sig_of_last=sig_of_last,
         dllp=_dllp,
         drp=_drp,
-        handover=_handover,
-        adm_gate=_adm_gate,
-        g3_ramp=_g3_ramp,
         seeds=seeds,
         dr_state=dr_state,
         bsat=bsat,
@@ -2052,10 +1583,9 @@ def main(argv=None, rx=None, publisher=None):
         _ctx.fitted = set()  # PRNs that got their own >=3-snapshot slope fit this cycle
         _ctx.cl_report = (
             []
-        )  # CL time-assist per-PRN (k, fine-time residual) log lines this cycle
+        )  # per-PRN long-code (overlay period) lift log lines this cycle
         # Capture time anchor: UTC of sample 0, the F-engine's frame 0 (--time0-endpoint).
-        # 0.0 until it answers -- retry lazily. Used by the CL time-assist and the
-        # dead-reckoned cp seeding.
+        # 0.0 until it answers -- retry lazily. Used by the dead-reckoned cp seeding.
         # THE ANCHOR IS LATCHED (`not utc0_sample0` above): fetched once and kept for the whole
         # run. That is right for a stable F-engine and WRONG ACROSS AN F-ENGINE RESTART, which
         # re-establishes frame 0 -- and the failure is silent. On 2026-08-07 the F-engine came
@@ -2119,10 +1649,10 @@ def main(argv=None, rx=None, publisher=None):
                         # leave the other seven running on the wrong epoch.
                         _log(
                             "*** STOPPING THE BROKER after %d confirmations, so frame0 is "
-                            "re-latched by the startup path. The supervisor in "
-                            "broker_restart.sh relaunches in %d s; the nodes are stopped by "
+                            "re-latched by the startup path. Its supervisor (systemd "
+                            "Restart=on-failure) relaunches it; the nodes are stopped by "
                             "their own fpga_monitor on this same event and come back on the "
-                            "new epoch." % (_anchor_chk[1], _ANCHOR_RESTART_S)
+                            "new epoch." % _anchor_chk[1]
                         )
                         try:
                             sys.stdout.flush()
@@ -2137,11 +1667,7 @@ def main(argv=None, rx=None, publisher=None):
             except Exception:
                 pass  # endpoint down is the normal outage case, already logged elsewhere
 
-        if (
-            (args.cl_assist or dr_state is not None)
-            and not _ctx.utc0_sample0
-            and args.time0_endpoint
-        ):
+        if dr_state is not None and not _ctx.utc0_sample0 and args.time0_endpoint:
             try:
                 # CHORD: frame 0 is GPS-disciplined, so this is exact rather than an
                 # estimate. time0_ns is the absolute time of fpga_seq_num 0.
@@ -2170,7 +1696,6 @@ def main(argv=None, rx=None, publisher=None):
                         "time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
                         % _ctx.utc0_sample0
                     )
-                    _anchor_seen[0] = _ctx.utc0_sample0
             except Exception as e:
                 _log("time anchor unavailable (%s); retrying" % e)
         _ctx.dr_pd = (dr_state or {}).get("pd") or {}
@@ -2390,7 +1915,7 @@ def main(argv=None, rx=None, publisher=None):
             # floor 4.72 on bds_b2a, ABOVE the q ~ 4 ceiling any real satellite can reach, so
             # nothing could pass on q at all and roughly HALF the population passed on prompt
             # power by construction. That is the "exactly half of the up satellites lock"
-            # symptom, and it is the same root as E36 ([[chord-prn-lists-diverge]]).
+            # symptom, and it is the same root as E36 (docs/CHORD_LIVE_PRN_RECONFIG.md).
             #
             # ⚠️ THIS IS NOT THE DISCOVERY-BASED FILTER THAT WAS REJECTED. That one inferred
             # untrackability from "never reported", which cannot tell untrackable from
@@ -2431,11 +1956,7 @@ def main(argv=None, rx=None, publisher=None):
                     doppler_hz=_ctx.pred[p][0] + _cb.value,
                     code_phase_chips=0.0,
                     code_phase_rate=cp_rate_from_code_bias(
-                        _ctx.pred[p][0],
-                        _cb.code_ema or 0.0,
-                        args.hops_per_sec,
-                        args.chip_rate_hz,
-                        args.carrier_hz,
+                        _cb.code_ema or 0.0, args.hops_per_sec, args.chip_rate_hz,
                     ),
                     ref_hop=0,
                     doppler_rate_hz_s=_ctx.pred[p][1],
@@ -2462,131 +1983,10 @@ def main(argv=None, rx=None, publisher=None):
         # converges to the search fit's quantization bias instead of double-counting on coasted
         # seeds. Gated on lock significance (an unlocked PRN's disc is noise). Bounded +-3 chips.
         # Per-cycle, so a dll_gain of 0 (the loop disabled) leaves a defined empty fleet for
-        # everything downstream that reports on it -- including #51's fast-trim publication,
-        # which must arm NOBODY rather than raise when the code loop is off.
+        # everything downstream that reports on it -- including the C++ trim arming, which
+        # must arm NOBODY rather than raise when the code loop is off.
         _dllp.fleet = {}
         fleetdll.stage_fleet_dll(_ctx)
-
-        # 3d. SHARED CARRIER LOOP (the carrier twin of 3c): integrate the combiner's full-band
-        # cross-record phase-walk residual into a commanded NCO frequency per PRN. The residual
-        # is measured AFTER the current trim (the NCO derotates before records ship), so the
-        # plain integrator converges: trim += gain * resid. No lock gate: the observable is
-        # vector-averaged over the emit window at FULL-BAND SNR (the whole point -- per-channel
-        # amplitude gates would exclude exactly the weak-band cases this loop exists for);
-        # the clamp bounds any noise walk.
-        # f_carrier FEED (task #33, 2026-08-11). rate_residuals -- the validated carrier
-        # measurement (split-half ~0.2 Hz on strong sats, wrong-bin defence, q gate) --
-        # used to run ONLY inside the carrier_gain > 0 branch below. With the gain at its
-        # default 0.0 the measurement was never even computed: the joint state's f_carrier
-        # had a characterised input that no code path produced. Harvest it whenever the
-        # joint shadow is on, and feed the fleet CONSENSUS -- the quality-weighted common
-        # mode across PRNs, which is exactly the receiver-wide offset f_carrier models.
-        # Per-sat residuals stay with the (still-off) trim loop; feeding them here would
-        # average per-sat noise into a common state (the 3d scope warning).
-        # MEASUREMENT-ONLY: touches no seed, no trim, no loop. sigma 0.5 Hz -- looser than
-        # the 0.2 Hz split-half bound because the consensus mixes sat qualities.
-        # ⚠️ ONE CHAIN FEEDS, measured on first light (01:03): the five chains' consensuses
-        # disagreed by tens of Hz (e5b +41, e5a -10, gps +44) because deep_rate_hz is the
-        # residual AFTER each chain's own applied seed Doppler, and the chains apply
-        # DIFFERENT clock biases (GPS solves one; the model-primary chains hold 0). Fed
-        # jointly, the state was yanked between definitions and the gate rejected 23/min.
-        # Scope to the detector chain (gps_l5): its carrier bias is actually solved, so
-        # its consensus is the best-defined "LO minus solved bias" residual. A per-band
-        # f_carrier (tau_band-style) is the eventual right shape if other chains need it.
-        # ⚠️ ONE rate_residuals CALL PER POLL, shared by its three consumers (the f_carrier
-        # consensus feed, the rrate per-sat feed, and the trim loop). The call MUTATES its
-        # continuity state (prev_hop/prev_val/unit_hop): a second call in the same poll
-        # reads "the same window again" for every PRN and returns {} -- so the consumers
-        # must share one result, never each ask.
-        _rf.resid, _rf.cons = {}, None
-        if args.carrier_source == "rate" and (
-            args.carrier_gain > 0.0
-            or (args.joint_shadow and args.detectors and not args.rrate_state)
-        ):
-            try:
-                _rf.resid, _rf.cons = rate_residuals(
-                    _ctx.status,
-                    args.carrier_rate_min_q,
-                    args.carrier_rate_clip_hz,
-                    _log if args.carrier_gain > 0.0 else None,
-                    prev_hop=rate_prev_hop,
-                    max_gap=args.carrier_rate_max_gap,
-                    prev_val=rate_prev_val,
-                    max_step=args.carrier_rate_max_step,
-                    unit_hop=rate_unit_hop,
-                )
-            except Exception as e:
-                _log_rl(
-                    "rate-resid-err", "rate_residuals skipped: %s" % e, every_s=300.0
-                )
-        if (
-            args.joint_shadow
-            and args.detectors
-            and args.carrier_source == "rate"
-            and args.carrier_gain <= 0.0
-        ):
-            try:
-                _fr_resid, _fr_cons = _rf.resid, _rf.cons
-                # A consensus over 1-2 sats is a rotating PER-SAT sample, not a common
-                # mode: measured 01:05-01:08, successive "consensuses" swung -29.6 ->
-                # -14.3 -> +38.6 -> +18.3 Hz as different single sats passed the q gate
-                # -- the standing ~24 Hz per-sat residual (STATE 8.20.3), not the LO.
-                # Require a real cross-sat median and log the spread, which is the
-                # per-sat-vs-common diagnostic this feed exists to provide.
-                # Per-sat values logged EVERY poll (2026-08-11, KV): the breakdown that
-                # resolved the "per-sat tens-of-Hz" mystery needed exactly this series --
-                # instances agree to 0.05 Hz while the value hops 15-39 Hz between polls,
-                # i.e. WRONG-BIN capture aliased into the +-47.7 Hz record-rate window
-                # (NH20 sidebands at +-50 alias to -+45.4), coherent across the fleet
-                # because every instance folds the same records. Not carrier physics.
-                if _fr_resid:
-                    _log_rl(
-                        "jfcar-sat",
-                        "JFCAR-SAT: %s (alias window +-%.1f Hz)"
-                        % (
-                            " ".join(
-                                "%d:%+.1f" % (p_, r_)
-                                for p_, r_ in sorted(_fr_resid.items())
-                            ),
-                            0.5 * args.hops_per_sec / 2048.0,
-                        ),
-                        every_s=30.0,
-                    )
-                # SUPERSEDED BY THE PER-SAT FEED when --rrate-state is on: the consensus
-                # is a weighted mean of the SAME residuals update_rrate consumes one by
-                # one, so feeding both is the same data twice per poll (correlated
-                # measurements the filter would treat as independent -> overconfident).
-                # Under the rrate gauge the common mode lands on f_carrier anyway.
-                if (
-                    _fr_cons is not None
-                    and len(_fr_resid) >= 3
-                    and not args.rrate_state
-                    and _drp.t_now_abs is not None
-                ):
-                    _vals = sorted(_fr_resid.values())
-                    _sprd = _vals[-1] - _vals[0]
-                    _jfc = _joint_state(rx, band_id, args)
-                    if _jfc is not None:
-                        _jfc.update_carrier(
-                            _fr_cons, _drp.t_now_abs, sigma_hz=max(0.5, _sprd / 2.0)
-                        )
-                        _log_rl(
-                            "jfcar",
-                            "JOINT f_carrier %+.3f+-%.3f Hz (consensus %+.3f, %d sats, "
-                            "per-sat spread %.1f Hz; n=%d rej=%d)"
-                            % (
-                                _jfc.f_carrier(),
-                                _jfc.f_carrier_sigma(),
-                                _fr_cons,
-                                len(_fr_resid),
-                                _sprd,
-                                _jfc.n_fcar,
-                                _jfc.fcar_rejected,
-                            ),
-                            every_s=60.0,
-                        )
-            except Exception as e:
-                _log_rl("jfcar-err", "f_carrier feed skipped: %s" % e, every_s=300.0)
 
         # 3d'. rrate FEED (task #33 P3 step 2, --rrate-state). Per-satellite ORBITAL
         # range-rate-error rows (m/s, band-shared) in the RECEIVER-WIDE joint state, fed
@@ -2597,23 +1997,18 @@ def main(argv=None, rx=None, publisher=None):
         # ONE row through two carriers 1.0261 apart: cross-band information ADDS instead of
         # being fitted twice, which is the entire point of the state.
         # MEASUREMENT-ONLY unless --rrate-command is also set: touches no seed, no POST.
-        # ITS OWN rate_residuals CALL, on the UNCAPPED fields when the combiner serves them
-        # (#40: deep_rate_hz is the fold's pick, clamped to deep_rate_max_hz -- past the cap
-        # it reports the best in-cap bin, i.e. NOISE, which is what walked arm 1). Fallback
-        # to the capped fields keeps the shadow alive against an old tracker binary, and
-        # rr_full_ok is how the COMMAND refuses to close the loop on that degraded feed.
+        # On the UNCAPPED fields (#40: deep_rate_hz is the fold's pick, clamped to
+        # deep_rate_max_hz -- past the cap it reports the best in-cap bin, i.e. NOISE, which
+        # is what walked arm 1). _rf.full_ok is False when no row carries them this poll
+        # (the status poll failed or came back empty), and the COMMAND then holds rather
+        # than close the loop on no fresh measurement.
         _rf.full_ok = False
-        if args.rrate_state and args.carrier_source == "rate":
+        if args.rrate_state:
             _rf.full_ok = any(
                 isinstance(_r, dict) and _r.get("deep_rate_full_q") is not None
                 for _r in (_ctx.status or {}).values()
             )
             try:
-                _fd = (
-                    ("deep_rate_full_hz", "deep_rate_full_q")
-                    if _rf.full_ok
-                    else ("deep_rate_hz", "deep_rate_q")
-                )
                 _rf.resid2, _ = rate_residuals(
                     _ctx.status,
                     args.carrier_rate_min_q,
@@ -2624,8 +2019,8 @@ def main(argv=None, rx=None, publisher=None):
                     prev_val=rrate_prev_val,
                     max_step=args.carrier_rate_max_step,
                     unit_hop=rate_unit_hop,
-                    rate_field=_fd[0],
-                    q_field=_fd[1],
+                    rate_field="deep_rate_full_hz",
+                    q_field="deep_rate_full_q",
                 )
             except Exception as e:
                 _rf.resid2 = {}
@@ -2664,12 +2059,7 @@ def main(argv=None, rx=None, publisher=None):
         ):
             rr_kcoh_fed["last"] = _kco
             try:
-                _jrk = rx.joint_receiver(
-                    band_id,
-                    CODE_LEN,
-                    rereference=args.joint_rereference,
-                    gauge_mode=args.joint_gauge,
-                )
+                _jrk = rx.joint_receiver(band_id, CODE_LEN, gauge_mode="prior")
                 _nk = 0
                 _krows = []
                 for _p, _kv in sorted(_kco.items()):
@@ -2687,9 +2077,7 @@ def main(argv=None, rx=None, publisher=None):
                     if abs(_rem) >= 20.0:
                         continue
                     _yk = _rem + (
-                        _rf.cmd_applied.get(_p, _carrier.trim.get(_p, 0.0))
-                        if args.rrate_feed_applied
-                        else 0.0
+                        _rf.cmd_applied.get(_p, 0.0) if args.rrate_feed_applied else 0.0
                     )
                     _sigk = min(0.3, max(0.03, 2.0 / math.sqrt(_kv["sig"])))
                     _k2 = (args.dr_constellation, int(_p))
@@ -2731,90 +2119,12 @@ def main(argv=None, rx=None, publisher=None):
         # under a constant command, and gating beats averaging a moving one.
         ratefeed.stage_rate_feed_fine(_ctx)
 
-        # S2 OBSERVER: the shadow surface for sky validation (present even when the feed
-        # produced nothing this poll, so a dead feed shows n=0 rather than vanishing).
-        if state_w is not None and args.rrate_state:
-            try:
-                _jro = rx.joint_receiver(
-                    band_id,
-                    CODE_LEN,
-                    rereference=args.joint_rereference,
-                    gauge_mode=args.joint_gauge,
-                )
-                _ks = [k for k in _jro._rr_idx if k[0] == args.dr_constellation]
-                _vs = sorted(_jro.rrate(k) for k in _ks)
-                state_w.observe(
-                    "rrate",
-                    n=len(_ks),
-                    median_mps=(statistics.median(_vs) if _vs else None),
-                    spread_mps=((_vs[-1] - _vs[0]) if _vs else None),
-                    f_carrier_hz=(
-                        _jro.f_carrier()
-                        if _jro.f_carrier_sigma() != float("inf")
-                        else None
-                    ),
-                    rejected=_jro.rrate_rejected,
-                )
-            except Exception:
-                pass
-
-        carrierloop.stage_carrier_loop(_ctx)
-
-        # S2 OBSERVER: the SECOND carrier-side estimator of the same LO. `car_trim`'s own
-        # arg help calls the converged fleet trim "the chain's deterministic frac-N LO
-        # offset ... stable across restarts (e.g. the L5 chain sits ~+30 Hz)" -- which is
-        # the same physical number `clock_bias_ema` solves for from search Doppler, on a
-        # different observable and a different timescale. The two have never been compared
-        # and this one is never persisted, so it is rebuilt from zero every launch despite
-        # being described as a restart-stable constant. Exported outside the carrier-loop
-        # gate so a chain with the loop disabled reports null rather than vanishing.
-        if state_w is not None:
-            try:
-                _ct = sorted(_carrier.trim.values())
-                _ctm = statistics.median(_ct) if _ct else None
-                state_w.observe(
-                    "carrier_trim",
-                    median_hz=_ctm,
-                    mad_hz=receiver_state.mad(_ct, _ctm),
-                    n=len(_ct),
-                    railed=sum(
-                        1
-                        for v in _ct
-                        if args.carrier_max_hz > 0.0
-                        and abs(v) >= 0.95 * args.carrier_max_hz
-                    ),
-                )
-            except Exception:
-                pass
-
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
         # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
         # The code-side twin of the carrier clock_bias: strong detections calibrate the clock so weak
         # ones never drift off-peak. Ephemeris-free (v/c cancels). Bounded +-50 ppm against a rogue fit.
-        # ── #91(c): DO NOT RE-FIT THE CLOCK FROM A COLLAPSING POPULATION ─────────────
-        # --code-bias-min-sats is an ABSOLUTE floor (2). A chain that fell from 7 present
-        # to 2 still passes it -- and that is precisely the population whose fit swung the
-        # (l-a) clock +-96 chips on 2026-08-25 and had its garbage rate (+0.041 ppm, 40x
-        # normal) adopted into every seed, a positive feedback that SUSTAINED the outage.
-        # The relative collapse is what D1 measures, so hold the last good EMA through it.
-        # Holding is the conservative direction: the oscillator does not care that our
-        # satellites went away, and the EMA is slow by design.
-        _cb_frozen = bool(args.code_bias_brownout_hold and _brown.established())
-        if _cb_frozen:
-            _log_rl(
-                "la-freeze",
-                "code-rate clock (l-a) HELD at %s ppm through the brownout (#91c): "
-                "%d fit sample(s) this cycle are a collapsed population, not a clock"
-                % (
-                    "%+.3f" % (_cb.code_ema * 1e6)
-                    if _cb.code_ema is not None
-                    else "unset",
-                    len(_ctx.la_samples),
-                ),
-                every_s=60.0,
-            )
-        if not _cb_frozen and len(_ctx.la_samples) >= args.code_bias_min_sats:
+        if len(_ctx.la_samples) >= args.code_bias_min_sats:
             raw_cb = statistics.median(_ctx.la_samples)
             if abs(raw_cb) < args.code_bias_max * 1e-6:
                 _cb.code_ema = (
@@ -2822,28 +2132,6 @@ def main(argv=None, rx=None, publisher=None):
                     if _cb.code_ema is None
                     else _cb.code_ema + args.code_bias_alpha * (raw_cb - _cb.code_ema)
                 )
-                # SAT-SCALED bar, same rationale as the carrier-bias alarm above (few-fit
-                # chains' l-a median is ~1/sqrt(n) noisy; the fixed bar cried wolf on the
-                # weak chains 2026-07-20). A real dongle-clock event is large + sustained.
-                _labar = args.code_bias_alarm_ppm * max(
-                    1.0, (5.0 / max(len(_ctx.la_samples), 1)) ** 0.5
-                )
-                if (
-                    _cb.code_cal is not None
-                    and abs(_cb.code_ema - _cb.code_cal) > _labar * 1e-6
-                ):
-                    _log_rl(
-                        "laalarm",
-                        "CLOCK DRIFT ALARM: l-a %+.3f ppm vs calibration %+.3f "
-                        "(|d| > %.2f ppm, %d fits) -- dongle clock news, INVESTIGATE"
-                        % (
-                            _cb.code_ema * 1e6,
-                            _cb.code_cal * 1e6,
-                            _labar,
-                            len(_ctx.la_samples),
-                        ),
-                        every_s=60.0,
-                    )
                 _log_rl(
                     "la-pool",
                     "code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted "
@@ -2856,38 +2144,11 @@ def main(argv=None, rx=None, publisher=None):
                     ),
                 )
                 # CONTRIBUTE (task #27 M3). PER BAND, not receiver-wide: cable and PFB group
-                # delay are per carrier, so this number does not survive a retune. That is
-                # exactly what --state-dongle asserts by hand today.
+                # delay are per carrier, so this number does not survive a retune.
                 rx.contribute_code_bias(
                     chain_id, band_id, _cb.code_ema, len(_ctx.la_samples), t0
                 )
-        # S2 OBSERVER: the code-side twin. Outside the min-sats gate, same reason as the
-        # carrier export. This one is the honest cross-chain comparison of the two: l-a has
-        # NO sibling fusion at all, so its spread across a band's chains is a real measure
-        # of estimator scatter, where the carrier's is partly manufactured by the fusion.
-        if state_w is not None:
-            try:
-                _raw_la = (
-                    statistics.median(_ctx.la_samples) if _ctx.la_samples else None
-                )
-                state_w.observe(
-                    "code",
-                    ppm=(_cb.code_ema * 1e6) if _cb.code_ema is not None else None,
-                    raw_ppm=(_raw_la * 1e6) if _raw_la is not None else None,
-                    mad_ppm=(lambda m: m * 1e6 if m is not None else None)(
-                        receiver_state.mad(_ctx.la_samples, _raw_la)
-                    ),
-                    n=len(_ctx.la_samples),
-                    cal_ppm=(_cb.code_cal * 1e6) if _cb.code_cal is not None else None,
-                    forced=args.code_bias_force is not None,
-                )
-            except Exception:
-                pass
-        cb_to_seed = (
-            args.code_bias_force * 1e-6
-            if args.code_bias_force is not None
-            else _cb.code_ema
-        )
+        cb_to_seed = _cb.code_ema
         # -- P2b CONSUMER 1: the code-rate clock comes from the joint state --------------
         # l-a and the joint clk_rate are THE SAME QUANTITY (cp_rate_from_code_bias is
         # exactly f_chip*(l-a), i.e. the clock's drift in chips/s), which makes them
@@ -2899,10 +2160,6 @@ def main(argv=None, rx=None, publisher=None):
         # BIAS that has been seeding every unlocked satellite with ~1.8 chips/min of
         # fictitious code drift. Held sats were spared only because the l-a seeding skips
         # them (`if prn in cp_held: continue` below), which is why this survived so long.
-        #
-        # It also retires the --code-bias-force diagnostic's verdict: that test pinned l-a
-        # to 0.001 ppm and read "a wash", but 0.001 ppm is still 25x the truth, so it never
-        # tested a correct rate at all.
         if "rate" in joint_consume:
             _jr = _joint_state(rx, band_id, args)
             # clk_rate is in the joint state's FEEDERS' chips per second (Receiver.joint_unit),
@@ -2951,53 +2208,16 @@ def main(argv=None, rx=None, publisher=None):
                     "la_rate",
                     epoch=seed.get("ref_hop"),
                     code_phase_rate=cp_rate_from_code_bias(
-                        seed["doppler_hz"],
-                        cb_to_seed,
-                        args.hops_per_sec,
-                        args.chip_rate_hz,
-                        args.carrier_hz,
+                        cb_to_seed, args.hops_per_sec, args.chip_rate_hz,
                     ),
                 )
                 n_seeded += 1
             if n_seeded:
                 _log_rl(
                     "la-seed",
-                    "seeded code rate from (l-a) %+.3f ppm%s -> %d sat(s)"
-                    % (
-                        cb_to_seed * 1e6,
-                        " [FORCED]" if args.code_bias_force is not None else "",
-                        n_seeded,
-                    ),
+                    "seeded code rate from (l-a) %+.3f ppm -> %d sat(s)"
+                    % (cb_to_seed * 1e6, n_seeded),
                 )
-
-        # 3e. OPEN-LOOP TRIM (diagnostic). Command a FIXED carrier_trim_hz to every seeded PRN,
-        # independent of --carrier-gain. This is the transfer-function probe the loop debugging
-        # needs and could not otherwise get: GNSS_TRIM_FORCE fires once at first seed and lives
-        # inside the gain>0 block, so the loop immediately corrects away from it and the step
-        # response is unobservable.
-        #
-        # With the loop OFF and a held trim, deep_rate_hz answers three questions at once:
-        #   response = -step  -> plumbed and correctly signed; any non-convergence is dynamics
-        #   response = +step  -> SIGN ERROR (and a wrong-signed integrator runs to the rail,
-        #                        which is what trims sitting at +28..31 against a +-40 clamp
-        #                        look like)
-        #   no response      -> the trim never reaches the despread; the loop is open, and no
-        #                        amount of gain tuning would ever have helped.
-        # The per-PRN overlay-period knob (publish.py /set_nh_prn_offset), read once per cycle
-        # and applied ON THE WIRE at both post sites below (seeding.apply_nh_prn_offset), so
-        # every seed route carries the same shift and clearing it restores the broker's own seed.
-        _nhoff = publisher.nh_prn_offset() if publisher is not None else {}
-        if _nhoff != _nhoff_seen[0]:
-            _log("nh_prn_offset in force: %s" % (_nhoff or "none"))
-            _nhoff_seen[0] = dict(_nhoff)
-        _ctc = (
-            publisher.carrier_trim_const(args.carrier_trim_const)
-            if publisher is not None
-            else args.carrier_trim_const
-        )
-        if _ctc is not None:
-            for prn in seeds:
-                _carrier.trim[prn] = _ctc
 
         # -- P3 CONSUMER (task #33, --rrate-command): ONE carrier command per (sat, band) --
         # carrier_correction_hz() = receiver-wide f_carrier + this sat's orbital rrate,
@@ -3008,25 +2228,18 @@ def main(argv=None, rx=None, publisher=None):
         _ctx.jrc = None
         if args.rrate_command:
             if not _rf.full_ok:
-                # ⚠️ THE ARM-1 GUARD. A capped measurement past +-deep_rate_max_hz is the
-                # best in-cap NOISE bin, and closing the loop on it walked every command
-                # (~1 Hz/min). The command therefore requires the combiner to be serving
-                # the uncapped fields THIS POLL -- an old tracker binary degrades this
-                # chain to shadow, loudly, instead of ratcheting.
+                # ⚠️ THE ARM-1 GUARD. Closing the loop on a capped (in-cap NOISE) or absent
+                # measurement walked every command (~1 Hz/min), so the command requires
+                # the uncapped fields THIS POLL and otherwise holds, loudly.
                 _log_rl(
                     "jrr-nofull",
-                    "rrate-command HELD: combiner is not serving deep_rate_full_* "
-                    "(old tracker binary?) -- shadow only",
+                    "rrate-command HELD: no row carries deep_rate_full_* this poll "
+                    "-- shadow only",
                     every_s=120.0,
                 )
             else:
                 try:
-                    _j = rx.joint_receiver(
-                        band_id,
-                        CODE_LEN,
-                        rereference=args.joint_rereference,
-                        gauge_mode=args.joint_gauge,
-                    )
+                    _j = rx.joint_receiver(band_id, CODE_LEN, gauge_mode="prior")
                     # No receiver-wide term solved yet -> nothing to command. The sigma
                     # gate below then handles per-sat convergence one row at a time.
                     _ctx.jrc = _j if _j.f_carrier_sigma() != float("inf") else None
@@ -3045,7 +2258,7 @@ def main(argv=None, rx=None, publisher=None):
         seeding.stage_push_seeds(_ctx)
         # The commands actually shipped this poll become the rrate feed's reference next
         # poll. REBUILT, not updated: a sat that stopped being commanded (row widened, seed
-        # dropped) must fall back to referencing car_trim/0, or a stale command would
+        # dropped) must fall back to referencing 0, or a stale command would
         # silently re-enter its measurements forever.
         _rf.cmd_applied.clear()
         _rf.cmd_applied.update(_ctx.rr_cmd_new)
@@ -3063,14 +2276,6 @@ def main(argv=None, rx=None, publisher=None):
                 ),
                 every_s=60.0,
             )
-        if _nav.health is not None:
-            _rep = _nav.health.report()
-            if _rep:
-                _log_rl("navhealth", _rep)
-        if os.environ.get("GNSS_SEED_DEBUG"):
-            for d in _ctx.payload:
-                if str(d["prn"]) in os.environ["GNSS_SEED_DEBUG"].split(","):
-                    _log("SEEDDBG %s" % json.dumps(d, sort_keys=True))
         # SEED CURRENCY AUDIT (#39 follow-up, 2026-08-11 -- the per-seed dop log). The
         # question this answers: does the (cp0, dop, rate, ref_hop) tuple we SHIP imply
         # the same physical code phase as the previous tuple we shipped for the same
@@ -3124,7 +2329,6 @@ def main(argv=None, rx=None, publisher=None):
                 args.carrier_hz,
                 args.code_doppler_sign,
                 _aud_mod,
-                args.search_fft_len or None,
             )
             _ph_new = tracker_phase_at(
                 d,
@@ -3134,7 +2338,6 @@ def main(argv=None, rx=None, publisher=None):
                 args.carrier_hz,
                 args.code_doppler_sign,
                 _aud_mod,
-                args.search_fft_len or None,
             )
             _stp = ((_ph_new - _ph_prev + _aud_mod / 2.0) % _aud_mod) - _aud_mod / 2.0
             _ddopA = d["doppler_hz"] - _prevA["doppler_hz"]
@@ -3232,10 +2435,6 @@ def main(argv=None, rx=None, publisher=None):
                 ),
                 every_s=60.0,
             )
-        # TASK #51: hand the fast control thread this cycle's decisions. It substitutes ONLY
-        # code_phase_chips into these exact dicts, so nothing the policy put in a seed can be
-        # dropped by the faster actuator. `base_cp` is the UNTRIMMED phase, because the fast
-        # loop owns dll_trim from here and must not re-add a trim already folded in above.
         # TASK #51 F3: HAND THE C++ FLEET LOOP THIS CYCLE'S DECISIONS.
         #
         # THE SPLIT. Everything above this line is policy -- ephemeris, sky, the clock solve,
@@ -3263,55 +2462,10 @@ def main(argv=None, rx=None, publisher=None):
         # --prn-reconfig; `report` posts nothing.
         prnmap.stage_prn_membership(_ctx)
 
-        if args.fast_trim_hz > 0.0:
-            with fast_lock:
-                fast_tmpl.clear()
-                for _d in _ctx.payload:
-                    _p = _d.get("prn")
-                    if _p is None:
-                        continue
-                    _base = _d.get("code_phase_chips", 0.0) - _dls.trim.get(_p, 0.0)
-                    # §4.6: the fast arm substitutes BOTH currencies (see the POST-time
-                    # site above) -- the template records the untrimmed phase beside the
-                    # untrimmed argument, or None when the payload carries no phase.
-                    _ba = _d.get("code_phase_at_ref_chips")
-                    if _ba is not None and _ba >= 0.0:
-                        _tmod = (LC_SEG * CODE_LEN) if LC_SEG > 1 else CODE_LEN
-                        _ba = (_ba - _dls.trim.get(_p, 0.0)) % _tmod
-                    else:
-                        _ba = None
-                    fast_tmpl[_p] = (dict(_d), _base, _ba)
-                fast_prns.clear()
-                # Only PRNs this cycle judged present AND trimmable. Presence, floors and the
-                # deep gate all stay here; the fast thread never re-decides who to touch.
-                fast_prns.update(
-                    _p
-                    for _p in (_dllp.fleet or {})
-                    if (_dllp.fleet[_p].get("present") and _p in fast_tmpl)
-                )
-            _log_rl(
-                "fast-trim",
-                "FAST-TRIM %s: %d PRNs armed, %d updates / %d posts since start "
-                "(%d skipped, %d railed)%s"
-                % (
-                    log_tag() or args.signal,
-                    len(fast_prns),
-                    fast_stats["updates"],
-                    fast_stats["posts"],
-                    fast_stats["skipped"],
-                    fast_stats["rail"],
-                    ("  last err %s" % fast_stats["last_err"])
-                    if fast_stats["last_err"]
-                    else "",
-                ),
-                every_s=30.0,
-            )
-
         ok = 0
-        _wire = seeding.apply_nh_prn_offset(_ctx.payload, _nhoff, CODE_LEN, LC_SEG)
         for t_ep in trackers:
             try:
-                _post("%s/set_seeds" % t_ep, _wire)
+                _post("%s/set_seeds" % t_ep, _ctx.payload)
                 ok += 1
             except Exception as e:
                 _log("set_seeds %s failed: %s" % (t_ep, e))
@@ -3324,16 +2478,8 @@ def main(argv=None, rx=None, publisher=None):
         if _ctx.cl_report:
             _log_rl("clreport", "CL: " + "; ".join(_ctx.cl_report))
 
-        # S2 OBSERVER: receiver clock, then publish the whole record. dr_state persists
-        # across cycles so it is read here rather than at its solve site -- and it is the
-        # one shared quantity with ZERO persistence today, so every restart re-bootstraps
-        # it from nothing. `integ` is the only per-measurement residual the system keeps
-        # anywhere; it is used to VETO satellites and has never been used as a weight.
-        statepub.stage_publish_state(_ctx)
         if dhw is not None:
             dhw.flush(t0)
-        if args.once:
-            return
         # REAL elapsed time, not the frozen cycle clock: this is the one place in the loop
         # that must know how long the pass actually took, or the control cadence would
         # become interval + processing rather than interval.
@@ -3353,16 +2499,6 @@ if __name__ == "__main__":
         _log(
             "transcript replay complete (%s); %d posts, digest %s"
             % (e, len(_TR.posts), _TR.digest())
-        )
-        # #83 COVERAGE CENSUS: which seed writers this fixture actually drove. The
-        # gate vouches for exactly this set and nothing else -- an owner missing here
-        # is a migration path the transcript never exercised, and any '?file:line'
-        # entry is an unattributed writer that slipped past the migration.
-        from gnss_broker import seed as _seed_mod
-
-        _log(
-            "seed writers exercised: %s"
-            % (", ".join(sorted(_seed_mod.SEEN_OWNERS)) or "NONE")
         )
         print(_TR.digest())
     finally:

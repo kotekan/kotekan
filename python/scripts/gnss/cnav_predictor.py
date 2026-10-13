@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-"""CNAV (L2C-CM / L5-I) decode-and-serve for the shared-knowledge broker (S3).
+"""CNAV (L2C-CM / L5-I) decode for the shared-knowledge broker (S3).
 
 The CNAV analog of navbit_predictor.LnavPredictor, but a DIFFERENT shape because CNAV is a
 different problem -- and because the LIVE symbol stream taught us two things the offline decode
 gate could not (both diagnosed on-air 2026-07-28, see the header lessons below):
 
     combiner get_status "nav_obs"  ->  per-emit polarity islands  ->  CRC-guided decode  ->  msgs
-                                                            (gps_cnav.py does the FEC/CRC work)
+                              (gps_cnav.py frames the messages; galileo_inav.py holds the FEC/CRC)
 
 WHY IT IS NOT A COPY OF THE LNAV PREDICTOR:
 
   * NOT CHEAPLY PREDICTABLE. LNAV subframes 1-3 repeat every 30 s with only a TOW increment.
     CNAV interleaves message TYPES on a control-segment schedule that is NOT contractually
     fixed, and the code is continuous rate-1/2 K=7. So there is no reliable future-symbol
-    table: predict() SERVES already-decoded spans and returns None at a forward horizon. That
-    is correct -- CL (Mechanism A) already gives L2C a sub-floor DATALESS pilot, so CNAV's
-    prizes are the live EPHEMERIS (types 10+11 -> BRDC cross-check) and the S4 L5-I cross-band
-    feed, NOT the CM self-wipe.
+    table -- and none is needed: CL (Mechanism A) already gives L2C a sub-floor DATALESS
+    pilot, so CNAV's prizes are the live EPHEMERIS (types 10+11 -> BRDC cross-check) and the
+    S4 L5-I cross-band feed, NOT the CM self-wipe.
 
   * ★ TWO LIVE-ONLY FAULTS the offline gate (synthetic, module-consistent symbols) could never
     show, both fixed here:
      1. G2-INVERSION CONVENTION. The on-air symbols are G2-*not*-inverted relative to
-        gps_cnav's encoder (measured: a single strong emit round-trips through Viterbi at 0.86
+        the module encoder (measured: a single strong emit round-trips through Viterbi at 0.86
         agreement raw but 0.99 with every-other-symbol flipped). The fix is to flip the 2nd
         symbol of each phase-aligned pair (`x[1::2]`) before Viterbi -- searched as g2 in {0,1}
         and locked once a CRC passes (it is a constant of the link).
@@ -32,20 +31,14 @@ WHY IT IS NOT A COPY OF THE LNAV PREDICTOR:
         to vote. So polarity is resolved the only way that works: CRC-GUIDED brute force over the
         per-emit sign pattern in a short window (a real message spans ~3 emits).
 
-  * CONTINUOUS ENCODER. Re-encoding a decoded message to recover its symbols (serve()) carries
-    the encoder state across message boundaries; the leading 6 pairs of each message depend on
-    the previous message and are left unknown.
-
 Consumed by gps_distributed_broker.py under --nav-decoder cnav (the L2C broker): it logs decode
-health + the live ephemeris, and shadow-serves decoded-span signs; navbit_health scores before
-any wipe.
+health + the live ephemeris.
 
 Self-test: python3 cnav_predictor.py  (synthetic continuous CNAV stream chopped into
-polarity-scrambled emits -> the CRC-guided decoder must recover the messages, ephemeris, and
-re-encode the span; g2=0 wins there because the synthetic symbols ARE module convention).
+polarity-scrambled emits -> the CRC-guided decoder must recover the messages and the
+ephemeris; g2=0 wins there because the synthetic symbols ARE module convention).
 """
 import itertools
-import math
 import os
 import sys
 import time
@@ -54,6 +47,10 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gps_cnav as C  # noqa: E402
+from galileo_inav import (
+    conv_encode,
+    viterbi_decode,
+)  # noqa: E402  (the shared CNAV FEC)
 
 SYM_S = 0.020  # L2C-CM record = 20 ms = one CNAV symbol (50 sps)
 MSG_SYMS = C.MSG_BITS * 2  # 600 symbols per 300-bit message (12 s)
@@ -91,7 +88,7 @@ COLD_BACKOFF_MAX = (
 )
 # a handful of Viterbis -- cheap -- so they stay responsive).
 EMIT_MAX = 48  # keep ~48 emits (~3 min) per PRN
-DECODED_MAX = 80  # keep the last ~80 decoded messages (~16 min) for serve/ephemeris
+DECODED_MAX = 80  # keep the last ~80 decoded messages (~16 min)
 TRY_EVERY_SYMS = (
     200  # attempt a decode once per ~4 s of NEW symbols per PRN (one new emit)
 )
@@ -116,7 +113,7 @@ def _crc_msgs(bits):
 
 def _g2(x, on):
     """Apply the G2-inversion convention toggle to a phase-aligned symbol array: flip the 2nd
-    symbol of every pair. `on` False decodes gps_cnav's native (G2-inverted) convention."""
+    symbol of every pair. `on` False decodes the module's native (G2-inverted) convention."""
     if not on:
         return x
     y = x.copy()
@@ -134,8 +131,6 @@ class _PrnState:
         )
         self.pol = {}  # slot0 -> resolved emit sign (+-1) in one consistent frame
         self.decoded = {}  # start_slot -> data bits[300] (0/1), CRC-verified
-        self.msg_type = {}
-        self.tow_at = {}
         self.eph10 = None
         self.eph11 = None
         self.n_decoded = 0
@@ -149,7 +144,7 @@ class _PrnState:
 
 
 class CnavPredictor:
-    """Per-PRN CNAV stitch/CRC-decode/serve. Single-threaded: call from one poll loop."""
+    """Per-PRN CNAV stitch/CRC-decode. Single-threaded: call from one poll loop."""
 
     def __init__(self, log=None):
         self._p = {}
@@ -199,7 +194,6 @@ class CnavPredictor:
         slot0 = min(m)
         hi = max(m)
         arr = np.zeros(hi - slot0 + 1, dtype=np.int8)
-        ok = True
         for s, v in m.items():
             arr[s - slot0] = v
         if (
@@ -393,7 +387,7 @@ class CnavPredictor:
                     if budget <= 0:
                         return
                     budget -= 1
-                    msgs = _crc_msgs(C.viterbi_decode(_g2(r[ph:], g2)))
+                    msgs = _crc_msgs(viterbi_decode(_g2(r[ph:], g2), known_start=False))
                     if not msgs:
                         continue
                     st.phase = ph
@@ -408,8 +402,6 @@ class CnavPredictor:
                     for m in msgs:
                         ss = lo + ph + 2 * m["index"]
                         st.decoded[ss] = np.array(m["bits"], dtype=np.int8)
-                        st.msg_type[ss] = m["type"]
-                        st.tow_at[ss] = m["tow"]
                         if m["type"] == 10:
                             st.eph10 = st.decoded[ss]
                         elif m["type"] == 11:
@@ -427,60 +419,12 @@ class CnavPredictor:
                     if len(st.decoded) > DECODED_MAX:
                         for s in sorted(st.decoded)[:-DECODED_MAX]:
                             st.decoded.pop(s, None)
-                            st.msg_type.pop(s, None)
-                            st.tow_at.pop(s, None)
                     for s in list(st.pol):  # bound pol to live emits
                         if s not in st.emits:
                             st.pol.pop(s, None)
                     return
 
     # ---------------- serve ----------------
-    def predict(self, prn, utc_now, horizon_s=4.0):
-        """+-1/0 signs over [utc_now, +horizon) for slots inside a DECODED message, re-encoded
-        into the RECEIVED convention (module symbols with the locked G2 toggle re-applied by
-        absolute-slot parity), 0 elsewhere. Returns {"utc0","bit_s","bits"} or None (the normal
-        case at a forward horizon -- see the module note: CNAV serves decoded spans, it does not
-        predict the future)."""
-        st = self._p.get(prn)
-        if st is None or not st.decoded or self._g2 is None:
-            return None
-        g2 = self._g2
-        slot_now = int(math.floor(utc_now / SYM_S + 1e-3))
-        n = int(math.ceil(horizon_s / SYM_S)) + 2
-        out = np.zeros(n, dtype=np.int8)
-        for start in sorted(st.decoded):
-            if start + MSG_SYMS <= slot_now or start >= slot_now + n:
-                continue
-            sym = C.conv_encode(
-                st.decoded[start], flush=False
-            )  # module (G2-inverted) frame
-            pm = np.where(sym == 1, -1, 1).astype(np.int8)
-            for j in range(len(pm)):
-                if j < 12:  # leading pairs: prior-msg state
-                    continue
-                slot = start + j
-                idx = slot - slot_now
-                if 0 <= idx < n:
-                    # re-apply the link's G2 convention: flip the 2nd symbol of each pair. The
-                    # message starts on a pair boundary, so pair position == j % 2.
-                    s = int(pm[j])
-                    if g2 and (j % 2 == 1):
-                        s = -s
-                    out[idx] = s
-        if not out.any():
-            return None
-        utc0 = slot_now * SYM_S
-        return {"utc0": utc0, "bit_s": SYM_S, "bits": [int(x) for x in out]}
-
-    def messages(self, prn):
-        st = self._p.get(prn)
-        if st is None:
-            return []
-        return [
-            {"start_slot": s, "tow": st.tow_at[s], "type": st.msg_type[s]}
-            for s in sorted(st.decoded)
-        ]
-
     def ephemeris(self, prn):
         """CNAV ephemeris (SI) from the latest type-10 + type-11, consistency-gated toe==toe2."""
         st = self._p.get(prn)
@@ -526,7 +470,7 @@ def _selftest():
             else rng.randint(0, 2, C.DATA_BITS - 38).astype(np.int8)
         )
         msg_bits += C.build_cnav_message(prn, mt, tow0 + i, data=payload)
-    sym = C.conv_encode(msg_bits, flush=True)
+    sym = conv_encode(msg_bits, flush=True)
     pm = np.where(sym == 1, -1, 1).astype(
         np.int8
     )  # transmitted +-1 (module convention)
@@ -568,29 +512,6 @@ def _selftest():
     )
     for k in ("e", "M0", "toe", "OMEGA0"):
         assert abs(eph[k] - truth[k]) < 1e-9, "ephemeris field %s mismatch" % k
-
-    # serve a decoded span: predict() must reproduce the true transmitted signs (polarity-free)
-    starts = sorted(pred._p[prn].decoded)
-    mid = starts[len(starts) // 2]
-    out = pred.predict(prn, mid * SYM_S, horizon_s=24.0)
-    assert out is not None, "predict returned nothing over a decoded span"
-    got = np.array(out["bits"], dtype=int)
-    slot0 = int(round(out["utc0"] / SYM_S))
-    truth_seg = np.array(
-        [int(pm[slot0 + k]) if slot0 + k < len(pm) else 0 for k in range(len(got))],
-        dtype=int,
-    )
-    known = (got != 0) & (np.arange(len(got)) + slot0 < len(pm))
-    ap = int((got[known] == truth_seg[known]).sum())
-    an = int((got[known] == -truth_seg[known]).sum())
-    pol = 1 if ap >= an else -1
-    wrong = int((got[known] * pol != truth_seg[known]).sum())
-    print(
-        "serve: %d known, %d wrong, %d unknown (of %d)"
-        % (int(known.sum()), wrong, int((got == 0).sum()), len(got))
-    )
-    assert wrong == 0, "served signs disagree with the air"
-    assert int(known.sum()) > len(got) // 2, "served span mostly unknown"
     print("PASS")
 
 

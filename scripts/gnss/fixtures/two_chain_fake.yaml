@@ -6,7 +6,6 @@ common:
     interval: 0.5
     dll-gain: 0.25
     publish-port: 0
-    cl-assist: true
     dead-reckon: true
     dr-clock-chips: 0.0
     almanac: true

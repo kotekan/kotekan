@@ -12,9 +12,8 @@ EVEN page part and the ODD one 250 symbols later, and the CRC spans both -- so d
 find-sync -> decode page part -> pair even+odd -> assemble -> CRC, and a word is only
 trustworthy once both halves land with a valid CRC.
 
-Carrier polarity is a per-stream sign ambiguity (the tracker's phase lock is mod pi):
-find_page_parts tries both, and once a page part decodes with valid CRC the resolved
-polarity is remembered so later parts decode incrementally.
+Carrier polarity is a per-emit sign ambiguity (the tracker's phase lock is mod pi): every
+page part is tried in both polarities, and its sync anchors the content to the true frame.
 
 nav_obs interface (identical to CNAV): {utc_ref, rec_dt, br, phase, bits=[[idx, +-1],...]}.
 For E1B the combiner emits one symbol per 4 ms record (br=1, rec_dt=0.004).
@@ -39,17 +38,14 @@ class _PrnState:
             None  # per-PRN symbol-grid origin (abs time of the first emit's sym 0)
         )
         self.last_obs = None  # (utc_ref, phase, br) dedup
-        self.pol = None  # resolved carrier polarity (+1/-1), None until first CRC-OK
         self.words = {}  # word_type -> (iodnav, word_bits[128], t_decoded)
         self.n_pages = 0  # page parts decoded (sync-valid)
         self.n_words = 0  # words assembled with valid CRC
-        self.last_decode = 0.0
 
 
 class InavPredictor:
-    def __init__(self, log=None):
+    def __init__(self):
         self._p = {}
-        self._log = log or (lambda m: None)
         self._min_gap = (
             1.0  # s between decode attempts across all PRNs (0 = off, self-test)
         )
@@ -159,7 +155,7 @@ class InavPredictor:
                     if np.array_equal(hard, np.array(G.SYNC, dtype=np.int8)):
                         bits, ok = G.decode_page_part(seg, want_sync=True)
                         if ok and bits is not None:
-                            got = (pol, bits)
+                            got = bits
                             break
                 if got is not None:
                     parts[run0 + i] = got
@@ -171,11 +167,10 @@ class InavPredictor:
                 i += 1
             # pair EVEN (flag 0) at slot s with ODD (flag 1) at slot s+PAGE; assemble+CRC
             for s in sorted(parts):
-                pol_e, even = parts[s]
-                nxt = parts.get(s + PAGE)
-                if nxt is None:
+                even = parts[s]
+                odd = parts.get(s + PAGE)
+                if odd is None:
                     continue
-                pol_o, odd = nxt
                 # even/odd raw polarities MAY differ (opposite-sign emits) -- each part's
                 # content is already in the true frame via its sync, so only the even/odd
                 # FLAGS gate the pairing, not the raw signs.
@@ -187,7 +182,6 @@ class InavPredictor:
                 word, crc_ok, wt = res
                 if not crc_ok:
                     continue
-                st.pol = pol_e  # last resolved sign (health only)
                 iod = G._uint(word[6:16])
                 st.words[wt] = (iod, word, time.time())
                 st.n_words += 1
@@ -210,18 +204,11 @@ class InavPredictor:
             return None
         return eph
 
-    def messages(self, prn):
-        st = self._p.get(prn)
-        if st is None:
-            return []
-        return [{"word_type": wt, "iodnav": v[0]} for wt, v in sorted(st.words.items())]
-
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
             return None
         return {
-            "pol": st.pol,
             "pages": st.n_pages,
             "words": st.n_words,
             "have": sorted(st.words),
@@ -266,7 +253,7 @@ def _selftest():
     # corrupts THAT part -- a graceful loss: the ephemeris still assembles from the parts
     # that land clean. Handling straddles needs per-emit polarity resolution -- a TODO to
     # settle against the real E1B combiner's emit cadence, not a correctness gap here.)
-    pred = InavPredictor(log=print)
+    pred = InavPredictor()
     pred._min_gap = 0.0
     ELEN = PAGE  # 250 = one page part per emit
     e = 0

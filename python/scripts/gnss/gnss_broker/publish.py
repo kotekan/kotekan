@@ -23,14 +23,14 @@ from . import timebase
 # DERIVED FROM SKY, not chosen: over 2026-08-11/12 the measured populations are 1.00-1.05 while
 # blind (broker-wide, all five chains) and 0.17-0.82 while tracking, so the bar sits in an empty
 # gap between them rather than inside either. Re-derive it -- do not nudge it -- if the split
-# ever stops being bimodal; scripts/gnss/site/blind_witness_check.py prints both populations.
+# ever stops being bimodal.
 PROMPT_RAYLEIGH_S4 = 0.90
 
-# Trailing window for det_duty_s / inst_snr_med_win (seconds). Chosen as ~12 seed-POST
-# intervals (posts land every ~10 s), so the duty averages over many flicker cycles
-# rather than aliasing against one. Not a smoothing constant to be tuned for looks: it
-# is the averaging time of a MEASUREMENT of how often the array is actually holding a
-# satellite, and it should be reported alongside the number (det_duty_n).
+# Trailing window for det_duty_s and the windowed median behind `sig` (seconds). Chosen
+# as ~12 seed-POST intervals (posts land every ~10 s), so the duty averages over many
+# flicker cycles rather than aliasing against one. Not a smoothing constant to be tuned
+# for looks: it is the averaging time of a MEASUREMENT of how often the array is actually
+# holding a satellite.
 DUTY_WIN_S = 120.0
 
 
@@ -52,14 +52,14 @@ class FleetPublisher:
 
     SCHEMA. Rows carry the field names GnssCoherentCombiner::get_status uses, so the viewer's
     signal_metrics() consumes them unchanged -- amplitude, coh_amplitude, deep_amplitude,
-    unbiased_amplitude, doppler_hz, coherence_s, deep_snr, deep_records, amp_snr, deep_floor,
-    peel_*. What each MEANS is chosen honestly rather than uniformly:
+    unbiased_amplitude, doppler_hz, coherence_s, deep_snr, deep_records, amp_snr, deep_floor.
+    What each MEANS is chosen honestly rather than uniformly:
 
       * MERGED across the fleet (this is the added value): dll_disc and the E/P/L powers, and
         amp_snr / amplitude derived from the summed prompt power against the live noise
         population -- full 20.46 MHz rather than one node's 1.37 MHz.
       * BEST-OF a single instance: every COHERENT statistic (deep_amplitude, deep_snr,
-        coherence_s, peel_*). These need cross-node phase alignment to merge, which is the very
+        coherence_s). These need cross-node phase alignment to merge, which is the very
         thing the power combine avoids; claiming a fleet number for them would be a lie. The
         source node ships as `coh_src` so a reader can see whose view it is.
       * BROKER-OWNED: doppler_hz, code_phase_chips, code_phase_rate, dll_trim -- the shared
@@ -78,9 +78,9 @@ class FleetPublisher:
         # store; a request selects one chain or gets them all, tagged. Before this, one
         # publisher served one chain on one port, which is why CHORD needed a viewer
         # instance per constellation (12060 GPS, 12061 E5a).
-        self._chains = {}  # chain id -> {"rows", "dets", "meta", "ctl", "sig", "band"}
+        self._chains = {}  # chain id -> {"rows", "dets", "meta", "sig", "band"}
         self._order = []  # registration order, so output is deterministic
-        self._rows, self._meta, self._dets, self._lock = [], {}, [], threading.Lock()
+        self._lock = threading.Lock()
         # TRAILING DETECTION HISTORY, (chain, prn) -> deque[(t, inst_snr_med, certified)].
         # Exists because EVERY instantaneous statistic in this row churns: measured
         # 2026-08-14, all 12 instances collapse to noise together and recover on a ~10 s
@@ -88,16 +88,6 @@ class FleetPublisher:
         # quantity and the display reads as random. A trailing duty is the honest summary --
         # it does not hide the flicker, it MEASURES it. See det_duty_s below.
         self._hist = {}
-        # RUNTIME CONTROL, deliberately narrow. Everything else here is read-only; this one
-        # value is writable because the experiment that needs it CANNOT be run any other way.
-        # Measuring the carrier loop's open-loop transfer function means holding a fixed
-        # carrier_trim_hz and watching deep_rate_hz -- but deep_rate_hz is measured against the
-        # tracker's f_ref, and changing the trim via --carrier-trim-const requires a broker
-        # restart, whose first seed list drops PRNs (the tracker's `active` fill is
-        # authoritative, so a dropped PRN sets f_ref = NaN and re-acquires). The step and the
-        # reference change are then inseparable, which is exactly how the 2026-08-04 attempt
-        # came out uninterpretable. Setting it in a LIVE broker holds f_ref still.
-        self._ctl = {"carrier_trim_const": None, "nh_prn_offset": {}}
         pub = self
 
         class H(BaseHTTPRequestHandler):
@@ -112,17 +102,8 @@ class FleetPublisher:
                 # was asking this port for prototype stage names (gal_search, gal_combiner,
                 # airspy_in) and the reported symptom was CORS rather than 404.
                 self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Methods", "GET")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type")
-
-            def do_OPTIONS(self):
-                # WITHOUT THIS, BaseHTTPRequestHandler answers 501 with no CORS headers, and
-                # every preflighted request dies. A POST of application/json IS preflighted,
-                # so /set_carrier_trim was unreachable from a browser entirely.
-                self.send_response(204)
-                self._cors()
-                self.send_header("Content-Length", "0")
-                self.end_headers()
 
             def do_GET(self):
                 # The viewer builds every URL as <base>/<stage>/<endpoint> from ONE host:port,
@@ -134,10 +115,9 @@ class FleetPublisher:
                 # CHAIN SELECTION, two ways, because the consumers differ:
                 #   /get_status?chain=gps_l5   explicit, for anything we write
                 #   /gps_l5/get_status         a PATH SEGMENT naming a chain -- which is what
-                #                              the viewer already emits, since it builds
+                #                              the viewer emits, since it builds
                 #                              <base>/<stage>/<endpoint> and cannot add a
-                #                              query string. Point its --gps-combiner-stage at
-                #                              a chain id and it filters with no code change.
+                #                              query string.
                 # Neither given -> every chain, each row tagged. With ONE chain registered
                 # that is byte-identical to the old single-chain output plus the tag, so
                 # nothing that exists today has to change at once.
@@ -183,11 +163,7 @@ class FleetPublisher:
                         unknown = (asked, list(pub._order))
                     ids = [asked] if asked in pub._chains else list(pub._order)
                     if p.endswith("get_chains"):
-                        # DISCOVERY. The viewer's own discover_signals() reads kotekan's
-                        # /config, which a broker publisher does not serve -- so it fell
-                        # back to a static PROTOTYPE table and asked for stage names that
-                        # have never existed on CHORD (gal_search, gal_combiner,
-                        # airspy_in). The broker already knows every chain it runs, its
+                        # DISCOVERY. The broker knows every chain it runs, its
                         # constellation, band and record length; publishing that lets ONE
                         # viewer instance build its table from what is actually running.
                         body = json.dumps(
@@ -254,149 +230,12 @@ class FleetPublisher:
                 self.end_headers()
                 self.wfile.write(body)
 
-            def _set_nh_prn_offset(self, sel):
-                # Diagnostic lever for a per-PRN despread deficit: shift ONE satellite's seeds
-                # by k whole overlay periods on the wire (seeding.apply_nh_prn_offset), so the
-                # tracker despreads at another NH20 alignment while everything else it is told
-                # stays the broker's own. Body {"prn": <int>, "k": <int>}; k = 0 clears. Per
-                # chain, like the carrier trim, and for the same reason: one signal at a time.
-                try:
-                    n = int(self.headers.get("Content-Length", 0))
-                    req = json.loads(self.rfile.read(n) or b"{}")
-                    prn = int(req["prn"])
-                    k = int(req.get("k", 0) or 0)
-                except Exception as e:
-                    body = json.dumps(
-                        {"error": 'body must be {"prn": int, "k": int}: %s' % e}
-                    ).encode()
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                with pub._lock:
-                    targets = [sel] if sel in pub._chains else list(pub._order)
-                    if len(targets) != 1:
-                        body = json.dumps(
-                            {
-                                "error": "name one chain with ?chain=<id> or "
-                                "/<id>/set_nh_prn_offset (registered: %s)"
-                                % ", ".join(targets)
-                            }
-                        ).encode()
-                        targets = []
-                    else:
-                        tbl = pub._chains[targets[0]]["ctl"]["nh_prn_offset"]
-                        if k:
-                            tbl[prn] = k
-                        else:
-                            tbl.pop(prn, None)
-                        body = json.dumps(
-                            {"chain": targets[0], "nh_prn_offset": dict(tbl)}
-                        ).encode()
-                if not targets:
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                pub._log(
-                    "nh_prn_offset PRN %d -> %s on %s by REST (diagnostic: whole overlay "
-                    "periods on the wire)"
-                    % (prn, "cleared" if not k else "%+d period(s)" % k, targets[0])
-                )
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self._cors()
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def do_POST(self):
-                # /set_carrier_trim: body {"hz": <float>} holds that trim on every seeded PRN;
-                # {"hz": null} releases it back to --carrier-trim-const. Diagnostic: pair it
-                # with --carrier-gain 0 so the loop does not immediately correct the step away.
-                # /set_nh_prn_offset: see _set_nh_prn_offset above.
-                raw = self.path.split("?", 1)
-                p = raw[0].rstrip("/")
-                q = urllib.parse.parse_qs(raw[1]) if len(raw) > 1 else {}
-                sel = (q.get("chain") or [None])[0]
-                if sel is None:
-                    for seg in p.strip("/").split("/"):
-                        if seg in pub._chains:
-                            sel = seg
-                            break
-                if p.endswith("set_nh_prn_offset"):
-                    self._set_nh_prn_offset(sel)
-                    return
-                if not p.endswith("set_carrier_trim"):
-                    self.send_response(404)
-                    self._cors()
-                    self.send_header("Content-Length", "0")
-                    self.end_headers()
-                    return
-                try:
-                    n = int(self.headers.get("Content-Length", 0))
-                    req = json.loads(self.rfile.read(n) or b"{}")
-                    hz = req.get("hz")
-                    hz = None if hz is None else float(hz)
-                except Exception as e:
-                    body = json.dumps({"error": str(e)}).encode()
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                # A trim is a PER-CHAIN experiment. With one chain registered, name it
-                # implicitly; with several, an unqualified POST would silently step every
-                # signal at once, so require ?chain= and say so.
-                with pub._lock:
-                    targets = [sel] if sel in pub._chains else list(pub._order)
-                    if len(targets) > 1:
-                        body = json.dumps(
-                            {
-                                "error": "several chains registered (%s); name "
-                                "one with ?chain=<id>" % ", ".join(targets)
-                            }
-                        ).encode()
-                        targets = []
-                    else:
-                        for c in targets:
-                            pub._chains[c]["ctl"]["carrier_trim_const"] = hz
-                        pub._ctl["carrier_trim_const"] = hz
-                        body = json.dumps(
-                            {
-                                "carrier_trim_const": hz,
-                                "chain": targets[0] if targets else None,
-                            }
-                        ).encode()
-                if not targets:
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                pub._log(
-                    "carrier trim const set to %s by REST on %s (diagnostic)"
-                    % ("released" if hz is None else "%+.3f Hz" % hz, targets[0])
-                )
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self._cors()
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
         self._log = log
         self._srv = ThreadingHTTPServer(("0.0.0.0", port), H)
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
         log(
-            "fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state; "
-            'POST /set_carrier_trim {"hz": x} -- diagnostic open-loop trim)' % port
+            "fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state)"
+            % port
         )
 
     # -- multi-chain plumbing (task #27 M6) ---------------------------------------------
@@ -404,7 +243,7 @@ class FleetPublisher:
         """Claim a slot on this port and get a handle that looks like the old publisher.
 
         Returns a per-chain VIEW rather than self, so every existing call site --
-        `publisher.update(...)`, `publisher.carrier_trim_const(...)` -- keeps working
+        `publisher.update(...)`, `publisher.set_sky(...)` -- keeps working
         unchanged whether it is the only chain or one of five."""
         with self._lock:
             if chain not in self._chains:
@@ -413,7 +252,6 @@ class FleetPublisher:
                     "dets": [],
                     "meta": {},
                     "elem": {},
-                    "ctl": {"carrier_trim_const": None, "nh_prn_offset": {}},
                     "sig": signal,
                     "band": band,
                     "desc": dict(meta or {}, chain=chain, signal=signal, band=band),
@@ -476,24 +314,6 @@ class FleetPublisher:
                 },
             }
 
-    def carrier_trim_const(self, fallback, chain=None):
-        """The REST override if one has been posted, else the command-line value."""
-        with self._lock:
-            st = self._chains.get(chain) if chain else None
-            v = (
-                st["ctl"]["carrier_trim_const"]
-                if st
-                else self._ctl["carrier_trim_const"]
-            )
-        return fallback if v is None else v
-
-    def nh_prn_offset(self, chain=None):
-        """{prn: k} overlay-period shifts posted for this chain (a copy; empty when none)."""
-        with self._lock:
-            st = self._chains.get(chain) if chain else None
-            tbl = st["ctl"]["nh_prn_offset"] if st else self._ctl["nh_prn_offset"]
-            return dict(tbl)
-
     def set_elements(self, table, chain=None):
         """The per-element complex-gain table (task #57 step 2), served on /get_elements.
 
@@ -511,7 +331,6 @@ class FleetPublisher:
         fleet,
         seeds,
         dll_trim,
-        n_endpoints,
         dets=None,
         fcoh=None,
         chain=None,
@@ -570,39 +389,16 @@ class FleetPublisher:
                     # value the despread actually used.
                     "doppler_hz": sd.get("doppler_hz", c.get("doppler_hz", 0.0)),
                     "doppler_applied_hz": c.get("doppler_hz"),
-                    # Fleet phase-slope delay fit (task #32): tau of the correlation peak
-                    # RELATIVE to the replica placement, from the cross-channel phase ramp.
-                    # Measurement-only today -- published next to the disc it is intended to
-                    # replace, so the two can be judged against each other on sky.
-                    "spec_tau_chips": v.get("spec_tau"),
-                    "spec_peak_ratio": v.get("spec_ratio"),
-                    # The b_sat actually being APPLIED to this sat's seeds (0 = none/stale) --
-                    # published so the closed loop's health is checkable from outside: b_sat
-                    # should hold near the P1 open-loop means while spec_tau collapses to 0.
-                    "bsat_chips": v.get("bsat"),
                     "code_phase_chips": sd.get(
                         "code_phase_chips", c.get("code_phase_chips", 0.0)
                     ),
                     # fleet-only extras: not in the combiner schema, ignored by older consumers
                     "fleet_q": v["q"],
                     "fleet_q_floor": v["q_floor"],
-                    "fleet_p_over_noise": ratio,
                     "fleet_present": bool(v["present"]),
                     # telescope-wide: the epoch the nodes serve is suspect (gnss_broker/timebase).
                     # Consumers withhold geometry while this is set; the row's own numbers stand.
                     "time_base_suspect": timebase.VERDICT.suspect,
-                    # ⚠️ WHICH GATE SAID SO. present alone is a boolean with five different
-                    # provenances -- "q+p:probes", the "prompt" peer fallback, "UNANCHORED",
-                    # "deep", and the displaced re-admissions -- and an A/B on any of them is
-                    # UNJUDGEABLE from outside without this. Found 2026-08-27 while arming
-                    # --presence-admit-displaced: the arm's whole observable is that rows start
-                    # carrying 'q+deep:probes+disp', and nothing published it, so the experiment
-                    # could not have been read even if it worked perfectly.
-                    "fleet_present_gate": v.get("present_gate"),
-                    # the displaced admission's own numbers, when it ran: which evidence admitted
-                    # the row, and the fit it was admitted on.
-                    "fleet_off_chips": v.get("off_chips"),
-                    "fleet_pedestal": v.get("pedestal"),
                     # THE DEAD-RECKON INTEGRITY RESIDUAL, in this chain's chips: search-vs-model
                     # with the solved receiver clock removed (deadreckon: r_i = wrap(d_i - clk),
                     # d_i = measured - predicted). It has existed for the escape referee's veto
@@ -624,14 +420,12 @@ class FleetPublisher:
                     # chains that have no detectors at all. `_s` is the currency-free form
                     # (seconds): a consumer converting chips to metres must know which chips
                     # (L2C's are CM chips), and seconds do not ask it to.
-                    "trk_resid_chips": (_trk.get(prn) or {}).get("chips"),
                     "trk_resid_s": (_trk.get(prn) or {}).get("s"),
                     # the same residual with the receiver clock left IN: the code RANGE residual,
                     # the quantity a carrier residual also carries (Hatch differences the two)
                     "trk_range_s": (_trk.get(prn) or {}).get("raw_s"),
                     "trk_resid_sd_chips": (_trk.get(prn) or {}).get("sd"),
                     "trk_resid_n": (_trk.get(prn) or {}).get("n"),
-                    "trk_resid_hop": (_trk.get(prn) or {}).get("hop"),
                     "trk_resid_age_s": (
                         None
                         if _trk.get(prn) is None
@@ -664,23 +458,19 @@ class FleetPublisher:
                     "proj_src": (_fadr.get(prn) or {}).get("proj_src"),
                     "fadr_trim_cycles": (_fadr.get(prn) or {}).get("trim_cycles"),
                     "fadr_res_cycles": (_fadr.get(prn) or {}).get("res_cycles"),
-                    "fadr_age_s": (_fadr.get(prn) or {}).get("age_s"),
                     # the ADR at the newest fleet-wide GRID hop (fleetadr.GRID_HOPS): the sample
                     # at which every chain's rows carry the SAME hop, so bands pair exactly
                     "fadr_g_hop": (_fadr.get(prn) or {}).get("g_hop"),
                     "fadr_g_dop_cycles": (_fadr.get(prn) or {}).get("g_dop_cycles"),
                     "fadr_g_cycles": (_fadr.get(prn) or {}).get("g_cycles"),
-                    "fadr_g_n_rec": (_fadr.get(prn) or {}).get("g_n_rec"),
                     # The last few grid hops as [hop, dop_cycles, cycles, n_rec], newest
                     # last (fleetadr.GRID_KEEP). A poller slower than the 1.0066 s grid sees
                     # only alternate hops otherwise, and two chains polling out of phase then
                     # pair on ~40% of them; with the history the pairing is poll-independent.
                     "fadr_g_hist": (_fadr.get(prn) or {}).get("g_hist"),
                     "fleet_instances": v["n_src"],
-                    "fleet_channels": v["n_chan"],
-                    # cross-sender coherence of the derotated prompts (combdll.lobe_taps): the
-                    # lobe sum is only a lobe sum while this is ~1; ~0 means the senders were not
-                    # on one phase reference and the fleet prompt sat BELOW the per-sender one.
+                    # Cross-sender coherence of the derotated prompts: ~1 when the senders share one
+                    # phase reference (the post-re-base check reads it), ~0 when they do not.
                     "fleet_xcoh": v.get("xcoh"),
                     "fleet_hop": v["hop"],
                     "coh_src": v.get("coh_src"),
@@ -719,30 +509,17 @@ class FleetPublisher:
                         "deep_amplitude": fc["deep_amplitude"],
                         "coh_frac": fc["coh_frac"],
                         "coh_src": "fleet:%d" % fc["n_src"],
-                        "fleet_coh_floor": fc["floor"],
-                        "fleet_coh_align": fc["align"],
-                        "fleet_coh_records": fc["n_rec"],
-                        # The best single instance kept alongside, so the GAIN this buys is
-                        # visible in the same row rather than inferred across restarts.
-                        "fleet_coh_best_inst": fc["best_inst_snr"],
-                        # THE RECORD-STREAM CARRIER RATE and its split-half sigma (Hz), the
-                        # rrate state's coarse feed since 2974aaa81. Published beside
-                        # deep_rate_full_hz -- the fold's argmax it replaced -- so the two
-                        # estimators of the same quantity can be judged against each other on
-                        # sky rather than by argument. The fold's measured structure function
-                        # was FLAT with lag (1.44 m/s rms at 3 s, 2.07 at 24 s), i.e. pure
-                        # per-sample noise; this one is what that comparison needs.
+                        # THE RECORD-STREAM CARRIER RATE (Hz), the rrate state's coarse feed
+                        # since 2974aaa81. Published beside deep_rate_full_hz -- the fold's
+                        # argmax it replaced -- so the two estimators of the same quantity can
+                        # be judged against each other on sky rather than by argument. The
+                        # fold's measured structure function was FLAT with lag (1.44 m/s rms
+                        # at 3 s, 2.07 at 24 s), i.e. pure per-sample noise; this one is what
+                        # that comparison needs.
                         "rec_rate_hz": fc.get("rate_hz"),
-                        "rec_rate_sigma_hz": fc.get("rate_sigma_hz"),
                     }
                 )
             else:
-                if fc:
-                    # Measured and rejected: publish the floor it failed against, so "no
-                    # fleet number" is distinguishable from "fleet never looked at this PRN".
-                    row.update(
-                        {"fleet_coh_floor": fc["floor"], "fleet_coh_align": fc["align"]}
-                    )
                 # QUADRATURE FALLBACK (2026-08-10, docs 11.31). The argmax this replaces sat
                 # a measured 4.9 dB below the fleet value, so every fleet-gate flicker
                 # stepped the published series 5-8 dB -- and at the observed 20-70% duty
@@ -750,11 +527,9 @@ class FleetPublisher:
                 # lands at the fleet level (-0.7..+2.0 dB over 5 strong PRNs), making the
                 # series CONTINUOUS across the gate. It is not quieter within-state than
                 # the argmax (no scalar is; the engagement rate is the real fix, #10) --
-                # continuity is what it buys. The argmax stays published alongside so the
-                # A/B lives in the row, and coh_src says which population produced the
+                # continuity is what it buys. coh_src says which population produced the
                 # number ('quad:N' vs a URL).
                 _q = v.get("coh_quad")
-                row["coh_best_inst_snr"] = c.get("deep_snr")
                 if _q is not None:
                     row.update({"deep_snr": _q[0], "coh_src": "quad:%d" % _q[1]})
             # ---- THE HONEST HEALTH METRIC (2026-08-14, task #57) ------------------------
@@ -814,11 +589,11 @@ class FleetPublisher:
                 )
             while _h and _t_now - _h[0][0] > DUTY_WIN_S:
                 _h.popleft()
+            _med_win = None
             if _h:
                 row["det_duty_s"] = sum(1 for _, _, ok in _h if ok) / float(len(_h))
-                row["det_duty_n"] = len(_h)
                 _m = sorted(v for _, v, _ok in _h)
-                row["inst_snr_med_win"] = _m[len(_m) // 2]
+                _med_win = _m[len(_m) // 2]
             # SIGNIFICANCE WITH A MATCHED GATE. The viewer computed
             #     sig = coherence_s > 0 ? max(deep_snr, amp_snr) : amp_snr
             # where deep_snr may be the FLEET value while coherence_s is the best single
@@ -879,7 +654,7 @@ class FleetPublisher:
                 row["sig"] = _ks
                 row["sig_src"] = "kcoh_weak:%d" % (_kn or 0)
             elif _pi and row.get("det_duty_s") is not None:
-                row["sig"] = row.get("inst_snr_med_win") or row["inst_snr_med"]
+                row["sig"] = _med_win or row["inst_snr_med"]
                 row["sig_src"] = "inst_med:%d" % row["inst_snr_n"]
             elif (c.get("coherence_s") or 0.0) > 0.0 and c.get("deep_snr"):
                 row["sig"] = c["deep_snr"]  # one instance, its own certified span
@@ -965,12 +740,7 @@ class FleetPublisher:
             if _pc:
                 row["cn0_prompt_db"] = _pc.get("cn0_db")
                 row["cn0_prompt_duty"] = _pc.get("duty")
-                row["cn0_prompt_n"] = _pc.get("n_used")
                 row["cn0_prompt_split_db"] = _pc.get("split_db")
-                row["cn0_prompt_src"] = "probes:%d,t>=%.0f,P>E,L" % (
-                    _pc.get("n_probe_rec", 0),
-                    _pc.get("min_sig", 0.0),
-                )
                 # The probes themselves ride the same rows (they are seeded PRNs); flag
                 # them so no consumer plots a below-horizon noise reference as a satellite.
                 row["noise_probe"] = bool(_pc.get("probe"))
@@ -988,11 +758,9 @@ class FleetPublisher:
                 row["cn0_kcoh_db"] = _kc.get("cn0_db")
                 row["cn0_kcoh_sky_db"] = _kc.get("cn0_sky_db")
                 row["kcoh_sig"] = _kc.get("sig")
-                row["kcoh_sig_sky"] = _kc.get("sig_sky")
                 row["kcoh_eta"] = _kc.get("eta")
                 row["kcoh_n"] = _kc.get("n_rec")
                 row["kcoh_rate_hz"] = _kc.get("rate_hz")
-                row["kcoh_rate_src"] = _kc.get("rate_src")
                 row["kcoh_t_coh_s"] = _kc.get("t_coh_s")
             #
             # ---- PROMPT LOCK (task #47, 2026-08-12). ------------------------------------
@@ -1037,13 +805,9 @@ class FleetPublisher:
             rows.append(row)
         meta = {
             "n_prn": len(rows),
-            "n_endpoints": n_endpoints,
             "present": sum(1 for r in rows if r["fleet_present"]),
             "time_base_suspect": timebase.VERDICT.suspect,
             "time_base_dt_s": timebase.VERDICT.dt_s,
-            # the diagnostic overlay-period shifts in force, so a reader of the records
-            # knows a satellite is being deliberately despread off its own alignment
-            "nh_prn_offset": self.nh_prn_offset(chain=chain),
             "utc": _now(),
         }
         with self._lock:
@@ -1053,17 +817,13 @@ class FleetPublisher:
                 if dets is not None:
                     st["dets"] = dets
                 st["meta"] = meta
-            self._rows = rows  # legacy single-chain mirror
-            if dets is not None:
-                self._dets = dets
-            self._meta = meta
 
 
 class _ChainView(object):
     """One chain's handle on a shared publisher.
 
     Exists so every call site keeps the pre-M6 shape -- `publisher.update(...)`,
-    `publisher.carrier_trim_const(...)` -- whether the process runs one chain or five. The
+    `publisher.set_sky(...)` -- whether the process runs one chain or five. The
     alternative was threading a chain id through the cycle body, which is the 3252 lines
     this refactor has deliberately not touched."""
 
@@ -1075,12 +835,6 @@ class _ChainView(object):
     def update(self, *a, **kw):
         kw["chain"] = self._chain
         return self._pub.update(*a, **kw)
-
-    def carrier_trim_const(self, fallback):
-        return self._pub.carrier_trim_const(fallback, chain=self._chain)
-
-    def nh_prn_offset(self):
-        return self._pub.nh_prn_offset(chain=self._chain)
 
     def set_elements(self, table):
         return self._pub.set_elements(table, chain=self._chain)

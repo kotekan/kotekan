@@ -45,15 +45,9 @@ A_REF_MEO = 27906100.0  # reference semi-major axis, MEO (m) -- IGSO/MEO CNAV ep
 A_REF_IGSO = 42162200.0  # reference semi-major axis, IGSO (m)
 
 # ------------------------------------------------------------------ GF(64) NB-LDPC (shared)
-# The decoder + GF(64) tables live in nb_ldpc.py (shared with B-CNAV1). Re-exported here under
-# the names this module's self-test + bcnav2_predictor already use.
+# The decoder + GF(64) tables live in nb_ldpc.py (shared with B-CNAV1/3).
 import nb_ldpc as _NB
-from nb_ldpc import GF_VEC, GF_POW, Q_GF, N_GF  # noqa: F401  (re-export for tests)
-
-_init_gf = _NB.init_gf
-_bin2gf = _NB.bin2gf
-_gf2bin = _NB.gf2bin
-_gf_mul = _NB.gf_mul
+from nb_ldpc import GF_VEC, GF_POW, Q_GF, N_GF  # noqa: F401  (self-test)
 
 # B-CNAV2 LDPC H-matrix ([BDS-ICD-B2a 6.2.2] via PocketSDR): 48 checks x 96 vars, weight 4
 H_BCNV2_IDX = (
@@ -301,12 +295,6 @@ def sv_position_bcnav2(eph, t):
 
 
 # ------------------------------------------------------------------ self-test
-def _gf_mul(a, b):
-    if a == 0 or b == 0:
-        return 0
-    return GF_VEC[(GF_POW[a] + GF_POW[b]) % (Q_GF - 1)]
-
-
 def _nullspace_codeword(rng):
     """Build a RANDOM valid GF(64) codeword (H c = 0) by Gaussian elimination over GF(64),
     for a rigorous decoder self-test (not the degenerate all-zero word)."""
@@ -329,11 +317,11 @@ def _nullspace_codeword(rng):
         inv = GF_VEC[
             (Q_GF - 1 - GF_POW[H[row][col]]) % (Q_GF - 1)
         ]  # multiplicative inverse
-        H[row] = [_gf_mul(inv, x) for x in H[row]]
+        H[row] = [_NB.gf_mul(inv, x) for x in H[row]]
         for r in range(N_CHECK):
             if r != row and H[r][col] != 0:
                 f = H[r][col]
-                H[r] = [H[r][c] ^ _gf_mul(f, H[row][c]) for c in range(N_VAR)]
+                H[r] = [H[r][c] ^ _NB.gf_mul(f, H[row][c]) for c in range(N_VAR)]
         where[col] = row
         pivots.append(col)
         row += 1
@@ -347,7 +335,7 @@ def _nullspace_codeword(rng):
         acc = 0
         for fc in range(N_VAR):
             if fc != col and H[r][fc] != 0:
-                acc ^= _gf_mul(H[r][fc], c[fc])
+                acc ^= _NB.gf_mul(H[r][fc], c[fc])
         c[col] = acc  # pivot coeff is 1 after normalization
     return c
 
@@ -355,7 +343,7 @@ def _nullspace_codeword(rng):
 if __name__ == "__main__":
     import sys
 
-    _init_gf()
+    _NB.init_gf()
     rng = np.random.default_rng(3)
     fails = 0
 
@@ -363,13 +351,13 @@ if __name__ == "__main__":
     okgf = True
     for a in range(1, Q_GF):
         inv = GF_VEC[(Q_GF - 1 - GF_POW[a]) % (Q_GF - 1)]
-        if _gf_mul(a, inv) != 1:
+        if _NB.gf_mul(a, inv) != 1:
             okgf = False
     for _ in range(200):
         a, b, d = (int(rng.integers(0, Q_GF)) for _ in range(3))
-        if _gf_mul(_gf_mul(a, b), d) != _gf_mul(a, _gf_mul(b, d)):
+        if _NB.gf_mul(_NB.gf_mul(a, b), d) != _NB.gf_mul(a, _NB.gf_mul(b, d)):
             okgf = False
-        if _gf_mul(a, b ^ d) != (_gf_mul(a, b) ^ _gf_mul(a, d)):
+        if _NB.gf_mul(a, b ^ d) != (_NB.gf_mul(a, b) ^ _NB.gf_mul(a, d)):
             okgf = False
     print("1. GF(64) field (inverse/assoc/distrib): %s" % ("OK" if okgf else "FAIL"))
     fails += 0 if okgf else 1
@@ -378,7 +366,7 @@ if __name__ == "__main__":
     p2 = 0
     for _ in range(5):
         cw = _nullspace_codeword(rng)
-        syms = _gf2bin(np.array(cw, dtype=np.uint8))
+        syms = _NB.gf2bin(np.array(cw, dtype=np.uint8))
         bits, nerr = decode_nb_ldpc(syms)
         if nerr != 0:
             p2 += 1
@@ -394,7 +382,7 @@ if __name__ == "__main__":
         okc = 0
         for _ in range(4):
             cw = _nullspace_codeword(rng)
-            syms = _gf2bin(np.array(cw, dtype=np.uint8)).copy()
+            syms = _NB.gf2bin(np.array(cw, dtype=np.uint8)).copy()
             info_true = syms[: N_CHECK * N_GF].copy()
             flip = rng.choice(N_LDPC_SYM, size=nbit, replace=False)
             syms[flip] ^= 1
@@ -415,10 +403,6 @@ if __name__ == "__main__":
         frame = list(rng.integers(0, 2, CRC_AT))
         crc = crc24q(frame)
         frame += [(crc >> (23 - k)) & 1 for k in range(24)]  # 288-bit info frame
-        cw = _nullspace_codeword(rng)  # a valid LDPC codeword...
-        cwsyms = _gf2bin(np.array(cw, dtype=np.uint8))
-        cwsyms[:FRAME_BITS] = frame  # ...but self-test only
-        # NOTE: cwsyms is no longer a valid LDPC word after overwriting info; test CRC path only
         ok, prn, mt, sow = check_crc(frame)
         bad = list(frame)
         bad[100] ^= 1

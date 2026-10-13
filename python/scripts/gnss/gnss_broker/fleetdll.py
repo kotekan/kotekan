@@ -225,47 +225,44 @@ def stage_fleet_dll(ctx):
                 _log_rl(
                     "telem-src", "telem: source failed (%s); using /get_records" % e
                 )
-        if ctx.args.fleet_coherent:
-            try:
-                ctx.dllp.fcoh = fleet_coherent(
-                    ctx.dll_combiners,
-                    ctx.args.coh_min_instances,
-                    ctx.args.coh_min_records,
-                    prns=set(ctx.seeds) or None,
-                    log=None,
-                    floor_margin=ctx.args.coh_floor_margin,
-                    seed=int(_now()),
-                    # lets it fit the record-stream carrier rate off
-                    # the records it already fetched (#33 coarse feed).
-                    # ⚠️ HOPS, NOT RECORDS. get_records' first tuple
-                    # element is a HOP COUNT -- phaseslope.py divides
-                    # it by 195312.5, not by the record rate. Passing
-                    # hops_per_sec/2048 made the time axis 2048x too
-                    # long, so every fitted rate came out 2048x too
-                    # SMALL: +-0.005 Hz where the fold read +-10,
-                    # ratio 1907-2140 across satellites.
-                    hop_rate_hz=ctx.args.hops_per_sec,
-                    # #59: when set, the poll is skipped entirely and
-                    # this identical estimator runs on the gathered
-                    # records instead.
-                    source=_tsrc,
-                )
-            except Exception as e:
-                _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
+        try:
+            ctx.dllp.fcoh = fleet_coherent(
+                ctx.dll_combiners,
+                ctx.args.coh_min_instances,
+                ctx.args.coh_min_records,
+                prns=set(ctx.seeds) or None,
+                floor_margin=ctx.args.coh_floor_margin,
+                seed=int(_now()),
+                # lets it fit the record-stream carrier rate off
+                # the records it already fetched (#33 coarse feed).
+                # ⚠️ HOPS, NOT RECORDS. get_records' first tuple
+                # element is a HOP COUNT -- phaseslope.py divides
+                # it by 195312.5, not by the record rate. Passing
+                # hops_per_sec/2048 made the time axis 2048x too
+                # long, so every fitted rate came out 2048x too
+                # SMALL: +-0.005 Hz where the fold read +-10,
+                # ratio 1907-2140 across satellites.
+                hop_rate_hz=ctx.args.hops_per_sec,
+                # #59: when set, the poll is skipped entirely and
+                # this identical estimator runs on the gathered
+                # records instead.
+                source=_tsrc,
+            )
+        except Exception as e:
+            _log_rl("fleet-coh", "fleet coherent: skipped this cycle (%s)" % e)
         # PATH B, same estimator, separate population. Reported side by side rather than
         # merged: blending the two streams would make the very comparison this exists to
         # support impossible, and their per-record noise is NOT independent (both despread
         # the same antenna voltages), so a merged sum would not buy the sqrt(2) it appears
         # to. Publishes nothing and touches no loop.
         ctx.dllp.fcoh_n2 = {}
-        if ctx.args.fleet_coherent and ctx.n2_combiners:
+        if ctx.n2_combiners:
             try:
                 ctx.dllp.fcoh_n2 = fleet_coherent(
                     ctx.n2_combiners,
                     ctx.args.coh_min_instances,
                     ctx.args.coh_min_records,
                     prns=set(ctx.seeds) or None,
-                    log=None,
                     floor_margin=ctx.args.coh_floor_margin,
                     seed=int(_now()),
                 )
@@ -490,7 +487,6 @@ def stage_fleet_dll(ctx):
                 ctx.dllp.fleet,
                 ctx.seeds,
                 ctx.dls.trim,
-                len(ctx.dll_combiners),
                 ctx.last_dets,
                 ctx.dllp.fcoh,
                 pcn0=ctx.dllp.pcn0,
@@ -531,7 +527,7 @@ def stage_fleet_dll(ctx):
         if _bmsg:
             _log("%s: %s" % (_tag, _bmsg))
 
-        # ── THE BORESIGHT-TRANSIT VETO (shared by D2 and D3) ──────────────────────────
+        # ── THE BORESIGHT-TRANSIT VETO (D3) ────────────────────────────────────────────
         # Pooled over EVERY constellation -- ctx.transit_pd carries all three (the geometry-only
         # sky, health gate off, #144: an unhealthy satellite still rails), and the quantiser is
         # shared, so a per-chain answer would be worse than none (it would clean the chain
@@ -546,7 +542,7 @@ def stage_fleet_dll(ctx):
         if _in_transit:
             _log_rl(
                 "transit-veto",
-                "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight (health %s); D2/D3 "
+                "%s: BORESIGHT TRANSIT -- %s%d is %.1f deg off boresight (health %s); D3 "
                 "suppressed (the quantiser rails and satellites drop across every chain at once)"
                 % (
                     _tag,
@@ -558,27 +554,7 @@ def stage_fleet_dll(ctx):
                 every_s=120.0,
             )
 
-        # ── D2: the deep latch, UNARMED ───────────────────────────────────────────────
-        # #90's four armed flights produced zero genuine targets, so the base rate is the
-        # missing number. This measures it at no risk; it actuates nothing.
-        for _lp, _labs, _lq in ctx.latch.scan(
-            ctx.t0,
-            ctx.qpop,
-            ctx.brown.active(),
-            uptime_s=ctx.t0 - ctx.broker_t0,
-            # The plant's own convergence window, not the process's -- a broker that has
-            # been up for hours is still looking at a sky that just came back.
-            recovering=ctx.brown.recovering(ctx.t0, ctx.latch.startup_hold_s),
-            in_transit=_in_transit,
-        ):
-            _log(
-                "%s: LATCH PRN %d absent %.0f s after q %.2f -- #90 v3 would have fired "
-                "here (detector only, nothing armed)" % (_tag, _lp, _labs, _lq)
-            )
-
         # ── D3: the handover sawtooth ─────────────────────────────────────────────────
-        # Fed the HANDOVER-CORRECTED trim: without that subtraction a successful #92
-        # handover -- the cure -- reads as the disease it was applied to.
         for _sp, _sr in (ctx.dls.readback or {}).items():
             if not isinstance(_sr, dict) or _sr.get("trim_chips") is None:
                 continue
@@ -590,7 +566,7 @@ def stage_fleet_dll(ctx):
             _smsg = ctx.saw.note(
                 ctx.t0,
                 _sp,
-                ctx.handover.corrected(_sp, float(_sr["trim_chips"])),
+                float(_sr["trim_chips"]),
                 browned_out=ctx.brown.active(),
                 uptime_s=ctx.t0 - ctx.broker_t0,
                 rebase_age_s=(ctx.t0 - _sbt) if _sbt is not None else None,
@@ -600,40 +576,6 @@ def stage_fleet_dll(ctx):
             )
             if _smsg:
                 _log("%s: %s" % (_tag, _smsg))
-        # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.
-        #
-        # Carrier and code are locked in ratio: a Doppler error dF drifts the code at
-        # dF * f_chip/f_carrier (validated offline, STATE 7.2: measured 0.01476 chips/s
-        # against 0.01476 predicted). Inverting, the fitted cp slope gives the carrier error
-        # directly, at f_carrier/f_chip = 115.03 Hz per chip/s.
-        #
-        # This matters because carrier_hz_resid is signal-free (2026-08-04: |resid| median
-        # 0.519 Hz on satellites with signal, 0.492 Hz on satellites without), so the carrier
-        # loop was integrating noise and is now off. The code side, by contrast, is strong --
-        # sustained q ~ 3.2 and an 8-point cp fit.
-        #
-        # LOGGED, NOT APPLIED. Three loops today were found eating a statistic that did not
-        # measure what its name said; this one gets compared against the estimator it would
-        # replace before it is allowed to move anything.
-        if ctx.args.carrier_from_code:
-            _k = ctx.args.carrier_hz / ctx.args.chip_rate_hz
-            _rows = []
-            for _p in sorted(ctx.cpt.fit_slope):
-                _rec = ctx.status.get(_p, {})
-                _meas = float(_rec.get("carrier_hz_resid", 0.0))
-                _sig = ctx.sig_of(_rec)
-                if _sig < ctx.args.lock_snr:
-                    continue
-                _rows.append(
-                    "PRN %d code->%+.2f Hz meas %+.2f Hz (sig %.1f)"
-                    % (_p, ctx.cpt.fit_slope[_p] * _k, _meas, _sig)
-                )
-            if _rows:
-                _log_rl(
-                    "carfromcode",
-                    "CARRIER-FROM-CODE (shadow): " + "; ".join(_rows[:6]),
-                    every_s=30.0,
-                )
         if ctx.dop_rate_rejected:
             _log(
                 "dop-rate: %d fit(s) REJECTED against the model (kept the model): %s"
@@ -746,7 +688,7 @@ def stage_fleet_dll(ctx):
         # this is beside `_fh = max(pow_hop)` in the status block -- but that `status` is
         # `{prn: row}` from ONE combiner, and every PRN in a poll carries the SAME
         # pow_hop, so it reports spread 0.00 s across 32 rows and says nothing about the
-        # fleet ([[identical-numbers-are-not-agreement]]). The axis lag that link 1 is
+        # fleet. The axis lag that link 1 is
         # about is ACROSS INSTANCES: on 2026-08-23, gps_l5/gal_e5a read -18.0..-19.3 s
         # while bds_b2a read -7.8 s at the same instant. `_inst_hops_now` is the right
         # population -- the newest hop per combiner, from the poll fleet_dll already makes.
@@ -795,11 +737,7 @@ def stage_fleet_dll(ctx):
         #
         # ⚠️ SAY SO RATHER THAN SKIPPING QUIETLY. A silent skip here would make a chain with
         # no dead reckoning indistinguishable from one whose instances are simply healthy.
-        if (
-            ctx.args.instance_stall_s > 0
-            and ctx.dllp.inst_hops
-            and ctx.dr_state is None
-        ):
+        if ctx.dllp.inst_hops and ctx.dr_state is None:
             _log_rl(
                 "inststall-nodr",
                 "instance-stall check SKIPPED: dr_state is None, so dead reckoning never "
@@ -808,7 +746,7 @@ def stage_fleet_dll(ctx):
                 "dead-reckoned -- which is a bigger problem than the skipped check.",
                 every_s=120.0,
             )
-        elif ctx.args.instance_stall_s > 0 and ctx.dllp.inst_hops:
+        elif ctx.dllp.inst_hops:
             _ih, _stalled = instance_stall_verdict(
                 ctx.dr_state.get("inst_hops", {}),
                 ctx.dllp.inst_hops,
@@ -856,7 +794,7 @@ def stage_fleet_dll(ctx):
         # guard that acts on a statistic this noisy would be a new failure mode, and
         # the honest recovery (a NODE restart, which clears the C++ trim state a
         # broker restart cannot) is not the broker's to perform.
-        if ctx.args.q_stall_window > 0 and ctx.dllp.fleet:
+        if ctx.dllp.fleet:
             _qs = [v["q"] for v in ctx.dllp.fleet.values() if v.get("q") is not None]
             if _qs:
                 _duty = sum(1 for q in _qs if q >= ctx.args.q_stall_bar) / float(

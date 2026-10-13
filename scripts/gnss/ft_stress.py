@@ -102,13 +102,11 @@ def lane_receiver(iters, nthread):
         for k in range(iters):
             t = 1_000_000.0 + k * 0.1
             hz = float(i * 1000 + k)
-            rx.contribute_carrier_bias(chain, hz, n, t)
             rx.contribute_code_bias(chain, "1176.45", hz * 1e-9, n, t)
             rx.contribute_dr_clock(
                 chain, "1176.45", float(k % 10230), 0.001, t, 10230.0
             )
             for got in (
-                rx.carrier_bias(t_now=t),
                 rx.code_bias("1176.45", t_now=t),
                 rx.dr_clock("1176.45", t_now=t),
                 rx.code_bias_any_band(t_now=t),
@@ -146,7 +144,7 @@ def lane_joint(iters, nthread):
             for prn in prns:
                 key = ("gps", prn)
                 try:
-                    js.update(key, rng.gauss(0.0, 0.4), 0.3, t, band="1176.45")
+                    js.update(key, rng.gauss(0.0, 0.4), 0.3, t)
                 except Exception as e:
                     bad.append("update raised %r" % (e,))
             try:
@@ -187,8 +185,8 @@ def lane_notes(iters, nthread):
         local = []
         for k in range(iters):
             # UNDER THE LOCK, because that is the production contract: `_note` is private and
-            # all thirteen of its call sites sit inside @_locked methods (update, predict,
-            # gauge, cycle, update_carrier, update_rrate). Poking it bare -- which is how this
+            # all of its call sites sit inside @_locked methods (update, predict, gauge,
+            # cycle, update_rrate). Poking it bare -- which is how this
             # lane was first written -- races the drainer's rebind against an append no
             # production path can make, and reports lost notes that the broker cannot lose.
             # A harness that violates the contract it is testing manufactures its own bugs.

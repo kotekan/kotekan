@@ -3,17 +3,12 @@
 # Reproduces the 2026-08-21 14:16 live failure (5 healthy GPS rows wiped the instant
 # gal_e5a was fed). Run: python3 test_joint_modulus_migrate.py -- prints PASS/FAIL.
 # CONTROL: reverting receiver.py's migrate to the old rebuild makes this print FAIL.
-import sys, random
+import os, sys, random
 
-sys.path.insert(0, "/home/kvand/gnss/kotekan/python/scripts/gnss")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gnss_broker.receiver import Receiver
-import inspect
 
-rx = (
-    Receiver()
-    if not inspect.signature(Receiver.__init__).parameters.get("cfg")
-    else Receiver(None)
-)
+rx = Receiver()
 random.seed(5)
 L_GPS, L_E5A = 204600.0, 10230.0  # gps_l5 NH vs a shorter-code chain
 clk_true = 151.0

@@ -1,12 +1,9 @@
 # The fast code loop: moving control to C++, leaving policy in Python (task #51)
 
-**Status 2026-08-15 14:30 — CLOSED, IT TRACKS.** All four milestones landed and the loop
-holds on sky: G23 at q 2.78-3.52 for 40+ continuous seconds on a small stable trim
-(-0.15..-0.32 chips), confirmed per-record at 95.4 Hz (`scripts/gnss/site/excursion.py`, median
-one-record |ddisc| 0.102). Live: gps_l5 at 23.84 Hz, bandwidth 2.5/s, signal-gated
-integrator, 90 s arming hold; four control chains. See §11 for the three control-theory
-lessons the sky taught on arming day; docs/CHORD_BUGLIST and task #57 for what the working
-loop exposed next (the served coherent estimator's own ~20 dB scatter).
+**Status: live.** `GnssFleetTrim` in the gather runs the fleet code loop at frame rate
+(23.84 Hz) and posts the trims; the broker keeps the policy, including which PRNs are armed.
+This doc is its design: why the loop has to be fast (§1-2), where the line between C++ and
+Python runs (§3-6), and the traps the controller is built around (§7, §10, §11).
 
 ## 1. The problem, stated as arithmetic
 
@@ -49,14 +46,14 @@ any authority.
 **Target: 95.4 steps/s, 23.84 posts/s.** Loop latency is ~2-3 frames (85-125 ms) which at
 0.121 chips/s is ~0.015 chips of lag -- irrelevant, and the reason the loop does not need to
 close on the node. If actuation at 95 Hz is ever wanted it is
-`--telem-records-per-frame 1`, not a redesign.
+`TELEM_RECORDS_PER_FRAME = 1` in the generator (nodes and gather together), not a redesign.
 
 ## 3. The split
 
 The rule that has to survive is **not** "Python owns the loop". It is *one place with the
 fleet-wide view owns the loop*. An instance sees 7 of ~105 channels and one reference
-element, which is exactly why `cudaGnssChordTrack`'s in-tracker `code_trim` -- which already
-exists, and already runs at frame rate -- is default OFF. The gather host is the only other
+element, which is exactly why the retired path-A tracker's in-tracker `code_trim`, which ran
+at frame rate, stayed OFF. The gather host is the only other
 place with the whole fleet at frame rate, so it can take the authority without violating
 anything that mattered about the original rule.
 
@@ -82,10 +79,12 @@ Two small interfaces, both JSON over the gather instance's existing REST server.
     POST /<name>/set_policy
     { "chains": { "gps_l5": {
         "armed":   [4, 9, 27],
-        "gain": 0.25, "leak_per_s": 1.19, "clamp": 3.0, "spacing": 0.5,
+        "gain_per_s": 1.4, "leak_per_s": 0.12, "clamp": 3.0, "spacing": 0.5,
         "targets": ["http://cx19:12049/gnss0_inject/set_trim", ...] } } }
 
-No `base_cp`: the trim is applied at the tracker, on top of whatever model phase the seed
+`gain_per_s` and `leak_per_s` are required (>= 0; 0 is the broker's freeze); the controller
+converts both to per-update values at its measured close rate (section 7a). No `base_cp`: the
+trim is applied at the tracker, on top of whatever model phase the seed
 carries, so the controller never needs to know it. The tracker's own comment already said the
 trim is a correction *to the model* rather than to a particular seed, which is exactly why a
 re-seed must not zero it.
@@ -133,7 +132,7 @@ window is CLOSED when any sender on that chain reports a newer one (`lag=1` in
 Today the fast thread copies the cycle's exact posted dict and substitutes one field,
 because "a POST that drops a field ZEROES it at the tracker". That dance is a symptom. Add:
 
-    POST /chord_track/set_trim   [{"prn": 4, "trim_chips": -0.312, "win": 123456}]
+    POST /gnss0_inject/set_trim   [{"prn": 4, "trim_chips": -0.312, "win": 123456}]
 
 * carries **one number**, and it is **absolute, not a delta** -- a dropped message then
   costs latency, not authority;
@@ -143,16 +142,19 @@ because "a POST that drops a field ZEROES it at the tracker". That dance is a sy
 * **does not touch `seeds[]`, `t_recv`, or `ema_n`.** `set_seeds_callback` resets
   `ema_n = 0` for every seeded PRN. That is harmless today only because `code_trim` is off;
   at 24 Hz it would pin any tracker-side average at warm-up forever. The slow plane keeps
-  posting real seeds every cycle so `seed_ttl_s` never expires them.
+  posting real seeds every cycle so the injector's fixed 60 s seed TTL never expires them.
+
+The endpoint is per chain and required in the config (`set_trim_endpoint`, e.g.
+`/gnss0_e5a_inject/set_trim`): a shared default path would let the last instance in a process
+take every chain's trims.
 
 **Transport.** ⚠️ I first wrote that the ~60 endpoint paths could be batched into 6 POSTs
 because they share 6 host processes. **That is wrong: a shared HOST is not a shared ENDPOINT.**
 Each instance has its own path and must be told separately, and `restClient` sends
 `Connection: close`, so each request is its own TCP connection -- ~1430/s at one post per
-window. `post_every_n_windows` decimates the ACTUATION without touching the integrator (the
-trim moves at most 0.0625 chips/step, so every 4th window is ~0.02 chips of lag).
-What defeats Python here is not the count -- it is connect-per-POST plus the GIL under five
-chain threads.
+window. The C++ actuator posts every window from a small thread pool (`post_threads`);
+decimating would cost only latency (the trim moves at most 0.0625 chips/step). What defeats
+Python here is not the count -- it is connect-per-POST plus the GIL under five chain threads.
 
 ## 7. Two traps, named before they bite
 
@@ -169,68 +171,29 @@ not run alongside with its own copy of the tau formula. Same rule as
 `gnssSeedTransport.hpp`: the convention lives in one function and both the harness and the
 shipped path call it.
 
-⚠️ And the existing actuator gate, `scripts/gnss/fast_trim_e2e.py`, has a **3-PRN fixture**
--- which is precisely why it could not catch the regression where 5 Hz was requested and
-1.5 Hz delivered (`fleet_dll_comb` was decoding every PRN and using one). It reached 4.39 Hz
-either way. **A gate smaller than production cannot measure a cost that scales with
-production.** The gate needs a production-sized PRN and instance count before it is allowed
-to certify a rate.
-
-## 8. Milestones
-
-* **F1 -- the observer. DONE (f7c8409f6), deployed on cf06.** `GnssFleetTrim` consumes `telem_buf`, collates on `win`, computes
-  fleet E/P/L/disc/q, serves them. **Posts nothing, actuates nothing.**
-  *Gate:* its `disc`/`q` match `combdll.fleet_dll_comb` on the same windows, offline, from
-  identical bytes.
-* **F2 -- the actuator. DONE (37cff469b, a5913c794).** Measured 23.90 posts/s/path. `/chord_track/set_trim` + the batched poster; `code_trim` still
-  false. *Gate:* `fast_trim_e2e` at production PRN/instance count sustains >= 90 steps/s and
-  >= 23 posts/s, and consecutive posts differ only in `trim_chips`.
-* **F3 -- the seam. DONE.** Measured 23.85 posts/s/path with targets carried by the policy. `set_policy` / `get_state`; the Python fast-trim thread deleted, the
-  Python DLL scoped to unarmed PRNs.
-* **F4 -- arm.** gps_l5 armed, the other four chains as control. Judged **paired
-  (armed vs control in the same sample), as a duty over hours, on `q`** -- never on
-  `deep_snr`, `cn0_coh` or `coh_frac`, which #66 shows fire on noise (a PRN 64 degrees below
-  the horizon reads 11.2x its floor).
+⚠️ And the Python arm's actuator gate, `scripts/gnss/fast_trim_e2e.py` (removed with it), had a
+**3-PRN fixture** -- which is precisely why it could not catch the regression where 5 Hz was
+requested and 1.5 Hz delivered (`fleet_dll_comb` was decoding every PRN and using one). It
+reached 4.39 Hz either way. **A gate smaller than production cannot measure a cost that scales
+with production.** The gate needs a production-sized PRN and instance count before it is
+allowed to certify a rate.
 
 ## 9. Not in scope
 
 Carrier. The carrier trim has its own per-sat residual story (#52, f_carrier) and its own
 cadence; folding it in here would couple two loops whose failure modes we cannot yet
-separate. Code first, and only once F4 has a duty number.
+separate. Code first, and only once the code loop has a duty number.
 
 
-## 10. What F3 found, and what is still not proven
+## 10. The sign gate
 
-**`cudaGnssInject` threw the trim away.** It passed a hardcoded `trim_chips = 0.0` to
-`propagate_seed`, and path B -- `gnss{0..1}_inject` -- is what the fleet actually runs. The
-actuator would have written trims into the shared state that were then ignored, and every
-downstream number would have looked like a tracking failure rather than a disconnected wire.
-This is precisely the hazard `cudaGnssChordTrack.hpp` names: the two stages duplicate the
-per-record seed -> Spec construction BY DECISION, and "must be mirrored by hand if changed
-there" is a standing debt that came due. The expiry and snapshot now live in one shared
-`snapshot_trims()` that both call.
+`scripts/gnss/trim_sign_gate.py` verifies the loop's sign end to end: a commanded trim on a
+perfect-truth synthetic sky IS a known code error, so `sign(tau) == -sign(err)` across the
+pull-in region is measured rather than argued. Locate the null first -- e2e's default seed
+carries a real age, so a sweep about trim zero can sit wholly outside the +-0.5-chip region
+where the discriminator has any gradient.
 
-**The sign is verified end to end** (`scripts/gnss/trim_sign_gate.py`). A commanded trim on a
-perfect-truth synthetic sky IS a known code error, so the loop's response is measurable rather
-than arguable:
-
-    trim +0.769  err -0.400  q 0.996  disc -0.965  tau +0.241
-    trim +1.169  err -0.000  q 3.108  disc -0.009  tau +0.002
-    trim +1.569  err +0.401  q 1.012  disc +0.964  tau -0.241
-
-`sign(tau) == -sign(err)` throughout the pull-in region, `disc` crosses zero at the null and
-`q` peaks there. Confirmed on GPS_L5_Q_NH and GAL_E5A_Q_CS. ⚠️ The first version of that sweep
-ran +-0.4 chips about trim ZERO and found nothing: e2e's default seed carries a real 27 s age,
-so the open-loop error is ~-1.17 chips and every sample sat outside the +-0.5-chip region where
-the discriminator has any gradient at all. **The null is located first.**
-
-**NOT PROVEN, and it is what F4 must establish first:** that `/set_trim` reaches a LIVE
-tracker's `trim[]` and changes what is despread. The running nodes predate the endpoint, so
-this needs a node restart (sudo, KV). Everything up to the POST is measured; the last hop is
-offline-verified only.
-
-
-## 11. What arming day taught (all measured, all mine)
+## 11. Three controller choices arming day forced (measured 2026-08-15)
 
 1. **"Same gain, faster rate" is true for slew and FALSE for stability.** Bandwidth =
    gain x rate against the loop's ~0.2-0.5 s measurement round trip: per-update 0.25, stable
@@ -243,6 +206,3 @@ offline-verified only.
 3. **Arming must not be disarmed by the error it fixes.** Presence sampled once per 12 s cycle
    caught the plant at random phase (~30% armed duty). 90 s hold; and a disarmed PRN's trim
    decays through the leak rather than being TTL-stepped to zero.
-4. **The per-record view settles arguments the windowed view starts.** Two of my diagnoses
-   ("sub-second plant excursion", "arms 6x apart") were single draws of wide distributions,
-   refuted by `excursion.py` (95.4 Hz) and the paired A/B population respectively.

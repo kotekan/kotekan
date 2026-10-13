@@ -8,7 +8,7 @@ stage, on the one code path that reads it. That happened on 2026-08-26 with `lc_
 and nothing but a replay caught it.
 
 This is a STRUCTURAL check, not a value check: several slots are legitimately None at
-construction (`receiver_state` without --state-file, `dr_eph_mod` without --dead-reckon,
+construction (`dr_eph_mod` without --dead-reckon,
 `brdc_alm` before the first fetch), so asserting non-None would be wrong. What can be asserted
 is that every slot is accounted for -- passed by the constructor call, given a default, or
 declared per-cycle and written by the stage that computes it.

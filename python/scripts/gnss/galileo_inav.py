@@ -2,9 +2,10 @@
 
 The first S5 D-component (2026-07-30). Mirrors gps_cnav.py -- and shares its FEC and CRC
 by construction: Galileo I/NAV uses the SAME rate-1/2 K=7 convolutional code (G1=171,
-G2=133 oct) and the SAME CRC-24Q (0x1864CFB) as GPS CNAV. What differs, and lives here:
-the block interleaver (30x8), the 10-symbol synchronisation pattern, and the even/odd
-page-part framing.
+G2=133 oct) and the SAME CRC-24Q (0x1864CFB) as GPS CNAV. This module holds the one copy
+of both; gps_cnav, cnav_predictor, galileo_fnav, gps_cnav2 and beidou_bcnav* import it.
+What differs, and lives here: the block interleaver (30x8), the 10-symbol synchronisation
+pattern, and the even/odd page-part framing.
 
 E1B is the DATA channel (250 sps = 4 ms symbols); the pilot E1C carries no data. A page
 part is 1 s = 250 symbols = 10 sync + 240 data; the 240 data symbols are the rate-1/2 FEC
@@ -173,26 +174,6 @@ def decode_page_part(symbols, want_sync=True):
     return bits[:PAGE_PART_BITS], sync_ok
 
 
-def find_page_parts(symbols):
-    """Scan a soft-symbol stream for sync-aligned page parts (both polarities).
-    Yields (start_index, polarity, content_bits) for each that decodes with valid sync.
-    Polarity: +1 as-is, -1 the whole stream inverted (carrier ambiguity)."""
-    s = np.asarray(symbols, dtype=float)
-    n = len(s)
-    i = 0
-    while i + PAGE_PART_SYMS <= n:
-        for pol in (1.0, -1.0):
-            hard = (pol * s[i : i + N_SYNC] < 0).astype(np.int8)
-            if np.array_equal(hard, np.array(SYNC, dtype=np.int8)):
-                bits, ok = decode_page_part(
-                    pol * s[i : i + PAGE_PART_SYMS], want_sync=True
-                )
-                if ok and bits is not None:
-                    yield i, int(pol), bits
-                    break
-        i += 1
-
-
 # --------------------------------------------------------------------------
 # nominal-page word assembly: EVEN + ODD page parts -> 128-bit word + CRC-24
 # --------------------------------------------------------------------------
@@ -204,7 +185,6 @@ def find_page_parts(symbols):
 EVEN_DATA = 112
 ODD_DATA = 16
 WORD_BITS = EVEN_DATA + ODD_DATA  # 128
-CRC_SPAN = 196  # even[0:114] + odd[0:82]
 ODD_CRC_AT = 82  # crc-24 occupies odd[82:106]
 
 
@@ -374,18 +354,6 @@ if __name__ == "__main__":
     )
     fails = f1a + f1b
 
-    # 2. sync + polarity search finds an embedded page part, either polarity
-    p2 = 0
-    for pol in (1.0, -1.0):
-        content = rng.integers(0, 2, PAGE_PART_BITS).astype(np.int8)
-        sym01 = encode_page_part(content)
-        soft = pol * np.where(sym01 == 0, 1.0, -1.0)
-        stream = np.concatenate([rng.normal(0, 1, 37), soft, rng.normal(0, 1, 29)])
-        found = list(find_page_parts(stream))
-        hit = any(np.array_equal(b, content) and i == 37 for i, _, b in found)
-        p2 += 0 if hit else 1
-    print("2. sync+polarity search: %s" % ("OK" if p2 == 0 else "FAIL %d/2" % p2))
-
     # 3. CRC-24Q detects a single-bit flip (over a 196-bit nav word, I/NAV CRC scope)
     word = list(rng.integers(0, 2, 196).astype(int))
     c = crc24q(word)
@@ -399,10 +367,9 @@ if __name__ == "__main__":
         and N_DATA_SYM == 240
         and PAGE_PART_BITS == 114
         and WORD_BITS == 128
-        and CRC_SPAN == 196
     )
     print(
-        "4. page geometry (250 sym = 10+240; 128-bit word; 196-bit CRC span): %s"
+        "4. page geometry (250 sym = 10+240; 128-bit word): %s"
         % ("OK" if ok4 else "FAIL")
     )
 
@@ -476,7 +443,7 @@ if __name__ == "__main__":
         % ("OK" if p6 == 0 else "FAIL %d" % p6)
     )
 
-    bad_any = fails or p2 or ok4 is False or crc24q(bad) == c or p5 or p6
+    bad_any = fails or ok4 is False or crc24q(bad) == c or p5 or p6
     print(
         "\n%s"
         % (

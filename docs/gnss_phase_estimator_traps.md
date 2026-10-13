@@ -85,8 +85,8 @@ one-way split usually still wins.
 
 ## Why the same estimator is SAFE in time
 
-`gnss::phase_track_loo` derotates each record by its temporal neighbours and passes its noise
-control cleanly. The difference: each record's reference is a **different local window**, so
+`gnss::phase_track_loo` (the combiner's leave-one-out phase tracker, removed after `be7d46e8e`)
+derotated each record by its temporal neighbours and passed its noise control cleanly. The difference: each record's reference is a **different local window**, so
 there is no single direction for everything to collapse onto. The collapse needs *both*
 conditions — all terms sharing one reference, **and** that reference being the sum being rotated.
 

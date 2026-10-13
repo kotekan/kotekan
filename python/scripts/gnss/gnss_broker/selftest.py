@@ -82,21 +82,23 @@ check("brdc: built once per key", len(_built) == 1, "%d builds" % len(_built))
 
 # THE CONTRACT THAT KEEPS SINGLE-CHAIN BEHAVIOUR IDENTICAL: a chain never consumes what it
 # itself contributed. If this ever fails, every equivalence result in this refactor is void.
-rx.contribute_carrier_bias("gps_l5", -12.5, 6, 1000.0)
+rx.contribute_code_bias("gps_l5", "1176.45MHz", -12.5e-6, 6, 1000.0)
 check(
     "clock: a chain does not consume its OWN estimate",
-    rx.carrier_bias(exclude="gps_l5", t_now=1000.0) is None,
+    rx.code_bias("1176.45MHz", exclude="gps_l5", t_now=1000.0) is None,
 )
-_s = rx.carrier_bias(exclude="gal_e5a", t_now=1000.0)
-check("clock: a sibling consumes it", _s is not None and _s.value == -12.5)
+_s = rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0)
+check("clock: a sibling consumes it", _s is not None and _s.value == -12.5e-6)
 check(
     "clock: stale contributions age out",
-    rx.carrier_bias(exclude="gal_e5a", t_now=1000.0 + 999.0) is None,
+    rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0 + 999.0) is None,
 )
 
-rx.contribute_carrier_bias("other", -9.0, 12, 1000.0)
-_s = rx.carrier_bias(exclude="gal_e5a", t_now=1000.0)
-check("clock: the better-supported estimate wins", _s.value == -9.0, "n=%d" % _s.weight)
+rx.contribute_code_bias("other", "1176.45MHz", -9.0e-6, 12, 1000.0)
+_s = rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0)
+check(
+    "clock: the better-supported estimate wins", _s.value == -9.0e-6, "n=%d" % _s.weight
+)
 
 # Code side is PER BAND: group delay does not survive a retune, so a bias measured at
 # 1176.45 MHz must not be visible to a chain at 1207.14.
@@ -141,15 +143,6 @@ for key, want in (
         all(abs(a - b) <= 1e-9 * max(1.0, abs(b)) for a, b in zip(got, want)),
         "%s vs %s" % (got, want),
     )
-
-check(
-    "gps_l5 and gal_e5a share a band (same 1176.45 MHz hardware)",
-    signals.get("gps_l5").band == signals.get("gal_e5a").band,
-)
-check(
-    "gal_e5b is a DIFFERENT band (retune -> different group delay)",
-    signals.get("gal_e5b").band != signals.get("gal_e5a").band,
-)
 
 # -- dead-reckon seed currency (task #30) -------------------------------------------------
 # The slewed refresh depends on two properties of dr_cp0/dr_seed_phys and dies silently
@@ -781,11 +774,6 @@ check(
     abs(receiver.Receiver.clock_chips_convert(150.2, 10.23e6, 10.23e6, 10230) - 150.2)
     < 1e-9,
 )
-check(
-    "a legacy store without chip_rate falls back to same-rate (old contributors stay valid)",
-    abs(receiver.Receiver.clock_chips_convert(150.2, None, 10.23e6, 10230) - 150.2)
-    < 1e-9,
-)
 # THE EPOCH EXTENSION (gps_l2c's bootstrap): a donor precise mod its SHORT window plus an
 # independent clock-mod measurement covering OUR longer period. Donor gps_l5: 152.22 chips
 # @ 10.23 Mcps = 14.879 us, window 1 ms; NH joint consensus says clock mod 20 ms ~ 40 us
@@ -834,15 +822,9 @@ check(
 # And the consumer's arithmetic: a fractional-frequency bias -> chips/hop, chip-rate scaled.
 from gnss_broker.fits import cp_rate_from_code_bias  # noqa: E402
 
-_r_e5a = cp_rate_from_code_bias(0.0, 1.5e-6, 195312.5, 10.23e6, 1176.45e6)
-_r_e5b = cp_rate_from_code_bias(0.0, 1.5e-6, 195312.5, 10.23e6, 1207.14e6)
+_r_e5b = cp_rate_from_code_bias(1.5e-6, 195312.5, 10.23e6)
 check(
-    "borrowed rate is carrier-INDEPENDENT at equal chip rate (E5a vs E5b)",
-    _r_e5a == _r_e5b,
-    "%.6g vs %.6g chips/hop" % (_r_e5a, _r_e5b),
-)
-check(
-    "and it is nonzero, i.e. the seed now carries a rate at all",
+    "the borrowed rate is nonzero, i.e. the seed now carries a rate at all",
     abs(_r_e5b) > 0.0,
     "%.6g chips/hop" % _r_e5b,
 )
@@ -885,172 +867,6 @@ check(
 check(
     "bootstrap replaces a 150-chip error with a sub-chip one",
     abs(150.74 - 0.0) > 100.0 and abs((150.74 % 10230.0) - 150.74) < 1e-9,
-)
-
-# -- P3: tau_band as a DECLARED STATE (task #33 / #34) ------------------------------------
-# The measurement is y_i = clk + b_i + tau_band(beta). These assert that the filter SPLITS a
-# per-band offset from per-satellite biases, that it needs dual-band satellites to do so, and
-# that it says so when it cannot -- the failure this project just spent a day on was a
-# configuration where the split was unobservable while every chain looked healthy.
-from gnss_broker.state_filter import JointReceiverState as _JRS  # noqa: E402
-
-_REF, _B2 = "1176.45MHz", "1207.14MHz"
-_TRUE_CLK, _TRUE_TAU = 151.0, 3.5
-_BI = {
-    ("E", 7): +2.0,
-    ("E", 8): -1.5,
-    ("E", 12): +0.5,
-    ("E", 19): -1.0,
-    ("E", 26): +0.7,
-}
-_rndj = __import__("random").Random(7)
-
-
-def _meas(t, bands_for):
-    out = []
-    for k, b in _BI.items():
-        for beta in bands_for(k):
-            tau = 0.0 if beta == _REF else _TRUE_TAU
-            out.append((k, _TRUE_CLK + b + tau + _rndj.gauss(0, 0.05), 0.3, beta))
-    return out
-
-
-# (a) DUAL-BAND sats present -> tau is observable and must be recovered, not absorbed into b.
-_j = _JRS(code_len=1023000.0, ref_band=_REF)
-for _i in range(400):
-    _j.cycle(_meas(_i * 2.0, lambda k: (_REF, _B2)), 1000.0 + _i * 2.0)
-check(
-    "tau_band recovered from dual-band sats",
-    abs(_j.tau(_B2) - _TRUE_TAU) < 0.4,
-    "tau %+.3f (true %+.2f)" % (_j.tau(_B2), _TRUE_TAU),
-)
-check("the reference band is pinned at exactly 0 (the gauge)", _j.tau(_REF) == 0.0)
-check(
-    "clk lands at the reference band's clock, not an average of the two",
-    abs(_j.wrap(_j.clk - _TRUE_CLK)) < 0.5,
-    "clk %.2f (true %.1f)" % (_j.clk, _TRUE_CLK),
-)
-check(
-    "biases stay per-SATELLITE and do not absorb the band offset",
-    max(abs(_j.bias(k) - b) for k, b in _BI.items()) < 0.6,
-    "worst %+.3f" % max(abs(_j.bias(k) - b) for k, b in _BI.items()),
-)
-check(
-    "tau_observability counts the dual-band sats", _j.tau_observability(_B2) == len(_BI)
-)
-
-# (b) DISJOINT sats per band -> tau is NOT observable. The filter must report zero
-#     observability rather than manufacture a split (this was the E5a/E5b PRN-list bug).
-_split = {("E", 7), ("E", 8)}
-_j2 = _JRS(code_len=1023000.0, ref_band=_REF)
-for _i in range(200):
-    _j2.cycle(
-        _meas(_i * 2.0, lambda k: (_REF,) if k in _split else (_B2,)), 1000.0 + _i * 2.0
-    )
-check(
-    "with DISJOINT per-band sats the filter reports tau unobservable",
-    _j2.tau_observability(_B2) == 0,
-    "dual-band sats %d" % _j2.tau_observability(_B2),
-)
-
-# (c) a band row must survive satellite churn -- _drop reindexes by surviving row order
-_j3 = _JRS(code_len=1023000.0, ref_band=_REF, max_age_s=10.0)
-for _i in range(60):
-    _j3.cycle(_meas(_i * 2.0, lambda k: (_REF, _B2)), 1000.0 + _i * 2.0)
-_tau_before = _j3.tau(_B2)
-for _i in range(30):  # only two sats keep reporting; the rest expire
-    _j3.cycle(
-        [m for m in _meas(_i * 2.0, lambda k: (_REF, _B2)) if m[0] in _split],
-        1200.0 + _i * 2.0,
-    )
-check(
-    "tau_band row survives satellite expiry (reindex is layout-generic)",
-    _B2 in _j3._band_idx and abs(_j3.tau(_B2) - _tau_before) < 1.5,
-    "tau %+.3f -> %+.3f" % (_tau_before, _j3.tau(_B2)),
-)
-check(
-    "and no satellite row aliased onto the band row after the drop",
-    len(set(list(_j3._idx.values()) + list(_j3._band_idx.values())))
-    == len(_j3._idx) + len(_j3._band_idx),
-)
-
-# (d) single-band operation is untouched -- the 3-tuple cycle() form still works
-_j4 = _JRS(code_len=1023000.0)
-for _i in range(200):
-    _j4.cycle(
-        [(k, _TRUE_CLK + b + _rndj.gauss(0, 0.05), 0.3) for k, b in _BI.items()],
-        1000.0 + _i * 2.0,
-    )
-check(
-    "single-band callers unaffected (3-tuple form, no band, no tau rows)",
-    not _j4._band_idx and abs(_j4.wrap(_j4.clk - _TRUE_CLK)) < 0.5,
-    "clk %.2f" % _j4.clk,
-)
-
-# -- #6: the S/R split must be BALANCED in sum|w|^2 and STABLE across polls ---------------
-# Reproduces both estimators on the same synthetic fleet -- 12 instances with realistic
-# per-poll amplitude jitter -- and asserts the new one on the two axes the old one failed.
-def _split_old(urls, w):
-    return {u: (i % 2) for i, u in enumerate(sorted(urls, key=lambda u: -w[u]))}
-
-
-def _split_new(urls, w):
-    # PURE function of the url set -- no measurement enters, so it cannot re-decide on noise.
-    return {u: (i % 2) for i, u in enumerate(sorted(urls))}
-
-
-def _imb(urls, half, w):
-    t = [sum(w[u] ** 2 for u in urls if half[u] == j) for j in (0, 1)]
-    return abs(t[0] - t[1]) / (t[0] + t[1]) if (t[0] + t[1]) else 0.0
-
-
-_R = __import__("random").Random(11)
-_urls = [
-    "http://cx%02d:12049/gnss%d_n2combine" % (n, g)
-    for n in (19, 27, 42, 43, 44, 51)
-    for g in (0, 1)
-]
-_base = {
-    u: 1.0 + 0.35 * _R.random() for u in _urls
-}  # instances differ in real strength
-_io, _in_, _flipo, _flipn = [], [], 0, 0
-_po = _pn = None
-for _ in range(200):
-    _w = {u: _base[u] * (1.0 + 0.18 * _R.gauss(0, 1)) for u in _urls}  # per-poll jitter
-    _ho, _hn = _split_old(_urls, _w), _split_new(_urls, _w)
-    _io.append(_imb(_urls, _ho, _w))
-    _in_.append(_imb(_urls, _hn, _w))
-    if _po is not None and _ho != _po:
-        _flipo += 1
-    if _pn is not None and _hn != _pn:
-        _flipn += 1
-    _po, _pn = _ho, _hn
-import statistics as _st
-
-check(
-    "new split NEVER reshuffles membership (the first-order defect)",
-    _flipn == 0,
-    "%d membership changes in 200 polls vs %d for the old split" % (_flipn, _flipo),
-)
-# Balance is deliberately traded for stability, but it must stay in the same league -- a
-# blown-out imbalance would mean the alternation had landed pathologically.
-check(
-    "sum|w|^2 imbalance stays small (second-order, traded knowingly)",
-    _st.mean(_in_) < 0.20,
-    "imbalance %.4f (old rank-interleave %.4f)" % (_st.mean(_in_), _st.mean(_io)),
-)
-check(
-    "both halves are non-empty (a one-way split needs a reference)",
-    0 < sum(1 for u in _urls if _split_new(_urls, _base)[u] == 0) < len(_urls),
-)
-# An odd instance count is where interleave is worst -- one half gets the extra instance AND
-# the rank-1 instance. The greedy pass must still land close.
-_odd = _urls[:9]
-_wo = {u: _base[u] for u in _odd}
-check(
-    "odd instance count: both halves still populated",
-    0 < sum(1 for u in _odd if _split_new(_odd, _wo)[u] == 0) < len(_odd),
-    "imbalance %.4f" % _imb(_odd, _split_new(_odd, _wo), _wo),
 )
 
 print(

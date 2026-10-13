@@ -10,11 +10,7 @@ number: it is a SLOT SWAP, which throws away a working satellite's acquisition. 
 hysteresis is asserted here directly.
 
 WHAT IS BEING PINNED:
-  * an incumbent that is merely DOWN is not evictable until down_hold has elapsed, and the
-    clock RESETS if it comes back up (a satellite that flickers must never churn a slot);
-  * an incumbent GONE from BRDC is evictable sooner, but not instantly;
   * a candidate below the admit mask claims nothing, however long a slot has been free;
-  * `report` posts NOTHING, ever -- the property that makes it safe to arm first;
   * two unwanted satellites never trade a slot (the map is a fixed point, not a flip-flop);
   * a node that left the fleet's map (a restart, a missed post) is put back on it, alone and
     once per interval; a split with no reference -- no majority, nothing this broker posted
@@ -44,8 +40,6 @@ class Args(object):
         self.prn_reconfig_interval_s = 900.0
         self.prn_reconfig_admit_deg = 10.0
         self.prn_reconfig_evict_deg = 0.0
-        self.prn_reconfig_down_hold_s = 10800.0
-        self.prn_reconfig_gone_hold_s = 7200.0
         self.prn_reconfig_timeout_s = 5.0
         self.prn_reconfig_lead_s = 2.0
         self.prn_reconfig_axis_max_age_s = 30.0
@@ -53,7 +47,6 @@ class Args(object):
         self.prn_reconfig_heartbeat_s = (
             1e18  # off by default in tests; check 11 arms it
         )
-        self.probe_require_slot = False
         self.noise_probes = 0
         self.signal = "GAL_E5A_Q_CS"
         self.__dict__.update(kw)
@@ -286,16 +279,6 @@ def main():
         "... while a slot whose PRN has no prediction is still handed to the unslotted one",
     )
 
-    # ---- 5. report mode posts nothing, ever -------------------------------------------
-    POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="report")
-    run_cycle(ctx, 1000.0)
-    run_cycle(ctx, 1000.0 + 100000.0)
-    check(
-        not POSTS,
-        "report mode NEVER posts -- the property that makes it safe to arm first",
-    )
-
     # ---- 6. off does nothing at all ---------------------------------------------------
     POSTS[:] = []
     ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="off")
@@ -389,21 +372,6 @@ def main():
         "... and the crossing is not called a split",
     )
 
-    # ---- 7e. report logs it, off does nothing --------------------------------------------
-    for mode in ("report", "off"):
-        POSTS[:] = []
-        LOGS[:] = []
-        ctx = Ctx(fleet, sky, prn_reconfig=mode)
-        ctx.args.probe_require_slot = True  # so that off still polls
-        ctx.trackers = nodes
-        sweep(ctx, odd, 1000.0)
-        check(not POSTS, "%s mode posts no resync" % mode)
-        if mode == "report":
-            check(
-                any("REPORT ONLY" in m and "node4" in m for m in LOGS),
-                "... and report mode names the node it would put back",
-            )
-
     # ---- 7f. A NODE THAT STAYS OFF THE MAP IS RETRIED ONCE PER INTERVAL ------------------
     POSTS[:] = []
     ctx = Ctx(fleet, sky, prn_reconfig_interval_s=120.0)
@@ -479,42 +447,40 @@ def main():
     # heartbeat is asserted on the LOG rather than on POSTS.
     POSTS[:] = []
     LOGS[:] = []
-    ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0}, prn_reconfig="report")
+    ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0})
     ctx.args.prn_reconfig_heartbeat_s = 900.0
     run_cycle(ctx, 1000.0)
     check(
-        any("PRN MAP" in m and "REPORT" in m for m in LOGS),
+        any("PRN MAP" in m and "APPLY" in m for m in LOGS),
         "an armed chain with NOTHING to propose still says so (the heartbeat)",
     )
     check(not POSTS, "... and still posts nothing")
-    n_beats = len([m for m in LOGS if "REPORT" in m])
+    n_beats = len([m for m in LOGS if "APPLY" in m])
     run_cycle(ctx, 1000.0 + 100.0)
     check(
-        len([m for m in LOGS if "REPORT" in m]) == n_beats,
+        len([m for m in LOGS if "APPLY" in m]) == n_beats,
         "... rate-limited: not once per cycle",
     )
     run_cycle(ctx, 1000.0 + 901.0)
     check(
-        len([m for m in LOGS if "REPORT" in m]) == n_beats + 1,
+        len([m for m in LOGS if "APPLY" in m]) == n_beats + 1,
         "... and it does beat again after the interval",
     )
 
     # ---- 12. the map is PUBLISHED for read-only consumers, and fails OPEN ---------------
-    # --probe-require-slot needs the live map but proposes no swaps, so "off" must still
-    # poll -- and a consumer must never act on a partial or split map. This is what stops
-    # the probe filter from silently emptying the probe set on a half-swept fleet.
+    # The probe selector (--probe-require-slot) reads the live map but proposes no swaps --
+    # and a consumer must never act on a partial or split map. This is what stops the probe
+    # filter from silently emptying the probe set on a half-swept fleet.
     POSTS[:] = []
-    ctx = Ctx([1, 2, 3], {2: 40.0, 3: 30.0, 36: 83.0}, prn_reconfig="off")
-    ctx.args.probe_require_slot = True
+    ctx = Ctx([1, 2, 3], {1: 40.0, 2: 40.0, 3: 30.0})
     run_cycle(ctx, 1000.0)
     check(
         ctx.prnmap.consensus == [1, 2, 3],
-        "prn_reconfig=off + probe_require_slot: the map is polled and PUBLISHED",
+        "a fully swept, unanimous fleet: the map is PUBLISHED",
     )
-    check(not POSTS, "... and still nothing is posted (off is off for SWAPS)")
+    check(not POSTS, "... and nothing is posted while the map already matches the sky")
 
-    ctx2 = Ctx([1, 2, 3], {2: 40.0, 3: 30.0}, prn_reconfig="off")
-    ctx2.args.probe_require_slot = True
+    ctx2 = Ctx([1, 2, 3], {2: 40.0, 3: 30.0})
     CTX[0] = ctx2
     ctx2.t0 = 1000.0
     ctx2.prnmap.poll_t = 1000.0
@@ -529,11 +495,11 @@ def main():
     prnmap.stage_prn_membership(ctx2)
     check(ctx2.prnmap.consensus is None, "... and so does a SPLIT fleet")
 
-    ctx3 = Ctx([1, 2, 3], {2: 40.0}, prn_reconfig="off")  # flag off entirely
+    ctx3 = Ctx([1, 2, 3], {2: 40.0}, prn_reconfig="off")
     run_cycle(ctx3, 1000.0)
     check(
         ctx3.prnmap.consensus is None,
-        "with BOTH off the stage does nothing at all (no new GET -- replay stays exact)",
+        "--prn-reconfig off: the stage does nothing at all (no GET -- replay stays exact)",
     )
 
     # ---- 12. SCHEDULED SWAPS: one frame, fleet-wide ------------------------------------
@@ -544,13 +510,7 @@ def main():
     # with a network delay for a cause.
     print("scheduled swaps: every node crosses on the SAME frame")
     POSTS[:] = []
-    _c = Ctx(
-        [1, 2, 3],
-        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-        prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
-    )
+    _c = Ctx([1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",)
     # The axis was polled 3 s ago -- at the TOP of the cycle that is now posting. The
     # deadline must be advanced across that gap, not written against the stale hop.
     _c.fe_hop_now = 1_000_000_000.0
@@ -588,11 +548,7 @@ def main():
     POSTS[:] = []
     LOGS[:] = []
     _c4 = Ctx(
-        [1, 2, 3],
-        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-        prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
+        [1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",
     )
     _c4.fe_hop_now = 1_000_000_000.0
     _c4.fe_hop_t = 2000.0 - 120.0  # two minutes stale, cap is 30 s
@@ -615,11 +571,7 @@ def main():
     # nothing at all. This is the fail-open direction, and it is deliberate.
     POSTS[:] = []
     _c2 = Ctx(
-        [1, 2, 3],
-        {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
-        prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
+        [1, 2, 3], {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0}, prn_reconfig="apply",
     )
     _c2.fe_hop_now = None
     run_cycle(_c2, 2000.0)
@@ -642,8 +594,6 @@ def main():
         [1, 2, 3],
         {1: +40.0, 2: -50.0, 3: -60.0, 9: +30.0},
         prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
         prn_reconfig_admit_deg=0.0,
         prn_reconfig_evict_deg=0.0,
     )
@@ -661,8 +611,6 @@ def main():
         [1, 2, 3],
         {1: +40.0, 2: -50.0, 3: -60.0, 9: +3.0},
         prn_reconfig="apply",
-        prn_reconfig_gone_hold_s=0.0,
-        prn_reconfig_down_hold_s=0.0,
         prn_reconfig_admit_deg=0.0,
         prn_reconfig_evict_deg=-2.0,
     )
@@ -688,10 +636,10 @@ def main():
     _ep = _c3.trackers[0]
 
     def _get_dead(url, timeout=5.0):
-        return {"prns": [1, 2, 3], "last_hop": -1, "pending_at_hop": -1}
+        return {"prns": [1, 2, 3], "last_hop": -1}
 
     def _get_live(url, timeout=5.0):
-        return {"prns": [1, 2, 3], "last_hop": 1_000_000_000, "pending_at_hop": -1}
+        return {"prns": [1, 2, 3], "last_hop": 1_000_000_000}
 
     def _get_absent(url, timeout=5.0):
         return {"prns": [1, 2, 3]}  # an OLD node binary: no field at all
