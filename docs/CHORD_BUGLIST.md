@@ -3,15 +3,19 @@
 What is open on the CHORD side (branch `kv/chord-gnss`). Closed items are in
 [`CHORD_BUGLIST_CLOSED.md`](CHORD_BUGLIST_CLOSED.md); their narratives are in git history.
 
-**Last reconciled: 2026-10-11 at HEAD `0011cf3b1`** (previous pass 2026-09-12 at `b45949144`). Closed in
-this pass, each verified against the tree or the fleet: **#102, #107 residual, #112, #130/#153, #133, #149, #160,
-#162**; moot: **#31** (roadmap, not a bug), **#88** (folded into the upstream PR plan), **#123** (the stack left
-cf06). Opened: **#164–#174**. The 10-11 memory note `chord-buglist-triage-20261011` records every check.
+**Last reconciled: 2026-10-13 after the dead-code merge** (previous passes 2026-10-11 at `0011cf3b1`, 2026-09-12 at
+`b45949144`). The 10-13 pass re-checked every open entry's anchor against the tree after `d505f3943`: all still
+present except the 09-14 mitigations of #131 (gone with the launchers) and the generator's profiling switch #114 relied
+on. Closed since 10-11: **#55, #62, #63, #113, #115, #121, #125, #144, #146 residual, #150, #159, #161, #172, #173,
+#174**, the #1750 latent lock (PR #1763), and the 10-11 batch (#31, #34, #88, #102, #107 residual, #112, #123,
+#130/#153, #133, #149, #160, #162). Opened: **#175–#188**. The 10-11 and 10-13 memory notes record every check.
 
-**Fleet state: six nodes on `0011cf3b1`** since 10-11 00:55Z (cx51 back 10-10), broker on the gnss VM, recv1 taking
-all three N² legs. The 10-10 re-base changed the per-board phases and the #154 cron re-took the reference. The F-engine
-runs the 10-07 gain table (#167) and does not send rows C/D (#166). `[live]` marks dated before 10-10 sit across a
-re-base and a binary change; treat them as `[carried]` until re-measured.
+**Fleet state (10-13): the F-engine is OFF** (since 10-12 17:05Z, for about a week); the six nodes are down, their hosts
+up; the broker, obs writers and viewer run the merged tree on the gnss VM, the gather and aggregator the 10-12 binaries.
+The last sky ran on `d30be5f66` (telemetry v8, the L5 code fix). The dead-code removal and the j2 deletion are merged and
+pushed; `fleet-d505f3943` and `gather-d505f3943` are built and not staged. The F-engine last ran the 10-07 gain table
+(#167) and did not send rows C/D (#166). `[live]` marks dated before 10-10 sit across a re-base and a binary change;
+treat them as `[carried]` until re-measured.
 
 **How to read the marks.** `[tree]` = checked against the working tree, with the check named.
 `[live]` = measured on the running fleet, with the date and the number. `[bench]` / `[archive]` =
@@ -117,8 +121,9 @@ because `cp_err` is rarely `None` on a tracked PRN.
 `conjugate`, `phi_fp16`, `despread_max_chips`, `despread_chips_centered`, `trim_endpoint`; cudaCorrelatorDual
 `gnss_freq_map`, `gnss_synth_compact`, `rfi_all_pass`), so a regenerated config still starts on d30be5f66; (b) the
 REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (GnssCoherentCombiner) for the old broker.
-**Fix:** once the fleet runs d505f3943 and the broker is restarted on it: stop emitting (a), then drop the reads; drop
-(b). Check after each step: `gen_fleet --check` and `--check-config` on all nine configs.
+**Fix:** the broker already runs the merged tree (restarted 10-13 12:57Z), so (b) can go with the first fleet binary after
+`d505f3943`; (a) waits for that binary too: stop emitting, then drop the reads. Check after each step: `gen_fleet
+--check` and `--check-config` on all nine configs.
 
 ### #176 — the joint clock adopts a one-off 0.8-chip outlier inside a transit and every 10.23-Mcps chain loses its prompts (2026-10-12)
 - **What:** C33 (0.61°, CA 12:54:15Z 10-12). Through the pass the joint solve's sigma grew 0.42 → 0.68 and was REFUSED
@@ -670,6 +675,10 @@ broker must fail LOUDLY when its gather link is refused -- it logged `TELEM DOWN
 `segvtrace.so` (separate log `/tmp/gnss_gather_segv.log`) so the next death leaves a backtrace.
 **How to see it:** `ss -ltn | grep -E "11060|11061|12051"` empty; broker log `frames 0` with
 `nothing yet` on every chain; the 2-line `stack_up.sh` health table.
+**10-13:** both mitigations are gone with the dead-code removal (`gate.sh` and the `segvtrace.so` launcher went with the
+pre-systemd launchers), so the next death leaves no backtrace; the gather now runs under its unit with
+`Restart=on-failure`, 30 s. The fix is in the gather binary on the VM (the reaper path), deployable without a node
+cycle; a flap harness (connect, take nothing, repeat 20×/min) is the test.
 
 ### #114 — `cudaRFISKtilde` is 6× slower on gpu0 than gpu1 on the same node
 **[live]** 12.89 ms vs 2.12 ms per frame on cx43 with identical per-GPU configuration, and it is
@@ -677,6 +686,9 @@ the largest non-inject kernel on the busier GPU. Per the standing rule that **no
 per-node or per-instance**, an asymmetry like this is a bug until proven otherwise. Investigate
 before optimising anything else on the GPU: it is a bigger lever than anything left in the GPU
 queue.
+**10-13:** `/gpu_profile/<name>` still exists in `gpuProcess`, but the generator's `--n2-debug` (which set
+`log_profiling`) was removed as dead, so the check now needs `log_profiling: true` hand-set on one node's config for one
+run at the F-engine's return.
 
 ### #126 — the F-engine axis is drift-free and ~217 ms stale, and only labels can use it
 Filed for years as "the 215 µs has never been decomposed"; **it was decomposed on 2026-08-17**,
