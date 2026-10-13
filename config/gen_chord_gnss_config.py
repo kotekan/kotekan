@@ -1219,22 +1219,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # A trim whose controller stopped posting EXPIRES to zero rather than being
                     # held forever (the #13 latch).
                     "trim_ttl_s": TRIM_TTL_S,
-                    # THE SAME F-ENGINE ANCHOR THE TRACKER GETS, AND NOT OPTIONAL. This one
-                    # missing key was the whole of the 11.14.1 coh_frac defect. Without it
-                    # cudaGnssInject writes utc0 = 0, GnssGpuRecordAssemble falls back to HOST
-                    # WALL CLOCK, and every path-B record is stamped at the instant it was
-                    # assembled -- so the four sub-records of a frame land microseconds apart
-                    # instead of 10.49 ms apart. The combiner's rate search works in UTC, takes
-                    # dt = the MINIMUM consecutive spacing, and therefore built its integer grid
-                    # on those microseconds: the records were scrambled across the transform and
-                    # q fell from ~22 to 4.5-11.4, straight through the q >= 10 gate. Measured
-                    # 2026-08-07: utc - hop*5.12us was constant to 0.0 s on path A and wandered
-                    # 45 ms (4.3 record periods) on path B.
-                    #
-                    # NB the amplitude estimators never noticed -- amp_snr was 71-83% of path A
-                    # throughout -- because they are per-record and use no time base at all. Only
-                    # the cross-record estimators (rate search, coherence_s, carrier fit) read
-                    # UTC, which is exactly the set that failed.
+                    # A pinned F-engine epoch (--frame0-nano) overrides the telescope's for the
+                    # inject as it does for the tracker. Records are stamped frame0_utc +
+                    # wstart/rate, and GnssGpuRecordAssemble refuses a record without utc0.
                     **(
                         {"frame0_utc": float(cfg["fengine"]["frame0_utc"])}
                         if cfg["fengine"].get("frame0_utc")
