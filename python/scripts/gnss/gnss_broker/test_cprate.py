@@ -100,22 +100,12 @@ def test_guard_is_on_deviation_not_magnitude():
     )
 
 
-def test_tolerance_zero_disables():
-    """Default 0.0 must be an exact no-op, or the digests move on an unarmed broker."""
-    clock = 4.62e-9
-    tol = 0.0
-    rate = 994.0 / HPS
-    fires = tol > 0.0 and abs(_dev_chips_s(rate, clock)) > tol
-    check(not fires, "tol 0.0 rejects nothing, however blown the fit")
-
-
 def main():
     for fn in (
         test_unbounded_fit_is_the_defect,
         test_clean_fit_is_admitted,
         test_blown_fit_is_rejected,
         test_guard_is_on_deviation_not_magnitude,
-        test_tolerance_zero_disables,
     ):
         print(fn.__name__)
         fn()

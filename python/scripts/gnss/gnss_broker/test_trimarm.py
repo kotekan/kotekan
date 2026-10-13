@@ -1,0 +1,124 @@
+"""The fast loop's arming POLICY: what the gather is told it may actuate.
+
+    python3 -m gnss_broker.test_trimarm     (or: pytest gnss_broker/test_trimarm.py)
+
+`stage_fleet_trim_arming` is the only place the C++ fast loop's authority is set. The stage
+POSTs, so `_post` is captured rather than sent: what this file asserts is the POLICY DOCUMENT
+the gather would receive -- which PRNs are armed (presence with a hold), the loop constants,
+and the probe-anchored floor.
+
+@author Keith Vanderlinde
+"""
+
+import sys
+import time
+
+from gnss_broker import trimarm
+
+
+_fails = []
+
+
+def check(ok, what):
+    print("  [%s] %s" % ("PASS" if ok else "FAIL", what))
+    if not ok:
+        _fails.append(what)
+
+
+class _Obj(object):
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def run(present=(1, 8, 10), hold=None, fleet=None):
+    """Drive the stage once; return (policy dict the gather would receive, ctx)."""
+    sent = {}
+
+    def fake_post(url, doc, timeout=None):
+        sent["url"] = url
+        sent["doc"] = doc
+        return {}
+
+    def fake_get(url, timeout=None):
+        return {}
+
+    real_post, real_get = trimarm._post, trimarm._get
+    trimarm._post, trimarm._get = fake_post, fake_get
+    try:
+        ctx = _Obj(
+            args=_Obj(
+                fleet_trim_url="http://127.0.0.1:12051/fleet_trim",
+                fleet_trim_hold_s=30.0,
+                fleet_trim_bandwidth=2.5,
+                fleet_trim_leak_per_s=0.5,
+                dll_spacing=0.5,
+                fleet_trim_readback=0,
+                signal="gps_l5",
+            ),
+            dllp=_Obj(
+                fleet=fleet
+                if fleet is not None
+                else {p: {"present": True} for p in present}
+            ),
+            dls=_Obj(
+                hold=dict(hold or {}),
+                armed_last=set(),
+                readback={},
+                stat={"posts": 0, "fail": 0, "last_err": ""},
+            ),
+            telem_chain="gps_l5",
+            trackers=["http://cx19:12048/gnss0_inject"],
+        )
+        trimarm.stage_fleet_trim_arming(ctx)
+    finally:
+        trimarm._post, trimarm._get = real_post, real_get
+    return sent.get("doc", {}).get("chains", {}).get("gps_l5", {}), ctx
+
+
+def main():
+    print("\nthe arming policy")
+
+    # 1. Present PRNs are armed, with the loop's own constants, and the armed set is
+    #    recorded for the Python integrator to stand down against.
+    pol, ctx = run()
+    check(sorted(pol.get("armed") or []) == [1, 8, 10], "present PRNs 1, 8, 10 armed")
+    check(
+        pol.get("gain_per_s") == 2.5 and pol.get("leak_per_s") == 0.5,
+        "gain/leak are the fleet-trim bandwidth and leak, not the slow DLL's constants",
+    )
+    check(
+        pol.get("targets") == ["http://cx19:12048/gnss0_inject/set_trim"],
+        "the targets are the trackers' /set_trim",
+    )
+    check(ctx.dls.armed_last == {1, 8, 10}, "armed_last records what was handed over")
+    check(ctx.dls.stat["posts"] == 1, "one policy POST counted")
+
+    # 2. PRESENCE WITH A HOLD: a PRN absent this cycle stays armed inside the hold and is
+    #    released once it has been absent longer than fleet_trim_hold_s.
+    now = time.time()
+    pol, _ = run(present=(1,), hold={8: now - 10.0, 10: now - 100.0})
+    check(
+        sorted(pol.get("armed") or []) == [1, 8],
+        "absent 10 s: still armed; absent 100 s (> 30 s hold): released",
+    )
+
+    # 3. ONLY A PROBE-ANCHORED FLOOR SHIPS. A peer-bar floor would rebuild the competition
+    #    the absolute floor removes, so anything else ships 0 (the C++ side refuses).
+    pol, _ = run(
+        fleet={1: {"present": True, "p_floor_src": "probes:3", "p_floor": 0.02}}
+    )
+    check(pol.get("p_floor_abs") == 0.02, "probe-anchored floor ships as p_floor_abs")
+    pol, _ = run(fleet={1: {"present": True, "p_floor_src": "peers", "p_floor": 0.02}})
+    check(pol.get("p_floor_abs") == 0.0, "a peer-bar floor ships 0")
+
+    print("-" * 70)
+    if _fails:
+        for f in _fails:
+            print("FAIL: %s" % f)
+        return 1
+    print("GATE GOOD: the fast loop's arming policy")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
