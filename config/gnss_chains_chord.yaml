@@ -1305,7 +1305,7 @@ chains:
     # ONE CHAIN, per the flag's own instruction, and the state is SHARED -- gps_l5's
     # SEED-OFFSET/JOINT-CLK lines are the free early-warning control.
     # Pre-registered: fixtures/expectations_20260821_joint_feed.txt. Revert: delete this
-    # line + the common joint-rereference, then restart the broker.
+    # line, then restart the broker.
     # ⚠️ DISARMED 14:19, ~3 min in, BY ITS OWN PRE-REGISTERED FALSIFIER. Two hits:
     # (1) the joint clock WALKED -- 149.15 -> 144.18 -> 142.23 chips in ~40 s at
     #     -0.12 chips/s, monotone;
