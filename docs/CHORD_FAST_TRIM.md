@@ -2,8 +2,8 @@
 
 **Status 2026-08-15 14:30 — CLOSED, IT TRACKS.** All four milestones landed and the loop
 holds on sky: G23 at q 2.78-3.52 for 40+ continuous seconds on a small stable trim
-(-0.15..-0.32 chips), confirmed per-record at 95.4 Hz (`scripts/gnss/site/excursion.py`, median
-one-record |ddisc| 0.102). Live: gps_l5 at 23.84 Hz, bandwidth 2.5/s, signal-gated
+(-0.15..-0.32 chips), confirmed per-record at 95.4 Hz (the `excursion.py` tool of e202a0f03,
+median one-record |ddisc| 0.102). Live: gps_l5 at 23.84 Hz, bandwidth 2.5/s, signal-gated
 integrator, 90 s arming hold; four control chains. See §11 for the three control-theory
 lessons the sky taught on arming day; docs/CHORD_BUGLIST and task #57 for what the working
 loop exposed next (the served coherent estimator's own ~20 dB scatter).
@@ -245,4 +245,5 @@ offline-verified only.
    decays through the leak rather than being TTL-stepped to zero.
 4. **The per-record view settles arguments the windowed view starts.** Two of my diagnoses
    ("sub-second plant excursion", "arms 6x apart") were single draws of wide distributions,
-   refuted by `excursion.py` (95.4 Hz) and the paired A/B population respectively.
+   refuted by the per-record `excursion.py` of e202a0f03 (95.4 Hz) and the paired A/B population
+   respectively.
