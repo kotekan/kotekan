@@ -45,7 +45,6 @@ class ClockBias(object):
         "available",
         "seed",
         "code_ema",
-        "code_cal",
     )
 
     def __init__(self, value=0.0, ema=None, cal=None, meas_t=0.0):
@@ -87,7 +86,6 @@ class ClockBias(object):
         # code_phase_rate = 0.0 and the prompt walks out of the correlation window in 3-11
         # minutes. That was E5a's rise-peak-fall envelope with the disc railed and E >> L.
         self.code_ema = None
-        self.code_cal = None
 
     def update_seed(self, source):
         """Advance the SEED-side bias after this cycle's raw multi-sat solve (#105).
@@ -101,18 +99,3 @@ class ClockBias(object):
         else:
             self.seed = self.ema if self.ema is not None else self.value
         return self.seed
-
-    def check_stale(self, t0, max_age_s):
-        """Update and return `stale`: is the last real measurement older than max_age_s?
-
-        A zero or negative `max_age_s` disables the check -- the value is then trusted
-        indefinitely, which is a deliberate configuration choice and not an oversight.
-        """
-        self.stale = bool(
-            max_age_s > 0.0 and self.ema is not None and t0 - self.meas_t > max_age_s
-        )
-        return self.stale
-
-    def age_s(self, t0):
-        """Seconds since the last genuine measurement -- what the alarm line reports."""
-        return t0 - self.meas_t

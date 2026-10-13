@@ -82,21 +82,23 @@ check("brdc: built once per key", len(_built) == 1, "%d builds" % len(_built))
 
 # THE CONTRACT THAT KEEPS SINGLE-CHAIN BEHAVIOUR IDENTICAL: a chain never consumes what it
 # itself contributed. If this ever fails, every equivalence result in this refactor is void.
-rx.contribute_carrier_bias("gps_l5", -12.5, 6, 1000.0)
+rx.contribute_code_bias("gps_l5", "1176.45MHz", -12.5e-6, 6, 1000.0)
 check(
     "clock: a chain does not consume its OWN estimate",
-    rx.carrier_bias(exclude="gps_l5", t_now=1000.0) is None,
+    rx.code_bias("1176.45MHz", exclude="gps_l5", t_now=1000.0) is None,
 )
-_s = rx.carrier_bias(exclude="gal_e5a", t_now=1000.0)
-check("clock: a sibling consumes it", _s is not None and _s.value == -12.5)
+_s = rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0)
+check("clock: a sibling consumes it", _s is not None and _s.value == -12.5e-6)
 check(
     "clock: stale contributions age out",
-    rx.carrier_bias(exclude="gal_e5a", t_now=1000.0 + 999.0) is None,
+    rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0 + 999.0) is None,
 )
 
-rx.contribute_carrier_bias("other", -9.0, 12, 1000.0)
-_s = rx.carrier_bias(exclude="gal_e5a", t_now=1000.0)
-check("clock: the better-supported estimate wins", _s.value == -9.0, "n=%d" % _s.weight)
+rx.contribute_code_bias("other", "1176.45MHz", -9.0e-6, 12, 1000.0)
+_s = rx.code_bias("1176.45MHz", exclude="gal_e5a", t_now=1000.0)
+check(
+    "clock: the better-supported estimate wins", _s.value == -9.0e-6, "n=%d" % _s.weight
+)
 
 # Code side is PER BAND: group delay does not survive a retune, so a bias measured at
 # 1176.45 MHz must not be visible to a chain at 1207.14.
@@ -770,11 +772,6 @@ check(
 check(
     "same-rate clock adoption is the identity (the pre-2026-08-31 behaviour, preserved)",
     abs(receiver.Receiver.clock_chips_convert(150.2, 10.23e6, 10.23e6, 10230) - 150.2)
-    < 1e-9,
-)
-check(
-    "a legacy store without chip_rate falls back to same-rate (old contributors stay valid)",
-    abs(receiver.Receiver.clock_chips_convert(150.2, None, 10.23e6, 10230) - 150.2)
     < 1e-9,
 )
 # THE EPOCH EXTENSION (gps_l2c's bootstrap): a donor precise mod its SHORT window plus an

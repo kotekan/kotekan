@@ -2149,28 +2149,6 @@ def main(argv=None, rx=None, publisher=None):
                     if _cb.code_ema is None
                     else _cb.code_ema + args.code_bias_alpha * (raw_cb - _cb.code_ema)
                 )
-                # SAT-SCALED bar, same rationale as the carrier-bias alarm above (few-fit
-                # chains' l-a median is ~1/sqrt(n) noisy; the fixed bar cried wolf on the
-                # weak chains 2026-07-20). A real dongle-clock event is large + sustained.
-                _labar = args.code_bias_alarm_ppm * max(
-                    1.0, (5.0 / max(len(_ctx.la_samples), 1)) ** 0.5
-                )
-                if (
-                    _cb.code_cal is not None
-                    and abs(_cb.code_ema - _cb.code_cal) > _labar * 1e-6
-                ):
-                    _log_rl(
-                        "laalarm",
-                        "CLOCK DRIFT ALARM: l-a %+.3f ppm vs calibration %+.3f "
-                        "(|d| > %.2f ppm, %d fits) -- dongle clock news, INVESTIGATE"
-                        % (
-                            _cb.code_ema * 1e6,
-                            _cb.code_cal * 1e6,
-                            _labar,
-                            len(_ctx.la_samples),
-                        ),
-                        every_s=60.0,
-                    )
                 _log_rl(
                     "la-pool",
                     "code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted "

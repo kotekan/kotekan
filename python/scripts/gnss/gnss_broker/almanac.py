@@ -283,11 +283,6 @@ def stage_almanac_predict(ctx):
             ctx.cb.value = ctx.cb.ema
             # #105: the seed consumers' bias -- ClockBias.update_seed has the invariant.
             ctx.cb.update_seed(ctx.args.seed_bias_source)
-            # CONTRIBUTE (task #27 M3). Receiver scope -- one reference, one frequency
-            # error -- so every co-hosted chain can have this without solving it. A
-            # chain that HAS its own estimate never reads back, which is why publishing
-            # here cannot change single-chain behaviour.
-            ctx.rx.contribute_carrier_bias(ctx.chain_id, ctx.cb.ema, len(resid), ctx.t0)
             # ALARM LOG on a SAT-SCALED bar: the median-of-residuals noise is ~1/sqrt(n),
             # so the fixed bar (tuned for strong chains) cried wolf on the weak-sat chains
             # (L5/E5a/B2a ~730 false alarms/night 2026-07-20 while the strong chains were

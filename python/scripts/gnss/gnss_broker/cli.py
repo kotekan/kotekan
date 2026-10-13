@@ -75,9 +75,6 @@ _FROZEN = dict(
     #   by more than this (GPSDO unlock / thermal event -- hardware news, not something to
     #   silently absorb)
     clock_bias_alarm_hz=10.0,
-    # --code-bias-alarm-ppm
-    #   same alarm for the code-rate clock (l-a) vs its warm-start value
-    code_bias_alarm_ppm=0.05,
     # --code-bias-max
     #   reject per-sat l-a samples beyond +-this (ppm) before the median -- a
     #   noisy/unwrap-blown slope fit is an outlier a few-sat median can't reject; the seeded

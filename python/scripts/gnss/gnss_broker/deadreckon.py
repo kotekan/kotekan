@@ -682,7 +682,7 @@ def dr_clock_adopt_rx(ctx):
             )
             _cand = None
         if _cand is not None:
-            _don_rate = _cand.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
+            _don_rate = _cand.extra["chip_rate_hz"]
             _don_window_s = (_cand.extra.get("code_length") or 0) / _don_rate
             _our_window_s = ctx.code_len / ctx.args.chip_rate_hz
             if _don_window_s >= _our_window_s:
@@ -716,7 +716,7 @@ def dr_clock_adopt_rx(ctx):
                         every_s=300.0,
                     )
     if ctx.drp.rx_sib is not None and _rx_xband:
-        _don_rate = ctx.drp.rx_sib.extra.get("chip_rate_hz") or ctx.args.chip_rate_hz
+        _don_rate = ctx.drp.rx_sib.extra["chip_rate_hz"]
         if _rx_xext is None:
             _v = ctx.rx.clock_chips_convert(
                 ctx.drp.rx_sib.value, _don_rate, ctx.args.chip_rate_hz, ctx.code_len

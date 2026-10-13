@@ -102,13 +102,11 @@ def lane_receiver(iters, nthread):
         for k in range(iters):
             t = 1_000_000.0 + k * 0.1
             hz = float(i * 1000 + k)
-            rx.contribute_carrier_bias(chain, hz, n, t)
             rx.contribute_code_bias(chain, "1176.45", hz * 1e-9, n, t)
             rx.contribute_dr_clock(
                 chain, "1176.45", float(k % 10230), 0.001, t, 10230.0
             )
             for got in (
-                rx.carrier_bias(t_now=t),
                 rx.code_bias("1176.45", t_now=t),
                 rx.dr_clock("1176.45", t_now=t),
                 rx.code_bias_any_band(t_now=t),

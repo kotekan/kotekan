@@ -12,7 +12,6 @@ estimated ONCE:
                   filtered per chain at predict time, so ONE parse serves every
                   constellation -- today each broker parses its own copy and throws the
                   other systems away.
-    carrier clock RECEIVER scope. One reference, one frequency error.
     code clock    PER BAND. Cable and PFB group delay are per carrier, so a code bias
                   measured at 1176.45 MHz is not the one at 1207 MHz. This is
                   load-bearing rather than decoration.
@@ -57,44 +56,22 @@ class Receiver(object):
         self._anchor = None  # utc0_sample0, latched once for the telescope
         self._anchor_src = None
         self._brdc = {}  # cache key -> the {"mod","eph","eph_t"} state dict
-        self._carrier = {}  # chain -> _Shared (Hz, receiver scope)
         self._code = {}  # (band, chain) -> _Shared (dimensionless l-a)
         self._dr = {}  # (band, chain) -> _Shared (chips, + drift in extra)
         self._clkmod = {}  # chain -> _Shared (the receiver clock in SECONDS,
         # known mod extra["epoch_s"] -- e.g. the NH joint
         # fit's consensus, clock mod 20 ms). The epoch
         # EXTENSION a short-window donor clock needs.
-        self._joint = {}  # band -> JointReceiverState (P2a, shadow)
+        self._joint = {}  # "__receiver__" -> the one JointReceiverState
         self._joint_unit = {}  # chain -> (chip_rate_hz, code_len) of the code
         # phases it FEEDS into the receiver-wide joint state
 
-    # -- the joint receiver state (task #33 P2a) ------------------------------------------
-    def joint(self, band, **kw):
-        """The ONE [clk, clk_rate, b_sat[i]] solve for this band, shared by every chain.
-
-        Receiver scope by the same physics as dr_clock: one F-engine, one reference, and a
-        code clock that is per BAND because cable and PFB group delay do not survive a
-        retune. On CHORD all three deployed chains (GPS L5, Galileo E5a, BeiDou B2a) sit at
-        1176.45 MHz, so all three feed one state -- which is the point: the gauge's 1/N leak
-        shrinks and the clock stops being one constellation's private median.
-
-        Created on first use so a process that never enables the shadow never imports numpy.
-        """
-        from .state_filter import JointReceiverState
-
-        with self._lock:
-            if band not in self._joint:
-                self._joint[band] = JointReceiverState(**kw)
-            return self._joint[band]
-
+    # -- the joint receiver state (task #33) -----------------------------------------------
     def joint_receiver(self, band, code_len, **kw):
-        """P3: ONE joint state for the WHOLE RECEIVER, with band as a measurement label.
+        """P3: ONE joint state for the WHOLE RECEIVER, shared by every chain.
 
-        `joint()` above keys a separate state per band, which is what P2 needed and what P3
-        must undo: two independent states cannot estimate the offset BETWEEN them. Here every
-        band feeds one filter and the per-band group delay becomes `tau_band`, a declared
-        state -- so the second band's clock is ESTIMATED rather than borrowed, which is what
-        the cross-band bootstrap in the dead-reckon seeder is standing in for today (#34).
+        Created on first use so a process that never enables the joint solve never imports
+        numpy.
 
         ⚠️ THE MODULUS IS THE CATCH, and it is why this takes a code_len argument rather than
         inheriting one. Chains here carry different code periods -- GPS L5 NH 204600 chips
@@ -218,10 +195,6 @@ class Receiver(object):
                 )
             return self._anchor
 
-    def anchor(self):
-        with self._lock:
-            return self._anchor
-
     # -- sky ----------------------------------------------------------------------------
     def brdc(self, key, build):
         """The shared BRDC store for `key`, built once.
@@ -238,19 +211,6 @@ class Receiver(object):
             return self._brdc.setdefault(key, st)
 
     # -- clocks -------------------------------------------------------------------------
-    def contribute_carrier_bias(self, chain, hz, n_sats, t):
-        """Publish this chain's clock-frequency bias. Receiver scope: one reference."""
-        if hz is None:
-            return
-        with self._lock:
-            self._carrier[chain] = _Shared(float(hz), chain, int(n_sats or 0), t)
-
-    def carrier_bias(self, exclude=None, max_age_s=120.0, t_now=None):
-        """The best OTHER chain's carrier bias, or None. Weighted by satellite count --
-        the only quality signal any of these estimators carries -- and aged out, because
-        a chain that stopped solving must stop being believed rather than fading silently."""
-        return self._best(self._carrier, exclude, max_age_s, t_now, key2=None)
-
     def contribute_code_bias(self, chain, band, la, n_sats, t):
         """Publish the code-side (l-a) bias. PER BAND: group delay is per carrier."""
         if la is None:
@@ -259,6 +219,9 @@ class Receiver(object):
             self._code[(band, chain)] = _Shared(float(la), chain, int(n_sats or 0), t)
 
     def code_bias(self, band, exclude=None, max_age_s=120.0, t_now=None):
+        """The best OTHER chain's (l-a) in this band, or None. Weighted by satellite count --
+        the only quality signal any of these estimators carries -- and aged out, because a
+        chain that stopped solving must stop being believed rather than fading silently."""
         return self._best(self._code, exclude, max_age_s, t_now, key2=band)
 
     def code_bias_any_band(self, exclude=None, max_age_s=120.0, t_now=None):
@@ -387,7 +350,9 @@ class Receiver(object):
         """
         return self._best(self._dr, exclude, max_age_s, t_now, key2=None)
 
-    def contribute_clock_mod_epoch(self, chain, seconds, epoch_s, n_sats, t, healthy=None):
+    def contribute_clock_mod_epoch(
+        self, chain, seconds, epoch_s, n_sats, t, healthy=None
+    ):
         """The receiver clock as a TIME, known mod epoch_s. Contributed by an estimator
         that resolves a LONGER modulus than any code period -- today the NH joint fit
         (clock mod 20 ms from every strong GPS sat voting). Consumers use it to extend a
@@ -447,12 +412,9 @@ class Receiver(object):
     def clock_chips_convert(donor_chips, donor_rate_hz, our_rate_hz, our_code_len):
         """A donor's clock, re-expressed in OUR chips and reduced mod OUR code.
 
-        The clock is a TIME; chips are a unit. donor_rate None = the legacy same-rate
-        assumption (every pre-2026-08-31 contributor was 10.23 Mcps, so old stores stay
-        valid). Selftest-gated with the exact gal_e6 numbers so the unit trap cannot
-        silently return."""
-        rate = donor_rate_hz or our_rate_hz
-        return (float(donor_chips) * our_rate_hz / rate) % our_code_len
+        The clock is a TIME; chips are a unit. Selftest-gated with the exact gal_e6 numbers
+        so the unit trap cannot silently return."""
+        return (float(donor_chips) * our_rate_hz / donor_rate_hz) % our_code_len
 
     @staticmethod
     def joint_clk_delta(
@@ -497,13 +459,11 @@ class Receiver(object):
         """One line for the periodic log -- what the instrument currently believes."""
         with self._lock:
             return (
-                "receiver: anchor=%s (%s), brdc=%d store(s), carrier from %s, "
-                "code from %s, dr from %s"
+                "receiver: anchor=%s (%s), brdc=%d store(s), code from %s, dr from %s"
                 % (
                     "%.9f" % self._anchor if self._anchor else "none",
                     self._anchor_src or "-",
                     len(self._brdc),
-                    sorted(self._carrier) or "-",
                     sorted(c for _, c in self._code) or "-",
                     sorted(c for _, c in self._dr) or "-",
                 )

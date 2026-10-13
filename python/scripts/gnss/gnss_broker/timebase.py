@@ -29,7 +29,7 @@ import math
 
 
 class Verdict(object):
-    __slots__ = ("suspect", "dt_s", "explained", "spread_hz", "n", "chain", "since_t")
+    __slots__ = ("suspect", "dt_s", "since_t")
 
     def __init__(self):
         self.clear()
@@ -37,10 +37,6 @@ class Verdict(object):
     def clear(self):
         self.suspect = False
         self.dt_s = None
-        self.explained = None
-        self.spread_hz = None
-        self.n = 0
-        self.chain = None
         self.since_t = None
 
 
@@ -109,11 +105,7 @@ class TimeBaseDetector(object):
             return None
         first = not v.suspect
         v.suspect = True
-        v.chain = chain
-        v.n = len(pairs)
-        v.spread_hz = pre
         v.dt_s = dt if explained else None
-        v.explained = explained
         if v.since_t is None:
             v.since_t = t
         if not first:
