@@ -42,18 +42,13 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
     _na16 = _num_elements / 16;
     _nt16 = (_num_elements + _num_synth) / 16;
     _nlive16 = (_n_live + 15) / 16;
-    _n_mixed = (_nt16 - _na16) * _nlive16;
-    // AA (live antenna x live antenna) follows the mixed block when the correlator has
-    // gnss_gather_aa, and BB (synth x synth) follows that with gnss_gather_bb, for the
-    // visibility capture. This stage only steps over them: the normalisation uses the
-    // pre-quantisation energy from the ctl block, not the quantised M^2 in BB.
-    _n_aa = config.get_default<bool>(unique_name, "gnss_gather_aa", false)
-                ? _nlive16 * (_nlive16 + 1) / 2
-                : 0;
-    const int nsb16 = _nt16 - _na16;
-    _n_bb = config.get_default<bool>(unique_name, "gnss_gather_bb", false) ? nsb16 * (nsb16 + 1) / 2
-                                                                           : 0;
-    _n_tile = _n_mixed + _n_aa + _n_bb;
+    // A chain's gather carries the mixed block alone; the AA and BB triangles are gathered
+    // only for the visibility capture, which has its own gather. The live configs still carry
+    // gnss_gather_aa, so it is read only to refuse true.
+    if (config.get_default<bool>(unique_name, "gnss_gather_aa", false))
+        FATAL_ERROR("GnssN2RecordAssemble: gnss_gather_aa true is not supported; a chain's "
+                    "tiles carry the mixed block only");
+    _n_tile = (_nt16 - _na16) * _nlive16;
 
     if (4 * _n_prn > _num_synth)
         FATAL_ERROR("GnssN2RecordAssemble: 4*n_prn ({:d}) exceeds num_synth ({:d})", 4 * _n_prn,
@@ -71,13 +66,12 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
         (size_t)(_n_hops_frame / _hops_per_record) * _n_gnss_chan * _n_tile * 512 * sizeof(int32_t);
     if ((size_t)_tiles_buf->frame_size != tiles_need)
         FATAL_ERROR("GnssN2RecordAssemble: tiles_buf frame_size {:d} != {:d} for {:d} rec x {:d} "
-                    "chan x {:d} tiles ({:d} mixed + {:d} AA + {:d} BB)",
+                    "chan x {:d} mixed tiles",
                     (size_t)_tiles_buf->frame_size, tiles_need, _n_hops_frame / _hops_per_record,
-                    _n_gnss_chan, _n_tile, _n_mixed, _n_aa, _n_bb);
+                    _n_gnss_chan, _n_tile);
 
-    INFO("GnssN2RecordAssemble: {:d} PRN x {:d} chan x {:d} elem; tiles {:d} ({:d} mixed + {:d} "
-         "AA + {:d} BB) per channel",
-         _n_prn, _n_gnss_chan, _n_live, _n_tile, _n_mixed, _n_aa, _n_bb);
+    INFO("GnssN2RecordAssemble: {:d} PRN x {:d} chan x {:d} elem; {:d} mixed tiles per channel",
+         _n_prn, _n_gnss_chan, _n_live, _n_tile);
 }
 
 void GnssN2RecordAssemble::main_thread() {

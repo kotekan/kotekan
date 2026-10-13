@@ -27,8 +27,7 @@
  *  - @c tiles_buf : cudaCorrelatorDual's gathered tiles, [Tc][n_gnss_chan][n_tile][16][16][2]
  *                   int32, in cudaCorrelatorDual::build_tile_selection's order: per channel,
  *                   the mixed tiles (synth tile rows x live tile columns, row-major, a column
- *                   indexed by its position in the correlator's live_element_tiles), then the
- *                   optional AA and BB triangles.
+ *                   indexed by its position in the correlator's live_element_tiles).
  *
  * Scale. The pack quantises each replica lane to 4+4 bits with a per-lane scale s, so the
  * tile is V = s * corr. The quantiser holds M^2 nearly constant across lanes, so s scales as
@@ -52,10 +51,7 @@
  * @conf  num_synth      Int. Synthetic stations. Default 128.
  * @conf  n_live_elements Int. Live antennas the tiles cover.
  * @conf  n_gnss_channels Int. Comb channels gathered.
- * @conf  gnss_gather_aa  Bool, default false. The correlator's flag: the tiles frame then
- *                       carries nlive16*(nlive16+1)/2 AA tiles after the mixed block.
- * @conf  gnss_gather_bb  Bool, default false. The correlator's flag: the tiles frame then
- *                       carries nsb16*(nsb16+1)/2 BB tiles after the AA block.
+ * @conf  gnss_gather_aa  Bool, default false; true is refused (the tiles carry no AA block).
  * @conf  n_prn, hops_per_record, samples_per_data_set
  */
 class GnssN2RecordAssemble : public kotekan::Stage {
@@ -74,7 +70,7 @@ private:
     int _hops_per_record, _n_hops_frame;
 
     /// Tile geometry, recomputed from config exactly as cudaCorrelatorDual does.
-    int _na16, _nt16, _nlive16, _n_mixed, _n_aa, _n_bb, _n_tile;
+    int _na16, _nt16, _nlive16, _n_tile;
 };
 
 #endif // GNSS_N2_RECORD_ASSEMBLE_HPP

@@ -77,7 +77,7 @@ static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& c
             for (size_t k = 0; k < live_cols.size(); k++)
                 sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + live_cols[k])});
         // The tile count is one contract stated in three places: here, GnssN2RecordAssemble's
-        // _n_mixed/_n_aa/_n_bb, and config/gen_chord_gnss_config.py's n2_tiles_per_chan, which
+        // _n_tile (mixed only), and config/gen_chord_gnss_config.py's n2_tiles_per_chan, which
         // sizes the tiles buffer. A mismatch is fatal: GnssN2RecordAssemble checks the frame
         // size at startup, and gpuDeviceInterface's size check catches this side when
         // cudaOutputData first copies the buffer out.
