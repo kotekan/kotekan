@@ -822,15 +822,9 @@ check(
 # And the consumer's arithmetic: a fractional-frequency bias -> chips/hop, chip-rate scaled.
 from gnss_broker.fits import cp_rate_from_code_bias  # noqa: E402
 
-_r_e5a = cp_rate_from_code_bias(0.0, 1.5e-6, 195312.5, 10.23e6, 1176.45e6)
-_r_e5b = cp_rate_from_code_bias(0.0, 1.5e-6, 195312.5, 10.23e6, 1207.14e6)
+_r_e5b = cp_rate_from_code_bias(1.5e-6, 195312.5, 10.23e6)
 check(
-    "borrowed rate is carrier-INDEPENDENT at equal chip rate (E5a vs E5b)",
-    _r_e5a == _r_e5b,
-    "%.6g vs %.6g chips/hop" % (_r_e5a, _r_e5b),
-)
-check(
-    "and it is nonzero, i.e. the seed now carries a rate at all",
+    "the borrowed rate is nonzero, i.e. the seed now carries a rate at all",
     abs(_r_e5b) > 0.0,
     "%.6g chips/hop" % _r_e5b,
 )

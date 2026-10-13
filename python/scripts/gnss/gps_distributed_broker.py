@@ -1957,11 +1957,7 @@ def main(argv=None, rx=None, publisher=None):
                     doppler_hz=_ctx.pred[p][0] + _cb.value,
                     code_phase_chips=0.0,
                     code_phase_rate=cp_rate_from_code_bias(
-                        _ctx.pred[p][0],
-                        _cb.code_ema or 0.0,
-                        args.hops_per_sec,
-                        args.chip_rate_hz,
-                        args.carrier_hz,
+                        _cb.code_ema or 0.0, args.hops_per_sec, args.chip_rate_hz,
                     ),
                     ref_hop=0,
                     doppler_rate_hz_s=_ctx.pred[p][1],
@@ -2213,11 +2209,7 @@ def main(argv=None, rx=None, publisher=None):
                     "la_rate",
                     epoch=seed.get("ref_hop"),
                     code_phase_rate=cp_rate_from_code_bias(
-                        seed["doppler_hz"],
-                        cb_to_seed,
-                        args.hops_per_sec,
-                        args.chip_rate_hz,
-                        args.carrier_hz,
+                        cb_to_seed, args.hops_per_sec, args.chip_rate_hz,
                     ),
                 )
                 n_seeded += 1

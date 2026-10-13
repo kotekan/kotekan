@@ -3,9 +3,6 @@
 Extracted verbatim from gps_distributed_broker.py (task #27 M1). Pure functions of their
 arguments -- no globals, no I/O -- so they are testable in isolation for the first time.
 """
-import math
-import statistics
-
 from gnss_broker import signals
 
 
@@ -78,9 +75,7 @@ def fit_dop_rate(hist, hops_per_sec, min_pts, min_span_s, max_rate):
     return rate if abs(rate) <= max_rate else None
 
 
-def code_clock_bias_sample(
-    rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz, carrier_hz
-):
+def code_clock_bias_sample(rate_chips_per_hop, hops_per_sec, chip_hz):
     """One satellite's estimate of the receiver LO-vs-ADC clock offset (l - a), dimensionless.
 
     CONVENTION (the 2026-07-04 L5 finding): the fitted slope here is the drift of the SEARCH's
@@ -95,9 +90,7 @@ def code_clock_bias_sample(
     residual-convention slopes it contaminated l-a by the per-sat carrier_frac: the estimates
     disagreed band-to-band (+0.25 ppm L1 / -0.63 ppm L5) where the residual reading agrees
     (+0.03 / -0.04 ppm, both near the GPSDO's measured +0.06).)
-    doppler_hz/carrier_hz are kept in the signature for call-site stability; unused.
     """
-    del doppler_hz, carrier_hz  # residual convention: geometry is already fed forward
     return rate_chips_per_hop * hops_per_sec / chip_hz
 
 
@@ -108,7 +101,6 @@ def rate_residuals(
     log=None,
     prev_hop=None,
     max_gap=2,
-    fft_len=16384,
     rec_hops=2048,
     prev_val=None,
     max_step=3.0,
@@ -244,7 +236,7 @@ def rate_residuals(
     return out, consensus
 
 
-def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier_hz):
+def cp_rate_from_code_bias(code_bias, hops_per_sec, chip_hz):
     """Seed the cp0 slope (chips/hop) for a not-yet-fittable sat from the calibrated (l - a).
 
     RESIDUAL convention (2026-07-04 L5 finding): cp0 is absolute-anchored and the replica applies
@@ -254,9 +246,7 @@ def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier
     replica then applied AGAIN: unfitted sats slid off-peak at the code-Doppler rate. Fatal at
     L5 (+-30 chips/s -> off the +-1 chip peak in <1 s; the replay smoking gun: seeded cp 6690,
     displayed 6477 after 65 s = -3.28 chips/s = exactly dop/f * f_chip), historically masked at
-    L1 (+-3 chips/s) by fast fits + the old per-record pull-in re-centering.
-    doppler_hz/carrier_hz kept in the signature for call-site stability; unused."""
-    del doppler_hz, carrier_hz  # residual convention: geometry is already fed forward
+    L1 (+-3 chips/s) by fast fits + the old per-record pull-in re-centering."""
     return code_bias * chip_hz / hops_per_sec
 
 
@@ -372,61 +362,6 @@ def dr_seed_phys(seed, h1, hops_per_sec, chip_hz, carrier_hz, code_doppler_sign,
         + seed.get("code_phase_rate", 0.0) * (h1 - seed["ref_hop"])
         + 0.5 * (chip_hz / carrier_hz) * seed.get("doppler_rate_hz_s", 0.0) * dt * dt
     ) % mod
-
-
-def track_vs_fit_chips(
-    held_seed,
-    det_cp_loc,
-    det_ref_hop,
-    dll_trim_chips,
-    hops_per_sec,
-    chip_hz,
-    carrier_hz,
-    code_doppler_sign,
-    code_len,
-):
-    """Track-vs-search residual, both sides physical, at the DETECTION's epoch
-    (#42 / #45 step 1).
-
-    Replaces the sample-0 currency comparison cp_err used until 2026-08-12. That formula
-    translated between two SEED-dop currencies with the full-run-age lever (~1700 chips/Hz
-    at 2.3 days), so any motion of the seed-vs-detection dop bias -- the carrier clock_bias
-    EMA, a quantity DESIGNED to move -- read as -1700*dBias chips of track error: 145
-    specimens in 7 minutes, seven false ESCAPES in one evening against tracks healthy at
-    40 dB-Hz.
-
-    Both inputs here are physical code phases at det_ref_hop, in one convention:
-      * det_cp_loc: the detection's own (cp0, dop) pair undone -- cp0 + t*f_chip*(1+k*dop),
-        the SAME pair the search published together, so no translation happens and a
-        pair-inconsistent candidate cannot inject anything. Measured continuity on sky:
-        0.27 chips median over 1423 consecutive detections.
-      * dr_seed_phys(held): where the tracker's propagation puts the despread, from the
-        held tuple's own labels used self-consistently.
-
-    An earlier draft used the payload's cp_at_ref instead. It is better conditioned in
-    principle, but it is referenced at the hop's LAST sample and carries the replica
-    anchor's Doppler term (+52.3711 + 1.39e-4*dop chips vs this quantity, measured on
-    26,815 banked detections) -- so consuming it means importing the search's fft_len AND
-    anchor geometry into every consumer, which is the coupling this pass exists to remove,
-    for a conditioning gain the sky says is not needed. The C++ side keeps cp_at_ref in its
-    own last-sample convention, which is a contract there (gnssSeedTransport).
-
-    Returns the wrapped residual (fresh - held - trim), or None if det_cp_loc is missing.
-    """
-    if det_cp_loc is None or det_cp_loc < 0.0:
-        return None
-    held = dr_seed_phys(
-        held_seed,
-        det_ref_hop,
-        hops_per_sec,
-        chip_hz,
-        carrier_hz,
-        code_doppler_sign,
-        code_len,
-    )
-    return (
-        (det_cp_loc - held - dll_trim_chips + code_len / 2.0) % code_len
-    ) - code_len / 2.0
 
 
 def retag_seed_doppler(

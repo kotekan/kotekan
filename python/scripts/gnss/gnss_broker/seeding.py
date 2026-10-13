@@ -671,11 +671,7 @@ def stage_detections_to_seeds(ctx):
             _tol = getattr(ctx.args, "cp_rate_model_tol", 0.0)
             if _tol > 0.0 and ctx.cb.code_ema is not None:
                 _model = cp_rate_from_code_bias(
-                    seed_dop,
-                    ctx.cb.code_ema,
-                    ctx.args.hops_per_sec,
-                    ctx.args.chip_rate_hz,
-                    ctx.args.carrier_hz,
+                    ctx.cb.code_ema, ctx.args.hops_per_sec, ctx.args.chip_rate_hz,
                 )
                 _dev = (rate - _model) * ctx.args.hops_per_sec  # chips/s
                 if abs(_dev) > _tol:
@@ -747,11 +743,7 @@ def stage_detections_to_seeds(ctx):
                 and ctx.cb.code_ema is not None
             ):
                 _seed_rate = cp_rate_from_code_bias(
-                    seed_dop,
-                    ctx.cb.code_ema,
-                    ctx.args.hops_per_sec,
-                    ctx.args.chip_rate_hz,
-                    ctx.args.carrier_hz,
+                    ctx.cb.code_ema, ctx.args.hops_per_sec, ctx.args.chip_rate_hz,
                 )
             # ⚠️ SUBSTITUTE THE COMMAND ONLY, NEVER THE MEASUREMENT. `rate` stays the
             # FITTED slope below this line, because the consumer underneath is a
@@ -770,11 +762,7 @@ def stage_detections_to_seeds(ctx):
             # This fit contributes an (l-a) sample: its code_frac minus the sat's carrier_frac.
             # Only strong, geometry-clean detections (SNR gate) -- weak/noisy slopes would bias it.
             la = code_clock_bias_sample(
-                rate,
-                seed_dop,
-                ctx.args.hops_per_sec,
-                ctx.args.chip_rate_hz,
-                ctx.args.carrier_hz,
+                rate, ctx.args.hops_per_sec, ctx.args.chip_rate_hz,
             )
             # PER-SAMPLE gate: a single noisy/unwrap-blown slope fit is a large l-a outlier
             # that the few-sat median can't reject -- and a wandering pooled l-a swings the
@@ -1050,9 +1038,8 @@ def stage_detections_to_seeds(ctx):
         # THE DETECTION'S OWN PHYSICAL PHASE at its epoch: cp0 and dop were published
         # together, so undoing the pair reintroduces no translation -- which is the
         # entire #42 fix. (cp_at_ref would be better conditioned but lives in the C++
-        # last-sample convention and carries the anchor Doppler term; see
-        # track_vs_fit_chips.) Hoisted out of the hold branch: the innovation below
-        # wants it for every detection.
+        # last-sample convention and carries the anchor Doppler term.) Hoisted out of
+        # the hold branch: the innovation below wants it for every detection.
         _cpe_recon = (
             cp
             + (ref_hop / ctx.args.hops_per_sec)
@@ -1091,7 +1078,7 @@ def stage_detections_to_seeds(ctx):
             )
         ):
             # FORECAST WHAT THE TRACKER RUNS, not the cp0 fiction. The first deploy of
-            # this block used track_vs_fit_chips (= dr_seed_phys, the cp0-argument
+            # this block used dr_seed_phys (the cp0-argument
             # path): every PRN read thousands of chips, sign-flipping, p95 ~5000 --
             # wrap-uniform, two uncorrelated phases -- while q and the trims said the
             # taps were fine. The tracker prefers code_phase_at_ref_chips
@@ -1151,12 +1138,10 @@ def stage_detections_to_seeds(ctx):
             # stepped, cp0 unmoved) and no translation survives that. So: compare
             # physical phases at the DETECTION's epoch instead -- the search's own
             # cp_at_ref (dt=0, its Doppler estimate does not enter) against where
-            # dr_seed_phys puts the tracker's despread. test_track_vs_fit.py pins
-            # the discriminating pair (bias step: old ~1700/Hz, new ~0; real lobe
-            # park: both read +-3.27) and drives the SHIPPED function.
+            # dr_seed_phys puts the tracker's despread.
             # #83 2(d) ADDENDUM (2026-08-17): the referee now CONSUMES THE INNOVATION
             # above -- forecast by tracker_phase_at, the reference propagate_seed
-            # actually prefers -- instead of track_vs_fit_chips' dr_seed_phys (the
+            # actually prefers -- instead of dr_seed_phys (the
             # cp0-argument path). On sky the cp0 fiction read wrap-uniform thousands
             # of chips (p95 ~5000) on satellites tracking cleanly: seed writers move
             # doppler_hz without re-projecting cp0, and the implied phase swings on
