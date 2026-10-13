@@ -249,7 +249,7 @@ by line count, lowest by risk — none of it compiles into kotekan.
 ## 6. Cleanup round 3 — the plan (2026-10-08)
 
 Six read-only reviewers at `9f555d4be`; condensed notes with file:line detail in
-`docs/CHORD_CLEANUP_ROUND3_NOTES.md`. About 37k of the ~201k added lines go with high
+`be7d46e8e:docs/CHORD_CLEANUP_ROUND3_NOTES.md`. About 37k of the ~201k added lines go with high
 confidence and no live behaviour change. Verify every batch with: CUDA `-Werror` build +
 boost tests on cf05, `kotekan --check-config` on the nine live configs, `gen_fleet --check`
 byte-identical, broker `gnss_broker/test_*.py` + `selftest.py` under venv-ft (niced), and for
