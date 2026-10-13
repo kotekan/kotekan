@@ -211,7 +211,6 @@ def _header_argv(path):
 def _census(path):
     """What the transcript actually contains. A replay of nothing replays perfectly."""
     n = {"now": 0, "get": 0, "post": 0}
-    urls, prns = set(), set()
     with _open(path) as f:
         for line in f:
             if not line.strip():
@@ -219,12 +218,10 @@ def _census(path):
             r = json.loads(line)
             if r["k"] in n:
                 n[r["k"]] += 1
-            if r["k"] == "post":
-                urls.add(r["u"])
-    return n, urls, prns
+    return n
 
 
-def replay(path, extra=(), env=None):
+def replay(path, env=None):
     """Run the broker against a transcript; return (digest, stderr)."""
     pin = _pin_for(path)
     argv = _header_argv(path)
@@ -233,12 +230,7 @@ def replay(path, extra=(), env=None):
     argv = _strip(argv, "--publish-port")
     for flag, nargs in RETIRED_FLAGS.items():
         argv = _strip(argv, flag, nargs)
-    cmd = (
-        [PY, "-u", BROKER]
-        + argv
-        + ["--transcript-read", path, "--publish-port", "0"]
-        + list(extra)
-    )
+    cmd = [PY, "-u", BROKER] + argv + ["--transcript-read", path, "--publish-port", "0"]
     e = dict(os.environ)
     # PIN THE SKY (task #29). The ephemeris is a replay input every bit as much as the
     # transcript: gnss_ephemeris.fetch_brdc pulls it through its own urllib into a cache that
@@ -276,7 +268,7 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "action", choices=["record", "digest", "check", "bless", "selftest", "census"]
+        "action", choices=["record", "digest", "check", "bless", "selftest"]
     )
     ap.add_argument("transcript")
     ap.add_argument(
@@ -303,13 +295,6 @@ def main():
         cmd = [PY, "-u", BROKER] + flags + ["--transcript-write", a.transcript]
         sys.stderr.write("+ %s\n" % " ".join(cmd))
         raise SystemExit(subprocess.call(cmd, cwd=K))
-
-    if a.action == "census":
-        n, urls, _ = _census(a.transcript)
-        print("cycles(now)=%d  gets=%d  posts=%d" % (n["now"], n["get"], n["post"]))
-        for u in sorted(urls):
-            print("  post ->", u)
-        return
 
     if a.action == "digest":
         d, _ = replay(a.transcript)
@@ -366,7 +351,7 @@ def main():
         )
 
     if a.action == "selftest":
-        n, _, _ = _census(a.transcript)
+        n = _census(a.transcript)
         if n["post"] == 0:
             sys.exit(
                 "transcript contains ZERO posts -- it exercises nothing. Capture one "
