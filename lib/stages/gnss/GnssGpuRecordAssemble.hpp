@@ -35,15 +35,7 @@
  * @conf out_buf  tracker records: n_prn * record_stride floats, plus the per-channel block
  *                with chan_export
  * @conf prns     initial slot -> PRN map; its length must equal the frame's n_prn
- * @conf sample_rate  rate of the wstart sample counter, Hz (default 5e6)
- * @conf elem_sum_shared_form_deg      no first shared model while the nearest satellite is
- *                                     inside this cone (deg; default 8, wider than the freeze)
- * @conf elem_sum_shared_ref_reseed_s  a warm half below elem_sum_shared_ref_min_sim against the
- *                                     fleet reference for this long takes the reference's shape
- *                                     (s; default 600; 0 disables; live mode only)
- * @conf elem_sum_shared_ref_reseed_sib_sim  ... and only while the sibling pol matches the
- *                                     reference at this similarity or better (default 0.8), so a
- *                                     reference stale for both pols never re-seeds the model
+ * @conf sample_rate  rate of the wstart sample counter, Hz
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
@@ -69,7 +61,6 @@ private:
     int _n_elements = 0;
     /// The element the record header's correlation slots carry: the broker's loop reference.
     int _reference_element = 0;
-    bool _elem_hold_on_reanchor = true; ///< keep the element cal across reanchored == 1
     std::vector<uint8_t> _elem_prev_ok; ///< element-cal continuity, independent of the carrier's
     std::vector<double> _fnco_prev;     ///< previous record's f_nco; the NCO advance over
                                         ///< [t_prev, t_now] uses the mean of it and this f_nco
@@ -115,13 +106,13 @@ private:
     /// any inter-pol coefficient learns. A post older than 120 s arms no new freeze.
     double _elem_shared_freeze_deg = 6.0;
     double _elem_shared_freeze_hold_s = 60.0;
-    /// No first model while the nearest satellite is inside this wider cone (config
-    /// elem_sum_shared_form_deg): a model formed at 5-8 deg learns the leakage as its shape.
+    /// No first model while the nearest satellite is inside this wider cone: a model formed at
+    /// 5-8 deg learns the leakage as its shape.
     double _elem_shared_form_deg = 8.0;
     // Per-channel noise weights for the cross-channel sums (gnssChanPower.hpp).
     bool _chan_norm = false;           ///< config chan_noise_norm
     std::vector<int> _chan_norm_elems; ///< config chan_noise_norm_elems: the frame inputs the
-                                       ///< power is averaged over (default: the first n_elements)
+                                       ///< power is averaged over
     std::vector<double> _chan_w;       ///< [n_chan] this frame's weights (1 when off or unknown)
     std::vector<double> _chan_pw;      ///< [n_chan] scratch: the looked-up power
     std::vector<double> _chan_w_pub;   ///< the last applied weights, for /get_elem_cal
@@ -155,11 +146,11 @@ private:
     double _fleet_sim[2] = {0.0, 0.0};     ///< |<F, G>| / (|F| |G|)
     bool _fleet_applied[2] = {false, false};
     bool _fleet_slewing[2] = {false, false}; ///< one WARN per slew episode, one when done
-    /// A warm half below _fleet_min_sim for this long (config elem_sum_shared_ref_reseed_s)
-    /// takes the reference's shape; 0 disables. Once per episode, at most once per interval.
+    /// A warm half below _fleet_min_sim for this long takes the reference's shape (live mode
+    /// only). Once per episode, at most once per interval.
     double _fleet_reseed_s = 600.0;
-    /// ... and only while the sibling pol matches F at this similarity or better (config
-    /// elem_sum_shared_ref_reseed_sib_sim): both pols off F at once means F is the stale one.
+    /// ... and only while the sibling pol matches F at this similarity or better: both pols off
+    /// F at once means F is the stale one.
     double _fleet_reseed_sib_sim = 0.8;
     gnss::ReseedState _fleet_reseed[2];
     /// REST staging (under _gain_mtx), applied by fleet_ref_apply_pending in the next
@@ -344,7 +335,7 @@ private:
     std::atomic<int> _proj_rank_max{2};
     std::atomic<double> _proj_max_age_s{2.0};
     std::atomic<double> _proj_probe_frac_min{0.5};
-    int _proj_kmax_alloc = 2; ///< basis columns allocated (config elem_proj_rank_max, 1..4)
+    int _proj_kmax_alloc = 2; ///< basis columns allocated
     /// Covariance time constants. The own-row tracker accumulates in the source's steered
     /// frame (its geometric phase ramp removed), so it can average for seconds without
     /// smearing the direction as the satellite moves. The probe stack has no geometry to

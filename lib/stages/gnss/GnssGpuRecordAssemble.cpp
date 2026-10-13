@@ -33,7 +33,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
     _prns = config.get<std::vector<int>>(unique_name, "prns");
-    _sample_rate = config.get_default<double>(unique_name, "sample_rate", 5e6);
+    _sample_rate = config.get<double>(unique_name, "sample_rate");
     // Element axis. 0 = the single-antenna layout. >0 appends n_elements per-antenna blocks to
     // every PRN record (gnssRecord.hpp), and the correlation array is [rows][n_chan][n_elem].
     _n_elements = config.get_default<int>(unique_name, "n_elements", 0);
@@ -49,9 +49,6 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     // Self-calibrated element sum (see the header and gnssElemCal.hpp). Needs the element axis.
     _elem_sum = config.get_default<bool>(unique_name, "elem_sum", false) && _n_elements > 0;
     _elem_sum_tau_s = config.get_default<double>(unique_name, "elem_sum_tau_s", 5.0);
-    _elem_hold_on_reanchor =
-        config.get_default<bool>(unique_name, "elem_sum_hold_on_reanchor", true);
-    _elem_sum_min_w = config.get_default<double>(unique_name, "elem_sum_min_w", 0.02);
     // Hold vs adapt. Each per-PRN cal learns its element phases from that PRN's own data, so a
     // satellite near boresight, whose leakage dominates every weak satellite's per-element
     // despread, teaches every cal its phases and the array gain is lost. With geometry steered
@@ -65,23 +62,22 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _elem_pol_tau_s = config.get_default<double>(unique_name, "elem_sum_pol_tau_s", 3.0);
     _elem_shared_freeze_deg =
         config.get_default<double>(unique_name, "elem_sum_shared_freeze_deg", 6.0);
-    _elem_shared_freeze_hold_s =
-        config.get_default<double>(unique_name, "elem_sum_shared_freeze_hold_s", 60.0);
-    _elem_shared_form_deg =
-        config.get_default<double>(unique_name, "elem_sum_shared_form_deg", 8.0);
     _chan_norm = config.get_default<bool>(unique_name, "chan_noise_norm", false);
-    // The frame inputs that are this stage's elements; empty = the first n_elements inputs.
-    _chan_norm_elems =
-        config.get_default<std::vector<int>>(unique_name, "chan_noise_norm_elems", {});
-    if (_chan_norm_elems.empty())
-        for (int e = 0; e < std::max(_n_elements, 1); ++e)
-            _chan_norm_elems.push_back(e);
-    if (_chan_norm)
+    if (_chan_norm) {
+        // The frame inputs that are this stage's elements.
+        _chan_norm_elems = config.get<std::vector<int>>(unique_name, "chan_noise_norm_elems");
+        if (_chan_norm_elems.empty()) {
+            FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: chan_noise_norm needs a non-empty "
+                        "chan_noise_norm_elems",
+                        unique_name);
+            return;
+        }
         INFO("GnssGpuRecordAssemble[{:s}]: chan_noise_norm ON -- channels weighted by 1/rms of "
              "their measured power over {:d} frame inputs ({:d}..{:d}; GnssChordVoltageTap "
              "band-power pass)",
              unique_name, (int)_chan_norm_elems.size(), _chan_norm_elems.front(),
              _chan_norm_elems.back());
+    }
     if (_elem_shared) {
         _elem_adapt = false;
         INFO("GnssGpuRecordAssemble[{:s}]: SHARED element model ON (consensus tau {:.0f} s, "
@@ -121,15 +117,6 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                         unique_name, mode);
             return;
         }
-        _fleet_slew_rad_s =
-            config.get_default<double>(unique_name, "elem_sum_shared_ref_slew_deg_s", 1.0) * M_PI
-            / 180.0;
-        _fleet_min_sim =
-            config.get_default<double>(unique_name, "elem_sum_shared_ref_min_sim", 0.5);
-        _fleet_reseed_s =
-            config.get_default<double>(unique_name, "elem_sum_shared_ref_reseed_s", 600.0);
-        _fleet_reseed_sib_sim =
-            config.get_default<double>(unique_name, "elem_sum_shared_ref_reseed_sib_sim", 0.8);
         if (_fleet_mode != 0)
             INFO("GnssGpuRecordAssemble[{:s}]: fleet reference {:s} ({:s}), slew {:.2f} deg/s, "
                  "min sim {:.2f}",
@@ -145,7 +132,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     {
         auto pos = config.get_default<std::vector<double>>(unique_name, "elem_positions_enu", {});
         const double st_sign = config.get_default<double>(unique_name, "elem_steer_sign", 1.0);
-        const double st_hold = config.get_default<double>(unique_name, "elem_steer_hold_s", 120.0);
+        const double st_hold = 120.0; // how long a post's geometry stays valid, s
         if (!pos.empty() && _n_elements > 0) {
             if ((int)pos.size() != 3 * _n_elements)
                 FATAL_ERROR("GnssGpuRecordAssemble: elem_positions_enu has {:d} values, "
@@ -205,30 +192,13 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             config.get_default<std::string>(unique_name, "elem_proj_mode", "off");
         _proj_mode = (mode_s == "live") ? 2 : (mode_s == "shadow") ? 1 : 0;
         _proj_deg = config.get_default<double>(unique_name, "elem_proj_deg", 4.0);
-        _proj_kmax_alloc =
-            std::max(1, std::min(4, config.get_default<int>(unique_name, "elem_proj_rank_max", 2)));
-        _proj_rank_max = _proj_kmax_alloc;
-        _proj_max_age_s = config.get_default<double>(unique_name, "elem_proj_max_age_s", 2.0);
-        _proj_probe_frac_min =
-            config.get_default<double>(unique_name, "elem_proj_probe_frac_min", 0.5);
-        _proj_tau_s = config.get_default<double>(unique_name, "elem_proj_tau_s", 4.0);
-        _proj_probe_tau_s = config.get_default<double>(unique_name, "elem_proj_probe_tau_s", 1.0);
-        _proj_probe_since_s =
-            config.get_default<double>(unique_name, "elem_proj_probe_since_s", 90.0);
-        _bore_az_deg = config.get_default<double>(unique_name, "boresight_az_deg", 180.0);
-        _bore_el_deg = config.get_default<double>(unique_name, "boresight_el_deg", 81.41);
-        _proj_group = config.get_default<std::string>(unique_name, "elem_proj_group",
-                                                      unique_name.substr(0, unique_name.find('_')));
-        std::string sys = config.get_default<std::string>(unique_name, "gnss_system", "");
-        if (sys.empty()) {
-            // Inferred from the generator's band tokens in the stage name unless set.
-            auto has = [&](const char* t) { return unique_name.find(t) != std::string::npos; };
-            sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))    ? "E"
-                  : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1")) ? "C"
-                  : (has("_l1of") || has("_l2of") || has("_l3oc"))            ? "R"
-                                                                              : "G";
-        }
-        _proj_sys = sys[0];
+        _proj_group = unique_name.substr(0, unique_name.find('_'));
+        // The constellation, from the generator's band tokens in the stage name.
+        auto has = [&](const char* t) { return unique_name.find(t) != std::string::npos; };
+        _proj_sys = (has("_e5a") || has("_e5b") || has("_e6") || has("_e1"))    ? 'E'
+                    : (has("_b2a") || has("_b2b") || has("_b3i") || has("_b1")) ? 'C'
+                    : (has("_l1of") || has("_l2of") || has("_l3oc"))            ? 'R'
+                                                                                : 'G';
         _proj_ready = _elem_sum && _n_elements > 0 && !fids.empty();
         if (_proj_ready) {
             _proj_fids = fids;
@@ -889,10 +859,8 @@ void GnssGpuRecordAssemble::main_thread() {
                 std::complex<double> g_sky(0.0, 0.0); // split-aperture prompt (slots 24/25)
                 if (_elem_sum) {
                     gnss::ElemCal& ec = _cal[p];
-                    if (c.reanchored == 1 && !_elem_hold_on_reanchor)
-                        ec.reset(); // fresh acquisition: full reset
-                    // By default the cal holds across a re-anchor (reanchored 1): the per-element
-                    // cal is E_e*conj(E_ref), from which the common carrier cancels.
+                    // The cal holds across a re-anchor (reanchored 1): the per-element cal is
+                    // E_e*conj(E_ref), from which the common carrier cancels.
                     // _anchor_warned is not re-armed on a re-anchor either, so the warning cannot
                     // repeat at the re-anchor rate.
                     // Shared model: this record's weights come from the model as it stood
@@ -919,8 +887,6 @@ void GnssGpuRecordAssemble::main_thread() {
                             // detector: sim ~1 = this satellite's data still give the same
                             // phases; sim -> 0 = something else is teaching it (a transit).
                             gnss::ElemCal& sh = _cal_shadow[p];
-                            if (c.reanchored == 1 && !_elem_hold_on_reanchor)
-                                sh.reset();
                             sh.update(&_g_elem[(size_t)1 * n_e], dt_s);
                             if (sh.warm() && ec.warm()) {
                                 const auto& wl = ec.weights();
@@ -947,8 +913,6 @@ void GnssGpuRecordAssemble::main_thread() {
                         // projection's cost on this satellite), sim_pp = the learners' agreement.
                         if (_proj_ready && _proj_mode.load() != 0) {
                             gnss::ElemCal& pj = _cal_proj[p];
-                            if (c.reanchored == 1 && !_elem_hold_on_reanchor)
-                                pj.reset();
                             pj.update(proj_this ? _g_proj.data() : &_g_elem[(size_t)1 * n_e], dt_s);
                             proj_slot_diag(p, &c, n_chan, n_e, steered);
                             rec[gnss::REC_PROJ_COST] = (float)_b_cos2[p];
@@ -985,8 +949,6 @@ void GnssGpuRecordAssemble::main_thread() {
                     _phi[p] = 0.0;
                     _phi_cyc[p] = 0.0;
                     _a_prev_ok[p] = 0;
-                    if (!_elem_hold_on_reanchor)
-                        _elem_prev_ok[p] = 0; // also break element continuity
                     _phi_cmd_ok[p] = 0;
                 } else if (repin) {
                     // Phase-continuous re-pin. Re-pinning f_ref steps the absolutely anchored
@@ -2700,8 +2662,7 @@ void GnssGpuRecordAssemble::set_elem_proj_callback(kotekan::connectionInstance& 
                                                    nlohmann::json& request) {
     // Body: any of {"mode": "off"|"shadow"|"live" (or 0|1|2), "deg": D, "rank_max": K,
     // "max_age_s": S, "probe_frac_min": F}. Applied at once (atomics read per record); the reply
-    // is the state in force. rank_max cannot exceed the columns allocated at construction
-    // (config elem_proj_rank_max).
+    // is the state in force. rank_max cannot exceed the columns allocated at construction.
     try {
         if (request.contains("mode")) {
             const auto& m = request["mode"];
