@@ -71,14 +71,13 @@ struct PrnCtl {
     uint8_t run;        ///< 1 = despread this window (the slot has a live seed)
     uint8_t reanchored; ///< f_ref moved at this window. 0 = no. 1 = fresh acquisition: no phase
                         ///< history to keep, so the assembler resets the NCO and breaks the arc.
-                        ///< 2 = continuous re-pin: the replica phase stepped by df*t_abs and the
-                        ///< assembler folds that step into the NCO, deriving it from fcar.
-                        ///< 3 = the same, with the step supplied in @ref dcyc (see there for why
-                        ///< the producer computes it). cudaGnssInject writes 1 and 3.
-    /// The PRN in this slot for this record; 0 = not stamped, and the assembler keeps its
-    /// current PRN for the slot. Carrying it in the frame leaves one slot -> PRN map, the
-    /// producer's, so a live slot swap (docs/CHORD_LIVE_PRN_RECONFIG.md) cannot mislabel
-    /// records. uint16 fills the padding, keeping sizeof(PrnCtl) at 80.
+                        ///< 3 = continuous re-pin: the replica phase stepped by @ref dcyc
+                        ///< cycles (see there for why the producer computes it), which the
+                        ///< assembler folds into the NCO. cudaGnssInject writes 1 and 3.
+    /// The PRN in this slot for this record, stamped for every slot, running or not. Carrying
+    /// it in the frame leaves one slot -> PRN map, the producer's, so a live slot swap
+    /// (docs/CHORD_LIVE_PRN_RECONFIG.md) cannot mislabel records. uint16 fills the padding,
+    /// keeping sizeof(PrnCtl) at 80.
     uint16_t prn;
     int32_t job0;       ///< first of this PRN's rows (E, P, L, P_HEAD); meaningless if !run
     float fcar_report;  ///< record slot 1 (physical-signed reported Doppler)
@@ -121,7 +120,7 @@ static_assert(sizeof(PrnCtl) == 80, "PrnCtl must stay 16-byte aligned");
 static_assert(sizeof(PrnCtl) % 16 == 0, "PrnCtl must stay 16-byte aligned");
 
 /// Maximum output rows (corr/energy) per frame: @c rows_spec per PRN per record.
-constexpr int max_jobs(int n_prn, int rows_spec = ROWS_PLAIN) {
+constexpr int max_jobs(int n_prn, int rows_spec) {
     return rows_spec * n_prn * MAX_REC;
 }
 /// Maximum kernel jobs per frame: one per PRN per record, each producing @c rows_spec rows.
@@ -144,11 +143,11 @@ constexpr size_t off_corr(int n_prn) {
 /// does not, [jobs][n_chan]. One replica is correlated against every antenna, so its energy is
 /// element-independent, as in the record schema (energies in the per-PRN header, correlations
 /// in the element blocks).
-constexpr size_t off_energy(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN, int n_elem = 1) {
+constexpr size_t off_energy(int n_prn, int n_chan, int rows_spec, int n_elem) {
     return off_corr(n_prn) + sizeof(double) * 2 * max_jobs(n_prn, rows_spec) * n_chan * n_elem;
 }
 /// Total frame size; GnssN2RecordAssemble requires its out_buf frame_size to be at least this.
-constexpr size_t frame_bytes(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN, int n_elem = 1) {
+constexpr size_t frame_bytes(int n_prn, int n_chan, int rows_spec, int n_elem) {
     return off_energy(n_prn, n_chan, rows_spec, n_elem)
            + sizeof(double) * max_jobs(n_prn, rows_spec) * n_chan;
 }

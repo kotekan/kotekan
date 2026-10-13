@@ -567,10 +567,9 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
     int n_changed = 0;
     for (int p = 0; p < n_prn && p < (int)_prns.size(); ++p) {
         // Record 0 speaks for the frame: the producer applies swaps at a frame boundary, so
-        // every record in it carries the same slot -> PRN map. prn = 0 means not stamped; keep
-        // the current value.
+        // every record in it carries the same slot -> PRN map.
         const int claimed = (int)pctl[(size_t)p].prn;
-        if (claimed <= 0 || claimed == _prns[(size_t)p])
+        if (claimed == _prns[(size_t)p])
             continue;
         const int was = _prns[(size_t)p];
         _prns[(size_t)p] = claimed;
