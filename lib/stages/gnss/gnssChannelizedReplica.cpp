@@ -493,7 +493,6 @@ ChannelizedReplicaBank::HopRateFilter ChannelizedReplicaBank::hoprate_header(dou
     const int Lf = _fft_len * _num_taps;
 
     HopRateFilter f;
-    f.doppler_hz = doppler_hz;
     f.prn_index = prn_index;
     f.n_chips = (int)std::ceil((double)(Lf - 1) * cps) + 2; // chips the filter spans
     // Truncation to max_chips (0 = the full span). Synthesis cost is linear in the gather
@@ -728,23 +727,6 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels_hoprate(
     int nh_phase) const {
     return hoprate_stream(hoprate_filter(want, doppler_hz, p), p, window_start_sample,
                           code_phase_chips, doppler_hz, n_hops, nav_bit, nh_phase);
-}
-
-HopRateReplicaStream::HopRateReplicaStream(const ChannelizedReplicaBank& bank, int prn_index,
-                                           std::vector<int> channels, double refresh_hz) :
-    _bank(bank), _prn(prn_index), _chans(std::move(channels)), _refresh_hz(refresh_hz) {}
-
-const std::vector<std::vector<cf>>&
-HopRateReplicaStream::generate(long long window_start, double cp, double doppler_hz, int n_hops,
-                               const std::function<float(long long)>& nav_bit) {
-    if (!_built || std::fabs(doppler_hz - _filter.doppler_hz) > _refresh_hz) {
-        // Per-PRN carrier under FDMA.
-        _filter = _bank.hoprate_filter(_chans, doppler_hz, _prn); // slow; only on a real drift
-        _built = true;
-        ++_rebuilds;
-    }
-    _out = _bank.hoprate_stream(_filter, _prn, window_start, cp, doppler_hz, n_hops, nav_bit);
-    return _out;
 }
 
 } // namespace gnss

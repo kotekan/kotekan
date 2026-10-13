@@ -80,9 +80,8 @@ public:
     /// The slowly varying half of the hop-rate generator: the cumulative channel filters (both
     /// carrier images) for @c chans at @c doppler_hz. Doppler enters only through the carrier
     /// offset, so a filter stays usable for tens of Hz of drift. Built by @ref hoprate_filter,
-    /// cached by @ref HopRateReplicaStream, consumed by @ref hoprate_stream.
+    /// consumed by @ref hoprate_stream.
     struct HopRateFilter {
-        double doppler_hz = 0.0;
         int prn_index = -1; ///< PRN this filter's carrier was built for (FDMA); -1 = band-wide
         int n_chips = 0;
         /// First chip of the gather window; chips below it contribute zero. Non-zero only with
@@ -318,51 +317,6 @@ private:
     fftwf_complex* _spec;
     fftwf_plan _p_fwd;
     std::vector<float> _replica_hist;
-};
-
-/**
- * @class HopRateReplicaStream
- * @brief Realtime streaming wrapper around @ref ChannelizedReplicaBank::hoprate_stream.
- *
- * Holds the cumulative channel filter (the O(num_taps*fft_len) part) and reuses it across
- * @ref generate() calls, rebuilding it only when the carrier Doppler has drifted past
- * @c refresh_hz -- so steady-state generation is O(n_chips) MACs/hop. One stream per PRN
- * per channel set; not thread-safe. The bank it references must outlive it.
- *
- * @author Keith Vanderlinde
- */
-class HopRateReplicaStream {
-public:
-    /// @param bank        the replica bank (must outlive this; provides codes/filter).
-    /// @param prn_index   PRN index into the bank.
-    /// @param channels    global channel indices to generate (the covering set).
-    /// @param refresh_hz  rebuild when |doppler - built| exceeds this. It bounds the filter's
-    ///                    staleness error (~-54 dB at 20 Hz, roughly linear). Rebuilds are
-    ///                    cheap against Doppler drift of ~1 Hz/s, so a few Hz is a good value.
-    HopRateReplicaStream(const ChannelizedReplicaBank& bank, int prn_index,
-                         std::vector<int> channels, double refresh_hz = 2.0);
-
-    /// Next @c n_hops from @c window_start at code phase @c cp and carrier @c doppler_hz.
-    /// Rebuilds the cached filter on a large Doppler step; otherwise reuses it. @c nav_bit
-    /// applies the +-1 data per chip (exact wipe). Returns [channels][n_hops] (owned here).
-    const std::vector<std::vector<std::complex<float>>>&
-    generate(long long window_start, double cp, double doppler_hz, int n_hops,
-             const std::function<float(long long)>& nav_bit = {});
-
-    /// Filter rebuilds so far (diagnostics; ~0 in steady lock).
-    long rebuilds() const {
-        return _rebuilds;
-    }
-
-private:
-    const ChannelizedReplicaBank& _bank;
-    int _prn;
-    std::vector<int> _chans;
-    double _refresh_hz;
-    bool _built = false;
-    long _rebuilds = 0;
-    ChannelizedReplicaBank::HopRateFilter _filter;
-    std::vector<std::vector<std::complex<float>>> _out;
 };
 
 } // namespace gnss

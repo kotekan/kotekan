@@ -189,8 +189,7 @@ struct Opt {
     double bench_cmd_slew = 0.0;  ///< staircase step (Hz per event); 0 = off
     int bench_cmd_every = 4;      ///< records between staircase steps (4 = one GPU frame)
     double bench_cmd_max = 3.0;   ///< staircase turnaround (Hz)
-    int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
-    int quantize = 0;      ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
+    int quantize = 0;             ///< 1 = 4+4b like the F-engine, 0 = float (noiseless)
     /// THE N x M PATH, NOT THE FUSED ONE. enqueue_batch_nm -- launch_waveform materialises the
     /// replicas, launch_correlate_nm correlates them against every antenna of a 4+4b
     /// [hop][chan][elem] frame -- is the reference path B is cross-checked against
@@ -216,9 +215,6 @@ struct Opt {
     bool cuda_refine = false;          ///< also run the GPU refine and compare (A5)
     int max_chips = 0;                 ///< truncate the PFB chip gather (0 = full span)
     bool chips_centered = false;       ///< center the truncation window on the prototype peak
-    int ms_split = 0;   ///< >0 = run the ms-split acquire with this many ~1 ms sub-windows
-    int sub_hops = 196; ///< N: ceil(code period in hops) at CHORD
-    const char* dump_ms = nullptr; ///< dump the ms-split surface along the lag axis
     /// Additive complex Gaussian noise, std as a MULTIPLE of the synthetic signal's rms.
     /// This is the regime knob that --quantize is not: quantizing a noiseless full-scale
     /// signal changes nothing (measured, byte-identical), because on sky the satellite sits
@@ -261,8 +257,6 @@ static void usage() {
         "                     the node default). With --trim sweeps this measures q on the\n"
         "                     peak and the discriminator slope for a spacing choice.\n"
         "  --emit-detection P write the detection in /get_detections wire format (for e2e_broker)\n"
-        "  --ms-split K       run the ms-split acquire over K ~1 ms sub-windows instead\n"
-        "  --sub-hops N       hops per sub-window (default 196 = ceil(code period))\n"
         "  --s-stride N       search comb stride (default 4 = 2 nodes; 1 = the 8-node agg)\n"
         "  --t-stride N       TRACKER comb stride (default 16 = one GPU's comb; 1 = contiguous)\n"
         "  --t-nchan N        tracker channel count (default 7)\n"
@@ -445,10 +439,6 @@ int main(int argc, char** argv) {
             o.max_chips = next_i();
         else if (arg_eq(a, "--chips-centered"))
             o.chips_centered = true;
-        else if (arg_eq(a, "--ms-split"))
-            o.ms_split = next_i();
-        else if (arg_eq(a, "--sub-hops"))
-            o.sub_hops = next_i();
         else if (arg_eq(a, "--t-stride"))
             o.t_stride = next_i();
         else if (arg_eq(a, "--t-nchan"))
@@ -463,16 +453,12 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--s-chan0")) {
             o.s_chan0 = next_i();
             s_chan0_set = 1;
-        } else if (arg_eq(a, "--dump-mssplit"))
-            o.dump_ms = argv[++i];
-        else if (arg_eq(a, "--noise"))
+        } else if (arg_eq(a, "--noise"))
             o.noise = next_d();
         else if (arg_eq(a, "--trials"))
             o.trials = next_i();
         else if (arg_eq(a, "--nseed"))
             o.nseed = (unsigned)next_i();
-        else if (arg_eq(a, "--fix-fine-sign"))
-            o.fix_fine_sign = 1;
         else if (arg_eq(a, "--quantize"))
             o.quantize = 1;
         else if (arg_eq(a, "--nm")) {
@@ -673,14 +659,7 @@ int main(int argc, char** argv) {
     double snr = 0.0;
 
     if (!o.skip_search) {
-        // ceil(K*N / Mp). NOT -(-a/b): C++ integer division truncates TOWARD ZERO, so
-        // -(-784/3125) is 0, not 1 -- which synthesized ZERO hops (instant crash), and for
-        // K=16 gave 1 window = 3125 hops where 16*196 = 3136 are needed, i.e. a read past the
-        // end of the buffer. Every ms-split number measured before this fix came off that
-        // out-of-bounds memory, which is why the lag offsets would not sit still.
-        const int nwin = o.ms_split > 0 ? (o.ms_split * o.sub_hops + Mp - 1) / Mp
-                                        : std::max(std::max(1, o.acquire_windows),
-                                                   std::max(1, o.refine_windows));
+        const int nwin = std::max(std::max(1, o.acquire_windows), std::max(1, o.refine_windows));
         printf("[1] SEARCH -- synthesizing %d x %d hops (%.1f ms) on %d channels...\n", nwin, Mp,
                1e3 * nwin * Mp * hop_s, o.s_nchan);
         const auto clean =
@@ -718,10 +697,8 @@ int main(int argc, char** argv) {
                 grid.push_back(f);
         }
 
-        // STAGE TIMERS. The ms-split acquire profiles at 9.1 s inside a 748 s run, so the
-        // acquire -- the thing the whole ms-split plan optimises -- is not where the time is.
-        // Measure the stages before optimising any of them again.
-        double T_acq = 0.0, T_nh = 0.0, T_ref = 0.0;
+        // STAGE TIMERS: measure the stages before optimising any of them.
+        double T_acq = 0.0, T_ref = 0.0;
         const auto tnow = [] {
             return std::chrono::duration<double>(
                        std::chrono::steady_clock::now().time_since_epoch())
@@ -743,113 +720,7 @@ int main(int argc, char** argv) {
             best_nh = -1;
             std::vector<double> surf;
             std::vector<std::vector<cf>> w((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
-            if (o.ms_split > 0) {
-                // MS-SPLIT: one pass, no NH alignment axis at all -- a ~1 ms sub-window spans
-                // exactly one overlay chip, a constant +-1, which |D|^2 cannot see. That is the
-                // 20x. The lag axis is one code period, not sixteen: the other 12.5x.
-                surf.assign(surf.size(), 0.0);
-                gnss::AcquisitionSurface dm = gnss::ms_split_accumulate(
-                    sbank, 0, data, s_chans, W0, o.sub_hops, o.ms_split, grid, o.sample_rate, surf,
-                    ws, o.fine_step, o.threads);
-                // DUMP THE SURFACE SHAPE BEFORE trusting any peak location. The lag offset
-                // would not sit still across injections and the SNR swung 2.5x on identical
-                // noiseless data -- both say the peak may be split or wrapped, and fitting a
-                // mapping to a peak you have not looked at is how the last three wrong stories
-                // started. Profile = max over the fine axis at each coarse lag.
-                if (o.dump_ms) {
-                    const int F = dm.fine();
-                    // The truth, in the SHORT code currency the ms-split can carry. A ~1 ms
-                    // sub-window spans one overlay chip, so this path resolves the phase modulo the
-                    // primary code (10230), never the NH-long 204600 -- comparing against the long
-                    // phase would print a "failure" that is only the missing overlay period.
-                    const double Lp = (double)sbank.code_length();
-                    const double truth_s = std::fmod(truth_phase_at(W0), Lp);
-                    // Reproduce channelized_peak's OWN mapping per cell rather than re-deriving it:
-                    // the question here is which q that shipped mapping sends to the right phase,
-                    // so a second implementation of it would answer a different question.
-                    const long Ns = (long)dm.Mp * dm.sph;
-                    // The mapping channelized_peak applies assumes the replica's own code phase at
-                    // its index 0 is zero, which the SHIPPED path arranges by anchoring repl0 at
-                    // Mp*fft_len = 16 exact code periods. The ms-split cannot: its replica must sit
-                    // N hops before the data, at an arbitrary absolute sample, so it starts at
-                    // whatever phase that sample implies. Ask the bank for that phase instead of
-                    // re-deriving it -- hoprate_stream's C = cp0 + n_m*cps is exactly what
-                    // phase_from_arg reports, so this cannot drift away from the generator.
-                    const long long W_repl = W0 - (long long)o.sub_hops * FFT;
-                    const double phi_r0 = sbank.phase_from_arg(0.0, W_repl, 0.0);
-                    const double cps_c = sbank.chip_rate_hz() / o.sample_rate;
-                    FILE* fp = fopen(o.dump_ms, "w");
-                    fprintf(fp, "# Mp=%d fine=%d sph=%d s_stored=%d s_step=%d ndop=%d\n", dm.Mp, F,
-                            dm.sph, dm.s_stored, dm.s_step, dm.n_dop);
-                    fprintf(fp, "# N=%d (one sub-window) truth_cp_mod_%.0f=%.4f\n", o.sub_hops, Lp,
-                            truth_s);
-                    fprintf(fp, "# W_repl=%lld phi_r0=%.4f  Ns=%ld Ns*cps mod L=%.4f\n", W_repl,
-                            phi_r0, Ns, std::fmod((double)Ns * cps_c, Lp));
-                    fprintf(fp,
-                            "# q tau_samples tau_chips max_over_fine best_i cp_implied err_chips "
-                            "cp_fixed err_fixed\n");
-                    for (int q = 0; q < dm.Mp; ++q) {
-                        double best = -1.0;
-                        int bi = 0;
-                        for (int i = 0; i < F; ++i) {
-                            const double v = surf[(size_t)(0 * dm.Mp + q) * (size_t)F + (size_t)i];
-                            if (v > best) {
-                                best = v;
-                                bi = i;
-                            }
-                        }
-                        const long tau = dm.tau(q, bi);
-                        const long pt = ((Ns - tau) % Ns + Ns) % Ns;
-                        double cp =
-                            std::fmod((double)pt * sbank.chip_rate_hz() / o.sample_rate, Lp);
-                        if (cp < 0.0)
-                            cp += Lp;
-                        // The peak condition is phi_r0 + Ns*cps - tau*cps == phi_data(0). Three
-                        // separate things, each measured, none assumed:
-                        //   phi_r0   the replica's OWN code phase at its index 0. The shipped path
-                        //            gets away without this because it anchors repl0 at Mp*fft_len
-                        //            = 16 exact code periods, i.e. phase ~0; the ms-split anchors N
-                        //            hops before the data at an arbitrary absolute sample.
-                        //   Ns*cps   the cyclic wrap: at the peak the correlation reads replica
-                        //            indices (m-q) mod Mp, a whole Mp hops further on. Zero for the
-                        //            shipped geometry (Mp*sph = 16 code periods), 72 chips here.
-                        //   tau*cps  the delay itself -- but the COARSE and FINE halves of tau
-                        //   enter
-                        //            with OPPOSITE signs. Measured, not assumed: injecting +5 chips
-                        //            moves the peak's fine index +49 columns (9.8/chip = 1/cps
-                        //            exactly), i.e. i grows WITH the code phase while q shrinks.
-                        //            dims.tau() adds them, so it is only usable where a following
-                        //            refine re-scans a full hop -- which is what the shipped path
-                        //            does, and why this never had to be right before.
-                        const long tau_eff = (long)q * dm.sph - (long)bi * dm.s_step;
-                        double cpf = std::fmod(phi_r0 + (double)(Ns - tau_eff) * cps_c, Lp);
-                        if (cpf < 0.0)
-                            cpf += Lp;
-                        fprintf(fp, "%d %ld %.4f %.6e %d %.4f %+.4f %.4f %+.4f\n", q, tau,
-                                (double)tau * sbank.chip_rate_hz() / o.sample_rate, best, bi, cp,
-                                wrap(cp - truth_s, Lp), cpf, wrap(cpf - truth_s, Lp));
-                    }
-                    fclose(fp);
-                    printf("    dumped ms-split lag profile -> %s (truth cp mod %.0f = %.4f)\n",
-                           o.dump_ms, Lp, truth_s);
-                }
-                // ms_split_peak, NOT channelized_peak: the ms-split replica starts N hops before
-                // the data at an arbitrary absolute sample, and 2N*sph is not a whole number of
-                // code periods. See the function's own comments for what each term is worth.
-                const double phi_r0 =
-                    sbank.phase_from_arg(0.0, W0 - (long long)o.sub_hops * FFT, 0.0);
-                const auto ai =
-                    gnss::ms_split_peak(surf, dm, grid, o.sample_rate, sbank.chip_rate_hz(),
-                                        sbank.code_length(), phi_r0, o.sub_hops);
-                a = ai;
-                best_nh = 0;
-                adims = dm;
-                printf("    ms-split: %d sub-windows x %d hops (%.1f ms each, %.0f ms total), "
-                       "lag axis %d, no NH axis\n",
-                       o.ms_split, o.sub_hops, o.sub_hops * hop_s * 1e3,
-                       o.ms_split * o.sub_hops * hop_s * 1e3, dm.Mp);
-            }
-            for (int nh = 0; o.ms_split == 0 && nh < n_nh; ++nh) {
+            for (int nh = 0; nh < n_nh; ++nh) {
                 // repl0: code 0, Doppler 0, overlay alignment nh -- what the stage precomputes.
                 auto repl0 = sbank.channels_hoprate(0, anchor, 0.0, 0.0, Mp, s_chans, {}, nh);
                 gnss::AcquisitionSurface dims{};
@@ -868,29 +739,6 @@ int main(int argc, char** argv) {
                 }
                 auto ai = gnss::channelized_peak(surf, dims, grid, o.sample_rate,
                                                  sbank.chip_rate_hz(), sbank.code_length());
-                // --fix-fine-sign: apply ms_split_peak's correction to the SHIPPED coarse phase.
-                // channelized_peak forms tau = q*sph + i*s_step, but the coarse and fine halves of
-                // the lag carry OPPOSITE signs (measured 2026-08-02), and i is reported mod sph so
-                // a small negative offset comes back near the top of the axis. Nobody noticed
-                // because refine_peak re-scans a full hop and finds the peak regardless -- which is
-                // precisely why refine_span has to be a full hop, and why the refine costs 426
-                // evaluations. If the sign is the reason, fixing it should collapse the refine's
-                // chosen offset toward zero, and the span with it.
-                if (o.fix_fine_sign) {
-                    const long Ns = (long)dims.Mp * dims.sph;
-                    long tau = ((Ns - (long)ai.peak_tau_samples) % Ns + Ns) % Ns;
-                    long fine = tau % dims.sph, q = tau / dims.sph;
-                    if (fine > dims.sph / 2)
-                        fine -= dims.sph;
-                    const long tau_eff = q * (long)dims.sph - fine;
-                    ai.peak_tau_samples = ((Ns - tau_eff) % Ns + Ns) % Ns;
-                    double cp = std::fmod((double)ai.peak_tau_samples * sbank.chip_rate_hz()
-                                              / o.sample_rate,
-                                          (double)sbank.code_length());
-                    if (cp < 0.0)
-                        cp += (double)sbank.code_length();
-                    ai.code_phase_chips = cp;
-                }
                 if (best_nh < 0 || ai.snr > a.snr) {
                     a = ai;
                     best_nh = nh;
@@ -927,33 +775,6 @@ int main(int argc, char** argv) {
                 fclose(fp);
                 printf("    dumped refine profile -> %s\n", o.dump_refine);
             }
-            // ---- PHASE A's MISSING HALF: recover the overlay period ----
-            // ms_split_accumulate carries NO NH axis (that is where its 20x comes from -- a ~1 ms
-            // sub-window spans one overlay chip, a constant sign that |D|^2 cannot see), so it
-            // resolves the phase mod 10230 and the seed would carry LESS than the current search
-            // reports. The design plan's answer was Phase B (coherent NH recombination); this is
-            // the cheaper one, and it works because the expensive part is already done:
-            //
-            // once the lag is known to a fraction of a chip, "which of the 20 overlay periods" is
-            // 20 SINGLE despreads at that one phase -- not 20 acquisition surfaces. The 20x saving
-            // is kept; only a rounding error of it is handed back.
-            const double t_nh0 = tnow();
-            if (o.ms_split > 0) {
-                const auto rf = sbank.hoprate_filter(s_chans, det_dop);
-                double bestp = -1.0;
-                for (int nh = 0; nh < n_nh; ++nh) {
-                    const auto r = sbank.hoprate_stream(rf, 0, anchor, a.code_phase_chips, det_dop,
-                                                        rhops, {}, nh);
-                    const double p = std::norm(gnss::channelized_despread(d, r).amplitude);
-                    if (p > bestp) {
-                        bestp = p;
-                        best_nh = nh;
-                    }
-                }
-                printf("    NH postfix: overlay period %d of %d recovered by %d despreads\n",
-                       best_nh, n_nh, n_nh);
-            }
-            T_nh += tnow() - t_nh0;
             const double t_ref0 = tnow();
             const double best_cp = gnss::refine_peak(
                 sbank, 0, d, s_chans, a.code_phase_chips, best_nh, det_dop, anchor,
@@ -961,8 +782,7 @@ int main(int argc, char** argv) {
                 o.refine_span, o.refine_step, o.threads);
 
             T_ref += tnow() - t_ref0;
-            printf("    [stages] acquire %.2fs | nh-postfix %.2fs | refine %.2fs\n", T_acq, T_nh,
-                   T_ref);
+            printf("    [stages] acquire %.2fs | refine %.2fs\n", T_acq, T_ref);
 #ifdef GNSS_CUDA
             // A5 VALIDATION. The GPU refine must return the SAME code phase as the CPU one, on the
             // same data, with the same scan geometry -- it is a reuse of GnssCudaDespread, not a
@@ -1010,16 +830,10 @@ int main(int argc, char** argv) {
             }
 #endif
             // ---- THE SHIPPED REPORTING ARITHMETIC ----
-            // The lag-period lift is for the SHIPPED geometry, where the coarse lag runs over
-            // Mp = 3125 hops = 16 code periods and therefore carries a whole-period count that
-            // detection_phase has to fold back in. The ms-split's lag axis is [N, 2N) -- one code
-            // period, by construction (8.7.7 / the ms-split doc) -- so that count is always zero
-            // here, and letting detection_phase derive it from the BANK's Mp (16) instead of the
-            // ms-split's 2N (2.007) adds a period that was never there. Measured: err +1 with the
-            // lift, 0 without.
-            const long lift_tau = (o.ms_split > 0) ? 0L : a.peak_tau_samples;
+            // The coarse lag runs over Mp = 3125 hops = 16 code periods and therefore carries a
+            // whole-period count that detection_phase folds back in (the lag-period lift).
             dp = gnss::detection_phase(sbank, best_cp, best_nh, n_nh, det_dop, o.hop0, anchor,
-                                       o.sample_rate, lift_tau);
+                                       o.sample_rate, a.peak_tau_samples);
 
             const double ph_true = truth_phase_at(W0);
             const double e_ref = wrap(dp.cp_at_ref - ph_true, LL);

@@ -279,39 +279,6 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
     }
 }
 
-// HopRateReplicaStream builds the filter once and reuses it across contiguous generate() calls,
-// rebuilding only past refresh_hz of Doppler drift, so steady generation is O(n_chips) per hop.
-// Checks the match to channels(), one rebuild over many chunks, and the refresh policy.
-BOOST_AUTO_TEST_CASE(hoprate_stream_amortizes_and_matches) {
-    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L1CA");
-    BOOST_REQUIRE(sig != nullptr);
-    gnss::ChannelizedReplicaBank bank(*sig, 5.0e6, 1.25e6, 20, 4, dsp::Window::Hamming, {1});
-    const std::vector<int> want = {8, 10, 12};
-    gnss::HopRateReplicaStream stream(bank, 0, want, 40.0); // refresh on >40 Hz drift
-    const int n_hops = 50;
-    const double cp = 300.0, dop = 1500.0;
-
-    long long ws = 1000000;
-    for (int chunk = 0; chunk < 5; ++chunk) { // contiguous chunks, stable Doppler
-        const auto& out = stream.generate(ws, cp, dop, n_hops);
-        auto exact = bank.channels(0, ws, cp, dop, n_hops);
-        for (size_t ci = 0; ci < want.size(); ++ci)
-            BOOST_CHECK_LT(rel_err(out[ci], exact[want[ci]]), 1e-5);
-        ws += (long long)n_hops * bank.fft_len();
-    }
-    BOOST_CHECK_EQUAL(stream.rebuilds(), 1); // filter built once, reused across 5 chunks
-
-    // A wobble below refresh_hz reuses the filter; the staleness error is ~-54 dB at 20 Hz and
-    // grows roughly linearly with the drift.
-    const auto& wob = stream.generate(ws, cp, dop + 20.0, n_hops);
-    BOOST_CHECK_EQUAL(stream.rebuilds(), 1);
-    BOOST_CHECK_LT(rel_err(wob[1], bank.channels(0, ws, cp, dop + 20.0, n_hops)[10]), 3e-3);
-
-    // Large jump (> refresh): rebuild.
-    stream.generate(ws, cp, dop + 500.0, n_hops);
-    BOOST_CHECK_EQUAL(stream.rebuilds(), 2);
-}
-
 // The same identity at CHORD scale: Fs = 3200 MSPS real, N = 8192, fft_len = 16384, so the
 // prefix-sum filter is 65536 taps, a chip spans ~313 samples, and the carrier sits at bin ~6023
 // rather than 10. The phasor recurrence over a 16384-sample hop and the chip-to-tap mapping at

@@ -31,8 +31,6 @@
 #ifndef GNSS_CHANNELIZED_ACQUIRE_HPP
 #define GNSS_CHANNELIZED_ACQUIRE_HPP
 
-#include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank (ms_split_accumulate)
-
 #include <complex> // for complex
 #include <fftw3.h> // for fftwf_plan, fftwf_complex
 #include <vector>  // for vector
@@ -69,7 +67,7 @@ struct AcquisitionResult {
     double snr;              ///< peak / mean of the |D|^2 surface
     /// Scalloping-corrected peak: the mainlobe pair-sum dop_peak[d] + max(dop_peak[d +- 1]) at
     /// the chosen Doppler plane d. Equals @c peak when d is at a grid edge or no per-plane
-    /// maxima were given; -1 from @ref ms_split_peak, which does not compute it.
+    /// maxima were given.
     ///
     /// Use this, not @c peak or @c snr, to compare hypotheses (e.g. overlay alignments) whose
     /// Doppler is a nuisance parameter: on a critically sampled grid the true peak scallops to
@@ -104,11 +102,6 @@ struct AcquisitionSurface {
         const int w = s_stored > 0 ? s_stored : sph;
         const int st = s_step > 0 ? s_step : 1;
         return (w + st - 1) / st;
-    }
-    /// Surface lag of cell (q, i), q*sph + i*s_step, in full-rate samples. This is not the
-    /// code delay: see @ref peak_from_reduction for the sign handling.
-    long tau(int q, int i) const {
-        return (long)q * sph + (long)i * (s_step > 0 ? s_step : 1);
     }
     long size() const {
         return (long)n_dop * Mp * fine();
@@ -210,39 +203,6 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<std::complex<floa
                      const std::vector<int>& chan_freq, int samples_per_hop,
                      std::vector<double>& surf, int n_threads = 1, int fine_step = 1);
 
-/// Sub-window ("ms-split") accumulation: integrate ~1 ms sub-windows coherently and sum |D|^2
-/// across them, instead of integrating over one replica period.
-///
-/// The ordinary acquire integrates over one replica period (Mp hops) because that makes its
-/// cyclic correlation exact, but when fft_len does not divide a code period's samples that is
-/// several code periods (16 at CHORD). That inflates the coarse-lag range, the Doppler grid and
-/// the overlay alignment search: a 1 ms window sees one constant NH sign, invisible to |D|^2.
-///
-/// Three properties make the sub-window sum correct:
-///  1. Full overlap at every lag: the replica spans two code periods and the data one, so
-///     every lag in [0, one period) sees all N data hops. Zero-padding only the replica would
-///     weight the lags triangularly.
-///  2. No cyclic wrap: a 196-hop replica is not periodic over 196 hops (one code period is
-///     195.3125), so a cyclic correlation at that length would be off by 0.6875 hop (36.0
-///     chips of a 10.23 Mchip/s code).
-///  3. No per-sub-window roll: each sub-window's replica is generated at its own absolute
-///     start with argument 0, and every generator here forms C(n) = arg + n*cps over the
-///     absolute sample index, so the peak lands at the same lag (the satellite's argument) in
-///     every sub-window. ChannelizedReplicaBank::phase_from_arg relies on the same property.
-///
-/// @param data_ch    [chan_ids.size()][n_sub*sub_hops] channelized data, rows in chan_ids order.
-/// @param chan_ids   bank channel indices to search; also the fine-lag ramp's frequency indices.
-/// @param sub_hops   N, hops per sub-window: ceil(code period in hops), 196 at CHORD.
-/// @param n_sub      K, how many sub-windows to accumulate (100 = ~100 ms).
-/// @return surface dimensions; @c surf accumulates |D|^2 as in channelized_accumulate.
-AcquisitionSurface ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
-                                       const std::vector<std::vector<std::complex<float>>>& data_ch,
-                                       const std::vector<int>& chan_ids,
-                                       long long window_start_sample, int sub_hops, int n_sub,
-                                       const std::vector<double>& doppler_grid, double sample_rate,
-                                       std::vector<double>& surf, AcquireWorkspace& ws,
-                                       int fine_step = 1, int n_threads = 1);
-
 /// Surface dimensions for a covering set, without computing a surface. @ref aggregate_accumulate
 /// takes its layout (the s_stored rule) from here, so a caller that never builds a host surface
 /// (the GPU search) indexes its reduction the same way.
@@ -289,30 +249,6 @@ peak_from_reduction(const AcquisitionSurface& dims, const std::vector<double>& d
                     double mean, int best_d, int best_q, int best_i,
                     const std::vector<double>& dop_peak, int fine_lag_sign = FINE_LAG_SIGN_PFB,
                     double dop_loc_m = -1.0, double dop_loc_p = -1.0, double dop_u = 1.0);
-
-/// Peak-pick an ms-split surface. @ref channelized_peak's lag -> code-phase mapping assumes two
-/// things the ms-split geometry does not provide:
-///
-///  1. The replica starts at code phase ~0. The search anchors repl0 at Mp*fft_len samples, a
-///     whole number of code periods (16 at CHORD), and the refine absorbs the remainder. An
-///     ms-split replica starts N hops before its data window at an arbitrary absolute sample,
-///     so its start phase @c phi_r0 is arbitrary and moves with the snapshot.
-///  2. Mp*sph is a whole number of code periods. At the peak the cyclic correlation reads
-///     replica indices (m-q) mod Mp, a whole Mp hops on; at Mp = 2N that is 2.007 periods at
-///     CHORD, and the 0.007 period (72.0 chips of a 10230-chip code) lands in the answer
-///     unless accounted for.
-///
-/// It also folds the fine index signed, with the fine half opposite to the coarse half, and
-/// searches only the full-overlap lags q in [N, 2N); see the implementation. Unlike
-/// channelized_peak, @c peak_tau_samples is the corrected surface lag q*sph - fine, not its
-/// negative, and @c peak_interp is not computed (-1).
-///
-/// @param phi_r0   the replica's own code phase at its index 0, for sub-window 0:
-///                 @c bank.phase_from_arg(0.0, window_start_sample - sub_hops*fft_len, 0.0).
-/// @param sub_hops N, the same value handed to @ref ms_split_accumulate.
-AcquisitionResult ms_split_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
-                                const std::vector<double>& doppler_grid, double sample_rate,
-                                double chip_rate, long code_length, double phi_r0, int sub_hops);
 
 } // namespace gnss
 
