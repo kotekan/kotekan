@@ -15,11 +15,15 @@ Every search speedup to date has been a *parameter* that buys latency by not sea
 | `acquire_windows` | 1 | 4-64 | integration length |
 | `acquire_fine_step` | 128 | 1 | 128x (this one is honest -- see 5q) |
 
+(`prns_per_pass` is gone and `require_hint` is now the only behaviour: the search takes every
+hinted PRN on every pass and never scans an unhinted one.)
+
 That is why a live pass is 0.6 s: it is not a search, it is a *re-acquire of things already known*.
 The instrument has no cold-start path that finishes in useful time, and every one of those
 multipliers gets worse with a second constellation.
 
-**Measured blind cost of the surface aggregate** (`scripts/gnss/aggbench`, cf06, 16 threads,
+**Measured blind cost of the surface aggregate** (`scripts/gnss/aggbench`, removed after
+`be7d46e8e`; cf06, 16 threads,
 nc=79, n_dop=321, Mp=3125, sph=16384, fine_step=128):
 
     CPU direct : 0.667 s   121.6 GFlop/s   (81.1 GFlop)   <- per NH alignment, per window
@@ -66,8 +70,9 @@ reassociated.
 
 **This is not the reverted coarse fold of 5o.** That one assumed the *replica* was periodic in
 the window and died on the NH overlay. This is an identity about the *ramp*; it assumes nothing
-about the signal. `aggregate_folded` in `scripts/gnss/aggbench.cpp` refuses to run when its one
-arithmetic precondition fails, rather than falling back to something close.
+about the signal. The bench's `aggregate_folded` (`be7d46e8e:scripts/gnss/aggbench.cpp`) refused
+to run when its one arithmetic precondition failed, rather than falling back to something close;
+the shipped GPU path is the folded kernel, `launch_aggregate_cdq`.
 
 Validated at blind dimensions against the shipped `gnss::aggregate_accumulate`:
 
@@ -138,7 +143,8 @@ the surface must be materialized in host RAM because that is where the peak sear
 
 ### MEASURED, A1 as built (cf06, one L40S, blind dimensions)
 
-`aggbench --nd 321 --mp 3125 --threads 16 --reps 5 --gpu`:
+`aggbench --nd 321 --mp 3125 --threads 16 --reps 5 --gpu` (the direct GPU kernel and the
+global peak were bench-only and went with it after `be7d46e8e`):
 
 | | time | rate | vs CPU |
 |---|---|---|---|
@@ -160,7 +166,7 @@ further when `acquire_windows > 1` (it runs once after all windows, not per wind
 
 Add the projected device correlate (~1.9 ms, bandwidth-bound on 1.3 GB) and a full blind
 GPS L5 snapshot lands near **3.4 s on one GPU, ~1.7 s on both** -- against 427 s today. That is
-the headroom to turn `require_hint` off and add constellations.
+the headroom to search blind and add constellations.
 
 ### Still to come: fusion (A4)
 
@@ -174,7 +180,7 @@ in any further flop reduction.
 A1 (device aggregate and on-device peak, `lib/cuda/cudaGnssAcquireKernel.{hpp,cu}`), A2 (device
 correlate, `lib/stages/gnss/GnssCudaAcquire.{hpp,cpp}`, 113x at blind dimensions), A3 (every
 eligible PRN every pass at its hinted grid, throttled to a GPU duty budget rather than run flat
-out) and A5 (the refine on the GPU, `gnss::refine_peak_cuda` behind `use_cuda_refine`, a pure
+out) and A5 (the refine on the GPU whenever the acquire is, `gnss::refine_peak_cuda`, a pure
 reuse of the despread) are built and run in the aggregator (`use_cuda_acquire: true`). A4
 (fusing steps 3-5) was not built. A6 (other signals) went the dead-reckon way instead: only
 gps_l5 runs a search (`docs/CHORD_MULTIBAND.md` §5). The staging journal and the first live
@@ -214,7 +220,8 @@ run (old §6b) are at `be7d46e8e:docs/gnss_gpu_search.md` §6.
 9. **A NULL `inembed` with a non-NULL `onembed` is not a valid mixture** -- cuFFT follows FFTW's
    rule that NULL inembed means "basic layout, ignore every other stride argument", and returns
    `CUFFT_INVALID_VALUE` rather than doing what you meant.
-10. **Size-dependent alignment faults.** `launch_peak`'s scratch originally laid out
+10. **Size-dependent alignment faults.** `launch_peak`'s scratch (the bench's global peak,
+    removed after `be7d46e8e`) originally laid out
     `float[nb]` before `double[nb]`, which leaves the `double*` 4-byte aligned whenever `nb` is
     ODD. `n_dop` 321 gives `nb` 1960 and passes; 41 gives 251 and faults with "misaligned
     address" -- reported at the *next* sync point, so it presents as a failure in an unrelated
@@ -237,8 +244,11 @@ run (old §6b) are at `be7d46e8e:docs/gnss_gpu_search.md` §6.
 
 ## 8. Reproducing the baseline
 
+The bench these numbers came from, `aggbench`, and the bench-only kernels it compared were
+removed after `be7d46e8e`. Reproduce from a checkout of that commit:
+
 ```
-KBUILD=build_nodpdk scripts/gnss/site/build_tool.sh aggbench      # on cf06
+KBUILD=build_nodpdk scripts/gnss/site/build_tool.sh aggbench      # on cf06, in that checkout
 scripts/gnss/aggbench --nd 321 --mp 3125 --threads 16        # blind dims, direct vs folded
 scripts/gnss/aggbench --nd 5 --mp 400                        # fast correctness check
 ```
@@ -259,7 +269,7 @@ The journal of `cudaGnssChordTrack`'s kernel (the path-A tracker, removed in f91
   once per hop pass per trial; 1024-wide blocks cut 24 re-walks to 2 (3.67x, `wave`
   bit-identical at every width). `__launch_bounds__` is load-bearing (unbounded, the gather
   needs ~72 registers and a 1024-thread launch fails), and the width is a request:
-  `launch_waveform_tuned` clamps to each instantiation's reported `maxThreadsPerBlock`.
+  `launch_waveform` clamps to each instantiation's reported `maxThreadsPerBlock`.
 * **Trial fusion** (`chip_gather3`): one chip walk serves all three E/P/L trials, whose taps sit
   inside a ~625-entry window and share L1 lines. 7.6x over the original 256-wide three-gather
   kernel.
@@ -269,8 +279,8 @@ The journal of `cudaGnssChordTrack`'s kernel (the path-A tracker, removed in f91
   it; a bench that compares a kernel with itself cannot.
 
 That work's gather-truncation sweep (a one-sided cap that cliffed between 105 and 120 chips) is
-superseded by the centered 80-chip window the manifest runs (`despread-max-chips`,
-`config/gnss_fleet_chord.yaml`).
+superseded by the centered 80-chip window the injector runs (`DESPREAD_MAX_CHIPS` in
+`config/gen_chord_gnss_config.py`).
 
 ## 10. The synthesis kernel: structure, cost model, and where the levers are
 
@@ -342,8 +352,8 @@ ONE band on ONE instance.** That is the scaling problem.
 
 ### 10.5 Precision -- MEASURED, and it corrects an earlier claim
 
-`scripts/gnss/phibits.cpp` builds `Phi` at deployed geometry and reports what the gather actually
-needs. **The "Phi is a prefix sum so it needs the dynamic range" argument is WRONG**, and I made
+`scripts/gnss/phibits.cpp` (removed after `be7d46e8e`) built `Phi` at deployed geometry and
+reported what the gather actually needs. **The "Phi is a prefix sum so it needs the dynamic range" argument is WRONG**, and I made
 it before checking:
 
     max|Phi|                                    0.674
@@ -432,7 +442,8 @@ the clustering. Two candidates, neither eliminated:
    traffic, so probably not the whole story, but it is real.
 
 So this is NOT a refutation of the idea -- it is one implementation of it, measured, and it lost.
-Anyone retrying should fix (1) first and re-measure before touching anything else.
+Anyone retrying should fix (1) first and re-measure before touching anything else. That
+implementation (the `hop_perm` arm) was removed after `be7d46e8e`, where it can be rebuilt.
 
 ### 10.6c ncu COUNTERS: it is DRAM BYTES, not coalescing -- and that overturns 10.6/10.6b
 
@@ -539,8 +550,8 @@ Extend CHORD's existing N^2 correlator to take TWO inputs and split its output:
 
 Why it is worth it: the N^2 kernel already loads every antenna voltage once and is heavily
 optimised. Path A re-loads the voltage in `launch_correlate_nm`; path B does not load it at all.
-The M^2 block also gives the replica cross-terms `<R_P,R_E>`/`<R_P,R_L>` for free -- the peel's
-analytic add-back currently computes those separately (`XC` in `gnss_despread_kernel`).
+The M^2 block also gives the replica cross-terms `<R_P,R_E>`/`<R_P,R_L>` for free -- the voltage
+peel's analytic add-back (removed after `be7d46e8e`) computed those separately.
 
 ### 11.2 What this does and does NOT save
 
@@ -680,10 +691,12 @@ total, 0 on the search taps.
 **Config:** the generator keeps production's N^2 stages beside the dual unconditionally (the
 flags that once selected this are retired). Two things are load-bearing and were each found by
 a failure:
-  * the dual needs its OWN gpu array name. Both correlators allocate
+  * the dual needed its OWN gpu array name. Both correlators allocated
     `<n2k_correlation_name>_buffer` sized from their own station count -- 28,311,552 B at
-    NS=128 against 113,246,208 B at NS=256 -- and sharing "correlation" is a hard startup
-    failure that presents as an ACTIVE unit with zero packets moving.
+    NS=128 against 113,246,208 B at NS=256 -- and sharing "correlation" was a hard startup
+    failure that presents as an ACTIVE unit with zero packets moving. The dual has since lost
+    its full-triangle arm and allocates no such array; the generator keeps a private name for
+    older binaries.
   * `host_correlation_buffer` must survive beside the dual; an early generator dropped it for
     every dual config, which left run_n2k pointing at a deleted buffer.
 

@@ -9,7 +9,7 @@ is locked and happy. Written for the wider team's (N+M)² request.
 
 | asked | what the fleet has |
 |---|---|
-| (N+M)² triangle | N² block (`gnss_gather_aa`) + N×M mixed block + M² block (`gnss_gather_bb`, 2026-10-06; the correlator always computes it, the tracker never reads it). Since 2026-10-06 one correlator pass per GPU covers every path-B chain, so the M² block also holds the replica × replica blocks BETWEEN chains (L5 × E5a, ...; see "One pass per GPU"). |
+| (N+M)² triangle | N² block (`gather_cap_aa`) + N×M mixed block + M² block (`gather_cap_bb`, 2026-10-06; the correlator always computes it, the tracker never reads it). Since 2026-10-06 one correlator pass per GPU covers every path-B chain, so the M² block also holds the replica × replica blocks BETWEEN chains (L5 × E5a, ...; see "One pass per GPU"). |
 | full cadence — 40 ms? 10 ms? | **10.49 ms is available now**: each 41.94 ms frame holds `n_rec = 4` sub-integrations of 2048 hops (hop = 5.12 µs). A 2.62 ms cadence would be a chain-wide `hops_per_record` change (tracker records, broker, everything) — not part of this. |
 | ~100 L5 subbands | the fleet despreads **79 absolute channels** (6–7 per GPU instance × 12 instances; `freq_MHz = freq_id × 0.1953125`). Only those channels are correlated in freq-map mode; nothing outside the comb exists to capture. |
 | N | the **32 live elements** (ids 0–15, 64–79 = `array.live_element_ranges`), so N² is 32×32 per channel per record. The remaining 96 element slots carry nothing. |
@@ -17,8 +17,10 @@ is locked and happy. Written for the wider team's (N+M)² request.
 
 ## Data layout on disk
 
-(This section and "Mechanism" describe the original per-chain capture, the 09-07 set. Since
-2026-10-06 the generator builds one capture per GPU instead; see "One pass per GPU".)
+(This section and "Mechanism" describe the original per-chain capture, the 09-07 set, with
+`gnss_gather_aa`/`gnss_gather_bb` on each chain's correlator. Since 2026-10-06 the generator
+builds one capture per GPU instead; see "One pass per GPU". The correlator now refuses the
+per-chain shape, so only the archived captures have it.)
 
 Per GPU instance, two `rawFileWrite` series in `<record_dir>/viscap/` (node nvme, `/tmp/gnss`):
 

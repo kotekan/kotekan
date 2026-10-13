@@ -21,8 +21,9 @@ Nearly everything. The airspy-era prototype was built multi-constellation from t
   (`*_code_check.py`). GAL_E5A_Q and BDS_B2A_P are **sky-validated (airspy, 2026-07-15)**;
   E5b/B2b/E6/B3I/L3OC are bit-exact-verified against PocketSDR/ICD tables.
 - **Secondary generators**: `galileo::e5aq_secondary(prn)` (CS100),
-  `beidou::b2ap_secondary(prn)` (Weil-1021) exist and are wired into the
-  `gnssOverlay.hpp` registry (`E5A_CS100`, `B2A_CS100` rows).
+  `beidou::b2ap_secondary(prn)` (Weil-1021) exist. The `gnssOverlay.hpp` registry holds
+  only the shared overlays of data components; its per-PRN rows (`E5A_CS100`, `B2A_CS100`
+  among them) were removed 2026-10-13, since the combiner refuses a per-PRN overlay.
 - **Tri-constellation ops machinery**: `gps_distributed_broker.py` takes
   `--constellation/--carrier-hz/--chip-rate-hz/--code-length`; the combiner ran the
   G26 + C33 cross-constellation confirm; per-chain buffer naming matters (a bare
@@ -168,9 +169,9 @@ Clean, with one real finding.
   Note precisely what this does and does not say. It is NOT that the primary is
   unacquirable in principle -- a **~1 ms sub-window spans one secondary chip, a constant
   sign that |D|² cannot see**, which is the whole basis of the ms-split acquire. But
-  `ms_split_accumulate` lives only in `scripts/gnss/e2e.cpp`; it is NOT wired into
-  `GnssChannelizedSearch`, so it is a harness experiment, not a deployable path. For the
-  system as it ships, blind acquisition of E5a/B2a does not exist. Three ways out:
+  `ms_split_accumulate` was only ever a harness experiment (`scripts/gnss/e2e.cpp`, removed
+  2026-10-13; at `be7d46e8e`), never wired into `GnssChannelizedSearch`. For the system as
+  it ships, blind acquisition of E5a/B2a does not exist. Three ways out:
   1. **Dead-reckon seeding (chosen)**: GPS L5 lock has already measured the instrumental
      delay and the clock; E5a/B2a cp + CS phase are then predictable from ephemeris +
      constellation time to well inside the DLL pull-in. No bank change, no 100-alignment
@@ -178,7 +179,7 @@ Clean, with one real finding.
   2. Per-PRN secondary slot in the bank (per-p `_secondary`, as `_full_code` already is):
      mechanical but touches the search-critical path. Only if dead-reckoning proves
      insufficient on sky.
-  3. **Productize the ms-split acquire** into `GnssChannelizedSearch`: overlay-blind by
+  3. **Productize the ms-split acquire** (from `be7d46e8e`) into `GnssChannelizedSearch`: overlay-blind by
      construction, so it needs no per-PRN slot to FIND the peak, and the period is then
      recovered by a postfix of 100 single despreads at the one known phase -- which the
      baked `_CS` banks built here can already do. This is the route that would give

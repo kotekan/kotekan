@@ -149,7 +149,6 @@ day list.
   fastest read on whether a day is short.
 - **A smoothed count is not coverage.** See `gnss_beam_static.py --min-occ`; it painted the
   vetoed 5° hole full of data that was never measured there.
-- **Two consumers of `/get_beam_cube` split the data** — it is reset-on-read. One archiver only.
 - **Restarting the compactor needs the in-flight pass to finish first.** `pkill` takes down
   the bash loop and orphans any running `gnss_cube_compact.py`; a second one on the same 89 L0
   files is a corrupting write. `cubecompact_up.sh` now waits for the child (up to 15 min) and

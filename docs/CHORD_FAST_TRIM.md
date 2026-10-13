@@ -79,10 +79,12 @@ Two small interfaces, both JSON over the gather instance's existing REST server.
     POST /<name>/set_policy
     { "chains": { "gps_l5": {
         "armed":   [4, 9, 27],
-        "gain": 0.25, "leak_per_s": 1.19, "clamp": 3.0, "spacing": 0.5,
+        "gain_per_s": 1.4, "leak_per_s": 0.12, "clamp": 3.0, "spacing": 0.5,
         "targets": ["http://cx19:12049/gnss0_inject/set_trim", ...] } } }
 
-No `base_cp`: the trim is applied at the tracker, on top of whatever model phase the seed
+`gain_per_s` and `leak_per_s` are required (>= 0; 0 is the broker's freeze); the controller
+converts both to per-update values at its measured close rate (section 7a). No `base_cp`: the
+trim is applied at the tracker, on top of whatever model phase the seed
 carries, so the controller never needs to know it. The tracker's own comment already said the
 trim is a correction *to the model* rather than to a particular seed, which is exactly why a
 re-seed must not zero it.
@@ -130,7 +132,7 @@ window is CLOSED when any sender on that chain reports a newer one (`lag=1` in
 Today the fast thread copies the cycle's exact posted dict and substitutes one field,
 because "a POST that drops a field ZEROES it at the tracker". That dance is a symptom. Add:
 
-    POST /chord_track/set_trim   [{"prn": 4, "trim_chips": -0.312, "win": 123456}]
+    POST /gnss0_inject/set_trim   [{"prn": 4, "trim_chips": -0.312, "win": 123456}]
 
 * carries **one number**, and it is **absolute, not a delta** -- a dropped message then
   costs latency, not authority;
@@ -140,16 +142,19 @@ because "a POST that drops a field ZEROES it at the tracker". That dance is a sy
 * **does not touch `seeds[]`, `t_recv`, or `ema_n`.** `set_seeds_callback` resets
   `ema_n = 0` for every seeded PRN. That is harmless today only because `code_trim` is off;
   at 24 Hz it would pin any tracker-side average at warm-up forever. The slow plane keeps
-  posting real seeds every cycle so `seed_ttl_s` never expires them.
+  posting real seeds every cycle so the injector's fixed 60 s seed TTL never expires them.
+
+The endpoint is per chain and required in the config (`set_trim_endpoint`, e.g.
+`/gnss0_e5a_inject/set_trim`): a shared default path would let the last instance in a process
+take every chain's trims.
 
 **Transport.** ⚠️ I first wrote that the ~60 endpoint paths could be batched into 6 POSTs
 because they share 6 host processes. **That is wrong: a shared HOST is not a shared ENDPOINT.**
 Each instance has its own path and must be told separately, and `restClient` sends
 `Connection: close`, so each request is its own TCP connection -- ~1430/s at one post per
-window. `post_every_n_windows` decimates the ACTUATION without touching the integrator (the
-trim moves at most 0.0625 chips/step, so every 4th window is ~0.02 chips of lag).
-What defeats Python here is not the count -- it is connect-per-POST plus the GIL under five
-chain threads.
+window. The C++ actuator posts every window from a small thread pool (`post_threads`);
+decimating would cost only latency (the trim moves at most 0.0625 chips/step). What defeats
+Python here is not the count -- it is connect-per-POST plus the GIL under five chain threads.
 
 ## 7. Two traps, named before they bite
 

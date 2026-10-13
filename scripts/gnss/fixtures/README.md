@@ -107,7 +107,8 @@ command, and #92's handover.
 
 * chain `gal_e5a` — model-primary, the maximally-exposed case (every seed comes from the
   model), with `rrate-phase-span-s 16`, `rrate-command true`, `joint-consume clk,rate`
-  and `fleet-trim-rebase-adjust 1` all live.
+  and `fleet-trim-rebase-adjust 1` all live (the last since removed; replay drops it,
+  `broker_equiv.py` RETIRED_FLAGS).
 * 113 cycles, 1474 posts, 4628 gets. `selftest`: **GATE GOOD** — determinism holds and the
   digest moves under a 1e-12 perturbation of `carrier_hz` and `dll_gain`.
   ⚠️ It does NOT reach `code_bias_alpha`, `bias_alpha`; a refactor touching

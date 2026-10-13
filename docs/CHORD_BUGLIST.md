@@ -181,24 +181,14 @@ The health and age gates are fixed (`aef331c10`, closed): the freezes and the ra
 What is left: NORAD 40748 "BEIDOU-3S M2S" (Celestrak C58; 0.66° on 09-27, +10 dB) and GLONASS (L3OC at 1202 MHz,
 no propagator, #129) are in no BRDC at all. A TLE supplement needs a path that is not Celestrak-from-cf06 and keeps
 capability on the IGS SINEX. Evidence `fixtures/projtest/unk/`.
-### #151 residual — the seeds and the sky still keep two ephemerides (EPH-REBASE is now off everywhere)
-The reload cadence is fixed (`b2223cc7a`, closed). 10-11: `eph-rebase` is off on every chain (#125), so the "no step is
-computed" half below is parked with #101; what remains is the two-copies design note. The entry's own "check #101 first":
+### #151 residual — the seeds and the sky still keep two ephemerides
+The reload cadence is fixed (`b2223cc7a`, closed). EPH-REBASE (#101), off on every chain since 10-11 (#125), was
+removed 2026-10-13 with its "no step is computed" half (the census, the shared-store flag and the popped step are at
+`be7d46e8e`); what remains is the two-copies design note:
 - **Two copies, two phases.** The seeds' copy (`dr_state["eph"]`) reloads on the broker's start phase and
-  the sky's (the shared `receiver.brdc()` store, where EPH-REBASE computes its step) on its own, so a seed
-  model step can land up to 15 min from the step computed for it.
-- **No step is computed at all.** Zero `eph-rebase census` lines in 16.4 h (09-28 20:18Z – 09-29 12:40Z)
-  with `eph-rebase: 1` armed on gal_e5a, although the census prints at every re-parse, zero included, so
-  its silence cannot mean "nothing moved". Both halves of a per-chain decision live on the SHARED store:
-  `almanac.py` writes the calling chain's `eph_rebase` flag onto it just before `brdc_predict`; whichever
-  chain finds the store stale does the re-parse and reads that flag (gal_e6 on all three `ephemeris
-  refreshed` lines of this run, unarmed); and a stored step is `pop`ped by whichever chain's almanac pass
-  comes next, armed or not. The same shape as the 08-27 prediction-collapse bookkeeping (the note in
-  `sky.py`). [tree + live; the interleaving is inferred from the code, not traced]
-- **Fix:** one ephemeris for the seeds and the sky, the step computed once per reload and handed to every
-  armed chain (keyed per consumer, never popped from the shared dict). **Check:** a census line at every
-  reload, and `EPH-REBASE:` posts on gal_e5a after the merge-adjacent ones. The geometry-only transit sky
-  moved to #144.
+  the sky's (the shared `receiver.brdc()` store) on its own, so a seed model step can land up to 15 min from
+  the sky's.
+- **Fix:** one ephemeris for the seeds and the sky. The geometry-only transit sky moved to #144.
 
 ### #152 — the joint clock latches chips off the search clock and nothing notices or re-latches it (2026-09-28)
 **Twice now a transit has left the shared joint clock confidently wrong, adopted fleet-wide.** 09-23
@@ -231,7 +221,8 @@ bds_b2a − bds_b3i moved −90 m. It can run from the obs files in the cf06 hea
 carries only gps_l5's search solve and no runaway Galileo seed can reach the joint clock. The detector stays as the
 backstop; the kick below is PARKED unless d leaves ±1 chip again. Check: run `joint_latch_detect.py` over the next
 week's log — zero alarms closes this.
-**Kick (parked) — none exists today** (`publish.py` POSTs only `/set_carrier_trim` and `/set_nh_prn_offset`). In order
+**Kick (parked) — none exists today** (the broker serves no joint-clock lever; its `/set_carrier_trim` and
+`/set_nh_prn_offset` levers were removed 2026-10-13). In order
 of preference: (1) in-broker RE-ANCHOR on the alarm: move the joint's gauge until its clock agrees with the
 healthy search clock + ref (clk by +δ and every b by −δ, so no prediction inside the joint moves — only
 the clock level the consumers adopt),
@@ -484,9 +475,12 @@ a PRN with no code, so a swap to PRN > 50 on a live E6 or E1 chain is undefined 
 
 ### #181 — the replica bank applies no shared overlay for B2I, L3OC and L2OC (2026-10-12, dormant)
 **What [tree]:** the shared-overlay ladder in the `ChannelizedReplicaBank` constructor omits `BDS_B2I`, `GLO_L3OC_P/D`
-and `GLO_L2OC_P`, although each has `secondary_length > 0` and a shared `gnssOverlay` registry row; `channels()` /
-`hoprate_stream` apply no overlay for them and the NH search reports "no secondary code". No live chain uses them.
-**Fix:** add them to the ladder (or take the shared overlay from the registry). Check: a replica test with `nh_phase >= 0`.
+and `GLO_L2OC_P`, although each has `secondary_length > 0`; `channels()` / `hoprate_stream` apply no overlay for them
+and the NH search reports "no secondary code". No live chain uses them. Only `BDS_B2I` (`B2I_NH20`) and `GLO_L3OC_D`
+(`L3OC_BC5`) keep a shared `gnssOverlay` registry row; the pilots' rows (`L3OC_NH10`, `L2OC_OC2`) were removed
+2026-10-13, though their arrays stay in the code generators.
+**Fix:** add them to the ladder (for B2I and L3OC_D the shared overlay can come from the registry). Check: a replica
+test with `nh_phase >= 0`.
 
 ### #182 — the combiner's overlay + navwipe path wipes suffix rungs at the full window's overlay phase (2026-10-12, dormant)
 **What [tree]:** `GnssCoherentCombiner.cpp` (the `!_secondary.empty() && _navwipe_bit_records > 0` branch) passes the
@@ -503,9 +497,10 @@ adaptation EMA is the only recovery. (The cable work that evening is a confound;
 **Fix:** freeze model FORMATION (not steering) inside a wider cone, ~8°, or re-seed a model whose similarity to the
 fleet reference's shape stays below 0.5 for N minutes from that reference. Check: restart one node during the next
 5–8° pass and watch `elem_shared_ref status` similarity recover within minutes.
-**10-11: both built (`11ab0ee25`), awaiting the next node cycle.** `elem_sum_shared_form_deg` 8.0 (no first model inside the
-cone; a warm one keeps adapting), `elem_sum_shared_ref_reseed_s` 600 (a warm half below the floor that long takes the
-reference's shape, once per interval) gated on the sibling pol still matching at `elem_sum_shared_ref_reseed_sib_sim` 0.8 —
+**10-11: both built (`11ab0ee25`), awaiting the next node cycle.** Formation cone 8.0° (no first model inside the
+cone; a warm one keeps adapting), re-seed after 600 s (a warm half below the floor that long takes the
+reference's shape, once per interval) gated on the sibling pol still matching at similarity 0.8 (all three fixed in
+the stage since 2026-10-13; they were the keys `elem_sum_shared_form_deg`, `_ref_reseed_s`, `_ref_reseed_sib_sim`) —
 both pols off at once means the reference is stale and the cron's re-take must win. `/get_elem_cal` reports `form_frozen`,
 `form_deg`, `fleet_ref.reseeds`. Boost test 12 cases. Judge after the cycle: restart one node during a 5–8° pass
 (`form_frozen: true` until it clears, then sim ≥ 0.8 within minutes); after the next F-engine gain change the re-seed
@@ -929,19 +924,6 @@ close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains ha
 - **Record-format hygiene**: UTC is recomputed into every PRN row instead of the frame header;
   the combiner reads the prompt by raw index (`rec[3]`, `rec[4]`…) in C++ *and* Python. Do the
   index normalisation before anyone reorders a slot.
-
----
-
-## Parked — built, disarmed, and currently unjudgeable
-
-**#90, #91, #92 — three trim-pathology fixes, built and all disarmed again since 10-11** (#92's handover had stayed
-armed on gal_e5a from 08-25 until #125's re-twin). Base rate ~0 on the healthy fleet (0 brownouts, 1 sawtooth of the
-class the handover cannot catch, in an hour; the "0 latches" once quoted here was not a measurement: D2 needed a
-1200 s absence inside a 900 s q window, could never fire, and was removed 2026-10-13), so an arm has nothing to
-remove and they cannot be judged in
-this regime. Flags: `--fleet-trim-brownout-hold-s`, `--code-bias-brownout-hold`, `fleet-trim-rebase-adjust`,
-`reseed-spec-tau`. **Re-judge only after a plant disturbance** — #106's establishment
-excursion is the one that reproduces on demand.
 
 ---
 

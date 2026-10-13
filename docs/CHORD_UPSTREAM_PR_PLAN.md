@@ -138,8 +138,9 @@ fallback is a question for this PR.
 
 The four `.cu` kernels, `cudaCorrelatorDual`, the `n2k_dual` clone, and the stages the CHORD
 configs run: the node chain, record assembly, combiner, projection, telemetry, fleet trim and
-the aggregator's search. The GPU cleanup pass comes first (the kernels' carrier-phase branch,
-bench-only kernel variants, `enable_split_timing`; it needs an A/B on cf06's L40S).
+the aggregator's search. The GPU cleanup pass comes first (the kernels' carrier-phase branch;
+it needs an A/B on cf06's L40S). The bench-only kernel variants and `enable_split_timing` are
+already gone (2026-10-13).
 **`external/n2k` is byte-untouched and must stay so** — verified: `git diff -- external/n2k`
 is empty.
 
