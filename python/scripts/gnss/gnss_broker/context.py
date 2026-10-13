@@ -67,7 +67,6 @@ class ChainContext(object):
         "dr_bad",
         "fe_axis",
         "fe_off",
-        "gating",
         "capable",
         "alm_now",
         "trackers",

@@ -44,7 +44,6 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     if getattr(_supply, "LOG_HOOK", "unset") is None:
         _supply.LOG_HOOK = _log
     now = _now()
-    state["_lat"], state["_lon"], state["_alt"] = lat, lon, alt_m
     # ⚠️⚠️ ASK AS OFTEN AS THE PRODUCT UPDATES, NOT AS OFTEN AS THE DAILY DOES. This gate was
     # 7200 s, inherited from the DAILY file's own 2 h re-fetch rule -- but the sky is served by
     # the STATION-HOURLY merge, which updates every hour, and a broadcast record is only valid
@@ -63,7 +62,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     # THIS IS CHEAP. fetch_brdc holds its own caches -- 2 h for the daily, 30 min for the
     # station-hourly merge -- so a call inside those windows is a dict lookup and a parse, not
     # a fetch. The gate here only decides how soon we NOTICE that something newer exists.
-    if state["eph"] is None or now - state["eph_t"] > state.get("eph_refresh_s", 900.0):
+    if state["eph"] is None or now - state["eph_t"] > 900.0:
         # Current-day BRDC files GROW; fetch_brdc re-fetches a cache older than 2 h. Pass
         # t_utc so a replay gets the DAY-MATCHED file -- today's file
         # cannot predict another epoch (best_eph 4 h window).
@@ -472,21 +471,6 @@ def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
-def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
-    """PRNs above the elevation mask now (and look_ahead_s ahead). Needs skyfield."""
-    try:
-        from gps_beamtrack import load_gps_sats, sat_elevation  # type: ignore
-    except Exception as e:  # pragma: no cover - optional dependency
-        _log("visibility gating unavailable (%s); not gating" % e)
-        return None
-    sats = load_gps_sats()
-    up = set()
-    for prn, sat in sats.items():
-        if sat_elevation(sat, lat, lon, alt_m, look_ahead_s) >= mask_deg:
-            up.add(prn)
-    return up
-
-
 # ---- BORESIGHT GEOMETRY (the quantiser-railing veto) ---------------------------------------
 # CHORD's dishes sit 8.59 deg SOUTH of zenith (dec +40.73): boresight is az 180.0, el 81.41.
 # ⚠️ `telescope.dish_coelev_deg` in the generated configs reads -27.3 and does NOT give this.
@@ -547,7 +531,14 @@ def transit_sky(ge, eph, lat, lon, alt_m, t_utc):
     those keep predict_all's defaults, and nothing here carries a clock. Objects in no BRDC at all
     (NORAD 40748, GLONASS) are still invisible; a TLE supplement is the follow-up."""
     pa = ge.predict_all(
-        eph, lat, lon, alt_m, t_utc, mask_deg=-90.0, max_age=TRANSIT_MAX_AGE_S, health_gate=False
+        eph,
+        lat,
+        lon,
+        alt_m,
+        t_utc,
+        mask_deg=-90.0,
+        max_age=TRANSIT_MAX_AGE_S,
+        health_gate=False,
     )
     t = ge.gpst_of_utc(t_utc)
     out = {}

@@ -21,7 +21,7 @@ search rather than narrow it.
 import statistics
 
 from gnss_broker.transport import _now, _post, _log, _log_rl
-from gnss_broker.sky import brdc_predict, nearest_boresight, visible_prns
+from gnss_broker.sky import brdc_predict, nearest_boresight
 from gnss_broker import timebase
 
 
@@ -351,7 +351,3 @@ def stage_almanac_predict(ctx):
                     ctx.args.bias_min_sats,
                 ),
             )
-    elif ctx.gating:
-        ctx.up = visible_prns(
-            ctx.args.lat, ctx.args.lon, ctx.args.alt, ctx.args.mask_deg, 0.0
-        )

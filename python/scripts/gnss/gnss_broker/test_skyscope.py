@@ -751,10 +751,8 @@ def test_refresh_cadence_matches_the_product():
     src = open(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "sky.py")
     ).read()
-    m = re.search(
-        r'now - state\["eph_t"\] > state\.get\("eph_refresh_s", ([0-9.]+)\)', src
-    )
-    check(m is not None, "the refresh gate is a named, overridable interval")
+    m = re.search(r'now - state\["eph_t"\] > ([0-9.]+):', src)
+    check(m is not None, "the refresh gate is a fixed interval")
     if m:
         iv = float(m.group(1))
         check(

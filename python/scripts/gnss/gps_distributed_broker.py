@@ -1419,7 +1419,6 @@ def main(argv=None, rx=None, publisher=None):
         dg_auto_last=_dg_auto_last,
         est_next=_est_next,
         sig_of=sig_of,
-        gating=gating,
         capable=_capable,
         alm_now=_alm_now,
         cb=_cb,
