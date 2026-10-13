@@ -78,7 +78,6 @@
  * `<unique_name>/get_stats`    -- counters, fold cost, trim store, policy and poster state.
  * `<unique_name>/set_policy`   -- POST {"chains": {chain: {armed, gain_per_s or gain,
  *                                 leak_per_s or leak, clamp, spacing, p_floor_abs, targets}}}.
- * `<unique_name>/adjust_trim`  -- POST {"chains": {chain: {prn: delta_chips}}}.
  *
  * @author Keith Vanderlinde
  */
@@ -137,10 +136,6 @@ private:
     int _restored_adopted = 0, _restored_offered = 0;
     void stats_callback(kotekan::connectionInstance& conn);
     void policy_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
-    /// `/adjust_trim`: the broker re-based a seed and posts the compensating trim delta, so
-    /// seed + trim stays on the sky. FleetDll::adjust_trim holds the refusal rules.
-    void adjust_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
-    uint64_t _adjust_ok = 0, _adjust_refused = 0;
     static Target parse_target(const std::string& url, const std::string& chain);
     void post_trims();
     void post_loop(int slot);

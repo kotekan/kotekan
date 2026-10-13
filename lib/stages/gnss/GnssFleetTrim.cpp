@@ -180,9 +180,6 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_policy", std::bind(&GnssFleetTrim::policy_callback, this,
                                                std::placeholders::_1, std::placeholders::_2));
-    kotekan::restServer::instance().register_post_callback(
-        unique_name + "/adjust_trim", std::bind(&GnssFleetTrim::adjust_callback, this,
-                                                std::placeholders::_1, std::placeholders::_2));
 
     // Post targets arrive with /set_policy, not from config: the broker owns the tracker
     // endpoint list, and a copy here would drift from it.
@@ -404,42 +401,6 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
     }
     rearm();
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
-}
-
-void GnssFleetTrim::adjust_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {
-    // Payload {"chains": {chain: {prn: delta_chips}}}; parse first, lock last. Each PRN's
-    // result is counted, echoed in the reply and logged, so a refused handover is visible.
-    std::map<std::string, std::map<int, double>> got;
-    try {
-        const auto& chains = request.at("chains");
-        for (auto it = chains.begin(); it != chains.end(); ++it)
-            for (auto pit = it.value().begin(); pit != it.value().end(); ++pit)
-                got[it.key()][std::stoi(pit.key())] = pit.value().get<double>();
-    } catch (const std::exception& e) {
-        conn.send_error(std::string("bad adjust payload: ") + e.what(),
-                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    nlohmann::json rep;
-    int n_ok = 0, n_ref = 0;
-    {
-        std::lock_guard<std::mutex> lk(_mtx);
-        for (const auto& cv : got)
-            for (const auto& pv : cv.second) {
-                const bool ok = _dll.adjust_trim(cv.first, pv.first, pv.second);
-                rep[cv.first][std::to_string(pv.first)] = ok ? "adjusted" : "refused";
-                (ok ? n_ok : n_ref)++;
-            }
-        _adjust_ok += n_ok;
-        _adjust_refused += n_ref;
-    }
-    // One call per seed re-base, so a log line per PRN is affordable.
-    for (const auto& cv : got)
-        for (const auto& pv : cv.second)
-            INFO("GnssFleetTrim[{:s}]: /adjust_trim {:s} PRN {:d} by {:+.3f} chips -> {:s}",
-                 unique_name, cv.first, pv.first, pv.second,
-                 rep[cv.first][std::to_string(pv.first)].get<std::string>());
-    conn.send_json_reply(rep);
 }
 
 void GnssFleetTrim::rearm() {
@@ -895,8 +856,6 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
     reply["frames"] = _frames;
     reply["bad_frames"] = _bad_frames;
     reply["late_frames"] = _late_frames;
-    reply["adjust_ok"] = _adjust_ok; // PRNs adjusted by /adjust_trim
-    reply["adjust_refused"] = _adjust_refused;
     // Fold cost: fold_us_per_frame x the fleet's frame rate (senders x 23.84 Hz) is the fold's
     // microseconds per second, which must stay well under 1e6 or telem_buf backs up.
     reply["fold_s"] = _fold_s;

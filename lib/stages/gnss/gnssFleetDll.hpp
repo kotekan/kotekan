@@ -459,26 +459,6 @@ public:
         return true;
     }
 
-    /// Handover: the broker re-based a seed by some step, and the standing trim carrying the
-    /// same chips must move with it in the same cycle, or the tap (seed + trim) lands a step off
-    /// the sky and the trim is rebuilt from scratch. `delta_chips` is added to the standing trim
-    /// (the broker posts the negated step); the result is clamped to the policy clamp.
-    ///
-    /// Refuses for a PRN that is not armed (its trim is decaying to erasure, and no loop would
-    /// maintain the correction), and for a non-finite or over-clamp delta, which no standing
-    /// trim could have been carrying.
-    bool adjust_trim(const std::string& chain, int prn, double delta_chips) {
-        auto ci = _chain.find(chain);
-        if (ci == _chain.end() || !ci->second.armed.count(prn))
-            return false;
-        const double c = ci->second.policy.clamp;
-        if (!std::isfinite(delta_chips) || std::abs(delta_chips) > c)
-            return false;
-        auto& ts = ci->second.trim[prn];
-        ts.trim = std::max(-c, std::min(c, ts.trim + delta_chips));
-        return true;
-    }
-
     /// One (window, record slot, PRN)'s lobe-coherent powers over the served window depth:
     /// combdll.prompt_cn0's `recs`, oldest window first.
     ///
