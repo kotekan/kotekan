@@ -157,11 +157,6 @@ static_assert(offsetof(TelemHeader, chain) == 64, "TelemHeader layout is a wire 
 static_assert(offsetof(TelemHeader, inst) == 80, "TelemHeader layout is a wire format");
 static_assert(offsetof(TelemHeader, chan_id) == 96, "TelemHeader layout is a wire format");
 
-/// Widest row the format admits: a ceiling, not the stride. Every sender declares its own row
-/// width in `max_chan`/`n_row_total`, and a reader that strides by this constant walks a
-/// narrower sender's frame at the wrong offsets. Use telem_row_floats(h.max_chan).
-constexpr int TELEM_MAX_ROW_FLOATS = RECORD_FLOATS + TELEM_MAX_CHAN * CHAN_FLOATS;
-
 /// Floats per row for a sender carrying @c n_cols comb columns (0 when the comb is off).
 constexpr int telem_row_floats(int n_cols) {
     return RECORD_FLOATS + n_cols * CHAN_FLOATS;
@@ -174,7 +169,9 @@ constexpr size_t telem_frame_bytes(int n_rec, int n_prn, int n_cols) {
 }
 
 /// Float offset of PRN row @c p in record slot @c r, within the payload (after the header).
-/// @c row_floats is the sender's stride (header n_row_total), never the compile-time ceiling.
+/// @c row_floats is the sender's stride (header n_row_total), never the ceiling
+/// telem_row_floats(TELEM_MAX_CHAN): striding by that walks a narrower sender's frame at the
+/// wrong offsets.
 constexpr size_t telem_row_offset(int r, int p, int n_prn, int row_floats) {
     return ((size_t)r * n_prn + p) * row_floats;
 }

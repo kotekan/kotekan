@@ -34,14 +34,8 @@
  *         record cancels to |2f-1| of its amplitude; with the head exported (tail = P - PH) the
  *         combiner wipes each segment with its own overlay chip. PH == P means no boundary in
  *         this window (tail = 0). PH_energy/P_energy = f.
- *    20 RES.re 21 RES.im  22 RES_PH.re 23 RES_PH.im
- *      -- peel residual prompt and its head segment: the same correlation on the voltage after
- *         this PRN's own reconstructed waveform was subtracted. Slots 3/4/16/17 carry the
- *         un-peeled correlation (the peel's own contribution is added back analytically).
- *         20*log10(|P| / |RES|) is the achieved peel depth, and it is unbiased per record
- *         because the subtracted gain is feed-forward: a gain fitted to this record would
- *         subtract its own noise and read as infinite depth. The head slots are needed for the
- *         same overlay sign flip as the prompt's. All four are zero when no peel ran.
+ *    20-23 reserved (REC_RES_*, the voltage peel's residual prompt): no producer writes them,
+ *         so they are zero.
  *    24-31: see REC_SKY_*, REC_ANG0, REC_PHI_DDOP, REC_PHI0 and REC_PROJ_* below.
  *
  *  COMBINER record (GnssCoherentCombiner output; full band, one per emit):
@@ -54,9 +48,7 @@
  *       accumulated carrier phase itself is a double served by REST get_status (adr_cycles):
  *       float32 would quantize ~1e6 cycles of ADR to ~0.06 cycles.
  *    16 head fraction (CMB_HEAD_FRAC)
- *    17 deep |A| of the peel residual  18 incoherent |A| of the peel residual
- *       -- the slot-8 and slot-3 estimators run on the residual prompt (tracker slots 20-23).
- *          peel depth (dB) = 20*log10(CMB_DEEP / CMB_PEEL_DEEP). Zero when no peel ran.
+ *    17-18 reserved (CMB_PEEL_*, the peel residual's depth): never written, so zero.
  *    19,20 absolute hop (CMB_HOP_SLOT, int64)  21 coherence fraction (CMB_COH_FRAC)
  *
  *  CARRIER PHASE (slot 15, tracker -> combiner). The tracker removes a known carrier phase from
@@ -131,12 +123,10 @@ constexpr int REC_TRIM_INC = 19;  ///< applied carrier-trim phase increment, cyc
                                   ///< PRN's previous record (0 = arc start / not written):
                                   ///< PrnCtl::ctrim_hz x the record spacing. The combiner sums
                                   ///< it into get_status trim_cycles, on the arc of adr_cycles.
-constexpr int REC_RES_RE = 20;    ///< peel residual prompt correlation: the prompt despread on
-constexpr int REC_RES_IM = 21;    ///< the voltage after this PRN's waveform was subtracted.
-constexpr int REC_RES_PH_RE = 22; ///< residual prompt head segment (same boundary as REC_PH_*);
-constexpr int REC_RES_PH_IM = 23; ///< needed, or the residual's deep integration self-cancels.
-                                  ///< All four zero = no peel ran. Energies are the prompt's
-                                  ///< (same replica). See the file note.
+constexpr int REC_RES_RE = 20;    ///< Reserved: the voltage peel's residual prompt and head
+constexpr int REC_RES_IM = 21;    ///< segment. No producer writes slots 20-23, so they are
+constexpr int REC_RES_PH_RE = 22; ///< zero; the constants stay so that the record layout
+constexpr int REC_RES_PH_IM = 23; ///< does not move.
 constexpr int REC_SKY_RE = 24;    ///< Sky-phase-corrected prompt (ElemCal::combine_split): one
 constexpr int REC_SKY_IM = 25;    ///< half of the elements derotated by the phase of the other,
                                   ///< disjoint half, then rotated like slots 3/4. Input to the deep
@@ -203,10 +193,8 @@ constexpr int CMB_ARC = 15;        ///< phase arc id: ++ on every cycle slip / c
 constexpr int CMB_HEAD_FRAC = 16;  ///< window-mean boundary fraction f = <PH_energy>/<P_energy>
                                    ///< (0 or 1: the period boundary sits at a window edge).
                                    ///< Diagnostic only.
-constexpr int CMB_PEEL_DEEP = 17;  ///< deep |A| of the peel residual (the CMB_DEEP estimator run on
-                                   ///< slots 20-23) -> depth_dB = 20*log10(CMB_DEEP/CMB_PEEL_DEEP)
-constexpr int CMB_PEEL_INCOH = 18; ///< incoherent |A| of the peel residual (the CMB_AMP_INCOH
-                                   ///< twin). Both zero when no peel ran.
+constexpr int CMB_PEEL_DEEP = 17;  ///< Reserved (the peel residual's deep and incoherent |A|):
+constexpr int CMB_PEEL_INCOH = 18; ///< never written, so zero.
 constexpr int CMB_HOP_SLOT = 19;   ///< absolute hop index (int64 aliased at slots 19-20) labelling
                                    ///< the E/P/L window: GnssChanMetadata::sample_seq / fft_len of
                                    ///< its first record (block mode) or newest record (rolling).
@@ -264,8 +252,8 @@ constexpr int ELEM_L_IM = 5;
 constexpr int ELEM_PH_RE = 6;  ///< prompt head segment (hops before the code-period boundary);
 constexpr int ELEM_PH_IM = 7;  ///< tail = P - PH, exactly as in the header. Required for deep
                                ///< integration across an overlay/nav sign flip.
-constexpr int ELEM_RES_RE = 8; ///< peel residual prompt and its head segment, per antenna
-constexpr int ELEM_RES_IM = 9; ///< (as REC_RES_*). Zero when no peel ran.
+constexpr int ELEM_RES_RE = 8; ///< reserved, as REC_RES_*: never written, so zero
+constexpr int ELEM_RES_IM = 9;
 constexpr int ELEM_RES_PH_RE = 10;
 constexpr int ELEM_RES_PH_IM = 11;
 
@@ -414,11 +402,6 @@ constexpr int elem_offset(int p, int e, int n_elem) {
     return p * record_stride(n_elem) + RECORD_FLOATS + e * ELEM_FLOATS;
 }
 
-/// Float offset of PRN @c p's header within the frame.
-constexpr int record_offset(int p, int n_elem) {
-    return p * record_stride(n_elem);
-}
-
 // Layout invariants, checked at compile time so an edit above cannot silently change the frame
 // geometry that the config's `record_floats` has to match.
 static_assert(record_stride(0) == RECORD_FLOATS,
@@ -427,11 +410,10 @@ static_assert(elem_offset(0, 0, 4) == RECORD_FLOATS,
               "element 0 must start immediately after the PRN header");
 static_assert(elem_offset(0, 1, 4) - elem_offset(0, 0, 4) == ELEM_FLOATS,
               "consecutive elements must be ELEM_FLOATS apart");
-static_assert(record_offset(1, 4) == record_stride(4), "consecutive PRNs must be one stride apart");
 static_assert(elem_offset(1, 0, 4) == record_stride(4) + RECORD_FLOATS,
               "PRN 1's first element must follow PRN 1's header");
 // The last element of PRN p must end exactly where PRN p+1 begins: no gap, no overlap.
-static_assert(elem_offset(0, 3, 4) + ELEM_FLOATS == record_offset(1, 4),
+static_assert(elem_offset(0, 3, 4) + ELEM_FLOATS == record_stride(4),
               "element blocks must tile the record exactly");
 
 } // namespace gnss
