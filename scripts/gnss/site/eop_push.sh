@@ -10,14 +10,13 @@
 # is near its edge. The 2026-08-24 restart reverted Jim's Friday curls exactly this way.
 #
 # SOURCE. The observatory keeps the rolling file at choco:/var/lib/choco/eop/state.json
-# (refreshed daily at ~12:00). cf06 CANNOT reach choco, so the file must be staged by a host
-# that reaches both:  scp choco:/var/lib/choco/eop/state.json cf06:/tmp/eop-state.json
-# This script then runs ON cf06 (or any host that reaches the cx nodes).
+# (refreshed daily at ~12:00). eop_cron.sh, hourly on gnss, stages it at
+# /var/tmp/gnss-logs/eop-state.json, which is the default here; run this on gnss.
 #
-#   usage:  eop_push.sh [file]          default /tmp/eop-state.json
+#   usage:  eop_push.sh [file]          default /var/tmp/gnss-logs/eop-state.json
 #   env:    GNSS_NODES                  default "cx19 cx27 cx42 cx43 cx44 cx51"
 set -u
-F=${1:-/tmp/eop-state.json}
+F=${1:-/var/tmp/gnss-logs/eop-state.json}
 NODES=${GNSS_NODES:-"cx19 cx27 cx42 cx43 cx44 cx51"}
 
 python3 - "$F" <<'PY' || exit 1

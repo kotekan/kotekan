@@ -156,7 +156,7 @@ fleet-wide re-arm.
 
 ```sh
 for n in cx19 cx27 cx42 cx43 cx44 cx51; do scripts/gnss/site/node_up.sh $n restart; done
-scripts/gnss/site/eop_push.sh        # from a host that reaches the nodes
+scripts/gnss/site/eop_push.sh        # on gnss: pushes the table eop_cron.sh staged
 ```
 
 **Bring the gather and the aggregator up BEFORE restarting nodes into them.** Sixty senders
