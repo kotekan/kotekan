@@ -10,7 +10,7 @@ trace, frames counted by `pl_mask_expand_kernel` launches.
 
 | per GPU, per 41.94 ms frame | stock production | + GNSS, 12 PRN x 7 bands | GNSS delta |
 |---|---|---|---|
-| gnss_waveform (replica synthesis, 28 launches) | 0 | 6.4-6.8 ms | +6.4-6.8 |
+| gnss_waveform (replica synthesis, 28 launches) | 0 | 6.4-6.8 ms (3.2-3.5 with `epl_from_prompt`) | +6.4-6.8 |
 | gnss_pack44 (lanes into the voltage ring) | 0 | 1.05 | +1.05 |
 | n2k_dual (MIXED+BB over the comb union) | 0 | 0.62-0.68 | +0.65 |
 | n2k (science N^2, 384 ch) | 1.03 | 1.18 | +0.14 (contention) |
@@ -46,33 +46,51 @@ What the numbers say:
 
 Measured per-record cost = (chains) x (one 0.18 ms wave each, at fp16 Phi and 80 centred chips).
 
-1. **E and L lanes from P (untested on sky, the biggest lever).** A code delay is a per-channel
-   phase rotation of the prompt replica, exp(-i 2 pi (f_c - f_car) delta). In the direct PFB model
-   the lobe-coherent DLL discriminator formed from the rotated prompt differs from the exact E/L
-   one by < 1e-4 chips at production geometry; the incoherent per-channel E/L powers carry no
-   code phase at all (slope 0.001/chip vs 4.56 coherent). The kernel walks three trials that each
-   load their own Phi lines and the N^2 carries four lanes per PRN (E, P, L, P_HEAD): dropping E
-   and L is ~2-3x on synthesis (~4 ms of the 6.5 per frame) and halves the MIXED lanes, with the
-   record format unchanged if the assembler emits E/L rows as P x rotation. VERIFY FIRST on the
-   sky capture `fixtures/tec_wander/telem/telem_all8_20261012_1643.bin` (rows carry per-channel E,
-   P, L): check E_c = P_c e^{i theta_c} per record before any code moves.
+1. **E and L lanes from P: verified on sky and implemented (`epl_from_prompt`, 10-13).** A
+   code offset of ds chips is a per-channel phase rotation of the prompt replica,
+   exp(+i 2 pi (f_c - f_car) ds / chip_rate) for the prompt - ds trial, up to the offset's phase
+   ramp across one channel (0.06 rad at 195 kHz and 0.5 chips of 10.23 Mcps). On the 10-12
+   all-band telemetry capture (`fixtures/tec_wander/telem/telem_all8_20261012_1643.bin`, 578k
+   frames, per-channel E/P/L; `fixtures/gpu_budget/epl_identity_sky.py`) the fitted rotation is
+   -1.000 k0 (E) / +1.000 k0 (L) on every 10.23 Mcps band and E6, the identity holds to -18..-26 dB
+   over all rows and -21..-37 dB on the top SNR decile, and the lobe-coherent DLL discriminator
+   (gnssFleetDll) rebuilt from the rotated prompt matches the true one with zero median bias and
+   0.004-0.016 chips rms on strong rows (0.03-0.04 on all rows = noise). L2C is the exception:
+   one channel per instance, so its rotated discriminator is identically zero; it keeps three
+   trials. The DLL is lobe-coherent everywhere (C++ gnssFleetDll, python combdll, the combiner's
+   header sums); the incoherent per-channel taps are diagnostics only.
+   Implementation (branch kv/epl-from-prompt, worktree ~/gnss/elp-wt): the waveform kernel walks
+   the prompt once and writes the E and L rows as the rotated prompt with the prompt's energy;
+   lanes, pack, N^2, assembler, records and broker are unchanged. Config key `epl_from_prompt`
+   on the track block (generator `--epl-from-prompt`, every chain but L2C), default off.
+   `cuda_gnss_despread_test` keeps P and P_HEAD bit-exact against the fused kernel and pins the
+   rotation's sign against the fused E row (the analytic sign was wrong by a conjugation).
+   Measured on cx52, same binary, 12 PRN x 7 chains per GPU (`run_epl_ab.sh`,
+   `delta_elpon_vs_elpoff_20261013.txt`): gnss_waveform 6.40 -> 3.24 ms per frame on GPU 0
+   (6.77 -> 3.47 on GPU 1 against the 14:28Z baseline), n2k contention -0.15, kernels union busy
+   9.57 -> 6.57 ms (22.8% -> 15.7% of the frame): the GNSS delta over stock falls from ~7.6 to
+   ~4.6 ms per frame per GPU. The remaining half of the launch is the per-hop fixed cost
+   (carrier phasor, the fp64 code phase, the Phi prologue), not the gather.
+   Stage 2, dropping the E/L lanes (2 per slot, E/L rows rotated in GnssN2RecordAssemble) would
+   take ~0.5 ms of pack and ~0.2 of the dual; it touches the lane contract at three sites and the
+   generator, and is not started.
 2. **Fewer chips (`despread_max_chips`, centred).** Loss is exactly the dropped window energy:
    212 chips 0 dB, 105 -0.018, 80 -0.045 (production), 60 -0.27, 40 -1.1, 20 -3.4. Cross-PRN
    leakage does not depend on it (set by the comb's channel count: -32 dB on 6 channels, -38 on
    27) and the aliases shrink rather than grow. The per-block time scales with chips (bench: 0.10
-   ms at 40 vs 0.15 at 80), so 40 chips saves ~2 ms per frame. BUT the dropped energy is also
-   what deprojection cannot remove, see below.
+   ms at 40 vs 0.15 at 80), so 40 chips saves ~2 ms per frame. Nothing but the tracking SNR
+   sees the dropped energy, see below.
 3. **Centralising synthesis** moves the same GPU-seconds (cost is linear in channels, nothing is
    shared across channels or PRNs because the Doppler sits in the Phi table exponent). Fleet-wide
    today ~1.2-2.4 A40s, full CHORD channel count 3-6, 1-2 with lever 1. The replica is already
    quantised to the ring's 4+4 bit, so shipping it is 1 B per (lane, channel, hop), 7-12 Gb/s per
    node. Worth it only at full CHORD's ~1 channel per lobe per node, or to free correlator GPUs.
 
-## Chips kept and deprojection
+## Chips kept: what else sees it
 
 The truncated replica R_n is the kept part of the true channelised signal S, and the kept and
 dropped parts are orthogonal to the precision of the loss curve (loss = kept energy exactly).
-Three consequences for everything downstream of the correlation:
+Consequences for everything downstream of the correlation:
 
 * **Element correlations keep their ratios.** Every element correlates against the same replica,
   so the truncation is a common-mode scale (0.88 in amplitude at 40 chips) on all per-element,
@@ -80,15 +98,15 @@ Three consequences for everything downstream of the correlation:
   gates (deep_snr, present, trim quality) see the loss.
 * **The DLL is unaffected** beyond SNR: the discriminator slope at 80 chips equals the full one
   (-4.55 vs -4.56 per chip) because on a comb the code phase is the cross-channel phase.
-* **Deprojection depth is capped by the dropped energy.** The rank-1 projection removes the part of
-  the satellite the replica models, a a* |R_n|^2, and leaves a a* (|S|^2 - |R_n|^2): the residual
-  satellite power in the science visibilities is (1 - kept) of the satellite, whatever the array
-  gain. That is -19.7 dB at 80 chips, -12 dB at 60, -6.5 dB at 40, -24 dB at 105, -33 dB at 160.
-  More dishes raise tracking SNR but do not touch this fraction. So 80 -> 40 trades 2 ms of GPU
-  per frame for a 13 dB shallower null; if the measured projection floor (proj_b in the rows;
-  E6 is set by F-engine clipping, other bands unknown) is near -20 dB, the lever points the
-  other way: 105-120 chips buys 4 dB of depth for ~1 ms per frame. Check proj_b per band against
-  -19.7 dB before moving this knob in either direction.
+* **Deprojection does not see the replica.** Both projections are spatial. GnssN2Project takes
+  its subspace from the science N^2 block's own top-k eigenvectors and removes the whole mode in
+  each channel: the tracked code, the pilot and encrypted components, and the clipping products
+  that carry the satellite's signature (G19, P(Y) only, was projected on 10-03). The record-row
+  projection in GnssGpuRecordAssemble uses the bright satellite's P row for its direction only,
+  which truncation scales and does not turn. Depth is set by the F-engine clipping floor
+  (-20 dB rank 1, -25..-30 at rank 2-3) and by the in-channel delay spread of the array
+  (rank-2 leak ~ (2 pi tau B)^2/12: -27 dB at the pathfinder's 0.12 us, -21 dB at 0.24 us),
+  not by chips kept. The chips knob trades tracking SNR against GPU time and nothing else.
 
 ## How to measure again
 
@@ -108,9 +126,12 @@ Three consequences for everything downstream of the correlation:
 
 ## Open items (for the buglist)
 
-* Verify lever 1 (E/L from P) on the 10-12 sky capture; then the kernel (one trial + P_HEAD gate),
-  the N^2 lane count, and `GnssN2RecordAssemble` emitting E/L rows from P.
-* Compare proj_b per band with the -19.7 dB replica cap before touching `despread_max_chips`.
+* Arm `epl_from_prompt` on the fleet at a node cycle (generator `--epl-from-prompt` in the
+  manifest's common flags; the worktree branch kv/epl-from-prompt merges first) and judge the
+  DLL by the readback decay and the trim-quality gates against the previous night.
+* Stage 2 of lever 1: 2 lanes per slot, E/L rows from P in `GnssN2RecordAssemble`.
+* `despread_max_chips` 80 -> 40 is -1.1 dB of tracking SNR for ~2 ms per frame; take it only
+  after lever 1, which costs nothing.
 * The synthesis tail (p90 0.8-0.9 ms when overlapping n2k or the copy): order the chains' stream
   away from the n2k window, or accept ~2 ms per frame.
 * `testDataGen` cannot source 9.6 GB/s (per-byte type-string compare) and multiplies its start

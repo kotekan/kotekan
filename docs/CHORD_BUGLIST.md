@@ -125,6 +125,19 @@ REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (Gnss
 `d505f3943`; (a) waits for that binary too: stop emitting, then drop the reads. Check after each step: `gen_fleet
 --check` and `--check-config` on all nine configs.
 
+### #189 — `epl_from_prompt` (E/L lanes as the rotated prompt): wire test at the F-engine's return (2026-10-13)
+**What [tree, branch kv/epl-from-prompt, worktree ~/gnss/elp-wt, 5bd27ec7f on 961c4d9c9]:** the waveform kernel walks
+the prompt once and writes the E and L lanes as the prompt rotated by +-2 pi (f_c - f_car) ds/chip_rate per channel,
+behind the config key `epl_from_prompt` (generator `--epl-from-prompt`, every chain but L2C). Offline: identity and
+DLL verified on the 10-12 telemetry capture, `cuda_gnss_despread_test` keeps P/P_HEAD bit-exact and pins the sign,
+cx52 A/B gnss_waveform 6.40 -> 3.24 ms per frame per GPU (docs/CHORD_GPU_BUDGET.md, fixtures/gpu_budget/README.md).
+Not merged (after the 10-13 14:10 ET session rollover, KV), not pushed, not armed.
+**Wire test:** one node first (cx51), `--epl-from-prompt` in its manifest entry at a node cycle after the broker has
+re-anchored; judge against a sibling node, same sky same time: the lobe DLL's readback decay and `q`, the trim-quality
+and `present` gates, per-channel E/P/L in the telemetry (E_c/P_c must read exp(-i k0 df) as on 10-12), arc survival
+through one transit. Then the manifest's common flags. L2C stays on three trials by construction (one channel per
+instance, its rotated discriminator is identically zero).
+
 ### #176 — the joint clock adopts a one-off 0.8-chip outlier inside a transit and every 10.23-Mcps chain loses its prompts (2026-10-12)
 - **What:** C33 (0.61°, CA 12:54:15Z 10-12). Through the pass the joint solve's sigma grew 0.42 → 0.68 and was REFUSED
   (bound 0.50); at 12:58:17Z, C33 at ~1.9°, a 4-satellite solve 0.806 chips from legacy with sigma 0.228 passed the
