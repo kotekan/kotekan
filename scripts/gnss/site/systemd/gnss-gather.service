@@ -15,7 +15,6 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-User=kvand
 # build_nodpdk is ARCH=native for cf06, and this VM is a guest on cf02 -- the same Xeon Gold
 # 5416S -- so it runs here as-is (verified: --help exits 0, no missing libraries). ⚠️ That is
 # true of THIS host and not of a host in general; a -DARCH=x86-64-v2 tree is the insurance.
@@ -36,7 +35,7 @@ Restart=on-failure
 RestartSec=30
 MemoryAccounting=yes
 MemoryMax=2G
-StandardOutput=append:/var/log/gnss/gather.log
+StandardOutput=append:/var/tmp/gnss-logs/gather.log
 StandardError=inherit
 
 [Install]

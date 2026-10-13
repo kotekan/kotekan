@@ -297,8 +297,7 @@ broker changes `broker_equiv.py check` on cf05 (never beside the live stack).
    deliberately on 10-01).
 
 **D. Operations found along the way.** Logs are not rotated (`/var/tmp/gnss-logs` 44 GB in 22
-days, ~2 GB/day, 161 GB free; `systemd/gnss.logrotate` targets a missing dir and is not
-installed). 41 `python/scripts/gnss` tests have no runner. `live_element_gate.py` broken since
+days, ~2 GB/day, 161 GB free). 41 `python/scripts/gnss` tests have no runner. `live_element_gate.py` broken since
 10-02. `gnss_transit_arcs.py` uses the pre-#99 station (155 m off). Viewer: layout key v7, reset
 clears v6.
 

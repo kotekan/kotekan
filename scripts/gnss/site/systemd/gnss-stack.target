@@ -23,4 +23,4 @@ Wants=gnss-obs@gal_e5a.service gnss-obs@gal_e5b.service gnss-obs@gal_e6.service
 Wants=gnss-obs@bds_b2a.service gnss-obs@bds_b2b.service gnss-obs@bds_b3i.service
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

@@ -17,7 +17,6 @@ PartOf=gnss-stack.target gnss-broker.service
 Type=simple
 # Must exceed the ExecStartPre deadline, or systemd kills the wait it was told to do.
 TimeoutStartSec=360
-User=kvand
 # It resolves its static assets relative to the cwd, so this is load-bearing, not tidiness.
 # ⚠️ THE VIEWER ONCE CALLED A DEAD BAND "LOCKED" because it gated on sig, which reads 46M on
 # noise. It gates on q now. Reproduce the live argument list exactly rather than tidying it:
@@ -34,7 +33,7 @@ Restart=on-failure
 RestartSec=10
 MemoryAccounting=yes
 MemoryMax=1G
-StandardOutput=append:/var/log/gnss/viewer.log
+StandardOutput=append:/var/tmp/gnss-logs/viewer.log
 StandardError=inherit
 
 [Install]

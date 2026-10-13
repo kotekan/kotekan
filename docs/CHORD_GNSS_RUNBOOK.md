@@ -268,8 +268,6 @@ ssh gnss 'systemctl --user status gnss-broker.service -n 40'
 Archive before any deliberate teardown you might want to explain later:
 `gzip -1 -c /var/tmp/gnss-logs/broker.log > /home/kvand/gnss/logs/broker_$(date -u +%Y%m%d_%H%M%S).log.gz`
 
-⚠️ There is no logrotate yet (it needs root). Watch the directory until there is.
-
 The service logs under `/var/tmp/gnss-logs/` rotate hourly by `scripts/gnss/site/logrotate.conf` (daily or past 4 GB,
 `copytruncate` because the units hold the files open, 10 gzipped generations). `broker.log.1.gz` and older hold what a
 long `tail` of `broker.log` used to.

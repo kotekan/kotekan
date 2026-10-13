@@ -13,7 +13,6 @@ PartOf=gnss-stack.target
 # %i is the chain name; the RF constants come from stack_components.sh.
 Environment=GNSS_CHAIN=%i
 Type=simple
-User=kvand
 # ⚠️ The writers and the broker must run the SAME generation of the code. They are separate
 # processes with separate lifetimes: a broker restarted with a new published field while the
 # writers kept running yesterday's code published that field into nothing for 26 minutes.
@@ -29,7 +28,7 @@ Restart=on-failure
 RestartSec=10
 MemoryAccounting=yes
 MemoryMax=512M
-StandardOutput=append:/var/log/gnss/obs_%i.log
+StandardOutput=append:/var/tmp/gnss-logs/obs_%i.log
 StandardError=inherit
 
 [Install]

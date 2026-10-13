@@ -14,7 +14,6 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-User=kvand
 # ⚠️ NOT a -DUSE_CUDA=OFF tree. The search runs on the GPU (use_cuda_acquire: true) and holds
 # ~2.7 GB of device memory; the CPU acquire path exists but is the expensive stage.
 
@@ -34,7 +33,7 @@ RestartSec=15
 # reservation and the process would not start at all.
 MemoryAccounting=yes
 MemoryMax=4G
-StandardOutput=append:/var/log/gnss/aggregator.log
+StandardOutput=append:/var/tmp/gnss-logs/aggregator.log
 StandardError=inherit
 
 [Install]
