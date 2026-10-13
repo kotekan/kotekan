@@ -76,12 +76,51 @@ PRNs, `joint-consume` and nothing else). The joint state is GPS-fed only again.
 (telemetry v8, #158; the L5 code fix, #177, verified on the sky); the broker runs the fleet-ADR silence gate (#155
 candidate 2) and the projection fields since 13:26Z. Our bad-inputs cron is held for the outage (#164). At the return:
 the broker re-anchors to the new F-engine epoch before the nodes are cycled, the cron is restored once bffs posts a
-list from valid data, the aggregator's L5 search is judged (#177), and the 17 local commits on kv/chord-gnss are pushed
+list from valid data, the aggregator's L5 search is judged (#177), and the local commits on kv/chord-gnss are pushed
 on KV's word. The memory note `chord-handoff-20261012-fengine-off` has the rollback binaries and the build dirs to keep.
+
+**10-13: the dead-code removal is merged (`d505f3943`, 339 files, −39k lines).** The gather, aggregator and cube-archiver
+configs are regenerated; the six node configs, the unit reinstall and the broker/obs/viewer restarts are KV's to run
+(auto mode refuses them); the node binary `fleet-d505f3943` joins the canary at the return, with `gather-d505f3943` for
+the aggregator and gather. #184–#187 below are what the removal left for later. 221 local commits, unpushed.
 
 ---
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
+
+### #184 — four finished A/B arms stay in the broker because retiring them moves the replay digests (2026-10-13)
+**What [tree]:** the removal pass retired every finished A/B except the ones whose live arm changes the `broker_equiv`
+digest of the seven recorded replays: `--n2-combiners` (the path-B population), `--seed-bias-source` ema/slow with
+`--seed-bias-alpha`, state_filter's median gauge, and fits' optional `fft_len` precision argument. Each keeps a dead arm
+and its flag. The replays predate the L5 code fix (#177) and telemetry v8, so re-blessing their digests under the new
+arms would bless a run nobody can reproduce.
+**Fix:** once the F-engine is back, record fresh replays from the live chains, retire the four arms and re-bless the
+digests in one commit. Check: `broker_equiv` identical on the new replays before and after the retire.
+
+### #185 — the #98 relative integrity veto never ran: `_FROZEN` pinned `integ-veto-baseline-s` to 0 over the yaml's 600 (2026-10-13)
+**What [tree]:** the chains yaml asked for the relative veto (`integ-veto-baseline-s: 600`, #98) but the broker's
+`_FROZEN` table overrode it to 0 on every chain, so only the absolute veto ever ran. Found by the removal pass, which
+deleted the dead relative arm and kept the absolute veto as it ran; the yaml key is gone.
+**Question:** is the relative veto wanted? If so it is new work (from git history, without the override), judged on a
+night's veto counts per chain against the absolute one; if not, close.
+
+### #186 — `seeding.py` appends to `err_hist` twice, the second time unconditionally (2026-10-13)
+**What [tree]:** `gnss_broker/seeding.py:1173-1185`: the guarded append (`if cp_err is not None`) is followed by an
+unguarded one, so a measured error enters the 9-sample history twice (halving the median gate's window) and a `None`
+enters it when there is no measurement; `statistics.median` at :1227 then raises on the `None`. Not seen live; latent
+because `cp_err` is rarely `None` on a tracked PRN.
+**Fix:** delete the second append. Check: the broker's `test_seeding`-style replays unchanged, plus one step with
+`cp_err = None`.
+
+### #187 — clean-up that waits on the new binaries and the restarted broker (2026-10-13)
+**What [tree]:** (a) the generator still emits keys the C++ now reads only to refuse other values (cudaGnssInject
+`conjugate`, `phi_fp16`, `despread_max_chips`, `despread_chips_centered`, `trim_endpoint`; cudaCorrelatorDual
+`gnss_freq_map`, `gnss_synth_compact`, `rfi_all_pass`), so a regenerated config still starts on d30be5f66; (b) the
+REST replies carry `addressable` (GnssGpuRecordAssemble) and `pow_fft_len` (GnssCoherentCombiner) for the old broker;
+(c) the j2 chain template (`config/gnss/gnss_chain.j2`, `--emit-j2-vars`, `scripts/gnss/j2_chain_equiv.py`) renders a
+chain the new C++ rejects — it was stale before the removal (KV: fix or delete).
+**Fix:** once the fleet runs d505f3943 and the broker is restarted on it: stop emitting (a), then drop the reads; drop
+(b); decide (c). Check after each step: `gen_fleet --check` and `--check-config` on all nine configs.
 
 ### #176 — the joint clock adopts a one-off 0.8-chip outlier inside a transit and every 10.23-Mcps chain loses its prompts (2026-10-12)
 - **What:** C33 (0.61°, CA 12:54:15Z 10-12). Through the pass the joint solve's sigma grew 0.42 → 0.68 and was REFUSED
