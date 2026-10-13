@@ -1228,7 +1228,7 @@ def build_parser(description):
         "per-PRN cp TRIM by gain * tau_est from the combiner's E/L discriminator. "
         "The trim rides on top of the search-fit cp, converging to the fit's "
         "grid-quantization bias -- sub-chip code tracking with no per-record "
-        "decisions (R1, docs/gnss_architecture_audit.md).",
+        "decisions (R1, 3c2e98f43:docs/gnss_architecture_audit.md).",
     )
     ap.add_argument(
         "--nh-hint",

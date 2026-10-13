@@ -2333,8 +2333,8 @@ def build_gather_instance(cfg, args, port):
     # per frame -- 8.2 us measured offline against a 42 ms frame period -- and get_stats
     # serves fold_us_per_frame so that claim stays checkable rather than remembered.
     #
-    # F1 OBSERVES ONLY. It forms the fleet discriminator and actuates nothing; the trim is
-    # still posted by the Python broker. See docs/CHORD_FAST_TRIM.md 8.
+    # It forms the fleet discriminator, integrates it and posts the trims (/set_trim, every
+    # post_every_n_windows); the broker keeps the policy. See docs/CHORD_FAST_TRIM.md.
     out["fleet_trim"] = {
         "kotekan_stage": "GnssFleetTrim",
         "in_buf": "telem_buf",
