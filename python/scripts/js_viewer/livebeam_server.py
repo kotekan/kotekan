@@ -35,7 +35,6 @@ import json
 import logging
 import math
 import os
-import re
 import select
 import signal
 import socket
@@ -461,18 +460,11 @@ def build_viewer_config(kotekan, args):
             "ccera_pointing": args.ccera_pointing,
             "galaxy_view": bool(args.galaxy_view_url),
             "galaxy_view_url": args.galaxy_view_url,
-            # GPS live-status panel (overhead-sky circle + locked-PRN list). It
-            # polls the kotekan GNSS stages (search/combiner) for locks + |A| and
-            # this server's /gps_sky endpoint for satellite az/el.
-            "gps_sky": bool(getattr(args, "_gps_enabled", False)),
         },
-        # Where the GPS panel finds its data. ``has_site`` is whether this server
-        # knows the observer location (so it can serve /gps_sky); without it the
-        # panel still shows the locked list, just no sky positions.
+        # ``has_site`` is whether this server knows the observer location (so it can
+        # serve /gps_sky); without it the GPS panel still shows the locked list, just
+        # no sky positions.
         "gps": {
-            "search_stage": args.gps_search_stage,
-            "combiner_stage": args.gps_combiner_stage,
-            "airspy_stage": args.gps_airspy_stage,
             "mask_deg": args.gps_mask_deg,
             "has_site": args.lat is not None and args.lon is not None,
         },
@@ -739,291 +731,13 @@ class ModeResource(resource.Resource):
         return json.dumps({"mode": mode}).encode("utf-8")
 
 
-# WARNING: "l1" / "l2c" / "l5" HERE ARE FRONT-END NAMES FROM THE AIRSPY PROTOTYPE, NOTHING ELSE.
-# They are one of FOUR band taxonomies in this file, and the only one that is purely historical:
-#
-#   this one      "l1"/"l2c"/"l5"        the three prototype dongles -- a dict key, a websocket
-#                                        port (8539/8639/8739) and the --band default. CHORD has
-#                                        NO airspys, so here they are vestigial: the RF selector
-#                                        is rebuilt from the broker's chains instead.
-#   column group  "high"/"mid"/"low"     BAND_LABEL / BAND_ORDER / _band_of -- what the table
-#                                        columns group by. Renamed off L1/L2/L5 on 2026-09-17
-#                                        precisely so it could not be confused with this one.
-#   broker        "L5"/"E5b"/"B3"/"E6"   per-signal physical band, from /get_chains. What the
-#                                        Stream-health panel shows, one row per RF stream.
-#   PVT           CARRIER_NAME           clock-group naming, keyed by carrier MHz.
-#
-# AND "l2c" IS A MISNOMER EVEN WITHIN ITS OWN TAXONOMY: that dongle was repurposed from GPS L2C
-# to BeiDou B2b (1207.14) and the key was never renamed, which is why its static label reads
-# "L2 - 1207.14 MHz" -- an L2 name on a signal that is not L2. Do not reason about frequency
-# from any of these three strings; use the carrier.
-#
-# Per-band constellation display defs (name shown in the sky legend + record period t_rec used
-# for C/N0 = x / t_rec). tag/colour are constant across bands (G/E/C = blue/orange/red, matching
-# the matplotlib composite-map palette); only the SIGNAL name and t_rec change. The client swaps
-# its L1 defaults for these on startup (fetched via /wsport), so a non-L1 viewer's legend names
-# the right signal instead of "GPS L1 C/A / Galileo E1C / BeiDou B1C".
-BAND_CHAINS = {
-    "l1": [
-        {"tag": "G", "name": "GPS L1 C/A", "t_rec": 1e-3, "color": "#4d9de0"},
-        {"tag": "E", "name": "Galileo E1C", "t_rec": 4e-3, "color": "#e8923c"},
-        {"tag": "C", "name": "BeiDou B1C", "t_rec": 10e-3, "color": "#d64550"},
-        # GPS L1C-P (4th L1 chain): constellation G / PRNs 1-32 like C/A, so it needs a
-        # DISTINCT viewer tag "L" (the series key is tag+prn) backed by explicit l1c_ stages
-        # in WsPortResource.base -- reusing "G" would merge it into the C/A series.
-        {"tag": "L", "name": "GPS L1C", "t_rec": 10e-3, "color": "#6fbf73"},
-    ],
-    # l2c dongle REPURPOSED to BeiDou B2b (2026-08-03): tag C, 1 ms records (was GPS L2C, tag G,
-    # 20 ms). The mid-band swap (mid-band-gal-bds-receivers); the stage names stay l2c_gps_* (the
-    # Shape-A primary convention), only the constellation/signal displayed change.
-    "l2c": [{"tag": "C", "name": "BeiDou B2b", "t_rec": 1e-3, "color": "#d64550"}],
-    "l5": [
-        {"tag": "G", "name": "GPS L5", "t_rec": 1e-3, "color": "#4d9de0"},
-        {"tag": "E", "name": "Galileo E5a", "t_rec": 1e-3, "color": "#e8923c"},
-        {"tag": "C", "name": "BeiDou B2a", "t_rec": 1e-3, "color": "#d64550"},
-    ],
-    # GLONASS L3OC (2026-08-04) -- the fourth constellation, tag R, 1 ms records. PRNs are
-    # orbital SLOT numbers. Only the 7 GLONASS-K satellites transmit it; the sky layer filters
-    # to those via _l3oc_capable_set, the same way "L" filters to GPS III.
-    "l3oc": [{"tag": "R", "name": "GLONASS L3OC", "t_rec": 1e-3, "color": "#9b6fd6"}],
-}
+# The signal inventory, one row per broker chain (see discover_broker_chains for the row
+# shape). main() fills it on a --unified start; _gps_signal_capability() and the GLONASS sky
+# filter read it at call time.
+UNIFIED_SIGNALS = []
 
-# UNIFIED VIEWER (2026-07-28): one page, one satellite per row, every signal that satellite
-# carries shown side by side -- the shared-knowledge paradigm made visible (L1 C/A, L1C,
-# L2C-CM, L2C-CL, L5 are ONE satellite). The merged kotekan already serves every band's
-# stages on one REST port, so the client polls all of these; the split into three viewer
-# ports was purely presentational. Each row here is ONE signal:
-#   tag        constellation (G/E/C) -- the satellite key is tag+prn across ALL bands
-#   band       frequency-band column group in the table (high / mid / low)
-#   col        the short column label under that group ("CA","L1C","CM","CL","Q","E1C",...)
-#   name       full signal name (tooltips / amp-history legend)
-#   combiner   ABSOLUTE kotekan stage (merged instance -- already l1_/l2c_/l5_ prefixed)
-#   search     detections stage, or None for a derived pilot (L2C-CL has no search)
-#   t_rec      record period (s) -> incoherent C/N0 = x / t_rec
-#   peel       whether this chain runs the voltage peel (peel-depth column applies)
-# The table renders columns in THIS order; add a signal by adding a row.
-#
-# STATIC FALLBACK ONLY (2026-08-03): main() replaces this at startup with the list DISCOVERED
-# from kotekan's running /config (see discover_signals() below), so a band/constellation swap in
-# gnss_node.yaml -- L2C dongle -> BeiDou B2b today, Galileo E5b next, GLONASS later -- flows into
-# the viewer with no edit here. This literal is used only when /config is unreachable at launch.
-UNIFIED_SIGNALS = [
-    {
-        "tag": "G",
-        "band": "high",
-        "col": "CA",
-        "name": "GPS L1 C/A",
-        "sigid": "GPS_L1CA",
-        "combiner": "l1_gps_combiner",
-        "search": "l1_gps_search",
-        "t_rec": 1e-3,
-        "peel": True,
-    },
-    {
-        "tag": "G",
-        "band": "high",
-        "col": "L1C",
-        "name": "GPS L1C-P",
-        "sigid": "GPS_L1C_P",
-        "combiner": "l1_l1c_combiner",
-        "search": "l1_l1c_search",
-        "t_rec": 10e-3,
-        "peel": True,
-    },
-    # L2/MID band: the l2c dongle was REPURPOSED from GPS L2C (CM data + CL pilot) to BeiDou B2b
-    # (2026-08-03, mid-band-gal-bds-receivers). B2b is DATA-only (no pilot), tag C, 1 ms records;
-    # the primary stage keeps its l2c_gps_* name (Shape-A convention), only the signal changes.
-    {
-        "tag": "C",
-        "band": "low",
-        "col": "B2b",
-        "name": "BeiDou B2b (data, B-CNAV3)",
-        "sigid": "BDS_B2B_I",
-        "combiner": "l2c_gps_combiner",
-        "search": "l2c_gps_search",
-        "t_rec": 1e-3,
-        "peel": False,
-    },
-    {
-        "tag": "G",
-        "band": "low",
-        "col": "Q",
-        "name": "GPS L5-Q",
-        "sigid": "GPS_L5_Q",
-        "combiner": "l5_gps_combiner",
-        "search": "l5_gps_search",
-        "t_rec": 1e-3,
-        "peel": True,
-    },
-    # L5-I is the DATA component of the same signal L5-Q pilots (S4 phase 2). Like L2C-CL it
-    # is DERIVED, not acquired -- seeded verbatim from its sibling's rows -- so search is None
-    # and it will never show an SNR cell. Its combiner runs the composed NH10 + CNAV navwipe,
-    # which is what lets it integrate past the 20 ms symbol boundary. Judge it against Q, its
-    # equal-power sibling, not against an absolute: measured 6.4 dB below Q at the 1 s rung
-    # (2026-07-29), down from 15.4 dB before the navwipe.
-    {
-        "tag": "G",
-        "band": "low",
-        "col": "I",
-        "name": "GPS L5-I (data, CNAV)",
-        "sigid": "GPS_L5_I",
-        "combiner": "l5_i_combiner",
-        "search": None,
-        "t_rec": 1e-3,
-        "peel": False,
-    },
-    {
-        "tag": "E",
-        "band": "high",
-        "col": "E1C",
-        "name": "Galileo E1-C",
-        "combiner": "l1_gal_combiner",
-        "search": "l1_gal_search",
-        "t_rec": 4e-3,
-        "peel": True,
-    },
-    # E1B / E5a-I / B1C-data / B2a-data: the DATA components (S5 D-components), each DERIVED off
-    # its band-mate pilot (search None, seeded verbatim). Their combiners run the nav-bit wipe
-    # (navwipe_bit_records) that lets a data channel integrate to 1 s, so they carry coherent
-    # C/N0 like any chain; judge each against its pilot sibling, not an absolute. Unpeeled
-    # (peel is GPS-only for now).
-    {
-        "tag": "E",
-        "band": "high",
-        "col": "E1B",
-        "name": "Galileo E1-B (data, I/NAV)",
-        "combiner": "l1_e1b_combiner",
-        "search": None,
-        "t_rec": 4e-3,
-        "peel": False,
-    },
-    {
-        "tag": "E",
-        "band": "low",
-        "col": "E5a",
-        "name": "Galileo E5a-Q",
-        "combiner": "l5_gal_combiner",
-        "search": "l5_gal_search",
-        "t_rec": 1e-3,
-        "peel": True,
-    },
-    {
-        "tag": "E",
-        "band": "low",
-        "col": "E5aI",
-        "name": "Galileo E5a-I (data, F/NAV)",
-        "combiner": "l5_e5a_i_combiner",
-        "search": None,
-        "t_rec": 1e-3,
-        "peel": False,
-    },
-    {
-        "tag": "C",
-        "band": "high",
-        "col": "B1C",
-        "name": "BeiDou B1C",
-        "combiner": "l1_bds_combiner",
-        "search": "l1_bds_search",
-        "t_rec": 10e-3,
-        "peel": True,
-    },
-    {
-        "tag": "C",
-        "band": "high",
-        "col": "B1CD",
-        "name": "BeiDou B1C (data, B-CNAV1)",
-        "combiner": "l1_b1c_d_combiner",
-        "search": None,
-        "t_rec": 10e-3,
-        "peel": False,
-    },
-    {
-        "tag": "C",
-        "band": "low",
-        "col": "B2a",
-        "name": "BeiDou B2a",
-        "combiner": "l5_bds_combiner",
-        "search": "l5_bds_search",
-        "t_rec": 1e-3,
-        "peel": True,
-    },
-    {
-        "tag": "C",
-        "band": "low",
-        "col": "B2aD",
-        "name": "BeiDou B2a (data, B-CNAV2)",
-        "combiner": "l5_b2a_d_combiner",
-        "search": None,
-        "t_rec": 1e-3,
-        "peel": False,
-    },
-]
-
-# ---------------------------------------------------------------------------
-# Signal-list discovery from kotekan's running /config (the swap-proof path).
-#
-# The hardcoded UNIFIED_SIGNALS above needed a hand-edit on every band swap. Instead we read the
-# live merged config and reconstruct the table. Sources, all authoritative and per-chain:
-#   * the 13 `cudaGnssTrack` commands (nested in the per-band `cudaProcess` stages) -- each carries
-#     a seed_endpoint `/<chain>_track/set_seeds` (-> the combiner `<chain>_combiner`), the chain's
-#     real `signal` (None on a primary chain -> inherits, so we fall back to its search stage), and
-#     a per-chain `peel` flag.
-#   * the `GnssChannelizedSearch` stages -- `<chain>_search`: the acquired chains' signal, and the
-#     "is this chain acquired vs derived" flag (a derived data/pilot sibling has no search).
-# band + t_rec come from the signal descriptor (parsed from gnssSignal.hpp, the C++ source of
-# truth), so a signal newly added there flows through with no python edit. Only the display
-# labels (tag/column/full-name) are genuine presentation -- SIG_DISPLAY, with a derived fallback.
-
-# Presentation metadata per signal id: (viewer tag, short column label, full name). The tag is the
-# satellite-series key (tag+prn) across every band -- GPS L1C is "L" not "G" so it stays a distinct
-# series from C/A. Everything else about a signal is discovered; a signal absent here still renders
-# via _display_for()'s derived fallback, so this table only prettifies -- it is not required.
-SIG_DISPLAY = {
-    "GPS_L1CA": ("G", "CA", "GPS L1 C/A"),
-    "GPS_L1C_P": ("L", "L1C", "GPS L1C-P"),
-    "GPS_L2C_CM": ("G", "CM", "GPS L2C-CM"),
-    "GPS_L2C_CL": ("G", "CL", "GPS L2C-CL (pilot)"),
-    "GPS_L5_Q": ("G", "Q", "GPS L5-Q"),
-    "GPS_L5_I": ("G", "I", "GPS L5-I (data, CNAV)"),
-    "GAL_E1C": ("E", "E1C", "Galileo E1-C"),
-    "GAL_E1B": ("E", "E1B", "Galileo E1-B (data, I/NAV)"),
-    "GAL_E5A_Q": ("E", "E5a", "Galileo E5a-Q"),
-    "GAL_E5A_I": ("E", "E5aI", "Galileo E5a-I (data, F/NAV)"),
-    "GAL_E5B_Q": ("E", "E5b", "Galileo E5b-Q (pilot)"),
-    "GAL_E5B_I": ("E", "E5bI", "Galileo E5b-I (data, I/NAV)"),
-    "BDS_B1C_P": ("C", "B1C", "BeiDou B1C"),
-    "BDS_B1C_D": ("C", "B1CD", "BeiDou B1C (data, B-CNAV1)"),
-    "BDS_B2A_P": ("C", "B2a", "BeiDou B2a"),
-    "BDS_B2A_D": ("C", "B2aD", "BeiDou B2a (data, B-CNAV2)"),
-    "BDS_B2B_I": ("C", "B2b", "BeiDou B2b (data, B-CNAV3)"),
-    # Signals added after this table was last swept -- without a row each renders with its raw
-    # id and a one-letter column ("D"), which reads as a bug in the table rather than an
-    # omission in it.
-    "GPS_L1C_D": (
-        "L",
-        "L1CD",
-        "GPS L1C-D (data, CNAV-2) -- carrier UNMODULATED, see notes",
-    ),
-    "GAL_E6_C": ("E", "E6C", "Galileo E6-C (pilot)"),
-    "GAL_E6_B": ("E", "E6B", "Galileo E6-B (data, HAS)"),
-    "BDS_B1I": ("C", "B1I", "BeiDou B1I (legacy, D1)"),
-    "BDS_B3I": ("C", "B3I", "BeiDou B3I (legacy, D1)"),
-    "BDS_B2I": ("C", "B2I", "BeiDou B2I (legacy BDS-2, D1)"),
-    "GLO_L3OC_P": ("R", "L3OC", "GLONASS L3OC-p (pilot)"),
-    "GLO_L3OC_D": ("R", "L3OCd", "GLONASS L3OC-d (data)"),
-}
+# Signal-id prefix -> constellation letter; main() backfills each row's "sys" with it.
 _SYS_TAG = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
-
-
-def _display_for(sigid):
-    """(tag, col, name) for a signal id -- SIG_DISPLAY if known, else derived from the id."""
-    if sigid in SIG_DISPLAY:
-        return SIG_DISPLAY[sigid]
-    pre = sigid.split("_", 1)[0]
-    tag = _SYS_TAG.get(pre, (pre[:1] or "?"))
-    col = sigid.split("_")[-1]
-    return (tag, col, sigid)
-
 
 # The three column groups. The page shows them as High/Mid/Low (BAND_LABEL in
 # app/panels/gps_table.js and app/panels/decode_health.js).
@@ -1073,56 +787,10 @@ def _band_of(carrier_hz):
     return "low"
 
 
-def _signal_descriptors():
-    """Parse gnssSignal.hpp -> {sigid: (carrier_hz, code_period_s)}.
-
-    That C++ table is the single source of truth for every signal's sky carrier and primary-code
-    period, so parsing it here means a signal added there (e.g. Galileo E5b) supplies its own
-    band + record period with no edit in this file. Empty dict if the header can't be found ->
-    the caller drops back to the static table.
-    """
-    here = os.path.dirname(os.path.abspath(__file__))
-    cands = [
-        os.path.normpath(os.path.join(here, "../../../lib/stages/gnss/gnssSignal.hpp")),
-        os.path.normpath(
-            os.path.join(here, "../../../../lib/stages/gnss/gnssSignal.hpp")
-        ),
-    ]
-    text = None
-    for p in cands:
-        try:
-            with open(p) as f:
-                text = f.read()
-            break
-        except OSError:
-            continue
-    out = {}
-    if not text:
-        return out
-    # Each descriptor initialiser begins:  "NAME", <carrier_hz>, <chip_rate>, <code_len>, <period>,
-    num = r"[0-9][0-9.eE+-]*"
-    pat = re.compile(
-        r'"([A-Z0-9_]+)"\s*,\s*(%s)\s*,\s*%s\s*,\s*[0-9]+\s*,\s*(%s)' % (num, num, num)
-    )
-    for m in pat.finditer(text):
-        try:
-            out[m.group(1)] = (float(m.group(2)), float(m.group(3)))
-        except ValueError:
-            pass
-    return out
-
-
 def discover_broker_chains(host, port, timeout=3.0):
     """Ask a BROKER publisher what chains it is actually running (task #27 M6).
 
-    Returns the viewer's chain dicts, or None on any failure so the caller keeps its
-    existing behaviour.
-
-    WHY THIS EXISTS. discover_signals() below reconstructs the signal table from KOTEKAN's
-    /config, which a broker publisher does not serve -- so a viewer pointed at a broker port
-    silently fell back to the static airspy table and polled stage names that have never
-    existed on CHORD (gal_search, gal_combiner, airspy_in). The symptom reaching the user
-    was a CORS error, which is three layers away from the cause.
+    Returns the viewer's chain dicts, or None on any failure.
 
     The broker knows every chain it runs, its constellation, its band and its record length,
     because those came from lib/stages/gnss/gnssSignal.hpp. Asking IT is both simpler and
@@ -1193,121 +861,6 @@ def discover_broker_chains(host, port, timeout=3.0):
     return out or None
 
 
-def discover_signals(host, rest_port, timeout=3.0):
-    """Reconstruct the UNIFIED_SIGNALS table from kotekan's running /config. Returns the list, or
-    None on any failure (fetch/parse/empty) so main() keeps the static UNIFIED_SIGNALS fallback."""
-    import urllib.request
-
-    # --kotekan-host defaults to 0.0.0.0 (a *bind* address); reuse it as a connect target only
-    # after mapping the wildcard to loopback.
-    if host in ("0.0.0.0", "", "::"):
-        host = "127.0.0.1"
-    url = "http://%s:%d/config" % (host, rest_port)
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:
-            cfg = json.load(r)
-    except Exception as e:  # noqa: BLE001 -- any failure -> fallback, never fatal
-        log_.warning(
-            "signal discovery: /config fetch failed (%s); using static table", e
-        )
-        return None
-
-    searches = {}  # stage name -> signal (acquired chains only)
-    tracks = []  # (chain, signal_or_None, peel_bool) in config order
-
-    def walk(node):
-        if isinstance(node, dict):
-            for name, v in node.items():
-                if isinstance(v, dict):
-                    kind = v.get("kotekan_stage")
-                    if kind == "GnssChannelizedSearch":
-                        searches[name] = v.get("signal")
-                    elif kind == "cudaProcess":
-                        for cm in v.get("commands", []):
-                            if (
-                                isinstance(cm, dict)
-                                and cm.get("name") == "cudaGnssTrack"
-                            ):
-                                m = re.match(
-                                    r"/([A-Za-z0-9_]+)_track/set_seeds$",
-                                    cm.get("seed_endpoint") or "",
-                                )
-                                if m:
-                                    tracks.append(
-                                        (
-                                            m.group(1),
-                                            cm.get("signal"),
-                                            bool(cm.get("peel")),
-                                        )
-                                    )
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    try:
-        walk(cfg)
-    except Exception as e:  # noqa: BLE001
-        log_.warning("signal discovery: config walk failed (%s); using static table", e)
-        return None
-    if not tracks:
-        log_.warning(
-            "signal discovery: no cudaGnssTrack commands in /config; using static table"
-        )
-        return None
-
-    desc = _signal_descriptors()
-    band_rank = {b: i for i, b in enumerate(BAND_ORDER)}
-    tag_rank = {"G": 0, "L": 1, "E": 2, "C": 3, "R": 4}
-    rows = []
-    for chain, sig, peel in tracks:
-        search_stage = chain + "_search"
-        sigid = sig or searches.get(search_stage)
-        if not sigid:
-            log_.warning(
-                "signal discovery: chain %s has no resolvable signal; skipping", chain
-            )
-            continue
-        carrier, period = desc.get(sigid, (None, None))
-        tag, col, name = _display_for(sigid)
-        rows.append(
-            {
-                "tag": tag,
-                # ★ The CONSTELLATION this signal's satellite belongs to, which is NOT always the
-                # display tag. "L" (GPS L1C) is a synthetic tag invented so L1C keeps a distinct
-                # SIGNAL series from C/A on the same PRN -- but the bird is a GPS bird. The client
-                # keys satellite ROWS by sys and signal COLUMNS by tag, so a Block III satellite
-                # gets ONE row carrying both CA and L1C, which is the entire premise of the unified
-                # viewer ("one satellite per row"). Keying rows by tag split it into G20 and L20.
-                "sys": _SYS_TAG.get(sigid.split("_", 1)[0], tag),
-                "band": _group_of(carrier, sigid),
-                "col": col,
-                "name": name,
-                "sigid": sigid,
-                "combiner": chain + "_combiner",
-                # A derived data/pilot sibling has no search stage -> no SNR cell in the table.
-                "search": search_stage if search_stage in searches else None,
-                "t_rec": period if period else 1e-3,
-                "peel": peel,
-            }
-        )
-
-    # Column order: band (L1<L2<L5), then constellation (G<L<E<C<R), then acquired-before-derived.
-    rows.sort(
-        key=lambda s: (
-            band_rank.get(s["band"], 9),
-            tag_rank.get(s["tag"], 9),
-            0 if s["search"] else 1,
-        )
-    )
-    log_.info(
-        "signal discovery: %d chains from /config -> %s",
-        len(rows),
-        ", ".join("%s/%s" % (r["band"], r["sigid"]) for r in rows),
-    )
-    return rows
-
-
 def _gps_signal_capability():
     """{sigid: [PRNs that BROADCAST it]} for the GPS signals in UNIFIED_SIGNALS.
 
@@ -1369,105 +922,53 @@ def _gps_signal_capability():
 
 
 class WsPortResource(resource.Resource):
-    """``GET /wsport`` -> ``{"ws_port": N, "band": .., "chains": [..]}`` for THIS server.
+    """``GET /wsport`` -> ``{"ws_port": N}`` for THIS server, plus the signal inventory when
+    --unified.
 
     The browser loads the page from one server's http_port but must open the WebSocket on the
-    SAME server's ws_port -- and http->ws is not a fixed offset across bands (L1 8080/8539,
-    L2C 8081/8639). The client used to hardcode 8539, so every non-L1 viewer connected to L1's
-    WebSocket and received L1's kotekan rest_port (12048) -> cross-origin failures against the
-    wrong kotekan. The client now fetches this (same-origin, so it hits the right server) and
-    connects to the port it returns. It ALSO carries the band's constellation display defs
-    (:data:`BAND_CHAINS`, filtered to --gps-constellations) so the sky legend names the right
-    signal for this band.
+    SAME server's ws_port, so the client fetches this (same-origin, so it hits the right
+    server) and connects to the port it returns.
     """
 
     isLeaf = True
 
-    def __init__(
-        self,
-        ws_port,
-        band="l1",
-        consts="G,E,C",
-        stage_prefix="",
-        unified=False,
-        broker_chains=None,
-    ):
+    def __init__(self, ws_port, unified=False, broker_chains=None):
         resource.Resource.__init__(self)
         self.ws_port = ws_port
-        self.band = band
         self.unified = unified
-        # UNIFIED: advertise the whole signal inventory. The client
-        # keys satellites by tag+prn across every band and polls every combiner here. `chains`
-        # is still emitted (the sky legend + per-constellation colours read it), one entry per
-        # CONSTELLATION rather than per band.
-        if unified:
-            # BROKER-DISCOVERED INVENTORY WINS. In unified mode the client draws from
-            # `signals` (a sub-table per constellation, a column per RF band), not from
-            # `chains` -- so pointing the chain discovery at `chains` alone left the panel
-            # rendering the static AIRSPY inventory while claiming to be unified. Feed the
-            # live chains in here too.
-            if broker_chains:
-                self.signals = [dict(c) for c in broker_chains]
-            else:
-                self.signals = [dict(s) for s in UNIFIED_SIGNALS]
-            # Attach the transmitting-PRN list per signal so the table can say
-            # "not transmitted" instead of "not detected". Computed once here (cheap: one
-            # cached-file parse), empty when unavailable -> client keeps today's behaviour.
-            self.capability = _gps_signal_capability()
-            _legend = [
-                {"tag": "G", "name": "GPS", "color": "#4d9de0"},
-                {"tag": "E", "name": "Galileo", "color": "#e8923c"},
-                {"tag": "C", "name": "BeiDou", "color": "#d64550"},
-                # GLONASS (2026-08-04): violet, distinct from the G/E/C palette and
-                # from the green the synthetic "L" (GPS L1C) tag uses. PRNs here are
-                # orbital SLOT numbers, which is what the L3OC code index turned out
-                # to be -- so tag+prn keys GLONASS satellites the same way as the rest.
-                {"tag": "R", "name": "GLONASS", "color": "#9b6fd6"},
-            ]
-            # Only the constellations actually being tracked: an empty sub-table for a
-            # constellation this instrument cannot see reads as "nothing detected" rather
-            # than "not configured", which is the same confusion the static table caused.
-            if broker_chains:
-                _live = {c["tag"] for c in broker_chains}
-                _legend = [g for g in _legend if g["tag"] in _live]
-            self.chains = _legend
+        if not unified:
             return
-        tags = [t.strip() for t in consts.split(",") if t.strip()]
-        table = BAND_CHAINS.get(band, BAND_CHAINS["l1"])
-        # EXPLICIT stage names per chain: a merged multi-band instance prefixes its stages
-        # (l1_gps_combiner) and the browser must poll those. The client falls back to its old
-        # hardcoded spellings when absent (old server / new client and vice versa both work).
-        base = {
-            "G": ("gps_search", "gps_combiner"),
-            "E": ("gal_search", "gal_combiner"),
-            "C": ("bds_search", "bds_combiner"),
-            "L": (
-                "l1c_search",
-                "l1c_combiner",
-            ),  # GPS L1C-P: 4th L1 chain, synthetic tag
-            # GLONASS L3OC is a Shape-A primary: its chain is labelled `constellation: gps`
-            # in gnss_node.yaml so it keeps the un-prefixed gps_* stage names the primary
-            # broker needs, even though the SIGNAL is GLONASS. Hence gps_*, not glo_*.
-            "R": ("gps_search", "gps_combiner"),
-        }
+        # UNIFIED: advertise the whole signal inventory. The client keys satellites by
+        # tag+prn across every band and polls every combiner here; it draws the table from
+        # `signals` (a sub-table per constellation, a column per RF band). `chains` is the
+        # sky legend + per-constellation colours, one entry per CONSTELLATION.
+        self.signals = [dict(c) for c in broker_chains or []]
+        # Attach the transmitting-PRN list per signal so the table can say
+        # "not transmitted" instead of "not detected". Computed once here (cheap: one
+        # cached-file parse), empty when unavailable -> client keeps today's behaviour.
+        self.capability = _gps_signal_capability()
+        _legend = [
+            {"tag": "G", "name": "GPS", "color": "#4d9de0"},
+            {"tag": "E", "name": "Galileo", "color": "#e8923c"},
+            {"tag": "C", "name": "BeiDou", "color": "#d64550"},
+            # GLONASS (2026-08-04): violet, distinct from the G/E/C palette. PRNs here are
+            # orbital SLOT numbers, which is what the L3OC code index turned out to be --
+            # so tag+prn keys GLONASS satellites the same way as the rest.
+            {"tag": "R", "name": "GLONASS", "color": "#9b6fd6"},
+        ]
+        # Only the constellations actually being tracked: an empty sub-table for a
+        # constellation this instrument cannot see reads as "nothing detected" rather
+        # than "not configured".
         if broker_chains:
-            # WHAT IS RUNNING BEATS WHAT THE TABLE SAYS. One entry per live broker chain,
-            # every constellation, one viewer instance, one port.
-            self.chains = [dict(c) for c in broker_chains]
-            return
-        self.chains = []
-        for c in table:
-            if c["tag"] not in tags:
-                continue
-            c = dict(c)
-            se, co = base[c["tag"]]
-            c["search"], c["combiner"] = stage_prefix + se, stage_prefix + co
-            self.chains.append(c)
+            _live = {c["tag"] for c in broker_chains}
+            _legend = [g for g in _legend if g["tag"] in _live]
+        self.chains = _legend
 
     def render_GET(self, request):
         request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
-        reply = {"ws_port": self.ws_port, "band": self.band, "chains": self.chains}
+        reply = {"ws_port": self.ws_port}
         if self.unified:
+            reply["chains"] = self.chains
             reply["unified"] = True
             reply["signals"] = self.signals
             reply["capability"] = self.capability  # {sigid: [transmitting PRNs]}
@@ -1497,25 +998,11 @@ class GpsSkyResource(resource.Resource):
     isLeaf = True
 
     def __init__(
-        self,
-        lat,
-        lon,
-        alt,
-        mask_deg,
-        consts="G,E,C",
-        glonass_sigids=None,
-        broker=(None, None),
+        self, lat, lon, alt, mask_deg, glonass_sigids=None, broker=(None, None)
     ):
         resource.Resource.__init__(self)
         self.lat, self.lon, self.alt, self.mask_deg = lat, lon, alt, mask_deg
         self._broker = broker  # (host, port) of the broker's publisher
-        # Only serve the constellations this band actually tracks: L1 tri-band = G,E,C (all share
-        # 1575.42); L2C / L5 are GPS-only, so showing Galileo/BeiDou there is misleading (they are
-        # not even in this band). Filter the class table to the requested tags, order preserved.
-        want = [t.strip() for t in consts.split(",") if t.strip()]
-        self.CONSTELLATIONS = tuple(
-            c for c in type(self).CONSTELLATIONS if c[0] in want
-        )
         # The GLONASS signals actually running (sigids, e.g. GLO_L2OF / GLO_L3OC_P), so the R sky
         # layer can filter to what ANY of them can track rather than to one signal's capability.
         # None/empty -> no per-signal filter (show every GLONASS sat).
@@ -1524,16 +1011,13 @@ class GpsSkyResource(resource.Resource):
         self._sats = None  # cached {prn: EarthSatellite} (TLE fallback)
         # (the parsed-BRDC cache that used to live here is gone: the broker serves the sky
         #  now, so this process neither parses nor fetches ephemeris -- see _brdc_skypos)
-        self._l1c_capable = None  # cached set of L1C-capable PRNs (GPS III)
-        self._l1c_capable_t = None  # monotonic s of last capability fetch
         self._glo_capable = None  # cached set of GLONASS slots any running R
         self._glo_capable_t = None  # signal can track (union); None = no filter
         self._last_compute = None  # monotonic s of last attempt
         self._refreshing = False
 
-    # Viewer tag -> ephemeris system letter. 'L' (GPS L1C) is the same GPS birds as 'G',
-    # so it reuses the GPS positions; there is no separate 'L' system in the ephemeris.
-    _TAG_SYS = {"G": "G", "E": "E", "C": "C", "L": "G"}
+    # Viewer tag -> ephemeris system letter.
+    _TAG_SYS = {"G": "G", "E": "E", "C": "C"}
 
     def _need_refresh(self):
         if self.lat is None or self.lon is None:
@@ -1549,11 +1033,6 @@ class GpsSkyResource(resource.Resource):
         ("G", None),  # None -> gps_beamtrack.DEFAULT_TLE_URL (gps-ops)
         ("E", "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"),
         ("C", "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"),
-        # ⚠️ NO "L" LAYER. GPS L1C is a synthetic SIGNAL tag on GPS birds, not a constellation:
-        # drawing it here put a second marker on top of every L1C-capable GPS satellite, at
-        # identical az/el. (It was masked for a while because --unified hardcoded the sky to
-        # "G,E,C"; deriving that list correctly is what exposed the duplicates.) The sky draws
-        # one marker per SATELLITE; L1C's presence shows up as a column in the detections table.
         ("R", "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"),
     )
 
@@ -1562,7 +1041,7 @@ class GpsSkyResource(resource.Resource):
     # integrated by Runge-Kutta rather than a Keplerian element set, so there is nothing for
     # sat_pos_clk to work with. 'R' therefore comes from TLE even when BRDC is healthy --
     # see _compute, which merges the two sources rather than choosing between them.
-    _BRDC_TAGS = frozenset(("G", "E", "C", "L"))
+    _BRDC_TAGS = frozenset(("G", "E", "C"))
 
     def _compute(self):
         """Runs in a worker thread. PRIMARY: broadcast-ephemeris (BRDC) geometry via predict_all
@@ -1592,9 +1071,8 @@ class GpsSkyResource(resource.Resource):
 
     def _glonass_capable_set(self):
         """Cached set of GLONASS SLOTS trackable by ANY GLONASS signal we are running -- the
-        UNION of each running R signal's capability. This is the R analogue of _l1c_capable_set,
-        but it MUST be a union, not one signal's set, because the R sky layer aggregates every
-        GLONASS signal onto one marker per satellite.
+        UNION of each running R signal's capability. It MUST be a union, not one signal's set,
+        because the R sky layer aggregates every GLONASS signal onto one marker per satellite.
 
         ★ WHY THE UNION MATTERS (the bug this fixes, 2026-08-04): L3OC is GLONASS-K only (7 sats)
         while L2OF is on EVERY satellite (~26 with a known channel). Filtering the whole R sky to
@@ -1639,32 +1117,6 @@ class GpsSkyResource(resource.Resource):
         self._glo_capable = union or None
         self._glo_capable_t = time.monotonic()
         return self._glo_capable
-
-    def _l1c_capable_set(self):
-        """Cached set of PRNs whose GPS block actually broadcasts L1C (GPS III), from the live
-        Celestrak block names -- so the 'L' (L1C) sky layer shows only birds that can transmit it,
-        not every visible GPS sat (older blocks would sit silent, looking like failed L1C locks).
-        None on failure / unknown => no filter (show all GPS under L, the prior behavior)."""
-        if (
-            self._l1c_capable_t is not None
-            and (time.monotonic() - self._l1c_capable_t) < 3600.0
-        ):
-            return self._l1c_capable
-        try:
-            import gps_beamtrack as bt
-
-            caps = bt.signal_capable_prns("GPS_L1C_P")
-            # signal_capable_prns returns ALL PRNs when the signal is unknown / on every sat;
-            # a near-full set carries no information, so treat it as "don't filter".
-            self._l1c_capable = set(caps) if caps and len(caps) < 32 else None
-        except Exception as e:
-            log_.warning(
-                "gps_sky: L1C capability set unavailable (%s); showing all GPS under L",
-                e,
-            )
-            self._l1c_capable = None
-        self._l1c_capable_t = time.monotonic()
-        return self._l1c_capable
 
     # Rows older than this are refused rather than drawn. A broker whose prediction has
     # frozen must read as "no sky", not as satellites standing still -- the same lesson as the
@@ -1717,7 +1169,6 @@ class GpsSkyResource(resource.Resource):
         by_sys = {}
         for x in fresh:
             by_sys.setdefault(x.get("const"), []).append(x)
-        cap_L = self._l1c_capable_set()
         sats = []
         for tag in want:
             sysc = self._TAG_SYS.get(tag)
@@ -1725,8 +1176,6 @@ class GpsSkyResource(resource.Resource):
                 continue
             for x in sorted(by_sys.get(sysc, []), key=lambda r: r["prn"]):
                 p = int(x["prn"])
-                if tag == "L" and cap_L is not None and p not in cap_L:
-                    continue  # 'L' = L1C: only GPS III birds actually transmit it
                 sats.append(
                     {
                         "prn": p,
@@ -1750,7 +1199,6 @@ class GpsSkyResource(resource.Resource):
                     self._sats[tag] = load_gps_satellites(url or DEFAULT_TLE_URL)
                 except Exception as e:
                     log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
-        cap_L = self._l1c_capable_set()
         cap_R = self._glonass_capable_set()
         sats = []
         for tag, by_prn in self._sats.items():
@@ -1761,7 +1209,6 @@ class GpsSkyResource(resource.Resource):
                 {"prn": p, "const": tag, "az": round(az, 2), "el": round(el, 2)}
                 for p, (az, el) in sorted(pos.items())
                 if el >= self.mask_deg
-                and not (tag == "L" and cap_L is not None and p not in cap_L)
                 and not (tag == "R" and cap_R is not None and p not in cap_R)
             ]
         return sats
@@ -2081,47 +1528,25 @@ def main():
 
     gg = ap.add_argument_group("GPS live-status panel")
     gg.add_argument(
-        "--gps",
-        action="store_true",
-        help="Enable the GPS sky/locks panel. Auto-enabled when LAT/LON "
-        "are known (CLI --lat/--lon or env LAT/LON).",
-    )
-    gg.add_argument(
         "--lat",
         type=float,
         default=None,
-        help="Observer latitude (deg) for sky positions; " "default env LAT.",
+        help="Observer latitude (deg) for sky positions.",
     )
     gg.add_argument(
         "--lon",
         type=float,
         default=None,
-        help="Observer longitude (deg) for sky positions; " "default env LON.",
+        help="Observer longitude (deg) for sky positions.",
     )
     gg.add_argument(
-        "--alt",
-        type=float,
-        default=None,
-        help="Observer altitude (m); default env ALT, else 0.",
+        "--alt", type=float, default=0.0, help="Observer altitude (m); default 0.",
     )
     gg.add_argument(
         "--gps-mask-deg",
         type=float,
         default=5.0,
         help="Elevation mask (deg) for the sky plot (default 5).",
-    )
-    gg.add_argument(
-        "--gps-search-stage",
-        default="gps_search",
-        help="kotekan GnssChannelizedSearch stage name (get_detections); "
-        "default 'gps_search' (the browser alias-resolves it to the bare "
-        "'search' on configs that still use that spelling).",
-    )
-    gg.add_argument(
-        "--gps-combiner-stage",
-        default="gps_combiner",
-        help="kotekan GnssCoherentCombiner stage name (get_status); "
-        "default 'gps_combiner' (alias-resolved to 'combiner' as above).",
     )
     gg.add_argument(
         "--decode-health-dir",
@@ -2138,41 +1563,11 @@ def main():
         "self-survey reads; served under /decode_health's pvt field. Unset = no survey.",
     )
     gg.add_argument(
-        "--gps-constellations",
-        default="G,E,C",
-        help="constellations to show on the sky plot (G=GPS, E=Galileo, C=BeiDou). "
-        "L1 tri-band = G,E,C; L2C = G; L5 = G,E,C (E5a/B2a).",
-    )
-    gg.add_argument(
-        "--band",
-        default="l1",
-        choices=["l1", "l2c", "l5"],
-        help="which frequency band this viewer serves -> the per-constellation "
-        "legend names + record periods (t_rec for C/N0). Delivered to the client "
-        "via /wsport so the sky legend reads the RIGHT signal (e.g. L5 shows "
-        "'GPS L5 / Galileo E5a / BeiDou B2a', not the L1 defaults). Default l1.",
-    )
-    gg.add_argument(
-        "--stage-prefix",
-        default="",
-        help="Prefix on every kotekan GNSS stage name (merged multi-band instance: "
-        "'l1_'/'l2c_'/'l5_'; see gen_3band_config.py). Applied to the "
-        "search/combiner/airspy stage args AND carried per-chain in /wsport.",
-    )
-    gg.add_argument(
         "--unified",
         action="store_true",
         help="UNIFIED viewer: one page, one row per satellite, every signal it "
-        "carries (L1 C/A, L1C, L2C-CM, L2C-CL, L5, E1C/E5a, B1C/B2a) shown "
-        "side by side, polling ALL band-prefixed combiners on the merged "
-        "kotekan. /wsport carries the full signal inventory (UNIFIED_SIGNALS). "
-        "Without it, the viewer serves its single --band as before.",
-    )
-    gg.add_argument(
-        "--gps-airspy-stage",
-        default="airspy_in",
-        help="kotekan airspy stage name for the ADC noise readout "
-        "(adcstat); default 'airspy_in'.",
+        "carries shown side by side. /wsport carries the signal inventory the "
+        "broker at --kotekan-rest-port reports (/get_chains).",
     )
     gg.add_argument(
         "--no-power-stream",
@@ -2180,38 +1575,11 @@ def main():
         help="Run GPS-only: don't wait for / serve a kotekan power "
         "stream (no waterfall). The lean live config uses this so the "
         "GPS panel works without a full-rate diagnostic PFB. Implies "
-        "--gps.",
+        "the GPS panel.",
     )
     args = ap.parse_args()
-    if args.stage_prefix:
-        args.gps_search_stage = args.stage_prefix + args.gps_search_stage
-        args.gps_combiner_stage = args.stage_prefix + args.gps_combiner_stage
-        args.gps_airspy_stage = args.stage_prefix + args.gps_airspy_stage
-
-    # Resolve the observer site from CLI, falling back to the env that
-    # run_live.sh already exports for the broker's almanac assist. The site only
-    # *positions* the sky plot; the panel is gated on the explicit --gps flag so
-    # a non-GPS viewer launched from a shell that happens to have LAT/LON in its
-    # environment never sprouts a stray GPS card. (live_l1.yaml passes --no-power-stream,
-    # which implies --gps.)
-    if args.lat is None and os.environ.get("LAT"):
-        args.lat = float(os.environ["LAT"])
-    if args.lon is None and os.environ.get("LON"):
-        args.lon = float(os.environ["LON"])
-    if args.alt is None:
-        args.alt = float(os.environ.get("ALT", 0.0))
-    # GPS-only mode is meaningless without the panel, so it implies --gps.
-    # --unified is a GPS-first page across all constellations: force the panel on and the
-    # sky to the full sky (the RF band selector owns which spectrum shows).
-    if args.unified:
-        args.gps = True
-        # DERIVED, not a literal: "the full sky" is whatever constellations GpsSkyResource
-        # knows how to place. This was hardcoded "G,E,C" and had already gone stale twice over
-        # -- it silently dropped the synthetic "L" (GPS L1C) layer, and would have dropped
-        # GLONASS the day it came up, on a page whose whole point is showing every signal at
-        # once. Adding a constellation to CONSTELLATIONS is now enough.
-        args.gps_constellations = ",".join(t for t, _ in GpsSkyResource.CONSTELLATIONS)
-    args._gps_enabled = bool(args.gps or args.no_power_stream or args.unified)
+    # The GPS panel (/gps_sky, /decode_health) runs on a GPS-only or unified page.
+    gps_enabled = args.no_power_stream or args.unified
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -2219,45 +1587,23 @@ def main():
     )
     log.startLogging(sys.stdout, setStdout=False)
 
-    # SWAP-PROOF SIGNAL LIST: rebuild UNIFIED_SIGNALS from kotekan's running /config so a
-    # band/constellation swap in gnss_node.yaml needs no viewer edit. Falls back to the static
-    # literal if /config is unreachable (kotekan not up yet, wrong port, ...). Reassigning the
-    # module global is enough: _gps_signal_capability() and WsPortResource read it at call time.
-    # Done after logging is configured so the discovery summary lands in the viewer log.
-    # THE BROKER IS ASKED FIRST, and it is the better source of the two by construction:
-    # it reports the chains it is ACTUALLY RUNNING, with constellation, carrier, record
-    # length and whether a search feeds each -- while discover_signals() below INFERS the
-    # same table by pattern-matching kotekan's /config for `cudaGnssTrack` commands.
-    #
-    # That inference broke the day path A was retired (task #26, 2026-08-09). With the
-    # primary chain moved onto path B there are no cudaGnssTrack commands left to find, so
-    # discovery logged "using static table" and silently fell back to a hardcoded L5-only
-    # literal -- and Galileo E5b and BeiDou B2b, which the broker was publishing correctly
-    # and this very function was already discovering two hundred lines below, had NO COLUMNS
-    # in the table. Inferring the running configuration from the shape of an implementation
-    # detail is exactly the kind of coupling that breaks when the implementation moves;
-    # asking the process that owns the answer does not.
-    #
-    # discover_signals() stays as the fallback: it is the only source when pointed at a
-    # kotekan NODE rather than a broker (the airspy prototype, and any single-node debug
-    # session), which is a case the broker endpoint cannot serve at all.
-    _bchains = discover_broker_chains(args.kotekan_host, args.kotekan_rest_port)
+    # The signal list comes from the BROKER: it reports the chains it is ACTUALLY RUNNING,
+    # with constellation, carrier, record length and whether a search feeds each. Reassigning
+    # the module global is enough: _gps_signal_capability() reads it at call time. Done after
+    # logging is configured so the discovery summary lands in the viewer log.
+    _bchains = None
     if args.unified:
-        discovered = _bchains or discover_signals(
-            args.kotekan_host, args.kotekan_rest_port
-        )
-        if discovered:
+        _bchains = discover_broker_chains(args.kotekan_host, args.kotekan_rest_port)
+        if _bchains:
             global UNIFIED_SIGNALS
-            UNIFIED_SIGNALS = discovered
+            UNIFIED_SIGNALS = _bchains
             log_.info(
-                "signal table: %d row(s) from %s -- %s",
-                len(discovered),
-                "the BROKER" if _bchains else "kotekan /config",
-                ", ".join("%s/%s" % (r.get("band"), r.get("col")) for r in discovered),
+                "signal table: %d row(s) from the BROKER -- %s",
+                len(_bchains),
+                ", ".join("%s/%s" % (r.get("band"), r.get("col")) for r in _bchains),
             )
-        # Backfill "sys" (the satellite's real constellation) on whichever list we ended up
-        # with, so the static fallback behaves identically to the discovered one. Derived from
-        # the signal id's prefix where there is one, else the display tag.
+        # Backfill "sys" (the satellite's real constellation), derived from the signal id's
+        # prefix where there is one, else the display tag.
         for _s in UNIFIED_SIGNALS:
             _s.setdefault(
                 "sys",
@@ -2297,30 +1643,19 @@ def main():
     # "I edited the JS but the browser ignored me" trouble during development.
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
-    # ONE VIEWER, EVERY CONSTELLATION (task #27 M6). If the rest port is a BROKER publisher
-    # it can name its own chains; if it is a kotekan node it cannot, and we fall through to
-    # the band/constellation table exactly as before. Trying and falling back beats a flag,
-    # because the failure it replaces was SILENT: a viewer pointed at a broker port used to
-    # poll airspy-era stage names and report the result as a CORS error.
-    # _bchains was fetched once, up where the signal table is built -- re-asking here would
-    # be a second round trip for an answer we already have, and could disagree with it.
+    # ONE VIEWER, EVERY CONSTELLATION (task #27 M6): the broker publisher names its own
+    # chains. _bchains was fetched once, up where the signal table is built -- re-asking here
+    # would be a second round trip for an answer we already have, and could disagree with it.
     root.putChild(
         b"wsport",
-        WsPortResource(
-            args.ws_port,
-            args.band,
-            args.gps_constellations,
-            args.stage_prefix,
-            unified=args.unified,
-            broker_chains=_bchains,
-        ),
+        WsPortResource(args.ws_port, unified=args.unified, broker_chains=_bchains),
     )
 
     # GPS sky positions (az/el) for the live-status panel. gps_beamtrack lives
     # one dir up (python/scripts); add it to the path so the worker thread can
     # import it. Only stood up when the panel is enabled, so a plain radio-
     # astronomy run doesn't pull in skyfield / fetch TLEs.
-    if args._gps_enabled:
+    if gps_enabled:
         # python/scripts (parent of js_viewer) AND python/scripts/gnss -- the GNSS helpers
         # (gps_beamtrack et al.) moved into the gnss/ subpackage on 2026-07-14 and this
         # bare-name import is how the sky panel finds them. Missing it makes /gps_sky return
@@ -2346,7 +1681,6 @@ def main():
                 args.lon,
                 args.alt,
                 args.gps_mask_deg,
-                args.gps_constellations,
                 glonass_sigids=_glo_sigids,
                 broker=(args.kotekan_host, args.kotekan_rest_port),
             ),

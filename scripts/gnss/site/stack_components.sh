@@ -130,7 +130,7 @@ gnss_component() {
         GNSS_EXEC=("$GNSS_VENV/bin/python" -u livebeam_server.py
                    --no-power-stream --http-port "${GNSS_VIEWER_PORT:-8080}" --ws-port 8539
                    --kotekan-rest-port "${GNSS_BROKER_PORT:-12060}"
-                   $GNSS_SITE_LL --band l5 --unified
+                   $GNSS_SITE_LL --unified
                    --pvt-obs-globs "$GNSS_OBS_OUT/[gb]*_2026*.jsonl")
         ;;
 

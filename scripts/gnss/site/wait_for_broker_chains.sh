@@ -2,7 +2,7 @@
 # Block until the broker's chain inventory has SETTLED, for use as a systemd ExecStartPre.
 #
 # WHY: livebeam_server.py discovers the chain list ONCE at construction, with a 3 s timeout, and
-# silently falls back to a static single-band table when the fetch is short or fails. systemd's
+# serves whatever it got, or no chains at all, when the fetch is short or fails. systemd's
 # After= orders START, not READINESS, so under systemd the viewer raced the broker's warm-up and
 # cached whatever existed at that instant -- it came up showing 2 chains once and 1 chain the
 # next time, against the 8 the fleet runs. Started by hand, minutes after the broker, it had

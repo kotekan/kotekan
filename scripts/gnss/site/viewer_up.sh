@@ -19,13 +19,6 @@
 # record length and whether a search feeds it. So adding B2a to config/gnss_chains_chord.yaml
 # is the ONLY step -- the viewer picks it up on its next start with nothing edited here.
 #
-# ⚠️ DO NOT pass --gps-constellations / --gps-search-stage / --gps-combiner-stage. They feed
-# the static AIRSPY table (gal_search, gal_combiner, airspy_in), which is what a viewer
-# pointed at a broker port used to fall back to -- polling stage names that have never
-# existed on CHORD and surfacing it as a CORS error three layers from the cause. They are
-# still right for the airspy prototype and for pointing at a kotekan NODE, where /get_chains
-# does not answer and the old path runs unchanged.
-#
 # usage:  viewer_up.sh [extra livebeam_server args...]
 set -u
 K=/home/kvand/gnss/kotekan

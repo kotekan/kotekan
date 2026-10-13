@@ -115,10 +115,9 @@ class FleetPublisher:
                 # CHAIN SELECTION, two ways, because the consumers differ:
                 #   /get_status?chain=gps_l5   explicit, for anything we write
                 #   /gps_l5/get_status         a PATH SEGMENT naming a chain -- which is what
-                #                              the viewer already emits, since it builds
+                #                              the viewer emits, since it builds
                 #                              <base>/<stage>/<endpoint> and cannot add a
-                #                              query string. Point its --gps-combiner-stage at
-                #                              a chain id and it filters with no code change.
+                #                              query string.
                 # Neither given -> every chain, each row tagged. With ONE chain registered
                 # that is byte-identical to the old single-chain output plus the tag, so
                 # nothing that exists today has to change at once.
@@ -164,11 +163,7 @@ class FleetPublisher:
                         unknown = (asked, list(pub._order))
                     ids = [asked] if asked in pub._chains else list(pub._order)
                     if p.endswith("get_chains"):
-                        # DISCOVERY. The viewer's own discover_signals() reads kotekan's
-                        # /config, which a broker publisher does not serve -- so it fell
-                        # back to a static PROTOTYPE table and asked for stage names that
-                        # have never existed on CHORD (gal_search, gal_combiner,
-                        # airspy_in). The broker already knows every chain it runs, its
+                        # DISCOVERY. The broker knows every chain it runs, its
                         # constellation, band and record length; publishing that lets ONE
                         # viewer instance build its table from what is actually running.
                         body = json.dumps(

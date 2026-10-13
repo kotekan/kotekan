@@ -80,21 +80,6 @@ const MODES = {
 const MODE_ORDER = ["cn0", "cn0_kcoh", "q", "beam_amp", "beam_ph", "sig", "coh_s", "dop",
                     "snr", "peel"];
 
-// ICD minimum received power per TRACKED COMPONENT, as a C/N₀ floor with
-// N₀ = −204 dBW/Hz (290 K, lossless front end): C/N₀_min = P_min(dBW) + 204.
-// Component powers: IS-GPS-200 (L1 C/A −158.5; L2C composite −160 → CM half −163),
-// IS-GPS-705 (Q5 −157.9), Galileo OS SIS ICD (E1 total −157.25 → E1C pilot half
-// −160.3; E5a total −155.25 → Q pilot half −158.3), BDS-3 ICDs, MEO values (B1C
-// total −158.5 → pilot 3/4 −159.75; B2a total −155.5 → pilot half −158.5; IGSO
-// sats spec 1.8 dB lower). A healthy strong sat should sit AT or ABOVE the line
-// (specs are minima at 5° elevation); sitting 10+ dB under it at high elevation
-// is a chain pathology, not geometry.
-const CN0_BASELINE = {
-    l1:  {G: 45.5, E: 43.7, C: 44.2},
-    l2c: {G: 41.0},
-    l5:  {G: 46.1, E: 45.7, C: 45.5},
-};
-
 // Unified overlay: signal draw order (frequency-ascending, pilot after its data sibling) and a
 // distinct-per-trace palette. Colours are by POSITION among a sat's signals, not fixed per
 // signal, so any constellation's 2-5 signals stay visually separable.
@@ -102,12 +87,10 @@ const SIG_ORDER = {CA: 0, L1C: 1, E1C: 2, B1C: 3, B2b: 4, Q: 6, E5a: 7, B2a: 8};
 const SIG_PALETTE = ["#4d9de0", "#6fbf73", "#e8923c", "#c65d21", "#d64550", "#8e6fb0", "#39a0a0"];
 
 export class GpsAmpHistoryPanel {
-    constructor({app, target, feed}) {
-        this.app = app;
+    constructor({target, feed}) {
         this.feed = feed;
-        this.hist = new Map();   // key -> {t:[], cn0_coh:[], cn0:[], sig:[], coh_s:[], dop:[], snr:[], dr:[]}
-        this.meta = new Map();   // key -> {label, band, tag} (unified: one entry per sat+signal)
-        this.unified = false;
+        this.hist = new Map();   // key -> {t:[], cn0:[], sig:[], coh_s:[], dop:[], snr:[], ...}
+        this.meta = new Map();   // key -> {col} (one entry per sat+signal)
         this.selected = null;
         this.mode = "cn0";
         this._dirty = false;
@@ -115,10 +98,9 @@ export class GpsAmpHistoryPanel {
         // Signals the user has toggled OFF, by signal column ("E5a-Q", "E5b-Q", ...).
         // Kept by SIGNAL rather than by series key so the choice survives changing PRN --
         // "show me only E5a" is a viewing mode, not a per-satellite decision. Plotly's own
-        // legend click cannot do this job here: _redraw_unified calls Plotly.react on every
+        // legend click cannot do this job here: _redraw calls Plotly.react on every
         // feed tick with freshly built traces, which resets legend visibility a second later.
         this._hidden = new Set();
-        this._maxDr = 0;         // largest deep_records seen = the converged (~1 s) window
 
         const root = $("#" + target);
         root.css({display: "flex", flexDirection: "column", width: "100%", height: "100%",
@@ -177,20 +159,11 @@ export class GpsAmpHistoryPanel {
         // floor, i.e. the point is a LOWER BOUND. Kept as its own array so the plot can never
         // render a bound as a measurement (see the header note).
         return {t: [], cn0: [], cn0_kcoh: [], q: [], beam_amp: [], beam_ph: [], sig: [],
-                coh_s: [], dop: [], snr: [], dr: [], peel: [], bound: []};
+                coh_s: [], dop: [], snr: [], peel: [], bound: []};
     }
 
-    // Column group (high/mid/low) -> the CN0_BASELINE band key, which is a DIFFERENT
-    // taxonomy: the front-end names l1/l2c/l5, left as they are. The left-hand side was
-    // L1/L2/L5 until 2026-09-17, which made the two look like one thing. ⚠️ A miss here
-    // is silent -- the lookup below falls back to "l1", so every signal would quietly
-    // take the L1 C/N0 baseline rather than its own.
-    static BAND_KEY = {high: "l1", mid: "l2c", low: "l5"};
-
-    // Append one (metrics) sample to a history series, with dedup + ring trim. `src` is either
-    // a flat row (r.snr present) or a per-signal metrics object (r.deep_snr, snr absent).
+    // Append one per-signal metrics sample to a history series, with dedup + ring trim.
     _push(key, src, now, snr) {
-        if (src.dr > this._maxDr) this._maxDr = src.dr;
         if (!this.hist.has(key)) this.hist.set(key, this._blank());
         const h = this.hist.get(key);
         const n = h.t.length;
@@ -225,42 +198,30 @@ export class GpsAmpHistoryPanel {
         h.beam_amp.push(src.beam_amp != null ? src.beam_amp : null);
         h.beam_ph.push(src.beam_ph != null ? src.beam_ph : null);
         h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);
-        h.dr.push(src.dr || 0);
         h.peel.push(src.peel_db); h.bound.push(!!src.peel_bound);
         if (h.t.length > MAX_PTS) for (const k of Object.keys(h)) h[k].shift();
-        // Mark dirty when this series belongs to the SELECTED satellite. Unified keys are
+        // Mark dirty when this series belongs to the SELECTED satellite. Keys are
         // "G11|<signal>" while `selected` is the sat "G11", so compare the sat part -- else
         // the plot renders once (newPlot) and never react()s again (static after frame 1).
-        if ((this.unified ? key.split("|")[0] : key) === this.selected) this._dirty = true;
+        if (key.split("|")[0] === this.selected) this._dirty = true;
     }
 
-    _on_feed({sats, unified, signals}) {
-        this.unified = !!unified;
+    _on_feed({sats, signals}) {
         const now = new Date();
         for (const r of sats || []) {
-            if (this.unified) {
-                // One history series per (satellite, signal) -- a sat carries several.
-                for (const sg of signals || []) {
-                    if (sg.tag !== r.tag) continue;
-                    const m = r.sig_by && r.sig_by[sg.key];
-                    if (!m || !(m.sig > 0 || m.amp > 0 || m.cn0 != null)) continue;
-                    const key = r.id + "|" + sg.key;
-                    this.meta.set(key, {label: r.id + " · " + sg.col, col: sg.col,
-                                        band: GpsAmpHistoryPanel.BAND_KEY[sg.band] || "l1",
-                                        tag: r.tag});
-                    // Search SNR IS per-signal now: gps_feed stashes each detection's snr at
-                    // sig_by[key].snr and carries it onto the metrics object, precisely so
-                    // "strong in search, wrong downstream" stays visible. This passed null
-                    // instead, so the snr mode rendered an empty plot in unified mode -- the
-                    // only mode the viewer runs in. (undefined for a signal with no blind
-                    // acquisition at all, e.g. E5a/B2a, which is a genuine gap, not a zero.)
-                    this._push(key, m, now, m.snr != null ? m.snr : null);
-                }
-            } else {
-                // No despread this emit -> a GAP, not a zero. (A tracked-but-silent sat
-                // still reports sig 0 with a real dop; require SOME signal-side content.)
-                if (!(r.sig > 0 || r.amp > 0 || r.cn0 != null || r.snr != null)) continue;
-                this._push(r.id, r, now, r.snr);
+            // One history series per (satellite, signal) -- a sat carries several.
+            for (const sg of signals || []) {
+                if (sg.tag !== r.tag) continue;
+                const m = r.sig_by && r.sig_by[sg.key];
+                if (!m || !(m.sig > 0 || m.amp > 0 || m.cn0 != null)) continue;
+                const key = r.id + "|" + sg.key;
+                this.meta.set(key, {col: sg.col});
+                // Search SNR IS per-signal: gps_feed stashes each detection's snr at
+                // sig_by[key].snr and carries it onto the metrics object, precisely so
+                // "strong in search, wrong downstream" stays visible. (undefined for a signal
+                // with no blind acquisition at all, e.g. E5a/B2a, which is a genuine gap, not
+                // a zero.)
+                this._push(key, m, now, m.snr != null ? m.snr : null);
             }
         }
         this._sync_dropdown();
@@ -268,20 +229,16 @@ export class GpsAmpHistoryPanel {
     }
 
     // Keep the dropdown in sync with the series we've seen (sorted), preserving the selection.
-    // Unified keys are "G11|l2c_cl_combiner"; sort by constellation, PRN, then signal so a
-    // satellite's signals cluster (G11 · CA, G11 · CM, G11 · CL, ...).
+    // Keys are "G11|gps_l5"; sort by constellation then PRN.
     _sync_dropdown() {
-        // Unified: the selector picks a SATELLITE (G11); the plot overlays a trace per signal
-        // it carries. So dedup the sat|signal history keys down to distinct sat ids. Flat: the
-        // keys ARE sat ids.
+        // The selector picks a SATELLITE (G11); the plot overlays a trace per signal it
+        // carries. So dedup the sat|signal history keys down to distinct sat ids.
         const sat_of = k => k.split("|")[0];
-        const ids = this.unified
-            ? [...new Set([...this.hist.keys()].map(sat_of))]
-            : [...this.hist.keys()];
+        const ids = [...new Set([...this.hist.keys()].map(sat_of))];
         const prns = ids.sort((a, b) =>
             a[0] !== b[0] ? a[0].localeCompare(b[0])
                           : (parseInt(a.slice(1)) || 0) - (parseInt(b.slice(1)) || 0));
-        const label = k => k;   // sat id (unified) or sat id (flat) -- both plain
+        const label = k => k;
         const cur = this.sel.val();
         const have = new Set();
         this.sel.find("option").each(function () { have.add($(this).val()); });
@@ -305,26 +262,18 @@ export class GpsAmpHistoryPanel {
             this.sel.val(cur);
     }
 
-    // A selection ("G11") maps to its history series: unified = every signal key "G11|...";
-    // flat = the one key "G11".
+    // A selection ("G11") maps to its history series: every signal key "G11|...".
     _series_keys(id) {
-        if (!this.unified) return this.hist.has(id) ? [id] : [];
         return [...this.hist.keys()].filter(k => k.split("|")[0] === id);
     }
     _has(id) { return this._series_keys(id).length > 0; }
     _len(id) { return this._series_keys(id).reduce((n, k) => n + this.hist.get(k).t.length, 0); }
 
-    // 1σ error bar for sample i. Retired with the cn0_coh mode (its bars were derived from
-    // the deep significance); cn0_prompt ships its own split-half witness in the TABLE row
-    // instead. Kept as a hook so a future mode can define one.
-    _err(h, i) {                                        // eslint-disable-line no-unused-vars
-        return 0;
-    }
-
-    // Unified: overlay one trace per signal the selected satellite carries (CM vs CL vs L5...
-    // on one axis) -- the shared-knowledge comparison. Colour + legend by signal; the "thing
-    // to plot" dropdown picks the observable for all of them.
-    _redraw_unified() {
+    // Overlay one trace per signal the selected satellite carries (CM vs CL vs L5... on one
+    // axis) -- the shared-knowledge comparison. Colour + legend by signal; the "thing to plot"
+    // dropdown picks the observable for all of them.
+    _redraw() {
+        if (this.selected == null || !window.Plotly) return;
         const M = MODES[this.mode];
         const keys = this._series_keys(this.selected)
             .sort((a, b) => (SIG_ORDER[(this.meta.get(a) || {}).col] || 99)
@@ -380,135 +329,6 @@ export class GpsAmpHistoryPanel {
             this._plotted = true;
         } else if (this._dirty) {
             window.Plotly.react(this.plot, traces, layout,
-                {displayModeBar: false, responsive: true});
-        }
-        this._dirty = false;
-    }
-
-    _redraw() {
-        if (this.selected == null || !window.Plotly) return;
-        if (this.unified) return this._redraw_unified();
-        const h = this.hist.get(this.selected);
-        if (!h) return;
-        const M = MODES[this.mode];
-        const V = h[this.mode];
-
-        // Fresh arrays each render (Plotly.react diffs BY REFERENCE, so reusing the
-        // in-place buffers would make it skip the redraw).
-        //
-        // De-emphasize only LOW-SIGNIFICANCE SHORT-window emits, and only for the
-        // ladder-dependent observables: near the ~7σ nav-wipe floor the short rungs are
-        // extreme-value-inflated (spurious up-spikes), but a HIGH-significance short
-        // window is real signal -- the ladder legitimately rides 125-500 ms windows at
-        // 50-160σ. The incoherent/search/Doppler observables don't come off the ladder
-        // at all, so nothing is greyed there.
-        // The SECOND trace is "this point is qualified, not plain": de-emphasized short-window
-        // ladder emits for cn0_coh/sig, and floor-limited LOWER BOUNDS for peel. Same
-        // mechanism, opposite emphasis -- a bound is not junk, it is a real statement about
-        // the peel that simply cannot be read as an equality.
-        const ladder = (this.mode === "sig");
-        const isPeel = (this.mode === "peel");
-        const thr = 0.6 * (this._maxDr || 0);
-        const SIG_REAL = 20;
-        const T = h.t.slice(), Yf = new Array(V.length), Ys = new Array(V.length),
-              E = new Array(V.length);
-        let lastFull = -1, lastAny = -1;
-        for (let i = 0; i < V.length; i++) {
-            E[i] = this._err(h, i);
-            const v = (V[i] == null) ? null : V[i];
-            const isAlt = isPeel
-                ? !!h.bound[i]
-                : (ladder && this._maxDr > 0 && (h.dr[i] || 0) < thr
-                   && (h.sig[i] || 0) < SIG_REAL);
-            Yf[i] = isAlt ? null : v;
-            Ys[i] = isAlt ? v : null;
-            if (!isAlt && v != null) lastFull = i;
-            if (v != null) lastAny = i;
-        }
-
-        const n = V.length;
-        // For peel, the newest point is worth reporting even when it is a BOUND -- "≥ 31 dB"
-        // is the honest reading, and suppressing it as "no certified value" would hide the
-        // deepest peels (the residual is at the floor precisely when the peel worked best).
-        const iShow = (isPeel && lastAny > lastFull) ? lastAny : lastFull;
-        if (iShow >= 0) {
-            const v = V[iShow], e = E[iShow], sig = h.sig[iShow];
-            const ge = (isPeel && h.bound[iShow]) ? "≥&nbsp;" : "";
-            const tag = (iShow !== n - 1)
-                ? (isPeel ? ' · <span style="color:#aaa">not peeling now</span>'
-                          : ' · <span style="color:#aaa">short win / no value now</span>')
-                : '';
-            const err = M.errs && e ? ` ± ${e.toFixed(1)}` : "";
-            this._info.html(`${M.label} = ${ge}<b>${v.toFixed(this.mode === "coh_s" ? 3 : 1)}</b>`
-                + `${err}${M.unit}&nbsp;(${(sig || 0).toFixed(1)}σ)&nbsp;· ${n} pts` + tag);
-        } else if (n) {
-            this._info.html('<span style="color:#aaa">no certified value yet…</span>');
-        } else {
-            this._info.text("(no samples yet)");
-        }
-
-        // POINTS ONLY -- no connecting lines (see the header note).
-        const full = {
-            x: T, y: Yf, customdata: E, type: "scatter", mode: "markers",
-            marker: {size: 4, color: "#1f77b4"},
-            error_y: M.errs
-                ? {type: "data", array: E, visible: true,
-                   color: "rgba(31,119,180,0.35)", thickness: 1, width: 0}
-                : {visible: false},
-            hovertemplate: M.errs
-                ? `%{x|%H:%M:%S}<br>%{y:${M.fmt}} ± %{customdata:${M.fmt}}${M.unit}<extra></extra>`
-                : `%{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit}<extra></extra>`,
-        };
-        // Bounds get their OWN glyph -- open orange triangles pointing up, the direction the
-        // true value lies in. Greying them like a short-window emit would say "trust this
-        // less"; the right message is "trust this, but only as an inequality".
-        const shortWin = isPeel ? {
-            x: T, y: Ys, type: "scatter", mode: "markers",
-            marker: {size: 6, symbol: "triangle-up-open", color: "rgba(230,140,20,0.85)",
-                     line: {width: 1}},
-            hovertemplate: `%{x|%H:%M:%S}<br>≥ %{y:${M.fmt}}${M.unit} · residual at floor`
-                + `<extra></extra>`,
-        } : {
-            x: T, y: Ys, type: "scatter", mode: "markers",
-            marker: {size: 3, color: "rgba(150,150,150,0.45)"},
-            hovertemplate: `%{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit} · short window, low sig<extra></extra>`,
-        };
-        const layout = {
-            margin: {l: 56, r: 10, t: 6, b: 28},
-            xaxis: {type: "date", tickfont: {size: 10}, gridcolor: "#eee"},
-            yaxis: {title: {text: M.axis, font: {size: 11}},
-                    rangemode: M.zero ? "tozero" : "normal", tickfont: {size: 10},
-                    gridcolor: "#eee", zeroline: !!M.zero},
-            showlegend: false, paper_bgcolor: "white", plot_bgcolor: "white",
-        };
-        // Absolute reference: the ICD-minimum C/N₀ for this band + constellation
-        // (dashed line, C/N₀ modes only). Baseline is per tracked component -- see
-        // CN0_BASELINE for the power bookkeeping and sources.
-        if (this.mode === "cn0" || this.mode === "cn0_kcoh") {
-            // Per-signal band in unified mode (the selected key's meta), else the viewer's band.
-            const band = this.unified
-                ? ((this.meta.get(this.selected) || {}).band || "l1")
-                : ((this.app && this.app.gps_band) || "l1");
-            const sys = String(this.selected)[0];
-            const base = (CN0_BASELINE[band] || {})[sys];
-            if (base != null) {
-                layout.shapes = [{type: "line", xref: "paper", x0: 0, x1: 1,
-                                  yref: "y", y0: base, y1: base,
-                                  line: {color: "rgba(200,60,60,0.55)", width: 1,
-                                         dash: "dash"}}];
-                layout.annotations = [{xref: "paper", x: 1, xanchor: "right",
-                                       yref: "y", y: base, yanchor: "bottom",
-                                       text: `ICD min ${base.toFixed(1)} dB-Hz (290 K)`,
-                                       showarrow: false,
-                                       font: {size: 9, color: "rgba(200,60,60,0.8)"}}];
-            }
-        }
-        if (!this._plotted) {
-            window.Plotly.newPlot(this.plot, [full, shortWin], layout,
-                {displayModeBar: false, responsive: true});
-            this._plotted = true;
-        } else if (this._dirty) {
-            window.Plotly.react(this.plot, [full, shortWin], layout,
                 {displayModeBar: false, responsive: true});
         }
         this._dirty = false;
