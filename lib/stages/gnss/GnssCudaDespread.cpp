@@ -102,9 +102,6 @@ struct GnssCudaDespread::Impl {
     std::vector<float2> stage;   // host transpose staging [chan][hop]
     int max_chips = 0;           ///< cap on the chip gather depth (0 = the filter's full span)
     bool chips_centered = false; ///< centre the max_chips window on the span
-    bool split_timing = false;
-    bool split_recorded = false; ///< at least one enqueue has recorded the events
-    cudaEvent_t ev_a = nullptr, ev_b = nullptr, ev_c = nullptr; ///< created when timing is on
     cudaStream_t stream = nullptr;
     std::vector<gnss_cuda::DespreadJob> h_jobs;
     std::vector<double2> h_corr;
@@ -372,11 +369,6 @@ GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn
 
 GnssCudaDespread::~GnssCudaDespread() = default;
 
-int GnssCudaDespread::prn_at(int p) const {
-    // This engine's device view, not the shared bank's; see set_prn.
-    return (p >= 0 && (size_t)p < _impl->slot_prn.size()) ? _impl->slot_prn[(size_t)p] : -1;
-}
-
 bool GnssCudaDespread::set_prn(int p, int prn, void* stream) {
     Impl& im = *_impl;
     if (p < 0 || p >= im.n_prn)
@@ -436,34 +428,6 @@ void GnssCudaDespread::upload_window(const std::complex<float>* window,
                        cudaMemcpyHostToDevice, im.stream),
        "window upload");
     im.window_start = window_start_sample;
-}
-
-void GnssCudaDespread::enable_split_timing(bool on) {
-    Impl& im = *_impl;
-    if (on && !im.ev_a) {
-        ck(cudaEventCreate(&im.ev_a), "ev_a");
-        ck(cudaEventCreate(&im.ev_b), "ev_b");
-        ck(cudaEventCreate(&im.ev_c), "ev_c");
-    }
-    im.split_timing = on;
-}
-
-bool GnssCudaDespread::split_timing_ms(double& synthesis_ms, double& correlation_ms) const {
-    Impl& im = *_impl;
-    // Before the first enqueue_batch_nm the events exist but have never been recorded, and
-    // cudaEventElapsedTime on them is an error.
-    if (!im.split_timing || !im.ev_c || !im.split_recorded)
-        return false;
-    // Synchronize in case the call that recorded the events is still in flight.
-    if (cudaEventSynchronize(im.ev_c) != cudaSuccess)
-        return false;
-    float a = 0.f, b = 0.f;
-    if (cudaEventElapsedTime(&a, im.ev_a, im.ev_b) != cudaSuccess
-        || cudaEventElapsedTime(&b, im.ev_b, im.ev_c) != cudaSuccess)
-        return false;
-    synthesis_ms = a;
-    correlation_ms = b;
-    return true;
 }
 
 bool GnssCudaDespread::set_phi_fp16(bool on) {
@@ -661,22 +625,14 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     // The replicas are generated once and reused for all n_elem antennas, which is why this
     // path splits the fused kernel. Both launches are on one stream, so the correlator starts
     // after the waveform it reads is complete.
-    if (im.split_timing)
-        ck(cudaEventRecord(im.ev_a, st), "split ev_a");
     ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
                                   im.n_chan, par, (float2*)d_wave, (double*)d_energy_out, st),
        "launch waveform (NxM)");
-    if (im.split_timing)
-        ck(cudaEventRecord(im.ev_b, st), "split ev_b");
     ck(gnss_cuda::launch_correlate_nm(
            (const unsigned char*)d_frame, (const float*)d_chan_scale, d_chan_ids,
            (const float2*)d_wave, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan, n_elem,
            elem_stride, frame_chan_stride, par, (double2*)d_corr_out, st),
        "launch correlate NxM");
-    if (im.split_timing) {
-        ck(cudaEventRecord(im.ev_c, st), "split ev_c");
-        im.split_recorded = true;
-    }
     return 4 * n_spec;
 }
 
@@ -702,11 +658,4 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
                                   im.n_chan, par, (float2*)d_wave, (double*)d_energy_out, st),
        "launch waveform (inject)");
     return n_spec;
-}
-
-std::array<gnss::DespreadResult, 3> GnssCudaDespread::despread3(int p, double cp_seed,
-                                                                double spacing_chips,
-                                                                double doppler_hz,
-                                                                const std::vector<int>& covering) {
-    return despread_batch({Spec{p, cp_seed, spacing_chips, doppler_hz, covering}})[0];
 }

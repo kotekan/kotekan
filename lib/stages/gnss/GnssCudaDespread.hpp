@@ -59,10 +59,6 @@ public:
     /// for this signal, or the bank is FDMA (see ChannelizedReplicaBank::set_prn).
     bool set_prn(int p, int prn, void* stream /*cudaStream_t*/);
 
-    /// PRN in slot @c p as this engine has it on the device (-1 out of range). Engines can share
-    /// one bank, so this can differ from the bank's prn_at until this engine's own @ref set_prn.
-    int prn_at(int p) const;
-
     /// Upload one record window ([hop][chan] complex float) for @ref despread_batch.
     void upload_window(const std::complex<float>* window, long long window_start_sample);
 
@@ -105,14 +101,6 @@ public:
     /// and @ref enqueue_batch_nm support it.
     bool set_phi_fp16(bool on);
 
-    /// Record CUDA events around @ref enqueue_batch_nm's two kernels. Off by default; three
-    /// event records per call when on.
-    void enable_split_timing(bool on);
-    /// The last enqueue_batch_nm's synthesis (launch_waveform, independent of n_elem) and
-    /// correlation (launch_correlate_nm, scales with n_elem) times, milliseconds. False if timing
-    /// is off or no call has recorded the events.
-    bool split_timing_ms(double& synthesis_ms, double& correlation_ms) const;
-
     /// Largest @c specs.size() for @ref despread_batch, @ref build_jobs and the Spec-taking
     /// enqueue_* calls: the host job staging, and despread_batch's device job arena, hold n_prn
     /// jobs (one per PRN slot). Nothing checks the bound. It is not gnss_gpu::max_specs(n_prn),
@@ -130,11 +118,6 @@ public:
     /// for @ref last_ang0. Phi is rebuilt only past refresh_hz, so this is per-instance state
     /// (gnss::REC_PHI_DDOP).
     double last_phi_ddop(int p) const;
-
-    /// One PRN's E/P/L with no carrier trim: @ref despread_batch of one Spec.
-    std::array<gnss::DespreadResult, 3> despread3(int p, double cp_seed, double spacing_chips,
-                                                  double doppler_hz,
-                                                  const std::vector<int>& covering);
 
     /// Build the per-PRN jobs for @c specs and upload them to @c d_jobs_slot on @c stream. Every
     /// enqueue_* call that takes Specs builds its jobs here, so their replicas cannot differ.

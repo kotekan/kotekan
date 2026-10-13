@@ -135,7 +135,6 @@ int main() {
     check(c_before < 0.1 * a_before, "... and does NOT correlate PRN C's");
 
     check(eng1.set_prn(0, PRN_C, nullptr), "engine 1 accepts the swap");
-    check(eng1.prn_at(0) == PRN_C && eng1.prn_at(1) == PRN_B, "engine 1 reports the new map");
     const double c_after1 = amp(eng1, sky_c);
     const double a_after1 = amp(eng1, sky_a);
     check(c_after1 > 0.5,
