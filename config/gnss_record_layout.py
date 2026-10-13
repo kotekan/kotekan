@@ -6,8 +6,8 @@ sized in yaml (`n_prn * record_floats * sizeof_float`), and until 2026-08-07 not
 the two. RECORD_FLOATS went 24 -> 26 on the CHORD branch and the airspy generator source kept
 saying 24, so 34 airspy stages FATAL'd at construction on a frame 256 B short per PRN. The
 guard that caught it is good (it prints the number to use), but the drift should not be
-possible in the first place -- so both generators now READ the header instead of restating
-it. The CHORD generator had the same latent bug in a different disguise: a Python literal
+possible in the first place -- so the generator now READS the header instead of restating
+it. It had the same latent bug in a different disguise: a Python literal
 `26 + n_elem * 12` whose comment claimed the value was "kept in one place".
 
 Parsed, not imported: these are plain `constexpr int` one-liners, and a regex over them is
@@ -44,8 +44,7 @@ CHAIN_HEADER = os.path.join(
 )
 
 
-def _read(name, header=None):
-    path = header or HEADER
+def _read(name, path=HEADER):
     with open(path) as fh:
         text = fh.read()
     m = re.search(r"^\s*constexpr\s+int\s+%s\s*=\s*(\d+)\s*;" % name, text, re.M)
@@ -57,19 +56,19 @@ def _read(name, header=None):
     return int(m.group(1))
 
 
-def record_floats(header=None):
+def record_floats():
     """Per-PRN record header width, floats (gnss::RECORD_FLOATS)."""
-    return _read("RECORD_FLOATS", header)
+    return _read("RECORD_FLOATS")
 
 
-def elem_floats(header=None):
+def elem_floats():
     """Per-element block width, floats (gnss::ELEM_FLOATS)."""
-    return _read("ELEM_FLOATS", header)
+    return _read("ELEM_FLOATS")
 
 
-def record_stride(n_elem, header=None):
+def record_stride(n_elem):
     """Full per-PRN stride: RECORD_FLOATS + n_elem * ELEM_FLOATS."""
-    return record_floats(header) + n_elem * elem_floats(header)
+    return record_floats() + n_elem * elem_floats()
 
 
 def prnctl_bytes():
@@ -121,11 +120,6 @@ def chan_floats():
 def telem_row_floats(n_cols):
     """gnss::telem_row_floats -- the record header PLUS this sender's own comb columns."""
     return record_floats() + n_cols * chan_floats()
-
-
-def telem_max_row_floats():
-    """gnss::TELEM_MAX_ROW_FLOATS -- the widest row the format admits (a CEILING, not a stride)."""
-    return telem_row_floats(telem_max_chan())
 
 
 def telem_frame_bytes(n_rec, n_prn, n_cols):
