@@ -15,7 +15,6 @@
 #include <array>          // for array
 #include <cstddef>        // for ptrdiff_t
 #include <driver_types.h> // for cudaEvent_t
-#include <memory>         // for make_shared, shared_ptr
 #include <string>         // for string
 #include <vector>         // for vector
 
