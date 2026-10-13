@@ -60,21 +60,21 @@ GNSS_SITE_LL=${GNSS_SITE_LL:-"--lat 49.32001414 --lon -119.62262691 --alt 545"}
 # ── the eight chains and their RF constants ────────────────────────────────────────────────
 # One copy. obs_up.sh had the only one, and obs_unit.sh used to PARSE it back out of that file
 # with sed, which was right on the day it was written and one edit from being wrong.
-#   chain  sys carrier_hz   chip_rate_hz  code_len  comb_mult
+#   chain  sys carrier_hz   chip_rate_hz  code_len
 GNSS_CHAIN_RF="
-gps_l5  G 1176450000 10230000 10230 1
-gal_e5a E 1176450000 10230000 10230 1
-bds_b2a C 1176450000 10230000 10230 1
-gal_e5b E 1207140000 10230000 10230 1
-bds_b2b C 1207140000 10230000 10230 1
-bds_b3i C 1268520000 10230000 10230 1
-gal_e6  E 1278750000  5115000  5115 1
-gps_l2c G 1227600000   511500 10230 2
+gps_l5  G 1176450000 10230000 10230
+gal_e5a E 1176450000 10230000 10230
+bds_b2a C 1176450000 10230000 10230
+gal_e5b E 1207140000 10230000 10230
+bds_b2b C 1207140000 10230000 10230
+bds_b3i C 1268520000 10230000 10230
+gal_e6  E 1278750000  5115000  5115
+gps_l2c G 1227600000   511500 10230
 "
 
 gnss_chains() { echo "$GNSS_CHAIN_RF" | awk 'NF {print $1}'; }
 
-gnss_chain_rf() {          # gnss_chain_rf <chain> -> "chain sys carrier chip code comb"
+gnss_chain_rf() {          # gnss_chain_rf <chain> -> "chain sys carrier chip code"
     echo "$GNSS_CHAIN_RF" | awk -v c="$1" '$1 == c {print; found=1} END {exit !found}'
 }
 
@@ -142,9 +142,9 @@ gnss_component() {
         # shellcheck disable=SC2086  # deliberate word split of the table row
         set -- $row
         GNSS_EXEC=("$GNSS_VENV/bin/python" -u "$GNSS_K/python/scripts/gnss/gnss_observables.py"
-                   --url "$GNSS_BROKER_URL" --combiner "$1" --search "$1" --airspy "$1"
+                   --url "$GNSS_BROKER_URL" --combiner "$1" --search "$1"
                    --sys "$2" --band "$1"
-                   --carrier-hz "$3" --chip-rate-hz "$4" --code-length "$5" --comb-mult "$6"
+                   --carrier-hz "$3" --chip-rate-hz "$4" --code-length "$5"
                    $GNSS_SITE_LL --frame0-url "$GNSS_FRAME0_URL"
                    --out "$GNSS_OBS_OUT/$1_%Y%m%d.jsonl")
         ;;

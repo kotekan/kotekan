@@ -4,8 +4,8 @@
 # WHY THIS EXISTS: these five processes were started by hand, and nothing recorded HOW. On
 # 2026-08-11, bringing the system back up after an outage, the invocation had to be
 # reverse-engineered from the schema of the rows they had already written -- checking which
-# endpoints the broker answered, guessing --combiner/--search/--airspy against a script whose
-# defaults are all AIRSPY names (--url 12048, gps_combiner, airspy_in, 1575.42 MHz, 1023
+# endpoints the broker answered, guessing the stage-name flags against a script whose
+# defaults were all AIRSPY names (--url 12048, gps_combiner, airspy_in, 1575.42 MHz, 1023
 # chips, and a Toronto lat/lon). Every one of those defaults is wrong for CHORD and NONE of
 # them fails loudly: you get rows, with a plausible schema, computed against the wrong
 # geometry. A data product whose generator flags live only in a dead shell's history is a
@@ -28,7 +28,6 @@
 #         OBS_OUT_DIR=/tmp/x obs_up.sh    # somewhere else (a test run)
 set -u
 K=/home/kvand/gnss/kotekan
-PY=${GNSS_PY:-/home/kvand/gnss/venv/bin/python}
 OUT=${OBS_OUT_DIR:-/home/kvand/gnss/fixtures/obs}
 BROKER=${GNSS_BROKER_URL:-http://localhost:12060}
 # ⚠️ THE DATE IS NOT A LAUNCH-TIME CONSTANT. Baked in at start, a logger keeps writing one
@@ -71,18 +70,7 @@ while read -r chain sys carrier chiprate codelen combmult; do
     # loop and the systemd template both use. The CHAINS table below is kept as the readable
     # chain list; the numbers in it are no longer the ones that reach the process.
     GNSS_CHAIN="$chain" nohup setsid "$K/scripts/gnss/site/run_component.sh" obs \
-        > "/tmp/obs_${chain}.log" 2>&1 < /dev/null & disown; n=$((n+1)); continue
-    nohup setsid "$PY" -u "$K/python/scripts/gnss/gnss_observables.py" \
-        --url "$BROKER" --combiner "$chain" --search "$chain" --airspy "$chain" \
-        --sys "$sys" --band "$chain" \
-        --carrier-hz "$carrier" --chip-rate-hz "$chiprate" --code-length "$codelen" \
-        --comb-mult "$combmult" \
-        --lat 49.32001414 --lon -119.62262691 --alt 545 \
-        --frame0-url "$FRAME0_URL" \
-        --out "$OUT/${chain}_%Y%m%d.jsonl" \
-        > "/tmp/obs_${chain}.log" 2>&1 < /dev/null &
-    disown
-    n=$((n + 1))
+        > "/tmp/obs_${chain}.log" 2>&1 < /dev/null & disown; n=$((n+1))
 done <<< "$CHAINS"
 
 sleep 12
