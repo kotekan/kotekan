@@ -86,6 +86,8 @@ public:
 
     /// Whether second stage RFI excision was applied to this frame
     bool& rfi_frame_excision_enabled;
+    /// Whether the visibilities in this frame were fringestopped
+    bool& fringestop_enabled;
     /// The number of active RFI excision thresholds.
     int32_t& rfi_frame_excision_num;
     /// The SK thresholds (in sigma) for RFI excision

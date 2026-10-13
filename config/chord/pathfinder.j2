@@ -995,6 +995,13 @@ rfi_second_stage_thresholds:
     thresholds: []
     valid_at_time_ns: 0
 
+# Updatable config for fringestopping in N2Accumulate; changes apply at the next bin start.
+# A restart returns to this value, not to the last posted one.
+fringestop_enabled:
+    kotekan_update_endpoint: json
+    enabled: false
+    valid_at_time_ns: 0
+
 n2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
@@ -1004,7 +1011,7 @@ n2_accumulate:
     variance_mode: EvenOddPosDef
     bin_in_ERA: true
     num_bins_per_rotation: 8640
-    do_fringestop: true
+    fringestop_updatable_config: /fringestop_enabled
     num_workers: 1
 {% for n in numa_halves %}
     accum_{{ n.id }}:

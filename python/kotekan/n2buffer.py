@@ -34,6 +34,7 @@ class N2Metadata(ctypes.Structure):
         ("n_pl_fpga_ticks", ctypes.c_uint64),
         # RFI Excision
         ("rfi_frame_excision_enabled", ctypes.c_bool),
+        ("fringestop_enabled", ctypes.c_bool),
         ("rfi_frame_excision_num", ctypes.c_uint32),
         ("rfi_frame_excision_threshold", ctypes.c_float * 8),
         ("rfi_frame_excision_fraction", ctypes.c_float * 8),

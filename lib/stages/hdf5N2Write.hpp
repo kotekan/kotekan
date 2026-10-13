@@ -55,7 +55,7 @@
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
  *   /bin_start_ERAL, /bin_end_ERAL, /rfi_frame_excision_enabled, /rfi_frame_excision_num,
- *   /rfi_frame_excision_threshold, /rfi_frame_excision_fraction.
+ *   /rfi_frame_excision_threshold, /rfi_frame_excision_fraction, /fringestop_enabled.
  * - /config_json grows on flush with snapshots from configTracker.
  *
  * @par Chunking and compression
@@ -141,6 +141,7 @@ protected:
     std::vector<int32_t> rfi_frame_excision_num;     // (t)
     std::vector<float> rfi_frame_excision_threshold; // (t, k)
     std::vector<float> rfi_frame_excision_fraction;  // (t, k)
+    std::vector<bool> fringestop_enabled;            // (t)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_file_f * num_file_t

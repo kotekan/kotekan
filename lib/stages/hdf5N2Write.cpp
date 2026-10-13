@@ -618,6 +618,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_t_}, {"time"},
                               HighFive::create_datatype<bool>(), props_empty);
+        _check_create_dataset(*file, "/fringestop_enabled", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<bool>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int32_t>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_threshold",
@@ -743,6 +745,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     bin_start_ERAL_deg.assign(num_file_t, 0.0);
     bin_end_ERAL_deg.assign(num_file_t, 0.0);
     rfi_frame_excision_enabled.assign(num_file_t, false);
+    fringestop_enabled.assign(num_file_t, false);
     rfi_frame_excision_num.assign(num_file_t, 0);
     rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
     rfi_frame_excision_fraction.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
@@ -937,6 +940,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     bin_start_ERAL_deg[t_index] = fv.bin_start_ERAL_deg;
     bin_end_ERAL_deg[t_index] = fv.bin_end_ERAL_deg;
     rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
+    fringestop_enabled[t_index] = fv.fringestop_enabled;
     rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
     std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
               rfi_frame_excision_threshold.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
@@ -1182,6 +1186,7 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_start_ERAL_deg").write(bin_start_ERAL_deg);
         h5_file->getDataSet("/bin_end_ERAL_deg").write(bin_end_ERAL_deg);
         h5_file->getDataSet("/rfi_frame_excision_enabled").write(rfi_frame_excision_enabled);
+        h5_file->getDataSet("/fringestop_enabled").write(fringestop_enabled);
         h5_file->getDataSet("/rfi_frame_excision_num").write(rfi_frame_excision_num);
         h5_file->getDataSet("/rfi_frame_excision_threshold")
             .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})

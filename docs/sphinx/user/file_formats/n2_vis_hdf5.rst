@@ -632,6 +632,9 @@ verifies consistency, within ns-level tolerance, as frames arrive).
      - float32 (:math:`N_t`, :math:`N_k`)
      - Fraction of samples above the corresponding threshold required to
        trigger excision.
+   * - ``fringestop_enabled``
+     - bool
+     - Whether the visibilities in this bin were fringestopped.
 
 Completeness tracking and configuration snapshots
 =================================================
