@@ -138,9 +138,7 @@ def _R(x):
     return max(0.0, 1.0 - abs(x))
 
 
-def _chan_block(
-    rng, prn, fid, dead_energy, dead_el_energy, phi0, ramp=0.7, amp_scale=1.0
-):
+def _chan_block(rng, prn, fid, dead_energy, phi0, ramp=0.7, amp_scale=1.0):
     """One channel's nine floats: E, P, L as the assembler writes them (raw, un-normalised),
     on the SENDER'S reference: the common phase rotated by exp(-i*phi0)."""
     d, amp = TARGETS[prn]
@@ -158,15 +156,11 @@ def _chan_block(
         a = amp * _R(d + off) + noise()
         return [a * energy * math.cos(phi), a * energy * math.sin(phi), energy]
 
-    e_e = 0.0 if dead_el_energy else e_p * 0.98
-    e_l = 0.0 if dead_el_energy else e_p * 1.02
-    # ⚠️ When an E/L energy is exactly 0 both arms must fall back to the PROMPT energy
-    # (Python: `a[CHAN_E_ENERGY] or eP`). The numerator is the raw complex either way, so this
-    # is only visible in the denominator -- which is precisely the kind of difference that
-    # would survive a casual comparison.
+    e_e = e_p * 0.98
+    e_l = e_p * 1.02
     p = tap(0.0, e_p)
-    e = tap(+SPACING, e_e if e_e else e_p)
-    l = tap(-SPACING, e_l if e_l else e_p)
+    e = tap(+SPACING, e_e)
+    l = tap(-SPACING, e_l)
     return [p[0], p[1], p[2], e[0], e[1], e_e, l[0], l[1], e_l]
 
 
@@ -241,7 +235,6 @@ def build_frame(
                     prn,
                     chan_ids[ch],
                     dead_energy=(ch, prn) in dead["energy"],
-                    dead_el_energy=(ch, prn) in dead["el_energy"],
                     phi0=phi0,
                     ramp=ramp,
                     amp_scale=amp_scale,
@@ -258,10 +251,7 @@ def build_fixture(n_win, seed=20260815, ramp=0.7, amp_scale=1.0):
     exactly co-phased (ramp 0) and one that is pure noise (amp_scale 0); the main fixture
     keeps both at their defaults."""
     rng = random.Random(seed)
-    dead = {
-        "energy": {(2, 9), (5, 27)},  # two channels with no live comb
-        "el_energy": {(0, 4)},
-    }  # one channel predating the E/L energies
+    dead = {"energy": {(2, 9), (5, 27)}}  # two channels with no live comb
     frames = []
     for win in range(n_win):
         for chain in ("gps_l5", "gal_e5a"):

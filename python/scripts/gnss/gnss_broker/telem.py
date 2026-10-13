@@ -250,8 +250,8 @@ class TelemFrame(object):
             eP = a[b + CHAN_ENERGY]
             if eP <= 0.0:
                 continue
-            eE = a[b + CHAN_E_ENERGY] or eP
-            eL = a[b + CHAN_L_ENERGY] or eP
+            eE = a[b + CHAN_E_ENERGY]
+            eL = a[b + CHAN_L_ENERGY]
             out.append(
                 (
                     self.chan_ids[ch],
