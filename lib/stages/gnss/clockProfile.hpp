@@ -2,37 +2,20 @@
 #define CLOCK_PROFILE_HPP
 /**
  * @file clockProfile.hpp
- * @brief Receiver clock-quality profile: presets for the reference oscillator (airspy TCXO,
- *        OCXO, GPSDO, rubidium, maser) and the Doppler search range they imply.
+ * @brief Receiver clock quality: the reference oscillator's frequency-offset bound and the
+ *        Doppler search range it implies.
  *
- * accuracy_ppm is the fractional frequency-offset bound. The offset shifts every carrier by
- * accuracy_ppm*f_c on top of the sky Doppler, so it sets the Doppler search extent
- * (GnssChannelizedSearch, from the /clock_profile config block). The LO-vs-ADC code/carrier
- * split (l-a) is another quantity, but the broker estimates it from the code-phase rate, so it
- * is not a setting here.
+ * The frequency offset shifts every carrier by accuracy_ppm*f_c on top of the sky Doppler, so it
+ * sets the Doppler search extent (GnssChannelizedSearch, from the /clock_profile config block).
+ * The LO-vs-ADC code/carrier split (l-a) is another quantity, but the broker estimates it from
+ * the code-phase rate, so it is not a setting here.
  */
-#include <string>
 
 namespace gnss {
 
-struct ClockProfile {
-    double accuracy_ppm; ///< fractional frequency-offset bound (ppm)
-};
-
-/// Preset table; an unknown name gives a conservative cold bound.
-inline ClockProfile clock_profile_preset(const std::string& name) {
-    if (name == "tcxo")
-        return {2.0}; // airspy stock TCXO, free-running
-    if (name == "ocxo")
-        return {0.3}; // plain oven-controlled xtal
-    if (name == "gpsdo")
-        return {0.06}; // GPS-disciplined OCXO
-    if (name == "rubidium")
-        return {1e-3}; // Rb standard
-    if (name == "maser")
-        return {1e-6}; // H-maser
-    return {2.0};      // unknown
-}
+/// Fractional frequency-offset bound (ppm) of CHORD's reference clock, a GPS-disciplined OCXO:
+/// /clock_profile name "gpsdo", the only name the search accepts.
+constexpr double GPSDO_ACCURACY_PPM = 0.06;
 
 /// Carrier-Doppler search half-range (Hz) for a band: max sky Doppler (GPS radial velocity) plus
 /// the clock frequency-offset term plus a margin. Every term but the margin scales with the

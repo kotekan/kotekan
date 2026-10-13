@@ -2,7 +2,7 @@
 
 #include "GnssChanMetadata.hpp"  // for get_gnss_chan_metadata, metadata_is_gnss_chan
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "clockProfile.hpp"      // for clock_profile_preset, clock_doppler_half_range_hz
+#include "clockProfile.hpp"      // for GPSDO_ACCURACY_PPM, clock_doppler_half_range_hz
 #include "gnssSeedTransport.hpp" // for detection_phase
 #include "gnssSignal.hpp"        // for SignalDescriptor, signal_by_name
 #include "kotekanLogging.hpp"    // for INFO, FATAL_ERROR
@@ -127,19 +127,24 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
     double dmax = config.get_default<double>(unique_name, "doppler_max", 6000.0);
     _doppler_step = config.get_default<double>(unique_name, "doppler_step", 500.0);
-    // A top-level /clock_profile block, when present, sets the Doppler extent from the named
-    // clock's frequency accuracy and the band's maximum sky Doppler, overriding doppler_min/max.
+    // A top-level /clock_profile block, when present, sets the Doppler extent from the GPSDO's
+    // frequency accuracy and the band's maximum sky Doppler, overriding doppler_min/max.
     // See clockProfile.hpp.
     const std::string clk_name =
         config.get_default<std::string>("/clock_profile", "name", std::string(""));
     if (!clk_name.empty()) {
-        const gnss::ClockProfile cp = gnss::clock_profile_preset(clk_name);
-        const double half = gnss::clock_doppler_half_range_hz(sig->carrier_hz, cp.accuracy_ppm);
+        if (clk_name != "gpsdo") {
+            FATAL_ERROR("GnssChannelizedSearch: clock_profile name must be 'gpsdo', not '{:s}'",
+                        clk_name);
+            return;
+        }
+        const double half =
+            gnss::clock_doppler_half_range_hz(sig->carrier_hz, gnss::GPSDO_ACCURACY_PPM);
         dmin = -half;
         dmax = half;
         INFO("GnssChannelizedSearch: clock_profile '{:s}' ({:.3g} ppm) -> Doppler search +-{:.0f} "
              "Hz",
-             clk_name, cp.accuracy_ppm, half);
+             clk_name, gnss::GPSDO_ACCURACY_PPM, half);
     }
     for (double f = dmin; f <= dmax + 1e-6; f += _doppler_step)
         _doppler_grid.push_back(f);
