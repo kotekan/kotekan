@@ -85,7 +85,6 @@ def row(prn, hop, deep):
     return {
         "prn": prn,
         "pow_hop": hop,
-        "pow_fft_len": 16384,
         "e_pow": 1.0,
         "p_pow": 4.0,
         "l_pow": 1.0,

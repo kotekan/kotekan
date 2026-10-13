@@ -335,22 +335,10 @@ def fleet_dll(
             l = float(r.get("l_pow", 0.0))
             if hop < 0 or (e + l) <= 0.0:
                 continue  # no metadata on the record frames, or this PRN is not being despread
-            # CURRENCY CHECK. A combiner configured without fft_len publishes pow_hop as a raw
-            # SAMPLE index; its neighbours publish HOPS, 16384x smaller. Grouping those together
-            # matches nothing, and the failure would look like "the fleet never agrees" rather
-            # than "one config is stale" -- which is exactly why pow_fft_len is published. Drop
-            # the odd instance out loudly instead of silently summing a fleet of one.
-            if int(r.get("pow_fft_len", 0)) <= 0:
-                _log_rl(
-                    "fleet-dll-cur-%s" % url,
-                    "fleet DLL: %s has no fft_len (pow_hop is a SAMPLE index) -- excluded; "
-                    "regenerate that node's config" % url,
-                )
-                continue
             prn = int(r["prn"])
             # #70: THE NEWEST HOP THIS INSTANCE SERVED, per URL. Free -- we are already
-            # parsing it for the currency check above; the aggregate below throws the
-            # per-instance axis away, and that axis is the one a wedge lives on.
+            # parsing it above; the aggregate below throws the per-instance axis away, and
+            # that axis is the one a wedge lives on.
             if src_hops is not None and hop > src_hops.get(url, -1):
                 src_hops[url] = hop
             if url in excluded:
@@ -1500,10 +1488,6 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
     NAME and the rest combine without it. Requiring all of them is exactly the earlier
     failure where one frozen GPU silently emptied the common window
     for every satellite and the combine returned {} -- indistinguishable from an empty sky.
-
-    An instance whose reply is NOT addressable (a node config without spectrum_window_samples)
-    cannot be aligned with anyone, so it is dropped by name rather than mixed in: a single
-    unaligned member would put the free-phase problem straight back into the gathered set.
     """
     avail, served, dropped, reanchored = {}, {}, [], []
     for url in endpoints:
@@ -1515,9 +1499,6 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
             )
             dropped.append((url, "unreachable"))
             continue
-        if not r.get("addressable"):
-            dropped.append((url, "not addressable"))
-            continue
         a = r.get("available") or [-1, -1]
         if a[1] is None or a[1] < 0:
             dropped.append((url, "no complete window yet"))
@@ -1526,7 +1507,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
     if not avail:
         return {}, {"window": None, "served": {}, "dropped": dropped}
 
-    # ⚠️ #84 (2026-08-17): min(hi) over ALL addressable instances hands the common index
+    # ⚠️ #84 (2026-08-17): min(hi) over ALL instances hands the common index
     # to the SLOWEST member forever. A bench-state instance (cx19's n2assemble, frozen
     # buffer, hi never advancing) pinned SPEC-WINDOW at one index for days: the 11 healthy
     # instances refused a window they had long rotated out, the frozen one served

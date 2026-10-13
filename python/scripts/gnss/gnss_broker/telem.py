@@ -105,8 +105,8 @@ REC_PROJ_COST = 29
 REC_PROJ_K = 30
 REC_PROJ_SRC = 31
 
-# Widest row the format admits -- gnss::TELEM_MAX_ROW_FLOATS, and the size of the header's
-# freq_id array. ⚠️ NOT THE STRIDE: from v6 every sender ships only the comb columns it
+# Widest row the format admits -- gnss::telem_row_floats(TELEM_MAX_CHAN), i.e. RECORD_FLOATS +
+# TELEM_MAX_CHAN * CHAN_FLOATS; TELEM_MAX_CHAN is also the size of the header's freq_id array. ⚠️ NOT THE STRIDE: from v6 every sender ships only the comb columns it
 # despreads and declares that width in the header (`row_total`). Striding by this constant
 # reads a narrow sender's rows at a wide sender's offsets -- plausible numbers, wrong PRNs.
 _MAX_ROW_TOTAL = _ROW_FLOATS + _MAX_CHAN * _CHAN_FLOATS
@@ -273,13 +273,14 @@ class TelemClient(object):
     shown, on sky, to be at least as good.
 
     ⚠️ THE SOCKET IS DRAINED BY A THREAD THAT DOES NOTHING ELSE. The gather delivers a frame
-    whole or drops the client (GnssTelemGather: a client that cannot take a frame within
-    send_timeout_ms is closed), and the stream carries EVERY chain on one connection, so a
-    stall of the reading thread is not one chain's problem: it is every fleet-ADR arc on every
-    chain broken at once. The kernel's socket buffers cover only a fraction of a second at
-    the stream's rate, and the ring lock is contended by every chain's control pass. So the
-    socket thread reads bytes and hands them to a queue, and a second thread parses them and
-    takes the ring lock. Nothing the consumers do can stop the socket draining.
+    whole or drops the client (GnssTelemGather: a client that cannot take a frame within its
+    fixed 200 ms send_deadline_ms is closed), and the stream carries EVERY chain on one
+    connection, so a stall of the reading thread is not one chain's problem: it is every
+    fleet-ADR arc on every chain broken at once. The kernel's socket buffers cover only a
+    fraction of a second at the stream's rate, and the ring lock is contended by every chain's
+    control pass. So the socket thread reads bytes and hands them to a queue, and a second
+    thread parses them and takes the ring lock. Nothing the consumers do can stop the socket
+    draining.
     """
 
     def __init__(
@@ -385,9 +386,10 @@ class TelemClient(object):
         advertised in full. And the size matters most in the seconds just after a connect: the
         kernel starts a fresh connection near 128 kB and autotunes upwards over tens of
         seconds, while this stream carries every chain at tens of MB/s and the gather drops a
-        client that cannot take a frame within send_timeout_ms. Since a drop is now followed by
-        an immediate reconnect, leaving it to autotuning would re-enter that ramp on every
-        drop -- the weakest moment, re-entered exactly when the link is already in trouble.
+        client that cannot take a frame within its 200 ms send deadline. Since a drop is now
+        followed by an immediate reconnect, leaving it to autotuning would re-enter that ramp
+        on every drop -- the weakest moment, re-entered exactly when the link is already in
+        trouble.
         The kernel clamps the request to net.core.rmem_max, so a host without the sysctl gets
         its maximum rather than an error.
         """

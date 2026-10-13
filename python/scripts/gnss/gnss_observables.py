@@ -106,21 +106,10 @@ def cn0_inc_dbhz(amp, unbiased, t_rec):
     no coherence at all, so it survives where the coherent estimator drops out -- BUT its noise
     split is the 4th-moment debias, which a BOC pilot's amplitude modulation fools (reads low by
     ~10log10(t_rec): E1C ~-7, B1C ~-13 dB). Kept as the phase-blind estimator + a commercial-Rx
-    comparison; cross-check it against cn0_q (modulation-immune) and cn0_coh."""
+    comparison; cross-check it against cn0_coh."""
     if amp and unbiased and amp > unbiased > 0 and t_rec > 0:
         x = (unbiased * unbiased) / (amp * amp - unbiased * unbiased)
         return 10.0 * math.log10(x / t_rec)
-    return None
-
-
-def cn0_q_dbhz(snr_q, t_rec):
-    """Modulation-immune C/N0 (dB-Hz): snr_q is the combiner's per-record SNR with the noise taken
-    from the QUADRATURE component of the carrier-removed frame, so BOC amplitude modulation does not
-    bias it (unlike cn0_inc). Coherence-referenced (the combiner produces it on the LINEAR pilot
-    path only, and only while the carrier fit holds), so it is None for data signals / decohered
-    windows -- there, fall back to cn0_inc. C/N0 = 10 log10(snr_q / t_rec)."""
-    if snr_q is not None and snr_q > 0 and t_rec > 0:
-        return 10.0 * math.log10(snr_q / t_rec)
     return None
 
 
@@ -607,9 +596,6 @@ def main():
                     "cn0_inc_dbhz": cn0_inc_dbhz(
                         r.get("amplitude"), r.get("unbiased_amplitude"), t_rec
                     ),
-                    "cn0_q_dbhz": cn0_q_dbhz(
-                        r.get("snr_q"), t_rec
-                    ),  # modulation-immune (BOC pilots)
                     # --- THE SERVED RADIOMETRY (task #57, 2026-08-15). Per-record prompt
                     # power, q-gated, debiased against the below-horizon probes; NO fit
                     # anywhere in it, unlike cn0_coh above (whose deep fold re-searches a
@@ -641,7 +627,6 @@ def main():
                     "search_snr": det_snr.get(prn),
                     "doppler_hz": r.get("doppler_hz"),
                     "carrier_hz_resid": r.get("carrier_hz_resid"),
-                    "nh_phase": r.get("nh_phase"),
                     # boundary_f: the code-period boundary's offset inside the despread window.
                     # Pre-feab8b04 amplitude went as |2f-1|, so f~0.5 nulled the sat (the
                     # "bistable"); the segmented despread killed that dependence. Logged so a

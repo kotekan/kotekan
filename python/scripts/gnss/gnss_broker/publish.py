@@ -52,14 +52,14 @@ class FleetPublisher:
 
     SCHEMA. Rows carry the field names GnssCoherentCombiner::get_status uses, so the viewer's
     signal_metrics() consumes them unchanged -- amplitude, coh_amplitude, deep_amplitude,
-    unbiased_amplitude, doppler_hz, coherence_s, deep_snr, deep_records, amp_snr, deep_floor,
-    peel_*. What each MEANS is chosen honestly rather than uniformly:
+    unbiased_amplitude, doppler_hz, coherence_s, deep_snr, deep_records, amp_snr, deep_floor.
+    What each MEANS is chosen honestly rather than uniformly:
 
       * MERGED across the fleet (this is the added value): dll_disc and the E/P/L powers, and
         amp_snr / amplitude derived from the summed prompt power against the live noise
         population -- full 20.46 MHz rather than one node's 1.37 MHz.
       * BEST-OF a single instance: every COHERENT statistic (deep_amplitude, deep_snr,
-        coherence_s, peel_*). These need cross-node phase alignment to merge, which is the very
+        coherence_s). These need cross-node phase alignment to merge, which is the very
         thing the power combine avoids; claiming a fleet number for them would be a lie. The
         source node ships as `coh_src` so a reader can see whose view it is.
       * BROKER-OWNED: doppler_hz, code_phase_chips, code_phase_rate, dll_trim -- the shared

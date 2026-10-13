@@ -636,10 +636,10 @@ def main():
     _ep = _c3.trackers[0]
 
     def _get_dead(url, timeout=5.0):
-        return {"prns": [1, 2, 3], "last_hop": -1, "pending_at_hop": -1}
+        return {"prns": [1, 2, 3], "last_hop": -1}
 
     def _get_live(url, timeout=5.0):
-        return {"prns": [1, 2, 3], "last_hop": 1_000_000_000, "pending_at_hop": -1}
+        return {"prns": [1, 2, 3], "last_hop": 1_000_000_000}
 
     def _get_absent(url, timeout=5.0):
         return {"prns": [1, 2, 3]}  # an OLD node binary: no field at all
