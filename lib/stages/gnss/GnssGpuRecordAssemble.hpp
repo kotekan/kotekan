@@ -246,8 +246,8 @@ private:
     // Beam cube: per-(PRN, subband bin, element) sums over a window.
     /// The element blocks sum over channels and the comb block over elements; the cube keeps
     /// both axes, from `corr` (unsteered, after any live projection), because the beam changes
-    /// across a wide or BOC signal. Served on /get_beam_cube and optionally pushed to cube_buf,
-    /// not written into the record. Each term is A_e,c = G_e,c / E_c: one replica is
+    /// across a wide or BOC signal. Pushed to cube_buf, not written into the record. Each term
+    /// is A_e,c = G_e,c / E_c: one replica is
     /// correlated against every element, so a common channel energy keeps the antenna ratios
     /// comparable. The incoherent sum still carries the noise pedestal; the reader debiases it
     /// from the probe PRNs, in the power domain.
@@ -286,12 +286,11 @@ private:
     int64_t _cube_max_idx = -1;         ///< newest index seen; complete windows are < this
     int _cube_singleton_windows = 0;    ///< consecutive windows that saw only one call
     bool _cube_win_warned = false;      ///< the unit-error warning fires once, not per record
-    std::mutex _cube_mtx;               ///< guards _cube_* between main_thread and REST
-    /// Push leg: with cube_buf set, each completed window is pushed with its address (chain,
-    /// window index, wstart), since the REST ring holds only beam_cube_ring_depth windows. It
-    /// never blocks the tracker: if the next frame is not empty (safe to test, as this stage is
-    /// the only producer) the window is dropped and counted in _cube_dropped, which every frame
-    /// carries, so a gap in the window index without a rise in the count was not dropped here.
+    /// Push leg: each completed window is pushed to cube_buf with its address (chain, window
+    /// index, wstart). It never blocks the tracker: if the next frame is not empty (safe to test,
+    /// as this stage is the only producer) the window is dropped and counted in _cube_dropped,
+    /// which every frame carries, so a gap in the window index without a rise in the count was
+    /// not dropped here.
     Buffer* _cube_out_buf = nullptr;
     int _cube_out_id = 0;
     int _cube_max_bins = 0;    ///< frame is sized for this many bins, zero-padded
@@ -300,14 +299,12 @@ private:
     std::string _cube_chain;   ///< "<host>/<stage>" (or beam_cube_chain), stamped in every frame
     int _cube_gpu = -1;        ///< beam_cube_gpu, stamped in every frame for the reader
     /// Pack a completed window into `_cube_out_buf` and mark it full, or count it dropped if
-    /// the next frame is not empty. Caller holds _cube_mtx.
+    /// the next frame is not empty.
     void emit_cube_window(const CubeWindow& C);
 
     /// The ring slot for the window owning `wstart`, cleared when a new window takes it.
-    /// Opening a later window completes the previous newest one, which is pushed to cube_buf
-    /// when set. Caller holds _cube_mtx.
+    /// Opening a later window completes the previous newest one, which is pushed to cube_buf.
     CubeWindow& cube_window_for(int64_t wstart);
-    void beam_cube_callback(kotekan::connectionInstance& conn);
     /// The ring slot for the window owning `wstart`, cleared when a new window takes it; with
     /// spectrum_window_samples unset, the single accumulator. Caller holds _spec_mtx.
     SpecWindow& spec_window_for(int64_t wstart);

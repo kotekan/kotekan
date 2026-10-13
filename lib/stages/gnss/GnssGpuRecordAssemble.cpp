@@ -397,9 +397,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             W.phi0.assign((size_t)n, 0.0);
             W.nreanchor.assign((size_t)n, 0);
         }
-        // Push leg (see the header), only with cube_buf; without it the cube is REST-only.
-        // Frames are addressed <short hostname>/<stage> by default: a stage name is unique only
-        // within a node, and one bufferRecv receives the whole fleet.
+        // Push leg (see the header). Frames are addressed <short hostname>/<stage> by default: a
+        // stage name is unique only within a node, and one bufferRecv receives the whole fleet.
         {
             char hn[64] = {0};
             gethostname(hn, sizeof(hn) - 1);
@@ -413,33 +412,31 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _cube_max_bins = std::max(
             _cube_bins, config.get_default<int>(unique_name, "beam_cube_max_bins", _cube_bins));
         _cube_max_prn = std::max(n, config.get_default<int>(unique_name, "beam_cube_max_prn", n));
-        const std::string cbuf = config.get_default<std::string>(unique_name, "cube_buf", "");
-        if (!cbuf.empty()) {
-            _cube_out_buf = buffer_container.get_buffer(cbuf);
-            _cube_out_buf->register_producer(unique_name);
-            const size_t need = gnss::cube_frame_bytes(_cube_max_prn, _cube_max_bins, _n_elements);
-            if ((size_t)_cube_out_buf->frame_size < need) {
-                FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: cube_buf needs a {:d} B frame "
-                            "({:d} PRN x {:d} bin x {:d} elem); {:s} is {:d} B. The generator "
-                            "sizes this from gnss::cube_frame_bytes -- regenerate the config.",
-                            unique_name, need, _cube_max_prn, _cube_max_bins, _n_elements, cbuf,
-                            (size_t)_cube_out_buf->frame_size);
-                return;
-            }
-            if (_cube_out_buf->metadata_pool == nullptr)
-                WARN("GnssGpuRecordAssemble[{:s}]: cube_buf {:s} has NO metadata_pool. Frames "
-                     "will carry no metadata; a bufferSend on this buffer DROPS them (it cannot "
-                     "send a frame without one) and a bufferRecv far side expects the pool's "
-                     "type. Give it metadata_pool: gnss_pool (#110).",
-                     unique_name, cbuf);
-            INFO("GnssGpuRecordAssemble[{:s}]: beam-cube PUSH leg on -> {:s} ({:d} B/frame, "
-                 "~{:.2f} MB/s at this window length); backpressure DROPS and the loss is "
-                 "counted into the next frame",
-                 unique_name, cbuf, need, need / ((double)_cube_win_samples / _sample_rate) / 1e6);
+        const std::string cbuf = config.get<std::string>(unique_name, "cube_buf");
+        _cube_out_buf = buffer_container.get_buffer(cbuf);
+        _cube_out_buf->register_producer(unique_name);
+        const size_t need = gnss::cube_frame_bytes(_cube_max_prn, _cube_max_bins, _n_elements);
+        if ((size_t)_cube_out_buf->frame_size < need) {
+            FATAL_ERROR("GnssGpuRecordAssemble[{:s}]: cube_buf needs a {:d} B frame "
+                        "({:d} PRN x {:d} bin x {:d} elem); {:s} is {:d} B. The generator "
+                        "sizes this from gnss::cube_frame_bytes -- regenerate the config.",
+                        unique_name, need, _cube_max_prn, _cube_max_bins, _n_elements, cbuf,
+                        (size_t)_cube_out_buf->frame_size);
+            return;
         }
+        if (_cube_out_buf->metadata_pool == nullptr)
+            WARN("GnssGpuRecordAssemble[{:s}]: cube_buf {:s} has NO metadata_pool. Frames "
+                 "will carry no metadata; a bufferSend on this buffer DROPS them (it cannot "
+                 "send a frame without one) and a bufferRecv far side expects the pool's "
+                 "type. Give it metadata_pool: gnss_pool (#110).",
+                 unique_name, cbuf);
+        INFO("GnssGpuRecordAssemble[{:s}]: beam-cube PUSH leg on -> {:s} ({:d} B/frame, "
+             "~{:.2f} MB/s at this window length); backpressure DROPS and the loss is "
+             "counted into the next frame",
+             unique_name, cbuf, need, need / ((double)_cube_win_samples / _sample_rate) / 1e6);
         INFO("GnssGpuRecordAssemble[{:s}]: BEAM CUBE on -- {:d} PRN x {:d} subband bin(s) "
              "({:d} channel(s), width {:d}) x {:d} element(s); COHERENT + incoherent, "
-             "addressable windows of {:d} samples ({:.5f} s), ring depth {:d}; "
+             "windows of {:d} samples ({:.5f} s), ring depth {:d}; "
              "{:d} cell(s), {:.1f} MB",
              unique_name, n, _cube_bins, nc, _cube_bin_width ? _cube_bin_width : 1, _n_elements,
              (long long)_cube_win_samples, (double)_cube_win_samples / _sample_rate, depth, ncell,
@@ -456,10 +453,6 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_spectrum",
         std::bind(&GnssGpuRecordAssemble::spectrum_callback, this, _1));
-    if (_cube_on)
-        kotekan::restServer::instance().register_get_callback(
-            unique_name + "/get_beam_cube",
-            std::bind(&GnssGpuRecordAssemble::beam_cube_callback, this, _1));
     if (_elem_sum)
         kotekan::restServer::instance().register_post_callback(
             unique_name + "/set_elem_gain",
@@ -635,7 +628,6 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
         // NCO history. Zero the sums and the weights together: a nonzero weight over a zeroed
         // sum reads as a measurement of no power.
         if (_cube_on) {
-            std::lock_guard<std::mutex> ck(_cube_mtx);
             const size_t ne = (size_t)_n_elements;
             const size_t ncell = (size_t)_cube_bins * ne;
             for (auto& C : _cube_ring) {
@@ -1163,7 +1155,6 @@ void GnssGpuRecordAssemble::main_thread() {
                     // all of them), so antenna ratios stay comparable; a zero-energy channel is
                     // skipped.
                     if (_cube_on) {
-                        std::lock_guard<std::mutex> ck(_cube_mtx);
                         CubeWindow& C = cube_window_for(wstart);
                         // The epoch the record's `utc` was stamped from, so the cube and the
                         // record stream agree on the time of a wstart.
@@ -1357,8 +1348,8 @@ GnssGpuRecordAssemble::SpecWindow& GnssGpuRecordAssemble::spec_window_for(int64_
 }
 
 GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_t wstart) {
-    // Caller holds _cube_mtx. The same floor arithmetic as spec_window_for, on
-    // beam_cube_window_samples (a separate length, so the two rings' boundaries need not match).
+    // The same floor arithmetic as spec_window_for, on beam_cube_window_samples (a separate
+    // length, so the two rings' boundaries need not match).
     int64_t idx = wstart / _cube_win_samples;
     if (wstart < 0 && idx * _cube_win_samples != wstart)
         --idx; // floor, not truncation toward zero (see spec_window_for)
@@ -1404,7 +1395,7 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
     if (idx > _cube_max_idx) {
         // A later window has opened, the only local evidence that no more records are coming
         // for the previous one: push it now, on the boundary crossing.
-        if (_cube_out_buf != nullptr && _cube_max_idx >= 0) {
+        if (_cube_max_idx >= 0) {
             const int64_t n2 = (int64_t)_cube_ring.size();
             const CubeWindow& prev = _cube_ring[(size_t)(((_cube_max_idx % n2) + n2) % n2)];
             if (prev.idx == _cube_max_idx)
@@ -1416,8 +1407,8 @@ GnssGpuRecordAssemble::CubeWindow& GnssGpuRecordAssemble::cube_window_for(int64_
 }
 
 void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
-    // Caller holds _cube_mtx. Never blocks (see the header): this stage is in the real-time
-    // path, so a full buffer costs the archive a window, never the tracker a record.
+    // Never blocks (see the header): this stage is in the real-time path, so a full buffer
+    // costs the archive a window, never the tracker a record.
     // is_frame_empty() is a safe pre-check because this stage is the buffer's only producer.
     if (!_cube_out_buf->is_frame_empty(_cube_out_id)) {
         ++_cube_dropped;
@@ -1523,139 +1514,6 @@ void GnssGpuRecordAssemble::emit_cube_window(const CubeWindow& C) {
     }
     _cube_out_buf->mark_frame_full(unique_name, _cube_out_id);
     _cube_out_id = (_cube_out_id + 1) % _cube_out_buf->num_frames;
-}
-
-
-// Beam cube endpoint (see the header): the (subband x element) sums, coherent and incoherent.
-// Addressable and idempotent like /get_spectrum: `?window=N` returns window N, no argument the
-// newest complete one, and nothing is reset, so two consumers cannot split a coherent
-// integration between them. Emitted raw: debias, normalisation, combining and dB are the
-// reader's job (debias in the power domain from the probe PRNs, per instance, element, subband
-// and time bin).
-void GnssGpuRecordAssemble::beam_cube_callback(kotekan::connectionInstance& conn) {
-    if (!_cube_on) {
-        conn.send_error("beam cube is OFF for this stage (needs 'beam_cube: true' plus both "
-                        "axes: 'channel_ids' for frequency and 'n_elements' for element)",
-                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    bool want_specific = false;
-    int64_t want = -1;
-    for (const auto& kv : conn.get_query()) {
-        if (kv.first != "window")
-            continue;
-        want_specific = true;
-        try {
-            want = std::stoll(kv.second);
-        } catch (const std::exception&) {
-            conn.send_error("get_beam_cube: 'window' must be an integer window index",
-                            kotekan::HTTP_RESPONSE::BAD_REQUEST);
-            return;
-        }
-    }
-
-    nlohmann::json reply;
-    const int ne = _n_elements;
-    std::vector<double> coh_re, coh_im, incoh, w, energy, phi0;
-    std::vector<int> nrec, nre;
-    int64_t idx = -1, w0 = -1, w1 = -1, lo = -1, hi = -1;
-    const char* status = "ok";
-    {
-        std::lock_guard<std::mutex> ck(_cube_mtx);
-        // A window is complete once a later one has opened: there is no end-of-window event.
-        hi = _cube_max_idx - 1;
-        lo = _cube_max_idx - (int64_t)_cube_ring.size() + 1;
-        if (lo < 0)
-            lo = 0;
-        idx = want_specific ? want : hi;
-        if (_cube_max_idx < 0)
-            status = "not_yet";
-        else if (idx > hi)
-            status = "not_yet"; // normal: instances lag each other; re-ask
-        else if (idx < lo)
-            status = "too_old"; // those records are gone; the caller must skip ahead
-        else {
-            const int64_t n = (int64_t)_cube_ring.size();
-            const CubeWindow& C = _cube_ring[(size_t)(((idx % n) + n) % n)];
-            if (C.idx != idx)
-                status = "too_old";
-            else {
-                coh_re = C.coh_re;
-                coh_im = C.coh_im;
-                incoh = C.incoh;
-                w = C.w;
-                energy = C.energy;
-                phi0 = C.phi0;
-                nrec = C.nrec;
-                nre = C.nreanchor;
-                w0 = C.w0;
-                w1 = C.w1;
-            }
-        }
-    }
-
-    const int nc = (int)_spec_freq_ids.size();
-    reply["n_bin"] = _cube_bins;
-    reply["n_elem"] = ne;
-    reply["n_chan"] = nc;
-    reply["bin_width"] = _cube_bin_width ? _cube_bin_width : 1;
-    reply["freq_ids"] = _spec_freq_ids;
-    reply["window"] = idx;
-    reply["window_samples"] = (double)_cube_win_samples;
-    reply["sample_rate"] = _sample_rate;
-    reply["available"] = nlohmann::json::array({lo, hi});
-    reply["status"] = status;
-    reply["wstart0"] = w0; // the cross-instance alignment key, same clock as fleet hops
-    reply["wstart1"] = w1;
-    reply["reference_element"] = _reference_element;
-    // Per-bin freq_id span, so a reader never reproduces the binning arithmetic.
-    nlohmann::json bins = nlohmann::json::array();
-    for (int b = 0; b < _cube_bins; ++b) {
-        const int c0 = _cube_bin_width ? b * _cube_bin_width : b;
-        const int c1 = _cube_bin_width ? std::min(nc, (b + 1) * _cube_bin_width) - 1 : b;
-        bins.push_back({_spec_freq_ids[c0], _spec_freq_ids[c1]});
-    }
-    reply["bin_freq_ids"] = bins;
-    if (std::string(status) != "ok") {
-        reply["prns"] = nlohmann::json::array();
-        conn.send_json_reply(reply);
-        return;
-    }
-
-    nlohmann::json prns = nlohmann::json::array();
-    for (size_t p = 0; p < _prns.size(); ++p) {
-        if (nrec[p] <= 0)
-            continue; // absent, not zeros (as in /get_spectrum)
-        nlohmann::json wb = nlohmann::json::array(), eb = nlohmann::json::array();
-        nlohmann::json cb = nlohmann::json::array(), ib = nlohmann::json::array();
-        for (int b = 0; b < _cube_bins; ++b) {
-            const size_t kb = p * _cube_bins + b;
-            wb.push_back(w[kb]);
-            eb.push_back(energy[kb]);
-            nlohmann::json cr = nlohmann::json::array(), ir = nlohmann::json::array();
-            const size_t k0 = ((size_t)p * _cube_bins + b) * ne;
-            for (int el = 0; el < ne; ++el) {
-                cr.push_back({coh_re[k0 + el], coh_im[k0 + el]});
-                ir.push_back(incoh[k0 + el]);
-            }
-            cb.push_back(cr);
-            ib.push_back(ir);
-        }
-        // coh[bin][elem] = [re, im] and incoh[bin][elem], with w[bin] the term count: sums and
-        // their weight, so windows, instances and nights combine by addition. phi0 is the
-        // coherent sum's phase reference; n_reanchor > 0 means the arc broke inside this window,
-        // which no constant undoes, so consumers drop those.
-        prns.push_back({{"prn", _prns[p]},
-                        {"n_rec", nrec[p]},
-                        {"phi0", phi0[p]},
-                        {"n_reanchor", nre[p]},
-                        {"w", wb},
-                        {"energy", eb},
-                        {"coh", cb},
-                        {"incoh", ib}});
-    }
-    reply["prns"] = prns;
-    conn.send_json_reply(reply);
 }
 
 
