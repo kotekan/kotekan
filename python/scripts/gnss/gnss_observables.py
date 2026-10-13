@@ -236,15 +236,30 @@ def main():
 
     # FATAL rather than 0.0: a missing anchor is not a degraded mode, it is every code
     # residual silently null -- which is how this went unnoticed for as long as it did.
-    with urllib.request.urlopen(
-        args.frame0_url.rstrip("/") + "/telescope/time0_ns", timeout=10
-    ) as _r:
-        _t0 = json.loads(_r.read().decode()).get("time0_ns")
-    if not _t0:
-        raise SystemExit(
-            "no time0_ns at %s -- the code residual needs the F-engine "
-            "sample-0 epoch; refusing to write null residuals" % args.frame0_url
-        )
+    # A node that does not answer (the F-engine off) is waited for, not exited on: the
+    # unit's Restart=on-failure would turn the exit into a 10 s re-import loop from NFS.
+    _t0, _wait_warn_t = None, 0.0
+    while not _t0:
+        try:
+            with urllib.request.urlopen(
+                args.frame0_url.rstrip("/") + "/telescope/time0_ns", timeout=10
+            ) as _r:
+                _t0 = json.loads(_r.read().decode()).get("time0_ns")
+        except OSError as _e:
+            if time.time() - _wait_warn_t > 600.0:
+                _wait_warn_t = time.time()
+                print(
+                    "gnss_observables: time0_ns unreadable at %s (%s); waiting for "
+                    "the anchor" % (args.frame0_url, _e),
+                    file=sys.stderr,
+                )
+            time.sleep(60.0)
+            continue
+        if not _t0:
+            raise SystemExit(
+                "no time0_ns at %s -- the code residual needs the F-engine "
+                "sample-0 epoch; refusing to write null residuals" % args.frame0_url
+            )
     frame0 = float(_t0) * 1e-9
     print(
         "gnss_observables: F-engine sample 0 at %.9f (%s)" % (frame0, args.frame0_url),
