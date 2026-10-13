@@ -28,32 +28,30 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     n_integrations(samples_per_data_set / sub_integration_ntime),
-    stations(config.get_default<std::vector<int>>(unique_name, "stations", std::vector<int>{})),
-    live_freq_ids(
-        config.get_default<std::vector<int>>(unique_name, "live_freq_ids", std::vector<int>{})),
-    mode(config.get_default<std::string>(unique_name, "mode", "shadow")), live(mode == "live"),
+    stations(config.get<std::vector<int>>(unique_name, "stations")),
+    live_freq_ids(config.get<std::vector<int>>(unique_name, "live_freq_ids")),
     tau_s(config.get_default<double>(unique_name, "tau_s", 0.5)),
     k_max(config.get_default<int>(unique_name, "k_max", 3)),
     frac_first_min(config.get_default<double>(unique_name, "frac_first_min", 0.4)),
     lambda_min_rel(config.get_default<double>(unique_name, "lambda_min_rel", 3.0)),
     pr_min(config.get_default<double>(unique_name, "pr_min", 6.0)),
-    rel_min(config.get_default<double>(unique_name, "rel_min", 0.2)),
-    frac_next_min(config.get_default<double>(unique_name, "frac_next_min", 0.3)),
     solve_every(std::max(1, config.get_default<int>(unique_name, "solve_every", 4))),
-    metric_period_s(config.get_default<double>(unique_name, "metric_period_s", 1.0)),
-    archive_path(config.get_default<std::string>(unique_name, "archive_path", "")),
-    archive_period_s(config.get_default<double>(unique_name, "archive_period_s", 10.0)) {
+    metric_period_s(config.get_default<double>(unique_name, "metric_period_s", 1.0)) {
 
-    if (mode != "shadow" && mode != "live")
-        FATAL_ERROR("mode must be shadow or live, not {:s}", mode);
+    // The stage always writes the projected copy; mode is read only to refuse another value.
+    const std::string mode = config.get_default<std::string>(unique_name, "mode", "live");
+    if (mode != "live")
+        FATAL_ERROR("GnssN2Project: mode '{:s}' is not supported; it must be 'live'", mode);
+    // archive_period_s has no effect; it is read only so a generated config that still carries
+    // it does not report it unused.
+    config.get_default<double>(unique_name, "archive_period_s", 10.0);
+    if (live_freq_ids.empty())
+        FATAL_ERROR("GnssN2Project: live_freq_ids is empty; it must list the freq_ids to write");
     if (num_elements % 16 != 0 || n_integrations < 1)
         FATAL_ERROR("num_elements {:d} must be a multiple of 16 and samples_per_data_set / "
                     "sub_integration_ntime ({:d}) >= 1",
                     num_elements, n_integrations);
     layout.n_elem = num_elements;
-    if (stations.empty())
-        for (int i = 0; i < num_elements; ++i)
-            stations.push_back(i);
     std::sort(stations.begin(), stations.end());
     stations.erase(std::unique(stations.begin(), stations.end()), stations.end());
     for (const int s : stations)
@@ -64,33 +62,24 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
-    const std::string out_name = config.get_default<std::string>(unique_name, "out_buf", "");
-    if (!out_name.empty()) {
-        out_buf = buffer_container.get_buffer(out_name);
-        out_buf->register_producer(unique_name);
-    }
-    if (live && !out_buf)
-        FATAL_ERROR("mode live needs an out_buf (N2Accumulate reads the projected copy)");
+    out_buf = get_buffer("out_buf");
+    out_buf->register_producer(unique_name);
     const auto desc = kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_correlation",
         {n_integrations, num_local_freq, layout.num_blocks(), layout.bs, layout.bs, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {sub_integration_ntime, 1, 16, 1, 1, 1});
     in_buf->require_frame_desc(desc);
-    if (out_buf)
-        out_buf->require_frame_desc(desc);
+    out_buf->require_frame_desc(desc);
 
     const int n = (int)stations.size();
     sub = gnss::ProjSubspace(n, num_local_freq, tau_s, k_max);
-    sub.rel_min = rel_min;
-    sub.frac_next_min = frac_next_min;
     // The projected block's tracker keeps all k_max components (no rank gates) and null_db
     // takes its first spread one: a lone pair the PR gate skipped survives the projection and
     // would otherwise floor the metric.
     nul = gnss::ProjSubspace(n, num_local_freq, tau_s, k_max);
     nul.rel_min = 0.0;
     nul.frac_next_min = 0.0;
-    live_ch.assign(num_local_freq, live_freq_ids.empty() ? 1 : 0);
-    live_ch_resolved = live_freq_ids.empty();
+    live_ch.assign(num_local_freq, 0);
     k_cur.assign(num_local_freq, 0);
     on.assign(num_local_freq, 0);
     lam0_rel.assign(num_local_freq, 0.0);
@@ -99,21 +88,16 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     mean_auto.assign(num_local_freq, 0.0);
     pr0.assign(num_local_freq, 0.0);
     q_use.assign((size_t)num_local_freq * k_max, -1);
-    if (!archive_path.empty()) {
-        archive.open(archive_path, std::ios::app);
-        if (!archive)
-            WARN("GnssN2Project: cannot open archive {:s}; archiving off", archive_path);
-    }
     INFO("GnssN2Project {:s}: {:d} live stations of {:d}, k_max {:d}, tau {:.2f} s, trigger "
          "frac0 >= {:.2f}, lambda0 >= {:.1f} x mean auto, spread >= {:.1f} inputs, solve every "
-         "{:d} frames{:s}",
+         "{:d} frames -> {:s}",
          mode, n, num_elements, k_max, tau_s, frac_first_min, lambda_min_rel, pr_min, solve_every,
-         out_buf ? " -> " + out_name : "");
+         out_buf->buffer_name);
 }
 
 void GnssN2Project::main_thread() {
     frameID in_id(in_buf);
-    frameID out_id(out_buf ? out_buf : in_buf);
+    frameID out_id(out_buf);
     const int n = (int)stations.size();
     const size_t per_freq = layout.per_freq();
     const size_t per_int = per_freq * (size_t)num_local_freq; // words per integration
@@ -140,20 +124,17 @@ void GnssN2Project::main_thread() {
 
     const double tick_s = Telescope::instance().seq_length_nsec() * 1e-9;
     int64_t prev_seq = -1;
-    double since_metric = 1e9, since_archive = 1e9;
+    double since_metric = 1e9;
     uint64_t frame_count = 0;
 
     while (!stop_thread) {
         const int32_t* in = (const int32_t*)in_buf->wait_for_full_frame(unique_name, in_id);
         if (in == nullptr)
             break;
-        int32_t* out = nullptr;
-        if (out_buf) {
-            out = (int32_t*)out_buf->wait_for_empty_frame(unique_name, out_id);
-            if (out == nullptr)
-                break;
-            std::memcpy(out, in, in_buf->frame_size);
-        }
+        int32_t* out = (int32_t*)out_buf->wait_for_empty_frame(unique_name, out_id);
+        if (out == nullptr)
+            break;
+        std::memcpy(out, in, in_buf->frame_size);
         // Frame spacing from the sequence numbers, so a dropped frame lengthens dt; freq_id
         // labels from the first frame that carries them.
         double dt = samples_per_data_set * tick_s;
@@ -185,9 +166,9 @@ void GnssN2Project::main_thread() {
             live_ch_resolved = true;
             INFO("GnssN2Project: live writes restricted to {:d} of {:d} channels", n_live_ch,
                  num_local_freq);
-            if (live && n_live_ch == 0)
-                WARN("GnssN2Project: none of the {:d} live_freq_ids is on this GPU: live mode "
-                     "writes nothing here",
+            if (n_live_ch == 0)
+                WARN("GnssN2Project: none of the {:d} live_freq_ids is on this GPU: it writes "
+                     "nothing here",
                      (int)live_freq_ids.size());
         }
         const double dt_int = dt / n_integrations;
@@ -261,7 +242,7 @@ void GnssN2Project::main_thread() {
                         null_db[f] =
                             (l0 > 0.0) ? 10.0 * std::log10(std::max(l1, 1e-12 * l0) / l0) : 0.0;
                     }
-                    if (live && live_ch[f])
+                    if (live_ch[f])
                         gnss_n2proj::writeback(layout,
                                                out + (size_t)t * per_int + (size_t)f * per_freq,
                                                stations, V.data());
@@ -274,7 +255,6 @@ void GnssN2Project::main_thread() {
         ++frame_count;
         c_frames.inc();
         since_metric += dt;
-        since_archive += dt;
         if (since_metric >= metric_period_s) {
             since_metric = 0.0;
             for (int f = 0; f < num_local_freq; ++f) {
@@ -286,36 +266,9 @@ void GnssN2Project::main_thread() {
                 g_pr.labels({fid}).set(pr0[f]);
             }
         }
-        if (archive && since_archive >= archive_period_s) {
-            since_archive = 0.0;
-            const int64_t t_ns =
-                (meta && prev_seq >= 0) ? Telescope::instance().to_time_ns(prev_seq) : 0;
-            archive << "{\"t_ns\":" << t_ns << ",\"mode\":\"" << mode << "\",\"freq_id\":[";
-            for (int f = 0; f < num_local_freq; ++f)
-                archive << (f ? "," : "") << freq_ids[f];
-            archive << "],\"k\":[";
-            for (int f = 0; f < num_local_freq; ++f)
-                archive << (f ? "," : "") << k_cur[f];
-            archive << "],\"lam0_rel\":[";
-            for (int f = 0; f < num_local_freq; ++f)
-                archive << (f ? "," : "") << (float)lam0_rel[f];
-            archive << "],\"frac0\":[";
-            for (int f = 0; f < num_local_freq; ++f)
-                archive << (f ? "," : "") << (float)frac0[f];
-            archive << "],\"null_db\":[";
-            for (int f = 0; f < num_local_freq; ++f)
-                archive << (f ? "," : "") << (float)null_db[f];
-            archive << "],\"pr0\":[";
-            for (int f = 0; f < num_local_freq; ++f)
-                archive << (f ? "," : "") << (float)pr0[f];
-            archive << "]}\n";
-            archive.flush();
-        }
-        if (out_buf) {
-            out_buf->allocate_new_metadata_object(out_id);
-            in_buf->copy_metadata(in_id, out_buf, out_id);
-            out_buf->mark_frame_full(unique_name, out_id++);
-        }
+        out_buf->allocate_new_metadata_object(out_id);
+        in_buf->copy_metadata(in_id, out_buf, out_id);
+        out_buf->mark_frame_full(unique_name, out_id++);
         in_buf->mark_frame_empty(unique_name, in_id++);
     }
 }
