@@ -395,17 +395,11 @@ def build_search_leg(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # chains span 1176.45 AND 1207.14 MHz, and a band-selective source is only
             # diagnosable against a band that is quiet in the SAME sample. The search tap's
             # own chan_ids are the primary's covering set alone and would see one band.
-            **(
-                {
-                    "band_power_chans": rf_monitor_channels(
-                        cfg, node, gpu, args, freq_ids, chan_idx
-                    ),
-                    "band_power_period_s": args.rf_stats_period_s,
-                    "band_power_hop_stride": args.rf_stats_hop_stride,
-                }
-                if args.rf_stats
-                else {}
+            "band_power_chans": rf_monitor_channels(
+                cfg, node, gpu, args, freq_ids, chan_idx
             ),
+            "band_power_period_s": args.rf_stats_period_s,
+            "band_power_hop_stride": args.rf_stats_hop_stride,
         },
         f"{pre}srch_send": {
             "kotekan_stage": "bufferSend",
@@ -416,7 +410,6 @@ def build_search_leg(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # convenience, the science chain is not.
             "drop_frames": True,
             **send_pacing(
-                args,
                 cfg,
                 cfg.get("samples_per_data_set", 8192),
                 int(cfg.get("samples_per_data_set", 8192)) * n_chan,
@@ -530,18 +523,14 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
             "ctl": ctl_bytes,
             "epl": epl_bytes,
             # ⚠️ rec CARRIES THE CHAN-EXPORT TERM, cmb does NOT. The record buffer grows by
-            # n_prn * n_chan * chan_floats() whenever telemetry is enabled, because the
-            # assembler appends the per-channel spectrum rows (#32) that /get_spectrum and
-            # the fleet delay fit read. Writing the two as the same expression -- which is
-            # what a first pass at this function did -- under-sizes rec by that term, and
-            # the equivalence gate caught it against the deployed config.
+            # n_prn * n_chan * chan_floats(), because the assembler appends the per-channel
+            # spectrum rows (#32) that /get_spectrum and the fleet delay fit read. Writing the
+            # two as the same expression -- which is what a first pass at this function did --
+            # under-sizes rec by that term, and the equivalence gate caught it against the
+            # deployed config.
             "rec": (
                 f"{n_prn} * {record_floats} * sizeof_float32"
-                + (
-                    f" + {n_prn} * {n_chan} * {chan_floats()} * sizeof_float32"
-                    if args.telem_host
-                    else ""
-                )
+                f" + {n_prn} * {n_chan} * {chan_floats()} * sizeof_float32"
             ),
             "cmb": f"{n_prn} * {record_floats} * sizeof_float32",
             "telem": telem_frame_bytes(
@@ -645,18 +634,10 @@ def write_j2_vars(path, node, cfg, out, per_gpu_vars):
                 "chan_ids": srch["chan_ids"],
                 "element_offset": srch["element_offset"],
                 # #8's RF monitor, PER GPU (the channel union differs -- each GPU holds a
-                # different slice of the node's comb). Present only when --rf-stats armed
-                # it, so the template must render these conditionally, exactly as with
-                # frame0_utc.
-                **(
-                    {
-                        "band_power_chans": srch["band_power_chans"],
-                        "band_power_period_s": srch["band_power_period_s"],
-                        "band_power_hop_stride": srch["band_power_hop_stride"],
-                    }
-                    if "band_power_chans" in srch
-                    else {}
-                ),
+                # different slice of the node's comb).
+                "band_power_chans": srch["band_power_chans"],
+                "band_power_period_s": srch["band_power_period_s"],
+                "band_power_hop_stride": srch["band_power_hop_stride"],
             }
             if srch
             else None
@@ -704,14 +685,11 @@ def dual_core(rt, gpu, ordv):
 
 
 def cube_assembler_keys(args, cfg, gpu, pre):
-    """THE BEAM CUBE (--beam-cube): the (subband x element) axis, UN-COLLAPSED.
+    """THE BEAM CUBE: the (subband x element) axis, UN-COLLAPSED, pushed to the archiver.
 
     Everything else GnssGpuRecordAssemble emits has collapsed one of the two axes -- element
     blocks are summed over channels, the comb is summed over elements -- and a beam map needs
     both at once.
-
-    Emitted only when armed: dark keys in every production config make "is the deployed config
-    current?" unanswerable.
 
     ⚠️ WINDOW LENGTH IS IN F-ENGINE SAMPLES -- the same clock as wstart -- AND IS DERIVED
     HERE RATHER THAN CHOSEN, exactly as spectrum_window_samples is and for the same reason:
@@ -728,9 +706,7 @@ def cube_assembler_keys(args, cfg, gpu, pre):
     here regardless, because the value must MATCH across instances and a default that agrees
     by luck is not a contract.
     """
-    if not args.beam_cube:
-        return {}
-    keys = {
+    return {
         "beam_cube": True,
         "beam_cube_window_samples": (
             args.cube_window_records
@@ -745,13 +721,11 @@ def cube_assembler_keys(args, cfg, gpu, pre):
         "beam_cube_max_prn": args.cube_max_prn,
         "beam_cube_max_bins": args.cube_max_bins,
         "beam_cube_gpu": gpu,
+        # beam_cube_chain is left to the stage, which builds "<short hostname>/<stage>" itself.
+        # Generating it here would let a config be copied to another node and keep the old
+        # name -- an archive mislabelled at the source, which no reader can detect.
+        "cube_buf": f"{pre}cube_buf",
     }
-    # beam_cube_chain is left to the stage, which builds "<short hostname>/<stage>" itself.
-    # Generating it here would let a config be copied to another node and keep the old name --
-    # an archive mislabelled at the source, which no reader can detect.
-    if args.cube_host:
-        keys["cube_buf"] = f"{pre}cube_buf"
-    return keys
 
 
 def live_element_ranges(arr):
@@ -934,9 +908,19 @@ def elem_steer_keys(args, arr, n_elem):
     }
 
 
-def send_pacing(args, cfg, spds, frame_bytes, frames_per_fengine_frame=1.0):
+# PACE EVERY PUSH LEG (telem, cube, search tap) at 2x its mean rate. Every sender in the fleet
+# emits on the F-engine frame clock, so unpaced they all land on the receiver's single 1 GbE in
+# the same millisecond and the switch drops what its egress queue cannot hold; each loss is an
+# RTO stall of ~200 ms, and a telemetry frame that stalls reaches the gather after its window
+# has closed. At 2x, a frame spreads over half its period and the aggregate at the link is the
+# mean, which the link carries. The real fix is a faster link into the receiver; this is the
+# one that needs no hardware.
+SEND_PACING_FACTOR = 2.0
+
+
+def send_pacing(cfg, spds, frame_bytes, frames_per_fengine_frame=1.0):
     """bufferSend `max_pacing_rate_mbps` for a leg that emits `frame_bytes` per F-engine frame
-    (or that fraction of one), or {} when --send-pacing-factor is 0.
+    (or that fraction of one): SEND_PACING_FACTOR x its mean rate.
 
     EVERY SENDER IN THE FLEET EMITS ON THE SAME FRAME CLOCK, so unpaced they all burst into the
     receiver's link in the same millisecond and the switch's egress queue for that port is what
@@ -945,15 +929,13 @@ def send_pacing(args, cfg, spds, frame_bytes, frames_per_fengine_frame=1.0):
     carries; the cap is per connection so a leg that fell behind catches up at (factor - 1) x
     its mean rate, which is why this is a factor and not a rate.
     """
-    if not args.send_pacing_factor or args.send_pacing_factor <= 1.0:
-        return {}
     frame_s = (
         float(spds)
         * float(cfg["fengine"]["fft_length"])
         / (float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6)
     )
     mean_mbps = frame_bytes * frames_per_fengine_frame * 8.0 / frame_s / 1e6
-    return {"max_pacing_rate_mbps": round(mean_mbps * args.send_pacing_factor, 3)}
+    return {"max_pacing_rate_mbps": round(mean_mbps * SEND_PACING_FACTOR, 3)}
 
 
 def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
@@ -1030,12 +1012,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # -- the exact drift config/gnss_record_layout.py was written to make impossible, left behind
     # in this branch when the path-A one was fixed (2026-08-07).
     record_floats = record_stride(n_live)
-    steer = (
-        elem_steer_keys(args, arr, n_live)
-        if args.elem_steer_bands == "all"
-        or tag.strip("_") in [b for b in args.elem_steer_bands.split(",") if b]
-        else {}
-    )
+    steer = elem_steer_keys(args, arr, n_live)
 
     blocks = {
         tiles_buf: {
@@ -1064,11 +1041,15 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                 # synchronization story (no ring semantics on gnss_synth).
                 {
                     "name": "cudaGnssInject",
-                    # fp16 Phi tables: half the resident table (GnssCudaDespread.hpp).
-                    "phi_fp16": bool(args.phi_fp16),
-                    # Centered chip-window truncation (GnssCudaDespread.hpp).
+                    # fp16 Phi tables: half the resident table (GnssCudaDespread.hpp) -- the
+                    # one lever the DRAM-footprint verdict (gnss_gpu_search.md 10.6c) says pays;
+                    # 1.55x through the shipped enqueue_waveform (scripts/gnss/phi16gpu).
+                    "phi_fp16": True,
+                    # Chip-window truncation (GnssCudaDespread.hpp), placed on the CENTRE of the
+                    # PFB span: the prototype peaks mid-span, and a one-sided cap crosses the
+                    # peak (9.5's cliff). e2e-EXACT at 80 chips across PRNs and Dopplers.
                     "despread_max_chips": int(args.despread_max_chips),
-                    "despread_chips_centered": bool(args.despread_chips_centered),
+                    "despread_chips_centered": True,
                     "voltage_name": "voltage",
                     # MUST match the tracker's `conjugate`. The N^2 kernel has no conj_data flag
                     # and its antenna input is production's, so the F-engine conjugation is
@@ -1203,11 +1184,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # each instance, that's *never* what we want to do."
             "frame_size": (
                 f"{n_prn} * {record_floats} * sizeof_float32"
-                + (
-                    f" + {n_prn} * {n_chan} * {chan_floats()} * sizeof_float32"
-                    if args.telem_host
-                    else ""
-                )
+                f" + {n_prn} * {n_chan} * {chan_floats()} * sizeof_float32"
             ),
             # dump a path-B record frame over REST without a rawFileWrite (see the tap buffers)
             "peek_hold": True,
@@ -1255,11 +1232,11 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             ),
             "spectrum_ring_depth": args.spectrum_ring_depth,
             # THE UNSUMMED COMB, per record, appended after the PRN records (gnssRecord.hpp).
-            # Tied to --telem-host because the broker is its only consumer today; the record
-            # buffer above is sized to match, and the two must move together.
-            **({"chan_export": True} if args.telem_host else {}),
+            # The broker (over the telemetry leg) is its consumer; the record buffer above is
+            # sized to match, and the two must move together.
+            "chan_export": True,
             "reference_element": args.reference_element,
-            # ── #102 ELEMENT STEERING (per band, --elem-steer-bands): positions from the
+            # ── #102 ELEMENT STEERING, every chain: positions from the
             # array-epoch table; presence of elem_positions_enu is what ARMS the
             # steering in GnssGpuRecordAssemble (geometry then arrives from the broker's
             # --post-sat-geometry feed). The SIGN is a measured convention.
@@ -1269,19 +1246,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             # #163: channels weighted by 1/rms of their own measured power, not by the
             # F-engine digital gain; the power is averaged over the frame inputs this stage
             # actually sums (the correlator's live tiles, same set as live_element_tiles).
-            # Emitted only when on, so a fleet without it is unchanged.
-            **(
-                {
-                    "chan_noise_norm": True,
-                    "chan_noise_norm_elems": [
-                        e
-                        for lo, hi in live_element_ranges(arr)
-                        for e in range(lo, hi + 1)
-                    ],
-                }
-                if args.chan_noise_norm
-                else {}
-            ),
+            "chan_noise_norm": True,
+            "chan_noise_norm_elems": [
+                e for lo, hi in live_element_ranges(arr) for e in range(lo, hi + 1)
+            ],
             **elem_shared_keys(args),
             **elem_shared_ref_keys(
                 args, (tag or signal_tag(sig["primary"])).strip("_"), steer, n_live
@@ -1329,7 +1297,10 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "deep_coherent": True,
             "deep_rate_search": True,
             "deep_rate_min_q": 10.0,
-            "sky_deep": args.sky_deep,
+            # The SKY-PHASE-CORRECTED prompt (record slots 24/25, gnssElemCal's leave-one-out
+            # element derotation) competes as a deep-fold rung under the same measured floor as
+            # every other candidate, so a cold or bad cal loses on merit (docs 11.32).
+            "sky_deep": True,
             "fft_len": cfg["fengine"]["fft_length"],
             "record_export": 128,
             "cpu_affinity": [V["cores"]["combine"]],
@@ -1353,89 +1324,85 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # despreads. One bufferRecv still serves the whole fleet -- the identity is in the payload,
     # and the receive buffer is sized to the widest sender (`allow_short_frames`) -- but a
     # reserved column or a reserved row that nobody fills is bytes on a link the fleet shares.
-    if args.telem_host:
-        chain_name = broker_chain_name(chain["signal"] if chain else sig["primary"])
-        telem_max_prn = telem_rows(chain_name)
-        telem_bytes = telem_frame_bytes(
-            args.telem_records_per_frame, telem_max_prn, n_chan
-        )
-        # ⚠️ NO LONGER AN ERROR WHEN n_prn EXCEEDS IT (task #64). GnssTelemPack COMPACTS the
-        # wire rows onto the PRNs that were actually despread, so max_prn is the number of
-        # SIMULTANEOUSLY LIVE satellites the wire can carry, not a mirror of the record
-        # buffer's slot count. A tracker configured for 32 PRN slots with 11-14 seeded fits in
-        # 16 rows, and the 40 rows this used to demand were ~65% zeros: 480 Mbps of cf06's
-        # single 1 GbE, which measured ~5 s on every broker cycle. The stage WARNs by PRN name
-        # if a window ever has more live than fit.
-        blocks.update(
-            {
-                f"{pre}telem_buf": {
-                    "kotekan_buffer": "standard",
-                    "metadata_pool": "gnss_pool",
-                    # Deep enough that a momentary stall in the send leg costs latency rather than
-                    # records; at 23.84 frames/s this is ~1.3 s of slack.
-                    "num_frames": 32,
-                    "frame_size": telem_bytes,
-                },
-                f"{pre}telem_pack": {
-                    "kotekan_stage": "GnssTelemPack",
-                    "in_buf": n2rec_buf,
-                    "out_buf": f"{pre}telem_buf",
-                    "chain": chain_name,
-                    # THE SENDER'S IDENTITY, and the only thing that distinguishes two instances on
-                    # the far side. node.gpu, because that is exactly the granularity the combiner
-                    # and every existing endpoint use.
-                    "inst": f"{node}.{gpu}",
-                    "n_prn": n_prn,
-                    "n_elements": n_live,
-                    "max_prn": telem_max_prn,
-                    "records_per_frame": args.telem_records_per_frame,
-                    "hops_per_record": args.hops_per_record,
-                    "fft_len": cfg["fengine"]["fft_length"],
-                    "n_chan": n_chan,
-                    # THE COMB AND ITS COLUMN LABELS. channel_ids is the SAME list the assembler and
-                    # the despread were given -- the broker reads the freq_ids off the wire so a
-                    # configured copy on its side cannot drift out of step with the node.
-                    "chan_export": True,
-                    "channel_ids": list(freq_ids),
-                    "cpu_affinity": [V["cores"]["telem"]],
-                },
-                f"{pre}telem_send": {
-                    "kotekan_stage": "bufferSend",
-                    "buf": f"{pre}telem_buf",
-                    "server_ip": args.telem_host,
-                    "server_port": args.telem_port,
-                    # NEVER back-pressure the science chain for telemetry. A broker that is down
-                    # must cost us nothing; that is also why this is a separate consumer of
-                    # n2rec_buf rather than a stage inside the chain.
-                    "drop_frames": True,
-                    # one wire frame per telem_records_per_frame records
-                    **send_pacing(
-                        args,
-                        cfg,
-                        spds,
-                        telem_bytes,
-                        n_rec_per_frame / float(args.telem_records_per_frame),
-                    ),
-                    # 30 s, not the 5 s default. When the gather is down EVERY sender logs one WARN
-                    # per attempt, and there are 60 of them (12 instances x 5 chains): at the
-                    # default that is ~12 lines a second of "Connection refused" across the fleet
-                    # logs, which buries whatever the real problem is. Bring the gather up first
-                    # (gnss-gather.service), then restart the nodes.
-                    "reconnect_time": 30,
-                    # Same bound as the search leg, and for the same reason: a gather that accepts
-                    # the connection and then stops reading must cost this instance a dropped frame,
-                    # not a 20-second stall inside send() on a thread that is also the only consumer
-                    # keeping telem_buf drained.
-                    "send_timeout": 2,
-                    # PIN THE WIRE FORMAT on both ends -- see the srch_send note. The node inherits
-                    # a config_tracker block from the production base and the gather instance has
-                    # none, so left to default the two disagree by one header field and the stream
-                    # shifts, surfacing as an unrelated-looking "Frame size does not match".
-                    "use_config_tracker": False,
-                    "cpu_affinity": [V["cores"]["send"]],
-                },
-            }
-        )
+    chain_name = broker_chain_name(chain["signal"] if chain else sig["primary"])
+    telem_max_prn = telem_rows(chain_name)
+    telem_bytes = telem_frame_bytes(args.telem_records_per_frame, telem_max_prn, n_chan)
+    # ⚠️ NO LONGER AN ERROR WHEN n_prn EXCEEDS IT (task #64). GnssTelemPack COMPACTS the
+    # wire rows onto the PRNs that were actually despread, so max_prn is the number of
+    # SIMULTANEOUSLY LIVE satellites the wire can carry, not a mirror of the record
+    # buffer's slot count. A tracker configured for 32 PRN slots with 11-14 seeded fits in
+    # 16 rows, and the 40 rows this used to demand were ~65% zeros: 480 Mbps of cf06's
+    # single 1 GbE, which measured ~5 s on every broker cycle. The stage WARNs by PRN name
+    # if a window ever has more live than fit.
+    blocks.update(
+        {
+            f"{pre}telem_buf": {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                # Deep enough that a momentary stall in the send leg costs latency rather than
+                # records; at 23.84 frames/s this is ~1.3 s of slack.
+                "num_frames": 32,
+                "frame_size": telem_bytes,
+            },
+            f"{pre}telem_pack": {
+                "kotekan_stage": "GnssTelemPack",
+                "in_buf": n2rec_buf,
+                "out_buf": f"{pre}telem_buf",
+                "chain": chain_name,
+                # THE SENDER'S IDENTITY, and the only thing that distinguishes two instances on
+                # the far side. node.gpu, because that is exactly the granularity the combiner
+                # and every existing endpoint use.
+                "inst": f"{node}.{gpu}",
+                "n_prn": n_prn,
+                "n_elements": n_live,
+                "max_prn": telem_max_prn,
+                "records_per_frame": args.telem_records_per_frame,
+                "hops_per_record": args.hops_per_record,
+                "fft_len": cfg["fengine"]["fft_length"],
+                "n_chan": n_chan,
+                # THE COMB AND ITS COLUMN LABELS. channel_ids is the SAME list the assembler and
+                # the despread were given -- the broker reads the freq_ids off the wire so a
+                # configured copy on its side cannot drift out of step with the node.
+                "chan_export": True,
+                "channel_ids": list(freq_ids),
+                "cpu_affinity": [V["cores"]["telem"]],
+            },
+            f"{pre}telem_send": {
+                "kotekan_stage": "bufferSend",
+                "buf": f"{pre}telem_buf",
+                "server_ip": args.telem_host,
+                "server_port": args.telem_port,
+                # NEVER back-pressure the science chain for telemetry. A broker that is down
+                # must cost us nothing; that is also why this is a separate consumer of
+                # n2rec_buf rather than a stage inside the chain.
+                "drop_frames": True,
+                # one wire frame per telem_records_per_frame records
+                **send_pacing(
+                    cfg,
+                    spds,
+                    telem_bytes,
+                    n_rec_per_frame / float(args.telem_records_per_frame),
+                ),
+                # 30 s, not the 5 s default. When the gather is down EVERY sender logs one WARN
+                # per attempt, and there are 60 of them (12 instances x 5 chains): at the
+                # default that is ~12 lines a second of "Connection refused" across the fleet
+                # logs, which buries whatever the real problem is. Bring the gather up first
+                # (gnss-gather.service), then restart the nodes.
+                "reconnect_time": 30,
+                # Same bound as the search leg, and for the same reason: a gather that accepts
+                # the connection and then stops reading must cost this instance a dropped frame,
+                # not a 20-second stall inside send() on a thread that is also the only consumer
+                # keeping telem_buf drained.
+                "send_timeout": 2,
+                # PIN THE WIRE FORMAT on both ends -- see the srch_send note. The node inherits
+                # a config_tracker block from the production base and the gather instance has
+                # none, so left to default the two disagree by one header field and the stream
+                # shifts, surfacing as an unrelated-looking "Frame size does not match".
+                "use_config_tracker": False,
+                "cpu_affinity": [V["cores"]["send"]],
+            },
+        }
+    )
     # -- THE BEAM-CUBE PUSH LEG (--cube-host) -------------------------------------------------
     # One completed ~1 s window per frame, PUSHED the moment a later window opens. Not polled:
     # the accumulator's ring is 8 windows, so any consumer stall longer than ~8 s loses those
@@ -1447,55 +1414,53 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # the count rides in the NEXT frame, so a hole in the window index that is NOT matched by a
     # rise in that counter means the loss happened downstream -- in this bufferSend or on the
     # far side -- which is a distinction worth being able to make from the archive alone.
-    if args.cube_host:
-        cube_bytes = cube_frame_bytes(args.cube_max_prn, args.cube_max_bins, n_live)
-        if n_chan > args.cube_max_bins and args.cube_bin_width == 0:
-            raise SystemExit(
-                f"chain {pre.strip('_')}: {n_chan} covering channels but "
-                f"--cube-max-bins {args.cube_max_bins}; the frame cannot hold "
-                f"them. Raise it (every sender must then use the same value) or "
-                f"set --cube-bin-width to group channels."
-            )
-        if n_prn > args.cube_max_prn:
-            raise SystemExit(
-                f"chain {pre.strip('_')}: {n_prn} PRN slots but --cube-max-prn "
-                f"{args.cube_max_prn}; raise it on EVERY sender and the archiver."
-            )
-        blocks.update(
-            {
-                f"{pre}cube_buf": {
-                    "kotekan_buffer": "standard",
-                    "metadata_pool": "gnss_pool",
-                    # ~1 frame/s per sender: 16 frames is ~16 s of absorption for a far side that
-                    # stalls, at 1.6 MB. Past that the ASSEMBLER drops (non-blocking acquire) and
-                    # says so in the next frame's counter.
-                    "num_frames": 16,
-                    "frame_size": cube_bytes,
-                },
-                f"{pre}cube_send": {
-                    "kotekan_stage": "bufferSend",
-                    "buf": f"{pre}cube_buf",
-                    "server_ip": args.cube_host,
-                    "server_port": args.cube_port,
-                    "drop_frames": True,
-                    "reconnect_time": 30,
-                    "send_timeout": 2,
-                    **send_pacing(
-                        args,
-                        cfg,
-                        spds,
-                        cube_bytes,
-                        n_rec_per_frame / float(args.cube_window_records),
-                    ),
-                    # ⚠️ MUST MATCH THE ARCHIVER -- see the telem_recv note: the nodes inherit a
-                    # config_tracker block from the production base and the archiver instance has
-                    # none, so left to default the two write different header lengths and the
-                    # stream shifts by one field.
-                    "use_config_tracker": False,
-                    "cpu_affinity": [V["cores"]["send"]],
-                },
-            }
+    cube_bytes = cube_frame_bytes(args.cube_max_prn, args.cube_max_bins, n_live)
+    if n_chan > args.cube_max_bins and args.cube_bin_width == 0:
+        raise SystemExit(
+            f"chain {pre.strip('_')}: {n_chan} covering channels but "
+            f"--cube-max-bins {args.cube_max_bins}; the frame cannot hold "
+            f"them. Raise it (every sender must then use the same value) or "
+            f"set --cube-bin-width to group channels."
         )
+    if n_prn > args.cube_max_prn:
+        raise SystemExit(
+            f"chain {pre.strip('_')}: {n_prn} PRN slots but --cube-max-prn "
+            f"{args.cube_max_prn}; raise it on EVERY sender and the archiver."
+        )
+    blocks.update(
+        {
+            f"{pre}cube_buf": {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                # ~1 frame/s per sender: 16 frames is ~16 s of absorption for a far side that
+                # stalls, at 1.6 MB. Past that the ASSEMBLER drops (non-blocking acquire) and
+                # says so in the next frame's counter.
+                "num_frames": 16,
+                "frame_size": cube_bytes,
+            },
+            f"{pre}cube_send": {
+                "kotekan_stage": "bufferSend",
+                "buf": f"{pre}cube_buf",
+                "server_ip": args.cube_host,
+                "server_port": args.cube_port,
+                "drop_frames": True,
+                "reconnect_time": 30,
+                "send_timeout": 2,
+                **send_pacing(
+                    cfg,
+                    spds,
+                    cube_bytes,
+                    n_rec_per_frame / float(args.cube_window_records),
+                ),
+                # ⚠️ MUST MATCH THE ARCHIVER -- see the telem_recv note: the nodes inherit a
+                # config_tracker block from the production base and the archiver instance has
+                # none, so left to default the two write different header lengths and the
+                # stream shifts by one field.
+                "use_config_tracker": False,
+                "cpu_affinity": [V["cores"]["send"]],
+            },
+        }
+    )
     return blocks
 
 
@@ -2552,29 +2517,6 @@ def main():
         "config merely uncovered it. Keep this off until it is fixed upstream.",
     )
     ap.add_argument(
-        "--rf-stats",
-        action="store_true",
-        help="ARM THE RF-PATH MONITOR on each GPU's search tap (task #8): 4+4b clip "
-        "fraction and per-channel band power, sampled at --rf-stats-period-s. "
-        "OFF by default and OFF means the pass never runs -- the stage reports "
-        "enabled=false at <tap>/rf_stats rather than serving zeros.\n"
-        "\n"
-        "WHY WE ARE BLIND WITHOUT IT. Fleet-wide amplitudes swing 5-10x per "
-        "hour on flipped and unflipped satellites together (#56), the root is "
-        "upstream of tracking AND of the combine, and nothing in this pipeline "
-        "measures whether the quantiser is railing or how power is distributed "
-        "across the band. The 2026-08-18 event settled that the source is real "
-        "and BAND-SELECTIVE (+16 dB at 1176 only), which is exactly what a "
-        "per-channel series shows and a scalar cannot.\n"
-        "\n"
-        "The channel set is the UNION of every chain's covering channels on "
-        "this node, so both the 1176.45 and 1207.14 MHz lobes are watched: a "
-        "band-selective source is only diagnosable against a band that is "
-        "quiet at the same instant. Cost measured at production shape (8192 "
-        "hops x 384 chan x 128 elem, 14 channels, stride 32): 1.0-1.2 ms per "
-        "pass, i.e. ~0.01%% duty at the 10 s default.",
-    )
-    ap.add_argument(
         "--rf-stats-period-s",
         type=float,
         default=10.0,
@@ -2745,14 +2687,6 @@ def main():
         "returned; 8 leaves headroom without meaningful memory cost.",
     )
     ap.add_argument(
-        "--elem-steer-bands",
-        default="",
-        help="#102: comma list of band tags (e.g. 'e5a') whose n2assemble gets "
-        "elem_positions_enu, enabling per-element geometric steering, or "
-        "'all' for every assembler including the untagged primary. Empty = "
-        "no steering anywhere (the default).",
-    )
-    ap.add_argument(
         "--elem-positions-file",
         default="",
         help="#102: a refined-positions JSON (cube order, epoch_key, positions_enu) "
@@ -2773,34 +2707,6 @@ def main():
         help="antenna whose correlation fills the record HEADER -- the broker's DLL "
         "and carrier loop reference (and, with --elem-sum, the phase anchor of "
         "the calibrated sum)",
-    )
-    ap.add_argument(
-        "--sky-deep",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="combiner: score the SKY-PHASE-CORRECTED prompt (record slots 24/25, "
-        "gnssElemCal's leave-one-out element derotation) as a deep-fold "
-        "candidate rung. Gated off on 2026-08-05 because the split-aperture "
-        "estimator appeared to beat a genie; RESOLVED 2026-08-10: that was a "
-        "comparator error (the split's honest bound is the HALF-aperture "
-        "genie, and against it the split reads 0.84-0.95 in every seed, "
-        "anomaly case included, with the null fail-closed at 4.5-7.8 vs "
-        "27-63 on signal). ON SKY the slots hold phase-coherence 0.92-0.96 "
-        "over 120 s of sparse samples where the raw prompt sits at the "
-        "random-walk floor, amplitude-neutral (|sky|/|raw| ~ 1), weak sats "
-        "failing soft -- measured 2026-08-10 with elem_sum live. The rung "
-        "competes under the same measured floor as every other candidate, "
-        "so a cold or bad cal loses on merit rather than corrupting the "
-        "fold (docs 11.32).",
-    )
-    ap.add_argument(
-        "--chan-noise-norm",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="assembler chan_noise_norm: weight each channel of the cross-channel sums by "
-        "1/rms of its own measured power (GnssChordVoltageTap's band-power pass), so a "
-        "channel enters by signal-to-noise and not by the F-engine digital gain (#163). "
-        "Emitted only when on.",
     )
     ap.add_argument(
         "--elem-sum-shared",
@@ -2952,27 +2858,8 @@ def main():
         help="GPU TODO item 6: truncate the tracker's per-hop PFB chip gather to "
         "this many chips (0 = the full ~210-chip span, the historical "
         "behaviour). Synthesis is 73-89%% of the tracker kernel and LINEAR in "
-        "this. Use WITH --despread-chips-centered; the validated centered "
-        "floor is 60 (harsh-comb flip at 52), recommended 80 = 2.6x. "
-        "One-sided (without centering) the floor is 120 (9.5's cliff).",
-    )
-    ap.add_argument(
-        "--despread-chips-centered",
-        action="store_true",
-        help="Place the --despread-max-chips window on the CENTRE of the PFB span "
-        "(the prototype peaks mid-span; a one-sided cap crosses the peak -- "
-        "that was 9.5's cliff). e2e-EXACT at 80 chips across PRNs and "
-        "Dopplers, both comb regimes, incl. the GPU tracker leg's own walk.",
-    )
-    ap.add_argument(
-        "--phi-fp16",
-        action="store_true",
-        help="GPU TODO item 3: store the despread's Phi tables as fp16 (__half2). "
-        "Halves the RESIDENT table -- the one lever the DRAM-footprint verdict "
-        "(gnss_gpu_search.md 10.6c) says pays; 1.55x measured through the "
-        "shipped enqueue_waveform (scripts/gnss/phi16gpu, ALL PASS: wave rel "
-        "~1e-3 vs the 3.3e-4 storage floor). Default OFF; arming is a node "
-        "restart. Fleet-wide or not at all -- nothing is per-node.",
+        "this. The window is centred on the PFB span; the validated "
+        "floor is 60 (harsh-comb flip at 52), recommended 80 = 2.6x.",
     )
     ap.add_argument("--buffer-depth", type=int, default=4)
     ap.add_argument(
@@ -3002,12 +2889,9 @@ def main():
     ap.add_argument(
         "--telem-host",
         default=None,
-        help="TASK #59: send per-record telemetry to the gather instance at this "
-        "address (bufferSend -> bufferRecv), replacing the broker's ~60 REST "
-        "polls per cycle. Off when unset -- the polling path is untouched, so "
-        "this can be turned on a node at a time. The gather is normally the "
-        "broker host (cf06, 10.222.3.6), which already runs the search "
-        "aggregator instance.",
+        help="TASK #59: the gather instance every node sends its per-record "
+        "telemetry to (bufferSend -> bufferRecv). Required for a node config. "
+        "The gather is normally the broker host.",
     )
     ap.add_argument(
         "--telem-port",
@@ -3027,39 +2911,15 @@ def main():
         "a local counter, so every instance batches the same record sets "
         "without negotiating -- the #53 lesson, applied before it can bite.",
     )
-    ap.add_argument(
-        "--send-pacing-factor",
-        type=float,
-        default=0.0,
-        help="cap every push leg's socket (telem_send, cube_send, srch_send) at this "
-        "multiple of the leg's MEAN rate via SO_MAX_PACING_RATE (0 = unpaced). "
-        "Every sender emits on the F-engine frame clock, so unpaced the whole "
-        "fleet bursts into the receiver's link in the same millisecond and the "
-        "switch drops what its egress queue cannot hold; each connection then "
-        "pays a 200 ms RTO stall, and the gather closes the window before the "
-        "frame arrives. A factor of 2 spreads each frame over half its period "
-        "and lets a leg that fell behind catch up at its mean rate.",
-    )
     # -- THE BEAM CUBE: the continuous per-(subband x element) recording ----------------------
-    ap.add_argument(
-        "--beam-cube",
-        action="store_true",
-        help="arm GnssGpuRecordAssemble's beam-cube accumulator: per (PRN slot, "
-        "subband bin, element) COHERENT sum plus incoherent power, in "
-        "addressable windows on the F-engine clock. This is the (channel x "
-        "element) axis every other product collapses, and it is what a "
-        "per-element/per-frequency beam map is built from. Serves "
-        "/get_beam_cube; add --cube-host to PUSH it to an archiver, which is "
-        "what makes it a record rather than a bench readout.",
-    )
     ap.add_argument(
         "--cube-host",
         default=None,
-        help="push completed beam-cube windows to the archiver at this address "
-        "(bufferSend -> bufferRecv). Implies --beam-cube. Normally the broker "
-        "host (cf06, 10.222.3.6), which already runs the search aggregator and "
-        "the telemetry gather -- but the archiver is a SEPARATE instance from "
-        "both, because a restart of either must never interrupt the record.",
+        help="the beam-cube archiver every node pushes its completed windows to "
+        "(bufferSend -> bufferRecv). Required for a node config. Normally cf06 "
+        "(10.222.3.6), which also runs the search aggregator and the telemetry "
+        "gather -- but the archiver is a SEPARATE instance from both, because "
+        "a restart of either must never interrupt the record.",
     )
     ap.add_argument(
         "--cube-port",
@@ -3331,12 +3191,6 @@ def main():
         "after any change here. Keep in step with the broker's --acquire-snr.",
     )
     args = ap.parse_args()
-
-    # --cube-host without --beam-cube would emit a buffer and a bufferSend for an accumulator
-    # that is never armed: a leg that connects, stays silent forever, and looks healthy from
-    # both ends. Imply it rather than reject it -- pushing IS the reason to arm it.
-    if args.cube_host:
-        args.beam_cube = True
 
     with open(args.node_file) as fh:
         cfg = yaml.safe_load(fh)
@@ -3666,6 +3520,13 @@ def main():
         return
 
         return
+
+    # A node config always ships its telemetry to the gather and its beam cube to the archiver.
+    for _flag in ("telem_host", "cube_host"):
+        if not getattr(args, _flag):
+            raise SystemExit(
+                "--%s is required for a node config" % _flag.replace("_", "-")
+            )
 
     # --- the REST port, and why the old refusal is gone ---------------------------------------
     # This used to hard-refuse port 12048 -- "choco owns that port and would redirect or

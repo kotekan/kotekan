@@ -25,8 +25,8 @@ common:
     time0-endpoint: telescope/time0_ns
     hops-per-sec: 195312.5         # F-engine record geometry -- not a signal property
   # #102 geometry feed for the per-element steering: each chain posts its constellation's
-  # az/el to its record assemblers every 30 s. Every band is steered (gnss_fleet_chord.yaml
-  # elem-steer-bands: all); an unsteered assembler acknowledges {"steering":"off"}.
+  # az/el to its record assemblers every 30 s. Every band is steered (the generator arms
+  # steering on every assembler); an unsteered assembler acknowledges {"steering":"off"}.
     post-sat-geometry: 1
   # #104 (2026-08-30): bound sibling clock adoption -- the unbounded path relayed gps's
   # poisoned clock fleet-wide in ~2 s during the #103 outage while JOINT-CLK's 5-chip
@@ -1035,7 +1035,7 @@ chains:
     # per-element steering (elem_positions_enu lives in the NODE configs, e5a only; e5b
     # is the unsteered control + sign calibration). Judge: e5a per-element |u| coherence
     # and p2 vs e5b after the node restart; SAT-GEOMETRY posted lines here.
-    # Revert: delete this line (and/or regenerate nodes without --elem-steer-bands).
+    # Revert: delete this line.
     # MOVED TO common: every band is steered now, so every chain posts its constellation's
     # az/el; the assembler acknowledges and drops a post when it is unsteered.
     # ── #33 PLL FINE STAGE (2026-08-13 20:0x): the phase-step feed, armed ────────────────
