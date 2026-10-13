@@ -94,8 +94,8 @@ private:
     void get_detections_callback(kotekan::connectionInstance& conn);
     // ---- Slot membership (docs/CHORD_LIVE_PRN_RECONFIG.md) ----
 
-    /// POST: the whole slot -> PRN map in slot order, as a bare array or @c {"prns": [...]},
-    /// the payload cudaGnssChordTrackState::set_prns_callback takes. The slot count is fixed
+    /// POST: the whole slot -> PRN map in slot order, as @c {"prns": [...]} (the payload
+    /// cudaGnssChordTrackState::set_prns_callback takes) or a bare array. The slot count is fixed
     /// and PRNs must be distinct. Any @c at_hop is ignored: the map is staged and applied before
     /// the next pass.
     void set_prns_callback(kotekan::connectionInstance& conn, nlohmann::json& request);

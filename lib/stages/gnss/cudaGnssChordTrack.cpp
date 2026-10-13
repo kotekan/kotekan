@@ -197,34 +197,19 @@ void cudaGnssChordTrackState::note_frame_hop(long long hop) {
 
 void cudaGnssChordTrackState::get_prns_callback(kotekan::connectionInstance& conn) {
     nlohmann::json out = nlohmann::json::array();
-    nlohmann::json gen = nlohmann::json::array();
     bool pend = false;
-    std::string err;
-    uint64_t swaps = 0;
-    int64_t at_h = -1, last_h = -1;
+    int64_t last_h = -1;
     {
         std::lock_guard<std::mutex> lk(prn_mtx);
-        for (int p = 0; p < n_prn; ++p) {
+        for (int p = 0; p < n_prn; ++p)
             out.push_back(prns[(size_t)p]);
-            gen.push_back(slot_gen[(size_t)p]);
-        }
         pend = !pending_prns.empty();
-        err = prn_last_err;
-        swaps = prn_swaps;
-        at_h = prn_at_hop;
         last_h = last_hop;
     }
     nlohmann::json reply = {{"prns", out},
-                            {"n_prn", n_prn},
-                            {"slot_gen", gen},
-                            {"swaps", swaps},
                             {"pending", pend},
-                            {"last_error", err},
-                            // When a staged swap is due and whether this node has reached it,
-                            // so a waiting swap does not read as a refused one. last_hop < 0
-                            // on a running node means nothing calls note_frame_hop, so every
-                            // scheduled swap applies immediately.
-                            {"pending_at_hop", at_h},
+                            // last_hop < 0 on a running node means nothing calls
+                            // note_frame_hop, so every scheduled swap applies immediately.
                             {"last_hop", last_h}};
     conn.send_json_reply(reply);
 }
@@ -235,20 +220,15 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
     std::vector<int> want;
     std::string err;
     int64_t at_hop = -1;
-    bool obsolete_at_seq = false;
     try {
+        if (!request.is_object())
+            throw std::runtime_error("expected {\"prns\": [...]}");
         // Optional; absent or null means the next frame boundary.
-        if (request.is_object() && request.contains("at_hop") && !request.at("at_hop").is_null())
+        if (request.contains("at_hop") && !request.at("at_hop").is_null())
             at_hop = request.at("at_hop").get<int64_t>();
-        // An obsolete `at_seq` deadline is ignored with a warning, not read as hops: its unit
-        // (samples or hops) depends on the sender, and a wrong guess moves the swap by a factor
-        // of fft_len. Ignoring it costs only the fleet-wide simultaneity.
-        else if (request.is_object() && request.contains("at_seq")
-                 && !request.at("at_seq").is_null())
-            obsolete_at_seq = true;
-        const nlohmann::json& arr = request.is_object() ? request.at("prns") : request;
+        const nlohmann::json& arr = request.at("prns");
         if (!arr.is_array())
-            throw std::runtime_error("expected an array of PRNs, or {\"prns\": [...]}");
+            throw std::runtime_error("expected {\"prns\": [...]}");
         want.reserve(arr.size());
         for (const auto& v : arr)
             want.push_back(v.get<int>());
@@ -274,10 +254,6 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
                           + std::to_string(j) + " and " + std::to_string(i);
         }
     if (!err.empty()) {
-        {
-            std::lock_guard<std::mutex> lk(prn_mtx);
-            prn_last_err = err;
-        }
         conn.send_error(err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
@@ -287,7 +263,6 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
         for (int p = 0; p < n_prn; ++p)
             if (want[(size_t)p] != prns[(size_t)p])
                 ++n_diff;
-        prn_last_err.clear();
         if (n_diff > 0) {
             pending_prns = want;
             prn_at_hop = at_hop;
@@ -295,11 +270,6 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
         }
     }
     if (n_diff > 0) {
-        if (obsolete_at_seq)
-            WARN_NON_OO("set_prns: the payload carries the OBSOLETE `at_seq` field (samples) "
-                        "and no `at_hop` (hops). Staging UNSCHEDULED: this node will swap at "
-                        "its own next frame boundary, so the fleet will NOT cross together. "
-                        "Update the broker -- see cudaGnssChordTrack.hpp on the currency.");
         if (at_hop >= 0)
             INFO_NON_OO("set_prns: {:d} slot(s) staged for frame hop >= {:d} "
                         "(now {:d}, {:d} frame(s) ahead)",
@@ -313,7 +283,8 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
 
 void cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
     std::vector<int> changed;
-    std::vector<std::pair<int, int>> log; // (slot, old prn) for logging outside the lock
+    std::vector<std::pair<int, int>> log;     // (slot, old prn) for logging outside the lock
+    std::vector<std::pair<int, int>> refused; // (slot, refused prn)
     {
         std::lock_guard<std::mutex> lk(prn_mtx);
         if (pending_prns.empty())
@@ -342,18 +313,21 @@ void cudaGnssChordTrackState::apply_prn_swaps(void* stream) {
             // an FDMA bank), nothing else about the slot changes, so its seed and trim stay
             // consistent with the code it still despreads.
             if (!despread->set_prn(p, newp, stream)) {
-                prn_last_err = "slot " + std::to_string(p) + ": no code for PRN "
-                               + std::to_string(newp) + " on this signal (or an FDMA bank)";
+                refused.emplace_back(p, newp);
                 continue;
             }
             log.emplace_back(p, prns[(size_t)p]);
             prns[(size_t)p] = newp;
             ++slot_gen[(size_t)p];
-            ++prn_swaps;
             changed.push_back(p);
         }
         pending_prns.clear();
     }
+    for (const auto& r : refused)
+        WARN_NON_OO("set_prns: slot {:d} REFUSED PRN {:d} (no code for it on this signal, or an "
+                    "FDMA bank) and keeps PRN {:d}; this node's map now differs from the one "
+                    "posted.",
+                    r.first, r.second, prns[(size_t)r.first]);
     if (changed.empty())
         return;
     // prn_mtx is already released, so a seed or trim posted for the new PRN in between is

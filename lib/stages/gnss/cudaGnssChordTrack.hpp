@@ -82,7 +82,7 @@ public:
     // (apply_prn_swaps, under prn_mtx), so it may read @c prns without the lock
     // (snapshot_seeds, snapshot_trims, cudaGnssInject::execute).
 
-    /// POST endpoint: the whole slot->PRN map in slot order, as {"prns": [...]} or a bare array.
+    /// POST endpoint: the whole slot->PRN map in slot order, as {"prns": [...]}.
     /// The node diffs it against its own map, so re-sending the current map is a no-op and a
     /// lost post costs only latency. The length must equal n_prn exactly; a different length is
     /// refused, not padded. An optional "at_hop" schedules the swap (see @ref prn_at_hop).
@@ -90,8 +90,8 @@ public:
     /// is built from half a map.
     void set_prns_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 
-    /// GET endpoint: {prns, n_prn, slot_gen, swaps, pending, last_error, pending_at_hop,
-    /// last_hop}, the live map and what has happened to it.
+    /// GET endpoint: {prns, pending, last_hop}, the live map, whether a new one is staged and
+    /// the newest frame hop seen.
     void get_prns_callback(kotekan::connectionInstance& conn);
 
     /// Apply the staged map if it is due. GPU thread only: it re-uploads device code tables on
@@ -109,8 +109,6 @@ public:
     /// history compares it with the generation it last saw (FoldHist::slot_gen_seen) to know
     /// when to reset.
     std::vector<uint64_t> slot_gen;
-    uint64_t prn_swaps = 0;   ///< slots swapped since start (diagnostics)
-    std::string prn_last_err; ///< why the last POST was refused, "" if none
 
     // ---- Scheduled swaps ----
     // A swap applied at each node's next frame boundary lands on a different frame on every
