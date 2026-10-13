@@ -8,7 +8,7 @@ What is open on the CHORD side (branch `kv/chord-gnss`). Closed items are in
 present except the 09-14 mitigations of #131 (gone with the launchers) and the generator's profiling switch #114 relied
 on. Closed since 10-11: **#55, #62, #63, #113, #115, #121, #125, #144, #146 residual, #150, #159, #161, #172, #173,
 #174**, the #1750 latent lock (PR #1763), and the 10-11 batch (#31, #34, #88, #102, #107 residual, #112, #123,
-#130/#153, #133, #149, #160, #162). Opened: **#175–#189**. The same evening the ready-now set ran in two reviewed lanes and merged: **#186, #183** closed; **#176, #175** have their guards built (live at the next broker restart); **#119, #152** are instrumented; **#94**'s gauge test is in; **#131**'s shutdown race is fixed and its death not reproduced. The 10-11 and 10-13 memory notes record every check.
+#130/#153, #133, #149, #160, #162). Opened: **#175–#189**. The same evening the ready-now set ran in two reviewed lanes and merged: **#186, #183** closed; **#176, #175** have their guards built (live since the 21:05Z broker restart); **#119, #152** are instrumented; **#94**'s gauge test is in; **#131**'s shutdown race is fixed and its death not reproduced. The 10-11 and 10-13 memory notes record every check.
 
 **Fleet state (10-13): the F-engine is OFF** (since 10-12 17:05Z, for about a week); the six nodes are down, their hosts
 up; the broker, obs writers and viewer run the merged tree on the gnss VM, the gather and aggregator the 10-12 binaries.
@@ -179,7 +179,7 @@ Cas A / Cyg A transits against the stage's k/lambda0 gauges (archive) for contin
   delta that moves more than ~0.3 chips from the previous adopted one unless it persists for two solves.
 - **Check:** `grep 'JOINT-CLK' broker.log | grep ADOPTED` and the |delta| census taken at the 10-12 telemetry v8 rollout.
 
-- **Fix [built 10-13, `6e73de015`; live at the next broker restart]:** `dr_joint_clk` keeps the joint clock it last
+- **Fix [built 10-13, `6e73de015`; live since the 10-13 21:05:55Z broker restart, 0 CHAIN DIED]:** `dr_joint_clk` keeps the joint clock it last
   adopted (`dr_state["jclk_last"]`) and refuses a joint clock more than 0.3 chips from it until the new level has held,
   to 0.3, for 30 s (`joint_clk_max_step_chips` / `joint_clk_step_hold_s`, frozen in `cli.py`); a bounds refusal
   restarts the hold; the refusal reads `JOINT-CLK: ... -> REFUSED (step -0.664 chips from the last adopted joint clock;
@@ -218,7 +218,7 @@ not N detections: refuse `presence-admit-displaced` while a BROWNOUT is open or 
 within 0.1 chips in one cycle; and a PRN whose disc has sat at the clamp for >60 s with SPEC-FIT tau disagreeing
 should re-run presence (the escape path the bright ones took).
 
-**Fix, 10-13 (`9f193b74e`; live at the next broker restart):** `displaced_chain_event` (fleet.py) refuses a cycle's
+**Fix, 10-13 (`9f193b74e`; live since the 10-13 21:05:55Z broker restart):** `displaced_chain_event` (fleet.py) refuses a cycle's
 displaced admissions while D1's BROWNOUT is open on the chain, or when three or more of them lie within 0.1 chips of
 one another; refused rows fall back to the q/prompt verdict, one `PRESENCE -displaced: <reason> -- N PRN(s) at off
 a..b REFUSED` line per cycle and reason (30-s rate limit). Rows within 0.1 chips of their peak are exempt from both
@@ -490,7 +490,7 @@ range), live at the 12:58Z broker restart. What is left is the garbage's origin,
 
 **10-13: the fit's INPUT samples are not in the log** — the cp-fit line carries only the fit's output (`cp_ref @ h0`,
 slope, pts) at a 10-s rate limit — so the dragging sample cannot be named offline from any existing log. `0a43f3557`
-(live at the next broker restart) logs the last 12 (hop, cp in seed currency, det dop Hz) at every FLUSHED. What the
+(live since the 10-13 21:05Z broker restart) logs the last 12 (hop, cp in seed currency, det dop Hz) at every FLUSHED. What the
 10-12 log does show for PRN 24 (03:26–03:32Z, el 54°): the first flush (03:28:54) was a 256-point history whose slope
 went 0.015 → 0.082 → 0.741 → 1.383 chips/s in 44 s while the search Doppler scattered ±50–100 Hz (measured
 alternating +62/+188 against a predicted ~+140) and the long-code residuals ran 1000–5000 chips at snr 30–41, just
@@ -789,7 +789,10 @@ survived 10 min at 20/min (203 drops) and 10 min at 10 reading clients × 200/mi
 same host — fits a SIGKILL (OOM) better than a stage bug. cf06's kernel log for 2026-09-14 20:50–21:05 settles it
 (`sudo journalctl -k --since "2026-09-14 20:50" --until "2026-09-14 21:05"`, or `zgrep -a "Sep 14 20:5"
 /var/log/kern.log*.gz | grep -i -E "oom|Killed process"`): an OOM kill closes this as host starvation; nothing there
-leaves it open with the harness as the standing check. The fix deploys with a gather restart on the VM, no node cycle.
+leaves it open with the harness as the standing check. **10-13 21:08:57Z:** the gather runs the fix (`build_nodpdk` = `4514061a6`, rollback
+`kotekan.prev_d30be5f66_20261013`; the aggregator takes the same binary at its next restart). KV's cf06 kernel log for
+2026-09-14 20:50–21:05 has no entries, so the 09-14 exit stays unexplained: open, with `telem_flap.py` as the standing
+check and the next death as the evidence (the gather now runs under its unit with `Restart=on-failure`).
 
 ### #114 — `cudaRFISKtilde` is 6× slower on gpu0 than gpu1 on the same node
 **[live]** 12.89 ms vs 2.12 ms per frame on cx43 with identical per-GPU configuration, and it is
