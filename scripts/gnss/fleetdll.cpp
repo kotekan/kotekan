@@ -14,7 +14,7 @@
  *
  *   ./build_tool.sh fleetdll && ./fleetdll frames.bin
  *
- * usage: fleetdll <file> [--n-win N] [--min-instances N] [--max-open-win N] [--no-flush]
+ * usage: fleetdll <file> [--n-win N] [--min-instances N] [--no-flush]
  *
  * ⚠️ --no-flush leaves the last window(s) OPEN, i.e. absent from the answer, which is what the
  * live path does (the next frame is the completion signal). The default flushes so a fixture's
@@ -43,12 +43,12 @@ int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr,
                      "usage: %s <frames.bin> [--n-win N] [--min-instances N] "
-                     "[--max-open-win N] [--taps-win N] [--trim-in F] [--no-flush]\n",
+                     "[--taps-win N] [--trim-in F] [--no-flush]\n",
                      argv[0]);
         return 2;
     }
     const std::string path = argv[1];
-    int n_win = 4, min_inst = 2, max_open = 8, taps_win = 0;
+    int n_win = 4, min_inst = 2, taps_win = 0;
     std::string trim_in;
     bool do_flush = true;
     std::set<int> arm;
@@ -59,8 +59,6 @@ int main(int argc, char** argv) {
             n_win = std::atoi(argv[++i]);
         else if (a == "--min-instances" && i + 1 < argc)
             min_inst = std::atoi(argv[++i]);
-        else if (a == "--max-open-win" && i + 1 < argc)
-            max_open = std::atoi(argv[++i]);
         else if (a == "--taps-win" && i + 1 < argc)
             taps_win = std::atoi(argv[++i]); // 0 = follow --n-win
         else if (a == "--trim-in" && i + 1 < argc)
@@ -99,10 +97,7 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    // ⚠️ NO sig_k ARGUMENT ANY MORE (2026-08-27): the peer-median gate it scaled is deleted.
-    // The old call passed `3.0` positionally, so leaving it here would have bound 3.0 to
-    // taps_win and taps_win to epoch_margin -- and it COMPILES, because both convert.
-    gnss::FleetDll dll(n_win, min_inst, max_open, taps_win);
+    gnss::FleetDll dll(n_win, min_inst, taps_win);
     std::map<std::string, std::map<int, double>> restore;
     int n_adopted = 0;
     if (!trim_in.empty()) {

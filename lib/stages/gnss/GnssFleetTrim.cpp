@@ -157,7 +157,6 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&GnssFleetTrim::main_thread, this)),
     _dll(config.get_default<int>(unique_name, "n_win", 4),
          config.get_default<int>(unique_name, "min_instances", 2),
-         config.get_default<int>(unique_name, "max_open_win", 8),
          config.get_default<int>(unique_name, "taps_win", 0)) {
     _trim_state_file = config.get_default<std::string>(unique_name, "trim_state_file", "");
     _trim_state_max_age_s = config.get_default<double>(unique_name, "trim_state_max_age_s", 300.0);
@@ -236,11 +235,10 @@ void GnssFleetTrim::main_thread() {
             break;
 
         const double t0 = current_time();
-        std::string chain, inst;
         gnss::FoldStatus st;
         {
             std::lock_guard<std::mutex> lk(_mtx);
-            st = _dll.fold(frame, (size_t)in_buf->frame_size, &chain, &inst);
+            st = _dll.fold(frame, (size_t)in_buf->frame_size);
             _frames++;
             if (st == gnss::FoldStatus::BAD_HEADER)
                 _bad_frames++;

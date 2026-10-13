@@ -54,8 +54,6 @@
  *                             (4 windows = 16 records = 168 ms).
  * @conf min_instances         Int, default 2. Senders a record must have reached to be
  *                             averaged in; a completeness gate, never an operand.
- * @conf max_open_win          Int, default 8. Windows held open per chain before the oldest is
- *                             force-closed, so a sender that dies mid-window cannot pin memory.
  * @conf taps_win              Int, default 0. Window depth served by get_taps and get_rec_taps;
  *                             0 follows n_win. Set it to the broker's `--telem-windows`.
  * @conf trim_state_file       String, default "". Trim store path; empty disables it.

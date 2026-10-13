@@ -118,15 +118,9 @@ public:
     /// loop's `n_win`. The loop integrates only the freshest few windows (one update's authority
     /// is fixed, so depth buys it nothing), while the broker's policy cycle averages its
     /// `telem-windows` for the SNR its gates need. 0 = follow n_win.
-    FleetDll(int n_win = 4, int min_instances = 2, int max_open_win = 8, int taps_win = 0,
-             int epoch_margin = 64, int epoch_strikes = 8) :
+    FleetDll(int n_win = 4, int min_instances = 2, int taps_win = 0) :
         _n_win(std::max(1, n_win)), _min_instances(min_instances),
-        _max_open_win(std::max(2, max_open_win)),
-        _taps_win(taps_win > 0 ? taps_win : std::max(1, n_win)),
-        // 64 windows is ~2.7 s at 23.84 windows/s: more than a laggard falls behind, far less
-        // than a frame0 move. 8 strikes is under half a second of stream even from one sender,
-        // and no single far-behind frame can re-anchor.
-        _epoch_margin(std::max(2, epoch_margin)), _epoch_strikes(std::max(1, epoch_strikes)) {}
+        _taps_win(taps_win > 0 ? taps_win : std::max(1, n_win)) {}
 
     /// One channel's three powers for one PRN over the records of one window, keyed by the
     /// F-engine freq_id from the frame header, never by the sender's column index. Formed from
@@ -186,7 +180,7 @@ public:
         uint64_t n_steps = 0;   ///< integrator updates; their rate is the achieved loop rate
         uint64_t n_railed = 0;  ///< updates that hit the clamp
         uint64_t n_skipped = 0; ///< leak-only windows: below the prompt-power floor, or no floor
-        double last_disc = 0.0, last_q = 0.0;
+        double last_disc = 0.0;
         uint64_t last_win = 0;
     };
 
@@ -206,7 +200,7 @@ public:
         std::map<int, TrimState> trim;
         uint64_t n_closed = 0; ///< windows closed == integrator steps available
         uint64_t n_late = 0;   ///< frames for a window already closed: dropped, never folded
-        uint64_t n_forced = 0; ///< windows force-closed by flush() or past max_open_win
+        uint64_t n_forced = 0; ///< windows force-closed by flush()
         uint64_t n_frames = 0;
         /// freq_ids two senders both carried in one window (see WindowAcc::owner)
         uint64_t n_dup_chan = 0;
@@ -216,9 +210,8 @@ public:
         uint64_t n_epoch_reset = 0; ///< re-anchors performed (the F-engine frame0 moved)
     };
 
-    /// Fold one wire frame. `chain_out`/`inst_out` are filled whenever the header parsed.
-    FoldStatus fold(const void* frame, size_t bytes, std::string* chain_out = nullptr,
-                    std::string* inst_out = nullptr) {
+    /// Fold one wire frame. `chain_out` is filled whenever the header parsed.
+    FoldStatus fold(const void* frame, size_t bytes, std::string* chain_out = nullptr) {
         const auto* h = (const TelemHeader*)frame;
         // The same check GnssTelemGather applies: a sender on a different record layout would
         // parse at the wrong stride. `bytes` is the capacity the caller can read (the buffer's
@@ -234,8 +227,6 @@ public:
         const std::string inst(h->inst, strnlen(h->inst, TELEM_NAME));
         if (chain_out)
             *chain_out = chain;
-        if (inst_out)
-            *inst_out = inst;
 
         Chain& c = _chain[chain];
         c.n_frames++;
@@ -247,9 +238,8 @@ public:
         // counted, and `_epoch_strikes` consecutive such frames re-anchor; any in-order frame
         // clears the run. Only `open` and `newest` are reset: the trims, arming and policy
         // belong to the broker's cycle, and wiping them would force a fleet-wide pull-in.
-        if (c.have_newest && h->win < c.newest && !c.open.count(h->win)) {
-            if (c.newest - h->win <= (uint64_t)_epoch_margin
-                || ++c.n_backwards < (uint64_t)_epoch_strikes) {
+        if (c.have_newest && h->win < c.newest) {
+            if (c.newest - h->win <= _epoch_margin || ++c.n_backwards < _epoch_strikes) {
                 c.n_late++;
                 return FoldStatus::LATE;
             }
@@ -398,9 +388,6 @@ public:
         }
         while (!c.open.empty() && c.open.begin()->first < c.newest)
             close_oldest(c, false);
-        // Backstop on open windows; the loop above already leaves only `newest` open.
-        while ((int)c.open.size() > _max_open_win)
-            close_oldest(c, true);
         return FoldStatus::OK;
     }
 
@@ -725,7 +712,6 @@ private:
             if (std::abs(t.trim) >= c.policy.clamp * 0.999)
                 t.n_railed++;
             t.last_disc = it->second.disc;
-            t.last_q = it->second.q;
             t.last_win = win;
             t.n_steps++;
         }
@@ -747,11 +733,13 @@ private:
         }
     }
 
-    int _n_win, _min_instances, _max_open_win;
+    int _n_win, _min_instances;
     // Members initialise in declaration order; keep it matching the constructor's list.
     int _taps_win = 1; ///< window depth served by taps() and rec_series()
-    /// Epoch-reset thresholds (see fold()).
-    int _epoch_margin = 64, _epoch_strikes = 8;
+    /// Epoch-reset thresholds (see fold()). 64 windows is ~2.7 s at 23.84 windows/s: more than
+    /// a laggard falls behind, far less than a frame0 move. 8 strikes is under half a second of
+    /// stream even from one sender, and no single far-behind frame can re-anchor.
+    static constexpr uint64_t _epoch_margin = 64, _epoch_strikes = 8;
     std::map<std::string, Chain> _chain;
 };
 

@@ -131,7 +131,7 @@ int main() {
 
     // ---- CASE 1: THE DEFECT ITSELF -- frame0 moves, the stream restarts small. --------
     {
-        FleetDll d(4, 2, 8);
+        FleetDll d(4, 2);
         for (uint64_t w = 5000; w < 5020; ++w)
             push(d, w, w, 0.20);
         const uint64_t before = updates_of(d);
@@ -155,7 +155,7 @@ int main() {
     // A sender a few windows behind must still be dropped as LATE, and must NEVER
     // re-anchor the chain -- that would make the aggregate depend on arrival order.
     {
-        FleetDll d(4, 2, 8);
+        FleetDll d(4, 2);
         for (uint64_t w = 5000; w < 5040; ++w)
             push(d, w, w, 0.20);
         const uint64_t newest_before = d.chains().at("gal_e5a").newest;
@@ -169,7 +169,7 @@ int main() {
 
     // ---- CASE 3: ONE far-back frame cannot re-anchor (a corrupt header must not). -----
     {
-        FleetDll d(4, 2, 8);
+        FleetDll d(4, 2);
         for (uint64_t w = 5000; w < 5040; ++w)
             push(d, w, w, 0.20);
         auto f = make_frame("cx19.0", 3, 9999, 0.20); // single wild frame
@@ -186,7 +186,7 @@ int main() {
     // An F-engine restart must not turn into a fleet-wide pull-in: only the window state
     // is epoch-scoped. (This is the property d01c0c1be's trim store also protects.)
     {
-        FleetDll d(4, 2, 8);
+        FleetDll d(4, 2);
         TrimPolicy p;
         d.set_armed("gal_e5a", {PRN}, p);
         for (uint64_t w = 5000; w < 5020; ++w)
