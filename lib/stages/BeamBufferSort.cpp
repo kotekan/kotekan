@@ -12,6 +12,7 @@
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <iostream>    // for cout
+#include <map>         // for map
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <string>      // for string
@@ -168,6 +169,9 @@ void BeamBufferSort::main_thread(){
     for (uint32_t i = 0; i < total_freq_chan; i++)
 	curr_queue0_metadata.push_back(nullptr);
 
+    // FPGA frame 0 time (ns) from the first frame, and the last mismatch reported per stream
+    int64_t ref_time0_ns = 0;
+    std::map<uint64_t, int64_t> reported_time0_diff;
 
     timespec ctime0;
     timespec ctime_at_dump;
@@ -226,6 +230,7 @@ void BeamBufferSort::main_thread(){
             timespec FPGA_t0 = ctime0;
             add_nsec(FPGA_t0, -1 * (long)(in_metadata -> fpga_seq_start * time_resolution_nsec));
             INFO("Time {:d} {:d}", FPGA_t0.tv_sec, FPGA_t0.tv_nsec);
+            ref_time0_ns = (int64_t)FPGA_t0.tv_sec * 1000000000 + FPGA_t0.tv_nsec;
             // Check with integer second the offset
             if (FPGA_t0.tv_nsec > time_resolution_nsec){
                 intsec_offset = FPGA_t0.tv_nsec - 1e9;
@@ -241,10 +246,14 @@ void BeamBufferSort::main_thread(){
             if (align_start_time){
 	        start_marginal_nframe = (uint32_t)(samples_to_align / queue_frame_size);
 		uint32_t extra_marginal = (uint32_t)(samples_to_align % queue_frame_size);
-		if (extra_marginal > 0)
+		if (extra_marginal > 0) {
 		    // add one more marginal frame for the extra marginal samples
 	            start_marginal_nframe++;
-		in_frame_dump_offset += queue_frame_size - extra_marginal;
+		    in_frame_dump_offset += queue_frame_size - extra_marginal;
+		}
+		// If extra_marginal is 0 the aligned time is the start of frame0, so the dump
+		// starts at offset 0. Setting it to queue_frame_size would skip frame0 and
+		// start the dump queue_frame_size samples past the aligned time.
 	    }
 	    INFO("Start Marginal {:d}", start_marginal_nframe);
 
@@ -275,13 +284,12 @@ void BeamBufferSort::main_thread(){
 	    // Decide the number of frames to dump.
 	    // dump offset is the position where data has been dump in the frame.
             advance_nframe = time_offset - wait_nframes + 1;
-            // Check queue fill stauts, if not, fill frames as zero, since the dump may go beyond 
-            // the advance frames, we check one more frame than the advance frame numbers.
-            for(uint32_t i = 0; i < advance_nframe + 1; i++){
-                for (uint32_t j = 0; j < queue_status.at(i).size(); j++){
-                    if (queue_status.at(i).at(j) == 0){
-                        fill_empty_frame(i, j, fpga_seq_start0, ctime0, beam_number, ra, dec, scaling);
-                    }
+            // Check queue fill status of the current queue start and fill missing frames with
+            // zeros. Each later queue frame is checked as it rotates to the queue start below,
+            // so every frame the dump reads from has been checked, however far it advances.
+            for (uint32_t j = 0; j < queue_status.at(0).size(); j++){
+                if (queue_status.at(0).at(j) == 0){
+                    fill_empty_frame(0, j, fpga_seq_start0, ctime0, beam_number, ra, dec, scaling);
                 }
             }
 	    //INFO("Start dumping advance {:d}", advance_nframe);
@@ -311,6 +319,13 @@ void BeamBufferSort::main_thread(){
                     add_nsec(ctime0, (long)(queue_frame_size * time_resolution_nsec));
                     // Rest the in frame dump offset
 		    in_frame_dump_offset = 0;
+		    // Fill missing frames in the new queue start with zeros before dumping from it.
+		    // Otherwise its metadata and data are left over from an older frame.
+		    for (uint32_t j = 0; j < queue_status.at(0).size(); j++){
+		        if (queue_status.at(0).at(j) == 0){
+		            fill_empty_frame(0, j, fpga_seq_start0, ctime0, beam_number, ra, dec, scaling);
+		        }
+		    }
 		    // Get the queue start matedata for each frequency.
 		    for (uint32_t i = 0; i < total_freq_chan; i++){
 		        curr_queue0_metadata.at(i) = (FreqIDBeamMetadata*)&sort_queue.at(0).at(i)[0];
@@ -365,9 +380,10 @@ void BeamBufferSort::main_thread(){
 			out_metadata -> n_pol = num_pol;
                         out_metadata -> freq_start = out_buf_start_chan.at(k);
                         out_metadata -> nchan = out_buf_nchan.at(k);
-			// Start fpga seq in the top of frequency band
-                        out_metadata -> fpga_seq_start = curr_queue0_metadata.at(out_buf_start_chan.at(k)) -> fpga_seq_start + in_frame_dump_offset;
-                        out_metadata -> ctime = curr_queue0_metadata.at(out_buf_start_chan.at(k)) -> ctime;
+			// Output start time from the queue's own clock, so it doesn't depend on which
+			// GPU node (or zero fill) supplied the start channel's frame.
+                        out_metadata -> fpga_seq_start = fpga_seq_start0 + in_frame_dump_offset;
+                        out_metadata -> ctime = ctime0;
 			add_nsec(out_metadata -> ctime, (long)(in_frame_dump_offset * time_resolution_nsec));
                         // TODO If we want to dump more than one time frame, this needs to be changed.
                         out_metadata -> nframe = 1;
@@ -429,6 +445,21 @@ void BeamBufferSort::main_thread(){
             input_frame_id++;
             continue;
         }
+	// Warn when a frame's time disagrees with the FPGA frame 0 time of the first frame, or it
+	// doesn't start on a frame edge. Output times come from the queue clock, which assumes both.
+	int64_t time0_diff = (int64_t)in_metadata -> ctime.tv_sec * 1000000000 + in_metadata -> ctime.tv_nsec
+	    - in_metadata -> fpga_seq_start * (int64_t)time_resolution_nsec - ref_time0_ns;
+	if (time0_diff != 0 || in_metadata -> fpga_seq_start % samples_per_data_set != 0){
+	    uint64_t stream = in_metadata -> stream_id.id;
+	    auto reported = reported_time0_diff.find(stream);
+	    if (reported == reported_time0_diff.end() || reported -> second != time0_diff){
+	        WARN("Stream {:d} freq ID {:d}: frame time is off by {:d} ns from FPGA frame 0 time; "
+	             "fpga_seq_start {:d} (remainder {:d} of {:d}). Output times use the queue clock.",
+	             stream, freq_bin, time0_diff, in_metadata -> fpga_seq_start,
+	             in_metadata -> fpga_seq_start % samples_per_data_set, samples_per_data_set);
+	        reported_time0_diff[stream] = time0_diff;
+	    }
+	}
 	// Copy in frame to the queue.
 	FreqIDBeamMetadata* sub_frame_metadata = (FreqIDBeamMetadata*)&sort_queue.at(time_offset).at(freq_bin)[0];
 	memcpy(sub_frame_metadata, in_metadata, FreqIDBeamMeta_size);

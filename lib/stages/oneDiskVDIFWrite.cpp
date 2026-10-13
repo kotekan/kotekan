@@ -82,7 +82,7 @@ oneDiskVDIFWrite::~oneDiskVDIFWrite(){}
 
 void oneDiskVDIFWrite::main_thread(){
     int fd;
-    int payload_ctr;
+    int payload_ctr = 0;
     uint8_t* input = nullptr;
     frameID in_frame_id(in_buf);
     uint8_t* vdif_frame;
@@ -96,21 +96,21 @@ void oneDiskVDIFWrite::main_thread(){
     char full_path[full_path_len];    
     time_t rawtime;
     struct tm* timeinfo;
-    size_t file_num;
+    size_t file_num = 0;
     uint32_t time_offset = 0;
     uint32_t freq_offset = 0;
     uint32_t vdif_frame_data_size;
     uint32_t vdif_frame_size;
-    uint32_t nvdif_payload_per_file;
+    uint32_t nvdif_payload_per_file = 0;
     uint32_t in_buf_frame_size;
     uint32_t src_start;
     uint32_t target_start;
     uint32_t inframe_ctr = 0;
-    long intsec_offset;
+    long intsec_offset = 0;
     char setting_log_file[full_path_len];
     char data_log_file[full_path_len];
-    FILE* setting_file;
-    FILE* j_file;
+    FILE* setting_file = nullptr;
+    FILE* j_file = nullptr;
 
     MergedBeamMetadata* in_metadata = nullptr;
     timespec out_frame_unix_time;
@@ -187,8 +187,6 @@ void oneDiskVDIFWrite::main_thread(){
 	    assert(in_metadata -> nchan % 4 == 0);
             // Number of time samples should be divided by vdif_samples_per_frame
 	    assert(in_metadata -> sub_frame_data_size % vdif_samples_per_frame == 0);
-	    // Make sure the vdif file has all the frequency from the input buffer
-	    assert(nvdif_payload_per_file % in_metadata -> nchan ==0);
             	
 	    if (file_num == 0 && payload_ctr == 0){
 		// Compute the vdif frames per file.
@@ -230,6 +228,8 @@ void oneDiskVDIFWrite::main_thread(){
 		}
             }    
         
+	    // Make sure the vdif file has all the frequency from the input buffer
+	    assert(nvdif_payload_per_file % in_metadata -> nchan ==0);
 	    // input buffer frame size
 	    in_buf_frame_size = in_metadata -> sub_frame_data_size + in_metadata -> sub_frame_metadata_size;
         }
@@ -330,7 +330,9 @@ void oneDiskVDIFWrite::main_thread(){
     }
     // free vdif frame 
     free(vdif_frame);
-    fclose(j_file);
+    // The data log is only opened when writing to disk.
+    if (j_file != nullptr)
+        fclose(j_file);
     
 }
 
