@@ -46,7 +46,7 @@ void pairs_to_half(const float2* src, void* dst, size_t n) {
 struct GnssCudaDespread::Impl {
     gnss::ChannelizedReplicaBank& bank;
     int n_prn, n_chan, n_hops;
-    double fs, f_off, refresh_hz;
+    double fs, refresh_hz;
     long long window_start = 0;
     // Device buffers (persistent).
     float2* d_data = nullptr;                 // [n_chan][n_hops]
@@ -107,9 +107,9 @@ struct GnssCudaDespread::Impl {
     std::vector<double2> h_corr;
     std::vector<double> h_energy;
 
-    Impl(gnss::ChannelizedReplicaBank& b, int np, int nc, int nh, double fs_, double fo, double rh,
+    Impl(gnss::ChannelizedReplicaBank& b, int np, int nc, int nh, double fs_, double rh,
          const std::vector<int>& ids) :
-        bank(b), n_prn(np), n_chan(nc), n_hops(nh), fs(fs_), f_off(fo), refresh_hz(rh) {
+        bank(b), n_prn(np), n_chan(nc), n_hops(nh), fs(fs_), refresh_hz(rh) {
         // Phi tables index by local channel ci; each is built at the centre frequency of global
         // bin ids[ci]. No structure is assumed: the list may be sparse, unsorted, irregularly
         // spaced, or a single channel.
@@ -360,9 +360,8 @@ struct GnssCudaDespread::Impl {
 
 GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn,
                                    const std::vector<int>& chan_ids, int n_hops, double sample_rate,
-                                   double f_offset, double refresh_hz) :
-    _impl(new Impl(bank, n_prn, (int)chan_ids.size(), n_hops, sample_rate, f_offset, refresh_hz,
-                   chan_ids)) {
+                                   double refresh_hz) :
+    _impl(new Impl(bank, n_prn, (int)chan_ids.size(), n_hops, sample_rate, refresh_hz, chan_ids)) {
     // FDMA (GLONASS L1OF/L2OF) is supported: the Phi cache is per PRN, and each PRN's filter and
     // carrier phasor use its own offset (see wc_for).
 }

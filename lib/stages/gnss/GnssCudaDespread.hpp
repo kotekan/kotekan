@@ -33,11 +33,10 @@ public:
     ///        replica near DC; a contiguous subband passes its ids (std::iota).
     /// @param n_hops hops per record window
     /// @param sample_rate samples per second
-    /// @param f_offset unused; carrier offsets come from the bank (carrier_offset)
     /// @param refresh_hz rebuild a PRN's Phi bucket when its Doppler moves further than this
     GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn,
                      const std::vector<int>& chan_ids, int n_hops, double sample_rate,
-                     double f_offset, double refresh_hz = 100.0);
+                     double refresh_hz = 100.0);
     ~GnssCudaDespread();
 
     // ---- Slot membership (docs/CHORD_LIVE_PRN_RECONFIG.md) ----

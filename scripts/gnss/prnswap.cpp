@@ -108,8 +108,8 @@ int main() {
     const auto sky_a = sky_of(gen_a, 0);
     const auto sky_c = sky_of(gen_c, 0);
 
-    GnssCudaDespread eng1(live, 2, cover, n_hops, fs, f_off);
-    GnssCudaDespread eng2(live, 2, cover, n_hops, fs, f_off); // SAME bank, own device table
+    GnssCudaDespread eng1(live, 2, cover, n_hops, fs);
+    GnssCudaDespread eng2(live, 2, cover, n_hops, fs); // SAME bank, own device table
 
     // Normalised prompt amplitude for slot 0 against a given sky: |corr| / energy. ~1 when the
     // loaded code matches the sky, ~0 when it does not (a C/A cross-correlation floor is

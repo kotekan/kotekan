@@ -989,8 +989,7 @@ int main(int argc, char** argv) {
                 for (size_t i0 = 0; i0 < nc; i0 += GMAX) {
                     const size_t ng = std::min(GMAX, nc - i0);
                     std::vector<int> gg(s_chans.begin() + i0, s_chans.begin() + i0 + ng);
-                    engines.emplace_back(
-                        new GnssCudaDespread(sbank, 1, gg, rh, o.sample_rate, sbank.f_offset()));
+                    engines.emplace_back(new GnssCudaDespread(sbank, 1, gg, rh, o.sample_rate));
                     gnss::CudaRefineGroup grp;
                     grp.gpu = engines.back().get();
                     grp.local.resize(ng);
@@ -1199,7 +1198,7 @@ int main(int argc, char** argv) {
     // -----------------------------------------------------------------------------------------
     printf("[3] TRACK + DESPREAD  (seed age %.1f s at record 0, records %.1f s apart)\n", o.age_s,
            o.rec_gap_s);
-    GnssCudaDespread ds(tbank, 3, t_chans, o.hops_per_record, o.sample_rate, o.f_offset);
+    GnssCudaDespread ds(tbank, 3, t_chans, o.hops_per_record, o.sample_rate);
     // ---- --nm: the N x M despread path, buffers in the native frame layout ----
     // n_elem 1, elem_stride 1, frame_chan_stride n_chan: byte (hop, chan) at hop*n_chan + chan.
     // Scale 1.0 and ids 0..n_chan-1 exactly as the tracker uploads them (its comment: CHORD's

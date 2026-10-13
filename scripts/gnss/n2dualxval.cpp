@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
         chan_ids_global.push_back(5972 + 16 * k);
     const int n_chan = (int)chan_ids_global.size();
 
-    GnssCudaDespread despr(bank, N_SPEC, chan_ids_global, N_HOPS, FS, F_OFF);
+    GnssCudaDespread despr(bank, N_SPEC, chan_ids_global, N_HOPS, FS);
 
     const long long window_start = 1000000LL * FFT; // hop-aligned absolute sample
     std::vector<GnssCudaDespread::Spec> specs(N_SPEC);

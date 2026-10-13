@@ -557,7 +557,7 @@ int main(int argc, char** argv) {
         const int bfft_len = 2 * bN;
         std::vector<int> bench_ids((size_t)bN);
         std::iota(bench_ids.begin(), bench_ids.end(), 0); // contiguous 0..bN-1 for the bench
-        GnssCudaDespread gpu(bbank, bench_prn, bench_ids, bn_hops, bfs, bf_off);
+        GnssCudaDespread gpu(bbank, bench_prn, bench_ids, bn_hops, bfs);
         std::vector<cf> win((size_t)bn_hops * bN);
         for (auto& v : win)
             v = cf((float)frand(), (float)frand());

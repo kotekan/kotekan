@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
     const std::vector<int> chans{5972, 5988, 6004, 6020, 6036, 6052, 6068};
     const int n_chan = (int)chans.size();
 
-    GnssCudaDespread eng(bank, n_prn, chans, N_HOPS, FS, F_OFF, /*refresh_hz=*/1e9);
+    GnssCudaDespread eng(bank, n_prn, chans, N_HOPS, FS, /*refresh_hz=*/1e9);
 
     const double dops[] = {0.0, 137.0, -900.0, 2500.0, -5000.0, 4321.0, -137.0, 3000.0};
     std::vector<GnssCudaDespread::Spec> specs;

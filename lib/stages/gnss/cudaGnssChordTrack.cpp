@@ -125,7 +125,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
         prns);
     // The despread takes each channel's global bin, since the comb is sparse.
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
-                                                  sample_rate, f_offset_hz);
+                                                  sample_rate);
     // Cap the per-hop PFB chip gather (0 = the full span, ~210 chips at CHORD geometry).
     // Synthesis cost is linear in the depth, but a capped gather is a different replica. At
     // CHORD geometry (scripts/gnss/e2e --max-chips) a one-sided cap of 120 or more reproduces

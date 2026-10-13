@@ -446,8 +446,8 @@ void GnssChannelizedSearch::search_snapshot() {
                     const size_t ng = std::min((size_t)GMAX, cov_local.size() - i0);
                     std::vector<int> gl(cov_local.begin() + i0, cov_local.begin() + i0 + ng);
                     std::vector<int> gg(cov_global.begin() + i0, cov_global.begin() + i0 + ng);
-                    _cuda_ref.emplace_back(new GnssCudaDespread(
-                        *_replica, n_prn, gg, rh, _sample_rate, _replica->f_offset()));
+                    _cuda_ref.emplace_back(
+                        new GnssCudaDespread(*_replica, n_prn, gg, rh, _sample_rate));
                     gnss::CudaRefineGroup grp;
                     grp.gpu = _cuda_ref.back().get();
                     grp.local = gl;
