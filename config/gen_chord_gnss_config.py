@@ -13,18 +13,13 @@ construction rather than by copy.
     python3 config/gen_chord_gnss_config.py --base config/chord/pathfinder.j2 --node cx19 \
         --out config/generated/chord_gnss_cx19.yaml
 
-Safety switches, both ON by default because the intended use is a shared node:
+The production science pipeline (correlator, RFI, eigen) runs unchanged beside the GNSS
+branch. Its bufferSend legs to the downstream N2 consumer at 10.222.0.51 are DROPPED unless
+--n2-send, which keeps and stamps them (--n2-send-legs picks which).
 
     --rest-port 12048   Our nodes REPLACE production's kotekan on cx19/27/42/43/44/51,
                         12048; an instance answering there can be redirected or
                         reconfigured out from under us.
-    --disable-outputs   Drop the bufferSend legs so nothing is injected into the
-                        downstream N2 consumer at 10.222.0.51. Our records go to
-                        local disk only.
-
-Use --keep-n2 to retain the science pipeline (correlator, RFI, eigen) alongside
-the GNSS branch. Off by default: the GNSS branch only needs ingest, and running
-the N2 chain as well competes for the same GPUs for no benefit while debugging.
 """
 
 import argparse
@@ -60,50 +55,10 @@ from gnss_record_layout import (
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
-# Stages that exist ONLY to feed the N2 science products. Dropped unless --keep-n2.
-#
-# ⚠️ GET THIS LIST WRONG AND THE PIPELINE SILENTLY STALLS. A kotekan stage blocks until its
-# inputs arrive, so dropping a stage that some SURVIVING stage consumes from does not raise an
-# error -- the consumer simply waits forever and the whole ingest wedges with no log line.
-# Two mistakes, both found on the first live run (2026-07-29):
-#
-#   * process_packet_mask was in this list. It is INGEST, not science: it turns DPDK's
-#     per-packet receipt bitmaps into host_pl_mask_exp_buffer, which TransposeBasebandArray
-#     REQUIRES. Dropped it, and both transposes blocked on their first frame -- DPDK happily
-#     filled network_input_buffer to 21/24 while host_voltage_buffer stayed empty.
-#
-#   * run_send_voltage was NOT in this list and needed to be. It uploads the full 402 MB frame
-#     to the GPU for the N2 correlator; with run_n2k dropped its output ringbuffer has no
-#     consumer, so it fills, blocks, and stops releasing host_voltage_buffer frames -- stalling
-#     the transposes from the other side. Our tap reads host_voltage_buffer directly and does
-#     not want that upload anyway, so dropping it also saves 9.6 GB/s of PCIe.
-#
-# The rule: drop only what nothing surviving CONSUMES from. --dry-run now checks this
-# (buffers left with consumers but no producer) instead of leaving it to a live stall.
 # Filled by build_n2dual_branch as it goes, drained by --emit-j2-vars. These are the SAME
 # objects the blocks were built from, so an emitted vars file cannot describe a config the
 # generator did not produce.
 J2_VARS = {}
-
-N2_STAGE_PREFIXES = (
-    "run_n2k",
-    "n2_accumulate",
-    "eigencalc",
-    "n2_subset",
-    "hex_dump",
-    "buffer_send_n2",
-    "compute_RFI_frame_mask",
-    "count_rfi_mask",
-    "rfi_sk_metrics",
-    "run_rfi_",
-    "run_recv_rfi_",
-    "run_pl_",
-    "count_PL",
-    "PL_mask_compactor",
-    "run_send_pl_mask",
-    "set_bf_mask",
-    "run_send_voltage",
-)
 
 
 def gpu_of_channel(cfg, node, freq_id):
@@ -2697,16 +2652,6 @@ def main():
         help="default: runtime.rest_port from the node table (NOT 12048)",
     )
     ap.add_argument(
-        "--disable-outputs", dest="disable_outputs", action="store_true", default=True
-    )
-    ap.add_argument(
-        "--enable-outputs",
-        dest="disable_outputs",
-        action="store_false",
-        help="DANGEROUS on a shared node: re-enables the bufferSend legs to the "
-        "downstream N2 consumer",
-    )
-    ap.add_argument(
         "--emit-j2-vars",
         default=None,
         metavar="PATH",
@@ -2802,9 +2747,7 @@ def main():
         "eigen subset), 0.37 Gbps fleet-wide. drop_frames stays true, so a slow "
         "or absent receiver degrades instead of backpressuring the GPU chain.\n"
         "\n"
-        "⚠️ REQUIRES --keep-n2 (enforced below): without it n2_accumulate, "
-        "n2_subset and eigencalc are dropped and the send legs would have no "
-        "producer. ⚠️ AND IT WRITES INTO SHARED SCIENCE STORAGE -- the default "
+        "⚠️ IT WRITES INTO SHARED SCIENCE STORAGE -- the default "
         "endpoint is the same host and ports choco's production nodes use, so "
         "our frames land beside theirs. Flip it on deliberately.",
     )
@@ -2880,11 +2823,6 @@ def main():
         metavar="N",
         dest="vis_capture_depth",
         help="frames of slack between the gate and each writer (default 8)",
-    )
-    ap.add_argument(
-        "--keep-n2",
-        action="store_true",
-        help="retain the science pipeline alongside the GNSS branch",
     )
     ap.add_argument(
         "--frame0-nano",
@@ -3045,7 +2983,7 @@ def main():
         help="GnssN2Project on the science N2 (phase 3a): shadow = solve the live "
         "block's dominant subspace per frame and report k/lambda/null per "
         "channel, touch nothing; live = N2Accumulate reads the projected copy "
-        "(gnss_n2_proj_buffer{,_1}). Needs --keep-n2.",
+        "(gnss_n2_proj_buffer{,_1}).",
     )
     ap.add_argument(
         "--n2-project-stations",
@@ -3997,11 +3935,6 @@ def main():
 
     # --- safety: don't inject into the downstream science consumer ----------------------------
     dropped = []
-    if args.n2_send and not args.keep_n2:
-        raise SystemExit(
-            "--n2-send needs --keep-n2: without it n2_accumulate/n2_subset/"
-            "eigencalc are dropped and the send legs would have no producer"
-        )
     n2_send_kept = []
     for key in list(out.keys()):
         if args.n2_send and key.startswith("buffer_send_n2"):
@@ -4059,7 +3992,7 @@ def main():
                     % (key, leg.get("buf"), leg["server_ip"], leg["server_port"])
                 )
             continue
-        if args.disable_outputs and key.startswith("buffer_send"):
+        if key.startswith("buffer_send"):
             del out[key]
             dropped.append(key)
             if key.startswith("buffer_send_bad_feed_mask"):
@@ -4073,19 +4006,6 @@ def main():
                 ):
                     if out.pop(_k, None) is not None:
                         dropped.append(_k)
-        elif not args.keep_n2 and key.startswith(N2_STAGE_PREFIXES):
-            # run_send_voltage survives (the dual correlator consumes the GPU voltage ring it
-            # feeds); run_n2k itself is still dropped -- cudaCorrelatorDual replaces it and
-            # keeps the N^2 prefix on-GPU.
-            if key.startswith("run_send_voltage"):
-                continue
-            del out[key]
-            dropped.append(key)
-        elif not args.keep_n2 and key.startswith("host_correlation_buffer"):
-            # Nothing produces or consumes it in this mode (no cudaOutputData for the N^2
-            # prefix in dev); leaving it would just allocate dead host memory.
-            del out[key]
-            dropped.append(key)
 
     # FLEET POLICY INTO THE CAPTURED BASE: the dpdk block comes from the live capture and is
     # never hand-edited (a hand-edit is exactly what node_up.sh's manifest check catches), so
@@ -4129,10 +4049,6 @@ def main():
     # stage per GPU under gnss_n2_project (a GNSS key for the parity gate). In live mode the
     # output copy replaces N2Accumulate's input, which stock_parity.py declares.
     if args.n2_project != "off":
-        if not args.keep_n2:
-            raise SystemExit(
-                "--n2-project needs --keep-n2 (the science N2 must be running)"
-            )
         _st = []
         for _part in str(args.n2_project_stations).split(","):
             _a, _, _b = _part.strip().partition("-")

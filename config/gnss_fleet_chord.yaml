@@ -16,8 +16,8 @@
 # makes that enforceable -- it regenerates into memory and compares, so a hand-edit or a
 # generator change shows up as a red gate instead of a silent divergence.
 #
-# Keys become flags exactly as in config/gnss_chains_chord.yaml: `keep-n2: true` -> a bare
-# `--keep-n2`, `search-port-base: 11040` -> `--search-port-base 11040`, false/null -> omitted.
+# Keys become flags exactly as in config/gnss_chains_chord.yaml: `n2-send: true` -> a bare
+# `--n2-send`, `search-port-base: 11040` -> `--search-port-base 11040`, false/null -> omitted.
 # Same convention, so a mistyped key surfaces as argparse's "unrecognized arguments".
 
 # ⚠️ THE BASE IS PRODUCTION'S TEMPLATE, RENDERED -- NEVER A CAPTURE (2026-10-02). The
@@ -77,14 +77,11 @@ common:
   # 2-6 deg and nothing is left uncovered between the two.
     elem-proj-deg: 6
 
-  # Production's N2 science chain stays up alongside ours -- path B rides for 0.077 ms
-  # (docs/gnss_gpu_search.md 11.15) rather than replacing run_n2k.
-    keep-n2: true
   # PHASE 3a: THE SATELLITES OUT OF THE SCIENCE N2 (cx51 canary LIVE 2026-10-03 12:37Z; the rest
   # of the fleet the same evening). GnssN2Project solves the dominant SPREAD components of each
   # channel's live block per frame and writes (I-QQ^H)V(I-QQ^H) into the copy N2Accumulate reads
   # -- only in the excision-exempt lobes ('exempt' = rfi-excision-exempt-freq-ids above), which
-  # are lost to cosmology anyway. Needs keep-n2. B04X (correlator station 7) is LEFT OUT of the
+  # are lost to cosmology anyway. B04X (correlator station 7) is LEFT OUT of the
   # projected stations: saturated, and its cross-pol pair with B04Y was the dominant 'component'
   # of every quiet channel (10-03). Judged at G32 2.94 deg and E36 1.43 deg on cx51: the satellite
   # gone from cx51's channels in recv1's files, present on everyone else's; what remains at a
@@ -445,7 +442,7 @@ common:
   # nodes capture the same sky interval to the frame.
   #
   # ⚠️ NOT THE PRODUCTION N^2. recv1's data set is run_n2k -> n2_accumulate -> the n2-send legs
-  # above (keep-n2 / n2-send / n2-send-legs) -- the collaboration's main product; those keys
+  # above (n2-send / n2-send-legs) -- the collaboration's main product; those keys
   # stay ARMED regardless of this one. gnss_gather_aa below is a block inside the GNSS DUAL
   # correlator (32 live elements, the 6-7 despread channels) so the capture carries N^2 next
   # to NxM; it does not touch cudaCorrelator or anything downstream of it.
